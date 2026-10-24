@@ -1,0 +1,3886 @@
+{
+ "schemaVersion": 1,
+ "budgets": {
+  "maxFileBytes": 60000,
+  "maxCellChars": 600
+ },
+ "entries": [
+  {
+   "kind": "missing-path",
+   "path": "AGENTS.md",
+   "key": "release/alpha",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "AGENTS.md",
+   "key": "release/beta",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "AGENTS.md",
+   "key": "release/preprod",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "AGENTS.md",
+   "key": "release/prod",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "CONTRIBUTING.md",
+   "key": "node/assembly",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "CONTRIBUTING.md",
+   "key": "node/dependencyTree",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "CONTRIBUTING.md",
+   "key": "node/target/runtime-classpath.txt",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "CONTRIBUTING.md",
+   "key": "release/alpha",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "CONTRIBUTING.md",
+   "key": "release/beta",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "CONTRIBUTING.md",
+   "key": "release/preprod",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "CONTRIBUTING.md",
+   "key": "release/prod",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "CONTRIBUTING.md",
+   "key": "storage/Binary.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/adr/0012-portable-blst.md",
+   "key": "blst-native/out/exports.txt",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/adr/0012-portable-blst.md",
+   "key": "blst-native/out/libblst.so",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/adr/0012-portable-blst.md",
+   "key": "node/tools",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/adr/0012-portable-blst.md",
+   "key": "JVMPlatformSpecific.bls12_381_G1_uncompress",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/adr/0012-portable-blst.md",
+   "key": "blst 0.3.10",
+   "count": 2
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/adr/0012-portable-blst.md",
+   "key": "blst@6d960cd05d6fe2b5bc9ba161edf0c1a131b87c4c",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/adr/0013-cbor-documents-are-an-index-over-the-input.md",
+   "key": "models/runtime",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/adr/0016-peer-states-and-the-governor.md",
+   "key": "ouroboros-consensus 4.2.1.0",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/adr/0016-peer-states-and-the-governor.md",
+   "key": "ouroboros-network 1.2.0.0",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/adr/0017-fibers-end-with-values.md",
+   "key": "Peer.carryingNetwork",
+   "count": 1
+  },
+  {
+   "kind": "file-size",
+   "path": "docs/architecture.md",
+   "key": "",
+   "count": 1,
+   "measure": 113071
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "consensus/ByronRules.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "consensus/ChainSelection.scala",
+   "count": 2
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "consensus/HardFork.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "consensus/HeaderRules.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "consensus/Praos.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "ledger/Phase2.scala",
+   "count": 2
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "ledger/PredicateFailure.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "ledger/Purpose.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "ledger/ScriptContexts.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "ledger/ScriptIntegrity.scala",
+   "count": 2
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "ledger/Tx.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "ledger/TxChecks.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "ledger/UpdateChecks.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "ledger/Utxo.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "ledger/byron",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "ledger/byron/",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "ledger/rules/",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "ledger/rules/Epoch.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "ledger/rules/EraBlock.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "ledger/rules/Ledger.scala",
+   "count": 2
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "ledger/rules/ShelleyUtxo.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "network/ConnectionManager.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "network/LocalStateQueryServer.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "network/LocalTxMonitorServer.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "network/Mux.scala",
+   "count": 2
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "node/ParallelPlutus.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "node/forge",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "node/mempool/LocalMonitor.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "node/ntc/",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "node/read/",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "plutus/PlutusAvailability.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "plutus/ScalusEvaluator.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "plutus/ScriptEvaluator.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "protocol/ConnectionState.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "protocol/LocalStateQuery.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "protocol/LocalTxMonitor.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "protocol/Mux.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "storage/UtxoStore.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "storage/haskell/",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/architecture.md",
+   "key": "storage/haskell/state",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/architecture.md",
+   "key": "Translate.toConway",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/architecture.md",
+   "key": "Verification.warm",
+   "count": 2
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/architecture.md",
+   "key": "ouroboros-consensus 4.2.1.0",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/architecture.md",
+   "key": "ouroboros-network 1.2.0.0",
+   "count": 1
+  },
+  {
+   "kind": "file-size",
+   "path": "docs/compatibility.md",
+   "key": "",
+   "count": 1,
+   "measure": 287063
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/compatibility.md",
+   "key": "byron.cddl:126",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/compatibility.md",
+   "key": "fixtures/snapshot-v3",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/compatibility.md",
+   "key": "gapmask.py",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/compatibility.md",
+   "key": "node/runtimeClasspathFile",
+   "count": 9
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "1,451 K1 Preview originals converted to current V5 with unch",
+   "count": 1,
+   "measure": 1202
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "13 files, 26 test classes, every assertion on both sides: th",
+   "count": 1,
+   "measure": 1319
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "14 rounds under the ordinary and governance load, epochs 0 t",
+   "count": 1,
+   "measure": 758
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "15 rounds: 763 of 763 query answers byte-equal; 23 of 24 `ca",
+   "count": 1,
+   "measure": 1156
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "18 complete actual reference Conway/PV10 transactions: V1/V2",
+   "count": 1,
+   "measure": 641
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "18 rounds, 987/987 implemented-query comparisons equal; 88/8",
+   "count": 1,
+   "measure": 607
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "2026-10-21 UTC, Euler; Docker JDK 21.0.11/Scala 3.3.8/sbt 1.",
+   "count": 1,
+   "measure": 859
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "2026-10-22 UTC, Euler; Docker JDK21.0.11/Scala3.3.8/sbt1.10.",
+   "count": 1,
+   "measure": 697
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "22 actual unchanged released-reference cases: six legal and ",
+   "count": 1,
+   "measure": 798
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "24 actual signed Conway/PV10 submissions (12 included/12 ref",
+   "count": 1,
+   "measure": 991
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "27 tests passed: all query walks, including an acquired sess",
+   "count": 1,
+   "measure": 661
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "74 reference-submitted cases: Alonzo PV5/6, Babbage PV7/8, C",
+   "count": 1,
+   "measure": 643
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "All 1,009 original upstream term/counting cases pass without",
+   "count": 1,
+   "measure": 734
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "All 4,758,521 original blocks from genesis to slot125366428/",
+   "count": 1,
+   "measure": 643
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "All protocol checks passed: 18 rounds, 986/986 implemented q",
+   "count": 1,
+   "measure": 717
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "All six committed Shelley-based state/table fixtures reconst",
+   "count": 1,
+   "measure": 722
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Both PASS. Relay final tips agree at196/de1736e9; 27/30 samp",
+   "count": 1,
+   "measure": 745
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Broader seeds/branches, protocol scheduling, transport and t",
+   "count": 1,
+   "measure": 649
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Current Preview reconciliation also passes: 4,758,521 contin",
+   "count": 1,
+   "measure": 774
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Current fixed-file/gap/semantic goldens and checkpoint resta",
+   "count": 1,
+   "measure": 1269
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Current native V5/fingerprint retained; fixed fixtures and e",
+   "count": 1,
+   "measure": 738
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Docker check: 5,144 passed/16 optional-data skips, no failur",
+   "count": 1,
+   "measure": 797
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "E2e PASS: 1,672 block applications through Conway epoch 17, ",
+   "count": 1,
+   "measure": 668
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Exit 0 on frozen source `6db8c0607b5fee0278cdb1238f6aedfcae6",
+   "count": 1,
+   "measure": 1464
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Extended decoder fuzz passes 77 targets × 400,000 cases (30.",
+   "count": 1,
+   "measure": 877
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Final full check: 4,597 passed, 15 skipped, including standa",
+   "count": 1,
+   "measure": 656
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Finite grids do not prove equality for every program, transa",
+   "count": 1,
+   "measure": 816
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Fresh private cluster: Scarab has one configured local root,",
+   "count": 1,
+   "measure": 677
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Full check after rebasing over KES persistence durability (#",
+   "count": 1,
+   "measure": 601
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Full check including scalafix passed on the combined product",
+   "count": 1,
+   "measure": 602
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Full check passes (4,608 passed, 15 skipped, 0 failed/errors",
+   "count": 1,
+   "measure": 761
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Full check: 4,563 passed, 15 skipped, including fuzz and sca",
+   "count": 1,
+   "measure": 682
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Full check: 4,572 passed, 15 skipped, including fuzz and sca",
+   "count": 1,
+   "measure": 807
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Genesis coverage is recorded in the separate G3 row; version",
+   "count": 1,
+   "measure": 824
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Haskell loads the private slot-7 S4 export and validates/rep",
+   "count": 1,
+   "measure": 929
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "IETF draft-03 vectors 16 and 17 reproduced exactly; KES veri",
+   "count": 1,
+   "measure": 772
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "LocalStateQuery answers `ledger-state` (`DebugNewEpochState`",
+   "count": 1,
+   "measure": 4555
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "N3 against the public Leios testnet `musashi` (2026-10-16, r",
+   "count": 1,
+   "measure": 1190
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "New sharing has actual private reference proof below; histor",
+   "count": 1,
+   "measure": 752
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "NtC: 17 rounds, 932/932 implemented query comparisons; V16–V",
+   "count": 1,
+   "measure": 674
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Output and mint multi-asset maps are read at the era's decod",
+   "count": 1,
+   "measure": 1953
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "PASS after the non-overlapping #195 merge: 5,045 passed, 16 ",
+   "count": 1,
+   "measure": 711
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "PASS on the rebased integration: 18 rounds, 986/986 implemen",
+   "count": 1,
+   "measure": 879
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "PASS: 5,239 tests passed, 16 optional-data skips, zero failu",
+   "count": 1,
+   "measure": 632
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "PASS: 5,253 tests, 16 optional-data skips, zero failures/err",
+   "count": 1,
+   "measure": 607
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "PASS: 5,366 tests, 17 optional-data skips, zero failures/err",
+   "count": 1,
+   "measure": 623
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "PASS: 5,394 passed/17 optional-data skips across 14 modules,",
+   "count": 1,
+   "measure": 789
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "PASS: 5,425 tests, 17 optional-data skips, zero failures/err",
+   "count": 1,
+   "measure": 689
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "PASS: 5,941 tests across 14 modules, 17 optional-data skips,",
+   "count": 1,
+   "measure": 604
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "PASS: 8,379 standard tests, zero failures/errors; 16 existin",
+   "count": 1,
+   "measure": 701
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "PASS: 8,422 tests, 16 existing external-input/benchmark skip",
+   "count": 1,
+   "measure": 663
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "PASS: 8,486 tests across 14 modules, zero failures/errors, 1",
+   "count": 1,
+   "measure": 676
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Passed: 17 rounds, 931/931 implemented query comparisons (th",
+   "count": 1,
+   "measure": 884
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Preview stride 72: 21 epochs, 70,183 blocks, 0 divergences (",
+   "count": 1,
+   "measure": 862
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Production-path paced bulk/control checks: successful KeepAl",
+   "count": 1,
+   "measure": 613
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "Real pinned-client full download/certification 0..29089, 327",
+   "count": 1,
+   "measure": 673
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "S4 export preserves the exact state and streams canonical ou",
+   "count": 1,
+   "measure": 1009
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "TPraos forging (H3); no Byron (PBFT) forging, a decision (H7",
+   "count": 1,
+   "measure": 677
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "`ByronVersionSuite`: signed complete blocks with a signed tr",
+   "count": 1,
+   "measure": 926
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "`ChainReadSuite`: every fact agrees between the flat state a",
+   "count": 1,
+   "measure": 1376
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "`CollateralWitnessSuite` (protocols 5 to 11: a collateral ke",
+   "count": 1,
+   "measure": 1287
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "`ConfigSuite` over the public Preview, preprod and mainnet f",
+   "count": 1,
+   "measure": 1266
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "`PoolRelaysSuite`, `LedgerPeersSuite`, `PeerSnapshotSuite` a",
+   "count": 1,
+   "measure": 681
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "`PreparedBlockSuite`, `TxDependenciesSuite`, `ParallelPlutus",
+   "count": 1,
+   "measure": 622
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "`e2e`: Shelley 12, Allegra 4, Mary 4, Alonzo 8, Babbage 8, C",
+   "count": 1,
+   "measure": 731
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "`python3 scripts/devnet.py --name scarab-247-root-restart re",
+   "count": 1,
+   "measure": 768
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "`python3 scripts/devnet.py --name scarab-248-e2e e2e` exit 0",
+   "count": 1,
+   "measure": 766
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "`query tip` equal to the chain (epoch 319, slot in epoch and",
+   "count": 1,
+   "measure": 796
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "before: format 1 migrated and restored, the 12th block after",
+   "count": 1,
+   "measure": 1009
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "blocks to slot 1,769,881 (Byron epoch 81) validated with 0 e",
+   "count": 1,
+   "measure": 607
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "both relay runs passed (default: with `ExperimentalProtocols",
+   "count": 1,
+   "measure": 906
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "byte round trip of real files written by a Haskell node 11.1",
+   "count": 1,
+   "measure": 794
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "eras fixture: 731 blocks, 675 of the 681 Shelley-based block",
+   "count": 1,
+   "measure": 1054
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "eras fixture: 731 blocks, 681 ticks compared, at least 6 era",
+   "count": 1,
+   "measure": 759
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "every Byron block validated (after the stop 1 fix) and the B",
+   "count": 1,
+   "measure": 639
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "full Genesis syncing remains G3; PeerSharing, ledger peers a",
+   "count": 1,
+   "measure": 1291
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "full successor-slot ticking includes epoch transitions, pend",
+   "count": 1,
+   "measure": 608
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "implemented: `TxBody.decode` and `Witnesses.decode` take the",
+   "count": 1,
+   "measure": 2370
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "implemented: the rule makes, for every transaction whatever ",
+   "count": 1,
+   "measure": 735
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "met, with one peer. Database migrated on open (identity, 5,8",
+   "count": 1,
+   "measure": 1185
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "native query fixtures: 16 wallet API outputs, 11 peer encodi",
+   "count": 1,
+   "measure": 678
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "one bug found by the devnet and fixed: the mirror's reading ",
+   "count": 1,
+   "measure": 945
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "only the UTxO set is on disk; accounts, pools, DReps and sta",
+   "count": 1,
+   "measure": 784
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "partial: `follow --config <config.json> --topology <topology",
+   "count": 1,
+   "measure": 900
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "passed (the second of two runs of the final build; the first",
+   "count": 1,
+   "measure": 849
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "pre-Conway eras keep their previous list and field rules exc",
+   "count": 1,
+   "measure": 1300
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "read and written: `HaskellLedgerFile` (the `[1, ...]` envelo",
+   "count": 1,
+   "measure": 619
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "resumed on the stop 4 fix (restored at block 4,488,648, befo",
+   "count": 1,
+   "measure": 939
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "round-trip and corruption property tests; store crash cases ",
+   "count": 1,
+   "measure": 1720
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "the Conway cases were run through `cardano-cli debug transac",
+   "count": 1,
+   "measure": 870
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "the follower of stop 5 wrote no snapshot after the handover:",
+   "count": 1,
+   "measure": 929
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "the follower, past slot about 26.6M in Mary, logged `snapsho",
+   "count": 1,
+   "measure": 1263
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "the production rules over the eras capture beside the old ru",
+   "count": 1,
+   "measure": 1651
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "the reference image run on the devnet as a fourth, non-forgi",
+   "count": 1,
+   "measure": 1200
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "the round-robin leader schedule is reported (`offSchedule`),",
+   "count": 1,
+   "measure": 675
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "the sixth sync stopped at block 6,203,514 (slot 39,249,764, ",
+   "count": 1,
+   "measure": 991
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "unit/property (Ratify, ConwayGovernance suites); devnet soak",
+   "count": 1,
+   "measure": 1091
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "unit/property; devnet soak (24/24, 41/41 and, with the exten",
+   "count": 1,
+   "measure": 643
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/compatibility.md",
+   "key": "worker-a (older 2-core x86-64 CPU, no `adx`/`bmi2`), contain",
+   "count": 1,
+   "measure": 616
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "blst@7b40a480",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "cardano-ledger@24dcc9a0ecbcbd9c",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "cardano-ledger@369826b2f60b443d",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "cardano-ledger@9a47e091709e4fe1",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "cardano-node@903690cb",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "cardano-node@d31f0b31",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "mithril@095cae6e",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "mithril@4a83ea72",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "mithril@8a42968a",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "mithril@b7f97836",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "mithril@c90140def52d",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "ouroboros-consensus 4.2.0.0",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "ouroboros-consensus 4.2.1.0",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "ouroboros-consensus@97095b3e",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "ouroboros-network@10c5508f",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "ouroboros-network@1c773ae6",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "ouroboros-network@50240b96",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "ouroboros-network@8d9631f1",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "ouroboros-network@f890bd5e",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "ouroboros-network@ffb2032d",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@0a6693fb0",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@0b5dde8f",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@0c94e76a4",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@244d1c14",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@2af53e49f",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@2fcd30904",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@32913e4",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@41eec68a",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@4246312a",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@5b290879b",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@63a629bc",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@6dd8be3",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@79469100a",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@7ba8c7f3",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@7bb98e3",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@8473993c8",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@93164ee9",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@95ed8951",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@aee75c1c",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@b991c9413",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@bac16602",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@bc37be68",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@d66b216",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@d9d089039",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@de9619b9",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@e1bb6473",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "plutus@f90dce57",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "scalus 1.2.0",
+   "count": 2
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "scalus@099f838",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "scalus@2edd684f",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "scalus@82af74e",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "scalus@97b31e35",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility.md",
+   "key": "scalus@ecc9c64",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "cardano-ledger@bbc1844c",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "cardano-ledger@bbc1844c0602de558d5eeebbde2c5c3d44cce3e8",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "cardano-ledger@d7297028",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "cardano-ledger@d7297028d3ffc910e49183070cb1b33259dc579c",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "cardano-ledger@f11490a9",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "cardano-ledger@f11490a9d7a947c1a26b0c49700f9bb0ab380501",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "cardano-ledger@f8636b4c",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "cardano-ledger@f8636b4c84bb070da67431f51993930b6d162007",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "ouroboros-network@2cede5d1",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "ouroboros-network@2cede5d1762028503182adbed6232f700fbc4684",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "ouroboros-network@31938ad4",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "ouroboros-network@31938ad42c71bb0bf5f40c9673dcaa158820beb6",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "ouroboros-network@33c11138",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "ouroboros-network@33c11138f83affc3433f54ade562cfa1e99e3848",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "ouroboros-network@6a49b6f6",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "ouroboros-network@6a49b6f63e18886adcdac3ae8393b8f8d316144a",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "plutus@82db8973",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "plutus@82db8973764a4deccb9d1b1d2ece33dd6c4c1e54",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "plutus@83fb488e",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "plutus@8fd7b6f3",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "plutus@bf691763",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "plutus@bf6917633a7c697b816e19f5b0491966c1f771ce",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "plutus@e25e3234",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/conformance-source-review.md",
+   "key": "plutus@e25e3234130e3a29f4d7c572ac47fa49978b2d14",
+   "count": 1
+  },
+  {
+   "kind": "file-size",
+   "path": "docs/design/haskell-snapshots.md",
+   "key": "",
+   "count": 1,
+   "measure": 64808
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/haskell-snapshots.md",
+   "key": "Bbody.scala:78",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/haskell-snapshots.md",
+   "key": "MempoolState.scala:281",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/haskell-snapshots.md",
+   "key": "Phase2.scala:51",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/haskell-snapshots.md",
+   "key": "RocksUtxoStore.scala:26",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/haskell-snapshots.md",
+   "key": "TxChecks.scala:123",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/haskell-snapshots.md",
+   "key": "TxChecks.scala:420",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/haskell-snapshots.md",
+   "key": "ledger/136511997",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/haskell-snapshots.md",
+   "key": "ledger/136511997/state",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/haskell-snapshots.md",
+   "key": "storage/haskell/state/SnapshotTables",
+   "count": 1
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/design/haskell-snapshots.md",
+   "key": "Acceptance. (a) `db-analyser --in-mem --analyse-from <slot> ",
+   "count": 1,
+   "measure": 704
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/design/haskell-snapshots.md",
+   "key": "`import-ledger-snapshot --haskell-ledger <dir> --db <dir> --",
+   "count": 1,
+   "measure": 791
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/design/haskell-snapshots.md",
+   "key": "`tables` writer and reader and the `meta` file in `storage`:",
+   "count": 1,
+   "measure": 999
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/design/haskell-snapshots.md",
+   "key": "cardano-node 10.7",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/design/haskell-snapshots.md",
+   "key": "cardano-node@0b2efe56",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/design/haskell-snapshots.md",
+   "key": "ouroboros-consensus 4.2.1.0",
+   "count": 1
+  },
+  {
+   "kind": "file-size",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "",
+   "count": 1,
+   "measure": 125556
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "Epoch.scala:118",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "LedgerMirror.scala:565",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "LedgerRules.scala:227",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "LedgerRules.scala:474",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "LedgerSnapshots.scala:43",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "Main.scala:309",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "Main.scala:449",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "QueryAnswers.scala:150",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "PreConwayRules.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "Repro.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "consensus/Scheduling.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "consensus/state",
+   "count": 2
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "fixtures/differential/",
+   "count": 2
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "ledger/LedgerState.scala",
+   "count": 2
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "ledger/PersistedFormat.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "ledger/TxChecks",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "ledger/rules/",
+   "count": 5
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "ledger/rules/Sts.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "ledger/state/Diff.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "node/MirrorRules.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "node/ntc/LedgerEncoders.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "node/read/ChainRead.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "node/read/EraRead.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "node/src/main/scala/xyz/kd5ujc/scarab/node/differential/",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "storage/LedgerSnapshots.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "storage/Migrate.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "storage/SnapshotSidecar.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "storage/haskell/state",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "storage/haskell/state/HaskellLedgerFile.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "storage/haskell/state/UtxoCodecs.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "ConwayBlock.Context",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "ConwayRules.vrfAvailable",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "DifferentialRules.ledgerFailure",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "Epoch.preConwayBoundary",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "ForgeError.KeyMismatch",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "LedgerEnv.txIx",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "LedgerFailure.Invalid",
+   "count": 2
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "MirrorAnswers.mirrored",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "NewOutcome.NotPorted",
+   "count": 3
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "NewRules.Apply",
+   "count": 2
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "NewRules.carried",
+   "count": 4
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "NewRules.current",
+   "count": 4
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "NewRules.forEra",
+   "count": 3
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "NewRules.shelleyBased",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "NewRules.tick",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "NewRules.withConway",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "NodeRules.applyFull",
+   "count": 3
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "Paired.neu",
+   "count": 2
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "PpupRules.newEpoch",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "PreConwayRules.minUTxO",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "PredicateFailure.Unmapped",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "Relations.compare",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "Relations.normalise",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "Relations.withoutByteCost",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "RuleSet.New",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "RuleSet.Old",
+   "count": 3
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "Sampling.Boundaries",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "SnapshotV4.mirrorFormat",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "SomeEra.next",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "Stage.Block",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "Stage.Tick",
+   "count": 4
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "StateMirror.fromMirror",
+   "count": 2
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "Translate.toConway",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "TxRules.Env",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "TxRules.apply",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/design/ledger-mirror-step2.md",
+   "key": "plutus@7c483457b06802d6",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror.md",
+   "key": "LedgerEncoders.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror.md",
+   "key": "consensus/state/",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror.md",
+   "key": "consensus/state/StateMirror.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror.md",
+   "key": "ledger/123932130",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror.md",
+   "key": "ledger/125366331",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror.md",
+   "key": "ledger/state/Eras.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/ledger-mirror.md",
+   "key": "ledger/state/Vocabulary.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/ledger-mirror.md",
+   "key": "NodeCodecs.nodeSnapshot",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "Address.scala:337",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "BootstrapLedger.scala:257",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "ByronAddress.scala:138",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "ByronDelegation.scala:64",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "ByronLedger.scala:71",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "ByronUpdate.scala:50",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "CborRead.scala:58",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "Codec.scala:199",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "Codec.scala:29",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "Codec.scala:404",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "DecodeError.scala:89",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "Emitter.scala:669",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "Envelope.scala:106",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "Governance.scala:118",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "LeiosFetch.scala:90",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "LocalSubmission.scala:31",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "NodeTypeCodecs.scala:61",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "RewardCodecs.scala:93",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "Scripts.scala:201",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "Tx.scala:192",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "Tx.scala:252",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "UtxoCodecs.scala:62",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "Value.scala:21",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "ledger/Block.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "models/runtime",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "models/runtime/Codec.scala",
+   "count": 3
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "models/runtime/DecodeError.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "node/forge/BlockBuilder.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "node/mempool/MempoolState.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "protocol/LeiosNotify.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "Elements.decodePairs",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/memory-lean-decoding.md",
+   "key": "SnapshotV4.encoded",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/design/parallel-plutus.md",
+   "key": "plutus@2ffad2d8",
+   "count": 1
+  },
+  {
+   "kind": "file-size",
+   "path": "docs/design/peer-selection.md",
+   "key": "",
+   "count": 1,
+   "measure": 165667
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/peer-selection.md",
+   "key": "Handshake.scala:50",
+   "count": 1
+  },
+  {
+   "kind": "line-citation",
+   "path": "docs/design/peer-selection.md",
+   "key": "NodeToNode.scala:59",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/peer-selection.md",
+   "key": "Outbound.scala",
+   "count": 2
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/peer-selection.md",
+   "key": "docs/network-design/network-design.tex",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/peer-selection.md",
+   "key": "docs/network-spec",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/peer-selection.md",
+   "key": "docs/network-spec/",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/peer-selection.md",
+   "key": "network/PeerSharingClient/Server",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/peer-selection.md",
+   "key": "node/Topology.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/peer-selection.md",
+   "key": "protocol/PeerSharing.scala",
+   "count": 2
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/peer-selection.md",
+   "key": "Decide.bigLedger",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/peer-selection.md",
+   "key": "Decide.rootPeers",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/peer-selection.md",
+   "key": "Job.RequestPublicRoots",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/peer-selection.md",
+   "key": "KnownPeers.insert",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/peer-selection.md",
+   "key": "Monitor.ledgerPeerSnapshotChange",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/peer-selection.md",
+   "key": "PublicRootPeers.toSet",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/peer-selection.md",
+   "key": "Source.BigLedger",
+   "count": 2
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/design/peer-selection.md",
+   "key": "Vocabulary.PublicRoots",
+   "count": 1
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/design/peer-selection.md",
+   "key": "One `Map[A, PeerRecord]` whose status is an enum with the tr",
+   "count": 1,
+   "measure": 788
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/design/peer-selection.md",
+   "key": "cardano-ledger@048b78d",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/design/peer-selection.md",
+   "key": "ouroboros-consensus 4.2.1.0",
+   "count": 2
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/design/peer-selection.md",
+   "key": "ouroboros-network 1.2.0.0",
+   "count": 2
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/releases.md",
+   "key": "release/alpha",
+   "count": 3
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/releases.md",
+   "key": "release/beta",
+   "count": 3
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/releases.md",
+   "key": "release/dev",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/releases.md",
+   "key": "release/mainnet",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/releases.md",
+   "key": "release/preprod",
+   "count": 3
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/releases.md",
+   "key": "release/prod",
+   "count": 4
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/design/releases.md",
+   "key": "ottochain@7ada01f1b8433b50acd5d86aa2388dd3f0e611f2",
+   "count": 5
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/reward-pulser.md",
+   "key": "ledger/rules/Rewards.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/reward-pulser.md",
+   "key": "ledger/rules/Rupd.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/reward-pulser.md",
+   "key": "ledger/state/Rewards.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/design/rule-interpreter-as-built.md",
+   "key": "node/runtimeClasspathFile",
+   "count": 1
+  },
+  {
+   "kind": "file-size",
+   "path": "docs/findings.md",
+   "key": "",
+   "count": 1,
+   "measure": 102361
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/findings.md",
+   "key": "ConwayRules.vrfAvailable",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/findings.md",
+   "key": "GovState.withDescendants",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/findings.md",
+   "key": "PreConwayCerts.moveRewards",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/findings.md",
+   "key": "RuleSet.New",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/findings.md",
+   "key": "SnapshotV4.differing",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/findings.md",
+   "key": "SoftForks.restrictPoolMetadataHash",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/findings.md",
+   "key": "Translate.toConway",
+   "count": 2
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**A Byron address has no size limit of its own; we refused o",
+   "count": 1,
+   "measure": 1834
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**A claim in the shared block pool must end with the session",
+   "count": 1,
+   "measure": 2002
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**A fiber must not raise through a capability it did not cre",
+   "count": 1,
+   "measure": 3241
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**A mainnet follower's CPU is bursts, and its rate is its ap",
+   "count": 1,
+   "measure": 950
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**A pointer address that does not fit the ledger's fields is",
+   "count": 1,
+   "measure": 6356
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**A pool registration's reward account network is checked on",
+   "count": 1,
+   "measure": 2498
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**A pool that re-registers with its own VRF key hash and the",
+   "count": 1,
+   "measure": 1212
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**A registered pool's reward account has no network in the l",
+   "count": 1,
+   "measure": 1325
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**A seed must not read `mark` off the accounts.** Preprod fr",
+   "count": 1,
+   "measure": 1073
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**A vkey witness spends a Byron output when its key hashes t",
+   "count": 1,
+   "measure": 1026
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**AVVM balances return to the reserves on entering Allegra.*",
+   "count": 1,
+   "measure": 1139
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**Before Babbage an address in an output may be followed by ",
+   "count": 1,
+   "measure": 3479
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**Builtin availability.** Which builtins a script may use de",
+   "count": 1,
+   "measure": 839
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**Byron PBFT validation** (ouroboros-consensus `Protocol/PBF",
+   "count": 1,
+   "measure": 726
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**Bytes after a Plutus script's CBOR item are ignored for V1",
+   "count": 1,
+   "measure": 1317
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**Chain selection at equal length** (confirmed, B1; ouroboro",
+   "count": 1,
+   "measure": 930
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**Conformance deviations of Scalus** (I1; found with 1.2.0, ",
+   "count": 1,
+   "measure": 1113
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**Empty redeemers in the script data hash.** An absent redee",
+   "count": 1,
+   "measure": 674
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**Haskell `state` derivations against the real Preview state",
+   "count": 1,
+   "measure": 1453
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**Header envelope and era timing** (B13; ouroboros-consensus",
+   "count": 1,
+   "measure": 965
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**Native script `n_of_k`: `n` is a signed 64-bit integer, a ",
+   "count": 1,
+   "measure": 1257
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**Nesting within the depth limit overflows the stack.** `Cbo",
+   "count": 1,
+   "measure": 1752
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**No nesting limit below the size of the block.** Preprod tr",
+   "count": 1,
+   "measure": 1933
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**Output value size.** `serialize v` (the ledger's own encod",
+   "count": 1,
+   "measure": 657
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**Phase 2 recursed once per redeemer, and a transaction with",
+   "count": 1,
+   "measure": 1314
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**Pointer address: a long run of continuation bytes costs qu",
+   "count": 1,
+   "measure": 751
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**Pre-Babbage reward prefilter.** Before Babbage (protocol o",
+   "count": 1,
+   "measure": 653
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**SPO default votes after the bootstrap phase.** A pool that",
+   "count": 1,
+   "measure": 628
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**Scalus 1.2.0 `serialiseData` truncated the constructor ind",
+   "count": 1,
+   "measure": 1793
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**Scalus `verifyEcdsaSecp256k1Signature` fails where the ref",
+   "count": 1,
+   "measure": 1311
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**Shelley's time to live is the last valid slot.** The mainn",
+   "count": 1,
+   "measure": 646
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**System start of the hard-fork combinator.** `GetSystemStar",
+   "count": 1,
+   "measure": 900
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**The BLS12-381 library of blst-java uses `mulx`/`adcx` with",
+   "count": 1,
+   "measure": 1023
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**The Byron to Shelley handover never wrote the Byron UTxO t",
+   "count": 1,
+   "measure": 2443
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**The hard-fork envelope reads indefinite lengths where the ",
+   "count": 1,
+   "measure": 1069
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**The old mirror's snapshots are exact only at the boundary.",
+   "count": 1,
+   "measure": 833
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**The pre-Conway rules of the node differ from the reference",
+   "count": 1,
+   "measure": 1849
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**The previous parameters of the first Conway epoch carry th",
+   "count": 1,
+   "measure": 1392
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**The reward update of a state, read back as the node's, sum",
+   "count": 1,
+   "measure": 1299
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**Votes were recorded with a map over every proposal for eve",
+   "count": 1,
+   "measure": 828
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**`cardano-cli query tip` against a node on a network older ",
+   "count": 1,
+   "measure": 1096
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/findings.md",
+   "key": "**`spsDelegators` is not in the pool queries' answer.** `Get",
+   "count": 1,
+   "measure": 951
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "blst 0.3.10",
+   "count": 2
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "cardano-ledger@06869a76",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "cardano-ledger@2293c5cf7bb77492",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "cardano-ledger@24dcc9a0ecbcbd9c",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "cardano-ledger@369826b2f60b443d",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "cardano-ledger@56ddee1",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "cardano-ledger@58b03728",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "cardano-ledger@5bad0850",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "cardano-ledger@5ecf2d28",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "cardano-ledger@b1db2a41",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "cardano-ledger@bc61865d",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "cardano-ledger@f277604972be4b11",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "cardano-ledger@ff5181ba",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "cardano-node@2813b99a",
+   "count": 3
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "cardano-node@9a47e091709e4fe1",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "cardano-node@afcb6d12",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "cardano-node@bcd98195",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "cardano-node@bcd9819561bddc6614",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "ouroboros-consensus 4.2.0.0",
+   "count": 2
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "ouroboros-consensus 4.2.0.1",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "ouroboros-network 1.2.0.0",
+   "count": 2
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "plutus@5272e713",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "plutus@5bc16a2",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "plutus@be476555",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "plutus@c70243bb",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "plutus@d8315bd",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "plutus@d8dc65d",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "plutus@eeaa16dc",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "plutus@f90dce57",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "plutus@ff3efca6",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "scalus 1.2.0",
+   "count": 7
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "scalus@2eb9f3d",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "scalus@2edd684f",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "scalus@5bc16a2",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "scalus@97b31e35",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "scalus@aee75c1c",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "scalus@d866821bffffffffffffffff80",
+   "count": 2
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "scalus@d866822080",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/findings.md",
+   "key": "scalus@f8209b4",
+   "count": 1
+  },
+  {
+   "kind": "file-size",
+   "path": "docs/implementer-notes.md",
+   "key": "",
+   "count": 1,
+   "measure": 107482
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/implementer-notes.md",
+   "key": "SoftForks.restrictPoolMetadataHash",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/implementer-notes.md",
+   "key": "cardano-ledger@56ddee1",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/implementer-notes.md",
+   "key": "cardano-ledger@ff5181ba",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/implementer-notes.md",
+   "key": "ouroboros-consensus 4.2.0.0",
+   "count": 3
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/implementer-notes.md",
+   "key": "plutus@97b31e35",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/implementer-notes.md",
+   "key": "plutus@d866821bffffffffffffffff80",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/implementer-notes.md",
+   "key": "plutus@d866822080",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/implementer-notes.md",
+   "key": "scalus 1.2.0",
+   "count": 5
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/implementer-notes.md",
+   "key": "scalus@2eb9f3d",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/implementer-notes.md",
+   "key": "scalus@5bc16a2",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/implementer-notes.md",
+   "key": "scalus@f8209b4",
+   "count": 1
+  },
+  {
+   "kind": "file-size",
+   "path": "docs/leios.md",
+   "key": "",
+   "count": 1,
+   "measure": 70210
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/leios.md",
+   "key": "consensus/ChainSelection.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/leios.md",
+   "key": "consensus/LedgerView.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/leios.md",
+   "key": "docs/ImpactAnalysis.md",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/leios.md",
+   "key": "docs/cddl",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/leios.md",
+   "key": "docs/environments-pre/leios/",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/leios.md",
+   "key": "docs/haskell-simulator",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/leios.md",
+   "key": "docs/leios-design",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/leios.md",
+   "key": "docs/leios/design-note.md",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/leios.md",
+   "key": "docs/status-report-2026q2.md",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/leios.md",
+   "key": "docs/threat-model.md",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/leios.md",
+   "key": "docs/website/contents/explanations/leiosdb.md",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/leios.md",
+   "key": "ledger/ProtocolParams.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/leios.md",
+   "key": "ledger/Stake.scala",
+   "count": 2
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/leios.md",
+   "key": "ledger/Tx.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/leios.md",
+   "key": "network/Handshake.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/leios.md",
+   "key": "node/Header.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/leios.md",
+   "key": "protocol/ProtocolVersion.scala",
+   "count": 1
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/leios.md",
+   "key": "The CDDL pipeline (`models-gen`) takes the Leios CDDL it was",
+   "count": 1,
+   "measure": 1452
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/leios.md",
+   "key": "`Era` has no `Dijkstra`: the era history, `HardForkConfig` (",
+   "count": 1,
+   "measure": 612
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/leios.md",
+   "key": "`foundation.icon:blst-java:0.3.2` (Apache-2.0) is already on",
+   "count": 1,
+   "measure": 908
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/leios.md",
+   "key": "~~Handshake: the node offers version 14 only; the relay acce",
+   "count": 1,
+   "measure": 611
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/leios.md",
+   "key": "cardano-ledger@ba863cf5",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/leios.md",
+   "key": "cardano-ledger@d93c6546",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/leios.md",
+   "key": "cardano-node@4b3ab766",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/leios.md",
+   "key": "cardano-node@715b8d2a",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/leios.md",
+   "key": "cardano-node@8c44d145",
+   "count": 3
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/leios.md",
+   "key": "cardano-node@96ee6e0e",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/leios.md",
+   "key": "cardano-node@aa1238f5",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/leios.md",
+   "key": "cardano-node@c5117705",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/leios.md",
+   "key": "cardano-node@f65db01c",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/leios.md",
+   "key": "ouroboros-consensus@27fa649f",
+   "count": 2
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/leios.md",
+   "key": "ouroboros-consensus@cef41f6b",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/leios.md",
+   "key": "ouroboros-network@4b3ab766",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/leios.md",
+   "key": "ouroboros-network@f0243fe6",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/leios.md",
+   "key": "ouroboros-network@fbfb3f05",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/leios.md",
+   "key": "scalus 1.2.0",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/licenses.md",
+   "key": "node/target/runtime-classpath.txt",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/models.md",
+   "key": "models/Test/compile",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/models.md",
+   "key": "models/test",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/models.md",
+   "key": "cuddle 1.8.1",
+   "count": 1
+  },
+  {
+   "kind": "file-size",
+   "path": "docs/performance.md",
+   "key": "",
+   "count": 1,
+   "measure": 229011
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/performance.md",
+   "key": "PulseProfile.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/performance.md",
+   "key": "RewardMemoryProfile.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/performance.md",
+   "key": "RewardProfile.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/performance.md",
+   "key": "analyze.py",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/performance.md",
+   "key": "node/Test/compile",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/performance.md",
+   "key": "node/Test/fullClasspath",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/performance.md",
+   "key": "node/runtimeClasspathFile",
+   "count": 2
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/performance.md",
+   "key": "run-memory.py",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/performance.md",
+   "key": "run-micro-cheap.py",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/performance.md",
+   "key": "run-micro-singleton.py",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/performance.md",
+   "key": "BitmapIndexedMapNode.getPayload",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/performance.md",
+   "key": "FieldElement.multiply",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/performance.md",
+   "key": "GC.heap_info",
+   "count": 2
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/performance.md",
+   "key": "HashMap.get",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/performance.md",
+   "key": "LegacySnapshots.read",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/performance.md",
+   "key": "NewRules.forEra",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/performance.md",
+   "key": "NewRules.tick",
+   "count": 2
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/performance.md",
+   "key": "PreConwayRules.apply",
+   "count": 3
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/performance.md",
+   "key": "PreConwayRules.witnessChecks",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/performance.md",
+   "key": "ScriptContexts.bytesOrder",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/performance.md",
+   "key": "Stats.oldBlocks",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/performance.md",
+   "key": "ThreadMXBean.getCurrentThreadCpuTime",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/performance.md",
+   "key": "TreeMap.transform",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/performance.md",
+   "key": "xyz.kd5ujc.scarab.node.differential.RewardProfile",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/performance.md",
+   "key": "dingo@278bbde98187863e3b6a6fbf37f0398bfa2336ac",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/performance.md",
+   "key": "mithril@57608c6e",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/performance.md",
+   "key": "ouroboros-consensus 4.2.0.0",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/performance.md",
+   "key": "scarab@0798b5d5c423cf4c6b657f514736e6160cca457e",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/performance.md",
+   "key": "scarab@2f7983d716919001f67a3ff0061998311200eaa2",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/performance.md",
+   "key": "scarab@bacac5342d5d09d37e2a949e9f23a2312cce560a",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/performance.md",
+   "key": "scarab@ca22fad29b8b41f7d47a94b3968a060f1b0a13e5",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/plutus-conformance.md",
+   "key": "cardano-node@ee396604",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/plutus-conformance.md",
+   "key": "scalus@c132a2c8615db9cd27b464b7863863cd576d23be",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/release-candidates.md",
+   "key": "node/releaseInventory",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/release-pr-preparation.md",
+   "key": "Manifest.fromManifest",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/reproducible-builds.md",
+   "key": "node/assembly",
+   "count": 3
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/reproducible-builds.md",
+   "key": "release/alpha",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/reproducible-builds.md",
+   "key": "release/beta",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/reproducible-builds.md",
+   "key": "release/preprod",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/reproducible-builds.md",
+   "key": "release/prod",
+   "count": 1
+  },
+  {
+   "kind": "file-size",
+   "path": "docs/roadmap.md",
+   "key": "",
+   "count": 1,
+   "measure": 103067
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/roadmap.md",
+   "key": "consensus/HardFork.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/roadmap.md",
+   "key": "ledger/byron",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/roadmap.md",
+   "key": "release/alpha",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/roadmap.md",
+   "key": "release/beta",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/roadmap.md",
+   "key": "release/preprod",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/roadmap.md",
+   "key": "release/prod",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/roadmap.md",
+   "key": "TxRules.Env.verdicts",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/roadmap.md",
+   "key": "cardano-ledger@369826b2",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/roadmap.md",
+   "key": "cardano-node@d31f0b31",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/roadmap.md",
+   "key": "ouroboros-consensus 4.2.0.0",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/roadmap.md",
+   "key": "plutus@9a47e091",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/roadmap.md",
+   "key": "plutus@aee75c1c",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/roadmap.md",
+   "key": "scalus 1.2.0",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/roadmap.md",
+   "key": "scalus@97b31e35",
+   "count": 1
+  },
+  {
+   "kind": "file-size",
+   "path": "docs/running.md",
+   "key": "",
+   "count": 1,
+   "measure": 182407
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/running.md",
+   "key": "./textfile",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/running.md",
+   "key": "node/runtimeClasspathFile",
+   "count": 2
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/running.md",
+   "key": "node/target/runtime-classpath.txt",
+   "count": 1
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/running.md",
+   "key": "`sessions` (per session: `session`, `busy`, `pendingOffers`,",
+   "count": 1,
+   "measure": 835
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/running.md",
+   "key": "a fresh cluster, the Scala node following pool 1 with `--loc",
+   "count": 1,
+   "measure": 1615
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/running.md",
+   "key": "blocks forged, adopted and on the final chain; the Haskell l",
+   "count": 1,
+   "measure": 1428
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/running.md",
+   "key": "every query that is implemented gives equal bytes in every r",
+   "count": 1,
+   "measure": 891
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/running.md",
+   "key": "everything `pool` asserts, and: at least `--min-rotations` `",
+   "count": 1,
+   "measure": 763
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/running.md",
+   "key": "exit status fails on any mismatched comparison or follower e",
+   "count": 1,
+   "measure": 985
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/running.md",
+   "key": "the Haskell relay syncs the whole chain from the Scala node ",
+   "count": 1,
+   "measure": 1159
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/running.md",
+   "key": "the `eraTransition` lines are exactly the seven eras at the ",
+   "count": 1,
+   "measure": 715
+  },
+  {
+   "kind": "table-cell",
+   "path": "docs/running.md",
+   "key": "the highest node-to-node version the node offers and accepts",
+   "count": 1,
+   "measure": 666
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/running.md",
+   "key": "ouroboros-consensus 4.2.0.0",
+   "count": 1
+  },
+  {
+   "kind": "unregistered-pin",
+   "path": "docs/running.md",
+   "key": "ouroboros-network 1.2.0.0",
+   "count": 1
+  }
+ ]
+}
