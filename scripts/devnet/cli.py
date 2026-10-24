@@ -102,8 +102,11 @@ def main():
         eras.add_argument("--cross-rewards", action="store_true",
                            help="register the pools so reward accounts also delegate to other pools (e2e does)")
         return eras
-    sub.add_parser("up-eras", parents=[eras_options()],
-                   help="start in Byron and walk Shelley..Conway (one epoch per era step)").set_defaults(run=up_eras)
+    ue = sub.add_parser("up-eras", parents=[eras_options()],
+                        help="start in Byron and walk Shelley..Conway (one epoch per era step)")
+    ue.add_argument("--final-era", choices=["alonzo", "babbage"],
+                    help="stop walking in this era: no later hard fork is configured or proposed")
+    ue.set_defaults(run=up_eras)
     ce = sub.add_parser("capture-eras", help="capture the running up-eras chain as fixtures")
     ce.add_argument("--out", default=str(REPO / "fixtures/eras"), help="fixture directory")
     ce.add_argument("--conway-blocks", type=int, default=3, help="Conway blocks to capture")
@@ -287,7 +290,11 @@ def main():
     fl.set_defaults(run=faults)
     rc = sub.add_parser("refusal-corpus", help="record the reference's complete refusals of the refusal corpus "
                                                "(on a cluster already `up` under this name)")
-    rc.add_argument("--corpus", default="conway-devnet", help="the corpus directory to write under --out")
+    rc.add_argument("--era", choices=["conway", "babbage"], default="conway",
+                    help="the era of the cluster: conway (`up`) or babbage (`up-eras --final-era babbage`)")
+    rc.add_argument("--corpus", help="the corpus directory to write under --out (default <era>-devnet)")
+    rc.add_argument("--cases", help="another case builder, `module:function` in scripts/devnet, called with the "
+                                    "devnet name and returning `refusalcases.Case`s")
     rc.add_argument("--out", default=str(REFUSALS_OUT), help="the refusal corpus root (its manifest.json is updated)")
     rc.set_defaults(run=refusal_corpus)
     rf = sub.add_parser("refused-fixture", help="write fixtures/devnet/refused-txs.jsonl from the run directory of a "

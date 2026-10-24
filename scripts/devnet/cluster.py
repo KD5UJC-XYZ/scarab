@@ -64,9 +64,14 @@ def era_plan(args):
     """ERA_PLAN with `--shelley-epochs` epochs at protocol 2. The pools produce blocks from the third
     epoch (the overlay is switched off in the second, the pool distribution lags two boundaries), so
     with three Shelley epochs the pre-Allegra reward rules pay out: blocks of epoch 3, the update made
-    in epoch 4 under the epoch 3 parameters (protocol 2), paid at the boundary into epoch 5."""
+    in epoch 4 under the epoch 3 parameters (protocol 2), paid at the boundary into epoch 5. With
+    `--final-era`, the plan ends with that era's last step and the chain stays in it."""
     n = getattr(args, "shelley_epochs", 1)
-    return [ERA_PLAN[0]] * n + ERA_PLAN[1:]
+    plan = [ERA_PLAN[0]] * n + ERA_PLAN[1:]
+    final = getattr(args, "final_era", None)
+    if final:
+        plan = plan[:max(i for i, (era, _) in enumerate(plan) if era == final) + 1]
+    return plan
 
 
 STABILITY_FACTOR = 6  # a protocol-parameter update must land 2 * 3k/f slots before the epoch ends
@@ -92,7 +97,10 @@ def prepare_eras_env(name, args):
     for i, (era, _) in enumerate(era_plan(args)):
         first.setdefault(era, args.byron_epochs + i)
     for era in ("shelley", "allegra", "mary", "alonzo", "babbage", "conway"):
-        config[f"Test{era.capitalize()}HardForkAtEpoch"] = first[era]
+        if era in first:
+            config[f"Test{era.capitalize()}HardForkAtEpoch"] = first[era]
+        else:
+            config.pop(f"Test{era.capitalize()}HardForkAtEpoch", None)
     put_file(name, f"{ENV}/configuration.yaml", json.dumps(config, indent=2))
     byron = read_json(name, f"{ENV}/byron-genesis.json")
     byron["startTime"] = start
