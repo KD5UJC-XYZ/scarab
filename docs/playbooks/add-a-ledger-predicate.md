@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # Add a ledger predicate with its reference citation
 
 The reference decides order and content. A predicate is a typed failure case, a check at the reference's position, a wire encoding and a test.

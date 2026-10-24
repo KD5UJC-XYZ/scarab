@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # Decisions log
 
 Every decision that shapes the code, with where it is recorded, the invariant it fixes and what reopens it. Checked by `python3 scripts/check_onramp.py`: each ADR in [adr/](adr/README.md) has exactly one row here, and every pointer resolves. A decision that is made or reversed adds a row (an ADR for a design choice; an issue and a roadmap line otherwise).

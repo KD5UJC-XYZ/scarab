@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # Playbooks
 
 Short recipes for recurring tasks. Each is under 60 lines and its commands and paths are checked by `python3 scripts/check_onramp.py`. Choose by task; the gate level comes from [run-the-gates.md](run-the-gates.md).

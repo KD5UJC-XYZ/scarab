@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # Run the gates for a change level
 
 Name the level first ([CONTRIBUTING](../../CONTRIBUTING.md#gates-and-ceremony-by-level-of-change) has the full table), then run only its gates.

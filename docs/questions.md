@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # Question index
 
 Where to look first for what a contributor asks. File and symbol name a definition (search for the name; the cited file defines it); decision is the ADR, design or roadmap item that explains it; open issue lists tracked follow-ups. Checked by `python3 scripts/check_onramp.py`: every cited path and symbol exists, no line numbers. The whole tree is in [codemap.md](codemap.md); terms are in [glossary.md](glossary.md).

@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # Glossary
 
 Terms that recur in issues, commits and documents, with the place that defines each. Checked by `python3 scripts/check_onramp.py`: every symbol, path and anchor in "Where defined" exists. Where to look for a question is in [questions.md](questions.md); decisions are in [decisions.md](decisions.md).

@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # Confirm a rule with the conway-decoding oracle
 
 The oracle runs the released `cardano-ledger-binary` decoders on hand-written encodings and records the verdict and the complete failure, with no ledger rule. Scarab's suite then checks that it agrees. Details: `scripts/oracle/conway-decoding/README.md`.

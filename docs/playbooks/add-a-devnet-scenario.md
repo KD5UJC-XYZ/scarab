@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # Add a devnet scenario
 
 A scenario starts the reference cluster with `up(args)`, runs the Scarab node or a client against it, compares, and exits non-zero on any mismatch or error. Keep the decisions in pure helper functions (`stop_problem` in `scripts/devnet/scenarios/restart.py` is the model) so the unit tests need no Docker.

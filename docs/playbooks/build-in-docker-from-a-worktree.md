@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # Build in Docker from a worktree
 
 No host JDK or sbt ([ADR 0004](../adr/0004-docker-only-build.md)); never run `java` or `sbt` on the host. Other playbooks write `sbtw ...`: it is the function below. A linked worktree's `.git` file points outside the mounted checkout, so the common Git metadata is mounted read-only at its original path, and the main checkout's dependency cache is mounted at `/work/.cache` (never copy jars into a worktree).

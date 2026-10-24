@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # Add a fuzz target
 
 Every decoder that reads a peer, a client or a block has a target. A target is seeds plus a property; the harness mutates the seeds and checks bounded time and allocation, no unexpected exception, and a round trip where the codec has a writer.

@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # Write an audit-shaped issue
 
 Every issue uses the shape of `.github/ISSUE_TEMPLATE/aud.yml`: boundary, finding, evidence, acceptance, removal condition. It is the default template. State lives in labels, never in the text.

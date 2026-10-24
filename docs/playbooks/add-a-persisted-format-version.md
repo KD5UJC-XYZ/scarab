@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # Add a persisted-format version
 
 Level 3. A format change needs a version bump, a migration and a test that reads the previous version ([ADR 0006](../adr/0006-versioned-formats-migrate-on-open.md)). The procedure with all conditions is [storage-migrations.md](../storage-migrations.md); this is the order of work.
