@@ -17,8 +17,6 @@ import scalus.cardano.ledger.{CostModels, ExUnits as ScalusExUnits, Language, Ma
 import scalus.cardano.onchain.plutus.prelude.List as PList
 import scalus.uplc.builtin.{ByteString, Data, platform}
 import scalus.serialization.flat.FlatDecodingError
-import scalus.uplc.builtin.bls12_381.{G1Element, G2Element}
-import xyz.kd5ujc.scarab.blst.{Platform, RawDst}
 import scalus.uplc.eval.{
   BudgetSpender,
   BuiltinError,
@@ -29,13 +27,11 @@ import scalus.uplc.eval.{
   CekMachine,
   CekValue,
   Logger,
-  DefaultCostingFun,
   Log,
   MachineParams,
   OutOfExBudgetError,
   PlutusVM,
-  RestrictingBudgetSpender,
-  ThreeArguments
+  RestrictingBudgetSpender
 }
 import scalus.uplc.{
   BuiltinRuntime,
@@ -192,42 +188,11 @@ object ScalusEvaluator:
           protocol
         )
         Right(
-          CorrectedVm(
-            language,
-            corrected(params, variant),
-            variant,
-            protocol
-          )
+          CorrectedVm(language, params, variant, protocol)
         )
       catch
         case NonFatal(e) =>
           Left(EvalFailure.Unsupported(BackendFailure.Defect(e)))
-
-    /** Costing the on-chain parameters cannot express and Scalus gets wrong. Semantics variant A
-      * (Plutus V1/V2 before protocol 9) prices `verifyEd25519Signature` by the size of its third
-      * argument, the signature (`linear_in_z` in the reference costing model); Scalus's
-      * parameter-to-model conversion prices it by the second, the message, in every variant. The
-      * reference ledger disagrees on a 11-word message against a 8-word signature, which showed up
-      * on Preview as a script spending 3063 more steps than the 539483304 the block declared.
-      *
-      * Reproducer: `ScalusReproducersSuite`; costing differential: `BuiltinCostingSuite`. Still
-      * present in Scalus 1.3.0 (reported as https://github.com/scalus3/scalus/issues/387; remove
-      * this when a fixed release is adopted and the reproducer fails).
-      */
-    private def corrected(params: MachineParams, variant: BuiltinSemanticsVariant): MachineParams =
-      if variant != BuiltinSemanticsVariant.A then params
-      else
-        val model = params.builtinCostModel
-        val ed = model.verifyEd25519Signature
-        (ed.cpu match
-          case ThreeArguments.LinearInY(f) =>
-            params.copy(builtinCostModel =
-              model.copy(verifyEd25519Signature =
-                DefaultCostingFun(ThreeArguments.LinearInZ(f), ed.memory)
-              )
-            )
-          case _ => params
-        )
 
     private def cached(script: Bytes): Option[Either[ScriptDecodeFailure, Decoded]] =
       programs.get(script)
@@ -329,6 +294,35 @@ object ScalusEvaluator:
                   log.getLogs.toVector
                 )
 
+  /** The builtins Scalus 1.4.0 evaluates through scalus-crypto-jni (libsodium, libsecp256k1, blst).
+    */
+  private[plutus] val nativeCrypto: Set[DefaultFun] =
+    import DefaultFun.*
+    Set(
+      VerifyEd25519Signature,
+      VerifyEcdsaSecp256k1Signature,
+      VerifySchnorrSecp256k1Signature,
+      Bls12_381_G1_add,
+      Bls12_381_G1_compress,
+      Bls12_381_G1_equal,
+      Bls12_381_G1_hashToGroup,
+      Bls12_381_G1_multiScalarMul,
+      Bls12_381_G1_neg,
+      Bls12_381_G1_scalarMul,
+      Bls12_381_G1_uncompress,
+      Bls12_381_G2_add,
+      Bls12_381_G2_compress,
+      Bls12_381_G2_equal,
+      Bls12_381_G2_hashToGroup,
+      Bls12_381_G2_multiScalarMul,
+      Bls12_381_G2_neg,
+      Bls12_381_G2_scalarMul,
+      Bls12_381_G2_uncompress,
+      Bls12_381_finalVerify,
+      Bls12_381_millerLoop,
+      Bls12_381_mulMlResult
+    )
+
   /** The vendor's typed CEK failures are reference script failures. BuiltinError also wraps backend
     * defects, so its cause is accepted only for the documented builtin/input combinations.
     */
@@ -360,12 +354,6 @@ object ScalusEvaluator:
             DefaultFun.Bls12_381_G1_hashToGroup,
             DefaultFun.Bls12_381_G2_hashToGroup
           )(builtin.builtin)
-        // blst0.3.15 bindings/blst.swg maps its BLST_ERROR to exactly java.lang.RuntimeException
-        // for these two uncompression operations; subclasses remain backend defects.
-        case cause if cause.getClass == classOf[RuntimeException] =>
-          Set(DefaultFun.Bls12_381_G1_uncompress, DefaultFun.Bls12_381_G2_uncompress)(
-            builtin.builtin
-          )
         case _ => false
     case _: MachineError | _: InvalidReturnValue => true
     case _                                       => false
@@ -393,11 +381,8 @@ object ScalusEvaluator:
     *     array nesting, where the reference has no limit and a datum can be as deep as the block
     *     that carries it. A script that hashes such a datum (Hydra's fanout compares the hash of
     *     the serialised outputs with the closed head's) must get the reference's bytes.
-    *   - `verifyEcdsaSecp256k1Signature` is [[Secp256k1.verifyEcdsa]] (Scalus 1.3.0 raises an error
-    *     on a signature with `r = 0` or `s = 0` where the reference returns `False`; preprod block
-    *     3,498,869).
     *
-    * Reproducers: `DataSerialiserSuite`, `Secp256k1Suite`; regressions: `PreprodConwayRulesSuite`,
+    * Reproducer: `DataSerialiserSuite`; regressions: `PreprodConwayRulesSuite`,
     * `PreprodSecp256k1RulesSuite`.
     */
   private[plutus] final class CorrectedVm(
@@ -414,110 +399,28 @@ object ScalusEvaluator:
             Constant.ByteString(ByteString.fromArray(DataSerialiser.serialise(args.head.asData)))
           )
       )
-    private val verifyEcdsa: BuiltinRuntime =
-      cardano.VerifyEcdsaSecp256k1Signature.copy(f = (logger, args) =>
-        if !scalus.crypto.jni.CryptoJni.isEnabled then
-          unavailable(
-            logger,
-            EvalFailure.Unsupported(
-              BackendFailure.BuiltinUnavailable(DefaultFun.VerifyEcdsaSecp256k1Signature)
-            )
-          )
-        CekValue.VCon(
-          Constant.Bool(
-            Secp256k1
-              .verifyEcdsa(
-                args(0).asByteString.bytes,
-                args(1).asByteString.bytes,
-                args(2).asByteString.bytes
-              )
-              .fold(
-                {
-                  case Secp256k1.Error.Defect(cause) =>
-                    unavailable(logger, EvalFailure.Unsupported(BackendFailure.Defect(cause)))
-                  case Secp256k1.Error.NativeUnavailable =>
-                    unavailable(
-                      logger,
-                      EvalFailure.Unsupported(
-                        BackendFailure.BuiltinUnavailable(DefaultFun.VerifyEcdsaSecp256k1Signature)
-                      )
-                    )
-                  case error =>
-                    unavailable(logger, EvalFailure.Script(ScriptFailure(error, Vector.empty)))
-                },
-                identity
-              )
-          )
-        ))
 
-    /** Scalus hands the domain separation tag of `hashToGroup` to blst as a Latin-1 `String`, which
-      * the native layer reads as (modified) UTF-8: a byte of 0x80 or above, or 0, makes another tag
-      * and another point than the reference computes (conformance cases `hash-dst-len-255` and
-      * `large-dst`). The blst-java API has no byte-level entry, so these tags are refused with a
-      * typed failure on platforms without the raw-byte JNI adapter. ASCII tags are served as before
-      * there; Linux/amd64 uses the byte-array adapter for every tag.
+    /** Scalus 1.4.0 runs these builtins on the native library of scalus-crypto-jni and throws
+      * `IllegalStateException` when it did not load. Refuse them with a typed unavailability before
+      * that, so a missing library is never mistaken for a script failure or an untyped defect.
       */
-    private def asciiDstOnly(base: BuiltinRuntime): BuiltinRuntime =
+    private def nativeGuarded(fun: DefaultFun): BuiltinRuntime =
+      val base = cardano.getBuiltinRuntime(fun)
       base.copy(f =
         (logger, args) =>
-          if args(1).asByteString.bytes.exists(_ <= 0) then
-            unavailable(
-              logger,
-              EvalFailure.Unsupported(
-                BackendFailure.BinaryDstUnavailable
-              )
-            )
+          if !scalus.crypto.jni.CryptoJni.isEnabled then
+            unavailable(logger, EvalFailure.Unsupported(BackendFailure.BuiltinUnavailable(fun)))
           else base.f(logger, args)
       )
-
-    /** Upstream's binary-DST fix, pinned in blst-native/native/README.md. Preserve the original
-      * runtime's typing, costing and >255-byte rejection; only the native byte-array entry differs.
-      * Other platforms retain the typed refusal until an equivalent portable artifact is supplied.
-      */
-    private def rawDst(base: BuiltinRuntime)(
-        hash: (Array[Byte], Array[Byte]) => Constant
-    ): BuiltinRuntime =
-      base.copy(f = (logger, args) =>
-        val message = args(0).asByteString.bytes
-        val dst = args(1).asByteString.bytes
-        if dst.length > 255 then base.f(logger, args)
-        else if Platform.current != Platform.LinuxAmd64 then asciiDstOnly(base).f(logger, args)
-        else
-          try CekValue.VCon(hash(message, dst))
-          catch
-            case _: LinkageError =>
-              unavailable(
-                logger,
-                EvalFailure.Unsupported(BackendFailure.NativeHashToGroupUnavailable)
-              ))
-    private val hashToGroupG1 = rawDst(cardano.Bls12_381_G1_hashToGroup) { (message, dst) =>
-      Constant.BLS12_381_G1_Element(G1Element(ByteString.fromArray(RawDst.hashG1(message, dst))))
-    }
-    private val hashToGroupG2 = rawDst(cardano.Bls12_381_G2_hashToGroup) { (message, dst) =>
-      Constant.BLS12_381_G2_Element(G2Element(ByteString.fromArray(RawDst.hashG2(message, dst))))
-    }
-    private val verifySchnorr = cardano.VerifySchnorrSecp256k1Signature.copy(f =
-      (logger, args) =>
-        if !scalus.crypto.jni.CryptoJni.isEnabled then
-          unavailable(
-            logger,
-            EvalFailure.Unsupported(
-              BackendFailure.BuiltinUnavailable(DefaultFun.VerifySchnorrSecp256k1Signature)
-            )
-          )
-        else cardano.VerifySchnorrSecp256k1Signature.f(logger, args)
-    )
+    private val native: Map[DefaultFun, BuiltinRuntime] =
+      ScalusEvaluator.nativeCrypto.iterator.map(fun => fun -> nativeGuarded(fun)).toMap
     private val caseOnBuiltins =
       protocol >= MajorProtocolVersion.vanRossemPV || language == Language.PlutusV4
 
     private[plutus] def runtime(fun: DefaultFun): BuiltinRuntime =
       fun match
-        case DefaultFun.SerialiseData                   => serialiseData
-        case DefaultFun.VerifyEcdsaSecp256k1Signature   => verifyEcdsa
-        case DefaultFun.VerifySchnorrSecp256k1Signature => verifySchnorr
-        case DefaultFun.Bls12_381_G1_hashToGroup        => hashToGroupG1
-        case DefaultFun.Bls12_381_G2_hashToGroup        => hashToGroupG2
-        case _                                          => cardano.getBuiltinRuntime(fun)
+        case DefaultFun.SerialiseData => serialiseData
+        case _                        => native.getOrElse(fun, cardano.getBuiltinRuntime(fun))
 
     override def evaluateDeBruijnedTerm(
         term: Term,
