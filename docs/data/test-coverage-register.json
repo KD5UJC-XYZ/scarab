@@ -544,6 +544,25 @@
         "network/src/test/scala/xyz/kd5ujc/scarab/network/ChainSyncTimeoutsSuite.scala"
       ],
       "candidateRequired": true
+    },
+    {
+      "id": "reference-refusal-corpus",
+      "classification": "native-parity",
+      "status": "open",
+      "scope": "Transactions the released reference node refused over node-to-client LocalTxSubmission on a Conway devnet and on an era-walking cluster stopped in Babbage, with the ledger state, UTxO and genesis each was judged against; the families each era must cover are declared in the manifest.",
+      "assertion": "Replay every case through Scarab (Conway: LocalSubmission and MempoolState.add on the reference's ticked state; Babbage: the era's LEDGER rule and PreConwayFailureCbor) and require the complete ApplyTxErr bytes, every accumulated failure in order; every required family per era must have a case.",
+      "rationale": "First-failure comparisons cannot show check-order regressions or a missing accumulated failure, and replays of accepted chains never contain a refused transaction.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Covered when every recorded case compares equal and every required family is covered; differing cases fail without an exclusion list, mask or tolerance.",
+      "evidence": [
+        "fixtures/reference/refusals/manifest.json",
+        "fixtures/reference/refusals/README.md",
+        "scripts/devnet/refusalcorpus.py",
+        "scripts/devnet/refusalcases.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
     }
   ]
 }

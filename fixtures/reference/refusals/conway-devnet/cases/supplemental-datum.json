@@ -1,0 +1,21 @@
+{
+  "label": "supplemental-datum",
+  "era": "conway",
+  "families": [
+    "UTXOW"
+  ],
+  "expect": [
+    "NotAllowedSupplementalDatums"
+  ],
+  "item": "8206d81858ea84a400818258209c80ad47441d870b865fa9a77a2619159925ea84ba53435358c1f13c826b81c700018182581d604b41caf365a8888e5cec9bda4efcc41de135fb3627dd9d810678b9ee1b00000da475d522e0021a000493e00b582071b9f38f0d63b1d67567909345acdc8d0a302021c3eb56f0906e1fe017a7d7bba20081825820d2ccb494116b235662aee7b637973782127b62d2411dfdb80ba652e4b81e171f58400e18b8b368fcd218253c8bfb3ea9ebf276dcc1f46d1b1d4e02d044507e00476e2253d864a5c8c7fca6fa785e79ee26d69db85cd2ef908cd32f9252124a9ca30d0481182af5f6",
+  "tip": {
+    "slot": 8188,
+    "hash": "9baa5589dcb79404ed4fb31b97f7fba6b6d949b7df269b5e8b66846d59607261"
+  },
+  "mempoolSlot": 8189,
+  "state": "states/97bef32b6a540eaad8ba199dea44db9b07c23dd5ebe3f5949956f8d943c4e2be.cbor",
+  "utxo": "utxo/e005a87c6a411872191271f2a4c4db97ad5ea5213637ddd39e8b7414ad797177.cbor",
+  "reason": "818206818201830cd901028158209e1199a988ba72ffd6e9c269cadb3b53b5f360ff99f112d9b2ee30c4d74ad88bd9010280",
+  "reasonSha256": "255c5e5f1a4816bf95d7747bc1bb1b7275f6115d6a3ce8e7916cf9eb2eaa69be",
+  "rendered": "Error: Error while submitting tx: ShelleyTxValidationError ShelleyBasedEraConway (ConwayApplyTxError (ConwayUtxowFailure (NotAllowedSupplementalDatums (NonEmptySet (fromList [SafeHash \"9e1199a988ba72ffd6e9c269cadb3b53b5f360ff99f112d9b2ee30c4d74ad88b\"])) (fromList [])) :| []))"
+}

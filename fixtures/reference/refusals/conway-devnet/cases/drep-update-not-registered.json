@@ -1,0 +1,21 @@
+{
+  "label": "drep-update-not-registered",
+  "era": "conway",
+  "families": [
+    "GOVCERT"
+  ],
+  "expect": [
+    "ConwayDRepNotRegistered"
+  ],
+  "item": "8206d81859015684a400d90102818258209c80ad47441d870b865fa9a77a2619159925ea84ba53435358c1f13c826b81c700018182581d604b41caf365a8888e5cec9bda4efcc41de135fb3627dd9d810678b9ee1b00000da475d6a980021a00030d4004d901028183128200581c332f3985d22c5fb65c4bdd356d730552fe9386f66cceba57e02bd4a9f6a100d90102828258200f2c28e1ab3940e5ed11248791f74d2d72044f0023ca5e007b031d8258424784584068ae0a4037fef7a0eb68eb47d794d27f08d3c3a2b9a1fb1df05f0255bfc9b2462a4f9fac98d8073e84bc68937ee12e5f207253232fedd0843e5113328769230f825820d2ccb494116b235662aee7b637973782127b62d2411dfdb80ba652e4b81e171f58408c7b1beccef863918e019fddb624e6592faa8538e48c3fd930d803c2208c75c7049846c83bf0e290ad71dc422b886a70a38a14a17495d5628a5ba51dee4b560ff5f6",
+  "tip": {
+    "slot": 8188,
+    "hash": "9baa5589dcb79404ed4fb31b97f7fba6b6d949b7df269b5e8b66846d59607261"
+  },
+  "mempoolSlot": 8189,
+  "state": "states/97bef32b6a540eaad8ba199dea44db9b07c23dd5ebe3f5949956f8d943c4e2be.cbor",
+  "utxo": "utxo/e005a87c6a411872191271f2a4c4db97ad5ea5213637ddd39e8b7414ad797177.cbor",
+  "reason": "8182068182028201820382018200581c332f3985d22c5fb65c4bdd356d730552fe9386f66cceba57e02bd4a9",
+  "reasonSha256": "7a8df6b0d74ba739f541ece79a2dc4676310c4fb0a786a90498605c8571d04f1",
+  "rendered": "Error: Error while submitting tx: ShelleyTxValidationError ShelleyBasedEraConway (ConwayApplyTxError (ConwayCertsFailure (CertFailure (GovCertFailure (ConwayDRepNotRegistered (KeyHashObj (KeyHash {unKeyHash = \"332f3985d22c5fb65c4bdd356d730552fe9386f66cceba57e02bd4a9\"}))))) :| []))"
+}

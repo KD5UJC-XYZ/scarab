@@ -1,0 +1,22 @@
+{
+  "label": "withdrawal-unregistered-account",
+  "era": "conway",
+  "families": [
+    "LEDGER",
+    "CERTS"
+  ],
+  "expect": [
+    "Withdrawals"
+  ],
+  "item": "8206d81859014a84a400818258209c80ad47441d870b865fa9a77a2619159925ea84ba53435358c1f13c826b81c700018182581d604b41caf365a8888e5cec9bda4efcc41de135fb3627dd9d810678b9ee1b00000da475d39c40021a00061a8005a1581de0aac86227d2f4ade383172f7f84aa81f446a0b4a78e23d78f23d0081c00a10082825820d2ccb494116b235662aee7b637973782127b62d2411dfdb80ba652e4b81e171f584078222013e3f10b6ad0b126f97eb0fcafbda81f62f2873e8140845025df405a2eb004ccd7d52b56d5cefd6dd64c6128c21528e9f5d1cdb2c4075648a9c7a02102825820c35930789a513cebd78108386303136af400ac64ed04bbe76aa3e0448dc5eb3f58403ea5cb47589f528258e133b262e297c01dc9d10bf868b58035d7795fd6ff8704688ca753ef6b677011e58e9edf3567bf513edfcc671d93969a3ad0bc796e410ef5f6",
+  "tip": {
+    "slot": 8188,
+    "hash": "9baa5589dcb79404ed4fb31b97f7fba6b6d949b7df269b5e8b66846d59607261"
+  },
+  "mempoolSlot": 8189,
+  "state": "states/97bef32b6a540eaad8ba199dea44db9b07c23dd5ebe3f5949956f8d943c4e2be.cbor",
+  "utxo": "utxo/e005a87c6a411872191271f2a4c4db97ad5ea5213637ddd39e8b7414ad797177.cbor",
+  "reason": "81820682820481581caac86227d2f4ade383172f7f84aa81f446a0b4a78e23d78f23d0081c82028200a1581de0aac86227d2f4ade383172f7f84aa81f446a0b4a78e23d78f23d0081c00",
+  "reasonSha256": "56640edd187c4b4ece2dc2e6a56b01607f6356d1cf3825232667b26c8747719d",
+  "rendered": "Error: Error while submitting tx: ShelleyTxValidationError ShelleyBasedEraConway (ConwayApplyTxError (ConwayWdrlNotDelegatedToDRep (KeyHash {unKeyHash = \"aac86227d2f4ade383172f7f84aa81f446a0b4a78e23d78f23d0081c\"} :| []) :| [ConwayCertsFailure (WithdrawalsNotInRewardsCERTS (Withdrawals {unWithdrawals = fromList [(AccountAddress {aaNetworkId = Testnet, aaId = AccountId {unAccountId = KeyHashObj (KeyHash {unKeyHash = \"aac86227d2f4ade383172f7f84aa81f446a0b4a78e23d78f23d0081c\"})}},Coin 0)]}))]))"
+}
