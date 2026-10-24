@@ -74,6 +74,25 @@ class RenameFallbackTest(unittest.TestCase):
         self.assertEqual(util.jdk_image(lambda tag: tag == "cardano-scala-jdk:local"), "cardano-scala-jdk:local")
 
 
+class EraPlanTest(unittest.TestCase):
+    def test_the_default_plan_walks_to_conway(self):
+        args = types.SimpleNamespace(shelley_epochs=1)
+        self.assertEqual(cluster.era_plan(args), cluster.ERA_PLAN)
+        config = cluster.place_hard_forks({"TestConwayHardForkAtEpoch": 0}, cluster.era_plan(args), 1)
+        self.assertEqual(config["TestBabbageHardForkAtEpoch"], 6)
+        self.assertEqual(config["TestConwayHardForkAtEpoch"], 8)
+
+    def test_a_final_era_ends_the_plan_and_places_no_later_hard_fork(self):
+        args = types.SimpleNamespace(shelley_epochs=1, final_era="babbage")
+        plan = cluster.era_plan(args)
+        self.assertEqual(plan[-1], ("babbage", 8))
+        self.assertEqual(plan, cluster.ERA_PLAN[:-1])
+        config = cluster.place_hard_forks({"TestConwayHardForkAtEpoch": 0, "Protocol": "Cardano"}, plan, 1)
+        self.assertNotIn("TestConwayHardForkAtEpoch", config)
+        self.assertEqual(config["TestBabbageHardForkAtEpoch"], 6)
+        self.assertEqual(config["Protocol"], "Cardano")
+
+
 class EncodingTest(unittest.TestCase):
     def test_bech32_roundtrip(self):
         for data in (b"\x01\x02\x03\x04\x05", bytes(range(29)), bytes(57)):
