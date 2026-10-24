@@ -37,7 +37,7 @@ import xyz.kd5ujc.scarab.storage.{
   SnapshotCheck,
   SnapshotMigration,
   SnapshotPolicy,
-  SnapshotV5,
+  SnapshotV7,
   StateBacking,
   UtxoBacking,
   UtxoHandle,
@@ -166,14 +166,18 @@ object Main extends IOApp:
       epochSlots: BigInt
   )(using Raise[IO, NodeError], Log[IO]): IO[Unit] =
     received.traverse_(cache =>
-      cache.entries.flatMap { entries =>
-        entries
-          .traverse { (ref, raw) =>
-            ReceivedBlockRecovery.checked(ref, raw, epochSlots) match
-              case Right(delivered) => IO.pure(Some(delivered))
-              case Left(error) =>
-                Log[IO].emit(NodeEvent.ReceivedBlockDiscarded(ref.hash, error)) *>
-                  cache.discardRecovered(ref.hash).as(None)
+      cache.refs.flatMap { refs =>
+        refs
+          .traverse { ref =>
+            cache.get(ref.hash).flatMap {
+              case None => IO.pure(None)
+              case Some((_, raw)) =>
+                ReceivedBlockRecovery.checked(ref, raw, epochSlots) match
+                  case Right(delivered) => IO.pure(Some(delivered))
+                  case Left(error) =>
+                    Log[IO].emit(NodeEvent.ReceivedBlockDiscarded(ref.hash, error)) *>
+                      cache.discardRecovered(ref.hash).as(None)
+            }
           }
           .flatMap(items => pool.seedRecoveredHeaders(items.flatten))
       }
@@ -732,7 +736,7 @@ object Main extends IOApp:
       // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
       // node has seen begin so far.
       given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(eraStarts.get)
-      given SnapshotFormat[IO, MirrorState] = SnapshotV5.format[IO](options.snapshotCheck)
+      given SnapshotFormat[IO, MirrorState] = SnapshotV7.format[IO](options.snapshotCheck)
       storage = options.db.fold(
         Resource.pure[IO, Storage[MirrorState]](
           Storage(
@@ -838,6 +842,7 @@ object Main extends IOApp:
             )
             given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
             _ <- collectors.add(Collectors.chain[IO, MirrorState](_.geometry(genesis.geometry)))
+            _ <- receivedBlocks.traverse_(r => collectors.add(Collectors.received(r)))
             server <- ChainServer.open[IO](
               immutable,
               anchor,
@@ -1008,7 +1013,17 @@ object Main extends IOApp:
                 follower.fetchSelection,
                 BlockPool.Recovered[IO](
                   received.hashes,
-                  hash => received.get(hash).map(_.map(_._2)),
+                  // read back from the received log in the calling session's fiber, under a
+                  // scope of its own: a failure of the file system stops the node, as one of
+                  // `put` does
+                  hash =>
+                    Handle
+                      .allow[StorageError](received.get(hash).map(found => Right(found.map(_._2))))
+                      .rescue(error => IO.pure(Left(error)))
+                      .flatMap {
+                        case Right(found) => IO.pure(found)
+                        case Left(error)  => fatalSink(Fatal.Storage(error)) *> IO.never
+                      },
                   received.invalidate
                 )
               )

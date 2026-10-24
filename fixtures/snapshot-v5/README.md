@@ -3,10 +3,13 @@
 Scarab fixture encodings and the conversion wrapper are Apache-2.0. These throwaway-network states
 contain public keys/signatures only, with no signing keys or operational node data; see [NOTICE](../../NOTICE).
 
-These complete checksummed native V5 files are the maintained snapshot test inputs. They replace
-`fixtures/snapshot-v3`; the historical originals remain in Git at the blobs in `manifest.json`.
+These complete checksummed native V5 files were the maintained snapshot test inputs until V7
+(#395); they are now the previous-version inputs of the V5 → V7 migration tests, and
+[`fixtures/snapshot-v7`](../snapshot-v7/README.md) holds their registered conversions, which are the
+maintained inputs. They replace `fixtures/snapshot-v3`; the historical originals remain in Git at
+the blobs in `manifest.json`.
 The current registry recognizes V1–V4 identifiers and refuses their retired payload formats; it
-reads native V5 only. The original readers are retained in pinned historical source, not on the
+migrates native V5 to V7. The original readers are retained in pinned historical source, not on the
 runtime classpath. Future format changes still require migration and previous-version tests under
 [ADR 0006](../../docs/adr/0006-versioned-formats-migrate-on-open.md). Operational writer upgrades
 remain [#37](https://github.com/KD5UJC-XYZ/scarab/issues/37) /
@@ -29,10 +32,10 @@ native V5 writer reproduction after the complete era capture. Its gaps differ fr
 gap metadata: live provenance persistence remains [#129](https://github.com/KD5UJC-XYZ/scarab/issues/129).
 
 `SHA256SUMS` binds all maintained files. `SnapshotGoldenSuite` pins complete-file hashes and asserts
-anchor/epoch/UTxO/coin values and exact carried gap metadata. `SnapshotV5Suite` independently replays
+anchor/epoch/UTxO/coin values and exact carried gap metadata. `SnapshotV7Suite` independently replays
 the original block capture and compares chain position, consensus state and UTxO accounting for every
 era fixture. Historical reward bookkeeping is not claimed equal to every current-rule ledger field.
-Recorded-data tools use `NativeSnapshots` and the verified V5 conversion corpus; they do not decode
+Recorded-data tools use `NativeSnapshots` (which brings V5 to V7 in memory by the registered conversion) and the verified conversion corpus; they do not decode
 old captures through a flat-state adapter. Original private archives remain unchanged.
 
 The optional conversion recipe is `scripts/fixtures/snapshot-v5/Snapshot83BridgeMain.scala`, compiled

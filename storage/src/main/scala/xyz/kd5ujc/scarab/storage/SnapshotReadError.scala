@@ -13,6 +13,7 @@ enum SnapshotReadError extends DomainError:
   case VersionHeaderLength(found: Int, expected: Int)
   case TrailingPayload
   case SidecarLength(length: Int, fileLength: Int)
+  case BindingLength(length: Int, fileLength: Int)
   case ByronWithLedgerState
   case ByronLedgerInShelley
   case AnchorMismatch

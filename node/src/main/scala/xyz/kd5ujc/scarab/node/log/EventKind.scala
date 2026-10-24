@@ -142,6 +142,7 @@ enum EventKind(val area: Area, val severity: Severity):
   case NetworkRecorded extends EventKind(Area.Storage, Severity.Info)
   case SnapshotSkipped extends EventKind(Area.Storage, Severity.Warning)
   case SnapshotRestored extends EventKind(Area.Storage, Severity.Info)
+  case SnapshotUnbound extends EventKind(Area.Storage, Severity.Warning)
   case SnapshotWritten extends EventKind(Area.Storage, Severity.Info)
   case SnapshotFailed extends EventKind(Area.Storage, Severity.Error)
   case SnapshotRefused extends EventKind(Area.Storage, Severity.Error)

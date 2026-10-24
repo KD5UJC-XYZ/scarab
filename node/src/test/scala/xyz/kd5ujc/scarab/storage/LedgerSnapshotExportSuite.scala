@@ -14,7 +14,15 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{ByronState, ConsensusExtras}
 import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorExtras, ProtocolExtras, StateMirror}
-import xyz.kd5ujc.scarab.ledger.{FileKind, FormatVersion, Nonce, StorageError, TxIn, Utxo}
+import xyz.kd5ujc.scarab.ledger.{
+  CheckpointProblem,
+  FileKind,
+  FormatVersion,
+  Nonce,
+  StorageError,
+  TxIn,
+  Utxo
+}
 import xyz.kd5ujc.scarab.ledger.mempack.TxOutMemPack
 import xyz.kd5ujc.scarab.ledger.state.{Gap, NodeExtras, ShelleyBasedEra, SlotNo}
 import xyz.kd5ujc.scarab.node.NodeSetup
@@ -116,12 +124,15 @@ class LedgerSnapshotExportSuite extends CatsEffectSuite:
           }
         }
 
+  private def bindingOf(db: Path, anchor: xyz.kd5ujc.scarab.consensus.BlockRef): CheckpointBinding =
+    StorageTestKit.boundTo(db / "utxo" / "checkpoints" / StateBacking.stem(anchor))
+
   private def write(db: Path, sidecar: SnapshotSidecar, raw: Bytes): IO[Unit] = IO.blocking {
     val anchor = sidecar.anchor.getOrElse(fail("test snapshot has no anchor"))
     JFiles.createDirectories((db / "snapshots").toNioPath)
     JFiles.write(
       (db / "snapshots" / FileLedgerSnapshots.nameOf(anchor)).toNioPath,
-      FileLedgerSnapshots.closed(SnapshotV5.framed(sidecar, raw))
+      FileLedgerSnapshots.closed(SnapshotV7.framed(bindingOf(db, anchor), sidecar, raw))
     )
     ()
   }
@@ -264,7 +275,11 @@ class LedgerSnapshotExportSuite extends CatsEffectSuite:
         path = db / "snapshots" / FileLedgerSnapshots.nameOf(
           sidecar.anchor.getOrElse(fail("anchor"))
         )
-        content = SnapshotV5.framed(sidecar, raw)
+        content = SnapshotV7.framed(
+          bindingOf(db, sidecar.anchor.getOrElse(fail("anchor"))),
+          sidecar,
+          raw
+        )
         _ <- IO.blocking(
           JFiles.write(
             path.toNioPath,
@@ -344,6 +359,23 @@ class LedgerSnapshotExportSuite extends CatsEffectSuite:
           RocksUtxoStore.deleteTree(checkpoint.toNioPath)
           JFiles.move((root / "replacement").toNioPath, checkpoint.toNioPath)
         }
+        // the snapshot recorded the checkpoint it was written with, not this replacement
+        unbound <- attempt(
+          LedgerSnapshotExport.run[IO](LedgerSnapshotExport.Config(db, root / "out"))
+        )
+        _ <- IO(
+          assert(
+            unbound.left.exists {
+              case LedgerSnapshotExport.Error.Storage(
+                    StorageError.UtxoCheckpoint(_, CheckpointProblem.DigestMismatch(_, _))
+                  ) =>
+                true
+              case _ => false
+            },
+            unbound.toString
+          )
+        )
+        _ <- write(db, sidecar, raw)
         stampBefore <- IO(fingerprint(db))
         stamp <- attempt(
           LedgerSnapshotExport.run[IO](LedgerSnapshotExport.Config(db, root / "out"))

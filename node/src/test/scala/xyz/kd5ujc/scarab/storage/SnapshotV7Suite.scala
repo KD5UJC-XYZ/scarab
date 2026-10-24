@@ -19,10 +19,10 @@ import xyz.kd5ujc.scarab.protocol.Era
 
 import StorageTestKit.*
 
-/** V5 writes and reads every era in the block capture. Immutable V5 conversions of the previous
-  * fixture corpus retain its independently replayed chain position and UTxO accounting.
+/** V7 writes and reads every era in the block capture. The maintained V7 conversions of the
+  * previous fixture corpus retain its independently replayed chain position and UTxO accounting.
   */
-class SnapshotV5Suite extends CatsEffectSuite:
+class SnapshotV7Suite extends CatsEffectSuite:
   private val fixtures = java.nio.file.Path.of("fixtures/eras")
 
   private val setup: NodeSetup =
@@ -30,7 +30,7 @@ class SnapshotV5Suite extends CatsEffectSuite:
   private val env = setup.mirrorEnv()
 
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(env)
-  private given v5: SnapshotFormat[IO, MirrorState] = SnapshotV5.format[IO](SnapshotCheck.Full)
+  private given v7: SnapshotFormat[IO, MirrorState] = SnapshotV7.format[IO](SnapshotCheck.Full)
 
   private val raws: Vector[Bytes] =
     JFiles
@@ -52,18 +52,19 @@ class SnapshotV5Suite extends CatsEffectSuite:
           case Right(next) =>
             acc :+ (blocks(i).era -> StateSnapshot(
               Some(BlockRef(h.slot, h.hash, h.blockNo, h.isBoundary)),
-              next
+              next,
+              CheckpointBinding.Unbacked
             ))
           case Left(f) => fail(s"block $i rejected by ${f.rule.name}: ${f.reason}")
       }
 
   private def decoded(bytes: Array[Byte]): IO[StateSnapshot[MirrorState]] =
-    v5.decode(bytes).flatMap(_.fold(e => IO.raiseError(new AssertionError(e.message)), IO.pure))
+    v7.decode(bytes).flatMap(_.fold(e => IO.raiseError(new AssertionError(e.message)), IO.pure))
 
   /** The writer's verdict on each state: the content, or the refusal. */
   private lazy val written
       : Vector[(Era, StateSnapshot[MirrorState], Either[SnapshotRefusal, Array[Byte]])] =
-    snapshots.map((era, s) => (era, s, v5.encode(s).unsafeRunSync()))
+    snapshots.map((era, s) => (era, s, v7.encode(s).unsafeRunSync()))
 
   /** The states the writer accepts. */
   private lazy val accepted: Vector[(Era, StateSnapshot[MirrorState], Array[Byte])] =
@@ -77,7 +78,7 @@ class SnapshotV5Suite extends CatsEffectSuite:
   private def sameState(back: MirrorState, written: MirrorState, clue: String): Unit =
     assertEquals(MirrorSteps.firstDifference(back, written), None, clue)
 
-  test("every state of the eras fixture comes back from its V5 snapshot, as it was") {
+  test("every state of the eras fixture comes back from its V7 snapshot, as it was") {
     accepted.traverse_ { (era, snapshot, bytes) =>
       val label = s"$era block ${snapshot.anchor.map(_.blockNo)}"
       decoded(bytes).map { back =>
@@ -91,7 +92,7 @@ class SnapshotV5Suite extends CatsEffectSuite:
     accepted.traverse_ { (era, snapshot, bytes) =>
       for
         back <- decoded(bytes)
-        again <- v5.encode(back).map(_.fold(r => fail(r.toString), identity))
+        again <- v7.encode(back).map(_.fold(r => fail(r.toString), identity))
       yield assert(java.util.Arrays.equals(bytes, again), s"$era block ${snapshot.anchor}")
     }
   }
@@ -145,7 +146,7 @@ class SnapshotV5Suite extends CatsEffectSuite:
     val raise = Bytes.fromHex("820700").fold(e => fail(e.message), identity)
     List(Map(17 -> key17), Map(14 -> raise, 17 -> key17)).traverse_ { fields =>
       val snapshot = base.copy(state = withProposals(base.state, ParamUpdate(fields)))
-      v5.encode(snapshot).flatMap {
+      v7.encode(snapshot).flatMap {
         case Right(bytes) =>
           decoded(bytes).map(back => sameState(back.state, snapshot.state, fields.toString))
         case Left(r) => IO(fail(s"refused $fields: $r"))
@@ -165,7 +166,7 @@ class SnapshotV5Suite extends CatsEffectSuite:
     * the update verbatim; the update is no longer adopted (`UpdateChecks.voted` gives none, as it
     * does for any update that cannot be read), where the same update with d = 1/2 is.
     */
-  test("a V5 state with a pending update outside its interval loads verbatim and is not adopted") {
+  test("a V7 state with a pending update outside its interval loads verbatim and is not adopted") {
     val Some((_, base)) =
       snapshots.find((era, s) => era == Era.Alonzo && proposals(s.state).nonEmpty): @unchecked
     def update(d: String) =
@@ -174,13 +175,13 @@ class SnapshotV5Suite extends CatsEffectSuite:
     val inside = update("d81e820102")
     List(outside, inside).traverse_ { u =>
       val snapshot = base.copy(state = withProposals(base.state, u))
-      v5.encode(snapshot).flatMap {
+      v7.encode(snapshot).flatMap {
         case Right(bytes) =>
           decoded(bytes).flatMap { back =>
             sameState(back.state, snapshot.state, u.toString)
             val pending = proposals(back.state)
             assert(pending.nonEmpty && pending.values.forall(_ == u), "update changed on load")
-            v5.encode(back).map { again =>
+            v7.encode(back).map { again =>
               assert(java.util.Arrays.equals(bytes, again.fold(r => fail(r.toString), identity)))
               val adopted =
                 xyz.kd5ujc.scarab.ledger.UpdateChecks.voted(params(back.state), pending, 1)
@@ -195,22 +196,32 @@ class SnapshotV5Suite extends CatsEffectSuite:
 
   test("a Shelley-based snapshot has the Haskell state after the sidecar, Byron has none") {
     accepted.foreach { (era, _, bytes) =>
-      val sidecar = java.nio.ByteBuffer.wrap(bytes, 8, 4).getInt
-      val haskell = bytes.length - 12 - sidecar
-      assertEquals(new String(bytes.take(8), "US-ASCII"), "SCRBSNP5")
+      val binding = java.nio.ByteBuffer.wrap(bytes, 8, 4).getInt
+      val body = 12 + binding
+      val sidecar = java.nio.ByteBuffer.wrap(bytes, body, 4).getInt
+      val haskell = bytes.length - body - 4 - sidecar
+      assertEquals(new String(bytes.take(8), "US-ASCII"), "SCRBSNP7")
       if era == Era.Byron then assertEquals(haskell, 0, era.toString)
       // [1, [telescope, header state]]: the state file of the reference node
-      else assert(haskell > 0 && (bytes(12 + sidecar) & 0xff) == 0x82, era.toString)
+      else assert(haskell > 0 && (bytes(body + 4 + sidecar) & 0xff) == 0x82, era.toString)
     }
   }
 
   /** The framing as it was written before the copies were removed (#94, stage 0): the Haskell bytes
-    * copied to an array, the output stream and its `toByteArray`.
+    * copied to an array, the output stream and its `toByteArray` (with the V7 binding in front).
     */
-  private def framedWithCopies(sidecar: SnapshotSidecar, haskell: Array[Byte]): Array[Byte] =
+  private def framedWithCopies(
+      binding: CheckpointBinding,
+      sidecar: SnapshotSidecar,
+      haskell: Array[Byte]
+  ): Array[Byte] =
+    val bound =
+      CheckpointBinding.fingerprint ++ Codec.encode(binding)(using CheckpointBinding.codec)
     val body = SnapshotSidecar.fingerprint ++ Codec.encode(sidecar)(using SnapshotSidecar.codec)
-    val out = new java.io.ByteArrayOutputStream(12 + body.length + haskell.length)
-    out.write(SnapshotV5.Magic)
+    val out = new java.io.ByteArrayOutputStream(16 + bound.length + body.length + haskell.length)
+    out.write(SnapshotV7.Magic)
+    out.write(java.nio.ByteBuffer.allocate(4).putInt(bound.length).array())
+    out.write(bound)
     out.write(java.nio.ByteBuffer.allocate(4).putInt(body.length).array())
     out.write(body)
     out.write(haskell)
@@ -218,19 +229,21 @@ class SnapshotV5Suite extends CatsEffectSuite:
 
   test("the framing without copies writes the bytes that the framing with copies wrote") {
     accepted.foreach { (era, _, bytes) =>
-      val sidecar = SnapshotV5.sidecarOf(bytes).fold(e => fail(e.message), identity)
-      val length = java.nio.ByteBuffer.wrap(bytes, 8, 4).getInt
-      val haskell = Bytes.wrap(bytes).drop(12 + length)
+      val (binding, sidecar, haskell) =
+        SnapshotV7.sections(bytes).fold(e => fail(e.message), identity)
       assert(
-        java.util.Arrays.equals(framedWithCopies(sidecar, haskell.toArray), bytes),
+        java.util.Arrays.equals(framedWithCopies(binding, sidecar, haskell.toArray), bytes),
         era.toString
       )
-      assert(java.util.Arrays.equals(SnapshotV5.framed(sidecar, haskell), bytes), era.toString)
+      assert(
+        java.util.Arrays.equals(SnapshotV7.framed(binding, sidecar, haskell), bytes),
+        era.toString
+      )
     }
   }
 
   test("the structure check writes the bytes the full check writes, and refuses the same states") {
-    val structure = SnapshotV5.format[IO](SnapshotCheck.Structure)
+    val structure = SnapshotV7.format[IO](SnapshotCheck.Structure)
     written.traverse_ { (era, snapshot, full) =>
       structure.encode(snapshot).map { cheap =>
         full match
@@ -246,9 +259,9 @@ class SnapshotV5Suite extends CatsEffectSuite:
 
   test("the structure check refuses content whose Haskell section is not one CBOR item") {
     accepted.filter(_._1 != Era.Byron).foreach { (era, _, bytes) =>
-      assert(SnapshotV5.wellFormed(bytes).isRight, era.toString)
-      assert(SnapshotV5.wellFormed(bytes.dropRight(1)).isLeft, s"$era truncated")
-      assert(SnapshotV5.wellFormed(bytes :+ 0.toByte).isLeft, s"$era trailing byte")
+      assert(SnapshotV7.wellFormed(bytes).isRight, era.toString)
+      assert(SnapshotV7.wellFormed(bytes.dropRight(1)).isLeft, s"$era truncated")
+      assert(SnapshotV7.wellFormed(bytes :+ 0.toByte).isLeft, s"$era trailing byte")
     }
     assertEquals(SnapshotCheck.parse("structure"), Some(SnapshotCheck.Structure))
     assertEquals(SnapshotCheck.parse("FULL"), Some(SnapshotCheck.Full))
@@ -261,7 +274,7 @@ class SnapshotV5Suite extends CatsEffectSuite:
         FileLedgerSnapshots.open[IO, MirrorState](dir, keep = 100).flatMap { store =>
           snapshots.takeRight(2).traverse { (_, s) =>
             for
-              content <- v5.encode(s).map(_.fold(r => fail(r.toString), identity))
+              content <- v7.encode(s).map(_.fold(r => fail(r.toString), identity))
               written <- store.write(s).map(_.fold(r => fail(r.toString), identity))
               file = JFiles.readAllBytes((dir / written.name).toNioPath)
             yield
@@ -273,16 +286,22 @@ class SnapshotV5Suite extends CatsEffectSuite:
     }
   }
 
-  test("a damaged V5 file is a typed error: magic, sidecar length, fingerprint, Haskell section") {
+  test(
+    "a damaged V7 file is a typed error: magic, binding, sidecar, fingerprints, Haskell section"
+  ) {
     val bytes = accepted.last._3
+    val body = 12 + java.nio.ByteBuffer.wrap(bytes, 8, 4).getInt
     val cases: List[(String, Array[Byte])] = List(
       "magic" -> bytes.updated(7, '6'.toByte),
-      "sidecar length" -> bytes.updated(8, 0x7f.toByte),
-      "fingerprint" -> bytes.updated(12, (bytes(12) ^ 1).toByte),
+      "binding length" -> bytes.updated(8, 0x7f.toByte),
+      "binding fingerprint" -> bytes.updated(12, (bytes(12) ^ 1).toByte),
+      "binding variant" -> bytes.updated(body - 1, 0x7f.toByte),
+      "sidecar length" -> bytes.updated(body, 0x7f.toByte),
+      "sidecar fingerprint" -> bytes.updated(body + 4, (bytes(body + 4) ^ 1).toByte),
       "haskell section" -> bytes.take(bytes.length - 40),
       "too short" -> bytes.take(5)
     )
-    cases.traverse_((what, damaged) => v5.decode(damaged).map(r => assert(r.isLeft, what)))
+    cases.traverse_((what, damaged) => v7.decode(damaged).map(r => assert(r.isLeft, what)))
   }
 
   test(
@@ -301,8 +320,8 @@ class SnapshotV5Suite extends CatsEffectSuite:
           try assert(!listing.findAny().isPresent)
           finally listing.close()
         }
-        (_, snapshot, content) = accepted.lastOption.getOrElse(fail("no accepted V5 state"))
-        anchor = snapshot.anchor.getOrElse(fail("V5 fixture has no anchor"))
+        (_, snapshot, content) = accepted.lastOption.getOrElse(fail("no accepted V7 state"))
+        anchor = snapshot.anchor.getOrElse(fail("V7 fixture has no anchor"))
         current = dir / FileLedgerSnapshots.nameOf(anchor)
         original = FileLedgerSnapshots.closed(content)
         _ <- IO(JFiles.write(current.toNioPath, original))
@@ -330,7 +349,7 @@ class SnapshotV5Suite extends CatsEffectSuite:
         _ <- IO(JFiles.write(current.toNioPath, damaged))
         unchanged <- ok(SnapshotMigration.toCurrent[IO].run(dir))
         restored <- ok(
-          FileLedgerSnapshots.open[IO, MirrorState](dir).flatMap(_.restore(_ => IO.pure(true)))
+          FileLedgerSnapshots.open[IO, MirrorState](dir).flatMap(_.restore(_ => IO.pure(Right(()))))
         )
       yield
         // Migration probes only current-version headers; the ordinary reader verifies the checksum.
@@ -345,7 +364,7 @@ class SnapshotV5Suite extends CatsEffectSuite:
   // ---- the verified current-format corpus converted from the previous era fixtures
 
   private lazy val recorded: Vector[(String, Array[Byte], StateSnapshot[MirrorState])] =
-    val dir = java.nio.file.Path.of("fixtures/snapshot-v5/eras")
+    val dir = java.nio.file.Path.of("fixtures/snapshot-v7/eras")
     val listing = JFiles.list(dir)
     try
       listing.iterator.asScala.toVector.sortBy(_.getFileName.toString).map { file =>
@@ -375,7 +394,7 @@ class SnapshotV5Suite extends CatsEffectSuite:
     assertEquals(back.utxo.coin, rules.utxo.coin, clue)
     assertEquals(back.utxo.count, rules.utxo.count, clue)
 
-  test("recorded V5 replacements retain each era's chain position and UTxO accounting") {
+  test("recorded V7 replacements retain each era's chain position and UTxO accounting") {
     assertEquals(recorded.map(_._1.takeWhile(_ != '-')).toSet.size, 7)
     recorded.traverse_ { (name, content, expected) =>
       decoded(content).map { back =>
@@ -385,20 +404,20 @@ class SnapshotV5Suite extends CatsEffectSuite:
     }
   }
 
-  test("frozen V5 files retain their exact source gaps and observed eras on read and rewrite") {
+  test("maintained V7 files retain their exact source gaps and observed eras on read and rewrite") {
     recorded.traverse_ { (name, content, _) =>
-      val original = SnapshotV5.sidecarOf(content).fold(e => fail(e.message), identity)
+      val original = SnapshotV7.sidecarOf(content).fold(e => fail(e.message), identity)
       for
         back <- decoded(content)
         _ = assertEquals(back.state.provenance.gaps, original.gaps, name)
         _ = assertEquals(back.state.provenance.observed, original.observed, name)
-        again <- v5.encode(back).map(_.fold(r => fail(r.toString), identity))
+        again <- v7.encode(back).map(_.fold(r => fail(r.toString), identity))
       yield assert(java.util.Arrays.equals(again, content), name)
     }
   }
 
   test(
-    "complete and incomplete sources keep every gap across repeated V5 rewrites and conflicting environments"
+    "complete and incomplete sources keep every gap across repeated V7 rewrites and conflicting environments"
   ) {
     import xyz.kd5ujc.scarab.consensus.state.MirrorProvenance
     import xyz.kd5ujc.scarab.ledger.state.Gap
@@ -421,9 +440,9 @@ class SnapshotV5Suite extends CatsEffectSuite:
         )
         (0 until 3).toList
           .foldM(snapshot) { (current, _) =>
-            val raw = SnapshotV5.encoded(current).fold(r => fail(r.toString), identity)
-            val back = SnapshotV5.decode(conflicting, raw).fold(e => fail(e.message), identity)
-            val sidecar = SnapshotV5.sidecarOf(raw).fold(e => fail(e.message), identity)
+            val raw = SnapshotV7.encoded(current).fold(r => fail(r.toString), identity)
+            val back = SnapshotV7.decode(conflicting, raw).fold(e => fail(e.message), identity)
+            val sidecar = SnapshotV7.sidecarOf(raw).fold(e => fail(e.message), identity)
             assertEquals(back.state.provenance.gaps, gaps)
             assertEquals(back.state.provenance.observed, seen)
             assertEquals(sidecar.gaps, gaps)
@@ -471,7 +490,7 @@ class SnapshotV5Suite extends CatsEffectSuite:
           _ <- (0 until 3).toList.traverse_ { _ =>
             for
               reopened <- FileLedgerSnapshots.open[IO, MirrorState](dir)
-              restored <- reopened.restore(_ => IO.pure(true))
+              restored <- reopened.restore(_ => IO.pure(Right(())))
               back = restored.snapshot.getOrElse(fail("the saved snapshot disappeared"))._2
               _ = assertEquals(back.state.provenance.gaps, provenance.gaps)
               _ = assertEquals(back.state.provenance.observed, provenance.observed)

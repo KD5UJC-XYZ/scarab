@@ -30,7 +30,7 @@ object RewardSnapshotFixtureMain extends Assertions:
       case _         => fail("expected create or rewrite")
     val setup = NodeSetup.fromDirectory(Path.of(args(1))).fold(e => fail(e.toString), identity)
     given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-    val format = SnapshotV5.format[IO](SnapshotCheck.Full)
+    val format = SnapshotV7.format[IO](SnapshotCheck.Full)
     val snapshot = mode match
       case Mode.Rewrite =>
         format
@@ -43,24 +43,29 @@ object RewardSnapshotFixtureMain extends Assertions:
           .asScala
           .filter(_.nonEmpty)
           .map(text => Bytes.fromHex(text).fold(e => fail(e.toString), identity))
-        val before = blocks.foldLeft(StateSnapshot(None, setup.mirrorStart)) { (previous, raw) =>
-          val block =
-            Block.decode(raw, setup.geometry.byron.epochSlots).fold(e => fail(e.toString), identity)
-          val state = MirrorSteps
-            .block(setup, previous.state, block.header, raw)
-            .fold(e => fail(e.toString), identity)
-          StateSnapshot(
-            Some(
-              BlockRef(
-                block.header.slot,
-                block.header.hash,
-                block.header.blockNo,
-                block.header.isBoundary
+        val before =
+          blocks.foldLeft(StateSnapshot(None, setup.mirrorStart, CheckpointBinding.Unbacked)) {
+            (previous, raw) =>
+              val block =
+                Block
+                  .decode(raw, setup.geometry.byron.epochSlots)
+                  .fold(e => fail(e.toString), identity)
+              val state = MirrorSteps
+                .block(setup, previous.state, block.header, raw)
+                .fold(e => fail(e.toString), identity)
+              StateSnapshot(
+                Some(
+                  BlockRef(
+                    block.header.slot,
+                    block.header.hash,
+                    block.header.blockNo,
+                    block.header.isBoundary
+                  )
+                ),
+                state,
+                CheckpointBinding.Unbacked
               )
-            ),
-            state
-          )
-        }
+          }
         val json = parser
           .parse(Files.readString(Path.of(args(3))))
           .fold(e => fail(e.toString), identity)

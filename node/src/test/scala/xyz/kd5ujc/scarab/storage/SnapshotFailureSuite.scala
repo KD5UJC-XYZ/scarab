@@ -18,7 +18,15 @@ class SnapshotFailureSuite extends FailsOnUncaught:
   private given SnapshotFormat[IO, Int] with
     def encode(snapshot: StateSnapshot[Int]) = IO.pure(Right(Array(snapshot.state.toByte)))
     def decode(content: Array[Byte]) =
-      IO.pure(Right(StateSnapshot(Some(point(1)), content.headOption.fold(0)(_.toInt))))
+      IO.pure(
+        Right(
+          StateSnapshot(
+            Some(point(1)),
+            content.headOption.fold(0)(_.toInt),
+            CheckpointBinding.Unbacked
+          )
+        )
+      )
 
   private val rules: BlockRules[IO, Int] = BlockRules.from((_, _, _) => IO.pure(0))
 
@@ -53,8 +61,11 @@ class SnapshotFailureSuite extends FailsOnUncaught:
   ): StateBacking[IO, Int] = new StateBacking[IO, Int]:
     def advance(state: Int)(using Raise[IO, StorageError]) = advanceBody
     def settled(state: Int)(using Raise[IO, StorageError]) = IO.pure(state)
-    def checkpoint(anchor: BlockRef)(using Raise[IO, StorageError]) = IO.unit
-    def available(anchor: Option[BlockRef])(using Raise[IO, StorageError]) = IO.pure(true)
+    def checkpoint(anchor: BlockRef)(using Raise[IO, StorageError]) =
+      IO.pure(CheckpointBinding.Unbacked)
+    def admit(anchor: Option[BlockRef], binding: CheckpointBinding)(using
+        Raise[IO, StorageError]
+    ) = IO.pure(Right(()))
     def restore(anchor: Option[BlockRef])(using Raise[IO, StorageError]) = IO.pure(true)
     def reset(using Raise[IO, StorageError]) = IO.unit
     def retain(stems: Set[String])(using Raise[IO, StorageError]) = retainBody
@@ -143,7 +154,9 @@ class SnapshotFailureSuite extends FailsOnUncaught:
     StorageTestKit.tempDir.use { dir =>
       for
         snapshots <- StorageTestKit.ok(FileLedgerSnapshots.open[IO, Int](dir))
-        refused <- SnapshotFailure.capture(snapshots.write(StateSnapshot(None, 0)))
+        refused <- SnapshotFailure.capture(
+          snapshots.write(StateSnapshot(None, 0, CheckpointBinding.Unbacked))
+        )
         _ <- IO(
           assertEquals(
             refused,
@@ -174,7 +187,9 @@ class SnapshotFailureSuite extends FailsOnUncaught:
         snapshots <- StorageTestKit.ok(
           FileLedgerSnapshots.open[IO, Int](dir)(using summon, refusing, summon)
         )
-        result <- SnapshotFailure.capture(snapshots.write(StateSnapshot(Some(point(1)), 1)))
+        result <- SnapshotFailure.capture(
+          snapshots.write(StateSnapshot(Some(point(1)), 1, CheckpointBinding.Unbacked))
+        )
         files <- SnapshotFailure.capture(snapshots.list)
       yield
         assertEquals(result, Right(Left(refusal)))
@@ -216,7 +231,9 @@ class SnapshotFailureSuite extends FailsOnUncaught:
         snapshots <- StorageTestKit.ok(
           FileLedgerSnapshots.open[IO, Int](dir)(using summon, broken, summon)
         )
-        result <- SnapshotFailure.capture(snapshots.write(StateSnapshot(Some(point(1)), 1)))
+        result <- SnapshotFailure.capture(
+          snapshots.write(StateSnapshot(Some(point(1)), 1, CheckpointBinding.Unbacked))
+        )
         _ <- IO(assertEquals(result, Left(SnapshotFailure.Defect(cause))))
         fiber <- SnapshotFailure.capture(IO.never[Unit]).start
         _ <- fiber.cancel

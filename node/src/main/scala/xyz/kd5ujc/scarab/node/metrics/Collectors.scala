@@ -14,6 +14,7 @@ import xyz.kd5ujc.scarab.network.ConnectionManager
 import xyz.kd5ujc.scarab.network.selection.PeerMetrics
 import xyz.kd5ujc.scarab.node.forge.ForgeStats
 import xyz.kd5ujc.scarab.node.mempool.Mempool
+import xyz.kd5ujc.scarab.storage.ReceivedBlocks
 
 /** What is measured when it is asked for, not when it happens: the state that already lives
   * somewhere (the chain, the mempool, the connection table, the forger's counters, the JVM). Each
@@ -72,6 +73,19 @@ object Collectors:
     mempool.snapshot.flatMap(s =>
       metrics.set(txsInMempool, s.entries.size.toDouble) *>
         metrics.set(mempoolBytes, s.bytes.toDouble)
+    )
+
+  /** The received-block index: what it holds in memory, and what its body cache has done. */
+  def received[F[_]: Monad](blocks: ReceivedBlocks[F])(using metrics: Metrics[F]): F[Unit] =
+    import Catalogue.*
+    blocks.residency.flatMap(r =>
+      metrics.set(receivedBlocks, r.blocks.toDouble) *>
+        metrics.set(receivedCacheBlocks, r.cachedBlocks.toDouble) *>
+        metrics.set(receivedCacheBytes, r.cachedBytes.toDouble) *>
+        metrics.set(receivedCacheLimit, r.limitBytes.toDouble) *>
+        metrics.advance(receivedEvictions, r.evictions.toDouble) *>
+        metrics.advance(receivedReads, r.reads.toDouble) *>
+        metrics.advance(receivedUnreadable, r.unreadable.toDouble)
     )
 
   /** The peer metrics boards: how many slots each holds. */
