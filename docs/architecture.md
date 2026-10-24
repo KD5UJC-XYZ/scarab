@@ -32,7 +32,7 @@ a cycle does not load.
 | `fuzz` | Structured fuzzing of every decoder entry point (test only) | |
 
 ```
-blst-native -> crypto, plutus (before blst-java on their class paths)
+blst-native -> crypto (before blst-java on its class path)
 
 codec <- crypto <- protocol <- network ------------------------.
   ^                  ^                                          \
