@@ -13,7 +13,8 @@ The Runtime classpath of the `node` project (its transitive runtime dependencies
 test-only and generator modules)
 was written with `sbt node/runtimeClasspathFile` in the JDK image, at v0.1.0 plus this review. For every
 jar on it, the `<licenses>` element of its POM in the Coursier cache was read; where a POM declares
-none, the parent POM chain was followed. 59 third-party jars resolve, 15 of them direct dependencies.
+none, the parent POM chain was followed. 59 third-party jars resolve, 15 of them direct dependencies
+(60 since the Scalus 1.4.0 update: scalus-secp256k1-jni left, scalus-crypto-jni and native-lib-loader came).
 Jar contents were listed for licence files and native libraries. The licence names below are the POM
 names, normalised to SPDX identifiers where they are unambiguous.
 
@@ -42,9 +43,9 @@ the jar count above were not regenerated for that change; the re-run below does 
 | Jar | Native content | Upstream licence | Note |
 |---|---|---|---|
 | `org.rocksdb:rocksdbjni:10.2.1` | `librocksdbjni` for Linux (x86, x86_64, aarch64, ppc64le, s390x, riscv64; glibc and musl), macOS (x86_64, arm64), Windows x64 | Apache-2.0 OR GPL-2.0-only (RocksDB) | The jar has no licence file. RocksDB statically links compression libraries (zlib, snappy, lz4, zstd, bzip2; BSD- or zlib-style licences) whose texts are not in the jar, so a binary distribution must add them (not verified here). Only the Linux x86_64 library is exercised by this project's Docker build. |
-| `foundation.icon:blst-java:0.3.2` | `libblst` for Linux amd64/aarch64, macOS x86_64/arm64 | Apache-2.0 (supranational/blst) | No licence file in the jar. On Linux amd64 the library of `blst-native` (below) is loaded instead. |
+| `foundation.icon:blst-java:0.3.2` | `libblst` for Linux amd64/aarch64, macOS x86_64/arm64 | Apache-2.0 (supranational/blst) | No licence file in the jar. Used by the Leios BLS keys (`MinSig`) only; on Linux amd64 the library of `blst-native` (below) is loaded instead. |
 | `blst-native` (this repository) | `libblst` for Linux amd64, built from supranational/blst v0.3.15 with `-D__BLST_PORTABLE__` | Apache-2.0 (supranational/blst) | Licence text in `blst-native/LICENSE-blst`; recipe and checksum in [ADR 0012](adr/0012-portable-blst.md). |
-| `org.scalus:scalus-secp256k1-jni:0.6.0` | `libscalus_secp256k1` for Linux x86_64/arm64, macOS x86_64/arm64 | Wrapper Apache-2.0 per its POM; wraps bitcoin-core/secp256k1 (MIT) | No licence file in the jar; the MIT status of the wrapped library is upstream's, not read from the jar. |
+| `org.scalus:scalus-crypto-jni:0.1.0` | `libscalus_crypto` for Linux x86_64/arm64 (glibc 2.33 or newer), macOS x86_64/arm64, Windows x64; libsodium (IOG fork `dbb48cce`), libsecp256k1 v0.3.2 and blst v0.3.15 statically linked | Wrapper Apache-2.0 per its POM; libsodium ISC, libsecp256k1 MIT, blst Apache-2.0 | No licence file in the jar. The texts from the pinned upstream sources are in `plutus/licenses/` (`LICENSE-libsodium`, `LICENSE-libsecp256k1`) and `blst-native/LICENSE-blst`. Pins and provenance in [ADR 0020](adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md). |
 
 Earlier `NOTICE` text said these natives are bundled "for linux x86_64"; the jars hold several platforms
 and `NOTICE` now says so.
@@ -62,7 +63,7 @@ were not regenerated here.
 | org.typelevel:cats-core_3 | 2.13.0 | MIT | direct |  |
 | org.typelevel:cats-effect_3 | 3.7.1 | Apache-2.0 | direct |  |
 | org.typelevel:cats-mtl_3 | 1.7.0 | Apache-2.0 | direct |  |
-| org.scalus:scalus_3 | 1.3.0 | Apache-2.0 | direct |  |
+| org.scalus:scalus_3 | 1.4.0 | Apache-2.0 | direct |  |
 | dnsjava:dnsjava | 3.6.5 | BSD-3-Clause | direct | Relay-root DNS resolver. POM read from Maven Central. |
 | org.typelevel:kittens_3 | 3.5.0 | Apache-2.0 | direct | POM read from Maven Central. |
 | org.scodec:scodec-core_3 | 2.3.3 | BSD-3-Clause | direct | POM read from Maven Central. |
@@ -75,7 +76,7 @@ were not regenerated here.
 | org.http4s:http4s-ember-server_3 | 0.23.37 | Apache-2.0 | direct |  |
 | org.http4s:http4s-dsl_3 | 0.23.37 | Apache-2.0 | direct |  |
 | org.http4s:http4s-circe_3 | 0.23.37 | Apache-2.0 | direct |  |
-| org.bouncycastle:bcprov-jdk18on | 1.85.2 | Bouncy Castle Licence (MIT-style) | direct | The jar carries META-INF/LICENSE.md. |
+| org.bouncycastle:bcprov-jdk18on | 1.86 | Bouncy Castle Licence (MIT-style) | direct | The jar carries META-INF/LICENSE.md. |
 | com.weavechain:curve25519-elisabeth | 0.1.3 | MIT | direct | The jar carries no licence file; further MIT, CC0 and BSD-3-Clause notices of adapted components are recorded in the project README (not verified here). |
 | org.typelevel:cats-kernel_3 | 2.13.0 | MIT | direct |  |
 | co.fs2:fs2-core_3 | 3.14.0 | MIT | direct |  |
@@ -85,12 +86,13 @@ were not regenerated here.
 | org.typelevel:cats-effect-std_3 | 3.7.1 | Apache-2.0 | transitive |  |
 | org.typelevel:paiges-core_3 | 0.4.4 | Apache-2.0 | transitive |  |
 | com.lihaoyi:upickle_3 | 4.4.3 | MIT | transitive |  |
-| com.github.plokhotnyuk.jsoniter-scala:jsoniter-scala-core_3 | 2.40.1 | MIT | transitive |  |
-| com.github.plokhotnyuk.jsoniter-scala:jsoniter-scala-macros_3 | 2.40.1 | MIT | transitive |  |
+| com.github.plokhotnyuk.jsoniter-scala:jsoniter-scala-core_3 | 2.41.2 | MIT | transitive |  |
+| com.github.plokhotnyuk.jsoniter-scala:jsoniter-scala-macros_3 | 2.41.2 | MIT | transitive |  |
 | io.bullet:borer-core_3 | 1.18.0 | MPL-2.0 | transitive | MPL-2.0 is file-level copyleft: compatible when used unmodified as a separate jar (via Scalus); duties arise only if its files are modified. |
 | io.bullet:borer-derivation_3 | 1.18.0 | MPL-2.0 | transitive | As borer-core_3. |
-| foundation.icon:blst-java | 0.3.2 | Apache-2.0 | direct (crypto, Leios BLS); also transitive via Scalus | Bundles native libblst (supranational/blst, Apache-2.0) for Linux amd64/aarch64 and macOS. |
-| org.scalus:scalus-secp256k1-jni | 0.6.0 | Apache-2.0 | transitive | Bundles native secp256k1 (bitcoin-core, MIT) for Linux and macOS; the POM states Apache-2.0 for the wrapper. |
+| foundation.icon:blst-java | 0.3.2 | Apache-2.0 | direct (crypto, Leios BLS) | Bundles native libblst (supranational/blst, Apache-2.0) for Linux amd64/aarch64 and macOS. |
+| org.scalus:scalus-crypto-jni | 0.1.0 | Apache-2.0 | transitive (Scalus) | Bundles `libscalus_crypto` (libsodium ISC, libsecp256k1 MIT, blst Apache-2.0) for Linux, macOS and Windows; the POM states Apache-2.0 for the wrapper. |
+| org.scijava:native-lib-loader | 2.5.0 | BSD-2-Clause | transitive (scalus-crypto-jni) | Extracts and loads `libscalus_crypto`. No licence file in the jar; the text from its tag `native-lib-loader-2.5.0` is `plutus/licenses/LICENSE-native-lib-loader`. |
 | io.circe:circe-jawn_3 | 0.14.16 | Apache-2.0 | transitive |  |
 | io.circe:circe-core_3 | 0.14.16 | Apache-2.0 | transitive |  |
 | org.http4s:http4s-ember-core_3 | 0.23.37 | Apache-2.0 | transitive |  |
@@ -104,7 +106,6 @@ were not regenerated here.
 | com.lihaoyi:upack_3 | 4.4.3 | MIT | transitive |  |
 | com.lihaoyi:upickle-implicits_3 | 4.4.3 | MIT | transitive |  |
 | org.typelevel:cats-free_3 | 2.12.0 | MIT | transitive |  |
-| org.scijava:native-lib-loader | 2.5.0 | BSD-2-Clause | transitive | Extracts bundled native libraries at run time. |
 | org.typelevel:jawn-parser_3 | 1.7.0 | MIT | transitive |  |
 | io.circe:circe-numbers_3 | 0.14.16 | Apache-2.0 | transitive |  |
 | org.typelevel:log4cats-core_3 | 2.8.0 | Apache-2.0 | transitive |  |

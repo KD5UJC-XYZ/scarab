@@ -17,7 +17,7 @@ one says so. New records copy [the template](template.md) and take the next numb
 | [0009](0009-ledger-mirror-step-2.md) | Ledger mirror step 2: three jumps behind a differential harness | Accepted (jumps 1 and 2 done; the harness is removed) | 2026-10-15 |
 | [0010](0010-scala-3-3-lts.md) | Scala 3.3 LTS | Accepted | 2026-10-14 |
 | [0011](0011-stack-safety.md) | Recursion over data from outside is stack safe | Accepted | 2026-10-16 |
-| [0012](0012-portable-blst.md) | One portable libblst for every x86-64 CPU, shipped where blst-java loads it | Accepted | 2026-10-16 |
+| [0012](0012-portable-blst.md) | One portable libblst for every x86-64 CPU, shipped where blst-java loads it | Accepted; Plutus part superseded by 0020 | 2026-10-16 |
 | [0013](0013-cbor-documents-are-an-index-over-the-input.md) | CBOR documents are an index over the input | Accepted | 2026-10-16 |
 | [0014](0014-typed-log.md) | A typed log: `Tell` of lines built from typed events, routed by namespace and severity | Accepted | 2026-10-16 |
 | [0015](0015-kes-key-written-back-and-checked-reload.md) | The evolved KES key is written back, and credentials are reloaded on SIGHUP only after a check | Accepted | 2026-10-17 |
@@ -25,5 +25,6 @@ one says so. New records copy [the template](template.md) and take the next numb
 | [0017](0017-fibers-end-with-values.md) | A fiber ends with a value; a typed error does not cross a fiber as an exception | Accepted | 2026-10-17 |
 | [0018](0018-parallel-plutus-after-ordered-preparation.md) | Bounded Plutus workers after ordered ledger preparation | Accepted | 2026-10-18 |
 | [0019](0019-incremental-reward-calculation.md) | Rewards advance through the reference's resumable pure machine | Accepted | 2026-10-19 |
+| [0020](0020-plutus-native-crypto-through-scalus-crypto-jni.md) | Plutus native crypto through scalus-crypto-jni | Accepted; partially supersedes 0012 | 2026-10-23 |
 | [0021](0021-ledger-state-residency-and-utxo-checkpoints.md) | Ledger state residency: snapshots bind their UTxO checkpoint, received bodies are read back from their log | Accepted | 2026-10-23 |
 | [0022](0022-defaults-follow-the-reference-binary.md) | Defaults follow the reference binary | Accepted | 2026-10-23 |

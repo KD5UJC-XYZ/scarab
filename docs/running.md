@@ -31,14 +31,27 @@ after any dependency change: a stale file lacked rocksdb.
 ## CPU and platform requirements
 
 Any x86-64 CPU or aarch64 that blst supports: nothing beyond what the architecture has. In
-particular `adx`, `bmi2` and `avx` are not needed; an older 2-core x86-64 CPU runs the node. The
-BLS12-381 library (Plutus builtins and Leios certificates) is blst v0.3.15 built with
-`-D__BLST_PORTABLE__`, which picks the ADX/BMI2 multiplication at run time
-([ADR 0012](adr/0012-portable-blst.md)); blst-java's own library, used by Scalus before, executed
-`mulx` unconditionally and killed the JVM with SIGILL on a CPU without it. At start `follow` checks
-the library and `/proc/cpuinfo` and logs a `blst` event (`platform`, CPU `features`, `library`
-`portable`); a library that is not the portable one on a processor not shown to have ADX and BMI2
-is refused with an `error` event of kind `NativeLibraryError` and exit code 1.
+particular `adx`, `bmi2` and `avx` are not needed; an older 2-core x86-64 CPU runs the node. Two
+native libraries carry BLS12-381, and both pick the ADX/BMI2 multiplication at run time:
+
+- The Leios BLS keys (`MinSig`) use blst v0.3.15 built with `-D__BLST_PORTABLE__` by this
+  repository ([ADR 0012](adr/0012-portable-blst.md)); blst-java's own library executed `mulx`
+  unconditionally and killed the JVM with SIGILL on a CPU without it. At start `follow` checks the
+  library and `/proc/cpuinfo` and logs a `blst` event (`platform`, CPU `features`, `library`
+  `portable`); a library that is not the portable one on a processor not shown to have ADX and BMI2
+  is refused.
+- The Plutus builtins (Ed25519, secp256k1, BLS12-381) use `libscalus_crypto` of
+  `org.scalus:scalus-crypto-jni:0.1.0`
+  ([ADR 0020](adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md)). It needs glibc 2.33 or
+  newer on Linux x86-64 and aarch64; musl (Alpine) is not supported. It is extracted to
+  `java.io.tmpdir` and loaded from there, so that directory must exist, be writable and allow
+  execution (a `noexec` `/tmp` makes the load fail; point `-Djava.io.tmpdir` elsewhere). At start
+  `follow` checks the sha-256 of the library it would load against the pinned build of the
+  platform, refuses a library of the same name on `java.library.path`, loads it, computes known
+  answers and logs a `plutusCrypto` event. Without it no V1/V2 script that verifies an Ed25519
+  signature could be evaluated.
+
+Either refusal is an `error` event of kind `NativeLibraryError` and exit code 1.
 
 To check a build on a machine (for example a bundle on an old CPU; run it in the bundle directory, whose `classpath.txt` names `/app` paths):
 
@@ -46,8 +59,9 @@ To check a build on a machine (for example a bundle on an old CPU; run it in the
 docker run --rm -v "$PWD":/app:ro scarab-jdk:local sh -c 'java -cp "$(cat /app/classpath.txt)" xyz.kd5ujc.scarab.node.tools.BlstCheckMain bench'
 ```
 
-It prints one JSON line: the platform, the CPU features, the library, three Plutus V3 scripts with the
-BLS12-381 builtins (`builtins`), and, with `bench`, operations per second (`opsPerSecond`); exit code 0 when all pass. The class path must list the
+It prints one JSON line: the platform, the CPU features, the library, the Plutus native library
+(`plutusCrypto`), three Plutus V3 scripts with the BLS12-381 builtins (`builtins`), and, with `bench`,
+operations per second (`opsPerSecond`); exit code 0 when all pass. The class path must list the
 `blst-native` module directory before the jars (`node/runtimeClasspathFile` does).
 
 ## `follow`: the node
