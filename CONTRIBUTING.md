@@ -176,7 +176,7 @@ everything else is caught within a day by CI. Land in minutes, not hours.
 | **1. Small code change** | refactor, test-only change, tooling, a local fix with no change in behaviour visible outside the module | `scripts/sbtw check` (formatting, `-Werror`, every module's tests, the fuzz suite and scalafix) | commit message; a changelog fragment only if a user could notice |
 | **2. Behaviour change in one area** | a bug fix, a new query, a new flag or event, a performance change | `check` plus **one** scenario for the area (table below) | changelog fragment; a test that fails without the change; `docs/running.md` if a flag, event or metric changed; a `docs/findings.md` row if it was found on real data |
 | **3. Consensus-critical or cross-cutting** | ledger rules, chain selection, a persisted format, the rules switch, anything forging | `check` plus the area scenarios, run in parallel | as level 2, plus the compatibility matrix row and the design document "as built" |
-| **4. Stage boundary** | the jump gates of a design (all Preview epochs, preprod from genesis), a release | the long runs the design names, once per stage, not per commit | an evidence-log row in `docs/compatibility.md` with commit, date and command |
+| **4. Stage boundary** | the jump gates of a design (all Preview epochs, preprod from genesis), a release | the long runs the design names, once per stage, not per commit | an evidence-log entry under `docs/compatibility/` with commit, date and command |
 
 A persisted format change is level 3 and also needs a version bump, a migration and a test that
 reads the previous version ([ADR 0006](docs/adr/0006-versioned-formats-migrate-on-open.md)).
@@ -272,10 +272,13 @@ A claim of compatibility needs evidence a reader can check:
   with `--plutus-cases`, or captured blocks via `CaptureMain`), a commit message that names the
   slot or epoch, and a row in [docs/findings.md](docs/findings.md).
 - A scenario result is recorded with the **commit, date, command and image versions** in
-  [docs/compatibility.md](docs/compatibility.md) (evidence log); numbers without a commit are not
-  recorded.
-- A change in what is verified updates the matching row of the compatibility matrix, including the
-  "explicitly unchecked" cell, and the roadmap item it closes (mark it done, never renumber).
+  [docs/compatibility.md](docs/compatibility.md#evidence-log) (the `evidence-log-N.md` pages under
+  `docs/compatibility/`); numbers without a commit are not recorded.
+- A change in what is verified updates the matching component of the compatibility register
+  (`docs/data/compatibility.json` and its page `docs/compatibility/<id>.md`), including the "explicitly
+  unchecked" section, then regenerates the matrix with `python3 scripts/render_compatibility.py`
+  (`docs/compatibility.md` is generated; CI runs the script with `--check`), and updates the roadmap item it
+  closes (mark it done, never renumber).
 - Performance numbers go in [docs/performance.md](docs/performance.md) with the setup.
 
 ## Commits and pull requests
