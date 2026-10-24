@@ -142,8 +142,8 @@ object LedgerSnapshotExport:
       for
         fileBytes <- files.readAll(snapshot).compile.to(Chunk).map(_.toArray)
         content <- lift(FileLedgerSnapshots.verified(fileBytes).leftMap(Error.Storage(_)))
-        sections <- lift(SnapshotV5.sections(content).leftMap(Error.Storage(_)))
-        (sidecar, raw) = sections
+        sections <- lift(SnapshotV7.sections(content).leftMap(Error.Storage(_)))
+        (binding, sidecar, raw) = sections
         _ <- lift(Either.cond(sidecar.gaps.isEmpty, (), Error.Gaps(sidecar.gaps)))
         utxo <- sidecar.chain match
           case SnapshotSidecar.Chain.InByron(_, _) =>
@@ -187,6 +187,11 @@ object LedgerSnapshotExport:
             Error.Unsettled(utxo.stamp, utxo.flushed, utxo.diff.size)
           )
         )
+        checkpointDir = config.db / "utxo" / "checkpoints" / StateBacking.stem(anchor)
+        admitted <- AtomicFile.guard[F, Either[StorageError, Unit]](checkpointDir.toString)(
+          CheckpointDigest.admit(checkpointDir.toNioPath, binding)
+        )
+        _ <- lift(admitted.leftMap(Error.Storage(_)))
         directory = config.out / (anchor.slot.toString + "_scarab")
         _ <- fresh(directory)
         logs = stage / "rocks-logs"
@@ -204,7 +209,7 @@ object LedgerSnapshotExport:
                 )
               )
               result <- RocksUtxoCheckpoint
-                .resource[F](config.db / "utxo" / "checkpoints" / StateBacking.stem(anchor), logs)
+                .resource[F](checkpointDir, logs)
                 .use { store =>
                   for
                     stamp <- store.flushed

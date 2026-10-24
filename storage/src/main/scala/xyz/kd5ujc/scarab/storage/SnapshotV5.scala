@@ -2,8 +2,6 @@
 package xyz.kd5ujc.scarab.storage
 
 import xyz.kd5ujc.scarab.codec.DomainError
-import cats.effect.Sync
-import cats.mtl.Ask
 import cats.syntax.all.*
 import java.nio.ByteBuffer
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
@@ -33,7 +31,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
 }
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState}
 
-/** The snapshot of format version 5, the Haskell ledger state with a sidecar:
+/** The snapshot of format version 5, the Haskell ledger state with a sidecar, and the body of the
+  * current version ([[SnapshotV7]]), which puts a checkpoint binding in front of it unchanged:
   *
   * {{{
   * "SCRBSNP5" | sidecar length u32 | sidecar | Haskell state bytes
@@ -56,6 +55,10 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState}
   * draft, the attributed amounts, the pool details of the snapshots, the parameter fields of other
   * eras) and, in Byron, the flat ledger state, none of which the era-indexed rules keep. Files of
   * versions 1 to 4 are recognized as retired by [[SnapshotMigration]] before stores open.
+  *
+  * A V5 file is read only to be migrated ([[SnapshotV7.fromV5]]): the body after its magic becomes
+  * the body of the V7 file byte for byte, so the sidecar and Haskell readers here are those of both
+  * versions, and the V5 sidecar fingerprint golden (`CodecSuite`) keeps guarding them.
   */
 object SnapshotV5:
   val Magic: Array[Byte] = "SCRBSNP5".getBytes("US-ASCII")
@@ -63,66 +66,12 @@ object SnapshotV5:
   /** Magic and the length of the sidecar. */
   private val HeaderSize = Magic.length + 4
 
-  /** The format for a chain whose state is the mirror ([[MirrorState]]), writing with `check` (see
-    * [[SnapshotCheck]]).
-    *
-    * With [[SnapshotCheck.Full]] the file is read back and its Haskell section is written again:
-    * the bytes must be those written, and the sidecar's parts equal (a pool registered with the
-    * empty relay list reads back as one with none, which the state does not tell apart, so the
-    * bytes are what is compared, not the state).
+  /** The sidecar and the Haskell section of a snapshot (the body the V5 and V7 files share), or the
+    * refusal of the state.
     */
-  def format[F[_]: Sync](check: SnapshotCheck)(using
-      env: Ask[F, ConsensusMirrorEnv]
-  ): SnapshotFormat[F, MirrorState] =
-    new SnapshotFormat[F, MirrorState]:
-      def encode(snapshot: StateSnapshot[MirrorState]): F[Either[SnapshotRefusal, Array[Byte]]] =
-        env
-          .ask[ConsensusMirrorEnv]
-          .flatMap(e => Sync[F].blocking(written(e, snapshot, check)))
-
-      def decode(content: Array[Byte]): F[Either[StorageError, StateSnapshot[MirrorState]]] =
-        env.ask[ConsensusMirrorEnv].flatMap(e => Sync[F].blocking(SnapshotV5.decode(e, content)))
-
-  private def written(
-      env: ConsensusMirrorEnv,
-      snapshot: StateSnapshot[MirrorState],
-      check: SnapshotCheck
-  ): Either[SnapshotRefusal, Array[Byte]] =
-    encoded(snapshot).flatTap { content =>
-      check match
-        case SnapshotCheck.Structure =>
-          wellFormed(content).leftMap(SnapshotRefusal.WouldNotRead(_))
-        case SnapshotCheck.Full =>
-          for
-            back <- decode(env, content).leftMap(SnapshotRefusal.WouldNotRead(_))
-            again <- encoded(back)
-            _ <- Either.cond(
-              java.util.Arrays.equals(again, content) && back.anchor == snapshot.anchor,
-              (),
-              SnapshotRefusal.WouldDiffer(
-                List(
-                  Option.when(!java.util.Arrays.equals(again, content))(
-                    SnapshotDifference.ReencodedBytes
-                  ),
-                  Option.when(back.anchor != snapshot.anchor)(SnapshotDifference.Anchor)
-                ).flatten
-              )
-            )
-          yield ()
-    }
-
-  /** The sidecar decodes and the Haskell section (empty in Byron) is one CBOR item under the limits
-    * the state is read with: the index of its items is made and dropped.
-    */
-  private[storage] def wellFormed(content: Array[Byte]): Either[StorageError, Unit] =
-    sections(content).flatMap { (_, haskell) =>
-      if haskell.size == 0 then Right(())
-      else Cbor.decode(haskell, HaskellState.limits).bimap(corrupt, _ => ())
-    }
-
-  private[storage] def encoded(
+  private[storage] def parts(
       snapshot: StateSnapshot[MirrorState]
-  ): Either[SnapshotRefusal, Array[Byte]] =
+  ): Either[SnapshotRefusal, (SnapshotSidecar, Bytes)] =
     val m = snapshot.state
     def sidecar(chain: SnapshotSidecar.Chain) =
       SnapshotSidecar(
@@ -137,12 +86,8 @@ object SnapshotV5:
             EraLedgerState.ByronCurrent(b)
           ) =>
         Right(
-          framed(
-            sidecar(
-              SnapshotSidecar.Chain.InByron(pending, ConsensusExtras(boot, b, protocol))
-            ),
+          sidecar(SnapshotSidecar.Chain.InByron(pending, ConsensusExtras(boot, b, protocol))) ->
             Bytes.empty
-          )
         )
       case (shelley: MirrorExtras.InShelley, i: EraLedgerState.InShelleyEra[e]) =>
         given xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra[e] = i.era
@@ -152,31 +97,40 @@ object SnapshotV5:
             .of(m.ext)
             .leftMap(e => SnapshotRefusal.Mirror(StateMirrorError.Telescope(e)))
           haskell <- HaskellLedgerFile.encode(file).leftMap(SnapshotRefusal.NotWritable(_))
-        yield framed(
-          sidecar(
-            SnapshotSidecar.Chain.InShelley(
-              i.state.nes.es.ls.utxo.utxo.utxo,
-              EraLedger.curPParams(gov),
-              Some(EraLedger.prevPParams(gov)),
-              shelley
-            )
-          ),
-          haskell
-        )
+        yield sidecar(
+          SnapshotSidecar.Chain.InShelley(
+            i.state.nes.es.ls.utxo.utxo.utxo,
+            EraLedger.curPParams(gov),
+            Some(EraLedger.prevPParams(gov)),
+            shelley
+          )
+        ) -> haskell
       case (_, state) =>
         Left(SnapshotRefusal.Mirror(StateMirrorError.ExtrasMismatch(state.era)))
 
-  /** The file content, in one array of its exact size: the header, the sidecar and the Haskell
-    * bytes are copied to it once (the Haskell section is a couple of hundred megabytes, and a copy
-    * of it is one more humongous allocation for the collector).
+  /** The encoded sidecar with its fingerprint: what follows the sidecar length in the body. */
+  private[storage] def sidecarBytes(sidecar: SnapshotSidecar): Array[Byte] =
+    SnapshotSidecar.fingerprint ++ Codec.encode(sidecar)(using SnapshotSidecar.codec)
+
+  /** Write the body (`sidecar length u32 | sidecar | Haskell bytes`) into `out` at `at`. */
+  private[storage] def writeBody(
+      out: Array[Byte],
+      at: Int,
+      sidecar: Array[Byte],
+      haskell: Bytes
+  ): Unit =
+    ByteBuffer.wrap(out, at, 4).putInt(sidecar.length)
+    System.arraycopy(sidecar, 0, out, at + 4, sidecar.length)
+    haskell.copyTo(out, at + 4 + sidecar.length)
+
+  /** A V5 file's content, in one array of its exact size (the previous-version tests and fixture
+    * recipes write it; the node writes [[SnapshotV7]]).
     */
   private[storage] def framed(sidecar: SnapshotSidecar, haskell: Bytes): Array[Byte] =
-    val body = SnapshotSidecar.fingerprint ++ Codec.encode(sidecar)(using SnapshotSidecar.codec)
-    val out = new Array[Byte](HeaderSize + body.length + haskell.size)
+    val side = sidecarBytes(sidecar)
+    val out = new Array[Byte](HeaderSize + side.length + haskell.size)
     System.arraycopy(Magic, 0, out, 0, Magic.length)
-    ByteBuffer.wrap(out, Magic.length, 4).putInt(body.length)
-    System.arraycopy(body, 0, out, HeaderSize, body.length)
-    haskell.copyTo(out, HeaderSize + body.length)
+    writeBody(out, Magic.length, side, haskell)
     out
 
   // ---- read
@@ -184,12 +138,13 @@ object SnapshotV5:
   private def corrupt[E <: DomainError](reason: E): StorageError =
     StorageError.Corrupt("snapshot", reason)
 
-  /** Read current-format content without changing its carried state or metadata. */
-  def decode(
+  /** The state of a body that starts at `at`: the anchor and the mirror. */
+  private[storage] def decodeBody(
       env: ConsensusMirrorEnv,
-      content: Array[Byte]
-  ): Either[StorageError, StateSnapshot[MirrorState]] =
-    sections(content).flatMap { (sidecar, haskell) =>
+      content: Array[Byte],
+      at: Int
+  ): Either[StorageError, (Option[BlockRef], MirrorState)] =
+    body(content, at).flatMap { (sidecar, haskell) =>
       val state: Either[StorageError, MirrorState] = sidecar.chain match
         case SnapshotSidecar.Chain.InByron(pending, extras) =>
           Either
@@ -216,7 +171,17 @@ object SnapshotV5:
             shelley.extras,
             MirrorProvenance.recorded(sidecar.gaps, sidecar.observed)
           )
-      state.map(StateSnapshot(sidecar.anchor, _))
+      state.map(sidecar.anchor -> _)
+    }
+
+  /** The sidecar of a body that starts at `at` decodes and its Haskell section (empty in Byron) is
+    * one CBOR item under the limits the state is read with: the index of its items is made and
+    * dropped.
+    */
+  private[storage] def bodyWellFormed(content: Array[Byte], at: Int): Either[StorageError, Unit] =
+    body(content, at).flatMap { (_, haskell) =>
+      if haskell.size == 0 then Right(())
+      else Cbor.decode(haskell, HaskellState.limits).bimap(corrupt, _ => ())
     }
 
   /** The mirror of a Shelley-based snapshot: the Haskell section decoded, the UTxO handle and the
@@ -246,26 +211,37 @@ object SnapshotV5:
   def sidecarOf(content: Array[Byte]): Either[StorageError, SnapshotSidecar] =
     sections(content).map(_._1)
 
-  /** The sidecar and the Haskell bytes of a file, after the magic, the length and the fingerprint
-    * have been checked.
+  /** The sidecar and the Haskell bytes of a V5 file, after the magic, the length and the
+    * fingerprint have been checked.
     */
   private[storage] def sections(
       content: Array[Byte]
   ): Either[StorageError, (SnapshotSidecar, Bytes)] =
-    val kind = FileKind.SnapshotFile
     if content.length < HeaderSize || !content.startsWith(Magic) then
       SnapshotMigration
         .versionOf("snapshot format", content)
-        .flatMap(version => kind.readable("snapshot format", version))
+        .flatMap(version => FileKind.SnapshotFile.readable("snapshot format", version))
         .flatMap(_ => Left(corrupt(SnapshotReadError.BadMagic)))
+    else body(content, Magic.length)
+
+  /** The sidecar and the Haskell bytes of the body that starts at `at`, after its length and
+    * fingerprint have been checked.
+    */
+  private[storage] def body(
+      content: Array[Byte],
+      at: Int
+  ): Either[StorageError, (SnapshotSidecar, Bytes)] =
+    if content.length < at + 4 then
+      Left(corrupt(SnapshotReadError.SidecarLength(0, content.length)))
     else
-      val length = ByteBuffer.wrap(content, Magic.length, 4).getInt
+      val length = ByteBuffer.wrap(content, at, 4).getInt
       val fingerprint = SnapshotSidecar.fingerprint
-      val end = HeaderSize.toLong + length
+      val start = at + 4
+      val end = start.toLong + length
       if length < fingerprint.length || end > content.length then
         Left(corrupt(SnapshotReadError.SidecarLength(length, content.length)))
       else
-        val found = content.slice(HeaderSize, HeaderSize + fingerprint.length)
+        val found = content.slice(start, start + fingerprint.length)
         if !java.util.Arrays.equals(found, fingerprint) then
           Left(
             StorageError.VersionMismatch(
@@ -277,7 +253,7 @@ object SnapshotV5:
         else
           Codec
             .decode[SnapshotSidecar](
-              content.slice(HeaderSize + fingerprint.length, end.toInt)
+              content.slice(start + fingerprint.length, end.toInt)
             )(using SnapshotSidecar.codec)
             .leftMap(corrupt)
             .map(_ -> Bytes.wrap(content).drop(end.toInt))

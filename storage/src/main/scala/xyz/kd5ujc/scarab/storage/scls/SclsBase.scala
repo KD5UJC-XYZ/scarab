@@ -16,6 +16,7 @@ import xyz.kd5ujc.scarab.ledger.{NetworkIdentity, StorageError, TxIn, TxOut, Utx
 import xyz.kd5ujc.scarab.ledger.state.{Conway, Gap, NewEpochState, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.{
+  CheckpointDigest,
   AtomicFile,
   DatabaseOwnership,
   FileLedgerSnapshots,
@@ -24,7 +25,7 @@ import xyz.kd5ujc.scarab.storage.{
   RocksUtxoStore,
   SnapshotCheck,
   SnapshotSidecar,
-  SnapshotV5,
+  SnapshotV7,
   StateBacking,
   StateSnapshot,
   UtxoCheckpoint
@@ -108,7 +109,8 @@ object SclsBase:
       _ <- lift(Either.cond(exists, (), Error.MissingSource(path)))
       raw <- guard(path)(Files.readAllBytes(path.toNioPath))
       content <- lift(FileLedgerSnapshots.verified(raw).leftMap(Error.Storage(_)))
-      sidecar <- lift(SnapshotV5.sidecarOf(content).leftMap(Error.Storage(_)))
+      sections <- lift(SnapshotV7.sections(content).leftMap(Error.Storage(_)))
+      (binding, sidecar, _) = sections
       _ <- lift(Either.cond(sidecar.gaps.isEmpty, (), Error.Gaps(sidecar.gaps)))
       _ <- lift(
         Either.cond(
@@ -134,7 +136,7 @@ object SclsBase:
           Error.Unsettled(utxo.stamp, utxo.flushed, utxo.diff.size)
         )
       )
-      decoded <- SnapshotV5.format[F](SnapshotCheck.Full).decode(content)
+      decoded <- SnapshotV7.format[F](SnapshotCheck.Full).decode(content)
       snapshot <- lift(decoded.leftMap(Error.Storage(_)))
       ledgerEra = snapshot.state.ext.ledgerState.era
       headerEra = snapshot.state.ext.headerState.chainDep.era
@@ -143,7 +145,7 @@ object SclsBase:
         case EraLedgerState.InShelleyEra(ShelleyBasedEra.SConway, state) => F.pure(state.nes)
         case _ =>
           Error.UnsupportedEra(snapshot.state.ext.ledgerState.era).raise[F, NewEpochState[Conway]]
-    yield (sidecar, snapshot, ledger, utxo)
+    yield (sidecar, snapshot, ledger, utxo, binding)
 
     for
       exists <- Resource.eval(guard(config.db)(Files.isDirectory(config.db.toNioPath)))
@@ -153,14 +155,16 @@ object SclsBase:
       identity <- Resource.eval(NetworkIdentityFile.verify[F](config.db, config.identity))
       _ <- Resource.eval(lift(Either.cond(identity, (), Error.MissingIdentity)))
       loaded <- Resource.eval(load)
-      (sidecar, snapshot, ledger, utxo) = loaded
+      (sidecar, snapshot, ledger, utxo, binding) = loaded
+      checkpointDir = config.db / "utxo" / "checkpoints" / StateBacking.stem(config.anchor)
+      admitted <- Resource.eval(
+        guard(checkpointDir)(CheckpointDigest.admit(checkpointDir.toNioPath, binding))
+      )
+      _ <- Resource.eval(lift(admitted.leftMap(Error.Storage(_))))
       logs <- Resource.make(guard(scratch) {
         Path.fromNioPath(Files.createTempDirectory(scratch.toNioPath, "scarab-scls-base-"))
       })(path => guard(path)(RocksUtxoStore.deleteTree(path.toNioPath)))
-      checkpoint <- RocksUtxoCheckpoint.resource[F](
-        config.db / "utxo" / "checkpoints" / StateBacking.stem(config.anchor),
-        logs
-      )
+      checkpoint <- RocksUtxoCheckpoint.resource[F](checkpointDir, logs)
       stamp <- Resource.eval(checkpoint.flushed)
       _ <- Resource.eval(
         lift(Either.cond(stamp == utxo.flushed, (), Error.CheckpointStamp(utxo.flushed, stamp)))

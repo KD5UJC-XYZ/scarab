@@ -199,7 +199,8 @@ Caveats:
   both. Details and numbers: [performance.md](performance.md) section 13.
 
 **Checking a database before a node is moved to this build.** First inventory its snapshot versions.
-This procedure requires verified current V5 snapshots and their associated checkpoints. V1–V4 inputs
+This procedure requires V5 or V7 snapshots and their associated checkpoints (V5 files migrate to V7
+on open, #395). V1–V4 inputs
 need separate verified current-format replacements using pinned historical source, as described in
 [Storage migrations](storage-migrations.md); this build refuses retired formats before mutable stores
 open. Work on a copy; the original is never opened by the new build. With the node stopped (a running
@@ -230,13 +231,15 @@ docker run -d --name check-old-db -v "$C":/db -v "$LEASE":/.db.scarab-lock ... \
   follow --genesis-dir /config --peer <relay> --db /db --keep-snapshots 2000 > node.log
 until [ "$(grep -c '"event":"replayProgress"' node.log)" -ge 5 ] || grep -q '"event":"error"' node.log; do sleep 10; done
 docker stop -t 120 check-old-db                                 # a graceful stop writes a snapshot
-grep -E '"event":"(formatMigrated|snapshotRestored|replayStarted|replayProgress|snapshotRefused|snapshotSkipped|error|shutdownSnapshot)"' node.log | cut -c1-300
+grep -E '"event":"(formatMigrated|snapshotRestored|snapshotUnbound|replayStarted|replayProgress|snapshotRefused|snapshotSkipped|error|shutdownSnapshot)"' node.log | cut -c1-300
 ```
 
 What shows the current-format database opens: `snapshotRestored` with the `anchor` of the newest
 snapshot; `replayStarted` from that anchor; `replayProgress` lines whose `tip` moves past it, with
 `replayed` growing by the progress interval each time and no `"event":"error"` (a `ValidationError ... BadInputsUTxO` right after the restore is this
-bug); no `snapshotRefused`, no `snapshotSkipped`, no `UtxoCheckpoint` error; and, after the stop, a
+bug); no `snapshotRefused`, no `snapshotSkipped`, no `UtxoCheckpoint` error; for a V5 database, one
+`formatMigrated` from `V5` to `V7` and a `snapshotUnbound` for the restored file (it was written
+before checkpoint binding); and, after the stop, a
 `snapshotWritten`/`shutdownSnapshot` at a block past the restored anchor. A replay from the newest
 snapshot of a mainnet follower that is a day behind covers some thousands of blocks, so
 `replayFinished` appears; for a database whose newest snapshot is older, five progress lines (the
@@ -521,7 +524,7 @@ immutable chunk trio, must be extracted and match their digests. `--no-verify-an
 accepts an unauthenticated ledger instead; the result records `ancillaryVerified: false`.
 
 The command checks metadata, era, exact immutable block and recomputed instant stake, builds a fresh
-RocksDB checkpoint and V5 snapshot in staging, and publishes only after validation. It never changes
+RocksDB checkpoint and a V7 snapshot bound to it in staging, and publishes only after validation. It never changes
 existing immutable files or overwrites ledger artifacts. JSON `importLedgerSnapshot` events report
 `done` with slot/hash, era, output count, lovelace and trust, or a typed `error`. A following `follow`
 restores that checkpoint and replays local blocks after the snapshot. Byron and non-Mem snapshots
@@ -541,8 +544,9 @@ java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main 
 ```
 
 The default is the newest snapshot; `--slot` selects an exact stored snapshot slot, an unsigned
-64-bit number. The command checks the existing V5 file's checksum and schema, preserves its
-Haskell state bytes, and reads its matching checkpoint without recovery or migration. A state
+64-bit number. The command checks the existing V7 file's checksum and schema, preserves its
+Haskell state bytes, admits its checkpoint against the snapshot's binding and reads it without
+recovery or migration. A state
 with recorded gaps, a Byron state, an unsettled checkpoint or a missing selection is refused.
 This means an imported reference state can be exported; a state whose recorded gaps have not
 been resolved cannot be exported by inventing those fields.
@@ -555,7 +559,7 @@ database. Failure or cancellation removes staging. JSON `exportLedgerSnapshot` e
 `done` with the point, output count and directory, or a typed `error`.
 
 Reference replay and epoch-boundary acceptance are recorded in #140; the command alone does not prove
-that acceptance. It preserves V5 and the node's stored CBOR values.
+that acceptance. It preserves the native snapshot and the node's stored CBOR values.
 
 ### `export-scls` and `import-scls`: canonical ledger-state interchange
 
@@ -585,7 +589,7 @@ SCLS omits restart and consensus information. Import therefore compares every na
 with the explicit same-point complete base, preserves unrepresented fields, validates the new native
 files, and publishes only after the target's full identity and immutable block match. The target
 must have no existing UTxO, snapshots, volatile or ledger artifacts. This is interchange against an
-explicit base, not standalone bootstrap. Both commands retain V5 restart snapshots, stored CBOR,
+explicit base, not standalone bootstrap. Both commands retain native (V7) restart snapshots, stored CBOR,
 and the existing Haskell import/export tools. JSON events report the point/count/path or typed error.
 
 ### Preprod
@@ -1055,6 +1059,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `networkRecorded` | `Storage.NetworkRecorded` | Info | `magic`, `shelleyGenesis`, `byronGenesis`, `alonzoGenesis`, `conwayGenesis`, `adoptedExisting` |
 | `snapshotSkipped` | `Storage.SnapshotSkipped` | Warning | `file`, `reason` |
 | `snapshotRestored` | `Storage.SnapshotRestored` | Info | `file`, `anchor` |
+| `snapshotUnbound` | `Storage.SnapshotUnbound` | Warning | `file`, `anchor`: the restored snapshot predates checkpoint binding (V5 migrated to V7) and its checkpoint was admitted by directory name. |
 | `snapshotWritten` | `Storage.SnapshotWritten` | Info | `file`, `anchor`, `bytes`, `millis` |
 | `snapshotFailed` | `Storage.SnapshotFailed` | Error | `reason` |
 | `snapshotRefused` | `Storage.SnapshotRefused` | Error | `file`, `anchor`, `reason` |
@@ -1357,9 +1362,16 @@ section and the catalogue differ.
 | `scarab_snapshots_written_total` | counter |  | Ledger snapshots written. | none |
 | `scarab_snapshots_restored_total` | counter |  | Ledger snapshots the node started from. | none |
 | `scarab_snapshots_migrated_total` | counter |  | Files rewritten from an older storage format when the database was opened. | none |
-| `scarab_snapshot_problems_total` | counter | `kind` | Snapshots skipped, not written or refused by the format, by kind. | none |
+| `scarab_snapshot_problems_total` | counter | `kind` | Snapshots skipped, not written, refused by the format or restored without a checkpoint binding, by kind. | none |
 | `scarab_snapshot_last_write_seconds` | gauge |  | Duration of the last snapshot written. | none |
 | `scarab_snapshot_last_bytes` | gauge |  | Size of the last snapshot written, in bytes. | none |
+| `scarab_received_blocks` | gauge |  | Received blocks in the index of the received-block log (bodies on disk). | none |
+| `scarab_received_cache_blocks` | gauge |  | Received bodies held in memory in front of the received-block log. | none |
+| `scarab_received_cache_bytes` | gauge |  | Bytes of the received bodies held in memory, never more than the bound. | none |
+| `scarab_received_cache_limit_bytes` | gauge |  | The bound of the received-body cache, in bytes. | none |
+| `scarab_received_cache_evictions_total` | counter |  | Received bodies that left the cache for its bound (they stay readable from the log). | none |
+| `scarab_received_reads_total` | counter |  | Received bodies read back from the received-block log. | none |
+| `scarab_received_unreadable_total` | counter |  | Received-block records that failed their checksum when read back, and were dropped. | none |
 | `scarab_replay_blocks` | gauge |  | Stored blocks applied again at the start (so far, then in total). | none |
 | `scarab_replay_seconds` | gauge |  | Time spent applying the stored blocks again at the start. | none |
 | `scarab_node_phase` | gauge | `phase` | 1 for the phase the start has reached (Restoring, Replaying, Following), 0 for the others. | none |
@@ -1680,7 +1692,7 @@ python3 scripts/devnet.py down                       # remove containers and the
 | `ntc [--seconds 240] [--warmup 60] [--every 10] [--chain-sync-blocks 60] [--monitor-burst 4]` | a fresh cluster, the Scala node following pool 1 with `--local-socket` and `--db` (and no `--mempool-bytes`, so both nodes use the default of two blocks), and the ordinary and governance load running. Rounds of LocalStateQuery: the Scala node's volatile tip is acquired on the reference node by point, and every query of the battery (`scripts/devnet/ntcqueries.py`, about 55 queries built from the live state) goes to both. Then `cardano-cli conway query ...` (24 commands) against both sockets, each pair accepted only when the tip read before and after is the same block on both nodes. Then 23 refused transactions (`scripts/devnet/ntccases.py`: a witness datum nothing allows (`NotAllowedSupplementalDatums`), fee too small, inputs spent, value not conserved, validity interval, missing witness, small and wrong-network outputs, treasury value, registration, delegation, DRep, pool retirement, proposal, vote, size, size with an input that does not exist, withdrawal network) and one valid transaction through both sockets. In parallel with the query rounds, local ChainSync on both sockets (`scripts/devnet/ntclocal.py`): `--chain-sync-blocks` blocks from Origin (the Scala node reads its immutable store and then its volatile chain), 12 from the tip, 4 as a backlog from a recent block. Last, LocalTxMonitor: snapshots of both mempools walked step for step while bursts of `--monitor-burst` chained transactions go through the Scala socket (which forwards them to the reference node), `cardano-cli conway query tx-mempool info | next-tx | tx-exists` on both sockets at the same time, and `AwaitAcquire` on both | every query that is implemented gives equal bytes in every round (matched / total per query); every `cardano-cli` pair equal; every refusal equal as raw `ApplyTxErr` bytes and as the text `cardano-cli transaction submit` prints; the valid transaction is accepted by the Scala node and reaches a block; every block of local ChainSync equal as the raw item and the same first instruction (a roll-back to the point found); every pair of mempool snapshots with the same slot and transactions has equal raw answers (at least 3 rounds with transactions), the bracketed `tx-mempool` outputs are equal (one with transactions) and `AwaitAcquire` wakes on both. Queries not answered yet are listed separately as missing implementations; they are not conformance passes. The four ledger-state wrappers and bracketed CLI ledger-state output must match without field exclusions. Writes `ntc-summary.json` |
 | `pool [--seconds 480] [--pool 1\|2\|3] [--keep]` | the Scala node is one of three pools: pool 1's Haskell node is never started and the Scala node forges with its keys; `slotsPerKESPeriod = 250` | blocks forged, adopted and on the final chain; the Haskell ledger's blocks-made count for the pool equals the Scala-forged blocks on the chain; every slot the reference node's `query leadership-schedule --current` gives the pool (asked once per epoch) is either forged or taken by another pool's block, and a missed one is reported with the `forgeSkipped` reason; load transactions in Scala blocks; at least one KES period crossed; no rollback deeper than `k`; Haskell pools agree on the tip; comparisons match; no error event; the forger's own counters (`GET /forging`, per epoch: slots checked, leader slots, forged, adopted, lost slot battles, skips by reason, forge latency) agree with the log and, scraped from `GET /metrics` between two readings of `/forging`, the Haskell-named series `Forge_about_to_lead_counter`, `node_is_leader_counter`, `forged_counter`, `adopted_counter` and `didnt_adopt_counter` lie between the two readings and the KES gauges exist and no block took more than five slots from its slot's start to adoption. `--byron-start-offset N` writes the Byron genesis' `startTime` N seconds off the Shelley `systemStart` (the reference's clock follows the Byron one; the check that the Scala node does too). Records the host load; a run whose only misses are busy slots on a host with load above its CPU count exits 2 (inconclusive). Writes `pool-summary.json` (`forgerStats`, `slotClock`, `oracle`, `host`) |
 | `kes-rotate [--seconds 300] [--max-kes-evolutions 24] [--rotate-threshold 21] [--rotate-every 10] [--min-rotations 2]` | `pool` with unattended KES rotation (H2a): `slotsPerKESPeriod = 250`, `maxKESEvolutions` 24, the Scala node reads its key and certificate through a `current` link and serves a local socket; `scripts/pool/rotate_kes.py` runs on a loop with the pool's cold key (never mounted into the node) and rotates every three periods | everything `pool` asserts, and: at least `--min-rotations` `kesReloaded` events with strictly increasing counters; one `forgeStarted` (no restart) and no `kesReloadRefused` or `kesPersistFailed`; every driver run exits 0; blocks forged with every certificate counter but perhaps the last, none with an older counter after a newer one and none before its certificate was reloaded; the pool's counter as a Haskell node reports it (`query kes-period-info`) equals the last counter on the final chain, so the Haskell pools took the blocks of every certificate; only the newest generation directory remains and no temporary key file; the key file was rewritten by the node after the last certificate was installed. Writes `pool-summary.json` with a `kesRotation` block |
-| `restart [--seconds 20]` | a fresh cluster, the Scala node follows with `--db`, is stopped with SIGTERM and started again on the same V5 database | the stop ends the JVM within 25 s and writes a shutdown snapshot (issue #89); the second start logs `snapshotRestored`; every snapshot file is current (`SCRBSNP5`). The retired `--migrate-from` old-writer round is no longer accepted; historical conversion evidence uses pinned source and an offline recipe |
+| `restart [--seconds 20]` | a fresh cluster, the Scala node follows with `--db`, is stopped with SIGTERM and started again on the same database | the stop ends the JVM within 25 s and writes a shutdown snapshot (issue #89); the second start logs `snapshotRestored`; every snapshot file is current (`SCRBSNP7`). The retired `--migrate-from` old-writer round is no longer accepted; historical conversion evidence uses pinned source and an offline recipe |
 | `v1-context [--eras] [--no-up]` | a fresh Conway cluster (or, with `--eras`, the cluster that walks Byron to Conway) and a set of transactions that each run one Plutus V1 script (some also V2 and V3 as controls): reference inputs, reference scripts, inline datums and Byron addresses in inputs, reference inputs and outputs, with the validity flag both ways; Alonzo 5 and 6, Babbage 7 and 8, Conway 9 (`--eras`) and the genesis protocol version of the Conway-only cluster | exit status fails on a case the reference decided otherwise than the case expects; writes `v1-context-cases.json` (the shape of `fixtures/reference/v1-context`, see [its README](../fixtures/reference/README.md)); `follow` against the same cluster validates the blocks of the accepted cases |
 
 `--scala-cpus N` (`follow`, `soak`, `relay`, `pool`, `e2e`; default 2) sets the CPUs of the Scala node's

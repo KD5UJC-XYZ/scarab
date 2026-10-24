@@ -121,7 +121,7 @@ enum ReloadLabel derives LabelValue:
   * refused.
   */
 enum SnapshotProblemLabel derives LabelValue:
-  case Skipped, Failed, Refused
+  case Skipped, Failed, Refused, Unbound
 
 /** The lateness above which a timer is counted as late. */
 enum LatenessLabel:
@@ -415,7 +415,7 @@ object Catalogue:
   )
   val snapshotProblems = CounterDef(
     MetricName("scarab_snapshot_problems_total"),
-    "Snapshots skipped, not written or refused by the format, by kind.",
+    "Snapshots skipped, not written, refused by the format or restored without a checkpoint binding, by kind.",
     Labels.one[SnapshotProblemLabel](LabelName("kind"))
   )
   val snapshotWriteSeconds = GaugeDef(
@@ -425,6 +425,34 @@ object Catalogue:
   val snapshotBytes = GaugeDef(
     MetricName("scarab_snapshot_last_bytes"),
     "Size of the last snapshot written, in bytes."
+  )
+  val receivedBlocks = GaugeDef(
+    MetricName("scarab_received_blocks"),
+    "Received blocks in the index of the received-block log (bodies on disk)."
+  )
+  val receivedCacheBlocks = GaugeDef(
+    MetricName("scarab_received_cache_blocks"),
+    "Received bodies held in memory in front of the received-block log."
+  )
+  val receivedCacheBytes = GaugeDef(
+    MetricName("scarab_received_cache_bytes"),
+    "Bytes of the received bodies held in memory, never more than the bound."
+  )
+  val receivedCacheLimit = GaugeDef(
+    MetricName("scarab_received_cache_limit_bytes"),
+    "The bound of the received-body cache, in bytes."
+  )
+  val receivedEvictions = CounterDef(
+    MetricName("scarab_received_cache_evictions_total"),
+    "Received bodies that left the cache for its bound (they stay readable from the log)."
+  )
+  val receivedReads = CounterDef(
+    MetricName("scarab_received_reads_total"),
+    "Received bodies read back from the received-block log."
+  )
+  val receivedUnreadable = CounterDef(
+    MetricName("scarab_received_unreadable_total"),
+    "Received-block records that failed their checksum when read back, and were dropped."
   )
   val replayedBlocks = GaugeDef(
     MetricName("scarab_replay_blocks"),
@@ -1001,6 +1029,13 @@ object Catalogue:
     snapshotProblems,
     snapshotWriteSeconds,
     snapshotBytes,
+    receivedBlocks,
+    receivedCacheBlocks,
+    receivedCacheBytes,
+    receivedCacheLimit,
+    receivedEvictions,
+    receivedReads,
+    receivedUnreadable,
     replayedBlocks,
     replaySeconds,
     nodePhase,

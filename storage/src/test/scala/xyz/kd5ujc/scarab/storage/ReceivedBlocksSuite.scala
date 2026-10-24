@@ -2,12 +2,24 @@
 package xyz.kd5ujc.scarab.storage
 
 import cats.effect.IO
+import cats.mtl.Raise
 import cats.syntax.all.*
+import java.nio.file.{Files as JFiles, StandardOpenOption}
 import munit.CatsEffectSuite
+import scala.jdk.CollectionConverters.*
+import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.consensus.BlockRef
+import xyz.kd5ujc.scarab.ledger.StorageError
 
 import StorageTestKit.*
 
 class ReceivedBlocksSuite extends CatsEffectSuite:
+  /** Every block held, each read through `get` (from the cache or the log). */
+  private def entries(store: ReceivedBlocks[IO])(using
+      Raise[IO, StorageError]
+  ): IO[Vector[(BlockRef, Bytes)]] =
+    store.refs.flatMap(_.traverse(ref => store.get(ref.hash))).map(_.flatten)
+
   test("reads the existing volatile record format without rewriting original bodies") {
     tempDir.use { dir =>
       ok {
@@ -62,7 +74,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
           }
           _ <- ReceivedBlocks.open[IO](dir, 2).use { store =>
             for
-              recovered <- store.entries
+              recovered <- entries(store)
               _ <- IO(assertEquals(recovered.toSet, original.toSet))
               _ <- original.traverse_ { case (ref, raw) =>
                 store.get(ref.hash).map(found => assertEquals(found, Some(ref -> raw)))
@@ -84,7 +96,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
             original.traverse_((ref, raw) => store.put(ref, raw)) *> store.collect(boundary)
           }
           _ <- ReceivedBlocks.open[IO](dir, 2).use { store =>
-            store.collect(boundary) *> store.entries.map { recovered =>
+            store.collect(boundary) *> entries(store).map { recovered =>
               assertEquals(recovered.toSet, original.filter(_._1.slot >= boundary).toSet)
             }
           }
@@ -106,11 +118,11 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
         for
           _ <- ReceivedBlocks.open[IO](dir, 2).use { store =>
             Vector(before, ebb, regular, later).traverse_((ref, raw) => store.put(ref, raw)) *>
-              store.collect(ebb._1.slot) *> store.entries
+              store.collect(ebb._1.slot) *> entries(store)
                 .map(found => assertEquals(found.toSet, expected))
           }
           _ <- ReceivedBlocks.open[IO](dir, 2).use { store =>
-            store.collect(ebb._1.slot) *> store.entries
+            store.collect(ebb._1.slot) *> entries(store)
               .map(found => assertEquals(found.toSet, expected))
           }
         yield ()
@@ -138,7 +150,7 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
             yield ()
           }
           _ <- ReceivedBlocks.open[IO](dir).use { store =>
-            store.entries.map(found => assertEquals(found.toSet, Set(selected, fork)))
+            entries(store).map(found => assertEquals(found.toSet, Set(selected, fork)))
           }
         yield ()
       }
@@ -161,9 +173,88 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
             yield ()
           }
           _ <- ReceivedBlocks.open[IO](dir).use { store =>
-            store.entries.map(found => assertEquals(found, Vector(selected)))
+            entries(store).map(found => assertEquals(found, Vector(selected)))
           }
         yield ()
+      }
+    }
+  }
+
+  test("the body cache stays within its byte bound and evicted bodies read back from the log") {
+    tempDir.use { dir =>
+      ok {
+        val original = (1 to 40).toVector.map(block(_))
+        val limit = 1000L
+        ReceivedBlocks.open[IO](dir, 4, limit).use { store =>
+          for
+            _ <- original.traverse_((ref, raw) => store.put(ref, raw))
+            held <- store.residency
+            _ <- IO(assert(held.cachedBytes <= limit, held.toString))
+            _ <- IO(assert(held.evictions > 0, held.toString))
+            _ <- IO(assertEquals(held.blocks, original.size))
+            found <- original.traverse((ref, _) => store.get(ref.hash))
+            _ <- IO(assertEquals(found, original.map(Some(_))))
+            after <- store.residency
+            _ <- IO(assertEquals(after.reads, original.size.toLong - held.cachedBlocks))
+            _ <- IO(assert(after.cachedBytes <= limit, after.toString))
+          yield ()
+        }
+      }
+    }
+  }
+
+  test("after collection every indexed block still reads back from a kept log file") {
+    tempDir.use { dir =>
+      ok {
+        val original = (1 to 20).toVector.map(block(_))
+        val boundary = original(9)._1.slot
+        ReceivedBlocks.open[IO](dir, 2, 0L).use { store =>
+          for
+            _ <- original.traverse_((ref, raw) => store.put(ref, raw))
+            _ <- store.collect(boundary)
+            kept <- entries(store)
+            _ <- IO(assertEquals(kept, original.filter(_._1.slot >= boundary)))
+            held <- store.residency
+            _ <- IO(assertEquals(held.unreadable, 0L))
+            _ <- IO(assertEquals(held.cachedBytes, 0L))
+          yield ()
+        }
+      }
+    }
+  }
+
+  test("a record that fails its checksum on read back is dropped, not returned") {
+    tempDir.use { dir =>
+      ok {
+        val (ref, raw) = block(1)
+        val other = block(2)
+        ReceivedBlocks.open[IO](dir, 512, 0L).use { store =>
+          for
+            _ <- store.put(ref, raw)
+            _ <- store.put(other._1, other._2)
+            // flip the last payload byte of the first record (header 58 bytes, then the body)
+            _ <- IO.blocking {
+              val log = JFiles.list(dir.toNioPath).iterator.asScala.toVector.head
+              val ch = JFiles.newByteChannel(log, StandardOpenOption.READ, StandardOpenOption.WRITE)
+              try
+                val at = VolatileStore.HeaderSize.toLong + raw.size - 1
+                val one = java.nio.ByteBuffer.allocate(1)
+                ch.position(at).read(one)
+                one.flip()
+                val flipped = java.nio.ByteBuffer.wrap(Array((one.get() ^ 0xff).toByte))
+                ch.position(at).write(flipped)
+              finally ch.close()
+            }
+            lost <- store.get(ref.hash)
+            kept <- store.get(other._1.hash)
+            hashes <- store.hashes
+            held <- store.residency
+            _ <- IO(assertEquals(lost, None))
+            _ <- IO(assertEquals(kept, Some(other)))
+            _ <- IO(assertEquals(hashes, Set(other._1.hash)))
+            _ <- IO(assertEquals(held.unreadable, 1L))
+          yield ()
+        }
       }
     }
   }

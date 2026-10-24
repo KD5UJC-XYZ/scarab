@@ -195,7 +195,8 @@ def export(immutable, snapshots, checkpoints, golden_path, output, selected_epoc
         slot, block, path = max(candidates)
         checkpoint = checkpoints / path.stem
         with path.open('rb') as stream:
-            require(stream.read(8) == b'SCRBSNP5', Problem.SNAPSHOT, path)
+            # archived corpora are V5; databases written since #395 are V7
+            require(stream.read(8) in (b'SCRBSNP5', b'SCRBSNP7'), Problem.SNAPSHOT, path)
         require(checkpoint.is_dir(), Problem.CHECKPOINT, checkpoint)
         plans.append({'epoch': epoch, 'anchorSlot': slot, 'anchorBlock': block, 'snapshot': str(path.resolve()),
                       'checkpoint': str(checkpoint.resolve()), 'endSlotExclusive': end, 'records': [], 'invalid': [],

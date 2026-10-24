@@ -15,11 +15,12 @@ import cats.data.NonEmptyList
   * chain index is unchanged by it); `V4` is the same layout with the chain-dependent state of the
   * node in the Haskell shape (the sidecar changed, J1.5); `V5` is the same layout with the sidecar
   * of the era-indexed rules, which keep none of the old rules' bookkeeping (J2.9); `V6` adds the
-  * complete network identity including Alonzo and Conway genesis bindings. New versions are
-  * appended.
+  * complete network identity including Alonzo and Conway genesis bindings; `V7` is the ledger
+  * snapshot with a checkpoint binding in front of the V5 body (the UTxO key layout and the digest
+  * of the RocksDB checkpoint the snapshot was written with, issue #395). New versions are appended.
   */
 enum FormatVersion derives CanEqual:
-  case V1, V2, V3, V4, V5, V6
+  case V1, V2, V3, V4, V5, V6, V7
 
   /** The version a migration step from this one produces; none for the newest. */
   def next: Option[FormatVersion] = FormatVersion.values.drop(ordinal + 1).headOption
@@ -78,7 +79,7 @@ enum FileKind(
   /** `<db>/snapshots/snapshot-<slot>-<blockNo>.bin`. The identifier is the 8-byte magic, and for
     * the two versions that share one (`CSLSNAP1`, which holds its format number as a 32-bit integer
     * next) the text `CSLSNAP1 v<n>`: `SCRBSNP3`, `SCRBSNP4` and `SCRBSNP5` are the Haskell ledger
-    * state with a sidecar.
+    * state with a sidecar, and `SCRBSNP7` is the V5 body behind a checkpoint binding.
     */
   case SnapshotFile
       extends FileKind(
@@ -89,7 +90,8 @@ enum FileKind(
           FormatVersion.V2 -> "CSLSNAP1 v2",
           FormatVersion.V3 -> "SCRBSNP3",
           FormatVersion.V4 -> "SCRBSNP4",
-          FormatVersion.V5 -> "SCRBSNP5"
+          FormatVersion.V5 -> "SCRBSNP5",
+          FormatVersion.V7 -> "SCRBSNP7"
         )
       )
 
@@ -134,3 +136,21 @@ enum FileKind(
         if families.exists(found.startsWith) then StorageError.UnknownVersion(what, this, found)
         else StorageError.Corrupt(what, StorageStructureError.WrongFileKind(this))
       )
+
+/** The layout of the keys and values of a UTxO store and its checkpoints. RocksDB has no format
+  * version of its own, so a checkpoint is admitted through the snapshot that records its layout
+  * ([[FileKind.SnapshotFile]] from [[FormatVersion.V7]]); a new layout is a new case here, a new
+  * snapshot version and a conversion of the checkpoints (ADR 0006, ADR 0021). The reference records
+  * the same fact as the tables codec version of its snapshot metadata (`TablesCodecVersion`,
+  * Ouroboros/Consensus/Storage/LedgerDB/Snapshots.hs:206-227 at
+  * `release-ouroboros-consensus-4.2.1.0`).
+  */
+enum UtxoKeyLayout derives CanEqual:
+  /** `txid[32] | index u16` keys, the stamp at the one-byte key `0`, original output CBOR values,
+    * all in the default column family.
+    */
+  case TxIdIndex16
+
+object UtxoKeyLayout:
+  /** The layout this build writes. */
+  val current: UtxoKeyLayout = TxIdIndex16

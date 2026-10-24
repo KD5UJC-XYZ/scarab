@@ -163,8 +163,24 @@ class CodecSuite extends ScalaCheckSuite:
       .fromDirectory(java.nio.file.Path.of("fixtures/eras/genesis"))
       .fold(e => fail(e.message), _.mirrorStart)
 
-  test("golden: the schema fingerprint of the V5 sidecar") {
+  test("golden: the schema fingerprint of the sidecar of the V5 body (V5 and V7)") {
     assertEquals(hex(SnapshotSidecar.fingerprint), GoldenSidecarFingerprint)
+  }
+
+  test("golden: the schema fingerprint and encodings of the V7 checkpoint binding") {
+    assertEquals(hex(CheckpointBinding.fingerprint), GoldenBindingFingerprint)
+    def encoded(b: CheckpointBinding) = hex(Codec.encode(b)(using CheckpointBinding.codec))
+    assertEquals(encoded(CheckpointBinding.Legacy), "00")
+    assertEquals(encoded(CheckpointBinding.Unbacked), "01")
+    assertEquals(
+      encoded(
+        CheckpointBinding.Bound(
+          xyz.kd5ujc.scarab.ledger.UtxoKeyLayout.TxIdIndex16,
+          xyz.kd5ujc.scarab.codec.Bytes.wrap(Array.tabulate[Byte](32)(_.toByte))
+        )
+      ),
+      "020020" + (0 until 32).map(i => f"$i%02x").mkString
+    )
   }
 
   test("golden: the sidecar of the initial state of the eras fixture encodes to a fixed digest") {
@@ -192,5 +208,7 @@ class CodecSuite extends ScalaCheckSuite:
   // the Byron ledger state (UTxO, delegation, update system) carried in NodeState, and the idle
   // pools of a stake snapshot (K1: the pool distribution lists a pool whose delegators have no stake).
   private val GoldenSidecarFingerprint = "7c483457b06802d6"
+  // The V7 binding in front of the V5 body (#395): a change to it is a new version too.
+  private val GoldenBindingFingerprint = "bd43aa08b4fae886"
   private val GoldenSidecar =
     ("577b9a786e5562dd44cf11e09fe8255ac01dcc276042751cc9e8aef67690a9b2", 1214)

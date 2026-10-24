@@ -8,11 +8,15 @@ import fs2.io.file.{Files, Path}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.ledger.{StorageError, UtxoKeyLayout}
 
 /** Helpers shared by the storage suites. */
 object StorageTestKit:
   val tempDir: Resource[IO, Path] = Files.forAsync[IO].tempDirectory
+
+  /** The binding a snapshot written now records of the checkpoint in `dir`. */
+  def boundTo(dir: Path): CheckpointBinding =
+    CheckpointBinding.Bound(UtxoKeyLayout.current, CheckpointDigest.of(dir.toNioPath))
 
   /** Run a program that may raise a [[StorageError]]. */
   def attempt[A](body: Handle[IO, StorageError] ?=> IO[A]): IO[Either[StorageError, A]] =

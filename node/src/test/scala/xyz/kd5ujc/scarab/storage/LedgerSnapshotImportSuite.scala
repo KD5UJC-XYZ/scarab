@@ -137,7 +137,7 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
     yield (ledger, db, state, raw)
 
   private def restored(db: Path, state: MirrorState): IO[StateSnapshot[MirrorState]] = ok {
-    val format = SnapshotV5.format[IO](SnapshotCheck.Full)
+    val format = SnapshotV7.format[IO](SnapshotCheck.Full)
     val path = db / "snapshots" / FileLedgerSnapshots.nameOf(anchor(state))
     for
       bytes <- IO.blocking(JFiles.readAllBytes(path.toNioPath))
@@ -166,7 +166,7 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
               )
               .dropRight(32)
             assert(content.takeRight(original.size).sameElements(original.toArray))
-            val sidecar = SnapshotV5.sidecarOf(content).fold(e => fail(e.message), identity)
+            val sidecar = SnapshotV7.sidecarOf(content).fold(e => fail(e.message), identity)
             assertEquals(sidecar.gaps, Set.empty)
             assertEquals(read.state.provenance.gaps, Set.empty)
             assertEquals(read.state.provenance.observed, sidecar.observed)

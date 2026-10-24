@@ -21,7 +21,8 @@ import xyz.kd5ujc.scarab.ledger.{
   StorageError,
   TxIn,
   TxOut,
-  Utxo
+  Utxo,
+  UtxoKeyLayout
 }
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, EraLedger}
 import xyz.kd5ujc.scarab.ledger.state.*
@@ -247,23 +248,25 @@ object LedgerSnapshotImport:
                     )
                     _ <- files.createDirectories(checkpoint.parent.getOrElse(stage))
                     _ <- store.checkpoint(checkpoint)
-                  yield utxo
+                    digest <- guard(checkpoint.toString)(CheckpointDigest.of(checkpoint.toNioPath))
+                  yield utxo -> CheckpointBinding.Bound(UtxoKeyLayout.current, digest)
               }
+              (utxo, binding) = result
               sidecar = SnapshotSidecar(
                 Some(anchor),
                 observed,
                 Set.empty,
-                SnapshotSidecar.Chain.InShelley(result, params, Some(previous), extras)
+                SnapshotSidecar.Chain.InShelley(utxo, params, Some(previous), extras)
               )
-              content = SnapshotV5.framed(sidecar, raw)
-              back <- SnapshotV5.format[F](SnapshotCheck.Structure).decode(content)
+              content = SnapshotV7.framed(binding, sidecar, raw)
+              back <- SnapshotV7.format[F](SnapshotCheck.Structure).decode(content)
               _ <- lift(back.leftMap(Error.Storage(_)).void)
               snapshots = stage / "artifacts" / "snapshots"
               _ <- files.createDirectories(snapshots)
               hash = MessageDigest.getInstance("SHA-256").digest(content)
               _ <- AtomicFile
                 .replaceAll[F](snapshots / FileLedgerSnapshots.nameOf(anchor), Seq(content, hash))
-            yield Report(anchor, file.era, result.count, result.coin, evidence)
+            yield Report(anchor, file.era, utxo.count, utxo.coin, evidence)
       yield report
 
     DatabaseOwnership

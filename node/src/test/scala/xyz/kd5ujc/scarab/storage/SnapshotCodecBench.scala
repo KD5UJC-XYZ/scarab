@@ -45,20 +45,22 @@ object SnapshotCodecBench extends Assertions:
     assert(args.length == 3, "expected label, snapshot path, config directory")
     val label = args(0)
     val raw = Files.readAllBytes(Path.of(args(1)))
-    val content = checked(FileLedgerSnapshots.verified(raw))
+    val content = checked(
+      FileLedgerSnapshots.verified(raw).flatMap(xyz.kd5ujc.scarab.node.NativeSnapshots.current)
+    )
     val env = checked(NodeSetup.fromDirectory(Path.of(args(2)))).mirrorEnv()
     println(s"INPUT $label bytes=${raw.length} sha256=${sha(raw)}")
-    val initial = checked(SnapshotV5.decode(env, content))
+    val initial = checked(SnapshotV7.decode(env, content))
     println(s"INPUT_STATE $label ${sha(initial.toString.getBytes("UTF-8"))}")
-    val expected = checked(SnapshotV5.encoded(initial))
-    val encoded = measure(s"$label.encode")(SnapshotV5.encoded(initial)) { result =>
+    val expected = checked(SnapshotV7.encoded(initial))
+    val encoded = measure(s"$label.encode")(SnapshotV7.encoded(initial)) { result =>
       assert(java.util.Arrays.equals(checked(result), expected))
     }
     println(s"DIGEST $label.encode bytes=${expected.length} sha256=${sha(checked(encoded))}")
-    val decoded = measure(s"$label.decode")(SnapshotV5.decode(env, content)) { result =>
+    val decoded = measure(s"$label.decode")(SnapshotV7.decode(env, content)) { result =>
       assertEquals(checked(result), initial)
     }
     println(s"DIGEST $label.decode ${sha(checked(decoded).toString.getBytes("UTF-8"))}")
-    val truncated = SnapshotV5.decode(env, content.dropRight(1))
+    val truncated = SnapshotV7.decode(env, content.dropRight(1))
     assert(truncated.isLeft)
     println(s"DIGEST $label.truncated ${sha(truncated.toString.getBytes("UTF-8"))}")

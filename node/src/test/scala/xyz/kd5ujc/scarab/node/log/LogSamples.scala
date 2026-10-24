@@ -411,6 +411,7 @@ object LogSamples:
     ),
     StorageEvent.SnapshotRestored("4200-abab", anchor),
     StorageEvent.SnapshotRestored("genesis", None),
+    StorageEvent.SnapshotUnbound("4200-abab", anchor),
     StorageEvent.SnapshotWritten("4200-abab", anchor, 2048L, 15L),
     StorageEvent.SnapshotFailed(
       xyz.kd5ujc.scarab.storage.SnapshotFailure.Defect(new java.io.IOException("disk full"))

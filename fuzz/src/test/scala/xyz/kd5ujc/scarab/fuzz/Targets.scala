@@ -1329,7 +1329,7 @@ object Targets:
       FileLedgerSnapshots,
       SnapshotCheck,
       SnapshotSidecar,
-      SnapshotV5
+      SnapshotV7
     }
     import scala.jdk.CollectionConverters.*
     lazy val env = NodeSetup
@@ -1337,10 +1337,10 @@ object Targets:
       .fold(e => throw new Violation(e.message), _.mirrorEnv())
     lazy val format =
       given Ask[SyncIO, ConsensusMirrorEnv] = Ask.const(env)
-      SnapshotV5.format[SyncIO](SnapshotCheck.Full)
+      SnapshotV7.format[SyncIO](SnapshotCheck.Full)
     Vector(
       Target(
-        "native-snapshot-v5",
+        "native-snapshot-v7",
         () =>
           // Keep decoder allocations visible to Probe's caller-thread counter.
           val caller = Thread.currentThread()
@@ -1348,7 +1348,7 @@ object Targets:
             Sync[SyncIO].blocking(Thread.currentThread()).unsafeRunSync() eq caller,
             "snapshot fuzz interpreter moved off the allocation-guard thread"
           )
-          val listing = java.nio.file.Files.list(java.nio.file.Path.of("fixtures/snapshot-v5/eras"))
+          val listing = java.nio.file.Files.list(java.nio.file.Path.of("fixtures/snapshot-v7/eras"))
           val eraSeeds =
             try
               listing.iterator.asScala.toVector.sorted.map { file =>
@@ -1357,19 +1357,23 @@ object Targets:
                   .fold(e => throw new Violation(e.message), identity)
               }
             finally listing.close()
-          val seeds = eraSeeds :+ java.nio.file.Files.readAllBytes(
-            java.nio.file.Path.of("node/src/test/resources/rewards-pending-v5.bin")
-          )
+          val seeds = eraSeeds :+ SnapshotV7
+            .fromV5(
+              java.nio.file.Files.readAllBytes(
+                java.nio.file.Path.of("node/src/test/resources/rewards-pending-v5.bin")
+              )
+            )
+            .fold(e => throw new Violation(e.message), identity)
           req(
             seeds.forall(b => format.decode(b).unsafeRunSync().isRight),
             "native snapshot seed does not decode"
           )
           seeds
         ,
-        probe("native-snapshot-v5") { bytes =>
+        probe("native-snapshot-v7") { bytes =>
           format.decode(bytes.toArray).unsafeRunSync().foreach { snapshot =>
-            hit("native-snapshot-v5")
-            val sidecar = SnapshotV5
+            hit("native-snapshot-v7")
+            val sidecar = SnapshotV7
               .sidecarOf(bytes.toArray)
               .fold(e => throw new Violation(e.message), identity)
             req(

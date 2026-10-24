@@ -286,8 +286,8 @@ class RestartScenarioTest(unittest.TestCase):
 
     def test_the_snapshots_must_be_of_the_current_format(self):
         from devnet.scenarios.restart import format_problem
-        self.assertIsNone(format_problem([b"SCRBSNP5", b"SCRBSNP5"]))
-        self.assertIn("SCRBSNP4", format_problem([b"SCRBSNP5", b"SCRBSNP4"]))
+        self.assertIsNone(format_problem([b"SCRBSNP7", b"SCRBSNP7"]))
+        self.assertIn("SCRBSNP5", format_problem([b"SCRBSNP7", b"SCRBSNP5"]))
         self.assertIn("no snapshot", format_problem([]))
 
     def test_retired_migration_flag_is_refused_before_starting_a_cluster(self):

@@ -35,6 +35,12 @@ enum StorageEvent:
   case FormatMigrated(migrated: Migrated)
   case SnapshotSkipped(name: String, error: StorageError)
   case SnapshotRestored(name: String, anchor: Option[BlockRef])
+
+  /** The restored snapshot was written before snapshots recorded their checkpoint
+    * ([[CheckpointBinding.Legacy]]): its checkpoint is admitted by its directory name alone, as the
+    * build that wrote it admitted it. Newer snapshots replace it as they are written.
+    */
+  case SnapshotUnbound(name: String, anchor: Option[BlockRef])
   case SnapshotWritten(name: String, anchor: Option[BlockRef], bytes: Long, millis: Long)
   case SnapshotFailed(failure: SnapshotFailure)
 
@@ -139,6 +145,9 @@ object ChainStorage:
     *   by a collection of the log files wholly below the immutable tip. The sync is what makes
     *   collecting safe, and it is a disk flush on the apply path, so it is rare: the log keeps up
     *   to this many blocks beyond the `k` it needs.
+    * @param receivedCacheBytes
+    *   Bytes of received bodies kept in memory in front of the received-block log
+    *   ([[ReceivedBlocks.DefaultCacheBytes]] says how the default is chosen).
     */
   final case class Config(
       snapshotPolicy: SnapshotPolicy,
@@ -149,7 +158,8 @@ object ChainStorage:
       identity: Option[NetworkIdentity] = None,
       adoptLegacyNetworkIdentity: Boolean = false,
       volatileFileBlocks: Int = 512,
-      volatileCollectBlocks: Int = 4096
+      volatileCollectBlocks: Int = 4096,
+      receivedCacheBytes: Long = ReceivedBlocks.DefaultCacheBytes
   )
 
   /** The node state recovered from disk, ready to anchor a
@@ -289,7 +299,11 @@ object ChainStorage:
       )
       volatileOpened <- VolatileStore.open[F](dir / "volatile", config.volatileFileBlocks)
       (volatile, logged) = volatileOpened
-      received <- ReceivedBlocks.open[F](dir / "received", config.volatileFileBlocks)
+      received <- ReceivedBlocks.open[F](
+        dir / "received",
+        config.volatileFileBlocks,
+        config.receivedCacheBytes
+      )
       _ <- Resource.eval(events.emit(StorageEvent.VolatileOpened(logged.report)))
       migratedSnapshots <- Resource.eval(
         snapshotMigration.fold(F.pure(SnapshotMigration.Report.empty))(_.run(dir / "snapshots"))
@@ -305,11 +319,14 @@ object ChainStorage:
       )
       supervisor <- Supervisor[F](await = false)
       restored <- Resource.eval(
-        snapshots.restore(anchor =>
-          for
-            stored <- anchor.fold(F.pure(true))(a => store.get(a.point).map(_.isDefined))
-            backed <- if stored then backing.available(anchor) else F.pure(false)
-          yield stored && backed
+        snapshots.restore(snapshot =>
+          snapshot.anchor
+            .fold(F.pure(true))(a => store.get(a.point).map(_.isDefined))
+            .flatMap {
+              case false =>
+                F.pure(Left(StorageError.Missing("snapshot anchor in the immutable store")))
+              case true => backing.admit(snapshot.anchor, snapshot.checkpoint)
+            }
         )
       )
       _ <- Resource.eval(
@@ -320,7 +337,10 @@ object ChainStorage:
       )
       _ <- Resource.eval(
         restored.snapshot.traverse_((name, s) =>
-          events.emit(StorageEvent.SnapshotRestored(name, s.anchor))
+          events.emit(StorageEvent.SnapshotRestored(name, s.anchor)) *>
+            F.whenA(s.checkpoint == CheckpointBinding.Legacy)(
+              events.emit(StorageEvent.SnapshotUnbound(name, s.anchor))
+            )
         )
       )
       _ <- Resource.eval(
@@ -625,11 +645,11 @@ object ChainStorage:
               _ <- lastSlot.set(ref.slot)
               _ <- Clock[F].monotonic.flatMap(now => lastTaken.set(Some(now)))
               settled <- backing.settled(state)
-              _ <- backing.checkpoint(ref)
+              binding <- backing.checkpoint(ref)
               _ <- supervisor.supervise(
                 SnapshotFailure
                   .capture {
-                    snapshotLock.lock.surround(snapshot(ref, settled))
+                    snapshotLock.lock.surround(snapshot(ref, settled, binding))
                   }
                   .guarantee(busy.set(false))
                   .flatMap(reportSnapshot)
@@ -639,12 +659,14 @@ object ChainStorage:
       }
 
     /** Write under `snapshotLock`, using the capability of this snapshot worker/finalizer. */
-    private def snapshot(ref: BlockRef, state: S)(using Raise[F, StorageError]): F[Boolean] =
+    private def snapshot(ref: BlockRef, state: S, binding: CheckpointBinding)(using
+        Raise[F, StorageError]
+    ): F[Boolean] =
       val began = Clock[F].monotonic
       for
         t0 <- began
         _ <- store.sync
-        outcome <- snapshots.write(StateSnapshot(Some(ref), state))
+        outcome <- snapshots.write(StateSnapshot(Some(ref), state, binding))
         done <- outcome.fold(
           refusal =>
             events
@@ -687,8 +709,8 @@ object ChainStorage:
                 for
                   _ <- backing.advance(state)
                   settled <- backing.settled(state)
-                  _ <- backing.checkpoint(ref)
-                  ok <- snapshot(ref, settled)
+                  binding <- backing.checkpoint(ref)
+                  ok <- snapshot(ref, settled, binding)
                   _ <- events.emit(StorageEvent.ShutdownSnapshot(Some(ref), ok))
                 yield ()
               case (_, done) => events.emit(StorageEvent.ShutdownSnapshot(done, false))

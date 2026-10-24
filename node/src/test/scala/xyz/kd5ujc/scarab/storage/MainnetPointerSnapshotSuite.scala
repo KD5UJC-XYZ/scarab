@@ -50,7 +50,7 @@ class MainnetPointerSnapshotSuite extends CatsEffectSuite:
     e.copy(ledger = e.ledger.copy(network = Mainnet))
 
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(env)
-  private val format: SnapshotFormat[IO, MirrorState] = SnapshotV5.format[IO](SnapshotCheck.Full)
+  private val format: SnapshotFormat[IO, MirrorState] = SnapshotV7.format[IO](SnapshotCheck.Full)
 
   /** The state after the first Shelley block of the capture. */
   private lazy val shelley: StateSnapshot[MirrorState] =
@@ -72,7 +72,11 @@ class MainnetPointerSnapshotSuite extends CatsEffectSuite:
         .fold(f => fail(s"block $i rejected by ${f.rule.name}: ${f.reason}"), identity)
     }
     val h = blocks(first).header
-    StateSnapshot(Some(BlockRef(h.slot, h.hash, h.blockNo, h.isBoundary)), state)
+    StateSnapshot(
+      Some(BlockRef(h.slot, h.hash, h.blockNo, h.isBoundary)),
+      state,
+      CheckpointBinding.Unbacked
+    )
 
   private val input = TxIn(body.id, 0)
 
