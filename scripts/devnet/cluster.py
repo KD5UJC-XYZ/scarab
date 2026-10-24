@@ -74,6 +74,21 @@ def era_plan(args):
     return plan
 
 
+def place_hard_forks(config, plan, byron_epochs):
+    """The node configuration with a `Test<Era>HardForkAtEpoch` at the first epoch of each era of `plan`, and
+    none for an era the plan does not reach."""
+    first = {}
+    for i, (era, _) in enumerate(plan):
+        first.setdefault(era, byron_epochs + i)
+    placed = dict(config)
+    for era in ("shelley", "allegra", "mary", "alonzo", "babbage", "conway"):
+        if era in first:
+            placed[f"Test{era.capitalize()}HardForkAtEpoch"] = first[era]
+        else:
+            placed.pop(f"Test{era.capitalize()}HardForkAtEpoch", None)
+    return placed
+
+
 STABILITY_FACTOR = 6  # a protocol-parameter update must land 2 * 3k/f slots before the epoch ends
 
 
@@ -92,15 +107,7 @@ def prepare_eras_env(name, args):
                  f"--epoch-length {args.epoch_length} --active-slots-coeff {args.active_slots_coeff} "
                  f"--output {ENV} > /work/create-env.log 2>&1")
     start = int(time.time()) + 10
-    config = read_json(name, f"{ENV}/configuration.yaml")
-    first = {}
-    for i, (era, _) in enumerate(era_plan(args)):
-        first.setdefault(era, args.byron_epochs + i)
-    for era in ("shelley", "allegra", "mary", "alonzo", "babbage", "conway"):
-        if era in first:
-            config[f"Test{era.capitalize()}HardForkAtEpoch"] = first[era]
-        else:
-            config.pop(f"Test{era.capitalize()}HardForkAtEpoch", None)
+    config = place_hard_forks(read_json(name, f"{ENV}/configuration.yaml"), era_plan(args), args.byron_epochs)
     put_file(name, f"{ENV}/configuration.yaml", json.dumps(config, indent=2))
     byron = read_json(name, f"{ENV}/byron-genesis.json")
     byron["startTime"] = start
