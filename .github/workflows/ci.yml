@@ -81,6 +81,8 @@ jobs:
         run: python3 scripts/check_error_channels.py
       - name: No absolute home paths in tracked files
         run: python3 scripts/check_local_paths.py
+      - name: Compatibility register (validation and generated docs/compatibility.md)
+        run: python3 scripts/render_compatibility.py --check
       - name: Documentation drift (links, cited paths and symbols, size budgets, reference pins)
         run: python3 scripts/check_docs.py
       - name: Install pinned changelog tool in an isolated environment
