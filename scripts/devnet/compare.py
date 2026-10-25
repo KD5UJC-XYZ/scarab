@@ -25,12 +25,13 @@ PROJECTION_SCOPE = {
         "epoch", "utxo (address, lovelace, assets, datum hash or inline datum, reference-script hash over the "
         "original script bytes)", "fees",
         "deposited", "treasury", "reserves", "accounts (balance, deposit, pool, DRep)", "pools (deposit, VRF)",
-        "pool parameters before Conway (pledge, cost, margin, reward credential, owners; future ones too)",
+        "pool parameters before Conway (pledge, cost, margin, reward credential hash, owners; future ones too)",
         "retiring", "dreps (deposit, expiry)", "numDormantEpochs", "blocksCurrent", "blocksBefore",
         "stake snapshots (stake, delegations, pool ids, fee)", "reward update (deltas, summed rewards per account)",
         "stake distribution (total, stake per pool)", "genesis delegations and future ones before Conway",
         "parameter update proposals (values) and MIR before Conway",
-        "protocol parameters before Conway, without cost models", "Conway governance (govview)",
+        "protocol parameters before Conway, without cost models",
+        "Conway governance (govview), including the proposal roots (prevGovActionIds)",
         "protocol state (nonces, operational certificate counters)"],
     # what the projection leaves out, by a stable name: each nested omission has a control test in
     # scripts/tests/test_devnet_pure.py showing two states that differ only there project identically.
@@ -40,9 +41,11 @@ PROJECTION_SCOPE = {
         "conwayProtocolParameters": "Conway current and future protocol parameters (only the protocol version)",
         "preConwayPreviousAndFutureParameters": "the previous and future protocol parameters before Conway",
         "parameterChangeValues": "the proposed values of a ParameterChange action (only which parameters)",
-        "rewardAccountNetwork": "the network of reward accounts: pool parameters, proposal return accounts and "
-                                "treasury withdrawals compare the credential, and withdrawals to one credential "
-                                "are summed",
+        "rewardAccountNetwork": "the network of reward accounts in future pool parameters, proposal return "
+                                "accounts and treasury withdrawals (they compare the credential; withdrawals to "
+                                "one credential are summed); a registered pool state holds only a credential",
+        "poolRewardCredentialKind": "whether a pool's reward credential is a key or a script hash (the Scala "
+                                    "/state shows the hash only, as do the recorded replay projections)",
         "poolRelaysAndMetadata": "pool relays and metadata",
         "conwayPoolParameters": "pool parameters in Conway (only deposit and VRF)",
         "poolDelegators": "the delegator set of each pool state",
@@ -210,14 +213,21 @@ def query_bundle(name):
 REFERENCE_UTXO_DEADLINE = 120  # seconds for the whole LocalStateQuery session of one UTxO read
 
 
+Q_GOV_STATE = 24  # Conway `GetGovState`: ConwayGovState [proposals, committee, constitution, cur, prev, future, pulser]
+
+
 def reference_utxo(name, tip):
-    """The reference's whole UTxO at the block `tip`, over LocalStateQuery (Conway `GetUTxOWhole`), in the
-    projection of `eraview.tx_out`: unlike `cardano-cli query utxo` it keeps the datum and the
-    reference-script hash in the Scala node's shape. It asks the socket the bundle's queries used."""
+    """The reference's whole UTxO and its proposal roots at the block `tip`, over one LocalStateQuery session
+    (Conway `GetUTxOWhole` and `GetGovState`). The UTxO is in the projection of `eraview.tx_out`: unlike
+    `cardano-cli query utxo` it keeps the datum and the reference-script hash in the Scala node's shape. The
+    roots (`Proposals` encodes `(roots, proposals)`, cardano-ledger f649f975 Conway/Governance/Proposals.hs:385-388)
+    are absent from the CLI's gov-state JSON, which shows only the proposals. It asks the socket the bundle's
+    queries used. Returns (utxo, roots)."""
     with ntcquery.LocalStateQuery(ref(name), reference_socket(), MAGIC, deadline=REFERENCE_UTXO_DEADLINE) as session:
         session.acquire([tip["slot"], bytes.fromhex(tip["hash"])])
         utxo = session.ledger_query(eraview.ERA_INDEX["conway"], [eraview.Q_UTXO_WHOLE])
-    return {f"{k[0].hex()}#{k[1]}": eraview.tx_out(v) for k, v in utxo.items()}
+        gov_state = session.ledger_query(eraview.ERA_INDEX["conway"], [Q_GOV_STATE])
+    return {f"{k[0].hex()}#{k[1]}": eraview.tx_out(v) for k, v in utxo.items()}, govview.proposal_roots(gov_state[0][0])
 
 
 def utxo_sources_agree(cli_utxo, lsq_utxo):
@@ -241,11 +251,11 @@ def compare_once_detailed(name, attempts=10, scala_wait=30):
             continue
         after = bundle["tip"]
         try:
-            full_utxo = reference_utxo(name, after)
+            full_utxo, roots = reference_utxo(name, after)
         except (ntcquery.Deadline, RuntimeError, EOFError, OSError, subprocess.TimeoutExpired) as e:
             # the block may have left the reference's volatile window since the bundle was read, or the
             # reference did not answer within the deadline: a failed attempt, never a comparison
-            failures.append({"query": "GetUTxOWhole", "slot": after["slot"], "error": repr(e)[:300]})
+            failures.append({"query": "GetUTxOWhole/GetGovState", "slot": after["slot"], "error": repr(e)[:300]})
             continue
         if not utxo_sources_agree(bundle["utxo"], full_utxo):
             return {"tip": after, "error": "the CLI and LocalStateQuery UTxO of one block differ"}, None
@@ -264,6 +274,7 @@ def compare_once_detailed(name, attempts=10, scala_wait=30):
         reference = reference_view(ls, utxo)
         reference["utxo"] = full_utxo
         reference["gov"] = govview.reference_gov(*gov)
+        reference["gov"]["prevGovActionIds"] = roots
         reference["protocolState"] = {k: protocol[k] for k in (
             "epochNonce", "evolvingNonce", "candidateNonce", "labNonce", "lastEpochBlockNonce", "oCertCounters")}
         scala_view = {k: v for k, v in scala.items() if k in reference}

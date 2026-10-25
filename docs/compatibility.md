@@ -56,9 +56,9 @@ Devnet ledger comparison counts in this file are projected comparisons. That cov
 `e2e` counts such as "66/66" and the per-era Shelley 12 … Conway 30, plus the `pool` and `soak` counts.
 They compare the reference ledger projected onto the Scala node's `/state` shape at one block.
 They do not show whole-state equality. Cost models, Conway protocol parameters other than the version,
-`ParameterChange` values, reward-account networks, pool relays, metadata and delegators, account
-pointers, DRep anchors and delegators, `nonMyopic`, individual reward entries and AVVM/Byron state are
-among the fields not compared. `scripts/devnet/compare.py` (`PROJECTION_SCOPE`)
+`ParameterChange` values, reward-account networks, the key-or-script kind of pool reward
+credentials, pool relays, metadata and delegators, account pointers, DRep anchors and delegators,
+`nonMyopic`, individual reward entries and AVVM/Byron state are among the fields not compared. `scripts/devnet/compare.py` (`PROJECTION_SCOPE`)
 lists the scope, each `e2e-summary.json` records it, and the register entry `devnet-ledger-projection`
 tracks it under [#433](https://github.com/KD5UJC-XYZ/scarab/issues/433). Runs before 2026-10-25 also
 left datums and reference-script hashes out of the Conway UTxO comparison, and hashed reference scripts

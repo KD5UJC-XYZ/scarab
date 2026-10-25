@@ -294,15 +294,43 @@ class ProjectionOmissionTest(unittest.TestCase):
 
     def test_reward_account_network(self):
         self.declared("rewardAccountNetwork")
-        pool = [b"\x01" * 32, 0, 340, Fraction(1, 10), [0, b"\x02" * 28], [b"\x03" * 28], [], None, 500, []]
-        mainnet = list(pool)
-        mainnet[4] = [1, b"\x02" * 28]
-        self.assertEqual(eraview.pool_params(pool), eraview.pool_params(mainnet))
+        # future pool parameters carry a whole reward account: header e0 (testnet key hash) against e1 (mainnet)
+        def future(header):
+            return [b"\x05" * 28, b"\x01" * 32, 0, 340, Fraction(1, 10), bytes([header]) + b"\x02" * 28,
+                    [b"\x03" * 28], [], None]
+        self.assertEqual(eraview.pool_params(future(0xe0)), eraview.pool_params(future(0xe1)))
 
         def withdrawal(network):
             return {"tag": "TreasuryWithdrawals",
                     "contents": [[[{"network": network, "credential": {"keyHash": "ab"}}, 5]], None]}
         self.assertEqual(govview.action(withdrawal("Testnet")), govview.action(withdrawal("Mainnet")))
+
+    def test_pool_reward_credential_kind(self):
+        self.declared("poolRewardCredentialKind")
+        # a registered pool state's reward account is a credential [0 key | 1 script, hash] (StakePoolState
+        # spsAccountId, cardano-ledger f649f975 libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs:147)
+        pool = [b"\x01" * 32, 0, 340, Fraction(1, 10), [0, b"\x02" * 28], [b"\x03" * 28], [], None, 500, []]
+        script = list(pool)
+        script[4] = [1, b"\x02" * 28]
+        self.assertEqual(eraview.pool_params(pool), eraview.pool_params(script))
+        # the same for future parameters: header e0 (key hash) against f0 (script hash)
+        future = [b"\x05" * 28, b"\x01" * 32, 0, 340, Fraction(1, 10), b"\xe0" + b"\x02" * 28, [], [], None]
+        scripted = future[:5] + [b"\xf0" + b"\x02" * 28] + future[6:]
+        self.assertEqual(eraview.pool_params(future), eraview.pool_params(scripted))
+
+    def test_proposal_roots_are_compared(self):
+        self.assertNotIn("proposalRoots", compare.PROJECTION_SCOPE["notCompared"])
+        roots = [[[b"\xaa" * 32, 0]], [], [], [[b"\xbb" * 32, 2]]]
+        self.assertEqual(govview.proposal_roots(roots),
+                         {"ParamUpdate": "aa" * 32 + "#0", "HardFork": None, "Committee": None,
+                          "Constitution": "bb" * 32 + "#2"})
+        # a mutation of the roots changes the projection, on the reference side and on the Scala side
+        self.assertNotEqual(govview.proposal_roots(roots), govview.proposal_roots([[], [], [], [[b"\xbb" * 32, 2]]]))
+        scala = {"proposals": [], "committee": None, "constitution": None, "committeeState": {}, "drepDistr": {},
+                 "prevGovActionIds": {"ParamUpdate": None}, "donation": 0,
+                 "ratify": {k: None for k in ("enacted", "expired", "delayed", "committee", "constitution",
+                                               "prevGovActionIds", "protocolVersion", "withdrawals")}}
+        self.assertEqual(govview.scala_gov(scala)["prevGovActionIds"], {"ParamUpdate": None})
 
     def test_pool_delegators(self):
         self.declared("poolDelegators")
@@ -393,7 +421,7 @@ class SessionDeadlineTest(unittest.TestCase):
                 patch.object(compare, "reference_utxo", side_effect=ntcquery.Deadline("no answer")):
             result, failures = compare.compare_once_detailed("n", attempts=2, scala_wait=1)
         self.assertIsNone(result)
-        self.assertEqual([f["query"] for f in failures], ["GetUTxOWhole", "GetUTxOWhole"])
+        self.assertEqual([f["query"] for f in failures], ["GetUTxOWhole/GetGovState"] * 2)
 
 
 class ReferenceImageTest(unittest.TestCase):
