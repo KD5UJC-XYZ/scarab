@@ -39,7 +39,72 @@ closed or semantically useful. Service APIs still expose their own closed famili
 Pure rules compose `Either`; effectful interpreters raise their declared errors through
 cats-mtl and handle them in the owning scope. External I/O and backend defects retain their
 original `Throwable` where applicable. A backend defect must not become an invalid script or
-peer merely because both can be rendered as text. Fiber ownership and recovery policy remain
+peer merely because both can be rendered as text. A crypto provider defect (an Ed25519, VRF, KES
+or certificate-signature verifier that threw or broke its contract) is a `ProviderDefect`, a value
+the pure rules return beside their refusals, never inside one: `Praos.validate`, `TPraos.update`
+and `ByronRules` return `Either[PraosError | ProviderDefect, …]` (and the TPraos and Byron
+equivalents), `Verdicts.witness` is `Either[ProviderDefect, Boolean]` and `Verdicts.opCert` is
+`Either[OCertError | ProviderDefect, Unit]`. No predicate failure (`PraosError`, `TPraosError`,
+`OCertError`, `ByronChainError`, `PredicateFailure`) has a case for it, so the conversions to
+`HeaderError` and `BlockFailure` must place it explicitly. `VerificationCache` never keeps a
+defect, so the rules ask the provider again.
+
+The reference's primitives answer only accept or reject, and the Praos rules turn only that answer
+into a predicate failure (ouroboros-consensus 82ecba32 `Protocol/Praos.hs` 587–592 and 637–640); a
+library failure is an exception that passes them. What the exception does depends on the thread
+that meets it, and Scarab does the same in each place:
+
+- **A block** (Praos, TPraos, Byron ledger signatures, operational certificate, KES, VRF and
+  transaction witnesses in a block: follower, chain selection, startup recovery, replay, and the
+  forger's validation of its own block). The reference's add-block runner is a linked thread of
+  the ChainDB registry (`Storage/ChainDB/Impl/Background.hs` 107–108 and 142), so the exception
+  stops the node, and nothing is recorded as invalid. Scarab raises it as `VerificationDefect`
+  (`BlockFailure.Unverifiable` or `LedgerFailure.Unverifiable` beside `LedgerFailure.Unavailable`;
+  `ValidationError.unverifiable` recognises both); `SessionEnd.of` places it as
+  `SessionEnd.Unverifiable`, whose disposition is `StopNode(Fatal.Unverifiable)`, exit 7, the
+  class of an exception from a library (exit 8 stays a missing implementation, exit 6 a broken
+  node invariant). Nothing is added to `InvalidBlocks` and no peer is blamed. Startup recovery
+  (`ChainStorage.resume`) raises it without cutting the volatile log back; a provider defect on
+  the node's own block stops the forger with `Fatal.Unverifiable` and evicts no transaction from
+  the pool.
+- **A header from a peer** (header-first validation). The exception is raised in that peer's
+  ChainSync thread, which no rethrow policy names, so the default applies: log it, disconnect the
+  peer in both directions (`ShutdownPeer`) and allow a reconnect after a short delay
+  (`Node/RethrowPolicy.hs` 36–48 and 128–140). `HeaderRules.Outcome.Unverifiable` is raised by the
+  header gate as `PeerError.Unverifiable` through the `Raise` of the fiber that called it
+  (ADR 0017); `FailurePolicy.classify` makes it `FailureClass.Transient`, so the session ends as
+  `SessionEnd.Failed`, the disposition is `Backoff`, and nothing is recorded as invalid. The
+  reconnect delay is that of any lost connection (`OutboundPeers.Config.repromoteDelay` plus the
+  governor's `coldReconnectFuzz`); the governor's usual bound on repeated transient failures
+  applies, as it does to any other.
+- **A transaction outside a block** (`MempoolState.add` over a local client's or a peer's
+  submission). The reference evaluates `pureTryAddTx` in the submitting thread
+  (`Mempool/Update.hs` 205 and 245) with no handler (`MiniProtocol/LocalTxSubmission/Server.hs`
+  26–38; the peer path is `getMempoolWriter` in `Node/NodeKernel.hs`). The mux rethrows a
+  mini-protocol exception (network 2fb69829 `network-mux/src/Network/Mux.hs` 459–464) and the
+  connection handler applies the rethrow policy (`ConnectionHandler.hs` 285–306), which is
+  `ShutdownPeer` for an exception no policy names; the local policy adds nothing
+  (`Diffusion.hs` 355, `Node/Node.hs` 812–813, `RethrowPolicy.hs` 64–70 and 99–103). Only that
+  connection closes, and the pool is not changed by the transaction. Scarab: local submission
+  answers `ServiceUnavailable` with no rejection bytes, which closes that client's connection;
+  a peer's transaction ends its TxSubmission2 session through the session's `Raise[NetworkError]`
+  (`Mempool.sink`), and the peer is tried again later.
+- **Revalidation and block production** (`Mempool.sync`, `removeTxsEvenIfValid`,
+  `BlockBuilder.select`). The reference runs them in linked threads (`Mempool/Init.hs` 64–77,
+  `Node/NodeKernel.hs` 549–560), so the exception stops the node. Scarab raises the defect as
+  `VerificationDefect` (`Mempool.unverifiable`, the forger) and the node stops with
+  `Fatal.Unverifiable`. The reference revalidates a held transaction with `reapplyTx` of a
+  previously validated one (`Mempool/Impl/Common.hs` 403–422, `Shelley/Ledger/Mempool.hs`
+  325–338); Scarab runs the full rules again, so a verifier can be asked a second time.
+
+The Byron ledger's own signature checks (`ByronSig`: transaction witnesses, delegation
+certificates, update proposals and votes) follow the same rule:
+`ByronSig.verify` is `Either[ProviderDefect, Boolean]`, the rules return
+`Either[ByronError | ProviderDefect, …]` (and the delegation and update equivalents), and
+`ByronRules` places the defect as `BlockFailure.Unverifiable(BlockRule.Byron, …)`. The ledger
+takes its verifier from `ByronLedger.Config.signatures`, the header rules from
+`ByronRulesConfig.signatures`. A defect on a genesis delegation certificate stops the start with
+`ConfigProblem.GenesisUnverifiable`. Fiber ownership and recovery policy remain
 [separate G7 work](../adr/0017-fibers-end-with-values.md) under
 [#180](https://github.com/KD5UJC-XYZ/scarab/issues/180).
 
