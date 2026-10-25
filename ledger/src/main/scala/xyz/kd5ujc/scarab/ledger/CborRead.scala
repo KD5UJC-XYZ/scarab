@@ -21,15 +21,21 @@ private[ledger] object CborRead:
     case Value.NInt(v) => Right(v)
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Integer, n.value))
 
-  /** A byte string in a form `strings` reads ([[ByteStrings]]): an indefinite (chunked) string is
-    * refused where only a definite one is read. The value is the joined chunks, and the node keeps
-    * its original bytes either way.
+  /** A byte string in a form `strings` reads ([[ByteStrings]]): an indefinite (chunked) string,
+    * whose head is `0x5f`, is refused where only a definite one is read. The value is the joined
+    * chunks, and the node keeps its original bytes either way. A node built by hand without
+    * original bytes was not read from a chunked string.
     */
   def bytes(n: Node, what: DecodeSite)(using strings: ByteStrings): Result[Bytes] = n.value match
     case Value.ByteString(v) =>
       strings match
-        case ByteStrings.Chunked  => Right(v)
-        case ByteStrings.Definite => definite(n, what).as(v)
+        case ByteStrings.Chunked => Right(v)
+        case ByteStrings.Definite =>
+          Either.cond(
+            n.original.size == 0 || (n.original(0) & 0xff) != 0x5f,
+            v,
+            LedgerDecodeError.IndefiniteLength(what)
+          )
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Bytes, n.value))
 
   def bytesN(n: Node, size: Int, what: DecodeSite)(using ByteStrings): Result[Bytes] =
@@ -38,7 +44,7 @@ private[ledger] object CborRead:
     )
 
   /** The item's head is not of indefinite length (additional information 31): a string, array or
-    * map read by a decoder that takes the definite form only.
+    * map read by a decoder that takes the definite form only (the Byron decoders).
     */
   def definite(n: Node, what: DecodeSite): Result[Unit] =
     Either.cond(
