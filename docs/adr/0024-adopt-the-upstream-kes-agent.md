@@ -26,7 +26,9 @@ JVM. Only (3) removes it, and (3) is a different protocol from the upstream one.
 
 H2 is **(1) only**.
 
-- **Adopt the upstream agent as it is**: `input-output-hk/kes-agent`, pinned by release and digest. Scarab
+- **Adopt the upstream agent as it is**: `input-output-hk/kes-agent`, pinned by release and digest — the
+  published `kes-agent-1.1.0.0` `x86_64-linux` asset, whose `Service:2.0` protocol is byte-identical to
+  1.4.0.0's, with a build of the 1.4.0.0 tag as the fallback if it will not run on the test host. Scarab
   writes no agent and ships no agent.
 - **No remote signing** (`sign` mode) for now. It is too large a deviation from the upstream protocol: a
   protocol of our own, a per-block round trip, and a change in availability — a node whose agent dies keeps

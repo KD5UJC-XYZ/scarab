@@ -36,10 +36,15 @@ It does **not** buy equivalent memory protection. The JVM cannot mlock the heap;
 | [`IntersectMBO/cardano-base`](https://github.com/IntersectMBO/cardano-base) | the pin of that consensus release (`cardano-crypto-class`) | the raw KES key image the bundle carries | Apache-2.0 |
 
 `cardano-node.cabal` at 11.1.3 requires `kes-agent ^>=1.3` (line 170) and
-`ouroboros-consensus ^>= 4.2.0.1` (line 179); 1.4.0.0 is inside `^>=1.3`. The flag is
-`--shelley-kes-agent-socket` (`Cardano/Node/Parsers.hs`), and `Cardano.Node.Run.installSigHUPHandler`
-(line 596) → `updateBlockForging` (line 626) re-creates the forging credentials, which is what makes a
-SIGHUP in agent mode a reconnect rather than a file reload.
+`ouroboros-consensus ^>= 4.2.0.1` (line 179). **`^>=1.3` means `>=1.3 && <1.4`**, so the version 11.1.3
+resolves is 1.3.0.0 (a CHaP release with no git tag), and **1.4.0.0 is outside that range**. We cite the
+1.4.0.0 tag because it is the newest tagged source and its `Service:2.0` protocol and V2 driver are
+byte-identical to 1.1.0.0's apart from language pragmas and lambda syntax — and identical to 1.0.0.0's
+protocol outright. The wire is the contract here, not the package version: nothing in the node's client
+depends on 1.4.0.0-only API. The flag is `--shelley-kes-agent-socket`
+(`Cardano/Node/Parsers.hs`), and `Cardano.Node.Run.installSigHUPHandler` (line 596) →
+`updateBlockForging` (line 626) re-creates the forging credentials, which is what makes a SIGHUP in agent
+mode a reconnect rather than a file reload.
 
 The node-side client is `Ouroboros.Consensus.Protocol.Praos.AgentClient.runKESAgentClient`, used by
 `instantiatePraosCredentials (PraosCredentialsAgent path)` through `HotKey.mkDynamicHotKey`
@@ -156,11 +161,18 @@ again (32 bytes, `Service:2.0`); the client checks it and aborts on a mismatch. 
 | `Word8` tag, `0` = key / `1` = key drop | 1 |
 | `Word64` timestamp, microseconds since the Unix epoch | 8 |
 | **key only**: key image, exactly `sizeSignKeyKES` bytes (608 for `Sum6KES`) | 608 |
-| **key only**: `Word32` KES period of the key | 4 |
-| **key only**: opcert: `vkHot` 32, `n` `Word64` 8, `kesPeriod` `Word64` 8, `sigma` 64 | 112 |
+| **key only**: `Word32` **evolution index** of the key within its own series, 0 to 63 | 4 |
+| **key only**: opcert: `vkHot` 32, `n` `Word64` 8, `startPeriod` `Word64` 8, `sigma` 64 | 112 |
 
-A key message body is therefore 724 bytes; the client answers every key or drop with one `Word32`
-`RecvResult` (table below). A drop carries only the tag and the timestamp.
+The index is not an absolute KES period. `cardano-crypto-class` types it as `Period` on
+`SignKeyWithPeriodKES` (`type Period = Word`, encoded here as a `Word32`), and it counts evolutions from 0
+for the key in hand. The **absolute** period a block is signed in is `startPeriod + index`, and that is the
+number the ledger and the certificate's window speak about. The two are easy to confuse; the design uses
+"index" for the wire field and "absolute period" everywhere else.
+
+So a key message body is 724 bytes, and the frame including the tag and timestamp is 733; the client
+answers every key or drop with one `Word32` `RecvResult` (table below). A drop carries only the tag and the
+timestamp.
 
 `RecvResult` codes (`Serialization/RawUtil.hs`, `encodeRecvResult`):
 
@@ -242,14 +254,16 @@ accident.
 | mlock | no | no | in the agent, not in the node |
 
 The reference's file path is the weakest of the three: it keeps the seed from which the entire key derives,
-which is exactly why its constructor is called `Unsound`. Ours is strictly better at rest because the
-predecessor is erased, at the cost of a persistence protocol the reference does not have. The agent path is
-the only one where the node holds nothing durable.
+which is exactly why its constructor is called `Unsound`. Ours removes the predecessor from the file when it
+evolves, so what a reader can reach is the current and future periods rather than the whole key — at the cost
+of a persistence protocol the reference does not have. "Removes from the file" is the claim, not "erased from
+the medium": on copy-on-write, journalling or SSD media the old bytes may survive the overwrite (ADR 0015 says
+the same). The agent path is the only one where the node holds nothing durable.
 
 Two consequences follow, and they are the answer to "should the file path go":
 
-- **Do not align the file path with the reference by deleting the write-back.** That would make Scarab
-  strictly weaker at rest for the sake of matching a constructor upstream itself calls unsound.
+- **Do not align the file path with the reference by deleting the write-back.** That would put the period-0
+  seed back on disk for the sake of matching a constructor upstream itself calls unsound.
 - **Do not remove the file path either.** The reference keeps it, our preprod producer ran on it
   (H1/H1a), and the devnet scenarios sign with files. Removal is a policy change that needs its own issue
   and an owner decision, not a side effect of the agent design.
@@ -267,7 +281,11 @@ Two consequences follow, and they are the answer to "should the file path go":
 - `persist` returns `Persisted.Unchanged`: the agent owns key evolution. The node must never write a KES
   file in this mode, and the design keeps file mode and agent mode explicit — no implicit fallback.
 - `adopt` becomes the push handler: when the agent pushes a bundle the client validates it and swaps the
-  forger's credentials under the same lock a SIGHUP reload takes.
+  forger's credentials under the same lock a SIGHUP reload takes. **The old key is forgotten under that lock
+  too**: `Sum6KesSigning` is mutable-and-erase, so a `forget()` racing a sign or an evolve would leave a
+  partially erased key. The swap therefore follows `HotKeys.usingKey`'s discipline — the lock covers the
+  remember-and-erase, not only the pointer swap — and the client hands the key over and touches no part of it
+  afterwards.
 
 That last point is the only structural change to existing forging code: today credentials are installed at
 startup and on SIGHUP; agent mode adds a third, asynchronous install path.
@@ -289,31 +307,55 @@ The codec is a decoder for attacker-influenced bytes and gets the same treatment
 
 The file path's checks (`ReloadRefusal`, `HotKeys`) apply, in this order, before a key is adopted:
 
-1. **Shape**: 608-byte image, period within `Sum6KesSigning.Periods`, opcert fields well formed. A shape
-   failure is a protocol error: refuse the bundle, keep the old key, and do not answer `RecvOK`.
-2. **Binding**: the key image's verification key equals `ocertVkHot`. This is the check that the file path
-   performs as `KeyNotCertified`.
-3. **Certificate signature**: verify `sigma` over `(vkHot, n, kesPeriod)` under the cold verification key
-   carried by the configured `--opcert` envelope, and check that the certificate names the pool this node
-   forges for. No equality with the file's own certificate is required, so a rotation issued by the same cold
-   key is accepted while the agent runs. This is exactly the check the reference's `Shelley.hs` TODO leaves
-   out.
-4. **Window and counter**: the certificate's KES window contains the current period, and the counter is the
-   chain's or one above it (`OCertRules.checkCounter`, the same code the header rules and the file reload
-   use). A refusal keeps the old key and reports `kesReloadRefused` with the existing typed cause.
-5. **Progress**: the bundle does not move the credentials backwards — a period or counter below the one in
-   force is refused as `RecvErrorKeyOutdated` rather than adopted, even on a fresh connection. The reference
-   only compares timestamps, and only within one session, so a reconnecting peer or a hijacked socket can
-   feed it an older bundle; equal period and counter are allowed, because reinstalling the same key is
-   legitimate.
+1. **Shape**: exactly 608 bytes, index within `Sum6KesSigning.Periods` (0 to 63), opcert fields well formed.
+2. **Binding**: the key image's verification key equals `ocertVkHot`. This is the check the file path performs
+   as `KeyNotCertified`.
+3. **Consistency**: sign a fixed probe message with the decoded key at the claimed index and verify it with
+   `Sum6Kes.verify(vkHot, index, probe, signature)`. Nothing else ties the wire index to the key's actual
+   evolution state — a mislabelled index would sign invalid blocks — and this catches it for one signature and
+   one verification per push.
+4. **Certificate signature**: verify `sigma` over `(vkHot, n, startPeriod)` under the cold verification key
+   carried by the configured `--opcert` envelope, and check that the cold key is the pool this node forges for
+   (the pool id is the cold key's hash; the file path reports this as `WrongPool`). No equality with the file's
+   own certificate is required, so a rotation issued by the same cold key is accepted while the agent runs. This
+   is exactly the check the reference's `Shelley.hs` TODO leaves out.
+5. **Window and counter**: the certificate's window contains the current absolute period, and the counter is
+   the chain's or one above it (`OCertRules.checkCounter`, the same code the header rules and the file reload
+   use). During bootstrap the counter part is deferred — the node has no judged chain to compare with — and
+   forging is blocked then anyway by `tipTooOld`, so a key adopted without that check cannot produce a block.
+6. **Progress**: the bundle must not move the credentials backwards. Compare **lexicographically: counter
+   first, then absolute period** (`startPeriod + index`). A rotation is a higher counter and a fresh key at
+   index 0, which is ahead on the first component and therefore accepted; a same-key push must not lower the
+   absolute period; equal counter and period are allowed, because reinstalling the same key is legitimate.
+   Comparing the raw index instead would refuse every rotation — the index goes back to 0 — which is the trap
+   this ordering exists to avoid.
 
-Answering `RecvResult`: `RecvOK` only after the key is adopted; `RecvErrorInvalidOpCert` for a binding or
-signature failure; `RecvErrorKeyOutdated` for a bundle at or behind the last one on this connection; and
-`RecvErrorUnknown` for anything we cannot classify. Answering `RecvOK` for a key we did not adopt would tell
-the agent its push succeeded, which is the failure mode the protocol's confirmation exists to prevent.
+**Reply or close, per failure class.** The protocol expects one `Word32` per key or drop, so the session stays
+open for everything the agent can reasonably fix:
+
+| Failure | Reply |
+|---|---|
+| shape, binding, consistency, certificate signature, window, counter | `RecvErrorInvalidOpCert` (2) |
+| progress / replayed or older bundle | `RecvErrorKeyOutdated` (1) |
+| internal error we cannot classify | `RecvErrorUnknown` (`0xFFFF`) |
+
+A **framing** violation is different: an unknown tag, a short body, or a bad version identifier means we can
+no longer trust the byte stream, so the client closes the connection without replying and lets the reconnect
+loop start again. The node never sends `RecvErrorNoKey` (3) or `RecvErrorUnsupportedOperation` (4); those
+exist for the control side.
+
+Answering `RecvOK` for a key we did not adopt would tell the agent its push succeeded, which is the failure
+mode the protocol's confirmation exists to prevent.
+
+**The progress memory does not survive a restart.** The node persists nothing in agent mode, so after a restart
+there is no "in force" value and a rogue socket owner could replay an older valid bundle. The bound is the
+ledger: a block signed outside the current absolute period is rejected by every peer, so the worst case is
+failed forging until the next push, not a forged block — and status 5's window check already rejects a bundle
+whose certificate has left its window. Recorded as a limitation rather than fixed with a state file, because
+persisting key metadata would reintroduce the on-disk artifact the mode exists to remove.
 
 **Deviation from the reference, deliberate and recorded**: the reference node trusts the agent's validation
-entirely and adopts whatever it receives; steps 2 to 4 are stricter than `handleKey`. That is consistent
+entirely and adopts whatever it receives; steps 2 to 6 are stricter than `handleKey`. That is consistent
 with the file path's documented improvement (ADR 0015 checks what the Haskell node does not) but it must be
 recorded as a behavioural difference in the compatibility matrix. It also means a node whose `--opcert`
 belongs to another pool will refuse every bundle — a misconfiguration that should fail loudly rather than
@@ -338,6 +380,9 @@ it is a level-3 change.
   given; refusing is a small, deliberate deviation.
 - `--key-lock` has no effect in agent mode: there is no KES file to lock. The VRF key checks (permission
   bits, the group-access warning) still apply.
+- `--kes-agent-peer-uid <uid>` pins the expected owner of the agent process, so a peer credential that does
+  not match is a refusal rather than a warning; without it the node accepts its own uid or root and warns on
+  anything else.
 - In file mode on a public network, log a one-time `kesFileMode` warning that the signing key is on disk and
   that the agent is the reference's forward-secure path. A log line, not a refusal: the reference accepts
   this configuration, so refusing it would break parity, but an operator should not be able to run a public
@@ -372,8 +417,12 @@ accept the in-process copy and document it. An off-heap buffer with a JNI `mlock
 What lands with the implementation, in place of a guarantee:
 
 - the node holds the current evolution only, replaces it on every push, and forgets it on a drop;
-- the shipped image sets `-XX:-HeapDumpOnOutOfMemoryError` and `-XX:+DisableAttachMechanism`, and the
-  operator documentation repeats the upstream guide's list: no swap, no hibernation, no core dumps;
+- the JVMs run with `-XX:+DisableAttachMechanism` (no `jmap`/`jcmd` heap dump from another process) and
+  `-XX:-CreateCoredumpOnCrash`; `-XX:+HeapDumpOnOutOfMemoryError` is already off by default, so there is
+  nothing to disable there;
+- swap, hibernation and core dumps are **host** settings, not image settings: the operator documentation
+  ships a compose/run example with `ulimit -c 0`, no swap and no hibernation, repeating the upstream guide's
+  own list;
 - in agent mode no KES material is on disk at all, which removes the at-rest exposure the file path has by
   design;
 - the operator documentation states the limitation in one sentence rather than implying the key is protected
@@ -381,24 +430,33 @@ What lands with the implementation, in place of a guarantee:
 
 **Trust boundaries:** the service socket is a key-distribution channel. A process that can connect to it
 gets the signing key, so the socket's permissions and its directory are part of the deployment, and the
-design adds a start-up warning when the socket is accessible beyond the node's user. A socket forwarded
-over SSH (which the upstream guide supports) puts the key on the wire between hosts and must be documented
-as weaker than a local socket.
+design adds a start-up warning when the socket is accessible beyond the node's user. Beyond permissions, the
+client checks **who is on the other end**: `jdk.net.ExtendedSocketOptions.SO_PEERCRED` gives the peer's uid and
+gid on JDK 16+ (a `UnixDomainPrincipal`), and the client accepts a peer that is the node's own uid or root,
+warns otherwise, and lets an operator pin the expected agent uid (`--kes-agent-peer-uid`) so a mismatch is a
+refusal instead. `getOption` throws `UnsupportedOperationException` where the platform has no peer
+credentials, so the check degrades to the permission warning rather than failing the connection. A socket
+forwarded over SSH (which the upstream guide supports) puts the key on the wire between hosts, has no
+meaningful peer credentials, and must be documented as weaker than a local socket.
 
 ## Testing
 
 1. **Codec** (`KesAgentWireSuite`): byte-exact frames built from the field table; round-trip properties;
-   a truncation case at every offset of a 724-byte body and at every boundary of the handshake; bad version
-   identifier; unknown tag; unknown `RecvResult`; a timestamp equal to the last one. Fuzz target over the
-   frame reader.
+   truncation at every offset of the **724-byte body** and at every boundary of the **733-byte frame**
+   (the tag and timestamp included), plus the client's 4-byte reply; bad version identifier; unknown tag;
+   unknown `RecvResult`; a timestamp equal to the last one. Fuzz target over the frame reader.
 2. **Fixtures** (`fixtures/kes-agent/`, provenance README with source commit, agent version, command and
-   licence): frames captured from a real `kes-agent` 1.4.0.0 by a probe script that speaks the node side
-   (`scripts/kes_agent_probe.py`), replayed offline in `check`. This is the conformance oracle; the probe
+   licence): frames captured from a real agent by a probe script that speaks the node side
+   (`scripts/kes_agent_probe.py`), replayed offline in `check`. The tested binary is the `kes-agent-1.1.0.0`
+   release asset (the only published build; see [Delivery](#delivery)), whose `Service:2.0` protocol and
+   driver are byte-identical to 1.4.0.0's apart from pragmas. This is the conformance oracle; the probe
    doubles as an independent implementation check of this document's byte table.
 3. **Behaviour** (`KesAgentClientSuite`): an in-process fake agent on a Unix socket covering push, drop,
    outdated bundle, malformed frame, EOF, refusal to handshake, slow write and reconnect; the forger's
    `noKey` state; a second instance's socket; a bundle signed by another cold key is refused; a rotated
-   certificate from the same cold key (a higher counter and a new key) is accepted without a restart.
+   certificate from the same cold key (a higher counter and a new key at index 0) is accepted without a
+   restart; a bundle with a **mislabelled index** fails the consistency probe; a peer credential that is
+   neither the node's uid nor root warns, and a pinned `--kes-agent-peer-uid` mismatch refuses.
 4. **Devnet** (level 3): a new `kes-agent` scenario — there is none today; the devnet has `e2e`, `pool`,
    `relay`, `ntc`, `restart`, `kes-rotate` and `soak`, and this one is added by stage 4. It runs the upstream
    binary (provenance above), has `kes-agent-control` install a key, and lets the Scala node forge through it;
@@ -410,7 +468,7 @@ as weaker than a local socket.
 
 | Stage | Content | Gate |
 |---|---|---|
-| 1 | Probe script, captured fixtures with provenance, and a byte-level verification of this document against them | fixtures replay in a Python test; the wire section corrected where the capture disagrees |
+| 1 | Probe script; the pinned `kes-agent-1.1.0.0` `x86_64-linux` release asset with its SHA-256 (if it will not run on the test host, build `kes-agent-1.4.0.0` from the tag in a pinned image instead, and record which was used); captured fixtures with provenance; a byte-level verification of this document against them | fixtures replay in a Python test; the wire section corrected where the capture disagrees |
 | 2 | `KesAgentWire` and its suite | `check` |
 | 3 | `HotKeys` no-key state, `KesAgentSource`, client, CLI flag, fake-agent suite | `check` + `kes-rotate` (no regression in file mode) |
 | 4 | Devnet `kes-agent` scenario and the real-agent matrix | `check` + the scenario (level 3) + evidence row |
@@ -430,16 +488,21 @@ No decisions remain open for H2.
 - **Scope.** [ADR 0024](../adr/0024-adopt-the-upstream-kes-agent.md): the upstream agent as it is, the client
   only, and no remote signing.
 - **Certificate validation.** Verify every pushed bundle under the cold key in the `--opcert` envelope, with the
-  five checks above. Stricter than the reference's explicit TODO, and it bounds what a hijacked service socket
+  six checks above. Stricter than the reference's explicit TODO, and it bounds what a hijacked service socket
   can achieve.
 - **Counter check.** Apply `OCertRules.checkCounter` when the node has a judged chain — a selected chain whose
-  tip is at or beyond the certificate's start period — and defer only that part during bootstrap.
-- **Memory hardening.** Accept and document the in-process copy, with the image flags and operator guidance
-  above; no off-heap/JNI key representation in H2.
-- **Agent provenance.** A pinned upstream release tarball, verified by SHA-256, recorded with URL, digest and
-  licence beside the other image pins. The consequence for this work: stage 1 and the devnet scenario do not
-  build Haskell, and if upstream's release artifacts disappear the pinned tag is the fallback. We do not ship
-  the agent to operators; the documentation points at upstream's releases.
+  tip is at or beyond the certificate's start period — and defer only that part during bootstrap, where the
+  forger is blocked by `tipTooOld` anyway, so a key adopted without the counter check cannot produce a block.
+- **Memory hardening.** Accept and document the in-process copy, with `-XX:+DisableAttachMechanism`,
+  `-XX:-CreateCoredumpOnCrash` and a host-level compose example (`ulimit -c 0`, no swap, no hibernation); no
+  off-heap/JNI key representation in H2.
+- **Agent provenance.** A published upstream binary, verified by SHA-256, with URL, digest and licence
+  recorded beside the other image pins. **Corrected 2026-10-25**: the `kes-agent-1.4.0.0` release has no
+  assets, so the binary we can pin is the `kes-agent-1.1.0.0` `x86_64-linux` asset — older than the `^>=1.3`
+  range 11.1.3 declares, but its `Service:2.0` protocol and driver are byte-identical to 1.4.0.0's apart from
+  pragmas. If that binary does not run on the test host, the fallback is a build of the pinned 1.4.0.0 tag in
+  a pinned image, which does mean a Haskell toolchain; the "no Haskell build" claim applies to the binary
+  path only. We do not ship the agent to operators; the documentation points at upstream's releases.
 - **Operator tooling.** Upstream `kes-agent-control`; no Scarab wrapper in H2. There is no devnet scenario to
   motivate one yet, and the scenario we add in stage 4 can call the upstream tool directly.
 - **Confirmations.** `--kes-agent-socket` as the flag name (reference mapping in #222); both flags together

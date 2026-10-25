@@ -15,9 +15,11 @@ mlocking guarantees, violating the rule that KES secrets must never be stored on
 to be loaded from a local file. This method is provided for backwards compatibility."
 
 Scarab's file path is not the reference's file path. [ADR 0015](0015-kes-key-written-back-and-checked-reload.md)
-writes the evolved key back and erases its predecessor, so the file holds the current evolution rather than the
-period-0 seed the reference keeps for ever. A reader of our file can sign for the current and future periods;
-a reader of the reference's file can sign for every period, past and future.
+writes the evolved key back and overwrites its predecessor, so the file holds the current evolution rather
+than the period-0 seed the reference keeps for ever. A reader of our file can sign for the current and future
+periods; a reader of the reference's file can sign for every period, past and future. "Overwrites" is the
+claim: on copy-on-write, journalling or SSD media the old bytes may survive (ADR 0015 says so), so this is not
+physical erasure.
 
 ## Decision
 
@@ -30,9 +32,9 @@ Two credential sources stay, and they are not equal in standing.
    predecessor. We do **not** adopt the reference's period-0 retention: it is strictly weaker at rest, and
    upstream's own name for it (`Unsound`) is the reason the agent path exists.
 3. **The agent path is the forward-secure path and the recommended one** for any pool that runs longer than
-   one KES key. The file path is documented as the compatibility path and logs a one-time warning on a public
-   network. Recommendation by documentation, not by refusing the configuration, because the reference accepts
-   it and parity (#46, #222) is a requirement.
+   one KES key. The file path is documented as the compatibility path **and** logs a one-time warning on a
+   public network; the demotion is those two things together, recommendation by documentation rather than by
+   refusing the configuration, because the reference accepts it and parity (#46, #222) is a requirement.
 4. **Neither path is removed** by this decision, and there is no automatic fallback between them. Removing
    either is a new decision with its own record.
 
@@ -43,8 +45,8 @@ Two credential sources stay, and they are not equal in standing.
 - H2 implements the **client** only. The agent process is upstream `kes-agent`; Scarab does not write one, and
   the design contains no agent-side code. The node's copy of the signing key is therefore in the JVM, which the
   design states rather than hides.
-- The demotion is a documentation change, so it lands when the agent path exists rather than before: a node
-  cannot be told to prefer a mode it does not have.
+- The demotion is documentation plus a start-up warning, and it lands when the agent path exists rather than
+  before: a node cannot be told to prefer a mode it does not have.
 - A node in agent mode has no KES material on disk, but makes no mlocked-memory claim; the file path's
   durability protocol remains as ADR 0015 describes, including its typed failure modes.
 - Revisit if the reference deprecates its file constructor, or if a public-network deployment shows the file
