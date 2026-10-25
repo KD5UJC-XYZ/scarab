@@ -1,9 +1,9 @@
 # KES agent mode (H2, #38)
 
-**Status**: Proposal. Designed against the pinned reference sources below; no implementation, no captured
-fixtures and no ADR yet. The file-backed mode of [ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md)
-stays the default and is unchanged. This document is the review ADR 0015 says an agent-backed persistence
-boundary needs before the policy can change.
+**Status**: Proposal. Designed against the pinned reference sources below; no implementation and no captured
+fixtures yet. The credential-source policy is decided: [ADR 0023](../adr/0023-two-kes-credential-sources.md)
+keeps both paths, keeps the file path exactly as [ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md)
+defines it, and makes the agent path the recommended one.
 
 ## Why
 
@@ -81,6 +81,11 @@ configuration the reference accepts — a CLI-parity regression (#46, #222) and 
 deployment. What this design does instead is **demote** the file path: agent mode is the path a pool that
 runs longer than one key should use, and file mode stays as the reference's compatibility path, deprecated by
 documentation rather than removed by code. The lifecycle differences are in [Lifecycle parity](#lifecycle-parity).
+
+**Decided 2026-10-25** in [ADR 0023](../adr/0023-two-kes-credential-sources.md): both sources stay, the file
+path keeps ADR 0015's write-back and predecessor erasure exactly as it is (we do not adopt the reference's
+period-0 retention, which upstream itself calls unsound), the agent path is the recommended one, and neither
+path is removed by this work.
 
 ## Wire conformance
 
@@ -349,10 +354,10 @@ as weaker than a local socket.
    outdated bundle, malformed frame, EOF, refusal to handshake, slow write and reconnect; the forger's
    `noKey` state; a second instance's socket; a bundle signed by another cold key is refused; a rotated
    certificate from the same cold key (a higher counter and a new key) is accepted without a restart.
-4. **Devnet** (level 3): a `kes-agent` scenario on the devnet with the upstream binary, `kes-agent-control`
-   installing a key, the Scala node forging through it, then: kill the agent (node keeps forging on the held
-   key), restart it (node re-served), drop the key (forging stops), and a node restart while the agent stays
-   up (served immediately). Evidence row in the compatibility matrix.
+4. **Devnet** (level 3): a `kes-agent` scenario on the devnet with the upstream binary (provenance decided
+   before this stage), `kes-agent-control` installing a key, the Scala node forging through it, then: kill the
+   agent (node keeps forging on the held key), restart it (node re-served), drop the key (forging stops), and
+   a node restart while the agent stays up (served immediately). Evidence row in the compatibility matrix.
 
 ## Delivery
 
@@ -367,29 +372,41 @@ as weaker than a local socket.
 Stage 1 is deliberately first: it is cheap, it removes the risk that this document is subtly wrong about
 the wire, and it produces the fixture the later stages test against.
 
-## Decisions for the owner
+## Decisions
 
-1. **The file path's future.** Recommendation: keep it as the reference's compatibility path and demote it in
-   the documentation (agent mode for any pool that runs longer than one key), with the ADR 0015 write-back
-   unchanged and the one-time public-network warning above. The alternatives are worse: removing it makes
-   Scarab refuse a configuration the reference accepts and breaks the existing producer, and matching the
-   reference by dropping the write-back makes the file strictly weaker at rest. If it is ever removed, that is
-   its own issue with its own decision, not a side effect of H2.
-2. **Certificate validation.** Verify every pushed bundle under the cold key in the `--opcert` envelope
+### Decided 2026-10-25
+
+[ADR 0023](../adr/0023-two-kes-credential-sources.md) settles the policy: two credential sources stay, the file
+path keeps ADR 0015's write-back and predecessor erasure unchanged, the agent path is the recommended one and
+the file path is documented as the compatibility path, and neither is removed by this work.
+
+### Open
+
+1. **Certificate validation.** Verify every pushed bundle under the cold key in the `--opcert` envelope
    (steps 2 to 4), which is stricter than the reference's explicit TODO, or trust the agent as the reference
-   does. Recommendation: verify, because #38 asks for certificate validation under the existing reload rules.
-3. **Service protocol versions.** Recommendation: `Service:2.0` only. It is the only version whose messages
-   carry timestamps and key deletions; 1.0 and 0.0 report a zero timestamp, so staleness cannot be judged.
-   The agent offers 2.0 first, so this costs nothing against a current agent.
-4. **Memory hardening.** Off-heap plus JNI `mlock` now, or document the limitation and defer. Recommendation:
-   document the limitation for this stage and decide on JNI with the threat model (O1/#74), which is where
-   the claim belongs.
-5. **Counter check.** The reference agent checks the counter at install time; the node does not. Scarab can
-   check it when it has a tip. Recommendation: check, and keep the existing typed refusal; record the
-   stricter behaviour.
-6. **ADR 0023.** On acceptance, record: agent mode is a credential source that keeps no KES material on
-   disk; the node validates every pushed bundle; file mode stays the reference's compatibility path with the
-   ADR 0015 write-back and is not removed by this change; the node makes no mlocked-memory claim.
+   does. Recommendation: verify. The check is chain-independent apart from the counter, costs one signature
+   verification per push (pushes are rare), and closes a gap upstream has already marked.
+2. **Counter check.** The reference node never compares a pushed certificate's counter with the chain; a bad
+   one shows up later as rejected blocks. Scarab can apply the same `OCertRules.checkCounter` the file reload
+   uses. Recommendation: check when the node has a judged chain, and defer only the chain-dependent part
+   during bootstrap rather than refusing a key the node cannot yet judge. The question to settle is what
+   "has a judged chain" means here — a selected chain whose tip is at or beyond the certificate's start
+   period is the natural rule.
+3. **Memory hardening.** Options: (a) document the JVM limitation and decide with O1/#74; (b) off-heap key
+   material plus a small JNI `mlock`/`explicit_bzero` helper, which also changes how `Sum6KesSigning` holds
+   its material and how BouncyCastle receives the seed; (c) additionally harden the shipped image
+   (`-XX:-HeapDumpOnOutOfMemoryError`, `-XX:+DisableAttachMechanism`, documented swap and hibernation
+   settings). Recommendation: (a) + (c) for this stage. (b) changes the representation of the key itself and
+   belongs with the threat model, not with the protocol work.
+4. **Devnet agent provenance.** How the devnet image obtains `kes-agent`: a pinned release tarball verified by
+   SHA-256, the way the reference node image is pinned, or a source build inside the image. Recommendation:
+   the pinned tarball, with URL, digest and licence recorded beside the other image pins; it is what an
+   operator runs and it keeps the image build cheap. Needed before stage 4.
+5. **Small confirmations**, with the recommendation in brackets: `--kes-agent-socket` as the flag name, with
+   the reference's `--shelley-kes-agent-socket` mapped in #222 [`--kes-agent-socket`]; both flags passed
+   together refused [`refuse`]; a group- or world-accessible service socket warned about at start-up [`warn`];
+   `Service:2.0` only [`2.0 only` — it exists since `kes-agent` 1.0.0.0, and every cardano-node that supports
+   an agent requires `kes-agent ^>=1.2` (10.7.1), so no released agent is excluded].
 
 ## Not in scope
 
