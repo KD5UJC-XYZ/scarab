@@ -30,7 +30,7 @@ class SupplementalDatumSuite extends FunSuite:
   private def datum(n: Int): Bytes = Bytes.fromArray(Array[Byte](n.toByte))
   private def hashOf(d: Bytes): Bytes = Blake2b.hash256.hash(d)
 
-  private val spent = base.tx.body.inputs.map(base.spent)
+  private val spent = base.tx.body.inputs.map(in => in -> base.spent(in)).toMap
   private val scripts = base.tx.witnesses.scriptsByHash
   private val needed = TxChecks.scriptsNeeded(base.tx.body, spent).values.flatten.toSet
   private val template = base.tx.body.outputs.headOption.getOrElse(fail("no output"))
@@ -44,7 +44,7 @@ class SupplementalDatumSuite extends FunSuite:
     )
 
   private def check(pp: ProtocolParams, tx: Tx, referenced: Vector[TxOut] = Vector.empty) =
-    TxChecks.datumChecks(pp, tx, spent, referenced, scripts)
+    TestLedger.verdict(tx.body.id, TxChecks.datumChecks(pp, tx, spent, referenced, scripts))
 
   private def notAllowed(unallowed: Set[Bytes], acceptable: Set[Bytes]) =
     Left(
@@ -57,7 +57,13 @@ class SupplementalDatumSuite extends FunSuite:
   test("the reference transaction, whose witness datum is the one an input requires, passes") {
     assertEquals(check(base.params, base.tx), Right(()))
     assertEquals(
-      TxChecks.alonzoChecks(base.params, base.tx, spent, Vector.empty, scripts, needed),
+      TestLedger.verdict(
+        base.tx.body.id,
+        rules.Test.all(
+          TxChecks.datumChecks(base.params, base.tx, spent, Vector.empty, scripts),
+          TxChecks.redeemerChecks(base.tx, spent, scripts, needed)
+        )
+      ),
       Right(())
     )
   }
@@ -214,7 +220,16 @@ class SupplementalDatumSuite extends FunSuite:
       val expected = recordedPayload(r)
       assertEquals(expected, (datums, Set.empty[Bytes]))
       assertEquals(
-        TxChecks.datumChecks(TestLedger.params(pv), r.tx, spent, Vector.empty, Map.empty),
+        TestLedger.verdict(
+          r.tx.body.id,
+          TxChecks.datumChecks(
+            TestLedger.params(pv),
+            r.tx,
+            r.tx.body.inputs.zip(spent).toMap,
+            Vector.empty,
+            Map.empty
+          )
+        ),
         Left(
           LedgerFailure.Rejected(
             r.tx.body.id,
@@ -237,7 +252,16 @@ class SupplementalDatumSuite extends FunSuite:
       witnesses = base.tx.witnesses.copy(datums = Vector(extra), datumsRaw = None)
     )
     assertEquals(
-      TxChecks.datumChecks(base.params, only, Vector(keyOut), Vector.empty, Map.empty),
+      TestLedger.verdict(
+        only.body.id,
+        TxChecks.datumChecks(
+          base.params,
+          only,
+          Map(only.body.inputs.head -> keyOut),
+          Vector.empty,
+          Map.empty
+        )
+      ),
       Left(
         LedgerFailure.Rejected(
           only.body.id,

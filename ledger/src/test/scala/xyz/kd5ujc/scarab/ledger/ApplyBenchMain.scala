@@ -184,26 +184,23 @@ object ApplyBenchMain:
         val (scripts, tProvided) =
           time(TxChecks.providedScripts(tx.witnesses, spent ++ refOuts))
         ns("providedScripts") += tProvided
-        val (needed, tNeeded) = time(TxChecks.scriptsNeeded(body, spent))
+        val byInput = body.inputs.flatMap(in => utxo.get(in).map(in -> _)).toMap
+        val (needed, tNeeded) = time(TxChecks.scriptsNeeded(body, byInput))
         ns("scriptsNeeded") += tNeeded
         val purposes = needed
           .collect { case (h, ps) if scripts.get(h).exists(_.kind.isPlutus) => ps }
           .flatten
           .toSet
-        ns("alonzoChecks") += time(
-          TxChecks.alonzoChecks(pp, tx, spent, refOuts, scripts, purposes)
-        )._2
+        ns("datumChecks") += time(TxChecks.datumChecks(pp, tx, byInput, refOuts, scripts))._2
+        ns("redeemerChecks") += time(TxChecks.redeemerChecks(tx, byInput, scripts, purposes))._2
         ns("auxiliaryChecks") += time(TxChecks.auxiliaryChecks(pp, tx, e))._2
         ns("witnessChecks") += time(
-          TxChecks.witnessChecks(
+          TxChecks.neededWitnesses(
             Map.empty,
             tx,
             spent,
             TxChecks.Collateral.none,
-            scripts,
-            needed,
-            tx.witnesses.vkeys.map(w => e.verdicts.keyHash(w._1)),
-            e.verdicts
+            TxChecks.providedKeyHashes(tx, tx.witnesses.vkeys.map(w => e.verdicts.keyHash(w._1)))
           )
         )._2
         ns("scriptsWellFormed") += time(TxChecks.scriptsWellFormed(pp, tx, e))._2

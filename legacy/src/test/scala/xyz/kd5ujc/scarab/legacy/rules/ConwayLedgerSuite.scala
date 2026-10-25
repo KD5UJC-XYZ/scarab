@@ -1041,9 +1041,11 @@ class ConwayLedgerSuite extends FunSuite:
       ),
       "WrongNetwork"
     )
+    // `feesOK` comes before the inputs (`Babbage/Rules/Utxo.hs:362-368`): the collateral that does
+    // not exist pays nothing, which is the first failure
     assertEquals(
       refused("missing collateral", c.bodyWith(c.hash, collateral = Vector(txIn(40)))),
-      "BadInputsUTxO"
+      "InsufficientCollateral"
     )
     assertEquals(
       refused(
