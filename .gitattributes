@@ -60,3 +60,6 @@ fixtures/coverage/upstream/generator-UtxowSpec.hs -text
 docs/restricted-replay-store-cli-diagnostic/duplicate.stdout -text -whitespace
 # The Leios testnet's published files and captures are hashed as published (config.json lists their hashes).
 fixtures/leios/testnet/** -text
+
+# Third-party licence texts are copied verbatim from their sources; licenses/index.json records their SHA-256.
+licenses/** -text -whitespace

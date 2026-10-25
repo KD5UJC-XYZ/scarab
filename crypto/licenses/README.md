@@ -13,7 +13,8 @@ that portions derive from eddsa-java (str4d/ed25519-java, CC0 1.0); and the BSD-
 curve25519-dalek, from which `UnpackedScalar` was ported. The dalek text is the first 28 lines of the
 `LICENSE` of dalek-cryptography/curve25519-dalek at tag `1.0.3` (`9cd4551b40a7328eed18717b527bc8ba9331fa27`),
 the release current when the port was made. BSD-3-Clause requires that notice in any binary
-distribution, which is why the file is kept here beside the module that uses the library.
+distribution, which is why the file is kept here beside the module that uses the library and why
+the assembly JAR carries it as `META-INF/scarab/licenses/crypto/LICENSE-curve25519-elisabeth`.
 
 `fixtures/witness/licenses/elisabeth-LICENSE` is the same file, kept with the Ed25519 witness
 corpus. How the source and the jar were matched is in [docs/licenses.md](../../docs/licenses.md#curve25519-elisabeth-provenance).
