@@ -699,9 +699,12 @@ object TxChecks:
           PredicateFailure.utxow(UtxowFailure.MissingVKeyWitnesses(missing))
         )
       )
-      // Native scripts (phase 1): the ones the transaction needs must hold.
+      // Native scripts (phase 1): the ones the transaction needs must hold. They see the key hashes
+      // of the vkey witnesses only (`validateTimelock`, `Allegra/Tx.hs`, and `validateMultiSig`,
+      // `Shelley/Scripts.hs`, evaluate over `addrTxWitsL`; `validateFailedNativeScripts`,
+      // `Shelley/Rules/Utxow.hs`, f649f975): a bootstrap witness's address root is not a signer.
       failing = needed.keys.toSet.filter { h =>
-        scripts(h).native.exists(s => !s.eval(provided, body.validityStart, body.ttl))
+        scripts(h).native.exists(s => !s.eval(vkeyHashes.toSet, body.validityStart, body.ttl))
       }
       _ <- Either.cond(
         failing.isEmpty,
