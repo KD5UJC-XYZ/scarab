@@ -59,6 +59,29 @@ Three processes, two Unix sockets:
 The agent's key lifecycle matters to the node only through the service protocol: a staged key is not
 served; an installed key is; a dropped key is pushed as a key deletion.
 
+## Two credential paths, and why this design keeps both
+
+The reference maintains two credential sources, not one, and it does not treat them as equals
+(`Ouroboros/Consensus/Protocol/Praos/Common.hs`, `PraosCredentialsSource`):
+
+| Constructor | How the key arrives | The reference's own words |
+|---|---|---|
+| `PraosCredentialsUnsound` | `--shelley-kes-key` with `--shelley-operational-certificate` | "does not provide mlocking guarantees, violating the rule that KES secrets must never be stored on disk, but allows the sign key to be loaded from a local file. This method is provided for backwards compatibility." |
+| `PraosCredentialsAgent` | `--shelley-kes-agent-socket` | the forward-secure path |
+
+The choice is per node and is a parser alternative (`parseKesSourceFilePath`,
+`Cardano/Node/Parsers.hs`): `asum` over the two flags, file first, with no exclusion check anywhere in the
+configuration path. Agent mode still requires the opcert file (`Cardano/Node/Protocol/Shelley.hs`, lines 200
+to 202): the node reads it for the cold verification key and the pool identity, while the agent supplies the
+live key and its own copy of the certificate. There is an explicit TODO there that the node does not check
+the two certificates against each other.
+
+So "the reference has one path" is not the case, and removing Scarab's file path would make us refuse a
+configuration the reference accepts — a CLI-parity regression (#46, #222) and a break for every existing
+deployment. What this design does instead is **demote** the file path: agent mode is the path a pool that
+runs longer than one key should use, and file mode stays as the reference's compatibility path, deprecated by
+documentation rather than removed by code. The lifecycle differences are in [Lifecycle parity](#lifecycle-parity).
+
 ## Wire conformance
 
 Everything below is from the pinned sources, not from a capture. Capturing real frames and pinning them as
@@ -143,8 +166,9 @@ which is why the four fields above are laid out plainly (`KES/OCert.hs` says so 
   connection**, unless the node applies its own policy (ours does; see below).
 - That a second key follows a drop: the agent may hold no key, and a session's current bundle can then be a
   deletion rather than a key.
-- That the agent validates anything the node can see: the opcert's cold signature is **not** in the bundle,
-  so a node cannot verify it without the cold verification key out of band.
+- That the agent validates anything the node can see: the bundle carries the opcert's **cold signature** but
+  not the cold verification key, so a node can only check it with the key from the `--opcert` envelope (or
+  another out-of-band copy).
 - That the socket is trustworthy. Anyone who can connect to the service socket receives the signing key.
   The agent's guide tells operators to restrict the directory; Scarab should say so too and warn when the
   socket is group- or world-accessible.
@@ -167,6 +191,33 @@ From `HotKey.hs` and `AgentClient.hs`:
 - **Agent loss is not fatal.** A node that holds a key keeps forging until the key runs out of evolutions.
   The reference's recovery table is explicit: node restart is automatic; agent restart or host reboot in a
   single-agent setup needs a key reinstall; a backup agent self-heals.
+
+## Lifecycle parity
+
+Three lifecycles are in play. The middle one is ours, and it is a deliberate deviation rather than an
+accident.
+
+| | Reference file path | Scarab file path (ADR 0015) | Agent path (this design) |
+|---|---|---|---|
+| What is on disk | the period-0 key, for ever | the current evolution; the predecessor is overwritten | no KES material |
+| Who evolves | the node, in memory only | the node, and each step is persisted before signing | the agent, with the node evolving between pushes |
+| A reader of the file can sign | every period, past and future, because the seed derives the whole key | the current and future periods, not the past ones | nothing |
+| Rotation | operator SIGHUP with a new key and certificate | the same, plus `scripts/pool/rotate_kes.py` | agent `gen-staged-key` / `install-key`, pushed to the node |
+| Persistence failure | does not apply | typed, prevents further signing | does not apply |
+| mlock | no | no | in the agent, not in the node |
+
+The reference's file path is the weakest of the three: it keeps the seed from which the entire key derives,
+which is exactly why its constructor is called `Unsound`. Ours is strictly better at rest because the
+predecessor is erased, at the cost of a persistence protocol the reference does not have. The agent path is
+the only one where the node holds nothing durable.
+
+Two consequences follow, and they are the answer to "should the file path go":
+
+- **Do not align the file path with the reference by deleting the write-back.** That would make Scarab
+  strictly weaker at rest for the sake of matching a constructor upstream itself calls unsound.
+- **Do not remove the file path either.** The reference keeps it, our preprod producer ran on it
+  (H1/H1a), and the devnet scenarios sign with files. Removal is a policy change that needs its own issue
+  and an owner decision, not a side effect of the agent design.
 
 ## Design for Scarab
 
@@ -207,8 +258,11 @@ The file path's checks (`ReloadRefusal`, `HotKeys`) apply, in this order, before
    failure is a protocol error: refuse the bundle, keep the old key, and do not answer `RecvOK`.
 2. **Binding**: the key image's verification key equals `ocertVkHot`. This is the check that the file path
    performs as `KeyNotCertified`.
-3. **Certificate signature**: verify `sigma` over `(vkHot, n, kesPeriod)` under the pool's cold
-   verification key. This needs a `--cold-vkey` file; see the open decision below.
+3. **Certificate signature**: verify `sigma` over `(vkHot, n, kesPeriod)` under the cold verification key
+   carried by the configured `--opcert` envelope, and check that the certificate names the pool this node
+   forges for. No equality with the file's own certificate is required, so a rotation issued by the same cold
+   key is accepted while the agent runs. This is exactly the check the reference's `Shelley.hs` TODO leaves
+   out.
 4. **Window and counter**: the certificate's KES window contains the current period, and the counter is the
    chain's or one above it (`OCertRules.checkCounter`, the same code the header rules and the file reload
    use). A refusal keeps the old key and reports `kesReloadRefused` with the existing typed cause.
@@ -221,8 +275,9 @@ the agent its push succeeded, which is the failure mode the protocol's confirmat
 **Deviation from the reference, deliberate and recorded**: the reference node trusts the agent's validation
 entirely and adopts whatever it receives; steps 2 to 4 are stricter than `handleKey`. That is consistent
 with the file path's documented improvement (ADR 0015 checks what the Haskell node does not) but it must be
-recorded as a behavioural difference in the compatibility matrix, and it can reject a valid bundle if the
-cold key is wrong on the node — hence the trust-mode decision below.
+recorded as a behavioural difference in the compatibility matrix. It also means a node whose `--opcert`
+belongs to another pool will refuse every bundle — a misconfiguration that should fail loudly rather than
+silently forge with a key the pool did not authorise.
 
 ### Forging without a key
 
@@ -234,12 +289,19 @@ it is a level-3 change.
 
 ### CLI and configuration
 
-- `--kes-agent-socket <path>` enables agent mode. It is mutually exclusive with `--kes-skey` and `--opcert`
-  (the bundle carries the certificate); `--vrf-skey` is still required because the VRF key does not come
-  from the agent.
-- `--cold-vkey <file>` supplies the cold verification key for step 3 above; see the decision list.
+- `--kes-agent-socket <path>` enables agent mode. `--kes-skey` is refused with it — the two sources are
+  alternatives, as in the reference. `--vrf-skey` and `--opcert` stay required, exactly as the reference
+  requires them in agent mode: the opcert envelope supplies the cold verification key and the pool identity,
+  while the bundle supplies the live key and its own certificate.
+- Passing both `--kes-skey` and `--kes-agent-socket` is a configuration error in Scarab. The reference has no
+  exclusion check and tries the file alternative first, so we do not rely on its behaviour when both are
+  given; refusing is a small, deliberate deviation.
 - `--key-lock` has no effect in agent mode: there is no KES file to lock. The VRF key checks (permission
   bits, the group-access warning) still apply.
+- In file mode on a public network, log a one-time `kesFileMode` warning that the signing key is on disk and
+  that the agent is the reference's forward-secure path. A log line, not a refusal: the reference accepts
+  this configuration, so refusing it would break parity, but an operator should not be able to run a public
+  pool on the compatibility path without having been told.
 - The flag name differs from the reference's `--shelley-kes-agent-socket`; the CLI parity register (#222)
   records the mapping until the `--shelley-*` names exist.
 
@@ -257,7 +319,8 @@ read from the hot key, so dashboards and alert rules do not need a second source
 
 **Bought:** the node never reads or writes a KES key file in agent mode; its copy is replaced, not
 accumulated; a dropped key is forgotten and forging stops; a node restart is served the current evolution
-by the agent, so the period-0 seed never has to exist on the node's disk.
+by the agent, so the period-0 seed never has to exist on the node's disk; and every pushed bundle is checked
+against the pool's cold key, which the reference does not do.
 
 **Not bought, and not claimed:** the JVM heap is not mlocked and can be swapped, dumped or read by a process
 with the same privileges; a `byte[]` may be copied by the collector, so `forget()` overwrites the copy we
@@ -284,7 +347,8 @@ as weaker than a local socket.
    doubles as an independent implementation check of this document's byte table.
 3. **Behaviour** (`KesAgentClientSuite`): an in-process fake agent on a Unix socket covering push, drop,
    outdated bundle, malformed frame, EOF, refusal to handshake, slow write and reconnect; the forger's
-   `noKey` state; a second instance's socket.
+   `noKey` state; a second instance's socket; a bundle signed by another cold key is refused; a rotated
+   certificate from the same cold key (a higher counter and a new key) is accepted without a restart.
 4. **Devnet** (level 3): a `kes-agent` scenario on the devnet with the upstream binary, `kes-agent-control`
    installing a key, the Scala node forging through it, then: kill the agent (node keeps forging on the held
    key), restart it (node re-served), drop the key (forging stops), and a node restart while the agent stays
@@ -305,23 +369,27 @@ the wire, and it produces the fixture the later stages test against.
 
 ## Decisions for the owner
 
-1. **Cold verification key.** Requiring `--cold-vkey` lets the node verify the opcert itself (steps 2 to 4)
-   at the cost of one more file and a deviation from the reference. The alternative is to trust the agent
-   exactly as the reference does and validate only the binding and the window. Recommendation: require it,
-   because #38 asks for certificate validation under the existing rules, and an operator running an agent
-   already has the cold key that issued the certificate.
-2. **Service protocol versions.** Recommendation: `Service:2.0` only. It is the only version whose messages
+1. **The file path's future.** Recommendation: keep it as the reference's compatibility path and demote it in
+   the documentation (agent mode for any pool that runs longer than one key), with the ADR 0015 write-back
+   unchanged and the one-time public-network warning above. The alternatives are worse: removing it makes
+   Scarab refuse a configuration the reference accepts and breaks the existing producer, and matching the
+   reference by dropping the write-back makes the file strictly weaker at rest. If it is ever removed, that is
+   its own issue with its own decision, not a side effect of H2.
+2. **Certificate validation.** Verify every pushed bundle under the cold key in the `--opcert` envelope
+   (steps 2 to 4), which is stricter than the reference's explicit TODO, or trust the agent as the reference
+   does. Recommendation: verify, because #38 asks for certificate validation under the existing reload rules.
+3. **Service protocol versions.** Recommendation: `Service:2.0` only. It is the only version whose messages
    carry timestamps and key deletions; 1.0 and 0.0 report a zero timestamp, so staleness cannot be judged.
    The agent offers 2.0 first, so this costs nothing against a current agent.
-3. **Memory hardening.** Off-heap plus JNI `mlock` now, or document the limitation and defer. Recommendation:
+4. **Memory hardening.** Off-heap plus JNI `mlock` now, or document the limitation and defer. Recommendation:
    document the limitation for this stage and decide on JNI with the threat model (O1/#74), which is where
    the claim belongs.
-4. **Counter check.** The reference agent checks the counter at install time; the node does not. Scarab can
+5. **Counter check.** The reference agent checks the counter at install time; the node does not. Scarab can
    check it when it has a tip. Recommendation: check, and keep the existing typed refusal; record the
    stricter behaviour.
-5. **ADR 0023.** On acceptance, record: agent mode is a credential source that keeps no KES material on
-   disk; the node validates every pushed bundle; file mode stays supported and explicit; the node makes no
-   mlocked-memory claim.
+6. **ADR 0023.** On acceptance, record: agent mode is a credential source that keeps no KES material on
+   disk; the node validates every pushed bundle; file mode stays the reference's compatibility path with the
+   ADR 0015 write-back and is not removed by this change; the node makes no mlocked-memory claim.
 
 ## Not in scope
 
