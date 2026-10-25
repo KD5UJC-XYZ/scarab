@@ -160,9 +160,9 @@ class FollowerChain:
     def immutable_tip(self, k):
         """The newest block with at least `k` blocks after it: the anchor of the last `k` headers, the reference's
         immutable tip ([consensus `82ecba329`, ChainDB/Impl/Query.hs:100-125](https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Query.hs#L100-L125),
-        `getCurrentChain`); None while the chain holds `k` blocks or fewer. The reference counts the volatile suffix by
-        weight (`takeVolatileSuffix`), which is the block count while no Peras certificate adds weight, as on the
-        devnet."""
+        `getCurrentChain`); None while the chain holds `k` blocks or fewer. This is the reference's rule while Peras
+        is disabled, `AF.anchorNewest k` ([Peras/Weight.hs:369-373](https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Peras/Weight.hs#L369-L373));
+        the devnet has no Peras certificates, and a chain with them is not modelled."""
         return self.blocks[-(k + 1)] if len(self.blocks) > k else None
 
     @staticmethod
@@ -309,21 +309,12 @@ def epochs_without_match(rows):
 SCOPE = {
     "kind": "epoch-boundary digests on both final chains",
     "issue": 91,
-    "pairing": "the digest's header hash is in the ImmutableDB of reference node 1 and on the follower's final chain, "
-               "rebuilt from its whole log (one session from Origin per start, every event linked to the tip) and "
-               "ending at the follower's recorded final tip",
-    "excluded": {v.value: doc for v, doc in (
-        (Verdict.ROLLED_BACK, "neither final chain holds the block: the follower's log shows it rolled the block back"),
-        (Verdict.NOT_FINAL_ON_FOLLOWER, "the reference's final chain does not hold it; the follower held it less "
-                                        "than k deep when it stopped"),
-        (Verdict.NOT_YET_IMMUTABLE, "after the reference's immutable tip when the comparison ran"),
-        (Verdict.ROLLED_BACK_ON_FOLLOWER, "immutable on the reference; the follower rolled it back within its "
-                                          "volatile part (after its immutable tip), so it can still adopt it"))},
-    "failures": ["any difference or error in a compared digest",
-                 "final chains that disagree: the follower's immutable tip (k blocks deep) is not on the reference's "
-                 "chain and the reference's immutable tip is not on the follower's",
-                 "a digest of a block the follower's log never extended",
-                 "a follower log or reference listing that is not one chain", "no digest compared and matched"],
+    "pairing": "header hash in reference node 1's ImmutableDB and on the follower's chain, rebuilt from its whole log "
+               "and ending at its recorded final tip",
+    "excluded": [v.value for v in Verdict if v.excluded],
+    "failures": ["a difference or error in a compared digest", "immutable chains that disagree",
+                 "a digest of a block the follower's log never extended", "a log or listing that is not one chain",
+                 "no digest compared and matched"],
 }
 
 

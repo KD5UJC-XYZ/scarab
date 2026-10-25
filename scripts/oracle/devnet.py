@@ -9,6 +9,8 @@ hash) is on both final chains are compared; the others are excluded with a reaso
 follower must have been stopped by `stop_follower`, which records its final tip for the check of its log.
 """
 import json
+import os
+import signal
 import subprocess
 import time
 
@@ -98,18 +100,30 @@ def follower_tip(name):
     return {"slot": point["slot"], "hash": point["hash"]} if isinstance(point, dict) and "hash" in point else None
 
 
-def stop_follower(name, root, settle_seconds=2, attempts=15):
+def node_pid(name, node):
+    """The host PID of reference node `node`'s `cardano-node run` (by its database path), or None unless exactly
+    one process matches."""
+    r = docker("top", ref(name), "-eo", "pid,args", check=False)
+    found = [int(line.split(None, 1)[0]) for line in r.stdout.splitlines()[1:]
+             if "cardano-node run" in line and f"{NODE_DB.replace('node1', f'node{node}')} " in line + " "]
+    return found[0] if len(found) == 1 else None
+
+
+def stop_follower(name, root, settle_seconds=2, attempts=15, node=1):
     """Stop the follower with its final tip recorded in `root/follower-tip.json`.
 
-    The reference container is paused, so no block or rollback reaches the follower; once two readings of the
-    follower's `/tip` `settle_seconds` apart agree, that is its final tip, and the follower is removed before the
-    reference resumes. Without a settled tip nothing is recorded and the comparison fails (`Cause.NO_FINAL_TIP`)."""
+    The follower's only peer, reference node `node`, is stopped (SIGSTOP, by PID; the other two nodes keep the
+    chain growing), so no block or rollback reaches the follower. Once two readings of its `/tip`
+    `settle_seconds` apart agree, that is its final tip; the follower is removed and the node continued. Without
+    a settled tip nothing is recorded, and the comparison fails (`Cause.NO_FINAL_TIP`)."""
     recorded = root / FINAL_TIP
     recorded.unlink(missing_ok=True)
-    docker("pause", ref(name), check=False)
+    pid = node_pid(name, node)
+    if pid is not None:
+        os.kill(pid, signal.SIGSTOP)
     try:
-        last = follower_tip(name)
-        for _ in range(attempts):
+        last = follower_tip(name) if pid is not None else None
+        for _ in range(attempts if pid is not None else 0):
             time.sleep(settle_seconds)
             now = follower_tip(name)
             if now is not None and now == last:
@@ -118,7 +132,8 @@ def stop_follower(name, root, settle_seconds=2, attempts=15):
             last = now
         docker("rm", "-f", f"{name}-scala", check=False)
     finally:
-        docker("unpause", ref(name), check=False)
+        if pid is not None:
+            os.kill(pid, signal.SIGCONT)
 
 
 def run(name, root, log=print, wait_seconds=240):
