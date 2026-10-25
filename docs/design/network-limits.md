@@ -5,7 +5,7 @@
 - **Reference**: ouroboros-network `2fb69829a19b5c04e4fb212bdd78fb63f9d2d776`, the existing
   protocol source pin; actual interoperability uses reference node 11.1.3.
 
-Networking keeps its fs2 structure under [ADR0008](../adr/0008-networking-as-implemented.md).
+Networking keeps its fs2 structure under [ADR0008](../adr/0008-networking-mirrors-ouroboros-network.md).
 Every mini-protocol state's time limit is the pinned reference's (`timeLimits*`, cited per row), except
 the BlockFetch client's cumulative request time (the BlockFetch client rework, #430). The TxSubmission
 byte/item profile (the TxSubmission alignment, #477), the BlockFetch client's aggregate bounds (#430), the
@@ -194,7 +194,7 @@ Fair service applies after admission within a fence prefix. A full admission bud
 `send`; KeepAlive's response timer starts after that call. A flush deliberately prevents later traffic
 from passing its predecessors. This is not an unconditional latency bound under arbitrary rates or
 full queues. It meets the useful scheduler contract while retaining Scarab's fs2 design under
-[ADR0008](../adr/0008-networking-as-implemented.md); broader upstream/property coverage remains #49.
+[ADR0008](../adr/0008-networking-mirrors-ouroboros-network.md); broader upstream/property coverage remains #49.
 
 ## Same-connection ChainSync recovery (#152)
 

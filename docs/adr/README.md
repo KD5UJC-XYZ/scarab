@@ -13,7 +13,7 @@ one says so. New records copy [the template](template.md) and take the next numb
 | [0005](0005-cbor-codec-and-scodec.md) | Our own byte-preserving CBOR codec; scodec only for read-once fixed layouts | Accepted; the decode into our own tree is superseded by [0013](0013-cbor-documents-are-an-index-over-the-input.md) | 2026-10-15 |
 | [0006](0006-versioned-formats-migrate-on-open.md) | Persisted formats are versioned and migrate on open; never a forced replay | Accepted | 2026-10-15 |
 | [0007](0007-era-indexed-state.md) | Era-indexed state: phantom eras, a closed witness and match types | Accepted | 2026-10-15 |
-| [0008](0008-networking-as-implemented.md) | Networking stays as implemented, not mirrored from Haskell | Accepted | 2026-10-15 |
+| [0008](0008-networking-mirrors-ouroboros-network.md) | Networking mirrors ouroboros-network (replaces the earlier 0008 in full, a one-time exception approved by the owner) | Accepted | 2026-10-25 |
 | [0009](0009-ledger-mirror-step-2.md) | Ledger mirror step 2: three jumps behind a differential harness | Accepted (jumps 1 and 2 done; the harness is removed); D8's eager reward calculation is superseded by [0019](0019-incremental-reward-calculation.md) | 2026-10-15 |
 | [0010](0010-scala-3-3-lts.md) | Scala 3.3 LTS | Accepted | 2026-10-14 |
 | [0011](0011-stack-safety.md) | Recursion over data from outside is stack safe | Accepted | 2026-10-16 |
