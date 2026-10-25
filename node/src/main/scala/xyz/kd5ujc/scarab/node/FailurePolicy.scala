@@ -19,6 +19,13 @@ object FailurePolicy:
     case _: PeerError.Protocol | _: PeerError.Framing | _: PeerError.InvalidHeader |
         _: PeerError.InvalidBlock =>
       FailureClass.Misbehaved
+    // A decoder that threw on the peer's input: the connection closes and the peer is charged a
+    // failure with the error delay, as the reference does for an exception that no rethrow policy
+    // names (network 2fb69829 RethrowPolicy.hs:61-70 and 99-103, the unit `ShutdownPeer`;
+    // consensus 82ecba329 Node/RethrowPolicy.hs:131-139, `theyBuggyOrEvil` and `ourBug` are both
+    // `ShutdownPeer`). It is not `Misbehaved`: a decoder that throws instead of refusing may be
+    // our bug on valid data, and forgetting would then drop every honest peer that sends it.
+    case _: PeerError.InputDefect => FailureClass.Transient
     // Consensus 82ecba329 Node/RethrowPolicy.hs maps every ChainSyncClientException,
     // including EmptyBucket, DensityTooLow and HistoricityError, to ShutdownPeer.
     // Network 2fb69829 PeerStateActions.hs uses epErrorDelay (10s default), preserving

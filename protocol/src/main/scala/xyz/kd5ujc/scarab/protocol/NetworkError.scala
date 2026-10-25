@@ -29,8 +29,18 @@ enum NetworkError extends DomainError:
   )
   case BearerClosed(reason: NetworkError.Closure)
 
-  /** An unexpected library failure or bug; never a recoverable failure of the peer. */
+  /** An unexpected library failure or bug of unknown origin; never a recoverable failure of the
+    * peer. It stops the node at the owner's fatal boundary.
+    */
   case Defect(cause: Throwable)
+
+  /** The decoder of `protocol` threw on the peer's bytes instead of answering: still a defect with
+    * its original cause, but one whose origin is this connection's input. The policy is the
+    * reference's for an exception in a mini-protocol thread: the connection is closed and the peer
+    * is charged, the node goes on (network `RethrowPolicy.hs`: an exception no policy names is
+    * `ShutdownPeer`).
+    */
+  case DecoderDefect(protocol: Int, cause: Throwable)
 
   /** The peer's bytes are not a well-formed multiplexer frame (a header that cannot be read, a
     * payload past the limit): the multiplexer cannot tell which protocol was meant.
@@ -58,10 +68,12 @@ enum NetworkError extends DomainError:
     case StateAcquireFailure(point, flushed, pinned, selected) =>
       s"${Protocols.name(Protocols.LocalStateQuery)} acquired UTxO view at $point with stamp $pinned; expected $flushed..$selected"
     case BearerClosed(r) => s"connection closed: ${r.message}"
-    case Defect(t)       => s"network defect: ${Option(t.getMessage).getOrElse(t.getClass.getName)}"
-    case Framing(e)      => s"multiplexer framing: ${e.message}"
-    case MuxSetup(e)     => s"multiplexer setup: ${e.message}"
-    case MuxWrite(e)     => s"multiplexer write: ${e.message}"
+    case Defect(t)       => s"network defect: ${NetworkError.describe(t)}"
+    case DecoderDefect(p, t) =>
+      s"${Protocols.name(p)} decoder defect: ${NetworkError.describe(t)}"
+    case Framing(e)  => s"multiplexer framing: ${e.message}"
+    case MuxSetup(e) => s"multiplexer setup: ${e.message}"
+    case MuxWrite(e) => s"multiplexer write: ${e.message}"
 
 object NetworkError:
   /** Internal invariant failure crossing from the network's peer-error scope to the node owner. */
@@ -126,8 +138,13 @@ object NetworkError:
   enum SduOperation:
     case Read, Write
 
-  /** Only operating-system transport failures are connection failures. Preserve every unexpected
-    * exception itself for the owning node's fatal boundary.
+  /** The text of an unexpected exception, for presentation only. */
+  def describe(cause: Throwable): String =
+    Option(cause.getMessage).getOrElse(cause.getClass.getName)
+
+  /** Only operating-system transport failures are connection failures. Preserve every other
+    * exception itself for the owning node's fatal boundary; an exception of a decoder on the peer's
+    * bytes is [[DecoderDefect]], made where the decoder runs (`MuxChannel.recv`), not here.
     */
   def fromThrowable(context: String, cause: Throwable): NetworkError = cause match
     case io: java.io.IOException =>

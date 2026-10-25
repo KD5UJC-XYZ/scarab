@@ -52,6 +52,11 @@ enum PeerError extends NodeError:
     */
   case InvalidBlock(error: ValidationError)
 
+  /** A decoder threw on this peer's input instead of answering. It stays a defect with its original
+    * cause; only its policy is the connection's (see `FailurePolicy`).
+    */
+  case InputDefect(site: PeerError.InputSite, cause: Throwable)
+
   def message: String = this match
     case Handshake(r)   => s"handshake: ${r.message}"
     case Protocol(r)    => s"protocol: ${PeerError.protocolMessage(r)}"
@@ -66,6 +71,8 @@ enum PeerError extends NodeError:
     case Diverged(r)         => s"diverged: ${r.message}"
     case InvalidHeader(p, e) => s"invalid header ${Points.show(p)}: ${e.message}"
     case InvalidBlock(e)     => s"invalid block ${e.message}"
+    case InputDefect(site, cause) =>
+      s"defect decoding ${site.message}: ${NetworkError.describe(cause)}"
 
 object PeerError:
   enum GenesisProblem:
@@ -99,6 +106,22 @@ object PeerError:
       case DensityTooLow => "candidate density cannot compete with another peer"
       case InvalidJumpResponse(requested, actual) =>
         s"intersection response ${actual.fold("no intersection")(Points.show)} does not match requested jump ${Points.show(requested)}"
+
+  /** Where the peer's input was being decoded when a decoder threw. */
+  enum InputSite:
+    /** A mini-protocol message, in the multiplexer's channel (`MuxChannel.recv`). */
+    case Wire(protocol: Int)
+
+    /** The ledger header inside a ChainSync roll-forward. */
+    case ChainSyncHeader
+
+    /** A fetched block body, checked against its announced header. */
+    case FetchedBlock(point: ChainSync.Point)
+    def message: String = this match
+      case Wire(protocol)  => s"a ${xyz.kd5ujc.scarab.protocol.Protocols.name(protocol)} message"
+      case ChainSyncHeader => "a ChainSync header"
+      case FetchedBlock(point) => s"the fetched block ${Points.show(point)}"
+
   type ProtocolFailure = ProtocolError | ProtocolProblem | NetworkError.IngressLimit |
     NetworkError.Decode | NetworkError.IllegalTransition | NetworkError.QueryRefused |
     NetworkError.TxSubmission

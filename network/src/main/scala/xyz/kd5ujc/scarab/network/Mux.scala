@@ -717,16 +717,19 @@ object Mux:
       lock.lock.surround {
         def decodeNow: F[A] = permitted *>
           F.delay(buffer.view).flatMap { held =>
-            decode(held) match
-              case DecodeResult.Decoded(value, consumed) =>
+            // A decoder that throws on the peer's bytes is a defect of this connection's input
+            // (network RethrowPolicy.hs: ShutdownPeer), never one of the node.
+            Either.catchNonFatal(decode(held)) match
+              case Left(cause) => NetworkError.DecoderDefect(id, cause).raise[F, A]
+              case Right(DecodeResult.Decoded(value, consumed)) =>
                 if consumed > maxBytes then NetworkError.IngressLimit(id, consumed).raise[F, A]
                 else
                   F.delay(buffer.consume(consumed)) *>
                     handshakeInput
                       .traverse_(input => F.delay(buffer.clear()) *> input.complete)
                       .as(value)
-              case DecodeResult.Failed(reason) => NetworkError.Decode(id, reason).raise[F, A]
-              case DecodeResult.NeedMore =>
+              case Right(DecodeResult.Failed(reason)) => NetworkError.Decode(id, reason).raise[F, A]
+              case Right(DecodeResult.NeedMore) =>
                 if held.size > maxBytes then NetworkError.IngressLimit(id, held.size).raise[F, A]
                 else handshakeInput.traverse_(_.continue) *> await(held.size)
           }

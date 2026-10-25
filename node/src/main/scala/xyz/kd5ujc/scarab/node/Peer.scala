@@ -499,11 +499,26 @@ object Peer:
   def parseAddress(text: String): Either[AddressError, SocketAddress[Host]] =
     SocketAddress.fromString(text).toRight(AddressError.Invalid(text))
 
+  /** A pure decoder over the peer's input, run where its result is used. One that throws instead of
+    * answering is [[PeerError.InputDefect]] with the original cause: the connection's failure, not
+    * the node's (the reference decodes in the mini-protocol's thread, where an exception is
+    * `ShutdownPeer`, network 2fb69829 RethrowPolicy.hs:99-103).
+    */
+  private[node] def decodingInput[F[_], A](site: PeerError.InputSite)(decode: => A)(using
+      F: cats.Applicative[F],
+      raise: Raise[F, PeerError]
+  ): F[A] =
+    Either
+      .catchNonFatal(decode)
+      .fold(cause => raise.raise[PeerError, A](PeerError.InputDefect(site, cause)), F.pure)
+
   /** The node-level classification of a network failure. */
   def networkFault(error: NetworkError): Fault = error match
     case NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error: PeerError)) =>
       Fault.Failed(error)
-    case NetworkError.Defect(cause)   => Fault.Defect(cause)
+    case NetworkError.Defect(cause) => Fault.Defect(cause)
+    case NetworkError.DecoderDefect(protocol, cause) =>
+      Fault.Failed(PeerError.InputDefect(PeerError.InputSite.Wire(protocol), cause))
     case NetworkError.Framing(cause)  => Fault.Failed(PeerError.Framing(cause))
     case NetworkError.MuxSetup(cause) => Fault.Failed(PeerError.MuxSetup(cause))
     case NetworkError.MuxWrite(cause) => Fault.Failed(PeerError.MuxWrite(cause))
@@ -742,12 +757,14 @@ object Peer:
               Raise[F, PeerError]
           ): F[SyncEvent] = update match
             case ChainSyncClient.Update.RollForward(h, tip) =>
-              Header
-                .fromNtN(h, settings.byronEpochSlots)
-                .fold(
+              decodingInput(PeerError.InputSite.ChainSyncHeader)(
+                Header.fromNtN(h, settings.byronEpochSlots)
+              ).flatMap(
+                _.fold(
                   e => protocol(PeerError.ProtocolProblem.HeaderDecode(e)),
                   h => F.pure(SyncEvent.RollForward(h, tip))
                 )
+              )
             case ChainSyncClient.Update.RollBackward(point, tip) =>
               F.pure(SyncEvent.RollBackward(point, tip))
 
@@ -868,9 +885,10 @@ object Peer:
                         )
                       case Some(header) =>
                         for
-                          delivered <- BlockPool.Delivered
-                            .checked(header, raw)
-                            .fold(protocol[BlockPool.Delivered], F.pure)
+                          delivered <- decodingInput(
+                            PeerError.InputSite.FetchedBlock(header.point)
+                          )(BlockPool.Delivered.checked(header, raw))
+                            .flatMap(_.fold(protocol[BlockPool.Delivered], F.pure))
                           _ <- fetcher.received(allocation, header.hash)
                           delegated <- claims.usesSelectionWorker
                           _ <- (receivedBody.traverse_(_(header, raw)) *> prepare(Vector(raw)))
@@ -1414,7 +1432,9 @@ object Peer:
           ): F[BlockPool.Taken] =
             if taken.metadata.nonEmpty then F.pure(taken)
             else
-              BlockPool.Delivered.checked(header, taken.block) match
+              decodingInput(PeerError.InputSite.FetchedBlock(header.point))(
+                BlockPool.Delivered.checked(header, taken.block)
+              ).flatMap {
                 case Right(checked) => F.pure(taken.copy(metadata = Some(checked.metadata)))
                 case Left(PeerError.ProtocolProblem.FetchedBlockIntegrity(cause)) =>
                   val refusal = ValidationError(header.point, BlockFailure.Transport(cause))
@@ -1423,6 +1443,7 @@ object Peer:
                      else PeerError.Diverged(PeerError.Divergence.ForeignBlock(refusal)))
                       .raise[F, BlockPool.Taken]
                 case Left(other) => protocol(other)
+              }
 
           def fetchBlock(header: Header)(using Raise[F, PeerError]): F[Bytes] =
             obtainBlock(header)

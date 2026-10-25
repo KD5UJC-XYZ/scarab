@@ -146,6 +146,9 @@ This comparison establishes queue cleanup; it does not claim identical snapshot-
 once, releases its connection and keeps accepting. Cancellation releases the handler without
 calling the reporter. The node's reporter logs typed network endings and sends both raw handler
 defects and `NetworkError.Defect` to the existing `Fatal.Defect` sink (exit 7), without peer blame.
+`NetworkError.DecoderDefect`, a decoder that threw on the connection's own bytes
+([ADR 0017](../adr/0017-fibers-end-with-values.md), decision 5), is a typed ending like the others:
+the reporter logs it and the connection closes, with no fatal event, and the listener keeps accepting.
 The Unix handler no longer catches an unexpected exception merely to log and continue. The local
 state acquisition invariant policy is described below; its typed cause reaches `Fatal.Internal`.
 

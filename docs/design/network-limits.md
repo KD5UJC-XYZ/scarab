@@ -89,7 +89,9 @@ the same body in later messages before acknowledgement remains allowed, as upstr
 
 SDU timeout is a transient transport failure. A resource/agency violation is peer misbehaviour.
 Within these mux/transaction scopes, unexpected library failures retain the original
-`NetworkError.Defect`; the node network-fault classifier bypasses peer blame for that constructor;
+`NetworkError.Defect`, except an exception thrown by a decoder on the connection's bytes, which is
+`NetworkError.DecoderDefect` and closes only that connection ([ADR0017](../adr/0017-fibers-end-with-values.md));
+the node network-fault classifier bypasses peer blame for `Defect`;
 expected bearer `IOException` remains a recoverable closure. An uncaught exception from a local
 transaction source is a defect even if its Java type is `IOException`, because mux transport errors
 already arrive as typed values. The transaction background fiber establishes

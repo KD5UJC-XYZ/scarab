@@ -278,6 +278,38 @@ class InboundGovernorSuite extends FailsOnUncaught:
       assertEquals(table.counters, ConnectionState.Counters.zero)
   }
 
+  test("a decoder that throws on an inbound peer's input closes that connection, not the node") {
+    val cause = new IllegalStateException("injected decoder defect")
+    val site = PeerError.InputSite.ChainSyncHeader
+    val defect: PeerError = PeerError.InputDefect(site, cause)
+    for
+      remoteNode <- serving(forged.raws)
+      reported <- Ref.of[IO, Vector[Fatal]](Vector.empty)
+      us <- local(
+        fatal = value => reported.update(_ :+ value),
+        followSession = Some(_ => Peer.decodingInput[IO, Unit](site)(throw cause))
+      )
+      first <- connect(Some(remoteNode), us)(ended => ended)
+      sessions <- us.governor.sessions
+      // the node goes on: the same address connects again and is served, not refused
+      second <- connect(Some(remoteNode), us)(ended => ended)
+      fatalities <- reported.get
+      table <- us.manager.snapshot
+    yield
+      assertEquals(peerFailure(first._2), defect)
+      assertEquals(peerFailure(second._2), defect)
+      assertEquals(
+        sessions.map(_.ended),
+        Vector(Some(InboundGovernor.SessionFailure.Peer(defect)))
+      )
+      assertEquals(
+        FailurePolicy.classify(defect),
+        xyz.kd5ujc.scarab.network.selection.FailureClass.Transient
+      )
+      assertEquals(fatalities, Vector.empty[Fatal])
+      assertEquals(table.counters, ConnectionState.Counters.zero)
+  }
+
   test("connection JSON renders a typed session failure only at presentation") {
     val failure = InboundGovernor.SessionFailure.Peer(PeerError.NoIntersection)
     val json = InboundGovernor.json(

@@ -640,6 +640,101 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       }
     }
 
+  test("a decoder that throws on an outbound peer's input loses that connection, not the node") {
+    val cause = new IllegalStateException("injected decoder defect")
+    val site = PeerError.InputSite.ChainSyncHeader
+    val defect: PeerError = PeerError.InputDefect(site, cause)
+    node {
+      for
+        chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
+          VolatileChain.genesis(ForgedChain.geometry.securityParam, forged.genesis)
+        )
+        given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
+        follower <- Follower.create[IO, MirrorState](
+          ForgedChain.rules,
+          _ => IO.unit,
+          ForgedChain.geometry
+        )
+        lost <- Ref.of[IO, Vector[PeerError]](Vector.empty)
+        fatals <- Ref.of[IO, Vector[Fatal]](Vector.empty)
+        pool <- BlockPool.create[IO]
+        good <- serving(forged.raws)
+        peers <- InMemoryPeers.create(magic)
+        first = InMemoryPeers.address(1)
+        _ <- peers.serve(first, good)
+        manager <- ConnectionManager.create[IO]()
+        hot = OutboundPeers.Hot[IO](
+          magic = magic,
+          network = NodeToNode.Settings(),
+          peer = Peer.Settings(
+            tcp,
+            magic,
+            readAhead = 8,
+            byronEpochSlots = ForgedChain.geometry.byron.epochSlots
+          ),
+          // the session meets a decoder that throws, as `Peer` does at its decode sites
+          follow = (_, _) => Peer.decodingInput[IO, Unit](site)(throw cause),
+          prepare = _ => IO.unit,
+          heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin,
+          headers = None,
+          transactions = None,
+          observe = None,
+          pool = pool,
+          versus = follower.versus,
+          lost = error => lost.update(_ :+ error),
+          fatal = f => fatals.update(_ :+ f)
+        )
+        view = new PeerNetwork.ChainView[IO]:
+          def tip = chainRef.get.map(c => c.tipRef.map(t => (t.slot, t.hash.hashCode.toLong)))
+          def geometry = IO.pure(ForgedChain.geometry)
+        local = RootConfig(false, DiffusionMode.InitiatorAndResponder, Provenance.Outbound, false)
+        roots = PeerNetwork.Roots(
+          List(RootGroupSpec(1, 1, List(first -> local))),
+          Set.empty,
+          None,
+          UseLedgerPeers.Disabled
+        )
+        modeRef <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
+        network = PeerNetwork.resource[IO](
+          PeerNetwork.Settings(roots, Targets.relay, seed = 7L),
+          peers,
+          manager,
+          OutboundPeers.Config(repromoteDelay = 1.second),
+          hot,
+          view,
+          modeRef,
+          _ => IO.unit,
+          (_, _) => IO.unit,
+          _ => IO.unit,
+          _ => IO.unit,
+          GsmRunner.Marker.none[IO],
+          LedgerPeersSource.none[IO]
+        )
+        stillRunning <- network.use { net =>
+          net.run.background.use { outcome =>
+            for
+              _ <- eventually("the loss is reported")(lost.get)(_.nonEmpty)
+              _ <- eventually("the peer is connected to again")(peers.connections)(
+                _.getOrElse(first, 0) >= 2
+              )
+              // the node does not end
+              ended <- outcome.map(Option(_)).timeoutTo(500.millis, IO.pure(None))
+            yield ended.isEmpty
+          }
+        }
+        reported <- lost.get
+        stopped <- fatals.get
+      yield
+        assert(stillRunning, "the node kept running")
+        assertEquals(stopped, Vector.empty[Fatal])
+        assert(reported.nonEmpty && reported.forall(_ == defect), reported.toString)
+        assertEquals(
+          FailurePolicy.classify(defect),
+          xyz.kd5ujc.scarab.network.selection.FailureClass.Transient
+        )
+    }
+  }
+
   test("a peer error raised in a fiber of the connection is a value, raised again in the session") {
     Handle
       .allow[PeerError] {

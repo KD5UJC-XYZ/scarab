@@ -39,12 +39,18 @@ code that is tested without a network.
    sessions and the `BlockPool`, one fiber per connection and one per hot session, whose resources own the
    claims on blocks.
 5. **Failure classes are decided in one place.** `FailurePolicy.classify(PeerError): FailureClass` maps a
-   protocol violation, an invalid header or an oversize message to *forget the peer* (unless its origin is
-   Local or Bootstrap, which are never forgotten) and a network failure or a timeout to *back off* (`FailureClass.Misbehaved` and `Transient`).
-   Owner decision of 2026-10-17 (design section 8a, item 8), not an open question.
+   protocol violation, an invalid header, an invalid block, a multiplexer framing error or an oversize
+   message to *forget the peer* (unless its origin is Local or Bootstrap, which are never forgotten) and a
+   network failure, a timeout, a Genesis refusal and a decoder that threw on the peer's input
+   (`PeerError.InputDefect`, [ADR 0017](0017-fibers-end-with-values.md)) to *back off* (`FailureClass.Misbehaved`
+   and `Transient`). The reference maps every consensus ChainSync client exception, the Genesis ones
+   included, to `ShutdownPeer` with the error delay (consensus `82ecba329` `Node/RethrowPolicy.hs`), which
+   is why Genesis is `Transient`. Owner decision of 2026-10-17 (design section 8a, item 8), not an open
+   question.
 6. **Placement.** The pure part (state, decision, events, targets, roots, sensitive state, the Genesis
-   State Machine and the fetch mode, the random generator) is `network/.../selection`, with no dependency
-   on cats-effect. The loop, the interpreter, the network wiring (`PeerNetwork`), the GSM runner and the
+   State Machine and the fetch mode, the random generator) is `network/.../selection`, free of effects
+   except `ChainSyncJumpingRuntime`, the one file there that uses cats-effect (`Async`, `Ref`, `Deferred`,
+   `Resource`), because it holds the jumping state of the ChainSync clients. The loop, the interpreter, the network wiring (`PeerNetwork`), the GSM runner and the
    marker file are in `node`, next to the follower and the connection manager they drive.
 7. **Faithful to the reference, with the differences written down**: the Genesis State Machine is ported from
    `Ouroboros.Consensus.Node.GSM` (ouroboros-consensus 4.2.1.0) and the fetch mode is derived from it; outbound
@@ -66,8 +72,12 @@ acceptance scope; they retain the pure decision function and single status recor
 - The state is larger than the reference's (one record per peer plus the views), and the views are computed per
   decision; at the sizes of the targets (hundreds of known peers) this costs microseconds, and the decision is
   not on the block path.
-- The loop never gives up, with one exception: a node in the sensitive state that has not reached the clean one
-  in 15 minutes stops (`BootstrapPeersCriticalTimeout`), as the reference does. The old "fatal after 30
-  consecutive failures" of the outbound supervisor is gone.
+- The loop never gives up on a peer, but it does stop the node in these cases: a session ends in
+  `Disposition.StopNode` (storage 5, internal 6, defect 7, implementation unavailable 8, see ADR 0017);
+  `--stall-exit-after` ends a node whose chain has not advanced for that long (exit 4); and a node in the
+  sensitive state that has not reached the clean one in 15 minutes stops
+  (`BootstrapPeersCriticalTimeout`), as the reference does. A peer's own failure, a decoder that threw on
+  its input included, is never one of them: that connection closes and the peer is tried again after a
+  delay. The old "fatal after 30 consecutive failures" of the outbound supervisor is gone.
 - Revisit if peer sharing or churn (G1.2 to G1.4) need state the record cannot carry without a second source of
   truth, or if the per-decision views show up in a profile.

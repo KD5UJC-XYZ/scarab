@@ -46,16 +46,37 @@ rules refused, a storage failure and a bug in the node were all retried like a l
 4. **The close of a connection is typed.** `Mux.closed` is a `NetworkError`, and `abort` takes one.
    Whichever fiber meets the close raises the original cause, so an ingress overrun is classified as the
    peer's protocol violation wherever it is seen.
-5. **A session ends with a closed set of outcomes.** `SessionEnd` is `Returned | Failed(PeerError) |
-   Rejected(ValidationError) | Unavailable(EvaluationUnavailable) | Storage(StorageError) | Internal(NodeError) | Defect(Throwable) | Cancelled
-   | Stopped`. Each session gives rules, stores and the follower its own caller capability. A retained
-   whole-run `Handle` also catches failures from resources whose scope owns their lifetime. The typed
-   failure is placed by `SessionEnd.of`, which has no default case. An exception that is not ours is `Defect`,
-   never an unavailable peer. `FailurePolicy.disposition` gives each a policy: a peer that broke the
-   protocol, sent an invalid header or an invalid block is forgotten; a failed connection is tried again
-   after a delay; storage, an internal failure, a defect and implementation unavailability stop the node
-   with exit codes 5, 6, 7 and 8, as
-   the reference stops its node for a storage failure (`consensusRethrowPolicy`, `ShutdownNode`).
+5. **A session ends with a closed set of outcomes.** `SessionEnd` is `Returned | NoMoreIntersection |
+   RolledBackPastIntersection(point) | Failed(PeerError) | Rejected(ValidationError) |
+   Unavailable(EvaluationUnavailable) | Storage(StorageError) | Internal(NodeError) | Defect(Throwable) |
+   Cancelled | Stopped(clean: Boolean)`. Each session gives rules, stores and the follower its own caller
+   capability. A retained whole-run `Handle` also catches failures from resources whose scope owns their
+   lifetime. The typed failure is placed by `SessionEnd.of`, which has no default case. An exception that is
+   not ours is `Defect`, never an unavailable peer. `FailurePolicy.disposition` gives each a policy: a peer
+   that broke the protocol, sent an invalid header or an invalid block is forgotten; a failed connection is
+   tried again after a delay; storage, an internal failure, a defect and implementation unavailability stop
+   the node with exit codes 5, 6, 7 and 8, as the reference stops its node for a storage failure
+   (`consensusRethrowPolicy`, `ShutdownNode`).
+   **An exception is placed by where it came from, not by its label.** A decoder that throws on a
+   peer's bytes is not the node's defect. `MuxChannel.recv` runs the decoder once under
+   `Either.catchNonFatal` and raises `NetworkError.DecoderDefect(protocol, cause)` through its caller's
+   `Raise`, in the fiber that called it, so no fiber is made and decision 1 holds. The decode sites in
+   the node (`Header.fromNtN`, both `BlockPool.Delivered.checked` calls) do the same through
+   `Peer.decodingInput` and raise `PeerError.InputDefect(site, cause)`. `Peer.networkFault` maps the
+   first to the second, and `FailurePolicy.classify` makes it `Transient`: the connection closes, the
+   peer is charged a failure with the error delay and the node goes on. The cause is kept, as for every
+   defect. It is not `Misbehaved`: a decoder that throws instead of refusing may be our own bug on valid
+   data, and forgetting the peer would then drop every honest peer that sends it. This is the reference's
+   policy: an exception that no rethrow policy names is `ShutdownPeer`, the unit of the monoid, and
+   `ourBug` and `theyBuggyOrEvil` are both `ShutdownPeer` (ouroboros-network `2fb69829`
+   `RethrowPolicy.hs` 61 to 70 and 99 to 103, with `ConnectionHandler.hs` 294 to 307, and
+   ouroboros-consensus `82ecba329` `Node/RethrowPolicy.hs` 131 to 139); only storage is `ShutdownNode`
+   (55 to 90). Making every `NetworkError.Defect` the peer's would undo issue 154, because the node's
+   own code produces `Defect` too (a fiber scope's wrapped exception, the rules, the storage). So
+   `NetworkError.Defect`, `fromThrowable`, `SessionEnd.Defect` (rules and storage) and `Fault.Defect`
+   still reach `Fatal.Defect`, and the storage, internal and unavailable cases still stop the node. A
+   peer must not be able to stop the whole process by what it sends, which is the reasoning of the
+   process-wide denial of service below.
 6. **The tip is published after the blocks are stored.** `Follower.commit` persists, then replaces the
    chain, as the reference writes a block to the VolatileDB before chain selection moves the tip. A
    failure of the storage leaves the published chain as it was.
@@ -98,8 +119,11 @@ rules refused, a storage failure and a bug in the node were all retried like a l
 
 - An evaluator or decoder implementation limit is `Unavailable`, carrying the closed ledger failure,
   not a consensus rejection. It stops the node with exit 8, bypassing peer blame and reconnect policy.
-  Expected transport `IOException`s remain connection failures; every unexpected network exception
-  preserves its cause as `NetworkError.Defect` until the node's `Fatal.Defect` boundary (exit 7).
+  Expected transport `IOException`s remain connection failures; an unexpected network exception of
+  unknown origin preserves its cause as `NetworkError.Defect` until the node's `Fatal.Defect` boundary
+  (exit 7), and one thrown by a decoder on a peer's bytes is `NetworkError.DecoderDefect`, a failure of
+  that connection (decision 5). The bearer's reader fiber is not yet covered: an exception thrown while
+  it reads or routes remains `Defect` and fatal, a gap recorded here until the reader can name its input.
   A fatal outcome marks and releases the connection before reporting the fatal event; it produces no
   `Lost` observation or `Transient` projection. Exits 5 (storage) and 6 (internal) are unchanged.
 - **Recovery addendum (#152).** `Follower` restarts intersection when its candidate leaves the
