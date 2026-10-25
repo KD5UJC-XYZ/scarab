@@ -74,3 +74,16 @@ presentation. Key bytes, validation order, erasure and evolution are unchanged.
 
 The rest of the string-error migration is tracked by #82; infrastructure failures and defects of
 the forger remain the separate G7-F3 follow-up in [#180](https://github.com/KD5UJC-XYZ/scarab/issues/180).
+
+## Amendment (2026-10-25): forger failures
+
+The forging worker ends with a value (`Forger.scoped`, [ADR 0017](0017-fibers-end-with-values.md)).
+A forging refusal does not end it: `NotLeader` and other `ForgeError` values are reported and the
+next slot is tried, unless `HotKeys.infrastructureFailure` classifies the error as terminal. A typed
+failure that escapes to `Forger.scoped` (a storage failure, missing evaluator support, another node
+error) and a defect of the worker finish it as a `Fatal`. A `Fatal` or a defect raised while the
+key is in use under `HotKeys` poisons the key state, so a queued signer or reload observes the same
+failure and does not sign; a failure to write the evolved key back (`ForgeError.KesFileFailure`,
+event `kesPersistFailed`) is one. An evolution that returns a `ForgeError` is a value, not such a
+failure. A defect that one transaction triggers in the evaluator does not stop the forger:
+`BlockBuilder.select` skips that transaction and selection continues.

@@ -30,3 +30,19 @@ jump 3 (D10).
 
 - During jump 2 the node can run either rule set, or both.
 - Performance budgets per jump: replay within +15%, epoch boundary within +25%, peak heap within +20%.
+
+## Amendment (2026-10-25): D3 and the `legacy` module
+
+D3 (old formats kept readable by a frozen `legacy` module) is superseded by the reader retirement
+of [ADR 0006](0006-versioned-formats-migrate-on-open.md) (amended 2026-10-19, #83), which removed
+the V1 to V4 snapshot readers from `legacy` (commit `edf8a887b`). V5 is the oldest supported
+snapshot version (`FileKind.SnapshotFile.readableFrom`); V5 migrates to V7 on open
+([storage-migrations.md](../storage-migrations.md)). As `FileKind.versionOf` and `FileKind.readable`
+implement it, a registered version older than that raises `StorageError.RetiredVersion`, an
+identifier of a snapshot family that no registered version spells raises `StorageError.UnknownVersion`,
+and any other leading bytes are `StorageError.Corrupt`; `ChainStorage.preflight` applies these
+before mutable stores are acquired.
+
+`legacy` remains because the genesis start path uses it: `NodeSetup` builds the first ledger state
+with `legacy.GenesisState.initial`, holds it as `legacy.FlatNodeState` and converts it to the
+era-indexed state with `legacy.Mirroring`.

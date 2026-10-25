@@ -23,3 +23,9 @@ cats-laws or ScalaCheck properties.
 - Deterministic tests (`TestControl`) and interpreters for simulation (K9) are possible.
 - Some boilerplate: hand-written instances where derivation cannot reach (era-generic composites).
 - Hot paths are measured before an abstraction is added to them.
+
+## Amendment (2026-10-25): the log is not an `IO` exception
+
+The decision above lists the JSON log beside `Main` and tools as a place for `IO`. The log is now
+the `LogRouter` interpreter of [ADR 0014](0014-typed-log.md) (`LogRouter.resource[F[_]: Async]`),
+polymorphic in `F`, so `IO` belongs only in `Main` and tools.

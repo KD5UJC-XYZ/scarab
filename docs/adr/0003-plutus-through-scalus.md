@@ -42,3 +42,13 @@ and reported upstream with reproductions.
   - `ScarabProgramView`;
   - `PlutusScriptBytes`;
   - `FlatScan`.
+
+## Amendment (2026-10-25): where the current state is recorded
+
+This record keeps the decision; it is not the inventory. The conformance count in the consequences
+is historical; current results and their evidence are in [plutus-conformance.md](../plutus-conformance.md).
+The native cryptographic backend is [ADR 0020](0020-plutus-native-crypto-through-scalus-crypto-jni.md).
+The builtin corrections the wrapper applies, with their reproducer suites, are documented on
+`ScalusEvaluator.CorrectedVm` in
+[ScalusEvaluator.scala](../../plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ScalusEvaluator.scala);
+the list in the amendment above is not maintained as corrections change.

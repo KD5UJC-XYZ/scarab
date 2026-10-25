@@ -22,3 +22,13 @@ CONTRIBUTING, "Build tooling").
 
 - No dependency on a general CBOR library's limits (borer refuses past 1,000 levels; scalus#398).
 - The decoders are fuzzed (K3) and cross-checked against cuddle (K10).
+
+## Amendment (2026-10-25): scodec in SCLS interchange
+
+The SCLS interchange code (`SclsFraming`, `SclsRecord`, `SclsOutput` in
+[storage/scls](../../storage/src/main/scala/xyz/kd5ujc/scarab/storage/scls)) also uses scodec, for
+fixed-width integer fields that it reads or writes once per frame and once per entry, not once per
+file or chunk. Each of the three has its own closed error cases (for example `SclsRecord.Error.Binary`), not
+`Binary.Failure`. It runs only in the `export-scls` and `import-scls` tools (`SclsCommand`), never
+on the node's per-block or per-frame paths, and the measurements in CONTRIBUTING ("Build tooling")
+do not cover it.
