@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import cats.effect.{Async, Deferred, Ref, Resource, Temporal}
 import cats.effect.implicits.*
-import cats.effect.std.{Queue, Semaphore, Supervisor}
+import cats.effect.std.{Queue, Semaphore}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -27,6 +27,7 @@ import xyz.kd5ujc.scarab.network.{
   NetworkError,
   NodeToNode,
   NodeToNodeConnection,
+  OrderedSupervisor,
   TxSubmissionClient
 }
 import xyz.kd5ujc.scarab.network.selection.{ChainSyncJumping, FetchGsv, FetchMode, Time}
@@ -644,7 +645,7 @@ object Peer:
           fetchIdentity.getOrElse(settings.address.hashCode.toLong)
         )
       )(Resource.pure[F, FetchCoordinator.Session[F]])
-      supervisor <- Supervisor[F](await = false)
+      supervisor <- OrderedSupervisor[F]
       heights <- Resource.eval(
         Ref.of[F, Map[ChainSync.Point, Option[BigInt]]](
           Map(ChainSync.Point.Origin -> None)
