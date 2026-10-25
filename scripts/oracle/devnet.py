@@ -107,7 +107,7 @@ def run(name, root, log=print, wait_seconds=240):
     previous = None
     for dump in sorted(dumps):
         verdict = finality.classify(dump, reference, tip, follower, k)
-        entry = {"slot": dump.slot, "hash": dump.hash, "epoch": dumped_epoch(dump), "verdict": verdict.value,
+        entry = {"slot": dump.slot, "hash": dump.hash, "epoch": dumped_epoch(dump), "verdict": verdict,
                  "followerDepth": follower.depth(dump.hash),
                  "referenceBlock": finality.first_reference_block(chain, dump.slot)}
         if verdict is finality.Verdict.COMPARE:

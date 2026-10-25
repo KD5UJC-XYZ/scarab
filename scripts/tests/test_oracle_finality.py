@@ -114,7 +114,7 @@ class SummaryTest(unittest.TestCase):
              "protocolState": {"evolvingNonce": h(5), "candidateNonce": h(6), "epochNonce": h(7)}}
 
     def row(self, slot, verdict, epoch, **fields):
-        return {"slot": slot, "hash": h(slot), "epoch": epoch, "verdict": verdict.value, "followerDepth": None,
+        return {"slot": slot, "hash": h(slot), "epoch": epoch, "verdict": verdict, "followerDepth": None,
                 "referenceBlock": None, **fields}
 
     def compared(self, slot, epoch, scala):
@@ -134,6 +134,10 @@ class SummaryTest(unittest.TestCase):
         self.assertEqual([e["slot"] for e in summary["exclusions"]], [20, 30])
         self.assertEqual(summary["epochsWithoutMatch"], [3])
         self.assertEqual(summary["followerTip"], {"slot": 31, "hash": h(31)})
+        written = json.loads(json.dumps(summary))
+        self.assertEqual([r["verdict"] for r in written["results"]],
+                         ["compare", "rolledBack", "compare", "notYetImmutable"])
+        self.assertEqual(written["exclusions"][0]["verdict"], "rolledBack")
 
     def test_a_run_where_every_digest_is_excluded_fails(self):
         rows = [self.row(20, Verdict.ROLLED_BACK, 2), self.row(30, Verdict.NOT_YET_IMMUTABLE, 3)]

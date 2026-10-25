@@ -160,33 +160,39 @@ SCOPE = {
 }
 
 
+def rendered(row):
+    """A row as JSON: its verdict by name."""
+    return {**row, "verdict": row["verdict"].value}
+
+
 def summarize(results, digests, k, immutable_tip, follower_tip):
-    """(summary, failures) over the rows of one oracle run (one row per digest, with its `verdict`)."""
-    compared = [r for r in results if r["verdict"] == Verdict.COMPARE.value]
-    excluded = [r for r in results if Verdict(r["verdict"]).excluded]
-    diverged = [r for r in results if r["verdict"] == Verdict.DIVERGED.value]
+    """(summary, failures) over the rows of one oracle run (one row per digest, its `verdict` a `Verdict`). The
+    summary is JSON: verdicts appear by name only there."""
+    compared = [r for r in results if r["verdict"] is Verdict.COMPARE]
+    excluded = [r for r in results if r["verdict"].excluded]
+    diverged = [r for r in results if r["verdict"] is Verdict.DIVERGED]
     matched = sum(1 for r in compared if r.get("matched"))
     by_reason = {}
     for r in excluded:
-        by_reason[r["verdict"]] = by_reason.get(r["verdict"], 0) + 1
+        by_reason[r["verdict"].value] = by_reason.get(r["verdict"].value, 0) + 1
     summary = {"scope": SCOPE, "digests": digests, "compared": len(compared), "matched": matched,
                "mismatched": sum(1 for r in compared if r.get("matched") is False and "error" not in r),
                "errors": sum(1 for r in compared if "error" in r), "diverged": len(diverged),
                "excluded": len(excluded), "excludedByReason": by_reason,
-               "exclusions": [{f: r.get(f) for f in ("slot", "hash", "epoch", "verdict", "followerDepth",
-                                                     "referenceBlock")} for r in excluded],
+               "exclusions": [{f: rendered(r).get(f) for f in ("slot", "hash", "epoch", "verdict", "followerDepth",
+                                                               "referenceBlock")} for r in excluded],
                "epochsWithoutMatch": epochs_without_match(results),
                "referenceImmutableTip": immutable_tip,
                "followerTip": follower_tip._asdict() if follower_tip else None,
-               "securityParam": k, "results": results}
+               "securityParam": k, "results": [rendered(r) for r in results]}
     failures = []
     bad = [r for r in compared if not r.get("matched")]
     if bad:
         failures.append(f"oracle: {len(bad)} of {len(compared)} compared epoch-boundary states differ from the "
-                        f"Haskell ledger or could not be compared (first: {bad[0]})")
+                        f"Haskell ledger or could not be compared (first: {rendered(bad[0])})")
     if diverged:
         failures.append(f"oracle: {len(diverged)} digests are of blocks that one side holds at least {k} deep and "
-                        f"the other side's final chain does not (first: {diverged[0]})")
+                        f"the other side's final chain does not (first: {rendered(diverged[0])})")
     if not matched:
         failures.append(f"oracle: no epoch-boundary state was compared and matched ({digests} digests, "
                         f"{len(excluded)} excluded: {by_reason})")
