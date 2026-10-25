@@ -85,3 +85,22 @@ compares at every epoch boundary the follower digested (`scripts/oracle/devnet.p
 `oracle-summary.json` of the run directory and in the `oracle` block of `e2e-summary.json`.
 The first epoch of a chain the follower started in Byron has no digest (the follower digests an epoch
 when it sees the epoch number change in Shelley-based blocks).
+
+A digest is compared only when its block, by header hash, is on both final chains: in node 1's ImmutableDB
+(`db-analyser --show-slot-block-no`) and on the follower's chain rebuilt from the `extended` and `rolledBack`
+lines of its log ([`scripts/oracle/finality.py`](../../scripts/oracle/finality.py), #91). Any other digest is
+excluded with its reason, and the summary counts both kinds (`compared`, `matched`, `excluded`,
+`excludedByReason`, `exclusions`, `epochsWithoutMatch`, `scope`):
+
+| Reason | Meaning |
+|---|---|
+| `rolledBack` | Neither final chain holds the block: the follower digested a block of a short fork before it rolled it back. |
+| `notFinalOnFollower` | The reference's final chain does not hold it; the follower still held it, less than `k` deep, when it stopped. |
+| `notYetImmutable` | The block is after the reference's immutable tip when the comparison ran. |
+| `rolledBackOnFollower` | Immutable on the reference; the follower moved to another chain less than `k` blocks before it stopped. |
+
+The comparison fails on any difference or error in a compared digest, on a block that one side holds at least
+`k` deep while the other side's final chain does not (`diverged`), and when no digest was compared and matched.
+An excluded digest is not evidence of agreement: `epochsWithoutMatch` lists the boundaries left unchecked. The
+follower digests an epoch once, at the first block it applies in that epoch, so an epoch whose boundary block
+was rolled back has no digest of the replacement block (#442).
