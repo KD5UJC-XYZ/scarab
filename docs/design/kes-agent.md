@@ -445,12 +445,13 @@ meaningful peer credentials, and must be documented as weaker than a local socke
    truncation at every offset of the **724-byte body** and at every boundary of the **733-byte frame**
    (the tag and timestamp included), plus the client's 4-byte reply; bad version identifier; unknown tag;
    unknown `RecvResult`; a timestamp equal to the last one. Fuzz target over the frame reader.
-2. **Fixtures** (`fixtures/kes-agent/`, provenance README with source commit, agent version, command and
-   licence): frames captured from a real agent by a probe script that speaks the node side
-   (`scripts/kes_agent_probe.py`), replayed offline in `check`. The tested binary is the `kes-agent-1.1.0.0`
-   release asset (the only published build; see [Delivery](#delivery)), whose `Service:2.0` protocol and
-   driver are byte-identical to 1.4.0.0's apart from pragmas. This is the conformance oracle; the probe
-   doubles as an independent implementation check of this document's byte table.
+2. **Fixtures** (`fixtures/kes-agent/`, provenance README with source tag and commit, the built image id or
+   digest, command and licence): frames captured from a real agent — the upstream Dockerfile built from the
+   pinned tag on the Docker host — by a probe script that speaks the node side
+   (`scripts/kes_agent_probe.py`), replayed offline in `check`. The fixtures are what the test path uses, so
+   neither `check` nor a normal test run needs an agent, a container or a Haskell toolchain. This is the
+   conformance oracle; the probe doubles as an independent implementation check of this document's byte
+   table.
 3. **Behaviour** (`KesAgentClientSuite`): an in-process fake agent on a Unix socket covering push, drop,
    outdated bundle, malformed frame, EOF, refusal to handshake, slow write and reconnect; the forger's
    `noKey` state; a second instance's socket; a bundle signed by another cold key is refused; a rotated
@@ -468,7 +469,7 @@ meaningful peer credentials, and must be documented as weaker than a local socke
 
 | Stage | Content | Gate |
 |---|---|---|
-| 1 | Probe script; the pinned `kes-agent-1.1.0.0` `x86_64-linux` release asset with its SHA-256 (if it will not run on the test host, build `kes-agent-1.4.0.0` from the tag in a pinned image instead, and record which was used); captured fixtures with provenance; a byte-level verification of this document against them | fixtures replay in a Python test; the wire section corrected where the capture disagrees |
+| 1 | Build the upstream Dockerfile at the pinned tag **once** on the Docker host (pin the base image digest; record the resulting image id); the probe script; captured fixtures with provenance; a byte-level verification of this document against them | fixtures replay in a Python test; the wire section corrected where the capture disagrees |
 | 2 | `KesAgentWire` and its suite | `check` |
 | 3 | `HotKeys` no-key state, `KesAgentSource`, client, CLI flag, fake-agent suite | `check` + `kes-rotate` (no regression in file mode) |
 | 4 | Devnet `kes-agent` scenario and the real-agent matrix | `check` + the scenario (level 3) + evidence row |
@@ -476,6 +477,22 @@ meaningful peer credentials, and must be documented as weaker than a local socke
 
 Stage 1 is deliberately first: it is cheap, it removes the risk that this document is subtly wrong about
 the wire, and it produces the fixture the later stages test against.
+
+### Why not the published Linux binary
+
+Because it does not run outside Nix. The `kes-agent-1.1.0.0` `x86_64-linux` release asset is Nix-built: its
+ELF interpreter is `/nix/store/cg9s562sa33k78m63njfn1rw47dp9z0i-glibc-2.40-66/lib/ld-linux-x86-64.so.2`, it
+links against `libblst.so`, and its RPATHs point into `/nix/store` (glibc, a patched `libsodium-vrf`,
+numactl, gcc's lib directory). Run on an ordinary Debian host it fails at the loader, before `--help`; run
+through the system loader it fails on `libblst.so`. The `kes-agent-1.4.0.0` release has no assets at all. So
+"pin the published binary" is not an option, and building once is the honest one — the cost is an image,
+not a test-path dependency.
+
+What the build costs: the upstream `Dockerfile` is single-stage on `haskell:9.10-bookworm`, installs
+libsodium-dev, builds secp256k1 and blst from source, then `cabal install`s both executables. Expect tens of
+minutes cold and a multi-gigabyte image; a two-stage variant of our own would be much smaller if that
+matters. That happens once per pin on the Docker host — not per test run, not in `check`, and not in the
+nightly `e2e` matrix unless we later publish the image.
 
 ## Decisions
 
@@ -496,13 +513,13 @@ No decisions remain open for H2.
 - **Memory hardening.** Accept and document the in-process copy, with `-XX:+DisableAttachMechanism`,
   `-XX:-CreateCoredumpOnCrash` and a host-level compose example (`ulimit -c 0`, no swap, no hibernation); no
   off-heap/JNI key representation in H2.
-- **Agent provenance.** A published upstream binary, verified by SHA-256, with URL, digest and licence
-  recorded beside the other image pins. **Corrected 2026-10-25**: the `kes-agent-1.4.0.0` release has no
-  assets, so the binary we can pin is the `kes-agent-1.1.0.0` `x86_64-linux` asset — older than the `^>=1.3`
-  range 11.1.3 declares, but its `Service:2.0` protocol and driver are byte-identical to 1.4.0.0's apart from
-  pragmas. If that binary does not run on the test host, the fallback is a build of the pinned 1.4.0.0 tag in
-  a pinned image, which does mean a Haskell toolchain; the "no Haskell build" claim applies to the binary
-  path only. We do not ship the agent to operators; the documentation points at upstream's releases.
+- **Agent provenance.** **Corrected 2026-10-25 after testing the artifacts**: the `kes-agent-1.4.0.0` release
+  has no assets, and the `1.1.0.0` `x86_64-linux` binary is a Nix closure (a `/nix/store` ELF interpreter, a
+  `libblst.so` dependency and `/nix/store` RPATHs), so it does not run on an ordinary host. The agent is
+  therefore **built once** from the pinned tag with the upstream Dockerfile on the Docker host, base image
+  digest pinned and the resulting image id recorded. The test path uses the captured fixtures, not a live
+  agent, so this is a one-time cost and never a per-run one. We do not ship the agent to operators; the
+  documentation points at upstream's releases.
 - **Operator tooling.** Upstream `kes-agent-control`; no Scarab wrapper in H2. There is no devnet scenario to
   motivate one yet, and the scenario we add in stage 4 can call the upstream tool directly.
 - **Confirmations.** `--kes-agent-socket` as the flag name (reference mapping in #222); both flags together
