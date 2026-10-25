@@ -616,8 +616,8 @@ final class Forger[F[_]: Async, S](
     }
 
   /** The Conway ledger state at `slot` from the state at the tip: the combinator's tick
-    * ([[Hfc.tick]]: the epoch boundaries on the way, then the slot's own work), as the block rules
-    * would make it for a block in that slot.
+    * ([[Hfc.tick]]: the translation into the slot's era, then the slot's own work), as the block
+    * rules would make it for a block in that slot.
     */
   private def tick(
       nes: NewEpochState[Conway],

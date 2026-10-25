@@ -44,7 +44,7 @@ import xyz.kd5ujc.scarab.storage.UtxoStore
   *
   * The chain's state is the mirror ([[MirrorState]]: the Haskell `ExtLedgerState` and the node's
   * bookkeeping). A block is applied as the hard-fork combinator applies it: the ledger state is
-  * ticked to the block's slot (`Hfc.tick`: the epoch boundaries on the way and the translation into
+  * ticked to the block's slot (`Hfc.tick`: the translation into
   * the era the chain has entered), the header is validated against the ticked state (the envelope,
   * the leader check against `nesPd`, the operational certificate, the KES signature), the body is
   * applied by the era's BBODY on the ticked state, and the mirror is rebuilt with the tip, the
