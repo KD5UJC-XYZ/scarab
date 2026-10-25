@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   PreConway,
   ShelleyUtxo,
   StAnnTx,
+  Test,
   UtxoEnv
 }
 import xyz.kd5ujc.scarab.ledger.state.*
@@ -159,9 +160,10 @@ class RemainingPredicateReferenceSuite extends FunSuite:
         val expected =
           if name == "ordered" && !field[Boolean](addresses, "accepted") then addresses
           else field[Json](row, "attributes")
-        checked match
-          case Right(_) => assert(field[Boolean](expected, "accepted"), s"$major $name")
-          case Left(LedgerFailure.Rejected.Single(_, failure)) =>
+        // the first failure UTXO records is the first in the source order
+        Test.failures(checked).map(_.head) match
+          case None => assert(field[Boolean](expected, "accepted"), s"$major $name")
+          case Some(failure) =>
             assert(!field[Boolean](expected, "accepted"), s"$major $name")
             val native = field[Vector[String]](expected, "failureCbor").headOption
               .getOrElse(fail("native output predicate failure"))
@@ -185,6 +187,5 @@ class RemainingPredicateReferenceSuite extends FunSuite:
             val utxow = array(ledger.original)(1)
             val utxo = array(utxow.original)(1)
             assertEquals(utxo.original, hex(native), s"$major $name")
-          case other => fail(s"unexpected output predicate: $other")
     }
   }

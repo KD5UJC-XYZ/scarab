@@ -177,8 +177,10 @@ object ApplyBenchMain:
         val body = tx.body
         val spent = body.inputs.flatMap(utxo.get)
         val refOuts = body.referenceInputs.flatMap(utxo.get)
-        ns("outputChecks") += time(TxChecks.outputChecks(pp, e, body.id, body.outputs))._2
-        ns("collateralChecks") += time(TxChecks.collateralChecks(ledgerUtxo, pp, tx))._2
+        ns("outputChecks") += time(
+          xyz.kd5ujc.scarab.ledger.rules.UtxoTests.outputTooSmall(pp, body.outputs)
+        )._2
+        ns("collateralChecks") += time(TxChecks.collateral(ledgerUtxo, pp, tx))._2
         val (scripts, tProvided) =
           time(TxChecks.providedScripts(tx.witnesses, spent ++ refOuts))
         ns("providedScripts") += tProvided
