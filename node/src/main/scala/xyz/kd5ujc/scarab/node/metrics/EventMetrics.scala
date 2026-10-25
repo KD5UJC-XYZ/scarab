@@ -116,7 +116,7 @@ final class EventMetrics[F[_]: Sync] private (
       case ForgeEvent.Adopted(_, latency) =>
         latency.traverse_(ms => metrics.observe(forgeAdoptionSeconds, ms / 1000.0))
       case ForgeEvent.Lost(_, _, _) | ForgeEvent.Skipped(_, _) | ForgeEvent.Failed(_, _) |
-          ForgeEvent.EpochSummary(_, _) =>
+          ForgeEvent.EpochSummary(_, _) | ForgeEvent.KeyFileGroupAccess(_, _) =>
         // counted from the forger's own statistics at every scrape ([[Collectors.forging]])
         Sync[F].unit
 

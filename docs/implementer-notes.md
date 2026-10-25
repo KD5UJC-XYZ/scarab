@@ -835,6 +835,17 @@ are the ones most in need of a second reading.
 - **Suggested upstream action:** None for the wait. The behaviour for a transaction larger than the whole capacity (it waits for ever, holding both FIFOs and so every later submission of that node) could be a refusal, as Scarab does.
 - **Status:** confirmed in source
 
+### IN-83 Forging keys: the VRF file permission check is the reference's, and a single-instance lock is added
+
+- **Era:** Praos (Conway)
+- **Specification or CDDL says:** Nothing: key-file handling is node operation, not protocol.
+- **Implementation does:** `checkVRFFilePermissions` (cardano-node 11.1.3, `Cardano/Node/Run.hs`, errors in `Cardano/Node/Types.hs`) runs at start-up on the VRF key file only: any "other" bit (`0o007`) refuses with `OtherPermissionsExist`, any "group" bit (`0o070`) logs a warning (`GroupPermissionsExist`). On Windows it tests file attributes against generic access rights and in effect never refuses. The KES key, the certificate and a second instance are not checked.
+- **Scarab does:** The same check on the VRF key (`KeyFilePermissions`), as typed `ForgeKeyProblem.OtherPermissions` and a `keyFileGroupAccess` warning event; on a file system without POSIX permissions nothing is checked. One improvement: with `--forge` the node holds an exclusive lock on a hidden file beside the KES key for its lifetime (`--key-lock on`, the default; `off` skips it), and a second Scarab instance on the same key files is refused with `ForgeKeyProblem.InstanceLocked`, whatever its `--db`. The reference has no such lock. It is on by default because running two forgers for one pool is an operator error that the database lock cannot see when the databases differ, and the node already writes into the KES key's directory. It protects only against another Scarab instance, not against the reference node.
+- **Evidence:** Source reading (cardano-node 11.1.3 `Run.hs`, `Types.hs`, `test/Test/Cardano/Node/FilePermissions.hs`) and `KeyGuardSuite`.
+- **Pinned by:** [`KeyGuardSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/node/forge/KeyGuardSuite.scala).
+- **Suggested upstream action:** None.
+- **Status:** confirmed in source
+
 ## Part C: index
 
 | ID | Title | Era | Status | Evidence |
@@ -921,6 +932,7 @@ are the ones most in need of a second reading.
 | [IN-80](#in-80-mempool-a-transaction-from-a-peer-is-held-with-the-is_valid-flag-its-scripts-call-for) | Mempool: a transaction from a peer is held with the `is_valid` flag its scripts call for | Alonzo onwards | confirmed in source | none (read from source) |
 | [IN-81](#in-81-mempool-the-capacity-is-two-blocks-of-the-current-parameters-and-a-transaction-is-measured-before-any-ledger-rule-runs) | Mempool: the capacity is two blocks of the current parameters, and a transaction is measured before any ledger rule runs | Alonzo onwards (reference-script measure: Conway) | confirmed in source | none (read from source) |
 | [IN-82](#in-82-mempool-a-transaction-that-finds-no-room-waits-for-the-pool-to-change-in-a-line-that-serves-local-clients-first) | Mempool: a transaction that finds no room waits for the pool to change, in a line that serves local clients first | All | confirmed in source | none (read from source) |
+| [IN-83](#in-83-forging-keys-the-vrf-file-permission-check-is-the-references-and-a-single-instance-lock-is-added) | Forging keys: the VRF file permission check is the reference's, and a single-instance lock is added | Praos (Conway) | confirmed in source | `KeyGuardSuite` |
 
 ## Related pages
 

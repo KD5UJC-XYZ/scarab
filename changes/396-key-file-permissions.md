@@ -1,0 +1,2 @@
+### Added (forging key files, #396)
+- **The VRF key file's permissions are checked at start as `cardano-node` 11.1.3 does:** any "other" permission refuses, any "group" permission warns (`keyFileGroupAccess`). With `--forge` an exclusive lock beside the KES key file (`--key-lock on`, the default; `off` disables it) refuses a second instance on the same key files with a typed error. The reference has no such lock; see IN-83.

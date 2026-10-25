@@ -342,6 +342,7 @@ object LogSamples:
         xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.Io(new java.io.IOException("disk full"))
       )
     ),
+    ForgeEvent.KeyFileGroupAccess("vrf.skey", 0x1a0),
     ForgeEvent.Skipped(BigInt(4201), ForgeSkip.Busy),
     ForgeEvent.Failed(BigInt(4202), ForgeError.KeyPeriodOutOfRange(33, 0, 32)),
     ForgeEvent.EpochSummary(BigInt(3), forgeStats),

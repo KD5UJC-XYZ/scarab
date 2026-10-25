@@ -6,6 +6,7 @@ import io.circe.Json
 import io.circe.syntax.*
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, SchedulingReport}
 import xyz.kd5ujc.scarab.network.ConnectionEvent
+import xyz.kd5ujc.scarab.ledger.ForgeKeyProblem
 import xyz.kd5ujc.scarab.node.Reports
 import xyz.kd5ujc.scarab.node.forge.ForgeEvent
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, Rejection}
@@ -314,6 +315,11 @@ object Traced:
         "kesPeriod" -> period.asJson,
         "kind" -> error.productPrefix.asJson,
         "message" -> error.message.asJson
+      )
+    case ForgeEvent.KeyFileGroupAccess(file, mode) =>
+      EventKind.KeyFileGroupAccess.line(
+        "file" -> file.asJson,
+        "mode" -> ForgeKeyProblem.octal(mode).asJson
       )
     case ForgeEvent.Skipped(slot, reason) =>
       EventKind.ForgeSkipped.line("slot" -> slot.asJson, "reason" -> reason.message.asJson)
