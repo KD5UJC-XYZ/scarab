@@ -53,6 +53,7 @@ import com.comcast.ip4s.{Host, Port, SocketAddress}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
 import xyz.kd5ujc.scarab.protocol.NtNHeader
 import xyz.kd5ujc.scarab.network.{
+  AcceptedConnectionsLimit,
   BearerServer,
   ConnectionEvents,
   ConnectionManager,
@@ -333,7 +334,9 @@ object Main extends IOApp:
     * @param headerFirst
     *   Validate the headers a peer announces before the blocks are fetched (G6).
     * @param maxInbound
-    *   The most inbound connections accepted at once (G2).
+    *   `--max-inbound`: the hard limit of accepted connections (G2), the reference's
+    *   `acceptedConnectionsHardLimit` (default 512); the soft limit (384) and the 5 s delay are the
+    *   reference's defaults ([[AcceptedConnectionsLimit]]).
     * @param inboundSync
     *   Run our own clients on inbound duplex connections, so that the peer is a source of blocks as
     *   well (G2). Off by default: the reference starts its clients only on connections its peer
@@ -375,7 +378,7 @@ object Main extends IOApp:
       dumpState: Option[(Path, StateDump.Targets)] = None,
       dumpStateFull: Boolean = false,
       headerFirst: Boolean = true,
-      maxInbound: Int = 64,
+      maxInbound: Int = AcceptedConnectionsLimit.default.acceptedConnectionsHardLimit,
       inboundSync: Boolean = false,
       log: LogSettings = LogSettings.default,
       roots: Option[PeerNetwork.Roots] = None,
@@ -386,7 +389,9 @@ object Main extends IOApp:
         xyz.kd5ujc.scarab.network.ChainSyncPipelineDecision.Window.Default,
       stallDump: Option[Path] = None,
       keyLock: Boolean = true
-  )
+  ):
+    def accepted: AcceptedConnectionsLimit =
+      AcceptedConnectionsLimit.default.copy(acceptedConnectionsHardLimit = maxInbound)
 
   /** What the chain database (or its absence) hands the node at start. */
   private final case class Storage[S](
@@ -1097,7 +1102,7 @@ object Main extends IOApp:
             )
             // the connection manager (G2): one connection per peer address, limits, accounting
             manager <- ConnectionManager.create[IO](
-              ConnectionManager.Limits(maxInbound = options.maxInbound),
+              ConnectionManager.Limits(accepted = options.accepted),
               Some(loggedConnections.alongside(measured.connection))
             )
             _ <- collectors.add(Collectors.connections(manager))
@@ -1251,7 +1256,8 @@ object Main extends IOApp:
                 .listen[IO, NetworkError](
                   Some(address.host),
                   Some(address.port),
-                  maxConnections = options.maxInbound * 2
+                  maxConnections = None,
+                  beforeAccept = Some(AcceptedConnectionsLimit.rateLimit(manager, options.accepted))
                 )((remote, failure) =>
                   ListenerFailures.report(remote.toString, failure, logged, fatalSink)
                 ) { (bearer, remote) =>
@@ -1737,7 +1743,9 @@ object Main extends IOApp:
             )
           maxInbound <- flags
             .get("max-inbound")
-            .fold(Right(64))(_.toIntOption.filter(_ > 0).toRight(invalid("max-inbound")))
+            .fold(Right(AcceptedConnectionsLimit.default.acceptedConnectionsHardLimit))(
+              _.toIntOption.filter(_ > 0).toRight(invalid("max-inbound"))
+            )
           inboundSync <- flags
             .get("inbound-sync")
             .fold(Right(false))(v =>

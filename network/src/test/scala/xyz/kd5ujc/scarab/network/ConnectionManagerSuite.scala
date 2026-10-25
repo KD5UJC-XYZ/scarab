@@ -16,6 +16,9 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
   private def peer(n: Int): SocketAddress[IpAddress] =
     SocketAddress(IpAddress.fromString(s"10.0.0.$n").get, Port.fromInt(3001).get)
 
+  private def hard(n: Int): AcceptedConnectionsLimit =
+    AcceptedConnectionsLimit.default.copy(acceptedConnectionsHardLimit = n)
+
   /** Run `program` with a manager; connection errors come back as values. */
   private def managed[A](
       limits: ConnectionManager.Limits = ConnectionManager.Limits()
@@ -121,7 +124,7 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
   }
 
   test("the limits of each direction are hard, and a released connection frees its slot") {
-    val limits = ConnectionManager.Limits(maxInbound = 2, maxOutbound = 1)
+    val limits = ConnectionManager.Limits(hard(2), maxOutbound = 1)
     managed(limits) { cm =>
       def attempt(
           r: Handle[IO, ConnectionError] ?=> Resource[IO, Connection[IO]]
@@ -151,7 +154,7 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
   test(
     "accepted connections are counted per IP address, across ports, and released slots free it"
   ) {
-    val limits = ConnectionManager.Limits(maxInbound = 10, maxInboundPerAddress = 2)
+    val limits = ConnectionManager.Limits(hard(10), maxInboundPerAddress = 2)
     def at(host: Int, port: Int): SocketAddress[IpAddress] =
       SocketAddress(IpAddress.fromString(s"10.0.0.$host").get, Port.fromInt(port).get)
     managed(limits) { cm =>
@@ -283,7 +286,7 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
   property(
     "the manager agrees with a model of the table, and its counters stay within the limits"
   ) {
-    val limits = ConnectionManager.Limits(maxInbound = 3, maxOutbound = 2)
+    val limits = ConnectionManager.Limits(hard(3), maxOutbound = 2)
     forAll(ops) { script =>
       val outcome = Handle
         .allow[ConnectionError] {

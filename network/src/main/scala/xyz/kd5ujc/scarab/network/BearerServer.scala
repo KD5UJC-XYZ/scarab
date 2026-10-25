@@ -12,18 +12,22 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.DomainError
 
 /** Inbound side of the transport: a listening TCP socket whose accepted connections are handed to
-  * one handler each, at most `maxConnections` at a time. A handler that fails closes only its own
+  * one handler each, at most `maxConnections` at a time (`None`: not bounded here, the caller's
+  * `beforeAccept` and connection manager limit them). A handler that fails closes only its own
   * connection and is reported to the owner as a typed value. Each handler owns its error scope;
   * cancellation releases its socket without reporting a failure (ADR0017).
   */
 object BearerServer:
   /** Listen on `host:port` (`None`: all interfaces / an ephemeral port). The resource yields the
-    * bound address and keeps accepting until it is released.
+    * bound address and keeps accepting until it is released. `beforeAccept`, if given, runs before
+    * each accept, as the reference's accept loop runs `runConnectionRateLimits` (ouroboros-network
+    * 2fb69829, `Server.hs`).
     */
   def listen[F[_]: Async, E <: DomainError](
       host: Option[Host],
       port: Option[Port],
-      maxConnections: Int = 64
+      maxConnections: Option[Int] = Some(64),
+      beforeAccept: Option[F[Unit]] = None
   )(
       onFailure: (SocketAddress[IpAddress], HandlerFailure[E]) => F[Unit]
   )(
@@ -39,7 +43,11 @@ object BearerServer:
       )
       .flatMap(requested => network.bind(requested))
       .flatMap { server =>
-        server.accept
+        // one accept per round, so that the socket of the previous round is released as soon as its
+        // handler ends, however long `beforeAccept` then pauses
+        val accepted = beforeAccept
+          .fold(server.accept)(pause => (Stream.exec(pause) ++ server.accept.take(1)).repeat)
+        val handlers = accepted
           .map { socket =>
             Stream.eval(
               HandlerFailure
@@ -49,7 +57,8 @@ object BearerServer:
                 .flatMap(_.fold(onFailure(socket.peerAddress.asIpUnsafe, _), _ => Async[F].unit))
             )
           }
-          .parJoin(maxConnections)
+        maxConnections
+          .fold(handlers.parJoinUnbounded)(handlers.parJoin(_))
           .compile
           .drain
           .background

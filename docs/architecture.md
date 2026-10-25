@@ -828,8 +828,8 @@ connection (the key is the address and the direction). `inbound(remote)` and `ou
 `Resource`s: admission is atomic with the checks (one live connection per address and direction, and
 none in the other direction while our clients use it: an outbound connection waits for an inbound
 duplex one that runs our clients, and with `--inbound-sync off` (the default) the two coexist; an inbound
-connection is never refused because we have an outbound one, see below; `maxInbound`,
-`maxInboundPerAddress` and `maxOutbound`), the
+connection is never refused because we have an outbound one, see below; `accepted` (the reference's
+`AcceptedConnectionsLimit`), `maxInboundPerAddress` and `maxOutbound`), the
 refusals are typed (`ConnectionError.InboundLimit`, `AddressLimit`, `OutboundLimit`, `AlreadyConnected`) and raised
 through `Raise`, and releasing the resource, however it ends (normally, by failure or by
 cancellation), always runs `Close` and `Released` and removes the entry, so the accounting cannot

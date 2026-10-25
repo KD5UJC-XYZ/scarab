@@ -6,6 +6,7 @@ import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, IpAddress, SocketAddress}
+import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.protocol.ConnectionState
 import xyz.kd5ujc.scarab.protocol.ConnectionState.{Counters, DataFlow, Event, Provenance}
 
@@ -72,21 +73,34 @@ trait ConnectionManager[F[_]]:
 
   def snapshot: F[ConnectionManager.Snapshot]
 
+  /** The number of inbound connections, as the accept loop's rate limit reads it (the reference's
+    * `numberOfConnections`, `icmNumberOfConnections`).
+    */
+  def inboundCount: F[Int]
+
+  /** Completes once fewer than `limit` inbound connections are live (the reference's STM `check` in
+    * `runConnectionRateLimits`).
+    */
+  def awaitInboundBelow(limit: Int): F[Unit]
+
 object ConnectionManager:
   /** A connection is known by the peer's address and the direction it was made in. */
   type Key = (SocketAddress[IpAddress], Provenance)
 
-  /** @param maxInbound
-    *   The hard limit of accepted connections (the reference's `AcceptedConnectionsLimit` hard
-    *   limit, `Server/RateLimiting.hs`; its default is 512, see #339).
+  /** @param accepted
+    *   The reference's accepted-connection limits; the hard limit refuses the connection that would
+    *   exceed it, the soft limit and the delay rate limit the accept loop
+    *   ([[AcceptedConnectionsLimit]]).
     * @param maxInboundPerAddress
-    *   The most live accepted connections from one IP address. The reference has no such limit; a
-    *   local addition, with its reason in ADR 0008.
+    *   The most live accepted connections from one IP address. The reference has no such limit.
+    *   Deviation approved by the owner on 2026-10-25: a per-address inbound limit (default 64) on
+    *   top of the reference's global accept limits, protecting inbound slots from a single address;
+    *   the reference has no per-address limit (ADR 0008).
     */
   final case class Limits(
-      maxInbound: Int = 64,
+      accepted: AcceptedConnectionsLimit = AcceptedConnectionsLimit.default,
       maxOutbound: Int = 64,
-      maxInboundPerAddress: Int = 8
+      maxInboundPerAddress: Int = 64
   )
 
   final case class Live[F[_]](
@@ -119,7 +133,7 @@ object ConnectionManager:
       events: Option[ConnectionEvents[F]] = None
   ): F[ConnectionManager[F]] =
     (
-      Ref.of[F, Map[ConnectionManager.Key, Entry[F]]](Map.empty),
+      SignallingRef.of[F, Map[ConnectionManager.Key, Entry[F]]](Map.empty),
       Ref.of[F, Long](0L)
     ).mapN { (table, ids) =>
       val F = Async[F]
@@ -220,8 +234,17 @@ object ConnectionManager:
             val c = counters(m)
             if taken.isDefined then
               (m, Left(ConnectionError.AlreadyConnected(remote.toString, taken.get.state)))
-            else if provenance == Provenance.Inbound && c.inbound >= limits.maxInbound then
-              (m, Left(ConnectionError.InboundLimit(remote.toString, limits.maxInbound)))
+            else if provenance == Provenance.Inbound && c.inbound >= limits.accepted.acceptedConnectionsHardLimit
+            then
+              (
+                m,
+                Left(
+                  ConnectionError.InboundLimit(
+                    remote.toString,
+                    limits.accepted.acceptedConnectionsHardLimit
+                  )
+                )
+              )
             else if provenance == Provenance.Inbound &&
               m.iterator.count { (k, e) =>
                 k._2 == Provenance.Inbound && k._1.host == remote.host && e.state.isLive
@@ -279,6 +302,11 @@ object ConnectionManager:
               .orElse(m.get((remote, Provenance.Outbound)).filter(_.state.isLive))
               .map(e => Live[F](remote, e.state, e.closed.get))
           }
+
+        def inboundCount = table.get.map(counters(_).inbound)
+
+        def awaitInboundBelow(limit: Int) =
+          table.discrete.map(counters(_).inbound).takeThrough(_ >= limit).compile.drain
 
         def snapshot =
           table.get.map(m =>
