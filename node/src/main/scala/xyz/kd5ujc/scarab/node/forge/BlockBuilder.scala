@@ -116,12 +116,13 @@ object BlockBuilder:
 
   /** Choose, in order, the candidates that still apply one after another to the ticked ledger in
     * the block's own environment and fit the body size, execution unit and reference script limits.
-    * A candidate that does not apply (its inputs were spent by the block, it expired, a script now
-    * fails) is skipped, not an error: the pool of a mempool is advisory. The rules are LEDGER of
-    * Conway on the era-indexed state ([[MempoolLedger]], the same that validates the pool). An
-    * evaluator that is unavailable or fails on a transaction's scripts, and a crypto provider that
-    * fails on a witness, have no ledger verdict and stop selection instead of skipping the
-    * transaction: the forger raises them and the node stops.
+    * A candidate that does not apply (its inputs were spent by the block, it expired) is skipped,
+    * not an error: the pool of a mempool is advisory. A candidate was validated when the pool
+    * admitted it, so it is applied again as the reference's forging snapshot applies it
+    * (`getSnapshotFor`, `revalidateTxsFor` and `reapplyTx`, [[MempoolLedger.reapply]]): MEMPOOL and
+    * LEDGER of Conway on the era-indexed state without their static checks, so no signature is
+    * verified and no script is evaluated again. A result without a ledger verdict would stop
+    * selection instead of skipping the transaction: the forger raises it and the node stops.
     */
   def select(
       ticked: MempoolLedger,
@@ -173,8 +174,8 @@ object BlockBuilder:
             refUsed > RefScripts.MaxRefScriptSizePerBlock
           then Right(acc)
           else
-            acc
-              .state(entry.tx, env, rules)
+            acc.state
+              .reapply(entry.tx, env, rules)
               .fold(
                 {
                   // no verdict on the transaction (evaluator, crypto provider): selection stops

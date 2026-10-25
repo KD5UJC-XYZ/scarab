@@ -101,16 +101,17 @@ that meets it, and Scarab does the same in each place:
   (`Mempool.sink`), and the peer is tried again later. Both hold for an evaluator that fails on
   the transaction's scripts as for a crypto provider.
 - **Revalidation and block production** (`Mempool.sync`, `removeTxsEvenIfValid`,
-  `BlockBuilder.select`). The reference runs them in linked threads (`Mempool/Init.hs` 64–77,
-  `Node/NodeKernel.hs` 549–560), so the exception stops the node, and it aborts the state
-  operation it was met in, so the pool's state is not changed and nothing is traced
-  (`Mempool/Update.hs` 467–495 and 587–622). Scarab's revalidation stops at the first transaction
-  it has no verdict on (`MempoolState.NoVerdict`) and raises it before the pool's state, version,
-  waiters or events change; the node raises it as `VerificationDefect` (`Mempool.raisedAt`, the
-  forger) and stops with `Fatal.Unverifiable`. The reference revalidates a held transaction with
-  `reapplyTx` of a previously validated one (`Mempool/Impl/Common.hs` 403–422,
-  `Shelley/Ledger/Mempool.hs` 325–338); Scarab runs the full rules again, so a verifier can be
-  asked a second time.
+  `BlockBuilder.select`). The reference applies a held transaction again with `reapplyTx`
+  (`Mempool/Impl/Common.hs` 403–422, `Shelley/Ledger/Mempool.hs` 325–338), which runs MEMPOOL and
+  LEDGER without their static checks (cardano-ledger f649f975 `Shelley/API/Mempool.hs` 472–473):
+  no witness signature is verified and no script is decoded or evaluated, so no provider is asked.
+  Scarab does the same (`MempoolLedger.reapply`, `TxEnv.Validation.NonStatic`). A result without
+  a verdict therefore does not arise there; were one to, the revalidation stops at it
+  (`MempoolState.NoVerdict`) and raises it before the pool's state, version, waiters or events
+  change, as an exception aborts the reference's state operation (`Mempool/Update.hs` 467–495 and
+  587–622) and stops the node through the linked watcher (`Mempool/Init.hs` 64–77,
+  `Node/NodeKernel.hs` 549–560); the node raises it as `VerificationDefect` or
+  `EvaluationUnavailable` (`Mempool.raisedAt`, the forger).
 
 The Byron ledger's own signature checks (`ByronSig`: transaction witnesses, delegation
 certificates, update proposals and votes) follow the same rule:

@@ -461,7 +461,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
   }
 
   test(
-    "candidate selection stops on a transaction the evaluator has no verdict on while invalidity is skipped"
+    "candidate selection applies a candidate again without decoding its scripts; invalidity is skipped"
   ) {
     val fixture = xyz.kd5ujc.scarab.ledger.PlutusCase.load(
       java.nio.file.Path.of("fixtures/preprod/plutus/tx-2edd684f.json")
@@ -488,38 +488,20 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
       (_, _, _) => Left(xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Unavailable(reason))
     val base = xyz.kd5ujc.scarab.node.mempool.TxKit.ledger(2)
     val limit = BlockBuilder.Limits(65536, xyz.kd5ujc.scarab.plutus.ExUnits(14000000, 10000000000L))
-    val result = BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(entry), limit)(using
-      failing(stopped),
-      xyz.kd5ujc.scarab.plutus.ScalusEvaluator.default
-    )
-    // a defect the transaction triggers has no verdict either: selection stops
-    assertEquals(
-      BlockBuilder
-        .select(base, 1001, 1, geometry, globals, Vector(entry), limit)(using
-          failing(xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted),
-          xyz.kd5ujc.scarab.plutus.ScalusEvaluator.default
-        )
-        .left
-        .map(e => e: xyz.kd5ujc.scarab.ledger.LedgerFailure),
-      Left(
-        xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable(
-          id,
-          xyz.kd5ujc.scarab.ledger.ScriptLocation.Phase1(script.hash),
-          xyz.kd5ujc.scarab.plutus.EvalFailure
-            .Unsupported(xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted)
-        )
+    // a candidate is applied again without the static checks (`reapplyTx`): its scripts are not
+    // decoded again (`Babbage/Rules/Utxow.hs` 379), so a decoder that is unavailable now, or fails
+    // on the transaction, gives no reason to stop or to skip it
+    List(stopped, xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted).foreach { reason =>
+      assertEquals(
+        BlockBuilder
+          .select(base, 1001, 1, geometry, globals, Vector(entry), limit)(using
+            failing(reason),
+            xyz.kd5ujc.scarab.plutus.ScalusEvaluator.default
+          )
+          .map(_.map(_._1.id)),
+        Right(Vector(id))
       )
-    )
-    assertEquals(
-      result.left.map(e => e: xyz.kd5ujc.scarab.ledger.LedgerFailure),
-      Left(
-        xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable(
-          id,
-          xyz.kd5ujc.scarab.ledger.ScriptLocation.Phase1(script.hash),
-          xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported(stopped)
-        )
-      )
-    )
+    }
     val invalid = entry.copy(tx = tx.copy(body = tx.body.copy(fee = -1)))
     assertEquals(
       BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(invalid), limit)(using

@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Tx,
   TxBody,
   TxChecks,
+  TxEnv,
   TxIn,
   TxOut,
   Utxo,
@@ -280,11 +281,12 @@ object UtxoTests:
       maxTxSize(pp, tx)
     )
 
-  /** What Alonzo's UTXO checks of a transaction before UTXOS (`Alonzo/Rules/Utxo.hs:505-568`). */
+  /** What Alonzo's UTXO checks of a transaction before UTXOS (`Alonzo/Rules/Utxo.hs:505-568`); the
+    * checks under `runTestOnSignal` run only when `env` runs the static ones ([[TxEnv.static]]).
+    */
   def alonzo(
       pp: ProtocolParams,
-      network: Int,
-      slot: BigInt,
+      env: TxEnv,
       ann: StAnnTx,
       minFee: BigInt,
       consumed: Value,
@@ -293,31 +295,32 @@ object UtxoTests:
     val tx = ann.tx
     val body = tx.body
     val outs = body.outputs
+    val network = env.network
     Test.all(
-      validityInterval(body, slot),
-      inputSetEmpty(body),
+      validityInterval(body, env.slot),
+      env.static(inputSetEmpty(body)),
       feesOK(pp, ann.utxo, tx, minFee),
       badInputs(ann.utxo, body.inputs ++ body.collateral),
       valueNotConserved(consumed, produced),
       outputTooSmall(pp, outs),
       outputTooBig(pp, outs),
-      bootAddrAttrsTooBig(outs),
-      wrongNetwork(network, outs),
-      wrongNetworkWithdrawal(network, body),
-      wrongNetworkInTxBody(network, body),
-      maxTxSize(pp, tx),
+      env.static(bootAddrAttrsTooBig(outs)),
+      env.static(wrongNetwork(network, outs)),
+      env.static(wrongNetworkWithdrawal(network, body)),
+      env.static(wrongNetworkInTxBody(network, body)),
+      env.static(maxTxSize(pp, tx)),
       exUnitsTooBig(pp, tx)
     )
 
   /** `babbageUtxoValidation` (`Babbage/Rules/Utxo.hs:340-412`), which Conway's UTXO runs too
     * (`Conway/Rules/Utxo.hs:236`). The outputs are the outputs and the collateral return
     * (`allSizedOutputsTxBodyF`); the inputs checked against the UTxO set are the spent, collateral
-    * and reference inputs (`allInputsTxBodyF`).
+    * and reference inputs (`allInputsTxBodyF`). The checks under `runTestOnSignal` (lines 368-406)
+    * run only when `env` runs the static ones ([[TxEnv.static]]).
     */
   def babbage(
       pp: ProtocolParams,
-      network: Int,
-      slot: BigInt,
+      env: TxEnv,
       ann: StAnnTx,
       minFee: BigInt,
       consumed: Value,
@@ -326,20 +329,21 @@ object UtxoTests:
     val tx = ann.tx
     val body = tx.body
     val outs = body.outputs ++ body.collateralReturn.toVector
+    val network = env.network
     Test.all(
       disjointRefInputs(pp, body),
-      validityInterval(body, slot),
-      inputSetEmpty(body),
+      validityInterval(body, env.slot),
+      env.static(inputSetEmpty(body)),
       feesOK(pp, ann.utxo, tx, minFee),
       badInputs(ann.utxo, body.inputs ++ body.collateral ++ body.referenceInputs),
       valueNotConserved(consumed, produced),
       outputTooSmall(pp, outs),
       outputTooBig(pp, outs),
-      bootAddrAttrsTooBig(outs),
-      wrongNetwork(network, outs),
-      wrongNetworkWithdrawal(network, body),
-      wrongNetworkInTxBody(network, body),
-      maxTxSize(pp, tx),
+      env.static(bootAddrAttrsTooBig(outs)),
+      env.static(wrongNetwork(network, outs)),
+      env.static(wrongNetworkWithdrawal(network, body)),
+      env.static(wrongNetworkInTxBody(network, body)),
+      env.static(maxTxSize(pp, tx)),
       exUnitsTooBig(pp, tx),
       tooManyCollateralInputs(pp, body)
     )
