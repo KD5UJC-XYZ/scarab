@@ -132,31 +132,23 @@ class Phase2UnavailableSuite extends FunSuite:
       )
   }
 
-  test("a defect a script triggers is the transaction's, a missing implementation is not") {
-    import LedgerFailure.reach
+  test("a defect a script triggers and a missing implementation are no verdict, with the cause") {
     val defect = EvalFailure.Unsupported(BackendFailure.Defect(new NullPointerException("input")))
     val missing = EvalFailure.Unsupported(BackendFailure.Defect(new UnsatisfiedLinkError("native")))
     val script =
       scripts.values.find(_.kind.isPlutus).getOrElse(fail("fixture has no Plutus script"))
     for valid <- Vector(true, false) do
       val tx = c.tx.copy(isValid = valid)
-      for (reason, expected) <- Vector(
-          defect -> BackendFailure.Reach.Input,
-          missing -> BackendFailure.Reach.Implementation,
-          limit -> BackendFailure.Reach.Implementation
-        )
-      do
+      for reason <- Vector(defect, missing, limit) do
         val evaluator: ScriptEvaluator[Id] =
           _ => EvalResult.Failure(reason, ExUnits.zero, Vector.empty)
         checked(tx, evaluator) match
-          case Left(failure: LedgerFailure.Unavailable) => assertEquals(failure.reach, expected)
+          case Left(failure: LedgerFailure.Unavailable) => assertEquals(failure.reason, reason)
           case other => fail(s"unexpected phase-2 outcome: $other")
       val witnessed = tx.copy(witnesses = tx.witnesses.copy(scripts = Vector(script)))
-      for (reason, expected) <- Vector(
-          BackendFailure.StackExhausted -> BackendFailure.Reach.Input,
-          BackendFailure.BuiltinUnavailable(
-            scalus.uplc.DefaultFun.Bls12_381_G1_hashToGroup
-          ) -> BackendFailure.Reach.Implementation
+      for reason <- Vector(
+          BackendFailure.StackExhausted,
+          BackendFailure.BuiltinUnavailable(scalus.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
         )
       do
         val decoder: ScriptDecoder[Id] = (_, _, _) => Left(ScriptDecodeFailure.Unavailable(reason))
@@ -165,6 +157,7 @@ class Phase2UnavailableSuite extends FunSuite:
           witnessed,
           TxEnv(c.slot, 189, 0, decoder = decoder)
         ) match
-          case Left(failure: LedgerFailure.Unavailable) => assertEquals(failure.reach, expected)
+          case Left(failure: LedgerFailure.Unavailable) =>
+            assertEquals(failure.reason, EvalFailure.Unsupported(reason))
           case other => fail(s"unexpected phase-1 outcome: $other")
   }
