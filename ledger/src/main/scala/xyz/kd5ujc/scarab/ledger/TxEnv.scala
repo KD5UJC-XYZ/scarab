@@ -99,7 +99,8 @@ object LedgerFailure:
 /** Block-level context of a transaction.
   *
   * @param clock
-  *   Slot to POSIX milliseconds through the era history (needed for the script context).
+  *   The slot to POSIX time translation through the era history at the ledger tip, with its
+  *   forecast horizon (needed for the script context).
   * @param evaluator
   *   The Plutus evaluator; a pure function of the request (see `ScriptEvaluator`).
   * @param decoder
@@ -118,7 +119,7 @@ final case class TxEnv(
     stabilityWindow: BigInt = 0,
     txIndex: Int = 0,
     updateQuorum: Int = 5,
-    clock: Option[BigInt => BigInt] = None,
+    clock: Option[PosixClock] = None,
     evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default,
     decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
     observer: Option[Phase2.Observation => Unit] = None,

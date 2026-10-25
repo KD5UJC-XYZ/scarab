@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "era": "babbage",
+  "protocolVersion": [
+    7,
+    0
+  ],
+  "provenance": {
+    "reference": {
+      "node": "cardano-node 11.1.3 - linux-x86_64 - ghc-9.6",
+      "revision": "938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+      "image": "cardano-reference-11.1.3:local",
+      "imageId": "sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b"
+    },
+    "command": "horizonrun.record('babbage', <devnet>, 'babbage-known-horizon', 'horizoncases:babbage')",
+    "scarabCommit": "d14d42cadff60dfe44584059b538eee76d97b2a3",
+    "scarabDirty": true,
+    "recorded": "2026-10-24T03:34:29Z"
+  },
+  "cases": [
+    {
+      "file": "cases/plutus-upper-bound-past-horizon-babbage.json",
+      "sha256": "62e467f13ae4f2d5b3dd2418b62c86edaf0c88cbc371572d5f000ba90e2db0a3"
+    }
+  ],
+  "note": "the inside-horizon case recorded with it was refused for an unrelated reason (a wallet output spent by the cluster load) and is not kept"
+}

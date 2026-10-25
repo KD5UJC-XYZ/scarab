@@ -23,8 +23,11 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   *   - `Alonzo/Plutus/Context.hs:357-383`: the `CollectError` constructors, tags 0 to 3; the
   *     `UTXOS` failure `CollectErrors` is tag 1 (`Alonzo/Rules/Utxos.hs:351-356`), the `UTXO` one
   *     tag 7 (`Alonzo/Rules/Utxo.hs`); Babbage holds Alonzo's at 1 (`Babbage/Rules/Utxo.hs`).
-  *   - `Alonzo/Plutus/TxInfo.hs:213-231`: the Alonzo `ContextError`, of which only
-  *     `TranslationLogicMissingInput` (tag 1) is a translation failure this encoding writes.
+  *   - `Alonzo/Plutus/TxInfo.hs:213-231`: the Alonzo `ContextError`, of which
+  *     `TranslationLogicMissingInput` (tag 1) and `TimeTranslationPastHorizon` (tag 7, the `Text`
+  *     of [[xyz.kd5ujc.scarab.ledger.Horizon.pastHorizonText]]) are the translation failures this
+  *     encoding writes; Babbage's `ContextError` holds the latter at 7 too
+  *     (`Babbage/TxInfo.hs:289`).
   *   - `Babbage/TxInfo.hs:249-292`: the Babbage `ContextError`, tags 0, 1, 2, 4, 5 and 6; Conway
   *     wraps those at 8 (`Conway/TxInfo.hs:232-248`) and adds its own from 9.
   *   - `Alonzo/Scripts.hs:370-397`: a purpose is `[tag, item]`, the item being the bare certificate
@@ -119,6 +122,8 @@ private[ntc] object ContextFailureCbor:
       Some(pair(1, CborOut.build(txIn(_, input))))
     case TranslationError.RedeemerPointerPointsToNothing(tag, index) =>
       Some(pair(2, CborOut.build(_.array(2).uint(tag).uint(index))))
+    case TranslationError.PastHorizon(slot, horizon) =>
+      Some(pair(7, CborOut.build(_.text(horizon.pastHorizonText(slot)))))
     case TranslationError.InlineDatumsNotSupported(from)     => Some(pair(4, source(from)))
     case TranslationError.ReferenceScriptsNotSupported(from) => Some(pair(5, source(from)))
     case TranslationError.ReferenceInputsNotSupported(inputs) =>
@@ -147,6 +152,8 @@ private[ntc] object ContextFailureCbor:
         error match
           case TranslationError.UnresolvedInput(input) =>
             Some(pair(1, CborOut.build(txIn(_, input))))
+          case TranslationError.PastHorizon(slot, horizon) =>
+            Some(pair(7, CborOut.build(_.text(horizon.pastHorizonText(slot)))))
           case _ => None
       case ContextEra.Babbage => babbageCase(error)
       case ContextEra.Conway  => conwayContext(error)
@@ -156,7 +163,7 @@ private[ntc] object ContextFailureCbor:
         TranslationError.RedeemerPointerPointsToNothing(_, _) |
         TranslationError.InlineDatumsNotSupported(_) |
         TranslationError.ReferenceScriptsNotSupported(_) |
-        TranslationError.ReferenceInputsNotSupported(_) =>
+        TranslationError.ReferenceInputsNotSupported(_) | TranslationError.PastHorizon(_, _) =>
       babbageCase(error).map(pair(8, _))
     case TranslationError.CertificateNotSupported(cert) =>
       certificate(ContextEra.Conway, cert).map(pair(9, _))
@@ -181,9 +188,10 @@ private[ntc] object ContextFailureCbor:
     case TranslationError.ReferenceInputsNotDisjointFromInputs(inputs) =>
       Some(pair(15, CborOut.build(list(_, inputs.toVector)((w, in) => { txIn(w, in); () }))))
     // No encoding. These are decoder or setup faults of this implementation with no reference
-    // constructor that names them: the reference's `TimeTranslationPastHorizon` is a different
-    // condition from `NoEraHistory` and `NoClockSample`, so those are not mapped to it. The text
-    // fallback keeps the reason; the pre-Conway eras answer `None`.
+    // constructor that names them: the reference's `TimeTranslationPastHorizon` is the
+    // `PastHorizon` case, a clock that is only missing a recorded sample (`NoClockSample`) or an
+    // era history (`NoEraHistory`) is not mapped to it. The text fallback keeps the reason; the
+    // pre-Conway eras answer `None`.
     case TranslationError.DelegationWithoutDelegatee | TranslationError.Undecodable(_) |
         TranslationError.NoScriptBytes(_) | TranslationError.NativeScriptRedeemer |
         TranslationError.CostModelParameterTooLarge | TranslationError.NoEraHistory |

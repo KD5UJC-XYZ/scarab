@@ -53,7 +53,11 @@ final class PlutusCases(dir: Path, perKind: Int, max: Int):
       val name = s"slot${o.slot}-${body.id.hex.take(8)}"
       val slots = (body.validityStart ++ body.ttl).toVector.distinct
       val clock =
-        o.clock.fold(Json.Null)(c => Json.obj(slots.map(s => s.toString -> c(s).toString.asJson)*))
+        o.clock.fold(Json.Null)(c =>
+          Json.obj(
+            slots.flatMap(s => c.posix(s).toOption.map(t => s.toString -> t.toString.asJson))*
+          )
+        )
       def utxo(m: Map[TxIn, TxOut]) =
         m.toVector.map { case (in, out) =>
           Json.obj("in" -> in.render.asJson, "out" -> out.raw.hex.asJson)

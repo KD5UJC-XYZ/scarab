@@ -27,8 +27,8 @@ enum TxOutSource:
   *
   * The cases the reference has no constructor for (it holds the data decoded and the cost models
   * complete) are the node's own: [[Undecodable]], [[NoScriptBytes]],
-  * [[CostModelParameterTooLarge]], [[NoEraHistory]], [[NoClockSample]] and
-  * [[NativeScriptRedeemer]].
+  * [[CostModelParameterTooLarge]], [[NoEraHistory]], [[NoClockSample]] (a recorded clock without
+  * the slot; the translation past the horizon is [[PastHorizon]]) and [[NativeScriptRedeemer]].
   */
 enum TranslationError:
   /** A redeemer names no purpose of the transaction (`RedeemerPointerPointsToNothing`). */
@@ -87,6 +87,12 @@ enum TranslationError:
   /** The clock the context was built with does not know the slot (`TimeTranslationPastHorizon`). */
   case NoClockSample(slot: BigInt)
 
+  /** The slot is past the forecast horizon of the era history at the ledger tip
+    * (`TimeTranslationPastHorizon`, `Alonzo/Plutus/TxInfo.hs` `transValidityInterval`): the horizon
+    * is kept for the text the reference's refusal carries ([[Horizon.pastHorizonText]]).
+    */
+  case PastHorizon(slot: BigInt, horizon: Horizon)
+
   /** The text of the failure for the log, derived from the case. */
   def message: String = this match
     case RedeemerPointerPointsToNothing(tag, index) => s"redeemer ($tag, $index) names no purpose"
@@ -117,3 +123,4 @@ enum TranslationError:
     case CostModelParameterTooLarge => "cost model parameter exceeds 64 bits"
     case NoEraHistory               => "no era history for slot times"
     case NoClockSample(slot)        => s"no clock sample for slot $slot"
+    case PastHorizon(slot, _)       => s"slot $slot is past the forecast horizon"

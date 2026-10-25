@@ -7,7 +7,7 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, ForgeError, Header, LedgerFailure, VrfCert}
 import xyz.kd5ujc.scarab.ledger.LedgerFailure.reach
-import xyz.kd5ujc.scarab.ledger.{RefScripts, LedgerGlobals, TxEnv}
+import xyz.kd5ujc.scarab.ledger.{LedgerGlobals, PosixClock, RefScripts, TxEnv}
 import xyz.kd5ujc.scarab.ledger.rules.Globals
 import xyz.kd5ujc.scarab.plutus.{
   BackendFailure,
@@ -136,7 +136,8 @@ object BlockBuilder:
       geometry: EpochGeometry,
       globals: LedgerGlobals,
       candidates: Vector[Entry],
-      limit: Limits
+      limit: Limits,
+      clock: Option[PosixClock] = None
   )(using
       decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
       evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default
@@ -168,7 +169,7 @@ object BlockBuilder:
             stabilityWindow = geometry.stabilityWindow,
             txIndex = acc.chosen.size,
             updateQuorum = globals.updateQuorum,
-            clock = Some(s => BigInt(geometry.slotStart(s).toEpochMilli)),
+            clock = Some(clock.getOrElse(PosixClock.total(geometry))),
             decoder = decoder,
             evaluator = evaluator
           )

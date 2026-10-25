@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.ledger.state.Diff
 import cats.{Eq, Show}
 import cats.derived.*
 import xyz.kd5ujc.scarab.consensus.{ForkTrigger, HardForkConfig}
-import xyz.kd5ujc.scarab.ledger.EpochGeometry
+import xyz.kd5ujc.scarab.ledger.{EpochGeometry, Horizon}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** One era of the history (`EraSummary`, `HardFork/History/Summary.hs:198-205`): where it starts,
@@ -105,3 +105,66 @@ object EraHistory:
       )
     }
     byronEra +: shelleyBased
+
+  private def edge(b: Bound): Horizon.Edge = Horizon.Edge(b.timePs, b.slot, b.epoch)
+
+  private def params(geometry: EpochGeometry, byron: ByronParams, era: Era): Horizon.Params =
+    if era == Era.Byron then
+      Horizon.Params(byron.epochSlots, byron.slotLengthMillis, byron.k * 2, byron.k * 2)
+    else
+      val safe = geometry.stabilityWindow
+      Horizon.Params(BigInt(geometry.epochLength), BigInt(geometry.slotLengthMillis), safe, safe)
+
+  /** The eras of a telescope in `era`, which started at `start` after the `past` eras, as the
+    * summary of the reference reconstructs them (`reconstructSummary`,
+    * `HardFork/Combinator/State/Infra.hs`): every era has the parameters of the configuration
+    * (Byron's own, the Shelley-based ones' 3k/f safe zone and genesis window,
+    * `Shelley/Ledger/Ledger.hs` `shelleyEraParams`), and the last era the node knows (Conway) has
+    * no successor.
+    */
+  def horizonHistory(
+      geometry: EpochGeometry,
+      byron: ByronParams,
+      era: Era,
+      past: Vector[Past],
+      start: Bound
+  ): Horizon.History =
+    val closed = past.zipWithIndex.map { case (p, i) =>
+      Horizon.Era(edge(p.start), Some(edge(p.end)), params(geometry, byron, Era.values(i)))
+    }
+    val next = Era.values.lift(era.index + 1).map(params(geometry, byron, _))
+    Horizon.History(closed, edge(start), params(geometry, byron, era), next)
+
+  /** What the ledger state at a tip tells of the end of its era (`singleEraTransition`,
+    * `Shelley/ShelleyHFC.hs`, as `mostRecentTransitionInfo` reads it): a configured epoch of the
+    * next era is known from the start; a version trigger is known once the parameters for the next
+    * epoch have the next era's first protocol version and at least k blocks have been applied after
+    * the voting deadline of the epoch (`shelleyTransition`). The era after the last the node knows
+    * is never known.
+    *
+    * @param epoch
+    *   the epoch of the new-epoch state (the parameters take effect in the next one)
+    * @param futureMajor
+    *   the protocol major version of the parameters already decided for the next epoch
+    * @param afterVoting
+    *   the blocks applied after the voting deadline in the epoch (`shelleyAfterVoting`)
+    * @param tip
+    *   the slot of the last block, none at Origin
+    */
+  def transition(
+      forks: HardForkConfig,
+      securityParam: BigInt,
+      era: Era,
+      epoch: BigInt,
+      futureMajor: Option[BigInt],
+      afterVoting: BigInt,
+      tip: Option[BigInt]
+  ): Horizon.Transition =
+    val unknown = Horizon.Transition.Unknown(tip)
+    Era.values.lift(era.index + 1).flatMap(forks.triggers.get).fold(unknown) {
+      case ForkTrigger.AtEpoch(e) => Horizon.Transition.Known(e)
+      case ForkTrigger.AtVersion(v) =>
+        if futureMajor.contains(BigInt(v)) && afterVoting >= securityParam then
+          Horizon.Transition.Known(epoch + 1)
+        else unknown
+    }

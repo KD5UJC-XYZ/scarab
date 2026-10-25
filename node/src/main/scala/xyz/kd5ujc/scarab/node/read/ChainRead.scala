@@ -6,6 +6,7 @@ import xyz.kd5ujc.scarab.consensus.state.*
 import xyz.kd5ujc.scarab.ledger as flat
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, ShelleyBasedEra}
+import scala.annotation.unused
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** The ledger state of a Shelley-based era, with the witness of which: the era parameter packed so
@@ -54,6 +55,17 @@ trait ChainRead[S]:
       */
     def ledger(at: Option[BlockRef]): Read[Option[InEra]]
 
+    /** The slot to time translation of the transactions of a block of `era` at `slot` (or of the
+      * mempool's next block) applied on this state: the era history at its tip with the forecast
+      * horizon ([[MirrorClock]]). A state with no era history of its own has no horizon.
+      */
+    def clock(
+        placement: Placement,
+        @unused era: Era,
+        @unused slot: BigInt
+    ): flat.PosixClock =
+      flat.PosixClock.total(placement.geometry)
+
     /** The era history as this state knows it: a chain whose Byron span is derived learns the first
       * Shelley epoch when it enters Shelley.
       */
@@ -91,6 +103,8 @@ object ChainRead:
       def utxo: flat.Utxo = m.ext.ledgerState.state match
         case EraLedgerState.ByronCurrent(_)    => flat.Utxo.empty
         case i: EraLedgerState.InShelleyEra[e] => i.state.nes.es.ls.utxo.utxo.utxo
+      override def clock(placement: Placement, era: Era, slot: BigInt): flat.PosixClock =
+        MirrorClock.of(m, placement, era, slot)
       def ledger(at: Option[BlockRef]): Read[Option[InEra]] =
         Right(m.ext.ledgerState.state match
           case EraLedgerState.ByronCurrent(_) => None

@@ -44,11 +44,11 @@ import xyz.kd5ujc.scarab.storage.{
   UtxoStore
 }
 import cats.mtl.{Ask, Handle, Raise, Stateful, Tell}
-import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState}
+import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState, Placement}
 import cats.syntax.all.*
 import java.nio.file.Path
 import com.comcast.ip4s.{Host, Port, SocketAddress}
-import xyz.kd5ujc.scarab.protocol.ChainSync
+import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
 import xyz.kd5ujc.scarab.protocol.NtNHeader
 import xyz.kd5ujc.scarab.network.{
   BearerServer,
@@ -884,7 +884,16 @@ object Main extends IOApp:
             mempoolEnvironment = new cats.mtl.Ask[IO, MempoolEnv]:
               val applicative = summon[cats.Applicative[IO]]
               def ask[E >: MempoolEnv]: IO[E] =
-                ref.get.map(chain => MempoolEnv(globals, chain.state.geometry(genesis.geometry)): E)
+                ref.get.map { chain =>
+                  val geometry = chain.state.geometry(genesis.geometry)
+                  val placement = Placement(geometry, setup.byronHistory, setup.praos.forks)
+                  val tip = chain.tipRef.fold(BigInt(0))(_.slot)
+                  MempoolEnv(
+                    globals,
+                    geometry,
+                    clock = Some(chain.state.clock(placement, Era.Conway, tip + 1))
+                  ): E
+                }
             mempoolLedger <- scheduling.compute
               .within(IO.delay {
                 val tip = resumed.lastOption.map(_.ref).orElse(anchor)

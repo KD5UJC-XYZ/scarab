@@ -16,6 +16,7 @@ import xyz.kd5ujc.scarab.consensus.{
 }
 import xyz.kd5ujc.scarab.consensus.state.{
   EraHistory,
+  MirrorClock,
   MirrorState,
   MirrorStep,
   Placement,
@@ -304,7 +305,15 @@ object MirrorRules:
       Globals(globals, geometry),
       config.forks.eraAt,
       verdicts = config.verdicts,
-      observer = phase2Observer
+      observer = phase2Observer,
+      clock = Some(
+        MirrorClock.of(
+          state,
+          Placement(geometry, byronParams, config.forks),
+          announced.era,
+          announced.slot
+        )
+      )
     )
     for
       decoded <- prepared.fold(Block.decodeShelley(raw).leftMap(BlockFailure.Decode(_)))(p =>

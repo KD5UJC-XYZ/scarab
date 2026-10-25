@@ -41,6 +41,21 @@ final case class Placement(
   /** The bound at the start of `epoch`. */
   def bound(epoch: BigInt): Bound = EraHistory.boundAt(geometry, byron, epoch)
 
+object Placement:
+  /** The placement of a chain whose Byron parameters are those of its geometry: the Byron security
+    * parameter is the Shelley one on every network.
+    */
+  def of(geometry: EpochGeometry, forks: HardForkConfig): Placement =
+    Placement(
+      geometry,
+      EraHistory.ByronParams(
+        geometry.byron.epochSlots,
+        BigInt(geometry.byron.slotLengthMillis),
+        BigInt(geometry.securityParam)
+      ),
+      forks
+    )
+
 /** What a block does to the mirror the node holds as its state: the tip, the new-epoch state, the
   * chain-dependent state and the node's bookkeeping, and, where the new-epoch state is of a later
   * era than the telescope's (the first block of an era, the hard-fork combinator having translated

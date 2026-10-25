@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
-import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+import xyz.kd5ujc.scarab.ledger.{LedgerDecodeError, PosixClock}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{
@@ -30,6 +30,9 @@ import xyz.kd5ujc.scarab.protocol.Era
 object EraBlock:
   /** What the rules read beyond the state: the network's constants and era history, which era each
     * epoch is, the signature verdicts, the Plutus evaluator, and a hook on phase-2 evaluations.
+    * `clock` is the slot to time translation of the block's scripts, the era history of the ledger
+    * state the block is applied to (the node's blocks always carry it); none is the geometry alone,
+    * without a forecast horizon, for fixtures with no era history.
     */
   final case class Context(
       globals: Globals,
@@ -38,6 +41,7 @@ object EraBlock:
       evaluator: ScriptEvaluator[cats.Id] = ScalusEvaluator.default,
       observer: Option[Phase2.Observation => Unit] = None,
       decoder: ScriptDecoder[cats.Id] = ScalusEvaluator.defaultDecoder,
+      clock: Option[PosixClock] = None,
       private[ledger] val preparation: Option[Phase2.Preparation] = None
   )
 
@@ -218,7 +222,7 @@ object EraBlock:
       stabilityWindow = geometry.stabilityWindow,
       txIndex = 0,
       updateQuorum = globals.quorum,
-      clock = Some(slot => BigInt(geometry.slotStart(slot).toEpochMilli)),
+      clock = Some(ctx.clock.getOrElse(PosixClock.total(geometry))),
       evaluator = ctx.evaluator,
       decoder = ctx.decoder,
       observer = ctx.observer,

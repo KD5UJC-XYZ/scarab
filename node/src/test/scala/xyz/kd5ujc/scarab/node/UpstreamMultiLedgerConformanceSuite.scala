@@ -120,8 +120,11 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
             0,
             geometry.firstSlot(epoch + 1),
             geometry.stabilityWindow,
-            clock =
-              Some(s => BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s))
+            clock = Some(
+              xyz.kd5ujc.scarab.ledger.PosixClock.Total(s =>
+                BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s)
+              )
+            )
           ),
           account.treasury
         ),

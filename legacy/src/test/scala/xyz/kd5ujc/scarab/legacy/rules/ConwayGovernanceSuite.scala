@@ -113,7 +113,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       firstSlotNextEpoch = s.epoch * 100 + 100,
       stabilityWindow = 20,
       txIndex = n,
-      clock = Some(slot => slot * 1000 + 1596059091000L)
+      clock = Some(xyz.kd5ujc.scarab.ledger.PosixClock.Total(slot => slot * 1000 + 1596059091000L))
     )
 
   /** Submit one transaction paid by `payer`; `deposits` and `refunds` balance the certificates. */

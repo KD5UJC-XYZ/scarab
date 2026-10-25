@@ -107,7 +107,11 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
       geometry.firstSlot(epoch + 1),
       geometry.stabilityWindow,
       txIndex = index,
-      clock = Some(s => BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s))
+      clock = Some(
+        xyz.kd5ujc.scarab.ledger.PosixClock.Total(s =>
+          BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s)
+        )
+      )
     )
 
   private def paymentContext: Vector[Node] = node("LEDGER-2", "context").value match
@@ -453,7 +457,11 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
         geometry.firstSlot(epoch + 1),
         geometry.stabilityWindow,
         txIndex = index.toInt,
-        clock = Some(s => BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s))
+        clock = Some(
+          xyz.kd5ujc.scarab.ledger.PosixClock.Total(s =>
+            BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s)
+          )
+        )
       )
       val actual = Sts
         .apply(Ledger)(

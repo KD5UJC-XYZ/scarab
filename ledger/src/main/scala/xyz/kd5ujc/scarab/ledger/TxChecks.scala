@@ -55,11 +55,11 @@ object TxChecks:
       else
         val inputs = body.inputs.zip(spent).toMap
         val references = body.referenceInputs.zip(refOuts).toMap
-        val posix = env.clock.toRight(TranslationError.NoEraHistory)
+        val posix = env.clock.toRight(TranslationError.NoEraHistory).map(c => c.posix)
         env.preparation match
           case Some(recording) =>
             val requests =
-              Phase2.collect(tx, pp, scripts, inputs, references, slot => posix.map(_(slot)))
+              Phase2.collect(tx, pp, scripts, inputs, references, slot => posix.flatMap(_(slot)))
             recording.append(
               Phase2.job(env.txIndex, tx, pp, env.slot, inputs, references, env.clock, requests)
             )
@@ -71,7 +71,7 @@ object TxChecks:
               scripts,
               inputs,
               references,
-              slot => posix.map(_(slot)),
+              slot => posix.flatMap(_(slot)),
               env.evaluator
             )
             env.observer.foreach(

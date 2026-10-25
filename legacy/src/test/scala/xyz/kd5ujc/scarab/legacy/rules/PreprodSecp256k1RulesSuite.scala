@@ -50,7 +50,9 @@ class PreprodSecp256k1RulesSuite extends FunSuite:
     network = 0,
     firstSlotNextEpoch = c.slot + 100,
     stabilityWindow = 129600,
-    clock = Some(slot => (BigInt(1655769600) + slot - 86400) * 1000),
+    clock = Some(
+      xyz.kd5ujc.scarab.ledger.PosixClock.Total(slot => (BigInt(1655769600) + slot - 86400) * 1000)
+    ),
     evaluator = evaluator
   )
 

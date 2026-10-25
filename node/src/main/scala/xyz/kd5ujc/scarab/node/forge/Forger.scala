@@ -18,7 +18,7 @@ import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash}
 import xyz.kd5ujc.scarab.node.{Fatal, Follower, SessionEnd}
 import xyz.kd5ujc.scarab.consensus.{Praos, PraosConfig}
-import xyz.kd5ujc.scarab.consensus.state.ProtocolState
+import xyz.kd5ujc.scarab.consensus.state.{Placement, ProtocolState}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.LedgerGlobals
 import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Globals, Hfc}
@@ -312,7 +312,14 @@ final class Forger[F[_]: Async, S](
           geometry,
           globals,
           held.entries,
-          limits
+          limits,
+          Some(
+            current.state.clock(
+              Placement.of(current.state.geometry(geometry), config.forks),
+              Era.Conway,
+              slot
+            )
+          )
         )
       )
       chosen <- selection.fold(

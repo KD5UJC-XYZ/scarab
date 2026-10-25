@@ -27,7 +27,9 @@ class Phase2UnavailableSuite extends FunSuite:
         c.slot,
         189,
         0,
-        clock = Some(slot => c.posix(slot).fold(error => fail(error.message), identity)),
+        clock = Some(
+          PosixClock.Total(slot => c.posix(slot).fold(error => fail(error.message), identity))
+        ),
         evaluator = evaluator
       ),
       scripts,

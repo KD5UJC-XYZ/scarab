@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView}
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.ledger.{Block, EpochGeometry}
+import xyz.kd5ujc.scarab.ledger.{Block, EpochGeometry, PosixClock}
 import xyz.kd5ujc.scarab.ledger.{
   Credential,
   LedgerFailure,
@@ -115,12 +115,16 @@ enum Source:
 final case class Entry(id: Bytes, raw: Bytes, tx: Tx, ticket: Long, refScriptBytes: Int = 0):
   def size: Int = raw.size
 
-/** What the transaction rules need besides the ledger state. */
+/** What the transaction rules need besides the ledger state. `clock` is the slot to time
+  * translation of the era history at the chain tip the pool is judged against, with its forecast
+  * horizon; none is the geometry alone, without a horizon, for pools of tests that have no chain.
+  */
 final case class MempoolEnv(
     globals: LedgerGlobals,
     geometry: EpochGeometry,
     evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default,
-    decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder
+    decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
+    clock: Option[PosixClock] = None
 ):
   /** The environment in which a transaction is validated for inclusion in the next block: the slot
     * after the tip, in the epoch of the fully ticked ledger.
@@ -135,7 +139,7 @@ final case class MempoolEnv(
       stabilityWindow = geometry.stabilityWindow,
       txIndex = index,
       updateQuorum = globals.updateQuorum,
-      clock = Some(s => BigInt(geometry.slotStart(s).toEpochMilli)),
+      clock = Some(clock.getOrElse(PosixClock.total(geometry))),
       evaluator = evaluator,
       decoder = decoder
     )

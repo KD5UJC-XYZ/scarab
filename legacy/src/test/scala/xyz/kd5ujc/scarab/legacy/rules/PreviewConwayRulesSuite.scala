@@ -91,7 +91,7 @@ class PreviewConwayRulesSuite extends FunSuite:
       network = 0,
       firstSlotNextEpoch = (c.slot / 86400 + 1) * 86400,
       stabilityWindow = 129600,
-      clock = Some(slot => slot * 1000 + 1666656000000L),
+      clock = Some(xyz.kd5ujc.scarab.ledger.PosixClock.Total(slot => slot * 1000 + 1666656000000L)),
       evaluator = ScalusEvaluator.default
     )
 

@@ -25,7 +25,7 @@ object Phase2:
       slot: BigInt,
       spent: Map[TxIn, TxOut],
       references: Map[TxIn, TxOut],
-      clock: Option[BigInt => BigInt],
+      clock: Option[PosixClock],
       outcome: Collected[Outcome]
   )
 
@@ -91,7 +91,7 @@ object Phase2:
       slot: BigInt,
       spent: Map[TxIn, TxOut],
       references: Map[TxIn, TxOut],
-      clock: Option[BigInt => BigInt],
+      clock: Option[PosixClock],
       requests: Collected[Vector[(Redeemer, EvalRequest)]]
   ): Job =
     new Job(

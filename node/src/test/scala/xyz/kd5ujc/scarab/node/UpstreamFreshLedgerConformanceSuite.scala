@@ -92,7 +92,11 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
     geometry.firstSlot(epoch + 1),
     geometry.stabilityWindow,
     txIndex = index,
-    clock = Some(s => BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s))
+    clock = Some(
+      xyz.kd5ujc.scarab.ledger.PosixClock.Total(s =>
+        BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s)
+      )
+    )
   )
   private def sameUtxo(found: UTxOState[Conway], wanted: UTxOState[Conway]): Unit =
     def parts(s: UTxOState[Conway]) = s.utxo.utxo.toMap.toVector

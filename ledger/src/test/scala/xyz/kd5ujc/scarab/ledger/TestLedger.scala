@@ -108,7 +108,7 @@ object TestLedger:
       firstSlotNextEpoch = 5000,
       stabilityWindow = 100,
       updateQuorum = 2,
-      clock = Some(slot => slot * 1000 + 1596059091000L)
+      clock = Some(PosixClock.Total(slot => slot * 1000 + 1596059091000L))
     )
 
   /** An evaluator whose verdict is fixed: every script succeeds or every script fails. */
