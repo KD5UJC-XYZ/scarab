@@ -6,11 +6,12 @@ import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import scalus.uplc.{ScarabProgramView, Term}
 import xyz.kd5ujc.scarab.ledger.PlutusCase
-import xyz.kd5ujc.scarab.plutus.{DeepFlatPrograms, FlatScan, FlatScanFunctional, PlutusScriptBytes}
+import xyz.kd5ujc.scarab.plutus.{DeepFlatPrograms, FlatScan, FlatScanImperative, PlutusScriptBytes}
 
-/** Development tool: the production flat decoder ([[FlatScan.decode]], an imperative walker)
-  * against [[FlatScanFunctional.decode]] (the same contract without mutation), timed and with the
-  * thread's allocation counted (`docs/performance.md`, "Flat script decoding").
+/** Development tool: the imperative flat decoder ([[FlatScanImperative.decode]], production's until
+  * this measurement) against the functional one production now uses ([[FlatScan.decode]], the same
+  * contract without mutation), timed and with the thread's allocation counted
+  * (`docs/performance.md`, "Flat script decoding").
   *
   * `ledger/Test/runMain xyz.kd5ujc.scarab.bench.FlatScanBench [imperative|functional] [rounds]`
   *
@@ -26,8 +27,8 @@ object FlatScanBench:
     case Imperative, Functional
 
     def decode(flat: Array[Byte]): Either[FlatScan.Failure, FlatScan.Decoded] = this match
-      case Imperative => FlatScan.decode(flat)
-      case Functional => FlatScanFunctional.decode(flat)
+      case Imperative => FlatScanImperative.decode(flat)
+      case Functional => FlatScan.decode(flat)
 
   private final case class Workload(name: String, inputs: Vector[Array[Byte]]):
     val bytes: Long = inputs.map(_.length.toLong).sum
@@ -151,8 +152,8 @@ object FlatScanBench:
     ) ++ DeepFlatPrograms.all.map((id, flat) => Workload(s"$id (${flat.length} B)", Vector(flat)))
     val inputs = workloads.flatMap(_.inputs)
     val checked = onBigStack(inputs.map { flat =>
-      val imperative = FlatScan.decode(flat)
-      (imperative.isRight, imperative == FlatScanFunctional.decode(flat))
+      val imperative = FlatScanImperative.decode(flat)
+      (imperative.isRight, imperative == FlatScan.decode(flat))
     })
     checked match
       case Left(error) =>

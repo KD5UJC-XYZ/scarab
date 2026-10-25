@@ -10,7 +10,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 /** The flat bytes of every script the fixtures hold, by an id that names its source: the upstream
   * conformance programs (encoded by Scalus, and the original-byte sidecars), the boundary, costing,
   * upstream-boundary and transaction script corpora, and the flat decoding probes. Shared by
-  * [[FlatDecodeParitySuite]] and [[FlatScanFunctionalSuite]].
+  * [[FlatDecodeParitySuite]] and [[FlatScanImperativeSuite]].
   */
 object FlatFixtureScripts:
   /** A fixture whose hex does not parse is a broken fixture, not an input. */

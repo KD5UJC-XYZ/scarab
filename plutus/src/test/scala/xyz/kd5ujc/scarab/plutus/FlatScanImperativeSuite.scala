@@ -4,11 +4,12 @@ package xyz.kd5ujc.scarab.plutus
 import munit.FunSuite
 import scala.util.Random
 
-/** [[FlatScanFunctional]] gives the result [[FlatScan.decode]] gives, program and scan facts or
-  * failure, for every fixture script, every prefix of one, and seeded single-bit changes of each,
-  * and keeps its stack on the heap (ADR 0011).
+/** [[FlatScan.decode]] gives the result of the imperative walker it replaced
+  * ([[FlatScanImperative]]), program and scan facts or failure, for every fixture script, every
+  * prefix of one, and seeded single-bit changes of each, and keeps its stack on the heap (ADR
+  * 0011).
   */
-class FlatScanFunctionalSuite extends FunSuite:
+class FlatScanImperativeSuite extends FunSuite:
   override val munitTimeout = scala.concurrent.duration.Duration(10, "min")
 
   private def onStack[A](size: Long)(body: => A): Either[Throwable, A] =
@@ -34,8 +35,8 @@ class FlatScanFunctionalSuite extends FunSuite:
     case Accepted, Refused, Differs
 
   private def outcome(flat: Array[Byte]): Outcome =
-    val imperative = FlatScan.decode(flat)
-    if imperative != FlatScanFunctional.decode(flat) then Outcome.Differs
+    val imperative = FlatScanImperative.decode(flat)
+    if imperative != FlatScan.decode(flat) then Outcome.Differs
     else if imperative.isRight then Outcome.Accepted
     else Outcome.Refused
 
@@ -89,7 +90,7 @@ class FlatScanFunctionalSuite extends FunSuite:
 
   test("the deep programs decode on a small stack") {
     DeepFlatPrograms.all.foreach { (id, flat) =>
-      val decoded = onStack(256L * 1024)(FlatScanFunctional.decode(flat).isRight)
+      val decoded = onStack(256L * 1024)(FlatScan.decode(flat).isRight)
       assertEquals(decoded.left.map(_.getClass.getName), Right(true), id)
     }
   }

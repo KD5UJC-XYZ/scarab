@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.plutus
 
 /** Flat programs of version 1.0.0 deep enough that a decoder recursing on the call stack overflows
-  * a small one (ADR 0011). Shared by [[FlatScanDepthSuite]], [[FlatScanFunctionalSuite]] and the
+  * a small one (ADR 0011). Shared by [[FlatScanDepthSuite]], [[FlatScanImperativeSuite]] and the
   * flat decoding benchmark.
   */
 object DeepFlatPrograms:
