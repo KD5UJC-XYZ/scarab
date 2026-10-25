@@ -57,7 +57,7 @@ private[witness] object WitnessGoldenCorpus:
       Error.IdMismatch(file, expected -- actual, actual -- expected)
     )
 
-  private def inputs(text: String): Either[Error, Vector[Input]] =
+  def inputs(text: String): Either[Error, Vector[Input]] =
     text.linesIterator.toVector.zipWithIndex.traverse { (line, index) =>
       line.split("\t", -1).toVector match
         case Vector(id, key, signature, message) if id.nonEmpty =>
