@@ -150,3 +150,52 @@ class DefiniteBytesReferenceSuite extends FunSuite:
       Some(LedgerDecodeError.IndefiniteLength(DecodeField.Nonce))
     )
   }
+
+  /** The definite Shelley body with the extra entropy `nonce` (hex) in place of its own. */
+  private def shelleyBodyWith(nonce: String): Bytes =
+    val definite =
+      rows.find(_.id == "shelley-body-update-extra-entropy-definite").getOrElse(fail("no case"))
+    val own = "82015820" + "5b" * 32
+    assert(definite.raw.hex.contains(own))
+    Bytes.fromHex(definite.raw.hex.replace(own, nonce)).fold(e => fail(e.toString), identity)
+
+  private def ingress(nonce: String): Vector[Either[LedgerDecodeError, Unit]] =
+    val body = shelleyBodyWith(nonce)
+    Vector(
+      TxBody.decode(body, Era.Shelley).map(_ => ()),
+      LiteLedger.effects(body, Era.Shelley).map(_ => ())
+    )
+
+  test("a neutral nonce has exactly one field at both ingress paths, as Summands checks") {
+    val refused = Left(LedgerDecodeError.TaggedArity(DecodeField.Nonce, BigInt(0), 2))
+    for nonce <- Vector("820000", "9f0000ff") do
+      assertEquals(ingress(nonce), Vector(refused, refused), nonce)
+  }
+
+  test("a neutral nonce of one field and a hash nonce of two are still accepted at ingress") {
+    for nonce <- Vector(
+        "8100",
+        "9f00ff",
+        "82015820" + "5b" * 32,
+        "9f01" + "5820" + "5b" * 32 + "ff"
+      )
+    do assertEquals(ingress(nonce), Vector(Right(()), Right(())), nonce)
+  }
+
+  test("an update stored with a neutral nonce of two fields still applies (ADR 0006)") {
+    val stored =
+      ParamUpdate(Map(13 -> Bytes.fromHex("820000").fold(e => fail(e.toString), identity)))
+    assertEquals(
+      ProtocolParams.update(TestLedger.params(2), stored).map(_.extraEntropy),
+      Right(Nonce.Neutral)
+    )
+    val lite = LiteParams(
+      (2, 0),
+      Rational.one,
+      Nonce.Hash(Bytes(Vector.fill(32)(1.toByte))),
+      65536,
+      16384,
+      1100
+    )
+    assertEquals(LiteLedger.applyUpdate(lite, stored).map(_.extraEntropy), Right(Nonce.Neutral))
+  }

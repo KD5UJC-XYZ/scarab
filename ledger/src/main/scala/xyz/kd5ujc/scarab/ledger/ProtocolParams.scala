@@ -381,7 +381,9 @@ object ProtocolParams:
       field(10)(rat(DecodeField.Rho, CborRead.Bound.Unit)((p, v) => p.copy(rho = v))),
       field(11)(rat(DecodeField.Tau, CborRead.Bound.Unit)((p, v) => p.copy(tau = v))),
       field(12)(rat(DecodeField.D, CborRead.Bound.Unit)((p, v) => p.copy(d = v))),
-      field(13)((p, n) => Nonce.decode(n).map(v => p.copy(extraEntropy = v))),
+      field(13)((p, n) =>
+        Nonce.decode(n, Nonce.NeutralFields.Stored).map(v => p.copy(extraEntropy = v))
+      ),
       field(14)((p, n) =>
         CborRead
           .arrayN(n, 2, DecodeField.ProtocolVersion)

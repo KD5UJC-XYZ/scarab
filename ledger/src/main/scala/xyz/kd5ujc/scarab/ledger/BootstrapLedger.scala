@@ -66,7 +66,7 @@ object ParamUpdate:
             .toRight(LedgerDecodeError.UnknownKey(DecodeField.ParameterUpdate, index))
           _ <-
             if key == CostModelsField then CostModelDecode.decode(v, costModels).void
-            else if key == ExtraEntropyField then Nonce.decode(v).void
+            else if key == ExtraEntropyField then Nonce.decode(v, Nonce.NeutralFields.Exact).void
             else Right(())
         yield acc.updated(key, v.original)
       }
@@ -310,7 +310,11 @@ object LiteLedger:
         p3,
         (p, n) => CborRead.rational(n, DecodeField.D, CborRead.Bound.Unit).map(v => p.copy(d = v))
       )
-      p5 <- field(13, p4, (p, n) => Nonce.decode(n).map(v => p.copy(extraEntropy = v)))
+      p5 <- field(
+        13,
+        p4,
+        (p, n) => Nonce.decode(n, Nonce.NeutralFields.Stored).map(v => p.copy(extraEntropy = v))
+      )
       p6 <- field(14, p5, (p, n) => parseVersion(n).map(v => p.copy(protocolVersion = v)))
     yield p6
 
