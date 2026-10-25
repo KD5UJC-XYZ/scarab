@@ -4,14 +4,15 @@
 Requires a run whose follower wrote state digests (`devnet.py e2e --oracle`, `soak --oracle`, or `follow
 --dump-state`) and a reference container that is still up (`--keep`). The ImmutableDB of reference node 1 is
 copied inside the container (the node keeps running), db-analyser stores the ledger state at the slot of each
-Scala digest, and the projection of each snapshot is compared with the digest.
+Scala digest, and the projection of each snapshot is compared with the digest. Only digests whose block (header
+hash) is on both final chains are compared; the others are excluded with a reason (`finality`, issue 91).
 """
 import json
 import subprocess
 import time
 
-from devnet.util import ENV, docker, ref
-from . import compare, ledger
+from devnet.util import ENV, docker, read_log, ref
+from . import compare, finality, ledger
 from .analyse import Analyser, AnalyserError
 
 WORK = "/work/oracle"
@@ -46,65 +47,107 @@ def export_snapshot(name, slot, out):
         (out / f).write_bytes(data)
 
 
+def reference_blocks(name):
+    """The blocks of the copied ImmutableDB of reference node 1: the reference's final chain."""
+    r = docker("exec", ref(name), "db-analyser", "--db", DB, "--config", f"{ENV}/configuration.yaml", "--in-mem",
+               "--show-slot-block-no", "--threshold", "1", check=False, timeout=300)
+    if r.returncode != 0:
+        raise AnalyserError(f"db-analyser --show-slot-block-no failed ({r.returncode}): {(r.stdout + r.stderr)[-1500:]}")
+    return finality.reference_chain(r.stdout + r.stderr)
+
+
+def security_param(root):
+    return json.loads((root / "genesis" / "shelley-genesis.json").read_text())["securityParam"]
+
+
+def dumped_epoch(dump):
+    """The ledger epoch the digest records (the state after its block), or None when the file has none."""
+    try:
+        return json.loads(dump.path.read_text()).get("epoch")
+    except (OSError, ValueError):
+        return None
+
+
 def run(name, root, log=print, wait_seconds=240):
-    """Compare every digest in `root/dump`; returns (summary dict, failures list)."""
-    dumps = compare.load_dumps(root / "dump")
+    """Compare every digest in `root/dump` whose block is on both final chains (`finality`); returns (summary
+    dict, failures list). The summary counts the compared, matched and excluded digests and names the reason
+    for each exclusion; `results` holds one row per digest."""
+    dumps = finality.load(root / "dump")
     if not dumps:
         return {"digests": 0}, ["the follower wrote no state digests (was it started with --dump-state?)"]
-    wanted = sorted(dumps)
+    events, _ = read_log(root / "follower.jsonl")
+    try:
+        follower = finality.FollowerChain.from_events(events)
+    except finality.ChainRebuildError as e:
+        return {"digests": len(dumps)}, [f"oracle: the follower's final chain cannot be rebuilt from its log: {e}"]
+    k = security_param(root)
+    newest = max(d.slot for d in dumps)
     deadline = time.monotonic() + wait_seconds
     while True:
         copy_db(name)
         tip = immutable_tip_slot(name)
-        if tip is not None and tip >= wanted[-1]:
+        if tip is not None and tip >= newest:
             break
         if time.monotonic() > deadline:
-            wanted = [s for s in wanted if tip is not None and s <= tip]
             log({"oracle": "immutable tip behind the newest digest", "tip": tip})
             break
         time.sleep(10)
+    try:
+        chain = reference_blocks(name)
+    except (AnalyserError, subprocess.SubprocessError) as e:
+        return {"digests": len(dumps)}, [f"oracle: the reference's final chain cannot be listed: {e!r}"]
+    if tip is not None and (not chain or chain[-1].slot != tip):
+        return {"digests": len(dumps)}, [f"oracle: db-analyser listed {len(chain)} reference blocks ending at "
+                                         f"{chain[-1] if chain else None}, the immutable tip is at slot {tip}"]
+    reference = {b.hash: b for b in chain}
     analyser = Analyser(lambda args: ["docker", "exec", ref(name), "db-analyser", *args], DB,
                         f"{ENV}/configuration.yaml", threshold=1)
     scratch = root / "oracle"
-    results, failures = [], []
+    results = []
     previous = None
-    for slot in wanted:
-        entry = {"slot": slot}
-        try:
-            stored = analyser.store(slot, analyse_from=previous)
-            if stored != slot:
-                entry["error"] = f"db-analyser stored the state at slot {stored}, the digest is at {slot}"
-            else:
-                export_snapshot(name, slot, scratch / str(slot))
-                reference = ledger.reduced(scratch / str(slot))
-                differences = []
-                for block_hash, path in dumps[slot]:
-                    differences = compare.compare_files(reference, path)
-                    entry["hash"] = block_hash
-                    if reference["point"]["hash"] != block_hash:
-                        entry["error"] = f"the reference block at slot {slot} is {reference['point']['hash']}"
-                entry["era"] = reference["era"]
-                entry["epoch"] = reference["epoch"]
-                entry["utxoSize"] = reference["utxo"]["count"]
-                entry["matched"] = not differences and "error" not in entry
-                entry["differenceCount"] = len(differences)
-                entry["differences"] = [{"path": p, "reference": str(a)[:300], "scala": str(b)[:300]}
-                                        for p, a, b in differences[:25]]
-            previous = slot
-        except (AnalyserError, subprocess.SubprocessError, OSError, ValueError, AssertionError, KeyError, IndexError) as e:
-            import traceback
-            entry["error"] = repr(e)
-            entry["traceback"] = traceback.format_exc()[-1200:]
+    for dump in sorted(dumps):
+        verdict = finality.classify(dump, reference, tip, follower, k)
+        entry = {"slot": dump.slot, "hash": dump.hash, "epoch": dumped_epoch(dump), "verdict": verdict.value,
+                 "followerDepth": follower.depth(dump.hash),
+                 "referenceBlock": finality.first_reference_block(chain, dump.slot)}
+        if verdict is finality.Verdict.COMPARE:
+            entry.update(compare_one(analyser, name, dump, previous, scratch))
+            previous = entry.get("stored", previous)
         results.append(entry)
-        log({"oracle": slot, "epoch": entry.get("epoch"), "era": entry.get("era"), "matched": entry.get("matched"),
-             "differences": entry.get("differenceCount"), "error": entry.get("error")})
-    matched = sum(1 for r in results if r.get("matched"))
-    summary = {"digests": len(dumps), "compared": len(results), "matched": matched,
-               "mismatched": sum(1 for r in results if r.get("matched") is False and "error" not in r),
-               "errors": sum(1 for r in results if "error" in r),
-               "notYetImmutable": len(dumps) - len(wanted), "results": results}
+        log({"oracle": dump.slot, "hash": dump.hash[:16], "verdict": verdict.value, "epoch": entry.get("epoch"),
+             "era": entry.get("era"), "matched": entry.get("matched"), "differences": entry.get("differenceCount"),
+             "error": entry.get("error")})
+    summary, failures = finality.summarize(results, len(dumps), k, tip, follower.tip)
     (root / "oracle-summary.json").write_text(json.dumps(summary, indent=2))
-    if matched != len(dumps):
-        failures.append(f"oracle: {matched} of {len(dumps)} epoch-boundary states match the Haskell ledger "
-                        f"(first: {next((r for r in results if not r.get('matched')), None)})")
     return summary, failures
+
+
+def compare_one(analyser, name, dump, previous, scratch):
+    """Store the reference state after the digest's block, project it and compare; returns the row's fields."""
+    entry = {}
+    try:
+        stored = analyser.store(dump.slot, analyse_from=previous)
+        if stored is not None:
+            entry["stored"] = stored
+        if stored != dump.slot:
+            # the block is on the reference's immutable chain, so the first block at or after its slot is that block
+            entry["error"] = f"db-analyser stored the state at slot {stored}, the digest is at {dump.slot}"
+            return entry
+        out = scratch / f"{dump.slot}-{dump.hash}"
+        export_snapshot(name, dump.slot, out)
+        reference = ledger.reduced(out)
+        if reference["point"]["hash"] != dump.hash:
+            entry["error"] = f"the reference state at slot {dump.slot} is after block {reference['point']['hash']}"
+        differences = compare.compare_files(reference, dump.path)
+        entry["era"] = reference["era"]
+        entry["ledgerEpoch"] = reference["epoch"]
+        entry["utxoSize"] = reference["utxo"]["count"]
+        entry["matched"] = not differences and "error" not in entry
+        entry["differenceCount"] = len(differences)
+        entry["differences"] = [{"path": p, "reference": str(a)[:300], "scala": str(b)[:300]}
+                                for p, a, b in differences[:25]]
+    except (AnalyserError, subprocess.SubprocessError, OSError, ValueError, AssertionError, KeyError, IndexError) as e:
+        import traceback
+        entry["error"] = repr(e)
+        entry["traceback"] = traceback.format_exc()[-1200:]
+    return entry
