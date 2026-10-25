@@ -416,13 +416,13 @@ object UtxoChecks:
     if pre.atLeast(ShelleyBasedEra.SBabbage) then
       UtxoChecks(
         defect,
-        UtxoTests.babbage(pp, ctx.network, ctx.slot, ann, minFee, consumed, produced),
+        UtxoTests.babbage(pp, ctx, ann, minFee, consumed, produced),
         Test.pass
       )
     else if alonzo then
       UtxoChecks(
         defect,
-        UtxoTests.alonzo(pp, ctx.network, ctx.slot, ann, minFee, consumed, produced),
+        UtxoTests.alonzo(pp, ctx, ann, minFee, consumed, produced),
         Test.pass
       )
     else

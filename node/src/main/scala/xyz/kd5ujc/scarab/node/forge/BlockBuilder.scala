@@ -144,10 +144,12 @@ object BlockBuilder:
     * selection. Each transaction counts for the measure it was admitted with ([[Capacity.measure]],
     * the ticket's measure the reference keeps).
     *
-    * The rules are LEDGER of Conway on the era-indexed state ([[MempoolLedger]], the same that
-    * validates the pool). An evaluator that is unavailable or fails on a transaction's scripts,
-    * and a crypto provider that fails on a witness, have no ledger verdict and stop the selection
-    * instead of dropping the transaction: the forger raises them and the node stops.
+    * A transaction was validated when the pool admitted it, so it is applied again as the
+    * reference's forging snapshot applies it (`revalidateTxsFor` and `reapplyTx`,
+    * [[MempoolLedger.reapply]]): MEMPOOL and LEDGER of Conway on the era-indexed state without their
+    * static checks, so no signature is verified and no script is evaluated again. A result without
+    * a ledger verdict would stop the selection instead of dropping the transaction: the forger
+    * raises it and the node stops.
     */
   def select(
       ticked: MempoolLedger,
@@ -188,8 +190,8 @@ object BlockBuilder:
         val applied = piece(entry).toOption match
           case None => Right(None)
           case Some(p) =>
-            acc
-              .state(entry.tx, env, rules)
+            acc.state
+              .reapply(entry.tx, env, rules)
               .fold(
                 {
                   // no verdict on the transaction (evaluator, crypto provider): selection stops

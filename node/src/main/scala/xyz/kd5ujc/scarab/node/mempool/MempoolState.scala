@@ -168,11 +168,20 @@ final case class MempoolLedger(ls: LedgerState[Conway], treasury: Coin, epoch: B
   def withUtxo(u: Utxo): MempoolLedger =
     copy(ls = ls.copy[Conway](utxo = ls.utxo.copy(utxo = UtxoTables(u))))
 
-  /** The transaction applied (LEDGER of Conway) to its first failure, or the refusal: how a held
-    * transaction is revalidated, where only the verdict counts.
+  /** A transaction validated before, applied again to its first failure, where only the verdict
+    * counts: MEMPOOL and LEDGER without their static checks (`reapplyTx`, ouroboros-consensus
+    * 82ecba32 `Shelley/Ledger/Mempool.hs` 325–338; cardano-ledger f649f975
+    * `Shelley/API/Mempool.hs` 472–473, whose Conway rule is MEMPOOL, `Conway.hs` 57). The pool
+    * revalidates its transactions so, and so does block production (`revalidateTxsFor`,
+    * `Mempool/Impl/Common.hs` 403–422): no signature is verified and no script is evaluated again
+    * ([[TxEnv.Validation]]).
     */
-  def apply(tx: Tx, env: TxEnv, rules: Globals): Either[LedgerFailure, MempoolLedger] =
-    judged(Ledger, Judgment.Policy.FirstFailure)(tx, env, rules)
+  def reapply(tx: Tx, env: TxEnv, rules: Globals): Either[LedgerFailure, MempoolLedger] =
+    judged(Mempool, Judgment.Policy.FirstFailure)(
+      tx,
+      env.copy(validation = TxEnv.Validation.NonStatic),
+      rules
+    )
 
   /** The transaction applied by the MEMPOOL rule of the ledger (`Conway/Rules/Mempool.hs`), whose
     * refusal holds every predicate failure the reference reports, in its order.
@@ -401,7 +410,7 @@ final case class MempoolState(
             state.current
               .leftMap(Rejection.NoLedger(_))
               .flatMap(
-                _(entry.tx, env.txEnv(slot, l, state.entries.size), env.rules)
+                _.reapply(entry.tx, env.txEnv(slot, l, state.entries.size), env.rules)
                   .leftMap(Rejection.Ledger(_))
               ) match
               case Right(next) =>

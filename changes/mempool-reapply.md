@@ -1,0 +1,3 @@
+### Changed (mempool and forging)
+
+- The mempool revalidates a held transaction, and block production applies a candidate, as the reference's `reapplyTx` does: the MEMPOOL and LEDGER rules without their static checks (cardano-ledger `Shelley/API/Mempool.hs`, `ValidateSuchThat (notElem lblStatic)`). No witness signature is verified, no Plutus script is decoded or evaluated, and the input set, network, bootstrap attribute, transaction size and auxiliary data checks are not made again. A held transaction is therefore no longer dropped because the maximum transaction size fell at an epoch boundary or because a script is now evaluated differently, and the MEMPOOL rule's checks (all inputs spent, unelected committee voters) now apply to revalidation as well as to admission.

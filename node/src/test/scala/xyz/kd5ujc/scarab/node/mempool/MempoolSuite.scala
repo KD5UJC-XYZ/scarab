@@ -201,9 +201,11 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
       .empty(Right(old), 5999, None)
       .add(raw, env, Source.Local)
       .fold(e => fail(e.message), _._1)
+    // a held transaction is applied again without the static checks (`reapplyTx`), and the size
+    // check is one (`runTestOnSignal`, `Babbage/Rules/Utxo.hs` 406): it stays in the pool
     val (synced, dropped) = held.sync(Right(ticked), 5999, env).verdict
-    assertEquals(synced.entries, Vector.empty)
-    assertEquals(dropped.map(_._1.raw), Vector(raw))
+    assertEquals(synced.entries.map(_.raw), Vector(raw))
+    assertEquals(dropped, Vector.empty)
     assertEquals(scheduled.ru, Some(PulsingRewUpdate.Complete(pending)))
   }
 
@@ -656,7 +658,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
       assert(!log.exists(_.isInstanceOf[MempoolEvent.Removed]))
   }
 
-  test("real mempool validation retries unavailable add and revalidation after decoder recovery") {
+  test("an unavailable add is retried after decoder recovery; revalidation does not decode") {
     val fixture = xyz.kd5ujc.scarab.ledger.PlutusCase
       .load(java.nio.file.Path.of("fixtures/preprod/plutus/tx-2edd684f.json"))
     val script =
@@ -696,19 +698,16 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
       knownAfterUnavailableSync <- mempool
         .sink(failure => IO(fail(s"unexpected fatal: $failure")))
         .known(id)
-      _ <- context.set(env)
-      retryAfterSync <- mempool.add(raw, Source.Local)
     yield
       first match
         case Left(Rejection.Ledger(_: LedgerFailure.Unavailable)) => ()
         case other => fail(s"unexpected first validation $other")
       assert(!knownAfterUnavailableAdd)
       assertEquals(retried, Right(id))
-      assert(dropped.exists {
-        case (_, Rejection.Ledger(_: LedgerFailure.Unavailable)) => true; case _ => false
-      })
-      assert(!knownAfterUnavailableSync)
-      assertEquals(retryAfterSync, Right(id))
+      // well-formed scripts are a static check (`Babbage/Rules/Utxow.hs` 379): applied again, the
+      // held transaction does not reach the decoder that is unavailable now
+      assertEquals(dropped, Vector.empty)
+      assert(knownAfterUnavailableSync)
   }
 
 /** The pool reads inputs from the UTxO store, like the block path does. */
