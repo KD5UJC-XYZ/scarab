@@ -185,9 +185,9 @@ lazy val consensus = scarab("consensus")
     )
   )
 
-// The frozen readers of the snapshot formats before the current one (V1 to V3) with the node state
-// of their time, and the upgrade of that state to the current one: what `storage` migrates from. Data
-// and readers only; deleted at its sunset (ADR 0006, design ledger-mirror-step2.md D3).
+// The flat node state (`FlatNodeState`), its conversion to the era-indexed state (`Mirroring`) and
+// the genesis start state (`GenesisState.initial`) that `NodeSetup` builds the first state from. It
+// holds no snapshot reader (ADR 0009, amendment of 2026-10-25).
 lazy val legacy = scarab("legacy")
   .dependsOn(consensus % "compile->compile;test->test")
   .settings(
