@@ -3,6 +3,8 @@
 
 Run from the repository root:  python3 -m unittest discover -s scripts/tests -v
 """
+import dataclasses
+import json
 import pathlib
 import re
 import sys
@@ -193,35 +195,82 @@ class PlanTest(unittest.TestCase):
 
 
 class HopDecisionTest(unittest.TestCase):
+    NOT_READY = walk.Wait(walk.WaitReason.COMMITTEE_NOT_AUTHORISED, missing=("gcommittee",))
+
     def decide(self, pv, epoch, hops=(), limit=11, ready=True, window=True):
-        return walk.hop_decision(pv, epoch, window, list(hops), limit, ready)
+        asked = []
+
+        def readiness():
+            asked.append(True)
+            return None if ready else self.NOT_READY
+        decision = walk.hop_decision(pv, epoch, window, list(hops), limit, readiness)
+        self.asked = bool(asked)
+        return decision
 
     def test_the_first_hop_needs_the_pools_only_while_the_bootstrap_phase_lasts(self):
-        self.assertEqual(self.decide(9, 10, ready=False), ("propose", 10, False))
+        self.assertEqual(self.decide(9, 10, ready=False), walk.Propose(10, False))
+        self.assertFalse(self.asked)  # the committee state is not queried for a bootstrap hop
 
     def test_a_late_slot_waits_for_the_next_epoch(self):
-        self.assertEqual(self.decide(9, 10, window=False)[0], "wait")
+        self.assertEqual(self.decide(9, 10, window=False), walk.Wait(walk.WaitReason.LATE_IN_EPOCH, hop=10))
 
     def test_a_hop_from_version_10_waits_for_the_committee_and_the_dreps(self):
-        self.assertEqual(self.decide(10, 14, ready=False)[0], "wait")
-        self.assertEqual(self.decide(10, 14, ready=True), ("propose", 11, True))
+        self.assertEqual(self.decide(10, 14, ready=False), dataclasses.replace(self.NOT_READY, hop=11))
+        self.assertEqual(self.decide(10, 14, ready=True), walk.Propose(11, True))
+
+    def test_the_votes_are_reported_before_the_window(self):
+        self.assertEqual(self.decide(10, 14, ready=False, window=False).reason, walk.WaitReason.COMMITTEE_NOT_AUTHORISED)
 
     def test_the_next_hop_is_proposed_one_epoch_after_its_predecessor_never_in_the_same_epoch(self):
         first = walk.Hop(10, 10, "aa")
-        self.assertEqual(self.decide(9, 10, [first])[0], "wait")
+        self.assertEqual(self.decide(9, 10, [first]), walk.Wait(walk.WaitReason.SAME_EPOCH, hop=10))
         # one epoch later the predecessor is still pending (version 9) and is ratified before the new hop: it is
         # ratified under version 10, whose rules need the DReps and the committee, who cannot vote at version 9
-        self.assertEqual(self.decide(9, 11, [first], ready=False)[0], "wait")
+        self.assertEqual(self.decide(9, 11, [first], ready=False).reason, walk.WaitReason.COMMITTEE_NOT_AUTHORISED)
 
     def test_a_chained_hop_proposed_while_its_predecessor_is_pending_needs_the_votes_of_the_predecessors_version(self):
         pending = walk.Hop(11, 14, "bb")
-        self.assertEqual(self.decide(10, 15, [pending], limit=12, ready=True), ("propose", 12, True))
-        self.assertEqual(self.decide(10, 15, [pending], limit=12, ready=False)[0], "wait")
+        self.assertEqual(self.decide(10, 15, [pending], limit=12, ready=True), walk.Propose(12, True))
+        self.assertIsInstance(self.decide(10, 15, [pending], limit=12, ready=False), walk.Wait)
 
     def test_nothing_is_proposed_at_the_limit_or_when_every_hop_is_out(self):
-        self.assertEqual(self.decide(11, 20), ("done",))
-        self.assertEqual(self.decide(10, 20, [walk.Hop(11, 19, "cc")]), ("done",))
+        self.assertEqual(self.decide(11, 20), walk.Done())
+        self.assertEqual(self.decide(10, 20, [walk.Hop(11, 19, "cc")]), walk.Wait(walk.WaitReason.ENACTMENT, hop=11))
 
+
+class FullReadinessTest(unittest.TestCase):
+    KEY = types.SimpleNamespace(hash=bytes([9]) * 28)
+
+    def ready(self, done, delegations_epoch=None, epoch=14, keys=(KEY,)):
+        return walk.full_readiness(set(done), delegations_epoch, epoch, lambda: list(keys))
+
+    def test_each_precondition_is_reported_in_order(self):
+        W = walk.WaitReason
+        self.assertEqual(self.ready(set()), walk.Wait(W.DELEGATIONS_NOT_MADE, missing=("gdeleg", "gdeleg2")))
+        self.assertEqual(self.ready({"gdeleg"}), walk.Wait(W.DELEGATIONS_NOT_MADE, missing=("gdeleg2",)))
+        self.assertEqual(self.ready({"gdeleg", "gdeleg2"}, 14),
+                         walk.Wait(W.DELEGATIONS_NOT_IN_DISTRIBUTION, since=14))
+        self.assertEqual(self.ready({"gdeleg", "gdeleg2"}, 13),
+                         walk.Wait(W.COMMITTEE_NOT_AUTHORISED, missing=("gcommittee",)))
+        self.assertEqual(self.ready({"gdeleg", "gdeleg2", "gcommittee"}, 13, keys=()),
+                         walk.Wait(W.NO_AUTHORISED_MEMBER))
+        self.assertIsNone(self.ready({"gdeleg", "gdeleg2", "gcommittee"}, 13))
+
+    def test_the_committee_state_is_queried_only_once_the_stages_are_done(self):
+        def query():
+            raise AssertionError("queried")
+        self.assertEqual(walk.full_readiness({"gdeleg", "gdeleg2"}, 13, 14, query).reason,
+                         walk.WaitReason.COMMITTEE_NOT_AUTHORISED)
+
+    def test_every_wait_reason_has_a_distinct_log_name(self):
+        self.assertEqual(len({r.name for r in walk.WaitReason}), len(walk.WaitReason))
+        fields = walk.Wait(walk.WaitReason.DELEGATIONS_NOT_IN_DISTRIBUTION, hop=11, since=13).fields()
+        self.assertEqual(fields["wait"], "DELEGATIONS_NOT_IN_DISTRIBUTION")
+        self.assertEqual((fields["hop"], fields["delegationsEpoch"]), (11, 13))
+        json.dumps(fields)
+
+
+class HopBookkeepingTest(unittest.TestCase):
     def test_settle_splits_enacted_from_pending(self):
         hops = [walk.Hop(10, 10, "a"), walk.Hop(11, 11, "b")]
         pending, enacted = walk.settle(hops, 10)
@@ -351,6 +400,46 @@ class WalkTest(unittest.TestCase):
         self.assertEqual(summary["firstEpochInForce"], {"9": 10, "10": 12, "11": 16})
         self.assertTrue(summary["complete"])
 
+    def waits(self):
+        return [(e["wait"], e.get("hop"), tuple(e.get("missing", ())), e["sinceEpoch"]) for e in self.ext.logs
+                if "wait" in e]
+
+    def test_every_pass_that_proposes_nothing_logs_its_typed_reason(self):
+        self.ext.done.clear()
+        self.step(9, 10)
+        self.ext.done.add("xrewards")
+        self.step(9, 10)  # proposes the hop to 10
+        self.proposals.append("01" * 32)
+        self.step(9, 10)
+        self.proposals.clear()
+        self.step(10, 12)
+        self.step(10, 12)
+        self.load.done |= {"gdeleg", "gdeleg2"}
+        self.step(10, 13)
+        self.assertEqual(self.waits(), [
+            ("REWARD_ACCOUNTS", None, ("xrewards",), 10),
+            ("SAME_EPOCH", 10, (), 10),
+            ("DELEGATIONS_NOT_MADE", 11, ("gdeleg", "gdeleg2"), 12),
+            ("DELEGATIONS_NOT_MADE", 11, ("gdeleg", "gdeleg2"), 12),
+            ("DELEGATIONS_NOT_IN_DISTRIBUTION", 11, (), 13)])
+        self.assertEqual(self.walk.summary()["waiting"]["wait"], "DELEGATIONS_NOT_IN_DISTRIBUTION")
+        self.assertEqual(self.walk.summary()["waiting"]["delegationsEpoch"], 13)
+
+    def test_a_stalled_walk_names_what_it_waited_for(self):
+        self.step(9, 10)
+        self.proposals.clear()
+        self.step(10, 12)
+        self.step(10, 13)
+        self.step(10, 13)
+        # the same reason over a boundary is one wait: it counts its passes from the epoch it began in
+        self.assertEqual((self.walk.waiting.passes, self.walk.waiting.since_epoch), (3, 12))
+        (failure,) = walk.walk_failures(self.walk)
+        self.assertTrue(failure.startswith("the chain did not reach protocol version 11 within 11 epochs"))
+        self.assertIn("waiting since epoch 12 (3 passes)", failure)
+        self.assertIn("enacted: [(10, 10)]", failure)
+        self.assertIn("DELEGATIONS_NOT_MADE", failure)
+        self.assertIn("missing gdeleg, gdeleg2", failure)
+
     def test_a_boundary_between_the_tip_and_the_parameters_does_not_date_a_version_a_epoch_early(self):
         self.ext.pv = 9
         self.load.epoch_now = 11  # the tip said 10, the parameters are already those of epoch 11
@@ -420,6 +509,124 @@ class WalkTest(unittest.TestCase):
         self.assertFalse(self.walk.overdue())
         self.walk.started -= self.walk.deadline_seconds() + 1
         self.assertTrue(self.walk.overdue())
+
+class BlockedThreadsTest(unittest.TestCase):
+    def test_only_a_thread_that_is_still_running_is_reported_with_its_stack(self):
+        import threading
+        from devnet.scenarios import e2e
+        release = threading.Event()
+
+        def blocked_in_a_comparison():
+            release.wait(30)
+        stuck = threading.Thread(target=blocked_in_a_comparison, daemon=True)
+        ended = threading.Thread(target=lambda: None, daemon=True)
+        stuck.start()
+        ended.start()
+        ended.join()
+        try:
+            stacks = e2e.blocked_stacks({"worker": stuck, "extended": ended, "governance": None})
+        finally:
+            release.set()
+            stuck.join()
+        self.assertEqual(sorted(stacks), ["worker"])
+        self.assertTrue(any("blocked_in_a_comparison" in line for line in stacks["worker"]))
+
+
+
+class GovernanceThreadTest(unittest.TestCase):
+    """The base governance pass that the walk's hops from version 10 depend on runs beside the comparisons."""
+
+    def test_the_pass_runs_once_per_conway_epoch_and_the_batch_leaves_it_to_the_thread(self):
+        from devnet import eraload
+        load = eraload.EraLoad("t", lambda: None, log=lambda m: None)
+        tips = iter([{"era": "Babbage", "epoch": 9, "slotInEpoch": 10}, {"era": "Conway", "epoch": 10, "slotInEpoch": 1},
+                     {"era": "Conway", "epoch": 10, "slotInEpoch": 5}, {"era": "Conway", "epoch": 10, "slotInEpoch": 9},
+                     {"era": "Conway", "epoch": 11, "slotInEpoch": 4}])
+
+        def epoch_info():
+            tip = next(tips, None)
+            if tip is None:
+                load.stop.set()
+                return {}
+            return tip
+        passes, batch = [], []
+        load.epoch_info, load.conway_features = epoch_info, passes.append
+        with patch.object(eraload, "time", types.SimpleNamespace(sleep=lambda seconds: None)):
+            load.start_governance()
+            load.governance_thread.join(30)
+        self.assertFalse(load.governance_thread.is_alive())
+        self.assertEqual(passes, [10, 11])
+        load.conway_features, load.transfers, load.once = batch.append, lambda era, n: None, lambda key: False
+        load.epoch_batch("conway", 12)
+        self.assertEqual(batch, [])
+
+    def test_without_the_thread_the_batch_runs_the_pass(self):
+        from devnet import eraload
+        load = eraload.EraLoad("t", lambda: None, log=lambda m: None)
+        batch = []
+        load.conway_features, load.transfers, load.once = batch.append, lambda era, n: None, lambda key: False
+        load.epoch_batch("conway", 12)
+        self.assertEqual(batch, [12])
+
+    def stopping_load(self):
+        from devnet import eraload
+        load = eraload.EraLoad("t", lambda: None, log=lambda m: None)
+        load.submissions = []
+        load.submit = lambda era, tx, label, expect=None: load.submissions.append(label) or True
+        return load
+
+    def test_a_stopped_load_submits_nothing_and_starts_no_stage(self):
+        load = self.stopping_load()
+        load.funds = lambda address: self.fail("the wallet was queried after the stop")
+        ran = []
+        load.stop.set()
+        self.assertIsNone(load.act("conway", "x", types.SimpleNamespace(address="a")))
+        self.assertIsNone(load.stage("s", lambda: ran.append(1) or "txid"))
+        self.assertEqual((ran, getattr(load, "attempts", {}), load.submissions), ([], {}, []))
+
+    def test_a_stop_during_the_governance_query_ends_the_pass_before_any_stage(self):
+        import threading
+        from devnet import eraload
+        load = self.stopping_load()
+        in_query, release = threading.Event(), threading.Event()
+        stages = []
+
+        def protocol_params():
+            in_query.set()
+            release.wait(30)
+            return {"protocolVersion": {"major": 10}, "stakeAddressDeposit": 1, "dRepDeposit": 1}
+        load.gov_setup = lambda: None
+        load.gw, load.gdrep, load.pool_cold = [None] * 5, [], []
+        load.protocol_params = protocol_params
+        load.stage = lambda key, run, tries=4: stages.append(key)
+        load.epoch_info = lambda: {"era": "Conway", "epoch": 10, "slotInEpoch": 5}
+        with patch.object(eraload, "time", types.SimpleNamespace(sleep=lambda seconds: None)):
+            load.start_governance()
+            try:
+                entered = in_query.wait(30)  # evaluated before the assertions: the worker holds no lock they need
+                load.stop.set()
+            finally:
+                release.set()
+            load.governance_thread.join(30)
+        self.assertTrue(entered)
+        self.assertFalse(load.governance_thread.is_alive())
+        self.assertEqual((stages, load.submissions), ([], []))
+
+    def test_join_stopped_names_the_threads_that_do_not_end(self):
+        import threading
+        from devnet.scenarios import e2e
+        release = threading.Event()
+        stuck = threading.Thread(target=lambda: release.wait(30), daemon=True)
+        ended = threading.Thread(target=lambda: None, daemon=True)
+        stuck.start()
+        ended.start()
+        try:
+            late = e2e.join_stopped({"worker": ended, "governance": stuck, "extended": None}, timeout=0)
+        finally:
+            release.set()
+            stuck.join(30)
+        self.assertEqual(late, ["governance"])
+        self.assertEqual(e2e.join_stopped({"governance": stuck}, timeout=0), [])
 
 
 if __name__ == "__main__":
