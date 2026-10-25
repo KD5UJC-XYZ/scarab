@@ -47,14 +47,15 @@ SLF4J (`node/log/LibraryLogs.scala`).
   code. If a borer source file were ever modified or vendored, that file would have to stay MPL-2.0 and
   be made available. Earlier versions of `NOTICE` did not mention it.
 - Nothing is redistributed in this repository: dependencies are retrieved from Maven Central at build
-  time. A binary distribution (a fat jar or a container image) would redistribute all of the below and
-  would need to carry their licence texts. No such artefact is published; that review stays open.
+  time. The node's assembly JAR (and the candidate OCI image, which adds only that JAR to its base)
+  redistributes all of the below, so it carries their licence texts: see
+  [Licence texts in binaries](#licence-texts-in-binaries).
 
 ## Native libraries bundled in jars
 
 | Jar | Native content | Upstream licence | Note |
 |---|---|---|---|
-| `org.rocksdb:rocksdbjni:10.2.1` | `librocksdbjni` for Linux (x86, x86_64, aarch64, ppc64le, s390x, riscv64; glibc and musl), macOS (x86_64, arm64), Windows x64 | Apache-2.0 OR GPL-2.0-only (RocksDB) | The jar has no licence file. RocksDB statically links compression libraries (zlib, snappy, lz4, zstd, bzip2; BSD- or zlib-style licences) whose texts are not in the jar, so a binary distribution must add them (not verified here). Only the Linux x86_64 library is exercised by this project's Docker build. |
+| `org.rocksdb:rocksdbjni:10.2.1` | `librocksdbjni` for Linux (x86, x86_64, aarch64, ppc64le, s390x, riscv64; glibc and musl), macOS (x86_64, arm64), Windows x64 | Apache-2.0 OR GPL-2.0-only (RocksDB) | The jar has no licence file. RocksDB statically links compression libraries (zlib, snappy, lz4, zstd, bzip2; BSD- or zlib-style licences) whose texts are not in the jar; the assembly adds them (see [Licence texts in binaries](#licence-texts-in-binaries)). Only the Linux x86_64 library is exercised by this project's Docker build. |
 | `foundation.icon:blst-java:0.3.2` | `libblst` for Linux amd64/aarch64, macOS x86_64/arm64 | Apache-2.0 (supranational/blst) | No licence file in the jar. Used by the Leios BLS keys (`MinSig`) only; on Linux amd64 the library of `blst-native` (below) is loaded instead. |
 | `blst-native` (this repository) | `libblst` for Linux amd64, built from supranational/blst v0.3.15 with `-D__BLST_PORTABLE__` | Apache-2.0 (supranational/blst) | Licence text in `blst-native/LICENSE-blst`; recipe and checksum in [ADR 0012](adr/0012-portable-blst.md). |
 | `org.scalus:scalus-crypto-jni:0.1.0` | `libscalus_crypto` for Linux x86_64/arm64 (glibc 2.33 or newer), macOS x86_64/arm64, Windows x64; libsodium (IOG fork `dbb48cce`), libsecp256k1 v0.3.2 and blst v0.3.15 statically linked | Wrapper Apache-2.0 per its POM; libsodium ISC, libsecp256k1 MIT, blst Apache-2.0 | No licence file in the jar. The texts from the pinned upstream sources are in `plutus/licenses/` (`LICENSE-libsodium`, `LICENSE-libsecp256k1`) and `blst-native/LICENSE-blst`. Pins and provenance in [ADR 0020](adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md). |
@@ -169,9 +170,8 @@ Licence notices, each checked at its source:
 | curve25519-dalek | `UnpackedScalar` (radix-2^29 Montgomery scalar arithmetic, cafe commit `e4e2354`, 2019-02-13), and test vectors that are not in the jar | BSD-3-Clause, Copyright (c) 2016-2018 Isis Agora Lovecruft, Henry de Valence | elisabeth's `LICENSE` reproduces lines 1 to 28 of dalek's `LICENSE` at tag `1.0.3` (`9cd4551b40a7328eed18717b527bc8ba9331fa27`, blob `d94fdb512eaab593968ff565e62f20b2c8787975`) word for word. That file goes on with a notice for parts derived from Adam Langley's Go ed25519 (agl/ed25519). That notice does not apply here: the ported code is dalek's `src/backend/u32/scalar.rs`, and agl/ed25519 at `5312a61534124124185d41f09206b9fef1d88403` has only ref10's radix-2^21 `ScMulAdd`/`ScReduce`, no Montgomery scalar code. |
 
 The full text, with all three notices, is `crypto/licenses/LICENSE-curve25519-elisabeth`. `NOTICE`
-names it. The assembly JAR packages only this repository's `LICENSE` and `NOTICE`
-(`META-INF/scarab/`), so packaging the third-party licence texts with a binary stays with the release
-work (#75).
+names it. The assembly JAR carries it as `META-INF/scarab/licenses/crypto/LICENSE-curve25519-elisabeth`
+(see [Licence texts in binaries](#licence-texts-in-binaries)).
 
 Maintenance, as of 2026-10-25: neither repository is archived. Central has 0.1.2 to 0.1.5, the last
 published on 2023-08-06. weavechain's last commit (2025-03-07) sets version 0.1.7, which was never
@@ -180,6 +180,65 @@ Scarab does not use. The pin stays at 0.1.3: it is traced to source, reproduces 
 version the Ed25519 and VRF differential corpora were recorded against (`StrictEd25519Suite`,
 `StrictEd25519DifferentialSuite`, the VRF suites of `crypto`). Any change of version has to keep those
 corpora unchanged.
+
+## Licence texts in binaries
+
+The assembly JAR (`node/assembly`, the artifact of `scripts/build_release_candidate.py`) carries, besides
+this repository's `LICENSE` and `NOTICE` in `META-INF/scarab/`, the licence texts of everything bundled in
+it under `META-INF/scarab/licenses/`, with `licenses/index.json` beside them (#75). The index names, for
+each of the 63 resolved runtime artifacts (`group:artifact:version`) and each of the 23 native libraries
+in the JAR, the texts its licence asks a binary to carry, and where each text comes from:
+
+- a file of an upstream Git revision (repository, tag and the commit the tag named when it was fetched);
+- the component's own jar, where the jar ships its text (slf4j-api, dnsjava, scala-library, ip4s-core,
+  bcprov, borer);
+- or a text kept elsewhere in this repository with its own provenance (`plutus/licenses/`, `crypto/licenses/`,
+  `blst-native/LICENSE-blst`), packaged under the module's name.
+
+The upstream legal files that jars carry at their root or in `META-INF/` are kept as well: the merge
+strategy renames them per artifact (for example `META-INF/LICENSE_dnsjava-3.6.5`), and
+`scripts/assembly_inventory.py` fails a build that loses or changes one.
+
+What each licence asks of a binary, as its text says:
+
+| Licence | Clause | Components |
+|---|---|---|
+| MIT (and the Bouncy Castle licence, an MIT licence) | "The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software." | cats, fs2, monocle, cats-parse, vault, idna4s, upickle, geny, jsoniter-scala, jawn, slf4j-api, bcprov, curve25519-elisabeth, libsecp256k1 |
+| BSD-2-Clause, BSD-3-Clause | "Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution." | dnsjava, scodec, scodec-bits, the third-party sections of the COPYING files of cats, cats-mtl and cats-collections, the argonaut and ephox notices of circe, native-lib-loader, curve25519-dalek (in elisabeth's LICENSE), LevelDB (`LICENSE.leveldb` of RocksDB), snappy, lz4, zstd |
+| Apache-2.0 | §4(a) "give any other recipients of the Work or Derivative Works a copy of this License"; §4(d) "include a readable copy of the attribution notices contained within such NOTICE file" | Scala 3 and the Scala 2 standard library, cats-effect, circe, http4s, http4s-crypto, log4cats, kittens, ip4s, case-insensitive, literally, jawn-fs2, shapeless-3, paiges, hpack, RocksDB (Apache-2.0 elected), blst-java, blst, Scalus and scalus-crypto-jni; each NOTICE file upstream has is packaged |
+| ISC | "provided that the above copyright notice and this permission notice appear in all copies" | libsodium |
+| MPL-2.0 | §3.2(a): the recipients of the Executable Form must be told "how they can obtain a copy of such Source Code Form" | borer; `NOTICE` names the source (github.com/sirthias/borer, tag v1.18.0) |
+| zlib, bzip2 | conditions on source distributions and misrepresentation only; the texts are included anyway | zlib, bzip2 |
+| CC0, public domain | none | eddsa-java, ref10 (both inside curve25519-elisabeth) |
+
+Two upstreams publish no licence file. jawn 1.7.0 states "All code is available to you under the MIT
+license" and its copyright in its README, and shapeless-3 3.5.0 states the Apache License v2 in its
+README. For both, the README at the tag is packaged with the SPDX licence text (spdx/license-list-data
+v3.29.0).
+
+The RocksDB natives link zlib 1.3.1, bzip2 1.0.8, snappy 1.2.1, lz4 1.9.4 and zstd 1.5.5, the versions of
+RocksDB's `Makefile` at v10.2.1. The Linux and macOS binaries show `deflate 1.3.1`, `1.0.8, 13-Jul-2019`
+and `snappy-1.2.1` paths, and they reference jemalloc only weakly (it is not linked). The Windows DLL is
+built differently: it shows `deflate 1.2.13` and no bzip2, and its snappy, lz4 and zstd versions are not
+recorded in any source of RocksDB 10.2.1. Its texts are those of the versions above; only the Linux
+x86_64 library is run by this project.
+
+Checks:
+
+- `scripts/assembly_inventory.py` (`export`, run by `scripts/reproducible_build.py --inventory` and so by
+  every candidate build) reads the index from the JAR. It fails when a resolved component or a packaged
+  native library has no entry, when an entry names something not in the JAR (a removed dependency or an
+  old version), or when a text is missing or differs from its recorded SHA-256.
+- `scripts/check_notice.py` (CI) checks that every text in `licenses/` has its recorded SHA-256 and that
+  the index names exactly the artifacts of the runtime table above.
+- After a dependency change, `python3 scripts/licence_texts.py fetch` writes the texts named by the index
+  (it checks that each tag still names the recorded commit and reads jar entries from the Coursier cache)
+  and records their digests. A new component or version needs its entry first: the source and the texts
+  it must carry.
+
+The OCI image of a candidate is the pinned Temurin base plus the JAR (`docker/candidate.Dockerfile`), so
+the JAR's texts cover what the image adds; the base image's own packages keep their copyright files,
+which the candidate's OS inventory records.
 
 ## Re-running
 

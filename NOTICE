@@ -109,7 +109,10 @@ only as a test oracle.
 
 Third-party runtime dependencies. None is redistributed in this repository: they are retrieved
 from Maven Central at build time and keep their own licenses (as declared in their POMs at the
-versions pinned in build.sbt).
+versions pinned in build.sbt). The node's assembly JAR bundles them; it carries the full licence
+and notice texts of every bundled library and native library under META-INF/scarab/licenses/,
+listed with their sources in META-INF/scarab/licenses/index.json (licenses/ in this repository).
+borer is MPL-2.0: its Source Code Form is https://github.com/sirthias/borer at tag v1.18.0.
 
   Scalus (org.scalus:scalus_3 1.4.0)                       Apache-2.0   UPLC machine and builtins
   blst-java (foundation.icon:blst-java 0.3.2)              Apache-2.0   bundles supranational/blst (Leios BLS)

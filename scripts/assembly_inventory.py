@@ -8,6 +8,7 @@ import re
 from urllib.parse import quote
 import zipfile
 
+import licence_texts
 from reproducible_build import sha256
 
 PORTABLE = 'supranational/blst/Linux/amd64/libblst.so'
@@ -152,9 +153,17 @@ def reconcile(artifact, inventory):
                 generatedEntries=['META-INF/MANIFEST.MF'])
 
 
+def licence_coverage(artifact, coverage):
+    """Fail unless the JAR carries the licence texts of exactly what was resolved into it (licence_texts.py)."""
+    rows = licence_texts.verify_artifact(dict(entries(artifact)), coverage)
+    if rows:
+        raise ValueError('incomplete licence texts: ' + '; '.join(row.render() for row in rows[:20]))
+
+
 def export(artifact, raw_inventory, destination):
     inventory = json.loads(raw_inventory.read_text())
     coverage = reconcile(artifact, inventory)
+    licence_coverage(artifact, coverage)
     destination.mkdir(parents=True)
     (destination / 'assembly-coverage.json').write_text(json.dumps(coverage, sort_keys=True) + '\n')
     # Absolute cache and scratch paths are operational inputs, not portable component identities.

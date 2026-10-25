@@ -4,7 +4,8 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from check_notice import ROOT, DEPENDENCIES, findings, parse_dependencies
+import licence_texts
+from check_notice import ROOT, DEPENDENCIES, findings, licence_findings, parse_dependencies, runtime_table
 
 DECLARATIONS = """\
 object Dependencies {
@@ -70,3 +71,24 @@ class RepositoryTest(unittest.TestCase):
         source = (ROOT / DEPENDENCIES).read_text(encoding="utf-8")
         self.assertEqual(findings(parse_dependencies(source), (ROOT / "NOTICE").read_text(encoding="utf-8"),
                                   (ROOT / "docs/licenses.md").read_text(encoding="utf-8")), [])
+
+    def test_the_checked_in_licence_texts_match_the_runtime_table(self):
+        inventory = (ROOT / "docs/licenses.md").read_text(encoding="utf-8")
+        index = licence_texts.load(ROOT)
+        self.assertEqual(licence_findings(inventory, index, licence_texts.verify_repository(ROOT, index)), [])
+
+
+class LicenceIndexTest(unittest.TestCase):
+    TABLE = ("## Runtime classpath\n\n| Artifact | Version | Licence | Kind | Note |\n|---|---|---|---|---|\n"
+             "| org.typelevel:cats-core_3 | 2.13.0 | MIT | direct |  |\n"
+             "| org.log4s:log4s_3 | 1.10.0 | Apache-2.0 | transitive |  |\n\n## Re-running\n\n| a:b | 1 | x |\n")
+
+    def test_the_runtime_table_is_read_from_its_section_only(self):
+        self.assertEqual(runtime_table(self.TABLE), {"org.typelevel:cats-core_3:2.13.0", "org.log4s:log4s_3:1.10.0"})
+
+    def test_a_runtime_artifact_without_texts_and_a_stale_index_entry_are_both_reported(self):
+        index = {"components": {"org.typelevel:cats-core_3:2.13.0": {}, "org.typelevel:cats-core_3:2.12.0": {}}}
+        self.assertEqual(licence_findings(self.TABLE, index, []), [
+            "org.log4s:log4s_3:1.10.0: in the runtime table of docs/licenses.md but has no licence texts in licenses/index.json",
+            "org.typelevel:cats-core_3:2.12.0: has licence texts in licenses/index.json but is not in the runtime table of docs/licenses.md",
+        ])

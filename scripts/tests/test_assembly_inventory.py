@@ -10,6 +10,7 @@ import zipfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import assembly_inventory as inventory
 import candidate_sbom
+import licence_texts
 
 
 class AssemblyInventoryTest(unittest.TestCase):
@@ -86,6 +87,37 @@ class AssemblyInventoryTest(unittest.TestCase):
         self.write_zip(self.artifact, self.result)
         with self.assertRaisesRegex(ValueError, 'legal'):
             inventory.reconcile(self.artifact, self.graph)
+
+    def with_licence_texts(self, index):
+        """Package `index` and its texts in the project classes and the artifact, as build.sbt does."""
+        files = {licence_texts.PACKAGED_INDEX: json.dumps(index).encode(), licence_texts.PACKAGED + 'library-1/LICENSE': b'library license'}
+        for name, raw in files.items():
+            (self.project / name).parent.mkdir(parents=True, exist_ok=True)
+            (self.project / name).write_bytes(raw)
+        self.result.update(files)
+        self.write_zip(self.artifact, self.result)
+
+    def licence_index(self):
+        return {'schemaVersion': 1,
+                'texts': {'library-1/LICENSE': {'source': {'jar': 'g:library:1', 'entry': 'LICENSE'},
+                                                'sha256': inventory.digest(b'library license')}},
+                'components': {'g:library:1': {'licence': 'MIT', 'texts': ['library-1/LICENSE']}},
+                'natives': [{'paths': [inventory.PORTABLE, inventory.PLUTUS_CRYPTO, 'native/Linux/a.so'],
+                             'contents': 'test natives', 'texts': ['library-1/LICENSE']}]}
+
+    def test_export_requires_the_licence_texts_of_every_resolved_component_and_native(self):
+        raw = self.root / 'release-inventory.json'
+        raw.write_text(json.dumps(self.graph))
+        with self.assertRaisesRegex(ValueError, 'incomplete licence texts: artifact carries no licence index'):
+            inventory.export(self.artifact, raw, self.root / 'without')
+        index = self.licence_index()
+        index['natives'][0]['paths'].remove('native/Linux/a.so')
+        self.with_licence_texts(index)
+        with self.assertRaisesRegex(ValueError, 'packaged native library without licence texts: native/Linux/a.so'):
+            inventory.export(self.artifact, raw, self.root / 'uncovered')
+        self.with_licence_texts(self.licence_index())
+        coverage = inventory.export(self.artifact, raw, self.root / 'complete')
+        self.assertEqual([c['coordinate'] for c in coverage['components']], ['g:library:1'])
 
     def test_native_receipt_must_match_actual_packaged_bytes(self):
         coverage = inventory.reconcile(self.artifact, self.graph)

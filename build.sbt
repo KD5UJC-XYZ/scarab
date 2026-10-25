@@ -321,7 +321,24 @@ lazy val node = scarab("node")
         IO.copyFile(root / name, target, preserveLastModified = false)
         target
       }
-      metadata +: notices
+      // The third-party licence texts a binary must carry (licenses/index.json; checked against the
+      // assembly by scripts/licence_texts.py): the licenses/ tree, and the texts kept beside the module
+      // that uses their component, under the module's name.
+      val kept = Seq(
+        root / "plutus" / "licenses" -> "plutus",
+        root / "crypto" / "licenses" -> "crypto"
+      ).flatMap { case (dir, name) =>
+        (dir * "LICENSE-*").get.map(file => file -> s"$name/${file.getName}")
+      } :+ (root / "blst-native" / "LICENSE-blst" -> "blst-native/LICENSE-blst")
+      val tree = (root / "licenses").allPaths.filter(_.isFile).get.map { file =>
+        file -> IO.relativize(root / "licenses", file).getOrElse(file.getName)
+      }
+      val texts = (tree ++ kept).sortBy(_._2).map { case (source, name) =>
+        val target = output / "licenses" / name
+        IO.copyFile(source, target, preserveLastModified = false)
+        target
+      }
+      (metadata +: notices) ++ texts
     }.taskValue,
     Compile / run / fork := true
   )
