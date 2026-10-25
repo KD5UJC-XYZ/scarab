@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.blst.{BlstReport, CpuSupport, LibraryBuild}
 import xyz.kd5ujc.scarab.plutus.{CryptoLibrary, NativeCryptoReport}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.VolatileChain
-import xyz.kd5ujc.scarab.ledger.{LedgerFailure, NodeError, Points, ShelleyGenesis, StorageError}
+import xyz.kd5ujc.scarab.ledger.{NodeError, Points, ShelleyGenesis, StorageError}
 import xyz.kd5ujc.scarab.node.{
   BuildInfo,
   Fatal,
@@ -78,9 +78,6 @@ enum NodeEvent:
     * [[xyz.kd5ujc.scarab.node.StallWatchdog]]).
     */
   case Stalled(idle: FiniteDuration, ours: BigInt, peers: BigInt)
-
-  /** The stall that began is behind the block at `point`, held without a verdict. */
-  case StalledBehind(point: ChainSync.Point, failure: LedgerFailure.Unavailable)
 
   /** The state of every session's pipeline when the stall of the [[Stalled]] event began, and what
     * became of the fiber dump (issue 371, [[xyz.kd5ujc.scarab.node.StallDiagnostics]]). One per
@@ -399,12 +396,6 @@ object NodeEvent:
         "clockDriftMs" -> drift.toMillis.asJson,
         "threshold" -> threshold.asJson,
         "intervalMs" -> interval.toMillis.asJson
-      )
-    case StalledBehind(at, failure) =>
-      EventKind.StalledBehind.line(
-        "point" -> Traced.point(at),
-        "tx" -> failure.txId.hex.asJson,
-        "reason" -> failure.message.asJson
       )
     case Stalled(idle, ours, peers) =>
       EventKind.Stalled.line(

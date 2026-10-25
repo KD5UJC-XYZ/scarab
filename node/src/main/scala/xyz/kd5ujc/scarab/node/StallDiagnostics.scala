@@ -314,9 +314,6 @@ object StallDiagnostics:
         case StallWatchdog.Change.Began(idle, ours, peers) =>
           measured(change) *> reporter.onStall(NodeEvent.Stalled(idle, ours, peers))
         case StallWatchdog.Change.Ended => measured(change)
-        case StallWatchdog.Change.Behind(held) =>
-          measured(change) *>
-            background(log(NodeEvent.StalledBehind(held.point, held.failure)).attempt.void)
         case StallWatchdog.Change.ExitDue(idle, ours, peers) =>
           exit.complete(()) *> measured(change) *>
             background(log(NodeEvent.StallExit(idle, ours, peers)).attempt.void)

@@ -381,7 +381,6 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         )
         assertEquals(SessionEnd.peerError(left.end), None)
         assertEquals(left.invalid, Set.empty[Bytes])
-        assertEquals(left.events.collect { case e: FollowerEvent.Held => e }, Vector.empty)
         assertEquals(left.chain.tip, headers(1).point)
         assertEquals(blockNos(left.stored), Vector(0, 1))
       }
@@ -401,7 +400,6 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(left.end, SessionEnd.Failed(PeerError.Unverifiable(held)))
       assertEquals(FailurePolicy.disposition(left.end), Disposition.Backoff)
       assertEquals(left.invalid, Set.empty[Bytes])
-      assertEquals(left.events.collect { case e: FollowerEvent.Held => e }, Vector.empty)
     }
   }
 
@@ -415,21 +413,18 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     assertEquals(code.code, 7)
   }
 
-  test("a defect a block triggers holds it: no verdict, no invalid record, no blame, no stop") {
+  test("a defect a block triggers stops the node: no invalid record, no blame") {
     session(held = Some(2)).map { left =>
       left.end match
-        case SessionEnd.Held(error) =>
+        case SessionEnd.Unavailable(error) =>
           assertEquals(error, EvaluationUnavailable(headers(2).point, heldFailure))
-          assertEquals(FailurePolicy.disposition(left.end), Disposition.Hold(error))
+          assertEquals(
+            FailurePolicy.disposition(left.end),
+            Disposition.StopNode(Fatal.Unavailable(error))
+          )
         case other => fail(s"unexpected $other")
       assertEquals(SessionEnd.peerError(left.end), None)
       assertEquals(left.invalid, Set.empty[Bytes])
-      assertEquals(
-        left.events.collect { case e: FollowerEvent.Held => e },
-        Vector(
-          FollowerEvent.Held(headers(2).point, heldFailure)
-        )
-      )
       assertEquals(left.chain.tip, headers(1).point)
       assertEquals(blockNos(left.stored), Vector(0, 1))
     }
@@ -438,7 +433,6 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   test("an implementation limit is never recorded as an invalid block") {
     session(unavailable = Some(2)).map { left =>
       assertEquals(left.invalid, Set.empty[Bytes])
-      assertEquals(left.events.collect { case e: FollowerEvent.Held => e }, Vector.empty)
     }
   }
 

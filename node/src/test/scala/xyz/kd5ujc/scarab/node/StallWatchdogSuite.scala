@@ -151,34 +151,3 @@ class StallWatchdogSuite extends CatsEffectSuite:
       yield assert(!reports.exists(_.isInstanceOf[Change.ExitDue]), reports.toString)
     )
   }
-
-  test("a stall behind a held block names the block, and progress forgets it") {
-    val point = xyz.kd5ujc.scarab.ledger.Fixtures.chain(1).head.point
-    val failure: xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable =
-      xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable(
-        xyz.kd5ujc.scarab.codec.Bytes.empty,
-        xyz.kd5ujc.scarab.ledger.ScriptLocation.Phase1(xyz.kd5ujc.scarab.codec.Bytes.empty),
-        xyz.kd5ujc.scarab.plutus.EvalFailure
-          .Unsupported(xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted)
-      )
-    TestControl.executeEmbed(
-      for
-        pair <- watching()
-        (dog, seen) = pair
-        _ <- dog.announced(BigInt(5000))
-        _ <- dog.held(point, failure)
-        _ <- IO.sleep(threshold) *> dog.check
-        behind <- seen
-        _ <- dog.extended(BigInt(101))
-        _ <- IO.sleep(threshold) *> dog.check
-        again <- seen
-      yield
-        behind match
-          case Vector(Change.Began(_, _, _), Change.Behind(held)) =>
-            assertEquals(held, StallWatchdog.Held(point, failure))
-          case other => fail(s"unexpected $other")
-        again.drop(behind.size) match
-          case Vector(Change.Ended, Change.Began(_, _, _)) => ()
-          case other                                       => fail(s"unexpected $other")
-    )
-  }

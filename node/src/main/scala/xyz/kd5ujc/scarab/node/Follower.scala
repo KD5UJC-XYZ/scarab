@@ -21,8 +21,6 @@ import xyz.kd5ujc.scarab.ledger.{
   Points,
   ValidationError
 }
-import xyz.kd5ujc.scarab.ledger.LedgerFailure.reach
-import xyz.kd5ujc.scarab.plutus.BackendFailure
 import cats.Monad
 import cats.effect.{Async, Ref, Resource}
 import cats.effect.std.Mutex
@@ -557,19 +555,15 @@ final class Follower[F[_]: Async, S] private (
                   )
                   .rescue {
                     // No verdict is no refusal: the block is not recorded as invalid and nobody is
-                    // punished. A defect the block's own scripts trigger is reported as held; the
-                    // session's outcome (SessionEnd.of) holds it or stops the node. A crypto
-                    // provider that failed on the block stops the node too (Fatal.Unverifiable), as
-                    // the exception does that ends the reference's linked addBlockRunner thread
+                    // punished. An evaluator that is unavailable or fails on the block's scripts,
+                    // or a crypto provider that fails on the block, stops the node (Fatal), as the
+                    // exception does that ends the reference's linked addBlockRunner thread
                     // (consensus 82ecba32 Storage/ChainDB/Impl/Background.hs:107-108,142).
                     case unavailable @ ValidationError(
-                          point,
-                          BlockFailure.Tx(failure: LedgerFailure.Unavailable)
+                          _,
+                          BlockFailure.Tx(_: LedgerFailure.Unavailable)
                         ) =>
-                      events
-                        .emit(FollowerEvent.Held(point, failure))
-                        .whenA(failure.reach == BackendFailure.Reach.Input) *>
-                        unavailable.raise[F, Either[ValidationError, S]]
+                      unavailable.raise[F, Either[ValidationError, S]]
                     case refused: ValidationError =>
                       refused.unverifiable.fold(F.pure(Left(refused)))(
                         _.raise[F, Either[ValidationError, S]]

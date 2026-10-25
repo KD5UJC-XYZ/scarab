@@ -417,6 +417,8 @@ final case class MempoolState(
                 )
               case Left(Rejection.Ledger(noVerdict: LedgerFailure.Unverifiable)) =>
                 Left(noVerdict)
+              case Left(Rejection.Ledger(noVerdict: LedgerFailure.Unavailable)) =>
+                Left(noVerdict)
               case Left(rejection) => Right((state, dropped :+ (entry -> rejection)))
         }
 
@@ -443,12 +445,12 @@ final case class MempoolState(
 
 object MempoolState:
   /** A held transaction that revalidation has no verdict on: a crypto provider failed on one of its
-    * witnesses. In the reference the exception aborts the state operation, so the pool keeps its
+    * witnesses, or the evaluator on one of its scripts. In the reference the exception aborts the state operation, so the pool keeps its
     * state and nothing is traced (consensus 82ecba32 `Mempool/Update.hs` 467–495 and 587–622,
     * `withTMVar`), and the revalidation watcher, linked to the node, stops it (`Mempool/Init.hs`
     * 64–77).
     */
-  type NoVerdict = LedgerFailure.Unverifiable
+  type NoVerdict = LedgerFailure.Unverifiable | LedgerFailure.Unavailable
 
   /** A credential as the ledger's `Show` instance prints it. */
   def showCredential(c: Credential): String = c match

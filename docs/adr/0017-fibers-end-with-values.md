@@ -156,56 +156,56 @@ with healthy rules. Other startup error policies are unchanged.
 
 An evaluation that supplies no verdict is not one thing. Before this amendment every
 `LedgerFailure.Unavailable` stopped the node with exit 8, and the follower first recorded the block
-as invalid. Stopping is right for a missing implementation, which no input can work around. For a
+as invalid. Stopping is right for a missing implementation, which no input can work around. ~~For a
 defect that one block's own scripts trigger in the evaluator (Scalus throwing on bytes it was given)
 it is the wrong policy: the defect says nothing about the other blocks, a restart does not change it,
-and recording the block as invalid is a verdict the implementation does not have.
+and recording the block as invalid is a verdict the implementation does not have.~~ ([superseded](#amendment-2026-10-25-the-hold-is-removed-393))
 
-`BackendFailure.reach` now says whose failure it is, by an exhaustive match with no default:
+~~`BackendFailure.reach` now says whose failure it is, by an exhaustive match with no default:~~ ([superseded](#amendment-2026-10-25-the-hold-is-removed-393))
 
-- **Implementation** — a linkage error (a native or a class that is missing, an initialiser that
+- ~~**Implementation** — a linkage error (a native or a class that is missing, an initialiser that
   failed), an unknown builtin, a virtual machine error other than a stack overflow, wherever it is
   in the chain of causes (Scalus keeps a builtin's exception in `BuiltinError.cause`), and the
   builtins and natives this platform lacks (`BuiltinUnavailable`, `NoResult`; before Scalus 1.4.0
   also `BinaryDstUnavailable` and `NativeHashToGroupUnavailable`, removed with the raw-DST paths by
   [ADR 0020](0020-plutus-native-crypto-through-scalus-crypto-jni.md)). Nothing can be trusted to get
-  a verdict: the node stops with exit 8, as before.
-- **Input** — any other exception the evaluator or decoder throws, a stack overflow, a budget beyond
-  64 bits. Only the block or transaction that carries the input lacks a verdict.
+  a verdict: the node stops with exit 8, as before.~~ ([superseded](#amendment-2026-10-25-the-hold-is-removed-393))
+- ~~**Input** — any other exception the evaluator or decoder throws, a stack overflow, a budget beyond
+  64 bits. Only the block or transaction that carries the input lacks a verdict.~~ ([superseded](#amendment-2026-10-25-the-hold-is-removed-393))
 
 The script-failure allowlist (`ScalusEvaluator.referenceFailure`) is unchanged: neither reach is ever
 a script failure, and nothing is added to it. The three outcomes of an evaluation are therefore a
 verdict (passed, or failed as the reference fails), no verdict for this input, and no verdict at all.
 
-For a block, no verdict for its input is `SessionEnd.Held` and `Disposition.Hold`, an outcome and a
-disposition added to those of decision 5 (`SessionEnd.of` still has no default case):
+~~For a block, no verdict for its input is `SessionEnd.Held` and `Disposition.Hold`, an outcome and a
+disposition added to those of decision 5 (`SessionEnd.of` still has no default case):~~ ([superseded](#amendment-2026-10-25-the-hold-is-removed-393))
 
-- the block is not adopted and **not recorded as invalid** (`InvalidBlocks`), and nobody is punished
+- ~~the block is not adopted and **not recorded as invalid** (`InvalidBlocks`), and nobody is punished
   or blamed for it (`BlockPool.Claims` is not consulted). The follower re-raises any
   `LedgerFailure.Unavailable` instead of treating it as a refusal, so an implementation limit is not
-  recorded as invalid either;
-- the session ends and the peer is tried again after the delay of a lost connection
-  (`PeerError.Unavailability.SessionEnded`, `Transient`), never forgotten;
-- the node goes on. The shared selection runner (`BlockSelection`) leaves the chain as it is and
-  takes the next admission;
-- the follower emits `FollowerEvent.Held` (log `Chain.BlockHeld`, metric
+  recorded as invalid either;~~ ([superseded](#amendment-2026-10-25-the-hold-is-removed-393))
+- ~~the session ends and the peer is tried again after the delay of a lost connection
+  (`PeerError.Unavailability.SessionEnded`, `Transient`), never forgotten;~~ ([superseded](#amendment-2026-10-25-the-hold-is-removed-393))
+- ~~the node goes on. The shared selection runner (`BlockSelection`) leaves the chain as it is and
+  takes the next admission;~~ ([superseded](#amendment-2026-10-25-the-hold-is-removed-393))
+- ~~the follower emits `FollowerEvent.Held` (log `Chain.BlockHeld`, metric
   `scarab_blocks_held_total`), and the stall watchdog names the held block when the stall it causes
   begins (`Chain.StalledBehind`). The node stays behind that block until a build that decides it is
-  installed; nothing about the block is remembered that would keep that build from adopting it.
+  installed; nothing about the block is remembered that would keep that build from adopting it.~~ ([superseded](#amendment-2026-10-25-the-hold-is-removed-393))
 
-Other paths: block production leaves out a mempool transaction that triggers such a defect
+~~Other paths: block production leaves out a mempool transaction that triggers such a defect
 (`BlockBuilder.select`) and treats a held block of its own like one its rules refuse (its
 transactions leave the pool, an empty block is tried); local submission and the mempool keep the
 existing behaviour for every `Unavailable` (the submission connection closes, the transaction is
 not remembered as refused). Replay of the stored chain stops with exit 8 for both reaches: a stored
 block was adopted by an earlier run, the chain cannot be rebuilt past it, and holding it would only
-hide that.
+hide that.~~ ([superseded](#amendment-2026-10-25-the-hold-is-removed-393))
 
 Tests: the injection suite places `NullPointerException`, `ClassCastException`, `MatchError`, a
 borer `Overflow`, `StackOverflowError` and `RuntimeException` at the decoder and at the machine
 (Input) with linkage, initialiser, out-of-memory and unknown-builtin controls (Implementation); the
-`MachineError` subclasses of the pinned Scalus jar are enumerated and pinned; `SessionFailureSuite`
-holds a block without an invalid record, blame or stop; `StallWatchdogSuite` names it.
+`MachineError` subclasses of the pinned Scalus jar are enumerated and pinned; ~~`SessionFailureSuite`
+holds a block without an invalid record, blame or stop; `StallWatchdogSuite` names it.~~ ([superseded](#amendment-2026-10-25-the-hold-is-removed-393))
 
 ## Amendment (2026-10-25): a crypto provider defect is not held (#393)
 
@@ -217,9 +217,39 @@ add-block runner and stops the node (ouroboros-consensus 82ecba32
 `StopNode(Fatal.Unverifiable)` (exit 7), with no `InvalidBlocks` entry and no peer blamed. On the
 header-first path it ends that peer's session and nothing else (`Node/RethrowPolicy.hs` 36-48 and
 128-140, `ShutdownPeer`): header-first validation raises it as `PeerError.Unverifiable` through the
-caller's `Raise`, classified `Transient`. The hold of the 2026-10-23 amendment is for the evaluator
-only. The as-built contract and the reference correspondence, including the mempool and local
+caller's `Raise`, classified `Transient`. ~~The hold of the 2026-10-23 amendment is for the evaluator
+only.~~ ([superseded](#amendment-2026-10-25-the-hold-is-removed-393)) The as-built contract and the reference correspondence, including the mempool and local
 submission, are in [domain errors](../design/domain-errors.md).
+
+## Amendment (2026-10-25): the hold is removed (#393)
+
+The 2026-10-23 amendment added SessionEnd.Held and Disposition.Hold, so that a block whose scripts
+made the evaluator fail was not adopted and not recorded as invalid while the node went on behind
+it. The reference has no such path: an exception met while a block is validated ends the add-block
+runner, which is a linked thread of the ChainDB registry, and stops the node (ouroboros-consensus
+82ecba32 `Storage/ChainDB/Impl/Background.hs` 107-108 and 142). The hold had been added so that a
+peer-supplied block that triggers a Scalus evaluator bug could not stop the node; with this change
+such a block stops the node, as the exception does in the reference. Whatever failed:
+
+- the follower re-raises any `LedgerFailure.Unavailable` instead of treating it as a refusal, so
+  nothing is recorded in `InvalidBlocks` and nobody is blamed;
+- `SessionEnd.of` places it as `SessionEnd.Unavailable`, whose disposition is
+  `StopNode(Fatal.Unavailable)`, exit 8, in the follower, the selection runner, the forger and
+  replay of the stored chain alike;
+- SessionEnd.Held, Disposition.Hold, FollowerEvent.Held (log Chain.BlockHeld, metric
+  scarab_blocks_held_total) and the stall watchdog's Chain.StalledBehind are removed;
+- BackendFailure.reach and LedgerFailure.reach, on which nothing branches any more, are removed, so
+  the reach classification of the 2026-10-23 amendment is historical. Every injected fault still
+  ends as the typed failure of no verdict, never as a script failure (`BackendFailureSuite`).
+
+Other paths follow the reference where the exception ends a thread. Local submission closes the
+client's connection and leaves the pool unchanged; a peer's transaction ends that peer's
+TxSubmission2 session; mempool revalidation and block production apply a held transaction again
+without evaluating its scripts (`reapplyTx`), so they do not meet it (see
+[domain errors](../design/domain-errors.md)). A crypto provider defect is not held either (the
+amendment above).
+
+Tests: `SessionFailureSuite` stops the node on such a block without an invalid record or blame.
 
 ## Amendment (2026-10-28): the bearer reader's exception is the connection's
 
