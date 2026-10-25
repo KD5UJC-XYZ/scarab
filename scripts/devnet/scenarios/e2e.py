@@ -199,6 +199,9 @@ def e2e(args):
             def conway_hook():
                 nonlocal conway_load
                 conway_load = start_conway_load(args, root, loader)
+                # the base governance rounds keep the chain's pace however long a comparison of the worker takes:
+                # the protocol walk's hops from version 10 wait for their DRep delegations and committee (#451)
+                loader.start_governance()
                 loader.start_extended(full=False)  # script credentials, pool reward accounts, B5 refusals
             worker = threading.Thread(target=loader.run, args=(compare, conway_hook), daemon=True)
             worker.start()
@@ -251,7 +254,7 @@ def e2e(args):
             loader.stop.set()
             worker.join(timeout=90)
         blocked = {} if loader is None else blocked_stacks(
-            {"worker": worker, "extended": getattr(loader, "ext_thread", None)})
+            {"worker": worker, "governance": loader.governance_thread, "extended": loader.ext_thread})
         exit_code = follower.poll()
         events, other = read_log(log)
         summary, failures = summarize_e2e(events, other, expected, exit_code)

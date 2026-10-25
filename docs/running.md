@@ -1868,6 +1868,16 @@ Conway starts at 9). The Conway versions are governance: a HardFork action per v
   1, so a hop is proposed and voted within one epoch, in its first 60 %, and the next hop one epoch after it (never in the
   same epoch: the enactment of a HardFork delays the rest of its ratification run past the lifetime of the later hop).
   A hop that is no longer pending while the chain has not reached its version fails the walk (`HardForkLost`).
+  Every pass that proposes nothing logs why, as a typed `WaitReason` (`walk: true, wait: <reason>` with the hop, the base
+  round stages still missing and the epoch the wait began), and `protocol.waiting` of `e2e-summary.json` holds the current
+  wait: the reward accounts (`xrewards`), the hop of this epoch, the DRep delegations (`gdeleg`, `gdeleg2`) not made or not
+  yet in the distribution, the committee's hot keys (`gcommittee`) not authorised, the slot window or a pending enactment.
+* **Where the preconditions come from.** The DRep delegations and the committee are stages of the base governance pass
+  (`EraLoad.conway_features`). In `e2e` that pass runs once per epoch in a thread of its own (`EraLoad.start_governance`),
+  not in the comparison worker's epoch batch: one comparison retries until the Scala node is at the reference's block, and
+  under load that took longer than the walk's bound, so the pass behind it made none of its stages and the hop to 11 was
+  never proposed (#451). The summary's `blockedThreads` has the stack of every load thread that was still running when the
+  run asked it to stop.
 * **How long it takes.** The run waits past its target epoch (`--until-epoch`, default Conway start + 7) for the walk and the
   checks of the versions reached. The walk's own limit is derived from the governance parameters:
   `(hops left + 1) * (govActionLifetime + 2) + 2` epochs of the run's epoch length and slot length

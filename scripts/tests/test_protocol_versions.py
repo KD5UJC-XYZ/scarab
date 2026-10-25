@@ -532,5 +532,41 @@ class BlockedThreadsTest(unittest.TestCase):
         self.assertTrue(any("blocked_in_a_comparison" in line for line in stacks["worker"]))
 
 
+
+class GovernanceThreadTest(unittest.TestCase):
+    """The base governance pass that the walk's hops from version 10 depend on runs beside the comparisons."""
+
+    def test_the_pass_runs_once_per_conway_epoch_and_the_batch_leaves_it_to_the_thread(self):
+        from devnet import eraload
+        load = eraload.EraLoad("t", lambda: None, log=lambda m: None)
+        tips = iter([{"era": "Babbage", "epoch": 9, "slotInEpoch": 10}, {"era": "Conway", "epoch": 10, "slotInEpoch": 1},
+                     {"era": "Conway", "epoch": 10, "slotInEpoch": 5}, {"era": "Conway", "epoch": 10, "slotInEpoch": 9},
+                     {"era": "Conway", "epoch": 11, "slotInEpoch": 4}])
+
+        def epoch_info():
+            tip = next(tips, None)
+            if tip is None:
+                load.stop.set()
+                return {}
+            return tip
+        passes, batch = [], []
+        load.epoch_info, load.conway_features = epoch_info, passes.append
+        with patch.object(eraload, "time", types.SimpleNamespace(sleep=lambda seconds: None)):
+            load.start_governance()
+            load.governance_thread.join(30)
+        self.assertFalse(load.governance_thread.is_alive())
+        self.assertEqual(passes, [10, 11])
+        load.conway_features, load.transfers, load.once = batch.append, lambda era, n: None, lambda key: False
+        load.epoch_batch("conway", 12)
+        self.assertEqual(batch, [])
+
+    def test_without_the_thread_the_batch_runs_the_pass(self):
+        from devnet import eraload
+        load = eraload.EraLoad("t", lambda: None, log=lambda m: None)
+        batch = []
+        load.conway_features, load.transfers, load.once = batch.append, lambda era, n: None, lambda key: False
+        load.epoch_batch("conway", 12)
+        self.assertEqual(batch, [12])
+
 if __name__ == "__main__":
     unittest.main()

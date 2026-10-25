@@ -222,6 +222,7 @@ class EraLoad:
         self.ext = None  # govextra.Extended while the extended governance scenarios run
         self.dynamic_forks = False  # the protocol walk (protocolwalk.py) proposes every hard fork, the base rounds none
         self.ext_thread = None
+        self.governance_thread = None  # runs `conway_features` once `start_governance` was called
         self.evidence = []  # expected rejections and what the reference said
         self.era_first = {}
         self.plutus_evidence = []
@@ -1135,6 +1136,32 @@ class EraLoad:
             self.ext_thread = threading.Thread(target=body, daemon=True)
             self.ext_thread.start()
 
+    def start_governance(self):
+        """Run the Conway governance pass (`conway_features`) once per epoch in a thread of its own instead of in the
+        epoch batch of `run`. The worker runs its batch between comparisons, and one comparison retries for as long as
+        the Scala node is not at the reference's block, which under load takes epochs; the pass behind it then made
+        none of its stages, and the hops of the protocol walk from version 10 wait for two of them (the DRep
+        delegations and the committee's hot keys, #451). In its own thread the pass keeps the chain's pace. Its
+        transactions spend the governance wallets (`gw`), as the extended thread spends `xw`, and stake delegator 3
+        once (`gfund`); the caller starts it after the Conway load wallets are funded from that delegator."""
+        if self.governance_thread is not None:
+            return
+
+        def body():
+            seen = set()
+            while not self.stop.is_set():
+                try:
+                    tip = self.epoch_info()
+                    epoch = tip.get("epoch")
+                    if tip.get("era", "").lower() == "conway" and tip.get("slotInEpoch", 0) >= 3 and epoch not in seen:
+                        seen.add(epoch)
+                        self.conway_features(epoch)
+                except Exception as e:  # a scenario problem must not stop the run
+                    self.log({"governanceFailed": repr(e)})
+                time.sleep(0.7)
+        self.governance_thread = threading.Thread(target=body, daemon=True)
+        self.governance_thread.start()
+
     # (era, epoch of the era, first slot of the epoch, last slot, action): actions that depend on the slot
     TIMED = [
         ("shelley", 1, 230, 400, "mir_mid_epoch"),
@@ -1170,7 +1197,7 @@ class EraLoad:
         """The actions for one epoch of `era`: features first (once each), then transfers and withdrawals."""
         if era in self.FEATURES:
             getattr(self, self.FEATURES[era])(era)
-        if era == "conway":
+        if era == "conway" and self.governance_thread is None:
             self.conway_features(epoch)
         if era in ("alonzo", "babbage", "conway") and self.once(f"legacy-plutus-{era}"):
             from .eraplutus import exercise
