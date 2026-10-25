@@ -454,6 +454,31 @@ class SubmissionVerdictTest(unittest.TestCase):
     def test_a_ledger_refusal_naming_the_predicate_is_refused(self):
         self.assertEqual(self.kind(1, err=self.LEDGER), "refused")
 
+    def test_a_refusal_says_whether_the_failure_list_is_exactly_the_expected_one(self):
+        single = self.LEDGER.replace("(VRFKeyHashAlreadyRegistered x y)))))",
+                                     "(VRFKeyHashAlreadyRegistered x y))) :| []))")
+        v = eraload.submission_verdict(1, "", single, self.EXPECTED)
+        self.assertEqual((v.kind, v.match, v.failures), ("refused", eraload.ListMatch.EXACT, 1))
+        # negative control: an extra failure still names the predicate, but the match is labelled CONTAINS
+        extra = single.replace(":| []", ':| [ConwayUtxowFailure (UtxoFailure (FeeTooSmallUTxO "a, b"))]')
+        v = eraload.submission_verdict(1, "", extra, self.EXPECTED)
+        self.assertEqual((v.kind, v.match, v.failures), ("refused", eraload.ListMatch.CONTAINS, 2))
+        # the text without its list (the old fixture form) cannot be classified
+        self.assertEqual(eraload.submission_verdict(1, "", self.LEDGER, self.EXPECTED).match,
+                         eraload.ListMatch.UNPARSED)
+        self.assertEqual(eraload.match_counts([{"match": "exact"}, {"match": "contains"}, {"match": None}]),
+                         {"exact": 1, "contains": 1, "unparsed": 0})
+
+    def test_a_predicate_is_named_as_a_whole_constructor(self):
+        prefix = self.LEDGER.replace("VRFKeyHashAlreadyRegistered", "VRFKeyHashAlreadyRegisteredPOOL")
+        self.assertEqual(self.kind(1, err=prefix), "wrongReason")
+
+    def test_the_failure_list_ignores_separators_in_strings_and_brackets(self):
+        text = 'Error: (ConwayApplyTxError (A "a)\\" :| [" (b c) :| [B [1,2], C {x = 1, y = 2}]))'
+        self.assertEqual(eraload.failure_list(text), ['A "a)\\" :| [" (b c)', "B [1,2]", "C {x = 1, y = 2}"])
+        self.assertIsNone(eraload.failure_list("Error: (ConwayApplyTxError (A :| [B]"))
+        self.assertIsNone(eraload.failure_list("Network.Socket.connect: does not exist"))
+
     def test_a_ledger_refusal_for_another_reason_is_wrong_reason(self):
         other = self.LEDGER.replace("VRFKeyHashAlreadyRegistered", "StakePoolCostTooLow")
         self.assertEqual(self.kind(1, err=other), "wrongReason")

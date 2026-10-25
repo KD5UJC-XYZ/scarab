@@ -30,13 +30,13 @@ Three comparisons on one cluster, the Scala node following it with `--local-sock
 import enum
 import json
 import os
-import re
 import subprocess
 import sys
 import time
 
 from .. import cborspan, ledgercompare, ntccli, ntcquery, ntcsafety
 from ..ntclocal import Session, backlog_follow, compare_follow, live_follow, monitor_rounds, await_wakes, tx_id
+from ..eraload import names_constructor
 from ..cluster import database_mounts, freeze_classes, scala_container, up
 from ..ntccases import CLI, Builder, corpus
 from ..ntcqueries import compare_round
@@ -256,11 +256,6 @@ def submit_scala_cli(args, tx):
 def rendered(text):
     """The error line `cardano-cli` prints (without its call stack)."""
     return next((l for l in text.splitlines() if l.startswith("Error:")), text.splitlines()[0] if text else "")
-
-
-def names_constructor(text, name):
-    """`name` occurs in `text` as a whole Haskell identifier (not as part of a longer constructor)."""
-    return re.search(rf"(?<![A-Za-z0-9_']){re.escape(name)}(?![A-Za-z0-9_'])", text) is not None
 
 
 def reasons(args, root, tx):
