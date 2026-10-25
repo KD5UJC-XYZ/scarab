@@ -236,6 +236,65 @@ class ProviderDefectBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncau
     }
   }
 
+  /** The real verifiers, except that the first OCERT check of the target header meets `defect`: a
+    * provider that fails once and then succeeds. `calls` counts the target's OCERT checks.
+    */
+  private final class FailsOnce(defect: ProviderDefect) extends Verdicts:
+    export Verdicts.Direct.{keyHash, praosVrf, takePrepared, tpraosVrf, witness}
+    private val counted = new java.util.concurrent.atomic.AtomicInteger(0)
+    def calls: Int = counted.get
+    def opCert(
+        header: Header.Shelley,
+        slotsPerKesPeriod: BigInt,
+        maxKesEvolutions: BigInt
+    ): Either[OCertError | ProviderDefect, Unit] =
+      if header.hash == target.hash && counted.getAndIncrement() == 0 then Left(defect)
+      else Verdicts.Direct.opCert(header, slotsPerKesPeriod, maxKesEvolutions)
+
+  test("a defect met while warming a block reaches its validation, which does not ask again") {
+    val provider = FailsOnce(kesDefect)
+    val cache = VerificationCache.unsafe(2, provider)
+    for
+      _ <- cache.warm[IO](Vector(forged.raws(index)), ForgedChain.config, 2)
+      refused <- Handle
+        .allow[NodeError](
+          blockRules(cache)
+            .apply(forged.states(index - 1), target, forged.raws(index))
+            .as(Option.empty[NodeError])
+        )
+        .rescue(e => IO.pure(Some(e)))
+    yield
+      cache.shutdown()
+      assertEquals(
+        refused,
+        Some(ValidationError(target.point, BlockFailure.Unverifiable(BlockRule.Praos, kesDefect)))
+      )
+      assertEquals(provider.calls, 1)
+  }
+
+  test("a defect met while warming headers reaches header-first validation only, once") {
+    val provider = FailsOnce(kesDefect)
+    val cache = VerificationCache.unsafe(2, provider)
+    cache
+      .warmHeaders[IO](Vector(target), forged.states(index - 1).protocol, ForgedChain.config)
+      .map { _ =>
+        assertEquals(validate(cache.forHeaders, target), Outcome.Unverifiable(kesDefect))
+        assertEquals(provider.calls, 1)
+        // the block's own validation is another one: it was warmed for none, so it asks the
+        // provider itself
+        assertEquals(
+          cache.opCert(
+            target,
+            ForgedChain.config.slotsPerKesPeriod,
+            ForgedChain.config.maxKesEvolutions
+          ),
+          Right(())
+        )
+        assertEquals(provider.calls, 2)
+        cache.shutdown()
+      }
+  }
+
   test("negative control: the real verifier still rejects an invalid proof as a typed failure") {
     val bad = target.vrf match
       case HeaderVrf.Praos(c) =>

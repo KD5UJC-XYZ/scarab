@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.ledger.{Prepared, Verdicts}
+import xyz.kd5ujc.scarab.ledger.{Prepared, ProviderDefect, Verdicts}
+import xyz.kd5ujc.scarab.crypto.witness.VerificationError
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import java.nio.file.{Files, Path}
@@ -126,4 +127,42 @@ class VerificationCacheSuite extends ScalaCheckSuite:
     assertEquals(b.witnessStats.toString, "0/1")
     a.shutdown()
     b.shutdown()
+  }
+
+  test("a witness defect met while warming is handed once to the validation, never asked again") {
+    val defect = ProviderDefect.Ed25519(
+      VerificationError.ImplementationFailure(new IllegalStateException("provider broke"))
+    )
+    val calls = new java.util.concurrent.atomic.AtomicInteger(0)
+    // the real verifier, except that its first answer is a defect: it fails once, then succeeds
+    val failsOnce = new Verdicts:
+      export Verdicts.Direct.{keyHash, opCert, praosVrf, takePrepared, tpraosVrf}
+      def witness(vkey: Bytes, signature: Bytes, message: Bytes): Either[ProviderDefect, Boolean] =
+        if calls.getAndIncrement() == 0 then Left(defect)
+        else Verdicts.Direct.witness(vkey, signature, message)
+    val cache = VerificationCache.unsafe(2, failsOnce)
+    cache.warm[IO](raws, setup.praos, 2).unsafeRunSync()
+    // every check warming makes: vkey and bootstrap witnesses alike
+    val distinct = prepared
+      .flatMap(_.txs.flatMap(_.toOption))
+      .flatMap { tx =>
+        (tx.witnesses.vkeys ++ tx.witnesses.bootstrap.map(w => w.vkey -> w.signature)).map {
+          (k, s) => (k, s, tx.body.id)
+        }
+      }
+      .distinct
+    val warmed = calls.get
+    assertEquals(warmed, distinct.size)
+    // warming the same blocks again leaves the defect for the validation it was met for
+    cache.warm[IO](raws, setup.praos, 2).unsafeRunSync()
+    assertEquals(calls.get, warmed)
+    val answers = distinct.map((k, s, m) => cache.witness(k, s, m))
+    assertEquals(answers.count(_ == Left(defect)), 1)
+    assert(
+      distinct.zip(answers).forall { case ((k, s, m), a) =>
+        a == Left(defect) || a == Verdicts.Direct.witness(k, s, m)
+      }
+    )
+    assertEquals(calls.get, warmed)
+    cache.shutdown()
   }
