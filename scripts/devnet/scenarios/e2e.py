@@ -7,6 +7,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 from .. import eraload, govextra, protocolversions, protocolwalk
 from ..cluster import down, freeze_classes, scala_container, up_eras
 from ..compare import PROJECTION_SCOPE, Comparisons, compare_era, comparison_table, judge_comparisons, lsq
@@ -20,6 +21,14 @@ CONWAY_EPOCHS = 7  # Conway epochs the e2e run follows at least: bootstrap gover
 # The run goes on past that target until the chain is at the highest protocol version the reference supports (the walk
 # of protocolwalk.py) and the checks of the versions it passed are done, within the time the walk derives from the
 # governance parameters.
+
+
+def blocked_stacks(threads):
+    """{name: stack} of the load threads still running after they were asked to stop: where a thread that stopped
+    feeding the run (a comparison that took epochs, a hung query) was blocked. Empty when every thread ended."""
+    frames = sys._current_frames()
+    return {name: traceback.format_stack(frames[t.ident]) for name, t in threads.items()
+            if t is not None and t.is_alive() and t.ident in frames}
 
 
 def block_era(hex_line):
@@ -241,9 +250,12 @@ def e2e(args):
         if loader is not None:
             loader.stop.set()
             worker.join(timeout=90)
+        blocked = {} if loader is None else blocked_stacks(
+            {"worker": worker, "extended": getattr(loader, "ext_thread", None)})
         exit_code = follower.poll()
         events, other = read_log(log)
         summary, failures = summarize_e2e(events, other, expected, exit_code)
+        summary["blockedThreads"] = blocked
         summary["stoppedBecause"] = reason
         summary["cpuStarvationWarnings"] = starvation_warnings(log)
         summary["targetConwayEpoch"] = target

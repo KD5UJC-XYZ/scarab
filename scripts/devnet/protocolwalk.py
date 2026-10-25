@@ -19,10 +19,20 @@ The rules that shape the schedule (cardano-ledger, Conway; the devnet genesis ha
   DReps are zero: the hop to 10 needs the pools' votes only. From 10 a hop needs the DReps, the committee (which the base
   governance round elects, `gcommittee`) and the pools. Which rules a hop is ratified under is decided by the version in
   force when it is ratified, which for a hop proposed one epoch after its predecessor is the predecessor's.
+
+The votes a HardFork needs (cardano-ledger f649f975, eras/conway/impl/src/Cardano/Ledger/Conway): the pools' threshold
+`pvtHardForkInitiation` (Governance/Internal.hs:403), with a pool that did not vote counted as No (Rules/Ratify.hs:185);
+the DReps' `dvtHardForkInitiation` (Governance/Internal.hs:529), reset to zero while the version is 9
+(Governance/Internal.hs:519, `hardforkConwayBootstrapPhase` is major version 9, Era.hs:258); and the committee's
+threshold (Governance/Internal.hs:456), which fails without a committee (Rules/Ratify.hs:126). From version 10 the walk
+therefore waits for the base round's committee (elected by its UpdateCommittee proposal, hot keys authorised by
+`gcommittee`) and for DReps with delegated stake (`gdeleg`, `gdeleg2`, counted from the boundary after them). Every pass
+that proposes nothing logs why (`WaitReason`), and the last reason is in the summary and in a stalled walk's failure.
 """
+import enum
 import json
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from . import eratx, protocolversions as pvs
 from .util import data_root
@@ -30,6 +40,66 @@ from .util import data_root
 POST_BOOTSTRAP = 10  # the first version with DRep and committee votes (cardano-ledger HardForks.bootstrapPhase is version 9)
 WINDOW = 0.6  # a hop is proposed only in the first 60 % of an epoch, so that its votes land in the same epoch
 LOST_PASSES = 3  # consecutive passes a past-due hop must be missing before it is reported lost
+
+
+# the base round's vote delegations to its two DReps (EraLoad.conway_features)
+DELEGATION_STAGES = ("gdeleg", "gdeleg2")
+COMMITTEE_STAGE = "gcommittee"  # the base round's hot-key authorisation of the elected committee
+
+
+class WaitReason(enum.Enum):
+    """Why a pass of the walk proposed nothing. The value is the text of the log line and the failure."""
+    REWARD_ACCOUNTS = "the pools' reward accounts (stage xrewards) are not registered yet"
+    SAME_EPOCH = "the previous hop was proposed in this epoch; the next one follows one epoch later"
+    DELEGATIONS_NOT_MADE = "the base round has not made its DRep vote delegations"
+    DELEGATIONS_NOT_IN_DISTRIBUTION = "the DRep vote delegations count from the boundary after their transaction"
+    COMMITTEE_NOT_AUTHORISED = "the base round has not authorised the hot keys of the elected committee"
+    NO_AUTHORISED_MEMBER = "the committee state has no authorised hot key of the base committee"
+    LATE_IN_EPOCH = "too late in the epoch for the votes to count"
+    ENACTMENT = "the last hop is proposed and waits for its enactment"
+
+
+@dataclass(frozen=True)
+class Done:
+    """Nothing is left to propose: the chain is at the walk's limit."""
+
+
+@dataclass(frozen=True)
+class Propose:
+    target: int
+    full: bool  # DReps and committee vote, not only the pools
+
+
+@dataclass(frozen=True)
+class Wait:
+    """A pass that proposes nothing. `hop` is the target concerned, `missing` the base-round stages not done yet,
+    `since` the epoch the delegations were made in."""
+    reason: WaitReason
+    hop: int | None = None
+    missing: tuple[str, ...] = ()
+    since: int | None = None
+
+    def fields(self):
+        """The log and summary form."""
+        out = {"wait": self.reason.name, "why": self.reason.value}
+        if self.hop is not None:
+            out["hop"] = self.hop
+        if self.missing:
+            out["missing"] = list(self.missing)
+        if self.since is not None:
+            out["delegationsEpoch"] = self.since
+        return out
+
+
+@dataclass
+class Waiting:
+    """The current run of passes that waited for the same reason."""
+    wait: Wait
+    since_epoch: int
+    passes: int = 1
+
+    def summary(self):
+        return {**self.wait.fields(), "sinceEpoch": self.since_epoch, "passes": self.passes}
 
 
 class HardForkLost(pvs.ProtocolVersionError):
@@ -54,22 +124,42 @@ class Hop:
         return eratx.gov_id(self.txid, 0)
 
 
-def hop_decision(pv, epoch, in_window, hops, limit, full_ready):
-    """What the next pass does: ("done",), ("wait", reason) or ("propose", target, full). `hops` are the pending hops
-    in order. Pure."""
+def hop_decision(pv, epoch, in_window, hops, limit, readiness):
+    """What the next pass does: `Done`, `Wait` or `Propose`. `hops` are the pending hops in order; `readiness()` is
+    None when the DReps and the committee can vote, else the `Wait` for them (it is asked only for a hop that needs
+    them). Pure, given a pure `readiness`."""
     last = hops[-1] if hops else None
     target = last.target + 1 if last else pv + 1
     if target > limit:
-        return ("done",)
+        return Done() if last is None else Wait(WaitReason.ENACTMENT, hop=last.target)
     if last is not None and epoch <= last.epoch:
-        return ("wait", f"the hop to {last.target} was proposed in this epoch")
+        return Wait(WaitReason.SAME_EPOCH, hop=last.target)
     ratified_under = last.target if last is not None and last.epoch + 1 == epoch else pv
     full = ratified_under >= POST_BOOTSTRAP
-    if full and not full_ready:
-        return ("wait", "the committee and the DRep votes are not ready")
+    if full:
+        blocked = readiness()
+        if blocked is not None:
+            return replace(blocked, hop=target)
     if not in_window:
-        return ("wait", "too late in the epoch for the votes to count")
-    return ("propose", target, full)
+        return Wait(WaitReason.LATE_IN_EPOCH, hop=target)
+    return Propose(target, full)
+
+
+def full_readiness(done, delegations_epoch, epoch, hot_keys):
+    """None when a hop from version 10 can get its votes, else the `Wait` for the first precondition that does not
+    hold: the base round's DRep delegations made (`done` holds its finished stages), in the distribution (from the
+    boundary after `delegations_epoch`), its committee's hot keys authorised, and `hot_keys()` (a query, asked last)
+    not empty. Pure, given a pure `hot_keys`."""
+    missing = tuple(s for s in DELEGATION_STAGES if s not in done)
+    if missing:
+        return Wait(WaitReason.DELEGATIONS_NOT_MADE, missing=missing)
+    if delegations_epoch is None or epoch <= delegations_epoch:
+        return Wait(WaitReason.DELEGATIONS_NOT_IN_DISTRIBUTION, since=delegations_epoch)
+    if COMMITTEE_STAGE not in done:
+        return Wait(WaitReason.COMMITTEE_NOT_AUTHORISED, missing=(COMMITTEE_STAGE,))
+    if not hot_keys():
+        return Wait(WaitReason.NO_AUTHORISED_MEMBER)
+    return None
 
 
 def settle(hops, pv):
@@ -103,6 +193,7 @@ class ProtocolWalk:
     started: float | None = None
     complete: bool = False
     genesis: dict | None = None
+    waiting: Waiting | None = None  # why the latest passes proposed nothing; None once a hop is proposed
 
     # ------------------------------------------------------------ state
     def log(self, **kv):
@@ -146,6 +237,7 @@ class ProtocolWalk:
                           "voted": h.voted} for h in self.hops + self.enacted],
                 "firstEpochInForce": {str(k): v for k, v in sorted(self.reached.items())},
                 "boundEpochs": self.bound_epochs,
+                "waiting": None if self.waiting is None else self.waiting.summary(),
                 "failure": None if self.failure is None else f"{type(self.failure).__name__}: {self.failure}",
                 "complete": self.complete}
 
@@ -178,13 +270,27 @@ class ProtocolWalk:
         for h in self.hops:
             if not h.voted and epoch == h.epoch:
                 h.voted = self.vote(h, pv)
-        if "xrewards" not in self.ext.done:
-            return
         slot_in_epoch = tip.get("slotInEpoch", 0)
+        if "xrewards" not in self.ext.done:
+            self.wait(Wait(WaitReason.REWARD_ACCOUNTS, missing=("xrewards",)), pv, epoch, slot_in_epoch)
+            return
         in_window = slot_in_epoch <= WINDOW * self.epoch_length()
-        action = hop_decision(pv, epoch, in_window, self.hops, self.plan.limit, self.full_ready(epoch))
-        if action[0] == "propose":
-            self.propose(action[1], action[2], pv, epoch)
+        match hop_decision(pv, epoch, in_window, self.hops, self.plan.limit, lambda: self.full_readiness(epoch)):
+            case Propose(target, full):
+                self.propose(target, full, pv, epoch)
+            case Wait() as wait:
+                self.wait(wait, pv, epoch, slot_in_epoch)
+            case Done():
+                pass
+
+    def wait(self, wait, pv, epoch, slot_in_epoch):
+        """Log why this pass proposes nothing, and count the passes that waited for the same reason."""
+        if self.waiting is not None and self.waiting.wait == wait:
+            self.waiting.passes += 1
+        else:
+            self.waiting = Waiting(wait, epoch)
+        self.log(**wait.fields(), epoch=epoch, protocol=pv, slotInEpoch=slot_in_epoch,
+                 sinceEpoch=self.waiting.since_epoch)
 
     def determine_plan(self, pv, pp, epoch):
         """Ask the reference for its highest version once the tip is in Conway; the guard's verdict is logged at once."""
@@ -218,12 +324,9 @@ class ProtocolWalk:
         if self.delegations_epoch is None and {"gdeleg", "gdeleg2"} <= self.ext.l.done:
             self.delegations_epoch = epoch
 
-    def full_ready(self, epoch):
-        """DReps with delegated stake in the distribution and an elected, authorised committee: the votes a hop from
-        version 10 on needs. A delegation counts from the boundary after its transaction."""
-        if self.delegations_epoch is None or epoch <= self.delegations_epoch:
-            return False
-        return "gcommittee" in self.ext.l.done and bool(self.ext.committee_hot_keys())
+    def full_readiness(self, epoch):
+        """`full_readiness` of the base round's stages and the committee state now."""
+        return full_readiness(self.ext.l.done, self.delegations_epoch, epoch, self.ext.committee_hot_keys)
 
     def propose(self, target, full, pv, epoch):
         ext, l = self.ext, self.ext.l
@@ -235,6 +338,7 @@ class ProtocolWalk:
             return
         hop = Hop(target, epoch, txid, full=full)
         self.hops.append(hop)
+        self.waiting = None
         self.log(proposed=target, epoch=epoch, protocol=pv, txid=txid, prev=None if prev is None else prev[0].hex(),
                  votedBy="pools, DReps and committee" if full else "pools")
         hop.voted = self.vote(hop, pv)
@@ -266,9 +370,15 @@ def walk_failures(walk):
     elif walk.plan is None:
         failures.append("the protocol walk never learned the reference's highest protocol version")
     elif not walk.complete:
+        waiting = "" if walk.waiting is None else (
+            f"; waiting since epoch {walk.waiting.since_epoch} ({walk.waiting.passes} passes): "
+            f"{walk.waiting.wait.reason.name}, {walk.waiting.wait.reason.value}"
+            + (f" (missing {', '.join(walk.waiting.wait.missing)})" if walk.waiting.wait.missing else ""))
         failures.append(str(WalkStalled(
             f"the chain did not reach protocol version {walk.plan.limit} within {walk.bound_epochs} epochs "
-            f"(derived from govActionLifetime and the hops left); hops: {[(h.target, h.epoch) for h in walk.hops]}")))
+            f"(derived from govActionLifetime and the hops left); pending hops: "
+            f"{[(h.target, h.epoch) for h in walk.hops]}, enacted: {[(h.target, h.epoch) for h in walk.enacted]}"
+            + waiting)))
     if walk.plan is not None:
         failures += list(walk.plan.failures)
     return failures
