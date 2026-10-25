@@ -40,6 +40,7 @@ paths = [
   '''^fixtures/reference/ledger-api-pool-goldens/head/queryPoolParameters\.json$''',
   '''^fixtures/reference/ledger-api-pool-goldens/head/queryPoolState\.json$''',
   '''^fixtures/reference/ntc-wallet-peers-11\.1\.3/peer-relays/genesis/shelley-genesis\.json$''',
+  '''^fixtures/reference/plutus-forecast-horizon/conway-past-horizon/genesis/shelley-genesis\.json$''',
   '''^fixtures/reference/wallet-queries/manifest\.json$''',
   # A public operational-certificate verification key used as an expected value: the file now, and
   # where it was before the package rename (the scan covers the whole history, so both paths stay).
