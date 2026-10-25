@@ -38,6 +38,9 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
       )
     )
 
+  /** One node with its block-selection runner, started and used within `backstop`. The runner
+    * signals the end of startup selection itself; `backstop` only bounds a hang and names it.
+    */
   private def node(
       invalid: Set[Bytes],
       k: Int = 5,
@@ -48,7 +51,8 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
       fatalAction: Fatal => IO[Unit] = _ => IO.unit,
       initial: Option[VolatileChain[BigInt]] = None,
       recovered: Vector[BlockPool.Delivered] = Vector.empty,
-      unavailable: Map[Bytes, xyz.kd5ujc.scarab.plutus.BackendFailure] = Map.empty
+      unavailable: Map[Bytes, xyz.kd5ujc.scarab.plutus.BackendFailure] = Map.empty,
+      backstop: FiniteDuration = 5.seconds
   )(use: Node => IO[Unit]): IO[Unit] =
     for
       state <- Ref.of[IO, VolatileChain[BigInt]](initial.getOrElse(VolatileChain.genesis(k, -1)))
@@ -87,7 +91,10 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
           follower
             .blockSelection(pool, work, e => fatals.update(_ :+ e) *> fatalAction(e))
             .use(_ => use(Node(pool, follower, state, reports, fatals, governor)))
-            .timeout(5.seconds)
+            .timeoutTo(
+              backstop,
+              IO(fail(s"block selection startup and use did not finish within $backstop"))
+            )
         }
         .rescue(error => IO(fail(error.message)))
     yield ()
@@ -490,7 +497,8 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
           .checked(block.header, block.body)
           .fold(e => IO(fail(e.message)), IO.pure)
       )
-      _ <- node(Set.empty, recovered = checked) { n =>
+      // Startup selection compares every recovered branch: bound a hang, not that linear work.
+      _ <- node(Set.empty, recovered = checked, backstop = 15.seconds) { n =>
         for
           processed <- n.pool.processedSnapshot
           selected <- n.state.get
