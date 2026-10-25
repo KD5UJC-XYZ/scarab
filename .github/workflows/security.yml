@@ -34,10 +34,12 @@ jobs:
         with:
           persist-credentials: false
       - name: Install semgrep
-        run: pip install semgrep==1.181.0
+        run: |
+          python3 -m venv "$RUNNER_TEMP/semgrep"
+          "$RUNNER_TEMP/semgrep/bin/pip" install --require-hashes -r scripts/security/requirements.txt
       - name: Scan with the crypto rules
         run: |
-          semgrep scan --no-git-ignore \
+          "$RUNNER_TEMP/semgrep/bin/semgrep" scan --no-git-ignore \
             --config .semgrep/scarab-crypto.yaml \
             --exclude target --exclude fixtures \
             --severity WARNING --error

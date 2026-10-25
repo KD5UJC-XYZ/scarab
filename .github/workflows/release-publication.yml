@@ -163,8 +163,9 @@ jobs:
           git /repo --log-opts="--full-history HEAD" --config /repo/.gitleaks.toml --no-banner --redact --exit-code 1
       - name: Crypto static rules at the exact cut
         run: |
-          pip install semgrep==1.181.0
-          semgrep scan --no-git-ignore --config .semgrep/scarab-crypto.yaml --error --severity WARNING --severity ERROR .
+          python3 -m venv "$RUNNER_TEMP/semgrep"
+          "$RUNNER_TEMP/semgrep/bin/pip" install --require-hashes -r scripts/security/requirements.txt
+          "$RUNNER_TEMP/semgrep/bin/semgrep" scan --no-git-ignore --config .semgrep/scarab-crypto.yaml --error --severity WARNING --severity ERROR .
   candidate:
     if: inputs.operation == 'publish' && inputs.candidate-run-id == ''
     needs: preflight
