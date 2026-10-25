@@ -47,7 +47,8 @@ class BoundaryTransactionsSuite extends FunSuite:
     }
     .toMap
   private val recorded: Vector[Recorded] =
-    if !Files.isDirectory(directory) then Vector.empty
+    // committed fixtures: a missing directory fails rather than leaving no cases to run
+    if !Files.isDirectory(directory) then fail(s"missing committed fixture directory $directory")
     else
       val paths = Files.list(directory)
       try

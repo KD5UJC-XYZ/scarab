@@ -37,7 +37,9 @@ object PlutusCase:
   val directory: Path = Path.of("fixtures/preview/plutus")
 
   def all: Vector[PlutusCase] =
-    if !Files.isDirectory(directory) then Vector.empty
+    // committed fixtures: a missing directory fails rather than leaving no cases to run
+    if !Files.isDirectory(directory) then
+      munit.Assertions.fail(s"missing committed fixture directory $directory")
     else
       Files
         .list(directory)
