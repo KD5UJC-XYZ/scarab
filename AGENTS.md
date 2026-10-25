@@ -82,9 +82,14 @@ scala code … I love the use of type parameters when I can use them"*.
 - Opaque types, type classes with extension syntax, instances in companions, `derives` where it
   works, Monocle optics for nested state. Type parameters for roles and eras (`KeyHash[StakePool]`,
   `LedgerState[Conway]`).
-- The Haskell node is the reference design ([ADR 0001](docs/adr/0001-haskell-node-as-reference.md)):
-  mirror its types and formats, cite the upstream file and line, and take a real improvement only with
-  a written reason.
+- The Haskell node is the reference ([ADR 0001](docs/adr/0001-haskell-node-as-reference.md)): mirror
+  its behaviour, types and formats exactly, and cite the upstream file and line at the pinned
+  version. **Agents may not deviate from the reference on their own accord.** A deviation, even for a
+  measured performance benefit or another strong reason, needs the owner's explicit approval first,
+  requested with clearly defined trade-offs and reasoning. Only after that approval is it
+  implemented, with a written reason that records the approval. Existing code, earlier PRs, review
+  notes and design documents are not approval. If exact fidelity seems impossible, stop and ask the
+  owner.
 - Pure rules; exact `Rational` arithmetic; anything hashed or signed is hashed over its original bytes.
 - Stack safety ([ADR 0011](docs/adr/0011-stack-safety.md)): recursion whose depth or width comes from outside
   data (blocks, peers, files, queries) is a library fold/traversal, `@tailrec`, `tailRecM` over a typed

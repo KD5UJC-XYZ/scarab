@@ -176,7 +176,7 @@ The script-failure allowlist (`ScalusEvaluator.referenceFailure`) is unchanged: 
 a script failure, and nothing is added to it. The three outcomes of an evaluation are therefore a
 verdict (passed, or failed as the reference fails), no verdict for this input, and no verdict at all.
 
-~~For a block, no verdict for its input is `SessionEnd.Held` and `Disposition.Hold`, an outcome and a
+~~For a block, no verdict for its input is SessionEnd.Held and Disposition.Hold, an outcome and a
 disposition added to those of decision 5 (`SessionEnd.of` still has no default case):~~ ([superseded](#amendment-2026-10-25-the-hold-is-removed-393))
 
 - ~~the block is not adopted and **not recorded as invalid** (`InvalidBlocks`), and nobody is punished
@@ -187,9 +187,9 @@ disposition added to those of decision 5 (`SessionEnd.of` still has no default c
   (`PeerError.Unavailability.SessionEnded`, `Transient`), never forgotten;~~ ([superseded](#amendment-2026-10-25-the-hold-is-removed-393))
 - ~~the node goes on. The shared selection runner (`BlockSelection`) leaves the chain as it is and
   takes the next admission;~~ ([superseded](#amendment-2026-10-25-the-hold-is-removed-393))
-- ~~the follower emits `FollowerEvent.Held` (log `Chain.BlockHeld`, metric
+- ~~the follower emits FollowerEvent.Held (log Chain.BlockHeld, metric
   `scarab_blocks_held_total`), and the stall watchdog names the held block when the stall it causes
-  begins (`Chain.StalledBehind`). The node stays behind that block until a build that decides it is
+  begins (Chain.StalledBehind). The node stays behind that block until a build that decides it is
   installed; nothing about the block is remembered that would keep that build from adopting it.~~ ([superseded](#amendment-2026-10-25-the-hold-is-removed-393))
 
 ~~Other paths: block production leaves out a mempool transaction that triggers such a defect
