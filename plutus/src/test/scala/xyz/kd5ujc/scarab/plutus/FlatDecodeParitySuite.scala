@@ -1,21 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.plutus
 
-import java.nio.file.{Files, Path, Paths}
 import munit.FunSuite
-import scala.jdk.CollectionConverters.*
 import scala.util.Try
 import scala.util.control.NonFatal
 import scalus.serialization.flat.FlatDecodingError
-import scalus.uplc.{DeBruijnedProgram, Program, ScarabProgramView}
-import xyz.kd5ujc.scarab.codec.Bytes
+import scalus.uplc.{DeBruijnedProgram, ScarabProgramView}
 
 /** [[FlatScan.decode]] against the flat decoder of Scalus 1.3.0, which production no longer uses,
   * over every script the fixtures hold: the upstream conformance programs (encoded by Scalus, and
   * the original-byte sidecars), the boundary, costing, upstream-boundary and transaction script
-  * corpora, and the flat decoding probes. Where both decode, the programs are equal (after the
-  * repair of Scalus's narrowed wide indices); where they disagree, the case is one of the pinned
-  * differences below, each of which the reference decides ([[FlatDecodeOracleSuite]]).
+  * corpora, and the flat decoding probes ([[FlatFixtureScripts]]). Where both decode, the programs
+  * are equal (after the repair of Scalus's narrowed wide indices); where they disagree, the case is
+  * one of the pinned differences below, each of which the reference decides
+  * ([[FlatDecodeOracleSuite]]).
   */
 class FlatDecodeParitySuite extends FunSuite:
   override val munitTimeout = scala.concurrent.duration.Duration(10, "min")
@@ -140,59 +138,8 @@ class FlatDecodeParitySuite extends FunSuite:
     worker.join()
     result.get().fold(throw _, identity)
 
-  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
-
-  private val conformanceRoot: Path =
-    Paths.get(getClass.getResource(s"/${PlutusConformanceSuite.Directory}").toURI)
-
-  /** Flat bytes from the conformance programs Scalus parses and can encode (a BLS constant has no
-    * flat encoding), and from the original-byte sidecars.
-    */
-  private lazy val conformance: Vector[(String, Array[Byte])] =
-    val files = Files.walk(conformanceRoot).iterator().asScala.toVector
-    val encoded = files.filter(_.toString.endsWith(".uplc")).flatMap { path =>
-      Program
-        .parseUplc(Files.readString(path))
-        .toOption
-        .flatMap(program => Try(program.flatEncoded).toOption)
-        .map(conformanceRoot.relativize(path).toString -> _)
-    }
-    val sidecars = files.filter(_.toString.endsWith(".flat.cbor.hex")).flatMap { path =>
-      PlutusScriptBytes
-        .flatOf(hex(Files.readString(path).trim).toArray)
-        .map(conformanceRoot.relativize(path).toString -> _)
-    }
-    encoded ++ sidecars
-
-  private def jsonl(file: String): Vector[(String, Array[Byte])] =
-    Files
-      .readAllLines(Path.of(file))
-      .asScala
-      .toVector
-      .zipWithIndex
-      .flatMap { (line, n) =>
-        val row = io.circe.parser.parse(line).fold(throw _, identity)
-        row.hcursor
-          .get[String]("script")
-          .toOption
-          .flatMap(s => PlutusScriptBytes.flatOf(hex(s).toArray))
-          .map(s"$file:$n" -> _)
-      }
-
-  private def scripts(probes: Vector[(String, Bytes)]): Vector[(String, Array[Byte])] =
-    probes.flatMap((id, script) => PlutusScriptBytes.flatOf(script.toArray).map(id -> _))
-
-  private lazy val fixtures: Vector[(String, Array[Byte])] =
-    Vector(
-      "fixtures/reference/plutus-costing/scripts.jsonl",
-      "fixtures/reference/plutus-boundaries/scripts.jsonl",
-      "fixtures/reference/plutus-boundaries/transaction-scripts.jsonl",
-      "fixtures/reference/plutus-upstream-boundaries/scripts.jsonl",
-      "fixtures/reference/plutus-boundary-transactions/scripts.jsonl"
-    ).flatMap(jsonl) ++ scripts(PlutusBoundaryCorpus.probes.map(p => p.id -> p.script))
-
   test("Scarab's decoder builds Scalus's program for every fixture script") {
-    val cases = conformance ++ fixtures
+    val cases = FlatFixtureScripts.conformance ++ FlatFixtureScripts.fixtures
     val outcomes = onBigStack(cases.map((id, flat) => id -> compare(flat)))
     val unexplained = outcomes.collect { case (id, Outcome.Unexplained(d)) => s"$id: $d" }
     assertEquals(unexplained, Vector.empty)
@@ -212,8 +159,7 @@ class FlatDecodeParitySuite extends FunSuite:
   }
 
   test("the flat decoding probes differ from Scalus exactly where the reference decides") {
-    val probes = scripts(FlatDecodeCorpus.probes.map(p => p.id -> p.script))
-    val outcomes = onBigStack(probes.map((id, flat) => id -> compare(flat)))
+    val outcomes = onBigStack(FlatFixtureScripts.probes.map((id, flat) => id -> compare(flat)))
     val differing = outcomes.collect { case (id, Outcome.Differs(d)) => id -> d }.toMap
     assertEquals(differing, expected)
     val unexplained = outcomes.collect { case (id, Outcome.Unexplained(d)) => s"$id: $d" }

@@ -2914,6 +2914,104 @@ each, so a decoder that rescans its prefix still does quadratic work overall; th
 that cost. An SDU that would overflow the buffer while batching is held until the complete message already buffered
 has been decoded (`Mux.Config.receiveBufferLimit` lets a test use a small limit).
 
+## 40. Flat script decoding: an imperative walker against a functional one
+
+**2026-10-25, level 2.** `FlatScan.decode` reads the flat bytes of every Plutus script in every block. Until
+this measurement it was a pure function outside and an imperative walker inside: the bit position in a `var`,
+`ArrayDeque` stacks of tasks, terms and constants, a mutable field count, and `boundary`/`break` for the typed
+failures. AGENTS.md admits that form only on a performance-critical path with measurements, so the same contract
+was written without mutation and the two were timed. The functional form is now production code; the imperative
+walker stays in the tests unchanged as `FlatScanImperative`, the baseline of the equivalence suite and of the
+benchmark.
+
+**The functional form.** Each reader (`bits`, `natural`, `word64`, `byteString`, the type tags, the `value`
+entries) is a pure `@tailrec` function of the bit position that returns the value and the position after it, or
+the failure. The term walk is a `@tailrec` loop whose parameters are its whole state: the position, what to do
+next, the frames of the terms under construction, the scan facts and the ordinal of the next variable. A frame holds
+the parts of its term already built and the frames below it, so a finished term always has a frame to go to or ends
+the walk; no stack of values can run short, and nothing is popped that might not be there. Constant values (lists,
+arrays, pairs) have their own loop of the same shape. The stack is on the heap, as
+[ADR 0011](adr/0011-stack-safety.md) asks: the four deep programs of `FlatScanDepthSuite` (a `data` constant of
+16,000 levels, 100,000 nested `delay`s, an application spine of 50,000, a constant type of 5,000 nested lists)
+decode on a 256 KiB stack.
+
+**Equivalence.** `FlatScanImperativeSuite` compares the two whole, program and scan facts or failure, on a
+1 GiB stack (equality of a deep term recurses): every fixture script `FlatDecodeParitySuite` reads (the upstream
+conformance programs and sidecars, the costing, boundary, upstream-boundary and transaction script corpora, the
+boundary probes) plus the flat decoding probes and the deep programs; every prefix of each script up to 512 bytes
+and 512 evenly spaced prefixes of a longer one; and sixteen seeded single-bit changes of each. All are equal. The
+suite fails if a deliberate change is made to the functional form's filler failure, its `constr` field count or its
+variable ordinals (each tried once). The benchmark also compares every input it times before timing it.
+
+**Harness.** No JMH (the build has no plugin); a timed loop in the style of `CastErasureBench`,
+[FlatScanBench](../ledger/src/test/scala/xyz/kd5ujc/scarab/bench/FlatScanBench.scala), with the current thread's
+allocated bytes (`ThreadMXBean.getCurrentThreadAllocatedBytes`). Per workload: eight warm-up passes of each
+variant of about 50 ms, then ten rounds of about 250 ms each in ABBA order, the same number of passes for both;
+the reported figure of a JVM is the median of its ten rounds. Workloads:
+
+- *real scripts*: the 74 distinct Plutus scripts (witness scripts and reference scripts of spent, referenced and
+  collateral outputs) of the 45 recorded Preview and 4 preprod transactions in `fixtures/preview/plutus` and
+  `fixtures/preprod/plutus`: 277,531 bytes, from 6 to 16,086 bytes, median 2,960; one pass decodes all of them;
+- *largest real script*: the 16,086-byte one;
+- *real scripts applied to each other*: the terms of the real scripts, largest first, applied to one another until
+  the program passes 64,000 bytes (73,780 bytes), encoded by Scalus;
+- the four deep programs above.
+
+**Environment.** Euler, Intel Core Ultra 9 285K (24 cores, WSL2), shared with other build containers (load average
+4.5 to 6.8, not pinned away from these CPUs). Docker image `scarab-jdk:local`
+`sha256:c90140def52d2711644c85a81c9bf218ffbe5dc81003bfb866154c2da832af38`, Temurin 21.0.11+10, Scala 3.3.8;
+`--cpuset-cpus=8-11 --memory=4g --network none`, `-Xms2g -Xmx2g -XX:+UseG1GC -XX:ActiveProcessorCount=4`. Classes
+frozen from commit `a829737e2` (the functional form in the tests, production unchanged; built before a rebase that changed only `.gitleaks.toml`), one JVM at a time in the
+order imperative-first, functional-first, functional-first, imperative-first.
+
+| Workload | Imperative µs/op | Functional µs/op | MB/s imp. / func. | MB allocated/op imp. / func. | Time, median (per-JVM range) | Allocation |
+|---|---:|---:|---:|---:|---:|---:|
+| Real scripts (74, 277,531 B) | 8,155 | 8,456 | 34.0 / 32.8 | 25.04 / 34.64 | +3.7% (+2.0% to +7.8%) | 1.38× |
+| Largest real script (16,086 B) | 300.6 | 289.8 | 53.5 / 55.5 | 1.050 / 1.286 | −3.6% (−8.2% to +0.8%) | 1.23× |
+| Real scripts applied to each other (73,780 B) | 1,835 | 1,940 | 40.2 / 38.0 | 5.87 / 8.52 | +5.7% (+0.4% to +12.1%) | 1.45× |
+| `data` constant, 16,000 levels (16,071 B) | 3,422 | 3,477 | 4.7 / 4.6 | 20.75 / 20.72 | +1.6% (0.0% to +4.4%) | 1.00× |
+| 100,000 nested `delay`s (50,004 B) | 2,315 | 1,245 | 21.6 / 40.2 | 7.45 / 6.40 | −46.2% (−47.1% to −40.6%) | 0.86× |
+| Application spine of 50,000 (50,004 B) | 1,740 | 1,896 | 28.8 / 26.4 | 5.45 / 7.60 | +9.0% (+4.8% to +24.9%) | 1.39× |
+| Constant type of 5,000 nested lists (6,255 B) | 90.1 | 109.2 | 69.5 / 57.3 | 0.169 / 0.681 | +21.2% (−0.8% to +41.6%) | 4.04× |
+
+Times are the median of the four per-JVM medians; the range is the per-JVM ratio, functional over imperative, in
+the same JVM. Real scripts per script: 110 µs imperative, 114 µs functional. Two more JVMs at the switched head
+(`0a9484f0f`, production functional, baseline in the tests) gave real scripts +0.1% and +6.8%, 1.38× and 1.40×
+allocation, and the other rows within the ranges above. The production walk at that commit is the measured one
+token for token apart from comments and the `scan` wrapper (compared with comments stripped).
+
+**What the numbers say.**
+
+- On real scripts the functional form is within 8% in every JVM, 3.7% at the median; on the largest real script it
+  is no slower. This host's run-to-run spread is of the same size.
+- It allocates about 1.4 times as much on real scripts: about 35 MB per pass of 277 KB, against 25 MB. The extra
+  is short-lived (a `Next` value per step, a frame per term read, a `Got` per variable-length read, list cells for
+  type tags), and its collection cost is inside the measured time. Per byte of input the worst functional figure
+  apart from `data` is the application spine at 152 B/B, against the imperative's worst of 149 B/B (the `delay`
+  chain); `data` constants dominate both at about 1,290 B/B, all of it in the shared `PlutusData` decoder.
+- The 4.04× of the nested list type is relative to a cheap baseline: 0.68 MB for 6 KB of type tags (109 B/B), below
+  the real-script average. From protocol 11 the reference refuses a type header longer than 32 tags.
+- Part of the time difference is algorithmic, not a matter of style: the functional `bits` checks the end of the
+  input once per read, the imperative one once per bit. The 46% gain on the `delay` chain most likely comes from that
+  and from the walk's shape (one frame per `delay`, against two tasks and a term stack entry), not from immutability.
+
+Allocation of the functional form while it was written (sbt `runMain`, one JVM, not pinned, so only the allocation
+ratios on real scripts are worth quoting): a plain version returning a fresh `Right` per read, frames in a `List`
+and a tuple per variable allocated 1.70×; caching the 256 results of a read of up to eight bits and dropping the
+tuple brought it to 1.55×; making each frame hold the frames below it (no list cell per frame) to 1.38×. A JFR
+allocation profile of the second version put the list cells of the frames and the `Next.Give` values first.
+
+**Recommendation and decision.** Switch, and keep the functional form: the time is within the 10–15% the owner set
+for this choice on real scripts, and the allocation increase is moderate, short-lived and already paid for in the
+measured time. The imperative exception of AGENTS.md is not justified for
+this path. `FlatScan.decode` keeps its contract (`Decoded`, `FlatScan`, `ValueFault`, `Failure` unchanged); the
+equivalence suite keeps the old walker as its reference so a later change to either is caught.
+
+**To repeat.** In the JDK container: `bash scripts/sbtw "ledger/Test/runMain xyz.kd5ujc.scarab.bench.FlatScanBench
+imperative 10"` (the first argument names the variant each workload starts with, the second the rounds). For the
+figures above, export `ledger/Test/fullClasspath`, copy the class directories it names, and run the main class with
+`java` in a fresh container with the flags above, once per order.
+
 ## 41. Mux stream decoder partial frames
 
 `protocol.Mux.Decoder.feed` appended each feed's share of a frame to the payload received so far with

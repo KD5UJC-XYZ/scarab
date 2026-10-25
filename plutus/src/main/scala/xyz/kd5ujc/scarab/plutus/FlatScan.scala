@@ -3,9 +3,7 @@ package xyz.kd5ujc.scarab.plutus
 
 import java.nio.ByteBuffer
 import java.nio.charset.{CharacterCodingException, CodingErrorAction, StandardCharsets}
-import scala.collection.mutable.{ArrayDeque, ListBuffer}
-import scala.util.boundary
-import scala.util.boundary.{Label, break}
+import scala.annotation.tailrec
 import scalus.cardano.ledger.Word64
 import scalus.serialization.flat.{EncoderState, Flat}
 import scalus.uplc.builtin.{BuiltinValue, ByteString}
@@ -25,7 +23,10 @@ import xyz.kd5ujc.scarab.codec.Bytes
   * The same pass builds the term the machine runs ([[FlatScan.decode]]); Scalus's own flat decoder
   * is not used. It recurses once per level of the term and of a `data` constant (and reads the
   * constant through borer, which stops at 1000 levels), where the reference has no depth limit. The
-  * walk keeps the work still to do and the values built so far on two heap stacks (ADR 0011).
+  * walk is a `@tailrec` loop over immutable frames, each holding the parts of its term already
+  * built, so its stack is on the heap (ADR 0011). Its readers are pure functions of the bit
+  * position; `docs/performance.md` ("Flat script decoding") measures this form against the
+  * imperative walker it replaced.
   *
   * A `value` constant is built normalised, as Scalus holds it (unsorted keys, repeated keys, empty
   * inner maps and zero quantities vanish), and a variable index of 64 bits does not fit Scalus's
@@ -135,11 +136,23 @@ object FlatScan:
   /** The program the bytes encode, and what the walk saw on the way. */
   final case class Decoded(scan: FlatScan, program: DeBruijnedProgram)
 
+  private type Result[A] = Either[Failure, A]
+
+  /** A value read and the bit position after it. */
+  private final case class Got[+A](value: A, at: Long)
+
   /** The largest variable index Scalus keeps without narrowing. */
   private val IntIndexLimit = BigInt(Int.MaxValue) + 1
   private val WordGroups = 10
   private val QuantityMin = -(BigInt(1) << 127)
   private val QuantityMax = (BigInt(1) << 127) - 1
+  private val Version110 = (BigInt(1), BigInt(1), BigInt(0))
+  private val Set1: Result[Boolean] = Right(true)
+  private val Clear: Result[Boolean] = Right(false)
+  private val Missing: Result[Nothing] = Left(Failure.Truncated)
+
+  /** Every result of a read of up to eight bits, built once: a read allocates nothing. */
+  private val Small: IArray[Result[Int]] = IArray.tabulate(256)(Right(_))
 
   /** The 7-bit builtin tags, as Scalus's own encoder writes them (it names the builtins the machine
     * runs).
@@ -152,363 +165,630 @@ object FlatScan:
       ((state.result.headOption.getOrElse(0.toByte) & 0xff) >>> 1) -> fun
     }.toMap
 
-  // The work still to do, innermost first. `depth` is the number of enclosing lambdas and
-  // `checked` whether the ledger's scope check descends here.
-  private sealed trait Task
-  private final case class Read(depth: Long, checked: Boolean) extends Task
-  private final case class Wrap(node: Unary) extends Task
-  private case object Join extends Task
-  private case object Lift extends Task
-  private final case class Fields(depth: Long, count: Count, node: Nary) extends Task
-  private final case class Value(ty: DefaultUni) extends Task
-  private final case class Elements(element: DefaultUni, count: Count, array: Boolean) extends Task
-  private case object Couple extends Task
-  private final class Count(var n: Int)
+  /** What the walk has seen so far: the fields of the [[FlatScan]] it returns. */
+  private final case class Facts(
+      malformed: Option[ValueFault],
+      typeHeader: Int,
+      constrFields: Int,
+      open: Option[BigInt],
+      wide: Set[Int]
+  )
 
-  /** A term built over the one term read before it. */
+  private object Facts:
+    val empty: Facts = Facts(None, 0, 0, None, Set.empty)
+
   private enum Unary:
     case Delay, Force, Lambda
 
-  /** A term built over the terms its list of fields or branches counted. */
   private enum Nary:
     case Constr(tag: Word64)
-    case Case
+    case Case(scrutinee: Uplc)
+
+  /** What the term walk does next. `depth` is the number of enclosing lambdas and `checked` whether
+    * the ledger's scope check descends here.
+    */
+  private enum Next:
+    case Read(depth: Long, checked: Boolean)
+    case Give(term: Uplc)
+
+    /** Reads the bit that says whether another field or branch follows. */
+    case More(depth: Long, node: Nary, fields: List[Uplc], count: Int)
+
+  /** The terms waiting for the term read next, innermost first: each frame holds the frames `below`
+    * it, so the stack is its own list. Fields are held last first.
+    */
+  private enum Frames:
+    case Done
+    case Wrap(node: Unary, below: Frames)
+    case Function(depth: Long, checked: Boolean, below: Frames)
+    case Argument(function: Uplc, below: Frames)
+    case Scrutinee(depth: Long, below: Frames)
+    case Fields(depth: Long, node: Nary, fields: List[Uplc], count: Int, below: Frames)
+
+  /** What the constant walk does next. */
+  private enum Want:
+    case Read(ty: DefaultUni)
+    case Give(constant: Constant)
+    case More(element: DefaultUni, array: Boolean, items: List[Constant])
+
+  /** A constant waiting for the constant read next. Items are held last first. */
+  private enum Part:
+    case Elements(element: DefaultUni, array: Boolean, items: List[Constant])
+    case First(second: DefaultUni)
+    case Second(first: Constant)
+
+  private final case class Walked(term: Uplc, facts: Facts)
+  private final case class ConstantRead(constant: Constant, fault: Option[ValueFault])
+  private final case class ValueRead(
+      entries: List[(ByteString, List[(ByteString, BigInt)])],
+      fault: Option[ValueFault]
+  )
+  private final case class TokensRead(tokens: List[(ByteString, BigInt)], fault: Option[ValueFault])
 
   /** Walks the flat bytes (the program, without its CBOR wrapper). */
   def scan(flat: Array[Byte]): Either[Failure, FlatScan] = decode(flat).map(_.scan)
 
   /** Decodes the flat bytes (the program, without its CBOR wrapper) into the program Scalus's
-    * machine runs, with an explicit stack. The program must end the bytes, behind its filler, as
-    * the reference's strict `unflatWith` requires; bytes after the script's CBOR item are a
-    * separate matter ([[PlutusScriptBytes]]).
+    * machine runs, on a heap stack. The program must end the bytes, behind its filler, as the
+    * reference's strict `unflatWith` requires; bytes after the script's CBOR item are a separate
+    * matter ([[PlutusScriptBytes]]).
     */
-  def decode(flat: Array[Byte]): Either[Failure, Decoded] = boundary:
-    Right(new Walker(flat).run())
+  def decode(flat: Array[Byte]): Either[Failure, Decoded] =
+    val input = Input(flat)
+    for
+      major <- input.natural(0L)
+      minor <- input.natural(major.at)
+      patch <- input.natural(minor.at)
+      version = (major.value, minor.value, patch.value)
+      allowed = summon[Ordering[(BigInt, BigInt, BigInt)]].gteq(version, Version110)
+      walked <- input.walk(
+        patch.at,
+        Next.Read(0L, checked = true),
+        Frames.Done,
+        Facts.empty,
+        0,
+        allowed
+      )
+      _ <- input.filler(walked.at)
+    yield
+      val facts = walked.value.facts
+      Decoded(
+        FlatScan(facts.malformed, facts.typeHeader, facts.constrFields, facts.open, facts.wide),
+        ScarabProgramView.program(
+          (saturated(version._1), saturated(version._2), saturated(version._3)),
+          walked.value.term
+        )
+      )
 
   /** A version component as the `Int` Scalus holds; a larger one is no version the ledger knows,
     * and stays one (`PlutusAvailability.versionFailure` refuses it as it refuses the original).
     */
   private def saturated(n: BigInt): Int = if n.isValidInt then n.toInt else Int.MaxValue
 
-  private final class Walker(bytes: Array[Byte])(using Label[Either[Failure, Decoded]]):
-    private var position = 0L // in bits
-    private var malformed: Option[ValueFault] = None
-    private var typeHeader = 0
-    private var constrFields = 0
-    private var open: Option[BigInt] = None
-    private var variableOrdinal = 0
-    private var wideVariables = Set.empty[Int]
-    private var constrCaseAllowed = false
-    private val tasks = ArrayDeque.empty[Task]
-    // The values built so far, last on top. Every task that pops pushed its children's tasks before
-    // its own was run, so the children are there.
-    private val terms = ArrayDeque.empty[Uplc]
-    private val constants = ArrayDeque.empty[Constant]
+  private def compare(a: Array[Byte], b: Array[Byte]): Int =
+    @tailrec def from(i: Int): Int =
+      if i < a.length && i < b.length && a(i) == b(i) then from(i + 1) else i
+    val i = from(0)
+    if i < a.length && i < b.length then (a(i) & 0xff) - (b(i) & 0xff) else a.length - b.length
 
-    private def abort(failure: Failure): Nothing = break(Left(failure))
+  private def utf8(raw: Array[Byte]): Result[String] =
+    val decoder = StandardCharsets.UTF_8
+      .newDecoder()
+      .onMalformedInput(CodingErrorAction.REPORT)
+      .onUnmappableCharacter(CodingErrorAction.REPORT)
+    try Right(decoder.decode(ByteBuffer.wrap(raw)).toString)
+    catch case _: CharacterCodingException => Left(Failure.InvalidUtf8)
 
-    private def bit(): Int =
-      val at = (position >> 3).toInt
-      if position >> 3 >= bytes.length then abort(Failure.Truncated)
-      val b = (bytes(at) >> (7 - (position & 7).toInt)) & 1
-      position += 1
-      b
+  private def data(raw: Array[Byte]): Result[scalus.uplc.builtin.Data] =
+    PlutusData
+      .decodePrefix(Bytes.fromArray(raw))
+      .left
+      .map(Failure.MalformedData(_))
+      .map(ScalusEvaluator.toData)
 
-    private def bits(n: Int): Int =
-      var acc = 0
-      var i = 0
-      while i < n do
-        acc = (acc << 1) | bit()
-        i += 1
-      acc
+  private def leafType(tag: Int): Result[DefaultUni] = tag match
+    case 0  => Right(DefaultUni.Integer)
+    case 1  => Right(DefaultUni.ByteString)
+    case 2  => Right(DefaultUni.String)
+    case 3  => Right(DefaultUni.Unit)
+    case 4  => Right(DefaultUni.Bool)
+    case 5  => Right(DefaultUni.ProtoList)
+    case 6  => Right(DefaultUni.ProtoPair)
+    case 8  => Right(DefaultUni.Data)
+    case 9  => Right(DefaultUni.BLS12_381_G1_Element)
+    case 10 => Right(DefaultUni.BLS12_381_G2_Element)
+    case 11 => Right(DefaultUni.BLS12_381_MlResult)
+    case 12 => Right(DefaultUni.ProtoArray)
+    case 13 => Right(DefaultUni.BuiltinValue)
+    case t  => Left(Failure.BadTypeTag(t))
+
+  /** The type a constant's tags describe, built from the last tag (`tags` is last first). */
+  @tailrec private def buildType(tags: List[Int], built: List[DefaultUni]): Result[DefaultUni] =
+    tags match
+      case Nil =>
+        built match
+          case single :: Nil => Right(single)
+          case _             => Left(Failure.IllFormedType)
+      case 7 :: rest =>
+        built match
+          case function :: argument :: below =>
+            buildType(rest, DefaultUni.Apply(function, argument) :: below)
+          case _ => Left(Failure.IllFormedType)
+      case tag :: rest =>
+        leafType(tag) match
+          case Left(failure) => Left(failure)
+          case Right(leaf)   => buildType(rest, leaf :: built)
+
+  /** A `value` entry's faults in the order `buildValueWith` meets them; the first one counts. */
+  private def keyFault(
+      key: Array[Byte],
+      previous: Option[Array[Byte]],
+      notAscending: ValueFault
+  ): Option[ValueFault] =
+    Option
+      .when(key.length > 32)(ValueFault.KeyTooLong)
+      .orElse(previous.filter(compare(_, key) >= 0).map(_ => notAscending))
+
+  private def quantityFault(quantity: BigInt): Option[ValueFault] =
+    if quantity < QuantityMin || quantity > QuantityMax then Some(ValueFault.QuantityOutOfRange)
+    else Option.when(quantity == 0)(ValueFault.ZeroQuantity)
+
+  /** The facts after a variable: the first index the scope check refuses, and the wide ones. */
+  private def variableFacts(
+      index: BigInt,
+      depth: Long,
+      checked: Boolean,
+      ordinal: Int,
+      facts: Facts
+  ): Facts =
+    val scopeViolation = checked && (index <= 0 || index > BigInt(depth))
+    val wide = index >= IntIndexLimit
+    if (scopeViolation && facts.open.isEmpty) || wide then
+      facts.copy(
+        open = facts.open.orElse(Option.when(scopeViolation)(index)),
+        wide = if wide then facts.wide + ordinal else facts.wide
+      )
+    else facts
+
+  /** Scalus's name for the variable, of the index narrowed as its decoder narrows it; a wide index
+    * is kept open, which Scalus's lookupVarName refuses before indexing the environment
+    * (Cek.scala:1465-1478 in the pinned 1.3.0 sources).
+    */
+  private def variableTerm(index: BigInt): Uplc =
+    val wide = index >= IntIndexLimit
+    Uplc.Var(NamedDeBruijn(s"i${index.toInt}", if wide then -1 else index.toInt))
+
+  private final class Input(bytes: Array[Byte]):
+    private val end = bytes.length.toLong * 8
+
+    private def bitAt(at: Long): Int = (bytes((at >> 3).toInt) >> (7 - (at & 7).toInt)) & 1
+
+    @tailrec private def gather(at: Long, n: Int, acc: Int): Int =
+      if n == 0 then acc else gather(at + 1, n - 1, (acc << 1) | bitAt(at))
+
+    /** `n` (at most eight) bits from `at`, or `Truncated` if the input ends before the last. */
+    def bits(at: Long, n: Int): Result[Int] =
+      if at + n > end then Missing else Small(gather(at, n, 0))
+
+    def flag(at: Long): Result[Boolean] =
+      if at >= end then Missing else if bitAt(at) == 1 then Set1 else Clear
 
     /** A flat natural: groups of seven bits, least significant first, each behind a continue bit.
+      * The groups are packed into the big-endian magnitude at the end, so a long natural costs
+      * linear time.
       */
-    private def natural(): BigInt =
-      val chunks = Array.newBuilder[Byte]
-      var more = true
-      while more do
-        val group = bits(8)
-        chunks += (group & 0x7f).toByte
-        more = (group & 0x80) != 0
-      // Construct BigInt once: extending one per seven-bit group allocates quadratically for a
-      // long untrusted natural. Pack little-endian groups into its big-endian magnitude instead.
-      val groups = chunks.result()
-      val magnitude = new Array[Byte](((groups.length.toLong * 7 + 7) / 8).toInt)
-      groups.indices.foreach { index =>
-        val offset = index.toLong * 7
-        val at = magnitude.length - 1 - (offset / 8).toInt
-        val shift = (offset % 8).toInt
-        val group = groups(index) & 0x7f
-        magnitude(at) = (magnitude(at) | (group << shift)).toByte
-        if shift > 1 && at > 0 then
-          magnitude(at - 1) = (magnitude(at - 1) | (group >>> (8 - shift))).toByte
-      }
-      BigInt(1, magnitude)
+    def natural(at: Long): Result[Got[BigInt]] = groups(at, Nil, 0)
+
+    @tailrec private def groups(at: Long, read: List[Int], count: Int): Result[Got[BigInt]] =
+      bits(at, 8) match
+        case Left(failure) => Left(failure)
+        case Right(group) =>
+          val next = (group & 0x7f) :: read
+          if (group & 0x80) != 0 then groups(at + 8, next, count + 1)
+          else Right(Got(magnitude(next.toArray, count + 1), at + 8))
+
+    /** `mostSignificantFirst` holds `n` seven-bit groups; byte `k` (from the least significant)
+      * takes its bits from groups `8k / 7` and the one after it.
+      */
+    private def magnitude(mostSignificantFirst: Array[Int], n: Int): BigInt =
+      val length = ((n.toLong * 7 + 7) / 8).toInt
+      def group(g: Long): Int = if g < n then mostSignificantFirst(n - 1 - g.toInt) else 0
+      BigInt(
+        1,
+        Array.tabulate(length) { i =>
+          val bit = (length - 1 - i).toLong * 8
+          val shift = (bit % 7).toInt
+          ((group(bit / 7) >>> shift) | (group(bit / 7 + 1) << (7 - shift))).toByte
+        }
+      )
 
     /** A flat `Word64`, which the reference reads as at most ten groups of seven bits: the tenth
       * holds bit 63 alone and does not continue, so a padded form of eleven groups is refused even
       * when its value is small, as is a tenth group of bit 64 or above.
       */
-    private def word64(): BigInt =
-      var value = BigInt(0)
-      var index = 0
-      var more = true
-      while more do
-        val group = bits(8)
-        if index == WordGroups - 1 then
-          if (group & 0x80) != 0 then abort(Failure.WordTooLong)
-          if group > 1 then abort(Failure.WordOverflow)
-        value = value | (BigInt(group & 0x7f) << (7 * index))
-        more = (group & 0x80) != 0
-        index += 1
-      value
+    @tailrec def word64(at: Long, index: Int = 0, value: BigInt = 0): Result[Got[BigInt]] =
+      bits(at, 8) match
+        case Left(failure) => Left(failure)
+        case Right(group) if index == WordGroups - 1 && (group & 0x80) != 0 =>
+          Left(Failure.WordTooLong)
+        case Right(group) if index == WordGroups - 1 && group > 1 => Left(Failure.WordOverflow)
+        case Right(group) =>
+          val next = value | (BigInt(group & 0x7f) << (7 * index))
+          if (group & 0x80) != 0 then word64(at + 8, index + 1, next) else Right(Got(next, at + 8))
 
-    private def integer(): BigInt =
-      val n = natural()
-      if n.testBit(0) then -((n + 1) >> 1) else n >> 1
+    def integer(at: Long): Result[Got[BigInt]] =
+      natural(at).map { case Got(n, after) =>
+        Got(if n.testBit(0) then -((n + 1) >> 1) else n >> 1, after)
+      }
 
     /** A flat byte string: padding up to a byte boundary, then chunks of up to 255 bytes. */
-    private def byteString(): Array[Byte] =
-      while bit() == 0 do ()
-      val out = Array.newBuilder[Byte]
-      var length = bits(8)
-      while length != 0 do
-        if (position >> 3) + length > bytes.length then abort(Failure.Truncated)
-        val from = (position >> 3).toInt
-        out ++= bytes.slice(from, from + length)
-        position += 8L * length
-        length = bits(8)
-      out.result()
+    def byteString(at: Long): Result[Got[Array[Byte]]] =
+      padding(at).flatMap(chunks(_, Nil))
 
-    private def utf8(raw: Array[Byte]): String =
-      val decoder = StandardCharsets.UTF_8
-        .newDecoder()
-        .onMalformedInput(CodingErrorAction.REPORT)
-        .onUnmappableCharacter(CodingErrorAction.REPORT)
-      try decoder.decode(ByteBuffer.wrap(raw)).toString
-      catch case _: CharacterCodingException => abort(Failure.InvalidUtf8)
+    @tailrec private def padding(at: Long): Result[Long] = flag(at) match
+      case Left(failure) => Left(failure)
+      case Right(true)   => Right(at + 1)
+      case Right(false)  => padding(at + 1)
 
-    private def data(raw: Array[Byte]): scalus.uplc.builtin.Data =
-      PlutusData
-        .decodePrefix(Bytes.fromArray(raw))
-        .fold(error => abort(Failure.MalformedData(error)), ScalusEvaluator.toData)
+    @tailrec private def chunks(at: Long, read: List[Array[Byte]]): Result[Got[Array[Byte]]] =
+      bits(at, 8) match
+        case Left(failure) => Left(failure)
+        case Right(0)      => Right(Got(Array.concat(read.reverse*), at + 8))
+        case Right(length) =>
+          val from = at + 8
+          if (from >> 3) + length > bytes.length then Left(Failure.Truncated)
+          else
+            val start = (from >> 3).toInt
+            chunks(from + 8L * length, bytes.slice(start, start + length) :: read)
 
-    private def compare(a: Array[Byte], b: Array[Byte]): Int =
-      val n = math.min(a.length, b.length)
-      var i = 0
-      while i < n && a(i) == b(i) do i += 1
-      if i < n then (a(i) & 0xff) - (b(i) & 0xff) else a.length - b.length
-
-    private def fault(f: ValueFault): Unit = if malformed.isEmpty then malformed = Some(f)
+    /** A constant's type tags, last first, and how many there are. */
+    @tailrec private def typeTags(
+        at: Long,
+        tags: List[Int],
+        count: Int
+    ): Result[Got[(List[Int], Int)]] =
+      flag(at) match
+        case Left(failure) => Left(failure)
+        case Right(false)  => Right(Got((tags, count), at + 1))
+        case Right(true) =>
+          bits(at + 1, 4) match
+            case Left(failure) => Left(failure)
+            case Right(tag)    => typeTags(at + 5, tag :: tags, count + 1)
 
     /** A `value` constant, as `Flat Value` reads it and `buildValueWith` checks it; the entries as
       * they were written.
       */
-    private def valueConstant(): List[(ByteString, List[(ByteString, BigInt)])] =
-      val entries = ListBuffer.empty[(ByteString, List[(ByteString, BigInt)])]
-      var previousCurrency: Option[Array[Byte]] = None
-      while bit() == 1 do
-        val currency = byteString()
-        if currency.length > 32 then fault(ValueFault.KeyTooLong)
-        previousCurrency.foreach(p =>
-          if compare(p, currency) >= 0 then fault(ValueFault.CurrenciesNotAscending)
-        )
-        previousCurrency = Some(currency)
-        var previousToken: Option[Array[Byte]] = None
-        val tokens = ListBuffer.empty[(ByteString, BigInt)]
-        while bit() == 1 do
-          val token = byteString()
-          val quantity = integer()
-          if token.length > 32 then fault(ValueFault.KeyTooLong)
-          previousToken.foreach(p =>
-            if compare(p, token) >= 0 then fault(ValueFault.TokensNotAscending)
-          )
-          previousToken = Some(token)
-          if quantity < QuantityMin || quantity > QuantityMax then
-            fault(ValueFault.QuantityOutOfRange)
-          else if quantity == 0 then fault(ValueFault.ZeroQuantity)
-          tokens += ByteString.unsafeFromArray(token) -> quantity
-        if tokens.isEmpty then fault(ValueFault.EmptyInnerMap)
-        entries += ByteString.unsafeFromArray(currency) -> tokens.toList
-      entries.toList
+    @tailrec private def currencies(
+        at: Long,
+        previous: Option[Array[Byte]],
+        entries: List[(ByteString, List[(ByteString, BigInt)])],
+        fault: Option[ValueFault]
+    ): Result[Got[ValueRead]] =
+      flag(at) match
+        case Left(failure) => Left(failure)
+        case Right(false)  => Right(Got(ValueRead(entries.reverse, fault), at + 1))
+        case Right(true) =>
+          byteString(at + 1).flatMap { case Got(currency, after) =>
+            tokens(
+              after,
+              None,
+              Nil,
+              fault.orElse(keyFault(currency, previous, ValueFault.CurrenciesNotAscending))
+            )
+              .map(_ -> currency)
+          } match
+            case Left(failure) => Left(failure)
+            case Right((Got(TokensRead(read, seen), after), currency)) =>
+              currencies(
+                after,
+                Some(currency),
+                (ByteString.unsafeFromArray(currency) -> read) :: entries,
+                seen.orElse(Option.when(read.isEmpty)(ValueFault.EmptyInnerMap))
+              )
 
-    /** The tags of a constant's type, built into a tree from the end (a stack, not recursion). */
-    private def constantType(): DefaultUni =
-      val tags = Vector.newBuilder[Int]
-      while bit() == 1 do tags += bits(4)
-      val all = tags.result()
-      typeHeader = math.max(typeHeader, all.length)
-      val built = ArrayDeque.empty[DefaultUni]
-      all.reverseIterator.foreach {
-        case 7 =>
-          if built.size < 2 then abort(Failure.IllFormedType)
-          val function = built.removeLast()
-          val argument = built.removeLast()
-          built.append(DefaultUni.Apply(function, argument))
-        case 0  => built.append(DefaultUni.Integer)
-        case 1  => built.append(DefaultUni.ByteString)
-        case 2  => built.append(DefaultUni.String)
-        case 3  => built.append(DefaultUni.Unit)
-        case 4  => built.append(DefaultUni.Bool)
-        case 5  => built.append(DefaultUni.ProtoList)
-        case 6  => built.append(DefaultUni.ProtoPair)
-        case 8  => built.append(DefaultUni.Data)
-        case 9  => built.append(DefaultUni.BLS12_381_G1_Element)
-        case 10 => built.append(DefaultUni.BLS12_381_G2_Element)
-        case 11 => built.append(DefaultUni.BLS12_381_MlResult)
-        case 12 => built.append(DefaultUni.ProtoArray)
-        case 13 => built.append(DefaultUni.BuiltinValue)
-        case t  => abort(Failure.BadTypeTag(t))
+    @tailrec private def tokens(
+        at: Long,
+        previous: Option[Array[Byte]],
+        read: List[(ByteString, BigInt)],
+        fault: Option[ValueFault]
+    ): Result[Got[TokensRead]] =
+      flag(at) match
+        case Left(failure) => Left(failure)
+        case Right(false)  => Right(Got(TokensRead(read.reverse, fault), at + 1))
+        case Right(true) =>
+          byteString(at + 1).flatMap { case Got(token, after) =>
+            integer(after).map(quantity => (token, quantity))
+          } match
+            case Left(failure) => Left(failure)
+            case Right((token, Got(quantity, after))) =>
+              tokens(
+                after,
+                Some(token),
+                (ByteString.unsafeFromArray(token) -> quantity) :: read,
+                fault
+                  .orElse(keyFault(token, previous, ValueFault.TokensNotAscending))
+                  .orElse(quantityFault(quantity))
+              )
+
+    /** The value of a constant of type `ty`, nested lists and pairs on a list of parts. */
+    @tailrec private def constant(
+        at: Long,
+        want: Want,
+        parts: List[Part],
+        fault: Option[ValueFault]
+    ): Result[Got[ConstantRead]] =
+      want match
+        case Want.Give(c) =>
+          parts match
+            case Nil => Right(Got(ConstantRead(c, fault), at))
+            case Part.Elements(element, array, items) :: rest =>
+              constant(at, Want.More(element, array, c :: items), rest, fault)
+            case Part.First(second) :: rest =>
+              constant(at, Want.Read(second), Part.Second(c) :: rest, fault)
+            case Part.Second(first) :: rest =>
+              constant(at, Want.Give(Constant.Pair(first, c)), rest, fault)
+        case Want.More(element, array, items) =>
+          flag(at) match
+            case Left(failure) => Left(failure)
+            case Right(true) =>
+              constant(
+                at + 1,
+                Want.Read(element),
+                Part.Elements(element, array, items) :: parts,
+                fault
+              )
+            case Right(false) =>
+              val built =
+                if array then Constant.Array(element, items.reverse.toIndexedSeq)
+                else Constant.List(element, items.reverse)
+              constant(at + 1, Want.Give(built), parts, fault)
+        case Want.Read(ty) =>
+          ty match
+            case DefaultUni.Integer =>
+              integer(at) match
+                case Left(failure) => Left(failure)
+                case Right(Got(n, after)) =>
+                  constant(after, Want.Give(Constant.Integer(n)), parts, fault)
+            case DefaultUni.ByteString =>
+              byteString(at) match
+                case Left(failure) => Left(failure)
+                case Right(Got(raw, after)) =>
+                  constant(
+                    after,
+                    Want.Give(Constant.ByteString(ByteString.unsafeFromArray(raw))),
+                    parts,
+                    fault
+                  )
+            case DefaultUni.String =>
+              byteString(at).flatMap(got => utf8(got.value).map(Got(_, got.at))) match
+                case Left(failure) => Left(failure)
+                case Right(Got(s, after)) =>
+                  constant(after, Want.Give(Constant.String(s)), parts, fault)
+            case DefaultUni.Unit => constant(at, Want.Give(Constant.Unit), parts, fault)
+            case DefaultUni.Bool =>
+              flag(at) match
+                case Left(failure) => Left(failure)
+                case Right(b)      => constant(at + 1, Want.Give(Constant.Bool(b)), parts, fault)
+            case DefaultUni.Data =>
+              byteString(at).flatMap(got => data(got.value).map(Got(_, got.at))) match
+                case Left(failure) => Left(failure)
+                case Right(Got(d, after)) =>
+                  constant(after, Want.Give(Constant.Data(d)), parts, fault)
+            case DefaultUni.BuiltinValue =>
+              currencies(at, None, Nil, None) match
+                case Left(failure) => Left(failure)
+                case Right(Got(ValueRead(entries, seen), after)) =>
+                  constant(
+                    after,
+                    Want.Give(Constant.BuiltinValue(BuiltinValue.fromEntryList(entries))),
+                    parts,
+                    fault.orElse(seen)
+                  )
+            case DefaultUni.BLS12_381_G1_Element => Left(Failure.NoFlatConstant(9))
+            case DefaultUni.BLS12_381_G2_Element => Left(Failure.NoFlatConstant(10))
+            case DefaultUni.BLS12_381_MlResult   => Left(Failure.NoFlatConstant(11))
+            case DefaultUni.Apply(DefaultUni.ProtoList, element) =>
+              constant(at, Want.More(element, array = false, Nil), parts, fault)
+            case DefaultUni.Apply(DefaultUni.ProtoArray, element) =>
+              constant(at, Want.More(element, array = true, Nil), parts, fault)
+            case DefaultUni.Apply(DefaultUni.Apply(DefaultUni.ProtoPair, first), second) =>
+              constant(at, Want.Read(first), Part.First(second) :: parts, fault)
+            case _ => Left(Failure.IllFormedType)
+
+    /** A constant term: its type, then its value. */
+    private def constantTerm(at: Long, facts: Facts): Result[Got[Walked]] =
+      typeTags(at, Nil, 0).flatMap { case Got((tags, count), afterTags) =>
+        buildType(tags, Nil).flatMap(ty => constant(afterTags, Want.Read(ty), Nil, None)).map {
+          case Got(ConstantRead(c, fault), after) =>
+            val updated =
+              if count > facts.typeHeader || (fault.isDefined && facts.malformed.isEmpty) then
+                facts.copy(
+                  typeHeader = math.max(facts.typeHeader, count),
+                  malformed = facts.malformed.orElse(fault)
+                )
+              else facts
+            Got(Walked(Uplc.Const(c), updated), after)
+        }
       }
-      if built.size != 1 then abort(Failure.IllFormedType)
-      built.head
 
-    private def variable(index: BigInt, depth: Long, checked: Boolean): Uplc =
-      val scopeViolation = checked && (index <= 0 || index > BigInt(depth))
-      if open.isEmpty && scopeViolation then open = Some(index)
-      val wide = index >= IntIndexLimit
-      if wide then wideVariables += variableOrdinal
-      variableOrdinal += 1
-      // Scalus's name for the variable, of the index narrowed as its decoder narrows it; a wide
-      // index is kept open, which Scalus's lookupVarName refuses before indexing the environment
-      // (Cek.scala:1465-1478 in the pinned 1.3.0 sources).
-      Uplc.Var(NamedDeBruijn(s"i${index.toInt}", if wide then -1 else index.toInt))
-
-    private def popTerms(n: Int): List[Uplc] =
-      var out = List.empty[Uplc]
-      var i = 0
-      while i < n do
-        out = terms.removeLast() :: out
-        i += 1
-      out
-
-    private def popConstants(n: Int): List[Constant] =
-      var out = List.empty[Constant]
-      var i = 0
-      while i < n do
-        out = constants.removeLast() :: out
-        i += 1
-      out
-
-    def run(): Decoded =
-      val version = (natural(), natural(), natural())
-      constrCaseAllowed = summon[Ordering[(BigInt, BigInt, BigInt)]].gteq(version, (1, 1, 0))
-      tasks.append(Read(0L, checked = true))
-      while tasks.nonEmpty do step(tasks.removeLast())
-      filler()
-      val program = ScarabProgramView.program(
-        (saturated(version._1), saturated(version._2), saturated(version._3)),
-        terms.removeLast()
-      )
-      Decoded(FlatScan(malformed, typeHeader, constrFields, open, wideVariables), program)
+    /** The term walk. `ordinal` is the preorder ordinal of the next variable. */
+    @tailrec final def walk(
+        at: Long,
+        next: Next,
+        frames: Frames,
+        facts: Facts,
+        ordinal: Int,
+        constrCaseAllowed: Boolean
+    ): Result[Got[Walked]] =
+      next match
+        case Next.Give(term) =>
+          frames match
+            case Frames.Done => Right(Got(Walked(term, facts), at))
+            case Frames.Wrap(node, rest) =>
+              val wrapped = node match
+                case Unary.Delay  => Uplc.Delay(term)
+                case Unary.Force  => Uplc.Force(term)
+                case Unary.Lambda => Uplc.LamAbs("i0", term)
+              walk(at, Next.Give(wrapped), rest, facts, ordinal, constrCaseAllowed)
+            case Frames.Function(depth, checked, rest) =>
+              walk(
+                at,
+                Next.Read(depth, checked),
+                Frames.Argument(term, rest),
+                facts,
+                ordinal,
+                constrCaseAllowed
+              )
+            case Frames.Argument(function, rest) =>
+              walk(
+                at,
+                Next.Give(Uplc.Apply(function, term)),
+                rest,
+                facts,
+                ordinal,
+                constrCaseAllowed
+              )
+            case Frames.Scrutinee(depth, rest) =>
+              walk(
+                at,
+                Next.More(depth, Nary.Case(term), Nil, 0),
+                rest,
+                facts,
+                ordinal,
+                constrCaseAllowed
+              )
+            case Frames.Fields(depth, node, fields, count, rest) =>
+              walk(
+                at,
+                Next.More(depth, node, term :: fields, count + 1),
+                rest,
+                facts,
+                ordinal,
+                constrCaseAllowed
+              )
+        case Next.More(depth, node, fields, count) =>
+          flag(at) match
+            case Left(failure) => Left(failure)
+            case Right(true) =>
+              walk(
+                at + 1,
+                Next.Read(depth, checked = false),
+                Frames.Fields(depth, node, fields, count, frames),
+                facts,
+                ordinal,
+                constrCaseAllowed
+              )
+            case Right(false) =>
+              node match
+                case Nary.Constr(tag) =>
+                  val updated =
+                    if count > facts.constrFields then facts.copy(constrFields = count) else facts
+                  walk(
+                    at + 1,
+                    Next.Give(Uplc.Constr(tag, fields.reverse)),
+                    frames,
+                    updated,
+                    ordinal,
+                    constrCaseAllowed
+                  )
+                case Nary.Case(scrutinee) =>
+                  walk(
+                    at + 1,
+                    Next.Give(Uplc.Case(scrutinee, fields.reverse)),
+                    frames,
+                    facts,
+                    ordinal,
+                    constrCaseAllowed
+                  )
+        case Next.Read(depth, checked) =>
+          val body = at + 4
+          bits(at, 4) match
+            case Left(failure) => Left(failure)
+            case Right(0) =>
+              word64(body) match
+                case Left(failure) => Left(failure)
+                case Right(Got(index, after)) =>
+                  walk(
+                    after,
+                    Next.Give(variableTerm(index)),
+                    frames,
+                    variableFacts(index, depth, checked, ordinal, facts),
+                    ordinal + 1,
+                    constrCaseAllowed
+                  )
+            case Right(1) =>
+              walk(body, next, Frames.Wrap(Unary.Delay, frames), facts, ordinal, constrCaseAllowed)
+            case Right(5) =>
+              walk(body, next, Frames.Wrap(Unary.Force, frames), facts, ordinal, constrCaseAllowed)
+            case Right(2) =>
+              walk(
+                body,
+                Next.Read(depth + 1, checked),
+                Frames.Wrap(Unary.Lambda, frames),
+                facts,
+                ordinal,
+                constrCaseAllowed
+              )
+            case Right(3) =>
+              walk(
+                body,
+                next,
+                Frames.Function(depth, checked, frames),
+                facts,
+                ordinal,
+                constrCaseAllowed
+              )
+            case Right(4) =>
+              constantTerm(body, facts) match
+                case Left(failure) => Left(failure)
+                case Right(Got(Walked(term, updated), after)) =>
+                  walk(after, Next.Give(term), frames, updated, ordinal, constrCaseAllowed)
+            case Right(6) =>
+              walk(body, Next.Give(Uplc.Error()), frames, facts, ordinal, constrCaseAllowed)
+            case Right(7) =>
+              bits(body, 7).flatMap(tag => builtins.get(tag).toRight(Failure.BadBuiltin(tag))) match
+                case Left(failure) => Left(failure)
+                case Right(fun) =>
+                  walk(
+                    body + 7,
+                    Next.Give(Uplc.Builtin(fun)),
+                    frames,
+                    facts,
+                    ordinal,
+                    constrCaseAllowed
+                  )
+            case Right(8) if !constrCaseAllowed => Left(Failure.ConstrCaseBefore110)
+            case Right(8) =>
+              word64(body) match
+                case Left(failure) => Left(failure)
+                case Right(Got(tag, after)) =>
+                  walk(
+                    after,
+                    Next.More(depth, Nary.Constr(Word64(tag.toLong)), Nil, 0),
+                    frames,
+                    facts,
+                    ordinal,
+                    constrCaseAllowed
+                  )
+            case Right(9) if !constrCaseAllowed => Left(Failure.ConstrCaseBefore110)
+            case Right(9) =>
+              walk(
+                body,
+                Next.Read(depth, checked = false),
+                Frames.Scrutinee(depth, frames),
+                facts,
+                ordinal,
+                constrCaseAllowed
+              )
+            case Right(tag) => Left(Failure.BadTermTag(tag))
 
     /** `unflatWith` reads the program with `postAlignedDecoder` (`PlutusCore/Flat/Filler.hs`
       * 77-81): zero or more 0 bits and a 1, and then `strictDecoder` requires the end of the input
-      * exactly there. A filler longer than it needs to be is accepted, as the reference accepts it.
+      * exactly there (`PlutusCore/Flat/Decoder/Run.hs` 19-24). A filler longer than it needs to be
+      * is accepted, as the reference accepts it.
       */
-    private def filler(): Unit =
-      val end = bytes.length.toLong * 8
-      var one = false
-      while !one do
-        if position >= end then abort(Failure.UnterminatedFiller)
-        one = bit() == 1
-      if position != end then abort(Failure.TooMuchSpace(end - position))
-
-    private def step(task: Task): Unit = task match
-      case Read(depth, checked) =>
-        bits(4) match
-          case 0 => terms.append(variable(word64(), depth, checked))
-          case 1 =>
-            tasks.append(Wrap(Unary.Delay))
-            tasks.append(Read(depth, checked))
-          case 5 =>
-            tasks.append(Wrap(Unary.Force))
-            tasks.append(Read(depth, checked))
-          case 2 =>
-            tasks.append(Wrap(Unary.Lambda))
-            tasks.append(Read(depth + 1, checked))
-          case 3 =>
-            tasks.append(Join)
-            tasks.append(Read(depth, checked))
-            tasks.append(Read(depth, checked))
-          case 4 =>
-            val ty = constantType()
-            tasks.append(Lift)
-            tasks.append(Value(ty))
-          case 6 => terms.append(Uplc.Error())
-          case 7 =>
-            val tag = bits(7)
-            terms.append(Uplc.Builtin(builtins.getOrElse(tag, abort(Failure.BadBuiltin(tag)))))
-          case 8 =>
-            if !constrCaseAllowed then abort(Failure.ConstrCaseBefore110)
-            val tag = word64()
-            tasks.append(Fields(depth, Count(0), Nary.Constr(Word64(tag.toLong))))
-          case 9 =>
-            if !constrCaseAllowed then abort(Failure.ConstrCaseBefore110)
-            tasks.append(Fields(depth, Count(0), Nary.Case))
-            tasks.append(Read(depth, checked = false))
-          case tag => abort(Failure.BadTermTag(tag))
-      case Wrap(node) =>
-        val body = terms.removeLast()
-        terms.append(node match
-          case Unary.Delay  => Uplc.Delay(body)
-          case Unary.Force  => Uplc.Force(body)
-          case Unary.Lambda => Uplc.LamAbs("i0", body))
-      case Join =>
-        val argument = terms.removeLast()
-        val function = terms.removeLast()
-        terms.append(Uplc.Apply(function, argument))
-      case Lift => terms.append(Uplc.Const(constants.removeLast()))
-      case Fields(depth, count, node) =>
-        if bit() == 1 then
-          count.n += 1
-          tasks.append(task)
-          tasks.append(Read(depth, checked = false))
-        else
-          node match
-            case Nary.Constr(tag) =>
-              constrFields = math.max(constrFields, count.n)
-              terms.append(Uplc.Constr(tag, popTerms(count.n)))
-            case Nary.Case =>
-              val branches = popTerms(count.n)
-              val scrutinee = terms.removeLast()
-              terms.append(Uplc.Case(scrutinee, branches))
-      case Elements(element, count, array) =>
-        if bit() == 1 then
-          count.n += 1
-          tasks.append(task)
-          tasks.append(Value(element))
-        else
-          val items = popConstants(count.n)
-          constants.append(
-            if array then Constant.Array(element, items.toIndexedSeq)
-            else Constant.List(element, items)
-          )
-      case Couple =>
-        val second = constants.removeLast()
-        val first = constants.removeLast()
-        constants.append(Constant.Pair(first, second))
-      case Value(ty) =>
-        ty match
-          case DefaultUni.Integer => constants.append(Constant.Integer(integer()))
-          case DefaultUni.ByteString =>
-            constants.append(Constant.ByteString(ByteString.unsafeFromArray(byteString())))
-          case DefaultUni.String => constants.append(Constant.String(utf8(byteString())))
-          case DefaultUni.Unit   => constants.append(Constant.Unit)
-          case DefaultUni.Bool   => constants.append(Constant.Bool(bit() == 1))
-          case DefaultUni.Data   => constants.append(Constant.Data(data(byteString())))
-          case DefaultUni.BuiltinValue =>
-            constants.append(Constant.BuiltinValue(BuiltinValue.fromEntryList(valueConstant())))
-          case DefaultUni.BLS12_381_G1_Element => abort(Failure.NoFlatConstant(9))
-          case DefaultUni.BLS12_381_G2_Element => abort(Failure.NoFlatConstant(10))
-          case DefaultUni.BLS12_381_MlResult   => abort(Failure.NoFlatConstant(11))
-          case DefaultUni.Apply(DefaultUni.ProtoList, element) =>
-            tasks.append(Elements(element, Count(0), array = false))
-          case DefaultUni.Apply(DefaultUni.ProtoArray, element) =>
-            tasks.append(Elements(element, Count(0), array = true))
-          case DefaultUni.Apply(DefaultUni.Apply(DefaultUni.ProtoPair, first), second) =>
-            tasks.append(Couple)
-            tasks.append(Value(second))
-            tasks.append(Value(first))
-          case _ => abort(Failure.IllFormedType)
+    @tailrec def filler(at: Long): Result[Unit] =
+      if at >= end then Left(Failure.UnterminatedFiller)
+      else if bitAt(at) == 0 then filler(at + 1)
+      else if at + 1 != end then Left(Failure.TooMuchSpace(end - at - 1))
+      else Right(())
