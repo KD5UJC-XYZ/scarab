@@ -9,8 +9,6 @@ hash) is on both final chains are compared; the others are excluded with a reaso
 follower must have been stopped by `stop_follower`, which records its final tip for the check of its log.
 """
 import json
-import os
-import signal
 import subprocess
 import time
 
@@ -101,12 +99,20 @@ def follower_tip(name):
 
 
 def node_pid(name, node):
-    """The host PID of reference node `node`'s `cardano-node run` (by its database path), or None unless exactly
-    one process matches."""
-    r = docker("top", ref(name), "-eo", "pid,args", check=False)
-    found = [int(line.split(None, 1)[0]) for line in r.stdout.splitlines()[1:]
-             if "cardano-node run" in line and f"{NODE_DB.replace('node1', f'node{node}')} " in line + " "]
+    """The PID, inside the reference container, of reference node `node`'s `cardano-node run` (by its database
+    path), or None unless exactly one process matches."""
+    listing = in_ref(name, 'for p in /proc/[0-9]*; do echo "${p#/proc/} $(tr "\\0" " " < $p/cmdline 2>/dev/null)"; '
+                           'done', timeout=30)
+    database = f"{NODE_DB.replace('node1', f'node{node}')} "
+    rows = [line.split(None, 1) for line in listing.stdout.splitlines()]
+    # the node itself, not the shell that started it (whose arguments hold the same command line)
+    found = [int(pid) for pid, args in (row for row in rows if len(row) == 2)
+             if args.startswith("cardano-node run") and database in args + " "]
     return found[0] if len(found) == 1 else None
+
+
+def signal_node(name, pid, sig):
+    in_ref(name, f"kill -{sig} {pid}", timeout=30)
 
 
 def stop_follower(name, root, settle_seconds=2, attempts=15, node=1):
@@ -120,7 +126,7 @@ def stop_follower(name, root, settle_seconds=2, attempts=15, node=1):
     recorded.unlink(missing_ok=True)
     pid = node_pid(name, node)
     if pid is not None:
-        os.kill(pid, signal.SIGSTOP)
+        signal_node(name, pid, "STOP")
     try:
         last = follower_tip(name) if pid is not None else None
         for _ in range(attempts if pid is not None else 0):
@@ -133,7 +139,7 @@ def stop_follower(name, root, settle_seconds=2, attempts=15, node=1):
         docker("rm", "-f", f"{name}-scala", check=False)
     finally:
         if pid is not None:
-            os.kill(pid, signal.SIGCONT)
+            signal_node(name, pid, "CONT")
 
 
 def run(name, root, log=print, wait_seconds=240):
