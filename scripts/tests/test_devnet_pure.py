@@ -253,7 +253,7 @@ class ProjectionTest(unittest.TestCase):
     def test_the_projection_declares_its_scope_and_the_scala_fields_it_leaves_out(self):
         self.assertEqual(compare.PROJECTION_SCOPE["kind"], "projection")
         self.assertEqual(compare.PROJECTION_SCOPE["issue"], 433)
-        self.assertIn("cost models", compare.PROJECTION_SCOPE["notCompared"])
+        self.assertIn("costModels", compare.PROJECTION_SCOPE["notCompared"])
         self.assertEqual(compare.scala_only({"utxo": 1, "nonMyopic": 2, "avvm": 3}, {"utxo": 1}),
                          ["avvm", "nonMyopic"])
         comparisons = compare.Comparisons(pathlib.Path("unused"))  # the tally writes only on record
@@ -276,6 +276,124 @@ class ProjectionTest(unittest.TestCase):
         self.assertEqual(govview.action_id({"txId": "aa", "govActionIx": 2}), "aa#2")
         self.assertIsNone(govview.opt_id(None))
         self.assertEqual(Fraction("0.5"), Fraction(1, 2))
+
+
+class ProjectionOmissionTest(unittest.TestCase):
+    """Each nested omission of the ledger projection is declared in PROJECTION_SCOPE["notCompared"], and two
+    states that differ only there project identically (the control: once a field is compared, its test fails
+    and the declaration is removed under #433)."""
+
+    def declared(self, name):
+        self.assertIn(name, compare.PROJECTION_SCOPE["notCompared"])
+
+    def test_parameter_change_values(self):
+        self.declared("parameterChangeValues")
+        low = {"tag": "ParameterChange", "contents": [None, {"txFeeFixed": 10}, None]}
+        high = {"tag": "ParameterChange", "contents": [None, {"txFeeFixed": 999999}, None]}
+        self.assertEqual(govview.action(low), govview.action(high))
+
+    def test_reward_account_network(self):
+        self.declared("rewardAccountNetwork")
+        pool = [b"\x01" * 32, 0, 340, Fraction(1, 10), [0, b"\x02" * 28], [b"\x03" * 28], [], None, 500, []]
+        mainnet = list(pool)
+        mainnet[4] = [1, b"\x02" * 28]
+        self.assertEqual(eraview.pool_params(pool), eraview.pool_params(mainnet))
+
+        def withdrawal(network):
+            return {"tag": "TreasuryWithdrawals",
+                    "contents": [[[{"network": network, "credential": {"keyHash": "ab"}}, 5]], None]}
+        self.assertEqual(govview.action(withdrawal("Testnet")), govview.action(withdrawal("Mainnet")))
+
+    def test_pool_delegators(self):
+        self.declared("poolDelegators")
+        pool = [b"\x01" * 32, 0, 340, Fraction(1, 10), [0, b"\x02" * 28], [], [], None, 500, []]
+        delegated = pool[:9] + [[[0, b"\x04" * 28]]]
+        self.assertEqual(eraview.pool_params(pool), eraview.pool_params(delegated))
+
+    def test_committee_member_status(self):
+        self.declared("committeeMemberStatus")
+        member = {"hotCredsAuthStatus": {"tag": "MemberAuthorized", "contents": {"keyHash": "cd"}},
+                  "expiration": 10, "status": "Active"}
+        later = {**member, "expiration": 99, "status": "Expired"}
+        unauthorised = {"hotCredsAuthStatus": {"tag": "MemberNotAuthorized"}}
+        self.assertEqual(govview.committee_state({"committee": {"keyHash-ab": member}}),
+                         govview.committee_state({"committee": {"keyHash-ab": later, "keyHash-ef": unauthorised}}))
+
+    def conway_ledger(self, drep_anchor, pool_fraction):
+        empty = {"activeStake": {}, "stakePoolsSnapShot": {}}
+        return {"lastEpoch": 1, "blocksCurrent": {}, "blocksBefore": {}, "possibleRewardUpdate": None,
+                "stakeDistrib": {"pdTotalActiveStake": 10,
+                                 "unPoolDistr": {"aa": {"individualTotalPoolStake": 10,
+                                                        "individualPoolStake": pool_fraction,
+                                                        "individualPoolStakeVrf": "bb" if pool_fraction else "cc"}}},
+                "stateBefore": {
+                    "esChainAccountState": {"treasury": 1, "reserves": 2},
+                    "esSnapshots": {"pstakeMark": empty, "pstakeSet": empty, "pstakeGo": empty, "feeSS": 0},
+                    "esLState": {"utxoState": {"fees": 0, "deposited": 0, "donation": 1 if drep_anchor else 7},
+                                 "delegationState": {
+                                     "dstate": {"accounts": {}},
+                                     "pstate": {"stakePools": {}, "retiring": {}},
+                                     "vstate": {"numDormantEpochs": 0, "dreps": {"keyHash-d": {
+                                         "deposit": 5, "expiry": 9, "anchor": drep_anchor,
+                                         "delegators": ["keyHash-x"] if drep_anchor else []}}}}}}}
+
+    def test_drep_stake_distribution_and_donation_details(self):
+        for name in ("drepAnchorsAndDelegators", "stakeDistributionDetail", "treasuryDonation"):
+            self.declared(name)
+        self.assertEqual(compare.reference_view(self.conway_ledger({"url": "u"}, 1), {}),
+                         compare.reference_view(self.conway_ledger(None, 0), {}))
+
+    def test_cost_models(self):
+        self.declared("costModels")
+        self.assertEqual(eraview.params_view({"a": 1, "costModels": {"PlutusV1": [1]}}, 4),
+                         eraview.params_view({"a": 1, "costModels": {"PlutusV1": [2]}}, 4))
+
+
+class ReferenceScriptHashTest(unittest.TestCase):
+    def test_a_native_reference_script_is_hashed_over_its_original_bytes(self):
+        # `all []` as a definite and as an indefinite list: the same script value, different original bytes
+        definite, indefinite = bytes.fromhex("820180"), bytes.fromhex("82019fff")
+        h1 = eraview.script_ref_hash(b"\x82\x00" + definite)
+        h2 = eraview.script_ref_hash(b"\x82\x00" + indefinite)
+        self.assertEqual(h1, eratx.blake2b(b"\x00" + definite, 28).hex())
+        self.assertEqual(h2, eratx.blake2b(b"\x00" + indefinite, 28).hex())
+        self.assertNotEqual(h1, h2)
+
+    def test_a_plutus_reference_script_is_hashed_over_its_byte_string_content(self):
+        flat = bytes.fromhex("0101002601")
+        raw = cbor.enc([3, flat])
+        self.assertEqual(eraview.script_ref_hash(raw), eratx.blake2b(b"\x03" + flat, 28).hex())
+
+    def test_the_utxo_projection_uses_the_original_bytes_hash(self):
+        out = eraview.tx_out({0: b"\x60" + bytes(28), 1: 5, 3: ntcquery.Tagged(24, b"\x82\x00\x82\x01\x9f\xff")})
+        self.assertEqual(out["scriptRef"], eratx.blake2b(b"\x00\x82\x01\x9f\xff", 28).hex())
+
+
+class SessionDeadlineTest(unittest.TestCase):
+    def test_a_node_that_never_answers_ends_the_session_at_its_deadline(self):
+        started, popen = [], subprocess.Popen
+
+        def silent(*args, **kwargs):
+            # holds the connection open and never writes: the reference that stopped replying
+            proc = popen([sys.executable, "-c", "import time; time.sleep(60)"], **kwargs)
+            started.append(proc)
+            return proc
+        import time as clock
+        begin = clock.monotonic()
+        with patch.object(ntcquery.subprocess, "Popen", side_effect=silent):
+            with self.assertRaises(ntcquery.Deadline):
+                with ntcquery.LocalStateQuery("c", "/s", 1, deadline=0.5):
+                    self.fail("the handshake cannot complete")
+        self.assertLess(clock.monotonic() - begin, 10)
+        self.assertIsNotNone(started[0].returncode)  # terminated and reaped
+
+    def test_a_deadline_during_a_query_is_a_failed_attempt_not_a_comparison(self):
+        bundle = {"tip": {"slot": 5, "hash": "00" * 32, "block": 1, "epoch": 0}, "utxo": {}}
+        with patch.object(compare, "query_bundle", return_value=(bundle, None)), \
+                patch.object(compare, "reference_utxo", side_effect=ntcquery.Deadline("no answer")):
+            result, failures = compare.compare_once_detailed("n", attempts=2, scala_wait=1)
+        self.assertIsNone(result)
+        self.assertEqual([f["query"] for f in failures], ["GetUTxOWhole", "GetUTxOWhole"])
 
 
 class ReferenceImageTest(unittest.TestCase):

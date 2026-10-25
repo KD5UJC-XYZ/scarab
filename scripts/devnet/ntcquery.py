@@ -5,9 +5,11 @@ cardano-cli 11.2.3 refuses `query ledger-state` and `query protocol-state` befor
 but the node still answers them. This speaks the mini-protocol directly through `socat` inside the
 reference container, so the e2e can read the reference ledger in every Shelley-based era.
 """
+import select
 import socket
 import struct
 import subprocess
+import time
 from fractions import Fraction
 
 from .cbor import enc
@@ -15,6 +17,10 @@ from .cbor import enc
 
 class Incomplete(Exception):
     pass
+
+
+class Deadline(TimeoutError):
+    """A session's overall deadline passed while it waited for the node (handshake, acquire or query)."""
 
 
 class Tagged:
@@ -164,6 +170,9 @@ class _HostSocket:
     def read(self, n):
         return self.sock.recv(n)
 
+    def fileno(self):
+        return self.sock.fileno()
+
     def kill(self):
         self.sock.close()
 
@@ -173,38 +182,53 @@ class _HostSocket:
 
 class LocalStateQuery:
     """Context manager: one NtC connection to a node socket, inside a container (through `socat`)
-    or, with `host=True`, a socket path on the host (the Scala node's socket directory)."""
+    or, with `host=True`, a socket path on the host (the Scala node's socket directory).
+
+    `deadline` (seconds, None for none) bounds the whole session from its start: every read of the
+    handshake, an acquire or a query waits at most until then and otherwise raises `Deadline`, and the
+    transport is terminated and reaped, so a node that keeps the connection open without answering
+    cannot hang the caller."""
 
     VERSIONS = [32784 + i for i in range(0, 10)]
 
-    def __init__(self, container, socket, magic, host=False, version=None):
+    def __init__(self, container, socket, magic, host=False, version=None, deadline=None):
         self.container, self.socket, self.magic, self.host = container, socket, magic, host
         self.version = version
+        self.deadline = deadline
 
     def __enter__(self):
+        self.expires = None if self.deadline is None else time.monotonic() + self.deadline
         if self.host:
             self.proc = _HostSocket(self.socket)
         else:
             self.proc = subprocess.Popen(
                 ["docker", "exec", "-i", self.container, "socat", "-", f"UNIX-CONNECT:{self.socket}"],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
-        self.buffers = {}
-        versions = self.VERSIONS if self.version is None else [32768 + self.version]
-        self._send(0, enc([0, {v: [self.magic, False] for v in versions}]))
-        reply = self._recv(0)
-        if reply[0] != 1:
-            raise RuntimeError(f"handshake refused: {reply}")
-        self.agreed_version = reply[1] - 32768
-        if self.version is not None and self.agreed_version != self.version:
-            raise RuntimeError(f"handshake agreed {self.agreed_version}, requested {self.version}")
+        try:
+            self.buffers = {}
+            versions = self.VERSIONS if self.version is None else [32768 + self.version]
+            self._send(0, enc([0, {v: [self.magic, False] for v in versions}]))
+            reply = self._recv(0)
+            if reply[0] != 1:
+                raise RuntimeError(f"handshake refused: {reply}")
+            self.agreed_version = reply[1] - 32768
+            if self.version is not None and self.agreed_version != self.version:
+                raise RuntimeError(f"handshake agreed {self.agreed_version}, requested {self.version}")
+        except BaseException:
+            self._close()  # `__exit__` does not run when `__enter__` fails
+            raise
         return self
 
     def __exit__(self, *exc):
         try:
-            self._send(7, enc([5]))  # release (a no-op error when nothing is acquired)
-            self._send(7, enc([7]))
+            if not isinstance(exc[1], Deadline):
+                self._send(7, enc([5]))  # release (a no-op error when nothing is acquired)
+                self._send(7, enc([7]))
         except Exception:
             pass
+        self._close()
+
+    def _close(self):
         self.proc.kill()
         self.proc.wait()
 
@@ -217,6 +241,10 @@ class LocalStateQuery:
     def _read(self, n):
         out = b""
         while len(out) < n:
+            if self.expires is not None:
+                remaining = self.expires - time.monotonic()
+                if remaining <= 0 or not select.select([self.proc.stdout], [], [], remaining)[0]:
+                    raise Deadline(f"no answer from {self.socket} within {self.deadline} s")
             part = self.proc.stdout.read(n - len(out))
             if not part:
                 raise EOFError("node closed the connection")

@@ -22,21 +22,43 @@ PROJECTION_SCOPE = {
     "kind": "projection",
     "issue": 433,
     "compared": [
-        "epoch", "utxo (address, lovelace, assets, datum hash or inline datum, reference-script hash)", "fees",
+        "epoch", "utxo (address, lovelace, assets, datum hash or inline datum, reference-script hash over the "
+        "original script bytes)", "fees",
         "deposited", "treasury", "reserves", "accounts (balance, deposit, pool, DRep)", "pools (deposit, VRF)",
-        "pool parameters before Conway (pledge, cost, margin, reward account, owners; future ones too)",
+        "pool parameters before Conway (pledge, cost, margin, reward credential, owners; future ones too)",
         "retiring", "dreps (deposit, expiry)", "numDormantEpochs", "blocksCurrent", "blocksBefore",
         "stake snapshots (stake, delegations, pool ids, fee)", "reward update (deltas, summed rewards per account)",
-        "stake distribution (total, per pool)", "genesis delegations and future ones before Conway",
-        "parameter update proposals and MIR before Conway",
+        "stake distribution (total, stake per pool)", "genesis delegations and future ones before Conway",
+        "parameter update proposals (values) and MIR before Conway",
         "protocol parameters before Conway, without cost models", "Conway governance (govview)",
         "protocol state (nonces, operational certificate counters)"],
-    "notCompared": [
-        "cost models", "Conway current and future protocol parameters (only the protocol version)",
-        "reference-script bytes (only their hash)", "pool relays and metadata", "pool parameters in Conway",
-        "account pointers", "pool parameters inside the stake snapshots", "nonMyopic",
-        "individual reward entries and the pulsing reward state", "instantaneous stake", "AVVM and Byron state",
-        "the Byron ledger (its UTxO is checked at the first Shelley boundary)"],
+    # what the projection leaves out, by a stable name: each nested omission has a control test in
+    # scripts/tests/test_devnet_pure.py showing two states that differ only there project identically.
+    # #433 removes an entry once it is compared.
+    "notCompared": {
+        "costModels": "cost models (protocol parameters and their updates compare without them)",
+        "conwayProtocolParameters": "Conway current and future protocol parameters (only the protocol version)",
+        "preConwayPreviousAndFutureParameters": "the previous and future protocol parameters before Conway",
+        "parameterChangeValues": "the proposed values of a ParameterChange action (only which parameters)",
+        "rewardAccountNetwork": "the network of reward accounts: pool parameters, proposal return accounts and "
+                                "treasury withdrawals compare the credential, and withdrawals to one credential "
+                                "are summed",
+        "poolRelaysAndMetadata": "pool relays and metadata",
+        "conwayPoolParameters": "pool parameters in Conway (only deposit and VRF)",
+        "poolDelegators": "the delegator set of each pool state",
+        "accountPointers": "account pointers",
+        "snapshotPoolParameters": "pool parameters inside the stake snapshots",
+        "stakeDistributionDetail": "the stake fraction and VRF key hash of each pool in the stake distribution",
+        "drepAnchorsAndDelegators": "DRep anchors and delegator sets (only deposit and expiry)",
+        "committeeMemberStatus": "committee members' expiration and status, and members with no hot key",
+        "enactWithdrawals": "the enact state's treasury withdrawals",
+        "treasuryDonation": "the Conway treasury donation",
+        "nonMyopic": "nonMyopic",
+        "rewardDetail": "individual reward entries and the pulsing reward state",
+        "instantaneousStake": "instantaneous stake",
+        "avvmAndByronState": "AVVM and Byron state",
+        "byronLedger": "the Byron ledger (its UTxO is checked at the first Shelley boundary)",
+    },
 }
 
 
@@ -185,11 +207,14 @@ def query_bundle(name):
     return bundle, None
 
 
+REFERENCE_UTXO_DEADLINE = 120  # seconds for the whole LocalStateQuery session of one UTxO read
+
+
 def reference_utxo(name, tip):
     """The reference's whole UTxO at the block `tip`, over LocalStateQuery (Conway `GetUTxOWhole`), in the
     projection of `eraview.tx_out`: unlike `cardano-cli query utxo` it keeps the datum and the
     reference-script hash in the Scala node's shape. It asks the socket the bundle's queries used."""
-    with ntcquery.LocalStateQuery(ref(name), reference_socket(), MAGIC) as session:
+    with ntcquery.LocalStateQuery(ref(name), reference_socket(), MAGIC, deadline=REFERENCE_UTXO_DEADLINE) as session:
         session.acquire([tip["slot"], bytes.fromhex(tip["hash"])])
         utxo = session.ledger_query(eraview.ERA_INDEX["conway"], [eraview.Q_UTXO_WHOLE])
     return {f"{k[0].hex()}#{k[1]}": eraview.tx_out(v) for k, v in utxo.items()}
@@ -217,8 +242,9 @@ def compare_once_detailed(name, attempts=10, scala_wait=30):
         after = bundle["tip"]
         try:
             full_utxo = reference_utxo(name, after)
-        except (RuntimeError, EOFError, OSError, subprocess.TimeoutExpired) as e:
-            # the block may have left the reference's volatile window since the bundle was read
+        except (ntcquery.Deadline, RuntimeError, EOFError, OSError, subprocess.TimeoutExpired) as e:
+            # the block may have left the reference's volatile window since the bundle was read, or the
+            # reference did not answer within the deadline: a failed attempt, never a comparison
             failures.append({"query": "GetUTxOWhole", "slot": after["slot"], "error": repr(e)[:300]})
             continue
         if not utxo_sources_agree(bundle["utxo"], full_utxo):
