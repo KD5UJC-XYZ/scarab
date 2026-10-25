@@ -127,3 +127,47 @@ to necessary private captures; reproducibility receipts; and an honest inventory
 remaining conformance gaps. Existing [compatibility evidence](../compatibility.md) belongs to its recorded
 source revisions. Do not relabel it as evidence for a future candidate. This document requests those
 inputs; it does not create a bundle or claim that they are already assembled.
+
+### Generating the packet for a revision
+
+[`scripts/evidence_packet.py`](../../scripts/evidence_packet.py) ([#349](https://github.com/KD5UJC-XYZ/scarab/issues/349))
+assembles these inputs for one tag or commit. No candidate has been selected and no packet has been
+produced for review; the tool only makes the packet reproducible when one is.
+
+```sh
+python3 scripts/evidence_packet.py --revision <tag-or-commit> --output <fresh-dir-outside-checkout> \
+  --candidate <build_release_candidate.py-output-of-the-same-commit> --check
+```
+
+- **Source.** The revision is read from git objects, never from the working tree. The packet records
+  the commit, tree and committer time and, for a tag, the tag object. It lists every file with its
+  SHA-256, and gives a module map from `build.sbt` (directory, dependencies, file counts and digest)
+  plus digests for the non-module areas.
+- **Commands and images.** The gate commands of every evidence family, with the environment each
+  runs in and the workflow or CONTRIBUTING file that states it. The image, action and recipe pins
+  (`name@sha256:`, `uses:` commits, Dockerfile digests and bases, the sbt launcher) are extracted
+  as the revision writes them. The commands are listed, not run, and their results must come from
+  runs of this revision.
+- **References and inventories.** The pinned upstream revisions from `check_conformance_sources.py`
+  (no network access) and the reference node release pins. The fixture inventory is recomputed and
+  must equal the committed one, which the packet names by digest with its corpus list. The coverage
+  register is copied and its not-covered entries listed.
+  Optional-data requirements are the `SCARAB_*` variables that test sources read, with the suites
+  that read them.
+- **Recorded evidence.** [compatibility.md](../compatibility.md) and the receipts under `docs/data`
+  are referenced by digest only. They belong to their recorded source revisions and are not runs
+  of the candidate.
+- **SBOM.** With `--candidate`, the output of `build_release_candidate.py` (the release-candidate
+  workflow's artifact) is validated with `candidate_manifest.validate` and must be built from the
+  same commit. Its `candidate.json` and CycloneDX documents are copied, and artifacts are recorded
+  by digest. Without it, the gate is `not-supplied`, the packet is incomplete, and the run fails
+  unless `--allow-incomplete` is given.
+
+The packet directory and a plain tar archive with fixed member metadata go to a fresh directory
+outside the checkout, together with `SHA256SUMS`. `--check` generates the packet twice from
+separate materializations and fails unless the archives are byte-identical. Every member must pass
+the `check_local_paths.py` guard and a check for this machine's checkout, home and scratch paths
+and its host name. A match fails the run; nothing is redacted. Before sharing a packet, scan it with the pinned gitleaks
+image and `.gitleaks.toml`, as `check_secret_scan.py` runs them. Security-sensitive reproductions and
+private captures are never embedded: they are exchanged privately under
+[SECURITY.md](../../SECURITY.md) and identified by digest.
