@@ -11,17 +11,19 @@ Research software, not legal advice. This is a record of what the build resolves
 
 The Runtime classpath of the `node` project (its transitive runtime dependencies, excluding
 test-only and generator modules)
-was written with `sbt node/runtimeClasspathFile` in the JDK image, at v0.1.0 plus this review. For every
-jar on it, the `<licenses>` element of its POM in the Coursier cache was read; where a POM declares
-none, the parent POM chain was followed. 59 third-party jars resolve, 15 of them direct dependencies
-(60 since the Scalus 1.4.0 update: scalus-secp256k1-jni left, scalus-crypto-jni and native-lib-loader came).
-Jar contents were listed for licence files and native libraries. The licence names below are the POM
-names, normalised to SPDX identifiers where they are unambiguous.
+was written with `sbt node/runtimeClasspathFile` in the JDK image, first at v0.1.0 plus this review and
+again for the Scalus 1.4.0 update (2026-10-25). For every jar on it, the `<licenses>` element of its POM
+in the Coursier cache was read; where a POM declares none, the parent POM chain was followed. 64
+third-party jars resolve, 23 of them direct dependencies (the 22 runtime libraries of
+`project/Dependencies.scala` and the Scala 3 library). At v0.1.0 jar contents were listed for licence
+files and native libraries; for the Scalus 1.4.0 update only the jar of scalus-crypto-jni was. The
+licence names below are the POM names, normalised to SPDX identifiers where they are unambiguous.
 
 The rows for dnsjava, kittens, scodec-core, cats-parse, monocle, and slf4j-api were added when
 `NOTICE` and this file were reconciled with `project/Dependencies.scala` (checked by `scripts/check_notice.py`).
-Their licences were read from the POMs of the declared versions on Maven Central. The resolved classpath and
-the jar count above were not regenerated for that change; the re-run below does that.
+Their licences were read from the POMs of the declared versions on Maven Central. The regeneration for the
+Scalus 1.4.0 update found two more jars, alleycats-core and shapeless3-deriving (transitive through
+kittens), whose rows were added from their POMs in the Coursier cache.
 
 ## Result
 
@@ -121,6 +123,8 @@ were not regenerated here.
 | org.typelevel:jawn-fs2_3 | 2.6.0 | Apache-2.0 | transitive |  |
 | com.lihaoyi:upickle-core_3 | 4.4.3 | MIT | transitive |  |
 | com.lihaoyi:geny_3 | 1.1.1 | MIT | transitive |  |
+| org.typelevel:alleycats-core_3 | 2.13.0 | MIT | transitive | Brought by kittens_3 (3.5.0). |
+| org.typelevel:shapeless3-deriving_3 | 3.5.0 | Apache-2.0 | transitive | Brought by kittens_3 (3.5.0). |
 
 ## Re-running
 
