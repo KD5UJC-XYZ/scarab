@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger.rules
 import cats.Monad
 import cats.mtl.{Ask, Raise, Stateful}
 import cats.syntax.all.*
-import scala.collection.immutable.SortedMap
+import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.{
@@ -226,7 +226,8 @@ object GovKernel extends Sts[GovViewEnv, Proposals, GovSignal, LedgerFailure]:
     yield ()
 
   /** The voters that do not exist: a DRep that is not registered, a pool that is not, a hot
-    * committee key that no member has authorised.
+    * committee key that no member has authorised. They come once each, in `Ord Voter` order: the
+    * reference builds the failure from `Set.fromList` (`Conway/Rules/Gov.hs` 597-604, f649f975).
     */
   private def votesKnown[F[_]: Monad](
       env: GovViewEnv,
@@ -243,7 +244,7 @@ object GovKernel extends Sts[GovViewEnv, Proposals, GovSignal, LedgerFailure]:
           case Voter.CommitteeHot(h) => Convert.credential[HotCommittee](h).map(hot.contains)
         Refuse.vocab[F, Boolean](exists).map(known => Option.unless(known)(voter))
       }
-      .map(_.flatten)
+      .map(unknown => SortedSet.from(unknown.flatten).toVector)
 
   /** The votes the bootstrap phase refuses (`checkBootstrapVotes`): a DRep votes on an info action
     * only, the others on the actions of the bootstrap.

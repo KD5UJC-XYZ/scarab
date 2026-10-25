@@ -8,6 +8,7 @@ import io.circe.Json
 import io.circe.parser.parse
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
+import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{
   Committee,
@@ -301,6 +302,40 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
         )
       )
     }
+  }
+
+  test("GOV reports the voters that do not exist once each, in the reference's Ord Voter order") {
+    // Conway/Rules/Gov.hs:597-604 (f649f975) builds the failure from Set.fromList, so a
+    // transaction's map order and a repeated voter do not reach the failure.
+    val id = "gov-drep-cast-vote"
+    val env = govViewEnvironment(id)
+    val before = read(node(id, "state"), summon[Codec[Proposals]])
+    val actionId = govSignal(id).votes.flatMap(_._2).map(_._1).head
+    def pool(byte: Int): Voter = Voter.Pool(Bytes.fromArray(Array.fill(28)(byte.toByte)))
+    // 0x80 is a high byte: a signed comparison would put it first.
+    val (low, middle, high) = (pool(0x01), pool(0x7f), pool(0x80))
+    val ballot = Vector((actionId, Vote.Yes))
+    val inputs = GovSignal(
+      Vector(high, middle, low, high).map(_ -> ballot),
+      Vector.empty,
+      Vector.empty
+    )
+    val absent = env.copy(cert = env.cert.copy(poolRegistered = _ => false))
+    val expected = Vector(low, middle, high)
+    val failure = PredicateFailure.Gov(GovFailure.VotersDoNotExist(expected))
+    assertEquals(
+      Sts.apply(GovKernel)(globals, absent, before, inputs),
+      Left(LedgerFailure.Rejected(env.id, failure))
+    )
+    // [14 VotersDoNotExist, [voters]] as the plain list of [4 Pool, hash] the encoder writes,
+    // in the order of the failure.
+    def entry(v: Voter): String = v match
+      case Voter.Pool(h) => "82" + "04" + "581c" + h.hex
+      case other         => fail(s"expected a pool voter, got $other")
+    assertEquals(
+      PredicateFailureCbor.applyTxError(Vector(failure)).hex.takeRight(6 + 3 * 64),
+      "820e83" + expected.map(entry).mkString
+    )
   }
 
   strictCertificateRefusals.toVector.sorted.foreach { seed =>

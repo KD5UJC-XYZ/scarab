@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.codec.Rational
+import cats.Order
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value as CborValue}
 
@@ -32,12 +33,46 @@ enum Voter:
   case Pool(keyHash: Bytes)
 
 object Voter:
-  /** The ledger's `Ord Voter`: constructor, then the credential (script before key), then hash. */
-  given ordering: Ordering[Voter] = Ordering.by {
-    case CommitteeHot(c) => (0, c.isInstanceOf[Credential.Key], c.hash.hex)
-    case DRepVoter(c)    => (1, c.isInstanceOf[Credential.Key], c.hash.hex)
-    case Pool(h)         => (2, false, h.hex)
-  }
+  /** The ledger's `Ord Voter`, which is derived (`Conway/Governance/Procedures.hs` 338-342,
+    * f649f975): the constructor in the order of the declaration (committee, DRep, pool), then the
+    * credential's derived `Ord` (`Credential.hs` 98-101: `ScriptHashObj` before `KeyHashObj`), then
+    * the hash. A `KeyHash` or `ScriptHash` orders as its `Hash` (`Hashes.hs` 166-168, 203-205),
+    * whose `Ord` is the one of `PackedBytes` (cardano-crypto-class 2.5.1.0, `Hash/Class.hs` 137-138
+    * and `PackedBytes/Internal.hs` 91-98; the same in 2.4.0.0): big-endian words, or the
+    * `ShortByteString`. Either is the unsigned lexicographic order of the bytes, which is the order
+    * of [[Bytes]].
+    */
+  given order: Order[Voter] = (a, b) =>
+    a match
+      case CommitteeHot(x) =>
+        b match
+          case CommitteeHot(y) => credential(x, y)
+          case _               => -1
+      case DRepVoter(x) =>
+        b match
+          case CommitteeHot(_) => 1
+          case DRepVoter(y)    => credential(x, y)
+          case Pool(_)         => -1
+      case Pool(x) =>
+        b match
+          case Pool(y) => x.compareTo(y)
+          case _       => 1
+
+  /** [[order]] for the standard library's sorts. */
+  given ordering: Ordering[Voter] = order.toOrdering
+
+  /** The derived `Ord (Credential r)`: a script before a key, then the hash. Not the legacy
+    * `Ordering[Credential]`, which puts the key first.
+    */
+  private def credential(x: Credential, y: Credential): Int = x match
+    case Credential.Script(a) =>
+      y match
+        case Credential.Script(b) => a.compareTo(b)
+        case Credential.Key(_)    => -1
+    case Credential.Key(a) =>
+      y match
+        case Credential.Key(b)    => a.compareTo(b)
+        case Credential.Script(_) => 1
 
   /** `[0, keyhash] / [1, scripthash]` (committee), `[2, ..] / [3, ..]` (DRep), `[4, keyhash]`. */
   def decode(n: Node): Either[LedgerDecodeError, Voter] =
