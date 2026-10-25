@@ -326,7 +326,7 @@ class UpstreamPipeBehaviorSuite extends FailsOnUncaught:
                       tipCodec,
                       payloadCodec,
                       oracle,
-                      ChainSyncRuntime.ServerSettings(idleTimeout = 20.seconds)
+                      ChainSyncRuntime.ServerSettings(idle = ProtocolDeadline.After(20.seconds))
                     )
                   yield ()
                 }
@@ -422,7 +422,7 @@ class UpstreamPipeBehaviorSuite extends FailsOnUncaught:
                           tipCodec,
                           payloadCodec,
                           oracle,
-                          ChainSyncRuntime.ServerSettings(idleTimeout = 5.seconds)
+                          ChainSyncRuntime.ServerSettings(idle = ProtocolDeadline.After(5.seconds))
                         )
                       }
                       .start

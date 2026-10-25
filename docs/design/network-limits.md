@@ -6,8 +6,11 @@
   protocol source pin; actual interoperability uses reference node 11.1.3.
 
 Networking keeps its fs2 structure under [ADR0008](../adr/0008-networking-as-implemented.md).
-Resource policy follows the reference where possible; the existing stricter local profiles below
-remain explicit. The node already had ingress budgets, finite outbound queues, bounded codecs and
+Every mini-protocol state's time limit is the pinned reference's (`timeLimits*`, cited per row), except
+the BlockFetch client's cumulative request time (the BlockFetch client rework, #430). The TxSubmission
+byte/item profile (the TxSubmission alignment, #477), the BlockFetch client's aggregate bounds (#430), the
+ChainSync intersection-list count (the ChainSync alignment) and the other local bounds that the matrix
+lists remain explicit until they are aligned. The node already had ingress budgets, finite outbound queues, bounded codecs and
 state timers. G5 adds the missing SDU deadlines, checks completed-message byte limits and bounds
 TxSubmission's retained request state. It changes no persisted format or original transaction bytes.
 
@@ -19,20 +22,20 @@ State names refer to wire agency, so KeepAlive `Client` is the server waiting fo
 
 | Component/state | Pinned reference | Scarab and explicit local policy |
 |---|---|---|
-| Handshake | 5760-byte message; 10s state/handshake-SDU budgets | 5760-byte message, 10s receive phase, 10s per SDU write; receive phase also limits silence before the first byte |
+| Handshake | 5760-byte message; node-to-node 10s per state (`timeLimitsHandshake`, `Handshake/Codec.hs:80-88`), node-to-client no state limit (`noTimeLimitsHandshake`, `:91-99`); 10s handshake-SDU budgets for both | 5760-byte message, node-to-node 10s receive phase (which also limits silence before the first byte), node-to-client none; 10s per SDU read and write in both |
 | Established mux read | Wait indefinitely for first header bytes; then complete that SDU within 30 s | Same partial-frame rule, using scoped `Pull.timed`; trickled header/payload bytes do not restart the deadline |
 | Mux write | 30s for one SDU on the application bearer, 10s on the handshake bearer (`ConnectionHandler.hs:94-102,335,379,412,451`); a batched write gets SDU-count×timeout (`Bearer/Socket.hs:224`) | 30s per SDU, 10s for the handshake lane, which is the reference's handshake bearer. Each write is one SDU with its own budget: no cross-protocol batch (`Egress.hs:164-186` batches up to 100 SDUs or 131072 bytes under SDU-count×timeout), so no donation from later SDUs. This difference remains |
 | Mux framing | Header 8 bytes, payload at most 65535 accepted; SDUs sent are cut at the bearer's `sduSize`, 12288 for sockets (`Bearer.hs:83-86`, node-to-client `Snocket.hs:455-456`) | Same: `Mux.Config.sduSize` 12288 for sending, `maxSduPayload` 65535 for acceptance; the decoder rejects oversized and zero-byte SDUs, partial EOF and invalid headers |
-| ChainSync active states | 65535 bytes; Intersect/CanAwait10s; configured Idle; MustReply uses peer trust and per-state random timeout | Same: server Idle3373s; each untrustable MustReply state draws a fresh uniform601–911s budget; trustable outbound peers wait indefinitely. The local-root activation captures trustability; inbound peers are untrustable. Partial message reads retain the sampled budget. Explicit fixed test profiles remain supported. |
-| BlockFetch Idle/Busy | 65535bytes; Idle indefinite, Busy 60 s | Same byte bound and Busy 60 s; server Idle 3373 s is existing stricter local policy |
-| BlockFetch Streaming | 2500000bytes per message,60s per reply | Same per-reply wire limit; Scarab additionally bounds cumulative peer time to 120 s per request, excluding local callbacks/journal/backpressure (including queued requests), and aggregate 10000000 raw bytes/max 128 blocks in the client; the server serves a range of any length, as the reference does (`MiniProtocol/BlockFetch/Server.hs`, ouroboros-consensus `82ecba32`) |
-| TxSubmission Init/Idle | 65535bytes; indefinite | 65535bytes in codec and runtime channel. Existing Init60s/Idle 3373 s local timeouts remain |
-| TxSubmission blocking IDs | 2500000bytes; indefinite | Existing stricter 524400-byte/eight-item profile; indefinite wait |
-| TxSubmission nonblocking IDs / bodies | 2500000bytes;10s | Same 10 s policy table;524400-byte/eight-item local profile. Current runtime server emits only blocking ID requests; body replies now use 10 s rather than 60 s |
+| ChainSync active states | 65535 bytes; Intersect/CanAwait10s; Idle `ChainSyncIdleTimeout`, default 3373 s (`Cardano/Network/Protocol/ChainSync/Codec/TimeLimits.hs:59-64`, `Cardano/Network/Diffusion/Configuration.hs` `defaultChainSyncIdleTimeout`); MustReply uses peer trust and per-state random timeout | Same: server Idle3373s; each untrustable MustReply state draws a fresh uniform601–911s budget; trustable outbound peers wait indefinitely. The local-root activation captures trustability; inbound peers are untrustable. Partial message reads retain the sampled budget. Explicit fixed test profiles remain supported. |
+| BlockFetch Idle/Busy | 65535bytes; Idle indefinite, Busy 60 s (`BlockFetch/Codec.hs:59-68`) | Same byte bound, Busy 60 s and server Idle indefinite |
+| BlockFetch Streaming | 2500000bytes per message,60s per reply | Same per-reply wire limit; no cumulative request deadline or aggregate byte/range-count cap. Full candidate fragments determine request sizes; the server streams any range it holds (ouroboros-consensus `82ecba32`, `MiniProtocol/BlockFetch/Server.hs`). |
+| TxSubmission Init/Idle | 65535bytes; indefinite (`TxSubmission2/Codec.hs:78-88`) | 65535bytes in codec and runtime channel; indefinite in both states |
+| TxSubmission blocking IDs | 2500000bytes; indefinite | Existing stricter 524400-byte/eight-item profile, left to the TxSubmission alignment (#477); indefinite wait |
+| TxSubmission nonblocking IDs / bodies | 2500000bytes;10s | Same 10 s policy table;524400-byte/eight-item local profile (#477). Current runtime server emits only blocking ID requests; body replies now use 10 s rather than 60 s |
 | TxSubmission retained inventory | Retained+requested IDs ≤configured maximum 10; no duplicate/unadvertised body IDs in one request | Same pure credit rule checked before mempool lookup or reply-batch truncation; server also refuses excess or duplicate offers before calling its sink |
 | KeepAlive Client/Server | 65535bytes; Client 97 s, Server 60 s | Same message/state bounds; existing 30 s ping interval is separate scheduling policy |
 | PeerSharing Idle/Busy | 5760bytes; Idle indefinite, Busy 60 s | Same; reply cardinality ≤request; published reply capped 10 by governor policy. The governor's logical3/10s budget is separate from the draining 60 s wire request |
-| Node-to-client | Reference local interfaces have large queue/message allowances | Existing per-protocol local limits and shared SDU deadlines still apply. This is a local-process interface, not a newly claimed public networking profile |
+| Node-to-client | Reference local interfaces have large queue/message allowances; the protocols run with `runPeer`, without state time limits (ouroboros-consensus 82ecba32 `Ouroboros/Consensus/Network/NodeToClient.hs`, `mkApps`), and the handshake with `noTimeLimitsHandshake` (`Handshake/Codec.hs:91-99`) | No state time limit for the local protocols or the handshake; existing per-protocol local size limits and the shared SDU deadlines apply. This is a local-process interface, not a newly claimed public networking profile |
 | Leios tools | Prototype profiles, outside ordinary node-to-node protocol set | Existing tool-specific bounds remain; G5 does not claim prototype reference limits are published |
 
 Source locations at the pin:

@@ -10,7 +10,6 @@ import xyz.kd5ujc.scarab.protocol.LocalTxMonitor
 import xyz.kd5ujc.scarab.protocol.LocalTxMonitor.{Kind, Message, State}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 import scala.collection.immutable.SortedMap
-import scala.concurrent.duration.*
 
 import NetworkError.RuntimeViolation
 
@@ -84,12 +83,9 @@ object LocalTxMonitorServer:
       )
     )
 
-  final case class Settings(idleTimeout: FiniteDuration = 3373.seconds)
-
   def run[F[_]: Temporal](
       channel: MuxChannel[F],
-      source: Source[F],
-      settings: Settings = Settings()
+      source: Source[F]
   )(using Raise[F, NetworkError]): F[Unit] =
     val F = Temporal[F]
     val id = Protocols.LocalTxMonitor
@@ -97,11 +93,9 @@ object LocalTxMonitorServer:
       NetworkError.IllegalTransition(id, detail).raise[F, A]
     def send(state: State, message: Message): F[Unit] =
       LocalTxMonitor.encode(state, Role.Server, message).fold(illegal, channel.send)
-    def receive(state: State, name: String): F[Message] =
-      Timed.within(settings.idleTimeout, id, name)(
-        channel.recv(LocalTxMonitor.MaxMessageBytes)(
-          LocalTxMonitor.decodePrefix(state, Role.Client, _)
-        )
+    def receive(state: State): F[Message] =
+      channel.recv(LocalTxMonitor.MaxMessageBytes)(
+        LocalTxMonitor.decodePrefix(state, Role.Client, _)
       )
 
     /** Acquiring: tell the client the slot and serve the snapshot until it releases. */
@@ -109,7 +103,7 @@ object LocalTxMonitorServer:
       send(State.Acquiring, Message.Acquired(snapshot.slot)) *> serving(snapshot, snapshot.txs)
 
     def serving(snapshot: Snapshot, remaining: Vector[Held]): F[Boolean] =
-      receive(State.Acquired, "acquired").flatMap {
+      receive(State.Acquired).flatMap {
         case Message.NextTx =>
           send(State.Busy(Kind.NextTx), Message.ReplyNextTx(remaining.headOption.map(_.tx))) *>
             serving(snapshot, remaining.drop(1))
@@ -130,7 +124,7 @@ object LocalTxMonitorServer:
       }
 
     val idle: F[Boolean] =
-      receive(State.Idle, "idle").flatMap {
+      receive(State.Idle).flatMap {
         case Message.Acquire => source.acquire.flatMap(acquired)
         case Message.Done    => F.pure(false)
         case other           => illegal(RuntimeViolation.LocalTxMonitorUnexpected(other))

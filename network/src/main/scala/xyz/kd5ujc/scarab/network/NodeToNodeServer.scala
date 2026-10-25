@@ -172,7 +172,7 @@ object NodeToNodeServer:
                 settings.offerPeerSharing,
                 settings.maxVersion
               ),
-              settings.handshakeTimeout
+              ProtocolDeadline.After(settings.handshakeTimeout)
             )
           )
         reason <- (

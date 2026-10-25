@@ -195,7 +195,6 @@ class UpstreamTxSubmission2BehaviorSuite extends FailsOnUncaught:
                       source,
                       codec,
                       rules(row.maxUnacked),
-                      TxSubmission2Runtime.ClientSettings(),
                       Some(finished.get),
                       _ => ProtocolError.UnknownTxSubmission2TagStateArity
                     )

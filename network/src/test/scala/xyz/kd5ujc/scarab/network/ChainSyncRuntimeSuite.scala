@@ -53,7 +53,7 @@ class ChainSyncRuntimeSuite extends FailsOnUncaught:
               tip,
               payload,
               source,
-              ChainSyncRuntime.ServerSettings(idleTimeout = 1.second)
+              ChainSyncRuntime.ServerSettings(idle = ProtocolDeadline.After(1.seconds))
             )
           ).start
           client <- ChainSyncRuntime.client(

@@ -6,7 +6,6 @@ import cats.mtl.Raise
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Tip}
-import scala.concurrent.duration.*
 
 /** Strict Cardano ChainSync server facade over the generic typed runtime. */
 object ChainSyncServer:
@@ -21,13 +20,16 @@ object ChainSyncServer:
 
   final case class Settings(
       limits: ChainSync.Limits = ChainSync.Limits(),
-      idleTimeout: FiniteDuration = 3373.seconds,
-      protocol: Int = Protocols.ChainSync,
-      idleDeadline: Option[ProtocolDeadline] = None
+      idle: ProtocolDeadline = ChainSyncRuntime.DefaultIdle,
+      protocol: Int = Protocols.ChainSync
   )
 
   val NodeToClient: Settings =
-    Settings(ChainSync.Limits.NodeToClient, protocol = Protocols.LocalChainSync)
+    Settings(
+      ChainSync.Limits.NodeToClient,
+      idle = ProtocolDeadline.Unbounded,
+      protocol = Protocols.LocalChainSync
+    )
 
   def run[F[_]: Temporal, P](
       channel: MuxChannel[F],
@@ -58,8 +60,7 @@ object ChainSyncServer:
       genericSource,
       ChainSyncRuntime.ServerSettings(
         settings.limits,
-        settings.idleTimeout,
-        settings.protocol,
-        settings.idleDeadline
+        settings.idle,
+        settings.protocol
       )
     )

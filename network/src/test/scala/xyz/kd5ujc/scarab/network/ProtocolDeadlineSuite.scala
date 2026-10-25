@@ -53,7 +53,7 @@ class ProtocolDeadlineSuite extends FailsOnUncaught:
                       s,
                       ChainSyncFixtures.rawItem,
                       source,
-                      ChainSyncServer.Settings(idleDeadline = Some(ProtocolDeadline.Unbounded))
+                      ChainSyncServer.Settings(idle = ProtocolDeadline.Unbounded)
                     )
                   )
                   .background
@@ -102,7 +102,7 @@ class ProtocolDeadlineSuite extends FailsOnUncaught:
                     BlockFetchServer.run(
                       s,
                       blocks,
-                      BlockFetchServer.Settings(idleDeadline = Some(ProtocolDeadline.Unbounded))
+                      BlockFetchServer.Settings(idle = ProtocolDeadline.Unbounded)
                     )
                   )
                   .background
@@ -126,3 +126,14 @@ class ProtocolDeadlineSuite extends FailsOnUncaught:
           }
       }
     }
+
+  test(
+    "the server-side idle deadlines are the reference's: timeLimits* of ouroboros-network 2fb69829"
+  ):
+    // TimeLimits.hs:59-60 with defaultChainSyncIdleTimeout 3373
+    assertEquals(ChainSyncServer.Settings().idle, ProtocolDeadline.After(3373.seconds))
+    // BlockFetch/Codec.hs:65: BFIdle waitForever
+    assertEquals(BlockFetchServer.Settings().idle, ProtocolDeadline.Unbounded)
+    // node-to-client: runPeer, no time limits
+    assertEquals(ChainSyncServer.NodeToClient.idle, ProtocolDeadline.Unbounded)
+    assertEquals(ChainSyncRuntime.NodeToClient.idle, ProtocolDeadline.Unbounded)

@@ -83,4 +83,4 @@ without acknowledgement. Duplicate/unadvertised body requests and excess/duplica
 violations. Body replies have 10 s; blocking ID waits remain indefinite. The existing local profile still
 limits each reply to eight items/524,400bytes and each original transaction to 65,536 bytes. The
 [network-limit matrix](../design/network-limits.md) gives every protocol state, the reference pin, queue
-budgets and existing stricter local timeout policies.
+budgets and the remaining explicit local limits.

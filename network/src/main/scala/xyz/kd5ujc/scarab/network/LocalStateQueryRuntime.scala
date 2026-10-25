@@ -11,7 +11,6 @@ import xyz.kd5ujc.scarab.protocol.{ChainSyncEngine, LocalStateQuery, LocalStateQ
 import xyz.kd5ujc.scarab.protocol.LocalStateQuery.{Failure, State}
 import xyz.kd5ujc.scarab.protocol.LocalStateQueryEngine.{Message, Target}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
-import scala.concurrent.duration.*
 
 import NetworkError.RuntimeViolation
 
@@ -40,24 +39,19 @@ object LocalStateQueryRuntime:
   trait Source[F[_], E, P]:
     def acquire(target: Target[P]): Resource[F, Either[AcquireFailure[E], Session[F, E]]]
 
-  final case class Settings(idleTimeout: FiniteDuration = 3373.seconds)
-
   def run[F[_]: Temporal: Defer, E, P](
       channel: MuxChannel[F],
       source: Source[F, E, P],
-      point: ChainSyncEngine.PointCodec[P],
-      settings: Settings = Settings()
+      point: ChainSyncEngine.PointCodec[P]
   )(using Raise[F, NetworkError]): F[Either[E, Unit]] =
     val id = Protocols.LocalStateQuery
     def illegal[A](detail: NetworkError.Violation)(using Raise[F, NetworkError]): F[A] =
       NetworkError.IllegalTransition(id, detail).raise[F, A]
     def send(state: State, message: Message[P])(using Raise[F, NetworkError]): F[Unit] =
       LocalStateQueryEngine.encode(state, Role.Server, message, point).fold(illegal, channel.send)
-    def receive(state: State, name: String)(using Raise[F, NetworkError]): F[Message[P]] =
-      Timed.within(settings.idleTimeout, id, name)(
-        channel.recv(LocalStateQuery.MaxQueryBytes)(
-          LocalStateQueryEngine.decodePrefix(state, Role.Client, _, point)
-        )
+    def receive(state: State)(using Raise[F, NetworkError]): F[Message[P]] =
+      channel.recv(LocalStateQuery.MaxQueryBytes)(
+        LocalStateQueryEngine.decodePrefix(state, Role.Client, _, point)
       )
 
     enum Loop:
@@ -71,7 +65,7 @@ object LocalStateQueryRuntime:
 
     def acquired(session: Session[F, E])(using Raise[F, NetworkError]): F[Either[E, AcquiredExit]] =
       Temporal[F].tailRecM[Unit, Either[E, AcquiredExit]](()) { _ =>
-        receive(State.Acquired, "acquired").flatMap {
+        receive(State.Acquired).flatMap {
           case Message.Query(query) =>
             session.answer(query).flatMap {
               case Left(error)          => Temporal[F].pure(Right(Left(error)))
@@ -89,7 +83,7 @@ object LocalStateQueryRuntime:
     Temporal[F].tailRecM[Loop, Either[E, Unit]](Loop.Idle) {
       case Loop.Done => Temporal[F].pure(Right(Right(())))
       case Loop.Idle =>
-        receive(State.Idle, "idle").flatMap {
+        receive(State.Idle).flatMap {
           case Message.Acquire(target) => Temporal[F].pure(Left(Loop.Acquire(target)))
           case Message.Done            => Temporal[F].pure(Left(Loop.Done))
           case other => illegal(RuntimeViolation.LocalStateQueryEngineUnexpected(other))
