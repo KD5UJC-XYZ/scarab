@@ -271,6 +271,11 @@ The file path's checks (`ReloadRefusal`, `HotKeys`) apply, in this order, before
 4. **Window and counter**: the certificate's KES window contains the current period, and the counter is the
    chain's or one above it (`OCertRules.checkCounter`, the same code the header rules and the file reload
    use). A refusal keeps the old key and reports `kesReloadRefused` with the existing typed cause.
+5. **Progress**: the bundle does not move the credentials backwards — a period or counter below the one in
+   force is refused as `RecvErrorKeyOutdated` rather than adopted, even on a fresh connection. The reference
+   only compares timestamps, and only within one session, so a reconnecting peer or a hijacked socket can
+   feed it an older bundle; equal period and counter are allowed, because reinstalling the same key is
+   legitimate.
 
 Answering `RecvResult`: `RecvOK` only after the key is adopted; `RecvErrorInvalidOpCert` for a binding or
 signature failure; `RecvErrorKeyOutdated` for a bundle at or behind the last one on this connection; and
@@ -383,9 +388,12 @@ the file path is documented as the compatibility path, and neither is removed by
 ### Open
 
 1. **Certificate validation.** Verify every pushed bundle under the cold key in the `--opcert` envelope
-   (steps 2 to 4), which is stricter than the reference's explicit TODO, or trust the agent as the reference
+   (steps 2 to 5), which is stricter than the reference's explicit TODO, or trust the agent as the reference
    does. Recommendation: verify. The check is chain-independent apart from the counter, costs one signature
-   verification per push (pushes are rare), and closes a gap upstream has already marked.
+   verification per push (pushes are rare), and closes a gap upstream has already marked. It also changes what
+   a hijacked service socket can do: without it, whoever can bind that path can feed the node any KES key and
+   watch it forge blocks its peers reject; with it, they cannot make the node adopt a key the pool did not
+   authorise.
 2. **Counter check.** The reference node never compares a pushed certificate's counter with the chain; a bad
    one shows up later as rejected blocks. Scarab can apply the same `OCertRules.checkCounter` the file reload
    uses. Recommendation: check when the node has a judged chain, and defer only the chain-dependent part
@@ -402,7 +410,12 @@ the file path is documented as the compatibility path, and neither is removed by
    SHA-256, the way the reference node image is pinned, or a source build inside the image. Recommendation:
    the pinned tarball, with URL, digest and licence recorded beside the other image pins; it is what an
    operator runs and it keeps the image build cheap. Needed before stage 4.
-5. **Small confirmations**, with the recommendation in brackets: `--kes-agent-socket` as the flag name, with
+5. **Operator tooling for agent mode.** Rely on the upstream `kes-agent-control` (recommendation for now: it
+   is the reference's tool, and reimplementing the control codec buys nothing for forging), or add a Scarab
+   wrapper so operators have one interface for both modes, since `scripts/pool/rotate_kes.py` only covers file
+   mode. Revisit once the devnet scenario exists — it has to drive the control socket anyway, which is most of
+   the work a wrapper would need.
+6. **Small confirmations**, with the recommendation in brackets: `--kes-agent-socket` as the flag name, with
    the reference's `--shelley-kes-agent-socket` mapped in #222 [`--kes-agent-socket`]; both flags passed
    together refused [`refuse`]; a group- or world-accessible service socket warned about at start-up [`warn`];
    `Service:2.0` only [`2.0 only` — it exists since `kes-agent` 1.0.0.0, and every cardano-node that supports
