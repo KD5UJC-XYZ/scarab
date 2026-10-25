@@ -81,7 +81,7 @@ condition, as ADR 0012 did for libblst.**
   - the variant-A Ed25519 costing;
   - the ECDSA builtin replacement;
   - the raw-DST `hashToGroup` adapter and its ASCII-only refusal;
-  - `BackendFailure.BinaryDstUnavailable` and `NativeHashToGroupUnavailable`;
+  - the `BinaryDstUnavailable` and `NativeHashToGroupUnavailable` cases of `BackendFailure`;
   - the `ScalusDeviations` context patch.
 - Every builtin the library backs is wrapped by `CorrectedVm.nativeGuarded`. It checks
   `NativeCrypto.available`, which never throws: an initialisation `LinkageError` counts as not

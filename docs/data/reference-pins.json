@@ -145,7 +145,7 @@
     "scalus"
    ],
    "repository": "scalus3/scalus",
-   "version": "1.3.0",
+   "version": "1.4.0",
    "urlPattern": "https://central.sonatype.com/artifact/org.scalus/scalus_3/{version}",
    "role": "UPLC machine and builtins used by the plutus module.",
    "dependents": [
