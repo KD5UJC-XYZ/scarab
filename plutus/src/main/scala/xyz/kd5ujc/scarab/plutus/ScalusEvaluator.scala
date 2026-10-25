@@ -196,18 +196,7 @@ object ScalusEvaluator:
       vms.getOrElseUpdate(key)(buildVm(key))
 
     private def buildVm(key: VmKey): Either[EvalFailure.Unsupported, PlutusVM] =
-      try
-        val language = Language.fromId(key.language.id)
-        val protocol = MajorProtocolVersion(key.protocolMajor)
-        val variant = BuiltinSemanticsVariant.fromProtocolAndPlutusVersion(protocol, language)
-        val params = MachineParams.fromCostModels(
-          CostModels(Map(key.language.id -> key.costModel.toIndexedSeq)),
-          language,
-          protocol
-        )
-        Right(
-          CorrectedVm(language, params, variant, protocol)
-        )
+      try Right(corrected(key.language, key.protocolMajor, key.costModel))
       catch
         case NonFatal(e) =>
           Left(EvalFailure.Unsupported(BackendFailure.Defect(e)))
@@ -467,15 +456,55 @@ object ScalusEvaluator:
         case DefaultFun.EqualsData    => equalsData
         case _                        => native.getOrElse(fun, cardano.getBuiltinRuntime(fun))
 
+    /** The CEK machine of this evaluation context, the one construction production uses. The ledger
+      * casts built-in values without `Data` before the Dijkstra protocol (`defaultCaserBuiltinFor`,
+      * `PlutusLedgerApi/Common/Eval.hs` lines 142-146 at plutus 1.70.0.0, `507cab8c`), so
+      * `caseOnData` is false here. Only the upstream conformance executable differs: its machine
+      * parameters carry the default caser, `caseBuiltin` with `Data` (`CekEvaluator.hs` lines
+      * 46-61), which `PlutusConformanceSuite` selects with `caseOnData = true`.
+      */
+    private[plutus] def cek(
+        spender: BudgetSpender,
+        logger: Logger,
+        debug: Boolean,
+        caseOnData: Boolean
+    ): CekMachine =
+      CekMachine(
+        machineParams,
+        spender,
+        logger,
+        runtime,
+        caseOnBuiltinsEnabled = caseOnBuiltins,
+        caseOnDataEnabled = caseOnData,
+        tracing = debug
+      )
+
     override def evaluateDeBruijnedTerm(
         term: Term,
         spender: BudgetSpender,
         logger: Logger,
         debug: Boolean
     ): Term =
-      val machine =
-        CekMachine(machineParams, spender, logger, runtime, caseOnBuiltins, tracing = debug)
-      DeBruijn.fromDeBruijnTerm(machine.evaluateTerm(term))
+      DeBruijn.fromDeBruijnTerm(cek(spender, logger, debug, caseOnData = false).evaluateTerm(term))
+
+  /** The machine of an evaluation request's language, protocol and cost model. [[Interpreter]]
+    * builds every machine through it, and so does the upstream conformance suite, which therefore
+    * runs the corpus on the machine production runs.
+    */
+  private[plutus] def corrected(
+      language: PlutusLanguage,
+      protocolMajor: Int,
+      costModel: Vector[Long]
+  ): CorrectedVm =
+    val scalusLanguage = Language.fromId(language.id)
+    val protocol = MajorProtocolVersion(protocolMajor)
+    val variant = BuiltinSemanticsVariant.fromProtocolAndPlutusVersion(protocol, scalusLanguage)
+    val params = MachineParams.fromCostModels(
+      CostModels(Map(language.id -> costModel.toIndexedSeq)),
+      scalusLanguage,
+      protocol
+    )
+    CorrectedVm(scalusLanguage, params, variant, protocol)
 
   /** Plutus data as the machine's `Data`; the nesting is walked on the heap. */
   private[scarab] def toData(root: PlutusData): Data =

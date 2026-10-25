@@ -7,21 +7,20 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
-import scalus.cardano.ledger.{CostModels, Language, MajorProtocolVersion}
+import scalus.cardano.ledger.{Language, MajorProtocolVersion}
 import scalus.uplc.{BuiltinSemanticsVariant, Constant, DeBruijnedProgram, Program, Term}
-import scalus.uplc.eval.{
-  CekMachine,
-  CountingBudgetSpender,
-  Log,
-  MachineParams,
-  RestrictingBudgetSpender
-}
+import scalus.uplc.eval.{CountingBudgetSpender, Log, RestrictingBudgetSpender}
 import scalus.uplc.DeBruijn
 
 /** All original Plutus 1.70.0.0 evaluation cases, under the upstream executable's term profile:
   * variant E, saturating counting and `caseBuiltin` including Data. Terms execute directly so BLS
   * constants retain their meaning and cost rather than being rewritten as Flat `uncompress` calls.
-  * The builtin runtimes are the same corrected runtimes used by [[ScalusEvaluator]].
+  * The machine is the one [[ScalusEvaluator]] builds for a request ([[ScalusEvaluator.corrected]],
+  * [[ScalusEvaluator.CorrectedVm.cek]]): same builtin runtimes, cost model, `case` on built-in
+  * values and tracing flag. Two settings follow the upstream executable (`CekEvaluator.hs` lines
+  * 46-61 at plutus 507cab8c) and differ from the ledger's: the budget is the counting one, and
+  * `case` on `Data` is allowed (`caseBuiltin`, where the ledger's `caseBuiltinNoData` applies from
+  * protocol 11 up to Dijkstra, `Common/Eval.hs` lines 142-146).
   *
   * Original malformed-Value Flat sidecars retain decoder coverage where the dependency's text
   * parser normalises their order. Ledger admission and restricting budgets are separate contracts,
@@ -39,18 +38,14 @@ class PlutusConformanceSuite extends FunSuite:
   private val root: Path =
     Paths.get(getClass.getResource(s"/$Directory").toURI)
 
-  /** The machine [[ScalusEvaluator]] builds for the request, to read the result term from. */
+  /** The machine [[ScalusEvaluator]] builds for the request ([[ScalusEvaluator.corrected]]). */
   private val machine: ScalusEvaluator.CorrectedVm =
-    val scalusLanguage = Language.fromId(language.id)
-    val major = MajorProtocolVersion(protocol)
-    val variant = BuiltinSemanticsVariant.fromProtocolAndPlutusVersion(major, scalusLanguage)
-    assertEquals(variant, BuiltinSemanticsVariant.E)
-    val params = MachineParams.fromCostModels(
-      CostModels(Map(language.id -> costModel.toIndexedSeq)),
-      scalusLanguage,
-      major
+    val variant = BuiltinSemanticsVariant.fromProtocolAndPlutusVersion(
+      MajorProtocolVersion(protocol),
+      Language.fromId(language.id)
     )
-    ScalusEvaluator.CorrectedVm(scalusLanguage, params, variant, major)
+    assertEquals(variant, BuiltinSemanticsVariant.E)
+    ScalusEvaluator.corrected(language, protocol, costModel)
 
   private val Unlimited = ExUnits(BigInt(1) << 60, BigInt(1) << 60)
 
@@ -247,14 +242,7 @@ class PlutusConformanceSuite extends FunSuite:
         val spender = CountingBudgetSpender()
         val log = Log()
         def spent = ExUnits(spender.getSpentBudget.memory, spender.getSpentBudget.steps)
-        val cek = CekMachine(
-          machine.machineParams,
-          spender,
-          log,
-          machine.runtime,
-          caseOnBuiltinsEnabled = true,
-          caseOnDataEnabled = true
-        )
+        val cek = machine.cek(spender, log, debug = false, caseOnData = true)
         scala.util
           .Try(DeBruijn.fromDeBruijnTerm(cek.evaluateTerm(term)))
           .fold(
@@ -322,6 +310,22 @@ class PlutusConformanceSuite extends FunSuite:
         s"${c.id}: the original ledger harness must diverge"
       )
       assertEquals(check(c), None, s"${c.id}: exact original result and budget")
+    }
+  }
+
+  test("case on Data is the one setting of the machine that the upstream profile changes") {
+    val data = cases.filter(c => c.id.startsWith("term/constant-case/data/") && c.budget.nonEmpty)
+    assertEquals(data.size, 2, "original Data caseBuiltin cases")
+    data.foreach { c =>
+      val term = Program
+        .parseUplc(c.program)
+        .fold(e => fail(e), _.deBruijnedProgram.term)
+      def evaluate(caseOnData: Boolean) =
+        scala.util.Try(
+          machine.cek(CountingBudgetSpender(), Log(), debug = false, caseOnData).evaluateTerm(term)
+        )
+      assert(evaluate(caseOnData = false).isFailure, s"${c.id}: the ledger machine refuses it")
+      assert(evaluate(caseOnData = true).isSuccess, s"${c.id}: the upstream profile runs it")
     }
   }
 
