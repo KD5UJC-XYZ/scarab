@@ -26,6 +26,8 @@ inspected. Every finding is a `Violation` of one `Kind`:
                     names an upstream repository) that no registered pin covers
   PIN_REGISTRY      a registry defect: a dependent path that does not exist, or a dependent that no longer mentions
                     the pin's version or revision
+  ADR_UNINDEXED     (only when `docs/adr/README.md` exists) a decision record `docs/adr/NNNN-*.md` that the ADR index
+                    does not link, so a reader starting from the index cannot find it
 
 Blocking and report-only rules. FILE_SIZE and TABLE_CELL are size rules: unrelated changes legitimately append a few
 words to a long table cell, so they are printed as warnings and never change the exit code, and the baseline does not
@@ -61,6 +63,8 @@ from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE_PATH = "docs/data/docs-check-baseline.json"
+ADR_INDEX_PATH = "docs/adr/README.md"
+ADR_RECORD = re.compile(r"^docs/adr/\d{4}-[^/]+\.md$")
 PINS_PATH = "docs/data/reference-pins.json"
 ROOT_FILES = ("README.md", "AGENTS.md", "CONTRIBUTING.md")
 SOURCE_SUFFIXES = (".scala", ".sbt", ".py", ".java")
@@ -108,6 +112,7 @@ class Kind(str, Enum):
     TABLE_CELL = "table-cell"
     UNREGISTERED_PIN = "unregistered-pin"
     PIN_REGISTRY = "pin-registry"
+    ADR_UNINDEXED = "adr-unindexed"
 
     @property
     def blocking(self) -> bool:
@@ -290,17 +295,21 @@ def resolve_repo_file(repo: Repo, doc: str, cited: str) -> str | None:
     return None
 
 
+def link_targets(line: Line) -> list[str]:
+    """The targets of the inline links and the reference definition on `line`, outside code spans."""
+    masked = mask_code(line.text)
+    raws = [m.group(1) for m in INLINE_LINK.finditer(masked)]
+    ref = REF_DEFINITION.match(masked)
+    if ref:
+        raws.append(ref.group(1))
+    return [raw[1:-1] if raw.startswith("<") else raw for raw in raws]
+
+
 def check_links(repo: Repo, doc: str, lines: Sequence[Line], anchor_cache: dict[str, frozenset[str]]) -> list[Violation]:
     out: list[Violation] = []
     own = posixpath.dirname(doc)
     for line in lines:
-        masked = mask_code(line.text)
-        targets = [m.group(1) for m in INLINE_LINK.finditer(masked)]
-        ref = REF_DEFINITION.match(masked)
-        if ref:
-            targets.append(ref.group(1))
-        for raw in targets:
-            target = raw[1:-1] if raw.startswith("<") else raw
+        for target in link_targets(line):
             if not target or SCHEME.match(target) or target.startswith("//"):
                 continue
             path_part, _, anchor = target.partition("#")
@@ -523,6 +532,21 @@ def check_pin_citations(doc: str, lines: Sequence[Line], pins: Sequence[Pin]) ->
     return out
 
 
+def check_adr_index(repo: Repo) -> list[Violation]:
+    """Every decision record is linked from the ADR index."""
+    if ADR_INDEX_PATH not in repo.files:
+        return []
+    index_dir = posixpath.dirname(ADR_INDEX_PATH)
+    linked = set()
+    for line in prose_lines(repo.read(ADR_INDEX_PATH)):
+        for raw in link_targets(line):
+            target = unquote(raw.split("#", 1)[0])
+            if target and not SCHEME.match(target) and not target.startswith("//"):
+                linked.add(posixpath.normpath(posixpath.join(index_dir, target)))
+    return [Violation(Kind.ADR_UNINDEXED, ADR_INDEX_PATH, name)
+            for name in sorted(repo.files) if ADR_RECORD.match(name) and name not in linked]
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # Driver
 
@@ -543,6 +567,7 @@ def collect(repo: Repo, budgets: Budgets) -> list[Violation]:
             found += check_pin_citations(doc, lines, pins)
     if pins is not None:
         found += check_pin_registry(repo, pins)
+    found += check_adr_index(repo)
     return found
 
 
