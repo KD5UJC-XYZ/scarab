@@ -2,15 +2,18 @@
 #
 # gitleaks configuration (CI job "secret scan", .github/workflows/ci.yml).
 #
-# The default rule set stays on. The only rule that fires on this repository is generic-api-key, and
-# every hit is public data that merely looks like a key to an entropy check: Ed25519 verification
-# keys, key hashes and SHA-256 file digests in committed fixtures and in manifests. A manual scan of
-# the whole history before v0.1.0 found 182 such hits and nothing else. The allowlist below is
-# scoped to that one rule, and to named paths, commits and exact public values. Every other rule
-# still applies everywhere; the exact-value exception does not hide different tokens in the same file.
+# The default rule set stays on, plus two rules for Cardano key material:
+# - cardano-text-envelope-signing-key matches a cardano-cli TextEnvelope whose "type" names a SigningKey
+#   and whose "cborHex" carries the key bytes (payment, stake, pool, KES and VRF signing keys);
+# - cardano-signing-key-file matches any *.skey path.
+# generic-api-key is the only default rule that fires on this repository, and every hit is public data that
+# merely looks like a key to an entropy check: Ed25519 verification keys, key hashes and SHA-256 file digests
+# in committed fixtures and in manifests. The allowlist is scoped to that one rule, and to named fixture
+# files, commits and exact public values. Every other rule still applies everywhere; the exact-value
+# exception does not hide different tokens in the same file.
 #
-# Do not add `.skey`, `.key` or other signing material here. Those are never committed
-# (see CONTRIBUTING.md and .gitignore).
+# Do not allowlist signing material here: signing keys are never committed (see CONTRIBUTING.md and
+# .gitignore), and the custom rules exist to catch them.
 
 title = "Scarab gitleaks configuration"
 
@@ -27,8 +30,17 @@ description = "public key hashes, verification keys, SHA-256 digests and exact C
 regexTarget = "secret"
 regexes = ['''^3e0cce471cf09815f930210f7827266fd09045445d65923e6d0238a6cd15126f$''']
 paths = [
-  # Fixtures are public chain data or throwaway keys (fixtures/*/README.md and NOTICE record provenance).
-  '''^fixtures/''',
+  # Fixtures are public chain data (fixtures/*/README.md and NOTICE record provenance). One entry per file that
+  # the full-history scan reports for generic-api-key; a new fixture with a flagged value needs its own entry.
+  '''^fixtures/devnet/lsq/genesis/shelley-genesis\.json$''',
+  '''^fixtures/leios/testnet/config/shelley-genesis\.json$''',
+  '''^fixtures/mainnet/byron-genesis-trimmed\.json$''',
+  '''^fixtures/mainnet/genesis/byron-genesis\.json$''',
+  '''^fixtures/preview/conway-governance\.json$''',
+  '''^fixtures/reference/ledger-api-pool-goldens/head/queryPoolParameters\.json$''',
+  '''^fixtures/reference/ledger-api-pool-goldens/head/queryPoolState\.json$''',
+  '''^fixtures/reference/ntc-wallet-peers-11\.1\.3/peer-relays/genesis/shelley-genesis\.json$''',
+  '''^fixtures/reference/wallet-queries/manifest\.json$''',
   # A public operational-certificate verification key used as an expected value: the file now, and
   # where it was before the package rename (the scan covers the whole history, so both paths stay).
   '''^node/src/test/scala/xyz/kd5ujc/scarab/node/forge/KeyFilesSuite\.scala$''',
@@ -37,12 +49,8 @@ paths = [
   '''^node/src/test/scala/xyz/kd5ujc/scarab/storage/ByronHandoverUtxoSuite\.scala$''',
 ]
 commits = [
-  # 87cf584: removed nonce-epoch tooling; the match is the string "pre-anchor-supplied-verification-keys-v1".
-  "87cf584de722c3ff55366e7d47702384ac5b2c25",
-  # a32e816: removed fixture-projection scripts and docs; the matches are SHA-256 digests and source commit ids.
-  "a32e816840fc99db862c85ec80129b50a0ff871d",
-  # The same two commits after the history rewrite of 2026-10-16 (text scrubbed, content otherwise equal);
-  # the old ids stay for clones made before it.
+  # The two commits as they stand after the history rewrite of 2026-10-16 (text scrubbed, content otherwise
+  # equal). Their pre-rewrite ids are no longer ancestors of main and are not listed.
   "3c0e74cb7ce8eeea25b3dc45cabbdc6a00417aac",
   "58172e52dc4054e627a18647477c6bd6953361d7",
 ]
@@ -57,3 +65,17 @@ condition = "AND"
 regexTarget = "line"
 paths = ['''^docs/data/fixture-inventory\.json$''']
 regexes = ['''^\n?[ \t]*"(?:fixtures|[a-z][a-z0-9-]*/src/test/resources)/(?:[A-Za-z0-9_+.-]+/)*[A-Za-z0-9_+.-]+"[ \t]*:[ \t]*"[0-9a-f]{64}",?[ \t]*$''']
+
+[[rules]]
+id = "cardano-text-envelope-signing-key"
+description = "Cardano TextEnvelope signing key"
+# A cardano-cli style envelope: a JSON object whose "type" names a SigningKey and whose "cborHex" carries
+# the key bytes (payment, stake, pool, KES and VRF keys alike). Verification keys use other type names.
+regex = '''"type"\s*:\s*"[^"{}]*SigningKey[^"{}]*"[^{}]*?"cborHex"\s*:\s*"([0-9a-fA-F]{64,})"'''
+secretGroup = 1
+keywords = ["signingkey"]
+
+[[rules]]
+id = "cardano-signing-key-file"
+description = "Cardano signing key file by name"
+path = '''(?i)\.skey$'''
