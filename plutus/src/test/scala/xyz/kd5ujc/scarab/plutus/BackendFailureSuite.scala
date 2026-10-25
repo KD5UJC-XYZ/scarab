@@ -91,40 +91,28 @@ class BackendFailureSuite extends FunSuite:
   private def machineSite(fault: () => Throwable) =
     ScalusEvaluator.injected(FlatScan.decode, (_, _, _, _) => thrower(fault)(()))
 
-  private def reaches(fault: () => Throwable): Vector[(String, Option[BackendFailure.Reach])] =
+  /** What a fault at each site becomes: the typed failure of no verdict, or nothing. */
+  private def outcomes(fault: () => Throwable): Vector[(String, Option[BackendFailure])] =
     def evaluated(result: EvalResult) = result match
-      case EvalResult.Failure(EvalFailure.Unsupported(why), _, _) => Some(why.reach)
+      case EvalResult.Failure(EvalFailure.Unsupported(why), _, _) => Some(why)
       case _                                                      => None
     val decoder = decodeSite(fault)
     Vector(
       "validate" -> (decoder.validate(PlutusLanguage.V3, 10, script) match
-        case Left(ScriptDecodeFailure.Unavailable(why)) => Some(why.reach)
+        case Left(ScriptDecodeFailure.Unavailable(why)) => Some(why)
         case _                                          => None),
       "evaluate after decode" -> evaluated(decoder.evaluate(request)),
       "evaluate on the machine" -> evaluated(machineSite(fault).evaluate(request))
     )
 
-  test("a defect that Scalus throws on an input is that input's, at both sites") {
+  test("a defect that Scalus throws on an input is no verdict, at both sites") {
     for (name, fault) <- inputFaults do
-      for (site, reach) <- reaches(fault) do
-        assertEquals(reach, Some(BackendFailure.Reach.Input), s"$name at $site")
+      for (site, failure) <- outcomes(fault) do assert(failure.isDefined, s"$name at $site")
   }
 
-  test("a missing native, missing class or broken runtime stays the implementation's") {
+  test("a missing native, missing class or broken runtime is no verdict, at both sites") {
     for (name, fault) <- implementationFaults do
-      for (site, reach) <- reaches(fault) do
-        assertEquals(reach, Some(BackendFailure.Reach.Implementation), s"$name at $site")
-  }
-
-  test("unavailable builtins and natives stay the implementation's") {
-    Vector(
-      BackendFailure.NoResult,
-      BackendFailure.BuiltinUnavailable(DefaultFun.VerifyEcdsaSecp256k1Signature)
-    ).foreach(f => assertEquals(f.reach, BackendFailure.Reach.Implementation, f.toString))
-    Vector(
-      BackendFailure.StackExhausted,
-      BackendFailure.BudgetOutOfRange(ExUnits.zero)
-    ).foreach(f => assertEquals(f.reach, BackendFailure.Reach.Input, f.toString))
+      for (site, failure) <- outcomes(fault) do assert(failure.isDefined, s"$name at $site")
   }
 
   test("every MachineError of the pinned Scalus is classified, none by default") {

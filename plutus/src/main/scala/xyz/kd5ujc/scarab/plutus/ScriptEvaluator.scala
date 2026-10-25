@@ -53,66 +53,12 @@ enum BackendFailure:
   case Defect(cause: Throwable)
   case BuiltinUnavailable(builtin: scalus.uplc.DefaultFun)
 
-  /** Whether the failure is the implementation's or this input's ([[BackendFailure.Reach]]). */
-  def reach: BackendFailure.Reach = this match
-    case NoResult | BuiltinUnavailable(_)     => BackendFailure.Reach.Implementation
-    case StackExhausted | BudgetOutOfRange(_) => BackendFailure.Reach.Input
-    case Defect(cause)                        => BackendFailure.reachOf(cause)
   def message: String = this match
     case NoResult                    => "backend did not return a result"
     case StackExhausted              => "backend stack exhausted"
     case BudgetOutOfRange(_)         => "execution budget exceeds 64 bits"
     case Defect(cause)               => Option(cause.getMessage).getOrElse(cause.getClass.getName)
     case BuiltinUnavailable(builtin) => s"builtin $builtin unavailable"
-
-object BackendFailure:
-  /** What a failure of the implementation says about the inputs it has no verdict for.
-    *
-    * A script failure the reference also reports is a verdict ([[EvalFailure.Script]]) and never
-    * one of these. Of the rest, a missing part of the implementation (a native library, a builtin,
-    * the memory or the classes of the process) leaves every script without a verdict, while a
-    * defect that one input triggers (Scalus throwing on bytes it was given) leaves only that input
-    * without one. Both stop the node on the block path, as an exception does in the reference (ADR
-    * 0017, amendment of 2026-10-25); the classification says what failed.
-    */
-  enum Reach:
-    /** The implementation is missing or its runtime is broken: no input can be trusted to get a
-      * verdict, so the node stops.
-      */
-    case Implementation
-
-    /** The implementation failed on this input: the block or transaction that carries it gets no
-      * verdict here; it is no evidence against whoever sent it.
-      */
-    case Input
-
-  /** A linkage error is a missing native or class, a builtin the machine does not know
-    * (`UnknownBuiltin`) is a missing builtin, and a virtual machine error other than a stack
-    * overflow (out of memory, an internal error) is the runtime's, wherever it is in the chain of
-    * causes (Scalus wraps what a builtin throws in a `BuiltinError`); any other exception was
-    * thrown on this input. A stack overflow is the depth of this input.
-    */
-  def reachOf(cause: Throwable): Reach =
-    val chain = Iterator
-      .iterate(Option(cause))(_.flatMap(c => causeOf(c).filterNot(_ eq c)))
-      .takeWhile(_.isDefined)
-      .flatten
-      .take(MaxCauses)
-    if chain.exists(runtime) then Reach.Implementation else Reach.Input
-
-  /** Causes followed at most (a chain of causes can loop through more than one exception). */
-  private val MaxCauses = 64
-
-  // Scalus's BuiltinError keeps what the builtin threw in a field of its own, not as its cause.
-  private def causeOf(error: Throwable): Option[Throwable] = error match
-    case builtin: scalus.uplc.eval.BuiltinError => Option(builtin.cause)
-    case other                                  => Option(other.getCause)
-
-  private def runtime(error: Throwable): Boolean = error match
-    case _: StackOverflowError                    => false
-    case _: scalus.uplc.eval.UnknownBuiltin       => true
-    case _: LinkageError | _: VirtualMachineError => true
-    case _                                        => false
 
 final case class ScriptFailure(cause: Throwable, logs: Vector[String]):
   def message: String =
