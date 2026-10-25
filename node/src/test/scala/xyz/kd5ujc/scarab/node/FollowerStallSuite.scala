@@ -107,9 +107,9 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       },
       new BlockFetchServer.Blocks[IO]:
         // counted across connections: only the very first range is answered
-        def range(from: Point, to: Point, max: Int) =
+        def range(from: Point, to: Point) =
           answered.getAndUpdate(_ + 1).flatMap { n =>
-            if n == 0 then honest.blocks.range(from, to, max) else IO.never
+            if n == 0 then honest.blocks.range(from, to) else IO.never
           }
       ,
       honest.transactions
@@ -160,9 +160,9 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         honest.codec,
         honest.chainSync,
         new BlockFetchServer.Blocks[IO]:
-          def range(from: Point, to: Point, max: Int) =
+          def range(from: Point, to: Point) =
             answered.getAndUpdate(_ + 1).flatMap { n =>
-              honest.blocks.range(from, to, max).map { found =>
+              honest.blocks.range(from, to).map { found =>
                 if n == 0 then
                   found.map(_.map(_ => Bytes(Vector(0xff.toByte))).evalTap { raw =>
                     malformed.complete(raw).void

@@ -22,7 +22,7 @@ class NodeToNodeVersionSuite extends CatsEffectSuite:
       def intersect(points: Vector[ChainSync.Point]) = IO.pure(Left(Peers.tip(1)))
       def poll = IO.pure(None)
       def await = IO.never),
-    (_, _, _) => IO.pure(None),
+    (_, _) => IO.pure(None),
     new TxSubmissionServer.Sink[IO]:
       def known(id: Bytes) = IO.pure(false)
       def submit(originals: Vector[Bytes]) = IO.unit

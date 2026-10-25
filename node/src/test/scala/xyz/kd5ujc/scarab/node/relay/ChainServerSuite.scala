@@ -284,7 +284,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  test("block ranges: inside the store, across into the volatile chain, and refusals") {
+  test("block ranges: inside the store, across into the volatile chain, whole, and refusals") {
     tempDir.use { dir =>
       ok {
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
@@ -302,18 +302,18 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 )
             }
             blocks = server.blocks
-            range = (a: Int, b: Int, max: Int) =>
-              blocks.range(ref(a).point, ref(b).point, max).flatMap {
+            range = (a: Int, b: Int) =>
+              blocks.range(ref(a).point, ref(b).point).flatMap {
                 case None    => IO.pure(None)
                 case Some(s) => s.compile.toList.map(_.map(_.value.head.toInt).some)
               }
-            inStore <- range(2, 5, 100)
-            single <- range(4, 4, 100)
-            across <- range(5, 9, 100)
-            volatile <- range(8, 10, 100)
-            backwards <- range(5, 2, 100)
-            unknown <- range(2, 77, 100)
-            tooLong <- range(1, 10, 5)
+            inStore <- range(2, 5)
+            single <- range(4, 4)
+            across <- range(5, 9)
+            volatile <- range(8, 10)
+            backwards <- range(5, 2)
+            unknown <- range(2, 77)
+            whole <- range(1, 10)
           yield
             assertEquals(inStore, Some(List(2, 3, 4, 5)))
             assertEquals(single, Some(List(4)))
@@ -321,7 +321,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             assertEquals(volatile, Some(List(8, 9, 10)))
             assertEquals(backwards, None)
             assertEquals(unknown, None)
-            assertEquals(tooLong, None)
+            assertEquals(whole, Some((1 to 10).toList))
         }
       }
     }

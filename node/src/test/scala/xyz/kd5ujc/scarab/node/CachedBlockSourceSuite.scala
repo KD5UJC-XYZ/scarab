@@ -29,7 +29,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
       def poll = IO.pure(None)
       def await = IO.never[ChainSyncServer.Update[NtNHeader]]
     val blocks = new BlockFetchServer.Blocks[IO]:
-      def range(from: ChainSync.Point, to: ChainSync.Point, maxBlocks: Int) = IO.pure(None)
+      def range(from: ChainSync.Point, to: ChainSync.Point) = IO.pure(None)
     val transactions = new TxSubmissionServer.Sink[IO]:
       def known(id: Bytes) = IO.pure(false)
       def submit(originals: Vector[Bytes]) = IO.unit
@@ -242,7 +242,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
                     .void *> available.discrete.evalMap(_ => poll).unNone.head.compile.lastOrError
               }
               blocks = new BlockFetchServer.Blocks[IO]:
-                def range(from: Point, to: Point, max: Int) =
+                def range(from: Point, to: Point) =
                   val at = chain.headers.indexWhere(_.point == from)
                   val raw = Option.when(at >= 0 && from == to)(
                     fs2.Stream.emit(chain.raws(at.max(0))).covary[IO]

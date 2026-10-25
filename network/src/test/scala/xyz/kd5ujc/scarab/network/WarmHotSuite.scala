@@ -34,12 +34,12 @@ class WarmHotSuite extends FailsOnUncaught:
         }
         def await = poll.flatMap(_.fold(IO.never)(IO.pure))
     }
-    val blocks: BlockFetchServer.Blocks[IO] = (from, to, max) =>
+    val blocks: BlockFetchServer.Blocks[IO] = (from, to) =>
       val all = (1 to 3).toVector
       val i = all.indexWhere(n => Peers.point(n) == from)
       val j = all.indexWhere(n => Peers.point(n) == to)
       IO.pure(
-        Option.when(i >= 0 && j >= i && j - i < max)(
+        Option.when(i >= 0 && j >= i)(
           Stream.emits(all.slice(i, j + 1).map(Peers.block).toList).covary[IO]
         )
       )

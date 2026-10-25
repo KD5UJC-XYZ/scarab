@@ -59,7 +59,7 @@ class BlockFetchQueuedRangesSuite extends FailsOnUncaught:
           release <- Deferred[IO, Unit]
           requests <- Ref.of[IO, Vector[(Point, Point)]](Vector.empty)
           source = new BlockFetchServer.Blocks[IO]:
-            def range(from: Point, to: Point, _maxBlocks: Int): IO[Option[Stream[IO, Bytes]]] =
+            def range(from: Point, to: Point): IO[Option[Stream[IO, Bytes]]] =
               requests.update(_ :+ (from -> to)).as {
                 if (from -> to) == first then
                   Some(
