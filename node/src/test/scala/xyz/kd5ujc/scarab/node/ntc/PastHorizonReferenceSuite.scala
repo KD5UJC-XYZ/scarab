@@ -70,7 +70,8 @@ class PastHorizonReferenceSuite extends FunSuite:
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.message), identity)
 
   private lazy val recorded: Vector[Recorded] =
-    if !Files.isDirectory(root) then Vector.empty
+    // committed fixtures: a missing directory fails rather than leaving no cases to run
+    if !Files.isDirectory(root) then fail(s"missing committed fixture directory $root")
     else
       val corpora = Files.list(root).iterator.asScala.toVector.sorted.filter(Files.isDirectory(_))
       corpora.flatMap { dir =>

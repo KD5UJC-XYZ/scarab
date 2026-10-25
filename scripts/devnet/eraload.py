@@ -29,10 +29,16 @@ Boundary cases (devnet.py e2e runs three Shelley epochs, genesis minUTxOValue 1 
 
 Transactions are built and signed by `eratx` because cardano-cli can only build Conway
 transactions. A rejected submission is logged and never fatal; a submission that must be rejected
-(`expect_reject`) counts as `unexpected` when the reference accepts it or names another reason.
+(`expect_reject`) counts as `unexpected` when the reference accepts it or names another reason. Only the
+reference's verdict is checked here (the Scala rules replay the refused bytes in unit tests): a refusal
+counts when it names each expected predicate failure as a whole constructor, and its evidence row says
+whether the reference's failure list is exactly those failures (`ListMatch.EXACT`) or holds others too
+(`CONTAINS`); the summary's `refusalMatches` counts both.
 """
+import enum
 import json
 import random
+import re
 import subprocess
 import threading
 import time
@@ -75,17 +81,98 @@ NO_VERDICT_ATTEMPTS = 3  # submissions of a transaction the reference must refus
 NO_VERDICT_PAUSE = 3  # seconds between them
 
 
+def _spans(text, start=0):
+    """Yield (index, character, depth) of `text` outside Haskell string literals, with the bracket depth
+    before the character; brackets are (), [] and {}."""
+    depth, quoted, escaped = 0, False, False
+    for i in range(start, len(text)):
+        c = text[i]
+        if quoted:
+            if escaped:
+                escaped = False
+            elif c == "\\":
+                escaped = True
+            elif c == '"':
+                quoted = False
+            continue
+        if c == '"':
+            quoted = True
+            continue
+        if c in ")]}":
+            depth -= 1
+        yield i, c, depth
+        if c in "([{":
+            depth += 1
+
+
+def _split_top(text, separator):
+    """`text` split at every `separator` outside brackets and strings."""
+    parts, last = [], 0
+    for i, _, depth in _spans(text):
+        if depth == 0 and i >= last and text.startswith(separator, i):
+            parts.append(text[last:i])
+            last = i + len(separator)
+    return parts + [text[last:]]
+
+
+def failure_list(text):
+    """The predicate failures of the `ApplyTxError (f :| [g,h])` that `cardano-cli transaction submit` prints
+    (the `Show` of the ledger's `NonEmpty` failure list), as their Haskell texts in order. Pure. None when the
+    text holds no complete such list."""
+    at = text.find("ApplyTxError (")
+    if at < 0:
+        return None
+    start = at + len("ApplyTxError (")
+    # the parenthesis that closes the one after `ApplyTxError` takes the depth below zero
+    end = next((i for i, c, depth in _spans(text, start) if c == ")" and depth < 0), None)
+    if end is None:
+        return None
+    parts = _split_top(text[start:end], " :| ")
+    if len(parts) != 2 or not parts[1].startswith("[") or not parts[1].endswith("]"):
+        return None
+    rest = parts[1][1:-1]
+    return [parts[0].strip()] + ([p.strip() for p in _split_top(rest, ",")] if rest.strip() else [])
+
+
+def names_constructor(text, name):
+    """`name` occurs in `text` as a whole Haskell identifier (not as part of a longer constructor)."""
+    return re.search(rf"(?<![A-Za-z0-9_']){re.escape(name)}(?![A-Za-z0-9_'])", text) is not None
+
+
+class ListMatch(enum.Enum):
+    """How a refusal that names every expected predicate failure matches the expectation.
+
+    EXACT: the reference's list has one failure per expected name, each naming its own, in order.
+    CONTAINS: the expected names occur, but the list is longer (the transaction broke other rules too) or
+    a name occurs only inside another failure; recorded, not counted as an exact match.
+    UNPARSED: the failure list could not be read from the text."""
+    EXACT = "exact"
+    CONTAINS = "contains"
+    UNPARSED = "unparsed"
+
+
+def list_match(text, expected):
+    """(ListMatch, number of failures or None) of a refusal text against the expected names."""
+    listed = failure_list(text)
+    if listed is None:
+        return ListMatch.UNPARSED, None
+    exact = len(listed) == len(expected) and all(names_constructor(f, e) for f, e in zip(listed, expected))
+    return (ListMatch.EXACT if exact else ListMatch.CONTAINS), len(listed)
+
+
 class Verdict:
     """What the reference said about a submission that must be refused: `kind` is `refused` (a ledger
-    refusal naming every expected predicate failure), `wrongReason` (a ledger refusal that does not),
-    `accepted` (the reference took the transaction: a divergence from the rule under test) or `noVerdict`
-    (the CLI or the container failed before the ledger spoke: nothing is known about the rule)."""
+    refusal naming every expected predicate failure as a whole constructor), `wrongReason` (a ledger refusal
+    that does not), `accepted` (the reference took the transaction: a divergence from the rule under test) or
+    `noVerdict` (the CLI or the container failed before the ledger spoke: nothing is known about the rule).
+    A refusal also carries `match` and `failures` (`list_match`): whether the reference's list is exactly the
+    expected failures or holds others too."""
 
-    def __init__(self, kind, text):
-        self.kind, self.text = kind, text
+    def __init__(self, kind, text, match=None, failures=None):
+        self.kind, self.text, self.match, self.failures = kind, text, match, failures
 
     def __repr__(self):
-        return f"Verdict({self.kind!r}, {self.text[:80]!r})"
+        return f"Verdict({self.kind!r}, {self.text[:80]!r}, {self.match})"
 
 
 def submission_verdict(returncode, stdout, stderr, expected):
@@ -95,11 +182,17 @@ def submission_verdict(returncode, stdout, stderr, expected):
     text = (stderr or stdout).strip().split("CallStack")[0].strip()
     if returncode == 0:
         return Verdict("accepted", text or "(the CLI printed nothing)")
-    if all(e in text for e in expected):
-        return Verdict("refused", text)
+    if all(names_constructor(text, e) for e in expected):
+        return Verdict("refused", text, *list_match(text, expected))
     if "TxValidationError" in text:
         return Verdict("wrongReason", text)
     return Verdict("noVerdict", text or "(the CLI printed nothing)")
+
+
+def match_counts(matches):
+    """{match kind: count} over the `ListMatch` of each expected refusal (None for one that was not a refusal):
+    the headline, exact versus contains."""
+    return {m.value: sum(1 for x in matches if x is m) for m in ListMatch}
 
 
 class Wallet:
@@ -135,6 +228,8 @@ class EraLoad:
         self.auxiliary_evidence = []
         self.refusal_evidence = []
         self.last_verdict = None  # `Verdict` of the last `expect_rejected`
+        self.must_reject_matches = []  # `ListMatch` (or None) of each `expect_reject` submission
+        self.negative_matches = []  # `ListMatch` (or None) of each `expect_rejected` verdict
 
     # ------------------------------------------------------------ reference plumbing
     def sh(self, script, stdin=None, timeout=60):
@@ -180,17 +275,24 @@ class EraLoad:
         # the reference's reason is in the first lines; the Haskell call stack that follows is noise
         text = (r.stderr or r.stdout).strip().split("CallStack")[0].strip()
         if expect is not None:
-            # the refusal must name the rule under test and must not be a side effect of a stale input or an
-            # unbalanced transaction, which would also refuse it
-            stale = ("BadInputsUTxO" in text or "ValueNotConservedUTxO" in text) and expect not in text
-            verdict = "accepted" if ok else "expected" if expect in text and not stale else "other reason"
+            # the refusal must name the rule under test (a whole constructor) and must not be a side effect of
+            # a stale input or an unbalanced transaction, which would also refuse it
+            named = names_constructor(text, expect)
+            stale = (names_constructor(text, "BadInputsUTxO") or names_constructor(text, "ValueNotConservedUTxO")) \
+                and not named
+            expected = not ok and named and not stale
+            verdict = "accepted" if ok else "expected" if expected else "other reason"
+            match, count = list_match(text, [expect]) if expected else (None, None)
+            self.must_reject_matches.append(match)
             self.evidence.append({"era": era, "label": label, "mustReject": expect, "verdict": verdict,
+                                  "match": match.value if match else None, "failures": count,
                                   "error": "" if ok else text[:400]})
             if not ok:
                 self.keep_raw_reason(era, tx, label, expect)
             key = "expectedRejected" if verdict == "expected" else "unexpected"
             self.stats[key] = self.stats.get(key, 0) + 1
-            self.log({key: label, "mustReject": expect, "verdict": verdict, "error": text[:400]})
+            self.log({key: label, "mustReject": expect, "verdict": verdict, "match": match.value if match else None,
+                      "failures": count, "error": text[:400]})
             return False
         self.stats[label.split("-")[0]] = self.stats.get(label.split("-")[0], 0) + (1 if ok else 0)
         if not ok:
@@ -340,10 +442,13 @@ class EraLoad:
         ok = verdict.kind == "refused"
         self.stats["negativeOk" if ok else "negativeUnexpected"] = self.stats.get(
             "negativeOk" if ok else "negativeUnexpected", 0) + 1
+        match = verdict.match.value if verdict.match else None
+        self.negative_matches.append(verdict.match)
         self.log({"negative": label, "refusedAsExpected": ok, "verdict": verdict.kind, "returncode": r.returncode,
-                  "expected": list(expected), "error": verdict.text[:700]})
-        entry = {"label": label, "era": era, "outcome": "refused", "expected": list(expected),
-                 "error": verdict.text[:2000], "tx": tx.hex()}
+                  "expected": list(expected), "match": match, "failures": verdict.failures,
+                  "error": verdict.text[:700]})
+        entry = {"label": label, "era": era, "outcome": "refused", "expected": list(expected), "match": match,
+                 "failures": verdict.failures, "error": verdict.text[:2000], "tx": tx.hex()}
         if ok:
             self.keep_tx("negative-txs.jsonl", entry)
         if record:
@@ -1047,7 +1152,7 @@ class EraLoad:
         self.mir_cert(era, "mir-before", 0, (self.wallets[1].stake.hash, 9_000_000))
 
     def mir_after_cutoff(self, era):
-        self.mir_cert(era, "mir-after", 0, (self.wallets[2].stake.hash, 2_000_000), expect="MIRCertificateTooLate")
+        self.mir_cert(era, "mir-after", 0, (self.wallets[2].stake.hash, 2_000_000), expect="MIRCertificateTooLateinEpochDELEG")
 
     def mir_unregistered(self, era):
         """An entry for a credential that is not registered: it counts against the pot, is never paid."""

@@ -9,7 +9,7 @@ import threading
 import time
 from .. import eraload, govextra, protocolversions, protocolwalk
 from ..cluster import down, freeze_classes, scala_container, up_eras
-from ..compare import Comparisons, compare_era, comparison_table, judge_comparisons, lsq
+from ..compare import PROJECTION_SCOPE, Comparisons, compare_era, comparison_table, judge_comparisons, lsq
 from ..follower import follower_problem, start_follower
 from ..load import start_conway_load
 from ..util import ERAS, MAGIC, TAG_ERA, data_root, docker, read_log, ref, stall_evidence, starvation_warnings
@@ -291,13 +291,17 @@ def e2e(args):
             docker("rm", "-f", f"{args.name}-scala", check=False)
             follower.wait()
         if comparisons is not None:
-            summary["ledgerComparison"] = {"perEra": comparisons.per_era, "mismatches": comparisons.mismatches}
+            summary["ledgerComparison"] = {"scope": PROJECTION_SCOPE, "perEra": comparisons.per_era,
+                                           "mismatches": comparisons.mismatches}
         if loader is not None:
             summary["load"] = loader.stats
             summary["loadEvidence"] = loader.evidence
             summary["legacyPlutus"] = loader.plutus_evidence
             summary["auxiliaryPlutus"] = loader.auxiliary_evidence
             summary["refusals"] = loader.refusal_evidence
+            # whether each expected refusal was exactly the expected failure list, or held others too
+            summary["refusalMatches"] = {"mustReject": eraload.match_counts(loader.must_reject_matches),
+                                         "expectRejected": eraload.match_counts(loader.negative_matches)}
         # the follower's stall evidence (state events, fiber dumps) stays with the run's summary
         evidence = stall_evidence(root) if root.exists() else None
         if evidence is not None:

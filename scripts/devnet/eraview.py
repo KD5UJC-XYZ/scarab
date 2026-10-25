@@ -8,6 +8,7 @@ Protocol parameters come from `cardano-cli query protocol-parameters`, which wor
 """
 from fractions import Fraction
 
+from . import cborspan
 from . import eratx
 from . import ntcquery
 
@@ -80,19 +81,22 @@ def tx_out(o):
         else:
             out["inlineDatum"] = datum[1].value.hex() if isinstance(datum[1], ntcquery.Tagged) else datum[1].hex()
     if script is not None:
-        raw = script.value if isinstance(script, ntcquery.Tagged) else script
-        kind, body = ntcquery.decode(raw)[0]
-        payload = eratx.enc(_to_enc(body)) if kind == 0 else body
-        out["scriptRef"] = eratx.blake2b(bytes([kind]) + payload, 28).hex()
+        out["scriptRef"] = script_ref_hash(script.value if isinstance(script, ntcquery.Tagged) else script)
     return out
 
 
-def _to_enc(x):
-    if isinstance(x, tuple):
-        return [_to_enc(i) for i in x]
-    if isinstance(x, list):
-        return [_to_enc(i) for i in x]
-    return x
+def script_ref_hash(raw):
+    """The hash of a reference script `[language, script]` (the payload of its `#6.24`), over the script's
+    original bytes as the ledger hashes it: `hashScript` (cardano-ledger f649f975
+    libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:603-608) is `scriptPrefixTag <> originalBytes`. A native
+    script is its CBOR span as received, never a re-encoding (an indefinite-length list and a definite one hash
+    differently); a Plutus script is the content of its byte string."""
+    spans = cborspan.children(raw, 0)
+    if len(spans) != 2:
+        raise ValueError(f"a reference script is a pair, not {len(spans)} items")
+    kind, body = ntcquery.decode(raw)[0]
+    payload = raw[spans[1][0]:spans[1][1]] if kind == 0 else body
+    return eratx.blake2b(bytes([kind]) + payload, 28).hex()
 
 
 def updates(m):

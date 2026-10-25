@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.differential
 
-import java.nio.file.{Files, Path}
+import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.node.NodeSetup
+import xyz.kd5ujc.scarab.storage.{ExternalInput, ExternalInputs}
 
 /** The epoch boundary of the new rules gives the state it gave before it was made fast (#131): the
   * SHA-256 of the Haskell-format encoding of the ticked `NewEpochState` at the first block of an
@@ -14,9 +15,10 @@ import xyz.kd5ujc.scarab.node.NodeSetup
   *
   * Runs when `SCARAB_K1_DB` names its verified current-format V5 conversion corpus, with the
   * recorded immutable chain available read-only (about 4 GB per state; allow a 12 GB heap for this
-  * optional proof); otherwise it is skipped.
+  * optional proof). Unset, it is skipped; set to a directory without `snapshots` and `immutable`,
+  * it fails ([[ExternalInput]]).
   */
-class BoundaryDigestSuite extends FunSuite:
+class BoundaryDigestSuite extends FunSuite with ExternalInputs:
   override def munitTimeout: scala.concurrent.duration.Duration =
     scala.concurrent.duration.Duration(30, "min")
 
@@ -29,14 +31,14 @@ class BoundaryDigestSuite extends FunSuite:
     1449 -> "6f5b91ad4a64a95a5ba8be3ecafecef753a50146e2ac029f0a8deff26468f033"
   )
 
-  private def db: Option[Path] =
-    sys.env
-      .get("SCARAB_K1_DB")
-      .map(Path.of(_))
-      .filter(p => Files.isDirectory(p.resolve("snapshots")))
+  private def database: ExternalInput =
+    ExternalInput.directory("SCARAB_K1_DB", sys.env, "snapshots", "immutable")
 
   test("the ticked state at the boundary is the one recorded before the change") {
-    assume(db.isDefined, "SCARAB_K1_DB is not set")
+    withInput(database)(digests)
+  }
+
+  private def digests(dir: Path): Unit =
     if sys.env.contains("SCARAB_CANDIDATE_RUNTIME") then
       val heap = Runtime.getRuntime.maxMemory()
       val processors = Runtime.getRuntime.availableProcessors()
@@ -47,7 +49,6 @@ class BoundaryDigestSuite extends FunSuite:
       assert(heap >= 16L * 1024 * 1024 * 1024, s"candidate fork heap is only $heap bytes")
       assertEquals(processors, 4)
       assertEquals(directory, Path.of("/work"))
-    val dir = db.get
     val setup =
       NodeSetup
         .fromDirectory(Path.of("fixtures/preview/genesis"))
@@ -57,4 +58,3 @@ class BoundaryDigestSuite extends FunSuite:
       val row = BoundaryTickMain.measure(dir, setup, snapshots, index, repeats = 1)
       assertEquals(row.digest, digest, s"snapshot $index")
     }
-  }

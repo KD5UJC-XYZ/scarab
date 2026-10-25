@@ -133,12 +133,17 @@ class LedgerMirrorSuite extends DisciplineSuite:
 
   // ---- what a real Haskell state showed (S8)
 
-  private def withPools(s: flat.LedgerState): flat.LedgerState =
-    (1L to 200L).iterator.map(sampled(conway = true, _)).find(_.pools.size >= 2).fold(s)(identity)
+  /** The first of the fixed generator seeds whose state has two pools; failing, not skipping, when
+    * none has, since the seeds and the generator decide it and a skip would hide the cases below.
+    */
+  private lazy val withPools: flat.LedgerState =
+    (1L to 200L).iterator
+      .map(sampled(conway = true, _))
+      .find(_.pools.size >= 2)
+      .getOrElse(fail("no generated state of seeds 1 to 200 has two pools"))
 
   test("a VRF key two pools share is counted twice in psVRFKeyHashes") {
-    val s = withPools(sample)
-    assume(s.pools.size >= 2)
+    val s = withPools
     val Seq(a, b) = s.pools.keys.toSeq.take(2)
     val shared = s.pools(a).params.vrfKeyHash
     val pools =
@@ -156,19 +161,20 @@ class LedgerMirrorSuite extends DisciplineSuite:
   }
 
   test("the mark snapshot counts the delegators with no stake, exactly") {
-    val s = withPools(sample)
-    val pool = s.pools.keys.head
+    val s = withPools
+    // a pool of the mark snapshot, so that the count below is always asserted
+    val pool = s.pools.keys
+      .find(s.snapshots.mark.pools.contains)
+      .getOrElse(fail("no pool of the generated state is in its mark snapshot"))
     val lazyOne = node.Credential.Key(hash(77))
     val bad = s.copy(accounts = s.accounts.updated(lazyOne, node.Account(0, 0, Some(pool), None)))
     val m = toConway(bad).fold(e => fail(e.show), identity)
     val staked = bad.snapshots.mark.delegations.count(_._2 == pool)
     val registered = bad.accounts.count(_._2.pool.contains(pool))
-    bad.snapshots.mark.pools.get(pool).foreach { _ =>
-      val n = m.value.nes.es.snapshots.mark.pools.collectFirst {
-        case (id, p) if id.bytes == pool => p
-      }
-      assertEquals(n.map(_.numDelegators.toBigInt), Some(BigInt(registered).max(BigInt(staked))))
+    val n = m.value.nes.es.snapshots.mark.pools.collectFirst {
+      case (id, p) if id.bytes == pool => p
     }
+    assertEquals(n.map(_.numDelegators.toBigInt), Some(BigInt(registered).max(BigInt(staked))))
     val back = run(mirror.from[Conway](at, m.value))
     assertEquals(back.map(_.snapshots.mark), Right(bad.snapshots.mark))
   }

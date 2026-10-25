@@ -22,6 +22,13 @@ import xyz.kd5ujc.scarab.plutus.ScalusEvaluator
   *     the reference names comes out, then the scripts run;
   *   - the transaction rule of the era (LEDGER) over a ledger holding the outputs the case reads;
   *   - the block rule (BBODY) over a block of the transaction.
+  *
+  * A refusal is matched by containment, not as a whole list: the recorded reference texts are cut
+  * at 1,500 characters, so the suite reads from them the one cause they name (the validation-tag
+  * mismatch, or the translation error and its source) and requires the Scala rules to give exactly
+  * that failure. It does not check that the reference listed no other failure, nor the encoded
+  * reason; #434 tracks comparing the whole raw reason (register entry
+  * `v1context-refusal-membership`).
   */
 class V1ContextSuite extends FunSuite:
   /** What the reference did with a case. */
@@ -62,7 +69,8 @@ class V1ContextSuite extends FunSuite:
 
   private val recorded: Vector[Recorded] =
     directories.flatMap { directory =>
-      if !Files.isDirectory(directory) then Vector.empty
+      // committed fixtures: a missing directory fails rather than leaving no cases to run
+      if !Files.isDirectory(directory) then fail(s"missing committed fixture directory $directory")
       else
         Files
           .list(directory)

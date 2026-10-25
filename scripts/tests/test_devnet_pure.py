@@ -16,7 +16,7 @@ from fractions import Fraction
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from devnet import cbor, cluster, compare, encoding, eraload, eratx, eraview, follower, govextra, govview, ntccli, ntclocal, ntcqueries, ntcquery, refused_fixture, util  # noqa: E402
+from devnet import cbor, cluster, compare, encoding, eraload, eratx, eraview, follower, govextra, govview, ntccases, ntccli, ntclocal, ntcqueries, ntcquery, refused_fixture, util  # noqa: E402
 from devnet.scenarios import peercut
 from devnet.scenarios import ntc  # noqa: E402
 from devnet.scenarios import pool  # noqa: E402
@@ -239,6 +239,26 @@ class ProjectionTest(unittest.TestCase):
         self.assertEqual(view["assets"], {"ab": {"cd": 3}})
         self.assertNotIn("assets", compare.conway_output({"address": text, "value": {"lovelace": 7}}))
 
+    def test_the_cli_and_local_state_query_utxo_must_hold_the_same_outputs(self):
+        text = bech32_text("addr_test", bytes(range(29)))
+        address = bytes(range(29)).hex()
+        cli = {"aa#0": {"address": text, "value": {"lovelace": 7, "ab": {"cd": 3}}}}
+        full = {"aa#0": {"address": address, "lovelace": 7, "assets": {"ab": {"cd": 3}}, "inlineDatum": "01",
+                         "scriptRef": "ff"}}
+        self.assertTrue(compare.utxo_sources_agree(cli, full))
+        # negative controls: a missing output or another amount is a disagreement
+        self.assertFalse(compare.utxo_sources_agree(cli, {}))
+        self.assertFalse(compare.utxo_sources_agree(cli, {"aa#0": {**full["aa#0"], "lovelace": 8}}))
+
+    def test_the_projection_declares_its_scope_and_the_scala_fields_it_leaves_out(self):
+        self.assertEqual(compare.PROJECTION_SCOPE["kind"], "projection")
+        self.assertEqual(compare.PROJECTION_SCOPE["issue"], 433)
+        self.assertIn("costModels", compare.PROJECTION_SCOPE["notCompared"])
+        self.assertEqual(compare.scala_only({"utxo": 1, "nonMyopic": 2, "avvm": 3}, {"utxo": 1}),
+                         ["avvm", "nonMyopic"])
+        comparisons = compare.Comparisons(pathlib.Path("unused"))  # the tally writes only on record
+        self.assertIn("projected ledger comparisons", compare.comparison_table(comparisons).splitlines()[0])
+
     def test_era_view_helpers(self):
         self.assertEqual(eraview.ratio(0.25), "1/4")
         self.assertEqual(eraview.cred([0, b"\x01"]), "keyHash-01")
@@ -256,6 +276,152 @@ class ProjectionTest(unittest.TestCase):
         self.assertEqual(govview.action_id({"txId": "aa", "govActionIx": 2}), "aa#2")
         self.assertIsNone(govview.opt_id(None))
         self.assertEqual(Fraction("0.5"), Fraction(1, 2))
+
+
+class ProjectionOmissionTest(unittest.TestCase):
+    """Each nested omission of the ledger projection is declared in PROJECTION_SCOPE["notCompared"], and two
+    states that differ only there project identically (the control: once a field is compared, its test fails
+    and the declaration is removed under #433)."""
+
+    def declared(self, name):
+        self.assertIn(name, compare.PROJECTION_SCOPE["notCompared"])
+
+    def test_parameter_change_values(self):
+        self.declared("parameterChangeValues")
+        low = {"tag": "ParameterChange", "contents": [None, {"txFeeFixed": 10}, None]}
+        high = {"tag": "ParameterChange", "contents": [None, {"txFeeFixed": 999999}, None]}
+        self.assertEqual(govview.action(low), govview.action(high))
+
+    def test_reward_account_network(self):
+        self.declared("rewardAccountNetwork")
+        # future pool parameters carry a whole reward account: header e0 (testnet key hash) against e1 (mainnet)
+        def future(header):
+            return [b"\x05" * 28, b"\x01" * 32, 0, 340, Fraction(1, 10), bytes([header]) + b"\x02" * 28,
+                    [b"\x03" * 28], [], None]
+        self.assertEqual(eraview.pool_params(future(0xe0)), eraview.pool_params(future(0xe1)))
+
+        def withdrawal(network):
+            return {"tag": "TreasuryWithdrawals",
+                    "contents": [[[{"network": network, "credential": {"keyHash": "ab"}}, 5]], None]}
+        self.assertEqual(govview.action(withdrawal("Testnet")), govview.action(withdrawal("Mainnet")))
+
+    def test_pool_reward_credential_kind(self):
+        self.declared("poolRewardCredentialKind")
+        # a registered pool state's reward account is a credential [0 key | 1 script, hash] (StakePoolState
+        # spsAccountId, cardano-ledger f649f975 libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs:147)
+        pool = [b"\x01" * 32, 0, 340, Fraction(1, 10), [0, b"\x02" * 28], [b"\x03" * 28], [], None, 500, []]
+        script = list(pool)
+        script[4] = [1, b"\x02" * 28]
+        self.assertEqual(eraview.pool_params(pool), eraview.pool_params(script))
+        # the same for future parameters: header e0 (key hash) against f0 (script hash)
+        future = [b"\x05" * 28, b"\x01" * 32, 0, 340, Fraction(1, 10), b"\xe0" + b"\x02" * 28, [], [], None]
+        scripted = future[:5] + [b"\xf0" + b"\x02" * 28] + future[6:]
+        self.assertEqual(eraview.pool_params(future), eraview.pool_params(scripted))
+
+    def test_proposal_roots_are_compared(self):
+        self.assertNotIn("proposalRoots", compare.PROJECTION_SCOPE["notCompared"])
+        roots = [[[b"\xaa" * 32, 0]], [], [], [[b"\xbb" * 32, 2]]]
+        self.assertEqual(govview.proposal_roots(roots),
+                         {"ParamUpdate": "aa" * 32 + "#0", "HardFork": None, "Committee": None,
+                          "Constitution": "bb" * 32 + "#2"})
+        # a mutation of the roots changes the projection, on the reference side and on the Scala side
+        self.assertNotEqual(govview.proposal_roots(roots), govview.proposal_roots([[], [], [], [[b"\xbb" * 32, 2]]]))
+        scala = {"proposals": [], "committee": None, "constitution": None, "committeeState": {}, "drepDistr": {},
+                 "prevGovActionIds": {"ParamUpdate": None}, "donation": 0,
+                 "ratify": {k: None for k in ("enacted", "expired", "delayed", "committee", "constitution",
+                                               "prevGovActionIds", "protocolVersion", "withdrawals")}}
+        self.assertEqual(govview.scala_gov(scala)["prevGovActionIds"], {"ParamUpdate": None})
+
+    def test_pool_delegators(self):
+        self.declared("poolDelegators")
+        pool = [b"\x01" * 32, 0, 340, Fraction(1, 10), [0, b"\x02" * 28], [], [], None, 500, []]
+        delegated = pool[:9] + [[[0, b"\x04" * 28]]]
+        self.assertEqual(eraview.pool_params(pool), eraview.pool_params(delegated))
+
+    def test_committee_member_status(self):
+        self.declared("committeeMemberStatus")
+        member = {"hotCredsAuthStatus": {"tag": "MemberAuthorized", "contents": {"keyHash": "cd"}},
+                  "expiration": 10, "status": "Active"}
+        later = {**member, "expiration": 99, "status": "Expired"}
+        unauthorised = {"hotCredsAuthStatus": {"tag": "MemberNotAuthorized"}}
+        self.assertEqual(govview.committee_state({"committee": {"keyHash-ab": member}}),
+                         govview.committee_state({"committee": {"keyHash-ab": later, "keyHash-ef": unauthorised}}))
+
+    def conway_ledger(self, drep_anchor, pool_fraction):
+        empty = {"activeStake": {}, "stakePoolsSnapShot": {}}
+        return {"lastEpoch": 1, "blocksCurrent": {}, "blocksBefore": {}, "possibleRewardUpdate": None,
+                "stakeDistrib": {"pdTotalActiveStake": 10,
+                                 "unPoolDistr": {"aa": {"individualTotalPoolStake": 10,
+                                                        "individualPoolStake": pool_fraction,
+                                                        "individualPoolStakeVrf": "bb" if pool_fraction else "cc"}}},
+                "stateBefore": {
+                    "esChainAccountState": {"treasury": 1, "reserves": 2},
+                    "esSnapshots": {"pstakeMark": empty, "pstakeSet": empty, "pstakeGo": empty, "feeSS": 0},
+                    "esLState": {"utxoState": {"fees": 0, "deposited": 0, "donation": 1 if drep_anchor else 7},
+                                 "delegationState": {
+                                     "dstate": {"accounts": {}},
+                                     "pstate": {"stakePools": {}, "retiring": {}},
+                                     "vstate": {"numDormantEpochs": 0, "dreps": {"keyHash-d": {
+                                         "deposit": 5, "expiry": 9, "anchor": drep_anchor,
+                                         "delegators": ["keyHash-x"] if drep_anchor else []}}}}}}}
+
+    def test_drep_stake_distribution_and_donation_details(self):
+        for name in ("drepAnchorsAndDelegators", "stakeDistributionDetail", "treasuryDonation"):
+            self.declared(name)
+        self.assertEqual(compare.reference_view(self.conway_ledger({"url": "u"}, 1), {}),
+                         compare.reference_view(self.conway_ledger(None, 0), {}))
+
+    def test_cost_models(self):
+        self.declared("costModels")
+        self.assertEqual(eraview.params_view({"a": 1, "costModels": {"PlutusV1": [1]}}, 4),
+                         eraview.params_view({"a": 1, "costModels": {"PlutusV1": [2]}}, 4))
+
+
+class ReferenceScriptHashTest(unittest.TestCase):
+    def test_a_native_reference_script_is_hashed_over_its_original_bytes(self):
+        # `all []` as a definite and as an indefinite list: the same script value, different original bytes
+        definite, indefinite = bytes.fromhex("820180"), bytes.fromhex("82019fff")
+        h1 = eraview.script_ref_hash(b"\x82\x00" + definite)
+        h2 = eraview.script_ref_hash(b"\x82\x00" + indefinite)
+        self.assertEqual(h1, eratx.blake2b(b"\x00" + definite, 28).hex())
+        self.assertEqual(h2, eratx.blake2b(b"\x00" + indefinite, 28).hex())
+        self.assertNotEqual(h1, h2)
+
+    def test_a_plutus_reference_script_is_hashed_over_its_byte_string_content(self):
+        flat = bytes.fromhex("0101002601")
+        raw = cbor.enc([3, flat])
+        self.assertEqual(eraview.script_ref_hash(raw), eratx.blake2b(b"\x03" + flat, 28).hex())
+
+    def test_the_utxo_projection_uses_the_original_bytes_hash(self):
+        out = eraview.tx_out({0: b"\x60" + bytes(28), 1: 5, 3: ntcquery.Tagged(24, b"\x82\x00\x82\x01\x9f\xff")})
+        self.assertEqual(out["scriptRef"], eratx.blake2b(b"\x00\x82\x01\x9f\xff", 28).hex())
+
+
+class SessionDeadlineTest(unittest.TestCase):
+    def test_a_node_that_never_answers_ends_the_session_at_its_deadline(self):
+        started, popen = [], subprocess.Popen
+
+        def silent(*args, **kwargs):
+            # holds the connection open and never writes: the reference that stopped replying
+            proc = popen([sys.executable, "-c", "import time; time.sleep(60)"], **kwargs)
+            started.append(proc)
+            return proc
+        import time as clock
+        begin = clock.monotonic()
+        with patch.object(ntcquery.subprocess, "Popen", side_effect=silent):
+            with self.assertRaises(ntcquery.Deadline):
+                with ntcquery.LocalStateQuery("c", "/s", 1, deadline=0.5):
+                    self.fail("the handshake cannot complete")
+        self.assertLess(clock.monotonic() - begin, 10)
+        self.assertIsNotNone(started[0].returncode)  # terminated and reaped
+
+    def test_a_deadline_during_a_query_is_a_failed_attempt_not_a_comparison(self):
+        bundle = {"tip": {"slot": 5, "hash": "00" * 32, "block": 1, "epoch": 0}, "utxo": {}}
+        with patch.object(compare, "query_bundle", return_value=(bundle, None)), \
+                patch.object(compare, "reference_utxo", side_effect=ntcquery.Deadline("no answer")):
+            result, failures = compare.compare_once_detailed("n", attempts=2, scala_wait=1)
+        self.assertIsNone(result)
+        self.assertEqual([f["query"] for f in failures], ["GetUTxOWhole/GetGovState"] * 2)
 
 
 class ReferenceImageTest(unittest.TestCase):
@@ -453,6 +619,31 @@ class SubmissionVerdictTest(unittest.TestCase):
 
     def test_a_ledger_refusal_naming_the_predicate_is_refused(self):
         self.assertEqual(self.kind(1, err=self.LEDGER), "refused")
+
+    def test_a_refusal_says_whether_the_failure_list_is_exactly_the_expected_one(self):
+        single = self.LEDGER.replace("(VRFKeyHashAlreadyRegistered x y)))))",
+                                     "(VRFKeyHashAlreadyRegistered x y))) :| []))")
+        v = eraload.submission_verdict(1, "", single, self.EXPECTED)
+        self.assertEqual((v.kind, v.match, v.failures), ("refused", eraload.ListMatch.EXACT, 1))
+        # negative control: an extra failure still names the predicate, but the match is labelled CONTAINS
+        extra = single.replace(":| []", ':| [ConwayUtxowFailure (UtxoFailure (FeeTooSmallUTxO "a, b"))]')
+        v = eraload.submission_verdict(1, "", extra, self.EXPECTED)
+        self.assertEqual((v.kind, v.match, v.failures), ("refused", eraload.ListMatch.CONTAINS, 2))
+        # the text without its list (the old fixture form) cannot be classified
+        self.assertEqual(eraload.submission_verdict(1, "", self.LEDGER, self.EXPECTED).match,
+                         eraload.ListMatch.UNPARSED)
+        self.assertEqual(eraload.match_counts([eraload.ListMatch.EXACT, eraload.ListMatch.CONTAINS, None]),
+                         {"exact": 1, "contains": 1, "unparsed": 0})
+
+    def test_a_predicate_is_named_as_a_whole_constructor(self):
+        prefix = self.LEDGER.replace("VRFKeyHashAlreadyRegistered", "VRFKeyHashAlreadyRegisteredPOOL")
+        self.assertEqual(self.kind(1, err=prefix), "wrongReason")
+
+    def test_the_failure_list_ignores_separators_in_strings_and_brackets(self):
+        text = 'Error: (ConwayApplyTxError (A "a)\\" :| [" (b c) :| [B [1,2], C {x = 1, y = 2}]))'
+        self.assertEqual(eraload.failure_list(text), ['A "a)\\" :| [" (b c)', "B [1,2]", "C {x = 1, y = 2}"])
+        self.assertIsNone(eraload.failure_list("Error: (ConwayApplyTxError (A :| [B]"))
+        self.assertIsNone(eraload.failure_list("Network.Socket.connect: does not exist"))
 
     def test_a_ledger_refusal_for_another_reason_is_wrong_reason(self):
         other = self.LEDGER.replace("VRFKeyHashAlreadyRegistered", "StakePoolCostTooLow")
@@ -783,11 +974,71 @@ class NtcQueriesTest(unittest.TestCase):
             self.assertFalse(text.startswith("query "), label)
         self.assertEqual(ntc.rendered("x\nError: boom\nCallStack"), "Error: boom")
 
-    def test_the_current_slot_of_a_validity_refusal_is_masked(self):
+    def test_the_current_slot_of_a_validity_refusal_is_not_masked(self):
         text = "Error: (OutsideValidityIntervalUTxO (ValidityInterval {invalidHereafter = SJust (SlotNo 1)}) (SlotNo 18204))) :| []"
-        self.assertEqual(ntc.rendered(text, "OutsideValidityIntervalUTxO"),
-                         ntc.rendered(text.replace("18204", "18399"), "OutsideValidityIntervalUTxO"))
-        self.assertNotEqual(ntc.rendered(text), ntc.rendered(text.replace("18204", "18399")))
+        case = ntccases.Case("expired", b"", "OutsideValidityIntervalUTxO")
+        raw = cbor.enc([[6, [[0, 18204]]]])
+        outcome, row = ntc.judge_refusal(case, {"h": raw, "s": raw}, {"h": text, "s": text})
+        self.assertIs(outcome, ntc.Refusal.EXACT)
+        # negative control: the same refusal judged one slot later is a difference, in bytes and in text
+        later = cbor.enc([[6, [[0, 18205]]]])
+        outcome, row = ntc.judge_refusal(case, {"h": raw, "s": later},
+                                         {"h": text, "s": text.replace("18204", "18205")})
+        self.assertIs(outcome, ntc.Refusal.DIFFERS)
+        self.assertFalse(row["rawEqual"] or row["textEqual"])
+        self.assertFalse(outcome.passes)
+
+    def test_a_submission_counts_only_when_one_tip_brackets_it(self):
+        tip, other = (10, "aa"), (11, "bb")
+        self.assertTrue(ntc.bracketed((tip, tip), (tip, tip)))
+        self.assertFalse(ntc.bracketed((tip, other), (tip, tip)))
+        self.assertFalse(ntc.bracketed((tip, tip), (other, other)))
+        self.assertFalse(ntc.bracketed((None, None), (None, None)))
+        self.assertFalse(ntc.Refusal.UNBRACKETED.passes)
+
+    def test_a_tracked_divergence_holds_exactly_as_declared(self):
+        case = ntccases.Case("withdrawal-network-flag-true", b"", "ConwayWithdrawalsMissingAccounts",
+                             ntccases.ACCUMULATED_WITHDRAWAL_FAILURES)
+        self.assertEqual(case.divergence.issue, 412)
+        both = cbor.enc([[6, [[8, 1], [1, 2]]]])
+        first = cbor.enc([[6, [[8, 1]]]])
+        text = {"h": "Error: (ConwayWithdrawalsMissingAccounts x :| [ConwayUtxowFailure y])",
+                "s": "Error: (ConwayWithdrawalsMissingAccounts x :| [])"}
+        outcome, row = ntc.judge_refusal(case, {"h": both, "s": first}, text)
+        self.assertIs(outcome, ntc.Refusal.TRACKED_DIVERGENCE)
+        self.assertEqual((row["referenceFailures"], row["scalaFailures"], row["issue"]), (2, 1, 412))
+        self.assertFalse(row["rawEqual"])
+        # a different first failure, or another count, is a difference
+        other = cbor.enc([[6, [[9, 1]]]])
+        self.assertIs(ntc.judge_refusal(case, {"h": both, "s": other}, text)[0], ntc.Refusal.DIFFERS)
+        three = cbor.enc([[6, [[8, 1], [1, 2], [1, 3]]]])
+        self.assertIs(ntc.judge_refusal(case, {"h": three, "s": first}, text)[0], ntc.Refusal.DIFFERS)
+        # once the Scala refusal is the whole list, the exemption fails so that it is removed
+        resolved = ntc.judge_refusal(case, {"h": both, "s": both}, {"h": text["h"], "s": text["h"]})[0]
+        self.assertIs(resolved, ntc.Refusal.DIVERGENCE_RESOLVED)
+        self.assertFalse(resolved.passes)
+
+    def test_the_summary_counts_exact_cases_and_lists_tracked_divergences(self):
+        rows = [(ntc.Refusal.EXACT, {"case": "a", "rawEqual": True, "textEqual": True, "referenceNamesRule": True}),
+                (ntc.Refusal.TRACKED_DIVERGENCE,
+                 {"case": "b", "rawEqual": False, "textEqual": False, "referenceNamesRule": True, "issue": 412,
+                  "referenceFailures": 2, "scalaFailures": 1})]
+        summary = ntc.submission_summary(rows)
+        self.assertEqual((summary["cases"], summary["exact"], summary["rawEqual"]), (2, 1, 1))
+        self.assertEqual(summary["trackedDivergences"], [{"case": "b", "issue": 412, "referenceFailures": 2,
+                                                          "scalaFailures": 1}])
+        self.assertEqual(summary["differences"], [])
+        failed = ntc.submission_summary([(ntc.Refusal.DIVERGENCE_RESOLVED, {"case": "c", "rawEqual": True,
+                                                                           "textEqual": True,
+                                                                           "referenceNamesRule": True})])
+        self.assertEqual([r["case"] for r in failed["differences"]], ["c"])
+
+    def test_a_rule_is_named_as_a_whole_constructor(self):
+        text = "(ConwayWithdrawalsMissingAccounts (Withdrawals {unWithdrawals = ...}))"
+        self.assertTrue(ntc.names_constructor(text, "ConwayWithdrawalsMissingAccounts"))
+        self.assertTrue(ntc.names_constructor(text, "Withdrawals"))
+        self.assertFalse(ntc.names_constructor(text, "WithdrawalsMissing"))
+        self.assertFalse(ntc.names_constructor("BabbageOutputTooSmallUTxO", "OutputTooSmallUTxO"))
 
 
 class NtcQuerySessionTest(unittest.TestCase):

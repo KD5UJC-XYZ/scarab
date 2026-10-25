@@ -130,6 +130,16 @@ def committee_state(cs):
     return out
 
 
+def proposal_roots(roots):
+    """The roots of the reference's `Proposals` (a GovRelation of StrictMaybe GovPurposeId, each a list of zero
+    or one `[txId, index]`), in the Scala `prevIds` shape. The caller adds them to `reference_gov`, whose CLI
+    input does not carry them."""
+    def purpose(x):
+        return None if not x else f"{x[0][0].hex()}#{x[0][1]}"
+    return {"ParamUpdate": purpose(roots[0]), "HardFork": purpose(roots[1]), "Committee": purpose(roots[2]),
+            "Constitution": purpose(roots[3])}
+
+
 def reference_gov(gov_state, committee_state_json, drep_distr):
     """The Scala `gov` projection, from the three reference queries."""
     ratify = gov_state["nextRatifyState"]
@@ -155,7 +165,8 @@ def reference_gov(gov_state, committee_state_json, drep_distr):
 
 def scala_gov(gov):
     """The part of the Scala `gov` projection the reference queries can also produce."""
-    out = {k: gov[k] for k in ("proposals", "committee", "constitution", "committeeState", "drepDistr")}
+    out = {k: gov[k] for k in ("proposals", "committee", "constitution", "committeeState", "drepDistr",
+                               "prevGovActionIds")}
     out["ratify"] = {k: gov["ratify"][k] for k in (
         "enacted", "expired", "delayed", "committee", "constitution", "prevGovActionIds", "protocolVersion")}
     return out

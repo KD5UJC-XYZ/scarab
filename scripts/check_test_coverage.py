@@ -7,6 +7,7 @@ Refreshing identities does not regenerate any fixture or expected result.
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 
 
@@ -15,7 +16,12 @@ INVENTORY = "docs/data/fixture-inventory.json"
 REGISTER = "docs/data/test-coverage-register.json"
 KINDS = {"native-parity", "regression", "input-boundary", "reference-non-result",
          "canonicalization", "sampling-limit", "external-input", "known-divergence"}
-STATES = {"covered", "open", "pending-integration"}
+# covered: the entry's assertion proves the invariant its scope names. bounded: the assertion holds but proves
+# less than its scope names (membership instead of list equality, a projection instead of a whole state); the
+# rationale states the gap and the tracking issue owns the stronger contract. open / pending-integration: the
+# assertion is not yet enforced.
+STATES = {"covered", "bounded", "open", "pending-integration"}
+ISSUE = re.compile(r"https://github\.com/KD5UJC-XYZ/scarab/issues/[1-9][0-9]*")
 
 
 def read_json(path):
@@ -125,6 +131,8 @@ def validate_register(root, register, candidate=False):
             raise ValueError(f"missing candidate policy/evidence: {row['id']}")
         for path in row["evidence"]:
             relative_file(root, path)
+        if row["status"] == "bounded" and not ISSUE.fullmatch(row["tracking"]):
+            raise ValueError(f"a bounded entry must name the issue of its stronger contract: {row['id']}")
         if candidate and row["candidateRequired"] and row["status"] != "covered":
             raise ValueError(f"candidate has unresolved required coverage: {row['id']}")
     return len(seen)
