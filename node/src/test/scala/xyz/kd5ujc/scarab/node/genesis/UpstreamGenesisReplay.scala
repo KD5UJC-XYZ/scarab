@@ -225,6 +225,21 @@ object UpstreamGenesisReplay extends munit.Assertions:
               )
             cancelled = (peer: PeerId, component: Component) =>
               lifecycle.update(_ :+ Lifecycle.Ended(Terminal(peer, component, End.Cancelled, None)))
+            // PeerSimulator/ChainSync.hs:258–268 and BlockFetch.hs:265–275 record each server's end
+            // exactly once, an asynchronous cancellation included, from inside its registry thread.
+            // A fiber cancelled before its first step never runs its own `onCancel`, so the owner
+            // records the cancellation that the body could not.
+            component = (peer: PeerId, part: Component, body: IO[Either[Problem, Unit]]) =>
+              Resource.eval(Ref.of[IO, Boolean](false)).flatMap { ended =>
+                def once(terminal: IO[Unit]): IO[Unit] =
+                  IO.uncancelable(_ => ended.getAndSet(true).flatMap(terminal.unlessA))
+                Resource.make(
+                  body
+                    .flatMap(outcome => once(record(peer, part, outcome)))
+                    .onCancel(once(cancelled(peer, part)))
+                    .start
+                )(fiber => fiber.cancel *> once(cancelled(peer, part)))
+              }
             outcome <- {
               given Stateful[IO, VolatileChain[Ledger]] = RefStateful(chain)
               val rules = BlockRules.from[IO, Ledger] { (_, header, bytes) =>
@@ -378,21 +393,18 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                   ),
                                   raw
                                 )
+                            // Reference start order at 82ecba329: ChainDB and its AddBlockRunner
+                            // (NodeLifecycle.hs:174–180), then the peers (Run.hs:441–474), the
+                            // BlockFetch logic (Run.hs:478) and the GDD watcher (Run.hs:488–500). A
+                            // downtime's `releaseAll` (NodeLifecycle.hs:258) releases youngest first
+                            // (resource-registry 0.3.0.0, ResourceRegistry.hs:386–388, 1219–1223), as
+                            // `Resource` does: GDD and fetch decisions stop before any peer leaves, so
+                            // a shrinking peer set never moves the LoE while the node shuts down.
                             follower.blockSelection(
                               pool,
                               runtime.work,
                               failure => closed.update(_ :+ Closure(None, Problem.Worker(failure)))
                             ) *> (
-                              Resource.make(governor.run.start)(_.cancel),
-                              Resource.make(
-                                pool.fetchCoordinator
-                                  .watchDecisions(
-                                    settings.blockFetchGracePicos,
-                                    Some(clock),
-                                    FetchCoordinator.DecisionIntervals(0, 0)
-                                  )
-                                  .start
-                              )(_.cancel),
                               order.zipWithIndex.filter((id, _) => active(id)).traverse {
                                 (id, ordinal) =>
                                   Resource.eval(servers(id).restart).flatMap { server =>
@@ -429,7 +441,9 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                                 serverBF <- Resource.eval(
                                                   serverMux.channel(Protocols.BlockFetch)
                                                 )
-                                                servingChainSync <- Resource.make(
+                                                servingChainSync <- component(
+                                                  id,
+                                                  Component.ChainSyncServer,
                                                   Fibers
                                                     .scoped[IO, NetworkError, Unit](
                                                       NetworkError.Defect(_)
@@ -445,15 +459,10 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                                       )
                                                     )
                                                     .map(_.leftMap(Problem.Network(_)))
-                                                    .flatMap(
-                                                      record(id, Component.ChainSyncServer, _)
-                                                    )
-                                                    .onCancel(
-                                                      cancelled(id, Component.ChainSyncServer)
-                                                    )
-                                                    .start
-                                                )(_.cancel)
-                                                _ <- Resource.make(
+                                                )
+                                                _ <- component(
+                                                  id,
+                                                  Component.BlockFetchServer,
                                                   Fibers
                                                     .scoped[IO, NetworkError, Unit](
                                                       NetworkError.Defect(_)
@@ -468,14 +477,7 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                                       )
                                                     )
                                                     .map(_.leftMap(Problem.Network(_)))
-                                                    .flatMap(
-                                                      record(id, Component.BlockFetchServer, _)
-                                                    )
-                                                    .onCancel(
-                                                      cancelled(id, Component.BlockFetchServer)
-                                                    )
-                                                    .start
-                                                )(_.cancel)
+                                                )
                                                 chainSync <- ChainSyncClient.resource(
                                                   clientCS,
                                                   NtNHeader.codec,
@@ -672,7 +674,17 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                         Resource.eval(ready.get)
                                     }
                                   }
-                              }
+                              },
+                              Resource.make(
+                                pool.fetchCoordinator
+                                  .watchDecisions(
+                                    settings.blockFetchGracePicos,
+                                    Some(clock),
+                                    FetchCoordinator.DecisionIntervals(0, 0)
+                                  )
+                                  .start
+                              )(_.cancel),
+                              Resource.make(governor.run.start)(_.cancel)
                             ).tupled.evalMap(_ => governor.setPhase(Gsm.Phase.Syncing)).void
                           }
                         }.flatten
