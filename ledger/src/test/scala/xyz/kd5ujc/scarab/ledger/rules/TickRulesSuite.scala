@@ -138,13 +138,17 @@ class TickRulesSuite extends FunSuite:
     assertEquals(pots(after), pots(before))
   }
 
-  test("an epoch with no block is crossed boundary by boundary") {
+  // NEWEPOCH does nothing for an epoch that is not the next one (`pure src`, cardano-ledger
+  // f649f975 `Shelley/Rules/NewEpoch.hs:148`; Conway also predicts the future parameters,
+  // `Conway/Rules/NewEpoch.hs:154-166`), and TICK runs once (`Tick.hs:160`).
+  test("a tick over an epoch with no block runs no boundary, as the reference does") {
     val before = tick(conway(5, 20, 4), late(5))
     val after = tick(before, first(8) + 10)
-    assertEquals(after.epoch, ok(EpochNo.fromBigInt(8)))
-    // three boundaries: the reward update of the epoch before the gap is applied once
+    assertEquals(after.epoch, ok(EpochNo.fromBigInt(5)))
+    assertEquals(after.bcur, before.bcur)
+    assertEquals(after.bprev, before.bprev)
+    assertEquals(after.es.snapshots, before.es.snapshots)
     assertEquals(pots(after), pots(before))
-    assert(after.bprev == BlocksMade.empty, "the epoch before the last had no blocks")
   }
 
   test("a retiring pool is refunded to its reward account, or to the treasury if it is gone") {

@@ -17,11 +17,13 @@ import xyz.kd5ujc.scarab.protocol.Era
   * or by configured epoch); the version asked of is the one the boundary is about to adopt, the
   * parameters of the next epoch (`nextEpochPParams`), as the ledger's `shelleyTransition` does.
   *
-  * Haskell ticks to a slot only, and consensus never skips a whole epoch; the node's chains can (a
-  * test cluster), so each epoch crossed has its boundary. The tick of the slot itself ([[Tick]])
-  * comes last, in the epoch of the slot, and it is the one that does the slot-dependent work.
+  * Like the reference, this ticks to a slot only: [[Tick]] runs once, in the epoch of the slot, and
+  * NEWEPOCH does nothing when that epoch is not the one after the state's (`Shelley/Rules/
+  * NewEpoch.hs:148`, `pure src`). The boundaries of an epoch with no block are therefore not
+  * crossed here either.
   *
-  * The chain over which this is run is unbounded (epochs crossed), so the loop is `tailRecM`.
+  * The only loop is over the eras translated on the way (the combinator's `extendToSlot`), so it is
+  * `tailRecM`.
   */
 object Hfc:
 
@@ -37,22 +39,16 @@ object Hfc:
   ): Either[TickFailure, EraNes] =
     val target = globals.epochOf(slot.toBigInt)
     type Result[A] = Either[TickFailure, A]
-    // one step: translate into the next era, run the boundary of an epoch no block is in, or tick
+    // one step: translate into the next era (the slot is past the end of the state's era), or tick
     Monad[Result].tailRecM(start) { current =>
       val epoch = current.epoch.toBigInt
-      def boundary(next: BigInt): Result[Either[EraNes, EraNes]] =
-        if next < target then
-          EpochNo.fromBigInt(next).left.map(TickFailure.Vocab(_)).flatMap { e =>
-            newEpoch(globals, current, e).map(Left(_))
-          }
-        else ticked(globals, current, slot).map(Right(_))
-      if epoch >= target then ticked(globals, current, slot).map(Right(_))
-      else if current.toEra.ordinal < eraAt(epoch + 1, adoptedMajor(current)).ordinal then
+      if epoch < target && current.toEra.ordinal < eraAt(epoch + 1, adoptedMajor(current)).ordinal
+      then
         Translate.next(globals, current).flatMap {
           case Some(translated) => Right(Left(translated))
-          case None             => boundary(epoch + 1)
+          case None             => ticked(globals, current, slot).map(Right(_))
         }
-      else boundary(epoch + 1)
+      else ticked(globals, current, slot).map(Right(_))
     }
 
   /** The major version of the parameters the next boundary adopts (`nextEpochPParams`). */
@@ -67,9 +63,3 @@ object Hfc:
       case i: EraNes.InEra[e] =>
         given ShelleyBasedEra[e] = i.era
         Sts(Tick.sts[e])(globals, (), i.nes, slot).map(EraNes.InEra(i.era, _))
-
-  private def newEpoch(globals: Globals, e: EraNes, epoch: EpochNo): Either[TickFailure, EraNes] =
-    e match
-      case i: EraNes.InEra[e] =>
-        given ShelleyBasedEra[e] = i.era
-        Sts(NewEpoch.sts[e])(globals, (), i.nes, epoch).map(EraNes.InEra(i.era, _))
