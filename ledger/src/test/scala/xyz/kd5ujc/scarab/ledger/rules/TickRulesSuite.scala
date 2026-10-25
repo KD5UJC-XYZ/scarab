@@ -232,6 +232,19 @@ class TickRulesSuite extends FunSuite:
     assertEquals(nes.es.ls.cert.vState.numDormantEpochs, EpochNo.fromUnsigned(1L))
   }
 
+  // `extendToSlot` (ouroboros-consensus 82ecba32 `HardFork/Combinator/State.hs`) translates while
+  // the slot is at or past the end of the state's era, whatever the state's own epoch
+  test("a tick across an epoch with no block still translates into an era that began in it") {
+    val laterConway: Hfc.EraAt = (epoch, major) =>
+      if epoch >= 7 && major >= 9 then Era.Conway else Era.Babbage
+    val from = EraNes.InEra(ShelleyBasedEra.SBabbage, babbage(conway(5, 10, 2)))
+    val after = Hfc
+      .tick(globals, laterConway)(from, ok(SlotNo.fromBigInt(first(8) + 10)))
+      .fold(e => fail(s"refused: $e"), identity)
+    assertEquals(after.toEra, Era.Conway)
+    assertEquals(after.epoch, ok(EpochNo.fromBigInt(5)))
+  }
+
   test("the translation into Conway of 150,000 accounts runs on a 256 KiB stack") {
     val big = babbage(conway(5, 150000, 300))
     onSmallStack {

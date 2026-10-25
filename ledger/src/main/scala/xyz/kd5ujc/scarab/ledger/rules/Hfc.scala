@@ -39,10 +39,11 @@ object Hfc:
   ): Either[TickFailure, EraNes] =
     val target = globals.epochOf(slot.toBigInt)
     type Result[A] = Either[TickFailure, A]
-    // one step: translate into the next era (the slot is past the end of the state's era), or tick
+    // one step: translate into the next era (the slot is past the end of the state's era: the era
+    // of the slot's epoch is a later one, whatever the state's own epoch), or tick
     Monad[Result].tailRecM(start) { current =>
       val epoch = current.epoch.toBigInt
-      if epoch < target && current.toEra.ordinal < eraAt(epoch + 1, adoptedMajor(current)).ordinal
+      if epoch < target && current.toEra.ordinal < eraAt(target, adoptedMajor(current)).ordinal
       then
         Translate.next(globals, current).flatMap {
           case Some(translated) => Right(Left(translated))
