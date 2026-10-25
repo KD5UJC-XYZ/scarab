@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network.selection
 
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, HaskellSort}
 
 import FetchGsv.PeerGsv
 
@@ -56,11 +56,22 @@ object BlockFetchPolicy:
     else if probability > 0.75 then ProbabilityBand.Moderate
     else ProbabilityBand.Low
 
-  /** `comparePeerGSV`: the 20% incumbent advantage applies only to preferred-peer admission. */
-  private def compareGsv[P](a: Candidate[P], b: Candidate[P], active: Set[P]): Int =
-    val ga = if active(a.peer) then a.performance.geographic * 4 / 5 else a.performance.geographic
-    val gb = if active(b.peer) then b.performance.geographic * 4 / 5 else b.performance.geographic
-    if (ga - gb).abs * 100 < ga.max(gb) * 5 then java.lang.Long.compare(a.tieBreak, b.tieBreak)
+  /** `comparePeerGSV` (ouroboros-network 2fb69829, BlockFetch/DeltaQ.hs:38–67; `comparePeerGSV'` at
+    * 71–79 is the case without active peers). The 20% incumbent advantage applies only to
+    * preferred-peer admission. Both factors are `DiffTime` products, which floor to picoseconds
+    * (`Data.Fixed`), so the advantage is ⌊4g/5⌋ and the strict 5% band is ⌊max/20⌋. Within the band
+    * the salted tie breaker decides. The relation is not transitive (each of three peers can be
+    * within 5% of its neighbour but not of the third), so it is only applied through
+    * [[HaskellSort.sortBy]], the reference's own `sortBy`; a `java.util` sort may throw on it.
+    */
+  private[selection] def compareGsv[P](active: Set[P])(a: Candidate[P], b: Candidate[P]): Int =
+    def geographic(candidate: Candidate[P]): BigInt =
+      val g = candidate.performance.geographic
+      if active(candidate.peer) then FetchGsv.floorDivide(g * 4, 5) else g
+    val ga = geographic(a)
+    val gb = geographic(b)
+    if (ga - gb).abs < FetchGsv.floorDivide(ga.max(gb), 20) then
+      java.lang.Long.compare(a.tieBreak, b.tieBreak)
     else ga.compare(gb)
 
   private def totalBytes[P](candidate: Candidate[P]): Long =
@@ -70,12 +81,14 @@ object BlockFetchPolicy:
       .min(BigInt(Long.MaxValue))
       .toLong
 
-  /** Includes stable salted GSV ties; deadline candidates with equal bands/preference are
+  /** `prioritisePeerChains` (Decision.hs:731–833): first the reference's `sortBy` with
+    * `comparePeerGSV'` (783–784, 821–822), then stable sorts on total keys, for which any stable
+    * sort gives the reference's order. Deadline candidates with equal bands/preference are
     * interleaved across chain heads, as upstream's group/transpose stage specifies.
     */
   def rank[P](mode: FetchMode, candidates: Vector[Candidate[P]]): Vector[Candidate[P]] =
-    val (declined, tied) = candidates
-      .sortWith((a, b) => compareGsv(a, b, Set.empty[P]) < 0)
+    val (declined, tied) = HaskellSort
+      .sortBy(candidates)(compareGsv(Set.empty[P]))
       .partition(_.refusal.isDefined)
     mode match
       case FetchMode.BulkSync =>
@@ -107,7 +120,8 @@ object BlockFetchPolicy:
         } ++ declined
 
   /** Include active peers with no pending fragments so concurrency and preferred admission see all
-    * sessions. Preferred peers may temporarily exceed the target while replacing slower peers.
+    * sessions. Preferred peers may temporarily exceed the target while replacing slower peers; they
+    * are the first of the reference's `sortBy` with `comparePeerGSV` (Decision.hs:1028–1035).
     */
   def decide[P](
       config: Config,
@@ -118,9 +132,8 @@ object BlockFetchPolicy:
       .filter(c => c.status != Status.Shutdown && c.inFlight.requests > 0)
       .map(_.peer)
       .toSet
-    val preferred = candidates
-      .filter(_.status != Status.Shutdown)
-      .sortWith((a, b) => compareGsv(a, b, active) < 0)
+    val preferred = HaskellSort
+      .sortBy(candidates.filter(_.status != Status.Shutdown))(compareGsv(active))
       .take(config.concurrency(mode).max(0))
       .map(_.peer)
       .toSet
