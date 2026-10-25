@@ -42,13 +42,9 @@ object LocalStateQueryServer:
 
     def acquire(target: Target): Resource[F, Either[AcquireFailure[E], Session[F, E]]]
 
-  type Settings = LocalStateQueryRuntime.Settings
-  val Settings: LocalStateQueryRuntime.Settings.type = LocalStateQueryRuntime.Settings
-
   def run[F[_]: Temporal: Defer, E](
       channel: MuxChannel[F],
-      source: Source[F, E],
-      settings: Settings = Settings()
+      source: Source[F, E]
   )(using Raise[F, NetworkError]): F[Either[E, Unit]] =
     val adapted =
       new LocalStateQueryRuntime.Source[F, E, xyz.kd5ujc.scarab.protocol.ChainSync.Point]:
@@ -72,6 +68,5 @@ object LocalStateQueryServer:
     LocalStateQueryRuntime.run(
       channel,
       adapted,
-      xyz.kd5ujc.scarab.protocol.ChainSync.enginePointCodec,
-      settings
+      xyz.kd5ujc.scarab.protocol.ChainSync.enginePointCodec
     )

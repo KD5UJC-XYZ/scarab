@@ -9,7 +9,6 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
 import xyz.kd5ujc.scarab.protocol.{Handshake, NtnVersion}
-import scala.concurrent.duration.*
 
 /** Node-to-node handshake, responder side: reads the client's proposal, answers through the pure
   * [[Handshake.responder]] and reports what was agreed. `Agreed.data.initiatorOnly` is false
@@ -43,10 +42,17 @@ object HandshakeServer:
       case Left(e) if e.incomplete => DecodeResult.NeedMore
       case Left(e)                 => DecodeResult.Failed(e.cause)
 
+  /** @param timeout
+    *   The time the client has to propose: `shortWait`, 10 s, in node-to-node
+    *   (`timeLimitsHandshake`, `Ouroboros/Network/Protocol/Handshake/Codec.hs:80-88`,
+    *   ouroboros-network 2fb69829); none in node-to-client (`noTimeLimitsHandshake`,
+    *   `Codec.hs:91-99`, used by `Cardano/Network/NodeToClient.hs` for its
+    *   `ctaHandshakeTimeLimits`).
+    */
   def run[F[_]: Temporal](
       channel: MuxChannel[F],
       supported: Vector[(Int, Handshake.Data)],
-      timeout: FiniteDuration = Handshake.DefaultPhaseTimeout,
+      timeout: ProtocolDeadline = ProtocolDeadline.After(Handshake.DefaultPhaseTimeout),
       suite: Handshake.Suite = Handshake.Suite.NodeToNode
   )(using Raise[F, NetworkError]): F[HandshakeClient.Agreed] =
     def refuse[A](reason: ProtocolError | NetworkError.HandshakeFailure): F[A] = NetworkError

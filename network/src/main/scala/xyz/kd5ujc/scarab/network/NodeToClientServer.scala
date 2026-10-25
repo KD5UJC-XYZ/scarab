@@ -25,11 +25,10 @@ object NodeToClientServer:
       magic: Long,
       submit: Bytes => F[LocalTxSubmissionServer.Response],
       stateQuery: Option[LocalStateQueryServer.Source[F, Nothing]] = None,
-      settings: LocalTxSubmissionServer.Settings = LocalTxSubmissionServer.Settings(),
       chainSync: Option[Resource[F, ChainSyncServer.Source[F, RawNtNBlock]]] = None,
       txMonitor: Option[LocalTxMonitorServer.Source[F]] = None
   )(using Raise[F, NetworkError]): F[LocalTxSubmissionServer.End] =
-    acceptBackend[F, Nothing](bearer, magic, submit, stateQuery, settings, chainSync, txMonitor)
+    acceptBackend[F, Nothing](bearer, magic, submit, stateQuery, chainSync, txMonitor)
       .map(_.fold(identity, identity))
 
   def acceptBackend[F[_]: Async, E](
@@ -37,7 +36,6 @@ object NodeToClientServer:
       magic: Long,
       submit: Bytes => F[LocalTxSubmissionServer.Response],
       stateQuery: Option[LocalStateQueryServer.Source[F, E]],
-      settings: LocalTxSubmissionServer.Settings = LocalTxSubmissionServer.Settings(),
       chainSync: Option[Resource[F, ChainSyncServer.Source[F, RawNtNBlock]]] = None,
       txMonitor: Option[LocalTxMonitorServer.Source[F]] = None
   )(using Raise[F, NetworkError]): F[Either[E, LocalTxSubmissionServer.End]] =
@@ -66,6 +64,7 @@ object NodeToClientServer:
               HandshakeServer.run(
                 _,
                 HandshakeServer.localOffers(magic),
+                timeout = ProtocolDeadline.Unbounded,
                 suite = xyz.kd5ujc.scarab.protocol.Handshake.Suite.NodeToClient
               )
             )
@@ -90,7 +89,7 @@ object NodeToClientServer:
             .traverse(source => mux.channel(Protocols.LocalTxMonitor).map(_ -> source))
           served = Fibers.failFast[F, NetworkError](
             List(
-              child(LocalTxSubmissionServer.run(submission, submit, settings).flatMap {
+              child(LocalTxSubmissionServer.run(submission, submit).flatMap {
                 case None        => Async[F].unit
                 case Some(error) => unavailable.complete(error).void *> Async[F].never[Unit]
               }),
@@ -99,11 +98,7 @@ object NodeToClientServer:
                   .scoped[F, NetworkError, Either[E, Unit]](t =>
                     NetworkError.fromThrowable("local-state-query", t)
                   )(
-                    LocalStateQueryServer.run(
-                      c,
-                      source.forVersion(version),
-                      LocalStateQueryServer.Settings(settings.idleTimeout)
-                    )
+                    LocalStateQueryServer.run(c, source.forVersion(version))
                   )
                   .flatMap {
                     case Left(error) => Async[F].pure(Left(error))
@@ -118,13 +113,13 @@ object NodeToClientServer:
                     c,
                     CardanoBlockFetch.payloadCodec(),
                     _,
-                    ChainSyncServer.NodeToClient.copy(idleTimeout = settings.idleTimeout)
+                    ChainSyncServer.NodeToClient
                   )
                 )
               }),
               child(monitoring.fold(Async[F].unit) { (c, source) =>
                 LocalTxMonitorServer
-                  .run(c, source, LocalTxMonitorServer.Settings(settings.idleTimeout))
+                  .run(c, source)
               })
             )
           )

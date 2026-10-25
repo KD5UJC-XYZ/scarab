@@ -453,8 +453,8 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                                         NtNHeader.codec,
                                                         server.chainSync,
                                                         ChainSyncServer
-                                                          .Settings(idleDeadline =
-                                                            Some(ProtocolDeadline.Unbounded)
+                                                          .Settings(idle =
+                                                            ProtocolDeadline.Unbounded
                                                           )
                                                       )
                                                     )
@@ -471,8 +471,8 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                                         serverBF,
                                                         server.blocks,
                                                         BlockFetchServer
-                                                          .Settings(idleDeadline =
-                                                            Some(ProtocolDeadline.Unbounded)
+                                                          .Settings(idle =
+                                                            ProtocolDeadline.Unbounded
                                                           )
                                                       )
                                                     )

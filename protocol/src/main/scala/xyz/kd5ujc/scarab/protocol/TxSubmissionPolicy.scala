@@ -74,8 +74,10 @@ object TxSubmissionPolicy:
     else if ids.distinct.size != ids.size then Left(Violation.DuplicateOffer)
     else Right(())
 
-  /** Default reference state deadlines. Runtime Init/Idle retain explicit stricter local policy;
-    * our server emits only blocking ID requests, so its ID wait remains indefinite.
+  /** The reference's state deadlines, `timeLimitsTxSubmission2` (ouroboros-network 2fb69829,
+    * `Ouroboros/Network/Protocol/TxSubmission2/Codec.hs:78-88`): `StInit`, `StIdle` and blocking
+    * `StTxIds` wait for ever, non-blocking `StTxIds` and `StTxs` have `shortWait`. Our server emits
+    * only blocking ID requests, so its ID wait is indefinite.
     */
   def timeLimit(state: TxSubmission2.State): Option[FiniteDuration] = state match
     case TxSubmission2.State.Txs | TxSubmission2.State.Ids(false) => Some(ShortWait)

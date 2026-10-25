@@ -5,7 +5,6 @@ import cats.effect.Temporal
 import cats.mtl.Raise
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.TxSubmission2
-import scala.concurrent.duration.*
 
 import NetworkError.RuntimeViolation
 
@@ -28,16 +27,8 @@ object TxSubmissionServer:
 
   /** @param idsPerRequest
     *   Ids asked for per request.
-    * @param bodiesTimeout
-    *   Time the client may take to send the transactions we asked for.
-    * @param initTimeout
-    *   Optional local bound for the client's first Init; the reference waits indefinitely.
     */
-  final case class Settings(
-      idsPerRequest: Int = 3,
-      bodiesTimeout: FiniteDuration = TxSubmissionPolicy.ShortWait,
-      initTimeout: Option[FiniteDuration] = None
-  )
+  final case class Settings(idsPerRequest: Int = 3)
 
   def run[F[_]: Temporal](
       channel: MuxChannel[F],
@@ -62,8 +53,6 @@ object TxSubmissionServer:
       TxSubmission2Runtime
         .ServerSettings(
           settings.idsPerRequest,
-          settings.bodiesTimeout,
-          settings.initTimeout,
           maxUnacked = settings.idsPerRequest
         ),
       message => RuntimeViolation.TxSubmissionUnexpected(TxSubmission2.fromEngine(message))

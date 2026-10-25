@@ -30,13 +30,6 @@ object TxSubmissionClient:
     /** The original bytes of a transaction, if it is still held. */
     def body(id: Bytes): F[Option[Bytes]]
 
-  /** @param idleTimeout
-    *   Time to wait for the server's next request.
-    */
-  final case class Settings(
-      idleTimeout: FiniteDuration = 3373.seconds
-  )
-
   /** `run` ends when the peer closes the protocol or, with `finish`, once that completes and the
     * peer next asks for transactions and waits: a blocking request is the only moment this side may
     * end the protocol, with `MsgDone`. A new conversation may then start with a fresh `MsgInit`.
@@ -44,7 +37,6 @@ object TxSubmissionClient:
   def run[F[_]: Temporal](
       channel: MuxChannel[F],
       source: Source[F],
-      settings: Settings = Settings(),
       finish: Option[F[Unit]] = None
   )(using Raise[F, NetworkError]): F[Unit] =
     val typedSource = new TxSubmission2Runtime.Source[F, Bytes, Bytes]:
@@ -65,7 +57,6 @@ object TxSubmissionClient:
       typedSource,
       TxSubmission2.conwayCodec,
       rules,
-      TxSubmission2Runtime.ClientSettings(settings.idleTimeout),
       finish,
       message => RuntimeViolation.TxSubmissionUnexpected(TxSubmission2.fromEngine(message))
     )
@@ -86,16 +77,14 @@ object TxSubmissionClient:
   def background[F[_]: cats.effect.Async](
       mux: Mux[F],
       source: Source[F],
-      settings: Settings = Settings(),
       role: Option[Mux.Role] = None
   ): cats.effect.Resource[F, Unit] =
-    backgroundFinishing(mux, source, settings, role).void
+    backgroundFinishing(mux, source, role).void
 
   /** As [[background]], and the client can be asked to end ([[Running.finish]]). */
   def backgroundFinishing[F[_]: cats.effect.Async](
       mux: Mux[F],
       source: Source[F],
-      settings: Settings = Settings(),
       role: Option[Mux.Role] = None
   ): cats.effect.Resource[F, Running[F]] =
     import cats.effect.syntax.all.*
@@ -108,7 +97,7 @@ object TxSubmissionClient:
           .scoped[F, NetworkError, Boolean](NetworkError.Defect(_))(
             role
               .fold(mux.channel(Protocols.TxSubmission2))(mux.channel(Protocols.TxSubmission2, _))
-              .flatMap(run(_, source, settings, Some(asked.get)))
+              .flatMap(run(_, source, Some(asked.get)))
               .as(true)
           )
           .flatMap(_.fold(error => mux.abort(error).as(false), F.pure))

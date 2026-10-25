@@ -173,7 +173,10 @@ class UpstreamBlockFetchBehaviorSuite extends FailsOnUncaught:
                           payloadCodec,
                           (from, to) => Right((from, to)),
                           BlockFetchRuntime
-                            .ServerSettings(maxBlocks = 128, idleTimeout = 10.seconds)
+                            .ServerSettings(
+                              maxBlocks = 128,
+                              idle = ProtocolDeadline.After(10.seconds)
+                            )
                         )
                     }
                     .start

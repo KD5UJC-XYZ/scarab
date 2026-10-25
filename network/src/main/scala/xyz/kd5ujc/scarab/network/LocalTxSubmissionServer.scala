@@ -9,7 +9,6 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.LocalTxSubmission
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
-import scala.concurrent.duration.*
 
 import NetworkError.RuntimeViolation
 
@@ -38,12 +37,9 @@ object LocalTxSubmissionServer:
       case ConnectionClosed(error)   => error.message
       case ServiceUnavailable(error) => s"service unavailable: ${error.message}"
 
-  final case class Settings(idleTimeout: FiniteDuration = 3373.seconds)
-
   def run[F[_]: Temporal](
       channel: MuxChannel[F],
-      submit: Bytes => F[Response],
-      settings: Settings = Settings()
+      submit: Bytes => F[Response]
   )(using Raise[F, NetworkError]): F[Option[Unavailable]] =
     val id = Protocols.LocalTxSubmission
     def illegal[A](detail: NetworkError.Violation): F[A] =
@@ -51,11 +47,9 @@ object LocalTxSubmissionServer:
     def send(state: LocalTxSubmission.State, message: LocalTxSubmission.Message): F[Unit] =
       LocalTxSubmission.encode(state, Role.Server, message).fold(illegal, channel.send)
     val step: F[Either[Unit, Option[Unavailable]]] =
-      Timed
-        .within(settings.idleTimeout, id, "idle")(
-          channel.recv(LocalTxSubmission.MaxMessageBytes)(
-            LocalTxSubmission.decodePrefix(LocalTxSubmission.State.Idle, Role.Client, _)
-          )
+      channel
+        .recv(LocalTxSubmission.MaxMessageBytes)(
+          LocalTxSubmission.decodePrefix(LocalTxSubmission.State.Idle, Role.Client, _)
         )
         .flatMap {
           case LocalTxSubmission.Message.SubmitTx(tx) =>
@@ -76,8 +70,7 @@ object LocalTxSubmissionServer:
   def accept[F[_]: cats.effect.Async](
       bearer: Bearer[F],
       magic: Long,
-      submit: Bytes => F[Response],
-      settings: Settings = Settings()
+      submit: Bytes => F[Response]
   )(using Raise[F, NetworkError]): F[End] =
     Mux
       .resource(
@@ -93,6 +86,7 @@ object LocalTxSubmissionServer:
               HandshakeServer.run(
                 _,
                 HandshakeServer.localOffers(magic),
+                timeout = ProtocolDeadline.Unbounded,
                 suite = xyz.kd5ujc.scarab.protocol.Handshake.Suite.NodeToClient
               )
             )
@@ -104,7 +98,7 @@ object LocalTxSubmissionServer:
             .race(
               Fibers.scoped[F, NetworkError, Option[Unavailable]](
                 NetworkError.fromThrowable("local-tx-submission", _)
-              )(run(channel, submit, settings)),
+              )(run(channel, submit)),
               mux.closed
             )
           reason <- ended.fold(

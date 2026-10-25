@@ -5,7 +5,6 @@ import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
-import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.protocol.{NetworkError, ProtocolError, TxSubmission2Engine}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 
@@ -40,15 +39,8 @@ private[network] object TxSubmission2Runtime:
     def bodies(unacked: Vector[I], ids: Vector[I]): Either[RuleError, Unit]
     def offers(ids: Vector[I], requested: Int): Either[RuleError, Unit]
 
-  final case class ClientSettings(idleTimeout: FiniteDuration = 3373.seconds)
-
-  /** @param initTimeout
-    *   The reference blocks indefinitely in StInit. A local deployment may opt into a bound.
-    */
   final case class ServerSettings(
       idsPerRequest: Int = 3,
-      bodiesTimeout: FiniteDuration = TxSubmissionPolicy.ShortWait,
-      initTimeout: Option[FiniteDuration] = None,
       maxTxToRequest: Int = 8,
       maxUnacked: Int = TxSubmissionPolicy.MaxUnacknowledged
   )
@@ -70,7 +62,6 @@ private[network] object TxSubmission2Runtime:
       source: Source[F, I, B],
       codec: Codec[I, B],
       rules: Rules[I],
-      settings: ClientSettings,
       finish: Option[F[Unit]],
       unexpected: Message[I, B] => NetworkError.Violation
   )(using Raise[F, NetworkError]): F[Unit] =
@@ -89,9 +80,15 @@ private[network] object TxSubmission2Runtime:
           channel.send
         )
     def receive(state: State): F[Message[I, B]] =
-      Timed.within(settings.idleTimeout, protocol, state.toString)(
-        channel.recv(codec.maxMessageBytes(state))(codec.decodePrefix(state, Role.Server, _))
-      )
+      TxSubmissionPolicy
+        .timeLimit(state)
+        .fold(
+          channel.recv(codec.maxMessageBytes(state))(codec.decodePrefix(state, Role.Server, _))
+        )(duration =>
+          Timed.within(duration, protocol, state.toString)(
+            channel.recv(codec.maxMessageBytes(state))(codec.decodePrefix(state, Role.Server, _))
+          )
+        )
     def offers(held: Vector[Held[I]]): F[Vector[TxSubmission2Engine.Offer[I]]] =
       held.traverse(h =>
         codec
@@ -175,18 +172,18 @@ private[network] object TxSubmission2Runtime:
         NetworkError.IllegalTransition(protocol, violation).raise[F, A]
     def send(state: State, message: Message[I, B]): F[Unit] =
       codec.encode(state, Role.Server, message).fold(error => illegal(error), channel.send)
-    def receive(state: State, limit: Option[FiniteDuration]): F[Message[I, B]] =
+    def receive(state: State): F[Message[I, B]] =
       val read =
         channel.recv(codec.maxMessageBytes(state))(codec.decodePrefix(state, Role.Client, _))
-      limit
-        .orElse(TxSubmissionPolicy.timeLimit(state))
+      TxSubmissionPolicy
+        .timeLimit(state)
         .fold(read)(duration => Timed.within(duration, protocol, state.toString)(read))
     def fetch(wanted: Vector[I]): F[Unit] =
       if wanted.isEmpty then F.unit
       else
         wanted.grouped(settings.maxTxToRequest.min(codec.maxBatch)).toVector.traverse_ { group =>
           send(State.Idle, TxSubmission2Engine.Message.RequestTxs(group)) *>
-            receive(State.Txs, Some(settings.bodiesTimeout)).flatMap {
+            receive(State.Txs).flatMap {
               case TxSubmission2Engine.Message.ReplyTxs(originals) =>
                 originals
                   .traverse(original =>
@@ -207,7 +204,7 @@ private[network] object TxSubmission2Runtime:
       // Request counts are UInt16 and independent of reply-list batch ceilings.
       val request = settings.idsPerRequest.min(settings.maxUnacked)
       send(State.Idle, TxSubmission2Engine.Message.RequestIds(true, ack, request)) *>
-        receive(State.Ids(true), None).flatMap {
+        receive(State.Ids(true)).flatMap {
           case TxSubmission2Engine.Message.ReplyIds(offers) =>
             rules.offers(offers.map(_.transactionId), request).fold(illegal, F.pure) *>
               offers
@@ -224,7 +221,7 @@ private[network] object TxSubmission2Runtime:
     validateServerSettings(settings, codec).fold(
       error => illegal(error),
       _ =>
-        receive(State.Init, settings.initTimeout).flatMap {
+        receive(State.Init).flatMap {
           case TxSubmission2Engine.Message.Init => loop(0)
           case other                            => illegal(unexpected(other))
         }
