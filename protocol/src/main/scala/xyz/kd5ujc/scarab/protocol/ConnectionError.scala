@@ -8,6 +8,11 @@ enum ConnectionError extends DomainError:
   /** The hard limit of accepted (inbound) connections is reached. */
   case InboundLimit(remote: String, limit: Int)
 
+  /** The per-address limit of accepted connections from one IP address is reached. The reference
+    * has none; see ADR 0008.
+    */
+  case AddressLimit(remote: String, limit: Int)
+
   /** The limit of connections we open is reached. */
   case OutboundLimit(remote: String, limit: Int)
 
@@ -20,6 +25,8 @@ enum ConnectionError extends DomainError:
   def message: String = this match
     case InboundLimit(r, l) =>
       s"refused inbound connection from $r: $l connections accepted already"
+    case AddressLimit(r, l) =>
+      s"refused inbound connection from $r: $l connections from that address already"
     case OutboundLimit(r, l)    => s"refused outbound connection to $r: $l connections open already"
     case AlreadyConnected(r, s) => s"already connected to $r ($s)"
     case IllegalTransition(r, p) => s"$r: ${p.message}"

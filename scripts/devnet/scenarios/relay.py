@@ -31,7 +31,10 @@ def start_scala_relay(args, root, peers):
     sock.mkdir(exist_ok=True)
     sock.chmod(0o777)
     program = ["follow", "--genesis-dir", "/genesis", "--query-port", str(QUERY_PORT),
-               "--listen", f"127.0.0.1:{SCALA_PORT}", "--db", "/db", "--local-socket", "/sock/node.socket"]
+               "--listen", f"127.0.0.1:{SCALA_PORT}", "--db", "/db", "--local-socket", "/sock/node.socket",
+               # this scenario checks that the node follows the relay over the relay's inbound connection;
+               # the flag is off by default
+               "--inbound-sync", "on"]
     if getattr(args, "consensus_mode", None) == "GenesisMode":
         program += trusted_pools(root, peers)
     else:

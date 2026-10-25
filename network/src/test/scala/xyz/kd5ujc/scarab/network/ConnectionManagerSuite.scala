@@ -148,6 +148,35 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
     }
   }
 
+  test(
+    "accepted connections are counted per IP address, across ports, and released slots free it"
+  ) {
+    val limits = ConnectionManager.Limits(maxInbound = 10, maxInboundPerAddress = 2)
+    def at(host: Int, port: Int): SocketAddress[IpAddress] =
+      SocketAddress(IpAddress.fromString(s"10.0.0.$host").get, Port.fromInt(port).get)
+    managed(limits) { cm =>
+      def attempt(
+          r: Handle[IO, ConnectionError] ?=> Resource[IO, Connection[IO]]
+      ): IO[Option[ConnectionError]] =
+        Handle
+          .allow[ConnectionError](r.use(_ => IO.unit).as(Option.empty[ConnectionError]))
+          .rescue(e => IO.pure(Some(e)))
+      (cm.inbound(at(1, 5001)), cm.inbound(at(1, 5002))).tupled
+        .use { _ =>
+          for
+            same <- attempt(cm.inbound(at(1, 5003)))
+            other <- attempt(cm.inbound(at(2, 5001)))
+            outbound <- attempt(cm.outbound(at(1, 3001)))
+          yield (same, other, outbound)
+        }
+        .flatMap(refused => attempt(cm.inbound(at(1, 5003))).map(refused -> _))
+    }.map { r =>
+      val ((same, other, outbound), again) = result(r)
+      assertEquals(same, Some(ConnectionError.AddressLimit(at(1, 5003).toString, 2)))
+      assertEquals((other, outbound, again), (None, None, None))
+    }
+  }
+
   test("a failing or cancelled owner still releases the connection") {
     managed() { cm =>
       for

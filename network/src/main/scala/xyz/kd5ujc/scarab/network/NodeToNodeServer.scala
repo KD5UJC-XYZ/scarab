@@ -34,12 +34,18 @@ object NodeToNodeServer:
     * @param offerPeerSharing
     *   Take part in peer sharing: offered in the handshake; the connection does if the peer does
     *   too.
+    * @param protocolIdleTimeout
+    *   How long an accepted connection may stay without a byte on any remote-initiated
+    *   mini-protocol after the handshake: `defaultProtocolIdleTimeout = 5` in ouroboros-network
+    *   2fb69829 `Ouroboros/Network/ConnectionManager/Core.hs`, armed as `registerDelay idleTimeout`
+    *   by the inbound governor when it starts an accepted connection (`InboundGovernor.hs`).
     * @param maxVersion
     *   The highest node-to-node version accepted: the latest release unless the configuration
     *   enables experimental protocols.
     */
   final case class Settings(
       handshakeTimeout: FiniteDuration = Handshake.DefaultPhaseTimeout,
+      protocolIdleTimeout: FiniteDuration = 5.seconds,
       mux: Mux.Config = Mux.Config(role = Mux.Role.Responder),
       duplex: Boolean = true,
       chainSync: ChainSyncServer.Settings = ChainSyncServer.Settings(),
@@ -119,6 +125,27 @@ object NodeToNodeServer:
         }
     yield ()
 
+  /** The initial idle window of the reference's inbound governor: end the connection with
+    * [[NetworkError.ProtocolIdleTimeout]] unless a remote-initiated mini-protocol sends a byte
+    * within `after`. The reference arms the timer again (`WaitIdleRemote`) when the last responder
+    * terminates; this port covers the first window only, the one a connection that never speaks
+    * holds a slot for.
+    */
+  private[network] def idleWatch[F[_]: Async](
+      mux: Mux[F],
+      after: FiniteDuration
+  ): Resource[F, Unit] =
+    Fibers
+      .scoped[F, NetworkError, Boolean](t => NetworkError.fromThrowable("protocol-idle", t))(
+        Async[F].race(mux.awaitResponderActivity, Async[F].sleep(after)).map(_.isRight)
+      )
+      .flatMap {
+        case Left(reason) => mux.abort(reason)
+        case Right(idle)  => mux.abort(NetworkError.ProtocolIdleTimeout(after)).whenA(idle)
+      }
+      .background
+      .void
+
   /** An inbound connection: negotiate, serve, and return the reason it ended. `negotiated` runs
     * once the handshake succeeded and may use the multiplexer (a duplex connection also carries our
     * clients, see [[Mux.Config.duplex]]).
@@ -155,7 +182,7 @@ object NodeToNodeServer:
             settings,
             agreed.data.peerSharing,
             initiators = !agreed.data.initiatorOnly
-          ) *> negotiated(agreed, mux)
+          ) *> idleWatch(mux, settings.protocolIdleTimeout) *> negotiated(agreed, mux)
         ).surround(mux.closed)
         result <- reason match
           case defect: NetworkError.Defect => defect.raise[F, ConnectionEnd]

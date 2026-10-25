@@ -42,7 +42,7 @@ class MuxEgressSuite extends FailsOnUncaught:
           .resource(
             bearer,
             Set(2, 3),
-            Mux.Config(duplex = true, maxSduPayload = 2, egressQueueMessages = 8)
+            Mux.Config(duplex = true, maxSduPayload = 2, egressBufferBytes = 64)
           )
           .use { mux =>
             for
@@ -116,7 +116,7 @@ class MuxEgressSuite extends FailsOnUncaught:
     yield ()
 
   test(
-    "staged messages retain admission credits and cancelled waiters neither send nor leak credit"
+    "a lane budget is soft, per lane and released per SDU; cancelled waiters neither send nor leak"
   ):
     for
       entered <- Deferred[IO, Unit]
@@ -125,6 +125,7 @@ class MuxEgressSuite extends FailsOnUncaught:
       cancel <- Deferred[IO, Unit]
       cancelled <- Deferred[IO, Unit]
       replacement <- Deferred[IO, Unit]
+      otherLane <- Deferred[IO, Unit]
       trace <- Ref.of[IO, Vector[WireMux.Sdu]](Vector.empty)
       bearer = new Bearer[IO]:
         def reads = Stream.never[IO]
@@ -138,24 +139,23 @@ class MuxEgressSuite extends FailsOnUncaught:
           wait *> trace.update(_ :+ sdu)
       clock <- TestControl.execute(Peers.typed {
         Mux
-          .resource(bearer, Set(2, 3), Mux.Config(maxSduPayload = 2, egressQueueMessages = 1))
+          .resource(bearer, Set(2, 3), Mux.Config(maxSduPayload = 2, egressBufferBytes = 4))
           .use { mux =>
             for
               bulk <- mux.channel(2)
               control <- mux.channel(3)
+              // six bytes on an empty lane: the soft limit admits one message past it
               _ <- bulk.send(hex("000102030405"))
               _ <- entered.get
-              _ <- bulk.send(hex("0607"))
-              result <- Resource.make(Peers.typed(control.send(hex("0809"))).start)(_.cancel).use {
-                waiting =>
-                  for
-                    _ <- cancel.get *> waiting.cancel *> cancelled.complete(())
-                    _ <- control.send(hex("0a0b")) *> replacement.complete(())
-                    _ <- bulk.flush
-                    written <- trace.get
-                  yield written
-              }
-            yield result
+              waiting <- Peers.typed(bulk.send(hex("0607"))).start
+              _ <- cancel.get *> waiting.cancel *> cancelled.complete(())
+              // another lane is not held back by the full one
+              _ <- control.send(hex("0a0b")) *> otherLane.complete(())
+              _ <- Peers.typed(bulk.send(hex("0809")) *> replacement.complete(()).void).start
+              _ <- replacement.get
+              _ <- bulk.flush
+              written <- trace.get
+            yield written
           }
       })
       _ <- Resource
@@ -169,17 +169,15 @@ class MuxEgressSuite extends FailsOnUncaught:
             _ <- c.tick
             _ <- cancel.complete(()) *> c.tick
             stopped <- cancelled.tryGet
+            other <- otherLane.tryGet
             before <- replacement.tryGet
             _ <- first.complete(()) *> c.tick
-            staged <- replacement.tryGet
+            partly <- replacement.tryGet
             _ <- IO {
               assertEquals(stopped, Some(()))
+              assertEquals(other, Some(()))
               assertEquals(before, None)
-              assertEquals(
-                staged,
-                None,
-                "draining the inbox into staged work must not free capacity"
-              )
+              assertEquals(partly, None, "four bytes are still buffered after one SDU")
             }
             _ <- second.complete(()) *> c.tickAll
             admitted <- replacement.tryGet
@@ -188,12 +186,12 @@ class MuxEgressSuite extends FailsOnUncaught:
               assertEquals(
                 admitted,
                 Some(()),
-                "the cancelled waiter did not retain an admission credit"
+                "the lane drained below its limit after the second SDU"
               )
               val written = result.fold(e => fail(e.message), identity)
               assertEquals(
                 written.filter(_.protocol == 2).foldLeft(Bytes.empty)(_ ++ _.payload),
-                hex("0001020304050607")
+                hex("0001020304050809")
               )
               assertEquals(written.filter(_.protocol == 3).map(_.payload), Vector(hex("0a0b")))
             }
@@ -201,8 +199,10 @@ class MuxEgressSuite extends FailsOnUncaught:
         }
     yield ()
 
-  test("negative queue capacity is rejected instead of constructing a zero-credit outbox"):
-    IO.defer(MuxEgress.create[IO](-1, 2)).attempt.map {
+  test(
+    "a non-positive lane budget is rejected instead of constructing an outbox that admits nothing"
+  ):
+    IO.defer(MuxEgress.create[IO](-1L, 2)).attempt.map {
       case Left(_: IllegalArgumentException) => ()
-      case other => fail(s"expected the concurrency primitive's capacity rejection: $other")
+      case other                             => fail(s"expected the budget rejection: $other")
     }

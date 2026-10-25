@@ -167,7 +167,7 @@ class UpstreamMuxLifecycleSuite extends FailsOnUncaught:
                 def write(bytes: Chunk[Byte]) =
                   (writing.complete(()) *> IO.never).guarantee(writerStopped.complete(()).void)
                 def close = IO.unit
-              result <- Mux.resource(bearer, Set(1, 2), Mux.Config(egressQueueMessages = 1)).use {
+              result <- Mux.resource(bearer, Set(1, 2), Mux.Config(egressBufferBytes = 2)).use {
                 mux =>
                   for
                     a <- mux.channel(1)

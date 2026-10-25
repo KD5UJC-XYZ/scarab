@@ -162,9 +162,11 @@ Each turn writes one complete SDU; a lane's later messages remain behind its cur
 A newly admitted lane joins the rotation, including while another lane has a large message in flight.
 There is no control-protocol priority rule or reproduction of Haskell's exact thread schedule.
 
-A semaphore covers queued, staged and current work. A credit transfers atomically to the writer
-when submission commits and returns only after the last SDU of that message is written. Cancellation
-while waiting for admission retains no credit. A flush marker also holds a credit: the writer stops
+Admission is a soft byte budget per lane (`egressBufferBytes`, 0x3ffff, the reference's
+`egressSoftBufferLimit` in `network-mux/src/Network/Mux.hs`): `send` is queued while fewer bytes than the
+limit are buffered on its lane, so one message may pass the limit, and later senders on that lane wait in
+arrival order. Bytes are released as each SDU is written. Cancellation while waiting for admission retains
+nothing; once admitted the message stays queued. A flush marker is not counted: the writer stops
 importing at that marker, fairly drains its finite predecessor set, acknowledges it, then admits
 later commands to the rotation. Thus a live `flush` covers every earlier submission across lanes,
 without waiting for later traffic. Existing abort wakeups and first typed close reasons are retained.

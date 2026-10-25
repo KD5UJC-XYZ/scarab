@@ -136,8 +136,9 @@ final class InboundGovernor[F[_]: Async] private (
   def serve(bearer: Bearer[F], remote: SocketAddress[IpAddress]): F[ConnectionEnd] =
     Handle
       .allow[ConnectionError] {
-        // a connection we opened is initiator-only: the peer can read our chain only over a
-        // connection it opens itself, so ours never refuses its inbound one
+        // a connection we opened to the peer is where our clients run unless inbound sync is on
+        // and this connection agrees duplex; its inbound connection serves our chain to it and so
+        // does not conflict with ours
         manager.inbound(remote, alongsideOutbound = true).use { connection =>
           emit(remote, InboundEvent.Accepted) *>
             Handle

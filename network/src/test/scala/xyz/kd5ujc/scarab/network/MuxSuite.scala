@@ -186,11 +186,11 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
       case Left(e) => fail(e.message)
     }
 
-  test("a sender waits for room in the egress queue while the bearer is not read"):
+  test("a sender waits for room in the lane budget while the bearer is not read"):
     typed {
       Bearer.inMemory[IO](1).flatMap { (ours, _) =>
         Mux
-          .resource(ours, Set(2), Mux.Config(maxSduPayload = 10, egressQueueMessages = 2))
+          .resource(ours, Set(2), Mux.Config(maxSduPayload = 10, egressBufferBytes = 20))
           .use { mux =>
             for
               c <- mux.channel(2)

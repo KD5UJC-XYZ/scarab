@@ -523,7 +523,7 @@ object Peer:
     case NetworkError.MuxSetup(cause) => Fault.Failed(PeerError.MuxSetup(cause))
     case NetworkError.MuxWrite(cause) => Fault.Failed(PeerError.MuxWrite(cause))
     case cause: (NetworkError.Connect | NetworkError.Timeout | NetworkError.SduTimeout |
-          NetworkError.BearerClosed) =>
+          NetworkError.ProtocolIdleTimeout | NetworkError.BearerClosed) =>
       Fault.Failed(PeerError.Unavailable(PeerError.Unavailability.Network(cause)))
     case cause: (NetworkError.HandshakeRefused | NetworkError.VersionMismatch) =>
       Fault.Failed(PeerError.Handshake(cause))

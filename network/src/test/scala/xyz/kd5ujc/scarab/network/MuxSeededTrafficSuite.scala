@@ -125,7 +125,7 @@ class MuxSeededTrafficSuite extends FailsOnUncaught:
       duplex = true,
       maxSduPayload = value.sdu,
       ingressLimit = _ => (maxMessage * rounds).toLong,
-      egressQueueMessages = 2
+      egressBufferBytes = 2L * maxMessage
     )
     for
       toLeft <- Queue.bounded[IO, Option[Chunk[Byte]]](4)

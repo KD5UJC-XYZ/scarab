@@ -52,8 +52,8 @@ trait Connection[F[_]]:
   */
 trait ConnectionManager[F[_]]:
   /** Admit an accepted connection from `remote` (state `Unnegotiated`). With `alongsideOutbound`
-    * the connection we opened to the same peer does not refuse it: we run no clients on inbound
-    * connections (`--inbound-sync off`), so the outbound one stays the source.
+    * the connection we opened to the same peer does not refuse it: the caller runs no clients of
+    * its own on this one (inbound sync off, the default), so the outbound one stays the source.
     */
   def inbound(remote: SocketAddress[IpAddress], alongsideOutbound: Boolean = false)(using
       Raise[F, ConnectionError]
@@ -76,7 +76,18 @@ object ConnectionManager:
   /** A connection is known by the peer's address and the direction it was made in. */
   type Key = (SocketAddress[IpAddress], Provenance)
 
-  final case class Limits(maxInbound: Int = 64, maxOutbound: Int = 64)
+  /** @param maxInbound
+    *   The hard limit of accepted connections (the reference's `AcceptedConnectionsLimit` hard
+    *   limit, `Server/RateLimiting.hs`; its default is 512, see #339).
+    * @param maxInboundPerAddress
+    *   The most live accepted connections from one IP address. The reference has no such limit; a
+    *   local addition, with its reason in ADR 0008.
+    */
+  final case class Limits(
+      maxInbound: Int = 64,
+      maxOutbound: Int = 64,
+      maxInboundPerAddress: Int = 8
+  )
 
   final case class Live[F[_]](
       remote: SocketAddress[IpAddress],
@@ -211,6 +222,12 @@ object ConnectionManager:
               (m, Left(ConnectionError.AlreadyConnected(remote.toString, taken.get.state)))
             else if provenance == Provenance.Inbound && c.inbound >= limits.maxInbound then
               (m, Left(ConnectionError.InboundLimit(remote.toString, limits.maxInbound)))
+            else if provenance == Provenance.Inbound &&
+              m.iterator.count { (k, e) =>
+                k._2 == Provenance.Inbound && k._1.host == remote.host && e.state.isLive
+              } >= limits.maxInboundPerAddress
+            then
+              (m, Left(ConnectionError.AddressLimit(remote.toString, limits.maxInboundPerAddress)))
             else if provenance == Provenance.Outbound && c.outbound >= limits.maxOutbound then
               (m, Left(ConnectionError.OutboundLimit(remote.toString, limits.maxOutbound)))
             else

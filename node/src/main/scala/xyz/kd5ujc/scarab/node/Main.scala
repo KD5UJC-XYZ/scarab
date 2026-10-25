@@ -100,8 +100,8 @@ import scala.concurrent.duration.*
   * [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full]
   * [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds
   * N] [--stall-minutes N] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N]
-  * [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N]
-  * [--plutus-workers N] [--dump-state <dir> [--dump-state-at
+  * [--header-first on|off] [--max-inbound N] [--inbound-sync on|off (default off)] [--cpu-threads
+  * N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at
   * <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket
   * <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
   *
@@ -334,7 +334,8 @@ object Main extends IOApp:
     *   The most inbound connections accepted at once (G2).
     * @param inboundSync
     *   Run our own clients on inbound duplex connections, so that the peer is a source of blocks as
-    *   well (G2).
+    *   well (G2). Off by default: the reference starts its clients only on connections its peer
+    *   governor chose, up to its targets (ADR 0008).
     * @param log
     *   `--log-*`: the log's sinks, thresholds and sampling ([[LogSettings]]).
     * @param roots
@@ -373,7 +374,7 @@ object Main extends IOApp:
       dumpStateFull: Boolean = false,
       headerFirst: Boolean = true,
       maxInbound: Int = 64,
-      inboundSync: Boolean = true,
+      inboundSync: Boolean = false,
       log: LogSettings = LogSettings.default,
       roots: Option[PeerNetwork.Roots] = None,
       churnInterval: Option[FiniteDuration] = None,
@@ -1717,7 +1718,7 @@ object Main extends IOApp:
             .fold(Right(64))(_.toIntOption.filter(_ > 0).toRight(invalid("max-inbound")))
           inboundSync <- flags
             .get("inbound-sync")
-            .fold(Right(true))(v =>
+            .fold(Right(false))(v =>
               Map("on" -> true, "off" -> false).get(v).toRight(invalid("inbound-sync"))
             )
           cpuThreads <- flags

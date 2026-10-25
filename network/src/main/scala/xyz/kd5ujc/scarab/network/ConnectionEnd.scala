@@ -22,4 +22,7 @@ object ConnectionEnd:
   def fromNetwork(error: NetworkError): ConnectionEnd = error match
     case NetworkError.BearerClosed(why) => Closed(why)
     case NetworkError.Defect(cause)     => Defect(cause)
-    case other                          => Failed(other)
+    // The reference releases an idle inbound connection (CommitTr in releaseInboundConnection):
+    // not a protocol failure of the peer.
+    case NetworkError.ProtocolIdleTimeout(_) => Released
+    case other                               => Failed(other)

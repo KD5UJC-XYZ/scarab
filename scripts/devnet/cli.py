@@ -8,6 +8,7 @@
     devnet.py compare              compare the Scala ledger with the reference at one block
     devnet.py soak [--seconds N]   up + follow + load + periodic compare, then a summary
     devnet.py peercut              up + the Scala node with two peers, one slow then silent mid-sync (issue 130)
+    devnet.py inbound-flood        up + the Scala node listening; one address opens silent inbound connections while another connects
     devnet.py governor             up + the Scala node with the three pools as public roots (one through a slow proxy),
                                    targets of 3/3/2 and churn every few seconds: the targets, the churn rounds, the
                                    demotion by the peer metrics, a silent peer lost and coming back (G1.2)
@@ -58,6 +59,7 @@ from .scenarios.e2e import CONWAY_EPOCHS, capture_eras, e2e
 from .scenarios.governor import governor
 from .scenarios.ntc import ntc
 from .scenarios.peercut import peercut
+from .scenarios.inbound_flood import inbound_flood
 from .scenarios.pool import kes_rotate_scenario, pool
 from .scenarios.relay import relay
 from .scenarios.peer_sharing import peer_sharing
@@ -213,6 +215,12 @@ def main():
     pc.add_argument("--stall-minutes", type=int, default=1, help="the node's --stall-minutes")
     pc.add_argument("--keep", action="store_true", help="leave the cluster running")
     pc.set_defaults(run=peercut)
+    fl = sub.add_parser("inbound-flood", parents=[scala_options],
+                        help="one address opens more silent inbound connections than the limit while another peer connects")
+    fl.add_argument("--connections", type=int, default=64, help="connections the flooding address opens")
+    fl.add_argument("--backlog-timeout", type=int, default=300, help="seconds the cluster may take to produce its first blocks")
+    fl.add_argument("--keep", action="store_true", help="leave the cluster running")
+    fl.set_defaults(run=inbound_flood)
     gv = sub.add_parser("governor", parents=[scala_options],
                         help="the peer governor with churn and the peer metrics against the three pools (G1.2)")
     gv.add_argument("--backlog-blocks", type=int, default=60, help="let the pools grow to this block before the Scala node starts")

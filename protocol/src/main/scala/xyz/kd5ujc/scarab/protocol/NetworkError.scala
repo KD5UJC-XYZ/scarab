@@ -29,6 +29,12 @@ enum NetworkError extends DomainError:
   )
   case BearerClosed(reason: NetworkError.Closure)
 
+  /** An accepted connection stayed silent after its handshake for the protocol idle timeout: no
+    * remote-initiated mini-protocol sent a byte (ouroboros-network 2fb69829,
+    * `defaultProtocolIdleTimeout`).
+    */
+  case ProtocolIdleTimeout(after: scala.concurrent.duration.FiniteDuration)
+
   /** An unexpected library failure or bug of unknown origin; never a recoverable failure of the
     * peer. It stops the node at the owner's fatal boundary.
     */
@@ -68,7 +74,9 @@ enum NetworkError extends DomainError:
     case StateAcquireFailure(point, flushed, pinned, selected) =>
       s"${Protocols.name(Protocols.LocalStateQuery)} acquired UTxO view at $point with stamp $pinned; expected $flushed..$selected"
     case BearerClosed(r) => s"connection closed: ${r.message}"
-    case Defect(t)       => s"network defect: ${NetworkError.describe(t)}"
+    case ProtocolIdleTimeout(after) =>
+      s"no mini-protocol activity within ${after.toSeconds} s of the handshake"
+    case Defect(t) => s"network defect: ${NetworkError.describe(t)}"
     case DecoderDefect(p, t) =>
       s"${Protocols.name(p)} decoder defect: ${NetworkError.describe(t)}"
     case Framing(e)  => s"multiplexer framing: ${e.message}"

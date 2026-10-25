@@ -47,7 +47,6 @@ class BulkControlCharacterizationSuite extends FailsOnUncaught:
   private def run(load: Load, control: Boolean): IO[Observation] =
     for
       started <- IO.monotonic
-      admittedBulk <- Deferred[IO, Unit]
       enteredWriter <- Deferred[IO, Unit]
       release <- Deferred[IO, Unit]
       admittedPing <- Deferred[IO, Unit]
@@ -82,10 +81,7 @@ class BulkControlCharacterizationSuite extends FailsOnUncaught:
             assertEquals(from, Peers.point(1))
             assertEquals(to, Peers.point(load.blocks))
             assert(load.blocks <= maxBlocks)
-            Some(
-              Stream.emits(Vector.fill(load.blocks)(payload)) ++
-                Stream.exec(admittedBulk.complete(()).void)
-            )
+            Some(Stream.emits(Vector.fill(load.blocks)(payload)))
           }
       outcome <- Peers.typed {
         (
@@ -129,7 +125,9 @@ class BulkControlCharacterizationSuite extends FailsOnUncaught:
                 }
               }
               for
-                _ <- enteredWriter.get *> admittedBulk.get
+                // The writer holds the first SDU, so the bulk lane fills to its byte budget and its
+                // sender waits; the virtual sleep returns only once every other fiber is blocked.
+                _ <- enteredWriter.get *> IO.sleep(1.milli)
                 measurement <-
                   if control then
                     Resource.make(probe.start)(_.cancel).use { pending =>
@@ -187,7 +185,7 @@ class BulkControlCharacterizationSuite extends FailsOnUncaught:
         assert(mixed.result == Right(expected), summary(mixed))
         assert(bulk.finished > 60.seconds && bulk.finished < 120.seconds, summary(bulk))
         assert(mixed.finished > 60.seconds && mixed.finished < 120.seconds, summary(mixed))
-        assertEquals(mixed.admitted, Some(Duration.Zero))
+        assertEquals(mixed.admitted, Some(1.milli))
         val probe = mixed.probe.getOrElse(fail("control probe did not run"))
         assert(probe.result.isRight, probe.toString)
         assert(probe.finished < 5.seconds, probe.toString)

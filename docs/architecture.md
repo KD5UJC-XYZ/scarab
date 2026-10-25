@@ -825,10 +825,10 @@ terminating, and the counters.
 connection (the key is the address and the direction). `inbound(remote)` and `outbound(remote)` are
 `Resource`s: admission is atomic with the checks (one live connection per address and direction, and
 none in the other direction while our clients use it: an outbound connection waits for an inbound
-duplex one that runs our clients, and with `--inbound-sync off` the two coexist; an inbound
-connection is never refused because we have an outbound one, see below; `maxInbound` and
-`maxOutbound`), the
-refusals are typed (`ConnectionError.InboundLimit`, `OutboundLimit`, `AlreadyConnected`) and raised
+duplex one that runs our clients, and with `--inbound-sync off` (the default) the two coexist; an inbound
+connection is never refused because we have an outbound one, see below; `maxInbound`,
+`maxInboundPerAddress` and `maxOutbound`), the
+refusals are typed (`ConnectionError.InboundLimit`, `AddressLimit`, `OutboundLimit`, `AlreadyConnected`) and raised
 through `Raise`, and releasing the resource, however it ends (normally, by failure or by
 cancellation), always runs `Close` and `Released` and removes the entry, so the accounting cannot
 leak. Every change of state is reported (`ConnectionEvent`, logged as `connection` lines);
@@ -839,7 +839,7 @@ dial (the limits still apply).
 
 **`InboundGovernor`** (`node`). `serve(bearer, remote)` is the inbound handler of `--listen`: it
 admits the connection to the manager, runs `NodeToNodeServer.accept` (handshake, our servers) and,
-when the handshake agreed duplex and `--inbound-sync` is on, starts in the `negotiated` hook the
+when the handshake agreed duplex and `--inbound-sync on` was given (the default is off), starts in the `negotiated` hook the
 same pieces that run on a connection we open: `NodeToNode.clients` (ChainSync, BlockFetch,
 KeepAlive and the TxSubmission2 client on the side of the mini-protocols that is ours), then
 `Peer.over` (the pipelined producer, header-first validation, ranges of blocks) and the follower

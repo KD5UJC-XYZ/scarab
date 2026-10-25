@@ -49,8 +49,9 @@ trait MuxChannel[F[_]]:
   * [[NetworkError.IngressLimit]] (the reference's `IngressQueueOverRun`). What slows a fast peer
   * down is the protocol, not the queue: a peer may only send what the protocol's state gives it
   * agency for, and pipelines no more than the window, so a well behaved peer stays within the limit
-  * however slowly we read. The writer's queue is bounded in messages and `send` waits for room in
-  * it, including staged work awaiting a later turn.
+  * however slowly we read. Egress is bounded in bytes per channel (mini-protocol and direction) by
+  * a soft limit, [[Mux.Config.egressBufferBytes]]: `send` waits while the channel has that many
+  * bytes queued or staged and not yet written, and one message may pass the limit.
   *
   * Both fibers end by completing [[closed]] with the typed reason, which the channels raise.
   */
@@ -100,6 +101,9 @@ object Mux:
     * @param ingressLimit
     *   The most unread bytes a mini-protocol may have queued, by protocol number (the node-to-node
     *   limits of the reference by default, [[IngressLimits]]).
+    * @param egressBufferBytes
+    *   The soft per-channel limit of bytes awaiting write: the reference's `egressSoftBufferLimit`
+    *   (network-mux `Network/Mux.hs`, `muxChannel`, ouroboros-network 2fb69829).
     * @param sduTimeout
     *   Reference ConnectionHandler.hs:94-102; idle between SDUs is indefinite.
     */
@@ -109,7 +113,7 @@ object Mux:
       maxSduPayload: Int = WireMux.WireMaxPayloadBytes,
       readChunkBytes: Int = 16384,
       ingressLimit: Int => Long = IngressLimits.nodeToNode(),
-      egressQueueMessages: Int = 64,
+      egressBufferBytes: Long = 0x3ffff,
       maxMessageBytes: Int = 2500000,
       sduTimeout: FiniteDuration = 30.seconds,
       handshakeSduTimeout: FiniteDuration = 10.seconds,
@@ -375,7 +379,7 @@ object Mux:
           .map(_.toMap)
       )
       outbound <- Resource.eval(
-        MuxEgress.create[F](config.egressQueueMessages, config.maxSduPayload)
+        MuxEgress.create[F](config.egressBufferBytes, config.maxSduPayload)
       )
       _ <- Resource.eval(
         WireMux.Decoder
