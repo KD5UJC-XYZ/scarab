@@ -19,6 +19,10 @@ work can be parked and resumed, and nothing goes stale silently.
 | Where is the code, and what covers it? | [codemap.md](codemap.md), generated from `docs/data/codemap.json` and `build.sbt` (CI checks it) | the change that moves a package, entry point or suite |
 | How fast and how large? | [performance.md](performance.md) | runs that measure |
 
+[questions.md](questions.md), [glossary.md](glossary.md) and the [playbooks](playbooks/README.md) are
+navigation, not sources of truth: they point to the documents above and to the code, and the change
+that moves what they point to updates them.
+
 Working notes, run logs and scratch analysis stay out of the repository (contributors keep them
 locally; the maintainer's sessions use the ignored `.workspace/` directory). What a reader needs
 later is distilled into one of the documents above.
