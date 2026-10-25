@@ -113,11 +113,9 @@ object BackendFailure:
     case _: LinkageError | _: VirtualMachineError => true
     case _                                        => false
 
-final case class ScriptFailure(cause: Throwable | Secp256k1.Error, logs: Vector[String]):
+final case class ScriptFailure(cause: Throwable, logs: Vector[String]):
   def message: String =
-    val detail = cause match
-      case error: Throwable       => Option(error.getMessage).getOrElse(error.getClass.getName)
-      case error: Secp256k1.Error => error.message
+    val detail = Option(cause.getMessage).getOrElse(cause.getClass.getName)
     if logs.isEmpty then detail else s"$detail; trace: ${logs.mkString(" | ")}"
 
 /** Why a script did not validate. */

@@ -11,10 +11,7 @@ import xyz.kd5ujc.scarab.plutus.*
   * retain their original typed payload.
   */
 object ReplayTrace:
-  enum ScriptCause:
-    case Native(kind: Class[? <: Throwable], diagnostic: Option[String])
-    case Secp(error: Secp256k1.Error)
-    case SecpDefect(kind: Class[? <: Throwable], diagnostic: Option[String])
+  final case class ScriptCause(kind: Class[? <: Throwable], diagnostic: Option[String])
 
   enum Failure:
     case Evaluator(reason: EvalFailure)
@@ -23,12 +20,7 @@ object ReplayTrace:
   object Failure:
     def from(reason: EvalFailure): Failure = reason match
       case EvalFailure.Script(ScriptFailure(cause, traces)) =>
-        val identity = cause match
-          case error: Throwable => ScriptCause.Native(error.getClass, Option(error.getMessage))
-          case Secp256k1.Error.Defect(error) =>
-            ScriptCause.SecpDefect(error.getClass, Option(error.getMessage))
-          case error: Secp256k1.Error => ScriptCause.Secp(error)
-        Script(identity, traces)
+        Script(ScriptCause(cause.getClass, Option(cause.getMessage)), traces)
       case other => Evaluator(other)
 
   enum Result:

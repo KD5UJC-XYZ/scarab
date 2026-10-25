@@ -3,8 +3,12 @@ package xyz.kd5ujc.scarab.plutus
 
 import scalus.crypto.jni.Secp256k1 as NativeSecp256k1
 
-/** The meaning of the Plutus builtin `verifyEcdsaSecp256k1Signature` as the reference defines it
-  * (`PlutusCore.Crypto.Secp256k1` over `Cardano.Crypto.DSIGN.EcdsaSecp256k1` and libsecp256k1):
+/** A test model of the Plutus builtin `verifyEcdsaSecp256k1Signature` as the reference defines it
+  * (`verifyEcdsaSecp256k1Signature`, `plutus-core/src/PlutusCore/Crypto/Secp256k1.hs` lines 53-62
+  * at plutus 1.70.0.0, `507cab8c`, over `Cardano.Crypto.DSIGN.EcdsaSecp256k1` and libsecp256k1).
+  * Since Scalus 1.4.0 the evaluator runs the builtin of the vendor unchanged (ADR 0020); this model
+  * is kept only so that the secp256k1 suites check the production builtin against an independent
+  * statement of the reference's rules:
   *
   *   - the key is 33 bytes and parses as a compressed point (`secp256k1_ec_pubkey_parse`), the
   *     message is 32 bytes, the signature is 64 bytes and parses as compact `r || s`
@@ -14,10 +18,9 @@ import scalus.crypto.jni.Secp256k1 as NativeSecp256k1
   *     `False` for `r = 0` or `s = 0` (they parse), and for a high `s` (above `n / 2`), because
   *     libsecp256k1 verifies only normalised signatures and Plutus does not normalise.
   *
-  * Scalus 1.2.0 and 1.3.0 fail on `r = 0` or `s = 0` where the reference answers `False`; the
+  * Scalus 1.2.0 and 1.3.0 failed on `r = 0` or `s = 0` where the reference answers `False`; the
   * preprod transaction 97b31e35 (block 3,498,869) passes an all-zero signature and the chain
-  * accepts the answer `False`. Failures are typed values; the Scalus callback adapter retains them
-  * in its evaluation log.
+  * accepts the answer `False`. Failures are typed values.
   */
 object Secp256k1:
   /** The order `n` of the secp256k1 group. */
