@@ -1,0 +1,3707 @@
+[
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body input id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body input id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body output address: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body output address: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 42 \"expected string\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body auxiliary data hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body auxiliary data hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 89 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body withdrawal account: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body withdrawal account: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 90 \"expected string\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body stake registration credential: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body stake registration credential: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 94 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body stake delegation pool id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body stake delegation pool id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 124 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body pool retirement pool id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body pool retirement pool id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 92 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body pool registration operator: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body pool registration operator: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 92 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body pool registration vrf key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body pool registration vrf key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 122 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body pool registration reward account: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body pool registration reward account: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 167 \"expected string\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body pool registration owner: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body pool registration owner: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 199 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body pool registration metadata hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body pool registration metadata hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 266 \"expected string\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body genesis delegation genesis key: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body genesis delegation genesis key: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 92 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body genesis delegation delegate: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body genesis delegation delegate: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 122 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body genesis delegation vrf key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body genesis delegation vrf key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 152 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body instantaneous reward credential: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body instantaneous reward credential: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 97 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body update genesis key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body update genesis key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 91 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses vkey: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses vkey: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxWits\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses signature: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses signature: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxWits\" (DeserialiseFailure 38 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses native script key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses native script key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxWits\" (DeserialiseFailure 5 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses bootstrap vkey: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses bootstrap vkey: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxWits\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses bootstrap signature: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses bootstrap signature: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxWits\" (DeserialiseFailure 38 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses bootstrap chain code: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses bootstrap chain code: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxWits\" (DeserialiseFailure 104 \"expected string\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses bootstrap attributes: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses bootstrap attributes: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxWits\" (DeserialiseFailure 138 \"expected string\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body input id: two chunks",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body input id: an empty chunk before the bytes",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body input id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body input id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body output address: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body output address: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 42 \"expected string\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body auxiliary data hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body auxiliary data hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 85 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body withdrawal account: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body withdrawal account: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 86 \"expected string\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body stake registration credential: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body stake registration credential: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 90 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body stake delegation pool id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body stake delegation pool id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 120 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body pool retirement pool id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body pool retirement pool id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 88 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body pool registration operator: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body pool registration operator: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 88 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body pool registration vrf key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body pool registration vrf key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 118 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body pool registration reward account: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body pool registration reward account: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 163 \"expected string\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body pool registration owner: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body pool registration owner: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 195 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body pool registration metadata hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body pool registration metadata hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 262 \"expected string\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body genesis delegation genesis key: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body genesis delegation genesis key: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 88 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body genesis delegation delegate: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body genesis delegation delegate: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 118 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body genesis delegation vrf key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body genesis delegation vrf key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 148 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body instantaneous reward credential: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body instantaneous reward credential: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 93 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body update genesis key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body update genesis key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 87 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses vkey: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses vkey: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxWits\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses signature: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses signature: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxWits\" (DeserialiseFailure 38 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses native script key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses native script key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxWits\" (DeserialiseFailure 5 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses bootstrap vkey: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses bootstrap vkey: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxWits\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses bootstrap signature: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses bootstrap signature: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxWits\" (DeserialiseFailure 38 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses bootstrap chain code: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses bootstrap chain code: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxWits\" (DeserialiseFailure 104 \"expected string\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses bootstrap attributes: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses bootstrap attributes: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxWits\" (DeserialiseFailure 138 \"expected string\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body input id: two chunks",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body input id: an empty chunk before the bytes",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body input id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body input id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body output address: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body output address: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 42 \"expected string\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body auxiliary data hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body auxiliary data hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 85 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body withdrawal account: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body withdrawal account: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 86 \"expected string\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body stake registration credential: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body stake registration credential: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 90 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body stake delegation pool id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body stake delegation pool id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 120 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body pool retirement pool id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body pool retirement pool id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 88 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body pool registration operator: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body pool registration operator: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 88 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body pool registration vrf key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body pool registration vrf key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 118 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body pool registration reward account: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body pool registration reward account: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 163 \"expected string\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body pool registration owner: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body pool registration owner: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 195 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body pool registration metadata hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body pool registration metadata hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 262 \"expected string\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body genesis delegation genesis key: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body genesis delegation genesis key: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 88 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body genesis delegation delegate: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body genesis delegation delegate: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 118 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body genesis delegation vrf key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body genesis delegation vrf key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 148 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body instantaneous reward credential: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body instantaneous reward credential: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 93 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body update genesis key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body update genesis key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 87 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body mint policy: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body mint policy: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 86 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body mint asset name: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body mint asset name: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 117 \"expected string\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body output value policy: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body output value policy: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 80 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body output value asset name: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body output value asset name: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 111 \"expected string\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses vkey: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses vkey: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxWits\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses signature: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses signature: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxWits\" (DeserialiseFailure 38 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses native script key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses native script key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxWits\" (DeserialiseFailure 5 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses bootstrap vkey: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses bootstrap vkey: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxWits\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses bootstrap signature: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses bootstrap signature: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxWits\" (DeserialiseFailure 38 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses bootstrap chain code: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses bootstrap chain code: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxWits\" (DeserialiseFailure 104 \"expected string\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses bootstrap attributes: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses bootstrap attributes: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxWits\" (DeserialiseFailure 138 \"expected string\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body input id: two chunks",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body input id: an empty chunk before the bytes",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body input id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body input id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body output address: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body output address: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 42 \"expected string\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body auxiliary data hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body auxiliary data hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 85 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body withdrawal account: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body withdrawal account: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 86 \"expected string\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body stake registration credential: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body stake registration credential: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 90 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body stake delegation pool id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body stake delegation pool id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 120 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body pool retirement pool id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body pool retirement pool id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 88 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body pool registration operator: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body pool registration operator: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 88 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body pool registration vrf key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body pool registration vrf key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 118 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body pool registration reward account: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body pool registration reward account: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 163 \"expected string\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body pool registration owner: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body pool registration owner: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 195 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body pool registration metadata hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body pool registration metadata hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 262 \"expected string\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body genesis delegation genesis key: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body genesis delegation genesis key: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 88 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body genesis delegation delegate: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body genesis delegation delegate: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 118 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body genesis delegation vrf key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body genesis delegation vrf key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 148 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body instantaneous reward credential: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body instantaneous reward credential: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 93 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body update genesis key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body update genesis key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 87 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body mint policy: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body mint policy: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 86 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body mint asset name: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body mint asset name: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 117 \"expected string\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body output value policy: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body output value policy: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 80 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body output value asset name: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body output value asset name: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 111 \"expected string\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body script data hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body script data hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 85 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body required signer: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body required signer: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 86 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body collateral input id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body collateral input id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 87 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body output datum hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body output datum hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 78 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses vkey: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses vkey: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxWits\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses signature: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses signature: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxWits\" (DeserialiseFailure 38 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses native script key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses native script key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxWits\" (DeserialiseFailure 5 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses bootstrap vkey: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses bootstrap vkey: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxWits\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses bootstrap signature: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses bootstrap signature: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxWits\" (DeserialiseFailure 38 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses bootstrap chain code: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses bootstrap chain code: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxWits\" (DeserialiseFailure 104 \"expected string\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses bootstrap attributes: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses bootstrap attributes: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxWits\" (DeserialiseFailure 138 \"expected string\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses Plutus V1 script: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses Plutus V1 script: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxWits\" (DeserialiseFailure 3 \"expected string\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body input id: two chunks",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body input id: an empty chunk before the bytes",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses datum: chunked bytes, one chunk",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses datum: chunked bytes, two chunks of a 100-byte string",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses datum: chunked bytes, inside a constructor",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses redeemer data: chunked bytes",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body input id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body input id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body output address: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body output address: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 42 \"expected string\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body auxiliary data hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body auxiliary data hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 85 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body withdrawal account: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body withdrawal account: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 86 \"expected string\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body stake registration credential: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body stake registration credential: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 90 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body stake delegation pool id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body stake delegation pool id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 120 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body pool retirement pool id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body pool retirement pool id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 88 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body pool registration operator: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body pool registration operator: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 88 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body pool registration vrf key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body pool registration vrf key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 118 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body pool registration reward account: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body pool registration reward account: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 163 \"expected string\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body pool registration owner: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body pool registration owner: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 195 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body pool registration metadata hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body pool registration metadata hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 262 \"expected string\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body genesis delegation genesis key: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body genesis delegation genesis key: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 88 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body genesis delegation delegate: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body genesis delegation delegate: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 118 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body genesis delegation vrf key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body genesis delegation vrf key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 148 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body instantaneous reward credential: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body instantaneous reward credential: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 93 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body update genesis key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body update genesis key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 87 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body mint policy: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body mint policy: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 86 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body mint asset name: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body mint asset name: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 117 \"expected string\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body output value policy: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body output value policy: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 80 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body output value asset name: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body output value asset name: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 111 \"expected string\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body script data hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body script data hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 85 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body required signer: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body required signer: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 86 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body collateral input id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body collateral input id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 87 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body output datum hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body output datum hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 78 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body reference input id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body reference input id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 87 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body collateral return address: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body collateral return address: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 86 \"expected string\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body map output address: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body map output address: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 43 \"expected string\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body map output datum hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body map output datum hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 83 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body map output inline datum: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body map output inline datum: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 85 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body map output reference script: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body map output reference script: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 83 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body map output reference Plutus script: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body map output reference Plutus script: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 98 \"Script: DecoderErrorDeserialiseFailure \\\"Script\\\" (DeserialiseFailure 2 \\\"expected string\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body map output reference native script key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body map output reference native script key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 121 \"Script: DecoderErrorDeserialiseFailure \\\"Script\\\" (DeserialiseFailure 4 \\\"expected bytes\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses vkey: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses vkey: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxWits\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses signature: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses signature: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxWits\" (DeserialiseFailure 38 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses native script key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses native script key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxWits\" (DeserialiseFailure 5 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses bootstrap vkey: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses bootstrap vkey: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxWits\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses bootstrap signature: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses bootstrap signature: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxWits\" (DeserialiseFailure 38 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses bootstrap chain code: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses bootstrap chain code: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxWits\" (DeserialiseFailure 104 \"expected string\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses bootstrap attributes: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses bootstrap attributes: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxWits\" (DeserialiseFailure 138 \"expected string\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses Plutus V1 script: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses Plutus V1 script: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxWits\" (DeserialiseFailure 3 \"expected string\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses Plutus V2 script: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses Plutus V2 script: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxWits\" (DeserialiseFailure 3 \"expected string\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body input id: two chunks",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body input id: an empty chunk before the bytes",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses datum: chunked bytes, one chunk",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses datum: chunked bytes, two chunks of a 100-byte string",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses datum: chunked bytes, inside a constructor",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses redeemer data: chunked bytes",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body map output inline datum: chunked bytes in the datum",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body input id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body input id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body output address: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body output address: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 42 \"expected string\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body auxiliary data hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body auxiliary data hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 85 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body withdrawal account: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body withdrawal account: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 86 \"expected string\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body stake registration credential: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body stake registration credential: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 90 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body stake delegation pool id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body stake delegation pool id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 120 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body pool retirement pool id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body pool retirement pool id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 88 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body pool registration operator: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body pool registration operator: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 88 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body pool registration vrf key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body pool registration vrf key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 118 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body pool registration reward account: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body pool registration reward account: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 163 \"expected string\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body pool registration owner: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body pool registration owner: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 195 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body pool registration metadata hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body pool registration metadata hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 262 \"expected string\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body mint policy: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body mint policy: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 86 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body mint asset name: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body mint asset name: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 117 \"expected string\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body output value policy: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body output value policy: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 80 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body output value asset name: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body output value asset name: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 111 \"expected string\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body script data hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body script data hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 85 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body required signer: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body required signer: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 86 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body collateral input id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body collateral input id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 87 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body output datum hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body output datum hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 78 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body reference input id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body reference input id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 87 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body collateral return address: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body collateral return address: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 86 \"expected string\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body map output address: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body map output address: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 43 \"expected string\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body map output datum hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body map output datum hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 83 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body map output inline datum: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body map output inline datum: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 85 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body map output reference script: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body map output reference script: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 83 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body map output reference Plutus script: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body map output reference Plutus script: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 98 \"Script: DecoderErrorDeserialiseFailure \\\"Script\\\" (DeserialiseFailure 2 \\\"expected string\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body map output reference native script key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body map output reference native script key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 121 \"Script: DecoderErrorDeserialiseFailure \\\"Script\\\" (DeserialiseFailure 4 \\\"expected bytes\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body vote delegation drep hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body vote delegation drep hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 122 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body committee hot credential: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body committee hot credential: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 122 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body drep registration anchor hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body drep registration anchor hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 151 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body proposal reward account: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body proposal reward account: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 92 \"expected string\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body proposal anchor hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body proposal anchor hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 153 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body proposal previous action id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body proposal previous action id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 126 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body proposal withdrawal account: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body proposal withdrawal account: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 126 \"expected string\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body proposal policy hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body proposal policy hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 158 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body vote voter hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body vote voter hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 88 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body vote action id: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body vote action id: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 120 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body vote anchor hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body vote anchor hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 185 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses vkey: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses vkey: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses signature: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses signature: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 38 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses native script key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses native script key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 5 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses bootstrap vkey: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses bootstrap vkey: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses bootstrap signature: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses bootstrap signature: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 38 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses bootstrap chain code: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses bootstrap chain code: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 104 \"expected string\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses bootstrap attributes: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses bootstrap attributes: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 138 \"expected string\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses Plutus V1 script: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses Plutus V1 script: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 3 \"expected string\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses Plutus V2 script: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses Plutus V2 script: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 3 \"expected string\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses Plutus V3 script: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses Plutus V3 script: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxWits\" (DeserialiseFailure 3 \"expected string\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body input id: two chunks",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body input id: an empty chunk before the bytes",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 4 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses datum: chunked bytes, one chunk",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses datum: chunked bytes, two chunks of a 100-byte string",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses datum: chunked bytes, inside a constructor",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "witnesses",
+  "name": "conway witnesses redeemer data: chunked bytes",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway body map output inline datum: chunked bytes in the datum",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "transaction",
+  "name": "conway transaction metadata: bytes, one chunk",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "transaction",
+  "name": "conway transaction metadata: bytes, chunks of 64 bytes in all",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "transaction",
+  "name": "conway transaction metadata: bytes, chunks of 80 bytes in all",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway Tx\" (DeserialiseFailure 177 \"An error occured while decoding metadata.\\nError: bytes .size (0..64): bytestring exceeds 64 bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "transaction",
+  "name": "conway transaction metadata: bytes, a definite string of 65 bytes",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway Tx\" (DeserialiseFailure 158 \"An error occured while decoding metadata.\\nError: bytes .size (0..64): bytestring exceeds 64 bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "transaction",
+  "name": "conway transaction metadata: text, one chunk",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "transaction",
+  "name": "conway transaction metadata: text, chunks of 80 bytes in all",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway Tx\" (DeserialiseFailure 177 \"An error occured while decoding metadata.\\nError: text .size (0..64): text exceeds 64 bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "transaction",
+  "name": "conway transaction auxiliary native script key hash: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "transaction",
+  "name": "conway transaction auxiliary native script key hash: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway Tx\" (DeserialiseFailure 95 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "transaction",
+  "name": "conway transaction auxiliary Plutus V1 script: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "transaction",
+  "name": "conway transaction auxiliary Plutus V1 script: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway Tx\" (DeserialiseFailure 93 \"expected string\")"
+  }
+ }
+]

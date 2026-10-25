@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-10-25",
+  "scope": "Unchanged released decoders (decodeFullAnnotator) of a transaction body and a witness set of each era from Shelley to Conway at the era's decoder version (2, 3, 4, 5, 7, 9), and of a whole Conway transaction with auxiliary data at 9, each place of a byte string written as a definite string and as an indefinite one; no ledger rule, signature or script is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "compiler": "GHC 9.10.3",
+  "referenceNode": "11.1.3 (matching embedded ledger package versions, not a bit-identical node release build)",
+  "packages": {
+    "cardano-ledger-binary": "1.9.1.0",
+    "cardano-ledger-core": "1.21.0.0",
+    "cardano-ledger-shelley": "1.19.0.1",
+    "cardano-ledger-allegra": "1.10.1.0",
+    "cardano-ledger-mary": "1.11.0.0",
+    "cardano-ledger-alonzo": "1.16.0.0",
+    "cardano-ledger-babbage": "1.14.0.0",
+    "cardano-ledger-conway": "1.23.0.0",
+    "cborg": "0.2.10.0"
+  },
+  "sourceFiles": {
+    "binaryDecoder": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+      "sourceSha256": "3ff3541b2900ceaab9bda26f633d7ea5118a49f5faab3936d036cfe9b49f94cc",
+      "matchesPin": false,
+      "archiveSha256": "05d59229edffc94b8f61273117456601532e23d8656f3076775bbf38e600bb8a",
+      "difference": "two lines of decodeIPv4 (byte order of the address read); decodeBytes and decodeByteArray (lines 350-373 and 1426-1448) are identical"
+    },
+    "metadata": {
+      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Metadata.hs",
+      "sourceSha256": "817bcfaf09b3d6b6d0c754296e09cf3dfef141286ad3adf05f7ea2880d88542c",
+      "matchesPin": true,
+      "archiveSha256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a"
+    },
+    "binaryVersion": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Version.hs",
+      "sourceSha256": "4726e87beca4af3b765984725b4a49797bd08bb61d45b4c3b0923a4bd3e8e58d",
+      "matchesPin": true,
+      "archiveSha256": "05d59229edffc94b8f61273117456601532e23d8656f3076775bbf38e600bb8a"
+    }
+  },
+  "harnessSha256": "bfb45c453f16726765809651d438e1c1a7d0be5a2fadf5d662b10a25bc64e07c",
+  "generatorSha256": "5bb5e3bf84df5b4422afcb3222c0ada705aa2ac243d400e9317313d713ff4b0d",
+  "casesSha256": "abbc489c1fbab14bb7efece355b69ee20092be059bd46372d32a417ed70dbdf7",
+  "referenceSha256": "a8d4708ae70ae70563f2ec699fb4374a03049019202c6ee5ad5eef9ffb9bc02b",
+  "cases": 436,
+  "accepted": 219,
+  "refused": 217,
+  "originalBytesRetained": true,
+  "network": "none",
+  "keysRetained": false
+}

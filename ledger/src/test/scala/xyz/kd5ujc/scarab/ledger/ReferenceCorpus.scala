@@ -21,6 +21,7 @@ private[ledger] object ReferenceCorpus:
   enum Corpus(val directory: String):
     case ConwayDecoding extends Corpus("conway-decoding")
     case PreConwaySets extends Corpus("pre-conway-sets")
+    case DefiniteBytes extends Corpus("definite-bytes")
 
   /** What a case is decoded as. */
   enum Kind(val wire: String):
@@ -51,7 +52,7 @@ private[ledger] object ReferenceCorpus:
 
   object Refusal:
     /** The tag of the case of an error, if the corpus names it; a voting-procedure structure error
-      * is the error of the structure.
+      * and a malformed native script are the error of the structure.
       */
     def of(e: LedgerDecodeError): Option[Refusal] = e match
       case LedgerDecodeError.ArrayLength(_, _, _)         => Some(ArrayLength)
@@ -74,7 +75,8 @@ private[ledger] object ReferenceCorpus:
       case LedgerDecodeError.Zero(_)                      => Some(Zero)
       case LedgerDecodeError.Voting(VotingProcedures.DecodeError.InvalidStructure(cause)) =>
         of(cause)
-      case _ => None
+      case LedgerDecodeError.NativeScript(NativeScript.DecodeError.Malformed(cause)) => of(cause)
+      case _                                                                         => None
 
   /** The rule of the reference a refusal is recorded for, named by the fragment of its failure text
     * that identifies it.
@@ -97,9 +99,9 @@ private[ledger] object ReferenceCorpus:
     case AddressLeftover extends Rule("DecoderErrorLeftover")
     case AddressHeaderBits extends Rule("Unused bits are not suppose to be set")
     case AddressEnvelope extends Rule("expected tag")
-    case AddressExpectedBytes extends Rule("expected bytes")
+    case ExpectedBytes extends Rule("expected bytes")
     case AddressExpectedList extends Rule("expected list len")
-    case AddressExpectedString extends Rule("expected string")
+    case ExpectedString extends Rule("expected string")
     case AddressExpectedMap extends Rule("expected map len")
     case AddressMapCanonicity extends Rule("Canonicity violation while decoding Map")
     case AddressWord8 extends Rule("expected word8")
@@ -118,6 +120,8 @@ private[ledger] object ReferenceCorpus:
     case ExpectedTag extends Rule("Expected tag")
     case RecordSize extends Rule("Size mismatch when decoding Record")
     case ExpectedMap extends Rule("expected map len or indef")
+    case MetadataBytesBound extends Rule("bytestring exceeds 64 bytes")
+    case MetadataTextBound extends Rule("text exceeds 64 bytes")
 
     /** The reference's failure is for this rule. */
     def explains(failure: Failure): Boolean = failure.text.contains(fragment)
