@@ -444,6 +444,8 @@ def split_cells(row: str) -> list[str]:
 # Reference pins
 
 COMMIT_URL = re.compile(r"github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/(?:commit|tree|blob)/([0-9a-f]{7,40})\b")
+# How far before a commit id (in characters) an upstream repository name still claims it.
+PIN_PROXIMITY = 40
 HEX_ID = re.compile(r"(?<![0-9A-Za-z/_.-])([0-9a-f]{7,40})(?![0-9A-Za-z_-])")
 
 
@@ -511,8 +513,12 @@ def check_pin_citations(doc: str, lines: Sequence[Line], pins: Sequence[Pin]) ->
             digest = match.group(1)
             if digest in covered or not re.search(r"\d", digest) or not re.search(r"[a-f]", digest):
                 continue
-            if not any(rev.startswith(digest) for rev in revisions):
-                nearest = max(named, key=lambda r: lowered.rfind(r, 0, match.start()))
+            # A commit id belongs to the upstream repository named just before it; other ids on the
+            # line (this repository's commits in an evidence row) are not upstream citations.
+            preceding = lowered[max(0, match.start() - PIN_PROXIMITY):match.start()]
+            near = [r for r in named if r in preceding]
+            if near and not any(rev.startswith(digest) for rev in revisions):
+                nearest = max(near, key=lambda r: preceding.rfind(r))
                 out.append(Violation(Kind.UNREGISTERED_PIN, doc, f"{nearest}@{digest}", line.number))
     return out
 
