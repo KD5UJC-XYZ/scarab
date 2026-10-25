@@ -1036,7 +1036,7 @@ withdrawals), CERTS and GOV run before UTXOW, as in the ledger. A submitted tran
 by the ledger's MEMPOOL rule under the accumulating judgment (`rules/Judge.scala`,
 `docs/design/rule-interpreter-as-built.md`): every rule boundary of the reference is a sub-rule
 that always runs, so the failures of different rules are all reported, in the reference's order.
-Within UTXO, UTXOW and the certificate rules the checks still stop at their first failure until
+Within UTXOW and the certificate rules the checks still stop at their first failure until
 #412 moves them to recording.
 
 **LocalStateQuery** (`protocol/LocalStateQuery.scala`, `network/LocalStateQueryServer.scala`,
