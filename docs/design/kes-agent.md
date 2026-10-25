@@ -59,6 +59,31 @@ Three processes, two Unix sockets:
 The agent's key lifecycle matters to the node only through the service protocol: a staged key is not
 served; an installed key is; a dropped key is pushed as a key deletion.
 
+## What H2 implements, and what it does not
+
+H2 is a **client**. The agent process is upstream `kes-agent` (Haskell, with the key in mlocked memory); we do
+not write one, and this design contains no agent-side code. Writing our own would duplicate a
+security-critical component, and inventing a protocol would lose the interoperability that is the point of
+conformance.
+
+Other implementations have made different choices, and neither is a reference for us ([ADR 0001](../adr/0001-haskell-node-as-reference.md)
+makes the Haskell node the reference):
+
+- **Blink Labs** ship a Go replica, `bursa kes-agent`, described in its own documentation as "a Go replica of
+  IOG's kes-agent, serving a Go block producer (dingo) rather than cardano-node". It speaks a JSON-framed
+  protocol (`bursa-kes-agent/1`) rather than the reference's binary one, and adds a **`sign` mode** in which
+  the producer sends a header body and the agent returns the signature, so "the KES signing key never leaves
+  the agent". Dingo's `kesagent` package is a client for that protocol, not for the reference's.
+- **Amaru** has no agent: KES signing happens inside the forging process (`amaru-ouroboros/src/kes`,
+  `forging_credentials`), with the key loaded from files.
+
+Why that matters for memory hardening: the reference's `serve-key` mode hands the key to the node, so the node
+holds it to sign **whatever language the agent is written in**. A Rust agent would still push the key into the
+JVM. Removing the copy requires a `sign` mode, which upstream deliberately does not have (the agent supplies
+credentials, not per-block signatures), which adds a round trip per block, and which changes availability: in
+`serve-key` mode a node whose agent dies keeps forging on the key it holds, while in `sign` mode it cannot
+forge at all. That is a separate proposal for the threat model (O1/#74), not part of H2.
+
 ## Two credential paths, and why this design keeps both
 
 The reference maintains two credential sources, not one, and it does not treat them as equals
@@ -359,10 +384,12 @@ as weaker than a local socket.
    outdated bundle, malformed frame, EOF, refusal to handshake, slow write and reconnect; the forger's
    `noKey` state; a second instance's socket; a bundle signed by another cold key is refused; a rotated
    certificate from the same cold key (a higher counter and a new key) is accepted without a restart.
-4. **Devnet** (level 3): a `kes-agent` scenario on the devnet with the upstream binary (provenance decided
-   before this stage), `kes-agent-control` installing a key, the Scala node forging through it, then: kill the
-   agent (node keeps forging on the held key), restart it (node re-served), drop the key (forging stops), and
-   a node restart while the agent stays up (served immediately). Evidence row in the compatibility matrix.
+4. **Devnet** (level 3): a new `kes-agent` scenario — there is none today; the devnet has `e2e`, `pool`,
+   `relay`, `ntc`, `restart`, `kes-rotate` and `soak`, and this one is added by stage 4. It runs the upstream
+   binary (provenance above), has `kes-agent-control` install a key, and lets the Scala node forge through it;
+   then kills the agent (node keeps forging on the held key), restarts it (node re-served), drops the key
+   (forging stops), and restarts the node while the agent stays up (served immediately). Evidence row in the
+   compatibility matrix.
 
 ## Delivery
 
@@ -387,40 +414,31 @@ the file path is documented as the compatibility path, and neither is removed by
 
 ### Open
 
-1. **Certificate validation.** Verify every pushed bundle under the cold key in the `--opcert` envelope
-   (steps 2 to 5), which is stricter than the reference's explicit TODO, or trust the agent as the reference
-   does. Recommendation: verify. The check is chain-independent apart from the counter, costs one signature
-   verification per push (pushes are rare), and closes a gap upstream has already marked. It also changes what
-   a hijacked service socket can do: without it, whoever can bind that path can feed the node any KES key and
-   watch it forge blocks its peers reject; with it, they cannot make the node adopt a key the pool did not
-   authorise.
-2. **Counter check.** The reference node never compares a pushed certificate's counter with the chain; a bad
-   one shows up later as rejected blocks. Scarab can apply the same `OCertRules.checkCounter` the file reload
-   uses. Recommendation: check when the node has a judged chain, and defer only the chain-dependent part
-   during bootstrap rather than refusing a key the node cannot yet judge. The question to settle is what
-   "has a judged chain" means here — a selected chain whose tip is at or beyond the certificate's start
-   period is the natural rule.
-3. **Memory hardening.** Options: (a) document the JVM limitation and decide with O1/#74; (b) off-heap key
-   material plus a small JNI `mlock`/`explicit_bzero` helper, which also changes how `Sum6KesSigning` holds
-   its material and how BouncyCastle receives the seed; (c) additionally harden the shipped image
-   (`-XX:-HeapDumpOnOutOfMemoryError`, `-XX:+DisableAttachMechanism`, documented swap and hibernation
-   settings). Recommendation: (a) + (c) for this stage. (b) changes the representation of the key itself and
-   belongs with the threat model, not with the protocol work.
-4. **Devnet agent provenance.** How the devnet image and the fixture capture obtain `kes-agent`: a pinned
-   release tarball verified by SHA-256, the way the reference node image is pinned, or a source build in the
-   image. Recommendation: the pinned tarball, with URL, digest and licence recorded beside the other image
-   pins; it is what an operator runs and it keeps the image build cheap. Needed before **stage 1**, because
-   stage 1 captures the fixtures from a real agent, not just before the devnet scenario.
-5. **Operator tooling for agent mode.** Rely on the upstream `kes-agent-control` (recommendation for now: it
-   is the reference's tool, and reimplementing the control codec buys nothing for forging), or add a Scarab
-   wrapper so operators have one interface for both modes, since `scripts/pool/rotate_kes.py` only covers file
-   mode. Revisit once the devnet scenario exists — it has to drive the control socket anyway, which is most of
-   the work a wrapper would need.
-6. **Small confirmations**, with the recommendation in brackets: `--kes-agent-socket` as the flag name, with
-   the reference's `--shelley-kes-agent-socket` mapped in #222 [`--kes-agent-socket`]; both flags passed
-   together refused [`refuse`]; a group- or world-accessible service socket warned about at start-up [`warn`];
-   `Service:2.0` only [`2.0 only` — it exists since `kes-agent` 1.0.0.0, and every cardano-node that supports
-   an agent requires `kes-agent ^>=1.2` (10.7.1), so no released agent is excluded].
+1. **Memory hardening of the node's own copy.** Decided for this stage: document the JVM limitation and harden
+   the shipped image (`-XX:-HeapDumpOnOutOfMemoryError`, `-XX:+DisableAttachMechanism`, documented swap and
+   hibernation settings). Still open, for O1/#74: whether Scarab ever adds a `sign`-mode client and a matching
+   agent, which would take the key out of the JVM at the cost of a per-block round trip and of availability
+   (see [What H2 implements](#what-h2-implements-and-what-it-does-not)). Not part of H2.
+2. **Operator tooling.** Upstream `kes-agent-control` for now, as recommended; a Scarab wrapper is a later
+   question, and there is no devnet scenario to motivate it yet (see [Testing](#testing)).
+
+### Decided 2026-10-25
+
+- **Credential sources.** [ADR 0023](../adr/0023-two-kes-credential-sources.md): both stay, the file path is
+  unchanged, the agent path is preferred and documented as such.
+- **Certificate validation.** Verify every pushed bundle under the cold key in the `--opcert` envelope, with the
+  five checks above. Stricter than the reference's explicit TODO, and it bounds what a hijacked service socket
+  can achieve.
+- **Counter check.** Apply `OCertRules.checkCounter` when the node has a judged chain — a selected chain whose
+  tip is at or beyond the certificate's start period — and defer only that part during bootstrap.
+- **Agent provenance.** A pinned upstream release tarball, verified by SHA-256, recorded with URL, digest and
+  licence beside the other image pins. The consequence for this work: stage 1 and the devnet scenario do not
+  build Haskell, and if upstream's release artifacts disappear the pinned tag is the fallback. We do not ship
+  the agent to operators; the documentation points at upstream's releases.
+- **Confirmations.** `--kes-agent-socket` as the flag name (reference mapping in #222); both flags together
+  refused; a group- or world-accessible service socket warned about at start-up; `Service:2.0` only, which
+  costs nothing — it exists since `kes-agent` 1.0.0.0, and every cardano-node that supports an agent requires
+  `kes-agent ^>=1.2`.
 
 ## Not in scope
 

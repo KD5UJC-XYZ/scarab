@@ -40,6 +40,9 @@ Two credential sources stay, and they are not equal in standing.
 
 - Two paths to test and document. The file path keeps its existing suites and the `kes-rotate` scenario; the
   agent path adds its own, specified in [the design](../design/kes-agent.md).
+- H2 implements the **client** only. The agent process is upstream `kes-agent`; Scarab does not write one, and
+  the design contains no agent-side code. The node's copy of the signing key is therefore in the JVM, which the
+  design states rather than hides.
 - The demotion is a documentation change, so it lands when the agent path exists rather than before: a node
   cannot be told to prefer a mode it does not have.
 - A node in agent mode has no KES material on disk, but makes no mlocked-memory claim; the file path's
