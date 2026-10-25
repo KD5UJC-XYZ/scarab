@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import hashlib
 import io
 import json
 import os
@@ -25,6 +26,27 @@ GIT = ["git", "-c", "user.name=Packet test", "-c", "user.email=packet-test@examp
 DATES = {"GIT_AUTHOR_DATE": "2026-01-02T03:04:05+00:00", "GIT_COMMITTER_DATE": "2026-01-02T03:04:05+00:00"}
 
 
+REFERENCE_PINS = {
+    "BASE": f'"node/ref@sha256:{PIN}"', "ARCHIVE_NAME": '"node.tar.gz"', "ARCHIVE_SHA256": f'"{PIN}"',
+    "ARCHIVE_SIZE": "10", "ARCHIVE_URL": '"https://example.invalid/" + ARCHIVE_NAME',
+    "BINARY_HASHES": f'{{"cardano-node": "{PIN}"}}',
+}
+REFERENCE_SCRIPT = "".join(f"{name} = {value}\n" for name, value in REFERENCE_PINS.items())
+# check_secret_scan.py's synthetic negative control: a digest of a fixed phrase, not a credential.
+SYNTHETIC_TOKEN = hashlib.sha256(b"Scarab secret scanner synthetic negative control").hexdigest()
+
+
+def passing(members, workdir):
+    return packet.Outcome.PASSED
+
+
+def docker_has(image):
+    try:
+        return subprocess.run(["docker", "image", "inspect", image], capture_output=True).returncode == 0
+    except OSError:
+        return False
+
+
 def tree():
     """The smallest tree every packet section can read, with the conformance pins it names."""
     manifest = lambda **v: json.dumps(v) + "\n"
@@ -42,8 +64,7 @@ def tree():
         "docker/jdk.Dockerfile": f"FROM eclipse-temurin@sha256:{PIN}\nWORKDIR /work\n",
         "scripts/sbtw": "#!/usr/bin/env bash\nversion=1.10.7\nsha=" + PIN + "\n",
         "scripts/tests/test_ignored.py": f"IMAGE = 'synthetic/image@sha256:{'e' * 64}'\n",
-        "scripts/prepare_reference_image.py": f'BASE = "node/ref@sha256:{PIN}"\nARCHIVE_SHA256 = "{PIN}"\n'
-                                              'ARCHIVE_NAME = "node.tar.gz"\nARCHIVE_URL = "https://example.invalid/" + ARCHIVE_NAME\n',
+        "scripts/prepare_reference_image.py": REFERENCE_SCRIPT,
         "node/src/test/resources/upstream/conway-govcert/manifest.json": manifest(
             upstream=dict(commit=COMMIT), dependencies={"formal-ledger-specifications": COMMIT,
                                                         "constrained-generators": COMMIT}),
@@ -104,9 +125,19 @@ class PacketTest(unittest.TestCase):
         self.host.stop()
         self.temporary.cleanup()
 
-    def build(self, name, revision="HEAD", **options):
+    def build(self, name, revision="HEAD", candidate=None, **options):
         options.setdefault("allow_incomplete", True)
-        return packet.build(self.repo.root, revision, self.base / name, None, options.pop("check", False), **options)
+        options.setdefault("scanner", passing)
+        return packet.build(self.repo.root, revision, self.base / name, candidate, options.pop("check", False),
+                            **options)
+
+    def set_scope(self, raw_scope):
+        """Commit a register whose scope is `raw_scope`, inserted as raw JSON string content."""
+        register = json.loads((self.repo.root / check_test_coverage.REGISTER).read_text())
+        register["entries"][0]["scope"] = "PLACEHOLDER"
+        text = json.dumps(register, indent=2).replace('"PLACEHOLDER"', '"' + raw_scope + '"')
+        self.repo.write(check_test_coverage.REGISTER, text + "\n")
+        self.repo.commit("scope")
 
     def members(self, name):
         archive, _, _ = self.build(name)
@@ -144,7 +175,7 @@ class PacketTest(unittest.TestCase):
         outcomes = {g["gate"]: g["outcome"] for g in manifest["gates"]}
         self.assertEqual(outcomes, {"coverage-register": "passed", "fixture-inventory": "passed",
                                     "reference-pins": "passed", "release-candidate-sbom": "not-supplied",
-                                    "source-map": "passed"})
+                                    "secret-scan": "passed", "source-map": "passed"})
         listed = {m["path"]: m["sha256"] for m in manifest["members"]}
         self.assertEqual(set(listed), set(contents) - {"packet/manifest.json"})
         sources = json.loads(contents["packet/source-map.json"])
@@ -230,11 +261,150 @@ class PacketTest(unittest.TestCase):
             self.build("exists")
 
     def test_main_reports_failure_without_a_traceback(self):
-        with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+        with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr, \
+                mock.patch.object(packet, "gitleaks", passing):
             code = packet.main(["--repo", str(self.repo.root), "--revision", "HEAD",
                                 "--output", str(self.base / "strict")])
         self.assertEqual(code, 1)
         self.assertIn("release-candidate-sbom", stderr.getvalue())
+
+
+    def test_json_escaped_paths_and_host_name_fail_the_run(self):
+        escapes = ["\\/ho" + "me\\/review-example\\/private\\/notes",
+                   "\\u002fho" + "me\\u002freview-example\\u002fprivate",
+                   "built on \\u0070acket-test-\\u0068ost"]
+        for index, scope in enumerate(escapes):
+            with self.subTest(scope=scope):
+                self.set_scope(scope)
+                with self.assertRaises(packet.ProvenanceLeak):
+                    self.build(f"escaped-{index}")
+                self.assertFalse((self.base / f"escaped-{index}").exists())
+
+    def test_guard_reads_decoded_keys_and_values_without_changing_bytes(self):
+        members = {"a.json": b'{"\\u002fho' + b'me\\u002falice\\u002f": 1}'}
+        original = dict(members)
+        with self.assertRaises(packet.ProvenanceLeak):
+            packet.guard(members, [])
+        self.assertEqual(members, original)
+        with self.assertRaises(packet.UndecodableMember):
+            packet.guard({"b.json": b"{not json"}, [])
+
+    def test_secret_finding_fails_the_run_and_writes_nothing(self):
+        def finding(members, workdir):
+            raise packet.SecretFound("packet/coverage/test-coverage-register.json:9: generic-api-key")
+        with self.assertRaises(packet.SecretFound):
+            self.build("secret", scanner=finding)
+        self.assertFalse((self.base / "secret").exists())
+
+    def test_scanner_unavailable_is_an_incomplete_gate_not_a_pass(self):
+        def unavailable(members, workdir):
+            return packet.Outcome.UNAVAILABLE
+        with self.assertRaises(packet.Incomplete):
+            self.build("strict", scanner=unavailable, allow_incomplete=False)
+        archive, _, complete = self.build("kept", scanner=unavailable)
+        manifest = json.loads((self.base / "kept/packet/manifest.json").read_text())
+        self.assertFalse(complete)
+        self.assertIn(dict(gate="secret-scan", outcome="scanner-unavailable"), manifest["gates"])
+
+    def test_scanner_receives_every_member_and_then_the_manifest(self):
+        seen = []
+        def recording(members, workdir):
+            seen.append(sorted(members))
+            return packet.Outcome.PASSED
+        self.build("seen", scanner=recording)
+        self.assertEqual(seen[1], ["packet/manifest.json"])
+        self.assertIn("packet/coverage/test-coverage-register.json", seen[0])
+        self.assertNotIn("packet/manifest.json", seen[0])
+
+    def test_each_missing_reference_pin_fails_the_gate(self):
+        for name in packet.REFERENCE_NODE_PINS:
+            with self.subTest(missing=name):
+                kept = {k: v for k, v in REFERENCE_PINS.items() if k != name}
+                self.repo.write("scripts/prepare_reference_image.py",
+                                "".join(f"{k} = {v}\n" for k, v in kept.items()))
+                self.repo.commit("without " + name)
+                outcome, pins = packet.references(self.materialized())
+                self.assertIs(outcome, packet.Outcome.FAILED)
+                # Without the archive name the URL cannot be shown to name that archive.
+                expected = [f"referenceNode.{name}"] + (["referenceNode.ARCHIVE_URL"] if name == "ARCHIVE_NAME" else [])
+                self.assertEqual(pins["invalid"], expected)
+
+    def test_reference_formats_are_checked(self):
+        self.repo.write("scripts/prepare_reference_image.py", f'ARCHIVE_SHA256 = "{PIN}"\n')
+        self.repo.write("fixtures/reference/genesis-density/manifest.json", json.dumps(dict(sourceCommit="main")))
+        self.repo.commit("moving and missing pins")
+        outcome, pins = packet.references(self.materialized())
+        self.assertIs(outcome, packet.Outcome.FAILED)
+        self.assertEqual(pins["invalid"], ["upstream.consensus.commit"] + [
+            f"referenceNode.{name}" for name in packet.REFERENCE_NODE_PINS if name != "ARCHIVE_SHA256"])
+        node = dict(BASE="node:latest", ARCHIVE_NAME="a.tgz", ARCHIVE_SHA256=PIN.upper(), ARCHIVE_SIZE=True,
+                    ARCHIVE_URL="http://example.invalid/a.tgz", BINARY_HASHES={"x": "short"})
+        self.assertEqual(packet.invalid_references([], node), ["upstream"] + [
+            f"referenceNode.{name}" for name in packet.REFERENCE_NODE_PINS if name != "ARCHIVE_NAME"])
+
+    def materialized(self):
+        root = self.base / f"tree-{len(list(self.base.iterdir()))}"
+        packet.materialize(self.repo.root, self.repo.run("rev-parse", "HEAD"), root)
+        return root
+
+    def test_candidate_jdk_image_id_reaches_the_commands(self):
+        real = packet.candidate
+        root = self.base / "candidate"
+        candidate_fixture.make_candidate(root, release=False)
+        with mock.patch.object(packet, "candidate", lambda directory, commit: real(directory, "a" * 40)):
+            _, _, complete = self.build("with-candidate", candidate=root, allow_incomplete=False)
+        self.assertTrue(complete)
+        out = self.base / "with-candidate/packet"
+        commands = json.loads((out / "commands.json").read_text())
+        image = "sha256:" + "e" * 64
+        self.assertEqual(commands["jdkImage"]["id"], image)
+        self.assertEqual(commands["jdkImage"]["receipt"]["path"], "evidence/toolchain.json")
+        ids = {c["command"]: c["jdkImageId"] for c in commands["commands"]}
+        self.assertEqual(ids["bash scripts/sbtw check"], image)
+        self.assertEqual(ids["python3 scripts/devnet.py --name <name> e2e"], image)
+        self.assertIsNone(ids["python3 scripts/check_test_coverage.py"])
+        inventories = json.loads((out / "inventories.json").read_text())
+        self.assertEqual(inventories["candidateSbom"]["jdkImage"], commands["jdkImage"])
+        self.assertEqual(sorted(p.name for p in (out / "sbom").iterdir()),
+                         ["candidate.json", "image.cdx.json", "jvm.cdx.json"])
+
+
+@unittest.skipUnless(docker_has(packet.check_secret_scan.IMAGE),
+                     "pinned gitleaks image not present locally; the secret-scan gate is then incomplete, not passed")
+class SecretScanIntegrationTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.base = Path(self.temporary.name)
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def scan(self, name, members):
+        return packet.gitleaks(members, self.base / name)
+
+    def test_clean_members_pass(self):
+        register = json.dumps(dict(entries=[dict(scope="bounded sample")]), indent=2).encode()
+        self.assertIs(self.scan("clean", {"packet/coverage/register.json": register}), packet.Outcome.PASSED)
+
+    def test_synthetic_control_is_found_raw_and_json_escaped(self):
+        raw = f'{{"scope": "api_key = \\"{SYNTHETIC_TOKEN}\\""}}\n'.encode()
+        escaped = ('{"scope": "\\u0061pi_key = \\u0022' + "".join(f"\\u{ord(c):04x}" for c in SYNTHETIC_TOKEN)
+                   + '\\u0022"}\n').encode()
+        self.assertEqual(json.loads(escaped)["scope"], f'api_key = "{SYNTHETIC_TOKEN}"')
+        for name, member in [("raw", raw), ("escaped", escaped)]:
+            with self.subTest(form=name), self.assertRaises(packet.SecretFound):
+                self.scan(name, {"packet/coverage/test-coverage-register.json": member})
+
+    def test_full_run_with_the_control_in_the_register_writes_nothing(self):
+        repo = Repo(self.base)
+        register = json.loads((repo.root / check_test_coverage.REGISTER).read_text())
+        register["entries"][0]["scope"] = f'api_key = "{SYNTHETIC_TOKEN}"'
+        repo.write(check_test_coverage.REGISTER, json.dumps(register, indent=2) + "\n")
+        repo.commit("synthetic control")
+        with mock.patch.object(packet.socket, "gethostname", return_value=HOST), \
+                self.assertRaises(packet.SecretFound):
+            packet.build(repo.root, "HEAD", self.base / "out", None, False, allow_incomplete=True)
+        self.assertFalse((self.base / "out").exists())
 
 
 class CandidateTest(unittest.TestCase):
@@ -247,10 +417,23 @@ class CandidateTest(unittest.TestCase):
             self.assertEqual(sorted(copies), ["sbom/candidate.json", "sbom/image.cdx.json", "sbom/jvm.cdx.json"])
             self.assertEqual(copies["sbom/candidate.json"], (root / "candidate.json").read_bytes())
             self.assertEqual(sorted(s["kind"] for s in summary["subjects"]), ["jar", "oci-archive"])
+            self.assertEqual(summary["jdkImage"]["id"], "sha256:" + "e" * 64)
             with self.assertRaises(packet.CandidateMismatch):
                 packet.candidate(root, "b" * 40)
             (root / "sbom/jvm.cdx.json").write_text("{}\n")
             with self.assertRaises(packet.CandidateMismatch):
+                packet.candidate(root, "a" * 40)
+
+    def test_mutable_jdk_image_name_is_refused(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "candidate"
+            manifest = candidate_fixture.make_candidate(root, release=False)
+            toolchain = root / "evidence/toolchain.json"
+            value = json.loads(toolchain.read_text())
+            value["jdk"]["jdkImage"] = "scarab-jdk:local"
+            toolchain.write_text(json.dumps(value))
+            with mock.patch.object(packet.candidate_manifest, "validate", return_value=manifest), \
+                    self.assertRaises(packet.CandidateMismatch):
                 packet.candidate(root, "a" * 40)
 
     def test_absent_candidate_is_not_supplied(self):

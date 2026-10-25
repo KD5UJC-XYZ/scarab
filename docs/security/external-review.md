@@ -149,7 +149,9 @@ python3 scripts/evidence_packet.py --revision <tag-or-commit> --output <fresh-di
   as the revision writes them. The commands are listed, not run, and their results must come from
   runs of this revision.
 - **References and inventories.** The pinned upstream revisions from `check_conformance_sources.py`
-  (no network access) and the reference node release pins. The fixture inventory is recomputed and
+  (no network access) and the reference node release pins. Every pin must be present and immutable
+  (full commits, `sha256` digests, an HTTPS archive URL that names the pinned archive), or the gate
+  lists the field and fails. The fixture inventory is recomputed and
   must equal the committed one, which the packet names by digest with its corpus list. The coverage
   register is copied and its not-covered entries listed.
   Optional-data requirements are the `SCARAB_*` variables that test sources read, with the suites
@@ -160,14 +162,19 @@ python3 scripts/evidence_packet.py --revision <tag-or-commit> --output <fresh-di
 - **SBOM.** With `--candidate`, the output of `build_release_candidate.py` (the release-candidate
   workflow's artifact) is validated with `candidate_manifest.validate` and must be built from the
   same commit. Its `candidate.json` and CycloneDX documents are copied, and artifacts are recorded
-  by digest. Without it, the gate is `not-supplied`, the packet is incomplete, and the run fails
+  by digest. The JDK image ID that built the candidate (`toolchain.json`, which the validation binds
+  to the reproducibility receipt) is attached to every command that runs in that image: the
+  Dockerfile and base pins alone do not identify an image whose recipe installs packages from
+  mutable repositories. Without `--candidate`, the gate is `not-supplied`, the packet is incomplete, and the run fails
   unless `--allow-incomplete` is given.
 
 The packet directory and a plain tar archive with fixed member metadata go to a fresh directory
 outside the checkout, together with `SHA256SUMS`. `--check` generates the packet twice from
-separate materializations and fails unless the archives are byte-identical. Every member must pass
-the `check_local_paths.py` guard and a check for this machine's checkout, home and scratch paths
-and its host name. A match fails the run; nothing is redacted. Before sharing a packet, scan it with the pinned gitleaks
-image and `.gitleaks.toml`, as `check_secret_scan.py` runs them. Security-sensitive reproductions and
+separate materializations and fails unless the archives are byte-identical. Every member, and
+the decoded keys and strings of every JSON member, must pass the `check_local_paths.py` guard and a
+check for this machine's checkout, home and scratch paths and its host name. The same views are
+scanned with the gitleaks image and `.gitleaks.toml` that `check_secret_scan.py` pins, offline. A
+finding fails the run and nothing is written or redacted; a scanner that cannot run makes the
+`secret-scan` gate incomplete, never passed. Security-sensitive reproductions and
 private captures are never embedded: they are exchanged privately under
 [SECURITY.md](../../SECURITY.md) and identified by digest.

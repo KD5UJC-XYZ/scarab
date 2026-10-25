@@ -17,9 +17,10 @@ signed or uploaded.
 
 Output is byte-reproducible: sorted JSON, sorted members, a plain tar with fixed member metadata, no
 clock, host or environment values. `--check` generates twice from separate materializations and
-fails unless the archives are identical. Every member passes the local-path guard of
-`check_local_paths.py` and a check for this machine's paths and host name; a match fails the run,
-it is never redacted. A missing input (no candidate, a stale inventory, unreadable pins) is an
+fails unless the archives are identical. Every member, and the decoded strings of every JSON
+member, passes the local-path guard of `check_local_paths.py`, a check for this machine's paths and
+host name, and the pinned gitleaks scan of `check_secret_scan.py`; a match fails the run, it is
+never redacted, and a scanner that cannot run leaves the `secret-scan` gate incomplete. A missing input (no candidate, a stale inventory, unreadable pins) is an
 explicit incomplete gate, and the run fails unless `--allow-incomplete` is given.
 """
 from __future__ import annotations
@@ -43,6 +44,7 @@ import tempfile
 import candidate_manifest
 import check_conformance_sources
 import check_local_paths
+import check_secret_scan
 import check_test_coverage
 
 SCHEMA = "scarab-reviewer-evidence-packet-v1"
@@ -51,7 +53,7 @@ REPO = GENERATOR.parents[1]
 # The generator's own inputs: older revisions are interpreted with this code, so the packet names it.
 GENERATOR_FILES = ("scripts/evidence_packet.py", "scripts/check_test_coverage.py",
                    "scripts/check_conformance_sources.py", "scripts/check_local_paths.py",
-                   "scripts/candidate_manifest.py")
+                   "scripts/check_secret_scan.py", "scripts/candidate_manifest.py", ".gitleaks.toml")
 RECORDED_EVIDENCE = ("docs/compatibility.md", "docs/data/external-acceptance-294.json",
                      "docs/data/upstream-source-review-20261020.json",
                      "docs/data/expanded-source-watch-review-20261020.json", "docs/reference-image.md",
@@ -63,6 +65,11 @@ ACTION_PIN = re.compile(rb"uses:\s*([A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+)@([0-9a-f]{
 SCARAB_ENV = re.compile(rb'"(SCARAB_[A-Z0-9_]+)"')
 MODULE = re.compile(r'lazy val (\w+) = scarab\("(\w+)"(?:, "([^"]+)")?\)')
 REFERENCE_NODE_PINS = ("BASE", "ARCHIVE_NAME", "ARCHIVE_SHA256", "ARCHIVE_SIZE", "ARCHIVE_URL", "BINARY_HASHES")
+COMMIT_ID = re.compile(r"[0-9a-f]{40}")
+SHA256_HEX = re.compile(r"[0-9a-f]{64}")
+IMAGE_ID = re.compile(r"sha256:[0-9a-f]{64}")
+PINNED_IMAGE = re.compile(r"[a-z0-9][a-z0-9./_-]*(?::[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}")
+REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 TAR_MODE = 0o644
 EXCLUSIONS = ("Security-sensitive reproductions, exploit details and private captures are not part of "
               "this packet; they are exchanged privately under SECURITY.md. Large or private inputs "
@@ -84,6 +91,14 @@ class ProvenanceLeak(PacketError):
     """A member records a machine-local path or the host name."""
 
 
+class SecretFound(ProvenanceLeak):
+    """The pinned secret scanner reported a finding in a member."""
+
+
+class UndecodableMember(PacketError):
+    """A JSON member cannot be decoded, so its string values cannot be checked."""
+
+
 class CandidateMismatch(PacketError):
     """The supplied release candidate is invalid or built from another revision."""
 
@@ -102,12 +117,14 @@ class Gate(enum.Enum):
     COVERAGE = "coverage-register"
     REFERENCES = "reference-pins"
     SBOM = "release-candidate-sbom"
+    SECRETS = "secret-scan"
 
 
 class Outcome(enum.Enum):
     PASSED = "passed"
     FAILED = "failed"
     NOT_SUPPLIED = "not-supplied"
+    UNAVAILABLE = "scanner-unavailable"
 
 
 class Family(enum.Enum):
@@ -171,6 +188,10 @@ def commands(commit: str) -> list[Command]:
         Command(Family.PACKET, f"python3 scripts/evidence_packet.py --revision {commit} --output <fresh-dir> "
                 "--candidate <candidate-dir> --check", Environment.HOST_PYTHON, "scripts/evidence_packet.py"),
     ]
+
+
+def runs_in_jdk_image(command: Command) -> bool:
+    return command.environment in {Environment.JDK_IMAGE, Environment.DEVNET} or command.family is Family.CANDIDATE
 
 
 def defined_in(root: Path, records: list[dict], command: Command) -> list[str]:
@@ -349,8 +370,35 @@ def references(root: Path) -> tuple[Outcome, dict]:
     script = root / "scripts/prepare_reference_image.py"
     constants = module_constants(script.read_text(encoding="utf-8")) if script.is_file() else {}
     node = {name: constants.get(name) for name in REFERENCE_NODE_PINS}
-    outcome = Outcome.PASSED if upstream and node.get("ARCHIVE_SHA256") else Outcome.FAILED
-    return outcome, dict(upstream=sorted(upstream, key=lambda u: u["name"]), referenceNode=node)
+    invalid = invalid_references(upstream, node)
+    outcome = Outcome.FAILED if invalid else Outcome.PASSED
+    return outcome, dict(upstream=sorted(upstream, key=lambda u: u["name"]), referenceNode=node, invalid=invalid)
+
+
+def invalid_references(upstream: list[dict], node: dict) -> list[str]:
+    """Each missing or malformed pin by name; an empty list is the only passing result."""
+    def text(value, pattern):
+        return isinstance(value, str) and pattern.fullmatch(value) is not None
+    rows = [] if upstream else ["upstream"]
+    for source in upstream:
+        if not text(source["commit"], COMMIT_ID):
+            rows.append(f"upstream.{source['name']}.commit")
+        if not text(source["repository"], REPOSITORY):
+            rows.append(f"upstream.{source['name']}.repository")
+        if not source["watchedPrefixes"] or not all(isinstance(p, str) and p for p in source["watchedPrefixes"]):
+            rows.append(f"upstream.{source['name']}.watchedPrefixes")
+    name, url, size, hashes = node["ARCHIVE_NAME"], node["ARCHIVE_URL"], node["ARCHIVE_SIZE"], node["BINARY_HASHES"]
+    checks = {
+        "BASE": text(node["BASE"], PINNED_IMAGE),
+        "ARCHIVE_NAME": isinstance(name, str) and bool(name) and "/" not in name,
+        "ARCHIVE_SHA256": text(node["ARCHIVE_SHA256"], SHA256_HEX),
+        "ARCHIVE_SIZE": type(size) is int and size > 0,
+        "ARCHIVE_URL": (isinstance(url, str) and url.startswith("https://") and isinstance(name, str)
+                        and bool(name) and url.endswith("/" + name)),
+        "BINARY_HASHES": (isinstance(hashes, dict) and bool(hashes)
+                          and all(isinstance(k, str) and k and text(v, SHA256_HEX) for k, v in hashes.items())),
+    }
+    return sorted(rows) + [f"referenceNode.{field}" for field, ok in checks.items() if not ok]
 
 
 def fixtures(root: Path, records: list[dict]) -> tuple[Outcome, dict]:
@@ -413,6 +461,10 @@ def candidate(directory: Path | None, commit: str) -> tuple[Outcome, dict, dict[
         raise CandidateMismatch(f"release candidate does not validate: {error}") from error
     if manifest["source"]["buildIdentity"]["gitCommit"] != commit:
         raise CandidateMismatch("release candidate was built from a different commit")
+    toolchain = next(e["file"] for e in manifest["evidence"] if e["kind"] == "toolchain")
+    jdk_image = candidate_manifest.read_json(root / toolchain["path"]).get("jdk", {}).get("jdkImage")
+    if not isinstance(jdk_image, str) or IMAGE_ID.fullmatch(jdk_image) is None:
+        raise CandidateMismatch("release candidate toolchain does not record an immutable JDK image ID")
     copies = {"sbom/candidate.json": (root / "candidate.json").read_bytes()}
     subjects = []
     for subject in sorted(manifest["subjects"], key=lambda s: s["kind"]):
@@ -422,6 +474,7 @@ def candidate(directory: Path | None, commit: str) -> tuple[Outcome, dict, dict[
                              size=subject["file"]["size"], bom=dict(bom, subject=subject["bom"]["subject"])))
     return Outcome.PASSED, dict(status=Outcome.PASSED.value, buildIdentity=manifest["source"]["buildIdentity"],
                                 image=manifest["image"], assurance=manifest["assurance"], subjects=subjects,
+                                jdkImage=dict(id=jdk_image, receipt=toolchain),
                                 evidence=sorted(manifest["evidence"], key=lambda e: e["kind"])), copies
 
 
@@ -439,9 +492,43 @@ def forbidden_tokens(extra: tuple[str, ...] = ()) -> list[bytes]:
     return sorted(set(tokens))
 
 
-def guard(members: dict[str, bytes], tokens: list[bytes]) -> None:
-    rows = check_local_paths.findings(sorted(members.items()), allowed={})
+def decoded_strings(path: str, raw: bytes) -> bytes:
+    """Every key and string value of a JSON member, decoded and one per line, so escapes hide nothing.
+
+    An explicit stack keeps the walk independent of the member's nesting depth (ADR 0011).
+    """
+    try:
+        stack = [json.loads(raw)]
+    except (ValueError, UnicodeDecodeError) as error:
+        raise UndecodableMember(f"{path}: not decodable JSON ({type(error).__name__})") from error
+    rows = []
+    while stack:
+        value = stack.pop()
+        if isinstance(value, dict):
+            rows.extend(value)
+            stack.extend(value.values())
+        elif isinstance(value, list):
+            stack.extend(value)
+        elif isinstance(value, str):
+            rows.append(value)
+    return "\n".join(rows).encode("utf-8", "surrogatepass")
+
+
+def views(members: dict[str, bytes]) -> list[tuple[str, bytes]]:
+    """The original bytes of each member and, for JSON members, their decoded strings."""
+    rows = []
     for path, raw in sorted(members.items()):
+        rows.append((path, raw))
+        if path.endswith(".json"):
+            rows.append((path + " (decoded strings)", decoded_strings(path, raw)))
+    return rows
+
+
+def guard(members: dict[str, bytes], tokens: list[bytes]) -> None:
+    """Fail on a home path, a listed local path or the host name in any member's bytes or decoded strings."""
+    shown = views(members)
+    rows = check_local_paths.findings(shown, allowed={})
+    for path, raw in shown:
         for token in tokens:
             if re.search(rb"(?<![A-Za-z0-9_])" + re.escape(token) + rb"(?![A-Za-z0-9_])", raw, re.IGNORECASE):
                 rows.append(f"{path}: records a machine-local path or the host name")
@@ -449,7 +536,48 @@ def guard(members: dict[str, bytes], tokens: list[bytes]) -> None:
         raise ProvenanceLeak("packet members record machine-local values:\n" + "\n".join(rows))
 
 
-def generate(repo: Path, revision: str, candidate_dir: Path | None, scratch: Path) -> dict[str, bytes]:
+def gitleaks(members: dict[str, bytes], workdir: Path) -> Outcome:
+    """Scan the members and their decoded strings with CI's pinned gitleaks image and rules.
+
+    A finding raises `SecretFound`; a scanner that cannot run or reports inconsistently is
+    `UNAVAILABLE`, an incomplete gate, never a pass. The image is the one `check_secret_scan.py` pins.
+    """
+    tree = workdir / "members"
+    for path, raw in sorted(members.items()):
+        written = {path: raw}
+        if path.endswith(".json"):
+            written["decoded/" + path + ".txt"] = decoded_strings(path, raw)
+        for name, content in written.items():
+            target = tree / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+    try:
+        done = subprocess.run(
+            ["docker", "run", "--rm", "--network", "none", "--user", f"{os.getuid()}:{os.getgid()}",
+             "-e", "HOME=/tmp", "-v", f"{workdir}:/scan", "-v", f"{REPO / '.gitleaks.toml'}:/config.toml:ro",
+             "-w", "/scan/members", check_secret_scan.IMAGE, "dir", ".", "--config", "/config.toml",
+             "--no-banner", "--redact", "--exit-code", "1", "--report-format", "json",
+             "--report-path", "/scan/report.json"], capture_output=True)
+    except OSError:
+        return Outcome.UNAVAILABLE
+    report = workdir / "report.json"
+    try:
+        findings = json.loads(report.read_text(encoding="utf-8")) if report.is_file() else None
+    except ValueError:
+        findings = None
+    if not isinstance(findings, list):
+        return Outcome.UNAVAILABLE
+    if done.returncode == 0 and not findings:
+        return Outcome.PASSED
+    if done.returncode == 1 and findings:
+        rows = sorted(f"{row.get('File')}:{row.get('StartLine')}: {row.get('RuleID')}" for row in findings)
+        raise SecretFound("secret scanner findings (redacted):\n" + "\n".join(rows))
+    return Outcome.UNAVAILABLE
+
+
+def generate(repo: Path, revision: str, candidate_dir: Path | None, scratch: Path, tokens: list[bytes],
+             scanner) -> dict[str, bytes]:
+    """All members, guarded and secret-scanned; `scanner(members, workdir)` returns the scan outcome."""
     identity = resolve(repo, revision)
     root = scratch / "tree"
     records, others = materialize(repo, identity["commit"], root)
@@ -466,25 +594,32 @@ def generate(repo: Path, revision: str, candidate_dir: Path | None, scratch: Pat
     gates[Gate.REFERENCES], reference_pins = references(root)
     gates[Gate.SBOM], sbom, copies = candidate(candidate_dir, identity["commit"])
     members.update({"packet/" + name: raw for name, raw in copies.items()})
+    jdk_image = sbom.get("jdkImage")
     members["packet/commands.json"] = canonical(dict(
         commands=[dict(family=c.family.value, command=c.command, environment=c.environment.value,
-                       definedIn=defined_in(root, records, c))
+                       definedIn=defined_in(root, records, c),
+                       jdkImageId=jdk_image["id"] if jdk_image and runs_in_jdk_image(c) else None)
                   for c in commands(identity["commit"])],
-        images=pins(root, records)))
+        jdkImage=jdk_image, images=pins(root, records)))
     members["packet/references.json"] = canonical(reference_pins)
     members["packet/inventories.json"] = canonical(dict(
         fixtures=fixture_summary, coverage=coverage_summary, optionalData=optional_data(root, records),
         recordedEvidence=dict(scope="Belongs to its recorded source revisions; not a run of this candidate.",
                               files=recorded(records)),
         candidateSbom=sbom))
+    guard(members, tokens)
+    gates[Gate.SECRETS] = scanner(members, scratch / "scan-members")
     generator = [dict(path=name, sha256=sha256((REPO / name).read_bytes())) for name in GENERATOR_FILES]
     manifest = dict(schema=SCHEMA, revision=identity, scope=SCOPE, exclusions=EXCLUSIONS, generator=generator,
                     gates=[dict(gate=gate.value, outcome=outcome.value) for gate, outcome in
                            sorted(gates.items(), key=lambda item: item[0].value)],
                     complete=all(outcome is Outcome.PASSED for outcome in gates.values()),
                     members=[dict(path=path, sha256=sha256(raw), size=len(raw)) for path, raw in sorted(members.items())])
-    members["packet/manifest.json"] = canonical(manifest)
-    return members
+    final = {"packet/manifest.json": canonical(manifest)}
+    guard(final, tokens)
+    if gates[Gate.SECRETS] is Outcome.PASSED and scanner(final, scratch / "scan-manifest") is not Outcome.PASSED:
+        raise SecretFound("the secret scanner did not pass the manifest it had already passed the members for")
+    return members | final
 
 
 def archive(members: dict[str, bytes]) -> bytes:
@@ -510,14 +645,15 @@ def fresh_output(output: Path, repo: Path) -> Path:
 
 
 def build(repo: Path, revision: str, output: Path, candidate_dir: Path | None, check: bool,
-          allow_incomplete: bool) -> tuple[Path, str, bool]:
+          allow_incomplete: bool, scanner=None) -> tuple[Path, str, bool]:
+    """`scanner` defaults to `gitleaks`; tests substitute a controlled outcome."""
+    scanner = scanner or gitleaks
     target = fresh_output(output, repo)
     tokens = forbidden_tokens((str(target), str(repo.resolve())))
     runs = []
     for _ in range(2 if check else 1):
         with tempfile.TemporaryDirectory(prefix="evidence-packet-") as scratch:
-            members = generate(repo, revision, candidate_dir, Path(scratch))
-            guard(members, tokens + [scratch.encode()])
+            members = generate(repo, revision, candidate_dir, Path(scratch), tokens + [scratch.encode()], scanner)
             runs.append((members, archive(members)))
     if check and runs[0][1] != runs[1][1]:
         raise NotReproducible("two generations of the same revision produced different archives")
