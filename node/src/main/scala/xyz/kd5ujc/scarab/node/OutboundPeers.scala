@@ -194,24 +194,37 @@ final class OutboundPeers[F[_]: Async, A] private (
         link.fatalReported.getAndSet(true).flatMap(done => hot.fatal(fatal).unlessA(done))
     )
 
-  /** The connection is going without the governor having asked: say so, once. */
+  /** The connection is going without the governor having asked: say so, once.
+    *
+    * Both the connection's fiber and its hot session's fiber call this, and the first to claim the
+    * link reports. The claim and the hand-off of the report are one uncancelable step, and the
+    * report runs on the node's `supervisor`, not in the caller: the hot session lives under the
+    * link's `children`, so a session that wins the claim is cancelled when the connection, which
+    * then sees `Ending` and reports nothing, is torn down. A report made in that fiber was lost
+    * with it, and the governor kept a peer hot whose connection was gone (issue 448). In the
+    * reference the one monitoring thread of the connection observes the end of every mini-protocol
+    * and moves the peer's status itself (`peerMonitoringLoop`, `PeerSelection/PeerStateActions.hs`
+    * 662-776, ouroboros-network 2fb69829), so no reporter is owned by what it reports on.
+    */
   private def lost(peer: A, link: Link[F], error: PeerError): F[Unit] =
-    link.phase.getAndSet(Phase.Ending()).flatMap {
-      case Phase.Ending() => F.unit
-      case _ =>
-        val failure = FailurePolicy.classify(error)
-        def observation(released: Boolean) =
-          Event.Observed(
-            peer,
-            Observation.Lost(failure, config.repromoteDelay, released, error.message),
-            Some(link.rootsGeneration)
-          )
-        hot.lost(error) *> report(observation(released = false)) *>
+    F.uncancelable { _ =>
+      link.phase.getAndSet(Phase.Ending()).flatMap {
+        case Phase.Ending() => F.unit
+        case _ =>
+          val failure = FailurePolicy.classify(error)
+          def observation(released: Boolean) =
+            Event.Observed(
+              peer,
+              Observation.Lost(failure, config.repromoteDelay, released, error.message),
+              Some(link.rootsGeneration)
+            )
           supervisor
             .supervise(
-              link.release.complete(()) *> link.gone.get *> report(observation(released = true))
+              hot.lost(error) *> report(observation(released = false)) *>
+                link.release.complete(()) *> link.gone.get *> report(observation(released = true))
             )
             .void
+      }
     }
 
   /** Match the adding hot BlockFetch client, never a later activation on the same bearer. The
