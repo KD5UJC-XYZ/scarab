@@ -96,6 +96,26 @@ whole-database no-mutation guarantee must run `ChainStorage.preflight` before op
 it can be skipped for an older usable snapshot or replay. Do not classify an incompatible but known
 version as ordinary corrupt input to obtain that fallback.
 
+## Worked example: snapshot V5 to V7
+
+The checkpoint binding (#395, [ADR 0021](adr/0021-ledger-state-residency-and-utxo-checkpoints.md))
+went through every step above. Read its code and tests before a new snapshot version:
+
+| Step | V5 to V7 |
+|---|---|
+| Register | `FormatVersion.V7` appended; `FileKind.SnapshotFile.history` gained `V7 -> "SCRBSNP7"`; the identity kind stayed at V6 and the other kinds at their own versions |
+| Freeze the previous reader | `SnapshotV5` kept as the reader of the previous version; its body parser is shared with `SnapshotV7` |
+| Convert without inventing state | `SnapshotV7.fromV5` copies the V5 body byte for byte behind `CheckpointBinding.Legacy`, because a V5 file recorded no checkpoint digest |
+| Register the migration | `SnapshotMigration.toCurrent`, run through `Migrate`; its step writes with `AtomicFile.replaceAll` |
+| Refuse first | `ChainStorage.preflight` runs `SnapshotMigration.preflight` before mutable stores are acquired |
+| Goldens | the binding fingerprint and encodings next to the sidecar's in `CodecSuite` |
+| Previous-version evidence | `fixtures/snapshot-v5` kept as the source; `fixtures/snapshot-v7` is its registered conversion, re-derived byte for byte by `SnapshotGoldenSuite` |
+| Refusal and transition tests | `SnapshotPreflightSuite` (retired and unknown versions refused before recovery, backing reset or a direct migration step), `FormatMigrationSuite` (version transitions, interruption, unknown versions) |
+
+A RocksDB layout change goes through the same steps plus the checkpoint rules of the next section.
+The change is level 3 ([CONTRIBUTING](../CONTRIBUTING.md#gates-and-ceremony-by-level-of-change));
+the area scenario is `restart`.
+
 ## RocksDB layouts and checkpoints
 
 RocksDB key/value and column-family layouts are not `FileKind` values: they are admitted through the
@@ -131,16 +151,8 @@ checkpoint; a standalone converted snapshot is not proof of a usable restored UT
 
 ## Verify and record the result
 
-Run builds only in the JDK image. From the worktree, with its dependency cache mounted at the same
-container path used for the build:
-
-```sh
-docker run --rm --name scarab-migration-check \
-  -v "$PWD":/work -v "${SCARAB_CACHE_DIR:-$PWD/.cache}":/work/.cache \
-  -w /work --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
-  -e SBT_GLOBAL_BASE=/tmp/sbt-global scarab-jdk:local \
-  bash scripts/sbtw check 'scalafixAll --check' node/runtimeClasspathFile
-```
+Run builds only in the JDK image, with the command and cache mount of
+[CONTRIBUTING](../CONTRIBUTING.md#build-docker-only) (`scripts/sbtw check node/runtimeClasspathFile`).
 
 Use [CONTRIBUTING's gates](../CONTRIBUTING.md#gates-and-ceremony-by-level-of-change) for the actual touched paths,
 including the storage restart scenario when applicable. Test previous-version bytes, semantic/gap

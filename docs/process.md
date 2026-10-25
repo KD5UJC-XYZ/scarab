@@ -127,7 +127,9 @@ ticket says which parts are confirmed from source, which come from an earlier re
 consequences still to verify.
 
 Every audit ticket states the **boundary** it concerns, the **trusted assumptions**, the **invariant**
-that must hold, the **acceptance criteria** and the **evidence** required; the fix keeps the
+that must hold, the **acceptance criteria** and the **evidence** required (the
+[audit finding template](../.github/ISSUE_TEMPLATE/audit.yml) has these fields; the registered upstream
+revisions to cite are in `docs/data/reference-pins.json`). The fix keeps the
 reproduction as a regression test, and the relevant row of [compatibility.md](compatibility.md)
 is updated. Where a finding concerns something a hostile peer or client could exploit, the public ticket
 describes the missing property and the reference's behaviour, never how to trigger it

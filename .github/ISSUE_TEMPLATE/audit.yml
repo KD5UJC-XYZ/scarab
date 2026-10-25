@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Audit finding
+description: A finding from an independent audit or review of main (docs/process.md, "Findings from an independent audit")
+labels: [audit]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Exploitable security problems: do not file here, see SECURITY.md. A public ticket states the missing property and what the reference does, never how to trigger it. Title: the audit ID, then a short imperative title (for example `[AUD3-22] ...`). Add one `priority:` label, an area label and the milestone.
+  - type: input
+    id: boundary
+    attributes:
+      label: Boundary
+      description: The module, symbol or interface the finding concerns (see docs/codemap.md).
+    validations:
+      required: true
+  - type: textarea
+    id: assumptions
+    attributes:
+      label: Trusted assumptions
+      description: What the boundary relies on.
+    validations:
+      required: true
+  - type: textarea
+    id: invariant
+    attributes:
+      label: Invariant
+      description: The property that must hold.
+    validations:
+      required: true
+  - type: textarea
+    id: finding
+    attributes:
+      label: Finding
+      description: What is wrong or missing. Mark each claim as confirmed from source, from an earlier reproduction, or a consequence still to verify.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: The source symbol, and the upstream file at a registered revision (docs/data/reference-pins.json), fixture, captured block or log excerpt. No key material.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checkable criteria, and the change level and gates that close it (CONTRIBUTING.md, "Gates and ceremony by level of change").
+    validations:
+      required: true
+  - type: input
+    id: roadmap
+    attributes:
+      label: Roadmap ID
+      description: The item in docs/roadmap.md this finding extends, if any.
