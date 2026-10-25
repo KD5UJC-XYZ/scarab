@@ -2961,7 +2961,7 @@ the reported figure of a JVM is the median of its ten rounds. Workloads:
 4.5 to 6.8, not pinned away from these CPUs). Docker image `scarab-jdk:local`
 `sha256:c90140def52d2711644c85a81c9bf218ffbe5dc81003bfb866154c2da832af38`, Temurin 21.0.11+10, Scala 3.3.8;
 `--cpuset-cpus=8-11 --memory=4g --network none`, `-Xms2g -Xmx2g -XX:+UseG1GC -XX:ActiveProcessorCount=4`. Classes
-frozen from commit `4d8127882` (the functional form in the tests, production unchanged), one JVM at a time in the
+frozen from commit `a829737e2` (the functional form in the tests, production unchanged; built before a rebase that changed only `.gitleaks.toml`), one JVM at a time in the
 order imperative-first, functional-first, functional-first, imperative-first.
 
 | Workload | Imperative µs/op | Functional µs/op | MB/s imp. / func. | MB allocated/op imp. / func. | Time, median (per-JVM range) | Allocation |
@@ -2976,7 +2976,7 @@ order imperative-first, functional-first, functional-first, imperative-first.
 
 Times are the median of the four per-JVM medians; the range is the per-JVM ratio, functional over imperative, in
 the same JVM. Real scripts per script: 110 µs imperative, 114 µs functional. Two more JVMs at the switched head
-(`cd1575d3d`, production functional, baseline in the tests) gave real scripts +0.1% and +6.8%, 1.38× and 1.40×
+(`0a9484f0f`, production functional, baseline in the tests) gave real scripts +0.1% and +6.8%, 1.38× and 1.40×
 allocation, and the other rows within the ranges above. The production walk at that commit is the measured one
 token for token apart from comments and the `scan` wrapper (compared with comments stripped).
 
