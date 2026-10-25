@@ -367,8 +367,20 @@ class HeaderRulesSuite extends ScalaCheckSuite:
       ),
       Left(PraosError.WrongState(h.era))
     )
+    // the counter comes before the VRF checks (`Protocol/Praos.hs` 481–486): an issuer with no
+    // counter whose pool is not in the stake distribution has no counter to start
     assertEquals(
       validate(pools = known.copy(stake = Map.empty)),
+      Left(PraosError.OCert(OCertError.NoCounter(pool)))
+    )
+    // with the counter of its first block, the issuer's stake is looked up next
+    assertEquals(
+      Praos.update(
+        before(1).state,
+        forged.headers(1),
+        known.copy(stake = Map.empty),
+        ForgedChain.config
+      ),
       Left(PraosError.IssuerWithoutStake(pool))
     )
     assertEquals(
@@ -382,6 +394,15 @@ class HeaderRulesSuite extends ScalaCheckSuite:
     )
     assertEquals(
       Praos.validate(state, h, StakeView.Unknown(Map.empty), ForgedChain.config),
+      Left(PraosError.OCert(OCertError.NoCounter(pool)))
+    )
+    assertEquals(
+      Praos.validate(
+        before(1).state,
+        forged.headers(1),
+        StakeView.Unknown(Map.empty),
+        ForgedChain.config
+      ),
       Left(PraosError.UnregisteredPool(pool))
     )
     assertEquals(

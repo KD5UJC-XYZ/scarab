@@ -138,10 +138,30 @@ object Praos:
   ): Either[PraosError | ProviderDefect, (PraosState, LeaderCheck)] =
     val pool = Blake2b.hash224.hash(header.issuerVkey)
     val vrfHash = Blake2b.hash256.hash(header.vrfVkey)
+    val distributed = stakeView match
+      case StakeView.Known(pools)      => pools.stake.contains(pool)
+      case StakeView.Unknown(registry) => registry.contains(pool)
     for
       issuer <- issuerKey(header.issuerVkey).leftMap(PraosError.Vocabulary(_))
       lastSlot <- slotOf(header.slot).leftMap(PraosError.Vocabulary(_))
       sequence <- counterOf(header.opCert.sequence).leftMap(PraosError.Vocabulary(_))
+      // The certificate, its KES signature and its counter come before the VRF checks, as in the
+      // reference (ouroboros-consensus 82ecba32 `Protocol/Praos.hs` 481–486): a header that fails
+      // both is refused for its certificate, and the VRF verifier is not asked about it.
+      _ <- config.verdicts
+        .opCert(header, config.slotsPerKesPeriod, config.maxKesEvolutions)
+        .refusedAs(PraosError.OCert(_))
+      _ <- OCertRules
+        // an issuer without a counter may start at 0 if its pool is in the stake distribution
+        // (`currentIssueNo`, `Protocol/Praos.hs` 658–665)
+        .checkCounter(
+          state.ocertCounters.get(issuer).map(_.toBigInt),
+          pool,
+          header.opCert.sequence,
+          known = distributed,
+          bounded = true
+        )
+        .leftMap(PraosError.OCert(_))
       registered <- stakeView match
         case StakeView.Known(pools) =>
           for
@@ -187,19 +207,6 @@ object Praos:
             )
           yield LeaderCheck.Threshold
         case None => Right(LeaderCheck.Unchecked(LeaderCheck.UncheckedReason.BootstrapStakeUnknown))
-      _ <- config.verdicts
-        .opCert(header, config.slotsPerKesPeriod, config.maxKesEvolutions)
-        .refusedAs(PraosError.OCert(_))
-      _ <- OCertRules
-        // reaching here means the pool is in the stake view
-        .checkCounter(
-          state.ocertCounters.get(issuer).map(_.toBigInt),
-          pool,
-          header.opCert.sequence,
-          known = true,
-          bounded = true
-        )
-        .leftMap(PraosError.OCert(_))
     yield
       val evolving = state.evolvingNonce.combine(nonceValue(output))
       val nextEpoch = config.geometry.firstSlot(config.geometry.epochOf(header.slot) + 1)

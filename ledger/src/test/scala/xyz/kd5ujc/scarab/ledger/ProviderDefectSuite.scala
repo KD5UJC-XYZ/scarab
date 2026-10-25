@@ -206,6 +206,56 @@ class ProviderDefectSuite extends FunSuite:
     )
   }
 
+  private enum Verifier:
+    case Cert, Kes
+
+  /** The OCERT signature checks over a certificate verifier answering `cert` and a KES verifier
+    * answering `kes`, with the verifiers called, in order.
+    */
+  private def ordered(
+      cert: Either[OperationalCertificate.Failure, OperationalCertificate.Result],
+      kes: Either[Sum6Kes.Failure, Sum6Kes.Result]
+  ): (Either[OCertError | ProviderDefect, Unit], Vector[Verifier]) =
+    val calls = Vector.newBuilder[Verifier]
+    val result = OCertRules.verifySignaturesWith(
+      header,
+      SlotsPerKesPeriod,
+      MaxKesEvolutions,
+      (_, _, _, _) =>
+        calls += Verifier.Kes
+        kes
+      ,
+      (_, _, _, _, _) =>
+        calls += Verifier.Cert
+        cert
+    )
+    (result, calls.result())
+
+  test("the cold-key signature is verified before KES, as in the reference (Praos.hs 637-640)") {
+    val certDefect = OperationalCertificate.Failure.Defect(boom)
+    val kesDefect = Sum6Kes.Failure.Defect(boom)
+    // a rejected KES signature does not mask a defect of the certificate verifier: the defect is
+    // met first, and KES is not asked
+    assertEquals(
+      ordered(Left(certDefect), Right(Sum6Kes.Result.SignatureRejected)),
+      (Left(ProviderDefect.OpCertSignature(certDefect)), Vector(Verifier.Cert))
+    )
+    // a KES defect cannot stop processing of a header whose certificate the reference rejects
+    // without asking KES
+    assertEquals(
+      ordered(Right(OperationalCertificate.Result.SignatureRejected), Left(kesDefect)),
+      (Left(OCertError.OpCertSignatureRejected), Vector(Verifier.Cert))
+    )
+    // a valid certificate reaches KES, whose defect is then the answer
+    assertEquals(
+      ordered(
+        Right(OperationalCertificate.Result.OperationalCertificateSignatureVerified),
+        Left(kesDefect)
+      ),
+      (Left(ProviderDefect.Kes(kesDefect)), Vector(Verifier.Cert, Verifier.Kes))
+    )
+  }
+
   test("the real verifiers accept the real header and reject a tampered KES signature") {
     assertEquals(
       OCertRules.verifySignatures(header, SlotsPerKesPeriod, MaxKesEvolutions),

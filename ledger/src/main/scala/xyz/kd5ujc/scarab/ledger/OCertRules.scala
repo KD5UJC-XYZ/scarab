@@ -38,7 +38,9 @@ object OCertRules:
       case Left(d: ProviderDefect) => Left(d)
 
   /** KES period window, the cold-key signature over the hot key, and the hot-key KES signature over
-    * the header body. A verifier that fails is a [[ProviderDefect]], never a refusal of the header.
+    * the header body, in this order (ouroboros-consensus 82ecba32 `Protocol/Praos.hs` 637–640;
+    * cardano-ledger f649f975 `cardano-protocol-tpraos` `Rules/OCert.hs` 98–99). A verifier that
+    * fails is a [[ProviderDefect]], never a refusal of the header.
     */
   def verifySignatures(
       header: Header.Shelley,
@@ -75,19 +77,6 @@ object OCertRules:
         (),
         OCertError.KesPeriodOutsideWindow(kesPeriod, start, maxKesEvolutions)
       )
-      kes <- ProviderDefect.kes(
-        kesVerifier(
-          header.opCert.hotVkey,
-          (kesPeriod - start).toInt,
-          header.bodyRaw,
-          header.kesSignature
-        )
-      )(OCertError.KesFailure(_))
-      _ <- Either.cond(
-        kes == Sum6Kes.Result.SuppliedMessageSignatureVerified,
-        (),
-        OCertError.KesSignatureRejected
-      )
       oc <- ProviderDefect.opCert(
         certVerifier(
           header.issuerVkey,
@@ -101,6 +90,19 @@ object OCertRules:
         oc == OperationalCertificate.Result.OperationalCertificateSignatureVerified,
         (),
         OCertError.OpCertSignatureRejected
+      )
+      kes <- ProviderDefect.kes(
+        kesVerifier(
+          header.opCert.hotVkey,
+          (kesPeriod - start).toInt,
+          header.bodyRaw,
+          header.kesSignature
+        )
+      )(OCertError.KesFailure(_))
+      _ <- Either.cond(
+        kes == Sum6Kes.Result.SuppliedMessageSignatureVerified,
+        (),
+        OCertError.KesSignatureRejected
       )
     yield ()
 

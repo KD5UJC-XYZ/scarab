@@ -169,6 +169,73 @@ class ProviderDefectBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncau
     }
   }
 
+  private enum Verifier:
+    case OCert, Vrf
+
+  /** The real verifiers, except that for the target header the OCERT checks answer `opCert` and the
+    * VRF verifier answers `vrf`; `calls` records which of the two the rules asked, in order.
+    */
+  private final class Ordered(
+      opCertAnswer: Either[OCertError | ProviderDefect, Unit],
+      vrfAnswer: Vrf.Result
+  ) extends Verdicts:
+    export Verdicts.Direct.{keyHash, takePrepared, tpraosVrf, witness}
+    private val asked = new java.util.concurrent.ConcurrentLinkedQueue[Verifier]()
+    def calls: Vector[Verifier] = Vector.from(asked.toArray(Array.empty[Verifier]))
+    def opCert(
+        header: Header.Shelley,
+        slotsPerKesPeriod: BigInt,
+        maxKesEvolutions: BigInt
+    ): Either[OCertError | ProviderDefect, Unit] =
+      if header.hash == target.hash then
+        asked.add(Verifier.OCert)
+        opCertAnswer
+      else Verdicts.Direct.opCert(header, slotsPerKesPeriod, maxKesEvolutions)
+    def praosVrf(input: Vrf.Input, vkey: Bytes, proof: Bytes, output: Bytes): Vrf.Result =
+      target.vrf match
+        case HeaderVrf.Praos(cert) if cert.proof == proof =>
+          asked.add(Verifier.Vrf)
+          vrfAnswer
+        case _ => Verdicts.Direct.praosVrf(input, vkey, proof, output)
+
+  private val kesDefect = ProviderDefect.Kes(Sum6Kes.Failure.Defect(boom))
+  private val rejectedProof = Vrf.Result.OutputMismatch
+
+  test(
+    "an OCERT defect beside an invalid VRF proof: the certificate is checked first, the node stops"
+  ) {
+    val headerFirst = Ordered(Left(kesDefect), rejectedProof)
+    assertEquals(validate(headerFirst, target), Outcome.Unverifiable(kesDefect))
+    assertEquals(headerFirst.calls, Vector(Verifier.OCert))
+    val block = Ordered(Left(kesDefect), rejectedProof)
+    session(block).map { (end, invalid, _, tip) =>
+      val held = VerificationDefect(target.point, VerificationDefect.Site.Header, kesDefect)
+      assertEquals(end, SessionEnd.Unverifiable(held))
+      assertEquals(FailurePolicy.disposition(end), Disposition.StopNode(Fatal.Unverifiable(held)))
+      assertEquals(invalid, Set.empty[Bytes])
+      assertEquals(tip, forged.headers(index - 1).point)
+      assert(!block.calls.contains(Verifier.Vrf), block.calls.toString)
+    }
+  }
+
+  test("a refused certificate beside a VRF defect: the header is invalid, the VRF is not asked") {
+    val headerFirst =
+      Ordered(Left(OCertError.KesSignatureRejected), Vrf.Result.InternalFailure(boom))
+    validate(headerFirst, target) match
+      case Outcome.Invalid(_) => ()
+      case other              => fail(s"unexpected $other")
+    assertEquals(headerFirst.calls, Vector(Verifier.OCert))
+    val block = Ordered(Left(OCertError.KesSignatureRejected), Vrf.Result.InternalFailure(boom))
+    session(block).map { (end, invalid, _, tip) =>
+      FailurePolicy.disposition(end) match
+        case Disposition.StopNode(fatal) => fail(s"the node stopped: $fatal")
+        case _                           => ()
+      assertEquals(invalid, Set(target.hash))
+      assertEquals(tip, forged.headers(index - 1).point)
+      assert(!block.calls.contains(Verifier.Vrf), block.calls.toString)
+    }
+  }
+
   test("negative control: the real verifier still rejects an invalid proof as a typed failure") {
     val bad = target.vrf match
       case HeaderVrf.Praos(c) =>
