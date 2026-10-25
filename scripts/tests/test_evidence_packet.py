@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import tomllib
 import unittest
 from unittest import mock
 
@@ -369,9 +370,32 @@ class PacketTest(unittest.TestCase):
                          ["candidate.json", "image.cdx.json", "jvm.cdx.json"])
 
 
-@unittest.skipUnless(docker_has(packet.check_secret_scan.IMAGE),
-                     "pinned gitleaks image not present locally; the secret-scan gate is then incomplete, not passed")
+REQUIRE_SCANNER = "SCARAB_REQUIRE_GITLEAKS"
+SCANNER_SCOPE = ("real-scanner controls of SecretScanIntegrationTest only: the pinned gitleaks image "
+                 f"{packet.check_secret_scan.IMAGE} is not present locally. Packet generation itself then records "
+                 "the secret-scan gate as scanner-unavailable (incomplete), never passed; set "
+                 f"{REQUIRE_SCANNER}=1 to make this a failure")
+
+
+def scanner_requirement(available, environment):
+    """Run with the real scanner, skip with the stated scope, or fail when the scanner is required."""
+    if available:
+        return None
+    if environment.get(REQUIRE_SCANNER) == "1":
+        raise AssertionError(SCANNER_SCOPE)
+    raise unittest.SkipTest(SCANNER_SCOPE)
+
+
+def marked(member):
+    """`member` with gitleaks' inline allow marker on the same line as its secret."""
+    return member.replace(b'"}', b' # gitleaks:allow"}').replace(b'\\u0022"}', b'\\u0022 # gitleaks:allow"}')
+
+
 class SecretScanIntegrationTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        scanner_requirement(docker_has(packet.check_secret_scan.IMAGE), os.environ)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.base = Path(self.temporary.name)
@@ -386,25 +410,87 @@ class SecretScanIntegrationTest(unittest.TestCase):
         register = json.dumps(dict(entries=[dict(scope="bounded sample")]), indent=2).encode()
         self.assertIs(self.scan("clean", {"packet/coverage/register.json": register}), packet.Outcome.PASSED)
 
-    def test_synthetic_control_is_found_raw_and_json_escaped(self):
+    def controls(self):
         raw = f'{{"scope": "api_key = \\"{SYNTHETIC_TOKEN}\\""}}\n'.encode()
         escaped = ('{"scope": "\\u0061pi_key = \\u0022' + "".join(f"\\u{ord(c):04x}" for c in SYNTHETIC_TOKEN)
                    + '\\u0022"}\n').encode()
         self.assertEqual(json.loads(escaped)["scope"], f'api_key = "{SYNTHETIC_TOKEN}"')
-        for name, member in [("raw", raw), ("escaped", escaped)]:
+        return [("raw", raw), ("escaped", escaped), ("raw-allow-marker", marked(raw)),
+                ("escaped-allow-marker", marked(escaped))]
+
+    def test_synthetic_control_is_found_raw_escaped_and_despite_inline_allow(self):
+        for name, member in self.controls():
+            if name.endswith("allow-marker"):
+                self.assertIn("gitleaks:allow", json.loads(member)["scope"])
             with self.subTest(form=name), self.assertRaises(packet.SecretFound):
                 self.scan(name, {"packet/coverage/test-coverage-register.json": member})
 
     def test_full_run_with_the_control_in_the_register_writes_nothing(self):
         repo = Repo(self.base)
-        register = json.loads((repo.root / check_test_coverage.REGISTER).read_text())
-        register["entries"][0]["scope"] = f'api_key = "{SYNTHETIC_TOKEN}"'
-        repo.write(check_test_coverage.REGISTER, json.dumps(register, indent=2) + "\n")
-        repo.commit("synthetic control")
-        with mock.patch.object(packet.socket, "gethostname", return_value=HOST), \
-                self.assertRaises(packet.SecretFound):
-            packet.build(repo.root, "HEAD", self.base / "out", None, False, allow_incomplete=True)
-        self.assertFalse((self.base / "out").exists())
+        for index, scope in enumerate([f'api_key = "{SYNTHETIC_TOKEN}"',
+                                       f'api_key = "{SYNTHETIC_TOKEN}" # gitleaks:allow']):
+            with self.subTest(scope=scope):
+                register = json.loads((repo.root / check_test_coverage.REGISTER).read_text())
+                register["entries"][0]["scope"] = scope
+                repo.write(check_test_coverage.REGISTER, json.dumps(register, indent=2) + "\n")
+                repo.commit(f"synthetic control {index}")
+                with mock.patch.object(packet.socket, "gethostname", return_value=HOST), \
+                        self.assertRaises(packet.SecretFound):
+                    packet.build(repo.root, "HEAD", self.base / f"out-{index}", None, False, allow_incomplete=True)
+                self.assertFalse((self.base / f"out-{index}").exists())
+
+
+class ScannerSetupTest(unittest.TestCase):
+    """Scanner invocation and layout, checked without the scanner image."""
+
+    def test_requirement_skips_with_its_scope_or_fails_when_required(self):
+        self.assertIsNone(scanner_requirement(True, {REQUIRE_SCANNER: "1"}))
+        with self.assertRaises(unittest.SkipTest) as skipped:
+            scanner_requirement(False, {})
+        self.assertIn("SecretScanIntegrationTest only", str(skipped.exception))
+        with self.assertRaises(AssertionError):
+            scanner_requirement(False, {REQUIRE_SCANNER: "1"})
+
+    def test_command_ignores_inline_allow_markers_and_uses_neutral_names(self):
+        calls = []
+        def run(command, **options):
+            calls.append(command)
+            workdir = Path(command[command.index("-v") + 1].split(":/scan")[0])
+            (workdir / "report.json").write_text("[]")
+            return subprocess.CompletedProcess(command, 0, b"", b"")
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(packet.subprocess, "run", run):
+            workdir = Path(temporary) / "scan"
+            outcome = packet.gitleaks({"packet/coverage/test-coverage-register.json": b'{"a": "b"}'}, workdir)
+            names = sorted(p.relative_to(workdir / "members").as_posix()
+                           for p in (workdir / "members").rglob("*") if p.is_file())
+        self.assertIs(outcome, packet.Outcome.PASSED)
+        self.assertIn("--ignore-gitleaks-allow", calls[0])
+        self.assertIn("--network", calls[0])
+        self.assertEqual(names, ["scan/000000.txt", "scan/000001.txt"])
+
+    def test_repository_config_cannot_allowlist_a_scan_name(self):
+        config = tomllib.loads((packet.REPO / ".gitleaks.toml").read_text())
+        self.assertTrue(packet.allowlist_paths(config))
+        layout = packet.scan_layout({"packet/inventories.json": b"{}"}, config)
+        self.assertEqual(sorted(layout), ["scan/000000.txt", "scan/000001.txt"])
+        for config in [dict(allowlist=dict(paths=["^scan/"])),
+                       dict(rules=[dict(id="r", allowlists=[dict(paths=["000001"])])]),
+                       dict(rules=[dict(id="r", allowlist=dict(paths=["("]))]),
+                       {"extend": {"path": "other.toml"}}]:
+            with self.subTest(config=config):
+                self.assertIsNone(packet.scan_layout({"packet/inventories.json": b"{}"}, config))
+
+    def test_path_rules_apply_to_the_real_member_paths(self):
+        config = tomllib.loads((packet.REPO / ".gitleaks.toml").read_text())
+        with self.assertRaises(packet.SecretFound):
+            packet.scan_layout({"packet/sbom/pool.skey": b"{}"}, config)
+
+    def test_a_config_that_could_exempt_packet_content_is_unavailable(self):
+        with tempfile.TemporaryDirectory() as temporary, \
+                mock.patch.object(packet, "scan_layout", return_value=None), \
+                mock.patch.object(packet.subprocess, "run") as run:
+            self.assertIs(packet.gitleaks({"packet/a.json": b"{}"}, Path(temporary)), packet.Outcome.UNAVAILABLE)
+        run.assert_not_called()
 
 
 class CandidateTest(unittest.TestCase):

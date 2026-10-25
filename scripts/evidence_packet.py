@@ -40,6 +40,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import tomllib
 
 import candidate_manifest
 import check_conformance_sources
@@ -536,28 +537,78 @@ def guard(members: dict[str, bytes], tokens: list[bytes]) -> None:
         raise ProvenanceLeak("packet members record machine-local values:\n" + "\n".join(rows))
 
 
+SCAN_NAME = "scan/{index:06d}.txt"
+
+
+def allowlist_paths(config: dict) -> list[str]:
+    """Every `paths` pattern of the global and per-rule allowlists of a parsed gitleaks config."""
+    lists = []
+    for owner in [config, *config.get("rules", [])]:
+        single = owner.get("allowlist")
+        lists.extend([single] if isinstance(single, dict) else [])
+        lists.extend(a for a in owner.get("allowlists", []) if isinstance(a, dict))
+    return [pattern for allow in lists for pattern in allow.get("paths", [])]
+
+
+def path_rules(config: dict) -> list[tuple[str, str]]:
+    """Rules that detect by file path alone, such as `cardano-signing-key-file` (`*.skey`)."""
+    return [(rule.get("id", ""), rule["path"]) for rule in config.get("rules", [])
+            if isinstance(rule.get("path"), str) and not rule.get("regex")]
+
+
+def scan_layout(members: dict[str, bytes], config: dict) -> dict[str, tuple[str, bytes]] | None:
+    """Neutral scan file name -> (member view, bytes); None when the config could allowlist a scan path.
+
+    Members are scanned under neutral names, not their packet paths, so no path allowlist of the
+    repository config (which names repository files such as the committed fixture inventory) can
+    exempt packet content. Path-only rules are applied to the real member paths here instead. A
+    pattern Python cannot compile, an `[extend] path`, or a match on a neutral name means the scan
+    cannot vouch for the packet.
+    """
+    if config.get("extend", {}).get("path"):
+        return None
+    shown = views(members)
+    layout = {SCAN_NAME.format(index=index): view for index, view in enumerate(shown)}
+    try:
+        patterns = [re.compile(pattern) for pattern in allowlist_paths(config)]
+        detectors = [(rule, re.compile(pattern)) for rule, pattern in path_rules(config)]
+    except re.error:
+        return None
+    if any(pattern.search(name) for pattern in patterns for name in layout):
+        return None
+    hits = sorted(f"{path}: {rule}" for rule, pattern in detectors for path in members if pattern.search(path))
+    if hits:
+        raise SecretFound("secret scanner path rules match packet members:\n" + "\n".join(hits))
+    return layout
+
+
 def gitleaks(members: dict[str, bytes], workdir: Path) -> Outcome:
     """Scan the members and their decoded strings with CI's pinned gitleaks image and rules.
 
     A finding raises `SecretFound`; a scanner that cannot run or reports inconsistently is
     `UNAVAILABLE`, an incomplete gate, never a pass. The image is the one `check_secret_scan.py` pins.
+    `--ignore-gitleaks-allow` keeps an inline `gitleaks:allow` marker in packet content from
+    suppressing its own finding, and neutral scan names keep path allowlists from applying.
     """
+    config_path = REPO / ".gitleaks.toml"
+    try:
+        layout = scan_layout(members, tomllib.loads(config_path.read_text(encoding="utf-8")))
+    except (OSError, tomllib.TOMLDecodeError):
+        return Outcome.UNAVAILABLE
+    if layout is None:
+        return Outcome.UNAVAILABLE
     tree = workdir / "members"
-    for path, raw in sorted(members.items()):
-        written = {path: raw}
-        if path.endswith(".json"):
-            written["decoded/" + path + ".txt"] = decoded_strings(path, raw)
-        for name, content in written.items():
-            target = tree / name
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(content)
+    for name, (_, content) in layout.items():
+        target = tree / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
     try:
         done = subprocess.run(
             ["docker", "run", "--rm", "--network", "none", "--user", f"{os.getuid()}:{os.getgid()}",
-             "-e", "HOME=/tmp", "-v", f"{workdir}:/scan", "-v", f"{REPO / '.gitleaks.toml'}:/config.toml:ro",
+             "-e", "HOME=/tmp", "-v", f"{workdir}:/scan", "-v", f"{config_path}:/config.toml:ro",
              "-w", "/scan/members", check_secret_scan.IMAGE, "dir", ".", "--config", "/config.toml",
-             "--no-banner", "--redact", "--exit-code", "1", "--report-format", "json",
-             "--report-path", "/scan/report.json"], capture_output=True)
+             "--ignore-gitleaks-allow", "--no-banner", "--redact", "--exit-code", "1",
+             "--report-format", "json", "--report-path", "/scan/report.json"], capture_output=True)
     except OSError:
         return Outcome.UNAVAILABLE
     report = workdir / "report.json"
@@ -570,7 +621,8 @@ def gitleaks(members: dict[str, bytes], workdir: Path) -> Outcome:
     if done.returncode == 0 and not findings:
         return Outcome.PASSED
     if done.returncode == 1 and findings:
-        rows = sorted(f"{row.get('File')}:{row.get('StartLine')}: {row.get('RuleID')}" for row in findings)
+        rows = sorted(f"{layout.get(str(row.get('File')), (row.get('File'),))[0]}:{row.get('StartLine')}: "
+                      f"{row.get('RuleID')}" for row in findings)
         raise SecretFound("secret scanner findings (redacted):\n" + "\n".join(rows))
     return Outcome.UNAVAILABLE
 

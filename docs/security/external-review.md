@@ -173,8 +173,10 @@ outside the checkout, together with `SHA256SUMS`. `--check` generates the packet
 separate materializations and fails unless the archives are byte-identical. Every member, and
 the decoded keys and strings of every JSON member, must pass the `check_local_paths.py` guard and a
 check for this machine's checkout, home and scratch paths and its host name. The same views are
-scanned with the gitleaks image and `.gitleaks.toml` that `check_secret_scan.py` pins, offline. A
-finding fails the run and nothing is written or redacted; a scanner that cannot run makes the
+scanned with the gitleaks image and `.gitleaks.toml` that `check_secret_scan.py` pins, offline, with
+inline `gitleaks:allow` markers ignored. The scan uses neutral file names, so the configuration's
+path allowlists cannot exempt packet content; its path-only rules (such as `*.skey`) are applied to
+the real member paths. A finding fails the run and nothing is written or redacted; a scanner that cannot run makes the
 `secret-scan` gate incomplete, never passed. Security-sensitive reproductions and
 private captures are never embedded: they are exchanged privately under
 [SECURITY.md](../../SECURITY.md) and identified by digest.
