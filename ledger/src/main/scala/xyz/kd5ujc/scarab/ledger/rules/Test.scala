@@ -28,5 +28,9 @@ object Test:
   def failureOnNonEmpty[C, Rec](items: C)(isEmpty: C => Boolean)(onNonEmpty: C => Rec): Test[Rec] =
     if isEmpty(items) then pass else Validated.invalidNec(onNonEmpty(items))
 
+  /** `sequenceA_` of tests: every one runs, and the failures are kept in order. */
+  def all[Rec](tests: Test[Rec]*): Test[Rec] =
+    tests.foldLeft(pass[Rec])((done, next) => done.product(next).map(_ => ()))
+
   /** The failures of a test, if it failed. */
   def failures[Rec](test: Test[Rec]): Option[NonEmptyChain[Rec]] = test.swap.toOption
