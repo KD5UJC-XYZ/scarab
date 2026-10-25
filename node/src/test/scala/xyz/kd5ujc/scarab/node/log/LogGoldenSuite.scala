@@ -57,6 +57,7 @@ class LogGoldenSuite extends CatsEffectSuite:
             .Started(build, peers, setup.genesis, xyz.kd5ujc.scarab.node.NodeConfig.empty, None)
         )
         _ <- blstReports.traverse_(r => node(NodeEvent.Blst(r)))
+        _ <- plutusCryptoReports.traverse_(r => node(NodeEvent.PlutusCrypto(r)))
         _ <- errors.traverse_(e => node(NodeEvent.Failed(e)))
         _ <- node(
           NodeEvent.ReceivedBlockDiscarded(

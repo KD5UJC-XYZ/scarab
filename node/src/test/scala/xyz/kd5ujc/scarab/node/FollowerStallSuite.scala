@@ -499,7 +499,10 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                         ScriptLocation.Phase1(Bytes.empty)
                       else ScriptLocation.Phase2(Redeemer(0, 0, Bytes.empty, ExUnits.zero)),
                       EvalFailure
-                        .Unsupported(xyz.kd5ujc.scarab.plutus.BackendFailure.BinaryDstUnavailable)
+                        .Unsupported(
+                          xyz.kd5ujc.scarab.plutus.BackendFailure
+                            .BuiltinUnavailable(scalus.uplc.DefaultFun.VerifyEd25519Signature)
+                        )
                     )
                     summon[Handle[IO, NodeError]].raise[NodeError, Unit](
                       ValidationError(

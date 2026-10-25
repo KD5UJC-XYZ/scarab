@@ -119,8 +119,6 @@ class BackendFailureSuite extends FunSuite:
   test("unavailable builtins and natives stay the implementation's") {
     Vector(
       BackendFailure.NoResult,
-      BackendFailure.BinaryDstUnavailable,
-      BackendFailure.NativeHashToGroupUnavailable,
       BackendFailure.BuiltinUnavailable(DefaultFun.VerifyEcdsaSecp256k1Signature)
     ).foreach(f => assertEquals(f.reach, BackendFailure.Reach.Implementation, f.toString))
     Vector(

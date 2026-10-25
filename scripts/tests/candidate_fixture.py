@@ -61,6 +61,7 @@ def make_candidate(root: Path, release=True) -> dict:
         archive.writestr('META-INF/scarab/build-info.properties', ''.join(f'{k}={v}\n' for k, v in metadata.items()))
         archive.writestr('META-INF/MANIFEST.MF', 'Implementation-Version: ' + identity['version'] + '\n')
         archive.writestr('supranational/blst/Linux/amd64/libblst.so', source['portable'])
+        archive.writestr('natives/linux_64/libscalus_crypto.so', b'synthetic Plutus crypto JNI')
     reports = []
     for index in [1, 2]:
         put(f'evidence/repro/build-{index}.jar', jar.read_bytes())
@@ -103,7 +104,10 @@ def make_candidate(root: Path, release=True) -> dict:
                         sha256=hashlib.sha256(archive.read(name)).hexdigest())]) for name in archive.namelist()]
     coverage = dict(artifactSha256=contract.sha256(jar), components=[dict(ref='pkg:maven/example/synthetic@1',
                     coordinate='example:synthetic:1', sha256='3' * 64, licenses=[dict(name='MIT', url='')], callers=[])],
-                    nativeResources=[dict(path=portable, sha256=hashlib.sha256(source['portable']).hexdigest())], entries=entries)
+                    nativeResources=[dict(path=portable, sha256=hashlib.sha256(source['portable']).hexdigest()),
+                                     dict(path='natives/linux_64/libscalus_crypto.so',
+                                          sha256=hashlib.sha256(b'synthetic Plutus crypto JNI').hexdigest())],
+                    entries=entries)
     write('evidence/assembly-coverage.json', coverage)
     write('evidence/jvm-resolution.json', {k: v for k, v in coverage.items() if k != 'entries'})
     legal = put('evidence/legal/license.txt', b'SYNTHETIC LEGAL EVIDENCE')

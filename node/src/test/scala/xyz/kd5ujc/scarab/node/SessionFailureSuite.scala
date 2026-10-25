@@ -110,7 +110,10 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                     Bytes.empty,
                     ScriptLocation.Phase2(Redeemer(0, 0, Bytes.empty, ExUnits.zero)),
                     EvalFailure
-                      .Unsupported(xyz.kd5ujc.scarab.plutus.BackendFailure.BinaryDstUnavailable)
+                      .Unsupported(
+                        xyz.kd5ujc.scarab.plutus.BackendFailure
+                          .BuiltinUnavailable(scalus.uplc.DefaultFun.VerifyEd25519Signature)
+                      )
                   )
                 )
               )

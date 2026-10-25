@@ -244,10 +244,10 @@ and wide indices, with both validity flags and both funding/collateral dispositi
 API observations apply the exact ignored-context wrapper before evaluation; they are distinct from
 the original 477-row API matrix. Transaction-context evidence remains recorded separately.
 
-| Case(s) | Class | Scalus 1.3.0 against the reference | Protocols where it exists | Reachable from a transaction? | Effect | Handling |
+| Case(s) | Class | Scalus 1.3.0 against the reference (as triaged) | Protocols where it exists | Reachable from a transaction? | Effect | Handling |
 |---|---|---|---|---|---|---|
 | `parser/value/` `currencyIDs-unordered`, `duplicate-currencyIDs`, `duplicate-tokenIDs`, `empty-tokens`, `tokenIDs-unordered`, `zero-asset` (6) | (ii), now (iii) in the suite | Scalus rebuilds a `value` constant as a normalised map when it decodes, so the malformed constant is accepted (and changed); the reference fails decoding (`PlutusCore/Value.hs` 637-694) | every protocol and language where a script exists: type tag 13 has no protocol gate, only the header size is checked (`SerialisedScript.hs` 199-215, `Versions.hs` 394-399) | yes: any Plutus script in a witness set or an output, whether or not it runs | decode: the reference makes the transaction invalid in phase 1 (Babbage on) or fails phase 2 (Alonzo); we accepted it | fixed on the ledger path by `FlatScan`, which validates the original flat bytes (also a key over 32 bytes and a quantity beyond 127 bits); tests `PlutusReachabilitySuite`, `PreConwayRulesSuite`; the suite now uses original Flat sidecars and removes these six exceptions |
-| `semantics/bls12_381_G1_hashToGroup/hash-dst-len-255`, `..._G2_...`, `bls12_381-cardano-crypto-tests/signature/large-dst` (3) | (ii) | the domain separation tag reaches blst as a Latin-1 `String`; a tag with a byte of 0x80 or more (or 0) yields another point (the cases' tags are such bytes: the length 255 is not the cause) | batch 4 builtin: V3 from 9, V1 and V2 from 11 | yes, by a script that hashes with a tag it builds or is given; ASCII tags are right | result: a different point, so a different verdict if the script compares it | fixed on Linux/amd64 by the pinned upstream byte-array JNI backport into portable blst; the three exceptions are removed; other platforms retain explicit unavailable evaluation |
+| `semantics/bls12_381_G1_hashToGroup/hash-dst-len-255`, `..._G2_...`, `bls12_381-cardano-crypto-tests/signature/large-dst` (3) | (ii) | the domain separation tag reaches blst as a Latin-1 `String`; a tag with a byte of 0x80 or more (or 0) yields another point (the cases' tags are such bytes: the length 255 is not the cause) | batch 4 builtin: V3 from 9, V1 and V2 from 11 | yes, by a script that hashes with a tag it builds or is given; ASCII tags are right | result: a different point, so a different verdict if the script compares it | fixed in Scalus 1.4.0, whose scalus-crypto-jni passes the tag to blst as bytes on every platform; the earlier Linux/amd64 JNI backport and the other platforms' refusal are removed; the three exceptions remain removed |
 | `term/constant-case/data/data-01`, `data-02` (2) | (ii), now (iii) | Scalus refuses `case` on `Data` below protocol 12 and applies the fields from 12, as the reference ledger does; the suite's executable uses `caseBuiltin` with `Data` | `Data` case from 12 only | no: the reference ledger uses `caseBuiltinNoData` at 11 and refuses too | none at protocols 5 to 11 | executes and passes under the upstream Data-case profile; separate regression tests retain the ledger protocol boundaries |
 | `parser/bls12-381/{G1,G2}/{zero,on-curve-bit3-clear,on-curve-bit3-set}` (6) | (iii) | the previous Scarab harness round-tripped a BLS12-381 constant through flat; flat has no such constant, and Scalus's encoder writes an application of `uncompress`; a flat byte string that does carry the constant tag is refused by the reference (`Flat Element` instances) and by Scalus alike | batch 4 | no: the decode failure is the same | none | direct parsed-constant evaluation passes the original result and budget; Flat admission remains separately tested |
 | `semantics/dropList/dropList-09`, `-10`, `-14`, `-15`, `-16` (5) | (iii) | the suite counts the budget with saturating arithmetic (the maximum); in restricting mode both run out of budget; only the units reported after the failure wrap negative in Scalus; the cost never wraps to a small value | batch 6: V3, V1, V2 at 11 | the script fails in both; phase 2 failure ignores the units spent | none on the verdict; the reported units on a failure | saturating counting now passes the original result and budget; separate restricting-budget tests retain ledger failure checks |
@@ -272,15 +272,16 @@ flat bytes that handles the `value` constants:
 
 ## 5. Implementation and remaining scope
 
-The portable native artifact backports the released dependency's upstream raw-byte DST fix from
-Scalus commit `c132a2c8615db9cd27b464b7863863cd576d23be`; see
-[`blst-native/native/README.md`](../blst-native/native/README.md). Scalus 1.3.0 remains the latest
-Maven release checked on 2026-10-18, and this fix is unreleased. No unpublished Scalus dependency
-is adopted. The adapter delegates hashing and compression to the same pinned portable blst0.3.15,
-retains costing and the DST length check, and passes original upstream conformance assertions plus
-independently exported G1/G2 point vectors. Library startup checks both new JNI entries against
-reference known answers. The complete upstream suite now passes 1,009/1,009 cases with zero
-exceptions under its own term/counting profile; the obsolete known-failure resource is removed.
+Scalus 1.4.0 evaluates the cryptographic builtins on `libscalus_crypto` of scalus-crypto-jni 0.1.0
+(libsodium, libsecp256k1 and portable blst 0.3.15) and passes `hashToGroup`'s tag as bytes, so the
+earlier raw-byte DST backport into Scarab's portable libblst is no longer used by Plutus
+([ADR 0020](adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md)). Costing and the 255-byte
+DST length check are Scalus's own, and the original upstream conformance assertions plus the
+independently exported G1/G2 point vectors pass through the production evaluator. The start-up
+check of the library computes the `hashToGroup` known answers for a non-ASCII tag. A builtin the
+library backs is a typed `BuiltinUnavailable` when it did not load. The complete upstream suite
+passes 1,009/1,009 cases with zero exceptions under its own term/counting profile; the obsolete
+known-failure resource is removed.
 
 An implementation limit is `Phase2.Outcome.Unavailable` and `LedgerFailure.Unavailable`, regardless
 of the transaction validity flag. It supplies no script verdict and no consensus predicate failure.

@@ -6,7 +6,6 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.blst.Blst
 
 /** Executed plutus-1.70.0.0 verdicts with its real crypto backend, not source-only predictions. */
 class PlutusBoundaryOracleSuite extends FunSuite:
@@ -48,8 +47,11 @@ class PlutusBoundaryOracleSuite extends FunSuite:
         val model = PlutusBoundaryCorpus.costModel(language, protocol)
         val modelBytes =
           Json.arr(model.map(Json.fromLong)*).noSpaces.getBytes(StandardCharsets.UTF_8)
-        assertEquals(Blst.sha256Hex(probe.script.toArray), field[String](row, "scriptSha256"))
-        assertEquals(Blst.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
+        assertEquals(
+          NativeCrypto.sha256Hex(probe.script.toArray),
+          field[String](row, "scriptSha256")
+        )
+        assertEquals(NativeCrypto.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
         val admitted = decoder.validate(language, protocol, probe.script).isRight
         assertEquals(admitted, field[Boolean](row, "admitted"), s"$language/$protocol")
         val result = evaluator.evaluate(

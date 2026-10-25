@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.plutus
 
-import scalus.crypto.{NativeSecp256k1, Secp256k1Context}
+import scalus.crypto.jni.Secp256k1 as NativeSecp256k1
 
 /** The meaning of the Plutus builtin `verifyEcdsaSecp256k1Signature` as the reference defines it
   * (`PlutusCore.Crypto.Secp256k1` over `Cardano.Crypto.DSIGN.EcdsaSecp256k1` and libsecp256k1):
@@ -23,8 +23,6 @@ object Secp256k1:
   /** The order `n` of the secp256k1 group. */
   val Order: BigInt =
     BigInt("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", 16)
-
-  private val HalfOrder: BigInt = Order >> 1
 
   enum Operand:
     case PublicKey, Message, Signature
@@ -54,17 +52,20 @@ object Secp256k1:
           (),
           Error.WrongLength(operand, expected, bytes.length)
         )
+    // libsecp256k1 parses the key, then the compact signature (which fails only for r or s at least
+    // the order, refused above), then verifies: an IllegalArgumentException is the key's.
+    def verify: Either[Error, Boolean] =
+      try Right(NativeSecp256k1.ecdsaVerify(msg, sig, pk))
+      catch case _: IllegalArgumentException => Left(Error.InvalidPublicKey)
     try
       for
-        _ <- Either.cond(Secp256k1Context.isEnabled, (), Error.NativeUnavailable)
+        _ <- Either.cond(NativeCrypto.available, (), Error.NativeUnavailable)
         _ <- length(pk, Operand.PublicKey, 33)
-        _ <- Either.cond(NativeSecp256k1.isValidPubKey(pk), (), Error.InvalidPublicKey)
         _ <- length(sig, Operand.Signature, 64)
         r = BigInt(1, sig.slice(0, 32))
         s = BigInt(1, sig.slice(32, 64))
         _ <- Either.cond(r < Order && s < Order, (), Error.ScalarOutOfRange)
         _ <- length(msg, Operand.Message, 32)
-      yield
-        if r.signum == 0 || s.signum == 0 || s > HalfOrder then false
-        else NativeSecp256k1.ecdsaVerify(msg, sig, pk)
+        verdict <- verify
+      yield verdict
     catch case scala.util.control.NonFatal(cause) => Left(Error.Defect(cause))

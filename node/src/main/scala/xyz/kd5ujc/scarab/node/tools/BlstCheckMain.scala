@@ -16,17 +16,20 @@ import xyz.kd5ujc.scarab.plutus.{
   EvalResult,
   ExUnits,
   PlutusData,
+  NativeCrypto,
+  NativeCryptoProblem,
+  NativeCryptoReport,
   PlutusLanguage,
   ScalusEvaluator
 }
 import cats.mtl.Handle
 
-/** `BlstCheckMain [bench]`: the start-up check of the BLS12-381 library, the Plutus BLS12-381
-  * builtins through Scalus, and with `bench` the rates of G1 and G2 uncompression, the pairing and
-  * the verification of a Leios certificate (ADR 0012). One JSON object on stdout; exit 0 when the
-  * library is usable and the builtins evaluate. Run it on a processor without ADX/BMI2 to see the
-  * portable library work there, and with and without `blst-native` on the class path to compare the
-  * rates.
+/** `BlstCheckMain [bench]`: the start-up checks of the BLS12-381 library of Leios certificates (ADR
+  * 0012) and of libscalus_crypto, the native library of the Plutus builtins (ADR 0020), the Plutus
+  * BLS12-381 builtins through the node's evaluator, and with `bench` the rates of G1 and G2
+  * uncompression, the pairing and the verification of a Leios certificate. One JSON object on
+  * stdout; exit 0 when both libraries are usable and the builtins evaluate. Run it on a processor
+  * without ADX/BMI2 to see both libraries work there.
   */
 object BlstCheckMain extends IOApp:
   private val g1Hex =
@@ -35,14 +38,26 @@ object BlstCheckMain extends IOApp:
     "93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8"
 
   def run(args: List[String]): IO[ExitCode] =
+    def refused(message: String): IO[ExitCode] =
+      IO.println(Json.obj("ok" -> false.asJson, "refused" -> message.asJson).noSpaces)
+        .as(ExitCode(1))
     Handle
-      .allow[BlstProblem](Blst.verify[IO].flatMap(report => rest(report, args.contains("bench"))))
-      .rescue(problem =>
-        IO.println(Json.obj("ok" -> false.asJson, "refused" -> problem.message.asJson).noSpaces)
-          .as(ExitCode(1))
+      .allow[BlstProblem](
+        Blst
+          .verify[IO]
+          .flatMap(report =>
+            Handle
+              .allow[NativeCryptoProblem](
+                NativeCrypto
+                  .verify[IO]
+                  .flatMap(crypto => rest(report, crypto, args.contains("bench")))
+              )
+              .rescue(problem => refused(problem.message))
+          )
       )
+      .rescue(problem => refused(problem.message))
 
-  private def rest(report: BlstReport, bench: Boolean): IO[ExitCode] =
+  private def rest(report: BlstReport, crypto: NativeCryptoReport, bench: Boolean): IO[ExitCode] =
     for
       builtins <- IO.blocking(evaluateBuiltins)
       rates <- if bench then IO.blocking(benchmark).map(Some(_)) else IO.pure(None)
@@ -59,6 +74,10 @@ object BlstCheckMain extends IOApp:
               case LibraryBuild.Portable      => "portable".asJson
               case LibraryBuild.Other(sha256) => s"other $sha256".asJson
               case LibraryBuild.OnLibraryPath => "library-path".asJson),
+            "plutusCrypto" -> Json.obj(
+              "platform" -> crypto.platform.directory.asJson,
+              "sha256" -> crypto.library.digest.asJson
+            ),
             "builtins" -> builtins.toMap.asJson,
             "opsPerSecond" -> rates.map(_.toMap).asJson
           )

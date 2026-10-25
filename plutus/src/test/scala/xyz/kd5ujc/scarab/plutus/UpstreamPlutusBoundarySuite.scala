@@ -6,7 +6,6 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.blst.Blst
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** The new upstream inputs use the released ledger API as their oracle. The separately executed
@@ -97,11 +96,11 @@ class UpstreamPlutusBoundarySuite extends FunSuite:
       .parse(Files.readString(root.resolve("manifest.json")))
       .fold(error => fail(error.message), identity)
     field[Map[String, String]](manifest, "fixtureSha256").foreach { case (path, expected) =>
-      assertEquals(Blst.sha256Hex(Files.readAllBytes(root.resolve(path))), expected, path)
+      assertEquals(NativeCrypto.sha256Hex(Files.readAllBytes(root.resolve(path))), expected, path)
     }
     val patch = field[Json](manifest, "boundsBackport")
     assertEquals(
-      Blst.sha256Hex(Files.readAllBytes(root.resolve(field[String](patch, "patch")))),
+      NativeCrypto.sha256Hex(Files.readAllBytes(root.resolve(field[String](patch, "patch")))),
       field[String](patch, "patchSha256")
     )
   }
@@ -121,8 +120,8 @@ class UpstreamPlutusBoundarySuite extends FunSuite:
           .noSpaces
           .getBytes(StandardCharsets.UTF_8)
         val original = bytes(script)
-        assertEquals(Blst.sha256Hex(original.toArray), field[String](row, "scriptSha256"))
-        assertEquals(Blst.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
+        assertEquals(NativeCrypto.sha256Hex(original.toArray), field[String](row, "scriptSha256"))
+        assertEquals(NativeCrypto.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
         val admitted = decoder.validate(language, protocol, original).isRight
         val result = evaluator.evaluate(
           EvalRequest(

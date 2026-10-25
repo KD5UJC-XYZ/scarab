@@ -54,7 +54,7 @@ val testDependencies = Seq(
 // Modules use `<id>` for the project and directory, with explicit overrides for blst-native and
 // models-gen below. Artifact names start with `scarab-`; sbt enforces an acyclic dependency graph:
 //
-//   blstNative <- crypto, plutus
+//   blstNative <- crypto
 //   codec <- crypto <- protocol <- network
 //   codec <- plutus
 //   protocol, plutus <- ledger <- consensus <- legacy, storage
@@ -126,14 +126,26 @@ lazy val network = scarab("network")
 
 // The Plutus (UPLC) machine and builtins through Scalus; the script context and the rules are ours.
 lazy val plutus = scarab("plutus")
-  .dependsOn(codec % "compile->compile;test->test", blstNative)
+  .dependsOn(codec % "compile->compile;test->test")
   .settings(
     libraryDependencies ++= Seq(
       Libraries.cats,
       Libraries.catsEffect,
       Libraries.scalus,
       Libraries.circeParserTest
-    )
+    ),
+    Test / testGrouping := {
+      // NativeCryptoAbsentSuite needs a JVM in which libscalus_crypto cannot load (ADR 0020): its
+      // java.io.tmpdir does not exist, so native-lib-loader cannot extract the library.
+      val (absent, others) =
+        (Test / definedTests).value.partition(_.name.endsWith(".NativeCryptoAbsentSuite"))
+      val fork = (Test / forkOptions).value
+        .withRunJVMOptions(Vector("-Djava.io.tmpdir=/nonexistent/scarab-no-tmpdir"))
+      Seq(
+        Tests.Group("plutus", others, Tests.InProcess),
+        Tests.Group("native-crypto-absent", absent, Tests.SubProcess(fork))
+      )
+    }
   )
 
 // The pure ledger rules and types: blocks, headers, genesis, transactions, scripts, governance,

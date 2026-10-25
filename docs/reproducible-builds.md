@@ -122,7 +122,9 @@ The assembly uses the plugin's documented defaults unless an explicit rule is ne
 - License and notice metadata are retained through the standard rename strategy. Scarab's own
   `LICENSE` and `NOTICE` remain under `META-INF/scarab/`; dependency metadata is not an SBOM.
 - The committed portable Linux/amd64 blst resource wins over blst-java's alternate resource at the
-  same path. Other native resources retain their original bytes. Packaging does not rebuild them.
+  same path. Other native resources retain their original bytes, among them `libscalus_crypto` of
+  scalus-crypto-jni (pinned by hash at start-up, [ADR 0020](adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md)).
+  Packaging does not rebuild them.
 - Dependency manifests, obsolete JAR indexes and invalidated dependency signature files are removed.
   The resulting artifact is unsigned. Dependency module descriptors are omitted because the single
   assembled application has no combined Java module descriptor.

@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import cats.syntax.show.*
 import xyz.kd5ujc.scarab.blst.BlstProblem
+import xyz.kd5ujc.scarab.plutus.NativeCryptoProblem
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.codec.DomainError
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
@@ -536,10 +537,25 @@ enum GovernorFault extends NodeError:
     case LocalDnsRefreshDefect(cause) =>
       s"local root DNS refresh defect: ${Option(cause.getMessage).getOrElse(cause.getClass.getName)}"
 
-/** The BLS12-381 library the JVM would load cannot run on this machine, or computes a wrong answer
-  * (checked at start-up; ADR 0012). Without the check the JVM dies with SIGILL, without an event.
-  */
-final case class NativeLibraryError(problem: BlstProblem) extends NodeError:
+/** Which native library the node refuses to start with, and why. */
+enum NativeLibraryProblem:
+  /** The BLS12-381 library of Leios certificates cannot run on this machine, or computes a wrong
+    * answer (ADR 0012). Without the check the JVM dies with SIGILL, without an event.
+    */
+  case Bls(problem: BlstProblem)
+
+  /** The native library of the Plutus builtins is not the pinned build, did not load, or computes a
+    * wrong answer (ADR 0020). Without it no Ed25519, secp256k1 or BLS12-381 builtin can be
+    * evaluated.
+    */
+  case PlutusCrypto(problem: NativeCryptoProblem)
+
+  def message: String = this match
+    case Bls(problem)          => problem.message
+    case PlutusCrypto(problem) => problem.message
+
+/** A native library failed its start-up check. */
+final case class NativeLibraryError(problem: NativeLibraryProblem) extends NodeError:
   def message: String = s"native library: ${problem.message}"
 
 /** A configuration failure. `problem` says which one for the callers that act on it (a genesis file

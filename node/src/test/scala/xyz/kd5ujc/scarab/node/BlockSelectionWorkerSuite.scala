@@ -159,7 +159,8 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
     for
       chain <- ForgedChain.forge(5000 until 5060)
       bodies <- checked(chain, 2)
-      missing = xyz.kd5ujc.scarab.plutus.BackendFailure.BinaryDstUnavailable
+      missing = xyz.kd5ujc.scarab.plutus.BackendFailure
+        .BuiltinUnavailable(scalus.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
       stopped <- Deferred[IO, Unit]
       _ <- node(
         Set.empty,

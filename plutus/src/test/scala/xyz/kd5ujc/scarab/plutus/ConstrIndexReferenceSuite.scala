@@ -8,7 +8,6 @@ import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import scalus.cardano.onchain.plutus.prelude.List as PList
 import scalus.uplc.builtin.Data
-import xyz.kd5ujc.scarab.blst.Blst
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** `constrData` at the sign and Word64 boundaries of its index against the executed reference
@@ -84,8 +83,8 @@ class ConstrIndexReferenceSuite extends FunSuite:
     val protocol = field[Int](row, "protocol")
     val model = PlutusBoundaryCorpus.costModel(language, protocol)
     val modelBytes = Json.arr(model.map(Json.fromLong)*).noSpaces.getBytes(StandardCharsets.UTF_8)
-    assertEquals(Blst.sha256Hex(probe.script.toArray), field[String](row, "scriptSha256"))
-    assertEquals(Blst.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
+    assertEquals(NativeCrypto.sha256Hex(probe.script.toArray), field[String](row, "scriptSha256"))
+    assertEquals(NativeCrypto.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
     evaluator.evaluate(
       EvalRequest(
         language,
