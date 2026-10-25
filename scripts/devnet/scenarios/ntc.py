@@ -27,6 +27,7 @@ Three comparisons on one cluster, the Scala node following it with `--local-sock
      every raw answer must be equal. `cardano-cli conway query tx-mempool info|next-tx|tx-exists`
      is compared as text on both sockets, and AwaitAcquire must wake on both.
 """
+import enum
 import json
 import os
 import re
@@ -252,13 +253,14 @@ def submit_scala_cli(args, tx):
     return out
 
 
-def rendered(text, rule=""):
-    """The error line `cardano-cli` prints (without its call stack). The slot a validity interval is
-    judged at is the node's current slot, which differs between two submissions in time, so it is masked."""
-    line = next((l for l in text.splitlines() if l.startswith("Error:")), text.splitlines()[0] if text else "")
-    if rule == "OutsideValidityIntervalUTxO":
-        line = re.sub(r"\(SlotNo \d+\)(\)+) :\|", r"(SlotNo <current>)\1 :|", line)
-    return line
+def rendered(text):
+    """The error line `cardano-cli` prints (without its call stack)."""
+    return next((l for l in text.splitlines() if l.startswith("Error:")), text.splitlines()[0] if text else "")
+
+
+def names_constructor(text, name):
+    """`name` occurs in `text` as a whole Haskell identifier (not as part of a longer constructor)."""
+    return re.search(rf"(?<![A-Za-z0-9_']){re.escape(name)}(?![A-Za-z0-9_'])", text) is not None
 
 
 def reasons(args, root, tx):
@@ -277,40 +279,114 @@ def reasons(args, root, tx):
     return got
 
 
-def first_failure(reason):
-    """The bytes of the first failure of a rejection `[[era, [failure, ...]]]` (None if it is not one)."""
+def failures(reason):
+    """The byte spans of the failures of a rejection `[[era, [failure, ...]]]`, in order (None if it is not one)."""
     try:
         outer = cborspan.children(reason, 0)
         era_and_failures = cborspan.children(reason, outer[0][0])
-        failures = cborspan.children(reason, era_and_failures[1][0])
-        return reason[failures[0][0]:failures[0][1]]
-    except (cborspan.Malformed, IndexError):
+        return [reason[a:b] for a, b in cborspan.children(reason, era_and_failures[1][0])]
+    except (cborspan.Malformed, IndexError, TypeError):
         return None
 
 
-def submissions(args, root):
+def first_failure(reason):
+    """The bytes of the first failure of a rejection (None if it is not one)."""
+    listed = failures(reason)
+    return listed[0] if listed else None
+
+
+def bracketed(before, after):
+    """Both nodes held the same tip before and after the submissions: each judged the transaction at the
+    slot after that tip (`MempoolState`, the reference's `tickLedgerState`), so a refusal that names the
+    current slot (`OutsideValidityIntervalUTxO`) carries the same slot from both."""
+    return before[0] is not None and before[0] == before[1] == after[0] == after[1]
+
+
+class Refusal(enum.Enum):
+    """How one refusal compares with the reference's."""
+    EXACT = "exact"  # raw bytes and text equal
+    DIFFERS = "differs"
+    TRACKED_DIVERGENCE = "trackedDivergence"  # the case's `Divergence`, exactly as declared
+    DIVERGENCE_RESOLVED = "divergenceResolved"  # declared divergent, but the refusals are now equal
+    UNBRACKETED = "unbracketed"  # no submission with one tip on both nodes: nothing compared
+
+    @property
+    def passes(self):
+        return self in (Refusal.EXACT, Refusal.TRACKED_DIVERGENCE)
+
+
+def judge_refusal(case, raw, text):
+    """The comparison of one case from the raw rejections and the `cardano-cli` texts of a bracketed
+    submission. Pure. A case without a `Divergence` must be equal in raw bytes and text; a divergent one must
+    have equal first failures, exactly the failure counts it declares and unequal whole refusals."""
+    ref_failures, scala_failures = failures(raw["h"]), failures(raw["s"])
+    raw_equal = raw["h"] == raw["s"]
+    text_equal = rendered(text["h"]) == rendered(text["s"])
+    row = {"rawEqual": raw_equal, "textEqual": text_equal,
+           "referenceFailures": None if ref_failures is None else len(ref_failures),
+           "scalaFailures": None if scala_failures is None else len(scala_failures)}
+    d = case.divergence
+    if d is None:
+        outcome = Refusal.EXACT if raw_equal and text_equal else Refusal.DIFFERS
+    elif raw_equal and text_equal:
+        outcome = Refusal.DIVERGENCE_RESOLVED
+    else:
+        first_equal = ref_failures is not None and scala_failures is not None and bool(ref_failures) \
+            and bool(scala_failures) and ref_failures[0] == scala_failures[0]
+        first_text_equal = rendered(text["h"]).split(" :| ")[0] == rendered(text["s"]).split(" :| ")[0]
+        counts = (row["referenceFailures"], row["scalaFailures"]) == (d.reference_failures, d.scala_failures)
+        outcome = Refusal.TRACKED_DIVERGENCE if first_equal and first_text_equal and counts else Refusal.DIFFERS
+        row.update({"comparison": "first-failure", "issue": d.issue, "firstFailureEqual": first_equal,
+                    "firstTextEqual": first_text_equal, "declaredFailures": [d.reference_failures, d.scala_failures]})
+    return outcome, row
+
+
+def submissions(args, root, attempts=20):
+    """Each refused case through both sockets, raw (LocalTxSubmission) and as text (`cardano-cli`), repeated
+    until one round of the four submissions is bracketed by one tip on both nodes."""
     cases = corpus(args.name, f"{ENV}/socket/node1/sock")
     results = []
     for case in cases:
-        raw = reasons(args, root, case.tx)
-        text = submit_scala_cli(args, case.tx)
-        # the slot a transaction is judged at differs by a block or two between the nodes
-        same_text = rendered(text["h"][1], case.ledger_rule) == rendered(text["s"][1], case.ledger_rule)
-        same_raw = raw["h"] == raw["s"]
-        if case.first_only:
-            same_text = rendered(text["h"][1]).split(" :| ")[0] == rendered(text["s"][1]).split(" :| ")[0]
-            same_raw = first_failure(raw["h"]) == first_failure(raw["s"])
-        named = case.ledger_rule in text["h"][1]
-        row = {"case": case.label, "rule": case.ledger_rule, "referenceNamesRule": named, "rawEqual": same_raw,
-               "textEqual": same_text}
-        if case.label.startswith(("withdrawal-network", "script-integrity")):
+        unbracketed, raw, text = 0, None, None
+        for _ in range(attempts):
+            before = (point_of(args, "h", root), point_of(args, "s", root))
+            got = reasons(args, root, case.tx)
+            printed = submit_scala_cli(args, case.tx)
+            after = (point_of(args, "h", root), point_of(args, "s", root))
+            if bracketed(before, after):
+                raw, text = got, {w: printed[w][1] for w in ("h", "s")}
+                break
+            unbracketed += 1
+        if raw is None:
+            outcome, row = Refusal.UNBRACKETED, {"rawEqual": False, "textEqual": False}
+            named = False
+        else:
+            outcome, row = judge_refusal(case, raw, text)
+            named = names_constructor(text["h"], case.ledger_rule)
+        row = {"case": case.label, "rule": case.ledger_rule, "outcome": outcome.value, "passes": outcome.passes,
+               "referenceNamesRule": named, "unbracketed": unbracketed, **row}
+        if raw is not None and case.label.startswith(("withdrawal-network", "script-integrity")):
             row["referenceRaw"] = raw["h"].hex()  # kept as a test vector of the failure encoding
-        if not (same_raw and same_text):
-            row["reference"] = rendered(text["h"][1])[:500]
-            row["scala"] = rendered(text["s"][1])[:500]
+        if raw is not None and outcome is not Refusal.EXACT:
+            row["reference"] = rendered(text["h"])[:500]
+            row["scala"] = rendered(text["s"])[:500]
         results.append(row)
         print(json.dumps(row), flush=True)
     return results
+
+
+def submission_summary(results):
+    """The headline of the refusal comparison: how many cases are exactly equal, and every case compared
+    under a tracked divergence with its issue."""
+    return {"cases": len(results),
+            "exact": sum(r["outcome"] == Refusal.EXACT.value for r in results),
+            "rawEqual": sum(r["rawEqual"] for r in results),
+            "textEqual": sum(r["textEqual"] for r in results),
+            "referenceNamedTheRule": sum(r["referenceNamesRule"] for r in results),
+            "trackedDivergences": [{k: r.get(k) for k in ("case", "comparison", "issue", "referenceFailures",
+                                                          "scalaFailures")}
+                                   for r in results if r["outcome"] == Refusal.TRACKED_DIVERGENCE.value],
+            "differences": [r for r in results if not r["passes"]]}
 
 
 def valid_submission(args, root):
@@ -594,11 +670,7 @@ def ntc(args):
             "cli": {k: (f"{v['matched']}/{v['total']}" if v["total"] else f"unbracketed x{v['unbracketed']}")
                     for k, v in cli_results.items()},
             "cliDetails": {k: v for k, v in cli_results.items() if not v["total"] or v["matched"] != v["total"]},
-            "submissions": {"cases": len(sub_results),
-                            "rawEqual": sum(r["rawEqual"] for r in sub_results),
-                            "textEqual": sum(r["textEqual"] for r in sub_results),
-                            "referenceNamedTheRule": sum(r["referenceNamesRule"] for r in sub_results),
-                            "differences": [r for r in sub_results if not (r["rawEqual"] and r["textEqual"])]},
+            "submissions": submission_summary(sub_results),
             "ledgerState": {"comparison": "byte-exact", "perQuery": ledger_states},
             "validSubmission": valid,
             "flaggedSubmission": flagged,
@@ -620,13 +692,12 @@ def ntc(args):
         badcli = incomplete_cli_comparisons(cli_results)
         if badcli:
             failures.append(f"cardano-cli outputs that differ: {badcli}")
-        if any(r["case"] and not r["referenceNamesRule"] for r in sub_results):
+        if any(not r["referenceNamesRule"] for r in sub_results):
             failures.append("a refusal was not the rule the case is built for (the case is wrong)")
-        # the raw bytes of a validity-interval refusal hold the node's current slot, which moves
-        # between two submissions; the text is compared with the slot masked
-        if any(not r["textEqual"] or (not r["rawEqual"] and r["rule"] != "OutsideValidityIntervalUTxO")
-               for r in sub_results):
-            failures.append("a rejection differs from the reference's")
+        if any(not r["passes"] for r in sub_results):
+            failures.append("a rejection differs from the reference's, was never bracketed by one tip, or a "
+                            "tracked divergence no longer holds (remove its exemption): "
+                            f"{[(r['case'], r['outcome']) for r in sub_results if not r['passes']]}")
         if not (valid["acceptedByScala"] and valid["reachedABlock"]):
             failures.append(f"the valid transaction did not reach a block: {valid}")
         if not (flagged["acceptedByScala"] and flagged["collateralTaken"] and flagged["spendKept"]):

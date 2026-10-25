@@ -3,11 +3,15 @@
 `ntc` scenario: each is submitted to both nodes over their node-to-client sockets and the rejection
 (the raw `ApplyTxErr` bytes and the text `cardano-cli transaction submit` prints) must be equal.
 
-Every case violates exactly one rule. The ledger reports all the failures it finds, in the order
-CERTS, GOV, UTXOW; a case with one violation has one failure, which is what the Scala rules report.
+Every case but one violates exactly one rule. The ledger reports all the failures it finds, in the order
+CERTS, GOV, UTXOW; a case with one violation has one failure, which is what the Scala rules report. The
+exception is `withdrawal-network-flag-true`: its withdrawal names an account of the other network, which LEDGER
+and UTXO both refuse, and the Scala rules stop at the first failure. Its `Divergence` records that comparison,
+the failure counts it expects and the issue whose resolution removes it.
 """
 import json
 from dataclasses import dataclass
+from typing import Optional
 
 from . import eratx
 from .eraplutus import DATUM
@@ -18,14 +22,28 @@ ANCHOR = ("--anchor-url http://example.com/a --anchor-data-hash "
           "0000000000000000000000000000000000000000000000000000000000000000")
 
 
+@dataclass(frozen=True)
+class Divergence:
+    """A refusal compared by its first failure only, because the Scala rules report one failure where the
+    reference accumulates `reference_failures` of them (#412, `Rules` accumulation). The comparison requires
+    the first failures to be byte-equal and both counts to be exactly these; once the whole refusals are equal
+    the case fails, so that the exemption is removed together with the divergence."""
+    issue: int
+    reference_failures: int
+    scala_failures: int
+
+
 @dataclass
 class Case:
+    """`ledger_rule` is the constructor the reference reports, matched as a whole identifier in its text.
+    `divergence` is None for a case compared exactly (raw bytes and text)."""
     label: str
     tx: bytes
-    ledger_rule: str  # the constructor the reference reports (checked against its text)
-    # the reference lists every failure of the rule that refused the transaction and the Scala rules the
-    # first: only the first failure is compared
-    first_only: bool = False
+    ledger_rule: str
+    divergence: Optional[Divergence] = None
+
+
+ACCUMULATED_WITHDRAWAL_FAILURES = Divergence(issue=412, reference_failures=2, scala_failures=1)
 
 
 class Builder:
@@ -124,8 +142,8 @@ def corpus(name, socket):
     main_addr = b.sh(f"{CLI} address build --payment-verification-key-file {w['vkey']} --mainnet")
     cases = []
 
-    def add(label, rule, tx, first_only=False):
-        cases.append(Case(label, tx, rule, first_only))
+    def add(label, rule, tx, divergence=None):
+        cases.append(Case(label, tx, rule, divergence))
 
     add("fee-too-small", "FeeTooSmallUTxO", b.tx(w, fee=1))
     add("all-inputs-spent", "ConwayMempoolFailure",
@@ -190,8 +208,13 @@ def corpus(name, socket):
         script_tx(b, w, other, SUCCEEDS, skew_cost_model=True, withdraw=False)[0])
     add("withdrawal-network-flag-false", "WrongNetworkWithdrawal",
         script_tx(b, w, other, FAILS, account="mainnet", invalid=True)[0])
-    add("withdrawal-network-flag-true", "Withdrawals",
-        script_tx(b, w, other, SUCCEEDS, account="mainnet")[0], first_only=True)
+    # from protocol version 11 LEDGER refuses a withdrawal from an account it does not hold
+    # (`ConwayWithdrawalsMissingAccounts`, Conway/Rules/Ledger.hs); below 11 CERTS does
+    # (`WithdrawalsNotInRewardsCERTS`). UTXO adds `WrongNetworkWithdrawal`, which the Scala rules do not
+    # reach because they stop at the first failure (#412)
+    add("withdrawal-network-flag-true",
+        "ConwayWithdrawalsMissingAccounts" if major >= 11 else "WithdrawalsNotInRewardsCERTS",
+        script_tx(b, w, other, SUCCEEDS, account="mainnet")[0], divergence=ACCUMULATED_WITHDRAWAL_FAILURES)
     # a datum in the witnesses that no spent Plutus input requires and no output carries (#330): a key-only
     # spend with the right script data hash, so that `NotAllowedSupplementalDatums` is its only failure
     key = eratx.Key(b.sh(f"cat {w['skey']}"))

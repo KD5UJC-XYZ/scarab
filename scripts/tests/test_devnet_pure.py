@@ -16,7 +16,7 @@ from fractions import Fraction
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from devnet import cbor, cluster, compare, encoding, eraload, eratx, eraview, follower, govextra, govview, ntccli, ntclocal, ntcqueries, ntcquery, refused_fixture, util  # noqa: E402
+from devnet import cbor, cluster, compare, encoding, eraload, eratx, eraview, follower, govextra, govview, ntccases, ntccli, ntclocal, ntcqueries, ntcquery, refused_fixture, util  # noqa: E402
 from devnet.scenarios import peercut
 from devnet.scenarios import ntc  # noqa: E402
 from devnet.scenarios import pool  # noqa: E402
@@ -783,11 +783,68 @@ class NtcQueriesTest(unittest.TestCase):
             self.assertFalse(text.startswith("query "), label)
         self.assertEqual(ntc.rendered("x\nError: boom\nCallStack"), "Error: boom")
 
-    def test_the_current_slot_of_a_validity_refusal_is_masked(self):
+    def test_the_current_slot_of_a_validity_refusal_is_not_masked(self):
         text = "Error: (OutsideValidityIntervalUTxO (ValidityInterval {invalidHereafter = SJust (SlotNo 1)}) (SlotNo 18204))) :| []"
-        self.assertEqual(ntc.rendered(text, "OutsideValidityIntervalUTxO"),
-                         ntc.rendered(text.replace("18204", "18399"), "OutsideValidityIntervalUTxO"))
-        self.assertNotEqual(ntc.rendered(text), ntc.rendered(text.replace("18204", "18399")))
+        case = ntccases.Case("expired", b"", "OutsideValidityIntervalUTxO")
+        raw = cbor.enc([[6, [[0, 18204]]]])
+        outcome, row = ntc.judge_refusal(case, {"h": raw, "s": raw}, {"h": text, "s": text})
+        self.assertIs(outcome, ntc.Refusal.EXACT)
+        # negative control: the same refusal judged one slot later is a difference, in bytes and in text
+        later = cbor.enc([[6, [[0, 18205]]]])
+        outcome, row = ntc.judge_refusal(case, {"h": raw, "s": later},
+                                         {"h": text, "s": text.replace("18204", "18205")})
+        self.assertIs(outcome, ntc.Refusal.DIFFERS)
+        self.assertFalse(row["rawEqual"] or row["textEqual"])
+        self.assertFalse(outcome.passes)
+
+    def test_a_submission_counts_only_when_one_tip_brackets_it(self):
+        tip, other = (10, "aa"), (11, "bb")
+        self.assertTrue(ntc.bracketed((tip, tip), (tip, tip)))
+        self.assertFalse(ntc.bracketed((tip, other), (tip, tip)))
+        self.assertFalse(ntc.bracketed((tip, tip), (other, other)))
+        self.assertFalse(ntc.bracketed((None, None), (None, None)))
+        self.assertFalse(ntc.Refusal.UNBRACKETED.passes)
+
+    def test_a_tracked_divergence_holds_exactly_as_declared(self):
+        case = ntccases.Case("withdrawal-network-flag-true", b"", "ConwayWithdrawalsMissingAccounts",
+                             ntccases.ACCUMULATED_WITHDRAWAL_FAILURES)
+        self.assertEqual(case.divergence.issue, 412)
+        both = cbor.enc([[6, [[8, 1], [1, 2]]]])
+        first = cbor.enc([[6, [[8, 1]]]])
+        text = {"h": "Error: (ConwayWithdrawalsMissingAccounts x :| [ConwayUtxowFailure y])",
+                "s": "Error: (ConwayWithdrawalsMissingAccounts x :| [])"}
+        outcome, row = ntc.judge_refusal(case, {"h": both, "s": first}, text)
+        self.assertIs(outcome, ntc.Refusal.TRACKED_DIVERGENCE)
+        self.assertEqual((row["referenceFailures"], row["scalaFailures"], row["issue"]), (2, 1, 412))
+        self.assertFalse(row["rawEqual"])
+        # a different first failure, or another count, is a difference
+        other = cbor.enc([[6, [[9, 1]]]])
+        self.assertIs(ntc.judge_refusal(case, {"h": both, "s": other}, text)[0], ntc.Refusal.DIFFERS)
+        three = cbor.enc([[6, [[8, 1], [1, 2], [1, 3]]]])
+        self.assertIs(ntc.judge_refusal(case, {"h": three, "s": first}, text)[0], ntc.Refusal.DIFFERS)
+        # once the Scala refusal is the whole list, the exemption fails so that it is removed
+        resolved = ntc.judge_refusal(case, {"h": both, "s": both}, {"h": text["h"], "s": text["h"]})[0]
+        self.assertIs(resolved, ntc.Refusal.DIVERGENCE_RESOLVED)
+        self.assertFalse(resolved.passes)
+
+    def test_the_summary_counts_exact_cases_and_lists_tracked_divergences(self):
+        rows = [{"case": "a", "outcome": "exact", "passes": True, "rawEqual": True, "textEqual": True,
+                 "referenceNamesRule": True},
+                {"case": "b", "outcome": "trackedDivergence", "passes": True, "rawEqual": False, "textEqual": False,
+                 "referenceNamesRule": True, "comparison": "first-failure", "issue": 412, "referenceFailures": 2,
+                 "scalaFailures": 1}]
+        summary = ntc.submission_summary(rows)
+        self.assertEqual((summary["cases"], summary["exact"], summary["rawEqual"]), (2, 1, 1))
+        self.assertEqual(summary["trackedDivergences"], [{"case": "b", "comparison": "first-failure", "issue": 412,
+                                                          "referenceFailures": 2, "scalaFailures": 1}])
+        self.assertEqual(summary["differences"], [])
+
+    def test_a_rule_is_named_as_a_whole_constructor(self):
+        text = "(ConwayWithdrawalsMissingAccounts (Withdrawals {unWithdrawals = ...}))"
+        self.assertTrue(ntc.names_constructor(text, "ConwayWithdrawalsMissingAccounts"))
+        self.assertTrue(ntc.names_constructor(text, "Withdrawals"))
+        self.assertFalse(ntc.names_constructor(text, "WithdrawalsMissing"))
+        self.assertFalse(ntc.names_constructor("BabbageOutputTooSmallUTxO", "OutputTooSmallUTxO"))
 
 
 class NtcQuerySessionTest(unittest.TestCase):
