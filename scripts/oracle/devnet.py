@@ -130,7 +130,7 @@ def run(name, root, log=print, wait_seconds=240):
         return {"digests": 0}, ["the follower wrote no state digests (was it started with --dump-state?)"]
     try:
         follower = follower_chain(root)
-    except (finality.ChainRebuildError, OSError) as e:
+    except (finality.ChainRebuildError, OSError, ValueError) as e:
         return {"digests": len(dumps)}, [f"oracle: the follower's final chain cannot be rebuilt from its log: {e}"]
     k = security_param(root)
     newest = max(d.slot for d in dumps)

@@ -160,7 +160,9 @@ class FollowerChain:
     def immutable_tip(self, k):
         """The newest block with at least `k` blocks after it: the anchor of the last `k` headers, the reference's
         immutable tip ([consensus `82ecba329`, ChainDB/Impl/Query.hs:100-125](https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Query.hs#L100-L125),
-        `getCurrentChain`); None while the chain holds `k` blocks or fewer."""
+        `getCurrentChain`); None while the chain holds `k` blocks or fewer. The reference counts the volatile suffix by
+        weight (`takeVolatileSuffix`), which is the block count while no Peras certificate adds weight, as on the
+        devnet."""
         return self.blocks[-(k + 1)] if len(self.blocks) > k else None
 
     @staticmethod
@@ -180,8 +182,7 @@ class FollowerChain:
             tip = blocks[-1] if blocks else None
             if kind == "connected":
                 at = point_of(n, e.get("intersection"))
-                if (at is None and connected) or (at is not None and at[1] not in position) or \
-                        (at is None and blocks):
+                if (at is not None and at[1] not in position) or (at is None and blocks):
                     raise ChainRebuildError(Cause.INTERSECTION, n, f"intersection {e.get('intersection')}")
                 connected = True
             elif kind == "extended":

@@ -180,6 +180,10 @@ class FollowerChainTest(unittest.TestCase):
             chain_of([*session(a, b), connected(blk(15, 9, 1))])
         self.assertIs(e.exception.cause, Cause.INTERSECTION)
 
+    def test_a_reconnection_at_origin_before_the_first_block(self):
+        a = blk(10, 1, 0)
+        self.assertEqual(chain_of([started(), connected(), connected(), extended(a)]).blocks, [a])
+
     def test_chain_events_before_the_first_start_fail(self):
         with self.assertRaises(ChainRebuildError) as e:
             chain_of([connected(), extended(blk(10, 1, 0))])
@@ -340,6 +344,33 @@ class SummaryTest(unittest.TestCase):
         summary, failures = self.summarize(rows)
         self.assertEqual(summary["errors"], 1)
         self.assertEqual(len(failures), 1)
+
+
+class RunTest(unittest.TestCase):
+    def test_an_undecodable_log_fails_the_comparison_instead_of_raising(self):
+        from oracle import devnet
+        with tempfile.TemporaryDirectory() as t:
+            root = pathlib.Path(t)
+            (root / "dump").mkdir()
+            (root / "dump" / f"{10:012d}-{h(1)}.json").write_text("{}")
+            (root / "follower.jsonl").write_bytes(b'{"event": "started"}\n\xff\xfe\n')
+            summary, failures = devnet.run("pw-test", root)
+        self.assertEqual(summary, {"digests": 1})
+        self.assertEqual(len(failures), 1)
+        self.assertIn("cannot be rebuilt from its log", failures[0])
+
+    def test_an_unreadable_final_tip_fails_the_comparison(self):
+        from oracle import devnet
+        with tempfile.TemporaryDirectory() as t:
+            root = pathlib.Path(t)
+            (root / "dump").mkdir()
+            (root / "dump" / f"{10:012d}-{h(1)}.json").write_text("{}")
+            events = session(blk(10, 1, 0))
+            (root / "follower.jsonl").write_text("".join(json.dumps(e) + "\n" for e in events))
+            (root / devnet.FINAL_TIP).write_text("{not json")
+            _, failures = devnet.run("pw-test", root)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("cannot be rebuilt from its log", failures[0])
 
 
 class LoadTest(unittest.TestCase):
