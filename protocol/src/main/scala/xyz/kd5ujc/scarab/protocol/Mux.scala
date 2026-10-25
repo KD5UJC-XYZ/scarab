@@ -249,15 +249,32 @@ object Mux:
     * output. An empty feed is a no-op, not EOF; finish explicitly verifies EOF. Retained data is at
     * most one incomplete frame, bounded by eight header bytes plus maxPayloadBytes - 1 payload
     * bytes.
+    *
+    * The payload of a frame that spans feeds is kept as its parts, newest first, and joined once
+    * when the frame completes, as the reference's socket bearer collects the chunks of one read and
+    * concatenates them at the end (network-mux 0.11.0.0, `Network/Mux/Bearer/Socket.hs`,
+    * `recvLen'`). Appending each feed to a joined payload instead copied the frame so far on every
+    * feed: a frame of `n` bytes fed a byte at a time cost about `n * n / 2` bytes. A part carried
+    * to the next feed is compacted so that it does not pin the caller's larger read buffer; every
+    * payload byte is therefore copied at most twice. The bound above counts payload bytes; each
+    * carried part also holds about 80 bytes of objects (its list cell, `Bytes` and array header),
+    * so a frame of the largest payload fed a byte at a time holds about 5 MB until it completes, as
+    * the reference's chunk list does for one SDU.
+    *
+    * @param partialParts
+    *   the received parts of the active frame's payload, newest first; empty without one
+    * @param partialSize
+    *   the total size of `partialParts`
     */
   final class Decoder private (
       val limits: Limits,
       private val partialHeader: Bytes,
       private val activeHeader: Option[Header],
-      private val partialPayload: Bytes
+      private val partialParts: List[Bytes],
+      private val partialSize: Int
   ):
     def pendingBytes: Int =
-      partialHeader.size + activeHeader.fold(0)(_ => HeaderBytes) + partialPayload.size
+      partialHeader.size + activeHeader.fold(0)(_ => HeaderBytes) + partialSize
 
     def feed(bytes: Bytes): Either[Error, (Decoder, Vector[Sdu])] =
       if bytes.size > limits.maxInputBytes then
@@ -266,7 +283,8 @@ object Mux:
       else
         var headerBytes = partialHeader
         var header = activeHeader
-        var payload = partialPayload
+        var parts = partialParts
+        var received = partialSize
         var offset = 0
         var emitted = 0
         var error: Option[Error] = None
@@ -284,10 +302,11 @@ object Mux:
                     header = Some(decoded)
                     headerBytes = Bytes.empty
             case Some(current) =>
-              val count = math.min(current.payloadLength - payload.size, bytes.size - offset)
-              payload = payload ++ bytes.slice(offset, offset + count)
+              val count = math.min(current.payloadLength - received, bytes.size - offset)
+              parts = bytes.slice(offset, offset + count) :: parts
+              received += count
               offset += count
-              if payload.size == current.payloadLength then
+              if received == current.payloadLength then
                 if emitted >= limits.maxFramesPerFeed then
                   error = Some(Error.FeedFrameLimit(emitted + 1, limits.maxFramesPerFeed))
                 else
@@ -295,18 +314,24 @@ object Mux:
                     current.timestamp,
                     current.protocol,
                     current.direction,
-                    payload
+                    Decoder.joined(parts, received)
                   )
                   emitted += 1
-                  payload = Bytes.empty
+                  parts = Nil
+                  received = 0
                   header = None
         error match
           case Some(reason) => Left(reason)
-          case None => Right((new Decoder(limits, headerBytes, header, payload), output.result()))
+          case None         =>
+            // only the newest part can come from this feed; the older ones are compact already
+            val carried = parts match
+              case newest :: older => newest.compact :: older
+              case Nil             => Nil
+            Right((new Decoder(limits, headerBytes, header, carried, received), output.result()))
 
     def finish: Either[Error, Unit] =
       activeHeader match
-        case Some(header) => Left(Error.TruncatedPayload(header.payloadLength, partialPayload.size))
+        case Some(header) => Left(Error.TruncatedPayload(header.payloadLength, partialSize))
         case None if partialHeader.nonEmpty => Left(Error.TruncatedHeader(partialHeader.size))
         case None                           => Right(())
 
@@ -324,4 +349,17 @@ object Mux:
           (),
           Error.InvalidFrameLimit(limits.maxFramesPerFeed)
         )
-      yield new Decoder(limits, Bytes.empty, None, Bytes.empty)
+      yield new Decoder(limits, Bytes.empty, None, Nil, 0)
+
+    /** The payload whose parts, newest first, total `size` bytes; a single part is used as it is.
+      */
+    private def joined(parts: List[Bytes], size: Int): Bytes = parts match
+      case only :: Nil => only
+      case _ =>
+        val out = new Array[Byte](size)
+        var end = size
+        parts.foreach { part =>
+          end -= part.size
+          part.copyTo(out, end)
+        }
+        Bytes.wrap(out)

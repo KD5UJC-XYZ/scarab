@@ -139,6 +139,13 @@ class GuardSuite extends FunSuite:
     muxStream.check(new Input(bytes))
   }
 
+  test("mux frames of 4096 bytes fed a byte at a time stay within the linear allocation budget") {
+    // every byte of the first header is 0 modulo 23, so the target feeds the stream a byte at a time
+    val first = Array[Byte](0, 0, 0, 0, 0, 0, 0, 0xfd.toByte) ++ Array.fill[Byte](253)(1)
+    val frame = Array[Byte](0, 0, 0, 0, 0, 0, 0x10, 0) ++ Array.fill[Byte](4096)(1)
+    muxStream.check(new Input(first ++ Array.fill(64)(frame).flatten))
+  }
+
   /** Short inputs whose heads declare 2^60 (or 2^63, 2^32) elements or bytes, alone and nested. */
   private val declaring: Vector[Input] =
     val counts = Vector(
