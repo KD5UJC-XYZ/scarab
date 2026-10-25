@@ -89,6 +89,8 @@ jobs:
         run: python3 scripts/check_local_paths.py
       - name: Licence records (NOTICE, docs/licenses.md) cover every declared library
         run: python3 scripts/check_notice.py
+      - name: Documentation drift (links, cited paths and symbols, reference pins; size budgets warn only)
+        run: python3 scripts/check_docs.py
       - name: Install pinned changelog tool in an isolated environment
         run: |
           python3 -m venv "$RUNNER_TEMP/scarab-python-tests"
