@@ -59,3 +59,26 @@ python3 scripts/devnet.py --name plutus-boundaries down
 The2026-10-18 private Conway/protocol10 run recorded all four expected validity-tag outcomes,
 including block inclusion for accepted transactions. The existing transaction/ledger/block harness
 replays every case; this complements the477 standalone API verdicts.
+
+`serialise-data/` holds a second tool that prints the reference `serialiseData` bytes and digests of constructor data with
+wide indices. Build it inside the oracle image (its sources and dependencies are already there) and run it:
+
+```sh
+docker run --rm --entrypoint sh -v "$PWD/scripts/oracle/plutus/serialise-data:/extra:ro" scarab-plutus-oracle:local -c '
+  cd /source && cp -r /extra serialise-data-oracle &&
+  sed -i "s|^packages: .*|& serialise-data-oracle|" cabal.project &&
+  cabal build serialise-data-oracle --offline --jobs=4 >&2 && "$(cabal list-bin serialise-data-oracle)"'
+```
+
+The phase-2 scripts come from `SerialiseDataCorpus` (`plutus/Test/runMain xyz.kd5ujc.scarab.plutus.SerialiseDataCorpus
+/oracle/requests.jsonl`) and run through the oracle's ordinary JSON-lines mode; results are in
+`fixtures/reference/plutus-serialise-data`.
+
+`serialise-data --indices` prints the reference bytes of `Constr i []` and `Constr i [I 1]` for the indices -1, -2^64,
+-2^600, 2^64-1 and 2^64 (`fixtures/reference/plutus-serialise-data/indices.tsv`). The `constrData` probes of
+`ConstrIndexCorpus` (`plutus/Test/runMain xyz.kd5ujc.scarab.plutus.ConstrIndexCorpus <requests.jsonl>`) run through the
+[costing oracle](costing/README.md), which also reports the budget spent:
+
+```sh
+python3 -I scripts/oracle/plutus/serialise-data/constr_index.py --requests <requests.jsonl> --raw <raw.jsonl>
+```

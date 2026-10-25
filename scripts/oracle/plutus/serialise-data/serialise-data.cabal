@@ -1,0 +1,10 @@
+cabal-version: 3.0
+-- SPDX-License-Identifier: Apache-2.0
+name: serialise-data-oracle
+version: 0.1.0.0
+build-type: Simple
+executable serialise-data-oracle
+  main-is: SerialiseData.hs
+  default-language: GHC2021
+  ghc-options: -Wall -Werror -O0
+  build-depends: base, bytestring, base16-bytestring, serialise, plutus-core

@@ -23,6 +23,7 @@ import scalus.uplc.eval.{
   BudgetSpender,
   BuiltinError,
   BuiltinException,
+  DeserializationError,
   InvalidReturnValue,
   MachineError,
   UnknownBuiltin,
@@ -396,9 +397,12 @@ object ScalusEvaluator:
     *   - `verifyEcdsaSecp256k1Signature` is [[Secp256k1.verifyEcdsa]] (Scalus 1.3.0 raises an error
     *     on a signature with `r = 0` or `s = 0` where the reference returns `False`; preprod block
     *     3,498,869).
+    *   - `constrData` builds through [[ConstrIndex]]: Scalus 1.3.0 asserts a non-negative index,
+    *     which the reference takes in variants A to C, and accepts any index in variants D and E,
+    *     where the reference takes an unsigned 64-bit integer only.
     *
-    * Reproducers: `DataSerialiserSuite`, `Secp256k1Suite`; regressions: `PreprodConwayRulesSuite`,
-    * `PreprodSecp256k1RulesSuite`.
+    * Reproducers: `DataSerialiserSuite`, `Secp256k1Suite`, `ConstrIndexReferenceSuite`;
+    * regressions: `PreprodConwayRulesSuite`, `PreprodSecp256k1RulesSuite`.
     */
   private[plutus] final class CorrectedVm(
       language: Language,
@@ -507,12 +511,29 @@ object ScalusEvaluator:
           )
         else cardano.VerifySchnorrSecp256k1Signature.f(logger, args)
     )
+    private val ensurable =
+      variant == BuiltinSemanticsVariant.D || variant == BuiltinSemanticsVariant.E
+    private val constrData: BuiltinRuntime =
+      cardano.ConstrData.copy(f = (logger, args) =>
+        val index = args(0).asInteger
+        // The `ensurable` variants unlift the index as a Word64; out of range that is a failure
+        // of the script (`Builtins.hs` ConstrData), which a BuiltinException is here.
+        if ensurable && !ConstrIndex.word64(index) then
+          throw new BuiltinException("constrData index out of the Word64 range")
+        else if index >= 0 then cardano.ConstrData.f(logger, args)
+        else
+          val fields = args(1).asList.map {
+            case Constant.Data(d) => d
+            case _                => throw new DeserializationError(DefaultFun.ConstrData, args(1))
+          }
+          CekValue.VCon(Constant.Data(ConstrIndex.constr(index, PList.from(fields)))))
     private val caseOnBuiltins =
       protocol >= MajorProtocolVersion.vanRossemPV || language == Language.PlutusV4
 
     private[plutus] def runtime(fun: DefaultFun): BuiltinRuntime =
       fun match
         case DefaultFun.SerialiseData                   => serialiseData
+        case DefaultFun.ConstrData                      => constrData
         case DefaultFun.VerifyEcdsaSecp256k1Signature   => verifyEcdsa
         case DefaultFun.VerifySchnorrSecp256k1Signature => verifySchnorr
         case DefaultFun.Bls12_381_G1_hashToGroup        => hashToGroupG1

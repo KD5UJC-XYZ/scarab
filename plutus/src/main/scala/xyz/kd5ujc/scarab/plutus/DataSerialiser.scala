@@ -10,7 +10,8 @@ import scalus.uplc.builtin.Data
   *
   *   - `Constr i`: tag `121 + i` for `0 <= i < 7`, tag `1280 + i - 7` for `7 <= i < 128`, else tag
   *     102 and a two-element array of the index (an unsigned 64-bit integer, or any other index as
-  *     an integer, which uses the big-number tags outside the 64-bit range) and the fields;
+  *     an integer, which uses the big-number tags outside the 64-bit range over one definite byte
+  *     string of any length, never chunked) and the fields;
   *   - lists are indefinite-length when non-empty and `0x80` when empty; maps are definite;
   *   - integers within 64 bits are plain CBOR integers, others tag 2 or 3 over a byte string;
   *   - byte strings of up to 64 bytes are definite, longer ones indefinite in chunks of 64 bytes.
@@ -49,7 +50,7 @@ object DataSerialiser:
         else
           head(out, 6, 102)
           head(out, 4, 2)
-          integer(out, i)
+          index(out, i)
         list(fields)
       case Data.Map(entries) =>
         val es = PList.asScala(entries)
@@ -65,6 +66,20 @@ object DataSerialiser:
       else
         stack.pop()
         if top.close >= 0 then out.write(top.close)
+
+  /** The index of a constructor in tag 102 is written by cborg's `encodeInteger`: a plain head
+    * within 64 bits, otherwise tag 2 or 3 over one definite byte string of the minimal magnitude,
+    * however long (`PlutusCore/Data.hs` `encodeData`; cborg `Codec.CBOR.Write`, `integerMP` and
+    * `bigNatMP`). Only `Data.I` goes through the chunking `encodeBs`.
+    */
+  private def index(out: ByteArrayOutputStream, v: BigInt): Unit =
+    if v >= 0 && v <= Word64Max then head(out, 0, v)
+    else if v < 0 && -1 - v <= Word64Max then head(out, 1, -1 - v)
+    else
+      val (tag, digits) = if v >= 0 then (2, magnitude(v)) else (3, magnitude(-1 - v))
+      head(out, 6, tag)
+      head(out, 2, BigInt(digits.length))
+      out.write(digits)
 
   private def integer(out: ByteArrayOutputStream, v: BigInt): Unit =
     if v >= 0 && v <= Word64Max then head(out, 0, v)
