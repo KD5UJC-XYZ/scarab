@@ -17,6 +17,7 @@ import xyz.kd5ujc.scarab.node.{
   Main,
   NodeConfig,
   StallDiagnostics,
+  SyncAdvisory,
   Topology
 }
 import xyz.kd5ujc.scarab.network.selection.{
@@ -47,6 +48,11 @@ enum NodeEvent:
 
   /** The BLS12-381 library in use and the processor it runs on (checked at start-up, ADR 0012). */
   case Blst(report: BlstReport)
+
+  /** The node starts in Praos mode with a long way to sync and no trusted roots
+    * ([[xyz.kd5ujc.scarab.node.SyncAdvisory]], ADR 0022).
+    */
+  case PraosSyncUntrusted(position: SyncAdvisory.Position)
 
   /** A listener is open (`--listen`, `--local-socket`). */
   case Listening(address: String)
@@ -338,6 +344,18 @@ object NodeEvent:
           case LibraryBuild.Other(sha256) =>
             Json.obj("build" -> "other".asJson, "sha256" -> sha256.asJson)
           case LibraryBuild.OnLibraryPath => Json.obj("build" -> "library-path".asJson))
+      )
+    case PraosSyncUntrusted(position) =>
+      EventKind.PraosSyncUntrusted.line(
+        "consensusMode" -> "PraosMode".asJson,
+        "start" -> (position match
+          case SyncAdvisory.Position.FromOrigin => "origin"
+          case _                                => "behind"
+        ).asJson,
+        "slotsBehind" -> (position match
+          case SyncAdvisory.Position.Behind(slots) => Some(slots)
+          case _                                   => None
+        ).asJson
       )
     case Listening(address) => EventKind.Listening.line("address" -> address.asJson)
     case Memory(sample)     => EventKind.Memory.line("sample" -> sample)

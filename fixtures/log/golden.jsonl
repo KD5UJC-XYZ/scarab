@@ -9,6 +9,8 @@
 {"event":"receivedBlockDiscarded","at":"2026-10-16T12:00:00Z","hash":"abababababababababababababababababababababababababababababababab","reason":"corrupt received block: UnexpectedEnd"}
 {"event":"memory","at":"2026-10-16T12:00:00Z","sample":{"heapUsed":1024,"rssAnon":null}}
 {"event":"cpuStarvation","at":"2026-10-16T12:00:00Z","clockDriftMs":250,"threshold":0.1,"intervalMs":1000}
+{"event":"praosSyncUntrusted","at":"2026-10-16T12:00:00Z","consensusMode":"PraosMode","start":"origin","slotsBehind":null}
+{"event":"praosSyncUntrusted","at":"2026-10-16T12:00:00Z","consensusMode":"PraosMode","start":"behind","slotsBehind":432001}
 {"event":"listening","at":"2026-10-16T12:00:00Z","address":"0.0.0.0:3001"}
 {"event":"headersChecked","at":"2026-10-16T12:00:00Z","validated":50000,"unchecked":12,"waited":3}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"/tmp/node.socket","state":"accepted","reason":null}
