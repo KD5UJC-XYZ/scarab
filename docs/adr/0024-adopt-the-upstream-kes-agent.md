@@ -26,10 +26,11 @@ JVM. Only (3) removes it, and (3) is a different protocol from the upstream one.
 
 H2 is **(1) only**.
 
-- **Adopt the upstream agent as it is**: `input-output-hk/kes-agent`, pinned by tag and commit, **built once**
-  from the upstream Dockerfile on the Docker host (the release assets are unusable: 1.4.0.0 has none, and the
-  1.1.0.0 binary is a Nix closure that does not run on an ordinary host). Scarab writes no agent and ships no
-  agent.
+- **Adopt the upstream agent as it is**: `input-output-hk/kes-agent`, pinned by tag and commit, **built from an
+  in-repo recipe** (`scripts/kes-agent/`, two-stage, base digest pinned) on any Docker host — the release
+  assets are unusable: 1.4.0.0 has none, and the 1.1.0.0 binary is a Nix closure that does not run on an
+  ordinary host. Scarab writes no agent and ships no agent; the recipe exists so that any test host can
+  reproduce the artifact without depending on a particular machine.
 - **No remote signing** (`sign` mode) for now. It is too large a deviation from the upstream protocol: a
   protocol of our own, a per-block round trip, and a change in availability — a node whose agent dies keeps
   forging on the key it holds today, and could not forge at all under remote signing.

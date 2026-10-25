@@ -446,8 +446,8 @@ meaningful peer credentials, and must be documented as weaker than a local socke
    (the tag and timestamp included), plus the client's 4-byte reply; bad version identifier; unknown tag;
    unknown `RecvResult`; a timestamp equal to the last one. Fuzz target over the frame reader.
 2. **Fixtures** (`fixtures/kes-agent/`, provenance README with source tag and commit, the built image id or
-   digest, command and licence): frames captured from a real agent — the upstream Dockerfile built from the
-   pinned tag on the Docker host — by a probe script that speaks the node side
+   digest, command and licence): frames captured from a real agent — the image built by the in-repo recipe —
+   by a probe script that speaks the node side
    (`scripts/kes_agent_probe.py`), replayed offline in `check`. The fixtures are what the test path uses, so
    neither `check` nor a normal test run needs an agent, a container or a Haskell toolchain. This is the
    conformance oracle; the probe doubles as an independent implementation check of this document's byte
@@ -469,7 +469,7 @@ meaningful peer credentials, and must be documented as weaker than a local socke
 
 | Stage | Content | Gate |
 |---|---|---|
-| 1 | Build the upstream Dockerfile at the pinned tag **once** on the Docker host (pin the base image digest; record the resulting image id); the probe script; captured fixtures with provenance; a byte-level verification of this document against them | fixtures replay in a Python test; the wire section corrected where the capture disagrees |
+| 1 | `scripts/kes-agent/` — a two-stage Dockerfile (pinned tag, commit and base-image digest) and a build script that reproduces the image on any Docker host and prints its id; the probe script; captured fixtures with provenance; a byte-level verification of this document against them | the recipe builds on a Docker host; fixtures replay in a Python test; the wire section corrected where the capture disagrees |
 | 2 | `KesAgentWire` and its suite | `check` |
 | 3 | `HotKeys` no-key state, `KesAgentSource`, client, CLI flag, fake-agent suite | `check` + `kes-rotate` (no regression in file mode) |
 | 4 | Devnet `kes-agent` scenario and the real-agent matrix | `check` + the scenario (level 3) + evidence row |
@@ -490,9 +490,34 @@ not a test-path dependency.
 
 What the build costs: the upstream `Dockerfile` is single-stage on `haskell:9.10-bookworm`, installs
 libsodium-dev, builds secp256k1 and blst from source, then `cabal install`s both executables. Expect tens of
-minutes cold and a multi-gigabyte image; a two-stage variant of our own would be much smaller if that
-matters. That happens once per pin on the Docker host — not per test run, not in `check`, and not in the
+minutes cold and a multi-gigabyte image; a two-stage variant of ours would be much smaller if that
+matters. That happens once per pin on any Docker host — not per test run, not in `check`, and not in the
 nightly `e2e` matrix unless we later publish the image.
+
+## Reusing this across test hosts
+
+Two artifacts carry this work, and only one of them is an image.
+
+- **The fixtures are the portable artifact.** `fixtures/kes-agent/` holds captured frames plus a provenance
+  README, and `check` replays them offline. Any agent, on any host, with or without Docker or network, runs
+  the full codec and behaviour coverage from a checkout. That is why stage 1 commits frames rather than an
+  image.
+- **The build is a recipe, not a host.** Stage 1 adds `scripts/kes-agent/`: a Dockerfile and a build script
+  that pin the upstream tag and commit, the base-image digest and the system dependencies, build, tag the
+  result and print its image id. Any Docker host reproduces it. Nothing in the repository names a particular
+  machine, and the design does not either.
+- **The image is disposable and host-local.** It is rebuilt from the recipe when missing and is never a
+  required input to `check`. Where a host cannot build — no Docker, no network — the script can
+  `docker save` the image to a shared path with a SHA-256 and the other host `docker load`s it: an archive,
+  not a registry, until there is a reason for one.
+- **A registry is a later decision.** Publishing to GHCR is needed only if the nightly GitHub matrix must run
+  the `kes-agent` scenario itself. Stages 1 to 3 do not, and publishing would be a new supply-chain surface
+  for the owner to accept.
+
+This changes one earlier recommendation: a two-stage build is worth it after all. Cross-host reuse makes the
+final image size matter, and a two-stage file drops it to the two binaries plus libsodium, blst and glibc —
+a few hundred megabytes, small enough to archive and move — instead of several gigabytes of GHC and cabal
+store that no runtime needs.
 
 ## Decisions
 
@@ -516,10 +541,11 @@ No decisions remain open for H2.
 - **Agent provenance.** **Corrected 2026-10-25 after testing the artifacts**: the `kes-agent-1.4.0.0` release
   has no assets, and the `1.1.0.0` `x86_64-linux` binary is a Nix closure (a `/nix/store` ELF interpreter, a
   `libblst.so` dependency and `/nix/store` RPATHs), so it does not run on an ordinary host. The agent is
-  therefore **built once** from the pinned tag with the upstream Dockerfile on the Docker host, base image
-  digest pinned and the resulting image id recorded. The test path uses the captured fixtures, not a live
-  agent, so this is a one-time cost and never a per-run one. We do not ship the agent to operators; the
-  documentation points at upstream's releases.
+  **built from an in-repo, host-agnostic recipe** (`scripts/kes-agent/`: two-stage Dockerfile plus a build
+  script pinning tag, commit and base-image digest) on whatever Docker host is available, and the resulting
+  image id is recorded. The test path uses the captured fixtures, so the image is never a required input to
+  `check` and no particular host is named anywhere. We do not ship the agent to operators; the documentation
+  points at upstream's releases.
 - **Operator tooling.** Upstream `kes-agent-control`; no Scarab wrapper in H2. There is no devnet scenario to
   motivate one yet, and the scenario we add in stage 4 can call the upstream tool directly.
 - **Confirmations.** `--kes-agent-socket` as the flag name (reference mapping in #222); both flags together
