@@ -223,8 +223,7 @@ object VolatileStore:
     /** Read the existing files; returns the infos, the logged records, the bytes cut off and where
       * each block is.
       */
-    val scan
-        : F[(Vector[FileInfo], Vector[VolatileRecord], Long, Vector[(BlockRef, Location)])] =
+    val scan: F[(Vector[FileInfo], Vector[VolatileRecord], Long, Vector[(BlockRef, Location)])] =
       guard(root.toString) {
         Files.createDirectories(root)
         val names = {
