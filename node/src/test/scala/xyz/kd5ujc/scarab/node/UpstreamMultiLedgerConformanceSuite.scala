@@ -150,8 +150,8 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
           )
           val failure = actual.swap.toOption.getOrElse(fail("native-rejected batch accepted"))
           val predicate = failure match
-            case LedgerFailure.Rejected(_, cause) => cause
-            case other                            => fail(s"expected a ledger refusal, got $other")
+            case LedgerFailure.Rejected.Single(_, cause) => cause
+            case other => fail(s"expected a ledger refusal, got $other")
           // Native STS accumulates failures; Scarab fails fast. Its typed cause and complete
           // payload must be an independently observed native failure, regardless of ordering.
           val wire = Cbor

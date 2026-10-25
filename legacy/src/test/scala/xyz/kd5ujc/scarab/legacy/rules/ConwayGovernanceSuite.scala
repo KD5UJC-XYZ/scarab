@@ -325,7 +325,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     val pid = idOf(p1, 0)
     val denied = submit(w, p1, w.dreps, votes = Vector(drepVote(w.dreps(0), pid, Vote.Yes)))
     assertEquals(
-      denied.left.map { case LedgerFailure.Rejected(_, f) => f.ruleName; case _ => "?" },
+      denied.left.map { case LedgerFailure.Rejected.Single(_, f) => f.ruleName; case _ => "?" },
       Left("DisallowedVotesDuringBootstrap")
     )
     // treasury withdrawals cannot even be proposed
@@ -333,7 +333,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     val refused =
       submit(w, s1, Vector.empty, proposals = Vector(proposal(w, tw)), deposits = 1000 * ada)
     assertEquals(
-      refused.left.map { case LedgerFailure.Rejected(_, f) => f.ruleName; case _ => "?" },
+      refused.left.map { case LedgerFailure.Rejected.Single(_, f) => f.ruleName; case _ => "?" },
       Left("DisallowedProposalDuringBootstrap")
     )
     // the zero DRep threshold lets a parameter change nobody voted for through (the committee and
@@ -539,7 +539,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     )
     assertEquals(
       rs.tx(s0.s, tx(b, Vector(w.payer)), env(s0.s, 0)).left.map {
-        case LedgerFailure.Rejected(_, f) => f.ruleName; case _ => "?"
+        case LedgerFailure.Rejected.Single(_, f) => f.ruleName; case _ => "?"
       },
       Left("ConwayTreasuryValueMismatch")
     )
@@ -694,9 +694,9 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
   // predicate failures carry.
 
   private def rejection(r: Either[LedgerFailure, State]): String = r match
-    case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
-    case Left(other)                        => other.message
-    case Right(_)                           => "accepted"
+    case Left(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
+    case Left(other)                               => other.message
+    case Right(_)                                  => "accepted"
 
   test(
     "committee hot keys: authorised but unelected keys may vote before protocol version 11 only"

@@ -143,7 +143,7 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     assert(
       add(afterHeld, raw).left.exists {
         case Rejection.Ledger(
-              LedgerFailure.Rejected(_, _: PredicateFailure.TxRefScriptsSizeTooBig)
+              LedgerFailure.Rejected.Single(_, _: PredicateFailure.TxRefScriptsSizeTooBig)
             ) =>
           true
         case _ => false
@@ -154,7 +154,8 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     assert(
       add(s0, raw).left.exists {
         case Rejection.Ledger(
-              LedgerFailure.Rejected(_, PredicateFailure.Mempool(MempoolProblem.AllInputsSpent))
+              LedgerFailure.Rejected
+                .Single(_, PredicateFailure.Mempool(MempoolProblem.AllInputsSpent))
             ) =>
           true
         case _ => false
