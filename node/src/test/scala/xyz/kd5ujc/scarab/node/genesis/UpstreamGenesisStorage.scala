@@ -64,7 +64,7 @@ object UpstreamGenesisStorage:
         )(using
             Raise[IO, StorageError],
             Raise[IO, ChainError]
-        ): IO[Unit] = log.append(ref, raw)
+        ): IO[Unit] = log.append(ref, raw).void
         def rolledBack(to: ChainSync.Point)(using
             Raise[IO, StorageError],
             Raise[IO, ChainError]

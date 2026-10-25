@@ -9,11 +9,12 @@ import cats.syntax.all.*
 import fs2.io.file.Path
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.state.{MirrorState, MirrorStep}
-import xyz.kd5ujc.scarab.ledger.{StorageError, Utxo}
+import xyz.kd5ujc.scarab.ledger.{StorageError, Utxo, UtxoKeyLayout}
 
 /** The part of the node state that lives outside the snapshot file: the UTxO set. It follows the
   * immutable tip, and each ledger snapshot has a checkpoint of it taken at the same block, so a
-  * restored snapshot and its store always agree.
+  * restored snapshot and its store always agree. The snapshot records the checkpoint it was written
+  * with ([[CheckpointBinding]]) and a restore admits only that one ([[admit]]).
   */
 trait StateBacking[F[_], S]:
   /** The immutable tip moved to `state`: make the store reflect it. */
@@ -22,11 +23,18 @@ trait StateBacking[F[_], S]:
   /** `state` with whatever the store now holds dropped from it (what a snapshot should contain). */
   def settled(state: S)(using Raise[F, StorageError]): F[S]
 
-  /** Durable copy of the store, which is at `anchor`, to go with the snapshot of that block. */
-  def checkpoint(anchor: BlockRef)(using Raise[F, StorageError]): F[Unit]
+  /** Durable copy of the store, which is at `anchor`, to go with the snapshot of that block: what
+    * that snapshot records of it.
+    */
+  def checkpoint(anchor: BlockRef)(using Raise[F, StorageError]): F[CheckpointBinding]
 
-  /** Whether the checkpoint of `anchor` exists. */
-  def available(anchor: Option[BlockRef])(using cats.mtl.Raise[F, StorageError]): F[Boolean]
+  /** Whether the checkpoint of `anchor` is the one a snapshot recorded as `binding`: the reason it
+    * is not, as a [[StorageError.UtxoCheckpoint]], otherwise. A [[CheckpointBinding.Legacy]]
+    * snapshot is admitted when its checkpoint directory exists, as the V5 build admitted it.
+    */
+  def admit(anchor: Option[BlockRef], binding: CheckpointBinding)(using
+      Raise[F, StorageError]
+  ): F[Either[StorageError, Unit]]
 
   /** Make the store equal to the checkpoint of `anchor`. */
   def restore(anchor: Option[BlockRef])(using cats.mtl.Raise[F, StorageError]): F[Boolean]
@@ -34,7 +42,9 @@ trait StateBacking[F[_], S]:
   /** Start from an empty store (no snapshot was restored). */
   def reset(using cats.mtl.Raise[F, StorageError]): F[Unit]
 
-  /** Delete the checkpoints that no listed snapshot (by file stem) refers to. */
+  /** Delete the checkpoints that no listed snapshot (by file stem) refers to. Only directories
+    * named as checkpoints ([[StateBacking.isStem]]) are deleted.
+    */
   def retain(stems: Set[String])(using Raise[F, StorageError]): F[Unit]
 
 object StateBacking:
@@ -42,9 +52,11 @@ object StateBacking:
     private val unit = Applicative[F].unit
     def advance(state: S)(using Raise[F, StorageError]) = unit
     def settled(state: S)(using Raise[F, StorageError]) = Applicative[F].pure(state)
-    def checkpoint(anchor: BlockRef)(using Raise[F, StorageError]) = unit
-    def available(anchor: Option[BlockRef])(using cats.mtl.Raise[F, StorageError]) =
-      Applicative[F].pure(true)
+    def checkpoint(anchor: BlockRef)(using Raise[F, StorageError]) =
+      Applicative[F].pure(CheckpointBinding.Unbacked)
+    def admit(anchor: Option[BlockRef], binding: CheckpointBinding)(using
+        Raise[F, StorageError]
+    ) = Applicative[F].pure(Right(()))
     def restore(anchor: Option[BlockRef])(using cats.mtl.Raise[F, StorageError]) =
       Applicative[F].pure(true)
     def reset(using cats.mtl.Raise[F, StorageError]) = unit
@@ -52,6 +64,11 @@ object StateBacking:
 
   /** The name shared by a snapshot file (`<stem>.bin`) and its checkpoint directory. */
   def stem(a: BlockRef): String = f"snapshot-${a.slot}%020d-${a.blockNo}"
+
+  private val Stem = "snapshot-[0-9]{20}-[0-9]+".r
+
+  /** Whether `name` is a name [[stem]] gives. */
+  def isStem(name: String): Boolean = Stem.matches(name)
 
 /** How a chain state holds the handle on its UTxO set. */
 trait UtxoHandle[S]:
@@ -100,16 +117,22 @@ final class UtxoBacking[F[_]: Sync, S](store: UtxoStore[F], root: Path)(using
     if handle.get(state).isEmpty then F.pure(state)
     else store.flushed.map(at => handle.modify(state)(_.settled(at, force = true)))
 
-  def checkpoint(anchor: BlockRef)(using Raise[F, StorageError]): F[Unit] =
+  def checkpoint(anchor: BlockRef)(using Raise[F, StorageError]): F[CheckpointBinding] =
     val dir = dirOf(anchor)
     guard(dir.toString)(RocksUtxoStore.deleteTree(dir.toNioPath)) *>
       guard(root.toString)(java.nio.file.Files.createDirectories(root.toNioPath)) *>
-      store.checkpoint(dir)
+      store.checkpoint(dir) *>
+      guard(dir.toString)(CheckpointDigest.of(dir.toNioPath))
+        .map(CheckpointBinding.Bound(UtxoKeyLayout.current, _))
 
-  def available(anchor: Option[BlockRef])(using cats.mtl.Raise[F, StorageError]): F[Boolean] =
+  def admit(anchor: Option[BlockRef], binding: CheckpointBinding)(using
+      Raise[F, StorageError]
+  ): F[Either[StorageError, Unit]] =
     anchor match
-      case None    => F.pure(false)
-      case Some(a) => guard(root.toString)(java.nio.file.Files.isDirectory(dirOf(a).toNioPath))
+      case None => F.pure(Left(StorageError.Missing("snapshot anchor")))
+      case Some(a) =>
+        val dir = dirOf(a)
+        guard(dir.toString)(CheckpointDigest.admit(dir.toNioPath, binding))
 
   def restore(anchor: Option[BlockRef])(using cats.mtl.Raise[F, StorageError]): F[Boolean] =
     anchor match
@@ -124,7 +147,8 @@ final class UtxoBacking[F[_]: Sync, S](store: UtxoStore[F], root: Path)(using
       val dirs = java.nio.file.Files.list(nio)
       try
         dirs.forEach { d =>
-          if !stems.contains(d.getFileName.toString) then RocksUtxoStore.deleteTree(d)
+          val name = d.getFileName.toString
+          if StateBacking.isStem(name) && !stems.contains(name) then RocksUtxoStore.deleteTree(d)
         }
       finally dirs.close()
   }

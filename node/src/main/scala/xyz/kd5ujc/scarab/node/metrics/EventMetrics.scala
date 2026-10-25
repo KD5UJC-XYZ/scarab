@@ -154,6 +154,8 @@ final class EventMetrics[F[_]: Sync] private (
       case StorageEvent.SnapshotSkipped(_, _) =>
         metrics.inc(snapshotProblems, SnapshotProblemLabel.Skipped)
       case StorageEvent.SnapshotRestored(_, _) => metrics.inc(snapshotsRestored)
+      case StorageEvent.SnapshotUnbound(_, _) =>
+        metrics.inc(snapshotProblems, SnapshotProblemLabel.Unbound)
       case StorageEvent.SnapshotWritten(_, _, bytes, millis) =>
         metrics.inc(snapshotsWritten) *>
           metrics.set(snapshotWriteSeconds, millis / 1000.0) *>

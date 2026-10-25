@@ -15,7 +15,7 @@ import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorStep}
 import xyz.kd5ujc.scarab.ledger.{Block, PlutusStats, StorageError, TxIn, TxOut, Utxo}
 import xyz.kd5ujc.scarab.ledger.rules.{EraBlock, EraNes, Globals, Hfc}
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.storage.{FileLedgerSnapshots, RocksUtxoStore, SnapshotCheck, SnapshotV5}
+import xyz.kd5ujc.scarab.storage.{FileLedgerSnapshots, RocksUtxoStore, SnapshotCheck, SnapshotV7}
 
 /** Opt-in test-side benchmark. Decoding, store reads, assertions and complete result rendering are
   * outside timing. Every timed call receives an identical immutable historical input.
@@ -82,9 +82,9 @@ object PreviewRuleBench extends IOApp.Simple with Assertions:
         for
           raw <- IO.blocking(Files.readAllBytes(JPath.of(s"/native/$name.bin")))
           _ <- IO.println(s"INPUT native sha256=${hash(raw)}")
-          snapshot <- SnapshotV5
+          snapshot <- SnapshotV7
             .format[IO](SnapshotCheck.Full)
-            .decode(checked(FileLedgerSnapshots.verified(raw)))
+            .decode(checked(FileLedgerSnapshots.verified(raw).flatMap(NativeSnapshots.current)))
             .map(checked(_))
           initial <- IO(MirrorStep.nesOf(snapshot.state).getOrElse(fail("Shelley input required")))
           _ <- IO.println(s"INPUT nes ${fingerprint(initial)} epoch=${initial.epoch}")

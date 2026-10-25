@@ -17,7 +17,8 @@ import xyz.kd5ujc.scarab.consensus.FollowerEvents
 import xyz.kd5ujc.scarab.consensus.state.{MirrorState, MirrorStep}
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
-import xyz.kd5ujc.scarab.ledger.{Block, FileKind, IdentityProvenance, StoredNetworkIdentity}
+import xyz.kd5ujc.scarab.ledger.{Block, CheckpointProblem, FileKind, FormatVersion}
+import xyz.kd5ujc.scarab.ledger.{IdentityProvenance, StoredNetworkIdentity}
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.ledger.NetworkIdentity
 import xyz.kd5ujc.scarab.ledger.NodeError
@@ -58,7 +59,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => fail(e.message), identity)
   private val geometry = setup.geometry
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-  private given SnapshotFormat[IO, MirrorState] = SnapshotV5.format[IO](SnapshotCheck.Full)
+  private given SnapshotFormat[IO, MirrorState] = SnapshotV7.format[IO](SnapshotCheck.Full)
   private val k = geometry.securityParam
 
   private val raws: Vector[Bytes] =
@@ -982,9 +983,9 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 stream.iterator().asScala.exists { file =>
                   JFiles.isRegularFile(file) &&
                   new String(JFiles.readAllBytes(file).take(8), StandardCharsets.ISO_8859_1) ==
-                    "SCRBSNP5"
+                    "SCRBSNP7"
                 },
-                "expected a current V5 snapshot before the immutable-header refusal"
+                "expected a current V7 snapshot before the immutable-header refusal"
               )
             finally stream.close()
           }
@@ -1056,7 +1057,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     assert(NetworkIdentity.parse("f", id.render.replace("v6", "v3")).isLeft)
   }
 
-  // ---- V5 snapshots paired with current and pre-K6 checkpoint key layouts (#145)
+  // ---- V5 and V7 snapshots paired with current and pre-K6 checkpoint key layouts (#145, #395)
 
   private enum CheckpointLayout:
     case Current, BeforeK6
@@ -1064,9 +1065,10 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private def checkpointOf(dir: Path, snapshotFile: String): Path =
     dir / "utxo" / "checkpoints" / snapshotFile.stripSuffix(".bin")
 
-  /** Current snapshot files with the chosen checkpoint key layout. Drop the newest snapshots so the
-    * live store is ahead, as after a crash; the original historical key migration remains supported
-    * independently of the snapshot payload format.
+  /** Snapshot files with the chosen checkpoint key layout: current V7 files, or, with `previous`,
+    * the V5 files a build before checkpoint binding wrote (the same body under the V5 magic). Drop
+    * the newest snapshots so the live store is ahead, as after a crash; the original historical key
+    * migration remains supported independently of the snapshot payload format.
     */
   private def checkpointDatabase(
       dir: Path,
@@ -1074,7 +1076,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       until: Int,
       every: Int,
       keep: Int,
-      drop: Int
+      drop: Int,
+      previous: Boolean = false
   ): IO[List[BlockRef]] =
     for
       log <- events(dir)
@@ -1096,12 +1099,23 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           _ <- IO.whenA(layout == CheckpointLayout.BeforeK6)(
             IO(LegacyUtxoCheckpoint.rewrite(checkpointOf(dir, n).toNioPath))
           )
+          _ <- IO.whenA(previous) {
+            val (_, sidecar, haskell) =
+              SnapshotV7.sections(content).fold(e => fail(e.message), identity)
+            IO.blocking(
+              JFiles.write(
+                file.toNioPath,
+                FileLedgerSnapshots.closed(SnapshotV5.framed(sidecar, haskell))
+              )
+            ).void
+          }
         yield snapshot.anchor.getOrElse(fail(s"$n is a snapshot of the origin"))
       }
     yield anchors
 
-  /** Restore the newest usable V5 snapshot/checkpoint, replay its immutable tail and continue the
-    * chain. The old checkpoint key layout must convert without requiring an old snapshot reader.
+  /** Restore the newest usable snapshot/checkpoint, replay its immutable tail and continue the
+    * chain. The old checkpoint key layout must convert without requiring an old snapshot reader;
+    * `previous` V5 files are migrated to V7 once, and the restored one is reported unbound.
     */
   private def reopened(
       dir: Path,
@@ -1110,7 +1124,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       until: Int,
       every: Int,
       keep: Int,
-      rollback: Option[Rollback] = None
+      rollback: Option[Rollback] = None,
+      previous: Boolean = false
   ): IO[Unit] =
     val label = layout.toString
     for
@@ -1131,8 +1146,15 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         seen.collect {
           case StorageEvent.FormatMigrated(m) if m.kind == FileKind.SnapshotFile => m
         }.toList,
-        List.empty[Migrated],
-        s"$label: current snapshot files are not rewritten"
+        if previous then
+          List(Migrated(FileKind.SnapshotFile, FormatVersion.V5, FormatVersion.V7, left.size))
+        else List.empty[Migrated],
+        s"$label: only V5 snapshot files are rewritten, once"
+      )
+      assertEquals(
+        seen.collect { case StorageEvent.SnapshotUnbound(_, a) => a }.toList,
+        if previous then List(left.headOption) else Nil,
+        s"$label: a migrated V5 snapshot is restored unbound"
       )
       assertEquals(
         seen.collect { case e: StorageEvent.SnapshotSkipped => e.name }.toList,
@@ -1153,16 +1175,58 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   for layout <- CheckpointLayout.values do
     test(
-      s"a V5 database with ${layout} UTxO checkpoints, its live store ahead of the snapshot, restores and replays"
+      s"a V5 database with ${layout} UTxO checkpoints, its live store ahead of the snapshot, migrates, restores and replays"
     ) {
       tempDir.use { dir =>
         for
-          left <- checkpointDatabase(dir, layout, until = 600, every = 60, keep = 4, drop = 1)
+          left <- checkpointDatabase(
+            dir,
+            layout,
+            until = 600,
+            every = 60,
+            keep = 4,
+            drop = 1,
+            previous = true
+          )
           _ <- IO(assert(left.size >= 2, s"snapshots left: ${left.size}"))
-          _ <- reopened(dir, layout, left, until = 731, every = 120, keep = 4)
+          _ <- reopened(dir, layout, left, until = 731, every = 120, keep = 4, previous = true)
         yield ()
       }
     }
+
+  test("a V7 database restores its snapshots against the checkpoints they were written with") {
+    tempDir.use { dir =>
+      for
+        left <- checkpointDatabase(dir, CheckpointLayout.Current, 600, 60, 4, 1)
+        _ <- IO(assert(left.size >= 2, s"snapshots left: ${left.size}"))
+        _ <- reopened(dir, CheckpointLayout.Current, left, until = 731, every = 120, keep = 4)
+      yield ()
+    }
+  }
+
+  test("a V7 snapshot whose checkpoint is not the one it recorded is skipped for an older one") {
+    tempDir.use { dir =>
+      for
+        left <- checkpointDatabase(dir, CheckpointLayout.Current, 600, 60, 4, 1)
+        _ <- IO(assert(left.size >= 2, s"snapshots left: ${left.size}"))
+        newest = FileLedgerSnapshots.nameOf(left.head)
+        // the same entries in other table files: a directory the snapshot was not written with
+        _ <- IO(LegacyUtxoCheckpoint.rewrite(checkpointOf(dir, newest).toNioPath))
+        log <- events(dir)
+        _ <- runWith(dir, 731, 120, log, Some("rocksdb"), 4, migrate = true)
+        seen <- log.get
+      yield
+        val skipped = seen.collect { case StorageEvent.SnapshotSkipped(name, e) => name -> e }
+        assertEquals(skipped.map(_._1).toList, List(newest))
+        skipped.headOption.map(_._2) match
+          case Some(StorageError.UtxoCheckpoint(_, CheckpointProblem.DigestMismatch(_, _))) => ()
+          case other => fail(s"expected a digest mismatch, got $other")
+        assertEquals(
+          seen.collect { case StorageEvent.SnapshotRestored(_, a) => a }.toList,
+          List(left.lift(1))
+        )
+    }
+  }
 
   test(
     "a current snapshot database with many blocks, many checkpoints and a rollback restores and replays"

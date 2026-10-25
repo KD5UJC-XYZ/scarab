@@ -11,8 +11,11 @@ import java.security.MessageDigest
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.ledger.StorageError
 
-/** The node state at an immutable point: `anchor` is the newest block applied (none: genesis). */
-final case class StateSnapshot[S](anchor: Option[BlockRef], state: S)
+/** The node state at an immutable point: `anchor` is the newest block applied (none: genesis), and
+  * `checkpoint` what the snapshot records of the store that holds the rest of the state
+  * ([[CheckpointBinding]]).
+  */
+final case class StateSnapshot[S](anchor: Option[BlockRef], state: S, checkpoint: CheckpointBinding)
 
 /** Periodic snapshots of the full node state: the LedgerDB snapshots of ouroboros-consensus. */
 trait LedgerSnapshots[F[_], S]:
@@ -23,11 +26,12 @@ trait LedgerSnapshots[F[_], S]:
       Raise[F, StorageError]
   ): F[Either[SnapshotRefusal, LedgerSnapshots.Written]]
 
-  /** The newest snapshot that decodes, passes its checksum and whose anchor `usable` accepts.
-    * Corrupt or unusable snapshots are reported and skipped. Unknown or retired format versions
-    * raise a storage error, preventing fallback replay from bypassing format admission.
+  /** The newest snapshot that decodes, passes its checksum and that `usable` admits (its anchor is
+    * stored, its checkpoint is the one it was written with); `usable` gives the reason it refuses
+    * one. Corrupt or unusable snapshots are reported and skipped. Unknown or retired format
+    * versions raise a storage error, preventing fallback replay from bypassing format admission.
     */
-  def restore(usable: Option[BlockRef] => F[Boolean])(using
+  def restore(usable: StateSnapshot[S] => F[Either[StorageError, Unit]])(using
       cats.mtl.Raise[F, StorageError]
   ): F[LedgerSnapshots.Restored[S]]
 
@@ -49,7 +53,7 @@ object LedgerSnapshots:
   * }}}
   *
   * The content is a [[SnapshotFormat]]'s and starts with the magic that names the format (see
-  * [[SnapshotV5]]); the store adds the checksum, atomic write, pruning and restore. Corrupt files
+  * [[SnapshotV7]]); the store adds the checksum, atomic write, pruning and restore. Corrupt files
   * can be skipped; known retired or unknown versions refuse restoration rather than cause replay.
   * Opening this generic store tidies temporary files: callers requiring admission before any
   * mutation must first run [[ChainStorage.preflight]], as the node does.
@@ -61,6 +65,9 @@ object FileLedgerSnapshots:
 
   private def sha256(bytes: Array[Byte]): Array[Byte] =
     MessageDigest.getInstance("SHA-256").digest(bytes)
+
+  /** The checksum that closes the file of a content. */
+  def digest(content: Array[Byte]): Array[Byte] = sha256(content)
 
   /** The content of a file whose checksum holds: the file without its last [[DigestSize]] bytes. */
   def verified(file: Array[Byte]): Either[StorageError, Array[Byte]] =
@@ -149,7 +156,7 @@ object FileLedgerSnapshots:
                 yield Right(LedgerSnapshots.Written(name, size, snapshot.anchor))
             }
 
-      def restore(usable: Option[BlockRef] => F[Boolean])(using
+      def restore(usable: StateSnapshot[S] => F[Either[StorageError, Unit]])(using
           cats.mtl.Raise[F, StorageError]
       ): F[LedgerSnapshots.Restored[S]] =
         def go(
@@ -163,16 +170,10 @@ object FileLedgerSnapshots:
               case Left(error: StorageError.RetiredVersion) => fail(error)
               case Left(error) => go(tail, skipped :+ LedgerSnapshots.Skipped(name, error))
               case Right(snapshot) =>
-                usable(snapshot.anchor).flatMap {
-                  case true => F.pure(LedgerSnapshots.Restored(Some(name -> snapshot), skipped))
-                  case false =>
-                    go(
-                      tail,
-                      skipped :+ LedgerSnapshots.Skipped(
-                        name,
-                        StorageError.Missing("snapshot anchor in the immutable store")
-                      )
-                    )
+                usable(snapshot).flatMap {
+                  case Right(()) =>
+                    F.pure(LedgerSnapshots.Restored(Some(name -> snapshot), skipped))
+                  case Left(error) => go(tail, skipped :+ LedgerSnapshots.Skipped(name, error))
                 }
             }
         names.flatMap(ns => go(ns.toList, Vector.empty)))

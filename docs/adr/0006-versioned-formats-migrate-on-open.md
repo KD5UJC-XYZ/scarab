@@ -2,7 +2,8 @@
 
 - **Status**: Accepted
 - **Date**: 2026-10-15
-- **Amended**: 2026-10-19 (#83 greenfield reader retirement/preflight; #159 complete database identity)
+- **Amended**: 2026-10-19 (#83 greenfield reader retirement/preflight; #159 complete database identity);
+  2026-10-23 (#395 RocksDB layouts and UTxO checkpoints)
 - **Issue**: [#83](https://github.com/KD5UJC-XYZ/scarab/issues/83)
 
 ## Context
@@ -21,6 +22,19 @@ reported, and resyncing is the operator's choice, never forced. Migrations are o
 which files to copy to keep an older build working. Global version V6 changes only the network
 identity record: it binds the loaded Byron, Shelley, Alonzo and Conway genesis inputs. Incomplete V1/V2
 identity records require explicit operator-confirmed adoption and retain their original bytes.
+
+RocksDB key/value and column-family layouts and the UTxO checkpoints were persisted layouts with no
+version of their own until #395: a snapshot named its checkpoint by directory stem only. Their
+admission rule is now this. A checkpoint is admitted only through the snapshot that recorded it:
+from global V7 a snapshot carries a `CheckpointBinding` with the `UtxoKeyLayout` and the digest of
+the checkpoint directory, and a restore refuses (and falls back from) a checkpoint whose layout or
+digest differs, with a typed `StorageError.UtxoCheckpoint`. The live store is never admitted by
+itself: each open replaces it by an admitted checkpoint or empties it. A V5 snapshot migrates to V7
+with a `Legacy` binding rather than a digest invented at migration time, and is admitted as the V5
+build admitted it, with a warning. A new key, value or column-family layout is a new `UtxoKeyLayout`
+case, a snapshot version bump and a conversion or refusal of the existing checkpoints; the
+historical pre-K6 key conversion (`RocksUtxoStore.rekeyInto`) remains as it was. See
+[ADR 0021](0021-ledger-state-residency-and-utxo-checkpoints.md).
 
 ## Consequences
 

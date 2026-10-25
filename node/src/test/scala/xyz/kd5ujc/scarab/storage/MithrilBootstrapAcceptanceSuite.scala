@@ -54,7 +54,7 @@ class MithrilBootstrapAcceptanceSuite extends CatsEffectSuite:
         finally candidates.close()
       val bytes = Files.readAllBytes(selected)
       for
-        decoded <- SnapshotV5.format[IO](SnapshotCheck.Full).decode(bytes.dropRight(32))
+        decoded <- SnapshotV7.format[IO](SnapshotCheck.Full).decode(bytes.dropRight(32))
         restored = decoded.fold(e => fail(e.message), identity)
         anchor = restored.anchor.getOrElse(fail("snapshot origin"))
         _ <- IO { assertEquals(anchor.slot, slot); assertEquals(anchor.hash.hex, hash) }

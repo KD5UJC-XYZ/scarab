@@ -41,7 +41,7 @@ object InternDecodeBench extends Assertions:
     )
     sampler.start()
     val state =
-      try checked(SnapshotV5.decode(env, content))
+      try checked(SnapshotV7.decode(env, content))
       finally
         running.set(false)
         sampler.join()
@@ -53,7 +53,9 @@ object InternDecodeBench extends Assertions:
   def main(args: Array[String]): Unit =
     assert(args.length == 4, "mode, label, snapshot, configs")
     val raw = Files.readAllBytes(Path.of(args(2)))
-    val content = checked(FileLedgerSnapshots.verified(raw))
+    val content = checked(
+      FileLedgerSnapshots.verified(raw).flatMap(xyz.kd5ujc.scarab.node.NativeSnapshots.current)
+    )
     val env = checked(NodeSetup.fromDirectory(Path.of(args(3)))).mirrorEnv()
     println(s"INPUT ${args(1)} bytes=${raw.length} sha256=${sha(raw)}")
     if args(0) == "memory" then
@@ -61,12 +63,12 @@ object InternDecodeBench extends Assertions:
       retained(env, content)
       checkpoint("RELEASED")
     else
-      val initial = checked(SnapshotV5.decode(env, content))
-      (0 until 10).foreach(_ => assertEquals(checked(SnapshotV5.decode(env, content)), initial))
+      val initial = checked(SnapshotV7.decode(env, content))
+      (0 until 10).foreach(_ => assertEquals(checked(SnapshotV7.decode(env, content)), initial))
       val rows = (0 until 9).map { sample =>
         val before = allocation.getCurrentThreadAllocatedBytes
         val start = System.nanoTime()
-        val result = SnapshotV5.decode(env, content)
+        val result = SnapshotV7.decode(env, content)
         val elapsed = System.nanoTime() - start
         val allocated = allocation.getCurrentThreadAllocatedBytes - before
         assertEquals(checked(result), initial)
@@ -77,7 +79,7 @@ object InternDecodeBench extends Assertions:
         s"METRIC median_ns=${rows.map(_._1).sorted.apply(4)} min_ns=${rows.map(_._1).min} max_ns=${rows.map(_._1).max} allocated=${rows.map(_._2).sorted.apply(4)}"
       )
       println(s"DIGEST state ${sha(initial.toString.getBytes("UTF-8"))}")
-      val refusal = SnapshotV5.decode(env, content.dropRight(1))
+      val refusal = SnapshotV7.decode(env, content.dropRight(1))
       assert(refusal.isLeft)
       println(s"DIGEST refusal ${sha(refusal.toString.getBytes("UTF-8"))}")
     java.lang.ref.Reference.reachabilityFence(raw)

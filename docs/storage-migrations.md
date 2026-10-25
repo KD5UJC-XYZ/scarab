@@ -23,8 +23,9 @@ checkout with a hashed manifest and reproducible provenance.
 
 The snapshot fingerprint golden in `CodecSuite` must change together with the version, migration and
 previous-version regression. Regenerating a fingerprint to make a test pass is not a migration.
-Native snapshots retain V5 (Haskell ledger CBOR plus a typed binary sidecar, framing and checksum);
-stored values remain CBOR. MemPack is an import/export format, not a replacement stored value.
+Native snapshots are V7: the V5 body (Haskell ledger CBOR plus a typed binary sidecar) behind a
+checkpoint binding, with framing and checksum; stored values remain CBOR. The binding has its own
+fingerprint golden in `CodecSuite`, next to the sidecar's. MemPack is an import/export format, not a replacement stored value.
 
 ## Convert typed values without inventing state
 
@@ -36,8 +37,9 @@ and all semantic state the old file actually held. Hashes and signatures continu
 transaction/block bytes; re-encoding diagnostics or a container format does not replace those bytes.
 
 For ledger snapshots, `FileLedgerSnapshots.verified` checks the file checksum before a payload is
-used. `SnapshotV5.format[F](SnapshotCheck.Full).decode(content)` reads current content, and
-`SnapshotV5.sidecarOf` exposes carried metadata. The `Full` choice controls encode-time read-back
+used. `SnapshotV7.format[F](SnapshotCheck.Full).decode(content)` reads current content, and
+`SnapshotV7.sidecarOf` and `SnapshotV7.bindingOf` expose carried metadata. `SnapshotV5` is the
+frozen previous reader: its body parser is shared, and `SnapshotV7.fromV5` is the migration step. The `Full` choice controls encode-time read-back
 checking; decoding itself validates the current file in either mode.
 A converter must carry the source `observed` eras and `gaps` exactly. Missing non-myopic data must
 remain missing; the caller's newer environment is not evidence that the old file observed an era.
@@ -65,13 +67,14 @@ step must leave either a complete old file or a complete new file. A restart dis
 actual version and resumes; a second successful migration changes no bytes and reports no work.
 Do not replace this with delete-then-write or an in-place payload edit.
 
-For example, with global V6 already assigned to complete network identity, a future snapshot change
-can append global `V7` and the snapshot's `SCRBSNP7` history entry. Keep V5 readable while that
-migration is supported. `Migration.detect` identifies either registered header;
-`step(file, V5, V7)` validates that exact transition, verifies the old checksum, uses the frozen V5
-reader, converts the typed state and atomically writes V7. `Migrate` then has no work for V7.
-The identity kind remains at V6 and unchanged kinds retain their own current versions. Retire the
-old reader only after the inventory and conversion conditions below hold, then advance the snapshot
+Global V6 is the complete network identity and global V7 the snapshot's checkpoint binding
+(`SCRBSNP7`, #395). V5 stays readable while that migration is supported. `Migration.detect`
+identifies either registered header; `step(file, V5, V7)` validates that exact transition, verifies
+the old checksum, checks the V5 sidecar against its fingerprint, copies the V5 body unchanged behind
+a `Legacy` binding (no checkpoint digest is invented for a file that recorded none) and atomically
+writes V7. `Migrate` then has no work for V7. The identity kind remains at V6 and unchanged kinds
+retain their own current versions. A future snapshot change appends global `V8`. Retire the V5
+reader only after the inventory and conversion conditions below hold, then advance the snapshot
 kind's `readableFrom` to V7. Use caller-scoped `Raise[F, StorageError]` for every migration operation;
 do not capture an earlier caller's error interpreter in a long-lived migration object.
 
@@ -95,10 +98,17 @@ version as ordinary corrupt input to obtain that fallback.
 
 ## RocksDB layouts and checkpoints
 
-RocksDB key/value and column-family layouts also need a migration plan. They are not currently
-registered `FileKind` values: do not imply that bumping the snapshot version alone versions their
-layout. A future incompatible change must deliberately add its version/admission mechanism and
-coordinate every database/checkpoint consumer.
+RocksDB key/value and column-family layouts are not `FileKind` values: they are admitted through the
+snapshot that records them ([ADR 0021](adr/0021-ledger-state-residency-and-utxo-checkpoints.md),
+amendment of ADR 0006). From V7 a snapshot's `CheckpointBinding` records the `UtxoKeyLayout` and the
+digest of its checkpoint directory (`CheckpointDigest`: data files by name and size, small files by
+content, RocksDB's `LOG*` and `LOCK` excluded), and `StateBacking.admit` refuses a checkpoint whose
+layout or digest differs, with `StorageError.UtxoCheckpoint`; the snapshot is skipped as any unusable
+one is. The live store is never admitted by itself: each open replaces it by an admitted checkpoint
+or empties it. A new key, value or column-family layout is a new `UtxoKeyLayout` case and a snapshot
+version bump, with a conversion or refusal of the existing checkpoints, coordinated with every
+database/checkpoint consumer (`LedgerSnapshotExport` and `SclsBase` admit checkpoints the same way).
+`UtxoBacking.retain` deletes only unlisted directories named as checkpoint stems.
 
 The existing `RocksUtxoStore.hasCurrentKeys` / `rekeyInto` path recognizes the historical 36-byte
 `txid | index-u32` checkpoint keys and restores them as current 34-byte `txid | index-u16` keys.
@@ -109,7 +119,10 @@ proof. This checkpoint conversion remains supported independently of retired sna
 Work on consistent database/checkpoint copies, with all writers stopped or a supported checkpoint
 capture, rather than editing an active database in place. Verify complete restored count/coin,
 stamp and the snapshot's diff overlay as well as file integrity and key widths. The checkpoint is
-associated with the snapshot anchor by its directory/handle, but its last flushed change stamp can
+associated with the snapshot anchor by its directory stem and, from V7, by the snapshot's binding;
+a `Legacy` (migrated V5) snapshot has only the stem, is restored with a `snapshotUnbound` warning,
+and ages out as newer snapshots are written. A converted checkpoint (`rekeyInto`) is a new directory
+whose digest a later snapshot records. Its last flushed change stamp can
 legitimately be behind that anchor. Compare the checkpoint's flushed stamp with the saved handle and
 apply the carried diff before comparing complete count/coin; do not require every checkpoint stamp
 to equal the block number or compare the raw backing set alone. Test mixed/invalid

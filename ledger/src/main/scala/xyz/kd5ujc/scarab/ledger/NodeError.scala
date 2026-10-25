@@ -260,11 +260,33 @@ enum CheckpointProblem:
   /** A key of a length no layout of the store has. */
   case UnknownKeyLength(length: Int)
 
+  /** The snapshot names a checkpoint directory that does not exist. */
+  case Absent
+
+  /** The snapshot records that its state keeps nothing outside the file, while this node keeps the
+    * UTxO entries in a store: the entries of the snapshot are not known.
+    */
+  case Unbound
+
+  /** The snapshot was written for checkpoints of another key layout. */
+  case LayoutMismatch(found: UtxoKeyLayout, expected: UtxoKeyLayout)
+
+  /** The checkpoint directory is not the one the snapshot was written with: its digest differs from
+    * the one the snapshot recorded.
+    */
+  case DigestMismatch(found: Bytes, recorded: Bytes)
+
   def render: String = this match
     case MixedKeyLayouts =>
       "it holds keys of the 36-byte layout and of the 34-byte one together"
     case IndexTooLarge(i)    => s"it holds an output index of $i, which the 34-byte key cannot hold"
     case UnknownKeyLength(n) => s"it holds a key of $n bytes"
+    case Absent              => "the snapshot's checkpoint directory does not exist"
+    case Unbound => "the snapshot records no checkpoint, but the UTxO entries live in one"
+    case LayoutMismatch(found, expected) =>
+      s"the snapshot was written for the $found key layout, this build uses $expected"
+    case DigestMismatch(found, recorded) =>
+      s"its digest is ${found.hex}, the snapshot recorded ${recorded.hex}"
 
 /** Failures of the on-disk chain database. Raised by the storage algebras; IO exceptions are mapped
   * to [[Io]] at the file boundary only.

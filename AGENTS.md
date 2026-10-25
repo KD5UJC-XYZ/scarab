@@ -117,8 +117,8 @@ scala code … I love the use of type parameters when I can use them"*.
 - Record evidence where the [definition of done](docs/process.md#definition-of-done) says, and track
   every gap you leave as an issue or roadmap item.
 - Maintained native snapshot fixtures and ordinary snapshot test builders use the current native
-  format (V5), and assertions read typed native state directly instead of completing flat-state
-  adapters. Keep pinned conversion provenance and preserve original private archives outside the
+  format (V7, `fixtures/snapshot-v7`; the V5 files are the previous-version inputs), and
+  assertions read typed native state directly instead of completing flat-state adapters. Keep pinned conversion provenance and preserve original private archives outside the
   checkout. A future persisted-format change still needs its previous-version read test and
   migration; generic toy-format migration framework tests remain independent of native fixtures.
 - Small, logical commits as CONTRIBUTING describes. A changelog entry is a fragment in `changes/`,
