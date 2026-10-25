@@ -7,7 +7,7 @@ decisions they rest on are [ADRs](../adr/README.md).
 | Document | Status | Issue |
 |---|---|---|
 | [Rolling ChainSync pipeline](chainsync-pipeline.md) | Implementation under review; combined acceptance pending | [#310](https://github.com/KD5UJC-XYZ/scarab/issues/310) |
-| [KES agent mode](kes-agent.md) | Proposal; designed against the pinned reference, not implemented | [#38](https://github.com/KD5UJC-XYZ/scarab/issues/38) |
+| [KES agent mode](kes-agent.md) | Proposal; decisions settled (ADR 0023/0024), not implemented | [#38](https://github.com/KD5UJC-XYZ/scarab/issues/38) |
 | [Ouroboros Genesis](genesis.md) | Implemented; local stage acceptance passed, review/main integration pending | [#33](https://github.com/KD5UJC-XYZ/scarab/issues/33) |
 | [Upstream conformance adapters](upstream-conformance.md) | As built for bounded adapters; remaining coverage tracked | [#49](https://github.com/KD5UJC-XYZ/scarab/issues/49) |
 | [Releases and repository hardening](releases.md) | Owner decisions accepted; implementation staged | [#161](https://github.com/KD5UJC-XYZ/scarab/issues/161), [#75](https://github.com/KD5UJC-XYZ/scarab/issues/75), [#76](https://github.com/KD5UJC-XYZ/scarab/issues/76) |

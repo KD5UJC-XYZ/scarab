@@ -1,9 +1,10 @@
 # KES agent mode (H2, #38)
 
 **Status**: Proposal. Designed against the pinned reference sources below; no implementation and no captured
-fixtures yet. The credential-source policy is decided: [ADR 0023](../adr/0023-two-kes-credential-sources.md)
-keeps both paths, keeps the file path exactly as [ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md)
-defines it, and makes the agent path the recommended one.
+fixtures yet. All decisions are settled: [ADR 0023](../adr/0023-two-kes-credential-sources.md) keeps both
+credential paths with the file path exactly as [ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md)
+defines it, and [ADR 0024](../adr/0024-adopt-the-upstream-kes-agent.md) adopts the upstream agent as it is —
+client only, no agent of our own, no remote signing.
 
 ## Why
 
@@ -65,6 +66,10 @@ H2 is a **client**. The agent process is upstream `kes-agent` (Haskell, with the
 not write one, and this design contains no agent-side code. Writing our own would duplicate a
 security-critical component, and inventing a protocol would lose the interoperability that is the point of
 conformance.
+
+**Decided 2026-10-25** ([ADR 0024](../adr/0024-adopt-the-upstream-kes-agent.md)): adopt the upstream agent as
+it is, write no agent, and add no remote signing. The node's in-memory copy of the key is accepted and
+documented rather than engineered away.
 
 Other implementations have made different choices, and neither is a reference for us ([ADR 0001](../adr/0001-haskell-node-as-reference.md)
 makes the Haskell node the reference):
@@ -360,9 +365,19 @@ against the pool's cold key, which the reference does not do.
 **Not bought, and not claimed:** the JVM heap is not mlocked and can be swapped, dumped or read by a process
 with the same privileges; a `byte[]` may be copied by the collector, so `forget()` overwrites the copy we
 hold and cannot prove no other copy exists; core dumps and hibernation are outside our control. The upstream
-agent's guarantee is about its own mlocked buffers, not the node's. Options are recorded in the decision
-list: an off-heap buffer plus a small JNI `mlock`/`explicit_bzero` helper, or an explicit, documented
-limitation. This design does not claim parity either way.
+agent's guarantee is about its own mlocked buffers, not the node's. **Decided** ([ADR 0024](../adr/0024-adopt-the-upstream-kes-agent.md)):
+accept the in-process copy and document it. An off-heap buffer with a JNI `mlock` would change
+`Sum6KesSigning`'s representation and is not part of H2.
+
+What lands with the implementation, in place of a guarantee:
+
+- the node holds the current evolution only, replaces it on every push, and forgets it on a drop;
+- the shipped image sets `-XX:-HeapDumpOnOutOfMemoryError` and `-XX:+DisableAttachMechanism`, and the
+  operator documentation repeats the upstream guide's list: no swap, no hibernation, no core dumps;
+- in agent mode no KES material is on disk at all, which removes the at-rest exposure the file path has by
+  design;
+- the operator documentation states the limitation in one sentence rather than implying the key is protected
+  in memory.
 
 **Trust boundaries:** the service socket is a key-distribution channel. A process that can connect to it
 gets the signing key, so the socket's permissions and its directory are part of the deployment, and the
@@ -399,7 +414,7 @@ as weaker than a local socket.
 | 2 | `KesAgentWire` and its suite | `check` |
 | 3 | `HotKeys` no-key state, `KesAgentSource`, client, CLI flag, fake-agent suite | `check` + `kes-rotate` (no regression in file mode) |
 | 4 | Devnet `kes-agent` scenario and the real-agent matrix | `check` + the scenario (level 3) + evidence row |
-| 5 | ADR accepted, `docs/running.md` operator section, `--kes-agent-socket` documented, #38 closed | owner review |
+| 5 | ADR 0023/0024 already accepted; `docs/running.md` operator section (mode recommendation, the memory limitation in plain words, where to obtain the upstream agent), compatibility matrix row, #38 closed | owner review |
 
 Stage 1 is deliberately first: it is cheap, it removes the risk that this document is subtly wrong about
 the wire, and it produces the fixture the later stages test against.
@@ -408,33 +423,25 @@ the wire, and it produces the fixture the later stages test against.
 
 ### Decided 2026-10-25
 
-[ADR 0023](../adr/0023-two-kes-credential-sources.md) settles the policy: two credential sources stay, the file
-path keeps ADR 0015's write-back and predecessor erasure unchanged, the agent path is the recommended one and
-the file path is documented as the compatibility path, and neither is removed by this work.
-
-### Open
-
-1. **Memory hardening of the node's own copy.** Decided for this stage: document the JVM limitation and harden
-   the shipped image (`-XX:-HeapDumpOnOutOfMemoryError`, `-XX:+DisableAttachMechanism`, documented swap and
-   hibernation settings). Still open, for O1/#74: whether Scarab ever adds a `sign`-mode client and a matching
-   agent, which would take the key out of the JVM at the cost of a per-block round trip and of availability
-   (see [What H2 implements](#what-h2-implements-and-what-it-does-not)). Not part of H2.
-2. **Operator tooling.** Upstream `kes-agent-control` for now, as recommended; a Scarab wrapper is a later
-   question, and there is no devnet scenario to motivate it yet (see [Testing](#testing)).
-
-### Decided 2026-10-25
+No decisions remain open for H2.
 
 - **Credential sources.** [ADR 0023](../adr/0023-two-kes-credential-sources.md): both stay, the file path is
   unchanged, the agent path is preferred and documented as such.
+- **Scope.** [ADR 0024](../adr/0024-adopt-the-upstream-kes-agent.md): the upstream agent as it is, the client
+  only, and no remote signing.
 - **Certificate validation.** Verify every pushed bundle under the cold key in the `--opcert` envelope, with the
   five checks above. Stricter than the reference's explicit TODO, and it bounds what a hijacked service socket
   can achieve.
 - **Counter check.** Apply `OCertRules.checkCounter` when the node has a judged chain — a selected chain whose
   tip is at or beyond the certificate's start period — and defer only that part during bootstrap.
+- **Memory hardening.** Accept and document the in-process copy, with the image flags and operator guidance
+  above; no off-heap/JNI key representation in H2.
 - **Agent provenance.** A pinned upstream release tarball, verified by SHA-256, recorded with URL, digest and
   licence beside the other image pins. The consequence for this work: stage 1 and the devnet scenario do not
   build Haskell, and if upstream's release artifacts disappear the pinned tag is the fallback. We do not ship
   the agent to operators; the documentation points at upstream's releases.
+- **Operator tooling.** Upstream `kes-agent-control`; no Scarab wrapper in H2. There is no devnet scenario to
+  motivate one yet, and the scenario we add in stage 4 can call the upstream tool directly.
 - **Confirmations.** `--kes-agent-socket` as the flag name (reference mapping in #222); both flags together
   refused; a group- or world-accessible service socket warned about at start-up; `Service:2.0` only, which
   costs nothing — it exists since `kes-agent` 1.0.0.0, and every cardano-node that supports an agent requires
@@ -442,6 +449,7 @@ the file path is documented as the compatibility path, and neither is removed by
 
 ## Not in scope
 
-Remote signing (the agent signs nothing for the node; the node signs locally) and a control client for the
-control socket (operators use upstream `kes-agent-control`). TCP transport, Windows, and multi-agent
-bootstrap for the node are out of scope; the node is a client and never a bootstrap peer.
+Remote signing — decided against for now ([ADR 0024](../adr/0024-adopt-the-upstream-kes-agent.md)); the agent
+signs nothing for the node, which signs locally. An agent of our own: the agent is upstream. A Scarab control
+client: operators use upstream `kes-agent-control`. TCP transport, Windows, and multi-agent bootstrap for the
+node; the node is a client and never a bootstrap peer.
