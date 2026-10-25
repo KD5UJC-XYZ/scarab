@@ -760,7 +760,35 @@ files stops with an `InstanceLocked` error even with another `--db`; `--key-lock
 directory the node cannot write to, which the KES write-back needs anyway). With a rotating `current` link the
 lock file sits in the directory the link points to. See
 [architecture.md](architecture.md) for the forging design and [compatibility.md](compatibility.md) for what
-is not covered (no KES agent, never run on a public network).
+is not covered (no KES agent; preprod since epoch 321, mainnet not run).
+
+#### A public pool on a test network (H1/H1a, [#37](https://github.com/KD5UJC-XYZ/scarab/issues/37)/[#115](https://github.com/KD5UJC-XYZ/scarab/issues/115))
+
+The node has forged on preprod since epoch 321; the evidence row with the pool ID and block hashes is
+in [compatibility.md](compatibility.md). The procedure that got there, without deployment specifics:
+
+1. **Registration and stake.** Register the pool, have faucet stake delegated to it and wait for the
+   stake snapshot: the pool can lead slots from the epoch after the one the snapshot was taken in.
+   Keys come from `cardano-cli` (`node key-gen-KES`, `node key-gen-VRF`, `node issue-op-cert`). The
+   cold signing key stays on the machine that issued the certificate and is never copied to the node.
+2. **A database at the tip.** Start from a synced database (`--db`, or an imported one, see above):
+   the mempool and the forger take the epoch history at start-up and do not run from an empty database.
+3. **Run with `--forge`.** `--vrf-skey`, `--kes-skey` and `--opcert` as above, with `--listen` for the
+   node-to-node address. `--max-inbound` counts connections per address and port, so behind a front
+   proxy or NAT it limits connections rather than peers; that accounting is the operator's decision
+   and the protocol option is tracked in [#35](https://github.com/KD5UJC-XYZ/scarab/issues/35).
+4. **Verify the first leader slot.** The `forged` and `adopted` events carry the same slot and header
+   hash, the block appears at that height on an explorer, and a Haskell node's tip contains it. An
+   `adopted` that does not follow a `forged` of the same slot is a lost block, not a success.
+5. **Leave it running.** Unattended operation needs the rotation below; a restart on the same key
+   files continues from the period the file records.
+
+A slot lost to another pool's block at the same height is normal: when the competing block has not
+arrived by the slot, the node forges, then takes the network's block by the chain-selection tie-break
+and rolls back, which is what the reference does. Start-up on a small host is dominated by the
+volatile resume (minutes rather than seconds) and the forger waits for it. A KES agent
+([H2 / #38](https://github.com/KD5UJC-XYZ/scarab/issues/38)) and a mainnet pool, whose cold key stays
+offline ([#120](https://github.com/KD5UJC-XYZ/scarab/issues/120)), are not covered here.
 
 #### Rotating the KES key (H2a, [#116](https://github.com/KD5UJC-XYZ/scarab/issues/116))
 
