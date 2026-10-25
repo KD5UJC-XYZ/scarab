@@ -659,7 +659,11 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           ForgedChain.geometry
         )
         lost <- Ref.of[IO, Vector[PeerError]](Vector.empty)
+        // completed by the second report: each connection is reported lost once, so two reports
+        // are two connections, the second opened after the first was lost
+        twice <- Deferred[IO, Unit]
         fatals <- Ref.of[IO, Vector[Fatal]](Vector.empty)
+        governor <- Ref.of[IO, Vector[Output[PeerNetwork.Addr]]](Vector.empty)
         pool <- BlockPool.create[IO]
         good <- serving(forged.raws)
         peers <- InMemoryPeers.create(magic)
@@ -684,7 +688,8 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           observe = None,
           pool = pool,
           versus = follower.versus,
-          lost = error => lost.update(_ :+ error),
+          lost = error =>
+            lost.updateAndGet(_ :+ error).flatMap(all => twice.complete(()).whenA(all.size == 2)),
           fatal = f => fatals.update(_ :+ f)
         )
         view = new PeerNetwork.ChainView[IO]:
@@ -706,7 +711,10 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           hot,
           view,
           modeRef,
-          _ => IO.unit,
+          {
+            case Output.Counted(_) => IO.unit
+            case output            => governor.update(_ :+ output)
+          },
           (_, _) => IO.unit,
           _ => IO.unit,
           _ => IO.unit,
@@ -715,10 +723,27 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         )
         stillRunning <- network.use { net =>
           net.run.background.use { outcome =>
+            // what was reported, what was opened and what the governor did, for a run in which
+            // the reports do not come
+            def stuck(why: String): IO[Nothing] =
+              (lost.get, fatals.get, peers.connections, governor.get).tupled.flatMap {
+                (seen, stopped, opened, trace) =>
+                  IO(
+                    fail(
+                      s"$why: lost $seen, fatal $stopped, connections $opened, governor" +
+                        trace.takeRight(60).mkString("\n  ", "\n  ", "")
+                    )
+                  )
+              }
             for
-              _ <- eventually("the loss is reported")(lost.get)(_.nonEmpty)
-              _ <- eventually("the peer is connected to again")(peers.connections)(
-                _.getOrElse(first, 0) >= 2
+              // two reports, or the node ending before them; the bound only turns reports that
+              // never come into a failure that says so
+              waited <- IO
+                .race(twice.get, outcome)
+                .timeoutTo(60.seconds, stuck("two losses are not reported"))
+              _ <- waited.fold(
+                _ => IO.unit,
+                ended => stuck(s"the node ended ($ended) before two losses were reported")
               )
               // the node does not end
               ended <- outcome.map(Option(_)).timeoutTo(500.millis, IO.pure(None))
@@ -727,8 +752,10 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         }
         reported <- lost.get
         stopped <- fatals.get
+        opened <- peers.connections
       yield
         assert(stillRunning, "the node kept running")
+        assert(opened.getOrElse(first, 0) >= 2, opened.toString)
         assertEquals(stopped, Vector.empty[Fatal])
         assert(reported.nonEmpty && reported.forall(_ == defect), reported.toString)
         assertEquals(
