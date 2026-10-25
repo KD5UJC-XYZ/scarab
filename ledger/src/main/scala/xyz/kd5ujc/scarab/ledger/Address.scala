@@ -553,36 +553,15 @@ final case class TxOut(
       yield payload
       size.getOrElse(0)
 
-  /** Size of the output as the ledger serialises it: outputs with neither inline datum nor
-    * reference script use the legacy array form, shorter by two bytes than the equivalent map, and
-    * the address is the one the ledger holds ([[addressExcess]]).
+  /** Size of the output for the Babbage and Conway minimum: the length of its original encoding.
+    * The reference measures the output as it was decoded, `Sized` by the span the decoder consumed
+    * (`decodeSized`, `Decoding/Sized.hs`, cardano-ledger f649f975), and the body keeps that size
+    * (`btbrOutputs :: StrictSeq (Sized (TxOut era))`, `Babbage/TxBody.hs`;
+    * `validateOutputTooSmallUTxO`, `Babbage/Rules/Utxo.hs`). The array and the map form, the
+    * address as it came (a pointer included) and any non-minimal encoding therefore count as they
+    * arrived.
     */
-  def ledgerSize: Int =
-    val head = if raw.size == 0 then 0 else raw.value.head & 0xff
-    val size = datum match
-      case Datum.NoDatum if scriptRef.isEmpty && head == 0xa2 => raw.size - 2
-      case Datum.Hash(_) if scriptRef.isEmpty && head == 0xa3 => raw.size - 2
-      case _                                                  => raw.size
-    size - addressExcess
-
-  /** The bytes the output as it came spends on its address beyond the address the ledger holds: a
-    * pointer address is written again with its pointer normalised, which can be shorter (a pointer
-    * of many groups that does not fit becomes `Ptr 0 0 0`). Every other address is kept as it is
-    * read, except after garbage, which only the eras that do not use the size have.
-    */
-  private def addressExcess: Int =
-    address.kind match
-      case Address.Kind.Shelley(_, _, None, Some(_)) =>
-        def encoded(n: Int): Int = Value.headSize(n) + n
-        val came = for
-          node <- CborRead.decode(raw).toOption
-          field <- node.value match
-            case xyz.kd5ujc.scarab.codec.Value.Arr(xs) => xs.headOption
-            case _ => CborRead.fields(node, DecodeField.Output).toOption.flatMap(_.get(0))
-          bytes <- CborRead.bytes(field, DecodeField.OutputAddress).toOption
-        yield encoded(bytes.size) - encoded(address.raw.size)
-        came.getOrElse(0)
-      case _ => 0
+  def ledgerSize: Int = raw.size
 
 object TxOut:
   def apply(address: Address, value: Value): TxOut =

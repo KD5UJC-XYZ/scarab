@@ -205,16 +205,13 @@ class MainnetPointerSuite extends FunSuite:
     }
   }
 
-  test("the output size is the one of the address the ledger holds") {
+  test("the output size is the length of the output as it came, the pointer as it came included") {
     // [address, 1 ada] with the address of the fixture: 38 bytes as it came, 32 written again
     val came = bytes(s"82582641$payment$original" + "1a000f4240")
     val out = TxOut.fromBytes(came, Address.Mode.Rigorous).fold(e => fail(e.toString), identity)
     assertEquals(out.address.raw.size, 32)
-    assertEquals(out.raw.size - out.ledgerSize, 6)
-    // an address already written as the ledger writes it is not changed
-    val plain = TxOut(
-      Address.decode(pointer("81010203")).fold(e => fail(e.toString), identity),
-      Value.coin(1000000)
-    )
-    assertEquals(plain.ledgerSize, plain.raw.size)
+    // the reference measures the decoded output by its original span (`Sized`), whatever address
+    // the ledger then holds: 1 + 2 + 38 + 5
+    assertEquals(out.ledgerSize, out.raw.size)
+    assertEquals(out.ledgerSize, 46)
   }

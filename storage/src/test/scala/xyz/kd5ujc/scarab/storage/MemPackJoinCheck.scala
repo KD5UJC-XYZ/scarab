@@ -177,8 +177,7 @@ object MemPackJoin extends IOApp:
         Error.Script(entry.key)
       )
       _ <- Either.cond(
-        canonical.ledgerSize == native.ledgerSize &&
-          canonical.valueSize == native.valueSize &&
+        canonical.valueSize == native.valueSize &&
           UtxoCodecs.txOut.encodeUnchecked(canonical) == UtxoCodecs.txOut.encodeUnchecked(native),
         (),
         Error.CanonicalFields(entry.key)
