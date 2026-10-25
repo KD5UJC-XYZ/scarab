@@ -94,11 +94,11 @@ class MainArgsSuite extends munit.FunSuite:
   test("--header-first, --max-inbound and --inbound-sync have defaults and refuse bad values") {
     val defaults = Main.parse(base).toOption.get
     assert(defaults.headerFirst && !defaults.inboundSync)
-    assertEquals(defaults.maxInbound, 512)
+    assertEquals(defaults.maxInbound, None)
     assert(!Main.parse(base ++ List("--header-first", "off")).toOption.get.headerFirst)
     assert(!Main.parse(base ++ List("--inbound-sync", "off")).toOption.get.inboundSync)
     assert(Main.parse(base ++ List("--inbound-sync", "on")).toOption.get.inboundSync)
-    assertEquals(Main.parse(base ++ List("--max-inbound", "5")).toOption.get.maxInbound, 5)
+    assertEquals(Main.parse(base ++ List("--max-inbound", "5")).toOption.get.maxInbound, Some(5))
     assert(Main.parse(base ++ List("--header-first", "maybe")).isLeft)
     assert(Main.parse(base ++ List("--max-inbound", "0")).isLeft)
   }

@@ -334,9 +334,9 @@ object Main extends IOApp:
     * @param headerFirst
     *   Validate the headers a peer announces before the blocks are fetched (G6).
     * @param maxInbound
-    *   `--max-inbound`: the hard limit of accepted connections (G2), the reference's
-    *   `acceptedConnectionsHardLimit` (default 512); the soft limit (384) and the 5 s delay are the
-    *   reference's defaults ([[AcceptedConnectionsLimit]]).
+    *   `--max-inbound`: overrides the hard limit of accepted connections (G2), the `hardLimit` of
+    *   the configuration's `AcceptedConnectionsLimit` (default 512, with soft 384 and delay 5 s:
+    *   see [[AcceptedConnectionsLimit]] and [[ConfigSettings]]).
     * @param inboundSync
     *   Run our own clients on inbound duplex connections, so that the peer is a source of blocks as
     *   well (G2). Off by default: the reference starts its clients only on connections its peer
@@ -378,7 +378,7 @@ object Main extends IOApp:
       dumpState: Option[(Path, StateDump.Targets)] = None,
       dumpStateFull: Boolean = false,
       headerFirst: Boolean = true,
-      maxInbound: Int = AcceptedConnectionsLimit.default.acceptedConnectionsHardLimit,
+      maxInbound: Option[Int] = None,
       inboundSync: Boolean = false,
       log: LogSettings = LogSettings.default,
       roots: Option[PeerNetwork.Roots] = None,
@@ -390,8 +390,11 @@ object Main extends IOApp:
       stallDump: Option[Path] = None,
       keyLock: Boolean = true
   ):
-    def accepted: AcceptedConnectionsLimit =
-      AcceptedConnectionsLimit.default.copy(acceptedConnectionsHardLimit = maxInbound)
+    /** The configuration's limits, with the hard limit of `--max-inbound` where given. */
+    def accepted(settings: ConfigSettings): AcceptedConnectionsLimit =
+      maxInbound.fold(settings.acceptedConnectionsLimit)(hard =>
+        settings.acceptedConnectionsLimit.copy(acceptedConnectionsHardLimit = hard)
+      )
 
   /** What the chain database (or its absence) hands the node at start. */
   private final case class Storage[S](
@@ -1101,9 +1104,11 @@ object Main extends IOApp:
               fatalSink
             )
             // the connection manager (G2): one connection per peer address, limits, accounting
+            accepted = options.accepted(setup.config.settings)
+            connectionEvents = loggedConnections.alongside(measured.connection)
             manager <- ConnectionManager.create[IO](
-              ConnectionManager.Limits(accepted = options.accepted),
-              Some(loggedConnections.alongside(measured.connection))
+              ConnectionManager.Limits(accepted = accepted),
+              Some(connectionEvents)
             )
             _ <- collectors.add(Collectors.connections(manager))
             fetchModeRef <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
@@ -1257,7 +1262,9 @@ object Main extends IOApp:
                   Some(address.host),
                   Some(address.port),
                   maxConnections = None,
-                  beforeAccept = Some(AcceptedConnectionsLimit.rateLimit(manager, options.accepted))
+                  beforeAccept = Some(
+                    AcceptedConnectionsLimit.rateLimit(manager, accepted, connectionEvents)
+                  )
                 )((remote, failure) =>
                   ListenerFailures.report(remote.toString, failure, logged, fatalSink)
                 ) { (bearer, remote) =>
@@ -1743,9 +1750,7 @@ object Main extends IOApp:
             )
           maxInbound <- flags
             .get("max-inbound")
-            .fold(Right(AcceptedConnectionsLimit.default.acceptedConnectionsHardLimit))(
-              _.toIntOption.filter(_ > 0).toRight(invalid("max-inbound"))
-            )
+            .traverse(_.toIntOption.filter(_ > 0).toRight(invalid("max-inbound")))
           inboundSync <- flags
             .get("inbound-sync")
             .fold(Right(false))(v =>

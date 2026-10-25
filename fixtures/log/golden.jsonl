@@ -94,6 +94,9 @@
 {"event":"connection","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","what":"changed","from":"Reserved","to":"Unnegotiated(Outbound)"}
 {"event":"connection","at":"2026-10-16T12:00:00Z","what":"refused","reason":"refused inbound connection from 10.0.0.2:4000: 64 connections accepted already"}
 {"event":"connection","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","what":"closed","provenance":"Inbound","reason":"connection closed: closed by peer"}
+{"event":"connection","at":"2026-10-16T12:00:00Z","what":"acceptRateLimited","delayMs":2500,"connections":448}
+{"event":"connection","at":"2026-10-16T12:00:00Z","what":"acceptHardLimit","limit":512}
+{"event":"connection","at":"2026-10-16T12:00:00Z","what":"acceptResumed","connections":511}
 {"event":"mempoolAdded","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","size":300,"count":2,"bytes":600}
 {"event":"mempoolRejected","at":"2026-10-16T12:00:00Z","tx":null,"reason":"malformed transaction: expected [body, witnesses, is_valid, auxiliary_data]"}
 {"event":"mempoolRejected","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","reason":"mempool full: 300 bytes needed, 100 free"}

@@ -55,21 +55,29 @@ object AcceptedConnectionsLimit:
   /** The reference's `runConnectionRateLimits`: read the number of inbound connections of
     * `connections` and carry out the decision. At the hard limit it waits until the number drops
     * below it, and at least `acceptedConnectionsDelay`, so that the last slot is not taken again
-    * and again by a connection that fails at once.
+    * and again by a connection that fails at once. `events` receives the reference's three traces
+    * (`AcceptConnectionsPolicyTrace`).
     */
   def rateLimit[F[_]: Temporal](
       connections: ConnectionManager[F],
-      limit: AcceptedConnectionsLimit
+      limit: AcceptedConnectionsLimit,
+      events: ConnectionEvents[F]
   ): F[Unit] =
     val F = Temporal[F]
-    connections.inboundCount.flatMap(decision(_, limit) match
-      case RateLimitDelay.NoRateLimiting   => F.unit
-      case RateLimitDelay.SoftDelay(delay) => F.sleep(delay)
-      case RateLimitDelay.HardLimit(hard) =>
-        for
-          start <- F.monotonic
-          _ <- connections.awaitInboundBelow(hard)
-          end <- F.monotonic
-          remaining = limit.acceptedConnectionsDelay - (end - start)
-          _ <- F.sleep(remaining).whenA(remaining > Duration.Zero)
-        yield ())
+    connections.inboundCount.flatMap(count =>
+      decision(count, limit) match
+        case RateLimitDelay.NoRateLimiting => F.unit
+        case RateLimitDelay.SoftDelay(delay) =>
+          events.emit(ConnectionEvent.AcceptRateLimited(delay, count)) *> F.sleep(delay)
+        case RateLimitDelay.HardLimit(hard) =>
+          for
+            _ <- events.emit(ConnectionEvent.AcceptHardLimit(hard))
+            start <- F.monotonic
+            _ <- connections.awaitInboundBelow(hard)
+            end <- F.monotonic
+            remaining = limit.acceptedConnectionsDelay - (end - start)
+            _ <- F.sleep(remaining).whenA(remaining > Duration.Zero)
+            resumed <- connections.inboundCount
+            _ <- events.emit(ConnectionEvent.AcceptResumed(resumed))
+          yield ()
+    )

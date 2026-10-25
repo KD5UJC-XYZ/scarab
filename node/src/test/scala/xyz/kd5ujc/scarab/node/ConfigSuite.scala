@@ -10,6 +10,8 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Era, NtnVersion}
 import xyz.kd5ujc.scarab.network.selection.{AfterSlot, ConsensusMode, Targets, UseLedgerPeers}
+import xyz.kd5ujc.scarab.network.AcceptedConnectionsLimit
+import scala.concurrent.duration.*
 import munit.FunSuite
 
 /** The Haskell node's `config.json` and `topology.json`, read as `cardano-node run` reads them,
@@ -311,6 +313,30 @@ class ConfigSuite extends FunSuite:
       Right(None)
     )
     assert(NodeConfig.parse(with_("MempoolCapacityBytesOverride", Json.fromString("lots"))).isLeft)
+    // AcceptedConnectionsLimit (POM.hs 373-375): three required keys, the delay in seconds
+    assertEquals(
+      parsed("preview").settings.acceptedConnectionsLimit,
+      AcceptedConnectionsLimit(512, 384, 5.seconds)
+    )
+    def limit(fields: (String, Json)*) = NodeConfig
+      .parse(with_("AcceptedConnectionsLimit", Json.obj(fields*)))
+      .map(_.settings.acceptedConnectionsLimit)
+    assertEquals(
+      limit(
+        "hardLimit" -> Json.fromInt(10),
+        "softLimit" -> Json.fromInt(5),
+        "delay" -> Json.fromBigDecimal(BigDecimal("2.5"))
+      ),
+      Right(AcceptedConnectionsLimit(10, 5, 2500.millis))
+    )
+    assert(limit("hardLimit" -> Json.fromInt(10), "softLimit" -> Json.fromInt(5)).isLeft)
+    assert(
+      limit(
+        "hardLimit" -> Json.fromInt(-1),
+        "softLimit" -> Json.fromInt(5),
+        "delay" -> Json.fromInt(5)
+      ).isLeft
+    )
     // Global fetching-peer targets; preferred-peer handover follows the reference.
     assertEquals(
       NodeConfig

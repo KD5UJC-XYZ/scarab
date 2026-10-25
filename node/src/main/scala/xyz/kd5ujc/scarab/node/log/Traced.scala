@@ -199,7 +199,9 @@ object Traced:
     case StorageEvent.ShutdownSnapshot(a, written) =>
       EventKind.ShutdownSnapshot.line("anchor" -> anchor(a), "written" -> written.asJson)
 
-  /** What the connection manager did (G2); a refusal is a warning. */
+  /** What the connection manager and the accept loop did (G2); a refusal and the hard limit are
+    * warnings.
+    */
   given Traced[ConnectionEvent] =
     case ConnectionEvent.Opened(remote, provenance) =>
       EventKind.Connection.line(
@@ -224,6 +226,21 @@ object Traced:
         "what" -> "closed".asJson,
         "provenance" -> provenance.toString.asJson,
         "reason" -> reason.message.asJson
+      )
+    case ConnectionEvent.AcceptRateLimited(delay, connections) =>
+      EventKind.Connection.line(
+        "what" -> "acceptRateLimited".asJson,
+        "delayMs" -> delay.toMillis.asJson,
+        "connections" -> connections.asJson
+      )
+    case ConnectionEvent.AcceptHardLimit(limit) =>
+      EventKind.Connection
+        .line("what" -> "acceptHardLimit".asJson, "limit" -> limit.asJson)
+        .at(Severity.Warning)
+    case ConnectionEvent.AcceptResumed(connections) =>
+      EventKind.Connection.line(
+        "what" -> "acceptResumed".asJson,
+        "connections" -> connections.asJson
       )
 
   given Traced[MempoolEvent] =

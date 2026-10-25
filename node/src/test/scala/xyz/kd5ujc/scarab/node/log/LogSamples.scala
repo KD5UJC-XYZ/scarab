@@ -280,7 +280,10 @@ object LogSamples:
       ConnectionState.Provenance.Inbound,
       ConnectionEnd
         .Closed(NetworkError.Closure.PeerClosed)
-    )
+    ),
+    ConnectionEvent.AcceptRateLimited(2500.millis, 448),
+    ConnectionEvent.AcceptHardLimit(512),
+    ConnectionEvent.AcceptResumed(511)
   )
 
   val mempool: List[MempoolEvent] = List(

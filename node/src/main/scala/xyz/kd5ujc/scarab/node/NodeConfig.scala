@@ -6,7 +6,9 @@ import cats.syntax.all.*
 import io.circe.{Decoder, HCursor, Json, parser}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Era, NtnVersion}
+import xyz.kd5ujc.scarab.network.AcceptedConnectionsLimit
 import xyz.kd5ujc.scarab.network.selection.{ConsensusMode, Targets}
+import scala.concurrent.duration.*
 
 /** The genesis files a configuration names (`ByronGenesisFile` or the older `GenesisFile`,
   * `ShelleyGenesisFile`, `AlonzoGenesisFile`, `ConwayGenesisFile`, and, with experimental hard
@@ -93,6 +95,11 @@ final case class PeerTargetOverrides(
   *   deadline mode; preferred-peer handover follows the reference. Absent is the default, 1.
   * @param maxConcurrencyBulkSync
   *   `MaxConcurrencyBulkSync`: the corresponding bulk-sync target (default 1).
+  * @param acceptedConnectionsLimit
+  *   `AcceptedConnectionsLimit` (`POM.hs` 373-375, cardano-node 11.1.3): an object with
+  *   `hardLimit`, `softLimit` and `delay` (seconds), all three required when present
+  *   (`Ouroboros/Network/OrphanInstances.hs` `FromJSON AcceptedConnectionsLimit`); absent is the
+  *   reference's default, hard 512, soft 384, delay 5 s.
   */
 final case class ConfigSettings(
     protocol: String = "Cardano",
@@ -112,7 +119,8 @@ final case class ConfigSettings(
     minBigLedgerPeersForTrustedState: Int = 5,
     maxConcurrencyDeadline: Option[Int] = None,
     maxConcurrencyBulkSync: Option[Int] = None,
-    genesis: GenesisSettings = GenesisSettings()
+    genesis: GenesisSettings = GenesisSettings(),
+    acceptedConnectionsLimit: AcceptedConnectionsLimit = AcceptedConnectionsLimit.default
 ):
   /** The highest node-to-node version the node offers and accepts: 15 unless
     * `ExperimentalProtocolsEnabled` is set, as the reference's `limitToLatestReleasedVersion`.
@@ -163,6 +171,20 @@ object NodeConfig:
   val DefaultPBftSignatureThreshold: Double = 0.22
 
   private val Eras = Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway)
+
+  /** The reference's `FromJSON AcceptedConnectionsLimit`: the three keys are required; the limits
+    * are `Word32` there (ours stop at `Int.MaxValue`) and the delay a number of seconds.
+    */
+  private val acceptedDecoder: Decoder[AcceptedConnectionsLimit] =
+    val word32 = Decoder.decodeInt.ensure(_ >= 0, "a non-negative integer")
+    val seconds = Decoder.decodeBigDecimal
+      .ensure(_.abs < BigDecimal(1000000000), "a number of seconds")
+      .map(s => (s * 1000000000).toLong.nanos)
+    Decoder.forProduct3[AcceptedConnectionsLimit, Int, Int, FiniteDuration](
+      "hardLimit",
+      "softLimit",
+      "delay"
+    )(AcceptedConnectionsLimit.apply)(using word32, word32, seconds)
 
   /** Typed access to the keys of one configuration object; `null` counts as absent. */
   private final class Keys(c: HCursor):
@@ -338,6 +360,7 @@ object NodeConfig:
         k.opt[Int]("SyncTargetNumberOfActiveBigLedgerPeers")
       ).mapN(PeerTargetOverrides.apply)
       genesisOptions <- k.opt[Json]("LowLevelGenesisOptions").flatMap(GenesisSettings.parse)
+      accepted <- k.opt[AcceptedConnectionsLimit]("AcceptedConnectionsLimit")(using acceptedDecoder)
       deadlineConcurrency <- k
         .opt[Int]("MaxConcurrencyDeadline")
         .flatMap(n =>
@@ -425,6 +448,7 @@ object NodeConfig:
           minBigLedgerPeers,
           deadlineConcurrency,
           bulkConcurrency,
-          genesisOptions
+          genesisOptions,
+          accepted.getOrElse(AcceptedConnectionsLimit.default)
         )
       )

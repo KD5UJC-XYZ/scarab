@@ -7,6 +7,7 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, IpAddress, SocketAddress}
 import fs2.concurrent.SignallingRef
+import scala.concurrent.duration.FiniteDuration
 import xyz.kd5ujc.scarab.protocol.ConnectionState
 import xyz.kd5ujc.scarab.protocol.ConnectionState.{Counters, DataFlow, Event, Provenance}
 
@@ -16,6 +17,17 @@ enum ConnectionEvent:
   case Changed(remote: String, from: ConnectionState, to: ConnectionState)
   case Refused(error: ConnectionError)
   case Closed(remote: String, provenance: Provenance, reason: ConnectionEnd)
+
+  /** The accept loop delays the next accept (the reference's
+    * `ServerTraceAcceptConnectionRateLimiting`, `Server/RateLimiting.hs`).
+    */
+  case AcceptRateLimited(delay: FiniteDuration, connections: Int)
+
+  /** The accept loop stopped at the hard limit (`ServerTraceAcceptConnectionHardLimit`). */
+  case AcceptHardLimit(limit: Int)
+
+  /** The accept loop accepts again after a hard limit (`ServerTraceAcceptConnectionResume`). */
+  case AcceptResumed(connections: Int)
 
 trait ConnectionEvents[F[_]]:
   def emit(event: ConnectionEvent): F[Unit]

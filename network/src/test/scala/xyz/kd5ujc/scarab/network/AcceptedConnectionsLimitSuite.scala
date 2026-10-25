@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.IO
+import cats.effect.{IO, Ref}
 import cats.effect.testkit.TestControl
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -44,42 +44,61 @@ class AcceptedConnectionsLimitSuite extends FailsOnUncaught:
   private val small = AcceptedConnectionsLimit(4, 2, 4.seconds)
 
   /** Hold `held` inbound connections and run the accept loop's rate limit; after `releaseAfter` the
-    * first one is released. The result is how long the rate limit took.
+    * first one is released. The result is how long the rate limit took and what it traced.
     */
-  private def waited(held: Int, releaseAfter: Option[FiniteDuration]): IO[FiniteDuration] =
+  private def waited(
+      held: Int,
+      releaseAfter: Option[FiniteDuration]
+  ): IO[(FiniteDuration, List[ConnectionEvent])] =
     TestControl.executeEmbed {
-      Handle
-        .allow[ConnectionError] {
-          ConnectionManager.create[IO](ConnectionManager.Limits(small)).flatMap { cm =>
-            (0 until held).toList.traverse(i => cm.inbound(peer(i)).allocated).flatMap { open =>
-              val release = releaseAfter.traverse_(d => IO.sleep(d) *> open.head._2)
-              for
-                start <- IO.monotonic
-                _ <- release.start
-                _ <- AcceptedConnectionsLimit.rateLimit(cm, small)
-                end <- IO.monotonic
-              yield (end - start).asRight[ConnectionError]
+      Ref.of[IO, List[ConnectionEvent]](Nil).flatMap { seen =>
+        val sink: ConnectionEvents[IO] = e => seen.update(_ :+ e)
+        Handle
+          .allow[ConnectionError] {
+            ConnectionManager.create[IO](ConnectionManager.Limits(small)).flatMap { cm =>
+              (0 until held).toList.traverse(i => cm.inbound(peer(i)).allocated).flatMap { open =>
+                val release = releaseAfter.traverse_(d => IO.sleep(d) *> open.head._2)
+                for
+                  start <- IO.monotonic
+                  _ <- release.start
+                  _ <- AcceptedConnectionsLimit.rateLimit(cm, small, sink)
+                  end <- IO.monotonic
+                  traced <- seen.get
+                yield (end - start, traced).asRight[ConnectionError]
+              }
             }
           }
-        }
-        .rescue(e => IO.pure(e.asLeft[FiniteDuration]))
-        .map(_.fold(e => fail(e.message), identity))
+          .rescue(e => IO.pure(e.asLeft[(FiniteDuration, List[ConnectionEvent])]))
+          .map(_.fold(e => fail(e.message), identity))
+      }
     }
 
-  test("below the soft limit the accept is not delayed") {
-    waited(1, None).map(assertEquals(_, Duration.Zero))
+  test("below the soft limit the accept is not delayed and nothing is traced") {
+    waited(1, None).map(assertEquals(_, (Duration.Zero, Nil)))
   }
 
   test("between the limits the next accept is delayed in proportion to the excess") {
     // 3 held, soft 2, hard 4: 4 s * (3 - 2) / (4 - 2)
-    waited(3, None).map(assertEquals(_, 2.seconds))
+    waited(3, None).map(
+      assertEquals(_, (2.seconds, List(ConnectionEvent.AcceptRateLimited(2.seconds, 3))))
+    )
   }
 
   test("at the hard limit the loop waits for a drop, and at least the delay from its start") {
     // dropped after 1 s: it still pauses for the full delay
-    waited(4, Some(1.second)).map(assertEquals(_, 4.seconds))
+    waited(4, Some(1.second)).map(
+      assertEquals(
+        _,
+        (4.seconds, List(ConnectionEvent.AcceptHardLimit(4), ConnectionEvent.AcceptResumed(3)))
+      )
+    )
   }
 
   test("at the hard limit the loop resumes as soon as the drop comes after the delay") {
-    waited(4, Some(6.seconds)).map(assertEquals(_, 6.seconds))
+    waited(4, Some(6.seconds)).map(
+      assertEquals(
+        _,
+        (6.seconds, List(ConnectionEvent.AcceptHardLimit(4), ConnectionEvent.AcceptResumed(3)))
+      )
+    )
   }
