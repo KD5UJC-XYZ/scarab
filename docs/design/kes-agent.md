@@ -406,10 +406,11 @@ the file path is documented as the compatibility path, and neither is removed by
    (`-XX:-HeapDumpOnOutOfMemoryError`, `-XX:+DisableAttachMechanism`, documented swap and hibernation
    settings). Recommendation: (a) + (c) for this stage. (b) changes the representation of the key itself and
    belongs with the threat model, not with the protocol work.
-4. **Devnet agent provenance.** How the devnet image obtains `kes-agent`: a pinned release tarball verified by
-   SHA-256, the way the reference node image is pinned, or a source build inside the image. Recommendation:
-   the pinned tarball, with URL, digest and licence recorded beside the other image pins; it is what an
-   operator runs and it keeps the image build cheap. Needed before stage 4.
+4. **Devnet agent provenance.** How the devnet image and the fixture capture obtain `kes-agent`: a pinned
+   release tarball verified by SHA-256, the way the reference node image is pinned, or a source build in the
+   image. Recommendation: the pinned tarball, with URL, digest and licence recorded beside the other image
+   pins; it is what an operator runs and it keeps the image build cheap. Needed before **stage 1**, because
+   stage 1 captures the fixtures from a real agent, not just before the devnet scenario.
 5. **Operator tooling for agent mode.** Rely on the upstream `kes-agent-control` (recommendation for now: it
    is the reference's tool, and reimplementing the control codec buys nothing for forging), or add a Scarab
    wrapper so operators have one interface for both modes, since `scripts/pool/rotate_kes.py` only covers file
