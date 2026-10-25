@@ -459,8 +459,9 @@ built by `docker/cuddle.Dockerfile` from the Hackage source with GHC 9.10.3 and 
 `haskell` image, pinned by digest) against the Hackage index as of 2026-09-20 (`--index-state`), so the dependency plan
 is reproducible; the runtime image is `debian:bookworm-slim` (pinned by digest) with the one executable, `libgmp` and
 Python for the worker (195 MB). The build takes about 9 minutes on 4 CPUs; CI caches the image as a tarball keyed on
-the Dockerfile. Both base images are rebuilt by their maintainers, so the pinned digests are from 2026-10-05/06, less
-than two weeks before the check was written; the tool versions in them (GHC, cabal, cuddle, the Hackage index) are older.
+the Dockerfile. Both base images are rebuilt by their maintainers, so the pinned digests are newer than the tool versions in them
+(GHC, cabal, cuddle, the Hackage index): the Debian digest is from 2026-10-05, and the `haskell:9.10.3-slim-bookworm`
+digest was repinned on 2026-10-24 after the earlier one stopped being the target of any published tag.
 No upstream binary or image of cuddle is published, hence the build. The commands used (cuddle 1.8.1.0, checked in
 `bin/Main.hs`): `cuddle format FILE`, `cuddle validate FILE` (parse and resolve), `cuddle gen [-f hex] [--seed N]
 [--size N] [--no-twiddle] RULE FILE` (one random term per call; by default with indefinite lengths and non-shortest

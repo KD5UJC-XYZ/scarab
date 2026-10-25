@@ -10,7 +10,7 @@ Pins:
 
 - Plutus `507cab8cf6192e5143f12be5b2d3005a2928dc6d` (tag1.70.0.0).
 - `plutus-core.cabal` SHA-256 `83f272966c2352f6e6a5aec76ffc3383cff49b99454b8b0934961e833843455f`.
-- GHC9.10.3 image `haskell@sha256:4f1f62fec9cea4cbb03e885c9ad45642609cadd3897b1e64a7f61d0862b575b1`.
+- GHC9.10.3 image (tag `haskell:9.10.3-slim-bookworm`, checked 2026-10-24) `haskell@sha256:3c9f47467dbd6cb62c6ec6b768270c627bc33565e209bece103b7484075b27e3`.
 - blst0.3.15 `6d960cd05d6fe2b5bc9ba161edf0c1a131b87c4c`, `-D__BLST_PORTABLE__`.
 - Upstream Hackage index2026-06-22T23:30:49Z and CHaP2026-06-18T17:45:00Z, including its repository keys.
 - Resolved `cardano-crypto-class2.5.0.0`; Debian bookworm libsodium1.0.18 and libsecp256k1 0.2.0.
