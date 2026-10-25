@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Run the EqualsDataCorpus requests through the pinned costing oracle and write the verdicts.
+"""Run the EqualsDataCorpus (or SliceByteStringCorpus, with --out) requests through the pinned costing oracle and
+write the verdicts.
 
 Each row keeps the reference stage and, on success, the CPU and memory the reference spent. Script
 bytes and cost model are bound by SHA-256, as in `plutus-boundaries`.

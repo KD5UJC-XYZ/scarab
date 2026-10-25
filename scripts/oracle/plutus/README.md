@@ -87,3 +87,8 @@ The `equalsData` probes of `EqualsDataCorpus` (`plutus/Test/runMain xyz.kd5ujc.s
 run through the [costing oracle](costing/README.md) the same way, with
 `python3 -I scripts/oracle/plutus/equals-data/equals_data.py --requests <requests.jsonl> --raw <raw.jsonl>`; results are in
 `fixtures/reference/plutus-equals-data`.
+
+The `sliceByteString` probes of `SliceByteStringCorpus` (`plutus/Test/runMain xyz.kd5ujc.scarab.plutus.SliceByteStringCorpus
+<requests.jsonl>`), with indices outside the 32-bit and Int64 ranges in every profile of the costing matrix, run through the
+same driver with `--out fixtures/reference/plutus-slice-bytestring/verdicts.jsonl`; results are in
+`fixtures/reference/plutus-slice-bytestring`.
