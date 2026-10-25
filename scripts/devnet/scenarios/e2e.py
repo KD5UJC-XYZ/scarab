@@ -9,7 +9,7 @@ import threading
 import time
 from .. import eraload, govextra, protocolversions, protocolwalk
 from ..cluster import down, freeze_classes, scala_container, up_eras
-from ..compare import Comparisons, compare_era, comparison_table, judge_comparisons, lsq
+from ..compare import PROJECTION_SCOPE, Comparisons, compare_era, comparison_table, judge_comparisons, lsq
 from ..follower import follower_problem, start_follower
 from ..load import start_conway_load
 from ..util import ERAS, MAGIC, TAG_ERA, data_root, docker, read_log, ref, stall_evidence, starvation_warnings
@@ -291,7 +291,8 @@ def e2e(args):
             docker("rm", "-f", f"{args.name}-scala", check=False)
             follower.wait()
         if comparisons is not None:
-            summary["ledgerComparison"] = {"perEra": comparisons.per_era, "mismatches": comparisons.mismatches}
+            summary["ledgerComparison"] = {"scope": PROJECTION_SCOPE, "perEra": comparisons.per_era,
+                                           "mismatches": comparisons.mismatches}
         if loader is not None:
             summary["load"] = loader.stats
             summary["loadEvidence"] = loader.evidence

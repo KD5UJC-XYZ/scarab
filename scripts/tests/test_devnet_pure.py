@@ -239,6 +239,26 @@ class ProjectionTest(unittest.TestCase):
         self.assertEqual(view["assets"], {"ab": {"cd": 3}})
         self.assertNotIn("assets", compare.conway_output({"address": text, "value": {"lovelace": 7}}))
 
+    def test_the_cli_and_local_state_query_utxo_must_hold_the_same_outputs(self):
+        text = bech32_text("addr_test", bytes(range(29)))
+        address = bytes(range(29)).hex()
+        cli = {"aa#0": {"address": text, "value": {"lovelace": 7, "ab": {"cd": 3}}}}
+        full = {"aa#0": {"address": address, "lovelace": 7, "assets": {"ab": {"cd": 3}}, "inlineDatum": "01",
+                         "scriptRef": "ff"}}
+        self.assertTrue(compare.utxo_sources_agree(cli, full))
+        # negative controls: a missing output or another amount is a disagreement
+        self.assertFalse(compare.utxo_sources_agree(cli, {}))
+        self.assertFalse(compare.utxo_sources_agree(cli, {"aa#0": {**full["aa#0"], "lovelace": 8}}))
+
+    def test_the_projection_declares_its_scope_and_the_scala_fields_it_leaves_out(self):
+        self.assertEqual(compare.PROJECTION_SCOPE["kind"], "projection")
+        self.assertEqual(compare.PROJECTION_SCOPE["issue"], 433)
+        self.assertIn("cost models", compare.PROJECTION_SCOPE["notCompared"])
+        self.assertEqual(compare.scala_only({"utxo": 1, "nonMyopic": 2, "avvm": 3}, {"utxo": 1}),
+                         ["avvm", "nonMyopic"])
+        comparisons = compare.Comparisons(pathlib.Path("unused"))  # the tally writes only on record
+        self.assertIn("projected ledger comparisons", compare.comparison_table(comparisons).splitlines()[0])
+
     def test_era_view_helpers(self):
         self.assertEqual(eraview.ratio(0.25), "1/4")
         self.assertEqual(eraview.cred([0, b"\x01"]), "keyHash-01")

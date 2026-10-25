@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Compare the Scala ledger with the reference node: projections, diffs and per-era comparisons."""
+"""Compare the Scala ledger with the reference node: projections, diffs and per-era comparisons.
+
+These comparisons are projections, not whole-state equality: `PROJECTION_SCOPE` lists what they compare and
+what they leave out, and every result names the Scala fields the reference side has no counterpart for
+(`scalaOnlyKeys`). #433 tracks replacing them with complete-state comparisons.
+"""
 import json
 import subprocess
 import threading
@@ -11,6 +16,33 @@ from . import pinnedquery
 from .encoding import address_hex
 from . import util
 from .util import CLI, ENV, ERAS, MAGIC, QUERY_PORT, docker, in_ref, ref
+
+
+PROJECTION_SCOPE = {
+    "kind": "projection",
+    "issue": 433,
+    "compared": [
+        "epoch", "utxo (address, lovelace, assets, datum hash or inline datum, reference-script hash)", "fees",
+        "deposited", "treasury", "reserves", "accounts (balance, deposit, pool, DRep)", "pools (deposit, VRF)",
+        "pool parameters before Conway (pledge, cost, margin, reward account, owners; future ones too)",
+        "retiring", "dreps (deposit, expiry)", "numDormantEpochs", "blocksCurrent", "blocksBefore",
+        "stake snapshots (stake, delegations, pool ids, fee)", "reward update (deltas, summed rewards per account)",
+        "stake distribution (total, per pool)", "genesis delegations and future ones before Conway",
+        "parameter update proposals and MIR before Conway",
+        "protocol parameters before Conway, without cost models", "Conway governance (govview)",
+        "protocol state (nonces, operational certificate counters)"],
+    "notCompared": [
+        "cost models", "Conway current and future protocol parameters (only the protocol version)",
+        "reference-script bytes (only their hash)", "pool relays and metadata", "pool parameters in Conway",
+        "account pointers", "pool parameters inside the stake snapshots", "nonMyopic",
+        "individual reward entries and the pulsing reward state", "instantaneous stake", "AVVM and Byron state",
+        "the Byron ledger (its UTxO is checked at the first Shelley boundary)"],
+}
+
+
+def scala_only(scala, reference):
+    """The top-level Scala `/state` fields the reference projection has no counterpart for (not compared)."""
+    return sorted(set(scala) - set(reference))
 
 
 def conway_output(v):
@@ -153,6 +185,24 @@ def query_bundle(name):
     return bundle, None
 
 
+def reference_utxo(name, tip):
+    """The reference's whole UTxO at the block `tip`, over LocalStateQuery (Conway `GetUTxOWhole`), in the
+    projection of `eraview.tx_out`: unlike `cardano-cli query utxo` it keeps the datum and the
+    reference-script hash in the Scala node's shape. It asks the socket the bundle's queries used."""
+    with ntcquery.LocalStateQuery(ref(name), reference_socket(), MAGIC) as session:
+        session.acquire([tip["slot"], bytes.fromhex(tip["hash"])])
+        utxo = session.ledger_query(eraview.ERA_INDEX["conway"], [eraview.Q_UTXO_WHOLE])
+    return {f"{k[0].hex()}#{k[1]}": eraview.tx_out(v) for k, v in utxo.items()}
+
+
+def utxo_sources_agree(cli_utxo, lsq_utxo):
+    """The CLI's UTxO and the LocalStateQuery one at the same block hold the same outputs (addresses,
+    lovelace and assets; the CLI JSON carries no comparable datum or script form)."""
+    def plain(view):
+        return {a: b for a, b in view.items() if a in ("address", "lovelace", "assets")}
+    return {k: conway_output(v) for k, v in cli_utxo.items()} == {k: plain(v) for k, v in lsq_utxo.items()}
+
+
 def compare_once_detailed(name, attempts=10, scala_wait=30):
     """One comparison at one reference block. Returns (result dict, None), or (None, failures) with one record
     per attempt that could not read the reference at that block (a failed query with its stderr)."""
@@ -165,6 +215,14 @@ def compare_once_detailed(name, attempts=10, scala_wait=30):
                 return None, failures  # the harness asked the node for another state: not a retryable failure
             continue
         after = bundle["tip"]
+        try:
+            full_utxo = reference_utxo(name, after)
+        except (RuntimeError, EOFError, OSError, subprocess.TimeoutExpired) as e:
+            # the block may have left the reference's volatile window since the bundle was read
+            failures.append({"query": "GetUTxOWhole", "slot": after["slot"], "error": repr(e)[:300]})
+            continue
+        if not utxo_sources_agree(bundle["utxo"], full_utxo):
+            return {"tip": after, "error": "the CLI and LocalStateQuery UTxO of one block differ"}, None
         ls, utxo, protocol = bundle["ls"], bundle["utxo"], bundle["protocol"]
         gov = (bundle["gov"], bundle["committee"], bundle["drep"])
         scala = None
@@ -178,6 +236,7 @@ def compare_once_detailed(name, attempts=10, scala_wait=30):
                 continue  # the node may have moved past the retained window while the queries ran
             return {"tip": after, "error": "scala node never reached the reference tip"}, None
         reference = reference_view(ls, utxo)
+        reference["utxo"] = full_utxo
         reference["gov"] = govview.reference_gov(*gov)
         reference["protocolState"] = {k: protocol[k] for k in (
             "epochNonce", "evolvingNonce", "candidateNonce", "labNonce", "lastEpochBlockNonce", "oCertCounters")}
@@ -185,11 +244,11 @@ def compare_once_detailed(name, attempts=10, scala_wait=30):
         scala_view["gov"] = govview.scala_gov(scala["gov"])
         scala_view["dreps"] = {c: {"deposit": d["deposit"], "expiry": d["expiry"]}
                                for c, d in scala_view["dreps"].items()}
-        # the Conway load makes no datums or reference scripts; the CLI JSON shapes for them are not compared
-        scala_view["utxo"] = {k: {a: b for a, b in v.items() if a in ("address", "lovelace", "assets")}
-                              for k, v in scala_view["utxo"].items()}
         differences = diff(reference, scala_view)
         return {"tip": {k: after[k] for k in ("slot", "block", "epoch", "hash")}, "utxoSize": len(utxo),
+                "utxoWithDatumOrScript": sum(1 for v in full_utxo.values()
+                                             if {"datumHash", "inlineDatum", "scriptRef"} & set(v)),
+                "scalaOnlyKeys": scala_only(scala, reference),
                 "blocksCurrent": reference["blocksCurrent"], "blocksBefore": reference["blocksBefore"],
                 "poolStake": reference["stakeDistrib"],
                 "matched": not differences, "differences": [
@@ -259,6 +318,8 @@ def compare_pre_conway(name, era, attempts=10):
         scala_view["ppup"], scala_encodings = eraview.proposal_values(scala_view["ppup"])
         differences = diff(reference, scala_view)
         return {"tip": tip, "epoch": reference["epoch"], "utxoSize": len(reference["utxo"]),
+                "scalaOnlyKeys": scala_only(scala, reference),
+                "scalaOnlyParams": scala_only(scala.get("params", {}), reference["params"]),
                 "evidence": {**(evidence or {}),
                     "ppupCostModelEncodings": {"reference": reference_encodings, "scala": scala_encodings},
                     "mirPending": {
@@ -335,7 +396,9 @@ def judge_comparisons(comparisons, minimum, loaded):
 
 
 def comparison_table(comparisons):
-    lines = ["era       matched  mismatched  errors  skipped"]
+    lines = [f"projected ledger comparisons (not whole states; scope in e2e-summary.json, "
+             f"#{PROJECTION_SCOPE['issue']})",
+             "era       matched  mismatched  errors  skipped"]
     for era in ERAS:
         r = comparisons.per_era[era]
         if era == "byron":
