@@ -508,9 +508,8 @@ final class Forger[F[_]: Async, S](
                   // NodeKernel.hs forkBlockForging, Background.hs:107-108,142)
                   case SessionEnd.Unverifiable(defect) =>
                     defect.raise[F, Either[ForgeError, Unit]]
-                  // a refusal, or a defect a transaction of ours triggers (SessionEnd.Held): the
-                  // block is not adopted, its transactions leave the pool and an empty block is
-                  // tried instead
+                  // a refusal: the block is not adopted, its transactions leave the pool and an
+                  // empty block is tried instead
                   case _ => F.pure(Left(ForgeError.SelfRejected(e)))
             }
     }
@@ -641,9 +640,6 @@ object Forger:
         val fatal = SessionEnd.of(error) match
           case SessionEnd.Storage(e)     => Fatal.Storage(e)
           case SessionEnd.Unavailable(e) => Fatal.Unavailable(e)
-          // BlockBuilder.select skips a transaction that triggers a defect, and adoption makes it
-          // a refusal of our own block, so none reaches here; were one to, there is no verdict
-          case SessionEnd.Held(e) => Fatal.Unavailable(e)
           // a crypto provider that fails on our own block is raised by `build`, with nothing evicted
           case SessionEnd.Unverifiable(e) => Fatal.Unverifiable(e)
           case _                          => Fatal.Internal(error)

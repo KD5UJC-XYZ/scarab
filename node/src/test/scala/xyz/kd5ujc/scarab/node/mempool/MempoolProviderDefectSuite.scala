@@ -7,22 +7,26 @@ import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.witness.VerificationError
 import xyz.kd5ujc.scarab.ledger.{
+  EvaluationUnavailable,
   LedgerFailure,
   ProviderDefect,
+  ScriptLocation,
   StorageError,
   Verdicts,
   VerificationDefect
 }
 import xyz.kd5ujc.scarab.network.{LocalTxSubmissionServer, NetworkError}
+import xyz.kd5ujc.scarab.plutus.{BackendFailure, EvalFailure}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 
 import TxKit.*
 
-/** Issue 393: a crypto provider that fails on a transaction witness outside a block. The reference
-  * lets the exception end the thread that met it (consensus 82ecba32 `Mempool/Update.hs` `doAddTx`
-  * evaluates `pureTryAddTx` there): a local client's connection closes, a peer's connection closes,
-  * and the revalidation watcher, which is linked to the node, stops the node. Nothing is a
-  * rejection, so the pool is not changed by the transaction.
+/** Issue 393: a crypto provider that fails on a transaction witness outside a block (and, as the
+  * evaluator that fails on its scripts, the same). The reference lets the exception end the thread
+  * that met it (consensus 82ecba32 `Mempool/Update.hs` `doAddTx` evaluates `pureTryAddTx` there): a
+  * local client's connection closes, a peer's connection closes, and the revalidation watcher,
+  * which is linked to the node, stops the node. Nothing is a rejection, so the pool is not changed
+  * by the transaction.
   */
 class MempoolProviderDefectSuite extends CatsEffectSuite:
   private val boom = new IllegalStateException("provider broke")
@@ -86,15 +90,26 @@ class MempoolProviderDefectSuite extends CatsEffectSuite:
       .add(t1, env, Source.Local)
       .fold(r => fail(r.toString), _._1)
     val stopped = held.sync(Right(ledger(2)), 1001, defective).left.toOption
-    assertEquals(stopped, Some(noVerdict(id)))
+    assertEquals(stopped, Some(unverifiable(id)))
     assertEquals(
-      stopped.map(Mempool.unverifiable(_, point)),
+      stopped.map(Mempool.noVerdict(_, point)),
       Some(VerificationDefect(point, VerificationDefect.Site.Witness(id), defect))
     )
-    assertEquals(held.remove(Set.empty, defective).left.toOption, Some(noVerdict(id)))
+    assertEquals(held.remove(Set.empty, defective).left.toOption, Some(unverifiable(id)))
   }
 
-  private def noVerdict(id: Bytes): MempoolState.NoVerdict = LedgerFailure.Unverifiable(id, defect)
+  test("a revalidation met by an evaluator that has no verdict is the node's defect too") {
+    val (_, id) = pay(1)
+    val point = ChainSync.Point.Origin
+    val failure: LedgerFailure.Unavailable = LedgerFailure.Unavailable(
+      id,
+      ScriptLocation.Phase1(id),
+      EvalFailure.Unsupported(BackendFailure.StackExhausted)
+    )
+    assertEquals(Mempool.noVerdict(failure, point), EvaluationUnavailable(point, failure))
+  }
+
+  private def unverifiable(id: Bytes): MempoolState.NoVerdict = LedgerFailure.Unverifiable(id, defect)
 
   private given Raise[IO, StorageError] with
     def functor = cats.Functor[IO]
@@ -138,7 +153,7 @@ class MempoolProviderDefectSuite extends CatsEffectSuite:
   test("a defective sync changes nothing: the state stays, no Dropped or Synced event") {
     val (_, id1) = pay(1)
     revalidated(m => m.sync(Right(ledger(3)), 1001).void).map { (raised, before, after, events) =>
-      assertEquals(raised, Some(noVerdict(id1)))
+      assertEquals(raised, Some(unverifiable(id1)))
       assertEquals(before.entries.size, 2)
       assertEquals(after, before)
       assertEquals(events, Vector.empty)
@@ -151,7 +166,7 @@ class MempoolProviderDefectSuite extends CatsEffectSuite:
     val (_, id1) = pay(1)
     val (_, id2) = pay(2)
     revalidated(m => m.removeTxsEvenIfValid(Set(id1)).void).map { (raised, before, after, events) =>
-      assertEquals(raised, Some(noVerdict(id2)))
+      assertEquals(raised, Some(unverifiable(id2)))
       assertEquals(after, before)
       assertEquals(events, Vector.empty)
     }

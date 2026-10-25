@@ -73,7 +73,6 @@ final class EventMetrics[F[_]: Sync] private (
           metrics.set(ledgerAccounts, accounts.toDouble) *>
           metrics.set(ledgerPools, pools.toDouble)
       case FollowerEvent.Reconnecting(_, _) => metrics.inc(peerReconnects)
-      case FollowerEvent.Held(_, _)         => metrics.inc(blocksHeld)
       case FollowerEvent.Connected(_) | FollowerEvent.EpochEntered(_, _) |
           FollowerEvent.EraEntered(_, _, _, _) | FollowerEvent.EpochValidated(_, _, _, _, _) |
           FollowerEvent.ByronEpochValidated(_, _, _, _, _) =>
@@ -294,7 +293,6 @@ final class EventMetrics[F[_]: Sync] private (
       metrics.inc(followerStalls) *> metrics.set(followerStalled, 1.0)
     case StallWatchdog.Change.Ended            => metrics.set(followerStalled, 0.0)
     case StallWatchdog.Change.ExitDue(_, _, _) => Sync[F].unit
-    case StallWatchdog.Change.Behind(_)        => Sync[F].unit
 
   /** What a batch of headers added to the header-first counts (the sessions count from zero each,
     * so the totals are the sums of the additions).

@@ -72,7 +72,8 @@ object BackendFailure:
     * one of these. Of the rest, a missing part of the implementation (a native library, a builtin,
     * the memory or the classes of the process) leaves every script without a verdict, while a
     * defect that one input triggers (Scalus throwing on bytes it was given) leaves only that input
-    * without one. ADR 0017 (amendment of 2026-10-23) gives each its policy.
+    * without one. Both stop the node on the block path, as an exception does in the reference (ADR
+    * 0017, amendment of 2026-10-25); the classification says what failed.
     */
   enum Reach:
     /** The implementation is missing or its runtime is broken: no input can be trusted to get a
@@ -81,7 +82,7 @@ object BackendFailure:
     case Implementation
 
     /** The implementation failed on this input: the block or transaction that carries it gets no
-      * verdict here and is not adopted; it is no evidence against whoever sent it.
+      * verdict here; it is no evidence against whoever sent it.
       */
     case Input
 

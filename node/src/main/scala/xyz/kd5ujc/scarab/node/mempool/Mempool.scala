@@ -5,7 +5,12 @@ import cats.effect.{Async, Ref}
 import cats.effect.std.{Mutex, Semaphore}
 import cats.mtl.{Ask, Raise}
 import cats.mtl.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.{LedgerFailure, StorageError, VerificationDefect}
+import xyz.kd5ujc.scarab.ledger.{
+  EvaluationUnavailable,
+  LedgerFailure,
+  StorageError,
+  VerificationDefect
+}
 import cats.syntax.all.*
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -119,24 +124,26 @@ trait Mempool[F[_]]:
   def sink(fatal: Fatal => F[Unit]): TxSubmissionServer.Sink[F]
 
 object Mempool:
-  /** The transaction a revalidation (`sync`, `removeTxsEvenIfValid`) has no verdict on, as the
-    * defect of the block it was revalidated for at `at`. The reference's revalidation watcher is
-    * linked to the node (consensus 82ecba32 `Mempool/Init.hs:64-77`), so the node stops
-    * ([[Fatal.Unverifiable]]).
+  /** The transaction a revalidation (`sync`, `removeTxsEvenIfValid`) has no verdict on (a crypto
+    * provider or the evaluator failed on it), as the defect of the block it was revalidated for at
+    * `at`. The reference's revalidation watcher is linked to the node (consensus 82ecba32
+    * `Mempool/Init.hs:64-77`), so the node stops.
     */
-  def unverifiable(
+  def noVerdict(
       noVerdict: MempoolState.NoVerdict,
       at: xyz.kd5ujc.scarab.protocol.ChainSync.Point
-  ): VerificationDefect =
-    VerificationDefect(at, VerificationDefect.Site.Witness(noVerdict.txId), noVerdict.defect)
+  ): VerificationDefect | EvaluationUnavailable = noVerdict match
+    case LedgerFailure.Unverifiable(tx, defect) =>
+      VerificationDefect(at, VerificationDefect.Site.Witness(tx), defect)
+    case failure: LedgerFailure.Unavailable => EvaluationUnavailable(at, failure)
 
-  /** A revalidation's no-verdict raised as the node's defect at `at` ([[unverifiable]]). */
+  /** A revalidation's no-verdict raised as the node's defect at `at` ([[noVerdict]]). */
   def raisedAt[F[_]](at: xyz.kd5ujc.scarab.protocol.ChainSync.Point)(using
-      node: Raise[F, VerificationDefect]
+      node: Raise[F, VerificationDefect | EvaluationUnavailable]
   ): Raise[F, MempoolState.NoVerdict] = new Raise[F, MempoolState.NoVerdict]:
     def functor = node.functor
-    def raise[E <: MempoolState.NoVerdict, A](noVerdict: E): F[A] =
-      node.raise(unverifiable(noVerdict, at))
+    def raise[E <: MempoolState.NoVerdict, A](failure: E): F[A] =
+      node.raise(noVerdict(failure, at))
 
   /** How many submissions wait for their turn: `remote` behind the peer's transaction that holds
     * the remote line, `common` behind the one that holds the common line.
@@ -353,15 +360,20 @@ object Mempool:
           // message, not the sink), the peer sits in StIdle where it may wait for ever, and its
           // other mini-protocols and our outbound direction run in fibers of their own.
           //
-          // A crypto provider that fails on a witness gives no verdict on the transaction. It is not
-          // a rejection: it closes this peer's connection, with the peer tried again later and
-          // nothing recorded, as the exception does in the reference's inbound TxSubmission2 thread
+          // A crypto provider or the evaluator that fails on the transaction gives no verdict on it.
+          // It is not a rejection: it closes this peer's connection, with the peer tried again
+          // later and nothing recorded, as the exception does in the reference's inbound
+          // TxSubmission2 thread
           // (consensus 82ecba32 Node/NodeKernel.hs `getMempoolWriter`, `Mempool/Update.hs`
           // `doAddTx`, `Node/RethrowPolicy.hs:40-45`). The transactions after it are not offered.
           def submit(originals: Vector[Bytes])(using Raise[F, NetworkError]) =
             originals.traverse_ { original =>
               StorageBoundary.run(fatal)(add(original, Source.Remote)).flatMap {
-                case Left(Rejection.Ledger(defect: LedgerFailure.Unverifiable)) =>
+                case Left(
+                      Rejection.Ledger(
+                        defect @ (_: LedgerFailure.Unverifiable | _: LedgerFailure.Unavailable)
+                      )
+                    ) =>
                   NetworkError
                     .BearerClosed(NetworkError.Closure.AbortedBy(defect))
                     .raise[F, Unit]

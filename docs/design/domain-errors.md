@@ -70,7 +70,10 @@ that meets it, and Scarab does the same in each place:
   `ValidationError.unverifiable` recognises both); `SessionEnd.of` places it as
   `SessionEnd.Unverifiable`, whose disposition is `StopNode(Fatal.Unverifiable)`, exit 7, the
   class of an exception from a library (exit 8 stays a missing implementation, exit 6 a broken
-  node invariant). Nothing is added to `InvalidBlocks` and no peer is blamed. Startup recovery
+  node invariant). Nothing is added to `InvalidBlocks` and no peer is blamed. An evaluator that
+  is unavailable or fails on a block's scripts (`LedgerFailure.Unavailable`) is treated the same
+  way, as `SessionEnd.Unavailable` and `Fatal.Unavailable` (exit 8); the 2026-10-23 hold of ADR
+  0017 is removed. Startup recovery
   (`ChainStorage.resume`) raises it without cutting the volatile log back; a provider defect on
   the node's own block stops the forger with `Fatal.Unverifiable` and evicts no transaction from
   the pool.
@@ -95,7 +98,8 @@ that meets it, and Scarab does the same in each place:
   connection closes, and the pool is not changed by the transaction. Scarab: local submission
   answers `ServiceUnavailable` with no rejection bytes, which closes that client's connection;
   a peer's transaction ends its TxSubmission2 session through the session's `Raise[NetworkError]`
-  (`Mempool.sink`), and the peer is tried again later.
+  (`Mempool.sink`), and the peer is tried again later. Both hold for an evaluator that fails on
+  the transaction's scripts as for a crypto provider.
 - **Revalidation and block production** (`Mempool.sync`, `removeTxsEvenIfValid`,
   `BlockBuilder.select`). The reference runs them in linked threads (`Mempool/Init.hs` 64–77,
   `Node/NodeKernel.hs` 549–560), so the exception stops the node, and it aborts the state

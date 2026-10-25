@@ -6,16 +6,9 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, ForgeError, Header, LedgerFailure, VrfCert}
-import xyz.kd5ujc.scarab.ledger.LedgerFailure.reach
 import xyz.kd5ujc.scarab.ledger.{LedgerGlobals, PosixClock, RefScripts, TxEnv}
 import xyz.kd5ujc.scarab.ledger.rules.Globals
-import xyz.kd5ujc.scarab.plutus.{
-  BackendFailure,
-  ExUnits,
-  ScalusEvaluator,
-  ScriptDecoder,
-  ScriptEvaluator
-}
+import xyz.kd5ujc.scarab.plutus.{ExUnits, ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
 import cats.Id
 import xyz.kd5ujc.scarab.node.mempool.{Entry, MempoolLedger}
 
@@ -125,10 +118,10 @@ object BlockBuilder:
     * the block's own environment and fit the body size, execution unit and reference script limits.
     * A candidate that does not apply (its inputs were spent by the block, it expired, a script now
     * fails) is skipped, not an error: the pool of a mempool is advisory. The rules are LEDGER of
-    * Conway on the era-indexed state ([[MempoolLedger]], the same that validates the pool). Missing
-    * evaluator support has no ledger verdict and stops selection instead of skipping it; a defect
-    * one transaction triggers in the evaluator skips that transaction. A crypto provider that fails
-    * on a witness stops selection too: the forger raises it as a [[VerificationDefect]].
+    * Conway on the era-indexed state ([[MempoolLedger]], the same that validates the pool). An
+    * evaluator that is unavailable or fails on a transaction's scripts, and a crypto provider that
+    * fails on a witness, have no ledger verdict and stop selection instead of skipping the
+    * transaction: the forger raises them and the node stops.
     */
   def select(
       ticked: MempoolLedger,
@@ -184,13 +177,8 @@ object BlockBuilder:
               .state(entry.tx, env, rules)
               .fold(
                 {
-                  // a defect the transaction's own scripts trigger leaves it out, like a refusal;
-                  // a missing implementation stops selection
-                  case unavailable: LedgerFailure.Unavailable =>
-                    unavailable.reach match
-                      case BackendFailure.Reach.Implementation => Left(unavailable)
-                      case BackendFailure.Reach.Input          => Right(acc)
-                  // a crypto provider that failed on a witness stops selection: no verdict
+                  // no verdict on the transaction (evaluator, crypto provider): selection stops
+                  case unavailable: LedgerFailure.Unavailable   => Left(unavailable)
                   case unverifiable: LedgerFailure.Unverifiable => Left(unverifiable)
                   case _                                        => Right(acc)
                 },

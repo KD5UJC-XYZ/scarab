@@ -15,11 +15,6 @@ and inbound session reports its peer's tip). When no block has been extended for
 stalls however long the network takes to produce a block. Alert on
 `scarab_follower_stalled == 1`, or on `increase(scarab_follower_stalls_total[1h]) > 0`.
 
-A block the node holds without a verdict (`blockHeld`: the Plutus evaluator failed on the block's own
-scripts, so the block is neither adopted nor recorded as invalid and no peer is blamed, ADR 0017) keeps
-the node behind it. When the stall it causes begins, the watchdog also logs `stalledBehind` with the
-held block's point, transaction and reason. Alert on `increase(scarab_blocks_held_total[1h]) > 0`.
-
 A stall that cannot be reproduced on demand leaves its evidence (issue 371). Right after `stalled` the node
 logs one `stallState` event with every session's pipeline: the coordinator's view (`busy`, the offers waiting for
 a decision, the reservations in flight, the headers of its candidate) and, for a pipelined session, its batch

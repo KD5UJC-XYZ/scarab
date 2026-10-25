@@ -34,12 +34,6 @@ enum FollowerEvent:
   case Immutable(block: BlockRef)
   case Reconnecting(reason: PeerError, attempt: Int)
 
-  /** The block at `point` has no verdict here: the evaluator failed on its own scripts (a defect
-    * the block triggers, not a missing implementation). It is not adopted, not recorded as invalid,
-    * and the chain stays behind it.
-    */
-  case Held(point: ChainSync.Point, failure: xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable)
-
   /** The first block of a new era was applied (`from` is empty for the chain's first era). */
   case EraEntered(from: Option[Era], to: Era, first: BlockRef, epoch: BigInt)
 

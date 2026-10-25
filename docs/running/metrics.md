@@ -163,7 +163,6 @@ section and the catalogue differ.
 | `scarab_peer_tip_slot` | gauge |  | Slot of the tip of the peer's chain, as the peer last announced it. | none |
 | `scarab_peer_tip_block` | gauge |  | Block number of the tip of the peer's chain, as the peer last announced it. | none |
 | `scarab_peer_reconnects_total` | counter |  | Times the connection to the peer was lost and opened again. | none |
-| `scarab_blocks_held_total` | counter |  | Times a block was not adopted because the evaluator failed on its scripts: no verdict, no blame; the chain stays behind it. | none |
 | `scarab_follower_stalls_total` | counter |  | Times the follower went the stall-minutes without extending its chain while a peer announced a longer one. | none |
 | `scarab_follower_stalled` | gauge |  | 1 while the follower is stalled (see scarab_follower_stalls_total), else 0. | none |
 | `scarab_rollbacks_total` | counter |  | Rollbacks of the chain. | none |

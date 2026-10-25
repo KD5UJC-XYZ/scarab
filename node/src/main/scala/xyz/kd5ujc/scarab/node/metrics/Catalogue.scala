@@ -361,10 +361,6 @@ object Catalogue:
     MetricName("scarab_peer_reconnects_total"),
     "Times the connection to the peer was lost and opened again."
   )
-  val blocksHeld = CounterDef(
-    MetricName("scarab_blocks_held_total"),
-    "Times a block was not adopted because the evaluator failed on its scripts: no verdict, no blame; the chain stays behind it."
-  )
   val followerStalls = CounterDef(
     MetricName("scarab_follower_stalls_total"),
     "Times the follower went the stall-minutes without extending its chain while a peer announced a longer one."
@@ -1019,7 +1015,6 @@ object Catalogue:
     peerTipSlot,
     peerTipBlock,
     peerReconnects,
-    blocksHeld,
     followerStalls,
     followerStalled,
     rollbacks,
