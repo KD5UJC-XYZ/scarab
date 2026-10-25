@@ -40,7 +40,10 @@ class CollateralWitnessSuite extends FunSuite:
 
   private def check(major: Int, tx: Tx) =
     val pp = TestLedger.params(major)
-    Utxow.witnesses(UtxoEnv(TestLedger.env, pp, ()), Map.empty, StAnnTx(tx, utxo))
+    TestLedger.verdict(
+      tx.body.id,
+      Utxow.checks(UtxoEnv(TestLedger.env, pp, ()), Map.empty, StAnnTx(tx, utxo), Test.pass)
+    )
 
   for major <- Vector(5, 6, 7, 8, 9, 10, 11) do
     test(s"protocol $major: a collateral input's key must sign, with no redeemers") {

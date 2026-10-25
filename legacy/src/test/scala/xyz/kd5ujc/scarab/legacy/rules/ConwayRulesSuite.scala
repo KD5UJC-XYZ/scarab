@@ -75,7 +75,8 @@ class ConwayRulesSuite extends FunSuite:
       rule(rs.tx(s, tx(b, signers, Witnesses(Vector.empty, scripts = scripts)), env))
     assertEquals(tryMint(Vector(alice), Vector(policy)), "accepted")
     assertEquals(tryMint(Vector(alice), Vector.empty), "MissingScriptWitnessesUTXOW")
-    assertEquals(tryMint(Vector(bob), Vector(policy)), "MissingVKeyWitnessesUTXOW")
+    // the needed native scripts are checked first (`Babbage/Rules/Utxow.hs:345`)
+    assertEquals(tryMint(Vector(bob), Vector(policy)), "ScriptWitnessNotValidatingUTXOW")
     val superfluous = policy.copy(hash = Blake2b.hash224.hash(Bytes(Vector(9))))
     assertEquals(
       tryMint(Vector(alice), Vector(policy, superfluous)),

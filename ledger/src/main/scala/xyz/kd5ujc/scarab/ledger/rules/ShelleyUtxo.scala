@@ -428,13 +428,9 @@ object UtxoChecks:
       )
 
 /** UTXOW (`Shelley/Rules/Utxow.hs:270`, `transitionRulesUTXOW`, with the Alonzo and Babbage rules
-  * that extend it): the scripts the transaction provides are the ones it needs, its datums and
-  * redeemers match the Plutus scripts, the script integrity hash, the auxiliary data, the
-  * signatures, and the genesis delegates' signatures a MIR certificate needs
-  * (`validateMIRInsufficientGenesisSigs`, `Utxow.hs:449`); then UTXO.
-  *
-  * As for Conway, the two checks of UTXO that annotating the transaction depends on (the inputs
-  * exist, `StAnnTx`) are made first ([[Utxo.resolvable]]).
+  * that extend it, cardano-ledger `f649f975`): the checks of the era ([[Utxow.checks]]), among them
+  * the genesis delegates' signatures a MIR certificate needs (`validateMIRInsufficientGenesisSigs`,
+  * `Shelley/Rules/Utxow.hs:449`), each recording its failures; then UTXO (`trans`).
   */
 object ShelleyUtxow:
   def sts[E <: EraTag](using
@@ -453,11 +449,9 @@ object ShelleyUtxow:
       ): F[Unit] =
         val genDelegs = ShelleyCertLens.genDelegs.get(env.cert)
         for
-          _ <- Sts.lift[F, LedgerFailure, Unit](Utxo.resolvable(ann))
-          _ <- Sts.lift[F, LedgerFailure, Unit](
-            Utxow.witnesses(env, PreConway.genDelegs(genDelegs), ann)
+          _ <- Utxow.record[F](
+            Utxow.checks(env, PreConway.genDelegs(genDelegs), ann, mirSigned(env, ann, genDelegs))
           )
-          _ <- Sts.require[F, LedgerFailure](mirSigned(env, ann, genDelegs))
           _ <- JudgedSts.trans[F, UtxoEnv[ShelleyCertState], Counted[UTxOState[E]], Counted[
             UTxOState[E]
           ], StAnnTx, PredicateFailure, LedgerFailure, LedgerFailure](
@@ -467,23 +461,22 @@ object ShelleyUtxow:
           )
         yield ()
 
-  /** `validateMIRInsufficientGenesisSigs`: a transaction with a MIR certificate is signed by at
-    * least the quorum of the genesis delegates; the refusal names the delegates that did sign.
+  /** `validateMIRInsufficientGenesisSigs` (`Shelley/Rules/Utxow.hs:449-470`): a transaction with a
+    * MIR certificate is signed by at least the quorum of the genesis delegates; the refusal names
+    * the delegates that did sign.
     */
   private def mirSigned(
       env: UtxoEnv[ShelleyCertState],
       ann: StAnnTx,
       genDelegs: SortedMap[KeyHash[Genesis], xyz.kd5ujc.scarab.ledger.GenDelegPair]
-  ): Option[LedgerFailure] =
+  ): Test[PredicateFailure] =
     val hasMir = ann.tx.body.certificates.exists {
       case Certificate.MoveRewards(_, _) => true
       case _                             => false
     }
     val signers = ann.tx.witnesses.vkeys.map(w => env.ctx.verdicts.keyHash(w._1)).toSet
     val genesisSigners = genDelegs.values.map(_.delegate).toSet.intersect(signers)
-    Option.when(hasMir && genesisSigners.size < env.ctx.updateQuorum)(
-      LedgerFailure.Rejected(
-        ann.id,
-        PredicateFailure.utxow(UtxowFailure.MIRInsufficientGenesisSigs(genesisSigners))
-      )
+    Test.failureUnless(
+      !hasMir || genesisSigners.size >= env.ctx.updateQuorum,
+      PredicateFailure.utxow(UtxowFailure.MIRInsufficientGenesisSigs(genesisSigners))
     )

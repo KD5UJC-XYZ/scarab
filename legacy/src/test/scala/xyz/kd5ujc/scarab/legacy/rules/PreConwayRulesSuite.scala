@@ -244,9 +244,11 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       rule(rs.tx(s, tx(b, Vector(alice), withScript), env)),
       "ScriptWitnessNotValidatingUTXOW"
     )
+    // an extraneous script that holds: before Babbage every native script provided must hold
+    // (`validateFailedNativeScripts`, `Shelley/Rules/Utxow.hs:365-373`), and that check comes first
     val extra = Witnesses(
       Vector.empty,
-      scripts = Vector(policyScript, scriptOf(NativeScript.AnyOf(Vector.empty)))
+      scripts = Vector(policyScript, scriptOf(NativeScript.AllOf(Vector.empty)))
     )
     assertEquals(
       rule(rs.tx(s, tx(b, Vector(alice, signer), extra), env)),
@@ -413,13 +415,11 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       val (s, in) = funded(protocol)
       val outputs = referenced.map(r => out(bob.address(), 2 * ada).copy(scriptRef = Some(r)))
       val b = body("wf", Vector(in), outputs, 200)
+      val checked = tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts))
       rule(
         TxChecks
-          .scriptsWellFormed(
-            s.params,
-            tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts)),
-            env
-          )
+          .scriptsWellFormed(s.params, checked, env)
+          .flatMap(TestLedger.verdict(checked.body.id, _))
           .map(_ => s)
       )
     assertEquals(check(8, Vector(keccakV2), Vector.empty), "MalformedScriptWitnesses")
@@ -462,13 +462,11 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       val (s, in) = funded(protocol)
       val outputs = referenced.map(r => out(bob.address(), 2 * ada).copy(scriptRef = Some(r)))
       val b = body("wf", Vector(in), outputs, 200)
+      val checked = tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts))
       rule(
         TxChecks
-          .scriptsWellFormed(
-            s.params,
-            tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts)),
-            env
-          )
+          .scriptsWellFormed(s.params, checked, env)
+          .flatMap(TestLedger.verdict(checked.body.id, _))
           .map(_ => s)
       )
     for pv <- Seq(8, 10, 11) do

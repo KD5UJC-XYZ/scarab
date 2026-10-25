@@ -6,6 +6,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.GenDelegPair
+import xyz.kd5ujc.scarab.ledger.rules.Test
 
 /** The checks of the transaction rules before Conway and the checks Conway shares with them (UTXO,
   * UTXOW, UTXOS): the pure predicates over a transaction and what it reads of the state, which the
@@ -21,10 +22,16 @@ object TxChecks:
   /** A redeemer pointer: tag 0 spend, 1 mint, 2 certificate, 3 reward, then index. */
   private[ledger] type Pointer = (Int, BigInt)
 
-  /** The script data hash must equal the recomputed hash, and the block's `is_valid` flag must
-    * equal the outcome of evaluating every Plutus script. Reads of the state: the parameters and
-    * the counters it adds to.
+  /** The block's `is_valid` flag must equal the outcome of evaluating every Plutus script
+    * (`expectScriptsToPass`, `babbageEvalScriptsTxInvalid`, `Babbage/Rules/Utxos.hs:132-220`): the
+    * contexts are collected (`CollectErrors`), then the scripts evaluated; a transaction flagged
+    * invalid with no script to fail passes unexpectedly. Reads of the state: the parameters and the
+    * counters it adds to.
     *
+    * @param spent
+    *   the outputs of the inputs the UTxO set holds, by input
+    * @param references
+    *   the outputs of the reference inputs the UTxO set holds, by input
     * @param evaluate
     *   whether the scripts are evaluated: they are not once the judgment has a failure
     *   (`whenFailureFree`, `Alonzo/Rules/Utxos.hs:180-182`), and then only their contexts are
@@ -36,56 +43,47 @@ object TxChecks:
       tx: Tx,
       env: Env,
       scripts: Map[Bytes, Script],
-      spent: Vector[TxOut],
-      refOuts: Vector[TxOut],
+      spent: Map[TxIn, TxOut],
+      references: Map[TxIn, TxOut],
       plutusPurposes: Set[Pointer],
       evaluate: Boolean
   ): Result[PlutusStats] =
     val body = tx.body
-    val id = body.id
-    if pp.protocolMajor < 5 || (plutusPurposes.isEmpty && body.scriptDataHash.isEmpty) then
-      Right(plutus)
+    if pp.protocolMajor < 5 then Right(plutus)
     else
-      val needed = scriptsNeeded(body, spent)
-      val languages = needed.keys.flatMap(scripts.get).map(_.kind).toSet
-      val recomputed = ScriptIntegrity.hash(tx, pp, languages)
-      val stats = plutus.copy(integrityChecked = plutus.integrityChecked + 1)
-      if recomputed != body.scriptDataHash then
-        Left(
-          LedgerFailure.Rejected(
-            id,
-            PredicateFailure.utxow(ScriptIntegrity.mismatch(tx, pp, languages))
-          )
-        )
-      else if plutusPurposes.isEmpty then Right(stats)
+      val stats =
+        if plutusPurposes.isEmpty && body.scriptDataHash.isEmpty then plutus
+        else plutus.copy(integrityChecked = plutus.integrityChecked + 1)
+      if plutusPurposes.isEmpty then
+        // no script: the evaluation of none passes (`Passes []`)
+        if tx.isValid || !evaluate then Right(stats)
+        else checkedPhase2(stats, tx, Right(Phase2.Outcome.Passed(Phase2.Report(Vector.empty))))
       else
-        val inputs = body.inputs.zip(spent).toMap
-        val references = body.referenceInputs.zip(refOuts).toMap
         val posix = env.clock.toRight(TranslationError.NoEraHistory).map(c => c.posix)
         env.preparation match
           case Some(recording) =>
             val requests =
-              Phase2.collect(tx, pp, scripts, inputs, references, slot => posix.flatMap(_(slot)))
+              Phase2.collect(tx, pp, scripts, spent, references, slot => posix.flatMap(_(slot)))
             recording.append(
-              Phase2.job(env.txIndex, tx, pp, env.slot, inputs, references, env.clock, requests)
+              Phase2.job(env.txIndex, tx, pp, env.slot, spent, references, env.clock, requests)
             )
             requests.fold(errors => checkedPhase2(stats, tx, Left(errors)), _ => Right(stats))
           case None if !evaluate =>
             Phase2
-              .collect(tx, pp, scripts, inputs, references, slot => posix.map(_(slot)))
+              .collect(tx, pp, scripts, spent, references, slot => posix.flatMap(_(slot)))
               .fold(errors => checkedPhase2(stats, tx, Left(errors)), _ => Right(stats))
           case None =>
             val outcome = Phase2.evaluate(
               tx,
               pp,
               scripts,
-              inputs,
+              spent,
               references,
               slot => posix.flatMap(_(slot)),
               env.evaluator
             )
             env.observer.foreach(
-              _(Phase2.Observation(tx, pp, env.slot, inputs, references, env.clock, outcome))
+              _(Phase2.Observation(tx, pp, env.slot, spent, references, env.clock, outcome))
             )
             checkedPhase2(stats, tx, outcome)
 
@@ -236,11 +234,18 @@ object TxChecks:
   private[ledger] def providedScripts(wits: Witnesses, outs: Vector[TxOut]): Map[Bytes, Script] =
     outs.flatMap(_.scriptRef).map(s => s.hash -> s).toMap ++ wits.scriptsByHash
 
-  /** Script hashes the transaction must provide, with the redeemer pointers that use each. */
-  private[ledger] def scriptsNeeded(body: TxBody, spent: Vector[TxOut]): Map[Bytes, Set[Pointer]] =
-    val byInput = body.inputs.zip(spent).toMap
+  /** Script hashes the transaction must provide, with the redeemer pointers that use each.
+    *
+    * @param spent
+    *   the outputs of the inputs the UTxO set holds, by input: an input it does not hold needs no
+    *   script (`getScriptsNeeded` over the UTxO, `Alonzo/UTxO.hs`)
+    */
+  private[ledger] def scriptsNeeded(
+      body: TxBody,
+      spent: Map[TxIn, TxOut]
+  ): Map[Bytes, Set[Pointer]] =
     Purpose
-      .all(body, byInput)
+      .all(body, spent)
       .flatMap(p => p.scriptHash.map(h => h -> ((p.tag, BigInt(p.index)))))
       .groupMap(_._1)(_._2)
       .view
@@ -266,35 +271,36 @@ object TxChecks:
       else body.outputs ++ body.collateralReturn ++ referenced
     outs.map(_.datum).collect { case Datum.Hash(h) => h }.toSet
 
-  /** The datum rules of UTXOW in the order of `missingRequiredDatums` (reference:
-    * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxow.hs`, `missingRequiredDatums`, reached
-    * from `babbageUtxowTransition` and Conway through `Babbage/Rules/Utxow.hs`): a spent Plutus
-    * output without a usable datum hash (`UnspendableUTxONoDatumHash`), a required datum the
-    * witnesses lack (`MissingRequiredDatums`), and a witness datum that is neither required nor
-    * allowed as supplemental (`NotAllowedSupplementalDatums`: the unallowed hashes and the
-    * acceptable ones).
+  private def utxow(f: UtxowFailure): PredicateFailure = PredicateFailure.utxow(f)
+
+  /** `missingRequiredDatums` (`Alonzo/Rules/Utxow.hs:210-234`), reached from every UTXOW from
+    * Alonzo: a spent Plutus output without a usable datum hash (`UnspendableUTxONoDatumHash`), a
+    * required datum the witnesses lack (`MissingRequiredDatums`), and a witness datum that is
+    * neither required nor allowed as supplemental (`NotAllowedSupplementalDatums`: the unallowed
+    * hashes and the acceptable ones).
+    *
+    * @param spent
+    *   the outputs of the inputs the UTxO set holds, by input
     */
   private[ledger] def datumChecks(
       pp: ProtocolParams,
       tx: Tx,
-      spent: Vector[TxOut],
+      spent: Map[TxIn, TxOut],
       referenced: Vector[TxOut],
       scripts: Map[Bytes, Script]
-  ): Result[Unit] =
+  ): Test[PredicateFailure] =
     val pv = pp.protocolMajor
     val body = tx.body
     val wits = tx.witnesses
-    def checkWith(ok: Boolean, failure: => UtxowFailure): Result[Unit] =
-      if ok then Right(())
-      else Left(LedgerFailure.Rejected(body.id, PredicateFailure.utxow(failure)))
     // Spent outputs locked with a Plutus script
-    val plutusLocked = spent.zip(body.inputs).flatMap { case (out, in) =>
-      out.address.kind match
-        case Address.Kind.Shelley(_, Credential.Script(h), _, _)
-            if scripts.get(h).exists(_.kind.isPlutus) =>
-          Some((in, out.datum, scripts(h).kind))
-        case _ => None
-    }
+    val plutusLocked =
+      body.inputs.flatMap(in => spent.get(in).map(in -> _)).flatMap { case (in, out) =>
+        out.address.kind match
+          case Address.Kind.Shelley(_, Credential.Script(h), _, _)
+              if scripts.get(h).exists(_.kind.isPlutus) =>
+            Some((in, out.datum, scripts(h).kind))
+          case _ => None
+      }
     // Outputs locked by a Plutus script without a usable datum hash
     val unspendable = plutusLocked.flatMap { case (in, datum, kind) =>
       datum match
@@ -307,128 +313,150 @@ object TxChecks:
     val requiredHashes = plutusLocked.collect { case (_, Datum.Hash(h), _) => h }.toSet
     val supplemental = wits.datumHashes -- requiredHashes
     val allowed = supplementalDatumHashes(pp, body, referenced)
-    for
-      _ <- checkWith(
+    Test.all(
+      Test.failureUnless(
         unspendable.isEmpty,
-        UtxowFailure.UnspendableUTxONoDatumHash(unspendable.toSet)
-      )
-      _ <- checkWith(
+        utxow(UtxowFailure.UnspendableUTxONoDatumHash(unspendable.toSet))
+      ),
+      Test.failureUnless(
         requiredHashes.subsetOf(wits.datumHashes),
-        UtxowFailure.MissingRequiredDatums(requiredHashes -- wits.datumHashes, wits.datumHashes)
-      )
-      _ <- checkWith(
+        utxow(
+          UtxowFailure.MissingRequiredDatums(requiredHashes -- wits.datumHashes, wits.datumHashes)
+        )
+      ),
+      Test.failureUnless(
         supplemental.subsetOf(allowed),
-        UtxowFailure.NotAllowedSupplementalDatums(
-          supplemental -- allowed,
-          supplemental.intersect(allowed)
+        utxow(
+          UtxowFailure.NotAllowedSupplementalDatums(
+            supplemental -- allowed,
+            supplemental.intersect(allowed)
+          )
         )
       )
-    yield ()
+    )
 
-  /** Alonzo UTXOW: redeemers match the Plutus purposes, datums, script data hash presence.
-    *
-    * @param referenced
-    *   the resolved reference inputs, whose datum hashes a witness set may carry from Babbage on
+  /** A transaction of an era before Alonzo holds no Plutus fields: what its decoder would not have
+    * admitted is a defect.
     */
-  private[ledger] def alonzoChecks(
-      pp: ProtocolParams,
+  private[ledger] def plutusFieldsDefect(pp: ProtocolParams, tx: Tx): Option[LedgerFailure] =
+    val wits = tx.witnesses
+    Option.when(
+      pp.protocolMajor < 5 &&
+        (wits.redeemers.nonEmpty || wits.datums.nonEmpty || tx.body.scriptDataHash.nonEmpty)
+    )(LedgerFailure.Undecodable(tx.body.id, TxDefect.PlutusFieldsBeforeAlonzo))
+
+  /** `hasExactSetOfRedeemers` (`Alonzo/Rules/Utxow.hs:239-262`): the redeemers no Plutus purpose
+    * needs (`ExtraRedeemers`), then the Plutus purposes with no redeemer (`MissingRedeemers`).
+    *
+    * @param spent
+    *   the outputs of the inputs the UTxO set holds, by input
+    */
+  private[ledger] def redeemerChecks(
       tx: Tx,
-      spent: Vector[TxOut],
-      referenced: Vector[TxOut],
+      spent: Map[TxIn, TxOut],
       scripts: Map[Bytes, Script],
       plutusPurposes: Set[Pointer]
-  ): Result[Unit] =
-    val pv = pp.protocolMajor
+  ): Test[PredicateFailure] =
     val body = tx.body
-    val id = body.id
-    val wits = tx.witnesses
-    def checkWith(ok: Boolean, failure: => UtxowFailure): Result[Unit] =
-      if ok then Right(())
-      else Left(LedgerFailure.Rejected(id, PredicateFailure.utxow(failure)))
-    if pv < 5 then
-      Either.cond(
-        wits.redeemers.isEmpty && wits.datums.isEmpty && body.scriptDataHash.isEmpty,
-        (),
-        LedgerFailure.Undecodable(id, TxDefect.PlutusFieldsBeforeAlonzo)
+    val provided = tx.witnesses.redeemers.map(r => (r.tag, r.index)).toSet
+    // Plutus purposes without a redeemer, with the script each one needs
+    val unredeemed = Purpose
+      .all(body, spent)
+      .flatMap(p =>
+        p.scriptHash
+          .filter(h => scripts.get(h).exists(_.kind.isPlutus))
+          .filter(_ => !provided.contains((p.tag, BigInt(p.index))))
+          .map(p -> _)
       )
-    else
-      val provided = wits.redeemers.map(r => (r.tag, r.index)).toSet
-      // Plutus purposes without a redeemer, with the script each one needs
-      val unredeemed = Purpose
-        .all(body, body.inputs.zip(spent).toMap)
-        .flatMap(p =>
-          p.scriptHash
-            .filter(h => scripts.get(h).exists(_.kind.isPlutus))
-            .filter(_ => !provided.contains((p.tag, BigInt(p.index))))
-            .map(p -> _)
-        )
-      for
-        _ <- checkWith(unredeemed.isEmpty, UtxowFailure.MissingRedeemers(unredeemed))
-        _ <- checkWith(
-          provided.subsetOf(plutusPurposes),
-          UtxowFailure.ExtraRedeemers((provided -- plutusPurposes).toVector.sorted)
-        )
-        _ <- datumChecks(pp, tx, spent, referenced, scripts)
-        needsHash = wits.redeemers.nonEmpty || wits.datums.nonEmpty
-        languages = scriptsNeeded(body, spent).keys.flatMap(scripts.get).map(_.kind).toSet
-        _ <- checkWith(
-          body.scriptDataHash.isDefined == needsHash,
-          ScriptIntegrity.mismatch(tx, pp, languages)
-        )
-      yield ()
+    Test.all(
+      Test.failureUnless(
+        provided.subsetOf(plutusPurposes),
+        utxow(UtxowFailure.ExtraRedeemers((provided -- plutusPurposes).toVector.sorted))
+      ),
+      Test.failureUnless(unredeemed.isEmpty, utxow(UtxowFailure.MissingRedeemers(unredeemed)))
+    )
 
-  /** Babbage onward: every Plutus script in the witness set and in the outputs (the collateral
-    * return included) must deserialise for its language and the protocol version in force, which
-    * rejects a builtin the pair does not allow (`validateScriptsWellFormed`:
-    * `MalformedScriptWitnesses`, `MalformedReferenceScripts`). Alonzo has no such check; there an
-    * undecodable script that a transaction needs fails phase 2.
+  /** `checkScriptIntegrityHash` (`Alonzo/Rules/Utxow.hs:266-283`): the script integrity hash of the
+    * body is the one of the redeemers, the datums and the language views of the Plutus scripts the
+    * transaction needs (`mkScriptIntegrity`, none when it has none of them).
+    *
+    * @param spent
+    *   the outputs of the inputs the UTxO set holds, by input
     */
-  /** Babbage onward: every Plutus script in the witness set and in the outputs (the collateral
-    * return included) must deserialise for its language and the protocol version in force, which
-    * rejects a builtin the pair does not allow (`validateScriptsWellFormed`:
-    * `MalformedScriptWitnesses`, `MalformedReferenceScripts`). Alonzo has no such check; there an
-    * undecodable script that a transaction needs fails phase 2.
+  private[ledger] def integrityCheck(
+      pp: ProtocolParams,
+      tx: Tx,
+      spent: Map[TxIn, TxOut],
+      scripts: Map[Bytes, Script]
+  ): Test[PredicateFailure] =
+    val languages = scriptsNeeded(tx.body, spent).keys.flatMap(scripts.get).map(_.kind).toSet
+    Test.failureUnless(
+      ScriptIntegrity.hash(tx, pp, languages) == tx.body.scriptDataHash,
+      utxow(ScriptIntegrity.mismatch(tx, pp, languages))
+    )
+
+  /** `validateScriptsWellFormed` (`Babbage/Rules/Utxow.hs:254-276`), from Babbage: every Plutus
+    * script in the witness set (`MalformedScriptWitnesses`) and in the outputs, the collateral
+    * return included (`MalformedReferenceScripts`), must deserialise for its language and the
+    * protocol version in force, which rejects a builtin the pair does not allow. Both are reported.
+    * Alonzo has no such check; there an undecodable script that a transaction needs fails phase 2.
+    * A decoder that cannot decide is a defect.
     */
-  private[ledger] def scriptsWellFormed(pp: ProtocolParams, tx: Tx, env: Env): Result[Unit] =
+  private[ledger] def scriptsWellFormed(
+      pp: ProtocolParams,
+      tx: Tx,
+      env: Env
+  ): Result[Test[PredicateFailure]] =
     val pv = pp.protocolMajor.toInt
-    def malformed(failure: Set[Bytes] => UtxowFailure, scripts: Vector[Script]): Result[Unit] =
-      val bad = scripts.filter(_.kind.isPlutus).traverse { script =>
-        (Phase2.languageOf(script).toOption, script.plutus) match
-          case (Some(language), Some(code)) =>
-            env.decoder.validate(language, pv, code) match
-              case Right(()) => Right(Option.empty[Bytes])
-              case Left(xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Malformed(_)) =>
-                Right(Some(script.hash))
-              case Left(xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Unavailable(why)) =>
-                Left(
-                  LedgerFailure.Unavailable(
-                    tx.body.id,
-                    ScriptLocation.Phase1(script.hash),
-                    xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported(why)
+    def malformed(
+        failure: Set[Bytes] => UtxowFailure,
+        scripts: Vector[Script]
+    ): Result[Test[PredicateFailure]] =
+      scripts
+        .filter(_.kind.isPlutus)
+        .traverse { script =>
+          (Phase2.languageOf(script).toOption, script.plutus) match
+            case (Some(language), Some(code)) =>
+              env.decoder.validate(language, pv, code) match
+                case Right(()) => Right(Option.empty[Bytes])
+                case Left(xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Malformed(_)) =>
+                  Right(Some(script.hash))
+                case Left(xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Unavailable(why)) =>
+                  Left(
+                    LedgerFailure.Unavailable(
+                      tx.body.id,
+                      ScriptLocation.Phase1(script.hash),
+                      xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported(why)
+                    )
                   )
-                )
-          case _ => Right(Option.empty[Bytes])
-      }
-      bad.flatMap { hashes =>
-        val malformed = hashes.flatten.toSet
-        if malformed.isEmpty then Right(())
-        else Left(LedgerFailure.Rejected(tx.body.id, PredicateFailure.utxow(failure(malformed))))
-      }
-    if pv < 7 then Right(())
+            case _ => Right(Option.empty[Bytes])
+        }
+        .map { hashes =>
+          val bad = hashes.flatten.toSet
+          Test.failureUnless(bad.isEmpty, utxow(failure(bad)))
+        }
+    if pv < 7 then Right(Test.pass)
     else
       for
-        _ <- malformed(UtxowFailure.MalformedScriptWitnesses(_), tx.witnesses.scripts)
-        _ <- malformed(
+        witnesses <- malformed(UtxowFailure.MalformedScriptWitnesses(_), tx.witnesses.scripts)
+        references <- malformed(
           UtxowFailure.MalformedReferenceScripts(_),
           (tx.body.outputs ++ tx.body.collateralReturn.toVector).flatMap(_.referenceScript)
         )
-      yield ()
+      yield Test.all(witnesses, references)
 
-  /** Shelley/Rules/Utxow.hs:427-443 and Alonzo/TxAuxData.hs:369-373 at f649f975. Auxiliary scripts
-    * are checked even when they are not used by phase 2, for either validity flag. A backend outage
-    * supplies no validation verdict.
+  /** `validateMetadata` (`Shelley/Rules/Utxow.hs:427-443`, `Alonzo/TxAuxData.hs:369-373` at
+    * f649f975): the body's hash of the auxiliary data and the data go together, and with both the
+    * hash must match (`ConflictingMetadataHash`) and the auxiliary scripts be well formed
+    * (`InvalidMetadata`), both reported. Auxiliary data that does not decode is a defect, and so is
+    * a decoder that cannot decide.
     */
-  private[ledger] def auxiliaryChecks(pp: ProtocolParams, tx: Tx, env: Env): Result[Unit] =
+  private[ledger] def auxiliaryChecks(
+      pp: ProtocolParams,
+      tx: Tx,
+      env: Env
+  ): Result[Test[PredicateFailure]] =
+    val id = tx.body.id
     for
       decoded <- tx.auxiliary
         .traverse(bytes =>
@@ -436,10 +464,9 @@ object TxChecks:
           // (`Tx.fromBlock`): the rule reads them again for their scripts, not their form.
           AuxiliaryScripts
             .read(bytes, pp.protocolMajor)(using ByteStrings.Chunked)
-            .leftMap(error => LedgerFailure.Undecodable(tx.body.id, TxDefect.AuxiliaryData(error)))
+            .leftMap(error => LedgerFailure.Undecodable(id, TxDefect.AuxiliaryData(error)))
         )
-      _ <- auxiliaryHash(tx)
-      _ <- decoded.traverse_ { scripts =>
+      valid <- decoded.fold(Right(true): Result[Boolean]) { scripts =>
         scripts
           .traverse { script =>
             env.decoder.validate(script.language, pp.protocolMajor.toInt, script.code) match
@@ -448,71 +475,65 @@ object TxChecks:
               case Left(xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Unavailable(why)) =>
                 Left(
                   LedgerFailure.Unavailable(
-                    tx.body.id,
+                    id,
                     ScriptLocation.Phase1(script.hash),
                     xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported(why)
                   )
                 )
           }
-          .flatMap { valid =>
-            Either.cond(
-              valid.forall(identity),
-              (),
-              LedgerFailure
-                .Rejected(tx.body.id, PredicateFailure.utxow(UtxowFailure.InvalidMetadata))
-            )
-          }
+          .map(_.forall(identity))
       }
-    yield ()
-
-  private def auxiliaryHash(tx: Tx): Result[Unit] =
-    val id = tx.body.id
-    (tx.body.auxDataHash, tx.auxiliary) match
-      case (None, None) => Right(())
+    yield (tx.body.auxDataHash, tx.auxiliary) match
+      case (None, None)    => Test.pass
+      case (Some(h), None) => Test.failureUnless(false, utxow(UtxowFailure.MissingTxMetadata(h)))
+      case (None, Some(aux)) =>
+        Test.failureUnless(
+          false,
+          utxow(UtxowFailure.MissingTxBodyMetadataHash(Blake2b.hash256.hash(aux)))
+        )
       case (Some(h), Some(aux)) =>
         val computed = Blake2b.hash256.hash(aux)
-        Either.cond(
-          computed == h,
-          (),
-          LedgerFailure.Rejected(
-            id,
-            PredicateFailure.utxow(UtxowFailure.ConflictingMetadataHash(Mismatch(h, computed)))
-          )
-        )
-      case (Some(h), None) =>
-        Left(
-          LedgerFailure.Rejected(id, PredicateFailure.utxow(UtxowFailure.MissingTxMetadata(h)))
-        )
-      case (None, Some(aux)) =>
-        Left(
-          LedgerFailure.Rejected(
-            id,
-            PredicateFailure.utxow(
-              UtxowFailure.MissingTxBodyMetadataHash(Blake2b.hash256.hash(aux))
-            )
-          )
+        Test.all(
+          Test.failureUnless(
+            computed == h,
+            utxow(UtxowFailure.ConflictingMetadataHash(Mismatch(h, computed)))
+          ),
+          Test.failureUnless(valid, utxow(UtxowFailure.InvalidMetadata))
         )
 
-  /** Key hashes that must sign (`witsVKeyNeeded`) and the address roots that need a bootstrap
-    * witness.
+  /** The hashes a transaction's witnesses provide (`witsFromTxWitnesses`): the hashes of the vkey
+    * witnesses and the address roots of the bootstrap witnesses form one set, and a Byron input's
+    * `bootstrapKeyHash` is one of the needed hashes. A vkey witness whose key hashes to the root
+    * therefore also spends the Byron output.
     */
-  /** Key hashes that must sign (`witsVKeyNeeded`) and the address roots that need a bootstrap
-    * witness. Reads of the state: the genesis delegations (empty from Conway, which has no update
-    * proposals).
+  private[ledger] def providedKeyHashes(tx: Tx, vkeyHashes: Vector[Bytes]): Set[Bytes] =
+    vkeyHashes.toSet ++ tx.witnesses.bootstrap.map(_.addressRoot)
+
+  /** `validateVerifiedWits` (`Shelley/Rules/Utxow.hs:380-397`): the vkey and bootstrap witnesses
+    * whose signature of the body does not verify.
     */
-  private[ledger] def witnessChecks(
+  private[ledger] def verifiedWits(tx: Tx, verdicts: Verdicts): Test[PredicateFailure] =
+    val id = tx.body.id
+    val wits = tx.witnesses
+    val invalid = wits.vkeys.collect {
+      case (vkey, signature) if !verdicts.witness(vkey, signature, id) => vkey
+    } ++ wits.bootstrap.collect {
+      case w if !verdicts.witness(w.vkey, w.signature, id) => w.vkey
+    }
+    Test.failureUnless(invalid.isEmpty, utxow(UtxowFailure.InvalidWitnesses(invalid)))
+
+  /** `validateNeededWitnesses` (`Shelley/Rules/Utxow.hs:399-412`): the key hashes that must sign
+    * (`witsVKeyNeeded`) and that no witness provides. Reads of the state: the genesis delegations
+    * (empty from Conway, which has no update proposals).
+    */
+  private[ledger] def neededWitnesses(
       genDelegs: Map[Bytes, GenDelegPair],
       tx: Tx,
       spent: Vector[TxOut],
       collateral: Collateral,
-      scripts: Map[Bytes, Script],
-      needed: Map[Bytes, Set[Pointer]],
-      vkeyHashes: Vector[Bytes],
-      verdicts: xyz.kd5ujc.scarab.ledger.Verdicts
-  ): Result[Unit] =
+      provided: Set[Bytes]
+  ): Test[PredicateFailure] =
     val body = tx.body
-    val id = body.id
-    val wits = tx.witnesses
     val locked = spent ++ collateral.outputs
     val inputKeys = locked.flatMap(_.address.kind match
       case Address.Kind.Shelley(_, Credential.Key(h), _, _) => Some(h)
@@ -550,49 +571,32 @@ object TxChecks:
     )
     val required =
       (inputKeys ++ bootRoots ++ withdrawalKeys ++ certKeys ++ voterKeys ++ updateKeys ++ body.requiredSigners).toSet
-    // `witsFromTxWitnesses`: the hashes of the vkey witnesses and the address roots of the bootstrap
-    // witnesses form one set, and a Byron input's `bootstrapKeyHash` is one of the needed hashes.
-    // A vkey witness whose key hashes to the root therefore also spends the Byron output.
-    val provided = vkeyHashes.toSet ++ wits.bootstrap.map(_.addressRoot)
-    val invalidKeys = wits.vkeys.collect {
-      case (vkey, signature) if !verdicts.witness(vkey, signature, id) => vkey
-    } ++ wits.bootstrap.collect {
-      case w if !verdicts.witness(w.vkey, w.signature, id) => w.vkey
-    }
-    for
-      _ <- Either.cond(
-        invalidKeys.isEmpty,
-        (),
-        LedgerFailure.Rejected(
-          id,
-          PredicateFailure.utxow(UtxowFailure.InvalidWitnesses(invalidKeys))
-        )
-      )
-      missing = required -- provided
-      _ <- Either.cond(
-        missing.isEmpty,
-        (),
-        LedgerFailure.Rejected(
-          id,
-          PredicateFailure.utxow(UtxowFailure.MissingVKeyWitnesses(missing))
-        )
-      )
-      // Native scripts (phase 1): the ones the transaction needs must hold. They see the key hashes
-      // of the vkey witnesses only (`validateTimelock`, `Allegra/Tx.hs`, and `validateMultiSig`,
-      // `Shelley/Scripts.hs`, evaluate over `addrTxWitsL`; `validateFailedNativeScripts`,
-      // `Shelley/Rules/Utxow.hs`, f649f975): a bootstrap witness's address root is not a signer.
-      failing = needed.keys.toSet.filter { h =>
-        scripts(h).native.exists(s => !s.eval(vkeyHashes.toSet, body.validityStart, body.ttl))
-      }
-      _ <- Either.cond(
-        failing.isEmpty,
-        (),
-        LedgerFailure.Rejected(
-          id,
-          PredicateFailure.utxow(UtxowFailure.ScriptWitnessNotValidating(failing))
-        )
-      )
-    yield ()
+    val missing = required -- provided
+    Test.failureUnless(missing.isEmpty, utxow(UtxowFailure.MissingVKeyWitnesses(missing)))
+
+  /** The native scripts that do not hold (`validateFailedNativeScripts`,
+    * `Shelley/Rules/Utxow.hs:365-373`: every native script provided; from Babbage
+    * `validateFailedBabbageScripts`, `Babbage/Rules/Utxow.hs:216-233`: only those needed).
+    *
+    * @param signers
+    *   the key hashes of the vkey witnesses only: `validateTimelock` (`Allegra/Tx.hs`) and
+    *   `validateMultiSig` (`Shelley/Scripts.hs`) evaluate over `addrTxWitsL` (cardano-ledger
+    *   f649f975), so a bootstrap witness's address root is no signer of a script.
+    */
+  private[ledger] def failedNativeScripts(
+      tx: Tx,
+      scripts: Map[Bytes, Script],
+      needed: Option[Set[Bytes]],
+      signers: Set[Bytes]
+  ): Test[PredicateFailure] =
+    val body = tx.body
+    val failing = scripts.collect {
+      case (h, script)
+          if needed.forall(_.contains(h)) &&
+            script.native.exists(s => !s.eval(signers, body.validityStart, body.ttl)) =>
+        h
+    }.toSet
+    Test.failureUnless(failing.isEmpty, utxow(UtxowFailure.ScriptWitnessNotValidating(failing)))
 
 /** Reference scripts: the limits and the fee of Conway's reference-script pricing. */
 object RefScripts:

@@ -142,7 +142,9 @@ class BoundaryTransactionsSuite extends FunSuite:
         c.tx.witnesses.scripts.flatMap(_.plutus),
         Vector(bytes(field[String](r.boundary, "script")))
       )
-      val phase1 = TxChecks.scriptsWellFormed(c.params, c.tx, TestLedger.env)
+      val phase1 = TxChecks
+        .scriptsWellFormed(c.params, c.tx, TestLedger.env)
+        .flatMap(TestLedger.verdict(c.tx.body.id, _))
       r.stage match
         case Stage.Decode => assertEquals(phase1, Left(malformed(c)))
         case stage =>

@@ -33,8 +33,8 @@ class Phase2UnavailableSuite extends FunSuite:
         evaluator = evaluator
       ),
       scripts,
-      tx.body.inputs.flatMap(c.spent.get),
-      tx.body.referenceInputs.flatMap(c.references.get),
+      tx.body.inputs.flatMap(in => c.spent.get(in).map(in -> _)).toMap,
+      tx.body.referenceInputs.flatMap(in => c.references.get(in).map(in -> _)).toMap,
       Set(0 -> BigInt(0)),
       evaluate = true
     )
@@ -125,7 +125,9 @@ class Phase2UnavailableSuite extends FunSuite:
         PredicateFailure.utxow(UtxowFailure.MalformedScriptWitnesses(Set(script.hash)))
       )
       assertEquals(
-        TxChecks.scriptsWellFormed(c.params, tx, TxEnv(c.slot, 189, 0, decoder = decoder)),
+        TxChecks
+          .scriptsWellFormed(c.params, tx, TxEnv(c.slot, 189, 0, decoder = decoder))
+          .flatMap(TestLedger.verdict(tx.body.id, _)),
         Left(expected)
       )
   }
