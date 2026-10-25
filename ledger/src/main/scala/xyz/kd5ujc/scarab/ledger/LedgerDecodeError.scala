@@ -21,6 +21,9 @@ enum LedgerDecodeError extends DomainError:
   case Empty(site: DecodeSite)
   case MissingField(site: DecodeSite, field: DecodeSite)
   case UnknownFields(site: DecodeSite, fields: Set[Int])
+
+  /** A key of a sparse record that names no field of it (`invalidKey`, `Coders.hs`). */
+  case UnknownKey(site: DecodeSite, key: BigInt)
   case DuplicateKey(site: DecodeSite)
   case UnsupportedCostModelLanguage(language: Int)
   case CostModelLength(language: Int, expected: Int, actual: Int)

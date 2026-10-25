@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage.haskell.state
 
+import cats.syntax.all.*
 import munit.ScalaCheckSuite
 import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Prop.forAll
@@ -511,6 +512,33 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     assert(bytes.hex.contains("a20e82070011199c40"), bytes.hex)
     val alonzo = Params.codec(ShelleyBasedEra.SAlonzo)
     assertEquals(readOk(alonzo, alonzo.encodeUnchecked(future)), future)
+  }
+
+  test("a stored Conway parameter change reads to its typed update and writes back as it came") {
+    // The writer before the typed update wrote the same map: each key once, in key order, and each
+    // value in its original encoding (here 44 with a 4-byte head and 2/4 not in lowest terms).
+    val stored = hex("8400 f6 a2 00 1a0000002c 09 d81e820204 f6")
+    val codec = govAction(using version(10))
+    val action = readOk(codec, stored)
+    action match
+      case xyz.kd5ujc.scarab.ledger.GovAction.ParameterChange(None, update, None) =>
+        assertEquals(update.keys, Set(0, 9))
+        assertEquals(
+          update.collectFirst { case xyz.kd5ujc.scarab.ledger.ConwayParam.A0(r) => r },
+          Some(Rational(1, 2))
+        )
+      case other => fail(s"not a parameter change: $other")
+    assertEquals(codec.encodeUnchecked(action), stored)
+  }
+
+  test("a stored Conway parameter change with a key that is not a Conway field is refused") {
+    // A state written before the update was typed could hold key 12 (d); the reference cannot
+    // represent it, so reading such a state fails with the ledger's typed error.
+    val stored = hex("8400 f6 a1 0c d81e820102 f6")
+    read(govAction(using version(10)), stored).map(_ => ()).leftMap(_.kind) match
+      case Left(Kind.Domain(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.UnknownKey(_, key))) =>
+        assertEquals(key, BigInt(12))
+      case other => fail(s"expected the unknown key 12: $other")
   }
 
   test("a reward set cannot hold two rewards of one type and pool, as the reference's cannot") {

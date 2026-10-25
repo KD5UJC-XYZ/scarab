@@ -186,7 +186,7 @@ class PreviewConwayRulesSuite extends FunSuite:
               GovAction
                 .ParameterChange(
                   None,
-                  ParamUpdate(Map(16 -> xyz.kd5ujc.scarab.codec.Bytes(Vector(0x01)))),
+                  xyz.kd5ujc.scarab.ledger.TestLedger.conwayUpdate(16 -> 1),
                   None
                 )
             ),

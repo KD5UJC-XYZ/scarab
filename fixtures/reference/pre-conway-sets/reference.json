@@ -488,5 +488,368 @@
    "accepted": false,
    "failure": "DecoderErrorDeserialiseFailure \"Babbage TxWits\" (DeserialiseFailure 2 \"expected list len or indef\")"
   }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley update: every field of the era",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley update: empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley update: indefinite map",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley update: key 17 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 126 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 17\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley update: key 25 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 127 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 25\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley update: key 2^32 is unknown",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 131 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 4294967296\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley update: repeated key, same value",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 126 \"An error occured while decoding Duplicate key:.\\nError: 0 while decoding type PParamsUpdate ShelleyEra\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley update: repeated key, other value, written wide",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 133 \"An error occured while decoding Duplicate key:.\\nError: 16 while decoding type PParamsUpdate ShelleyEra\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra update: every field of the era",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra update: empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra update: indefinite map",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra update: key 17 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 122 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 17\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra update: key 25 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 123 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 25\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra update: key 2^32 is unknown",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 127 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 4294967296\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra update: repeated key, same value",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 122 \"An error occured while decoding Duplicate key:.\\nError: 0 while decoding type PParamsUpdate AllegraEra\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra update: repeated key, other value, written wide",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 129 \"An error occured while decoding Duplicate key:.\\nError: 16 while decoding type PParamsUpdate AllegraEra\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary update: every field of the era",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary update: empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary update: indefinite map",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary update: key 18 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 122 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 18\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary update: key 25 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 123 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 25\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary update: key 2^32 is unknown",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 127 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 4294967296\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary update: repeated key, same value",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 122 \"An error occured while decoding Duplicate key:.\\nError: 0 while decoding type PParamsUpdate MaryEra\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary update: repeated key, other value, written wide",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 129 \"An error occured while decoding Duplicate key:.\\nError: 16 while decoding type PParamsUpdate MaryEra\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo update: every field of the era",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo update: empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo update: indefinite map",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo update: key 15 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 122 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 15\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo update: key 25 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 123 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 25\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo update: key 2^32 is unknown",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 127 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 4294967296\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo update: repeated key, same value",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 122 \"An error occured while decoding Duplicate key:.\\nError: 0 while decoding type PParamsUpdate AlonzoEra\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo update: repeated key, other value, written wide",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 129 \"An error occured while decoding Duplicate key:.\\nError: 16 while decoding type PParamsUpdate AlonzoEra\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage update: every field of the era",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage update: empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage update: indefinite map",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage update: key 12 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 122 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 12\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage update: key 13 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 122 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 13\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage update: key 15 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 122 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 15\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage update: key 25 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 123 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 25\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage update: key 2^32 is unknown",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 127 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 4294967296\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage update: repeated key, same value",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 122 \"An error occured while decoding Duplicate key:.\\nError: 0 while decoding type PParamsUpdate BabbageEra\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage update: repeated key, other value, written wide",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 129 \"An error occured while decoding Duplicate key:.\\nError: 16 while decoding type PParamsUpdate BabbageEra\")"
+  }
  }
 ]

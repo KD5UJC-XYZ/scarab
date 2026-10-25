@@ -7,17 +7,27 @@ object GovChecks:
     case _: GovAction.ParameterChange | _: GovAction.HardFork | GovAction.Info => true
     case _                                                                     => false
 
-  /** `ppuWellFormed`: no zero where zero is meaningless, and a non-empty update. */
-  private[ledger] def wellFormed(pp: ProtocolParams, u: ParamUpdate): Boolean =
-    def value(key: Int): Option[BigInt] =
-      u.fields
-        .get(key)
-        .flatMap(raw => CborRead.decode(raw).toOption)
-        .flatMap(n => CborRead.uint(n, DecodeField.Value).toOption)
-    val nonZero = Vector(2, 3, 4, 22, 23, 28, 29, 6, 30, 31) ++
-      (if pp.protocolMajor == 9 then Vector.empty else Vector(17)) ++
-      (if pp.protocolMajor >= 11 then Vector(8) else Vector.empty)
-    u.fields.nonEmpty && nonZero.forall(k => value(k).forall(_ != 0))
+  /** `ppuWellFormed` (`Conway/PParams.hs:935-963`, f649f975): no zero where zero is meaningless,
+    * the UTxO cost per byte only after the bootstrap phase, `nOpt` from protocol version 11, and a
+    * non-empty update.
+    */
+  private[ledger] def wellFormed(pp: ProtocolParams, u: ConwayParamUpdate): Boolean =
+    import ConwayParam.*
+    def nonZero(f: ConwayParam): Boolean = f match
+      case MaxBBSize(v)              => v.value != 0
+      case MaxTxSize(v)              => v.value != 0
+      case MaxBHSize(v)              => v.value != 0
+      case MaxValSize(v)             => v.value != 0
+      case CollateralPercentage(v)   => v.value != 0
+      case CommitteeMaxTermLength(v) => v.value != 0
+      case GovActionLifetime(v)      => v.value != 0
+      case PoolDeposit(v)            => v.value != 0
+      case GovActionDeposit(v)       => v.value != 0
+      case DRepDeposit(v)            => v.value != 0
+      case CoinsPerUTxOByte(v)       => pp.protocolMajor == 9 || v.value != 0
+      case NOpt(v)                   => pp.protocolMajor < 11 || v.value != 0
+      case _                         => true
+    !u.isEmpty && u.params.forall(nonZero)
 
   private[ledger] def canFollow(prev: (BigInt, BigInt), next: (BigInt, BigInt)): Boolean =
     next == (prev._1 + 1, BigInt(0)) || next == (prev._1, prev._2 + 1)

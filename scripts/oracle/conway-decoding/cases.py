@@ -785,6 +785,131 @@ conway_body("update (key 6): not a field of Conway", body({6: array([cmap([]), u
 conway_body("unknown key 10", body({10: uint(0)}), "not a valid key", "UnknownFields")
 conway_body("unknown key 12", body({12: uint(0)}), "not a valid key", "UnknownFields")
 
+# --- parameter updates: the Conway `PParamsUpdate` key set and value types -------------------
+# `DecCBOR (PParamsUpdate era)` below decoder version 12 is `SparseKeyed` over the update keys of
+# `eraPParams` (`Core/PParams.hs:257-293`): a key outside the Conway set (12-15, 34 and up) is
+# `invalidKey`, a repeated key is `duplicateKey` before its value is read (`applyField`,
+# `Coders.hs:562-570`), and each value is read at the type of its field (`Conway/PParams.hs:643-709`).
+
+
+def update_case(name, fields, rule=None, expect=None, indef=False):
+    conway_body(name, proposals(proposal(param_change(fields, indef=indef))), rule, expect)
+
+
+EVERY_CONWAY_FIELD = [
+    (uint(0), uint(44)),
+    (uint(1), uint(155_381)),
+    (uint(2), uint(90_112)),
+    (uint(3), uint(16_384)),
+    (uint(4), uint(1_100)),
+    (uint(5), uint(2_000_000)),
+    (uint(6), uint(500_000_000)),
+    (uint(7), uint(18)),
+    (uint(8), uint(500)),
+    (uint(9), ratio(uint(3), uint(10))),
+    (uint(10), ratio(uint(3), uint(1_000))),
+    (uint(11), ratio(uint(1), uint(5))),
+    (uint(16), uint(170_000_000)),
+    (uint(17), uint(4_310)),
+    (uint(18), cmap(COST_MODEL)),
+    (uint(19), PRICES),
+    (uint(20), array([uint(14_000_000), uint(10_000_000_000)])),
+    (uint(21), array([uint(62_000_000), uint(20_000_000_000)])),
+    (uint(22), uint(5_000)),
+    (uint(23), uint(150)),
+    (uint(24), uint(3)),
+    (uint(25), POOL_THRESHOLDS),
+    (uint(26), DREP_THRESHOLDS),
+    (uint(27), uint(7)),
+    (uint(28), uint(146)),
+    (uint(29), uint(6)),
+    (uint(30), uint(100_000_000_000)),
+    (uint(31), uint(500_000_000)),
+    (uint(32), uint(20)),
+    (uint(33), ratio(uint(15), uint(1))),
+]
+update_case("parameter update: every Conway field", EVERY_CONWAY_FIELD)
+update_case("parameter update: empty", [])
+update_case("parameter update: indefinite map", FIELDS, indef=True)
+update_case("parameter update: keys and values with wide arguments", [(uint(4, 8), uint(65_535, 4))])
+update_case("parameter update: Word16 maximum", [(uint(27), uint(65_535))])
+update_case("parameter update: Word32 maximum", [(uint(2), uint(2**32 - 1))])
+update_case("parameter update: Word64 maximum", [(uint(1), uint(2**64 - 1))])
+update_case("parameter update: execution units at the Int64 maximum", [(uint(20), array([uint(2**63 - 1), uint(0)]))])
+UNKNOWN_KEY_RULE = "not a valid key"
+DUP_KEY_RULE = "Duplicate key:"
+WORD_RULE = "expected word"
+EX_UNITS_RULE = "values must not exceed maxBound :: Int64"
+TAG_RULE = "Expected tag"
+SIZE_RULE = "Size mismatch when decoding Record"
+MAP_RULE = "expected map len or indef"
+update_case("parameter update: key 12 (d) is not a Conway field", [(uint(12), HALF)], UNKNOWN_KEY_RULE, "UnknownKey")
+update_case("parameter update: key 13 (extra entropy) is not a Conway field", [(uint(13), array([uint(0)]))], UNKNOWN_KEY_RULE, "UnknownKey")
+update_case(
+    "parameter update: key 14 (protocol version) is not a Conway field", [(uint(14), array([uint(11), uint(0)]))], UNKNOWN_KEY_RULE, "UnknownKey"
+)
+update_case("parameter update: key 15 (min UTxO value) is not a Conway field", [(uint(15), uint(1_000_000))], UNKNOWN_KEY_RULE, "UnknownKey")
+update_case("parameter update: key 34 is unknown", [(uint(34), uint(0))], UNKNOWN_KEY_RULE, "UnknownKey")
+update_case("parameter update: key 2^32 is unknown", [(uint(2**32), uint(44))], UNKNOWN_KEY_RULE, "UnknownKey")
+update_case("parameter update: key 2^32 + 16 is unknown", [(uint(2**32 + 16), uint(1))], UNKNOWN_KEY_RULE, "UnknownKey")
+update_case("parameter update: unknown key after a known one", [(uint(0), uint(44)), (uint(12), HALF)], UNKNOWN_KEY_RULE, "UnknownKey")
+update_case("parameter update: a text key", [(text("0"), uint(44))], WORD_RULE, "Expected")
+update_case("parameter update: repeated key, same value", [(uint(0), uint(44)), (uint(0), uint(44))], DUP_KEY_RULE, "DuplicateKey")
+update_case("parameter update: repeated key, other value", [(uint(16), uint(1)), (uint(16), uint(2))], DUP_KEY_RULE, "DuplicateKey")
+update_case(
+    "parameter update: repeated key, the second value of a wrong type",
+    [(uint(0), uint(44)), (uint(0), text("x"))],
+    DUP_KEY_RULE,
+    "DuplicateKey",
+)
+update_case(
+    "parameter update: repeated key written wide", [(uint(0), uint(44)), (uint(0, 8), uint(44))], DUP_KEY_RULE, "DuplicateKey"
+)
+update_case("parameter update: Word16 field above its maximum", [(uint(4), uint(65_536))], WORD_RULE, "NumberOutOfRange")
+update_case("parameter update: Word16 committee size above its maximum", [(uint(27), uint(65_536))], WORD_RULE, "NumberOutOfRange")
+update_case("parameter update: Word32 field above its maximum", [(uint(2), uint(2**32))], WORD_RULE, "NumberOutOfRange")
+update_case("parameter update: epoch interval above its maximum", [(uint(29), uint(2**32))], WORD_RULE, "NumberOutOfRange")
+update_case("parameter update: coin as a bignum", [(uint(1), bignum(2**64))], WORD_RULE, "Expected")
+update_case("parameter update: negative coin", [(uint(30), nint(-1))], WORD_RULE, "Expected")
+update_case("parameter update: text where a coin is read", [(uint(0), text("44"))], WORD_RULE, "Expected")
+update_case("parameter update: rational where a coin is read", [(uint(16), HALF)], WORD_RULE, "Expected")
+update_case("parameter update: integer where a rational is read", [(uint(10), uint(1))], TAG_RULE, "ExpectedTag")
+update_case("parameter update: rho above one", [(uint(10), ratio(uint(3), uint(2)))], "BoundedRatio", "RationalOutOfBounds")
+update_case(
+    "parameter update: execution units above the Int64 maximum",
+    [(uint(21), array([uint(2**63), uint(1)]))],
+    EX_UNITS_RULE,
+    "NumberOutOfRange",
+)
+update_case("parameter update: execution units of three", [(uint(20), array([uint(1), uint(2), uint(3)]))], SIZE_RULE, "ArrayLength")
+update_case("parameter update: execution units as a map", [(uint(20), cmap([(uint(0), uint(1))]))], "expected list len or indef", "Expected")
+update_case("parameter update: prices of three", [(uint(19), array([HALF, HALF, HALF]))], SIZE_RULE, "ArrayLength")
+update_case(
+    "parameter update: pool voting thresholds of six",
+    [(uint(25), array([ratio(uint(i), uint(10)) for i in range(1, 7)]))],
+    SIZE_RULE,
+    "ArrayLength",
+)
+update_case(
+    "parameter update: DRep voting thresholds of eleven",
+    [(uint(26), array([ratio(uint(i), uint(20)) for i in range(1, 12)]))],
+    SIZE_RULE,
+    "ArrayLength",
+)
+update_case(
+    "parameter update: a pool voting threshold above one",
+    [(uint(25), array([ratio(uint(i), uint(10)) for i in (1, 2, 3, 4, 11)]))],
+    "BoundedRatio",
+    "RationalOutOfBounds",
+)
+update_case(
+    "parameter update: cost models with a repeated language",
+    [(uint(18), cmap([(uint(0), array([uint(1)])), (uint(0), array([uint(2)]))]))],
+    DUP_RULE,
+    "DuplicateKey",
+)
+update_case("parameter update: cost models as a list", [(uint(18), array([array([uint(1)])]))], MAP_RULE, "Expected")
+
 # --- bodies: Babbage keeps what Conway refuses (decoder version 7) ---------------------------
 case("babbage body baseline", "babbage", "body", body())
 case("babbage inputs: duplicate input is collapsed", "babbage", "body", body(inputs=sset([txin(1), txin(1)])))

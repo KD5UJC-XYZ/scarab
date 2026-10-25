@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import scala.annotation.unused
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.plutus.{PlutusData, PlutusLanguage}
 
 import PlutusData.{B, I}
@@ -309,65 +309,57 @@ object ScriptContexts:
   private def policy(h: Option[Bytes]): PlutusData = PlutusData.maybe(h.map(B(_)))
 
   /** `ChangedParameters`: the update as a map from parameter index to the value in Plutus data, in
-    * index order (the ledger's `ToPlutusData PParamsUpdate`). A rational is read in its field's
-    * interval: `UnitInterval` for rho, tau and the voting thresholds, `NonNegativeInterval` for a0,
-    * the prices and the reference-script fee.
+    * index order (the ledger's `ToPlutusData PParamsUpdate`, `Conway/PParams.hs:200-206`). A
+    * rational is the list of its numerator and denominator, a pair (prices, execution units) and
+    * the voting thresholds a list, and the cost models a map by language in language order.
     */
-  def changedParameters(update: ParamUpdate): Result[PlutusData] =
-    def rational(bound: CborRead.Bound)(n: xyz.kd5ujc.scarab.codec.Node): Result[PlutusData] =
-      CborRead
-        .rational(n, DecodeField.Rational, bound)
-        .bimap(
-          _ => TranslationError.Undecodable(DataSite.ParameterUpdate),
-          r => PlutusData.List(Vector(I(r.numerator), I(r.denominator)))
-        )
-    def uint(n: xyz.kd5ujc.scarab.codec.Node): Result[PlutusData] =
-      CborRead
-        .int(n, DecodeField.Integer)
-        .bimap(_ => TranslationError.Undecodable(DataSite.ParameterUpdate), I(_))
-    def list(
-        f: xyz.kd5ujc.scarab.codec.Node => Result[PlutusData]
-    )(n: xyz.kd5ujc.scarab.codec.Node): Result[PlutusData] =
-      CborRead
-        .array(n, DecodeField.List)
-        .leftMap(_ => TranslationError.Undecodable(DataSite.ParameterUpdate))
-        .flatMap(_.traverse(f))
-        .map(PlutusData.List(_))
-    def value(key: Int, n: xyz.kd5ujc.scarab.codec.Node): Result[PlutusData] = key match
-      case 9 | 33  => rational(CborRead.Bound.NonNegative)(n)
-      case 10 | 11 => rational(CborRead.Bound.Unit)(n)
-      case 19      => list(rational(CborRead.Bound.NonNegative))(n)
-      case 20 | 21 => list(uint)(n)
-      case 25 | 26 => list(rational(CborRead.Bound.Unit))(n)
-      case 18 =>
-        CborRead
-          .map(n, DecodeField.CostModels)
-          .leftMap(_ => TranslationError.Undecodable(DataSite.ParameterUpdate))
-          .flatMap(_.traverse { case (k, v) =>
-            (uint(k), list(uint)(v)).tupled
-          })
-          .map(es =>
-            PlutusData.Map(es.sortBy(_._1 match
-              case I(v) => v
-              case _    => BigInt(0)))
-          )
-      case _ => uint(n)
-    update.fields.toVector
-      .sortBy(_._1)
-      .traverse { case (key, raw) =>
-        for
-          node <- xyz.kd5ujc.scarab.codec.Cbor
-            .decode(raw)
-            .leftMap(_ => TranslationError.Undecodable(DataSite.ParameterUpdate))
-          v <- value(key, node)
-        yield (I(key): PlutusData) -> v
-      }
-      .map(PlutusData.Map(_))
+  def changedParameters(update: ConwayParamUpdate): PlutusData =
+    import ConwayParam.*
+    def rational(r: Rational): PlutusData =
+      PlutusData.List(Vector(I(r.numerator), I(r.denominator)))
+    def rationals(rs: Vector[Rational]): PlutusData = PlutusData.List(rs.map(rational))
+    def exUnits(e: xyz.kd5ujc.scarab.plutus.ExUnits): PlutusData =
+      PlutusData.List(Vector(I(e.mem), I(e.steps)))
+    def value(f: ConwayParam): PlutusData = f match
+      case TxFeePerByte(v)     => I(v.value)
+      case TxFeeFixed(v)       => I(v.value)
+      case MaxBBSize(v)        => I(v.value)
+      case MaxTxSize(v)        => I(v.value)
+      case MaxBHSize(v)        => I(v.value)
+      case KeyDeposit(v)       => I(v.value)
+      case PoolDeposit(v)      => I(v.value)
+      case EMax(v)             => I(v.value)
+      case NOpt(v)             => I(v.value)
+      case A0(r)               => rational(r)
+      case Rho(r)              => rational(r)
+      case Tau(r)              => rational(r)
+      case MinPoolCost(v)      => I(v.value)
+      case CoinsPerUTxOByte(v) => I(v.value)
+      case CostModels(models) =>
+        PlutusData.Map(models.toVector.sortBy(_._1).map { case (language, costs) =>
+          (I(BigInt(language)): PlutusData) -> (PlutusData.List(costs.map(I(_))): PlutusData)
+        })
+      case Prices(m, s)                  => rationals(Vector(m, s))
+      case MaxTxExUnits(e)               => exUnits(e)
+      case MaxBlockExUnits(e)            => exUnits(e)
+      case MaxValSize(v)                 => I(v.value)
+      case CollateralPercentage(v)       => I(v.value)
+      case MaxCollateralInputs(v)        => I(v.value)
+      case PoolThresholds(t)             => rationals(t.toVector)
+      case DRepThresholds(t)             => rationals(t.toVector)
+      case CommitteeMinSize(v)           => I(v.value)
+      case CommitteeMaxTermLength(v)     => I(v.value)
+      case GovActionLifetime(v)          => I(v.value)
+      case GovActionDeposit(v)           => I(v.value)
+      case DRepDeposit(v)                => I(v.value)
+      case DRepActivity(v)               => I(v.value)
+      case MinFeeRefScriptCostPerByte(r) => rational(r)
+    PlutusData.Map(update.params.map(f => (I(BigInt(f.key)): PlutusData) -> value(f)))
 
   private def proposalData(p: Proposal): Result[PlutusData] =
     val action: Result[PlutusData] = p.action match
       case GovAction.ParameterChange(prev, update, script) =>
-        changedParameters(update).map(c => constr(0, previous(prev), c, policy(script)))
+        Right(constr(0, previous(prev), changedParameters(update), policy(script)))
       case GovAction.HardFork(prev, major, minor) =>
         Right(constr(1, previous(prev), constr(0, I(major), I(minor))))
       case GovAction.TreasuryWithdrawals(withdrawals, script) =>

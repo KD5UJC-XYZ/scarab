@@ -121,8 +121,15 @@ class RationalFieldsSuite extends FunSuite:
     )
   }
 
-  private def translated(fields: (Int, String)*) = ScriptContexts.changedParameters(update(fields*))
-  private val undecodable = Left(TranslationError.Undecodable(DataSite.ParameterUpdate))
+  private def conwayUpdate(fields: (Int, String)*) =
+    ConwayParamUpdate.fromEncoded(fields.toVector.map((k, v) => BigInt(k) -> hex(v)))
+
+  private def translated(fields: (Int, String)*) =
+    conwayUpdate(fields*).map(ScriptContexts.changedParameters)
+
+  private def outOfBounds(result: Either[LedgerDecodeError, PlutusData]): Boolean = result match
+    case Left(LedgerDecodeError.RationalOutOfBounds(_, _, _)) => true
+    case _                                                    => false
 
   test("ScriptContexts.changedParameters translates a rational in its field's interval") {
     for form <- Seq(half, halfSigned, halfBig) do
@@ -134,18 +141,18 @@ class RationalFieldsSuite extends FunSuite:
     assert(translated(9 -> threeHalvesSigned, 33 -> threeHalves).isRight)
   }
 
-  test("ScriptContexts.changedParameters refuses rho, tau and the thresholds above one") {
+  test("a Conway update refuses rho, tau and the thresholds above one when it is decoded") {
     for key <- Seq(10, 11) do
-      assertEquals(translated(key -> threeHalves), undecodable)
-      assertEquals(translated(key -> threeHalvesSigned), undecodable)
-    assertEquals(translated(25 -> array(half, threeHalves)), undecodable)
-    assertEquals(translated(26 -> array(halfSigned, threeHalvesSigned)), undecodable)
-    assert(translated(25 -> array(half, halfBig)).isRight)
+      assert(outOfBounds(translated(key -> threeHalves)))
+      assert(outOfBounds(translated(key -> threeHalvesSigned)))
+    assert(outOfBounds(translated(25 -> array(half, half, half, half, threeHalves))))
+    assert(outOfBounds(translated(26 -> array(Seq.fill(9)(halfSigned) :+ threeHalvesSigned*))))
+    assert(translated(25 -> array(half, halfBig, half, half, half)).isRight)
   }
 
-  test("ScriptContexts.changedParameters refuses a rational the reference cannot decode") {
+  test("a Conway update refuses a rational the reference cannot decode") {
     for form <- Seq(minusHalf, tooBig, zeroDenominator, indefiniteBignum, widenedTag) do
-      assertEquals(translated(9 -> form), undecodable, form)
+      assert(translated(9 -> form).isLeft, form)
   }
 
   test("the test's bignum helper writes the heads cborg reads") {

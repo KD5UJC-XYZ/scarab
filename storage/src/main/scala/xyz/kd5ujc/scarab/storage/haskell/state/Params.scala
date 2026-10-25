@@ -6,9 +6,9 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Value}
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.{
+  ConwayParamUpdate,
   DRepVotingThresholds,
   Nonce,
-  ParamUpdate,
   PoolVotingThresholds,
   ProtocolParams
 }
@@ -480,18 +480,22 @@ object Params:
     * values keep their original parameter bytes; the reference's diagnostic `PParamsUpdate`
     * re-encodes its typed fields (`Conway/PParams.hs`, `conwayPParamsHKDPairs`).
     */
-  def canonicalConwayUpdate(update: ParamUpdate): Decoded[ParamUpdate] =
+  def canonicalConwayUpdate(update: ConwayParamUpdate): Decoded[ConwayParamUpdate] =
     val fields = conwayMapFields.filterNot(_._1 == 14).toMap
-    update.fields.toVector
-      .sortBy(_._1)
+    update.encodings
       .traverse { case (key, raw) =>
         fields
           .get(key)
           .toRight(DecodeError(Kind.UnexpectedKey(key.toString), Nil, 0))
           .flatMap(_.canonical(raw))
-          .map(key -> _)
+          .map(BigInt(key) -> _)
       }
-      .map(values => ParamUpdate(values.toMap))
+      .flatMap(values =>
+        ConwayParamUpdate
+          .fromEncoded(values)
+          .left
+          .map(why => DecodeError(Kind.Domain(why), Nil, 0))
+      )
 
   private def listCodec(params: Vector[Param[?]]): Codec[ProtocolParams] =
     new Codec[ProtocolParams]:

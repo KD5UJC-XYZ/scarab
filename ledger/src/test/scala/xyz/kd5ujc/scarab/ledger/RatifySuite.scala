@@ -365,7 +365,7 @@ class RatifySuite extends ScalaCheckSuite:
     )
     val yes = Map(a -> Vote.Yes)
     val orphan =
-      GovAction.ParameterChange(Some(id(99)), ParamUpdate(Map(16 -> Bytes(Vector(0x01)))), None)
+      GovAction.ParameterChange(Some(id(99)), TestLedger.conwayUpdate(16 -> 1), None)
     val result = Ratify.ratify(
       e,
       enactState(),
@@ -376,10 +376,10 @@ class RatifySuite extends ScalaCheckSuite:
   }
 
   test("parameter groups decide the DRep threshold and whether pools may vote") {
-    val network = ParamUpdate(Map(3 -> Bytes(Vector(1))))
-    val gov = ParamUpdate(Map(29 -> Bytes(Vector(1))))
-    val economic = ParamUpdate(Map(16 -> Bytes(Vector(1))))
-    val mixed = ParamUpdate(Map(16 -> Bytes(Vector(1)), 29 -> Bytes(Vector(1))))
+    val network = TestLedger.conwayUpdate(3 -> 1)
+    val gov = TestLedger.conwayUpdate(29 -> 1)
+    val economic = TestLedger.conwayUpdate(16 -> 1)
+    val mixed = TestLedger.conwayUpdate(16 -> 1, 29 -> 1)
     val thresholds = DRepVotingThresholds(
       Rational(1, 100),
       Rational(2, 100),
@@ -393,7 +393,7 @@ class RatifySuite extends ScalaCheckSuite:
       Rational(10, 100)
     )
     val params = pp().copy(drepVotingThresholds = thresholds)
-    def drep(u: ParamUpdate) =
+    def drep(u: ConwayParamUpdate) =
       Ratify.drepThreshold(params, true, GovAction.ParameterChange(None, u, None))
     assertEquals(drep(network), Ratify.Threshold.Required(Rational(6, 100)))
     assertEquals(drep(economic), Ratify.Threshold.Required(Rational(7, 100)))
@@ -404,12 +404,12 @@ class RatifySuite extends ScalaCheckSuite:
     // minFeeA and the governance deposit are in the security group
     assert(
       Ratify.isPoolVotingAllowed(
-        GovAction.ParameterChange(None, ParamUpdate(Map(0 -> Bytes.empty)), None)
+        GovAction.ParameterChange(None, TestLedger.conwayUpdate(0 -> 1), None)
       )
     )
     assert(
       Ratify.isPoolVotingAllowed(
-        GovAction.ParameterChange(None, ParamUpdate(Map(30 -> Bytes.empty)), None)
+        GovAction.ParameterChange(None, TestLedger.conwayUpdate(30 -> 1), None)
       )
     )
     assert(!Ratify.isPoolVotingAllowed(GovAction.NewConstitution(None, None)))
@@ -420,7 +420,7 @@ class RatifySuite extends ScalaCheckSuite:
   // The proposal store
 
   private def update(n: Int, prev: Option[GovActionId]): GovActionState =
-    gas(n, GovAction.ParameterChange(prev, ParamUpdate(Map(16 -> Bytes(Vector(n.toByte)))), None))
+    gas(n, GovAction.ParameterChange(prev, TestLedger.conwayUpdate(16 -> n), None))
 
   test("a proposal is accepted when it names the root or a stored proposal of its kind") {
     val ps = Proposals.empty

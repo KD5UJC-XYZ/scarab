@@ -119,16 +119,16 @@ class ContextFailureCborSuite extends FunSuite:
     val update = proposal.tx.body.proposals.headOption.map(_.action) match
       case Some(GovAction.ParameterChange(_, update, _)) => update
       case _                                             => fail("not a parameter change")
-    assertEquals(update.fields(0).hex, "1801")
-    assertEquals(update.fields(9).hex, "d81e820204")
+    assertEquals(update.encodings.toMap.apply(0).hex, "1801")
+    assertEquals(update.encodings.toMap.apply(9).hex, "d81e820204")
     val body = proposal.tx.body.raw
     val id = proposal.tx.body.id
     val errors = proposal.collect.swap.fold(_ => fail("no context refusal"), identity)
     assert(ContextFailureCbor.utxos(Conway, errors).isDefined)
     assertEquals(proposal.tx.body.raw, body)
     assertEquals(proposal.tx.body.id, id)
-    assertEquals(update.fields(0).hex, "1801")
-    assertEquals(update.fields(9).hex, "d81e820204")
+    assertEquals(update.encodings.toMap.apply(0).hex, "1801")
+    assertEquals(update.encodings.toMap.apply(9).hex, "d81e820204")
   }
 
   test("twenty thousand collection errors encode on a small stack with reference list framing") {

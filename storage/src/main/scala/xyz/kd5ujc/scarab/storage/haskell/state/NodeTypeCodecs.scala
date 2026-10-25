@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Anchor,
   Committee,
   Constitution,
+  ConwayParamUpdate,
   Credential,
   DRep,
   DRepState,
@@ -200,6 +201,20 @@ trait NodeTypeCodecs extends VocabularyCodecs:
         out.raw(v)
       })
 
+  /** The Conway `PParamsUpdate` of a parameter-change proposal: written as [[paramUpdate]] writes
+    * an update, each value in its original encoding, and read by the ledger's Conway decoder
+    * ([[ConwayParamUpdate.decode]]), so a state holding a key that is not a Conway field or a value
+    * not of its field's type is refused with the ledger's typed error.
+    */
+  given conwayParamUpdate: Codec[ConwayParamUpdate] = new Codec[ConwayParamUpdate]:
+    def decode(n: Node): Decoded[ConwayParamUpdate] =
+      ConwayParamUpdate.decode(n).left.map(why => DecodeError.at(n, Kind.Domain(why)))
+    def encode(a: ConwayParamUpdate, out: Writer): Unit =
+      out.variableMap(a.encodings.size)(a.encodings.foreach { (k, v) =>
+        out.uint(k.toLong)
+        out.raw(v)
+      })
+
   given govActionId: Codec[GovActionId] =
     Record.of[GovActionId]((hash32Bytes, word16))
 
@@ -235,7 +250,7 @@ trait NodeTypeCodecs extends VocabularyCodecs:
         case (t, Vector(g, u, p)) if t == 0 =>
           for
             prev <- previous.decode(g).at("previous")
-            update <- paramUpdate.decode(u).at("update")
+            update <- conwayParamUpdate.decode(u).at("update")
             pol <- policy.decode(p).at("policy")
           yield GovAction.ParameterChange(prev, update, pol)
         case (t, Vector(g, pv)) if t == 1 =>
@@ -268,7 +283,8 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     def encode(a: GovAction, out: Writer): Unit = a match
       case GovAction.ParameterChange(prev, update, pol) =>
         out.arrayHead(4); out.uint(0L)
-        previous.encode(prev, out); paramUpdate.encode(update, out); policy.encode(pol, out)
+        previous.encode(prev, out); conwayParamUpdate.encode(update, out)
+        policy.encode(pol, out)
       case GovAction.HardFork(prev, major, minor) =>
         out.arrayHead(3); out.uint(1L)
         previous.encode(prev, out); version.encode((major, minor), out)

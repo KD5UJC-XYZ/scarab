@@ -17,24 +17,69 @@ final case class ParamUpdate(fields: Map[Int, Bytes])
 object ParamUpdate:
   private val CostModelsField = 18
 
-  /** The update of a transaction or proposal from its map of field index to value. The cost models
-    * of field 18 are checked by the rule of the decoder version of the era ([[CostModelDecode]]);
-    * the other fields are kept as they are and read when the update is applied.
+  /** The update keys of the `PParamsUpdate` of a pre-Conway era: the `ppUpdate` tags of its
+    * `eraPParams` (cardano-ledger f649f975). Shelley, Allegra and Mary have 0 to 16
+    * (`Shelley/PParams.hs:344-496`); Alonzo drops the minimum UTxO value (15) and adds 17 to 24
+    * (`Alonzo/PParams.hs:344-369, 664-727`); Babbage also drops `d` (12) and the extra entropy (13)
+    * (`Babbage/PParams.hs:203-226, 411`).
+    */
+  enum Keys(val keys: Set[Int]):
+    case ShelleyToMary extends Keys((0 to 16).toSet)
+    case Alonzo extends Keys(((0 to 14) ++ (16 to 24)).toSet)
+    case Babbage extends Keys(((0 to 11) ++ Seq(14) ++ (16 to 24)).toSet)
+
+  object Keys:
+    /** The keys of the update of `era`; none for Byron and Conway, which have no PPUP. */
+    def of(era: Era): Option[Keys] = era match
+      case Era.Shelley | Era.Allegra | Era.Mary => Some(ShelleyToMary)
+      case Era.Alonzo                           => Some(Alonzo)
+      case Era.Babbage                          => Some(Babbage)
+      case Era.Byron | Era.Conway               => None
+
+  /** The update of a transaction or proposal from its map of field index to value, as the shared
+    * sparse decoder of `PParamsUpdate` reads it below decoder version 12 (`SparseKeyed`,
+    * `Core/PParams.hs:257-293`; `applyField`, `Coders.hs:562-570`): entries in order, the key a
+    * `Word`, a key read before refused (`duplicateKey`), a key that is not one of the era's update
+    * keys refused (`invalidKey`). The cost models of field 18 are checked by the rule of the
+    * decoder version of the era ([[CostModelDecode]]); the other fields are kept as they are and
+    * read when the update is applied.
     */
   def read(
       fields: Vector[(Node, Node)],
+      keys: Keys,
       costModels: CostModelDecode.Format
   ): Either[LedgerDecodeError, ParamUpdate] =
     fields
-      .traverse { case (k, v) =>
+      .foldLeftM(Map.empty[Int, Bytes]) { case (acc, (k, v)) =>
         for
-          index <- CborRead.uint(k, DecodeField.ParameterIndex).map(_.toInt)
+          index <- Unsigned.read[Unsigned.Width.W64](k, DecodeField.ParameterIndex).map(_.value)
+          _ <- Either.cond(
+            !(index.isValidInt && acc.contains(index.toInt)),
+            (),
+            LedgerDecodeError.DuplicateKey(DecodeField.ParameterUpdate)
+          )
+          key <- Option
+            .when(index.isValidInt && keys.keys.contains(index.toInt))(index.toInt)
+            .toRight(LedgerDecodeError.UnknownKey(DecodeField.ParameterUpdate, index))
           _ <-
-            if index == CostModelsField then CostModelDecode.decode(v, costModels).void
+            if key == CostModelsField then CostModelDecode.decode(v, costModels).void
             else Right(())
-        yield index -> v.original
+        yield acc.updated(key, v.original)
       }
-      .map(kvs => ParamUpdate(kvs.toMap))
+      .map(ParamUpdate(_))
+
+  /** [[read]] at the update keys of `era`; an era without PPUP has no update (key 6 is not a field
+    * of its body).
+    */
+  def read(
+      fields: Vector[(Node, Node)],
+      era: Era,
+      costModels: CostModelDecode.Format
+  ): Either[LedgerDecodeError, ParamUpdate] =
+    Keys
+      .of(era)
+      .toRight(LedgerDecodeError.UnknownFields(DecodeField.TransactionBody, Set(6)))
+      .flatMap(read(fields, _, costModels))
 
 /** The protocol parameters the bootstrap ledger tracks: those that header validation reads. */
 final case class LiteParams(
@@ -289,7 +334,10 @@ object LiteLedger:
     for
       root <- CborRead.decode(body, bodyLimits)
       fields <- CborRead.fields(root, DecodeField.TransactionBody)
-      proposal <- fields.get(6).filter(_ => era.ordinal <= Era.Babbage.ordinal).traverse(proposal)
+      proposal <- fields
+        .get(6)
+        .filter(_ => era.ordinal <= Era.Babbage.ordinal)
+        .traverse(proposal(_, era))
       certs <- fields.get(4).traverse(n => certificates(n).flatMap(_.flatTraverse(cert)))
     yield proposal.toVector ++ certs.getOrElse(Vector.empty)
 
@@ -297,7 +345,7 @@ object LiteLedger:
     case Value.Tag(t, inner) if t == 258 => CborRead.array(inner, DecodeField.Certificates)
     case _                               => CborRead.array(n, DecodeField.Certificates)
 
-  private def proposal(n: Node): Either[LedgerDecodeError, Effect] =
+  private def proposal(n: Node, era: Era): Either[LedgerDecodeError, Effect] =
     for
       xs <- CborRead.arrayN(n, 2, DecodeField.Update)
       kvs <- CborRead.map(xs(0), DecodeField.ProposedUpdates)
@@ -305,7 +353,7 @@ object LiteLedger:
         for
           key <- CborRead.bytesN(k, 28, DecodeField.GenesisKeyHash)
           fs <- CborRead.map(v, DecodeField.ParameterUpdate)
-          update <- ParamUpdate.read(fs, CostModelDecode.Format.Legacy)
+          update <- ParamUpdate.read(fs, era, CostModelDecode.Format.Legacy)
         yield key -> update
       }
       epoch <- CborRead.uint(xs(1), DecodeField.UpdateEpoch)

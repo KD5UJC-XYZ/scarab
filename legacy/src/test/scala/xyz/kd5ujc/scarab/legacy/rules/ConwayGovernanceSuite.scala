@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.legacy.*
 import scala.annotation.unused
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
+import xyz.kd5ujc.scarab.codec.Bytes
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
@@ -151,9 +151,6 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     val next = rs.boundary(st.s, globals)
     st.copy(s = next)
 
-  private def encodedInt(v: BigInt): Bytes =
-    Cbor.encode(CborValue.UInt(v)).fold(e => fail(e.toString), identity)
-
   @unused private def returnAccount(w: World, i: Int): RewardAccount =
     RewardAccount(0, w.stakes(i).credential)
 
@@ -254,8 +251,8 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
 
   test("a parameter change is enacted and removes its competitor, refunding both deposits") {
     val w = World(10)
-    val a1 = GovAction.ParameterChange(None, ParamUpdate(Map(16 -> encodedInt(7 * ada))), None)
-    val a2 = GovAction.ParameterChange(None, ParamUpdate(Map(16 -> encodedInt(9 * ada))), None)
+    val a1 = GovAction.ParameterChange(None, conwayUpdate(16 -> (7 * ada)), None)
+    val a2 = GovAction.ParameterChange(None, conwayUpdate(16 -> (9 * ada)), None)
     val s1 = ok(
       submit(
         w,
@@ -319,7 +316,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     val id = idOf(s1, 0)
     // a DRep may vote on an info action, but not on anything else in the bootstrap phase
     ok(submit(w, s1, w.dreps, votes = Vector(drepVote(w.dreps(0), id, Vote.Yes))))
-    val param = GovAction.ParameterChange(None, ParamUpdate(Map(24 -> encodedInt(4))), None)
+    val param = GovAction.ParameterChange(None, conwayUpdate(24 -> 4), None)
     val p1 =
       ok(submit(w, s1, Vector.empty, proposals = Vector(proposal(w, param)), deposits = 1000 * ada))
     val pid = idOf(p1, 0)
@@ -571,7 +568,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     forAll(Gen.listOfN(3, voteGen), Gen.listOfN(2, voteGen), Gen.choose(1, 5)) { (dv, pv, steps) =>
       val w = World(10)
       val tw = GovAction.TreasuryWithdrawals(Vector(returnAccount(w, 1) -> (3 * ada)), None)
-      val param = GovAction.ParameterChange(None, ParamUpdate(Map(16 -> encodedInt(ada))), None)
+      val param = GovAction.ParameterChange(None, conwayUpdate(16 -> ada), None)
       val s1 = ok(
         submit(
           w,

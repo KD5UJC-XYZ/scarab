@@ -88,12 +88,21 @@ object StateGen:
     smallMap(Gen.oneOf(0, 1, 3, 17, 30), Gen.choose(0L, 100000L).map(n => item(_.uint(n))))
       .map(node.ParamUpdate(_))
 
+  /** A Conway parameter update: Conway fields whose values are unsigned integers. */
+  def conwayParamUpdate: Gen[node.ConwayParamUpdate] =
+    smallMap(Gen.oneOf(0, 1, 3, 17, 30), Gen.choose(0L, 100000L).map(n => item(_.uint(n))))
+      .flatMap(fields =>
+        node.ConwayParamUpdate
+          .fromEncoded(fields.toVector.map((k, v) => BigInt(k) -> v))
+          .fold(_ => Gen.fail, Gen.const)
+      )
+
   def previousId: Gen[Option[node.GovActionId]] = Gen.option(govActionId)
 
   def govAction: Gen[node.GovAction] =
     val policy = Gen.option(VocabularyGen.bytes(28))
     Gen.oneOf(
-      Gen.zip(previousId, paramUpdate, policy).map(node.GovAction.ParameterChange(_, _, _)),
+      Gen.zip(previousId, conwayParamUpdate, policy).map(node.GovAction.ParameterChange(_, _, _)),
       Gen
         .zip(previousId, Gen.choose(0, 13), Gen.choose(0, 5))
         .map((p, a, b) => node.GovAction.HardFork(p, a, b)),

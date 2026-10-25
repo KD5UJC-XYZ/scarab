@@ -108,6 +108,97 @@ for era in ERAS:
     )
 
 
+# --- parameter updates (key 6): the era's `PParamsUpdate` key set and repeated keys -----------
+# `DecCBOR (PParamsUpdate era)` below decoder version 12 is `SparseKeyed` over the update keys of
+# the era's `eraPParams` (`Core/PParams.hs:257-293`): a key outside them is `invalidKey`, a repeated
+# key `duplicateKey` (`applyField`, `Coders.hs:562-570`). Shelley, Allegra and Mary have keys 0 to 16
+# (`Shelley/PParams.hs`), Alonzo 0 to 14 and 16 to 24 (`Alonzo/PParams.hs`), Babbage 0 to 11, 14 and
+# 16 to 24 (`Babbage/PParams.hs`), all f649f975.
+UNKNOWN_KEY_RULE = "not a valid key"
+DUP_KEY_RULE = "Duplicate key:"
+GENESIS = c.bstr(c.h(0x5A, 28))
+VERSION = {"shelley": 3, "allegra": 4, "mary": 5, "alonzo": 6, "babbage": 8}
+KEYS = {
+    "shelley": list(range(0, 17)),
+    "allegra": list(range(0, 17)),
+    "mary": list(range(0, 17)),
+    "alonzo": list(range(0, 15)) + list(range(16, 25)),
+    "babbage": list(range(0, 12)) + [14] + list(range(16, 25)),
+}
+OUTSIDE = {
+    "shelley": [17, 25],
+    "allegra": [17, 25],
+    "mary": [18, 25],
+    "alonzo": [15, 25],
+    "babbage": [12, 13, 15, 25],
+}
+
+
+def value(key, era):
+    half = c.tag(30, c.array([c.uint(1), c.uint(2)]))
+    special = {
+        9: c.tag(30, c.array([c.uint(3), c.uint(10)])),
+        10: half,
+        11: half,
+        12: half,
+        13: c.array([c.uint(0)]),
+        14: c.array([c.uint(VERSION[era]), c.uint(0)]),
+        18: c.cmap([(c.uint(0), c.array([c.uint(0)] * 166))]),
+        19: c.array([half, half]),
+        20: c.array([c.uint(1), c.uint(2)]),
+        21: c.array([c.uint(1), c.uint(2)]),
+    }
+    return special.get(key, c.uint(7))
+
+
+def update_body(era, fields, indef=False):
+    update = c.array([c.cmap([(GENESIS, c.cmap(fields, indef=indef))]), c.uint(10)])
+    b = {0: c.sset([c.txin(1)]), 1: c.array([c.OUTPUT]), 2: c.uint(200_000), 6: update}
+    if era == "shelley":
+        b[3] = c.uint(1_000)
+    return c.cmap([(c.uint(k), b[k]) for k in sorted(b)])
+
+
+for era in ERAS:
+    every = [(c.uint(k), value(k, era)) for k in KEYS[era]]
+    case(f"{era} update: every field of the era", era, "body", update_body(era, every), size=1)
+    case(f"{era} update: empty", era, "body", update_body(era, []), size=1)
+    case(f"{era} update: indefinite map", era, "body", update_body(era, every[:2], indef=True), size=1)
+    for key in OUTSIDE[era]:
+        case(
+            f"{era} update: key {key} is not a field of the era",
+            era,
+            "body",
+            update_body(era, [(c.uint(0), c.uint(44)), (c.uint(key), value(key, era))]),
+            "UnknownKey",
+            UNKNOWN_KEY_RULE,
+        )
+    case(
+        f"{era} update: key 2^32 is unknown",
+        era,
+        "body",
+        update_body(era, [(c.uint(2**32), c.uint(44))]),
+        "UnknownKey",
+        UNKNOWN_KEY_RULE,
+    )
+    case(
+        f"{era} update: repeated key, same value",
+        era,
+        "body",
+        update_body(era, [(c.uint(0), c.uint(44)), (c.uint(0), c.uint(44))]),
+        "DuplicateKey",
+        DUP_KEY_RULE,
+    )
+    case(
+        f"{era} update: repeated key, other value, written wide",
+        era,
+        "body",
+        update_body(era, [(c.uint(16), c.uint(1)), (c.uint(16, 8), c.uint(2))]),
+        "DuplicateKey",
+        DUP_KEY_RULE,
+    )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True)

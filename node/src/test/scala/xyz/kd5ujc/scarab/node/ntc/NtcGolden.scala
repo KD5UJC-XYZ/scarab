@@ -115,8 +115,8 @@ object NtcGolden:
   private def actionId(n: Int): GovActionId = GovActionId(bytes(0x40 + n, 32), n)
   private def account(c: Credential) = RewardAccount(0, c)
 
-  private def update(field: Int, value: Int): ParamUpdate =
-    ParamUpdate(Map(field -> CborOut.build(_.uint(value))))
+  private def update(field: Int, value: Int): ConwayParamUpdate =
+    TestLedger.conwayUpdateOf(field -> CborOut.build(_.uint(value)))
 
   private def proposed(n: Int, action: GovAction): GovActionState =
     GovActionState(

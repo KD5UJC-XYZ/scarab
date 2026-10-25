@@ -2,8 +2,8 @@
 
 Status: Current. Evidence for [AUD3-01/#327](https://github.com/KD5UJC-XYZ/scarab/issues/327).
 
-`cases.json` holds 298 original encodings written by `scripts/oracle/conway-decoding/cases.py`:
-185 Conway transaction bodies, 65 Conway witness sets, 4 whole Conway transactions and 44 Babbage
+`cases.json` holds 338 original encodings written by `scripts/oracle/conway-decoding/cases.py`:
+225 Conway transaction bodies, 65 Conway witness sets, 4 whole Conway transactions and 44 Babbage
 bodies. Each case breaks one rule of the reference decoders or keeps a rule the reference tolerates,
 and most sit next to a twin that keeps the rule: repeated or empty sets, ordered sets, maps and
 voting procedures; the tag 258 wrapper; indefinite-length containers; two encodings of one input;
@@ -42,6 +42,15 @@ byte or text string, and an indefinite array where the reference reads a fixed r
 pair, execution units, a proposal), are refusals of other rules (see "Not covered") and are
 not used as repeats.
 
+The parameter update of a parameter-change proposal is a Conway `PParamsUpdate`, read below
+decoder version 12 as `SparseKeyed` over the update keys of `eraPParams` (`Core/PParams.hs:257-293`,
+`Conway/PParams.hs:643-709, 862-894`; `applyField`, `Coders.hs:562-570`; all f649f975). The
+"parameter update" cases cover every Conway field at once, an empty and an indefinite map, the
+largest value of each width, keys 12 to 15 (`d`, extra entropy, protocol version, minimum UTxO
+value, which have no Conway update key), key 34 and keys beyond 2^32, a repeated key (refused before
+its value is read), and a value of the wrong type or out of its field's `Word16`, `Word32`,
+`Word64`, `ExUnits`, interval or record size.
+
 `reference.json` is what the unchanged released decoders of cardano-ledger
 `f649f9751074d2ab3de033fc3912f29c9862c1f5` (the libraries of node 11.1.3) did with each encoding:
 `decodeFullAnnotator` at decoder version 9 for Conway (`eraProtVerLow`) and 7 for the Babbage
@@ -57,7 +66,7 @@ case is shown to fail for the rule it breaks) and `expect` (the Scarab `LedgerDe
 Scope: wire decoding only. No ledger rule, signature, script or transaction admission is run. A
 refusal here is the decoder's, which in the reference ends the block or transaction before any rule.
 Not covered: an indefinite-length byte string where the reference reads a definite one (it refuses
-one for a hash or a script), parameter-update maps and the pre-Conway eras' empty-list rules.
+one for a hash or a script) and the pre-Conway eras' empty-list rules.
 
 Regenerate: see the [oracle recipe](../../../scripts/oracle/conway-decoding/README.md). The
 encodings are deterministic; rerunning the oracle must reproduce `reference.json` byte for byte

@@ -304,7 +304,7 @@ final case class TxBody(
 object TxBody:
   private val Known = Set(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22)
 
-  private def update(n: Node): Either[LedgerDecodeError, Update] =
+  private def update(n: Node, era: Era): Either[LedgerDecodeError, Update] =
     for
       xs <- CborRead.arrayN(n, 2, DecodeField.Update)
       kvs <- CborRead.map(xs(0), DecodeField.ProposedUpdates)
@@ -312,7 +312,7 @@ object TxBody:
         for
           key <- CborRead.bytesN(k, 28, DecodeField.GenesisKeyHash)
           fs <- CborRead.map(v, DecodeField.ParameterUpdate)
-          update <- ParamUpdate.read(fs, CostModelDecode.Format.Legacy)
+          update <- ParamUpdate.read(fs, era, CostModelDecode.Format.Legacy)
         yield key -> update
       }
       epoch <- CborRead.uint(xs(1), DecodeField.UpdateEpoch)
@@ -384,7 +384,7 @@ object TxBody:
               )
           )
       )
-      upd <- f.get(6).traverse(update)
+      upd <- f.get(6).traverse(update(_, era))
       auxHash <- f.get(7).traverse(CborRead.bytesN(_, 32, DecodeField.AuxiliaryDataHash))
       mint <- f.get(9).traverse(Value.multiasset(_, DecodeField.Mint, signed = true, mode.values))
       _ <- Either.cond(

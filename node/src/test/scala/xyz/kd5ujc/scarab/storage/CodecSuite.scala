@@ -54,8 +54,8 @@ class CodecSuite extends ScalaCheckSuite:
   roundTrip[Nonce]("Nonce")
   roundTrip[Era]("Era")
   roundTrip[Account]("Account")
-  roundTrip[GovAction]("GovAction")
-  roundTrip[Proposal]("Proposal")
+  // Governance actions and proposals are persisted by the Haskell-section codec only
+  // (`NodeTypeCodecs`), whose laws `HaskellStateCodecSuite` checks on the proposals.
   roundTrip[ChainDepState]("ChainDepState")
   roundTrip[ProtocolExtras]("ProtocolExtras")
   roundTrip[LiteLedger]("LiteLedger")

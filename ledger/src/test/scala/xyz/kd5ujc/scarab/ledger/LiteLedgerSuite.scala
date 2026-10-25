@@ -102,3 +102,17 @@ class LiteLedgerSuite extends FunSuite:
     assertEquals(updated.d, Rational(0))
     assertEquals(updated.maxBlockBodySize, lite.params.maxBlockBodySize)
   }
+
+  test("the bootstrap ledger reads an update at its era's key set and refuses a repeated key") {
+    // Babbage has no `d` (key 12, `Babbage/PParams.hs`); Alonzo has (`Alonzo/PParams.hs`)
+    assertEquals(
+      LiteLedger.effects(proposalBody(0), Era.Babbage),
+      Left(LedgerDecodeError.UnknownKey(DecodeField.ParameterUpdate, 12))
+    )
+    assert(LiteLedger.effects(proposalBody(0), Era.Alonzo).isRight)
+    val repeated = hex("a10682a1581c" + gkey.hex + "a2" + "0c" + zero.hex + "0c" + zero.hex + "00")
+    assertEquals(
+      LiteLedger.effects(repeated, Era.Alonzo),
+      Left(LedgerDecodeError.DuplicateKey(DecodeField.ParameterUpdate))
+    )
+  }

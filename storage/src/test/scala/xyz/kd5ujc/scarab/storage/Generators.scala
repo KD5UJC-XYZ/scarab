@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.byron.ByronVersion
 import xyz.kd5ujc.scarab.codec.Rational
+import cats.syntax.all.*
 import org.scalacheck.Gen
 import scala.compiletime.{erasedValue, summonInline}
 import scala.deriving.Mirror
@@ -107,6 +108,21 @@ object Gens extends LowPriorityGens:
   given govActionId: Gens[GovActionId] = auto
   given voter: Gens[Voter] = auto
   given vote: Gens[Vote] = auto
+
+  /** Conway updates of unsigned fields, read by the Conway decoder from their encodings. */
+  given conwayParamUpdate: Gens[ConwayParamUpdate] = of(for
+    keys <- Gen.containerOf[Set, Int](Gen.oneOf(0, 1, 3, 16, 17, 30))
+    values <- Gen.listOfN(keys.size, Gen.choose(0L, 1000000L))
+    encoded <- keys.toVector
+      .zip(values)
+      .traverse((k, v) =>
+        xyz.kd5ujc.scarab.codec.Cbor
+          .encode(xyz.kd5ujc.scarab.codec.Value.UInt(v))
+          .map(BigInt(k) -> _)
+      )
+      .fold(_ => Gen.fail, Gen.const)
+    update <- ConwayParamUpdate.fromEncoded(encoded).fold(_ => Gen.fail, Gen.const)
+  yield update)
   given govAction: Gens[GovAction] = auto
   given proposal: Gens[Proposal] = auto
   given govAnchor: Gens[xyz.kd5ujc.scarab.ledger.Anchor] = auto

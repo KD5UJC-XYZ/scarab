@@ -207,7 +207,7 @@ object Projection:
       Json.obj(
         "tag" -> "ParameterChange".asJson,
         "prev" -> optId(prev),
-        "keys" -> u.fields.keys.toVector.sorted.asJson,
+        "keys" -> u.keys.toVector.sorted.asJson,
         "policy" -> policy.map(_.hex).asJson
       )
     case GovAction.HardFork(prev, major, minor) =>

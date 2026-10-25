@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "measuredAt": "2026-10-22",
+  "measuredAt": "2026-10-23",
   "scope": "Unchanged released decoders (decodeFullAnnotator) of a Conway transaction body, witness set and whole transaction at decoder version 9, and of a Babbage body at version 7; no ledger rule, signature or script is run",
   "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
   "compiler": "GHC 9.10.3",
@@ -44,15 +44,33 @@
       "sourceSha256": "7d9a130c5621d63647fd00877ff8f7ce7b5b3d9d5a0d97ba5235698ba9818432",
       "matchesPin": true,
       "archiveSha256": "96ec1cba5c6a877e858317161356688efddf0b88da90fd622e7079bcc5400701"
+    },
+    "coreParamsUpdate": {
+      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+      "sourceSha256": "4ed40959bb0c4b97dc39303f2f2d3166b0609fc92da7acc79f0e2a38646f7e0a",
+      "matchesPin": true,
+      "archiveSha256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a"
+    },
+    "conwayPParams": {
+      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+      "sourceSha256": "ba8712e61f23f067988b7d585194321a954ccedea2191df65e7d72f736db26ab",
+      "matchesPin": true,
+      "archiveSha256": "486831d3d94060fff90e5e85c74030c744008526aa83f4a18215da124720cf1a"
+    },
+    "binaryCoders": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Coders.hs",
+      "sourceSha256": "c48ae8e39adddd6b68190f6a3ba57078508cb0cce80dab6ad0b6781e9d6a622d",
+      "matchesPin": true,
+      "archiveSha256": "05d59229edffc94b8f61273117456601532e23d8656f3076775bbf38e600bb8a"
     }
   },
   "harnessSha256": "bfb45c453f16726765809651d438e1c1a7d0be5a2fadf5d662b10a25bc64e07c",
-  "generatorSha256": "111757a72b92406cd537695a23a1d967e591fce2fddaf49648b2c45b2ab0b50c",
-  "casesSha256": "c25a500f8a3d7fa19fedb6a92e604b06b642bd633d753aeaba529f75a1de7eba",
-  "referenceSha256": "1695f43cfeb268d3f15c0f5b9d1c4c0dd9fe613139b3f68b51fe343e160936bf",
-  "cases": 298,
-  "accepted": 132,
-  "refused": 166,
+  "generatorSha256": "b4f8cbf1c617ae9f22656dc6e3fa023c94edda830707eb59b62d311b9b8cb11a",
+  "casesSha256": "c0d59b073b13de1513994a8ab1e2658dd44136628700ef368038dddb837d8fbb",
+  "referenceSha256": "d2a342f954589d459dc6d05c3e587547be2ba9946a979113687a6220f426dd35",
+  "cases": 338,
+  "accepted": 140,
+  "refused": 198,
   "originalBytesRetained": true,
   "network": "none",
   "keysRetained": false

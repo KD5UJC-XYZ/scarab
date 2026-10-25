@@ -1258,6 +1258,358 @@
   }
  },
  {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: every Conway field",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: indefinite map",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: keys and values with wide arguments",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: Word16 maximum",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: Word32 maximum",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: Word64 maximum",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: execution units at the Int64 maximum",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: key 12 (d) is not a Conway field",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 128 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 12\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: key 13 (extra entropy) is not a Conway field",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 128 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 13\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: key 14 (protocol version) is not a Conway field",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 128 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 14\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: key 15 (min UTxO value) is not a Conway field",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 128 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 15\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: key 34 is unknown",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 129 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 34\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: key 2^32 is unknown",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 136 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 4294967296\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: key 2^32 + 16 is unknown",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 136 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 4294967312\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: unknown key after a known one",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 131 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 12\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: a text key",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 127 \"expected word\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: repeated key, same value",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 131 \"An error occured while decoding Duplicate key:.\\nError: 0 while decoding type PParamsUpdate ConwayEra\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: repeated key, other value",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 130 \"An error occured while decoding Duplicate key:.\\nError: 16 while decoding type PParamsUpdate ConwayEra\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: repeated key, the second value of a wrong type",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 131 \"An error occured while decoding Duplicate key:.\\nError: 0 while decoding type PParamsUpdate ConwayEra\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: repeated key written wide",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 139 \"An error occured while decoding Duplicate key:.\\nError: 0 while decoding type PParamsUpdate ConwayEra\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: Word16 field above its maximum",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 128 \"expected word16\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: Word16 committee size above its maximum",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 129 \"expected word16\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: Word32 field above its maximum",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 128 \"expected word32\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: epoch interval above its maximum",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 129 \"expected word32\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: coin as a bignum",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 128 \"expected word\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: negative coin",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 129 \"expected word\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: text where a coin is read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 128 \"expected word\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: rational where a coin is read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 128 \"expected word\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: integer where a rational is read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 128 \"Expected tag\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: rho above one",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 133 \"An error occured while decoding BoundedRatio.\\nError: 3 % 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: execution units above the Int64 maximum",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 138 \"An error occured while decoding ExUnits field.\\nError: values must not exceed maxBound :: Int64\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: execution units of three",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 129 \"Size mismatch when decoding Record RecD.\\nExpected 3, but found 2.\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: execution units as a map",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 128 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: prices of three",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 129 \"Size mismatch when decoding Record RecD.\\nExpected 3, but found 2.\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: pool voting thresholds of six",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 155 \"Size mismatch when decoding Record PoolVotingThresholds.\\nExpected 6, but found 5.\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: DRep voting thresholds of eleven",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 180 \"Size mismatch when decoding Record DRepVotingThresholds.\\nExpected 11, but found 10.\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: a pool voting threshold above one",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 155 \"An error occured while decoding BoundedRatio.\\nError: 11 % 10\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: cost models with a repeated language",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 135 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "parameter update: cost models as a list",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 128 \"expected map len or indef\")"
+  }
+ },
+ {
   "era": "babbage",
   "kind": "body",
   "name": "babbage body baseline",

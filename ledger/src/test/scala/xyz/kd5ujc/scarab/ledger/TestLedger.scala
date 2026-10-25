@@ -33,6 +33,24 @@ object TestLedger:
 
   def key(): Key = Key(KeyPairGenerator.getInstance("Ed25519").generateKeyPair())
 
+  /** A Conway parameter update of fields given by key and their encoded values, read by the Conway
+    * decoder; a field it refuses fails the test.
+    */
+  def conwayUpdateOf(fields: (Int, Bytes)*): ConwayParamUpdate =
+    ConwayParamUpdate
+      .fromEncoded(fields.toVector.map((k, v) => BigInt(k) -> v))
+      .fold(e => munit.Assertions.fail(s"Conway update: ${e.message}"), identity)
+
+  /** A Conway parameter update of unsigned integer fields, each value in its shortest encoding. */
+  def conwayUpdate(fields: (Int, BigInt)*): ConwayParamUpdate =
+    conwayUpdateOf(fields.map((k, v) => k -> uintBytes(v))*)
+
+  /** The shortest encoding of an unsigned integer. */
+  def uintBytes(v: BigInt): Bytes =
+    xyz.kd5ujc.scarab.codec.Cbor
+      .encode(xyz.kd5ujc.scarab.codec.Value.UInt(v))
+      .fold(e => munit.Assertions.fail(s"uint $v: ${e.message}"), identity)
+
   def params(protocolMajor: Int): ProtocolParams =
     // none before Babbage (the mirror holds none)
     ProtocolParams(

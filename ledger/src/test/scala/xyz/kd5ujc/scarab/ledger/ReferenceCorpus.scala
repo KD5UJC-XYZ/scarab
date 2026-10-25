@@ -30,17 +30,20 @@ private[ledger] object ReferenceCorpus:
 
   /** The case of [[LedgerDecodeError]] a refusal must be. */
   enum Refusal(val wire: String):
+    case ArrayLength extends Refusal("ArrayLength")
     case DuplicateElement extends Refusal("DuplicateElement")
     case AddressHeader extends Refusal("AddressHeader")
-    case ArrayLength extends Refusal("ArrayLength")
     case ByteLength extends Refusal("ByteLength")
     case CrcMismatch extends Refusal("CrcMismatch")
     case Empty extends Refusal("Empty")
     case Expected extends Refusal("Expected")
     case IndefiniteLength extends Refusal("IndefiniteLength")
+    case DuplicateKey extends Refusal("DuplicateKey")
+    case ExpectedTag extends Refusal("ExpectedTag")
     case NumberOutOfRange extends Refusal("NumberOutOfRange")
     case RationalOutOfBounds extends Refusal("RationalOutOfBounds")
     case UnknownFields extends Refusal("UnknownFields")
+    case UnknownKey extends Refusal("UnknownKey")
     case ZeroDenominator extends Refusal("ZeroDenominator")
     case Syntax extends Refusal("Syntax")
     case UnknownTag extends Refusal("UnknownTag")
@@ -51,17 +54,20 @@ private[ledger] object ReferenceCorpus:
       * is the error of the structure.
       */
     def of(e: LedgerDecodeError): Option[Refusal] = e match
+      case LedgerDecodeError.ArrayLength(_, _, _)         => Some(ArrayLength)
       case LedgerDecodeError.DuplicateElement(_)          => Some(DuplicateElement)
       case LedgerDecodeError.AddressHeader(_)             => Some(AddressHeader)
-      case LedgerDecodeError.ArrayLength(_, _, _)         => Some(ArrayLength)
       case LedgerDecodeError.ByteLength(_, _, _)          => Some(ByteLength)
       case LedgerDecodeError.CrcMismatch(_, _)            => Some(CrcMismatch)
       case LedgerDecodeError.Empty(_)                     => Some(Empty)
       case LedgerDecodeError.Expected(_, _, _)            => Some(Expected)
       case LedgerDecodeError.IndefiniteLength(_)          => Some(IndefiniteLength)
+      case LedgerDecodeError.DuplicateKey(_)              => Some(DuplicateKey)
+      case LedgerDecodeError.ExpectedTag(_, _, _)         => Some(ExpectedTag)
       case LedgerDecodeError.NumberOutOfRange(_, _, _, _) => Some(NumberOutOfRange)
       case LedgerDecodeError.RationalOutOfBounds(_, _, _) => Some(RationalOutOfBounds)
       case LedgerDecodeError.UnknownFields(_, _)          => Some(UnknownFields)
+      case LedgerDecodeError.UnknownKey(_, _)             => Some(UnknownKey)
       case LedgerDecodeError.ZeroDenominator(_)           => Some(ZeroDenominator)
       case LedgerDecodeError.Syntax(_)                    => Some(Syntax)
       case LedgerDecodeError.UnknownTag(_, _)             => Some(UnknownTag)
@@ -106,6 +112,12 @@ private[ledger] object ReferenceCorpus:
     case AddressWord32Canonical extends Rule("non-canonical word32")
     case AddressWord32 extends Rule("expected word32")
     case AddressRootLength extends Rule("Bytes not expected length")
+    case DuplicateKey extends Rule("Duplicate key:")
+    case ExpectedWord extends Rule("expected word")
+    case ExUnitsBound extends Rule("values must not exceed maxBound :: Int64")
+    case ExpectedTag extends Rule("Expected tag")
+    case RecordSize extends Rule("Size mismatch when decoding Record")
+    case ExpectedMap extends Rule("expected map len or indef")
 
     /** The reference's failure is for this rule. */
     def explains(failure: Failure): Boolean = failure.text.contains(fragment)

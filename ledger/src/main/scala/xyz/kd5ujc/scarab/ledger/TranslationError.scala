@@ -13,9 +13,6 @@ enum DataSite:
   case InlineDatum
   case Redeemer
 
-  /** A field of a parameter update, as the `ChangedParameters` of a V3 context carries it. */
-  case ParameterUpdate
-
 /** The output named by a context translation error (`Plutus/TxInfo.hs:90-103`). */
 enum TxOutSource:
   case TxOutFromInput(input: TxIn)

@@ -59,11 +59,15 @@ object Voter:
 enum Vote:
   case No, Yes, Abstain
 
-/** Governance action of a proposal procedure. A parameter change keeps the update's fields as their
-  * original encodings.
+/** Governance action of a proposal procedure. A parameter change holds a typed Conway update that
+  * keeps the original encoding of each value ([[ConwayParamUpdate]]).
   */
 enum GovAction:
-  case ParameterChange(previous: Option[GovActionId], update: ParamUpdate, policy: Option[Bytes])
+  case ParameterChange(
+      previous: Option[GovActionId],
+      update: ConwayParamUpdate,
+      policy: Option[Bytes]
+  )
   case HardFork(previous: Option[GovActionId], major: BigInt, minor: BigInt)
   case TreasuryWithdrawals(withdrawals: Vector[(RewardAccount, BigInt)], policy: Option[Bytes])
   case NoConfidence(previous: Option[GovActionId])
@@ -99,12 +103,16 @@ private[ledger] final case class ProposalIdentity(
 )
 
 /** A governance action by meaning (`Governance/Procedures.hs:815-848`, `deriving Ord`): a parameter
-  * update by the meaning of each field (`PParamsUpdate`), and treasury withdrawals as the `Map
+  * update by the typed value of each field (`PParamsUpdate`), and treasury withdrawals as the `Map
   * AccountAddress Coin` they are, whatever the order of the entries; any other action is its
   * decoded value.
   */
 private[ledger] enum ActionIdentity:
-  case Update(previous: Option[GovActionId], fields: Map[Int, Semantic], policy: Option[Bytes])
+  case Update(
+      previous: Option[GovActionId],
+      fields: Map[Int, ConwayParam],
+      policy: Option[Bytes]
+  )
   case Withdrawals(withdrawals: Map[RewardAccount, BigInt], policy: Option[Bytes])
   case Other(action: GovAction)
 
@@ -115,11 +123,7 @@ object Proposal:
       p.returnAccount,
       p.action match
         case GovAction.ParameterChange(previous, update, policy) =>
-          ActionIdentity.Update(
-            previous,
-            update.fields.view.mapValues(Semantic.ofBytes).toMap,
-            policy
-          )
+          ActionIdentity.Update(previous, update.byKey, policy)
         case GovAction.TreasuryWithdrawals(ws, policy) =>
           ActionIdentity.Withdrawals(ws.toMap, policy)
         case other => ActionIdentity.Other(other)
@@ -160,9 +164,7 @@ object Proposal:
           case (0, 4) =>
             (
               GovActionId.optional(xs(1)),
-              CborRead
-                .map(xs(2), DecodeField.ParameterUpdate)
-                .flatMap(ParamUpdate.read(_, CostModelDecode.Format.Open)),
+              ConwayParamUpdate.decode(xs(2)),
               optionalHash(xs(3))
             ).mapN(GovAction.ParameterChange(_, _, _))
           case (1, 3) =>

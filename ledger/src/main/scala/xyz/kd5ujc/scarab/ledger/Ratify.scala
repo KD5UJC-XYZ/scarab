@@ -20,23 +20,12 @@ object Ratify:
 
   import Threshold.*
 
-  /** Parameter-change groups: DRep group index and whether the parameter is in the security group.
-    * 0 network, 1 economic, 2 technical, 3 governance.
+  /** The DRep groups an update modifies, and whether any of its fields is in the security group
+    * (`modifiedPPGroups`, from the `THKD` groups of each field, `Conway/PParams.hs:643-709`).
     */
-  private val groups: Map[Int, (Int, Boolean)] =
-    val network = Set(2, 3, 4, 20, 21, 22, 24)
-    val economic = Set(0, 1, 5, 6, 10, 11, 16, 17, 19, 33)
-    val technical = Set(7, 8, 9, 18, 23)
-    val governance = Set(25, 26, 27, 28, 29, 30, 31, 32)
-    val security = Set(0, 1, 2, 3, 4, 17, 21, 22, 30, 33)
-    (network.map(_ -> 0) ++ economic.map(_ -> 1) ++ technical.map(_ -> 2) ++ governance.map(
-      _ -> 3
-    )).map { case (k, g) => k -> (g, security(k)) }.toMap
-
-  /** The parameter groups an update modifies, and whether any is in the security group. */
-  def modifiedGroups(u: ParamUpdate): (Set[Int], Boolean) =
-    val entries = u.fields.keys.flatMap(groups.get).toVector
-    (entries.map(_._1).toSet, entries.exists(_._2))
+  def modifiedGroups(u: ConwayParamUpdate): (Set[DRepGroup], Boolean) =
+    val params = u.params
+    (params.map(_.drepGroup).toSet, params.exists(_.poolGroup == StakePoolGroup.Security))
 
   def isBootstrap(pp: ProtocolParams): Boolean = pp.protocolMajor == 9
 
@@ -51,10 +40,10 @@ object Ratify:
       case _: GovAction.HardFork        => Required(t.hardForkInitiation)
       case GovAction.ParameterChange(_, u, _) =>
         val ratios = modifiedGroups(u)._1.map {
-          case 0 => t.ppNetworkGroup
-          case 1 => t.ppEconomicGroup
-          case 2 => t.ppTechnicalGroup
-          case _ => t.ppGovGroup
+          case DRepGroup.Network   => t.ppNetworkGroup
+          case DRepGroup.Economic  => t.ppEconomicGroup
+          case DRepGroup.Technical => t.ppTechnicalGroup
+          case DRepGroup.Gov       => t.ppGovGroup
         }
         Required(ratios.foldLeft(Rational.zero)(_ max _))
       case _: GovAction.TreasuryWithdrawals => Required(t.treasuryWithdrawal)
@@ -272,7 +261,7 @@ object Ratify:
   def enact(st: EnactState, id: GovActionId, a: GovAction): EnactState = a match
     case GovAction.ParameterChange(_, u, _) =>
       st.copy(
-        params = ProtocolParams.update(st.params, u).getOrElse(st.params),
+        params = u.applyTo(st.params),
         prevIds = st.prevIds.copy(paramUpdate = Some(id))
       )
     case GovAction.HardFork(_, major, minor) =>

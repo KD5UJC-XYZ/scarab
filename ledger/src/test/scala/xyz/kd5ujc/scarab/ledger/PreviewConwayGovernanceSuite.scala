@@ -117,7 +117,13 @@ class PreviewConwayGovernanceSuite extends FunSuite:
             )
           case GovAction.ParameterChange(_, update, policy) =>
             val parameters = array(description, "contents")(1).asObject.get
-            assertEquals(update.fields.size, parameters.size)
+            assertEquals(update.keys.size, parameters.size)
+            // the explorer names each parameter; the typed value must be the one it reports
+            assertEquals(
+              update.collectFirst { case ConwayParam.MinPoolCost(v) => v.value },
+              parameters("minPoolCost").flatMap(_.as[BigInt].toOption),
+              s"minPoolCost of $id"
+            )
             assertEquals(
               policy.map(_.hex),
               array(description, "contents").lift(2).flatMap(_.asString)
