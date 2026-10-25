@@ -35,15 +35,21 @@
       "sourceSha256": "4726e87beca4af3b765984725b4a49797bd08bb61d45b4c3b0923a4bd3e8e58d",
       "matchesPin": true,
       "archiveSha256": "05d59229edffc94b8f61273117456601532e23d8656f3076775bbf38e600bb8a"
+    },
+    "baseTypes": {
+      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+      "sourceSha256": "0b86d1ecdd5abb0cf89194e7324fe1f62e58214cbd7386a1c50aeaf1c605866e",
+      "matchesPin": true,
+      "archiveSha256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a"
     }
   },
   "harnessSha256": "bfb45c453f16726765809651d438e1c1a7d0be5a2fadf5d662b10a25bc64e07c",
-  "generatorSha256": "5bb5e3bf84df5b4422afcb3222c0ada705aa2ac243d400e9317313d713ff4b0d",
-  "casesSha256": "abbc489c1fbab14bb7efece355b69ee20092be059bd46372d32a417ed70dbdf7",
-  "referenceSha256": "a8d4708ae70ae70563f2ec699fb4374a03049019202c6ee5ad5eef9ffb9bc02b",
-  "cases": 436,
-  "accepted": 219,
-  "refused": 217,
+  "generatorSha256": "8675f5695892ac8a47d874eae5851fc17fb82043975fe1a3ce15627b9fc1ba3c",
+  "casesSha256": "01328f3ce95918b3288b08d8ee81f49fb495459df1c76996d271c6470863cf0b",
+  "referenceSha256": "2c3a29043f9719d91ba4ee9d60bd3f49b43054be46434e306504badab29bd771",
+  "cases": 444,
+  "accepted": 223,
+  "refused": 221,
   "originalBytesRetained": true,
   "network": "none",
   "keysRetained": false

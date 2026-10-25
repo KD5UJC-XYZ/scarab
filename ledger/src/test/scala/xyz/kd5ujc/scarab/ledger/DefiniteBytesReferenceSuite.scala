@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import munit.FunSuite
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -129,5 +129,24 @@ class DefiniteBytesReferenceSuite extends FunSuite:
     assertEquals(
       TxBody.decode(known(Known.ConwayChunkedInputId).raw, Era.Conway),
       Left(LedgerDecodeError.IndefiniteLength(DecodeField.InputId))
+    )
+  }
+
+  test("an update read before with a chunked extra entropy still applies, and a body refuses it") {
+    val hash = Bytes.fromHex("5b" * 32).fold(e => fail(e.toString), identity)
+    val chunked =
+      Bytes.fromHex("8201" + "5f5820" + "5b" * 32 + "ff").fold(e => fail(e.toString), identity)
+    val stored = ParamUpdate(Map(13 -> chunked))
+    assertEquals(
+      ProtocolParams.update(TestLedger.params(2), stored).map(_.extraEntropy),
+      Right(Nonce.Hash(hash))
+    )
+    val lite = LiteParams((2, 0), Rational.one, Nonce.Neutral, 65536, 16384, 1100)
+    assertEquals(LiteLedger.applyUpdate(lite, stored).map(_.extraEntropy), Right(Nonce.Hash(hash)))
+    val body =
+      rows.find(_.id == "shelley-body-update-extra-entropy-indefinite").getOrElse(fail("no case"))
+    assertEquals(
+      TxBody.decode(body.raw, Era.Shelley).left.toOption,
+      Some(LedgerDecodeError.IndefiniteLength(DecodeField.Nonce))
     )
   }

@@ -169,8 +169,12 @@ def votes(b, at):
 
 
 def update(b, at):
+    params = c.cmap([])
+    if at == "extra entropy":
+        # field 13 of Shelley to Alonzo (`ppExtraEntropy`), a `Nonce`: `[1, hash]`
+        params = c.cmap([(c.uint(13), c.array([c.uint(1), b(c.h(0x5B, 32))]))])
     key = b(c.h(0x5A, 28)) if at == "genesis key hash" else definite(c.h(0x5A, 28))
-    return c.array([c.cmap([(key, c.cmap([]))]), c.uint(10)])
+    return c.array([c.cmap([(key, params)]), c.uint(10)])
 
 
 def body_sites(era):
@@ -226,6 +230,8 @@ def body_sites(era):
             )
         )
         sites.append(("update genesis key hash", BYTES, lambda b: {6: update(b, "genesis key hash")}))
+        if not since(era, "babbage"):
+            sites.append(("update extra entropy", BYTES, lambda b: {6: update(b, "extra entropy")}))
     if since(era, "mary"):
         sites.append(("mint policy", BYTES, lambda b: {9: multiasset(b, "policy")}))
         sites.append(("mint asset name", ARRAY, lambda b: {9: multiasset(b, "asset name")}))

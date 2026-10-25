@@ -16,6 +16,7 @@ final case class ParamUpdate(fields: Map[Int, Bytes])
 
 object ParamUpdate:
   private val CostModelsField = 18
+  private val ExtraEntropyField = 13
 
   /** The update keys of the `PParamsUpdate` of a pre-Conway era: the `ppUpdate` tags of its
     * `eraPParams` (cardano-ledger f649f975). Shelley, Allegra and Mary have 0 to 16
@@ -41,14 +42,16 @@ object ParamUpdate:
     * `Core/PParams.hs:257-293`; `applyField`, `Coders.hs:562-570`): entries in order, the key a
     * `Word`, a key read before refused (`duplicateKey`), a key that is not one of the era's update
     * keys refused (`invalidKey`). The cost models of field 18 are checked by the rule of the
-    * decoder version of the era ([[CostModelDecode]]); the other fields are kept as they are and
-    * read when the update is applied.
+    * decoder version of the era ([[CostModelDecode]]), and the extra entropy of field 13 (Shelley
+    * to Alonzo, `ppExtraEntropy`, `Shelley/PParams.hs:463-469`) is read as a [[Nonce]], its hash in
+    * the form `ByteStrings` gives; the other fields are kept as they are and read when the update
+    * is applied.
     */
   def read(
       fields: Vector[(Node, Node)],
       keys: Keys,
       costModels: CostModelDecode.Format
-  ): Either[LedgerDecodeError, ParamUpdate] =
+  )(using ByteStrings): Either[LedgerDecodeError, ParamUpdate] =
     fields
       .foldLeftM(Map.empty[Int, Bytes]) { case (acc, (k, v)) =>
         for
@@ -63,6 +66,7 @@ object ParamUpdate:
             .toRight(LedgerDecodeError.UnknownKey(DecodeField.ParameterUpdate, index))
           _ <-
             if key == CostModelsField then CostModelDecode.decode(v, costModels).void
+            else if key == ExtraEntropyField then Nonce.decode(v).void
             else Right(())
         yield acc.updated(key, v.original)
       }
@@ -75,7 +79,7 @@ object ParamUpdate:
       fields: Vector[(Node, Node)],
       era: Era,
       costModels: CostModelDecode.Format
-  ): Either[LedgerDecodeError, ParamUpdate] =
+  )(using ByteStrings): Either[LedgerDecodeError, ParamUpdate] =
     Keys
       .of(era)
       .toRight(LedgerDecodeError.UnknownFields(DecodeField.TransactionBody, Set(6)))
@@ -306,22 +310,9 @@ object LiteLedger:
         p3,
         (p, n) => CborRead.rational(n, DecodeField.D, CborRead.Bound.Unit).map(v => p.copy(d = v))
       )
-      p5 <- field(13, p4, (p, n) => nonce(n).map(v => p.copy(extraEntropy = v)))
+      p5 <- field(13, p4, (p, n) => Nonce.decode(n).map(v => p.copy(extraEntropy = v)))
       p6 <- field(14, p5, (p, n) => parseVersion(n).map(v => p.copy(protocolVersion = v)))
     yield p6
-
-  private def nonce(n: Node)(using ByteStrings): Either[LedgerDecodeError, Nonce] =
-    CborRead.array(n, DecodeField.Nonce).flatMap { xs =>
-      xs.headOption
-        .toRight(LedgerDecodeError.Empty(DecodeField.Nonce))
-        .flatMap(CborRead.uint(_, DecodeField.NonceTag))
-        .flatMap {
-          case t if t == 0 => Right(Nonce.Neutral)
-          case t if t == 1 && xs.size == 2 =>
-            CborRead.bytesN(xs(1), 32, DecodeField.Nonce).map(Nonce.Hash(_))
-          case t => Left(LedgerDecodeError.TaggedArity(DecodeField.Nonce, t, xs.size))
-        }
-    }
 
   /** What a transaction does to the bootstrap ledger. */
   enum Effect:

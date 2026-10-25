@@ -290,6 +290,23 @@
  },
  {
   "era": "shelley",
+  "kind": "body",
+  "name": "shelley body update extra entropy: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body update extra entropy: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxBody\" (DeserialiseFailure 125 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "shelley",
   "kind": "witnesses",
   "name": "shelley witnesses vkey: definite",
   "result": {
@@ -716,6 +733,23 @@
  },
  {
   "era": "allegra",
+  "kind": "body",
+  "name": "allegra body update extra entropy: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body update extra entropy: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxBody\" (DeserialiseFailure 121 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "allegra",
   "kind": "witnesses",
   "name": "allegra witnesses vkey: definite",
   "result": {
@@ -1138,6 +1172,23 @@
   "result": {
    "accepted": false,
    "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 87 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body update extra entropy: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body update extra entropy: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxBody\" (DeserialiseFailure 121 \"expected bytes\")"
   }
  },
  {
@@ -1632,6 +1683,23 @@
   "result": {
    "accepted": false,
    "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 87 \"expected bytes\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body update extra entropy: definite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body update extra entropy: indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxBody\" (DeserialiseFailure 121 \"expected bytes\")"
   }
  },
  {

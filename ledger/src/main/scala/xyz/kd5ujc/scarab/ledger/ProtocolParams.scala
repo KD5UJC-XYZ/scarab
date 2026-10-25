@@ -381,7 +381,7 @@ object ProtocolParams:
       field(10)(rat(DecodeField.Rho, CborRead.Bound.Unit)((p, v) => p.copy(rho = v))),
       field(11)(rat(DecodeField.Tau, CborRead.Bound.Unit)((p, v) => p.copy(tau = v))),
       field(12)(rat(DecodeField.D, CborRead.Bound.Unit)((p, v) => p.copy(d = v))),
-      field(13)((p, n) => nonce(n).map(v => p.copy(extraEntropy = v))),
+      field(13)((p, n) => Nonce.decode(n).map(v => p.copy(extraEntropy = v))),
       field(14)((p, n) =>
         CborRead
           .arrayN(n, 2, DecodeField.ProtocolVersion)
@@ -459,19 +459,6 @@ object ProtocolParams:
             .flatMap(_.traverse(CborRead.int(_, DecodeField.Cost)))
         ).tupled
       }.map(_.toMap))
-
-  private def nonce(n: Node)(using ByteStrings): Either[LedgerDecodeError, Nonce] =
-    CborRead.array(n, DecodeField.Nonce).flatMap { xs =>
-      xs.headOption
-        .toRight(LedgerDecodeError.Empty(DecodeField.Nonce))
-        .flatMap(CborRead.uint(_, DecodeField.NonceTag))
-        .flatMap {
-          case t if t == 0 => Right(Nonce.Neutral)
-          case t if t == 1 && xs.size == 2 =>
-            CborRead.bytesN(xs(1), 32, DecodeField.Nonce).map(Nonce.Hash(_))
-          case t => Left(LedgerDecodeError.TaggedArity(DecodeField.Nonce, t, xs.size))
-        }
-    }
 
   private def get[A: Decoder](c: ACursor, name: String): Either[ConfigError, A] =
     c.downField(name)
