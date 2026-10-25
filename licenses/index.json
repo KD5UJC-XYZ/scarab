@@ -1,0 +1,1017 @@
+{
+  "schemaVersion": 1,
+  "texts": {
+    "bcprov-jdk18on-1.86/LICENSE.md": {
+      "source": {
+        "jar": "org.bouncycastle:bcprov-jdk18on:1.86",
+        "entry": "META-INF/LICENSE.md"
+      },
+      "sha256": "0e01f1549c9022f406392ac2947d32223b7c2e977d21ea2f8c182fdeb4dae5fd"
+    },
+    "blst-java-0.3.2/LICENSE": {
+      "source": {
+        "git": "https://github.com/icon-project/blst-java",
+        "ref": "v0.3.2",
+        "commit": "a280335051988f2b672644714d35c03f10463af7",
+        "path": "LICENSE"
+      },
+      "sha256": "f1bf50646984757dc1ce037f95c7210ace76e8a42a135b97e44247e6386616bc"
+    },
+    "blst-native/LICENSE-blst": {
+      "source": {
+        "file": "blst-native/LICENSE-blst"
+      },
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    "borer-1.18.0/LICENSE": {
+      "source": {
+        "jar": "io.bullet:borer-core_3:1.18.0",
+        "entry": "LICENSE"
+      },
+      "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+    },
+    "bzip2-1.0.8/LICENSE": {
+      "source": {
+        "git": "https://sourceware.org/git/bzip2.git",
+        "ref": "bzip2-1.0.8",
+        "commit": "6a8690fc8d26c815e798c588f796eabe9d684cf0",
+        "path": "LICENSE"
+      },
+      "sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3"
+    },
+    "case-insensitive-1.5.0/LICENSE": {
+      "source": {
+        "git": "https://github.com/typelevel/case-insensitive",
+        "ref": "v1.5.0",
+        "commit": "5bc7e07c7e9361e7275ffcb823c6404fd7c3aa51",
+        "path": "LICENSE"
+      },
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    "case-insensitive-1.5.0/NOTICE": {
+      "source": {
+        "git": "https://github.com/typelevel/case-insensitive",
+        "ref": "v1.5.0",
+        "commit": "5bc7e07c7e9361e7275ffcb823c6404fd7c3aa51",
+        "path": "NOTICE"
+      },
+      "sha256": "c47d18b278aa0bc417d3bc41cb4c3e7b3938b9d41ba85b5c113ecc2b3ea6d6a0"
+    },
+    "cats-2.12.0/COPYING": {
+      "source": {
+        "git": "https://github.com/typelevel/cats",
+        "ref": "v2.12.0",
+        "commit": "502e4b80909de11bffa1dbee38ac316564f2f788",
+        "path": "COPYING"
+      },
+      "sha256": "56976829a6edd3cdefbd6bf2c764f31cb1817dfd1d14d349a152044ef0155917"
+    },
+    "cats-2.13.0/COPYING": {
+      "source": {
+        "git": "https://github.com/typelevel/cats",
+        "ref": "v2.13.0",
+        "commit": "32a50dcfad9d897459bb755c4b5a22b4c7bc745c",
+        "path": "COPYING"
+      },
+      "sha256": "56976829a6edd3cdefbd6bf2c764f31cb1817dfd1d14d349a152044ef0155917"
+    },
+    "cats-collections-0.9.10/COPYING": {
+      "source": {
+        "git": "https://github.com/typelevel/cats-collections",
+        "ref": "v0.9.10",
+        "commit": "cbef5f9f09a166c545176d4153ece94edc67ca86",
+        "path": "COPYING"
+      },
+      "sha256": "0f0501c52b9a68a02933fff8500df244c35682744bcf179af61d70ed511d64b7"
+    },
+    "cats-effect-3.7.1/LICENSE.txt": {
+      "source": {
+        "git": "https://github.com/typelevel/cats-effect",
+        "ref": "v3.7.1",
+        "commit": "eb0cc258fc732fc37f22f117c2e81d5554d67024",
+        "path": "LICENSE.txt"
+      },
+      "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9"
+    },
+    "cats-effect-3.7.1/NOTICE.txt": {
+      "source": {
+        "git": "https://github.com/typelevel/cats-effect",
+        "ref": "v3.7.1",
+        "commit": "eb0cc258fc732fc37f22f117c2e81d5554d67024",
+        "path": "NOTICE.txt"
+      },
+      "sha256": "6e2d7c2f8babdfcdaee7a9ad8045d0b3c7d8a5ee8fc89620f523f565d1a30f53"
+    },
+    "cats-mtl-1.7.0/COPYING": {
+      "source": {
+        "git": "https://github.com/typelevel/cats-mtl",
+        "ref": "v1.7.0",
+        "commit": "931556e44938a47eaa91af4d907b61a4a0bb4cab",
+        "path": "COPYING"
+      },
+      "sha256": "3c4c7f717a79aab4a9ab0fec0fcb435fa8279839491bf8674da2bed6060327c7"
+    },
+    "cats-parse-1.1.0/LICENSE": {
+      "source": {
+        "git": "https://github.com/typelevel/cats-parse",
+        "ref": "v1.1.0",
+        "commit": "5a4abf64083a7e8a6f171f82f5d5cfa446268034",
+        "path": "LICENSE"
+      },
+      "sha256": "bd16cdf2d68dc6e51888df9a9bdc7e09b80daf8c395e851d4b91122b624e39a8"
+    },
+    "circe-0.14.16/LICENSE": {
+      "source": {
+        "git": "https://github.com/circe/circe",
+        "ref": "v0.14.16",
+        "commit": "ef7dbf31435730ba1e83ad3a9ba2f7d7c89e92f2",
+        "path": "LICENSE"
+      },
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    "circe-0.14.16/LICENSE.argonaut": {
+      "source": {
+        "git": "https://github.com/circe/circe",
+        "ref": "v0.14.16",
+        "commit": "ef7dbf31435730ba1e83ad3a9ba2f7d7c89e92f2",
+        "path": "LICENSE.argonaut"
+      },
+      "sha256": "f078e975e5c754b19de80814a5c9dfee08e7fdad29751bf3eae0f548a2fd51fa"
+    },
+    "circe-0.14.16/LICENSE.ephox": {
+      "source": {
+        "git": "https://github.com/circe/circe",
+        "ref": "v0.14.16",
+        "commit": "ef7dbf31435730ba1e83ad3a9ba2f7d7c89e92f2",
+        "path": "LICENSE.ephox"
+      },
+      "sha256": "b39189e0b716d00a0476ecf1906c78af129bdf5a0e08a850cc60615301ea63d5"
+    },
+    "circe-0.14.16/NOTICE": {
+      "source": {
+        "git": "https://github.com/circe/circe",
+        "ref": "v0.14.16",
+        "commit": "ef7dbf31435730ba1e83ad3a9ba2f7d7c89e92f2",
+        "path": "NOTICE"
+      },
+      "sha256": "6da1ab7189ff26151d1b007947c87d494e7c1e4039b83dbd96a22625fd25a64a"
+    },
+    "crypto/LICENSE-curve25519-elisabeth": {
+      "source": {
+        "file": "crypto/licenses/LICENSE-curve25519-elisabeth"
+      },
+      "sha256": "f8c5d5965fdae0556691dc621e84ca0c4c526ebd748a3f993f03116ff9f94c2f"
+    },
+    "dnsjava-3.6.5/LICENSE": {
+      "source": {
+        "jar": "dnsjava:dnsjava:3.6.5",
+        "entry": "META-INF/LICENSE"
+      },
+      "sha256": "728425063f391e5afae6feb669dd74d61477d749d37baa001938a0f2700fd200"
+    },
+    "fs2-3.14.0/LICENSE": {
+      "source": {
+        "git": "https://github.com/typelevel/fs2",
+        "ref": "v3.14.0",
+        "commit": "bd384ed29184872e12b51d3b1abdc68bab614d91",
+        "path": "LICENSE"
+      },
+      "sha256": "b1cc7dc351701678120bf7b8ee82f282ab3cbaa5d53c62fe8d7d64deee91af43"
+    },
+    "geny-1.1.1/LICENSE": {
+      "source": {
+        "git": "https://github.com/com-lihaoyi/geny",
+        "ref": "1.1.1",
+        "commit": "9b290357503e5601a650bc469a072bb9a2266efb",
+        "path": "LICENSE"
+      },
+      "sha256": "f8a443667d027fd656ab15ad601b7a12489f3f8bbe0ee528b558a0b7fd1863db"
+    },
+    "hpack-1.0.2/LICENSE": {
+      "source": {
+        "git": "https://github.com/twitter/hpack",
+        "ref": "hpack-parent-1.0.2",
+        "commit": "71a3537e7aadc558f53a85ed302a917c5f09bb79",
+        "path": "LICENSE"
+      },
+      "sha256": "cb5e8e7e5f4a3988e1063c142c60dc2df75605f4c46515e776e3aca6df976e14"
+    },
+    "http4s-0.23.37/LICENSE": {
+      "source": {
+        "git": "https://github.com/http4s/http4s",
+        "ref": "v0.23.37",
+        "commit": "73340be10836b95241ed2d7682b4da057b7b5ccb",
+        "path": "LICENSE"
+      },
+      "sha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1"
+    },
+    "http4s-0.23.37/NOTICE": {
+      "source": {
+        "git": "https://github.com/http4s/http4s",
+        "ref": "v0.23.37",
+        "commit": "73340be10836b95241ed2d7682b4da057b7b5ccb",
+        "path": "NOTICE"
+      },
+      "sha256": "26b394082a62de69027de302dc33b93c4d32bcc99d00c4ef47d039fb7754d6ae"
+    },
+    "http4s-crypto-0.2.5/LICENSE.txt": {
+      "source": {
+        "git": "https://github.com/http4s/http4s-crypto",
+        "ref": "v0.2.5",
+        "commit": "f039c6a7cd866a9d9300402fb97441b0768a72b5",
+        "path": "LICENSE.txt"
+      },
+      "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9"
+    },
+    "idna4s-0.1.0/LICENSE": {
+      "source": {
+        "git": "https://github.com/typelevel/idna4s",
+        "ref": "v0.1.0",
+        "commit": "fa070e8333281fa4a870492824eb2f34b6a9947c",
+        "path": "LICENSE"
+      },
+      "sha256": "500cbfa3e4c7bf3131c17b52f56a87fa5394d5c7cad3ac510ed670a219b54948"
+    },
+    "ip4s-3.8.0/LICENSE": {
+      "source": {
+        "jar": "com.comcast:ip4s-core_3:3.8.0",
+        "entry": "LICENSE"
+      },
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    "ip4s-3.8.0/NOTICE": {
+      "source": {
+        "jar": "com.comcast:ip4s-core_3:3.8.0",
+        "entry": "NOTICE"
+      },
+      "sha256": "49b8a96facd8425e51e9ef27aec668c8ead6ae16abda30466fb59be83414adc8"
+    },
+    "jawn-1.7.0/README.md": {
+      "source": {
+        "git": "https://github.com/typelevel/jawn",
+        "ref": "v1.7.0",
+        "commit": "29dfc7e761e1430b18a7e813ee37b73e2908ab64",
+        "path": "README.md"
+      },
+      "sha256": "9997e30804a080e6712ce7e5f41cda082c8c567e13577506db5c423f09732cb4"
+    },
+    "jawn-fs2-2.6.0/LICENSE": {
+      "source": {
+        "git": "https://github.com/typelevel/jawn-fs2",
+        "ref": "v2.6.0",
+        "commit": "cd45406d0af175e779ea5afde4126c510f7eaf12",
+        "path": "LICENSE"
+      },
+      "sha256": "6d6579dfe40d23a56021afeaaf122469c7cb5af099b22340d8274830910bc764"
+    },
+    "jsoniter-scala-2.41.2/LICENSE": {
+      "source": {
+        "git": "https://github.com/plokhotnyuk/jsoniter-scala",
+        "ref": "v2.41.2",
+        "commit": "54f66936271e08fc92679181ca86f5afcbbbd36e",
+        "path": "LICENSE"
+      },
+      "sha256": "1d827e11e21a5f51f0b13ba37268515cbb312f2e39476744327a76726ca16084"
+    },
+    "kittens-3.5.0/LICENSE": {
+      "source": {
+        "git": "https://github.com/typelevel/kittens",
+        "ref": "v3.5.0",
+        "commit": "1fa48283ae4f56324fd1d7e9d7a9c0947294da69",
+        "path": "LICENSE"
+      },
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    "literally-1.2.0/LICENSE": {
+      "source": {
+        "git": "https://github.com/typelevel/literally",
+        "ref": "v1.2.0",
+        "commit": "1207e8aae0e9bf80a08afa5f4736cf5fbf7025eb",
+        "path": "LICENSE"
+      },
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    "log4cats-2.8.0/LICENSE": {
+      "source": {
+        "git": "https://github.com/typelevel/log4cats",
+        "ref": "v2.8.0",
+        "commit": "0f6e4eb381fb8fd65b2d7672b17046d0139270ca",
+        "path": "LICENSE"
+      },
+      "sha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1"
+    },
+    "lz4-1.9.4/lib/LICENSE": {
+      "source": {
+        "git": "https://github.com/lz4/lz4",
+        "ref": "v1.9.4",
+        "commit": "5ff839680134437dbf4678f3d0c7b371d84f4964",
+        "path": "lib/LICENSE"
+      },
+      "sha256": "8b58c446121a109ccf32edc094bba3010a3d85e4ee3702950db55e4d3e87736c"
+    },
+    "monocle-3.3.0/LICENSE": {
+      "source": {
+        "git": "https://github.com/optics-dev/Monocle",
+        "ref": "v3.3.0",
+        "commit": "ae59b9ad07a5b6f1addac2117fd71dec2664d513",
+        "path": "LICENSE"
+      },
+      "sha256": "bbce64ec06dded6c5234fac28777b40f3d317cde9769b31d9afef5b8e141712b"
+    },
+    "paiges-0.4.4/LICENSE": {
+      "source": {
+        "git": "https://github.com/typelevel/paiges",
+        "ref": "v0.4.4",
+        "commit": "4d6217ade3aae6b625dd7ac3fe2337fd88dd0433",
+        "path": "LICENSE"
+      },
+      "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+    },
+    "plutus/LICENSE-libsecp256k1": {
+      "source": {
+        "file": "plutus/licenses/LICENSE-libsecp256k1"
+      },
+      "sha256": "a735999c7e5649df6fcda6fb06ab97435851c392b1b93494ae8725f37441632f"
+    },
+    "plutus/LICENSE-libsodium": {
+      "source": {
+        "file": "plutus/licenses/LICENSE-libsodium"
+      },
+      "sha256": "dea1855c9809f3faf22aa4a1fba20ec8af5a5587f23115012e5b98279cedc4af"
+    },
+    "plutus/LICENSE-native-lib-loader": {
+      "source": {
+        "file": "plutus/licenses/LICENSE-native-lib-loader"
+      },
+      "sha256": "fd5c26e1223b6fed176743658a42f19eb7f73740b38d00f0eb07a1cc97a6a370"
+    },
+    "rocksdb-10.2.1/LICENSE.Apache": {
+      "source": {
+        "git": "https://github.com/facebook/rocksdb",
+        "ref": "v10.2.1",
+        "commit": "4b2122578e475cb88aef4dcf152cccd5dbf51060",
+        "path": "LICENSE.Apache"
+      },
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    "rocksdb-10.2.1/LICENSE.leveldb": {
+      "source": {
+        "git": "https://github.com/facebook/rocksdb",
+        "ref": "v10.2.1",
+        "commit": "4b2122578e475cb88aef4dcf152cccd5dbf51060",
+        "path": "LICENSE.leveldb"
+      },
+      "sha256": "b568f1f37a5a1d37a3e981e7c8b7fc4856ca33b2ca0a45bc8e847aaaf7afe485"
+    },
+    "scala-library-2.13.18/LICENSE": {
+      "source": {
+        "jar": "org.scala-lang:scala-library:2.13.18",
+        "entry": "LICENSE"
+      },
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    "scala-library-2.13.18/NOTICE": {
+      "source": {
+        "jar": "org.scala-lang:scala-library:2.13.18",
+        "entry": "NOTICE"
+      },
+      "sha256": "50ce10d50898ba07e632c8913b34098521416d6eed480d44edca93bd92344a45"
+    },
+    "scala3-3.3.8/LICENSE": {
+      "source": {
+        "git": "https://github.com/scala/scala3",
+        "ref": "3.3.8",
+        "commit": "35579ef3127faef3db621cc4958df7a5849da7b7",
+        "path": "LICENSE"
+      },
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    "scala3-3.3.8/NOTICE.md": {
+      "source": {
+        "git": "https://github.com/scala/scala3",
+        "ref": "3.3.8",
+        "commit": "35579ef3127faef3db621cc4958df7a5849da7b7",
+        "path": "NOTICE.md"
+      },
+      "sha256": "9c8404faff38eaedeeab5839fd98ac4d883eb0117a8dd53b878336f4cfa06d70"
+    },
+    "scalus-1.4.0/LICENSE": {
+      "source": {
+        "git": "https://github.com/scalus3/scalus",
+        "ref": "v1.4.0",
+        "commit": "b836856a5b4e54cd40fe0aa5947922478e8f1237",
+        "path": "LICENSE"
+      },
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    "scalus-crypto-jni-0.1.0/LICENSE": {
+      "source": {
+        "git": "https://github.com/scalus3/scalus",
+        "ref": "crypto-jni-v0.1.0",
+        "commit": "1d04d06772632ff78c10b81a227d32df99bfbf57",
+        "path": "LICENSE"
+      },
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    "scodec-2.3.3/LICENSE": {
+      "source": {
+        "git": "https://github.com/scodec/scodec",
+        "ref": "v2.3.3",
+        "commit": "e1cef6425b59bf5d7bcdc0ec9c2487524dd8496c",
+        "path": "LICENSE"
+      },
+      "sha256": "85b26b2cf29b65f9dde76e7e5993e77cab5d59f3e8bd6d8e955a773599d20269"
+    },
+    "scodec-2.3.3/NOTICE": {
+      "source": {
+        "git": "https://github.com/scodec/scodec",
+        "ref": "v2.3.3",
+        "commit": "e1cef6425b59bf5d7bcdc0ec9c2487524dd8496c",
+        "path": "NOTICE"
+      },
+      "sha256": "fe66b160511cfb76214b460d61ed918198e7f7de6069ebf74910c9a0c48ade67"
+    },
+    "scodec-bits-1.2.5/LICENSE": {
+      "source": {
+        "git": "https://github.com/scodec/scodec-bits",
+        "ref": "v1.2.5",
+        "commit": "af8d92c88e4a14d277d54c25e3544c8b141399a3",
+        "path": "LICENSE"
+      },
+      "sha256": "85b26b2cf29b65f9dde76e7e5993e77cab5d59f3e8bd6d8e955a773599d20269"
+    },
+    "shapeless-3-3.5.0/README.md": {
+      "source": {
+        "git": "https://github.com/typelevel/shapeless-3",
+        "ref": "v3.5.0",
+        "commit": "9841a3579e5ca118b460efe53d214443af00c4dc",
+        "path": "README.md"
+      },
+      "sha256": "20b313b909438b4adc1bb462dcaffa149529148cb15e427ca9422360bd9e563a"
+    },
+    "slf4j-api-2.0.17/LICENSE.txt": {
+      "source": {
+        "jar": "org.slf4j:slf4j-api:2.0.17",
+        "entry": "META-INF/LICENSE.txt"
+      },
+      "sha256": "4e7f90c86ab51278228bce153122f1d8df30149d13ce9ef524c8444a84c32dcc"
+    },
+    "snappy-1.2.1/COPYING": {
+      "source": {
+        "git": "https://github.com/google/snappy",
+        "ref": "1.2.1",
+        "commit": "2c94e11145f0b7b184b831577c93e5a41c4c0346",
+        "path": "COPYING"
+      },
+      "sha256": "55172044f7e241207117448a4d9d6ba1d0925c8ad66b5d4c08c70adfa9cc3de6"
+    },
+    "spdx-3.29.0/text/Apache-2.0.txt": {
+      "source": {
+        "git": "https://github.com/spdx/license-list-data",
+        "ref": "v3.29.0",
+        "commit": "31ba1a50e5397e00a304dbadc76531740e89ee48",
+        "path": "text/Apache-2.0.txt"
+      },
+      "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
+    },
+    "spdx-3.29.0/text/MIT.txt": {
+      "source": {
+        "git": "https://github.com/spdx/license-list-data",
+        "ref": "v3.29.0",
+        "commit": "31ba1a50e5397e00a304dbadc76531740e89ee48",
+        "path": "text/MIT.txt"
+      },
+      "sha256": "b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5"
+    },
+    "upickle-4.4.3/LICENSE": {
+      "source": {
+        "git": "https://github.com/com-lihaoyi/upickle",
+        "ref": "4.4.3",
+        "commit": "87e0b24b8c811e174ebd680839e4edf1e62abe71",
+        "path": "LICENSE"
+      },
+      "sha256": "fc06ee462a6d140906b364eb86b1f0c86fc9134827f7605df49b84190d1e2120"
+    },
+    "vault-3.7.0/LICENSE": {
+      "source": {
+        "git": "https://github.com/typelevel/vault",
+        "ref": "v3.7.0",
+        "commit": "87ed95613c166c57cbc6c729ef842f883be79a3d",
+        "path": "LICENSE"
+      },
+      "sha256": "b16195185043390a0283a2941e6869019fa2478cbdf5611b5e321170ac7f49f9"
+    },
+    "vault-3.7.0/NOTICE": {
+      "source": {
+        "git": "https://github.com/typelevel/vault",
+        "ref": "v3.7.0",
+        "commit": "87ed95613c166c57cbc6c729ef842f883be79a3d",
+        "path": "NOTICE"
+      },
+      "sha256": "345665f7252ce26c0b9045f8dc33b03d331af89e4fc46740bccadb686f20957e"
+    },
+    "zlib-1.3.1/LICENSE": {
+      "source": {
+        "git": "https://github.com/madler/zlib",
+        "ref": "v1.3.1",
+        "commit": "51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf",
+        "path": "LICENSE"
+      },
+      "sha256": "845efc77857d485d91fb3e0b884aaa929368c717ae8186b66fe1ed2495753243"
+    },
+    "zstd-1.5.5/LICENSE": {
+      "source": {
+        "git": "https://github.com/facebook/zstd",
+        "ref": "v1.5.5",
+        "commit": "63779c798237346c2b245c546c40b72a5a5913fe",
+        "path": "LICENSE"
+      },
+      "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
+    }
+  },
+  "components": {
+    "co.fs2:fs2-core_3:3.14.0": {
+      "licence": "MIT",
+      "texts": [
+        "fs2-3.14.0/LICENSE"
+      ]
+    },
+    "co.fs2:fs2-io_3:3.14.0": {
+      "licence": "MIT",
+      "texts": [
+        "fs2-3.14.0/LICENSE"
+      ]
+    },
+    "com.comcast:ip4s-core_3:3.8.0": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "ip4s-3.8.0/LICENSE",
+        "ip4s-3.8.0/NOTICE"
+      ]
+    },
+    "com.github.plokhotnyuk.jsoniter-scala:jsoniter-scala-core_3:2.41.2": {
+      "licence": "MIT",
+      "texts": [
+        "jsoniter-scala-2.41.2/LICENSE"
+      ]
+    },
+    "com.github.plokhotnyuk.jsoniter-scala:jsoniter-scala-macros_3:2.41.2": {
+      "licence": "MIT",
+      "texts": [
+        "jsoniter-scala-2.41.2/LICENSE"
+      ]
+    },
+    "com.lihaoyi:geny_3:1.1.1": {
+      "licence": "MIT",
+      "texts": [
+        "geny-1.1.1/LICENSE"
+      ]
+    },
+    "com.lihaoyi:ujson_3:4.4.3": {
+      "licence": "MIT",
+      "texts": [
+        "upickle-4.4.3/LICENSE"
+      ]
+    },
+    "com.lihaoyi:upack_3:4.4.3": {
+      "licence": "MIT",
+      "texts": [
+        "upickle-4.4.3/LICENSE"
+      ]
+    },
+    "com.lihaoyi:upickle-core_3:4.4.3": {
+      "licence": "MIT",
+      "texts": [
+        "upickle-4.4.3/LICENSE"
+      ]
+    },
+    "com.lihaoyi:upickle-implicits_3:4.4.3": {
+      "licence": "MIT",
+      "texts": [
+        "upickle-4.4.3/LICENSE"
+      ]
+    },
+    "com.lihaoyi:upickle_3:4.4.3": {
+      "licence": "MIT",
+      "texts": [
+        "upickle-4.4.3/LICENSE"
+      ]
+    },
+    "com.twitter:hpack:1.0.2": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "hpack-1.0.2/LICENSE"
+      ]
+    },
+    "com.weavechain:curve25519-elisabeth:0.1.3": {
+      "licence": "MIT",
+      "texts": [
+        "crypto/LICENSE-curve25519-elisabeth"
+      ],
+      "note": "Includes the CC0 eddsa-java statement and the BSD-3-Clause curve25519-dalek notice (docs/licenses.md)."
+    },
+    "dev.optics:monocle-core_3:3.3.0": {
+      "licence": "MIT",
+      "texts": [
+        "monocle-3.3.0/LICENSE"
+      ]
+    },
+    "dev.optics:monocle-macro_3:3.3.0": {
+      "licence": "MIT",
+      "texts": [
+        "monocle-3.3.0/LICENSE"
+      ]
+    },
+    "dnsjava:dnsjava:3.6.5": {
+      "licence": "BSD-3-Clause",
+      "texts": [
+        "dnsjava-3.6.5/LICENSE"
+      ]
+    },
+    "foundation.icon:blst-java:0.3.2": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "blst-java-0.3.2/LICENSE"
+      ]
+    },
+    "io.bullet:borer-core_3:1.18.0": {
+      "licence": "MPL-2.0",
+      "texts": [
+        "borer-1.18.0/LICENSE"
+      ],
+      "note": "Source Code Form: https://github.com/sirthias/borer at tag v1.18.0 (MPL-2.0 section 3.2; NOTICE says so)."
+    },
+    "io.bullet:borer-derivation_3:1.18.0": {
+      "licence": "MPL-2.0",
+      "texts": [
+        "borer-1.18.0/LICENSE"
+      ],
+      "note": "Source Code Form: https://github.com/sirthias/borer at tag v1.18.0 (MPL-2.0 section 3.2; NOTICE says so)."
+    },
+    "io.circe:circe-core_3:0.14.16": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "circe-0.14.16/LICENSE",
+        "circe-0.14.16/LICENSE.argonaut",
+        "circe-0.14.16/LICENSE.ephox",
+        "circe-0.14.16/NOTICE"
+      ]
+    },
+    "io.circe:circe-jawn_3:0.14.16": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "circe-0.14.16/LICENSE",
+        "circe-0.14.16/LICENSE.argonaut",
+        "circe-0.14.16/LICENSE.ephox",
+        "circe-0.14.16/NOTICE"
+      ]
+    },
+    "io.circe:circe-numbers_3:0.14.16": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "circe-0.14.16/LICENSE",
+        "circe-0.14.16/LICENSE.argonaut",
+        "circe-0.14.16/LICENSE.ephox",
+        "circe-0.14.16/NOTICE"
+      ]
+    },
+    "io.circe:circe-parser_3:0.14.16": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "circe-0.14.16/LICENSE",
+        "circe-0.14.16/LICENSE.argonaut",
+        "circe-0.14.16/LICENSE.ephox",
+        "circe-0.14.16/NOTICE"
+      ]
+    },
+    "org.bouncycastle:bcprov-jdk18on:1.86": {
+      "licence": "MIT",
+      "texts": [
+        "bcprov-jdk18on-1.86/LICENSE.md"
+      ],
+      "note": "The Bouncy Castle Licence, an MIT licence."
+    },
+    "org.http4s:http4s-circe_3:0.23.37": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "http4s-0.23.37/LICENSE",
+        "http4s-0.23.37/NOTICE"
+      ]
+    },
+    "org.http4s:http4s-core_3:0.23.37": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "http4s-0.23.37/LICENSE",
+        "http4s-0.23.37/NOTICE"
+      ]
+    },
+    "org.http4s:http4s-crypto_3:0.2.5": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "http4s-crypto-0.2.5/LICENSE.txt"
+      ]
+    },
+    "org.http4s:http4s-dsl_3:0.23.37": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "http4s-0.23.37/LICENSE",
+        "http4s-0.23.37/NOTICE"
+      ]
+    },
+    "org.http4s:http4s-ember-core_3:0.23.37": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "http4s-0.23.37/LICENSE",
+        "http4s-0.23.37/NOTICE"
+      ]
+    },
+    "org.http4s:http4s-ember-server_3:0.23.37": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "http4s-0.23.37/LICENSE",
+        "http4s-0.23.37/NOTICE"
+      ]
+    },
+    "org.http4s:http4s-jawn_3:0.23.37": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "http4s-0.23.37/LICENSE",
+        "http4s-0.23.37/NOTICE"
+      ]
+    },
+    "org.http4s:http4s-server_3:0.23.37": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "http4s-0.23.37/LICENSE",
+        "http4s-0.23.37/NOTICE"
+      ]
+    },
+    "org.rocksdb:rocksdbjni:10.2.1": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "rocksdb-10.2.1/LICENSE.Apache",
+        "rocksdb-10.2.1/LICENSE.leveldb"
+      ],
+      "note": "Apache-2.0 OR GPL-2.0-only; Apache-2.0 elected. LICENSE.leveldb covers the LevelDB-derived code."
+    },
+    "org.scala-lang:scala-library:2.13.18": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "scala-library-2.13.18/LICENSE",
+        "scala-library-2.13.18/NOTICE"
+      ]
+    },
+    "org.scala-lang:scala3-library_3:3.3.8": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "scala3-3.3.8/LICENSE",
+        "scala3-3.3.8/NOTICE.md"
+      ]
+    },
+    "org.scalus:scalus-crypto-jni:0.1.0": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "scalus-crypto-jni-0.1.0/LICENSE"
+      ]
+    },
+    "org.scalus:scalus_3:1.4.0": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "scalus-1.4.0/LICENSE"
+      ]
+    },
+    "org.scijava:native-lib-loader:2.5.0": {
+      "licence": "BSD-2-Clause",
+      "texts": [
+        "plutus/LICENSE-native-lib-loader"
+      ]
+    },
+    "org.scodec:scodec-bits_3:1.2.5": {
+      "licence": "BSD-3-Clause",
+      "texts": [
+        "scodec-bits-1.2.5/LICENSE"
+      ]
+    },
+    "org.scodec:scodec-core_3:2.3.3": {
+      "licence": "BSD-3-Clause",
+      "texts": [
+        "scodec-2.3.3/LICENSE",
+        "scodec-2.3.3/NOTICE"
+      ]
+    },
+    "org.slf4j:slf4j-api:2.0.17": {
+      "licence": "MIT",
+      "texts": [
+        "slf4j-api-2.0.17/LICENSE.txt"
+      ]
+    },
+    "org.typelevel:algebra_3:2.13.0": {
+      "licence": "MIT",
+      "texts": [
+        "cats-2.13.0/COPYING"
+      ]
+    },
+    "org.typelevel:alleycats-core_3:2.13.0": {
+      "licence": "MIT",
+      "texts": [
+        "cats-2.13.0/COPYING"
+      ]
+    },
+    "org.typelevel:case-insensitive_3:1.5.0": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "case-insensitive-1.5.0/LICENSE",
+        "case-insensitive-1.5.0/NOTICE"
+      ]
+    },
+    "org.typelevel:cats-collections-core_3:0.9.10": {
+      "licence": "MIT AND BSD-3-Clause",
+      "texts": [
+        "cats-collections-0.9.10/COPYING"
+      ]
+    },
+    "org.typelevel:cats-core_3:2.13.0": {
+      "licence": "MIT",
+      "texts": [
+        "cats-2.13.0/COPYING"
+      ]
+    },
+    "org.typelevel:cats-effect-kernel_3:3.7.1": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "cats-effect-3.7.1/LICENSE.txt",
+        "cats-effect-3.7.1/NOTICE.txt"
+      ]
+    },
+    "org.typelevel:cats-effect-std_3:3.7.1": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "cats-effect-3.7.1/LICENSE.txt",
+        "cats-effect-3.7.1/NOTICE.txt"
+      ]
+    },
+    "org.typelevel:cats-effect_3:3.7.1": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "cats-effect-3.7.1/LICENSE.txt",
+        "cats-effect-3.7.1/NOTICE.txt"
+      ]
+    },
+    "org.typelevel:cats-free_3:2.12.0": {
+      "licence": "MIT",
+      "texts": [
+        "cats-2.12.0/COPYING"
+      ]
+    },
+    "org.typelevel:cats-kernel_3:2.13.0": {
+      "licence": "MIT",
+      "texts": [
+        "cats-2.13.0/COPYING"
+      ]
+    },
+    "org.typelevel:cats-mtl_3:1.7.0": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "cats-mtl-1.7.0/COPYING"
+      ]
+    },
+    "org.typelevel:cats-parse_3:1.1.0": {
+      "licence": "MIT",
+      "texts": [
+        "cats-parse-1.1.0/LICENSE"
+      ]
+    },
+    "org.typelevel:idna4s-core_3:0.1.0": {
+      "licence": "MIT",
+      "texts": [
+        "idna4s-0.1.0/LICENSE"
+      ]
+    },
+    "org.typelevel:jawn-fs2_3:2.6.0": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "jawn-fs2-2.6.0/LICENSE"
+      ]
+    },
+    "org.typelevel:jawn-parser_3:1.7.0": {
+      "licence": "MIT",
+      "texts": [
+        "jawn-1.7.0/README.md",
+        "spdx-3.29.0/text/MIT.txt"
+      ],
+      "note": "The repository has no licence file; its README states the MIT licence and the copyright."
+    },
+    "org.typelevel:kittens_3:3.5.0": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "kittens-3.5.0/LICENSE"
+      ]
+    },
+    "org.typelevel:literally_3:1.2.0": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "literally-1.2.0/LICENSE"
+      ]
+    },
+    "org.typelevel:log4cats-core_3:2.8.0": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "log4cats-2.8.0/LICENSE"
+      ]
+    },
+    "org.typelevel:log4cats-slf4j_3:2.8.0": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "log4cats-2.8.0/LICENSE"
+      ]
+    },
+    "org.typelevel:paiges-core_3:0.4.4": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "paiges-0.4.4/LICENSE"
+      ]
+    },
+    "org.typelevel:shapeless3-deriving_3:3.5.0": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "shapeless-3-3.5.0/README.md",
+        "spdx-3.29.0/text/Apache-2.0.txt"
+      ],
+      "note": "The repository has no licence file; its README states the Apache License v2."
+    },
+    "org.typelevel:vault_3:3.7.0": {
+      "licence": "MIT",
+      "texts": [
+        "vault-3.7.0/LICENSE",
+        "vault-3.7.0/NOTICE"
+      ]
+    }
+  },
+  "natives": [
+    {
+      "paths": [
+        "librocksdbjni-linux-aarch64-musl.so",
+        "librocksdbjni-linux-aarch64.so",
+        "librocksdbjni-linux-ppc64le-musl.so",
+        "librocksdbjni-linux-ppc64le.so",
+        "librocksdbjni-linux-riscv64.so",
+        "librocksdbjni-linux-s390x-musl.so",
+        "librocksdbjni-linux-s390x.so",
+        "librocksdbjni-linux32-musl.so",
+        "librocksdbjni-linux32.so",
+        "librocksdbjni-linux64-musl.so",
+        "librocksdbjni-linux64.so",
+        "librocksdbjni-osx-arm64.jnilib",
+        "librocksdbjni-osx-x86_64.jnilib",
+        "librocksdbjni-win64.dll"
+      ],
+      "contents": "RocksDB 10.2.1 JNI; statically links zlib, bzip2, snappy, lz4 and zstd (versions of the RocksDB Makefile at v10.2.1; see docs/licenses.md for what each binary shows)",
+      "texts": [
+        "rocksdb-10.2.1/LICENSE.Apache",
+        "rocksdb-10.2.1/LICENSE.leveldb",
+        "zlib-1.3.1/LICENSE",
+        "bzip2-1.0.8/LICENSE",
+        "snappy-1.2.1/COPYING",
+        "lz4-1.9.4/lib/LICENSE",
+        "zstd-1.5.5/LICENSE"
+      ]
+    },
+    {
+      "paths": [
+        "natives/linux_64/libscalus_crypto.so",
+        "natives/linux_arm64/libscalus_crypto.so",
+        "natives/osx_64/libscalus_crypto.dylib",
+        "natives/osx_arm64/libscalus_crypto.dylib",
+        "natives/windows_64/scalus_crypto.dll"
+      ],
+      "contents": "scalus-crypto-jni 0.1.0; statically links libsodium (IOG fork dbb48cce), libsecp256k1 v0.3.2 and blst v0.3.15 (ADR 0020)",
+      "texts": [
+        "scalus-crypto-jni-0.1.0/LICENSE",
+        "plutus/LICENSE-libsodium",
+        "plutus/LICENSE-libsecp256k1",
+        "blst-native/LICENSE-blst"
+      ]
+    },
+    {
+      "paths": [
+        "supranational/blst/Linux/aarch64/libblst.so",
+        "supranational/blst/Mac/aarch64/libblst.dylib",
+        "supranational/blst/Mac/x86_64/libblst.dylib"
+      ],
+      "contents": "blst-java 0.3.2 natives, built from supranational/blst v0.3.10 (its build.yml); blst LICENSE is the same blob at v0.3.10 and v0.3.15",
+      "texts": [
+        "blst-java-0.3.2/LICENSE",
+        "blst-native/LICENSE-blst"
+      ]
+    },
+    {
+      "paths": [
+        "supranational/blst/Linux/amd64/libblst.so"
+      ],
+      "contents": "blst-native: supranational/blst v0.3.15 built by docker/blst.Dockerfile (ADR 0012)",
+      "texts": [
+        "blst-native/LICENSE-blst"
+      ]
+    }
+  ]
+}
