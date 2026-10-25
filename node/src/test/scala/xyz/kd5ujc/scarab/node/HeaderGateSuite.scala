@@ -25,9 +25,20 @@ import scala.concurrent.duration.*
 class HeaderGateSuite extends CatsEffectSuite with ScalaCheckSuite:
   private val tip = ChainSync.Tip.Origin
 
-  /** A header further than `horizon` blocks above the anchor must wait; `bad` ones are invalid. */
-  private final class Model(bad: Set[Bytes], horizon: Int, unchecked: Set[Bytes] = Set.empty)
-      extends HeaderRules[BigInt, Int]:
+  /** A provider defect met while verifying a `defective` header. */
+  private val providerDefect = xyz.kd5ujc.scarab.ledger.ProviderDefect.Kes(
+    xyz.kd5ujc.scarab.crypto.kes.Sum6Kes.Failure.Defect(new IllegalStateException("provider broke"))
+  )
+
+  /** A header further than `horizon` blocks above the anchor must wait; `bad` ones are invalid,
+    * `defective` ones meet a provider defect.
+    */
+  private final class Model(
+      bad: Set[Bytes],
+      horizon: Int,
+      unchecked: Set[Bytes] = Set.empty,
+      defective: Set[Bytes] = Set.empty
+  ) extends HeaderRules[BigInt, Int]:
     def at(state: BigInt): Int = state.toInt + 1
     def validate(
         anchor: BigInt,
@@ -35,7 +46,8 @@ class HeaderGateSuite extends CatsEffectSuite with ScalaCheckSuite:
         prev: Int,
         header: Header
     ): Outcome[Int] =
-      if bad(header.hash) then
+      if defective(header.hash) then Outcome.Unverifiable(providerDefect)
+      else if bad(header.hash) then
         Outcome.Invalid(
           HeaderError.Structure(xyz.kd5ujc.scarab.ledger.HeaderStructureProblem.EpochPrecedes(0, 1))
         )
@@ -65,14 +77,15 @@ class HeaderGateSuite extends CatsEffectSuite with ScalaCheckSuite:
       unchecked: Set[Bytes] = Set.empty,
       horizon: Int = 1000,
       applied: Vector[Header] = Vector.empty,
-      stall: FiniteDuration = 5.seconds
+      stall: FiniteDuration = 5.seconds,
+      defective: Set[Bytes] = Set.empty
   )(using Handle[IO, PeerError]): IO[Rig] =
     for
       chain <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(50, BigInt(-1)))
       given Stateful[IO, VolatileChain[BigInt]] = RefStateful(chain)
       seen <- Ref.of[IO, Vector[HeaderGate.Counts]](Vector.empty)
       check = HeaderCheck.forChain[IO, BigInt, Int](
-        new Model(bad, horizon, unchecked),
+        new Model(bad, horizon, unchecked, defective),
         Compute.inline[IO],
         stall = stall,
         poll = 10.millis,
@@ -152,6 +165,30 @@ class HeaderGateSuite extends CatsEffectSuite with ScalaCheckSuite:
         )
       )
     )
+  }
+
+  test("a provider defect on a header disconnects the peer: no record, reconnect allowed (393)") {
+    val main = Fixtures.chain(8)
+    typed {
+      for
+        r <- rig(defective = Set(main(5).hash))
+        _ <- r.gate.accept(main.map(forward))
+      yield ()
+    }.map { result =>
+      val held = xyz.kd5ujc.scarab.ledger.VerificationDefect(
+        main(5).point,
+        xyz.kd5ujc.scarab.ledger.VerificationDefect.Site.Header,
+        providerDefect
+      )
+      assertEquals(result, Left(PeerError.Unverifiable(held)))
+      val end = SessionEnd.of(PeerError.Unverifiable(held))
+      assertEquals(end, SessionEnd.Failed(PeerError.Unverifiable(held)))
+      assertEquals(
+        FailurePolicy.classify(PeerError.Unverifiable(held)),
+        xyz.kd5ujc.scarab.network.selection.FailureClass.Transient
+      )
+      assertEquals(FailurePolicy.disposition(end), Disposition.Backoff)
+    }
   }
 
   test("a header that does not extend the candidate chain is a protocol error") {

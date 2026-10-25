@@ -20,6 +20,11 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
     def functor = cats.Functor[IO]
     def raise[E <: StorageError, A](error: E): IO[A] = IO(fail(error.message))
 
+  private given cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError] with
+    def functor = cats.effect.IO.asyncForIO
+    def raise[E <: xyz.kd5ujc.scarab.network.NetworkError, A](error: E): IO[A] =
+      IO(fail(error.message))
+
   private val mempoolEnv = TxKit.env
 
   /** A recorded case, its parts as received and the ledger that holds what it reads. */

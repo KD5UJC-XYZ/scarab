@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger.byron
 import io.circe.parser
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Block, ByronGenesisFile}
+import xyz.kd5ujc.scarab.ledger.{Block, ByronGenesisFile, ProviderDefect}
 import xyz.kd5ujc.scarab.ledger.TxIn
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
@@ -115,8 +115,8 @@ class ByronMainnetSuite extends FunSuite:
   private def applyAll(
       txs: Vector[ByronTxAux],
       utxo: Map[TxIn, ByronOut]
-  ): Either[ByronError, Map[TxIn, ByronOut]] =
-    txs.foldLeft[Either[ByronError, Map[TxIn, ByronOut]]](Right(utxo))((acc, tx) =>
+  ): Either[ByronError | ProviderDefect, Map[TxIn, ByronOut]] =
+    txs.foldLeft[Either[ByronError | ProviderDefect, Map[TxIn, ByronOut]]](Right(utxo))((acc, tx) =>
       acc.flatMap(ByronLedger.applyTx(config, genesis.params, _, tx))
     )
 
@@ -124,7 +124,7 @@ class ByronMainnetSuite extends FunSuite:
   private lazy val utxo = genesisUtxo ++ inputs
 
   test("every transaction validates: witnesses, address roots, value conservation, minimum fee") {
-    val after = applyAll(allTxs, utxo).fold(e => fail(e.message), identity)
+    val after = applyAll(allTxs, utxo).fold(e => fail(e.toString), identity)
     // the inputs are spent, the outputs exist
     allTxs.flatMap(_.tx.inputs).foreach(i => assert(!after.contains(i), i.toString))
     allTxs.foreach(t =>

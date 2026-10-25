@@ -431,10 +431,12 @@ final class InboundGovernor[F[_]: Async] private (
                       case SessionEnd.Rejected(error)    => caller.raise[NodeError, Unit](error)
                       case SessionEnd.Unavailable(error) => caller.raise[NodeError, Unit](error)
                       case SessionEnd.Held(error)        => caller.raise[NodeError, Unit](error)
-                      case SessionEnd.Storage(error)     => caller.raise[NodeError, Unit](error)
-                      case SessionEnd.Internal(error)    => caller.raise[NodeError, Unit](error)
-                      case SessionEnd.Defect(error)      => F.raiseError[Unit](error)
-                      case SessionEnd.Cancelled          => F.canceled *> F.never[Unit]
+                      case SessionEnd.Unverifiable(error) =>
+                        caller.raise[NodeError, Unit](error)
+                      case SessionEnd.Storage(error)  => caller.raise[NodeError, Unit](error)
+                      case SessionEnd.Internal(error) => caller.raise[NodeError, Unit](error)
+                      case SessionEnd.Defect(error)   => F.raiseError[Unit](error)
+                      case SessionEnd.Cancelled       => F.canceled *> F.never[Unit]
                       case SessionEnd.Returned | SessionEnd.Stopped(_) => F.unit
                       case SessionEnd.RolledBackPastIntersection(point) =>
                         caller.raise[NodeError, Unit](PeerError.RolledBackPastIntersection(point))

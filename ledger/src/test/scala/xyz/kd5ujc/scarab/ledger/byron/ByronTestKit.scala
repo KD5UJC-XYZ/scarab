@@ -168,3 +168,107 @@ object ByronTestKit:
       avvm.toVector,
       nonAvvm.toVector
     )
+
+  /** A protocol version as the update payload and the header extra data encode it. */
+  def encodedVersion(major: Long, minor: Long, alt: Long): Bytes =
+    Cb.arr(ByronCbor.uint(major), ByronCbor.uint(minor), ByronCbor.uint(alt))
+
+  /** A proposal of the protocol `version`, signed by `issuer` under the proposal tag. */
+  def signedProposal(
+      config: ByronLedger.Config,
+      issuer: Key,
+      version: (Long, Long, Long)
+  ): Bytes =
+    val body = Seq(
+      encodedVersion(version._1, version._2, version._3),
+      Cb.arr(Seq.fill(14)(Cb.arr())*),
+      Cb.arr(Cb.text("cardano-sl"), Cb.uint(1)),
+      Cb.map(),
+      Cb.map()
+    )
+    val signed = ByronCbor.of(0x85) ++ ByronCbor.concat(body*)
+    val signature = issuer.sign(ByronSig.tag(ByronSig.SignUpdateProposal, config.magic) ++ signed)
+    Cb.arr((body ++ Seq(Cb.bytes(issuer.extended), Cb.bytes(signature)))*)
+
+  /** The first main block after the genesis boundary: one signed transaction and one signed
+    * proposal, a header of `headerVersion` signed by `delegate` for the genesis key `leader`, and
+    * body proofs that match. The genesis must delegate from `leader` to `delegate`.
+    */
+  def signedBlock(
+      config: ByronLedger.Config,
+      genesis: ByronGenesis,
+      leader: Key,
+      delegate: Key,
+      transaction: ByronTxAux,
+      proposal: Bytes,
+      headerVersion: (Long, Long, Long)
+  ): Bytes =
+    val blake = xyz.kd5ujc.scarab.crypto.Blake2b.hash256
+    val updates = Cb.arr(Cb.arr(proposal), Cb.arr())
+    val delegation = Cb.arr()
+    val body = Cb.arr(Cb.indef(transaction.raw), Cb.arr(), delegation, updates)
+    val proof = Cb.arr(
+      Cb.arr(
+        Cb.uint(1),
+        Cb.bytes(ByronTx.merkleRoot(Vector(transaction.tx.raw))),
+        Cb.bytes(blake.hash(Cb.indef(transaction.rawWitnesses)))
+      ),
+      Cb.arr(),
+      Cb.bytes(blake.hash(delegation)),
+      Cb.bytes(blake.hash(updates))
+    )
+    val slot = Cb.arr(Cb.uint(0), Cb.uint(1))
+    val difficulty = Cb.arr(Cb.uint(1))
+    val extra = Cb.arr(
+      encodedVersion(headerVersion._1, headerVersion._2, headerVersion._3),
+      Cb.arr(Cb.text("cardano-sl"), Cb.uint(1)),
+      Cb.map(),
+      Cb.bytes(blake.hash(Cb.arr()))
+    )
+    val previous = Cb.bytes(genesis.hash)
+    val signed = Cb.arr(previous, proof, slot, difficulty, extra)
+    val signature = delegate.sign(
+      ByronCbor.of(0x30, 0x31) ++ leader.extended ++ ByronCbor.of(0x09) ++ config.magic ++ signed
+    )
+    val certificate = genesis.delegations
+      .find(_.issuer == leader.extended)
+      .fold(throw new AssertionError("missing genesis certificate"))(_.cert)
+    val proxy = Cb.arr(
+      Cb.uint(0),
+      Cb.bytes(leader.extended),
+      Cb.bytes(delegate.extended),
+      Cb.bytes(certificate)
+    )
+    val consensus = Cb.arr(
+      slot,
+      Cb.bytes(leader.extended),
+      difficulty,
+      Cb.arr(Cb.uint(2), Cb.arr(proxy, Cb.bytes(signature)))
+    )
+    val header = Cb.arr(Cb.uint(Magic), previous, proof, consensus, extra)
+    Cb.arr(Cb.uint(1), Cb.arr(header, body, Cb.arr()))
+
+  /** The failure of an Ed25519 provider that threw. */
+  val providerFailure: xyz.kd5ujc.scarab.crypto.witness.VerificationError =
+    xyz.kd5ujc.scarab.crypto.witness.VerificationError.ImplementationFailure(
+      new IllegalStateException("provider broke")
+    )
+
+  /** A verifier that fails for every message. */
+  def failingVerifier(
+      failure: xyz.kd5ujc.scarab.crypto.witness.VerificationError
+  ): ByronSig.Verifier = (_, _, _) => Left(failure)
+
+  /** The real verifier, except that it fails for the messages of one signing kind (a signature is
+    * made over the kind's tag, the protocol magic and the content): the rest of the ledger runs on
+    * a working provider, so the failure is met at that one site.
+    */
+  def failingOn(
+      kind: Int,
+      magic: Bytes,
+      failure: xyz.kd5ujc.scarab.crypto.witness.VerificationError
+  ): ByronSig.Verifier =
+    val tag = ByronSig.tag(kind, magic)
+    (key, signature, message) =>
+      if message.take(tag.size) == tag then Left(failure)
+      else ByronSig.Standard(key, signature, message)

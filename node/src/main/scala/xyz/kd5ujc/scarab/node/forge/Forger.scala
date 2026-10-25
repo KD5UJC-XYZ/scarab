@@ -12,7 +12,12 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.Block
-import xyz.kd5ujc.scarab.ledger.{EvaluationUnavailable, ForgeError}
+import xyz.kd5ujc.scarab.ledger.{
+  EvaluationUnavailable,
+  ForgeError,
+  LedgerFailure,
+  VerificationDefect
+}
 import xyz.kd5ujc.scarab.ledger.NodeError
 import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash}
@@ -363,9 +368,16 @@ final class Forger[F[_]: Async, S](
         )
       )
       chosen <- selection.fold(
-        unavailable =>
-          EvaluationUnavailable(current.tip, unavailable)
-            .raise[F, Vector[(xyz.kd5ujc.scarab.node.mempool.Entry, BlockBuilder.Piece)]],
+        {
+          case unavailable: LedgerFailure.Unavailable =>
+            EvaluationUnavailable(current.tip, unavailable)
+              .raise[F, Vector[(xyz.kd5ujc.scarab.node.mempool.Entry, BlockBuilder.Piece)]]
+          // the forging thread is linked to the node in the reference, which re-applies the pool's
+          // transactions in it (consensus 82ecba32 Node/NodeKernel.hs `forkBlockForging`)
+          case LedgerFailure.Unverifiable(tx, defect) =>
+            VerificationDefect(current.tip, VerificationDefect.Site.Witness(tx), defect)
+              .raise[F, Vector[(xyz.kd5ujc.scarab.node.mempool.Entry, BlockBuilder.Piece)]]
+        },
         F.pure
       )
       outcome <- build(
@@ -385,7 +397,11 @@ final class Forger[F[_]: Async, S](
           // the reference removes the block's transactions from the pool, valid or not, so that the
           // next leader slot does not repeat the failure (`NodeKernel.hs`, `removeTxsEvenIfValid`)
           failed(slot, e) *>
-            mempool.removeTxsEvenIfValid(chosen.map(_._1.id).toSet).void *>
+            mempool
+              .removeTxsEvenIfValid(chosen.map(_._1.id).toSet)
+              .flatMap(dependants =>
+                Mempool.unverifiable(dependants, current.tip).traverse_(_.raise[F, Unit])
+              ) *>
             build(current, tip, slot, epoch, ticked, cert, Vector.empty, stake, pools.total)
               .flatMap(_.fold(e2 => failed(slot, e2), _ => F.unit))
         case Left(e)  => failed(slot, e)
@@ -485,6 +501,12 @@ final class Forger[F[_]: Async, S](
                 SessionEnd.of(e) match
                   case SessionEnd.Unavailable(unavailable) =>
                     unavailable.raise[F, Either[ForgeError, Unit]]
+                  // a crypto provider failed on our own block: an exception in the forging thread,
+                  // which is linked to the node in the reference, so the forger stops with
+                  // Fatal.Unverifiable and nothing leaves the pool (consensus 82ecba32
+                  // NodeKernel.hs forkBlockForging, Background.hs:107-108,142)
+                  case SessionEnd.Unverifiable(defect) =>
+                    defect.raise[F, Either[ForgeError, Unit]]
                   // a refusal, or a defect a transaction of ours triggers (SessionEnd.Held): the
                   // block is not adopted, its transactions leave the pool and an empty block is
                   // tried instead
@@ -621,7 +643,9 @@ object Forger:
           // BlockBuilder.select skips a transaction that triggers a defect, and adoption makes it
           // a refusal of our own block, so none reaches here; were one to, there is no verdict
           case SessionEnd.Held(e) => Fatal.Unavailable(e)
-          case _                  => Fatal.Internal(error)
+          // a crypto provider that fails on our own block is raised by `build`, with nothing evicted
+          case SessionEnd.Unverifiable(e) => Fatal.Unverifiable(e)
+          case _                          => Fatal.Internal(error)
         terminal.raise[Fatal, A](fatal)
       }
     }

@@ -86,7 +86,9 @@ class ServerSuite extends FailsOnUncaught:
 
   private val noTxs: TxSubmissionServer.Sink[IO] = new TxSubmissionServer.Sink[IO]:
     def known(id: Bytes) = IO.pure(false)
-    def submit(originals: Vector[Bytes]) = IO.unit
+    def submit(originals: Vector[Bytes])(using
+        cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+    ) = IO.unit
 
   private def handlers(chain: Chain, sink: TxSubmissionServer.Sink[IO] = noTxs) =
     ServerHandlers[IO, Bytes](ChainSyncFixtures.rawItem, chain.source, chain.blockSource, sink)
@@ -279,7 +281,9 @@ class ServerSuite extends FailsOnUncaught:
         def body(id: Bytes) = IO.pure(bodies.get(id))
       sink = new TxSubmissionServer.Sink[IO]:
         def known(id: Bytes) = IO.pure(id == ids(1))
-        def submit(originals: Vector[Bytes]) = received.update(_ ++ originals)
+        def submit(originals: Vector[Bytes])(using
+            cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+        ) = received.update(_ ++ originals)
       outcome <- typed {
         linked(protocols = Set(4)).use { (client, server) =>
           for

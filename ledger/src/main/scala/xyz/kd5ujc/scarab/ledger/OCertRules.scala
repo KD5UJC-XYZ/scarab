@@ -30,14 +30,43 @@ enum OCertError:
 
 /** The OCERT rule shared by TPraos and Praos headers. */
 object OCertRules:
+  extension [A](result: Either[OCertError | ProviderDefect, A])
+    /** The refusal as the enclosing rule's, a provider defect as itself. */
+    def refusedAs[E](refusal: OCertError => E): Either[E | ProviderDefect, A] = result match
+      case Right(a)                => Right(a)
+      case Left(e: OCertError)     => Left(refusal(e))
+      case Left(d: ProviderDefect) => Left(d)
+
   /** KES period window, the cold-key signature over the hot key, and the hot-key KES signature over
-    * the header body.
+    * the header body. A verifier that fails is a [[ProviderDefect]], never a refusal of the header.
     */
   def verifySignatures(
       header: Header.Shelley,
       slotsPerKesPeriod: BigInt,
       maxKesEvolutions: BigInt
-  ): Either[OCertError, Unit] =
+  ): Either[OCertError | ProviderDefect, Unit] =
+    verifySignaturesWith(
+      header,
+      slotsPerKesPeriod,
+      maxKesEvolutions,
+      Sum6Kes.verify,
+      OperationalCertificate.verify
+    )
+
+  /** [[verifySignatures]] over the given verifiers, so a test can inject a failing provider. */
+  private[ledger] def verifySignaturesWith(
+      header: Header.Shelley,
+      slotsPerKesPeriod: BigInt,
+      maxKesEvolutions: BigInt,
+      kesVerifier: (Bytes, Int, Bytes, Bytes) => Either[Sum6Kes.Failure, Sum6Kes.Result],
+      certVerifier: (
+          Bytes,
+          Bytes,
+          BigInt,
+          BigInt,
+          Bytes
+      ) => Either[OperationalCertificate.Failure, OperationalCertificate.Result]
+  ): Either[OCertError | ProviderDefect, Unit] =
     val kesPeriod = header.slot / slotsPerKesPeriod
     val start = header.opCert.kesPeriod
     for
@@ -46,30 +75,28 @@ object OCertRules:
         (),
         OCertError.KesPeriodOutsideWindow(kesPeriod, start, maxKesEvolutions)
       )
-      kes <- Sum6Kes
-        .verify(
+      kes <- ProviderDefect.kes(
+        kesVerifier(
           header.opCert.hotVkey,
           (kesPeriod - start).toInt,
           header.bodyRaw,
           header.kesSignature
         )
-        .left
-        .map(OCertError.KesFailure(_))
+      )(OCertError.KesFailure(_))
       _ <- Either.cond(
         kes == Sum6Kes.Result.SuppliedMessageSignatureVerified,
         (),
         OCertError.KesSignatureRejected
       )
-      oc <- OperationalCertificate
-        .verify(
+      oc <- ProviderDefect.opCert(
+        certVerifier(
           header.issuerVkey,
           header.opCert.hotVkey,
           header.opCert.sequence,
           start,
           header.opCert.sigma
         )
-        .left
-        .map(OCertError.OpCertFailure(_))
+      )(OCertError.OpCertFailure(_))
       _ <- Either.cond(
         oc == OperationalCertificate.Result.OperationalCertificateSignatureVerified,
         (),

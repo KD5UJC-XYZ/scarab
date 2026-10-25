@@ -121,13 +121,15 @@ final case class Entry(id: Bytes, raw: Bytes, tx: Tx, ticket: Long, refScriptByt
 /** What the transaction rules need besides the ledger state. `clock` is the slot to time
   * translation of the era history at the chain tip the pool is judged against, with its forecast
   * horizon; none is the geometry alone, without a horizon, for pools of tests that have no chain.
+  * `verdicts` are the signature verifiers of the witness checks.
   */
 final case class MempoolEnv(
     globals: LedgerGlobals,
     geometry: EpochGeometry,
     evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default,
     decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
-    clock: Option[PosixClock] = None
+    clock: Option[PosixClock] = None,
+    verdicts: xyz.kd5ujc.scarab.ledger.Verdicts = xyz.kd5ujc.scarab.ledger.Verdicts.Direct
 ):
   /** The environment in which a transaction is validated for inclusion in the next block: the slot
     * after the tip, in the epoch of the fully ticked ledger.
@@ -144,7 +146,8 @@ final case class MempoolEnv(
       updateQuorum = globals.updateQuorum,
       clock = Some(clock.getOrElse(PosixClock.total(geometry))),
       evaluator = evaluator,
-      decoder = decoder
+      decoder = decoder,
+      verdicts = verdicts
     )
 
   /** The constants the rules of the era-indexed state read. */

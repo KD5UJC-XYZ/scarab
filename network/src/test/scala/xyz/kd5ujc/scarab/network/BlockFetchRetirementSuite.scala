@@ -22,7 +22,9 @@ class BlockFetchRetirementSuite extends FailsOnUncaught:
     val blocks: BlockFetchServer.Blocks[IO] = (_, _) => IO.pure(None)
     val sink = new TxSubmissionServer.Sink[IO]:
       def known(id: Bytes) = IO.pure(false)
-      def submit(originals: Vector[Bytes]) = IO.unit
+      def submit(originals: Vector[Bytes])(using
+          cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+      ) = IO.unit
     ServerHandlers(ChainSyncFixtures.rawItem, Resource.pure(source), blocks, sink)
 
   private def warm(using Net): Resource[IO, WarmConnection[IO, Bytes, Unit]] =

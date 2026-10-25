@@ -206,7 +206,11 @@ class ParallelPlutusSuite extends FailsOnUncaught:
     val defect = new IllegalStateException("later phase-1 defect")
     val verdicts = new Verdicts:
       export Verdicts.Direct.{opCert, praosVrf, tpraosVrf, keyHash, takePrepared}
-      def witness(key: Bytes, signature: Bytes, message: Bytes): Boolean =
+      def witness(
+          key: Bytes,
+          signature: Bytes,
+          message: Bytes
+      ): Either[xyz.kd5ujc.scarab.ledger.ProviderDefect, Boolean] =
         if message == PreparedBlockFixture.txs(1).body.id then throw defect
         else Verdicts.Direct.witness(key, signature, message)
     val failing: ScriptEvaluator[Id] = _ =>
@@ -233,7 +237,11 @@ class ParallelPlutusSuite extends FailsOnUncaught:
     val first = new java.util.concurrent.atomic.AtomicBoolean(true)
     val verdicts = new Verdicts:
       export Verdicts.Direct.{opCert, praosVrf, tpraosVrf, keyHash, takePrepared}
-      def witness(key: Bytes, signature: Bytes, message: Bytes): Boolean =
+      def witness(
+          key: Bytes,
+          signature: Bytes,
+          message: Bytes
+      ): Either[xyz.kd5ujc.scarab.ledger.ProviderDefect, Boolean] =
         if message == PreparedBlockFixture.txs(1).body.id && first.compareAndSet(true, false) then
           throw defect
         else Verdicts.Direct.witness(key, signature, message)

@@ -127,7 +127,8 @@ object BlockBuilder:
     * fails) is skipped, not an error: the pool of a mempool is advisory. The rules are LEDGER of
     * Conway on the era-indexed state ([[MempoolLedger]], the same that validates the pool). Missing
     * evaluator support has no ledger verdict and stops selection instead of skipping it; a defect
-    * one transaction triggers in the evaluator skips that transaction.
+    * one transaction triggers in the evaluator skips that transaction. A crypto provider that fails
+    * on a witness stops selection too: the forger raises it as a [[VerificationDefect]].
     */
   def select(
       ticked: MempoolLedger,
@@ -141,7 +142,7 @@ object BlockBuilder:
   )(using
       decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
       evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default
-  ): Either[LedgerFailure.Unavailable, Vector[(Entry, Piece)]] =
+  ): Either[LedgerFailure.Unavailable | LedgerFailure.Unverifiable, Vector[(Entry, Piece)]] =
     final case class Acc(
         state: MempoolLedger,
         chosen: Vector[(Entry, Piece)],
@@ -151,7 +152,9 @@ object BlockBuilder:
     val rules = Globals(globals, geometry)
     candidates
       .foldM(Acc(ticked, Vector.empty, ExUnits.zero, 0L)) { (acc, entry) =>
-        piece(entry).toOption.fold(Right(acc): Either[LedgerFailure.Unavailable, Acc]) { p =>
+        piece(entry).toOption.fold(
+          Right(acc): Either[LedgerFailure.Unavailable | LedgerFailure.Unverifiable, Acc]
+        ) { p =>
           val units = acc.units + entry.tx.witnesses.totalExUnits
           val size = bodySize(acc.chosen.map(_._2) :+ p)
           val refUsed =
@@ -187,7 +190,9 @@ object BlockBuilder:
                     unavailable.reach match
                       case BackendFailure.Reach.Implementation => Left(unavailable)
                       case BackendFailure.Reach.Input          => Right(acc)
-                  case _ => Right(acc)
+                  // a crypto provider that failed on a witness stops selection: no verdict
+                  case unverifiable: LedgerFailure.Unverifiable => Left(unverifiable)
+                  case _                                        => Right(acc)
                 },
                 next => Right(Acc(next, acc.chosen :+ (entry -> p), units, refUsed))
               )

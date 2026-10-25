@@ -26,6 +26,13 @@ object FailurePolicy:
     // `ShutdownPeer`). It is not `Misbehaved`: a decoder that throws instead of refusing may be
     // our bug on valid data, and forgetting would then drop every honest peer that sends it.
     case _: PeerError.InputDefect => FailureClass.Transient
+    // A crypto provider failed on the peer's header: an exception in that peer's ChainSync thread,
+    // which no rethrow policy names, so the same policy as a decoder defect: the connection closes
+    // in both directions and the peer is charged a failure with the error delay, never forgotten
+    // and never recorded as invalid (consensus 82ecba329 Node/RethrowPolicy.hs:40-45 and 131-139).
+    // The reconnect delay is the one of any lost connection: `OutboundPeers.Config.repromoteDelay`
+    // (10 s) plus the governor's `coldReconnectFuzz` (`selection.Events.observedConnection`).
+    case _: PeerError.Unverifiable => FailureClass.Transient
     // Consensus 82ecba329 Node/RethrowPolicy.hs maps every ChainSyncClientException,
     // including EmptyBucket, DensityTooLow and HistoricityError, to ShutdownPeer.
     // Network 2fb69829 PeerStateActions.hs uses epErrorDelay (10s default), preserving
@@ -45,12 +52,13 @@ object FailurePolicy:
       classify(error) match
         case FailureClass.Misbehaved => Disposition.Forget
         case FailureClass.Transient  => Disposition.Backoff
-    case _: SessionEnd.Rejected    => Disposition.Forget
-    case SessionEnd.Unavailable(e) => Disposition.StopNode(Fatal.Unavailable(e))
-    case SessionEnd.Held(e)        => Disposition.Hold(e)
-    case SessionEnd.Storage(e)     => Disposition.StopNode(Fatal.Storage(e))
-    case SessionEnd.Internal(e)    => Disposition.StopNode(Fatal.Internal(e))
-    case SessionEnd.Defect(t)      => Disposition.StopNode(Fatal.Defect(t))
+    case _: SessionEnd.Rejected     => Disposition.Forget
+    case SessionEnd.Unavailable(e)  => Disposition.StopNode(Fatal.Unavailable(e))
+    case SessionEnd.Held(e)         => Disposition.Hold(e)
+    case SessionEnd.Unverifiable(e) => Disposition.StopNode(Fatal.Unverifiable(e))
+    case SessionEnd.Storage(e)      => Disposition.StopNode(Fatal.Storage(e))
+    case SessionEnd.Internal(e)     => Disposition.StopNode(Fatal.Internal(e))
+    case SessionEnd.Defect(t)       => Disposition.StopNode(Fatal.Defect(t))
     case SessionEnd.Returned | SessionEnd.NoMoreIntersection |
         _: SessionEnd.RolledBackPastIntersection | SessionEnd.Cancelled | _: SessionEnd.Stopped =>
       Disposition.Settled

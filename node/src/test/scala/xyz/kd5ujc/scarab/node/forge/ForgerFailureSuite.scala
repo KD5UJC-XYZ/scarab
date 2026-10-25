@@ -120,6 +120,50 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     }
   }
 
+  test("a provider defect on our own block is fatal and evicts nothing (issue 393)") {
+    val p = pool(kesStart = 50)
+    val boom = new IllegalStateException("provider broke")
+    val failing = new xyz.kd5ujc.scarab.ledger.Verdicts:
+      export xyz.kd5ujc.scarab.ledger.Verdicts.Direct.{
+        keyHash,
+        opCert,
+        takePrepared,
+        tpraosVrf,
+        witness
+      }
+      def praosVrf(
+          input: xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate.Input,
+          vkey: xyz.kd5ujc.scarab.codec.Bytes,
+          proof: xyz.kd5ujc.scarab.codec.Bytes,
+          output: xyz.kd5ujc.scarab.codec.Bytes
+      ) = xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate.Result.InternalFailure(boom)
+    val (t1, _) = xyz.kd5ujc.scarab.node.mempool.TxKit.pay(1)
+    withHandle {
+      for
+        h <- harness(p, ledgerWith(p, 1), verdicts = failing)
+        _ <- h.mempool.add(t1, Source.Local)
+        result <- h.forger.step(leaderSlot(p))
+        events <- h.seen
+        chain <- h.chain
+        held <- h.mempool.snapshot
+      yield
+        result match
+          case Left(Fatal.Unverifiable(error)) =>
+            assertEquals(
+              error.defect,
+              xyz.kd5ujc.scarab.ledger.ProviderDefect.VrfVerifier(
+                xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate.Result.InternalFailure(boom)
+              )
+            )
+          case other => fail(s"expected an unverifiable block, got $other")
+        // no transaction is evicted, no empty block is tried, nothing is adopted
+        assertEquals(held.entries.size, 1)
+        assertEquals(chain.tipRef, None)
+        assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]))
+        assert(!events.exists(_.isInstanceOf[ForgeEvent.Adopted]))
+    }
+  }
+
   test("a slot defect retains its cause without recording a recoverable forge failure") {
     val p = pool(kesStart = 50)
     val cause = new IllegalStateException("readiness bug")

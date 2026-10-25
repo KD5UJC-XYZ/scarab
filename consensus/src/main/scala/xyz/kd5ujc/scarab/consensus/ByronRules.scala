@@ -3,12 +3,13 @@ package xyz.kd5ujc.scarab.consensus
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Block, ByronGenesis, Header, ByronChainError}
+import xyz.kd5ujc.scarab.ledger.{Block, ByronChainError, ByronGenesis, Header, ProviderDefect}
 import xyz.kd5ujc.scarab.ledger.Header.ByronSignature
 import xyz.kd5ujc.scarab.ledger.byron.*
+import xyz.kd5ujc.scarab.ledger.byron.ByronLedger.refusedAs
 import xyz.kd5ujc.scarab.consensus.state.{PBftSigner, PBftState}
 import xyz.kd5ujc.scarab.ledger.state.{Genesis, KeyHash, SlotNo}
-import xyz.kd5ujc.scarab.crypto.witness.{ByronEd25519, VerificationResult}
+import xyz.kd5ujc.scarab.crypto.witness.VerificationResult
 
 /** How a Byron block was established. Every main block is fully checked (there is no "unchecked"
   * outcome): signature, delegation, PBFT window, body proofs and the ledger rules.
@@ -34,12 +35,24 @@ final case class ByronTip(hash: Bytes, epoch: BigInt, slot: BigInt, boundary: Bo
   * and PBFT signature threshold and the configured Shelley epoch (a `Test` override).
   * @param configuredShelleyEpoch
   *   `TestShelleyHardForkAtEpoch`: when set, the transition epoch is not derived.
+  * @param signatures
+  *   The Ed25519 verifier of the delegate's block signature (the reference's Byron semantics; a
+  *   test injects a failing provider here). The ledger's own signatures (witnesses, certificates,
+  *   proposals, votes) take theirs from [[ByronLedger.Config.signatures]].
   */
 final case class ByronRulesConfig(
     ledger: ByronLedger.Config,
     signatureThreshold: Double,
-    configuredShelleyEpoch: Option[BigInt]
+    configuredShelleyEpoch: Option[BigInt],
+    signatures: ByronRulesConfig.Verifier = ByronRulesConfig.ByronSignatures
 )
+
+object ByronRulesConfig:
+  /** An Ed25519 verifier: `(key, signature, message)` to its answer. */
+  type Verifier = ByronSig.Verifier
+
+  /** [[ByronEd25519.verify]], one instance so that configurations compare equal. */
+  val ByronSignatures: Verifier = ByronSig.Standard
 
 /** Byron block validation: linkage to the previous block (or the genesis hash), slot and epoch
   * order, the protocol magic, and for main blocks the PBFT rules of ouroboros-consensus (the
@@ -70,7 +83,7 @@ object ByronRules:
       state: State,
       block: Block.Byron,
       config: Config
-  ): Either[ByronChainError, (State, ByronCheck)] =
+  ): Either[ByronChainError | ProviderDefect, (State, ByronCheck)] =
     val header = block.header
     val genesis = config.ledger.genesis
     val expectedPrev = state.tip.map(_.hash).getOrElse(genesis.hash)
@@ -102,7 +115,7 @@ object ByronRules:
       state: State,
       block: Block.Byron,
       config: Config
-  ): Either[ByronChainError, (State, ByronCheck)] =
+  ): Either[ByronChainError | ProviderDefect, (State, ByronCheck)] =
     val header = block.header
     val ticked = ByronLedger.tick(config.ledger, state.ledger, header.slot)
     ByronLedger
@@ -114,7 +127,7 @@ object ByronRules:
       state: State,
       block: Block.Byron,
       config: Config
-  ): Either[ByronChainError, (State, ByronCheck)] =
+  ): Either[ByronChainError | ProviderDefect, (State, ByronCheck)] =
     val header = block.header
     val genesis = config.ledger.genesis
     // The tick to the block's slot comes first: it activates the delegations due, which the
@@ -126,7 +139,7 @@ object ByronRules:
       body <- ByronBody.decode(block.body).leftMap(ByronChainError.Body(_))
       ledger <- ByronLedger
         .applyMain(config.ledger, ticked, header, block.size, body)
-        .leftMap(ByronChainError.Ledger(_))
+        .refusedAs(ByronChainError.Ledger(_))
     yield
       val onSchedule = ByronCbor.keyHash(main.leader) == scheduledLeader(genesis, header.slot)
       State(Some(tipOf(header)), ledger, pbft) -> ByronCheck.Verified(onSchedule, body.txs.size)
@@ -140,7 +153,7 @@ object ByronRules:
       previous: PBftState,
       delegation: DelegationState,
       config: Config
-  ): Either[ByronChainError, PBftState] =
+  ): Either[ByronChainError | ProviderDefect, PBftState] =
     if header.boundary then Right(previous)
     else
       for
@@ -199,7 +212,7 @@ object ByronRules:
       main: Header.ByronMain,
       d: ByronSignature.Delegated,
       config: Config
-  ): Either[ByronChainError, Unit] =
+  ): Either[ByronChainError | ProviderDefect, Unit] =
     // The genesis key in the signed tag is the header's, not the certificate's (as upstream).
     val message = ByronCbor.concat(
       Bytes.fromArray("01".getBytes("US-ASCII")),
@@ -208,11 +221,12 @@ object ByronRules:
       config.ledger.magic,
       main.signed
     )
-    for _ <- ByronEd25519.verify(d.delegate.take(32), d.signature, message) match
+    for _ <- config.signatures(d.delegate.take(32), d.signature, message) match
         case Right(VerificationResult.SignatureVerified) => Right(())
         case Right(VerificationResult.SignatureRejected) => Left(ByronChainError.SignatureRejected)
         case Left(input: xyz.kd5ujc.scarab.crypto.witness.WitnessInputError) =>
           Left(ByronChainError.SignatureInput(input))
+        // a verifier failure is no verdict on the block, not a rejected signature (ProviderDefect)
         case Left(other: xyz.kd5ujc.scarab.crypto.witness.VerificationError) =>
-          Left(ByronChainError.SignatureFailure(other))
+          Left(ProviderDefect.Ed25519(other))
     yield ()

@@ -81,7 +81,9 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         .rescue(e => IO.raiseError(new RuntimeException(e.message)))
       sink = new TxSubmissionServer.Sink[IO]:
         def known(id: Bytes) = IO.pure(false)
-        def submit(originals: Vector[Bytes]) = IO.unit
+        def submit(
+            originals: Vector[Bytes]
+        )(using cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]) = IO.unit
     yield ServerHandlers[IO, NtNHeader](NtNHeader.codec, server.source, server.blocks, sink)
 
   /** The same peer, stalling on every connection: it announces `headers` headers and then does not

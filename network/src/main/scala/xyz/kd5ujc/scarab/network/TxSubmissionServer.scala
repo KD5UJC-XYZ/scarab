@@ -21,9 +21,12 @@ object TxSubmissionServer:
     def known(id: Bytes): F[Boolean]
 
     /** Offer fetched transactions (original bytes). Rejections are the sink's business: a refused
-      * transaction is not a protocol error.
+      * transaction is not a protocol error. A failure of the node's own library, which gives no
+      * verdict on a transaction, ends the session through the caller's `Raise`: the connection
+      * closes and the peer is tried again later, as the reference's `ShutdownPeer` does for an
+      * exception in the inbound TxSubmission2 thread.
       */
-    def submit(originals: Vector[Bytes]): F[Unit]
+    def submit(originals: Vector[Bytes])(using Raise[F, NetworkError]): F[Unit]
 
   /** @param idsPerRequest
     *   Ids asked for per request.
@@ -37,7 +40,7 @@ object TxSubmissionServer:
   )(using Raise[F, NetworkError]): F[Unit] =
     val typedSink = new TxSubmission2Runtime.Sink[F, Bytes, Bytes]:
       def known(id: Bytes) = sink.known(id)
-      def submit(originals: Vector[Bytes]) = sink.submit(originals)
+      def submit(originals: Vector[Bytes])(using Raise[F, NetworkError]) = sink.submit(originals)
     val rules = new TxSubmission2Runtime.Rules[Bytes]:
       def acknowledge(unacked: Vector[Bytes], blocking: Boolean, ack: Int, request: Int) =
         TxSubmissionPolicy.acknowledge(unacked, blocking, ack, request)

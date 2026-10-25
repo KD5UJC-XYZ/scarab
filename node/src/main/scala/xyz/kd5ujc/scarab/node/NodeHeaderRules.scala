@@ -213,21 +213,22 @@ final class NodeHeaderRules[S](
           case Right(_) =>
             val ticked = ByronLedger.tick(cfg.ledger, ledger, header.slot)
             Prepared.Check(() =>
-              ByronRules
-                .validateHeader(header, previous.pbft, ticked.delegation, cfg)
-                .leftMap(HeaderError.Byron(_))
-                .fold(
-                  Outcome.Invalid(_),
-                  next =>
-                    Outcome.Valid(
-                      NodeHeaderState.Byron(
-                        next,
-                        previous.pendingShelley,
-                        Some(ByronTip(header.hash, header.epoch, header.slot, header.boundary)),
-                        Some(header.blockNo)
-                      )
+              HeaderRules.outcome(
+                ByronRules
+                  .validateHeader(header, previous.pbft, ticked.delegation, cfg)
+                  .leftMap {
+                    case defect: ProviderDefect => defect
+                    case error: ByronChainError => HeaderError.Byron(error)
+                  }
+                  .map(next =>
+                    NodeHeaderState.Byron(
+                      next,
+                      previous.pendingShelley,
+                      Some(ByronTip(header.hash, header.epoch, header.slot, header.boundary)),
+                      Some(header.blockNo)
                     )
-                )
+                  )
+              )
             )
       case _ => Prepared.Invalid(HeaderError.Structure(HeaderStructureProblem.MissingByronLedger))
 

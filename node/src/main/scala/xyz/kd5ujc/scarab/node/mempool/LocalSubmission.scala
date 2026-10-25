@@ -50,10 +50,14 @@ object LocalSubmission:
     * predicate failures `cardano-cli` renders), the hard-fork combinator's era mismatch for a
     * transaction of another era. What the ledger does not report as a predicate failure (a
     * malformed transaction, a full mempool) is sent as its free-text `ConwayMempoolFailure`. An
-    * implementation limit remains a typed value and has no rejection bytes.
+    * implementation limit, and a crypto provider that failed on a witness, remain typed values and
+    * have no rejection bytes: there is no verdict to send.
     */
-  def reasonItem(rejection: Rejection): Either[LedgerFailure.Unavailable, Bytes] = rejection match
-    case Rejection.Ledger(error: LedgerFailure.Unavailable) => Left(error)
+  def reasonItem(
+      rejection: Rejection
+  ): Either[LedgerFailure.Unavailable | LedgerFailure.Unverifiable, Bytes] = rejection match
+    case Rejection.Ledger(error: LedgerFailure.Unavailable)  => Left(error)
+    case Rejection.Ledger(error: LedgerFailure.Unverifiable) => Left(error)
     case Rejection.WrongEra(era) =>
       Right(
         PredicateFailureCbor.eraMismatch(
@@ -88,10 +92,16 @@ object LocalSubmission:
     */
   private def response(rejection: Rejection): LocalTxSubmissionServer.Response =
     reasonItem(rejection).fold(
-      error =>
-        LocalTxSubmissionServer.Response.ServiceUnavailable(
-          LocalTxSubmissionServer.Unavailable.ScriptEvaluation(error)
-        ),
+      {
+        case error: LedgerFailure.Unavailable =>
+          LocalTxSubmissionServer.Response.ServiceUnavailable(
+            LocalTxSubmissionServer.Unavailable.ScriptEvaluation(error)
+          )
+        case error: LedgerFailure.Unverifiable =>
+          LocalTxSubmissionServer.Response.ServiceUnavailable(
+            LocalTxSubmissionServer.Unavailable.Verification(error)
+          )
+      },
       LocalTxSubmissionServer.Response.Rejected(_)
     )
 

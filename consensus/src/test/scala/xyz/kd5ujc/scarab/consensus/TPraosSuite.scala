@@ -63,7 +63,7 @@ class TPraosSuite extends FunSuite:
       case ((s, acc), h) =>
         TPraos.update(s, h, lite.view, config) match
           case Right(v) => (v.state, acc :+ v.leader)
-          case Left(e)  => fail(s"block ${h.blockNo} slot ${h.slot}: ${e.message}")
+          case Left(e)  => fail(s"block ${h.blockNo} slot ${h.slot}: $e")
     }
     assertEquals(leaders.size, 20)
     assert(leaders.forall(_.isInstanceOf[LeaderCheck.Overlay]), leaders.toString)
@@ -116,6 +116,32 @@ class TPraosSuite extends FunSuite:
     val h = headers.head
     val bad = h.copy(kesSignature = flip(h.kesSignature, 10))
     assert(firstError(bad).exists(_.isInstanceOf[TPraosError.OCert]), firstError(bad).toString)
+  }
+
+  test("a VRF or certificate provider defect is no verdict, not a TPraos refusal (issue 393)") {
+    import xyz.kd5ujc.scarab.ledger.{OCertError, ProviderDefect, Verdicts}
+    import xyz.kd5ujc.scarab.crypto.kes.Sum6Kes
+    val boom = new IllegalStateException("provider broke")
+    val vrfDefect = new Verdicts:
+      export Verdicts.Direct.{keyHash, opCert, praosVrf, takePrepared, witness}
+      def tpraosVrf(alpha: Bytes, vkey: Bytes, proof: Bytes, output: Bytes): Vrf.Result =
+        Vrf.Result.InternalFailure(boom)
+    assertEquals(
+      TPraos.update(initial, headers.head, lite.view, config.copy(verdicts = vrfDefect)),
+      Left(ProviderDefect.VrfVerifier(Vrf.Result.InternalFailure(boom)))
+    )
+    val kesDefect = new Verdicts:
+      export Verdicts.Direct.{keyHash, praosVrf, takePrepared, tpraosVrf, witness}
+      def opCert(
+          header: Header.Shelley,
+          slotsPerKesPeriod: BigInt,
+          maxKesEvolutions: BigInt
+      ): Either[OCertError | ProviderDefect, Unit] =
+        Left(ProviderDefect.Kes(Sum6Kes.Failure.Defect(boom)))
+    assertEquals(
+      TPraos.update(initial, headers.head, lite.view, config.copy(verdicts = kesDefect)),
+      Left(ProviderDefect.Kes(Sum6Kes.Failure.Defect(boom)))
+    )
   }
 
   test("a non-overlay slot of an unregistered issuer is rejected before any crypto") {

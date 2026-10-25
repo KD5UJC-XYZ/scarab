@@ -9,7 +9,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Nonce, OCertError, OCertRules}
+import xyz.kd5ujc.scarab.ledger.{Nonce, OCertError, OCertRules, ProviderDefect}
 import xyz.kd5ujc.scarab.consensus.{Praos, PraosConfig, TPraos}
 import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
 
@@ -31,7 +31,9 @@ import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
   * maps are written from the parallel warming threads and read, synchronously, from the pure rules,
   * which have no effect type to thread a `Ref` through. Every structure is a concurrent map or
   * atomic, bounded (cleared at `Limit`), and holds only verdicts that are functions of their key,
-  * so sharing one between threads changes timing, never results.
+  * so sharing one between threads changes timing, never results. A provider defect
+  * ([[xyz.kd5ujc.scarab.ledger.ProviderDefect]]) is no verdict and is never kept: the rules ask the
+  * provider again and meet it themselves.
   */
 final class VerificationCache private (val parallelism: Int) extends Verdicts:
   private final case class WitnessKey(vkey: Bytes, signature: Bytes, message: Bytes)
@@ -116,19 +118,19 @@ final class VerificationCache private (val parallelism: Int) extends Verdicts:
         case HeaderVrf.Praos(cert) =>
           Praos.vrfInput(hint._2, header.slot).foreach { input =>
             Vrf.alpha(input).foreach { alpha =>
-              vrfs.computeIfAbsent(
+              keepVrf(
                 VrfKey(0, alpha, header.vrfVkey, cert.proof, cert.output),
-                _ => Vrf.verify(input, header.vrfVkey, cert.proof, cert.output)
+                Vrf.verify(input, header.vrfVkey, cert.proof, cert.output)
               )
             }
           }
         case HeaderVrf.TPraos(nonceCert, leaderCert) =>
           for (uc, cert) <- Seq(TPraos.SeedEta -> nonceCert, TPraos.SeedL -> leaderCert) do
             val alpha = TPraos.seed(uc, header.slot, hint._2)
-            vrfs.computeIfAbsent(
+            keepVrf(
               VrfKey(1, alpha, header.vrfVkey, cert.proof, cert.output),
-              _ => Vrf.verifyAlpha(alpha, header.vrfVkey, cert.proof, cert.output)
-            )
+              Vrf.verifyAlpha(alpha, header.vrfVkey, cert.proof, cert.output)
+            ): Unit
 
   /** The verdicts as header-first validation reads them (G6): computed once if they are not there
     * yet and *kept*, so that the block's own validation, which comes later and consumes them
@@ -136,35 +138,35 @@ final class VerificationCache private (val parallelism: Int) extends Verdicts:
     * fetched stay until the maps are cleared at their limits.
     */
   def forHeaders: Verdicts = new Verdicts:
-    def witness(vkey: Bytes, signature: Bytes, message: Bytes): Boolean =
+    def witness(vkey: Bytes, signature: Bytes, message: Bytes): Either[ProviderDefect, Boolean] =
       VerificationCache.this.witness(vkey, signature, message)
 
     def opCert(
         header: Header.Shelley,
         slotsPerKesPeriod: BigInt,
         maxKesEvolutions: BigInt
-    ): Either[OCertError, Unit] =
+    ): Either[OCertError | ProviderDefect, Unit] =
       if headers.size > Limit then headers.clear()
-      headers.computeIfAbsent(
+      keepHeader(
         HeaderKey(header.hash, slotsPerKesPeriod, maxKesEvolutions),
-        _ => Verdicts.Direct.opCert(header, slotsPerKesPeriod, maxKesEvolutions)
+        Verdicts.Direct.opCert(header, slotsPerKesPeriod, maxKesEvolutions)
       )
 
     def praosVrf(input: Vrf.Input, vkey: Bytes, proof: Bytes, output: Bytes): Vrf.Result =
       Vrf.alpha(input) match
         case Right(alpha) =>
           if vrfs.size > 16384 then vrfs.clear()
-          vrfs.computeIfAbsent(
+          keepVrf(
             VrfKey(0, alpha, vkey, proof, output),
-            _ => Verdicts.Direct.praosVrf(input, vkey, proof, output)
+            Verdicts.Direct.praosVrf(input, vkey, proof, output)
           )
         case Left(_) => Vrf.verify(input, vkey, proof, output)
 
     def tpraosVrf(alpha: Bytes, vkey: Bytes, proof: Bytes, output: Bytes): Vrf.Result =
       if vrfs.size > 16384 then vrfs.clear()
-      vrfs.computeIfAbsent(
+      keepVrf(
         VrfKey(1, alpha, vkey, proof, output),
-        _ => Verdicts.Direct.tpraosVrf(alpha, vkey, proof, output)
+        Verdicts.Direct.tpraosVrf(alpha, vkey, proof, output)
       )
 
     def keyHash(vkey: Bytes): Bytes = VerificationCache.this.keyHash(vkey)
@@ -188,10 +190,9 @@ final class VerificationCache private (val parallelism: Int) extends Verdicts:
         .parTraverseN(parallelism)(h =>
           Async[F].blocking(
             try
-              headers.computeIfAbsent(
+              keepHeader(
                 HeaderKey(h.hash, config.slotsPerKesPeriod, config.maxKesEvolutions),
-                _ =>
-                  OCertRules.verifySignatures(h, config.slotsPerKesPeriod, config.maxKesEvolutions)
+                OCertRules.verifySignatures(h, config.slotsPerKesPeriod, config.maxKesEvolutions)
               )
               warmVrf(h, config, (epoch, nonce))
             catch case scala.util.control.NonFatal(_) => ()
@@ -202,8 +203,32 @@ final class VerificationCache private (val parallelism: Int) extends Verdicts:
   /** The block decoded while warming, if any (taken once). */
   override def takePrepared(hash: Bytes): Option[Prepared] = Option(prepared.remove(hash))
 
-  private def compute(key: WitnessKey): Boolean =
+  private def compute(key: WitnessKey): Either[ProviderDefect, Boolean] =
     Verdicts.Direct.witness(key.vkey, key.signature, key.message)
+
+  /** The kept OCERT verdict of `key`, or `verdict` kept now unless it is a provider defect. */
+  private def keepHeader(
+      key: HeaderKey,
+      verdict: => Either[OCertError | ProviderDefect, Unit]
+  ): Either[OCertError | ProviderDefect, Unit] =
+    val known = headers.get(key)
+    if known != null then known
+    else
+      val computed = verdict
+      computed match
+        case Right(())               => headers.putIfAbsent(key, Right(())): Unit
+        case Left(e: OCertError)     => headers.putIfAbsent(key, Left(e)): Unit
+        case Left(_: ProviderDefect) => ()
+      computed
+
+  /** The kept VRF verdict of `key`, or `verdict` kept now unless it records a provider defect. */
+  private def keepVrf(key: VrfKey, verdict: => Vrf.Result): Vrf.Result =
+    val known = vrfs.get(key)
+    if known != null then known
+    else
+      val computed = verdict
+      if ProviderDefect.ofVrf(computed).isEmpty then vrfs.putIfAbsent(key, computed): Unit
+      computed
 
   private val keyHashes = new ConcurrentHashMap[Bytes, Bytes]()
 
@@ -235,18 +260,22 @@ final class VerificationCache private (val parallelism: Int) extends Verdicts:
   val vrfStats = new Counters
 
   /** Whether `signature` is a valid witness of `message` under `vkey`. */
-  override def witness(vkey: Bytes, signature: Bytes, message: Bytes): Boolean =
+  override def witness(
+      vkey: Bytes,
+      signature: Bytes,
+      message: Bytes
+  ): Either[ProviderDefect, Boolean] =
     val key = WitnessKey(vkey, signature, message)
     val known = witnesses.remove(key)
     witnessStats.record(known != null)
-    if known != null then known.booleanValue else compute(key)
+    if known != null then Right(known.booleanValue) else compute(key)
 
   /** The OCERT signature checks of a header (see [[OCertRules.verifySignatures]]). */
   override def opCert(
       header: Header.Shelley,
       slotsPerKesPeriod: BigInt,
       maxKesEvolutions: BigInt
-  ): Either[OCertError, Unit] =
+  ): Either[OCertError | ProviderDefect, Unit] =
     val known = headers.remove(HeaderKey(header.hash, slotsPerKesPeriod, maxKesEvolutions))
     opCertStats.record(known != null)
     if known != null then known
@@ -296,11 +325,10 @@ final class VerificationCache private (val parallelism: Int) extends Verdicts:
         // header-first validation may have computed it already (see forHeaders)
         Vector[Job](
           () =>
-            headers.computeIfAbsent(
+            keepHeader(
               key,
-              _ =>
-                OCertRules
-                  .verifySignatures(b.header, config.slotsPerKesPeriod, config.maxKesEvolutions)
+              OCertRules
+                .verifySignatures(b.header, config.slotsPerKesPeriod, config.maxKesEvolutions)
             ): Unit,
           () => warmVrf(b.header, config)
         ) ++ triples.map { k =>
@@ -312,7 +340,7 @@ final class VerificationCache private (val parallelism: Int) extends Verdicts:
             warmedStats.record(present)
             if !present then
               keyHash(k.vkey)
-              witnesses.put(k, compute(k)): Unit
+              compute(k).foreach(valid => witnesses.put(k, valid)): Unit
           ): Job
         }
       val pending = new Pending(p, checks.size)

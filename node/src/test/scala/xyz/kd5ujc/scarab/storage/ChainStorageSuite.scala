@@ -28,11 +28,15 @@ import xyz.kd5ujc.scarab.node.log.NodeEvent
 import xyz.kd5ujc.scarab.consensus.BlockRules
 import xyz.kd5ujc.scarab.ledger.{
   BlockFailure,
+  BlockRule,
   LedgerFailure,
+  ProviderDefect,
   Redeemer,
   ScriptLocation,
-  ValidationError
+  ValidationError,
+  VerificationDefect
 }
+import xyz.kd5ujc.scarab.crypto.witness.VerificationError
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, ExUnits}
 import xyz.kd5ujc.scarab.node.{MirrorRules, MirrorSteps}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
@@ -511,18 +515,21 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       identity: Option[NetworkIdentity] = Some(setup.identity),
       tap: Int => IO[Unit] = _ => IO.unit,
       adoptLegacy: Boolean = false,
-      selectionOnStartup: Boolean = false
+      selectionOnStartup: Boolean = false,
+      wrapRules: BlockRules[IO, MirrorState] => BlockRules[IO, MirrorState] = identity
   ): IO[Session] =
     Ref.of[IO, Vector[StorageEvent]](Vector.empty).flatMap { log =>
       Handle
         .allow[NodeError] {
           val backing = StateBacking.none[IO, MirrorState]
-          val nodeRules = MirrorRules[IO](
-            setup.praos,
-            setup.globals,
-            setup.byronRules,
-            setup.handOver,
-            setup.byronHistory
+          val nodeRules = wrapRules(
+            MirrorRules[IO](
+              setup.praos,
+              setup.globals,
+              setup.byronRules,
+              setup.handOver,
+              setup.byronHistory
+            )
           )
           ChainStorage
             .open[IO, MirrorState](
@@ -627,8 +634,11 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             }
         }
         .rescue(e => IO.pure(e.asLeft))
-        .flatMap(_.fold(e => IO.raiseError(new AssertionError(e.message)), IO.pure))
+        .flatMap(_.fold(e => IO.raiseError(new SessionRefused(e)), IO.pure))
     }
+
+  /** A session that ended in a typed error of the node, which a test can inspect. */
+  private final class SessionRefused(val error: NodeError) extends AssertionError(error.message)
 
   /** The message of the refusal a session ends in. */
   private def refusal(s: IO[Session]): IO[String] =
@@ -806,6 +816,43 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           yield ()
         }
       yield ()
+    }
+  }
+
+  test(
+    "a provider defect on a stored volatile block stops the start and rolls nothing back (issue 393)"
+  ) {
+    val defect = ProviderDefect.Ed25519(
+      VerificationError.ImplementationFailure(new IllegalStateException("provider broke"))
+    )
+    def failingOn(last: Header): BlockRules[IO, MirrorState] => BlockRules[IO, MirrorState] =
+      base =>
+        BlockRules.from { (state, header, raw) =>
+          if header.hash == last.hash then
+            Raise[IO, ValidationError].raise[ValidationError, MirrorState](
+              ValidationError(header.point, BlockFailure.Unverifiable(BlockRule.Byron, defect))
+            )
+          else base(state, header, raw)
+        }
+    tempDir.use { dir =>
+      for
+        first <- session(dir, 500)
+        tail = first.chain.blocks.lastOption.getOrElse(fail("expected a volatile suffix"))._1
+        header = headers.find(_.hash == tail.hash).getOrElse(fail("missing fixture header"))
+        stopped <- session(dir, 500, wrapRules = failingOn(header)).attempt
+        // control: the same database, healthy, keeps the whole tail it selected
+        again <- session(dir, 500)
+      yield
+        stopped match
+          case Left(refused: SessionRefused) =>
+            val held = VerificationDefect(header.point, VerificationDefect.Site.Header, defect)
+            assertEquals(refused.error, held)
+            assertEquals(Main.startupFailure(refused.error)._2.code, 7)
+          case other => fail(s"expected the start to stop on the defect, got $other")
+        // nothing was cut back: the tail is as it was selected
+        assertEquals(again.resumed, k)
+        assertEquals(again.dropped, 0)
+        assertEquals(again.chain, first.chain)
     }
   }
 

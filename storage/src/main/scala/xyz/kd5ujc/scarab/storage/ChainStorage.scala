@@ -19,6 +19,8 @@ import xyz.kd5ujc.scarab.ledger.{
   FirstImmutableProblem,
   NodeError,
   StorageError,
+  ValidationError,
+  VerificationDefect,
   StorageStructureError
 }
 import xyz.kd5ujc.scarab.consensus.Compute
@@ -398,9 +400,10 @@ object ChainStorage:
 
   /** Rebuild the volatile chain from the log: apply the logged blocks after the immutable tip, in
     * order, on top of the recovered state. Blocks that do not connect or that the rules refuse end
-    * the chain there (the rest is fetched again, and the log is cut back); a log with more than `k`
-    * blocks after the immutable tip (the immutable store lost an unforced tail) resumes the first
-    * `k`. The result is the volatile chain the node continues from.
+    * the chain there (the rest is fetched again, and the log is cut back); a crypto provider that
+    * fails on a block raises instead, and the log is left as it is; a log with more than `k` blocks
+    * after the immutable tip (the immutable store lost an unforced tail) resumes the first `k`. The
+    * result is the volatile chain the node continues from.
     */
   def resume[F[_]: Async, S](
       recovered: Recovered[F, S],
@@ -438,6 +441,13 @@ object ChainStorage:
             if actual != ref then F.pure(done)
             else
               handle.attempt(rules(chain.state, header, raw)).flatMap {
+                // A crypto provider that fails is no refusal: the stored tail was selected on a
+                // verdict of an earlier run, so the start stops (Fatal.Unverifiable, as the
+                // exception ends the reference's linked thread) and nothing is rolled back.
+                case Left(e: ValidationError) =>
+                  e.unverifiable.fold(F.pure(done))(handle.raise[NodeError, Vector[Resumed[S]]](_))
+                case Left(e: VerificationDefect) =>
+                  handle.raise[NodeError, Vector[Resumed[S]]](e)
                 case Left(_) => F.pure(done)
                 case Right(next) =>
                   chain.extend(header, next) match

@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.node
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.*
-import xyz.kd5ujc.scarab.consensus.HeaderRules.Outcome
 import xyz.kd5ujc.scarab.consensus.state.ProtocolState
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.state.EraTag
@@ -79,7 +78,7 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
         else geometry.stabilityWindow.toBigInt
       val delegations = ledger.genDelegsAt(h.slot)
       HeaderRules.Prepared.Check(() =>
-        val checked: Either[HeaderError, ProtocolState] =
+        val checked: Either[HeaderError | ProviderDefect, ProtocolState] =
           genericEnvelope.flatMap(_ => envelope).flatMap { _ =>
             if h.era.usesTPraos then
               val view = LedgerView(
@@ -91,7 +90,10 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
               TPraos
                 .update(Praos.tick(prev, h.era, epoch, params.extraEntropy), h, view, cfg)
                 .map(_.state)
-                .leftMap(HeaderError.TPraos(_))
+                .leftMap {
+                  case defect: ProviderDefect => defect
+                  case error: TPraosError     => HeaderError.TPraos(error)
+                }
             else
               Praos
                 .validate(
@@ -102,7 +104,10 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
                   nonceWindow
                 )
                 .map(_._1)
-                .leftMap(HeaderError.Praos(_))
+                .leftMap {
+                  case defect: ProviderDefect => defect
+                  case error: PraosError      => HeaderError.Praos(error)
+                }
           }
-        checked.fold(Outcome.Invalid(_), Outcome.Valid(_))
+        HeaderRules.outcome(checked)
       )

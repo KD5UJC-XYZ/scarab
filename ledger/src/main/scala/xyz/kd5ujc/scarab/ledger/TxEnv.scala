@@ -71,10 +71,12 @@ sealed trait LedgerFailure extends DomainError:
         case ScriptLocation.Phase1(hash) => s"phase 1 script ${hash.hex.take(16)}"
         case ScriptLocation.Phase2(r)    => s"phase 2 redeemer ${r.tag}.${r.index}"
       s"tx ${id.hex.take(16)} evaluation unavailable at $where: ${why.message}"
-    case LedgerFailure.Vocab(e) => s"transaction outside the state's vocabulary: $e"
+    case LedgerFailure.Unverifiable(id, d) => s"tx ${id.hex.take(16)} has no verdict: ${d.message}"
+    case LedgerFailure.Vocab(e)            => s"transaction outside the state's vocabulary: $e"
 
 /** What ends a judgment of the rules without a verdict: the transaction cannot be what its era
-  * decodes, a script cannot be evaluated here, or a value is outside the state's vocabulary. The
+  * decodes, a script cannot be evaluated here, a verifier failed, or a value is outside the
+  * state's vocabulary. The
   * reference has no predicate failure for any of them, so none is part of a refusal's list.
   */
 sealed trait LedgerDefect extends LedgerFailure
@@ -107,6 +109,11 @@ object LedgerFailure:
       location: ScriptLocation,
       reason: xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported
   ) extends LedgerDefect
+
+  /** The Ed25519 verifier failed on a witness of the transaction ([[ProviderDefect]]): no verdict
+    * on it, and not a predicate failure.
+    */
+  final case class Unverifiable(txId: Bytes, defect: ProviderDefect) extends LedgerDefect
 
   /** A value of the transaction is not a member of the vocabulary type that the era-indexed state
     * holds it in (a credential of another length, a quantity outside its word). The decoder admits

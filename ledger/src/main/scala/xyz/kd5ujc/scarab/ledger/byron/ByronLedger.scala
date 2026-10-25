@@ -6,7 +6,7 @@ import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
-import xyz.kd5ujc.scarab.ledger.{ByronGenesis, Header}
+import xyz.kd5ujc.scarab.ledger.{ByronGenesis, Header, ProviderDefect}
 import xyz.kd5ujc.scarab.ledger.{CborRead, TxIn}
 
 /** Why a Byron block is refused by the ledger rules (`ChainValidationError`). */
@@ -123,7 +123,15 @@ object ByronLedger:
   /** The protocol major version whose adoption is the transition to Shelley. */
   val ShelleyMajor: BigInt = 2
 
-  final case class Config(genesis: ByronGenesis, requiresNetworkMagic: Boolean):
+  /** @param signatures
+    *   The Ed25519 verifier of the ledger's own signatures (transaction witnesses, delegation
+    *   certificates, update proposals and votes); a test injects a failing provider here.
+    */
+  final case class Config(
+      genesis: ByronGenesis,
+      requiresNetworkMagic: Boolean,
+      signatures: ByronSig.Verifier = ByronSig.Standard
+  ):
     def magicId: BigInt = BigInt(genesis.protocolMagic)
     def magic: Bytes = ByronCbor.uint(magicId)
     def k: BigInt = BigInt(genesis.securityParam)
@@ -157,14 +165,24 @@ object ByronLedger:
       )
     }
 
-  def initial(config: Config): Either[LedgerDecodeError, ByronLedgerState] =
+  extension [A](result: Either[ByronError | ProviderDefect, A])
+    /** The refusal as the enclosing rule's, a provider defect as itself. */
+    def refusedAs[E](refusal: ByronError => E): Either[E | ProviderDefect, A] = result match
+      case Right(a)                => Right(a)
+      case Left(e: ByronError)     => Left(refusal(e))
+      case Left(d: ProviderDefect) => Left(d)
+
+  /** The state at slot 0. A verifier that fails on a genesis certificate is a [[ProviderDefect]]:
+    * the genesis cannot be checked, which is not a fault of the genesis.
+    */
+  def initial(config: Config): Either[LedgerDecodeError | ProviderDefect, ByronLedgerState] =
     val g = config.genesis
     for
       utxo <- genesisUtxo(g, config.addressMagic)
       certs = g.delegations.map(cert)
-      delegation <- DelegationRules
-        .initial(config.magic, g.genesisKeys, certs)
-        .leftMap(LedgerDecodeError.Delegation(_))
+      delegation <- DelegationRules.refusedAs(
+        DelegationRules.initial(config.magic, g.genesisKeys, certs, config.signatures)
+      )(LedgerDecodeError.Delegation(_))
     yield ByronLedgerState(
       0,
       0,
@@ -204,7 +222,7 @@ object ByronLedger:
       header: Header.Byron,
       blockSize: Int,
       body: ByronBody
-  ): Either[ByronError, ByronLedgerState] =
+  ): Either[ByronError | ProviderDefect, ByronLedgerState] =
     val params = ticked.update.adoptedParams
     val slot = header.slot
     val main = header.main
@@ -229,36 +247,41 @@ object ByronLedger:
         .flatMap(_.signature match
           case d: Header.ByronSignature.Delegated => Some(ByronCbor.keyHash(d.delegate)))
         .toRight(ByronError.MissingDelegatedSignature)
-      delegation <- DelegationRules
-        .update(
+      delegation <- DelegationRules.refusedAs(
+        DelegationRules.update(
           DelegationRules.Env(
             config.magic,
             config.genesis.genesisKeys.toSet,
             epochOf(config, slot),
             slot,
-            config.k
+            config.k,
+            config.signatures
           ),
           ticked.delegation,
           body.delegation
         )
-        .leftMap(ByronError.Delegation(_))
-      utxo <- body.txs.foldLeftM(ticked.utxo)(applyTx(config, params, _, _))
-      update <- ByronUpdate
-        .register(
+      )(ByronError.Delegation(_))
+      utxo <- body.txs
+        .foldLeftM[[A] =>> Either[ByronError | ProviderDefect, A], Map[TxIn, ByronOut]](
+          ticked.utxo
+        )(applyTx(config, params, _, _))
+      update <- ByronUpdate.refusedAs(
+        ByronUpdate.register(
           ByronUpdate.Env(
             config.magicId,
             config.magic,
             config.k,
             slot,
             config.genesis.genesisKeys.size,
-            ticked.delegation.delegationMap
+            ticked.delegation.delegationMap,
+            config.signatures
           ),
           ticked.update,
           body.update,
           header.blockVersion,
           issuerDelegate
         )
-        .leftMap(ByronError.Update(_))
+      )(ByronError.Update(_))
     yield
       val nowCandidates = update.candidates.map(_.version).toSet
       val candidateBlocks =
@@ -355,7 +378,7 @@ object ByronLedger:
       params: ByronParams,
       utxo: Map[TxIn, ByronOut],
       aux: ByronTxAux
-  ): Either[ByronError, Map[TxIn, ByronOut]] =
+  ): Either[ByronError | ProviderDefect, Map[TxIn, ByronOut]] =
     val tx = aux.tx
     val inputSet = tx.inputs.toSet
     for
@@ -366,9 +389,11 @@ object ByronLedger:
         ByronAddress.decode(o.address).leftMap(ByronError.Decode(_)).map(i -> _)
       )
       // `zip`: surplus witnesses or surplus inputs are ignored, as upstream does
-      _ <- addresses.zip(aux.witnesses).traverse_ { case ((in, address), w) =>
-        witness(config, tx, in, address, w)
-      }
+      _ <- addresses
+        .zip(aux.witnesses)
+        .traverse_[[A] =>> Either[ByronError | ProviderDefect, A], Unit] {
+          case ((in, address), w) => witness(config, tx, in, address, w)
+        }
       _ <- Either.cond(
         BigInt(aux.raw.size) <= params.maxTxSize,
         (),
@@ -422,16 +447,18 @@ object ByronLedger:
       input: TxIn,
       address: ByronAddress,
       w: ByronWitness
-  ): Either[ByronError, Unit] =
+  ): Either[ByronError | ProviderDefect, Unit] =
     val signedHash = ByronCbor.of(0x58, 0x20) ++ tx.id
     val (kind, key, signature) = w match
       case ByronWitness.VerKey(k, s) => (ByronSig.SignTx, k, s)
       case ByronWitness.Redeem(k, s) => (ByronSig.SignRedeemTx, k, s)
     val message = ByronSig.tag(kind, config.magic) ++ signedHash
-    val verified = w match
-      case _: ByronWitness.VerKey => ByronSig.verify(key, signature, message)
-      case _: ByronWitness.Redeem => ByronSig.verifyRedeem(key, signature, message)
+    val verification = w match
+      case _: ByronWitness.VerKey => ByronSig.verify(key, signature, message, config.signatures)
+      case _: ByronWitness.Redeem =>
+        ByronSig.verifyRedeem(key, signature, message, config.signatures)
     for
+      verified <- verification
       _ <- Either.cond(verified, (), ByronError.WrongSignature(input))
       _ <- Either.cond(
         address.addrType == (w match

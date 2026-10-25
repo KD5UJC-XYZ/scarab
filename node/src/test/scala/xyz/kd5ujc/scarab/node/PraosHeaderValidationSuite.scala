@@ -109,7 +109,9 @@ class PraosHeaderValidationSuite extends FailsOnUncaught:
           fetched.update(_ + 1).as(Some(fs2.Stream.emit(c.raws(index)).covary[IO]))
       sink = new TxSubmissionServer.Sink[IO]:
         def known(id: Bytes) = IO.pure(false)
-        def submit(originals: Vector[Bytes]) = IO.unit
+        def submit(originals: Vector[Bytes])(using
+            cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+        ) = IO.unit
       bearers <- Bearer.inMemory[IO](64)
       (theirs, ours) = bearers
       result <- Handle

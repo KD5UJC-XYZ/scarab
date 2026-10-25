@@ -94,6 +94,12 @@ enum BlockFailure:
   /** A Praos header rule, retaining its typed cause. */
   case Praos(error: PraosError)
 
+  /** A crypto provider failed while the `family` header rules of the block verified it
+    * ([[ProviderDefect]]). Not a refusal: this implementation has no verdict on the block, and
+    * [[ValidationError.unverifiable]] says so.
+    */
+  case Unverifiable(family: BlockRule, defect: ProviderDefect)
+
   // ---- ledger
 
   /** The ledger-lite rules of the bootstrap mode refused the block. */
@@ -133,9 +139,10 @@ enum BlockFailure:
     case Decode(_) | TxDecode(_, _) => BlockRule.Decode
     case NoByronGenesis | TransitionUndecided(_) | ShelleyBeforeTransition(_, _, _) | Byron(_) =>
       BlockRule.Byron
-    case Envelope(_) => BlockRule.Envelope
-    case TPraos(_)   => BlockRule.TPraos
-    case Praos(_)    => BlockRule.Praos
+    case Envelope(_)        => BlockRule.Envelope
+    case TPraos(_)          => BlockRule.TPraos
+    case Praos(_)           => BlockRule.Praos
+    case Unverifiable(r, _) => r
     case Lite(_) | Handover(_) | SupplyInvariant(_, _, _) | RefScriptsTooLarge(_) |
         BlockExUnitsTooBig(_, _) | Tx(_) | Tick(_) | Mirror(_) =>
       BlockRule.Ledger
@@ -158,12 +165,13 @@ enum BlockFailure:
       s"$era block, but the Byron ledger has not decided on the transition to Shelley"
     case ShelleyBeforeTransition(epoch, first, last) =>
       s"Shelley block in epoch $epoch, the transition is to epoch $first after Byron slot $last"
-    case Byron(error)    => error.message
-    case Envelope(error) => error.message
-    case TPraos(error)   => error.message
-    case Praos(error)    => error.message
-    case Lite(error)     => error.message
-    case Handover(error) => error.message
+    case Byron(error)            => error.message
+    case Envelope(error)         => error.message
+    case TPraos(error)           => error.message
+    case Praos(error)            => error.message
+    case Unverifiable(_, defect) => s"no verdict: ${defect.message}"
+    case Lite(error)             => error.message
+    case Handover(error)         => error.message
     case SupplyInvariant(epoch, total, maximum) =>
       s"supply invariant broken entering epoch $epoch: $total != $maximum"
     case RefScriptsTooLarge(limit) => s"reference scripts of the block exceed $limit bytes"

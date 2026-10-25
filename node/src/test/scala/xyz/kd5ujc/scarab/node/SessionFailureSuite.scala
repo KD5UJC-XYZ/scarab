@@ -12,15 +12,24 @@ import xyz.kd5ujc.scarab.ledger.{LedgerFailure, Redeemer, ScriptLocation}
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules, FollowerEvent, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{
   BlockFailure,
+  BlockRule,
   ChainError,
   EpochGeometry,
+  EvaluationUnavailable,
   Fixtures,
   Header,
   NodeError,
   PeerError,
+  ProviderDefect,
   StorageError,
-  ValidationError
+  ValidationError,
+  VerificationDefect
 }
+import xyz.kd5ujc.scarab.crypto.kes.Sum6Kes
+import xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate
+import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
+import xyz.kd5ujc.scarab.crypto.witness.VerificationError
+import xyz.kd5ujc.scarab.ledger.byron.ByronSig
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.storage.ChainPersistence
 import scala.concurrent.duration.*
@@ -58,7 +67,8 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   /** Run a session of the follower over a peer that announces `headers` in turn and then waits.
     * `refuse` is the header the rules reject, `breakStorage` the number of the block whose
     * persistence fails, `breakTip` the number of the block after which telling the mempool fails,
-    * `explode` the number of the block whose rules throw.
+    * `explode` the number of the block whose rules throw, `unverifiable` the number of the block on
+    * which a crypto provider fails and the failure the rules report for it.
     */
   private def session(
       script: List[Either[PeerError, SyncEvent]] =
@@ -68,7 +78,8 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       breakTip: Option[Int] = None,
       explode: Option[Int] = None,
       unavailable: Option[Int] = None,
-      held: Option[Int] = None
+      held: Option[Int] = None,
+      unverifiable: Option[(Int, BlockFailure)] = None
   ): IO[Result] =
     NodeScope.resource.use { node =>
       for
@@ -118,6 +129,10 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   )
                 )
               )
+            )
+          else if unverifiable.exists(_._1 == header.blockNo.toInt) then
+            Raise[IO, ValidationError].raise[ValidationError, BigInt](
+              ValidationError(header.point, unverifiable.fold(BlockFailure.HeaderDiffers)(_._2))
             )
           else if held.contains(header.blockNo.toInt) then
             Raise[IO, ValidationError].raise[ValidationError, BigInt](
@@ -283,11 +298,128 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
+  // Issue 393: a crypto provider that fails on a block, whichever primitive it is, stops the node
+  // (Fatal.Unverifiable), as the exception ends the reference's linked add-block thread: no invalid
+  // record and no blame for the peer.
+  private val boom = new IllegalStateException("provider broke")
+  private val providerDefects: List[(String, BlockFailure, VerificationDefect.Site)] =
+    List(
+      (
+        "Praos VRF",
+        BlockFailure.Unverifiable(
+          BlockRule.Praos,
+          ProviderDefect.VrfVerifier(Vrf.Result.InternalFailure(boom))
+        ),
+        VerificationDefect.Site.Header
+      ),
+      (
+        "TPraos VRF",
+        BlockFailure.Unverifiable(
+          BlockRule.TPraos,
+          ProviderDefect.VrfVerifier(Vrf.Result.PrimitiveContractViolation(None))
+        ),
+        VerificationDefect.Site.Header
+      ),
+      (
+        "KES",
+        BlockFailure
+          .Unverifiable(BlockRule.Praos, ProviderDefect.Kes(Sum6Kes.Failure.Defect(boom))),
+        VerificationDefect.Site.Header
+      ),
+      (
+        "certificate signature",
+        BlockFailure.Unverifiable(
+          BlockRule.TPraos,
+          ProviderDefect.OpCertSignature(OperationalCertificate.Failure.Defect(boom))
+        ),
+        VerificationDefect.Site.Header
+      ),
+      (
+        "Byron Ed25519",
+        BlockFailure.Unverifiable(
+          BlockRule.Byron,
+          ProviderDefect.Ed25519(VerificationError.ImplementationFailure(boom))
+        ),
+        VerificationDefect.Site.Header
+      ),
+      // the failures the real Byron rules give when the provider fails on a signature of the
+      // Byron ledger (issue 438): not a Byron refusal, so not recorded and not blamed
+      (
+        "Byron ledger transaction witness",
+        ByronLedgerDefectKit.failure(ByronSig.SignTx),
+        VerificationDefect.Site.Header
+      ),
+      (
+        "Byron ledger update proposal",
+        ByronLedgerDefectKit.failure(ByronSig.SignUpdateProposal),
+        VerificationDefect.Site.Header
+      ),
+      (
+        "Ed25519 witness",
+        BlockFailure.Tx(
+          LedgerFailure.Unverifiable(
+            Bytes.fromArray(Array.fill(32)(3.toByte)),
+            ProviderDefect.Ed25519(VerificationError.ImplementationFailure(boom))
+          )
+        ),
+        VerificationDefect.Site.Witness(Bytes.fromArray(Array.fill(32)(3.toByte)))
+      )
+    )
+
+  providerDefects.foreach { (name, failure, site) =>
+    test(s"a $name provider defect stops the node: no invalid record, no blame") {
+      session(unverifiable = Some(2 -> failure)).map { left =>
+        val defect = failure match
+          case BlockFailure.Unverifiable(_, d)                   => d
+          case BlockFailure.Tx(LedgerFailure.Unverifiable(_, d)) => d
+          case other                                             => fail(s"unexpected $other")
+        val held = VerificationDefect(headers(2).point, site, defect)
+        assertEquals(left.end, SessionEnd.Unverifiable(held))
+        assertEquals(
+          FailurePolicy.disposition(left.end),
+          Disposition.StopNode(Fatal.Unverifiable(held))
+        )
+        assertEquals(SessionEnd.peerError(left.end), None)
+        assertEquals(left.invalid, Set.empty[Bytes])
+        assertEquals(left.events.collect { case e: FollowerEvent.Held => e }, Vector.empty)
+        assertEquals(left.chain.tip, headers(1).point)
+        assertEquals(blockNos(left.stored), Vector(0, 1))
+      }
+    }
+  }
+
+  test("a provider defect on a header disconnects the peer: recorded nowhere, tried again later") {
+    val held = VerificationDefect(
+      headers(2).point,
+      VerificationDefect.Site.Header,
+      ProviderDefect.VrfVerifier(Vrf.Result.InternalFailure(boom))
+    )
+    val script =
+      headers.take(2).toList.map(h => Right(SyncEvent.RollForward(h, tip))) :+
+        Left(PeerError.Unverifiable(held))
+    session(script = script).map { left =>
+      assertEquals(left.end, SessionEnd.Failed(PeerError.Unverifiable(held)))
+      assertEquals(FailurePolicy.disposition(left.end), Disposition.Backoff)
+      assertEquals(left.invalid, Set.empty[Bytes])
+      assertEquals(left.events.collect { case e: FollowerEvent.Held => e }, Vector.empty)
+    }
+  }
+
+  test("a provider defect on a stored block stops replay with exit 7, as a library failure") {
+    val held = VerificationDefect(
+      headers(2).point,
+      VerificationDefect.Site.Header,
+      ProviderDefect.Kes(Sum6Kes.Failure.Defect(boom))
+    )
+    val (_, code) = Main.startupFailure(held)
+    assertEquals(code.code, 7)
+  }
+
   test("a defect a block triggers holds it: no verdict, no invalid record, no blame, no stop") {
     session(held = Some(2)).map { left =>
       left.end match
         case SessionEnd.Held(error) =>
-          assertEquals(error.point, headers(2).point)
+          assertEquals(error, EvaluationUnavailable(headers(2).point, heldFailure))
           assertEquals(FailurePolicy.disposition(left.end), Disposition.Hold(error))
         case other => fail(s"unexpected $other")
       assertEquals(SessionEnd.peerError(left.end), None)

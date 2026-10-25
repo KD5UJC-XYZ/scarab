@@ -4,11 +4,12 @@ package xyz.kd5ujc.scarab.node.mempool
 import cats.effect.{Async, Ref}
 import cats.effect.std.{Mutex, Semaphore}
 import cats.mtl.{Ask, Raise}
-import xyz.kd5ujc.scarab.ledger.StorageError
+import cats.mtl.syntax.all.*
+import xyz.kd5ujc.scarab.ledger.{LedgerFailure, StorageError, VerificationDefect}
 import cats.syntax.all.*
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.network.{TxSubmissionClient, TxSubmissionServer}
+import xyz.kd5ujc.scarab.network.{NetworkError, TxSubmissionClient, TxSubmissionServer}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.node.{Fatal, StorageBoundary}
@@ -115,6 +116,19 @@ trait Mempool[F[_]]:
   def sink(fatal: Fatal => F[Unit]): TxSubmissionServer.Sink[F]
 
 object Mempool:
+  /** The provider defect among the transactions a revalidation (`sync`, `removeTxsEvenIfValid`)
+    * dropped, as the defect of the block it was revalidated for at `at`. The reference's
+    * revalidation watcher is linked to the node (consensus 82ecba32 `Mempool/Init.hs:64-77`), so
+    * the node stops ([[Fatal.Unverifiable]]).
+    */
+  def unverifiable(
+      dropped: Vector[(Entry, Rejection)],
+      at: xyz.kd5ujc.scarab.protocol.ChainSync.Point
+  ): Option[VerificationDefect] =
+    dropped.collectFirst { case (_, Rejection.Ledger(LedgerFailure.Unverifiable(tx, defect))) =>
+      VerificationDefect(at, VerificationDefect.Site.Witness(tx), defect)
+    }
+
   /** How many submissions wait for their turn: `remote` behind the peer's transaction that holds
     * the remote line, `common` behind the one that holds the common line.
     */
@@ -324,5 +338,19 @@ object Mempool:
           // outside every protocol deadline (`TxSubmission2Runtime.server` times the read of a
           // message, not the sink), the peer sits in StIdle where it may wait for ever, and its
           // other mini-protocols and our outbound direction run in fibers of their own.
-          def submit(originals: Vector[Bytes]) =
-            StorageBoundary.run(fatal)(originals.traverse_(add(_, Source.Remote).void))
+          //
+          // A crypto provider that fails on a witness gives no verdict on the transaction. It is not
+          // a rejection: it closes this peer's connection, with the peer tried again later and
+          // nothing recorded, as the exception does in the reference's inbound TxSubmission2 thread
+          // (consensus 82ecba32 Node/NodeKernel.hs `getMempoolWriter`, `Mempool/Update.hs`
+          // `doAddTx`, `Node/RethrowPolicy.hs:40-45`). The transactions after it are not offered.
+          def submit(originals: Vector[Bytes])(using Raise[F, NetworkError]) =
+            originals.traverse_ { original =>
+              StorageBoundary.run(fatal)(add(original, Source.Remote)).flatMap {
+                case Left(Rejection.Ledger(defect: LedgerFailure.Unverifiable)) =>
+                  NetworkError
+                    .BearerClosed(NetworkError.Closure.AbortedBy(defect))
+                    .raise[F, Unit]
+                case _ => F.unit
+              }
+            }

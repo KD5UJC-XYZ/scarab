@@ -135,6 +135,7 @@ trait ForgeFixture:
       offsetMillis: Long = 0,
       source: Option[HotKeySource[IO]] = None,
       ruleFailure: Option[BlockFailure] = None,
+      verdicts: xyz.kd5ujc.scarab.ledger.Verdicts = xyz.kd5ujc.scarab.ledger.Verdicts.Direct,
       storageFailure: Option[StorageError] = None,
       clock: Option[IO[Instant]] = None
   )(using Handle[IO, NodeError]): IO[Harness] =
@@ -144,7 +145,13 @@ trait ForgeFixture:
         VolatileChain.genesis(geometry.k.toInt, start)
       )
       given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
-      realRules = MirrorRules[IO](config, globals, None, None, mirrorEnv.byron)
+      realRules = MirrorRules[IO](
+        config.copy(verdicts = verdicts),
+        globals,
+        None,
+        None,
+        mirrorEnv.byron
+      )
       rules = new xyz.kd5ujc.scarab.consensus.BlockRules[IO, MirrorState]:
         def apply(state: MirrorState, header: Header, raw: Bytes)(using
             Raise[IO, ValidationError],
