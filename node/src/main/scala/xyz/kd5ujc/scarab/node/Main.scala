@@ -88,14 +88,15 @@ import xyz.kd5ujc.scarab.node.relay.{ChainServer, Persistence}
 import scala.concurrent.duration.*
 
 /** `follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] |
-  * --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P]
-  * [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every
-  * <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N]
-  * [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes
-  * N] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off]
-  * [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--plutus-workers N] [--dump-state
-  * <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]]
-  * [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
+  * --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P]
+  * [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>]
+  * [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full]
+  * [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds
+  * N] [--stall-minutes N] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N]
+  * [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N]
+  * [--plutus-workers N] [--dump-state <dir> [--dump-state-at
+  * <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket
+  * <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
   *
   * With `--config` the node reads the Haskell node's `config.json` as `cardano-node run` does (the
   * genesis files it names, relative to it, with every hash it lists verified, the hard-fork epochs,
@@ -334,7 +335,7 @@ object Main extends IOApp:
       genesisDir: Option[Path],
       peers: List[SocketAddress[Host]],
       seconds: Option[Long],
-      queryPort: Int,
+      query: QueryListen,
       metricsListen: Option[SocketAddress[Host]] = None,
       plutusCases: Option[Path] = None,
       db: Option[Path] = None,
@@ -1334,7 +1335,7 @@ object Main extends IOApp:
                 QueryServer
                   .resource[IO, MirrorState](
                     ChainView.fromRef(ref),
-                    options.queryPort,
+                    options.query,
                     Some(store),
                     Some(scheduling.stats.total.map(Reports.schedulingTotal)),
                     Some(
@@ -1465,7 +1466,7 @@ object Main extends IOApp:
       values.find(r => argument == s"--${r.flag}")
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>] " + LogSettings.Usage
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>] " + LogSettings.Usage
 
   /** Flags that take a value and may repeat. */
   private val RepeatedFlags = Set("peer") ++ LogSettings.RepeatedFlags
@@ -1477,6 +1478,7 @@ object Main extends IOApp:
     "topology",
     "seconds",
     "query-port",
+    "query-listen",
     "metrics-listen",
     "plutus-cases",
     "db",
@@ -1582,9 +1584,12 @@ object Main extends IOApp:
             Peer.parseAddress(t).leftMap(e => ConfigError(ConfigProblem.PeerAddress(e)))
           )
           seconds <- flags.get("seconds").traverse(_.toLongOption.toRight(invalid("seconds")))
-          port <- flags
-            .get("query-port")
-            .fold(Right(7071))(_.toIntOption.toRight(invalid("query-port")))
+          query <- (flags.get("query-listen"), flags.get("query-port")) match
+            case (Some(_), Some(_)) => Left(invalid("query-listen"))
+            case (Some(t), None)    => QueryListen.parse(t).toRight(invalid("query-listen"))
+            case (None, Some(t)) =>
+              Port.fromString(t).map(QueryListen.Loopback(_)).toRight(invalid("query-port"))
+            case (None, None) => Right(QueryListen.Loopback(QueryListen.DefaultPort))
           metricsListen <- flags
             .get("metrics-listen")
             .traverse(t =>
@@ -1701,7 +1706,7 @@ object Main extends IOApp:
           dir,
           peers,
           seconds,
-          port,
+          query,
           metricsListen,
           flags.get("plutus-cases").map(Path.of(_)),
           flags.get("db").map(Path.of(_)),

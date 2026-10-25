@@ -20,10 +20,36 @@ class MainArgsSuite extends munit.FunSuite:
 
   test("known flags parse with their defaults") {
     val options = Main.parse(base).toOption.get
-    assertEquals(options.queryPort, 7071)
+    assertEquals(options.query, QueryListen.Loopback(QueryListen.DefaultPort))
     assertEquals(options.keepSnapshots, 2)
     assertEquals(options.snapshotEvery, None)
     assertEquals(options.mempoolBytes, None)
+  }
+
+  test(
+    "--query-listen turns the query server off or names its port, and conflicts with --query-port"
+  ) {
+    def query(extra: String*) = Main.parse(base ++ extra).map(_.query)
+    assertEquals(query("--query-listen", "off"), Right(QueryListen.Off))
+    assertEquals(
+      query("--query-listen", "7100"),
+      Right(
+        QueryListen.Loopback(
+          QueryListen
+            .parse("7100")
+            .flatMap {
+              case QueryListen.Loopback(p) => Some(p)
+              case QueryListen.Off         => None
+            }
+            .get
+        )
+      )
+    )
+    assertEquals(query("--query-port", "7100"), query("--query-listen", "7100"))
+    assert(query("--query-listen", "maybe").isLeft)
+    assert(query("--query-listen", "70000").isLeft)
+    assert(query("--query-port", "off").isLeft)
+    assert(query("--query-listen", "off", "--query-port", "7100").isLeft)
   }
 
   test("a repeated --peer is allowed") {
