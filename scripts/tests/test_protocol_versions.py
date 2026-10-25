@@ -568,5 +568,66 @@ class GovernanceThreadTest(unittest.TestCase):
         load.epoch_batch("conway", 12)
         self.assertEqual(batch, [12])
 
+    def stopping_load(self):
+        from devnet import eraload
+        load = eraload.EraLoad("t", lambda: None, log=lambda m: None)
+        load.submissions = []
+        load.submit = lambda era, tx, label, expect=None: load.submissions.append(label) or True
+        return load
+
+    def test_a_stopped_load_submits_nothing_and_starts_no_stage(self):
+        load = self.stopping_load()
+        load.funds = lambda address: self.fail("the wallet was queried after the stop")
+        ran = []
+        load.stop.set()
+        self.assertIsNone(load.act("conway", "x", types.SimpleNamespace(address="a")))
+        self.assertIsNone(load.stage("s", lambda: ran.append(1) or "txid"))
+        self.assertEqual((ran, getattr(load, "attempts", {}), load.submissions), ([], {}, []))
+
+    def test_a_stop_during_the_governance_query_ends_the_pass_before_any_stage(self):
+        import threading
+        from devnet import eraload
+        load = self.stopping_load()
+        in_query, release = threading.Event(), threading.Event()
+        stages = []
+
+        def protocol_params():
+            in_query.set()
+            release.wait(30)
+            return {"protocolVersion": {"major": 10}, "stakeAddressDeposit": 1, "dRepDeposit": 1}
+        load.gov_setup = lambda: None
+        load.gw, load.gdrep, load.pool_cold = [None] * 5, [], []
+        load.protocol_params = protocol_params
+        load.stage = lambda key, run, tries=4: stages.append(key)
+        load.epoch_info = lambda: {"era": "Conway", "epoch": 10, "slotInEpoch": 5}
+        with patch.object(eraload, "time", types.SimpleNamespace(sleep=lambda seconds: None)):
+            load.start_governance()
+            try:
+                entered = in_query.wait(30)  # evaluated before the assertions: the worker holds no lock they need
+                load.stop.set()
+            finally:
+                release.set()
+            load.governance_thread.join(30)
+        self.assertTrue(entered)
+        self.assertFalse(load.governance_thread.is_alive())
+        self.assertEqual((stages, load.submissions), ([], []))
+
+    def test_join_stopped_names_the_threads_that_do_not_end(self):
+        import threading
+        from devnet.scenarios import e2e
+        release = threading.Event()
+        stuck = threading.Thread(target=lambda: release.wait(30), daemon=True)
+        ended = threading.Thread(target=lambda: None, daemon=True)
+        stuck.start()
+        ended.start()
+        try:
+            late = e2e.join_stopped({"worker": ended, "governance": stuck, "extended": None}, timeout=0)
+        finally:
+            release.set()
+            stuck.join(30)
+        self.assertEqual(late, ["governance"])
+        self.assertEqual(e2e.join_stopped({"governance": stuck}, timeout=0), [])
+
+
 if __name__ == "__main__":
     unittest.main()

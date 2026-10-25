@@ -339,7 +339,10 @@ class EraLoad:
             **build):
         """Spend from `wallet` (largest ADA-only output plus any `spend_extra` inputs), pay `outputs`
         ((address, coin, assets, kwargs) tuples), send the change back to the wallet, sign, submit and
-        wait for the confirmation. Returns the transaction id, or None."""
+        wait for the confirmation. Returns the transaction id, or None; nothing is submitted once the run has
+        asked the load to stop (`stop`)."""
+        if self.stop.is_set():
+            return None
         utxos = [u for u in self.funds(wallet.address) if not u[2] and u[0] not in avoid]
         if not utxos:
             self.log({"skipped": label, "reason": "wallet has no ADA-only output"})
@@ -399,6 +402,8 @@ class EraLoad:
                 total_collateral=total_collateral, **build)
         except Exception as e:  # a bug in a scenario must not stop the cluster walk
             self.log({"buildFailed": label, "error": repr(e)})
+            return None
+        if self.stop.is_set():
             return None
         if refusal is not None:
             # the reference's raw refusal is kept for the failure encodings; nothing is expected of its text
@@ -829,8 +834,9 @@ class EraLoad:
         return txid
 
     def stage(self, key, run, tries=4):
-        """Run a scenario stage until it succeeds (a transaction id or truthy result), at most `tries` times."""
-        if key in self.done or self.attempts.get(key, 0) >= tries:
+        """Run a scenario stage until it succeeds (a transaction id or truthy result), at most `tries` times. Once the
+        run has asked the load to stop (`stop`) no stage starts and no attempt is counted."""
+        if self.stop.is_set() or key in self.done or self.attempts.get(key, 0) >= tries:
             return None
         self.attempts[key] = self.attempts.get(key, 0) + 1
         result = run()
@@ -848,6 +854,8 @@ class EraLoad:
         n = epoch - self.first_conway
         pp = self.protocol_params()
         pv = pp["protocolVersion"]["major"]
+        if self.stop.is_set():  # asked to stop during the query
+            return
         deposit, drep_deposit = pp["stakeAddressDeposit"], pp["dRepDeposit"]
         gw, d = self.gw, self.gdrep
         pools = [k.hash for k in self.pool_cold]

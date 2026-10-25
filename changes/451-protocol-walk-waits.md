@@ -8,3 +8,6 @@
   delegations not made or not yet in the distribution, committee hot keys, the slot window, a pending enactment).
   `protocol.waiting` in `e2e-summary.json` and the `WalkStalled` failure name the current wait. `blockedThreads` holds the
   stacks of load threads still running when the run stopped them.
+- **`e2e` ends its load threads before it summarises or removes the containers.** The comparison worker, the governance
+  thread and the extended thread are all joined on every exit, a thread still running after 90 s fails the run, and
+  once the load is asked to stop no stage starts and no transaction is submitted.

@@ -31,6 +31,20 @@ def blocked_stacks(threads):
             if t is not None and t.is_alive() and t.ident in frames}
 
 
+LOAD_JOIN_SECONDS = 90  # how long the load threads get to end once they were asked to stop
+
+
+def join_stopped(threads, timeout=LOAD_JOIN_SECONDS):
+    """Wait up to `timeout` seconds in all for the load threads (name -> thread or None) to end; the names of the ones
+    still running. The run summarises and removes the containers only after this, so no thread submits to a node
+    that is being removed."""
+    deadline = time.monotonic() + timeout
+    for t in threads.values():
+        if t is not None:
+            t.join(max(deadline - time.monotonic(), 0))
+    return sorted(name for name, t in threads.items() if t is not None and t.is_alive())
+
+
 def block_era(hex_line):
     """Era of a raw `[era tag, block]` line: the tag is the second byte (`82 <tag>`)."""
     return TAG_ERA[int(hex_line[2:4], 16)]
@@ -175,6 +189,7 @@ def e2e(args):
             raise SystemExit(f"{root} exists and is not an e2e leftover; run `devnet.py --name {args.name} down`")
         down(args, quiet=True)  # leftovers of an earlier e2e run
     follower, loader, worker, conway_load = None, None, None, None
+    late = []  # load threads that did not end within LOAD_JOIN_SECONDS of the request to stop
     comparisons = None
     summary, failures = {}, []
     state = {"last_check": 0.0}
@@ -252,12 +267,15 @@ def e2e(args):
                 break
         if loader is not None:
             loader.stop.set()
-            worker.join(timeout=90)
-        blocked = {} if loader is None else blocked_stacks(
-            {"worker": worker, "governance": loader.governance_thread, "extended": loader.ext_thread})
+        load_threads = {} if loader is None else {
+            "worker": worker, "governance": loader.governance_thread, "extended": loader.ext_thread}
+        late = join_stopped(load_threads)
+        blocked = {} if loader is None else blocked_stacks(load_threads)
         exit_code = follower.poll()
         events, other = read_log(log)
         summary, failures = summarize_e2e(events, other, expected, exit_code)
+        if late:
+            failures.append(f"load threads still running {LOAD_JOIN_SECONDS} s after they were asked to stop: {late}")
         summary["blockedThreads"] = blocked
         summary["stoppedBecause"] = reason
         summary["cpuStarvationWarnings"] = starvation_warnings(log)
@@ -300,6 +318,13 @@ def e2e(args):
     finally:
         if loader is not None:
             loader.stop.set()
+            # an exceptional exit reaches here with the threads running: end them before the containers go
+            still = join_stopped({"worker": worker, "governance": loader.governance_thread,
+                                  "extended": loader.ext_thread})
+            unreported = [name for name in still if name not in late]
+            if unreported:
+                failures.append(f"load threads still running {LOAD_JOIN_SECONDS} s after they were asked to stop: "
+                                f"{unreported}")
         if conway_load is not None:
             conway_load.terminate()
         if follower is not None and follower.poll() is None:
