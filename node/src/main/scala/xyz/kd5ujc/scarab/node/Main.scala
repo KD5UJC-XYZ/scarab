@@ -169,14 +169,12 @@ object Main extends IOApp:
           )
         )
         .flatMap(Raise[IO, NodeError].fromEither(_))
-      dropped <- mempool.sync(
+      // a transaction revalidation has no verdict on stops the node before the pool changes
+      _ <- mempool.sync(
         ledger,
         chain.tipRef.fold(BigInt(-1))(_.slot),
         adopted
-      )
-      _ <- Mempool
-        .unverifiable(dropped, chain.tip)
-        .traverse_(Raise[IO, NodeError].raise[NodeError, Unit](_))
+      )(using summon, Mempool.raisedAt[IO](chain.tip))
     yield ()
 
   private def seedReceived(

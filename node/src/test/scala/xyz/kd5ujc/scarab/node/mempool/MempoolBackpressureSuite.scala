@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.ledger.*
 
 import TestLedger.txIn
 import TxKit.*
+import TxKit.given
 
 /** `implAddTx` of the reference: a transaction that finds no room waits for the pool to change
   * instead of being refused, in a line that serves local clients before queued peers, and it holds

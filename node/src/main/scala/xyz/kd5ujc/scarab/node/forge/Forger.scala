@@ -398,10 +398,11 @@ final class Forger[F[_]: Async, S](
           // next leader slot does not repeat the failure (`NodeKernel.hs`, `removeTxsEvenIfValid`)
           failed(slot, e) *>
             mempool
-              .removeTxsEvenIfValid(chosen.map(_._1.id).toSet)
-              .flatMap(dependants =>
-                Mempool.unverifiable(dependants, current.tip).traverse_(_.raise[F, Unit])
-              ) *>
+              .removeTxsEvenIfValid(chosen.map(_._1.id).toSet)(using
+                summon,
+                Mempool.raisedAt[F](current.tip)
+              )
+              .void *>
             build(current, tip, slot, epoch, ticked, cert, Vector.empty, stake, pools.total)
               .flatMap(_.fold(e2 => failed(slot, e2), _ => F.unit))
         case Left(e)  => failed(slot, e)

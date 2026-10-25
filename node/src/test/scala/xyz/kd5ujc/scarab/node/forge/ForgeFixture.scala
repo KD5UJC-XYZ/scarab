@@ -203,7 +203,12 @@ trait ForgeFixture:
                   .left
                   .map(ChainError.MempoolTick(c.tipRef.fold(BigInt(0))(_.slot + 1), _))
               )
-              .flatMap(mempool.sync(_, c.tipRef.fold(BigInt(0))(_.slot), Set.empty))
+              .flatMap(
+                mempool.sync(_, c.tipRef.fold(BigInt(0))(_.slot), Set.empty)(using
+                  summon,
+                  Mempool.raisedAt[IO](c.tip)
+                )
+              )
               .void
           )
         )

@@ -128,7 +128,9 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
     val held = failing.pool
       .add(failing.raw(true), mempoolEnv, Source.Remote)
       .fold(r => fail(r.message), _._1)
-    val (synced, dropped) = held.sync(Right(failing.ledger), failing.tipSlot, mempoolEnv)
+    val (synced, dropped) = held
+      .sync(Right(failing.ledger), failing.tipSlot, mempoolEnv)
+      .fold(noVerdict => fail(s"no verdict: $noVerdict"), identity)
     assertEquals(dropped, Vector.empty)
     assertEquals(synced.entries.map(_.raw), held.entries.map(_.raw))
     assertEquals(synced.entries.map(_.tx.isValid), Vector(false))

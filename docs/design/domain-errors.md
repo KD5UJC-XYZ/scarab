@@ -47,7 +47,12 @@ equivalents), `Verdicts.witness` is `Either[ProviderDefect, Boolean]` and `Verdi
 `Either[OCertError | ProviderDefect, Unit]`. No predicate failure (`PraosError`, `TPraosError`,
 `OCertError`, `ByronChainError`, `PredicateFailure`) has a case for it, so the conversions to
 `HeaderError` and `BlockFailure` must place it explicitly. `VerificationCache` never keeps a
-defect, so the rules ask the provider again.
+defect as a verdict: a defect met while warming is handed once to the validation it was computed
+for (a fetched block's, or header-first validation's) when that validation asks for the check, and
+the provider is not asked again. A check the rules never reach shows no defect, so the reference's
+evaluation order decides whether one is met: Praos checks the operational certificate, its
+cold-key signature, its KES signature and the counter before the VRF (ouroboros-consensus 82ecba32
+`Protocol/Praos.hs` 481–486 and 637–640).
 
 The reference's primitives answer only accept or reject, and the Praos rules turn only that answer
 into a predicate failure (ouroboros-consensus 82ecba32 `Protocol/Praos.hs` 587–592 and 637–640); a
@@ -91,11 +96,15 @@ that meets it, and Scarab does the same in each place:
   (`Mempool.sink`), and the peer is tried again later.
 - **Revalidation and block production** (`Mempool.sync`, `removeTxsEvenIfValid`,
   `BlockBuilder.select`). The reference runs them in linked threads (`Mempool/Init.hs` 64–77,
-  `Node/NodeKernel.hs` 549–560), so the exception stops the node. Scarab raises the defect as
-  `VerificationDefect` (`Mempool.unverifiable`, the forger) and the node stops with
-  `Fatal.Unverifiable`. The reference revalidates a held transaction with `reapplyTx` of a
-  previously validated one (`Mempool/Impl/Common.hs` 403–422, `Shelley/Ledger/Mempool.hs`
-  325–338); Scarab runs the full rules again, so a verifier can be asked a second time.
+  `Node/NodeKernel.hs` 549–560), so the exception stops the node, and it aborts the state
+  operation it was met in, so the pool's state is not changed and nothing is traced
+  (`Mempool/Update.hs` 467–495 and 587–622). Scarab's revalidation stops at the first transaction
+  it has no verdict on (`MempoolState.NoVerdict`) and raises it before the pool's state, version,
+  waiters or events change; the node raises it as `VerificationDefect` (`Mempool.raisedAt`, the
+  forger) and stops with `Fatal.Unverifiable`. The reference revalidates a held transaction with
+  `reapplyTx` of a previously validated one (`Mempool/Impl/Common.hs` 403–422,
+  `Shelley/Ledger/Mempool.hs` 325–338); Scarab runs the full rules again, so a verifier can be
+  asked a second time.
 
 The Byron ledger's own signature checks (`ByronSig`: transaction witnesses, delegation
 certificates, update proposals and votes) follow the same rule:
