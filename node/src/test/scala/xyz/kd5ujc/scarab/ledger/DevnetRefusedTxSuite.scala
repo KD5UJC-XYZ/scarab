@@ -61,14 +61,14 @@ class DevnetRefusedTxSuite extends FunSuite:
     s.copy(params = s.params.copy(protocolMajor = major, poolDeposit = 0, minUTxOValue = 0))
 
   private def rule(r: Either[LedgerFailure, LedgerState]): String = r match
-    case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
-    case Left(other)                        => other.message
-    case Right(_)                           => "accepted"
+    case Left(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
+    case Left(other)                               => other.message
+    case Right(_)                                  => "accepted"
 
   /** The failure as `cardano-cli` prints it (Haskell `Show`), for the constructors of this fixture.
     */
   private def shown(r: Either[LedgerFailure, LedgerState]): String = r match
-    case Left(LedgerFailure.Rejected(_, f)) =>
+    case Left(LedgerFailure.Rejected.Single(_, f)) =>
       def key(h: Bytes) = s"""KeyHash {unKeyHash = "${h.hex}"}"""
       f match
         case PredicateFailure.Certs(

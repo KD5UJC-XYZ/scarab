@@ -87,7 +87,7 @@ class PreprodConwayRulesSuite extends FunSuite:
   test("the same transaction marked invalid is refused: its scripts succeed") {
     val invalid = c.tx.copy(isValid = false)
     rs.tx(world, invalid, env(ScalusEvaluator.default)) match
-      case Left(LedgerFailure.Rejected(_, f)) =>
+      case Left(LedgerFailure.Rejected.Single(_, f)) =>
         assert(f.toString.contains("ValidationTagMismatch(false"), f.toString)
       case other => fail(s"$other")
   }

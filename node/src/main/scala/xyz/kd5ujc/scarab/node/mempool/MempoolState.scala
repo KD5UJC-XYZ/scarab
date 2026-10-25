@@ -175,9 +175,10 @@ final case class MempoolLedger(ls: LedgerState[Conway], treasury: Coin, epoch: B
     * `DoNotIntervene`
     * (`ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Eras.hs` at
     * `82ecba329d7d054340bf707d44fe6e9ac27cec40`, `isIncorrectClaimedFlag`). The reference takes a
-    * refusal that is the only element of the failure list; this ledger reports its first failure
-    * and checks the phase-1 rules before the scripts run, so a mismatch is the first failure only
-    * when nothing before it failed.
+    * refusal that is the only element of the failure list, and so does this one
+    * ([[LedgerFailure.Rejected.Single]]). The rules report their first failure and check the
+    * phase-1 rules before the scripts run, so a mismatch is the only failure when nothing before it
+    * failed.
     */
   def admit(
       tx: Tx,
@@ -191,7 +192,7 @@ final case class MempoolLedger(ls: LedgerState[Conway], treasury: Coin, epoch: B
         val claimed = tx.copy(isValid = true)
         apply(claimed, env, rules) match
           case Left(
-                LedgerFailure.Rejected(
+                LedgerFailure.Rejected.Single(
                   _,
                   PredicateFailure.Utxow(
                     UtxowFailure.Utxo(

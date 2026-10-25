@@ -39,6 +39,46 @@ cast, no `@unchecked`, and no `Any` value channel anywhere in the file; the comp
 each continuation receives its predecessor's exact result type — across `Bind`, `Handle` recovery
 and scoped globals.
 
+## The judgment (#412)
+
+The reference's small-steps interpreter (cardano-ledger `f649f975`,
+`libs/small-steps/src/Control/State/Transition/Extended.hs:668-730`) never aborts a rule on a
+predicate failure: it records the failure and continues, runs every sub-rule (`trans`), and skips a
+step only under `whenFailureFree`/`ifFailureFree`, which read a flag that is set once anything was
+recorded anywhere in the judgment. The machine now carries that judgment:
+
+- `RuleT[Rec, Fail, S, A]` records predicate failures of type `Rec` and raises `Fail`. A rule that
+  records nothing runs in `RuleT.Of[Fail, S]`, which is `RuleT[Nothing, Fail, S, *]`, as before.
+- Three program nodes: `Record(failures)` (`Tell`), `Failing()` (the flag) and `Nest(program)` (the
+  boundary of a sub-rule). The machine state gains the current rule's recorded `Trace` (`Chain.nil`
+  until something fails, so a valid transaction allocates none) and the failing flag.
+- A `Frame.Unnest(parent)` closes a nest: the failures recorded inside become one `Trace.Node` of
+  the parent's, after what the parent had recorded; a nest that recorded nothing adds nothing.
+  `Frame.Handler` saves and restores the trace and the flag together with the state.
+- The capability is `Judge[F, Fail]`, a cats-mtl `Tell[F, Chain[Fail]]` with `failing`, `nest` and
+  `contramap` (`wrapFailed`). `Sts.whenFailureFree`, `Sts.whenFailureFreeDefault` and
+  `Sts.ifFailureFree` read the flag.
+- `RuleT.Policy`: `Accumulate` records and continues; `FirstFailure` ends the judgment at the first
+  recorded failure, as a raise does. A program that records nothing runs identically under both.
+- `Judgment.flatten` puts the recorded failures in the reference's order. The reference prepends a
+  predicate's failures to the rule's list (`Extended.hs:708`) and folds a sub-rule's list in one
+  element at a time (`Extended.hs:720-722`), which reverses it, so the order alternates with the
+  depth of the nest from the applied rule. The flatten walks an explicit stack of pending blocks
+  with their direction (ADR 0011): linear in the failures, constant in the JVM stack.
+- `Judgment.run(rule, policy)` applies a rule and returns a defect, the refusal's predicate failures
+  (`NonEmptyChain`), or the state. `Refusal[Fail]` splits a raised failure into the two; for the
+  ledger, `LedgerFailure.Rejected` holds the predicate failures and the `LedgerDefect` cases
+  (`Undecodable`, `Unavailable`, `Vocab`) are defects.
+
+`JudgmentSuite` checks the order against a literal port of `Extended.hs:703-722` on random rule
+trees, the certificate recursion of CERTS and DELEGS (`gamma :|> c`) for one to eight certificates
+in the Babbage and Conway nesting, the flag, the two policies, `Monad` and `Tell` laws, and judgments
+of 100,000 failures, nests and certificates on a 256 KiB stack.
+
+The rules still raise their predicate failures, and every caller runs them under `FirstFailure`,
+so verdicts and refusals are unchanged. Rules record through `Judge` and `Sts.trans` becomes a
+nest when the rules are moved over to recording.
+
 ## What is preserved
 
 - **Laws**: `Monad`, `Local`, `Stateful`, `Handle` — the suites are unchanged and green.

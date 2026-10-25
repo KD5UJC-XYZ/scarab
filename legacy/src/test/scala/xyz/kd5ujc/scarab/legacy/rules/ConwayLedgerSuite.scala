@@ -135,8 +135,8 @@ class ConwayLedgerSuite extends FunSuite:
     case other              => fail(s"expected the transaction to be accepted: $other")
 
   private def refusedWith(s: flat.LedgerState, t: Tx): String = agree(s, t) match
-    case Out.Refused(LedgerFailure.Rejected(_, f)) => f.ruleName
-    case other                                     => fail(s"expected a refusal: $other")
+    case Out.Refused(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
+    case other                                            => fail(s"expected a refusal: $other")
 
   // ---- a Conway state to start from
 
@@ -983,7 +983,7 @@ class ConwayLedgerSuite extends FunSuite:
           assertEquals((next.plutus.failed, next.fees), (1L, 100 * ada))
         case other => fail(s"expected the collateral to be taken: $other")
       ScriptCase(pp, there).attempt(succeeds = false, isValid = false, block) match
-        case Out.Refused(LedgerFailure.Rejected(_, f)) =>
+        case Out.Refused(LedgerFailure.Rejected.Single(_, f)) =>
           assertEquals(f.ruleName, "WrongNetworkWithdrawal")
         case other => fail(s"expected the withdrawal of another network to be refused: $other")
       // the same for a transaction whose scripts succeed: here LEDGER's own check of the
@@ -993,7 +993,7 @@ class ConwayLedgerSuite extends FunSuite:
         case Out.Accepted(next) => assert(!next.utxo.contains(validHere.lockedIn))
         case other              => fail(s"expected the transaction to be accepted: $other")
       ScriptCase(pp, there).attempt(succeeds = true, isValid = true, block) match
-        case Out.Refused(LedgerFailure.Rejected(_, f)) =>
+        case Out.Refused(LedgerFailure.Rejected.Single(_, f)) =>
           assertEquals(
             f.ruleName,
             if protocol < 11 then "WithdrawalsNotInRewardsCERTS"
@@ -1012,8 +1012,8 @@ class ConwayLedgerSuite extends FunSuite:
       case other              => fail(s"expected the collateral to be taken: $other")
     def refused(what: String, b: node.TxBody): String =
       c.attemptWith(succeeds = false, isValid = false, b) match
-        case Out.Refused(LedgerFailure.Rejected(_, f)) => f.ruleName
-        case other                                     => fail(s"$what: expected a refusal: $other")
+        case Out.Refused(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
+        case other => fail(s"$what: expected a refusal: $other")
     val otherNetwork = node.Address
       .decode(Bytes(0x61.toByte +: alice.hash.value))
       .fold(e => fail(e.toString), identity)

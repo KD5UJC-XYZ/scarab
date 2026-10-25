@@ -123,8 +123,8 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
     */
   private def rejection(rule: String, e: LedgerFailure, failures: Node): Unit =
     val predicate = e match
-      case LedgerFailure.Rejected(_, cause) => cause
-      case other                            => fail(s"expected typed native refusal, got $other")
+      case LedgerFailure.Rejected.Single(_, cause) => cause
+      case other => fail(s"expected typed native refusal, got $other")
     val answer = Cbor
       .decode(PredicateFailureCbor.applyTxError(Vector(predicate)))
       .fold(e => fail(e.message), identity)

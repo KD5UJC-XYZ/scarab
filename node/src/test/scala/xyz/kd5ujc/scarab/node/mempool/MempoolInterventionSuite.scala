@@ -69,7 +69,7 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
   private def tagMismatch(flag: Boolean): PartialFunction[Any, Boolean] =
     case Left(
           Rejection.Ledger(
-            LedgerFailure.Rejected(
+            LedgerFailure.Rejected.Single(
               _,
               PredicateFailure.Utxow(
                 UtxowFailure.Utxo(UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(`flag`, _)))

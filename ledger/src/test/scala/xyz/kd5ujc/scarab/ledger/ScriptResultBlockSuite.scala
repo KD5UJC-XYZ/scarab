@@ -114,7 +114,7 @@ class ScriptResultBlockSuite extends FunSuite:
             assertEquals(planned.jobs.size, 2)
           case EraBlock.Outcome.Refused(
                 BlockFailure.Tx(
-                  LedgerFailure.Rejected(
+                  LedgerFailure.Rejected.Single(
                     _,
                     PredicateFailure.Utxow(
                       UtxowFailure.Utxo(UtxoFailure.Utxos(_: UtxosFailure.ValidationTagMismatch))

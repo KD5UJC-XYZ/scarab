@@ -124,7 +124,7 @@ class PreviewConwayRulesSuite extends FunSuite:
         s.copy(gov = s.gov.copy(constitution = s.gov.constitution.copy(script = Some(body.id))))
       rs.tx(other, c.tx, envOf(c, other)) match
         case Left(
-              LedgerFailure.Rejected(
+              LedgerFailure.Rejected.Single(
                 _,
                 PredicateFailure.Gov(GovFailure.InvalidGuardrailsScriptHash(_, _))
               )

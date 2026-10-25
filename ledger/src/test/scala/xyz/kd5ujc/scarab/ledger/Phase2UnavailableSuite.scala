@@ -64,8 +64,8 @@ class Phase2UnavailableSuite extends FunSuite:
       _ => EvalResult.Failure(EvalFailure.OutOfBudget, ExUnits.zero, Vector.empty)
     assert(checked(c.tx.copy(isValid = false), failing).isRight)
     checked(c.tx.copy(isValid = true), failing) match
-      case Left(LedgerFailure.Rejected(_, _)) => ()
-      case other                              => fail(s"unexpected script-failure outcome: $other")
+      case Left(LedgerFailure.Rejected.Single(_, _)) => ()
+      case other => fail(s"unexpected script-failure outcome: $other")
   }
 
   test("a validity-tag mismatch retains the evaluator cause and its original exception") {
@@ -74,7 +74,7 @@ class Phase2UnavailableSuite extends FunSuite:
     val evaluator: ScriptEvaluator[Id] = _ => EvalResult.Failure(reason, ExUnits.zero, Vector.empty)
     checked(c.tx.copy(isValid = true), evaluator) match
       case Left(
-            LedgerFailure.Rejected(
+            LedgerFailure.Rejected.Single(
               _,
               PredicateFailure.Utxow(
                 UtxowFailure.Utxo(

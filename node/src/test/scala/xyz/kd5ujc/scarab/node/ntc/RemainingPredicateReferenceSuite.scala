@@ -90,7 +90,7 @@ class RemainingPredicateReferenceSuite extends FunSuite:
           assert(field[Boolean](result, "accepted"), name)
           assertEquals(state, poolState(field[String](result, "stateCbor")), name)
         case Left(
-              LedgerFailure.Rejected(
+              LedgerFailure.Rejected.Single(
                 _,
                 PredicateFailure.Certs(CertsFailure.Cert(CertFailure.Pool(f)))
               )
@@ -161,7 +161,7 @@ class RemainingPredicateReferenceSuite extends FunSuite:
           else field[Json](row, "attributes")
         checked match
           case Right(_) => assert(field[Boolean](expected, "accepted"), s"$major $name")
-          case Left(LedgerFailure.Rejected(_, failure)) =>
+          case Left(LedgerFailure.Rejected.Single(_, failure)) =>
             assert(!field[Boolean](expected, "accepted"), s"$major $name")
             val native = field[Vector[String]](expected, "failureCbor").headOption
               .getOrElse(fail("native output predicate failure"))
