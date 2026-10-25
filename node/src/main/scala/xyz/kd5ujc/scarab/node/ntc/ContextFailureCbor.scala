@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node.ntc
 
 import cats.data.NonEmptyVector
-import cats.Order
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.*
@@ -202,7 +201,6 @@ private[ntc] object ContextFailureCbor:
       procedures: Vector[(Voter, Vector[(GovActionId, VotingProcedure)])]
   )(using ProtVer): Bytes =
     CborOut.build { w =>
-      given Order[Voter] = Order.from((a, b) => Voter.ordering.compare(a, b))
       val procedure = element[VotingProcedure] { (out, value) =>
         out.array(2)
         put(out, value.vote)(using HaskellStateCodecs.vote)
