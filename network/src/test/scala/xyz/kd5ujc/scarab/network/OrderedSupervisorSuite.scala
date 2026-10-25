@@ -77,6 +77,73 @@ class OrderedSupervisorSuite extends FailsOnUncaught:
     }
   }
 
+  /** The registry size once it has reached `expected`; a registry that never does is a test that
+    * does not terminate, which `TestControl` reports.
+    */
+  private def settled(size: IO[Int], expected: Int): IO[Int] =
+    (IO.cede *> size).iterateUntil(_ == expected)
+
+  test("a child cancelled before its first step leaves the registry while the supervisor is open") {
+    TestControl.executeEmbed {
+      OrderedSupervisor.observed[IO].use { (supervisor, size) =>
+        for
+          ran <- Ref.of[IO, Boolean](false)
+          fiber <- supervisor.supervise(ran.set(true))
+          // Nothing has been scheduled since `supervise` returned: the child has not taken a step.
+          _ <- fiber.cancel
+          outcome <- fiber.join
+          held <- settled(size, 0)
+          didRun <- ran.get
+        yield
+          assert(outcome.isCanceled)
+          assertEquals((held, didRun), (0, false))
+      }
+    }
+  }
+
+  test("a child that ends or is cancelled leaves the registry") {
+    TestControl.executeEmbed {
+      OrderedSupervisor.observed[IO].use { (supervisor, size) =>
+        for
+          ready <- Deferred[IO, Unit]
+          done <- supervisor.supervise(IO.unit)
+          failed <- supervisor.supervise(IO.raiseError[Unit](new IllegalStateException("child")))
+          waiting <- supervisor.supervise(ready.complete(()) *> IO.never[Unit])
+          _ <- ready.get
+          _ <- done.join *> failed.join
+          before <- settled(size, 1)
+          _ <- waiting.cancel
+          after <- settled(size, 0)
+        yield assertEquals((before, after), (1, 0))
+      }
+    }
+  }
+
+  test("supervising concurrently with the release leaves no running child") {
+    TestControl.executeEmbed {
+      for
+        allocated <- OrderedSupervisor[IO].allocated
+        (supervisor, release) = allocated
+        attempts <- List
+          .tabulate(20)(_ => supervisor.supervise(IO.never[Unit]).attempt.start)
+          .sequence
+        closing <- release.start
+        results <- attempts.traverse(_.joinWithNever)
+        _ <- closing.joinWithNever
+        outcomes <- results.traverse {
+          case Right(fiber) => fiber.join.map(_.isCanceled.asRight[String])
+          case Left(error)  => IO.pure(error.getMessage.asLeft[Boolean])
+        }
+      yield assert(
+        outcomes.forall {
+          case Right(canceled) => canceled
+          case Left(message)   => message == "supervisor already shutdown"
+        },
+        clue(outcomes)
+      )
+    }
+  }
+
   /** The contract that `supervise` shares with the supervisor of cats-effect, run on both. */
   private val implementations: List[(String, Resource[IO, Supervisor[IO]])] =
     List(

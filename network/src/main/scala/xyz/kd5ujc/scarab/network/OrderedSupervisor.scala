@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.effect.{Concurrent, Deferred, Fiber, Ref, Resource}
-import cats.effect.implicits.*
 import cats.effect.std.Supervisor
 import cats.syntax.all.*
 import scala.collection.immutable.TreeMap
@@ -30,9 +29,21 @@ object OrderedSupervisor:
     case Closed()
 
   def apply[F[_]](using F: Concurrent[F]): Resource[F, Supervisor[F]] =
+    observed[F].map((supervisor, _) => supervisor)
+
+  /** The supervisor with a view of its registry, the number of children it holds now. */
+  private[network] def observed[F[_]](using
+      F: Concurrent[F]
+  ): Resource[F, (Supervisor[F], F[Int])] =
     Resource
       .make(Ref.of[F, State[F]](State.Open(0L, TreeMap.empty)))(release[F])
-      .map(state => supervisor[F](state))
+      .map(state => (supervisor[F](state), size(state)))
+
+  private def size[F[_]](state: Ref[F, State[F]])(using F: Concurrent[F]): F[Int] =
+    state.get.map {
+      case State.Open(_, children) => children.size
+      case State.Closed()          => 0
+    }
 
   private def supervisor[F[_]](state: Ref[F, State[F]])(using F: Concurrent[F]): Supervisor[F] =
     new Supervisor[F]:
@@ -47,10 +58,9 @@ object OrderedSupervisor:
               .flatMap {
                 case None     => F.raiseError(shutdown)
                 case Some(id) =>
-                  // The child waits until it is registered, so that it can only leave the registry
-                  // after it has entered it.
-                  val child = (registered.get *> fa).guarantee(forget(state, id))
-                  F.start(child).flatMap { fiber =>
+                  // The child waits until it is registered, so that a supervisor released in the
+                  // meantime starts no work.
+                  F.start(registered.get *> fa).flatMap { fiber =>
                     state
                       .modify {
                         case State.Open(next, children) =>
@@ -58,7 +68,12 @@ object OrderedSupervisor:
                         case closed @ State.Closed() => (closed, false)
                       }
                       .flatMap {
-                        case true  => registered.complete(()).as(fiber)
+                        case true =>
+                          // A monitor removes the child when it ends however it ends: a child
+                          // cancelled before its first step runs no finalizer of its own.
+                          F.start(fiber.join *> forget(state, id)) *> registered
+                            .complete(())
+                            .as(fiber)
                         case false => fiber.cancel *> F.raiseError(shutdown)
                       }
                   }
