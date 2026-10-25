@@ -82,3 +82,8 @@ The phase-2 scripts come from `SerialiseDataCorpus` (`plutus/Test/runMain xyz.kd
 ```sh
 python3 -I scripts/oracle/plutus/serialise-data/constr_index.py --requests <requests.jsonl> --raw <raw.jsonl>
 ```
+
+The `equalsData` probes of `EqualsDataCorpus` (`plutus/Test/runMain xyz.kd5ujc.scarab.plutus.EqualsDataCorpus <requests.jsonl>`)
+run through the [costing oracle](costing/README.md) the same way, with
+`python3 -I scripts/oracle/plutus/equals-data/equals_data.py --requests <requests.jsonl> --raw <raw.jsonl>`; results are in
+`fixtures/reference/plutus-equals-data`.

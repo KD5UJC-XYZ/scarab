@@ -400,9 +400,12 @@ object ScalusEvaluator:
     *   - `constrData` builds through [[ConstrIndex]]: Scalus 1.3.0 asserts a non-negative index,
     *     which the reference takes in variants A to C, and accepts any index in variants D and E,
     *     where the reference takes an unsigned 64-bit integer only.
+    *   - `equalsData` is [[DataEquality]]: Scalus 1.3.0 compares a `Data.Map` as a set of its
+    *     entries, where the reference compares the ordered list of entries.
     *
-    * Reproducers: `DataSerialiserSuite`, `Secp256k1Suite`, `ConstrIndexReferenceSuite`;
-    * regressions: `PreprodConwayRulesSuite`, `PreprodSecp256k1RulesSuite`.
+    * Reproducers: `DataSerialiserSuite`, `Secp256k1Suite`, `ConstrIndexReferenceSuite`,
+    * `DataEqualityReferenceSuite`; regressions: `PreprodConwayRulesSuite`,
+    * `PreprodSecp256k1RulesSuite`.
     */
   private[plutus] final class CorrectedVm(
       language: Language,
@@ -417,6 +420,11 @@ object ScalusEvaluator:
           CekValue.VCon(
             Constant.ByteString(ByteString.fromArray(DataSerialiser.serialise(args.head.asData)))
           )
+      )
+    private val equalsData: BuiltinRuntime =
+      cardano.EqualsData.copy(f =
+        (_, args) =>
+          CekValue.VCon(Constant.Bool(DataEquality.equal(args(0).asData, args(1).asData)))
       )
     private val verifyEcdsa: BuiltinRuntime =
       cardano.VerifyEcdsaSecp256k1Signature.copy(f = (logger, args) =>
@@ -534,6 +542,7 @@ object ScalusEvaluator:
       fun match
         case DefaultFun.SerialiseData                   => serialiseData
         case DefaultFun.ConstrData                      => constrData
+        case DefaultFun.EqualsData                      => equalsData
         case DefaultFun.VerifyEcdsaSecp256k1Signature   => verifyEcdsa
         case DefaultFun.VerifySchnorrSecp256k1Signature => verifySchnorr
         case DefaultFun.Bls12_381_G1_hashToGroup        => hashToGroupG1
