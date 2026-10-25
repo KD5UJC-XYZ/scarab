@@ -85,13 +85,13 @@
     {
       "id": "ledger-refusal-membership",
       "classification": "sampling-limit",
-      "status": "covered",
+      "status": "bounded",
       "scope": "Fresh-ledger and multi-ledger refusal comparisons.",
       "assertion": "The one complete typed Scarab failure is present in the native accumulated failure list.",
       "rationale": "This proves failure membership, not native full-list cardinality, order or equality.",
       "owner": "Scarab maintainers",
-      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
-      "resolution": "Retained native cases execute the single complete typed-cause membership assertion. Suite names and documentation explicitly exclude accumulated-list cardinality, ordering and equality; any accumulated-list contract requires a separate error-accumulation design.",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/412",
+      "resolution": "Retained native cases execute the single complete typed-cause membership assertion; suite names and documentation exclude accumulated-list cardinality, ordering and equality. Covered once the rules accumulate failures in the reference's order and these comparisons assert whole lists (#412).",
       "evidence": [
         "node/src/test/scala/xyz/kd5ujc/scarab/node/UpstreamFreshLedgerConformanceSuite.scala",
         "node/src/test/scala/xyz/kd5ujc/scarab/node/UpstreamMultiLedgerConformanceSuite.scala"
@@ -136,13 +136,13 @@
     {
       "id": "incoherent-cache-generators",
       "classification": "native-parity",
-      "status": "covered",
+      "status": "bounded",
       "scope": "All 17 original generated-cache contexts (nine native accepts and eight refusals), separately counted from 39 coherent-state inputs.",
       "assertion": "Replay unchanged complete native accepted state fields and UTxO entries under the documented byte adapter; require one complete typed cause to occur in each native refusal list, without claiming full list/order equality. Pin 58 observations and 56 distinct rule inputs (37 accepts, 19 refusals).",
       "rationale": "The discrepancy was checked signed arithmetic versus native modular Word64 arithmetic and missing-entry insertion, not an evidenced native cache-coherence precondition.",
       "owner": "Scarab maintainers",
-      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
-      "resolution": "Match modular arithmetic, absent-entry insertion, zero removal and native TxIn deletion order; retain checked CompactCoin construction, seven source-derived controls and all original fixture bytes.",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/412",
+      "resolution": "Match modular arithmetic, absent-entry insertion, zero removal and native TxIn deletion order; retain checked CompactCoin construction, seven source-derived controls and all original fixture bytes. The refusal side stays one-cause membership until whole accumulated lists are compared (#412).",
       "evidence": [
         "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Utxo.scala",
         "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Word64.scala",
@@ -267,7 +267,7 @@
     {
       "id": "native-utxo-semantic-view",
       "classification": "canonicalization",
-      "status": "covered",
+      "status": "bounded",
       "scope": "Native ledger UTxO result comparisons in fresh-ledger and multi-ledger suites.",
       "assertion": "Compare every MemPack field, every non-raw TxOut field, aggregate UTxO accounting and remaining ledger state; signed transaction body/witness bytes have separate original-byte assertions.",
       "rationale": "The native compact output does not retain historical original output CBOR. Clearing TxOut.raw in a semantic result comparison does not establish original output-byte identity.",
@@ -544,6 +544,71 @@
         "network/src/test/scala/xyz/kd5ujc/scarab/network/ChainSyncTimeoutsSuite.scala"
       ],
       "candidateRequired": true
+    },
+    {
+      "id": "devnet-ledger-projection",
+      "classification": "native-parity",
+      "status": "bounded",
+      "scope": "Devnet ledger comparisons of the e2e scenario (every Shelley-based era) and of pool, relay, soak and restart (Conway): the reference ledger projected onto the Scala /state shape at one block.",
+      "assertion": "Every projected field is equal, with no masks or tolerances; compare.PROJECTION_SCOPE lists the compared and omitted fields, e2e-summary.json carries it under ledgerComparison.scope, and each result lists the Scala fields without a reference counterpart (scalaOnlyKeys). The Conway UTxO comes from LocalStateQuery with datums and reference-script hashes, cross-checked against the CLI UTxO.",
+      "rationale": "A projection is not whole-state equality: cost models, Conway protocol parameters other than the version, reference-script bytes, pool relays and metadata (all Conway pool parameters), account pointers, snapshot pool parameters, nonMyopic, individual reward entries, the pulsing reward state, instantaneous stake and AVVM/Byron state are not compared. Counts such as 66/66 describe projected comparisons only.",
+      "owner": "verification maintainer",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/433",
+      "resolution": "Covered once every era's comparison checks the complete ledger state (for example same-point DebugNewEpochState and whole-UTxO bytes, as ntc does for Conway) or the projection omits nothing.",
+      "evidence": [
+        "scripts/devnet/compare.py",
+        "scripts/devnet/eraview.py",
+        "scripts/devnet/govview.py"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "devnet-ntc-refusal-first-failure",
+      "classification": "known-divergence",
+      "status": "bounded",
+      "scope": "The ntc refusal case withdrawal-network-flag-true: a withdrawal from an account of the other network, which LEDGER and UTXO both refuse.",
+      "assertion": "The first failures are byte-equal and equal as cardano-cli text, the reference lists exactly two failures and the Scala node one; the case fails once the whole refusals are equal. Every other ntc refusal is compared exactly (raw ApplyTxErr bytes and text) at one tip of both nodes, without masks.",
+      "rationale": "The Scala rules stop at the first failure where the reference accumulates; comparing the whole list would fail on that documented divergence, and comparing nothing would hide a change in the first failure or the counts.",
+      "owner": "ledger maintainer",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/412",
+      "resolution": "Remove ntccases.ACCUMULATED_WITHDRAWAL_FAILURES and compare the case exactly once the rules accumulate failures (#412); the scenario fails with divergenceResolved until then.",
+      "evidence": [
+        "scripts/devnet/ntccases.py",
+        "scripts/devnet/scenarios/ntc.py"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "devnet-e2e-refusal-match",
+      "classification": "reference-non-result",
+      "status": "covered",
+      "scope": "Expected reference refusals of the e2e load (expect_reject and expect_rejected in eraload).",
+      "assertion": "A refusal counts only when it names every expected predicate failure as a whole constructor; each evidence row records whether the reference's failure list is exactly the expected failures (exact), holds others too (contains) or could not be read (unparsed), and e2e-summary.json counts both under refusalMatches.",
+      "rationale": "These cases check the reference's verdict for transactions built to break one rule; the Scala rules replay the refused bytes in unit tests. A containment match is recorded as such, never reported as an exact list.",
+      "owner": "verification maintainer",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/337",
+      "resolution": "Retain whole-constructor matching, the list-match label and its negative controls in scripts/tests/test_devnet_pure.py.",
+      "evidence": [
+        "scripts/devnet/eraload.py",
+        "scripts/tests/test_devnet_pure.py"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "v1context-refusal-membership",
+      "classification": "sampling-limit",
+      "status": "bounded",
+      "scope": "Refused cases of V1ContextSuite (v1-context, context-errors submissions and plutus-boundaries transactions).",
+      "assertion": "The one cause the recorded reference text names (validation-tag mismatch, or a translation error and its source) is exactly the failure the Scala phase-2, transaction and block rules give.",
+      "rationale": "The recorded texts are cut at 1,500 characters and most cases keep no raw reason, so neither the reference's whole failure list nor the encoded reason is compared.",
+      "owner": "ledger maintainer",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/434",
+      "resolution": "Covered once each refused case carries the reference's raw reason and a node-module suite asserts the encoded Scala refusal equals it byte for byte.",
+      "evidence": [
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/V1ContextSuite.scala",
+        "fixtures/reference/v1-context/README.md"
+      ],
+      "candidateRequired": false
     }
   ]
 }

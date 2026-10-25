@@ -102,6 +102,25 @@ class FixtureCoverageTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "duplicate coverage ID"):
             validate_register(self.root, register)
 
+    def test_a_bounded_entry_names_its_issue_and_is_not_candidate_coverage(self):
+        row = {"id": "membership", "classification": "sampling-limit", "status": "bounded",
+               "scope": "refusal comparisons", "assertion": "one typed cause is in the native list",
+               "rationale": "membership, not list equality", "owner": "ledger maintainer",
+               "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/412",
+               "resolution": "accumulated lists compared exactly",
+               "evidence": ["fixtures/native/README.md"], "candidateRequired": False}
+        register = {"schemaVersion": 1, "entries": [row]}
+        self.assertEqual(validate_register(self.root, register, candidate=True), 1)
+        # negative controls: a bounded entry without an issue, or one a candidate requires, fails
+        for tracking in ("issue412", "https://github.com/KD5UJC-XYZ/scarab/pull/412"):
+            row["tracking"] = tracking
+            with self.assertRaisesRegex(ValueError, "bounded entry must name the issue"):
+                validate_register(self.root, register)
+        row["tracking"] = "https://github.com/KD5UJC-XYZ/scarab/issues/412"
+        row["candidateRequired"] = True
+        with self.assertRaisesRegex(ValueError, "unresolved required coverage"):
+            validate_register(self.root, register, candidate=True)
+
     def test_stale_evidence_unknown_classification_and_path_escape_fail(self):
         row = {"id": "native", "classification": "native-parity", "status": "covered",
                "scope": "native data", "assertion": "original bytes", "rationale": "fixture binding",
