@@ -6,7 +6,7 @@ import cats.effect.std.Mutex
 import cats.syntax.all.*
 import scala.concurrent.duration.FiniteDuration
 import xyz.kd5ujc.scarab.network.genesis.PicosClock
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, HaskellSort}
 import xyz.kd5ujc.scarab.consensus.ChainSelection
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.network.selection.{
@@ -358,7 +358,7 @@ final class FetchCoordinator[F[_]: Async] private (
     def tipOf(peer: PeerState[F]): Option[Header] =
       chainOf(peer).flatMap(_.headers.lastOption).orElse(peer.tip)
     val tips = s.peers.valuesIterator.flatMap(tipOf).toVector
-    val ordered = CandidateSelection.sort(tips)(compareTips)
+    val ordered = HaskellSort.sortBy(tips)(compareTips)
     def preference(tip: Option[Header]): Int = tip.fold(0) { h =>
       ordered.indexWhere(other => compareTips(h, other) == 0).max(0)
     }

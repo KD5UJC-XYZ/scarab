@@ -22,7 +22,10 @@ estimator. A resource-owned updater samples changed KeepAlive estimates independ
 of header progress at the pinned Praos decision interval (10ms); older header
 announcements cannot replace newer samples. The native oracle records the actual ascending bulk and descending
 deadline comparator directions; comments describing a generic preferred-first sort
-are insufficient to define this behavior.
+are insufficient to define this behavior. The GSV comparator's 5% tie band is not
+transitive, so both GSV orderings (ranking and preferred-peer admission) use
+`HaskellSort.sortBy`, the reference's GHC `Data.List.sortBy` algorithm, which
+reproduces the native order for such a relation; a `java.util` sort may reject it.
 
 One `FetchCoordinator` belongs to the shared `BlockPool`. Outbound peers, inbound
 duplex clients and single-block recovery use it. Its pure decision and reservation

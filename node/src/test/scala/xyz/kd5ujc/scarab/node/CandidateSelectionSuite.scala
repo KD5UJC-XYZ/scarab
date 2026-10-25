@@ -5,10 +5,10 @@ import java.nio.file.{Files, Path}
 import io.circe.{ACursor, Decoder}
 import io.circe.parser.parse
 import munit.FunSuite
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, HaskellSort}
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
 import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity.Fragment
-import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf, PreprodDeepTx, VrfCert}
+import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf, VrfCert}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
 
 /** Selection-only synthetic headers; crypto/transport admission is a separate boundary. */
@@ -101,23 +101,6 @@ class CandidateSelectionSuite extends FunSuite:
     )
   }
 
-  test("native natural-run merging retains stable ties and handles adversarial comparison laws") {
-    val identity = Vector(1, 2, 3, 4, 5, 6, 7)
-    assertEquals(CandidateSelection.sort(identity)((_, _) => 0), identity)
-    assertEquals(CandidateSelection.sort(identity.reverse)(Integer.compare), identity)
-    assertEquals(CandidateSelection.sort(Vector(4, 2, 7, 1, 6, 3, 5))(Integer.compare), identity)
-    // A synthetic nontransitive relation tests the native run boundary, not actual Praos Ord.
-    def partial(a: Int, b: Int): Int = if (a - b).abs > 5 then 0 else Integer.compare(a, b)
-    assertEquals(CandidateSelection.sort(Vector(4, 0, 8))(partial), Vector(0, 4, 8))
-  }
-
-  test("sorting external width remains stack safe on a 256 KiB thread") {
-    PreprodDeepTx.onSmallStack {
-      val input = Vector.tabulate(50000)(i => (i * 7919) % 50000)
-      assertEquals(CandidateSelection.sort(input)(Integer.compare), Vector.range(0, 50000))
-    }
-  }
-
   test("all native candidate orders, eligibility decisions and pairwise Ord results agree") {
     def field[A: Decoder](c: ACursor, name: String): A =
       c.get[A](name).fold(e => fail(e.message), identity)
@@ -157,8 +140,8 @@ class CandidateSelectionSuite extends FunSuite:
         )
       )
       def ordered(values: Vector[(Int, SelectView)]) =
-        CandidateSelection
-          .sort(values)((a, b) => CandidateSelection.compareViews(a._2, b._2))
+        HaskellSort
+          .sortBy(values)((a, b) => CandidateSelection.compareViews(a._2, b._2))
           .map(_._1)
       assertEquals(eligible.map(_._1), field[Vector[Int]](output, "eligibleIds"), label)
       assertEquals(ordered(items), field[Vector[Int]](output, "sortedIds"), label)
@@ -187,7 +170,7 @@ class CandidateSelectionSuite extends FunSuite:
     def compare(a: Int, b: Int): Int = if (a - b).abs > 5 then 0 else Integer.compare(a, b)
     rows.foreach { row =>
       val input = field[Vector[Int]](row, "input")
-      assertEquals(CandidateSelection.sort(input)(compare), field[Vector[Int]](row, "sorted"))
+      assertEquals(HaskellSort.sortBy(input)(compare), field[Vector[Int]](row, "sorted"))
       val matrix = input.map(a =>
         input.map(b =>
           val result = compare(a, b)

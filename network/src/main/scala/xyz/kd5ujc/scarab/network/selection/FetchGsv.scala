@@ -52,7 +52,7 @@ object FetchGsv:
     PeerGsv(startPicos, direction, direction)
 
   // Fixed/Pico floors signed products; BigInt division alone truncates towards zero.
-  private def floorDivide(numerator: BigInt, denominator: BigInt): BigInt =
+  private[selection] def floorDivide(numerator: BigInt, denominator: BigInt): BigInt =
     val quotient = numerator / denominator
     if numerator < 0 && numerator % denominator != 0 then quotient - 1 else quotient
 
