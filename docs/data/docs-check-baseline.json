@@ -114,12 +114,6 @@
    "count": 1
   },
   {
-   "kind": "unregistered-pin",
-   "path": "docs/adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md",
-   "key": "scalus@dbb48cce",
-   "count": 1
-  },
-  {
    "kind": "missing-path",
    "path": "docs/architecture.md",
    "key": "consensus/ByronRules.scala",
@@ -422,84 +416,6 @@
   {
    "kind": "unregistered-pin",
    "path": "docs/compatibility.md",
-   "key": "cardano-ledger@055fb39a",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "cardano-ledger@24dcc9a0ecbcbd9c",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "cardano-ledger@369826b2f60b443d",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "cardano-ledger@62141bc0",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "cardano-ledger@9a47e091709e4fe1",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "cardano-ledger@be476555",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "cardano-node@903690cb",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "cardano-node@d31f0b31",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "mithril@095cae6e",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "mithril@4a83ea72",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "mithril@8a42968a",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "mithril@b7f97836",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "mithril@c90140def52d",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
    "key": "ouroboros-consensus 4.2.0.0",
    "count": 1
   },
@@ -512,271 +428,13 @@
   {
    "kind": "unregistered-pin",
    "path": "docs/compatibility.md",
-   "key": "ouroboros-consensus@97095b3e",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "ouroboros-network@10c5508f",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "ouroboros-network@1c773ae6",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "ouroboros-network@50240b96",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "ouroboros-network@8d9631f1",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "ouroboros-network@f890bd5e",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "ouroboros-network@ffb2032d",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@0a6693fb0",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@0b5dde8f",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@0c94e76a4",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@244d1c14",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@2af53e49f",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@2fcd30904",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@32913e4",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@3cdfd28b",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@41eec68a",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@4246312a",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@5b290879b",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@63a629bc",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@6dd8be3",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@79469100a",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@7ba8c7f3",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@7bb98e3",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@8473993c8",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@93164ee9",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@95ed8951",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@ae528435f",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@aee75c1c",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@b991c9413",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@bac16602",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@bc37be68",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@d66b216",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@d9d089039",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@de9619b9",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@e1bb6473",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "plutus@f90dce57",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
    "key": "scalus 1.2.0",
    "count": 2
   },
   {
    "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "scalus@099f838",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "scalus@2edd684f",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "scalus@82af74e",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "scalus@97b31e35",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "scalus@ecc9c64",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/conformance-source-review.md",
-   "key": "cardano-ledger@bbc1844c",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
    "path": "docs/conformance-source-review.md",
    "key": "cardano-ledger@bbc1844c0602de558d5eeebbde2c5c3d44cce3e8",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/conformance-source-review.md",
-   "key": "cardano-ledger@d7297028",
    "count": 1
   },
   {
@@ -788,19 +446,7 @@
   {
    "kind": "unregistered-pin",
    "path": "docs/conformance-source-review.md",
-   "key": "cardano-ledger@f11490a9",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/conformance-source-review.md",
    "key": "cardano-ledger@f11490a9d7a947c1a26b0c49700f9bb0ab380501",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/conformance-source-review.md",
-   "key": "cardano-ledger@f8636b4c",
    "count": 1
   },
   {
@@ -812,19 +458,7 @@
   {
    "kind": "unregistered-pin",
    "path": "docs/conformance-source-review.md",
-   "key": "ouroboros-network@2cede5d1",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/conformance-source-review.md",
    "key": "ouroboros-network@2cede5d1762028503182adbed6232f700fbc4684",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/conformance-source-review.md",
-   "key": "ouroboros-network@31938ad4",
    "count": 1
   },
   {
@@ -836,31 +470,13 @@
   {
    "kind": "unregistered-pin",
    "path": "docs/conformance-source-review.md",
-   "key": "ouroboros-network@33c11138",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/conformance-source-review.md",
    "key": "ouroboros-network@33c11138f83affc3433f54ade562cfa1e99e3848",
    "count": 1
   },
   {
    "kind": "unregistered-pin",
    "path": "docs/conformance-source-review.md",
-   "key": "ouroboros-network@6a49b6f6",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/conformance-source-review.md",
    "key": "ouroboros-network@6a49b6f63e18886adcdac3ae8393b8f8d316144a",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/conformance-source-review.md",
-   "key": "plutus@82db8973",
    "count": 1
   },
   {
@@ -884,19 +500,7 @@
   {
    "kind": "unregistered-pin",
    "path": "docs/conformance-source-review.md",
-   "key": "plutus@bf691763",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/conformance-source-review.md",
    "key": "plutus@bf6917633a7c697b816e19f5b0491966c1f771ce",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/conformance-source-review.md",
-   "key": "plutus@e25e3234",
    "count": 1
   },
   {
@@ -963,12 +567,6 @@
    "kind": "unregistered-pin",
    "path": "docs/design/haskell-snapshots.md",
    "key": "cardano-node 10.7",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/design/haskell-snapshots.md",
-   "key": "cardano-node@0b2efe56",
    "count": 1
   },
   {
@@ -1362,12 +960,6 @@
    "count": 1
   },
   {
-   "kind": "unregistered-pin",
-   "path": "docs/design/ledger-mirror-step2.md",
-   "key": "plutus@7c483457b06802d6",
-   "count": 1
-  },
-  {
    "kind": "missing-path",
    "path": "docs/design/ledger-mirror.md",
    "key": "LedgerEncoders.scala",
@@ -1608,12 +1200,6 @@
    "count": 1
   },
   {
-   "kind": "unregistered-pin",
-   "path": "docs/design/parallel-plutus.md",
-   "key": "plutus@2ffad2d8",
-   "count": 1
-  },
-  {
    "kind": "line-citation",
    "path": "docs/design/peer-selection.md",
    "key": "Handshake.scala:50",
@@ -1832,103 +1418,7 @@
   {
    "kind": "unregistered-pin",
    "path": "docs/findings.md",
-   "key": "cardano-ledger@06869a76",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "cardano-ledger@2293c5cf7bb77492",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "cardano-ledger@24dcc9a0ecbcbd9c",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "cardano-ledger@369826b2f60b443d",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
    "key": "cardano-ledger@56ddee1",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "cardano-ledger@58b03728",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "cardano-ledger@5bad0850",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "cardano-ledger@5ecf2d28",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "cardano-ledger@b1db2a41",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "cardano-ledger@bc61865d",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "cardano-ledger@f277604972be4b11",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "cardano-ledger@ff5181ba",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "cardano-node@2813b99a",
-   "count": 3
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "cardano-node@9a47e091709e4fe1",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "cardano-node@afcb6d12",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "cardano-node@bcd98195",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "cardano-node@bcd9819561bddc6614",
    "count": 1
   },
   {
@@ -1958,54 +1448,6 @@
   {
    "kind": "unregistered-pin",
    "path": "docs/findings.md",
-   "key": "plutus@5bc16a2",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "plutus@be476555",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "plutus@c70243bb",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "plutus@d8315bd",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "plutus@d8dc65d",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "plutus@eeaa16dc",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "plutus@f90dce57",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "plutus@ff3efca6",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
    "key": "scalus 1.2.0",
    "count": 7
   },
@@ -2022,48 +1464,6 @@
    "count": 1
   },
   {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "scalus@2edd684f",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "scalus@5bc16a2",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "scalus@97b31e35",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "scalus@aee75c1c",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "scalus@d866821bffffffffffffffff80",
-   "count": 2
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "scalus@d866822080",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "scalus@f8209b4",
-   "count": 1
-  },
-  {
    "kind": "missing-symbol",
    "path": "docs/implementer-notes.md",
    "key": "SoftForks.restrictPoolMetadataHash",
@@ -2072,38 +1472,8 @@
   {
    "kind": "unregistered-pin",
    "path": "docs/implementer-notes.md",
-   "key": "cardano-ledger@56ddee1",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/implementer-notes.md",
-   "key": "cardano-ledger@ff5181ba",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/implementer-notes.md",
    "key": "ouroboros-consensus 4.2.0.0",
    "count": 3
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/implementer-notes.md",
-   "key": "plutus@97b31e35",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/implementer-notes.md",
-   "key": "plutus@d866821bffffffffffffffff80",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/implementer-notes.md",
-   "key": "plutus@d866822080",
-   "count": 1
   },
   {
    "kind": "unregistered-pin",
@@ -2116,18 +1486,6 @@
    "path": "docs/implementer-notes.md",
    "key": "scalus 1.3.0",
    "count": 2
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/implementer-notes.md",
-   "key": "scalus@5bc16a2",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/implementer-notes.md",
-   "key": "scalus@f8209b4",
-   "count": 1
   },
   {
    "kind": "missing-path",
@@ -2234,12 +1592,6 @@
   {
    "kind": "unregistered-pin",
    "path": "docs/leios.md",
-   "key": "cardano-ledger@ba863cf5",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/leios.md",
    "key": "cardano-ledger@d93c6546",
    "count": 1
   },
@@ -2259,43 +1611,13 @@
    "kind": "unregistered-pin",
    "path": "docs/leios.md",
    "key": "cardano-node@8c44d145",
-   "count": 3
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/leios.md",
-   "key": "cardano-node@96ee6e0e",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/leios.md",
-   "key": "cardano-node@aa1238f5",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/leios.md",
-   "key": "cardano-node@c5117705",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/leios.md",
-   "key": "cardano-node@f65db01c",
-   "count": 1
+   "count": 2
   },
   {
    "kind": "unregistered-pin",
    "path": "docs/leios.md",
    "key": "ouroboros-consensus@27fa649f",
    "count": 2
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/leios.md",
-   "key": "ouroboros-consensus@cef41f6b",
-   "count": 1
   },
   {
    "kind": "unregistered-pin",
@@ -2307,12 +1629,6 @@
    "kind": "unregistered-pin",
    "path": "docs/leios.md",
    "key": "ouroboros-network@f0243fe6",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/leios.md",
-   "key": "ouroboros-network@fbfb3f05",
    "count": 1
   },
   {
@@ -2355,12 +1671,6 @@
    "kind": "missing-symbol",
    "path": "docs/licenses.md",
    "key": "LICENSE.leveldb",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/licenses.md",
-   "key": "scalus@dbb48cce",
    "count": 1
   },
   {
@@ -2540,12 +1850,6 @@
   {
    "kind": "unregistered-pin",
    "path": "docs/performance.md",
-   "key": "mithril@57608c6e",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/performance.md",
    "key": "ouroboros-consensus 4.2.0.0",
    "count": 1
   },
@@ -2630,31 +1934,7 @@
   {
    "kind": "unregistered-pin",
    "path": "docs/roadmap.md",
-   "key": "cardano-ledger@369826b2",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/roadmap.md",
-   "key": "cardano-node@d31f0b31",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/roadmap.md",
    "key": "ouroboros-consensus 4.2.0.0",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/roadmap.md",
-   "key": "plutus@9a47e091",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/roadmap.md",
-   "key": "plutus@aee75c1c",
    "count": 1
   },
   {

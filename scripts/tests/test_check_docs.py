@@ -139,6 +139,11 @@ class PinTest(DocsCase):
             (Kind.UNREGISTERED_PIN, "cardano-ledger@0123456789abcdef"),
         ], key=str))
 
+    def test_a_commit_id_far_from_the_repository_name_is_not_its_citation(self):
+        doc = ("plutus 507cab8c is the reference; the gates ran on this repository's branch at "
+               "`a4ca53130` (main `3a2955f0c`), and plutus `deadbee1` is stale.\n")
+        self.assertEqual(self.kinds({"README.md": doc, **self.FILES}), [(Kind.UNREGISTERED_PIN, "plutus@deadbee1")])
+
     def test_registry_defects(self):
         pins = {"schemaVersion": 1, "pins": [
             {"name": "a", "version": "1.0", "dependents": ["gone.py"]},
