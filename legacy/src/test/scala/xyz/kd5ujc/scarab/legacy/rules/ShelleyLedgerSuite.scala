@@ -201,7 +201,28 @@ class ShelleyLedgerSuite extends FunSuite:
 
   private val rich = 10000 * ada
 
-  Vector(alonzo, babbage).foreach { c =>
+  // Babbage's UTXO counts the collateral inputs of every transaction (`Babbage/Rules/Utxo.hs:412`);
+  // Alonzo's does not count them at all (`Alonzo/Rules/Utxo.hs:570-572`, cardano-ledger `f649f975`)
+  test("Alonzo LEDGER does not count the collateral inputs") {
+    val inputs = Vector(coinIn, txIn(2), txIn(3), txIn(4))
+    val s = base(alonzo, inputs.map(_ -> out(alice.address(), rich)))
+    accepted(
+      alonzo,
+      s,
+      tx(
+        body(
+          "collateral-count",
+          Vector(coinIn),
+          Vector(out(alice.address(), rich - 200)),
+          200,
+          collateral = inputs
+        ),
+        Vector(alice)
+      )
+    )
+  }
+
+  Vector(babbage).foreach { c =>
     test(s"${c.name} LEDGER refuses excessive collateral even without redeemers (#178)") {
       val inputs = Vector(coinIn, txIn(2), txIn(3), txIn(4))
       val s = base(c, inputs.map(_ -> out(alice.address(), rich)))

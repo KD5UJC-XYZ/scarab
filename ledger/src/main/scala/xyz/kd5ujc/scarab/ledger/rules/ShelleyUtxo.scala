@@ -249,10 +249,10 @@ object ShelleyUtxos:
 
 /** UTXO (`Shelley/Rules/Utxo.hs:336`, `utxoInductive`, with the rules of the later eras,
   * cardano-ledger `f649f975`): the validity of the transaction against the parameters and the UTxO
-  * set, the update proposals (`trans PPUP`, Shelley to Mary) or UTXOS (`trans UTXOS`, Alonzo and
-  * Babbage, which runs PPUP), and then the change of the state (`updateUTxOState`): the set, the
-  * instant stake, the fees and the deposits of a valid transaction, the collateral of one that
-  * failed phase 2.
+  * set, every failure recorded ([[UtxoChecks]]), the update proposals (`trans PPUP`, Shelley to
+  * Mary) or UTXOS (`trans UTXOS`, Alonzo and Babbage, which runs PPUP), and then the change of the
+  * state (`updateUTxOState`): the set, the instant stake, the fees and the deposits of a valid
+  * transaction, the collateral of one that failed phase 2.
   */
 object ShelleyUtxo:
   /** `trans PPUP` on the governance state of the UTxO state. */
@@ -289,10 +289,11 @@ object ShelleyUtxo:
           judge: Judge[F, PredicateFailure]
       ): F[Unit] =
         val (deposits, refunds) = ShelleyDeposits.of(env.pp, env.cert, ann.tx.body)
+        val collateral = TxChecks.collateral(ann.utxo, env.pp, ann.tx)
+        val checks = UtxoChecks.of[E](env, ann, deposits, refunds)
         for
-          collateral <- Sts.lift[F, LedgerFailure, TxChecks.Collateral](
-            validate[E](env, ann, deposits, refunds)
-          )
+          _ <- Sts.require[F, LedgerFailure](checks.defect)
+          _ <- Sts.runTest[F, PredicateFailure](checks.beforePpup)
           _ <-
             if pre.atLeast(ShelleyBasedEra.SAlonzo) then
               JudgedSts.trans[F, UtxoEnv[ShelleyCertState], Counted[UTxOState[E]], Counted[
@@ -302,7 +303,7 @@ object ShelleyUtxo:
                 env,
                 ann
               )
-            else ppup[F, E](env, ann)
+            else ppup[F, E](env, ann) *> Sts.runTest[F, PredicateFailure](checks.afterPpup)
           s <- st.get
           next <- Refuse.vocab[F, UTxOState[E]](
             update[E](s.state, ann, collateral, deposits, refunds)
@@ -310,89 +311,15 @@ object ShelleyUtxo:
           _ <- st.set(s.copy(state = next))
         yield ()
 
-  /** The checks of UTXO the node makes of a transaction, in the order of the reference where it has
-    * one for the era, and the collateral of the transaction.
-    */
+  /** What UTXO checks of a transaction, without PPUP between them ([[UtxoChecks]]). */
   def validate[E <: EraTag](
       env: UtxoEnv[ShelleyCertState],
       ann: StAnnTx,
       deposits: BigInt,
       refunds: BigInt
-  )(using pre: PreConway[E]): Either[LedgerFailure, TxChecks.Collateral] =
-    val tx = ann.tx
-    val body = tx.body
-    val id = ann.id
-    val pp = env.pp
-    val ctx = env.ctx
-    val wits = tx.witnesses
-    def refuse(f: UtxoFailure) = Left(LedgerFailure.Rejected(id, PredicateFailure.utxo(f)))
-    def check(ok: Boolean, f: => UtxoFailure): Either[LedgerFailure, Unit] =
-      if ok then Right(()) else refuse(f)
-    val alonzo = pre.atLeast(ShelleyBasedEra.SAlonzo)
-    val scriptFee =
-      if alonzo then
-        (pp.priceMem * Rational(wits.totalExUnits.mem) + pp.priceSteps * Rational(
-          wits.totalExUnits.steps
-        )).ceil
-      else BigInt(0)
-    val minFee = pp.minFeeA * tx.size + pp.minFeeB + scriptFee
-    val outputs = body.outputs ++ body.collateralReturn.toVector
-    for
-      _ <- Either.cond(
-        !body.hasGovernance && body.donation == 0,
-        (),
-        LedgerFailure.Undecodable(id, TxDefect.GovernanceFieldsBeforeConway)
-      )
-      // Shelley's time to live is the last slot the transaction is valid in (`validateTimeToLive`,
-      // `Shelley/Rules/Utxo.hs:414-423`); from Allegra the validity interval's upper bound is
-      // exclusive (`inInterval`)
-      _ <-
-        if !pre.atLeast(ShelleyBasedEra.SAllegra) then
-          check(
-            body.ttl.forall(ctx.slot <= _),
-            UtxoFailure.ExpiredUTxO(Mismatch(body.ttl.getOrElse(ctx.slot), ctx.slot))
-          )
-        else
-          check(
-            body.ttl.forall(ctx.slot < _) && body.validityStart.forall(_ <= ctx.slot),
-            UtxoFailure.OutsideValidityInterval(body.validityStart, body.ttl, ctx.slot)
-          )
-      _ <- check(body.fee >= minFee, UtxoFailure.FeeTooSmall(Mismatch(body.fee, minFee)))
-      _ <- check(
-        body.networkId.forall(_ == ctx.network),
-        UtxoFailure.WrongNetworkInTxBody(Mismatch(body.networkId.fold(0)(_.toInt), ctx.network))
-      )
-      _ <- if !alonzo then TxChecks.outputNetwork(ctx, id, outputs) else Right(())
-      wrongWithdrawals = body.withdrawals.keys.filter(_.network != ctx.network).toSet
-      _ <- check(
-        wrongWithdrawals.isEmpty,
-        UtxoFailure.WrongNetworkWithdrawal(ctx.network, wrongWithdrawals)
-      )
-      withdrawn = body.withdrawals.valuesIterator.map(_.value).sum
-      consumed = ann.spent.foldLeft(Value.zero)(_ + _.value) + Value.coin(withdrawn + refunds) +
-        Value(0, body.mint)
-      produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +
-        Value.coin(body.fee + deposits)
-      _ <- check(consumed == produced, UtxoFailure.ValueNotConserved(Mismatch(consumed, produced)))
-      _ <- TxChecks.outputChecks(pp, ctx, id, outputs)
-      _ <- check(
-        tx.size <= pp.maxTxSize,
-        UtxoFailure.MaxTxSize(Mismatch(BigInt(tx.size), pp.maxTxSize))
-      )
-      _ <- check(
-        !alonzo || wits.totalExUnits.fits(pp.maxTxExUnits),
-        UtxoFailure.ExUnitsTooBig(Mismatch(wits.totalExUnits, pp.maxTxExUnits))
-      )
-      // `validateTooManyCollateralInputs` (Alonzo Utxo.hs:571, Babbage Utxo.hs:412) runs
-      // independently of the redeemer-dependent collateral fee checks and the validity flag.
-      _ <- check(
-        !alonzo || TxChecks.collateralInputs(body).size <= pp.maxCollateralInputs,
-        UtxoFailure.TooManyCollateralInputs(
-          Mismatch(TxChecks.collateralInputs(body).size, pp.maxCollateralInputs.toInt)
-        )
-      )
-      collateral <- TxChecks.collateralChecks(ann.utxo, pp, tx)
-    yield collateral
+  )(using PreConway[E]): Test[PredicateFailure] =
+    val checks = UtxoChecks.of[E](env, ann, deposits, refunds)
+    Test.all(checks.beforePpup, checks.afterPpup)
 
   /** `updateUTxOState` (`Shelley/Rules/Utxo.hs:584`, `Alonzo/Rules/Utxos.hs`): a valid transaction
     * spends its inputs and creates its outputs, pays its fee and the deposits less the refunds; one
@@ -437,6 +364,67 @@ object ShelleyUtxo:
         fees = Coin(s.fees.value + collateral.fee)
       yield pre.instantStake.replace(next)(
         s.copy[E](utxo = UtxoTables(utxo -- body.collateral ++ returned), fees = fees)
+      )
+
+/** The checks of UTXO before Conway, in the era's order: those before PPUP and those after it
+  * (Shelley to Mary run PPUP between them, `Shelley/Rules/Utxo.hs:390-392`; Alonzo and Babbage run
+  * every check before UTXOS, which runs PPUP), and the defect of a transaction carrying fields its
+  * era's decoder would not have admitted.
+  *
+  * The minimum fee is `minfee` with the script fee from Alonzo; the value consumed and produced
+  * count the refunds and deposits (`consumed`, `produced`, `Shelley/UTxO.hs`).
+  */
+final case class UtxoChecks(
+    defect: Option[LedgerFailure],
+    beforePpup: Test[PredicateFailure],
+    afterPpup: Test[PredicateFailure]
+)
+
+object UtxoChecks:
+  def of[E <: EraTag](
+      env: UtxoEnv[ShelleyCertState],
+      ann: StAnnTx,
+      deposits: BigInt,
+      refunds: BigInt
+  )(using pre: PreConway[E]): UtxoChecks =
+    val tx = ann.tx
+    val body = tx.body
+    val pp = env.pp
+    val ctx = env.ctx
+    val wits = tx.witnesses
+    val alonzo = pre.atLeast(ShelleyBasedEra.SAlonzo)
+    val scriptFee =
+      if alonzo then
+        (pp.priceMem * Rational(wits.totalExUnits.mem) + pp.priceSteps * Rational(
+          wits.totalExUnits.steps
+        )).ceil
+      else BigInt(0)
+    val minFee = pp.minFeeA * tx.size + pp.minFeeB + scriptFee
+    val withdrawn = body.withdrawals.valuesIterator.map(_.value).sum
+    val consumed = ann.spent.foldLeft(Value.zero)(_ + _.value) +
+      Value.coin(withdrawn + refunds) + Value(0, body.mint)
+    val produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +
+      Value.coin(body.fee + deposits)
+    val defect = Option.unless(!body.hasGovernance && body.donation == 0)(
+      LedgerFailure.Undecodable(ann.id, TxDefect.GovernanceFieldsBeforeConway)
+    )
+    if pre.atLeast(ShelleyBasedEra.SBabbage) then
+      UtxoChecks(
+        defect,
+        UtxoTests.babbage(pp, ctx.network, ctx.slot, ann, minFee, consumed, produced),
+        Test.pass
+      )
+    else if alonzo then
+      UtxoChecks(
+        defect,
+        UtxoTests.alonzo(pp, ctx.network, ctx.slot, ann, minFee, consumed, produced),
+        Test.pass
+      )
+    else
+      UtxoChecks(
+        defect,
+        UtxoTests.shelleyBeforePpup(pp, ctx.network, ctx.slot, ann, minFee, consumed, produced),
+        UtxoTests.shelleyAfterPpup(pp, tx)
       )
 
 /** UTXOW (`Shelley/Rules/Utxow.hs:270`, `transitionRulesUTXOW`, with the Alonzo and Babbage rules

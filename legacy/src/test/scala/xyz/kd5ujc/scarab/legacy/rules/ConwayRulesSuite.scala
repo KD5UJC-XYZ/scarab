@@ -287,10 +287,11 @@ class ConwayRulesSuite extends FunSuite:
         )
       )
     )
-    // a script without collateral
+    // a script without collateral: its first failure is the balance below the fee's share, before
+    // the empty collateral (`validateTotalCollateral`, `Babbage/Rules/Utxo.hs:209-240`)
     assertEquals(
       rule(run(succeeds = true, isValid = true, bodyWith(hash, Vector.empty))),
-      "NoCollateralInputs"
+      "InsufficientCollateral"
     )
   }
 

@@ -12,7 +12,6 @@ import xyz.kd5ujc.scarab.ledger.{
   RefScripts,
   GenDelegPair,
   LedgerFailure,
-  Mismatch,
   PlutusStats,
   TxChecks,
   PredicateFailure,
@@ -26,7 +25,6 @@ import xyz.kd5ujc.scarab.ledger.{
   UtxowFailure,
   Value
 }
-import xyz.kd5ujc.scarab.ledger.byron.ByronAddress
 import xyz.kd5ujc.scarab.ledger.state.*
 
 // UTXOW, UTXO and UTXOS for Conway (`Conway/Rules/Utxow.hs`, `Utxo.hs`, `Utxos.hs`, with the Alonzo
@@ -197,56 +195,20 @@ object Utxo
     else if missing.nonEmpty then refuse(UtxoFailure.BadInputs(missing))
     else Right(())
 
-  /** The checks of the outputs that hold a bootstrap (Byron) address: its attributes are at most 64
-    * bytes (`validateOutputBootAddrAttrsTooBig`, `Babbage/Rules/Utxo.hs:392`) and its network is
-    * the one of the ledger (`validateWrongNetwork`, `Babbage/Rules/Utxo.hs:397`, which takes the
-    * network of a bootstrap address from its attributes, `getNetwork`). The Shelley addresses are
-    * checked by [[TxChecks.outputsOk]]. A Byron-kind address has been decoded in full when its
-    * output was ([[Address.decode]]), so the decode below succeeds for every output of a decoded
-    * transaction.
-    */
-  private[ledger] def bootstrapOutputs(
-      network: Int,
-      outs: Vector[TxOut]
-  ): Either[PredicateFailure, Unit] =
-    val bootstrap = outs.flatMap(out =>
-      out.address.kind match
-        case Address.Kind.Byron(_) => ByronAddress.decode(out.address.raw).toOption.map(out -> _)
-        case _                     => None
-    )
-    val big = bootstrap.collect { case (out, a) if a.attributesSize > 64 => out }
-    val wrong = bootstrap.collect { case (out, a) if a.network != network => out.address.raw }
-    for
-      _ <- Either.cond(
-        big.isEmpty,
-        (),
-        PredicateFailure.utxo(UtxoFailure.OutputBootAddrAttrsTooBig(big))
-      )
-      _ <- Either.cond(
-        wrong.isEmpty,
-        (),
-        PredicateFailure.utxo(UtxoFailure.WrongNetwork(network, wrong.toSet))
-      )
-    yield ()
-
-  /** The checks of UTXO the node makes of a transaction, in the node's order, and the collateral of
-    * the transaction (`TxChecks.Collateral`).
+  /** The checks of UTXO (`babbageUtxoValidation`, [[UtxoTests.babbage]]): the minimum fee counts
+    * the reference scripts (`getMinFeeTxUtxo`, `Conway/Tx.hs`), and the value consumed and produced
+    * count the refunds, deposits and the donation.
     */
   def validate(
       env: UtxoEnv[ConwayCertState],
       ann: StAnnTx,
       deposits: BigInt,
       refunds: BigInt
-  ): Either[LedgerFailure, TxChecks.Collateral] =
+  ): Test[PredicateFailure] =
     val tx = ann.tx
     val body = tx.body
-    val id = ann.id
     val pp = env.pp
-    val ctx = env.ctx
     val wits = tx.witnesses
-    def refuse(f: UtxoFailure) = Left(LedgerFailure.Rejected(id, PredicateFailure.utxo(f)))
-    def check(ok: Boolean, f: => UtxoFailure): Either[LedgerFailure, Unit] =
-      if ok then Right(()) else refuse(f)
     val scriptFee =
       (pp.priceMem * Rational(wits.totalExUnits.mem) + pp.priceSteps * Rational(
         wits.totalExUnits.steps
@@ -257,60 +219,12 @@ object Utxo
           pp.minFeeRefScriptCostPerByte,
           RefScripts.refScriptsSize(ann.utxo, body)
         )
-    val overlap = body.inputs.toSet.intersect(body.referenceInputs.toSet)
-    val wrongWithdrawals = body.withdrawals.keys.filter(_.network != ctx.network).toSet
-    for
-      _ <- check(
-        pp.protocolMajor >= 11 || overlap.isEmpty,
-        UtxoFailure.BabbageNonDisjointRefInputs(overlap.toVector.sorted)
-      )
-      _ <- check(
-        body.ttl.forall(ctx.slot < _) && body.validityStart.forall(_ <= ctx.slot),
-        UtxoFailure.OutsideValidityInterval(body.validityStart, body.ttl, ctx.slot)
-      )
-      // f649f975: Babbage/Rules/Utxo.hs:368–375, also used by Conway/Rules/Utxo.hs:238.
-      // UTXOW resolves early for its annotations; standalone UTXO still owns these predicates.
-      _ <- check(body.inputs.nonEmpty, UtxoFailure.InputSetEmpty)
-      _ <- check(
-        tx.size <= pp.maxTxSize,
-        UtxoFailure.MaxTxSize(Mismatch(BigInt(tx.size), pp.maxTxSize))
-      )
-      _ <- check(body.fee >= minFee, UtxoFailure.FeeTooSmall(Mismatch(body.fee, minFee)))
-      _ <- resolvable(ann)
-      _ <- check(
-        body.networkId.forall(_ == ctx.network),
-        UtxoFailure.WrongNetworkInTxBody(Mismatch(body.networkId.fold(0)(_.toInt), ctx.network))
-      )
-      _ <- TxChecks
-        .outputsOk(pp, ctx, body.outputs ++ body.collateralReturn.toVector)
-        .leftMap(LedgerFailure.Rejected(id, _))
-      _ <- bootstrapOutputs(ctx.network, body.outputs ++ body.collateralReturn.toVector)
-        .leftMap(LedgerFailure.Rejected(id, _))
-      // `validateWrongNetworkWithdrawal` (`Babbage/Rules/Utxo.hs:400`), regardless of the validity tag
-      _ <- check(
-        wrongWithdrawals.isEmpty,
-        UtxoFailure.WrongNetworkWithdrawal(ctx.network, wrongWithdrawals)
-      )
-      _ <- check(
-        wits.totalExUnits.fits(pp.maxTxExUnits),
-        UtxoFailure.ExUnitsTooBig(Mismatch(wits.totalExUnits, pp.maxTxExUnits))
-      )
-      // `validateTooManyCollateralInputs` (`Babbage/Rules/Utxo.hs:412`): whether or not there are
-      // redeemers, which is all `collateralChecks` looks at
-      _ <- check(
-        TxChecks.collateralInputs(body).size <= pp.maxCollateralInputs,
-        UtxoFailure.TooManyCollateralInputs(
-          Mismatch(TxChecks.collateralInputs(body).size, pp.maxCollateralInputs.toInt)
-        )
-      )
-      collateral <- TxChecks.collateralChecks(ann.utxo, pp, tx)
-      withdrawn = body.withdrawals.valuesIterator.map(_.value).sum
-      consumed = ann.spent.foldLeft(Value.zero)(_ + _.value) + Value.coin(withdrawn + refunds) +
-        Value(0, body.mint)
-      produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +
-        Value.coin(body.fee + deposits + body.donation)
-      _ <- check(consumed == produced, UtxoFailure.ValueNotConserved(Mismatch(consumed, produced)))
-    yield collateral
+    val withdrawn = body.withdrawals.valuesIterator.map(_.value).sum
+    val consumed = ann.spent.foldLeft(Value.zero)(_ + _.value) +
+      Value.coin(withdrawn + refunds) + Value(0, body.mint)
+    val produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +
+      Value.coin(body.fee + deposits + body.donation)
+    UtxoTests.babbage(pp, env.ctx.network, env.ctx.slot, ann, minFee, consumed, produced)
 
   /** `updateUTxOState` and `updateTreasuryDonation` (`Babbage/Rules/Utxo.hs:449`,
     * `Conway/Rules/Utxo.hs:201`).
@@ -366,10 +280,9 @@ object Utxo
       judge: Judge[F, PredicateFailure]
   ): F[Unit] =
     val (deposits, refunds) = Deposits.of(env.pp, env.cert, ann.tx.body)
+    val collateral = TxChecks.collateral(ann.utxo, env.pp, ann.tx)
     for
-      collateral <- Sts.lift[F, LedgerFailure, TxChecks.Collateral](
-        validate(env, ann, deposits, refunds)
-      )
+      _ <- Sts.runTest[F, PredicateFailure](validate(env, ann, deposits, refunds))
       _ <- JudgedSts.trans[F, UtxoEnv[Any], PlutusStats, Counted[
         UTxOState[Conway]
       ], StAnnTx, PredicateFailure, LedgerFailure, LedgerFailure](Utxos, env, ann)
