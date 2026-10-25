@@ -109,6 +109,12 @@ class BudgetTest(DocsCase):
         self.assertEqual([(v.kind, v.measure) for v in rows],
                          [(Kind.FILE_SIZE, len(text.encode())), (Kind.TABLE_CELL, 30)])
 
+    def test_only_the_size_kinds_are_report_only(self):
+        self.assertEqual({k for k in Kind if not k.blocking}, {Kind.FILE_SIZE, Kind.TABLE_CELL})
+        self.assertEqual(check_docs.warnings_of([Violation(Kind.BROKEN_LINK, "a.md", "x", 1)]), [])
+        self.assertEqual(check_docs.warnings_of([Violation(Kind.TABLE_CELL, "a.md", "x", 3, 30)]),
+                         ["warning: a.md:3: table-cell: x (30)"])
+
     def test_pipes_in_code_spans_and_escapes_do_not_split_cells(self):
         self.assertEqual(check_docs.split_cells("| `a|b` | c\\|d | e |"), ["`a|b`", "c\\|d", "e"])
 
@@ -148,28 +154,29 @@ class PinTest(DocsCase):
 
 class RatchetTest(unittest.TestCase):
     A = (Kind.MISSING_PATH, "README.md", "x/y")
-    B = (Kind.FILE_SIZE, "docs/a.md", "")
+    B = (Kind.BROKEN_LINK, "docs/a.md", "gone.md")
 
     def test_equal_is_ok_new_and_growth_fail(self):
-        base = {self.A: Entry(1, None), self.B: Entry(1, 100)}
+        base = {self.A: Entry(1), self.B: Entry(1)}
         self.assertTrue(check_docs.ratchet(base, base).ok)
-        grown = check_docs.ratchet({self.A: Entry(2, None), self.B: Entry(1, 101)}, base)
-        self.assertEqual(len(grown.new), 2)
+        grown = check_docs.ratchet({self.A: Entry(2), self.B: Entry(1)}, base)
+        self.assertEqual(len(grown.new), 1)
         self.assertEqual(grown.stale, ())
-        extra = check_docs.ratchet({**base, (Kind.BROKEN_LINK, "README.md", "z"): Entry(1, None)}, base)
+        extra = check_docs.ratchet({**base, (Kind.BROKEN_LINK, "README.md", "z"): Entry(1)}, base)
         self.assertEqual(len(extra.new), 1)
 
     def test_fixed_entries_make_the_baseline_stale(self):
-        base = {self.A: Entry(2, None), self.B: Entry(1, 100)}
-        result = check_docs.ratchet({self.A: Entry(1, None), self.B: Entry(1, 90)}, base)
+        base = {self.A: Entry(2), self.B: Entry(1)}
+        result = check_docs.ratchet({self.A: Entry(1), self.B: Entry(1)}, base)
         self.assertEqual(result.new, ())
         self.assertEqual(len(result.stale), 1)
         self.assertEqual(len(check_docs.ratchet({}, base).stale), 2)
 
-    def test_shrinking_measure_does_not_fail(self):
-        base = {self.B: Entry(1, 100)}
-        self.assertTrue(check_docs.ratchet({self.B: Entry(1, 10)}, base).ok)
-        self.assertFalse(check_docs.ratchet({self.B: Entry(1, 101)}, base).ok)
+    def test_size_violations_are_not_part_of_the_ratcheted_state(self):
+        size = [Violation(Kind.FILE_SIZE, "docs/a.md", "", measure=100), Violation(Kind.TABLE_CELL, "docs/a.md", "c", 4, 700)]
+        self.assertEqual(check_docs.summarise(size), {})
+        self.assertEqual(check_docs.summarise([*size, Violation(Kind.BROKEN_LINK, "docs/a.md", "gone.md", 2)]),
+                         {self.B: Entry(1)})
 
     def test_branch_names_are_not_paths(self):
         tmp, repo = build({"release/x.json": "", "README.md": "`release/alpha` `release/gone`\n"})
@@ -177,8 +184,15 @@ class RatchetTest(unittest.TestCase):
         self.assertEqual([v.key for v in check_docs.collect(repo, Budgets())], ["release/gone"])
 
     def test_baseline_round_trips(self):
-        baseline = check_docs.Baseline(Budgets(5, 6), {self.A: Entry(2, None), self.B: Entry(1, 100)})
+        baseline = check_docs.Baseline(Budgets(5, 6), {self.A: Entry(2), self.B: Entry(1)})
         self.assertEqual(check_docs.Baseline.parse(baseline.render()), baseline)
+
+    def test_report_only_entries_of_an_older_baseline_are_ignored(self):
+        old = json.dumps({"schemaVersion": 1, "budgets": {"maxFileBytes": 5, "maxCellChars": 6}, "entries": [
+            {"kind": "file-size", "path": "docs/a.md", "key": "", "count": 1, "measure": 100},
+            {"kind": "broken-link", "path": "docs/a.md", "key": "gone.md", "count": 1},
+        ]})
+        self.assertEqual(check_docs.Baseline.parse(old).entries, {self.B: Entry(1)})
 
 
 class EndToEndTest(unittest.TestCase):
@@ -201,6 +215,19 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(self.run_main(tmp.name, "--write-baseline"), 0)
         self.assertEqual(json.loads((root / check_docs.BASELINE_PATH).read_text())["entries"], [])
         self.assertEqual(self.run_main(tmp.name), 0)
+
+
+    def test_size_violations_warn_without_failing(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        (root / "README.md").write_text("| a |\n|---|\n| " + "x" * 30 + " |\n")
+        self.assertEqual(self.run_main(tmp.name, "--max-file-bytes", "10", "--max-cell-chars", "20"), 0)
+        self.assertEqual(self.run_main(tmp.name, "--max-file-bytes", "10", "--max-cell-chars", "20", "--write-baseline"), 0)
+        self.assertEqual(json.loads((root / check_docs.BASELINE_PATH).read_text())["entries"], [])
+        self.assertEqual(self.run_main(tmp.name), 0)
+        (root / "README.md").write_text("| a |\n|---|\n| " + "x" * 30 + " |\n[a](gone.md)\n")
+        self.assertEqual(self.run_main(tmp.name), 1, "a blocking violation still fails next to size warnings")
 
 
 if __name__ == "__main__":

@@ -120,13 +120,6 @@
    "count": 1
   },
   {
-   "kind": "file-size",
-   "path": "docs/architecture.md",
-   "key": "",
-   "count": 1,
-   "measure": 114405
-  },
-  {
    "kind": "missing-path",
    "path": "docs/architecture.md",
    "key": "consensus/ByronRules.scala",
@@ -391,13 +384,6 @@
    "count": 1
   },
   {
-   "kind": "file-size",
-   "path": "docs/compatibility.md",
-   "key": "",
-   "count": 1,
-   "measure": 295912
-  },
-  {
    "kind": "line-citation",
    "path": "docs/compatibility.md",
    "key": "byron.cddl:126",
@@ -426,755 +412,6 @@
    "path": "docs/compatibility.md",
    "key": "node/runtimeClasspathFile",
    "count": 9
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "1,451 K1 Preview originals converted to current V5 with unch",
-   "count": 1,
-   "measure": 1202
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "13 files, 26 test classes, every assertion on both sides: th",
-   "count": 1,
-   "measure": 1319
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "14 rounds under the ordinary and governance load, epochs 0 t",
-   "count": 1,
-   "measure": 758
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "15 rounds: 763 of 763 query answers byte-equal; 23 of 24 `ca",
-   "count": 1,
-   "measure": 1156
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "18 complete actual reference Conway/PV10 transactions: V1/V2",
-   "count": 1,
-   "measure": 641
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "18 rounds, 987/987 implemented-query comparisons equal; 88/8",
-   "count": 1,
-   "measure": 607
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "2026-10-21 UTC, Euler; Docker JDK 21.0.11/Scala 3.3.8/sbt 1.",
-   "count": 1,
-   "measure": 859
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "2026-10-22 UTC, Euler; Docker JDK21.0.11/Scala3.3.8/sbt1.10.",
-   "count": 1,
-   "measure": 697
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "22 actual unchanged released-reference cases: six legal and ",
-   "count": 1,
-   "measure": 798
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "24 actual signed Conway/PV10 submissions (12 included/12 ref",
-   "count": 1,
-   "measure": 991
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "27 tests passed: all query walks, including an acquired sess",
-   "count": 1,
-   "measure": 661
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "74 reference-submitted cases: Alonzo PV5/6, Babbage PV7/8, C",
-   "count": 1,
-   "measure": 643
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "All 1,009 original upstream term/counting cases pass without",
-   "count": 1,
-   "measure": 734
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "All 4,758,521 original blocks from genesis to slot125366428/",
-   "count": 1,
-   "measure": 643
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "All protocol checks passed: 18 rounds, 986/986 implemented q",
-   "count": 1,
-   "measure": 717
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "All six committed Shelley-based state/table fixtures reconst",
-   "count": 1,
-   "measure": 722
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Both PASS. Relay final tips agree at196/de1736e9; 27/30 samp",
-   "count": 1,
-   "measure": 745
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Broader seeds/branches, protocol scheduling, transport and t",
-   "count": 1,
-   "measure": 649
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Current Preview reconciliation also passes: 4,758,521 contin",
-   "count": 1,
-   "measure": 774
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Current fixed-file/gap/semantic goldens and checkpoint resta",
-   "count": 1,
-   "measure": 1269
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Current native V5/fingerprint retained; fixed fixtures and e",
-   "count": 1,
-   "measure": 738
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Docker check: 5,144 passed/16 optional-data skips, no failur",
-   "count": 1,
-   "measure": 797
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "E2e PASS: 1,672 block applications through Conway epoch 17, ",
-   "count": 1,
-   "measure": 668
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Exit 0 on frozen source `6db8c0607b5fee0278cdb1238f6aedfcae6",
-   "count": 1,
-   "measure": 1464
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Extended decoder fuzz passes 77 targets × 400,000 cases (30.",
-   "count": 1,
-   "measure": 877
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Final full check: 4,597 passed, 15 skipped, including standa",
-   "count": 1,
-   "measure": 656
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Finite grids do not prove equality for every program, transa",
-   "count": 1,
-   "measure": 1057
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Fresh private cluster: Scarab has one configured local root,",
-   "count": 1,
-   "measure": 677
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Full check after rebasing over KES persistence durability (#",
-   "count": 1,
-   "measure": 601
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Full check including scalafix passed on the combined product",
-   "count": 1,
-   "measure": 602
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Full check passes (4,608 passed, 15 skipped, 0 failed/errors",
-   "count": 1,
-   "measure": 761
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Full check: 4,563 passed, 15 skipped, including fuzz and sca",
-   "count": 1,
-   "measure": 682
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Full check: 4,572 passed, 15 skipped, including fuzz and sca",
-   "count": 1,
-   "measure": 807
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Genesis coverage is recorded in the separate G3 row; version",
-   "count": 1,
-   "measure": 824
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Haskell loads the private slot-7 S4 export and validates/rep",
-   "count": 1,
-   "measure": 929
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "IETF draft-03 vectors 16 and 17 reproduced exactly; KES veri",
-   "count": 1,
-   "measure": 772
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "LocalStateQuery answers `ledger-state` (`DebugNewEpochState`",
-   "count": 1,
-   "measure": 4555
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "N3 against the public Leios testnet `musashi` (2026-10-16, r",
-   "count": 1,
-   "measure": 1190
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "New sharing has actual private reference proof below; histor",
-   "count": 1,
-   "measure": 752
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "NtC: 17 rounds, 932/932 implemented query comparisons; V16–V",
-   "count": 1,
-   "measure": 674
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Output and mint multi-asset maps are read at the era's decod",
-   "count": 1,
-   "measure": 1953
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "PASS after the non-overlapping #195 merge: 5,045 passed, 16 ",
-   "count": 1,
-   "measure": 711
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "PASS on the rebased integration: 18 rounds, 986/986 implemen",
-   "count": 1,
-   "measure": 879
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "PASS: 5,239 tests passed, 16 optional-data skips, zero failu",
-   "count": 1,
-   "measure": 632
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "PASS: 5,253 tests, 16 optional-data skips, zero failures/err",
-   "count": 1,
-   "measure": 607
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "PASS: 5,366 tests, 17 optional-data skips, zero failures/err",
-   "count": 1,
-   "measure": 623
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "PASS: 5,394 passed/17 optional-data skips across 14 modules,",
-   "count": 1,
-   "measure": 789
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "PASS: 5,425 tests, 17 optional-data skips, zero failures/err",
-   "count": 1,
-   "measure": 689
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "PASS: 5,941 tests across 14 modules, 17 optional-data skips,",
-   "count": 1,
-   "measure": 604
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "PASS: 8,379 standard tests, zero failures/errors; 16 existin",
-   "count": 1,
-   "measure": 701
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "PASS: 8,422 tests, 16 existing external-input/benchmark skip",
-   "count": 1,
-   "measure": 663
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "PASS: 8,486 tests across 14 modules, zero failures/errors, 1",
-   "count": 1,
-   "measure": 676
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "PASS: `check` 9,094 tests, 16 existing optional-input skips,",
-   "count": 1,
-   "measure": 971
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Passed: 17 rounds, 931/931 implemented query comparisons (th",
-   "count": 1,
-   "measure": 884
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Preview stride 72: 21 epochs, 70,183 blocks, 0 divergences (",
-   "count": 1,
-   "measure": 862
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Production-path paced bulk/control checks: successful KeepAl",
-   "count": 1,
-   "measure": 613
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "Real pinned-client full download/certification 0..29089, 327",
-   "count": 1,
-   "measure": 673
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "S4 export preserves the exact state and streams canonical ou",
-   "count": 1,
-   "measure": 1009
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "TPraos forging (H3); no Byron (PBFT) forging, a decision (H7",
-   "count": 1,
-   "measure": 677
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "`ByronEd25519ReferenceSuite`: 569 generated rows (non-canoni",
-   "count": 1,
-   "measure": 790
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "`ByronVersionSuite`: signed complete blocks with a signed tr",
-   "count": 1,
-   "measure": 926
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "`ChainReadSuite`: every fact agrees between the flat state a",
-   "count": 1,
-   "measure": 1376
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "`CollateralWitnessSuite` (protocols 5 to 11: a collateral ke",
-   "count": 1,
-   "measure": 1287
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "`ConfigSuite` over the public Preview, preprod and mainnet f",
-   "count": 1,
-   "measure": 1266
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "`ConwayDecodingReferenceSuite`: 338 original encodings (225 ",
-   "count": 1,
-   "measure": 660
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "`PoolRelaysSuite`, `LedgerPeersSuite`, `PeerSnapshotSuite` a",
-   "count": 1,
-   "measure": 681
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "`PreparedBlockSuite`, `TxDependenciesSuite`, `ParallelPlutus",
-   "count": 1,
-   "measure": 622
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "`check` exit 0: 9,099 tests in 14 modules, 9,083 passed, 16 ",
-   "count": 1,
-   "measure": 919
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "`e2e`: Shelley 12, Allegra 4, Mary 4, Alonzo 8, Babbage 8, C",
-   "count": 1,
-   "measure": 731
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "`python3 scripts/devnet.py --name scarab-247-root-restart re",
-   "count": 1,
-   "measure": 768
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "`python3 scripts/devnet.py --name scarab-248-e2e e2e` exit 0",
-   "count": 1,
-   "measure": 766
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "`query tip` equal to the chain (epoch 319, slot in epoch and",
-   "count": 1,
-   "measure": 796
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "before: format 1 migrated and restored, the 12th block after",
-   "count": 1,
-   "measure": 1009
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "blocks to slot 1,769,881 (Byron epoch 81) validated with 0 e",
-   "count": 1,
-   "measure": 607
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "both relay runs passed (default: with `ExperimentalProtocols",
-   "count": 1,
-   "measure": 906
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "byte round trip of real files written by a Haskell node 11.1",
-   "count": 1,
-   "measure": 794
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "eras fixture: 731 blocks, 675 of the 681 Shelley-based block",
-   "count": 1,
-   "measure": 1054
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "eras fixture: 731 blocks, 681 ticks compared, at least 6 era",
-   "count": 1,
-   "measure": 759
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "every Byron block validated (after the stop 1 fix) and the B",
-   "count": 1,
-   "measure": 639
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "full Genesis syncing remains G3; PeerSharing, ledger peers a",
-   "count": 1,
-   "measure": 1291
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "full successor-slot ticking includes epoch transitions, pend",
-   "count": 1,
-   "measure": 608
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "implemented: Byron block headers, delegation certificates (g",
-   "count": 1,
-   "measure": 773
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "implemented: `TxBody.decode` and `Witnesses.decode` take the",
-   "count": 1,
-   "measure": 2803
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "implemented: native V7 (`SCRBSNP7`, #395, [ADR 0021](adr/002",
-   "count": 1,
-   "measure": 794
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "implemented: the rule makes, for every transaction whatever ",
-   "count": 1,
-   "measure": 735
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "met, with one peer. Database migrated on open (identity, 5,8",
-   "count": 1,
-   "measure": 1185
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "native query fixtures: 16 wallet API outputs, 11 peer encodi",
-   "count": 1,
-   "measure": 678
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "one bug found by the devnet and fixed: the mirror's reading ",
-   "count": 1,
-   "measure": 945
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "only the UTxO set is on disk; accounts, pools, DReps and sta",
-   "count": 1,
-   "measure": 784
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "partial: `follow --config <config.json> --topology <topology",
-   "count": 1,
-   "measure": 900
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "passed (the second of two runs of the final build; the first",
-   "count": 1,
-   "measure": 849
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "pre-Conway eras keep their previous list and field rules exc",
-   "count": 1,
-   "measure": 2207
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "read and written: `HaskellLedgerFile` (the `[1, ...]` envelo",
-   "count": 1,
-   "measure": 619
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "recorded mainnet Byron data in the repository is a sample of",
-   "count": 1,
-   "measure": 609
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "resumed on the stop 4 fix (restored at block 4,488,648, befo",
-   "count": 1,
-   "measure": 939
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "round-trip and corruption property tests; store crash cases ",
-   "count": 1,
-   "measure": 1720
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "the Conway cases were run through `cardano-cli debug transac",
-   "count": 1,
-   "measure": 870
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "the follower of stop 5 wrote no snapshot after the handover:",
-   "count": 1,
-   "measure": 929
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "the follower, past slot about 26.6M in Mary, logged `snapsho",
-   "count": 1,
-   "measure": 1263
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "the production rules over the eras capture beside the old ru",
-   "count": 1,
-   "measure": 1651
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "the reference image run on the devnet as a fourth, non-forgi",
-   "count": 1,
-   "measure": 1200
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "the round-robin leader schedule is reported (`offSchedule`),",
-   "count": 1,
-   "measure": 675
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "the sixth sync stopped at block 6,203,514 (slot 39,249,764, ",
-   "count": 1,
-   "measure": 991
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "this change: the gates ran on its final code before the reba",
-   "count": 1,
-   "measure": 900
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "unit/property (Ratify, ConwayGovernance suites); devnet soak",
-   "count": 1,
-   "measure": 1091
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "unit/property; devnet soak (24/24, 41/41 and, with the exten",
-   "count": 1,
-   "measure": 643
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/compatibility.md",
-   "key": "worker-a (older 2-core x86-64 CPU, no `adx`/`bmi2`), contain",
-   "count": 1,
-   "measure": 616
   },
   {
    "kind": "unregistered-pin",
@@ -1669,13 +906,6 @@
    "count": 1
   },
   {
-   "kind": "file-size",
-   "path": "docs/design/haskell-snapshots.md",
-   "key": "",
-   "count": 1,
-   "measure": 64964
-  },
-  {
    "kind": "line-citation",
    "path": "docs/design/haskell-snapshots.md",
    "key": "Bbody.scala:78",
@@ -1730,27 +960,6 @@
    "count": 1
   },
   {
-   "kind": "table-cell",
-   "path": "docs/design/haskell-snapshots.md",
-   "key": "Acceptance. (a) `db-analyser --in-mem --analyse-from <slot> ",
-   "count": 1,
-   "measure": 704
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/design/haskell-snapshots.md",
-   "key": "`import-ledger-snapshot --haskell-ledger <dir> --db <dir> --",
-   "count": 1,
-   "measure": 796
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/design/haskell-snapshots.md",
-   "key": "`tables` writer and reader and the `meta` file in `storage`:",
-   "count": 1,
-   "measure": 999
-  },
-  {
    "kind": "unregistered-pin",
    "path": "docs/design/haskell-snapshots.md",
    "key": "cardano-node 10.7",
@@ -1767,13 +976,6 @@
    "path": "docs/design/haskell-snapshots.md",
    "key": "ouroboros-consensus 4.2.1.0",
    "count": 1
-  },
-  {
-   "kind": "file-size",
-   "path": "docs/design/ledger-mirror-step2.md",
-   "key": "",
-   "count": 1,
-   "measure": 125556
   },
   {
    "kind": "line-citation",
@@ -2412,13 +1614,6 @@
    "count": 1
   },
   {
-   "kind": "file-size",
-   "path": "docs/design/peer-selection.md",
-   "key": "",
-   "count": 1,
-   "measure": 165667
-  },
-  {
    "kind": "line-citation",
    "path": "docs/design/peer-selection.md",
    "key": "Handshake.scala:50",
@@ -2521,13 +1716,6 @@
    "count": 1
   },
   {
-   "kind": "table-cell",
-   "path": "docs/design/peer-selection.md",
-   "key": "One `Map[A, PeerRecord]` whose status is an enum with the tr",
-   "count": 1,
-   "measure": 788
-  },
-  {
    "kind": "unregistered-pin",
    "path": "docs/design/peer-selection.md",
    "key": "cardano-ledger@048b78d",
@@ -2588,13 +1776,6 @@
    "count": 1
   },
   {
-   "kind": "file-size",
-   "path": "docs/findings.md",
-   "key": "",
-   "count": 1,
-   "measure": 102436
-  },
-  {
    "kind": "missing-symbol",
    "path": "docs/findings.md",
    "key": "Address.byronRoot",
@@ -2641,300 +1822,6 @@
    "path": "docs/findings.md",
    "key": "Translate.toConway",
    "count": 2
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**A Byron address has no size limit of its own; we refused o",
-   "count": 1,
-   "measure": 1834
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**A claim in the shared block pool must end with the session",
-   "count": 1,
-   "measure": 2002
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**A fiber must not raise through a capability it did not cre",
-   "count": 1,
-   "measure": 3241
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**A mainnet follower's CPU is bursts, and its rate is its ap",
-   "count": 1,
-   "measure": 950
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**A pointer address that does not fit the ledger's fields is",
-   "count": 1,
-   "measure": 6431
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**A pool registration's reward account network is checked on",
-   "count": 1,
-   "measure": 2498
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**A pool that re-registers with its own VRF key hash and the",
-   "count": 1,
-   "measure": 1212
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**A registered pool's reward account has no network in the l",
-   "count": 1,
-   "measure": 1325
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**A seed must not read `mark` off the accounts.** Preprod fr",
-   "count": 1,
-   "measure": 1073
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**A vkey witness spends a Byron output when its key hashes t",
-   "count": 1,
-   "measure": 1026
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**AVVM balances return to the reserves on entering Allegra.*",
-   "count": 1,
-   "measure": 1139
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**Before Babbage an address in an output may be followed by ",
-   "count": 1,
-   "measure": 3479
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**Builtin availability.** Which builtins a script may use de",
-   "count": 1,
-   "measure": 839
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**Byron PBFT validation** (ouroboros-consensus `Protocol/PBF",
-   "count": 1,
-   "measure": 726
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**Bytes after a Plutus script's CBOR item are ignored for V1",
-   "count": 1,
-   "measure": 1317
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**Chain selection at equal length** (confirmed, B1; ouroboro",
-   "count": 1,
-   "measure": 930
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**Conformance deviations of Scalus** (I1; found with 1.2.0, ",
-   "count": 1,
-   "measure": 1113
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**Empty redeemers in the script data hash.** An absent redee",
-   "count": 1,
-   "measure": 674
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**Haskell `state` derivations against the real Preview state",
-   "count": 1,
-   "measure": 1453
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**Header envelope and era timing** (B13; ouroboros-consensus",
-   "count": 1,
-   "measure": 965
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**Native script `n_of_k`: `n` is a signed 64-bit integer, a ",
-   "count": 1,
-   "measure": 1257
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**Nesting within the depth limit overflows the stack.** `Cbo",
-   "count": 1,
-   "measure": 1752
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**No nesting limit below the size of the block.** Preprod tr",
-   "count": 1,
-   "measure": 1933
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**Output value size.** `serialize v` (the ledger's own encod",
-   "count": 1,
-   "measure": 657
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**Phase 2 recursed once per redeemer, and a transaction with",
-   "count": 1,
-   "measure": 1314
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**Pointer address: a long run of continuation bytes costs qu",
-   "count": 1,
-   "measure": 751
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**Pre-Babbage reward prefilter.** Before Babbage (protocol o",
-   "count": 1,
-   "measure": 653
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**SPO default votes after the bootstrap phase.** A pool that",
-   "count": 1,
-   "measure": 628
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**Scalus 1.2.0 `serialiseData` truncated the constructor ind",
-   "count": 1,
-   "measure": 1793
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**Scalus `verifyEcdsaSecp256k1Signature` fails where the ref",
-   "count": 1,
-   "measure": 1311
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**Shelley's time to live is the last valid slot.** The mainn",
-   "count": 1,
-   "measure": 646
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**System start of the hard-fork combinator.** `GetSystemStar",
-   "count": 1,
-   "measure": 900
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**The BLS12-381 library of blst-java uses `mulx`/`adcx` with",
-   "count": 1,
-   "measure": 1023
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**The Byron to Shelley handover never wrote the Byron UTxO t",
-   "count": 1,
-   "measure": 2443
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**The hard-fork envelope reads indefinite lengths where the ",
-   "count": 1,
-   "measure": 1069
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**The old mirror's snapshots are exact only at the boundary.",
-   "count": 1,
-   "measure": 833
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**The pre-Conway rules of the node differ from the reference",
-   "count": 1,
-   "measure": 1849
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**The previous parameters of the first Conway epoch carry th",
-   "count": 1,
-   "measure": 1392
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**The reward update of a state, read back as the node's, sum",
-   "count": 1,
-   "measure": 1299
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**Votes were recorded with a map over every proposal for eve",
-   "count": 1,
-   "measure": 828
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**`cardano-cli query tip` against a node on a network older ",
-   "count": 1,
-   "measure": 1096
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/findings.md",
-   "key": "**`spsDelegators` is not in the pool queries' answer.** `Get",
-   "count": 1,
-   "measure": 951
   },
   {
    "kind": "unregistered-pin",
@@ -3177,13 +2064,6 @@
    "count": 1
   },
   {
-   "kind": "file-size",
-   "path": "docs/implementer-notes.md",
-   "key": "",
-   "count": 1,
-   "measure": 109744
-  },
-  {
    "kind": "missing-symbol",
    "path": "docs/implementer-notes.md",
    "key": "SoftForks.restrictPoolMetadataHash",
@@ -3248,13 +2128,6 @@
    "path": "docs/implementer-notes.md",
    "key": "scalus@f8209b4",
    "count": 1
-  },
-  {
-   "kind": "file-size",
-   "path": "docs/leios.md",
-   "key": "",
-   "count": 1,
-   "measure": 70210
   },
   {
    "kind": "missing-path",
@@ -3359,34 +2232,6 @@
    "count": 1
   },
   {
-   "kind": "table-cell",
-   "path": "docs/leios.md",
-   "key": "The CDDL pipeline (`models-gen`) takes the Leios CDDL it was",
-   "count": 1,
-   "measure": 1452
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/leios.md",
-   "key": "`Era` has no `Dijkstra`: the era history, `HardForkConfig` (",
-   "count": 1,
-   "measure": 612
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/leios.md",
-   "key": "`foundation.icon:blst-java:0.3.2` (Apache-2.0) is already on",
-   "count": 1,
-   "measure": 908
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/leios.md",
-   "key": "~~Handshake: the node offers version 14 only; the relay acce",
-   "count": 1,
-   "measure": 611
-  },
-  {
    "kind": "unregistered-pin",
    "path": "docs/leios.md",
    "key": "cardano-ledger@ba863cf5",
@@ -3479,7 +2324,37 @@
   {
    "kind": "missing-path",
    "path": "docs/licenses.md",
+   "key": "node/assembly",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/licenses.md",
+   "key": "node/log/LibraryLogs.scala",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/licenses.md",
+   "key": "node/releaseInventory",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/licenses.md",
+   "key": "node/runtimeClasspathFile",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/licenses.md",
    "key": "node/target/runtime-classpath.txt",
+   "count": 1
+  },
+  {
+   "kind": "missing-symbol",
+   "path": "docs/licenses.md",
+   "key": "LICENSE.leveldb",
    "count": 1
   },
   {
@@ -3507,13 +2382,6 @@
    "count": 1
   },
   {
-   "kind": "file-size",
-   "path": "docs/performance.md",
-   "key": "",
-   "count": 1,
-   "measure": 230614
-  },
-  {
    "kind": "missing-path",
    "path": "docs/performance.md",
    "key": "PulseProfile.scala",
@@ -3535,6 +2403,12 @@
    "kind": "missing-path",
    "path": "docs/performance.md",
    "key": "analyze.py",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/performance.md",
+   "key": "ledger/Test/fullClasspath",
    "count": 1
   },
   {
@@ -3736,13 +2610,6 @@
    "count": 3
   },
   {
-   "kind": "file-size",
-   "path": "docs/roadmap.md",
-   "key": "",
-   "count": 1,
-   "measure": 103505
-  },
-  {
    "kind": "missing-path",
    "path": "docs/roadmap.md",
    "key": "consensus/HardFork.scala",
@@ -3809,13 +2676,6 @@
    "count": 1
   },
   {
-   "kind": "file-size",
-   "path": "docs/running.md",
-   "key": "",
-   "count": 1,
-   "measure": 188788
-  },
-  {
    "kind": "missing-path",
    "path": "docs/running.md",
    "key": "./textfile",
@@ -3832,69 +2692,6 @@
    "path": "docs/running.md",
    "key": "node/target/runtime-classpath.txt",
    "count": 1
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/running.md",
-   "key": "`sessions` (per session: `session`, `busy`, `pendingOffers`,",
-   "count": 1,
-   "measure": 835
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/running.md",
-   "key": "a fresh cluster, the Scala node following pool 1 with `--loc",
-   "count": 1,
-   "measure": 1615
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/running.md",
-   "key": "blocks forged, adopted and on the final chain; the Haskell l",
-   "count": 1,
-   "measure": 1428
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/running.md",
-   "key": "every query that is implemented gives equal bytes in every r",
-   "count": 1,
-   "measure": 891
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/running.md",
-   "key": "everything `pool` asserts, and: at least `--min-rotations` `",
-   "count": 1,
-   "measure": 763
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/running.md",
-   "key": "exit status fails on any mismatched comparison or follower e",
-   "count": 1,
-   "measure": 985
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/running.md",
-   "key": "the Haskell relay syncs the whole chain from the Scala node ",
-   "count": 1,
-   "measure": 1159
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/running.md",
-   "key": "the `eraTransition` lines are exactly the seven eras at the ",
-   "count": 1,
-   "measure": 715
-  },
-  {
-   "kind": "table-cell",
-   "path": "docs/running.md",
-   "key": "the highest node-to-node version the node offers and accepts",
-   "count": 1,
-   "measure": 666
   },
   {
    "kind": "unregistered-pin",

@@ -19,27 +19,28 @@ inspected. Every finding is a `Violation` of one `Kind`:
                     starting with an `UPSTREAM_ROOTS` word, or three or more capitalised segments) are skipped
   LINE_CITATION     `File.scala:123`, `path/File.py:10-20` or a link ending `#L12` into a repo file. Line numbers rot;
                     these are counted and ratcheted, never fixed by this tool
-  FILE_SIZE         a file above the per-file byte budget (measure: bytes)
-  TABLE_CELL        a table cell above the per-cell character budget (measure: characters; one entry per cell
-                    identified by its first 60 characters)
+  FILE_SIZE         a file above the per-file byte budget (measure: bytes). Report-only
+  TABLE_CELL        a table cell above the per-cell character budget (measure: characters). Report-only
   UNREGISTERED_PIN  (only when `docs/data/reference-pins.json` exists) a cited upstream version (`cardano-node 11.1.3`,
                     `Scalus 1.3.0`, ...) or 7-40 hex commit id (in a GitHub commit/tree/blob URL, or on a line that
                     names an upstream repository) that no registered pin covers
   PIN_REGISTRY      a registry defect: a dependent path that does not exist, or a dependent that no longer mentions
                     the pin's version or revision
 
-Ratchet: `docs/data/docs-check-baseline.json` lists today's violations (identity = kind, path, key; line numbers are
-not part of an identity so that edits above a finding do not move it). The check fails when
+Blocking and report-only rules. FILE_SIZE and TABLE_CELL are size rules: unrelated changes legitimately append a few
+words to a long table cell, so they are printed as warnings and never change the exit code, and the baseline does not
+list them. Every other kind is a correctness rule and blocks.
 
-  * a violation is not in the baseline, occurs more often than baselined, or a measured one grew
-    (a baselined file past its recorded size, a baselined cell past its recorded length), or
-  * the baseline holds an entry that no longer occurs or occurs less often. A measured entry that merely shrinks
-    never fails (compaction PRs need not rewrite the baseline); `--write-baseline` tightens it.
+Ratchet (blocking kinds only): `docs/data/docs-check-baseline.json` lists today's violations (identity = kind, path,
+key; line numbers are not part of an identity so that edits above a finding do not move it). The check fails when
+
+  * a violation is not in the baseline or occurs more often than baselined, or
+  * the baseline holds an entry that no longer occurs or occurs less often.
 
 `--write-baseline` rewrites the baseline to the current state: that is how fixed violations leave it. It is also the
 only way to accept a new violation, which a reviewer sees as a baseline diff; do not do that to silence a check.
-The budgets (`maxFileBytes`, `maxCellChars`) live in the baseline; `--max-file-bytes` / `--max-cell-chars` override them
-and `--write-baseline` stores the effective values.
+The size budgets (`maxFileBytes`, `maxCellChars`) live in the baseline; `--max-file-bytes` / `--max-cell-chars` override
+them and `--write-baseline` stores the effective values. Entries of report-only kinds in an older baseline are ignored.
 
 Pure standard library; no sbt, no network.
 """
@@ -108,8 +109,13 @@ class Kind(str, Enum):
     UNREGISTERED_PIN = "unregistered-pin"
     PIN_REGISTRY = "pin-registry"
 
+    @property
+    def blocking(self) -> bool:
+        return self not in REPORT_ONLY
 
-MEASURED = frozenset({Kind.FILE_SIZE, Kind.TABLE_CELL})
+
+# Size rules print warnings and never fail the check; see the module docstring.
+REPORT_ONLY = frozenset({Kind.FILE_SIZE, Kind.TABLE_CELL})
 
 
 @dataclass(frozen=True)
@@ -537,17 +543,12 @@ def collect(repo: Repo, budgets: Budgets) -> list[Violation]:
 @dataclass(frozen=True)
 class Entry:
     count: int
-    measure: int | None
 
 
 def summarise(violations: Iterable[Violation]) -> dict[tuple[Kind, str, str], Entry]:
-    counts: Counter[tuple[Kind, str, str]] = Counter()
-    measures: dict[tuple[Kind, str, str], int] = {}
-    for v in violations:
-        counts[v.identity] += 1
-        if v.measure is not None:
-            measures[v.identity] = max(measures.get(v.identity, 0), v.measure)
-    return {ident: Entry(n, measures.get(ident)) for ident, n in counts.items()}
+    """The ratcheted state: occurrence counts of the blocking violations."""
+    counts: Counter[tuple[Kind, str, str]] = Counter(v.identity for v in violations if v.kind.blocking)
+    return {ident: Entry(n) for ident, n in counts.items()}
 
 
 @dataclass(frozen=True)
@@ -565,16 +566,14 @@ class Baseline:
         if data.get("schemaVersion") != SCHEMA_VERSION:
             raise ValueError(f"unsupported baseline schemaVersion {data.get('schemaVersion')!r}")
         budgets = Budgets(data["budgets"]["maxFileBytes"], data["budgets"]["maxCellChars"])
-        entries = {(Kind(e["kind"]), e["path"], e["key"]): Entry(e["count"], e.get("measure")) for e in data["entries"]}
+        entries = {(Kind(e["kind"]), e["path"], e["key"]): Entry(e["count"])
+                   for e in data["entries"] if Kind(e["kind"]).blocking}
         return Baseline(budgets, entries)
 
     def render(self) -> str:
         rows = []
         for (kind, path, key), entry in sorted(self.entries.items(), key=lambda kv: (kv[0][1], kv[0][0].value, kv[0][2])):
-            row: dict[str, object] = {"kind": kind.value, "path": path, "key": key, "count": entry.count}
-            if entry.measure is not None:
-                row["measure"] = entry.measure
-            rows.append(row)
+            rows.append({"kind": kind.value, "path": path, "key": key, "count": entry.count})
         doc = {"schemaVersion": SCHEMA_VERSION,
                "budgets": {"maxFileBytes": self.budgets.max_file_bytes, "maxCellChars": self.budgets.max_cell_chars},
                "entries": rows}
@@ -602,12 +601,9 @@ def ratchet(current: Mapping[tuple[Kind, str, str], Entry], baseline: Mapping[tu
     for ident, now in sorted(current.items(), key=lambda kv: (kv[0][1], kv[0][0].value, kv[0][2])):
         was = baseline.get(ident)
         if was is None:
-            suffix = f" ({now.measure})" if now.measure is not None else ""
-            new.append(f"{label(ident)}{suffix}" + (f" x{now.count}" if now.count > 1 else ""))
+            new.append(label(ident) + (f" x{now.count}" if now.count > 1 else ""))
         elif now.count > was.count:
             new.append(f"{label(ident)}: {now.count} occurrences, baseline allows {was.count}")
-        elif now.measure is not None and was.measure is not None and now.measure > was.measure:
-            new.append(f"{label(ident)}: grew to {now.measure}, baseline allows {was.measure}")
     for ident, was in sorted(baseline.items(), key=lambda kv: (kv[0][1], kv[0][0].value, kv[0][2])):
         now = current.get(ident)
         if now is None:
@@ -624,6 +620,12 @@ def counts_by_kind(entries: Mapping[tuple[Kind, str, str], Entry]) -> dict[Kind,
     return {kind: totals[kind] for kind in Kind if totals[kind]}
 
 
+def warnings_of(violations: Iterable[Violation]) -> list[str]:
+    """The report-only findings as warning lines, sorted by path and line."""
+    advisory = [v for v in violations if not v.kind.blocking]
+    return [f"warning: {v.render()}" for v in sorted(advisory, key=lambda v: (v.path, v.line, v.kind.value))]
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--root", type=Path, default=ROOT)
@@ -631,7 +633,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--write-baseline", action="store_true", help="rewrite the baseline to the current violations")
     parser.add_argument("--max-file-bytes", type=int)
     parser.add_argument("--max-cell-chars", type=int)
-    parser.add_argument("--list", action="store_true", help="print every current violation")
+    parser.add_argument("--list", action="store_true", help="print every current blocking violation")
     args = parser.parse_args(argv)
 
     repo = Repo.discover(args.root.resolve())
@@ -646,8 +648,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     current = summarise(violations)
     if args.list:
-        for v in sorted(violations, key=lambda v: (v.path, v.line, v.kind.value)):
+        for v in sorted((v for v in violations if v.kind.blocking), key=lambda v: (v.path, v.line, v.kind.value)):
             print(v.render())
+    warnings = warnings_of(violations)
+    if warnings:
+        print(f"size warnings (report-only; budgets {budgets.max_file_bytes} bytes per file, {budgets.max_cell_chars} "
+              f"characters per table cell):")
+        print("\n".join(f"  {row}" for row in warnings))
     if args.write_baseline:
         baseline_file.parent.mkdir(parents=True, exist_ok=True)
         baseline_file.write_text(Baseline(budgets, current).render(), encoding="utf-8")
@@ -658,7 +665,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     result = ratchet(current, baseline.entries)
     totals = ", ".join(f"{k.value} {n}" for k, n in counts_by_kind(current).items()) or "none"
     if result.ok:
-        print(f"docs check passes ({len(repo.doc_files())} files; baselined violations: {totals})")
+        print(f"docs check passes ({len(repo.doc_files())} files; baselined violations: {totals}; "
+              f"size warnings: {len(warnings)})")
         return 0
     if result.new:
         print("new documentation violations (fix them; the baseline only shrinks, so do not add entries with --write-baseline):")
