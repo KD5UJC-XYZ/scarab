@@ -25,7 +25,10 @@ of bit 63 and of bit 64 (`dWord64` admits ten groups of which the tenth holds bi
 (cborg's `peekTokenType` reads a big number only from `0xc2` and `0xc3`), with constructor tags
 behind wide heads as controls; and the outer script byte string in definite, 8-byte-length and
 indefinite form (`deserialiseScript` refuses the last with `ExpectedBytes`). The rows of these
-probes were produced by the pinned image on 2026-10-24.
+probes were produced by the pinned image on 2026-10-24. The `filler-*` and `cbor-remainder*` probes run at protocols 5
+to 11 (Alonzo, Babbage, Conway): the end of the flat program behind its filler (minimal, longer,
+missing its 1 bit, ending inside a byte, followed by a byte) and a byte after the script's CBOR
+byte string, alone and with a byte after the filler.
 
 Reproduce from the repository root (Docker only):
 

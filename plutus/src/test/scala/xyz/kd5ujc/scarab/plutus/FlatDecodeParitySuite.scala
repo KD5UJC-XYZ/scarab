@@ -32,6 +32,11 @@ class FlatDecodeParitySuite extends FunSuite:
     /** Scalus wraps a version component beyond 32 bits; Scarab keeps it out of every version. */
     case ScalusNarrowsVersion
 
+    /** Scalus's `decodeFlat` reads neither the filler after the program nor the end of the input;
+      * the reference's strict decoder requires both.
+      */
+    case ScalusIgnoresFiller
+
     /** Scalus wraps a natural beyond 64 bits (a variable index or a `constr` tag); the reference
       * refuses it (`scope-natural-65` of the boundary corpus).
       */
@@ -68,7 +73,13 @@ class FlatDecodeParitySuite extends FunSuite:
       "var-11-groups-padded" -> Difference.ScalusAcceptsLongWord64,
       "data-tag2-wide-head" -> Difference.ScalusAcceptsWideBigNumberHead,
       "data-tag3-wide-head" -> Difference.ScalusAcceptsWideBigNumberHead
-    )
+    ) ++ Vector(
+      "filler-trailing-zero-byte",
+      "filler-trailing-ff-byte",
+      "filler-without-one",
+      "filler-misaligned",
+      "cbor-remainder-and-flat-trailing"
+    ).map(_ -> Difference.ScalusIgnoresFiller)
 
   private enum Outcome:
     case Equal, BothRefuse
@@ -92,6 +103,11 @@ class FlatDecodeParitySuite extends FunSuite:
         Outcome.Differs(Difference.ScalusRefusesData)
       case (Left(FlatScan.Failure.InvalidUtf8), Right(_)) =>
         Outcome.Differs(Difference.ScalusAcceptsInvalidUtf8)
+      case (
+            Left(FlatScan.Failure.UnterminatedFiller | FlatScan.Failure.TooMuchSpace(_)),
+            Right(_)
+          ) =>
+        Outcome.Differs(Difference.ScalusIgnoresFiller)
       case (Left(FlatScan.Failure.WordOverflow), Right(_)) =>
         Outcome.Differs(Difference.ScalusWrapsWord64)
       case (Left(FlatScan.Failure.WordTooLong), Right(_)) =>

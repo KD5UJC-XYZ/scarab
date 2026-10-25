@@ -76,7 +76,7 @@ object FlatDecodeCorpus:
           cborByteString(flatOf((BigInt(1), BigInt(1) + (BigInt(1) << 32), BigInt(0)), unit))
         )
       )
-    ) ++ wordProbes ++ tagProbes ++ outerProbes
+    ) ++ wordProbes ++ tagProbes ++ outerProbes ++ fillers
 
   /** Padded and extreme `Word64` indices: `dWord64` reads at most ten groups of seven bits and the
     * tenth holds bit 63 alone.
@@ -123,6 +123,53 @@ object FlatDecodeCorpus:
         Bytes.fromArray(Array(0x5f.toByte) ++ definite ++ Array(0xff.toByte))
       )
     )
+
+  /** The ends of a flat program the reference's strict decoder judges, Alonzo to van Rossem. */
+  private lazy val AllProtocols = Vector(5, 6, 7, 8, 9, 10, 11)
+
+  private def ending(id: String, end: Bits => Array[Byte]): Probe =
+    val bits = unpadded((BigInt(1), BigInt(0), BigInt(0)), unit)
+    Probe(id, Bytes.fromArray(cborByteString(end(bits))), AllProtocols)
+
+  /** A minimal filler, a longer one, none, one that ends inside a byte, and bytes after it. */
+  lazy val fillers: Vector[Probe] = Vector(
+    ending("filler-minimal", _.bytes),
+    ending("filler-trailing-zero-byte", _.bytes :+ 0x00.toByte),
+    ending("filler-trailing-ff-byte", _.bytes :+ 0xff.toByte),
+    ending(
+      "filler-longer",
+      b =>
+        b.zeros()
+        b.bits(1, 8)
+        b.packed
+    ),
+    ending(
+      "filler-without-one",
+      b =>
+        b.zeros()
+        b.packed
+    ),
+    ending(
+      "filler-misaligned",
+      b =>
+        b.bit(1)
+        b.zeros()
+        b.packed
+    ),
+    // after the CBOR byte string, not inside it: V1 and V2 keep these as a remainder
+    Probe(
+      "cbor-remainder",
+      Bytes.fromArray(cborByteString(flat((1, 0, 0), unit)) :+ 0x00.toByte),
+      AllProtocols
+    ),
+    Probe(
+      "cbor-remainder-and-flat-trailing",
+      Bytes.fromArray(
+        cborByteString(flat((1, 0, 0), unit) :+ 0x00.toByte) :+ 0x00.toByte
+      ),
+      AllProtocols
+    )
+  )
 
   def costModel(language: PlutusLanguage, protocol: Int): Vector[Long] =
     PlutusBoundaryCorpus.costModel(language, protocol)

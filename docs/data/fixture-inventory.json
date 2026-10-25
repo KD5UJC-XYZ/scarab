@@ -625,7 +625,7 @@
     "fixtures/reference/plutus-costing/verdicts.jsonl": "d2f0c73e44409f810d37ce86ee92b20ca3acc027d7a22e28b17d5cecaf599bd3",
     "fixtures/reference/plutus-data-chunks/cases.tsv": "549482f91f4c71e4200e64fffb06b92758ace2d95caa3732c042d1fb7c824791",
     "fixtures/reference/plutus-equals-data/verdicts.jsonl": "08e07d8d37951da7703deb1cb501147180d0226f5b1bce7a6d4402ef3ccbced2",
-    "fixtures/reference/plutus-flat-decode/verdicts.jsonl": "02dfff39de84e76753be77d109002d4593358bf81c310b75b737a7e245fb8279",
+    "fixtures/reference/plutus-flat-decode/verdicts.jsonl": "01b173abd50962d90c00d4ba7b1ce5fb0af52660641283f86403e05347c01081",
     "fixtures/reference/plutus-serialise-data/constr-index-verdicts.jsonl": "47ce329c4178d7bb44174704072cf4774396216797b6ed80d66d6ad3e4747b7f",
     "fixtures/reference/plutus-serialise-data/indices.tsv": "e96060fbe30f02630cbda0009c815af0347da86c4258d1acbae695569e5535e9",
     "fixtures/reference/plutus-serialise-data/vectors.tsv": "09b72ee0ef9d43041aba8bc52bda22ff96f81c4b3c131b45370861ba3fcdb7e3",

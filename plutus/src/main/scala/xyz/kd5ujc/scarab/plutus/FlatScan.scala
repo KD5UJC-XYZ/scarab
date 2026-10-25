@@ -107,6 +107,16 @@ object FlatScan:
     /** A `data` constant whose first CBOR item `decodeData` refuses. */
     case MalformedData(cause: PlutusData.DecodeError)
 
+    /** The input ends before the filler after the program has its final 1 bit (the generated
+      * `Filler` decoder of `PlutusCore/Flat/Filler.hs` 27-35 meets the end: `notEnoughSpace`).
+      */
+    case UnterminatedFiller
+
+    /** Bits remain after the filler: it did not end on the last bit of the last byte
+      * (`strictDecoder`, `PlutusCore/Flat/Decoder/Run.hs` 19-24: `tooMuchSpace`).
+      */
+    case TooMuchSpace(bits: Long)
+
     def message: String = this match
       case Truncated           => "flat input ends inside a term"
       case BadTermTag(t)       => s"unknown term tag $t"
@@ -119,6 +129,8 @@ object FlatScan:
       case BadBuiltin(t)       => s"unknown builtin tag $t"
       case InvalidUtf8         => "string constant is not UTF-8"
       case MalformedData(c)    => s"data constant does not decode: $c"
+      case UnterminatedFiller  => "flat input ends inside the filler after the program"
+      case TooMuchSpace(n)     => s"$n bits remain after the program's filler"
 
   /** The program the bytes encode, and what the walk saw on the way. */
   final case class Decoded(scan: FlatScan, program: DeBruijnedProgram)
@@ -166,7 +178,9 @@ object FlatScan:
   def scan(flat: Array[Byte]): Either[Failure, FlatScan] = decode(flat).map(_.scan)
 
   /** Decodes the flat bytes (the program, without its CBOR wrapper) into the program Scalus's
-    * machine runs, with an explicit stack.
+    * machine runs, with an explicit stack. The program must end the bytes, behind its filler, as
+    * the reference's strict `unflatWith` requires; bytes after the script's CBOR item are a
+    * separate matter ([[PlutusScriptBytes]]).
     */
   def decode(flat: Array[Byte]): Either[Failure, Decoded] = boundary:
     Right(new Walker(flat).run())
@@ -382,11 +396,24 @@ object FlatScan:
       constrCaseAllowed = summon[Ordering[(BigInt, BigInt, BigInt)]].gteq(version, (1, 1, 0))
       tasks.append(Read(0L, checked = true))
       while tasks.nonEmpty do step(tasks.removeLast())
+      filler()
       val program = ScarabProgramView.program(
         (saturated(version._1), saturated(version._2), saturated(version._3)),
         terms.removeLast()
       )
       Decoded(FlatScan(malformed, typeHeader, constrFields, open, wideVariables), program)
+
+    /** `unflatWith` reads the program with `postAlignedDecoder` (`PlutusCore/Flat/Filler.hs`
+      * 77-81): zero or more 0 bits and a 1, and then `strictDecoder` requires the end of the input
+      * exactly there. A filler longer than it needs to be is accepted, as the reference accepts it.
+      */
+    private def filler(): Unit =
+      val end = bytes.length.toLong * 8
+      var one = false
+      while !one do
+        if position >= end then abort(Failure.UnterminatedFiller)
+        one = bit() == 1
+      if position != end then abort(Failure.TooMuchSpace(end - position))
 
     private def step(task: Task): Unit = task match
       case Read(depth, checked) =>

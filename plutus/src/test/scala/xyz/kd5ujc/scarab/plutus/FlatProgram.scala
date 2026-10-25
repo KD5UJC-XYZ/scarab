@@ -89,6 +89,13 @@ object FlatProgram:
       bits(0, 8)
     def bytes: Array[Byte] =
       filler()
+      packed
+
+    /** Zero bits up to the next byte boundary, and no filler. */
+    def zeros(): Unit = while out.length % 8 != 0 do bit(0)
+
+    /** The bits written so far, which must end on a byte boundary, without a filler. */
+    def packed: Array[Byte] =
       out.toString.grouped(8).map(Integer.parseInt(_, 2).toByte).toArray
 
   private def term(t: Tm, b: Bits): Unit = t match
@@ -130,12 +137,16 @@ object FlatProgram:
 
   /** The flat bytes of a program whose version components may be any natural. */
   def flatOf(version: (BigInt, BigInt, BigInt), t: Tm): Array[Byte] =
+    unpadded(version, t).bytes
+
+  /** The bits of a program up to the end of its term: what follows is the caller's to write. */
+  def unpadded(version: (BigInt, BigInt, BigInt), t: Tm): Bits =
     val b = Bits()
     b.natural(version._1)
     b.natural(version._2)
     b.natural(version._3)
     term(t, b)
-    b.bytes
+    b
 
   def cborByteString(content: Array[Byte]): Array[Byte] =
     val n = content.length
