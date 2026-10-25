@@ -16,7 +16,7 @@ object Dependencies {
     val kittens = "3.5.0"
     val scodec = "2.3.3" // needs scodec-bits 1.2.4; fs2 already brings 1.2.5
     // The API the node's own SLF4J backend implements (node/log/LibraryLogs.scala); http4s brings
-    // 1.7.36 through log4cats and log4s, whose calls 2.0 keeps.
+    // 1.7.36 through log4cats, whose calls 2.0 keeps.
     val slf4j = "2.0.17"
     val dnsjava = "3.6.5"
 
@@ -63,6 +63,9 @@ object Dependencies {
     val blstJava = "foundation.icon" % "blst-java" % V.blstJava
     // The on-disk UTxO set (an embedded LSM tree; native library bundled in the jar).
     val rocksdb = "org.rocksdb" % "rocksdbjni" % V.rocksdb
+    // Declared by http4s-core but referenced by no class on the node's runtime classpath (#214);
+    // http4s logs through log4cats, which stays (docs/licenses.md).
+    val unusedLog4s = ExclusionRule("org.log4s", "log4s_3")
 
     // The tests of every module: munit, ScalaCheck, and the cats law and effect test kits.
     val catsLawsTest = "org.typelevel" %% "cats-laws" % V.cats % Test

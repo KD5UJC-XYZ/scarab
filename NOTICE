@@ -119,8 +119,8 @@ versions pinned in build.sbt).
   RocksDB JNI (org.rocksdb:rocksdbjni 10.2.1)              Apache-2.0 OR GPL-2.0-only; the Apache-2.0
                                                            option is elected here. Bundles the native library.
   Bouncy Castle (org.bouncycastle:bcprov-jdk18on 1.86)     Bouncy Castle Licence (MIT-style)
-  curve25519-elisabeth (com.weavechain 0.1.3)              MIT (its distribution carries further MIT, CC0
-                                                           and BSD-3-Clause notices for adapted components)
+  curve25519-elisabeth (com.weavechain 0.1.3)              MIT, with the CC0 eddsa-java statement and the
+                                                           BSD-3-Clause curve25519-dalek notice (see below)
   cats-core, cats-kernel 2.13.0                            MIT (Typelevel)
   cats-effect 3.7.1                                        Apache-2.0 (Typelevel)
   cats-mtl 1.7.0                                           Apache-2.0 (Typelevel)
@@ -138,6 +138,15 @@ versions pinned in build.sbt).
   Test only: munit, munit-scalacheck, munit-cats-effect (Apache-2.0), discipline-munit (BSD-3-Clause),
   cats-laws, cats-mtl-laws, cats-kernel-laws, cats-effect-testkit (Typelevel, MIT or Apache-2.0),
   monocle-law (MIT).
+
+curve25519-elisabeth (com.weavechain:curve25519-elisabeth:0.1.3, source
+https://github.com/weavechain/curve25519-elisabeth at 81bd79dbd0b323e5fc5729bca883d124b95b4e54, a fork
+of cryptography-cafe/curve25519-elisabeth): MIT, Copyright (c) 2019 Jack Grigg. Portions derive from
+eddsa-java (str4d/ed25519-java, CC0 1.0, itself a port of the public-domain ref10 Ed25519), and its
+UnpackedScalar arithmetic was ported from curve25519-dalek (BSD-3-Clause, Copyright (c) 2016-2018
+Isis Agora Lovecruft, Henry de Valence). The jar carries no licence file; the upstream LICENSE with
+all three notices is crypto/licenses/LICENSE-curve25519-elisabeth, and docs/licenses.md records how
+the jar was matched to that source revision.
 
 Licenses were read from the POMs resolved by the build; docs/licenses.md records the node Runtime classpath.
 Transitive dependencies are not repeated here: all of them, with versions and the native libraries
