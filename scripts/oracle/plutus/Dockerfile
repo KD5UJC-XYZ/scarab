@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
-FROM haskell@sha256:4f1f62fec9cea4cbb03e885c9ad45642609cadd3897b1e64a7f61d0862b575b1
+# GHC 9.10.3 on Debian bookworm-slim: tag haskell:9.10.3-slim-bookworm, index digest checked on 2026-10-24.
+FROM haskell@sha256:3c9f47467dbd6cb62c6ec6b768270c627bc33565e209bece103b7484075b27e3
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates pkg-config libsodium-dev libsecp256k1-dev \
  && rm -rf /var/lib/apt/lists/*
