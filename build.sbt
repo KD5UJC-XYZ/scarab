@@ -272,6 +272,9 @@ lazy val node = scarab("node")
       Libraries.slf4jApi,
       Libraries.dnsjava
     ),
+    // http4s-core 0.23.37 declares log4s, but no class on the runtime classpath refers to it (#214):
+    // http4s logs through log4cats, which `EmberServerBuilder.default` builds over SLF4J (LibraryLogs).
+    excludeDependencies += Libraries.unusedLog4s,
     runtimeClasspathFile := {
       val output = target.value / "runtime-classpath.txt"
       IO.write(output, (Runtime / fullClasspath).value.files.mkString(java.io.File.pathSeparator))

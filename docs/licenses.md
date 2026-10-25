@@ -13,8 +13,8 @@ The Runtime classpath of the `node` project (its transitive runtime dependencies
 test-only and generator modules)
 was written with `sbt node/runtimeClasspathFile` in the JDK image, first at v0.1.0 plus this review and
 again for the Scalus 1.4.0 update (2026-10-25). For every jar on it, the `<licenses>` element of its POM
-in the Coursier cache was read; where a POM declares none, the parent POM chain was followed. 64
-third-party jars resolve, 23 of them direct dependencies (the 22 runtime libraries of
+in the Coursier cache was read; where a POM declares none, the parent POM chain was followed. 63
+third-party jars resolve (64 before log4s was excluded, below), 23 of them direct dependencies (the 22 runtime libraries of
 `project/Dependencies.scala` and the Scala 3 library). At v0.1.0 jar contents were listed for licence
 files and native libraries; for the Scalus 1.4.0 update only the jar of scalus-crypto-jni was. The
 licence names below are the POM names, normalised to SPDX identifiers where they are unambiguous.
@@ -24,6 +24,16 @@ The rows for dnsjava, kittens, scodec-core, cats-parse, monocle, and slf4j-api w
 Their licences were read from the POMs of the declared versions on Maven Central. The regeneration for the
 Scalus 1.4.0 update found two more jars, alleycats-core and shapeless3-deriving (transitive through
 kittens), whose rows were added from their POMs in the Coursier cache.
+
+`node` excludes `org.log4s:log4s_3` (#214), which http4s-core declares. On 2026-10-25 the class files of
+all 76 entries of `node/runtimeClasspathFile` (36,645 classes: every jar and the class directories of the
+project's modules) were searched for the names `org/log4s/` and `org.log4s`: only log4s's own classes
+contain them, and its jar registers no service. Without it `node/releaseInventory` resolves the same
+modules less `log4s_3` 1.10.0, and the assembly holds no `org/log4s/` entry. log4cats stays: its names
+appear in 47 classes of http4s-core, -server, -ember-core, -ember-server and -circe, and
+`EmberServerBuilder.default`, which `QueryServer.resource` and `MetricsServer.resource` call, builds its logger with
+`log4cats.slf4j.Slf4jLogger.getLogger`. That logger is how http4s's lines reach the node's log through
+SLF4J (`node/log/LibraryLogs.scala`).
 
 ## Result
 
@@ -99,7 +109,7 @@ were not regenerated here.
 | io.circe:circe-core_3 | 0.14.16 | Apache-2.0 | transitive |  |
 | org.http4s:http4s-ember-core_3 | 0.23.37 | Apache-2.0 | transitive |  |
 | org.http4s:http4s-server_3 | 0.23.37 | Apache-2.0 | transitive |  |
-| org.typelevel:log4cats-slf4j_3 | 2.8.0 | Apache-2.0 | transitive |  |
+| org.typelevel:log4cats-slf4j_3 | 2.8.0 | Apache-2.0 | transitive | Used: `EmberServerBuilder.default` builds its logger with `Slf4jLogger` (see above). |
 | org.http4s:http4s-core_3 | 0.23.37 | Apache-2.0 | transitive |  |
 | org.http4s:http4s-jawn_3 | 0.23.37 | Apache-2.0 | transitive |  |
 | org.scodec:scodec-bits_3 | 1.2.5 | BSD-3-Clause | transitive |  |
@@ -110,7 +120,7 @@ were not regenerated here.
 | org.typelevel:cats-free_3 | 2.12.0 | MIT | transitive |  |
 | org.typelevel:jawn-parser_3 | 1.7.0 | MIT | transitive |  |
 | io.circe:circe-numbers_3 | 0.14.16 | Apache-2.0 | transitive |  |
-| org.typelevel:log4cats-core_3 | 2.8.0 | Apache-2.0 | transitive |  |
+| org.typelevel:log4cats-core_3 | 2.8.0 | Apache-2.0 | transitive | Used by http4s's server and Ember (see above). |
 | com.twitter:hpack | 1.0.2 | Apache-2.0 | transitive |  |
 | org.typelevel:case-insensitive_3 | 1.5.0 | Apache-2.0 | transitive |  |
 | org.http4s:http4s-crypto_3 | 0.2.5 | Apache-2.0 | transitive |  |
@@ -119,22 +129,12 @@ were not regenerated here.
 | org.typelevel:cats-collections-core_3 | 0.9.10 | MIT and BSD-3-Clause | transitive | The POM lists both. |
 | org.typelevel:algebra_3 | 2.13.0 | MIT | transitive |  |
 | org.typelevel:vault_3 | 3.7.0 | MIT | transitive |  |
-| org.log4s:log4s_3 | 1.10.0 | Apache-2.0 | transitive |  |
 | org.typelevel:jawn-fs2_3 | 2.6.0 | Apache-2.0 | transitive |  |
 | com.lihaoyi:upickle-core_3 | 4.4.3 | MIT | transitive |  |
 | com.lihaoyi:geny_3 | 1.1.1 | MIT | transitive |  |
 | org.typelevel:alleycats-core_3 | 2.13.0 | MIT | transitive | Brought by kittens_3 (3.5.0). |
 | org.typelevel:shapeless3-deriving_3 | 3.5.0 | Apache-2.0 | transitive | Brought by kittens_3 (3.5.0). |
 
-## Re-running
-
-```sh
-docker run --rm --user 1000:1000 -e HOME=/work/.cache/home -v "$PWD":/work -w /work scarab-jdk:local \
-  bash scripts/sbtw node/runtimeClasspathFile
-```
-
-then read the POM `<licenses>` of each jar in `node/target/runtime-classpath.txt`. Re-run it whenever
-dependency versions in `build.sbt` change, and update `NOTICE` and this file together.
 ## curve25519-elisabeth provenance
 
 `com.weavechain:curve25519-elisabeth:0.1.3` (#199) was traced on 2026-10-25 from the jar to its source
@@ -181,6 +181,15 @@ version the Ed25519 and VRF differential corpora were recorded against (`StrictE
 `StrictEd25519DifferentialSuite`, the VRF suites of `crypto`). Any change of version has to keep those
 corpora unchanged.
 
+## Re-running
+
+```sh
+docker run --rm --user 1000:1000 -e HOME=/work/.cache/home -v "$PWD":/work -w /work scarab-jdk:local \
+  bash scripts/sbtw node/runtimeClasspathFile
+```
+
+then read the POM `<licenses>` of each jar in `node/target/runtime-classpath.txt`. Re-run it whenever
+dependency versions in `build.sbt` change, and update `NOTICE` and this file together.
 
 ## Name and trademark wording
 
