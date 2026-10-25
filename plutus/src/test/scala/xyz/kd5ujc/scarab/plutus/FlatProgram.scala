@@ -13,17 +13,30 @@ object FlatProgram:
   sealed trait Tm
   final case class Var(index: BigInt) extends Tm
   final case class Delay(body: Tm) extends Tm
+
+  /** A variable whose index is written as exactly these bytes (seven-bit groups, each behind its
+    * continue bit), padded or not, as `dWord64` reads them.
+    */
+  final case class VarGroups(groups: Vector[Int]) extends Tm
   final case class Lam(body: Tm) extends Tm
   final case class Ap(function: Tm, argument: Tm) extends Tm
   final case class Force(body: Tm) extends Tm
   final case class Constr(tag: Int, fields: Vector[Tm]) extends Tm
   final case class Case(scrutinee: Tm, branches: Vector[Tm]) extends Tm
+  final case class Builtin(tag: Int) extends Tm
+  case object Error extends Tm
 
   /** A constant: its type tags (preorder) and the writer of its value. */
   final case class Const(types: Vector[Int], value: Bits => Unit) extends Tm
 
   val unit: Tm = Const(Vector(3), _ => ())
   def integer(n: BigInt): Tm = Const(Vector(0), _.integer(n))
+
+  /** A `data` constant whose flat byte string holds exactly `cbor`, trailing bytes and all. */
+  def data(cbor: Array[Byte]): Tm = Const(Vector(8), _.byteString(cbor))
+
+  /** A `string` constant whose flat byte string holds exactly `raw`, UTF-8 or not. */
+  def string(raw: Array[Byte]): Tm = Const(Vector(2), _.byteString(raw))
 
   /** `n` nested list types around an integer, an empty list value. */
   def nestedEmptyList(n: Int): Tm =
@@ -79,7 +92,10 @@ object FlatProgram:
       out.toString.grouped(8).map(Integer.parseInt(_, 2).toByte).toArray
 
   private def term(t: Tm, b: Bits): Unit = t match
-    case Var(i)   => b.bits(0, 4); b.natural(i)
+    case Var(i) => b.bits(0, 4); b.natural(i)
+    case VarGroups(gs) =>
+      b.bits(0, 4)
+      gs.foreach(g => b.bits(g, 8))
     case Delay(x) => b.bits(1, 4); term(x, b)
     case Lam(x)   => b.bits(2, 4); term(x, b)
     case Ap(f, a) => b.bits(3, 4); term(f, b); term(a, b)
@@ -105,9 +121,15 @@ object FlatProgram:
         b.bit(1); term(x, b)
       }
       b.bit(0)
+    case Builtin(tag) => b.bits(7, 4); b.bits(tag, 7)
+    case Error        => b.bits(6, 4)
 
   /** The flat bytes of a program of the given UPLC version. */
   def flat(version: (Int, Int, Int), t: Tm): Array[Byte] =
+    flatOf((BigInt(version._1), BigInt(version._2), BigInt(version._3)), t)
+
+  /** The flat bytes of a program whose version components may be any natural. */
+  def flatOf(version: (BigInt, BigInt, BigInt), t: Tm): Array[Byte] =
     val b = Bits()
     b.natural(version._1)
     b.natural(version._2)
@@ -115,7 +137,7 @@ object FlatProgram:
     term(t, b)
     b.bytes
 
-  private def cborByteString(content: Array[Byte]): Array[Byte] =
+  def cborByteString(content: Array[Byte]): Array[Byte] =
     val n = content.length
     val head =
       if n < 24 then Array((0x40 + n).toByte)

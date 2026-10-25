@@ -6,9 +6,16 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, ForgeError, Header, LedgerFailure, VrfCert}
+import xyz.kd5ujc.scarab.ledger.LedgerFailure.reach
 import xyz.kd5ujc.scarab.ledger.{RefScripts, LedgerGlobals, TxEnv}
 import xyz.kd5ujc.scarab.ledger.rules.Globals
-import xyz.kd5ujc.scarab.plutus.{ExUnits, ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
+import xyz.kd5ujc.scarab.plutus.{
+  BackendFailure,
+  ExUnits,
+  ScalusEvaluator,
+  ScriptDecoder,
+  ScriptEvaluator
+}
 import cats.Id
 import xyz.kd5ujc.scarab.node.mempool.{Entry, MempoolLedger}
 
@@ -119,7 +126,8 @@ object BlockBuilder:
     * A candidate that does not apply (its inputs were spent by the block, it expired, a script now
     * fails) is skipped, not an error: the pool of a mempool is advisory. The rules are LEDGER of
     * Conway on the era-indexed state ([[MempoolLedger]], the same that validates the pool). Missing
-    * evaluator support has no ledger verdict and stops selection instead of skipping it.
+    * evaluator support has no ledger verdict and stops selection instead of skipping it; a defect
+    * one transaction triggers in the evaluator skips that transaction.
     */
   def select(
       ticked: MempoolLedger,
@@ -172,8 +180,13 @@ object BlockBuilder:
               .state(entry.tx, env, rules)
               .fold(
                 {
-                  case unavailable: LedgerFailure.Unavailable => Left(unavailable)
-                  case _                                      => Right(acc)
+                  // a defect the transaction's own scripts trigger leaves it out, like a refusal;
+                  // a missing implementation stops selection
+                  case unavailable: LedgerFailure.Unavailable =>
+                    unavailable.reach match
+                      case BackendFailure.Reach.Implementation => Left(unavailable)
+                      case BackendFailure.Reach.Input          => Right(acc)
+                  case _ => Right(acc)
                 },
                 next => Right(Acc(next, acc.chosen :+ (entry -> p), units, refUsed))
               )

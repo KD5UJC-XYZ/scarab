@@ -8,7 +8,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, ExUnits}
 import xyz.kd5ujc.scarab.ledger.{LedgerFailure, Redeemer, ScriptLocation}
-import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules, FollowerEvents, VolatileChain}
+import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules, FollowerEvent, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{
   BlockFailure,
   ChainError,
@@ -42,7 +42,6 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       activeSlotsCoeff = 0.5
     )
   private val tip = ChainSync.Tip.Origin
-  private val noEvents: FollowerEvents[IO] = _ => IO.unit
   private val headers: Vector[Header] = Fixtures.chain(5)
 
   /** What a session left behind. */
@@ -50,7 +49,9 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       end: SessionEnd,
       chain: VolatileChain[BigInt],
       stored: Vector[BlockRef],
-      published: Vector[Header]
+      published: Vector[Header],
+      events: Vector[FollowerEvent] = Vector.empty,
+      invalid: Set[Bytes] = Set.empty
   )
 
   /** Run a session of the follower over a peer that announces `headers` in turn and then waits.
@@ -65,7 +66,8 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       breakStorage: Option[Int] = None,
       breakTip: Option[Int] = None,
       explode: Option[Int] = None,
-      unavailable: Option[Int] = None
+      unavailable: Option[Int] = None,
+      held: Option[Int] = None
   ): IO[Result] =
     NodeScope.resource.use { node =>
       for
@@ -75,6 +77,8 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
         stored <- Ref.of[IO, Vector[BlockRef]](Vector.empty)
         published <- Ref.of[IO, Vector[Header]](Vector.empty)
+        emitted <- Ref.of[IO, Vector[FollowerEvent]](Vector.empty)
+        registry <- InvalidBlocks.create[IO]
         persistence = new ChainPersistence[IO, BigInt]:
           def extended(
               block: BlockRef,
@@ -111,6 +115,10 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 )
               )
             )
+          else if held.contains(header.blockNo.toInt) then
+            Raise[IO, ValidationError].raise[ValidationError, BigInt](
+              ValidationError(header.point, BlockFailure.Tx(heldFailure))
+            )
           else if refuse.contains(header.blockNo.toInt) then
             Raise[IO, ValidationError].raise[ValidationError, BigInt](
               ValidationError(header.point, BlockFailure.HeaderDiffers)
@@ -119,7 +127,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         }
         follower <- Follower.create[IO, BigInt](
           rules,
-          noEvents,
+          event => emitted.update(_ :+ event),
           geometry,
           persistence = Some(persistence),
           onTip = Some(
@@ -135,6 +143,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             )
           )
         )
+        _ <- follower.installInvalidBlocks(registry)
         queue <- Queue.unbounded[IO, Either[PeerError, SyncEvent]]
         _ <- script.traverse_(queue.offer)
         peer = new Peer[IO]:
@@ -153,9 +162,20 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           }
           .timeoutTo(2.seconds, IO.pure(SessionEnd.Stopped(false)))
         chain <- ref.get
-        left <- (stored.get, published.get).mapN(Result(end, chain, _, _))
+        left <- (stored.get, published.get, emitted.get, registry.snapshot).mapN(
+          (s, p, e, invalid) => Result(end, chain, s, p, e, invalid.entries.keySet)
+        )
       yield left
     }
+
+  /** A block with no verdict: Scalus threw on its scripts (a defect the block triggers). */
+  private val heldFailure: LedgerFailure.Unavailable = LedgerFailure.Unavailable(
+    Bytes.empty,
+    ScriptLocation.Phase2(Redeemer(0, 0, Bytes.empty, ExUnits.zero)),
+    EvalFailure.Unsupported(
+      xyz.kd5ujc.scarab.plutus.BackendFailure.Defect(new NullPointerException("in Scalus"))
+    )
+  )
 
   private def blockNos(blocks: Vector[BlockRef]) = blocks.map(_.blockNo.toInt)
 
@@ -256,6 +276,33 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(FailurePolicy.disposition(result.end), Disposition.Settled)
       assertEquals(SessionEnd.returnDelay(result.end), Some(180.seconds))
       assertEquals(SessionEnd.networkFailure(result.end), None)
+    }
+  }
+
+  test("a defect a block triggers holds it: no verdict, no invalid record, no blame, no stop") {
+    session(held = Some(2)).map { left =>
+      left.end match
+        case SessionEnd.Held(error) =>
+          assertEquals(error.point, headers(2).point)
+          assertEquals(FailurePolicy.disposition(left.end), Disposition.Hold(error))
+        case other => fail(s"unexpected $other")
+      assertEquals(SessionEnd.peerError(left.end), None)
+      assertEquals(left.invalid, Set.empty[Bytes])
+      assertEquals(
+        left.events.collect { case e: FollowerEvent.Held => e },
+        Vector(
+          FollowerEvent.Held(headers(2).point, heldFailure)
+        )
+      )
+      assertEquals(left.chain.tip, headers(1).point)
+      assertEquals(blockNos(left.stored), Vector(0, 1))
+    }
+  }
+
+  test("an implementation limit is never recorded as an invalid block") {
+    session(unavailable = Some(2)).map { left =>
+      assertEquals(left.invalid, Set.empty[Bytes])
+      assertEquals(left.events.collect { case e: FollowerEvent.Held => e }, Vector.empty)
     }
   }
 

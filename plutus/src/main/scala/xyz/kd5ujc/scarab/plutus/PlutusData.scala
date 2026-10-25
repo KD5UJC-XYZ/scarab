@@ -33,6 +33,12 @@ object PlutusData:
     case ConstructorIndex(actual: Value)
     case ConstructorEnvelope(actual: Value)
     case UnexpectedTag(tag: BigInt)
+
+    /** Tag 2 or 3 behind a head wider than `0xc2` or `0xc3`: cborg's `peekTokenType` reads a big
+      * number only from those bytes, and the reference refuses the item as an unrecognised tag
+      * (`PlutusCore/Data.hs` `decodeData`, Plutus 507cab8c).
+      */
+    case BigNumberWideHead(tag: BigInt)
     case UnexpectedItem(actual: Value)
 
   given Tree[PlutusData] with
@@ -87,6 +93,14 @@ object PlutusData:
   def decode(bytes: Bytes): Either[DecodeError, PlutusData] =
     Cbor.decode(bytes, limits).left.map(DecodeError.Syntax.apply).flatMap(fromNode)
 
+  /** The `data` constant of a flat script: the first item of `bytes`. Flat reads it through
+    * `FlatViaSerialise` (`Codec/Extras/FlatViaSerialise.hs` 32-39, Plutus 507cab8c), whose
+    * `deserialiseOrFail` drops whatever follows the item (`Codec/Serialise.hs` 134-143, serialise
+    * 0.2.6.1); a datum or redeemer, which the ledger decodes as a whole, uses [[decode]].
+    */
+  def decodePrefix(bytes: Bytes): Either[DecodeError, PlutusData] =
+    Cbor.decodePrefix(bytes, limits).left.map(DecodeError.Syntax.apply).flatMap(fromNode)
+
   /** `plutus_data` of the Conway CDDL: constructors in tags 121 to 127, 1280 to 1400 and 102,
     * integers (with tag 2 and 3 big numbers), byte strings, lists and maps. Nesting is unlimited,
     * as in the reference, and walked on the heap. Each original definite byte-string chunk is at
@@ -120,6 +134,8 @@ object PlutusData:
           ds => Right(Map(TreeFold.pairs(ds)))
         )
       )
+    case Value.Tag(t, _) if (t == 2 || t == 3) && (n.original(0) & 0xff) != 0xc0 + t.toInt =>
+      Left(DecodeError.BigNumberWideHead(t))
     case Value.Tag(t, inner) if t == 2 || t == 3 =>
       inner.value match
         case Value.ByteString(b) =>

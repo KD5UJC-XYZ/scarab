@@ -321,7 +321,8 @@ final class InboundGovernor[F[_]: Async] private (
         case Disposition.Forget | Disposition.Backoff =>
           SessionEnd.peerError(end).map(InboundGovernor.SessionFailure.Peer(_))
         case Disposition.StopNode(f) => Some(InboundGovernor.SessionFailure.Fatal(f))
-        case Disposition.Settled     => None
+        // no verdict on the block and no blame: the follower already reported the held block
+        case Disposition.Settled | Disposition.Hold(_) => None
       drop = disposition == Disposition.Forget
       _ <- reason.traverse_ { why =>
         val closure = SessionEnd
@@ -423,13 +424,14 @@ final class InboundGovernor[F[_]: Async] private (
                               _.copy(ended = Some(InboundGovernor.SessionFailure.Peer(problem)))
                             )
                           )
-                      case Disposition.Settled => F.unit
+                      case Disposition.Settled | Disposition.Hold(_) => F.unit
                     record *> peer.quiesce.whenA(SessionEnd.returnDelay(end).nonEmpty) *> SessionEnd
                       .networkFailure(end)
                       .traverse_(connection.mux.abort) *> (end match
                       case SessionEnd.Failed(error)      => caller.raise[NodeError, Unit](error)
                       case SessionEnd.Rejected(error)    => caller.raise[NodeError, Unit](error)
                       case SessionEnd.Unavailable(error) => caller.raise[NodeError, Unit](error)
+                      case SessionEnd.Held(error)        => caller.raise[NodeError, Unit](error)
                       case SessionEnd.Storage(error)     => caller.raise[NodeError, Unit](error)
                       case SessionEnd.Internal(error)    => caller.raise[NodeError, Unit](error)
                       case SessionEnd.Defect(error)      => F.raiseError[Unit](error)

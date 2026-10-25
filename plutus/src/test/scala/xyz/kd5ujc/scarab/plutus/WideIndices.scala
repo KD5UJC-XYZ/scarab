@@ -6,14 +6,12 @@ import cats.syntax.all.*
 import scalus.uplc.Term
 import xyz.kd5ujc.scarab.codec.TreeFold
 
-/** Scalus 1.3.0 stores a de Bruijn index in an Int. A wider Word64 is necessarily unbound in any
-  * ledger script, but narrowing it can capture a variable. Keep those variables explicitly open in
-  * the internal VM term: Scalus's lookupVarName rejects a negative index before indexing the
-  * environment (Cek.scala:1465-1478 in the pinned 1.3.0 sources).
-  *
-  * The original Flat bytes still supply the scope check and every hash. This view only preserves
-  * the deferred failure of a variable under constr/case: the reference's scope check skips those
-  * subterms, and the VM must not fail if they are never evaluated.
+/** Scalus 1.3.0 stores a de Bruijn index in an Int, and its flat decoder narrows a wider Word64. A
+  * wider index is necessarily unbound in any ledger script, but narrowing it can capture a
+  * variable. [[FlatScan.decode]] keeps those variables explicitly open (index -1); this is the same
+  * repair of a term Scalus decoded, which the parity check against Scalus's decoder applies before
+  * comparing. Scalus's lookupVarName rejects a negative index before indexing the environment
+  * (Cek.scala:1465-1478 in the pinned 1.3.0 sources).
   */
 private[plutus] object WideIndices:
   def repair(root: Term, wide: Set[Int]): Term =

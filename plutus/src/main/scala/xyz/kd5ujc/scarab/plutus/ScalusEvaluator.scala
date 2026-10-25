@@ -16,7 +16,6 @@ import scala.util.control.NonFatal
 import scalus.cardano.ledger.{CostModels, ExUnits as ScalusExUnits, Language, MajorProtocolVersion}
 import scalus.cardano.onchain.plutus.prelude.List as PList
 import scalus.uplc.builtin.{ByteString, Data, platform}
-import scalus.serialization.flat.FlatDecodingError
 import scalus.uplc.builtin.bls12_381.{G1Element, G2Element}
 import xyz.kd5ujc.scarab.blst.{Platform, RawDst}
 import scalus.uplc.eval.{
@@ -58,7 +57,7 @@ import scalus.uplc.{
   * memoisation only: they never change a result.
   */
 object ScalusEvaluator:
-  /** Large enough for the recursive flat decoder on deeply nested scripts. */
+  /** Large enough for the machine, which recurses on deeply nested terms and values. */
   private val StackSize = 256L * 1024 * 1024
 
   /** The threads that evaluate, each with a stack of [[StackSize]]. Starting one costs a mapping of
@@ -109,7 +108,25 @@ object ScalusEvaluator:
       scan: FlatScan
   )
 
-  private final class Interpreter extends ScriptEvaluator[Id] with ScriptDecoder[Id]:
+  /** Runs a decoded program on the machine; the result term is not needed. */
+  private type Machine = (PlutusVM, DeBruijnedProgram, BudgetSpender, Logger) => Unit
+
+  private val machineRun: Machine = (vm, program, spender, logger) =>
+    val _ = vm.evaluateScript(program, spender, logger)
+
+  /** An interpreter whose flat decoder and machine run are replaced: the seam through which a test
+    * places a fault (an exception of Scalus's or of the runtime) at either site.
+    */
+  private[plutus] def injected(
+      decode: Array[Byte] => Either[FlatScan.Failure, FlatScan.Decoded],
+      machine: (PlutusVM, DeBruijnedProgram, BudgetSpender, Logger) => Unit
+  ): ScriptEvaluator[Id] & ScriptDecoder[Id] = Interpreter(decode, machine)
+
+  private final class Interpreter(
+      decode: Array[Byte] => Either[FlatScan.Failure, FlatScan.Decoded] = FlatScan.decode,
+      runMachine: Machine = machineRun
+  ) extends ScriptEvaluator[Id]
+      with ScriptDecoder[Id]:
     // Deliberate instance-scoped caches (one Interpreter per evaluator value, not hidden in an object;
     // `default` shares one): `evaluate` is a pure function of its request, and the caches only memoise
     // PlutusVM construction and program decoding. RetryingMemo shares construction atomically and
@@ -142,7 +159,7 @@ object ScalusEvaluator:
             program(script).flatMap(available(_, language, protocolMajor))
           )
 
-    /** The machine and the decoder recurse on the term; run on a thread with a large stack. */
+    /** The machine recurses on the term; run on a thread with a large stack. */
     private def onBigStack[A](failed: Throwable => A)(body: => A): A =
       try bigStacks.submit(() => body).get()
       catch case error: ExecutionException => failed(Option(error.getCause).getOrElse(error))
@@ -233,7 +250,9 @@ object ScalusEvaluator:
     private def cached(script: Bytes): Option[Either[ScriptDecodeFailure, Decoded]] =
       programs.get(script)
 
-    /** Must run on a big stack ([[onBigStack]]): the flat decoder recurses on the term. */
+    /** Decodes with Scarab's own walker ([[FlatScan.decode]]), which keeps its stack on the heap;
+      * it runs on a big stack only because [[validate]] shares the thread pool of the machine.
+      */
     private def program(script: Bytes): Either[ScriptDecodeFailure, Decoded] =
       programs.getOrElseUpdate(
         script,
@@ -245,23 +264,18 @@ object ScalusEvaluator:
             .flatOf(bytes)
             .toRight(ScriptDecodeFailure.Malformed(ScriptProblem.CborByteStringExpected))
             .flatMap { flat =>
-              FlatScan
-                .scan(flat)
-                .left
+              decode(flat).left
                 .map(failure => ScriptDecodeFailure.Malformed(ScriptProblem.Flat(failure)))
-                .map { scan =>
-                  val program = DeBruijnedProgram.fromFlatEncoded(flat)
-                  val preserved = scalus.uplc.ScarabProgramView.withTerm(
-                    program,
-                    WideIndices.repair(program.term, scan.wideVariables)
+                .map { decoded =>
+                  Decoded(
+                    decoded.program,
+                    builtinsOf(decoded.program.term),
+                    bytes.length - used,
+                    decoded.scan
                   )
-                  Decoded(preserved, builtinsOf(preserved.term), bytes.length - used, scan)
                 }
             }
         catch
-          // Flat.decode's documented malformed-input contract (Scalus1.3.0 Flat.scala:35-74).
-          case error: FlatDecodingError =>
-            Left(ScriptDecodeFailure.Malformed(ScriptProblem.FlatDecoding(error)))
           case _: StackOverflowError =>
             Left(ScriptDecodeFailure.Unavailable(BackendFailure.StackExhausted))
           case NonFatal(error) =>
@@ -311,7 +325,7 @@ object ScalusEvaluator:
             def spent = ExUnits(spender.getSpentBudget.memory, spender.getSpentBudget.steps)
             try
               val applied = request.args.foldLeft(script)((p, a) => p.applyArg(toData(a)))
-              machine.evaluateScript(applied, spender, log)
+              runMachine(machine, applied, spender, log)
               EvalResult.Success(spent, log.getLogs.toVector)
             catch
               case _: OutOfExBudgetError =>

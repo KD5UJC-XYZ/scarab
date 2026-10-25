@@ -4,6 +4,8 @@ package xyz.kd5ujc.scarab.node
 import cats.effect.{Ref, Temporal}
 import cats.syntax.all.*
 import scala.concurrent.duration.*
+import xyz.kd5ujc.scarab.ledger.LedgerFailure
+import xyz.kd5ujc.scarab.protocol.ChainSync
 
 /** Notices a follower that has stopped extending its chain while a peer says there is more of it
   * (issue 130: the process was up, idle, and said nothing for hours). The follower reports the
@@ -11,6 +13,9 @@ import scala.concurrent.duration.*
   * [[check]], called periodically, reports a stall once when no block has been extended for
   * `threshold` while an announced tip is ahead of ours, and the end of it as soon as a block is
   * extended again.
+  *
+  * A block the follower holds because the evaluator failed on its scripts ([[held]]) is named when
+  * a stall begins: a node that stays behind such a block stalls, and says which block it is behind.
   *
   * The peers' tip is the highest block number any peer announced: a peer that rolls back to a
   * shorter chain leaves it a block or two too high, which cannot alarm for `threshold` unless the
@@ -29,6 +34,10 @@ final class StallWatchdog[F[_]: Temporal] private (
         .modify(s => s.progressed(block, now))
         .flatMap(_.traverse_(report))
     }
+
+  /** The follower holds the block at `point`: no verdict on it here ([[SessionEnd.Held]]). */
+  def held(point: ChainSync.Point, failure: LedgerFailure.Unavailable): F[Unit] =
+    state.update(s => s.copy(held = Some(StallWatchdog.Held(point, failure))))
 
   /** A peer announced a chain whose tip is `block`. */
   def announced(block: BigInt): F[Unit] =
@@ -57,6 +66,14 @@ object StallWatchdog:
       */
     case ExitDue(idle: FiniteDuration, ours: BigInt, peers: BigInt)
 
+    /** The stall that began is behind a held block: the last one the follower held since a block
+      * was last extended. Reported with [[Began]].
+      */
+    case Behind(held: Held)
+
+  /** A block the follower holds, and why it has no verdict on it. */
+  final case class Held(point: ChainSync.Point, failure: LedgerFailure.Unavailable)
+
   /** Our tip (`ours`), the highest announced tip (`peer`), when a block was last extended (or the
     * watchdog started) and whether a stall is being reported.
     */
@@ -65,7 +82,8 @@ object StallWatchdog:
       peer: BigInt,
       progressAt: FiniteDuration,
       stalled: Boolean,
-      exiting: Boolean = false
+      exiting: Boolean = false,
+      held: Option[Held] = None
   ):
     private[StallWatchdog] def progressed(
         block: BigInt,
@@ -92,9 +110,10 @@ object StallWatchdog:
         val began = Option.when(!stalled && idle >= threshold)(Change.Began(idle, ours, peer))
         val due =
           Option.when(!exiting && exitAfter.exists(idle >= _))(Change.ExitDue(idle, ours, peer))
+        val behind = began.flatMap(_ => held).map(Change.Behind(_))
         (
           copy(stalled = stalled || began.isDefined, exiting = exiting || due.isDefined),
-          began.toList ++ due.toList
+          began.toList ++ behind.toList ++ due.toList
         )
 
   /** Watching from now, with the chain at block `ours`. */

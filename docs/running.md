@@ -1037,7 +1037,9 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `eraTransition` | `Chain.EraTransition` | Notice | `from`, `to`, `epoch`, `slot`, `block` |
 | `epochValidated` | `Chain.EpochValidated` | Info | `era`, `epoch`, `headers`, `thresholdChecked`, `overlay`, `leaderUnchecked`, `scheduling`, `boundary`, `signatureVerified`, `offSchedule`, `transactions` |
 | `reconnecting` | `Chain.Reconnecting` | Warning | `reason`, `attempt` |
+| `blockHeld` | `Chain.BlockHeld` | Error | `point`, `tx`, `reason`; a block with no verdict because the Plutus evaluator failed on its own scripts: not adopted, not recorded as invalid, no peer blamed (counted by `scarab_blocks_held_total`) |
 | `stalled` | `Chain.Stalled` | Warning | `idleSeconds`, `ourBlock`, `peerBlock` |
+| `stalledBehind` | `Chain.StalledBehind` | Error | `point`, `tx`, `reason` of the held block a stall that began is behind |
 | `stallState` | `Chain.StallState` | Warning | `sessions` (per session: `session`, `busy`, `pendingOffers`, `pendingHeaders`, `active`, `candidateHeaders`, `reserving` (`phase`: `LockWait`, `LockHeld` or `GrantWait`, `runningMs`, or null), `pipeline`: `peer`, `permitsFree`, `permits`, `queued`, `candidateHeaders`, `unpublishedHeaders`, `capacityRoom`, `candidateBase`, `candidateTip`, `publishedBase`, `publishedTip`, `candidateTipSlot`, `publishedTipSlot`, `lastReplyCollectedAgoMs`, `lastReplyAcceptedAgoMs`, `lastReplyHandledAgoMs`), `admissions` (`capacity`, `held`, `queued`, `worker`: `work`, `stage`, `inStageMs`, `runningMs`, or null; `publishWaiting`, `oldestPublishWaitMs`), `decisionLock` (`heldBy`, `runningMs`, or null), `droppedReports` (stall reports replaced before they were logged because the log was stuck, so far), `fiberDump` (`requested`, `skipped`, or null) |
 | `stallDump` | `Chain.StallDump` | Warning | `stateFile` and `fiberDump` (each `path`, or `failed` and `message`), logged when the files `--stall-dump` asked for have ended |
 | `stallExit` | `Chain.StallExit` | Error | `idleSeconds`, `ourBlock`, `peerBlock` |
@@ -1257,6 +1259,7 @@ section and the catalogue differ.
 | `scarab_peer_tip_slot` | gauge |  | Slot of the tip of the peer's chain, as the peer last announced it. | none |
 | `scarab_peer_tip_block` | gauge |  | Block number of the tip of the peer's chain, as the peer last announced it. | none |
 | `scarab_peer_reconnects_total` | counter |  | Times the connection to the peer was lost and opened again. | none |
+| `scarab_blocks_held_total` | counter |  | Times a block was not adopted because the evaluator failed on its scripts: no verdict, no blame; the chain stays behind it. | none |
 | `scarab_follower_stalls_total` | counter |  | Times the follower went the stall-minutes without extending its chain while a peer announced a longer one. | none |
 | `scarab_follower_stalled` | gauge |  | 1 while the follower is stalled (see scarab_follower_stalls_total), else 0. | none |
 | `scarab_rollbacks_total` | counter |  | Rollbacks of the chain. | none |
@@ -1445,6 +1448,11 @@ and inbound session reports its peer's tip). When no block has been extended for
 `scarab_follower_stalled` to 1 until the next block is extended. A node at the tip of every peer never
 stalls however long the network takes to produce a block. Alert on
 `scarab_follower_stalled == 1`, or on `increase(scarab_follower_stalls_total[1h]) > 0`.
+
+A block the node holds without a verdict (`blockHeld`: the Plutus evaluator failed on the block's own
+scripts, so the block is neither adopted nor recorded as invalid and no peer is blamed, ADR 0017) keeps
+the node behind it. When the stall it causes begins, the watchdog also logs `stalledBehind` with the
+held block's point, transaction and reason. Alert on `increase(scarab_blocks_held_total[1h]) > 0`.
 
 A stall that cannot be reproduced on demand leaves its evidence (issue 371). Right after `stalled` the node
 logs one `stallState` event with every session's pipeline: the coordinator's view (`busy`, the offers waiting for

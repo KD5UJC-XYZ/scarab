@@ -150,3 +150,57 @@ Evaluator unavailability during stored-block replay is reported by the same type
 exit code 8 as live adoption. No ledger verdict exists in either path. A regression stops both
 phase-1 and phase-2 injected replay outages, then reopens and replays the unchanged stored chain
 with healthy rules. Other startup error policies are unchanged.
+
+## Amendment (2026-10-23): no verdict, for the implementation or for one block
+
+An evaluation that supplies no verdict is not one thing. Before this amendment every
+`LedgerFailure.Unavailable` stopped the node with exit 8, and the follower first recorded the block
+as invalid. Stopping is right for a missing implementation, which no input can work around. For a
+defect that one block's own scripts trigger in the evaluator (Scalus throwing on bytes it was given)
+it is the wrong policy: the defect says nothing about the other blocks, a restart does not change it,
+and recording the block as invalid is a verdict the implementation does not have.
+
+`BackendFailure.reach` now says whose failure it is, by an exhaustive match with no default:
+
+- **Implementation** — a linkage error (a native or a class that is missing, an initialiser that
+  failed), an unknown builtin, a virtual machine error other than a stack overflow, wherever it is
+  in the chain of causes (Scalus keeps a builtin's exception in `BuiltinError.cause`), and the
+  builtins and natives this platform lacks (`BuiltinUnavailable`, `BinaryDstUnavailable`,
+  `NativeHashToGroupUnavailable`, `NoResult`). Nothing can be trusted to get a verdict: the node
+  stops with exit 8, as before.
+- **Input** — any other exception the evaluator or decoder throws, a stack overflow, a budget beyond
+  64 bits. Only the block or transaction that carries the input lacks a verdict.
+
+The script-failure allowlist (`ScalusEvaluator.referenceFailure`) is unchanged: neither reach is ever
+a script failure, and nothing is added to it. The three outcomes of an evaluation are therefore a
+verdict (passed, or failed as the reference fails), no verdict for this input, and no verdict at all.
+
+For a block, no verdict for its input is `SessionEnd.Held` and `Disposition.Hold`, an outcome and a
+disposition added to those of decision 5 (`SessionEnd.of` still has no default case):
+
+- the block is not adopted and **not recorded as invalid** (`InvalidBlocks`), and nobody is punished
+  or blamed for it (`BlockPool.Claims` is not consulted). The follower re-raises any
+  `LedgerFailure.Unavailable` instead of treating it as a refusal, so an implementation limit is not
+  recorded as invalid either;
+- the session ends and the peer is tried again after the delay of a lost connection
+  (`PeerError.Unavailability.SessionEnded`, `Transient`), never forgotten;
+- the node goes on. The shared selection runner (`BlockSelection`) leaves the chain as it is and
+  takes the next admission;
+- the follower emits `FollowerEvent.Held` (log `Chain.BlockHeld`, metric
+  `scarab_blocks_held_total`), and the stall watchdog names the held block when the stall it causes
+  begins (`Chain.StalledBehind`). The node stays behind that block until a build that decides it is
+  installed; nothing about the block is remembered that would keep that build from adopting it.
+
+Other paths: block production leaves out a mempool transaction that triggers such a defect
+(`BlockBuilder.select`) and treats a held block of its own like one its rules refuse (its
+transactions leave the pool, an empty block is tried); local submission and the mempool keep the
+existing behaviour for every `Unavailable` (the submission connection closes, the transaction is
+not remembered as refused). Replay of the stored chain stops with exit 8 for both reaches: a stored
+block was adopted by an earlier run, the chain cannot be rebuilt past it, and holding it would only
+hide that.
+
+Tests: the injection suite places `NullPointerException`, `ClassCastException`, `MatchError`, a
+borer `Overflow`, `StackOverflowError` and `RuntimeException` at the decoder and at the machine
+(Input) with linkage, initialiser, out-of-memory and unknown-builtin controls (Implementation); the
+`MachineError` subclasses of the pinned Scalus jar are enumerated and pinned; `SessionFailureSuite`
+holds a block without an invalid record, blame or stop; `StallWatchdogSuite` names it.

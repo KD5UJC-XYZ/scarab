@@ -82,19 +82,33 @@ object Cbor:
     try body
     catch case _: StackOverflowError => Left(TooDeep)
 
-  def decode(bytes: Bytes, limits: Limits = Limits()): Either[Error, Node] = boundary:
-    if limits.maxInputBytes < 0 || limits.maxDepth < 0 || limits.maxItems < 0 || limits.maxStringBytes < 0
-    then Left(Error.InvalidLimits)
-    else if bytes.size > limits.maxInputBytes then Left(Error.InputLimitExceeded)
-    else
-      try Right(new Decoder(bytes, limits).run())
-      catch case _: StackOverflowError => Left(TooDeep)
+  def decode(bytes: Bytes, limits: Limits = Limits()): Either[Error, Node] =
+    decoded(bytes, limits, prefix = false)
+
+  /** The first item of `bytes`, with the checks of [[decode]]; whatever follows it is not read.
+    * This is what cborg's `deserialiseFromBytes` returns before its caller looks at the leftover,
+    * and what serialise's `deserialiseOrFail` keeps: it drops the leftover (`Codec/Serialise.hs`
+    * 134-143, serialise 0.2.6.1).
+    */
+  def decodePrefix(bytes: Bytes, limits: Limits = Limits()): Either[Error, Node] =
+    decoded(bytes, limits, prefix = true)
+
+  private def decoded(bytes: Bytes, limits: Limits, prefix: Boolean): Either[Error, Node] =
+    boundary:
+      if limits.maxInputBytes < 0 || limits.maxDepth < 0 || limits.maxItems < 0 || limits.maxStringBytes < 0
+      then Left(Error.InvalidLimits)
+      else if bytes.size > limits.maxInputBytes then Left(Error.InputLimitExceeded)
+      else
+        try Right(new Decoder(bytes, limits, prefix).run())
+        catch case _: StackOverflowError => Left(TooDeep)
 
   /** Reads the input once, with the checks of a decoder, and writes the [[Index]] of its items;
     * nothing is built per item. What it accepts and what it refuses (and says) is what the tree
     * builder of the first version did, which the tests keep as the oracle.
     */
-  private final class Decoder(input: Bytes, limits: Limits)(using Label[Either[Error, Node]]):
+  private final class Decoder(input: Bytes, limits: Limits, prefix: Boolean)(using
+      Label[Either[Error, Node]]
+  ):
     private def fail(error: Error): Nothing = break(Left(error))
     // Read-only view of the input: the document shares it, its nodes are windows onto it.
     private val data = input.unsafeArray
@@ -289,7 +303,7 @@ object Cbor:
           // a leaf is complete as soon as it is read; a container that was pushed is not
           if produced && major != 4 && major != 5 && major != 6 then index.finish(item, pos)
         if produced then if depth == 0 then finished = true else openCount(depth - 1) += 1
-      if pos != end then fail(Error.TrailingBytes)
+      if !prefix && pos != end then fail(Error.TrailingBytes)
       new Document(data, index).node(0)
 
   /** Uses shortest integer/length widths and definite containers, recursively re-encoding values

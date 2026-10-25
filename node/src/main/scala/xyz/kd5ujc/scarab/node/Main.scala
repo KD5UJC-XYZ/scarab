@@ -461,13 +461,18 @@ object Main extends IOApp:
             }
         }
 
-  /** Replay has no verdict when the evaluator is unavailable, just as live adoption has none. */
+  /** Replay has no verdict when the evaluator is unavailable, just as live adoption has none. A
+    * stored block was adopted by an earlier run, so a defect it now triggers is no reason to hold
+    * it: the chain cannot be rebuilt past it, and the node stops as for a missing implementation.
+    */
   private[scarab] def startupFailure(error: NodeError): (NodeEvent, ExitCode) =
     SessionEnd.of(error) match
-      case SessionEnd.Unavailable(unavailable) =>
-        val fatal = Fatal.Unavailable(unavailable)
-        (NodeEvent.Faulted(fatal), FaultExitCode(fatal))
-      case _ => (NodeEvent.Failed(error), ExitCode(1))
+      case SessionEnd.Unavailable(unavailable) => faulted(Fatal.Unavailable(unavailable))
+      case SessionEnd.Held(unavailable)        => faulted(Fatal.Unavailable(unavailable))
+      case _                                   => (NodeEvent.Failed(error), ExitCode(1))
+
+  private def faulted(fatal: Fatal): (NodeEvent, ExitCode) =
+    (NodeEvent.Faulted(fatal), FaultExitCode(fatal))
 
   /** The UTxO store, and where the checkpoints that keep it in step with the snapshots live (none:
     * the store is in memory and nothing is kept). The backing itself ([[backing]]) is of the form
@@ -710,7 +715,8 @@ object Main extends IOApp:
               eraStarts.update(_.updatedWith(to)(_.orElse(Some(epoch))))
             case FollowerEvent.Extended(block, _, peerTip, _) =>
               watchdog.announced(peerTip.blockNo.value) *> watchdog.extended(block.blockNo)
-            case _ => IO.unit
+            case FollowerEvent.Held(point, failure) => watchdog.held(point, failure)
+            case _                                  => IO.unit
           ) *> followerLog.emit(event)
       followerEvents = events.alongside(measured.follower)
       storageEvents = Log.sink[StorageEvents, StorageEvent, IO].alongside(measured.storage)

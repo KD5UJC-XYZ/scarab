@@ -438,6 +438,9 @@ final class Forger[F[_]: Async, S](
                 SessionEnd.of(e) match
                   case SessionEnd.Unavailable(unavailable) =>
                     unavailable.raise[F, Either[ForgeError, Unit]]
+                  // a refusal, or a defect a transaction of ours triggers (SessionEnd.Held): the
+                  // block is not adopted, its transactions leave the pool and an empty block is
+                  // tried instead
                   case _ => F.pure(Left(ForgeError.SelfRejected(e)))
             }
     }
@@ -568,7 +571,10 @@ object Forger:
         val fatal = SessionEnd.of(error) match
           case SessionEnd.Storage(e)     => Fatal.Storage(e)
           case SessionEnd.Unavailable(e) => Fatal.Unavailable(e)
-          case _                         => Fatal.Internal(error)
+          // BlockBuilder.select skips a transaction that triggers a defect, and adoption makes it
+          // a refusal of our own block, so none reaches here; were one to, there is no verdict
+          case SessionEnd.Held(e) => Fatal.Unavailable(e)
+          case _                  => Fatal.Internal(error)
         terminal.raise[Fatal, A](fatal)
       }
     }

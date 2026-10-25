@@ -25,6 +25,19 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
   private def error(header: Header) =
     ValidationError(header.point, BlockFailure.EpochPrecedesLedger(0))
 
+  /** A block without a verdict: the evaluator failed with `why` on one of its scripts. */
+  private def noVerdict(header: Header, why: xyz.kd5ujc.scarab.plutus.BackendFailure) =
+    ValidationError(
+      header.point,
+      BlockFailure.Tx(
+        xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable(
+          header.hash,
+          xyz.kd5ujc.scarab.ledger.ScriptLocation.Phase1(header.hash),
+          xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported(why)
+        )
+      )
+    )
+
   private def node(
       invalid: Set[Bytes],
       k: Int = 5,
@@ -34,7 +47,8 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
       preparation: BlockSelection.Before[IO] = BlockSelection.Before.noop[IO],
       fatalAction: Fatal => IO[Unit] = _ => IO.unit,
       initial: Option[VolatileChain[BigInt]] = None,
-      recovered: Vector[BlockPool.Delivered] = Vector.empty
+      recovered: Vector[BlockPool.Delivered] = Vector.empty,
+      unavailable: Map[Bytes, xyz.kd5ujc.scarab.plutus.BackendFailure] = Map.empty
   )(use: Node => IO[Unit]): IO[Unit] =
     for
       state <- Ref.of[IO, VolatileChain[BigInt]](initial.getOrElse(VolatileChain.genesis(k, -1)))
@@ -47,7 +61,12 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
         BlockRules.from((_, h, _) =>
           beforeRule(h) *>
             (if invalid(h.hash) then Raise[IO, ValidationError].raise(error(h))
-             else IO.pure(h.blockNo))
+             else
+               unavailable
+                 .get(h.hash)
+                 .fold(IO.pure(h.blockNo))(why =>
+                   Raise[IO, ValidationError].raise(noVerdict(h, why))
+                 ))
         ),
         _ => IO.unit,
         ForgedChain.geometry,
@@ -102,6 +121,67 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
             assertEquals(first, initial + 1)
             assertEquals(unchanged, first)
             assertEquals(second, first + 1)
+        }
+      }
+    yield ()
+  }
+
+  test("selection holds a block its own scripts make the evaluator fail, and goes on") {
+    for
+      chain <- ForgedChain.forge(5000 until 5060)
+      bodies <- checked(chain, 3)
+      defect = xyz.kd5ujc.scarab.plutus.BackendFailure.Defect(new NullPointerException("Scalus"))
+      _ <- node(Set.empty, unavailable = Map(bodies(1).header.hash -> defect)) { n =>
+        n.pool.session(Some(e => n.reports.update(_ :+ e))).use { sender =>
+          for
+            _ <- add(sender, bodies.take(2)) *> n.pool.admissions.reprocess
+            held <- n.state.get
+            // a later admission is still processed: the runner did not stop
+            _ <- add(sender, bodies.drop(2)) *> n.pool.admissions.reprocess
+            after <- n.state.get
+            known <- n.pool.invalidBlocks.snapshot
+            reports <- n.reports.get
+            fatals <- n.fatals.get
+            _ <- IO {
+              assertEquals(held.tipRef.map(_.hash), Some(bodies(0).header.hash))
+              assertEquals(after.tipRef.map(_.hash), Some(bodies(0).header.hash))
+              assertEquals(known.entries, Map.empty)
+              assertEquals(reports, Vector.empty)
+              assertEquals(fatals, Vector.empty)
+            }
+          yield ()
+        }
+      }
+    yield ()
+  }
+
+  test("a missing implementation stops selection and records no invalid block") {
+    for
+      chain <- ForgedChain.forge(5000 until 5060)
+      bodies <- checked(chain, 2)
+      missing = xyz.kd5ujc.scarab.plutus.BackendFailure.BinaryDstUnavailable
+      stopped <- Deferred[IO, Unit]
+      _ <- node(
+        Set.empty,
+        fatalAction = _ => stopped.complete(()).void,
+        unavailable = Map(bodies(1).header.hash -> missing)
+      ) { n =>
+        n.pool.session(Some(e => n.reports.update(_ :+ e))).use { sender =>
+          for
+            _ <- add(sender, bodies)
+            // the runner reports its fatal outcome when it ends: wait for that report
+            _ <- stopped.get.timeout(4.seconds)
+            fatals <- n.fatals.get
+            known <- n.pool.invalidBlocks.snapshot
+            reports <- n.reports.get
+            _ <- IO {
+              fatals match
+                case Vector(Fatal.Unavailable(e)) => assertEquals(e.point, bodies(1).header.point)
+                case other                        => fail(s"unexpected $other")
+              assertEquals(known.entries, Map.empty)
+              assertEquals(reports, Vector.empty)
+            }
+          yield ()
         }
       }
     yield ()

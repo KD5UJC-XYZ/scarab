@@ -19,7 +19,6 @@ object ReplayTrace:
   enum Failure:
     case Evaluator(reason: EvalFailure)
     case Script(cause: ScriptCause, traces: Vector[String])
-    case NativeDecode(kind: Class[? <: Throwable], diagnostic: Option[String])
 
   object Failure:
     def from(reason: EvalFailure): Failure = reason match
@@ -30,8 +29,6 @@ object ReplayTrace:
             ScriptCause.SecpDefect(error.getClass, Option(error.getMessage))
           case error: Secp256k1.Error => ScriptCause.Secp(error)
         Script(identity, traces)
-      case EvalFailure.Decode(ScriptProblem.FlatDecoding(error)) =>
-        NativeDecode(error.getClass, Option(error.getMessage))
       case other => Evaluator(other)
 
   enum Result:

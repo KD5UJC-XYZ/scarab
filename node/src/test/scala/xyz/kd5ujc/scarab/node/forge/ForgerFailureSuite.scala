@@ -413,7 +413,9 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
       assertEquals(internal, Left(Fatal.Internal(ChainError.NoIntersection)))
   }
 
-  test("candidate selection stops on unavailable evaluation while ordinary invalidity is skipped") {
+  test(
+    "candidate selection stops on a missing implementation while invalidity and input defects are skipped"
+  ) {
     val fixture = xyz.kd5ujc.scarab.ledger.PlutusCase.load(
       java.nio.file.Path.of("fixtures/preprod/plutus/tx-2edd684f.json")
     )
@@ -431,12 +433,25 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     )
     val tx = xyz.kd5ujc.scarab.node.mempool.MempoolState.parse(raw).fold(e => fail(e.message), _._2)
     val entry = xyz.kd5ujc.scarab.node.mempool.Entry(id, raw, tx, 0)
-    val stopped = xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted
-    given xyz.kd5ujc.scarab.plutus.ScriptDecoder[cats.Id] =
-      (_, _, _) => Left(xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Unavailable(stopped))
+    val stopped = xyz.kd5ujc.scarab.plutus.BackendFailure.BinaryDstUnavailable
+    def failing(
+        reason: xyz.kd5ujc.scarab.plutus.BackendFailure
+    ): xyz.kd5ujc.scarab.plutus.ScriptDecoder[cats.Id] =
+      (_, _, _) => Left(xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Unavailable(reason))
     val base = xyz.kd5ujc.scarab.node.mempool.TxKit.ledger(2)
     val limit = BlockBuilder.Limits(65536, xyz.kd5ujc.scarab.plutus.ExUnits(14000000, 10000000000L))
-    val result = BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(entry), limit)
+    val result = BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(entry), limit)(using
+      failing(stopped),
+      xyz.kd5ujc.scarab.plutus.ScalusEvaluator.default
+    )
+    // a defect the transaction triggers leaves it out of the block and selection goes on
+    assertEquals(
+      BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(entry), limit)(using
+        failing(xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted),
+        xyz.kd5ujc.scarab.plutus.ScalusEvaluator.default
+      ),
+      Right(Vector.empty)
+    )
     assertEquals(
       result.left.map(e => e: xyz.kd5ujc.scarab.ledger.LedgerFailure),
       Left(

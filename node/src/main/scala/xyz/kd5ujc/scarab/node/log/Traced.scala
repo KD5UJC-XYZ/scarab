@@ -51,7 +51,8 @@ object Traced:
     */
   type FollowerLine = FollowerEvent.Connected | FollowerEvent.Extended | FollowerEvent.RolledBack |
     FollowerEvent.EpochEntered | FollowerEvent.Reconnecting | FollowerEvent.EraEntered |
-    FollowerEvent.EpochValidated | FollowerEvent.ByronEpochValidated | FollowerEvent.LedgerEpoch
+    FollowerEvent.EpochValidated | FollowerEvent.ByronEpochValidated | FollowerEvent.LedgerEpoch |
+    FollowerEvent.Held
 
   given Traced[FollowerLine] =
     case FollowerEvent.Connected(p) => EventKind.Connected.line("intersection" -> point(p))
@@ -111,6 +112,12 @@ object Traced:
       )
     case FollowerEvent.Reconnecting(reason, attempt) =>
       EventKind.Reconnecting.line("reason" -> reason.message.asJson, "attempt" -> attempt.asJson)
+    case FollowerEvent.Held(p, failure) =>
+      EventKind.BlockHeld.line(
+        "point" -> point(p),
+        "tx" -> failure.txId.hex.asJson,
+        "reason" -> failure.message.asJson
+      )
 
   given Traced[StorageEvent] =
     case StorageEvent.FormatMigrated(m) =>

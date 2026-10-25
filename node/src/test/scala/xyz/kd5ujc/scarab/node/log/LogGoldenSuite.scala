@@ -74,6 +74,7 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- node(NodeEvent.ChainSyncRounds(200L, 25600L, 120L, 900L, 128))
         _ <- node(NodeEvent.SlowFetch(300L))
         _ <- node(NodeEvent.Stalled(10.minutes, BigInt(6809207), BigInt(10200000)))
+        _ <- node(NodeEvent.StalledBehind(LogSamples.point, held))
         _ <- node(
           NodeEvent.StallState(
             xyz.kd5ujc.scarab.node.StallDiagnostics.Report(

@@ -483,6 +483,10 @@ final class OutboundPeers[F[_]: Async, A] private (
         val failure: Option[PeerError] = disposition match
           case Disposition.Forget | Disposition.Backoff => SessionEnd.peerError(end)
           case Disposition.StopNode(_)                  => None
+          // the connection is closed through nobody's fault: tried again after the usual delay,
+          // never forgotten (the follower reported the held block)
+          case Disposition.Hold(_) =>
+            Some(PeerError.Unavailable(PeerError.Unavailability.SessionEnded))
           case Disposition.Settled =>
             Option.when(end == SessionEnd.Returned)(
               PeerError.Unavailable(PeerError.Unavailability.SessionEnded)

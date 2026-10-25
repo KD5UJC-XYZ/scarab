@@ -14,7 +14,9 @@ import xyz.kd5ujc.scarab.ledger.{
   StorageError,
   ValidationError
 }
+import xyz.kd5ujc.scarab.ledger.LedgerFailure.reach
 import xyz.kd5ujc.scarab.network.{Fibers, NetworkError}
+import xyz.kd5ujc.scarab.plutus.BackendFailure
 
 /** What a fiber of the pipeline of a session ends with, as a value: the peer or the connection
   * failed, or something that is not ours threw (a library, a bug).
@@ -78,6 +80,14 @@ enum SessionEnd:
     */
   case Unavailable(error: EvaluationUnavailable)
 
+  /** This implementation has no verdict on a block because its evaluator failed on the block's own
+    * scripts (a defect the block triggers,
+    * [[xyz.kd5ujc.scarab.plutus.BackendFailure.Reach.Input]]). The block is not adopted and not
+    * recorded as invalid, the peer is not blamed and the node goes on, behind that block, until an
+    * implementation that decides it is installed (ADR 0017, amendment of 2026-10-23).
+    */
+  case Held(error: EvaluationUnavailable)
+
   /** The storage failed under the session. Nothing a reconnect can repair: the node stops and
     * recovers from disk on the next start.
     */
@@ -110,16 +120,24 @@ object SessionEnd:
     case PeerError.InvalidBlock(
           ValidationError(point, BlockFailure.Tx(failure: LedgerFailure.Unavailable))
         ) =>
-      Unavailable(EvaluationUnavailable(point, failure))
+      unavailable(EvaluationUnavailable(point, failure))
     case ValidationError(point, BlockFailure.Tx(failure: LedgerFailure.Unavailable)) =>
-      Unavailable(EvaluationUnavailable(point, failure))
-    case e: EvaluationUnavailable                    => Unavailable(e)
+      unavailable(EvaluationUnavailable(point, failure))
+    case e: EvaluationUnavailable                    => unavailable(e)
     case PeerError.NoIntersection                    => NoMoreIntersection
     case PeerError.RolledBackPastIntersection(point) => RolledBackPastIntersection(point)
     case e: PeerError                                => Failed(e)
     case e: ValidationError                          => Rejected(e)
     case e: StorageError                             => Storage(e)
     case other                                       => Internal(other)
+
+  /** No verdict: the node stops for a missing implementation and holds the block for a defect the
+    * block triggers.
+    */
+  private def unavailable(error: EvaluationUnavailable): SessionEnd =
+    error.failure.reach match
+      case BackendFailure.Reach.Implementation => Unavailable(error)
+      case BackendFailure.Reach.Input          => Held(error)
 
   /** The session owns a fresh node-error scope for its rule/store operations. The enclosing `node`
     * scope remains live for compatibility with other enclosing services; its errors are caught in
@@ -160,6 +178,7 @@ object SessionEnd:
       Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(PeerError.InvalidBlock(error))))
     case Unavailable(error) =>
       Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(Fatal.Unavailable(error))))
+    case Held(error) => Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
     case Storage(error) =>
       Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(Fatal.Storage(error))))
     case Internal(error) =>
@@ -207,6 +226,12 @@ enum Disposition:
 
   /** Nothing to do: we ended it, or it returned. */
   case Settled
+
+  /** A block the peer sent has no verdict here (a defect it triggers in the evaluator): it is not
+    * adopted, the peer is not blamed and is tried again after the delay of a lost connection, and
+    * the node goes on.
+    */
+  case Hold(error: EvaluationUnavailable)
 
   /** The node stops (storage, an internal failure, a defect). */
   case StopNode(fatal: Fatal)

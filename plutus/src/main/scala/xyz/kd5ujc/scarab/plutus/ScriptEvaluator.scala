@@ -38,21 +38,28 @@ final case class EvalRequest(
 enum ScriptProblem:
   case CborByteStringExpected
   case Flat(cause: FlatScan.Failure)
-  case FlatDecoding(cause: scalus.serialization.flat.FlatDecodingError)
   case Availability(cause: PlutusAvailability.Failure)
   case TrailingBytes(count: Int)
   def message: String = this match
     case CborByteStringExpected => "script is not a CBOR byte string"
     case Flat(cause)            => cause.message
-    case FlatDecoding(cause)    => Option(cause.getMessage).getOrElse(cause.getClass.getName)
     case Availability(cause)    => cause.message
     case TrailingBytes(count)   => s"$count bytes remain after the script (RemainderError)"
 
+/** Why this implementation supplies no verdict for a script: never the reference's verdict. */
 enum BackendFailure:
   case NoResult, StackExhausted, BinaryDstUnavailable, NativeHashToGroupUnavailable
   case BudgetOutOfRange(budget: ExUnits)
   case Defect(cause: Throwable)
   case BuiltinUnavailable(builtin: scalus.uplc.DefaultFun)
+
+  /** Whether the failure is the implementation's or this input's ([[BackendFailure.Reach]]). */
+  def reach: BackendFailure.Reach = this match
+    case NoResult | BinaryDstUnavailable | NativeHashToGroupUnavailable =>
+      BackendFailure.Reach.Implementation
+    case BuiltinUnavailable(_)                => BackendFailure.Reach.Implementation
+    case StackExhausted | BudgetOutOfRange(_) => BackendFailure.Reach.Input
+    case Defect(cause)                        => BackendFailure.reachOf(cause)
   def message: String = this match
     case BinaryDstUnavailable =>
       "hashToGroup binary DST has no byte-array implementation on this platform"
@@ -62,6 +69,54 @@ enum BackendFailure:
     case BudgetOutOfRange(_)          => "execution budget exceeds 64 bits"
     case Defect(cause)                => Option(cause.getMessage).getOrElse(cause.getClass.getName)
     case BuiltinUnavailable(builtin)  => s"builtin $builtin unavailable"
+
+object BackendFailure:
+  /** What a failure of the implementation says about the inputs it has no verdict for.
+    *
+    * A script failure the reference also reports is a verdict ([[EvalFailure.Script]]) and never
+    * one of these. Of the rest, a missing part of the implementation (a native library, a builtin,
+    * the memory or the classes of the process) leaves every script without a verdict, while a
+    * defect that one input triggers (Scalus throwing on bytes it was given) leaves only that input
+    * without one. ADR 0017 (amendment of 2026-10-23) gives each its policy.
+    */
+  enum Reach:
+    /** The implementation is missing or its runtime is broken: no input can be trusted to get a
+      * verdict, so the node stops.
+      */
+    case Implementation
+
+    /** The implementation failed on this input: the block or transaction that carries it gets no
+      * verdict here and is not adopted; it is no evidence against whoever sent it.
+      */
+    case Input
+
+  /** A linkage error is a missing native or class, a builtin the machine does not know
+    * (`UnknownBuiltin`) is a missing builtin, and a virtual machine error other than a stack
+    * overflow (out of memory, an internal error) is the runtime's, wherever it is in the chain of
+    * causes (Scalus wraps what a builtin throws in a `BuiltinError`); any other exception was
+    * thrown on this input. A stack overflow is the depth of this input.
+    */
+  def reachOf(cause: Throwable): Reach =
+    val chain = Iterator
+      .iterate(Option(cause))(_.flatMap(c => causeOf(c).filterNot(_ eq c)))
+      .takeWhile(_.isDefined)
+      .flatten
+      .take(MaxCauses)
+    if chain.exists(runtime) then Reach.Implementation else Reach.Input
+
+  /** Causes followed at most (a chain of causes can loop through more than one exception). */
+  private val MaxCauses = 64
+
+  // Scalus's BuiltinError keeps what the builtin threw in a field of its own, not as its cause.
+  private def causeOf(error: Throwable): Option[Throwable] = error match
+    case builtin: scalus.uplc.eval.BuiltinError => Option(builtin.cause)
+    case other                                  => Option(other.getCause)
+
+  private def runtime(error: Throwable): Boolean = error match
+    case _: StackOverflowError                    => false
+    case _: scalus.uplc.eval.UnknownBuiltin       => true
+    case _: LinkageError | _: VirtualMachineError => true
+    case _                                        => false
 
 final case class ScriptFailure(cause: Throwable | Secp256k1.Error, logs: Vector[String]):
   def message: String =

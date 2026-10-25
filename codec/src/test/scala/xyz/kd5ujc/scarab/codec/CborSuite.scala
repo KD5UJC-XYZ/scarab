@@ -29,6 +29,15 @@ class CborSuite extends munit.FunSuite:
     }
   }
 
+  test("a prefix decode keeps the first item and ignores what follows it") {
+    val prefix = Cbor.decodePrefix(bytes("8201810200ff1c")).fold(e => fail(e.toString), identity)
+    assertEquals(prefix.original, bytes("82018102"))
+    assertEquals(prefix.value, decoded("82018102").value)
+    assertEquals(Cbor.decode(bytes("8201810200ff1c")), Left(Cbor.Error.TrailingBytes))
+    assertEquals(Cbor.decodePrefix(bytes("820181")), Left(Cbor.Error.UnexpectedEnd))
+    assertEquals(Cbor.decodePrefix(Bytes.empty), Left(Cbor.Error.UnexpectedEnd))
+  }
+
   test("byte-string chunk bounds inspect the original chunks and safely refuse missing evidence") {
     val payload = "ab" * 65
     val definite = decoded("5841" + payload)

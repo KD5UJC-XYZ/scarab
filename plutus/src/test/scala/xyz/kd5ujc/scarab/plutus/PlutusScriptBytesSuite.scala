@@ -12,8 +12,18 @@ class PlutusScriptBytesSuite extends FunSuite:
     assertEquals(PlutusScriptBytes.cborItemLength(b(0x59, 0, 2, 7, 7, 1)), 5)
   }
 
-  test("an indefinite byte string ends at its break") {
-    assertEquals(PlutusScriptBytes.cborItemLength(b(0x5f, 0x42, 1, 2, 0x41, 3, 0xff, 8)), 7)
+  test("a definite length of eight bytes is read") {
+    assertEquals(PlutusScriptBytes.cborItemLength(b(0x5b, 0, 0, 0, 0, 0, 0, 0, 2, 7, 7, 1)), 11)
+    assertEquals(
+      PlutusScriptBytes.flatOf(b(0x5b, 0, 0, 0, 0, 0, 0, 0, 2, 7, 7, 1)).map(_.toVector),
+      Some(Vector(7, 7).map(_.toByte))
+    )
+  }
+
+  test("an indefinite byte string is not the script bytes the reference reads") {
+    val chunked = b(0x5f, 0x42, 1, 2, 0x41, 3, 0xff, 8)
+    assertEquals(PlutusScriptBytes.cborItemLength(chunked), chunked.length)
+    assertEquals(PlutusScriptBytes.flatOf(chunked), None)
   }
 
   test("anything else is taken whole, for the decoder to reject") {
@@ -21,4 +31,5 @@ class PlutusScriptBytesSuite extends FunSuite:
     assertEquals(PlutusScriptBytes.cborItemLength(b(0x01, 2)), 2)
     assertEquals(PlutusScriptBytes.cborItemLength(b()), 0)
     assertEquals(PlutusScriptBytes.cborItemLength(b(0x5f, 0x41, 1)), 3)
+    assertEquals(PlutusScriptBytes.flatOf(b(0x43, 1, 2)), None)
   }

@@ -88,6 +88,14 @@ enum LedgerFailure extends DomainError:
       s"tx ${id.hex.take(16)} evaluation unavailable at $where: ${why.message}"
     case Vocab(e) => s"transaction outside the state's vocabulary: $e"
 
+object LedgerFailure:
+  extension (failure: LedgerFailure.Unavailable)
+    /** Whose failure it is ([[xyz.kd5ujc.scarab.plutus.BackendFailure.Reach]]): the
+      * implementation's (no transaction can be trusted to get a verdict) or this transaction's (a
+      * defect its scripts trigger; only it lacks a verdict).
+      */
+    def reach: xyz.kd5ujc.scarab.plutus.BackendFailure.Reach = failure.reason.reason.reach
+
 /** Block-level context of a transaction.
   *
   * @param clock

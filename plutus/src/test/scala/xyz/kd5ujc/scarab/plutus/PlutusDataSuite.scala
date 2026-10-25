@@ -51,6 +51,16 @@ class PlutusDataSuite extends FunSuite:
     assertEquals(decode("f5"), Left(DecodeError.UnexpectedItem(Value.Bool(true))))
   }
 
+  test("a big number needs the short head the reference reads, constructors do not") {
+    assertEquals(decode("d8024101"), Left(DecodeError.BigNumberWideHead(2)))
+    assertEquals(decode("d8034101"), Left(DecodeError.BigNumberWideHead(3)))
+    assertEquals(decode("d9000200"), Left(DecodeError.BigNumberWideHead(2)))
+    assertEquals(decode("c24101"), Right(I(1)))
+    assertEquals(decode("c34101"), Right(I(-2)))
+    assertEquals(decode("da0000007980"), Right(Constr(0, Vector.empty)))
+    assertEquals(decode("db0000000000000066820080"), Right(Constr(0, Vector.empty)))
+  }
+
   test("the unit, Maybe and Bool shapes") {
     assertEquals(PlutusData.unit, Constr(0, Vector.empty))
     assertEquals(PlutusData.maybe(None), Constr(1, Vector.empty))
