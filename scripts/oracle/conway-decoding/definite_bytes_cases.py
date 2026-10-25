@@ -14,7 +14,14 @@ holds for the joined string.
 Each place is written twice, with a definite string (accepted) and with the same bytes as one
 indefinite chunk (refused), so a refusal is for the form of the string alone.
 
-    python3 scripts/oracle/conway-decoding/definite_bytes_cases.py --out fixtures/reference/definite-bytes/cases.json
+The committed corpus is one file, `fixtures/reference/definite-bytes/cases.jsonl`, a line per case
+with the original encoding and the verdict of the harness. Two steps write it: `--inputs` writes
+the array the harness reads, and `--reference` merges the harness output (the verdicts, in the same
+order) into the lines:
+
+    python3 scripts/oracle/conway-decoding/definite_bytes_cases.py --inputs /tmp/definite-bytes-inputs.json
+    python3 scripts/oracle/conway-decoding/definite_bytes_cases.py --inputs /tmp/definite-bytes-inputs.json \\
+        --reference /tmp/definite-bytes-reference.json --out fixtures/reference/definite-bytes/cases.jsonl
 """
 import argparse
 import json
@@ -86,6 +93,11 @@ def wits(key, value):
     return c.cmap([(c.uint(key), value)])
 
 
+def pick(b, at, here, raw):
+    """`raw` written with `b` where the place under test `at` is `here`, and as a definite string elsewhere."""
+    return b(raw) if at == here else definite(raw)
+
+
 def input_with(b):
     return c.array([b(c.h(0x11, 32)), c.uint(0)])
 
@@ -96,13 +108,8 @@ def output_map(fields):
 
 def map_output(era, b, at):
     """A map-form output whose field `at` takes the string `b`."""
-    fields = {
-        0: definite(ADDRESS),
-        1: c.uint(2_000_000),
-    }
-    if at == "address":
-        fields[0] = b(ADDRESS)
-    elif at == "datum hash":
+    fields = {0: pick(b, at, "address", ADDRESS), 1: c.uint(2_000_000)}
+    if at == "datum hash":
         fields[2] = c.array([c.uint(0), b(c.h(0x58, 32))])
     elif at == "inline datum":
         fields[2] = c.array([c.uint(1), c.tag(24, b(c.uint(1)))])
@@ -116,9 +123,7 @@ def map_output(era, b, at):
 
 
 def multiasset(b, at):
-    policy = b(c.h(0x88, 28)) if at == "policy" else definite(c.h(0x88, 28))
-    name = b(b"a") if at == "asset name" else definite(b"a")
-    return c.cmap([(policy, c.cmap([(name, c.uint(1))]))])
+    return c.cmap([(pick(b, at, "policy", c.h(0x88, 28)), c.cmap([(pick(b, at, "asset name", b"a"), c.uint(1))]))])
 
 
 def cred(b):
@@ -127,7 +132,7 @@ def cred(b):
 
 def pool(b, at):
     def field(name, raw):
-        return b(raw) if at == name else definite(raw)
+        return pick(b, at, name, raw)
 
     return c.array(
         [
@@ -150,7 +155,7 @@ def anchor(b):
 
 
 def proposal(b, at):
-    account = b(ACCOUNT) if at == "reward account" else definite(ACCOUNT)
+    account = pick(b, at, "reward account", ACCOUNT)
     action = c.array([c.uint(6)])
     if at == "previous action id":
         action = c.array([c.uint(3), c.array([b(c.h(0x66, 32)), c.uint(0)])])
@@ -162,8 +167,8 @@ def proposal(b, at):
 
 
 def votes(b, at):
-    voter = c.array([c.uint(2), b(c.KEY_HASH) if at == "voter hash" else definite(c.KEY_HASH)])
-    action = c.array([b(c.h(0x66, 32)) if at == "action id" else definite(c.h(0x66, 32)), c.uint(0)])
+    voter = c.array([c.uint(2), pick(b, at, "voter hash", c.KEY_HASH)])
+    action = c.array([pick(b, at, "action id", c.h(0x66, 32)), c.uint(0)])
     vote_anchor = anchor(b) if at == "anchor hash" else c.NULL
     return c.cmap([(voter, c.cmap([(action, c.array([c.uint(1), vote_anchor]))]))])
 
@@ -173,7 +178,7 @@ def update(b, at):
     if at == "extra entropy":
         # field 13 of Shelley to Alonzo (`ppExtraEntropy`), a `Nonce`: `[1, hash]`
         params = c.cmap([(c.uint(13), c.array([c.uint(1), b(c.h(0x5B, 32))]))])
-    key = b(c.h(0x5A, 28)) if at == "genesis key hash" else definite(c.h(0x5A, 28))
+    key = pick(b, at, "genesis key hash", c.h(0x5A, 28))
     return c.array([c.cmap([(key, params)]), c.uint(10)])
 
 
@@ -212,9 +217,9 @@ def body_sites(era):
                                 c.array(
                                     [
                                         c.uint(5),
-                                        b(c.h(0x5A, 28)) if at == "genesis key" else definite(c.h(0x5A, 28)),
-                                        b(c.h(0x5C, 28)) if at == "delegate" else definite(c.h(0x5C, 28)),
-                                        b(c.h(0x5D, 32)) if at == "vrf key hash" else definite(c.h(0x5D, 32)),
+                                        pick(b, at, "genesis key", c.h(0x5A, 28)),
+                                        pick(b, at, "delegate", c.h(0x5C, 28)),
+                                        pick(b, at, "vrf key hash", c.h(0x5D, 32)),
                                     ]
                                 )
                             ]
@@ -311,7 +316,7 @@ def witness_sites(era):
 
         def witness(b, at=at):
             names = ["vkey", "signature", "chain code", "attributes"]
-            return wits(2, c.array([c.array([b(p) if n == at else definite(p) for n, p in zip(names, parts)])]))
+            return wits(2, c.array([c.array([pick(b, at, n, p) for n, p in zip(names, parts)])]))
 
         sites.append((f"bootstrap {at}", rule, witness))
     languages = [("Plutus V1 script", 3, "alonzo"), ("Plutus V2 script", 6, "babbage"), ("Plutus V3 script", 7, "conway")]
@@ -417,17 +422,49 @@ for place, rule, scripts in (
     )
 
 
+def merge(reference):
+    """The corpus lines: each case with the verdict the harness recorded for it (absent fields are null)."""
+    assert len(reference) == len(CASES), "the harness answered a different number of cases"
+    lines = []
+    for case_, verdict in zip(CASES, reference):
+        assert (verdict["name"], verdict["era"], verdict["kind"]) == (case_["name"], case_["era"], case_["kind"])
+        result = verdict["result"]
+        line = {
+            "id": case_["id"],
+            "name": case_["name"],
+            "era": case_["era"],
+            "kind": case_["kind"],
+            "expect": case_["expect"],
+            "rule": case_["rule"],
+            "accepted": result["accepted"],
+            "failure": result.get("failure"),
+            "bytes": case_["bytes"],
+        }
+        lines.append(json.dumps({k: v for k, v in line.items() if v is not None}, separators=(",", ":")))
+    return lines
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out", required=True)
+    parser.add_argument("--inputs", help="write the array of original encodings the harness reads")
+    parser.add_argument("--reference", help="the harness output for those inputs, to merge")
+    parser.add_argument("--out", help="write the corpus lines (needs --reference)")
     args = parser.parse_args()
     names = [x["name"] for x in CASES]
     assert len(names) == len(set(names)), "case names must be unique"
     ids = [x["id"] for x in CASES]
     assert len(ids) == len(set(ids)), "case ids must be unique"
-    with open(args.out, "w") as f:
-        json.dump(CASES, f, indent=1)
-        f.write("\n")
+    if args.inputs:
+        with open(args.inputs, "w") as f:
+            json.dump(CASES, f, indent=1)
+            f.write("\n")
+    if args.out:
+        if not args.reference:
+            parser.error("--out needs --reference")
+        with open(args.reference) as f:
+            lines = merge(json.load(f))
+        with open(args.out, "w") as f:
+            f.write("\n".join(lines) + "\n")
 
 
 if __name__ == "__main__":

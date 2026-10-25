@@ -11,9 +11,9 @@ import ReferenceCorpus.{Case, Corpus, Kind, Refusal}
 /** Below decoder version 12 the reference reads a byte string with `decodeBytes` or
   * `decodeByteArray` over a definite-length string only (`Decoder.hs` in cardano-ledger f649f975);
   * Plutus `Data` and metadata read chunked strings in every version.
-  * `fixtures/reference/definite-bytes` holds original encodings, each place of each era written
-  * with a definite string and with one chunk, with what the unchanged released decoders did with
-  * them ([[ByteStrings]]).
+  * `fixtures/reference/definite-bytes/cases.jsonl` holds original encodings, each place of each era
+  * written with a definite string and with one chunk, each line with what the unchanged released
+  * decoders did with it ([[ByteStrings]]).
   */
 class DefiniteBytesReferenceSuite extends FunSuite:
   private val rows: Vector[Case] =

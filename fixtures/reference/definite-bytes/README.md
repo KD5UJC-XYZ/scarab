@@ -2,8 +2,8 @@
 
 Status: Current. Evidence for [#373](https://github.com/KD5UJC-XYZ/scarab/issues/373).
 
-`cases.json` holds 444 original encodings written by
-`scripts/oracle/conway-decoding/definite_bytes_cases.py`. For each era from Shelley to Conway, every
+`cases.jsonl` holds 444 lines, a case each: its original encoding (`bytes`, written by
+`scripts/oracle/conway-decoding/definite_bytes_cases.py`) and the verdict of the reference. For each era from Shelley to Conway, every
 place of a transaction body and a witness set that holds a byte string (input ids, output addresses,
 datum hashes, inline-datum and reference-script wrappers, the script inside a reference script,
 policy ids and asset names, hashes of the body, certificate credentials, pool, genesis and governance
@@ -13,7 +13,7 @@ adds the auxiliary native and Plutus scripts, and chunked metadata. The chunked 
 keeps are also present: Plutus `Data` in a witness datum, a redeemer and the content of an inline
 datum, and metadata byte and text strings.
 
-`reference.json` is what the unchanged released decoders of cardano-ledger
+The verdict (`accepted` and the `failure` text) is what the unchanged released decoders of cardano-ledger
 `f649f9751074d2ab3de033fc3912f29c9862c1f5` did with each: `decodeFullAnnotator` at the era's decoder
 version (Shelley 2, Allegra 3, Mary 4, Alonzo 5, Babbage 7, Conway 9), with the complete failure text.
 Below version 12 `decodeBytes` and `decodeByteArray` read a definite string only
@@ -25,9 +25,10 @@ version: those 17 cases are accepted, and the metadata bound of 64 bytes holds f
 (3 refusals with `bytestring exceeds 64 bytes` or `text exceeds 64 bytes`). In all, 223 accepted and
 221 refused.
 `provenance.json` records the package versions and the hashes of the decoder sources, harness,
-generator and both fixtures.
+generator, the corpus, and the two files of the harness (its input array and its output, which the
+generator merges into `cases.jsonl`).
 
-`cases.json` names for every refusal `rule` (a fragment of the reference failure) and `expect` (the
+`cases.jsonl` names for every refusal `rule` (a fragment of the reference failure) and `expect` (the
 Scarab error case: `IndefiniteLength` for a chunked string, `NumberOutOfRange` for the metadata
 bound). `DefiniteBytesReferenceSuite` requires the same verdict, and for an acceptance that the
 retained bytes (and so the transaction id) are the original ones.
