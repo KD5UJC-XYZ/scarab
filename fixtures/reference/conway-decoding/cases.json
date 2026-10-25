@@ -1996,5 +1996,689 @@
   "rule": "does not match the total count that was decoded",
   "expect": "DuplicateElement",
   "bytes": "84a30081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d40a10382494e4d01000022220011494e4d01000022220011f5f6"
+ },
+ {
+  "id": "conway-output-byron-address-with-a-valid-checksum",
+  "name": "conway output: Byron address with a valid checksum",
+  "era": "conway",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582b82d818582183581c11111111111111111111111111111111111111111111111111111111a0001a4e47c4741a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-with-a-wrong-checksum",
+  "name": "conway output: Byron address with a wrong checksum",
+  "era": "conway",
+  "kind": "body",
+  "rule": "was not the computed one",
+  "expect": "CrcMismatch",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582b82d818582183581c11111111111111111111111111111111111111111111111111111111a0001a4e47c4751a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-followed-by-a-byte",
+  "name": "conway output: Byron address followed by a byte",
+  "era": "conway",
+  "kind": "body",
+  "rule": "DecoderErrorLeftover",
+  "expect": "Syntax",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582c82d818582183581c11111111111111111111111111111111111111111111111111111111a0001a4e47c474001a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-header-kind-8-that-is-no-byron-envelope",
+  "name": "conway output: header kind 8 that is no Byron envelope",
+  "era": "conway",
+  "kind": "body",
+  "rule": "Unused bits are not suppose to be set",
+  "expect": "AddressHeader",
+  "bytes": "a3008182582011111111111111111111111111111111111111111111111111111111111111110001818244830000001a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-header-kind-8-truncated",
+  "name": "conway output: header kind 8 truncated",
+  "era": "conway",
+  "kind": "body",
+  "rule": "expected tag",
+  "expect": "Syntax",
+  "bytes": "a300818258201111111111111111111111111111111111111111111111111111111111111111000181824282001a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-with-a-valid-checksum",
+  "name": "babbage output: Byron address with a valid checksum",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582b82d818582183581c11111111111111111111111111111111111111111111111111111111a0001a4e47c4741a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-with-a-wrong-checksum",
+  "name": "babbage output: Byron address with a wrong checksum",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "was not the computed one",
+  "expect": "CrcMismatch",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582b82d818582183581c11111111111111111111111111111111111111111111111111111111a0001a4e47c4751a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-followed-by-a-byte",
+  "name": "babbage output: Byron address followed by a byte",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "DecoderErrorLeftover",
+  "expect": "Syntax",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582c82d818582183581c11111111111111111111111111111111111111111111111111111111a0001a4e47c474001a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-header-kind-8-that-is-no-byron-envelope",
+  "name": "babbage output: header kind 8 that is no Byron envelope",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "Unused bits are not suppose to be set",
+  "expect": "AddressHeader",
+  "bytes": "a3008182582011111111111111111111111111111111111111111111111111111111111111110001818244830000001a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-header-kind-8-truncated",
+  "name": "babbage output: header kind 8 truncated",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "expected tag",
+  "expect": "Syntax",
+  "bytes": "a300818258201111111111111111111111111111111111111111111111111111111111111111000181824282001a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-tag-24-with-a-wide-head",
+  "name": "conway output: Byron address, tag 24 with a wide head",
+  "era": "conway",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582c82d90018582183581c11111111111111111111111111111111111111111111111111111111a0001a4e47c4741a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-payload-length-with-a-wide-head",
+  "name": "conway output: Byron address, payload length with a wide head",
+  "era": "conway",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582c82d81859002183581c11111111111111111111111111111111111111111111111111111111a0001a4e47c4741a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-crc-with-a-wide-head",
+  "name": "conway output: Byron address, crc with a wide head",
+  "era": "conway",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582f82d818582183581c11111111111111111111111111111111111111111111111111111111a0001b000000004e47c4741a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-body-list-with-a-wide-head",
+  "name": "conway output: Byron address, body list with a wide head",
+  "era": "conway",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582c82d81858229803581c11111111111111111111111111111111111111111111111111111111a0001a21b3cd0d1a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-root-length-with-a-wide-head",
+  "name": "conway output: Byron address, root length with a wide head",
+  "era": "conway",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582c82d81858228359001c11111111111111111111111111111111111111111111111111111111a0001a14cde8db1a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-attribute-map-with-a-wide-key-and-length",
+  "name": "conway output: Byron address, attribute map with a wide key and length",
+  "era": "conway",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583182d818582783581c11111111111111111111111111111111111111111111111111111111b8011801424101001ac3b1ae4d1a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-derivation-path-and-network-magic",
+  "name": "conway output: Byron address, derivation path and network magic",
+  "era": "conway",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583482d818582a83581c11111111111111111111111111111111111111111111111111111111a201434201020242182a001ae76190751a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-unknown-attribute-kept-with-a-wide-length",
+  "name": "conway output: Byron address, unknown attribute kept with a wide length",
+  "era": "conway",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583082d818582683581c11111111111111111111111111111111111111111111111111111111a10558020102001a4f54efbe1a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-redeem-type",
+  "name": "conway output: Byron address, redeem type",
+  "era": "conway",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582b82d818582183581c11111111111111111111111111111111111111111111111111111111a0021aa049a5581a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-indefinite-payload-bytes",
+  "name": "conway output: Byron address, indefinite payload bytes",
+  "era": "conway",
+  "kind": "body",
+  "rule": "expected bytes",
+  "expect": "IndefiniteLength",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582d82d8185f582183581c11111111111111111111111111111111111111111111111111111111a000ff1a4e47c4741a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-indefinite-body-list",
+  "name": "conway output: Byron address, indefinite body list",
+  "era": "conway",
+  "kind": "body",
+  "rule": "expected list len",
+  "expect": "IndefiniteLength",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582c82d81858229f581c11111111111111111111111111111111111111111111111111111111a000ff1ae0fa206b1a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-indefinite-root-bytes",
+  "name": "conway output: Byron address, indefinite root bytes",
+  "era": "conway",
+  "kind": "body",
+  "rule": "expected string",
+  "expect": "IndefiniteLength",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582d82d8185823835f581c11111111111111111111111111111111111111111111111111111111ffa0001ab51d9ac81a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-indefinite-attribute-map",
+  "name": "conway output: Byron address, indefinite attribute map",
+  "era": "conway",
+  "kind": "body",
+  "rule": "expected map len",
+  "expect": "IndefiniteLength",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583182d818582783581c11111111111111111111111111111111111111111111111111111111bf0143420102ff001ac12c75801a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-indefinite-attribute-value",
+  "name": "conway output: Byron address, indefinite attribute value",
+  "era": "conway",
+  "kind": "body",
+  "rule": "expected bytes",
+  "expect": "IndefiniteLength",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583082d818582683581c11111111111111111111111111111111111111111111111111111111a1055f4101ff001ad5c75b8d1a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-attribute-keys-descending",
+  "name": "conway output: Byron address, attribute keys descending",
+  "era": "conway",
+  "kind": "body",
+  "rule": "Canonicity violation while decoding Map",
+  "expect": "Expected",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583482d818582a83581c11111111111111111111111111111111111111111111111111111111a20242182a0143420102001abfdc885f1a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-attribute-key-repeated",
+  "name": "conway output: Byron address, attribute key repeated",
+  "era": "conway",
+  "kind": "body",
+  "rule": "Canonicity violation while decoding Map",
+  "expect": "Expected",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583482d818582a83581c11111111111111111111111111111111111111111111111111111111a2014342010201424103001a87ea60711a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-attribute-key-256",
+  "name": "conway output: Byron address, attribute key 256",
+  "era": "conway",
+  "kind": "body",
+  "rule": "expected word8",
+  "expect": "NumberOutOfRange",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583082d818582683581c11111111111111111111111111111111111111111111111111111111a11901004101001afffd966c1a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-attribute-key-above-word32",
+  "name": "conway output: Byron address, attribute key above Word32",
+  "era": "conway",
+  "kind": "body",
+  "rule": "expected word8",
+  "expect": "NumberOutOfRange",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583682d818582c83581c11111111111111111111111111111111111111111111111111111111a11b00000001000000014101001a6e85a16d1a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-type-with-a-wide-head",
+  "name": "conway output: Byron address, type with a wide head",
+  "era": "conway",
+  "kind": "body",
+  "rule": "non-canonical word8",
+  "expect": "Expected",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582c82d818582283581c11111111111111111111111111111111111111111111111111111111a018001a073f85351a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-type-1",
+  "name": "conway output: Byron address, type 1",
+  "era": "conway",
+  "kind": "body",
+  "rule": "Found unknown tag 1 while decoding AddrType",
+  "expect": "UnknownTag",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582b82d818582183581c11111111111111111111111111111111111111111111111111111111a0011a3940f4e21a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-type-3",
+  "name": "conway output: Byron address, type 3",
+  "era": "conway",
+  "kind": "body",
+  "rule": "Found unknown tag 3 while decoding AddrType",
+  "expect": "UnknownTag",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582b82d818582183581c11111111111111111111111111111111111111111111111111111111a0031ad74e95ce1a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-type-256",
+  "name": "conway output: Byron address, type 256",
+  "era": "conway",
+  "kind": "body",
+  "rule": "expected word8",
+  "expect": "NumberOutOfRange",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582d82d818582383581c11111111111111111111111111111111111111111111111111111111a01901001a9c6f4f5d1a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-derivation-path-with-a-wide-length",
+  "name": "conway output: Byron address, derivation path with a wide length",
+  "era": "conway",
+  "kind": "body",
+  "rule": "non-canonical length prefix",
+  "expect": "Expected",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583182d818582783581c11111111111111111111111111111111111111111111111111111111a1014458020102001a2ea967451a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-derivation-path-indefinite",
+  "name": "conway output: Byron address, derivation path indefinite",
+  "era": "conway",
+  "kind": "body",
+  "rule": "expected bytes",
+  "expect": "IndefiniteLength",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583282d818582883581c11111111111111111111111111111111111111111111111111111111a101455f420102ff001aa43f6dc21a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-derivation-path-that-is-no-byte-string",
+  "name": "conway output: Byron address, derivation path that is no byte string",
+  "era": "conway",
+  "kind": "body",
+  "rule": "expected bytes",
+  "expect": "Expected",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582e82d818582483581c11111111111111111111111111111111111111111111111111111111a1014107001a5052e04c1a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-derivation-path-followed-by-a-byte",
+  "name": "conway output: Byron address, derivation path followed by a byte",
+  "era": "conway",
+  "kind": "body",
+  "rule": "Found unexpected leftover bytes while decoding HDAddressPayload",
+  "expect": "Syntax",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583082d818582683581c11111111111111111111111111111111111111111111111111111111a10143410100001a78629e6a1a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-network-magic-with-a-wide-head",
+  "name": "conway output: Byron address, network magic with a wide head",
+  "era": "conway",
+  "kind": "body",
+  "rule": "non-canonical word32",
+  "expect": "Expected",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583282d818582883581c11111111111111111111111111111111111111111111111111111111a102451a00000005001a027d40eb1a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-network-magic-above-word32",
+  "name": "conway output: Byron address, network magic above Word32",
+  "era": "conway",
+  "kind": "body",
+  "rule": "expected word32",
+  "expect": "NumberOutOfRange",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583682d818582c83581c11111111111111111111111111111111111111111111111111111111a102491b0000000100000000001a5a76499d1a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-root-of-27-bytes",
+  "name": "conway output: Byron address, root of 27 bytes",
+  "era": "conway",
+  "kind": "body",
+  "rule": "Bytes not expected length",
+  "expect": "ByteLength",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582a82d818582083581b111111111111111111111111111111111111111111111111111111a0001ad207c5ed1a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-root-of-29-bytes",
+  "name": "conway output: Byron address, root of 29 bytes",
+  "era": "conway",
+  "kind": "body",
+  "rule": "Bytes not expected length",
+  "expect": "ByteLength",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582c82d818582283581d1111111111111111111111111111111111111111111111111111111111a0001a1e6530081a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-under-the-header-byte-0x81",
+  "name": "conway output: Byron address under the header byte 0x81",
+  "era": "conway",
+  "kind": "body",
+  "rule": "Unused bits are not suppose to be set",
+  "expect": "AddressHeader",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582b81d818582183581c11111111111111111111111111111111111111111111111111111111a0001a4e47c4741a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-under-the-header-byte-0x83",
+  "name": "conway output: Byron address under the header byte 0x83",
+  "era": "conway",
+  "kind": "body",
+  "rule": "Unused bits are not suppose to be set",
+  "expect": "AddressHeader",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582b83d818582183581c11111111111111111111111111111111111111111111111111111111a0001a4e47c4741a001e8480021a00030d40"
+ },
+ {
+  "id": "conway-output-byron-address-under-the-header-byte-0x8f",
+  "name": "conway output: Byron address under the header byte 0x8f",
+  "era": "conway",
+  "kind": "body",
+  "rule": "Unused bits are not suppose to be set",
+  "expect": "AddressHeader",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582b8fd818582183581c11111111111111111111111111111111111111111111111111111111a0001a4e47c4741a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-tag-24-with-a-wide-head",
+  "name": "babbage output: Byron address, tag 24 with a wide head",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582c82d90018582183581c11111111111111111111111111111111111111111111111111111111a0001a4e47c4741a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-payload-length-with-a-wide-head",
+  "name": "babbage output: Byron address, payload length with a wide head",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582c82d81859002183581c11111111111111111111111111111111111111111111111111111111a0001a4e47c4741a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-crc-with-a-wide-head",
+  "name": "babbage output: Byron address, crc with a wide head",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582f82d818582183581c11111111111111111111111111111111111111111111111111111111a0001b000000004e47c4741a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-body-list-with-a-wide-head",
+  "name": "babbage output: Byron address, body list with a wide head",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582c82d81858229803581c11111111111111111111111111111111111111111111111111111111a0001a21b3cd0d1a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-root-length-with-a-wide-head",
+  "name": "babbage output: Byron address, root length with a wide head",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582c82d81858228359001c11111111111111111111111111111111111111111111111111111111a0001a14cde8db1a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-attribute-map-with-a-wide-key-and-length",
+  "name": "babbage output: Byron address, attribute map with a wide key and length",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583182d818582783581c11111111111111111111111111111111111111111111111111111111b8011801424101001ac3b1ae4d1a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-derivation-path-and-network-magic",
+  "name": "babbage output: Byron address, derivation path and network magic",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583482d818582a83581c11111111111111111111111111111111111111111111111111111111a201434201020242182a001ae76190751a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-unknown-attribute-kept-with-a-wide-length",
+  "name": "babbage output: Byron address, unknown attribute kept with a wide length",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583082d818582683581c11111111111111111111111111111111111111111111111111111111a10558020102001a4f54efbe1a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-redeem-type",
+  "name": "babbage output: Byron address, redeem type",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582b82d818582183581c11111111111111111111111111111111111111111111111111111111a0021aa049a5581a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-indefinite-payload-bytes",
+  "name": "babbage output: Byron address, indefinite payload bytes",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "expected bytes",
+  "expect": "IndefiniteLength",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582d82d8185f582183581c11111111111111111111111111111111111111111111111111111111a000ff1a4e47c4741a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-indefinite-body-list",
+  "name": "babbage output: Byron address, indefinite body list",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "expected list len",
+  "expect": "IndefiniteLength",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582c82d81858229f581c11111111111111111111111111111111111111111111111111111111a000ff1ae0fa206b1a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-indefinite-root-bytes",
+  "name": "babbage output: Byron address, indefinite root bytes",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "expected string",
+  "expect": "IndefiniteLength",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582d82d8185823835f581c11111111111111111111111111111111111111111111111111111111ffa0001ab51d9ac81a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-indefinite-attribute-map",
+  "name": "babbage output: Byron address, indefinite attribute map",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "expected map len",
+  "expect": "IndefiniteLength",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583182d818582783581c11111111111111111111111111111111111111111111111111111111bf0143420102ff001ac12c75801a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-indefinite-attribute-value",
+  "name": "babbage output: Byron address, indefinite attribute value",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "expected bytes",
+  "expect": "IndefiniteLength",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583082d818582683581c11111111111111111111111111111111111111111111111111111111a1055f4101ff001ad5c75b8d1a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-attribute-keys-descending",
+  "name": "babbage output: Byron address, attribute keys descending",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "Canonicity violation while decoding Map",
+  "expect": "Expected",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583482d818582a83581c11111111111111111111111111111111111111111111111111111111a20242182a0143420102001abfdc885f1a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-attribute-key-repeated",
+  "name": "babbage output: Byron address, attribute key repeated",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "Canonicity violation while decoding Map",
+  "expect": "Expected",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583482d818582a83581c11111111111111111111111111111111111111111111111111111111a2014342010201424103001a87ea60711a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-attribute-key-256",
+  "name": "babbage output: Byron address, attribute key 256",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "expected word8",
+  "expect": "NumberOutOfRange",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583082d818582683581c11111111111111111111111111111111111111111111111111111111a11901004101001afffd966c1a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-attribute-key-above-word32",
+  "name": "babbage output: Byron address, attribute key above Word32",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "expected word8",
+  "expect": "NumberOutOfRange",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583682d818582c83581c11111111111111111111111111111111111111111111111111111111a11b00000001000000014101001a6e85a16d1a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-type-with-a-wide-head",
+  "name": "babbage output: Byron address, type with a wide head",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "non-canonical word8",
+  "expect": "Expected",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582c82d818582283581c11111111111111111111111111111111111111111111111111111111a018001a073f85351a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-type-1",
+  "name": "babbage output: Byron address, type 1",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "Found unknown tag 1 while decoding AddrType",
+  "expect": "UnknownTag",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582b82d818582183581c11111111111111111111111111111111111111111111111111111111a0011a3940f4e21a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-type-3",
+  "name": "babbage output: Byron address, type 3",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "Found unknown tag 3 while decoding AddrType",
+  "expect": "UnknownTag",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582b82d818582183581c11111111111111111111111111111111111111111111111111111111a0031ad74e95ce1a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-type-256",
+  "name": "babbage output: Byron address, type 256",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "expected word8",
+  "expect": "NumberOutOfRange",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582d82d818582383581c11111111111111111111111111111111111111111111111111111111a01901001a9c6f4f5d1a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-derivation-path-with-a-wide-length",
+  "name": "babbage output: Byron address, derivation path with a wide length",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "non-canonical length prefix",
+  "expect": "Expected",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583182d818582783581c11111111111111111111111111111111111111111111111111111111a1014458020102001a2ea967451a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-derivation-path-indefinite",
+  "name": "babbage output: Byron address, derivation path indefinite",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "expected bytes",
+  "expect": "IndefiniteLength",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583282d818582883581c11111111111111111111111111111111111111111111111111111111a101455f420102ff001aa43f6dc21a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-derivation-path-that-is-no-byte-string",
+  "name": "babbage output: Byron address, derivation path that is no byte string",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "expected bytes",
+  "expect": "Expected",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582e82d818582483581c11111111111111111111111111111111111111111111111111111111a1014107001a5052e04c1a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-derivation-path-followed-by-a-byte",
+  "name": "babbage output: Byron address, derivation path followed by a byte",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "Found unexpected leftover bytes while decoding HDAddressPayload",
+  "expect": "Syntax",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583082d818582683581c11111111111111111111111111111111111111111111111111111111a10143410100001a78629e6a1a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-network-magic-with-a-wide-head",
+  "name": "babbage output: Byron address, network magic with a wide head",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "non-canonical word32",
+  "expect": "Expected",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583282d818582883581c11111111111111111111111111111111111111111111111111111111a102451a00000005001a027d40eb1a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-network-magic-above-word32",
+  "name": "babbage output: Byron address, network magic above Word32",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "expected word32",
+  "expect": "NumberOutOfRange",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182583682d818582c83581c11111111111111111111111111111111111111111111111111111111a102491b0000000100000000001a5a76499d1a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-root-of-27-bytes",
+  "name": "babbage output: Byron address, root of 27 bytes",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "Bytes not expected length",
+  "expect": "ByteLength",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582a82d818582083581b111111111111111111111111111111111111111111111111111111a0001ad207c5ed1a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-root-of-29-bytes",
+  "name": "babbage output: Byron address, root of 29 bytes",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "Bytes not expected length",
+  "expect": "ByteLength",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582c82d818582283581d1111111111111111111111111111111111111111111111111111111111a0001a1e6530081a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-under-the-header-byte-0x81",
+  "name": "babbage output: Byron address under the header byte 0x81",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "Unused bits are not suppose to be set",
+  "expect": "AddressHeader",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582b81d818582183581c11111111111111111111111111111111111111111111111111111111a0001a4e47c4741a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-under-the-header-byte-0x83",
+  "name": "babbage output: Byron address under the header byte 0x83",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "Unused bits are not suppose to be set",
+  "expect": "AddressHeader",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582b83d818582183581c11111111111111111111111111111111111111111111111111111111a0001a4e47c4741a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-output-byron-address-under-the-header-byte-0x8f",
+  "name": "babbage output: Byron address under the header byte 0x8f",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "Unused bits are not suppose to be set",
+  "expect": "AddressHeader",
+  "bytes": "a30081825820111111111111111111111111111111111111111111111111111111111111111100018182582b8fd818582183581c11111111111111111111111111111111111111111111111111111111a0001a4e47c4741a001e8480021a00030d40"
  }
 ]

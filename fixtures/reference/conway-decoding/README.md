@@ -2,14 +2,23 @@
 
 Status: Current. Evidence for [AUD3-01/#327](https://github.com/KD5UJC-XYZ/scarab/issues/327).
 
-`cases.json` holds 222 original encodings written by `scripts/oracle/conway-decoding/cases.py`:
-147 Conway transaction bodies, 65 Conway witness sets, 4 whole Conway transactions and 6 Babbage
+`cases.json` holds 298 original encodings written by `scripts/oracle/conway-decoding/cases.py`:
+185 Conway transaction bodies, 65 Conway witness sets, 4 whole Conway transactions and 44 Babbage
 bodies. Each case breaks one rule of the reference decoders or keeps a rule the reference tolerates,
 and most sit next to a twin that keeps the rule: repeated or empty sets, ordered sets, maps and
 voting procedures; the tag 258 wrapper; indefinite-length containers; two encodings of one input;
 a zero donation; key 6; empty witness lists; a Plutus script listed twice, and the same script under
 two languages; repeated vkeys, native scripts, datums and redeemer keys, which the reference keeps
-accepting.
+accepting. Ten cases (five per era) put an address of header kind 8 in an output: the reference decodes the whole
+byte string as the CRC-protected Byron `Address` (`decodeBootstrapAddress`, `Cardano/Ledger/Address.hs`) and refuses a
+wrong checksum, a byte after the address, a header that is no Byron envelope and a truncated envelope.
+Sixty-six more (thirty-three per era) pin the rules of the reference's version-1 Byron `Address` decoder
+(`Cardano.Chain.Common.Address`, `AddrAttributes`, `AddrSpendingData`, `Hashing`): the header byte is exactly 0x82;
+indefinite-length bytes, lists and maps are refused; the attribute map is strictly ascending with `Word8` keys; the
+type is a canonical `Word8` of 0 or 2; the derivation path is canonical bytes and the network magic a canonical
+`Word32`; the root is 28 bytes. Nine accepted twins keep what the reference tolerates in the envelope: wide heads of the
+tag, the payload length, the checksum, the body list, the root length and the attribute map and key, an unknown
+attribute, and the redeem type.
 
 The ordered sets are judged on the decoded elements under the reference's derived `Ord` (`OSet`,
 `Data/OSet/Strict.hs:71-75, 109-116`; `StakePoolParams` and `PoolMetadata`, `State/StakePool.hs:293-297,

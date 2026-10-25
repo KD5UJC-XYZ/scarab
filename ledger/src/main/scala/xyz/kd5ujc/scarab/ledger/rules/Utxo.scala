@@ -186,7 +186,9 @@ object Utxo
     * bytes (`validateOutputBootAddrAttrsTooBig`, `Babbage/Rules/Utxo.hs:392`) and its network is
     * the one of the ledger (`validateWrongNetwork`, `Babbage/Rules/Utxo.hs:397`, which takes the
     * network of a bootstrap address from its attributes, `getNetwork`). The Shelley addresses are
-    * checked by [[TxChecks.outputsOk]]; an address that does not parse is not checked here.
+    * checked by [[TxChecks.outputsOk]]. A Byron-kind address has been decoded in full when its
+    * output was ([[Address.decode]]), so the decode below succeeds for every output of a decoded
+    * transaction.
     */
   private[ledger] def bootstrapOutputs(
       network: Int,

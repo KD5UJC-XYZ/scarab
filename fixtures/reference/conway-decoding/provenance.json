@@ -47,12 +47,12 @@
     }
   },
   "harnessSha256": "bfb45c453f16726765809651d438e1c1a7d0be5a2fadf5d662b10a25bc64e07c",
-  "generatorSha256": "24bf714024bb7928e1354164086906263209d96715045b42d5c5738714b51db3",
-  "casesSha256": "2c92c9e9a105d80fb8dddd416578e216861f3d0c0f172d95bc51b10fb647694f",
-  "referenceSha256": "7f61d753263a3e60b164977cfe79b95a3151b5a9e2f83c0251aeff6e6f8e5a62",
-  "cases": 222,
-  "accepted": 112,
-  "refused": 110,
+  "generatorSha256": "111757a72b92406cd537695a23a1d967e591fce2fddaf49648b2c45b2ab0b50c",
+  "casesSha256": "c25a500f8a3d7fa19fedb6a92e604b06b642bd633d753aeaba529f75a1de7eba",
+  "referenceSha256": "1695f43cfeb268d3f15c0f5b9d1c4c0dd9fe613139b3f68b51fe343e160936bf",
+  "cases": 298,
+  "accepted": 132,
+  "refused": 166,
   "originalBytesRetained": true,
   "network": "none",
   "keysRetained": false

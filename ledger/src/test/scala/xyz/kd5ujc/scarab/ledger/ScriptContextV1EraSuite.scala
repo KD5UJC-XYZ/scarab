@@ -34,8 +34,15 @@ class ScriptContextV1EraSuite extends FunSuite:
     (0 until length).map(i => f"${(seed * 31 + i * 7 + 1) & 0xff}%02x").mkString
 
   private val keyAddress = "60" + hash(1, 28)
+  // a bootstrap address, which has no payment key; the decoder reads it in full, checksum included
   private val byronAddress =
-    "82d818" + hash(2, 30) // an array: a Byron address, which has no payment key
+    xyz.kd5ujc.scarab.ledger.byron.ByronAddress
+      .make(
+        xyz.kd5ujc.scarab.ledger.byron.ByronAddress.VerKey,
+        Bytes.fromHex(hash(2, 64)).toOption.get,
+        None
+      )
+      .hex
 
   private def out(
       address: String,

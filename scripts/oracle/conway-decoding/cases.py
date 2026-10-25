@@ -896,6 +896,197 @@ case(
 )
 
 
+# --- output addresses of header kind 8: a Byron address is decoded in full (CRC-protected) --------
+def crc32(b):
+    import zlib
+
+    return zlib.crc32(b) & 0xFFFFFFFF
+
+
+def byron_address(crc_xor=0, trailing=b""):
+    """`[#6.24(bytes .cbor [root, {}, 0]), crc32]` of a made-up root; `crc_xor` damages the checksum."""
+    payload = array([bstr(h(0x11, 28)), cmap([]), uint(0)])
+    return array([tag(24, bstr(payload)), uint(crc32(payload) ^ crc_xor)]) + trailing
+
+
+def byron_output_body(address):
+    return body({1: array([array([bstr(address), uint(2_000_000)])])})
+
+
+for era in ("conway", "babbage"):
+    case(f"{era} output: Byron address with a valid checksum", era, "body", byron_output_body(byron_address()))
+    case(
+        f"{era} output: Byron address with a wrong checksum",
+        era,
+        "body",
+        byron_output_body(byron_address(crc_xor=1)),
+        "was not the computed one",
+        "CrcMismatch",
+    )
+    case(
+        f"{era} output: Byron address followed by a byte",
+        era,
+        "body",
+        byron_output_body(byron_address(trailing=b"\x00")),
+        "DecoderErrorLeftover",
+        "Syntax",
+    )
+    case(
+        f"{era} output: header kind 8 that is no Byron envelope",
+        era,
+        "body",
+        byron_output_body(b"\x83\x00\x00\x00"),
+        "Unused bits are not suppose to be set",
+        "AddressHeader",
+    )
+    case(
+        f"{era} output: header kind 8 truncated",
+        era,
+        "body",
+        byron_output_body(b"\x82\x00"),
+        "expected tag",
+        "Syntax",
+    )
+
+
+# --- Byron addresses: what the reference's version-1 decoder refuses and what it keeps ----------
+def ibstr(b):
+    """An indefinite-length byte string of one chunk."""
+    return b"\x5f" + bstr(b) + b"\xff"
+
+
+def attrs(pairs, indef=False):
+    """An attribute map; `pairs` are (encoded key, encoded value) so a case can write either badly."""
+    return cmap(pairs, indef=indef)
+
+
+def path_attr(path=b"\x01\x02", wide=False):
+    """Attribute 1: a byte string that holds the CBOR of the derivation path (a byte string)."""
+    inner = head(2, len(path), 1) + path if wide else bstr(path)
+    return (uint(1), bstr(inner))
+
+
+def magic_attr(magic=42, width=None):
+    """Attribute 2: a byte string that holds the CBOR of the network magic (a Word32)."""
+    return (uint(2), bstr(uint(magic, width)))
+
+
+def byron_payload(root=None, attr=None, kind=None, parts=None):
+    root = bstr(h(0x11, 28)) if root is None else root
+    attr = cmap([]) if attr is None else attr
+    kind = uint(0) if kind is None else kind
+    return array([root, attr, kind]) if parts is None else parts
+
+
+def byron_envelope(payload, tag_head=None, payload_item=None, crc=None, outer=None, trailing=b""):
+    """The Byron `Address`: `[#6.24(bytes .cbor payload), crc32]`."""
+    item = bstr(payload) if payload_item is None else payload_item
+    tagged = (tag_head if tag_head is not None else head(6, 24)) + item
+    checksum = uint(crc32(payload)) if crc is None else crc
+    return (outer if outer is not None else b"\x82") + tagged + checksum + trailing
+
+
+def byron_address_from(**parts):
+    return byron_envelope(byron_payload(**parts))
+
+
+BYRON_ACCEPTED = (
+    ("tag 24 with a wide head", byron_envelope(byron_payload(), tag_head=b"\xd9\x00\x18")),
+    (
+        "payload length with a wide head",
+        byron_envelope(byron_payload(), payload_item=head(2, len(byron_payload()), 2) + byron_payload()),
+    ),
+    ("crc with a wide head", byron_envelope(byron_payload(), crc=uint(crc32(byron_payload()), 8))),
+    (
+        "body list with a wide head",
+        byron_address_from(parts=array([bstr(h(0x11, 28)), cmap([]), uint(0)], width=1)),
+    ),
+    ("root length with a wide head", byron_address_from(root=head(2, 28, 2) + h(0x11, 28))),
+    (
+        "attribute map with a wide key and length",
+        byron_address_from(attr=head(5, 1, 1) + uint(1, 1) + bstr(bstr(b"\x01"))),
+    ),
+    ("derivation path and network magic", byron_address_from(attr=attrs([path_attr(), magic_attr()]))),
+    (
+        "unknown attribute kept with a wide length",
+        byron_address_from(attr=attrs([(uint(5), head(2, 2, 1) + b"\x01\x02")])),
+    ),
+    ("redeem type", byron_address_from(kind=uint(2))),
+)
+
+BYRON_REFUSED = (
+    ("indefinite payload bytes", byron_envelope(byron_payload(), payload_item=ibstr(byron_payload()))),
+    (
+        "indefinite body list",
+        byron_address_from(parts=b"\x9f" + bstr(h(0x11, 28)) + cmap([]) + uint(0) + b"\xff"),
+    ),
+    ("indefinite root bytes", byron_address_from(root=ibstr(h(0x11, 28)))),
+    ("indefinite attribute map", byron_address_from(attr=attrs([path_attr()], indef=True))),
+    ("indefinite attribute value", byron_address_from(attr=attrs([(uint(5), ibstr(b"\x01"))]))),
+    ("attribute keys descending", byron_address_from(attr=attrs([magic_attr(), path_attr()]))),
+    ("attribute key repeated", byron_address_from(attr=attrs([path_attr(), path_attr(b"\x03")]))),
+    ("attribute key 256", byron_address_from(attr=attrs([(uint(256), bstr(b"\x01"))]))),
+    ("attribute key above Word32", byron_address_from(attr=attrs([(uint(2**32 + 1), bstr(b"\x01"))]))),
+    ("type with a wide head", byron_address_from(kind=uint(0, 1))),
+    ("type 1", byron_address_from(kind=uint(1))),
+    ("type 3", byron_address_from(kind=uint(3))),
+    ("type 256", byron_address_from(kind=uint(256))),
+    ("derivation path with a wide length", byron_address_from(attr=attrs([path_attr(wide=True)]))),
+    ("derivation path indefinite", byron_address_from(attr=attrs([(uint(1), bstr(ibstr(b"\x01\x02")))]))),
+    ("derivation path that is no byte string", byron_address_from(attr=attrs([(uint(1), bstr(uint(7)))]))),
+    (
+        "derivation path followed by a byte",
+        byron_address_from(attr=attrs([(uint(1), bstr(bstr(b"\x01") + b"\x00"))])),
+    ),
+    ("network magic with a wide head", byron_address_from(attr=attrs([magic_attr(5, 4)]))),
+    ("network magic above Word32", byron_address_from(attr=attrs([magic_attr(2**32, 8)]))),
+    ("root of 27 bytes", byron_address_from(root=bstr(h(0x11, 27)))),
+    ("root of 29 bytes", byron_address_from(root=bstr(h(0x11, 29)))),
+)
+
+BYRON_REFUSAL = {
+    "indefinite payload bytes": ("expected bytes", "IndefiniteLength"),
+    "indefinite body list": ("expected list len", "IndefiniteLength"),
+    "indefinite root bytes": ("expected string", "IndefiniteLength"),
+    "indefinite attribute map": ("expected map len", "IndefiniteLength"),
+    "indefinite attribute value": ("expected bytes", "IndefiniteLength"),
+    "attribute keys descending": ("Canonicity violation while decoding Map", "Expected"),
+    "attribute key repeated": ("Canonicity violation while decoding Map", "Expected"),
+    "attribute key 256": ("expected word8", "NumberOutOfRange"),
+    "attribute key above Word32": ("expected word8", "NumberOutOfRange"),
+    "type with a wide head": ("non-canonical word8", "Expected"),
+    "type 1": ("Found unknown tag 1 while decoding AddrType", "UnknownTag"),
+    "type 3": ("Found unknown tag 3 while decoding AddrType", "UnknownTag"),
+    "type 256": ("expected word8", "NumberOutOfRange"),
+    "derivation path with a wide length": ("non-canonical length prefix", "Expected"),
+    "derivation path indefinite": ("expected bytes", "IndefiniteLength"),
+    "derivation path that is no byte string": ("expected bytes", "Expected"),
+    "derivation path followed by a byte": ("Found unexpected leftover bytes while decoding HDAddressPayload", "Syntax"),
+    "network magic with a wide head": ("non-canonical word32", "Expected"),
+    "network magic above Word32": ("expected word32", "NumberOutOfRange"),
+    "root of 27 bytes": ("Bytes not expected length", "ByteLength"),
+    "root of 29 bytes": ("Bytes not expected length", "ByteLength"),
+}
+
+BYRON_HEADERS = (("0x81", b"\x81"), ("0x83", b"\x83"), ("0x8f", b"\x8f"))
+
+for era in ("conway", "babbage"):
+    for label, address in BYRON_ACCEPTED:
+        case(f"{era} output: Byron address, {label}", era, "body", byron_output_body(address))
+    for label, address in BYRON_REFUSED:
+        rule, expect = BYRON_REFUSAL[label]
+        case(f"{era} output: Byron address, {label}", era, "body", byron_output_body(address), rule, expect)
+    for label, outer in BYRON_HEADERS:
+        case(
+            f"{era} output: Byron address under the header byte {label}",
+            era,
+            "body",
+            byron_output_body(byron_envelope(byron_payload(), outer=outer)),
+            "Unused bits are not suppose to be set",
+            "AddressHeader",
+        )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True)

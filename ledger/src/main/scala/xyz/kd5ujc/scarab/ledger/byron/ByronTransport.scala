@@ -102,33 +102,8 @@ object ByronTransport:
       _ <- lovelace(amount)
     yield ()
 
-  private def address(node: Node): Result[Unit] =
-    for
-      outer <- tuple(node, 2, DecodeField.Address)
-      inner <- nested(outer(0), DecodeField.Address)
-      _ <- word(outer(1), 32, DecodeField.AddressCRC)
-      fields <- tuple(inner, 3, DecodeField.AddressPayload)
-      _ <- fixedBytes(fields(0), 28, DecodeField.AddressRoot)
-      attrs <- attributes(fields(1), DecodeField.AddressAttributes)
-      _ <- attrs.traverse_ { (key, value) =>
-        if key == 1 || key == 2 then
-          CborRead
-            .bytes(value, DecodeField.AddressAttribute)
-            .flatMap(CborRead.decode(_, ByronCbor.BodyLimits))
-            .flatMap { payload =>
-              if key == 1 then canonicalBytes(payload, DecodeField.DerivationPath)
-              else canonicalWord(payload, 32, DecodeField.NetworkMagic).void
-            }
-        else Right(())
-      }
-      tag <- canonicalWord(fields(2), 8, DecodeField.AddressType)
-      _ <- Either.cond(
-        tag == 0 || tag == 2,
-        (),
-        LedgerDecodeError.UnknownTag(DecodeField.Address, tag)
-      )
-      _ <- ByronAddress.decode(node.original).void
-    yield ()
+  /** The address is read as the reference reads it, in full ([[ByronAddress.decode]]). */
+  private def address(node: Node): Result[Unit] = ByronAddress.decode(node.original).void
 
   private def delegation(node: Node): Result[Unit] =
     for
@@ -258,7 +233,7 @@ object ByronTransport:
       case values        => Left(LedgerDecodeError.AtMostOne(context, values.size))
     }
 
-  private def attributes(node: Node, context: DecodeSite): Result[Vector[(BigInt, Node)]] =
+  private[byron] def attributes(node: Node, context: DecodeSite): Result[Vector[(BigInt, Node)]] =
     for
       entries <- map(node, context)
       values <- entries.traverse { (key, value) =>
@@ -302,7 +277,7 @@ object ByronTransport:
   private def text(node: Node, context: DecodeSite): Result[String] =
     definite(node, context) *> CborRead.text(node, context)
 
-  private def canonicalWord(node: Node, bits: Int, context: DecodeSite): Result[BigInt] =
+  private[byron] def canonicalWord(node: Node, bits: Int, context: DecodeSite): Result[BigInt] =
     word(node, bits, context).flatMap(n =>
       Either.cond(
         node.original == ByronCbor.uint(n),
@@ -315,7 +290,7 @@ object ByronTransport:
       )
     )
 
-  private def canonicalBytes(node: Node, context: DecodeSite): Result[Unit] =
+  private[byron] def canonicalBytes(node: Node, context: DecodeSite): Result[Unit] =
     bytes(node) *> CborRead.bytes(node, context).flatMap { value =>
       val size = value.size
       val expected =
@@ -421,7 +396,7 @@ object ByronTransport:
         values.traverse_(element)
     }
 
-  private def tuple(node: Node, size: Int, context: DecodeSite): Result[Vector[Node]] =
+  private[byron] def tuple(node: Node, size: Int, context: DecodeSite): Result[Vector[Node]] =
     definite(node, context) *> CborRead.arrayN(node, size, context)
 
   private def map(node: Node, context: DecodeSite): Result[Vector[(Node, Node)]] =
@@ -430,7 +405,7 @@ object ByronTransport:
   private def bytes(node: Node): Result[Unit] =
     definite(node, DecodeField.ByronBytes) *> CborRead.bytes(node, DecodeField.ByronBytes).void
 
-  private def word(node: Node, bits: Int, context: DecodeSite): Result[BigInt] =
+  private[byron] def word(node: Node, bits: Int, context: DecodeSite): Result[BigInt] =
     CborRead.uint(node, context).flatMap { value =>
       val maximum = (BigInt(1) << bits) - 1
       Either.cond(
@@ -440,7 +415,7 @@ object ByronTransport:
       )
     }
 
-  private def definite(node: Node, context: DecodeSite): Result[Unit] =
+  private[byron] def definite(node: Node, context: DecodeSite): Result[Unit] =
     Either.cond(
       node.original.size > 0 && (node.original(0) & 31) != 31,
       (),

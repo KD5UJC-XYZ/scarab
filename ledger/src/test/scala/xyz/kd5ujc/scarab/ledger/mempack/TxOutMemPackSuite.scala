@@ -10,6 +10,7 @@ import org.scalacheck.Prop.forAll
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{CborRead, Datum, ScriptKind, TxOut, Value}
+import xyz.kd5ujc.scarab.ledger.byron.ByronAddress
 import xyz.kd5ujc.scarab.ledger.state.{
   Allegra,
   Alonzo,
@@ -431,8 +432,11 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
     yield Bytes.fromArray(Array((0x40 | net).toByte)) ++ pay ++ Bytes.fromArray(
       Array(slot.toByte, tx.toByte, cert.toByte)
     ),
-    for body <- Gen.choose(20, 60).flatMap(genBytes)
-    yield Bytes.fromArray(Array(0x82.toByte)) ++ body
+    // a bootstrap address, which the decoder reads in full (envelope and checksum)
+    for
+      key <- genBytes(64)
+      magic <- Gen.option(Gen.choose(0L, 0xffffffffL))
+    yield ByronAddress.make(ByronAddress.VerKey, key, magic)
   )
 
   private val genCoin: Gen[BigInt] = Gen.oneOf(

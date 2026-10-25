@@ -8,6 +8,7 @@ import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.GenDelegPair
+import xyz.kd5ujc.scarab.ledger.byron.ByronCbor
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
@@ -508,7 +509,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       Vector(0xa0, 0x00).map(_.toByte)
     val byron = Bytes(
       Vector(0x82, 0xd8, 0x18, 0x58, payload.size).map(_.toByte) ++ payload ++
-        Vector(0x1a, 0, 0, 0, 0).map(_.toByte)
+        ByronCbor.uint(ByronCbor.crc32(Bytes(payload))).value
     )
     val address = Address.decode(byron).fold(e => fail(e.toString), identity)
     assertEquals(address.kind, Address.Kind.Byron(witness.addressRoot))

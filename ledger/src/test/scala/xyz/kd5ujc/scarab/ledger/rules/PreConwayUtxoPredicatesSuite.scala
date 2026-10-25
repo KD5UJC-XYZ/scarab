@@ -29,9 +29,11 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
   private def bootstrap(size: Int, magic: Option[Long], derivation: Boolean = false): Address =
     val payload = Bytes(Vector.fill(size)(2.toByte))
     val attribute = if derivation then ByronCbor.bytes(payload) else payload
-    val fields = Vector(
-      ByronCbor.uint(if derivation then 1 else 5) ++ ByronCbor.bytes(attribute)
-    ) ++ magic.toVector.map(m => ByronCbor.uint(2) ++ ByronCbor.bytes(ByronCbor.uint(m)))
+    // the reference reads the attributes in strictly ascending key order
+    val fields = (
+      Vector((if derivation then 1 else 5) -> ByronCbor.bytes(attribute)) ++
+        magic.toVector.map(m => 2 -> ByronCbor.bytes(ByronCbor.uint(m)))
+    ).sortBy(_._1).map((key, value) => ByronCbor.uint(key) ++ value)
     val attributes = ByronCbor.of(0xa0 + fields.size) ++ fields.foldLeft(Bytes.empty)(_ ++ _)
     val key = Bytes(Vector.fill(64)(1.toByte))
     val body = ByronCbor.concat(

@@ -1884,5 +1884,669 @@
    "accepted": false,
    "failure": "DecoderErrorDeserialiseFailure \"Conway Tx\" (DeserialiseFailure 108 \"Final number of elements: 1 does not match the total count that was decoded: 2\")"
   }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address with a valid checksum",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address with a wrong checksum",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 87 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 43 \\\"decodeCrcProtected, expected CRC 1313326197 was not the computed one, which was 1313326196\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address followed by a byte",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 88 \"DecoderErrorLeftover \\\"Address\\\" \\\"\\\\NUL\\\"\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: header kind 8 that is no Byron envelope",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 47 \"Decoding Shelley Address: Invalid header. Unused bits are not suppose to be set: 0b10000011\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: header kind 8 truncated",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 45 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 1 \\\"expected tag\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address with a valid checksum",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address with a wrong checksum",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 87 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 43 \\\"decodeCrcProtected, expected CRC 1313326197 was not the computed one, which was 1313326196\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address followed by a byte",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 88 \"DecoderErrorLeftover \\\"Address\\\" \\\"\\\\NUL\\\"\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: header kind 8 that is no Byron envelope",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 47 \"Decoding Shelley Address: Invalid header. Unused bits are not suppose to be set: 0b10000011\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: header kind 8 truncated",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 45 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 1 \\\"expected tag\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, tag 24 with a wide head",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, payload length with a wide head",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, crc with a wide head",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, body list with a wide head",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, root length with a wide head",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, attribute map with a wide key and length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, derivation path and network magic",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, unknown attribute kept with a wide length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, redeem type",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, indefinite payload bytes",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 89 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 3 \\\"expected bytes\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, indefinite body list",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 88 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 44 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 0 \\\\\\\"expected list len\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, indefinite root bytes",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 89 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 45 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 1 \\\\\\\"expected string\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, indefinite attribute map",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 93 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 49 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 31 \\\\\\\"expected map len\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, indefinite attribute value",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 92 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 48 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 33 \\\\\\\"expected bytes\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, attribute keys descending",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 96 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 52 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 41 \\\\\\\"Canonicity violation while decoding Map\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, attribute key repeated",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 96 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 52 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 41 \\\\\\\"Canonicity violation while decoding Map\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, attribute key 256",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 92 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 48 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 32 \\\\\\\"expected word8\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, attribute key above Word32",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 98 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 54 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 32 \\\\\\\"expected word8\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, type with a wide head",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 88 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 44 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 32 \\\\\\\"non-canonical word8\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, type 1",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 87 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 43 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 33 \\\\\\\"Found unknown tag 1 while decoding AddrType\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, type 3",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 87 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 43 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 33 \\\\\\\"Found unknown tag 3 while decoding AddrType\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, type 256",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 89 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 45 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 32 \\\\\\\"expected word8\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, derivation path with a wide length",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 93 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 49 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 38 \\\\\\\"Deserialisation failure while decoding HDAddressPayload.\\\\\\\\nCBOR failed with error: DeserialiseFailure 0 \\\\\\\\\\\\\\\"non-canonical length prefix\\\\\\\\\\\\\\\"\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, derivation path indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 94 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 50 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 39 \\\\\\\"Deserialisation failure while decoding HDAddressPayload.\\\\\\\\nCBOR failed with error: DeserialiseFailure 0 \\\\\\\\\\\\\\\"expected bytes\\\\\\\\\\\\\\\"\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, derivation path that is no byte string",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 90 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 46 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 35 \\\\\\\"Deserialisation failure while decoding HDAddressPayload.\\\\\\\\nCBOR failed with error: DeserialiseFailure 0 \\\\\\\\\\\\\\\"expected bytes\\\\\\\\\\\\\\\"\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, derivation path followed by a byte",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 92 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 48 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 37 \\\\\\\"Found unexpected leftover bytes while decoding HDAddressPayload./nLeftover: \\\\\\\\\\\\\\\"\\\\\\\\\\\\\\\\NUL\\\\\\\\\\\\\\\"\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, network magic with a wide head",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 94 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 50 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 39 \\\\\\\"Deserialisation failure while decoding NetworkMagic.\\\\\\\\nCBOR failed with error: DeserialiseFailure 0 \\\\\\\\\\\\\\\"non-canonical word32\\\\\\\\\\\\\\\"\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, network magic above Word32",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 98 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 54 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 43 \\\\\\\"Deserialisation failure while decoding NetworkMagic.\\\\\\\\nCBOR failed with error: DeserialiseFailure 0 \\\\\\\\\\\\\\\"expected word32\\\\\\\\\\\\\\\"\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, root of 27 bytes",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 86 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 42 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 30 \\\\\\\"An error occured while decoding AbstractHash.\\\\\\\\nError: Bytes not expected length\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address, root of 29 bytes",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 88 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 44 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 32 \\\\\\\"An error occured while decoding AbstractHash.\\\\\\\\nError: Bytes not expected length\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address under the header byte 0x81",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 87 \"Decoding Shelley Address: Invalid header. Unused bits are not suppose to be set: 0b10000001\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address under the header byte 0x83",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 87 \"Decoding Shelley Address: Invalid header. Unused bits are not suppose to be set: 0b10000011\")"
+  }
+ },
+ {
+  "era": "conway",
+  "kind": "body",
+  "name": "conway output: Byron address under the header byte 0x8f",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Conway TxBody\" (DeserialiseFailure 87 \"Decoding Shelley Address: Invalid header. Unused bits are not suppose to be set: 0b10001111\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, tag 24 with a wide head",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, payload length with a wide head",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, crc with a wide head",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, body list with a wide head",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, root length with a wide head",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, attribute map with a wide key and length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, derivation path and network magic",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, unknown attribute kept with a wide length",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, redeem type",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, indefinite payload bytes",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 89 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 3 \\\"expected bytes\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, indefinite body list",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 88 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 44 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 0 \\\\\\\"expected list len\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, indefinite root bytes",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 89 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 45 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 1 \\\\\\\"expected string\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, indefinite attribute map",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 93 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 49 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 31 \\\\\\\"expected map len\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, indefinite attribute value",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 92 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 48 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 33 \\\\\\\"expected bytes\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, attribute keys descending",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 96 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 52 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 41 \\\\\\\"Canonicity violation while decoding Map\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, attribute key repeated",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 96 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 52 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 41 \\\\\\\"Canonicity violation while decoding Map\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, attribute key 256",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 92 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 48 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 32 \\\\\\\"expected word8\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, attribute key above Word32",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 98 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 54 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 32 \\\\\\\"expected word8\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, type with a wide head",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 88 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 44 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 32 \\\\\\\"non-canonical word8\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, type 1",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 87 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 43 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 33 \\\\\\\"Found unknown tag 1 while decoding AddrType\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, type 3",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 87 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 43 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 33 \\\\\\\"Found unknown tag 3 while decoding AddrType\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, type 256",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 89 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 45 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 32 \\\\\\\"expected word8\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, derivation path with a wide length",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 93 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 49 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 38 \\\\\\\"Deserialisation failure while decoding HDAddressPayload.\\\\\\\\nCBOR failed with error: DeserialiseFailure 0 \\\\\\\\\\\\\\\"non-canonical length prefix\\\\\\\\\\\\\\\"\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, derivation path indefinite",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 94 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 50 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 39 \\\\\\\"Deserialisation failure while decoding HDAddressPayload.\\\\\\\\nCBOR failed with error: DeserialiseFailure 0 \\\\\\\\\\\\\\\"expected bytes\\\\\\\\\\\\\\\"\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, derivation path that is no byte string",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 90 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 46 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 35 \\\\\\\"Deserialisation failure while decoding HDAddressPayload.\\\\\\\\nCBOR failed with error: DeserialiseFailure 0 \\\\\\\\\\\\\\\"expected bytes\\\\\\\\\\\\\\\"\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, derivation path followed by a byte",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 92 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 48 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 37 \\\\\\\"Found unexpected leftover bytes while decoding HDAddressPayload./nLeftover: \\\\\\\\\\\\\\\"\\\\\\\\\\\\\\\\NUL\\\\\\\\\\\\\\\"\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, network magic with a wide head",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 94 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 50 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 39 \\\\\\\"Deserialisation failure while decoding NetworkMagic.\\\\\\\\nCBOR failed with error: DeserialiseFailure 0 \\\\\\\\\\\\\\\"non-canonical word32\\\\\\\\\\\\\\\"\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, network magic above Word32",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 98 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 54 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 43 \\\\\\\"Deserialisation failure while decoding NetworkMagic.\\\\\\\\nCBOR failed with error: DeserialiseFailure 0 \\\\\\\\\\\\\\\"expected word32\\\\\\\\\\\\\\\"\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, root of 27 bytes",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 86 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 42 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 30 \\\\\\\"An error occured while decoding AbstractHash.\\\\\\\\nError: Bytes not expected length\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address, root of 29 bytes",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 88 \"DecoderErrorDeserialiseFailure \\\"Address\\\" (DeserialiseFailure 44 \\\"Deserialisation failure while decoding ((AbstractHash Blake2b_224 Address'),(Attributes AddrAttributes),AddrType).\\\\nCBOR failed with error: DeserialiseFailure 32 \\\\\\\"An error occured while decoding AbstractHash.\\\\\\\\nError: Bytes not expected length\\\\\\\"\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address under the header byte 0x81",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 87 \"Decoding Shelley Address: Invalid header. Unused bits are not suppose to be set: 0b10000001\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address under the header byte 0x83",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 87 \"Decoding Shelley Address: Invalid header. Unused bits are not suppose to be set: 0b10000011\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage output: Byron address under the header byte 0x8f",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 87 \"Decoding Shelley Address: Invalid header. Unused bits are not suppose to be set: 0b10001111\")"
+  }
  }
 ]

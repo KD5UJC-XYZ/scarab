@@ -188,7 +188,19 @@ object Address:
       else if era.ordinal < Era.Conway.ordinal then Rigorous
       else Strict
 
-  /** The address in `raw`. A Shelley address of an era that drops trailing bytes
+  /** The first byte of a bootstrap address, exactly: `headerByron = 0b10000010` and
+    * `isByronAddress` is an equality test (`Cardano/Ledger/Address.hs`, cardano-ledger-core
+    * 1.21.0.0). Any other header of kind 8 is read on the Shelley path, which has no such kind and
+    * fails.
+    */
+  private val ByronHeader = 0x82
+
+  /** The address in `raw`. A Byron-kind address (header byte 0x82) is decoded as the reference
+    * decodes a bootstrap address, over the whole byte string in every era
+    * (`decodeBootstrapAddress`, `Cardano/Ledger/Address.hs`, which runs `decodeFull'` of the Byron
+    * `Address`, cardano-ledger-core 1.21.0.0): the CBOR envelope, the CRC-32 of the payload and the
+    * payload itself must all read ([[byron.ByronAddress.decode]]), and the failure is the typed
+    * cause of that decoder. A Shelley address of an era that drops trailing bytes
     * ([[Mode.CoinOnly]], [[Mode.Backwards]]) is cut where the reference cuts it: [[Address.raw]] is
     * the address without the bytes after it, as the reference keeps it in the UTxO
     * (`UnsafeCompactAddr sbsCropped`); the output that carried it keeps its own bytes. A pointer
@@ -248,26 +260,9 @@ object Address:
             kept <- own(29, DecodeField.EnterpriseAddressLength)
             p <- payment
           yield Address(kept, Kind.Shelley(network, p, None, None))
-        case 8 => Right(Address(raw, Kind.Byron(byronRoot(raw))))
+        case 8 if header == ByronHeader =>
+          byron.ByronAddress.decode(raw).map(b => Address(raw, Kind.Byron(b.root)))
         case _ => Left(LedgerDecodeError.AddressHeader(header))
-
-  /** `[#6.24(bytes .cbor [root, attributes, type]), crc32]`: the root, or empty if malformed. */
-  private def byronRoot(raw: Bytes): Bytes =
-    val parsed = for
-      outer <- CborRead.decode(raw)
-      parts <- CborRead.arrayN(outer, 2, DecodeField.BootstrapAddress)
-      payload <- parts(0).value match
-        case xyz.kd5ujc.scarab.codec.Value.Tag(t, inner) if t == 24 =>
-          CborRead.bytes(inner, DecodeField.BootstrapPayload)
-        case _ =>
-          Left(LedgerDecodeError.ExpectedTag(DecodeField.BootstrapPayload, 24, parts(0).value))
-      body <- CborRead.decode(payload)
-      fields <- CborRead.array(body, DecodeField.BootstrapAddressPayload)
-      root <- fields.headOption
-        .toRight(LedgerDecodeError.Empty(DecodeField.BootstrapAddressPayload))
-        .flatMap(CborRead.bytesN(_, 28, DecodeField.BootstrapRoot))
-    yield root
-    parsed.getOrElse(Bytes.empty)
 
   /** Byron bootstrap address root for a genesis non-AVVM balance is the address itself. */
   def byronGenesisTxId(raw: Bytes): Bytes = Blake2b.hash256.hash(raw)

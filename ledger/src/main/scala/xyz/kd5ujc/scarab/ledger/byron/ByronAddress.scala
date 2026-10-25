@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger.byron
 
 import xyz.kd5ujc.scarab.ledger.{DecodeField, DecodeSite, LedgerDecodeError}
-import xyz.kd5ujc.scarab.ledger.DecodeSite.Qualifier
 import cats.syntax.all.*
 import java.util.zip.CRC32
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -108,18 +107,18 @@ object ByronAddress:
     val spending = ByronCbor.concat(ByronCbor.of(0x82, addrType), ByronCbor.bytes(key))
     ByronCbor.addressHash(ByronCbor.concat(ByronCbor.of(0x83, addrType), spending, attributes))
 
-  /** The attribute map of an address (or a transaction): numeric key to byte string. */
+  /** The attribute map of an address or a transaction: numeric key to byte string. The reference
+    * reads it with `decodeMapSkel` at `byronProtVer` (`Cardano.Chain.Common.Attributes`,
+    * `Decoder.hs`): a definite map whose keys are `Word8` and strictly ascending (a repeated or
+    * descending key is a canonicity violation) and whose values are definite byte strings.
+    */
   private def attributeFields(
       n: Node,
       what: DecodeSite
   ): Either[LedgerDecodeError, Vector[(BigInt, Bytes)]] =
-    CborRead
-      .map(n, what)
-      .flatMap(
-        _.traverse((k, v) =>
-          (CborRead.uint(k, what / Qualifier.Key), CborRead.bytes(v, what)).tupled
-        )
-      )
+    ByronTransport
+      .attributes(n, what)
+      .flatMap(_.traverse((k, v) => CborRead.bytes(v, what).map(k -> _)))
 
   /** The total length of the values of attributes the ledger does not interpret. */
   private def unknownLength(fields: Vector[(BigInt, Bytes)], known: Set[Int]): Int =
@@ -129,15 +128,25 @@ object ByronAddress:
   def attributesLength(n: Node, what: DecodeSite): Either[LedgerDecodeError, Int] =
     attributeFields(n, what).map(unknownLength(_, Set.empty))
 
+  /** The Byron `Address` as the reference reads it at `byronProtVer` (`decodeFullDecoder`, version
+    * 1: definite lengths only; cardano-ledger f649f975, `Cardano.Chain.Common.Address`,
+    * `AddrAttributes`, `AddrSpendingData`, `Hashing`): `[#6.24(bytes .cbor [root, attributes,
+    * type]), crc32]` with a 28-byte root, strictly ascending `Word8` attribute keys, a canonical
+    * derivation path (attribute 1), a canonical `Word32` network magic (attribute 2), a canonical
+    * `Word8` type that is 0 or 2, and no byte after the address. The reference keeps any width of
+    * the integers and lengths of the envelope (the tag, the payload length, the checksum, the list,
+    * map and key heads), and so does this reader.
+    */
   def decode(raw: Bytes): Either[LedgerDecodeError, ByronAddress] =
     for
       root <- CborRead.decode(raw, limits)
-      outer <- CborRead.arrayN(root, 2, DecodeField.ByronAddress)
+      outer <- ByronTransport.tuple(root, 2, DecodeField.ByronAddress)
       payload <- outer(0).value match
         case Value.Tag(t, inner) if t == 24 =>
-          CborRead.bytes(inner, DecodeField.ByronAddressPayload)
+          ByronTransport.definite(inner, DecodeField.ByronAddressPayload) *>
+            CborRead.bytes(inner, DecodeField.ByronAddressPayload)
         case _ => Left(LedgerDecodeError.ExpectedTag(DecodeField.ByronAddress, 24, outer(0).value))
-      crc <- CborRead.uint(outer(1), DecodeField.ByronAddressCrc)
+      crc <- ByronTransport.word(outer(1), 32, DecodeField.ByronAddressCrc)
       _ <- Either.cond(
         crc == BigInt(ByronCbor.crc32(payload)),
         (),
@@ -145,36 +154,32 @@ object ByronAddress:
       )
       parts <- CborRead
         .decode(payload, limits)
-        .flatMap(CborRead.arrayN(_, 3, DecodeField.ByronAddressBody))
-      addrRoot <- CborRead.bytesN(parts(0), 28, DecodeField.ByronAddressRoot)
+        .flatMap(ByronTransport.tuple(_, 3, DecodeField.ByronAddressBody))
+      addrRoot <- ByronTransport.definite(parts(0), DecodeField.ByronAddressRoot) *>
+        CborRead.bytesN(parts(0), 28, DecodeField.ByronAddressRoot)
       fields <- attributeFields(parts(1), DecodeField.ByronAddressAttributes)
-      ty <- CborRead.uint(parts(2), DecodeField.ByronAddressType).map(_.toInt)
-      _ <- Either.cond(
-        ty == VerKey || ty == Redeem,
-        (),
-        LedgerDecodeError.UnknownTag(DecodeField.ByronAddress, ty)
-      )
       magic <- fields.find(_._1 == 2).traverse { (_, v) =>
         CborRead
           .decode(v, limits)
-          .flatMap(CborRead.uint(_, DecodeField.NetworkMagic))
-          .flatMap(n =>
-            Either.cond(
-              n < (BigInt(1) << 32),
-              n,
-              LedgerDecodeError
-                .NumberOutOfRange(DecodeField.NetworkMagic, n, 0, (BigInt(1) << 32) - 1)
-            )
-          )
+          .flatMap(ByronTransport.canonicalWord(_, 32, DecodeField.NetworkMagic))
           .map(_.toLong)
       }
       // the derivation path is a byte string, itself the content of the attribute's byte string
       derivationPath <- fields.find(_._1 == 1).traverse { (_, v) =>
         CborRead
           .decode(v, limits)
-          .flatMap(CborRead.bytes(_, DecodeField.DerivationPath))
+          .flatMap(n =>
+            ByronTransport.canonicalBytes(n, DecodeField.DerivationPath) *>
+              CborRead.bytes(n, DecodeField.DerivationPath)
+          )
           .map(_.size)
       }
+      ty <- ByronTransport.canonicalWord(parts(2), 8, DecodeField.ByronAddressType).map(_.toInt)
+      _ <- Either.cond(
+        ty == VerKey || ty == Redeem,
+        (),
+        LedgerDecodeError.UnknownTag(DecodeField.ByronAddress, ty)
+      )
     yield ByronAddress(
       raw,
       addrRoot,
