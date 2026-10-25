@@ -79,7 +79,7 @@ were not regenerated here.
 | org.http4s:http4s-dsl_3 | 0.23.37 | Apache-2.0 | direct |  |
 | org.http4s:http4s-circe_3 | 0.23.37 | Apache-2.0 | direct |  |
 | org.bouncycastle:bcprov-jdk18on | 1.86 | Bouncy Castle Licence (MIT-style) | direct | The jar carries META-INF/LICENSE.md. |
-| com.weavechain:curve25519-elisabeth | 0.1.3 | MIT | direct | The jar carries no licence file; further MIT, CC0 and BSD-3-Clause notices of adapted components are recorded in the project README (not verified here). |
+| com.weavechain:curve25519-elisabeth | 0.1.3 | MIT | direct | The jar carries no licence file. Its upstream `LICENSE` (MIT, with the CC0 eddsa-java statement and the BSD-3-Clause curve25519-dalek notice) is `crypto/licenses/LICENSE-curve25519-elisabeth`; source and verification under [curve25519-elisabeth provenance](#curve25519-elisabeth-provenance). |
 | org.typelevel:cats-kernel_3 | 2.13.0 | MIT | direct |  |
 | co.fs2:fs2-core_3 | 3.14.0 | MIT | direct |  |
 | co.fs2:fs2-io_3 | 3.14.0 | MIT | direct |  |
@@ -135,6 +135,52 @@ docker run --rm --user 1000:1000 -e HOME=/work/.cache/home -v "$PWD":/work -w /w
 
 then read the POM `<licenses>` of each jar in `node/target/runtime-classpath.txt`. Re-run it whenever
 dependency versions in `build.sbt` change, and update `NOTICE` and this file together.
+## curve25519-elisabeth provenance
+
+`com.weavechain:curve25519-elisabeth:0.1.3` (#199) was traced on 2026-10-25 from the jar to its source
+and to the components its `LICENSE` and README name.
+
+| Item | Identity |
+|---|---|
+| Jar (Maven Central, as in the Coursier cache) | 52,823 bytes, SHA-256 `256048db6904c00832ab6045c624c69844d7617f719e3cd446691257aab8ffcb`, SHA-1 `918d9db1face8ef8ad5ceb33664399a8a4701e45` (equal to Central's `.sha1`) |
+| POM | SHA-256 `d51e81c745e08d206c2f174dba2027cae08057633a23fda45f6a7c632601f11a`; licence "MIT License"; SCM github.com/weavechain/curve25519-elisabeth; developer Jack Grigg |
+| Sources jar (Central) | SHA-256 `6259b983a6368c4a39eb39f3db1e78193ba9b82da5d7ec6ea42ccc5514328dda`, SHA-1 `6a2869613b6d618289d4a1dcbf0340005f9caf56` (equal to Central's `.sha1`) |
+| Source revision | weavechain/curve25519-elisabeth `81bd79dbd0b323e5fc5729bca883d124b95b4e54` (2023-06-14, "Package update, namespace change for publishing"), the only commit whose `build.gradle.kts` says `version = "0.1.3"`. The repository has no tags. |
+| Fork base | cryptography-cafe/curve25519-elisabeth `26c014bda6cf87498b9180e8b2ec8024fdb95e80` (2022-06-19, its last commit), an ancestor of `81bd79d` |
+
+How the jar was matched to the revision:
+
+- The sources jar holds the same 17 Java files as `src/main/java` at `81bd79d` (without `module-info.java`,
+  which the build compiles separately), identical apart from CRLF line endings.
+- `81bd79d` compiled with `javac -g --release 11` (JDK 21.0.11, the `scarab-jdk:local` image; the original
+  toolchain is not recorded) gives the jar's 22 classes. 18 are byte-identical. The other four
+  (`EdwardsPoint`, `FieldElement`, `RistrettoElement`, `Scalar`) have the same `javap -v -c -p -l`
+  output outside the constant pool and the same set of pool entries, in a different order (the
+  string-concatenation bootstrap entries). The jar's classes are class-file version 55 (Java 11), as the
+  build file sets. The jar's `.asc` signature on Central was not checked against a trusted key.
+
+Licence notices, each checked at its source:
+
+| Component | What is used | Licence | Source checked |
+|---|---|---|---|
+| curve25519-elisabeth | the library | MIT, Copyright (c) 2019 Jack Grigg | `LICENSE` at `81bd79d` (blob `685a9b1291cddff06d38ab3d8520633822acb3fd`, unchanged since cryptography-cafe `77969505e166e1d6d06ec80f8d47df6caa845937`, 2019-03-16); every source file except `StrUtils.java` (no header) carries "Copyright (c) 2019 Jack Grigg, See LICENSE". Weavechain's changes in `81bd79d` (namespace; `Scalar.square`, `invert` and `divide`) add no notice of their own. |
+| eddsa-java (str4d/ed25519-java) | field and scalar arithmetic, point decompression and `Scalar` radix/NAF code ("Extracted from ed25519-java, License: CC0" in the cafe commits of 2019-02-03 to 2019-02-05) | CC0 1.0 | `LICENSE.txt` at `901aec0383938a0d9992649231af7dd7ccd2b387`, the last commit before 2019-02-03 (blob `bb127922f0790edfc6f0269d191a082478571be0`, unchanged since 2016). CC0 asks for no notice. |
+| ref10 (SUPERCOP Ed25519) | the origin of eddsa-java's arithmetic | public domain | eddsa-java's README; ed25519.cr.yp.to/software.html: "The Ed25519 software is in the public domain." |
+| curve25519-dalek | `UnpackedScalar` (radix-2^29 Montgomery scalar arithmetic, cafe commit `e4e2354`, 2019-02-13), and test vectors that are not in the jar | BSD-3-Clause, Copyright (c) 2016-2018 Isis Agora Lovecruft, Henry de Valence | elisabeth's `LICENSE` reproduces lines 1 to 28 of dalek's `LICENSE` at tag `1.0.3` (`9cd4551b40a7328eed18717b527bc8ba9331fa27`, blob `d94fdb512eaab593968ff565e62f20b2c8787975`) word for word. That file goes on with a notice for parts derived from Adam Langley's Go ed25519 (agl/ed25519). That notice does not apply here: the ported code is dalek's `src/backend/u32/scalar.rs`, and agl/ed25519 at `5312a61534124124185d41f09206b9fef1d88403` has only ref10's radix-2^21 `ScMulAdd`/`ScReduce`, no Montgomery scalar code. |
+
+The full text, with all three notices, is `crypto/licenses/LICENSE-curve25519-elisabeth`. `NOTICE`
+names it. The assembly JAR packages only this repository's `LICENSE` and `NOTICE`
+(`META-INF/scarab/`), so packaging the third-party licence texts with a binary stays with the release
+work (#75).
+
+Maintenance, as of 2026-10-25: neither repository is archived. Central has 0.1.2 to 0.1.5, the last
+published on 2023-08-06. weavechain's last commit (2025-03-07) sets version 0.1.7, which was never
+published. The 0.1.4 and 0.1.5 releases add Straus and Pippenger multiscalar multiplication, which
+Scarab does not use. The pin stays at 0.1.3: it is traced to source, reproduces from it, and is the
+version the Ed25519 and VRF differential corpora were recorded against (`StrictEd25519Suite`,
+`StrictEd25519DifferentialSuite`, the VRF suites of `crypto`). Any change of version has to keep those
+corpora unchanged.
+
 
 ## Name and trademark wording
 
