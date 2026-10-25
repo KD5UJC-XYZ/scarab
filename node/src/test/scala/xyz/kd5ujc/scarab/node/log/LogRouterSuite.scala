@@ -28,14 +28,34 @@ class LogRouterSuite extends CatsEffectSuite:
       .parse(many.view.mapValues(_.last).toMap, many)
       .fold(_.problem, s => fail(s"accepted: $s"))
 
-  test("no flag: every line as JSON on stdout, nothing else") {
+  test("no flag: every line of the node and the libraries' from Info, as JSON on stdout") {
     val s = settings()
     assertEquals(s.sinks, List(Sink.Stdout -> Format.Json))
+    val (library, own) = EventKind.values.toList.partition(_.area == Area.Library)
+    assertEquals(library, List(EventKind.Slf4j))
+    List(Sink.Stdout, Sink.File).foreach { sink =>
+      assertEquals(own.map(s.threshold(sink, _)).distinct, List(Threshold.AtLeast(Severity.Debug)))
+      assertEquals(library.map(s.threshold(sink, _)), List(Threshold.AtLeast(Severity.Info)))
+    }
     assertEquals(
-      EventKind.values.toList.map(s.threshold(Sink.Stdout, _)).distinct,
-      List(Threshold.AtLeast(Severity.Debug))
+      EventKind.values.toList.map(s.threshold(Sink.Stderr, _)).distinct,
+      List(Threshold.AtLeast(Severity.Warning))
     )
     assertEquals(EventKind.values.toList.flatMap(s.sampling(Sink.Stdout, _)), Nil)
+  }
+
+  test("any namespace that covers the libraries' lines replaces their Info default") {
+    val debug = Threshold.AtLeast(Severity.Debug)
+    List("*=Debug", "Library=Debug", "Library.Slf4j=Debug").foreach { flag =>
+      val s = settings("log-severity" -> flag)
+      Sink.values.foreach(sink => assertEquals(s.threshold(sink, EventKind.Slf4j), debug, flag))
+    }
+    val one = settings("log-severity" -> "stdout:Library=Debug")
+    assertEquals(one.threshold(Sink.Stdout, EventKind.Slf4j), debug)
+    assertEquals(one.threshold(Sink.File, EventKind.Slf4j), Threshold.AtLeast(Severity.Info))
+    assertEquals(one.threshold(Sink.Stderr, EventKind.Slf4j), Threshold.AtLeast(Severity.Warning))
+    val node = settings("log-severity" -> "Chain=Info")
+    assertEquals(node.threshold(Sink.Stdout, EventKind.Slf4j), Threshold.AtLeast(Severity.Info))
   }
 
   test("the most specific namespace that sets a threshold or a sampling wins") {
@@ -207,11 +227,7 @@ class LogRouterSuite extends CatsEffectSuite:
   test("SLF4J finds the node's backend, and a library's line goes to the sinks as Library.Slf4j") {
     tempDir.flatMap { dir =>
       val file = dir.resolve("node.jsonl")
-      val s = settings(
-        "log-stdout" -> "off",
-        "log-file" -> file.toString,
-        "log-severity" -> "Library=Info"
-      )
+      val s = settings("log-stdout" -> "off", "log-file" -> file.toString)
       LogRouter
         .resource[IO](s)
         .use { _ =>
@@ -219,14 +235,35 @@ class LogRouterSuite extends CatsEffectSuite:
             val logger = org.slf4j.LoggerFactory.getLogger("org.http4s.test")
             logger.debug("not kept")
             logger.warn("hello {}", "world")
+            logger.isDebugEnabled
           }
         }
-        .map { _ =>
+        .map { debugEnabled =>
           assert(org.slf4j.LoggerFactory.getLogger("any").isInstanceOf[LibraryLogger])
+          assert(!debugEnabled, "a library's Debug is off by default")
           val kept = lines(file).flatMap(parse(_).toOption).map(_.hcursor)
           assertEquals(kept.flatMap(_.get[String]("message").toOption), List("hello world"))
           assertEquals(kept.flatMap(_.get[String]("level").toOption), List("Warning"))
           assertEquals(kept.flatMap(_.get[String]("logger").toOption), List("org.http4s.test"))
+        }
+    }
+  }
+
+  test("a namespace set to Debug keeps a library's Debug lines") {
+    tempDir.flatMap { dir =>
+      val file = dir.resolve("node.jsonl")
+      val s = settings(
+        "log-stdout" -> "off",
+        "log-file" -> file.toString,
+        "log-severity" -> "Library.Slf4j=Debug"
+      )
+      LogRouter
+        .resource[IO](s)
+        .use(_ => IO.blocking(org.slf4j.LoggerFactory.getLogger("org.xbill.DNS").debug("kept")))
+        .map { _ =>
+          val kept = lines(file).flatMap(parse(_).toOption).map(_.hcursor)
+          assertEquals(kept.flatMap(_.get[String]("message").toOption), List("kept"))
+          assertEquals(kept.flatMap(_.get[String]("level").toOption), List("Debug"))
         }
     }
   }

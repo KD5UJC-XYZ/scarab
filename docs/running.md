@@ -964,8 +964,8 @@ Every line the node writes is a typed event (roadmap J3a, [#92](https://github.c
 [ADR 0014](adr/0014-typed-log.md)): it has a kind, a **namespace** `Area.Kind` (`Chain.Extended`) and a
 **severity** (`Debug`, `Info`, `Notice`, `Warning`, `Error`, `Critical`, `Alert`, `Emergency`, the levels of the
 Haskell node's trace-dispatcher). The JSON line is `{"event": ..., "at": ..., <fields>}`, the `event` being the
-kind's name (`extended`); the catalogue below lists every kind. **Without a `--log-*` flag the log is what it always
-was**: every line, as JSON, on stdout, and nothing on stderr. The scenarios of `devnet.py` and the run watchers parse
+kind's name (`extended`); the catalogue below lists every kind. **Without a `--log-*` flag** every line of the node
+goes, as JSON, to stdout, the libraries' lines (`Library`) from `Info` up, and nothing goes to stderr. The scenarios of `devnet.py` and the run watchers parse
 these lines; the field names and values are fixed by a golden (`fixtures/log/golden.jsonl`, `LogGoldenSuite`).
 
 | Flag | Default | Meaning |
@@ -976,7 +976,7 @@ these lines; the field names and values are fixed by a golden (`fixtures/log/gol
 | `--log-file-format json\|human` | `json` | with `--log-file` |
 | `--log-file-size N[K\|M\|G]` | `100M` | with `--log-file`: the size at which the file turns over (powers of 1024, at least `1K`); a line is never split |
 | `--log-file-keep N` | `10` | with `--log-file`: rotated files kept |
-| `--log-severity [<sink>:]<namespace>=<Severity\|Silence>` | everything (stderr: `Warning`) | repeatable: the least severity `<sink>` (`stdout`, `stderr` or `file`; every sink without the prefix) lets through for `<namespace>`; `Silence` lets nothing through |
+| `--log-severity [<sink>:]<namespace>=<Severity\|Silence>` | everything but `Library`, which is `Info` (stderr: `Warning`) | repeatable: the least severity `<sink>` (`stdout`, `stderr` or `file`; every sink without the prefix) lets through for `<namespace>`; `Silence` lets nothing through |
 | `--log-every [<sink>:]<namespace>=N` | `1` | repeatable: `<sink>` keeps the first line of every `N` of `<namespace>` (one count for the namespace named) |
 
 A namespace is `*` (everything), an area (`Node`, `Chain`, `Ledger`, `Rules`, `Net`, `Mempool`, `Forge`, `Storage`,
@@ -996,6 +996,12 @@ thread):
 The libraries' own logs (http4s, fs2) go through SLF4J to the node's SLF4J backend (`LibraryLogs`, slf4j-api 2.0)
 and from there to the same sinks as `slf4j` lines, namespace `Library.Slf4j`, with the library's level as the
 severity and the logger name in `logger`. There is no "no SLF4J providers" (formerly `StaticLoggerBinder`) warning.
+Without a setting for them, these lines go through from `Info` up ([#112](https://github.com/KD5UJC-XYZ/scarab/issues/112)):
+a library's `Debug` (dnsjava's lookups, the native loader's search) is not formatted at all. This is the fallback when
+no `--log-severity` covers `Library.Slf4j`, as the Haskell node's default configuration keeps its root at `Notice`
+and lowers chosen namespaces only (cardano-node 11.1.3, `Cardano/Node/Tracing/DefaultTraceConfig.hs`). Any setting that covers them
+replaces it: `--log-severity Library=Debug` (or `Library.Slf4j=Debug`, or `*=Debug`) lets them through on every
+sink, `--log-severity file:Library=Debug` on the file only.
 
 **A long run without a shell pipe.** The long runs used to pipe stdout through `tee` (everything to a file) and a
 filter (stdout without the per-block `extended` lines but one in 1000). The node does both itself now, so the run

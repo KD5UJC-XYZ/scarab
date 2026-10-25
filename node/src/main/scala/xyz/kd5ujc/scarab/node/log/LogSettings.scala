@@ -51,8 +51,9 @@ final case class FileSink(path: Path, format: Format, maxBytes: Long, keep: Int)
 /** The log configuration: the sinks, and per sink and namespace the least severity let through and
   * the sampling, one line in `n`.
   *
-  * The defaults are the log as it always was: every line, as JSON, on stdout, and nothing else. The
-  * error stream (stderr) lets through `Warning` and above unless told otherwise.
+  * The defaults: every line of the node, as JSON, on stdout, and nothing else; the libraries' lines
+  * (`Library`) from `Info` up. The error stream (stderr) lets through `Warning` and above unless
+  * told otherwise. [[LogSettings.defaultThreshold]] says why.
   */
 final case class LogSettings(
     stdout: Option[Format] = Some(Format.Json),
@@ -71,7 +72,7 @@ final case class LogSettings(
     Scope
       .of(kind)
       .collectFirstSome(scope => severity.get(sink -> scope))
-      .getOrElse(LogSettings.defaultThreshold(sink))
+      .getOrElse(LogSettings.defaultThreshold(sink, kind.area))
 
   /** The sampling that applies to `kind` on `sink`: the scope that sets it (its lines share one
     * count) and `n`; none when every line goes through.
@@ -85,9 +86,18 @@ final case class LogSettings(
 object LogSettings:
   val default: LogSettings = LogSettings()
 
-  def defaultThreshold(sink: Sink): Threshold = sink match
-    case Sink.Stderr => Threshold.AtLeast(Severity.Warning)
-    case _           => Threshold.AtLeast(Severity.Debug)
+  /** The least severity `sink` lets through for `area` when no `--log-severity` names a scope of
+    * it: `Warning` on stderr; `Info` for the libraries' lines, whose `Debug` (a DNS resolver's
+    * lookups, a native loader's search) is noise to an operator; `Debug` for the node's own. The
+    * Haskell node's default configuration likewise sets its root at `Notice` and lowers chosen
+    * namespaces only (cardano-node 11.1.3, `Cardano/Node/Tracing/DefaultTraceConfig.hs` 15-56). A
+    * fallback, not a setting: any scope that covers the libraries' lines (`*`, `Library`,
+    * `Library.Slf4j`, on every sink or on one) replaces it.
+    */
+  def defaultThreshold(sink: Sink, area: Area): Threshold = (sink, area) match
+    case (Sink.Stderr, _)  => Threshold.AtLeast(Severity.Warning)
+    case (_, Area.Library) => Threshold.AtLeast(Severity.Info)
+    case _                 => Threshold.AtLeast(Severity.Debug)
 
   val DefaultFileBytes: Long = 100L * 1024 * 1024
   val DefaultFileKeep: Int = 10
