@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.mempack
 
-import xyz.kd5ujc.scarab.ledger.DecodeField
+import xyz.kd5ujc.scarab.ledger.{ByteStrings, DecodeField}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.{
@@ -50,6 +50,9 @@ final case class RefScript(kind: ScriptKind, bytes: Bytes)
   * equal to the original's when the original was canonical.
   */
 object TxOutMemPack:
+  // What this reads is stored: the encoding of an output already decoded, or a snapshot's
+  // output. It keeps reading in any form that was stored.
+  private given ByteStrings = ByteStrings.Chunked
 
   /** The output packed, in the format of era `E`. */
   def encode[E <: EraTag](out: TxOut)(using ShelleyBasedEra[E]): Result[Bytes] =

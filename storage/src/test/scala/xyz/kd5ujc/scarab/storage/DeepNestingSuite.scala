@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.ledger.testByteStrings
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Tree, Value as C}
 import xyz.kd5ujc.scarab.ledger.Block

@@ -10,7 +10,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value as CborValue}
 final case class GovActionId(txId: Bytes, index: BigInt)
 
 object GovActionId:
-  def decode(n: Node): Either[LedgerDecodeError, GovActionId] =
+  def decode(n: Node)(using ByteStrings): Either[LedgerDecodeError, GovActionId] =
     CborRead
       .arrayN(n, 2, DecodeField.GovernanceActionId)
       .flatMap(xs =>
@@ -21,7 +21,9 @@ object GovActionId:
           .mapN(GovActionId(_, _))
       )
 
-  private[ledger] def optional(n: Node): Either[LedgerDecodeError, Option[GovActionId]] =
+  private[ledger] def optional(n: Node)(using
+      ByteStrings
+  ): Either[LedgerDecodeError, Option[GovActionId]] =
     n.value match
       case CborValue.Null => Right(None)
       case _              => decode(n).map(Some(_))
@@ -75,7 +77,7 @@ object Voter:
         case Credential.Script(_) => 1
 
   /** `[0, keyhash] / [1, scripthash]` (committee), `[2, ..] / [3, ..]` (DRep), `[4, keyhash]`. */
-  def decode(n: Node): Either[LedgerDecodeError, Voter] =
+  def decode(n: Node)(using ByteStrings): Either[LedgerDecodeError, Voter] =
     CborRead.arrayN(n, 2, DecodeField.Voter).flatMap { xs =>
       (
         CborRead.uint(xs(0), DecodeField.VoterTag).map(_.toInt),
@@ -166,11 +168,13 @@ object Proposal:
       p.anchor
     )
 
-  private def optionalHash(n: Node): Either[LedgerDecodeError, Option[Bytes]] = n.value match
-    case CborValue.Null => Right(None)
-    case _              => CborRead.bytesN(n, 28, DecodeField.PolicyHash).map(Some(_))
+  private def optionalHash(n: Node)(using ByteStrings): Either[LedgerDecodeError, Option[Bytes]] =
+    n.value match
+      case CborValue.Null => Right(None)
+      case _              => CborRead.bytesN(n, 28, DecodeField.PolicyHash).map(Some(_))
 
   def decode(n: Node, version: DecoderVersion): Either[LedgerDecodeError, Proposal] =
+    given ByteStrings = ByteStrings.of(version)
     for
       xs <- CborRead.arrayN(n, 4, DecodeField.ProposalProcedure)
       deposit <- CborRead.uint(xs(0), DecodeField.ProposalDeposit)
@@ -189,7 +193,9 @@ object Proposal:
   ): Either[LedgerDecodeError, Vector[(K, V)]] =
     if version.atLeast(9) then CborRead.unique(kvs.map(_._1), what).as(kvs) else Right(kvs)
 
-  private def action(n: Node, version: DecoderVersion): Either[LedgerDecodeError, GovAction] =
+  private def action(n: Node, version: DecoderVersion)(using
+      ByteStrings
+  ): Either[LedgerDecodeError, GovAction] =
     CborRead.array(n, DecodeField.GovernanceAction).flatMap { xs =>
       for
         tag <- xs.headOption
@@ -271,6 +277,8 @@ object VotingProcedures:
 
   def decode(
       n: Node
+  )(using
+      ByteStrings
   ): Either[DecodeError, Vector[(Voter, Vector[(GovActionId, VotingProcedure)])]] =
     CborRead
       .map(n, DecodeField.VotingProcedures)

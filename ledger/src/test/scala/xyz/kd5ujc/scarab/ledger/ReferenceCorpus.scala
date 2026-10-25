@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import cats.syntax.all.*
-import io.circe.{Decoder, Json}
+import io.circe.{ACursor, Decoder, Json}
 import io.circe.parser.parse
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -10,17 +10,26 @@ import xyz.kd5ujc.scarab.protocol.Era
 
 /** A recorded reference corpus (`fixtures/reference/<name>`): the original encodings of
   * `cases.json` joined with what the unchanged released decoders did with them (`reference.json`),
-  * read once into typed values. The JSON vocabulary (era, kind, the Scarab error case a refusal
-  * must be, the rule of the reference it must be for) is parsed here, at the boundary; a name the
-  * corpus does not know fails the load with a [[ReferenceCorpus.Error]], so the suites that replay
-  * a corpus branch on enums and never on text.
+  * or, for a [[Layout.Lines]] corpus, one `cases.jsonl` whose lines hold both, read once into typed
+  * values. The JSON vocabulary (era, kind, the Scarab error case a refusal must be, the rule of the
+  * reference it must be for) is parsed here, at the boundary; a name the corpus does not know fails
+  * the load with a [[ReferenceCorpus.Error]], so the suites that replay a corpus branch on enums
+  * and never on text.
   */
 private[ledger] object ReferenceCorpus:
 
   /** A recorded corpus: the directory of `fixtures/reference` that holds it. */
-  enum Corpus(val directory: String):
-    case ConwayDecoding extends Corpus("conway-decoding")
-    case PreConwaySets extends Corpus("pre-conway-sets")
+  enum Corpus(val directory: String, val layout: Layout):
+    case ConwayDecoding extends Corpus("conway-decoding", Layout.Pair)
+    case PreConwaySets extends Corpus("pre-conway-sets", Layout.Pair)
+    case DefiniteBytes extends Corpus("definite-bytes", Layout.Lines)
+
+  /** How a corpus is stored: `cases.json` beside `reference.json`, or one `cases.jsonl` with a case
+    * and its verdict (`accepted`, `failure`) on each line.
+    */
+  enum Layout:
+    case Pair
+    case Lines
 
   /** What a case is decoded as. */
   enum Kind(val wire: String):
@@ -51,7 +60,7 @@ private[ledger] object ReferenceCorpus:
 
   object Refusal:
     /** The tag of the case of an error, if the corpus names it; a voting-procedure structure error
-      * is the error of the structure.
+      * and a malformed native script are the error of the structure.
       */
     def of(e: LedgerDecodeError): Option[Refusal] = e match
       case LedgerDecodeError.ArrayLength(_, _, _)         => Some(ArrayLength)
@@ -74,7 +83,8 @@ private[ledger] object ReferenceCorpus:
       case LedgerDecodeError.Zero(_)                      => Some(Zero)
       case LedgerDecodeError.Voting(VotingProcedures.DecodeError.InvalidStructure(cause)) =>
         of(cause)
-      case _ => None
+      case LedgerDecodeError.NativeScript(NativeScript.DecodeError.Malformed(cause)) => of(cause)
+      case _                                                                         => None
 
   /** The rule of the reference a refusal is recorded for, named by the fragment of its failure text
     * that identifies it.
@@ -97,9 +107,9 @@ private[ledger] object ReferenceCorpus:
     case AddressLeftover extends Rule("DecoderErrorLeftover")
     case AddressHeaderBits extends Rule("Unused bits are not suppose to be set")
     case AddressEnvelope extends Rule("expected tag")
-    case AddressExpectedBytes extends Rule("expected bytes")
+    case ExpectedBytes extends Rule("expected bytes")
     case AddressExpectedList extends Rule("expected list len")
-    case AddressExpectedString extends Rule("expected string")
+    case ExpectedString extends Rule("expected string")
     case AddressExpectedMap extends Rule("expected map len")
     case AddressMapCanonicity extends Rule("Canonicity violation while decoding Map")
     case AddressWord8 extends Rule("expected word8")
@@ -118,6 +128,8 @@ private[ledger] object ReferenceCorpus:
     case ExpectedTag extends Rule("Expected tag")
     case RecordSize extends Rule("Size mismatch when decoding Record")
     case ExpectedMap extends Rule("expected map len or indef")
+    case MetadataBytesBound extends Rule("bytestring exceeds 64 bytes")
+    case MetadataTextBound extends Rule("text exceeds 64 bytes")
 
     /** The reference's failure is for this rule. */
     def explains(failure: Failure): Boolean = failure.text.contains(fragment)
@@ -156,34 +168,54 @@ private[ledger] object ReferenceCorpus:
   private def named[A](all: Array[A], wire: A => String, s: String): Option[A] =
     all.find(a => wire(a) == s)
 
+  private def text(corpus: Corpus, file: String): Either[Error, String] =
+    Either
+      .catchNonFatal(Files.readString(Path.of("fixtures", "reference", corpus.directory, file)))
+      .leftMap(e => Error.Unreadable(file, e.getMessage))
+
   private def array(corpus: Corpus, file: String): Either[Error, Vector[Json]] =
     for
-      text <- Either
-        .catchNonFatal(Files.readString(Path.of("fixtures", "reference", corpus.directory, file)))
-        .leftMap(e => Error.Unreadable(file, e.getMessage))
-      json <- parse(text).leftMap(e => Error.Unreadable(file, e.message))
+      content <- text(corpus, file)
+      json <- parse(content).leftMap(e => Error.Unreadable(file, e.message))
       items <- json.asArray.toRight(Error.NotAnArray(file))
     yield items
+
+  private def lines(corpus: Corpus, file: String): Either[Error, Vector[Json]] =
+    text(corpus, file).flatMap(
+      _.linesIterator.toVector
+        .filter(_.nonEmpty)
+        .traverse(l => parse(l).leftMap(e => Error.Unreadable(file, e.message)))
+    )
 
   private def field[A: Decoder](json: Json, id: String, name: String): Either[Error, A] =
     json.hcursor.get[A](name).leftMap(e => Error.Field(id, e.message))
 
-  /** The cases of a corpus, in the order of its `cases.json`. */
+  /** The cases of a corpus, in the order of its `cases.json` or `cases.jsonl`. */
   def load(corpus: Corpus): Either[Error, Vector[Case]] =
     for
-      verdicts <- array(corpus, "reference.json")
-      cases <- array(corpus, "cases.json")
-      byName <- verdicts
-        .traverse(v => field[String](v, "reference", "name").map(_ -> v))
-        .map(_.toMap)
-      rows <- cases.traverse(row(byName, _))
+      rows <- corpus.layout match
+        case Layout.Pair =>
+          for
+            verdicts <- array(corpus, "reference.json")
+            cases <- array(corpus, "cases.json")
+            byName <- verdicts
+              .traverse(v => field[String](v, "reference", "name").map(_ -> v))
+              .map(_.toMap)
+            rows <- cases.traverse(c =>
+              row(c, name => byName.get(name).map(_.hcursor.downField("result")))
+            )
+          yield rows
+        case Layout.Lines =>
+          lines(corpus, "cases.jsonl").flatMap(_.traverse(c => row(c, _ => Some(c.hcursor))))
       _ <- rows
         .groupBy(_.id)
         .collectFirst { case (id, rs) if rs.size > 1 => Error.DuplicateId(id) }
         .toLeft(())
     yield rows
 
-  private def row(verdicts: Map[String, Json], c: Json): Either[Error, Case] =
+  /** The case `c`, with the verdict its name has in `result`: the `accepted` and `failure` fields.
+    */
+  private def row(c: Json, result: String => Option[ACursor]): Either[Error, Case] =
     for
       id <- field[String](c, "case", "id")
       name <- field[String](c, id, "name")
@@ -206,8 +238,7 @@ private[ledger] object ReferenceCorpus:
         .leftMap(e => Error.Field(id, e.message))
       hex <- field[String](c, id, "bytes")
       raw <- Bytes.fromHex(hex).leftMap(_ => Error.BadHex(id))
-      verdict <- verdicts.get(name).toRight(Error.NoVerdict(id, name))
-      result = verdict.hcursor.downField("result")
-      accepted <- result.get[Boolean]("accepted").leftMap(e => Error.Field(id, e.message))
-      failure <- result.get[Option[String]]("failure").leftMap(e => Error.Field(id, e.message))
+      verdict <- result(name).toRight(Error.NoVerdict(id, name))
+      accepted <- verdict.get[Boolean]("accepted").leftMap(e => Error.Field(id, e.message))
+      failure <- verdict.get[Option[String]]("failure").leftMap(e => Error.Field(id, e.message))
     yield Case(id, name, era, kind, expect, rule, size, raw, accepted, failure.map(Failure(_)))

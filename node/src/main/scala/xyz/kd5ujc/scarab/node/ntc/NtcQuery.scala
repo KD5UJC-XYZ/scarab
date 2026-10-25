@@ -6,7 +6,7 @@ import cats.Monad
 import cats.syntax.all.*
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
-import xyz.kd5ujc.scarab.ledger.{Credential, DRep, GovActionId, TxIn}
+import xyz.kd5ujc.scarab.ledger.{ByteStrings, Credential, DRep, GovActionId, TxIn}
 import xyz.kd5ujc.scarab.protocol.NtcVersion
 
 /** The two native `LedgerPeersKind` cases of a peer snapshot query. */
@@ -187,7 +187,10 @@ object NtcQuery:
   private def keyHash(n: Node): R[Bytes] =
     bytes(n, "key hash").filterOrElse(_.size == 28, Error.InvalidHash("key hash"))
 
-  private def txIn(n: Node): R[TxIn] = TxIn.decode(n).leftMap(Error.InvalidTxIn(_))
+  // Query arguments keep reading chunked byte strings until the reference's query decoders are
+  // measured (#437); the decoding oracle reads transactions only.
+  private def txIn(n: Node): R[TxIn] =
+    TxIn.decode(n)(using ByteStrings.Chunked).leftMap(Error.InvalidTxIn(_))
 
   private def drep(n: Node): R[DRep] =
     arr(n, "drep").flatMap { xs =>

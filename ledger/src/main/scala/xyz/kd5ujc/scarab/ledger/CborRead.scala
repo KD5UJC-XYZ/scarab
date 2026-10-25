@@ -21,13 +21,36 @@ private[ledger] object CborRead:
     case Value.NInt(v) => Right(v)
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Integer, n.value))
 
-  def bytes(n: Node, what: DecodeSite): Result[Bytes] = n.value match
-    case Value.ByteString(v) => Right(v)
+  /** A byte string in a form `strings` reads ([[ByteStrings]]): an indefinite (chunked) string,
+    * whose head is `0x5f`, is refused where only a definite one is read. The value is the joined
+    * chunks, and the node keeps its original bytes either way. A node built by hand without
+    * original bytes was not read from a chunked string.
+    */
+  def bytes(n: Node, what: DecodeSite)(using strings: ByteStrings): Result[Bytes] = n.value match
+    case Value.ByteString(v) =>
+      strings match
+        case ByteStrings.Chunked => Right(v)
+        case ByteStrings.Definite =>
+          Either.cond(
+            n.original.size == 0 || (n.original(0) & 0xff) != 0x5f,
+            v,
+            LedgerDecodeError.IndefiniteLength(what)
+          )
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Bytes, n.value))
 
-  def bytesN(n: Node, size: Int, what: DecodeSite): Result[Bytes] =
+  def bytesN(n: Node, size: Int, what: DecodeSite)(using ByteStrings): Result[Bytes] =
     bytes(n, what).flatMap(b =>
       Either.cond(b.size == size, b, LedgerDecodeError.ByteLength(what, size, b.size))
+    )
+
+  /** The item's head is not of indefinite length (additional information 31): a string, array or
+    * map read by a decoder that takes the definite form only (the Byron decoders).
+    */
+  def definite(n: Node, what: DecodeSite): Result[Unit] =
+    Either.cond(
+      n.original.size > 0 && (n.original(0) & 31) != 31,
+      (),
+      LedgerDecodeError.IndefiniteLength(what)
     )
 
   def text(n: Node, what: DecodeSite): Result[String] = n.value match
@@ -178,10 +201,11 @@ private[ledger] object CborRead:
     * definite byte string of any length head or with leading zeros is still a bignum.
     */
   private def integer(n: Node, what: DecodeSite): Result[BigInt] = n.value match
-    case Value.UInt(v) => Right(v)
-    case Value.NInt(v) => Right(v)
+    case Value.UInt(v)                                                     => Right(v)
+    case Value.NInt(v)                                                     => Right(v)
     case Value.Tag(t, inner) if (t == 2 || t == 3) && bignumHead(n, inner) =>
-      bytes(inner, what).map { b =>
+      // cborg's bignum is a definite string in every version; `bignumHead` has checked it.
+      bytes(inner, what)(using ByteStrings.Definite).map { b =>
         val magnitude = BigInt(1, b.toArray)
         if t == 2 then magnitude else -1 - magnitude
       }

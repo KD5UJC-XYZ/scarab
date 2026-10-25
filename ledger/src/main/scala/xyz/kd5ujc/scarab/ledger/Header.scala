@@ -302,5 +302,7 @@ object Header:
           LedgerDecodeError.Expected(DecodeField.Header, LedgerDecodeError.Shape.Unsigned, n.value)
         )
       )
+  // Headers keep reading chunked byte strings until the reference's header decoder is measured
+  // (#437): the decoding oracle reads transactions only.
   private[ledger] def bytes(n: Node, size: Int): Either[ChainError, Bytes] =
-    CborRead.bytesN(n, size, DecodeField.Header).leftMap(fail)
+    CborRead.bytesN(n, size, DecodeField.Header)(using ByteStrings.Chunked).leftMap(fail)

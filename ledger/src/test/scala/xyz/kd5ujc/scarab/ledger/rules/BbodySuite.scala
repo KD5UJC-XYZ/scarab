@@ -21,6 +21,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Utxo,
   Witnesses
 }
+import xyz.kd5ujc.scarab.ledger.testByteStrings
 import xyz.kd5ujc.scarab.ledger.TestLedger.*
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.plutus.ExUnits

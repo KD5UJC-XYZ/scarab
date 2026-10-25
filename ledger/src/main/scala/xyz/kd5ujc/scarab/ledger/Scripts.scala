@@ -111,7 +111,7 @@ object NativeScript:
   /** Decode with the nesting on the heap, so a script as deep as a block can hold decodes (see
     * [[NativeScript.eval]]); the reference has no limit on the depth of a native script.
     */
-  def decode(n: Node): Either[DecodeError, NativeScript] =
+  def decode(n: Node)(using ByteStrings): Either[DecodeError, NativeScript] =
     TreeFold.foldE[Node, NativeScript, DecodeError](n)(open)
 
   /** Why bytes are not a native script. */
@@ -147,7 +147,9 @@ object NativeScript:
       Either.cond(v >= MinInt64 && v <= MaxInt64, v, DecodeError.RequiredOutOfRange(v))
     )
 
-  private def open(n: Node): Either[DecodeError, TreeFold.Step[Node, NativeScript, DecodeError]] =
+  private def open(n: Node)(using
+      ByteStrings
+  ): Either[DecodeError, TreeFold.Step[Node, NativeScript, DecodeError]] =
     import TreeFold.Step
     malformed(CborRead.array(n, DecodeField.NativeScript)).flatMap { xs =>
       malformed(
@@ -208,7 +210,7 @@ object Script:
   private def hashOf(kind: ScriptKind, payload: Bytes): Bytes =
     Blake2b.hash224.hash(Bytes(kind.tag.toByte +: payload.value))
 
-  def native(n: Node): Either[LedgerDecodeError, Script] =
+  def native(n: Node)(using ByteStrings): Either[LedgerDecodeError, Script] =
     NativeScript
       .decode(n)
       .left
@@ -219,7 +221,7 @@ object Script:
     Script(kind, hashOf(kind, bytes), None, Some(bytes))
 
   /** `script = [0, native_script] / [1, plutus_v1] / [2, plutus_v2] / [3, plutus_v3]`. */
-  def decode(n: Node): Either[LedgerDecodeError, Script] =
+  def decode(n: Node)(using ByteStrings): Either[LedgerDecodeError, Script] =
     CborRead.arrayN(n, 2, DecodeField.Script).flatMap { xs =>
       CborRead.uint(xs(0), DecodeField.ScriptType).flatMap {
         case t if t == 0 => native(xs(1))
@@ -236,11 +238,15 @@ object Script:
   /** `#6.24(bytes .cbor script)` as stored in an output's reference-script field; the Plutus bytes
     * are dropped so the ledger state keeps one copy (the output's own encoding).
     */
-  def decodeWrapped(n: Node): Either[LedgerDecodeError, Script] =
+  def decodeWrapped(n: Node)(using ByteStrings): Either[LedgerDecodeError, Script] =
     decodeWrappedWithBytes(n).map(_.copy(plutus = None))
 
   /** As [[decodeWrapped]], keeping the Plutus bytes. */
-  def decodeWrappedWithBytes(n: Node): Either[LedgerDecodeError, Script] = n.value match
-    case Value.Tag(t, inner) if t == 24 =>
-      CborRead.bytes(inner, DecodeField.ReferenceScript).flatMap(CborRead.decode(_)).flatMap(decode)
-    case _ => Left(LedgerDecodeError.ExpectedTag(DecodeField.ReferenceScript, 24, n.value))
+  def decodeWrappedWithBytes(n: Node)(using ByteStrings): Either[LedgerDecodeError, Script] =
+    n.value match
+      case Value.Tag(t, inner) if t == 24 =>
+        CborRead
+          .bytes(inner, DecodeField.ReferenceScript)
+          .flatMap(CborRead.decode(_))
+          .flatMap(decode)
+      case _ => Left(LedgerDecodeError.ExpectedTag(DecodeField.ReferenceScript, 24, n.value))

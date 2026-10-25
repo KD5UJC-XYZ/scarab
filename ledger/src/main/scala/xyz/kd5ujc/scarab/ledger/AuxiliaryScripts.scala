@@ -64,7 +64,7 @@ private[ledger] object AuxiliaryScripts:
         )
     }
 
-  private def native(node: Node): Either[LedgerDecodeError, Vector[Plutus]] =
+  private def native(node: Node)(using ByteStrings): Either[LedgerDecodeError, Vector[Plutus]] =
     CborRead
       .array(node, DecodeField.AuxiliaryNativeScripts)
       .flatMap(_.traverse_(Script.native))
@@ -74,7 +74,7 @@ private[ledger] object AuxiliaryScripts:
       language: PlutusLanguage,
       protocol: BigInt,
       node: Node
-  ): Either[LedgerDecodeError, Vector[Plutus]] =
+  )(using ByteStrings): Either[LedgerDecodeError, Vector[Plutus]] =
     val (kind, minimum) = language match
       case PlutusLanguage.V1 => (ScriptKind.PlutusV1, 5)
       case PlutusLanguage.V2 => (ScriptKind.PlutusV2, 7)
@@ -104,7 +104,7 @@ private[ledger] object AuxiliaryScripts:
   private def historical(
       node: Node,
       protocol: BigInt
-  ): Either[LedgerDecodeError, Vector[Plutus]] =
+  )(using ByteStrings): Either[LedgerDecodeError, Vector[Plutus]] =
     val lists = protocol >= 3
     node.value match
       case _: Value.Map => metadata(node, protocol).as(Vector.empty)
@@ -121,7 +121,9 @@ private[ledger] object AuxiliaryScripts:
           )
         )
 
-  def read(bytes: Bytes, protocol: BigInt): Either[LedgerDecodeError, Vector[Plutus]] =
+  def read(bytes: Bytes, protocol: BigInt)(using
+      ByteStrings
+  ): Either[LedgerDecodeError, Vector[Plutus]] =
     CborRead
       .decode(bytes)
       .flatMap(node =>
@@ -131,7 +133,7 @@ private[ledger] object AuxiliaryScripts:
   private def alonzoOn(
       node: Node,
       protocol: BigInt
-  ): Either[LedgerDecodeError, Vector[Plutus]] =
+  )(using ByteStrings): Either[LedgerDecodeError, Vector[Plutus]] =
     node.value match
       case _: Value.Map                     => metadata(node, protocol).as(Vector.empty)
       case Value.Arr(Vector(data, scripts)) => metadata(data, protocol) *> native(scripts)

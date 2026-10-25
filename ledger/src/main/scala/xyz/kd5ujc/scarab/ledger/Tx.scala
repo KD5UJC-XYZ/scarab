@@ -22,7 +22,7 @@ enum DRep:
     case AlwaysNoConfidence               => "drep-alwaysNoConfidence"
 
 object DRep:
-  def decode(n: Node): Either[LedgerDecodeError, DRep] =
+  def decode(n: Node)(using ByteStrings): Either[LedgerDecodeError, DRep] =
     CborRead.array(n, DecodeField.Drep).flatMap {
       case Vector(t, h) =>
         (
@@ -70,7 +70,9 @@ object PoolParams:
     * POOL, rather than decoding, enforces its upper bound after protocol 4.0. Keep the original
     * metadata term for hashing, snapshots and transaction presentation.
     */
-  private[ledger] def metadataHash(raw: Bytes): Either[LedgerDecodeError, Bytes] =
+  private[ledger] def metadataHash(
+      raw: Bytes
+  )(using ByteStrings): Either[LedgerDecodeError, Bytes] =
     for
       node <- CborRead.decode(raw)
       fields <- CborRead.arrayN(node, 2, DecodeField.PoolMetadata)
@@ -140,6 +142,7 @@ object Certificate:
     case other                => Right(other)
 
   def decode(n: Node, version: DecoderVersion): Either[LedgerDecodeError, Certificate] =
+    given ByteStrings = ByteStrings.of(version)
     def cred(i: Int, xs: Vector[Node]) = Credential.decode(xs(i), DecodeField.CertificateCredential)
     def pool(i: Int, xs: Vector[Node]) = CborRead.bytesN(xs(i), 28, DecodeField.PoolId)
     def coin(i: Int, xs: Vector[Node]) = CborRead.uint(xs(i), DecodeField.CertificateCoin)
@@ -213,7 +216,7 @@ object Certificate:
       yield cert
     }
 
-  private def moveRewards(n: Node): Either[LedgerDecodeError, Certificate] =
+  private def moveRewards(n: Node)(using ByteStrings): Either[LedgerDecodeError, Certificate] =
     CborRead.arrayN(n, 2, DecodeField.MoveInstantaneousRewards).flatMap { xs =>
       for
         pot <- CborRead.uint(xs(0), DecodeField.MIRPot).flatMap {
@@ -239,7 +242,7 @@ object Certificate:
   private def poolParams(
       xs: Vector[Node],
       version: DecoderVersion
-  ): Either[LedgerDecodeError, PoolParams] =
+  )(using ByteStrings): Either[LedgerDecodeError, PoolParams] =
     for
       operator <- CborRead.bytesN(xs(0), 28, DecodeField.PoolOperator)
       vrf <- CborRead.bytesN(xs(1), 32, DecodeField.PoolVrf)
@@ -305,6 +308,7 @@ object TxBody:
   private val Known = Set(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22)
 
   private def update(n: Node, era: Era): Either[LedgerDecodeError, Update] =
+    given ByteStrings = ByteStrings.of(DecoderVersion.of(era))
     for
       xs <- CborRead.arrayN(n, 2, DecodeField.Update)
       kvs <- CborRead.map(xs(0), DecodeField.ProposedUpdates)
@@ -328,6 +332,7 @@ object TxBody:
   def decode(raw: Bytes, era: Era): Either[LedgerDecodeError, TxBody] =
     val mode = Address.Mode.of(era)
     val version = DecoderVersion.of(era)
+    given ByteStrings = ByteStrings.of(version)
     val conway = era.ordinal >= Era.Conway.ordinal
     val known = if conway then Known - 6 else Known
     // `fieldGuarded`: Conway fails a key that is present with an empty value.
@@ -513,6 +518,7 @@ object Witnesses:
     */
   def decode(raw: Bytes, era: Era): Either[LedgerDecodeError, Witnesses] =
     val version = DecoderVersion.of(era)
+    given ByteStrings = ByteStrings.of(version)
     val strict = version.atLeast(9)
     for
       root <- CborRead.decode(raw)
@@ -682,6 +688,7 @@ object Tx:
     * Alonzo, `[body, witnesses, aux]` before.
     */
   def fromBlock(t: Block.Transaction, era: Era): Either[LedgerDecodeError, Tx] =
+    given ByteStrings = ByteStrings.of(DecoderVersion.of(era))
     for
       body <- TxBody.decode(t.body, era)
       witnesses <- Witnesses.decode(t.witnesses, era)

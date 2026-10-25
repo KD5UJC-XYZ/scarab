@@ -8,6 +8,7 @@ import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.{
+  ByteStrings,
   Anchor,
   Certificate,
   Committee,
@@ -475,7 +476,7 @@ object Pool extends Sts[CertEnv, PState, PoolCert, LedgerFailure]:
           // before either registration or re-registration can change the pool state.
           metadata <- Sts.lift[F, LedgerFailure, Option[Bytes]](
             params.metadata
-              .traverse(PoolParams.metadataHash)
+              .traverse(PoolParams.metadataHash(_)(using ByteStrings.Chunked))
               .leftMap(cause => LedgerFailure.Undecodable(id, TxDefect.PoolMetadata(cause)))
           )
           _ <- Refuse.unless[F](

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
+import xyz.kd5ujc.scarab.ledger.testByteStrings
 import xyz.kd5ujc.scarab.legacy as flat
 import xyz.kd5ujc.scarab.legacy.{LedgerImage, LedgerMirror}
 import xyz.kd5ujc.scarab.legacy.LedgerMirrorBack.*
