@@ -2913,3 +2913,26 @@ Batching only covers SDUs that are already queued. When the queue runs dry after
 each, so a decoder that rescans its prefix still does quadratic work overall; the buffer removes the copying, not
 that cost. An SDU that would overflow the buffer while batching is held until the complete message already buffered
 has been decoded (`Mux.Config.receiveBufferLimit` lets a test use a small limit).
+
+## 41. Mux stream decoder partial frames
+
+`protocol.Mux.Decoder.feed` appended each feed's share of a frame to the payload received so far with
+`payload ++ more`, copying it on every feed: a frame of n bytes fed in pieces of c bytes cost about
+n squared / 2c bytes. The nightly fuzz target `mux-stream` feeds its input in pieces of 1 to 23 bytes derived
+from the input's first eight bytes; when all of them are 0 modulo 23 the pieces are single bytes. The decoder now
+keeps the parts of the active frame, newest first, and joins them once when the frame completes, as network-mux
+0.11.0.0 `Network/Mux/Bearer/Socket.hs` `recvLen'` concatenates the chunks of one SDU; a carried part is compacted
+so it does not pin the caller's read buffer. Production ingress (`network.Mux`, `readPayload`) already collects
+parts and does not call `feed`.
+
+Allocation on the test thread (`ThreadMXBean.getThreadAllocatedBytes`) for the decode loop of that target, Docker
+JDK 21.0.11, October 25 2026; the fuzz budget is 24 MiB plus 2,000 bytes per input byte:
+
+| input | before | after |
+|---|---:|---:|
+| 64 frames of 4,096 bytes fed a byte at a time (262,917 bytes) | 630.5 MB (2,398 B per byte) | 107.5 MB (408 B per byte) |
+| 5,797 frames of 138 bytes, pieces of 1 and 16 bytes (800,016 bytes) | 41.6 MB | unchanged |
+
+The nightly failure on seed 20751332 was the target's own oracle, not the decoder: it joined the re-encoded frames
+with a fold over `Bytes.++`, quadratic in the frame count (1.09 GB of the 1.12 GB measured for 3,980 frames). The
+oracle now compares each frame with the input slice at its offset.

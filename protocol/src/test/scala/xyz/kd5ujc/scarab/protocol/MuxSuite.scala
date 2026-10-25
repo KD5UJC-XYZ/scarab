@@ -98,6 +98,30 @@ class MuxSuite extends munit.FunSuite:
     assertEquals(done.finish, Right(()))
   }
 
+  test("a largest frame fed in uneven pieces is joined in order, and earlier states stay usable") {
+    val payload = Bytes.wrap(Array.tabulate(WireMaxPayloadBytes)(i => (i % 251).toByte))
+    val sdu = Sdu(7, 3, Direction.Responder, payload)
+    val wire = right(encode(sdu))
+    val pieces = Iterator
+      .iterate(0)(_ + 1)
+      .map(i => i % 23 + 1)
+      .scanLeft(0)(_ + _)
+      .takeWhile(_ < wire.size)
+      .toVector :+ wire.size
+    val states = pieces.zip(pieces.tail).scanLeft(decoder() -> Vector.empty[Sdu]) {
+      case ((state, out), (from, until)) =>
+        val (next, frames) = right(state.feed(wire.slice(from, until)))
+        next -> (out ++ frames)
+    }
+    val (done, frames) = states.last
+    assertEquals(frames, Vector(sdu))
+    assertEquals(done.finish, Right(()))
+    // a state halfway through the payload completes the same frame again
+    val (middle, _) = states(states.size / 2)
+    val from = pieces(states.size / 2)
+    assertEquals(right(middle.feed(wire.drop(from)))._2, Vector(sdu))
+  }
+
   test("EOF rejects every truncated header and payload, but allows an empty stream") {
     assertEquals(decoder().finish, Right(()))
     for length <- 1 until proposal.size do
