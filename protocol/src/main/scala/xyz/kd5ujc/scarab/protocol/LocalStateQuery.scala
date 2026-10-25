@@ -30,7 +30,9 @@ object LocalStateQuery:
   /** The deepest nesting of a client message. The reference has no bound; ours keeps the effective
     * depth the former 65,535-item bound gave a chain of single-item wrappers (two items each),
     * which `DeepQuerySuite` exercises. The walkers of a query are stack safe, so this bounds only
-    * the heap one query takes.
+    * the heap one query takes. Deviation approved by the owner on 2026-10-25: the bound stays;
+    * trade-off: it guards the JVM against stack overflow, where Haskell would not overflow, on a
+    * local socket only, and real queries nest far less deeply.
     */
   val MaxQueryDepth = 32767
 

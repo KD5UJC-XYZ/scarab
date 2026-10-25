@@ -1596,7 +1596,10 @@ protocol, started on demand, only when the negotiated flag is on).
    generator made, the generator is stored advanced, and the other requests of the 823 s read the first draw of the advanced
    generator (`PeerSharing.hs:219-227`), so the salt of an interval is read by the request that opens the next one. `PeerShare.Salting`
    is the pure state; the hash is MurmurHash3 of the address bytes under the salt (the reference's `hashWithSalt` of a `SockAddr`
-   cannot be matched, and nothing depends on it: only that the order is a function of the salt).
+   cannot be matched, and nothing depends on it: only that the order is a function of the salt). Deviation approved by the owner
+   on 2026-10-25: MurmurHash3 for the salted peer-share order; trade-off: the reference's `hashWithSalt` order is keyed by a secret
+   random per-node salt, so peers cannot observe the hash function, and mirroring it would mean reimplementing version- and
+   platform-dependent `hashable` internals.
 4. `PeerSharing: true` stays in `ConfigSettings.unsupported`, with a text that says what is missing: the flag is offered and the
    protocol answered, but the governor does not ask and the server has nothing to share (see G1.4b).
 
