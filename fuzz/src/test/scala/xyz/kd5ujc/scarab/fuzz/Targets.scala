@@ -515,7 +515,9 @@ object Targets:
           val b = raw(in)
           // cut the input into pieces at positions derived from its own bytes
           val cuts = in.bytes.take(8).map(x => (x & 0xff) % 23 + 1)
-          var decoder = Mux.Decoder.create(Mux.Limits(maxPayloadBytes = 4096)).toOption.get
+          var decoder = Mux.Decoder
+            .create(Mux.Limits(maxPayloadBytes = 4096))
+            .fold(e => throw new Violation(s"mux decoder limits refused: ${e.message}"), identity)
           var at = 0
           var i = 0
           val sdus = Vector.newBuilder[Mux.Sdu]
@@ -529,13 +531,26 @@ object Targets:
             at += n
           if !failed then
             seen("mux-stream", sdus.result().nonEmpty)
-            val framed = sdus.result().map(s => Mux.encode(s).toOption.get)
-            val joined = framed.foldLeft(Bytes.empty)(_ ++ _)
+            // Each re-encoded frame is compared with the input at its own offset. Joining the frames
+            // first would copy the frames so far once per frame, quadratic in the frame count under
+            // a linear budget (3,980 frames of 138 bytes cost 1.09 GB).
+            val emitted = sdus.result().foldLeft(0) { (offset, sdu) =>
+              val frame = Mux
+                .encode(sdu)
+                .fold(
+                  e => throw new Violation(s"an emitted frame does not encode: ${e.message}"),
+                  identity
+                )
+              req(
+                frame == b.slice(offset, offset + frame.size),
+                "emitted frames do not re-encode to the input"
+              )
+              offset + frame.size
+            }
             req(
-              joined.size + decoder.pendingBytes == b.size,
+              emitted + decoder.pendingBytes == b.size,
               "emitted and pending bytes differ from the input"
             )
-            req(joined == b.take(joined.size), "emitted frames do not re-encode to the input")
         }
     ),
     Target(

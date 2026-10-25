@@ -129,6 +129,16 @@ class GuardSuite extends FunSuite:
     target.check(new Input(bytes))
   }
 
+  private def muxStream: Target =
+    Targets.all.find(_.name == "mux-stream").getOrElse(fail("mux-stream target"))
+
+  test("many small mux frames keep the mux-stream round trip within its linear allocation budget") {
+    // the shape that nightly seed 20751332 found (800,016 bytes before shrinking): `00 82`
+    // repeated, 5,797 frames of 138 bytes with header 00820082 0082 0082, cut 1 and 16 bytes at a time
+    val bytes = Array.fill(400008)(Array[Byte](0x00, 0x82.toByte)).flatten
+    muxStream.check(new Input(bytes))
+  }
+
   /** Short inputs whose heads declare 2^60 (or 2^63, 2^32) elements or bytes, alone and nested. */
   private val declaring: Vector[Input] =
     val counts = Vector(
