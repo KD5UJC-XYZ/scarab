@@ -9,12 +9,12 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.rules.{
   CertEnv,
+  JudgedSts,
   Pool,
   PoolCert,
   PreConway,
   ShelleyUtxo,
   StAnnTx,
-  Sts,
   UtxoEnv
 }
 import xyz.kd5ujc.scarab.ledger.state.*
@@ -74,7 +74,7 @@ class RemainingPredicateReferenceSuite extends FunSuite:
           minPoolCost = field[BigInt](row, "minCost"),
           poolDeposit = 0
         )
-      def apply(state: PState, p: PoolParams) = Sts(Pool)(
+      def apply(state: PState, p: PoolParams) = JudgedSts(Pool)(LedgerFailure.Rejected(id, _))(
         TestLedger.globals,
         CertEnv(id, pp, 5, None, Map.empty),
         state,

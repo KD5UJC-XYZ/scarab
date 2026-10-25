@@ -17,7 +17,7 @@ import xyz.kd5ujc.scarab.ledger.{
   PoolParams,
   Tx
 }
-import xyz.kd5ujc.scarab.ledger.rules.{Globals, Pool, PoolCert, Sts}
+import xyz.kd5ujc.scarab.ledger.rules.{Globals, JudgedSts, Pool, PoolCert}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.protocol.Era
@@ -168,8 +168,8 @@ class UpstreamPoolConformanceSuite extends FunSuite:
       val pp = Params.conwayCodec.decode(env(1)).fold(e => fail(e.render), identity)
       val before = state(dir.resolve("state.cbor"))
       val expected = state(dir.resolve("implementation-state.cbor"))
-      val actual = Sts
-        .apply(Pool.Adapter)(
+      val actual = JudgedSts
+        .apply(Pool.Adapter)(xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(Bytes.empty, _))(
           globals,
           Pool.RuleEnv(
             Bytes.fromArray(

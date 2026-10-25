@@ -111,11 +111,12 @@ final case class GovSignal(
   * (authorised), not elected. The authorisations are pruned at the epoch boundary (`Epoch.hs`,
   * `removeCommitteeMembers`) while the votes stay, which is what those epochs of preprod show.
   */
-object Gov extends Sts[GovEnv, Proposals, GovSignal, LedgerFailure]:
+object Gov extends JudgedSts[GovEnv, Proposals, GovSignal, PredicateFailure, LedgerFailure]:
   def transition[F[_]: Monad](env: GovEnv, signal: GovSignal)(using
       Ask[F, Globals],
       Stateful[F, Proposals],
-      Raise[F, LedgerFailure]
+      Raise[F, LedgerFailure],
+      Judge[F, PredicateFailure]
   ): F[Unit] = GovKernel.transition(GovViewEnv.from(env), signal)
 
   def unelected(
@@ -126,7 +127,8 @@ object Gov extends Sts[GovEnv, Proposals, GovSignal, LedgerFailure]:
     GovKernel.unelected(committee, GovCertificateView.from(cert), voters)
 
 /** The production GOV rule over precisely the read-only certificate information it requires. */
-object GovKernel extends Sts[GovViewEnv, Proposals, GovSignal, LedgerFailure]:
+object GovKernel
+    extends JudgedSts[GovViewEnv, Proposals, GovSignal, PredicateFailure, LedgerFailure]:
   /** The committee hot credentials that the committee state has authorised
     * (`knownCommitteeMembers`, `authorizedHotCommitteeCredentials`).
     */
@@ -156,7 +158,8 @@ object GovKernel extends Sts[GovViewEnv, Proposals, GovSignal, LedgerFailure]:
   def transition[F[_]: Monad](env: GovViewEnv, signal: GovSignal)(using
       ask: Ask[F, Globals],
       st: Stateful[F, Proposals],
-      raise: Raise[F, LedgerFailure]
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
   ): F[Unit] =
     val id = env.id
     val pp = env.pp

@@ -89,7 +89,13 @@ class ConwayLedgerSuite extends FunSuite:
         val treasury = nes.es.chainAccount.treasury
         val result =
           if block then Sts(Ledgers)(globals, LedgersEnv(ctx, treasury), start, Vector(t))
-          else Sts(Ledger)(globals, LedgerEnv(ctx, treasury), start, t)
+          else
+            JudgedSts(Ledger)(LedgerFailure.Rejected(t.body.id, _))(
+              globals,
+              LedgerEnv(ctx, treasury),
+              start,
+              t
+            )
         result match
           case Left(f)      => Out.Refused(f)
           case Right(after) =>
@@ -690,7 +696,7 @@ class ConwayLedgerSuite extends FunSuite:
       case Left(e) => fail(e.show)
       case Right(ls) =>
         assertEquals(Invariants.poolDelegators(ls.cert), Vector.empty)
-        Sts(Ledger)(
+        JudgedSts(Ledger)(LedgerFailure.Rejected(t.body.id, _))(
           globals,
           LedgerEnv(TestLedger.env, Coin.zero),
           Counted(ls, s.plutus),
@@ -728,9 +734,18 @@ class ConwayLedgerSuite extends FunSuite:
     )
     val cheap = pay("cheap", alice, 10000 * ada, 1)
     for t <- Vector(delegate, cheap) do
-      val onRuleT = Sts(Ledger)(globals, ledgerEnv, start, t)
+      val onRuleT =
+        JudgedSts(Ledger)(LedgerFailure.Rejected(t.body.id, _))(globals, ledgerEnv, start, t)
       val onStack = Ledger
-        .transition[K](ledgerEnv, t)(using summon, summon, summon, summon)
+        .transition[K](ledgerEnv, t)(using
+          summon,
+          summon,
+          summon,
+          summon,
+          Judge.raising[K, xyz.kd5ujc.scarab.ledger.PredicateFailure, LedgerFailure](
+            LedgerFailure.Rejected(t.body.id, _)
+          )
+        )
         .run(globals)
         .run(start)
         .map(_._1)
@@ -806,7 +821,7 @@ class ConwayLedgerSuite extends FunSuite:
       certificates = Vector(Certificate.RegisterPool(poolParams(one).copy(vrfKeyHash = other))),
       signers = Vector(one)
     )
-    val after = Sts(Ledger)(
+    val after = JudgedSts(Ledger)(LedgerFailure.Rejected(t.body.id, _))(
       globals,
       LedgerEnv(TestLedger.env, start.es.chainAccount.treasury),
       Build.counted(start),

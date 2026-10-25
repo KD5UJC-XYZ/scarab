@@ -11,7 +11,6 @@ import xyz.kd5ujc.scarab.ledger.{
   Certificate,
   LedgerFailure,
   Mismatch,
-  PlutusStats,
   PpupFailure,
   UpdateChecks,
   TxChecks,
@@ -62,11 +61,13 @@ final case class PpupEnv(
   * also makes the prediction of the parameters of the next, `votedFuturePParams` (`Ppup.hs:205`),
   * which the TICK rule solidifies and UPEC adopts.
   */
-object ShelleyPpup extends Sts[PpupEnv, ShelleyGovState, Option[Update], LedgerFailure]:
+object ShelleyPpup
+    extends JudgedSts[PpupEnv, ShelleyGovState, Option[Update], PredicateFailure, LedgerFailure]:
   def transition[F[_]: Monad](env: PpupEnv, update: Option[Update])(using
       ask: Ask[F, Globals],
       st: Stateful[F, ShelleyGovState],
-      raise: Raise[F, LedgerFailure]
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
   ): F[Unit] =
     update.traverse_ { u =>
       val id = env.id
@@ -213,46 +214,95 @@ object ShelleyDeposits:
       }
     (pp.keyDeposit * keys + pp.poolDeposit * newPools.size, refunds)
 
-/** UTXO (`Shelley/Rules/Utxo.hs:336`, `utxoInductive`, with the rules of the later eras): the
-  * validity of the transaction against the parameters and the UTxO set, UTXOS (the evaluation of
-  * the Plutus scripts, Alonzo on), PPUP for a valid transaction, and then the change of the state
-  * (`updateUTxOState`): the set, the instant stake, the fees and the deposits of a valid
-  * transaction, the collateral of one that failed phase 2.
+/** UTXOS of Alonzo and Babbage (`Alonzo/Rules/Utxos.hs:159`, `Babbage/Rules/Utxos.hs:120`,
+  * cardano-ledger `f649f975`): the evaluation of the Plutus scripts ([[Utxos.scripts]]) and, for a
+  * transaction whose scripts are to pass, the update proposals (`trans PPUP`): after the scripts in
+  * Alonzo (`alonzoEvalScriptsTxValid`, `Alonzo/Rules/Utxos.hs:194-216`), before them in Babbage
+  * (`babbageEvalScriptsTxValid`, `Babbage/Rules/Utxos.hs:157-189`).
   */
-object ShelleyUtxo:
+object ShelleyUtxos:
   def sts[E <: EraTag](using
       pre: PreConway[E]
-  ): Sts[UtxoEnv[ShelleyCertState], Counted[UTxOState[E]], StAnnTx, LedgerFailure] =
-    new Sts[UtxoEnv[ShelleyCertState], Counted[UTxOState[E]], StAnnTx, LedgerFailure]:
-      private given Embed[PlutusStats, Counted[UTxOState[E]], LedgerFailure, LedgerFailure] =
-        Embed(Counted.plutus[UTxOState[E]], identity)
-
-      private given Embed[ShelleyGovState, Counted[UTxOState[E]], LedgerFailure, LedgerFailure] =
-        Embed(Counted.state[UTxOState[E]].andThen(pre.gov), identity)
-
+  ): JudgedSts[UtxoEnv[ShelleyCertState], Counted[
+    UTxOState[E]
+  ], StAnnTx, PredicateFailure, LedgerFailure] =
+    new JudgedSts[UtxoEnv[ShelleyCertState], Counted[
+      UTxOState[E]
+    ], StAnnTx, PredicateFailure, LedgerFailure]:
       def transition[F[_]: Monad](env: UtxoEnv[ShelleyCertState], ann: StAnnTx)(using
           ask: Ask[F, Globals],
           st: Stateful[F, Counted[UTxOState[E]]],
-          raise: Raise[F, LedgerFailure]
+          raise: Raise[F, LedgerFailure],
+          judge: Judge[F, PredicateFailure]
+      ): F[Unit] =
+        val scripts =
+          Utxos.scripts[F](env, ann)(using
+            summon[Monad[F]],
+            st.focus(Counted.plutus[UTxOState[E]]),
+            raise,
+            judge
+          )
+        if !ann.tx.isValid then scripts
+        else
+          val ppup = ShelleyUtxo.ppup[F, E](env, ann)
+          if pre.atLeast(ShelleyBasedEra.SBabbage) then ppup *> scripts else scripts *> ppup
+
+/** UTXO (`Shelley/Rules/Utxo.hs:336`, `utxoInductive`, with the rules of the later eras,
+  * cardano-ledger `f649f975`): the validity of the transaction against the parameters and the UTxO
+  * set, the update proposals (`trans PPUP`, Shelley to Mary) or UTXOS (`trans UTXOS`, Alonzo and
+  * Babbage, which runs PPUP), and then the change of the state (`updateUTxOState`): the set, the
+  * instant stake, the fees and the deposits of a valid transaction, the collateral of one that
+  * failed phase 2.
+  */
+object ShelleyUtxo:
+  /** `trans PPUP` on the governance state of the UTxO state. */
+  private[rules] def ppup[F[_]: Monad, E <: EraTag](env: UtxoEnv[ShelleyCertState], ann: StAnnTx)(
+      using
+      pre: PreConway[E],
+      ask: Ask[F, Globals],
+      st: Stateful[F, Counted[UTxOState[E]]],
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
+  ): F[Unit] =
+    given Embed[ShelleyGovState, Counted[UTxOState[E]], LedgerFailure, LedgerFailure] =
+      Embed(Counted.state[UTxOState[E]].andThen(pre.gov), identity)
+    JudgedSts.trans[F, PpupEnv, ShelleyGovState, Counted[UTxOState[E]], Option[
+      Update
+    ], PredicateFailure, LedgerFailure, LedgerFailure](
+      ShelleyPpup,
+      PpupEnv(env.ctx, ann.id, env.pp, ShelleyCertLens.genDelegs.get(env.cert)),
+      ann.tx.body.update
+    )
+
+  def sts[E <: EraTag](using
+      pre: PreConway[E]
+  ): JudgedSts[UtxoEnv[ShelleyCertState], Counted[
+    UTxOState[E]
+  ], StAnnTx, PredicateFailure, LedgerFailure] =
+    new JudgedSts[UtxoEnv[ShelleyCertState], Counted[
+      UTxOState[E]
+    ], StAnnTx, PredicateFailure, LedgerFailure]:
+      def transition[F[_]: Monad](env: UtxoEnv[ShelleyCertState], ann: StAnnTx)(using
+          ask: Ask[F, Globals],
+          st: Stateful[F, Counted[UTxOState[E]]],
+          raise: Raise[F, LedgerFailure],
+          judge: Judge[F, PredicateFailure]
       ): F[Unit] =
         val (deposits, refunds) = ShelleyDeposits.of(env.pp, env.cert, ann.tx.body)
         for
           collateral <- Sts.lift[F, LedgerFailure, TxChecks.Collateral](
             validate[E](env, ann, deposits, refunds)
           )
-          _ <- Sts.trans[F, UtxoEnv[Any], PlutusStats, Counted[
-            UTxOState[E]
-          ], StAnnTx, LedgerFailure, LedgerFailure](Utxos, env, ann)
           _ <-
-            if ann.tx.isValid then
-              Sts.trans[F, PpupEnv, ShelleyGovState, Counted[
+            if pre.atLeast(ShelleyBasedEra.SAlonzo) then
+              JudgedSts.trans[F, UtxoEnv[ShelleyCertState], Counted[UTxOState[E]], Counted[
                 UTxOState[E]
-              ], Option[Update], LedgerFailure, LedgerFailure](
-                ShelleyPpup,
-                PpupEnv(env.ctx, ann.id, env.pp, ShelleyCertLens.genDelegs.get(env.cert)),
-                ann.tx.body.update
+              ], StAnnTx, PredicateFailure, LedgerFailure, LedgerFailure](
+                ShelleyUtxos.sts[E],
+                env,
+                ann
               )
-            else Monad[F].unit
+            else ppup[F, E](env, ann)
           s <- st.get
           next <- Refuse.vocab[F, UTxOState[E]](
             update[E](s.state, ann, collateral, deposits, refunds)
@@ -401,12 +451,17 @@ object ShelleyUtxo:
 object ShelleyUtxow:
   def sts[E <: EraTag](using
       pre: PreConway[E]
-  ): Sts[UtxoEnv[ShelleyCertState], Counted[UTxOState[E]], StAnnTx, LedgerFailure] =
-    new Sts[UtxoEnv[ShelleyCertState], Counted[UTxOState[E]], StAnnTx, LedgerFailure]:
+  ): JudgedSts[UtxoEnv[ShelleyCertState], Counted[
+    UTxOState[E]
+  ], StAnnTx, PredicateFailure, LedgerFailure] =
+    new JudgedSts[UtxoEnv[ShelleyCertState], Counted[
+      UTxOState[E]
+    ], StAnnTx, PredicateFailure, LedgerFailure]:
       def transition[F[_]: Monad](env: UtxoEnv[ShelleyCertState], ann: StAnnTx)(using
           ask: Ask[F, Globals],
           st: Stateful[F, Counted[UTxOState[E]]],
-          raise: Raise[F, LedgerFailure]
+          raise: Raise[F, LedgerFailure],
+          judge: Judge[F, PredicateFailure]
       ): F[Unit] =
         val genDelegs = ShelleyCertLens.genDelegs.get(env.cert)
         for
@@ -415,7 +470,13 @@ object ShelleyUtxow:
             Utxow.witnesses(env, PreConway.genDelegs(genDelegs), ann)
           )
           _ <- Sts.require[F, LedgerFailure](mirSigned(env, ann, genDelegs))
-          _ <- ShelleyUtxo.sts[E].transition[F](env, ann)
+          _ <- JudgedSts.trans[F, UtxoEnv[ShelleyCertState], Counted[UTxOState[E]], Counted[
+            UTxOState[E]
+          ], StAnnTx, PredicateFailure, LedgerFailure, LedgerFailure](
+            ShelleyUtxo.sts[E],
+            env,
+            ann
+          )
         yield ()
 
   /** `validateMIRInsufficientGenesisSigs`: a transaction with a MIR certificate is signed by at

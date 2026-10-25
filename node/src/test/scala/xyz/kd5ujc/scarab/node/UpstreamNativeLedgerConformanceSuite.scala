@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.ledger.{Block, EpochGeometry, LedgerGlobals, PlutusStat
 import xyz.kd5ujc.scarab.ledger.rules.{
   Counted,
   Globals,
+  JudgedSts,
   Ledger,
   LedgerEnv,
   Ledgers,
@@ -137,8 +138,8 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
       val tx = transaction(node(id, "signal"))
       assert(tx.body.certificates.isEmpty && tx.body.proposals.isEmpty)
       assertEquals(node(id, "signal").original, node("LEDGER-2", "signal").original)
-      val actual = Sts
-        .apply(rule)(
+      val actual = JudgedSts
+        .apply(rule)(xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(tx.body.id, _))(
           globals,
           UtxoEnv(txEnv(slot.toBigInt, geometry.epochOf(slot.toBigInt)), params, cert),
           Counted(before, PlutusStats.zero),
@@ -455,8 +456,8 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
         txIndex = index.toInt,
         clock = Some(s => BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s))
       )
-      val actual = Sts
-        .apply(Ledger)(
+      val actual = JudgedSts
+        .apply(Ledger)(xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(tx.body.id, _))(
           globals,
           LedgerEnv(ctx, account.treasury),
           Counted(before, PlutusStats.zero),

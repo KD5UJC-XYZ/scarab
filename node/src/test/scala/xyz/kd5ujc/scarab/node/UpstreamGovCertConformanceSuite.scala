@@ -17,7 +17,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Certificate
 }
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.ledger.rules.{ConwayCert, ConwayGovCert, GovCert, Globals, Sts}
+import xyz.kd5ujc.scarab.ledger.rules.{ConwayCert, ConwayGovCert, Globals, GovCert, JudgedSts}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, Params, Wire}
@@ -131,8 +131,10 @@ class UpstreamGovCertConformanceSuite extends FunSuite:
         case ConwayCert.OfGov(ConwayGovCert.RegDRep(credential, deposit, anchor)) =>
           val before = state(dir.resolve("state.cbor"))
           val expected = state(dir.resolve("implementation-state.cbor"))
-          val actual = Sts
+          val actual = JudgedSts
             .apply(GovCert.DRepAdapter)(
+              xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(Bytes.empty, _)
+            )(
               globals,
               GovCert.DRepRuleEnv(Bytes.empty, pp, epoch.toBigInt),
               before,
@@ -167,8 +169,10 @@ class UpstreamGovCertConformanceSuite extends FunSuite:
             before.vState.dreps.contains(credential),
             s"seed $seed generated update lacks registered DRep"
           )
-          val actual = Sts
+          val actual = JudgedSts
             .apply(GovCert.DRepAdapter)(
+              xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(Bytes.empty, _)
+            )(
               globals,
               GovCert.DRepRuleEnv(Bytes.empty, pp, epoch.toBigInt),
               before,
@@ -192,8 +196,10 @@ class UpstreamGovCertConformanceSuite extends FunSuite:
         case ConwayCert.OfGov(ConwayGovCert.AuthCommitteeHotKey(cold, hot)) =>
           val before = state(dir.resolve("state.cbor"))
           val expected = state(dir.resolve("implementation-state.cbor"))
-          val actual = Sts
+          val actual = JudgedSts
             .apply(GovCert.CommitteeAdapter)(
+              xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(Bytes.empty, _)
+            )(
               globals,
               GovCert.CommitteeRuleEnv(Bytes.empty, committee, proposalEntries),
               before,
@@ -216,8 +222,10 @@ class UpstreamGovCertConformanceSuite extends FunSuite:
         case ConwayCert.OfGov(ConwayGovCert.ResignCommitteeColdKey(cold, anchor)) =>
           val before = state(dir.resolve("state.cbor"))
           val expected = state(dir.resolve("implementation-state.cbor"))
-          val actual = Sts
+          val actual = JudgedSts
             .apply(GovCert.CommitteeAdapter)(
+              xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(Bytes.empty, _)
+            )(
               globals,
               GovCert.CommitteeRuleEnv(Bytes.empty, committee, proposalEntries),
               before,
