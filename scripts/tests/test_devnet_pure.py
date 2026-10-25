@@ -486,7 +486,7 @@ class SubmissionVerdictTest(unittest.TestCase):
         # the text without its list (the old fixture form) cannot be classified
         self.assertEqual(eraload.submission_verdict(1, "", self.LEDGER, self.EXPECTED).match,
                          eraload.ListMatch.UNPARSED)
-        self.assertEqual(eraload.match_counts([{"match": "exact"}, {"match": "contains"}, {"match": None}]),
+        self.assertEqual(eraload.match_counts([eraload.ListMatch.EXACT, eraload.ListMatch.CONTAINS, None]),
                          {"exact": 1, "contains": 1, "unparsed": 0})
 
     def test_a_predicate_is_named_as_a_whole_constructor(self):
@@ -873,16 +873,19 @@ class NtcQueriesTest(unittest.TestCase):
         self.assertFalse(resolved.passes)
 
     def test_the_summary_counts_exact_cases_and_lists_tracked_divergences(self):
-        rows = [{"case": "a", "outcome": "exact", "passes": True, "rawEqual": True, "textEqual": True,
-                 "referenceNamesRule": True},
-                {"case": "b", "outcome": "trackedDivergence", "passes": True, "rawEqual": False, "textEqual": False,
-                 "referenceNamesRule": True, "comparison": "first-failure", "issue": 412, "referenceFailures": 2,
-                 "scalaFailures": 1}]
+        rows = [(ntc.Refusal.EXACT, {"case": "a", "rawEqual": True, "textEqual": True, "referenceNamesRule": True}),
+                (ntc.Refusal.TRACKED_DIVERGENCE,
+                 {"case": "b", "rawEqual": False, "textEqual": False, "referenceNamesRule": True, "issue": 412,
+                  "referenceFailures": 2, "scalaFailures": 1})]
         summary = ntc.submission_summary(rows)
         self.assertEqual((summary["cases"], summary["exact"], summary["rawEqual"]), (2, 1, 1))
-        self.assertEqual(summary["trackedDivergences"], [{"case": "b", "comparison": "first-failure", "issue": 412,
-                                                          "referenceFailures": 2, "scalaFailures": 1}])
+        self.assertEqual(summary["trackedDivergences"], [{"case": "b", "issue": 412, "referenceFailures": 2,
+                                                          "scalaFailures": 1}])
         self.assertEqual(summary["differences"], [])
+        failed = ntc.submission_summary([(ntc.Refusal.DIVERGENCE_RESOLVED, {"case": "c", "rawEqual": True,
+                                                                           "textEqual": True,
+                                                                           "referenceNamesRule": True})])
+        self.assertEqual([r["case"] for r in failed["differences"]], ["c"])
 
     def test_a_rule_is_named_as_a_whole_constructor(self):
         text = "(ConwayWithdrawalsMissingAccounts (Withdrawals {unWithdrawals = ...}))"

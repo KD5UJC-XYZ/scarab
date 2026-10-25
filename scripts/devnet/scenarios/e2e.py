@@ -300,7 +300,7 @@ def e2e(args):
             summary["auxiliaryPlutus"] = loader.auxiliary_evidence
             summary["refusals"] = loader.refusal_evidence
             # whether each expected refusal was exactly the expected failure list, or held others too
-            summary["refusalMatches"] = {"mustReject": eraload.match_counts(loader.evidence),
+            summary["refusalMatches"] = {"mustReject": eraload.match_counts(loader.must_reject_matches),
                                          "expectRejected": eraload.match_counts(loader.negative_matches)}
         # the follower's stall evidence (state events, fiber dumps) stays with the run's summary
         evidence = stall_evidence(root) if root.exists() else None

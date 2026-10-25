@@ -292,7 +292,8 @@ def first_failure(reason):
 
 def bracketed(before, after):
     """Both nodes held the same tip before and after the submissions: each judged the transaction at the
-    slot after that tip (`MempoolState`, the reference's `tickLedgerState`), so a refusal that names the
+    slot after that tip (`MempoolState`; the reference's `tickLedgerState`, ouroboros-consensus 82ecba32
+    Mempool/Impl/Common.hs), so a refusal that names the
     current slot (`OutsideValidityIntervalUTxO`) carries the same slot from both."""
     return before[0] is not None and before[0] == before[1] == after[0] == after[1]
 
@@ -331,14 +332,15 @@ def judge_refusal(case, raw, text):
         first_text_equal = rendered(text["h"]).split(" :| ")[0] == rendered(text["s"]).split(" :| ")[0]
         counts = (row["referenceFailures"], row["scalaFailures"]) == (d.reference_failures, d.scala_failures)
         outcome = Refusal.TRACKED_DIVERGENCE if first_equal and first_text_equal and counts else Refusal.DIFFERS
-        row.update({"comparison": "first-failure", "issue": d.issue, "firstFailureEqual": first_equal,
+        row.update({"issue": d.issue, "firstFailureEqual": first_equal,
                     "firstTextEqual": first_text_equal, "declaredFailures": [d.reference_failures, d.scala_failures]})
     return outcome, row
 
 
 def submissions(args, root, attempts=20):
     """Each refused case through both sockets, raw (LocalTxSubmission) and as text (`cardano-cli`), repeated
-    until one round of the four submissions is bracketed by one tip on both nodes."""
+    until one round of the four submissions is bracketed by one tip on both nodes. Returns (Refusal, row) per
+    case; the row is the JSON evidence, with the outcome's value."""
     cases = corpus(args.name, f"{ENV}/socket/node1/sock")
     results = []
     for case in cases:
@@ -365,23 +367,23 @@ def submissions(args, root, attempts=20):
         if raw is not None and outcome is not Refusal.EXACT:
             row["reference"] = rendered(text["h"])[:500]
             row["scala"] = rendered(text["s"])[:500]
-        results.append(row)
+        results.append((outcome, row))
         print(json.dumps(row), flush=True)
     return results
 
 
 def submission_summary(results):
-    """The headline of the refusal comparison: how many cases are exactly equal, and every case compared
-    under a tracked divergence with its issue."""
+    """The headline of the refusal comparison from (Refusal, row) pairs: how many cases are exactly equal, and
+    every case compared under a tracked divergence (by its first failure) with its issue."""
+    rows = [row for _, row in results]
     return {"cases": len(results),
-            "exact": sum(r["outcome"] == Refusal.EXACT.value for r in results),
-            "rawEqual": sum(r["rawEqual"] for r in results),
-            "textEqual": sum(r["textEqual"] for r in results),
-            "referenceNamedTheRule": sum(r["referenceNamesRule"] for r in results),
-            "trackedDivergences": [{k: r.get(k) for k in ("case", "comparison", "issue", "referenceFailures",
-                                                          "scalaFailures")}
-                                   for r in results if r["outcome"] == Refusal.TRACKED_DIVERGENCE.value],
-            "differences": [r for r in results if not r["passes"]]}
+            "exact": sum(outcome is Refusal.EXACT for outcome, _ in results),
+            "rawEqual": sum(r["rawEqual"] for r in rows),
+            "textEqual": sum(r["textEqual"] for r in rows),
+            "referenceNamedTheRule": sum(r["referenceNamesRule"] for r in rows),
+            "trackedDivergences": [{k: row.get(k) for k in ("case", "issue", "referenceFailures", "scalaFailures")}
+                                   for outcome, row in results if outcome is Refusal.TRACKED_DIVERGENCE],
+            "differences": [row for outcome, row in results if not outcome.passes]}
 
 
 def valid_submission(args, root):
@@ -687,12 +689,12 @@ def ntc(args):
         badcli = incomplete_cli_comparisons(cli_results)
         if badcli:
             failures.append(f"cardano-cli outputs that differ: {badcli}")
-        if any(not r["referenceNamesRule"] for r in sub_results):
+        if any(not r["referenceNamesRule"] for _, r in sub_results):
             failures.append("a refusal was not the rule the case is built for (the case is wrong)")
-        if any(not r["passes"] for r in sub_results):
+        if any(not outcome.passes for outcome, _ in sub_results):
             failures.append("a rejection differs from the reference's, was never bracketed by one tip, or a "
                             "tracked divergence no longer holds (remove its exemption): "
-                            f"{[(r['case'], r['outcome']) for r in sub_results if not r['passes']]}")
+                            f"{[(r['case'], r['outcome']) for outcome, r in sub_results if not outcome.passes]}")
         if not (valid["acceptedByScala"] and valid["reachedABlock"]):
             failures.append(f"the valid transaction did not reach a block: {valid}")
         if not (flagged["acceptedByScala"] and flagged["collateralTaken"] and flagged["spendKept"]):

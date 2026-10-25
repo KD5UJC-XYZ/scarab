@@ -209,9 +209,11 @@ def corpus(name, socket):
     add("withdrawal-network-flag-false", "WrongNetworkWithdrawal",
         script_tx(b, w, other, FAILS, account="mainnet", invalid=True)[0])
     # from protocol version 11 LEDGER refuses a withdrawal from an account it does not hold
-    # (`ConwayWithdrawalsMissingAccounts`, Conway/Rules/Ledger.hs); below 11 CERTS does
-    # (`WithdrawalsNotInRewardsCERTS`). UTXO adds `WrongNetworkWithdrawal`, which the Scala rules do not
-    # reach because they stop at the first failure (#412)
+    # (`ConwayWithdrawalsMissingAccounts`, cardano-ledger f649f975 Conway/Rules/Ledger.hs:125 and :383, the
+    # switch `hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule` at Conway/Era.hs:283-284); below 11
+    # CERTS does (`WithdrawalsNotInRewardsCERTS`, Conway/Rules/Certs.hs:116). UTXO adds
+    # `WrongNetworkWithdrawal`, which the Scala rules do not reach because they stop at the first failure
+    # (#412). The ntc devnet runs at 11 or later; the counts below 11 have not been observed.
     add("withdrawal-network-flag-true",
         "ConwayWithdrawalsMissingAccounts" if major >= 11 else "WithdrawalsNotInRewardsCERTS",
         script_tx(b, w, other, SUCCEEDS, account="mainnet")[0], divergence=ACCUMULATED_WITHDRAWAL_FAILURES)

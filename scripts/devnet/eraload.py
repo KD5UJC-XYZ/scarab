@@ -189,13 +189,10 @@ def submission_verdict(returncode, stdout, stderr, expected):
     return Verdict("noVerdict", text or "(the CLI printed nothing)")
 
 
-def match_counts(entries):
-    """{match kind: count} over evidence rows of expected refusals (the headline: exact versus contains)."""
-    counts = {m.value: 0 for m in ListMatch}
-    for e in entries:
-        if e.get("match") in counts:
-            counts[e["match"]] += 1
-    return counts
+def match_counts(matches):
+    """{match kind: count} over the `ListMatch` of each expected refusal (None for one that was not a refusal):
+    the headline, exact versus contains."""
+    return {m.value: sum(1 for x in matches if x is m) for m in ListMatch}
 
 
 class Wallet:
@@ -231,7 +228,8 @@ class EraLoad:
         self.auxiliary_evidence = []
         self.refusal_evidence = []
         self.last_verdict = None  # `Verdict` of the last `expect_rejected`
-        self.negative_matches = []  # how each `expect_rejected` refusal matched (`ListMatch`)
+        self.must_reject_matches = []  # `ListMatch` (or None) of each `expect_reject` submission
+        self.negative_matches = []  # `ListMatch` (or None) of each `expect_rejected` verdict
 
     # ------------------------------------------------------------ reference plumbing
     def sh(self, script, stdin=None, timeout=60):
@@ -282,8 +280,10 @@ class EraLoad:
             named = names_constructor(text, expect)
             stale = (names_constructor(text, "BadInputsUTxO") or names_constructor(text, "ValueNotConservedUTxO")) \
                 and not named
-            verdict = "accepted" if ok else "expected" if named and not stale else "other reason"
-            match, count = list_match(text, [expect]) if verdict == "expected" else (None, None)
+            expected = not ok and named and not stale
+            verdict = "accepted" if ok else "expected" if expected else "other reason"
+            match, count = list_match(text, [expect]) if expected else (None, None)
+            self.must_reject_matches.append(match)
             self.evidence.append({"era": era, "label": label, "mustReject": expect, "verdict": verdict,
                                   "match": match.value if match else None, "failures": count,
                                   "error": "" if ok else text[:400]})
@@ -443,7 +443,7 @@ class EraLoad:
         self.stats["negativeOk" if ok else "negativeUnexpected"] = self.stats.get(
             "negativeOk" if ok else "negativeUnexpected", 0) + 1
         match = verdict.match.value if verdict.match else None
-        self.negative_matches.append({"label": label, "match": match, "failures": verdict.failures})
+        self.negative_matches.append(verdict.match)
         self.log({"negative": label, "refusedAsExpected": ok, "verdict": verdict.kind, "returncode": r.returncode,
                   "expected": list(expected), "match": match, "failures": verdict.failures,
                   "error": verdict.text[:700]})
