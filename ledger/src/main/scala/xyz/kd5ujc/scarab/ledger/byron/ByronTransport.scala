@@ -416,8 +416,4 @@ object ByronTransport:
     }
 
   private[byron] def definite(node: Node, context: DecodeSite): Result[Unit] =
-    Either.cond(
-      node.original.size > 0 && (node.original(0) & 31) != 31,
-      (),
-      LedgerDecodeError.IndefiniteLength(context)
-    )
+    CborRead.definite(node, context)

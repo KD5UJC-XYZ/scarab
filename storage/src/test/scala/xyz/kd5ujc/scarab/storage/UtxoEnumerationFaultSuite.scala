@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.ledger.testByteStrings
 import xyz.kd5ujc.scarab.ledger.StorageStructureError
 import cats.effect.{IO, Resource}
 import cats.syntax.all.*

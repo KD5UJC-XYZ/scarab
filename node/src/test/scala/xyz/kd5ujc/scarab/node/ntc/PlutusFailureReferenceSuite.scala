@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.ledger.testByteStrings
 import cats.data.NonEmptyVector
 import io.circe.parser.parse
 import munit.FunSuite

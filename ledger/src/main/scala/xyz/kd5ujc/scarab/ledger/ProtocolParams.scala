@@ -346,6 +346,9 @@ object ProtocolParams:
     * `Babbage/PParams.hs:389-391`), also when the same update names key 17.
     */
   def update(p: ProtocolParams, u: ParamUpdate): Either[LedgerDecodeError, ProtocolParams] =
+    // The fields are the original bytes of an update that was read before, from a body or from a
+    // stored state: they are applied in any form that read took.
+    given ByteStrings = ByteStrings.Chunked
     def field(key: Int)(f: (ProtocolParams, Node) => Either[LedgerDecodeError, ProtocolParams])(
         p: ProtocolParams
     ): Either[LedgerDecodeError, ProtocolParams] =
@@ -457,7 +460,7 @@ object ProtocolParams:
         ).tupled
       }.map(_.toMap))
 
-  private def nonce(n: Node): Either[LedgerDecodeError, Nonce] =
+  private def nonce(n: Node)(using ByteStrings): Either[LedgerDecodeError, Nonce] =
     CborRead.array(n, DecodeField.Nonce).flatMap { xs =>
       xs.headOption
         .toRight(LedgerDecodeError.Empty(DecodeField.Nonce))

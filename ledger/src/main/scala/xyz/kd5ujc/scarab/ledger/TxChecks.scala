@@ -556,8 +556,10 @@ object TxChecks:
     for
       decoded <- tx.auxiliary
         .traverse(bytes =>
+          // The bytes were read at the era's decoder version when the transaction was decoded
+          // (`Tx.fromBlock`): the rule reads them again for their scripts, not their form.
           AuxiliaryScripts
-            .read(bytes, pp.protocolMajor)
+            .read(bytes, pp.protocolMajor)(using ByteStrings.Chunked)
             .leftMap(error => LedgerFailure.Undecodable(tx.body.id, TxDefect.AuxiliaryData(error)))
         )
       _ <- auxiliaryHash(tx)

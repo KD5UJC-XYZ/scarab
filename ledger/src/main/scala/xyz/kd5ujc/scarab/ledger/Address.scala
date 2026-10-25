@@ -31,7 +31,7 @@ object Credential:
     if kinds != 0 then kinds else a.hash.compareTo(b.hash)
 
   /** Conway credential encoding `[0, keyhash] / [1, scripthash]`. */
-  def decode(n: Node, what: DecodeSite): Either[LedgerDecodeError, Credential] =
+  def decode(n: Node, what: DecodeSite)(using ByteStrings): Either[LedgerDecodeError, Credential] =
     CborRead.arrayN(n, 2, what).flatMap { xs =>
       (CborRead.uint(xs(0), what).map(_.toInt), CborRead.bytesN(xs(1), 28, what)).tupled.flatMap {
         case (0, h) => Right(Key(h))
@@ -405,7 +405,7 @@ object Value:
       n: Node,
       what: DecodeSite,
       decoding: Decoding
-  ): Either[LedgerDecodeError, Value] = n.value match
+  )(using ByteStrings): Either[LedgerDecodeError, Value] = n.value match
     case xyz.kd5ujc.scarab.codec.Value.UInt(c) => Right(coin(c))
     case _ if decoding == Decoding.CoinOnly    => Left(LedgerDecodeError.MultiAssetNotAllowed(what))
     case _ =>
@@ -424,7 +424,7 @@ object Value:
       what: DecodeSite,
       signed: Boolean,
       decoding: Decoding
-  ): Either[LedgerDecodeError, Map[Bytes, Map[Bytes, BigInt]]] =
+  )(using ByteStrings): Either[LedgerDecodeError, Map[Bytes, Map[Bytes, BigInt]]] =
     for
       policies <- CborRead
         .map(n, what)
@@ -508,6 +508,10 @@ final case class TxOut(
   def hasDatum: Boolean = datum != Datum.NoDatum
   def hasScriptRef: Boolean = scriptRef.isDefined
 
+  // The reads below are of `raw`, which this output was already decoded from under the policy of
+  // its decoder: they take any form that decode took.
+  private given ByteStrings = ByteStrings.Chunked
+
   /** The reference script with its Plutus bytes, re-read from the output's encoding. */
   def referenceScript: Option[Script] =
     scriptRef.flatMap { kept =>
@@ -565,7 +569,7 @@ object TxOut:
   def decode(
       n: Node,
       mode: Address.Mode = Address.Mode.Rigorous
-  ): Either[LedgerDecodeError, TxOut] =
+  )(using ByteStrings): Either[LedgerDecodeError, TxOut] =
     n.value match
       case xyz.kd5ujc.scarab.codec.Value.Arr(xs) if xs.size == 2 || xs.size == 3 =>
         for
@@ -606,7 +610,7 @@ object TxOut:
         )
 
   /** `datum_option = [0, hash] / [1, #6.24(bytes .cbor plutus_data)]` */
-  private def datumOption(n: Node): Either[LedgerDecodeError, Datum] =
+  private def datumOption(n: Node)(using ByteStrings): Either[LedgerDecodeError, Datum] =
     CborRead.arrayN(n, 2, DecodeField.DatumOption).flatMap { xs =>
       CborRead.uint(xs(0), DecodeField.DatumOptionTag).flatMap {
         case t if t == 0 => CborRead.bytesN(xs(1), 32, DecodeField.DatumHash).map(Datum.Hash(_))
@@ -622,7 +626,7 @@ object TxOut:
   def fromBytes(
       raw: Bytes,
       mode: Address.Mode = Address.Mode.Rigorous
-  ): Either[LedgerDecodeError, TxOut] =
+  )(using ByteStrings): Either[LedgerDecodeError, TxOut] =
     CborRead.decode(raw).flatMap(decode(_, mode))
 
 /** `[transaction_id, index]` */
@@ -637,7 +641,7 @@ object TxIn:
   given Ordering[TxIn] = (a, b) =>
     val ids = a.id.compareTo(b.id)
     if ids != 0 then ids else a.index.compare(b.index)
-  def decode(n: Node): Either[LedgerDecodeError, TxIn] =
+  def decode(n: Node)(using ByteStrings): Either[LedgerDecodeError, TxIn] =
     CborRead
       .arrayN(n, 2, DecodeField.Input)
       .flatMap(xs =>

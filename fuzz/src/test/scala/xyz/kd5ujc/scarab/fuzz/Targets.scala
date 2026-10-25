@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
 import xyz.kd5ujc.scarab.ledger.{Block, Header}
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.TestLedger
+import xyz.kd5ujc.scarab.ledger.testByteStrings
 import xyz.kd5ujc.scarab.ledger.byron.{ByronAddress, ByronBody}
 import xyz.kd5ujc.scarab.node.mempool.{LocalMonitor, LocalSubmission, MempoolState}
 import xyz.kd5ujc.scarab.node.ntc.NtcQuery

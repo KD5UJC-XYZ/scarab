@@ -10,7 +10,7 @@ import fs2.io.file.Path
 import fs2.Stream
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.StorageError
-import xyz.kd5ujc.scarab.ledger.{TxIn, TxOut, Utxo}
+import xyz.kd5ujc.scarab.ledger.{ByteStrings, TxIn, TxOut, Utxo}
 
 /** The backing store of the UTxO set: the state of the set at the newest immutable block, which is
   * everything older than the last `k` blocks. The volatile part is not here; it lives in the ledger
@@ -188,6 +188,10 @@ object UtxoStore:
       case Binary(cause: xyz.kd5ujc.scarab.codec.BinaryError)
     final case class EntryError(input: TxIn, cause: ValueError) extends DomainError
     import NodeCodecs.given
+
+    // A stored output is read in any form of byte string an earlier build accepted and stored, so
+    // the store keeps reading what it wrote (ADR 0006); blocks are read under their era's policy.
+    private given ByteStrings = ByteStrings.Chunked
 
     def encodeValue(out: TxOut): Array[Byte] =
       if out.raw.size > 0 && TxOut.fromBytes(out.raw) == Right(out) then

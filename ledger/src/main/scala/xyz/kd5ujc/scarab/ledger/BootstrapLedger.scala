@@ -274,6 +274,9 @@ object LiteLedger:
         }
 
   def applyUpdate(params: LiteParams, u: ParamUpdate): Either[LedgerDecodeError, LiteParams] =
+    // The fields are the original bytes of an update that was read before, from a body or from a
+    // stored state: they are applied in any form that read took.
+    given ByteStrings = ByteStrings.Chunked
     def field[A](
         key: Int,
         p: LiteParams,
@@ -307,7 +310,7 @@ object LiteLedger:
       p6 <- field(14, p5, (p, n) => parseVersion(n).map(v => p.copy(protocolVersion = v)))
     yield p6
 
-  private def nonce(n: Node): Either[LedgerDecodeError, Nonce] =
+  private def nonce(n: Node)(using ByteStrings): Either[LedgerDecodeError, Nonce] =
     CborRead.array(n, DecodeField.Nonce).flatMap { xs =>
       xs.headOption
         .toRight(LedgerDecodeError.Empty(DecodeField.Nonce))
@@ -331,6 +334,7 @@ object LiteLedger:
 
   /** The effects of a transaction body. Update proposals (key 6) exist up to Babbage only. */
   def effects(body: Bytes, era: Era): Either[LedgerDecodeError, Vector[Effect]] =
+    given ByteStrings = ByteStrings.of(DecoderVersion.of(era))
     for
       root <- CborRead.decode(body, bodyLimits)
       fields <- CborRead.fields(root, DecodeField.TransactionBody)
@@ -345,7 +349,7 @@ object LiteLedger:
     case Value.Tag(t, inner) if t == 258 => CborRead.array(inner, DecodeField.Certificates)
     case _                               => CborRead.array(n, DecodeField.Certificates)
 
-  private def proposal(n: Node, era: Era): Either[LedgerDecodeError, Effect] =
+  private def proposal(n: Node, era: Era)(using ByteStrings): Either[LedgerDecodeError, Effect] =
     for
       xs <- CborRead.arrayN(n, 2, DecodeField.Update)
       kvs <- CborRead.map(xs(0), DecodeField.ProposedUpdates)
@@ -359,7 +363,7 @@ object LiteLedger:
       epoch <- CborRead.uint(xs(1), DecodeField.UpdateEpoch)
     yield Effect.Proposal(updates.toMap, epoch)
 
-  private def cert(n: Node): Either[LedgerDecodeError, Vector[Effect]] =
+  private def cert(n: Node)(using ByteStrings): Either[LedgerDecodeError, Vector[Effect]] =
     CborRead.array(n, DecodeField.Certificate).flatMap { xs =>
       xs.headOption
         .toRight(LedgerDecodeError.Empty(DecodeField.Certificate))
