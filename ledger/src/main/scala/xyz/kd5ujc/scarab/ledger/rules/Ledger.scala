@@ -207,8 +207,8 @@ object Ledgers extends Sts[LedgersEnv, ConwayLedger, Vector[Tx], LedgerFailure]:
       st: Stateful[F, ConwayLedger],
       raise: Raise[F, LedgerFailure]
   ): F[Unit] =
-    txs.zipWithIndex.traverse_ { (tx, i) =>
-      Ledger.transition[F](LedgerEnv(env.ctx.copy(txIndex = i), env.treasury), tx)(using
+    TxIx.enumerate(txs).traverse_ { (tx, ix) =>
+      Ledger.transition[F](LedgerEnv(env.ctx.copy(txIndex = ix.index), env.treasury), tx)(using
         summon[Monad[F]],
         ask,
         st,

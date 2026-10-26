@@ -116,10 +116,10 @@ object ShelleyLedgers:
           st: Stateful[F, Counted[LedgerState[E]]],
           raise: Raise[F, LedgerFailure]
       ): F[Unit] =
-        txs.zipWithIndex.traverse_ { (tx, i) =>
+        TxIx.enumerate(txs).traverse_ { (tx, ix) =>
           ShelleyLedger
             .sts[E]
-            .transition[F](env.copy(ctx = env.ctx.copy(txIndex = i)), tx)(using
+            .transition[F](env.copy(ctx = env.ctx.copy(txIndex = ix.index)), tx)(using
               summon[Monad[F]],
               ask,
               st,
