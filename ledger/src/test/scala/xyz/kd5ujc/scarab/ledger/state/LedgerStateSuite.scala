@@ -109,7 +109,7 @@ class LedgerStateSuite extends DisciplineSuite:
         Coin.zero
       )
     )
-    val fees = Coin.fromBigInt(BigInt(1)).toOption.get
+    val fees = Coin(BigInt(1))
     assert(a === a)
     assert(a =!= LedgerState.utxo[Conway].andThen(UTxOState.fees[Conway]).replace(fees)(a))
   }

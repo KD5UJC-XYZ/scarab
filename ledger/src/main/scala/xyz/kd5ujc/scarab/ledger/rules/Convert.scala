@@ -49,15 +49,13 @@ object Convert:
   ): Either[VocabError, StakePoolState] =
     (
       VRFVerKeyHash.fromBytes(params.vrfKeyHash),
-      Coin.fromBigInt(params.pledge),
-      Coin.fromBigInt(params.cost),
       credential[Staking](params.rewardAccount.credential),
       params.owners.toList.traverse(keyHash[Staking]).map(Sorted.set(_))
-    ).mapN((vrf, pledge, cost, account, owners) =>
+    ).mapN((vrf, account, owners) =>
       StakePoolState(
         vrf,
-        pledge,
-        cost,
+        Coin(params.pledge),
+        Coin(params.cost),
         params.margin,
         account,
         owners,

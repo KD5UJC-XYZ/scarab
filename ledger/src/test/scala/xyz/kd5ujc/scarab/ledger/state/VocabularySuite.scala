@@ -111,9 +111,17 @@ class VocabularySuite extends DisciplineSuite:
   private val two64 = BigInt(2).pow(64)
   private val two63 = BigInt(2).pow(63)
 
+  test("Coin admits signed arbitrary integers; compact conversion retains the Word64 bounds") {
+    val amounts = List(-(BigInt(1) << 128), BigInt(-1), BigInt(0), two64, BigInt(1) << 128)
+    amounts.foreach(n => assertEquals(Coin(n).value, n))
+    assertEquals(
+      CompactCoin.fromCoin(Coin(-1)),
+      Left(VocabError.Negative(VocabError.Kind.CompactCoin, BigInt(-1)))
+    )
+  }
+
   test("smart constructors reject wrong values with a typed error") {
     import VocabError.*
-    assertEquals(Coin.fromBigInt(BigInt(-1)), Left(Negative(Kind.Coin, BigInt(-1))))
     assertEquals(SlotNo.fromBigInt(BigInt(-1)), Left(Negative(Kind.SlotNo, BigInt(-1))))
     assertEquals(EpochNo.fromBigInt(BigInt(-5)), Left(Negative(Kind.EpochNo, BigInt(-5))))
     assertEquals(BlockNo.fromBigInt(BigInt(-1)), Left(Negative(Kind.BlockNo, BigInt(-1))))
@@ -123,7 +131,7 @@ class VocabularySuite extends DisciplineSuite:
     assertEquals(BlockNo.fromBigInt(two64 + 1), Left(OutOfRange(Kind.BlockNo, two64 + 1)))
     assertEquals(CompactCoin.fromBigInt(two64), Left(OutOfRange(Kind.CompactCoin, two64)))
     val big =
-      Coin.fromBigInt(two64).toOption.get // a Coin is an Integer: it fits, a compact one not
+      Coin(two64) // a Coin is an Integer: it fits, a compact one not
     assertEquals(CompactCoin.fromCoin(big), Left(OutOfRange(Kind.CompactCoin, two64)))
     assertEquals(
       KeyHash.fromBytes[Staking](Bytes.fromArray(Array.fill(27)(0.toByte))),
@@ -173,7 +181,7 @@ class VocabularySuite extends DisciplineSuite:
   }
 
   test("accepted values round-trip") {
-    assertEquals(Coin.fromBigInt(BigInt(7)).map(Coin.value), Right(BigInt(7)))
+    assertEquals(Coin(BigInt(7)).value, BigInt(7))
     assertEquals(CompactCoin.fromCoin(Coin.zero).map(_.toBigInt), Right(BigInt(0)))
     assertEquals(NonZero.from(3).map(_.value), Right(3))
     assertEquals(EpochNo.fromBigInt(BigInt(4)).map(_.next.map(_.toBigInt)), Right(Some(BigInt(5))))

@@ -54,7 +54,7 @@ class DuplicateWithdrawalsLedgerSuite extends FunSuite:
       empty.copy[E](utxo =
         empty.utxo.copy[E](
           utxo = UtxoTables(Utxo.empty ++ Vector(input -> out(alice.address(), funds))),
-          deposited = Coin.fromBigInt(deposit).fold(e => fail(e.toString), identity)
+          deposited = Coin(deposit)
         )
       )
     )

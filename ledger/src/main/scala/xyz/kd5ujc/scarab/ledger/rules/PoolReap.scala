@@ -100,12 +100,12 @@ object PoolReap:
         future = Sorted.empty,
         retiring = ps0.retiring.filter((id, _) => !retired(id))
       )
+      val amounts = refunds.toList.map((c, n) => c -> Coin(n))
       for
-        amounts <- refunds.toList.traverse((c, n) => Coin.fromBigInt(n).map(c -> _))
         credited <- EraLedger.credit(ls0, amounts)
         cleared = EraLedger.clearPoolDelegations(credited, clear)
-        deposited <- Coin.fromBigInt(st.utxo.deposited.value - (unclaimed + refunded))
-        treasury <- Coin.fromBigInt(st.chainAccount.treasury.value + unclaimed)
+        deposited = Coin(st.utxo.deposited.value - (unclaimed + refunded))
+        treasury = Coin(st.chainAccount.treasury.value + unclaimed)
       yield PoolreapState[E](
         st.utxo.copy(deposited = deposited),
         st.chainAccount.copy(treasury = treasury),

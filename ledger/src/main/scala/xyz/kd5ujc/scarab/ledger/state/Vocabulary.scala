@@ -110,7 +110,9 @@ object Hash32:
 
 // ---- amounts
 
-/** `Coin` (`Coin.hs:93`, an `Integer`): lovelace, never negative here (`Negative` otherwise). */
+/** `Coin` (`Coin.hs:93`, an `Integer`): every integer; bounds belong to decoders and rule
+  * predicates.
+  */
 opaque type Coin = BigInt
 
 object Coin:
@@ -121,8 +123,7 @@ object Coin:
     */
   val oneNonZero: NonZero[Coin] = BigInt(1)
 
-  def fromBigInt(n: BigInt): Either[VocabError, Coin] =
-    Either.cond(n.signum >= 0, n, VocabError.Negative(VocabError.Kind.Coin, n))
+  def apply(n: BigInt): Coin = n
 
   extension (c: Coin) def value: BigInt = c
 

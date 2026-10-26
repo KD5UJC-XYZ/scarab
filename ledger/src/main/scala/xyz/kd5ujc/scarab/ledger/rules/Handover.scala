@@ -47,9 +47,7 @@ object Handover:
         )
       all = node.Utxo.fromMap(outputs.map((in, out, _) => in -> out).toMap)
       stash = node.Utxo.fromMap(outputs.collect { case (in, out, true) => in -> out }.toMap)
-      reserves <- Coin
-        .fromBigInt(context.maxLovelaceSupply - all.coin)
-        .leftMap(TickFailure.Vocab(_))
+      reserves = Coin(context.maxLovelaceSupply - all.coin)
       genDelegs <- context.genDelegs.toList
         .traverse((k, p) => Convert.keyHash[Genesis](k).map(_ -> p))
         .map(Sorted.map(_))

@@ -319,9 +319,9 @@ object Utxo
           body.outputs,
           body.inputs.distinct.sorted.flatMap(utxo.get)
         )
-        deposited <- Coin.fromBigInt(s.deposited.value + deposits - refunds)
-        fees <- Coin.fromBigInt(s.fees.value + body.fee)
-        donation <- Coin.fromBigInt(s.donation.value + body.donation)
+        deposited = Coin(s.deposited.value + deposits - refunds)
+        fees = Coin(s.fees.value + body.fee)
+        donation = Coin(s.donation.value + body.donation)
       yield s.copy(
         utxo = UtxoTables(utxo -- body.inputs ++ created),
         deposited = deposited,
@@ -337,7 +337,7 @@ object Utxo
           returned.map(_._2),
           collateral.outputs
         )
-        fees <- Coin.fromBigInt(s.fees.value + collateral.fee)
+        fees = Coin(s.fees.value + collateral.fee)
       yield s.copy(
         utxo = UtxoTables(utxo -- body.collateral ++ returned),
         fees = fees,

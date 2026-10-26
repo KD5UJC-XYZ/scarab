@@ -39,7 +39,7 @@ object RewardPulserFixture extends Assertions:
 
   def pool(n: Int): KeyHash[StakePool] = ok(KeyHash.fromBytes[StakePool](bytes(n, 28)))
 
-  def coin(n: BigInt): Coin = ok(Coin.fromBigInt(n))
+  def coin(n: BigInt): Coin = Coin(n)
   def compact(n: BigInt): CompactCoin = ok(CompactCoin.fromBigInt(n))
 
   /** A Conway state in `epoch`: `accounts` stake credentials delegating to `pools` pools, each with

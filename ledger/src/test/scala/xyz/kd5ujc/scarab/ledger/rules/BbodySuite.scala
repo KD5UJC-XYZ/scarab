@@ -60,7 +60,7 @@ class BbodySuite extends FunSuite:
   ) =
     Sts(Bbody)(
       globals,
-      BbodyEnv(TestLedger.env, pp, ok(Coin.fromBigInt(0))),
+      BbodyEnv(TestLedger.env, pp, Coin(0)),
       from,
       BbodySignal(txs, issuer, declared, commitment)
     )
@@ -110,7 +110,7 @@ class BbodySuite extends FunSuite:
       Vector(alice)
     )
     val from = state(pp, utxo)
-    val env = BbodyEnv(TestLedger.env, pp, ok(Coin.fromBigInt(0)))
+    val env = BbodyEnv(TestLedger.env, pp, Coin(0))
     val cases = Vector(
       (Vector(signed), commitment),
       (Vector(signed), commitment.copy(size = commitment.size + 1)),

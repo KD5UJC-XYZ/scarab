@@ -5,13 +5,10 @@ import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger as flat
 import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, Rewards}
-import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.node.read.LeaderPools.given
 
-/** A ledger read with a typed refusal. Direct native fields succeed; derived views such as
-  * [[MirrorEraRead.rewardsDue]] can reject values outside the ledger vocabulary.
-  */
+/** A ledger read with a typed refusal. Native fields and their total projections succeed. */
 type Read[A] = Either[MirrorError, A]
 
 /** The reward update a state holds, by credential: what the node's projection and `GetRewardInfo`
@@ -182,24 +179,15 @@ final class MirrorEraRead[E <: EraTag](val state: NewEpochState[E])(using
     * applied); the mirror's update holds every reward.
     */
   def rewardsDue: Read[Option[RewardsDue]] =
-    state.ru.flatTraverse {
-      case PulsingRewUpdate.Complete(u) =>
-        Rewards
-          .aggregate(EraLedger.prevPParams(ls.utxo.gov).protocolMajor, u.rs)
-          .left
-          .map(MirrorError.Vocab(_))
-          .map(paid =>
-            Some(
-              RewardsDue(
-                u.deltaT,
-                u.deltaR,
-                u.deltaF,
-                Sorted.map(paid.collect { case (c, n) if n.value.signum != 0 => c -> n.value })
-              )
-            )
-          )
-      case PulsingRewUpdate.Pulsing(_, _) => Right(None)
-    }
+    Right(state.ru.collect { case PulsingRewUpdate.Complete(u) =>
+      val paid = Rewards.aggregate(EraLedger.prevPParams(ls.utxo.gov).protocolMajor, u.rs)
+      RewardsDue(
+        u.deltaT,
+        u.deltaR,
+        u.deltaF,
+        Sorted.map(paid.collect { case (c, n) if n.value.signum != 0 => c -> n.value })
+      )
+    })
 
   def ppup: Read[(Map[Bytes, flat.ParamUpdate], Map[Bytes, flat.ParamUpdate])] =
     Right(era match

@@ -24,7 +24,7 @@ class RewardsDueSuite extends FunSuite:
   private val poolB =
     KeyHash.fromBytes[StakePool](bytes(28, 3)).fold(e => fail(e.toString), identity)
 
-  private def coin(n: Long) = Coin.fromBigInt(n).fold(e => fail(e.toString), identity)
+  private def coin(n: Long) = Coin(n)
 
   /** A state with the update paying `credential` a leader reward and a member reward, the previous
     * parameters of the major version `previous`.

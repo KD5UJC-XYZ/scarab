@@ -20,7 +20,7 @@ object EpochStateGen:
   given nonZeroCoin: Arbitrary[NonZero[Coin]] = Arbitrary(
     Gen
       .oneOf(1L, 2L, Long.MaxValue)
-      .map(n => NonZero.from(Coin.fromBigInt(BigInt(n)).toOption.get).toOption.get)
+      .map(n => NonZero.from(Coin(BigInt(n))).toOption.get)
   )
 
   given nonZeroCompact: Arbitrary[NonZero[CompactCoin]] = Arbitrary(

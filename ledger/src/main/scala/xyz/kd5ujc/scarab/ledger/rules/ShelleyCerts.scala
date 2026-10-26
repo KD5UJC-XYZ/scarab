@@ -236,11 +236,7 @@ object ShelleyDeleg extends Sts[ShelleyDelegEnv, ShelleyCertState, Certificate, 
     val transfersAllowed = env.delegs.pp.protocolMajor > 4
     def total(m: SortedMap[Credential[Staking], Coin]): BigInt = m.valuesIterator.map(_.value).sum
     def coins(m: Map[Credential[Staking], BigInt]): F[SortedMap[Credential[Staking], Coin]] =
-      Refuse
-        .vocab[F, List[(Credential[Staking], Coin)]](
-          m.toList.traverse((c, n) => Coin.fromBigInt(n).map(c -> _))
-        )
-        .map(Sorted.map(_))
+      Sorted.map(m.iterator.map((c, n) => c -> Coin(n)).toList).pure[F]
     def delta(d: DeltaCoin, by: BigInt): DeltaCoin = DeltaCoin(d.value + by)
     for
       s <- st.get

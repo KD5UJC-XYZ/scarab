@@ -175,15 +175,15 @@ object ConwayEpoch:
       prevPParams = gov0.curPParams,
       futurePParams = FuturePParams.PotentialPParamsUpdate(None)
     )
+    val withdrawn = successful.map((c, n) => c -> Coin(n))
+    val withdrawnTotal = successful.foldLeft(BigInt(0))(_ + _._2)
     for
-      withdrawn <- successful.traverse((c, n) => Coin.fromBigInt(n).map(c -> _))
-      withdrawnTotal = successful.foldLeft(BigInt(0))(_ + _._2)
       afterWithdrawals <- EraLedger.credit(ls1, withdrawn)
       // proposal deposits go back to their accounts, or to the treasury where there is none
       refunds <- removed.traverse { gas =>
         Convert
           .credential[Staking](gas.proposal.returnAccount.credential)
-          .flatMap(c => Coin.fromBigInt(gas.proposal.deposit).map(c -> _))
+          .map(c => c -> Coin(gas.proposal.deposit))
       }
       (refundable, unclaimedRefunds) = refunds.partition((c, _) =>
         EraLedger.isRegistered(afterWithdrawals, c)
@@ -198,7 +198,7 @@ object ConwayEpoch:
       committeeState = refunded.cert.vState.committeeState.creds.filter((cold, _) =>
         enacted.committee.exists(_.members.contains(Convert.back(cold)))
       )
-      treasury <- Coin.fromBigInt(
+      treasury = Coin(
         es1.chainAccount.treasury.value - withdrawnTotal + es0.ls.utxo.donation.value + unclaimed
       )
       cert2 = refunded.cert.copy(vState =
@@ -208,7 +208,7 @@ object ConwayEpoch:
         )
       )
       ls2 = LedgerState[Conway](cert2, ls1.utxo.copy(gov = gov1))
-      deposited <- Coin.fromBigInt(totalObligation(ls2))
+      deposited = Coin(totalObligation(ls2))
       ls3 = ls2.copy[Conway](utxo = ls2.utxo.copy(deposited = deposited, donation = Coin.zero))
       es2 = es1.copy(chainAccount = es1.chainAccount.copy(treasury = treasury), ls = ls3)
     yield

@@ -19,7 +19,7 @@ object NativeRewardFixture extends Assertions:
   def key(n: Int): KeyHash[Staking] = ok(KeyHash.fromBytes[Staking](hash(n)))
   def cred(n: Int): Credential[Staking] = Credential.KeyHashObj(key(n))
   def pool(n: Int): KeyHash[StakePool] = ok(KeyHash.fromBytes[StakePool](hash(n)))
-  def coin(n: BigInt): Coin = ok(Coin.fromBigInt(n))
+  def coin(n: BigInt): Coin = Coin(n)
   def compact(n: BigInt): CompactCoin = ok(CompactCoin.fromBigInt(n))
 
   def globals(slots: Int, active: Rational, security: Int = 1, network: Int = 0): Globals =
@@ -135,7 +135,8 @@ object NativeRewardFixture extends Assertions:
       ShelleyBasedEra[E]
   ): Map[Credential[Staking], BigInt] =
     val update = complete(nes, g)
-    ok(Rewards.aggregate(EraLedger.prevPParams(nes.es.ls.utxo.gov).protocolMajor, update.rs))
+    Rewards
+      .aggregate(EraLedger.prevPParams(nes.es.ls.utxo.gov).protocolMajor, update.rs)
       .map((c, n) => c -> n.value)
       .toMap
 

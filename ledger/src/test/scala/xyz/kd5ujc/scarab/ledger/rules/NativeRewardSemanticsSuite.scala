@@ -124,7 +124,7 @@ class NativeRewardSemanticsSuite extends FunSuite:
     val started = rupd(between, 41, g)
     val pending = started.ru.getOrElse(fail("start must retain native pending reward work"))
     val update = ok(Rewards.complete(pending))
-    val memberReward = ok(Rewards.aggregate(5, update.rs)).find(_._1 == member).map(_._2.value)
+    val memberReward = Rewards.aggregate(5, update.rs).find(_._1 == member).map(_._2.value)
     assertEquals(memberReward.isDefined, registeredAtStart, update.toString)
     val later = accounts(
       started,
