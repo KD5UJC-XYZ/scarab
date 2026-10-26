@@ -617,6 +617,32 @@
       "page": "docs/compatibility/ledger-rule-interpreter.md"
     },
     {
+      "id": "native-genesis-start",
+      "component": "Native genesis start (#488)",
+      "status": "implemented",
+      "summary": "Native state initialization; Byron hand-over uses translated cost models, Shelley-based starts apply current-only injections",
+      "evidence": {
+        "suites": [
+          "GenesisStartSuite",
+          "DuplicateWithdrawalsLedgerSuite"
+        ],
+        "issues": [
+          488,
+          496
+        ],
+        "paths": [
+          "fixtures/devnet/lsq/genesis"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          499,
+          497
+        ]
+      },
+      "page": "docs/compatibility/native-genesis-start.md"
+    },
+    {
       "id": "ledger-incremental-rewards",
       "component": "Ledger: incremental rewards (D15, #135)",
       "status": "implemented",

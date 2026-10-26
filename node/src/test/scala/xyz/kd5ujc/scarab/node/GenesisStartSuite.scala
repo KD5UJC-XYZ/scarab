@@ -7,7 +7,7 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorExtras, MirrorProvenance}
 import xyz.kd5ujc.scarab.ledger.{ConfigProblem, ProtocolParams, Ptr}
-import xyz.kd5ujc.scarab.ledger.rules.{CertLens, GenesisStartError}
+import xyz.kd5ujc.scarab.ledger.rules.{CertLens, GenesisStartError, Globals, Handover, Translate}
 import xyz.kd5ujc.scarab.ledger.state.*
 
 /** The start state of a chain, made from its genesis files as the reference makes it
@@ -142,6 +142,69 @@ class GenesisStartSuite extends FunSuite:
     assertEquals(nes.es.ls.utxo.gov.curPParams.costModels.get(1), injected.get(1))
     assertEquals(nes.es.ls.utxo.gov.prevPParams.costModels.get(1), None)
     assertEquals(nes.es.ls.utxo.gov.drepPulsing.ratify.enact.params.costModels.get(1), None)
+  }
+
+  private def byronStart(name: String, value: Json): Json = name match
+    case "configuration.yaml" =>
+      Vector("Shelley", "Allegra", "Mary", "Alonzo", "Babbage", "Conway").zipWithIndex
+        .foldLeft(value) { case (config, (era, index)) =>
+          config.deepMerge(Json.obj(s"Test${era}HardForkAtEpoch" -> Json.fromInt(index + 1)))
+        }
+    case "shelley-genesis.json" =>
+      value.deepMerge(
+        Json.obj(
+          "protocolParams" -> Json.obj(
+            "protocolVersion" -> Json.obj("major" -> Json.fromInt(2), "minor" -> Json.fromInt(0))
+          )
+        )
+      )
+    case _ => value
+
+  test("a Byron hand-over keeps base cost models without the era-skipping injection") {
+    val byron = NodeSetup.fromFiles(files(byronStart)).fold(e => fail(e.message), identity)
+    val context = byron.handOver.getOrElse(fail("a Byron start has no hand-over context"))
+    val utxo = byron.mirrorStart.ext.ledgerState.state match
+      case EraLedgerState.ByronCurrent(state) =>
+        state.ledger.getOrElse(fail("a Byron start has no ledger")).utxo
+      case other => fail(s"not a Byron start: $other")
+    val shelley = Handover
+      .toShelley(context, EpochNo.fromUnsigned(1L), utxo)
+      .fold(e => fail(e.toString), identity)
+    val allegra = Translate.shelleyToAllegra(shelley).fold(e => fail(e.toString), identity)
+    val alonzo = Translate.maryToAlonzo(
+      Globals(byron.globals, byron.genesis.geometry),
+      Translate.allegraToMary(allegra)
+    )
+    val baseModel = nes.es.ls.utxo.gov.prevPParams.costModels.get(0)
+    assert(baseModel.nonEmpty)
+    for params <- Vector(
+        context.protocolParams,
+        shelley.es.ls.utxo.gov.curPParams,
+        shelley.es.ls.utxo.gov.prevPParams,
+        alonzo.es.ls.utxo.gov.curPParams,
+        alonzo.es.ls.utxo.gov.prevPParams
+      )
+    do
+      assertEquals(params.costModels.get(0), baseModel)
+      assertEquals(params.costModels.get(1), None)
+  }
+
+  test("a Byron start still refuses a malformed cost model in the unused injection") {
+    val problem = refusal { (name, value) =>
+      val started = byronStart(name, value)
+      if name != "alonzo-genesis.json" then started
+      else
+        started.deepMerge(
+          Json.obj(
+            "extraConfig" -> Json.obj(
+              "costModels" -> Json.obj("PlutusV2" -> Json.fromString("not a cost model"))
+            )
+          )
+        )
+    }
+    problem match
+      case ConfigProblem.JsonField("protocol parameters", "cost model", _) => ()
+      case other => fail(s"unexpected refusal: $other")
   }
 
   /** The devnet genesis started in Shelley: the staking injection of the eras before Conway. */
