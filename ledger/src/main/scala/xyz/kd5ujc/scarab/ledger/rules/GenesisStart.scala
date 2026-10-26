@@ -128,9 +128,9 @@ object GenesisInjections:
     yield DRepState(expiry, anchor, deposit, Sorted.emptySet[Credential[Staking]])
 
   /** The injections of the genesis files: the Shelley genesis `initialFunds` and staking
-    * (`Shelley/Genesis.hs:215-219`, `sgInitialFunds`, `sgStaking`) and, when `conway` (the chain
-    * starts in Conway, whose `TransitionConfig` holds them), the Conway genesis `initialDReps` and
-    * `delegs` (`Conway/Transition.hs:157-170`).
+    * (`sgInitialFunds` and `sgStaking`, `Shelley/Genesis.hs:321-324`, and `ShelleyExtraConfig`,
+    * `215-219`) and, when `conway` (the chain starts in Conway, whose `TransitionConfig` holds
+    * them), the Conway genesis `initialDReps` and `delegs` (`Conway/Transition.hs:157-171`).
     */
   def read(files: GenesisState.Files, conway: Boolean): Either[ConfigError, GenesisInjections] =
     val s = files.shelley.hcursor
@@ -258,7 +258,7 @@ object GenesisStart:
     * `Mary/Transition.hs:26`, `Alonzo/Transition.hs:36-37`, `Babbage/Transition.hs:26-30`,
     * `Conway/Transition.hs:130-132`): `shelleyRegisterInitialFundsThenStaking`
     * (`Shelley/Transition.hs:306-314`) before Conway and `conwayRegisterInitialFundsThenStaking`
-    * (`Conway/Transition.hs:157-170`) in it, which also injects the DReps and the vote delegations.
+    * (`Conway/Transition.hs:157-171`) in it, which also injects the DReps and the vote delegations.
     * From Alonzo the current parameters' cost models are first overridden by the Alonzo genesis
     * ones ([[alonzoInjectCostModels]]).
     */
@@ -374,7 +374,7 @@ object GenesisStart:
       .fromBigInt(EraLedger.curPParams(nes.es.ls.utxo.gov).keyDeposit)
       .leftMap(GenesisStartError.Vocab(_))
 
-  /** `injectStakeCredentials` of the eras before Conway (`Shelley/Transition.hs:269-303`): each
+  /** `injectStakeCredentials` of the eras before Conway (`Shelley/Transition.hs:269-304`): each
     * staking key, in turn, is registered with the key deposit and a pointer of its own (slot 0, the
     * transaction and certificate indices of its position) and delegates to its pool, which must be
     * registered.
@@ -415,7 +415,7 @@ object GenesisStart:
           register(ls.cert, deposit).map(c => withLedger(nes, ls.copy[E](cert = c)))
     )
 
-  /** `injectStakeCredentials` of Conway (`Conway/Transition.hs:200-221`): each staking key is
+  /** `injectStakeCredentials` of Conway (`Conway/Transition.hs:200-223`): each staking key is
     * registered with the key deposit and delegates its stake to its pool (`registerConwayAccount
     * ... (Just (DelegStake pool))`), which must be registered.
     */
