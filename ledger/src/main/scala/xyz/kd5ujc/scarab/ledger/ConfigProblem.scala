@@ -26,6 +26,7 @@ enum ConfigProblem:
   case Hex(cause: Bytes.HexError)
   case ByteLength(context: String, expected: Int, actual: Int)
   case LedgerValue(cause: LedgerDecodeError)
+  case GenesisAddressEncoding(cause: xyz.kd5ujc.scarab.codec.Cbor.Error)
   case Credential(value: String)
   case DRep(value: String)
   case DuplicateInjection(name: String)

@@ -46,6 +46,7 @@
     "fixtures/reference/genesis-connection-order",
     "fixtures/reference/genesis-density",
     "fixtures/reference/genesis-historicity",
+    "fixtures/reference/genesis-initial-funds",
     "fixtures/reference/genesis-punishment",
     "fixtures/reference/instant-stake",
     "fixtures/reference/ledger-api-pool-goldens",

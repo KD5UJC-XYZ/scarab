@@ -6,8 +6,16 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorExtras, MirrorProvenance}
-import xyz.kd5ujc.scarab.ledger.{ConfigProblem, GenesisState, ProtocolParams, Ptr}
-import xyz.kd5ujc.scarab.ledger.rules.{CertLens, GenesisStartError, Globals, Handover, Translate}
+import xyz.kd5ujc.scarab.ledger.{Address, ConfigProblem, GenesisState, ProtocolParams, Ptr}
+import xyz.kd5ujc.scarab.ledger.rules.{
+  CertLens,
+  GenesisInjections,
+  GenesisStart,
+  GenesisStartError,
+  Globals,
+  Handover,
+  Translate
+}
 import xyz.kd5ujc.scarab.ledger.state.*
 
 /** The start state of a chain, made from its genesis files as the reference makes it
@@ -66,6 +74,201 @@ class GenesisStartSuite extends FunSuite:
   }
 
   private val enterpriseFund = "60" + "19" * 28
+
+  Files
+    .readString(Path.of("fixtures/reference/genesis-initial-funds/cases.jsonl"))
+    .linesIterator
+    .foreach { line =>
+      val row = parser.parse(line).fold(e => fail(e.message), identity).hcursor
+      def field[A: io.circe.Decoder](name: String): A =
+        row.get[A](name).fold(e => fail(e.message), identity)
+      test(s"native initial-funds input: ${field[String]("name")}") {
+        val decoded = GenesisState.address(field[String]("address")).toOption
+        assertEquals(decoded.map(_.raw.hex), field[Option[String]]("canonicalAddress"))
+        val pseudo = decoded.map { address =>
+          val (input, _) = GenesisState
+            .initialOutput(address, Coin(0))
+            .fold(e => fail(e.toString), identity)
+          assertEquals(input.index, BigInt(0))
+          "825820" + input.id.hex + "00"
+        }
+        assertEquals(pseudo, field[Option[String]]("pseudoInput"))
+        val files = GenesisState.Files(
+          Json.obj(
+            "networkId" -> Json.fromString("Testnet"),
+            "initialFunds" -> Json.obj(enterpriseFund -> field[Json]("amount"))
+          ),
+          Json.obj(),
+          Json.obj(),
+          Json.obj()
+        )
+        val coin = GenesisInjections
+          .read(files, conway = false)
+          .toOption
+          .flatMap(_.initialFunds.headOption)
+          .map(_._2)
+        assertEquals(coin.map(_.value.toString), field[Option[String]]("coin"))
+        assertEquals(
+          coin.flatMap(c => CompactCoin.fromCoin(c).toOption).map(_.toBigInt.toString),
+          field[Option[String]]("compact")
+        )
+      }
+    }
+
+  private def fundAddress(hex: String): Address =
+    GenesisState.address(hex).fold(e => fail(e.message), identity)
+
+  private def injections(
+      funds: Vector[(Address, Coin)],
+      mainnet: Boolean = false
+  ): GenesisInjections =
+    GenesisInjections(
+      mainnet,
+      funds,
+      Vector.empty,
+      Vector.empty,
+      Vector.empty,
+      Vector.empty,
+      Map.empty
+    )
+
+  Vector(BigInt(-1), BigInt(1) << 64).foreach { amount =>
+    test(s"the native public initial-funds operation checks Mainnet before compacting $amount") {
+      val funds = injections(Vector(fundAddress(enterpriseFund) -> Coin(amount)), mainnet = true)
+      assertEquals(
+        GenesisStart.registerInitialFunds(funds, nes),
+        Left(GenesisStartError.InjectionNotAllowedOnMainnet)
+      )
+    }
+
+    test(s"a parsed Mainnet genesis retains signed Coin $amount until the injection guard") {
+      val result = NodeSetup.fromFiles(files { (name, value) =>
+        if name != "shelley-genesis.json" then value
+        else
+          value.deepMerge(
+            Json.obj(
+              "networkId" -> Json.fromString("Mainnet"),
+              "extraConfig" -> Json.obj(
+                "initialFunds" -> Json.obj(
+                  "data" -> Json.obj(enterpriseFund -> Json.fromBigInt(amount))
+                )
+              )
+            )
+          )
+      })
+      assertEquals(
+        result.left.toOption.map(_.problem),
+        Some(ConfigProblem.GenesisStart(GenesisStartError.InjectionNotAllowedOnMainnet))
+      )
+    }
+
+    test(s"the native public initial-funds operation compacts every output amount $amount") {
+      val funds = injections(Vector(fundAddress(enterpriseFund) -> Coin(amount)))
+      val expected = CompactCoin.fromBigInt(amount).left.map(GenesisStartError.Vocab(_))
+      assertEquals(
+        GenesisStart.registerInitialFunds(funds, nes).map(_ => ()),
+        expected.map(_ => ())
+      )
+    }
+  }
+
+  test("initial funds retain an exact signed reserve total beyond Word64") {
+    val maximum = (BigInt(1) << 64) - 1
+    val addresses = Vector(fundAddress(enterpriseFund), fundAddress("60" + "1a" * 28))
+    val start =
+      nes.copy(es = nes.es.copy(chainAccount = nes.es.chainAccount.copy(reserves = Coin(0))))
+    val funded = GenesisStart
+      .registerInitialFunds(injections(addresses.map(_ -> Coin(maximum))), start)
+      .fold(e => fail(e.toString), identity)
+    assertEquals(funded.es.chainAccount.reserves.value, -2 * maximum)
+    addresses.foreach { address =>
+      val input =
+        xyz.kd5ujc.scarab.ledger.TxIn(xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(address.raw), 0)
+      assertEquals(funded.es.ls.utxo.utxo.utxo.get(input).map(_.value.coin), Some(maximum))
+    }
+  }
+
+  test("ordered initial funds overwrite a repeated address but sum every Coin") {
+    val address = fundAddress(enterpriseFund)
+    val funded = GenesisStart
+      .registerInitialFunds(injections(Vector(address -> Coin(1), address -> Coin(2))), nes)
+      .fold(e => fail(e.toString), identity)
+    val input =
+      xyz.kd5ujc.scarab.ledger.TxIn(xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(address.raw), 0)
+    assertEquals(funded.es.ls.utxo.utxo.utxo.get(input).map(_.value.coin), Some(BigInt(2)))
+    assertEquals(funded.es.chainAccount.reserves.value, nes.es.chainAccount.reserves.value - 3)
+    assertEquals(
+      GenesisStart.registerInitialFunds(injections(Vector(address -> Coin(3))), funded),
+      Left(GenesisStartError.InitialFundInUtxo(input))
+    )
+  }
+
+  Vector(Json.fromString("1"), Json.fromBigDecimal(BigDecimal("1.5"))).foreach { amount =>
+    test(s"Coin JSON syntax is checked before the Mainnet injection guard: ${amount.noSpaces}") {
+      val result = NodeSetup.fromFiles(files { (name, value) =>
+        if name != "shelley-genesis.json" then value
+        else
+          value.deepMerge(
+            Json.obj(
+              "networkId" -> Json.fromString("Mainnet"),
+              "extraConfig" -> Json.obj(
+                "initialFunds" -> Json.obj("data" -> Json.obj(enterpriseFund -> amount))
+              )
+            )
+          )
+      })
+      result.left.toOption.map(_.problem) match
+        case Some(_: ConfigProblem.JsonField) => ()
+        case other                            => fail(s"expected Coin JSON refusal, got $other")
+    }
+  }
+
+  test("genesis address parsing uses strict pointers and reserved header bits") {
+    val reservedHeader = "62" + "19" * 28
+    assertEquals(
+      GenesisState.address(reservedHeader).left.toOption.map(_.problem),
+      Some(
+        ConfigProblem.LedgerValue(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.AddressHeader(0x62))
+      )
+    )
+    val overflowPointer = "40" + "19" * 28 + "90808080000000"
+    assert(GenesisState.address(overflowPointer).isLeft)
+    val result = NodeSetup.fromFiles(files { (name, value) =>
+      if name != "shelley-genesis.json" then value
+      else
+        value.deepMerge(
+          Json.obj(
+            "networkId" -> Json.fromString("Mainnet"),
+            "extraConfig" -> Json.obj(
+              "initialFunds" -> Json.obj("data" -> Json.obj("not-hex" -> Json.fromInt(1)))
+            )
+          )
+        )
+    })
+    assert(result.left.toOption.exists(_.problem.isInstanceOf[ConfigProblem.Hex]))
+  }
+
+  test("initial-fund pseudo inputs hash the decoded pointer address serialization") {
+    val canonical = "40" + "19" * 28 + "000000"
+    val noncanonical = "40" + "19" * 28 + "80000000"
+    val address = fundAddress(noncanonical)
+    assertEquals(address.raw.hex, canonical)
+    val output = GenesisState.output(noncanonical, 1).fold(e => fail(e.message), identity)
+    assertEquals(output._1.id, xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(address.raw))
+  }
+
+  test("initial-fund Byron addresses use native serialization before pseudo-input hashing") {
+    import xyz.kd5ujc.scarab.ledger.byron.ByronCbor
+    val payload = ByronCbor.of(0x83, 0x58, 0x1c) ++ Bytes.fromArray(
+      Array.fill[Byte](28)(0)
+    ) ++ ByronCbor.of(0xa0, 0)
+    val checksum = ByronCbor.uint(BigInt(ByronCbor.crc32(payload)))
+    val canonical = ByronCbor.of(0x82, 0xd8, 0x18) ++ ByronCbor.bytes(payload) ++ checksum
+    val noncanonical = ByronCbor.of(0x82, 0xd9, 0, 0x18) ++ ByronCbor.bytes(payload) ++ checksum
+    val output = GenesisState.outputBytes(noncanonical, 1).fold(e => fail(e.message), identity)
+    assertEquals(output._2.address.raw, canonical)
+    assertEquals(output._1.id, xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(canonical))
+  }
 
   // `registerInitialFunds` constructs `mkBasicTxOut`, whose value must compact even though the
   // chain account's reserve arithmetic uses signed Coin (f649f975 Shelley/Transition.hs:650-653;
