@@ -161,8 +161,7 @@ object Sts:
 /** A state transition system whose predicate failures are recorded ([[Judge]]) rather than raised:
   * the rules of a transaction, as the reference runs every `STS` (`Extended.hs:668-730`). `Rec` is
   * the predicate failure (`PredicateFailure`); `Fail` is raised for what ends the judgment with no
-  * verdict (a defect), and, until every rule records (#412), for the predicate failures of the
-  * rules that still raise them ([[Judge.trans]]).
+  * verdict (a defect).
   *
   * The epoch and tick rules, whose reference predicate failures cannot occur, stay [[Sts]]. A rule
   * of the block (LEDGERS) runs a transaction's rules with [[Judge.raising]]: the block's verdict is
@@ -194,7 +193,7 @@ object JudgedSts:
     rule.transition[RuleT.Of[Fail, S]](env, signal).run(globals, state).map(_._1)
 
   /** `trans @sub` (`Extended.hs:475`, interpreted at `Extended.hs:713-722`): runs `sub` on the part
-    * of the state `S0` that [[Embed]] names, as a sub-rule ([[Judge.trans]]): it always runs, and
+    * of the state `S0` that [[Embed]] names, as a sub-rule ([[Judge.nest]]): it always runs, and
     * what it records is one block of the enclosing rule's failures. The predicate failures of the
     * transaction rules are one type, so they are recorded as they are; a raise is wrapped
     * (`wrapFailed`).
@@ -210,7 +209,7 @@ object JudgedSts:
       raise: Raise[F, Fail0],
       judge: Judge[F, Rec]
   ): F[Unit] =
-    judge.trans(
+    judge.nest(
       sub.transition[F](env, signal)(using
         summon[Monad[F]],
         ask,

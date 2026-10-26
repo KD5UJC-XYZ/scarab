@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Certificate,
   RefScripts,
   GenDelegPair,
+  LedgerDefect,
   LedgerFailure,
   PlutusStats,
   TxChecks,
@@ -319,7 +320,7 @@ object Utxow
       genDelegs: Map[Bytes, GenDelegPair],
       ann: StAnnTx,
       mir: Test[PredicateFailure]
-  ): Vector[Either[LedgerFailure, Test[PredicateFailure]]] =
+  ): Vector[Either[LedgerDefect, Test[PredicateFailure]]] =
     val tx = ann.tx
     val pp = env.pp
     val pv = pp.protocolMajor
@@ -402,8 +403,10 @@ object Utxow
         test(TxChecks.integrityCheck(pp, tx, ann.spentByInput, scripts))
       )
 
-  /** Records the checks in order: every failure of each, or the first defect raised. */
-  def record[F[_]: Monad](checks: Vector[Either[LedgerFailure, Test[PredicateFailure]]])(using
+  /** Records the checks in order: every failure of each, or the first defect raised. A check ends
+    * in a defect or a test, never a raised refusal.
+    */
+  def record[F[_]: Monad](checks: Vector[Either[LedgerDefect, Test[PredicateFailure]]])(using
       raise: Raise[F, LedgerFailure],
       judge: Judge[F, PredicateFailure]
   ): F[Unit] =
