@@ -6,7 +6,7 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorExtras, MirrorProvenance}
-import xyz.kd5ujc.scarab.ledger.{Address, ConfigProblem, GenesisState, ProtocolParams, Ptr}
+import xyz.kd5ujc.scarab.ledger.{ConfigProblem, GenesisState, ProtocolParams, Ptr}
 import xyz.kd5ujc.scarab.ledger.rules.{
   CertLens,
   GenesisInjections,
@@ -17,6 +17,7 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   Translate
 }
 import xyz.kd5ujc.scarab.ledger.state.*
+import xyz.kd5ujc.scarab.ledger.GenesisState.{FundAddress, InjectionSource}
 
 /** The start state of a chain, made from its genesis files as the reference makes it
   * (`GenesisStart`, `GenesisMirror`): the devnet genesis of `devnet.py up` starts in Conway with
@@ -84,7 +85,7 @@ class GenesisStartSuite extends FunSuite:
         row.get[A](name).fold(e => fail(e.message), identity)
       test(s"native initial-funds input: ${field[String]("name")}") {
         val decoded = GenesisState.address(field[String]("address")).toOption
-        assertEquals(decoded.map(_.raw.hex), field[Option[String]]("canonicalAddress"))
+        assertEquals(decoded.map(_.canonicalBytes.hex), field[Option[String]]("canonicalAddress"))
         val pseudo = decoded.map { address =>
           val (input, _) = GenesisState
             .initialOutput(address, Coin(0))
@@ -103,9 +104,9 @@ class GenesisStartSuite extends FunSuite:
           Json.obj()
         )
         val coin = GenesisInjections
-          .read(files, conway = false)
+          .read(files)
           .toOption
-          .flatMap(_.initialFunds.headOption)
+          .flatMap(_.initialFunds.legacy.headOption)
           .map(_._2)
         assertEquals(coin.map(_.value.toString), field[Option[String]]("coin"))
         assertEquals(
@@ -115,20 +116,231 @@ class GenesisStartSuite extends FunSuite:
       }
     }
 
-  private def fundAddress(hex: String): Address =
+  private def fundAddress(hex: String): FundAddress =
     GenesisState.address(hex).fold(e => fail(e.message), identity)
 
+  private def replaceExtra(value: Json, name: String, source: Json): Json =
+    val extra = value.hcursor
+      .downField("extraConfig")
+      .focus
+      .flatMap(_.asObject)
+      .getOrElse(io.circe.JsonObject.empty)
+    value.mapObject(_.add("extraConfig", Json.fromJsonObject(extra.add(name, source))))
+
+  private def sourceFiles(shelley: Json): GenesisState.Files =
+    GenesisState.Files(shelley, Json.obj(), Json.obj(), Json.obj())
+
+  private def fundSources(extra: Json): Json = Json.obj(
+    "networkId" -> Json.fromString("Testnet"),
+    "initialFunds" -> Json.obj(enterpriseFund -> Json.fromInt(1)),
+    "extraConfig" -> Json.obj("initialFunds" -> extra)
+  )
+
+  test("no injection preserves legacy funds, but embedded empty data conflicts with them") {
+    for extra <- Vector(Json.obj(), Json.Null, Json.obj("data" -> Json.Null, "file" -> Json.Null))
+    do
+      val parsed = GenesisInjections
+        .read(sourceFiles(fundSources(extra)))
+        .fold(e => fail(e.message), identity)
+      val next =
+        GenesisStart.registerInitialFunds(parsed, nes).fold(e => fail(e.toString), identity)
+      assertEquals(next.es.chainAccount.reserves.value, nes.es.chainAccount.reserves.value - 1)
+    val embedded = GenesisInjections
+      .read(sourceFiles(fundSources(Json.obj("data" -> Json.obj()))))
+      .fold(e => fail(e.message), identity)
+    assertEquals(
+      GenesisStart.registerInitialFunds(embedded, nes),
+      Left(GenesisStartError.ConflictingSources("initialFunds"))
+    )
+  }
+
+  test(
+    "a parsed funds conflict is resolved after Mainnet, while invalid unselected data is parsed first"
+  ) {
+    val extra = Json.obj("data" -> Json.obj(enterpriseFund -> Json.fromInt(2)))
+    val parsed = GenesisInjections
+      .read(sourceFiles(fundSources(extra)))
+      .fold(e => fail(e.message), identity)
+    assertEquals(
+      GenesisStart.registerInitialFunds(parsed.copy(mainnet = true), nes),
+      Left(GenesisStartError.InjectionNotAllowedOnMainnet)
+    )
+    assertEquals(
+      GenesisStart.registerInitialFunds(parsed, nes),
+      Left(GenesisStartError.ConflictingSources("initialFunds"))
+    )
+    val invalid = replaceExtra(
+      fundSources(extra),
+      "initialFunds",
+      Json.obj("data" -> Json.obj(enterpriseFund -> Json.fromString("1")))
+    )
+    assert(
+      GenesisInjections
+        .read(sourceFiles(invalid))
+        .left
+        .toOption
+        .exists(_.problem.isInstanceOf[ConfigProblem.JsonField])
+    )
+    val invalidKey = fundSources(extra).mapObject(
+      _.add("initialFunds", Json.obj("not-hex" -> Json.fromString("also not a Coin")))
+    )
+    assert(
+      GenesisInjections
+        .read(sourceFiles(invalidKey))
+        .left
+        .toOption
+        .exists(_.problem.isInstanceOf[ConfigProblem.Hex])
+    )
+  }
+
+  test(
+    "file metadata is parsed before injection; selection and consumption retain native ordering"
+  ) {
+    val file = Json.obj(
+      "file" -> Json.arr(Json.fromString("funds.json")),
+      "hash" -> Json.fromString("00" * 32)
+    )
+    val legacy = GenesisInjections
+      .read(sourceFiles(fundSources(file)))
+      .fold(e => fail(e.message), identity)
+    assertEquals(
+      GenesisStart.registerInitialFunds(legacy.copy(mainnet = true), nes),
+      Left(GenesisStartError.InjectionNotAllowedOnMainnet)
+    )
+    assertEquals(
+      GenesisStart.registerInitialFunds(legacy, nes),
+      Left(GenesisStartError.ConflictingSources("initialFunds"))
+    )
+    val selected = legacy.copy(initialFunds = legacy.initialFunds.copy(legacy = Vector.empty))
+    GenesisStart.registerInitialFunds(selected, nes) match
+      case Left(GenesisStartError.UnsupportedFile("initialFunds", Vector("funds.json"), hash)) =>
+        assertEquals(hash.bytes.hex, "00" * 32)
+      case other => fail(s"unexpected selected file result: $other")
+    for invalid <- Vector(
+        Json.obj("file" -> Json.arr(Json.fromString("funds.json"))),
+        file.mapObject(_.add("hash", Json.fromString("00"))),
+        file.mapObject(_.add("hash", Json.fromString("not hex"))),
+        file.mapObject(_.add("file", Json.fromString("funds.json"))),
+        file.mapObject(_.add("data", Json.obj()))
+      )
+    do assert(GenesisInjections.read(sourceFiles(fundSources(invalid))).isLeft)
+  }
+
+  Vector("initialFunds", "stakePools", "stakeCredentials", "initialDReps", "delegs").foreach {
+    source =>
+      test(s"$source requires an object when supplied, even for a Byron start") {
+        val result = NodeSetup.fromFiles(files { (name, value) =>
+          val started = byronStart(name, value)
+          val genesis =
+            if Set("initialDReps", "delegs")(source) then "conway-genesis.json"
+            else "shelley-genesis.json"
+          if name == genesis then replaceExtra(started, source, Json.arr()) else started
+        })
+        assert(result.left.toOption.exists(_.problem.isInstanceOf[ConfigProblem.JsonField]))
+      }
+  }
+
+  Vector("initialDReps", "delegs").foreach { source =>
+    test(s"Conway resolves $source conflicts before the funds Mainnet guard") {
+      val problem = refusal { (name, value) =>
+        if name == "shelley-genesis.json" then
+          value.mapObject(_.add("networkId", Json.fromString("Mainnet")))
+        else if name == "conway-genesis.json" then
+          val entries = value.hcursor
+            .downField("extraConfig")
+            .downField(source)
+            .downField("data")
+            .focus
+            .getOrElse(fail(s"missing $source fixture"))
+          value.mapObject(_.add(source, entries))
+        else value
+      }
+      assertEquals(
+        problem,
+        ConfigProblem.GenesisStart(GenesisStartError.ConflictingSources(source))
+      )
+    }
+  }
+
+  Vector("stakePools", "stakeCredentials").foreach { source =>
+    test(s"Shelley resolves $source conflicts after Mainnet and before funds compaction") {
+      def edit(mainnet: Boolean)(name: String, value: Json): Json =
+        if name != "shelley-genesis.json" then value
+        else
+          val field = if source == "stakePools" then "pools" else "stake"
+          val entries = value.hcursor
+            .downField("extraConfig")
+            .downField(source)
+            .downField("data")
+            .focus
+            .getOrElse(fail(s"missing $source fixture"))
+          val staking =
+            Json.obj("pools" -> Json.obj(), "stake" -> Json.obj()).mapObject(_.add(field, entries))
+          replaceExtra(
+            value.mapObject(
+              _.add("staking", staking)
+                .add("networkId", Json.fromString(if mainnet then "Mainnet" else "Testnet"))
+            ),
+            "initialFunds",
+            Json.obj("data" -> Json.obj(enterpriseFund -> Json.fromInt(-1)))
+          )
+      assertEquals(
+        refusal(edit(true)),
+        ConfigProblem.GenesisStart(GenesisStartError.InjectionNotAllowedOnMainnet)
+      )
+      assertEquals(
+        refusal(edit(false)),
+        ConfigProblem.GenesisStart(GenesisStartError.ConflictingSources(source))
+      )
+    }
+  }
+
+  Vector(
+    "invalid address" -> Json.obj("not-hex" -> Json.fromInt(1)),
+    "invalid Coin" -> Json.obj(enterpriseFund -> Json.fromString("1"))
+  ).foreach { (label, funds) =>
+    test(s"a Byron start validates unused initial funds: $label") {
+      val result = NodeSetup.fromFiles(files { (name, value) =>
+        val started = byronStart(name, value)
+        if name == "shelley-genesis.json" then
+          replaceExtra(started, "initialFunds", Json.obj("data" -> funds))
+        else started
+      })
+      assert(result.isLeft)
+    }
+  }
+
+  test("a Byron start parses valid file metadata and conflicts without resolving either") {
+    val result = NodeSetup.fromFiles(files { (name, value) =>
+      val started = byronStart(name, value)
+      if name == "shelley-genesis.json" then
+        replaceExtra(
+          started.mapObject(_.add("initialFunds", Json.obj(enterpriseFund -> Json.fromInt(-1)))),
+          "initialFunds",
+          Json.obj(
+            "file" -> Json.arr(Json.fromString("unread.json")),
+            "hash" -> Json.fromString("00" * 32)
+          )
+        )
+      else started
+    })
+    assertEquals(
+      result.map(_.mirrorStart.ext.ledgerState.era),
+      Right(xyz.kd5ujc.scarab.protocol.Era.Byron)
+    )
+  }
+
   private def injections(
-      funds: Vector[(Address, Coin)],
+      funds: Vector[(FundAddress, Coin)],
       mainnet: Boolean = false
   ): GenesisInjections =
     GenesisInjections(
       mainnet,
-      funds,
-      Vector.empty,
-      Vector.empty,
-      Vector.empty,
-      Vector.empty,
+      InjectionSource.legacy(funds),
+      InjectionSource.legacy(Vector.empty),
+      InjectionSource.legacy(Vector.empty),
+      InjectionSource.legacy(Vector.empty),
+      InjectionSource.legacy(Vector.empty),
       Map.empty
     )
 
@@ -183,7 +395,8 @@ class GenesisStartSuite extends FunSuite:
     assertEquals(funded.es.chainAccount.reserves.value, -2 * maximum)
     addresses.foreach { address =>
       val input =
-        xyz.kd5ujc.scarab.ledger.TxIn(xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(address.raw), 0)
+        xyz.kd5ujc.scarab.ledger
+          .TxIn(xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(address.canonicalBytes), 0)
       assertEquals(funded.es.ls.utxo.utxo.utxo.get(input).map(_.value.coin), Some(maximum))
     }
   }
@@ -194,7 +407,8 @@ class GenesisStartSuite extends FunSuite:
       .registerInitialFunds(injections(Vector(address -> Coin(1), address -> Coin(2))), nes)
       .fold(e => fail(e.toString), identity)
     val input =
-      xyz.kd5ujc.scarab.ledger.TxIn(xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(address.raw), 0)
+      xyz.kd5ujc.scarab.ledger
+        .TxIn(xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(address.canonicalBytes), 0)
     assertEquals(funded.es.ls.utxo.utxo.utxo.get(input).map(_.value.coin), Some(BigInt(2)))
     assertEquals(funded.es.chainAccount.reserves.value, nes.es.chainAccount.reserves.value - 3)
     assertEquals(
@@ -252,9 +466,12 @@ class GenesisStartSuite extends FunSuite:
     val canonical = "40" + "19" * 28 + "000000"
     val noncanonical = "40" + "19" * 28 + "80000000"
     val address = fundAddress(noncanonical)
-    assertEquals(address.raw.hex, canonical)
+    assertEquals(address.canonicalBytes.hex, canonical)
     val output = GenesisState.output(noncanonical, 1).fold(e => fail(e.message), identity)
-    assertEquals(output._1.id, xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(address.raw))
+    assertEquals(
+      output._1.id,
+      xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(address.canonicalBytes)
+    )
   }
 
   test("initial-fund Byron addresses use native serialization before pseudo-input hashing") {
@@ -545,22 +762,31 @@ class GenesisStartSuite extends FunSuite:
   test("an injection both in extraConfig and in the legacy field, or from a file, is refused") {
     val both = refusal((name, j) =>
       if name == "shelley-genesis.json" then
-        j.deepMerge(Json.obj("initialFunds" -> Json.obj("00" * 29 -> Json.fromInt(1))))
+        j.deepMerge(Json.obj("initialFunds" -> Json.obj(enterpriseFund -> Json.fromInt(1))))
       else j
     )
-    assertEquals(both, ConfigProblem.DuplicateInjection("initialFunds"))
+    assertEquals(
+      both,
+      ConfigProblem.GenesisStart(GenesisStartError.ConflictingSources("initialFunds"))
+    )
     val file = refusal((name, j) =>
       if name == "conway-genesis.json" then
-        j.deepMerge(
+        replaceExtra(
+          j,
+          "delegs",
           Json.obj(
-            "extraConfig" -> Json.obj(
-              "delegs" -> Json.obj("file" -> Json.arr(Json.fromString("d.json")))
-            )
+            "file" -> Json.arr(Json.fromString("d.json")),
+            "hash" -> Json.fromString("00" * 32)
           )
         )
       else j
     )
-    assertEquals(file, ConfigProblem.InjectionFile("delegs"))
+    file match
+      case ConfigProblem.GenesisStart(
+            GenesisStartError.UnsupportedFile("delegs", Vector("d.json"), _)
+          ) =>
+        ()
+      case other => fail(s"unexpected file refusal: $other")
   }
 
   test("a vote delegation of a key with no account adds the DRep's delegator only") {

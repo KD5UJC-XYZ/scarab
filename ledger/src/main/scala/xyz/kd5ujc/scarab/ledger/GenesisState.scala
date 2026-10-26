@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.codec.Rational
 import cats.syntax.all.*
-import io.circe.{ACursor, Decoder, Json}
+import io.circe.{ACursor, Decoder, Json, JsonObject}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value as CborValue}
 
@@ -80,10 +80,17 @@ object GenesisState:
     * f649f975). JSON uses strict pointers and reserved header bits; a pseudo transaction hashes the
     * decoded address's serialization, not a noncanonical spelling in the JSON key.
     */
-  def address(hex: String): Either[ConfigError, Address] =
+  opaque type FundAddress = Address
+
+  object FundAddress:
+    extension (address: FundAddress)
+      def canonicalBytes: Bytes = address.raw
+      def decoded: Address = address
+
+  def address(hex: String): Either[ConfigError, FundAddress] =
     Bytes.fromHex(hex).leftMap(e => ConfigError(ConfigProblem.Hex(e))).flatMap(addressBytes)
 
-  private def addressBytes(raw: Bytes): Either[ConfigError, Address] =
+  private def addressBytes(raw: Bytes): Either[ConfigError, FundAddress] =
     val decoded =
       if raw.size > 0 && (raw.value(0) & 0xff) != 0x82 && (raw.value(0) & 0x8e) != 0 then
         Left(LedgerDecodeError.AddressHeader(raw.value(0) & 0xff))
@@ -142,7 +149,10 @@ object GenesisState:
     * `initialFundsPseudoTxIn` hashes serialiseAddr and uses minBound
     * (`Shelley/Genesis.hs:660-674`).
     */
-  def initialOutput(address: Address, coin: state.Coin): Either[state.VocabError, (TxIn, TxOut)] =
+  def initialOutput(
+      address: FundAddress,
+      coin: state.Coin
+  ): Either[state.VocabError, (TxIn, TxOut)] =
     state.CompactCoin.fromCoin(coin).map { amount =>
       TxIn(Blake2b.hash256.hash(address.raw), 0) -> TxOut(address, Value.coin(amount.toBigInt))
     }
@@ -194,39 +204,83 @@ object GenesisState:
           .cond(b.size == 28, b, ConfigError(ConfigProblem.ByteLength("hash", 28, h.length / 2)))
       )
 
-  /** `resolveInjectionSource` (`Shelley/Transition.hs:496-517`, cardano-ledger f649f975): with an
-    * `extraConfig`, its `<name>` source when it names one, else the legacy field, and a conflict
-    * when both are given; without one, the legacy field. The entries are in the order of the key,
-    * the order in which the reference folds an embedded `ListMap` (`Data/ListMap.hs:109-125`, an
-    * aeson key map). A `file` source (`InjectionFromFile`) is not read by this node and is refused
-    * rather than taken as empty.
-    *
-    * @param legacy
-    *   the legacy field itself (the Shelley genesis `initialFunds`, `staking.pools`,
-    *   `staking.stake`; the Conway genesis `initialDReps`, `delegs`)
-    * @param extraConfig
-    *   the genesis file's `extraConfig`
+  /** The parsed native `InjectionData` (`Shelley/Genesis.hs:796-848`, f649f975). Parsing preserves
+    * a file source without reading it, and distinguishes no source from embedded empty data.
     */
-  def source[V: Decoder](
-      legacy: ACursor,
-      extraConfig: ACursor,
-      name: String
-  ): Either[ConfigError, Vector[(String, V)]] =
-    def entries(c: ACursor) =
-      c.as[Option[Map[String, V]]]
-        .leftMap(e => ConfigError(ConfigProblem.JsonField("genesis injection", name, e)))
-        .map(_.getOrElse(Map.empty).toVector.sortBy(_._1))
-    val extra = extraConfig.focus.filterNot(_.isNull).map(_ => extraConfig.downField(name))
-    val file = extra.exists(_.downField("file").focus.exists(!_.isNull))
-    val data = extra.flatMap(c => c.downField("data").focus.filterNot(_.isNull).map(_ => c))
+  enum InjectionData[+A]:
+    case NoInjection
+    case Embedded(entries: Vector[A])
+    case FromFile(segments: Vector[String], hash: state.Hash32)
+
+  /** Legacy and extra sources stay separate until the era's guarded injection operation. */
+  final case class InjectionSource[A](legacy: Vector[A], extra: InjectionData[A])
+
+  object InjectionSource:
+    def legacy[A](entries: Vector[A]): InjectionSource[A] =
+      InjectionSource(entries, InjectionData.NoInjection)
+
+  def optionalObject(cursor: ACursor, name: String): Either[ConfigError, Option[JsonObject]] =
+    cursor
+      .as[Option[JsonObject]]
+      .leftMap(e => ConfigError(ConfigProblem.JsonField("genesis injection", name, e)))
+
+  /** `ListMap` decodes ordered JSON keys, each key before its value (`Data/ListMap.hs:109-125`). */
+  def entries[K, V](
+      cursor: ACursor,
+      name: String,
+      key: String => Either[ConfigError, K],
+      value: (K, Json) => Either[ConfigError, V],
+      optional: Boolean = false
+  ): Either[ConfigError, Vector[(K, V)]] =
+    val fields =
+      if optional then optionalObject(cursor, name).map(_.getOrElse(JsonObject.empty))
+      else
+        cursor
+          .as[JsonObject]
+          .leftMap(e => ConfigError(ConfigProblem.JsonField("genesis injection", name, e)))
+    fields.flatMap(_.toVector.sortBy(_._1).traverse { (k, v) =>
+      key(k).flatMap(parsed => value(parsed, v).map(parsed -> _))
+    })
+
+  def injection[K, V](
+      extra: Option[JsonObject],
+      name: String,
+      key: String => Either[ConfigError, K],
+      value: (K, Json) => Either[ConfigError, V]
+  ): Either[ConfigError, InjectionData[(K, V)]] =
+    val cursor = Json.fromJsonObject(extra.getOrElse(JsonObject.empty)).hcursor.downField(name)
     for
-      _ <- Either.cond(!file, (), ConfigError(ConfigProblem.InjectionFile(name)))
-      old <- entries(legacy)
-      chosen <- data match
-        case None                   => Right(old)
-        case Some(c) if old.isEmpty => entries(c.downField("data"))
-        case Some(_)                => Left(ConfigError(ConfigProblem.DuplicateInjection(name)))
-    yield chosen
+      source <- optionalObject(cursor, name)
+      parsed <- source match
+        case None => Right(InjectionData.NoInjection)
+        case Some(obj) =>
+          val c = Json.fromJsonObject(obj).hcursor
+          for
+            file <- c
+              .get[Option[Vector[String]]]("file")
+              .leftMap(e => ConfigError(ConfigProblem.JsonField("genesis injection", name, e)))
+            data <- c
+              .downField("data")
+              .focus
+              .filterNot(_.isNull)
+              .traverse(j => entries(j.hcursor, name, key, value))
+            result <- (file, data) match
+              case (None, None)         => Right(InjectionData.NoInjection)
+              case (None, Some(values)) => Right(InjectionData.Embedded(values))
+              case (Some(segments), None) =>
+                for
+                  text <- get[String](c, "hash")
+                  bytes <- Bytes.fromHex(text).leftMap(e => ConfigError(ConfigProblem.Hex(e)))
+                  hash <- state.Hash32
+                    .fromBytes(bytes)
+                    .leftMap(e =>
+                      ConfigError(ConfigProblem.GenesisStart(rules.GenesisStartError.Vocab(e)))
+                    )
+                yield InjectionData.FromFile(segments, hash)
+              case (Some(_), Some(_)) =>
+                Left(ConfigError(ConfigProblem.ConflictingFields(Set("file", "data"))))
+          yield result
+    yield parsed
 
   def get[A: Decoder](c: ACursor, name: String): Either[ConfigError, A] =
     c.downField(name).as[A].leftMap(e => ConfigError(ConfigProblem.JsonField("genesis", name, e)))
