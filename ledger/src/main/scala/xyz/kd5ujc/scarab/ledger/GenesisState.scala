@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 
 /** The genesis files and the network constants read from them, and the readers of their injections
   * (`initialFunds`, `stakePools`, `stakeCredentials`, Conway DReps and delegations). The ledger
-  * state at the start of a chain is built from them by `legacy.GenesisState`.
+  * state at the start of a chain is built from them by [[rules.GenesisStart]].
   */
 object GenesisState:
   /** The genesis files; `byronNetworkMagic` is the magic Byron addresses carry on a network that
@@ -144,6 +144,40 @@ object GenesisState:
       case (None, legacy)                                => Right(legacy.getOrElse(Map.empty))
       case _ => Left(ConfigError(ConfigProblem.DuplicateInjection(name)))
     }
+
+  /** `resolveInjectionSource` (`Shelley/Transition.hs:496-517`, cardano-ledger f649f975): with an
+    * `extraConfig`, its `<name>` source when it names one, else the legacy field, and a conflict
+    * when both are given; without one, the legacy field. The entries are in the order of the key,
+    * the order in which the reference folds an embedded `ListMap` (`Data/ListMap.hs:109-125`, an
+    * aeson key map). A `file` source (`InjectionFromFile`) is not read by this node and is refused
+    * rather than taken as empty.
+    *
+    * @param legacy
+    *   the legacy field itself (the Shelley genesis `initialFunds`, `staking.pools`,
+    *   `staking.stake`; the Conway genesis `initialDReps`, `delegs`)
+    * @param extraConfig
+    *   the genesis file's `extraConfig`
+    */
+  def source[V: Decoder](
+      legacy: ACursor,
+      extraConfig: ACursor,
+      name: String
+  ): Either[ConfigError, Vector[(String, V)]] =
+    def entries(c: ACursor) =
+      c.as[Option[Map[String, V]]]
+        .leftMap(e => ConfigError(ConfigProblem.JsonField("genesis injection", name, e)))
+        .map(_.getOrElse(Map.empty).toVector.sortBy(_._1))
+    val extra = extraConfig.focus.filterNot(_.isNull).map(_ => extraConfig.downField(name))
+    val file = extra.exists(_.downField("file").focus.exists(!_.isNull))
+    val data = extra.flatMap(c => c.downField("data").focus.filterNot(_.isNull).map(_ => c))
+    for
+      _ <- Either.cond(!file, (), ConfigError(ConfigProblem.InjectionFile(name)))
+      old <- entries(legacy)
+      chosen <- data match
+        case None                   => Right(old)
+        case Some(c) if old.isEmpty => entries(c.downField("data"))
+        case Some(_)                => Left(ConfigError(ConfigProblem.DuplicateInjection(name)))
+    yield chosen
 
   def get[A: Decoder](c: ACursor, name: String): Either[ConfigError, A] =
     c.downField(name).as[A].leftMap(e => ConfigError(ConfigProblem.JsonField("genesis", name, e)))
