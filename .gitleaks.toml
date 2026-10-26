@@ -68,6 +68,15 @@ regexTarget = "line"
 paths = ['''^docs/data/fixture-inventory\.json$''']
 regexes = ['''^\n?[ \t]*"(?:fixtures|[a-z][a-z0-9-]*/src/test/resources)/(?:[A-Za-z0-9_+.-]+/)*[A-Za-z0-9_+.-]+"[ \t]*:[ \t]*"[0-9a-f]{64}",?[ \t]*$''']
 
+# Exact public reward-account credentials from the native three-certificate capture.
+# These are Blake2b-224 stake key hashes, not signing material; other values still scan.
+[[rules.allowlists]]
+description = "native refusal corpus public stake credential hashes"
+condition = "AND"
+regexTarget = "secret"
+paths = ['''^fixtures/reference/refusals/conway-three-certificates/genesis/shelley-genesis\.json$''']
+regexes = ['''^(?:0f46326caf6fcd16ddd1efe09f604eb65ac69c613ffb2aafae06589c|541188416c999cf1199ec997f6abde82c2b2823583d99e73587e9387|eb28d57e2df235e8d85ce2498522f3b3a63741a6d525d87109fca0cf)$''']
+
 [[rules]]
 id = "cardano-text-envelope-signing-key"
 description = "Cardano TextEnvelope signing key"
