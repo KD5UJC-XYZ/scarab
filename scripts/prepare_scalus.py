@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Build the SHA-pinned Scalus CEK hooks in an isolated, immutable Maven repository.
+"""Build the SHA-pinned Scalus CEK hooks and scalar-text representation in an isolated, immutable Maven repository.
 
 Called by sbtw inside its JDK environment. No published dependency is overwritten.
 The source archive and completed repository are reusable dependency caches; staging
@@ -28,7 +28,9 @@ import xml.etree.ElementTree as ET
 
 SOURCE_ROOT = Path("/tmp")
 
-INPUTS = ("patches/scalus/manifest.json", "patches/scalus/cek-hooks.patch", "scripts/prepare_scalus.py")
+INPUTS = ("patches/scalus/manifest.json", "patches/scalus/cek-hooks.patch",
+          "patches/scalus/native-text-constant.patch", "patches/scalus/native-text-parser.patch",
+          "scripts/prepare_scalus.py")
 
 
 class Problem(enum.Enum):
@@ -165,17 +167,20 @@ def original_artifact(cache: Path, pin: dict, offline: bool) -> Path:
     return cached
 
 
-def compose_jar(original: Path, compiled: Path, members: list[str]) -> dict:
-    """One jar, exact CEK allowlist; all other released member bytes remain unchanged."""
-    family = re.compile(r"scalus/uplc/eval/CekMachine(?:\$[^/]*)?\.(?:class|tasty)")
-    allowed = set(members)
+def compose_jar(original: Path, compiled: Path, members: list[str], compilation_members: list[str]) -> dict:
+    """One jar, exact replacement and source-family inventories; preserve all other release bytes."""
+    family = re.compile(r"scalus/uplc/(?:eval/CekMachine|Constant|UplcParser)(?:\$[^/]*)?\.(?:class|tasty)")
+    allowed, expected = set(members), set(compilation_members)
+    if (len(allowed) != len(members) or len(expected) != len(compilation_members)
+            or not allowed or not allowed <= expected or any(not family.fullmatch(n) for n in expected)):
+        raise BootstrapError(Problem.PUBLICATION, compiled, "invalid explicit member inventory")
     temporary = compiled.with_suffix(".composed")
     try:
         with zipfile.ZipFile(original) as base, zipfile.ZipFile(compiled) as built:
             for archive in (base, built):
                 names = archive.namelist()
-                if len(names) != len(set(names)) or {n for n in names if family.fullmatch(n)} != allowed:
-                    raise BootstrapError(Problem.PUBLICATION, compiled, "CEK compilation family differs from exact allowlist")
+                if len(names) != len(set(names)) or {n for n in names if family.fullmatch(n)} != expected:
+                    raise BootstrapError(Problem.PUBLICATION, compiled, "compilation family differs from exact inventory")
             with zipfile.ZipFile(temporary, "w", zipfile.ZIP_STORED) as output:
                 for name in base.namelist():
                     output.writestr(name, built.read(name) if name in allowed else base.read(name))
@@ -267,12 +272,14 @@ def build_at(root: Path, cache: Path, launcher: Path, staging: Path, source_root
     source = source_root / ("scalus-" + manifest["commit"])
     if (source / "project/build.properties").read_text().strip() != "sbt.version=" + manifest["sbtVersion"]:
         raise BootstrapError(Problem.TOOLCHAIN, source / "project/build.properties")
-    target = source / manifest["sourcePath"]
-    check_hash(target, manifest["sourceSha256"])
-    patch = root / "patches/scalus/cek-hooks.patch"
-    check_hash(patch, manifest["patchSha256"])
-    target.write_bytes(apply_patch(target.read_bytes(), patch.read_text(), manifest["sourcePath"]))
-    patched_hash = sha(target.read_bytes())
+    patched_sources = []
+    for pin in manifest["sourcePatches"]:
+        target = source / pin["sourcePath"]
+        check_hash(target, pin["sourceSha256"])
+        patch = root / pin["patchPath"]
+        check_hash(patch, pin["patchSha256"])
+        target.write_bytes(apply_patch(target.read_bytes(), patch.read_text(), pin["sourcePath"]))
+        patched_sources.append(dict(pin, patchedSourceSha256=sha(target.read_bytes())))
     repository = staging / "repository"
     # Upstream sbt-ci-release may override publication defaults: make the exact file repository
     # and release coordinate explicit, then omit docs/source artifacts from this runtime package.
@@ -305,7 +312,7 @@ def build_at(root: Path, cache: Path, launcher: Path, staging: Path, source_root
     validate_pom(pom, version)
     base_jar = original_artifact(cache, manifest["baseJar"], offline)
     base_pom = original_artifact(cache, manifest["basePom"], offline)
-    replacements = compose_jar(base_jar, jar, manifest["replacementMembers"])
+    replacements = compose_jar(base_jar, jar, manifest["replacementMembers"], manifest["compilationMembers"])
     compose_pom(base_pom, pom, version)
     validate_pom(pom, version)
     files = {str(p.relative_to(staging)): sha(p.read_bytes()) for p in (jar, pom)}
@@ -313,9 +320,9 @@ def build_at(root: Path, cache: Path, launcher: Path, staging: Path, source_root
         for suffix, algorithm in ((".sha1", hashlib.sha1), (".md5", hashlib.md5)):
             Path(str(path) + suffix).write_text(algorithm(path.read_bytes()).hexdigest())
     (staging / "receipt.json").write_text(json.dumps({
-        "format": 1, "inputDigest": digest, "version": version,
+        "format": 2, "inputDigest": digest, "version": version,
         "sourceCommit": manifest["commit"], "archiveSha256": manifest["archiveSha256"],
-        "patchSha256": manifest["patchSha256"], "patchedSourceSha256": patched_hash,
+        "sourcePatches": patched_sources, "compilationMembers": manifest["compilationMembers"],
         "baseJarSha256": manifest["baseJar"]["sha256"], "basePomSha256": manifest["basePom"]["sha256"],
         "replacements": replacements,
         "javaRuntimeVersion": manifest["javaRuntimeVersion"], "scalaVersion": manifest["scalaVersion"],
@@ -326,7 +333,12 @@ def build_at(root: Path, cache: Path, launcher: Path, staging: Path, source_root
 
 def prepare(root: Path, cache: Path, launcher: Path, processors: int, offline: bool) -> Path:
     manifest = json.loads((root / INPUTS[0]).read_text())
-    check_hash(root / INPUTS[1], manifest["patchSha256"])
+    if (manifest.get("format") != 2
+            or [p["patchPath"] for p in manifest["sourcePatches"]] != list(INPUTS[1:-1])
+            or len({p["sourcePath"] for p in manifest["sourcePatches"]}) != len(manifest["sourcePatches"])):
+        raise BootstrapError(Problem.PATCH, root / INPUTS[0], "source/patch inventory differs")
+    for pin in manifest["sourcePatches"]:
+        check_hash(root / pin["patchPath"], pin["patchSha256"])
     if manifest["sourceRoot"] != str(SOURCE_ROOT):
         raise BootstrapError(Problem.TOOLCHAIN, SOURCE_ROOT, "fixed source root differs")
     check_jdk(manifest)

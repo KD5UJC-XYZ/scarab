@@ -63,3 +63,9 @@ fixtures/leios/testnet/** -text
 
 # Third-party licence texts are copied verbatim from their sources; licenses/index.json records their SHA-256.
 licenses/** -text -whitespace
+
+# Unified patch context uses a space for empty lines; retain every pinned patch byte.
+patches/scalus/*.patch -text -whitespace
+# Native text observations and the original upstream notice are hash-pinned inputs.
+fixtures/reference/plutus-text/** -text
+fixtures/reference/plutus-text/NOTICE -whitespace

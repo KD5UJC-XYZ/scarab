@@ -609,6 +609,23 @@
         "fixtures/reference/v1-context/README.md"
       ],
       "candidateRequired": false
+    },
+    {
+      "id": "plutus-scalar-text",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "26 exact native scalar-value, UTF8, literal-parser and retained byte-length observations.",
+      "assertion": "Compare every acceptance/value/UTF8/length/measure field; preserve public constructor/copy/Product/Mirror contracts and immutable construction-time measurement.",
+      "rationale": "Java surrogate replacement and 16-bit escape truncation differ from native scalar Text; repeated encoding is not a stored measure.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/485",
+      "resolution": "NativeTextReferenceSuite enforces the complete bounded fixture. Generic foreign Flat/helpers and native CEK budget/demand semantics are outside this representation/parser scope.",
+      "evidence": [
+        "plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/NativeTextReferenceSuite.scala",
+        "fixtures/reference/plutus-text/README.md",
+        "patches/scalus/README.md"
+      ],
+      "candidateRequired": true
     }
   ]
 }

@@ -78,7 +78,7 @@ Plutus evaluation through Scalus.
 
 | Package | Responsibility | Entry points | Suites | Decisions |
 |---|---|---|---|---|
-| plutus | Script evaluator algebra, Scalus adapter, Plutus data, execution units, builtin availability | `ScriptEvaluator`, `ScalusEvaluator`, `PlutusData`, `ExUnits`, `PlutusAvailability`, `RetryingMemo` | `ScalusEvaluatorSuite`, `PlutusDataSuite`, `PlutusAvailabilitySuite`, `BuiltinCostingSuite`, `ScalusReproducersSuite` | [ADR 0003](adr/0003-plutus-through-scalus.md), [ADR 0018](adr/0018-parallel-plutus-after-ordered-preparation.md), [design parallel-plutus](design/parallel-plutus.md), [design script-results](design/script-results.md) |
+| plutus | Script evaluator algebra, Scalus adapter, Plutus data, execution units, builtin availability | `ScriptEvaluator`, `ScalusEvaluator`, `PlutusData`, `ExUnits`, `PlutusAvailability`, `RetryingMemo` | `ScalusEvaluatorSuite`, `PlutusDataSuite`, `PlutusAvailabilitySuite`, `BuiltinCostingSuite`, `ScalusReproducersSuite`, `NativeTextReferenceSuite` | [ADR 0003](adr/0003-plutus-through-scalus.md), [ADR 0018](adr/0018-parallel-plutus-after-ordered-preparation.md), [design parallel-plutus](design/parallel-plutus.md), [design script-results](design/script-results.md) |
 | scalus/uplc | Scarab view over Scalus programs, in Scalus' own package | `ScarabProgramView` | `ScalusEvaluatorSuite` | [ADR 0003](adr/0003-plutus-through-scalus.md) |
 
 ## ledger

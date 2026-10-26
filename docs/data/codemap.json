@@ -118,7 +118,7 @@
    "path": "plutus",
    "responsibility": "Script evaluator algebra, Scalus adapter, Plutus data, execution units, builtin availability",
    "entryPoints": ["ScriptEvaluator", "ScalusEvaluator", "PlutusData", "ExUnits", "PlutusAvailability", "RetryingMemo"],
-   "suites": ["ScalusEvaluatorSuite", "PlutusDataSuite", "PlutusAvailabilitySuite", "BuiltinCostingSuite", "ScalusReproducersSuite"],
+   "suites": ["ScalusEvaluatorSuite", "PlutusDataSuite", "PlutusAvailabilitySuite", "BuiltinCostingSuite", "ScalusReproducersSuite", "NativeTextReferenceSuite"],
    "docs": ["docs/adr/0003-plutus-through-scalus.md", "docs/adr/0018-parallel-plutus-after-ordered-preparation.md", "docs/design/parallel-plutus.md", "docs/design/script-results.md"]
   },
   {

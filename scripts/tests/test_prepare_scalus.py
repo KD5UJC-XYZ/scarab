@@ -138,7 +138,7 @@ class ScalusBootstrapTests(unittest.TestCase):
                 with zipfile.ZipFile(path, "w") as jar:
                     for name, value in data.items():
                         jar.writestr(name, value)
-            replacements = scalus.compose_jar(original, compiled, [member])
+            replacements = scalus.compose_jar(original, compiled, [member], [member])
             self.assertEqual(set(replacements), {member})
             with zipfile.ZipFile(compiled) as jar:
                 self.assertEqual(jar.read(member), b"patched")
@@ -147,9 +147,37 @@ class ScalusBootstrapTests(unittest.TestCase):
             with zipfile.ZipFile(compiled, "a") as jar:
                 jar.writestr("scalus/uplc/eval/CekMachine$Unexpected.class", b"unreviewed")
             with self.assertRaises(scalus.BootstrapError):
-                scalus.compose_jar(original, compiled, [member])
+                scalus.compose_jar(original, compiled, [member], [member])
             with self.assertRaises(scalus.BootstrapError):
-                scalus.compose_jar(original, compiled, [member, "scalus/uplc/eval/CekMachine.tasty"])
+                scalus.compose_jar(original, compiled, [member, "scalus/uplc/eval/CekMachine.tasty"], [member])
+
+    def test_partial_family_replacement_preserves_original_siblings_and_rejects_unknown_members(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            original, compiled = root / "original.jar", root / "compiled.jar"
+            changed = "scalus/uplc/Constant$String.class"
+            sibling = "scalus/uplc/Constant$Integer.class"
+            parser = "scalus/uplc/UplcParser$.class"
+            inventory = [changed, sibling, parser]
+            for path, prefix in [(original, b"original"), (compiled, b"built")]:
+                with zipfile.ZipFile(path, "w") as jar:
+                    for name in inventory:
+                        jar.writestr(name, prefix + name.encode())
+            scalus.compose_jar(original, compiled, [changed, parser], inventory)
+            with zipfile.ZipFile(compiled) as jar:
+                self.assertEqual(jar.read(sibling), b"original" + sibling.encode())
+                self.assertEqual(jar.read(changed), b"built" + changed.encode())
+                self.assertEqual(jar.read(parser), b"built" + parser.encode())
+            for replacements, expected in [([changed, changed], inventory),
+                                           ([changed], [changed, sibling]),
+                                           ([changed], inventory + [sibling]),
+                                           ([changed, "unreviewed.class"], inventory)]:
+                with self.assertRaises(scalus.BootstrapError):
+                    scalus.compose_jar(original, compiled, replacements, expected)
+            with zipfile.ZipFile(compiled, "a") as jar:
+                jar.writestr("scalus/uplc/Constant$Unexpected.class", b"unknown")
+            with self.assertRaises(scalus.BootstrapError):
+                scalus.compose_jar(original, compiled, [changed, parser], inventory)
 
     def test_pom_composition_preserves_dependencies_and_license_metadata(self):
         from xml.etree import ElementTree as ET
