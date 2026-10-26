@@ -469,7 +469,7 @@ meaningful peer credentials, and must be documented as weaker than a local socke
 
 | Stage | Content | Gate |
 |---|---|---|
-| 1 | `scripts/kes-agent/` — a two-stage Dockerfile (pinned tag, commit and base-image digest) and a build script that reproduces the image on any Docker host and prints its id; the probe script; captured fixtures with provenance; a byte-level verification of this document against them | the recipe builds on a Docker host; fixtures replay in a Python test; the wire section corrected where the capture disagrees |
+| 1 | `scripts/kes-agent/` — a two-stage Dockerfile (pinned tag, commit and base-image digest) plus a build script, and a dispatch workflow that publishes `ghcr.io/kd5ujc-xyz/scarab-kes-agent` with labels, SBOM, signature and LICENSE/NOTICE; the probe script; captured fixtures with provenance; a byte-level verification of this document against them | the image publishes and pulls by digest; fixtures replay in a Python test; the wire section corrected where the capture disagrees |
 | 2 | `KesAgentWire` and its suite | `check` |
 | 3 | `HotKeys` no-key state, `KesAgentSource`, client, CLI flag, fake-agent suite | `check` + `kes-rotate` (no regression in file mode) |
 | 4 | Devnet `kes-agent` scenario and the real-agent matrix | `check` + the scenario (level 3) + evidence row |
@@ -491,33 +491,40 @@ not a test-path dependency.
 What the build costs: the upstream `Dockerfile` is single-stage on `haskell:9.10-bookworm`, installs
 libsodium-dev, builds secp256k1 and blst from source, then `cabal install`s both executables. Expect tens of
 minutes cold and a multi-gigabyte image; a two-stage variant of ours would be much smaller if that
-matters. That happens once per pin on any Docker host — not per test run, not in `check`, and not in the
-nightly `e2e` matrix unless we later publish the image.
+matters. That happens once per pin, in the publishing workflow rather than on each test host — not per test
+run, not in `check`, and not as a build in the nightly `e2e` matrix once the image is published.
 
-## Reusing this across test hosts
+## Publishing the test image
 
-Two artifacts carry this work, and only one of them is an image.
+Yes, we publish it, and the answer to "each host builds" is no. A published image pinned by digest is one
+artifact every host and agent shares; a per-host build is a Haskell toolchain on every host, thirty-odd
+minutes of CPU each time, and a binary that can differ from the next host's even with `index-state` pinned —
+GHC version, base image, libsodium and blst builds all vary. Build-from-source becomes the fallback for a
+host that cannot pull, and the reproducibility check on the published artifact, not the normal path.
 
-- **The fixtures are the portable artifact.** `fixtures/kes-agent/` holds captured frames plus a provenance
-  README, and `check` replays them offline. Any agent, on any host, with or without Docker or network, runs
-  the full codec and behaviour coverage from a checkout. That is why stage 1 commits frames rather than an
-  image.
-- **The build is a recipe, not a host.** Stage 1 adds `scripts/kes-agent/`: a Dockerfile and a build script
-  that pin the upstream tag and commit, the base-image digest and the system dependencies, build, tag the
-  result and print its image id. Any Docker host reproduces it. Nothing in the repository names a particular
-  machine, and the design does not either.
-- **The image is disposable and host-local.** It is rebuilt from the recipe when missing and is never a
-  required input to `check`. Where a host cannot build — no Docker, no network — the script can
-  `docker save` the image to a shared path with a SHA-256 and the other host `docker load`s it: an archive,
-  not a registry, until there is a reason for one.
-- **A registry is a later decision.** Publishing to GHCR is needed only if the nightly GitHub matrix must run
-  the `kes-agent` scenario itself. Stages 1 to 3 do not, and publishing would be a new supply-chain surface
-  for the owner to accept.
+- **Where.** `ghcr.io/kd5ujc-xyz/scarab-kes-agent:<upstream tag>`, a public package beside the node image the
+  release workflow already publishes to `ghcr.io/kd5ujc-xyz/scarab`. Published by dispatch rather than on
+  every node release: the two upstreams move independently. Consumed by digest, never by tag alone.
+- **What goes in it.** Built by the two-stage recipe from the pinned tag and commit; labelled with
+  `org.opencontainers.image.{source,revision,version,licences}`; SBOM attached and the manifest signed with
+  the same keyless cosign flow the node image uses. The digest and that label set are what the devnet pins.
+- **Licence.** Upstream is Apache-2.0 with a `NOTICE` ("Copyright INTERSECT 2024-2025"), so redistributing a
+  built image is permitted. The image carries `LICENSE` and `NOTICE` under `/usr/share/doc/kes-agent/`, keeps
+  the base image's own copyright files, and the package description says plainly that it is an unmodified
+  build of `input-output-hk/kes-agent` at a named commit — not an official upstream image, no endorsement
+  implied. We do not patch the source; if that ever changes, the description must state the modification
+  (Apache-2.0 §4(b)).
+- **How tests use it.** The devnet scenario pulls the digest; `KES_AGENT_IMAGE` overrides it with a local
+  build. `check` still uses the committed fixtures and needs no image at all, so a runner without Docker or
+  network is unaffected.
+- **What it costs us.** Publishing makes us the redistributor: an upstream security fix means we rebuild and
+  republish — one dispatch — and an old digest left in a config is our stale pin to notice. The node image
+  already carries the same obligation.
 
-This changes one earlier recommendation: a two-stage build is worth it after all. Cross-host reuse makes the
-final image size matter, and a two-stage file drops it to the two binaries plus libsodium, blst and glibc —
-a few hundred megabytes, small enough to archive and move — instead of several gigabytes of GHC and cabal
-store that no runtime needs.
+This changes two earlier recommendations. A two-stage build is worth it after all, because a published image
+is pulled by everyone and its size is paid on every pull: two binaries plus libsodium, blst and glibc rather
+than GHC and a cabal store. And "no registry yet" is withdrawn: GHCR is the registry this project already
+uses, and public packages are free to store and serve.
 
 ## Decisions
 
@@ -541,11 +548,12 @@ No decisions remain open for H2.
 - **Agent provenance.** **Corrected 2026-10-25 after testing the artifacts**: the `kes-agent-1.4.0.0` release
   has no assets, and the `1.1.0.0` `x86_64-linux` binary is a Nix closure (a `/nix/store` ELF interpreter, a
   `libblst.so` dependency and `/nix/store` RPATHs), so it does not run on an ordinary host. The agent is
-  **built from an in-repo, host-agnostic recipe** (`scripts/kes-agent/`: two-stage Dockerfile plus a build
-  script pinning tag, commit and base-image digest) on whatever Docker host is available, and the resulting
-  image id is recorded. The test path uses the captured fixtures, so the image is never a required input to
-  `check` and no particular host is named anywhere. We do not ship the agent to operators; the documentation
-  points at upstream's releases.
+  **built once by a publishing workflow and pulled by digest**: `ghcr.io/kd5ujc-xyz/scarab-kes-agent`, beside
+  the node image, Apache-2.0 obligations carried (LICENSE and NOTICE in the image, upstream commit named, no
+  implied endorsement). The two-stage recipe in `scripts/kes-agent/` is the fallback for a host that cannot
+  pull and the reproducibility check on the published artifact. The test path uses the captured fixtures, so
+  no host builds the agent to run tests, and no particular host is named anywhere. We do not ship the agent
+  to operators as a supported product; the documentation points at upstream's releases.
 - **Operator tooling.** Upstream `kes-agent-control`; no Scarab wrapper in H2. There is no devnet scenario to
   motivate one yet, and the scenario we add in stage 4 can call the upstream tool directly.
 - **Confirmations.** `--kes-agent-socket` as the flag name (reference mapping in #222); both flags together
