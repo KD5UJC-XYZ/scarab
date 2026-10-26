@@ -1,0 +1,7 @@
+*
+!scripts/
+scripts/*
+!scripts/oracle/
+scripts/oracle/*
+!scripts/oracle/genesis-cost-models/
+!scripts/oracle/genesis-cost-models/Main.hs
