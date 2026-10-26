@@ -47,8 +47,8 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
   test("a message larger than one SDU is split and reassembled"):
     typed {
       linked(
-        client = Mux.Config(maxSduPayload = 100),
-        server = Mux.Config(role = Mux.Role.Responder, maxSduPayload = 100)
+        client = Mux.Config(sduSize = 100),
+        server = Mux.Config(role = Mux.Role.Responder, sduSize = 100)
       ).use { (client, server) =>
         for
           c <- client.channel(2)
@@ -58,6 +58,51 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
         yield got
       }
     }.map(r => assertEquals(r, Right(payload(1050))))
+
+  test("the default send size is the reference socket bearer's 12288 bytes (Bearer.hs:86)"):
+    typed {
+      Bearer.inMemory[IO]().flatMap { (ours, raw) =>
+        Mux.resource(ours, Set(2)).use { mux =>
+          for
+            c <- mux.channel(2)
+            _ <- c.send(payload(30000))
+            bytes <- raw.reads.take(30000 + 3 * WireMux.HeaderBytes).compile.to(Chunk)
+          yield
+            def frames(rest: Bytes, sizes: Vector[Int]): Vector[Int] =
+              if rest.size == 0 then sizes
+              else
+                val length = ((rest(6) & 0xff) << 8) | (rest(7) & 0xff)
+                frames(Bytes(rest.value.drop(WireMux.HeaderBytes + length)), sizes :+ length)
+            frames(Bytes(bytes.toVector), Vector.empty)
+        }
+      }
+    }.map(r => assertEquals(r, Right(Vector(12288, 12288, 5424))))
+
+  test("an SDU of the full 65535 bytes is accepted on read although the send size is smaller"):
+    typed {
+      linked(
+        client = Mux.Config(sduSize = 65535),
+        server = Mux.Config(role = Mux.Role.Responder)
+      ).use { (client, server) =>
+        for
+          c <- client.channel(2)
+          s <- server.channel(2)
+          _ <- c.send(payload(65535))
+          got <- s.recv(65535)(exactly(65535))
+        yield got
+      }
+    }.map(r => assertEquals(r, Right(payload(65535))))
+
+  test("a send size above the accepted SDU size is a setup error"):
+    typed {
+      Bearer.inMemory[IO]().flatMap { (ours, _) =>
+        Mux
+          .resource(ours, Set(2), Mux.Config(sduSize = 65536))
+          .use(_ => IO.unit)
+      }
+    }.map(r =>
+      assertEquals(r, Left(NetworkError.MuxSetup(WireMux.Error.InvalidPayloadLimit(65536))))
+    )
 
   test("the initiator sends with the mode bit clear and a valid 32-bit timestamp"):
     typed {
@@ -99,8 +144,8 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
       val message = payload(size, seed)
       val result = typed {
         linked(
-          client = Mux.Config(maxSduPayload = sdu),
-          server = Mux.Config(role = Mux.Role.Responder, maxSduPayload = sdu)
+          client = Mux.Config(sduSize = sdu),
+          server = Mux.Config(role = Mux.Role.Responder, sduSize = sdu)
         ).use { (client, server) =>
           for
             c <- client.channel(3)
@@ -117,10 +162,10 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
     typed {
       val limit = 100L
       linked(
-        client = Mux.Config(maxSduPayload = 10),
+        client = Mux.Config(sduSize = 10),
         server = Mux.Config(
           role = Mux.Role.Responder,
-          maxSduPayload = 10,
+          sduSize = 10,
           ingressLimit = _ => limit
         )
       ).use { (client, server) =>
@@ -154,10 +199,10 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
     val perMessage = 2.millis
     typed {
       linked(
-        client = Mux.Config(maxSduPayload = 10),
+        client = Mux.Config(sduSize = 10),
         server = Mux.Config(
           role = Mux.Role.Responder,
-          maxSduPayload = 10,
+          sduSize = 10,
           ingressLimit = _ => 100L
         )
       ).use { (client, server) =>
@@ -190,7 +235,7 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
     typed {
       Bearer.inMemory[IO](1).flatMap { (ours, _) =>
         Mux
-          .resource(ours, Set(2), Mux.Config(maxSduPayload = 10, egressBufferBytes = 20))
+          .resource(ours, Set(2), Mux.Config(sduSize = 10, egressBufferBytes = 20))
           .use { mux =>
             for
               c <- mux.channel(2)
@@ -228,7 +273,7 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
   ):
     val config = Mux.Config.nodeToClient.copy(
       role = Mux.Role.Initiator,
-      maxSduPayload = 1000,
+      sduSize = 1000,
       receiveBufferLimit = 6500
     )
     typed {

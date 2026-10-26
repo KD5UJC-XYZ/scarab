@@ -127,7 +127,7 @@ class UpstreamMuxStarvationSuite extends FailsOnUncaught:
               first.getAndSet(false).flatMap(flag => release.get.whenA(flag)) *>
                 trace.update(_ :+ (number & 0x7fff)) *> b.write(bytes)
           config = Mux.Config(
-            maxSduPayload = 1280,
+            sduSize = 1280,
             maxMessageBytes = 3000000,
             ingressLimit = _ => 3000000L
           )

@@ -123,7 +123,7 @@ class MuxSeededTrafficSuite extends FailsOnUncaught:
     val maxMessage = 2 * value.sdu + 1
     val config = Mux.Config(
       duplex = true,
-      maxSduPayload = value.sdu,
+      sduSize = value.sdu,
       ingressLimit = _ => (maxMessage * rounds).toLong,
       egressBufferBytes = 2L * maxMessage
     )

@@ -105,7 +105,7 @@ class MuxDeadlinesSuite extends FailsOnUncaught:
             .resource(
               bearer(Stream.never[IO], _ => IO.never),
               Set(protocol),
-              Mux.Config(maxSduPayload = 1)
+              Mux.Config(sduSize = 1)
             )
             .use { mux =>
               for
@@ -134,7 +134,7 @@ class MuxDeadlinesSuite extends FailsOnUncaught:
                   }
               ),
               Set(2),
-              Mux.Config(maxSduPayload = 1)
+              Mux.Config(sduSize = 1)
             )
             .use { mux =>
               for
