@@ -803,7 +803,7 @@
       "evidence": {
         "suites": [
           "DefiniteBytesReferenceSuite",
-          "ShelleyLedgerSuite"
+          "DuplicateWithdrawalsLedgerSuite"
         ],
         "paths": [
           "fixtures/reference/definite-bytes"

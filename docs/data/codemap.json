@@ -158,7 +158,7 @@
    "path": "ledger/rules",
    "responsibility": "Shelley to Conway rule interpreter: LEDGER, UTXO, BBODY, epoch, tick, rewards, governance",
    "entryPoints": ["Ledger", "Utxo", "Bbody", "NewEpoch", "Tick", "RuleT", "Sts", "Gov", "Rewards"],
-   "suites": ["BbodySuite", "StsSuite", "TickRulesSuite", "EpochBoundarySuite", "RewardPulserSuite", "TxDependenciesSuite"],
+   "suites": ["BbodySuite", "StsSuite", "TickRulesSuite", "EpochBoundarySuite", "RewardPulserSuite", "TxDependenciesSuite", "DuplicateWithdrawalsLedgerSuite"],
    "docs": ["docs/design/rule-interpreter-as-built.md", "docs/adr/0009-ledger-mirror-step-2.md", "docs/adr/0019-incremental-reward-calculation.md", "docs/adr/0011-stack-safety.md", "docs/design/reward-pulser.md"]
   },
   {
