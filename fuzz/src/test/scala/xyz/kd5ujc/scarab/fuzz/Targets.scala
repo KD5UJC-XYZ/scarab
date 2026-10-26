@@ -1645,9 +1645,36 @@ object Targets:
       }
     )
 
+  private val genesisPoolFields: Target =
+    import io.circe.{Json, parser}
+    Target(
+      "genesis-pool-fields",
+      () =>
+        Files
+          .readString(java.nio.file.Path.of("fixtures/reference/genesis-pool-fields/cases.jsonl"))
+          .linesIterator
+          .filter(_.nonEmpty)
+          .map { line =>
+            val row = parser.parse(line).fold(e => throw new Violation(e.message), identity)
+            row.hcursor
+              .get[Json]("pool")
+              .fold(e => throw new Violation(e.message), identity)
+              .noSpaces
+              .getBytes(java.nio.charset.StandardCharsets.UTF_8)
+          }
+          .toVector,
+      probe("genesis-pool-fields") { bytes =>
+        parser.parse(new String(bytes.toArray, java.nio.charset.StandardCharsets.UTF_8)).foreach {
+          json =>
+            seen("genesis-pool-fields", GenesisPoolFields.read(json.hcursor).isRight)
+        }
+      }
+    )
+
   val all: Vector[Target] =
     network ++ node ++ ledgerPeers ++ mempackTxOut ++ snapshotMeta ++ snapshotTables ++ sclsFraming ++
       Vector(
         sclsValues,
-        genesisInjections
+        genesisInjections,
+        genesisPoolFields
       ) ++ nativeSnapshots ++ ancillary ++ mithril ++ networkIdentity
