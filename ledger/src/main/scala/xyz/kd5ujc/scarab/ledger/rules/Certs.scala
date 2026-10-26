@@ -302,55 +302,58 @@ object Deleg
       st: Stateful[F, ConwayCertState],
       raise: Raise[F, LedgerFailure],
       judge: Judge[F, PredicateFailure]
-  ): F[Unit] = transitionWithPools(env.id, env.pp, CertLens.pools.get(_), cert)
+  ): F[Unit] = transitionWithPools(env.pp, CertLens.pools.get(_), cert)
 
+  /** `conwayDelegTransition` (`Conway/Rules/Deleg.hs:177-290`, cardano-ledger `f649f975`): every
+    * check records its failure and the rule goes on to the state the reference makes, so a later
+    * certificate sees it: a registration registers whatever failed, and only an account that does
+    * not exist leaves the state as it was.
+    */
   private def transitionWithPools[F[_]: Monad](
-      id: Bytes,
       pp: ProtocolParams,
       pools: ConwayCertState => SortedMap[KeyHash[StakePool], StakePoolState],
       cert: DelegCert
   )(using
       ask: Ask[F, Globals],
       st: Stateful[F, ConwayCertState],
-      raise: Raise[F, LedgerFailure]
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
   ): F[Unit] =
     val v10 = pp.protocolMajor > 10
     def credential(c: Credential[Staking]): node.Credential = Convert.back(c)
+    def fail(f: DelegFailure): PredicateFailure = PredicateFailure.deleg(f)
     // `checkDepositAgainstPParams` (`Deleg.hs:199`)
     def depositMatches(declared: BigInt): F[Unit] =
-      Refuse.unless[F](
+      Sts.predicate[F, PredicateFailure](
         declared == pp.keyDeposit,
-        id,
-        if v10 then
-          PredicateFailure.deleg(DelegFailure.DepositIncorrect(Mismatch(declared, pp.keyDeposit)))
-        else PredicateFailure.deleg(DelegFailure.IncorrectDeposit(declared))
+        if v10 then fail(DelegFailure.DepositIncorrect(Mismatch(declared, pp.keyDeposit)))
+        else fail(DelegFailure.IncorrectDeposit(declared))
       )
     // `checkStakeKeyNotRegistered`
     def notRegistered(s: ConwayCertState, c: Credential[Staking]): F[Unit] =
-      Refuse.unless[F](
+      Sts.predicate[F, PredicateFailure](
         !CertLens.accounts.get(s).contains(c),
-        id,
-        PredicateFailure.deleg(DelegFailure.StakeKeyRegistered(credential(c)))
+        fail(DelegFailure.StakeKeyRegistered(credential(c)))
       )
     // `checkStakeDelegateeRegistered` (`Deleg.hs:215`): the pool, then (but not in the bootstrap
     // phase) the DRep
     def delegateeRegistered(s: ConwayCertState, d: Delegatee): F[Unit] =
       def pool(p: KeyHash[StakePool]) =
-        Refuse.unless[F](
+        Sts.predicate[F, PredicateFailure](
           pools(s).contains(p),
-          id,
-          PredicateFailure.deleg(DelegFailure.DelegateeStakePoolNotRegistered(p.bytes))
+          fail(DelegFailure.DelegateeStakePoolNotRegistered(p.bytes))
         )
       def drep(d: DRep) = CertOps.dRepCredential(d).traverse_ { credential =>
-        Refuse.unless[F](
+        Sts.predicate[F, PredicateFailure](
           pp.protocolMajor == 9 || CertLens.dreps.get(s).contains(credential),
-          id,
-          PredicateFailure.deleg(DelegFailure.DelegateeDRepNotRegistered(Convert.back(credential)))
+          fail(DelegFailure.DelegateeDRepNotRegistered(Convert.back(credential)))
         )
       }
       d.stakePool.traverse_(pool) *> d.votedDRep.traverse_(drep)
     def deposit: F[CompactCoin] =
       Refuse.vocab[F, CompactCoin](CompactCoin.fromBigInt(pp.keyDeposit))
+    def notRegisteredAccount(c: Credential[Staking]): F[Unit] =
+      Sts.failBecause[F, PredicateFailure](fail(DelegFailure.StakeKeyNotRegistered(credential(c))))
     val preserve = pp.protocolMajor < 10
     st.get.flatMap { s =>
       cert match
@@ -362,46 +365,34 @@ object Deleg
             _ <- st.set(CertOps.register(s, c, d, None))
           yield ()
         case DelegCert.UnReg(c, refund) =>
-          CertLens.accounts.get(s).get(c) match
-            case None =>
-              Refuse[F, Unit](
-                id,
-                PredicateFailure.deleg(DelegFailure.StakeKeyNotRegistered(credential(c)))
-              )
-            case Some(account) =>
-              val held = account.deposit.toBigInt
-              for
-                _ <- refund.traverse_(supplied =>
-                  Refuse.unless[F](
-                    supplied == held,
-                    id,
-                    if v10 then
-                      PredicateFailure.deleg(
-                        DelegFailure.RefundIncorrect(Mismatch(supplied, held))
-                      )
-                    else PredicateFailure.deleg(DelegFailure.IncorrectDeposit(supplied))
-                  )
+          val account = CertLens.accounts.get(s).get(c)
+          for
+            // the refund and the balance only of an account that exists
+            _ <- account.traverse_ { a =>
+              val held = a.deposit.toBigInt
+              refund.traverse_(supplied =>
+                Sts.predicate[F, PredicateFailure](
+                  supplied == held,
+                  if v10 then fail(DelegFailure.RefundIncorrect(Mismatch(supplied, held)))
+                  else fail(DelegFailure.IncorrectDeposit(supplied))
                 )
-                _ <- Refuse.unless[F](
-                  account.balance.word.isZero,
-                  id,
-                  PredicateFailure.deleg(
-                    DelegFailure.StakeKeyHasNonZeroAccountBalance(account.balance.toBigInt)
-                  )
+              ) *>
+                Sts.predicate[F, PredicateFailure](
+                  a.balance.word.isZero,
+                  fail(DelegFailure.StakeKeyHasNonZeroAccountBalance(a.balance.toBigInt))
                 )
-                _ <- st.set(CertOps.unregister(s, c, account))
-              yield ()
+            }
+            _ <- account.fold(notRegisteredAccount(c))(a => st.set(CertOps.unregister(s, c, a)))
+          yield ()
         case DelegCert.Deleg(c, delegatee) =>
           for
             _ <- delegateeRegistered(s, delegatee)
-            account <- CertLens.accounts.get(s).get(c) match
-              case Some(a) => a.pure[F]
-              case None =>
-                Refuse[F, ConwayAccountState](
-                  id,
-                  PredicateFailure.deleg(DelegFailure.StakeKeyNotRegistered(credential(c)))
-                )
-            _ <- st.set(CertOps.delegate(s, c, Some(account), delegatee, preserve))
+            _ <- CertLens.accounts
+              .get(s)
+              .get(c)
+              .fold(notRegisteredAccount(c))(a =>
+                st.set(CertOps.delegate(s, c, Some(a), delegatee, preserve))
+              )
           yield ()
         case DelegCert.RegDeleg(c, delegatee, declared) =>
           for
@@ -432,12 +423,7 @@ object Deleg
         raise: Raise[F, LedgerFailure],
         judge: Judge[F, PredicateFailure]
     ): F[Unit] =
-      transitionWithPools(
-        env.caseId,
-        env.pp,
-        _ => env.pools,
-        cert
-      )
+      transitionWithPools(env.pp, _ => env.pools, cert)
 
 /** POOL (`Shelley/Rules/Pool.hs:209`, `poolTransition`, the rule of every era): registration and
   * retirement of stake pools, with the VRF key hashes kept from protocol version 11
@@ -461,16 +447,16 @@ object Pool extends JudgedSts[CertEnv, PState, PoolCert, PredicateFailure, Ledge
   )(using
       ask: Ask[F, Globals],
       st: Stateful[F, PState],
-      raise: Raise[F, LedgerFailure]
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
   ): F[Unit] =
     val unique = pp.protocolMajor >= 11
     cert match
       case PoolCert.RegPool(params) =>
         for
           globals <- Sts.globals[F]
-          _ <- Refuse.unless[F](
+          _ <- Sts.predicate[F, PredicateFailure](
             !pp.validatesPoolRewardAccountNetwork || params.rewardAccount.network == globals.networkId,
-            id,
             PredicateFailure.pool(
               PoolFailure.WrongNetworkPool(
                 Mismatch(params.rewardAccount.network, globals.networkId),
@@ -485,16 +471,14 @@ object Pool extends JudgedSts[CertEnv, PState, PoolCert, PredicateFailure, Ledge
               .traverse(PoolParams.metadataHash(_)(using ByteStrings.Chunked))
               .leftMap(cause => LedgerFailure.Undecodable(id, TxDefect.PoolMetadata(cause)))
           )
-          _ <- Refuse.unless[F](
+          _ <- Sts.predicate[F, PredicateFailure](
             !pp.restrictsPoolMetadataHash || metadata.forall(_.size <= 32),
-            id,
             PredicateFailure.pool(
               PoolFailure.PoolMedataHashTooBig(params.operator, metadata.fold(0)(_.size))
             )
           )
-          _ <- Refuse.unless[F](
+          _ <- Sts.predicate[F, PredicateFailure](
             params.cost >= pp.minPoolCost,
-            id,
             PredicateFailure.pool(
               PoolFailure.StakePoolCostTooLow(Mismatch(params.cost, pp.minPoolCost))
             )
@@ -507,9 +491,8 @@ object Pool extends JudgedSts[CertEnv, PState, PoolCert, PredicateFailure, Ledge
           next <- s.stakePools.get(operator) match
             case None =>
               for
-                _ <- Refuse.unless[F](
+                _ <- Sts.predicate[F, PredicateFailure](
                   !unique || !s.vrfKeyHashes.contains(vrf),
-                  id,
                   PredicateFailure.pool(
                     PoolFailure.VRFKeyHashAlreadyRegistered(params.operator, params.vrfKeyHash)
                   )
@@ -524,9 +507,8 @@ object Pool extends JudgedSts[CertEnv, PState, PoolCert, PredicateFailure, Ledge
                   if unique then s.vrfKeyHashes.updated(vrf, NonZero.oneWord) else s.vrfKeyHashes
               )
             case Some(current) =>
-              for _ <- Refuse.unless[F](
+              for _ <- Sts.predicate[F, PredicateFailure](
                   !unique || current.vrf == vrf || !s.vrfKeyHashes.contains(vrf),
-                  id,
                   PredicateFailure.pool(
                     PoolFailure.VRFKeyHashAlreadyRegistered(params.operator, params.vrfKeyHash)
                   )
@@ -558,15 +540,13 @@ object Pool extends JudgedSts[CertEnv, PState, PoolCert, PredicateFailure, Ledge
       case PoolCert.RetirePool(pool, epoch) =>
         for
           s <- st.get
-          _ <- Refuse.unless[F](
+          _ <- Sts.predicate[F, PredicateFailure](
             s.stakePools.contains(pool),
-            id,
             PredicateFailure.pool(PoolFailure.StakePoolNotRegisteredOnKey(pool.bytes))
           )
           limit = currentEpoch + pp.eMax
-          _ <- Refuse.unless[F](
+          _ <- Sts.predicate[F, PredicateFailure](
             currentEpoch < epoch && epoch <= limit,
-            id,
             PredicateFailure.pool(
               PoolFailure.StakePoolRetirementWrongEpoch(
                 Mismatch(epoch, currentEpoch),
@@ -637,28 +617,29 @@ object GovCert
               drepRegistration[F](DRepRuleEnv(id, pp, env.epoch), c, deposit, anchor)
             case ConwayGovCert.UpdateDRep(c, anchor) =>
               drepUpdate[F](DRepRuleEnv(id, pp, env.epoch), c, anchor)
+            // `ConwayUnRegDRep` (`GovCert.hs:224-243`): not registered, then the refund; the DRep is
+            // removed whatever failed, with its delegations if it was registered
             case ConwayGovCert.UnRegDRep(c, refund) =>
-              dreps.get(c) match
-                case None =>
-                  Refuse[F, Unit](id, govCert(GovCertFailure.DRepNotRegistered(Convert.back(c))))
-                case Some(d) =>
-                  for
-                    _ <- Refuse.unless[F](
-                      refund == d.deposit.toBigInt,
-                      id,
-                      govCert(
-                        GovCertFailure.DRepIncorrectRefund(Mismatch(refund, d.deposit.toBigInt))
-                      )
+              val drep = dreps.get(c)
+              for
+                _ <- Sts.predicate[F, PredicateFailure](
+                  drep.isDefined,
+                  govCert(GovCertFailure.DRepNotRegistered(Convert.back(c)))
+                )
+                _ <- Sts.failOnJust[F, BigInt, PredicateFailure](
+                  drep.map(_.deposit.toBigInt).filter(_ != refund)
+                )(paid => govCert(GovCertFailure.DRepIncorrectRefund(Mismatch(refund, paid))))
+                // the reverse index decides who loses their delegation
+                _ <- st.set(
+                  drep.fold(s)(d =>
+                    d.delegators.foldLeft(CertLens.dreps.modify(_ - c)(s))((cs, delegator) =>
+                      CertLens.accounts.modify(
+                        _.updatedWith(delegator)(_.map(ConwayAccountState.drep.replace(None)))
+                      )(cs)
                     )
-                    // the reverse index decides who loses their delegation
-                    cleared = d.delegators.foldLeft(CertLens.dreps.modify(_ - c)(s))(
-                      (cs, delegator) =>
-                        CertLens.accounts.modify(
-                          _.updatedWith(delegator)(_.map(ConwayAccountState.drep.replace(None)))
-                        )(cs)
-                    )
-                    _ <- st.set(cleared)
-                  yield ()
+                  )
+                )
+              yield ()
             case ConwayGovCert.AuthCommitteeHotKey(cold, hot) =>
               committeeMember(s, cold, CommitteeAuthorization.CommitteeHotCredential(hot))
                 .flatMap(st.set)
@@ -711,12 +692,16 @@ object GovCert
             )
           ).flatMap(st.set)
 
+  /** `checkAndOverwriteCommitteeMemberState` (`GovCert.hs:190-208`): a member that resigned, then
+    * one neither in the committee nor proposed for it; the member's state is overwritten whatever
+    * failed.
+    */
   private def committeeTransition[F[_]: Monad](
       env: CommitteeRuleEnv,
       s: ConwayCertState,
       cold: Credential[ColdCommittee],
       state: CommitteeAuthorization
-  )(using Raise[F, LedgerFailure]): F[ConwayCertState] =
+  )(using Judge[F, PredicateFailure]): F[ConwayCertState] =
     val back = Convert.back(cold)
     val resigned = CertLens.committee.get(s).get(cold).exists {
       case CommitteeAuthorization.CommitteeMemberResigned(_) => true
@@ -729,14 +714,12 @@ object GovCert
         case _                                         => false
     }
     for
-      _ <- Refuse.unless[F](
+      _ <- Sts.predicate[F, PredicateFailure](
         !resigned,
-        env.caseId,
         PredicateFailure.govCert(GovCertFailure.CommitteeHasPreviouslyResigned(back))
       )
-      _ <- Refuse.unless[F](
+      _ <- Sts.predicate[F, PredicateFailure](
         current || future,
-        env.caseId,
         PredicateFailure.govCert(GovCertFailure.CommitteeIsUnknown(back))
       )
     yield CertLens.committee.modify(_.updated(cold, state))(s)
@@ -749,20 +732,20 @@ object GovCert
   )(using
       ask: Ask[F, Globals],
       st: Stateful[F, ConwayCertState],
-      raise: Raise[F, LedgerFailure]
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
   ): F[Unit] =
-    val id = env.caseId
     val pp = env.pp
+    // `ConwayRegDRep` (`GovCert.hs:211-223`): already registered, then the deposit; registered
+    // whatever failed
     st.get.flatMap { s =>
       for
-        _ <- Refuse.unless[F](
+        _ <- Sts.predicate[F, PredicateFailure](
           !CertLens.dreps.get(s).contains(c),
-          id,
           PredicateFailure.govCert(GovCertFailure.DRepAlreadyRegistered(Convert.back(c)))
         )
-        _ <- Refuse.unless[F](
+        _ <- Sts.predicate[F, PredicateFailure](
           deposit == pp.drepDeposit,
-          id,
           PredicateFailure.govCert(
             GovCertFailure.DRepIncorrectDeposit(Mismatch(deposit, pp.drepDeposit))
           )
@@ -785,15 +768,15 @@ object GovCert
   )(using
       ask: Ask[F, Globals],
       st: Stateful[F, ConwayCertState],
-      raise: Raise[F, LedgerFailure]
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
   ): F[Unit] =
-    val id = env.caseId
     val pp = env.pp
+    // `ConwayUpdateDRep` (`GovCert.hs:245-260`): a DRep that is not registered is left so
     st.get.flatMap { s =>
       CertLens.dreps.get(s).get(c) match
         case None =>
-          Refuse[F, Unit](
-            id,
+          Sts.failBecause[F, PredicateFailure](
             PredicateFailure.govCert(GovCertFailure.DRepNotRegistered(Convert.back(c)))
           )
         case Some(d) =>
@@ -906,7 +889,7 @@ object Certs
     val pp = env.cert.pp
     val base = if pp.protocolMajor >= 11 then Monad[F].unit else baseCase(env)
     certs.foldLeft(base) { (prefix, cert) =>
-      judge.trans(prefix) *>
+      judge.nest(prefix) *>
         JudgedSts.trans[
           F,
           CertEnv,
