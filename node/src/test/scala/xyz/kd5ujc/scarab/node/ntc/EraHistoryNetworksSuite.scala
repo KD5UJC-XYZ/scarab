@@ -3,7 +3,13 @@ package xyz.kd5ujc.scarab.node.ntc
 
 import java.nio.file.Path
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, GenesisMirror, PraosState}
+import xyz.kd5ujc.scarab.ledger.{Nonce, TxIn}
+import xyz.kd5ujc.scarab.ledger.byron.ByronOut
+import xyz.kd5ujc.scarab.ledger.rules.{EraNes, GenesisStart, Globals, Handover}
+import xyz.kd5ujc.scarab.ledger.state.{EpochNo, ShelleyBasedEra, Sorted, WithOrigin}
 import xyz.kd5ujc.scarab.node.NodeSetup
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
 import munit.FunSuite
@@ -17,8 +23,8 @@ import munit.FunSuite
   * connection died without an answer.
   */
 class EraHistoryNetworksSuite extends FunSuite:
-  private val (setup, start) = NodeSetup
-    .fromDirectoryWithStart(Path.of("fixtures", "preprod", "genesis"))
+  private val setup = NodeSetup
+    .fromDirectory(Path.of("fixtures", "preprod", "genesis"))
     .fold(e => fail(e.message), identity)
 
   private val env = QueryEnv(
@@ -32,12 +38,16 @@ class EraHistoryNetworksSuite extends FunSuite:
     networkMagic = setup.genesis.networkMagic.toLong
   )
 
-  /** The state of a chain in Conway whose Byron era ended at epoch 4, at slot 100,000,000. */
+  /** The state of a chain in Conway whose Byron era ended at epoch 4, at slot 100,000,000: the
+    * genesis Byron UTxO handed over to Shelley at epoch 4 and translated to Conway, with a Praos
+    * state, at the origin of telescopes placed on the era history of that Byron span.
+    */
   private val view =
-    val neutral = xyz.kd5ujc.scarab.ledger.Nonce.Neutral
-    val praos = xyz.kd5ujc.scarab.consensus.state.PraosState(
-      xyz.kd5ujc.scarab.ledger.state.WithOrigin.Origin,
-      xyz.kd5ujc.scarab.ledger.state.Sorted.map(List.empty),
+    val firstShelley = BigInt(4)
+    val neutral = Nonce.Neutral
+    val praos = PraosState(
+      WithOrigin.Origin,
+      Sorted.map(List.empty),
       neutral,
       neutral,
       neutral,
@@ -45,15 +55,32 @@ class EraHistoryNetworksSuite extends FunSuite:
       neutral,
       neutral
     )
-    val flat = start
-      .withProtocol(
-        start.protocol.copy(dep = xyz.kd5ujc.scarab.consensus.state.ChainDepState.Praos(praos))
+    val start = setup.mirrorStart
+    val geometry = setup.geometry.resolved(firstShelley)
+    val env = setup.mirrorEnv()
+    val byronUtxo = start.consensus.byron.ledger.fold(Map.empty[TxIn, ByronOut])(_.utxo)
+    val context = setup.handOver.getOrElse(fail("preprod starts in Byron: it has a hand-over"))
+    val shelley = Handover
+      .toShelley(context, EpochNo.fromUnsigned(firstShelley.toLong), byronUtxo)
+      .fold(e => fail(s"the hand-over refuses: $e"), identity)
+    val conway = GenesisStart
+      .translateTo(
+        Globals(setup.globals, geometry),
+        Era.Conway,
+        EraNes.InEra(ShelleyBasedEra.SShelley, shelley)
       )
-      .withBoot(start.boot.copy(era = Some(Era.Conway)))
-      .withByron(start.byron.copy(firstShelleyEpoch = Some(BigInt(4))))
-    val state = xyz.kd5ujc.scarab.legacy.Mirroring
-      .toMirror(setup.mirrorEnv(), None, flat)
-      .fold(e => fail(s"the state does not mirror: $e"), _.value)
+      .fold(e => fail(s"no translation to Conway: $e"), identity)
+    val state = GenesisMirror
+      .of(
+        env.copy(ledger = env.ledger.copy(geometry = geometry)),
+        conway,
+        ChainDepState.Praos(praos),
+        start.consensus.copy(
+          boot = start.consensus.boot.copy(era = Some(Era.Conway)),
+          byron = start.consensus.byron.copy(firstShelleyEpoch = Some(firstShelley))
+        )
+      )
+      .fold(e => fail(s"the state does not mirror: $e"), identity)
     val point = Point.Block(UInt64.saturating(BigInt(100000000)), Bytes(Vector.fill(32)(1.toByte)))
     QueryView(point, Some(1), state)
 

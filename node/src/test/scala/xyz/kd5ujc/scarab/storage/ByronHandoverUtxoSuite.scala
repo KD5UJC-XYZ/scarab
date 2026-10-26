@@ -8,7 +8,9 @@ import io.circe.parser
 import java.nio.file.{Files as JFiles, Path as JPath}
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Block, ByronGenesisFile, Header, NodeError, TxIn}
+import xyz.kd5ujc.scarab.ledger.{Block, ByronGenesisFile, Header, NodeError, TxIn, TxOut}
+import xyz.kd5ujc.scarab.ledger.rules.Handover
+import xyz.kd5ujc.scarab.ledger.state.EpochNo
 import xyz.kd5ujc.scarab.ledger.byron.{ByronBody, ByronLedger, ByronOut}
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.node.{MirrorRules, MirrorSteps, NodeSetup}
@@ -89,10 +91,23 @@ class ByronHandoverUtxoSuite extends CatsEffectSuite:
 
   // ---- the handover over a store
 
-  private val (setup, flatStart) =
-    NodeSetup
-      .fromDirectoryWithStart(JPath.of("fixtures/eras/genesis"))
-      .fold(e => fail(e.message), identity)
+  private val setup =
+    NodeSetup.fromDirectory(JPath.of("fixtures/eras/genesis")).fold(e => fail(e.message), identity)
+
+  /** The genesis placeholder an earlier build wrote: the UTxO of the Shelley state the genesis
+    * Byron UTxO hands over to (`Handover.toShelley`; the Shelley genesis of the capture has no
+    * initial funds), every entry at stamp 0.
+    */
+  private val placeholder: Vector[(TxIn, Option[TxOut])] =
+    val genesisUtxo =
+      setup.mirrorStart.consensus.byron.ledger.fold(Map.empty[TxIn, ByronOut])(_.utxo)
+    val context = setup.handOver.getOrElse(fail("the capture starts in Byron: it has a hand-over"))
+    Handover
+      .toShelley(context, EpochNo.fromUnsigned(0L), genesisUtxo)
+      .fold(
+        e => fail(s"the hand-over refuses: $e"),
+        _.es.ls.utxo.utxo.utxo.changesAfter(-1).toVector
+      )
 
   private val raws: Vector[Bytes] =
     JFiles
@@ -151,7 +166,7 @@ class ByronHandoverUtxoSuite extends CatsEffectSuite:
   }
 
   test("a store that holds the genesis placeholder (a database of an earlier build) is emptied") {
-    surviving(store =>
-      StorageTestKit.ok(store.write(flatStart.ledger.utxo.changesAfter(-1).toVector, 0))
-    ).map(r => assertEquals(r.toMap, expected.toMap))
+    surviving(store => StorageTestKit.ok(store.write(placeholder, 0))).map(r =>
+      assertEquals(r.toMap, expected.toMap)
+    )
   }
