@@ -26,7 +26,11 @@ object BlockFetchRuntime:
   enum Event:
     case Sent(at: FiniteDuration)
     case Block(bytes: Int, at: FiniteDuration)
-    case Completed(at: FiniteDuration)
+    case Completed(at: FiniteDuration, outcome: BatchOutcome)
+
+  enum BatchOutcome:
+    case Accepted(blocks: Int)
+    case Rejected
 
   trait Client[F[_], P, B]:
     def requestRange(from: P, to: P)(using Raise[F, NetworkError]): F[Option[Vector[B]]]
@@ -42,11 +46,10 @@ object BlockFetchRuntime:
       * requested fragment's length, which the reference enforces by matching each block with the
       * next requested header (BlockFetch/Client.hs:236–250).
       */
-    def requestBlocks(from: P, to: P, @scala.annotation.unused blocks: Int)(
+    def requestBlocks(from: P, to: P, blocks: Int)(
         onBlock: B => F[Either[NetworkError, Unit]],
         observe: Event => F[Unit]
-    )(using Raise[F, NetworkError]): F[Option[Vector[B]]] =
-      requestRangeStreaming(from, to)(onBlock, observe)
+    )(using Raise[F, NetworkError]): F[Option[Vector[B]]]
     def done(using Raise[F, NetworkError]): F[Unit]
     def idle: F[Boolean]
 
@@ -139,17 +142,28 @@ object BlockFetchRuntime:
 
       def stream(
           onBlock: B => F[Either[NetworkError, Unit]],
-          observe: Event => F[Unit]
+          observe: Event => F[Unit],
+          expected: Option[Int]
       )(using
           Raise[F, NetworkError]
       ): F[Vector[B]] =
         F.tailRecM((BlockFetchEngine.Received.Empty, Vector.empty[B])) { case (received, blocks) =>
           receive.flatMap {
             case Message.Block(block) =>
-              BlockFetchEngine.Received.add(received, settings.request) match
+              BlockFetchEngine.Received.add(
+                received,
+                expected.fold(settings.request)(count => settings.request.copy(maxBlocks = count))
+              ) match
                 case Left(_) =>
-                  NetworkError
-                    .IngressLimit(id, blocks.size + 1)
+                  expected
+                    .fold(
+                      NetworkError.IngressLimit(id, blocks.size + 1)
+                    )(count =>
+                      NetworkError.IllegalTransition(
+                        id,
+                        RuntimeViolation.BlockFetchTooManyBlocks(count, blocks.size + 1)
+                      )
+                    )
                     .raise[F, Either[(BlockFetchEngine.Received, Vector[B]), Vector[B]]]
                 case Right(next) =>
                   peerTime
@@ -158,6 +172,13 @@ object BlockFetchRuntime:
                         onBlock(block).flatMap(_.fold(_.raise[F, Unit], F.pure))
                     )
                     .as(Left((next, blocks :+ block)))
+            case Message.BatchDone if expected.exists(_ != blocks.size) =>
+              illegal(
+                RuntimeViolation.BlockFetchTooFewBlocks(
+                  expected.getOrElse(blocks.size),
+                  blocks.size
+                )
+              )
             case Message.BatchDone => F.pure(Right(blocks))
             case other             => illegal(RuntimeViolation.BlockFetchEngineUnexpected(other))
           }
@@ -180,15 +201,43 @@ object BlockFetchRuntime:
         def requestRangeStreaming(from: P, to: P)(
             onBlock: B => F[Either[NetworkError, Unit]],
             observe: Event => F[Unit]
+        )(using Raise[F, NetworkError]): F[Option[Vector[B]]] =
+          request(from, to, onBlock, observe, None)
+
+        def requestBlocks(from: P, to: P, blocks: Int)(
+            onBlock: B => F[Either[NetworkError, Unit]],
+            observe: Event => F[Unit]
+        )(using Raise[F, NetworkError]): F[Option[Vector[B]]] =
+          request(from, to, onBlock, observe, Some(blocks))
+
+        private def request(
+            from: P,
+            to: P,
+            onBlock: B => F[Either[NetworkError, Unit]],
+            observe: Event => F[Unit],
+            expected: Option[Int]
         )(using Raise[F, NetworkError]): F[Option[Vector[B]]] = lock.lock.surround {
           (send(Message.RequestRange(from, to)) *>
             peerTime.local(F.monotonic.flatMap(at => observe(Event.Sent(at)))) *>
             receive.flatMap {
               case Message.NoBlocks   => F.pure(None)
-              case Message.StartBatch => stream(onBlock, observe).map(Some(_))
+              case Message.StartBatch => stream(onBlock, observe, expected).map(Some(_))
               case other              => illegal(RuntimeViolation.BlockFetchEngineUnexpected(other))
             })
-            .flatTap(_ => peerTime.local(F.monotonic.flatMap(at => observe(Event.Completed(at)))))
+            .flatTap(result =>
+              peerTime.local(
+                F.monotonic.flatMap(at =>
+                  observe(
+                    Event.Completed(
+                      at,
+                      result.fold[BatchOutcome](BatchOutcome.Rejected)(blocks =>
+                        BatchOutcome.Accepted(blocks.size)
+                      )
+                    )
+                  )
+                )
+              )
+            )
         }
     }
 
@@ -215,7 +264,8 @@ object BlockFetchRuntime:
         ready: Deferred[F, Unit],
         observe: Event => F[Unit],
         onBlock: B => F[Either[NetworkError, Unit]],
-        budget: BlockFetchEngine.RequestLimits
+        budget: BlockFetchEngine.RequestLimits,
+        expected: Option[Int]
     )
     def illegal[A](cause: NetworkError.Violation)(using Raise[F, NetworkError]): F[A] =
       NetworkError.IllegalTransition(id, cause).raise[F, A]
@@ -286,8 +336,15 @@ object BlockFetchRuntime:
                     case Message.Block(block) =>
                       BlockFetchEngine.Received.add(received, job.budget) match
                         case Left(_) =>
-                          NetworkError
-                            .IngressLimit(id, blocks.size + 1)
+                          job.expected
+                            .fold(
+                              NetworkError.IngressLimit(id, blocks.size + 1)
+                            )(count =>
+                              NetworkError.IllegalTransition(
+                                id,
+                                RuntimeViolation.BlockFetchTooManyBlocks(count, blocks.size + 1)
+                              )
+                            )
                             .raise[F, Either[(BlockFetchEngine.Received, Vector[B]), Vector[B]]]
                         case Right(next) =>
                           peerTime
@@ -297,6 +354,11 @@ object BlockFetchRuntime:
                                 job.onBlock(block).flatMap(_.fold(_.raise[F, Unit], F.pure))
                             )
                             .as(Left((next, blocks :+ block)))
+                    case Message.BatchDone if job.expected.exists(_ != blocks.size) =>
+                      illegal(
+                        RuntimeViolation
+                          .BlockFetchTooFewBlocks(job.expected.getOrElse(blocks.size), blocks.size)
+                      )
                     case Message.BatchDone => F.pure(Right(blocks))
                     case other => illegal(RuntimeViolation.BlockFetchEngineUnexpected(other))
                   }
@@ -309,8 +371,19 @@ object BlockFetchRuntime:
               Fibers
                 .scoped[F, NetworkError, Option[Vector[B]]](NetworkError.Defect(_)) {
                   collect(job)
-                    .flatTap(_ =>
-                      peerTime.local(F.monotonic.flatMap(at => job.observe(Event.Completed(at))))
+                    .flatTap(result =>
+                      peerTime.local(
+                        F.monotonic.flatMap(at =>
+                          job.observe(
+                            Event.Completed(
+                              at,
+                              result.fold[BatchOutcome](BatchOutcome.Rejected)(blocks =>
+                                BatchOutcome.Accepted(blocks.size)
+                              )
+                            )
+                          )
+                        )
+                      )
                     )
                 }
             }
@@ -354,24 +427,32 @@ object BlockFetchRuntime:
                 onBlock: B => F[Either[NetworkError, Unit]],
                 observe: Event => F[Unit]
             )(using Raise[F, NetworkError]): F[Option[Vector[B]]] =
-              submit(from, to, onBlock, observe, settings.request)
+              submit(from, to, onBlock, observe, settings.request, None)
 
             override def requestBlocks(from: P, to: P, blocks: Int)(
                 onBlock: B => F[Either[NetworkError, Unit]],
                 observe: Event => F[Unit]
             )(using Raise[F, NetworkError]): F[Option[Vector[B]]] =
-              submit(from, to, onBlock, observe, settings.request.copy(maxBlocks = blocks))
+              submit(
+                from,
+                to,
+                onBlock,
+                observe,
+                settings.request.copy(maxBlocks = blocks),
+                Some(blocks)
+              )
 
             def submit(
                 from: P,
                 to: P,
                 onBlock: B => F[Either[NetworkError, Unit]],
                 observe: Event => F[Unit],
-                budget: BlockFetchEngine.RequestLimits
+                budget: BlockFetchEngine.RequestLimits,
+                expected: Option[Int]
             )(using Raise[F, NetworkError]): F[Option[Vector[B]]] =
               credits.permit.use { _ =>
                 (Deferred[F, Result], Deferred[F, Unit])
-                  .mapN(Job(_, _, observe, onBlock, budget))
+                  .mapN(Job(_, _, observe, onBlock, budget, expected))
                   .flatMap { job =>
                     val submitted = Fibers
                       .scoped[F, NetworkError, Unit](NetworkError.Defect(_)) {
