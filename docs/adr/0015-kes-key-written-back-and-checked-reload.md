@@ -1,6 +1,6 @@
 # 0015. The evolved KES key is written back, and credentials are reloaded on SIGHUP only after a check
 
-- **Status**: Accepted; file-backed writeback retained by owner review on 2026-10-19. A separate KES agent is tracked in [H2 / #38](https://github.com/KD5UJC-XYZ/scarab/issues/38).
+- **Status**: Accepted; file-backed writeback retained by owner review on 2026-10-19. A separate KES agent is tracked in [H2 / #38](https://github.com/KD5UJC-XYZ/scarab/issues/38); the two-source policy — this path kept exactly as decided here, the agent path preferred for long-running pools — is [ADR 0023](0023-two-kes-credential-sources.md).
 - **Date**: 2026-10-17
 - **Issue**: [#116](https://github.com/KD5UJC-XYZ/scarab/issues/116)
 
