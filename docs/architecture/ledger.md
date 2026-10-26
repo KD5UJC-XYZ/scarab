@@ -3,6 +3,10 @@
 
 Part of [Architecture](../architecture.md).
 
+Native `Coin` is a signed arbitrary-precision integer; `CompactCoin` uses Word64 arithmetic.
+Decoder/conversion bounds and rule predicates apply at their reference boundaries. Compact
+account folds wrap before conversion to Coin. Stake aggregation alignment remains under #492. See the [arithmetic contracts and evidence](../compatibility/ledger-coin-arithmetic.md).
+
 ## Era history and Byron
 
 `EpochGeometry` is the node's era history: a Byron prefix (`ByronSpan`: epochs, 10k slots per

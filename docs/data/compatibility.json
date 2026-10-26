@@ -823,6 +823,33 @@
       "page": "docs/compatibility/ledger-repeated-withdrawals.md"
     },
     {
+      "id": "ledger-coin-arithmetic",
+      "component": "Ledger: signed Coin and compact arithmetic (#492)",
+      "status": "partial",
+      "summary": "Signed Coin and compact account arithmetic; stake aggregation and complete native arithmetic comparisons remain pending",
+      "evidence": {
+        "suites": [
+          "VocabularySuite",
+          "CompactCoinRulesSuite",
+          "HaskellStateCodecSuite",
+          "DuplicateWithdrawalsLedgerSuite",
+          "WithdrawalContextsSuite"
+        ],
+        "issues": [
+          492
+        ]
+      },
+      "limitations": {
+        "issues": [
+          411,
+          483,
+          477,
+          502
+        ]
+      },
+      "page": "docs/compatibility/ledger-coin-arithmetic.md"
+    },
+    {
       "id": "ledger-conway-governance",
       "component": "Ledger: Conway governance",
       "status": "implemented",
