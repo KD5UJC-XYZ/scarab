@@ -26,18 +26,20 @@ import xyz.kd5ujc.scarab.ledger.state.*
   */
 final case class ShelleyLedgerEnv(ctx: TxEnv, account: ChainAccountState)
 
-/** LEDGER (`Shelley/Rules/Ledger.hs:300`, `ledgerTransition`, and `Alonzo/Rules/Ledger.hs:90`): for
-  * a transaction whose scripts pass (phase-2 valid; every one before Alonzo) the withdrawals are
-  * checked against the accounts and drained, and the certificates run (DELEGS); then, for every
-  * transaction, UTXOW. The environment of UTXOW holds the certificate state *before* the
-  * transaction, which is what its refunds and the genesis delegates it checks signatures of come
-  * from. A transaction that failed phase 2 only collects its collateral (UTXOW).
+/** LEDGER (`Shelley/Rules/Ledger.hs:300`, `ledgerTransition`, and `Alonzo/Rules/Ledger.hs:111`,
+  * cardano-ledger `f649f975`): for a transaction whose scripts pass (phase-2 valid; every one
+  * before Alonzo) the withdrawals are checked against the accounts
+  * (`testIncompleteAndMissingWithdrawals`, `Shelley/Rules/Ledger.hs:343-361`, each failure
+  * recorded) and drained, and the certificates run (DELEGS); then, for every transaction, UTXOW.
+  * DELEGS and UTXOW always run (`trans`). The environment of UTXOW holds the certificate state
+  * *before* the transaction, which is what its refunds and the genesis delegates it checks
+  * signatures of come from. A transaction that failed phase 2 only collects its collateral (UTXOW).
   */
 object ShelleyLedger:
   def sts[E <: EraTag](using
       pre: PreConway[E]
-  ): Sts[ShelleyLedgerEnv, Counted[LedgerState[E]], Tx, LedgerFailure] =
-    new Sts[ShelleyLedgerEnv, Counted[LedgerState[E]], Tx, LedgerFailure]:
+  ): JudgedSts[ShelleyLedgerEnv, Counted[LedgerState[E]], Tx, PredicateFailure, LedgerFailure] =
+    new JudgedSts[ShelleyLedgerEnv, Counted[LedgerState[E]], Tx, PredicateFailure, LedgerFailure]:
       private val certs: monocle.Lens[Counted[LedgerState[E]], ShelleyCertState] =
         Counted.state[LedgerState[E]].andThen(pre.cert)
 
@@ -52,7 +54,8 @@ object ShelleyLedger:
       def transition[F[_]: Monad](env: ShelleyLedgerEnv, tx: Tx)(using
           ask: Ask[F, Globals],
           st: Stateful[F, Counted[LedgerState[E]]],
-          raise: Raise[F, LedgerFailure]
+          raise: Raise[F, LedgerFailure],
+          judge: Judge[F, PredicateFailure]
       ): F[Unit] =
         val ctx = env.ctx
         val id = tx.body.id
@@ -73,34 +76,24 @@ object ShelleyLedger:
                     globals.networkId
                   )(_.balance.toBigInt)
                 )
-                // `testIncompleteAndMissingWithdrawals` (`Ledger.hs:341`)
-                _ <- Refuse.unless[F](
-                  view.missing.isEmpty,
-                  id,
-                  PredicateFailure.WithdrawalsMissingAccounts(view.missing.toMap)
-                )
-                _ <- Refuse.unless[F](
-                  view.incomplete.isEmpty,
-                  id,
-                  PredicateFailure.IncompleteWithdrawals(view.incomplete.toMap)
-                )
+                _ <- Withdrawals.record[F](view)
                 drained <- Refuse.vocab[F, ShelleyCertState](
                   tx.body.withdrawals
                     .traverse((a, _) => Convert.credential[Staking](a.credential))
                     .map(ShelleyCertOps.drain(certBefore, _))
                 )
                 _ <- st.modify(certs.replace(drained))
-                _ <- Sts.trans[F, DelegsEnv, ShelleyCertState, Counted[
+                _ <- JudgedSts.trans[F, DelegsEnv, ShelleyCertState, Counted[
                   LedgerState[E]
-                ], Vector[Certificate], LedgerFailure, LedgerFailure](
+                ], Vector[Certificate], PredicateFailure, LedgerFailure, LedgerFailure](
                   ShelleyDelegs,
                   DelegsEnv(ctx, pp, id, env.account),
                   tx.body.certificates
                 )
               yield ()
-          _ <- Sts.trans[F, UtxoEnv[ShelleyCertState], Counted[
+          _ <- JudgedSts.trans[F, UtxoEnv[ShelleyCertState], Counted[
             UTxOState[E]
-          ], Counted[LedgerState[E]], StAnnTx, LedgerFailure, LedgerFailure](
+          ], Counted[LedgerState[E]], StAnnTx, PredicateFailure, LedgerFailure, LedgerFailure](
             ShelleyUtxow.sts[E],
             UtxoEnv(ctx, pp, certBefore),
             StAnnTx(tx, utxo)
@@ -108,7 +101,8 @@ object ShelleyLedger:
         yield ()
 
 /** LEDGERS (`Shelley/Rules/Ledgers.hs`): the transactions of a block, in order, each by LEDGER with
-  * its position in the block.
+  * its position in the block. The block's verdict is its first failure, so a transaction's rules
+  * run to their first failure ([[Judge.raising]]), raised as the transaction's.
   */
 object ShelleyLedgers:
   def sts[E <: EraTag](using
@@ -121,7 +115,17 @@ object ShelleyLedgers:
           raise: Raise[F, LedgerFailure]
       ): F[Unit] =
         txs.zipWithIndex.traverse_ { (tx, i) =>
-          ShelleyLedger.sts[E].transition[F](env.copy(ctx = env.ctx.copy(txIndex = i)), tx)
+          ShelleyLedger
+            .sts[E]
+            .transition[F](env.copy(ctx = env.ctx.copy(txIndex = i)), tx)(using
+              summon[Monad[F]],
+              ask,
+              st,
+              raise,
+              Judge.raising[F, PredicateFailure, LedgerFailure](
+                LedgerFailure.Rejected(tx.body.id, _)
+              )
+            )
         }
 
 /** `BbodyEnv` (`Shelley/Rules/Bbody.hs`): the parameters in force, the chain account, and the

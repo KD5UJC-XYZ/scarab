@@ -179,7 +179,7 @@ class V1ContextSuite extends FunSuite:
       pre: PreConway[E]
   ): Either[LedgerFailure, Counted[LedgerState[E]]] =
     val nes = Build.funded(Build.nes[E](5, c.params), utxoOf(c))
-    Sts(ShelleyLedger.sts[E])(
+    JudgedSts(ShelleyLedger.sts[E])(LedgerFailure.Rejected(c.tx.body.id, _))(
       globals,
       ShelleyLedgerEnv(TestLedger.env, nes.es.chainAccount),
       Build.counted(nes),

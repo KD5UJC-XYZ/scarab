@@ -75,9 +75,34 @@ trees, the certificate recursion of CERTS and DELEGS (`gamma :|> c`) for one to 
 in the Babbage and Conway nesting, the flag, the two policies, `Monad` and `Tell` laws, and judgments
 of 100,000 failures, nests and certificates on a 256 KiB stack.
 
-The rules still raise their predicate failures, and every caller runs them under `FirstFailure`,
-so verdicts and refusals are unchanged. Rules record through `Judge` and `Sts.trans` becomes a
-nest when the rules are moved over to recording.
+### Rule boundaries (#412, part 2)
+
+- The rules of a transaction are `JudgedSts[Env, S, Sig, Rec, Fail]`: their transition also takes
+  `Judge[F, PredicateFailure]`. The epoch and tick rules stay `Sts` (their reference predicate
+  failures cannot occur), and so does the block's BBODY and LEDGERS.
+- `JudgedSts.trans` is the reference's `trans`, a nest at every site the reference has one:
+  MEMPOOL → LEDGER; Conway LEDGER → CERTS, GOV, UTXOW; Shelley-to-Babbage LEDGER → DELEGS, UTXOW;
+  UTXOW → UTXO → UTXOS; CERTS → CERTS (the prefix) and CERT → DELEG, POOL, GOVCERT; DELEGS →
+  DELEGS and DELPL → POOL, DELEG. CERTS and DELEGS recurse on the prefix of the certificates with
+  a fold that builds the nested program, so the first certificate is the deepest. PPUP is a
+  sub-rule of UTXO from Shelley to Mary and of UTXOS in Alonzo (after the scripts) and Babbage
+  (before them).
+- MEMPOOL (`Mempool`) is the root of a submitted Conway transaction, as in the reference; the
+  mempool runs it under `Accumulate`. Revalidation of held transactions runs LEDGER under
+  `FirstFailure`, where only the verdict counts.
+- LEDGERS runs a transaction's rules with `Judge.raising`: a recorded failure is raised as the
+  transaction's, so the block keeps its first-failure verdict, with no nest and no record in the
+  machine. `JudgedSts.apply` runs a rule that way.
+- The checks of LEDGER and MEMPOOL, and the base case of CERTS, record their failures in the
+  reference's `Test`/`runTest` style (`rules/Test.scala`, `Sts.runTest`, `Sts.predicate`,
+  `Sts.failOnNonEmpty`). Script evaluation runs only when nothing has failed (`whenFailureFree`);
+  the contexts are still collected, so `CollectErrors` is reported.
+- Until every rule records, a rule may still raise a refusal (`LedgerFailure.Rejected`). The
+  boundary of a sub-rule (`Judge.trans`, a `Nest` with a resume value) then ends that sub-rule
+  only: the interpreter, given the split of `Refusal`, appends the raised failures to the
+  sub-rule's block, sets the failing flag and resumes the parent with the state the sub-rule had
+  reached. A raised refusal at the root is reported after what the root recorded. A defect still
+  ends the judgment. The boundary goes once no rule raises a refusal.
 
 ## What is preserved
 

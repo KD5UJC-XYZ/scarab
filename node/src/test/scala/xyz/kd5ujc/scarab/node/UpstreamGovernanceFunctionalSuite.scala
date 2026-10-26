@@ -40,12 +40,12 @@ import xyz.kd5ujc.scarab.storage.haskell.state.Params
 import xyz.kd5ujc.scarab.ledger.rules.{
   Globals,
   Gov,
-  GovEnv,
-  GovSignal,
   GovCertificateView,
-  GovViewEnv,
+  GovEnv,
   GovKernel,
-  Sts
+  GovSignal,
+  GovViewEnv,
+  JudgedSts
 }
 
 import HaskellStateCodecs.given
@@ -112,6 +112,14 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
     LedgerGlobals(BigInt(0), BigInt(1), Rational.zero, network = 0),
     EpochGeometry(Instant.EPOCH, 1000L, 1L, 1, BigDecimal("0.1"))
   )
+
+  /** GOV to its first failure, a refusal of the environment's transaction. */
+  private def govRule(globals: Globals, env: GovEnv, state: Proposals, signal: GovSignal) =
+    JudgedSts(Gov)(LedgerFailure.Rejected(env.id, _))(globals, env, state, signal)
+
+  /** The GOV kernel to its first failure, a refusal of the environment's transaction. */
+  private def kernelRule(globals: Globals, env: GovViewEnv, state: Proposals, signal: GovSignal) =
+    JudgedSts(GovKernel)(LedgerFailure.Rejected(env.id, _))(globals, env, state, signal)
 
   private def govEnvironment(id: String): GovEnv =
     val fields = node(id, "environment").value match
@@ -197,12 +205,11 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
         Files.readString(base.resolve(s"cases/$id/result.txt")),
         "implementation-accepted\nagda-accepted\n"
       )
-      val actual = Sts
-        .apply(GovKernel)(globals, govViewEnvironment(id), before, inputs)
+      val actual = kernelRule(globals, govViewEnvironment(id), before, inputs)
         .fold(e => fail(s"Scarab refused upstream-accepted nonempty GOV: $e"), identity)
       if !strictCertificateRefusals(seed) then
         assertEquals(
-          Sts.apply(Gov)(globals, govEnvironment(id), before, inputs),
+          govRule(globals, govEnvironment(id), before, inputs),
           Right(actual),
           "full validated certificate facade and minimal production kernel agree"
         )
@@ -225,7 +232,7 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
       case _                          => false
     })
     assertEquals(
-      Sts.apply(Gov)(
+      govRule(
         globals,
         govEnvironment(id),
         read(node(id, "state"), summon[Codec[Proposals]]),
@@ -240,7 +247,7 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
     val unregistered = env.copy(cert = authorisations.modify(_.empty)(env.cert))
     val unknown = inputs.votes.collect { case (voter @ Voter.CommitteeHot(_), _) => voter }
     assertEquals(
-      Sts.apply(Gov)(
+      govRule(
         globals,
         unregistered,
         read(node(id, "state"), summon[Codec[Proposals]]),
@@ -269,7 +276,7 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
       case other => fail(s"expected the original actual DRep yes vote, got $other")
     assertEquals(read(node(id, "observed-ledger-proposals"), summon[Codec[Proposals]]), expected)
     assertEquals(
-      Sts.apply(GovKernel)(globals, govViewEnvironment(id), before, inputs),
+      kernelRule(globals, govViewEnvironment(id), before, inputs),
       Right(expected)
     )
     assertEquals(
@@ -295,7 +302,7 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
       }
       assert(unknown.nonEmpty, "negative control must name a removed registration")
       assertEquals(
-        Sts.apply(GovKernel)(globals, absent, before, inputs),
+        kernelRule(globals, absent, before, inputs),
         Left(
           LedgerFailure.Rejected(env.id, PredicateFailure.Gov(GovFailure.VotersDoNotExist(unknown)))
         )
@@ -392,16 +399,16 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
       "implementation-rejected\nagda-rejected\n"
     )
     assertEquals(
-      Sts.apply(GovKernel)(
+      kernelRule(
         globals,
         govViewEnvironment(id),
         read(node(id, "state"), summon[Codec[Proposals]]),
         inputs
       ),
-      Sts.apply(Gov)(globals, env, read(node(id, "state"), summon[Codec[Proposals]]), inputs)
+      govRule(globals, env, read(node(id, "state"), summon[Codec[Proposals]]), inputs)
     )
     assertEquals(
-      Sts.apply(Gov)(globals, env, read(node(id, "state"), summon[Codec[Proposals]]), inputs),
+      govRule(globals, env, read(node(id, "state"), summon[Codec[Proposals]]), inputs),
       Left(
         LedgerFailure.Rejected(
           env.id,

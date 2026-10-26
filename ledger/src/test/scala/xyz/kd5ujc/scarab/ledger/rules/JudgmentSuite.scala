@@ -293,6 +293,52 @@ class JudgmentSuite extends DisciplineSuite:
     }
   }
 
+  test(
+    "a sub-rule that raises its refusal ends there: its block closes with the raised failures"
+  ) {
+    def run(policy: Policy, raise: Option[LedgerFailure]) =
+      Judgment.run(Transitional, policy)(globals, (), 4, raise)
+    // the sub-rule's block is in the order it was recorded, the root's failures reversed
+    assertEquals(
+      run(Policy.Accumulate, Some(LedgerFailure.Rejected(Bytes.empty, raised))),
+      Right(Left(NonEmptyChain(after, inner, raised, first)))
+    )
+    assertEquals(
+      run(Policy.Accumulate, None),
+      Right(Left(NonEmptyChain(after, inner, first)))
+    )
+    assertEquals(
+      run(Policy.FirstFailure, Some(LedgerFailure.Rejected(Bytes.empty, raised))),
+      Right(Left(NonEmptyChain.one(first)))
+    )
+    val vocab = LedgerFailure.Vocab(VocabError.Zero(VocabError.Kind.Coin))
+    // a defect after a recorded failure leaves no verdict; the first failure ends before it
+    assertEquals(run(Policy.Accumulate, Some(vocab)), Left(vocab))
+    assertEquals(run(Policy.FirstFailure, Some(vocab)), Right(Left(NonEmptyChain.one(first))))
+  }
+
+  test("a raised refusal at the root is reported after what the rule recorded") {
+    val program = Judge[[A] =>> RuleT[PredicateFailure, LedgerFailure, Int, A], PredicateFailure]
+      .fail(first) *>
+      Raise[[A] =>> RuleT[PredicateFailure, LedgerFailure, Int, A], LedgerFailure]
+        .raise[LedgerFailure, Unit](LedgerFailure.Rejected(Bytes.empty, raised))
+    val absorb: LedgerFailure => Option[NonEmptyChain[PredicateFailure]] = {
+      case LedgerFailure.Rejected(_, failures) => Some(failures)
+      case _                                   => None
+    }
+    assertEquals(
+      program.judge(Policy.Accumulate, globals, 0, absorb),
+      Outcome.Refused(NonEmptyChain(raised, first))
+    )
+  }
+
+  test("JudgedSts.apply runs a rule to its first failure, raised") {
+    assertEquals(
+      JudgedSts(Transitional)(LedgerFailure.Rejected(Bytes.empty, _))(globals, (), 4, None),
+      Left(LedgerFailure.Rejected(Bytes.empty, first))
+    )
+  }
+
   test("long and deep judgments run in constant stack, and so does their order") {
     val n = 100000
     val sequence = (1 to n).toList.traverse_(judge.fail)
@@ -315,13 +361,43 @@ class JudgmentSuite extends DisciplineSuite:
 
 object JudgmentSuite:
   /** Adds one to its state, then raises the failure of its signal, if any. */
-  object Raising extends Sts[Unit, Int, Option[LedgerFailure], LedgerFailure]:
+  object Raising
+      extends JudgedSts[Unit, Int, Option[LedgerFailure], PredicateFailure, LedgerFailure]:
     def transition[F[_]: Monad](env: Unit, signal: Option[LedgerFailure])(using
         Ask[F, Globals],
         Stateful[F, Int],
-        Raise[F, LedgerFailure]
+        Raise[F, LedgerFailure],
+        Judge[F, PredicateFailure]
     ): F[Unit] =
       Stateful[F, Int].modify(_ + 1) *> signal.fold(Monad[F].unit)(_.raise[F, Unit])
+
+  /** Failures of the transitional sub-rule boundary's cases. */
+  val first: PredicateFailure = PredicateFailure.Mempool(MempoolProblem.AllInputsSpent)
+  val inner: PredicateFailure =
+    PredicateFailure.TreasuryValueMismatch(xyz.kd5ujc.scarab.ledger.Mismatch(BigInt(1), BigInt(2)))
+  val raised: PredicateFailure =
+    PredicateFailure.TreasuryValueMismatch(xyz.kd5ujc.scarab.ledger.Mismatch(BigInt(3), BigInt(4)))
+  val after: PredicateFailure =
+    PredicateFailure.TreasuryValueMismatch(xyz.kd5ujc.scarab.ledger.Mismatch(BigInt(5), BigInt(6)))
+
+  /** A rule that records `first`, runs a sub-rule that records `inner`, changes the state and
+    * raises the signal, and then records `after` if the judgment is failing.
+    */
+  object Transitional
+      extends JudgedSts[Unit, Int, Option[LedgerFailure], PredicateFailure, LedgerFailure]:
+    def transition[F[_]: Monad](env: Unit, signal: Option[LedgerFailure])(using
+        Ask[F, Globals],
+        Stateful[F, Int],
+        Raise[F, LedgerFailure],
+        Judge[F, PredicateFailure]
+    ): F[Unit] =
+      val judge = Judge[F, PredicateFailure]
+      judge.fail(first) *>
+        judge.trans(
+          judge.fail(inner) *> Stateful[F, Int].modify(_ + 1) *>
+            signal.fold(Monad[F].unit)(_.raise[F, Unit])
+        ) *>
+        judge.failing.flatMap(failing => if failing then judge.fail(after) else Monad[F].unit)
 
   /** The defect the programs raise. */
   enum Defect:

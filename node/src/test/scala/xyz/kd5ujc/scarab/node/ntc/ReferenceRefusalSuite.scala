@@ -168,7 +168,7 @@ class ReferenceRefusalSuite extends FunSuite:
         decoder = env.decoder
       )
       Judgment
-        .run(ShelleyLedger.sts[Babbage], Judgment.Policy.FirstFailure)(
+        .run(ShelleyLedger.sts[Babbage], Judgment.Policy.Accumulate)(
           env.rules,
           ShelleyLedgerEnv(txEnv, ticked.es.chainAccount),
           Counted(ticked.es.ls, PlutusStats.zero),

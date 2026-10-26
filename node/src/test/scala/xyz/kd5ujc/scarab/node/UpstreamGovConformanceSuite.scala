@@ -9,7 +9,7 @@ import io.circe.parser.parse
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.{Committee, EnactState, EpochGeometry, LedgerGlobals, Proposals}
-import xyz.kd5ujc.scarab.ledger.rules.{Globals, Gov, GovEnv, GovSignal, Sts}
+import xyz.kd5ujc.scarab.ledger.rules.{Globals, Gov, GovEnv, GovSignal, JudgedSts}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, Params, Wire}
@@ -113,8 +113,8 @@ class UpstreamGovConformanceSuite extends FunSuite:
       .fold(e => fail(s"full GOV implementation state: ${e.render}"), identity)
     assertEquals(before, expected, "pinned generated trace is an accepted no-op")
 
-    val actual = Sts
-      .apply(Gov)(
+    val actual = JudgedSts
+      .apply(Gov)(xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(txId, _))(
         globals,
         GovEnv(txId, epoch.toBigInt, pp, guardrails, cert, committee),
         before,

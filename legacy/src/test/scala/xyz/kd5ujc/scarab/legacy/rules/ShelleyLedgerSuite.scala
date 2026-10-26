@@ -99,7 +99,7 @@ class ShelleyLedgerSuite extends FunSuite:
   ): Either[LedgerFailure, (LedgerImage[E], Counted[LedgerState[E]])] =
     val image = run(mirror.to[E](at, s)).fold(e => fail(s"to the mirror: ${e.show}"), _.value)
     val nes = image.nes
-    Sts(ShelleyLedger.sts[E])(
+    JudgedSts(ShelleyLedger.sts[E])(LedgerFailure.Rejected(t.body.id, _))(
       globals,
       ShelleyLedgerEnv(ctx, nes.es.chainAccount),
       Counted(nes.es.ls, s.plutus),
@@ -969,9 +969,18 @@ class ShelleyLedgerSuite extends FunSuite:
     )
     for t <- Vector(delegate, pay("cheap", alice, fee = 1)) do
       val rules = ShelleyLedger.sts[Babbage]
-      val onRuleT = Sts(rules)(globals, ledgerEnv, start, t)
+      val onRuleT =
+        JudgedSts(rules)(LedgerFailure.Rejected(t.body.id, _))(globals, ledgerEnv, start, t)
       val onStack = rules
-        .transition[K](ledgerEnv, t)(using summon, summon, summon, summon)
+        .transition[K](ledgerEnv, t)(using
+          summon,
+          summon,
+          summon,
+          summon,
+          Judge.raising[K, xyz.kd5ujc.scarab.ledger.PredicateFailure, LedgerFailure](
+            LedgerFailure.Rejected(t.body.id, _)
+          )
+        )
         .run(globals)
         .run(start)
         .map(_._1)

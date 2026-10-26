@@ -73,6 +73,39 @@ object Sts:
   ): F[Unit] =
     Monad[F].flatMap(state.get)(s => Monad[F].flatMap(lift[F, Fail, S](f(s)))(state.set))
 
+  /** `runTest` (`Cardano/Ledger/Rules/ValidationMode.hs`, `validateTrans`, `Extended.hs:373`):
+    * records every failure of a pure [[Test]], in its order, and continues.
+    */
+  def runTest[F[_], Rec](test: Test[Rec])(using F: Applicative[F], judge: Judge[F, Rec]): F[Unit] =
+    test.fold(failures => judge.tell(failures.toChain), _ => F.unit)
+
+  /** `cond ?! failure` (`Extended.hs:394-399`): records `failure` unless `cond` holds. */
+  def predicate[F[_], Rec](cond: Boolean, failure: => Rec)(using
+      F: Applicative[F],
+      judge: Judge[F, Rec]
+  ): F[Unit] =
+    if cond then F.unit else judge.fail(failure)
+
+  /** `failBecause` (`Extended.hs:401-402`): records `failure`. */
+  def failBecause[F[_], Rec](failure: Rec)(using judge: Judge[F, Rec]): F[Unit] =
+    judge.fail(failure)
+
+  /** `failOnJust` (`Extended.hs:404-407`): records the failure made of a present value. */
+  def failOnJust[F[_], A, Rec](cond: Option[A])(onJust: A => Rec)(using
+      F: Applicative[F],
+      judge: Judge[F, Rec]
+  ): F[Unit] =
+    runTest(Test.failureOnJust(cond)(onJust))
+
+  /** `failOnNonEmpty` (`Extended.hs:419-421`, and its set and map forms): records the failure made
+    * of the items, if there are any.
+    */
+  def failOnNonEmpty[F[_], C, Rec](items: C)(isEmpty: C => Boolean)(onNonEmpty: C => Rec)(using
+      F: Applicative[F],
+      judge: Judge[F, Rec]
+  ): F[Unit] =
+    runTest(Test.failureOnNonEmpty(items)(isEmpty)(onNonEmpty))
+
   /** `ifFailureFree yes no` (`Extended.hs:479-481`): `yes` if nothing was recorded so far anywhere
     * in the judgment, `no` otherwise. With `whenFailureFree`, the only clause of the reference that
     * skips a step.
@@ -124,6 +157,68 @@ object Sts:
       signal: Sig
   ): Either[Fail, S] =
     rule.transition[RuleT.Of[Fail, S]](env, signal).run(globals, state).map(_._1)
+
+/** A state transition system whose predicate failures are recorded ([[Judge]]) rather than raised:
+  * the rules of a transaction, as the reference runs every `STS` (`Extended.hs:668-730`). `Rec` is
+  * the predicate failure (`PredicateFailure`); `Fail` is raised for what ends the judgment with no
+  * verdict (a defect), and, until every rule records (#412), for the predicate failures of the
+  * rules that still raise them ([[Judge.trans]]).
+  *
+  * The epoch and tick rules, whose reference predicate failures cannot occur, stay [[Sts]]. A rule
+  * of the block (LEDGERS) runs a transaction's rules with [[Judge.raising]]: the block's verdict is
+  * the first failure.
+  */
+trait JudgedSts[Env, S, Sig, Rec, Fail]:
+  /** The transition judgment `env ⊢ s ⊢ signal ⇒ s'`: changes the state, records the predicate
+    * failures of the transition, and raises a defect.
+    */
+  def transition[F[_]: Monad](env: Env, signal: Sig)(using
+      Ask[F, Globals],
+      Stateful[F, S],
+      Raise[F, Fail],
+      Judge[F, Rec]
+  ): F[Unit]
+
+object JudgedSts:
+  /** Applies the rule to its first failure, raised as `wrap` makes it ([[Judge.raising]]): the
+    * state after the transition, or the first failure. This is how the block's rules apply a
+    * transaction; [[Judgment.run]] reports every failure.
+    */
+  def apply[Env, S, Sig, Rec, Fail](rule: JudgedSts[Env, S, Sig, Rec, Fail])(wrap: Rec => Fail)(
+      globals: Globals,
+      env: Env,
+      state: S,
+      signal: Sig
+  ): Either[Fail, S] =
+    given Judge[RuleT.Of[Fail, S], Rec] = Judge.raising(wrap)
+    rule.transition[RuleT.Of[Fail, S]](env, signal).run(globals, state).map(_._1)
+
+  /** `trans @sub` (`Extended.hs:475`, interpreted at `Extended.hs:713-722`): runs `sub` on the part
+    * of the state `S0` that [[Embed]] names, as a sub-rule ([[Judge.trans]]): it always runs, and
+    * what it records is one block of the enclosing rule's failures. The predicate failures of the
+    * transaction rules are one type, so they are recorded as they are; a raise is wrapped
+    * (`wrapFailed`).
+    */
+  def trans[F[_]: Monad, Env, S, S0, Sig, Rec, Fail, Fail0](
+      sub: JudgedSts[Env, S, Sig, Rec, Fail],
+      env: Env,
+      signal: Sig
+  )(using
+      embed: Embed[S, S0, Fail, Fail0],
+      ask: Ask[F, Globals],
+      state: Stateful[F, S0],
+      raise: Raise[F, Fail0],
+      judge: Judge[F, Rec]
+  ): F[Unit] =
+    judge.trans(
+      sub.transition[F](env, signal)(using
+        summon[Monad[F]],
+        ask,
+        state.focus(embed.state),
+        raise.contramap(embed.failure),
+        judge
+      )
+    )
 
 /** `Embed sub super` (`Extended.hs:270-286`): how the state and the failures of a sub-rule sit in
   * those of the rule that runs it. The state is a lens (Haskell's rules pass the part of the state

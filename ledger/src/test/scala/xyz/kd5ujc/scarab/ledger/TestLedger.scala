@@ -6,7 +6,7 @@ import xyz.kd5ujc.scarab.plutus.ExUnits
 import java.security.{KeyPair, KeyPairGenerator, Signature}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.rules.{Counted, Globals, Ledger, LedgerEnv, Sts}
+import xyz.kd5ujc.scarab.ledger.rules.{Counted, Globals, JudgedSts, Ledger, LedgerEnv}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState as EraLedgerState, NewEpochState}
 
 /** Builders for ledger rule tests: parameters per era, funded states, keys that really sign, and
@@ -91,7 +91,7 @@ object TestLedger:
       tx: Tx,
       env: TxEnv
   ): Either[LedgerFailure, Counted[EraLedgerState[Conway]]] =
-    Sts(Ledger)(
+    JudgedSts(Ledger)(LedgerFailure.Rejected(tx.body.id, _))(
       globals,
       LedgerEnv(env, nes.es.chainAccount.treasury),
       Counted(nes.es.ls, PlutusStats.zero),

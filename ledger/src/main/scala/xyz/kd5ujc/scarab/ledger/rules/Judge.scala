@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
-import cats.Functor
+import cats.{Applicative, Functor}
 import cats.data.Chain
-import cats.mtl.Tell
+import cats.mtl.{Raise, Tell}
 
 /** The judgment of a rule as the reference's small-steps interpreter keeps it (cardano-ledger
   * `f649f975`, `libs/small-steps/src/Control/State/Transition/Extended.hs:668-730`): a writer of
@@ -36,6 +36,14 @@ trait Judge[F[_], Fail] extends Tell[F, Chain[Fail]]:
   /** Runs `fa` as a sub-rule: its failures are recorded as one block of the enclosing rule's. */
   def nest[A](fa: F[A]): F[A]
 
+  /** The boundary of `trans` while some rules still raise their predicate failures: a [[nest]] in
+    * which a raised refusal ends the sub-rule only. Its failures are recorded at the end of the
+    * sub-rule's block and the enclosing rule continues, with the state the sub-rule had reached; a
+    * raised defect ends the judgment as before. A rule that records its failures never raises a
+    * refusal, so for it this is [[nest]]; the boundary goes once every rule records (#412).
+    */
+  def trans(fa: F[Unit]): F[Unit] = nest(fa)
+
   /** The judgment of a sub-rule whose failures are wrapped into this one's (`wrapFailed`, as
     * `Raise.contramap` does for raised failures).
     */
@@ -46,6 +54,24 @@ trait Judge[F[_], Fail] extends Tell[F, Chain[Fail]]:
       def tell(failures: Chain[G]): F[Unit] = outer.tell(failures.map(wrap))
       def failing: F[Boolean] = outer.failing
       def nest[A](fa: F[A]): F[A] = outer.nest(fa)
+      override def trans(fa: F[Unit]): F[Unit] = outer.trans(fa)
 
 object Judge:
   def apply[F[_], Fail](using judge: Judge[F, Fail]): Judge[F, Fail] = judge
+
+  /** The judgment of a rule run to its first failure, as a raise: a recorded failure is raised,
+    * wrapped (`wrap`), so nothing is ever recorded and the failing flag is always down. This is the
+    * [[RuleT.Policy.FirstFailure]] judgment for a rule whose caller raises its failures: the
+    * block's rules (LEDGERS under BBODY), whose verdict is the first failure of the first refused
+    * transaction. It is not a lawful `Tell`: a told failure ends the program.
+    */
+  def raising[F[_], Rec, Fail](wrap: Rec => Fail)(using
+      F: Applicative[F],
+      raise: Raise[F, Fail]
+  ): Judge[F, Rec] = new Judge[F, Rec]:
+    val functor: Functor[F] = F
+    def tell(failures: Chain[Rec]): F[Unit] =
+      failures.headOption.fold(F.unit)(f => raise.raise[Fail, Unit](wrap(f)))
+    def failing: F[Boolean] = F.pure(false)
+    def nest[A](fa: F[A]): F[A] = fa
+    override def trans(fa: F[Unit]): F[Unit] = fa

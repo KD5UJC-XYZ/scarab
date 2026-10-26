@@ -33,7 +33,8 @@ class Phase2UnavailableSuite extends FunSuite:
       scripts,
       tx.body.inputs.flatMap(c.spent.get),
       tx.body.referenceInputs.flatMap(c.references.get),
-      Set(0 -> BigInt(0))
+      Set(0 -> BigInt(0)),
+      evaluate = true
     )
 
   test("implementation unavailability supplies no verdict for either transaction validity flag") {

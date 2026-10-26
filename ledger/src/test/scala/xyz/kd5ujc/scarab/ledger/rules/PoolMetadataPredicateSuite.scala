@@ -37,7 +37,12 @@ class PoolMetadataPredicateSuite extends FunSuite:
   )
   private val initial = Empty.ledgerState[Conway](TestLedger.params(10)).cert.pState
   private def run(pp: ProtocolParams, p: PoolParams, state: PState = initial) =
-    Sts(Pool)(TestLedger.globals, CertEnv(id, pp, 5, None, Map.empty), state, PoolCert.RegPool(p))
+    JudgedSts(Pool)(LedgerFailure.Rejected(id, _))(
+      TestLedger.globals,
+      CertEnv(id, pp, 5, None, Map.empty),
+      state,
+      PoolCert.RegPool(p)
+    )
 
   test("only the metadata hash, rather than the encoded URL and metadata, is bounded") {
     for size <- Vector(0, 31, 32) do
@@ -128,7 +133,7 @@ class PoolMetadataPredicateSuite extends FunSuite:
       ),
       Vector(owner)
     )
-    def admit(tx: Tx) = Sts(Ledger)(
+    def admit(tx: Tx) = JudgedSts(Ledger)(LedgerFailure.Rejected(tx.body.id, _))(
       TestLedger.globals,
       LedgerEnv(TestLedger.env, Coin.zero),
       Counted(funded, PlutusStats.zero),
