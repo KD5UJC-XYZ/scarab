@@ -125,3 +125,11 @@ from synthetic chain state; no signing keys. Apache-2.0.
   run remains recorded in the manifest. This field-level proof and the focused
   `NtcGoldenSuite` run justify the six updated entries, and do not turn the failed
   full run into a pass. The coordinated feature branch runs a new full check.
+
+- #502 (Byron-origin genesis identity): 25 rows changed across current/future parameters,
+  governance/ratify state and debug state. The old start incorrectly merged the Alonzo test-only
+  `extraConfig` V2 model into a Byron hand-over. Native parameter upgrades on the exact captured
+  genesis retain V1, then add V3 at Conway. [The scoped native oracle and migration evidence](byron-cost-models/README.md)
+  pin the inputs and source identities. All 68 changed CBOR subtrees are exactly the corresponding
+  cost-model maps: deleting the complete extra V2 vector produces native bytes, and inverse
+  replacement reproduces all 265 old raw answers. No other bytes or subject/query rows changed.
