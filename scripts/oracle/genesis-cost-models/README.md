@@ -11,6 +11,9 @@ python3 scripts/oracle/genesis-cost-models/run.py --replay   # run both images (
 python3 scripts/oracle/genesis-cost-models/run.py --record   # rewrite the fixture and its provenance
 ```
 
+`--image <tag>` runs a genesis oracle image built under another tag (the costing image keeps its
+tag, `scarab-plutus-costing-oracle:local`).
+
 `Main.hs` runs the unchanged released libraries (cardano-ledger-alonzo 1.16.0.0, -conway 1.23.0.0,
 -core 1.21.0.0) on JSON given by `cases.py`: `FromJSON AlonzoGenesis` and `FromJSON ConwayGenesis`
 (whose cost models go through `parseCostModels` and `parseCostModelAsArray`), `parseCostModels`

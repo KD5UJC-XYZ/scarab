@@ -7,6 +7,5 @@
   length and an `Unknown` map, and the Conway `plutusV3CostModel` must be an array of exactly 251
   parameters. A genesis file the reference refuses is refused with a typed `GenesisCostModel`
   problem. Real network genesis files load unchanged.
-- Plutus evaluation with a short or long cost-model list is measured against the reference (3,441
-  observations, same stages and budgets); no change was needed. With every parameter at `Int64`'s
-  minimum Scalus differs ([#485](https://github.com/KD5UJC-XYZ/scarab/issues/485)).
+- Plutus evaluation with a short or long cost-model list is measured against the reference (same
+  stages and budgets); no change was needed for the length.

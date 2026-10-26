@@ -212,10 +212,13 @@ def record():
 
 
 def main():
+    global IMAGE
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--replay", action="store_true", help="run the images and compare every verdict")
     parser.add_argument("--record", action="store_true", help="rewrite the fixture and its hashes from the images")
+    parser.add_argument("--image", default=IMAGE, help=f"the genesis oracle image (default {IMAGE})")
     args = parser.parse_args()
+    IMAGE = args.image
     if args.record:
         record()
         return 0

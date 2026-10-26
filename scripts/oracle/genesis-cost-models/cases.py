@@ -7,6 +7,7 @@ fixture stays small; `expand` is the one definition of that expansion (the Scala
 """
 import json
 from pathlib import Path
+import random
 
 ROOT = Path(__file__).resolve().parents[3]
 TEMPLATES = {
@@ -270,6 +271,8 @@ def model_values(spec):
     """The list a model spec stands for: the pinned default of its profile cut or extended with sevens."""
     if "fill" in spec:
         return [spec["fill"]] * spec["length"]
+    if "values" in spec:
+        return spec["values"]
     params = default_params(spec["language"], spec["protocol"])
     return (params + [7] * spec["length"])[: spec["length"]]
 
@@ -287,7 +290,25 @@ def evaluation_models():
     for language, protocol, size in ((1, 5, 343), (3, 11, 361)):
         for label, fill in (("min", INT64_MIN), ("max", INT64_MAX), ("minus-one", -1), ("zero", 0)):
             out.append({"id": f"v{language}-pv{protocol}-all-{label}", "language": language, "protocol": protocol, "length": size, "fill": fill})
+    for language, protocol in ((1, 5), (1, 11), (2, 7), (2, 11), (3, 11)):
+        defaults = default_params(language, protocol)
+        out.append({"id": f"v{language}-pv{protocol}-negated", "language": language, "protocol": protocol,
+                    "length": len(defaults), "values": [-d for d in defaults]})
+        for seed in (1, 2, 3):
+            out.append({"id": f"v{language}-pv{protocol}-mixed-{seed}", "language": language, "protocol": protocol,
+                        "length": len(defaults), "values": mixed(defaults, seed)})
     return out
+
+
+# Magnitudes at which the reference's SatInt arithmetic saturates, crossed with both signs (#485).
+PALETTE = (0, 1, -1, 2**20, -(2**20), 2**40, -(2**40), 2**58, -(2**58), 2**62, -(2**62),
+           INT64_MIN, INT64_MIN + 1, INT64_MAX - 1, INT64_MAX)
+
+
+def mixed(defaults, seed):
+    """Each parameter its default, negated, doubled or a value of the palette, chosen by the seed."""
+    rng = random.Random(seed)
+    return [rng.choice(PALETTE + (d, -d, 2 * d)) for d in defaults]
 
 
 def evaluation_scripts():
