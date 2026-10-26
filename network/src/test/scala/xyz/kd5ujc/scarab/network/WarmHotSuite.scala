@@ -56,7 +56,7 @@ class WarmHotSuite extends FailsOnUncaught:
 
   private def warm(duplex: Boolean = false, settings: NodeToNode.Settings = NodeToNode.Settings())(
       using Net
-  ): Resource[IO, WarmConnection[IO, Bytes]] =
+  ): Resource[IO, WarmConnection[IO, Bytes, Unit]] =
     Resource
       .eval(Bearer.inMemory[IO]())
       .flatMap { (ours, theirs) =>
@@ -73,7 +73,7 @@ class WarmHotSuite extends FailsOnUncaught:
       }
 
   private final case class DuplexPair(
-      local: WarmConnection[IO, Bytes],
+      local: WarmConnection[IO, Bytes, Unit],
       responses: Deferred[
         IO,
         (
@@ -185,7 +185,7 @@ class WarmHotSuite extends FailsOnUncaught:
     }.map(result => assertEquals(result, Right(())))
 
   test("a connection is activated, finished and activated again on one bearer"):
-    def round(warm: WarmConnection[IO, Bytes])(using Net) =
+    def round(warm: WarmConnection[IO, Bytes, Unit])(using Net) =
       warm.activate(Some(emptySource)).use { hot =>
         for
           found <- hot.chainSync.findIntersect(Vector(Point.Origin))
@@ -205,6 +205,23 @@ class WarmHotSuite extends FailsOnUncaught:
       )
       assertEquals(r, Right((expected, expected)))
     }
+
+  test("finishing a standalone hot client completes every application result handle"):
+    typed(warm().use { connection =>
+      connection.activate().use { hot =>
+        hot.finish(5.seconds) *> connection.applications
+          .awaitAll(Set(ProtocolResults.Temperature.Hot))
+      }
+    }).map(result =>
+      assertEquals(
+        result,
+        Right(
+          ProtocolResults.LastToFinish.AllSucceeded(
+            Map(Protocols.ChainSync -> (), Protocols.BlockFetch -> ())
+          )
+        )
+      )
+    )
 
   test("a connection with a request outstanding cannot be finished"):
     typed(

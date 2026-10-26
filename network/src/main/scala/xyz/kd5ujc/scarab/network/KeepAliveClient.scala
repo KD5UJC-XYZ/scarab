@@ -14,6 +14,9 @@ trait KeepAliveClient[F[_]]:
   /** One request/response round trip; returns its duration. */
   def ping(using Raise[F, NetworkError]): F[FiniteDuration]
 
+  /** End at the client-agency boundary. */
+  def done(using Raise[F, NetworkError]): F[Unit]
+
 object KeepAliveClient:
   /** The upstream server drops a client that is silent for 97 seconds, so ping well inside that. */
   final case class Settings(
@@ -33,6 +36,15 @@ object KeepAliveClient:
 
     Ref.of[F, Int](0).map { counter =>
       new KeepAliveClient[F]:
+        def done(using Raise[F, NetworkError]): F[Unit] =
+          KeepAlive
+            .encode(
+              KeepAlive.State.Client,
+              KeepAlive.Role.Client,
+              KeepAlive.Message.Done,
+              settings.limits
+            )
+            .fold(illegal[Unit], bytes => channel.send(bytes) *> channel.flush)
         def ping(using Raise[F, NetworkError]): F[FiniteDuration] =
           for
             n <- counter.getAndUpdate(c => (c + 1) % (KeepAlive.Cookie.Max + 1))
@@ -68,6 +80,41 @@ object KeepAliveClient:
       sample: Option[FiniteDuration => F[Unit]] = None
   ): Resource[F, Unit] =
     Temporal[F].background(pinger(channel, mux, settings, sample)).void
+
+  /** The established application accepts Terminate, sends MsgDone after its current ping, and
+    * publishes its result before mux failure can cancel its resource. PeerStateActions owns the
+    * result handle (2fb69829 PeerSelection/PeerStateActions.hs:1055–1077).
+    */
+  def controlled[F[_]: Temporal: Defer](
+      channel: MuxChannel[F],
+      mux: Mux[F],
+      settings: Settings,
+      sample: Option[FiniteDuration => F[Unit]],
+      completed: Either[NetworkError, Unit] => F[Unit],
+      control: F[ProtocolResults.Control],
+      terminated: F[Unit]
+  ): Resource[F, Unit] =
+    Temporal[F]
+      .background(
+        Fibers
+          .scoped[F, NetworkError, Unit](t => NetworkError.fromThrowable("keep-alive", t))(
+            apply[F](channel, settings).flatMap { client =>
+              Temporal[F].tailRecM(()) { _ =>
+                control.flatMap {
+                  case ProtocolResults.Control.Terminate => client.done.as(Right(()))
+                  case _ =>
+                    client.ping.flatMap(duration => sample.traverse_(_(duration))) *>
+                      Temporal[F]
+                        .race(terminated, Temporal[F].sleep(settings.interval))
+                        .as(Left(()))
+                }
+              }
+            }
+          )
+          .flatTap(completed)
+          .flatMap(_.fold(mux.abort, _ => Temporal[F].unit))
+      )
+      .void
 
   /** The pinger fiber. Whatever ends it ends the connection. It runs in an error scope of its own
     * ([[Fibers.scoped]]) and ends with the reason as a value, which it hands to the multiplexer:

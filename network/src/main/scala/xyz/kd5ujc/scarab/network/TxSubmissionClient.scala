@@ -79,6 +79,11 @@ object TxSubmissionClient:
       */
     def finish(within: FiniteDuration): F[Boolean]
 
+    /** Request protocol termination and retain its exact result. The connection action owns the
+      * deadline; cancelling this wait does not cancel the resource-owned protocol fiber.
+      */
+    def terminate: F[Either[NetworkError, Unit]]
+
   /** Offer `source` to the peer for the life of the resource. A failure ends the connection.
     * @param role
     *   The side of the protocol to run: the multiplexer's own by default.
@@ -96,27 +101,38 @@ object TxSubmissionClient:
       mux: Mux[F],
       source: Source[F],
       settings: Settings = Settings(),
-      role: Option[Mux.Role] = None
+      role: Option[Mux.Role] = None,
+      completed: Option[Either[NetworkError, Unit] => F[Unit]] = None,
+      termination: Option[F[Unit]] = None
   ): cats.effect.Resource[F, Running[F]] =
     import cats.effect.syntax.all.*
     val F = cats.effect.Async[F]
-    cats.effect.Resource.eval((F.deferred[Unit], F.deferred[Boolean]).tupled).flatMap {
-      case (asked, ended) =>
+    cats.effect.Resource
+      .eval((F.deferred[Unit], F.deferred[Either[NetworkError, Unit]]).tupled)
+      .flatMap { case (asked, ended) =>
         // The fiber's own error scope. Mux already typed transport failures; an uncaught
         // exception here comes from the local source/interpreter, even if it is an IOException.
         val program = Fibers
-          .scoped[F, NetworkError, Boolean](NetworkError.Defect(_))(
+          .scoped[F, NetworkError, Unit](NetworkError.Defect(_))(
             role
               .fold(mux.channel(Protocols.TxSubmission2))(mux.channel(Protocols.TxSubmission2, _))
-              .flatMap(run(_, source, settings, Some(asked.get)))
-              .as(true)
+              .flatMap(
+                run(
+                  _,
+                  source,
+                  settings,
+                  Some(termination.fold(asked.get)(external => F.race(asked.get, external).void))
+                )
+              )
           )
-          .flatMap(_.fold(error => mux.abort(error).as(false), F.pure))
-          .flatMap(ended.complete)
+          .flatTap(result => completed.traverse_(_(result)))
+          .flatTap(result => ended.complete(result))
+          .flatMap(_.fold(mux.abort, _ => F.unit))
           .void
         program.background.as(
           new Running[F]:
             def finish(within: FiniteDuration) =
-              asked.complete(()) *> F.timeoutTo(ended.get, within, F.pure(false))
+              F.timeoutTo(terminate.map(_.isRight), within, F.pure(false))
+            def terminate = asked.complete(()) *> ended.get
         )
-    }
+      }

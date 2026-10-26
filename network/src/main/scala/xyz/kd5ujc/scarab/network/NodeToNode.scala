@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.network
 import cats.Monad
 import cats.effect.{Async, Ref, Resource}
 import cats.mtl.Raise
+import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, SocketAddress}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Handshake, NtnVersion}
@@ -31,7 +32,8 @@ final class NodeToNodeConnection[F[_], P](
     val transactions: Option[TxSubmissionClient.Running[F]] = None,
     val fetchPerformance: Option[F[FetchGsv.PeerGsv]] = None,
     blockFetchEnded: Option[F[Unit]] = None,
-    val chainSyncPipeline: Option[ChainSyncClient.Pipeline[F, P]] = None
+    val chainSyncPipeline: Option[ChainSyncClient.Pipeline[F, P]] = None,
+    chainSyncEnded: Option[F[Unit]] = None
 ):
   /** End the hot protocols on the wire, so the connection can carry a new activation: ChainSync and
     * BlockFetch say `MsgDone` where they are idle, TxSubmission2 at the peer's next blocking
@@ -41,9 +43,10 @@ final class NodeToNodeConnection[F[_], P](
   def finish(within: FiniteDuration)(using Monad[F], Raise[F, NetworkError]): F[Boolean] =
     (chainSync.idle, blockFetch.idle).tupled.flatMap {
       case (true, true) =>
-        chainSync.done *> blockFetch.done *> blockFetchEnded.sequence_ *> transactions.fold(
-          true.pure[F]
-        )(_.finish(within))
+        chainSync.done *> chainSyncEnded.sequence_ *> blockFetch.done *> blockFetchEnded.sequence_ *> transactions
+          .fold(
+            true.pure[F]
+          )(_.finish(within))
       case _ => false.pure[F]
     }
 
@@ -55,11 +58,22 @@ final class NodeToNodeConnection[F[_], P](
   )(using Monad[F], Raise[F, NetworkError]): F[Boolean] =
     blockFetch.idle.flatMap {
       case true =>
-        blockFetch.done *> blockFetchEnded.sequence_ *> transactions.fold(true.pure[F])(
-          _.finish(within)
-        )
+        chainSyncEnded.sequence_ *> blockFetch.done *> blockFetchEnded.sequence_ *> transactions
+          .fold(true.pure[F])(
+            _.finish(within)
+          )
       case false => false.pure[F]
     }
+
+  /** End the drained hot protocols without a second deadline or a lossy Boolean result.
+    * PeerStateActions owns the all-results timeout and connection release.
+    */
+  def finishGracefully(
+      chainSyncAlreadyEnded: Boolean
+  )(using Monad[F], Raise[F, NetworkError]): F[Unit] =
+    chainSync.done.unlessA(chainSyncAlreadyEnded) *> chainSyncEnded.sequence_ *>
+      blockFetch.done *> blockFetchEnded.sequence_ *>
+      transactions.traverse_(_.terminate.flatMap(_.fold(_.raise[F, Unit], _.pure[F])))
 
 /** A connection with its handshake done and KeepAlive running, the temperature the reference calls
   * warm (`Ouroboros.Network.PeerSelection.PeerStateActions`: established protocols only). The hot
@@ -72,7 +86,7 @@ final class NodeToNodeConnection[F[_], P](
   * @param duplex
   *   The handshake agreed InitiatorAndResponder for this bearer.
   */
-final class WarmConnection[F[_], P] private[network] (
+final class WarmConnection[F[_], P, A] private[network] (
     val version: Int,
     val mux: Mux[F],
     role: Mux.Role,
@@ -80,7 +94,10 @@ final class WarmConnection[F[_], P] private[network] (
     settings: NodeToNode.Settings,
     val peerSharing: Option[PeerSharingClient[F]] = None,
     val duplex: Boolean = false,
-    val fetchPerformance: Option[F[FetchGsv.PeerGsv]] = None
+    val fetchPerformance: Option[F[FetchGsv.PeerGsv]],
+    val applications: ProtocolResults[F, A],
+    val stopEstablished: F[Unit],
+    noInitiatorResult: A
 ):
   /** Start the hot protocols as the initiator side of each. With `transactions` the node offers
     * those transactions over TxSubmission2 for the life of the resource. `blockFetchEnded` is a
@@ -89,25 +106,50 @@ final class WarmConnection[F[_], P] private[network] (
   def activate(
       transactions: Option[TxSubmissionClient.Source[F]] = None,
       blockFetchEnded: Option[F[Unit]] = None,
-      peerTrust: ChainSyncTimeouts.PeerTrust = ChainSyncTimeouts.PeerTrust.Untrustable
+      peerTrust: ChainSyncTimeouts.PeerTrust = ChainSyncTimeouts.PeerTrust.Untrustable,
+      chainSyncResult: Option[ProtocolResults.Run[F, A] => F[Unit]] = None
   )(using
       Async[F],
       Raise[F, NetworkError]
   ): Resource[F, NodeToNodeConnection[F, P]] =
+    Resource
+      .eval(applications.activateHot *> applications.startHot(transactions.nonEmpty))
+      .flatMap(startHotProtocols(_, transactions, blockFetchEnded, peerTrust, chainSyncResult))
+
+  /** Start an activation whose control and result handles were installed by its status owner. */
+  def startHotProtocols(
+      results: ProtocolResults.Hot[F, A],
+      transactions: Option[TxSubmissionClient.Source[F]],
+      blockFetchEnded: Option[F[Unit]],
+      peerTrust: ChainSyncTimeouts.PeerTrust,
+      chainSyncResult: Option[ProtocolResults.Run[F, A] => F[Unit]]
+  )(using Async[F], Raise[F, NetworkError]): Resource[F, NodeToNodeConnection[F, P]] =
     for
-      running <- transactions.traverse(source =>
-        TxSubmissionClient.backgroundFinishing(mux, source, role = Some(role))
-      )
+      _ <- Resource.eval(chainSyncResult.traverse_(_(results.chainSync)))
+      running <- (transactions, results.transactions).tupled.traverse { (source, result) =>
+        TxSubmissionClient.backgroundFinishing(
+          mux,
+          source,
+          role = Some(role),
+          completed = Some(outcome => result.complete(outcome.as(noInitiatorResult))),
+          termination = Some(applications.awaitTermination(ProtocolResults.Temperature.Hot))
+        )
+      }
       chainSyncChannel <- Resource.eval(mux.channel(Protocols.ChainSync, role))
       blockFetchChannel <- Resource.eval(mux.channel(Protocols.BlockFetch, role))
       chainSync <- ChainSyncClient.resource(
         chainSyncChannel,
         codec,
-        mux.abort,
+        error => results.chainSync.complete(Left(error)) *> mux.abort(error),
         settings.chainSync.withPeerTrust(peerTrust),
         maxOutstanding = settings.chainSync.pipelineCapacity
       )
-      blockFetch <- BlockFetchClient.resource(blockFetchChannel, mux.abort, settings.blockFetch)
+      blockFetch <- BlockFetchClient.resource(
+        blockFetchChannel,
+        error => results.blockFetch.complete(Left(error)) *> mux.abort(error),
+        settings.blockFetch,
+        completed = Some(results.blockFetch.complete(Right(noInitiatorResult)))
+      )
     yield NodeToNodeConnection(
       version,
       chainSync,
@@ -116,7 +158,8 @@ final class WarmConnection[F[_], P] private[network] (
       running,
       fetchPerformance,
       blockFetchEnded,
-      Some(chainSync)
+      Some(chainSync),
+      Option.when(chainSyncResult.isEmpty)(results.chainSync.complete(Right(noInitiatorResult)))
     )
 
 object NodeToNode:
@@ -189,7 +232,7 @@ object NodeToNode:
       codec: ChainSync.PayloadCodec[P],
       settings: Settings = Settings(),
       serve: Option[ServerHandlers[F, P]] = None
-  )(using Raise[F, NetworkError]): Resource[F, WarmConnection[F, P]] =
+  )(using Raise[F, NetworkError]): Resource[F, WarmConnection[F, P, Unit]] =
     Bearer
       .tcp[F](address, settings.connectTimeout)
       .flatMap(warmOver(_, magic, codec, settings, serve))
@@ -203,7 +246,18 @@ object NodeToNode:
       codec: ChainSync.PayloadCodec[P],
       settings: Settings = Settings(),
       serve: Option[ServerHandlers[F, P]] = None
-  )(using Raise[F, NetworkError]): Resource[F, WarmConnection[F, P]] =
+  )(using Raise[F, NetworkError]): Resource[F, WarmConnection[F, P, Unit]] =
+    warmOverWithResults(bearer, magic, codec, (), settings, serve)
+
+  /** Establish the application bundle with the caller's typed initiator result and exit policy. */
+  def warmOverWithResults[F[_]: Async, P, A](
+      bearer: Bearer[F],
+      magic: Long,
+      codec: ChainSync.PayloadCodec[P],
+      noInitiatorResult: A,
+      settings: Settings = Settings(),
+      serve: Option[ServerHandlers[F, P]] = None
+  )(using Raise[F, NetworkError]): Resource[F, WarmConnection[F, P, A]] =
     val offers = Handshake.nodeToNodeOffers(
       settings.maxVersion,
       Handshake.Data(
@@ -240,14 +294,15 @@ object NodeToNode:
             initiators = true
           )
         }
-      warm <- warm(
+      warm <- warmWithResults(
         mux,
         settings.mux.role,
         agreed.version,
         codec,
         settings,
         peerSharing = agreed.data.peerSharing,
-        duplex = !agreed.data.initiatorOnly
+        duplex = !agreed.data.initiatorOnly,
+        noInitiatorResult = noInitiatorResult
       )
     yield warm
 
@@ -263,11 +318,27 @@ object NodeToNode:
       settings: Settings = Settings(),
       peerSharing: Boolean = false,
       duplex: Boolean = false
-  )(using Raise[F, NetworkError]): Resource[F, WarmConnection[F, P]] =
+  )(using Raise[F, NetworkError]): Resource[F, WarmConnection[F, P, Unit]] =
+    warmWithResults(mux, role, version, codec, settings, peerSharing, duplex, ())
+
+  private def warmWithResults[F[_]: Async, P, A](
+      mux: Mux[F],
+      role: Mux.Role,
+      version: Int,
+      codec: ChainSync.PayloadCodec[P],
+      settings: Settings,
+      peerSharing: Boolean,
+      duplex: Boolean,
+      noInitiatorResult: A
+  )(using Raise[F, NetworkError]): Resource[F, WarmConnection[F, P, A]] =
     for
       performance <- Resource.eval(Ref.of[F, FetchGsv.PeerGsv](FetchGsv.default))
+      applications <- Resource.eval(ProtocolResults.create[F, A])
+      keepAliveResult <- Resource.eval(
+        applications.start(Protocols.KeepAlive, ProtocolResults.Temperature.Established)
+      )
       keepAliveChannel <- Resource.eval(mux.channel(Protocols.KeepAlive, role))
-      _ <- KeepAliveClient.background(
+      _ <- KeepAliveClient.controlled(
         keepAliveChannel,
         mux,
         settings.keepAlive,
@@ -277,7 +348,10 @@ object NodeToNode:
             val measured = FetchGsv.fromSample(endPicos - BigInt(duration.toNanos) * 1000, endPicos)
             performance.update(previous => measured.update(previous))
           }
-        )
+        ),
+        outcome => keepAliveResult.complete(outcome.as(noInitiatorResult)),
+        applications.control(ProtocolResults.Temperature.Established),
+        applications.awaitTermination(ProtocolResults.Temperature.Established)
       )
       sharing <- Resource.eval(
         Option
@@ -286,6 +360,30 @@ object NodeToNode:
             mux
               .channel(Protocols.PeerSharing, role)
               .flatMap(PeerSharingClient(_, settings.peerSharing))
+              .flatMap(client =>
+                applications
+                  .start(Protocols.PeerSharing, ProtocolResults.Temperature.Established)
+                  .map { result =>
+                    new PeerSharingClient[F]:
+                      def request(amount: xyz.kd5ujc.scarab.protocol.PeerSharing.Amount)(using
+                          Raise[F, NetworkError]
+                      ) =
+                        Fibers
+                          .scoped[F, NetworkError, Vector[
+                            xyz.kd5ujc.scarab.protocol.PeerSharing.Address
+                          ]](NetworkError.Defect(_))(
+                            client.request(amount)
+                          )
+                          .flatMap {
+                            case Right(peers) => Async[F].pure(peers)
+                            case Left(error) =>
+                              result.complete(Left(error)) *> mux.abort(error) *> error
+                                .raise[F, Vector[xyz.kd5ujc.scarab.protocol.PeerSharing.Address]]
+                          }
+                      def done(using Raise[F, NetworkError]) =
+                        client.done *> result.complete(Right(noInitiatorResult))
+                  }
+              )
           )
       )
     yield WarmConnection(
@@ -296,7 +394,14 @@ object NodeToNode:
       settings,
       sharing,
       duplex,
-      Some(performance.get)
+      Some(performance.get),
+      applications,
+      Fibers
+        .scoped[F, NetworkError, Unit](NetworkError.Defect(_))(
+          sharing.traverse_(_.done)
+        )
+        .flatMap(_.fold(mux.abort, _ => Async[F].unit)),
+      noInitiatorResult
     )
 
   /** Our own clients (ChainSync, BlockFetch, KeepAlive and, with `transactions`, TxSubmission2) on
@@ -315,4 +420,6 @@ object NodeToNode:
       transactions: Option[TxSubmissionClient.Source[F]] = None,
       peerSharing: Boolean = false
   )(using Raise[F, NetworkError]): Resource[F, NodeToNodeConnection[F, P]] =
-    warm(mux, role, version, codec, settings, peerSharing).flatMap(_.activate(transactions))
+    warm(mux, role, version, codec, settings, peerSharing).flatMap(
+      _.activate(transactions)
+    )
