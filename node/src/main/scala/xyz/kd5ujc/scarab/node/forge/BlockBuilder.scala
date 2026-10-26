@@ -113,6 +113,12 @@ object BlockBuilder:
       head(5, aux.size.toLong).length + aux.map((i, a) => headLength(i) + a.size).sum +
       headLength(invalid.size) + invalid.map(i => headLength(i)).sum
 
+  /** What ends selection instead of dropping a transaction: missing evaluator support or a crypto
+    * provider that failed on a witness (no ledger verdict), or a quantity of the ledger state outside its vocabulary type, which the reference's
+    * `compactCoinOrError` throws on in the forging thread (the node's stop).
+    */
+  type Stop = LedgerFailure.Unavailable | LedgerFailure.Unverifiable | LedgerFailure.StateOutOfRange
+
   /** The protocol's block limits for a block on top of `ticked`: its maximum body size and its
     * maximum execution units.
     */
@@ -148,8 +154,8 @@ object BlockBuilder:
     * reference's forging snapshot applies it (`revalidateTxsFor` and `reapplyTx`,
     * [[MempoolLedger.reapply]]): MEMPOOL and LEDGER of Conway on the era-indexed state without
     * their static checks, so no signature is verified and no script is evaluated again. A result
-    * without a ledger verdict would stop the selection instead of dropping the transaction: the
-    * forger raises it and the node stops.
+    * without a ledger verdict, and a quantity of the state out of range ([[Stop]]), stop the
+    * selection instead of dropping the transaction: the forger raises it and the node stops.
     */
   def select(
       ticked: MempoolLedger,
@@ -163,16 +169,13 @@ object BlockBuilder:
   )(using
       decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
       evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default
-  ): Either[LedgerFailure.Unavailable | LedgerFailure.Unverifiable, Vector[(Entry, Piece)]] =
+  ): Either[Stop, Vector[(Entry, Piece)]] =
     import Capacity.fits
     final case class Acc(state: MempoolLedger, chosen: Vector[(Entry, Piece)], used: TxMeasure)
     val rules = Globals(globals, geometry)
     val capacity = limit.capacity
     @tailrec
-    def go(
-        rest: List[Entry],
-        acc: Acc
-    ): Either[LedgerFailure.Unavailable | LedgerFailure.Unverifiable, Acc] = rest match
+    def go(rest: List[Entry], acc: Acc): Either[Stop, Acc] = rest match
       case Nil => Right(acc)
       case entry :: more =>
         val env = TxEnv(
@@ -194,10 +197,12 @@ object BlockBuilder:
               .reapply(entry.tx, env, rules)
               .fold(
                 {
-                  // no verdict on the transaction (evaluator, crypto provider): selection stops
-                  case unavailable: LedgerFailure.Unavailable   => Left(unavailable)
-                  case unverifiable: LedgerFailure.Unverifiable => Left(unverifiable)
-                  case _                                        => Right(None)
+                  // no verdict on the transaction (evaluator, crypto provider) or a quantity of the
+                  // state out of range: selection stops
+                  case unavailable: LedgerFailure.Unavailable    => Left(unavailable)
+                  case unverifiable: LedgerFailure.Unverifiable  => Left(unverifiable)
+                  case outOfRange: LedgerFailure.StateOutOfRange => Left(outOfRange)
+                  case _                                         => Right(None)
                 },
                 next => Right(Some((next, p)))
               )

@@ -89,7 +89,8 @@ final class MirrorRules[F[_]: Monad](
 
   def apply(state: MirrorState, header: Header, raw: Bytes)(using
       Raise[F, ValidationError],
-      Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]
+      Raise[F, xyz.kd5ujc.scarab.ledger.StorageError],
+      Raise[F, xyz.kd5ujc.scarab.ledger.ChainError]
   ): F[MirrorState] =
     def run(s: MirrorState, prepared: Option[Prepared]): F[MirrorState] =
       val applied = parallelPlutus match
@@ -126,7 +127,10 @@ final class MirrorRules[F[_]: Monad](
       applied
         .flatMap(
           _.fold(
-            failure => ValidationError(header.point, failure).raise[F, MirrorState],
+            failure =>
+              MirrorRules.stateOutOfRange(header, failure) match
+                case Some(fault) => fault.raise[F, MirrorState]
+                case None        => ValidationError(header.point, failure).raise[F, MirrorState],
             next => afterBlock.fold(next.pure[F])(f => f(header, next).as(next))
           )
         )
@@ -154,6 +158,17 @@ final class MirrorRules[F[_]: Monad](
       case _ => run(state, None)
 
 object MirrorRules:
+  /** A quantity of the ledger state outside its vocabulary type, met by the tick or by a rule of a
+    * transaction ([[BlockFailure.stateOutOfRange]]): no verdict on the block. The reference aborts
+    * with an exception there (`compactCoinOrError`), so this is the node's stop and never a
+    * refusal.
+    */
+  private[node] def stateOutOfRange(
+      header: Header,
+      failure: BlockFailure
+  ): Option[xyz.kd5ujc.scarab.ledger.ChainError] =
+    failure.stateOutOfRange.map(xyz.kd5ujc.scarab.ledger.ChainError.StateOutOfRange(header.slot, _))
+
   /** The label a block application is recorded under: a block that crossed an epoch boundary or ran
     * Plutus scripts says so, as those are the steps that take long.
     */

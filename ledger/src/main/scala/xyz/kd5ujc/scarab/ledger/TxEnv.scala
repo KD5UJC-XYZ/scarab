@@ -74,6 +74,8 @@ sealed trait LedgerFailure extends DomainError:
       s"tx ${id.hex.take(16)} evaluation unavailable at $where: ${why.message}"
     case LedgerFailure.Unverifiable(id, d) => s"tx ${id.hex.take(16)} has no verdict: ${d.message}"
     case LedgerFailure.Vocab(e)            => s"transaction outside the state's vocabulary: $e"
+    case LedgerFailure.StateOutOfRange(id, e) =>
+      s"tx ${id.hex.take(16)}: a quantity of the ledger state is out of range: $e"
 
 /** What ends a judgment of the rules without a verdict: the transaction cannot be what its era
   * decodes, a script cannot be evaluated here, a verifier failed, or a value is outside the state's
@@ -122,6 +124,15 @@ object LedgerFailure:
     * rules of the era-indexed ledger need (design `ledger-mirror-step2.md` §4, J2.4).
     */
   final case class Vocab(error: VocabError) extends LedgerDefect
+
+  /** A quantity of the ledger state, its parameters included, that a rule of the transaction
+    * converts is outside the range of its vocabulary type: a deposit of the parameters that is not
+    * a `CompactForm Coin` (`compactCoinOrError`, cardano-ledger f649f975 `Coin.hs:184-188`, in
+    * `Shelley/Rules/Deleg.hs:268` and `Conway/Rules/Deleg.hs:197`). The reference aborts with an
+    * exception there, so this is no verdict on the transaction: on the block path the node stops
+    * ([[BlockFailure.stateOutOfRange]]). A value of the transaction itself is [[Vocab]].
+    */
+  final case class StateOutOfRange(txId: Bytes, error: VocabError) extends LedgerDefect
 
 /** Block-level context of a transaction.
   *

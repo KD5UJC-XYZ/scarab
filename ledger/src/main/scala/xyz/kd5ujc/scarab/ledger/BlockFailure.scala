@@ -182,6 +182,18 @@ enum BlockFailure:
     case Mirror(text)  => s"the state cannot be held: $text"
 
 object BlockFailure:
+  extension (failure: BlockFailure)
+    /** The quantity of the ledger state outside its vocabulary type that `failure` reports, when it
+      * reports one: the tick's ([[TickFailure.Vocab]]) or a transaction rule's
+      * ([[LedgerFailure.StateOutOfRange]]). The reference aborts there (`compactCoinOrError`), so
+      * it is the node's stop ([[ChainError.StateOutOfRange]]) and never a refusal. A number taken
+      * from the block ([[TickFailure.Input]], [[LedgerFailure.Vocab]]) is a refusal.
+      */
+    def stateOutOfRange: Option[xyz.kd5ujc.scarab.ledger.state.VocabError] = failure match
+      case Tick(TickFailure.Vocab(error))              => Some(error)
+      case Tx(LedgerFailure.StateOutOfRange(_, error)) => Some(error)
+      case _                                           => None
+
   // Plain data all through (Bytes and the ledger's failure records compare structurally).
   given Eq[BlockFailure] = Eq.fromUniversalEquals
   given Show[BlockFailure] = Show.show(f => s"${f.rule.name}: ${f.reason}")

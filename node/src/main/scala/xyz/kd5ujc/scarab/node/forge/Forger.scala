@@ -13,6 +13,8 @@ import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.{Block, Header}
 import xyz.kd5ujc.scarab.ledger.{
+  BlockFailure,
+  ChainError,
   EvaluationUnavailable,
   ForgeError,
   LedgerFailure,
@@ -493,7 +495,7 @@ final class Forger[F[_]: Async, S](
     val maxFor = at.fold(BigInt(0))(_ + 1) + forecastWindow
     Either.cond(at.contains(slot) || slot < maxFor, (), OutsideForecastRange(at, maxFor, slot))
 
-  private def lift[A](e: Either[ForgeError, A])(using Handle[F, NodeError]): F[A] =
+  private def lift[A](e: Either[NodeError, A])(using Handle[F, NodeError]): F[A] =
     e.fold(_.raise[F, A], F.pure)
 
   /** The transactions of the block, from the mempool's held ones ([[BlockBuilder.select]]). */
@@ -537,6 +539,10 @@ final class Forger[F[_]: Async, S](
           // transactions in it (consensus 82ecba32 Node/NodeKernel.hs `forkBlockForging`)
           case LedgerFailure.Unverifiable(tx, defect) =>
             VerificationDefect(base.tip, VerificationDefect.Site.Witness(tx), defect)
+              .raise[F, Vector[(Entry, BlockBuilder.Piece)]]
+          case outOfRange: LedgerFailure.StateOutOfRange =>
+            ChainError
+              .StateOutOfRange(slot, outOfRange.error)
               .raise[F, Vector[(Entry, BlockBuilder.Piece)]]
         },
         F.pure
@@ -616,13 +622,13 @@ final class Forger[F[_]: Async, S](
   private def tick(
       nes: NewEpochState[Conway],
       slot: BigInt
-  ): Either[ForgeError, MempoolLedger] =
+  ): Either[NodeError, MempoolLedger] =
     ticked(nes, slot).map(MempoolLedger.of)
 
   private def ticked(
       nes: NewEpochState[Conway],
       slot: BigInt
-  ): Either[ForgeError, NewEpochState[Conway]] =
+  ): Either[NodeError, NewEpochState[Conway]] =
     for
       target <- SlotNo
         .fromBigInt(slot)
@@ -634,7 +640,7 @@ final class Forger[F[_]: Async, S](
           target
         )
         .left
-        .map(f => ForgeError.LedgerViewUnavailable(slot, ForgeLedgerProblem.Tick(f)))
+        .map(Forger.tickFault(slot, _))
       conway <- ConwayView
         .of(state)
         .toRight(ForgeError.UnsupportedProtocol(ForgeProtocolProblem.LeftConway))
@@ -744,6 +750,23 @@ object Forger:
     * consensus 82ecba329 `Node.hs` 560).
     */
   private[forge] val MaxClockRewind: Duration = Duration.ofSeconds(20)
+
+  /** What a failed tick of the tip's state to `slot` is. A quantity of the state outside its
+    * vocabulary type is no forging failure but the node's stop ([[ChainError.StateOutOfRange]]):
+    * the reference's `compactCoinOrError` throws in the forging thread, which is linked
+    * (ouroboros-consensus 82ecba32 `NodeKernel.hs:378-380`), so the node stops and no later slot is
+    * tried. Any other failure leaves the ledger view of this slot unavailable.
+    */
+  private[forge] def tickFault(
+      slot: BigInt,
+      failure: xyz.kd5ujc.scarab.ledger.rules.TickFailure
+  ): NodeError =
+    BlockFailure
+      .Tick(failure)
+      .stateOutOfRange
+      .fold[NodeError](ForgeError.LedgerViewUnavailable(slot, ForgeLedgerProblem.Tick(failure)))(
+        ChainError.StateOutOfRange(slot, _)
+      )
 
   /** Like runExceptT at the forging worker boundary: typed failures and defects finish as values.
     * The scope and the body are constructed inside defer (cats-mtl 1.7.0 Handle.rescue invokes its

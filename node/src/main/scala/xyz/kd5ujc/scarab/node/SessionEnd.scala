@@ -7,7 +7,10 @@ import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.{
   BlockFailure,
+  ChainError,
   EvaluationUnavailable,
+  HeaderError,
+  HeaderStructureProblem,
   LedgerFailure,
   NodeError,
   PeerError,
@@ -16,6 +19,7 @@ import xyz.kd5ujc.scarab.ledger.{
   VerificationDefect
 }
 import xyz.kd5ujc.scarab.network.{Fibers, NetworkError}
+import xyz.kd5ujc.scarab.protocol.ChainSync
 
 /** What a fiber of the pipeline of a session ends with, as a value: the peer or the connection
   * failed, or something that is not ours threw (a library, a bug).
@@ -125,6 +129,7 @@ object SessionEnd:
       Unavailable(EvaluationUnavailable(point, failure))
     case e: EvaluationUnavailable => Unavailable(e)
     case e: VerificationDefect    => Unverifiable(e)
+    case StateFaultInHeader(fault) => Internal(fault)
     case e @ PeerError.InvalidBlock(refused) =>
       refused.unverifiable.fold(Failed(e))(Unverifiable(_))
     case PeerError.NoIntersection                    => NoMoreIntersection
@@ -133,6 +138,24 @@ object SessionEnd:
     case e: ValidationError => e.unverifiable.fold(Rejected(e))(Unverifiable(_))
     case e: StorageError    => Storage(e)
     case other              => Internal(other)
+
+  /** A header whose validation met a quantity of the node's own ledger state outside its vocabulary
+    * type (the Byron to Shelley hand-over of the header forecast, [[NodeHeaderRules]]): no verdict
+    * on the header and no fault of the peer, so the node stops, as for the same failure on the
+    * block path ([[BlockFailure.stateOutOfRange]]). The header pipeline has one error channel, the
+    * peer's, and this is where its value is placed. The reference's forecast
+    * (`mkInitialShelleyForecast`, cardano-ledger f649f975 `TPraos/API.hs:656-668`) is total over a
+    * typed translation context: the values that fail here are of the genesis, which the reference
+    * refuses when it reads it.
+    */
+  private object StateFaultInHeader:
+    def unapply(error: PeerError): Option[ChainError] = error match
+      case PeerError.InvalidHeader(
+            ChainSync.Point.Block(slot, _),
+            HeaderError.Structure(HeaderStructureProblem.Transition(failure))
+          ) =>
+        failure.stateOutOfRange.map(ChainError.StateOutOfRange(slot.value, _))
+      case _ => None
 
   /** The session owns a fresh node-error scope for its rule/store operations. The enclosing `node`
     * scope remains live for compatibility with other enclosing services; its errors are caught in
