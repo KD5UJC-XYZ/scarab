@@ -5,8 +5,8 @@ import io.circe.parser.parse
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Block, Header}
-import xyz.kd5ujc.scarab.protocol.NtNHeader
+import xyz.kd5ujc.scarab.ledger.{Block, Header, LedgerDecodeError, Unsigned}
+import xyz.kd5ujc.scarab.protocol.{NtNHeader, ProtocolError}
 
 /** Actual pinned CLI full-block decoder verdicts, not reference signature/ledger acceptance. */
 class ByronHeaderFixtureSuite extends FunSuite:
@@ -38,14 +38,33 @@ class ByronHeaderFixtureSuite extends FunSuite:
           {
             case b: Block.Byron =>
               assertEquals(b.header.blockVersion, version)
-              assertEquals(b.header.blockSizeHint, BigInt(b.size) + 9)
+              assertEquals(b.header.blockSizeHint.value, BigInt(b.size) + 9)
               for hint <- List(BigInt(0), BigInt(1234), BigInt(0xffffffffL)) do
                 val wire =
                   NtNHeader(b.header.era, b.header.raw, Some(NtNHeader.ByronInfo(false, hint)))
                 val sized = Header.fromNtN(wire, 21600).fold(e => fail(e.message), identity)
-                assertEquals(sized, b.header.copy(blockSizeHint = hint))
+                assertEquals(
+                  sized,
+                  b.header.copy(blockSizeHint =
+                    Unsigned.from[Unsigned.Width.W32](hint).getOrElse(fail("invalid fixture size"))
+                  )
+                )
                 assertEquals(sized.raw, b.header.raw)
                 assertEquals(sized.hash, b.header.hash)
+              for hint <- List(BigInt(-1), BigInt(1) << 32, BigInt(1) << 80) do
+                val wire =
+                  NtNHeader(b.header.era, b.header.raw, Some(NtNHeader.ByronInfo(false, hint)))
+                assertEquals(
+                  Header.fromNtN(wire, 21600),
+                  Left(
+                    Header.fail(
+                      LedgerDecodeError.Protocol(
+                        ProtocolError.SizeHint(hint)
+                      )
+                    )
+                  )
+                )
+                assertEquals(Unsigned.from[Unsigned.Width.W32](hint), None)
               assertEquals(
                 Header.byronFromRaw(b.header.raw, false, 21600),
                 Right(b.header.withoutSizeHint)

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus
 
-import xyz.kd5ujc.scarab.ledger.{Fixtures, Header, HeaderVrf, VrfCert}
+import xyz.kd5ujc.scarab.ledger.{Fixtures, Header, HeaderVrf, Unsigned, VrfCert}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
@@ -145,10 +145,12 @@ class ChainSelectionSuite extends ScalaCheckSuite:
 
   test("Byron EBB projection and preference retain the native equal-difficulty tie-break") {
     val regular =
-      Header.UnsizedByron(Bytes.empty, bytes(1, 32), false, 0, 49, 50, 10, None).withSizeHint(1)
+      Header
+        .UnsizedByron(Bytes.empty, bytes(1, 32), false, 0, 49, 50, 10, None)
+        .withSizeHint(Unsigned.from[Unsigned.Width.W32](1).getOrElse(fail("invalid fixture size")))
     val boundary = Header
       .UnsizedByron(Bytes.empty, bytes(2, 32), true, 1, 0, 50, 10, Some(regular.hash))
-      .withSizeHint(1)
+      .withSizeHint(Unsigned.from[Unsigned.Width.W32](1).getOrElse(fail("invalid fixture size")))
     val regularView = SelectView.of(regular)
     val boundaryView = SelectView.of(boundary)
     assert(!regularView.boundary)

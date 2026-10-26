@@ -697,7 +697,7 @@ object FetchCoordinator:
   private[node] def estimatedBytes(header: Header): Long = header match
     case h: Header.Shelley =>
       (h.bodySize + h.raw.size + 10).min(BigInt(Long.MaxValue)).max(0).toLong
-    case h: Header.Byron => h.blockSizeHint.toLong
+    case h: Header.Byron => h.blockSizeHint.value.toLong
 
   private def fragmentsOf(
       headers: Vector[Header],

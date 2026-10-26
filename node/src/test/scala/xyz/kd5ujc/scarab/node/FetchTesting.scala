@@ -5,12 +5,15 @@ import cats.effect.{IO, Outcome, Resource}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.ChainSelection
-import xyz.kd5ujc.scarab.ledger.Header
+import xyz.kd5ujc.scarab.ledger.{Header, Unsigned}
 import xyz.kd5ujc.scarab.network.selection.FetchGsv
 import xyz.kd5ujc.scarab.protocol.ChainSync
 
 /** Headers, candidates and session steps shared by the fetch-decision suites. */
-private[node] object FetchTesting:
+private[node] object FetchTesting extends munit.Assertions:
+  def sizeHint(value: BigInt): Unsigned[Unsigned.Width.W32] =
+    Unsigned.from[Unsigned.Width.W32](value).getOrElse(fail(s"invalid fixture size hint: $value"))
+
   /** A test node owns its loop independently of the peers it creates. */
   def decisions(pool: BlockPool[IO]): Resource[IO, Unit] =
     Resource
@@ -34,7 +37,7 @@ private[node] object FetchTesting:
       n,
       Some(Bytes.wrap(Array((n - 1).toByte)))
     )
-    .withSizeHint(1)
+    .withSizeHint(sizeHint(1))
 
   def candidate(headers: Vector[Header]): ChainSelection.Candidate =
     ChainSelection.Candidate(ChainSync.Point.Origin, headers)
@@ -48,7 +51,7 @@ private[node] object FetchTesting:
     ): IO[Unit] =
       val sized = headers.map {
         case header: Header.Byron =>
-          hints.get(header.hash).fold(header)(hint => header.copy(blockSizeHint = hint))
+          hints.get(header.hash).fold(header)(hint => header.copy(blockSizeHint = sizeHint(hint)))
         case header => header
       }
       session.announce(sized.lastOption, performance, Some(candidate(sized)))

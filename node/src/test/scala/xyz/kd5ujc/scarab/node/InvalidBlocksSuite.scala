@@ -20,7 +20,7 @@ class InvalidBlocksSuite extends FailsOnUncaught:
       n,
       Some(Bytes(Vector((n - 1).toByte)))
     )
-    .withSizeHint(1)
+    .withSizeHint(FetchTesting.sizeHint(1))
   private def refused(n: Int): ValidationError =
     ValidationError(header(n).point, BlockFailure.EpochPrecedesLedger(n))
 

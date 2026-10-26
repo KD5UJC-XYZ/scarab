@@ -225,7 +225,7 @@ class HeaderRulesSuite extends ScalaCheckSuite:
         blockNo = 1,
         prevHash = None
       )
-      .withSizeHint(1)
+      .withSizeHint(FetchTesting.sizeHint(1))
     assertEquals(
       rules.validate(forged.genesis, None, rules.at(forged.genesis), h),
       Outcome.Invalid(

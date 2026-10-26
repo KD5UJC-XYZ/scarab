@@ -5,7 +5,7 @@ import scala.annotation.unused
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
-import xyz.kd5ujc.scarab.protocol.{ChainSync, Era, NtNHeader}
+import xyz.kd5ujc.scarab.protocol.{ChainSync, Era, NtNHeader, ProtocolError}
 import xyz.kd5ujc.scarab.ledger.byron.ByronVersion
 
 /** VRF certificate: 64-byte output and 80-byte proof. */
@@ -76,7 +76,7 @@ object Header:
       blockVersion: ByronVersion = ByronVersion.zero
   ):
     def slot: BigInt = epoch * epochSlots + slotInEpoch
-    def withSizeHint(blockSizeHint: BigInt): Byron = Byron(
+    def withSizeHint(blockSizeHint: Unsigned[Unsigned.Width.W32]): Byron = Byron(
       raw,
       hash,
       boundary,
@@ -105,7 +105,7 @@ object Header:
       epochSlots: BigInt,
       blockNo: BigInt,
       prevHash: Option[Bytes],
-      blockSizeHint: BigInt,
+      blockSizeHint: Unsigned[Unsigned.Width.W32],
       protocolMagic: BigInt = 0,
       bodyProof: Bytes = Bytes(Vector.empty),
       main: Option[ByronMain] = None,
@@ -174,8 +174,21 @@ object Header:
   ): Either[ChainError, Header] =
     h.byron match
       case Some(info) =>
-        byronFromRaw(h.raw, info.boundary, byronEpochSlots).map(_.withSizeHint(info.sizeHint))
+        for
+          hint <- byronSizeHint(info.sizeHint)
+          header <- byronFromRaw(h.raw, info.boundary, byronEpochSlots)
+        yield header.withSizeHint(hint)
       case None => fromRaw(h.era, h.raw)
+
+  /** The native SizeInBytes is a Word32; keep an invalid outer wrapper out of a sized header. */
+  private[ledger] def byronSizeHint(
+      value: BigInt
+  ): Either[ChainError, Unsigned[Unsigned.Width.W32]] =
+    Unsigned
+      .from[Unsigned.Width.W32](value)
+      .toRight(
+        fail(LedgerDecodeError.Protocol(ProtocolError.SizeHint(value)))
+      )
 
   /** Decode a Shelley-based raw header `[header_body, kes_signature]` of the given era. */
   def fromRaw(era: Era, raw: Bytes): Either[ChainError, Header.Shelley] =

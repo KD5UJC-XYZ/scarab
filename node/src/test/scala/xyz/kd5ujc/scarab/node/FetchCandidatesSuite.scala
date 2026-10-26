@@ -109,7 +109,7 @@ class FetchCandidatesSuite extends FunSuite:
     val boundary =
       Header
         .UnsizedByron(Bytes.empty, Bytes(Vector(99.toByte)), true, 1, 0, 101, 10, Some(anchor.hash))
-        .withSizeHint(1)
+        .withSizeHint(FetchTesting.sizeHint(1))
     val selected = ChainSelection.Local(anchor.point, SelectView.of(anchor), Vector.empty)
     assert(
       FetchCandidates.plausible(

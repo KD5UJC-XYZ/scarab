@@ -29,7 +29,7 @@ object SelectionReviewBenchmark extends IOApp.Simple:
           n,
           Option.when(!forks && n > 1)(hash(n - 1))
         )
-        .withSizeHint(1)
+        .withSizeHint(FetchTesting.sizeHint(1))
       h.hash -> h
     }.toMap
 

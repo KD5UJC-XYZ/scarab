@@ -361,7 +361,7 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
       assertEquals(after, before)
       assertEquals(decided, before + 1)
       // The new GSV gives a 393216-byte window; the first body crosses it (Decision.hs:1180).
-      assertEquals(requested, Vector(header(1).copy(blockSizeHint = 400000)))
+      assertEquals(requested, Vector(header(1).copy(blockSizeHint = FetchTesting.sizeHint(400000))))
   }
 
   test("Genesis declines a peer whose chain is not plausible, while another serves the preferred") {
@@ -603,8 +603,8 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
   }
 
   test("receipts use acknowledged limits and recompute Ready or Busy independently") {
-    val first = FetchTesting.header(1).copy(blockSizeHint = 1000)
-    val second = FetchTesting.header(2).copy(blockSizeHint = 299000)
+    val first = FetchTesting.header(1).copy(blockSizeHint = FetchTesting.sizeHint(1000))
+    val second = FetchTesting.header(2).copy(blockSizeHint = FetchTesting.sizeHint(299000))
     val initial = FetchGsv.fromSample(0, FetchGsv.PicosPerSecond / 10)
     val slow = FetchGsv.fromSample(1000, 1000 + 10 * FetchGsv.PicosPerSecond)
     FetchCoordinator.create[IO]().flatMap { coordinator =>
@@ -653,8 +653,8 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
   }
 
   test("identical Byron hashes retain each peer's own size hint in flight") {
-    val first = FetchTesting.header(1).copy(blockSizeHint = 1000)
-    val second = first.copy(blockSizeHint = 5000)
+    val first = FetchTesting.header(1).copy(blockSizeHint = FetchTesting.sizeHint(1000))
+    val second = first.copy(blockSizeHint = FetchTesting.sizeHint(5000))
     FetchCoordinator.create[IO](BlockFetchPolicy.Config(deadlineConcurrency = 2)).flatMap {
       coordinator =>
         (coordinator.session(0), coordinator.session(1)).tupled.use { (one, two) =>

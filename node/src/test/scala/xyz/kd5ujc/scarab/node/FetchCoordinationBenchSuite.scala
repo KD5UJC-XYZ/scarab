@@ -37,7 +37,7 @@ class FetchCoordinationBenchSuite extends FailsOnUncaught:
       n,
       Option.when(n > 0)(Bytes(Vector((n - 1).toByte)))
     )
-    .withSizeHint(blockBytes)
+    .withSizeHint(FetchTesting.sizeHint(blockBytes))
   private val anchor = header(0)
   private val headers = (1 to blockCount).toVector.map(header)
   private val batches = headers.grouped(4).map(_.toVector).toVector
