@@ -7,8 +7,8 @@ import java.nio.charset.{CharacterCodingException, CodingErrorAction, StandardCh
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Bytes
 
-/** aeson 2.2.5.0 `Decoding/ByteString.hs:143-175` and text-2 `Internal/Unescape.hs`: raw controls
-  * are forbidden, UTF-8 is strict, and escaped surrogates must form a scalar pair.
+/** aeson 2.2.5.0 `Decoding/ByteString.hs:143-175` and its `Internal/Unescape.hs` text >= 2 branch:
+  * raw controls are forbidden, UTF-8 is strict, and escaped surrogates must form a scalar pair.
   */
 private[json] object NativeJsonString:
   import NativeJson.{Error, Expected, byte}
