@@ -134,7 +134,8 @@ object ShelleyCertOps:
   * UTXOW's (`validateMIRInsufficientGenesisSigs`, `Utxow.hs:449`), where the old node's rule
   * checked them (`ShelleyUtxow`). The deregistration of a key with a balance, the delegation to a
   * pool that is not registered and the duplicate genesis delegate and VRF key are the reference's;
-  * the order of the failures within a certificate is its too.
+  * the order of the failures within a certificate is its too. Every check records its failure and
+  * the rule goes on to the state the reference makes (cardano-ledger `f649f975`).
   */
 object ShelleyDeleg
     extends JudgedSts[
@@ -153,10 +154,10 @@ object ShelleyDeleg
     val id = env.delegs.id
     val pp = env.delegs.pp
     val ctx = env.delegs.ctx
-    def refused[A](f: DelegFailure): F[A] =
-      (LedgerFailure.Rejected(id, PredicateFailure.deleg(f)): LedgerFailure).raise[F, A]
+    def refused(f: DelegFailure): F[Unit] =
+      Sts.failBecause[F, PredicateFailure](PredicateFailure.deleg(f))
     def ensure(cond: Boolean, f: => DelegFailure): F[Unit] =
-      Sts.check[F, LedgerFailure](cond, LedgerFailure.Rejected(id, PredicateFailure.deleg(f)))
+      Sts.predicate[F, PredicateFailure](cond, PredicateFailure.deleg(f))
     cert match
       case Certificate.Register(c, _) =>
         for
@@ -173,14 +174,17 @@ object ShelleyDeleg
         for
           cred <- Refuse.vocab[F, Credential[Staking]](Convert.credential[Staking](c))
           s <- st.get
-          account <- ShelleyCertLens.states.get(s).get(cred) match
-            case Some(a) => a.pure[F]
-            case None    => refused[ShelleyAccountState](DelegFailure.StakeKeyNotRegistered(c))
-          _ <- ensure(
-            account.balance.word.isZero,
-            DelegFailure.StakeKeyHasNonZeroAccountBalance(account.balance.toBigInt)
+          account = ShelleyCertLens.states.get(s).get(cred)
+          // the balance of an account that exists, then whether it exists (`Deleg.hs:272-289`)
+          _ <- account.traverse_(a =>
+            ensure(
+              a.balance.word.isZero,
+              DelegFailure.StakeKeyHasNonZeroAccountBalance(a.balance.toBigInt)
+            )
           )
-          _ <- st.set(ShelleyCertOps.unregister(s, cred, account))
+          _ <- account.fold(refused(DelegFailure.StakeKeyNotRegistered(c)))(a =>
+            st.set(ShelleyCertOps.unregister(s, cred, a))
+          )
         yield ()
       case Certificate.Delegate(c, Some(pool), _, _) =>
         for
@@ -191,10 +195,12 @@ object ShelleyDeleg
             ShelleyCertLens.pools.get(s).contains(target),
             DelegFailure.DelegateeNotRegistered(pool)
           )
-          account <- ShelleyCertLens.states.get(s).get(cred) match
-            case Some(a) => a.pure[F]
-            case None    => refused[ShelleyAccountState](DelegFailure.StakeDelegationImpossible(c))
-          _ <- st.set(ShelleyCertOps.delegate(s, cred, account, target))
+          _ <- ShelleyCertLens.states
+            .get(s)
+            .get(cred)
+            .fold(refused(DelegFailure.StakeDelegationImpossible(c)))(a =>
+              st.set(ShelleyCertOps.delegate(s, cred, a, target))
+            )
         yield ()
       case Certificate.GenesisDelegate(g, delegate, vrf) =>
         for
@@ -232,14 +238,12 @@ object ShelleyDeleg
       transfer: Either[BigInt, Map[xyz.kd5ujc.scarab.ledger.Credential, BigInt]]
   )(using
       st: Stateful[F, ShelleyCertState],
-      raise: Raise[F, LedgerFailure]
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
   ): F[Unit] =
-    val id = env.delegs.id
     val ctx = env.delegs.ctx
-    def refused[A](f: DelegFailure): F[A] =
-      (LedgerFailure.Rejected(id, PredicateFailure.deleg(f)): LedgerFailure).raise[F, A]
     def ensure(cond: Boolean, f: => DelegFailure): F[Unit] =
-      Sts.check[F, LedgerFailure](cond, LedgerFailure.Rejected(id, PredicateFailure.deleg(f)))
+      Sts.predicate[F, PredicateFailure](cond, PredicateFailure.deleg(f))
     // `hardforkAlonzoAllowMIRTransfer`: transfers between pots and negative entries from Alonzo
     val transfersAllowed = env.delegs.pp.protocolMajor > 4
     def total(m: SortedMap[Credential[Staking], Coin]): BigInt = m.valuesIterator.map(_.value).sum
@@ -264,7 +268,11 @@ object ShelleyDeleg
       )
       next <- transfer match
         case Left(_) if !transfersAllowed =>
-          refused[InstantaneousRewards](DelegFailure.MIRTransferNotCurrentlyAllowed)
+          Sts
+            .failBecause[F, PredicateFailure](
+              PredicateFailure.deleg(DelegFailure.MIRTransferNotCurrentlyAllowed)
+            )
+            .as(Option.empty[InstantaneousRewards])
         case Left(coin) =>
           for
             _ <- ensure(coin >= 0, DelegFailure.MIRNegativeTransfer(pot, coin))
@@ -291,7 +299,7 @@ object ShelleyDeleg
                     deltaTreasury = delta(ir.deltaTreasury, -coin)
                   )
                 )
-          yield result
+          yield Some(result)
         case Right(amounts) =>
           for
             credited <- Refuse.vocab[F, List[(Credential[Staking], BigInt)]](
@@ -319,11 +327,18 @@ object ShelleyDeleg
                 Mismatch(combined.values.sum, available)
               )
             )
-            entries <- coins(combined)
-          yield
-            if pot == Pot.Reserves then ir.copy(reserves = entries)
-            else ir.copy(treasury = entries)
-      _ <- st.set(ShelleyCertLens.iRewards.replace(next)(s))
+            // The reference keeps a negative entry in the state of a refused transaction; the
+            // state's coin has no negative value, so that state is left as it was: a negative
+            // entry is always one of the failures just recorded, so no transaction that applies
+            // reaches it
+            entries <-
+              if combined.values.exists(_ < 0) then
+                Monad[F].pure(Option.empty[SortedMap[Credential[Staking], Coin]])
+              else coins(combined).map(Some(_))
+          yield entries.map(e =>
+            if pot == Pot.Reserves then ir.copy(reserves = e) else ir.copy(treasury = e)
+          )
+      _ <- next.traverse_(n => st.set(ShelleyCertLens.iRewards.replace(n)(s)))
     yield ()
 
 /** DELPL (`Shelley/Rules/Delpl.hs:174`, `delplTransition`, cardano-ledger `f649f975`): a
@@ -397,7 +412,7 @@ object ShelleyDelegs
       judge: Judge[F, PredicateFailure]
   ): F[Unit] =
     certs.zipWithIndex.foldLeft(Monad[F].unit) { case (prefix, (cert, ix)) =>
-      judge.trans(prefix) *>
+      judge.nest(prefix) *>
         JudgedSts.trans[
           F,
           ShelleyDelegEnv,
