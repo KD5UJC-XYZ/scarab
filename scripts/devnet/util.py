@@ -21,7 +21,9 @@ QUERY_PORT = 7071
 
 
 def _populated(path):
-    return path.is_dir() and any(path.iterdir())
+    """Whether `path` holds a file. A tree of empty directories, such as the `.cache/scarab` mount
+    point a build container leaves in a worktree, holds none."""
+    return path.is_dir() and any(not p.is_dir() for p in path.rglob("*"))
 
 
 def main_checkout(repo, common_dir=None):

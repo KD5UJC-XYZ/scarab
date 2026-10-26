@@ -890,6 +890,7 @@ class CacheDirTest(unittest.TestCase):
         self.main = self.tmp / "main"
         self.tree = self.main / ".claude" / "worktrees" / "w1"
         (self.main / ".cache" / "tools").mkdir(parents=True)
+        (self.main / ".cache" / "tools" / "sbt-launch.jar").write_bytes(b"jar")
         (self.tree / ".cache").mkdir(parents=True)  # the empty mount point of a worktree
         self.common = str(self.main / ".git")
 
@@ -904,14 +905,19 @@ class CacheDirTest(unittest.TestCase):
     def test_worktree_with_empty_cache_uses_the_main_checkout(self):
         self.assertEqual(util.cache_dir(self.tree, {}, self.common), self.main / ".cache")
 
+    def test_worktree_with_an_empty_mount_point_tree_uses_the_main_checkout(self):
+        # a build container leaves `.cache/scarab` behind as an empty (often root-owned) mount point
+        (self.tree / ".cache" / "scarab").mkdir()
+        self.assertEqual(util.cache_dir(self.tree, {}, self.common), self.main / ".cache")
+
     def test_no_shared_cache_falls_back_to_own(self):
-        (self.main / ".cache" / "tools").rmdir()
+        shutil.rmtree(self.main / ".cache" / "tools")
         self.assertEqual(util.cache_dir(self.tree, {}, self.common), self.tree / ".cache")
 
     def test_both_cache_layouts_resolve_to_the_parent(self):
         # `.cache/scarab` (new), or `.cache/cardano-scala-lab` (old, or the symlink to the new): either way
         # the directory mounted at /work/.cache is `.cache` itself
-        (self.main / ".cache" / "tools").rmdir()
+        shutil.rmtree(self.main / ".cache" / "tools")
         for name in ("cardano-scala-lab", "scarab"):
             (self.main / ".cache" / name).mkdir()
             self.assertEqual(util.cache_dir(self.main, {}, ".git"), self.main / ".cache")
