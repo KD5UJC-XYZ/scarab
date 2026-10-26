@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.codec.Rational
-import cats.data.Kleisli
+import cats.data.{Kleisli, NonEmptyChain}
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import munit.{CatsEffectSuite, ScalaCheckSuite}
 import xyz.kd5ujc.scarab.ledger.state.{
@@ -365,13 +365,20 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     def attempt(protocol: Int) =
       val l = ledger(1)
       add(pool(l.withProtocol(protocol)), raw).map(_ => ())
+    // MEMPOOL records the unelected voter and runs LEDGER, whose GOV does not know the voter; the
+    // root's failures come out reversed, LEDGER's after MEMPOOL's own
     assertEquals(
       attempt(10),
       Left(
         Rejection.Ledger(
           LedgerFailure.Rejected(
             id,
-            PredicateFailure.Mempool(MempoolProblem.UnelectedCommittee(Vector(hot.credential)))
+            NonEmptyChain(
+              PredicateFailure.gov(
+                GovFailure.VotersDoNotExist(Vector(Voter.CommitteeHot(hot.credential)))
+              ),
+              PredicateFailure.Mempool(MempoolProblem.UnelectedCommittee(Vector(hot.credential)))
+            )
           )
         )
       )

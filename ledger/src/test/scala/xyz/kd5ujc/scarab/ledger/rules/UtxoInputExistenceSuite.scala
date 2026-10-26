@@ -42,7 +42,12 @@ class UtxoInputExistenceSuite extends FunSuite:
 
   private def run(tx: Tx): Either[LedgerFailure, Counted[UTxOState[Conway]]] =
     assert(tx.witnesses.redeemers.isEmpty)
-    Sts(ConwayUtxo)(TestLedger.globals, env, initial, StAnnTx(tx, held))
+    JudgedSts(ConwayUtxo)(LedgerFailure.Rejected(tx.body.id, _))(
+      TestLedger.globals,
+      env,
+      initial,
+      StAnnTx(tx, held)
+    )
 
   private def rejected(tx: Tx, failure: UtxoFailure): Unit =
     assertEquals(run(tx), Left(LedgerFailure.Rejected(tx.body.id, PredicateFailure.utxo(failure))))

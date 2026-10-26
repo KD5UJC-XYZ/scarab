@@ -10,7 +10,7 @@ import io.circe.parser.parse
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.ledger.rules.{CertEnv, Certs, CertsEnv, Globals, Sts}
+import xyz.kd5ujc.scarab.ledger.rules.{CertEnv, Certs, CertsEnv, Globals, JudgedSts}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.protocol.Era
@@ -139,8 +139,8 @@ class UpstreamCertsCoverageSuite extends FunSuite:
       case other => fail(s"expected CERTS certificate sequence, got $other")
     assertEquals(signal, Vector.empty)
 
-    val actual = Sts
-      .apply(Certs)(
+    val actual = JudgedSts
+      .apply(Certs)(LedgerFailure.Rejected(tx.body.id, _))(
         globals,
         CertsEnv(
           tx,

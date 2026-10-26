@@ -16,6 +16,7 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   Counted,
   Globals,
   InstantStakeOps,
+  JudgedSts,
   Ledger,
   LedgerEnv,
   Ledgers,
@@ -180,8 +181,19 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
       val signal = StAnnTx(transaction, before.utxo.utxo)
       val actual =
         if rule == "UTXO" then
-          Sts.apply(Utxo)(globals, execution, Counted(before, PlutusStats.zero), signal)
-        else Sts.apply(Utxow)(globals, execution, Counted(before, PlutusStats.zero), signal)
+          JudgedSts.apply(Utxo)(LedgerFailure.Rejected(signal.id, _))(
+            globals,
+            execution,
+            Counted(before, PlutusStats.zero),
+            signal
+          )
+        else
+          JudgedSts.apply(Utxow)(LedgerFailure.Rejected(signal.id, _))(
+            globals,
+            execution,
+            Counted(before, PlutusStats.zero),
+            signal
+          )
       result match
         case "accepted" =>
           sameUtxo(
@@ -228,7 +240,7 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
             array(read("signal")).map(tx)
           )
         else
-          Sts.apply(Ledger)(
+          JudgedSts.apply(Ledger)(LedgerFailure.Rejected(Bytes.empty, _))(
             globals,
             LedgerEnv(env(slot, epoch, index), account.treasury),
             Counted(before, PlutusStats.zero),
@@ -348,7 +360,7 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
     assertEquals(observed("state").original, node("utxo-274101", "state").original)
     assertEquals(observed("original-signal").original, node("utxo-274101", "signal").original)
     val signal = StAnnTx(transaction, before.utxo.utxo)
-    val actual = Sts.apply(Utxo)(
+    val actual = JudgedSts.apply(Utxo)(LedgerFailure.Rejected(signal.id, _))(
       globals,
       UtxoEnv(env(slot, geometry.epochOf(slot)), params, cert),
       Counted(before, PlutusStats.zero),

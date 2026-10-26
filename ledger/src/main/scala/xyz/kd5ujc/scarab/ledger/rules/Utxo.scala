@@ -128,19 +128,31 @@ object Deposits:
       }
     (deposits, refunds)
 
-/** UTXOS (`Conway/Rules/Utxos.hs:207`, `utxosTransition`): the evaluation of the Plutus scripts,
-  * whose verdict must equal the block's `is_valid` flag (a transaction flagged invalid must have a
-  * script that fails, one flagged valid none). The state is the node's counters of what was
-  * evaluated.
+/** UTXOS (`Conway/Rules/Utxos.hs:207`, `utxosTransition`, cardano-ledger `f649f975`): the
+  * evaluation of the Plutus scripts, whose verdict must equal the block's `is_valid` flag (a
+  * transaction flagged invalid must have a script that fails, one flagged valid none). The state is
+  * the node's counters of what was evaluated.
   */
-object Utxos extends Sts[UtxoEnv[Any], PlutusStats, StAnnTx, LedgerFailure]:
+object Utxos extends JudgedSts[UtxoEnv[Any], PlutusStats, StAnnTx, PredicateFailure, LedgerFailure]:
   def transition[F[_]: Monad](env: UtxoEnv[Any], ann: StAnnTx)(using
       ask: Ask[F, Globals],
       st: Stateful[F, PlutusStats],
-      raise: Raise[F, LedgerFailure]
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
+  ): F[Unit] = scripts[F](env, ann)
+
+  /** `expectScriptsToPass` (`Babbage/Rules/Utxos.hs:132-155`) and `babbageEvalScriptsTxInvalid`
+    * (`Babbage/Rules/Utxos.hs:194-220`): the contexts of the scripts are collected, and the scripts
+    * are evaluated only if nothing failed so far in the judgment (`whenFailureFree`).
+    */
+  def scripts[F[_]: Monad](env: UtxoEnv[Any], ann: StAnnTx)(using
+      st: Stateful[F, PlutusStats],
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
   ): F[Unit] =
     val tx = ann.tx
     for
+      failing <- judge.failing
       counters <- st.get
       next <- Sts.lift[F, LedgerFailure, PlutusStats](
         TxChecks.phase2(
@@ -151,7 +163,8 @@ object Utxos extends Sts[UtxoEnv[Any], PlutusStats, StAnnTx, LedgerFailure]:
           ann.scripts,
           ann.spent,
           ann.referenced,
-          ann.plutusPurposes
+          ann.plutusPurposes,
+          evaluate = !failing
         )
       )
       _ <- st.set(next)
@@ -164,7 +177,9 @@ object Utxos extends Sts[UtxoEnv[Any], PlutusStats, StAnnTx, LedgerFailure]:
   * that failed phase 2.
   */
 object Utxo
-    extends Sts[UtxoEnv[ConwayCertState], Counted[UTxOState[Conway]], StAnnTx, LedgerFailure]:
+    extends JudgedSts[UtxoEnv[ConwayCertState], Counted[
+      UTxOState[Conway]
+    ], StAnnTx, PredicateFailure, LedgerFailure]:
   given Embed[PlutusStats, Counted[UTxOState[Conway]], LedgerFailure, LedgerFailure] =
     Embed(Counted.plutus[UTxOState[Conway]], identity)
 
@@ -347,20 +362,17 @@ object Utxo
   def transition[F[_]: Monad](env: UtxoEnv[ConwayCertState], ann: StAnnTx)(using
       ask: Ask[F, Globals],
       st: Stateful[F, Counted[UTxOState[Conway]]],
-      raise: Raise[F, LedgerFailure]
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
   ): F[Unit] =
     val (deposits, refunds) = Deposits.of(env.pp, env.cert, ann.tx.body)
     for
       collateral <- Sts.lift[F, LedgerFailure, TxChecks.Collateral](
         validate(env, ann, deposits, refunds)
       )
-      _ <- Sts.trans[F, UtxoEnv[Any], PlutusStats, Counted[
+      _ <- JudgedSts.trans[F, UtxoEnv[Any], PlutusStats, Counted[
         UTxOState[Conway]
-      ], StAnnTx, LedgerFailure, LedgerFailure](
-        Utxos,
-        env,
-        ann
-      )
+      ], StAnnTx, PredicateFailure, LedgerFailure, LedgerFailure](Utxos, env, ann)
       s <- st.get
       next <- Refuse.vocab[F, UTxOState[Conway]](
         update(s.state, ann, collateral, deposits, refunds)
@@ -378,7 +390,9 @@ object Utxo
   * transaction to the rule.
   */
 object Utxow
-    extends Sts[UtxoEnv[ConwayCertState], Counted[UTxOState[Conway]], StAnnTx, LedgerFailure]:
+    extends JudgedSts[UtxoEnv[ConwayCertState], Counted[
+      UTxOState[Conway]
+    ], StAnnTx, PredicateFailure, LedgerFailure]:
   /** The checks of the witnesses and scripts, in the node's order. */
   def witnesses(env: UtxoEnv[ConwayCertState], ann: StAnnTx): Either[LedgerFailure, Unit] =
     witnesses(env, Map.empty, ann)
@@ -451,10 +465,13 @@ object Utxow
   def transition[F[_]: Monad](env: UtxoEnv[ConwayCertState], ann: StAnnTx)(using
       ask: Ask[F, Globals],
       st: Stateful[F, Counted[UTxOState[Conway]]],
-      raise: Raise[F, LedgerFailure]
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
   ): F[Unit] =
     for
       _ <- Sts.lift[F, LedgerFailure, Unit](Utxo.resolvable(ann))
       _ <- Sts.lift[F, LedgerFailure, Unit](witnesses(env, ann))
-      _ <- Utxo.transition[F](env, ann)
+      _ <- JudgedSts.trans[F, UtxoEnv[ConwayCertState], Counted[UTxOState[Conway]], Counted[
+        UTxOState[Conway]
+      ], StAnnTx, PredicateFailure, LedgerFailure, LedgerFailure](Utxo, env, ann)
     yield ()

@@ -24,6 +24,11 @@ object TxChecks:
   /** The script data hash must equal the recomputed hash, and the block's `is_valid` flag must
     * equal the outcome of evaluating every Plutus script. Reads of the state: the parameters and
     * the counters it adds to.
+    *
+    * @param evaluate
+    *   whether the scripts are evaluated: they are not once the judgment has a failure
+    *   (`whenFailureFree`, `Alonzo/Rules/Utxos.hs:180-182`), and then only their contexts are
+    *   collected (`CollectErrors`)
     */
   private[ledger] def phase2(
       pp: ProtocolParams,
@@ -33,7 +38,8 @@ object TxChecks:
       scripts: Map[Bytes, Script],
       spent: Vector[TxOut],
       refOuts: Vector[TxOut],
-      plutusPurposes: Set[Pointer]
+      plutusPurposes: Set[Pointer],
+      evaluate: Boolean
   ): Result[PlutusStats] =
     val body = tx.body
     val id = body.id
@@ -64,6 +70,10 @@ object TxChecks:
               Phase2.job(env.txIndex, tx, pp, env.slot, inputs, references, env.clock, requests)
             )
             requests.fold(errors => checkedPhase2(stats, tx, Left(errors)), _ => Right(stats))
+          case None if !evaluate =>
+            Phase2
+              .collect(tx, pp, scripts, inputs, references, slot => posix.map(_(slot)))
+              .fold(errors => checkedPhase2(stats, tx, Left(errors)), _ => Right(stats))
           case None =>
             val outcome = Phase2.evaluate(
               tx,

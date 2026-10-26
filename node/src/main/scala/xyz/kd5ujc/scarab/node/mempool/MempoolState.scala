@@ -27,11 +27,14 @@ import xyz.kd5ujc.scarab.ledger.{
   UtxowFailure
 }
 import xyz.kd5ujc.scarab.ledger.rules.{
+  ConwayLedger,
   Counted,
-  Gov,
   Globals,
+  JudgedSts,
+  Judgment,
   Ledger,
   LedgerEnv,
+  Mempool,
   Sts,
   Tick,
   TickFailure
@@ -162,9 +165,25 @@ final case class MempoolLedger(ls: LedgerState[Conway], treasury: Coin, epoch: B
   def withUtxo(u: Utxo): MempoolLedger =
     copy(ls = ls.copy[Conway](utxo = ls.utxo.copy(utxo = UtxoTables(u))))
 
-  /** The transaction applied (LEDGER of Conway), or the rule that refuses it. */
+  /** The transaction applied (LEDGER of Conway) to its first failure, or the refusal: how a held
+    * transaction is revalidated, where only the verdict counts.
+    */
   def apply(tx: Tx, env: TxEnv, rules: Globals): Either[LedgerFailure, MempoolLedger] =
-    Sts(Ledger)(rules, LedgerEnv(env, treasury), Counted(ls, PlutusStats.zero), tx)
+    judged(Ledger, Judgment.Policy.FirstFailure)(tx, env, rules)
+
+  /** The transaction applied by the MEMPOOL rule of the ledger (`Conway/Rules/Mempool.hs`), whose
+    * refusal holds every predicate failure the reference reports, in its order.
+    */
+  def submit(tx: Tx, env: TxEnv, rules: Globals): Either[LedgerFailure, MempoolLedger] =
+    judged(Mempool, Judgment.Policy.Accumulate)(tx, env, rules)
+
+  private def judged(
+      rule: JudgedSts[LedgerEnv, ConwayLedger, Tx, PredicateFailure, LedgerFailure],
+      policy: Judgment.Policy
+  )(tx: Tx, env: TxEnv, rules: Globals): Either[LedgerFailure, MempoolLedger] =
+    Judgment
+      .run(rule, policy)(rules, LedgerEnv(env, treasury), Counted(ls, PlutusStats.zero), tx)
+      .flatMap(_.leftMap(LedgerFailure.Rejected(tx.body.id, _)))
       .map(after => copy(ls = after.state))
 
   /** The transaction admitted from `source`, with the transaction as it is to be held (its
@@ -176,9 +195,8 @@ final case class MempoolLedger(ls: LedgerState[Conway], treasury: Coin, epoch: B
     * (`ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Eras.hs` at
     * `82ecba329d7d054340bf707d44fe6e9ac27cec40`, `isIncorrectClaimedFlag`). The reference takes a
     * refusal that is the only element of the failure list, and so does this one
-    * ([[LedgerFailure.Rejected.Single]]). The rules report their first failure and check the
-    * phase-1 rules before the scripts run, so a mismatch is the only failure when nothing before it
-    * failed.
+    * ([[LedgerFailure.Rejected.Single]]): the scripts run only when nothing failed before them
+    * (`whenFailureFree`), so a mismatch is the only failure when it is the reason of the refusal.
     */
   def admit(
       tx: Tx,
@@ -187,10 +205,10 @@ final case class MempoolLedger(ls: LedgerState[Conway], treasury: Coin, epoch: B
       source: Source
   ): Either[LedgerFailure, (MempoolLedger, Tx)] =
     source match
-      case Source.Local => apply(tx, env, rules).map(_ -> tx)
+      case Source.Local => submit(tx, env, rules).map(_ -> tx)
       case Source.Remote =>
         val claimed = tx.copy(isValid = true)
-        apply(claimed, env, rules) match
+        submit(claimed, env, rules) match
           case Left(
                 LedgerFailure.Rejected.Single(
                   _,
@@ -202,7 +220,7 @@ final case class MempoolLedger(ls: LedgerState[Conway], treasury: Coin, epoch: B
                 )
               ) =>
             val failed = tx.copy(isValid = false)
-            apply(failed, env, rules).map(_ -> failed)
+            submit(failed, env, rules).map(_ -> failed)
           case other => other.map(_ -> claimed)
 
 object MempoolLedger:
@@ -306,31 +324,9 @@ final case class MempoolState(
         .phase2(ledger, tx)
         .leftMap(f => Rejection.Ledger(LedgerFailure.Rejected(id, f)))
       _ <- room(phase1.copy(refScriptsBytes = refScriptBytes.toLong))
-      // The MEMPOOL rule of the ledger (`Rules/Mempool.hs`) runs before LEDGER: a transaction none
-      // of whose inputs is unspent is "probably a duplicate" and is refused with that alone. Votes
-      // of unelected committee members are refused here, and only here, before protocol version 11;
-      // from 11 the GOV rule does.
-      pv = ledger.params.protocolMajor
-      _ <- Either.cond(
-        pv < 9 || tx.body.inputs.exists(ledger.utxo.contains),
-        (),
-        Rejection.Ledger(
-          LedgerFailure.Rejected(id, PredicateFailure.Mempool(MempoolProblem.AllInputsSpent))
-        )
-      )
-      unelected = MempoolState.unelectedCommitteeVoters(ledger, tx.body)
-      _ <- Either.cond(
-        pv < 9 || pv > 10 || unelected.isEmpty,
-        (),
-        Rejection.Ledger(
-          LedgerFailure.Rejected(
-            id,
-            PredicateFailure.Mempool(
-              MempoolProblem.UnelectedCommittee(unelected)
-            )
-          )
-        )
-      )
+      // The MEMPOOL rule of the ledger (`Rules/Mempool.hs`, [[Mempool]]) judges the transaction:
+      // one none of whose inputs is unspent is "probably a duplicate" and is refused with that
+      // alone; then LEDGER.
       admitted <- ledger
         .admit(tx, env.txEnv(tipSlot, baseLedger, entries.size), env.rules, source)
         .leftMap(Rejection.Ledger(_))
@@ -423,25 +419,6 @@ final case class MempoolState(
   def after(ticket: Long): Vector[Entry] = entries.filter(_.ticket > ticket)
 
 object MempoolState:
-  /** The text of the ledger's MEMPOOL failure for a transaction whose inputs are all spent. */
-  val AllInputsSpent: String =
-    "All inputs are spent. Transaction has probably already been included"
-
-  /** `unelectedCommitteeVoters` (`Gov.hs:652`): the committee hot credentials among the voters of
-    * `body` that no member of the current committee has authorised. From protocol version 11 the
-    * GOV rule refuses such votes; before that the reference refuses them in its mempool only
-    * (`Rules/Mempool.hs`), so blocks may carry them.
-    */
-  def unelectedCommitteeVoters(
-      ledger: MempoolLedger,
-      body: xyz.kd5ujc.scarab.ledger.TxBody
-  ): Vector[Credential] =
-    Gov.unelected(
-      ledger.ls.utxo.gov.committee,
-      ledger.ls.cert,
-      body.votes.map(_._1)
-    )
-
   /** A credential as the ledger's `Show` instance prints it. */
   def showCredential(c: Credential): String = c match
     case Credential.Key(h)    => "KeyHashObj (KeyHash {unKeyHash = \"" + h.hex + "\"})"

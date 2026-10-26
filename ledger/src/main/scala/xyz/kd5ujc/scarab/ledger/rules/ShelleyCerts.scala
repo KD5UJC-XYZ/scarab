@@ -136,11 +136,19 @@ object ShelleyCertOps:
   * pool that is not registered and the duplicate genesis delegate and VRF key are the reference's;
   * the order of the failures within a certificate is its too.
   */
-object ShelleyDeleg extends Sts[ShelleyDelegEnv, ShelleyCertState, Certificate, LedgerFailure]:
+object ShelleyDeleg
+    extends JudgedSts[
+      ShelleyDelegEnv,
+      ShelleyCertState,
+      Certificate,
+      PredicateFailure,
+      LedgerFailure
+    ]:
   def transition[F[_]: Monad](env: ShelleyDelegEnv, cert: Certificate)(using
       ask: Ask[F, Globals],
       st: Stateful[F, ShelleyCertState],
-      raise: Raise[F, LedgerFailure]
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
   ): F[Unit] =
     val id = env.delegs.id
     val pp = env.delegs.pp
@@ -314,48 +322,90 @@ object ShelleyDeleg extends Sts[ShelleyDelegEnv, ShelleyCertState, Certificate, 
       _ <- st.set(ShelleyCertLens.iRewards.replace(next)(s))
     yield ()
 
-/** DELPL (`Shelley/Rules/Delpl.hs:174`, `delplTransition`): a certificate goes to the rule of its
-  * family: POOL for a pool's registration and retirement (POOL sees the pool state only), DELEG for
-  * the rest.
+/** DELPL (`Shelley/Rules/Delpl.hs:174`, `delplTransition`, cardano-ledger `f649f975`): a
+  * certificate goes to the rule of its family (`trans`, `Delpl.hs:193-202`): POOL for a pool's
+  * registration and retirement (POOL sees the pool state only), DELEG for the rest.
   */
-object ShelleyDelpl extends Sts[ShelleyDelegEnv, ShelleyCertState, Certificate, LedgerFailure]:
+object ShelleyDelpl
+    extends JudgedSts[
+      ShelleyDelegEnv,
+      ShelleyCertState,
+      Certificate,
+      PredicateFailure,
+      LedgerFailure
+    ]:
   given poolEmbed: Embed[PState, ShelleyCertState, LedgerFailure, LedgerFailure] =
     Embed(ShelleyCertState.pState, identity)
 
   def transition[F[_]: Monad](env: ShelleyDelegEnv, cert: Certificate)(using
       ask: Ask[F, Globals],
       st: Stateful[F, ShelleyCertState],
-      raise: Raise[F, LedgerFailure]
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
   ): F[Unit] =
     val delegs = env.delegs
     // the pool rule's environment: no committee and no proposals before Conway
     val poolEnv = CertEnv(delegs.id, delegs.pp, delegs.ctx.epoch, None, Map.empty)
     def pool(c: PoolCert): F[Unit] =
-      Sts.trans[F, CertEnv, PState, ShelleyCertState, PoolCert, LedgerFailure, LedgerFailure](
-        Pool,
-        poolEnv,
-        c
-      )
+      JudgedSts.trans[
+        F,
+        CertEnv,
+        PState,
+        ShelleyCertState,
+        PoolCert,
+        PredicateFailure,
+        LedgerFailure,
+        LedgerFailure
+      ](Pool, poolEnv, c)
     cert match
       case Certificate.RegisterPool(p) => pool(PoolCert.RegPool(p))
       case Certificate.RetirePool(p, e) =>
         Refuse
           .vocab[F, KeyHash[StakePool]](Convert.keyHash[StakePool](p))
           .flatMap(h => pool(PoolCert.RetirePool(h, e)))
-      case _ => ShelleyDeleg.transition[F](env, cert)
+      case _ =>
+        JudgedSts.trans[
+          F,
+          ShelleyDelegEnv,
+          ShelleyCertState,
+          ShelleyCertState,
+          Certificate,
+          PredicateFailure,
+          LedgerFailure,
+          LedgerFailure
+        ](ShelleyDeleg, env, cert)
 
-/** DELEGS (`Shelley/Rules/Delegs.hs:169`, `delegsTransition`): the certificates of a transaction,
-  * in order, each with the pointer of its position (`Ptr slot txIx certIx`).
+/** DELEGS (`Shelley/Rules/Delegs.hs:169`, `delegsTransition`, cardano-ledger `f649f975`): the
+  * certificates of a transaction, by recursion on their prefix (`gamma :|> c`,
+  * `Delegs.hs:189-198`): DELEGS of all but the last certificate, then DELPL of the last with the
+  * pointer of its position (`Ptr slot txIx certIx`, `certIx` the length of the prefix), each a
+  * sub-rule (`trans`), so the first certificate is the deepest. The recursion is a fold over the
+  * certificates, each step a program over the previous (ADR 0011).
   */
-object ShelleyDelegs extends Sts[DelegsEnv, ShelleyCertState, Vector[Certificate], LedgerFailure]:
+object ShelleyDelegs
+    extends JudgedSts[DelegsEnv, ShelleyCertState, Vector[
+      Certificate
+    ], PredicateFailure, LedgerFailure]:
   def transition[F[_]: Monad](env: DelegsEnv, certs: Vector[Certificate])(using
       ask: Ask[F, Globals],
       st: Stateful[F, ShelleyCertState],
-      raise: Raise[F, LedgerFailure]
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
   ): F[Unit] =
-    certs.zipWithIndex.traverse_ { (cert, ix) =>
-      ShelleyDelpl.transition[F](
-        ShelleyDelegEnv(env, Ptr(env.ctx.slot, env.ctx.txIndex, ix)),
-        cert
-      )
+    certs.zipWithIndex.foldLeft(Monad[F].unit) { case (prefix, (cert, ix)) =>
+      judge.trans(prefix) *>
+        JudgedSts.trans[
+          F,
+          ShelleyDelegEnv,
+          ShelleyCertState,
+          ShelleyCertState,
+          Certificate,
+          PredicateFailure,
+          LedgerFailure,
+          LedgerFailure
+        ](
+          ShelleyDelpl,
+          ShelleyDelegEnv(env, Ptr(env.ctx.slot, env.ctx.txIndex, ix)),
+          cert
+        )
     }

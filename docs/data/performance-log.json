@@ -3468,8 +3468,8 @@
       "date": "2026-10-24",
       "dateSource": "text",
       "issues": [
-        412,
-        420
+        "#412",
+        "#420"
       ],
       "commits": [
         "d14d42cadff60dfe44584059b538eee76d97b2a3",

@@ -10,7 +10,7 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.{Certificate, DecoderVersion, EpochGeometry, LedgerGlobals}
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.ledger.rules.{ConwayCert, Deleg, Globals, Sts}
+import xyz.kd5ujc.scarab.ledger.rules.{ConwayCert, Deleg, Globals, JudgedSts}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, Params, Wire}
@@ -134,8 +134,8 @@ class UpstreamDelegConformanceSuite extends FunSuite:
       val typed = ConwayCert.of(Bytes.empty, certificate).fold(e => fail(e.toString), identity)
       typed match
         case ConwayCert.OfDeleg(cert) =>
-          val actual = Sts
-            .apply(Deleg.Adapter)(
+          val actual = JudgedSts
+            .apply(Deleg.Adapter)(xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(Bytes.empty, _))(
               globals,
               Deleg.RuleEnv(
                 Bytes.fromArray(

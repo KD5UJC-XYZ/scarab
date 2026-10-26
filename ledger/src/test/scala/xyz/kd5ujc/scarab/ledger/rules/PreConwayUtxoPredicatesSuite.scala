@@ -199,15 +199,16 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
     val pp = TestLedger.params(major)
     val initial = Empty.ledgerState[E](pp)
     val funded = initial.copy[E](utxo = initial.utxo.copy[E](utxo = UtxoTables(utxo)))
-    def admit(tx: Tx, network: Int = 0) = Sts(ShelleyLedger.sts[E])(
-      TestLedger.globals.copy(ledger = TestLedger.globals.ledger.copy(network = network)),
-      ShelleyLedgerEnv(
-        TestLedger.env.copy(network = network),
-        ChainAccountState(Coin.zero, Coin.zero)
-      ),
-      Counted(funded, PlutusStats.zero),
-      tx
-    )
+    def admit(tx: Tx, network: Int = 0) =
+      JudgedSts(ShelleyLedger.sts[E])(LedgerFailure.Rejected(tx.body.id, _))(
+        TestLedger.globals.copy(ledger = TestLedger.globals.ledger.copy(network = network)),
+        ShelleyLedgerEnv(
+          TestLedger.env.copy(network = network),
+          ChainAccountState(Coin.zero, Coin.zero)
+        ),
+        Counted(funded, PlutusStats.zero),
+        tx
+      )
     def rejected(tx: Tx, expected: UtxoFailure, network: Int = 0): Unit =
       assertEquals(
         admit(tx, network),

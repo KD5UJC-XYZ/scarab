@@ -83,7 +83,7 @@ object RuleSet:
         given ShelleyBasedEra[x] = e.era
         val image =
           mirror.to[x](at, s).run(env).fold(m => broken(s"to the mirror: ${m.show}"), _.value)
-        Sts(Pool)(
+        JudgedSts(Pool)(LedgerFailure.Rejected(tx.body.id, _))(
           globals,
           CertEnv(tx.body.id, s.params, ctx.epoch, None, Map.empty),
           xyz.kd5ujc.scarab.ledger.state.LedgerState.pState[x].get(image.nes.es.ls),
@@ -312,7 +312,7 @@ object RuleSet:
   )(using era: ShelleyBasedEra[E], pre: PreConway[E]): Either[LedgerFailure, LedgerState] =
     val image = mirror.to[E](at, s).run(env).fold(e => broken(s"to the mirror: ${e.show}"), _.value)
     val nes = image.nes
-    Sts(ShelleyLedger.sts[E])(
+    JudgedSts(ShelleyLedger.sts[E])(LedgerFailure.Rejected(t.body.id, _))(
       globals,
       ShelleyLedgerEnv(ctx, nes.es.chainAccount),
       Counted(nes.es.ls, s.plutus),
@@ -341,7 +341,7 @@ object RuleSet:
     val image =
       mirror.to[Conway](at, s).run(env).fold(e => broken(s"to the mirror: ${e.show}"), _.value)
     val nes = image.nes
-    Sts(Ledger)(
+    JudgedSts(Ledger)(LedgerFailure.Rejected(t.body.id, _))(
       globals,
       LedgerEnv(ctx, nes.es.chainAccount.treasury),
       Counted(nes.es.ls, s.plutus),

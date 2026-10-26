@@ -18,7 +18,7 @@ import xyz.kd5ujc.scarab.ledger.{
   LedgerGlobals
 }
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.ledger.rules.{ConwayCert, Globals, Pool, PoolCert, Sts}
+import xyz.kd5ujc.scarab.ledger.rules.{ConwayCert, Globals, JudgedSts, Pool, PoolCert}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, NodeOrders, Params, Wire}
@@ -122,8 +122,8 @@ class UpstreamCertConformanceSuite extends FunSuite:
       .fold(error => fail(s"generated CERT signal: $error"), identity)
     ConwayCert.of(Bytes.empty, signal).fold(e => fail(e.toString), identity) match
       case ConwayCert.OfPool(cert @ PoolCert.RegPool(_)) =>
-        val actual = Sts
-          .apply(Pool.Adapter)(
+        val actual = JudgedSts
+          .apply(Pool.Adapter)(xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(Bytes.empty, _))(
             globals,
             Pool.RuleEnv(
               Bytes.fromArray(
