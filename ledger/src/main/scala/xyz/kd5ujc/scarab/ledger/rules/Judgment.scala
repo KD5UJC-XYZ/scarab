@@ -82,8 +82,8 @@ object Judgment:
       case RuleT.Outcome.Passed(s, a)      => Right(Right((s, a)))
 
   /** Applies the judged `rule` under `policy`: a defect, or the predicate failures of the refusal
-    * in the reference's order, or the state after the transition. A refusal a rule still raises
-    * ends that rule only ([[Judge.trans]]); under `FirstFailure` it is the first failure.
+    * in the reference's order, or the state after the transition. A rule records its predicate
+    * failures and raises only defects; a refusal raised all the same is reported as its failures.
     */
   def run[Env, S, Sig, Fail, D, P](rule: JudgedSts[Env, S, Sig, P, Fail], policy: Policy)(
       globals: Globals,
@@ -93,7 +93,7 @@ object Judgment:
   )(using refusal: Refusal.Aux[Fail, D, P]): Either[D, Either[NonEmptyChain[P], S]] =
     rule
       .transition[RuleT.Judged[P, Fail, S]](env, signal)
-      .judge(policy, globals, state, refusal.split(_).toOption) match
+      .judge(policy, globals, state) match
       case RuleT.Outcome.Raised(raised)    => refusal.split(raised).map(Left(_))
       case RuleT.Outcome.Refused(failures) => Right(Left(failures))
       case RuleT.Outcome.Passed(after, _)  => Right(Right(after))
