@@ -323,16 +323,11 @@ object ShelleyDeleg
                 Mismatch(combined.values.sum, available)
               )
             )
-            // The reference keeps a negative entry in the state of a refused transaction; the
-            // state's coin has no negative value, so that state is left as it was: a negative
-            // entry is always one of the failures just recorded, so no transaction that applies
-            // reaches it
-            entries <-
-              if combined.values.exists(_ < 0) then
-                Monad[F].pure(Option.empty[SortedMap[Credential[Staking], Coin]])
-              else coins(combined).map(Some(_))
-          yield entries.map(e =>
-            if pot == Pot.Reserves then ir.copy(reserves = e) else ir.copy(treasury = e)
+            // Deleg.hs:351-361,406-428 (f649f975) retains signed entries after recording the
+            // predicate failure: subsequent certificates observe this intermediate state.
+            entries <- coins(combined)
+          yield Some(
+            if pot == Pot.Reserves then ir.copy(reserves = entries) else ir.copy(treasury = entries)
           )
       _ <- next.traverse_(n => st.set(ShelleyCertLens.iRewards.replace(n)(s)))
     yield ()

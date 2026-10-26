@@ -96,7 +96,8 @@ object Ledger extends JudgedSts[LedgerEnv, ConwayLedger, Tx, PredicateFailure, L
       accounts: scala.collection.immutable.SortedMap[Credential[Staking], ConwayAccountState],
       tx: Tx
   ): Test[PredicateFailure] =
-    val notDelegated = Purpose.sortedWithdrawals(tx.body)
+    val notDelegated = Purpose
+      .sortedWithdrawals(tx.body)
       .collect {
         case (account, _)
             if account.credential.isInstanceOf[xyz.kd5ujc.scarab.ledger.Credential.Key] =>
