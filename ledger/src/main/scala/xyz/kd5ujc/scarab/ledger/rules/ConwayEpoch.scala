@@ -140,8 +140,8 @@ object ConwayEpoch:
     */
   def totalObligation(ls: LedgerState[Conway]): BigInt =
     EraLedger.keyDeposits(ls) +
-      ls.cert.pState.stakePools.valuesIterator.foldLeft(BigInt(0))(_ + _.deposit.toBigInt) +
-      ls.cert.vState.dreps.valuesIterator.foldLeft(BigInt(0))(_ + _.deposit.toBigInt) +
+      CompactCoin.sum(ls.cert.pState.stakePools.valuesIterator.map(_.deposit)).toBigInt +
+      CompactCoin.sum(ls.cert.vState.dreps.valuesIterator.map(_.deposit)).toBigInt +
       ls.utxo.gov.proposals.totalDeposits
 
   /** The rest of the rule once SNAP and POOLREAP have run: `es0` is the state the rule began with
@@ -175,10 +175,10 @@ object ConwayEpoch:
       prevPParams = gov0.curPParams,
       futurePParams = FuturePParams.PotentialPParamsUpdate(None)
     )
-    val withdrawn = successful.map((c, n) => c -> Coin(n))
-    val withdrawnTotal = successful.foldLeft(BigInt(0))(_ + _._2)
     for
-      afterWithdrawals <- EraLedger.credit(ls1, withdrawn)
+      withdrawn <- successful.traverse((c, n) => CompactCoin.fromCoin(Coin(n)).map(c -> _))
+      withdrawnTotal = CompactCoin.sum(withdrawn.iterator.map(_._2)).toBigInt
+      afterWithdrawals = EraLedger.credit(ls1, withdrawn.toMap)
       // proposal deposits go back to their accounts, or to the treasury where there is none
       refunds <- removed.traverse { gas =>
         Convert
@@ -188,7 +188,11 @@ object ConwayEpoch:
       (refundable, unclaimedRefunds) = refunds.partition((c, _) =>
         EraLedger.isRegistered(afterWithdrawals, c)
       )
-      refunded <- EraLedger.credit(afterWithdrawals, refundable)
+      compactRefunds <- refundable.traverse((c, n) => CompactCoin.fromCoin(n).map(c -> _))
+      refunded = EraLedger.credit(
+        afterWithdrawals,
+        compactRefunds.groupMapReduce(_._1)(_._2)((a, b) => a.add(b))
+      )
       unclaimed = unclaimedRefunds.foldLeft(BigInt(0))(_ + _._2.value)
       dormant <- {
         val active = proposals.actions.exists(epoch.toBigInt <= _.expiresAfter)
