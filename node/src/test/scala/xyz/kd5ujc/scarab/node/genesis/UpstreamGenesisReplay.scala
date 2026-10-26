@@ -301,7 +301,6 @@ object UpstreamGenesisReplay extends munit.Assertions:
                               ),
                               BlockPool.AttributionPolicy(),
                               Some(follower.fetchSelection),
-                              decisions = false,
                               recovered = Some(
                                 BlockPool.Recovered(
                                   opened.received.hashes,

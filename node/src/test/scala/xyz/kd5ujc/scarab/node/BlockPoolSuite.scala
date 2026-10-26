@@ -375,7 +375,7 @@ class BlockPoolSuite extends CatsEffectSuite:
         for
           _ <- fetcher.announce(Some(h), FetchGsv.default, candidate = Some(candidate))
           _ <- pool.fetchCoordinator.step
-          recovered <- fetcher.acquire(IO.unit)
+          recovered <- fetcher.tryAcquire
           _ <- IO(assertEquals(recovered, None))
           first <- claims.take(h.hash)
           _ <- IO(assertEquals(first.map(_.origin), Some(BlockPool.Source.Recovered)))
@@ -384,7 +384,7 @@ class BlockPoolSuite extends CatsEffectSuite:
             ValidationError(h.point, BlockFailure.HeaderDiffers)
           )
           _ <- pool.fetchCoordinator.step
-          refetched <- fetcher.acquire(IO.unit)
+          refetched <- fetcher.tryAcquire
           _ <- IO(assertEquals(refetched.map(_.headers), Some(headers)))
         yield ()
       }

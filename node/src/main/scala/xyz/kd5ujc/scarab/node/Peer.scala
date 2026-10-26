@@ -618,6 +618,11 @@ object Peer:
     // has cancelled and awaited the fibers that fetch, nothing the session claimed is left open.
     (for
       shared <- Resource.eval(pool.fold(BlockPool.create[F])(F.pure))
+      _ <- (shared.fetchCoordinator.run
+        .handleErrorWith(cause => connection.mux.abort(NetworkError.Defect(cause)) *> F.never)
+        .background
+        .void)
+        .whenA(pool.isEmpty)
       claims <- shared.session(invalidCachedBlock, diffusion)
       fetcher <- fetchSession.fold(
         shared.fetchCoordinator.session(
@@ -655,7 +660,6 @@ object Peer:
           ChainSelection.Candidate(ChainSync.Point.Origin, Vector.empty)
         ),
         Ref.of[F, Option[Fault]](None),
-        Deferred[F, Unit],
         Ref.of[F, Boolean](false),
         Ref.of[F, Staged](Staged()),
         Deferred[F, Unit].flatMap(signal => Ref.of[F, Deferred[F, Unit]](signal)),
@@ -677,7 +681,6 @@ object Peer:
             last,
             candidateHeaders,
             pipelineFailure,
-            fetchStopped,
             observersStarted,
             stagedBlocks,
             drainRequested,
@@ -750,11 +753,11 @@ object Peer:
             * takes each request the decisions added for this session (`acknowledgeFetchRequest`),
             * sends its ranges and collects their blocks, until the session is brought to rest. What
             * is requested is the decisions' alone; publishing headers never waits for it. Byte
-            * credit returns as individual blocks arrive, before signature preparation finishes.
+            * credit returns after each checked original is visible in the shared body pool.
             */
           def fetchClient(using Raise[F, PeerError]): F[Unit] =
             F.tailRecM(()) { _ =>
-              fetcher.acquire(fetchStopped.get).flatMap {
+              fetcher.acquire.flatMap {
                 case None             => F.pure(Right(()))
                 case Some(allocation) => fetchRequest(allocation).as(Left(()))
               }
@@ -807,11 +810,6 @@ object Peer:
                 val observeEvent: BlockFetchRuntime.Event => F[Unit] = {
                   case BlockFetchRuntime.Event.Sent(_) =>
                     F.monotonic.flatMap(at => sentAt.set(Some(at))) *> sent
-                  case BlockFetchRuntime.Event.Completed(_) =>
-                    remaining
-                      .getAndSet(Vector.empty)
-                      .flatMap(_.traverse_(h => fetcher.received(allocation, h.hash))) *>
-                      fetcher.completed(allocation)
                   case _ => F.unit
                 }
                 val receive: Bytes => F[Either[NetworkError, Unit]] = raw =>
@@ -828,7 +826,6 @@ object Peer:
                               PeerError.InputSite.FetchedBlock(header.point)
                             )(BlockPool.Delivered.checked(header, raw))
                               .flatMap(_.fold(protocol[BlockPool.Delivered], F.pure))
-                            _ <- fetcher.received(allocation, header.hash)
                             // CompletedBlockFetch (Client.hs:290, ClientState.hs:579–615): the
                             // block's download is complete, so long after its range was sent.
                             _ <- (sentAt.get, F.monotonic).tupled.flatMap { (from, now) =>
@@ -840,6 +837,7 @@ object Peer:
                             _ <- (receivedBody.traverse_(_(header, raw)) *> prepare(Vector(raw)))
                               .unlessA(delegated)
                             _ <- claims.fillDelivered(Vector(delivered))
+                            _ <- fetcher.received(allocation, header.hash)
                             winner <- claims.take(header.hash)
                             _ <- winner.fold(
                               PeerError
@@ -865,7 +863,8 @@ object Peer:
                 request.flatMap {
                   case Some(raw) if raw.size != run.size =>
                     protocol(PeerError.ProtocolProblem.BlockCount(run.size, raw.size))
-                  case result => F.monotonic.map(result -> _)
+                  case None   => fetcher.rejected(allocation, run) *> F.monotonic.map(None -> _)
+                  case result => fetcher.completed(allocation) *> F.monotonic.map(result -> _)
                 }
               }
 
@@ -1143,7 +1142,7 @@ object Peer:
               result <- accepted match
                 case HeaderGate.Acceptance.Accepted =>
                   gate.get.flatMap(_.snapshot).flatMap {
-                    case Some(_) => recordUpdates(batch, updates)
+                    case Some(_) => recordUpdates(batch)
                     case None =>
                       candidateHeaders.get.flatMap { initial =>
                         val checked =
@@ -1160,7 +1159,7 @@ object Peer:
                             pendingEnd
                               .set(Some(PeerError.RolledBackPastIntersection(point)))
                               .as(Vector.empty[SyncEvent]),
-                          _ => recordUpdates(batch, updates)
+                          _ => recordUpdates(batch)
                         )
                       }
                   }
@@ -1183,8 +1182,7 @@ object Peer:
             yield result
 
           def recordUpdates(
-              batch: Vector[SyncEvent],
-              updates: Vector[ChainSyncClient.Update[NtNHeader]]
+              batch: Vector[SyncEvent]
           ): F[Vector[SyncEvent]] =
             for
               performance <- connection.fetchPerformance.getOrElse(F.pure(FetchGsv.default))
@@ -1202,18 +1200,9 @@ object Peer:
                 }
                 (after, after)
               }
-              hints = batch
-                .zip(updates)
-                .collect {
-                  case (SyncEvent.RollForward(h, _), ChainSyncClient.Update.RollForward(wire, _))
-                      if wire.byron.isDefined =>
-                    h.hash -> wire.byron.fold(0L)(_.sizeHint.toLong)
-                }
-                .toMap
               _ <- fetcher.announce(
                 candidate.headers.lastOption,
                 performance,
-                hints,
                 Some(candidate)
               )
               _ <- heights.update { previous =>
@@ -1792,7 +1781,7 @@ object Peer:
               // Quiescing ends this hot session; a pending fault is of no further interest. Its
               // fetch client takes no further request and collects the ranges it sent
               // (`senderTerminate`, Client.hs:182–190).
-              Fault.fiber(drain).void *> fetchStopped.complete(()).void *> fetcher.settled
+              Fault.fiber(drain).void *> fetcher.terminate *> fetcher.settled
 
             def intersect(candidates: Vector[ChainSync.Point])(using Raise[F, PeerError]) =
               for

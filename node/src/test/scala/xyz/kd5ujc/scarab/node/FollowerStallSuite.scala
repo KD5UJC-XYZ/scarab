@@ -288,7 +288,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               GsmRunner.Marker.none[IO],
               LedgerPeersSource.none[IO]
             )
-            reconnects <- network.use { net =>
+            reconnects <- network.flatTap(_ => FetchTesting.decisions(pool)).use { net =>
               // as in Main: the governor runs beside the node, and ends it only by a fault
               // Live cache occupancy is not pending-claim ownership. BlockPoolSuite checks
               // scoped claim release while allowing filled blocks to remain cached.
@@ -424,7 +424,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             GsmRunner.Marker.none[IO],
             LedgerPeersSource.none[IO]
           )
-          _ <- network.use { net =>
+          _ <- network.flatTap(_ => FetchTesting.decisions(pool)).use { net =>
             net.run.background.use { _ =>
               eventually("our chain reaches the tip")(chainRef.get.map(_.tip))(_ == last.point) *>
                 // Native transport decoding precedes ChainDB admission: this exact typed protocol
@@ -604,7 +604,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               .zip(forged.raws.take(8))
               .map((header, raw) => header.hash -> raw)
             (origin.claim(loaned.map(_._1)) *> origin.fill(loaned)).whenA(unavailable) *>
-              network.use { net =>
+              network.flatTap(_ => FetchTesting.decisions(pool)).use { net =>
                 net.run.background.use { _ =>
                   eventually("the node is told to stop")(fatals.get)(_.nonEmpty)
                 }
@@ -727,7 +727,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           GsmRunner.Marker.none[IO],
           LedgerPeersSource.none[IO]
         )
-        stillRunning <- network.use { net =>
+        stillRunning <- network.flatTap(_ => FetchTesting.decisions(pool)).use { net =>
           net.run.background.use { outcome =>
             // what was reported, what was opened and what the governor did, for a run in which
             // the reports do not come

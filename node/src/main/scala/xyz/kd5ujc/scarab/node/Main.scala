@@ -276,15 +276,15 @@ object Main extends IOApp:
       }
     yield runtime
 
-  /** The Genesis governor. The BlockFetch decision loop is the pool's own
-    * ([[FetchCoordinator.watchDecisions]]), with the grace of the installed Genesis control.
+  /** NodeKernel.hs:382–393 (consensus 82ecba329): the node owns the BlockFetch loop, independently
+    * of how many peer sessions currently exist.
     */
   private def maintainDecisions(
+      pool: BlockPool[IO],
       runtime: Option[GenesisRuntime[IO]],
       fatal: Fatal => IO[Unit]
   ): Resource[IO, Unit] =
-    runtime
-      .fold(IO.never[Unit])(_.governor.run.void)
+    IO.both(pool.fetchCoordinator.run, runtime.fold(IO.never[Unit])(_.governor.run.void))
       .handleErrorWith(cause => fatal(Fatal.Defect(cause)) *> IO.never)
       .background
       .void
@@ -1096,7 +1096,7 @@ object Main extends IOApp:
               ref.get.map(_.state.geometry(genesis.geometry))
             )
             genesisGovernor = genesisRuntime.map(_.governor)
-            decisionMaintenance = maintainDecisions(genesisRuntime, fatalSink)
+            decisionMaintenance = maintainDecisions(blockPool, genesisRuntime, fatalSink)
             // the connection manager (G2): one connection per peer address, limits, accounting
             accepted = options.accepted(setup.config.settings)
             connectionEvents = loggedConnections.alongside(measured.connection)

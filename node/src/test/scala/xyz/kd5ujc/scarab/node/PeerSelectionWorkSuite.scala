@@ -109,6 +109,7 @@ class PeerSelectionWorkSuite extends FailsOnUncaught:
                 )
               }
             }
+            .flatTap(_ => FetchTesting.decisions(pool))
             .use { peer =>
               for
                 _ <- peer.intersect(Vector(ChainSync.Point.Origin))

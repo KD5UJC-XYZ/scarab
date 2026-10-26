@@ -44,6 +44,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
         Supervisor[IO](await = false).use { supervisor =>
           for
             pool <- BlockPool.create[IO]
+            _ <- supervisor.supervise(pool.fetchCoordinator.run)
             transport <- InMemoryPeers.create(magic)
             source = InMemoryPeers.address(1)
             consumer = InMemoryPeers.address(2)
@@ -219,6 +220,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
               secondStarted <- Deferred[IO, Unit]
               activations <- Ref.of[IO, Int](0)
               pool <- BlockPool.create[IO]
+              _ <- supervisor.supervise(pool.fetchCoordinator.run)
               events <- Ref.of[IO, Vector[Event[PeerNetwork.Addr]]](Vector.empty)
               cursor = Resource.eval(Ref.of[IO, Int](0)).map { position =>
                 new ChainSyncServer.Source[IO, NtNHeader]:

@@ -89,7 +89,7 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
               _ <- IO.sleep(1.second)
               before <- session.requested
               _ <- session.follows(headers)
-              after <- session.acquire(IO.sleep(1.second))
+              after <- session.acquire
             yield
               assertEquals(before, None)
               assertEquals(after.map(_.headers), Some(headers))
@@ -361,7 +361,7 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
       assertEquals(after, before)
       assertEquals(decided, before + 1)
       // The new GSV gives a 393216-byte window; the first body crosses it (Decision.hs:1180).
-      assertEquals(requested, Vector(header(1)))
+      assertEquals(requested, Vector(header(1).copy(blockSizeHint = 400000)))
   }
 
   test("Genesis declines a peer whose chain is not plausible, while another serves the preferred") {
@@ -540,6 +540,153 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
             assertEquals(holding.map(_.by), Some(FetchCoordinator.DecisionHolder.Decide))
             assertEquals(afterCancel, None)
         }
+      }
+    }
+  }
+
+  test("Terminate wins over a request already queued for acknowledgement") {
+    FetchCoordinator.create[IO](selection = Some(IO.pure(origin))).flatMap { coordinator =>
+      coordinator.session(0).use { session =>
+        for
+          _ <- session.follows(Fixtures.chain(2))
+          _ <- coordinator.step
+          before <- coordinator.diagnostics
+          _ <- session.terminate
+          result <- session.acquire
+        yield
+          assertEquals(before.head.pendingRequests, 1)
+          assertEquals(result, None)
+      }
+    }
+  }
+
+  test("termination wakes an idle acknowledgement without admitting later requests") {
+    FetchCoordinator.create[IO](selection = Some(IO.pure(origin))).flatMap { coordinator =>
+      coordinator.session(0).use { session =>
+        session.acquire.background.use { result =>
+          for
+            _ <- session.terminate
+            _ <- session.follows(Fixtures.chain(2))
+            _ <- coordinator.step
+            first <- result.flatMap(_.embedNever)
+            later <- session.tryAcquire
+          yield
+            assertEquals(first, None)
+            assertEquals(later, None)
+        }
+      }
+    }
+  }
+
+  test("the decision-loop owner receives the original defect without a session") {
+    val defect = new IllegalStateException("decision snapshot defect")
+    FetchCoordinator.create[IO](selection = Some(IO.raiseError(defect))).flatMap { coordinator =>
+      coordinator.run.attempt.map(result => assertEquals(result, Left(defect)))
+    }
+  }
+
+  test("removing the last session leaves the owner's decision loop running") {
+    TestControl.executeEmbed {
+      for
+        reads <- Ref.of[IO, Long](0L)
+        coordinator <- FetchCoordinator.create[IO](selection = Some(reads.update(_ + 1).as(origin)))
+        _ <- coordinator.run.background.use { _ =>
+          for
+            _ <- coordinator.session(0).use(_ => IO.sleep(30.millis))
+            before <- reads.get
+            _ <- IO.sleep(30.millis)
+            after <- reads.get
+          yield assert(after > before)
+        }
+      yield ()
+    }
+  }
+
+  test("receipts use acknowledged limits and recompute Ready or Busy independently") {
+    val first = FetchTesting.header(1).copy(blockSizeHint = 1000)
+    val second = FetchTesting.header(2).copy(blockSizeHint = 299000)
+    val initial = FetchGsv.fromSample(0, FetchGsv.PicosPerSecond / 10)
+    val slow = FetchGsv.fromSample(1000, 1000 + 10 * FetchGsv.PicosPerSecond)
+    FetchCoordinator.create[IO]().flatMap { coordinator =>
+      coordinator.session(0).use { session =>
+        for
+          _ <- session.follows(Vector(first, second), initial)
+          _ <- coordinator.step
+          request <- session.requested.map(_.getOrElse(fail("expected request")))
+          before <- coordinator.diagnostics
+          _ <- session.updatePerformance(slow)
+          sampled <- coordinator.diagnostics
+          _ <- session.received(request, first.hash)
+          after <- coordinator.diagnostics
+          _ <- session.updatePerformance(slow.copy(sampleTimePicos = 2000))
+          resampled <- coordinator.diagnostics
+        yield
+          assertEquals(before.head.busy, false)
+          assertEquals(sampled.head.busy, false)
+          assertEquals(request.limits, initial.window)
+          assertEquals(after.head.busy, true)
+          assertEquals(resampled.head.busy, true)
+      }
+    }
+  }
+
+  test("an unacknowledged merge captures the latest GSV and limits") {
+    val first = FetchTesting.header(1)
+    val second = FetchTesting.header(2)
+    val fresh = FetchGsv.fromSample(1000, 1000 + 10 * FetchGsv.PicosPerSecond)
+    FetchCoordinator.create[IO]().flatMap { coordinator =>
+      coordinator.session(0).use { session =>
+        for
+          _ <- session.follows(Vector(first))
+          _ <- coordinator.step
+          _ <- session.follows(Vector(first, second), fresh)
+          _ <- coordinator.step
+          request <- session.requested.map(_.getOrElse(fail("expected request")))
+          _ <- session.updatePerformance(FetchGsv.default.copy(sampleTimePicos = 2000))
+        yield
+          assertEquals(request.headers, Vector(first, second))
+          assertEquals(request.requests, 1)
+          assertEquals(request.performance, fresh)
+          assertEquals(request.limits, fresh.window)
+      }
+    }
+  }
+
+  test("identical Byron hashes retain each peer's own size hint in flight") {
+    val first = FetchTesting.header(1).copy(blockSizeHint = 1000)
+    val second = first.copy(blockSizeHint = 5000)
+    FetchCoordinator.create[IO](BlockFetchPolicy.Config(deadlineConcurrency = 2)).flatMap {
+      coordinator =>
+        (coordinator.session(0), coordinator.session(1)).tupled.use { (one, two) =>
+          for
+            _ <- coordinator.setMode(FetchMode.Deadline)
+            _ <- one.follows(Vector(first))
+            _ <- two.follows(Vector(second))
+            _ <- coordinator.step
+            flight <- coordinator.inFlight
+          yield assertEquals(flight.values.map(_.bytes).toSet, Set(1000L, 5000L))
+        }
+    }
+  }
+
+  test("NoBlocks retires the rejected fragment and request together") {
+    val headers = Vector(FetchTesting.header(1), FetchTesting.header(2))
+    FetchCoordinator.create[IO]().flatMap { coordinator =>
+      coordinator.session(0).use { session =>
+        for
+          _ <- session.follows(headers)
+          _ <- coordinator.step
+          request <- session.requested.map(_.getOrElse(fail("expected request")))
+          changed <- session.changed
+          _ <- session.rejected(request, headers)
+          _ <- changed
+          flight <- coordinator.inFlight
+          status <- coordinator.diagnostics
+        yield
+          assertEquals(flight.values.map(_.requests).sum, 0)
+          assertEquals(flight.values.map(_.bytes).sum, 0L)
+          assert(flight.values.forall(_.blocks.isEmpty))
+          assertEquals(status.head.busy, false)
       }
     }
   }

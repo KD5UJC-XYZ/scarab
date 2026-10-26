@@ -42,8 +42,7 @@ class FetchPerformanceRefreshSuite extends FailsOnUncaught:
                   .watchDecisions(BigInt(3600) * 1000000000000L, Some(PicosClock.system[IO]))
                   .background
                   .use { _ =>
-                    waiting
-                      .acquire(IO.never)
+                    waiting.acquire
                       .flatMap(_.traverse_(a => admitted.complete(a.headers).void))
                       .background
                       .use { _ =>
@@ -103,8 +102,7 @@ class FetchPerformanceRefreshSuite extends FailsOnUncaught:
               _ <- incumbent.follows(Vector(header(1)), incumbentModel)
               _ <- coordinator.step
               _ <- waiting.follows(Vector(header(2)))
-              at <- waiting
-                .acquire(IO.never)
+              at <- waiting.acquire
                 .flatMap(a =>
                   IO(assertEquals(a.map(_.headers), Some(Vector(header(2))))) *>
                     IO.monotonic.flatMap(admitted.complete).void

@@ -43,7 +43,6 @@ class FetchCoordinationBenchSuite extends FailsOnUncaught:
   private val batches = headers.grouped(4).map(_.toVector).toVector
   private val candidate = ChainSelection.Candidate(anchor.point, headers)
   private val local = ChainSelection.Local(anchor.point, SelectView.of(anchor), Vector.empty)
-  private val hints = headers.map(_.hash -> blockBytes).toMap
 
   private final case class Observation(
       unique: Set[Bytes] = Set.empty,
@@ -113,7 +112,7 @@ class FetchCoordinationBenchSuite extends FailsOnUncaught:
           // Each peer's fetch client takes the requests the decision loop adds and downloads
           // them while it takes the next, as the session's fetch client does.
           peers.zip(sessions).traverse_ { case (peer, (session, _)) =>
-            session.announce(headers.lastOption, peer.model, hints, Some(candidate))
+            session.announce(headers.lastOption, peer.model, Some(candidate))
           } *> coordinator.setMode(mode) *> coordinator.watchDecisions(0).background.use { _ =>
             peers.zip(sessions).parTraverse_ { case (peer, (session, writer)) =>
               def download(allocation: FetchCoordinator.Allocation): IO[Unit] =
@@ -139,8 +138,8 @@ class FetchCoordinationBenchSuite extends FailsOnUncaught:
                   drained.flatMap {
                     case true => IO.pure(Right(()))
                     case false =>
-                      session.acquire(IO.sleep(1.millis)).flatMap {
-                        case None => IO.pure(Left(()))
+                      session.tryAcquire.flatMap {
+                        case None => IO.sleep(1.millis).as(Left(()))
                         case Some(allocation) =>
                           downloads.supervise(download(allocation)).as(Left(()))
                       }

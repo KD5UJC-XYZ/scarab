@@ -199,14 +199,24 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
                     byronEpochSlots = ForgedChain.geometry.byron.epochSlots
                   ),
                   raws =>
-                    receivedBodies.get.flatMap(seen =>
-                      IO(
-                        assert(
-                          raws.forall(raw => seen.exists(_._2 == raw)),
-                          "received originals must be persisted before preparation"
-                        )
-                      )
-                    ),
+                    (receivedBodies.get, pool.fetchCoordinator.inFlight).tupled.flatMap {
+                      (seen, flight) =>
+                        IO {
+                          assert(
+                            raws.forall(raw => seen.exists(_._2 == raw)),
+                            "received originals must be persisted before preparation"
+                          )
+                          val stillInFlight = flight.valuesIterator.flatMap(_.blocks).toSet
+                          assert(
+                            raws.forall(raw =>
+                              seen.exists { (hash, original) =>
+                                original == raw && stillInFlight(hash)
+                              }
+                            ),
+                            "checked bodies retain fetch credit until pool publication"
+                          )
+                        }
+                    },
                   pool = Some(pool),
                   receivedBody = Some((header, raw) =>
                     IO(
@@ -243,6 +253,7 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
                     ChainSyncHeights.selected(left.headers.take(common), Vector(base.point))
                 )
               }
+              .flatTap(_ => FetchTesting.decisions(pool))
               .use { peer =>
                 Resource
                   .make(

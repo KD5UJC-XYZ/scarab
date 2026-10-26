@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.{Async, Deferred, Fiber, Ref, Resource}
+import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.std.Mutex
 import cats.syntax.all.*
 import scala.concurrent.duration.FiniteDuration
@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.network.genesis.PicosClock
 import xyz.kd5ujc.scarab.codec.{Bytes, HaskellSort}
 import xyz.kd5ujc.scarab.consensus.ChainSelection
 import xyz.kd5ujc.scarab.ledger.Header
+import xyz.kd5ujc.scarab.network.ProtocolResults.Control
 import xyz.kd5ujc.scarab.network.selection.{
   BlockFetchPolicy,
   FetchGsv,
@@ -24,9 +25,8 @@ import xyz.kd5ujc.scarab.network.selection.{
   * ([[Session.acquire]]). Sessions only report what changed: their candidate, the blocks that
   * arrived. Nothing a session publishes or offers decides what is requested.
   *
-  * With `autonomous`, the coordinator runs that loop itself while it has a session, with the grace
-  * period of the installed Genesis control (none without one, Node/Genesis.hs:114). A defect of the
-  * loop ends every fetch client's wait with it, so that it ends the sessions as theirs would.
+  * The node owns the loop for its whole lifetime, independently of session registration (consensus
+  * 82ecba329 NodeKernel.hs:382–393). Its owner receives defects directly.
   */
 final class FetchCoordinator[F[_]: Async] private (
     state: Ref[F, FetchCoordinator.State[F]],
@@ -36,10 +36,7 @@ final class FetchCoordinator[F[_]: Async] private (
     salt: Long,
     genesis: Ref[F, Option[FetchCoordinator.GenesisControl[F]]],
     decisions: Mutex[F],
-    holder: Ref[F, Option[FetchCoordinator.Holding]],
-    autonomous: Boolean,
-    leases: Ref[F, FetchCoordinator.Lease[F]],
-    leasing: Mutex[F]
+    holder: Ref[F, Option[FetchCoordinator.Holding]]
 ):
   import FetchCoordinator.*
   private val F = Async[F]
@@ -70,6 +67,11 @@ final class FetchCoordinator[F[_]: Async] private (
       clock: Option[PicosClock[F]] = None,
       intervals: DecisionIntervals = DecisionIntervals.default
   ): F[Nothing] = loop(F.pure(gracePicos), clock.getOrElse(PicosClock.system[F]), intervals)
+
+  /** The node-owned decision loop, using the live Genesis grace configuration. */
+  private[node] def run: F[Nothing] =
+    val grace = genesis.get.flatMap(_.traverse(_.context)).map(_.fold(BigInt(0))(_.gracePicos))
+    loop(grace, PicosClock.system[F], DecisionIntervals.default)
 
   private def loop(
       grace: F[BigInt],
@@ -143,7 +145,7 @@ final class FetchCoordinator[F[_]: Async] private (
       val headers = active.flatMap(_.remaining)
       id -> BlockFetchPolicy.InFlight(
         active.map(_.requests).sum,
-        headers.map(h => sizeOf(h, s)).sum,
+        headers.map(estimatedBytes).sum,
         headers.map(_.hash).toSet
       )
     }
@@ -160,30 +162,7 @@ final class FetchCoordinator[F[_]: Async] private (
           )
         }
       )(id => change(s => s.copy(peers = s.peers - id)))
-      .flatTap(_ => Resource.make(lease)(_ => unlease).whenA(autonomous))
       .map(id => new Session(this, id))
-
-  /** The first session starts the autonomous loop, the last one stops it. */
-  private def lease: F[Unit] = leasing.lock.surround(
-    leases.get.flatMap { current =>
-      if current.sessions > 0 then leases.set(current.copy(sessions = current.sessions + 1))
-      else
-        val grace = genesis.get.flatMap(_.traverse(_.context)).map(_.fold(BigInt(0))(_.gracePicos))
-        F.start(
-          loop(grace, PicosClock.system[F], DecisionIntervals.default)
-            .handleErrorWith(defect =>
-              leases.update(_.copy(failed = Some(defect))) *> refreshGenesis *> F.never
-            )
-        ).flatMap(running => leases.set(Lease(1, Some(running), current.failed)))
-    }
-  )
-
-  private def unlease: F[Unit] = leasing.lock.surround(
-    leases.get.flatMap { current =>
-      if current.sessions > 1 then leases.set(current.copy(sessions = current.sessions - 1))
-      else current.running.traverse_(_.cancel) *> leases.set(Lease(0, None, current.failed))
-    }
-  )
 
   private def change(f: State[F] => State[F]): F[Unit] =
     locked(DecisionHolder.Change)(changeLocked(f))
@@ -202,10 +181,12 @@ final class FetchCoordinator[F[_]: Async] private (
 
   /** A change wakes whoever waits on the state: the decision loop and the fetch clients. */
   private def changeLocked(f: State[F] => State[F]): F[Unit] =
-    Deferred[F, Unit].flatMap { signal =>
-      state
-        .modify(before => (f(before).copy(signal = signal), before.signal))
-        .flatMap(_.complete(()).void)
+    F.uncancelable { _ =>
+      Deferred[F, Unit].flatMap { signal =>
+        state
+          .modify(before => (f(before).copy(signal = signal), before.signal))
+          .flatMap(_.complete(()).void)
+      }
     }
 
   /** Decide from one snapshot and act on it (State.hs:166–190), returning the next fingerprint:
@@ -231,7 +212,7 @@ final class FetchCoordinator[F[_]: Async] private (
             )
             val (after, requested, genesisMode) = act(snapshot)
             val next = fingerprint(snapshot, local).withStatuses(
-              requested.flatMap(id => after.peers.get(id).map(id -> status(_, after)))
+              requested.flatMap(id => after.peers.get(id).map(id -> status(_)))
             )
             val changed = requested.nonEmpty || after.genesisState != before.genesisState
             (
@@ -257,16 +238,15 @@ final class FetchCoordinator[F[_]: Async] private (
     Fingerprint(
       local.map(l => l.blocks.lastOption.fold(l.anchor)(_.point)),
       s.peers.map((id, peer) => id -> candidateOf(peer).tip),
-      s.peers.map((id, peer) => id -> status(peer, s))
+      s.peers.map((id, peer) => id -> status(peer))
     )
 
   /** `PeerFetchStatus` (ClientState.hs:145–188): busy, or ready with the blocks in flight and
     * whether any request is.
     */
-  private def status(peer: PeerState[F], s: State[F]): FetchStatus =
+  private def status(peer: PeerState[F]): FetchStatus =
     val remaining = peer.active.valuesIterator.flatMap(_.remaining).toVector
-    if peer.busy && remaining.map(h => sizeOf(h, s)).sum > peer.performance.window.lowBytes then
-      FetchStatus.Busy
+    if peer.busy then FetchStatus.Busy
     else
       FetchStatus.Ready(
         remaining.map(_.hash).toSet,
@@ -281,14 +261,14 @@ final class FetchCoordinator[F[_]: Async] private (
       ChainSelection.Candidate(xyz.kd5ujc.scarab.protocol.ChainSync.Point.Origin, Vector.empty)
     )
 
-  private def received(id: Long, token: Long, hash: Bytes): F[Unit] =
+  private def received(id: Long, allocation: Allocation, hash: Bytes): F[Unit] =
     change(s =>
       s.copy(peers = s.peers.updatedWith(id)(_.map { p =>
-        val active = p.active.updatedWith(token)(
+        val active = p.active.updatedWith(allocation.token)(
           _.map(a => a.copy(remaining = a.remaining.filterNot(_.hash == hash)))
         )
-        val bytes = active.valuesIterator.flatMap(_.remaining).map(h => sizeOf(h, s)).sum
-        p.copy(active = active, busy = p.busy && bytes > p.performance.window.lowBytes)
+        val bytes = active.valuesIterator.flatMap(_.remaining).map(estimatedBytes).sum
+        p.copy(active = active, busy = bytes > allocation.limits.lowBytes)
       }))
     )
 
@@ -305,39 +285,62 @@ final class FetchCoordinator[F[_]: Async] private (
       )
     )
 
+  /** NoBlocks removes the rejected fragment and its request in one transaction: network 2fb69829
+    * ClientState.hs:665–685.
+    */
+  private def rejected(id: Long, allocation: Allocation, headers: Vector[Header]): F[Unit] =
+    val hashes = headers.map(_.hash).toSet
+    change(s =>
+      s.copy(peers = s.peers.updatedWith(id)(_.map { peer =>
+        val active = peer.active.updatedWith(allocation.token)(
+          _.map(a =>
+            a.copy(
+              remaining = a.remaining.filterNot(h => hashes(h.hash)),
+              requests = (a.requests - 1).max(0)
+            )
+          )
+        )
+        val bytes = active.valuesIterator.flatMap(_.remaining).map(estimatedBytes).sum
+        peer.copy(active = active, busy = bytes > allocation.limits.lowBytes)
+      }))
+    )
+
   /** The request's ranges have ended, however they ended: nothing of it is in flight any more. */
   private def finished(id: Long, token: Long): F[Unit] =
     change(s =>
       s.copy(peers = s.peers.updatedWith(id)(_.map(p => p.copy(active = p.active - token))))
     )
 
-  /** `acknowledgeFetchRequest` (ClientState.hs:551–555): take the request the decisions added for
-    * this session, waiting for one; none once `until` completes first. Its blocks stay in flight
-    * until they arrive or it ends. A request taken is never lost to a cancelled wait.
+  /** ControlMessage.hs:47–55 and ClientState.hs:551–555: termination wins over an already queued
+    * request in the same transaction that acknowledges the request.
     */
-  private def acquire(id: Long, until: F[Unit]): F[Option[Allocation]] =
+  private def takeRequest(id: Long): F[Either[Deferred[F, Unit], Option[Allocation]]] =
+    state.modify { s =>
+      s.peers.get(id) match
+        case None                                            => (s, Right(None))
+        case Some(peer) if peer.control == Control.Terminate => (s, Right(None))
+        case Some(peer) =>
+          peer.request match
+            case Some(request) =>
+              (s.copy(peers = s.peers.updated(id, peer.copy(request = None))), Right(Some(request)))
+            case None => (s, Left(s.signal))
+    }
+
+  private def acquire(id: Long): F[Option[Allocation]] =
     F.uncancelable { poll =>
       F.tailRecM(()) { _ =>
-        leases.get.flatMap(_.failed.traverse_(F.raiseError[Unit])) *> state
-          .modify { s =>
-            s.peers.get(id).flatMap(_.request) match
-              case Some(request) =>
-                (
-                  s.copy(peers = s.peers.updatedWith(id)(_.map(_.copy(request = None)))),
-                  Right(request)
-                )
-              case None => (s, Left(s.signal))
-          }
-          .flatMap {
-            case Right(request) => F.pure(Right(Some(request)))
-            case Left(signal) =>
-              poll(F.race(until, signal.get)).map {
-                case Left(_)  => Right(None)
-                case Right(_) => Left(())
-              }
-          }
+        takeRequest(id).flatMap {
+          case Right(request) => F.pure(Right(request))
+          case Left(signal)   => poll(signal.get).as(Left(()))
+        }
       }
     }
+
+  private def tryAcquire(id: Long): F[Option[Allocation]] =
+    takeRequest(id).map(_.toOption.flatten)
+
+  private def terminate(id: Long): F[Unit] =
+    change(s => s.copy(peers = s.peers.updatedWith(id)(_.map(_.copy(control = Control.Terminate)))))
 
   /** Until no request of this session that its fetch client took is in flight. */
   private def settled(id: Long): F[Unit] =
@@ -395,23 +398,10 @@ final class FetchCoordinator[F[_]: Async] private (
       id: Long,
       tip: Option[Header],
       performance: FetchGsv.PeerGsv,
-      hints: Map[Bytes, Long],
       candidate: Option[ChainSelection.Candidate]
   ): F[Unit] =
     change { s =>
-      val added = hints.map((hash, size) => hash -> (size -> s.next))
-      val live = s.peers.valuesIterator
-        .flatMap(p =>
-          p.active.valuesIterator.flatMap(_.claimed) ++ p.request.iterator
-            .flatMap(_.headers.map(_.hash)) ++ p.candidate.iterator.flatMap(_.headers.map(_.hash))
-        )
-        .toSet
-      val combined = s.hints ++ added
-      val retained = combined.filter((hash, _) => live(hash)) ++
-        combined.toVector.sortBy(_._2._2).takeRight(2 * BlockPool.Retained).toMap
       s.copy(
-        next = s.next + 1,
-        hints = retained,
         peers = s.peers.updatedWith(id)(
           _.map(peer =>
             peer.copy(
@@ -476,14 +466,14 @@ final class FetchCoordinator[F[_]: Async] private (
           if useGenesis || s.mode == FetchMode.Deadline then -preference(tipOf(peer))
           else preference(tipOf(peer)),
         chainHead = tipOf(peer).fold(Bytes.empty)(_.hash),
-        fragments = fragmentsOf(chosen.getOrElse(Vector.empty), h => sizeOf(h, s)),
+        fragments = fragmentsOf(chosen.getOrElse(Vector.empty), estimatedBytes),
         performance = peer.performance,
         inFlight = BlockFetchPolicy.InFlight(
           flight.map(_.requests).sum,
-          remaining.map(h => sizeOf(h, s)).sum,
+          remaining.map(estimatedBytes).sum,
           remaining.map(_.hash).toSet
         ),
-        status = status(peer, s) match
+        status = status(peer) match
           case FetchStatus.Busy        => BlockFetchPolicy.Status.Busy
           case FetchStatus.Ready(_, _) => BlockFetchPolicy.Status.Ready
         ,
@@ -548,11 +538,17 @@ final class FetchCoordinator[F[_]: Async] private (
         (
           old.copy(
             headers = old.headers ++ headers,
-            requests = old.requests + fragments - (if joined then 1 else 0)
+            requests = old.requests + fragments - (if joined then 1 else 0),
+            performance = peer.performance,
+            limits = peer.performance.window
           ),
           s.next
         )
-      case None => (Allocation(s.next, headers, fragments), s.next + 1)
+      case None =>
+        (
+          Allocation(s.next, headers, fragments, peer.performance, peer.performance.window),
+          s.next + 1
+        )
     val active = peer.active.updatedWith(request.token) { previous =>
       val before = previous.getOrElse(Active(Vector.empty, 0, Set.empty))
       Some(
@@ -563,12 +559,11 @@ final class FetchCoordinator[F[_]: Async] private (
         )
       )
     }
-    val bytes = active.valuesIterator.flatMap(_.remaining).map(h => sizeOf(h, s)).sum
+    val bytes = active.valuesIterator.flatMap(_.remaining).map(estimatedBytes).sum
     val updated = peer.copy(
       request = Some(request),
       active = active,
-      busy = (peer.busy && status(peer, s) == FetchStatus.Busy) ||
-        bytes >= peer.performance.window.highBytes
+      busy = bytes >= peer.performance.window.highBytes
     )
     s.copy(next = next, peers = s.peers.updated(id, updated))
 
@@ -631,21 +626,13 @@ object FetchCoordinator:
 
   private[node] final case class Holding(who: DecisionHolder, at: FiniteDuration)
 
-  /** The autonomous loop: how many sessions keep it running, its fiber, and its defect if it had
-    * one.
-    */
-  private[node] final case class Lease[F[_]](
-      sessions: Int,
-      running: Option[Fiber[F, Throwable, Nothing]],
-      failed: Option[Throwable]
-  )
-
   private final case class Active(remaining: Vector[Header], requests: Int, claimed: Set[Bytes])
   private final case class PeerState[F[_]](
       identity: Long,
       tip: Option[Header] = None,
       candidate: Option[ChainSelection.Candidate] = None,
       performance: FetchGsv.PeerGsv = FetchGsv.default,
+      control: Control = Control.Continue,
       request: Option[Allocation] = None,
       active: Map[Long, Active] = Map.empty,
       busy: Boolean = false,
@@ -656,7 +643,6 @@ object FetchCoordinator:
       next: Long,
       peers: Map[Long, PeerState[F]],
       mode: FetchMode = FetchMode.BulkSync,
-      hints: Map[Bytes, (Long, Long)] = Map.empty,
       selected: Option[ChainSelection.Local] = None,
       fetched: Set[Bytes] = Set.empty,
       genesisContext: Option[GenesisContext] = None,
@@ -665,23 +651,30 @@ object FetchCoordinator:
   )
 
   /** A request the decisions added for a session: `headers` in `requests` contiguous ranges. */
-  private[node] final case class Allocation(token: Long, headers: Vector[Header], requests: Int)
+  private[node] final case class Allocation(
+      token: Long,
+      headers: Vector[Header],
+      requests: Int,
+      performance: FetchGsv.PeerGsv,
+      limits: FetchGsv.Window
+  )
 
   final class Session[F[_]] private[FetchCoordinator] (owner: FetchCoordinator[F], id: Long):
     def announce(
         tip: Option[Header],
         performance: FetchGsv.PeerGsv,
-        hints: Map[Bytes, Long] = Map.empty,
         candidate: Option[ChainSelection.Candidate] = None
     ): F[Unit] =
-      owner.announce(id, tip, performance, hints, candidate)
+      owner.announce(id, tip, performance, candidate)
     def identity: Long = id
 
     /** Let [[diagnostics]] read this session's pipeline through `probe`, which must not block. */
     private[node] def observed(probe: F[Peer.PipelineState]): F[Unit] = owner.observe(id, probe)
     private[node] def updatePerformance(performance: FetchGsv.PeerGsv): F[Unit] =
       owner.updatePerformance(id, performance)
-    private[node] def acquire(until: F[Unit]): F[Option[Allocation]] = owner.acquire(id, until)
+    private[node] def acquire: F[Option[Allocation]] = owner.acquire(id)
+    private[node] def tryAcquire: F[Option[Allocation]] = owner.tryAcquire(id)
+    private[node] def terminate: F[Unit] = owner.terminate(id)
     private[node] def settled: F[Unit] = owner.settled(id)
     private[node] def obtain[A](hash: Bytes, take: F[Option[A]]): F[A] = owner.obtain(hash, take)
 
@@ -693,7 +686,9 @@ object FetchCoordinator:
     private[node] def changed: F[F[Unit]] = owner.changed
     private[node] def await(hash: Bytes): F[Unit] = owner.await(hash)
     private[node] def received(allocation: Allocation, hash: Bytes): F[Unit] =
-      owner.received(id, allocation.token, hash)
+      owner.received(id, allocation, hash)
+    private[node] def rejected(allocation: Allocation, headers: Vector[Header]): F[Unit] =
+      owner.rejected(id, allocation, headers)
     private[node] def completed(allocation: Allocation): F[Unit] =
       owner.completed(id, allocation.token)
     private[node] def finished(allocation: Allocation): F[Unit] =
@@ -702,10 +697,7 @@ object FetchCoordinator:
   private[node] def estimatedBytes(header: Header): Long = header match
     case h: Header.Shelley =>
       (h.bodySize + h.raw.size + 10).min(BigInt(Long.MaxValue)).max(0).toLong
-    case _: Header.Byron => 0L
-
-  private def sizeOf[F[_]](header: Header, state: State[F]): Long =
-    state.hints.get(header.hash).fold(estimatedBytes(header))(_._1)
+    case h: Header.Byron => h.blockSizeHint.toLong
 
   private def fragmentsOf(
       headers: Vector[Header],
@@ -733,17 +725,14 @@ object FetchCoordinator:
       config: BlockFetchPolicy.Config = BlockFetchPolicy.Config(),
       selection: Option[F[ChainSelection.Local]] = None,
       fetched: Option[F[Set[Bytes]]] = None,
-      salt: Long = 0L,
-      autonomous: Boolean = false
+      salt: Long = 0L
   ): F[FetchCoordinator[F]] =
     (
       Deferred[F, Unit].flatMap(signal => Ref.of[F, State[F]](State[F](signal, 0, Map.empty))),
       Ref.of[F, Option[GenesisControl[F]]](None),
       Mutex[F],
-      Ref.of[F, Option[Holding]](None),
-      Ref.of[F, Lease[F]](Lease(0, None, None)),
-      Mutex[F]
-    ).mapN { (state, genesis, decisions, holder, leases, leasing) =>
+      Ref.of[F, Option[Holding]](None)
+    ).mapN { (state, genesis, decisions, holder) =>
       new FetchCoordinator(
         state,
         config,
@@ -752,9 +741,6 @@ object FetchCoordinator:
         salt,
         genesis,
         decisions,
-        holder,
-        autonomous,
-        leases,
-        leasing
+        holder
       )
     }

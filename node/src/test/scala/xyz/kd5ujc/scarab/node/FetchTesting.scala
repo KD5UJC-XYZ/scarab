@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.IO
+import cats.effect.{IO, Outcome, Resource}
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.ChainSelection
 import xyz.kd5ujc.scarab.ledger.Header
@@ -10,6 +11,17 @@ import xyz.kd5ujc.scarab.protocol.ChainSync
 
 /** Headers, candidates and session steps shared by the fetch-decision suites. */
 private[node] object FetchTesting:
+  /** A test node owns its loop independently of the peers it creates. */
+  def decisions(pool: BlockPool[IO]): Resource[IO, Unit] =
+    Resource
+      .make(pool.fetchCoordinator.run.start) { fiber =>
+        fiber.cancel *> fiber.join.flatMap {
+          case Outcome.Errored(cause) => IO.raiseError(cause)
+          case _                      => IO.unit
+        }
+      }
+      .void
+
   /** A Byron header whose hash is `n` and whose predecessor is `n - 1`. */
   def header(n: Int): Header.Byron = Header
     .UnsizedByron(
@@ -34,10 +46,15 @@ private[node] object FetchTesting:
         performance: FetchGsv.PeerGsv = FetchGsv.default,
         hints: Map[Bytes, Long] = Map.empty
     ): IO[Unit] =
-      session.announce(headers.lastOption, performance, hints, Some(candidate(headers)))
+      val sized = headers.map {
+        case header: Header.Byron =>
+          hints.get(header.hash).fold(header)(hint => header.copy(blockSizeHint = hint))
+        case header => header
+      }
+      session.announce(sized.lastOption, performance, Some(candidate(sized)))
 
     /** The request the decisions added for the session, without waiting for one. */
-    def requested: IO[Option[FetchCoordinator.Allocation]] = session.acquire(IO.unit)
+    def requested: IO[Option[FetchCoordinator.Allocation]] = session.tryAcquire
 
     /** The headers of that request, none when there is none. */
     def requestedHeaders: IO[Vector[Header]] = requested.map(_.toVector.flatMap(_.headers))

@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.mtl.syntax.all.*
+import cats.syntax.flatMap.*
 import com.comcast.ip4s.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules, SelectView, VolatileChain}
@@ -143,6 +144,7 @@ class PeerForkPrefixSuite extends FailsOnUncaught:
                     selectionWork = Some(bodyWork)
                   )
                 }
+                .flatTap(_ => FetchTesting.decisions(pool))
                 .use { peer =>
                   Resource
                     .make(

@@ -33,9 +33,10 @@ waits until the trigger fingerprint (our chain's head, each peer's candidate hea
 peer's fetch status with its in-flight set) differs or the grace expires, decides for every
 peer from its whole current ChainSync candidate, acts, and sleeps out the rest of its
 mode's decision interval. Fetched blocks, GSVs and the fetch mode are non-trigger state.
-The pool's coordinator runs the loop while it has sessions; a harness with its own clock
-runs it itself. Each session's candidate is an empty fragment until it announces one, as
-consensus registers it.
+The node owns the loop for its lifetime, independently of session registration, and receives
+its defects directly (`NodeKernel.hs:382–393`, consensus `82ecba329`). A standalone peer or
+test node owns its own loop resource. Each session's candidate is an empty fragment until it
+announces one, as consensus registers it.
 
 The decision pipeline is the reference's: `filterPlausibleCandidates`,
 `selectForkSuffixes` and `filterNotAlreadyFetched` (`FetchCandidates`), then
@@ -60,19 +61,31 @@ write back to the consensus selection cache or acquire its application lock. Act
 ChainSync batches are capped at 2048 to fit the current plus three queued batches
 inside the 8192-header history; the configured read-ahead remains an upper bound. Announced
 Shelley sizes are the reference's `estimateBlockSize` (body + header + 10 bytes), and
-Byron uses the advertised node-to-node size hint (`byronHeaderBlockSizeHint`), retained
-outside signed headers.
+Byron uses the advertised node-to-node size hint (`byronHeaderBlockSizeHint`), retained on
+each decoded header outside its signed bytes. Raw-only decoding returns `UnsizedByron`;
+joining an actual hint produces `Header.Byron`. Full-block decoding derives the hint from
+the original block annotation plus nine bytes, as `Byron/Ledger/Block.hs:141–175,274–338`
+at consensus `82ecba329` does. One peer's hint cannot change another peer's in-flight bytes.
 
 Per-peer request/byte limits use upstream high/low-water hysteresis and permit the
 last complete block to cross the high watermark. A pool claim is bookkeeping for a
 session that waits for a block; it never changes what was requested.
+The unacknowledged slot merges requests with the latest GSV and limits; acknowledgement
+retains those limits for every range and receipt of that request (`ClientState.hs:760–793`).
+Each add computes Busy against its high watermark, while each receipt or rejected batch
+computes Ready against its captured low watermark (`ClientState.hs:723–746`). GSV sampling
+alone cannot change the stored status. Terminate takes precedence over a queued request in
+the same state transaction (`ControlMessage.hs:47–55`); state publication and waiter wakeup
+form a finite uncancelable operation.
 
 ## Pipeline and lifetime
 
 Production connections allocate `BlockFetchClient.resource`. Concurrent submissions
 are bounded (100 by default, matching `Cardano/Network/NodeToNode.hs:212` at the pin), go onto the wire in FIFO order and collect responses
-in that order. Per-block observations return estimated byte credit immediately;
-BatchDone/NoBlocks returns request credit before signature preparation completes.
+in that order. A checked original enters the shared fetched state before its estimated byte
+credit is returned (`Client.hs:274–295`). NoBlocks retires the rejected fragment and request
+in one transaction. BatchDone validates the expected count before successful completion;
+too few blocks remain a typed protocol failure (`Client.hs:236–240,300–304`).
 The compatibility `apply` constructor remains serial for callers requiring it.
 
 Each collector owns its typed error scope and ends with a value (ADR 0017). A
