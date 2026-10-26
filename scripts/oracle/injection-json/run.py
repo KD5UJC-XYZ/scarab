@@ -36,7 +36,7 @@ def main():
                    "--cpus", "2", "--memory", "4g", "--tmpfs", "/build:exec",
                    "-v", f"{here}:/probe:ro", "-v", f"{inputs}:/inputs.jsonl:ro",
                    "--entrypoint", "sh", args.image, "-c",
-                   "cabal exec -- ghc -Wall -Werror -package aeson -package json-stream "
+                   "cabal exec -- ghc -Wall -Werror -package aeson -package scientific -package json-stream "
                    "-package base16-bytestring -outputdir /build /probe/Main.hs -o /build/oracle >&2 "
                    "&& /build/oracle < /inputs.jsonl"]
         result = subprocess.run(command, capture_output=True, text=True)

@@ -26,6 +26,48 @@ class InjectionJsonSuite extends FunSuite:
       .map(s => parser.parse(s).fold(e => fail(e.message), identity))
   }
 
+  private enum Work:
+    case Visit(value: Json)
+    case Key(value: String)
+
+  private val decimalToken = "(-?)([0-9]+)(?:\\.([0-9]+))?(?:[eE]([+-]?[0-9]+))?".r
+  private def valueEvents(value: Json): Vector[Json] =
+    def row(tag: String, values: Json*): Json = Json.arr((Json.fromString(tag) +: values)*)
+    @tailrec def walk(todo: List[Work], acc: List[Json]): Vector[Json] = todo match
+      case Nil                   => acc.reverse.toVector
+      case Work.Key(key) :: rest => walk(rest, row("key", Json.fromString(key)) :: acc)
+      case Work.Visit(value) :: rest =>
+        val (event, children) = value.fold[(Json, List[Work])](
+          (row("null"), Nil),
+          b => (row("bool", Json.fromBoolean(b)), Nil),
+          n =>
+            n.toString match
+              case decimalToken(sign, whole, fraction, power) =>
+                val decimals = Option(fraction).getOrElse("")
+                val coefficient = BigInt(sign + whole + decimals)
+                // Observe the returned representation: do not wrap or normalize it in the test.
+                val exponent = Option(power).fold(BigInt(0))(BigInt(_)) - decimals.length
+                (
+                  row(
+                    "number",
+                    Json.fromString(coefficient.toString),
+                    Json.fromString(exponent.toString)
+                  ),
+                  Nil
+                )
+              case other => fail(s"not a decimal Json number: $other"),
+          text => (row("string", Json.fromString(text)), Nil),
+          array => (row("array", Json.fromInt(array.size)), array.toList.map(Work.Visit.apply)),
+          obj =>
+            // Iteration is observed directly; sorting here would conceal a product ordering error.
+            (
+              row("object", Json.fromInt(obj.size)),
+              obj.toVector.toList.flatMap { (key, v) => List(Work.Key(key), Work.Visit(v)) }
+            )
+        )
+        walk(children ::: rest, event :: acc)
+    walk(List(Work.Visit(value)), Nil)
+
   private final case class Trace(
       status: String,
       feeds: Vector[Int],
@@ -70,7 +112,15 @@ class InjectionJsonSuite extends FunSuite:
       val native = field[Json](c, "native")
       assertEquals(actual.status, field[String](native, "status"))
       assertEquals(actual.feeds, field[Vector[Int]](native, "feeds"))
-      assertEquals(actual.pairs, field[Vector[Json]](native, "pairs"))
+      // Observe native Value directly. Re-parsing its JSON encoding can normalize Scientific
+      // or overflow the formatter's exponent; serialized pairs remain in the portable replay.
+      val observed = actual.pairs.map { pair =>
+        val items = pair.asArray.fold(fail("pair is not an array"))(identity)
+        val key = items.headOption.fold(fail("missing pair key"))(identity)
+        val value = items.lift(1).fold(fail("missing pair value"))(identity)
+        Json.obj("key" -> key, "events" -> Json.fromValues(valueEvents(value)))
+      }
+      assertEquals(observed, field[Vector[Json]](native, "pairEvents"))
       assertEquals(actual.remaining, field[Option[Int]](native, "remaining"))
       assertEquals(actual.remainingHex, field[Option[String]](native, "remainingHex"))
       assertEquals(actual.error.nonEmpty, native.hcursor.get[String]("error").isRight)

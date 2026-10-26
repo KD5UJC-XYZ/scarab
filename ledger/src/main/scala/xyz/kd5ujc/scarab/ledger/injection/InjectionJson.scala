@@ -159,8 +159,15 @@ object InjectionJson:
           case ObjectEnd =>
             s.frames match
               case Frame.ObjectFields(fields, None) :: rest =>
-                // The native parser reverses pairs before KeyMap.fromList: first original key wins.
-                value(new State(s.lexer, Mode.Value, rest), Json.fromFields(fields))
+                // Aeson's ordered KeyMap keeps the last supplied pair and traverses Text keys.
+                // Original pairs are reversed: first original wins, then unsigned UTF-8 order.
+                val ordered = fields.toMap.toVector
+                  .map { (key, value) =>
+                    (Bytes.wrap(key.getBytes(java.nio.charset.StandardCharsets.UTF_8)), key, value)
+                  }
+                  .sortBy(_._1)
+                  .map { (_, key, value) => (key, value) }
+                value(new State(s.lexer, Mode.Value, rest), Json.fromFields(ordered))
               case _ => Action.Return(Step.Failed(Error.InvalidFrame))
           case StringRaw(bytes) => string(s, bytes, Destination.Key(outer))
           case StringPart(bytes) =>

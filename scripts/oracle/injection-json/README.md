@@ -16,3 +16,8 @@ Its temporary input file and container are removed automatically. JSON numeric t
 exact spelling and their distinct type, including exponents beyond Python Decimal's range.
 The replay checks every native output field, including diagnostic text. Scala compares typed
 refusal decisions instead of native diagnostic wording; see the [corpus scope](../../../fixtures/reference/injection-json/README.md).
+
+Each trace retains serialized `pairs` and adds complete `pairEvents` from the native Values,
+including KeyMap traversal order and Scientific coefficient/exponent. The Scala comparison uses
+those direct events uniformly because JSON formatting can overflow an extreme exponent; the
+portable replay still compares every serialized field without normalization.
