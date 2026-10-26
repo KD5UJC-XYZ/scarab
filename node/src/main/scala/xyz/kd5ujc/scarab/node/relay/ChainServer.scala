@@ -184,7 +184,16 @@ final class ChainServer[F[_]: Async] private (
                   val stored = StorageBoundary.stream(fatal)(s.stream(from))
                   inVolatile match
                     case Some(j) =>
-                      Some(first ++ stored.map(_.raw) ++ emit(chain.blocks.take(j + 1)))
+                      // The store is read while the range streams, and blocks of the captured
+                      // volatile chain may reach it before or during the read: its part ends at
+                      // the captured boundary, so the range is exactly `from` to `to`, as the
+                      // reference's one iterator over the inclusive bounds
+                      // (`MiniProtocol/BlockFetch/Server.hs` `receiveReq`).
+                      val immutable = chain.anchor match
+                        case Some(boundary) if boundary.point != from =>
+                          stored.takeThrough(_.ref.point != boundary.point)
+                        case _ => Stream.empty
+                      Some(first ++ immutable.map(_.raw) ++ emit(chain.blocks.take(j + 1)))
                     case None => Some(first ++ stored.takeThrough(_.ref.point != to).map(_.raw))
           case _ => None
         }
