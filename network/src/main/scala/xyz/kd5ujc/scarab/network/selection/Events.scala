@@ -74,6 +74,8 @@ private[selection] object Events:
       policy: Policy
   )(using Ordering[A]): Decision[A] =
     observation match
+      case Observation.ActionFailed(operation, error) =>
+        Decision(st0, Nil, List(Trace.PeerActionFailed(peer, operation, error)))
       case Observation.CachedBlockRejected(cause, generation, live) =>
         Decision(st0, Nil, List(Trace.CachedBlockRejected(peer, cause, generation, live)))
       case other => observedConnection(st0, peer, other, now, policy)
@@ -92,13 +94,13 @@ private[selection] object Events:
           case Observation.CachedBlockRejected(cause, generation, live) =>
             Decision(st0, Nil, List(Trace.CachedBlockRejected(peer, cause, generation, live)))
           // a hot protocol ended and the connection is up: warm again
-          case Observation.HotEnded(delay) if record.status == Status.Hot =>
+          case Observation.HotEnded(delay, reason) if record.status == Status.Hot =>
             val (extra, st) = fuzz(st0, policy.warmReconnectFuzz._1, policy.warmReconnectFuzz._2)
             val readyAt = delay.fold(now)(d => now + (d + extra).max(Duration.Zero))
             Decision(
               st.updated(peer)(_.copy(status = Status.Warm(readyAt))),
               Nil,
-              List(Trace.DemoteAsynchronous(peer, Temperature.Warm, None, None))
+              List(Trace.DemoteAsynchronous(peer, Temperature.Warm, None, None, reason, delay))
             )
           // the connection is going: it lingers until the connection manager releases it
           case Observation.Lost(failure, _, false, reason) =>

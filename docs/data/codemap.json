@@ -93,8 +93,8 @@
    "module": "network",
    "path": "network",
    "responsibility": "fs2 bearer, multiplexer, connection manager, client and server roles of each mini-protocol",
-   "entryPoints": ["Mux", "Bearer", "ConnectionManager", "NodeToNode", "HandshakeClient", "ChainSyncClient", "BlockFetchClient", "NodeToNodeServer"],
-   "suites": ["MuxSuite", "ConnectionManagerSuite", "NodeToNodeSuite", "HandshakeSuite", "ChainSyncRuntimeSuite", "BlockFetchPipelineSuite"],
+   "entryPoints": ["Mux", "Bearer", "ConnectionManager", "NodeToNode", "HandshakeClient", "ChainSyncClient", "BlockFetchClient", "NodeToNodeServer", "ProtocolResults"],
+   "suites": ["MuxSuite", "ConnectionManagerSuite", "NodeToNodeSuite", "HandshakeSuite", "ChainSyncRuntimeSuite", "BlockFetchPipelineSuite", "ProtocolResultsSuite", "WarmHotSuite"],
    "docs": ["docs/adr/0008-networking-as-implemented.md", "docs/adr/0017-fibers-end-with-values.md", "docs/design/chainsync-pipeline.md", "docs/design/network-limits.md"]
   },
   {
@@ -261,9 +261,9 @@
    "module": "node",
    "path": "node",
    "responsibility": "Node wiring: config, setup, follower, block pool, fetch coordination, governors, header gate, Main",
-   "entryPoints": ["Main", "NodeConfig", "NodeSetup", "Follower", "BlockPool", "FetchCoordinator", "InboundGovernor", "HeaderGate"],
-   "suites": ["FollowerSuite", "BlockPoolSuite", "FetchCoordinatorSuite", "ConfigSuite", "InboundGovernorSuite", "HeaderGateSuite"],
-   "docs": ["docs/design/block-fetch-coordination.md", "docs/adr/0017-fibers-end-with-values.md", "docs/adr/0018-parallel-plutus-after-ordered-preparation.md"]
+   "entryPoints": ["Main", "NodeConfig", "NodeSetup", "Follower", "BlockPool", "FetchCoordinator", "InboundGovernor", "HeaderGate", "OutboundPeers", "PeerGovernor"],
+   "suites": ["FollowerSuite", "BlockPoolSuite", "FetchCoordinatorSuite", "ConfigSuite", "InboundGovernorSuite", "HeaderGateSuite", "OutboundLossReportSuite", "OutboundLinkIdentitySuite", "ConnectionMonitorSuite", "ConnectionResourcesSuite"],
+   "docs": ["docs/design/block-fetch-coordination.md", "docs/adr/0017-fibers-end-with-values.md", "docs/adr/0018-parallel-plutus-after-ordered-preparation.md", "docs/design/peer-selection.md"]
   },
   {
    "module": "node",

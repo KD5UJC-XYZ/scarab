@@ -120,16 +120,28 @@ private[log] object PeerSelectionLines:
           "timedOut" -> timedOut.asJson
         )
         .at(Severity.Warning)
-    case Trace.DemoteAsynchronous(peer, to, f, reason) =>
+    case Trace.DemoteAsynchronous(peer, to, f, reason, returned, delay) =>
       EventKind.PeerSelectionDemote
         .line(
           "action" -> "asynchronous".asJson,
           "to" -> temperature(to),
           "peer" -> peer.toString.asJson,
           "failure" -> f.map(failure).asJson,
-          "reason" -> reason.asJson
+          "reason" -> reason.orElse(returned.map(_.message)).asJson,
+          "repromoteDelaySeconds" -> delay.map(seconds).asJson
         )
         .at(if f.isDefined then Severity.Warning else Severity.Info)
+    case Trace.PeerActionFailed(peer, operation, error) =>
+      (if operation == xyz.kd5ujc.scarab.network.PeerOperation.Activate then
+         EventKind.PeerSelectionPromote
+       else EventKind.PeerSelectionDemote)
+        .line(
+          "action" -> "failed".asJson,
+          "peer" -> peer.toString.asJson,
+          "operation" -> operation.toString.asJson,
+          "reason" -> error.message.asJson
+        )
+        .at(Severity.Warning)
     case Trace.CachedBlockRejected(peer, cause, generation, live) =>
       EventKind.PeerSelectionSource.line(
         "action" -> "cachedBlockRejected".asJson,
