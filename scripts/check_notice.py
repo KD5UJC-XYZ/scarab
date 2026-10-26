@@ -28,7 +28,7 @@ INVENTORY = "docs/licenses.md"
 
 VERSION_ENTRY = re.compile(r'^\s+val (\w+) = "([^"]+)"\s*(?://.*)?$')
 LIBRARY_ENTRY = re.compile(r'^\s+val (\w+) = "([^"]+)" (%%|%) "([^"]+)" % (V\.\w+|"[^"]+")(?: % (Test))?\s*(?://.*)?$')
-VERSION_TOKEN = re.compile(r"(?<![\w.-])\d+(?:\.\d+)+(?![\w.-])")
+VERSION_TOKEN = re.compile(r"(?<![\w.-])\d+(?:\.\d+)+(?:-[A-Za-z0-9][\w.-]*)?(?![\w.-])")
 RUNTIME_ROW = re.compile(r"^\| ([\w.-]+:[\w.-]+) \| ([\w.-]+) \|")
 
 

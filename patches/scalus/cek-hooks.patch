@@ -1,0 +1,48 @@
+--- a/scalus-core/shared/src/main/scala/scalus/uplc/eval/Cek.scala
++++ b/scalus-core/shared/src/main/scala/scalus/uplc/eval/Cek.scala
+@@ -1266,7 +1266,9 @@
+ 
+     private def returnCek(ctx: Context, env: CekValEnv, value: CekValue): CekState = {
+         ctx match
+-            case NoFrame         => Done(dischargeCekValue(value))
++            case NoFrame =>
++                beforeResultDischarge(env)
++                Done(dischargeCekValue(value))
+             case FrameForce(ctx) => forceEvaluate(ctx, env, value)
+             case FrameAwaitFunTerm(env, arg, ctx, callPos) =>
+                 Compute(FrameAwaitArg(value, ctx, callPos), env, arg)
+@@ -1656,17 +1658,29 @@
+                 throw new NonPolymorphicInstantiationMachineError(value, env, lastSourcePos)
+     }
+ 
++    /** Called immediately before a successful result is discharged. */
++    protected def beforeResultDischarge(env: CekValEnv): Unit = ()
++
++    /** Charges a saturated builtin before its denotation is evaluated. */
++    protected def spendBuiltinBudget(
++        builtin: DefaultFun,
++        runtime: BuiltinRuntime,
++        args: List[CekValue],
++        env: CekValEnv
++    ): Unit =
++        spendBudget(
++          ExBudgetCategory.BuiltinApp(builtin),
++          runtime.costFunction.calculateCost(args*),
++          env
++        )
++
+     /** Runs the builtin if `b` has all its arguments, otherwise returns `b` as it is. */
+     private def evalBuiltinApp(env: CekValEnv, b: VBuiltin): CekValue = {
+         val runtime = b.runtime
+         if b.applied < runtime.argKinds.length then b
+         else
+             val args = b.args.reverse // `b.args` holds the term arguments newest first
+-            spendBudget(
+-              ExBudgetCategory.BuiltinApp(b.bn),
+-              runtime.costFunction.calculateCost(args*),
+-              env
+-            )
++            spendBuiltinBudget(b.bn, runtime, args, env)
+             try runtime.f(logger, args)
+             catch
+                 case NonFatal(e) =>

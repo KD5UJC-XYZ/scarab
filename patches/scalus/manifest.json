@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "version": "1.4.0",
+  "commit": "b836856a5b4e54cd40fe0aa5947922478e8f1237",
+  "archiveUrl": "https://codeload.github.com/scalus3/scalus/tar.gz/b836856a5b4e54cd40fe0aa5947922478e8f1237",
+  "archiveSha256": "a8a534e023bb994cce7884b6ca393a5e7b06d0cbc6cdd5a052038a8539e4be82",
+  "sourcePath": "scalus-core/shared/src/main/scala/scalus/uplc/eval/Cek.scala",
+  "sourceSha256": "3488b178f5ced2d1120face5861664bd5a169ec3de76ad6265c4568cb24c49e0",
+  "patchSha256": "8f9a19d0e1e7f56d4c2368b78a4dbd823aa659fd689aaa3f61558dd8de24ccf6",
+  "scalaVersion": "3.3.8",
+  "sbtVersion": "1.13.0",
+  "javaVersion": "21.0.11",
+  "javaVendor": "Eclipse Adoptium",
+  "javaRuntimeVersion": "21.0.11+10-LTS",
+  "sourceDateEpoch": 315532800,
+  "baseJar": {
+    "url": "https://repo.maven.apache.org/maven2/org/scalus/scalus_3/1.4.0/scalus_3-1.4.0.jar",
+    "sha256": "cb273758674ec49241a65fd41a950547dcdb4f4d598ba38cbaa68de6a235210b"
+  },
+  "basePom": {
+    "url": "https://repo.maven.apache.org/maven2/org/scalus/scalus_3/1.4.0/scalus_3-1.4.0.pom",
+    "sha256": "16243456c77dbd78758eccff2aa120233c7e8c227620e2373df697f542687993"
+  },
+  "replacementMembers": [
+    "scalus/uplc/eval/CekMachine$$anon$4.class",
+    "scalus/uplc/eval/CekMachine$.class",
+    "scalus/uplc/eval/CekMachine$ProfilingBudgetSpender.class",
+    "scalus/uplc/eval/CekMachine.class",
+    "scalus/uplc/eval/CekMachine.tasty"
+  ],
+  "sourceRoot": "/tmp"
+}

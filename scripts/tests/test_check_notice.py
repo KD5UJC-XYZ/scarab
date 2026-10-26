@@ -60,6 +60,14 @@ class FindingsTest(unittest.TestCase):
         rows = findings(self.deps(), notice, "org.typelevel:cats-core_3 | 2.13.0\norg.scalus:scalus_3 | 1.3.0\ndnsjava 3.6.5\n")
         self.assertEqual(rows, ["scalus: NOTICE names 1.2.0, Dependencies.scala declares 1.3.0"])
 
+    def test_content_versioned_dependency_is_checked_without_dropping_its_suffix(self):
+        from check_notice import Dependency
+        dependency = Dependency("scalus", "scalus", "1.4.0-scarab-abc123", False)
+        notice = "org.scalus:scalus_3 1.4.0-scarab-abc123"
+        self.assertEqual(findings([dependency], notice, notice), [])
+        self.assertTrue(findings([dependency], notice.replace("abc123", "wrong"), notice))
+        self.assertTrue(findings([dependency], "org.scalus:scalus_3 1.4.0", notice))
+
     def test_suffixed_neighbours_and_licence_names_do_not_count_as_versions_or_artifacts(self):
         notice = "cats-core 2.13.0\nscalus-secp256k1-jni 0.6.0 Apache-2.0\nscalus_3 1.3.0\ndnsjava 3.6.5\nmunit 1.0.2\n"
         self.assertEqual(findings(self.deps(), notice, "cats-core 2.13.0\nscalus_3 1.3.0\ndnsjava 3.6.5\n"), [])
