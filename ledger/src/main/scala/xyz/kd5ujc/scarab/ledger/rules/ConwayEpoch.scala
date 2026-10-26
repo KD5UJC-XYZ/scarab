@@ -15,8 +15,8 @@ import xyz.kd5ujc.scarab.ledger.state.*
   *     of delegators from the accounts and drops the delegations to DReps that are not registered
   *     (`updateDRepDelegations`).
   *   - Entering 11 it populates the VRF key hashes of the pools (`populateVRFKeyHashes`,
-  *     `HardFork.hs:107`), which POOL keeps from then on ([[Pool]]). The node derived them from
-  *     version 10 (`LedgerMirror`); a state the new rules carry across the fork needs them here
+  *     `HardFork.hs:107`), which POOL keeps from then on ([[Pool]]). The retired flat conversion
+  *     derived them from version 10; a state the new rules carry across the fork needs them here
   *     (J2.4; the rest of J3.3, the VRF key hashes in the node's own checks, stays).
   */
 object HardFork:

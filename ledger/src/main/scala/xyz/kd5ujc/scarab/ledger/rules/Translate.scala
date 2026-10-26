@@ -64,7 +64,7 @@ object EraNes:
   * The parameters of every era are the node's one flat [[ProtocolParams]], so what a translation
   * does to the parameters (`upgradePParams`) is what changes in the flat record: the fields the new
   * era introduces take their genesis values and those it drops are zeroed, as the era's view of the
-  * parameters has them (`LedgerMirror`). The contexts the translations need are in [[Globals]]
+  * parameters has them. The contexts the translations need are in [[Globals]]
   * (`TranslationContext`: the Alonzo and Conway genesis values).
   */
 object Translate:

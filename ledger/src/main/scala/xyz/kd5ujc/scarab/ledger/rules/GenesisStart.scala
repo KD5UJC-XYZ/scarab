@@ -204,7 +204,7 @@ object GenesisInjections:
   *   1. the Byron ledger of the genesis (`initExtLedgerStateByron`: the Byron genesis UTxO, the
   *      AVVM balances at their redeem addresses and the non-AVVM ones);
   *   1. the hard forks scheduled at the first slot, executed at once (`injectInitialExtLedgerState`
-  *      and its `extendToSlot (SlotNo 0)`, `HardFork/Combinator/Embed/Nary.hs:272-306`): Byron to
+  *      and its `extendToSlot (SlotNo 0)`, `HardFork/Combinator/Embed/Nary.hs:272-328`): Byron to
   *      Shelley (`translateLedgerStateByronToShelleyWrapper`, `CanHardFork.hs:336-366`, here
   *      [[Handover.toShelley]]) and each later era's translation ([[Translate.next]]) up to the era
   *      the chain starts in;

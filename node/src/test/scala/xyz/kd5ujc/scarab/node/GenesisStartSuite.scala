@@ -53,6 +53,11 @@ class GenesisStartSuite extends FunSuite:
 
   private def staking(hex: String): Credential[Staking] = Credential.KeyHashObj(hash[Staking](hex))
 
+  /** The governance state of the start is `emptyGovState` 's (cardano-ledger f649f975
+    * `Shelley/Governance.hs:185-192`, `State/Governance.hs:104-105`): no update until the first
+    * boundary, which nothing at the origin may predict. The reward update is empty
+    * (`ByronTranslation.hs:109`).
+    */
   test("the start holds no parameter update and no reward update until the first boundary") {
     assertEquals(nes.es.ls.utxo.gov.futurePParams, FuturePParams.NoPParamsUpdate)
     assertEquals(nes.ru, None)

@@ -118,8 +118,9 @@ object Telescope:
   /** The telescope of `era` that has not been put on the era history: every bound at
     * [[Bound.zero]]. This is how the node holds its chain-dependent state (it has no use for the
     * bounds, which are a function of the configuration and of the eras it has seen begin,
-    * `EraHistory.summary`); `legacy.StateMirror` gives it the real ones. The caller chooses an
-    * `era` that the state can be in (see [[ChainDepState.firstEra]]); nothing here checks it.
+    * `EraHistory.summary`); the mirror's builders ([[ByronMirror]], [[GenesisMirror]],
+    * [[MirrorStep]]) give it the real ones. The caller chooses an `era` that the state can be in
+    * (see [[ChainDepState.firstEra]]); nothing here checks it.
     */
   def unplaced[A](era: Era, state: A): Telescope[A] =
     new Telescope(

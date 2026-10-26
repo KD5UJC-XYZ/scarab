@@ -4,9 +4,9 @@ package xyz.kd5ujc.scarab.ledger.state
 import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, Counted, InstantStakeOps, ShelleyInstantStakeOps}
 
-/** Native era-indexed state builders for rule tests. They can express fields the legacy flat
-  * fixtures cannot retain, including independent VRF key counts, exact snapshots and a pulser. The
-  * flat-fixture adapter lives in `legacy.rules.RuleSet`; these builders avoid that conversion.
+/** Native era-indexed state builders for rule tests, including independent VRF key counts, exact
+  * snapshots and a pulser. The rule suites run on them through
+  * [[xyz.kd5ujc.scarab.ledger.rules.NativeRules]].
   *
   * Every builder takes the era by its witness, as the rules do, so one test body can be written for
   * a family of eras.
