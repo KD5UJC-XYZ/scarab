@@ -81,34 +81,32 @@ object BlockFetchEngine:
       val strings = math.min(maxStringBytes, size)
       ProtocolWire.Limits(size, strings, math.min(maxHashBytes, strings), maxDepth, maxItems)
 
-  /** The runtime client's deadlines. Idle unlimited and 60s state waits are upstream values; the
-    * whole-request deadline is additional local policy.
+  /** The runtime client's per-state deadlines, the upstream ones: Idle waits forever, Busy and
+    * Streaming wait `longWait`, 60 s (network 2fb69829 Protocol/BlockFetch/Codec.hs:59–68,
+    * Protocol/Limits.hs:114–115). A range has no deadline as a whole.
     */
   final case class TimeLimits(
       idle: Option[FiniteDuration] = None,
       busy: FiniteDuration = 60.seconds,
-      streaming: FiniteDuration = 60.seconds,
-      wholeRequest: FiniteDuration = 120.seconds
+      streaming: FiniteDuration = 60.seconds
   ):
-    def valid: Boolean = idle.forall(_ > Duration.Zero) && busy > Duration.Zero &&
-      streaming > Duration.Zero && wholeRequest > Duration.Zero
+    def valid: Boolean =
+      idle.forall(_ > Duration.Zero) && busy > Duration.Zero && streaming > Duration.Zero
 
-  /** The runtime client's local aggregate range budget, separate from codec/transport limits. */
-  final case class RequestLimits(maxBlocks: Int = 4, maxRawBytes: Long = 10000000L):
-    def valid: Boolean = maxBlocks > 0 && maxBlocks <= 1000000 && maxRawBytes > 0
-  final class Received private (val blocks: Int, val rawBytes: Long)
+  /** How many blocks a range may stream: the requested fragment's length, which the reference
+    * enforces by matching each block with the next requested header (BlockFetch/Client.hs:236–250).
+    * Bytes are bounded per message by the codec and per protocol by the multiplexer's ingress
+    * queue, not per range.
+    */
+  final case class RequestLimits(maxBlocks: Int = 4):
+    def valid: Boolean = maxBlocks > 0 && maxBlocks <= 1000000
+  final class Received private (val blocks: Int)
   object Received:
-    val Empty: Received = new Received(0, 0L)
-    def add(
-        previous: Received,
-        bytes: Int,
-        limits: RequestLimits
-    ): Either[ProtocolError, Received] =
-      if !limits.valid || bytes < 0 then Left(ProtocolError.InvalidRequestAccountingLimitsBytes)
+    val Empty: Received = new Received(0)
+    def add(previous: Received, limits: RequestLimits): Either[ProtocolError, Received] =
+      if !limits.valid then Left(ProtocolError.InvalidRequestAccountingLimitsBytes)
       else if previous.blocks >= limits.maxBlocks then Left(ProtocolError.RequestBlockLimitExceeded)
-      else if previous.rawBytes > limits.maxRawBytes || bytes.toLong > limits.maxRawBytes - previous.rawBytes
-      then Left(ProtocolError.RequestAggregateRawByteLimitExceeded)
-      else Right(new Received(previous.blocks + 1, previous.rawBytes + bytes.toLong))
+      else Right(new Received(previous.blocks + 1))
 
   def direction(sender: Role): Mux.Direction = sender match
     case Role.Client => Mux.Direction.Initiator

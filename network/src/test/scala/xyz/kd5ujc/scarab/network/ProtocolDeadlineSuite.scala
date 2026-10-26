@@ -76,7 +76,7 @@ class ProtocolDeadlineSuite extends FailsOnUncaught:
     }
 
   private enum Timer:
-    case Streaming, Whole, None
+    case Streaming, None
 
   for timer <- Timer.values.toList do
     test(s"BlockFetch exact optional deadline $timer") {
@@ -95,8 +95,6 @@ class ProtocolDeadlineSuite extends FailsOnUncaught:
                 timeouts = BlockFetchRuntime.Timeouts(
                   ProtocolDeadline.Unbounded,
                   if timer == Timer.Streaming then ProtocolDeadline.After(1.second)
-                  else ProtocolDeadline.Unbounded,
-                  if timer == Timer.Whole then ProtocolDeadline.After(1.second)
                   else ProtocolDeadline.Unbounded
                 )
                 result <- Fibers
@@ -125,8 +123,6 @@ class ProtocolDeadlineSuite extends FailsOnUncaught:
               case Timer.None => assertEquals(result, Right(Some(Vector(Bytes(Vector(1.toByte))))))
               case Timer.Streaming =>
                 assertEquals(result, Left(NetworkError.Timeout(Protocols.BlockFetch, "Streaming")))
-              case Timer.Whole =>
-                assertEquals(result, Left(NetworkError.Timeout(Protocols.BlockFetch, "request")))
           }
       }
     }

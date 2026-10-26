@@ -212,17 +212,13 @@ class BlockFetchSuite extends munit.FunSuite:
     )
   }
 
-  test("aggregate accounting is bounded and overflow-safe") {
-    val limits = RequestLimits(maxBlocks = 2, maxRawBytes = 3)
-    val one = right(Received.add(Received.Empty, 1, limits))
-    val two = right(Received.add(one, 2, limits))
+  test("a range streams at most its requested blocks, with no aggregate byte budget") {
+    val limits = RequestLimits(maxBlocks = 2)
+    val one = right(Received.add(Received.Empty, limits))
+    val two = right(Received.add(one, limits))
     assertEquals(two.blocks, 2)
-    assertEquals(two.rawBytes, 3L)
-    assert(Received.add(two, 0, limits).isLeft)
-    assert(Received.add(one, 3, limits).isLeft)
-    assert(Received.add(one, -1, limits).isLeft)
-    assert(Received.add(one, 1, RequestLimits(0, 3)).isLeft)
-    assert(Received.add(one, 1, RequestLimits(2, Long.MaxValue)).isRight)
+    assert(Received.add(two, limits).isLeft)
+    assert(Received.add(one, RequestLimits(0)).isLeft)
   }
 
   test("independent time policy and mux metadata, no transport timer claim") {
@@ -233,7 +229,7 @@ class BlockFetchSuite extends munit.FunSuite:
     assertEquals(TimeLimits().busy, 60.seconds)
     assertEquals(TimeLimits().streaming, 60.seconds)
     assert(TimeLimits().valid)
-    assert(!TimeLimits(wholeRequest = 0.seconds).valid)
+    assert(!TimeLimits(busy = 0.seconds).valid)
     assert(!TimeLimits(idle = Some((-1).seconds)).valid)
     assertEquals(Limits().messageBytes(State.Idle), 65535)
     assertEquals(Limits().messageBytes(State.Streaming), 2500000)

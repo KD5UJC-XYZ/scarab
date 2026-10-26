@@ -56,11 +56,12 @@ class BlockFetchBatchSuite extends munit.FunSuite:
     val stream = next(begin, Message.StartBatch, p)
     assert(stream.accept(Message.NoBlocks)(_ => Right(p)).isLeft)
   }
-  test("aggregate raw-byte cap applies across a batch before completion") {
-    val limited = right(FetchPlan.from(Vector(p, q), BlockFetch.RequestLimits(2, 1)))
-    val stream = next(Batch.begin(limited), Message.StartBatch, p)
+  test("a batch has no aggregate raw-byte cap, only its requested block count") {
+    val plan = right(FetchPlan.from(Vector(p, q), BlockFetch.RequestLimits(2)))
+    val stream = next(Batch.begin(plan), Message.StartBatch, p)
     val one = next(stream, Message.Block(raw), p)
-    assert(one.accept(Message.Block(raw))(_ => Right(q)).isLeft)
+    val two = next(one, Message.Block(raw), q)
+    assert(two.accept(Message.Block(raw))(_ => Right(q)).isLeft)
   }
   test("shared scanner preserves ChainSync small-message and independent-field policies") {
     val limits = ChainSync.Limits(maxMessageBytes = 2, maxStringBytes = 65535, maxHashBytes = 65535)
