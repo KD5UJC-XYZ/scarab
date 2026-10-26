@@ -5,6 +5,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
+
 import LeiosFetch.{Message, State, decodePrefix}
 
 class LeiosFetchDecoderSuite extends FunSuite:

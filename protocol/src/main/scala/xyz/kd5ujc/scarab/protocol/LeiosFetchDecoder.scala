@@ -5,6 +5,7 @@ import cats.Monad
 import cats.data.StateT
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
+
 import LeiosFetch.{Message, State}
 import LeiosWord.{Word16, Word32, Word64}
 

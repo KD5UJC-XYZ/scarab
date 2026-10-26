@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.protocol
 
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
+
 import LeiosWord.{Word16, Word32, Word64}
 
 /** Native word and hash constructors (consensus 7b239a16 Leios/Types.hs), independently of the

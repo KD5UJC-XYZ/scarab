@@ -3,10 +3,11 @@ package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.crypto.bls.{BlsError, SeatId, Seed, SecretKey, Vote}
 import xyz.kd5ujc.scarab.codec.Bytes
-import LeiosWord.{Word16, Word32, Word64}
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
 import org.scalacheck.Gen
+
+import LeiosWord.{Word16, Word32, Word64}
 
 /** Round trips and malformed input for the LeiosNotify and LeiosFetch codecs. */
 class LeiosCodecSuite extends ScalaCheckSuite:

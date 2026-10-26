@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.crypto.bls.BlsError
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+
 import LeiosWord.{Word16, Word64}
 
 /** What a field of a Leios message should have been. */
