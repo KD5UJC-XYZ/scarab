@@ -13,8 +13,8 @@ Integrating the KES agent (H2) can mean three different pieces of work, and they
 2. **An agent of our own**, in Scala, Rust or anything else, replacing the upstream Haskell process.
 3. **Remote signing**, where the agent signs block headers and the key never enters the node.
 
-The reference does (1) only. Its agent hands the key over (`PraosCredentialsAgent`, then
-`HotKey.mkDynamicHotKey`), and the node signs. Other implementations chose differently: Blink Labs ship a Go
+The reference does (1) only. Its agent hands the key over (`PraosCredentialsAgent`, then the `HotKey` module's
+`mkDynamicHotKey`), and the node signs. Other implementations chose differently: Blink Labs ship a Go
 replica of the agent (`bursa kes-agent`) with a JSON protocol of their own and an added `sign` mode for their
 Go node (dingo), and Amaru has no agent at all, signing inside its forging process.
 
@@ -28,7 +28,7 @@ H2 is **(1) only**.
 
 - **Adopt the upstream agent as it is**: `input-output-hk/kes-agent`, pinned by tag and commit, **republished
   by our own dispatch workflow** to `ghcr.io/kd5ujc-xyz/scarab-kes-agent` and pulled by digest, with the
-  two-stage recipe in `scripts/kes-agent/` as the fallback for hosts that cannot pull and as the
+  two-stage recipe under `scripts/` as the fallback for hosts that cannot pull and as the
   reproducibility check. The release assets are unusable: 1.4.0.0 has none, and the 1.1.0.0 binary is a Nix
   closure that does not run on an ordinary host. Scarab writes no agent; it redistributes an unmodified
   Apache-2.0 build with the licence and notice carried in the image, which is not the same as shipping a

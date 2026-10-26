@@ -32,7 +32,7 @@ It does **not** buy equivalent memory protection. The JVM cannot mlock the heap;
 |---|---|---|---|
 | [`input-output-hk/kes-agent`](https://github.com/input-output-hk/kes-agent) | tag `kes-agent-1.4.0.0`, commit `44fdcec892` | the service protocol, the control protocol, the key bundle and its raw encoding | Apache-2.0 |
 | [`IntersectMBO/cardano-node`](https://github.com/IntersectMBO/cardano-node) | tag `11.1.3` | the node flag, the SIGHUP behaviour, the dependency ranges | Apache-2.0 |
-| [`IntersectMBO/ouroboros-consensus`](https://github.com/IntersectMBO/ouroboros-consensus) | tag `release-ouroboros-consensus-4.2.1.0` | the node-side client (`Praos.AgentClient`), the dynamic hot key | Apache-2.0 |
+| [`IntersectMBO/ouroboros-consensus`](https://github.com/IntersectMBO/ouroboros-consensus) | tag `release-ouroboros-consensus-4.2.1.0` | the node-side client (`Ouroboros.Consensus.Protocol.Praos.AgentClient`), the dynamic hot key | Apache-2.0 |
 | [`IntersectMBO/cardano-base`](https://github.com/IntersectMBO/cardano-base) | the pin of that consensus release (`cardano-crypto-class`) | the raw KES key image the bundle carries | Apache-2.0 |
 
 `cardano-node.cabal` at 11.1.3 requires `kes-agent ^>=1.3` (line 170) and
@@ -47,7 +47,7 @@ depends on 1.4.0.0-only API. The flag is `--shelley-kes-agent-socket`
 mode a reconnect rather than a file reload.
 
 The node-side client is `Ouroboros.Consensus.Protocol.Praos.AgentClient.runKESAgentClient`, used by
-`instantiatePraosCredentials (PraosCredentialsAgent path)` through `HotKey.mkDynamicHotKey`
+`instantiatePraosCredentials (PraosCredentialsAgent path)` through the `HotKey` module's `mkDynamicHotKey`
 (`Ouroboros/Consensus/Protocol/Praos/Common.hs`, lines 295 to 330; `.../Ledger/HotKey.hs`, lines 281 to 360).
 
 ## The reference system
@@ -445,10 +445,10 @@ meaningful peer credentials, and must be documented as weaker than a local socke
    truncation at every offset of the **724-byte body** and at every boundary of the **733-byte frame**
    (the tag and timestamp included), plus the client's 4-byte reply; bad version identifier; unknown tag;
    unknown `RecvResult`; a timestamp equal to the last one. Fuzz target over the frame reader.
-2. **Fixtures** (`fixtures/kes-agent/`, provenance README with source tag and commit, the built image id or
-   digest, command and licence): frames captured from a real agent — the image built by the in-repo recipe —
-   by a probe script that speaks the node side
-   (`scripts/kes_agent_probe.py`), replayed offline in `check`. The fixtures are what the test path uses, so
+2. **Fixtures** (a `kes-agent` directory under `fixtures/`, provenance README with source tag and commit, the
+   built image id or digest, command and licence): frames captured from a real agent — the image built by the
+   in-repo recipe — by a probe script under `scripts/` that speaks the node side, replayed offline in
+   `check`. The fixtures are what the test path uses, so
    neither `check` nor a normal test run needs an agent, a container or a Haskell toolchain. This is the
    conformance oracle; the probe doubles as an independent implementation check of this document's byte
    table.
@@ -469,10 +469,10 @@ meaningful peer credentials, and must be documented as weaker than a local socke
 
 | Stage | Content | Gate |
 |---|---|---|
-| 1 | `scripts/kes-agent/` — a two-stage Dockerfile (pinned tag, commit and base-image digest) plus a build script, and a dispatch workflow that publishes `ghcr.io/kd5ujc-xyz/scarab-kes-agent` with labels, SBOM, signature and LICENSE/NOTICE; the probe script; captured fixtures with provenance; a byte-level verification of this document against them | the image publishes and pulls by digest; fixtures replay in a Python test; the wire section corrected where the capture disagrees |
+| 1 | A `kes-agent` directory under `scripts/` — a two-stage Dockerfile (pinned tag, commit and base-image digest) plus a build script, and a dispatch workflow that publishes `ghcr.io/kd5ujc-xyz/scarab-kes-agent` with labels, SBOM, signature and LICENSE/NOTICE; the probe script; captured fixtures with provenance; a byte-level verification of this document against them | the image publishes and pulls by digest; fixtures replay in a Python test; the wire section corrected where the capture disagrees |
 | 2 | `KesAgentWire` and its suite | `check` |
 | 3 | `HotKeys` no-key state, `KesAgentSource`, client, CLI flag, fake-agent suite | `check` + `kes-rotate` (no regression in file mode) |
-| 4 | Devnet `kes-agent` scenario and the real-agent matrix | `check` + the scenario (level 3) + evidence row |
+| 4 | Devnet `kes-agent` scenario, added the way `docs/playbooks/add-a-devnet-scenario.md` prescribes, and the real-agent matrix | `check` + the scenario (level 3) + evidence row |
 | 5 | ADR 0023/0024 already accepted; `docs/running.md` operator section (mode recommendation, the memory limitation in plain words, where to obtain the upstream agent), compatibility matrix row, #38 closed | owner review |
 
 Stage 1 is deliberately first: it is cheap, it removes the risk that this document is subtly wrong about
@@ -480,7 +480,7 @@ the wire, and it produces the fixture the later stages test against.
 
 ### Why not the published Linux binary
 
-Because it does not run outside Nix. The `kes-agent-1.1.0.0` `x86_64-linux` release asset is Nix-built: its
+Because it does not run outside Nix. The 1.1.0.0 release's `x86_64-linux` asset is Nix-built: its
 ELF interpreter is `/nix/store/cg9s562sa33k78m63njfn1rw47dp9z0i-glibc-2.40-66/lib/ld-linux-x86-64.so.2`, it
 links against `libblst.so`, and its RPATHs point into `/nix/store` (glibc, a patched `libsodium-vrf`,
 numactl, gcc's lib directory). Run on an ordinary Debian host it fails at the loader, before `--help`; run
@@ -550,7 +550,7 @@ No decisions remain open for H2.
   `libblst.so` dependency and `/nix/store` RPATHs), so it does not run on an ordinary host. The agent is
   **built once by a publishing workflow and pulled by digest**: `ghcr.io/kd5ujc-xyz/scarab-kes-agent`, beside
   the node image, Apache-2.0 obligations carried (LICENSE and NOTICE in the image, upstream commit named, no
-  implied endorsement). The two-stage recipe in `scripts/kes-agent/` is the fallback for a host that cannot
+  implied endorsement). The two-stage recipe under `scripts/` is the fallback for a host that cannot
   pull and the reproducibility check on the published artifact. The test path uses the captured fixtures, so
   no host builds the agent to run tests, and no particular host is named anywhere. We do not ship the agent
   to operators as a supported product; the documentation points at upstream's releases.
@@ -558,7 +558,7 @@ No decisions remain open for H2.
   motivate one yet, and the scenario we add in stage 4 can call the upstream tool directly.
 - **Confirmations.** `--kes-agent-socket` as the flag name (reference mapping in #222); both flags together
   refused; a group- or world-accessible service socket warned about at start-up; `Service:2.0` only, which
-  costs nothing — it exists since `kes-agent` 1.0.0.0, and every cardano-node that supports an agent requires
+  costs nothing — the service protocol has existed since the 1.0.0.0 release, and every cardano-node that supports an agent requires
   `kes-agent ^>=1.2`.
 
 ## Not in scope

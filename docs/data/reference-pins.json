@@ -196,6 +196,18 @@
     "scripts/cddl_crosscheck.py",
     "docs/models.md"
    ]
+  },
+  {
+   "name": "kes-agent",
+   "repository": "input-output-hk/kes-agent",
+   "version": "1.4.0.0",
+   "revision": "44fdcec892e2868053f964cad87fc32c590c81e4",
+   "urlPattern": "https://github.com/input-output-hk/kes-agent/tree/kes-agent-{version}",
+   "role": "Upstream KES agent: the Service:2.0 key-handover protocol, the 724-byte bundle encoding and the node-side client this design conforms to. Built by our two-stage recipe and republished as a test image.",
+   "dependents": [
+    "docs/design/kes-agent.md",
+    "docs/adr/0024-adopt-the-upstream-kes-agent.md"
+   ]
   }
  ]
 }
