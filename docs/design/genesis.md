@@ -81,7 +81,7 @@ all-era captures and the unchanged Genesis replay corpus remain separate control
   still propagate. Recovered bodies have their
   own source case, rather than borrowing a live session identity. Collection follows a durable
   immutable boundary; an LoE stall can retain a growing forest, including raw bodies in memory.
-  [Measured scan and idle-decision costs](../performance.md#39-received-forest-selection-and-idle-decisions-309-review)
+  [Measured scan and idle-decision costs](../performance/peers-and-network.md#39-received-forest-selection-and-idle-decisions-309-review)
   state the scope of this retention policy.
 - **Source attribution:** an original body's punishment belongs to its adding BlockFetch run,
   not a peer address or the lifetime of its TCP connection. The native client captures its

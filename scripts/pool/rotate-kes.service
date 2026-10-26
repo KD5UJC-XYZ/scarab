@@ -4,7 +4,7 @@
 # signals the node's container), to the key directory and to the cold key.
 [Unit]
 Description=Scarab block producer: rotate the KES key when the operational certificate runs low
-Documentation=https://github.com/KD5UJC-XYZ/scarab/blob/main/docs/running.md
+Documentation=https://github.com/KD5UJC-XYZ/scarab/blob/main/docs/running/forging.md
 After=docker.service
 Wants=docker.service
 

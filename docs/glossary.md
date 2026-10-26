@@ -58,4 +58,4 @@ place that defines it. The definition there wins over this summary. Where code l
 | Term | Meaning | Defined in |
 |---|---|---|
 | Oracle | A tool that runs unchanged upstream code to produce expected results for comparison | [scripts/oracle](../scripts/oracle) |
-| Scenario | One devnet run with its own checks; each exits non-zero on a mismatch | [running.md](running.md#devnet-scenarios-scriptsdevnetpy) |
+| Scenario | One devnet run with its own checks; each exits non-zero on a mismatch | [running.md](running/devnet.md#devnet-scenarios-scriptsdevnetpy) |

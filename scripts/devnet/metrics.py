@@ -3,7 +3,7 @@
 
 The text format is read here the way a scraper reads it (strictly: a line the grammar of the exposition
 format 0.0.4 does not allow is an error). The checks are about the node, not the format: the series that
-the documentation (docs/running.md, "Metrics") promises are there, and the values agree with the JSON log
+the documentation (docs/running/metrics.md) promises are there, and the values agree with the JSON log
 of the same run.
 """
 import re

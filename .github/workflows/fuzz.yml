@@ -3,7 +3,7 @@ name: Fuzz
 
 # Structured fuzzing of every decoder entry point (roadmap K3): the `fuzz` project, run for many more cases
 # than the one-minute budget of `check`, over a block of seeds that changes every day. A failure prints the seed,
-# the shrunk input in hex and the command that reproduces it (docs/running.md, "Fuzzing").
+# the shrunk input in hex and the command that reproduces it (docs/running/fuzzing.md).
 on:
   schedule:
     - cron: '47 2 * * *'

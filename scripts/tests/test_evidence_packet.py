@@ -210,17 +210,21 @@ class PacketTest(unittest.TestCase):
             corpora=json.loads(committed)["corpora"], files=len(json.loads(committed)["files"])))
         self.assertNotIn(committed, contents.values())
 
-    def test_recorded_evidence_includes_committed_compatibility_register_and_pages(self):
+    def test_recorded_evidence_includes_committed_registers_and_pages(self):
         evidence = {
             "docs/data/compatibility.json": '{"schemaVersion": 1}\n',
             "docs/compatibility/component.md": "Component evidence.\n",
             "docs/compatibility/evidence-log-1.md": "A dated run.\n",
+            "docs/data/performance-log.json": '{"entries": []}\n',
+            "docs/performance/measurements.md": "Measured results.\n",
         }
         for path, text in evidence.items():
             self.repo.write(path, text)
-        self.repo.commit("split compatibility evidence")
+        self.repo.commit("split compatibility and performance evidence")
         self.repo.write("docs/compatibility/evidence-log-1.md", "Uncommitted replacement.\n")
         self.repo.write("docs/compatibility/untracked.md", "Uncommitted evidence.\n")
+        self.repo.write("docs/performance/measurements.md", "Uncommitted replacement.\n")
+        self.repo.write("docs/performance/untracked.md", "Uncommitted evidence.\n")
         contents, _ = self.members("split")
         inventories = json.loads(contents["packet/inventories.json"])
         recorded = {row["path"]: row["sha256"] for row in inventories["recordedEvidence"]["files"]}

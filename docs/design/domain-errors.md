@@ -54,7 +54,7 @@ for the declared length.
 
 Functional, stack-safe composition remains the default. Local mutable cursors, byte buffers and
 explicit heap stacks remain in the measured critical CBOR and framing paths; the existing
-[receive-path measurements](../performance.md#what-was-found-the-receive-path) and
+[receive-path measurements](../performance/sync-and-scheduling.md#what-was-found-the-receive-path) and
 [indexed-decoding evidence](memory-lean-decoding.md#2-what-was-measured) motivate those exceptions.
 Lexically scoped `scala.util.boundary` exits return typed failures from these loops; they are not
 domain exceptions. This work supplies no new performance measurements or general exemption for

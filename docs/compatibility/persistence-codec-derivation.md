@@ -9,7 +9,7 @@ implemented: compiler-generated typed field accessors, typed result tuples and r
 
 ## Evidence
 
-format/fingerprint, migration, Haskell-format and snapshot goldens; meaningful generic/phantom compile probes with positive controls; nested field failures; full representative V5 encode/decode byte/state/refusal parity; extended 30.8M-case decoder fuzz; successful private restart ([as built](../design/codec-derivation-as-built.md), [measurements](../performance.md#35-typed-snapshot-codec-derivation-205))
+format/fingerprint, migration, Haskell-format and snapshot goldens; meaningful generic/phantom compile probes with positive controls; nested field failures; full representative V5 encode/decode byte/state/refusal parity; extended 30.8M-case decoder fuzz; successful private restart ([as built](../design/codec-derivation-as-built.md), [measurements](../performance/cast-erasure-decode-and-diff.md#35-typed-snapshot-codec-derivation-205))
 
 ## Explicitly unchecked or unconfirmed
 

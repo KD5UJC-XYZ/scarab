@@ -76,7 +76,7 @@ historical samples do not establish a speed-up or a confidence interval.
 
 The synthetic workload is supplementary. The representative Preview block/epoch comparison,
 its input and source identities, full sample summary, diagnostic warmup investigation and limits
-are recorded in [performance.md](../performance.md#typed-rule-interpreter-202).
+are recorded in [performance.md](../performance/cast-erasure-interpreter.md#typed-rule-interpreter-202).
 
 ## Verification
 

@@ -11,7 +11,7 @@ reward start point, `epochFirstSlot + 4k/f`. That pure call computed all pool an
 before returning.
 It created a long individual block-validation step even when the surrounding ticks were short.
 The historical approximately 1.1-second observation is workload and machine dependent; the
-fresh Preview measurements are in [performance.md](../performance.md#29-reward-update-shaping-135).
+fresh Preview measurements are in [performance.md](../performance/rewards-and-evaluation.md#29-reward-update-shaping-135).
 
 The implementation replaces that eager step with the reference's pure, resumable reward calculation. It preserves the
 attributed rewards, protocol-version gates, exact rational arithmetic and treasury/reserves/fee
@@ -196,7 +196,7 @@ The controlled API measurements remove the eager first-call work and reduce tota
 but normal completion still performs the reference's linear delivered-reward reduction. Its
 15.99 ms median exceeded the original proposed 5 ms API target; the owner accepted that measured
 result on 2026-10-19. #135 follows the normal main-plus-nightly definition of done, with no
-remaining 5 ms follow-up requirement. [performance.md](../performance.md#30-incremental-reward-implementation-135)
+remaining 5 ms follow-up requirement. [performance.md](../performance/rewards-and-evaluation.md#30-incremental-reward-implementation-135)
 records measured scope and limitations, separately from the final recorded block replay.
 
 

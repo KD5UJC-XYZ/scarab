@@ -58,7 +58,7 @@ GENERATOR_FILES = ("scripts/evidence_packet.py", "scripts/check_test_coverage.py
 RECORDED_EVIDENCE = ("docs/compatibility.md", "docs/data/compatibility.json", "docs/data/external-acceptance-294.json",
                      "docs/data/upstream-source-review-20261020.json",
                      "docs/data/expanded-source-watch-review-20261020.json", "docs/reference-image.md",
-                     "docs/performance.md", "docs/security/threat-model.md",
+                     "docs/performance.md", "docs/data/performance-log.json", "docs/security/threat-model.md",
                      "docs/security/external-review.md", "scripts/candidate_acceptance/README.md")
 PIN_ROOTS = ("docker/", ".github/workflows/", "scripts/", "build.sbt", "project/")
 IMAGE_PIN = re.compile(rb"([a-z0-9][a-z0-9./_-]*(?::[A-Za-z0-9._-]+)?)@sha256:([0-9a-f]{64})")
@@ -449,7 +449,8 @@ def optional_data(root: Path, records: list[dict]) -> list[dict]:
 def recorded(records: list[dict]) -> list[dict]:
     """Digest the evidence index, register and pages from the committed source inventory."""
     by_path = {r["path"]: r for r in records}
-    pages = sorted(path for path in by_path if path.startswith("docs/compatibility/") and path.endswith(".md"))
+    pages = sorted(path for path in by_path
+                   if path.startswith(("docs/compatibility/", "docs/performance/")) and path.endswith(".md"))
     return [dict(path=path, sha256=by_path[path]["sha256"])
             for path in (*RECORDED_EVIDENCE, *pages) if path in by_path]
 

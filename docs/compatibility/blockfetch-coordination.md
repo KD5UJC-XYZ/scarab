@@ -9,7 +9,7 @@ Pinned Praos bulk/deadline rankings, preferred-peer handover, global targets, pe
 
 ## Evidence
 
-289 native scheduling observations plus eight GSV observations (291 differential assertions); original 24-case/298-range generic protocol replay now runs the pipeline; coordinator race/window/lifecycle laws and [controlled performance workload](../performance.md#37-coordinated-blockfetch-service-model-148)
+289 native scheduling observations plus eight GSV observations (291 differential assertions); original 24-case/298-range generic protocol replay now runs the pipeline; coordinator race/window/lifecycle laws and [controlled performance workload](../performance/peers-and-network.md#37-coordinated-blockfetch-service-model-148)
 
 ## Explicitly unchecked or unconfirmed
 

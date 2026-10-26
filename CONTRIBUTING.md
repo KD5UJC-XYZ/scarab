@@ -25,7 +25,7 @@ docker run --rm -v "$PWD":/work -v "$scarab_cache":/work/.cache \
 ```
 
 `check` (an alias in `build.sbt`, built from its `modules` list; CI runs the same alias) runs `scalafmtCheckAll`, compiles all test sources, runs the
-tests of all modules (`blstNative` and its `BlstSuite` among them: library selection, start-up checks, the export list of the JNI glue), the fuzz suite among them, and ends with `scalafixAll --check`; the compiler runs with `-Werror` and the unused-code warnings (imports, privates, locals, explicit parameters, pattern variables); a module may only depend on the modules before it in the graph of [docs/architecture.md](docs/architecture.md#modules), and sbt refuses a cycle. Dependencies and the sbt launcher are
+tests of all modules (`blstNative` and its `BlstSuite` among them: library selection, start-up checks, the export list of the JNI glue), the fuzz suite among them, and ends with `scalafixAll --check`; the compiler runs with `-Werror` and the unused-code warnings (imports, privates, locals, explicit parameters, pattern variables); a module may only depend on the modules before it in the graph of [docs/architecture.md](docs/architecture/modules.md#modules), and sbt refuses a cycle. Dependencies and the sbt launcher are
 cached under `.cache/` (gitignored). `bash scripts/sbtw node/runtimeClasspathFile` writes
 `node/target/runtime-classpath.txt`, which the scenarios use.
 
@@ -290,7 +290,8 @@ A claim of compatibility needs evidence a reader can check:
   unchecked" section, then regenerates the matrix with `python3 scripts/render_compatibility.py`
   (`docs/compatibility.md` is generated; CI runs the script with `--check`), and updates the roadmap item it
   closes (mark it done, never renumber).
-- Performance numbers go in [docs/performance.md](docs/performance.md) with the setup.
+- Performance numbers go in [docs/performance.md](docs/performance.md) with the setup: an entry in
+  `docs/data/performance-log.json`, then `python3 scripts/render_performance.py --write`.
 
 ## Commits and pull requests
 

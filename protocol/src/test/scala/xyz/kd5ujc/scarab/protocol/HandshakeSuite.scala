@@ -72,7 +72,7 @@ class HandshakeSuite extends munit.FunSuite:
     assert(wireVersion(ntc, 24).isLeft)
     assert(decode(ntc, State.Confirm, bytes("8301108202f4")).isLeft)
     assert(decode(ntn, State.Confirm, bytes("8301118502f500f4f4")).isLeft)
-    // the default is the latest release, 14 and 15; 16 is experimental (docs/running.md)
+    // the default is the latest release, 14 and 15; 16 is experimental (docs/running/configuration.md)
     assertEquals(defaultNodeToNode(2), Vector(14 -> Data(2), 15 -> Data(2)))
     assertEquals(
       nodeToNodeOffers(NtnVersion.V16, Data(2)).map(_._1),
