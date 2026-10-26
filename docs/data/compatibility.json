@@ -796,6 +796,30 @@
       "page": "docs/compatibility/ledger-definite-byte-strings.md"
     },
     {
+      "id": "ledger-repeated-withdrawals",
+      "component": "Ledger: repeated withdrawal accounts, decoder versions 2 to 9 (#494)",
+      "status": "implemented",
+      "summary": "Repeated withdrawal accounts keep the last amount below decoder version 9 and are refused from version 9",
+      "evidence": {
+        "suites": [
+          "DefiniteBytesReferenceSuite",
+          "ShelleyLedgerSuite"
+        ],
+        "paths": [
+          "fixtures/reference/definite-bytes"
+        ],
+        "issues": [
+          494
+        ]
+      },
+      "limitations": {
+        "issues": [
+          477
+        ]
+      },
+      "page": "docs/compatibility/ledger-repeated-withdrawals.md"
+    },
+    {
       "id": "ledger-conway-governance",
       "component": "Ledger: Conway governance",
       "status": "implemented",
