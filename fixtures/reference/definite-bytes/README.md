@@ -2,7 +2,7 @@
 
 Status: Current. Evidence for [#373](https://github.com/KD5UJC-XYZ/scarab/issues/373).
 
-`cases.jsonl` holds 444 lines, a case each: its original encoding (`bytes`, written by
+`cases.jsonl` holds 456 lines, a case each: its original encoding (`bytes`, written by
 `scripts/oracle/conway-decoding/definite_bytes_cases.py`) and the verdict of the reference. For each era from Shelley to Conway, every
 place of a transaction body and a witness set that holds a byte string (input ids, output addresses,
 datum hashes, inline-datum and reference-script wrappers, the script inside a reference script,
@@ -22,16 +22,23 @@ strings are refused with cborg's `expected bytes` or `expected string` and their
 are accepted; an input id in two chunks, or after an empty chunk, is refused too (12 more). Plutus
 `Data` and metadata (`decodeMetadatum`, `Metadata.hs:153-222`) read chunked strings in every
 version: those 17 cases are accepted, and the metadata bound of 64 bytes holds for the joined string
-(3 refusals with `bytestring exceeds 64 bytes` or `text exceeds 64 bytes`). In all, 223 accepted and
-221 refused.
+(3 refusals with `bytestring exceeds 64 bytes` or `text exceeds 64 bytes`).
+
+The last 12 lines are bodies of each era whose withdrawals name one reward account twice (#494).
+`Withdrawals` is read with `decodeMap` (`Address.hs:980-982`), and `decodeMapByKey`
+(`Decoder.hs:810-823`) builds it with `Map.fromList` below version 9, so the 10 Shelley to Babbage
+bodies are accepted with the last amount of the account; for these lines the harness also records
+the decoded withdrawals (`withdrawals`, each account's hex with its amount). From version 9
+`decodeMapLikeEnforceNoDuplicates` refuses the 2 Conway bodies. In all, 233 accepted and 223 refused.
 `provenance.json` records the package versions and the hashes of the decoder sources, harness,
 generator, the corpus, and the two files of the harness (its input array and its output, which the
 generator merges into `cases.jsonl`).
 
 `cases.jsonl` names for every refusal `rule` (a fragment of the reference failure) and `expect` (the
 Scarab error case: `IndefiniteLength` for a chunked string, `NumberOutOfRange` for the metadata
-bound). `DefiniteBytesReferenceSuite` requires the same verdict, and for an acceptance that the
-retained bytes (and so the transaction id) are the original ones.
+bound, `DuplicateElement` for a repeated withdrawal account). `DefiniteBytesReferenceSuite` requires
+the same verdict, for an acceptance that the retained bytes (and so the transaction id) are the
+original ones, and where `withdrawals` is recorded that Scarab decodes the same withdrawals.
 
 Scope: wire decoding of transactions only; no ledger rule, signature or script is run. Headers,
 node-to-client query arguments, the other values of a pre-Conway parameter update, pool relays and

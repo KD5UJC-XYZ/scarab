@@ -289,7 +289,7 @@ final case class TxBody(
     ttl: Option[BigInt],
     validityStart: Option[BigInt],
     certificates: Vector[Certificate],
-    withdrawals: Vector[(RewardAccount, BigInt)],
+    withdrawals: Map[RewardAccount, BigInt],
     mint: Map[Bytes, Map[Bytes, BigInt]],
     collateral: Vector[TxIn],
     requiredSigners: Vector[Bytes],
@@ -417,13 +417,16 @@ object TxBody:
                   CborRead.uint(v, DecodeField.Withdrawal)
                 ).tupled
               })
+              // The decoded/API map enforces the unique keys of Withdrawals (Map AccountAddress Coin).
+              // Decode every pair before checking repeats; version 9 and later refuse them. `raw` remains intact
+              // (f649f975 Address.hs:980-983; Binary/Decoding/Decoder.hs:810-824).
               .flatMap(ws =>
                 if version.atLeast(9) then
                   CborRead.unique(ws.map(_._1), DecodeField.Withdrawals).as(ws)
                 else Right(ws)
               )
           )
-      )
+      ).map(_.map(_.toMap))
       upd <- f.get(6).traverse(update(_, era))
       auxHash <- f.get(7).traverse(CborRead.bytesN(_, 32, DecodeField.AuxiliaryDataHash))
       mint <-
@@ -484,7 +487,7 @@ object TxBody:
       ttl,
       start,
       certs.getOrElse(Vector.empty),
-      withdrawals.getOrElse(Vector.empty),
+      withdrawals.getOrElse(Map.empty),
       mint.getOrElse(Map.empty),
       collateral.getOrElse(Vector.empty),
       signers.getOrElse(Vector.empty),

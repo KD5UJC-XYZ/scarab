@@ -150,7 +150,8 @@ private[ledger] object ReferenceCorpus:
   final case class Failure(text: String)
 
   /** One case with the reference's verdict. `size` is the number of elements Scarab must keep where
-    * the corpus records it.
+    * the corpus records it; `withdrawals` the withdrawals the reference decoded from an accepted
+    * body (each reward account's bytes with its amount) where the corpus records them.
     */
   final case class Case(
       id: String,
@@ -160,6 +161,7 @@ private[ledger] object ReferenceCorpus:
       expect: Option[Refusal],
       rule: Option[Rule],
       size: Option[Int],
+      withdrawals: Option[Vector[(Bytes, BigInt)]],
       raw: Bytes,
       accepted: Boolean,
       failure: Option[Failure]
@@ -248,9 +250,30 @@ private[ledger] object ReferenceCorpus:
         .get[Option[Int]]("size")
         .orElse(Right(None))
         .leftMap(e => Error.Field(id, e.message))
+      withdrawalsWire <- c.hcursor
+        .get[Option[Vector[(String, BigInt)]]]("withdrawals")
+        .orElse(Right(None))
+        .leftMap(e => Error.Field(id, e.message))
+      withdrawals <- withdrawalsWire.traverse(
+        _.traverse((account, n) =>
+          Bytes.fromHex(account).leftMap(_ => Error.BadHex(id)).tupleRight(n)
+        )
+      )
       hex <- field[String](c, id, "bytes")
       raw <- Bytes.fromHex(hex).leftMap(_ => Error.BadHex(id))
       verdict <- result(name).toRight(Error.NoVerdict(id, name))
       accepted <- verdict.get[Boolean]("accepted").leftMap(e => Error.Field(id, e.message))
       failure <- verdict.get[Option[String]]("failure").leftMap(e => Error.Field(id, e.message))
-    yield Case(id, name, era, kind, expect, rule, size, raw, accepted, failure.map(Failure(_)))
+    yield Case(
+      id,
+      name,
+      era,
+      kind,
+      expect,
+      rule,
+      size,
+      withdrawals,
+      raw,
+      accepted,
+      failure.map(Failure(_))
+    )

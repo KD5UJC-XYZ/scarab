@@ -796,6 +796,33 @@
       "page": "docs/compatibility/ledger-definite-byte-strings.md"
     },
     {
+      "id": "ledger-repeated-withdrawals",
+      "component": "Ledger: repeated withdrawal accounts, decoder versions 2 to 9 (#494)",
+      "status": "implemented",
+      "summary": "Decoded withdrawals and native ledger APIs use a unique-key map; last amount wins before version 9, repeats refused from version 9; original bytes retained",
+      "evidence": {
+        "suites": [
+          "DefiniteBytesReferenceSuite",
+          "DuplicateWithdrawalsLedgerSuite",
+          "WithdrawalContextsSuite",
+          "HotPathEquivalenceSuite"
+        ],
+        "paths": [
+          "fixtures/reference/definite-bytes"
+        ],
+        "issues": [
+          494
+        ]
+      },
+      "limitations": {
+        "issues": [
+          477,
+          492
+        ]
+      },
+      "page": "docs/compatibility/ledger-repeated-withdrawals.md"
+    },
+    {
       "id": "ledger-conway-governance",
       "component": "Ledger: Conway governance",
       "status": "implemented",
