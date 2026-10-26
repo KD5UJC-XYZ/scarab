@@ -228,6 +228,13 @@ class LedgerMirrorSuite extends DisciplineSuite:
     assertEquals(run(mirror.from[Conway](at, m.value)).map(_.params), Right(s.params))
   }
 
+  test("a signed treasury is retained in native Coin and roundtrips through the mirror") {
+    val signed = sample.copy(treasury = BigInt(-1))
+    val native = toConway(signed).fold(e => fail(e.show), identity)
+    assertEquals(native.value.nes.es.chainAccount.treasury.value, BigInt(-1))
+    assertEquals(run(mirror.from[Conway](at, native.value)).map(_.treasury), Right(BigInt(-1)))
+  }
+
   // ---- what is refused
 
   test("a hash of the wrong size is a vocabulary error") {
@@ -235,14 +242,6 @@ class LedgerMirrorSuite extends DisciplineSuite:
     assertEquals(
       toConway(bad).left.toOption.map(_.show),
       shown(MirrorError.Vocab(VocabError.WrongHashLength(VocabError.Kind.KeyHash, 28, 5))).some
-    )
-  }
-
-  test("a negative amount is a vocabulary error") {
-    val bad = sample.copy(treasury = BigInt(-1))
-    assertEquals(
-      toConway(bad).left.toOption.map(_.show),
-      shown(MirrorError.Vocab(VocabError.Negative(VocabError.Kind.Coin, BigInt(-1)))).some
     )
   }
 
