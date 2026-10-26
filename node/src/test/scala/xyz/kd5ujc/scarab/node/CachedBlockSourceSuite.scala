@@ -251,11 +251,14 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
                     .complete(())
                     .void *> available.discrete.evalMap(_ => poll).unNone.head.compile.lastOrError
               }
+              // A peer serves any range of its chain: BlockFetch requests the candidate's blocks
+              // in the ranges its decisions choose, not one per published header.
               blocks = new BlockFetchServer.Blocks[IO]:
                 def range(from: Point, to: Point) =
-                  val at = chain.headers.indexWhere(_.point == from)
-                  val raw = Option.when(at >= 0 && from == to)(
-                    fs2.Stream.emit(chain.raws(at.max(0))).covary[IO]
+                  val start = chain.headers.indexWhere(_.point == from)
+                  val end = chain.headers.indexWhere(_.point == to)
+                  val raw = Option.when(start >= 0 && end >= start)(
+                    fs2.Stream.emits(chain.raws.slice(start, end + 1)).covary[IO]
                   )
                   filled.complete(()).void.whenA(to == chain.headers(Peer.Depth).point).as(raw)
               servers = ServerHandlers(NtNHeader.codec, cursor, blocks, handlers.transactions)

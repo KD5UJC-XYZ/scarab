@@ -708,11 +708,16 @@ object BlockPool:
       recovered: Recovered[F]
   ): F[BlockPool[F]] = create(policy, AttributionPolicy(), Some(selection), Some(recovered))
 
+  /** @param decisions
+    *   Whether the pool's coordinator runs its decision loop itself while it has sessions; false
+    *   for a caller that runs [[FetchCoordinator.watchDecisions]] on a clock of its own.
+    */
   private[node] def create[F[_]: Async](
       policy: FetchPolicy,
       attribution: AttributionPolicy,
       selection: Option[F[ChainSelection.Local]] = None,
-      recovered: Option[Recovered[F]] = None
+      recovered: Option[Recovered[F]] = None,
+      decisions: Boolean = true
   ): F[BlockPool[F]] =
     Ref
       .of[F, Slots[F]](Slots(Map.empty, 0L, 0L, Map.empty, 0, None))
@@ -731,7 +736,8 @@ object BlockPool:
                   current.processed.keySet ++ durable.getOrElse(Set.empty)
               }
             ),
-            policy.peerSalt
+            policy.peerSalt,
+            decisions
           )
           .flatMap(coordinator =>
             InvalidBlocks

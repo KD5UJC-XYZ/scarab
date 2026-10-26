@@ -25,7 +25,7 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
     test(
       if streaming then
         "a streamed prefix advances the ledger while a later header in the same batch waits"
-      else "retired read-ahead headers and a longer replacement fork both remain fetchable"
+      else "a header rolled back within its batch is never fetched; the longer fork is adopted"
     ) {
       for
         forks <- ForgedChain.competingForks(5000 until 5020, 5020 until 5100, 31, 47)
@@ -97,10 +97,19 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
               IO.raiseError[ChainSyncClient.Update[NtNHeader]](
                 new AssertionError("batch interface expected")
               )
+            // In the read-ahead variant the rollback batch follows the application of the first
+            // header, as a peer's later batch follows our progress: this follower applies each
+            // published header, so it needs the first header's body, which the decisions fetch
+            // only while a candidate holds that header.
             def requestNextBatch(n: Int)(using Raise[IO, NetworkError]) =
               remaining.modify {
                 case next :: rest =>
-                  rest -> IO {
+                  val first = applied.get.map(_.contains(a.head.hash))
+                  val ready =
+                    if !streaming && rest.size == scripts.size - 2 then
+                      (IO.sleep(5.millis) *> first).iterateUntil(identity).void
+                    else IO.unit
+                  rest -> ready *> IO {
                     assert(next.size <= n, s"scripted batch ${next.size} exceeds requested $n")
                     next
                   }
@@ -264,11 +273,13 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
         val (finalChain, observed, ranges) = result
         assertEquals(finalChain.tip, expected.last.point)
         assert(observed.contains(a.head.hash), "first batch was applied")
-        assert(
-          observed.contains(a.last.hash),
-          "retired header was fetched before its queued rollback"
-        )
         assertEquals(finalChain.blocks.map(_._1.hash), expected.map(_.hash))
         assert(expected.forall(h => observed.contains(h.hash)))
-        if !streaming then assert(ranges.exists { (_, to) => to == a.last.point })
+        // The candidate never held a.last: it was rolled back within the batch that announced it,
+        // which ChainSync folds into the candidate as one change. BlockFetch decides from
+        // candidates alone (ouroboros-network 2fb69829 BlockFetch/State.hs:274–281, Decision.hs:
+        // 251–310), so the reference never requests it; ChainDB adopts the longer fork from the
+        // fetched blocks.
+        if !streaming then
+          assert(!ranges.exists((from, to) => from == a.last.point || to == a.last.point))
     }

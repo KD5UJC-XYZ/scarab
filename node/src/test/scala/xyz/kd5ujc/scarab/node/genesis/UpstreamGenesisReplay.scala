@@ -292,17 +292,22 @@ object UpstreamGenesisReplay extends munit.Assertions:
                               val functor = IO.asyncForIO
                               def tell(problem: GenesisInternalProblem) =
                                 closed.update(_ :+ Closure(None, Problem.Invariant(problem)))
+                            // The replay runs the decision loop on its own clock below.
                             pool <- BlockPool.create[IO](
                               BlockPool.FetchPolicy(
                                 bulkConcurrency = 50,
                                 deadlineConcurrency = 50,
                                 maxRequestsPerPeer = 10
                               ),
-                              follower.fetchSelection,
-                              BlockPool.Recovered(
-                                opened.received.hashes,
-                                hash => opened.received.get(hash).map(_.map(_._2)),
-                                opened.received.invalidate
+                              BlockPool.AttributionPolicy(),
+                              Some(follower.fetchSelection),
+                              decisions = false,
+                              recovered = Some(
+                                BlockPool.Recovered(
+                                  opened.received.hashes,
+                                  hash => opened.received.get(hash).map(_.map(_._2)),
+                                  opened.received.invalidate
+                                )
                               )
                             )
                             _ <- opened.received.refs
