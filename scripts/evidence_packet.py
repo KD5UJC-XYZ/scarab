@@ -55,7 +55,7 @@ REPO = GENERATOR.parents[1]
 GENERATOR_FILES = ("scripts/evidence_packet.py", "scripts/check_test_coverage.py",
                    "scripts/check_conformance_sources.py", "scripts/check_local_paths.py",
                    "scripts/check_secret_scan.py", "scripts/candidate_manifest.py", ".gitleaks.toml")
-RECORDED_EVIDENCE = ("docs/compatibility.md", "docs/data/external-acceptance-294.json",
+RECORDED_EVIDENCE = ("docs/compatibility.md", "docs/data/compatibility.json", "docs/data/external-acceptance-294.json",
                      "docs/data/upstream-source-review-20261020.json",
                      "docs/data/expanded-source-watch-review-20261020.json", "docs/reference-image.md",
                      "docs/performance.md", "docs/security/threat-model.md",
@@ -447,8 +447,11 @@ def optional_data(root: Path, records: list[dict]) -> list[dict]:
 
 
 def recorded(records: list[dict]) -> list[dict]:
+    """Digest the evidence index, register and pages from the committed source inventory."""
     by_path = {r["path"]: r for r in records}
-    return [dict(path=path, sha256=by_path[path]["sha256"]) for path in RECORDED_EVIDENCE if path in by_path]
+    pages = sorted(path for path in by_path if path.startswith("docs/compatibility/") and path.endswith(".md"))
+    return [dict(path=path, sha256=by_path[path]["sha256"])
+            for path in (*RECORDED_EVIDENCE, *pages) if path in by_path]
 
 
 def candidate(directory: Path | None, commit: str) -> tuple[Outcome, dict, dict[str, bytes]]:

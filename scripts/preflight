@@ -31,6 +31,7 @@ step "fixture identities and comparison contracts" python3 scripts/check_test_co
 step "closed error channel guard" python3 scripts/check_error_channels.py
 step "no absolute home paths" python3 scripts/check_local_paths.py
 step "licence records" python3 scripts/check_notice.py
+step "compatibility register" python3 scripts/render_compatibility.py --check
 step "documentation drift" python3 scripts/check_docs.py
 step "code map is current" python3 scripts/render_codemap.py --check
 

@@ -379,57 +379,69 @@
   },
   {
    "kind": "line-citation",
-   "path": "docs/compatibility.md",
+   "path": "docs/compatibility/byron-version-widths.md",
    "key": "byron.cddl:126",
    "count": 1
   },
   {
-   "kind": "missing-path",
-   "path": "docs/compatibility.md",
-   "key": "fixtures/snapshot-v3",
+   "kind": "unregistered-pin",
+   "path": "docs/compatibility/chain-selection.md",
+   "key": "ouroboros-consensus 4.2.0.0",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/compatibility.md",
-   "key": "gapmask.py",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/compatibility.md",
+   "path": "docs/compatibility/evidence-log-1.md",
    "key": "node/assembly",
    "count": 1
   },
   {
    "kind": "missing-path",
-   "path": "docs/compatibility.md",
+   "path": "docs/compatibility/evidence-log-1.md",
    "key": "node/runtimeClasspathFile",
-   "count": 9
+   "count": 6
   },
   {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "blst@7b40a480",
+   "kind": "missing-path",
+   "path": "docs/compatibility/evidence-log-2.md",
+   "key": "node/runtimeClasspathFile",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/compatibility/evidence-log-3.md",
+   "key": "gapmask.py",
    "count": 1
   },
   {
    "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "ouroboros-consensus 4.2.0.0",
+   "path": "docs/compatibility/evidence-log-3.md",
+   "key": "scalus 1.2.0",
+   "count": 2
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/compatibility/evidence-log-4.md",
+   "key": "node/runtimeClasspathFile",
+   "count": 1
+  },
+  {
+   "kind": "missing-path",
+   "path": "docs/compatibility/evidence-log-5.md",
+   "key": "node/runtimeClasspathFile",
    "count": 1
   },
   {
    "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
+   "path": "docs/compatibility/header-arrival-time.md",
    "key": "ouroboros-consensus 4.2.1.0",
    "count": 1
   },
   {
-   "kind": "unregistered-pin",
-   "path": "docs/compatibility.md",
-   "key": "scalus 1.2.0",
-   "count": 2
+   "kind": "missing-path",
+   "path": "docs/compatibility/persistence-snapshot-v7.md",
+   "key": "fixtures/snapshot-v3",
+   "count": 1
   },
   {
    "kind": "unregistered-pin",
