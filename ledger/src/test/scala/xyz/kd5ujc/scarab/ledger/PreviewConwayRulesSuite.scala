@@ -135,7 +135,7 @@ class PreviewConwayRulesSuite extends FunSuite:
       .replace(ConwayAccounts(Sorted.map(accounts.toList.map { (credential, account) =>
         ok(Convert.credential[Staking](credential)) -> account
       })))
-      .andThen(ConwayNewEpochState.treasury.replace(ok(Coin.fromBigInt(1000000000L * ada))))
+      .andThen(ConwayNewEpochState.treasury.replace(Coin(1000000000L * ada)))
       .andThen(
         ConwayNewEpochState.gov.modify(g =>
           g.copy(
@@ -144,9 +144,9 @@ class PreviewConwayRulesSuite extends FunSuite:
           )
         )
       )(funded)
-    val registered = deposits.replace(ok(Coin.fromBigInt(NativeRules.obligation(base))))(base)
+    val registered = deposits.replace(Coin(NativeRules.obligation(base)))(base)
     val reserves = Supply - (total(registered) - registered.es.chainAccount.reserves.value)
-    ConwayNewEpochState.reserves.replace(ok(Coin.fromBigInt(reserves)))(registered)
+    ConwayNewEpochState.reserves.replace(Coin(reserves))(registered)
 
   private def envOf(c: PlutusCase): TxEnv =
     TxEnv(

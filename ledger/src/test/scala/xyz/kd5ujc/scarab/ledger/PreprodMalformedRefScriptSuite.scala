@@ -50,9 +50,7 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
   private def world: NewEpochState[Conway] =
     assertEquals(NativeRules.eraOf(c.protocolMajor), Era.Conway, "a Conway transaction")
     val nes = Build.funded(Build.nes[Conway](248, params), c.spent)
-    val reserves = Coin
-      .fromBigInt(Supply - nes.es.ls.utxo.utxo.utxo.coin)
-      .fold(e => fail(e.toString), identity)
+    val reserves = Coin(Supply - nes.es.ls.utxo.utxo.utxo.coin)
     ConwayNewEpochState.reserves.replace(reserves)(nes)
 
   private def env = TxEnv(

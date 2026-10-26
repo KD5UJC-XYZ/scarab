@@ -61,7 +61,7 @@ class ConwayRulesSuite extends FunSuite:
     */
   private def conway(funds: Vector[(TxIn, TxOut)], pp: ProtocolParams = conwayParams): Nes =
     val nes = Build.funded(Build.nes[Conway](5, pp), funds.toMap)
-    ConwayNewEpochState.reserves.replace(ok(native.Coin.fromBigInt(Supply - utxo(nes).coin)))(nes)
+    ConwayNewEpochState.reserves.replace(native.Coin(Supply - utxo(nes).coin))(nes)
 
   /** `nes` with the account of `c` registered, holding `balance` and `deposit`, delegating its vote
     * to `drep`; the deposit pot holds the deposit and the reserves pay for both.
@@ -88,13 +88,11 @@ class ConwayRulesSuite extends FunSuite:
   /** `nes` with `deposit` more in the deposit pot and `deposit + balance` less in the reserves. */
   private def paid(nes: Nes, deposit: BigInt, balance: BigInt): Nes =
     val ls = nes.es.ls
-    val deposited = ok(native.Coin.fromBigInt(ls.utxo.deposited.value + deposit))
+    val deposited = native.Coin(ls.utxo.deposited.value + deposit)
     val withPot = nes.copy(es =
       nes.es.copy(ls = ls.copy[Conway](utxo = ls.utxo.copy[Conway](deposited = deposited)))
     )
-    ConwayNewEpochState.reserves.modify(r =>
-      ok(native.Coin.fromBigInt(r.value - deposit - balance))
-    )(withPot)
+    ConwayNewEpochState.reserves.modify(r => native.Coin(r.value - deposit - balance))(withPot)
 
   private def utxo(nes: Nes): Utxo = nes.es.ls.utxo.utxo.utxo
 

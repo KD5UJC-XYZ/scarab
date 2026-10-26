@@ -88,7 +88,7 @@ class ShelleyLedgerSuite extends FunSuite:
   private def compact(n: BigInt): CompactCoin =
     CompactCoin.fromBigInt(n).fold(e => fail(s"$e"), identity)
 
-  private def coin(n: BigInt): Coin = Coin.fromBigInt(n).fold(e => fail(s"$e"), identity)
+  private def coin(n: BigInt): Coin = Coin(n)
 
   // ---- the parts of a state the assertions read
 
