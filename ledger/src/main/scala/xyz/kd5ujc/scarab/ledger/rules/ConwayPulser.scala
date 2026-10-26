@@ -49,7 +49,7 @@ object ConwayPulser:
     // the accounts in the order of the credential, and the instant stake walked beside them; the
     // sum for each DRep is built as `groupMapReduce` builds it
     val stakes = Sorted.Cursor(instant)
-    val sums = mutable.Map.empty[node.DRep, BigInt]
+    val sums = mutable.Map.empty[node.DRep, CompactCoin]
     accounts.iterator.foreach { (c, a) =>
       a.drep.foreach { drep =>
         val d = Convert.drepBack(drep)
@@ -58,19 +58,19 @@ object ConwayPulser:
           case _                       => true
         if known then
           val proposals =
-            if deposits.isEmpty then BigInt(0) else deposits.getOrElse(Convert.back(c), BigInt(0))
-          val stake = stakes.at(c).fold(BigInt(0))(_.toBigInt) + a.balance.toBigInt + proposals
-          sums.put(d, sums.get(d).fold(stake)(_ + stake))
+            deposits.getOrElse(Convert.back(c), CompactCoin.zero)
+          val stake = stakes.at(c).getOrElse(CompactCoin.zero).add(proposals).add(a.balance)
+          sums.put(d, sums.get(d).fold(stake)(_.add(stake)))
       }
     }
-    val drepDistr: Map[node.DRep, BigInt] = sums.to(Map)
+    val drepDistr: Map[node.DRep, BigInt] =
+      sums.iterator.map((d, amount) => d -> amount.toBigInt).toMap
     val mark = es.snapshots.mark
-    val base: Map[Bytes, BigInt] =
+    val base: Map[Bytes, CompactCoin] =
       mark.pools.iterator.collect {
-        case (id, p) if !p.numDelegators.isZero => id.bytes -> p.stake.toBigInt
+        case (id, p) if !p.numDelegators.isZero => id.bytes -> p.stake
       }.toMap
-    val baseTotal =
-      mark.activeStake.entries.valuesIterator.foldLeft(BigInt(0))(_ + _.stake.value.toBigInt)
+    val baseTotal = mark.activeStake.total.value.value
     // proposals hold no deposits most of the time, and then no account adds to a pool
     val (poolDistr, totalPoolStake) =
       if deposits.isEmpty then (base, baseTotal)
@@ -78,11 +78,12 @@ object ConwayPulser:
         accounts.iterator.foldLeft((base, baseTotal)) { case (acc @ (dist, total), (c, a)) =>
           (a.pool.map(_.bytes), deposits.get(Convert.back(c))) match
             case (Some(pool), Some(d)) if dist.contains(pool) =>
-              (dist.updated(pool, dist(pool) + d), total + d)
+              (dist.updated(pool, dist(pool).add(d)), total + d.toBigInt)
             case _ => acc
         }
+    val poolAmounts = poolDistr.view.mapValues(_.toBigInt).toMap
     val snapshot =
-      node.PulsingSnapshot(gov.proposals.actions, drepDistr, flatDReps, poolDistr)
+      node.PulsingSnapshot(gov.proposals.actions, drepDistr, flatDReps, poolAmounts)
     val committeeState: Map[node.Credential, node.CommitteeAuth] =
       FlatView.stakeMap(ls.cert.vState.committeeState.creds) {
         case CommitteeAuthorization.CommitteeHotCredential(h) =>
@@ -92,7 +93,7 @@ object ConwayPulser:
     val env = node.Ratify.Env(
       drepDistr = drepDistr,
       drepState = flatDReps,
-      poolDistr = poolDistr,
+      poolDistr = poolAmounts,
       totalPoolStake = totalPoolStake,
       epoch = epoch.toBigInt,
       committeeState = committeeState,

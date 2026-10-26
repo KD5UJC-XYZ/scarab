@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
-import cats.syntax.all.*
 import monocle.Lens
 import munit.ScalaCheckSuite
 import org.scalacheck.{Arbitrary, Gen}
@@ -104,25 +103,20 @@ class EpochBoundarySuite extends ScalaCheckSuite:
     }
   }
 
-  /** The stake distribution as it was written: a lookup of the instant stake for each account. */
+  /** The same native compact resolution by a lookup for each account instead of a cursor. */
   private def resolved(
       instant: SortedMap[Credential[Staking], CompactCoin],
       accounts: Vector[(Credential[Staking], EraLedger.AccountView)]
-  ) =
+  ): ActiveStake =
     val entries = accounts.flatMap { (c, account) =>
       account.pool.flatMap { p =>
-        val total = account.balance.toBigInt + instant.get(c).fold(BigInt(0))(_.toBigInt)
-        Option.when(total.signum > 0)((c, total, p))
+        val total = instant.get(c) match
+          case Some(stake) => Some(stake.add(account.balance))
+          case None        => Option.unless(account.balance.word.isZero)(account.balance)
+        total.map(stake => c -> StakeWithDelegation(NonZero.unsafe(stake), p))
       }
     }
-    entries.toList
-      .traverse { (c, total, p) =>
-        for
-          stake <- CompactCoin.fromBigInt(total)
-          nonZero <- NonZero.from(stake)
-        yield c -> StakeWithDelegation(nonZero, p)
-      }
-      .map(es => ActiveStake(Sorted.map(es)))
+    ActiveStake(Sorted.map(entries))
 
   property(
     "the active stake by a merge with the instant stake is the one by a lookup for each account"
@@ -143,7 +137,7 @@ class EpochBoundarySuite extends ScalaCheckSuite:
         Sorted.empty[Ptr, CompactCoin]
       )
       val want = resolved(instant, accounts.toVector)
-      assertEquals(got.map(_.entries.toList), want.map(_.entries.toList))
+      assertEquals(got.entries.toList, want.entries.toList)
       true
     }
   }

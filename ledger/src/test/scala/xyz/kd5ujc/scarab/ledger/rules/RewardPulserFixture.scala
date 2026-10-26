@@ -98,8 +98,8 @@ object RewardPulserFixture extends Assertions:
         coin(0)
       )
     )
-    val active = ok(EraLedger.activeStake(ls))
-    val go = ok(StakeDistribution.snapshot(active, stakePools))
+    val active = EraLedger.activeStake(ls)
+    val go = StakeDistribution.snapshot(active, stakePools)
     val made = BlocksMade(
       Sorted.map(Vector.range(0, pools).map(p => pool(p) -> Word64.fromUnsigned(10L)))
     )

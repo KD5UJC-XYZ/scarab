@@ -67,7 +67,7 @@ object NativeRewardFixture extends Assertions:
         case (c, stake) if stake.delegation == id => c
       }))
     )
-    ok(StakeDistribution.snapshot(active, indexed))
+    StakeDistribution.snapshot(active, indexed)
 
   /** Rebuild just the era's account record, retaining the rest of its certificate state. */
   def accounts[E <: EraTag](
@@ -175,4 +175,4 @@ object NativeRewardFixture extends Assertions:
   def total[E <: EraTag](nes: NewEpochState[E])(using ShelleyBasedEra[E]): BigInt =
     nes.es.chainAccount.reserves.value + nes.es.chainAccount.treasury.value +
       nes.es.ls.utxo.fees.value + nes.es.ls.utxo.deposited.value +
-      EraLedger.accounts(nes.es.ls).iterator.map(_._2.balance.toBigInt).sum
+      CompactCoin.sum(EraLedger.accounts(nes.es.ls).iterator.map(_._2.balance)).toBigInt
