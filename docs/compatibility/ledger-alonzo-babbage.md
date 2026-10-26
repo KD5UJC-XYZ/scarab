@@ -1,11 +1,11 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Ledger: Alonzo and Babbage
 
-Part of the [compatibility matrix](../compatibility.md); the register entry is `ledger-alonzo-babbage` in [compatibility.json](../data/compatibility.json). The three sections below are the cells of the former matrix row, unchanged.
+Part of the [compatibility matrix](../compatibility.md); the register entry is `ledger-alonzo-babbage` in [compatibility.json](../data/compatibility.json). The sections below record the implementation, evidence and remaining limits.
 
 ## Status as recorded
 
-implemented incl. collateral, inline datums, reference inputs and scripts; collateral count is checked without redeemers, and bootstrap output attributes/network are checked under either validity flag (#178); the payment key (or Byron root) of every collateral input is a needed key witness whether or not the transaction has redeemers, in every era from Alonzo (`getShelleyWitsVKeyNeededNoGov` over `spendableInputsTxBodyF`, cardano-ledger f649f975 `Shelley/UTxO.hs`, `Alonzo/TxBody.hs`, `Babbage/TxBody.hs`, `Conway/TxBody.hs`; #331)
+implemented incl. collateral, inline datums, reference inputs and scripts; Babbage checks the collateral count without redeemers and Alonzo does not check it, as the reference (`Babbage/Rules/Utxo.hs:412`; `Alonzo/Rules/Utxo.hs:570-572` has no such test, cardano-ledger f649f975; #412), and bootstrap output attributes/network are checked under either validity flag (#178); UTXO records every failing predicate in the era's order (#412); the payment key (or Byron root) of every collateral input is a needed key witness whether or not the transaction has redeemers, in every era from Alonzo (`getShelleyWitsVKeyNeededNoGov` over `spendableInputsTxBodyF`, cardano-ledger f649f975 `Shelley/UTxO.hs`, `Alonzo/TxBody.hs`, `Babbage/TxBody.hs`, `Conway/TxBody.hs`; #331)
 
 ## Evidence
 

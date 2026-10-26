@@ -319,7 +319,7 @@ or nests yet, so the measured cost is that of the larger machine on unchanged ru
 loop arguments, two more fields in a handler frame and one more frame case. Old is
 `feat/refusal-oracle` `d14d42cadff60dfe44584059b538eee76d97b2a3` (`RuleT.scala` SHA-256
 `05ab67a4…737b`), new is this change (`RuleT.scala` SHA-256 `1d7210e0…c351`). Both builds are
-complete (`node/Test/compile` of each tree), not a class overlay, because `LedgerFailure` and its
+complete (the `sbt node/Test/compile` command on each tree), not a class overlay, because `LedgerFailure` and its
 users change too. Results are identical: every Preview block and epoch digest and the synthetic
 BBODY digest `159017f549d74b4d4cb6a520` agree between the builds. The four `missing-input-*`
 digests differ by representation only: they hash `toString` of the refusal, which now holds a

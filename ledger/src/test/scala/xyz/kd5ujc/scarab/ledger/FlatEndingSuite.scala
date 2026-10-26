@@ -41,6 +41,12 @@ class FlatEndingSuite extends FunSuite:
 
   private def env = TxEnv(c.slot, 189, 0)
 
+  /** The verdict of the phase-1 script checks (`MalformedScriptWitnesses`,
+    * `MalformedReferenceScripts`) as the node reports it.
+    */
+  private def wellFormed(protocol: Int, tx: Tx): Either[LedgerFailure, Unit] =
+    TestLedger.verdict(tx.body.id, Vector(TxChecks.scriptsWellFormed(params(protocol), tx, env)))
+
   test("the fixture's own script ends exactly behind its filler") {
     assert(FlatScan.decode(flat).isRight)
     assertEquals(
@@ -54,7 +60,7 @@ class FlatEndingSuite extends FunSuite:
     for protocol <- Vector(7, 8) do
       val witnessed = c.tx.copy(witnesses = c.tx.witnesses.copy(scripts = Vector(bad)))
       assertEquals(
-        TxChecks.scriptsWellFormed(params(protocol), witnessed, env),
+        wellFormed(protocol, witnessed),
         Left(
           LedgerFailure.Rejected(
             witnessed.body.id,
@@ -69,7 +75,7 @@ class FlatEndingSuite extends FunSuite:
         body = c.tx.body.copy(outputs = Vector(output.copy(scriptRef = Some(bad))))
       )
       assertEquals(
-        TxChecks.scriptsWellFormed(params(protocol), referenced, env),
+        wellFormed(protocol, referenced),
         Left(
           LedgerFailure.Rejected(
             referenced.body.id,
@@ -84,11 +90,11 @@ class FlatEndingSuite extends FunSuite:
     for protocol <- Vector(7, 8) do
       val kept = Script.plutus(ScriptKind.PlutusV2, remainder)
       val tx = c.tx.copy(witnesses = c.tx.witnesses.copy(scripts = Vector(kept)))
-      assertEquals(TxChecks.scriptsWellFormed(params(protocol), tx, env), Right(()))
+      assertEquals(wellFormed(protocol, tx), Right(()))
     val v3 = Script.plutus(ScriptKind.PlutusV3, remainder)
     val tx = c.tx.copy(witnesses = c.tx.witnesses.copy(scripts = Vector(v3)))
     assertEquals(
-      TxChecks.scriptsWellFormed(params(9), tx, env),
+      wellFormed(9, tx),
       Left(
         LedgerFailure.Rejected(
           tx.body.id,

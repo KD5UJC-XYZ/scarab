@@ -1023,7 +1023,7 @@ class NtcQueriesTest(unittest.TestCase):
 
     def test_a_tracked_divergence_holds_exactly_as_declared(self):
         case = ntccases.Case("withdrawal-network-flag-true", b"", "ConwayWithdrawalsMissingAccounts",
-                             ntccases.ACCUMULATED_WITHDRAWAL_FAILURES)
+                             ntccases.Divergence(issue=412, reference_failures=2, scala_failures=1))
         self.assertEqual(case.divergence.issue, 412)
         both = cbor.enc([[6, [[8, 1], [1, 2]]]])
         first = cbor.enc([[6, [[8, 1]]]])

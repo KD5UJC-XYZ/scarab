@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Ledger: Conway UTXO against `babbageUtxoValidation` (audit, #163)
 
-Part of the [compatibility matrix](../compatibility.md); the register entry is `ledger-conway-utxo-babbage-validation` in [compatibility.json](../data/compatibility.json). The three sections below are the cells of the former matrix row, unchanged.
+Part of the [compatibility matrix](../compatibility.md); the register entry is `ledger-conway-utxo-babbage-validation` in [compatibility.json](../data/compatibility.json). The sections below record the implementation, evidence and remaining limits.
 
 ## Status as recorded
 
@@ -13,4 +13,4 @@ unit: `ConwayLedgerSuite` (a withdrawal of another network and one of the networ
 
 ## Explicitly unchecked or unconfirmed
 
-`validateOutsideForecast` has no counterpart: after `unsafeLinearExtendEpochInfo` the conversion is total, so it cannot fail; for a transaction with the flag true the reference lists the failure of LEDGER's check of the withdrawals and then this one, the Scala rules the first (the known limit of the failure list); Alonzo/Babbage now enforce these collateral and bootstrap-output predicates under #178; Shelley/Allegra/Mary now enforce bootstrap-output bounds and network predicates under #141; protocol-9 set, map and ordered-set uniqueness at decoding is the next row (#327)
+`validateOutsideForecast` has no counterpart: after `unsafeLinearExtendEpochInfo` the conversion is total, so it cannot fail; every failing predicate is reported, in the reference's order (#412); Alonzo/Babbage now enforce these collateral and bootstrap-output predicates under #178; Shelley/Allegra/Mary now enforce bootstrap-output bounds and network predicates under #141; protocol-9 set, map and ordered-set uniqueness at decoding is the next row (#327)

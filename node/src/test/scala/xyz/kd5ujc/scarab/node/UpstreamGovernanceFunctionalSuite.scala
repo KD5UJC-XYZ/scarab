@@ -332,7 +332,7 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
     val expected = Vector(low, middle, high)
     val failure = PredicateFailure.Gov(GovFailure.VotersDoNotExist(expected))
     assertEquals(
-      Sts.apply(GovKernel)(globals, absent, before, inputs),
+      kernelRule(globals, absent, before, inputs),
       Left(LedgerFailure.Rejected(env.id, failure))
     )
     // [14 VotersDoNotExist, [voters]] as the plain list of [4 Pool, hash] the encoder writes,

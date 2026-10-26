@@ -9,17 +9,15 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.consensus.state.{EraHistory, MirrorClock, Past, Placement}
 import xyz.kd5ujc.scarab.consensus.ForkTrigger
-import xyz.kd5ujc.scarab.ledger.{
-  LedgerFailure,
-  PlutusStats,
-  PosixClock,
-  Tx,
-  TxEnv,
-  TxIn,
-  TxOut,
-  Utxo
+import xyz.kd5ujc.scarab.ledger.{PlutusStats, PosixClock, Tx, TxEnv, TxIn, TxOut, Utxo}
+import xyz.kd5ujc.scarab.ledger.rules.{
+  Counted,
+  Judgment,
+  ShelleyLedger,
+  ShelleyLedgerEnv,
+  Sts,
+  Tick
 }
-import xyz.kd5ujc.scarab.ledger.rules.{Counted, ShelleyLedger, ShelleyLedgerEnv, Sts, Tick}
 import xyz.kd5ujc.scarab.ledger.state.{
   Alonzo,
   Babbage,
@@ -196,20 +194,20 @@ class PastHorizonReferenceSuite extends FunSuite:
       evaluator = env.evaluator,
       decoder = env.decoder
     )
-    Sts(ShelleyLedger.sts[E])(
+    Judgment.run(ShelleyLedger.sts[E], Judgment.Policy.Accumulate)(
       env.rules,
       ShelleyLedgerEnv(txEnv, ticked.es.chainAccount),
       Counted(ticked.es.ls, PlutusStats.zero),
       envelope(r.item, era)
     ) match
-      case Left(LedgerFailure.Rejected(_, f)) =>
+      case Right(Left(failures)) =>
         Some(
           PreConwayFailureCbor
-            .applyTxError(era, Vector(f))
-            .getOrElse(fail(s"no encoding for ${f.detail}"))
+            .applyTxError(era, failures.toChain.toVector)
+            .getOrElse(fail(s"no encoding for ${failures.iterator.map(_.detail).mkString("; ")}"))
         )
-      case Left(other) => fail(s"not judged: ${other.message}")
-      case Right(_)    => None
+      case Left(defect) => fail(s"not judged: ${defect.message}")
+      case Right(_)     => None
 
   private def replayConway(r: Recorded): Option[Bytes] =
     val setup = setupOf(r)

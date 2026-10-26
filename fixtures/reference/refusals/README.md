@@ -43,14 +43,20 @@ rule (`ShelleyLedger.sts[Babbage]`) and written by `PreConwayFailureCbor`. Scara
 LocalTxSubmission serve Conway only, so this compares the rule and its encoding, not a node-to-client
 path.
 
-There are no expected-failure lists, masks or tolerances. A case whose bytes differ fails. A family
+The corpus currently contains 71 transactions: 24 Babbage and 47 Conway. Of these, 69
+compare the complete refusal bytes. Two `utxos-script-fails-flag-true` cases (one per era)
+have an explicitly incomplete comparison under [#491](https://github.com/KD5UJC-XYZ/scarab/issues/491):
+the suite removes only the `PlutusFailure` text to compare the remaining structure, checks that the
+original refusal bytes still differ, and cancels the case. Neither is counted as a conformance pass;
+the recorded original bytes are unchanged. Every other case whose bytes differ fails. A family
 that `manifest.json` requires for an era and no case of that era covers fails the era's coverage test:
 missing coverage is an incomplete gate, never a pass. Batches were recorded only while the tip and the
 mempool slot held still, with an empty mempool, so the validity-interval slot in a refusal is the one
-the replay judges at; nothing is masked.
+the replay judges at; the slot is compared unchanged.
 
 The upstream LEDGERS conformance adapter is not used here: these expectations come from the released
-node's own submission path.
+node's own submission path. The recorded corpus currently covers Babbage and Conway only. Earlier
+eras, PPUP and the complete LEDGERS adapter acceptance scope of #401 remain incomplete.
 
 ## Refresh
 

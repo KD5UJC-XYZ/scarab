@@ -4,10 +4,10 @@
 (the raw `ApplyTxErr` bytes and the text `cardano-cli transaction submit` prints) must be equal.
 
 Every case but one violates exactly one rule. The ledger reports all the failures it finds, in the order
-CERTS, GOV, UTXOW; a case with one violation has one failure, which is what the Scala rules report. The
-exception is `withdrawal-network-flag-true`: its withdrawal names an account of the other network, which LEDGER
-and UTXO both refuse, and the Scala rules stop at the first failure. Its `Divergence` records that comparison,
-the failure counts it expects and the issue whose resolution removes it.
+CERTS, GOV, UTXOW, and so do the Scala rules (#412). The exception is `withdrawal-network-flag-true`: its
+withdrawal names an account of the other network, which LEDGER and UTXO both refuse, so its refusal holds two
+failures. Every case is compared whole; a `Divergence` would record a case compared by its first failure, the
+failure counts it expects and the issue whose resolution removes it.
 """
 import json
 from dataclasses import dataclass
@@ -24,8 +24,8 @@ ANCHOR = ("--anchor-url http://example.com/a --anchor-data-hash "
 
 @dataclass(frozen=True)
 class Divergence:
-    """A refusal compared by its first failure only, because the Scala rules report one failure where the
-    reference accumulates `reference_failures` of them (#412, `Rules` accumulation). The comparison requires
+    """A refusal compared by its first failure only, because the Scala rules report `scala_failures` where the
+    reference accumulates `reference_failures` of them. No case declares one now. The comparison requires
     the first failures to be byte-equal and both counts to be exactly these; once the whole refusals are equal
     the case fails, so that the exemption is removed together with the divergence."""
     issue: int
@@ -41,9 +41,6 @@ class Case:
     tx: bytes
     ledger_rule: str
     divergence: Optional[Divergence] = None
-
-
-ACCUMULATED_WITHDRAWAL_FAILURES = Divergence(issue=412, reference_failures=2, scala_failures=1)
 
 
 class Builder:
@@ -212,11 +209,11 @@ def corpus(name, socket):
     # (`ConwayWithdrawalsMissingAccounts`, cardano-ledger f649f975 Conway/Rules/Ledger.hs:125 and :383, the
     # switch `hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule` at Conway/Era.hs:283-284); below 11
     # CERTS does (`WithdrawalsNotInRewardsCERTS`, Conway/Rules/Certs.hs:116). UTXO adds
-    # `WrongNetworkWithdrawal`, which the Scala rules do not reach because they stop at the first failure
-    # (#412). The ntc devnet runs at 11 or later; the counts below 11 have not been observed.
+    # `WrongNetworkWithdrawal`, and both rules record every failure (#412), so the whole refusal is compared.
+    # The ntc devnet runs at 11 or later; the refusal below 11 has not been observed.
     add("withdrawal-network-flag-true",
         "ConwayWithdrawalsMissingAccounts" if major >= 11 else "WithdrawalsNotInRewardsCERTS",
-        script_tx(b, w, other, SUCCEEDS, account="mainnet")[0], divergence=ACCUMULATED_WITHDRAWAL_FAILURES)
+        script_tx(b, w, other, SUCCEEDS, account="mainnet")[0])
     # a datum in the witnesses that no spent Plutus input requires and no output carries (#330): a key-only
     # spend with the right script data hash, so that `NotAllowedSupplementalDatums` is its only failure
     key = eratx.Key(b.sh(f"cat {w['skey']}"))

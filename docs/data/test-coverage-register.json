@@ -532,7 +532,7 @@
       "status": "covered",
       "scope": "384 unchanged native active-state observations across eight seeds, both peer trust values and both idle settings, plus seven unsigned Word64 boundaries.",
       "assertion": "Compare every captured deadline using the production client receive-state selector or effective server idle setting, exact binary timeout samples and picoseconds; verify complete retained RNG advancement and random scaling boundaries.",
-      "rationale": "Untrustable MustReply deadlines are freshly randomized601\u2013911seconds. Trustable local-root clients are unbounded, other states do not consume random input, and partial reads retain a single state budget.",
+      "rationale": "Untrustable MustReply deadlines are freshly randomized601–911seconds. Trustable local-root clients are unbounded, other states do not consume random input, and partial reads retain a single state budget.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/35",
       "resolution": "Every native output is retained without masks or exceptions. Native and JVM PRNG seed streams are not equated; actual native Word64 samples drive identical production scaling. Runtime tests independently exercise hook ordering, trust, fresh state draws and fragmented reads.",
@@ -559,22 +559,6 @@
         "scripts/devnet/compare.py",
         "scripts/devnet/eraview.py",
         "scripts/devnet/govview.py"
-      ],
-      "candidateRequired": false
-    },
-    {
-      "id": "devnet-ntc-refusal-first-failure",
-      "classification": "known-divergence",
-      "status": "bounded",
-      "scope": "The ntc refusal case withdrawal-network-flag-true: a withdrawal from an account of the other network, which LEDGER and UTXO both refuse.",
-      "assertion": "The first failures are byte-equal and equal as cardano-cli text, the reference lists exactly two failures and the Scala node one; the case fails once the whole refusals are equal. Every other ntc refusal is compared exactly (raw ApplyTxErr bytes and text) at one tip of both nodes, without masks.",
-      "rationale": "The Scala rules stop at the first failure where the reference accumulates; comparing the whole list would fail on that documented divergence, and comparing nothing would hide a change in the first failure or the counts.",
-      "owner": "ledger maintainer",
-      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/412",
-      "resolution": "Remove ntccases.ACCUMULATED_WITHDRAWAL_FAILURES and compare the case exactly once the rules accumulate failures (#412); the scenario fails with divergenceResolved until then.",
-      "evidence": [
-        "scripts/devnet/ntccases.py",
-        "scripts/devnet/scenarios/ntc.py"
       ],
       "candidateRequired": false
     },
@@ -636,7 +620,7 @@
       "rationale": "First-failure comparisons cannot show check-order regressions or a missing accumulated failure, and replays of accepted chains never contain a refused transaction.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
-      "resolution": "Covered when every recorded case compares equal and every required family is covered; differing cases fail without an exclusion list, mask or tolerance. Two cases have a recorded gap in the PlutusFailure text only (#491): everything else compares exactly, they are reported as incomplete, and they fail once the text matches.",
+      "resolution": "Covered when every recorded case compares equal and the complete required era/family scope is covered (#401). The current 71 transactions comprise 69 complete byte comparisons and two incomplete PlutusFailure-text comparisons (#491). Those two remove only that text for the partial comparison, assert the original bytes still differ and cancel; they are not conformance passes. Other differing cases fail.",
       "evidence": [
         "fixtures/reference/refusals/manifest.json",
         "fixtures/reference/refusals/README.md",

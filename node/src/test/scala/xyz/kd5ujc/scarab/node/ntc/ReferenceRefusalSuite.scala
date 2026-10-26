@@ -17,6 +17,7 @@ import xyz.kd5ujc.scarab.ledger.{
   LedgerDefect,
   LedgerFailure,
   PlutusStats,
+  PosixClock,
   PredicateFailure,
   Tx,
   TxEnv,
@@ -64,7 +65,7 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
   * mempool whose ledger is the reference's state ticked to the successor of the recorded tip
   * (`MempoolLedger.tick`), `MempoolState.add`, and `LocalSubmission.reasonItem`. The bytes must
   * equal the reference's. A Babbage case goes through the era's LEDGER rule and encoding
-  * ([[replayBabbage]]). There is no list of cases expected to differ and no partial comparison: a
+  * ([[replayBabbage]]). Apart from the explicitly incomplete text comparisons below, every
   * difference fails its case. A family the manifest requires for an era and no case covers fails
   * that era's coverage test (an incomplete gate is never a pass).
   *
@@ -176,7 +177,7 @@ class ReferenceRefusalSuite extends FunSuite:
         stabilityWindow = env.geometry.stabilityWindow,
         txIndex = 0,
         updateQuorum = env.globals.updateQuorum,
-        clock = Some(s => BigInt(env.geometry.slotStart(s).toEpochMilli)),
+        clock = Some(PosixClock.total(env.geometry)),
         evaluator = env.evaluator,
         decoder = env.decoder
       )

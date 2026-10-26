@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.rules.{Test, UtxoTests}
 
 /** The Babbage and Conway minimum ada of an output is `(160 + size) * coinsPerUTxOByte` over the
   * `Sized` length of the output as it was decoded (`validateOutputTooSmallUTxO`,
@@ -31,8 +32,11 @@ class MinUtxoSizeSuite extends FunSuite:
 
   private val perByte = TestLedger.params(7).coinsPerUTxOByte
 
-  private def checked(major: Int, out: TxOut) =
-    TxChecks.outputsOk(TestLedger.params(major), TestLedger.env, Vector(out))
+  /** The failures of `validateOutputTooSmallUTxO` for the one output, in order. */
+  private def checked(major: Int, out: TxOut): Either[List[PredicateFailure], Unit] =
+    Test
+      .failures(UtxoTests.outputTooSmall(TestLedger.params(major), Vector(out)))
+      .fold(Right(()))(failures => Left(failures.toNonEmptyList.toList))
 
   List(7, 9).foreach { major =>
     test(s"map form: the minimum is over the original 39 bytes (protocol $major)") {
@@ -42,7 +46,9 @@ class MinUtxoSizeSuite extends FunSuite:
       val below = decode(mapForm(minimum.toLong - 1))
       assertEquals(
         checked(major, below),
-        Left(PredicateFailure.utxo(UtxoFailure.BabbageOutputTooSmall(Vector(below -> minimum))))
+        Left(
+          List(PredicateFailure.utxo(UtxoFailure.BabbageOutputTooSmall(Vector(below -> minimum))))
+        )
       )
     }
 
@@ -53,7 +59,9 @@ class MinUtxoSizeSuite extends FunSuite:
       assertEquals(
         checked(major, out),
         Left(
-          PredicateFailure.utxo(UtxoFailure.BabbageOutputTooSmall(Vector(out -> (199 * perByte))))
+          List(
+            PredicateFailure.utxo(UtxoFailure.BabbageOutputTooSmall(Vector(out -> (199 * perByte))))
+          )
         )
       )
     }
@@ -65,7 +73,9 @@ class MinUtxoSizeSuite extends FunSuite:
       val below = decode(arrayForm(minimum.toLong - 1))
       assertEquals(
         checked(major, below),
-        Left(PredicateFailure.utxo(UtxoFailure.BabbageOutputTooSmall(Vector(below -> minimum))))
+        Left(
+          List(PredicateFailure.utxo(UtxoFailure.BabbageOutputTooSmall(Vector(below -> minimum))))
+        )
       )
     }
   }
