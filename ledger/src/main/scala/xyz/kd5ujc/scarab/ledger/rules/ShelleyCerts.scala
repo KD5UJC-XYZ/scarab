@@ -416,7 +416,7 @@ object ShelleyDelegs
           LedgerFailure
         ](
           ShelleyDelpl,
-          ShelleyDelegEnv(env, Ptr(env.ctx.slot, env.ctx.txIndex, ix)),
+          ShelleyDelegEnv(env, Ptr.ofCertificate(env.ctx.slot, env.ctx.txIndex, ix)),
           cert
         )
     }

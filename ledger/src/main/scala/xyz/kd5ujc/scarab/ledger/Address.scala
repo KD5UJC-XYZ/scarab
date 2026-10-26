@@ -44,8 +44,8 @@ object Credential:
 
 /** Certificate pointer of a pointer address: slot, transaction index, certificate index. The
   * reference holds them as a `Word32` and two `Word16` s (`Ptr`, `Credential.hs` 258); the fields
-  * are wider here so the persisted codec stays as it was, and every pointer read from an address is
-  * made to fit by [[Ptr.read]].
+  * are wider here so the persisted codec stays as it was, and every pointer, whether read from an
+  * address ([[Ptr.read]]) or made by DELEGS ([[Ptr.ofCertificate]]), is made to fit.
   */
 final case class Ptr(slot: BigInt, txIx: BigInt, certIx: BigInt):
   /** Whether the fields fit a `Word32` and two `Word16`s. */
@@ -63,6 +63,19 @@ object Ptr:
 
   /** The pointer to no certificate (`Ptr 0 0 0`): what a pointer that does not fit is made into. */
   val zero: Ptr = Ptr(0, 0, 0)
+
+  private val slotMask: BigInt = BigInt(0xffffffffL)
+  private val indexMask: BigInt = BigInt(0xffffL)
+
+  /** The pointer DELEGS gives the certificate at position `certIx` of the transaction at `txIx`
+    * (cardano-ledger f649f975 `Shelley/Rules/Delegs.hs:192-194`): the slot is cut to its low 32
+    * bits (`SlotNo32 (fromIntegral @Word64 @Word32 slot64)`, `Credential.hs:233`) and the
+    * certificate index to 16 (`fromIntegral @Int @Word16`). The transaction index is kept: it is
+    * the `TxIx` LEDGERS gave the transaction ([[xyz.kd5ujc.scarab.ledger.state.TxIx.enumerate]]),
+    * which is never past 65,535.
+    */
+  def ofCertificate(slot: BigInt, txIx: Int, certIx: Int): Ptr =
+    Ptr(slot & slotMask, txIx, BigInt(certIx) & indexMask)
 
   /** What a decoder does with a pointer whose natural does not fit its field. The decoder of a
     * protocol version below 9 normalises it (`mkPtrNormalized`, `Credential.hs` 270-285, chosen by

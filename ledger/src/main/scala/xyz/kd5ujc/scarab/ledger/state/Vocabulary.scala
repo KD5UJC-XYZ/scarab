@@ -224,6 +224,25 @@ object BlockNo:
   given Order[BlockNo] = Word64.order
   given Show[BlockNo] = Show.show(b => s"BlockNo(${Word64.decimal(b)})")
 
+/** `TxIx` (cardano-ledger f649f975 `BaseTypes.hs:918-921`): the position of a transaction in its
+  * block, a `Word16` with the derived bounded `Enum`. A position exists only as LEDGERS enumerates
+  * it ([[TxIx.enumerate]]), so none is past 65,535.
+  */
+opaque type TxIx = Int
+
+object TxIx:
+  /** The number of positions: `[minBound .. maxBound] :: [TxIx]` has 2^16. */
+  val count: Int = 1 << 16
+
+  /** `zip [minBound ..] txs` (LEDGERS, `Shelley/Rules/Ledgers.hs:201-211`, the rule of every era):
+    * each element with its position. `[minBound ..]` of a bounded `Enum` ends at `maxBound`
+    * (65,535) and `zip` stops at the shorter list, so an element past the last position has none
+    * and is not in the result: no position wraps and none is past `maxBound`.
+    */
+  def enumerate[A](as: Vector[A]): Vector[(A, TxIx)] = as.take(count).zipWithIndex
+
+  extension (ix: TxIx) def index: Int = ix
+
 /** `HasZero a` (`BaseTypes/NonZero.hs:80-91`): the types that have a zero to refuse. */
 trait HasZero[A]:
   def isZero(a: A): Boolean
