@@ -1,13 +1,34 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import xyz.kd5ujc.scarab.legacy.*
-import scala.annotation.unused
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.plutus.ScalusEvaluator
 import munit.FunSuite
-import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
+import xyz.kd5ujc.scarab.ledger.rules.{Convert, Counted, EraLedger, NativeRules}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Build,
+  ColdCommittee,
+  Coin,
+  CommitteeAuthorization,
+  CommitteeState,
+  CompactCoin,
+  Conway,
+  ConwayAccountState,
+  ConwayAccounts,
+  ConwayGovState,
+  ConwayLedgerState,
+  ConwayNewEpochState,
+  HotCommittee,
+  LedgerState,
+  NewEpochState,
+  Sorted,
+  Staking,
+  UTxOState,
+  VState,
+  VocabError
+}
+import xyz.kd5ujc.scarab.protocol.Era
 
 import TestLedger.*
 
@@ -19,7 +40,6 @@ import TestLedger.*
   * and phase 2 (the real script against our script context) must accept it.
   */
 class PreviewConwayRulesSuite extends FunSuite:
-  private val rs = RuleSet
   private val ada = BigInt(1000000)
 
   private val cases =
@@ -31,7 +51,38 @@ class PreviewConwayRulesSuite extends FunSuite:
       c.tx.body.proposals.isEmpty && c.tx.body.votes.isEmpty && c.tx.body.certificates.isEmpty
   )
 
-  private def worldOf(c: PlutusCase): LedgerState =
+  private def ok[A](value: Either[VocabError, A]): A = value.fold(e => fail(e.toString), identity)
+
+  private def compact(n: BigInt): CompactCoin = ok(CompactCoin.fromBigInt(n))
+
+  /** Everything the ledger holds, in lovelace: the UTxO, the fees, the deposits, the two pots, the
+    * account balances and the donations. It is the supply when the ledger is consistent.
+    */
+  private def total(nes: NewEpochState[Conway]): BigInt =
+    val es = nes.es
+    es.ls.utxo.utxo.utxo.coin + es.ls.utxo.fees.value + es.ls.utxo.deposited.value +
+      es.chainAccount.treasury.value + es.chainAccount.reserves.value +
+      EraLedger.accounts(es.ls).iterator.map(_._2.balance.toBigInt).sum +
+      es.ls.utxo.donation.value
+
+  private def deposited(nes: NewEpochState[Conway]): BigInt = nes.es.ls.utxo.deposited.value
+
+  private def fees(nes: NewEpochState[Conway]): BigInt = nes.es.ls.utxo.fees.value
+
+  private def gov(nes: NewEpochState[Conway]): ConwayGovState = ConwayNewEpochState.gov.get(nes)
+
+  private val vState = ConwayNewEpochState.ls.andThen(ConwayLedgerState.vState)
+
+  private val deposits =
+    ConwayNewEpochState.ls.andThen(LedgerState.utxo[Conway]).andThen(UTxOState.deposited[Conway])
+
+  /** The ledger around the transaction of `c`: its outputs, the accounts its proposals and
+    * withdrawals name (the withdrawing ones holding what they withdraw and delegated to abstain), a
+    * treasury of a billion ada, the constitution's guardrails script and the roots its proposals
+    * follow, the deposits its accounts hold and the reserves making up the rest of the supply.
+    */
+  private def worldOf(c: PlutusCase): NewEpochState[Conway] =
+    assertEquals(NativeRules.eraOf(c.protocolMajor), Era.Conway, "a Conway transaction")
     val body = c.tx.body
     val utxo = c.spent ++ c.references ++ c.collateral
     val policy = body.proposals.collectFirst {
@@ -43,13 +94,22 @@ class PreviewConwayRulesSuite extends FunSuite:
         case GovAction.ParameterChange(prev, _, _) => r.copy(paramUpdate = prev)
         case _                                     => r
     }
+    val abstain = ok(Convert.drep(DRep.AlwaysAbstain))
     val withdrawing = body.withdrawals.map { case (account, amount) =>
-      account.credential -> Account(amount.value, 2 * ada, None, Some(DRep.AlwaysAbstain))
+      account.credential -> ConwayAccountState(
+        compact(amount.value),
+        compact(2 * ada),
+        None,
+        Some(abstain)
+      )
     }
     val credentials =
       body.proposals.map(_.returnAccount.credential) ++ body.proposals.flatMap(_.action match
         case GovAction.TreasuryWithdrawals(ws, _) => ws.map(_._1.credential)
         case _                                    => Vector.empty)
+    val accounts = credentials.distinct
+      .map(_ -> ConwayAccountState(compact(0), compact(2 * ada), None, None))
+      .toMap ++ withdrawing
     val params = TestLedger
       .params(c.protocolMajor)
       .copy(
@@ -70,21 +130,25 @@ class PreviewConwayRulesSuite extends FunSuite:
         minFeeRefScriptCostPerByte = Rational(15),
         costModels = c.costModels
       )
-    val base = state(c.protocolMajor, utxo.toVector).copy(
-      params = params,
-      epoch = c.slot / 86400,
-      accounts =
-        credentials.distinct.map(_ -> Account(0, 2 * ada, None, None)).toMap ++ withdrawing,
-      treasury = 1000000000L * ada,
-      gov = GovState.empty.copy(
-        constitution = Constitution(GovState.noAnchor, policy),
-        proposals = Proposals(Vector.empty, roots)
-      )
-    )
-    val registered = base.copy(deposited = FlatTestLedger.obligation(base))
-    registered.copy(reserves = Supply - (registered.total - registered.reserves))
+    val funded = Build.funded(Build.nes[Conway]((c.slot / 86400).toLong, params), utxo)
+    val base = ConwayNewEpochState.accounts
+      .replace(ConwayAccounts(Sorted.map(accounts.toList.map { (credential, account) =>
+        ok(Convert.credential[Staking](credential)) -> account
+      })))
+      .andThen(ConwayNewEpochState.treasury.replace(ok(Coin.fromBigInt(1000000000L * ada))))
+      .andThen(
+        ConwayNewEpochState.gov.modify(g =>
+          g.copy(
+            constitution = g.constitution.copy(script = policy),
+            proposals = Proposals(Vector.empty, roots)
+          )
+        )
+      )(funded)
+    val registered = deposits.replace(ok(Coin.fromBigInt(NativeRules.obligation(base))))(base)
+    val reserves = Supply - (total(registered) - registered.es.chainAccount.reserves.value)
+    ConwayNewEpochState.reserves.replace(ok(Coin.fromBigInt(reserves)))(registered)
 
-  private def envOf(c: PlutusCase, @unused s: LedgerState): TxEnv =
+  private def envOf(c: PlutusCase): TxEnv =
     TxEnv(
       slot = c.slot,
       epoch = c.slot / 86400,
@@ -94,6 +158,9 @@ class PreviewConwayRulesSuite extends FunSuite:
       clock = Some(xyz.kd5ujc.scarab.ledger.PosixClock.Total(slot => slot * 1000 + 1666656000000L)),
       evaluator = ScalusEvaluator.default
     )
+
+  private def accepted(s: NewEpochState[Conway], c: PlutusCase): Counted[NewEpochState[Conway]] =
+    NativeRules.txIn[Conway](s, c.tx, envOf(c)).fold(f => fail(f.message), identity)
 
   test("the captured proposal transactions are present") {
     assert(cases.size >= 4, cases.size)
@@ -110,19 +177,21 @@ class PreviewConwayRulesSuite extends FunSuite:
       s"${c.name}: the Conway rules accept the proposal transaction and run its guardrails script"
     ) {
       val s = worldOf(c)
-      assertEquals(s.total, Supply)
-      val after = rs.tx(s, c.tx, envOf(c, s)).fold(f => fail(f.message), identity)
+      assertEquals(total(s), Supply)
+      val after = accepted(s, c)
       val body = c.tx.body
-      assertEquals(after.fees, body.fee)
-      assertEquals(after.gov.proposals.actions.size, body.proposals.size)
-      assertEquals(after.deposited, s.deposited + body.proposals.map(_.deposit).sum)
+      assertEquals(fees(after.state), body.fee)
+      assertEquals(gov(after.state).proposals.actions.size, body.proposals.size)
+      assertEquals(deposited(after.state), deposited(s) + body.proposals.map(_.deposit).sum)
+      assertEquals(deposited(after.state), NativeRules.obligation(after.state))
       assertEquals(after.plutus.succeeded, 1L)
       assertEquals(after.plutus.integrityChecked, 1L)
-      assertEquals(after.total, Supply)
+      assertEquals(total(after.state), Supply)
       // and the same transaction with another guardrails script is refused
-      val other =
-        s.copy(gov = s.gov.copy(constitution = s.gov.constitution.copy(script = Some(body.id))))
-      rs.tx(other, c.tx, envOf(c, other)) match
+      val other = ConwayNewEpochState.gov.modify(g =>
+        g.copy(constitution = g.constitution.copy(script = Some(body.id)))
+      )(s)
+      NativeRules.txIn[Conway](other, c.tx, envOf(c)) match
         case Left(
               LedgerFailure.Rejected.Single(
                 _,
@@ -140,12 +209,12 @@ class PreviewConwayRulesSuite extends FunSuite:
 
   spends.foreach { c =>
     test(s"${c.name}: the Conway rules accept the Plutus transaction (${c.kind})") {
-      val s = worldOf(c)
-      val after = rs.tx(s, c.tx, envOf(c, s)).fold(f => fail(f.message), identity)
-      assertEquals(after.fees, c.tx.body.fee)
+      val after = accepted(worldOf(c), c)
+      assertEquals(fees(after.state), c.tx.body.fee)
       assert(after.plutus.succeeded >= 1)
-      assertEquals(after.total, Supply)
-      c.tx.body.inputs.foreach(i => assert(!after.utxo.contains(i)))
+      assertEquals(total(after.state), Supply)
+      assertEquals(deposited(after.state), NativeRules.obligation(after.state))
+      c.tx.body.inputs.foreach(i => assert(!after.state.es.ls.utxo.utxo.utxo.contains(i)))
     }
   }
 
@@ -194,17 +263,22 @@ class PreviewConwayRulesSuite extends FunSuite:
             epoch + 5
           )
         }
-      val s = world.copy(
-        gov = world.gov.copy(
-          committee = Some(Committee(cold.map(_._1 -> (epoch + 50)).toMap, Rational(2, 3))),
-          proposals = Proposals(actions, PrevIds())
-        ),
-        committeeState = cold.map { case (c, hot) => c -> CommitteeAuth.Hot(hot) }.toMap
-      )
-      val after = rs.tx(s, c.tx, envOf(c, s)).fold(f => fail(f.message), identity)
-      val recorded = after.gov.proposals.actions.flatMap(_.committeeVotes.values)
+      val authorized = CommitteeState(Sorted.map(cold.map { (member, hot) =>
+        ok(Convert.credential[ColdCommittee](member)) ->
+          CommitteeAuthorization.CommitteeHotCredential(ok(Convert.credential[HotCommittee](hot)))
+      }))
+      val s = ConwayNewEpochState.gov
+        .modify(g =>
+          g.copy(
+            committee = Some(Committee(cold.map(_._1 -> (epoch + 50)).toMap, Rational(2, 3))),
+            proposals = Proposals(actions, PrevIds())
+          )
+        )
+        .andThen(vState.andThen(VState.committeeState).replace(authorized))(world)
+      val after = accepted(s, c)
+      val recorded = gov(after.state).proposals.actions.flatMap(_.committeeVotes.values)
       assertEquals(recorded.size, voters.flatMap(_._2).size)
       assert(recorded.forall(_ == Vote.Yes))
-      assertEquals(after.total, Supply)
+      assertEquals(total(after.state), Supply)
     }
   }

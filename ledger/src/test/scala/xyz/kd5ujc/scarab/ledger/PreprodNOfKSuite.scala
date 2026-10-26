@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import xyz.kd5ujc.scarab.legacy.*
 import io.circe.parser
 import java.nio.file.{Files, Path}
 import munit.ScalaCheckSuite
@@ -9,7 +8,8 @@ import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as C}
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
+import xyz.kd5ujc.scarab.ledger.rules.NativeRules
+import xyz.kd5ujc.scarab.ledger.state.{Build, Coin, Conway, ConwayNewEpochState, NewEpochState}
 
 import TestLedger.*
 
@@ -21,7 +21,6 @@ import TestLedger.*
   * (`SlotNo`).
   */
 class PreprodNOfKSuite extends ScalaCheckSuite:
-  private val rs = RuleSet
   private val ada = BigInt(1000000)
   private val dir = Path.of("fixtures/preprod")
   private val Int64Min = -(BigInt(1) << 63)
@@ -60,17 +59,18 @@ class PreprodNOfKSuite extends ScalaCheckSuite:
       }
       .toMap
 
-  private val world: LedgerState =
+  /** A Conway ledger at epoch 313 with the preprod fee parameters and the spent outputs, the
+    * reserves making up the rest of the supply.
+    */
+  private val world: NewEpochState[Conway] =
     val params = TestLedger.params(10).copy(minFeeA = 44, minFeeB = 155381, keyDeposit = 2 * ada)
-    val base = state(10, inputs.toVector).copy(params = params, epoch = 313)
-    base.copy(reserves = Supply - (base.total - base.reserves))
+    val nes = Build.funded(Build.nes[Conway](313, params), inputs)
+    val reserves = Coin
+      .fromBigInt(Supply - nes.es.ls.utxo.utxo.utxo.coin)
+      .fold(e => fail(e.toString), identity)
+    ConwayNewEpochState.reserves.replace(reserves)(nes)
 
   private val conwayEnv = env.copy(slot = 133902219, epoch = 313)
-
-  private def rule(t: Tx): String = rs.tx(world, t, conwayEnv) match
-    case Left(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
-    case Left(other)                               => other.message
-    case Right(_)                                  => "accepted"
 
   test("the fixture is the recorded transaction: one native script, n = -1, no vkey witness") {
     assertEquals(
@@ -88,7 +88,7 @@ class PreprodNOfKSuite extends ScalaCheckSuite:
   }
 
   test("the transaction validates: n = -1 holds with no signature at all") {
-    assertEquals(rule(tx), "accepted")
+    NativeRules.txIn[Conway](world, tx, conwayEnv).fold(f => fail(f.message), _ => ())
   }
 
   // --- CBOR by hand, so any integer can be put on the wire ------------------------------------

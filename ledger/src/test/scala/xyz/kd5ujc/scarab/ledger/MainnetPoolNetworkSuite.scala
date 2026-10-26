@@ -5,7 +5,8 @@ import java.nio.file.{Files, Path}
 import cats.syntax.all.*
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
+import xyz.kd5ujc.scarab.ledger.rules.{CertEnv, EraNes, NativeRules, Pool, PoolCert, Sts}
+import xyz.kd5ujc.scarab.ledger.state.{LedgerState, ShelleyBasedEra}
 
 import TestLedger.*
 
@@ -19,7 +20,6 @@ import TestLedger.*
   * (`fixtures/mainnet/README.md`).
   */
 class MainnetPoolNetworkSuite extends FunSuite:
-  private val rs = RuleSet
   private val EpochSlots: BigInt = BigInt(21600)
   private val Mainnet = 1
 
@@ -35,33 +35,56 @@ class MainnetPoolNetworkSuite extends FunSuite:
       .find(_.body.id.hex.startsWith("49be5965c31a60c3"))
       .getOrElse(fail("transaction 49be5965c31a60c3 is not in the block"))
 
-  private val registrations: Vector[(Certificate.RegisterPool, Int)] =
-    tx.body.certificates.zipWithIndex.collect { case (c: Certificate.RegisterPool, i) => c -> i }
+  private val registrations: Vector[Certificate.RegisterPool] =
+    tx.body.certificates.collect { case c: Certificate.RegisterPool => c }
 
-  // the fixture holds one registration, so each is judged on the state it starts from
+  /** POOL on the registrations of the transaction, on mainnet, with the parameters of protocol
+    * version `pv` in force. The fixture holds one registration, so each is judged on the pool state
+    * of the empty ledger of that version.
+    */
   private def register(pv: Int): Either[LedgerFailure, Unit] =
-    registrations.traverse_ { case (cert, ix) =>
-      rs.registerPool(state(pv, Vector.empty), cert, ix, env.copy(network = Mainnet), tx)
-    }
-
-  private def rule(r: Either[LedgerFailure, Unit]): String = r match
-    case Left(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
-    case Left(other)                               => other.message
-    case Right(_)                                  => "accepted"
+    val ctx = env.copy(network = Mainnet)
+    NativeRules.state(pv, Vector.empty) match
+      case i: EraNes.InEra[x] =>
+        given ShelleyBasedEra[x] = i.era
+        val pools = LedgerState.pState[x].get(i.nes.es.ls)
+        registrations.traverse_ { cert =>
+          Sts(Pool)(
+            NativeRules.globalsOf(ctx),
+            CertEnv(tx.body.id, TestLedger.params(pv), ctx.epoch, None, Map.empty),
+            pools,
+            PoolCert.RegPool(cert.params)
+          )
+        }
 
   test(
     "the fixture is the block at slot 4,495,760 with a pool whose reward account is not mainnet"
   ) {
     assertEquals(block.header.slot, BigInt(4495760))
     assert(block.header.hash.hex.startsWith("fb4e87a00f0eea0d"), block.header.hash.hex)
-    assertEquals(registrations.map(_._1.params.rewardAccount.network), Vector(0))
-    assert(registrations.head._1.params.operator.hex.startsWith("ff5181ba"))
+    assertEquals(registrations.map(_.params.rewardAccount.network), Vector(0))
+    assert(registrations.head.params.operator.hex.startsWith("ff5181ba"))
   }
 
   test("protocol versions 2 to 4 accept the registration: the network is not checked") {
-    (2 to 4).foreach(pv => assertEquals(rule(register(pv)), "accepted", s"pv $pv"))
+    (2 to 4).foreach(pv => assertEquals(register(pv), Right(()), s"pv $pv"))
   }
 
   test("protocol version 5 and later reject it with WrongNetworkPOOL") {
-    List(5, 6, 7, 8).foreach(pv => assertEquals(rule(register(pv)), "WrongNetworkPOOL", s"pv $pv"))
+    val operator = registrations.head.params.operator
+    List(5, 6, 7, 8).foreach { pv =>
+      register(pv) match
+        case Left(
+              LedgerFailure.Rejected(
+                _,
+                PredicateFailure.Certs(
+                  CertsFailure.Cert(
+                    CertFailure.Pool(PoolFailure.WrongNetworkPool(Mismatch(0, Mainnet), pool))
+                  )
+                )
+              )
+            ) =>
+          assertEquals(pool, operator, s"pv $pv")
+        case other => fail(s"pv $pv: $other")
+    }
   }

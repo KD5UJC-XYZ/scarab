@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import xyz.kd5ujc.scarab.legacy.*
 import java.nio.file.Path
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.plutus.*
 import munit.FunSuite
-import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
+import xyz.kd5ujc.scarab.ledger.rules.NativeRules
+import xyz.kd5ujc.scarab.ledger.state.{Build, Coin, Conway, ConwayNewEpochState, NewEpochState}
+import xyz.kd5ujc.scarab.protocol.Era
 
 import TestLedger.*
 
@@ -17,7 +18,6 @@ import TestLedger.*
   * node report `MalformedReferenceScripts` on a transaction the chain accepted.
   */
 class PreprodMalformedRefScriptSuite extends FunSuite:
-  private val rs = RuleSet
   private val c = PlutusCase.load(Path.of("fixtures/preprod/plutus/tx-aee75c1c.json"))
   private val ada = BigInt(1000000)
   private val decoder = ScalusEvaluator.pureDecoder
@@ -25,27 +25,35 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
   private val script: Bytes =
     c.tx.body.outputs.flatMap(_.referenceScript).head.plutus.get
 
-  private def world: LedgerState =
-    val params = TestLedger
-      .params(c.protocolMajor)
-      .copy(
-        minFeeA = 44,
-        minFeeB = 155381,
-        maxTxSize = 16384,
-        maxValueSize = 5000,
-        coinsPerUTxOByte = 4310,
-        keyDeposit = 2 * ada,
-        priceMem = Rational(577, 10000),
-        priceSteps = Rational(721, 10000000),
-        maxTxExUnits = ExUnits(14000000, BigInt("10000000000")),
-        maxBlockExUnits = ExUnits(62000000, BigInt("20000000000")),
-        collateralPercentage = 150,
-        maxCollateralInputs = 3,
-        minFeeRefScriptCostPerByte = Rational(15),
-        costModels = c.costModels
-      )
-    val base = state(c.protocolMajor, c.spent.toVector).copy(params = params, epoch = 248)
-    base.copy(reserves = Supply - (base.total - base.reserves))
+  private val params: ProtocolParams = TestLedger
+    .params(c.protocolMajor)
+    .copy(
+      minFeeA = 44,
+      minFeeB = 155381,
+      maxTxSize = 16384,
+      maxValueSize = 5000,
+      coinsPerUTxOByte = 4310,
+      keyDeposit = 2 * ada,
+      priceMem = Rational(577, 10000),
+      priceSteps = Rational(721, 10000000),
+      maxTxExUnits = ExUnits(14000000, BigInt("10000000000")),
+      maxBlockExUnits = ExUnits(62000000, BigInt("20000000000")),
+      collateralPercentage = 150,
+      maxCollateralInputs = 3,
+      minFeeRefScriptCostPerByte = Rational(15),
+      costModels = c.costModels
+    )
+
+  /** A Conway ledger at epoch 248 holding the outputs the transaction spends, the reserves making
+    * up the rest of the supply.
+    */
+  private def world: NewEpochState[Conway] =
+    assertEquals(NativeRules.eraOf(c.protocolMajor), Era.Conway, "a Conway transaction")
+    val nes = Build.funded(Build.nes[Conway](248, params), c.spent)
+    val reserves = Coin
+      .fromBigInt(Supply - nes.es.ls.utxo.utxo.utxo.coin)
+      .fold(e => fail(e.toString), identity)
+    ConwayNewEpochState.reserves.replace(reserves)(nes)
 
   private def env = TxEnv(
     slot = c.slot,
@@ -91,8 +99,8 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
 
   test("the Conway rules accept the transaction") {
     assert(c.tx.isValid)
-    val after = rs.tx(world, c.tx, env).fold(f => fail(f.message), identity)
-    assertEquals(after.fees, c.tx.body.fee)
+    val after = NativeRules.txIn[Conway](world, c.tx, env).fold(f => fail(f.message), identity)
+    assertEquals(after.state.es.ls.utxo.fees.value, c.tx.body.fee)
   }
 
   test("with the output's script as V3 bytes plus remainder the rules reject it") {
@@ -106,8 +114,15 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
     val bad = c.tx.copy(body =
       c.tx.body.copy(outputs = c.tx.body.outputs.updated(at, out.copy(raw = raw3)))
     )
-    val r = TxChecks
-      .scriptsWellFormed(world.params, bad, env)
-      .flatMap(TestLedger.verdict(bad.body.id, _))
-    assert(r.left.exists(_.message.contains("MalformedReferenceScripts")), r.toString)
+    TxChecks.scriptsWellFormed(params, bad, env) match
+      case Left(
+            LedgerFailure.Rejected(
+              _,
+              PredicateFailure.Utxow(UtxowFailure.MalformedReferenceScripts(hashes))
+            )
+          ) =>
+        // the script as the patched output carries it: its hash is that of a V3 script
+        val v3 = bad.body.outputs(at).referenceScript.getOrElse(fail("no reference script"))
+        assertEquals(hashes, Set(v3.hash))
+      case other => fail(s"$other")
   }

@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import xyz.kd5ujc.scarab.legacy.*
 import io.circe.parser
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as C}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.Block
 import munit.FunSuite
-import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
+import xyz.kd5ujc.scarab.ledger.rules.{Counted, NativeRules}
+import xyz.kd5ujc.scarab.ledger.state.{Build, Coin, Conway, ConwayNewEpochState, NewEpochState}
 
 import TestLedger.*
 
@@ -20,7 +20,6 @@ import TestLedger.*
   * bootstrap witness (`MissingBootstrapWitnessesUTXOW`).
   */
 class PreprodByronKeyWitnessSuite extends FunSuite:
-  private val rs = RuleSet
   private val ada = BigInt(1000000)
   private val dir = Path.of("fixtures/preprod")
 
@@ -56,17 +55,39 @@ class PreprodByronKeyWitnessSuite extends FunSuite:
       }
       .toMap
 
-  private val world: LedgerState =
+  /** The Byron address root both inputs pay to. */
+  private val root: Bytes = Bytes
+    .fromHex("533bcb8dad5fc8049f5d43974bdc21d637f5b73d6120237303ca6843")
+    .fold(e => fail(e.toString), identity)
+
+  /** A Conway ledger at epoch 196 with the preprod fee parameters and the two outputs, the reserves
+    * making up the rest of the supply.
+    */
+  private val world: NewEpochState[Conway] =
     val params = TestLedger.params(10).copy(minFeeA = 44, minFeeB = 155381, keyDeposit = 2 * ada)
-    val base = state(10, inputs.toVector).copy(params = params, epoch = 196)
-    base.copy(reserves = Supply - (base.total - base.reserves))
+    val nes = Build.funded(Build.nes[Conway](196, params), inputs)
+    val reserves = Coin
+      .fromBigInt(Supply - nes.es.ls.utxo.utxo.utxo.coin)
+      .fold(e => fail(e.toString), identity)
+    ConwayNewEpochState.reserves.replace(reserves)(nes)
 
   private val conwayEnv = env.copy(slot = 83038792, epoch = 196)
 
-  private def rule(t: Tx): String = rs.tx(world, t, conwayEnv) match
-    case Left(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
-    case Left(other)                               => other.message
-    case Right(_)                                  => "accepted"
+  private def judged(t: Tx): Either[LedgerFailure, Counted[NewEpochState[Conway]]] =
+    NativeRules.txIn[Conway](world, t, conwayEnv)
+
+  /** The refusal of a transaction whose Byron inputs no witness covers: the root is the key hash
+    * that has no witness.
+    */
+  private def missingRoot(t: Tx): Unit = judged(t) match
+    case Left(
+          LedgerFailure.Rejected(
+            _,
+            PredicateFailure.Utxow(UtxowFailure.MissingVKeyWitnesses(hashes))
+          )
+        ) =>
+      assertEquals(hashes, Set(root))
+    case other => fail(s"$other")
 
   test("the fixture is the recorded transaction: two Byron inputs, one vkey witness") {
     assertEquals(
@@ -80,7 +101,7 @@ class PreprodByronKeyWitnessSuite extends FunSuite:
     assertEquals(roots.size, 1)
     roots.head match
       case Address.Kind.Byron(root) =>
-        assertEquals(root.hex, "533bcb8dad5fc8049f5d43974bdc21d637f5b73d6120237303ca6843")
+        assertEquals(root, this.root)
         assertEquals(
           xyz.kd5ujc.scarab.crypto.Blake2b.hash224.hash(tx.witnesses.vkeys.head._1),
           root
@@ -89,15 +110,15 @@ class PreprodByronKeyWitnessSuite extends FunSuite:
   }
 
   test("a vkey witness whose key hashes to the Byron address root spends the Byron output") {
-    assertEquals(rule(tx), "accepted")
+    judged(tx).fold(f => fail(f.message), _ => ())
   }
 
   test("no witness for the Byron root is refused, as a missing key hash witness") {
-    assertEquals(rule(tx.copy(witnesses = Witnesses.empty)), "MissingVKeyWitnessesUTXOW")
+    missingRoot(tx.copy(witnesses = Witnesses.empty))
   }
 
   test("a valid witness of another key does not spend the Byron output") {
     val other = key()
     val t = tx.copy(witnesses = Witnesses(Vector(other.witness(tx.body.id))))
-    assertEquals(rule(t), "MissingVKeyWitnessesUTXOW")
+    missingRoot(t)
   }
