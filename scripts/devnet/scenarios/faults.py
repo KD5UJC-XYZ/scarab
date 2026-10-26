@@ -326,9 +326,12 @@ def faults(args):
         if run.scala is not None:
             run.scala.wait()
         if plan is not None and docker("inspect", ref(args.name), check=False).returncode == 0:
-            # the Haskell pools' logs (the tail) for the artifact; the container is removed below
+            # Setup may fail before a pool creates its log. Diagnostic collection must not hide
+            # that failure or prevent the summary and remaining cleanup.
             for n in HASKELL.values():
-                (root / f"node{n}.log").write_text(in_ref(args.name, f"tail -c 200000 /work/node{n}.log").stdout)
+                result = docker("exec", ref(args.name), "/bin/sh", "-c",
+                                f"tail -c 200000 /work/node{n}.log", check=False, timeout=60)
+                (root / f"node{n}.log").write_text(result.stdout)
         summary["failures"] = failures
         summary["completed"] = completed
         summary["passed"] = completed and not failures

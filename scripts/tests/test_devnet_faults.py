@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from devnet import faultplan, netfaults
+from devnet import faultplan, netfaults, util
 from devnet.scenarios import faults
 
 PARAMS = (5, 0.05, 0.1)   # k, active slot coefficient, slot length of a cardano-testnet environment
@@ -433,6 +433,37 @@ class ExecutionTests(unittest.TestCase):
         self.assertFalse(summary["passed"])
         self.assertFalse(summary["completed"])
         self.assertTrue(any("TimeoutExpired" in f for f in summary["failures"]), summary["failures"])
+
+    def test_setup_failure_survives_missing_pool_logs_and_completes_cleanup(self):
+        args, root = self.execute(FakeScala(alive=10**6))
+        args.keep = False
+        reason = "cannot set up tc netem: required kernel modules are unavailable"
+        faults.netfaults.Shaper.return_value.install.side_effect = SystemExit(reason)
+        commands = []
+
+        def command(argv, **kwargs):
+            commands.append(argv)
+            missing = argv[-1].startswith("tail -c ")
+            text = kwargs.get("text", False)
+            return subprocess.CompletedProcess(
+                argv, 1 if missing else 0, stdout="" if text else b"",
+                stderr="tail: cannot open pool log" if missing else ("" if text else b""))
+
+        # Keep the real checked Docker wrappers: an unchecked stub would conceal the original bug.
+        with patch.object(faults, "docker", util.docker), \
+                patch.object(faults, "in_ref", util.in_ref), \
+                patch.object(faults.subprocess, "run", side_effect=command), \
+                self.assertRaises(SystemExit) as raised:
+            faults.faults(args)
+        self.assertEqual(raised.exception.code, 1)
+        summary = self.summary(root)
+        self.assertEqual(summary["failures"], [reason])
+        self.assertFalse(summary["completed"])
+        self.assertFalse(summary["passed"])
+        self.assertIn("--seed 1", summary["replay"])
+        self.assertEqual([p.read_text() for p in (root / "node2.log", root / "node3.log")], ["", ""])
+        faults.netfaults.Shaper.return_value.remove.assert_called_once()
+        self.assertIn(["docker", "rm", "-f", "n-ref"], commands)
 
 
 class ProxyTests(unittest.TestCase):
