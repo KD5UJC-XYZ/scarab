@@ -420,7 +420,7 @@ object TxBody:
               .flatMap(ws =>
                 if version.atLeast(9) then
                   CborRead.unique(ws.map(_._1), DecodeField.Withdrawals).as(ws)
-                else Right(ws)
+                else Right(CborRead.lastWins(ws))
               )
           )
       )

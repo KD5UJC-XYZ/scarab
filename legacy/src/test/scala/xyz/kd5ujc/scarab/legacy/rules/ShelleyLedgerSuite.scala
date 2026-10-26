@@ -12,6 +12,7 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.plutus.ExUnits
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.{
   Account,
@@ -34,6 +35,7 @@ import xyz.kd5ujc.scarab.ledger.{
   TestLedger,
   TxEnv,
   Tx,
+  TxBody,
   TxOut,
   Update,
   Value,
@@ -72,19 +74,26 @@ class ShelleyLedgerSuite extends FunSuite:
   private val carol = key()
   private val ada = BigInt(1000000)
 
-  /** An era: the protocol version its parameters have, and its witness with the evidence. */
+  /** An era: the protocol version its parameters have, the era its bodies are decoded in, and its
+    * witness with the evidence.
+    */
   private final class Case[E <: EraTag](
       val name: String,
       val pv: Int,
+      val wire: Era,
       val era: ShelleyBasedEra[E],
       val pre: PreConway[E]
   )
 
-  private val shelley = Case("Shelley", 2, ShelleyBasedEra.SShelley, summon[PreConway[Shelley]])
-  private val allegra = Case("Allegra", 3, ShelleyBasedEra.SAllegra, summon[PreConway[Allegra]])
-  private val mary = Case("Mary", 4, ShelleyBasedEra.SMary, summon[PreConway[Mary]])
-  private val alonzo = Case("Alonzo", 5, ShelleyBasedEra.SAlonzo, summon[PreConway[Alonzo]])
-  private val babbage = Case("Babbage", 7, ShelleyBasedEra.SBabbage, summon[PreConway[Babbage]])
+  private val shelley =
+    Case("Shelley", 2, Era.Shelley, ShelleyBasedEra.SShelley, summon[PreConway[Shelley]])
+  private val allegra =
+    Case("Allegra", 3, Era.Allegra, ShelleyBasedEra.SAllegra, summon[PreConway[Allegra]])
+  private val mary = Case("Mary", 4, Era.Mary, ShelleyBasedEra.SMary, summon[PreConway[Mary]])
+  private val alonzo =
+    Case("Alonzo", 5, Era.Alonzo, ShelleyBasedEra.SAlonzo, summon[PreConway[Alonzo]])
+  private val babbage =
+    Case("Babbage", 7, Era.Babbage, ShelleyBasedEra.SBabbage, summon[PreConway[Babbage]])
   private val eras: Vector[Case[?]] = Vector(shelley, allegra, mary, alonzo, babbage)
 
   /** What a side did with a transaction. */
@@ -508,6 +517,70 @@ class ShelleyLedgerSuite extends FunSuite:
       )
       val missing = newSide(c, s, unknown, TestLedger.env)
       assertEquals(refusal(missing, c), "ConwayWithdrawalsMissingAccounts", c.name)
+    }
+  }
+
+  /** Definite CBOR, as hex, of the few items a hand-written body needs. */
+  private object Hex:
+    private def head(major: Int, n: BigInt): String =
+      val m = major << 5
+      if n < 24 then f"${m + n.toInt}%02x"
+      else if n < 256 then f"${m + 24}%02x${n.toInt}%02x"
+      else if n < 65536 then f"${m + 25}%02x${n.toInt}%04x"
+      else if n < BigInt(1L << 32) then f"${m + 26}%02x${n.toLong}%08x"
+      else f"${m + 27}%02x${n.toLong}%016x"
+    def uint(n: BigInt): String = head(0, n)
+    def bytes(b: Bytes): String = head(2, b.size) + b.hex
+    def array(items: String*): String = head(4, items.size) + items.mkString
+    def map(pairs: (String, String)*): String =
+      head(5, pairs.size) + pairs.map(_ + _).mkString
+
+  test(
+    "a withdrawal account repeated in a body is counted once, so its balance taken twice is not conserved (#494)"
+  ) {
+    forEras { c =>
+      val s = base(
+        c,
+        fundedBy(alice),
+        accounts = Map(bob.credential -> Account(7 * ada, 2 * ada, None, None))
+      )
+      val account = RewardAccount(0, bob.credential)
+      val accountBytes = Bytes(0xe0.toByte +: bob.hash.value)
+      val fee = BigInt(200)
+      // The output takes the balance twice; the reference reads the withdrawals with
+      // `Map.fromList` below decoder version 9, so the account counts once (`decodeMapByKey`,
+      // `Decoder.hs:815-823`, cardano-ledger f649f975).
+      val raw = Hex.map(
+        Hex.uint(0) -> Hex.array(Hex.array(Hex.bytes(coinIn.id), Hex.uint(coinIn.index))),
+        Hex.uint(1) -> Hex.array(
+          Hex.array(Hex.bytes(alice.address().raw), Hex.uint(rich - fee + 14 * ada))
+        ),
+        Hex.uint(2) -> Hex.uint(fee),
+        Hex.uint(3) -> Hex.uint(100000),
+        Hex.uint(5) -> Hex.map(
+          Hex.bytes(accountBytes) -> Hex.uint(7 * ada),
+          Hex.bytes(accountBytes) -> Hex.uint(7 * ada)
+        )
+      )
+      val bytes = Bytes.fromHex(raw).fold(e => fail(e.toString), identity)
+      val decoded = TxBody.decode(bytes, c.wire).fold(e => fail(s"${c.name}: $e"), identity)
+      assertEquals(decoded.raw.hex, raw, c.name)
+      assertEquals(decoded.withdrawals, Vector(account -> 7 * ada), c.name)
+      val t = tx(decoded, Vector(alice, bob))
+      assertEquals(
+        agree(c, s, t, TestLedger.env),
+        Out.Refused(
+          LedgerFailure.Rejected(
+            decoded.id,
+            node.PredicateFailure.utxo(
+              node.UtxoFailure.ValueNotConserved(
+                node.Mismatch(Value.coin(rich + 7 * ada), Value.coin(rich + 14 * ada))
+              )
+            )
+          )
+        ),
+        c.name
+      )
     }
   }
 
