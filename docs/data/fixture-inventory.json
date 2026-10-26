@@ -483,6 +483,8 @@
     "fixtures/reference/genesis-historicity/historicity.jsonl": "399cc227d7eca059a6db48af67a8899bb90066d98f589ca2e5203fbf2c2a8f09",
     "fixtures/reference/genesis-historicity/historicity.jsonl.errors.jsonl": "b6efc4cae54870432710f3de5e3e98eb227d05dc842d813d1a7adfef8db69048",
     "fixtures/reference/genesis-historicity/manifest.json": "e38fadf616de6d73eb102c6a6bcd61d0e75efa0ba5c802e6a55f34de94f49020",
+    "fixtures/reference/genesis-initial-funds/cases.jsonl": "e7e0e9a93fd8192ae6b63812a80773b2487e1531c2499ee9f64b4c53d965b024",
+    "fixtures/reference/genesis-initial-funds/provenance.json": "290825c9422862849103c8f61d3a84cb7b5e98496af3a8848d532f60f15cd894",
     "fixtures/reference/genesis-punishment/classification.jsonl": "35d8aaf87f2d6faaf79abc24824b2b55b882f5278416ec1a940d3df1033ea0d7",
     "fixtures/reference/genesis-punishment/manifest.json": "cadcd1de31e57df0c172b1bd9afdcd91387dc9dee782491013d5cfd38d09b2b8",
     "fixtures/reference/genesis-punishment/projection.json": "5a870e7a0e39ad16a03c9a06ee8336240ee52a49c8e35cadd2c718c69e076c61",
