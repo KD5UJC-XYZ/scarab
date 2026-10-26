@@ -625,7 +625,9 @@
         "suites": [
           "GenesisStartSuite",
           "DuplicateWithdrawalsLedgerSuite",
-          "InjectionJsonSuite"
+          "InjectionJsonSuite",
+          "InjectionFoldSuite",
+          "InjectionFoldReferenceSuite"
         ],
         "issues": [
           488,
@@ -634,7 +636,8 @@
         ],
         "paths": [
           "fixtures/devnet/lsq/genesis",
-          "fixtures/reference/injection-json"
+          "fixtures/reference/injection-json",
+          "fixtures/reference/injection-fold"
         ]
       },
       "limitations": {
