@@ -13,7 +13,6 @@ class BlockFetchPeerTimeSuite extends FailsOnUncaught:
     Some(
       BlockFetchRuntime.Timeouts(
         ProtocolDeadline.After(10.seconds),
-        ProtocolDeadline.After(10.seconds),
         ProtocolDeadline.After(3.seconds)
       )
     )
@@ -36,7 +35,7 @@ class BlockFetchPeerTimeSuite extends FailsOnUncaught:
     CardanoBlockFetch.RawNtNBlock.from(Peers.block(1)).fold(e => fail(e.message), identity)
 
   for queued <- List(false, true) do
-    test(s"local body consumer time is excluded from the whole request budget, queued=$queued") {
+    test(s"local body consumer time is excluded from the streaming wait, queued=$queued") {
       TestControl.executeEmbed {
         Peers
           .typed {
@@ -84,7 +83,8 @@ class BlockFetchPeerTimeSuite extends FailsOnUncaught:
       }
     }
 
-    test(s"whole request budget still bounds cumulative peer silence, queued=$queued") {
+    // Codec.hs:59–68: each message has its state's limit; silences add up without a budget.
+    test(s"peer silences within the per-state limit add up past it, queued=$queued") {
       TestControl.executeEmbed {
         Peers
           .typed {
@@ -125,10 +125,7 @@ class BlockFetchPeerTimeSuite extends FailsOnUncaught:
                         )(c.requestRange(Peers.point(1), Peers.point(1)))
                     )
                   }
-              yield assertEquals(
-                result,
-                Left(NetworkError.Timeout(Protocols.BlockFetch, "request"))
-              )
+              yield assertEquals(result, Right(Some(Vector(block.bytes))))
             }
           }
           .map(result => assertEquals(result, Right(())))

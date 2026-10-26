@@ -32,6 +32,16 @@ trait BlockFetchClient[F[_]]:
       _.traverse_(_.traverse_(body => onBlock(body).flatMap(_.fold(_.raise[F, Unit], _.pure[F]))))
     )
 
+  /** As [[requestRangeStreaming]] for a range of `blocks` blocks, a requested fragment: more blocks
+    * than it has are refused (the reference matches each block with the next requested header,
+    * BlockFetch/Client.hs:236–250).
+    */
+  def requestBlocks(from: Point, to: Point, @scala.annotation.unused blocks: Int)(
+      onBlock: Bytes => F[Either[NetworkError, Unit]],
+      observe: BlockFetchRuntime.Event => F[Unit]
+  )(using Raise[F, NetworkError], cats.Monad[F]): F[Option[Vector[Bytes]]] =
+    requestRangeStreaming(from, to)(onBlock, observe)
+
   /** Tell the peer we are finished; valid only when no request is outstanding. */
   def done(using Raise[F, NetworkError]): F[Unit]
 
@@ -120,5 +130,15 @@ object BlockFetchClient:
         range(from, to)
           .flatMap(r =>
             runtime.requestRangeStreaming(r.from.point, r.to.point)(b => onBlock(b.bytes), observe)
+          )
+          .map(_.map(_.map(_.bytes)))
+
+      override def requestBlocks(from: Point, to: Point, blocks: Int)(
+          onBlock: Bytes => F[Either[NetworkError, Unit]],
+          observe: BlockFetchRuntime.Event => F[Unit]
+      )(using Raise[F, NetworkError], cats.Monad[F]): F[Option[Vector[Bytes]]] =
+        range(from, to)
+          .flatMap(r =>
+            runtime.requestBlocks(r.from.point, r.to.point, blocks)(b => onBlock(b.bytes), observe)
           )
           .map(_.map(_.map(_.bytes)))

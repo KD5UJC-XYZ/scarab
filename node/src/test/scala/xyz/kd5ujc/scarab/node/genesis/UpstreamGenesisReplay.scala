@@ -515,8 +515,7 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                                         deadline(
                                                           scenario.config.blockFetchTimeouts,
                                                           scenario.blockFetch.streaming
-                                                        ),
-                                                        ProtocolDeadline.Unbounded
+                                                        )
                                                       )
                                                     )
                                                   )

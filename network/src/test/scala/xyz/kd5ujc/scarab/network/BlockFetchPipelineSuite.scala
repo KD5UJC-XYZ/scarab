@@ -205,7 +205,7 @@ class BlockFetchPipelineSuite extends FailsOnUncaught:
         assert(!idle)
       }
 
-  test("collector timeout fails the entire pipeline with the original typed cause"):
+  test("a Busy timeout fails the entire pipeline with the original typed cause"):
     Peers
       .typed {
         Peers.linked(protocols = Set(Protocols.BlockFetch)).use { (clientMux, _) =>
@@ -215,9 +215,7 @@ class BlockFetchPipelineSuite extends FailsOnUncaught:
               .resource(
                 c,
                 clientMux.abort,
-                BlockFetchClient.Settings(
-                  timeLimits = BlockFetch.TimeLimits(wholeRequest = 100.millis)
-                )
+                BlockFetchClient.Settings(timeLimits = BlockFetch.TimeLimits(busy = 100.millis))
               )
               .use { client =>
                 for
@@ -240,7 +238,7 @@ class BlockFetchPipelineSuite extends FailsOnUncaught:
       .timeout(5.seconds)
       .map { result =>
         val (results, again) = result.fold(e => fail(e.message), identity)
-        val expected = Left(NetworkError.Timeout(Protocols.BlockFetch, "request"))
+        val expected = Left(NetworkError.Timeout(Protocols.BlockFetch, "Busy"))
         assertEquals(results, (expected, expected))
         assertEquals(again, expected)
       }
@@ -368,3 +366,91 @@ class BlockFetchPipelineSuite extends FailsOnUncaught:
       }
       .map(result => assertEquals(result, Right(())))
   }
+
+  /** Serve one range of `blocks`, each `apart` after the previous one. */
+  private def serveSlowly(
+      channel: MuxChannel[IO],
+      blocks: Vector[CardanoBlockFetch.RawNtNBlock],
+      apart: FiniteDuration
+  )(using cats.mtl.Raise[IO, NetworkError]): IO[Unit] =
+    request(channel) *> send(channel, BlockFetch.State.Busy, BlockFetch.Message.StartBatch) *>
+      blocks.traverse_(block =>
+        IO.sleep(apart) *> send(
+          channel,
+          BlockFetch.State.Streaming,
+          BlockFetch.Message.Block(block)
+        )
+      ) *> send(channel, BlockFetch.State.Streaming, BlockFetch.Message.BatchDone)
+
+  private def raw(bytes: Int, n: Int): CardanoBlockFetch.RawNtNBlock =
+    CardanoBlockFetch.RawNtNBlock
+      .from(xyz.kd5ujc.scarab.codec.Bytes(Vector.fill(bytes)(n.toByte)))
+      .fold(e => fail(e.message), identity)
+
+  test("a range that keeps progressing within the per-state limit may take far longer than 120 s"):
+    // Codec.hs:59–68: Busy and Streaming each wait longWait (60 s) per message, and a range
+    // has no deadline as a whole; a block every 50 s is compliant.
+    cats.effect.testkit.TestControl
+      .executeEmbed {
+        Peers.typed {
+          Peers.linked(protocols = Set(Protocols.BlockFetch)).use { (clientMux, serverMux) =>
+            val blocks = Vector.tabulate(5)(n => raw(100 + n, n))
+            for
+              c <- clientMux.channel(Protocols.BlockFetch)
+              s <- serverMux.channel(Protocols.BlockFetch)
+              result <- Fibers
+                .scoped[IO, NetworkError, Unit](NetworkError.Defect(_))(
+                  serveSlowly(s, blocks, 50.seconds)
+                )
+                .background
+                .use(_ =>
+                  BlockFetchClient
+                    .resource(c, clientMux.abort)
+                    .use(client =>
+                      (client.requestRange(Peers.point(1), Peers.point(5)), IO.monotonic).tupled
+                    )
+                )
+            yield (result, blocks)
+          }
+        }
+      }
+      .map { outcome =>
+        val ((fetched, at), blocks) = outcome.fold(e => fail(e.message), identity)
+        assertEquals(fetched, Some(blocks.map(_.bytes)))
+        assert(at >= 250.seconds, at.toString)
+      }
+
+  test("a Byron-sized range of more than 10 MB is received whole"):
+    // Bytes are bounded per message (Codec.hs:42–44) and by the protocol's ingress queue
+    // (Cardano/Network/NodeToNode.hs:348–367), not per range.
+    Peers
+      .typed {
+        Peers.linked(protocols = Set(Protocols.BlockFetch)).use { (clientMux, serverMux) =>
+          val blocks = Vector.tabulate(6)(n => raw(2000000, n))
+          for
+            c <- clientMux.channel(Protocols.BlockFetch)
+            s <- serverMux.channel(Protocols.BlockFetch)
+            fetched <- Fibers
+              .scoped[IO, NetworkError, Unit](NetworkError.Defect(_))(
+                serveSlowly(s, blocks, Duration.Zero)
+              )
+              .background
+              .use(_ =>
+                BlockFetchClient
+                  .resource(c, clientMux.abort)
+                  .use(
+                    _.requestBlocks(Peers.point(1), Peers.point(6), blocks.size)(
+                      _ => IO.pure(Right(())),
+                      _ => IO.unit
+                    )
+                  )
+              )
+          yield (fetched, blocks)
+        }
+      }
+      .timeout(30.seconds)
+      .map { outcome =>
+        val (fetched, blocks) = outcome.fold(e => fail(e.message), identity)
+        assert(blocks.map(_.bytes.size.toLong).sum > 10000000L)
+        assertEquals(fetched, Some(blocks.map(_.bytes)))
+      }
