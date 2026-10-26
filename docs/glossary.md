@@ -25,7 +25,7 @@ place that defines it. The definition there wins over this summary. Where code l
 |---|---|---|
 | Reference | The Haskell node, at the revisions registered in `docs/data/reference-pins.json` | [ADR 0001](adr/0001-haskell-node-as-reference.md) |
 | Mirror, native state | The Haskell-shaped, era-indexed ledger and consensus state the rules run on | `MirrorState`, [ADR 0007](adr/0007-era-indexed-state.md) |
-| Flat state | The node's earlier state shape; in production it remains only for the genesis start path | `FlatNodeState`, [ADR 0009](adr/0009-ledger-mirror-step-2.md) |
+| Flat state | The node's earlier state shape, removed with the `legacy` module (#488); the genesis start is native (`GenesisStart`) | [ADR 0009](adr/0009-ledger-mirror-step-2.md) |
 | Gap | A named part of the mirror that its source state did not carry; it is saved with the snapshot and never filled with a default | `Gap`, [storage-migrations.md](storage-migrations.md#per-state-provenance-upgrades-129) |
 | Sidecar | The typed binary part of a native snapshot that carries what the Haskell ledger-state layout does not | `SnapshotSidecar` |
 | Checkpoint binding | What a snapshot records about its UTxO checkpoint: `Bound` (key layout and directory digest; restored only with that checkpoint), `Legacy` (a migrated V5 snapshot that recorded none; an existing checkpoint is admitted without a digest comparison) or `Unbacked` (the state keeps nothing outside the snapshot file) | `CheckpointBinding`, [ADR 0021](adr/0021-ledger-state-residency-and-utxo-checkpoints.md) |

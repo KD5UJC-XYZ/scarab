@@ -634,7 +634,7 @@ The whole check takes about four minutes on one core (`LeiosCheckMain`: 255 s, 2
    and 19) registers the Leios protocols as hot protocols of every version. Section 4.3's open
    question "version, era or flag" is answered: not the version. What the relay does on 18 and 19 is
    11.7.
-4. **The genesis `extraConfig` is read already.** `GenesisState.initial` reads `initialFunds`,
+4. **The genesis `extraConfig` is read already.** `GenesisInjections.read` reads `initialFunds`,
    `stakePools` and `stakeCredentials` from `extraConfig` (cardano-ledger `Shelley/Genesis.hs` 213 to
    260, the embedded `data` form); the node derives the two genesis outputs, the one pool and the
    genesis stake of epochs 0 and 1 (`LeiosTestnetConfigSuite`). The file form of an injection

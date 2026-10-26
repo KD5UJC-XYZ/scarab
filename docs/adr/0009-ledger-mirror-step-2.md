@@ -72,4 +72,5 @@ start](#amendment-2026-10-25-the-genesis-start-is-native-and-the-legacy-module-i
   current parameters only, from Alonzo, not merged into every era's current and previous ones). Each
   was asserted against the reference's value.
 - **Tests.** The rule suites that were written over the flat state run on native state and moved
-  to the `ledger` and `node` test sources; the suites of the conversion itself went with it.
+  to the `ledger` test sources, the node suites that used the flat fixtures run on native state,
+  and the suites of the conversion itself went with it.
