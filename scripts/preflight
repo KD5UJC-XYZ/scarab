@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+#
+# The repository-wide checks CI runs, locally, before a change is reported ready: the full-history secret
+# scan with the pinned gitleaks image, the workflow lint, and the Python guards of the scripts job.
+# `--check` also runs the sbt `check` (formatting, -Werror, every module's tests, scalafix) in the JDK image.
+# Works from the main checkout and from a linked worktree (the shared Git directory is mounted read-only).
+# Every step runs; the exit status is non-zero if any failed, and the failed steps are listed at the end.
+set -uo pipefail
+cd "$(dirname "$0")/.."
+root=$PWD
+common=$(git rev-parse --path-format=absolute --git-common-dir)
+gitleaks=zricethezav/gitleaks:v8.24.3@sha256:e1b35e12a8c6fa8901f060459cfb6b2fc4c484d3afbe3b029733a3bbfab07055
+actionlint=rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+failed=()
+
+step() {
+  local name=$1; shift
+  printf '== %s\n' "$name"
+  if "$@"; then printf '   ok\n'; else printf '   FAILED: %s\n' "$name"; failed+=("$name"); fi
+}
+
+step "secret scan (gitleaks, full history)" \
+  docker run --rm --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
+    -v "$common":"$common":ro -v "$root":/repo:ro -w /repo "$gitleaks" \
+    git /repo --log-opts="--full-history HEAD" --config /repo/.gitleaks.toml --no-banner --redact --exit-code 1
+step "secret scan controls" python3 scripts/check_secret_scan.py
+step "secret scan history controls" python3 scripts/check_secret_scan_history.py
+step "workflow lint" docker run --rm --network none -v "$root":/repo -w /repo "$actionlint" -color
+step "fixture identities and comparison contracts" python3 scripts/check_test_coverage.py
+step "closed error channel guard" python3 scripts/check_error_channels.py
+step "no absolute home paths" python3 scripts/check_local_paths.py
+step "licence records" python3 scripts/check_notice.py
+step "documentation drift" python3 scripts/check_docs.py
+step "code map is current" python3 scripts/render_codemap.py --check
+
+if [ "${1:-}" = "--check" ]; then
+  cache=$(python3 -c 'import sys; sys.path.insert(0, "scripts"); from devnet.util import cache_dir; print(cache_dir())')
+  step "sbt check (JDK image)" \
+    docker run --rm -v "$root":/work -v "$common":"$common":ro -v "$cache":/work/.cache -w /work \
+      --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home -e SBT_GLOBAL_BASE=/tmp/sbt-global \
+      scarab-jdk:local bash scripts/sbtw check
+fi
+
+if [ ${#failed[@]} -gt 0 ]; then
+  printf '\npreflight FAILED: %s\n' "${failed[*]}"
+  exit 1
+fi
+printf '\npreflight passed\n'

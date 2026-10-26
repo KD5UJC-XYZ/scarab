@@ -137,6 +137,10 @@ scala code … I love the use of type parameters when I can use them"*.
   migration; generic toy-format migration framework tests remain independent of native fixtures.
 - Small, logical commits as CONTRIBUTING describes. A changelog entry is a fragment in `changes/`,
   never an edit of `CHANGELOG.md`. Do not push to `main` unless you were asked to.
+- Before reporting a change ready, and again after every rebase or merge of its base, run
+  `scripts/preflight --check` and report its result. It runs the repository-wide CI checks locally
+  (the full-history secret scan, workflow lint, the Python guards and `check`); a PR is not ready while
+  it fails.
 - After a rebase, re-check every factual claim your change makes against the new base, not only that
   it builds.
 - A change to an ADR, or to agent-facing documents that state facts about the code, gets an
