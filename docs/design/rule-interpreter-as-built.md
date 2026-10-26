@@ -97,12 +97,12 @@ of 100,000 failures, nests and certificates on a 256 KiB stack.
   reference's `Test`/`runTest` style (`rules/Test.scala`, `Sts.runTest`, `Sts.predicate`,
   `Sts.failOnNonEmpty`). Script evaluation runs only when nothing has failed (`whenFailureFree`);
   the contexts are still collected, so `CollectErrors` is reported.
-- Until every rule records, a rule may still raise a refusal (`LedgerFailure.Rejected`). The
-  boundary of a sub-rule (`Judge.trans`, a `Nest` with a resume value) then ends that sub-rule
-  only: the interpreter, given the split of `Refusal`, appends the raised failures to the
-  sub-rule's block, sets the failing flag and resumes the parent with the state the sub-rule had
-  reached. A raised refusal at the root is reported after what the root recorded. A defect still
-  ends the judgment. The boundary goes once no rule raises a refusal.
+- Every rule of a transaction records its predicate failures and raises only defects: UTXO, UTXOW
+  and UTXOS (parts 3 and 4), DELEG, POOL, GOVCERT, GOV, the Shelley DELEG with the MIR certificates,
+  and PPUP (part 5). Each goes on after a failure to the state the reference makes. The pure checks
+  that can also end in a defect have the type `Either[LedgerDefect, Test[PredicateFailure]]`, so a
+  raised refusal cannot come from them. While parts 2 to 4 were in flight, a sub-rule that still
+  raised its refusal ended alone at its nest; that boundary is gone.
 
 ## What is preserved
 
