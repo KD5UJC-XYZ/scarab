@@ -115,8 +115,9 @@ jobs:
           done
           echo "$FAULT_SEED" > "$RUNNER_TEMP/summary/seed.txt"
           cp "$RUNNER_TEMP/logs/faults.log" "$RUNNER_TEMP/failure/" 2>/dev/null || true
-          # the logs that explain a failure: the Scala node's events, the Haskell pools' tails, container output
-          for f in follower.jsonl node2.log node3.log; do
+          # the logs that explain a failure: the Scala node's events, the Haskell pools' tails and whole logs
+          # (gzip, with their peer-selection, ChainSync and BlockFetch traces), container output
+          for f in follower.jsonl node2.log node3.log node2.log.gz node3.log.gz; do
             cp "$run_dir/$f" "$RUNNER_TEMP/failure/" 2>/dev/null || true
           done
           docker logs "$DEVNET_NAME-scala" > "$RUNNER_TEMP/failure/scala.docker.log" 2>&1 || true
