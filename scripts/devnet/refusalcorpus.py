@@ -245,7 +245,7 @@ def refusal_corpus(args):
     if len(set(labels)) != len(labels):
         raise SystemExit("duplicate case labels")
     judged_cases = capture(args.name, era, cases)
-    files, problems = [], []
+    records, problems = [], []
     for name in GENESIS:
         write(directory / "genesis" / name, (root / "genesis" / name).read_bytes())
     for case, result, reason in judged_cases:
@@ -264,12 +264,13 @@ def refusal_corpus(args):
                   "tip": {"slot": result["point"][0], "hash": result["point"][1].hex()},
                   "mempoolSlot": result["mempoolSlot"], "state": state_file, "utxo": utxo_file,
                   "reason": reason.hex(), "reasonSha256": sha256(reason), "rendered": rendered}
-        data = (json.dumps(record, indent=2) + "\n").encode()
-        write(directory / "cases" / f"{case.label}.json", data)
-        files.append({"file": f"cases/{case.label}.json", "sha256": sha256(data)})
+        records.append(record)
+    data = "".join(json.dumps(record, separators=(",", ":")) + "\n" for record in records).encode()
+    write(directory / "cases" / "cases.jsonl", data)
+    files = [{"file": "cases/cases.jsonl", "sha256": sha256(data)}]
     pv = json.loads(in_ref(args.name, f"cardano-cli query protocol-parameters --testnet-magic {MAGIC} "
                                       f"--socket-path {ENV}/socket/node1/sock").stdout)["protocolVersion"]
-    meta = {"format": 1, "era": era, "protocolVersion": [pv["major"], pv["minor"]],
+    meta = {"format": 2, "era": era, "protocolVersion": [pv["major"], pv["minor"]],
             "provenance": provenance(args.name, command),
             "genesis": {n: sha256((directory / "genesis" / n).read_bytes()) for n in GENESIS},
             "cases": files}
@@ -282,7 +283,7 @@ def refusal_corpus(args):
                                  [{"path": corpus_name, "sha256": sha256(meta_bytes)}], key=lambda c: c["path"])
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
     all_families = [families(era, r) for _, _, r in judged_cases]
-    summary = {"corpus": corpus_name, "era": era, "cases": len(files),
+    summary = {"corpus": corpus_name, "era": era, "cases": len(records),
                "families": sorted({f for fs in all_families for f in fs}),
                "multiFailure": sum(len(fs) > 1 for fs in all_families), "problems": problems}
     print(json.dumps(summary, indent=2))

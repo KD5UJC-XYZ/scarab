@@ -24,12 +24,20 @@
   },
   "corpora": [
     {
+      "path": "babbage-certificate-order",
+      "sha256": "b47b2fc4485a21428f814b3f486e7d80c9b43a229c6c626299ca36b911a24448"
+    },
+    {
       "path": "babbage-devnet",
-      "sha256": "484259b49df4fe465103f14f553b55cfc1385591656865911e512810783276fa"
+      "sha256": "8d04e36c820ac500d15c5e8294665ab6df73b9b8580347c70c54961a54de8e97"
     },
     {
       "path": "conway-devnet",
-      "sha256": "772ebeac2de74da0f8f575f4d3535faab51911820ae64b59c491780369635bbb"
+      "sha256": "286a678fea0f7086d17a169d27d756077ddc2135d54ea02661e39c920f6a66d4"
+    },
+    {
+      "path": "conway-three-certificates",
+      "sha256": "335673554ec6b794302fdbb70f0d941b0c143af6f0814c964a2de2c613088aa3"
     }
   ]
 }

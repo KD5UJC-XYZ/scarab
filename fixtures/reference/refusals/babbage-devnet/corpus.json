@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "era": "babbage",
   "protocolVersion": [
     8,
@@ -26,100 +26,8 @@
   },
   "cases": [
     {
-      "file": "cases/fee-too-small.json",
-      "sha256": "5f976ad1e432192a042f903d79b85ffb6b8c131494ac8487ecf2a087c598f8d4"
-    },
-    {
-      "file": "cases/value-not-conserved.json",
-      "sha256": "044902ac610d5f0f8a7cb12c39e3dce1fc297c80e30bfd6c0dce8163f89062c1"
-    },
-    {
-      "file": "cases/expired.json",
-      "sha256": "a13d92650c2314ae15271316e23d31bf71f47ad63002c08c30273467f81f1c32"
-    },
-    {
-      "file": "cases/output-too-small.json",
-      "sha256": "0dcaa3f6e3ab7a6896155eac15a4fc573e049d920b7303e27941e9c81f97d57e"
-    },
-    {
-      "file": "cases/missing-witness.json",
-      "sha256": "087c1511ca38701d7bf56e7970bcc2a0299a8c9f49fbcb086b6f7cb15d693967"
-    },
-    {
-      "file": "cases/utxo-fee-interval-balance.json",
-      "sha256": "59b2ed107756c70734846e2f1bff63ea5e9ee2cccb3dc15a73699dfdbcc6b88f"
-    },
-    {
-      "file": "cases/utxo-small-and-wrong-network-outputs.json",
-      "sha256": "66e3c0e463785d33d9d4f25fd666d55417aeee392acbc1891f4432f8e2d7693e"
-    },
-    {
-      "file": "cases/utxo-bad-input-missing-witness.json",
-      "sha256": "ab407c7795edf1e91e439dc96eeaf79f80fe5f23b17c4d5c1c72db518f941fc5"
-    },
-    {
-      "file": "cases/deleg-stake-key-registered.json",
-      "sha256": "8cf4220e19d441ff5163bda63e114e53f03ecb6cdc745bd065741e7b2564ca1c"
-    },
-    {
-      "file": "cases/deleg-unregistered-delegation.json",
-      "sha256": "9b62b682538d765d64551e4bbcd8440ea8094e2148ed2c03ae4dd3a5e55ed6c0"
-    },
-    {
-      "file": "cases/delegs-unknown-pool.json",
-      "sha256": "b19ea172251dafc11517bc063674234c719c433e01e8da51c81cb94ffea24595"
-    },
-    {
-      "file": "cases/certs-two-failing.json",
-      "sha256": "3f04e96fc9cb348adcdea0c9270359223a2610ff9f19808b03c98db569763eeb"
-    },
-    {
-      "file": "cases/withdrawal-more-than-balance.json",
-      "sha256": "9a13b29928a696a08db1a5008b91149e16fa414c3a677934222429f1b9f62e8f"
-    },
-    {
-      "file": "cases/withdrawal-unregistered-account.json",
-      "sha256": "7a485e158666c1f17eba875650196de83b87aed2c3b17e5d64829532de80fd08"
-    },
-    {
-      "file": "cases/pool-retire-unregistered.json",
-      "sha256": "80342599f99a0f11154398bea3764d12de272caf6edf041abf28f7da4734a4d8"
-    },
-    {
-      "file": "cases/pool-retirement-wrong-epoch.json",
-      "sha256": "8f25909718e0d8dfe4037116cb228231b3586b5e5f039b1509280a223cf29eb5"
-    },
-    {
-      "file": "cases/utxos-script-fails-flag-true.json",
-      "sha256": "b5efe4c0cc5dfd24417c372c08e38a84b3e8b42db4daeb10f5cde422e156ccbe"
-    },
-    {
-      "file": "cases/utxos-script-passes-flag-false.json",
-      "sha256": "7579756a1324d36d8d16160f0f9c0b5cde51eeee2e74cd1c6054cb563a87a4ba"
-    },
-    {
-      "file": "cases/utxo-mint-no-collateral.json",
-      "sha256": "01446cfb0a08932e348ff6598a7e944e0d1e0a075af61b4cd8592e7ccd8b4f3d"
-    },
-    {
-      "file": "cases/utxo-total-collateral-wrong.json",
-      "sha256": "9c3bd153fa8ca46fe033630885d7545793612b644c50b0c719ecbca87f2c4000"
-    },
-    {
-      "file": "cases/utxow-malformed-witness-and-reference-script.json",
-      "sha256": "3d7dea7034061784837251b72052873bd956066a54d1e4ad89b65c5264517d64"
-    },
-    {
-      "file": "cases/utxow-spend-without-datum-or-redeemer.json",
-      "sha256": "13ec413b3a8f2f577ec86f81fc68a65729082c9e2786fd2beaaeefaf2676b81f"
-    },
-    {
-      "file": "cases/utxow-spend-without-script-with-extra-datum.json",
-      "sha256": "4fb872a414385cb6a009d5d6043c2f48d48f412fc8bbb5142196330afa603697"
-    },
-    {
-      "file": "cases/utxow-spend-redeemer-without-datum-wrong-hash.json",
-      "sha256": "55df69dc75296d87b10be87ea43db506c55b17fe68de12c76d53c695019f40a1"
+      "file": "cases/cases.jsonl",
+      "sha256": "277f39a22f1cddd72348a908b166a798955d1edd95073cae21b236f3676ab287"
     }
   ]
 }

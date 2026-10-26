@@ -395,14 +395,16 @@ object ReferenceRefusalSuite:
     case HashMismatch(file: Path, recorded: String, actual: String)
     case Unlisted(file: Path)
     case Hex(file: Path, field: String)
+    case UnsupportedFormat(file: Path, version: Int)
 
   object CorpusProblem:
     given Show[CorpusProblem] = Show.show {
-      case Unreadable(f)         => s"$f cannot be read"
-      case Json(f, e)            => s"$f: ${e.getMessage}"
-      case HashMismatch(f, r, a) => s"$f has sha256 $a, the corpus records $r"
-      case Unlisted(f)           => s"$f is in the corpus but not listed in its corpus.json"
-      case Hex(f, field)         => s"$f: $field is not hexadecimal"
+      case Unreadable(f)           => s"$f cannot be read"
+      case Json(f, e)              => s"$f: ${e.getMessage}"
+      case HashMismatch(f, r, a)   => s"$f has sha256 $a, the corpus records $r"
+      case Unlisted(f)             => s"$f is in the corpus but not listed in its corpus.json"
+      case Hex(f, field)           => s"$f: $field is not hexadecimal"
+      case UnsupportedFormat(f, v) => s"$f: unsupported corpus format $v"
     }
 
   private final case class ManifestEntry(path: String, sha256: String) derives Decoder
@@ -499,6 +501,11 @@ object ReferenceRefusalSuite:
     for
       bytes <- pinned(meta, entry.sha256)
       file <- json[CorpusFile](meta, bytes)
+      _ <- Either.cond(
+        file.format == 1 || file.format == 2,
+        (),
+        CorpusProblem.UnsupportedFormat(meta, file.format)
+      )
       _ <- file.genesis.toVector.traverse((name, h) =>
         pinned(base.resolve("genesis").resolve(name), h)
       )
@@ -508,15 +515,34 @@ object ReferenceRefusalSuite:
         .map(base.resolve)
         .map(CorpusProblem.Unlisted(_))
         .toLeft(())
-      cases <- file.cases.traverse { e =>
-        val path = base.resolve(e.file)
-        for
-          raw <- pinned(path, e.sha256)
-          c <- json[CaseFile](path, raw)
-          item <- hex(path, "item", c.item)
-          reason <- hex(path, "reason", c.reason)
-        yield RefusalCase(c.label, c.era, c.families, item, c.tip.slot, c.state, c.utxo, reason)
-      }
+      cases <- file.cases
+        .traverse { e =>
+          val path = base.resolve(e.file)
+          for
+            raw <- pinned(path, e.sha256)
+            records <-
+              if file.format == 1 then json[CaseFile](path, raw).map(Vector(_))
+              else
+                new String(raw, "UTF-8").linesIterator.toVector
+                  .traverse(line => json[CaseFile](path, line.getBytes("UTF-8")))
+            decoded <- records.traverse { c =>
+              for
+                item <- hex(path, "item", c.item)
+                reason <- hex(path, "reason", c.reason)
+              yield RefusalCase(
+                c.label,
+                c.era,
+                c.families,
+                item,
+                c.tip.slot,
+                c.state,
+                c.utxo,
+                reason
+              )
+            }
+          yield decoded
+        }
+        .map(_.flatten)
       states <- addressed(base, "states")
       utxos <- addressed(base, "utxo")
     yield Corpus(entry.path, file.era, cases, states, utxos)

@@ -116,6 +116,13 @@ def corpus(name, socket):
         **spend(delta=-key_deposit + 1_000_000,
                 certs=[eratx.reg_cert(kd1.hash, key_deposit), eratx.drep_unreg_cert(fresh_drep.hash, 1_000_000)],
                 signers=[k1, kd1, fresh_drep]))
+    add("certs-three-failing", ["StakeKeyRegisteredDELEG", "ConwayDRepNotRegistered",
+                                "DelegateeStakePoolNotRegisteredDELEG"],
+        **spend(delta=-key_deposit + 1_000_000,
+                certs=[eratx.reg_cert(kd1.hash, key_deposit),
+                       eratx.drep_unreg_cert(fresh_drep.hash, 1_000_000),
+                       eratx.delegation_cert(kd1.hash, unknown_pool)],
+                signers=[k1, kd1, fresh_drep]))
     # ---- DELEG: an unregistered credential delegating to an unknown pool
     add("deleg-unregistered-to-unknown-pool", ["StakeKeyNotRegisteredDELEG", "DelegateeStakePoolNotRegisteredDELEG"],
         **spend(certs=[eratx.delegation_cert(fresh_stake.hash, unknown_pool)], signers=[k1, fresh_stake]))
@@ -323,6 +330,17 @@ def babbage_corpus(name):
         **spend(delta=-key_deposit,
                 certs=[eratx.stake_key_cert(0, kd.hash), eratx.delegation_cert(kd.hash, unknown_pool)],
                 signers=[k, kd]))
+    add("certs-three-failing", ["StakeKeyAlreadyRegisteredDELEG", "DelegateeNotRegisteredDELEG",
+                                "StakePoolNotRegisteredOnKeyPOOL"],
+        **spend(delta=-key_deposit,
+                certs=[eratx.stake_key_cert(0, kd.hash), eratx.delegation_cert(kd.hash, unknown_pool),
+                       eratx.pool_retirement_cert(fresh_cold.hash, epoch + 1)],
+                signers=[k, kd, fresh_cold]))
+    # Deleg.hs:351-361 retains the negative intermediate Coin even after a predicate failure.
+    # The middle certificate offsets it; the final negative update must fail again.
+    for pot, label in ((0, "reserves"), (1, "treasury")):
+        add(f"mir-signed-intermediate-{label}", ["MIRProducesNegativeUpdate"],
+            **spend(certs=[[6, [pot, {(0, kd.hash): amount}]] for amount in (-1, 1, -1)]))
     add("withdrawal-more-than-balance", ["Withdrawals"],
         **spend(delta=1, withdrawals={eratx.reward_address(kd.hash): 1}, signers=[k, kd]))
     add("withdrawal-unregistered-account", ["Withdrawals"],
@@ -388,6 +406,18 @@ def babbage_corpus(name):
     add("utxow-spend-redeemer-without-datum-wrong-hash", ["MissingRequiredDatums", "PPViewHashesDontMatch"],
         **spend_locked(plutus={2: [OK]}, redeemers=spend_redeemer, script_data=bytes(32)))
     return cases
+
+
+def conway_certificate_order(name):
+    """Capture the three-certificate production judgment independently of earlier corpora."""
+    return [case for case in corpus(name, f"{ENV}/socket/node1/sock")
+            if case.label == "certs-three-failing"]
+
+
+def babbage_certificate_order(name):
+    """Capture DELEGS nesting and signed MIR state across three production certificates."""
+    return [case for case in babbage_corpus(name)
+            if case.label == "certs-three-failing" or case.label.startswith("mir-signed-intermediate-")]
 
 
 def submit_setup(b, funder, era, outputs):

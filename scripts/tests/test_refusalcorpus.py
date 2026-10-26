@@ -41,12 +41,15 @@ class RecordedCorpus(unittest.TestCase):
     def test_families_are_read_from_the_reference_bytes_and_named_in_its_rendering(self):
         for directory, meta in self.corpora():
             for c in meta["cases"]:
-                case = json.loads((directory / c["file"]).read_text())
-                reason = bytes.fromhex(case["reason"])
-                self.assertEqual(hashlib.sha256(reason).hexdigest(), case["reasonSha256"], case["label"])
-                families = refusalcorpus.families(case["era"], reason)
-                self.assertEqual(families, case["families"], case["label"])
-                self.assertEqual(refusalcorpus.unnamed(case["era"], families, case["rendered"]), [], case["label"])
+                text = (directory / c["file"]).read_text()
+                cases = ([json.loads(text)] if meta["format"] == 1
+                         else [json.loads(line) for line in text.splitlines()])
+                for case in cases:
+                    reason = bytes.fromhex(case["reason"])
+                    self.assertEqual(hashlib.sha256(reason).hexdigest(), case["reasonSha256"], case["label"])
+                    families = refusalcorpus.families(case["era"], reason)
+                    self.assertEqual(families, case["families"], case["label"])
+                    self.assertEqual(refusalcorpus.unnamed(case["era"], families, case["rendered"]), [], case["label"])
 
     def test_the_manifest_requires_every_era_the_corpora_hold(self):
         manifest = json.loads((ROOT / "manifest.json").read_text())

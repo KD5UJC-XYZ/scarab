@@ -3,8 +3,8 @@
 Transactions the pinned reference node (`cardano-node` 11.1.3) refused, each with its **complete**
 refusal: the hard-fork-combinator `ApplyTxErr` it sent over node-to-client LocalTxSubmission, holding
 every predicate failure it accumulated, in its order (#401). `ReferenceRefusalSuite` (node module, part
-of `check`) replays every case through Scarab and compares the bytes. Nothing in this directory is
-written by hand; every file comes from a run of `scripts/devnet.py refusal-corpus`.
+of `check`) replays every case through Scarab and compares the bytes. The inputs and expected refusals come from runs of `scripts/devnet.py refusal-corpus`;
+repacking the case records preserves every JSON field and all original CBOR bytes.
 The data is from throwaway local devnets (their genesis and transactions signed with devnet keys);
 no signing key is kept, and it carries the repository's licence.
 
@@ -17,7 +17,8 @@ no signing key is kept, and it carries the repository's licence.
 | `<corpus>/genesis/` | the cluster's genesis files and node configuration, as `devnet.py` copied them |
 | `<corpus>/states/<sha256>.cbor` | the reference's `GetCBOR DebugNewEpochState` answer at the tip a case was judged at |
 | `<corpus>/utxo/<sha256>.cbor` | the reference's `GetCBOR GetUTxOWhole` answer at that tip (UTxO-HD keeps the UTxO out of the state) |
-| `<corpus>/cases/<label>.json` | one case (below) |
+| `<corpus>/cases/cases.jsonl` | format 2: one complete case record per line (below) |
+| `<corpus>/cases/<label>.json` | format 1: one case per file; the reader retains support |
 
 A case holds `item` (the exact LocalTxSubmission payload `[era index, #6.24(tx)]` that was sent), `tip`
 (the ledger tip; `mempoolSlot` is the reference mempool's snapshot slot, the tip's successor), the state
@@ -43,7 +44,7 @@ rule (`ShelleyLedger.sts[Babbage]`) and written by `PreConwayFailureCbor`. Scara
 LocalTxSubmission serve Conway only, so this compares the rule and its encoding, not a node-to-client
 path.
 
-The corpus currently contains 71 transactions: 24 Babbage and 47 Conway. Of these, 69
+The corpus currently contains 75 transactions: 27 Babbage and 48 Conway. Of these, 73
 compare the complete refusal bytes. Two `utxos-script-fails-flag-true` cases (one per era)
 have an explicitly incomplete comparison under [#491](https://github.com/KD5UJC-XYZ/scarab/issues/491):
 the suite removes only the `PlutusFailure` text to compare the remaining structure, checks that the
@@ -53,6 +54,13 @@ that `manifest.json` requires for an era and no case of that era covers fails th
 missing coverage is an incomplete gate, never a pass. Batches were recorded only while the tip and the
 mempool slot held still, with an empty mempool, so the validity-interval slot in a refusal is the one
 the replay judges at; the slot is compared unchanged.
+
+The certificate-order corpora add three failing certificates in both eras. The Babbage corpus also
+records MIR certificates with successive amounts `[-1, +1, -1]`, once against each pot. The native
+rule retains the signed intermediate update after reporting a negative reward: the complete refusal
+therefore contains two `MIRProducesNegativeUpdate` failures. Other failures in those submissions are
+retained and compared too. Reinstating the old implementation that discarded the negative update
+makes both native MIR cases fail; the corrected rule matches their complete original refusals.
 
 The upstream LEDGERS conformance adapter is not used here: these expectations come from the released
 node's own submission path. The recorded corpus currently covers Babbage and Conway only. Earlier
