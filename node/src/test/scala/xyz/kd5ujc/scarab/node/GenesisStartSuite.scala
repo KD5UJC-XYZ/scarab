@@ -6,7 +6,7 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorExtras, MirrorProvenance}
-import xyz.kd5ujc.scarab.ledger.{ConfigProblem, ProtocolParams, Ptr}
+import xyz.kd5ujc.scarab.ledger.{ConfigProblem, GenesisState, ProtocolParams, Ptr}
 import xyz.kd5ujc.scarab.ledger.rules.{CertLens, GenesisStartError, Globals, Handover, Translate}
 import xyz.kd5ujc.scarab.ledger.state.*
 
@@ -63,6 +63,51 @@ class GenesisStartSuite extends FunSuite:
     assertEquals(nes.ru, None)
     assertEquals(setup.mirrorStart.provenance, MirrorProvenance.complete)
     assert(setup.mirrorStart.extras.isInstanceOf[MirrorExtras.InShelley])
+  }
+
+  private val enterpriseFund = "60" + "19" * 28
+
+  // `registerInitialFunds` constructs `mkBasicTxOut`, whose value must compact even though the
+  // chain account's reserve arithmetic uses signed Coin (f649f975 Shelley/Transition.hs:650-653;
+  // Shelley/TxOut.hs:139-143, Alonzo/TxOut.hs:326-327, Babbage/TxOut.hs:449-450).
+  Vector(BigInt(0), (BigInt(1) << 64) - 1).foreach { amount =>
+    test(s"an initial-fund output retains compact boundary amount $amount") {
+      val output = GenesisState.output(enterpriseFund, amount).fold(e => fail(e.message), _._2)
+      assertEquals(output.value.coin, amount)
+      assertEquals(output.address.raw.hex, enterpriseFund)
+    }
+  }
+
+  Vector(
+    BigInt(-1) -> VocabError.Negative(VocabError.Kind.CompactCoin, BigInt(-1)),
+    (BigInt(1) << 64) -> VocabError.OutOfRange(VocabError.Kind.CompactCoin, BigInt(1) << 64)
+  ).foreach { (amount, cause) =>
+    test(s"an initial-fund output refuses noncompact amount $amount") {
+      val result = GenesisState.output(enterpriseFund, amount).left.map(_.problem)
+      assertEquals(result, Left(ConfigProblem.GenesisStart(GenesisStartError.Vocab(cause))))
+    }
+  }
+
+  test("a negative initial fund without staking cannot enter the genesis UTxO") {
+    val result = NodeSetup.fromFiles(files { (name, value) =>
+      if name != "shelley-genesis.json" then value
+      else
+        value.deepMerge(
+          Json.obj(
+            "extraConfig" -> Json.obj(
+              "initialFunds" -> Json.obj("data" -> Json.obj(enterpriseFund -> Json.fromInt(-1)))
+            )
+          )
+        )
+    })
+    assertEquals(
+      result.left.toOption.map(_.problem),
+      Some(
+        ConfigProblem.GenesisStart(
+          GenesisStartError.Vocab(VocabError.Negative(VocabError.Kind.CompactCoin, BigInt(-1)))
+        )
+      )
+    )
   }
 
   test("the initial funds join the Byron genesis UTxO and the reserves give them up") {
@@ -205,6 +250,25 @@ class GenesisStartSuite extends FunSuite:
     problem match
       case ConfigProblem.JsonField("protocol parameters", "cost model", _) => ()
       case other => fail(s"unexpected refusal: $other")
+  }
+
+  test("a Byron start does not construct outputs from unused initial-fund injections") {
+    val result = NodeSetup.fromFiles(files { (name, value) =>
+      val started = byronStart(name, value)
+      if name != "shelley-genesis.json" then started
+      else
+        started.deepMerge(
+          Json.obj(
+            "extraConfig" -> Json.obj(
+              "initialFunds" -> Json.obj("data" -> Json.obj(enterpriseFund -> Json.fromInt(-1)))
+            )
+          )
+        )
+    })
+    assertEquals(
+      result.map(_.mirrorStart.ext.ledgerState.era),
+      Right(xyz.kd5ujc.scarab.protocol.Era.Byron)
+    )
   }
 
   /** The devnet genesis started in Shelley: the staking injection of the eras before Conway. */

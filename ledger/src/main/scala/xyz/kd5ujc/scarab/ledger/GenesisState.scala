@@ -78,10 +78,17 @@ object GenesisState:
 
   /** Genesis outputs are spent from the pseudo transaction whose id is the address hash. */
   def outputBytes(raw: Bytes, coin: BigInt): Either[ConfigError, (TxIn, TxOut)] =
-    Address.decode(raw).leftMap(e => ConfigError(ConfigProblem.LedgerValue(e))).map { address =>
-      // Genesis outputs have no transaction encoding; `raw` is only consulted for new outputs.
-      TxIn(Blake2b.hash256.hash(raw), 0) -> TxOut(address, Value.coin(coin))
-    }
+    for
+      address <- Address.decode(raw).leftMap(e => ConfigError(ConfigProblem.LedgerValue(e)))
+      // `registerInitialFunds` constructs `mkBasicTxOut`, which compacts each output value
+      // (f649f975 Shelley/Transition.hs:650-653; Shelley/TxOut.hs:139-143;
+      // Alonzo/TxOut.hs:326-327; Babbage/TxOut.hs:449-450). This is the output's bound;
+      // the chain account's reserves and the sum of initial funds remain signed Coin.
+      amount <- state.CompactCoin
+        .fromBigInt(coin)
+        .leftMap(e => ConfigError(ConfigProblem.GenesisStart(rules.GenesisStartError.Vocab(e))))
+    // Genesis outputs have no transaction encoding; `raw` is only consulted for new outputs.
+    yield TxIn(Blake2b.hash256.hash(raw), 0) -> TxOut(address, Value.coin(amount.toBigInt))
 
   def pool(id: String, j: Json): Either[ConfigError, (Bytes, PoolParams)] =
     val c = j.hcursor
