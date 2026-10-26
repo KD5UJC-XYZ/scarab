@@ -5,6 +5,11 @@ with cats-mtl, and checked against the Haskell `cardano-node` as the reference. 
 apply to every automated session working in this repository; human contributors follow the same
 rules through [CONTRIBUTING.md](CONTRIBUTING.md).
 
+For orientation only: [docs/codemap.md](docs/codemap.md) (modules, entry points, suites),
+[docs/questions.md](docs/questions.md) (where to start reading), [docs/glossary.md](docs/glossary.md)
+(terms) and [docs/playbooks/](docs/playbooks/README.md) (recurring tasks). They set no rules; where
+they differ from this file or CONTRIBUTING, this file and CONTRIBUTING win.
+
 ## Before you start
 
 1. Read [docs/process.md](docs/process.md) (how work is tracked), then the issue you are working on,
@@ -92,6 +97,15 @@ scala code … I love the use of type parameters when I can use them"*.
   correspondence or a non-obvious tradeoff; check their reason before rewriting or removing them.
   Refer to maintained symbols, ADRs and pinned upstream sources rather than private notes,
   implementation-stage labels or unpinned line numbers.
+- An accepted ADR's decision text is not rewritten. A stale example or symbol name may be corrected
+  in place; any other correction, and a supersession, goes in a dated "Amendment (YYYY-MM-DD)"
+  section that links what replaced it, and the superseded words in the decision are struck through
+  (`~~…~~`) with a link to that amendment, so a reader sees where they read it that the text is stale.
+- Each policy or fact has one authoritative home (gates in CONTRIBUTING, decisions in ADRs, process
+  in [docs/process.md](docs/process.md)); other documents link to it rather than restating it.
+- No volatile facts in static documents: issue state, test counts and "current" versions come from
+  GitHub, the registries (`docs/data/reference-pins.json`, `PersistedFormat.scala`) or dated
+  evidence rows.
 
 ## Conformance expectations
 
@@ -123,6 +137,10 @@ scala code … I love the use of type parameters when I can use them"*.
   migration; generic toy-format migration framework tests remain independent of native fixtures.
 - Small, logical commits as CONTRIBUTING describes. A changelog entry is a fragment in `changes/`,
   never an edit of `CHANGELOG.md`. Do not push to `main` unless you were asked to.
+- After a rebase, re-check every factual claim your change makes against the new base, not only that
+  it builds.
+- A change to an ADR, or to agent-facing documents that state facts about the code, gets an
+  independent review against the code before it is reported ready.
 - Report: branch and commits, what changed, gate results, deviations from the plan and why, and what
   the next stage needs to know.
 

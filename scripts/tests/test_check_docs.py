@@ -54,6 +54,33 @@ class LinkTest(DocsCase):
         self.assertEqual(self.kinds({"README.md": text, "docs/x.md": "x"}), [(Kind.MISSING_PATH, "docs/nothing/here.md")])
 
 
+class AdrIndexTest(DocsCase):
+    def test_every_decision_record_is_linked_from_the_index(self):
+        files = {
+            "docs/adr/README.md": "# ADRs\n| [0001](0001-first.md) | First |\n| [0003](./0003-third.md#context) |\n"
+                                  "[template](template.md)\n",
+            "docs/adr/0001-first.md": "# 1\n",
+            "docs/adr/0002-second.md": "# 2\n",
+            "docs/adr/0003-third.md": "# 3\n## Context\n",
+            "docs/adr/template.md": "# T\n",
+        }
+        self.assertEqual(self.kinds(files), [(Kind.ADR_UNINDEXED, "docs/adr/0002-second.md")])
+
+    def test_code_spans_are_not_index_entries_and_reference_links_are(self):
+        files = {
+            "docs/adr/README.md": "# ADRs\n`[0001](0001-first.md)` [0002][second]\n\n[second]: 0002-second.md\n"
+                                  f"{FENCE}\n[0003](0003-third.md)\n{FENCE}\n",
+            "docs/adr/0001-first.md": "# 1\n",
+            "docs/adr/0002-second.md": "# 2\n",
+            "docs/adr/0003-third.md": "# 3\n",
+        }
+        self.assertEqual(sorted(self.kinds(files)), [(Kind.ADR_UNINDEXED, "docs/adr/0001-first.md"),
+                                                     (Kind.ADR_UNINDEXED, "docs/adr/0003-third.md")])
+
+    def test_no_index_means_no_check(self):
+        self.assertEqual(self.kinds({"docs/adr/0001-first.md": "# 1\n"}), [])
+
+
 class PathTest(DocsCase):
     def test_only_repo_rooted_paths_are_checked(self):
         files = {

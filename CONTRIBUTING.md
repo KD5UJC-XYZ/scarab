@@ -16,7 +16,10 @@ run it in the JDK image:
 ```sh
 docker build -f docker/jdk.Dockerfile -t scarab-jdk:local .
 scarab_git_metadata="$(git rev-parse --path-format=absolute --git-common-dir)"
-docker run --rm -v "$PWD":/work -v "$scarab_git_metadata:$scarab_git_metadata:ro" \
+scarab_cache="$(python3 -I -c 'import sys; sys.path.insert(0, "scripts")
+from devnet.util import cache_dir; print(cache_dir())')"
+docker run --rm -v "$PWD":/work -v "$scarab_cache":/work/.cache \
+  -v "$scarab_git_metadata:$scarab_git_metadata:ro" \
   -w /work --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
   scarab-jdk:local bash scripts/sbtw check
 ```
@@ -32,11 +35,12 @@ absolute paths; use it for every Docker sbt invocation, including a persistent s
 reads HEAD without needing a Git executable in the JDK image. Missing Git identity is refused,
 not labeled `unknown`; an immutable export instead supplies the verified identity described below.
 
-The classpath file names jars as `/work/.cache/...`. `scripts/devnet.py` mounts the dependency cache
-there itself: `SCARAB_CACHE_DIR` if set, else the checkout's own `.cache` if it holds anything, else
-(in a linked git worktree, whose `.cache` is only an empty mount point) the `.cache` of the main
-checkout, found as the parent of `git rev-parse --git-common-dir`. Mount the same directory at
-`/work/.cache` when you run sbt in a worktree, and never copy jars into the worktree.
+The classpath file names jars as `/work/.cache/...`, so sbt and the scenarios must mount the same
+dependency cache there. The command above asks `scripts/devnet.py`'s own choice (`cache_dir` in
+`scripts/devnet/util.py`, run from the checkout's root): `SCARAB_CACHE_DIR` if set (made absolute),
+else the checkout's own `.cache` if it holds anything, else (in a linked git worktree, whose `.cache`
+is only an empty mount point) the populated `.cache` of the main checkout. Never copy jars into a
+worktree.
 
 ### Reproducible runtime artifacts
 
@@ -50,8 +54,8 @@ See [the artifact contract and verification commands](docs/reproducible-builds.m
 Starting sbt costs 40 to 60 seconds of JVM start and compile. For many small edits keep one
 container alive and talk to its sbt server:
 
-1. Start a long-lived container from `scarab-jdk:local` with the checkout, read-only Git metadata
-   and `HOME` mounts/settings above (for example `docker run -d --name scarab-sbt ... tail -f /dev/null`).
+1. Start a long-lived container from `scarab-jdk:local` with the checkout, cache, read-only Git
+   metadata and `HOME` mounts/settings above (for example `docker run -d --name scarab-sbt ... tail -f /dev/null`).
 2. Run sbt once inside it with the server enabled (a copy of `scripts/sbtw` without
    `-Dsbt.server.autostart=false`, kept outside the repository).
 3. Send commands with `docker exec scarab-sbt <that launcher> --client "ledger/testOnly xyz.kd5ujc.scarab.ledger.*"`.
@@ -107,6 +111,9 @@ with a pattern that matches your own shell command line.
   `python3 scripts/render_codemap.py`; a package, entry point or suite that moves needs the entry updated.
   `python3 scripts/status.py [--area A] [--priority P1]` prints a one-line digest of the open issues
   (needs `gh`; `--from file.json` works offline); its output is never committed.
+  [docs/questions.md](docs/questions.md), [docs/glossary.md](docs/glossary.md) and
+  [docs/playbooks/](docs/playbooks/README.md) point to where things are and how recurring tasks
+  run; they set no rules of their own.
 
 ## Style rules
 

@@ -29,7 +29,9 @@ A recursion whose depth depends on outside data takes one of these forms, in thi
    100,000 elements).
 2. **`@tailrec`**, so the compiler refuses a call that is not in tail position.
 3. **`Monad[F].tailRecM` over a small typed state** (a case class or enum of what remains), when the
-   loop is effectful or short-circuits through `Either`/`Option`/`F`: `Phase2` (`Progress(rest, done)`).
+   loop is effectful or short-circuits through `Either`/`Option`/`F`: `Hfc.tick` (over `EraNes`, for as
+   many epochs as the chain crosses) and `Migrate` (`steps`, over a `FormatVersion`). `Phase2` uses
+   form 1 (`foldLeftM`).
 4. **An explicit stack machine** (typed frames, a loop over them) for a tree walk where the recursion
    is not a tail call: `TreeFold`.
 

@@ -19,7 +19,7 @@ and reported upstream with reproductions.
 
 ## Consequences
 
-- Plutus conformance is measured continuously (987 of 1,009 cases at the time of writing).
+- Plutus conformance is measured continuously ~~(987 of 1,009 cases at the time of writing)~~ ([amended 2026-10-25](#amendment-2026-10-25-where-the-current-state-is-recorded)).
 - Scalus versions move only with evidence (the conformance suite and the Preview and preprod replays).
 - Owning the evaluator remains an open spike (#43).
 
@@ -36,9 +36,19 @@ and reported upstream with reproductions.
   project ([ADR 0020](0020-plutus-native-crypto-through-scalus-crypto-jni.md)).
 - **Corrections removed with Scalus 1.4.0.** The variant-A Ed25519 costing, the ECDSA
   replacement, the raw-DST `hashToGroup` adapter and the `NewConstitution` context deviation.
-- **Corrections that remain in the wrapper:**
+- **Corrections that remain in the wrapper** (as of 2026-10-23; not maintained here, see the [amendment of 2026-10-25](#amendment-2026-10-25-where-the-current-state-is-recorded)):
   - `DataSerialiser` (`serialiseData`);
   - `WideIndices`;
   - `ScarabProgramView`;
   - `PlutusScriptBytes`;
   - `FlatScan`.
+
+## Amendment (2026-10-25): where the current state is recorded
+
+This record keeps the decision; it is not the inventory. The conformance count in the consequences
+is historical; current results and their evidence are in [plutus-conformance.md](../plutus-conformance.md).
+The native cryptographic backend is [ADR 0020](0020-plutus-native-crypto-through-scalus-crypto-jni.md).
+The builtin corrections the wrapper applies, with their reproducer suites, are documented on
+`ScalusEvaluator.CorrectedVm` in
+[ScalusEvaluator.scala](../../plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ScalusEvaluator.scala);
+the list in the amendment above is not maintained as corrections change.

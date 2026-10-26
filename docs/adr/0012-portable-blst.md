@@ -4,14 +4,6 @@
 - **Date**: 2026-10-16
 - **Issue**: #93 (roadmap B25)
 
-> **Amended 2026-10-23.** Scalus 1.4.0 no longer uses blst-java: the Plutus builtins run on
-> `libscalus_crypto` of scalus-crypto-jni, pinned and checked at start-up under
-> [ADR 0020](0020-plutus-native-crypto-through-scalus-crypto-jni.md). This record still governs the
-> portable `libblst.so` of `blst-native`, its reproducible rebuild and its start-up check, which
-> now serve the Leios BLS keys (`MinSig`) only. The `RawDst` JNI class and its two known answers are
-> removed; the raw-DST entry points remain in the committed binary until its next rebuild. Where the
-> text below says Scalus or Plutus loads this library, it describes Scalus 1.3.0.
-
 ## Context
 
 A preprod follower on an older 2-core x86-64 CPU (no `adx`, no `bmi2` in `/proc/cpuinfo`) died with
@@ -62,12 +54,12 @@ before blst-java on the class path.**
   recorded in this ADR's provenance table; the original hash is historical build evidence.
 - The sbt project `blstNative` (`blst-native/`) holds it at
   `supranational/blst/Linux/amd64/libblst.so`, the licence text of blst (`LICENSE-blst`, Apache-2.0)
-  and `Blst`, the start-up check below. `crypto` and `plutus` depend on it, so it precedes
+  and `Blst`, the start-up check below. `crypto` ~~and `plutus`~~ ([amended 2026-10-23](#amendment-2026-10-23-plutus-moves-to-scalus-crypto-jni)) depend on it, so it precedes
   `blst-java` on every class path that can reach blst (sbt puts the classes of the projects before
   the library jars; so does the bundle layout `classes/*` before `lib/*`). The JNI glue is the same
   SWIG output as blst-java's, so the unchanged `blstJNI.class` of blst-java runs against it
   (`BlstSuite` checks that every native method of `blstJNI` is exported by the library).
-- No code is needed in the callers and no system property: Scalus and `MinSig` find the right
+- No code is needed in the callers and no system property: ~~Scalus and~~ ([amended 2026-10-23](#amendment-2026-10-23-plutus-moves-to-scalus-crypto-jni)) `MinSig` find the right
   library by themselves, and the same library is used for every CPU. Linux/aarch64 and macOS keep
   the libraries of blst-java: aarch64 has no ADX, and a macOS build does not run in this project's
   containers; this record is revisited if a platform other than Linux/amd64 is run seriously.
@@ -130,9 +122,9 @@ To update blst: review the commit and source-archive SHA-256 pins in `docker/bls
 `blst-native/out/libblst.so` over the resource, `blst-native/out/exports.txt` over
 `blst-native/src/test/resources/blst-exports.txt`, put the new sha-256 into `Blst.portableSha256`
 (`BlstSuite` and the start-up check fail until it matches), refresh the table above and the
-licence, and run `check`, the Plutus conformance suite (it contains the BLS12-381 cases) and
-`BlstCheckMain` on a CPU without ADX. When blst-java changes its `blstJNI` (a new release of
-Scalus), the export test says whether the library still has every native method it calls.
+licence, and run `check`, ~~the Plutus conformance suite (it contains the BLS12-381 cases)~~ ([amended 2026-10-23](#amendment-2026-10-23-plutus-moves-to-scalus-crypto-jni)) and
+`BlstCheckMain` on a CPU without ADX. When blst-java changes its `blstJNI` ~~(a new release of
+Scalus)~~ ([amended 2026-10-23](#amendment-2026-10-23-plutus-moves-to-scalus-crypto-jni)), the export test says whether the library still has every native method it calls.
 
 The 2026-10-18 raw-DST adapter update (#175) preserves the blst source, portable flags, existing JNI
 exports and curve arithmetic. It adds two byte-array hash/compress entry points, pinned to the
@@ -169,3 +161,13 @@ compiled native overlay read-only; no operational node or configuration changed.
 - Revisit when: Scalus or blst-java ship a portable build themselves (then drop the module and keep
   the check), when the Dijkstra/Leios work needs a blst feature newer than v0.3.15, or when a
   platform other than Linux/amd64 is deployed.
+
+## Amendment (2026-10-23): Plutus moves to scalus-crypto-jni
+
+Scalus 1.4.0 no longer uses blst-java: the Plutus builtins run on
+`libscalus_crypto` of scalus-crypto-jni, pinned and checked at start-up under
+[ADR 0020](0020-plutus-native-crypto-through-scalus-crypto-jni.md). This record still governs the
+portable `libblst.so` of `blst-native`, its reproducible rebuild and its start-up check, which
+now serve the Leios BLS keys (`MinSig`) only. The `RawDst` JNI class and its two known answers are
+removed; the raw-DST entry points remain in the committed binary until its next rebuild. Where the
+decision says Scalus or Plutus loads this library (struck through above), it describes Scalus 1.3.0.

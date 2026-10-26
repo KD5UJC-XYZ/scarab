@@ -19,6 +19,10 @@ work can be parked and resumed, and nothing goes stale silently.
 | Where is the code, and what covers it? | [codemap.md](codemap.md), generated from `docs/data/codemap.json` and `build.sbt` (CI checks it) | the change that moves a package, entry point or suite |
 | How fast and how large? | [performance.md](performance.md) | runs that measure |
 
+[questions.md](questions.md), [glossary.md](glossary.md) and the [playbooks](playbooks/README.md) are
+navigation, not sources of truth: they point to the documents above and to the code, and the change
+that moves what they point to updates them.
+
 Working notes, run logs and scratch analysis stay out of the repository (contributors keep them
 locally; the maintainer's sessions use the ignored `.workspace/` directory). What a reader needs
 later is distilled into one of the documents above.
@@ -127,7 +131,9 @@ ticket says which parts are confirmed from source, which come from an earlier re
 consequences still to verify.
 
 Every audit ticket states the **boundary** it concerns, the **trusted assumptions**, the **invariant**
-that must hold, the **acceptance criteria** and the **evidence** required; the fix keeps the
+that must hold, the **acceptance criteria** and the **evidence** required (the
+[audit finding template](../.github/ISSUE_TEMPLATE/audit.yml) has these fields; the registered upstream
+revisions to cite are in `docs/data/reference-pins.json`). The fix keeps the
 reproduction as a regression test, and the relevant row of [compatibility.md](compatibility.md)
 is updated. Where a finding concerns something a hostile peer or client could exploit, the public ticket
 describes the missing property and the reference's behaviour, never how to trigger it
