@@ -136,7 +136,13 @@ private[ledger] object CborRead:
   def fields(n: Node, what: DecodeSite): Result[Map[Int, Node]] =
     map(n, what).flatMap { kvs =>
       kvs
-        .traverse { case (k, v) => uint(k, what / DecodeSite.Qualifier.Key).map(_.toInt -> v) }
+        .traverse { case (k, v) =>
+          uint(k, what / DecodeSite.Qualifier.Key).flatMap(key =>
+            // A key beyond `Int` names no field of any record, and reading it as its low 32 bits would
+            // make it one (`invalidField`, `Coders.hs`, cardano-ledger f649f975, reads a `Word`).
+            Either.cond(key.isValidInt, key.toInt -> v, LedgerDecodeError.UnknownKey(what, key))
+          )
+        }
         .flatMap(pairs =>
           Either
             .cond(

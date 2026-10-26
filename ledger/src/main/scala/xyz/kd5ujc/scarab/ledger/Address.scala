@@ -566,12 +566,37 @@ object TxOut:
   def apply(address: Address, value: Value): TxOut =
     TxOut(Bytes.empty, address, value, Datum.NoDatum, None, 0)
 
+  /** The forms of an output that an era's decoder reads. `ShelleyTxOut` (Shelley, Allegra and Mary)
+    * is the two-element array alone (`decodeRecordNamed "ShelleyTxOut" (const 2)`,
+    * `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxOut.hs`); `AlonzoTxOut` adds the three-element
+    * array with a datum hash (`DecCBOR (AlonzoTxOut era)`,
+    * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs`); `BabbageTxOut` (Babbage and Conway)
+    * adds the map (`decodeBabbageTxOut`, `eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs`),
+    * all of cardano-ledger f649f975. An indefinite array is read as a definite one in every era.
+    */
+  enum Forms(val arities: Set[Int], val admitsMap: Boolean):
+    case Pair extends Forms(Set(2), false)
+    case PairOrDatumHash extends Forms(Set(2, 3), false)
+    case PairDatumHashOrMap extends Forms(Set(2, 3), true)
+
+  object Forms:
+    def of(era: Era): Forms =
+      if era.ordinal < Era.Alonzo.ordinal then Pair
+      else if era.ordinal < Era.Babbage.ordinal then PairOrDatumHash
+      else PairDatumHashOrMap
+
+    /** A stored output is read in any form an earlier build accepted and stored, so the stores keep
+      * reading what they wrote (ADR 0006): every form of the latest era.
+      */
+    val Stored: Forms = PairDatumHashOrMap
+
   def decode(
       n: Node,
-      mode: Address.Mode = Address.Mode.Rigorous
+      mode: Address.Mode,
+      forms: Forms
   )(using ByteStrings): Either[LedgerDecodeError, TxOut] =
     n.value match
-      case xyz.kd5ujc.scarab.codec.Value.Arr(xs) if xs.size == 2 || xs.size == 3 =>
+      case xyz.kd5ujc.scarab.codec.Value.Arr(xs) if forms.arities.contains(xs.size) =>
         for
           a <- CborRead.bytes(xs(0), DecodeField.OutputAddress).flatMap(Address.decode(_, mode))
           v <- Value.decode(xs(1), DecodeField.OutputValue, mode.values)
@@ -580,7 +605,7 @@ object TxOut:
               CborRead.bytesN(xs(2), 32, DecodeField.DatumHash).map(Datum.Hash(_))
             else Right(Datum.NoDatum)
         yield TxOut(n.original, a, v, d, None, xs(1).original.size)
-      case xyz.kd5ujc.scarab.codec.Value.Map(_) =>
+      case xyz.kd5ujc.scarab.codec.Value.Map(_) if forms.admitsMap =>
         for
           f <- CborRead.fields(n, DecodeField.Output)
           a <- f
@@ -600,14 +625,7 @@ object TxOut:
           d <- f.get(2).traverse(datumOption)
           s <- f.get(3).traverse(Script.decodeWrapped)
         yield TxOut(n.original, a, v, d.getOrElse(Datum.NoDatum), s, vn.original.size)
-      case _ =>
-        Left(
-          LedgerDecodeError.Expected(
-            DecodeField.Output,
-            LedgerDecodeError.Shape.ArrayOrMap,
-            n.value
-          )
-        )
+      case _ => Left(LedgerDecodeError.OutputForm(forms, n.value))
 
   /** `datum_option = [0, hash] / [1, #6.24(bytes .cbor plutus_data)]` */
   private def datumOption(n: Node)(using ByteStrings): Either[LedgerDecodeError, Datum] =
@@ -623,11 +641,14 @@ object TxOut:
       }
     }
 
+  /** An output read from its own bytes, as the stores keep it and as a rule re-reads it: in every
+    * form of [[Forms.Stored]].
+    */
   def fromBytes(
       raw: Bytes,
       mode: Address.Mode = Address.Mode.Rigorous
   )(using ByteStrings): Either[LedgerDecodeError, TxOut] =
-    CborRead.decode(raw).flatMap(decode(_, mode))
+    CborRead.decode(raw).flatMap(decode(_, mode, Forms.Stored))
 
 /** `[transaction_id, index]` */
 final case class TxIn(id: Bytes, index: BigInt):
