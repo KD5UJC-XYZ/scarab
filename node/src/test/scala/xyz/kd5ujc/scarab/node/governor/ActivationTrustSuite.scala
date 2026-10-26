@@ -50,7 +50,7 @@ class ActivationTrustSuite extends FailsOnUncaught:
           def tell(output: Output[Int]) = IO.unit
         actions = new PeerStateActions[IO, Int]:
           def establish(peer: Int, mode: DiffusionMode, provenance: Provenance) =
-            IO.pure(Option.empty[FailureClass])
+            IO.pure(ActionFixtures.established(this, peer))
           def establishAt(
               peer: Int,
               mode: DiffusionMode,
@@ -60,10 +60,12 @@ class ActivationTrustSuite extends FailsOnUncaught:
           def activate(peer: Int, trust: PeerTrust) =
             entered.complete(()).void *> release.get *> observed
               .complete(trust)
-              .as(Option.empty[FailureClass])
-          def deactivate(peer: Int) = IO.pure(PeerStateActions.Deactivation.Warm)
-          def close(peer: Int) = IO.pure(true)
-          def closeIfGeneration(peer: Int, generation: BigInt) = IO.pure(Some(true))
+              .as(Right(()))
+          def deactivate(peer: Int) = IO.pure(Right(PeerStateActions.Deactivation.Warm))
+          def close(peer: Int) =
+            IO.pure(Right(PeerStateActions.CloseResult(PeerStateActions.Release.Released)))
+          def closeIfGeneration(peer: Int, generation: BigInt) =
+            IO.pure(Some(Right(PeerStateActions.CloseResult(PeerStateActions.Release.Released))))
         provider = new RootProvider[IO, Int]:
           def request(max: Int, bootstrap: Boolean) = IO.pure(None)
           def requestBigLedger(max: Int) = IO.pure(None)

@@ -1212,6 +1212,8 @@ object Main extends IOApp:
             )
             emitOutput = (out: Output[PeerNetwork.Addr]) =>
               measured.peerSelection(out) *> (out match
+                case Output.EstablishmentFailed(peer, error) =>
+                  logged(NodeEvent.PeerEstablishmentFailed(peer, error))
                 case Output.Traced(trace)      => logged(NodeEvent.PeerSelection(trace))
                 case Output.Churned(trace)     => logged(NodeEvent.PeerChurn(trace))
                 case Output.LedgerPeers(trace) => logged(NodeEvent.LedgerPeers(trace))

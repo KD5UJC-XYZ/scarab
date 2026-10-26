@@ -48,4 +48,5 @@ Each component of the design has a page of its own; the section names below are 
 | [G1.2 as built](peer-selection/g1-2-as-built.md) | 7b. G1.2 as built |
 | [G1.4 as built](peer-selection/g1-4-as-built.md) | 7c. G1.4a as built; 7f. G1.4b governor and wiring |
 | [G1.5 and the topology, DNS and duplex work as built](peer-selection/g1-5-as-built.md) | 7g. G1.5 (#139) and topology/DNS/duplex (#142) as built |
+| [PeerStateActions result handles and monitor](peer-selection/peer-state-actions.md) | 7h. PeerStateActions result handles and monitor |
 | [Open questions, owner decisions and risks](peer-selection/decisions-and-risks.md) | 8. Open questions for the owner; 8a. Owner decisions on the open questions (2026-10-17); 9. Risks, in one place |

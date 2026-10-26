@@ -33,15 +33,34 @@ object SourceRefusal:
     type Cause = E
     def message: String = show.show(cause)
 
+/** A successful application result, retained in typed form until the log renders its reason. */
+sealed trait ReturnReason:
+  type Result
+  def result: Result
+  def message: String
+
+object ReturnReason:
+  final case class Typed[A](result: A)(using show: Show[A]) extends ReturnReason:
+    type Result = A
+    def message: String = show.show(result)
+
 /** What the effect layer sees of an established peer's connection when it looks without blocking
   * (`monitorPeerConnection`, `PeerStateActions.hs` 908-950): a change the governor did not ask for
   * is an asynchronous demotion (`Monitor.connections`, `Governor/Monitor.hs` 111-320).
   */
 enum Observation:
+  /** A typed action diagnostic; it preserves every application failure across the governor
+    * boundary.
+    */
+  case ActionFailed(
+      operation: xyz.kd5ujc.scarab.network.PeerOperation,
+      error: xyz.kd5ujc.scarab.network.PeerActionError
+  )
+
   /** A hot protocol ended and the connection is still up: the peer is warm. `delay` is how long the
     * exit policy asks to wait before it is activated again.
     */
-  case HotEnded(delay: Option[FiniteDuration])
+  case HotEnded(delay: Option[FiniteDuration], reason: Option[ReturnReason] = None)
 
   /** The connection failed or was closed under us. `released` is false while the connection manager
     * still holds it (`PeerCooling`) and true once it is gone (`PeerCold`); `delay` is the exit
@@ -185,7 +204,14 @@ enum Trace[A]:
       peer: A,
       to: Temperature,
       failure: Option[FailureClass],
-      reason: Option[String]
+      reason: Option[String],
+      returned: Option[ReturnReason] = None,
+      repromoteDelay: Option[FiniteDuration] = None
+  )
+  case PeerActionFailed(
+      peer: A,
+      operation: xyz.kd5ujc.scarab.network.PeerOperation,
+      error: xyz.kd5ujc.scarab.network.PeerActionError
   )
   case CachedBlockRejected(
       peer: A,
@@ -233,10 +259,18 @@ enum Step[A]:
 /** What the effect loop feeds to the governor besides time. */
 enum Event[A]:
   /** What a look at the connection of `peer` shows (an asynchronous demotion). */
-  case Observed(peer: A, observation: Observation, generation: Option[BigInt] = None)
+  case Observed(
+      peer: A,
+      observation: Observation,
+      generation: Option[BigInt] = None,
+      connection: Option[BigInt] = None
+  )
 
   /** A job ended. */
   case Completed(outcome: Outcome[A])
+
+  /** The action ran against this retained connection, even if its address was reused. */
+  case ConnectionCompleted(peer: A, connection: BigInt, outcome: Outcome[A])
 
   /** The churn governor's variable changed (here the regime's targets). */
   case TargetsRequested(targets: Targets, generation: Option[BigInt] = None)

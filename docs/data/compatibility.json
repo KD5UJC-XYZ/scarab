@@ -295,10 +295,22 @@
       "id": "peer-selection-governor",
       "component": "Peer selection (governor)",
       "status": "implemented",
-      "summary": "Governor stages G1.1 to G1.5 and network follow-ups: roots, ledger peers, targets, churn, metrics, bootstrap",
+      "summary": "Governor stages G1.1 to G1.5 and network follow-ups: roots, ledger peers, targets, churn, metrics, bootstrap; retained peer-connection monitors and typed application results",
       "evidence": {
         "issues": [
-          142
+          142,
+          477,
+          448,
+          460
+        ],
+        "suites": [
+          "ProtocolResultsSuite",
+          "OutboundLossReportSuite",
+          "OutboundLinkIdentitySuite",
+          "ConnectionMonitorSuite"
+        ],
+        "docs": [
+          "docs/design/peer-selection/peer-state-actions.md"
         ]
       },
       "limitations": {
@@ -306,7 +318,9 @@
           148,
           289,
           150,
-          311
+          311,
+          371,
+          477
         ]
       },
       "page": "docs/compatibility/peer-selection-governor.md"

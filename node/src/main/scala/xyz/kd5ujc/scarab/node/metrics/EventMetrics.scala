@@ -210,6 +210,7 @@ final class EventMetrics[F[_]: Sync] private (
     * reference, the outbound connections state.
     */
   def peerSelection(out: Output[PeerNetwork.Addr]): F[Unit] = out match
+    case Output.EstablishmentFailed(_, _) => Sync[F].unit
     case Output.Counted(c) =>
       peerSelectionGauges.traverse_((gauge, of) => metrics.set(gauge, of(c).toDouble)) *>
         c.byOrigin.toList.traverse_((origin, n) => metrics.set(peerOrigins, origin, n.toDouble))
@@ -250,7 +251,9 @@ final class EventMetrics[F[_]: Sync] private (
           count(PeerTransitionLabel.PromoteFailed) *>
             retryIn.traverse_(d => metrics.observe(peerBackoffSeconds, d.toMillis / 1000.0))
         case Trace.DemoteFailed(_, _, _) => count(PeerTransitionLabel.DemoteFailed)
-        case Trace.DemoteAsynchronous(_, _, failure, _) =>
+        // The ordinary job/monitor outcome counts the transition; this retains its typed cause.
+        case Trace.PeerActionFailed(_, _, _) => Sync[F].unit
+        case Trace.DemoteAsynchronous(_, _, failure, _, _, _) =>
           count(
             if failure.isDefined then PeerTransitionLabel.Lost else PeerTransitionLabel.DemotedHot
           )

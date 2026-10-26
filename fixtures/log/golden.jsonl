@@ -39,6 +39,7 @@
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"cachedBlockRejected","reason":"4200@abababababababab rejected by structure: block header differs from announced header; source generation 8; live=false"}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"closed","reason":"connection closed: closed by peer"}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"refused","reason":"refused inbound connection from 10.0.0.2:4000: 64 connections accepted already"}
+{"event":"peerSelectionPromote","at":"2026-10-16T12:00:00Z","action":"failed","peer":"10.0.0.1:3001","operation":"Establish","reason":"connection establishment defect: injected acquisition defect"}
 {"event":"peerSelectionTargets","at":"2026-10-16T12:00:00Z","root":60,"known":150,"established":30,"active":20,"knownBigLedger":15,"establishedBigLedger":10,"activeBigLedger":5}
 {"event":"peerSelectionRoots","at":"2026-10-16T12:00:00Z","action":"localRootsChanged","before":3,"after":2}
 {"event":"peerSelectionSensitive","at":"2026-10-16T12:00:00Z","action":"judgement","judgement":"TooOld"}
@@ -54,8 +55,11 @@
 {"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"decided","from":"hot","peers":["10.0.0.1:3001"],"local":false,"target":20,"current":21,"scores":{"10.0.0.1:3001":null,"relay.example.org:3001":0}}
 {"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"done","from":"warm","peer":"10.0.0.1:3001","current":29}
 {"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"failed","from":"hot","peer":"relay.example.org:3001","timedOut":true}
-{"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"asynchronous","to":"warm","peer":"10.0.0.1:3001","failure":null,"reason":null}
-{"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"asynchronous","to":"cold","peer":"relay.example.org:3001","failure":"Transient","reason":"unavailable: connection closed"}
+{"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"asynchronous","to":"warm","peer":"10.0.0.1:3001","failure":null,"reason":"initiator returned","repromoteDelaySeconds":10.0}
+{"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"asynchronous","to":"warm","peer":"10.0.0.1:3001","failure":null,"reason":"no more intersection","repromoteDelaySeconds":120.0}
+{"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"asynchronous","to":"warm","peer":"10.0.0.1:3001","failure":null,"reason":"rolled back past intersection: Block(4200,Bytes(abababababababababababababababababababababababababababababababab))","repromoteDelaySeconds":180.0}
+{"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"asynchronous","to":"cold","peer":"relay.example.org:3001","failure":"Transient","reason":"unavailable: connection closed","repromoteDelaySeconds":null}
+{"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"failed","peer":"10.0.0.1:3001","operation":"Deactivate","reason":"protocol 2: chain-sync timed out in idle; protocol 3: connection closed: closed by peer"}
 {"event":"peerSelectionSource","at":"2026-10-16T12:00:00Z","action":"cachedBlockRejected","peer":"10.0.0.1:3001","reason":"4200@abababababababab rejected by structure: block header differs from announced header","sourceGeneration":7,"sourceLive":true}
 {"event":"peerSelectionSource","at":"2026-10-16T12:00:00Z","action":"cachedBlockRejected","peer":"10.0.0.1:3001","reason":"4200@abababababababab rejected by structure: block header differs from announced header","sourceGeneration":8,"sourceLive":false}
 {"event":"peerSelectionForget","at":"2026-10-16T12:00:00Z","action":"cold","target":150,"known":160,"peers":["relay.example.org:3001"]}

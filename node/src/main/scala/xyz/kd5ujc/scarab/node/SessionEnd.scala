@@ -195,6 +195,30 @@ object SessionEnd:
       case RolledBackPastIntersection(_) => Some(180.seconds)
       case _                             => None
 
+  /** NodeToNodeInitiatorResult returnPolicy, consensus 82ecba329 Node/ExitPolicy.hs:17–38. The
+    * current producer preserves its available ChainSync return value; ordinary initiator completion
+    * and AskedToTerminate both carry the reference's ten-second delay.
+    */
+  def initiatorReturnDelay(result: SessionEnd): scala.concurrent.duration.FiniteDuration =
+    import scala.concurrent.duration.*
+    returnDelay(result).getOrElse(10.seconds)
+
+  /** The available producer result is preserved in the trace; missing native tip context and
+    * ForkTooDeep are owned by the ChainSync client alignment (#477), not reconstructed here.
+    */
+  def returnReason(result: SessionEnd): Option[xyz.kd5ujc.scarab.network.selection.ReturnReason] =
+    import cats.Show
+    import xyz.kd5ujc.scarab.network.selection.ReturnReason
+    def reason(render: SessionEnd => String): Option[ReturnReason] =
+      Some(ReturnReason.Typed(result)(using Show.show(render)))
+    result match
+      case Returned           => reason(_ => "initiator returned")
+      case NoMoreIntersection => reason(_ => "no more intersection")
+      case RolledBackPastIntersection(point) =>
+        reason(_ => s"rolled back past intersection: $point")
+      case Stopped(true) => reason(_ => "asked to terminate")
+      case _             => None
+
   /** The scope of a session's fiber has the outcome as its error. */
   def raiseOf[F[_]](scope: Raise[F, SessionEnd]): Raise[F, PeerError] =
     Peer.contramapped[F, SessionEnd, PeerError](scope)(of)

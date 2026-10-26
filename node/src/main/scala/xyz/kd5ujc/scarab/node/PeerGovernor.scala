@@ -9,17 +9,22 @@ import cats.syntax.all.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust
+import xyz.kd5ujc.scarab.network.{PeerActionError, PeerOperation, PeerStatus}
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 
 /** What the governor asks of the world to move a peer between temperatures (the reference's
   * `PeerStateActions`, `PeerSelection/PeerStateActions.hs` 590-: establish, activate, deactivate,
-  * close). A peer is named by its address; whoever implements this keeps the connection. The
-  * changes the governor did not ask for (a hot protocol ended, the connection was lost) are not
-  * returned here: the implementation reports them as [[Event.Observed]] on the governor's queue.
+  * close). Establishment is named by address; subsequent production jobs capture the retained
+  * [[PeerStateActions.Connection]] before supervision. Unrequested changes wake the governor with
+  * [[Event.Observed]], which it rechecks against that connection's current status and identity.
   */
 trait PeerStateActions[F[_], A]:
-  /** Open a connection and start the warm protocols; none when it worked. */
-  def establish(peer: A, mode: DiffusionMode, provenance: Provenance): F[Option[FailureClass]]
+  /** Open a connection and retain its handle or its original acquisition failure. */
+  def establish(
+      peer: A,
+      mode: DiffusionMode,
+      provenance: Provenance
+  ): F[Either[EstablishmentError, PeerStateActions.Connection[F]]]
 
   /** Open a connection for one roots generation; stale completion cleanup can target that link. */
   def establishAt(
@@ -27,26 +32,67 @@ trait PeerStateActions[F[_], A]:
       mode: DiffusionMode,
       provenance: Provenance,
       generation: BigInt
-  ): F[Option[FailureClass]]
+  ): F[Either[EstablishmentError, PeerStateActions.Connection[F]]]
 
-  /** Start the hot protocols on an established connection; none when it worked. */
-  def activate(peer: A): F[Option[FailureClass]] = activate(peer, PeerTrust.Untrustable)
+  /** Start the hot protocols on an established connection, preserving typed failures. */
+  def activate(peer: A): F[Either[PeerActionError, Unit]] = activate(peer, PeerTrust.Untrustable)
 
   /** Activate with the trust flags captured when the governor selected this job. */
-  def activate(peer: A, trust: PeerTrust): F[Option[FailureClass]]
+  def activate(peer: A, trust: PeerTrust): F[Either[PeerActionError, Unit]]
 
   /** End the hot protocols and keep the connection. */
-  def deactivate(peer: A): F[PeerStateActions.Deactivation]
+  def deactivate(peer: A): F[PeerStateActions.Result[PeerStateActions.Deactivation]]
 
-  /** Close the connection and wait for the connection manager to release it; false when it did not
-    * within the demotion timeout.
-    */
-  def close(peer: A): F[Boolean]
+  /** Close the connection and retain its graceful-completion and manager-release outcomes. */
+  def close(peer: A): F[PeerStateActions.Result[PeerStateActions.CloseResult]]
 
   /** Close a link only if it is still the attempt completed by `generation`. */
-  def closeIfGeneration(peer: A, generation: BigInt): F[Option[Boolean]]
+  def closeIfGeneration(
+      peer: A,
+      generation: BigInt
+  ): F[Option[PeerStateActions.Result[PeerStateActions.CloseResult]]]
 
 object PeerStateActions:
+  type Status = PeerStatus
+  val Status = PeerStatus
+
+  enum Release:
+    case Released, Lingering
+
+  enum CloseCompletion:
+    case Clean, TimedOut
+
+  final case class CloseResult(
+      release: Release,
+      completion: CloseCompletion = CloseCompletion.Clean,
+      status: Status = Status.Cooling
+  )
+
+  final case class Failure(cause: PeerActionError, release: Release)
+  type Result[A] = Either[Failure, A]
+
+  final case class Monitoring(
+      status: Status,
+      repromoteDelay: Option[FiniteDuration],
+      failure: Option[xyz.kd5ujc.scarab.ledger.PeerError] = None
+  )
+
+  /** Reads and commands retain this connection after its bearer is gone or its address is reused.
+    */
+  final case class Connection[F[_]](
+      identity: BigInt,
+      rootsGeneration: BigInt,
+      read: F[Monitoring],
+      activate: PeerTrust => F[Either[PeerActionError, Unit]],
+      deactivate: F[Result[Deactivation]],
+      close: F[Result[CloseResult]],
+      awaitCold: F[Unit]
+  )
+
+  trait Connections[F[_], A]:
+    def monitorPeerConnection(peer: A): F[Option[Connection[F]]]
+    def retainConnections(known: Set[A]): F[Unit]
+
   /** How a deactivation ended. */
   enum Deactivation:
     /** The hot protocols ended on the wire and the connection is warm. */
@@ -71,6 +117,9 @@ trait RootProvider[F[_], A]:
 /** What the governor tells the world besides its traces. */
 enum Output[A]:
   case Traced(trace: Trace[A])
+
+  /** The original connection acquisition failure, before its existing retry-policy projection. */
+  case EstablishmentFailed(peer: A, error: EstablishmentError)
 
   /** The counters changed (`PeerSelectionCounters`). */
   case Counted(counters: GovernorState.Counters)
@@ -141,7 +190,8 @@ object PeerGovernor:
       sharing: Option[PeerSharingActions[F, A]] = None,
       beforeEventApplied: Option[Event[A] => F[Unit]] = None,
       onEventApplied: Option[Event[A] => F[Unit]] = None,
-      readRequestedTargets: Option[F[Option[RequestedTargets]]] = None
+      readRequestedTargets: Option[F[Option[RequestedTargets]]] = None,
+      connections: Option[PeerStateActions.Connections[F, A]] = None
   )(using
       state: Stateful[F, GovernorState[A]],
       config: Ask[F, GovernorConfig],
@@ -161,7 +211,8 @@ object PeerGovernor:
           sharing,
           beforeEventApplied,
           onEventApplied,
-          readRequestedTargets
+          readRequestedTargets,
+          connections
         )
       )
 
@@ -177,7 +228,8 @@ object PeerGovernor:
       sharing: Option[PeerSharingActions[F, A]],
       beforeEventApplied: Option[Event[A] => F[Unit]],
       onEventApplied: Option[Event[A] => F[Unit]],
-      readRequestedTargets: Option[F[Option[RequestedTargets]]]
+      readRequestedTargets: Option[F[Option[RequestedTargets]]],
+      connections: Option[PeerStateActions.Connections[F, A]]
   )(using
       state: Stateful[F, GovernorState[A]],
       config: Ask[F, GovernorConfig],
@@ -194,10 +246,39 @@ object PeerGovernor:
     def complete(result: F[Outcome[A]]): F[Unit] =
       supervisor.supervise(result.flatMap(outcome => events.offer(Event.Completed(outcome)))).void
 
-    def completeMaybe(result: F[Option[Outcome[A]]]): F[Unit] =
-      supervisor
-        .supervise(result.flatMap(_.traverse_(outcome => events.offer(Event.Completed(outcome)))))
-        .void
+    // Capture the retained connection in the governor fiber, before supervising the action.
+    // ActivePeers.hs (2fb69829):167–181,450–461; EstablishedPeers.hs:971–978.
+    def connectionJob(peer: A, generation: Option[BigInt] = None)(
+        run: PeerStateActions.Connection[F] => F[Outcome[A]],
+        legacy: F[Option[Outcome[A]]]
+    ): F[Unit] = connections match
+      case None =>
+        supervisor
+          .supervise(legacy.flatMap(_.traverse_(value => events.offer(Event.Completed(value)))))
+          .void
+      case Some(source) =>
+        source.monitorPeerConnection(peer).flatMap {
+          case Some(handle) if generation.forall(_ == handle.rootsGeneration) =>
+            supervisor
+              .supervise(
+                run(handle).flatMap(value =>
+                  events.offer(Event.ConnectionCompleted(peer, handle.identity, value))
+                )
+              )
+              .void
+          case _ => F.unit
+        }
+
+    // Governor demotion jobs, not PeerStateActions, own the manager-release deadline.
+    // ActivePeers.hs (2fb69829):989–1000; EstablishedPeers.hs:971–992.
+    def awaitRelease(handle: PeerStateActions.Connection[F]): F[PeerStateActions.Release] =
+      config.reader(_.policy.demotionTimeout).flatMap { timeout =>
+        F.timeoutTo(
+          handle.awaitCold.as(PeerStateActions.Release.Released),
+          timeout,
+          F.pure(PeerStateActions.Release.Lingering)
+        )
+      }
 
     /** Start a job in a fiber of the supervisor; it ends by offering its outcome. */
     def start(job: Job[A]): F[Unit] = job match
@@ -257,52 +338,129 @@ object PeerGovernor:
             }
         }
       case Job.Connect(peer, mode, provenance, generation) =>
-        complete(
-          actions
-            .establishAt(peer, mode, provenance, generation)
-            .map(
-              _.fold[Outcome[A]](Outcome.Connected(peer, generation))(failure =>
-                Outcome.ConnectFailed(peer, failure, generation)
+        supervisor
+          .supervise(actions.establishAt(peer, mode, provenance, generation).flatMap {
+            case Right(handle) =>
+              events.offer(
+                Event
+                  .ConnectionCompleted(peer, handle.identity, Outcome.Connected(peer, generation))
               )
-            )
-        )
+            case Left(error) =>
+              val failure = error match
+                case EstablishmentError.Failed(cause) => FailurePolicy.classify(cause)
+                case _                                => FailureClass.Transient
+              out.tell(Output.EstablishmentFailed(peer, error)) *>
+                events.offer(Event.Completed(Outcome.ConnectFailed(peer, failure, generation)))
+          })
+          .void
       case Job.Activate(peer, trust) =>
-        complete(
-          actions.activate(peer, trust).flatMap {
-            case None => F.pure[Outcome[A]](Outcome.Activated(peer))
-            case Some(failure) =>
+        def outcome(result: Either[PeerActionError, Unit]): F[Outcome[A]] = result match
+          case Right(_)    => F.pure[Outcome[A]](Outcome.Activated(peer))
+          case Left(error) =>
+            // ActivePeers.hs:462–479: preserve the failure, pause one second, then use the
+            // existing promotion-failure policy. This does not introduce another backoff.
+            val cause = error match
+              case PeerActionError.ConnectionFailure(cause)    => Some(cause)
+              case PeerActionError.ApplicationFailures(errors) => Some(errors.head.error)
+              case _                                           => None
+            val failure = cause
+              .flatMap(c =>
+                Peer.networkFault(c) match
+                  case Fault.Failed(problem) => Some(FailurePolicy.classify(problem))
+                  case _                     => None
+              )
+              .getOrElse(FailureClass.Transient)
+            out.tell(Output.Traced(Trace.PeerActionFailed(peer, PeerOperation.Activate, error))) *>
               config.reader(_.activationPause).flatMap(F.sleep) *>
-                F.pure[Outcome[A]](Outcome.ActivateFailed(peer, failure))
-          }
+              F.pure[Outcome[A]](Outcome.ActivateFailed(peer, failure))
+        connectionJob(peer)(
+          _.activate(trust).flatMap(outcome),
+          actions.activate(peer, trust).flatMap(outcome).map(Some(_))
         )
       case Job.Deactivate(peer) =>
-        complete(
-          actions.deactivate(peer).map {
-            case PeerStateActions.Deactivation.Warm      => Outcome.Deactivated(peer)
-            case PeerStateActions.Deactivation.Closed    => Outcome.DeactivateFailed(peer)
-            case PeerStateActions.Deactivation.Lingering => Outcome.CloseTimedOut(peer)
-          }
-        )
-      case Job.Close(peer, generation) =>
-        generation match
-          case None =>
-            complete(
-              actions
-                .close(peer)
-                .map(released =>
-                  if released then Outcome.Closed(peer) else Outcome.CloseTimedOut(peer)
-                )
-            )
-          case Some(expected) =>
-            completeMaybe(
-              actions
-                .closeIfGeneration(peer, expected)
-                .map(
-                  _.map(released =>
-                    if released then Outcome.Closed(peer) else Outcome.CloseTimedOut(peer)
+        def outcome(result: PeerStateActions.Result[PeerStateActions.Deactivation]): F[Outcome[A]] =
+          result match
+            case Right(PeerStateActions.Deactivation.Warm) => F.pure(Outcome.Deactivated(peer))
+            case Right(PeerStateActions.Deactivation.Closed) =>
+              F.pure(Outcome.DeactivateFailed(peer))
+            case Right(PeerStateActions.Deactivation.Lingering) =>
+              F.pure(Outcome.CloseTimedOut(peer))
+            case Left(failure) =>
+              out
+                .tell(
+                  Output.Traced(
+                    Trace.PeerActionFailed(peer, PeerOperation.Deactivate, failure.cause)
                   )
                 )
-            )
+                .as(
+                  if failure.release == PeerStateActions.Release.Released then
+                    Outcome.DeactivateFailed(peer)
+                  else Outcome.CloseTimedOut(peer)
+                )
+        connectionJob(peer)(
+          handle =>
+            handle.deactivate.flatMap {
+              case result @ Right(PeerStateActions.Deactivation.Warm) => outcome(result)
+              case Left(failure) =>
+                awaitRelease(handle).flatMap(release =>
+                  outcome(Left(failure.copy(release = release)))
+                )
+              case Right(_) =>
+                awaitRelease(handle).flatMap {
+                  case PeerStateActions.Release.Released =>
+                    outcome(Right(PeerStateActions.Deactivation.Closed))
+                  case PeerStateActions.Release.Lingering =>
+                    outcome(Right(PeerStateActions.Deactivation.Lingering))
+                }
+            },
+          actions.deactivate(peer).flatMap(outcome).map(Some(_))
+        )
+      case Job.Close(peer, generation) =>
+        def outcome(result: PeerStateActions.Result[PeerStateActions.CloseResult]): F[Outcome[A]] =
+          result match
+            case Right(result) =>
+              out
+                .tell(
+                  Output.Traced(
+                    Trace.PeerActionFailed(
+                      peer,
+                      PeerOperation.Close,
+                      PeerActionError.TimedOut(PeerOperation.Close)
+                    )
+                  )
+                )
+                .whenA(result.completion == PeerStateActions.CloseCompletion.TimedOut) *>
+                F.pure(
+                  if result.release == PeerStateActions.Release.Released then Outcome.Closed(peer)
+                  else Outcome.CloseTimedOut(peer)
+                )
+            case Left(failure) =>
+              out
+                .tell(
+                  Output.Traced(Trace.PeerActionFailed(peer, PeerOperation.Close, failure.cause))
+                )
+                .as(
+                  if failure.release == PeerStateActions.Release.Released then Outcome.Closed(peer)
+                  else Outcome.CloseTimedOut(peer)
+                )
+        val legacy = generation match
+          case None => actions.close(peer).flatMap(outcome).map(Some(_))
+          case Some(expected) =>
+            actions.closeIfGeneration(peer, expected).flatMap(_.traverse(outcome))
+        connectionJob(peer, generation)(
+          handle =>
+            handle.close.flatMap {
+              case Left(failure) =>
+                awaitRelease(handle).flatMap(release =>
+                  outcome(Left(failure.copy(release = release)))
+                )
+              case Right(result) =>
+                awaitRelease(handle).flatMap(release =>
+                  outcome(Right(result.copy(release = release)))
+                )
+            },
+          legacy
+        )
       case Job.RequestRoots(max, bootstrap, generation) =>
         complete(
           roots
@@ -347,6 +505,66 @@ object PeerGovernor:
       yield ()
 
     def apply(event: Event[A]): F[Unit] = event match
+      case Event.ConnectionCompleted(peer, identity, outcome) =>
+        connections.fold(applySnapshot(Event.Completed(outcome))) { source =>
+          source.monitorPeerConnection(peer).flatMap {
+            case Some(handle) if handle.identity == identity =>
+              outcome match
+                case connected: Outcome.Connected[A] =>
+                  // A monitor can finish before this completion is accepted. Its earlier wakes may
+                  // have arrived while Connecting, so reconcile the captured handle now.
+                  handle.read.flatMap { current =>
+                    applySnapshot(Event.Completed(connected)) *>
+                      (current.status match
+                        case PeerStatus.Cold | PeerStatus.Cooling =>
+                          applySnapshot(
+                            Event.Observed(
+                              peer,
+                              Observation.Lost(
+                                current.failure
+                                  .fold(FailureClass.Transient)(FailurePolicy.classify),
+                                current.repromoteDelay.getOrElse(Duration.Zero),
+                                current.status == PeerStatus.Cold,
+                                current.failure.fold(
+                                  "connection ended before establishment was accepted"
+                                )(_.message)
+                              ),
+                              Some(handle.rootsGeneration),
+                              Some(identity)
+                            )
+                          )
+                        case _ => F.unit)
+                  }
+                case _ => applySnapshot(Event.Completed(outcome))
+            case _ => F.unit
+          }
+        }
+      case event @ Event.Observed(peer, observation, generation, Some(identity)) =>
+        connections.fold(applySnapshot(event)) { source =>
+          source.monitorPeerConnection(peer).flatMap {
+            case Some(handle)
+                if handle.identity == identity && generation.forall(_ == handle.rootsGeneration) =>
+              handle.read.flatMap { current =>
+                val observed = (current.status, observation) match
+                  case (PeerStateActions.Status.Warm, ended: Observation.HotEnded) =>
+                    Some(ended.copy(delay = current.repromoteDelay))
+                  case (PeerStateActions.Status.Cooling, loss: Observation.Lost) =>
+                    Some(loss.copy(released = false))
+                  case (PeerStateActions.Status.Cold, loss: Observation.Lost) =>
+                    Some(
+                      loss
+                        .copy(released = true, delay = current.repromoteDelay.getOrElse(loss.delay))
+                    )
+                  case (_, action: Observation.ActionFailed)        => Some(action)
+                  case (_, cached: Observation.CachedBlockRejected) => Some(cached)
+                  case _                                            => None
+                observed.traverse_(value =>
+                  applySnapshot(Event.Observed(peer, value, generation, Some(identity)))
+                )
+              }
+            case _ => F.unit
+          }
+        }
       case Event.ChurnTargetsChanged(generation) =>
         readRequestedTargets.traverse_(
           _.flatMap(
@@ -369,6 +587,7 @@ object PeerGovernor:
     def publish(loop: Loop, at: Time): F[Loop] =
       for
         st <- state.get
+        _ <- connections.traverse_(_.retainConnections(st.peers.keySet.toSet))
         association <- config.reader(_.association)
         _ <- sharing.traverse_(_.publish(st))
         view = st.view(at)
