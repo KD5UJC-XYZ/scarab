@@ -1,0 +1,3 @@
+### Fixed (ledger decoding, #379)
+
+- Read a transaction output and a transaction body as the decoders of its era do. Shelley, Allegra and Mary outputs are the two-element array alone, Alonzo adds the datum-hash form, and the map form is Babbage and later. Each era refuses the body keys it does not know (for example a mint in Shelley, or a Conway key before Conway), Shelley requires the time to live, Allegra reads key 9 as `null`, and a key beyond 32 bits is refused instead of read as its low 32 bits. Outputs already stored by earlier builds keep reading in every form, and the original bytes that are hashed are unchanged.
