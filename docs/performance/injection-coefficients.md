@@ -12,7 +12,7 @@ incomplete: the retained output cannot distinguish aggregate cost from shrinking
 per-input time-guard failure. No cases, seeds, mutation distribution, resource guards or workflow
 limits were changed to address it.
 
-A local thread sample identifies `BigInteger.destructiveMulAdd` under the reader's coefficient
+A local thread sample identifies `java.math.BigInteger.destructiveMulAdd` under the reader's coefficient
 conversion during ordinary property evaluation. The original native corpus includes a 262,145-digit
 coefficient. Inspection of the installed ScalaCheck 1.19 bytecode confirmed that successful-case
 Pretty wrappers are lazy; the sampled cost was parsing, not eager formatting of successful test
