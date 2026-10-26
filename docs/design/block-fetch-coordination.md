@@ -35,7 +35,9 @@ peer from its whole current ChainSync candidate, acts, and sleeps out the rest o
 mode's decision interval. Fetched blocks, GSVs and the fetch mode are non-trigger state.
 The node owns the loop for its lifetime, independently of session registration, and receives
 its defects directly (`NodeKernel.hs:382–393`, consensus `82ecba329`). A standalone peer or
-test node owns its own loop resource. Each session's candidate is an empty fragment until it
+test node owns its own loop resource. `InboundGovernor` requires that explicitly owned pool;
+it cannot allocate an unowned fallback. The test node keeps one loop across all of its connections
+and reconnects. Each session's candidate is an empty fragment until it
 announces one, as consensus registers it.
 
 The decision pipeline is the reference's: `filterPlausibleCandidates`,

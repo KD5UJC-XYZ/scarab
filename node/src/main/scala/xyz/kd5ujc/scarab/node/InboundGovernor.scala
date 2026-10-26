@@ -73,7 +73,7 @@ final class InboundGovernor[F[_]: Async] private (
     observe: Option[Peer.Observation => F[Unit]],
     peerMetrics: Option[Ref[F, PeerMetrics[PeerNetwork.Addr]]],
     sharing: Option[PeerSharingRuntime[F]],
-    pool: Option[BlockPool[F]],
+    pool: BlockPool[F],
     genesis: Option[GenesisRuntime[F]],
     receivedBody: Option[Peer.BodySink[F]],
     repromotion: RepromotionWait[F],
@@ -357,7 +357,7 @@ final class InboundGovernor[F[_]: Async] private (
         GenesisRuntime
           .controls(
             genesis,
-            pool,
+            Some(pool),
             remote.hashCode.toLong,
             connection.mux.connectionId,
             error =>
@@ -374,7 +374,7 @@ final class InboundGovernor[F[_]: Async] private (
                 heightSnapshot,
                 bound.fold(headers)(value => headers.map(_.withPatience(value.patience))),
                 metered(remote),
-                pool,
+                Some(pool),
                 invalidCachedBlock = Some(rejectedCachedBlock(source, _)),
                 patience = bound.map(_.patience),
                 received = bound.map(_.received),
@@ -569,6 +569,10 @@ object InboundGovernor:
       deactivateTimeout: FiniteDuration = 300.seconds
   )
 
+  /** The node supplies its pool and owns its decision loop before serving connections (consensus
+    * 82ecba329 NodeKernel.hs:382–393). An inbound connection never creates a hidden pool whose
+    * fetch decisions have no owner.
+    */
   def create[F[_]: Async](
       manager: ConnectionManager[F],
       config: Config,
@@ -577,12 +581,12 @@ object InboundGovernor:
       prepare: Peer.Prepare[F],
       fatal: Fatal => F[Unit],
       heightSnapshot: Peer.HeightSnapshot[F],
+      pool: BlockPool[F],
       headers: Option[HeaderCheck[F]] = None,
       transactions: Option[TxSubmissionClient.Source[F]] = None,
       events: Option[InboundEvents[F]] = None,
       observe: Option[Peer.Observation => F[Unit]] = None,
       sharing: Option[PeerSharingRuntime[F]] = None,
-      pool: Option[BlockPool[F]] = None,
       genesis: Option[GenesisRuntime[F]] = None,
       receivedBody: Option[Peer.BodySink[F]] = None,
       peerMetrics: Option[Ref[F, PeerMetrics[PeerNetwork.Addr]]] = None
@@ -591,9 +595,8 @@ object InboundGovernor:
       Ref.of[F, Map[String, Session]](Map.empty),
       Ref.of[F, BigInt](0),
       Ref.of[F, Map[BigInt, LiveSource[F]]](Map.empty),
-      Mutex[F],
-      pool.fold(BlockPool.create[F])(Async[F].pure)
-    ).mapN { (sessions, counter, sources, lock, sharedPool) =>
+      Mutex[F]
+    ).mapN { (sessions, counter, sources, lock) =>
       new InboundGovernor[F](
         node,
         fatal,
@@ -609,7 +612,7 @@ object InboundGovernor:
         observe,
         peerMetrics,
         sharing,
-        Some(sharedPool),
+        pool,
         genesis,
         receivedBody,
         repromotion,

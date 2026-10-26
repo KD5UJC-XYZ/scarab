@@ -78,7 +78,7 @@ class PraosHeaderValidationSuite extends FailsOnUncaught:
       ChainSync.UInt64.from(target.blockNo).fold(e => fail(e.toString), identity)
     )
     val byron = target match
-      case h: Header.Byron => Some(NtNHeader.ByronInfo(h.boundary, c.raws(index).size))
+      case h: Header.Byron => Some(NtNHeader.ByronInfo(h.boundary, h.blockSizeHint.value))
       case _               => None
     val wire = NtNHeader(target.era, rawHeader, byron)
     for

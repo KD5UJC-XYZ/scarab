@@ -1149,7 +1149,7 @@ object Main extends IOApp:
               events = Some(loggedInbound.alongside(measured.inbound)),
               observe = Some(observePeer),
               sharing = Some(sharing),
-              pool = Some(blockPool),
+              pool = blockPool,
               genesis = genesisRuntime,
               receivedBody = receivedBody,
               peerMetrics = Some(peerMetrics)
