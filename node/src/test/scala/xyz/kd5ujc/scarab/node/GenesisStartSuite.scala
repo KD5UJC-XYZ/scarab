@@ -617,6 +617,51 @@ class GenesisStartSuite extends FunSuite:
     }
   }
 
+  test("native pool construction keeps the map key, script account and signed Coin fields") {
+    // mkStakePoolState drops the inner pool ID and reward-account network, but retains the
+    // credential and Coin values (State/StakePool.hs:253-269, f649f975).
+    val updates = Json.obj(
+      "poolId" -> Json.fromString("ee" * 28),
+      "pledge" -> Json.fromBigInt(-1),
+      "cost" -> Json.fromBigInt(BigInt(1) << 64),
+      "accountAddress" -> Json.obj(
+        "network" -> Json.fromString("Mainnet"),
+        "credential" -> Json.obj("scriptHash" -> Json.fromString("cd" * 28))
+      )
+    )
+    val changed = files { (name, value) =>
+      if name != "shelley-genesis.json" then value
+      else
+        val pools = value.hcursor
+          .downField("extraConfig")
+          .downField("stakePools")
+          .downField("data")
+          .as[Map[String, Json]]
+          .fold(e => fail(e.message), identity)
+        value.deepMerge(
+          Json.obj(
+            "extraConfig" -> Json.obj(
+              "stakePools" -> Json.obj(
+                "data" -> Json.obj(pools.toVector.map((id, p) => id -> p.deepMerge(updates))*)
+              )
+            )
+          )
+        )
+    }
+    val state = conwayOf(NodeSetup.fromFiles(changed).fold(e => fail(e.message), identity))
+    val pools = CertLens.pools.get(state.es.ls.cert)
+    assertEquals(pools.keySet, CertLens.pools.get(nes.es.ls.cert).keySet)
+    assert(!pools.contains(hash[StakePool]("ee" * 28)))
+    val script = ScriptHash
+      .fromBytes(Bytes.fromArray(Array.fill(28)(0xcd.toByte)))
+      .fold(e => fail(e.toString), identity)
+    pools.values.foreach { p =>
+      assertEquals(p.pledge.value, BigInt(-1))
+      assertEquals(p.cost.value, BigInt(1) << 64)
+      assertEquals(p.accountId, Credential.ScriptHashObj[Staking](script))
+    }
+  }
+
   test("the genesis DReps hold the vote delegations, and the delegators' accounts name them") {
     val dreps = CertLens.dreps.get(nes.es.ls.cert)
     val accounts = CertLens.accounts.get(nes.es.ls.cert)

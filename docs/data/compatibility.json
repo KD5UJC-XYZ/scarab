@@ -625,7 +625,8 @@
         "suites": [
           "GenesisStartSuite",
           "DuplicateWithdrawalsLedgerSuite",
-          "GenesisPoolFieldsSuite"
+          "GenesisPoolFieldsSuite",
+          "GenesisPoolParamsSuite"
         ],
         "issues": [
           488,
@@ -634,7 +635,8 @@
         ],
         "paths": [
           "fixtures/devnet/lsq/genesis",
-          "fixtures/reference/genesis-pool-fields"
+          "fixtures/reference/genesis-pool-fields",
+          "fixtures/reference/genesis-pool-params"
         ]
       },
       "limitations": {

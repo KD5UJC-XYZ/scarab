@@ -13,6 +13,6 @@ The JSON text types do not impose their CBOR decoder's length limits. Released b
 encodes IPv4 in network order; the provenance distinguishes that fix from the older pinned binary source.
 
 `GenesisPoolFieldsSuite` compares every acceptance decision and every accepted relay/metadata byte.
-`GenesisStartSuite` checks that the same fields reach native genesis pool state. The remaining
-pool-field and genesis parser differences belong to [#497](https://github.com/KD5UJC-XYZ/scarab/issues/497);
-this corpus establishes neither whole-pool JSON conformance nor a whole-node oracle result.
+`GenesisStartSuite` checks that the same fields reach native genesis pool state. The [separate full-parameter corpus](../genesis-pool-params/README.md) covers the other pool fields.
+Other genesis parser differences belong to [#497](https://github.com/KD5UJC-XYZ/scarab/issues/497);
+this relay/metadata corpus alone establishes neither whole-pool JSON conformance nor a whole-node oracle result.

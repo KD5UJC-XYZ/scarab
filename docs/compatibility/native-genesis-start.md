@@ -21,6 +21,17 @@ The [Byron-origin cost-model oracle](../../fixtures/ntc-golden/byron-cost-models
 
 The pool relay/metadata JSON reader follows `State/StakePool.hs:293-360,467-483`: all relay variants, ordered parser fallback, required field presence and optional values. `BaseTypes.hs:674-701` derives JSON from unrestricted Text and Word16; metadata hashes are arbitrary ASCII hex bytes. [The captured native corpus](../../fixtures/reference/genesis-pool-fields/README.md) compares decisions and encoded fields, and `GenesisStartSuite` checks their preservation into native pool state. This does not apply wire-decoder text limits to JSON. The `genesis-pool-fields` fuzz target mutates every captured JSON input and exercises the field reader; this is a crash/property check, not native differential fuzzing.
 
+
+The complete pool parameter reader also follows the native ID/account aliases and fallback order,
+exact hash lengths and network names, script-first credential alternatives, signed/unbounded Coin,
+and UnitInterval JSON rules. [Eighty-eight native pool cases](../../fixtures/reference/genesis-pool-params/README.md)
+compare all acceptance decisions and every accepted field, retaining original numeric spellings.
+Aeson's Integer exponent guard is separate from Coin's unbounded value domain; margin JSON normalizes
+Scientific before its precision bound and reduces rational objects before the Word64 check.
+`GenesisStartSuite` verifies that native pool construction keeps the outer map key and drops only
+the inner ID/account network. The new `genesis-pool-params` target fuzzes the complete reader.
+These captures do not establish whole-genesis conformance or identical Scala/native diagnostic text.
+
 ## Explicitly unchecked or unconfirmed
 
 Hash-checked `InjectionFromFile` support remains [#499](https://github.com/KD5UJC-XYZ/scarab/issues/499), approved for separate reference-alignment changes. Existing required-field/default and malformed-input parser differences remain [#497](https://github.com/KD5UJC-XYZ/scarab/issues/497). Preserving validation of the tested malformed extra cost model does not establish complete genesis-parser conformance. #496 is a required predecessor of the legacy deletion. Signed reserve arithmetic depends on [#492](https://github.com/KD5UJC-XYZ/scarab/issues/492). Focused boundary tests pass on the integrated arithmetic implementation; final predecessor integration, independent review and complete stage gates remain required. The twelve-case native API corpus covers Addr/Coin serialization and compaction; source-selection ordering is checked against the cited source with Scala regressions, not a claimed whole-transition native oracle. File loading is still unimplemented.

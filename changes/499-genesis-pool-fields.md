@@ -1,2 +1,5 @@
-Genesis stake pools now retain their configured relays and metadata. Their JSON forms follow the
-reference, including optional relay fields, port bounds and unrestricted JSON DNS/URL text.
+### Fixed (#499)
+
+- Preserve genesis pool relays and metadata, and read the complete pool parameter JSON boundary
+  with the reference's field aliases, hash/network checks, script credentials, signed Coin and
+  bounded margin rules. Keep the outer pool map key independent of the inner parameter ID.

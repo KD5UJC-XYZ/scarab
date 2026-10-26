@@ -1671,10 +1671,35 @@ object Targets:
       }
     )
 
+  private val genesisPoolParams: Target =
+    import io.circe.parser
+    Target(
+      "genesis-pool-params",
+      () =>
+        Files
+          .readString(java.nio.file.Path.of("fixtures/reference/genesis-pool-params/cases.jsonl"))
+          .linesIterator
+          .filter(_.nonEmpty)
+          .map { line =>
+            val row = parser.parse(line).fold(e => throw new Violation(e.message), identity)
+            row.hcursor
+              .get[String]("poolJson")
+              .fold(e => throw new Violation(e.message), identity)
+              .getBytes(java.nio.charset.StandardCharsets.UTF_8)
+          }
+          .toVector,
+      probe("genesis-pool-params") { bytes =>
+        parser.parse(new String(bytes.toArray, java.nio.charset.StandardCharsets.UTF_8)).foreach {
+          json => seen("genesis-pool-params", GenesisState.pool("01" * 28, json).isRight)
+        }
+      }
+    )
+
   val all: Vector[Target] =
     network ++ node ++ ledgerPeers ++ mempackTxOut ++ snapshotMeta ++ snapshotTables ++ sclsFraming ++
       Vector(
         sclsValues,
         genesisInjections,
-        genesisPoolFields
+        genesisPoolFields,
+        genesisPoolParams
       ) ++ nativeSnapshots ++ ancillary ++ mithril ++ networkIdentity
