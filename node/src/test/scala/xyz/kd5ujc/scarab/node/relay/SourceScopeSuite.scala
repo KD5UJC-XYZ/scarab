@@ -77,7 +77,7 @@ class SourceScopeSuite extends FailsOnUncaught:
         headerOf,
         failure => reported.complete(failure).void
       )
-      range <- server.blocks.range(ref(1).point, ref(3).point, 10)
+      range <- server.blocks.range(ref(1).point, ref(3).point)
       _ <- range.fold(IO(fail("expected range"))) { blocks =>
         blocks.evalMap(value => seen.update(_ :+ value)).compile.drain.background.use { _ =>
           for

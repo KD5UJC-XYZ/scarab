@@ -28,7 +28,14 @@ import xyz.kd5ujc.scarab.ledger.{
   StorageError,
   ValidationError
 }
-import xyz.kd5ujc.scarab.network.{ConnectionEnd, ConnectionError, ConnectionEvent, NetworkError}
+import xyz.kd5ujc.scarab.network.{
+  ConnectionEnd,
+  ConnectionError,
+  ConnectionEvent,
+  DiffTime,
+  NetworkError,
+  Word32
+}
 import xyz.kd5ujc.scarab.node.{
   InboundEnd,
   InboundEvent,
@@ -280,7 +287,10 @@ object LogSamples:
       ConnectionState.Provenance.Inbound,
       ConnectionEnd
         .Closed(NetworkError.Closure.PeerClosed)
-    )
+    ),
+    ConnectionEvent.AcceptRateLimited(DiffTime.of(2500.millis), 448),
+    ConnectionEvent.AcceptHardLimit(Word32.fromUnsigned(512)),
+    ConnectionEvent.AcceptResumed(511)
   )
 
   val mempool: List[MempoolEvent] = List(

@@ -532,7 +532,7 @@ which is where the numbers above come from; this document cites the code, as ADR
 | `Follower.session` | The hot-protocol run: intersect, headers, header gate, chain selection, fetch through the `BlockPool`, adoption. One candidate chain per session. | `Follower.scala` 85-134 |
 | `BlockPool` | Claims by header hash across sessions, so a block is fetched from one peer (the reference's `filterNotAlreadyInFlightWithOtherPeers`); releases on session end (#124, #130). Does not choose peers. | `BlockPool.scala` |
 | `StallWatchdog` | Logs and counts a stall (no block extended while a peer announced a longer tip); `--stall-exit-after` ends the node (#130). Its `announced` input is the highest tip any peer announced. | `StallWatchdog.scala` |
-| `ConnectionManager` / `ConnectionState` | A table of connections by remote address and direction; limits `maxInbound` (`--max-inbound`, default 64) and `maxOutbound` (64, not exposed); typed refusals; release on any end. Lifecycle `Reserved`, `Unnegotiated`, `Established(flow)`, `Terminating`, `Terminated`. | `ConnectionManager.scala`, `ConnectionState.scala` |
+| `ConnectionManager` / `ConnectionState` | A table of connections by remote address and direction; limits `accepted` (the configuration's `AcceptedConnectionsLimit`, hard 512, soft 384 and delay 5 s by default; `--max-inbound` overrides the hard limit) and `maxOutbound` (64, not exposed); typed refusals; release on any end. Lifecycle `Reserved`, `Unnegotiated`, `Established(flow)`, `Terminating`, `Terminated`. | `ConnectionManager.scala`, `ConnectionState.scala` |
 | `Outbound.connect` | A dial through the manager; waits for the peer's own inbound duplex connection instead of dialling a second one (`reuseInbound`). | `Outbound.scala` |
 | `InboundGovernor` | Accepts inbound connections; on a duplex one runs our clients and a follower session, so an inbound peer is a block source. | `InboundGovernor.scala` |
 | Topology fields | All parsed; valencies, `advertise`, `behindFirewall`, `diffusionMode`, `trustable`, `useLedgerAfterSlot` and `peerSnapshotFile` are recorded and not acted on. `NodeConfig.unsupported` names `GenesisMode` and `PeerSharing` as not implemented. | `Topology.scala`, `NodeConfig.scala` 70-83 |
@@ -758,9 +758,9 @@ replace or close a newer link for the same address.
 
 Limits. `ConnectionManager.Limits.maxOutbound` (64, not exposed) must be at least `established +
 establishedBig + local warm`; the governor's default established target is 30 + 10 on a relay, so the default is
-enough, and the configuration check (section 4.7) refuses targets above it. `--max-inbound` stays what it is
-(the inbound limit, not the reference's `acceptedConnectionsLimit`, a different knob: hard 512, soft 384,
-delay 5 s, `Configuration.hs:76-81`; mapping it is G5's).
+enough, and the configuration check (section 4.7) refuses targets above it. `AcceptedConnectionsLimit` of the configuration (`--max-inbound` overrides its hard limit) is
+the reference's (hard 512, soft 384, delay 5 s, `Configuration.hs:76-81`), applied as in
+`Server/RateLimiting.hs` (#339).
 
 ### 4.6 Roots and providers
 
@@ -1596,7 +1596,10 @@ protocol, started on demand, only when the negotiated flag is on).
    generator made, the generator is stored advanced, and the other requests of the 823 s read the first draw of the advanced
    generator (`PeerSharing.hs:219-227`), so the salt of an interval is read by the request that opens the next one. `PeerShare.Salting`
    is the pure state; the hash is MurmurHash3 of the address bytes under the salt (the reference's `hashWithSalt` of a `SockAddr`
-   cannot be matched, and nothing depends on it: only that the order is a function of the salt).
+   cannot be matched, and nothing depends on it: only that the order is a function of the salt). Deviation approved by the owner
+   on 2026-10-25: MurmurHash3 for the salted peer-share order; trade-off: the reference's `hashWithSalt` order is keyed by a secret
+   random per-node salt, so peers cannot observe the hash function, and mirroring it would mean reimplementing version- and
+   platform-dependent `hashable` internals.
 4. `PeerSharing: true` stays in `ConfigSettings.unsupported`, with a text that says what is missing: the flag is offered and the
    protocol answered, but the governor does not ask and the server has nothing to share (see G1.4b).
 

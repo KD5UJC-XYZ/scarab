@@ -216,6 +216,10 @@ object PeerShare:
       .sorted
 
   /** A hash of a peer under a salt: the order in which the salt ranks the peers (`hashWithSalt`).
+    * Deviation approved by the owner on 2026-10-25: MurmurHash3 stands in for `hashWithSalt`;
+    * trade-off: the reference's order is keyed by a secret random per-node salt, so peers cannot
+    * observe the hash function, and mirroring it would mean reimplementing version- and
+    * platform-dependent `hashable` internals.
     */
   trait SaltedHash[A]:
     def apply(salt: Long, peer: A): Int

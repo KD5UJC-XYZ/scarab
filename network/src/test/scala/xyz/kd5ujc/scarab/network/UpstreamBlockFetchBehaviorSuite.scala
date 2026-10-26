@@ -122,10 +122,8 @@ class UpstreamBlockFetchBehaviorSuite extends FailsOnUncaught:
         key -> expected
       }
 
-    def range(from: Bytes, to: Bytes, maxBlocks: Int): IO[Option[Stream[IO, Bytes]]] =
-      IO.pure(
-        ranges.get((from, to)).filter(_.size <= maxBlocks).filter(_.nonEmpty).map(Stream.emits)
-      )
+    def range(from: Bytes, to: Bytes): IO[Option[Stream[IO, Bytes]]] =
+      IO.pure(ranges.get((from, to)).filter(_.nonEmpty).map(Stream.emits))
 
   test("production generic BlockFetch runtime replays unchanged upstream channel range rows"):
     val cases = readCases()
@@ -173,7 +171,7 @@ class UpstreamBlockFetchBehaviorSuite extends FailsOnUncaught:
                           payloadCodec,
                           (from, to) => Right((from, to)),
                           BlockFetchRuntime
-                            .ServerSettings(maxBlocks = 128, idleTimeout = 10.seconds)
+                            .ServerSettings(idleTimeout = 10.seconds)
                         )
                     }
                     .start

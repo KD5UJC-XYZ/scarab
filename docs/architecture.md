@@ -828,8 +828,8 @@ connection (the key is the address and the direction). `inbound(remote)` and `ou
 `Resource`s: admission is atomic with the checks (one live connection per address and direction, and
 none in the other direction while our clients use it: an outbound connection waits for an inbound
 duplex one that runs our clients, and with `--inbound-sync off` (the default) the two coexist; an inbound
-connection is never refused because we have an outbound one, see below; `maxInbound`,
-`maxInboundPerAddress` and `maxOutbound`), the
+connection is never refused because we have an outbound one, see below; `accepted` (the reference's
+`AcceptedConnectionsLimit`), `maxInboundPerAddress` and `maxOutbound`), the
 refusals are typed (`ConnectionError.InboundLimit`, `AddressLimit`, `OutboundLimit`, `AlreadyConnected`) and raised
 through `Raise`, and releasing the resource, however it ends (normally, by failure or by
 cancellation), always runs `Close` and `Released` and removes the entry, so the accounting cannot
@@ -1069,7 +1069,7 @@ current era (`EraHistory`); a version-triggered hard fork that happened before t
 placed and is assumed to start with the previous era. As on the reference, a result has no byte or item
 limit beyond what a byte array holds (`maximumMiniProtocolLimits`, codec run without limits; #353): a
 `GetCBOR DebugEpochState` answer of preprod, which `leadership-schedule --next` asks, is tens of megabytes.
-A client's query has the same absence of a byte or item bound (#356); only its nesting is bounded (32,767 levels, `LocalStateQuery.MaxQueryDepth`), because the node reads queries on the heap with stack-safe walkers. Queries the node does not answer end the connection with
+A client's query has the same absence of a byte or item bound (#356); only its nesting is bounded (32,767 levels, `LocalStateQuery.MaxQueryDepth`), because the node reads queries on the heap with stack-safe walkers. Deviation approved by the owner on 2026-10-25: the nesting bound stays; trade-off: it guards the JVM against stack overflow, where Haskell would not overflow, on a local socket only, and real queries nest far less deeply. Queries the node does not answer end the connection with
 a protocol error that names the query (`inbound ... closed` in the log), where the reference would
 answer.
 

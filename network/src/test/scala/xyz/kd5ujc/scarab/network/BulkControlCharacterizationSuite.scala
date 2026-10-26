@@ -74,13 +74,11 @@ class BulkControlCharacterizationSuite extends FailsOnUncaught:
       source = new BlockFetchServer.Blocks[IO]:
         def range(
             from: ChainSync.Point,
-            to: ChainSync.Point,
-            maxBlocks: Int
+            to: ChainSync.Point
         ): IO[Option[Stream[IO, Bytes]]] =
           IO {
             assertEquals(from, Peers.point(1))
             assertEquals(to, Peers.point(load.blocks))
-            assert(load.blocks <= maxBlocks)
             Some(Stream.emits(Vector.fill(load.blocks)(payload)))
           }
       outcome <- Peers.typed {

@@ -284,7 +284,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  test("block ranges: inside the store, across into the volatile chain, and refusals") {
+  test("block ranges: inside the store, across into the volatile chain, whole, and refusals") {
     tempDir.use { dir =>
       ok {
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
@@ -302,18 +302,18 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 )
             }
             blocks = server.blocks
-            range = (a: Int, b: Int, max: Int) =>
-              blocks.range(ref(a).point, ref(b).point, max).flatMap {
+            range = (a: Int, b: Int) =>
+              blocks.range(ref(a).point, ref(b).point).flatMap {
                 case None    => IO.pure(None)
                 case Some(s) => s.compile.toList.map(_.map(_.value.head.toInt).some)
               }
-            inStore <- range(2, 5, 100)
-            single <- range(4, 4, 100)
-            across <- range(5, 9, 100)
-            volatile <- range(8, 10, 100)
-            backwards <- range(5, 2, 100)
-            unknown <- range(2, 77, 100)
-            tooLong <- range(1, 10, 5)
+            inStore <- range(2, 5)
+            single <- range(4, 4)
+            across <- range(5, 9)
+            volatile <- range(8, 10)
+            backwards <- range(5, 2)
+            unknown <- range(2, 77)
+            whole <- range(1, 10)
           yield
             assertEquals(inStore, Some(List(2, 3, 4, 5)))
             assertEquals(single, Some(List(4)))
@@ -321,7 +321,57 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             assertEquals(volatile, Some(List(8, 9, 10)))
             assertEquals(backwards, None)
             assertEquals(unknown, None)
-            assertEquals(tooLong, None)
+            assertEquals(whole, Some((1 to 10).toList))
+        }
+      }
+    }
+  }
+
+  test("a range across the boundary is exact while volatile blocks become immutable") {
+    tempDir.use { dir =>
+      ok {
+        FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
+          for
+            server <- ChainServer.open[IO](Some(store), None, headerOf, fatal)
+            persistence = server.persistence[Unit]
+            extend = (i: Int) =>
+              val immutable = if i > k then Vector(ref(i - k)) else Vector.empty
+              immutable.traverse_(r => store.append(r, raw(r.blockNo.toInt))) *>
+                persistence.extended(
+                  ref(i),
+                  raw(i),
+                  immutable,
+                  Anchor[Unit](immutable.headOption, ())
+                )
+            _ <- (1 to 10).toList.traverse_(extend)
+            blocks = server.blocks
+            // After the first block is sent, blocks 8 and 9 of the captured volatile chain move
+            // to the store before the stored part is read.
+            promoting <- blocks.range(ref(5).point, ref(9).point).flatMap {
+              case None => IO.pure(None)
+              case Some(s) =>
+                s.zipWithIndex
+                  .evalTap((_, n) => (extend(11) *> extend(12)).whenA(n == 0))
+                  .map(_._1.value.head.toInt)
+                  .compile
+                  .toList
+                  .map(_.some)
+            }
+            // Block 10 is already in the store but still in the volatile chain when the request
+            // arrives (the store is written first).
+            _ <- store.append(ref(10), raw(10))
+            written <- blocks.range(ref(8).point, ref(11).point).flatMap {
+              case None    => IO.pure(None)
+              case Some(s) => s.compile.toList.map(_.map(_.value.head.toInt).some)
+            }
+            fromBoundary <- blocks.range(ref(9).point, ref(12).point).flatMap {
+              case None    => IO.pure(None)
+              case Some(s) => s.compile.toList.map(_.map(_.value.head.toInt).some)
+            }
+          yield
+            assertEquals(promoting, Some(List(5, 6, 7, 8, 9)))
+            assertEquals(written, Some(List(8, 9, 10, 11)))
+            assertEquals(fromBoundary, Some(List(9, 10, 11, 12)))
         }
       }
     }

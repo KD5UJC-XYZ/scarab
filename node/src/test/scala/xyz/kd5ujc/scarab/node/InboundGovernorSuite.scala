@@ -75,8 +75,8 @@ class InboundGovernorSuite extends FailsOnUncaught:
       ranges <- Ref.of[IO, Vector[(Point, Point)]](Vector.empty)
       intersections <- Ref.of[IO, Int](0)
       counting = new BlockFetchServer.Blocks[IO]:
-        def range(from: Point, to: Point, max: Int) =
-          ranges.update(_ :+ (from -> to)) *> server.blocks.range(from, to, max)
+        def range(from: Point, to: Point) =
+          ranges.update(_ :+ (from -> to)) *> server.blocks.range(from, to)
       sink = new TxSubmissionServer.Sink[IO]:
         def known(id: Bytes) = IO.pure(false)
         def submit(originals: Vector[Bytes]) = IO.unit
@@ -150,7 +150,13 @@ class InboundGovernorSuite extends FailsOnUncaught:
           )
         }
         .rescue(e => IO(fail(e.message)))
-      manager <- ConnectionManager.create[IO](ConnectionManager.Limits(maxInbound = 4))
+      manager <- ConnectionManager.create[IO](
+        ConnectionManager.Limits(
+          AcceptedConnectionsLimit.default.copy(
+            acceptedConnectionsHardLimit = xyz.kd5ujc.scarab.network.Word32.fromUnsigned(4)
+          )
+        )
+      )
       metrics <- Ref.of[IO, PeerMetrics[PeerNetwork.Addr]](PeerMetrics.empty())
       validating = Option.when(headerFirst)(
         HeaderCheck.forChain[IO, MirrorState, NodeHeaderState](
@@ -198,7 +204,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
               def poll = IO.pure(None)
               def await = IO.never
           ),
-          (_, _, _) => IO.pure(None),
+          (_, _) => IO.pure(None),
           new TxSubmissionServer.Sink[IO]:
             def known(id: Bytes) = IO.pure(false)
             def submit(originals: Vector[Bytes]) = IO.unit

@@ -17,17 +17,14 @@ import scala.concurrent.duration.*
 object BlockFetchServer:
   trait Blocks[F[_]]:
     /** The blocks of the inclusive range on our chain, oldest first, or `None` when the range is
-      * not one contiguous stretch of our chain or has more than `maxBlocks` blocks (the client then
-      * gets `NoBlocks`).
+      * not one contiguous stretch of our chain (the client then gets `NoBlocks`). The length of a
+      * range is not bounded: the reference server streams any range it holds
+      * (`MiniProtocol/BlockFetch/Server.hs`, `blockFetchServer'`, ouroboros-consensus 82ecba32).
       */
-    def range(from: Point, to: Point, maxBlocks: Int): F[Option[Stream[F, Bytes]]]
+    def range(from: Point, to: Point): F[Option[Stream[F, Bytes]]]
 
-  /** @param maxBlocks
-    *   Ranges longer than this are refused with `NoBlocks`.
-    */
   final case class Settings(
       limits: BlockFetch.Limits = BlockFetch.Limits(),
-      maxBlocks: Int = 2160,
       idleTimeout: FiniteDuration = 3373.seconds,
       idleDeadline: Option[ProtocolDeadline] = None
   )
@@ -43,11 +40,10 @@ object BlockFetchServer:
     val genericBlocks = new BlockFetchRuntime.Blocks[F, Point, CardanoBlockFetch.RawNtNBlock]:
       def range(
           from: Point,
-          to: Point,
-          maxBlocks: Int
+          to: Point
       ): F[Option[Stream[F, CardanoBlockFetch.RawNtNBlock]]] =
         blocks
-          .range(from, to, maxBlocks)
+          .range(from, to)
           .map(
             _.map(
               _.evalMap(raw =>
@@ -75,7 +71,6 @@ object BlockFetchServer:
           .map(range => (range.from.point, range.to.point)),
       BlockFetchRuntime.ServerSettings(
         settings.limits,
-        settings.maxBlocks,
         settings.idleTimeout,
         settings.idleDeadline
       )

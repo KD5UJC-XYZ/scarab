@@ -6,7 +6,7 @@ import xyz.kd5ujc.scarab.codec.DomainError
 /** Why the connection manager refuses or cannot do something. Closed; raised through `Raise`. */
 enum ConnectionError extends DomainError:
   /** The hard limit of accepted (inbound) connections is reached. */
-  case InboundLimit(remote: String, limit: Int)
+  case InboundLimit(remote: String, limit: Long)
 
   /** The per-address limit of accepted connections from one IP address is reached. The reference
     * has none; see ADR 0008.

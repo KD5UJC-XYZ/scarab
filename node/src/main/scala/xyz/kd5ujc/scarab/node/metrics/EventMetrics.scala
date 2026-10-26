@@ -179,14 +179,16 @@ final class EventMetrics[F[_]: Sync] private (
         Sync[F].unit
 
   val connection: ConnectionEvents[F] = new ConnectionEvents[F]:
-    def emit(event: ConnectionEvent): F[Unit] = metrics.inc(
-      connectionEvents,
+    def emit(event: ConnectionEvent): F[Unit] =
+      def count(label: ConnectionEventLabel) = metrics.inc(connectionEvents, label)
       event match
-        case ConnectionEvent.Opened(_, _)     => ConnectionEventLabel.Opened
-        case ConnectionEvent.Changed(_, _, _) => ConnectionEventLabel.Changed
-        case ConnectionEvent.Refused(_)       => ConnectionEventLabel.Refused
-        case ConnectionEvent.Closed(_, _, _)  => ConnectionEventLabel.Closed
-    )
+        case ConnectionEvent.Opened(_, _)     => count(ConnectionEventLabel.Opened)
+        case ConnectionEvent.Changed(_, _, _) => count(ConnectionEventLabel.Changed)
+        case ConnectionEvent.Refused(_)       => count(ConnectionEventLabel.Refused)
+        case ConnectionEvent.Closed(_, _, _)  => count(ConnectionEventLabel.Closed)
+        case ConnectionEvent.AcceptRateLimited(_, _) | ConnectionEvent.AcceptHardLimit(_) |
+            ConnectionEvent.AcceptResumed(_) =>
+          Sync[F].unit
 
   val inbound: InboundEvents[F] = new InboundEvents[F]:
     def emit(remote: String, event: InboundEvent): F[Unit] = metrics.inc(

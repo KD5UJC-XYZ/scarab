@@ -75,11 +75,11 @@ class ServerSuite extends FailsOnUncaught:
             poll.flatMap(_.fold(IO.sleep(5.millis) *> await)(IO.pure))
       }
 
-    def blockSource: BlockFetchServer.Blocks[IO] = (from, to, max) =>
+    def blockSource: BlockFetchServer.Blocks[IO] = (from, to) =>
       blocks.get.map { chain =>
         val i = chain.indexWhere(n => Peers.point(n) == from)
         val j = chain.indexWhere(n => Peers.point(n) == to)
-        Option.when(i >= 0 && j >= i && j - i < max)(
+        Option.when(i >= 0 && j >= i)(
           Stream.emits(chain.slice(i, j + 1).map(Peers.block).toList).covary[IO]
         )
       }
@@ -198,7 +198,7 @@ class ServerSuite extends FailsOnUncaught:
       case other => fail(other.toString)
     }
 
-  test("BlockFetch server: a range streams in order, an unknown or too long one gets NoBlocks"):
+  test("BlockFetch server: a range of any length streams in order, an unknown one gets NoBlocks"):
     val chain = Chain(Vector(1, 2, 3, 4))
     typed {
       linked(protocols = Set(3)).use { (client, server) =>
@@ -206,14 +206,14 @@ class ServerSuite extends FailsOnUncaught:
           c <- client.channel(3)
           s <- server.channel(3, Mux.Role.Responder)
           _ <- BlockFetchServer
-            .run(s, chain.blockSource, BlockFetchServer.Settings(maxBlocks = 3))
+            .run(s, chain.blockSource)
             .start
           api <- BlockFetchClient(c)
           some <- api.requestRange(Peers.point(2), Peers.point(4))
           unknown <- api.requestRange(Peers.point(2), Peers.point(9))
-          tooLong <- api.requestRange(Peers.point(1), Peers.point(4))
+          whole <- api.requestRange(Peers.point(1), Peers.point(4))
           single <- api.requestRange(Peers.point(1), Peers.point(1))
-        yield (some, unknown, tooLong, single)
+        yield (some, unknown, whole, single)
       }
     }.map(r =>
       assertEquals(
@@ -222,7 +222,7 @@ class ServerSuite extends FailsOnUncaught:
           (
             Some(Vector(2, 3, 4).map(Peers.block)),
             None,
-            None,
+            Some(Vector(1, 2, 3, 4).map(Peers.block)),
             Some(Vector(Peers.block(1)))
           )
         )

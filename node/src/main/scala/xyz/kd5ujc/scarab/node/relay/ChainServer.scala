@@ -153,8 +153,11 @@ final class ChainServer[F[_]: Async] private (
             yield ofStored(stored.raw).map(ChainSyncServer.Update.RollForward(_, chain.tip))
         }
 
-  /** Blocks for BlockFetch: the range must lie on our chain (immutable then volatile). */
-  def blocks: BlockFetchServer.Blocks[F] = (from, to, max) =>
+  /** Blocks for BlockFetch: the range must lie on our chain (immutable then volatile); its length
+    * is not bounded, as in the reference's `blockFetchServer'` (ouroboros-consensus 82ecba32,
+    * `MiniProtocol/BlockFetch/Server.hs`).
+    */
+  def blocks: BlockFetchServer.Blocks[F] = (from, to) =>
     StorageBoundary.run(fatal) {
       state.get.flatMap { chain =>
         def volatile(point: Point): Option[Int] =
@@ -169,7 +172,7 @@ final class ChainServer[F[_]: Async] private (
             )
         def emit(served: Vector[Served]) = Stream.emits(served.map(_.raw).toList).covary[F]
         (number(from), number(to)).mapN {
-          case (Some(a), Some(b)) if a <= b && b - a < max =>
+          case (Some(a), Some(b)) if a <= b =>
             (volatile(from), volatile(to), store) match
               case (Some(i), Some(j), _) => Some(emit(chain.blocks.slice(i, j + 1)))
               case (Some(_), None, _)    => None
@@ -181,7 +184,16 @@ final class ChainServer[F[_]: Async] private (
                   val stored = StorageBoundary.stream(fatal)(s.stream(from))
                   inVolatile match
                     case Some(j) =>
-                      Some(first ++ stored.map(_.raw) ++ emit(chain.blocks.take(j + 1)))
+                      // The store is read while the range streams, and blocks of the captured
+                      // volatile chain may reach it before or during the read: its part ends at
+                      // the captured boundary, so the range is exactly `from` to `to`, as the
+                      // reference's one iterator over the inclusive bounds
+                      // (`MiniProtocol/BlockFetch/Server.hs` `receiveReq`).
+                      val immutable = chain.anchor match
+                        case Some(boundary) if boundary.point != from =>
+                          stored.takeThrough(_.ref.point != boundary.point)
+                        case _ => Stream.empty
+                      Some(first ++ immutable.map(_.raw) ++ emit(chain.blocks.take(j + 1)))
                     case None => Some(first ++ stored.takeThrough(_.ref.point != to).map(_.raw))
           case _ => None
         }

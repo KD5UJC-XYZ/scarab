@@ -27,7 +27,7 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
       def poll = IO.pure(None)
       def await = IO.never[ChainSyncServer.Update[NtNHeader]]
     val blocks = new BlockFetchServer.Blocks[IO]:
-      def range(from: ChainSync.Point, to: ChainSync.Point, maxBlocks: Int) = IO.pure(None)
+      def range(from: ChainSync.Point, to: ChainSync.Point) = IO.pure(None)
     val transactions = new TxSubmissionServer.Sink[IO]:
       def known(id: xyz.kd5ujc.scarab.codec.Bytes) = IO.pure(false)
       def submit(originals: Vector[xyz.kd5ujc.scarab.codec.Bytes]) = IO.unit

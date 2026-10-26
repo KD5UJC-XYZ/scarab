@@ -41,11 +41,11 @@ object BlockFetchRuntime:
     def idle: F[Boolean]
 
   trait Blocks[F[_], P, B]:
-    /** Return `None` when the inclusive range is absent, noncontiguous, or exceeds `maxBlocks`. A
-      * returned stream contains blocks in source chain order, matching the strict Cardano
-      * `BlockFetchServer.Blocks` contract.
+    /** Return `None` when the inclusive range is absent or noncontiguous. A returned stream
+      * contains blocks in source chain order, matching the strict Cardano `BlockFetchServer.Blocks`
+      * contract.
       */
-    def range(from: P, to: P, maxBlocks: Int): F[Option[Stream[F, B]]]
+    def range(from: P, to: P): F[Option[Stream[F, B]]]
 
   final case class Timeouts(
       busy: ProtocolDeadline,
@@ -63,7 +63,6 @@ object BlockFetchRuntime:
 
   final case class ServerSettings(
       limits: BlockFetchEngine.Limits = BlockFetchEngine.Limits(),
-      maxBlocks: Int = 2160,
       idleTimeout: FiniteDuration = 3373.seconds,
       idleDeadline: Option[ProtocolDeadline] = None
   )
@@ -439,7 +438,7 @@ object BlockFetchRuntime:
           case Message.ClientDone => F.pure(false)
           case Message.RequestRange(from, to) =>
             validateRange(from, to).fold(illegal, F.pure).flatMap { case (first, last) =>
-              blocks.range(first, last, settings.maxBlocks).flatMap {
+              blocks.range(first, last).flatMap {
                 case None => send(State.Busy, Message.NoBlocks).as(true)
                 case Some(source) =>
                   send(State.Busy, Message.StartBatch) *>
