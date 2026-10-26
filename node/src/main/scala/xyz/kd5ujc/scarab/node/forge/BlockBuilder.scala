@@ -118,6 +118,12 @@ object BlockBuilder:
       head(5, aux.size.toLong).length + aux.map((i, a) => headLength(i) + a.size).sum +
       headLength(invalid.size) + invalid.map(i => headLength(i)).sum
 
+  /** What ends selection instead of skipping a transaction: missing evaluator support (no ledger
+    * verdict), or a quantity of the ledger state outside its vocabulary type, which the reference's
+    * `compactCoinOrError` throws on in the forging thread (the node's stop).
+    */
+  type Stop = LedgerFailure.Unavailable | LedgerFailure.StateOutOfRange
+
   /** What fits: the protocol's block limits for a block at `slot` on top of `ticked`. */
   final case class Limits(maxBodyBytes: Long, maxExUnits: ExUnits)
 
@@ -126,8 +132,9 @@ object BlockBuilder:
     * A candidate that does not apply (its inputs were spent by the block, it expired, a script now
     * fails) is skipped, not an error: the pool of a mempool is advisory. The rules are LEDGER of
     * Conway on the era-indexed state ([[MempoolLedger]], the same that validates the pool). Missing
-    * evaluator support has no ledger verdict and stops selection instead of skipping it; a defect
-    * one transaction triggers in the evaluator skips that transaction.
+    * evaluator support has no ledger verdict and stops selection instead of skipping it, as a
+    * quantity of the state out of range does ([[Stop]]); a defect one transaction triggers in the
+    * evaluator skips that transaction.
     */
   def select(
       ticked: MempoolLedger,
@@ -141,7 +148,7 @@ object BlockBuilder:
   )(using
       decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
       evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default
-  ): Either[LedgerFailure.Unavailable, Vector[(Entry, Piece)]] =
+  ): Either[Stop, Vector[(Entry, Piece)]] =
     final case class Acc(
         state: MempoolLedger,
         chosen: Vector[(Entry, Piece)],
@@ -151,7 +158,7 @@ object BlockBuilder:
     val rules = Globals(globals, geometry)
     candidates
       .foldM(Acc(ticked, Vector.empty, ExUnits.zero, 0L)) { (acc, entry) =>
-        piece(entry).toOption.fold(Right(acc): Either[LedgerFailure.Unavailable, Acc]) { p =>
+        piece(entry).toOption.fold(Right(acc): Either[Stop, Acc]) { p =>
           val units = acc.units + entry.tx.witnesses.totalExUnits
           val size = bodySize(acc.chosen.map(_._2) :+ p)
           val refUsed =
@@ -187,7 +194,8 @@ object BlockBuilder:
                     unavailable.reach match
                       case BackendFailure.Reach.Implementation => Left(unavailable)
                       case BackendFailure.Reach.Input          => Right(acc)
-                  case _ => Right(acc)
+                  case outOfRange: LedgerFailure.StateOutOfRange => Left(outOfRange)
+                  case _                                         => Right(acc)
                 },
                 next => Right(Acc(next, acc.chosen :+ (entry -> p), units, refUsed))
               )

@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.Block
-import xyz.kd5ujc.scarab.ledger.{EvaluationUnavailable, ForgeError}
+import xyz.kd5ujc.scarab.ledger.{BlockFailure, ChainError, EvaluationUnavailable, ForgeError}
 import xyz.kd5ujc.scarab.ledger.NodeError
 import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash}
@@ -289,7 +289,7 @@ final class Forger[F[_]: Async, S](
       skipped(slot, ForgeSkip.TipTooOld(tipSlot))
     else forge(base, slot)
 
-  private def lift[A](e: Either[ForgeError, A])(using Handle[F, NodeError]): F[A] =
+  private def lift[A](e: Either[NodeError, A])(using Handle[F, NodeError]): F[A] =
     e.fold(_.raise[F, A], F.pure)
 
   private def forge(current: VolatileChain[S], slot: BigInt)(using
@@ -363,9 +363,13 @@ final class Forger[F[_]: Async, S](
         )
       )
       chosen <- selection.fold(
-        unavailable =>
-          EvaluationUnavailable(current.tip, unavailable)
-            .raise[F, Vector[(xyz.kd5ujc.scarab.node.mempool.Entry, BlockBuilder.Piece)]],
+        stop =>
+          (stop match
+            case unavailable: xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable =>
+              EvaluationUnavailable(current.tip, unavailable)
+            case outOfRange: xyz.kd5ujc.scarab.ledger.LedgerFailure.StateOutOfRange =>
+              ChainError.StateOutOfRange(slot, outOfRange.error)
+          ).raise[F, Vector[(xyz.kd5ujc.scarab.node.mempool.Entry, BlockBuilder.Piece)]],
         F.pure
       )
       outcome <- build(
@@ -499,13 +503,13 @@ final class Forger[F[_]: Async, S](
   private def tick(
       nes: NewEpochState[Conway],
       slot: BigInt
-  ): Either[ForgeError, MempoolLedger] =
+  ): Either[NodeError, MempoolLedger] =
     ticked(nes, slot).map(MempoolLedger.of)
 
   private def ticked(
       nes: NewEpochState[Conway],
       slot: BigInt
-  ): Either[ForgeError, NewEpochState[Conway]] =
+  ): Either[NodeError, NewEpochState[Conway]] =
     for
       target <- SlotNo
         .fromBigInt(slot)
@@ -517,7 +521,7 @@ final class Forger[F[_]: Async, S](
           target
         )
         .left
-        .map(f => ForgeError.LedgerViewUnavailable(slot, ForgeLedgerProblem.Tick(f)))
+        .map(Forger.tickFault(slot, _))
       conway <- ConwayView
         .of(state)
         .toRight(ForgeError.UnsupportedProtocol(ForgeProtocolProblem.LeftConway))
@@ -605,6 +609,23 @@ final class Forger[F[_]: Async, S](
     }
 
 object Forger:
+  /** What a failed tick of the tip's state to `slot` is. A quantity of the state outside its
+    * vocabulary type is no forging failure but the node's stop ([[ChainError.StateOutOfRange]]):
+    * the reference's `compactCoinOrError` throws in the forging thread, which is linked
+    * (ouroboros-consensus 82ecba32 `NodeKernel.hs:378-380`), so the node stops and no later slot is
+    * tried. Any other failure leaves the ledger view of this slot unavailable.
+    */
+  private[forge] def tickFault(
+      slot: BigInt,
+      failure: xyz.kd5ujc.scarab.ledger.rules.TickFailure
+  ): NodeError =
+    BlockFailure
+      .Tick(failure)
+      .stateOutOfRange
+      .fold[NodeError](ForgeError.LedgerViewUnavailable(slot, ForgeLedgerProblem.Tick(failure)))(
+        ChainError.StateOutOfRange(slot, _)
+      )
+
   /** Like runExceptT at the forging worker boundary: typed failures and defects finish as values.
     * The scope and the body are constructed inside defer (cats-mtl 1.7.0 Handle.rescue invokes its
     * body eagerly); cancellation passes through unchanged.

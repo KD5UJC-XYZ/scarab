@@ -302,7 +302,7 @@ object Deleg
       st: Stateful[F, ConwayCertState],
       raise: Raise[F, LedgerFailure],
       judge: Judge[F, PredicateFailure]
-  ): F[Unit] = transitionWithPools(env.pp, CertLens.pools.get(_), cert)
+  ): F[Unit] = transitionWithPools(env.id, env.pp, CertLens.pools.get(_), cert)
 
   /** `conwayDelegTransition` (`Conway/Rules/Deleg.hs:177-290`, cardano-ledger `f649f975`): every
     * check records its failure and the rule goes on to the state the reference makes, so a later
@@ -310,6 +310,7 @@ object Deleg
     * not exist leaves the state as it was.
     */
   private def transitionWithPools[F[_]: Monad](
+      id: Bytes,
       pp: ProtocolParams,
       pools: ConwayCertState => SortedMap[KeyHash[StakePool], StakePoolState],
       cert: DelegCert
@@ -350,8 +351,9 @@ object Deleg
         )
       }
       d.stakePool.traverse_(pool) *> d.votedDRep.traverse_(drep)
+    // `compactCoinOrError ppKeyDeposit` (`Conway/Rules/Deleg.hs:197`)
     def deposit: F[CompactCoin] =
-      Refuse.vocab[F, CompactCoin](CompactCoin.fromBigInt(pp.keyDeposit))
+      Refuse.state[F, CompactCoin](id, CompactCoin.fromBigInt(pp.keyDeposit))
     def notRegisteredAccount(c: Credential[Staking]): F[Unit] =
       Sts.failBecause[F, PredicateFailure](fail(DelegFailure.StakeKeyNotRegistered(credential(c))))
     val preserve = pp.protocolMajor < 10
@@ -423,7 +425,7 @@ object Deleg
         raise: Raise[F, LedgerFailure],
         judge: Judge[F, PredicateFailure]
     ): F[Unit] =
-      transitionWithPools(env.pp, _ => env.pools, cert)
+      transitionWithPools(env.caseId, env.pp, _ => env.pools, cert)
 
 /** POOL (`Shelley/Rules/Pool.hs:209`, `poolTransition`, the rule of every era): registration and
   * retirement of stake pools, with the VRF key hashes kept from protocol version 11
@@ -497,7 +499,9 @@ object Pool extends JudgedSts[CertEnv, PState, PoolCert, PredicateFailure, Ledge
                     PoolFailure.VRFKeyHashAlreadyRegistered(params.operator, params.vrfKeyHash)
                   )
                 )
-                deposit <- Refuse.vocab[F, CompactCoin](CompactCoin.fromBigInt(pp.poolDeposit))
+                // `ppPoolDepositCompactL` (`Shelley/Rules/Pool.hs:275`): a `CompactForm Coin` of the
+                // parameters
+                deposit <- Refuse.state[F, CompactCoin](id, CompactCoin.fromBigInt(pp.poolDeposit))
                 pool <- Refuse.vocab[F, StakePoolState](
                   Convert.poolState(params, deposit, Sorted.emptySet[Credential[Staking]])
                 )
@@ -752,7 +756,9 @@ object GovCert
         )
         dormant = ConwayCertState.vState.andThen(VState.numDormantEpochs).get(s)
         e <- Refuse.vocab[F, EpochNo](expiry(pp, env.epoch, dormant, versioned = true))
-        held <- Refuse.vocab[F, CompactCoin](CompactCoin.fromBigInt(pp.drepDeposit))
+        // `ppDRepDepositCompactL` (`Conway/Rules/GovCert.hs:187`): a `CompactForm Coin` of the
+        // parameters
+        held <- Refuse.state[F, CompactCoin](env.caseId, CompactCoin.fromBigInt(pp.drepDeposit))
         _ <- st.set(
           CertLens.dreps.modify(
             _.updated(c, DRepState(e, anchor, held, Sorted.emptySet[Credential[Staking]]))

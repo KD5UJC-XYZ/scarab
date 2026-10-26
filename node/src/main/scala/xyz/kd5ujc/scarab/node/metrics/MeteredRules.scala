@@ -7,7 +7,7 @@ import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRules
-import xyz.kd5ujc.scarab.ledger.{Header, StorageError, ValidationError}
+import xyz.kd5ujc.scarab.ledger.{ChainError, Header, StorageError, ValidationError}
 
 /** The block rules, measured: how long a block took to validate and apply, and which rule family
   * refused it. The wrapped rules are called exactly as before and their result, or the error they
@@ -19,7 +19,8 @@ object MeteredRules:
   ): BlockRules[F, S] = new BlockRules[F, S]:
     def apply(state: S, header: Header, block: Bytes)(using
         validation: Raise[F, ValidationError],
-        storage: Raise[F, StorageError]
+        storage: Raise[F, StorageError],
+        chain: Raise[F, ChainError]
     ): F[S] =
       for
         began <- Clock[F].monotonic

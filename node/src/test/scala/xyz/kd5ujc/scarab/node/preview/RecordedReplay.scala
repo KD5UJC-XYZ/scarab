@@ -15,7 +15,7 @@ import xyz.kd5ujc.scarab.plutus.{DataSerialiser, ScalusEvaluator}
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.state.{MirrorState, MirrorStep}
-import xyz.kd5ujc.scarab.ledger.{Block, StorageError, ValidationError}
+import xyz.kd5ujc.scarab.ledger.{Block, NodeError, StorageError}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.{MirrorRules, NativeSnapshots, NodeSetup, ParallelPlutus}
 import xyz.kd5ujc.scarab.storage.{RocksUtxoStore, UtxoStore}
@@ -159,7 +159,7 @@ object RecordedReplay extends munit.Assertions:
         parallelPlutus = parallel
       )
       Handle
-        .allow[ValidationError] {
+        .allow[NodeError] {
           for
             began <- IO.monotonic
             next <- rules(state, block.header, raw)

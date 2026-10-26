@@ -5,11 +5,16 @@ import xyz.kd5ujc.scarab.ledger.{Header, PeerError}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
 
-/** The node's chain-extension rule: the state after `header`/`block`, or a [[ValidationError]]. */
+/** The node's chain-extension rule: the state after `header` /`block`, or a [[ValidationError]].
+  * Two outcomes are no verdict on the block: a [[xyz.kd5ujc.scarab.ledger.StorageError]] and a
+  * [[xyz.kd5ujc.scarab.ledger.ChainError.StateOutOfRange]] (the ledger state left the range of its
+  * types, which stops the node as the reference's `compactCoinOrError` does).
+  */
 trait BlockRules[F[_], S]:
   def apply(state: S, header: Header, block: Bytes)(using
       cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.ValidationError],
-      cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]
+      cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.StorageError],
+      cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.ChainError]
   ): F[S]
 
 object BlockRules:
@@ -17,12 +22,14 @@ object BlockRules:
   def from[F[_], S](
       run: (S, Header, Bytes) => (
           cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.ValidationError],
-          cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]
+          cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.StorageError],
+          cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.ChainError]
       ) ?=> F[S]
   ): BlockRules[F, S] = new BlockRules[F, S]:
     def apply(state: S, header: Header, block: Bytes)(using
         cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.ValidationError],
-        cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]
+        cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.StorageError],
+        cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.ChainError]
     ): F[S] = run(state, header, block)
 
 /** Observable follower milestones. */

@@ -438,7 +438,9 @@ object ChainStorage:
             if actual != ref then F.pure(done)
             else
               handle.attempt(rules(chain.state, header, raw)).flatMap {
-                case Left(_) => F.pure(done)
+                // A ledger state out of range stops the node: it does not end the chain here.
+                case Left(fatal: ChainError.StateOutOfRange) => fatal.raise[F, Vector[Resumed[S]]]
+                case Left(_)                                 => F.pure(done)
                 case Right(next) =>
                   chain.extend(header, next) match
                     case Left(_) => F.pure(done)

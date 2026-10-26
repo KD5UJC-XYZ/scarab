@@ -135,6 +135,7 @@ trait ForgeFixture:
       offsetMillis: Long = 0,
       source: Option[HotKeySource[IO]] = None,
       ruleFailure: Option[BlockFailure] = None,
+      chainFailure: Option[ChainError] = None,
       storageFailure: Option[StorageError] = None,
       clock: Option[IO[Instant]] = None
   )(using Handle[IO, NodeError]): IO[Harness] =
@@ -148,11 +149,14 @@ trait ForgeFixture:
       rules = new xyz.kd5ujc.scarab.consensus.BlockRules[IO, MirrorState]:
         def apply(state: MirrorState, header: Header, raw: Bytes)(using
             Raise[IO, ValidationError],
-            Raise[IO, StorageError]
+            Raise[IO, StorageError],
+            Raise[IO, ChainError]
         ): IO[MirrorState] =
-          ruleFailure.fold(realRules(state, header, raw))(failure =>
-            ValidationError(header.point, failure).raise[IO, MirrorState]
-          )
+          chainFailure.fold(
+            ruleFailure.fold(realRules(state, header, raw))(failure =>
+              ValidationError(header.point, failure).raise[IO, MirrorState]
+            )
+          )(_.raise[IO, MirrorState])
       mempoolBase <- cats.mtl
         .Raise[IO, NodeError]
         .fromEither(

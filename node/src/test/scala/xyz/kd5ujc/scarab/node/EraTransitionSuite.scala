@@ -668,6 +668,47 @@ class EraTransitionSuite extends CatsEffectSuite:
     }
   }
 
+  // A quantity of the node's own state out of range at the hand-over is no verdict on the first
+  // Shelley header or block: the node stops (`compactCoinOrError`, cardano-ledger f649f975
+  // `Coin.hs:184-188`; ouroboros-consensus 82ecba32 `Storage/ChainDB/Impl/Background.hs:107-109`)
+  test("a hand-over state out of range stops the node on the first Shelley header and block") {
+    val b = boundaries.head
+    val context = setup.handOver.getOrElse(fail("no hand-over context"))
+    val delegate = context.genDelegs.values.headOption.getOrElse(fail("no genesis delegation"))
+    val broken = context.copy(genDelegs =
+      context.genDelegs.updated(Bytes.fromArray(Array.fill(3)(1.toByte)), delegate)
+    )
+    val before = states(b)
+    def stopped(end: Option[NodeError]): Unit = end match
+      case Some(ledger.ChainError.StateOutOfRange(slot, _)) => assertEquals(slot, headers(b).slot)
+      case other => fail(s"expected the node's stop, got $other")
+    val check = new NodeHeaderRules[MirrorState](
+      setup.praos,
+      setup.globals,
+      setup.byronRules,
+      Some(broken)
+    )
+    check.validate(before, Some(ref(b - 1)), check.at(before), headers(b)) match
+      case consensus.HeaderRules.Outcome.Invalid(error) =>
+        SessionEnd.of(PeerError.InvalidHeader(headers(b).point, error)) match
+          case SessionEnd.Internal(fault) => stopped(Some(fault))
+          case other                      => fail(s"expected the node's stop, got $other")
+      case other => fail(s"expected the hand-over to fail, got $other")
+    Handle
+      .allow[NodeError] {
+        val rules = MirrorRules[IO](
+          setup.praos,
+          setup.globals,
+          setup.byronRules,
+          Some(broken),
+          setup.byronHistory
+        )
+        rules(before, headers(b), raws(b)).as(Option.empty[NodeError])
+      }
+      .rescue(e => IO.pure(Some(e)))
+      .map(stopped)
+  }
+
   test(
     "a rollback across the Byron to Shelley boundary restores the Byron state; the era is entered again"
   ) {

@@ -85,6 +85,76 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     }
   }
 
+  /** A deposit of the parameters that is not a `CompactForm Coin`. */
+  private val outOfRange = xyz.kd5ujc.scarab.ledger.state.VocabError
+    .OutOfRange(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.CompactCoin, BigInt(1) << 64)
+
+  // `compactCoinOrError` (cardano-ledger f649f975 `Coin.hs:184-188`) throws in the forging thread,
+  // which is linked (ouroboros-consensus 82ecba32 `NodeKernel.hs:378-380`)
+  test("a ledger state out of range is fatal: no recoverable forge failure, no later slot") {
+    val p = pool(kesStart = 50)
+    val fault = ChainError.StateOutOfRange(leaderSlot(p), outOfRange)
+    withHandle {
+      for
+        h <- harness(p, ledgerWith(p, 1), chainFailure = Some(fault))
+        result <- h.forger.step(leaderSlot(p))
+        events <- h.seen
+        chain <- h.chain
+        stats <- h.forger.stats.total
+      yield
+        assertEquals(result, Left(Fatal.Internal(fault)))
+        assertEquals(chain.tipRef, None)
+        assertEquals(stats.failed, 0L)
+        assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]))
+    }
+  }
+
+  test("a tick of the tip's state out of range is the node's stop; another tick failure is not") {
+    val state = xyz.kd5ujc.scarab.ledger.rules.TickFailure.Vocab(outOfRange)
+    assertEquals(Forger.tickFault(7, state), ChainError.StateOutOfRange(7, outOfRange))
+    val input = xyz.kd5ujc.scarab.ledger.rules.TickFailure.Input(outOfRange)
+    assertEquals(
+      Forger.tickFault(7, input),
+      ForgeError.LedgerViewUnavailable(7, xyz.kd5ujc.scarab.ledger.ForgeLedgerProblem.Tick(input))
+    )
+    for fatal <- Forger.scoped[IO, Unit](
+        summon[Handle[IO, NodeError]].raise(Forger.tickFault(7, state))
+      )
+    yield assertEquals(fatal, Left(Fatal.Internal(ChainError.StateOutOfRange(7, outOfRange))))
+  }
+
+  test(
+    "a deposit of the parameters out of range stops block selection, not skipping the transaction"
+  ) {
+    import xyz.kd5ujc.scarab.node.mempool.TxKit
+    import xyz.kd5ujc.scarab.node.mempool.TxKit.*
+    // a stake registration `[0, [0, key hash]]` (Conway `RegTxCert`, which takes `ppKeyDeposit`)
+    val keyHash = xyz.kd5ujc.scarab.codec.Bytes.fromArray(Array.fill(28)(9.toByte))
+    val certificate = head(4, 1) ++ head(4, 2) ++ head(0, 0) ++ head(4, 2) ++ head(0, 0) ++
+      bstr(keyHash)
+    val (raw, _) = TxKit.tx(
+      Vector(xyz.kd5ujc.scarab.ledger.TestLedger.txIn(1)),
+      Vector(bob.address() -> BigInt(99000000)),
+      BigInt(1000000),
+      Vector(alice),
+      certificates = certificate
+    )
+    val base = TxKit.ledger(2).withParams(_.copy(keyDeposit = BigInt(1) << 64))
+    val limit = BlockBuilder.Limits(65536, xyz.kd5ujc.scarab.plutus.ExUnits(14000000, 10000000000L))
+    BlockBuilder.select(
+      base,
+      1001,
+      1,
+      geometry,
+      globals,
+      Vector(MempoolStateFixture.entry(raw)),
+      limit
+    ) match
+      case Left(xyz.kd5ujc.scarab.ledger.LedgerFailure.StateOutOfRange(_, error)) =>
+        assertEquals(error, outOfRange)
+      case other => fail(s"expected the state out of range, got $other")
+  }
+
   test("an actual rule rejection remains recoverable and retains its predicate failure") {
     val p = pool(kesStart = 50)
     val cause = xyz.kd5ujc.scarab.ledger.BlockFailure.HeaderDiffers
