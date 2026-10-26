@@ -27,12 +27,12 @@ import subprocess
 from . import ntclocal, ntcquery
 from .cbor import Raw, Tag, enc
 from . import eratx
-from .refusalcases import babbage_corpus, corpus
+from .refusalcases import babbage_corpus, corpus, preconway_families
 from .util import ENV, MAGIC, REFERENCE_IMAGE, REPO, data_root, docker, in_ref, ref
 
 # The hard-fork-combinator index of each era the corpus covers: the LocalTxSubmission item `[index, #6.24(tx)]`
 # and the era of the LocalStateQuery queries
-ERA_INDEX = {"babbage": 5, "conway": 6}
+ERA_INDEX = {"shelley": 1, "allegra": 2, "mary": 3, "alonzo": 4, "babbage": 5, "conway": 6}
 BATCH = 4
 ATTEMPTS = 40
 DEFAULT_OUT = REPO / "fixtures" / "reference" / "refusals"
@@ -42,7 +42,11 @@ GENESIS = ("byron-genesis.json", "shelley-genesis.json", "alonzo-genesis.json", 
 # What the manifest requires per era. A family without a case is an incomplete gate in the Scala suite.
 COVERAGE = {
     "conway": ["UTXO", "UTXOW", "UTXOS", "LEDGER", "CERTS", "DELEG", "POOL", "GOVCERT", "GOV", "MEMPOOL"],
-    "babbage": ["UTXO", "UTXOW", "UTXOS", "LEDGER", "DELEG", "POOL"],
+    "babbage": ["UTXO", "UTXOW", "UTXOS", "PPUP", "LEDGER", "DELEG", "POOL"],
+    "alonzo": ["UTXO", "UTXOW", "UTXOS", "PPUP", "LEDGER", "DELEG", "POOL"],
+    "shelley": ["UTXO", "UTXOW", "PPUP", "LEDGER", "DELEG", "POOL"],
+    "allegra": ["UTXO", "UTXOW", "PPUP", "LEDGER", "DELEG", "POOL"],
+    "mary": ["UTXO", "UTXOW", "PPUP", "LEDGER", "DELEG", "POOL"],
 }
 # (DELEGS of the pinned ledger has no failure of its own: it wraps DELPL's, and the withdrawal failures are
 # LEDGER's, `ShelleyWithdrawalsMissingAccounts` and `ShelleyIncompleteWithdrawals`.)
@@ -54,8 +58,12 @@ RENDERED = {
                "GOVCERT": "GovCertFailure", "GOV": "ConwayGovFailure", "MEMPOOL": "ConwayMempoolFailure",
                "LEDGER": "Conway"},
     "babbage": {"UTXOW": "UtxowFailure", "UTXO": "UtxoFailure", "UTXOS": "UtxosFailure",
-                "DELEGS": "DelegsFailure", "DELEG": "DelegFailure", "POOL": "PoolFailure", "LEDGER": "Shelley"},
+                "DELEGS": "DelegsFailure", "DELEG": "DelegFailure", "POOL": "PoolFailure", "LEDGER": "Shelley",
+                "PPUP": "UpdateFailure"},
 }
+
+for _era in ("shelley", "allegra", "mary", "alonzo"):
+    RENDERED[_era] = RENDERED["babbage"]
 
 
 class Unexpected(Exception):
@@ -89,7 +97,9 @@ def babbage_family(failure):
         utxow = failure[1]
         if utxow[0] == 2:
             utxo = utxow[1]
-            return "UTXOS" if utxo[0] == 1 and utxo[1][0] == 7 else "UTXO"
+            if utxo[0] == 1 and utxo[1][0] == 7:
+                return "PPUP" if utxo[1][1][0] == 2 else "UTXOS"
+            return "UTXO"
         return "UTXOW"
     if tag == 1:
         delegs = failure[1]
@@ -99,7 +109,31 @@ def babbage_family(failure):
     return "LEDGER"
 
 
-FAMILY = {"conway": conway_family, "babbage": babbage_family}
+def shelley_family(failure):
+    """f649f975 Shelley UTXOW:176-207 wraps UTXO at4; Shelley/Allegra UTXO wraps PPUP at7."""
+    if failure[0] != 0:
+        return babbage_family(failure)
+    utxow = failure[1]
+    if utxow[0] == 4:
+        return "PPUP" if utxow[1][0] == 7 else "UTXO"
+    return "UTXOW"
+
+
+def alonzo_family(failure):
+    """f649f975 Alonzo UTXOW:169 wraps Shelley at0; UTXO:662 wraps UTXOS at7, its PPUP at2."""
+    if failure[0] != 0:
+        return babbage_family(failure)
+    utxow = failure[1]
+    if utxow[0] == 0 and utxow[1][0] == 4:
+        utxo = utxow[1][1]
+        if utxo[0] == 7:
+            return "PPUP" if utxo[1][0] == 2 else "UTXOS"
+        return "UTXO"
+    return "UTXOW"
+
+
+FAMILY = {"conway": conway_family, "babbage": babbage_family, "alonzo": alonzo_family,
+          "shelley": shelley_family, "allegra": shelley_family, "mary": shelley_family}
 
 
 def families(era, reason):
@@ -240,7 +274,13 @@ def refusal_corpus(args):
         cases = getattr(importlib.import_module(f".{module}", __package__), function)(args.name)
         command += f" --cases {args.cases}"
     else:
-        cases = corpus(args.name, f"{ENV}/socket/node1/sock") if era == "conway" else babbage_corpus(args.name)
+        if era == "conway":
+            cases = corpus(args.name, f"{ENV}/socket/node1/sock")
+        elif era == "babbage":
+            cases = babbage_corpus(args.name)
+            cases += [case for case in preconway_families(args.name, era) if case.label.startswith("ppup-")]
+        else:
+            cases = preconway_families(args.name, era)
     labels = [c.label for c in cases]
     if len(set(labels)) != len(labels):
         raise SystemExit("duplicate case labels")
@@ -279,6 +319,7 @@ def refusal_corpus(args):
     manifest_path = out / "manifest.json"
     manifest = (json.loads(manifest_path.read_text()) if manifest_path.exists()
                 else {"format": 1, "coverage": COVERAGE, "corpora": []})
+    manifest["coverage"] = COVERAGE
     manifest["corpora"] = sorted([c for c in manifest["corpora"] if c["path"] != corpus_name] +
                                  [{"path": corpus_name, "sha256": sha256(meta_bytes)}], key=lambda c: c["path"])
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")

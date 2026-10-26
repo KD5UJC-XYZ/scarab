@@ -28,6 +28,7 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.ledger.rules.{
   Counted,
   Judgment,
+  PreConway,
   ShelleyLedger,
   ShelleyLedgerEnv,
   Sts,
@@ -35,10 +36,14 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   TickFailure
 }
 import xyz.kd5ujc.scarab.ledger.state.{
+  Allegra,
+  Alonzo,
   Babbage,
   Conway,
   EraTag,
+  Mary,
   NewEpochState,
+  Shelley,
   ShelleyBasedEra,
   SlotNo,
   UtxoTables
@@ -64,8 +69,8 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
   * Each Conway case puts the submitted bytes through Scarab's own path: `LocalSubmission.unwrap`, a
   * mempool whose ledger is the reference's state ticked to the successor of the recorded tip
   * (`MempoolLedger.tick`), `MempoolState.add`, and `LocalSubmission.reasonItem`. The bytes must
-  * equal the reference's. A Babbage case goes through the era's LEDGER rule and encoding
-  * ([[replayBabbage]]). Apart from the explicitly incomplete text comparisons below, every
+  * equal the reference's. An earlier-era case goes through its LEDGER rule and encoding
+  * ([[replayPreConway]]). Apart from the explicitly incomplete text comparisons below, every
   * difference fails its case. A family the manifest requires for an era and no case covers fails
   * that era's coverage test (an incomplete gate is never a pass).
   *
@@ -97,8 +102,12 @@ class ReferenceRefusalSuite extends FunSuite:
         c.states.foreach { (file, bytes) =>
           test(s"${c.path}: the reference's state $file reads and writes back byte for byte") {
             c.era match
-              case RefusalEra.Conway  => roundTrip[Conway](bytes)
+              case RefusalEra.Shelley => roundTrip[Shelley](bytes)
+              case RefusalEra.Allegra => roundTrip[Allegra](bytes)
+              case RefusalEra.Mary    => roundTrip[Mary](bytes)
+              case RefusalEra.Alonzo  => roundTrip[Alonzo](bytes)
               case RefusalEra.Babbage => roundTrip[Babbage](bytes)
+              case RefusalEra.Conway  => roundTrip[Conway](bytes)
           }
         }
         c.utxos.foreach { (file, bytes) =>
@@ -137,8 +146,12 @@ class ReferenceRefusalSuite extends FunSuite:
 
   /** What Scarab answers for one case, from the recorded state. */
   private def replay(c: Corpus, rc: RefusalCase): Either[ReplayProblem, Judgement] = rc.era match
+    case RefusalEra.Shelley => replayPreConway[Shelley](c, rc)
+    case RefusalEra.Allegra => replayPreConway[Allegra](c, rc)
+    case RefusalEra.Mary    => replayPreConway[Mary](c, rc)
+    case RefusalEra.Alonzo  => replayPreConway[Alonzo](c, rc)
+    case RefusalEra.Babbage => replayPreConway[Babbage](c, rc)
     case RefusalEra.Conway  => replayConway(c, rc)
-    case RefusalEra.Babbage => replayBabbage(c, rc)
 
   /** The recorded state of a case of era `E`, with its UTxO, and the environment of its genesis. */
   private def recorded[E <: EraTag](c: Corpus, rc: RefusalCase)(using
@@ -154,20 +167,23 @@ class ReferenceRefusalSuite extends FunSuite:
       utxo <- UtxoCodecs.utxo.decodeBytes(utxoBytes).leftMap(ReplayProblem.Utxo(_))
     yield Recorded(withUtxo(nes, utxo), MempoolEnv(setup.globals, setup.geometry))
 
-  /** A Babbage case through the era's LEDGER rule and its predicate-failure encoding: Scarab's
+  /** A pre-Conway case through the era's LEDGER rule and its predicate-failure encoding: Scarab's
     * mempool and LocalTxSubmission serve Conway only, so this is the rule and the encoder, not the
     * node-to-client path. The state is ticked to the successor of the tip, as the reference's
     * mempool does, and the transaction judged as the first of a block in that slot.
     */
-  private def replayBabbage(c: Corpus, rc: RefusalCase): Either[ReplayProblem, Judgement] =
+  private def replayPreConway[E <: EraTag](c: Corpus, rc: RefusalCase)(using
+      pre: PreConway[E]
+  ): Either[ReplayProblem, Judgement] =
+    given ShelleyBasedEra[E] = pre.era
     for
-      at <- recorded[Babbage](c, rc)
+      at <- recorded[E](c, rc)
       env = at.env
       slot <- SlotNo
         .fromBigInt(rc.tipSlot + 1)
         .leftMap(e => ReplayProblem.Tick(TickFailure.Vocab(e)))
-      ticked <- Sts(Tick.sts[Babbage])(env.rules, (), at.nes, slot).leftMap(ReplayProblem.Tick(_))
-      tx <- babbageTx(rc.item)
+      ticked <- Sts(Tick.sts[E])(env.rules, (), at.nes, slot).leftMap(ReplayProblem.Tick(_))
+      tx <- preConwayTx(rc.item, rc.era.wire)
     yield
       val txEnv = TxEnv(
         slot = slot.toBigInt,
@@ -182,7 +198,7 @@ class ReferenceRefusalSuite extends FunSuite:
         decoder = env.decoder
       )
       Judgment
-        .run(ShelleyLedger.sts[Babbage], Judgment.Policy.Accumulate)(
+        .run(ShelleyLedger.sts[E], Judgment.Policy.Accumulate)(
           env.rules,
           ShelleyLedgerEnv(txEnv, ticked.es.chainAccount),
           Counted(ticked.es.ls, PlutusStats.zero),
@@ -193,16 +209,16 @@ class ReferenceRefusalSuite extends FunSuite:
           _.fold(
             failures =>
               PreConwayFailureCbor
-                .applyTxError(Era.Babbage, failures.toChain.toVector)
+                .applyTxError(rc.era.wire, failures.toChain.toVector)
                 .fold(Judgement.Unencodable(failures))(Judgement.Refused(_)),
             _ => Judgement.Accepted
           )
         )
 
-  /** The transaction of a Babbage LocalTxSubmission item `[5, #6.24(tx)]`. */
-  private def babbageTx(item: Bytes): Either[ReplayProblem, Tx] =
+  /** The original transaction of a LocalTxSubmission item `[era index, #6.24(tx)]`. */
+  private def preConwayTx(item: Bytes, expected: Era): Either[ReplayProblem, Tx] =
     val inner = Cbor.decode(item).toOption.map(_.value).collect {
-      case Value.Arr(Vector(era, payload)) if era.value == Value.UInt(BabbageIndex) =>
+      case Value.Arr(Vector(era, payload)) if era.value == Value.UInt(BigInt(expected.index)) =>
         payload.value match
           case Value.Tag(t, bytes) if t == 24 =>
             bytes.value match
@@ -212,7 +228,7 @@ class ReferenceRefusalSuite extends FunSuite:
     }
     inner.flatten
       .toRight(ReplayProblem.Item)
-      .flatMap(Tx.fromEnvelope(_, Era.Babbage).leftMap(ReplayProblem.Transaction(_)))
+      .flatMap(Tx.fromEnvelope(_, expected).leftMap(ReplayProblem.Transaction(_)))
 
   private def replayConway(c: Corpus, rc: RefusalCase): Either[ReplayProblem, Judgement] =
     for
@@ -319,8 +335,13 @@ object ReferenceRefusalSuite:
     }
 
   /** The eras the manifest can require coverage of. */
-  enum RefusalEra:
-    case Conway, Babbage
+  enum RefusalEra(val wire: Era):
+    case Shelley extends RefusalEra(Era.Shelley)
+    case Allegra extends RefusalEra(Era.Allegra)
+    case Mary extends RefusalEra(Era.Mary)
+    case Alonzo extends RefusalEra(Era.Alonzo)
+    case Babbage extends RefusalEra(Era.Babbage)
+    case Conway extends RefusalEra(Era.Conway)
 
   object RefusalEra:
     private val byName = values.map(e => e.toString.toLowerCase -> e).toMap
@@ -331,7 +352,7 @@ object ReferenceRefusalSuite:
     * reference's constructor tags.
     */
   enum Family:
-    case UTXO, UTXOW, UTXOS, LEDGER, CERTS, DELEGS, DELEG, POOL, GOVCERT, GOV, MEMPOOL
+    case UTXO, UTXOW, UTXOS, PPUP, LEDGER, CERTS, DELEGS, DELEG, POOL, GOVCERT, GOV, MEMPOOL
 
   object Family:
     private val byName = values.map(f => f.toString -> f).toMap
@@ -348,9 +369,6 @@ object ReferenceRefusalSuite:
 
   /** A case's recorded state, with its UTxO, and the environment of the corpus genesis. */
   final case class Recorded[E <: EraTag](nes: NewEpochState[E], env: MempoolEnv)
-
-  /** The hard-fork-combinator index of Babbage. */
-  private val BabbageIndex = BigInt(5)
 
   enum Judgement:
     case Refused(reason: Bytes)
@@ -385,7 +403,7 @@ object ReferenceRefusalSuite:
       case State(e)       => s"the reference's state does not decode: ${e.render}"
       case Utxo(e)        => s"the reference's UTxO does not decode: ${e.render}"
       case Tick(f)        => s"the state does not tick to the next slot: ${f.show}"
-      case Item           => "the case's item is not `[5, #6.24(tx)]`"
+      case Item           => "the case's item is not `[expected era index, #6.24(tx)]`"
       case Transaction(e) => s"Scarab does not decode the transaction: ${e.message}"
     }
 

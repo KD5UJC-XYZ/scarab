@@ -434,3 +434,50 @@ def submit_setup(b, funder, era, outputs):
             return body_hash
         b.sh("sleep 1")
     raise RuntimeError("the setup transaction of the script cases did not reach a block")
+
+
+def babbage_ppup(name):
+    """Add the retired PPUP rule to an existing Babbage corpus without recapturing other cases."""
+    return [case for case in preconway_families(name, "babbage") if case.label.startswith("ppup-")]
+
+
+def preconway_families(name, era):
+    """Recorded family and accumulation cases for a cluster stopped in a pre-Conway era."""
+    from .util import SOCKET
+    b = EraWallets(name)
+    wd, other = b.wallet(2), b.wallet(3)
+    key, stake = wd["key"], wd["stake"]
+    fresh_stake, fresh_cold = seeded_key(f"{era} refusal stake"), seeded_key(f"{era} refusal pool")
+    tip = json.loads(b.sh(f"cardano-cli query tip {SOCKET}"))
+    params = json.loads(b.sh(f"cardano-cli query protocol-parameters {SOCKET}"))
+    unknown_pool = eratx.blake2b(b"refusal corpus unknown pool", 28)
+    cases = []
+
+    def spend(fee=FEE, delta=0, signers=None, **kw):
+        return dict(inputs=[txin(wd)], outputs=[eratx.tx_out(era, wd["address"], wd["lovelace"] - fee + delta)],
+                    fee=fee, signers=signers or [key], ttl=tip["slot"] + 1_000_000, **kw)
+
+    def add(label, expect, **kw):
+        tx, _ = eratx.build_tx(era, **kw)
+        cases.append(Case(label, tx, tuple(expect)))
+
+    add("fee-too-small", ["FeeTooSmallUTxO"], **spend(fee=1))
+    add("missing-witness", ["MissingVKeyWitnessesUTXOW"], **spend(signers=[other["key"]]))
+    add("withdrawal-unregistered-account", ["Withdrawals"],
+        **spend(withdrawals={eratx.reward_address(fresh_stake.hash): 0}, signers=[key, fresh_stake]))
+    add("deleg-stake-key-registered", ["StakeKeyAlreadyRegisteredDELEG"],
+        **spend(certs=[eratx.stake_key_cert(0, stake.hash)]))
+    add("pool-retire-unregistered", ["StakePoolNotRegisteredOnKeyPOOL"],
+        **spend(certs=[eratx.pool_retirement_cert(fresh_cold.hash, tip["epoch"] + 1)],
+                signers=[key, fresh_cold]))
+    add("certs-three-failing", ["StakeKeyAlreadyRegisteredDELEG", "DelegateeNotRegisteredDELEG",
+                                "StakePoolNotRegisteredOnKeyPOOL"],
+        **spend(delta=-params["stakeAddressDeposit"],
+                certs=[eratx.stake_key_cert(0, stake.hash), eratx.delegation_cert(stake.hash, unknown_pool),
+                       eratx.pool_retirement_cert(fresh_cold.hash, tip["epoch"] + 1)],
+                signers=[key, stake, fresh_cold]))
+    add("ppup-non-genesis-proposer", ["NonGenesisUpdatePPUP"],
+        **spend(update=[{fresh_stake.hash: {0: 45}}, tip["epoch"]]))
+    if era in ("alonzo", "babbage"):
+        add("utxos-empty-script-set-invalid", ["ValidationTagMismatch"], **spend(is_valid=False))
+    return cases

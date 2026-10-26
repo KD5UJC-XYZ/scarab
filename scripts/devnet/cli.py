@@ -104,7 +104,7 @@ def main():
         return eras
     ue = sub.add_parser("up-eras", parents=[eras_options()],
                         help="start in Byron and walk Shelley..Conway (one epoch per era step)")
-    ue.add_argument("--final-era", choices=["alonzo", "babbage"],
+    ue.add_argument("--final-era", choices=["shelley", "allegra", "mary", "alonzo", "babbage"],
                     help="stop walking in this era: no later hard fork is configured or proposed")
     ue.set_defaults(run=up_eras)
     ce = sub.add_parser("capture-eras", help="capture the running up-eras chain as fixtures")
@@ -290,8 +290,8 @@ def main():
     fl.set_defaults(run=faults)
     rc = sub.add_parser("refusal-corpus", help="record the reference's complete refusals of the refusal corpus "
                                                "(on a cluster already `up` under this name)")
-    rc.add_argument("--era", choices=["conway", "babbage"], default="conway",
-                    help="the era of the cluster: conway (`up`) or babbage (`up-eras --final-era babbage`)")
+    rc.add_argument("--era", choices=["shelley", "allegra", "mary", "alonzo", "babbage", "conway"], default="conway",
+                    help="the era of the cluster: conway (`up`) or an earlier era (`up-eras --final-era <era>`)")
     rc.add_argument("--corpus", help="the corpus directory to write under --out (default <era>-devnet)")
     rc.add_argument("--cases", help="another case builder, `module:function` in scripts/devnet, called with the "
                                     "devnet name and returning `refusalcases.Case`s")

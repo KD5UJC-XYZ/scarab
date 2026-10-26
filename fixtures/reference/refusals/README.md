@@ -27,7 +27,7 @@ each failure, read from the reference's constructor tags), `expect` (the constru
 built to provoke) and `rendered` (what `cardano-cli transaction submit` printed for a second submission
 of the same transaction; a diagnostic only, never compared).
 
-The families are UTXO, UTXOW, UTXOS, LEDGER (the ledger rule's own failures), CERTS, DELEGS, DELEG, POOL,
+The families are UTXO, UTXOW, UTXOS, PPUP, LEDGER (the ledger rule's own failures), CERTS, DELEGS, DELEG, POOL,
 GOVCERT, GOV and MEMPOOL. `scripts/tests/test_refusalcorpus.py` checks that each recorded family is the
 one the reference's rendering names.
 
@@ -39,13 +39,13 @@ that does not read and write back byte for byte fails its own test), ticks it to
 `LocalSubmission.unwrap`, `MempoolState.add` on an empty mempool, `LocalSubmission.reasonItem`. The
 result must equal `reason` byte for byte: every failure, their number and their order.
 
-For a **Babbage** case the same state is ticked and the transaction is judged by Scarab's Babbage LEDGER
-rule (`ShelleyLedger.sts[Babbage]`) and written by `PreConwayFailureCbor`. Scarab's mempool and
+For a **Shelley, Allegra, Mary, Alonzo or Babbage** case the same state is ticked and the transaction
+is judged by that era's LEDGER rule (`ShelleyLedger.sts[E]`) and written by `PreConwayFailureCbor`. Scarab's mempool and
 LocalTxSubmission serve Conway only, so this compares the rule and its encoding, not a node-to-client
 path.
 
-The corpus currently contains 75 transactions: 27 Babbage and 48 Conway. Of these, 73
-compare the complete refusal bytes. Two `utxos-script-fails-flag-true` cases (one per era)
+The 2026-10-26 corpus contains 105 transactions: 7 each in Shelley, Allegra and Mary,
+8 in Alonzo, 28 in Babbage and 48 in Conway. Of these, 103 compare the complete refusal bytes. Two `utxos-script-fails-flag-true` cases (one in Babbage and one in Conway)
 have an explicitly incomplete comparison under [#491](https://github.com/KD5UJC-XYZ/scarab/issues/491):
 the suite removes only the `PlutusFailure` text to compare the remaining structure, checks that the
 original refusal bytes still differ, and cancels the case. Neither is counted as a conformance pass;
@@ -66,8 +66,12 @@ These expectations come from the released node's submission path. Separately, th
 `UpstreamFreshLedgerConformanceSuite` and `UpstreamMultiLedgerConformanceSuite` use the same production
 transaction rules under accumulation, with a native-shaped LEDGERS adapter, and compare all original
 native refusal lists as complete bytes. Their original inputs and native/formal provenance remain
-separate from these devnet captures. The recorded devnet corpus currently covers Babbage and Conway
-only; earlier eras and PPUP coverage required by #401 remain incomplete.
+separate from these devnet captures. The recorded devnet corpus covers the six Shelley-based eras.
+PPUP is identified at its era-specific embedding: directly under UTXO through Mary and under UTXOS
+in Alonzo and Babbage. The early-era cases include three failing certificates and complete accumulated
+failures; Alonzo also includes an invalid validity flag with an empty script set, requiring no
+PlutusFailure-text exception. These STS/LEDGERS comparisons do not establish Byron transaction-error
+coverage or exhaust every constructor within each family.
 
 ## Refresh
 
