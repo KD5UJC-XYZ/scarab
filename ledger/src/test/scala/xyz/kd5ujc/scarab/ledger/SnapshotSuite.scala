@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, StakeDistribution}
-import xyz.kd5ujc.scarab.ledger.rules.NativeRewardFixture.{compact, cred, ok, pool, stakePool}
+import xyz.kd5ujc.scarab.ledger.rules.NativeRewardFixture.{compact, cred, pool, stakePool}
 import xyz.kd5ujc.scarab.ledger.state.{PoolDistr, Sorted}
 import xyz.kd5ujc.scarab.ledger.state.given
 
@@ -21,13 +21,11 @@ class SnapshotSuite extends munit.FunSuite:
       idleOnly -> pool(11),
       elsewhere -> pool(99)
     ).map((c, p) => c -> EraLedger.AccountView(compact(0), compact(0), Some(p)))
-    val active = ok(
-      StakeDistribution.resolve(
-        Sorted.map(List(staked -> compact(500))),
-        accounts.iterator,
-        Sorted.empty,
-        Sorted.empty
-      )
+    val active = StakeDistribution.resolve(
+      Sorted.map(List(staked -> compact(500))),
+      accounts.iterator,
+      Sorted.empty,
+      Sorted.empty
     )
     // pool 10 has a staked and an idle delegator: its stake is not reset; pool 11 has only an idle
     // one; pool 12 has none; 99 is not a registered pool
@@ -38,7 +36,7 @@ class SnapshotSuite extends munit.FunSuite:
         pool(12) -> stakePool(cred(12))
       )
     )
-    val distribution = PoolDistr.of(ok(StakeDistribution.snapshot(active, pools)))
+    val distribution = PoolDistr.of(StakeDistribution.snapshot(active, pools))
     assertEquals(
       distribution.distribution.view.mapValues(_.totalPoolStake.toBigInt).toMap,
       Map(pool(10) -> BigInt(500), pool(11) -> BigInt(0))

@@ -265,8 +265,8 @@ class ConwayLedgerSuite extends FunSuite:
     )(ConwayLedgerState.cert.replace(withCert)(ls))
     val built = ConwayNewEpochState.ls.replace(withGov)(registered)
     val deposited = NativeRules.obligation(built)
-    val held = ok(Coin.fromBigInt(deposited))
-    val reserves = ok(Coin.fromBigInt(TestLedger.Supply - utxoOf(built).coin - deposited))
+    val held = Coin(deposited)
+    val reserves = Coin(TestLedger.Supply - utxoOf(built).coin - deposited)
     ConwayNewEpochState.reserves.replace(reserves)(
       ConwayNewEpochState.ls
         .andThen(LedgerState.utxo[Conway])

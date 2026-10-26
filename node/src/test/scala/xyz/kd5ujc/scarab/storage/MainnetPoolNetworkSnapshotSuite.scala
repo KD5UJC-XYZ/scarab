@@ -139,9 +139,7 @@ class MainnetPoolNetworkSnapshotSuite extends CatsEffectSuite:
         future = pools.future.updated(poolId, registration)
       )
       val mark = nes.es.snapshots.mark
-      val inMark = vocab(
-        StakeDistribution.poolSnapshot(mark.activeStake, mark.activeStake.total, state)
-      )
+      val inMark = StakeDistribution.poolSnapshot(mark.activeStake, mark.activeStake.total, state)
       nes.copy(es =
         nes.es.copy(
           ls = LedgerState.pState[Shelley].replace(registered)(ls),

@@ -177,18 +177,16 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       )
       val governed = ls.copy[Conway](cert = cert, utxo = ls.utxo.copy(gov = gov))
       val pending = registered.copy(es = registered.es.copy(ls = governed))
-      val deposited = must(native.Coin.fromBigInt(NativeRules.obligation(pending)))
+      val deposited = native.Coin(NativeRules.obligation(pending))
       val withDeposits = governed.copy[Conway](utxo = governed.utxo.copy(deposited = deposited))
-      val mark = must(
-        EraLedger
-          .activeStake(withDeposits)
-          .flatMap(StakeDistribution.snapshot(_, withDeposits.cert.pState.stakePools))
+      val mark = StakeDistribution.snapshot(
+        EraLedger.activeStake(withDeposits),
+        withDeposits.cert.pState.stakePools
       )
       val unreserved = Step(
         registered.copy(es =
           registered.es.copy(
-            chainAccount =
-              ChainAccountState(must(native.Coin.fromBigInt(treasury)), native.Coin.zero),
+            chainAccount = ChainAccountState(native.Coin(treasury), native.Coin.zero),
             ls = withDeposits,
             snapshots = registered.es.snapshots.copy(mark = mark)
           )
@@ -197,7 +195,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
         fundCoin,
         0
       )
-      val reserves = must(native.Coin.fromBigInt(Supply - unreserved.total))
+      val reserves = native.Coin(Supply - unreserved.total)
       unreserved.copy(nes =
         unreserved.nes.copy(es =
           unreserved.nes.es

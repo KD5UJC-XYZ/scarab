@@ -66,9 +66,7 @@ class PreprodByronKeyWitnessSuite extends FunSuite:
   private val world: NewEpochState[Conway] =
     val params = TestLedger.params(10).copy(minFeeA = 44, minFeeB = 155381, keyDeposit = 2 * ada)
     val nes = Build.funded(Build.nes[Conway](196, params), inputs)
-    val reserves = Coin
-      .fromBigInt(Supply - nes.es.ls.utxo.utxo.utxo.coin)
-      .fold(e => fail(e.toString), identity)
+    val reserves = Coin(Supply - nes.es.ls.utxo.utxo.utxo.coin)
     ConwayNewEpochState.reserves.replace(reserves)(nes)
 
   private val conwayEnv = env.copy(slot = 83038792, epoch = 196)

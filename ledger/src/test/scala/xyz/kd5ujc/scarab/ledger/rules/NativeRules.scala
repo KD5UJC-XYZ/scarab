@@ -60,9 +60,7 @@ object NativeRules:
       ShelleyBasedEra[E]
   ): NewEpochState[E] =
     val nes = Build.funded(Build.nes[E](5, TestLedger.params(protocolMajor)), funds.toMap)
-    val reserves = Coin
-      .fromBigInt(TestLedger.Supply - nes.es.ls.utxo.utxo.utxo.coin)
-      .fold(e => broken(s"$e"), identity)
+    val reserves = Coin(TestLedger.Supply - nes.es.ls.utxo.utxo.utxo.coin)
     nes.copy(es = nes.es.copy(chainAccount = nes.es.chainAccount.copy(reserves = reserves)))
 
   /** The constants of the rules for a transaction context: [[TestLedger.globals]] on its network

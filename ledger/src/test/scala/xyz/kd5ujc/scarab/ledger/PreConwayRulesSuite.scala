@@ -65,7 +65,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
   private val boundaryGlobals = LedgerGlobals(Supply, 10000, Rational(1, 20), 0, updateQuorum = 2)
 
   private def ok[A](v: Either[VocabError, A]): A = v.fold(e => fail(e.toString), identity)
-  private def coin(n: BigInt): NativeCoin = ok(NativeCoin.fromBigInt(n))
+  private def coin(n: BigInt): NativeCoin = NativeCoin(n)
   private def compact(n: BigInt): CompactCoin = ok(CompactCoin.fromBigInt(n))
   private def staking(c: Credential): native.Credential[Staking] =
     ok(Convert.credential[Staking](c))
@@ -350,7 +350,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     )
     assertEquals(rule(run(s1, tx(dereg, Vector(alice)))), "MissingVKeyWitnessesUTXOW")
     // five lovelace of rewards in the account, paid from the reserves
-    val credited = ok(EraLedger.credit(s1.es.ls, Vector(staking(stake.credential) -> coin(5))))
+    val credited = EraLedger.credit(s1.es.ls, Map(staking(stake.credential) -> compact(5)))
     val funded1 = paid(s1.copy(es = s1.es.copy(ls = credited)), 0, 5)
     assertEquals(
       rule(run(funded1, tx(dereg, Vector(alice, stake)))),
@@ -842,10 +842,9 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
         0,
         Some(poolId(b))
       )
-      val snap = ok(
-        EraLedger
-          .activeStake(base.es.ls)
-          .flatMap(StakeDistribution.snapshot(_, base.es.ls.cert.pState.stakePools))
+      val snap = StakeDistribution.snapshot(
+        EraLedger.activeStake(base.es.ls),
+        base.es.ls.cert.pState.stakePools
       )
       // a pool that made no block is not in the blocks made, as in the reference
       val blocks = BlocksMade(

@@ -57,9 +57,7 @@ class DevnetRefusedTxSuite extends FunSuite:
     }
     val held = base.es.ls.utxo.utxo.utxo.toMap
     val utxo = held ++ values.filterNot(v => held.contains(v._1))
-    val reserves = Coin
-      .fromBigInt(Supply - utxo.valuesIterator.map(_.value.coin).sum)
-      .fold(e => fail(s"$e"), identity)
+    val reserves = Coin(Supply - utxo.valuesIterator.map(_.value.coin).sum)
     ConwayNewEpochState.reserves.replace(reserves)(Build.funded(base, utxo))
 
   /** The empty state of the suites at protocol version `major`, with no pool deposit and no minimum
