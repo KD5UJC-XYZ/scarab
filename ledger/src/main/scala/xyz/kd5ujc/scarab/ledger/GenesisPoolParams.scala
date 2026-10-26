@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import cats.syntax.all.*
 import io.circe.{ACursor, Json}
+import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError, Rational}
 
 /** The complete genesis `StakePoolParams` JSON boundary (`State/StakePool.hs:467-482`, f649f975).
@@ -12,15 +13,15 @@ import xyz.kd5ujc.scarab.codec.{Bytes, DomainError, Rational}
 object GenesisPoolParams:
   enum Error extends DomainError:
     case Number(field: String, value: Json)
-    case IntegerExponent(field: String, exponent: BigInt)
+    case IntegerExponent(field: String, exponent: Long)
     case FractionalInteger(field: String, value: Json)
     case NegativeMargin(value: Json)
-    case MarginPrecision(exponent: BigInt)
+    case MarginPrecision(exponent: Long)
     case MarginBounds(value: Rational)
-    case ZeroDenominator
+    case ZeroDenominator, InvalidUnicode
     def message: String = toString
 
-  private final case class Scientific(coefficient: BigInt, exponent: BigInt):
+  private final case class Scientific(coefficient: BigInt, exponent: Long):
     def normalized: Scientific =
       if coefficient == 0 then Scientific(0, 0)
       else
@@ -38,7 +39,10 @@ object GenesisPoolParams:
       case Some(number(sign, whole, fraction, power)) =>
         val decimals = Option(fraction).getOrElse("")
         // JsonNumber supplies valid numeric tokens; each BigInt input consists of signed digits.
-        val exponent = Option(power).fold(BigInt(0))(BigInt(_)) - decimals.length
+        // Scientific's exponent is machine Int in the pinned 64-bit native reader; overflowing
+        // the decimal exponent and subtracting the fraction width both wrap at this boundary
+        // (aeson-2.2.5.0, Decoding/ByteString/Lazy.hs:258-276).
+        val exponent = Option(power).fold(0L)(p => BigInt(p).toLong) - decimals.length
         Right(Scientific(BigInt(sign + whole + decimals), exponent))
       case _ => Left(failure(Error.Number(field, value)))
 
@@ -52,8 +56,22 @@ object GenesisPoolParams:
       else if n.exponent >= 0 then Right(n.coefficient * BigInt(10).pow(n.exponent.toInt))
       else
         val zeros = n.coefficient.toString.reverse.takeWhile(_ == '0').length
-        if -n.exponent > zeros then Left(failure(Error.FractionalInteger(field, value)))
+        if -BigInt(n.exponent) > zeros then Left(failure(Error.FractionalInteger(field, value)))
         else Right(n.coefficient / BigInt(10).pow((-n.exponent).toInt))
+    }
+
+  /** Word16 uses Scientific.toBoundedInteger, not Integer's exponent guard. Normalize after native
+    * exponent wrapping and test the actual Word16 range (scientific-0.3.8.1:771-803).
+    */
+  private[ledger] def relayPort(value: Json): Option[RelayPort] =
+    scientific("port", value).toOption.flatMap { input =>
+      val n = input.normalized
+      if n.exponent < 0 || n.exponent > 4 then None
+      else
+        val integer = n.coefficient * BigInt(10).pow(n.exponent.toInt)
+        Option
+          .when(integer >= 0 && integer <= RelayPort.MaxValue)(integer.toInt)
+          .flatMap(RelayPort.fromInt)
     }
 
   private def integerField(c: ACursor, field: String): Either[ConfigError, BigInt] =
@@ -119,9 +137,37 @@ object GenesisPoolParams:
       cred <- credential(c.downField("credential"))
     yield RewardAccount(network, cred)
 
+  // Aeson builds Text only after validating Unicode in every JSON string, including ignored
+  // fields and object keys. Circe admits lone UTF-16 surrogates; enforce the native value domain
+  // here before field alternatives or CBOR encoding can replace/refuse them inconsistently.
+  private def unicode(value: Json): Either[ConfigError, Unit] =
+    @tailrec def text(s: String, at: Int = 0): Boolean =
+      if at == s.length then true
+      else if Character.isHighSurrogate(s.charAt(at)) then
+        if at + 1 < s.length && Character.isLowSurrogate(s.charAt(at + 1)) then text(s, at + 2)
+        else false
+      else if Character.isLowSurrogate(s.charAt(at)) then false
+      else text(s, at + 1)
+    @tailrec def loop(todo: List[Json]): Boolean = todo match
+      case Nil => true
+      case head :: tail =>
+        head.asString match
+          case Some(s) => if text(s) then loop(tail) else false
+          case None =>
+            head.asArray match
+              case Some(values) => loop(values.toList ::: tail)
+              case None =>
+                head.asObject match
+                  case Some(fields) =>
+                    if fields.keys.forall(s => text(s)) then loop(fields.values.toList ::: tail)
+                    else false
+                  case None => loop(tail)
+    Either.cond(loop(List(value)), (), failure(Error.InvalidUnicode))
+
   def read(id: String, value: Json): Either[ConfigError, (Bytes, PoolParams)] =
     val c = value.hcursor
     for
+      _ <- unicode(value)
       key <- GenesisState.hex28(id)
       operator <- hash(c, "poolId", 28).orElse(hash(c, "publicKey", 28))
       vrf <- hash(c, "vrf", 32)

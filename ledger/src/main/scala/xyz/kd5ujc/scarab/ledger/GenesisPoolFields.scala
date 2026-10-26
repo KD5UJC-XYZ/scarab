@@ -56,7 +56,7 @@ object GenesisPoolFields:
         .leftMap(e => ConfigError(ConfigProblem.JsonField("genesis pool relay", "port", e)))
         .flatMap(_.traverse { value =>
           Either.fromOption(
-            value.asNumber.flatMap(_.toInt).flatMap(RelayPort.fromInt),
+            GenesisPoolParams.relayPort(value),
             failure(Error.Port(value))
           )
         })

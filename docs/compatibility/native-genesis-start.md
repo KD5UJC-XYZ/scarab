@@ -24,10 +24,18 @@ The pool relay/metadata JSON reader follows `State/StakePool.hs:293-360,467-483`
 
 The complete pool parameter reader also follows the native ID/account aliases and fallback order,
 exact hash lengths and network names, script-first credential alternatives, signed/unbounded Coin,
-and UnitInterval JSON rules. [Eighty-eight native pool cases](../../fixtures/reference/genesis-pool-params/README.md)
+and UnitInterval JSON rules. [117 native pool cases](../../fixtures/reference/genesis-pool-params/README.md)
 compare all acceptance decisions and every accepted field, retaining original numeric spellings.
 Aeson's Integer exponent guard is separate from Coin's unbounded value domain; margin JSON normalizes
 Scientific before its precision bound and reduces rational objects before the Word64 check.
+Scientific exponent arithmetic wraps at the native signed-64-bit boundary. Unicode validation
+visits every retained JSON key/string, including ignored fields, before decoding pool alternatives; malformed
+UTF-16 cannot be silently replaced by the relay encoder. A small-stack regression traverses
+20,000 nested ignored arrays. Raw ingress remains a prerequisite: Circe can replace malformed UTF-8
+or discard an invalid string in an overwritten field before this AST boundary sees it. Actual
+native/Scala controls confirm that gap; [#497](https://github.com/KD5UJC-XYZ/scarab/issues/497)
+must align raw-byte and string-token admission before this change is ready. The AST checks do not
+establish native root JSON admissibility.
 `GenesisStartSuite` verifies that native pool construction keeps the outer map key and drops only
 the inner ID/account network. The new `genesis-pool-params` target fuzzes the complete reader.
 These captures do not establish whole-genesis conformance or identical Scala/native diagnostic text.

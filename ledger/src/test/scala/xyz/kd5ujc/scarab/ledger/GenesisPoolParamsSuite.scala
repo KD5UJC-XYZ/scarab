@@ -51,3 +51,18 @@ class GenesisPoolParamsSuite extends FunSuite:
       else assert(decoded.isLeft, s"reference refused ${field[String](c, "name")}")
     }
   }
+
+  test("Unicode validation visits deeply nested ignored data on a small stack") {
+    val base =
+      parser.parse(field[String](cases.head, "poolJson")).fold(e => fail(e.message), identity)
+    def nested(value: Json): Json = (0 until 20000).foldLeft(value)((j, _) => Json.arr(j))
+    val valid = base.mapObject(_.add("ignored", nested(Json.fromString("\ud800\udc00"))))
+    val invalid = base.mapObject(_.add("ignored", nested(Json.fromString("\ud800"))))
+    val good = PreprodDeepTx.onSmallStack(GenesisState.pool(outerId, valid))
+    val bad = PreprodDeepTx.onSmallStack(GenesisState.pool(outerId, invalid))
+    assert(good.isRight)
+    assertEquals(
+      bad.left.map(_.problem),
+      Left(ConfigProblem.GenesisPoolParams(GenesisPoolParams.Error.InvalidUnicode))
+    )
+  }

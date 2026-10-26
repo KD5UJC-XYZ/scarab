@@ -7,7 +7,7 @@
   "imageId": "sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef",
   "freezeSha256": "f7e6220cf1d723bb8722b4a7e90be5993c4f1fa5a380e64a13c3303546e8a68c",
   "harnessSha256": "0831b168ac3a4eb74071b2988039c4bca9582e1fafa022e01be24feecb286951",
-  "casesSha256": "35042ba8c0b412f19f5eb2726e79a268b88d71552a6c49968d9d4623fa804ec0",
+  "casesSha256": "f633a4c2dc91eb1231bd98e2ef4dffe6399f3b76af197fc48fe8e01ec2ff3109",
   "sourceFiles": [
     {
       "package": "cardano-ledger-core",
@@ -69,6 +69,20 @@
       "archiveSha256": "e22f9883adce9e02d77de6a1bba36f2f98d322c8a9fa3bc51596d31493d00ac5",
       "file": "src/Data/Aeson/Types/FromJSON.hs",
       "sourceSha256": "a089e0dfb1196a719e1cfbdf8dc022dd0a107f756989b324f461c5eb587f1c16"
+    },
+    {
+      "package": "aeson",
+      "version": "2.2.5.0",
+      "archiveSha256": "e22f9883adce9e02d77de6a1bba36f2f98d322c8a9fa3bc51596d31493d00ac5",
+      "file": "src/Data/Aeson/Decoding/ByteString/Lazy.hs",
+      "sourceSha256": "b1b68434ef3d4b46f86fdb1debf337972b18806c567e63c9133987cff7fc9f09"
+    },
+    {
+      "package": "scientific",
+      "version": "0.3.8.1",
+      "archiveSha256": "ad3781be149dfc7936e62eb9c3ad78ded0e9985b4dae16d2f62d9ba957ccdcfe",
+      "file": "src/Data/Scientific.hs",
+      "sourceSha256": "c8769f9c91fbf3430cdd98419b0045be0b772de777ac4fd6cdae7bed0a51167f"
     }
   ],
   "packageUnits": [
@@ -103,11 +117,42 @@
       "sourceSha256": "18a331a7e0e6f9dc89a2da95577b0d76bd2690b8f832b72b46d6cc9b667b4ba5"
     }
   ],
-  "caseCount": 88,
-  "accepted": 44,
-  "refused": 44,
+  "caseCount": 117,
+  "accepted": 55,
+  "refused": 62,
   "encodingNote": "Released cardano-ledger-binary 1.9.1.0 writes IPv4 in network order; its fix differs from the f649f975 binary source. Core JSON parser sources above match the pinned commit exactly.",
-  "captureInputsSha256": "65eee5137a9bf383302a26dad7f3d05688896eae445de1a9b6f4e59c9ccfa69a",
-  "nativeCaptureSeconds": 4.693915843963623,
-  "captureImageNote": "Capture used the local tag; complete corpus replay subsequently pins this immutable image ID. Historical relay/metadata corpus provenance is separate."
+  "captureImageNote": "Capture used the local tag; complete corpus replay subsequently pins this immutable image ID. Historical relay/metadata corpus provenance is separate.",
+  "captureBatches": [
+    {
+      "cases": 88,
+      "inputsSha256": "65eee5137a9bf383302a26dad7f3d05688896eae445de1a9b6f4e59c9ccfa69a",
+      "seconds": 4.693915843963623
+    },
+    {
+      "cases": 16,
+      "inputsSha256": "d0e063b428c22ab0d0d11ec541ef3054123320fcfee6531de16a5e36d602ca7d",
+      "seconds": 4.273199081420898
+    },
+    {
+      "cases": 7,
+      "inputsSha256": "1d2ff9878d70ddd32e31c898989f98b9f943dfa8f920cc68f4c9367d470ddcfd",
+      "seconds": 4.530459880828857
+    },
+    {
+      "cases": 6,
+      "inputsSha256": "c12dac8b8801b71be4f72b774b5cb33de9a799c820aad0c10510c455b356bc3a",
+      "seconds": 4.384340286254883
+    }
+  ],
+  "remainingPrerequisite": "Raw UTF-8 and original string-token admission before duplicate-field collapse (#497); AST-value checks cannot recover discarded invalid values. Not a waived conformance case.",
+  "rawIngressPrerequisite": {
+    "cases": 4,
+    "accepted": 1,
+    "refused": 3,
+    "confirmedScalaDisagreements": 2,
+    "casesSha256": "dfbea5fd3e9f48e83aabedc74361f4fd97e2a6fed5df32c6fd6db26baaa8eec7",
+    "inputsSha256": "8f0953c8d013adce046bd318635f87cc713982e49f4ed37b9ef27ddf64f927a0",
+    "seconds": 4.844549179077148,
+    "gate": "incomplete; #497 must implement raw ingress before readiness"
+  }
 }
