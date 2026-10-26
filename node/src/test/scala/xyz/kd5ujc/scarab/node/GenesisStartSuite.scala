@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node
 import io.circe.{Json, parser}
 import java.nio.file.{Files, Path}
 import munit.FunSuite
+import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorExtras, MirrorProvenance}
 import xyz.kd5ujc.scarab.ledger.{ConfigProblem, GenesisState, ProtocolParams, Ptr}
@@ -567,6 +568,53 @@ class GenesisStartSuite extends FunSuite:
     }
     assert(pools.values.forall(_.deposit.toBigInt == 0))
     assert(nes.es.ls.cert.pState.vrfKeyHashes.isEmpty)
+  }
+
+  test("genesis pool relays and metadata reach native pool state unchanged") {
+    val example = Files
+      .readAllLines(Path.of("fixtures/reference/genesis-pool-fields/cases.jsonl"))
+      .asScala
+      .toVector
+      .map(s => parser.parse(s).fold(e => fail(e.message), identity))
+      .find(_.hcursor.get[String]("name").contains("all-relay-forms"))
+      .getOrElse(fail("missing native pool fields reference case"))
+    val poolFields = example.hcursor.downField("pool")
+    val fields = Json.obj(
+      "relays" -> poolFields.get[Json]("relays").fold(e => fail(e.message), identity),
+      "metadata" -> poolFields.get[Json]("metadata").fold(e => fail(e.message), identity)
+    )
+    val changed = files { (name, value) =>
+      if name != "shelley-genesis.json" then value
+      else
+        val pools = value.hcursor
+          .downField("extraConfig")
+          .downField("stakePools")
+          .downField("data")
+          .as[Map[String, Json]]
+          .fold(e => fail(e.message), identity)
+        value.deepMerge(
+          Json.obj(
+            "extraConfig" -> Json.obj(
+              "stakePools" -> Json.obj(
+                "data" -> Json.obj(pools.toVector.map((id, p) => id -> p.deepMerge(fields))*)
+              )
+            )
+          )
+        )
+    }
+    val state = conwayOf(NodeSetup.fromFiles(changed).fold(e => fail(e.message), identity))
+    val expectedRelays = example.hcursor
+      .get[String]("relays")
+      .fold(e => fail(e.message), identity)
+    val expectedMetadata = example.hcursor
+      .get[Vector[String]]("metadata")
+      .fold(e => fail(e.message), identity)
+    val pools = CertLens.pools.get(state.es.ls.cert)
+    assert(pools.nonEmpty)
+    pools.values.foreach { p =>
+      assertEquals(p.relays.hex, expectedRelays)
+      assertEquals(p.metadata.toVector.map(_.hex), expectedMetadata)
+    }
   }
 
   test("the genesis DReps hold the vote delegations, and the delegators' accounts name them") {

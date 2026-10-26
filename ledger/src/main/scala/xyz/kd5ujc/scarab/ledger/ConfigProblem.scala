@@ -45,6 +45,7 @@ enum ConfigProblem:
   case PeerSnapshot[E <: DomainError](cause: E)
   case StateMirror[E <: DomainError](cause: E)
   case GenesisStart(cause: rules.GenesisStartError)
+  case GenesisPool(cause: GenesisPoolFields.Error)
   case Ancillary[E <: DomainError](cause: E)
   case FileRead(file: String, cause: Throwable)
   case InvalidPath(value: String, cause: Throwable)

@@ -132,8 +132,8 @@
    "module": "ledger",
    "path": "ledger",
    "responsibility": "Blocks, headers, transactions, governance, parameters, scripts, ledger view and the closed error vocabulary",
-   "entryPoints": ["Block", "Header", "Tx", "GovAction", "ProtocolParams", "LedgerView", "ScriptContexts", "Prepared"],
-   "suites": ["TxDecodingSuite", "ProtocolParamsSuite", "PreparedBlockSuite", "RatifySuite", "ScriptContextOracleSuite", "VotingProceduresSuite", "WithdrawalContextsSuite"],
+   "entryPoints": ["Block", "Header", "Tx", "GovAction", "ProtocolParams", "LedgerView", "ScriptContexts", "Prepared", "GenesisPoolFields"],
+   "suites": ["TxDecodingSuite", "ProtocolParamsSuite", "PreparedBlockSuite", "RatifySuite", "ScriptContextOracleSuite", "VotingProceduresSuite", "WithdrawalContextsSuite", "GenesisPoolFieldsSuite"],
    "docs": ["docs/adr/0007-era-indexed-state.md", "docs/adr/0009-ledger-mirror-step-2.md", "docs/design/domain-errors.md"]
   },
   {
