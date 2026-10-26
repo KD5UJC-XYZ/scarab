@@ -46,6 +46,11 @@
    "file": "docs/performance/cast-erasure-interpreter.md",
    "title": "The typed rule interpreter and the cast-erasure batch",
    "prefix": "cast-erasure-interpreter"
+  },
+  {
+   "file": "docs/performance/injection-coefficients.md",
+   "title": "Incremental injection numeric coefficients",
+   "prefix": "injection-coefficients"
   }
  ],
  "entries": [
@@ -3456,6 +3461,55 @@
       ]
      ],
      "id": "perf-47.t1"
+    }
+   ],
+   "listings": []
+  },
+  {
+   "id": "perf-48",
+   "section": "42",
+   "heading": "42. Incremental injection numeric coefficients (#499)",
+   "subject": "Incremental injection numeric coefficients (#499)",
+   "date": "2026-10-26",
+   "dateSource": "text",
+   "issues": [
+    "#499"
+   ],
+   "commits": [
+    "798daf559"
+   ],
+   "links": [],
+   "page": "injection-coefficients",
+   "results": [
+    {
+     "id": "perf-48.t1",
+     "header": [
+      "Coefficient digits and shape",
+      "Original target (ms / MB)",
+      "Midpoint target (ms / MB)",
+      "Existing allocation bound (MB)"
+     ],
+     "separator": "|---|---:|---:|---:|",
+     "rows": [
+      [
+       "262,145, object value (original native coefficient)",
+       "700 / 191.30",
+       "395 / 228.90",
+       "287.32"
+      ],
+      [
+       "327,674, object value",
+       "1,048 / 279.79",
+       "612 / 337.46",
+       "352.85"
+      ],
+      [
+       "327,679, root number",
+       "1,049 / 279.71",
+       "640 / 336.42",
+       "352.85"
+      ]
+     ]
     }
    ],
    "listings": []

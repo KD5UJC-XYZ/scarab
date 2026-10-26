@@ -90,13 +90,42 @@ private[injection] object InjectionLexer:
 
   private val scientific = "([+-]?)([0-9]+)(?:\\.([0-9]*))?(?:[eE]([+-]?)([0-9]*))?".r
 
+  // Integer concatenation is exact: left * 10^rightWidth + right. Midpoint splitting limits
+  // the JVM decimal constructor's quadratic work without changing Scientific's representation.
+  // The measured leaf size trades some CPU gain for lower intermediate allocation; see performance.md.
+  private def decimalCoefficient(digits: String): BigInt =
+    enum Work:
+      case Read(text: String)
+      case Ready(value: BigInt)
+    enum Frame:
+      case Pending(right: String)
+      case Join(left: BigInt, width: Int)
+    @tailrec def loop(work: Work, stack: List[Frame], powers: Map[Int, BigInt]): BigInt =
+      work match
+        case Work.Read(text) =>
+          if text.length <= 163840 then loop(Work.Ready(BigInt(text)), stack, powers)
+          else
+            val (left, right) = text.splitAt(text.length / 2)
+            loop(Work.Read(left), Frame.Pending(right) :: stack, powers)
+        case Work.Ready(value) =>
+          stack match
+            case Nil => value
+            case Frame.Pending(right) :: tail =>
+              loop(Work.Read(right), Frame.Join(value, right.length) :: tail, powers)
+            case Frame.Join(left, width) :: tail =>
+              val power = powers.getOrElse(width, BigInt(10).pow(width))
+              loop(Work.Ready(left * power + value), tail, powers.updated(width, power))
+    if digits.length <= 163840 then BigInt(digits)
+    else loop(Work.Read(digits), Nil, Map.empty)
+
   private def generalNumber(text: String): Either[InjectionJson.Error, Json] = text match
     case scientific(sign, whole, decimal, exponentSign, power) =>
       val fraction = Option(decimal).getOrElse("")
       // Haskell's Scientific exponent is machine Int; the pinned 64-bit parser wraps arithmetic.
       val magnitude = Option(power).getOrElse("").foldLeft(0L)((n, c) => n * 10 + (c - '0'))
       val exponent = (if exponentSign == "-" then -magnitude else magnitude) - fraction.length
-      val coefficient = BigInt((if sign == "-" then "-" else "") + whole + fraction)
+      val unsigned = decimalCoefficient(whole + fraction)
+      val coefficient = if sign == "-" then -unsigned else unsigned
       scalar(coefficient, exponent)
     case _ => Left(InjectionJson.Error.NumberSyntax)
 
