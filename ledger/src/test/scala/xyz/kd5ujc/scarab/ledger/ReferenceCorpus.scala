@@ -23,6 +23,7 @@ private[ledger] object ReferenceCorpus:
     case ConwayDecoding extends Corpus("conway-decoding", Layout.Pair)
     case PreConwaySets extends Corpus("pre-conway-sets", Layout.Pair)
     case DefiniteBytes extends Corpus("definite-bytes", Layout.Lines)
+    case EraForms extends Corpus("era-forms", Layout.Lines)
 
   /** How a corpus is stored: `cases.json` beside `reference.json`, or one `cases.jsonl` with a case
     * and its verdict (`accepted`, `failure`) on each line.
@@ -40,6 +41,8 @@ private[ledger] object ReferenceCorpus:
   /** The case of [[LedgerDecodeError]] a refusal must be. */
   enum Refusal(val wire: String):
     case ArrayLength extends Refusal("ArrayLength")
+    case OutputForm extends Refusal("OutputForm")
+    case MissingField extends Refusal("MissingField")
     case DuplicateElement extends Refusal("DuplicateElement")
     case AddressHeader extends Refusal("AddressHeader")
     case ByteLength extends Refusal("ByteLength")
@@ -64,6 +67,8 @@ private[ledger] object ReferenceCorpus:
       */
     def of(e: LedgerDecodeError): Option[Refusal] = e match
       case LedgerDecodeError.ArrayLength(_, _, _)         => Some(ArrayLength)
+      case LedgerDecodeError.OutputForm(_, _)             => Some(OutputForm)
+      case LedgerDecodeError.MissingField(_, _)           => Some(MissingField)
       case LedgerDecodeError.DuplicateElement(_)          => Some(DuplicateElement)
       case LedgerDecodeError.AddressHeader(_)             => Some(AddressHeader)
       case LedgerDecodeError.ByteLength(_, _, _)          => Some(ByteLength)
@@ -130,6 +135,11 @@ private[ledger] object ReferenceCorpus:
     case ExpectedMap extends Rule("expected map len or indef")
     case MetadataBytesBound extends Rule("bytestring exceeds 64 bytes")
     case MetadataTextBound extends Rule("text exceeds 64 bytes")
+    case ExcessTerms extends Rule("Excess terms in array")
+    case WrongTermsAlonzo extends Rule("wrong number of terms in txout")
+    case WrongTermsBabbage extends Rule("Wrong number of terms in TxOut")
+    case ExpectedNull extends Rule("expected null")
+    case FieldNotDecoded extends Rule("not decoded.")
 
     /** The reference's failure is for this rule. */
     def explains(failure: Failure): Boolean = failure.text.contains(fragment)

@@ -80,7 +80,11 @@ class PlutusFailureReferenceSuite extends FunSuite:
   /** The first output of the transaction: the one the cases make too small. */
   private def firstOutput(r: Record): TxOut =
     TxOut
-      .decode(items(field(body(r), 1).getOrElse(fail("no outputs")))(0))
+      .decode(
+        items(field(body(r), 1).getOrElse(fail("no outputs")))(0),
+        Address.Mode.Rigorous,
+        TxOut.Forms.Stored
+      )
       .fold(e => fail(e.message), identity)
 
   /** The script integrity hash the transaction carries. */

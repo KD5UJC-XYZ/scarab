@@ -63,7 +63,8 @@ class PreConwayFailureReferenceSuite extends FunSuite:
     case CborValue.UInt(v) => v
     case other             => fail(s"not an unsigned integer: $other")
 
-  private def txOut(n: Node): TxOut = TxOut.decode(n).fold(e => fail(e.message), identity)
+  private def txOut(n: Node): TxOut =
+    TxOut.decode(n, Address.Mode.Rigorous, TxOut.Forms.Stored).fold(e => fail(e.message), identity)
 
   /** The failure the recorded reason reports, from its payload. */
   private def failureOf(r: Record, reason: Node): PredicateFailure =
