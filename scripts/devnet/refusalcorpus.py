@@ -286,8 +286,10 @@ def refusal_corpus(args):
         raise SystemExit("duplicate case labels")
     judged_cases = capture(args.name, era, cases)
     records, problems = [], []
-    for name in GENESIS:
-        write(directory / "genesis" / name, (root / "genesis" / name).read_bytes())
+    # Each genesis file is stored once for all corpora, under the hash its corpus pins.
+    genesis = {name: (root / "genesis" / name).read_bytes() for name in GENESIS}
+    for name, data in genesis.items():
+        write(out / "genesis" / f"{sha256(data)}-{name}", data)
     for case, result, reason in judged_cases:
         state_file = f"states/{sha256(result['state'])}.cbor"
         utxo_file = f"utxo/{sha256(result['utxo'])}.cbor"
@@ -312,7 +314,7 @@ def refusal_corpus(args):
                                       f"--socket-path {ENV}/socket/node1/sock").stdout)["protocolVersion"]
     meta = {"format": 2, "era": era, "protocolVersion": [pv["major"], pv["minor"]],
             "provenance": provenance(args.name, command),
-            "genesis": {n: sha256((directory / "genesis" / n).read_bytes()) for n in GENESIS},
+            "genesis": {n: sha256(data) for n, data in genesis.items()},
             "cases": files}
     meta_bytes = (json.dumps(meta, indent=2) + "\n").encode()
     write(directory / "corpus.json", meta_bytes)

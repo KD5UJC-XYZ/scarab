@@ -14,7 +14,7 @@ no signing key is kept, and it carries the repository's licence.
 |---|---|
 | `manifest.json` | `coverage`: the predicate-failure families each era must have a case for; `corpora`: each corpus directory with the sha256 of its `corpus.json` |
 | `<corpus>/corpus.json` | era, protocol version, provenance (reference node version and revision, image id, the command, the Scarab commit of the tooling, the time), the sha256 of each genesis file and of each case file |
-| `<corpus>/genesis/` | the cluster's genesis files and node configuration, as `devnet.py` copied them |
+| `genesis/<sha256>-<name>` | the clusters' genesis files and node configurations, as `devnet.py` copied them; each file is stored once under the sha256 its corpus pins, so corpora recorded on identically configured clusters share it |
 | `<corpus>/states/<sha256>.cbor` | the reference's `GetCBOR DebugNewEpochState` answer at the tip a case was judged at |
 | `<corpus>/utxo/<sha256>.cbor` | the reference's `GetCBOR GetUTxOWhole` answer at that tip (UTxO-HD keeps the UTxO out of the state) |
 | `<corpus>/cases/cases.jsonl` | format 2: one complete case record per line (below) |

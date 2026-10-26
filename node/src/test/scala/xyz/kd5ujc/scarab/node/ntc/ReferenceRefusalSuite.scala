@@ -159,7 +159,7 @@ class ReferenceRefusalSuite extends FunSuite:
   ): Either[ReplayProblem, Recorded[E]] =
     for
       setup <- NodeSetup
-        .fromDirectory(root.resolve(c.path).resolve("genesis"))
+        .fromFiles(name => c.genesis.get(name).map(_.toArray))
         .leftMap(ReplayProblem.Genesis(_))
       state <- c.states.get(rc.state).toRight(ReplayProblem.NoFile(rc.state))
       utxoBytes <- c.utxos.get(rc.utxo).toRight(ReplayProblem.NoFile(rc.utxo))
@@ -468,7 +468,8 @@ object ReferenceRefusalSuite:
       era: RefusalEra,
       cases: Vector[RefusalCase],
       states: Map[String, Bytes],
-      utxos: Map[String, Bytes]
+      utxos: Map[String, Bytes],
+      genesis: Map[String, Bytes]
   )
 
   final case class Loaded(coverage: Map[RefusalEra, Vector[Family]], corpora: Vector[Corpus])
@@ -524,9 +525,13 @@ object ReferenceRefusalSuite:
         (),
         CorpusProblem.UnsupportedFormat(meta, file.format)
       )
-      _ <- file.genesis.toVector.traverse((name, h) =>
-        pinned(base.resolve("genesis").resolve(name), h)
-      )
+      // Genesis files are shared between corpora, stored once under their pinned hash.
+      genesis <- file.genesis.toVector
+        .traverse((name, h) =>
+          pinned(root.resolve("genesis").resolve(s"$h-$name"), h)
+            .map(b => name -> Bytes.fromArray(b))
+        )
+        .map(_.toMap)
       present <- listed(base, "cases")
       _ <- present
         .find(p => !file.cases.exists(_.file == p))
@@ -563,7 +568,7 @@ object ReferenceRefusalSuite:
         .map(_.flatten)
       states <- addressed(base, "states")
       utxos <- addressed(base, "utxo")
-    yield Corpus(entry.path, file.era, cases, states, utxos)
+    yield Corpus(entry.path, file.era, cases, states, utxos, genesis)
 
   /** The manifest and every corpus it lists, each file checked against its recorded hash. */
   def load(root: Path): Either[CorpusProblem, Loaded] =

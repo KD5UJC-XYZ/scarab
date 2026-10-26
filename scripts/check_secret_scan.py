@@ -85,7 +85,8 @@ def main():
         scan(content, {("generic-api-key", 1)}, INVENTORY)
     # The native refusal capture contains public reward-account key hashes. Permit only those
     # exact values at that exact path, without hiding other tokens or signing envelopes there.
-    genesis_path = "fixtures/reference/refusals/conway-three-certificates/genesis/shelley-genesis.json"
+    genesis_path = ("fixtures/reference/refusals/genesis/"
+                    "41a5c6f0e32ada7b1da933d3603bdebb76adf616b0b32aac15fb5848262859f5-shelley-genesis.json")
     genesis = (ROOT / genesis_path).read_text()
     scan(genesis, set(), genesis_path, git_history=True)
     scan(genesis.rstrip("\n") + f'\napi_key = "{api_token}"\n' + private_fixture,

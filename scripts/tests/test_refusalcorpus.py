@@ -33,10 +33,15 @@ class RecordedCorpus(unittest.TestCase):
             for c in meta["cases"]:
                 self.assertEqual(sha256(directory / c["file"]), c["sha256"], c["file"])
             for name, digest in meta["genesis"].items():
-                self.assertEqual(sha256(directory / "genesis" / name), digest, name)
+                self.assertEqual(sha256(ROOT / "genesis" / f"{digest}-{name}"), digest, name)
+            self.assertFalse((directory / "genesis").exists(), "genesis files are shared, not copied per corpus")
             for sub in ("states", "utxo"):
                 for p in (directory / sub).iterdir():
                     self.assertEqual(sha256(p), p.stem, p.name)
+
+    def test_every_shared_genesis_file_is_pinned_by_a_corpus(self):
+        pinned = {f"{digest}-{name}" for _, meta in self.corpora() for name, digest in meta["genesis"].items()}
+        self.assertEqual({p.name for p in (ROOT / "genesis").iterdir()}, pinned)
 
     def test_families_are_read_from_the_reference_bytes_and_named_in_its_rendering(self):
         for directory, meta in self.corpora():
