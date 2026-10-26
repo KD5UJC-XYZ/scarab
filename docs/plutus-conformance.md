@@ -13,9 +13,15 @@ details are not written here (see [SECURITY.md](../SECURITY.md)).
 
 The profile follows `PlutusConformance/CekEvaluator.hs:46-61` at Plutus commit
 `507cab8cf6192e5143f12be5b2d3005a2928dc6d`: check the whole term for free variables, then evaluate
-the original term with variant E and saturating counting. The reference's `caseBuiltin` includes
-Data. Scarab uses the same corrected builtin runtimes as its ledger evaluator, with explicit
-`caseOnDataEnabled` in this upstream profile. No Flat serialization or unit-return wrapper is
+the original term with variant E and saturating counting. The machine is the one production builds:
+`ScalusEvaluator.corrected` makes the evaluation context of the request's language, protocol and
+cost model, and `CorrectedVm.cek` the CEK machine, with the corrected builtin runtimes. Two
+settings differ from the ledger's, both because the reference executable differs from the ledger
+there. The budget is the counting one (`counting`) where the ledger restricts. `case` on `Data` is
+allowed (the executable's default caser is `caseBuiltin`) where the ledger refuses it from protocol
+11 until Dijkstra (`caseBuiltinNoData`, `PlutusLedgerApi/Common/Eval.hs:142-146`); the two
+`term/constant-case/data` cases are the cases that rest on it, and the suite checks that they fail
+with the ledger's setting. No Flat serialization or unit-return wrapper is
 inserted before term evaluation. Existing original-byte sidecars still test malformed Value
 constants before the dependency text parser can normalize their entries.
 
