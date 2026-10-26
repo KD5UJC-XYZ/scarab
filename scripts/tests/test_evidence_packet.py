@@ -210,6 +210,24 @@ class PacketTest(unittest.TestCase):
             corpora=json.loads(committed)["corpora"], files=len(json.loads(committed)["files"])))
         self.assertNotIn(committed, contents.values())
 
+    def test_recorded_evidence_includes_committed_compatibility_register_and_pages(self):
+        evidence = {
+            "docs/data/compatibility.json": '{"schemaVersion": 1}\n',
+            "docs/compatibility/component.md": "Component evidence.\n",
+            "docs/compatibility/evidence-log-1.md": "A dated run.\n",
+        }
+        for path, text in evidence.items():
+            self.repo.write(path, text)
+        self.repo.commit("split compatibility evidence")
+        self.repo.write("docs/compatibility/evidence-log-1.md", "Uncommitted replacement.\n")
+        self.repo.write("docs/compatibility/untracked.md", "Uncommitted evidence.\n")
+        contents, _ = self.members("split")
+        inventories = json.loads(contents["packet/inventories.json"])
+        recorded = {row["path"]: row["sha256"] for row in inventories["recordedEvidence"]["files"]}
+        expected = {"docs/compatibility.md": packet.sha256(tree()["docs/compatibility.md"].encode())}
+        expected.update((path, packet.sha256(text.encode())) for path, text in evidence.items())
+        self.assertEqual(recorded, expected)
+
     def test_annotated_tag_is_recorded_with_its_object(self):
         self.repo.run("tag", "-a", "v1.2.3-alpha.1", "-m", "candidate")
         contents, _ = self.members_for("v1.2.3-alpha.1")
