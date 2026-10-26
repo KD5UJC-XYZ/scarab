@@ -695,6 +695,32 @@
       "page": "docs/compatibility/ledger-conway-utxo-babbage-validation.md"
     },
     {
+      "id": "ledger-era-output-body-decoding",
+      "component": "Ledger: era-specific output forms and body keys, decoder versions 2 to 9 (#379)",
+      "status": "implemented",
+      "summary": "Era-specific output forms, body keys and full-width constructor tags; stored outputs retain prior reader compatibility",
+      "evidence": {
+        "suites": [
+          "EraFormsReferenceSuite",
+          "StoredWideKeyOutputSuite"
+        ],
+        "paths": [
+          "fixtures/reference/era-forms",
+          "scripts/oracle/conway-decoding/era_forms_cases.py"
+        ],
+        "issues": [
+          379
+        ]
+      },
+      "limitations": {
+        "issues": [
+          477,
+          496
+        ]
+      },
+      "page": "docs/compatibility/ledger-era-output-body-decoding.md"
+    },
+    {
       "id": "ledger-conway-body-decoding-v9",
       "component": "Ledger: Conway transaction body and witness-set decoding at decoder version 9 (audit, AUD3-01/#327)",
       "status": "implemented",
