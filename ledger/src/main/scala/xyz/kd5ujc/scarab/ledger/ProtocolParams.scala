@@ -235,13 +235,18 @@ object ProtocolParams:
       collateralPct <- anyInt(a, "collateralPercentage")
       maxCollateral <- anyInt(a, "maxCollateralInputs")
       entropy <- extraEntropy(s)
-      baseModels <- costModelsOf(a.downField("costModels"))
-      // Alonzo genesis files of Babbage-era clusters carry the later languages (PlutusV2) in
-      // `extraConfig.costModels`; the ledger merges them into the genesis parameters.
-      extraModels <- costModelsOf(a.downField("extraConfig").downField("costModels"))
-      alonzoModels = baseModels ++ extraModels
-      v3Model = c.downField("plutusV3CostModel").as[Vector[BigInt]].toOption
-      costModels = v3Model.fold(alonzoModels)(m => alonzoModels.updated(2, m))
+      alonzoCostModels <- GenesisCostModels.alonzo(alonzo).leftMap(genesisCostModel)
+      // The Conway genesis, when the chain starts in Conway, brings the PlutusV3 model, which the
+      // ledger lays over the models of the Alonzo genesis (`Conway/PParams.hs`, `updateCostModels`).
+      v3Model <- conway.traverse(GenesisCostModels.conwayPlutusV3(_).leftMap(genesisCostModel))
+      costModels = alonzoCostModels.models
+        .updated(
+          GenesisCostModels.Models(
+            v3Model.map(CostModelLanguage.PlutusV3 -> _).toMap,
+            Map.empty
+          )
+        )
+        .flatten
       drepDeposit <- opt[BigInt](c, "dRepDeposit").map(_.getOrElse(BigInt(0)))
       drepActivity <- opt[BigInt](c, "dRepActivity").map(_.getOrElse(BigInt(0)))
       govDeposit <- opt[BigInt](c, "govActionDeposit").map(_.getOrElse(BigInt(0)))
@@ -303,39 +308,8 @@ object ProtocolParams:
       case Left(e) =>
         Left(ConfigError(ConfigProblem.JsonField("protocol parameters", "extraEntropy", e)))
 
-  /** Genesis cost models are objects of named integers, canonically ordered by parameter name. */
-  private def costModelsOf(c: ACursor): Either[ConfigError, Map[Int, Vector[BigInt]]] =
-    c.focus.flatMap(_.asObject) match
-      case None => Right(Map.empty)
-      case Some(obj) =>
-        obj.toVector
-          .traverse { case (lang, model) =>
-            val tag = lang match
-              case "PlutusV1" => Right(0)
-              case "PlutusV2" => Right(1)
-              case "PlutusV3" => Right(2)
-              case other      => Left(ConfigError(ConfigProblem.CostModelLanguage(other)))
-            // The ledger reads named parameters into a map ordered by name; that order is the
-            // canonical parameter order, whatever the order of the genesis file.
-            val values = model.asObject match
-              case Some(o) =>
-                o.toVector
-                  .sortBy(_._1)
-                  .map(_._2)
-                  .traverse(
-                    _.as[BigInt].leftMap(e =>
-                      ConfigError(ConfigProblem.JsonField("protocol parameters", "cost model", e))
-                    )
-                  )
-              case None =>
-                model
-                  .as[Vector[BigInt]]
-                  .leftMap(e =>
-                    ConfigError(ConfigProblem.JsonField("protocol parameters", "cost model", e))
-                  )
-            (tag, values).tupled
-          }
-          .map(_.toMap)
+  private def genesisCostModel(problem: CostModelProblem): ConfigError =
+    ConfigError(ConfigProblem.GenesisCostModel(problem))
 
   /** Apply a protocol-parameter update (field index -> original CBOR). Key 17 is the lovelace per
     * UTxO word in the eras before Babbage (`Alonzo/PParams.hs:664`) and per byte from Babbage

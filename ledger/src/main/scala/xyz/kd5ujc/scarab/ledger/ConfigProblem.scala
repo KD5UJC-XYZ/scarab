@@ -29,7 +29,7 @@ enum ConfigProblem:
   case Credential(value: String)
   case DRep(value: String)
   case DuplicateInjection(name: String)
-  case CostModelLanguage(value: String)
+  case GenesisCostModel(cause: CostModelProblem)
   case NonPositive(context: String, value: BigDecimal)
   case Negative(context: String, value: BigDecimal)
   case ActiveSlotRange(value: BigDecimal)
@@ -96,5 +96,6 @@ enum ConfigProblem:
     case NoPeers => "no peer to follow: the topology names no local root, bootstrap or public root"
     case BootstrapPeersInGenesisMode =>
       "topology bootstrapPeers cannot be configured with ConsensusMode GenesisMode"
+    case GenesisCostModel(cause) => s"genesis cost models: ${cause.message}"
     case WithUsage(cause, usage) => s"${cause.message}\n$usage"
     case _                       => toString
