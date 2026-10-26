@@ -215,7 +215,7 @@ class ConwayLedgerSuite extends FunSuite:
       signers: Vector[Key] = Vector.empty,
       votes: Vector[(Voter, Vector[(GovActionId, Vote)])] = Vector.empty,
       proposals: Vector[Proposal] = Vector.empty,
-      withdrawals: Vector[(RewardAccount, BigInt)] = Vector.empty
+      withdrawals: Map[RewardAccount, BigInt] = Map.empty
   ): Tx =
     val b = body(
       id,
@@ -528,7 +528,7 @@ class ConwayLedgerSuite extends FunSuite:
         alice,
         10000 * ada,
         200,
-        withdrawals = Vector(RewardAccount(0, alice.credential) -> 7 * ada)
+        withdrawals = Map(RewardAccount(0, alice.credential) -> 7 * ada)
       )
     assertEquals(accepted(s, good).accounts(alice.credential).balance, BigInt(0))
     val partial =
@@ -537,7 +537,7 @@ class ConwayLedgerSuite extends FunSuite:
         alice,
         10000 * ada,
         200,
-        withdrawals = Vector(RewardAccount(0, alice.credential) -> 3 * ada)
+        withdrawals = Map(RewardAccount(0, alice.credential) -> 3 * ada)
       )
     assertEquals(refusedWith(s, partial), "WithdrawalsNotInRewardsCERTS")
   }
@@ -900,7 +900,7 @@ class ConwayLedgerSuite extends FunSuite:
         Vector(lockedIn),
         outputs.getOrElse(Vector(out(bob.address(), 50 * ada - fee))),
         fee,
-        withdrawals = withdrawal.map(_ -> BigInt(0)).toVector,
+        withdrawals = withdrawal.map(_ -> BigInt(0)).toMap,
         collateral = collateral,
         collateralReturn = collateralReturn,
         scriptDataHash = hash

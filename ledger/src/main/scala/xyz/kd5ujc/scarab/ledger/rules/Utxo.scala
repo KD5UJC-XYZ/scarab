@@ -243,7 +243,7 @@ object Utxo
           RefScripts.refScriptsSize(ann.utxo, body)
         )
     val overlap = body.inputs.toSet.intersect(body.referenceInputs.toSet)
-    val wrongWithdrawals = body.withdrawals.map(_._1).filter(_.network != ctx.network).toSet
+    val wrongWithdrawals = body.withdrawals.keys.filter(_.network != ctx.network).toSet
     for
       _ <- check(
         pp.protocolMajor >= 11 || overlap.isEmpty,
@@ -289,7 +289,7 @@ object Utxo
         )
       )
       collateral <- TxChecks.collateralChecks(ann.utxo, pp, tx)
-      withdrawn = body.withdrawals.map(_._2).sum
+      withdrawn = body.withdrawals.valuesIterator.sum
       consumed = ann.spent.foldLeft(Value.zero)(_ + _.value) + Value.coin(withdrawn + refunds) +
         Value(0, body.mint)
       produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +

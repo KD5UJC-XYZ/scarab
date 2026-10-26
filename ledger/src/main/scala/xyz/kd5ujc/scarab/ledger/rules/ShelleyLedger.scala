@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Certificate,
   LedgerFailure,
   PredicateFailure,
+  Purpose,
   ProtocolParams,
   Tx,
   TxEnv
@@ -85,7 +86,8 @@ object ShelleyLedger:
                   PredicateFailure.IncompleteWithdrawals(view.incomplete.toMap)
                 )
                 drained <- Refuse.vocab[F, ShelleyCertState](
-                  tx.body.withdrawals
+                  Purpose
+                    .sortedWithdrawals(tx.body)
                     .traverse((a, _) => Convert.credential[Staking](a.credential))
                     .map(ShelleyCertOps.drain(certBefore, _))
                 )

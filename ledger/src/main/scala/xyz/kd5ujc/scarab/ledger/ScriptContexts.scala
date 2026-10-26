@@ -545,8 +545,14 @@ object ScriptContexts:
     * the ledger order instead.
     */
   private def withdrawalsV1(body: TxBody, asMap: Boolean): PlutusData =
-    val entries = body.withdrawals
+    // `transWithdrawals` folds the account map in ledger order into a second map keyed only by
+    // staking credential. If networks differ, the later account replaces the earlier amount
+    // (f649f975 Alonzo/Plutus/TxInfo.hs:301-309); V3's `transMap` instead retains the list entries.
+    val entries = Purpose
+      .sortedWithdrawals(body)
       .map { case (a, amount) => (a.credential, amount) }
+      .toMap
+      .toVector
       .sortBy { case (c, _) => (c.isInstanceOf[Credential.Script], c.hash.hex) }
       .map { case (c, amount) => (stakingHash(c), I(amount): PlutusData) }
     if asMap then PlutusData.Map(entries)

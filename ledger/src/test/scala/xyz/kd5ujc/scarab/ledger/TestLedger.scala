@@ -150,7 +150,7 @@ object TestLedger:
       outputs: Vector[TxOut],
       fee: BigInt,
       certificates: Vector[Certificate] = Vector.empty,
-      withdrawals: Vector[(RewardAccount, BigInt)] = Vector.empty,
+      withdrawals: Map[RewardAccount, BigInt] = Map.empty,
       mint: Map[Bytes, Map[Bytes, BigInt]] = Map.empty,
       ttl: Option[BigInt] = None,
       validityStart: Option[BigInt] = None,

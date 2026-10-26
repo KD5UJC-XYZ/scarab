@@ -127,7 +127,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       donation: BigInt = 0,
       deposits: BigInt = 0,
       refunds: BigInt = 0,
-      withdrawals: Vector[(RewardAccount, BigInt)] = Vector.empty
+      withdrawals: Map[RewardAccount, BigInt] = Map.empty
   ): Either[LedgerFailure, State] =
     val fee = BigInt(200)
     val change = st.fundCoin - fee - deposits + refunds - donation + withdrawals.map(_._2).sum

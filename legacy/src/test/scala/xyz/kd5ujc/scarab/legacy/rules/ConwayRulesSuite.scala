@@ -382,7 +382,7 @@ class ConwayRulesSuite extends FunSuite:
         Vector(in),
         Vector(out(alice.address(), 100 * ada + amount - 200)),
         200,
-        withdrawals = Vector(account -> amount)
+        withdrawals = Map(account -> amount)
       )
       rule(rs.tx(state, tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts)), env))
     assertEquals(run(5 * ada, Vector(script)), "accepted")
@@ -410,7 +410,7 @@ class ConwayRulesSuite extends FunSuite:
       Vector(in),
       Vector(out(alice.address(), 103 * ada - 200)),
       200,
-      withdrawals = Vector(RewardAccount(0, staker.credential) -> (3 * ada))
+      withdrawals = Map(RewardAccount(0, staker.credential) -> (3 * ada))
     )
     def run(s: LedgerState) = rule(rs.tx(s, tx(b, Vector(alice, staker)), env))
     assertEquals(run(world(None, 9)), "accepted")

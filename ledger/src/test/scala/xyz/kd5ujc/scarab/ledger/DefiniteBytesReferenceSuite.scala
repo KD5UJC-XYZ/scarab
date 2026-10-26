@@ -82,7 +82,7 @@ class DefiniteBytesReferenceSuite extends FunSuite:
             val decoded = TxBody.decode(row.raw, row.era).map(_.withdrawals)
             assertEquals(decoded.map(_.size), expected.map(_.size), "one entry per account")
             assertEquals(
-              decoded.map(_.toMap),
+              decoded,
               expected.map(_.toMap),
               "the withdrawals the reference decoded"
             )

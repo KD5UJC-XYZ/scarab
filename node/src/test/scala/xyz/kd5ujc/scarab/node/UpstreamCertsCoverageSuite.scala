@@ -125,7 +125,7 @@ class UpstreamCertsCoverageSuite extends FunSuite:
       case other => fail(s"expected translated CERTS context [withdrawals,votes], got $other")
     assertEquals(context._1.value, Value.Map(Vector.empty))
     assertEquals(context._2.value, Value.Map(Vector.empty))
-    assertEquals(tx.body.withdrawals, Vector.empty)
+    assertEquals(tx.body.withdrawals, Map.empty)
     assertEquals(tx.body.votes, Vector.empty)
     assert(tx.body.raw == txItems(0).original)
 

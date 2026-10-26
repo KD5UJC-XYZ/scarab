@@ -58,7 +58,10 @@ object Purpose:
 
   /** Withdrawals in the ledger's order: by reward account, script credentials first. */
   def sortedWithdrawals(body: TxBody): Vector[(RewardAccount, BigInt)] =
-    body.withdrawals.sorted(using withdrawalOrder)
+    sortedWithdrawals(body.withdrawals)
+
+  def sortedWithdrawals(withdrawals: Map[RewardAccount, BigInt]): Vector[(RewardAccount, BigInt)] =
+    withdrawals.toVector.sorted(using withdrawalOrder)
 
   /** By network, script credentials before key credentials, then the hash. */
   private val withdrawalOrder: Ordering[(RewardAccount, BigInt)] = (a, b) =>

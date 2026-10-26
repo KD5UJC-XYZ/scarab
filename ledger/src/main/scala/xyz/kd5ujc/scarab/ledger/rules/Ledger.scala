@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.ledger.{
   LedgerFailure,
   Mismatch,
   PredicateFailure,
+  Purpose,
   Proposals,
   Tx
 }
@@ -115,7 +116,8 @@ object Ledger extends Sts[LedgerEnv, ConwayLedger, Tx, LedgerFailure]:
       accounts = CertLens.accounts.get(certBefore)
       // key-hash reward accounts must be delegated to a DRep after the bootstrap phase; the check
       // looks at the state before the certificates (`validateWithdrawalsDelegated`)
-      notDelegated = body.withdrawals
+      notDelegated = Purpose
+        .sortedWithdrawals(body)
         .collect {
           case (account, _)
               if account.credential.isInstanceOf[xyz.kd5ujc.scarab.ledger.Credential.Key] =>
