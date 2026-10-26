@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import cats.syntax.all.*
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational}
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -76,11 +77,34 @@ class DefiniteBytesReferenceSuite extends FunSuite:
               Right(Blake2b.hash256.hash(row.raw)),
               "the id hashes the original bytes"
             )
+          row.withdrawals.foreach { recorded =>
+            val expected = recorded.traverse((a, n) => RewardAccount.decode(a).tupleRight(n))
+            val decoded = TxBody.decode(row.raw, row.era).map(_.withdrawals)
+            assertEquals(decoded.map(_.size), expected.map(_.size), "one entry per account")
+            assertEquals(
+              decoded.map(_.toMap),
+              expected.map(_.toMap),
+              "the withdrawals the reference decoded"
+            )
+          }
         case (None, Left(e))     => fail(s"the reference accepts this encoding: $e")
         case (Some(_), Right(_)) => fail(s"the reference refuses this encoding: ${row.failure}")
         case (Some(refusal), Left(e)) =>
           assertEquals(Refusal.of(e), Some(refusal), s"Scarab gave $e")
     }
+
+  test("a repeated withdrawal account keeps its last amount before version 9 and fails from it") {
+    val lastWins = rows.filter(_.withdrawals.isDefined)
+    assertEquals(lastWins.map(_.era).toSet, Era.values.toSet -- Set(Era.Byron, Era.Conway))
+    val refused = rows.filter(_.expect.contains(Refusal.DuplicateElement))
+    assertEquals(refused.map(_.era).toSet, Set(Era.Conway))
+    for row <- refused do
+      assertEquals(
+        TxBody.decode(row.raw, row.era).map(_ => ()),
+        Left(LedgerDecodeError.DuplicateElement(DecodeField.Withdrawals)),
+        row.name
+      )
+  }
 
   test("no era is read at decoder version 12 or above, so every era reads definite strings") {
     for era <- Era.values do

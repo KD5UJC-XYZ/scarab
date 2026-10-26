@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "measuredAt": "2026-10-25",
-  "scope": "Unchanged released decoders (decodeFullAnnotator) of a transaction body and a witness set of each era from Shelley to Conway at the era's decoder version (2, 3, 4, 5, 7, 9), and of a whole Conway transaction with auxiliary data at 9, each place of a byte string written as a definite string and as an indefinite one; no ledger rule, signature or script is run",
+  "scope": "Unchanged released decoders (decodeFullAnnotator) of a transaction body and a witness set of each era from Shelley to Conway at the era's decoder version (2, 3, 4, 5, 7, 9), and of a whole Conway transaction with auxiliary data at 9, each place of a byte string written as a definite string and as an indefinite one, and a body of each era with a repeated withdrawal account; no ledger rule, signature or script is run",
   "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
   "compiler": "GHC 9.10.3",
   "referenceNode": "11.1.3 (matching embedded ledger package versions, not a bit-identical node release build)",
@@ -22,7 +22,7 @@
       "sourceSha256": "3ff3541b2900ceaab9bda26f633d7ea5118a49f5faab3936d036cfe9b49f94cc",
       "matchesPin": false,
       "archiveSha256": "05d59229edffc94b8f61273117456601532e23d8656f3076775bbf38e600bb8a",
-      "difference": "two lines of decodeIPv4 (byte order of the address read); decodeBytes and decodeByteArray (lines 350-373 and 1426-1448) are identical"
+      "difference": "two lines of decodeIPv4 (byte order of the address read); decodeBytes and decodeByteArray (lines 350-373 and 1426-1448) and decodeMapByKey (lines 810-823) are identical"
     },
     "metadata": {
       "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Metadata.hs",
@@ -41,16 +41,22 @@
       "sourceSha256": "0b86d1ecdd5abb0cf89194e7324fe1f62e58214cbd7386a1c50aeaf1c605866e",
       "matchesPin": true,
       "archiveSha256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a"
+    },
+    "address": {
+      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+      "sourceSha256": "f2ef8e3cebbe7475676e7466d6fa57a6dfc8495f3bdb0b516d3ae4420b04ec2d",
+      "matchesPin": true,
+      "archiveSha256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a"
     }
   },
-  "harnessSha256": "bfb45c453f16726765809651d438e1c1a7d0be5a2fadf5d662b10a25bc64e07c",
-  "generatorSha256": "5fa920e4e6553ca1dd371dd454f065170ef39dbb93bc916f60206a721f9bacf2",
-  "harnessInputSha256": "01328f3ce95918b3288b08d8ee81f49fb495459df1c76996d271c6470863cf0b",
-  "harnessOutputSha256": "2c3a29043f9719d91ba4ee9d60bd3f49b43054be46434e306504badab29bd771",
-  "casesSha256": "775273c56cc93ece0b4fdb1e76d08e21f4f029322e533828a036690a641a901f",
-  "cases": 444,
-  "accepted": 223,
-  "refused": 221,
+  "harnessSha256": "56e41ca86274a36f8e433b6f49ddb55b0f17720c75298c7b56e56e63f52170ce",
+  "generatorSha256": "caa31f146da6531bc9e165b5f138dfa5b93287465ff035696fe2a90ad9e6cedf",
+  "harnessInputSha256": "6527ef266bf8d63c4e0dab323f576e1a2141dacf5df1f4446626c2b25f968104",
+  "harnessOutputSha256": "9ca61a37b4ebc188a164baaa79f6b93b72e168ca757141d50b745c5b44a898d6",
+  "casesSha256": "86a7a55679903e723860d53dd3f30896e91c1d2a9df555396c7c55c703cd404c",
+  "cases": 456,
+  "accepted": 233,
+  "refused": 223,
   "originalBytesRetained": true,
   "network": "none",
   "keysRetained": false

@@ -44,18 +44,20 @@ def since(era, first):
     return ORDER[era] >= ORDER[first]
 
 
-def case(name, era, kind, raw, expect=None, rule=None):
-    CASES.append(
-        {
-            "id": c.case_id(name),
-            "name": name,
-            "era": era,
-            "kind": kind,
-            "rule": rule,
-            "expect": expect,
-            "bytes": raw.hex(),
-        }
-    )
+def case(name, era, kind, raw, expect=None, rule=None, withdrawals=False):
+    entry = {
+        "id": c.case_id(name),
+        "name": name,
+        "era": era,
+        "kind": kind,
+        "rule": rule,
+        "expect": expect,
+        "bytes": raw.hex(),
+    }
+    if withdrawals:
+        # the harness also reports the withdrawals of an accepted body, as decoded
+        entry["withdrawals"] = True
+    CASES.append(entry)
 
 
 def definite(b):
@@ -422,6 +424,30 @@ for place, rule, scripts in (
     )
 
 
+# --- repeated withdrawal accounts ---------------------------------------------------------------
+# `Withdrawals` is read with `decodeMap` (`libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs`
+# 980-982): below version 9 `decodeMapByKey` builds it with `Map.fromList`, so a repeated account
+# keeps its last amount; from version 9 `decodeMapLikeEnforceNoDuplicates` refuses the repeat
+# (`Decoder.hs` 815-823, f649f975). The harness reports the decoded withdrawals of an accepted body.
+SCRIPT_ACCOUNT = b"\xf1" + c.h(0x78, 28)
+DUPLICATE_COUNT = "does not match the total count that was decoded"
+
+for era in ERAS:
+    for label, entries in (
+        ("an account repeated around another", [(ACCOUNT, 5), (SCRIPT_ACCOUNT, 3), (ACCOUNT, 7)]),
+        ("an account repeated, the smaller amount last", [(ACCOUNT, 7), (ACCOUNT, 5)]),
+    ):
+        refused = ("DuplicateElement", DUPLICATE_COUNT) if era == "conway" else (None, None)
+        case(
+            f"{era} body withdrawals: {label}",
+            era,
+            "body",
+            body(era, {5: c.cmap([(definite(a), c.uint(n)) for a, n in entries])}),
+            *refused,
+            withdrawals=True,
+        )
+
+
 def merge(reference):
     """The corpus lines: each case with the verdict the harness recorded for it (absent fields are null)."""
     assert len(reference) == len(CASES), "the harness answered a different number of cases"
@@ -438,6 +464,7 @@ def merge(reference):
             "rule": case_["rule"],
             "accepted": result["accepted"],
             "failure": result.get("failure"),
+            "withdrawals": result.get("withdrawals"),
             "bytes": case_["bytes"],
         }
         lines.append(json.dumps({k: v for k, v in line.items() if v is not None}, separators=(",", ":")))
