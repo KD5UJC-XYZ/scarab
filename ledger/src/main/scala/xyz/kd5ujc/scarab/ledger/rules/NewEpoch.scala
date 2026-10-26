@@ -107,13 +107,13 @@ object NewEpoch:
     val major = EraLedger.prevPParams(es.ls.utxo.gov).protocolMajor
     val (registered, unregistered) =
       partitionRegistered(update.rs, EraLedger.registeredAscending(es.ls))
-    val delivered = Rewards.aggregate(major, registered)
     val treasury = Coin(
       es.chainAccount.treasury.value + update.deltaT.value + Rewards.total(major, unregistered)
     )
     val reserves = Coin(es.chainAccount.reserves.value + update.deltaR.value)
     val fees = Coin(es.ls.utxo.fees.value + update.deltaF.value)
-    EraLedger.creditAscending(es.ls, delivered).map { credited =>
+    Rewards.aggregateCompact(major, registered).map { delivered =>
+      val credited = EraLedger.creditAscending(es.ls, delivered)
       es.copy(
         chainAccount = ChainAccountState(treasury, reserves),
         ls = credited.copy[E](utxo = credited.utxo.copy(fees = fees)),

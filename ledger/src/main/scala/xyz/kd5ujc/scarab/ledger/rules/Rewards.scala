@@ -81,6 +81,23 @@ object Rewards:
       credential -> Coin(delivered(major, rewards).foldLeft(BigInt(0))(_ + _.rewardAmount.value))
     }.toVector
 
+  /** `aggregateCompactRewards` (`Shelley/Rewards.hs:205–210`): convert each delivered reward before
+    * the compact fold. A negative or oversized individual reward still fails conversion.
+    */
+  def aggregateCompact(
+      major: BigInt,
+      rs: Iterable[(Credential[Staking], RewardSet)]
+  ): Either[VocabError, SortedMap[Credential[Staking], CompactCoin]] =
+    rs.toList
+      .traverse { (credential, rewards) =>
+        delivered(major, rewards).toList
+          .foldLeftM(CompactCoin.zero)((sum, reward) =>
+            CompactCoin.fromCoin(reward.rewardAmount).map(sum.add(_))
+          )
+          .map(credential -> _)
+      }
+      .map(Sorted.map(_))
+
   /** `sumRewards` (`Rewards.hs:159`). */
   def total(major: BigInt, rs: Iterable[(Credential[Staking], RewardSet)]): BigInt =
     rs.iterator.foldLeft(BigInt(0))((sum, entry) =>
