@@ -62,9 +62,12 @@ therefore contains two `MIRProducesNegativeUpdate` failures. Other failures in t
 retained and compared too. Reinstating the old implementation that discarded the negative update
 makes both native MIR cases fail; the corrected rule matches their complete original refusals.
 
-The upstream LEDGERS conformance adapter is not used here: these expectations come from the released
-node's own submission path. The recorded corpus currently covers Babbage and Conway only. Earlier
-eras, PPUP and the complete LEDGERS adapter acceptance scope of #401 remain incomplete.
+These expectations come from the released node's submission path. Separately, the offline
+`UpstreamFreshLedgerConformanceSuite` and `UpstreamMultiLedgerConformanceSuite` use the same production
+transaction rules under accumulation, with a native-shaped LEDGERS adapter, and compare all original
+native refusal lists as complete bytes. Their original inputs and native/formal provenance remain
+separate from these devnet captures. The recorded devnet corpus currently covers Babbage and Conway
+only; earlier eras and PPUP coverage required by #401 remain incomplete.
 
 ## Refresh
 

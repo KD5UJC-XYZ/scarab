@@ -18,17 +18,18 @@ outputs or accumulated typed predicate failures:
 | double-spend | Rejected | The second copy spends the input already consumed by the first payment. |
 
 Both accepted native states are independently checked against the original integration
-trace's final state before export. Scarab runs its production `Ledgers` transition on the
-original transaction body and witness bytes, retaining valid signatures and script data.
+trace's final state before export. Scarab's `UpstreamLedgerJudgments` adapter runs the production
+LEDGER transitions with the native LEDGERS fold and sub-rule nesting, on original transaction body
+and witness bytes, retaining valid signatures and script data.
 It compares every input/output field, UTxO accounting and all remaining native state.
 MemPack has no original `TxOut.raw` or Scala change-history bookkeeping; those local
 representations are the only state-comparison exclusions, as in the original trace.
 
-For rejected batches, native Haskell accumulates several predicate failures while Scarab
-returns the first failure. The test encodes Scarab's typed cause using its production
-Conway predicate-failure encoder and requires that complete structured payload to occur
-among the native observations. This is single-cause membership, not equality of the complete
-accumulated failure list, order or multiplicity. It does not branch on rendered diagnostic messages.
+For rejected batches, the adapter uses the accumulating judgment policy. The production Conway
+predicate-failure encoder writes every typed cause, and the complete list must equal the unchanged
+native bytes, including order and multiplicity. Selecting the first-failure policy instead makes
+both rejected-batch comparisons fail. The comparison does not branch on rendered diagnostic
+messages; production block application retains its separate first-failure policy.
 
 `manifest.json` pins all retained bytes, observer patches, source/dependency revisions,
 runner arguments and source trace manifest. This is bounded native coverage, not a formal
