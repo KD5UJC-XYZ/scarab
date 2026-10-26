@@ -32,7 +32,8 @@ its cases come from `pre_conway_cases.py` and are run the same way.
 The [definite-bytes corpus](../../../fixtures/reference/definite-bytes/README.md) (#373) runs on the
 same harness, its cases from `definite_bytes_cases.py`: each place of a byte string in every era from
 Shelley to Conway, written as a definite and as an indefinite string. It is committed as one file,
-`cases.jsonl`, a line per case with its encoding and the verdict; the generator writes the harness
+`cases.jsonl`, a line per case with its encoding and the verdict (a case with `"withdrawals": true`
+also gets the withdrawals of an accepted body as decoded, for #494); the generator writes the harness
 input and then merges the harness output into the lines:
 
 ```sh
