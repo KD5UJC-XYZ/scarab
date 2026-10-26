@@ -17,7 +17,7 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
     SocketAddress(IpAddress.fromString(s"10.0.0.$n").get, Port.fromInt(3001).get)
 
   private def hard(n: Int): AcceptedConnectionsLimit =
-    AcceptedConnectionsLimit.default.copy(acceptedConnectionsHardLimit = n)
+    AcceptedConnectionsLimit.default.copy(acceptedConnectionsHardLimit = Word32.fromUnsigned(n))
 
   /** Run `program` with a manager; connection errors come back as values. */
   private def managed[A](

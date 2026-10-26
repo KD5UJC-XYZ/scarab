@@ -5,7 +5,7 @@ import cats.syntax.all.*
 import io.circe.Json
 import io.circe.syntax.*
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, SchedulingReport}
-import xyz.kd5ujc.scarab.network.ConnectionEvent
+import xyz.kd5ujc.scarab.network.{ConnectionEvent, DiffTime}
 import xyz.kd5ujc.scarab.ledger.ForgeKeyProblem
 import xyz.kd5ujc.scarab.node.Reports
 import xyz.kd5ujc.scarab.node.forge.ForgeEvent
@@ -199,6 +199,12 @@ object Traced:
     case StorageEvent.ShutdownSnapshot(a, written) =>
       EventKind.ShutdownSnapshot.line("anchor" -> anchor(a), "written" -> written.asJson)
 
+  /** A `DiffTime` as an exact number of seconds. */
+  private def seconds(delay: DiffTime): BigDecimal =
+    BigDecimal(
+      new java.math.BigDecimal(delay.toPicoseconds.bigInteger, 12).stripTrailingZeros.toPlainString
+    )
+
   /** What the connection manager and the accept loop did (G2); a refusal and the hard limit are
     * warnings.
     */
@@ -230,12 +236,12 @@ object Traced:
     case ConnectionEvent.AcceptRateLimited(delay, connections) =>
       EventKind.Connection.line(
         "what" -> "acceptRateLimited".asJson,
-        "delayMs" -> delay.toMillis.asJson,
+        "delaySeconds" -> seconds(delay).asJson,
         "connections" -> connections.asJson
       )
     case ConnectionEvent.AcceptHardLimit(limit) =>
       EventKind.Connection
-        .line("what" -> "acceptHardLimit".asJson, "limit" -> limit.asJson)
+        .line("what" -> "acceptHardLimit".asJson, "limit" -> limit.toLong.asJson)
         .at(Severity.Warning)
     case ConnectionEvent.AcceptResumed(connections) =>
       EventKind.Connection.line(

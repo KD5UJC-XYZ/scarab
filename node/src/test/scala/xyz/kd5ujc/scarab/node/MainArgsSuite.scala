@@ -98,7 +98,10 @@ class MainArgsSuite extends munit.FunSuite:
     assert(!Main.parse(base ++ List("--header-first", "off")).toOption.get.headerFirst)
     assert(!Main.parse(base ++ List("--inbound-sync", "off")).toOption.get.inboundSync)
     assert(Main.parse(base ++ List("--inbound-sync", "on")).toOption.get.inboundSync)
-    assertEquals(Main.parse(base ++ List("--max-inbound", "5")).toOption.get.maxInbound, Some(5))
+    assertEquals(
+      Main.parse(base ++ List("--max-inbound", "5")).toOption.get.maxInbound.map(_.toLong),
+      Some(5L)
+    )
     assert(Main.parse(base ++ List("--header-first", "maybe")).isLeft)
     assert(Main.parse(base ++ List("--max-inbound", "0")).isLeft)
   }

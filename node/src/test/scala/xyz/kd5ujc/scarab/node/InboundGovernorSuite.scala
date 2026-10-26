@@ -152,7 +152,9 @@ class InboundGovernorSuite extends FailsOnUncaught:
         .rescue(e => IO(fail(e.message)))
       manager <- ConnectionManager.create[IO](
         ConnectionManager.Limits(
-          AcceptedConnectionsLimit.default.copy(acceptedConnectionsHardLimit = 4)
+          AcceptedConnectionsLimit.default.copy(
+            acceptedConnectionsHardLimit = xyz.kd5ujc.scarab.network.Word32.fromUnsigned(4)
+          )
         )
       )
       metrics <- Ref.of[IO, PeerMetrics[PeerNetwork.Addr]](PeerMetrics.empty())

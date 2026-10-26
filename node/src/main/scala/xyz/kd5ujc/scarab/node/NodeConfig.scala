@@ -6,9 +6,8 @@ import cats.syntax.all.*
 import io.circe.{Decoder, HCursor, Json, parser}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Era, NtnVersion}
-import xyz.kd5ujc.scarab.network.AcceptedConnectionsLimit
+import xyz.kd5ujc.scarab.network.{AcceptedConnectionsLimit, DiffTime, Word32}
 import xyz.kd5ujc.scarab.network.selection.{ConsensusMode, Targets}
-import scala.concurrent.duration.*
 
 /** The genesis files a configuration names (`ByronGenesisFile` or the older `GenesisFile`,
   * `ShelleyGenesisFile`, `AlonzoGenesisFile`, `ConwayGenesisFile`, and, with experimental hard
@@ -172,19 +171,57 @@ object NodeConfig:
 
   private val Eras = Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway)
 
-  /** The reference's `FromJSON AcceptedConnectionsLimit`: the three keys are required; the limits
-    * are `Word32` there (ours stop at `Int.MaxValue`) and the delay a number of seconds.
+  /** aeson's `FromJSON Word32` (`parseBoundedIntegral`): a JSON number (not a string) with an
+    * integral value in `0 .. 2^32 - 1`, in any notation (`512`, `512.0`, `5.12e2`).
+    */
+  private val word32Decoder: Decoder[Word32] = Decoder.decodeJson.emap(json =>
+    json.asNumber
+      .flatMap(_.toLong)
+      .flatMap(Word32.fromLong)
+      .toRight("a Word32: an integral number from 0 to 4294967295")
+  )
+
+  /** A JSON number as aeson's `Scientific` holds it: the coefficient of its digits and the base-10
+    * exponent as written (`1.50e3` is `150` and `1`).
+    */
+  private val Number = """(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?""".r
+
+  /** aeson's `FromJSON DiffTime` (aeson 2.2 `Data/Aeson/Types/FromJSON.hs`, `withBoundedScientific`
+    * and `realToFrac`): a JSON number of seconds whose exponent is at most 1024, of any sign,
+    * floored to a picosecond (`Fixed` `fromRational`).
+    */
+  private val diffTimeDecoder: Decoder[DiffTime] = Decoder.decodeJson.emap(json =>
+    json.asNumber
+      .map(_.toString)
+      .collect { case Number(sign, whole, fraction, exponent) =>
+        val digits = Option(fraction).getOrElse("")
+        val coefficient = BigInt(sign + whole + digits)
+        (coefficient, Option(exponent).fold(BigInt(0))(BigInt(_)) - digits.length)
+      }
+      .toRight("a number of seconds")
+      .filterOrElse(_._2 <= 1024, "a number of seconds with an exponent of at most 1024")
+      .map { (coefficient, exponent) =>
+        val shift = exponent + 12
+        if shift >= 0 then DiffTime.picoseconds(coefficient * BigInt(10).pow(shift.toInt))
+        else if -shift > coefficient.abs.toString.length then
+          DiffTime.picoseconds(if coefficient.signum < 0 then BigInt(-1) else BigInt(0))
+        else
+          val (quotient, remainder) = coefficient /% BigInt(10).pow((-shift).toInt)
+          DiffTime.picoseconds(if remainder.signum < 0 then quotient - 1 else quotient)
+      }
+  )
+
+  /** The reference's `FromJSON AcceptedConnectionsLimit` (ouroboros-network 2fb69829,
+    * `ouroboros-network/orphan-instances/Ouroboros/Network/OrphanInstances.hs:303-308`): the three
+    * keys are required, the limits `Word32` and the delay a `DiffTime`
+    * (`Server/RateLimiting.hs:26-42`).
     */
   private val acceptedDecoder: Decoder[AcceptedConnectionsLimit] =
-    val word32 = Decoder.decodeInt.ensure(_ >= 0, "a non-negative integer")
-    val seconds = Decoder.decodeBigDecimal
-      .ensure(_.abs < BigDecimal(1000000000), "a number of seconds")
-      .map(s => (s * 1000000000).toLong.nanos)
-    Decoder.forProduct3[AcceptedConnectionsLimit, Int, Int, FiniteDuration](
+    Decoder.forProduct3[AcceptedConnectionsLimit, Word32, Word32, DiffTime](
       "hardLimit",
       "softLimit",
       "delay"
-    )(AcceptedConnectionsLimit.apply)(using word32, word32, seconds)
+    )(AcceptedConnectionsLimit.apply)(using word32Decoder, word32Decoder, diffTimeDecoder)
 
   /** Typed access to the keys of one configuration object; `null` counts as absent. */
   private final class Keys(c: HCursor):

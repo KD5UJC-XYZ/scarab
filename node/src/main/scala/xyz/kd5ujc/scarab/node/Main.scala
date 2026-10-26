@@ -54,6 +54,7 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
 import xyz.kd5ujc.scarab.protocol.NtNHeader
 import xyz.kd5ujc.scarab.network.{
   AcceptedConnectionsLimit,
+  Word32,
   BearerServer,
   ConnectionEvents,
   ConnectionManager,
@@ -378,7 +379,7 @@ object Main extends IOApp:
       dumpState: Option[(Path, StateDump.Targets)] = None,
       dumpStateFull: Boolean = false,
       headerFirst: Boolean = true,
-      maxInbound: Option[Int] = None,
+      maxInbound: Option[Word32] = None,
       inboundSync: Boolean = false,
       log: LogSettings = LogSettings.default,
       roots: Option[PeerNetwork.Roots] = None,
@@ -1750,7 +1751,12 @@ object Main extends IOApp:
             )
           maxInbound <- flags
             .get("max-inbound")
-            .traverse(_.toIntOption.filter(_ > 0).toRight(invalid("max-inbound")))
+            .traverse(
+              _.toLongOption
+                .flatMap(Word32.fromLong)
+                .filter(_.toLong > 0)
+                .toRight(invalid("max-inbound"))
+            )
           inboundSync <- flags
             .get("inbound-sync")
             .fold(Right(false))(v =>

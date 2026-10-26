@@ -7,7 +7,6 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, IpAddress, SocketAddress}
 import fs2.concurrent.SignallingRef
-import scala.concurrent.duration.FiniteDuration
 import xyz.kd5ujc.scarab.protocol.ConnectionState
 import xyz.kd5ujc.scarab.protocol.ConnectionState.{Counters, DataFlow, Event, Provenance}
 
@@ -21,10 +20,10 @@ enum ConnectionEvent:
   /** The accept loop delays the next accept (the reference's
     * `ServerTraceAcceptConnectionRateLimiting`, `Server/RateLimiting.hs`).
     */
-  case AcceptRateLimited(delay: FiniteDuration, connections: Int)
+  case AcceptRateLimited(delay: DiffTime, connections: Int)
 
   /** The accept loop stopped at the hard limit (`ServerTraceAcceptConnectionHardLimit`). */
-  case AcceptHardLimit(limit: Int)
+  case AcceptHardLimit(limit: Word32)
 
   /** The accept loop accepts again after a hard limit (`ServerTraceAcceptConnectionResume`). */
   case AcceptResumed(connections: Int)
@@ -93,7 +92,7 @@ trait ConnectionManager[F[_]]:
   /** Completes once fewer than `limit` inbound connections are live (the reference's STM `check` in
     * `runConnectionRateLimits`).
     */
-  def awaitInboundBelow(limit: Int): F[Unit]
+  def awaitInboundBelow(limit: Long): F[Unit]
 
 object ConnectionManager:
   /** A connection is known by the peer's address and the direction it was made in. */
@@ -149,6 +148,8 @@ object ConnectionManager:
       Ref.of[F, Long](0L)
     ).mapN { (table, ids) =>
       val F = Async[F]
+      // `includeInboundConnectionImpl` accepts while `numberOfCons + 1 <= hardLimit`.
+      val hardLimit = limits.accepted.acceptedConnectionsHardLimit.toLong
       def emit(event: ConnectionEvent): F[Unit] = events.traverse_(_.emit(event))
       def refuse[A](error: ConnectionError)(using Raise[F, ConnectionError]): F[A] =
         emit(ConnectionEvent.Refused(error)) *> error.raise[F, A]
@@ -246,17 +247,8 @@ object ConnectionManager:
             val c = counters(m)
             if taken.isDefined then
               (m, Left(ConnectionError.AlreadyConnected(remote.toString, taken.get.state)))
-            else if provenance == Provenance.Inbound && c.inbound >= limits.accepted.acceptedConnectionsHardLimit
-            then
-              (
-                m,
-                Left(
-                  ConnectionError.InboundLimit(
-                    remote.toString,
-                    limits.accepted.acceptedConnectionsHardLimit
-                  )
-                )
-              )
+            else if provenance == Provenance.Inbound && c.inbound + 1L > hardLimit then
+              (m, Left(ConnectionError.InboundLimit(remote.toString, hardLimit)))
             else if provenance == Provenance.Inbound &&
               m.iterator.count { (k, e) =>
                 k._2 == Provenance.Inbound && k._1.host == remote.host && e.state.isLive
@@ -317,7 +309,7 @@ object ConnectionManager:
 
         def inboundCount = table.get.map(counters(_).inbound)
 
-        def awaitInboundBelow(limit: Int) =
+        def awaitInboundBelow(limit: Long) =
           table.discrete.map(counters(_).inbound).takeThrough(_ >= limit).compile.drain
 
         def snapshot =

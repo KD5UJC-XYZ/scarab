@@ -10,8 +10,7 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Era, NtnVersion}
 import xyz.kd5ujc.scarab.network.selection.{AfterSlot, ConsensusMode, Targets, UseLedgerPeers}
-import xyz.kd5ujc.scarab.network.AcceptedConnectionsLimit
-import scala.concurrent.duration.*
+import xyz.kd5ujc.scarab.network.{AcceptedConnectionsLimit, DiffTime, Word32}
 import munit.FunSuite
 
 /** The Haskell node's `config.json` and `topology.json`, read as `cardano-node run` reads them,
@@ -313,29 +312,73 @@ class ConfigSuite extends FunSuite:
       Right(None)
     )
     assert(NodeConfig.parse(with_("MempoolCapacityBytesOverride", Json.fromString("lots"))).isLeft)
-    // AcceptedConnectionsLimit (POM.hs 373-375): three required keys, the delay in seconds
+    // AcceptedConnectionsLimit (POM.hs 373-375): three required keys, the limits Word32 and the
+    // delay a DiffTime of seconds (OrphanInstances.hs:303-308, aeson's FromJSON Word32/DiffTime)
+    def accepted(hard: Long, soft: Long, picos: BigInt) =
+      for h <- Word32.fromLong(hard); s <- Word32.fromLong(soft)
+      yield AcceptedConnectionsLimit(h, s, DiffTime.picoseconds(picos))
     assertEquals(
-      parsed("preview").settings.acceptedConnectionsLimit,
-      AcceptedConnectionsLimit(512, 384, 5.seconds)
+      Some(parsed("preview").settings.acceptedConnectionsLimit),
+      accepted(512, 384, BigInt(5000000000000L))
     )
-    def limit(fields: (String, Json)*) = NodeConfig
-      .parse(with_("AcceptedConnectionsLimit", Json.obj(fields*)))
+    def limit(hard: Json, soft: Json, delay: Json) = NodeConfig
+      .parse(
+        with_(
+          "AcceptedConnectionsLimit",
+          Json.obj("hardLimit" -> hard, "softLimit" -> soft, "delay" -> delay)
+        )
+      )
       .map(_.settings.acceptedConnectionsLimit)
+      .toOption
+    def number(text: String) = io.circe.parser.parse(text).toOption.getOrElse(Json.Null)
     assertEquals(
-      limit(
-        "hardLimit" -> Json.fromInt(10),
-        "softLimit" -> Json.fromInt(5),
-        "delay" -> Json.fromBigDecimal(BigDecimal("2.5"))
-      ),
-      Right(AcceptedConnectionsLimit(10, 5, 2500.millis))
+      limit(Json.fromInt(10), Json.fromInt(5), number("2.5")),
+      accepted(10, 5, BigInt(2500000000000L))
     )
-    assert(limit("hardLimit" -> Json.fromInt(10), "softLimit" -> Json.fromInt(5)).isLeft)
+    // the whole Word32 domain, in any integral notation; not negative, fractional, too wide or text
+    assertEquals(
+      limit(number("4294967295"), number("384.0"), number("5")),
+      accepted(4294967295L, 384, BigInt(5000000000000L))
+    )
+    assertEquals(
+      limit(number("5.12e2"), number("0"), number("5")),
+      accepted(512, 0, BigInt(5000000000000L))
+    )
+    List("4294967296", "-1", "1.5", "\"512\"").foreach { bad =>
+      assertEquals(limit(number(bad), Json.fromInt(384), Json.fromInt(5)), None, bad)
+    }
+    // any delay of seconds, negative too, floored to a picosecond, up to an exponent of 1024
+    assertEquals(
+      limit(Json.fromInt(512), Json.fromInt(384), number("100000000")),
+      accepted(512, 384, BigInt("100000000000000000000"))
+    )
+    assertEquals(
+      limit(Json.fromInt(512), Json.fromInt(384), number("-0.0000000000015")),
+      accepted(512, 384, BigInt(-2))
+    )
+    assertEquals(
+      limit(Json.fromInt(512), Json.fromInt(384), number("1e-100")),
+      accepted(512, 384, BigInt(0))
+    )
+    assertEquals(
+      limit(Json.fromInt(512), Json.fromInt(384), number("-1e-100")),
+      accepted(512, 384, BigInt(-1))
+    )
+    assertEquals(
+      limit(Json.fromInt(512), Json.fromInt(384), number("1e1024")),
+      accepted(512, 384, BigInt(10).pow(1036))
+    )
+    assertEquals(limit(Json.fromInt(512), Json.fromInt(384), number("1e1025")), None)
+    assertEquals(limit(Json.fromInt(512), Json.fromInt(384), Json.fromString("5")), None)
     assert(
-      limit(
-        "hardLimit" -> Json.fromInt(-1),
-        "softLimit" -> Json.fromInt(5),
-        "delay" -> Json.fromInt(5)
-      ).isLeft
+      NodeConfig
+        .parse(
+          with_(
+            "AcceptedConnectionsLimit",
+            Json.obj("hardLimit" -> Json.fromInt(10), "softLimit" -> Json.fromInt(5))
+          )
+        )
+        .isLeft
     )
     // Global fetching-peer targets; preferred-peer handover follows the reference.
     assertEquals(
