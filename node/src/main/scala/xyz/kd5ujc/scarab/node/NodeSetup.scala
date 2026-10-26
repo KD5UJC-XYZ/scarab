@@ -322,14 +322,14 @@ object NodeSetup:
         .downField("major")
         .as[Int]
         .exists(_ >= 9)
-      // The Shelley genesis parameters (`sgProtocolParams`), with the later eras' fields of the
-      // node's one parameter record from their genesis files: for the hand-over of a chain that
-      // starts in Byron with the Alonzo genesis `extraConfig` cost models merged in, and for a
-      // chain that starts in a Shelley-based era without them (its injection lays them over the
-      // current parameters, `GenesisStart.alonzoInjectCostModels`).
+      // Parse the supplied injection even when a Byron start will not apply it: the reference
+      // reads AlonzoGenesis.extraConfig before perEraInjections chooses Byron's identity
+      // (cardano-ledger f649f975 Alonzo/Genesis.hs:222-242; consensus 82ecba32 Cardano/Node.hs:957-959).
+      // The hand-over uses translated parameters; only a Shelley-based start injects cost models
+      // into its current parameters (GenesisStart.alonzoInjectCostModels).
       conwayFile = Option.when(startsInConway)(files.conway)
-      params <- ProtocolParams.fromGenesis(files.shelley, files.alonzo, conwayFile)
-      translated <- ProtocolParams.translatedFromGenesis(files.shelley, files.alonzo, conwayFile)
+      _ <- ProtocolParams.fromGenesis(files.shelley, files.alonzo, conwayFile)
+      params <- ProtocolParams.translatedFromGenesis(files.shelley, files.alonzo, conwayFile)
       f = genesis.geometry.activeSlotsCoeff
       active <- PraosLeaderThreshold.Fraction
         .checked(BigInt(f.bigDecimal.unscaledValue), BigInt(10).pow(f.bigDecimal.scale.max(0)))
@@ -367,7 +367,7 @@ object NodeSetup:
             env,
             Globals(globals, genesis.geometry),
             files,
-            fromByron.copy(protocolParams = translated),
+            fromByron,
             praos.forks.eraAt(globals.firstEpoch, params.protocolMajor),
             shelleyHash,
             lite
