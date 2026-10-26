@@ -31,11 +31,7 @@ enum LeiosWireError:
   /** A vote inside `MsgLeiosVotes` failed strict decoding. */
   case BadVote(index: Int, error: BlsError)
 
-  /** The CBOR encoder refused the value of the message; `cause` is its reason. The encoder's own
-    * bounds are reported as the case the decoder reports for the same input (`EmptyEndorserBlock`,
-    * `TooMany`, `ZeroBitmap` and the other bitmap cases), so an encoder and a decoder that refuse
-    * the same message say the same thing.
-    */
+  /** The CBOR encoder refused the value of the message; `cause` retains its typed reason. */
   case Unencodable(cause: Cbor.Error)
 
   /** An endorser block that names no transaction: `{ + hash => word32 }` needs at least one. */
@@ -142,48 +138,7 @@ private[protocol] object LeiosWire:
       yield EbPoint(slot, hash)
     case _ => Left(LeiosWireError.BadField(tag, LeiosField.Point))
 
-  /** The checks of `decodeBitmaps` in ouroboros-consensus `MiniProtocol/LeiosFetch/Type.hs`
-    * (revision `7b239a16`, lines 407 to 435), in its order: at most `MaxBitmapEntries` entries
-    * (lines 410 to 413), then for each entry a 16-bit window and a 64-bit bitmap, a bitmap that is
-    * not zero (427), a window below `MaxBitmapEntries` (430) and strictly above the window before
-    * it (433).
-    */
-  def checkBitmaps(tag: Int, windows: Vector[(Word16, Word64)]): Either[LeiosWireError, Unit] =
-    val limit = LeiosFetch.MaxBitmapEntries
-    if windows.size > limit then
-      Left(LeiosWireError.TooMany(tag, LeiosField.Bitmaps, limit, windows.size))
-    else
-      windows.zipWithIndex.foldLeft[Either[LeiosWireError, Unit]](Right(())) {
-        case (acc, ((window, bits), i)) =>
-          acc.flatMap { _ =>
-            if bits.toBigInt.signum == 0 then Left(LeiosWireError.ZeroBitmap(tag, window.toInt))
-            else if window.toInt >= limit then
-              Left(LeiosWireError.BitmapWindowOutOfRange(tag, window.toInt, limit))
-            else if i > 0 && window.toInt <= windows(i - 1)._1.toInt then
-              Left(LeiosWireError.BitmapWindowsNotAscending(tag, window.toInt))
-            else Right(())
-          }
-      }
-
-  def bitmaps(tag: Int, n: Node): Either[LeiosWireError, TxBitmaps] = n.value match
-    case Value.Map(entries) =>
-      for
-        _ <- Either.cond(
-          entries.size <= LeiosFetch.MaxBitmapEntries,
-          (),
-          LeiosWireError.TooMany(tag, LeiosField.Bitmaps, LeiosFetch.MaxBitmapEntries, entries.size)
-        )
-        windows <- all(entries) { case (k, v) =>
-          for
-            window <- uint(tag, k, Word16.Max, LeiosField.Word16).flatMap(Word16.from)
-            bits <- uint(tag, v, Word64.Max, LeiosField.Word64).flatMap(Word64.from)
-          yield window -> bits
-        }
-        _ <- checkBitmaps(tag, windows)
-      yield TxBitmaps(windows)
-    case _ => Left(LeiosWireError.BadField(tag, LeiosField.Bitmaps))
-
-  // --- encoding (requests are small and bounded) ---
+  // --- encoding ---
   def nodeOf(v: Value): Node = Node(v, Bytes.empty)
 
   def all[A, B](
@@ -194,8 +149,8 @@ private[protocol] object LeiosWire:
     )
 
   /** A complete CBOR item, as a node to embed in a message. */
-  def embed(item: Bytes): Either[LeiosWireError, Node] =
-    Cbor.decode(item).left.map(e => LeiosWireError.Syntax(ProtocolError.Codec(e)))
+  def embed(item: Bytes, limits: Cbor.Limits = Cbor.Limits()): Either[LeiosWireError, Node] =
+    Cbor.decode(item, limits).left.map(e => LeiosWireError.Syntax(ProtocolError.Codec(e)))
 
   /** The head of a definite-length array of `n` items. */
   private def arrayHead(n: Int): Bytes =
@@ -213,35 +168,36 @@ private[protocol] object LeiosWire:
     */
   def arrayWithVerbatim(
       head: Vector[Value],
-      verbatim: Vector[Bytes]
+      verbatim: Vector[Bytes],
+      limits: Cbor.Limits = Cbor.Limits()
   ): Either[LeiosWireError, Bytes] =
     for
-      heads <- all(head)(v => encode(v))
-      _ <- all(verbatim)(embed)
-    yield (heads ++ verbatim).foldLeft(arrayHead(head.size + verbatim.size))(_ ++ _)
+      heads <- all(head)(v => encode(v, limits))
+      _ <- all(verbatim)(item => embed(item, limits))
+    yield concatenate(arrayHead(head.size + verbatim.size) +: (heads ++ verbatim))
+
+  private def concatenate(chunks: Vector[Bytes]): Bytes =
+    Bytes.wrap(chunks.iterator.flatMap(_.toArray).toArray)
 
   def tagged(tag: Int, rest: Value*): Value =
     Value.Arr((Value.UInt(BigInt(tag)) +: rest.toVector).map(nodeOf))
   def pointValue(p: EbPoint): Value =
     Value.Arr(Vector(nodeOf(Value.UInt(p.slot.toBigInt)), nodeOf(Value.ByteString(p.hash.bytes))))
 
-  /** The bitmaps as the reference writes them, an indefinite-length map (`encodeBitmaps`, `Type.hs`
-    * of ouroboros-consensus `7b239a16`, lines 387 to 393; the Blueprint draws the same). Refused,
-    * with the decoder's own error for `tag`, unless they pass the checks the reference decoder
-    * applies.
+  /** encodeBitmaps (`Type.hs`, consensus `7b239a16`, lines 387 to 393) writes the entries as
+    * supplied. Collection and semantic checks belong to decodeBitmaps, not this encoder.
     */
-  def bitmapsBytes(tag: Int, b: TxBitmaps): Either[LeiosWireError, Bytes] =
-    for
-      _ <- checkBitmaps(tag, b.windows)
-      entries <- all(b.windows) { case (w, bits) =>
-        for
-          k <- encode(Value.UInt(BigInt(w.toInt)))
-          v <- encode(Value.UInt(bits.toBigInt))
-        yield k ++ v
-      }
-    yield entries.foldLeft(Bytes.fromArray(Array(0xbf.toByte)))(_ ++ _) ++ Bytes.fromArray(
-      Array(0xff.toByte)
+  def bitmapsBytes(b: TxBitmaps, limits: Cbor.Limits): Either[LeiosWireError, Bytes] =
+    all(b.windows) { case (w, bits) =>
+      for
+        k <- encode(Value.UInt(BigInt(w.toInt)), limits)
+        v <- encode(Value.UInt(bits.toBigInt), limits)
+      yield k ++ v
+    }.map(entries =>
+      concatenate(
+        Bytes.fromArray(Array(0xbf.toByte)) +: entries :+ Bytes.fromArray(Array(0xff.toByte))
+      )
     )
 
-  def encode(v: Value): Either[LeiosWireError, Bytes] =
-    Cbor.encode(v).left.map(LeiosWireError.Unencodable(_))
+  def encode(v: Value, limits: Cbor.Limits = Cbor.Limits()): Either[LeiosWireError, Bytes] =
+    Cbor.encode(v, limits).left.map(LeiosWireError.Unencodable(_))

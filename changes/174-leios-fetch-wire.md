@@ -8,5 +8,4 @@
   `LeiosFetch.Message.LegacyBlockTxs` until a capture or a testnet release settles which form a relay speaks (#174).
 - LeiosFetch bitmaps follow the reference decoder: at most 268 entries, no zero bitmap, windows below 268 and strictly
   ascending, each a typed error; a request writes the indefinite-length map the reference writes.
-- The `LegacyBlockTxs` encoder refuses more than `maxTxsPerEb` transactions (`TooMany`), as the current form does, so it cannot emit a message its own decoder rejects (#174).
-- The `LeiosFetch` encoder reports a refused message with the decoder's own typed error (`EmptyEndorserBlock`, `TooMany`, `ZeroBitmap`, `BitmapWindowOutOfRange`, `BitmapWindowsNotAscending`); `LeiosWireError.Unencodable` now carries the CBOR encoder's `Cbor.Error` instead of discarding it (#174).
+- The pure encoders write the supplied typed fields, matching the native encoder contract; emptiness, collection bounds and bitmap semantics are checked by the decoder. `LeiosWireError.Unencodable` retains a CBOR error for malformed legacy raw items instead of discarding its cause (#174).

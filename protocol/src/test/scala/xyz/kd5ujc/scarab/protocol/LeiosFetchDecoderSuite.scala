@@ -158,6 +158,61 @@ class LeiosFetchDecoderSuite extends FunSuite:
     finally thread.join()
   }
 
+  test("native pure encoders do not apply receiver byte limits or the generic CBOR one-MiB cap") {
+    val payload = Bytes.wrap(Array.fill[Byte](1048577)(0x5a))
+    val slot = ok(LeiosWord.Word64.from(0))
+    val size = ok(LeiosWord.Word32.from(0))
+    val messages = Vector(
+      State.Idle -> Message.BlockRequest(EbPoint(slot, EbHash.fromBytes(payload))),
+      State.Block -> Message.Block(Vector(LeiosTxHash.fromBytes(payload) -> size)),
+      State.BlockTxs -> Message.BlockTxs(Vector(payload))
+    )
+    messages.foreach { (state, message) =>
+      val encoded = ok(LeiosFetch.encode(message))
+      assert(encoded.size > 1048576)
+      assertEquals(decodePrefix(state, encoded), Right(message -> encoded.size))
+    }
+    // Pinned encodeLeiosTx (consensus 7b239a16) with cardano-binary 1.9.1.0/cborg 0.2.10.0:
+    // remove the message/list framing and compare the entire native tag-24 encoding.
+    val txEncoding = ok(LeiosFetch.encode(Message.BlockTxs(Vector(payload)))).drop(3)
+    val digest = java.security.MessageDigest.getInstance("SHA-256").digest(txEncoding.toArray)
+    assertEquals(
+      Bytes.wrap(digest).hex,
+      "5c64a6dff9bbb0ffd5544d1cb695ccef70c791f230f7e9e2de335b4877056abe"
+    )
+  }
+
+  test("native encoders write empty and over-bound collections and unchecked bitmap pairs") {
+    val slot = ok(LeiosWord.Word64.from(0))
+    val p = EbPoint(slot, EbHash.fromBytes(Bytes.empty))
+    val zero = TxBitmaps(Vector(ok(LeiosWord.Word16.from(5)) -> slot))
+    assertEquals(
+      LeiosFetch.encode(Message.BlockTxsRequest(p, zero)),
+      Right(bs(0x83, 3, 0x82, 0, 0x40, 0xbf, 5, 0, 0xff))
+    )
+    Vector(
+      Vector(268 -> 1) -> bs(0xbf, 0x19, 1, 0x0c, 1, 0xff),
+      Vector(3 -> 1, 2 -> 1) -> bs(0xbf, 3, 1, 2, 1, 0xff)
+    ).foreach { (pairs, native) =>
+      val bitmaps = TxBitmaps(pairs.map { (window, bitmap) =>
+        ok(LeiosWord.Word16.from(window)) -> ok(LeiosWord.Word64.from(bitmap))
+      })
+      assertEquals(ok(LeiosFetch.encode(Message.BlockTxsRequest(p, bitmaps))).drop(5), native)
+    }
+    val repeated = Message.Block(
+      Vector.fill(LeiosFetch.MaxTxsPerEb + 1)(
+        LeiosTxHash.fromBytes(Bytes.empty) -> ok(LeiosWord.Word32.from(0))
+      )
+    )
+    val encoded = ok(LeiosFetch.encode(repeated))
+    assertEquals(encoded.take(5), bs(0x82, 2, 0xb9, 0x42, 0xf7))
+    assertEquals(encoded.size - 2, 34289)
+    assertEquals(
+      decodePrefix(State.Block, encoded),
+      Left(LeiosWireError.TooMany(2, LeiosField.EndorserBlock, 17142, 17143))
+    )
+  }
+
   test("reference byte policy is separate for each receiving state") {
     assertEquals(LeiosFetch.byteLimit(State.Idle), Some(65535))
     assertEquals(LeiosFetch.byteLimit(State.Block), Some(660000))

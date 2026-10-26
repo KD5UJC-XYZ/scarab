@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
-import xyz.kd5ujc.scarab.codec.{Bytes, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 
 import LeiosWire.*
 import LeiosWord.Word32
@@ -38,8 +38,9 @@ import LeiosWord.Word32
   * (`decodeBitmaps`, `decodeMapLenOrIndef`) accepts both, and its encoder always writes the
   * indefinite one; this codec reads both and writes the indefinite one, for byte parity (a definite
   * map would save one byte at most). The decoder applies the reference's checks, see
-  * `LeiosWire.checkBitmaps`: at most [[MaxBitmapEntries]] entries, no zero bitmap, windows below
-  * [[MaxBitmapEntries]] and strictly ascending; the encoder refuses what the decoder would.
+  * [[LeiosFetchDecoder]]: at most [[MaxBitmapEntries]] entries, no zero bitmap, windows below
+  * [[MaxBitmapEntries]] and strictly ascending. As in the reference, the encoder writes the typed
+  * fields as supplied; these are decoder checks, not additional constructor or encoder bounds.
   *
   * Agency: the client in `Idle`, the server in `Block` and `BlockTxs`.
   */
@@ -105,47 +106,51 @@ object LeiosFetch:
     case (State.BlockTxs, _: Message.LegacyBlockTxs) => Some(State.Idle)
     case _                                           => None
 
+  // The native pure encoder has no driver byte limit. Keep the existing CBOR implementation's
+  // JVM-indexable representation bound; the receiving driver applies byteLimit separately.
+  private val EncodingLimits = Cbor.Limits(
+    maxInputBytes = Int.MaxValue,
+    maxItems = Int.MaxValue,
+    maxStringBytes = Int.MaxValue
+  )
+
   def encode(message: Message): Either[LeiosWireError, Bytes] = message match
-    case Message.Done            => LeiosWire.encode(tagged(0))
-    case Message.BlockRequest(p) => LeiosWire.encode(tagged(1, pointValue(p)))
+    case Message.Done            => LeiosWire.encode(tagged(0), EncodingLimits)
+    case Message.BlockRequest(p) => LeiosWire.encode(tagged(1, pointValue(p)), EncodingLimits)
     case Message.Block(txs) =>
-      for
-        _ <- Either.cond(txs.nonEmpty, (), LeiosWireError.EmptyEndorserBlock)
-        _ <- bounded(2, LeiosField.EndorserBlock, txs.size)
-        out <- LeiosWire.encode(
-          tagged(
-            2,
-            Value.Map(txs.map { case (h, size) =>
-              (nodeOf(Value.ByteString(h.bytes)), nodeOf(Value.UInt(BigInt(size.toLong))))
-            })
-          )
-        )
-      yield out
+      LeiosWire.encode(
+        tagged(
+          2,
+          Value.Map(txs.map { case (h, size) =>
+            (nodeOf(Value.ByteString(h.bytes)), nodeOf(Value.UInt(BigInt(size.toLong))))
+          })
+        ),
+        EncodingLimits
+      )
     case Message.BlockTxsRequest(p, b) =>
-      bitmapsBytes(3, b).flatMap(bytes =>
-        arrayWithVerbatim(Vector(Value.UInt(BigInt(3)), pointValue(p)), Vector(bytes))
+      bitmapsBytes(b, EncodingLimits).flatMap(bytes =>
+        arrayWithVerbatim(
+          Vector(Value.UInt(BigInt(3)), pointValue(p)),
+          Vector(bytes),
+          EncodingLimits
+        )
       )
     case Message.BlockTxs(txs) =>
-      for
-        _ <- bounded(4, LeiosField.Transactions, txs.size)
-        out <- LeiosWire.encode(
-          tagged(
-            4,
-            Value.Arr(
-              txs.map(tx => nodeOf(Value.Tag(EmbeddedCbor, nodeOf(Value.ByteString(tx)))))
-            )
-          )
-        )
-      yield out
+      LeiosWire.encode(
+        tagged(
+          4,
+          Value.Arr(txs.map(tx => nodeOf(Value.Tag(EmbeddedCbor, nodeOf(Value.ByteString(tx))))))
+        ),
+        EncodingLimits
+      )
     case Message.LegacyBlockTxs(p, b, txs) =>
-      // the transactions go out as the bytes they came with
       for
-        _ <- bounded(4, LeiosField.Transactions, txs.size)
-        list <- arrayWithVerbatim(Vector.empty, txs)
-        bm <- bitmapsBytes(4, b)
+        list <- arrayWithVerbatim(Vector.empty, txs, EncodingLimits)
+        bm <- bitmapsBytes(b, EncodingLimits)
         out <- arrayWithVerbatim(
           Vector(Value.UInt(BigInt(4)), pointValue(p)),
-          Vector(bm, list)
+          Vector(bm, list),
+          EncodingLimits
         )
       yield out
 
@@ -161,13 +166,6 @@ object LeiosFetch:
       transactions,
       LeiosWireError.TransactionCountMismatch(request.count, transactions.size)
     )
-
-  private def bounded(
-      tag: Int,
-      field: LeiosField,
-      actual: Int
-  ): Either[LeiosWireError, Unit] =
-    Either.cond(actual <= MaxTxsPerEb, (), LeiosWireError.TooMany(tag, field, MaxTxsPerEb, actual))
 
   def decodePrefix(state: State, bytes: Bytes): Either[LeiosWireError, (Message, Int)] =
     LeiosFetchDecoder.decode(state, bytes)

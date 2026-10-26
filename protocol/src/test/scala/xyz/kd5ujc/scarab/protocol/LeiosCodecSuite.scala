@@ -294,13 +294,13 @@ class LeiosCodecSuite extends ScalaCheckSuite:
       )
     }
     assertEquals(
-      encode(Message.BlockTxs(Vector.fill(MaxTxsPerEb + 1)(bs(0xa0)))),
-      Left(LeiosWireError.TooMany(4, LeiosField.Transactions, MaxTxsPerEb, MaxTxsPerEb + 1))
+      encode(Message.BlockTxs(Vector.fill(MaxTxsPerEb + 1)(bs(0xa0)))).map(_.take(5)),
+      Right(bs(0x82, 4, 0x99, 0x42, 0xf7))
     )
   }
 
   test(
-    "LeiosFetch: both forms of MsgLeiosBlockTxs encode at maxTxsPerEb and read back, and refuse one more"
+    "LeiosFetch: both forms encode typed transaction vectors; the decoder bounds their count"
   ) {
     import LeiosFetch.*
     val bm = bitmaps(Vector.empty)
@@ -311,7 +311,7 @@ class LeiosCodecSuite extends ScalaCheckSuite:
       val bytes = ok(encode(atBound))
       assertEquals(decodePrefix(State.BlockTxs, bytes), Right((atBound, bytes.size)))
       assertEquals(
-        encode(form(Vector.fill(MaxTxsPerEb + 1)(bs(0xa0)))),
+        decodePrefix(State.BlockTxs, ok(encode(form(Vector.fill(MaxTxsPerEb + 1)(bs(0xa0)))))),
         Left(LeiosWireError.TooMany(4, LeiosField.Transactions, MaxTxsPerEb, MaxTxsPerEb + 1))
       )
     }
@@ -328,7 +328,7 @@ class LeiosCodecSuite extends ScalaCheckSuite:
       decodePrefix(State.Block, bs(0x82, 0x02, 0xbf, 0xff)),
       Left(LeiosWireError.EmptyEndorserBlock)
     )
-    assertEquals(encode(Message.Block(Vector.empty)), Left(LeiosWireError.EmptyEndorserBlock))
+    assertEquals(encode(Message.Block(Vector.empty)), Right(bs(0x82, 2, 0xa0)))
     // an indefinite map of one entry is read; the keys here repeat, which the codec does not judge
     assert(decodePrefix(State.Block, bs(0x82, 0x02, 0xbf) ++ entry ++ bs(0xff)).isRight)
     def eb(n: Int) =
@@ -433,7 +433,7 @@ class LeiosCodecSuite extends ScalaCheckSuite:
       decodePrefix(State.Idle, overIndef),
       Left(LeiosWireError.TooMany(3, LeiosField.Bitmaps, 268, 269))
     )
-    // the encoder refuses what the decoder refuses, with the decoder's own error
+    // Native encodeBitmaps writes the supplied Word16/Word64 pairs; decoding applies these checks.
     Vector(
       Vector(5 -> BigInt(0)) -> LeiosWireError.ZeroBitmap(3, 5),
       Vector(268 -> BigInt(1)) -> LeiosWireError.BitmapWindowOutOfRange(3, 268, 268),
@@ -447,13 +447,16 @@ class LeiosCodecSuite extends ScalaCheckSuite:
       )
     ).foreach { case (w, error) =>
       assertEquals(
-        encode(Message.BlockTxsRequest(p0, bitmaps(w))),
+        decodePrefix(State.Idle, ok(encode(Message.BlockTxsRequest(p0, bitmaps(w))))),
         Left(error),
         w.take(3).toString
       )
     }
     assertEquals(
-      encode(Message.LegacyBlockTxs(p0, bitmaps(Vector(5 -> BigInt(0))), Vector.empty)),
+      decodePrefix(
+        State.BlockTxs,
+        ok(encode(Message.LegacyBlockTxs(p0, bitmaps(Vector(5 -> BigInt(0))), Vector.empty)))
+      ),
       Left(LeiosWireError.ZeroBitmap(4, 5))
     )
     // the older form carries the same bitmaps and the same checks
