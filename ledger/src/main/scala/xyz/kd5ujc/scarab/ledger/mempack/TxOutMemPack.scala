@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.mempack
 
-import xyz.kd5ujc.scarab.ledger.{ByteStrings, DecodeField}
+import xyz.kd5ujc.scarab.ledger.{ByteStrings, DecodeField, FieldKeys}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.{
@@ -89,7 +89,9 @@ object TxOutMemPack:
     else
       for
         node <- CborRead.decode(raw).leftMap(Failure.ScriptRefused(_))
-        fields <- CborRead.fields(node, DecodeField.Output).leftMap(Failure.ScriptRefused(_))
+        fields <- CborRead
+          .fields(node, DecodeField.Output, FieldKeys.Stored)
+          .leftMap(Failure.ScriptRefused(_))
         wrapped <- fields.get(3).toRight(Failure.ReferenceScriptMissing)
         inner <- wrapped.value match
           case CborValue.Tag(t, i) if t == 24 =>

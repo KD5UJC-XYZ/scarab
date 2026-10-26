@@ -509,7 +509,7 @@ final case class TxOut(
   def hasScriptRef: Boolean = scriptRef.isDefined
 
   // The reads below are of `raw`, which this output was already decoded from under the policy of
-  // its decoder: they take any form that decode took.
+  // its decoder: they take any form and any key that decode took.
   private given ByteStrings = ByteStrings.Chunked
 
   /** The reference script with its Plutus bytes, re-read from the output's encoding. */
@@ -517,7 +517,7 @@ final case class TxOut(
     scriptRef.flatMap { kept =>
       val reread = for
         node <- CborRead.decode(raw)
-        f <- CborRead.fields(node, DecodeField.Output)
+        f <- CborRead.fields(node, DecodeField.Output, FieldKeys.Stored)
         field <- f
           .get(3)
           .toRight(LedgerDecodeError.MissingField(DecodeField.Output, DecodeField.ReferenceScript))
@@ -534,7 +534,7 @@ final case class TxOut(
     else
       val size = for
         node <- CborRead.decode(raw)
-        f <- CborRead.fields(node, DecodeField.Output)
+        f <- CborRead.fields(node, DecodeField.Output, FieldKeys.Stored)
         field <- f
           .get(3)
           .toRight(LedgerDecodeError.MissingField(DecodeField.Output, DecodeField.ReferenceScript))
@@ -574,21 +574,22 @@ object TxOut:
     * adds the map (`decodeBabbageTxOut`, `eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs`),
     * all of cardano-ledger f649f975. An indefinite array is read as a definite one in every era.
     */
-  enum Forms(val arities: Set[Int], val admitsMap: Boolean):
-    case Pair extends Forms(Set(2), false)
-    case PairOrDatumHash extends Forms(Set(2, 3), false)
-    case PairDatumHashOrMap extends Forms(Set(2, 3), true)
+  enum Forms(val arities: Set[Int], val admitsMap: Boolean, val keys: FieldKeys):
+    case Pair extends Forms(Set(2), false, FieldKeys.FullWidth)
+    case PairOrDatumHash extends Forms(Set(2, 3), false, FieldKeys.FullWidth)
+    case PairDatumHashOrMap extends Forms(Set(2, 3), true, FieldKeys.FullWidth)
+
+    /** A stored output is read in any form and with the map keys an earlier build accepted and
+      * stored, so the stores keep reading what they wrote (ADR 0006): every form of the latest era,
+      * the keys as their low 32 bits ([[FieldKeys.Stored]]).
+      */
+    case Stored extends Forms(Set(2, 3), true, FieldKeys.Stored)
 
   object Forms:
     def of(era: Era): Forms =
       if era.ordinal < Era.Alonzo.ordinal then Pair
       else if era.ordinal < Era.Babbage.ordinal then PairOrDatumHash
       else PairDatumHashOrMap
-
-    /** A stored output is read in any form an earlier build accepted and stored, so the stores keep
-      * reading what they wrote (ADR 0006): every form of the latest era.
-      */
-    val Stored: Forms = PairDatumHashOrMap
 
   def decode(
       n: Node,
@@ -607,7 +608,7 @@ object TxOut:
         yield TxOut(n.original, a, v, d, None, xs(1).original.size)
       case xyz.kd5ujc.scarab.codec.Value.Map(_) if forms.admitsMap =>
         for
-          f <- CborRead.fields(n, DecodeField.Output)
+          f <- CborRead.fields(n, DecodeField.Output, forms.keys)
           a <- f
             .get(0)
             .toRight(LedgerDecodeError.MissingField(DecodeField.Output, DecodeField.Address))

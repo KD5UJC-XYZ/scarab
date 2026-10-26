@@ -6,6 +6,19 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 
 /** Total readers over decoded CBOR. Every failure names what was being read. */
+/** How the unsigned keys of a record map are read. */
+enum FieldKeys:
+  /** At full width, as the reference reads them (`invalidField` reads a `Word`, `Binary/Coders.hs`,
+    * cardano-ledger f649f975): a key beyond `Int` names no field and is
+    * [[LedgerDecodeError.UnknownKey]]. Every read of a block, a transaction or a query.
+    */
+  case FullWidth
+
+  /** As the builds before #379 read them, as their low 32 bits: what such a build stored still
+    * reads as it read then (ADR 0006). The stores' re-reads of their own outputs alone.
+    */
+  case Stored
+
 private[ledger] object CborRead:
   def decode(bytes: Bytes, limits: Cbor.Limits = Cbor.Limits()): Result[Node] =
     Cbor.decode(bytes, limits).leftMap(LedgerDecodeError.Syntax(_))
@@ -132,15 +145,20 @@ private[ledger] object CborRead:
   def unique[A](xs: Vector[A], what: DecodeSite): Result[Vector[A]] =
     Either.cond(xs.distinct.size == xs.size, xs, LedgerDecodeError.DuplicateElement(what))
 
-  /** Map with unsigned-integer keys, rejecting duplicate keys. */
-  def fields(n: Node, what: DecodeSite): Result[Map[Int, Node]] =
+  /** Map with unsigned-integer keys, rejecting duplicate keys, the keys read as `keys` says. */
+  def fields(
+      n: Node,
+      what: DecodeSite,
+      keys: FieldKeys = FieldKeys.FullWidth
+  ): Result[Map[Int, Node]] =
     map(n, what).flatMap { kvs =>
       kvs
         .traverse { case (k, v) =>
           uint(k, what / DecodeSite.Qualifier.Key).flatMap(key =>
-            // A key beyond `Int` names no field of any record, and reading it as its low 32 bits would
-            // make it one (`invalidField`, `Coders.hs`, cardano-ledger f649f975, reads a `Word`).
-            Either.cond(key.isValidInt, key.toInt -> v, LedgerDecodeError.UnknownKey(what, key))
+            keys match
+              case FieldKeys.FullWidth =>
+                Either.cond(key.isValidInt, key.toInt -> v, LedgerDecodeError.UnknownKey(what, key))
+              case FieldKeys.Stored => Right(key.toInt -> v)
           )
         }
         .flatMap(pairs =>
