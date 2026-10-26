@@ -21,9 +21,9 @@ class PoolNetworkQuerySuite extends FunSuite:
   private val foreign = 1 - network
 
   private val (_, base, point, blockNo) = NtcGolden.subjects
-    .find(s => NtcGolden.flatLedger(s._2, None).pools.nonEmpty)
+    .find(s => NtcGolden.pools(s._2).nonEmpty)
     .getOrElse(fail("no Conway state of the capture has a pool"))
-  private val (id, pool) = NtcGolden.flatLedger(base, None).pools.head
+  private val (id, pool) = NtcGolden.pools(base).head
   private val moved =
     pool.params.copy(rewardAccount = pool.params.rewardAccount.copy(network = foreign))
 
