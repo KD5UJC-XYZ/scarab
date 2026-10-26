@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.network
 import cats.effect.{Deferred, IO, Ref}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
+
 import MuxJobPool.Group
 
 class MuxJobPoolSuite extends FailsOnUncaught:
