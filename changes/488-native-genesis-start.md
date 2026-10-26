@@ -1,0 +1,5 @@
+### Changed (ledger, #488)
+
+- A chain whose first era is Shelley-based (the devnet, Preview and other test networks that schedule their hard forks at epoch 0) starts from the state the reference makes: the Byron genesis UTxO translated to the first era, then that era's genesis injection. The start no longer predicts a protocol-parameter update or precomputes the first epoch's reward update, the injected staking keys before Conway get the pointers the reference gives them, and the Alonzo genesis `extraConfig.costModels` override only the current parameters, from Alonzo. A chain that starts in Byron is unchanged.
+- An era-skipping start on a network whose Shelley genesis names `Mainnet` is refused, as the reference refuses its injection, and so is an injection given both in `extraConfig` and in the legacy field, or read from a file.
+- The `legacy` module (the frozen flat state and its conversion) is removed.

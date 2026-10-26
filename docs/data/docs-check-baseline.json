@@ -626,12 +626,6 @@
   {
    "kind": "line-citation",
    "path": "docs/design/ledger-mirror-step2.md",
-   "key": "LedgerMirror.scala:565",
-   "count": 1
-  },
-  {
-   "kind": "line-citation",
-   "path": "docs/design/ledger-mirror-step2.md",
    "key": "LedgerRules.scala:227",
    "count": 1
   },

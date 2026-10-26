@@ -5,7 +5,7 @@ Part of [Performance](../performance.md). The tables and listings are copied fro
 
 ## 9. The differential harness: what the conversion costs (J2.2)
 
-`--rules differential` (and `PreviewDifferentialMain`) converts the old state to the mirror (`StateMirror.toMirror`) at
+`--rules differential` (and `PreviewDifferentialMain`) converts the old state to the mirror (`toMirror` of the retired `StateMirror`) at
 the sampling points: the first block, the first block of every epoch and era, every 2,160th block. While the new side is
 not ported the conversion is the whole cost. Linux x86-64, JDK 21, 8 CPUs, `-Xmx16g`, commit of the J2.2 harness,
 `PreviewDifferentialMain <K1 db> 72` (21 epochs of the Preview sync, each replayed from its snapshot and UTxO checkpoint, once
@@ -145,7 +145,7 @@ only in the tool). The gate (p99 within +25% of the old rules) holds in all four
 tick of a snapshot is slower than the later ones in both builds (556 against 422 ms best of four after); the best of four is
 0.7 to 0.9 times the old rules.
 
-**After the rebase onto J2.9** (the old rules, the flat state and `Relations.seed` gone; the tool reads the K1 snapshots with the
+**After the rebase onto J2.9** (the old rules, the flat state and `seed` of the retired `Relations` gone; the tool reads the K1 snapshots with the
 frozen reader of the `legacy` module and its conversion, which seeds the state as the migration does): `main` against `main` plus
 this change, concurrent, 50 snapshots by 4 ticks: pooled over the 200 ticks the mean is 699 ms before and 381 after, the median 631
 and 352, the p99 1,326 and 773; the first tick of each snapshot 828 and 478 (mean), the best of four 576 and 297. The gate against

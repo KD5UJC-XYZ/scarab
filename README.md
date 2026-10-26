@@ -159,7 +159,6 @@ the dependencies.
 | `plutus` | The Plutus evaluator algebra and its Scalus adapter |
 | `ledger` | Blocks, headers, genesis, transactions, the Byron to Conway rules, and the era-indexed Haskell-shaped state (`ledger.state`) |
 | `consensus` | Praos, TPraos and PBFT, chain selection, the hard-fork combinator, header rules, the consensus side of the state (`consensus.state`) |
-| `legacy` | Flat genesis/domain types and one-way conversion into the era-indexed state |
 | `storage` | Immutable and volatile stores, ledger snapshots, the UTxO store, format migrations, the Haskell ImmutableDB reader and ledger-state codec |
 | `node` | Peers, follower, relay, mempool, forging, node-to-client, query server, `Main` |
 | `models-gen`, `models` | A CDDL parser and code generator; the models generated from the pinned upstream CDDL (a spike: used by tests, and its runtime by the ledger-state codec in `storage`) |
