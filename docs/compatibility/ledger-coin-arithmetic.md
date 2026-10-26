@@ -20,24 +20,32 @@ subtotals wrap separately before their Coin sum. The reference boundaries are
 `Shelley/Rules/PoolReap.hs:179–221`, `Shelley/Rewards.hs:205–210` and
 `Conway/Rules/Epoch.hs:181–240`.
 
+Stake resolution retains native unchecked NonZero values when compact addition wraps to zero
+(`State/Stake.hs:220–245`, `Shelley/State/Stake.hs:148–172`,
+`BaseTypes/NonZero.hs:140–141`). Pool/owner and DRep subtotals wrap; total active stake remains
+an unbounded Coin, with zero replaced by one (`State/Stake.hs:157–166`,
+`State/SnapShots.hs:187–226`, `Conway/Governance/DRepPulser.hs:209–232`). Proposal deposits
+use the reference's zero on failed compaction before credential grouping
+(`Conway/Governance/Proposals.hs:566–580`).
+
 ## Evidence
 
-`VocabularySuite` checks signed Coin construction and compact bounds. `HaskellStateCodecSuite`
-checks the exact negative Coin encoding, unsigned Word64 decoding and refusal of out-of-range
-values. The native mirror regression retains a negative treasury through conversion; it is not
-a claim that negative Coin CBOR decodes successfully.
+The [eleven native API cases](../../fixtures/reference/coin-arithmetic/cases.jsonl) and
+[provenance](../../fixtures/reference/coin-arithmetic/provenance.json) record actual signed Coin
+encoding/compaction, compact arithmetic, account sums/credit and credential stake resolution.
+Six installed reference source files were compared byte-for-byte with the pinned Git objects.
+`CoinArithmeticReferenceSuite` compares native results, and `HaskellStateCodecSuite` compares
+exact Coin bytes while retaining bounded decoder refusal. The portable
+[oracle replay](../../scripts/oracle/coin-arithmetic/run.py) compares every captured case.
 
-`CompactCoinRulesSuite` covers account additions/subtotals, sparse/dense credit, MIR union before
-compaction, per-reward conversion and pool-refund boundaries. Withdrawal map tests preserve
-last-wins/duplicate refusal, original body bytes and V1/V2 versus V3 context behavior with Coin
-amounts. These are scoped source-derived checks, not complete native arithmetic comparisons or
-whole-ledger equivalence. Current-head integration gates remain required before readiness.
+`CompactCoinRulesSuite`, `CompactStakeSuite` and `TickRulesSuite` additionally cover source-derived
+rule boundaries, both account families, sparse/dense credit, pointer stake, pool owners,
+proposal deposits and DRep sums. The balanced reward-update test preserves treasury -1.
+Removing wrapped-zero stake retention fails four focused assertions; clamping signed Coin
+fails three. Restored source passes both sets of regressions. These are scoped arithmetic
+checks, not full-ledger equivalence.
 
 ## Explicitly unchecked or unconfirmed
-
-Compact stake folds, wrapped-zero stake retention, pool/owner and DRep aggregation, and the
-complete native arithmetic corpus remain under [#492](https://github.com/KD5UJC-XYZ/scarab/issues/492).
-This entry does not claim those pending operations match the reference.
 
 The accumulated MIR negative-update state regression requires the rule interpreter integration
 under [#411](https://github.com/KD5UJC-XYZ/scarab/pull/411); the predecessor interpreter remains
