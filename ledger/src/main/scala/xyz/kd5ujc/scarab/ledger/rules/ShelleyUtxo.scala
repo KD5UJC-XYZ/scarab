@@ -318,7 +318,7 @@ object ShelleyUtxo:
         wrongWithdrawals.isEmpty,
         UtxoFailure.WrongNetworkWithdrawal(ctx.network, wrongWithdrawals)
       )
-      withdrawn = body.withdrawals.valuesIterator.sum
+      withdrawn = body.withdrawals.valuesIterator.map(_.value).sum
       consumed = ann.spent.foldLeft(Value.zero)(_ + _.value) + Value.coin(withdrawn + refunds) +
         Value(0, body.mint)
       produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +

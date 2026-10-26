@@ -893,20 +893,22 @@ object Withdrawals:
 
   def view(
       accounts: SortedMap[Credential[Staking], ConwayAccountState],
-      withdrawals: Map[RewardAccount, BigInt],
+      withdrawals: Map[RewardAccount, Coin],
       network: Int
   ): Either[VocabError, View] = viewOf(accounts, withdrawals, network)(_.balance.toBigInt)
 
   /** [[view]] over the accounts of any era, whose balance is `balance`. */
   def viewOf[A](
       accounts: SortedMap[Credential[Staking], A],
-      withdrawals: Map[RewardAccount, BigInt],
+      withdrawals: Map[RewardAccount, Coin],
       network: Int
   )(balance: A => BigInt): Either[VocabError, View] =
     Purpose
       .sortedWithdrawals(withdrawals)
       .traverse { (account, amount) =>
-        Convert.credential[Staking](account.credential).map(c => (account, amount, accounts.get(c)))
+        Convert
+          .credential[Staking](account.credential)
+          .map(c => (account, amount.value, accounts.get(c)))
       }
       .map { found =>
         View(

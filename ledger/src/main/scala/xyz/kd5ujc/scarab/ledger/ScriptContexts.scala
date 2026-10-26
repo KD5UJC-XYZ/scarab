@@ -516,7 +516,7 @@ object ScriptContexts:
           mint(body.mint, v3 = true),
           PlutusData.List(certs),
           PlutusData.Map(Purpose.sortedWithdrawals(body).map { case (a, amount) =>
-            (credential(a.credential): PlutusData) -> (I(amount): PlutusData)
+            (credential(a.credential): PlutusData) -> (I(amount.value): PlutusData)
           }),
           range,
           PlutusData.List(body.requiredSigners.sorted.map(B(_))),
@@ -554,7 +554,7 @@ object ScriptContexts:
       .toMap
       .toVector
       .sortBy { case (c, _) => (c.isInstanceOf[Credential.Script], c.hash.hex) }
-      .map { case (c, amount) => (stakingHash(c), I(amount): PlutusData) }
+      .map { case (c, amount) => (stakingHash(c), I(amount.value): PlutusData) }
     if asMap then PlutusData.Map(entries)
     else PlutusData.List(entries.map { case (k, v) => constr(0, k, v) })
 
