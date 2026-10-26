@@ -3,6 +3,9 @@ package xyz.kd5ujc.scarab.codec
 
 /** Failures of the length-prefixed snapshot binary representation. */
 enum BinaryError extends DomainError:
+  /** An unexpected decoder exception, distinct from invalid stored bytes. */
+  case Internal(cause: Throwable)
+  case Reconstruction[E <: DomainError](cause: E) extends BinaryError
   case BadMagic
   case UnexpectedEnd(position: Long)
   case LengthExceedsRemaining(length: Long, remaining: Long)
@@ -20,6 +23,8 @@ enum BinaryError extends DomainError:
   case InvalidByronVersion(field: String, value: BigInt)
 
   def message: String = this match
+    case Internal(cause)                   => s"decoder defect: $cause"
+    case Reconstruction(cause)             => s"reconstruction failed: $cause"
     case BadMagic                          => "bad magic or too short"
     case UnexpectedEnd(_)                  => "unexpected end of data"
     case LengthExceedsRemaining(n, _)      => s"length $n exceeds remaining data"

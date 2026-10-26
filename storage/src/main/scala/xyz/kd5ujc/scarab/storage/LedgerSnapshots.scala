@@ -143,6 +143,8 @@ object FileLedgerSnapshots:
           case Some(anchor) =>
             val name = nameOf(anchor)
             format.encode(snapshot).flatMap {
+              case Left(SnapshotRefusal.WouldNotRead(error)) if DecodeFailure.terminal(error) =>
+                fail(error)
               case Left(refusal)  => F.pure(Left(refusal))
               case Right(content) =>
                 // the checksum is written after the content, not appended to a copy of it
@@ -166,13 +168,15 @@ object FileLedgerSnapshots:
           case Nil => F.pure(LedgerSnapshots.Restored(None, skipped))
           case name :: tail =>
             readFile(name).flatMap {
-              case Left(error: StorageError.UnknownVersion) => fail(error)
-              case Left(error: StorageError.RetiredVersion) => fail(error)
+              case Left(error) if DecodeFailure.terminal(error) => fail(error)
+              case Left(error: StorageError.UnknownVersion)     => fail(error)
+              case Left(error: StorageError.RetiredVersion)     => fail(error)
               case Left(error) => go(tail, skipped :+ LedgerSnapshots.Skipped(name, error))
               case Right(snapshot) =>
                 usable(snapshot).flatMap {
                   case Right(()) =>
                     F.pure(LedgerSnapshots.Restored(Some(name -> snapshot), skipped))
+                  case Left(error) if DecodeFailure.terminal(error) => fail(error)
                   case Left(error) => go(tail, skipped :+ LedgerSnapshots.Skipped(name, error))
                 }
             }

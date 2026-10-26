@@ -41,11 +41,39 @@ final case class DecodeError(
       best.copy(path = path ++ best.path)
     case _ => this
 
+  /** An implementation failure cannot be recovered by another CDDL alternative. */
+  def terminal: Option[DecodeError.Terminal] =
+    import DecodeError.{Terminal, TerminalCause}
+    @scala.annotation.tailrec
+    def first(todo: List[(DecodeError, List[String])]): Option[Terminal] = todo match
+      case Nil => None
+      case (error, reversedPrefix) :: rest =>
+        def located(cause: TerminalCause): Option[Terminal] =
+          Some(Terminal(error.copy(path = reversedPrefix.reverse ::: error.path), cause))
+        error.kind match
+          case DecodeError.Kind.Internal(cause) => located(TerminalCause.Internal(cause))
+          case DecodeError.Kind.Reconstruction(cause) =>
+            located(TerminalCause.Reconstruction(cause))
+          case DecodeError.Kind.NoAlternative(causes) =>
+            val prefix = error.path.foldLeft(reversedPrefix)((done, segment) => segment :: done)
+            first(causes.foldRight(rest)((cause, next) => (cause, prefix) :: next))
+          case _ => first(rest)
+    first((this, Nil) :: Nil)
+
   def render: String = s"${path.mkString("/")} @$offset: ${DecodeError.describe(kind)}"
 
 object DecodeError:
+  enum TerminalCause:
+    case Internal(cause: Throwable)
+    case Reconstruction[E <: DomainError](cause: E) extends TerminalCause
+
+  final case class Terminal private[DecodeError] (error: DecodeError, cause: TerminalCause)
+
   enum Kind:
     case Domain[E <: DomainError](cause: E) extends Kind
+
+    /** A runtime value could not be reconstructed; this is not a refusal of its encoded bytes. */
+    case Reconstruction[E <: DomainError](cause: E) extends Kind
 
     /** The bytes are not well-formed CBOR; retain the codec failure as the cause. */
     case Syntax(cause: xyz.kd5ujc.scarab.codec.Cbor.Error)
@@ -94,6 +122,7 @@ object DecodeError:
 
   def describe(kind: Kind): String = kind match
     case Kind.Domain(cause)         => cause.toString
+    case Kind.Reconstruction(cause) => s"reconstruction failed: $cause"
     case Kind.Syntax(m)             => s"malformed CBOR: ${m.message}"
     case Kind.TypeMismatch(e, f)    => s"expected $e, found $f"
     case Kind.BadSize(e, a)         => s"expected size $e, got $a"

@@ -179,7 +179,11 @@ object LedgerSnapshotImport:
     def prepare(stage: Path, source: Path, evidence: Evidence): F[Report] =
       for
         raw <- files.readAll(source / "state").compile.to(Chunk).map(c => Bytes.wrap(c.toArray))
-        file <- lift(HaskellLedgerFile.decode(raw).leftMap(Error.State(_)))
+        file <- lift(HaskellLedgerFile.decode(raw).leftMap { error =>
+          val classified = DecodeFailure.native("native ledger state", error)
+          if DecodeFailure.terminal(classified) then Error.Storage(classified)
+          else Error.State(error)
+        })
         ext <- lift(file.ext.toRight(Error.Byron))
         _ <- lift(
           Either.cond(

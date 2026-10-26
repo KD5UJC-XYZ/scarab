@@ -328,6 +328,10 @@ enum FirstImmutableProblem extends DomainError:
     case BlockDecode(error) => s"first immutable block cannot be decoded: ${error.message}"
 
 enum StorageError extends NodeError:
+  /** Reconstruction failed independently of whether the stored bytes are well formed. */
+  case Reconstruction[E <: DomainError](what: String, cause: E) extends StorageError
+  case DecoderDefect(what: String, cause: Throwable)
+
   case DatabaseInUse(database: String)
 
   /** The stored bytes fail validation (bad checksum, truncation, impossible structure). */
@@ -387,6 +391,8 @@ enum StorageError extends NodeError:
   case UtxoCheckpoint(dir: String, problem: CheckpointProblem)
 
   def message: String = this match
+    case Reconstruction(what, cause) => s"$what reconstruction failed: $cause"
+    case DecoderDefect(what, cause)  => s"$what decoder defect: $cause"
     case DatabaseInUse(db) => s"database $db is already owned by a follower or offline command"
     case Corrupt(w, r)     => s"corrupt $w: $r"
     case FirstImmutable(p) => s"corrupt first immutable block: ${p.message}"

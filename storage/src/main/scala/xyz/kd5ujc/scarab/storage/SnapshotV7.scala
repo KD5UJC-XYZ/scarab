@@ -191,5 +191,5 @@ object SnapshotV7:
             .decode[CheckpointBinding](
               content.slice(HeaderSize + fingerprint.length, end.toInt)
             )(using CheckpointBinding.codec)
-            .leftMap(corrupt)
+            .leftMap(DecodeFailure.binary("snapshot checkpoint binding", _))
             .map(_ -> end.toInt)
