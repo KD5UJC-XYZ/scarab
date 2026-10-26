@@ -236,13 +236,17 @@ object HasZero:
   given HasZero[BigInt] = instance(_.signum == 0)
   given HasZero[Word64] = instance(Word64.isZero(_))
 
-/** `NonZero a` (`BaseTypes/NonZero.hs:76-78`: `newtype NonZero a`,
-  * `deriving newtype (Eq, Ord, ..)`, so it orders as the value does): a value that is not zero, by
-  * construction.
+/** `NonZero a` (`BaseTypes/NonZero.hs:76-78`): checked construction refuses zero. Native rules also
+  * use the reference's unchecked constructor; those call sites preserve its representation.
   */
 opaque type NonZero[A] = A
 
 object NonZero:
+  /** `unsafeNonZero` (`BaseTypes/NonZero.hs:140–141`) performs no check, including on wrapped zero.
+    * Only reference-corresponding internal rule construction may use this operation.
+    */
+  private[ledger] def unsafe[A](a: A): NonZero[A] = a
+
   def from[A](a: A)(using z: HasZero[A]): Either[VocabError, NonZero[A]] =
     Either.cond(!z.isZero(a), a, VocabError.Zero(VocabError.Kind.NonZero))
 

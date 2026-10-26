@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.ledger.rules
 
 import cats.Monad
 import cats.mtl.{Ask, Raise, Stateful}
-import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.state.*
 
 /** SNAP (`Shelley/Rules/Snap.hs:75`, `snapTransition`): the stake distribution at the epoch
@@ -26,12 +25,6 @@ object Snap:
           snapshots: Stateful[F, SnapShots],
           failures: Raise[F, TickFailure]
       ): F[Unit] =
-        for
-          mark <- Sts.lift[F, TickFailure, SnapShot](
-            EraLedger
-              .activeStake(ls)
-              .flatMap(StakeDistribution.snapshot(_, EraLedger.pState(ls).stakePools))
-              .leftMap(TickFailure.Vocab(_))
-          )
-          _ <- snapshots.modify(s => SnapShots(mark, s.mark, s.set, ls.utxo.fees))
-        yield ()
+        val mark =
+          StakeDistribution.snapshot(EraLedger.activeStake(ls), EraLedger.pState(ls).stakePools)
+        snapshots.modify(s => SnapShots(mark, s.mark, s.set, ls.utxo.fees))
