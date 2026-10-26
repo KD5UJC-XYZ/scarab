@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+set -euo pipefail
+# The pinned submission action invokes `sbt --batch <command>`. The jar launcher used by sbtw
+# accepts commands directly; batch mode belongs to the upstream shell launcher, not sbt itself.
+if [ "${1:-}" = --batch ]; then shift; fi
+: "${GITHUB_WORKSPACE:?required by the dependency submission action}"
+: "${RUNNER_TEMP:?required by the dependency submission action}"
+: "${GITHUB_OUTPUT:?required by the dependency submission action}"
+processors="${SCARAB_BUILD_PROCESSORS:-4}"
+# Keep workspace and temporary paths identical so the plugin's build-file and output paths stay
+# valid outside the container. Pass the token by environment name, never as a command argument.
+exec docker run --rm --cpus="$processors" --user "$(id -u):$(id -g)" \
+  -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -w "$GITHUB_WORKSPACE" \
+  -v "$RUNNER_TEMP:$RUNNER_TEMP" \
+  -e "HOME=$GITHUB_WORKSPACE/.cache/home" \
+  -e "SCARAB_CACHE_DIR=$GITHUB_WORKSPACE/.cache" \
+  -e SBT_GLOBAL_BASE=/tmp/scarab-dependency-sbt \
+  -e "SCARAB_BUILD_PROCESSORS=$processors" \
+  -e "JAVA_TOOL_OPTIONS=-Djava.io.tmpdir=$RUNNER_TEMP" \
+  -e GITHUB_WORKSPACE -e GITHUB_RUN_ID -e GITHUB_SHA -e GITHUB_REF \
+  -e GITHUB_API_URL -e GITHUB_SERVER_URL -e GITHUB_REPOSITORY \
+  -e GITHUB_TOKEN -e GITHUB_OUTPUT \
+  scarab-dependency-jdk:ci bash scripts/sbtw "$@"
