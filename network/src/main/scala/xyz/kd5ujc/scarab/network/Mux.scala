@@ -104,13 +104,30 @@ object Mux:
     * @param egressBufferBytes
     *   The soft per-channel limit of bytes awaiting write: the reference's `egressSoftBufferLimit`
     *   (network-mux `Network/Mux.hs`, `muxChannel`, ouroboros-network 2fb69829).
+    * @param maxSduPayload
+    *   The largest SDU payload accepted on read: the uint16 length field of the header
+    *   (`Network/Mux/Codec.hs:57-72` at ouroboros-network 2fb69829 bounds nothing else, and rejects
+    *   a zero length). It is not the size of the SDUs sent, see `sduSize`.
+    * @param sduSize
+    *   The size of the SDUs sent: a message is cut into SDUs of at most this many bytes, one per
+    *   turn of each active mini-protocol (`Network/Mux/Egress.hs:199-205`). 12288, the `sduSize` of
+    *   the socket bearer (`Network/Mux/Bearer.hs:83-86`), used for both TCP and node-to-client Unix
+    *   sockets (`Ouroboros/Network/Snocket.hs:455-456`). It never exceeds `maxSduPayload`.
     * @param sduTimeout
-    *   Reference ConnectionHandler.hs:94-102; idle between SDUs is indefinite.
+    *   The time one SDU may take to read (from its first header byte) or write once the handshake
+    *   is done: `sduTimeout = 30` (`Ouroboros/Network/ConnectionHandler.hs:94-95`, used by the
+    *   bearer at `:379` and `:451`); idle between SDUs is indefinite (`Bearer/Socket.hs:73-77`).
+    * @param handshakeSduTimeout
+    *   The same for the handshake: the reference reads and writes it on a bearer of its own with
+    *   `sduHandshakeTimeout = 10` (`ConnectionHandler.hs:98-102`, bearer at `:335` and `:412`),
+    *   after which that bearer is dropped for one with the timeout above. The handshake lane here
+    *   is that bearer: its SDUs get this timeout, every other protocol's `sduTimeout`.
     */
   final case class Config(
       role: Role = Role.Initiator,
       duplex: Boolean = false,
       maxSduPayload: Int = WireMux.WireMaxPayloadBytes,
+      sduSize: Int = 12288,
       readChunkBytes: Int = 16384,
       ingressLimit: Int => Long = IngressLimits.nodeToNode(),
       egressBufferBytes: Long = 0x3ffff,
@@ -378,13 +395,22 @@ object Mux:
           }
           .map(_.toMap)
       )
-      outbound <- Resource.eval(
-        MuxEgress.create[F](config.egressBufferBytes, config.maxSduPayload)
-      )
       _ <- Resource.eval(
         WireMux.Decoder
           .create(WireMux.Limits(maxPayloadBytes = config.maxSduPayload))
           .fold(e => NetworkError.MuxSetup(e).raise[F, WireMux.Decoder], F.pure)
+      )
+      outbound <- Resource.eval(
+        Either
+          .cond(
+            config.sduSize >= 1 && config.sduSize <= config.maxSduPayload,
+            (),
+            WireMux.Error.InvalidPayloadLimit(config.sduSize)
+          )
+          .fold(
+            e => NetworkError.MuxSetup(e).raise[F, MuxEgress.Outbox[F]],
+            _ => MuxEgress.create[F](config.egressBufferBytes, config.sduSize)
+          )
       )
     yield (done, inbound, outbound, connectionIdentity, dispatch, handshakeInput)
 
@@ -542,7 +568,7 @@ object Mux:
                       payload,
                       now.toMicros & 0xffffffffL,
                       sending(lane.role),
-                      config.maxSduPayload,
+                      config.sduSize,
                       lane.protocol,
                       config.maxMessageBytes
                     )

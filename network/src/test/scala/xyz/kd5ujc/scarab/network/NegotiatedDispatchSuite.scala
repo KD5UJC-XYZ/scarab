@@ -232,12 +232,12 @@ class NegotiatedDispatchSuite extends FailsOnUncaught:
               Mux.handshakeResource(
                 a,
                 NodeToNodeServer.Protocol,
-                Mux.Config(duplex = true, maxSduPayload = 1)
+                Mux.Config(duplex = true, sduSize = 1)
               ),
               Mux.handshakeResource(
                 b,
                 NodeToNodeServer.Protocol,
-                Mux.Config(role = Mux.Role.Responder, duplex = true, maxSduPayload = 1)
+                Mux.Config(role = Mux.Role.Responder, duplex = true, sduSize = 1)
               )
             ).tupled
           }

@@ -60,8 +60,8 @@ class ChainSyncBatchSuite extends FailsOnUncaught:
             Peers
               .linked(
                 protocols = Set(protocol),
-                client = Mux.Config(maxSduPayload = sduSize),
-                server = Mux.Config(role = Mux.Role.Responder, maxSduPayload = sduSize)
+                client = Mux.Config(sduSize = sduSize),
+                server = Mux.Config(role = Mux.Role.Responder, sduSize = sduSize)
               )
               .use { (clientMux, serverMux) =>
                 for
