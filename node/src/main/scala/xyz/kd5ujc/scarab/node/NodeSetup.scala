@@ -152,6 +152,7 @@ object NodeSetup:
       env: ConsensusMirrorEnv,
       globals: Globals,
       files: GenesisState.Files,
+      injections: GenesisInjections,
       fromByron: FromByron,
       era: Era,
       shelleyHash: Bytes,
@@ -163,7 +164,6 @@ object NodeSetup:
       byronUtxo <- ByronLedger
         .genesisUtxo(balances._1, balances._2, files.byronNetworkMagic)
         .leftMap(e => ConfigError(ConfigProblem.LedgerValue(e)))
-      injections <- GenesisInjections.read(files, conway = era == Era.Conway)
       ledger <- GenesisStart
         .ledger(globals, fromByron, byronUtxo, era, injections)
         .leftMap(e => ConfigError(ConfigProblem.GenesisStart(e)))
@@ -315,6 +315,7 @@ object NodeSetup:
         json(names.conway, conwayBytes),
         byronJson.asRight[ConfigError]
       ).mapN(GenesisState.Files(_, _, _, _, addressMagic))
+      injections <- GenesisInjections.read(files)
       globals <- GenesisState.globals(files, genesis)
       startsInConway = files.shelley.hcursor
         .downField("protocolParams")
@@ -367,6 +368,7 @@ object NodeSetup:
             env,
             Globals(globals, genesis.geometry),
             files,
+            injections,
             fromByron,
             praos.forks.eraAt(globals.firstEpoch, params.protocolMajor),
             shelleyHash,

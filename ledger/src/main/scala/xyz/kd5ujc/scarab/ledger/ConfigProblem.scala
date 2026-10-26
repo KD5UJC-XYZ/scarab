@@ -29,8 +29,6 @@ enum ConfigProblem:
   case GenesisAddressEncoding(cause: xyz.kd5ujc.scarab.codec.Cbor.Error)
   case Credential(value: String)
   case DRep(value: String)
-  case DuplicateInjection(name: String)
-  case InjectionFile(name: String)
   case CostModelLanguage(value: String)
   case NonPositive(context: String, value: BigDecimal)
   case Negative(context: String, value: BigDecimal)

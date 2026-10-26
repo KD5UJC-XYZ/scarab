@@ -9,6 +9,7 @@ import io.circe.{Decoder, DecodingFailure, Json}
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem, GenesisState, Ptr}
+import xyz.kd5ujc.scarab.ledger.GenesisState.{FundAddress, InjectionData, InjectionSource}
 import xyz.kd5ujc.scarab.ledger.byron.ByronOut
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.protocol.Era
@@ -32,6 +33,9 @@ enum GenesisStartError extends DomainError derives Show:
   /** `InjectionNotAllowedOnMainnet`: a chain on mainnet does not start in a Shelley-based era. */
   case InjectionNotAllowedOnMainnet
 
+  case ConflictingSources(name: String)
+  case UnsupportedFile(name: String, segments: Vector[String], hash: Hash32)
+
   /** `delegationInvariantMsg`: the staking injection delegates to a pool it does not register. */
   case DelegationToUnregisteredPool(staking: KeyHash[Staking], pool: KeyHash[StakePool])
 
@@ -47,11 +51,11 @@ object GenesisStartError:
 
 /** What the genesis files inject into the state of the era a chain starts in: the
   * `TransitionConfig` data of the reference that is only for test networks (`tcInitialFundsL`,
-  * `tcInitialStakingL`, Conway's `tcInitialDRepsL` and `tcDelegsL`). Each source is resolved as
-  * `resolveInjectionSource` does (`Shelley/Transition.hs:496-517`: `extraConfig.<name>.data`, or
-  * the top-level field, never both), and each is in the order in which the reference folds it: an
-  * embedded `ListMap` decodes the JSON object through aeson's key map, so in the order of the key
-  * (`Data/ListMap.hs:109-125`, `Shelley/Genesis.hs:883-884`).
+  * `tcInitialStakingL`, Conway's `tcInitialDRepsL` and `tcDelegsL`). Parsed legacy and extra
+  * sources remain separate until `resolveInjectionSource` at the native transition boundary
+  * (`Shelley/Transition.hs:496-517`). An embedded `ListMap` retains the JSON key order from aeson's
+  * key map (`Data/ListMap.hs:109-125`), including distinct spellings that decode to the same
+  * address. Parsing validates unused sources too; it does not construct outputs.
   *
   * @param mainnet
   *   the Shelley genesis `networkId` is `Mainnet` (`tcNetworkIDG`)
@@ -71,11 +75,11 @@ object GenesisStartError:
   */
 final case class GenesisInjections(
     mainnet: Boolean,
-    initialFunds: Vector[(node.Address, Coin)],
-    stakePools: Vector[(KeyHash[StakePool], node.PoolParams)],
-    stakeCredentials: Vector[(KeyHash[Staking], KeyHash[StakePool])],
-    initialDReps: Vector[(Credential[DRepRole], DRepState)],
-    delegs: Vector[(Credential[Staking], Delegatee)],
+    initialFunds: InjectionSource[(FundAddress, Coin)],
+    stakePools: InjectionSource[(KeyHash[StakePool], node.PoolParams)],
+    stakeCredentials: InjectionSource[(KeyHash[Staking], KeyHash[StakePool])],
+    initialDReps: InjectionSource[(Credential[DRepRole], DRepState)],
+    delegs: InjectionSource[(Credential[Staking], Delegatee)],
     costModels: Map[Int, Vector[BigInt]]
 )
 
@@ -135,73 +139,95 @@ object GenesisInjections:
       }
     yield DRepState(expiry, anchor, deposit, Sorted.emptySet[Credential[Staking]])
 
-  /** The injections of the genesis files: the Shelley genesis `initialFunds` and staking
-    * (`sgInitialFunds` and `sgStaking`, `Shelley/Genesis.hs:321-324`, and `ShelleyExtraConfig`,
-    * `215-219`) and, when `conway` (the chain starts in Conway, whose `TransitionConfig` holds
-    * them), the Conway genesis `initialDReps` and `delegs` (`Conway/Transition.hs:157-171`).
+  /** Parse every supplied source before era selection, including sources a Byron start ignores.
+    * Legacy and extra objects retain the native parse order (`Shelley/Genesis.hs:511-513,526-531`,
+    * `Conway/Genesis.hs:156-164`); resolving conflicting sources is a later transition operation.
     */
-  def read(files: GenesisState.Files, conway: Boolean): Either[ConfigError, GenesisInjections] =
+  def read(files: GenesisState.Files): Either[ConfigError, GenesisInjections] =
+    def decoded[A: Decoder](name: String)(j: Json): Either[ConfigError, A] =
+      j.as[A].leftMap(field("genesis injection", name))
+    def poolKey(k: String) =
+      GenesisState.hex28(k).flatMap(b => vocab(KeyHash.fromBytes[StakePool](b)))
+    def stakeKey(k: String) =
+      GenesisState.hex28(k).flatMap(b => vocab(KeyHash.fromBytes[Staking](b)))
+    def poolValue(key: KeyHash[StakePool], j: Json) =
+      GenesisState.pool(key.bytes.hex, j).map(_._2)
+    def fundValue(key: FundAddress, j: Json) =
+      val _ = key
+      decoded[Coin]("initialFunds")(j)
+    def stakeValue(key: KeyHash[Staking], j: Json) =
+      val _ = key
+      decoded[String]("stakeCredentials")(j).flatMap(poolKey)
+    def drepValue(key: Credential[DRepRole], j: Json) =
+      val _ = key
+      drepState(j)
+    def delegValue(key: Credential[Staking], j: Json) =
+      val _ = key
+      delegatee(j)
+    def drepKey(k: String) =
+      GenesisState.credential(k).flatMap(n => vocab(Convert.credential[DRepRole](n)))
+    def delegKey(k: String) =
+      GenesisState.credential(k).flatMap(n => vocab(Convert.credential[Staking](n)))
     val s = files.shelley.hcursor
-    val extra = s.downField("extraConfig")
     val c = files.conway.hcursor
-    val conwayExtra = c.downField("extraConfig")
     for
-      network <- s.downField("networkId").as[Option[String]].leftMap(field("genesis", "networkId"))
-      funds <- GenesisState
-        .source[Coin](s.downField("initialFunds"), extra, "initialFunds")
-        .flatMap(_.traverse((hex, coin) => GenesisState.address(hex).map(_ -> coin)))
-      pools <- GenesisState
-        .source[Json](s.downField("staking").downField("pools"), extra, "stakePools")
-        .flatMap(
-          _.traverse((id, j) =>
-            GenesisState
-              .pool(id, j)
-              .flatMap((op, p) => vocab(KeyHash.fromBytes[StakePool](op)).map(_ -> p))
-          )
-        )
-      stake <- GenesisState
-        .source[String](s.downField("staking").downField("stake"), extra, "stakeCredentials")
-        .flatMap(
-          _.traverse((k, p) =>
-            (GenesisState.hex28(k), GenesisState.hex28(p)).tupled.flatMap((kb, pb) =>
-              vocab((KeyHash.fromBytes[Staking](kb), KeyHash.fromBytes[StakePool](pb)).tupled)
-            )
-          )
-        )
-      dreps <-
-        if !conway then Right(Vector.empty)
-        else
-          GenesisState
-            .source[Json](c.downField("initialDReps"), conwayExtra, "initialDReps")
-            .flatMap(
-              _.traverse((k, j) =>
-                (
-                  GenesisState.credential(k).flatMap(n => vocab(Convert.credential[DRepRole](n))),
-                  drepState(j)
-                ).tupled
-              )
-            )
-      delegs <-
-        if !conway then Right(Vector.empty)
-        else
-          GenesisState
-            .source[Json](c.downField("delegs"), conwayExtra, "delegs")
-            .flatMap(
-              _.traverse((k, j) =>
-                (
-                  GenesisState.credential(k).flatMap(n => vocab(Convert.credential[Staking](n))),
-                  delegatee(j)
-                ).tupled
-              )
-            )
+      network <- s.get[String]("networkId").leftMap(field("genesis", "networkId"))
+      mainnet <- network match
+        case "Mainnet" => Right(true)
+        case "Testnet" => Right(false)
+        case other =>
+          Left(ConfigError(ConfigProblem.Selection("networkId", other, Set("Mainnet", "Testnet"))))
+      funds <- GenesisState.entries(
+        s.downField("initialFunds"),
+        "initialFunds",
+        GenesisState.address,
+        fundValue
+      )
+      staking <- GenesisState.optionalObject(s.downField("staking"), "staking")
+      stakingCursor = Json.fromJsonObject(staking.getOrElse(io.circe.JsonObject.empty)).hcursor
+      poolEntries <- GenesisState.entries(
+        stakingCursor.downField("pools"),
+        "pools",
+        poolKey,
+        poolValue,
+        optional = staking.isEmpty
+      )
+      stake <- GenesisState.entries(
+        stakingCursor.downField("stake"),
+        "stake",
+        stakeKey,
+        stakeValue,
+        optional = staking.isEmpty
+      )
+      extra <- GenesisState.optionalObject(s.downField("extraConfig"), "extraConfig")
+      fundsExtra <- GenesisState.injection(extra, "initialFunds", GenesisState.address, fundValue)
+      poolsExtra <- GenesisState.injection(extra, "stakePools", poolKey, poolValue)
+      stakeExtra <- GenesisState.injection(extra, "stakeCredentials", stakeKey, stakeValue)
+      delegs <- GenesisState.entries(
+        c.downField("delegs"),
+        "delegs",
+        delegKey,
+        delegValue,
+        optional = true
+      )
+      dreps <- GenesisState.entries(
+        c.downField("initialDReps"),
+        "initialDReps",
+        drepKey,
+        drepValue,
+        optional = true
+      )
+      conwayExtra <- GenesisState.optionalObject(c.downField("extraConfig"), "extraConfig")
+      delegsExtra <- GenesisState.injection(conwayExtra, "delegs", delegKey, delegValue)
+      drepsExtra <- GenesisState.injection(conwayExtra, "initialDReps", drepKey, drepValue)
       costModels <- node.ProtocolParams.injectedCostModels(files.alonzo)
     yield GenesisInjections(
-      network.contains("Mainnet"),
-      funds,
-      pools,
-      stake,
-      dreps,
-      delegs,
+      mainnet,
+      InjectionSource(funds, fundsExtra),
+      InjectionSource(poolEntries, poolsExtra),
+      InjectionSource(stake, stakeExtra),
+      InjectionSource(dreps, drepsExtra),
+      InjectionSource(delegs, delegsExtra),
       costModels
     )
 
@@ -274,22 +300,57 @@ object GenesisStart:
       era: ShelleyBasedEra[E]
   ): Either[GenesisStartError, NewEpochState[E]] =
     for
+      // Conway resolves its governance sources before the Shelley funds/staking guard
+      // (Conway/Transition.hs:166-171); Shelley resolves pools/stake after it (252-260).
+      drepsSource <- era match
+        case ShelleyBasedEra.SConway => resolve("initialDReps", injections.initialDReps)
+        case _                       => Right(InjectionData.NoInjection)
+      delegsSource <- era match
+        case ShelleyBasedEra.SConway => resolve("delegs", injections.delegs)
+        case _                       => Right(InjectionData.NoInjection)
       _ <- Either.cond(!injections.mainnet, (), GenesisStartError.InjectionNotAllowedOnMainnet)
-      funded <- registerInitialFunds(
-        injections,
-        alonzoInjectCostModels(injections, nes)
-      )
-      pooled <- injectStakePools(injections.stakePools, funded)
+      poolsSource <- resolve("stakePools", injections.stakePools)
+      stakeSource <- resolve("stakeCredentials", injections.stakeCredentials)
+      funded <- registerInitialFunds(injections, alonzoInjectCostModels(injections, nes))
+      pools <- embedded("stakePools", poolsSource)
+      pooled <- injectStakePools(pools, funded)
+      stake <- embedded("stakeCredentials", stakeSource)
       staked <- (era match
         case ShelleyBasedEra.SConway =>
-          conwayStakeCredentials(injections.stakeCredentials, pooled)
-            .map(injectDRepsThenDelegs(injections.initialDReps, injections.delegs, _))
+          for
+            registered <- conwayStakeCredentials(stake, pooled)
+            dreps <- embedded("initialDReps", drepsSource)
+            delegs <- embedded("delegs", delegsSource)
+          yield injectDRepsThenDelegs(dreps, delegs, registered)
         case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
             ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-          shelleyStakeCredentials[E](injections.stakeCredentials, pooled)
+          shelleyStakeCredentials[E](stake, pooled)
       ): Either[GenesisStartError, NewEpochState[E]]
       reset <- resetStakeDistribution(staked).leftMap(GenesisStartError.Vocab(_))
     yield reset
+
+  /** Source selection is distinct from consumption (`Shelley/Transition.hs:496-517`). */
+  private def resolve[A](
+      name: String,
+      source: InjectionSource[A]
+  ): Either[GenesisStartError, InjectionData[A]] =
+    source.extra match
+      case InjectionData.NoInjection      => Right(InjectionData.Embedded(source.legacy))
+      case extra if source.legacy.isEmpty => Right(extra)
+      case _                              => Left(GenesisStartError.ConflictingSources(name))
+
+  /** File consumption remains the separately tracked hash-checked reader; a selected file must
+    * never become an empty embedded source.
+    */
+  private def embedded[A](
+      name: String,
+      source: InjectionData[A]
+  ): Either[GenesisStartError, Vector[A]] =
+    source match
+      case InjectionData.NoInjection       => Right(Vector.empty)
+      case InjectionData.Embedded(entries) => Right(entries)
+      case InjectionData.FromFile(segments, hash) =>
+        Left(GenesisStartError.UnsupportedFile(name, segments, hash))
 
   /** `alonzoInjectCostModels` (`Alonzo/Transition.hs:47-66`, applied by the Alonzo, Babbage and
     * Conway injections): the injected cost models override the current parameters' models of the
@@ -329,7 +390,9 @@ object GenesisStart:
     val utxo = ls.utxo.utxo.utxo
     for
       _ <- Either.cond(!injections.mainnet, (), GenesisStartError.InjectionNotAllowedOnMainnet)
-      folded <- injections.initialFunds.foldLeftM((Map.empty[node.TxIn, node.TxOut], Coin(0))) {
+      source <- resolve("initialFunds", injections.initialFunds)
+      entries <- embedded("initialFunds", source)
+      folded <- entries.foldLeftM((Map.empty[node.TxIn, node.TxOut], Coin(0))) {
         case ((entries, total), (address, amount)) =>
           GenesisState.initialOutput(address, amount).leftMap(GenesisStartError.Vocab(_)).map {
             case (input, output) =>
@@ -362,7 +425,7 @@ object GenesisStart:
     * pool deposit of the parameters and no delegator (`mkStakePoolState deposit mempty`), in place
     * of any the state had.
     */
-  def injectStakePools[E <: EraTag](
+  private def injectStakePools[E <: EraTag](
       pools: Vector[(KeyHash[StakePool], node.PoolParams)],
       nes: NewEpochState[E]
   )(using ShelleyBasedEra[E]): Either[GenesisStartError, NewEpochState[E]] =
@@ -393,7 +456,7 @@ object GenesisStart:
     * transaction and certificate indices of its position) and delegates to its pool, which must be
     * registered.
     */
-  def shelleyStakeCredentials[E <: EraTag](
+  private def shelleyStakeCredentials[E <: EraTag](
       stake: Vector[(KeyHash[Staking], KeyHash[StakePool])],
       nes: NewEpochState[E]
   )(using era: ShelleyBasedEra[E]): Either[GenesisStartError, NewEpochState[E]] =
@@ -433,7 +496,7 @@ object GenesisStart:
     * registered with the key deposit and delegates its stake to its pool (`registerConwayAccount
     * ... (Just (DelegStake pool))`), which must be registered.
     */
-  def conwayStakeCredentials(
+  private def conwayStakeCredentials(
       stake: Vector[(KeyHash[Staking], KeyHash[StakePool])],
       nes: NewEpochState[Conway]
   ): Either[GenesisStartError, NewEpochState[Conway]] =
@@ -461,7 +524,7 @@ object GenesisStart:
     * (`Conway/Rules/Deleg.hs:305-316`): the account's delegatee set where there is an account, and
     * the reverse delegation added to the pool or the DRep either way.
     */
-  def injectDRepsThenDelegs(
+  private def injectDRepsThenDelegs(
       dreps: Vector[(Credential[DRepRole], DRepState)],
       delegs: Vector[(Credential[Staking], Delegatee)],
       nes: NewEpochState[Conway]
