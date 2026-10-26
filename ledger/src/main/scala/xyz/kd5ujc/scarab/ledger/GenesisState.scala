@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.codec.Rational
 import cats.syntax.all.*
 import io.circe.{ACursor, Decoder, Json}
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value as CborValue}
 
 /** The genesis files and the network constants read from them, and the readers of their injections
   * (`initialFunds`, `stakePools`, `stakeCredentials`, Conway DReps and delegations). The ledger
@@ -76,19 +76,76 @@ object GenesisState:
   def output(hex: String, coin: BigInt): Either[ConfigError, (TxIn, TxOut)] =
     Bytes.fromHex(hex).leftMap(e => ConfigError(ConfigProblem.Hex(e))).flatMap(outputBytes(_, coin))
 
-  /** Genesis outputs are spent from the pseudo transaction whose id is the address hash. */
+  /** The JSON Addr decoder and its native serialization (`Address.hs:254-259,597-602,657-683` at
+    * f649f975). JSON uses strict pointers and reserved header bits; a pseudo transaction hashes the
+    * decoded address's serialization, not a noncanonical spelling in the JSON key.
+    */
+  def address(hex: String): Either[ConfigError, Address] =
+    Bytes.fromHex(hex).leftMap(e => ConfigError(ConfigProblem.Hex(e))).flatMap(addressBytes)
+
+  private def addressBytes(raw: Bytes): Either[ConfigError, Address] =
+    val decoded =
+      if raw.size > 0 && (raw.value(0) & 0xff) != 0x82 && (raw.value(0) & 0x8e) != 0 then
+        Left(LedgerDecodeError.AddressHeader(raw.value(0) & 0xff))
+      else Address.decode(raw, Address.Mode.Strict)
+    decoded.leftMap(e => ConfigError(ConfigProblem.LedgerValue(e))).flatMap { address =>
+      address.kind match
+        case Address.Kind.Byron(_) => canonicalByron(raw).map(bytes => address.copy(raw = bytes))
+        case _                     => Right(address)
+    }
+
+  /** `putAddr` serializes a decoded Byron address (`Address.hs:279-281`); the root and attribute
+    * values remain unchanged, while the envelope, payload and attribute map use their encoders.
+    */
+  private def canonicalByron(raw: Bytes): Either[ConfigError, Bytes] =
+    def n(value: CborValue): Node = Node(value, Bytes.empty)
+    def encode(value: CborValue): Either[ConfigError, Bytes] =
+      Cbor
+        .encode(value, byron.ByronCbor.BodyLimits)
+        .leftMap(e => ConfigError(ConfigProblem.GenesisAddressEncoding(e)))
+    for
+      address <- byron.ByronAddress
+        .decode(raw)
+        .leftMap(e => ConfigError(ConfigProblem.LedgerValue(e)))
+      attributes <- Cbor
+        .decode(address.attributes, byron.ByronCbor.BodyLimits)
+        .leftMap(e => ConfigError(ConfigProblem.LedgerValue(LedgerDecodeError.Syntax(e))))
+      payload <- encode(
+        CborValue.Arr(
+          Vector(
+            n(CborValue.ByteString(address.root)),
+            attributes,
+            n(CborValue.UInt(BigInt(address.addrType)))
+          )
+        )
+      )
+      encoded <- encode(
+        CborValue.Arr(
+          Vector(
+            n(CborValue.Tag(BigInt(24), n(CborValue.ByteString(payload)))),
+            n(CborValue.UInt(BigInt(byron.ByronCbor.crc32(payload))))
+          )
+        )
+      )
+    yield encoded
+
+  /** A convenience output constructor; injection parsing itself retains only address and Coin. */
   def outputBytes(raw: Bytes, coin: BigInt): Either[ConfigError, (TxIn, TxOut)] =
     for
-      address <- Address.decode(raw).leftMap(e => ConfigError(ConfigProblem.LedgerValue(e)))
-      // `registerInitialFunds` constructs `mkBasicTxOut`, which compacts each output value
-      // (f649f975 Shelley/Transition.hs:650-653; Shelley/TxOut.hs:139-143;
-      // Alonzo/TxOut.hs:326-327; Babbage/TxOut.hs:449-450). This is the output's bound;
-      // the chain account's reserves and the sum of initial funds remain signed Coin.
-      amount <- state.CompactCoin
-        .fromBigInt(coin)
+      address <- addressBytes(raw)
+      output <- initialOutput(address, state.Coin(coin))
         .leftMap(e => ConfigError(ConfigProblem.GenesisStart(rules.GenesisStartError.Vocab(e))))
-    // Genesis outputs have no transaction encoding; `raw` is only consulted for new outputs.
-    yield TxIn(Blake2b.hash256.hash(raw), 0) -> TxOut(address, Value.coin(amount.toBigInt))
+    yield output
+
+  /** `mkBasicTxOut` compacts each output value (`Shelley/Transition.hs:650-653`,
+    * `Shelley/TxOut.hs:139-143`, `Alonzo/TxOut.hs:326-327`, `Babbage/TxOut.hs:449-450`, f649f975).
+    * `initialFundsPseudoTxIn` hashes serialiseAddr and uses minBound
+    * (`Shelley/Genesis.hs:660-674`).
+    */
+  def initialOutput(address: Address, coin: state.Coin): Either[state.VocabError, (TxIn, TxOut)] =
+    state.CompactCoin.fromCoin(coin).map { amount =>
+      TxIn(Blake2b.hash256.hash(address.raw), 0) -> TxOut(address, Value.coin(amount.toBigInt))
+    }
 
   def pool(id: String, j: Json): Either[ConfigError, (Bytes, PoolParams)] =
     val c = j.hcursor

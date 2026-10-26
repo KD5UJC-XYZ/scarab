@@ -1,0 +1,34 @@
+{
+  "imageId": "sha256:0d7d3971a5ff78c8a6786459d191f39b166d69a4d71a6eb310c9d8338d6e035e",
+  "reference": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "sources": [
+    {
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0",
+      "source": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+      "sha256": "f2ef8e3cebbe7475676e7466d6fa57a6dfc8495f3bdb0b516d3ae4420b04ec2d",
+      "matchesPinnedSource": true
+    },
+    {
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0",
+      "source": "libs/cardano-ledger-core/src/Cardano/Ledger/Coin.hs",
+      "sha256": "fd4fb02a353f0dcaf1e17945fb816993802d0c2b3e51ee674d311b74a7bc4dc0",
+      "matchesPinnedSource": true
+    },
+    {
+      "package": "cardano-ledger-shelley",
+      "version": "1.19.0.1",
+      "source": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
+      "sha256": "834c21264330a9c8367e4e4b271bcc3ecc9e8084f5bd27bfd27e916968ae8eaa",
+      "matchesPinnedSource": true
+    }
+  ],
+  "scope": "Native Addr/Coin JSON decoding, serialiseAddr, initialFundsPseudoTxIn and Coin compaction. Not complete genesis parsing or state transition conformance.",
+  "compiler": "GHC 9.10.3",
+  "protocolVersion": 11,
+  "cases": 12,
+  "oracleSha256": "311ac56c02ef4a85accd391dc551c671b2c89126480d67e5f81a0437da0c5250",
+  "casesSha256": "e7e0e9a93fd8192ae6b63812a80773b2487e1531c2499ee9f64b4c53d965b024",
+  "binaryVersion": "1.9.1.0"
+}

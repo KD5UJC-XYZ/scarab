@@ -5,7 +5,7 @@ import cats.Show
 import cats.derived.*
 import scala.annotation.tailrec
 import cats.syntax.all.*
-import io.circe.Json
+import io.circe.{Decoder, DecodingFailure, Json}
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem, GenesisState, Ptr}
@@ -21,8 +21,8 @@ import xyz.kd5ujc.scarab.protocol.Era
   * UTxO set its `mergeUtxoNoOverlap` error (`Shelley/Transition.hs:700-710`).
   */
 enum GenesisStartError extends DomainError derives Show:
-  /** A value of the genesis does not fit its type in the state (a hash of another length, a compact coin
-    * outside the unsigned 64-bit range).
+  /** A value of the genesis does not fit its type in the state (a hash of another length, a compact
+    * coin outside the unsigned 64-bit range).
     */
   case Vocab(cause: VocabError)
 
@@ -56,7 +56,7 @@ object GenesisStartError:
   * @param mainnet
   *   the Shelley genesis `networkId` is `Mainnet` (`tcNetworkIDG`)
   * @param initialFunds
-  *   `initialFunds`: each address with its pseudo input (`initialFundsPseudoTxIn`) and output
+  *   the ordered `ListMap Addr Coin`; outputs are constructed only during guarded injection
   * @param stakePools
   *   `staking.pools` / `stakePools`
   * @param stakeCredentials
@@ -71,7 +71,7 @@ object GenesisStartError:
   */
 final case class GenesisInjections(
     mainnet: Boolean,
-    initialFunds: Vector[(node.TxIn, node.TxOut)],
+    initialFunds: Vector[(node.Address, Coin)],
     stakePools: Vector[(KeyHash[StakePool], node.PoolParams)],
     stakeCredentials: Vector[(KeyHash[Staking], KeyHash[StakePool])],
     initialDReps: Vector[(Credential[DRepRole], DRepState)],
@@ -80,6 +80,14 @@ final case class GenesisInjections(
 )
 
 object GenesisInjections:
+  // Coin's FromJSON is Integer (f649f975 Coin.hs:93-101), without compaction or string coercion.
+  private given Decoder[Coin] = Decoder.instance { cursor =>
+    cursor.value.asNumber
+      .flatMap(_.toBigInt)
+      .map(Coin(_))
+      .toRight(DecodingFailure("expected an integer Coin", cursor.history))
+  }
+
   private def vocab[A](e: Either[VocabError, A]): Either[ConfigError, A] =
     e.leftMap(v => ConfigError(ConfigProblem.GenesisStart(GenesisStartError.Vocab(v))))
 
@@ -140,8 +148,8 @@ object GenesisInjections:
     for
       network <- s.downField("networkId").as[Option[String]].leftMap(field("genesis", "networkId"))
       funds <- GenesisState
-        .source[BigInt](s.downField("initialFunds"), extra, "initialFunds")
-        .flatMap(_.traverse((hex, coin) => GenesisState.output(hex, coin)))
+        .source[Coin](s.downField("initialFunds"), extra, "initialFunds")
+        .flatMap(_.traverse((hex, coin) => GenesisState.address(hex).map(_ -> coin)))
       pools <- GenesisState
         .source[Json](s.downField("staking").downField("pools"), extra, "stakePools")
         .flatMap(
@@ -268,7 +276,7 @@ object GenesisStart:
     for
       _ <- Either.cond(!injections.mainnet, (), GenesisStartError.InjectionNotAllowedOnMainnet)
       funded <- registerInitialFunds(
-        injections.initialFunds,
+        injections,
         alonzoInjectCostModels(injections, nes)
       )
       pooled <- injectStakePools(injections.stakePools, funded)
@@ -314,21 +322,27 @@ object GenesisStart:
     * the reserves give up their total, and the instant stake is made again over the whole set.
     */
   def registerInitialFunds[E <: EraTag](
-      funds: Vector[(node.TxIn, node.TxOut)],
+      injections: GenesisInjections,
       nes: NewEpochState[E]
   )(using era: ShelleyBasedEra[E]): Either[GenesisStartError, NewEpochState[E]] =
     val ls = nes.es.ls
     val utxo = ls.utxo.utxo.utxo
-    val total = funds.foldLeft(BigInt(0))(_ + _._2.value.coin)
     for
+      _ <- Either.cond(!injections.mainnet, (), GenesisStartError.InjectionNotAllowedOnMainnet)
+      folded <- injections.initialFunds.foldLeftM((Map.empty[node.TxIn, node.TxOut], Coin(0))) {
+        case ((entries, total), (address, amount)) =>
+          GenesisState.initialOutput(address, amount).leftMap(GenesisStartError.Vocab(_)).map {
+            case (input, output) =>
+              (entries.updated(input, output), Coin(total.value + amount.value))
+          }
+      }
+      (funds, total) = folded
       _ <- funds
         .collectFirst { case (in, _) if utxo.contains(in) => in }
         .toLeft(())
         .leftMap(GenesisStartError.InitialFundInUtxo(_))
       next = utxo ++ funds
-      reserves <- Coin
-        .fromBigInt(nes.es.chainAccount.reserves.value - total)
-        .leftMap(GenesisStartError.Vocab(_))
+      reserves = Coin(nes.es.chainAccount.reserves.value - total.value)
       outputs = next.valuesIterator.toVector
       stake <- ((era match
         case ShelleyBasedEra.SConway =>
@@ -473,12 +487,13 @@ object GenesisStart:
       ShelleyBasedEra[E]
   ): Either[VocabError, NewEpochState[E]] =
     val ls = nes.es.ls
-    EraLedger
-      .activeStake(ls)
-      .flatMap(StakeDistribution.snapshot(_, LedgerState.pState[E].get(ls).stakePools))
-      .map(mark =>
-        nes.copy(
-          es = nes.es.copy(snapshots = nes.es.snapshots.copy(mark = mark)),
-          pd = PoolDistr.of(mark)
-        )
+    val mark = StakeDistribution.snapshot(
+      EraLedger.activeStake(ls),
+      LedgerState.pState[E].get(ls).stakePools
+    )
+    Right(
+      nes.copy(
+        es = nes.es.copy(snapshots = nes.es.snapshots.copy(mark = mark)),
+        pd = PoolDistr.of(mark)
       )
+    )
