@@ -128,11 +128,18 @@ final class ProtocolResults[F[_]: Async, A] private (
     })
   )
 
-  /** `awaitAllResults`: running protocols block; protocols never started contribute no result. */
+  /** `awaitAllResults`: running protocols block; protocols never started contribute no result.
+    * Close combines Hot, Warm, Established in that order (PeerStateActions.hs:1072–1079), with
+    * protocol-number order inside each bundle (408–420).
+    */
   def awaitAll(temperatures: Set[Temperature]): F[LastToFinish[A]] =
     F.tailRecM(()) { _ =>
       snapshot.flatMap { s =>
-        val entries = s.entries.toVector.filter((_, e) => temperatures(e.temperature)).sortBy(_._1)
+        val entries = Vector(Temperature.Hot, Temperature.Warm, Temperature.Established)
+          .filter(temperatures)
+          .flatMap(temperature =>
+            s.entries.toVector.filter(_._2.temperature == temperature).sortBy(_._1)
+          )
         if entries.exists(_._2.result == Result.Running) then s.changed.as(Left(()))
         else
           val values = entries.flatMap { (id, entry) =>

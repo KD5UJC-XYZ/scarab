@@ -143,3 +143,29 @@ class ProtocolResultsSuite extends FailsOnUncaught:
       _ <- results.awaitTermination(Temperature.Hot)
     yield assertEquals(snapshot.controls.values.toSet, Set(Control.Terminate))
   }
+
+  test("closing combines failures in hot, warm, established order before protocol number") {
+    val warmError = NetworkError.Timeout(Protocols.PeerSharing, "busy")
+    val establishedError = NetworkError.Timeout(Protocols.KeepAlive, "client")
+    for
+      results <- ProtocolResults.create[IO, Unit]
+      hot <- results.startHot(transactions = false)
+      warm <- results.start(Protocols.PeerSharing, Temperature.Warm)
+      established <- results.start(Protocols.KeepAlive, Temperature.Established)
+      _ <- hot.chainSync.complete(Left(error))
+      _ <- hot.blockFetch.complete(Left(error))
+      _ <- warm.complete(Left(warmError))
+      _ <- established.complete(Left(establishedError))
+      all <- results.awaitAll(Temperature.values.toSet)
+    yield assertEquals(
+      all,
+      ProtocolResults.LastToFinish.SomeErrored(
+        cats.data.NonEmptyVector.of(
+          ProtocolResults.MiniProtocolFailure(Protocols.ChainSync, error),
+          ProtocolResults.MiniProtocolFailure(Protocols.BlockFetch, error),
+          ProtocolResults.MiniProtocolFailure(Protocols.PeerSharing, warmError),
+          ProtocolResults.MiniProtocolFailure(Protocols.KeepAlive, establishedError)
+        )
+      )
+    )
+  }
