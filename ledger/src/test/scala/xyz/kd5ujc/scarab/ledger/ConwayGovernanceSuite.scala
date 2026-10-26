@@ -1,26 +1,75 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import xyz.kd5ujc.scarab.legacy.*
-import scala.annotation.unused
+import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
-import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
+import xyz.kd5ujc.scarab.ledger.rules.{
+  Convert,
+  EraLedger,
+  EraNes,
+  InstantStakeOps,
+  Invariants,
+  NativeRules,
+  StakeDistribution
+}
+import xyz.kd5ujc.scarab.ledger.state as native
+import xyz.kd5ujc.scarab.ledger.state.{
+  Build,
+  ChainAccountState,
+  ColdCommittee,
+  CompactCoin,
+  Conway,
+  ConwayAccountState,
+  ConwayAccounts,
+  ConwayGovState,
+  DRComplete,
+  DRepRole,
+  Empty,
+  EpochNo,
+  KeyHash,
+  NewEpochState,
+  PState,
+  ShelleyBasedEra,
+  Sorted,
+  StakePool,
+  Staking,
+  VRFVerKeyHash,
+  VState,
+  VocabError
+}
 
 import TestLedger.*
 
 /** Constructed governance scenarios: propose, vote, cross epoch boundaries, enact, with the supply
-  * and the deposit pot checked after every step.
+  * and the deposit pot checked after every step. The state is the native Conway state throughout:
+  * the LEDGER rules run on each transaction and the tick ([[NativeRules.boundary]]) on each
+  * boundary, and the state the rules leave is the next step's.
   */
 class ConwayGovernanceSuite extends ScalaCheckSuite:
-  private val rs = RuleSet
   private val ada = BigInt(1000000)
   private val half = Rational(1, 2)
   private val globals = LedgerGlobals(Supply, 100, Rational(1, 20), network = 0)
+
+  /** A value the vocabulary must admit: the test's own keys and amounts. */
+  private def must[A](v: Either[VocabError, A]): A = v.fold(e => fail(s"$e"), identity)
+
+  private def staking(k: Key): native.Credential[Staking] =
+    must(Convert.credential[Staking](k.credential))
+
+  private def drepCredential(k: Key): native.Credential[DRepRole] =
+    must(Convert.credential[DRepRole](k.credential))
+
+  private def coldCredential(k: Key): native.Credential[ColdCommittee] =
+    must(Convert.credential[ColdCommittee](k.credential))
+
+  private def poolId(k: Key): KeyHash[StakePool] = must(Convert.keyHash[StakePool](k.hash))
+
+  private def compact(n: BigInt): CompactCoin = must(CompactCoin.fromBigInt(n))
 
   /** A Conway ledger with three DReps, two pools, three delegating accounts and a funded payer. */
   private final class World(val pv: Int):
@@ -33,6 +82,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     val committeeHot = Vector.fill(2)(key())
     val fundIn: TxIn = txIn(77)
     val fundCoin: BigInt = 10000 * ada
+    val treasury: BigInt = 100000 * ada
     val params: ProtocolParams = TestLedger
       .params(pv)
       // no monetary expansion or treasury cut: the treasury moves only through governance
@@ -64,62 +114,142 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
         None
       )
 
-    def initial: State =
+    /** Stake account `i` delegates to pool `i % 2` and to DRep `i % 3`; the pool owner's account is
+      * registered and delegates to neither. The pools list their delegators and the DReps theirs,
+      * the deposit pot is the obligation, the mark snapshot is the stake distribution of the state,
+      * and the reserves make the total the supply.
+      */
+    def initial: Step =
       val stakeUtxos = stakes.zipWithIndex.map { case (sk, i) =>
         txIn(100 + i) -> out(payer.baseAddress(sk), 1000 * ada)
       }
-      val accounts = (stakes.zipWithIndex.map { case (sk, i) =>
-        sk.credential -> Account(
-          0,
-          params.keyDeposit,
-          Some(pools(i % 2).hash),
-          Some(DRep.Registered(dreps(i % 3).credential))
+      val funded =
+        NativeRules.stateIn[Conway](pv, stakeUtxos :+ (fundIn -> out(payer.address(), fundCoin)))
+      val registered =
+        pools.foldLeft(funded)((nes, p) => Build.pool(nes, poolParams(p), params.poolDeposit))
+      val delegations = stakes.zipWithIndex.map { case (sk, i) =>
+        (
+          staking(sk),
+          poolId(pools(i % 2)),
+          must(Convert.drep(DRep.Registered(dreps(i % 3).credential)))
         )
-      } :+ (poolOwner.credential -> Account(0, params.keyDeposit, None, None))).toMap
-      val poolStates = pools.map(p => p.hash -> PoolState(poolParams(p), params.poolDeposit)).toMap
-      val drepStates = dreps.zipWithIndex.map { case (k, i) =>
-        k.credential -> DRepState(
-          params.drepDeposit,
-          1000,
+      }
+      val keyDeposit = compact(params.keyDeposit)
+      val accounts = ConwayAccounts(
+        Sorted.map(
+          delegations.map((c, p, d) =>
+            c -> ConwayAccountState(CompactCoin.fromUnsigned(0L), keyDeposit, Some(p), Some(d))
+          ) :+ (staking(poolOwner) ->
+            ConwayAccountState(CompactCoin.fromUnsigned(0L), keyDeposit, None, None))
+        )
+      )
+      val ls = registered.es.ls
+      val stakePools = ls.cert.pState.stakePools.transform((id, s) =>
+        s.copy(delegators = Sorted.set(delegations.collect { case (c, p, _) if p == id => c }))
+      )
+      val drepStates = Sorted.map(dreps.zipWithIndex.map { case (k, i) =>
+        drepCredential(k) -> native.DRepState(
+          EpochNo.fromUnsigned(1000L),
           None,
-          stakes.zipWithIndex.collect { case (sk, j) if j % 3 == i => sk.credential }.toSet
+          compact(params.drepDeposit),
+          Sorted.set(stakes.zipWithIndex.collect { case (sk, j) if j % 3 == i => staking(sk) })
         )
-      }.toMap
-      val utxo = (stakeUtxos :+ (fundIn -> out(payer.address(), fundCoin))).toMap
-      val base = state(pv, utxo.toVector).copy(
-        params = params,
-        accounts = accounts,
-        pools = poolStates,
-        dreps = drepStates,
-        treasury = 100000 * ada,
-        epoch = 5,
-        gov = GovState.empty.copy(committee = Some(Committee(Map.empty, Rational.zero)))
+      })
+      val committee = Some(Committee(Map.empty, Rational.zero))
+      val gov0 = ls.utxo.gov
+      // the pulser of a state before its first boundary: the ratification of nothing over the
+      // enact state as it stands
+      val enact =
+        EnactState(committee, gov0.constitution, params, params, treasury, Map.empty, PrevIds())
+      val gov = gov0.copy(
+        committee = committee,
+        curPParams = params,
+        prevPParams = params,
+        drepPulsing = DRComplete(
+          PulsingSnapshot.empty,
+          RatifyState(enact, Vector.empty, Set.empty, delayed = false)
+        )
       )
-      val withObligation = base.copy(deposited = FlatTestLedger.obligation(base))
-      val marked = withObligation.copy(
-        snapshots = Snapshots(Stake.snapshot(withObligation), Snapshot.empty, Snapshot.empty, 0)
+      val cert = ls.cert.copy(
+        vState = ls.cert.vState.copy(dreps = drepStates),
+        pState = ls.cert.pState.copy(stakePools = stakePools),
+        dState = ls.cert.dState.copy(accounts = accounts)
       )
-      val reserves = Supply - (marked.total - marked.reserves)
-      val seeded = marked.copy(reserves = reserves)
-      State(seeded, fundIn, fundCoin, 0)
+      val governed = ls.copy[Conway](cert = cert, utxo = ls.utxo.copy(gov = gov))
+      val pending = registered.copy(es = registered.es.copy(ls = governed))
+      val deposited = must(native.Coin.fromBigInt(NativeRules.obligation(pending)))
+      val withDeposits = governed.copy[Conway](utxo = governed.utxo.copy(deposited = deposited))
+      val mark = must(
+        EraLedger
+          .activeStake(withDeposits)
+          .flatMap(StakeDistribution.snapshot(_, withDeposits.cert.pState.stakePools))
+      )
+      val unreserved = Step(
+        registered.copy(es =
+          registered.es.copy(
+            chainAccount =
+              ChainAccountState(must(native.Coin.fromBigInt(treasury)), native.Coin.zero),
+            ls = withDeposits,
+            snapshots = registered.es.snapshots.copy(mark = mark)
+          )
+        ),
+        fundIn,
+        fundCoin,
+        0
+      )
+      val reserves = must(native.Coin.fromBigInt(Supply - unreserved.total))
+      unreserved.copy(nes =
+        unreserved.nes.copy(es =
+          unreserved.nes.es
+            .copy(chainAccount = unreserved.nes.es.chainAccount.copy(reserves = reserves))
+        )
+      )
 
-  private final case class State(s: LedgerState, fund: TxIn, fundCoin: BigInt, nonce: Int)
+  /** The native state of a step, with the output that funds the next transaction. */
+  private final case class Step(
+      nes: NewEpochState[Conway],
+      fund: TxIn,
+      fundCoin: BigInt,
+      nonce: Int
+  ):
+    def gov: ConwayGovState = nes.es.ls.utxo.gov
+    def vState: VState = nes.es.ls.cert.vState
+    def pState: PState = nes.es.ls.cert.pState
+    def accounts: SortedMap[native.Credential[Staking], ConwayAccountState] =
+      nes.es.ls.cert.dState.accounts.states
+    def epoch: BigInt = nes.epoch.toBigInt
+    def params: ProtocolParams = gov.curPParams
+    def treasury: BigInt = nes.es.chainAccount.treasury.value
+    def donation: BigInt = nes.es.ls.utxo.donation.value
+    def deposited: BigInt = nes.es.ls.utxo.deposited.value
 
-  private def env(s: LedgerState, n: Int): TxEnv =
+    def account(k: Key): ConwayAccountState =
+      accounts.getOrElse(staking(k), fail(s"no account of ${k.credential}"))
+
+    def drepState(k: Key): native.DRepState =
+      vState.dreps.getOrElse(drepCredential(k), fail(s"no DRep ${k.credential}"))
+
+    /** Total value in existence; the supply when the ledger is consistent. */
+    def total: BigInt =
+      val u = nes.es.ls.utxo
+      u.utxo.utxo.coin + u.fees.value + u.deposited.value + u.donation.value + treasury +
+        nes.es.chainAccount.reserves.value + accounts.valuesIterator.map(_.balance.toBigInt).sum
+
+  private def env(st: Step, n: Int): TxEnv =
     TxEnv(
-      slot = s.epoch * 100 + 10,
-      epoch = s.epoch,
+      slot = st.epoch * 100 + 10,
+      epoch = st.epoch,
       network = 0,
-      firstSlotNextEpoch = s.epoch * 100 + 100,
+      firstSlotNextEpoch = st.epoch * 100 + 100,
       stabilityWindow = 20,
       txIndex = n,
-      clock = Some(xyz.kd5ujc.scarab.ledger.PosixClock.Total(slot => slot * 1000 + 1596059091000L))
+      clock = Some(PosixClock.Total(slot => slot * 1000 + 1596059091000L))
     )
 
   /** Submit one transaction paid by `payer`; `deposits` and `refunds` balance the certificates. */
   private def submit(
       w: World,
-      st: State,
+      st: Step,
       signers: Vector[Key],
       certs: Vector[Certificate] = Vector.empty,
       proposals: Vector[Proposal] = Vector.empty,
@@ -128,7 +258,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       deposits: BigInt = 0,
       refunds: BigInt = 0,
       withdrawals: Map[RewardAccount, BigInt] = Map.empty
-  ): Either[LedgerFailure, State] =
+  ): Either[LedgerFailure, Step] =
     val fee = BigInt(200)
     val change = st.fundCoin - fee - deposits + refunds - donation + withdrawals.map(_._2).sum
     val b = body(
@@ -142,16 +272,28 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       proposals = proposals,
       donation = donation
     )
-    rs.tx(st.s, tx(b, w.payer +: signers), env(st.s, st.nonce))
-      .map(next => State(next, TxIn(b.id, 0), change, st.nonce + 1))
+    NativeRules
+      .txIn[Conway](st.nes, tx(b, w.payer +: signers), env(st, st.nonce))
+      .map(next => Step(next.state, TxIn(b.id, 0), change, st.nonce + 1))
 
   private def ok[A](r: Either[LedgerFailure, A]): A = r.fold(f => fail(f.message), identity)
 
-  private def boundary(st: State): State =
-    val next = rs.boundary(st.s, globals)
-    st.copy(s = next)
+  /** The rule's refusal of a transaction, or `None` if it is accepted. */
+  private def refusal[A](r: Either[LedgerFailure, A]): Option[PredicateFailure] = r match
+    case Left(LedgerFailure.Rejected(_, f)) => Some(f)
+    case Left(other)                        => fail(s"not a rule's refusal: ${other.message}")
+    case Right(_)                           => None
 
-  @unused private def returnAccount(w: World, i: Int): RewardAccount =
+  /** The state one epoch later: the tick into the next epoch, on the state the rules left. */
+  private def boundary(st: Step): Step =
+    NativeRules.boundary(EraNes.InEra(ShelleyBasedEra.SConway, st.nes), globals) match
+      case next: EraNes.InEra[x] =>
+        val nes = NewEpochState
+          .retype(next.era, ShelleyBasedEra.SConway)(next.nes)
+          .getOrElse(fail(s"the boundary left Conway for ${next.era}"))
+        st.copy(nes = nes)
+
+  private def returnAccount(w: World, i: Int): RewardAccount =
     RewardAccount(0, w.stakes(i).credential)
 
   private def proposal(w: World, action: GovAction, i: Int = 0): Proposal =
@@ -162,12 +304,29 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
 
   private def poolVote(k: Key, id: GovActionId, v: Vote) = (Voter.Pool(k.hash), Vector(id -> v))
 
-  private def assertInvariants(st: State, label: String): Unit =
-    assertEquals(st.s.total, Supply, s"$label: supply")
-    assertEquals(st.s.deposited, FlatTestLedger.obligation(st.s), s"$label: deposit pot")
+  /** What the rules keep incrementally and what it must agree with: the supply, the deposit pot
+    * against the obligation, the pools' delegators against the accounts, and the instant stake
+    * against the UTxO set.
+    */
+  private def assertInvariants(st: Step, label: String): Unit =
+    assertEquals(st.total, Supply, s"$label: supply")
+    assertEquals(st.deposited, NativeRules.obligation(st.nes), s"$label: deposit pot")
+    assertEquals(
+      Invariants.poolDelegators(st.nes.es.ls.cert),
+      Vector.empty,
+      s"$label: pool delegators"
+    )
+    val instant = must(
+      InstantStakeOps.update(
+        Empty.instantStake[Conway],
+        st.nes.es.ls.utxo.utxo.utxo.valuesIterator.toVector,
+        Nil
+      )
+    )
+    assertEquals(st.nes.es.ls.utxo.instantStake, instant, s"$label: instant stake")
 
   /** The id of governance action `index` of the last transaction submitted. */
-  private def idOf(st: State, index: Int): GovActionId =
+  private def idOf(st: Step, index: Int): GovActionId =
     GovActionId(Blake2b.hash256.hash(Bytes(s"gov-${st.nonce - 1}".getBytes.toVector)), index)
 
   // ---------------------------------------------------------------------------------------------
@@ -196,24 +355,24 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     )
     val e6 = boundary(s2)
     assertInvariants(e6, "epoch 6")
-    val ratified = e6.s.gov.pulsed.get._2
+    val ratified = e6.gov.drepPulsing.ratify
     assertEquals(ratified.enacted.map(_.id), Vector(id))
     // nothing moves until the next boundary
-    assertEquals(e6.s.treasury, 100000 * ada)
+    assertEquals(e6.treasury, 100000 * ada)
     val e7 = boundary(e6)
     assertInvariants(e7, "epoch 7")
-    assertEquals(e7.s.treasury, 100000 * ada - 10 * ada)
+    assertEquals(e7.treasury, 100000 * ada - 10 * ada)
     assertEquals(
-      e7.s.accounts(target.credential).balance,
+      e7.account(target).balance.toBigInt,
       10 * ada,
       "the withdrawal reaches the account"
     )
     assertEquals(
-      e7.s.accounts(w.stakes(0).credential).balance,
+      e7.account(w.stakes(0)).balance.toBigInt,
       1000 * ada,
       "the deposit goes back to the return account"
     )
-    assert(e7.s.gov.proposals.actions.isEmpty)
+    assert(e7.gov.proposals.actions.isEmpty)
   }
 
   test("an info action is never ratified: it expires and its deposit is returned") {
@@ -238,15 +397,15 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     )
     // proposed in epoch 5 with lifetime 3: expires after epoch 8
     val steps = Iterator.iterate(s2)(boundary).take(6).toVector
-    steps.foreach(st => assertInvariants(st, s"epoch ${st.s.epoch}"))
+    steps.foreach(st => assertInvariants(st, s"epoch ${st.epoch}"))
     // epoch 8 is the last of its life; the pulser of epoch 9 marks it expired; the boundary into 10
     // removes it and returns the deposit
-    assert(steps(4).s.gov.proposals.actions.nonEmpty)
+    assert(steps(4).gov.proposals.actions.nonEmpty)
     val e10 = steps(5)
-    assertEquals(e10.s.epoch, BigInt(10))
-    assert(e10.s.gov.proposals.actions.isEmpty, "expired and removed")
-    assertEquals(e10.s.accounts(w.stakes(0).credential).balance, 1000 * ada)
-    assertEquals(e10.s.deposited, FlatTestLedger.obligation(e10.s))
+    assertEquals(e10.epoch, BigInt(10))
+    assert(e10.gov.proposals.actions.isEmpty, "expired and removed")
+    assertEquals(e10.account(w.stakes(0)).balance.toBigInt, 1000 * ada)
+    assertEquals(e10.deposited, NativeRules.obligation(e10.nes))
   }
 
   test("a parameter change is enacted and removes its competitor, refunding both deposits") {
@@ -267,13 +426,13 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     val e6 = boundary(s2)
     val e7 = boundary(e6)
     assertInvariants(e7, "enacted")
-    assertEquals(e7.s.params.minPoolCost, 7 * ada)
-    assertEquals(e7.s.params.minFeeA, w.params.minFeeA)
-    assertEquals(e7.s.gov.proposals.roots.paramUpdate, Some(id1))
-    assert(e7.s.gov.proposals.actions.isEmpty, "the competing proposal is gone")
-    assertEquals(e7.s.accounts(w.stakes(0).credential).balance, 1000 * ada)
-    assertEquals(e7.s.accounts(w.stakes(1).credential).balance, 1000 * ada)
-    assertEquals(e7.s.prevParams.map(_.minPoolCost), Some(BigInt(0)))
+    assertEquals(e7.params.minPoolCost, 7 * ada)
+    assertEquals(e7.params.minFeeA, w.params.minFeeA)
+    assertEquals(e7.gov.proposals.roots.paramUpdate, Some(id1))
+    assert(e7.gov.proposals.actions.isEmpty, "the competing proposal is gone")
+    assertEquals(e7.account(w.stakes(0)).balance.toBigInt, 1000 * ada)
+    assertEquals(e7.account(w.stakes(1)).balance.toBigInt, 1000 * ada)
+    assertEquals(e7.gov.prevPParams.minPoolCost, BigInt(0))
   }
 
   test("a hard fork needs the pools as well as the DReps") {
@@ -292,7 +451,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     // DReps alone: not enough
     val dOnly = ok(submit(w, s1, w.dreps, votes = w.dreps.map(drepVote(_, id, Vote.Yes))))
     val e6 = boundary(dOnly)
-    assertEquals(e6.s.gov.pulsed.get._2.enacted, Vector.empty)
+    assertEquals(e6.gov.drepPulsing.ratify.enacted, Vector.empty)
     // both pools (each holds half of the stake of the three accounts' pools) and the DReps
     val both = ok(
       submit(
@@ -304,8 +463,8 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     )
     val f7 = boundary(boundary(both))
     assertInvariants(f7, "forked")
-    assertEquals(f7.s.params.version, (BigInt(11), BigInt(0)))
-    assertEquals(f7.s.gov.proposals.roots.hardFork, Some(id))
+    assertEquals(f7.params.version, (BigInt(11), BigInt(0)))
+    assertEquals(f7.gov.proposals.roots.hardFork, Some(id))
   }
 
   test("during the bootstrap phase DRep thresholds are zero and DRep votes are refused") {
@@ -322,21 +481,27 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     val pid = idOf(p1, 0)
     val denied = submit(w, p1, w.dreps, votes = Vector(drepVote(w.dreps(0), pid, Vote.Yes)))
     assertEquals(
-      denied.left.map { case LedgerFailure.Rejected.Single(_, f) => f.ruleName; case _ => "?" },
-      Left("DisallowedVotesDuringBootstrap")
+      refusal(denied),
+      Some(
+        PredicateFailure.gov(
+          GovFailure.DisallowedVotesDuringBootstrap(
+            Vector(Voter.DRepVoter(w.dreps(0).credential) -> pid)
+          )
+        )
+      )
     )
     // treasury withdrawals cannot even be proposed
     val tw = GovAction.TreasuryWithdrawals(Vector(returnAccount(w, 1) -> ada), None)
     val refused =
       submit(w, s1, Vector.empty, proposals = Vector(proposal(w, tw)), deposits = 1000 * ada)
     assertEquals(
-      refused.left.map { case LedgerFailure.Rejected.Single(_, f) => f.ruleName; case _ => "?" },
-      Left("DisallowedProposalDuringBootstrap")
+      refusal(refused),
+      Some(PredicateFailure.gov(GovFailure.DisallowedProposalDuringBootstrap(proposal(w, tw))))
     )
     // the zero DRep threshold lets a parameter change nobody voted for through (the committee and
     // pools do not stand in the way: the pools may not vote on a non-security parameter)
     val e7 = boundary(boundary(p1))
-    assertEquals(e7.s.params.maxCollateralInputs, BigInt(4))
+    assertEquals(e7.params.maxCollateralInputs, BigInt(4))
   }
 
   test(
@@ -365,14 +530,17 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     )
     val e7 = boundary(boundary(s2))
     assertInvariants(e7, "elected")
-    assertEquals(e7.s.gov.committee.map(_.members.keySet), Some(members.keySet))
-    assertEquals(e7.s.gov.committee.map(_.threshold), Some(Rational(1, 2)))
+    assertEquals(e7.gov.committee.map(_.members.keySet), Some(members.keySet))
+    assertEquals(e7.gov.committee.map(_.threshold), Some(Rational(1, 2)))
     // hot key authorisation
     val auth = w.committeeCold.zip(w.committeeHot).map { case (c, h) =>
       Certificate.CommitteeAuthorize(c.credential, h.credential)
     }
     val e7a = ok(submit(w, e7, w.committeeCold, certs = auth))
-    assertEquals(e7a.s.committeeState.size, 2)
+    assertEquals(
+      e7a.vState.committeeState.creds.keySet.toSet,
+      w.committeeCold.map(coldCredential).toSet
+    )
     // a withdrawal now needs the committee: DReps alone are not enough
     val tw = GovAction.TreasuryWithdrawals(Vector(returnAccount(w, 2) -> (5 * ada)), None)
     val t1 =
@@ -380,7 +548,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     val tid = idOf(t1, 0)
     val dOnly = ok(submit(w, t1, w.dreps, votes = w.dreps.map(drepVote(_, tid, Vote.Yes))))
     val none = boundary(boundary(dOnly))
-    assertEquals(none.s.treasury, 100000 * ada, "no committee vote, no withdrawal")
+    assertEquals(none.treasury, 100000 * ada, "no committee vote, no withdrawal")
     // with one of the two members voting yes the ratio is 1/2, which meets the threshold
     val withCommittee = ok(
       submit(
@@ -393,7 +561,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     )
     val paid = boundary(boundary(withCommittee))
     assertInvariants(paid, "paid")
-    assertEquals(paid.s.treasury, 100000 * ada - 5 * ada)
+    assertEquals(paid.treasury, 100000 * ada - 5 * ada)
   }
 
   test("no confidence removes the committee; a constitution cannot pass without one") {
@@ -426,14 +594,14 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     )
     val e6 = boundary(s2)
     // the delaying no-confidence action is first in line, so the constitution waits behind it
-    assertEquals(e6.s.gov.pulsed.get._2.enacted.map(_.id), Vector(a))
-    assert(e6.s.gov.pulsed.get._2.delayed)
+    assertEquals(e6.gov.drepPulsing.ratify.enacted.map(_.id), Vector(a))
+    assert(e6.gov.drepPulsing.ratify.delayed)
     val e7 = boundary(e6)
     assertInvariants(e7, "after")
-    assertEquals(e7.s.gov.committee, None)
-    assertEquals(e7.s.gov.proposals.roots.committee, Some(a))
+    assertEquals(e7.gov.committee, None)
+    assertEquals(e7.gov.proposals.roots.committee, Some(a))
     val e8 = boundary(e7)
-    assertEquals(e8.s.gov.constitution.script, None, "no committee, no constitution")
+    assertEquals(e8.gov.constitution.script, None, "no committee, no constitution")
     assertInvariants(e8, "still pending")
   }
 
@@ -459,9 +627,9 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     val s2 = ok(submit(w, s1, w.dreps, votes = w.dreps.map(drepVote(_, b, Vote.Yes))))
     val e7 = boundary(boundary(s2))
     assertInvariants(e7, "after")
-    assertEquals(e7.s.gov.constitution.script, Some(Bytes(Vector.fill(28)(5.toByte))))
-    assertEquals(e7.s.gov.constitution.anchor.url, "https://c.invalid")
-    assertEquals(e7.s.gov.proposals.roots.constitution, Some(b))
+    assertEquals(e7.gov.constitution.script, Some(Bytes(Vector.fill(28)(5.toByte))))
+    assertEquals(e7.gov.constitution.anchor.url, "https://c.invalid")
+    assertEquals(e7.gov.proposals.roots.constitution, Some(b))
   }
 
   test(
@@ -496,9 +664,9 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
         )
       )
     )
-    assertEquals(del.s.dreps(newDRep.credential).delegs, Set(voterStake.credential))
+    assertEquals(del.drepState(newDRep).delegators.toSet, Set(staking(voterStake)))
     // PV10: the old DRep forgets the delegator
-    assert(!del.s.dreps(w.dreps(2).credential).delegs.contains(voterStake.credential))
+    assert(!del.drepState(w.dreps(2)).delegators.contains(staking(voterStake)))
     val retire = ok(
       submit(
         w,
@@ -509,18 +677,18 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       )
     )
     assertInvariants(retire, "retired")
-    assertEquals(retire.s.accounts(voterStake.credential).drep, None)
-    assert(!retire.s.dreps.contains(newDRep.credential))
+    assertEquals(retire.account(voterStake).drep, None)
+    assert(!retire.vState.dreps.contains(drepCredential(newDRep)))
   }
 
   test("a treasury donation joins the treasury at the epoch boundary and conserves the supply") {
     val w = World(10)
     val d = ok(submit(w, w.initial, Vector.empty, donation = 123 * ada))
-    assertEquals(d.s.donation, 123 * ada)
+    assertEquals(d.donation, 123 * ada)
     assertInvariants(d, "donated")
     val next = boundary(d)
-    assertEquals(next.s.donation, BigInt(0))
-    assertEquals(next.s.treasury, d.s.treasury + 123 * ada)
+    assertEquals(next.donation, BigInt(0))
+    assertEquals(next.treasury, d.treasury + 123 * ada)
     assertInvariants(next, "moved")
   }
 
@@ -535,19 +703,17 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       currentTreasury = Some(5)
     )
     assertEquals(
-      rs.tx(s0.s, tx(b, Vector(w.payer)), env(s0.s, 0)).left.map {
-        case LedgerFailure.Rejected.Single(_, f) => f.ruleName; case _ => "?"
-      },
-      Left("ConwayTreasuryValueMismatch")
+      refusal(NativeRules.txIn[Conway](s0.nes, tx(b, Vector(w.payer)), env(s0, 0))),
+      Some(PredicateFailure.TreasuryValueMismatch(Mismatch(BigInt(5), s0.treasury)))
     )
     val right = body(
       "t2",
       Vector(s0.fund),
       Vector(out(w.payer.address(), s0.fundCoin - 200)),
       200,
-      currentTreasury = Some(s0.s.treasury)
+      currentTreasury = Some(s0.treasury)
     )
-    assert(rs.tx(s0.s, tx(right, Vector(w.payer)), env(s0.s, 0)).isRight)
+    assert(NativeRules.txIn[Conway](s0.nes, tx(right, Vector(w.payer)), env(s0, 0)).isRight)
   }
 
   test("the reference-script fee grows by 1.2 for every 25 KiB") {
@@ -592,94 +758,98 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
         )
       )
       val states = Iterator.iterate(s2)(boundary).take(steps + 1).toVector
-      states.forall(st => st.s.total == Supply && st.s.deposited == FlatTestLedger.obligation(st.s))
+      states.forall(st => st.total == Supply && st.deposited == NativeRules.obligation(st.nes))
     }
   }
+
+  /** Every account that delegates to a registered DRep is among its delegators, and every delegator
+    * of a DRep delegates to it.
+    */
+  private def assertDRepIndex(st: Step): Unit =
+    st.accounts.foreach { (c, a) =>
+      a.drep.foreach {
+        case native.DRep.DRepKeyHash(h) =>
+          assert(st.vState.dreps.get(native.Credential.KeyHashObj(h)).exists(_.delegators(c)))
+        case native.DRep.DRepScriptHash(h) =>
+          assert(st.vState.dreps.get(native.Credential.ScriptHashObj(h)).exists(_.delegators(c)))
+        case native.DRep.DRepAlwaysAbstain | native.DRep.DRepAlwaysNoConfidence => ()
+      }
+    }
+    st.vState.dreps.foreach { (d, state) =>
+      val delegated = d match
+        case native.Credential.KeyHashObj(h)    => native.DRep.DRepKeyHash(h)
+        case native.Credential.ScriptHashObj(h) => native.DRep.DRepScriptHash(h)
+      state.delegators.foreach(c =>
+        assertEquals(st.accounts.get(c).flatMap(_.drep), Some(delegated))
+      )
+    }
 
   property(
     "DRep and delegation certificates keep the supply, the deposit pot and the reverse index"
   ) {
     forAll(Gen.listOfN(14, Gen.choose(0, 4)), Gen.listOfN(14, Gen.choose(0, 9))) { (ops, picks) =>
       val w = World(10)
-      var st = w.initial
-      var extra = Vector.empty[Key]
       def pick(n: Int, size: Int) = if size == 0 then 0 else n % size
-      ops.zip(picks).foreach { case (op, p) =>
+      ops.zip(picks).foldLeft((w.initial, Vector.empty[Key])) { case ((st, extra), (op, p)) =>
         val staker = w.stakes(p % 3)
-        val result: Option[Either[LedgerFailure, State]] = op match
+        val (next, more) = op match
           case 0 =>
             val k = key()
-            Some(
-              submit(
-                w,
-                st,
-                Vector(k),
-                certs = Vector(Certificate.RegisterDRep(k.credential, 500 * ada, None)),
-                deposits = 500 * ada
-              ).map { next =>
-                extra = extra :+ k; next
-              }
+            val registered = submit(
+              w,
+              st,
+              Vector(k),
+              certs = Vector(Certificate.RegisterDRep(k.credential, 500 * ada, None)),
+              deposits = 500 * ada
             )
+            (ok(registered), extra :+ k)
           case 1 if extra.nonEmpty =>
             val k = extra(pick(p, extra.size))
-            Some(
-              submit(
-                w,
-                st,
-                Vector(k),
-                certs = Vector(Certificate.UnregisterDRep(k.credential, 500 * ada)),
-                refunds = 500 * ada
-              ).map { next =>
-                extra = extra.filterNot(_ == k); next
-              }
+            val retired = submit(
+              w,
+              st,
+              Vector(k),
+              certs = Vector(Certificate.UnregisterDRep(k.credential, 500 * ada)),
+              refunds = 500 * ada
             )
+            (ok(retired), extra.filterNot(_ == k))
           case 2 =>
-            val all = (w.dreps ++ extra).filter(k => st.s.dreps.contains(k.credential))
+            val all = (w.dreps ++ extra).filter(k => st.vState.dreps.contains(drepCredential(k)))
             val target = all(pick(p, all.size))
-            Some(
-              submit(
-                w,
-                st,
-                Vector(staker),
-                certs = Vector(
-                  Certificate.Delegate(
-                    staker.credential,
-                    None,
-                    Some(DRep.Registered(target.credential)),
-                    None
-                  )
+            val delegated = submit(
+              w,
+              st,
+              Vector(staker),
+              certs = Vector(
+                Certificate.Delegate(
+                  staker.credential,
+                  None,
+                  Some(DRep.Registered(target.credential)),
+                  None
                 )
               )
             )
+            (ok(delegated), extra)
           case 3 =>
-            Some(
-              submit(
-                w,
-                st,
-                Vector(staker),
-                certs = Vector(
-                  Certificate.Delegate(staker.credential, None, Some(DRep.AlwaysAbstain), None)
-                )
+            val abstained = submit(
+              w,
+              st,
+              Vector(staker),
+              certs = Vector(
+                Certificate.Delegate(staker.credential, None, Some(DRep.AlwaysAbstain), None)
               )
             )
+            (ok(abstained), extra)
           case _ if extra.nonEmpty =>
             val k = extra(pick(p, extra.size))
-            Some(
+            val updated =
               submit(w, st, Vector(k), certs = Vector(Certificate.UpdateDRep(k.credential, None)))
-            )
-          case _ => None
-        result.foreach(r => st = ok(r))
-        assertEquals(st.s.total, Supply)
-        assertEquals(st.s.deposited, FlatTestLedger.obligation(st.s))
-        st.s.accounts.foreach { case (c, a) =>
-          a.drep.foreach {
-            case DRep.Registered(d) => assert(st.s.dreps(d).delegs.contains(c))
-            case _                  => ()
-          }
-        }
-        st.s.dreps.foreach { case (d, state) =>
-          state.delegs.foreach(c => assertEquals(st.s.accounts(c).drep, Some(DRep.Registered(d))))
-        }
+            (ok(updated), extra)
+          case _ => (st, extra)
+        assertEquals(next.total, Supply)
+        assertEquals(next.deposited, NativeRules.obligation(next.nes))
+        assertDRepIndex(next)
+        (next, more)
       }
       true
     }
@@ -687,17 +857,13 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
 
   // -------------------------------------------------------------------------------------------
   // Protocol-version 11 rules (roadmap B5). The same transactions are refused by the reference node
-  // in the devnet scenarios (scripts/devnet/govextra.py); the expected rule names are the ones its
+  // in the devnet scenarios (scripts/devnet/govextra.py); the expected failures are the ones its
   // predicate failures carry.
-
-  private def rejection(r: Either[LedgerFailure, State]): String = r match
-    case Left(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
-    case Left(other)                               => other.message
-    case Right(_)                                  => "accepted"
 
   test(
     "committee hot keys: authorised but unelected keys may vote before protocol version 11 only"
   ) {
+    // the refusal of the hot key's vote before its member is elected and after, and the key
     def scenario(pv: Int) =
       val w = World(pv)
       val member = w.committeeCold(0)
@@ -724,14 +890,14 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
           certs = Vector(Certificate.CommitteeAuthorize(member.credential, hot.credential))
         )
       )
-      def vote(st: State, id: GovActionId) =
+      def vote(st: Step, id: GovActionId) =
         submit(
           w,
           st,
           Vector(hot),
           votes = Vector((Voter.CommitteeHot(hot.credential), Vector(id -> Vote.Yes)))
         )
-      val early = rejection(vote(s2, infoId))
+      val early = refusal(vote(s2, infoId))
       // elect the member, then the same vote is accepted at every version
       val s3 = ok(
         submit(
@@ -744,9 +910,9 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
         )
       )
       val elected = boundary(boundary(s3))
-      assertEquals(elected.s.gov.committee.map(_.members.keySet), Some(Set(member.credential)))
+      assertEquals(elected.gov.committee.map(_.members.keySet), Some(Set(member.credential)))
       // the epoch boundary dropped the authorisation of a member who was not yet elected: authorise again
-      assertEquals(elected.s.committeeState, Map.empty[Credential, CommitteeAuth])
+      assert(elected.vState.committeeState.creds.isEmpty)
       val again = ok(
         submit(
           w,
@@ -764,9 +930,19 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
           deposits = 1000 * ada
         )
       )
-      (early, rejection(vote(s4, idOf(s4, 0))))
-    assertEquals(scenario(10), ("accepted", "accepted"))
-    assertEquals(scenario(11), ("UnelectedCommitteeVoters", "accepted"))
+      (early, refusal(vote(s4, idOf(s4, 0))), hot)
+    val (early10, late10, _) = scenario(10)
+    assertEquals((early10, late10), (None, None))
+    val (early11, late11, hot11) = scenario(11)
+    assertEquals(
+      (early11, late11),
+      (
+        Some(
+          PredicateFailure.gov(GovFailure.UnelectedCommitteeVoters(Vector(hot11.credential)))
+        ),
+        None
+      )
+    )
   }
 
   test("committee hot keys: with no committee every hot key is unelected at protocol version 11") {
@@ -798,11 +974,14 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       Vector(hot),
       votes = Vector((Voter.CommitteeHot(hot.credential), Vector(idOf(s1, 1) -> Vote.Yes)))
     )
-    assertEquals(rejection(refused), "UnelectedCommitteeVoters")
+    assertEquals(
+      refusal(refused),
+      Some(PredicateFailure.gov(GovFailure.UnelectedCommitteeVoters(Vector(hot.credential))))
+    )
   }
 
   test("protocol version 11: a pool registration may not take a VRF key hash another pool holds") {
-    def register(w: World, st: State, op: Key, vrf: Bytes, fresh: Boolean) =
+    def register(w: World, st: Step, op: Key, vrf: Bytes, fresh: Boolean) =
       val params = w.poolParams(op).copy(vrfKeyHash = vrf)
       submit(
         w,
@@ -811,8 +990,11 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
         certs = Vector(Certificate.RegisterPool(params)),
         deposits = if fresh then w.params.poolDeposit else 0
       )
+    def taken(op: Key, vrf: Bytes) =
+      Some(PredicateFailure.pool(PoolFailure.VRFKeyHashAlreadyRegistered(op.hash, vrf)))
     def vrfOf(i: Int, w: World) = w.poolParams(w.pools(i)).vrfKeyHash
     def fresh(n: Int) = Blake2b.hash256.hash(Bytes(Vector(0x56, n.toByte)))
+    def keys(st: Step) = st.pState.vrfKeyHashes.keysIterator.map(_.bytes).toSet
     val f1 = fresh(1)
     val f2 = fresh(2)
     val w = World(11)
@@ -820,26 +1002,27 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     val b = key()
     val s0 = w.initial
     // an active pool's key hash is taken, a free one is not
-    assertEquals(
-      rejection(register(w, s0, a, vrfOf(0, w), fresh = true)),
-      "VRFKeyHashAlreadyRegistered"
-    )
+    assertEquals(refusal(register(w, s0, a, vrfOf(0, w), fresh = true)), taken(a, vrfOf(0, w)))
     val s1 = ok(register(w, s0, a, f1, fresh = true))
-    assertEquals(rejection(register(w, s1, b, f1, fresh = true)), "VRFKeyHashAlreadyRegistered")
+    assertEquals(refusal(register(w, s1, b, f1, fresh = true)), taken(b, f1))
     // a pool keeps its own key hash when it re-registers, and may not take another pool's
     val s2 = ok(register(w, s1, a, f1, fresh = false))
-    assertEquals(
-      rejection(register(w, s2, a, vrfOf(1, w), fresh = false)),
-      "VRFKeyHashAlreadyRegistered"
-    )
+    assertEquals(refusal(register(w, s2, a, vrfOf(1, w), fresh = false)), taken(a, vrfOf(1, w)))
     // a key hash scheduled by a re-registration is taken too, until the pool goes back to its own
     val s3 = ok(register(w, s2, a, f2, fresh = false))
-    assertEquals(rejection(register(w, s3, b, f2, fresh = true)), "VRFKeyHashAlreadyRegistered")
+    // the reference's map: the second re-registration of the epoch forgets the key of the first,
+    // which is the key the pool has in use (`Pool.hs:274-286`)
+    assertEquals(keys(s3), Set(vrfOf(0, w), vrfOf(1, w), f2))
+    assertEquals(refusal(register(w, s3, b, f2, fresh = true)), taken(b, f2))
     val s4 = ok(register(w, s3, a, f1, fresh = false))
     val s5 = ok(register(w, s4, b, f2, fresh = true))
-    assertEquals(rejection(register(w, s5, b, f1, fresh = false)), "VRFKeyHashAlreadyRegistered")
+    assertEquals(keys(s5), Set(vrfOf(0, w), vrfOf(1, w), f1, f2))
+    assertEquals(refusal(register(w, s5, b, f1, fresh = false)), taken(b, f1))
     // the scheduled change takes effect at the boundary; the other pool keeps its key hash
-    assertEquals(boundary(s5).s.pools(a.hash).params.vrfKeyHash, f1)
+    assertEquals(
+      boundary(s5).pState.stakePools.get(poolId(a)).map(_.vrf),
+      Some(must(VRFVerKeyHash.fromBytes(f1)))
+    )
   }
 
   test("before protocol version 11 two pools may share a VRF key hash") {
@@ -855,5 +1038,5 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
         deposits = w.params.poolDeposit
       )
     )
-    assertEquals(s.s.pools.size, 3)
+    assertEquals(s.pState.stakePools.size, 3)
   }
