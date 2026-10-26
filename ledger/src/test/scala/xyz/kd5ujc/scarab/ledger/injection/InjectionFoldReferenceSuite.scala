@@ -183,7 +183,7 @@ class InjectionFoldReferenceSuite extends FunSuite:
                       InjectionFold.Error.HashMismatch(_, expected, actualHash)
                     ) =>
                   assertEquals(expected.bytes.hex, field[String](native, "expected"))
-                  assertEquals(actualHash.hex, field[String](native, "actual"))
+                  assertEquals(actualHash.bytes.hex, field[String](native, "actual"))
                 case other => fail(s"expected native demanded-chunk hash refusal, got $other")
             case Some("parse") =>
               actual.step match

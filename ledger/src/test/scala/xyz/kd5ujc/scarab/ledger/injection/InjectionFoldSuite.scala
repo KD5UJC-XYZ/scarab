@@ -59,7 +59,7 @@ class InjectionFoldSuite extends FunSuite:
     assertEquals(
       first(firstChunk, hash(firstChunk ++ tail)),
       InjectionFold.Step.Failed(
-        InjectionFold.Error.HashMismatch(path, hash(firstChunk ++ tail), hash(firstChunk).bytes)
+        InjectionFold.Error.HashMismatch(path, hash(firstChunk ++ tail), hash(firstChunk))
       )
     )
   }
@@ -118,8 +118,8 @@ class InjectionFoldSuite extends FunSuite:
   test("incremental digest values are persistent and independent of chunk partition") {
     val left = bytes("left")
     val right = bytes("right")
-    val prefix = InjectionDigest.empty.add(left)
-    assertEquals(prefix.add(right).finish, hash(left ++ right).bytes)
-    assertEquals(prefix.finish, hash(left).bytes)
-    assertEquals(InjectionDigest.empty.finish, hash(Bytes.empty).bytes)
+    val prefix = Hash32.Blake2b256.empty.add(left)
+    assertEquals(prefix.add(right).finish, hash(left ++ right))
+    assertEquals(prefix.finish, hash(left))
+    assertEquals(Hash32.Blake2b256.empty.finish, hash(Bytes.empty))
   }

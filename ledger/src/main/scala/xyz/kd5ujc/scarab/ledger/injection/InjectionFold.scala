@@ -19,7 +19,7 @@ object InjectionFold:
     case Key(segments: Vector[String], text: String, cause: KeyE)
     case Value(segments: Vector[String], key: String, cause: ValueE)
     case Fold(cause: FoldE)
-    case HashMismatch(segments: Vector[String], expected: Hash32, actual: Bytes)
+    case HashMismatch(segments: Vector[String], expected: Hash32, actual: Hash32)
 
   enum Step[+A, +E <: DomainError]:
     case NeedChunk(input: Input[A, E])
@@ -60,7 +60,7 @@ object InjectionFold:
         def drive(
             state: InjectionJson.State,
             accumulator: A,
-            digest: InjectionDigest,
+            digest: Hash32.Blake2b256,
             exhausted: Boolean
         ): Step[A, Error[KeyE, ValueE, FoldE]] =
           @tailrec def loop(
@@ -88,7 +88,7 @@ object InjectionFold:
               case InjectionJson.Step.Failed(cause) => Step.Failed(Error.Syntax(segments, cause))
               case InjectionJson.Step.Done(_) =>
                 val actual = digest.finish
-                if actual == expected.bytes then Step.Done(acc)
+                if actual == expected then Step.Done(acc)
                 else Step.Failed(Error.HashMismatch(segments, expected, actual))
           loop(state, accumulator)
-        drive(InjectionJson.initial, initial, InjectionDigest.empty, false)
+        drive(InjectionJson.initial, initial, Hash32.Blake2b256.empty, false)
