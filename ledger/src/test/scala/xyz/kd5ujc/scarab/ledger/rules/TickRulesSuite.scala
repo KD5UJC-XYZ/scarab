@@ -43,7 +43,7 @@ class TickRulesSuite extends FunSuite:
     val es = nes.es
     es.chainAccount.treasury.value + es.chainAccount.reserves.value + es.ls.utxo.fees.value +
       es.ls.utxo.deposited.value +
-      es.ls.cert.dState.accounts.states.valuesIterator.foldLeft(BigInt(0))(_ + _.balance.toBigInt)
+      CompactCoin.sum(es.ls.cert.dState.accounts.states.valuesIterator.map(_.balance)).toBigInt
 
   private def onSmallStack[A](body: => A): A =
     var result: Option[Either[Throwable, A]] = None
@@ -133,7 +133,7 @@ class TickRulesSuite extends FunSuite:
     assertEquals(after.es.snapshots.fee, after.es.ls.utxo.fees)
     // the pools made blocks and the accounts were given rewards
     val balances = (s: NewEpochState[Conway]) =>
-      s.es.ls.cert.dState.accounts.states.valuesIterator.map(_.balance.toBigInt).sum
+      CompactCoin.sum(s.es.ls.cert.dState.accounts.states.valuesIterator.map(_.balance)).toBigInt
     assert(balances(after) > balances(before))
     assertEquals(pots(after), pots(before))
   }
@@ -352,14 +352,17 @@ class TickRulesSuite extends FunSuite:
     }
   }
 
-  test("Tick and the reference stack agree when a reward update underflows a pot") {
+  test("Tick and the reference stack preserve a signed pot after a balanced reward update") {
     type R[A] = Either[TickFailure, A]
     type S[A] = StateT[R, NewEpochState[Conway], A]
     type M[A] = Kleisli[S, Globals, A]
     given Monad[M] = Kleisli.catsDataMonadForKleisli[S, Globals]
     val before = conway(5, 30, 3)
     val update =
-      RewardUpdate.empty.copy(deltaT = DeltaCoin(-before.es.chainAccount.treasury.value - 1))
+      RewardUpdate.empty.copy(
+        deltaT = DeltaCoin(-before.es.chainAccount.treasury.value - 1),
+        deltaR = DeltaCoin(before.es.chainAccount.treasury.value + 1)
+      )
     val from = before.copy(ru = Some(PulsingRewUpdate.Complete(update)))
     val slot = ok(SlotNo.fromBigInt(first(6)))
     val rule = Tick.sts[Conway]
@@ -369,7 +372,7 @@ class TickRulesSuite extends FunSuite:
       .run(globals)
       .run(from)
       .map(_._1)
-    assert(onRuleT.isLeft)
+    assertEquals(onRuleT.map(_.es.chainAccount.treasury.value), Right(BigInt(-1)))
     assertEquals(onRuleT, onStack)
   }
 
