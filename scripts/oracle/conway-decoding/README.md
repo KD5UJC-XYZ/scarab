@@ -43,3 +43,8 @@ python3 scripts/oracle/conway-decoding/definite_bytes_cases.py --inputs /tmp/def
   --reference /tmp/definite-bytes-reference.json --out /tmp/definite-bytes-cases.jsonl
 cmp /tmp/definite-bytes-cases.jsonl fixtures/reference/definite-bytes/cases.jsonl
 ```
+
+The [era-forms corpus](../../../fixtures/reference/era-forms/README.md) (#379) runs on the same
+harness too, its cases from `era_forms_cases.py`: the forms of an output and the keys of a body in
+every era from Shelley to Conway. Its recipe is the one above with `era_forms_cases.py`,
+`/tmp/era-forms-inputs.json` and `fixtures/reference/era-forms/cases.jsonl`.

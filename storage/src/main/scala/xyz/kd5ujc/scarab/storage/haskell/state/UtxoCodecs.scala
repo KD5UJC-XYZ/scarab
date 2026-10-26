@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.storage.haskell.state
 
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
-import xyz.kd5ujc.scarab.ledger.{ByteStrings, Datum, TxIn, TxOut, Value}
+import xyz.kd5ujc.scarab.ledger.{Address, ByteStrings, Datum, TxIn, TxOut, Value}
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Decoded, Node, Writer}
 
@@ -49,7 +49,7 @@ object UtxoCodecs:
     // A stored output: it reads in any form of byte string it was stored with.
     def decode(n: Node): Decoded[TxOut] =
       TxOut
-        .decode(n)(using ByteStrings.Chunked)
+        .decode(n, Address.Mode.Rigorous, TxOut.Forms.Stored)(using ByteStrings.Chunked)
         .left
         .map(why => DecodeError.at(n, Kind.Domain(why)))
 

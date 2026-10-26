@@ -245,18 +245,26 @@ class MultiAssetDecodeSuite extends FunSuite:
   test("an output is read at the decoder version of its era") {
     val zero = output(assets(1 -> Seq("01" -> uint(0))))
     assertEquals(
-      TxOut.decode(node(zero), Address.Mode.of(Era.Babbage)).map(_.value.assets),
+      TxOut
+        .decode(node(zero), Address.Mode.of(Era.Babbage), TxOut.Forms.of(Era.Babbage))
+        .map(_.value.assets),
       Right(Map.empty)
     )
     assertEquals(
-      TxOut.decode(node(zero), Address.Mode.of(Era.Conway)).map(_ => ()),
+      TxOut
+        .decode(node(zero), Address.Mode.of(Era.Conway), TxOut.Forms.of(Era.Conway))
+        .map(_ => ()),
       Left(LedgerDecodeError.ZeroQuantity(DecodeField.OutputValue))
     )
     // the post-Alonzo map form takes the same path
     val mapForm = "a2" + "00" + enterprise + "01" + value(2000000, assets(1 -> Seq.empty))
-    assert(TxOut.decode(node(mapForm), Address.Mode.of(Era.Babbage)).isRight)
+    assert(
+      TxOut.decode(node(mapForm), Address.Mode.of(Era.Babbage), TxOut.Forms.of(Era.Babbage)).isRight
+    )
     assertEquals(
-      TxOut.decode(node(mapForm), Address.Mode.of(Era.Conway)).map(_ => ()),
+      TxOut
+        .decode(node(mapForm), Address.Mode.of(Era.Conway), TxOut.Forms.of(Era.Conway))
+        .map(_ => ()),
       Left(LedgerDecodeError.Empty(DecodeField.OutputValue / Qualifier.Assets))
     )
   }
@@ -316,13 +324,13 @@ class MultiAssetDecodeSuite extends FunSuite:
     coinOnly.foreach { era =>
       val mode = Address.Mode.of(era)
       assertEquals(
-        TxOut.decode(node(adaOnly), mode).map(_.value),
+        TxOut.decode(node(adaOnly), mode, TxOut.Forms.Stored).map(_.value),
         Right(Value.coin(2000000)),
         era.toString
       )
       List(multi, emptyMulti, mapForm).foreach { hex =>
         assertEquals(
-          TxOut.decode(node(hex), mode).map(_ => ()),
+          TxOut.decode(node(hex), mode, TxOut.Forms.Stored).map(_ => ()),
           Left(LedgerDecodeError.MultiAssetNotAllowed(DecodeField.OutputValue)),
           s"$era $hex"
         )
@@ -330,13 +338,17 @@ class MultiAssetDecodeSuite extends FunSuite:
     }
     // the same bytes are an output from Mary
     List(Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway).foreach { era =>
-      assert(TxOut.decode(node(multi), Address.Mode.of(era)).isRight, era.toString)
+      assert(
+        TxOut.decode(node(multi), Address.Mode.of(era), TxOut.Forms.of(era)).isRight,
+        era.toString
+      )
     }
   }
 
   test("a Shelley or Allegra body refuses an output with a multi-asset value") {
     def withOutput(out: String) =
-      "a3" + "00" + "81" + "82" + bstr("22" * 32) + "00" + "01" + "81" + out + "02" + uint(170000)
+      "a4" + "00" + "81" + "82" + bstr("22" * 32) + "00" + "01" + "81" + out + "02" + uint(170000) +
+        "03" + uint(1000)
     val multi = withOutput(output(assets(1 -> Seq("01" -> uint(3)))))
     val adaOnly = withOutput("82" + enterprise + uint(2000000))
     coinOnly.foreach { era =>

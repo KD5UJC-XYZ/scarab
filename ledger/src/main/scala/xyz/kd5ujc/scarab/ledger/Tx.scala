@@ -25,20 +25,23 @@ object DRep:
   def decode(n: Node)(using ByteStrings): Either[LedgerDecodeError, DRep] =
     CborRead.array(n, DecodeField.Drep).flatMap {
       case Vector(t, h) =>
+        // `Summands "DRep"` (`DRep.hs:90-99`): the tag is a full-width `Word`
         (
-          CborRead.uint(t, DecodeField.Drep).map(_.toInt),
+          CborRead.uint(t, DecodeField.Drep),
           CborRead.bytesN(h, 28, DecodeField.DrepHash)
         ).tupled
-          .flatMap {
-            case (0, hash) => Right(Registered(Credential.Key(hash)))
-            case (1, hash) => Right(Registered(Credential.Script(hash)))
-            case (tag, _)  => Left(LedgerDecodeError.UnknownTag(DecodeField.Drep, tag))
+          .flatMap { (tag, hash) =>
+            CborRead.small(tag) match
+              case Some(0) => Right(Registered(Credential.Key(hash)))
+              case Some(1) => Right(Registered(Credential.Script(hash)))
+              case _       => Left(LedgerDecodeError.UnknownTag(DecodeField.Drep, tag))
           }
       case Vector(t) =>
-        CborRead.uint(t, DecodeField.Drep).map(_.toInt).flatMap {
-          case 2   => Right(AlwaysAbstain)
-          case 3   => Right(AlwaysNoConfidence)
-          case tag => Left(LedgerDecodeError.UnknownTag(DecodeField.Drep, tag))
+        CborRead.uint(t, DecodeField.Drep).flatMap { tag =>
+          CborRead.small(tag) match
+            case Some(2) => Right(AlwaysAbstain)
+            case Some(3) => Right(AlwaysNoConfidence)
+            case _       => Left(LedgerDecodeError.UnknownTag(DecodeField.Drep, tag))
         }
       case _ =>
         Left(LedgerDecodeError.Expected(DecodeField.Drep, LedgerDecodeError.Shape.Array, n.value))
@@ -173,11 +176,13 @@ object Certificate:
           17 -> 3,
           18 -> 3
         )
-        _ <- arity
-          .get(tag.toInt)
-          .filter(_ == xs.size)
+        // `decodeRecordSum` (`Shelley/TxCert.hs:475-487`, `Conway/TxCert.hs`): the tag is a
+        // full-width `Word`, and a tag beyond `Int` names no certificate
+        small <- CborRead
+          .small(tag)
+          .filter(t => arity.get(t).contains(xs.size))
           .toRight(LedgerDecodeError.TaggedArity(DecodeField.Certificate, tag, xs.size))
-        cert <- tag.toInt match
+        cert <- small match
           case 0 => cred(1, xs).map(Register(_, None))
           case 1 => cred(1, xs).map(Unregister(_, None))
           case 2 => (cred(1, xs), pool(2, xs)).mapN((c, p) => Delegate(c, Some(p), None, None))
@@ -305,7 +310,31 @@ final case class TxBody(
   def hasScriptData: Boolean = scriptDataHash.isDefined
 
 object TxBody:
-  private val Known = Set(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22)
+  /** The keys of a body that an era's decoder knows, and `invalidField` refuses the others
+    * (`boxBody` in `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxBody.hs`; `bodyFields` in
+    * `eras/allegra/impl/src/Cardano/Ledger/Allegra/TxBody.hs`, shared by Mary, and in the Alonzo,
+    * Babbage and Conway `TxBody.hs`, cardano-ledger f649f975).
+    */
+  private def known(era: Era): Set[Int] =
+    val shelley = (0 to 7).toSet
+    val allegra = shelley + 8 + 9
+    val alonzo = allegra ++ Set(11, 13, 14, 15)
+    val babbage = alonzo ++ Set(16, 17, 18)
+    era match
+      case Era.Byron | Era.Shelley => shelley
+      case Era.Allegra | Era.Mary  => allegra
+      case Era.Alonzo              => alonzo
+      case Era.Babbage             => babbage
+      case Era.Conway              => babbage - 6 ++ Set(19, 20, 21, 22)
+
+  /** Allegra reads the key 9 as `()`, whose `DecCBOR` is `decodeNull` (`AllegraTxBodyRaw () l`,
+    * `eras/allegra/impl/src/Cardano/Ledger/Allegra/TxBody.hs`;
+    * `libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs`, cardano-ledger
+    * f649f975): the mint of an era without tokens is `null`, and carries nothing.
+    */
+  private def unit(n: Node, what: DecodeSite): Either[LedgerDecodeError, Unit] = n.value match
+    case xyz.kd5ujc.scarab.codec.Value.Null => Right(())
+    case other => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Null, other))
 
   private def update(n: Node, era: Era): Either[LedgerDecodeError, Update] =
     given ByteStrings = ByteStrings.of(DecoderVersion.of(era))
@@ -334,7 +363,7 @@ object TxBody:
     val version = DecoderVersion.of(era)
     given ByteStrings = ByteStrings.of(version)
     val conway = era.ordinal >= Era.Conway.ordinal
-    val known = if conway then Known - 6 else Known
+    val forms = TxOut.Forms.of(era)
     // `fieldGuarded`: Conway fails a key that is present with an empty value.
     def present[A](what: DecodeSite)(
         r: Either[LedgerDecodeError, Option[Vector[A]]]
@@ -344,9 +373,9 @@ object TxBody:
       root <- CborRead.decode(raw)
       f <- CborRead.fields(root, DecodeField.TransactionBody)
       _ <- Either.cond(
-        f.keySet.subsetOf(known),
+        f.keySet.subsetOf(known(era)),
         (),
-        LedgerDecodeError.UnknownFields(DecodeField.TransactionBody, f.keySet -- known)
+        LedgerDecodeError.UnknownFields(DecodeField.TransactionBody, f.keySet -- known(era))
       )
       inputs <- f
         .get(0)
@@ -356,11 +385,17 @@ object TxBody:
         .get(1)
         .toRight(LedgerDecodeError.MissingField(DecodeField.TransactionBody, DecodeField.Outputs))
         .flatMap(CborRead.array(_, DecodeField.Outputs))
-        .flatMap(_.traverse(TxOut.decode(_, mode)))
+        .flatMap(_.traverse(TxOut.decode(_, mode, forms)))
       fee <- f
         .get(2)
         .toRight(LedgerDecodeError.MissingField(DecodeField.TransactionBody, DecodeField.Fee))
         .flatMap(CborRead.uint(_, DecodeField.Fee))
+      // Shelley lists the time to live among its required keys (`boxBody`'s list); Allegra made it optional.
+      _ <- Either.cond(
+        f.contains(3) || era.ordinal > Era.Shelley.ordinal,
+        (),
+        LedgerDecodeError.MissingField(DecodeField.TransactionBody, DecodeField.Ttl)
+      )
       ttl <- f.get(3).traverse(CborRead.uint(_, DecodeField.Ttl))
       start <- f.get(8).traverse(CborRead.uint(_, DecodeField.ValidityStart))
       certs <- present(DecodeField.Certificates)(
@@ -391,7 +426,9 @@ object TxBody:
       )
       upd <- f.get(6).traverse(update(_, era))
       auxHash <- f.get(7).traverse(CborRead.bytesN(_, 32, DecodeField.AuxiliaryDataHash))
-      mint <- f.get(9).traverse(Value.multiasset(_, DecodeField.Mint, signed = true, mode.values))
+      mint <-
+        if era == Era.Allegra then f.get(9).traverse(unit(_, DecodeField.Mint)).as(None)
+        else f.get(9).traverse(Value.multiasset(_, DecodeField.Mint, signed = true, mode.values))
       _ <- Either.cond(
         !(conway && mint.exists(_.isEmpty)),
         (),
@@ -410,7 +447,7 @@ object TxBody:
           )
       )
       network <- f.get(15).traverse(CborRead.uint(_, DecodeField.NetworkId))
-      collateralReturn <- f.get(16).traverse(TxOut.decode(_, mode))
+      collateralReturn <- f.get(16).traverse(TxOut.decode(_, mode, forms))
       totalCollateral <- f.get(17).traverse(CborRead.uint(_, DecodeField.TotalCollateral))
       refs <- present(DecodeField.ReferenceInputs)(
         f.get(18).traverse(CborRead.set(_, DecodeField.ReferenceInputs, version)(TxIn.decode))

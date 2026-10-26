@@ -79,17 +79,19 @@ object Voter:
   /** `[0, keyhash] / [1, scripthash]` (committee), `[2, ..] / [3, ..]` (DRep), `[4, keyhash]`. */
   def decode(n: Node)(using ByteStrings): Either[LedgerDecodeError, Voter] =
     CborRead.arrayN(n, 2, DecodeField.Voter).flatMap { xs =>
+      // `decodeRecordSum "Voter"` (`Conway/Governance/Procedures.hs:355-363`): a full-width tag
       (
-        CborRead.uint(xs(0), DecodeField.VoterTag).map(_.toInt),
+        CborRead.uint(xs(0), DecodeField.VoterTag),
         CborRead.bytesN(xs(1), 28, DecodeField.VoterHash)
       ).tupled
-        .flatMap {
-          case (0, h) => Right(CommitteeHot(Credential.Key(h)))
-          case (1, h) => Right(CommitteeHot(Credential.Script(h)))
-          case (2, h) => Right(DRepVoter(Credential.Key(h)))
-          case (3, h) => Right(DRepVoter(Credential.Script(h)))
-          case (4, h) => Right(Pool(h))
-          case (t, _) => Left(LedgerDecodeError.UnknownTag(DecodeField.Voter, t))
+        .flatMap { (t, h) =>
+          CborRead.small(t) match
+            case Some(0) => Right(CommitteeHot(Credential.Key(h)))
+            case Some(1) => Right(CommitteeHot(Credential.Script(h)))
+            case Some(2) => Right(DRepVoter(Credential.Key(h)))
+            case Some(3) => Right(DRepVoter(Credential.Script(h)))
+            case Some(4) => Right(Pool(h))
+            case _       => Left(LedgerDecodeError.UnknownTag(DecodeField.Voter, t))
         }
     }
 
@@ -201,14 +203,15 @@ object Proposal:
         tag <- xs.headOption
           .toRight(LedgerDecodeError.Empty(DecodeField.GovernanceAction))
           .flatMap(CborRead.uint(_, DecodeField.ActionTag))
-        a <- (tag.toInt, xs.size) match
-          case (0, 4) =>
+        // `Summands "GovAction"` (`Conway/Governance/Procedures.hs:876-895`): a full-width tag
+        a <- (CborRead.small(tag), xs.size) match
+          case (Some(0), 4) =>
             (
               GovActionId.optional(xs(1)),
               ConwayParamUpdate.decode(xs(2)),
               optionalHash(xs(3))
             ).mapN(GovAction.ParameterChange(_, _, _))
-          case (1, 3) =>
+          case (Some(1), 3) =>
             (
               GovActionId.optional(xs(1)),
               CborRead
@@ -220,7 +223,7 @@ object Proposal:
                   ).tupled
                 )
             ).mapN((p, v) => GovAction.HardFork(p, v._1, v._2))
-          case (2, 3) =>
+          case (Some(2), 3) =>
             (
               CborRead
                 .map(xs(1), DecodeField.TreasuryWithdrawals)
@@ -233,8 +236,8 @@ object Proposal:
                 .flatMap(ws => keysUnique(ws, DecodeField.TreasuryWithdrawals, version)),
               optionalHash(xs(2))
             ).mapN(GovAction.TreasuryWithdrawals(_, _))
-          case (3, 2) => GovActionId.optional(xs(1)).map(GovAction.NoConfidence(_))
-          case (4, 5) =>
+          case (Some(3), 2) => GovActionId.optional(xs(1)).map(GovAction.NoConfidence(_))
+          case (Some(4), 5) =>
             (
               GovActionId.optional(xs(1)),
               CborRead.set(xs(2), DecodeField.RemovedMembers, version)(
@@ -251,15 +254,15 @@ object Proposal:
                 .flatMap(ms => keysUnique(ms, DecodeField.AddedMembers, version)),
               CborRead.rational(xs(4), DecodeField.Quorum, CborRead.Bound.Unit)
             ).mapN((p, r, a, q) => GovAction.UpdateCommittee(p, r.toSet, a.toMap, q))
-          case (5, 3) =>
+          case (Some(5), 3) =>
             (
               GovActionId.optional(xs(1)),
               CborRead
                 .arrayN(xs(2), 2, DecodeField.Constitution)
                 .flatMap(c => (optionalHash(c(1)), Anchor.decode(c(0))).tupled)
             ).mapN((p, c) => GovAction.NewConstitution(p, c._1, c._2))
-          case (6, 1) => Right(GovAction.Info)
-          case (t, k) => Left(LedgerDecodeError.TaggedArity(DecodeField.GovernanceAction, t, k))
+          case (Some(6), 1) => Right(GovAction.Info)
+          case (_, k) => Left(LedgerDecodeError.TaggedArity(DecodeField.GovernanceAction, tag, k))
       yield a
     }
 

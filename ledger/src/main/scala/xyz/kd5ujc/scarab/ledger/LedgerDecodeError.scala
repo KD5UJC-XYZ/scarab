@@ -18,6 +18,9 @@ enum LedgerDecodeError extends DomainError:
   case ExpectedTag(site: DecodeSite, expected: BigInt, actual: Value)
   case ByteLength(site: DecodeSite, expected: Int, actual: Int)
   case ArrayLength(site: DecodeSite, expected: Int, actual: Int)
+
+  /** A transaction output in none of the forms the era reads ([[TxOut.Forms]]). */
+  case OutputForm(forms: TxOut.Forms, actual: Value)
   case Empty(site: DecodeSite)
   case MissingField(site: DecodeSite, field: DecodeSite)
   case UnknownFields(site: DecodeSite, fields: Set[Int])
@@ -99,4 +102,4 @@ object LedgerDecodeError:
     else e.productIterator.map(repr).mkString(s"${e.productPrefix}(", ",", ")")
 
   enum Shape:
-    case Unsigned, Integer, Bytes, Text, Boolean, Array, Map, ArrayOrMap, Metadatum
+    case Unsigned, Integer, Bytes, Text, Boolean, Null, Array, Map, ArrayOrMap, Metadatum
