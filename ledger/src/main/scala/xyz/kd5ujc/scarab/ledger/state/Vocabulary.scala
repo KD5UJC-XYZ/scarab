@@ -100,6 +100,26 @@ object VRFVerKeyHash:
 opaque type Hash32 = Bytes
 
 object Hash32:
+  /** Immutable fixed Blake2b-256 context. Copies isolate updates/finalization, and the fixed
+    * algorithm and output allocation construct Hash32 without accepting unchecked input bytes.
+    */
+  private[ledger] final class Blake2b256 private (
+      state: org.bouncycastle.crypto.digests.Blake2bDigest
+  ):
+    def add(bytes: Bytes): Blake2b256 =
+      val next = new org.bouncycastle.crypto.digests.Blake2bDigest(state)
+      next.update(bytes.unsafeArray, bytes.unsafeOffset, bytes.size)
+      new Blake2b256(next)
+
+    def finish: Hash32 =
+      val next = new org.bouncycastle.crypto.digests.Blake2bDigest(state)
+      val output = new Array[Byte](32)
+      next.doFinal(output, 0)
+      Bytes.wrap(output)
+
+  private[ledger] object Blake2b256:
+    val empty: Blake2b256 = new Blake2b256(new org.bouncycastle.crypto.digests.Blake2bDigest(256))
+
   def fromBytes(bytes: Bytes): Either[VocabError, Hash32] =
     checked(VocabError.Kind.Hash32, 32, bytes)
 
