@@ -53,9 +53,15 @@ enum BackendFailure:
   case Defect(cause: Throwable)
   case BuiltinUnavailable(builtin: scalus.uplc.DefaultFun)
 
+  /** Scalus's cost model gives the builtin a costing function that [[ReferenceCosting]] does not
+    * mirror, so the reference's budget for it is unknown.
+    */
+  case CostingUnmirrored(builtin: scalus.uplc.DefaultFun)
+
   /** Whether the failure is the implementation's or this input's ([[BackendFailure.Reach]]). */
   def reach: BackendFailure.Reach = this match
-    case NoResult | BuiltinUnavailable(_)     => BackendFailure.Reach.Implementation
+    case NoResult | BuiltinUnavailable(_) | CostingUnmirrored(_) =>
+      BackendFailure.Reach.Implementation
     case StackExhausted | BudgetOutOfRange(_) => BackendFailure.Reach.Input
     case Defect(cause)                        => BackendFailure.reachOf(cause)
   def message: String = this match
@@ -64,6 +70,7 @@ enum BackendFailure:
     case BudgetOutOfRange(_)         => "execution budget exceeds 64 bits"
     case Defect(cause)               => Option(cause.getMessage).getOrElse(cause.getClass.getName)
     case BuiltinUnavailable(builtin) => s"builtin $builtin unavailable"
+    case CostingUnmirrored(builtin)  => s"the costing function of $builtin is not mirrored"
 
 object BackendFailure:
   /** What a failure of the implementation says about the inputs it has no verdict for.

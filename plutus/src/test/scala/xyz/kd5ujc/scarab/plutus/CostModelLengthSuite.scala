@@ -6,19 +6,22 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 
-/** Scalus 1.4.0 against the unchanged Plutus 1.70.0.0 evaluator under cost-model lists of every
-  * length. The ledger stores whatever length an update or a genesis gives from decoder version 9
-  * and hands the list to `mkEvaluationContext` (`CostModels.hs` `mkCostModel`, cardano-ledger
-  * `f649f975`), whose `tagWithParamNames` pads a short list with `maxBound` and drops the values
-  * beyond the last name (`PlutusLedgerApi/Common/ParamName.hs` lines 86-112 at plutus `507cab8c`),
-  * each with a warning only. Every observation of
-  * `fixtures/reference/genesis-cost-models/evaluation.jsonl` is one program under one list: the
-  * stage and the exact budget of the reference are the ones of [[ScalusEvaluator]].
+/** The evaluator (Scalus 1.4.0's machine, with the reference's budget arithmetic of
+  * [[ReferenceCosting]] and [[ReferenceBudget]]) against the unchanged Plutus 1.70.0.0 evaluator
+  * under cost-model lists of every length and of extreme or mixed-sign values. The ledger stores
+  * whatever length an update or a genesis gives from decoder version 9 and hands the list to
+  * `mkEvaluationContext` (`CostModels.hs` `mkCostModel`, cardano-ledger `f649f975`), whose
+  * `tagWithParamNames` pads a short list with `maxBound` and drops the values beyond the last name
+  * (`PlutusLedgerApi/Common/ParamName.hs` lines 86-112 at plutus `507cab8c`), each with a warning
+  * only. Every observation of `fixtures/reference/genesis-cost-models/evaluation.jsonl` is one
+  * program under one list: the stage and the exact budget of the reference are the evaluator's,
+  * with no observation excluded.
   *
-  * The lists also cover the extremes of `Int64` (all `minBound`, `-1`, `0`, `maxBound`), where the
-  * reference's budget arithmetic saturates or wraps; the last test additionally builds a machine
-  * for every list that changes one parameter at a time to an extreme, which the reference's
-  * `mkCostModel` accepted in each case (`sweep.json`).
+  * The lists also cover the extremes of `Int64` (all `minBound`, `-1`, `0`, `maxBound`) and lists
+  * whose values mix signs and magnitudes up to the bounds, where the reference's budget arithmetic
+  * saturates and the order of its charges decides the verdict (issue 485); the last test
+  * additionally builds a machine for every list that changes one parameter at a time to an extreme,
+  * which the reference's `mkCostModel` accepted in each case (`sweep.json`).
   */
 class CostModelLengthSuite extends FunSuite:
   override val munitTimeout = scala.concurrent.duration.Duration(10, "min")
@@ -41,11 +44,14 @@ class CostModelLengthSuite extends FunSuite:
   private val observations = lines(directory.resolve("evaluation.jsonl"))
   private val unlimited = ExUnits(BigInt(1) << 60, BigInt(1) << 60)
 
-  /** The list a model stands for: the pinned default of its profile cut or extended with sevens. */
+  /** The list a model stands for: its values, one value repeated, or the pinned default of its
+    * profile cut or extended with sevens.
+    */
   private def values(model: Json): Vector[Long] =
-    field[Option[Long]](model, "fill") match
-      case Some(fill) => Vector.fill(field[Int](model, "length"))(fill)
-      case None =>
+    (field[Option[Vector[Long]]](model, "values"), field[Option[Long]](model, "fill")) match
+      case (Some(values), _)  => values
+      case (None, Some(fill)) => Vector.fill(field[Int](model, "length"))(fill)
+      case (None, None) =>
         val defaults = BuiltinCostingCorpus.parameters(
           field[Int](model, "language"),
           field[Int](model, "protocol")
@@ -97,20 +103,8 @@ class CostModelLengthSuite extends FunSuite:
     stageMismatch.orElse(budgetMismatch)
   }
 
-  private val (minimum, ordinary) =
-    observations.partition(row => field[String](row, "id").endsWith("-all-min"))
-
-  test("Scalus agrees with the reference on every program under every list length") {
-    assert(minimum.nonEmpty && ordinary.size > minimum.size)
-    assertEquals(disagreements(ordinary), Vector.empty[String])
-  }
-
-  // Not a list-length rule: with every parameter at Int64's minimum Scalus reports an exhausted
-  // budget where the reference evaluates. The comparison is kept, tagged as expected to fail, so
-  // that it turns red when the dependency matches the reference; the divergence is tracked in
-  // https://github.com/KD5UJC-XYZ/scarab/issues/485.
-  test("Scalus agrees with the reference when every parameter is Int64's minimum".fail) {
-    assertEquals(disagreements(minimum), Vector.empty[String])
+  test("the evaluator agrees with the reference on every program under every list") {
+    assertEquals(disagreements(observations), Vector.empty[String])
   }
 
   test("Scalus builds a machine for every list the reference's mkCostModel accepted in the sweep") {
