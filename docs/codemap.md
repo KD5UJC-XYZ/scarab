@@ -59,7 +59,7 @@ Pure Ouroboros mini-protocol codecs and state machines.
 
 | Package | Responsibility | Entry points | Suites | Decisions |
 |---|---|---|---|---|
-| protocol | Pure mini-protocol codecs and state machines, versions, era and header tags | `ChainSync`, `BlockFetch`, `Handshake`, `TxSubmission2`, `LocalStateQuery`, `Mux`, `KeepAlive`, `PeerSharing`, `LeiosFetch`, `LeiosNotify`, `LeiosWord`, `EbHash`, `LeiosTxHash` | `ChainSyncSuite`, `BlockFetchSuite`, `HandshakeSuite`, `TxSubmission2Suite`, `LocalStateQuerySuite`, `MuxSuite`, `KeepAliveSuite`, `LeiosCodecSuite`, `LeiosWordSuite` | [ADR 0008](adr/0008-networking-as-implemented.md), [design domain-errors](design/domain-errors.md) |
+| protocol | Pure mini-protocol codecs and state machines, versions, era and header tags | `ChainSync`, `BlockFetch`, `Handshake`, `TxSubmission2`, `LocalStateQuery`, `Mux`, `KeepAlive`, `PeerSharing`, `LeiosFetch`, `LeiosNotify`, `LeiosWord`, `EbHash`, `LeiosTxHash` | `ChainSyncSuite`, `BlockFetchSuite`, `HandshakeSuite`, `TxSubmission2Suite`, `LocalStateQuerySuite`, `MuxSuite`, `KeepAliveSuite`, `LeiosCodecSuite`, `LeiosWordSuite`, `LeiosFetchDecoderSuite` | [ADR 0008](adr/0008-networking-as-implemented.md), [design domain-errors](design/domain-errors.md) |
 
 ## network
 
@@ -67,7 +67,7 @@ Effectful bearer, multiplexer, connections, peer selection.
 
 | Package | Responsibility | Entry points | Suites | Decisions |
 |---|---|---|---|---|
-| network | fs2 bearer, multiplexer, connection manager, client and server roles of each mini-protocol | `Mux`, `Bearer`, `ConnectionManager`, `NodeToNode`, `HandshakeClient`, `ChainSyncClient`, `BlockFetchClient`, `NodeToNodeServer`, `ProtocolResults` | `MuxSuite`, `ConnectionManagerSuite`, `NodeToNodeSuite`, `HandshakeSuite`, `ChainSyncRuntimeSuite`, `BlockFetchPipelineSuite`, `ProtocolResultsSuite`, `WarmHotSuite` | [ADR 0008](adr/0008-networking-as-implemented.md), [ADR 0017](adr/0017-fibers-end-with-values.md), [design chainsync-pipeline](design/chainsync-pipeline.md), [design network-limits](design/network-limits.md) |
+| network | fs2 bearer, multiplexer, connection manager, client and server roles of each mini-protocol | `Mux`, `Bearer`, `ConnectionManager`, `NodeToNode`, `HandshakeClient`, `ChainSyncClient`, `BlockFetchClient`, `NodeToNodeServer`, `ProtocolResults` | `MuxSuite`, `ConnectionManagerSuite`, `NodeToNodeSuite`, `HandshakeSuite`, `ChainSyncRuntimeSuite`, `BlockFetchPipelineSuite`, `ProtocolResultsSuite`, `WarmHotSuite`, `LeiosFetchClientSuite` | [ADR 0008](adr/0008-networking-as-implemented.md), [ADR 0017](adr/0017-fibers-end-with-values.md), [design chainsync-pipeline](design/chainsync-pipeline.md), [design network-limits](design/network-limits.md) |
 | network/genesis | Genesis rate limiting primitives: leaky bucket, limit on patience, picosecond clock | `LeakyBucket`, `LimitOnPatience`, `PicosClock` | `LeakyBucketSuite`, `LimitOnPatienceSuite` | [design genesis](design/genesis.md) |
 | network/selection | Pure peer selection: governor state, churn, ledger peers, local roots, GSM, CSJ, fetch policy | `PeerSelection`, `GovernorState`, `Churn`, `LedgerPool`, `LocalRoots`, `Gsm`, `ChainSyncJumping`, `BlockFetchPolicy` | `PeerSelectionSuite`, `ChurnSuite`, `LedgerPeersSuite`, `GsmSuite`, `BlockFetchPolicySuite`, `PeerShareSuite` | [ADR 0016](adr/0016-peer-states-and-the-governor.md), [design peer-selection](design/peer-selection.md), [design block-fetch-coordination](design/block-fetch-coordination.md) |
 

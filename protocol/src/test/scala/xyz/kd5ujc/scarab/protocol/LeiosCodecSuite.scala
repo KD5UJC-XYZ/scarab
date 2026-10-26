@@ -249,10 +249,10 @@ class LeiosCodecSuite extends ScalaCheckSuite:
     }
   }
 
-  test("LeiosFetch: an indefinite-length transaction list and byte string are read") {
+  test("LeiosFetch: indefinite transaction lists retain definite payloads") {
     import LeiosFetch.*
     val msg =
-      bs(0x82, 0x04, 0x9f) ++ tag24(bs(0xa0)) ++ bs(0xd8, 0x18, 0x5f, 0x41, 0xa0, 0xff, 0xff)
+      bs(0x82, 0x04, 0x9f) ++ tag24(bs(0xa0)) ++ bs(0xd8, 0x18, 0x41, 0xa0, 0xff)
     assertEquals(
       decodePrefix(State.BlockTxs, msg).map(_._1),
       Right(Message.BlockTxs(Vector(bs(0xa0), bs(0xa0))))
@@ -362,10 +362,10 @@ class LeiosCodecSuite extends ScalaCheckSuite:
       decodePrefix(State.BlockTxs, bs(0x84, 0x04) ++ pt ++ bs(0xa0, 0xa0)),
       Left(LeiosWireError.BadField(4, LeiosField.Transactions))
     )
-    // neither one nor three fields is a form
+    // The reference decodes fields before checking outer arity.
     assertEquals(
       decodePrefix(State.BlockTxs, bs(0x83, 0x04) ++ pt ++ bs(0xa0)),
-      Left(LeiosWireError.WrongArity(4, 1, 2))
+      Left(LeiosWireError.BadTransaction(0))
     )
   }
 

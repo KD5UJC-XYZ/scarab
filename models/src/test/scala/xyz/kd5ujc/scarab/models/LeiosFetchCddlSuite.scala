@@ -112,16 +112,11 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
   }
 
   test("an indefinite-length bitmaps map and transaction list are read by both") {
-    // [3, point, {_ 0: 1}] and [4, [_ #6.24(h'a0')...]] with an indefinite byte string inside the tag
+    // [3, point, {_ 0: 1}] and [4, [_ #6.24(bytes)...]].
     val p = "82" + "1a0005a91e" + "5820" + "07" * 32
     val request = hex("83" + "03" + p + "bf" + "0001" + "ff")
     val tx = tx1Hex
     val answer = hex("82" + "04" + "9f" + "d818" + "58" + "0e" + tx + "ff")
-    // the same transaction as an indefinite-length byte string of two chunks inside the tag
-    val chunked =
-      hex(
-        "82" + "04" + "81" + "d818" + "5f" + "44" + "84a300d9" + "4a" + "01028001800200a0f6f5" + "ff"
-      )
     assert(generated(request).isRight)
     assert(generated(answer).isRight)
     assert(LeiosFetch.decodePrefix(LeiosFetch.State.Idle, request).isRight)
@@ -133,9 +128,19 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
     val eb = hex("82" + "02" + "bf" + "5820" + "01" * 32 + "01" + "ff")
     assert(generated(eb).isRight)
     assert(LeiosFetch.decodePrefix(LeiosFetch.State.Block, eb).isRight)
+  }
+
+  test("native decodeNestedCborBytes refuses chunked bytes admitted by the Blueprint reader") {
+    // Cardano.Binary.Deserialize.decodeNestedCborBytes delegates to cborg decodeBytes;
+    // the native primitive rejects 0x5f even when every chunk is valid CBOR payload bytes.
+    // the same transaction as an indefinite-length byte string of two chunks inside the tag
+    val chunked =
+      hex(
+        "82" + "04" + "81" + "d818" + "5f" + "44" + "84a300d9" + "4a" + "01028001800200a0f6f5" + "ff"
+      )
     assertEquals(
-      LeiosFetch.decodePrefix(LeiosFetch.State.BlockTxs, chunked).map(_._1),
-      Right(LeiosFetch.Message.BlockTxs(Vector(hex(tx))))
+      LeiosFetch.decodePrefix(LeiosFetch.State.BlockTxs, chunked),
+      Left(LeiosWireError.BadTransaction(0))
     )
     assert(generated(chunked).isRight)
   }

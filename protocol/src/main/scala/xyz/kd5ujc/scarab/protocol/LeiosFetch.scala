@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
-import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Value}
 
 import LeiosWire.*
 import LeiosWord.Word32
@@ -66,6 +66,18 @@ object LeiosFetch:
 
   enum State:
     case Idle, Block, BlockTxs, Done
+
+  /** byteLimitsLeiosFetch at consensus `7b239a16`: smallByteLimit in Idle, then a ten-percent
+    * margin on the 600 kB endorser block and 500 kB transaction reply. Done has no receiver.
+    */
+  val BlockByteLimit: Int = 660000
+  val BlockTxsByteLimit: Int = 550000
+
+  def byteLimit(state: State): Option[Int] = state match
+    case State.Idle     => Some(65535)
+    case State.Block    => Some(BlockByteLimit)
+    case State.BlockTxs => Some(BlockTxsByteLimit)
+    case State.Done     => None
 
   enum Message:
     case Done
@@ -150,14 +162,6 @@ object LeiosFetch:
       LeiosWireError.TransactionCountMismatch(request.count, transactions.size)
     )
 
-  /** The bytes inside the tag 24 of transaction `index`. */
-  private def transaction(index: Int, n: Node): Either[LeiosWireError, Bytes] = n.value match
-    case Value.Tag(t, inner) if t == EmbeddedCbor =>
-      inner.value match
-        case Value.ByteString(b) => Right(b)
-        case _                   => Left(LeiosWireError.BadTransaction(index))
-    case _ => Left(LeiosWireError.BadTransaction(index))
-
   private def bounded(
       tag: Int,
       field: LeiosField,
@@ -165,56 +169,5 @@ object LeiosFetch:
   ): Either[LeiosWireError, Unit] =
     Either.cond(actual <= MaxTxsPerEb, (), LeiosWireError.TooMany(tag, field, MaxTxsPerEb, actual))
 
-  private def list(tag: Int, n: Node): Either[LeiosWireError, Vector[Node]] = n.value match
-    case Value.Arr(xs) => Right(xs)
-    case _             => Left(LeiosWireError.BadField(tag, LeiosField.Transactions))
-
   def decodePrefix(state: State, bytes: Bytes): Either[LeiosWireError, (Message, Int)] =
-    for
-      parts <- split(bytes)
-      (tag, fields, consumed) = parts
-      message <- (state, tag) match
-        case (State.Idle, 0) => arity(tag, fields, 0).map(_ => Message.Done)
-        case (State.Idle, 1) =>
-          arity(tag, fields, 1).flatMap(_ => point(tag, fields(0))).map(Message.BlockRequest(_))
-        case (State.Idle, 3) =>
-          for
-            _ <- arity(tag, fields, 2)
-            p <- point(tag, fields(0))
-            b <- bitmaps(tag, fields(1))
-          yield Message.BlockTxsRequest(p, b)
-        case (State.Block, 2) =>
-          for
-            _ <- arity(tag, fields, 1)
-            entries <- fields(0).value match
-              case Value.Map(es) => Right(es)
-              case _             => Left(LeiosWireError.BadField(tag, LeiosField.EndorserBlock))
-            _ <- Either.cond(entries.nonEmpty, (), LeiosWireError.EmptyEndorserBlock)
-            _ <- bounded(tag, LeiosField.EndorserBlock, entries.size)
-            txs <- all(entries) { case (k, v) =>
-              for
-                h <- k.value match
-                  case Value.ByteString(bytes) => Right(LeiosTxHash.fromBytes(bytes))
-                  case _ => Left(LeiosWireError.BadField(tag, LeiosField.Hash))
-                size <- uint(tag, v, Word32.Max, LeiosField.Word32).flatMap(Word32.from)
-              yield (h, size)
-            }
-          yield Message.Block(txs)
-        case (State.BlockTxs, 4) if fields.size == 3 =>
-          // the form of Blueprint `fe4cceb9`: [4, point, bitmaps, tx_list]
-          for
-            p <- point(tag, fields(0))
-            b <- bitmaps(tag, fields(1))
-            items <- list(tag, fields(2))
-            _ <- bounded(tag, LeiosField.Transactions, items.size)
-          yield Message.LegacyBlockTxs(p, b, items.map(_.original))
-        case (State.BlockTxs, 4) =>
-          for
-            _ <- arity(tag, fields, 1)
-            items <- list(tag, fields(0))
-            _ <- bounded(tag, LeiosField.Transactions, items.size)
-            txs <- all(items.zipWithIndex)((n, i) => transaction(i, n))
-          yield Message.BlockTxs(txs)
-        case (_, t) if t >= 0 && t <= 4 => Left(LeiosWireError.NotAdmitted(t))
-        case (_, t)                     => Left(LeiosWireError.UnknownTag(BigInt(t)))
-    yield (message, consumed)
+    LeiosFetchDecoder.decode(state, bytes)

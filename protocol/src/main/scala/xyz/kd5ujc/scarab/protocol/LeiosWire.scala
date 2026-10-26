@@ -23,7 +23,8 @@ enum LeiosWireError:
 
   /** A known tag that the protocol state does not admit (wrong direction or state). */
   case NotAdmitted(tag: Int)
-  case WrongArity(tag: Int, expected: Int, actual: Int)
+  case WrongArity(tag: Int, expected: Int, actual: BigInt)
+  case ExcessTerms(tag: Int)
   case BadField(tag: Int, field: LeiosField)
   case OutsideWord(field: LeiosField, value: BigInt)
 
@@ -41,7 +42,7 @@ enum LeiosWireError:
   case EmptyEndorserBlock
 
   /** A list or map of `actual` entries where the message admits at most `limit`. */
-  case TooMany(tag: Int, field: LeiosField, limit: Int, actual: Int)
+  case TooMany(tag: Int, field: LeiosField, limit: Int, actual: BigInt)
 
   /** Transaction `index` of `MsgLeiosBlockTxs` is not `#6.24(bytes)`. */
   case BadTransaction(index: Int)
