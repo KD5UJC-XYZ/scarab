@@ -36,14 +36,6 @@ trait Judge[F[_], Fail] extends Tell[F, Chain[Fail]]:
   /** Runs `fa` as a sub-rule: its failures are recorded as one block of the enclosing rule's. */
   def nest[A](fa: F[A]): F[A]
 
-  /** The boundary of `trans` while some rules still raise their predicate failures: a [[nest]] in
-    * which a raised refusal ends the sub-rule only. Its failures are recorded at the end of the
-    * sub-rule's block and the enclosing rule continues, with the state the sub-rule had reached; a
-    * raised defect ends the judgment as before. A rule that records its failures never raises a
-    * refusal, so for it this is [[nest]]; the boundary goes once every rule records (#412).
-    */
-  def trans(fa: F[Unit]): F[Unit] = nest(fa)
-
   /** The judgment of a sub-rule whose failures are wrapped into this one's (`wrapFailed`, as
     * `Raise.contramap` does for raised failures).
     */
@@ -54,7 +46,6 @@ trait Judge[F[_], Fail] extends Tell[F, Chain[Fail]]:
       def tell(failures: Chain[G]): F[Unit] = outer.tell(failures.map(wrap))
       def failing: F[Boolean] = outer.failing
       def nest[A](fa: F[A]): F[A] = outer.nest(fa)
-      override def trans(fa: F[Unit]): F[Unit] = outer.trans(fa)
 
 object Judge:
   def apply[F[_], Fail](using judge: Judge[F, Fail]): Judge[F, Fail] = judge
@@ -74,4 +65,3 @@ object Judge:
       failures.headOption.fold(F.unit)(f => raise.raise[Fail, Unit](wrap(f)))
     def failing: F[Boolean] = F.pure(false)
     def nest[A](fa: F[A]): F[A] = fa
-    override def trans(fa: F[Unit]): F[Unit] = fa

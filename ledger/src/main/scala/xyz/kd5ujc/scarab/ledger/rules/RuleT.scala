@@ -50,7 +50,7 @@ private[rules] enum Prog[Rec, Fail, S, A]:
   case Scoped(program: Prog[Rec, Fail, S, A], change: Globals => Globals)
   case Record[Rec, Fail, S](failures: Chain[Rec]) extends Prog[Rec, Fail, S, Unit]
   case Failing[Rec, Fail, S]() extends Prog[Rec, Fail, S, Boolean]
-  case Nest(program: Prog[Rec, Fail, S, A], resume: Option[A])
+  case Nest(program: Prog[Rec, Fail, S, A])
 
 /** The rest of the computation with a hole of type `X` and a final result of type `A`: a
   * type-aligned sequence of [[Frame]]s (`Done` closes the sequence, `Cons` extends it by one step
@@ -85,12 +85,9 @@ private[rules] enum Frame[Rec, Fail, S, X, Y]:
 
   /** Leave a nest: the failures recorded inside it become one block of the enclosing rule's, after
     * those the enclosing rule had recorded before it (`parent`); a nest that recorded nothing adds
-    * nothing. A raise leaves it the same way. A nest with a `resume` value is a sub-rule that still
-    * raises its predicate failures: a raised refusal ends the sub-rule only, its failures closing
-    * the block, and the enclosing rule continues with `resume` (see [[Judge.trans]]).
+    * nothing. A raise leaves it the same way.
     */
-  case Unnest[Rec, Fail, S, A](parent: Chain[Trace[Rec]], resume: Option[A])
-      extends Frame[Rec, Fail, S, A, A]
+  case Unnest[Rec, Fail, S, A](parent: Chain[Trace[Rec]]) extends Frame[Rec, Fail, S, A, A]
 
 /** The failures a judgment recorded, in the order they were recorded: a predicate failure of the
   * rule itself, or the block of a sub-rule run through a nest ([[Judge.nest]]).
@@ -133,22 +130,14 @@ object RuleT:
 
   extension [Rec, Fail, S, A](rule: RuleT[Rec, Fail, S, A])
     /** Runs the rule under `policy`: how it ended. A raised failure not recovered ends it whatever
-      * was recorded before (the reference has no raise; this is the defect that leaves no verdict),
-      * unless `absorb` takes it for the predicate failures of a refusal and a sub-rule boundary
-      * ([[Judge.trans]]) is there to end: then it ends that sub-rule only.
+      * was recorded before (the reference has no raise; this is the defect that leaves no verdict).
       */
-    def judge(
-        policy: Policy,
-        globals: Globals,
-        state: S,
-        absorb: Fail => Option[NonEmptyChain[Rec]] = (_: Fail) => None
-    ): Outcome[Rec, Fail, S, A] =
+    def judge(policy: Policy, globals: Globals, state: S): Outcome[Rec, Fail, S, A] =
       val first = policy == Policy.FirstFailure
       // One loop, so that it is a tail call: the machine is either running a program or unwinding
       // a raise (dropping the continuations and closing the nests up to the nearest handler,
       // restoring the constants of the scopes it leaves, and resuming there; with no handler left
-      // the run ends). A sub-rule boundary with a `resume` value takes a refusal `absorb` accepts:
-      // its failures are recorded at the end of the sub-rule's block and the parent resumes.
+      // the run ends).
       // `trace` holds what the innermost rule recorded so far, `failing` whether anything was
       // recorded anywhere in the judgment (the flag of `Extended.hs:690-697`, which a nest
       // inherits from its parent and passes on). The frames are type-aligned: `go` is called with
@@ -166,25 +155,13 @@ object RuleT:
         current match
           case Left(e) =>
             frames match
-              case Frames.Done() =>
-                absorb(e) match
-                  case Some(failures) if first => Outcome.Refused(NonEmptyChain.one(failures.head))
-                  // the root's failures come out reversed, its last first (Judgment.flatten)
-                  case Some(failures) =>
-                    Outcome.Refused(failures.reverse.appendChain(Judgment.flatten(trace)))
-                  case None => Outcome.Raised(e)
+              case Frames.Done() => Outcome.Raised(e)
               case Frames.Cons(head, tail) =>
                 head match
                   case Frame.Next(_)        => go(Left(e), g, s, trace, failing, tail)
                   case Frame.Restore(outer) => go(Left(e), outer, s, trace, failing, tail)
-                  case Frame.Unnest(parent, resume) =>
-                    resume.flatMap(a => absorb(e).map(a -> _)) match
-                      case Some((_, failures)) if first =>
-                        Outcome.Refused(NonEmptyChain.one(failures.head))
-                      case Some((a, failures)) =>
-                        val block = trace ++ failures.toChain.map(Trace.Leaf(_))
-                        go(Right(Prog.Pure(a)), g, s, parent :+ Trace.Node(block), true, tail)
-                      case None => go(Left(e), g, s, closed(parent, trace), failing, tail)
+                  case Frame.Unnest(parent) =>
+                    go(Left(e), g, s, closed(parent, trace), failing, tail)
                   case Frame.Handler(handler, saved, before, wasFailing) =>
                     go(Right(handler(e)), g, saved, before, wasFailing, tail)
           case Right(program) =>
@@ -204,7 +181,7 @@ object RuleT:
                         go(Right(Prog.Pure(a)), g, s, trace, failing, tail)
                       case Frame.Restore(outer) =>
                         go(Right(Prog.Pure(a)), outer, s, trace, failing, tail)
-                      case Frame.Unnest(parent, _) =>
+                      case Frame.Unnest(parent) =>
                         go(Right(Prog.Pure(a)), g, s, closed(parent, trace), failing, tail)
               case Prog.Step(step) =>
                 step(g, s) match
@@ -234,8 +211,8 @@ object RuleT:
                     go(Right(Prog.Pure(())), g, s, recorded, true, frames)
               case Prog.Failing() =>
                 go(Right(Prog.Pure(failing)), g, s, trace, failing, frames)
-              case Prog.Nest(program, resume) =>
-                val frame = Frame.Unnest[Rec, Fail, S, X](trace, resume)
+              case Prog.Nest(program) =>
+                val frame = Frame.Unnest[Rec, Fail, S, X](trace)
                 go(Right(program), g, s, Chain.nil, failing, Frames.Cons(frame, frames))
 
       go(Right(rule), globals, state, Chain.nil, false, Frames.Done[Rec, Fail, S, A]())
@@ -310,6 +287,4 @@ object RuleT:
       val functor: Functor[Judged[Rec, Fail, S]] = monad
       def tell(failures: Chain[Rec]): RuleT[Rec, Fail, S, Unit] = Prog.Record(failures)
       def failing: RuleT[Rec, Fail, S, Boolean] = Prog.Failing()
-      def nest[A](fa: RuleT[Rec, Fail, S, A]): RuleT[Rec, Fail, S, A] = Prog.Nest(fa, None)
-      override def trans(fa: RuleT[Rec, Fail, S, Unit]): RuleT[Rec, Fail, S, Unit] =
-        Prog.Nest(fa, Some(()))
+      def nest[A](fa: RuleT[Rec, Fail, S, A]): RuleT[Rec, Fail, S, A] = Prog.Nest(fa)

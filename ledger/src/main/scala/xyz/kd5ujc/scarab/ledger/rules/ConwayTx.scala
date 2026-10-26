@@ -111,20 +111,10 @@ object CertLens:
       : Lens[ConwayCertState, SortedMap[Credential[ColdCommittee], CommitteeAuthorization]] =
     ConwayCertState.vState.andThen(VState.committeeState).andThen(CommitteeState.creds)
 
-/** What a rule of the transaction does when it refuses: the failure the node has always reported
-  * for it, `LedgerFailure.Rejected` of the transaction and the nested predicate failure.
+/** What a rule of the transaction does with a pure check's result: its predicate failures recorded,
+  * a defect raised.
   */
 private[rules] object Refuse:
-  /** Raises `failure` for the transaction `id`. */
-  def apply[F[_]: Applicative, A](id: Bytes, failure: PredicateFailure)(using
-      Raise[F, LedgerFailure]
-  ): F[A] = (LedgerFailure.Rejected(id, failure): LedgerFailure).raise[F, A]
-
-  /** `cond ?! failure`: raises unless `cond` holds. */
-  def unless[F[_]: Applicative](cond: Boolean, id: Bytes, failure: => PredicateFailure)(using
-      Raise[F, LedgerFailure]
-  ): F[Unit] = Sts.check(cond, LedgerFailure.Rejected(id, failure))
-
   /** The value of a pure check of the transaction, or nothing with its predicate failures recorded
     * (and the rule going on); a defect is raised.
     */

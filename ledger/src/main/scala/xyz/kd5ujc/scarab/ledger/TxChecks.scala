@@ -335,7 +335,7 @@ object TxChecks:
   /** A transaction of an era before Alonzo holds no Plutus fields: what its decoder would not have
     * admitted is a defect.
     */
-  private[ledger] def plutusFieldsDefect(pp: ProtocolParams, tx: Tx): Option[LedgerFailure] =
+  private[ledger] def plutusFieldsDefect(pp: ProtocolParams, tx: Tx): Option[LedgerDefect] =
     val wits = tx.witnesses
     Option.when(
       pp.protocolMajor < 5 &&
@@ -403,12 +403,12 @@ object TxChecks:
       pp: ProtocolParams,
       tx: Tx,
       env: Env
-  ): Result[Test[PredicateFailure]] =
+  ): Either[LedgerDefect, Test[PredicateFailure]] =
     val pv = pp.protocolMajor.toInt
     def malformed(
         failure: Set[Bytes] => UtxowFailure,
         scripts: Vector[Script]
-    ): Result[Test[PredicateFailure]] =
+    ): Either[LedgerDefect, Test[PredicateFailure]] =
       scripts
         .filter(_.kind.isPlutus)
         .traverse { script =>
@@ -452,7 +452,7 @@ object TxChecks:
       pp: ProtocolParams,
       tx: Tx,
       env: Env
-  ): Result[Test[PredicateFailure]] =
+  ): Either[LedgerDefect, Test[PredicateFailure]] =
     val id = tx.body.id
     for
       decoded <- tx.auxiliary
@@ -461,7 +461,7 @@ object TxChecks:
             .read(bytes, pp.protocolMajor)
             .leftMap(error => LedgerFailure.Undecodable(id, TxDefect.AuxiliaryData(error)))
         )
-      valid <- decoded.fold(Right(true): Result[Boolean]) { scripts =>
+      valid <- decoded.fold(Right(true): Either[LedgerDefect, Boolean]) { scripts =>
         scripts
           .traverse { script =>
             env.decoder.validate(script.language, pp.protocolMajor.toInt, script.code) match
