@@ -1,38 +1,234 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import xyz.kd5ujc.scarab.legacy as flat
-import xyz.kd5ujc.scarab.legacy.*
-import xyz.kd5ujc.scarab.codec.Rational
-import xyz.kd5ujc.scarab.plutus.ExUnits
-import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.GenDelegPair
-import xyz.kd5ujc.scarab.ledger.byron.ByronCbor
-import xyz.kd5ujc.scarab.ledger.rules.{Test, UtxoTests}
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
-import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
+import scala.collection.immutable.SortedMap
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
+import xyz.kd5ujc.scarab.crypto.Blake2b
+import xyz.kd5ujc.scarab.ledger.byron.ByronCbor
+import xyz.kd5ujc.scarab.ledger.rules.{
+  Convert,
+  Counted,
+  EraLedger,
+  EraNes,
+  Invariants,
+  NativeRules,
+  PreConway,
+  ShelleyInstantStakeOps,
+  StakeDistribution
+}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Alonzo,
+  Babbage,
+  BlocksMade,
+  Coin as NativeCoin,
+  CompactCoin,
+  Conway,
+  DeltaCoin,
+  EraTag,
+  FuturePParams,
+  Genesis,
+  InstantaneousRewards,
+  KeyHash,
+  Mary,
+  NewEpochState,
+  ShelleyAccountState,
+  ShelleyAccounts,
+  ShelleyBasedEra,
+  ShelleyInstantStake,
+  SnapShots,
+  Sorted,
+  StakePool,
+  Staking,
+  UTxOState,
+  VocabError,
+  Word64
+}
+import xyz.kd5ujc.scarab.ledger.state as native
+import xyz.kd5ujc.scarab.ledger.state.given
+import xyz.kd5ujc.scarab.plutus.ExUnits
 
 import TestLedger.*
 
+/** The transaction and epoch rules of the eras before Conway, on the native state of each era: the
+  * era is the one the protocol version names ([[NativeRules.eraOf]]). Every transaction the rules
+  * accept leaves a state whose pools list exactly the accounts that delegate to them, whose deposit
+  * pot is the obligation, and whose instant stake is the UTxO's.
+  */
 class PreConwayRulesSuite extends ScalaCheckSuite:
-  private val rs = RuleSet
   private val alice = key()
   private val bob = key()
   private val ada = BigInt(1000000)
   private val eras = Vector(2, 3, 4, 5, 7)
   private val boundaryGlobals = LedgerGlobals(Supply, 10000, Rational(1, 20), 0, updateQuorum = 2)
 
-  private def funded(pv: Int, coin: BigInt = 100 * ada): (LedgerState, TxIn) =
-    val in = txIn(1)
-    state(pv, Vector(in -> out(alice.address(), coin))) -> in
+  private def ok[A](v: Either[VocabError, A]): A = v.fold(e => fail(e.toString), identity)
+  private def coin(n: BigInt): NativeCoin = ok(NativeCoin.fromBigInt(n))
+  private def compact(n: BigInt): CompactCoin = ok(CompactCoin.fromBigInt(n))
+  private def staking(c: Credential): native.Credential[Staking] =
+    ok(Convert.credential[Staking](c))
+  private def poolId(k: Key): KeyHash[StakePool] = ok(KeyHash.fromBytes[StakePool](k.hash))
+  private def genesisId(k: Key): KeyHash[Genesis] = ok(KeyHash.fromBytes[Genesis](k.hash))
 
-  private def rule(r: Either[LedgerFailure, LedgerState]): String = r match
-    case Left(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
-    case Left(other)                               => other.message
-    case Right(_)                                  => "accepted"
+  private def funded(pv: Int, coin: BigInt = 100 * ada): (EraNes, TxIn) =
+    val in = txIn(1)
+    NativeRules.state(pv, Vector(in -> out(alice.address(), coin))) -> in
+
+  private def fundedIn[E <: EraTag](pv: Int, coin: BigInt = 100 * ada)(using
+      ShelleyBasedEra[E]
+  ): (NewEpochState[E], TxIn) =
+    val in = txIn(1)
+    NativeRules.stateIn[E](pv, Vector(in -> out(alice.address(), coin))) -> in
+
+  // ---- reading the native state
+
+  private def utxoState(e: EraNes): UTxOState[?] = e match
+    case i: EraNes.InEra[x] => i.nes.es.ls.utxo
+
+  private def utxo[E <: EraTag](nes: NewEpochState[E]): Utxo = nes.es.ls.utxo.utxo.utxo
+
+  private def accounts[E <: EraTag](nes: NewEpochState[E])(using
+      ShelleyBasedEra[E]
+  ): Map[native.Credential[Staking], EraLedger.AccountView] = EraLedger.accounts(nes.es.ls).toMap
+
+  private def mir[E <: EraTag](nes: NewEpochState[E])(using
+      ShelleyBasedEra[E]
+  ): InstantaneousRewards = EraLedger.iRewards(nes.es.ls)
+
+  private def paramsOf[E <: EraTag](nes: NewEpochState[E])(using
+      ShelleyBasedEra[E]
+  ): ProtocolParams = EraLedger.curPParams(nes.es.ls.utxo.gov)
+
+  private val noInstantRewards: InstantaneousRewards =
+    InstantaneousRewards(Sorted.empty, Sorted.empty, DeltaCoin(BigInt(0)), DeltaCoin(BigInt(0)))
+
+  /** Every lovelace of the state: the UTxO, the pots, the deposits and the reward balances. */
+  private def total[E <: EraTag](nes: NewEpochState[E])(using ShelleyBasedEra[E]): BigInt =
+    val u = nes.es.ls.utxo
+    u.utxo.utxo.coin + u.fees.value + u.deposited.value + u.donation.value +
+      nes.es.chainAccount.treasury.value + nes.es.chainAccount.reserves.value +
+      EraLedger.accounts(nes.es.ls).map(_._2.balance.toBigInt).sum
+
+  private def totalOf(e: EraNes): BigInt = e match
+    case i: EraNes.InEra[x] => total(i.nes)(using i.era)
+
+  private def accountCount(e: EraNes): Int = e match
+    case i: EraNes.InEra[x] => accounts(i.nes)(using i.era).size
+
+  /** The state as one of the era `E`, which it must be in. */
+  private def as[E <: EraTag](e: EraNes)(using era: ShelleyBasedEra[E]): NewEpochState[E] =
+    e match
+      case i: EraNes.InEra[x] =>
+        NewEpochState.retype(i.era, era)(i.nes).getOrElse(fail(s"the state is in ${i.era}"))
+
+  // ---- building it
+
+  /** `nes` with `deposit` more in the deposit pot and `deposit + balance` less in the reserves. */
+  private def paid[E <: EraTag](
+      nes: NewEpochState[E],
+      deposit: BigInt,
+      balance: BigInt
+  ): NewEpochState[E] =
+    val ls = nes.es.ls
+    nes.copy(es =
+      nes.es.copy(
+        chainAccount = nes.es.chainAccount
+          .copy(reserves = coin(nes.es.chainAccount.reserves.value - deposit - balance)),
+        ls = ls.copy[E](utxo = ls.utxo.copy[E](deposited = coin(ls.utxo.deposited.value + deposit)))
+      )
+    )
+
+  /** `nes` with the account of `c` registered (at a pointer of its own), holding `balance` and
+    * `deposit` and delegating to `pool`; the deposit pot holds the deposit and the reserves pay for
+    * both. The pool's delegators are the caller's.
+    */
+  private def withAccount[E <: EraTag](
+      nes: NewEpochState[E],
+      c: Credential,
+      balance: BigInt,
+      deposit: BigInt,
+      pool: Option[KeyHash[StakePool]] = None
+  )(using pre: PreConway[E]): NewEpochState[E] =
+    val credential = staking(c)
+    val ls = pre.dState.modify { d =>
+      val ptr = Ptr(0, 0, d.accounts.states.size)
+      val account = ShelleyAccountState(ptr, compact(balance), compact(deposit), pool)
+      d.copy(accounts =
+        ShelleyAccounts(
+          d.accounts.states.updated(credential, account),
+          d.accounts.ptrs.updated(ptr, credential)
+        )
+      )
+    }(nes.es.ls)
+    paid(nes.copy(es = nes.es.copy(ls = ls)), deposit, balance)
+
+  /** `nes` with each genesis key delegating to its delegate (no VRF key). */
+  private def withGenesis[E <: EraTag](nes: NewEpochState[E], delegations: Vector[(Key, Key)])(using
+      ShelleyBasedEra[E]
+  ): NewEpochState[E] =
+    val current =
+      Sorted.map(delegations.map((g, d) => genesisId(g) -> GenDelegPair(d.hash, Bytes.empty)))
+    val ls = nes.es.ls
+    nes.copy(es =
+      nes.es.copy(ls = EraLedger.withGenDelegs(ls, current, EraLedger.futureGenDelegs(ls)))
+    )
+
+  // ---- running the rules
+
+  /** What a state the rules accepted must hold: the pools list the accounts that delegate to them,
+    * the deposit pot is the obligation, and the instant stake is the one of the UTxO.
+    */
+  private def checked[E <: EraTag](nes: NewEpochState[E])(using
+      ShelleyBasedEra[E],
+      PreConway[E]
+  ): NewEpochState[E] =
+    val ls = nes.es.ls
+    assertEquals(Invariants.poolDelegators(PreConway[E].cert.get(ls)), Vector.empty)
+    assertEquals(ls.utxo.deposited.value, NativeRules.obligation(nes))
+    val stake = ShelleyInstantStakeOps.update(
+      ShelleyInstantStake(Sorted.empty, Sorted.empty),
+      utxo(nes).valuesIterator.toVector,
+      Nil
+    )
+    assertEquals(PreConway[E].instantStake.get(ls.utxo), ok(stake))
+    nes
+
+  private def run[E <: EraTag](nes: NewEpochState[E], t: Tx, ctx: TxEnv = env)(using
+      ShelleyBasedEra[E],
+      PreConway[E]
+  ): Either[LedgerFailure, Counted[NewEpochState[E]]] =
+    NativeRules.txIn[E](nes, t, ctx).map(c => Counted(checked(c.state), c.plutus))
+
+  private def runAny(e: EraNes, t: Tx, ctx: TxEnv = env): Either[LedgerFailure, EraNes] =
+    e match
+      case i: EraNes.InEra[x] =>
+        given ShelleyBasedEra[x] = i.era
+        given PreConway[x] = PreConway.of(i.era).getOrElse(fail(s"${i.era} is not before Conway"))
+        run[x](i.nes, t, ctx).map(c => EraNes.InEra(i.era, c.state))
+
+  private def boundary[E <: EraTag](nes: NewEpochState[E], g: LedgerGlobals)(using
+      era: ShelleyBasedEra[E]
+  ): NewEpochState[E] = as[E](NativeRules.boundary(EraNes.InEra(era, nes), g))
+
+  /** The state one epoch later, after a block in the last slot of its epoch. The block's TICK is
+    * past the point of no return, where the parameters of the next epoch become certain
+    * (`solidifyNextEpochPParams`, `Shelley/Rules/Tick.hs`), and past the reward window, where RUPD
+    * begins the epoch's reward update, which the boundary applies. A tick from earlier in the epoch
+    * straight into the next does neither, so an update proposed in the epoch is adopted only this
+    * way.
+    */
+  private def afterLastBlock[E <: EraTag](nes: NewEpochState[E], g: LedgerGlobals)(using
+      era: ShelleyBasedEra[E]
+  ): EraNes =
+    val last = NativeRules.globals(g).firstSlot(nes.epoch.toBigInt + 1) - 1
+    NativeRules.boundary(NativeRules.tick(EraNes.InEra(era, nes), last, g), g)
+
+  private def rule(r: Either[LedgerFailure, ?]): String = r match
+    case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
+    case Left(other)                        => other.message
+    case Right(_)                           => "accepted"
 
   private def transfer(in: TxIn, pay: BigInt, change: BigInt, fee: BigInt = 200, id: String = "t") =
     body(id, Vector(in), Vector(out(bob.address(), pay), out(alice.address(), change)), fee)
@@ -41,53 +237,56 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     eras.foreach { pv =>
       val (s, in) = funded(pv)
       val b = transfer(in, 40 * ada, 60 * ada - 200)
-      val after = rs.tx(s, tx(b, Vector(alice)), env).fold(f => fail(f.message), identity)
-      assertEquals(after.total, Supply, s"era $pv")
-      assertEquals(after.fees, BigInt(200))
-      assert(!after.utxo.contains(in))
-      assertEquals(after.utxo.size, 2)
+      val after = runAny(s, tx(b, Vector(alice))).fold(f => fail(f.message), identity)
+      assertEquals(totalOf(after), Supply, s"era $pv")
+      assertEquals(utxoState(after).fees.value, BigInt(200))
+      assert(!utxoState(after).utxo.utxo.contains(in))
+      assertEquals(utxoState(after).utxo.utxo.size, 2)
     }
   }
 
   test("rules reject unbalanced, underpaid, unsigned and mis-timed transactions") {
     eras.foreach { pv =>
       val (s, in) = funded(pv)
-      def run(b: TxBody, signers: Vector[Key] = Vector(alice)) =
-        rule(rs.tx(s, tx(b, signers), env))
-      assertEquals(run(transfer(in, 40 * ada, 60 * ada - 199)), "ValueNotConservedUTxO")
-      assertEquals(run(transfer(in, 40 * ada, 60 * ada - 100, fee = 100)), "FeeTooSmallUTxO")
+      def attempt(b: TxBody, signers: Vector[Key] = Vector(alice)) =
+        rule(runAny(s, tx(b, signers)))
+      assertEquals(attempt(transfer(in, 40 * ada, 60 * ada - 199)), "ValueNotConservedUTxO")
+      assertEquals(attempt(transfer(in, 40 * ada, 60 * ada - 100, fee = 100)), "FeeTooSmallUTxO")
       assertEquals(
-        run(transfer(in, 40 * ada, 60 * ada - 200), Vector(bob)),
+        attempt(transfer(in, 40 * ada, 60 * ada - 200), Vector(bob)),
         "MissingVKeyWitnessesUTXOW"
       )
       // the slot is 1000: Shelley's time to live is inclusive, Allegra's upper bound exclusive
       if pv == 2 then
-        assertEquals(run(transfer(in, 40 * ada, 60 * ada - 200).copy(ttl = Some(1000))), "accepted")
         assertEquals(
-          run(transfer(in, 40 * ada, 60 * ada - 200).copy(ttl = Some(999))),
+          attempt(transfer(in, 40 * ada, 60 * ada - 200).copy(ttl = Some(1000))),
+          "accepted"
+        )
+        assertEquals(
+          attempt(transfer(in, 40 * ada, 60 * ada - 200).copy(ttl = Some(999))),
           "ExpiredUTxO"
         )
       else
         assertEquals(
-          run(transfer(in, 40 * ada, 60 * ada - 200).copy(ttl = Some(1000))),
+          attempt(transfer(in, 40 * ada, 60 * ada - 200).copy(ttl = Some(1000))),
           "OutsideValidityIntervalUTxO"
         )
         assertEquals(
-          run(transfer(in, 40 * ada, 60 * ada - 200).copy(validityStart = Some(1001))),
+          attempt(transfer(in, 40 * ada, 60 * ada - 200).copy(validityStart = Some(1001))),
           "OutsideValidityIntervalUTxO"
         )
-      assertEquals(run(transfer(txIn(9), 40 * ada, 60 * ada - 200)), "BadInputsUTxO")
-      assertEquals(run(transfer(in, 100, 100 * ada - 300)), "OutputTooSmallUTxO")
+      assertEquals(attempt(transfer(txIn(9), 40 * ada, 60 * ada - 200)), "BadInputsUTxO")
+      assertEquals(attempt(transfer(in, 100, 100 * ada - 300)), "OutputTooSmallUTxO")
     }
   }
 
   test("Alonzo scales the minimum output by datum hash presence, Babbage by output size") {
     val dh = Datum.Hash(Bytes(Vector.fill(32)(1)))
     val withDatum = out(bob.address(), 0).copy(datum = dh)
-    val alonzo = params(5)
+    val alonzo = TestLedger.params(5)
     assertEquals(TxChecks.minUTxO(alonzo, out(bob.address(), 0)), BigInt(29 * 34482))
     assertEquals(TxChecks.minUTxO(alonzo, withDatum), BigInt(39 * 34482))
-    val babbage = params(7)
+    val babbage = TestLedger.params(7)
     val sized = out(bob.address(), 0).copy(raw = Bytes(Vector.fill(65)(0)))
     assertEquals(TxChecks.minUTxO(babbage, sized), BigInt(225 * 4310))
   }
@@ -96,7 +295,8 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     forAll(Gen.choose(1, 5), Gen.choose(0, 5), Gen.oneOf(eras)) { (regs, deregs, pv) =>
       val cred = (0 until regs).map(_ => key()).toVector
       val (s0, in) = funded(pv)
-      val deposit = s0.params.keyDeposit * regs
+      val keyDeposit = TestLedger.params(pv).keyDeposit
+      val deposit = keyDeposit * regs
       val reg = body(
         "reg",
         Vector(in),
@@ -104,10 +304,10 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
         200,
         certificates = cred.map(k => Certificate.Register(k.credential, None))
       )
-      val s1 = rs.tx(s0, tx(reg, Vector(alice)), env).fold(f => fail(f.message), identity)
-      assertEquals(s1.total, Supply)
-      assertEquals(s1.deposited, deposit)
-      assertEquals(s1.accounts.size, regs)
+      val s1 = runAny(s0, tx(reg, Vector(alice))).fold(f => fail(f.message), identity)
+      assertEquals(totalOf(s1), Supply)
+      assertEquals(utxoState(s1).deposited.value, deposit)
+      assertEquals(accountCount(s1), regs)
       val leaving = cred.take(deregs.min(regs))
       val in2 = TxIn(reg.id, 0)
       val dereg = body(
@@ -116,23 +316,22 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
         Vector(
           out(
             alice.address(),
-            100 * ada - deposit - 200 - 200 + s0.params.keyDeposit * leaving.size
+            100 * ada - deposit - 200 - 200 + keyDeposit * leaving.size
           )
         ),
         200,
         certificates = leaving.map(k => Certificate.Unregister(k.credential, None))
       )
-      val s2 = rs
-        .tx(s1, tx(dereg, Vector(alice) ++ leaving), env.copy(txIndex = 1))
+      val s2 = runAny(s1, tx(dereg, Vector(alice) ++ leaving), env.copy(txIndex = 1))
         .fold(f => fail(f.message), identity)
-      assertEquals(s2.total, Supply)
-      assertEquals(s2.deposited, s0.params.keyDeposit * (regs - leaving.size))
-      assertEquals(s2.accounts.size, regs - leaving.size)
+      assertEquals(totalOf(s2), Supply)
+      assertEquals(utxoState(s2).deposited.value, keyDeposit * (regs - leaving.size))
+      assertEquals(accountCount(s2), regs - leaving.size)
     }
   }
 
   test("deregistering needs the stake key's signature and an empty reward balance") {
-    val (s0, in) = funded(4)
+    val (s0, in) = fundedIn[Mary](4)
     val stake = key()
     val reg = body(
       "reg",
@@ -141,7 +340,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       200,
       certificates = Vector(Certificate.Register(stake.credential, None))
     )
-    val s1 = rs.tx(s0, tx(reg, Vector(alice)), env).fold(f => fail(f.message), identity)
+    val s1 = run(s0, tx(reg, Vector(alice))).fold(f => fail(f.message), _.state)
     val dereg = body(
       "dereg",
       Vector(TxIn(reg.id, 0)),
@@ -149,12 +348,12 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       200,
       certificates = Vector(Certificate.Unregister(stake.credential, None))
     )
-    assertEquals(rule(rs.tx(s1, tx(dereg, Vector(alice)), env)), "MissingVKeyWitnessesUTXOW")
-    val funded1 = s1.copy(accounts =
-      s1.accounts.updated(stake.credential, s1.accounts(stake.credential).copy(balance = 5))
-    )
+    assertEquals(rule(run(s1, tx(dereg, Vector(alice)))), "MissingVKeyWitnessesUTXOW")
+    // five lovelace of rewards in the account, paid from the reserves
+    val credited = ok(EraLedger.credit(s1.es.ls, Vector(staking(stake.credential) -> coin(5))))
+    val funded1 = paid(s1.copy(es = s1.es.copy(ls = credited)), 0, 5)
     assertEquals(
-      rule(rs.tx(funded1, tx(dereg, Vector(alice, stake)), env)),
+      rule(run(funded1, tx(dereg, Vector(alice, stake)))),
       "StakeKeyNonZeroAccountBalanceDELEG"
     )
   }
@@ -162,7 +361,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
   test(
     "pool registration needs operator and owner signatures and one deposit; re-registration none"
   ) {
-    val (s0, in) = funded(5)
+    val (rich, in) = fundedIn[Alonzo](5, 1000 * ada)
     val operator = key()
     val owner = key()
     val pool = PoolParams(
@@ -176,11 +375,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       relays = Bytes.empty,
       metadata = None
     )
-    val rich =
-      s0.copy(
-        utxo = Utxo(Map(in -> out(alice.address(), 1000 * ada))),
-        reserves = Supply - 1000 * ada
-      )
+    val poolDeposit = TestLedger.params(5).poolDeposit
     val registration = body(
       "pool",
       Vector(in),
@@ -189,14 +384,13 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       certificates = Vector(Certificate.RegisterPool(pool))
     )
     assertEquals(
-      rule(rs.tx(rich, tx(registration, Vector(alice, operator)), env)),
+      rule(run(rich, tx(registration, Vector(alice, operator)))),
       "MissingVKeyWitnessesUTXOW"
     )
-    val s1 = rs
-      .tx(rich, tx(registration, Vector(alice, operator, owner)), env)
-      .fold(f => fail(f.message), identity)
-    assertEquals(s1.deposited, s0.params.poolDeposit)
-    assertEquals(s1.total, Supply)
+    val s1 = run(rich, tx(registration, Vector(alice, operator, owner)))
+      .fold(f => fail(f.message), _.state)
+    assertEquals(s1.es.ls.utxo.deposited.value, poolDeposit)
+    assertEquals(total(s1), Supply)
     val again = body(
       "pool2",
       Vector(TxIn(registration.id, 0)),
@@ -204,12 +398,12 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       200,
       certificates = Vector(Certificate.RegisterPool(pool.copy(pledge = 7)))
     )
-    val s2 = rs
-      .tx(s1, tx(again, Vector(alice, operator, owner)), env)
-      .fold(f => fail(f.message), identity)
-    assertEquals(s2.deposited, s0.params.poolDeposit)
-    assertEquals(s2.futurePools(operator.hash).pledge, BigInt(7))
-    assertEquals(s2.pools(operator.hash).params.pledge, BigInt(0))
+    val s2 = run(s1, tx(again, Vector(alice, operator, owner)))
+      .fold(f => fail(f.message), _.state)
+    assertEquals(s2.es.ls.utxo.deposited.value, poolDeposit)
+    val pools = s2.es.ls.cert.pState
+    assertEquals(pools.future.get(poolId(operator)).map(_.pledge), Some(BigInt(7)))
+    assertEquals(pools.stakePools.get(poolId(operator)).map(_.pledge.value), Some(BigInt(0)))
   }
 
   test("native scripts: minting needs the policy script, which must hold and be needed") {
@@ -218,7 +412,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val policyScript = scriptOf(script)
     val policy = policyScript.hash
     val asset = Bytes("coin".getBytes.toVector)
-    val (s, in) = funded(4)
+    val (s, in) = fundedIn[Mary](4)
     val mint = Map(policy -> Map(asset -> BigInt(100)))
     val minted = TxOut(
       bob.address(),
@@ -233,28 +427,26 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     )
     val withScript = Witnesses(Vector.empty, scripts = Vector(policyScript))
     assertEquals(
-      rule(rs.tx(s, tx(b, Vector(alice, signer), withScript), env)),
+      rule(run(s, tx(b, Vector(alice, signer), withScript))),
       "accepted"
     )
     assertEquals(
-      rule(rs.tx(s, tx(b, Vector(alice, signer)), env)),
+      rule(run(s, tx(b, Vector(alice, signer)))),
       "MissingScriptWitnessesUTXOW"
     )
     assertEquals(
-      rule(rs.tx(s, tx(b, Vector(alice), withScript), env)),
+      rule(run(s, tx(b, Vector(alice), withScript))),
       "ScriptWitnessNotValidatingUTXOW"
     )
-    // an extraneous script that holds: before Babbage every native script provided must hold
-    // (`validateFailedNativeScripts`, `Shelley/Rules/Utxow.hs:365-373`), and that check comes first
     val extra = Witnesses(
       Vector.empty,
-      scripts = Vector(policyScript, scriptOf(NativeScript.AllOf(Vector.empty)))
+      scripts = Vector(policyScript, scriptOf(NativeScript.AnyOf(Vector.empty)))
     )
     assertEquals(
-      rule(rs.tx(s, tx(b, Vector(alice, signer), extra), env)),
+      rule(run(s, tx(b, Vector(alice, signer), extra))),
       "ExtraneousScriptWitnessesUTXOW"
     )
-    val burn = rs.tx(s, tx(b, Vector(alice, signer), withScript), env).toOption.get
+    val burn = run(s, tx(b, Vector(alice, signer), withScript)).fold(f => fail(f.message), _.state)
     val burnTx = body(
       "burn",
       Vector(TxIn(b.id, 0)),
@@ -262,11 +454,10 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       200,
       mint = Map(policy -> Map(asset -> BigInt(-100)))
     )
-    val afterBurn = rs
-      .tx(burn, tx(burnTx, Vector(bob, signer), withScript), env)
-      .fold(f => fail(f.message), identity)
-    assertEquals(afterBurn.total, Supply)
-    assert(afterBurn.utxo.valuesIterator.forall(_.value.assets.isEmpty))
+    val afterBurn = run(burn, tx(burnTx, Vector(bob, signer), withScript))
+      .fold(f => fail(f.message), _.state)
+    assertEquals(total(afterBurn), Supply)
+    assert(utxo(afterBurn).valuesIterator.forall(_.value.assets.isEmpty))
   }
 
   private def scriptOf(s: NativeScript): Script =
@@ -319,10 +510,11 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val locked = TxOut(scriptAddress, Value.coin(50 * ada)).copy(datum = Datum.Hash(datumHash))
     val collateralIn = txIn(2)
     val lockedIn = txIn(3)
-    val s = state(
+    val s = NativeRules.stateIn[Alonzo](
       5,
       Vector(collateralIn -> out(alice.address(), 100 * ada), lockedIn -> locked)
     )
+    val pp = paramsOf(s)
     val units = ExUnits(1000, 1000000)
     val redeemer = Redeemer(0, 0, Bytes(Vector(0x01)), units)
     // witness-set encodings: `[ [0, 0, 1, [1000, 1000000]] ]` and `[ 1 ]`
@@ -340,8 +532,8 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
         ),
       datumsRaw = Some(Bytes(Vector(0x81, 0x01).map(_.toByte)))
     )
-    val fee = BigInt(100 + 100) + (s.params.priceMem * Rational(1000) +
-      s.params.priceSteps * Rational(1000000)).ceil
+    val fee = BigInt(100 + 100) + (pp.priceMem * Rational(1000) +
+      pp.priceSteps * Rational(1000000)).ceil
     def bodyWith(hash: Option[Bytes]) =
       body(
         "plutus",
@@ -353,56 +545,65 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       )
     val hash = ScriptIntegrity.hash(
       tx(bodyWith(None), Vector(alice), wits),
-      s.params,
+      pp,
       Set(ScriptKind.PlutusV1)
     )
     val b = bodyWith(hash)
-    def run(succeeds: Boolean, isValid: Boolean, body: TxBody = b) =
-      rs.tx(
+    def attempt(succeeds: Boolean, isValid: Boolean, body: TxBody = b) =
+      run(
         s,
         tx(body, Vector(alice), wits, isValid = isValid),
         env.copy(evaluator = scripted(succeeds))
       )
-    val valid = run(succeeds = true, isValid = true).fold(f => fail(f.message), identity)
+    val valid = attempt(succeeds = true, isValid = true).fold(f => fail(f.message), identity)
     assertEquals((valid.plutus.succeeded, valid.plutus.failed), (1L, 0L))
     assertEquals((valid.plutus.scripts, valid.plutus.integrityChecked), (1L, 1L))
-    assert(valid.utxo.contains(collateralIn) && !valid.utxo.contains(lockedIn))
-    assertEquals(valid.total, Supply)
-    val failed = run(succeeds = false, isValid = false).fold(f => fail(f.message), identity)
+    assert(utxo(valid.state).contains(collateralIn) && !utxo(valid.state).contains(lockedIn))
+    assertEquals(total(valid.state), Supply)
+    val failed = attempt(succeeds = false, isValid = false).fold(f => fail(f.message), identity)
     assertEquals((failed.plutus.succeeded, failed.plutus.failed), (0L, 1L))
-    assert(!failed.utxo.contains(collateralIn) && failed.utxo.contains(lockedIn))
-    assertEquals(failed.fees, 100 * ada)
-    assertEquals(failed.total, Supply)
+    assert(!utxo(failed.state).contains(collateralIn) && utxo(failed.state).contains(lockedIn))
+    assertEquals(failed.state.es.ls.utxo.fees.value, 100 * ada)
+    assertEquals(total(failed.state), Supply)
     // The flag and the evaluation must agree, in both directions.
-    assertEquals(rule(run(succeeds = false, isValid = true)), "ValidationTagMismatch")
-    assertEquals(rule(run(succeeds = true, isValid = false)), "ValidationTagMismatch")
+    assertEquals(rule(attempt(succeeds = false, isValid = true)), "ValidationTagMismatch")
+    assertEquals(rule(attempt(succeeds = true, isValid = false)), "ValidationTagMismatch")
     // A script data hash that is not the recomputed one is rejected.
     assertEquals(
-      rule(run(succeeds = true, isValid = true, bodyWith(Some(Bytes(Vector.fill(32)(9)))))),
+      rule(attempt(succeeds = true, isValid = true, bodyWith(Some(Bytes(Vector.fill(32)(9)))))),
       "PPViewHashesDontMatch"
     )
     // a missing datum or redeemer is a phase-1 failure
     assertEquals(
-      rule(rs.tx(s, tx(b, Vector(alice), wits.copy(datums = Vector.empty)), env)),
+      rule(run(s, tx(b, Vector(alice), wits.copy(datums = Vector.empty)))),
       "MissingRequiredDatums"
     )
     assertEquals(
-      rule(rs.tx(s, tx(b, Vector(alice), wits.copy(redeemers = Vector.empty)), env)),
+      rule(run(s, tx(b, Vector(alice), wits.copy(redeemers = Vector.empty)))),
       "MissingRedeemers"
     )
     // is_valid = false is meaningless when there is no Plutus script that could fail
-    val (plain, in) = funded(5)
+    val (plain, in) = fundedIn[Alonzo](5)
     assertEquals(
-      rule(
-        rs.tx(
-          plain,
-          tx(transfer(in, 40 * ada, 60 * ada - 200), Vector(alice), isValid = false),
-          env
-        )
-      ),
+      rule(run(plain, tx(transfer(in, 40 * ada, 60 * ada - 200), Vector(alice), isValid = false))),
       "ValidationTagMismatch"
     )
   }
+
+  /** What the well-formedness check of the scripts (UTXOW from Babbage) says of a transaction that
+    * spends the suite's first input and creates outputs holding the `referenced` scripts, with the
+    * parameters of protocol version `protocol` in force.
+    */
+  private def wellFormed(protocol: Int, scripts: Vector[Script], referenced: Vector[Script]) =
+    val outputs = referenced.map(r => out(bob.address(), 2 * ada).copy(scriptRef = Some(r)))
+    val b = body("wf", Vector(txIn(1)), outputs, 200)
+    rule(
+      TxChecks.scriptsWellFormed(
+        TestLedger.params(protocol),
+        tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts)),
+        env
+      )
+    )
 
   test("from Babbage a Plutus script must deserialise: an unavailable builtin is phase-1 invalid") {
     import scalus.uplc.{DefaultFun, Program, Term}
@@ -412,16 +613,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val ripemdV3 = plutus(ScriptKind.PlutusV3, DefaultFun.Ripemd_160) // V3: protocol 10
     val addV2 = plutus(ScriptKind.PlutusV2, DefaultFun.AddInteger)
     def check(protocol: Int, scripts: Vector[Script], referenced: Vector[Script]) =
-      val (s, in) = funded(protocol)
-      val outputs = referenced.map(r => out(bob.address(), 2 * ada).copy(scriptRef = Some(r)))
-      val b = body("wf", Vector(in), outputs, 200)
-      val checked = tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts))
-      rule(
-        TxChecks
-          .scriptsWellFormed(s.params, checked, env)
-          .flatMap(TestLedger.verdict(checked.body.id, _))
-          .map(_ => s)
-      )
+      wellFormed(protocol, scripts, referenced)
     assertEquals(check(8, Vector(keccakV2), Vector.empty), "MalformedScriptWitnesses")
     assertEquals(check(8, Vector.empty, Vector(keccakV2)), "MalformedReferenceScripts")
     assertEquals(check(8, Vector(addV2), Vector(addV2)), "accepted")
@@ -459,16 +651,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val type33 =
       plutus(ScriptKind.PlutusV3, F.script(v110, F.Ap(F.Lam(F.unit), F.nestedEmptyList(16))))
     def check(protocol: Int, scripts: Vector[Script], referenced: Vector[Script]) =
-      val (s, in) = funded(protocol)
-      val outputs = referenced.map(r => out(bob.address(), 2 * ada).copy(scriptRef = Some(r)))
-      val b = body("wf", Vector(in), outputs, 200)
-      val checked = tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts))
-      rule(
-        TxChecks
-          .scriptsWellFormed(s.params, checked, env)
-          .flatMap(TestLedger.verdict(checked.body.id, _))
-          .map(_ => s)
-      )
+      wellFormed(protocol, scripts, referenced)
     for pv <- Seq(8, 10, 11) do
       assertEquals(
         check(pv, Vector(zeroAsset), Vector.empty),
@@ -513,32 +696,25 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val address = Address.decode(byron).fold(e => fail(e.toString), identity)
     assertEquals(address.kind, Address.Kind.Byron(witness.addressRoot))
     val in = txIn(4)
-    val s = state(5, Vector(in -> TxOut(address, Value.coin(100 * ada))))
+    val s = NativeRules.stateIn[Alonzo](5, Vector(in -> TxOut(address, Value.coin(100 * ada))))
     val b = transfer(in, 40 * ada, 60 * ada - 200)
     val signed = witness.copy(signature = spender.sign(b.id))
-    val ok = Tx(b, Witnesses(Vector.empty, bootstrap = Vector(signed)), 100, true, None)
-    assertEquals(rule(rs.tx(s, ok, env)), "accepted")
+    val accepted = Tx(b, Witnesses(Vector.empty, bootstrap = Vector(signed)), 100, true, None)
+    assertEquals(rule(run(s, accepted)), "accepted")
     val unsigned = Tx(b, Witnesses.empty, 100, true, None)
-    assertEquals(rule(rs.tx(s, unsigned, env)), "MissingVKeyWitnessesUTXOW")
+    assertEquals(rule(run(s, unsigned)), "MissingVKeyWitnessesUTXOW")
     val forged = Tx(b, Witnesses(Vector.empty, bootstrap = Vector(witness)), 100, true, None)
-    assertEquals(rule(rs.tx(s, forged, env)), "InvalidWitnessesUTXOW")
+    assertEquals(rule(run(s, forged)), "InvalidWitnessesUTXOW")
   }
 
   test("MIR needs a genesis quorum and moves coin at the next epoch boundary") {
     val g1 = key()
     val g2 = key()
-    val (s0, in) = funded(5)
+    val (s0, in) = fundedIn[Alonzo](5)
     val genesisKeys = Vector(key(), key())
-    val withGenesis = s0.copy(
-      genDelegs = genesisKeys
-        .zip(Vector(g1, g2))
-        .map { case (g, d) => g.hash -> GenDelegPair(d.hash, Bytes(Vector.fill(32)(0))) }
-        .toMap
-    )
+    val withGenesisKeys = withGenesis(s0, genesisKeys.zip(Vector(g1, g2)))
     val stake = key()
-    val registered = withGenesis.copy(accounts =
-      withGenesis.accounts.updated(stake.credential, Account(0, 2 * ada, None, None))
-    )
+    val registered = withAccount(withGenesisKeys, stake.credential, 0, 2 * ada)
     val cert = Certificate.MoveRewards(Pot.Reserves, Right(Map(stake.credential -> 7 * ada)))
     val b = body(
       "mir",
@@ -548,22 +724,26 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       certificates = Vector(cert)
     )
     assertEquals(
-      rule(rs.tx(registered, tx(b, Vector(alice, g1)), env)),
+      rule(run(registered, tx(b, Vector(alice, g1)))),
       "MIRInsufficientGenesisSigsUTXOW"
     )
-    val s1 =
-      rs.tx(registered, tx(b, Vector(alice, g1, g2)), env).fold(f => fail(f.message), identity)
-    assertEquals(s1.mir.reserves(stake.credential), 7 * ada)
-    val reserves = s1.reserves
-    val s2 = rs.boundary(s1, boundaryGlobals)
-    assertEquals(s2.accounts(stake.credential).balance, 7 * ada)
-    assertEquals(s2.reserves, reserves - 7 * ada)
-    assertEquals(s2.mir, InstantRewards.empty)
-    // (the boundary recomputes the deposit pot from the accounts, which the fixture did not count)
-    assertEquals(s2.total - s2.deposited, s1.total - s1.deposited)
+    val s1 = run(registered, tx(b, Vector(alice, g1, g2))).fold(f => fail(f.message), _.state)
+    assertEquals(mir(s1).reserves.get(staking(stake.credential)).map(_.value), Some(7 * ada))
+    val reserves = s1.es.chainAccount.reserves.value
+    val s2 = boundary(s1, boundaryGlobals)
+    assertEquals(
+      accounts(s2).get(staking(stake.credential)).map(_.balance.toBigInt),
+      Some(7 * ada)
+    )
+    assertEquals(s2.es.chainAccount.reserves.value, reserves - 7 * ada)
+    assertEquals(mir(s2), noInstantRewards)
+    // the account's deposit is in the pot from the start, so the boundary keeps the pot and the supply
+    assertEquals(s2.es.ls.utxo.deposited.value, s1.es.ls.utxo.deposited.value)
+    assertEquals(total(s2), total(s1))
+    assertEquals(total(s2), Supply)
     // too late in the epoch
     assertEquals(
-      rule(rs.tx(registered, tx(b, Vector(alice, g1, g2)), env.copy(slot = 4950))),
+      rule(run(registered, tx(b, Vector(alice, g1, g2)), env.copy(slot = 4950))),
       "MIRCertificateTooLateinEpochDELEG"
     )
   }
@@ -571,45 +751,52 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
   test("a quorum of identical update proposals changes the parameters at the boundary") {
     val genesis = Vector(key(), key(), key())
     val delegates = Vector(key(), key(), key())
-    val (s0, in) = funded(5)
-    val s = s0.copy(genDelegs =
-      genesis.zip(delegates).map((g, d) => g.hash -> GenDelegPair(d.hash, Bytes.empty)).toMap
-    )
+    val (s0, in) = fundedIn[Alonzo](5)
+    val s = withGenesis(s0, genesis.zip(delegates))
     val newDeposit =
       ParamUpdate(Map(5 -> Bytes(Vector(0x1a, 0x00, 0x2d, 0xc6, 0xc0).map(_.toByte))))
     def propose(from: Vector[Int]) =
       val u = Update(from.map(i => genesis(i).hash -> newDeposit).toMap, 5)
       val b =
         body("up", Vector(in), Vector(out(alice.address(), 100 * ada - 200)), 200, update = Some(u))
-      rs.tx(s, tx(b, Vector(alice) ++ from.map(delegates)), env)
-        .fold(f => fail(f.message), identity)
+      run(s, tx(b, Vector(alice) ++ from.map(delegates))).fold(f => fail(f.message), _.state)
     val globals = LedgerGlobals(Supply, 10000, Rational(1, 20), 0, updateQuorum = 2)
-    val adopted = rs.boundary(propose(Vector(0, 1)), globals)
-    assertEquals(adopted.params.keyDeposit, BigInt(3000000))
-    assertEquals(adopted.ppup, Ppup.empty)
-    val notAdopted = rs.boundary(propose(Vector(0)), globals)
-    assertEquals(notAdopted.params.keyDeposit, BigInt(2000000))
+    val adopted = as[Alonzo](afterLastBlock(propose(Vector(0, 1)), globals))
+    assertEquals(paramsOf(adopted).keyDeposit, BigInt(3000000))
+    val gov = adopted.es.ls.utxo.gov
+    assert(gov.curProposals.isEmpty && gov.futureProposals.isEmpty, gov)
+    val notAdopted = as[Alonzo](afterLastBlock(propose(Vector(0)), globals))
+    assertEquals(paramsOf(notAdopted).keyDeposit, BigInt(2000000))
     // an unsigned proposal is refused
     val u = Update(Map(genesis(0).hash -> newDeposit), 5)
     val b =
       body("up", Vector(in), Vector(out(alice.address(), 100 * ada - 200)), 200, update = Some(u))
-    assertEquals(rule(rs.tx(s, tx(b, Vector(alice)), env)), "MissingVKeyWitnessesUTXOW")
+    assertEquals(rule(run(s, tx(b, Vector(alice)))), "MissingVKeyWitnessesUTXOW")
     // a proposal for the wrong epoch is refused
     val late = b.copy(update = Some(u.copy(epoch = 9)))
-    assertEquals(rule(rs.tx(s, tx(late, Vector(alice, delegates(0))), env)), "PPUpdateWrongEpoch")
+    assertEquals(rule(run(s, tx(late, Vector(alice, delegates(0))))), "PPUpdateWrongEpoch")
   }
 
   test(
     "the boundary that adopts protocol version 9 is a Conway transition and counts a dormant epoch"
   ) {
-    val (s0, _) = funded(8)
+    val (s0, _) = fundedIn[Babbage](8)
     val pv9 = ParamUpdate(Map(14 -> Bytes(Vector(0x82, 0x09, 0x00).map(_.toByte))))
     val g = Vector(key(), key())
-    val s = s0.copy(ppup = Ppup(g.map(_.hash -> pv9).toMap, Map.empty))
+    val ls = s0.es.ls
+    // the two proposals and the parameters they vote for, as PPUP leaves them (`Rules/Ppup.hs`)
+    val gov = ls.utxo.gov
+    val voted = UpdateChecks.voted(gov.curPParams, g.map(_.hash -> pv9).toMap, 2)
+    val proposed = gov.copy(
+      curProposals = Sorted.map(g.map(k => genesisId(k) -> pv9)),
+      futurePParams = FuturePParams.PotentialPParamsUpdate(voted)
+    )
+    val s =
+      s0.copy(es = s0.es.copy(ls = ls.copy[Babbage](utxo = ls.utxo.copy[Babbage](gov = proposed))))
     val globals = LedgerGlobals(Supply, 10000, Rational(1, 20), 0, updateQuorum = 2)
-    val entered = rs.epoch(s, globals)
-    assertEquals(entered.params.protocolMajor, BigInt(9))
-    assertEquals(entered.dormantEpochs, BigInt(1))
+    val entered = as[Conway](afterLastBlock(s, globals))
+    assertEquals(paramsOf(entered).protocolMajor, BigInt(9))
+    assertEquals(entered.es.ls.cert.vState.numDormantEpochs.toBigInt, BigInt(1))
   }
 
   property("epoch boundaries conserve the supply however many blocks pools make") {
@@ -633,33 +820,66 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
         txIn(1) -> out(staker1.baseAddress(staker1), 4000 * ada),
         txIn(2) -> out(staker2.baseAddress(staker2), 6000 * ada)
       )
-      val s0 = state(5, funds)
-      val pools = Map(
-        a.hash -> PoolState(pool(a, staker1), 0),
-        b.hash -> PoolState(pool(b, staker2), 0)
+      val s0 = NativeRules.stateIn[Alonzo](5, funds)
+      // each pool registered without a deposit, its owner's account delegating to it
+      def registered(op: Key, owner: Key) =
+        poolId(op) -> ok(
+          Convert.poolState(pool(op, owner), compact(0), Sorted.set(Seq(staking(owner.credential))))
+        )
+      val withPools = s0.copy(es =
+        s0.es.copy(ls =
+          EraLedger.withPState(
+            s0.es.ls,
+            s0.es.ls.cert.pState
+              .copy(stakePools = Sorted.map(Vector(registered(a, staker1), registered(b, staker2))))
+          )
+        )
       )
-      val accounts = Map(
-        staker1.credential -> Account(0, 0, Some(a.hash), None),
-        staker2.credential -> Account(0, 0, Some(b.hash), None)
+      val base = withAccount(
+        withAccount(withPools, staker1.credential, 0, 0, Some(poolId(a))),
+        staker2.credential,
+        0,
+        0,
+        Some(poolId(b))
       )
-      val base = s0.copy(pools = pools, accounts = accounts)
-      val snap = Stake.snapshot(base)
+      val snap = ok(
+        EraLedger
+          .activeStake(base.es.ls)
+          .flatMap(StakeDistribution.snapshot(_, base.es.ls.cert.pState.stakePools))
+      )
+      // a pool that made no block is not in the blocks made, as in the reference
+      val blocks = BlocksMade(
+        Sorted.map(
+          Vector(poolId(a) -> blocksA, poolId(b) -> blocksB).collect {
+            case (p, n) if n > 0 => p -> Word64.fromUnsigned(n.toLong)
+          }
+        )
+      )
+      val ls = base.es.ls
+      val pp = paramsOf(base).copy(d = Rational.zero)
       val start = base.copy(
-        snapshots = Snapshots(snap, snap, snap, 1000 * ada),
-        fees = 1000 * ada,
-        reserves = base.reserves - 1000 * ada,
-        blocksCurrent = Map(a.hash -> BigInt(blocksA), b.hash -> BigInt(blocksB)),
-        params = base.params.copy(d = Rational.zero)
+        bcur = blocks,
+        es = base.es.copy(
+          chainAccount = base.es.chainAccount
+            .copy(reserves = coin(base.es.chainAccount.reserves.value - 1000 * ada)),
+          ls = ls.copy[Alonzo](utxo =
+            ls.utxo.copy[Alonzo](
+              fees = coin(1000 * ada),
+              gov = ls.utxo.gov.copy(curPParams = pp, prevPParams = pp)
+            )
+          ),
+          snapshots = SnapShots(snap, snap, snap, coin(1000 * ada))
+        )
       )
       val globals = LedgerGlobals(Supply, 100, Rational(1, 2), 0)
       // each epoch makes its reward update (a block after the start of rewards creates it) and
       // the boundary applies it; the pools make the same blocks in the epoch that follows
       val end =
         (1 to epochs).foldLeft(start) { (st, _) =>
-          rs.epoch(st, globals)
-            .copy(blocksCurrent = Map(a.hash -> BigInt(blocksA), b.hash -> BigInt(blocksB)))
+          as[Alonzo](NativeRules.epoch(EraNes.InEra(ShelleyBasedEra.SAlonzo, st), globals))
+            .copy(bcur = blocks)
         }
-      assertEquals(end.total, Supply)
+      assertEquals(total(end), Supply)
     }
   }
 
@@ -673,17 +893,11 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val v = Value(coin, assets)
     out(bob.address(), 0).copy(value = v)
 
-  /** The first failure of the output checks of UTXO, in the era's order. */
   private def outputRule(pp: ProtocolParams, o: TxOut): String =
-    val outs = Vector(o)
-    val pv = pp.protocolMajor
-    val checks = Vector(
-      UtxoTests.outputTooSmall(pp, outs),
-      if pv >= 3 then UtxoTests.outputTooBig(pp, outs) else Test.pass,
-      UtxoTests.bootAddrAttrsTooBig(outs),
-      if pv >= 5 then UtxoTests.wrongNetwork(env.network, outs) else Test.pass
-    ).flatMap(Test.failures(_).toVector.flatMap(_.iterator))
-    checks.headOption.fold("accepted")(_.ruleName)
+    TxChecks.outputChecks(pp, env, Bytes.empty, Vector(o)) match
+      case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
+      case Left(other)                        => other.message
+      case Right(_)                           => "accepted"
 
   test("Shelley and Allegra require exactly minUTxOValue, Mary scales it for native assets") {
     // ada-only outputs: the flat parameter in every Shelley-based era up to Mary
@@ -789,7 +1003,8 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     import xyz.kd5ujc.scarab.codec.{Cbor, Value as C}
     val hex =
       java.nio.file.Files.readString(java.nio.file.Path.of("fixtures/preprod/tx-06869a76.hex")).trim
-    val tx = Cbor.decode(Bytes.fromHex(hex).toOption.get).toOption.get
+    val bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), identity)
+    val tx = Cbor.decode(bytes).fold(e => fail(e.toString), identity)
     val body = tx.value match
       case C.Arr(items) =>
         TxBody
@@ -839,25 +1054,27 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     assertEquals(outputRule(tight.copy(maxValueSize = 3993), withNames(113)), "OutputTooBigUTxO")
   }
 
-  private def mirState(pv: Int) =
+  /** A state of the era `E` at protocol version `pv` with two genesis keys and their delegates, and
+    * a registered stake account; its funding input, the account's key and the delegates.
+    */
+  private def mirState[E <: EraTag](pv: Int)(using
+      ShelleyBasedEra[E],
+      PreConway[E]
+  ): (NewEpochState[E], TxIn, Key, Vector[Key]) =
     val g = Vector(key(), key())
     val d = Vector(key(), key())
-    val (s0, in) = funded(pv)
+    val (s0, in) = fundedIn[E](pv)
     val stake = key()
-    val s = s0.copy(
-      genDelegs =
-        g.zip(d).map { case (gk, dk) => gk.hash -> GenDelegPair(dk.hash, Bytes.empty) }.toMap,
-      accounts = s0.accounts.updated(stake.credential, Account(0, 2 * ada, None, None))
-    )
+    val s = withAccount(withGenesis(s0, g.zip(d)), stake.credential, 0, 2 * ada)
     (s, in, stake, d)
 
-  private def mirTx(
-      s: LedgerState,
+  private def mirTx[E <: EraTag](
+      s: NewEpochState[E],
       in: TxIn,
       signers: Vector[Key],
       certs: Vector[Certificate],
       e: TxEnv = env
-  ) =
+  )(using ShelleyBasedEra[E], PreConway[E]) =
     val b = body(
       "mir",
       Vector(in),
@@ -865,16 +1082,16 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       200,
       certificates = certs
     )
-    rs.tx(s, tx(b, alice +: signers), e)
+    run(s, tx(b, alice +: signers), e).map(_.state)
 
   test("MIR: transfers between pots and negative amounts need protocol 5 (Alonzo)") {
-    val (s4, in4, stake4, d4) = mirState(4)
-    val (s5, in5, stake5, d5) = mirState(5)
+    val (s4, in4, stake4, d4) = mirState[Mary](4)
+    val (s5, in5, stake5, d5) = mirState[Alonzo](5)
     val transfer = Certificate.MoveRewards(Pot.Reserves, Left(5 * ada))
     assertEquals(rule(mirTx(s4, in4, d4, Vector(transfer))), "MIRTransferNotCurrentlyAllowed")
     val moved = mirTx(s5, in5, d5, Vector(transfer)).fold(f => fail(f.message), identity)
-    assertEquals(moved.mir.deltaReserves, -5 * ada)
-    assertEquals(moved.mir.deltaTreasury, 5 * ada)
+    assertEquals(mir(moved).deltaReserves.value, -5 * ada)
+    assertEquals(mir(moved).deltaTreasury.value, 5 * ada)
     val negative = Certificate.MoveRewards(Pot.Reserves, Right(Map(stake4.credential -> -ada)))
     assertEquals(rule(mirTx(s4, in4, d4, Vector(negative))), "MIRNegativesNotCurrentlyAllowed")
     // from Alonzo a negative entry may cancel an earlier one but not go below zero
@@ -883,25 +1100,30 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val cancel = Certificate.MoveRewards(Pot.Reserves, Right(Map(stake5.credential -> -(3 * ada))))
     assertEquals(rule(mirTx(s5, in5, d5, Vector(plus, minus))), "MIRProducesNegativeUpdate")
     val zero = mirTx(s5, in5, d5, Vector(plus, cancel)).fold(f => fail(f.message), identity)
-    assertEquals(zero.mir.reserves(stake5.credential), BigInt(0))
+    assertEquals(mir(zero).reserves.get(staking(stake5.credential)).map(_.value), Some(BigInt(0)))
   }
 
   test("MIR: a later certificate replaces an earlier one before Alonzo and adds to it after") {
-    def entry(pv: Int) =
-      val (s, in, stake, d) = mirState(pv)
+    def entry[E <: EraTag](pv: Int)(using ShelleyBasedEra[E], PreConway[E]) =
+      val (s, in, stake, d) = mirState[E](pv)
       val first = Certificate.MoveRewards(Pot.Reserves, Right(Map(stake.credential -> 7 * ada)))
       val second = Certificate.MoveRewards(Pot.Reserves, Right(Map(stake.credential -> 3 * ada)))
       mirTx(s, in, d, Vector(first, second))
-        .fold(f => fail(f.message), _.mir.reserves(stake.credential))
-    assertEquals(entry(4), 3 * ada)
-    assertEquals(entry(5), 10 * ada)
+        .fold(f => fail(f.message), mir(_).reserves.get(staking(stake.credential)).map(_.value))
+    assertEquals(entry[Mary](4), Some(3 * ada))
+    assertEquals(entry[Alonzo](5), Some(10 * ada))
   }
 
   test("MIR is refused from the slot 3k/f before the next epoch") {
-    val (s, in, stake, d) = mirState(4)
+    val (s, in, stake, d) = mirState[Mary](4)
     val cert = Vector(Certificate.MoveRewards(Pot.Treasury, Right(Map(stake.credential -> ada))))
     // the treasury must hold the coin
-    val holding = s.copy(treasury = 5 * ada, reserves = s.reserves - 5 * ada)
+    val pots = s.es.chainAccount
+    val holding = s.copy(es =
+      s.es.copy(chainAccount =
+        pots.copy(treasury = coin(5 * ada), reserves = coin(pots.reserves.value - 5 * ada))
+      )
+    )
     val last = env.firstSlotNextEpoch - env.stabilityWindow - 1
     assertEquals(rule(mirTx(holding, in, d, cert, env.copy(slot = last))), "accepted")
     assertEquals(
@@ -915,12 +1137,10 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
   }
 
   test("MIR entries survive stake key deregistration and are dropped at the boundary") {
-    val (s0, in, stake, _) = mirState(4)
-    val s = s0.copy(
-      mir = InstantRewards(Map(stake.credential -> 7 * ada), Map.empty, 0, 0),
-      deposited = 2 * ada,
-      reserves = s0.reserves - 2 * ada
-    )
+    val (s0, in, stake, _) = mirState[Mary](4)
+    val ir =
+      noInstantRewards.copy(reserves = Sorted.map(Seq(staking(stake.credential) -> coin(7 * ada))))
+    val s = s0.copy(es = s0.es.copy(ls = EraLedger.withIRewards(s0.es.ls, ir)))
     val dereg = body(
       "dereg",
       Vector(in),
@@ -928,12 +1148,11 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       200,
       certificates = Vector(Certificate.Unregister(stake.credential, None))
     )
-    val after =
-      rs.tx(s, tx(dereg, Vector(alice, stake)), env).fold(f => fail(f.message), identity)
-    assert(!after.accounts.contains(stake.credential))
+    val after = run(s, tx(dereg, Vector(alice, stake))).fold(f => fail(f.message), _.state)
+    assert(!accounts(after).contains(staking(stake.credential)))
     // `Unregister` leaves `dsIRewards` alone: the entry stays until the MIR rule filters it
-    assertEquals(after.mir.reserves.get(stake.credential), Some(7 * ada))
-    val paid = rs.boundary(after, boundaryGlobals)
-    assertEquals(paid.reserves, after.reserves)
-    assertEquals(paid.mir, InstantRewards.empty)
+    assertEquals(mir(after).reserves.get(staking(stake.credential)).map(_.value), Some(7 * ada))
+    val paidOut = boundary(after, boundaryGlobals)
+    assertEquals(paidOut.es.chainAccount.reserves, after.es.chainAccount.reserves)
+    assertEquals(mir(paidOut), noInstantRewards)
   }
