@@ -277,48 +277,60 @@ class PeerRootReloadSuite extends FailsOnUncaught:
     }
   }
 
+  /** Every seed is one controlled schedule. While a stale wake still restarted the generation the
+    * refresh loop already resolved, seeds 360, 542, 574, 696 and 862 caught the replacement lookup
+    * cancelled.
+    */
   test("reload cancels obsolete DNS and starts the new source without its predecessor's deadline") {
-    TestControl.executeEmbed {
-      for
-        oldEntered <- Deferred[IO, Unit]
-        oldCanceled <- Deferred[IO, Unit]
-        nextEntered <- Deferred[IO, Unit]
-        active <- Ref.of[IO, Set[DnsName]](Set.empty)
-        dns = new PeerDns[IO]:
-          def addresses(query: DnsName) =
-            Resource.make(active.update(_ + query))(_ => active.update(_ - query)).use { _ =>
-              if query.value == "pending.example." then
-                oldEntered.complete(()).void *> IO
-                  .never[DnsAddressAnswer]
-                  .onCancel(oldCanceled.complete(()).void)
-              else nextEntered.complete(()).void *> IO.never[DnsAddressAnswer]
-            }
-          def services(_query: DnsName) = IO.pure(Left(PeerDnsError.Lookup(Vector.empty)))
-        given Resource[IO, PeerDns[IO]] = Resource.pure[IO, PeerDns[IO]](dns)
-        _ <- running(roots(List(fixed -> oldConfig))).use { network =>
-          network.run.background.use { _ =>
-            for
-              _ <- network.reloadRoots(roots(List(pendingHost -> nextConfig))).timeout(1.second)
-              _ <- oldEntered.get
-              nextHost = SocketAddress[Host](host"replacement.example", port"3001")
-              _ <- network
-                .reloadRoots(roots(List(moved -> nextConfig, nextHost -> nextConfig)))
-                .timeout(1.second)
-              _ <- nextEntered.get.timeout(1.second)
-              _ <- oldCanceled.get
-              remaining <- active.get
-              _ = assertEquals(remaining.map(_.value), Set("replacement.example."))
-              state <- network.state.get
-              _ = assertEquals(state.configuredRoots.keys.toSet, Set(moved))
-              _ = assertEquals(GovernorState.invariant(state), Nil)
-            yield ()
-          }
+    (1 to 1000).toList.traverse_ { n =>
+      val seed = java.util.Base64.getEncoder.encodeToString(n.toString.getBytes)
+      TestControl
+        .executeEmbed(obsoleteDnsReload, seed = Some(seed))
+        .adaptError { case failure: AssertionError =>
+          new AssertionError(s"schedule seed $n", failure)
         }
-        remaining <- active.get
-        _ = assertEquals(remaining, Set.empty[DnsName])
-      yield ()
     }
   }
+
+  private def obsoleteDnsReload: IO[Unit] =
+    for
+      oldEntered <- Deferred[IO, Unit]
+      oldCanceled <- Deferred[IO, Unit]
+      nextEntered <- Deferred[IO, Unit]
+      active <- Ref.of[IO, Set[DnsName]](Set.empty)
+      dns = new PeerDns[IO]:
+        def addresses(query: DnsName) =
+          Resource.make(active.update(_ + query))(_ => active.update(_ - query)).use { _ =>
+            if query.value == "pending.example." then
+              oldEntered.complete(()).void *> IO
+                .never[DnsAddressAnswer]
+                .onCancel(oldCanceled.complete(()).void)
+            else nextEntered.complete(()).void *> IO.never[DnsAddressAnswer]
+          }
+        def services(_query: DnsName) = IO.pure(Left(PeerDnsError.Lookup(Vector.empty)))
+      given Resource[IO, PeerDns[IO]] = Resource.pure[IO, PeerDns[IO]](dns)
+      _ <- running(roots(List(fixed -> oldConfig))).use { network =>
+        network.run.background.use { _ =>
+          for
+            _ <- network.reloadRoots(roots(List(pendingHost -> nextConfig))).timeout(1.second)
+            _ <- oldEntered.get
+            nextHost = SocketAddress[Host](host"replacement.example", port"3001")
+            _ <- network
+              .reloadRoots(roots(List(moved -> nextConfig, nextHost -> nextConfig)))
+              .timeout(1.second)
+            _ <- nextEntered.get.timeout(1.second)
+            _ <- oldCanceled.get
+            remaining <- active.get
+            _ = assertEquals(remaining.map(_.value), Set("replacement.example."))
+            state <- network.state.get
+            _ = assertEquals(state.configuredRoots.keys.toSet, Set(moved))
+            _ = assertEquals(GovernorState.invariant(state), Nil)
+          yield ()
+        }
+      }
+      remaining <- active.get
+      _ = assertEquals(remaining, Set.empty[DnsName])
+    yield ()
 
   test("a reload caller can stop waiting without losing the owner's DNS refresh") {
     settled { settle =>

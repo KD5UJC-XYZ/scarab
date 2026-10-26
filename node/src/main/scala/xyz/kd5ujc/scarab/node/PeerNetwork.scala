@@ -704,11 +704,17 @@ object PeerNetwork:
       val refreshLocalRoots: F[Nothing] =
         F.tailRecM[Unit, Nothing](()) { _ =>
           runtime.get.flatMap { captured =>
+            // The reference restarts its resolvers only when the configuration it resolves has
+            // changed (`localRootPeersProvider`, `check (a /= domainsGroups)`, LocalRootPeers.hs of
+            // ouroboros-network 2fb69829). A wake whose generation this pass already resolves is
+            // spent: restarting would cancel lookups of the installed configuration for nothing.
             F.race(
               refreshLocalDnsCache(captured.roots, captured.localDnsCache, dns, dnsRng),
-              rootRefreshWake.take
+              (rootRefreshWake.take *> runtime.get).iterateUntil(
+                _.generation != captured.generation
+              )
             ).flatMap {
-              case Right(()) => F.pure(Left(()))
+              case Right(_) => F.pure(Left(()))
               case Left(cache) =>
                 val resolved = NodeRootProvider.localGroupsFromCache(
                   captured.roots.local,
