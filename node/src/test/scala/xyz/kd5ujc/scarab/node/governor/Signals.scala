@@ -61,6 +61,6 @@ object Signals:
     */
   def failures(rec: Recording): Vector[(Time, Peer)] =
     rec.traces.collect {
-      case (t, Trace.PromoteFailed(_, peer, _, _, _))   => t -> peer
-      case (t, Trace.DemoteAsynchronous(peer, _, _, _)) => t -> peer
+      case (t, Trace.PromoteFailed(_, peer, _, _, _))         => t -> peer
+      case (t, Trace.DemoteAsynchronous(peer, _, _, _, _, _)) => t -> peer
     }

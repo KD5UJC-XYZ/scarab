@@ -74,10 +74,12 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
               _ => IO.unit,
               _ => IO.unit
             )
+            // This attribution fixture deliberately never completes its application. Exercise
+            // the reference's forced-close deadline without waiting its production 120 seconds.
             outbound <- OutboundPeers.create(
               transport,
               manager,
-              OutboundPeers.Config(),
+              OutboundPeers.Config(closeTimeout = 100.millis),
               hot,
               supervisor,
               e => events.update(_ :+ e),
@@ -96,7 +98,10 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
             _ <- pool.session(Some(outbound.rejectedCachedBlock(sourceKey, _))).use { claims =>
               claims.claim(Vector(hash)) *> claims.fill(Vector(hash -> block))
             }
-            _ <- outbound.close(source).unlessA(originalLive)
+            _ <- outbound
+              .monitorPeerConnection(source)
+              .flatMap(_.traverse_(handle => handle.close *> handle.awaitCold))
+              .unlessA(originalLive)
             second <- outbound
               .establish(source, DiffusionMode.InitiatorAndResponder, Provenance.Outbound)
               .whenA(replacement)
@@ -131,7 +136,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
             innocent <- manager.lookup(consumerRemote)
             observed <- events.get
             sourceFailures = observed.collect {
-              case Event.Observed(peer, Observation.Lost(failure, _, false, _), _)
+              case Event.Observed(peer, Observation.Lost(failure, _, false, _), _, _)
                   if peer == source =>
                 failure
             }
@@ -139,18 +144,23 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
               case Event.Observed(
                     peer,
                     Observation.CachedBlockRejected(cause, generation, live),
+                    _,
                     _
                   ) =>
                 (peer, cause.cause, generation, live)
             }
-            _ <- outbound.close(consumer)
-            _ <- outbound.close(source)
+            _ <- outbound
+              .monitorPeerConnection(consumer)
+              .flatMap(_.traverse_(handle => handle.close *> handle.awaitCold))
+            _ <- outbound
+              .monitorPeerConnection(source)
+              .flatMap(_.traverse_(handle => handle.close *> handle.awaitCold))
             finished <- finalized.get
           yield
             assertEquals(finished, if replacement then 2 else 1)
-            assertEquals(first, None)
+            assert(first.isRight)
             assertEquals(second, ())
-            assertEquals(other, None)
+            assert(other.isRight)
             assert(innocent.isDefined)
             assertEquals(replacementState, replacement)
             assertEquals(
@@ -316,7 +326,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
                 supervisor,
                 e =>
                   events.update(_ :+ e) *> (e match
-                    case Event.Observed(_, Observation.HotEnded(_), _) =>
+                    case Event.Observed(_, Observation.HotEnded(_, _), _, _) =>
                       firstEnded.complete(()).void
                     case _ => IO.unit),
                 RefStateful(metrics)
@@ -366,7 +376,12 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
               assertEquals(active, Some(successor))
               assert(observed.exists {
                 case Event
-                      .Observed(p, Observation.CachedBlockRejected(cause, generation, false), _) =>
+                      .Observed(
+                        p,
+                        Observation.CachedBlockRejected(cause, generation, false),
+                        _,
+                        _
+                      ) =>
                   p == peer && cause.cause == refusal && generation == old.activationGeneration
                 case _ => false
               })

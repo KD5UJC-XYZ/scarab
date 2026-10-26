@@ -140,6 +140,10 @@ enum NodeEvent:
 
   /** A decision of the peer governor or what became of one (G1). */
   case PeerSelection(trace: Trace[SocketAddress[Host]])
+  case PeerEstablishmentFailed(
+      peer: SocketAddress[Host],
+      error: xyz.kd5ujc.scarab.node.EstablishmentError
+  )
   case PeerChurn(trace: Churn.Trace)
 
   /** The ledger-peers worker (G1.3): the snapshot, the stake maps it rebuilt, the pools it skipped.
@@ -511,6 +515,15 @@ object NodeEvent:
         case InboundEvent.Closed(reason) => inbound(remote, "closed", Some(reason.message))
         case InboundEvent.Refused(reason) =>
           inbound(remote, "refused", Some(reason.message)).at(Severity.Warning)
+    case PeerEstablishmentFailed(peer, error) =>
+      EventKind.PeerSelectionPromote
+        .line(
+          "action" -> "failed".asJson,
+          "peer" -> peer.toString.asJson,
+          "operation" -> "Establish".asJson,
+          "reason" -> error.message.asJson
+        )
+        .at(Severity.Warning)
     case PeerSelection(trace)        => PeerSelectionLines.trace(trace)
     case PeerChurn(trace)            => PeerSelectionLines.churn(trace)
     case LedgerPeers(trace)          => PeerSelectionLines.ledger(trace)

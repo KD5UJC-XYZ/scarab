@@ -76,7 +76,9 @@ The outbound peers are chosen by the peer governor (roadmap G1.1, [design](../de
 - **Temperatures.** Cold is known, warm is connected with KeepAlive and negotiated PeerSharing, hot also runs ChainSync, BlockFetch and
   TxSubmission2; the transitions in between are states of their own. A warm peer is promoted to hot, and a hot peer is
   demoted, by starting and ending the hot protocols on the same connection; the blocks a hot session claimed are
-  released when it ends.
+  released when it ends. A successful hot-protocol return keeps the bearer warm. The asynchronous
+  demotion log includes the typed return's reason and `repromoteDelaySeconds`: 10 for ordinary
+  completion, 120 for no intersection, and 180 for rollback past the intersection.
 - **Targets.** The relay defaults of the reference (`TargetNumberOfRootPeers` 60, `KnownPeers` 150, `EstablishedPeers` 30,
   `ActivePeers` 20, and for big ledger peers 15, 10, 5), read from the configuration file by these keys
   (`TargetNumberOfRootPeers`, `TargetNumberOfKnownPeers`, `TargetNumberOfEstablishedPeers`, `TargetNumberOfActivePeers`,

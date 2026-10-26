@@ -10,6 +10,7 @@ import cats.syntax.all.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.ledger.GovernorFault
 import xyz.kd5ujc.scarab.network.selection.*
+import xyz.kd5ujc.scarab.network.{PeerActionError, PeerOperation, PeerStatus}
 import xyz.kd5ujc.scarab.node.{GovernorConfig, Output, PeerGovernor, PeerStateActions, RootProvider}
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 
@@ -241,11 +242,13 @@ object MockEnvironment:
                 .flatMap { attempt =>
                   val fails = env.script(peer).connectFails
                   if peer >= env.peers || fails(attempt.min(fails.size - 1)) then
-                    IO.pure(Some(FailureClass.Transient))
+                    IO.pure(Left(ActionFixtures.unavailable))
                   else
                     Ref.of[IO, Conn](Conn.Warm).flatMap { conn =>
                       statuses.update(_ + (peer -> conn)) *> snapshot *>
-                        supervisor.supervise(monitor(peer, conn)).as(None)
+                        supervisor
+                          .supervise(monitor(peer, conn))
+                          .as(ActionFixtures.established(this, peer))
                     }
                 }
             }
@@ -262,35 +265,44 @@ object MockEnvironment:
           def activate(peer: Peer, trust: xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust) =
             note(Seen.Env(EnvEvent.Activate(peer))) *> IO.sleep(1.second) *>
               statuses.get.map(_.get(peer)).flatMap {
-                case None => IO.pure(Some(FailureClass.Transient))
+                case None =>
+                  IO.pure(Left(PeerActionError.Inactive(PeerOperation.Activate, PeerStatus.Cold)))
                 case Some(conn) =>
                   conn.get.flatMap {
-                    case Conn.Warm =>
-                      conn.set(Conn.Hot) *> snapshot.as(Option.empty[FailureClass])
-                    case Conn.Hot => IO.pure(None)
-                    case _        => IO.pure(Some(FailureClass.Transient))
+                    case Conn.Warm => conn.set(Conn.Hot) *> snapshot.as(Right(()))
+                    case Conn.Hot =>
+                      IO.pure(
+                        Left(PeerActionError.Inactive(PeerOperation.Activate, PeerStatus.Hot))
+                      )
+                    case _ =>
+                      IO.pure(
+                        Left(PeerActionError.Inactive(PeerOperation.Activate, PeerStatus.Cold))
+                      )
                   }
               }
 
           def deactivate(peer: Peer) =
             note(Seen.Env(EnvEvent.Deactivate(peer))) *> statuses.get.map(_.get(peer)).flatMap {
-              case None => IO.pure(PeerStateActions.Deactivation.Closed)
+              case None => IO.pure(Right(PeerStateActions.Deactivation.Closed))
               case Some(conn) =>
                 conn.get.flatMap {
                   case Conn.Hot | Conn.Warm =>
-                    conn.set(Conn.Warm) *> snapshot.as(PeerStateActions.Deactivation.Warm)
+                    conn.set(Conn.Warm) *> snapshot.as(Right(PeerStateActions.Deactivation.Warm))
                   case _ =>
                     conn.set(Conn.Cold) *> statuses.update(_ - peer) *> snapshot.as(
-                      PeerStateActions.Deactivation.Closed
+                      Right(PeerStateActions.Deactivation.Closed)
                     )
                 }
             }
 
           def close(peer: Peer) =
             note(Seen.Env(EnvEvent.Close(peer))) *> statuses.get.map(_.get(peer)).flatMap {
-              case None => IO.pure(true)
+              case None =>
+                IO.pure(Right(PeerStateActions.CloseResult(PeerStateActions.Release.Released)))
               case Some(conn) =>
-                conn.set(Conn.Cold) *> statuses.update(_ - peer) *> snapshot.as(true)
+                conn.set(Conn.Cold) *> statuses.update(_ - peer) *> snapshot.as(
+                  Right(PeerStateActions.CloseResult(PeerStateActions.Release.Released))
+                )
             }
 
           def closeIfGeneration(peer: Peer, generation: BigInt) =

@@ -48,7 +48,7 @@ class ChurnTargetWakeSuite extends FailsOnUncaught:
           def tell(out: Output[Int]) = IO.unit
         actions = new PeerStateActions[IO, Int]:
           def establish(peer: Int, mode: DiffusionMode, provenance: ConnectionState.Provenance) =
-            IO.pure(Option.empty[FailureClass])
+            IO.pure(ActionFixtures.established(this, peer))
           def establishAt(
               peer: Int,
               mode: DiffusionMode,
@@ -56,10 +56,12 @@ class ChurnTargetWakeSuite extends FailsOnUncaught:
               generation: BigInt
           ) = establish(peer, mode, provenance)
           def activate(peer: Int, trust: xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust) =
-            IO.pure(Option.empty[FailureClass])
-          def deactivate(peer: Int) = IO.pure(PeerStateActions.Deactivation.Warm)
-          def close(peer: Int) = IO.pure(true)
-          def closeIfGeneration(peer: Int, generation: BigInt) = IO.pure(Some(true))
+            IO.pure(Right(()))
+          def deactivate(peer: Int) = IO.pure(Right(PeerStateActions.Deactivation.Warm))
+          def close(peer: Int) =
+            IO.pure(Right(PeerStateActions.CloseResult(PeerStateActions.Release.Released)))
+          def closeIfGeneration(peer: Int, generation: BigInt) =
+            IO.pure(Some(Right(PeerStateActions.CloseResult(PeerStateActions.Release.Released))))
         roots = new RootProvider[IO, Int]:
           def request(max: Int, bootstrap: Boolean) = IO.pure(None)
           def requestBigLedger(max: Int) = IO.pure(None)

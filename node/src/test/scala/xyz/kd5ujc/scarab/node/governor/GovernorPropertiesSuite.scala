@@ -355,11 +355,11 @@ class GovernorPropertiesSuite extends ScalaCheckSuite:
   property("prop_governor_repromote_delay") {
     over(Generators.environment) { rec =>
       val waits = rec.traces.collect {
-        case (t, Trace.DemoteAsynchronous(peer, Temperature.Cold, Some(_), _)) =>
+        case (t, Trace.DemoteAsynchronous(peer, Temperature.Cold, Some(_), _, _, _)) =>
           stateAt(rec, t).flatMap(_.peers.get(peer)).map(_.status).collect {
             case Status.Cold(Some(at)) => (peer, at - t)
           }
-        case (t, Trace.DemoteAsynchronous(peer, Temperature.Warm, None, _)) =>
+        case (t, Trace.DemoteAsynchronous(peer, Temperature.Warm, None, _, _, _)) =>
           stateAt(rec, t).flatMap(_.peers.get(peer)).map(_.status).collect { case Status.Warm(at) =>
             (peer, at - t)
           }

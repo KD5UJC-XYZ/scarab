@@ -141,12 +141,52 @@ object LogSamples:
     ),
     Trace.DemoteDone(Temperature.Warm, peerA, 29),
     Trace.DemoteFailed(Temperature.Hot, peerB, timedOut = true),
-    Trace.DemoteAsynchronous(peerA, Temperature.Warm, None, None),
+    Trace.DemoteAsynchronous(
+      peerA,
+      Temperature.Warm,
+      None,
+      None,
+      xyz.kd5ujc.scarab.node.SessionEnd.returnReason(xyz.kd5ujc.scarab.node.SessionEnd.Returned),
+      Some(10.seconds)
+    ),
+    Trace.DemoteAsynchronous(
+      peerA,
+      Temperature.Warm,
+      None,
+      None,
+      xyz.kd5ujc.scarab.node.SessionEnd
+        .returnReason(xyz.kd5ujc.scarab.node.SessionEnd.NoMoreIntersection),
+      Some(120.seconds)
+    ),
+    Trace.DemoteAsynchronous(
+      peerA,
+      Temperature.Warm,
+      None,
+      None,
+      xyz.kd5ujc.scarab.node.SessionEnd
+        .returnReason(xyz.kd5ujc.scarab.node.SessionEnd.RolledBackPastIntersection(point)),
+      Some(180.seconds)
+    ),
     Trace.DemoteAsynchronous(
       peerB,
       Temperature.Cold,
       Some(FailureClass.Transient),
       Some("unavailable: connection closed")
+    ),
+    Trace.PeerActionFailed(
+      peerA,
+      xyz.kd5ujc.scarab.network.PeerOperation.Deactivate,
+      xyz.kd5ujc.scarab.network.PeerActionError.ApplicationFailures(
+        cats.data.NonEmptyVector.of(
+          xyz.kd5ujc.scarab.network.ProtocolResults
+            .MiniProtocolFailure(2, xyz.kd5ujc.scarab.network.NetworkError.Timeout(2, "idle")),
+          xyz.kd5ujc.scarab.network.ProtocolResults.MiniProtocolFailure(
+            3,
+            xyz.kd5ujc.scarab.network.NetworkError
+              .BearerClosed(xyz.kd5ujc.scarab.network.NetworkError.Closure.PeerClosed)
+          )
+        )
+      )
     ),
     Trace.CachedBlockRejected(
       peerA,

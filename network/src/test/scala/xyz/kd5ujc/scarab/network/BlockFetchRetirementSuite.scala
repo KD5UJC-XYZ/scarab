@@ -25,79 +25,83 @@ class BlockFetchRetirementSuite extends FailsOnUncaught:
       def submit(originals: Vector[Bytes]) = IO.unit
     ServerHandlers(ChainSyncFixtures.rawItem, Resource.pure(source), blocks, sink)
 
-  private def warm(using Net): Resource[IO, WarmConnection[IO, Bytes]] =
+  private def warm(using Net): Resource[IO, WarmConnection[IO, Bytes, Unit]] =
     Resource.eval(Bearer.inMemory[IO]()).flatMap { (ours, theirs) =>
       typed(NodeToNodeServer.accept(theirs, 42L, handlers)).void.background
         .flatMap(_ => NodeToNode.warmOver[IO, Bytes](ours, 42L, ChainSyncFixtures.rawItem))
     }
 
-  List(false, true).foreach { chainSyncAlreadyEnded =>
-    test(
-      s"BF attribution ends before a paused Tx finish (CS already done=$chainSyncAlreadyEnded)"
-    ) {
-      typed {
-        for
-          live <- Ref.of[IO, Boolean](true)
-          aborted <- Ref.of[IO, Boolean](false)
-          txEntered <- Deferred[IO, Unit]
-          txRelease <- Deferred[IO, Unit]
-          result <- warm.use { connection =>
-            connection
-              .activate(blockFetchEnded = Some(live.set(false)))
-              .use { hot =>
-                val paused = new TxSubmissionClient.Running[IO]:
-                  def finish(within: FiniteDuration) =
-                    txEntered.complete(()).void *> txRelease.get.as(true)
-                val finishing = NodeToNodeConnection(
-                  hot.version,
-                  hot.chainSync,
-                  hot.blockFetch,
-                  hot.mux,
-                  Some(paused),
-                  blockFetchEnded = Some(live.set(false))
-                )
-                for
-                  _ <- hot.chainSync.findIntersect(Vector(Point.Origin))
-                  _ <- hot.chainSync.done.whenA(chainSyncAlreadyEnded)
-                  ended <- Resource
-                    .make(
-                      Fibers
-                        .scoped[IO, NetworkError, Boolean](NetworkError.Defect(_))(
-                          if chainSyncAlreadyEnded then finishing.finishAfterChainSync(5.seconds)
-                          else finishing.finish(5.seconds)
-                        )
-                        .start
-                    )(_.cancel)
-                    .use { fiber =>
-                      for
-                        _ <- txEntered.get
-                        // The late punishment uses the same source-registry liveness decision as the
-                        // governors. Its source must already be retired while Tx remains blocked.
-                        _ <- live.get.ifM(
-                          aborted.set(true) *> hot.mux
-                            .abort(NetworkError.BearerClosed(NetworkError.Closure.Aborted)),
-                          IO.unit
-                        )
-                        isLive <- live.get
-                        didAbort <- aborted.get
-                        _ <- IO(assert(!isLive && !didAbort))
-                        _ <- txRelease.complete(())
-                        done <- fiber.joinWithNever
-                      yield done
+  List(false, true).flatMap(done => List(false, true).map(done -> _)).foreach {
+    (chainSyncAlreadyEnded, graceful) =>
+      test(
+        s"BF attribution ends before a paused Tx finish (CS already done=$chainSyncAlreadyEnded, graceful=$graceful)"
+      ) {
+        typed {
+          for
+            live <- Ref.of[IO, Boolean](true)
+            aborted <- Ref.of[IO, Boolean](false)
+            txEntered <- Deferred[IO, Unit]
+            txRelease <- Deferred[IO, Unit]
+            result <- warm.use { connection =>
+              connection
+                .activate(blockFetchEnded = Some(live.set(false)))
+                .use { hot =>
+                  val paused = new TxSubmissionClient.Running[IO]:
+                    def finish(within: FiniteDuration) = terminate.map(_.isRight)
+                    def terminate = txEntered.complete(()).void *> txRelease.get.as(Right(()))
+                  val finishing = NodeToNodeConnection(
+                    hot.version,
+                    hot.chainSync,
+                    hot.blockFetch,
+                    hot.mux,
+                    Some(paused),
+                    blockFetchEnded = Some(live.set(false))
+                  )
+                  for
+                    _ <- hot.chainSync.findIntersect(Vector(Point.Origin))
+                    _ <- hot.chainSync.done.whenA(chainSyncAlreadyEnded)
+                    ended <- Resource
+                      .make(
+                        Fibers
+                          .scoped[IO, NetworkError, Boolean](NetworkError.Defect(_))(
+                            if graceful then
+                              finishing.finishGracefully(chainSyncAlreadyEnded).as(true)
+                            else if chainSyncAlreadyEnded then
+                              finishing.finishAfterChainSync(5.seconds)
+                            else finishing.finish(5.seconds)
+                          )
+                          .start
+                      )(_.cancel)
+                      .use { fiber =>
+                        for
+                          _ <- txEntered.get
+                          // The late punishment uses the same source-registry liveness decision as the
+                          // governors. Its source must already be retired while Tx remains blocked.
+                          _ <- live.get.ifM(
+                            aborted.set(true) *> hot.mux
+                              .abort(NetworkError.BearerClosed(NetworkError.Closure.Aborted)),
+                            IO.unit
+                          )
+                          isLive <- live.get
+                          didAbort <- aborted.get
+                          _ <- IO(assert(!isLive && !didAbort))
+                          _ <- txRelease.complete(())
+                          done <- fiber.joinWithNever
+                        yield done
+                      }
+                  yield ended
+                }
+                .flatMap { finished =>
+                  connection.activate().use { next =>
+                    next.chainSync.findIntersect(Vector(Point.Origin)).flatMap { found =>
+                      next.finish(5.seconds).map(reused => (finished, found, reused))
                     }
-                yield ended
-              }
-              .flatMap { finished =>
-                connection.activate().use { next =>
-                  next.chainSync.findIntersect(Vector(Point.Origin)).flatMap { found =>
-                    next.finish(5.seconds).map(reused => (finished, found, reused))
                   }
                 }
-              }
-          }
-        yield result
-      }.map(result =>
-        assertEquals(result, Right((Right(true), Some(Point.Origin -> Tip.Origin), true)))
-      )
-    }
+            }
+          yield result
+        }.map(result =>
+          assertEquals(result, Right((Right(true), Some(Point.Origin -> Tip.Origin), true)))
+        )
+      }
   }

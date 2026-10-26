@@ -170,6 +170,13 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- node(NodeEvent.Faulted(Fatal.Internal(ChainError.NoIntersection)))
         _ <- node(NodeEvent.Faulted(Fatal.Defect(new IllegalStateException("a bug in the rules"))))
         _ <- inbound.traverse_(Log.inbound[IO].emit("10.0.0.1:3001", _))
+        _ <- node(
+          NodeEvent.PeerEstablishmentFailed(
+            SocketAddress(host"10.0.0.1", port"3001"),
+            xyz.kd5ujc.scarab.node.EstablishmentError
+              .Defect(new IllegalStateException("injected acquisition defect"))
+          )
+        )
         _ <- peerSelection.traverse_(t => node(NodeEvent.PeerSelection(t)))
         _ <- peerCounters.traverse_(c => node(NodeEvent.PeerCounters(c)))
         _ <- churnTraces.traverse_(t => node(NodeEvent.PeerChurn(t)))

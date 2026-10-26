@@ -626,6 +626,7 @@ object PeerNetwork:
           supervisor,
           actions,
           readRequestedTargets = Some(churnTargets.accepted),
+          connections = Some(outbound),
           beforeEventApplied = Some {
             case Event.RootsConfigured(_, _, _, Some(generation)) =>
               rootInstallAcks.get.flatMap(_.get(generation).traverse_ { (staged, _) =>
