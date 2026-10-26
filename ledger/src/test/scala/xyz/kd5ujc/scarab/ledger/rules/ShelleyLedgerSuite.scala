@@ -295,7 +295,7 @@ class ShelleyLedgerSuite extends FunSuite:
       fee: BigInt = 200,
       extra: BigInt = 0,
       certificates: Vector[Certificate] = Vector.empty,
-      withdrawals: Vector[(RewardAccount, BigInt)] = Vector.empty,
+      withdrawals: Map[RewardAccount, BigInt] = Map.empty,
       update: Option[Update] = None,
       signers: Vector[Key] = Vector.empty,
       ttl: Option[BigInt] = None
@@ -552,7 +552,7 @@ class ShelleyLedgerSuite extends FunSuite:
           val s = base(c, fundedBy(alice), held = Map(bob -> Held(7 * ada, 2 * ada)))
           val account = RewardAccount(0, bob.credential)
           val full =
-            pay("full", alice, withdrawals = Vector(account -> 7 * ada), signers = Vector(bob))
+            pay("full", alice, withdrawals = Map(account -> 7 * ada), signers = Vector(bob))
           val next = accepted(c, s, full)
           assertEquals(
             accounts(c, next).states.get(staking(bob)).map(_.balance.toBigInt),
@@ -560,12 +560,12 @@ class ShelleyLedgerSuite extends FunSuite:
             c.name
           )
           val partial =
-            pay("partial", alice, withdrawals = Vector(account -> 3 * ada), signers = Vector(bob))
+            pay("partial", alice, withdrawals = Map(account -> 3 * ada), signers = Vector(bob))
           assertEquals(refusedWith(c, s, partial), "ConwayIncompleteWithdrawals", c.name)
           val unknown = pay(
             "unknown",
             alice,
-            withdrawals = Vector(RewardAccount(0, carol.credential) -> 1),
+            withdrawals = Map(RewardAccount(0, carol.credential) -> 1),
             signers = Vector(carol)
           )
           assertEquals(refusedWith(c, s, unknown), "ConwayWithdrawalsMissingAccounts", c.name)
@@ -1096,7 +1096,7 @@ class ShelleyLedgerSuite extends FunSuite:
       alice,
       extra = 2 * ada * width,
       certificates = certificates,
-      withdrawals = keys.map(k => RewardAccount(0, k.credential) -> BigInt(1)),
+      withdrawals = keys.map(k => RewardAccount(0, k.credential) -> BigInt(1)).toMap,
       signers = keys ++ others
     )
     forEras(
