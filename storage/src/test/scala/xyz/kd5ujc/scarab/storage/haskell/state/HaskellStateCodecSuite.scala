@@ -75,6 +75,26 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
   laws("ProtVer", arb[ProtVer], protVer)
   laws("Ptr", LedgerStateGen.ptr, ptr)
 
+  test("Coin encoding matches every captured native signed and compact boundary") {
+    val rows = java.nio.file.Files
+      .readString(
+        java.nio.file.Path.of("fixtures/reference/coin-arithmetic/cases.jsonl")
+      )
+      .linesIterator
+      .filter(_.nonEmpty)
+      .toVector
+    assertEquals(rows.size, 11)
+    rows.foreach { line =>
+      val row = io.circe.parser.parse(line).fold(e => fail(e.message), identity).hcursor
+      val amount = BigInt(row.get[String]("left").fold(e => fail(e.message), identity))
+      val expected = hex(row.get[String]("coinBytes").fold(e => fail(e.message), identity))
+      assertEquals(coin.encodeUnchecked(Coin(amount)), expected)
+      if amount >= 0 && amount < (BigInt(1) << 64) then
+        assertEquals(read(coin, expected), Right(Coin(amount)))
+      else assert(read(coin, expected).isLeft)
+    }
+  }
+
   test("amounts: Coin is written as an Integer and read as a Word64 (Coin.hs:93,111)") {
     val big = (BigInt(1) << 64) - 1
     val c = Coin(big)
