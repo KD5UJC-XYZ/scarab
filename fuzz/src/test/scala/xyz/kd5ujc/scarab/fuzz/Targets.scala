@@ -1645,9 +1645,40 @@ object Targets:
       }
     )
 
+  private val nativeJson: Target =
+    import xyz.kd5ujc.scarab.ledger.json.NativeJson
+    Target(
+      "native-json",
+      () =>
+        scala.util.Using.resource(
+          new java.util.zip.GZIPInputStream(
+            Files.newInputStream(
+              java.nio.file.Path.of("fixtures/reference/native-json/cases.jsonl.gz")
+            )
+          )
+        ) { in =>
+          new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+            .split("\n")
+            .toVector
+            .filter(_.nonEmpty)
+            .map { line =>
+              val json =
+                io.circe.parser.parse(line).fold(e => throw new Violation(e.message), identity)
+              val hex = json.hcursor
+                .get[String]("inputHex")
+                .fold(e => throw new Violation(e.message), identity)
+              Bytes.fromHex(hex).fold(e => throw new Violation(e.toString), _.toArray)
+            }
+        },
+      probe("native-json") { bytes =>
+        seen("native-json", NativeJson.parse(bytes).isRight)
+      }
+    )
+
   val all: Vector[Target] =
     network ++ node ++ ledgerPeers ++ mempackTxOut ++ snapshotMeta ++ snapshotTables ++ sclsFraming ++
       Vector(
         sclsValues,
-        genesisInjections
+        genesisInjections,
+        nativeJson
       ) ++ nativeSnapshots ++ ancillary ++ mithril ++ networkIdentity

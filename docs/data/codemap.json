@@ -16,6 +16,20 @@
   "fuzz": "Structured fuzzing of decoder entry points (test only)"
  },
  "packages": [
+{
+    "module": "ledger",
+    "path": "ledger/json",
+    "responsibility": "Unused strict native raw JSON Value parser, original-token validation and ordered objects",
+    "entryPoints": [
+       "NativeJson"
+    ],
+    "suites": [
+       "NativeJsonSuite"
+    ],
+    "docs": [
+       "docs/compatibility/native-genesis-start.md"
+    ]
+ },
   {
    "module": "blst-native",
    "path": "blst",

@@ -630,6 +630,23 @@
         "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
       ],
       "candidateRequired": true
+    },
+    {
+      "id": "native-strict-json",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "All 302 original JSONTestSuite parsing inputs in aeson 2.2.5.0 plus 48 controls; every raw byte, native admission result and complete accepted Value event stream.",
+      "assertion": "First-wins only after validating every value; directly compare object iteration and unnormalized Scientific coefficient/exponent. All350 cases run on a small-stack thread. Native errors retained, Scala diagnostic text not claimed identical.",
+      "rationale": "Circe admission differs on duplicate choice, original malformed tokens, nesting depth and exponent representation. This unused primitive does not establish genesis loader or field-level conformance.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/497",
+      "resolution": "Keep all upstream inputs and exact native replay; integrate raw genesis loaders and close field-level/order gaps separately.",
+      "evidence": [
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/json/NativeJsonSuite.scala",
+        "fixtures/reference/native-json/README.md",
+        "scripts/oracle/native-json/Main.hs"
+      ],
+      "candidateRequired": true
     }
   ]
 }
