@@ -49,6 +49,9 @@ The only owner-approved network deviations (decisions of 2026-10-25, recorded in
   MurmurHash3 instead of the reference's `hashWithSalt`. Trade-off: the reference's order is keyed by
   a secret random per-node salt, so peers cannot observe the hash function; mirroring it would mean
   reimplementing version- and platform-dependent `hashable` internals.
+- **LocalStateQuery nesting bound** (row 35). A client's query is bounded in nesting depth
+  (32,767); the reference has no bound. Trade-off: it guards the JVM against a stack overflow on a
+  deeply nested query, and it applies to the local socket only.
 
 ## Consequences
 
