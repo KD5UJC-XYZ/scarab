@@ -381,7 +381,8 @@ object Arr:
     else
       at(xs, position)(codec.decode).at(path) match
         case Right(value) => next(Some(value), position + 1)
-        case Left(_)      => next(None, position)
+        case Left(error) =>
+          error.terminal.fold(next(None, position))(terminal => Left(terminal.error))
 
   def exact(n: Node, size: Int): Decoded[Vector[Node]] = n.value match
     case Value.Arr(xs) if xs.size == size => Right(xs)
@@ -494,6 +495,9 @@ final class Alternatives[A](alts: Array[Node => Decoded[A]]):
     while result == null && i < alts.length do
       alts(i)(n) match
         case r @ Right(_) => result = r
-        case Left(e)      => causes = causes :+ e
+        case Left(e) =>
+          e.terminal match
+            case Some(terminal) => result = Left(terminal.error)
+            case None           => causes = causes :+ e
       i += 1
     if result != null then result else Left(DecodeError.at(n, Kind.NoAlternative(causes)))

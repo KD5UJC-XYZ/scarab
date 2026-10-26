@@ -1,0 +1,41 @@
+--- a/scalus-core/shared/src/main/scala/scalus/uplc/UplcParser.scala
++++ b/scalus-core/shared/src/main/scala/scalus/uplc/UplcParser.scala
+@@ -264,9 +264,36 @@
+ 
+     val stringChar: P[Char] = regularChar | escapeSequence
+ 
+-    // Main string literal parser
++    // Plutus 507cab8cf6192e5143f12be5b2d3005a2928dc6d,
++    // plutus-core/plutus-core/src/PlutusCore/Parser/Builtin.hs80-87: conText packs scalars.
++    // Numeric surrogate escapes are replaced before
++    // adjacent tokens are joined, so two escaped surrogate values cannot become one scalar.
++    // Keep the existing character-level helper API; the complete string parser consumes these
++    // scalar tokens instead of truncating numeric escapes to UTF-16 Char.
++    private def scalarToken(value: String, radix: Int): Parser0[String] =
++        val point = BigInt(value, radix)
++        if point > 0x10ffff then P.failWith("character code is out of range")
++        else if point >= 0xd800 && point <= 0xdfff then P.pure("\ufffd")
++        else P.pure(new String(Character.toChars(point.toInt)))
++
++    private val decimalScalar: P[String] =
++        digit.rep(1).flatMap(chars => scalarToken(chars.toList.mkString, 10))
++    private val octalScalar: P[String] =
++        P.char('o') *> P.charIn('0' to '7').rep(1).flatMap(chars => scalarToken(chars.toList.mkString, 8))
++    private val hexadecimalScalar: P[String] =
++        P.char('x') *> hexdig.rep(1).flatMap(chars => scalarToken(chars.toList.mkString, 16))
++    private val scalarEscape: P[String] = P.char('\\') *> (
++      P.char('&').as("") |
++          P.charIn(escapeMap.keys.filterNot(_ == '&')).map(char => escapeMap(char).toString) |
++          asciiMnemonicChar.map(_.toString) | decimalScalar | octalScalar | hexadecimalScalar |
++          controlChar.map(_.toString)
++    )
++    private val scalarStringToken: P[String] = regularChar.map(_.toString) | scalarEscape
++
++    // Main string literal parser. This intentionally does not accept the non-native unicode-u
++    // extension or a multiline string gap; the pinned conText parser rejects both.
+     val stringLiteral: P[String] =
+-        P.char('"') *> stringChar.rep0.map(_.toList.mkString) <* P.char('"')
++        P.char('"') *> scalarStringToken.rep0.map(_.toList.mkString) <* P.char('"')
+ 
+     def conListOf(t: DefaultUni): P[Constant] =
+         symbol("[") *> constantOf(t).repSep0(symbol(",")) <* symbol("]") map { ls =>

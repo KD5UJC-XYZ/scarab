@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "plutusCommit": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+  "oracleImage": "sha256:01961cacb7812313680b6dd5641ddf7ad77c2159d3492d5a7d3b3887274f092b",
+  "textPackage": "text-2.1.3-3792",
+  "observations": 26,
+  "kinds": {
+    "pack": 12,
+    "decode": 5,
+    "parse": 9
+  },
+  "sourceCommit": "5a75611deb72e459710e407eea44a701d7e11930",
+  "sourceWorktreeDirty": true,
+  "sha256": {
+    "observations.jsonl": "07b2bfd98958026d26488a3d782a9d48177fe07f548410fa4d52f747dbcec6e3"
+  },
+  "toolSha256": {
+    "scripts/oracle/plutus/text/Main.hs": "390667b250a6e3e341bcccfe5a76c7ef51643b7b56481de5f5243013307b5d7f"
+  },
+  "command": "cabal exec --offline -v0 -- runghc -package=plutus-core -package=megaparsec -package=aeson /tmp/TextMain.hs",
+  "scope": "Exact scalar values, UTF8 bytes/length, native byte-length measure and literal/UTF8 acceptance. No CEK budget or generic foreign Flat claim."
+}

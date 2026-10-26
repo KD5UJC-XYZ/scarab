@@ -9,6 +9,8 @@ object ScalusPatch {
   private val inputs = Vector(
     "patches/scalus/manifest.json",
     "patches/scalus/cek-hooks.patch",
+    "patches/scalus/native-text-constant.patch",
+    "patches/scalus/native-text-parser.patch",
     "scripts/prepare_scalus.py"
   )
   private val digest = MessageDigest.getInstance("SHA-256")

@@ -14,10 +14,12 @@ import xyz.kd5ujc.scarab.ledger.StorageError
 enum SnapshotFailure extends DomainError:
   case Storage(error: StorageError)
   case Defect(cause: Throwable)
+  case Reconstruction[E <: DomainError](what: String, cause: E) extends SnapshotFailure
 
   def message: String = this match
-    case Storage(error) => error.message
-    case Defect(cause)  => s"$cause"
+    case Storage(error)              => error.message
+    case Defect(cause)               => s"$cause"
+    case Reconstruction(what, cause) => StorageError.Reconstruction(what, cause).message
 
 object SnapshotFailure:
   /** Each snapshot worker/finalizer owns its error scope (ADR0017). Cancellation passes through. */
@@ -28,7 +30,12 @@ object SnapshotFailure:
       .defer {
         Handle
           .allow[StorageError](body.map(_.asRight[SnapshotFailure]))
-          .rescue(error => MonadThrow[F].pure(Left(Storage(error))))
+          .rescue {
+            case StorageError.DecoderDefect(_, cause) => MonadThrow[F].pure(Left(Defect(cause)))
+            case StorageError.Reconstruction(what, cause) =>
+              MonadThrow[F].pure(Left(Reconstruction(what, cause)))
+            case error => MonadThrow[F].pure(Left(Storage(error)))
+          }
       }
       .handleErrorWith {
         case NonFatal(cause) => MonadThrow[F].pure(Left(Defect(cause)))

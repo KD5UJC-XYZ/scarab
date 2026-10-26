@@ -130,7 +130,12 @@ operations no longer raise through the scope that opened the service. The broade
 capability migration is described under G7-F1 below; the snapshot slice alone does not complete it.
 
 `SnapshotFailure.Storage` retains the original `StorageError`, while `SnapshotFailure.Defect`
-retains an unexpected exception. `StorageEvent.SnapshotFailed` carries that value; only the log
+retains an unexpected exception. Native decoder `Internal` failures keep that original exception;
+structured runtime reconstruction failures retain their typed cause as
+`SnapshotFailure.Reconstruction`. Neither is corrupt data: restore stops before trying an older
+snapshot, and a write's read-back failure is reported as a failed operation rather than a format
+refusal. CDDL alternatives and optional fields cannot swallow either terminal decoder outcome.
+Binary decoders retain their existing exception escape to the effect owner. `StorageEvent.SnapshotFailed` carries that value; only the log
 renderer produces text. Format refusals stay `SnapshotRefused`. Existing report-and-replay policy
 is preserved: a failed snapshot does not alter the stored ledger, and the worker frees its busy
 slot so another request can run. Cancellation remains cancellation. Shutdown no longer discards
@@ -170,8 +175,9 @@ and keeps the whole-run handle as a lifetime backstop. Local handling of `NoInte
 same wider error channel, so changing the capability does not change same-connection retry policy.
 
 HTTP state projection, local submission and relay callbacks own their storage scopes.
-`StorageBoundary` preserves a `StorageError` as `Fatal.Storage` and an unexpected exception as
-`Fatal.Defect`. After reporting, the callback waits cancelably for shutdown; it supplies neither a
+`StorageBoundary` preserves an ordinary `StorageError` as `Fatal.Storage` and an unexpected
+exception, including a retained decoder exception, as `Fatal.Defect`. A structured reconstruction
+failure is `Fatal.Internal` with its original typed cause. After reporting, the callback waits cancelably for shutdown; it supplies neither a
 ledger refusal nor peer blame. A streamed store read runs in a scoped producer with a one-element
 queue of typed results. Its scope and iterator remain alive through consumption, and cancellation
 releases both. Mempool `add` and `sync` use the caller's storage capability; their network adapters
