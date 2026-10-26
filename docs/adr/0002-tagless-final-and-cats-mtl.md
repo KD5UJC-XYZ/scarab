@@ -10,8 +10,8 @@ compiler. Effects (network, storage, time) must be swappable for tests and simul
 
 ## Decision
 
-Algebras over `F[_]` at every effect boundary; interpreters chosen in `Main`; `IO` only in `Main`, the
-JSON log and tools. Capabilities through cats-mtl: `Ask`/`Local` for environment, `Stateful` for
+Algebras over `F[_]` at every effect boundary; interpreters chosen in `Main`; `IO` only in `Main`, ~~the
+JSON log~~ and tools ([amended 2026-10-25](#amendment-2026-10-25-the-log-is-not-an-io-exception)). Capabilities through cats-mtl: `Ask`/`Local` for environment, `Stateful` for
 state, `Raise`/`Handle` for typed errors, `Tell` for accumulation. Domain errors are closed ADTs; no
 `Either[String, …]`, no string-based control flow, no exceptions for domain errors. Rules are pure
 functions over values. Type classes with extension syntax, givens, derivation, opaque types and type

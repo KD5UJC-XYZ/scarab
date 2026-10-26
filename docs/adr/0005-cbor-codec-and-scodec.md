@@ -12,9 +12,9 @@ are a separate concern.
 
 ## Decision
 
-CBOR is decoded into our own tree that keeps each item's original bytes, without recursion on the call
+CBOR is ~~decoded into our own tree~~ (superseded by [ADR 0013](0013-cbor-documents-are-an-index-over-the-input.md)) that keeps each item's original bytes, without recursion on the call
 stack, with typed, located errors; the CDDL generator (`models-gen`) targets the same runtime. scodec is
-used only for fixed layouts read once per file or chunk (the Haskell ImmutableDB indices). Per-block and
+used ~~only~~ for fixed layouts read once per file or chunk (the Haskell ImmutableDB indices) ([amended 2026-10-25](#amendment-2026-10-25-scodec-in-scls-interchange): also SCLS interchange). Per-block and
 per-frame paths stay hand-written: measured, scodec was 2 to 24 times slower there (numbers in
 CONTRIBUTING, "Build tooling").
 

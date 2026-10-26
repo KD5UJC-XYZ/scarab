@@ -72,8 +72,9 @@ relevant, the local period and seed state. `ForgeError.KesKey` retains the cause
 loading; `ForgeError.KesEvolution` retains it when advancing the key. Messages are rendered for
 presentation. Key bytes, validation order, erasure and evolution are unchanged.
 
-The rest of the string-error migration is tracked by #82; infrastructure failures and defects of
-the forger remain the separate G7-F3 follow-up in [#180](https://github.com/KD5UJC-XYZ/scarab/issues/180).
+The rest of the string-error migration is tracked by #82; ~~infrastructure failures and defects of
+the forger remain the separate G7-F3 follow-up in [#180](https://github.com/KD5UJC-XYZ/scarab/issues/180).~~
+([Amended 2026-10-25](#amendment-2026-10-25-forger-failures).)
 
 ## Amendment (2026-10-25): forger failures
 

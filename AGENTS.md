@@ -99,7 +99,8 @@ scala code … I love the use of type parameters when I can use them"*.
   implementation-stage labels or unpinned line numbers.
 - An accepted ADR's decision text is not rewritten. A stale example or symbol name may be corrected
   in place; any other correction, and a supersession, goes in a dated "Amendment (YYYY-MM-DD)"
-  section that links what replaced it.
+  section that links what replaced it, and the superseded words in the decision are struck through
+  (`~~…~~`) with a link to that amendment, so a reader sees where they read it that the text is stale.
 - Each policy or fact has one authoritative home (gates in CONTRIBUTING, decisions in ADRs, process
   in [docs/process.md](docs/process.md)); other documents link to it rather than restating it.
 - No volatile facts in static documents: issue state, test counts and "current" versions come from

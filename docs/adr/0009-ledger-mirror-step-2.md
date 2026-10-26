@@ -21,7 +21,7 @@ differential harness that names the block, stage and field of any disagreement, 
 after agreement on the eras fixture, every Preview epoch and a preprod replay; (3) the remaining gaps,
 to byte-equal answers. Small commits with cheap checks inside a jump; the expensive replays once per
 jump. The decisions D1 to D10 of the design document were accepted as recommended, among them: old
-formats kept readable by a frozen `legacy` module (D3); per-era transaction types deferred to #85 (D5);
+~~formats kept readable by a frozen `legacy` module (D3)~~ ([superseded, amended 2026-10-25](#amendment-2026-10-25-d3-and-the-legacy-module)); per-era transaction types deferred to #85 (D5);
 the pool-ranking likelihoods (floats, read only by the wallet API) matched bit for bit if feasible,
 otherwise a documented gap (D9); Haskell's VRF-registry rule adopted, a verdict change confined to
 jump 3 (D10).

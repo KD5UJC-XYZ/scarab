@@ -19,7 +19,7 @@ and reported upstream with reproductions.
 
 ## Consequences
 
-- Plutus conformance is measured continuously (987 of 1,009 cases at the time of writing).
+- Plutus conformance is measured continuously ~~(987 of 1,009 cases at the time of writing)~~ ([amended 2026-10-25](#amendment-2026-10-25-where-the-current-state-is-recorded)).
 - Scalus versions move only with evidence (the conformance suite and the Preview and preprod replays).
 - Owning the evaluator remains an open spike (#43).
 
@@ -36,7 +36,7 @@ and reported upstream with reproductions.
   project ([ADR 0020](0020-plutus-native-crypto-through-scalus-crypto-jni.md)).
 - **Corrections removed with Scalus 1.4.0.** The variant-A Ed25519 costing, the ECDSA
   replacement, the raw-DST `hashToGroup` adapter and the `NewConstitution` context deviation.
-- **Corrections that remain in the wrapper:**
+- **Corrections that remain in the wrapper** (as of 2026-10-23; not maintained here, see the [amendment of 2026-10-25](#amendment-2026-10-25-where-the-current-state-is-recorded)):
   - `DataSerialiser` (`serialiseData`);
   - `WideIndices`;
   - `ScarabProgramView`;
