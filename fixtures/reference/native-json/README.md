@@ -7,7 +7,9 @@ in that exact package archive is included. The `y_`, `n_` and `i_` filename cate
 expected behavior: the captured native result does. The remaining 48 source-derived controls cover
 duplicate aliases, invalid original UTF-8/scalars in overwritten values, strict grammar/EOF,
 Scientific exponent wrap and coefficient representation, Unicode key order and 20,000-level depth.
-Original upstream payload hashes and archive members are retained in [provenance](provenance.json).
+Each original upstream case retains its archive member (`sourceMember`) and original payload hash
+(`sha256`) in the [case corpus](cases.jsonl.gz). The [provenance](provenance.json) records the archive
+identity and the `upstream/` case-name mapping; the 302 identity records have one source of truth.
 JSONTestSuite's [MIT license](JSONTestSuite-LICENSE) is retained without alteration.
 
 Every accepted Value is observed by a complete flat event stream, avoiding deep recursive printing
