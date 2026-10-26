@@ -211,7 +211,7 @@ object LedgerMirror:
 
     private def hash[R <: KeyRole](b: Bytes): F[KeyHash[R]] = vocab(KeyHash.fromBytes[R](b))
     private def vrfHash(b: Bytes): F[VRFVerKeyHash] = vocab(VRFVerKeyHash.fromBytes(b))
-    private def coin(n: BigInt): F[Coin] = vocab(Coin.fromBigInt(n))
+    private def coin(n: BigInt): F[Coin] = Coin(n).pure[F]
     private def compact(n: BigInt): F[CompactCoin] = vocab(CompactCoin.fromBigInt(n))
 
     private def cred[R <: KeyRole](c: node.Credential): F[Credential[R]] = c match

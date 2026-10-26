@@ -229,11 +229,7 @@ object MirrorLaws:
               .pd[E]
               .modify(d =>
                 d.copy(totalActiveStake =
-                  Coin
-                    .fromBigInt(d.totalActiveStake.value.value + 1)
-                    .flatMap(NonZero.from(_))
-                    .toOption
-                    .get
+                  NonZero.from(Coin(d.totalActiveStake.value.value + 1)).toOption.get
                 )
               )(
                 i.nes

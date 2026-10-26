@@ -367,8 +367,8 @@ object ShelleyUtxo:
       val created = body.outputs.zipWithIndex.map { (out, i) => TxIn(id, i) -> out }
       for
         next <- ShelleyInstantStakeOps.update(stake, body.outputs, inOrder(body.inputs))
-        deposited <- Coin.fromBigInt(s.deposited.value + deposits - refunds)
-        fees <- Coin.fromBigInt(s.fees.value + body.fee)
+        deposited = Coin(s.deposited.value + deposits - refunds)
+        fees = Coin(s.fees.value + body.fee)
       yield pre.instantStake.replace(next)(
         s.copy[E](
           utxo = UtxoTables(utxo -- body.inputs ++ created),
@@ -384,7 +384,7 @@ object ShelleyUtxo:
           returned.map(_._2),
           inOrder(body.collateral)
         )
-        fees <- Coin.fromBigInt(s.fees.value + collateral.fee)
+        fees = Coin(s.fees.value + collateral.fee)
       yield pre.instantStake.replace(next)(
         s.copy[E](utxo = UtxoTables(utxo -- body.collateral ++ returned), fees = fees)
       )

@@ -15,7 +15,7 @@ private[ntc] object WalletQueryCases extends munit.Assertions:
   private def checked[A](r: Either[VocabError, A]): A = r.fold(e => fail(e.toString), identity)
   private def hash[R <: KeyRole](n: Int): KeyHash[R] =
     checked(KeyHash.fromBytes[R](Bytes(Vector.fill(28)(n.toByte))))
-  private def coin(n: BigInt): Coin = checked(Coin.fromBigInt(n))
+  private def coin(n: BigInt): Coin = Coin(n)
   private def compact(n: BigInt): CompactCoin = checked(CompactCoin.fromBigInt(n))
   private val owners = Vector.tabulate(4)(i => hash[Staking](i + 20))
   val credentials: Vector[Either[BigInt, NodeCredential]] = Vector(

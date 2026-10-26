@@ -60,10 +60,9 @@ object LegacySeed:
         for
           pool <- placeholder
           rewards <- amounts.toList.traverse { (c, n) =>
-            (
-              xyz.kd5ujc.scarab.ledger.rules.Convert.credential[Staking](c),
-              Coin.fromBigInt(n).map(Reward(RewardType.MemberReward, pool, _))
-            ).tupled
+            xyz.kd5ujc.scarab.ledger.rules.Convert
+              .credential[Staking](c)
+              .map(_ -> Reward(RewardType.MemberReward, pool, Coin(n)))
           }
         yield nes.copy(ru =
           Some(

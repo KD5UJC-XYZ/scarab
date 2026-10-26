@@ -202,7 +202,7 @@ class WalletPeerReferenceSuite extends FunSuite:
   private def facts(nes: NewEpochState[Conway]): ConwayFacts =
     new ConwayFacts(new MirrorEraRead(nes)(using ShelleyBasedEra.SConway))
   private def coin(value: BigInt): xyz.kd5ujc.scarab.ledger.state.Coin =
-    xyz.kd5ujc.scarab.ledger.state.Coin.fromBigInt(value).fold(e => fail(e.toString), identity)
+    xyz.kd5ujc.scarab.ledger.state.Coin(value)
 
   private def result(nes: NewEpochState[Conway], query: LedgerQuery): Either[Unanswered, Bytes] =
     val view = rich.view.copy(state = rich.state.copy(nes = nes))
