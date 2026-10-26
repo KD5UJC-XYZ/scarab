@@ -1,38 +1,135 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import xyz.kd5ujc.scarab.legacy.*
-import xyz.kd5ujc.scarab.codec.Rational
-import xyz.kd5ujc.scarab.plutus.ExUnits
-import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.Bytes
 import munit.FunSuite
-import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
+import xyz.kd5ujc.scarab.crypto.Blake2b
+import xyz.kd5ujc.scarab.ledger.rules.{
+  Convert,
+  Counted,
+  EraNes,
+  InstantStakeOps,
+  Invariants,
+  NativeRules
+}
+import xyz.kd5ujc.scarab.ledger.state as native
+import xyz.kd5ujc.scarab.ledger.state.{
+  Build,
+  ColdCommittee,
+  CommitteeAuthorization,
+  CompactCoin,
+  Conway,
+  ConwayAccountState,
+  ConwayGovState,
+  ConwayInstantStake,
+  ConwayNewEpochState,
+  DRepRole,
+  EpochNo,
+  HotCommittee,
+  NewEpochState,
+  ShelleyBasedEra,
+  Sorted,
+  Staking,
+  VocabError
+}
+import xyz.kd5ujc.scarab.plutus.ExUnits
 
 import TestLedger.*
 
 /** The Conway transaction rules that are not about governance: scripts, minting, reference-script
-  * fees, collateral, treasury fields.
+  * fees, collateral, treasury fields, on the native Conway state. Every transaction the rules
+  * accept leaves a state whose pools list exactly the accounts that delegate to them, whose deposit
+  * pot is the obligation, and whose instant stake is the UTxO's.
   */
 class ConwayRulesSuite extends FunSuite:
-  private val rs = RuleSet
+  private type Nes = NewEpochState[Conway]
+
   private val alice = key()
   private val bob = key()
   private val ada = BigInt(1000000)
 
-  private def conway: LedgerState =
-    state(10, Vector.empty).copy(params =
-      params(10).copy(
-        minFeeRefScriptCostPerByte = Rational(15),
-        costModels = Map(0 -> Vector(1, 2, 3), 1 -> Vector(4, 5, 6, 7), 2 -> Vector(8, 9))
-      )
+  private val conwayParams: ProtocolParams =
+    params(10).copy(
+      minFeeRefScriptCostPerByte = Rational(15),
+      costModels = Map(0 -> Vector(1, 2, 3), 1 -> Vector(4, 5, 6, 7), 2 -> Vector(8, 9))
     )
 
-  private def withUtxo(s: LedgerState, outs: Vector[(TxIn, TxOut)]): LedgerState =
-    val utxo = s.utxo ++ outs
-    s.copy(utxo = utxo, reserves = Supply - utxo.valuesIterator.map(_.value.coin).sum)
+  private def ok[A](v: Either[VocabError, A]): A = v.fold(e => fail(e.toString), identity)
 
-  private def rule(r: Either[LedgerFailure, LedgerState]): String = r match
+  /** An empty Conway chain in epoch 5 with `pp` in force, `funds` as its UTxO set and the reserves
+    * what makes the total [[Supply]] ([[NativeRules.stateIn]] with parameters of the test's own).
+    */
+  private def conway(funds: Vector[(TxIn, TxOut)], pp: ProtocolParams = conwayParams): Nes =
+    val nes = Build.funded(Build.nes[Conway](5, pp), funds.toMap)
+    ConwayNewEpochState.reserves.replace(ok(native.Coin.fromBigInt(Supply - utxo(nes).coin)))(nes)
+
+  /** `nes` with the account of `c` registered, holding `balance` and `deposit`, delegating its vote
+    * to `drep`; the deposit pot holds the deposit and the reserves pay for both.
+    */
+  private def withAccount(
+      nes: Nes,
+      c: Credential,
+      balance: BigInt,
+      deposit: BigInt,
+      drep: Option[DRep] = None
+  ): Nes =
+    val account = ConwayAccountState(
+      ok(CompactCoin.fromBigInt(balance)),
+      ok(CompactCoin.fromBigInt(deposit)),
+      None,
+      drep.map(d => ok(Convert.drep(d)))
+    )
+    val accounts =
+      ConwayNewEpochState.accounts.modify(a =>
+        a.copy(states = a.states.updated(ok(Convert.credential[Staking](c)), account))
+      )(nes)
+    paid(accounts, deposit, balance)
+
+  /** `nes` with `deposit` more in the deposit pot and `deposit + balance` less in the reserves. */
+  private def paid(nes: Nes, deposit: BigInt, balance: BigInt): Nes =
+    val ls = nes.es.ls
+    val deposited = ok(native.Coin.fromBigInt(ls.utxo.deposited.value + deposit))
+    val withPot = nes.copy(es =
+      nes.es.copy(ls = ls.copy[Conway](utxo = ls.utxo.copy[Conway](deposited = deposited)))
+    )
+    ConwayNewEpochState.reserves.modify(r =>
+      ok(native.Coin.fromBigInt(r.value - deposit - balance))
+    )(withPot)
+
+  private def utxo(nes: Nes): Utxo = nes.es.ls.utxo.utxo.utxo
+
+  /** Every lovelace of the state: the UTxO, the pots, the deposits and the reward balances. */
+  private def total(nes: Nes): BigInt =
+    val u = nes.es.ls.utxo
+    utxo(nes).coin + u.fees.value + u.deposited.value + u.donation.value +
+      nes.es.chainAccount.treasury.value + nes.es.chainAccount.reserves.value +
+      nes.es.ls.cert.dState.accounts.states.valuesIterator.map(_.balance.toBigInt).sum
+
+  private def inConway(e: EraNes): Nes = e match
+    case i: EraNes.InEra[x] =>
+      NewEpochState
+        .retype(i.era, ShelleyBasedEra.SConway)(i.nes)
+        .getOrElse(fail(s"the state is in ${i.era}, not in Conway"))
+
+  /** What a state the rules accepted must hold: the pools list the accounts that delegate to them,
+    * the deposit pot is the obligation, and the instant stake is the one of the UTxO.
+    */
+  private def checked(nes: Nes): Nes =
+    val ls = nes.es.ls
+    assertEquals(Invariants.poolDelegators(ls.cert), Vector.empty)
+    assertEquals(ls.utxo.deposited.value, NativeRules.obligation(nes))
+    val stake = InstantStakeOps.update(
+      ConwayInstantStake(Sorted.empty),
+      utxo(nes).valuesIterator.toVector,
+      Nil
+    )
+    assertEquals(ls.utxo.instantStake, ok(stake))
+    nes
+
+  private def run(s: Nes, t: Tx, ctx: TxEnv = env): Either[LedgerFailure, Counted[Nes]] =
+    NativeRules.txIn[Conway](s, t, ctx).map(c => Counted(checked(c.state), c.plutus))
+
+  private def rule(r: Either[LedgerFailure, ?]): String = r match
     case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
     case Left(other)                        => other.message
     case Right(_)                           => "accepted"
@@ -61,7 +158,7 @@ class ConwayRulesSuite extends FunSuite:
       Some(NativeScript.Sig(alice.hash))
     )
     val in = txIn(1)
-    val s = withUtxo(conway, Vector(in -> out(alice.address(), 100 * ada)))
+    val s = conway(Vector(in -> out(alice.address(), 100 * ada)))
     val token = Map(policy.hash -> Map(Bytes(Vector(0x61)) -> BigInt(5)))
     val minted = TxOut(bob.address(), Value(10 * ada, token))
     def tryMint(signers: Vector[Key], scripts: Vector[Script]) =
@@ -72,7 +169,7 @@ class ConwayRulesSuite extends FunSuite:
         200,
         mint = token
       )
-      rule(rs.tx(s, tx(b, signers, Witnesses(Vector.empty, scripts = scripts)), env))
+      rule(run(s, tx(b, signers, Witnesses(Vector.empty, scripts = scripts))))
     assertEquals(tryMint(Vector(alice), Vector(policy)), "accepted")
     assertEquals(tryMint(Vector(alice), Vector.empty), "MissingScriptWitnessesUTXOW")
     assertEquals(tryMint(Vector(bob), Vector(policy)), "MissingVKeyWitnessesUTXOW")
@@ -92,7 +189,7 @@ class ConwayRulesSuite extends FunSuite:
     val name = Bytes(Vector(0x62))
     val have = Map(policy.hash -> Map(name -> BigInt(9)))
     val in = txIn(1)
-    val s = withUtxo(conway, Vector(in -> TxOut(alice.address(), Value(100 * ada, have))))
+    val s = conway(Vector(in -> TxOut(alice.address(), Value(100 * ada, have))))
     val burn = Map(policy.hash -> Map(name -> BigInt(-4)))
     val b = body(
       "burn",
@@ -103,8 +200,7 @@ class ConwayRulesSuite extends FunSuite:
       200,
       mint = burn
     )
-    val result =
-      rs.tx(s, tx(b, Vector(alice), Witnesses(Vector.empty, scripts = Vector(policy))), env)
+    val result = run(s, tx(b, Vector(alice), Witnesses(Vector.empty, scripts = Vector(policy))))
     assertEquals(rule(result), "accepted")
     val unbalanced = body(
       "burn2",
@@ -115,11 +211,7 @@ class ConwayRulesSuite extends FunSuite:
     )
     assertEquals(
       rule(
-        rs.tx(
-          s,
-          tx(unbalanced, Vector(alice), Witnesses(Vector.empty, scripts = Vector(policy))),
-          env
-        )
+        run(s, tx(unbalanced, Vector(alice), Witnesses(Vector.empty, scripts = Vector(policy))))
       ),
       "ValueNotConservedUTxO"
     )
@@ -130,12 +222,9 @@ class ConwayRulesSuite extends FunSuite:
     val ref = txIn(2)
     val script = outputWithScript(bob.address(), 5 * ada, 30000)
     assertEquals(script.referenceScriptSize, 30000)
-    val s = withUtxo(
-      conway,
-      Vector(spend -> out(alice.address(), 100 * ada), ref -> script)
-    )
+    val s = conway(Vector(spend -> out(alice.address(), 100 * ada), ref -> script))
     val extra = BigInt(25600) * 15 + BigInt(4400) * 18
-    def run(fee: BigInt) =
+    def attempt(fee: BigInt) =
       val b = body(
         "ref",
         Vector(spend),
@@ -143,21 +232,21 @@ class ConwayRulesSuite extends FunSuite:
         fee,
         referenceInputs = Vector(ref)
       )
-      rule(rs.tx(s, tx(b, Vector(alice)), env))
-    assertEquals(run(200), "FeeTooSmallUTxO")
-    assertEquals(run(200 + extra - 1), "FeeTooSmallUTxO")
-    assertEquals(run(200 + extra), "accepted")
+      rule(run(s, tx(b, Vector(alice))))
+    assertEquals(attempt(200), "FeeTooSmallUTxO")
+    assertEquals(attempt(200 + extra - 1), "FeeTooSmallUTxO")
+    assertEquals(attempt(200 + extra), "accepted")
   }
 
   test("a transaction may use at most 200 KiB of reference scripts") {
     val spend = txIn(1)
     val refs = Vector(txIn(2), txIn(3))
-    val s = withUtxo(
-      conway.copy(params = conway.params.copy(minFeeRefScriptCostPerByte = Rational.zero)),
+    val s = conway(
       Vector(spend -> out(alice.address(), 100 * ada)) ++
-        refs.map(_ -> outputWithScript(bob.address(), 5 * ada, 104 * 1024))
+        refs.map(_ -> outputWithScript(bob.address(), 5 * ada, 104 * 1024)),
+      conwayParams.copy(minFeeRefScriptCostPerByte = Rational.zero)
     )
-    def run(referenceInputs: Vector[TxIn]) =
+    def attempt(referenceInputs: Vector[TxIn]) =
       val b = body(
         "refs",
         Vector(spend),
@@ -165,14 +254,14 @@ class ConwayRulesSuite extends FunSuite:
         200,
         referenceInputs = referenceInputs
       )
-      rule(rs.tx(s, tx(b, Vector(alice)), env))
-    assertEquals(run(refs.take(1)), "accepted")
-    assertEquals(run(refs), "ConwayTxRefScriptsSizeTooBig")
+      rule(run(s, tx(b, Vector(alice))))
+    assertEquals(attempt(refs.take(1)), "accepted")
+    assertEquals(attempt(refs), "ConwayTxRefScriptsSizeTooBig")
   }
 
   test("an input may not also be a reference input before protocol version 11") {
     val spend = txIn(1)
-    val s = withUtxo(conway, Vector(spend -> out(alice.address(), 100 * ada)))
+    val funds = Vector(spend -> out(alice.address(), 100 * ada))
     val b = body(
       "overlap",
       Vector(spend),
@@ -180,9 +269,9 @@ class ConwayRulesSuite extends FunSuite:
       200,
       referenceInputs = Vector(spend)
     )
-    assertEquals(rule(rs.tx(s, tx(b, Vector(alice)), env)), "BabbageNonDisjointRefInputs")
-    val later = s.copy(params = s.params.copy(protocolMajor = 11))
-    assertEquals(rule(rs.tx(later, tx(b, Vector(alice)), env)), "accepted")
+    assertEquals(rule(run(conway(funds), tx(b, Vector(alice)))), "BabbageNonDisjointRefInputs")
+    val later = conway(funds, conwayParams.copy(protocolMajor = 11))
+    assertEquals(rule(run(later, tx(b, Vector(alice)))), "accepted")
   }
 
   test(
@@ -196,10 +285,9 @@ class ConwayRulesSuite extends FunSuite:
       .copy(datum = Datum.Hash(Blake2b.hash256.hash(datum)))
     val collateralIn = txIn(2)
     val lockedIn = txIn(3)
-    val s = withUtxo(
-      conway,
-      Vector(collateralIn -> out(alice.address(), 100 * ada), lockedIn -> locked)
-    )
+    val funds = Vector(collateralIn -> out(alice.address(), 100 * ada), lockedIn -> locked)
+    val pp = conwayParams
+    val s = conway(funds, pp)
     val units = ExUnits(1000, 1000000)
     // `{ [0, 0] : [1, [1000, 1000000]] }` and `[ 1 ]`
     val wits = Witnesses(
@@ -215,8 +303,8 @@ class ConwayRulesSuite extends FunSuite:
       ),
       datumsRaw = Some(Bytes(Vector(0x81, 0x01).map(_.toByte)))
     )
-    val fee = BigInt(100 + 100) + (s.params.priceMem * Rational(1000) +
-      s.params.priceSteps * Rational(1000000)).ceil
+    val fee = BigInt(100 + 100) + (pp.priceMem * Rational(1000) +
+      pp.priceSteps * Rational(1000000)).ceil
     def bodyWith(hash: Option[Bytes], collateral: Vector[TxIn] = Vector(collateralIn)) =
       body(
         "v3",
@@ -228,17 +316,17 @@ class ConwayRulesSuite extends FunSuite:
       )
     val hash = ScriptIntegrity.hash(
       tx(bodyWith(None), Vector(alice), wits),
-      s.params,
+      pp,
       Set(ScriptKind.PlutusV3)
     )
     val b = bodyWith(hash)
-    def run(
+    def attempt(
         succeeds: Boolean,
         isValid: Boolean,
         body: TxBody = b,
-        state: LedgerState = s
+        state: Nes = s
     ) =
-      rs.tx(
+      run(
         state,
         tx(body, Vector(alice), wits, isValid = isValid),
         env.copy(
@@ -246,38 +334,43 @@ class ConwayRulesSuite extends FunSuite:
           decoder = xyz.kd5ujc.scarab.plutus.ScriptDecoder.lenient
         )
       )
-    val valid = run(succeeds = true, isValid = true).fold(f => fail(f.message), identity)
+    val valid = attempt(succeeds = true, isValid = true).fold(f => fail(f.message), identity)
     assertEquals((valid.plutus.succeeded, valid.plutus.failed), (1L, 0L))
-    assertEquals(valid.total, Supply)
-    val failed = run(succeeds = false, isValid = false).fold(f => fail(f.message), identity)
-    assert(!failed.utxo.contains(collateralIn) && failed.utxo.contains(lockedIn))
-    assertEquals(failed.total, Supply)
-    assertEquals(rule(run(succeeds = false, isValid = true)), "ValidationTagMismatch")
-    assertEquals(rule(run(succeeds = true, isValid = false)), "ValidationTagMismatch")
+    assertEquals(total(valid.state), Supply)
+    val failed = attempt(succeeds = false, isValid = false).fold(f => fail(f.message), identity)
+    assert(!utxo(failed.state).contains(collateralIn) && utxo(failed.state).contains(lockedIn))
+    assertEquals(total(failed.state), Supply)
+    assertEquals(rule(attempt(succeeds = false, isValid = true)), "ValidationTagMismatch")
+    assertEquals(rule(attempt(succeeds = true, isValid = false)), "ValidationTagMismatch")
     // the hash is over the redeemers exactly as they were sent
     assertEquals(
       rule(
-        run(succeeds = true, isValid = true, bodyWith(Some(Blake2b.hash256.hash(Bytes(Vector(1))))))
+        attempt(
+          succeeds = true,
+          isValid = true,
+          bodyWith(Some(Blake2b.hash256.hash(Bytes(Vector(1)))))
+        )
       ),
       "PPViewHashesDontMatch"
     )
     // from protocol version 11 the mismatch is ScriptIntegrityHashMismatch with the same pair and
     // the bytes the expected hash is taken over (Alonzo/Rules/Utxow.hs, checkScriptIntegrityHash)
-    val at11 = s.copy(params = s.params.copy(protocolMajor = 11))
+    val pp11 = pp.copy(protocolMajor = 11)
+    val at11 = conway(funds, pp11)
     val wrong = Blake2b.hash256.hash(Bytes(Vector(1)))
     val preimage = ScriptIntegrity.preimage(
       tx(bodyWith(None), Vector(alice), wits),
-      at11.params,
+      pp11,
       Set(ScriptKind.PlutusV3)
     )
     val expected = ScriptIntegrity.hash(
       tx(bodyWith(None), Vector(alice), wits),
-      at11.params,
+      pp11,
       Set(ScriptKind.PlutusV3)
     )
     assert(preimage.isDefined)
     assertEquals(
-      run(succeeds = true, isValid = true, bodyWith(Some(wrong)), at11).left.map {
+      attempt(succeeds = true, isValid = true, bodyWith(Some(wrong)), at11).left.map {
         case LedgerFailure.Rejected(_, f) => f
         case other                        => fail(other.message)
       },
@@ -289,7 +382,7 @@ class ConwayRulesSuite extends FunSuite:
     )
     // a script without collateral
     assertEquals(
-      rule(run(succeeds = true, isValid = true, bodyWith(hash, Vector.empty))),
+      rule(attempt(succeeds = true, isValid = true, bodyWith(hash, Vector.empty))),
       "NoCollateralInputs"
     )
   }
@@ -303,13 +396,10 @@ class ConwayRulesSuite extends FunSuite:
     val collateralIn = txIn(2)
     val lockedIn = txIn(3)
     val other = txIn(4)
-    val base = withUtxo(
-      conway,
-      Vector(
-        collateralIn -> out(alice.address(), 100 * ada),
-        lockedIn -> locked,
-        other -> out(alice.address(), 5 * ada)
-      )
+    val funds = Vector(
+      collateralIn -> out(alice.address(), 100 * ada),
+      lockedIn -> locked,
+      other -> out(alice.address(), 5 * ada)
     )
     val units = ExUnits(1000, 1000000)
     val wits = Witnesses(
@@ -323,8 +413,8 @@ class ConwayRulesSuite extends FunSuite:
         )
       )
     )
-    val fee = BigInt(100 + 100) + (base.params.priceMem * Rational(1000) +
-      base.params.priceSteps * Rational(1000000)).ceil
+    val fee = BigInt(100 + 100) + (conwayParams.priceMem * Rational(1000) +
+      conwayParams.priceSteps * Rational(1000000)).ceil
     def bodyWith(hash: Option[Bytes], refs: Vector[TxIn]) =
       body(
         "v3-refs",
@@ -337,14 +427,14 @@ class ConwayRulesSuite extends FunSuite:
       )
     val hash = ScriptIntegrity.hash(
       tx(bodyWith(None, Vector.empty), Vector(alice), wits),
-      base.params,
+      conwayParams,
       Set(ScriptKind.PlutusV3)
     )
-    def run(protocol: Int, refs: Vector[TxIn]) =
+    def attempt(protocol: Int, refs: Vector[TxIn]) =
       // the placeholder script is not well-formed UPLC; this test is about reference inputs
       rule(
-        rs.tx(
-          base.copy(params = base.params.copy(protocolMajor = protocol)),
+        run(
+          conway(funds, conwayParams.copy(protocolMajor = protocol)),
           tx(bodyWith(hash, refs), Vector(alice), wits),
           env.copy(
             evaluator = scripted(true),
@@ -353,11 +443,11 @@ class ConwayRulesSuite extends FunSuite:
         )
       )
     // the input is also a reference input: refused by the UTXO rule up to 10, by the V3 script context at 11
-    assertEquals(run(10, Vector(lockedIn)), "BabbageNonDisjointRefInputs")
-    assertEquals(run(11, Vector(lockedIn)), "CollectErrors")
+    assertEquals(attempt(10, Vector(lockedIn)), "BabbageNonDisjointRefInputs")
+    assertEquals(attempt(11, Vector(lockedIn)), "CollectErrors")
     // disjoint reference inputs are fine at both
-    assertEquals(run(10, Vector(other)), "accepted")
-    assertEquals(run(11, Vector(other)), "accepted")
+    assertEquals(attempt(10, Vector(other)), "accepted")
+    assertEquals(attempt(11, Vector(other)), "accepted")
   }
 
   test(
@@ -369,14 +459,12 @@ class ConwayRulesSuite extends FunSuite:
       Some(NativeScript.Sig(alice.hash))
     )
     val in = txIn(1)
-    val base = withUtxo(conway, Vector(in -> out(alice.address(), 100 * ada)))
-    val s = base.copy(
-      accounts = Map(Credential.Script(script.hash) -> Account(5 * ada, 2 * ada, None, None)),
-      deposited = 2 * ada,
-      reserves = base.reserves - 7 * ada
-    )
+    val funds = Vector(in -> out(alice.address(), 100 * ada))
+    def world(pp: ProtocolParams) =
+      withAccount(conway(funds, pp), Credential.Script(script.hash), 5 * ada, 2 * ada)
+    val s = world(conwayParams)
     val account = RewardAccount(0, Credential.Script(script.hash))
-    def run(amount: BigInt, scripts: Vector[Script], state: LedgerState = s) =
+    def attempt(amount: BigInt, scripts: Vector[Script], state: Nes = s) =
       val b = body(
         "wd",
         Vector(in),
@@ -384,26 +472,27 @@ class ConwayRulesSuite extends FunSuite:
         200,
         withdrawals = Map(account -> amount)
       )
-      rule(rs.tx(state, tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts)), env))
-    assertEquals(run(5 * ada, Vector(script)), "accepted")
-    assertEquals(run(5 * ada, Vector.empty), "MissingScriptWitnessesUTXOW")
+      rule(run(state, tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts))))
+    assertEquals(attempt(5 * ada, Vector(script)), "accepted")
+    assertEquals(attempt(5 * ada, Vector.empty), "MissingScriptWitnessesUTXOW")
     // up to protocol version 10 the CERTS rule reports a withdrawal that does not drain the
     // account; from 11 the LEDGER rule names it ConwayIncompleteWithdrawals
-    assertEquals(run(4 * ada, Vector(script)), "WithdrawalsNotInRewardsCERTS")
-    val v11 = s.copy(params = s.params.copy(protocolMajor = 11))
-    assertEquals(run(4 * ada, Vector(script), v11), "ConwayIncompleteWithdrawals")
+    assertEquals(attempt(4 * ada, Vector(script)), "WithdrawalsNotInRewardsCERTS")
+    val v11 = world(conwayParams.copy(protocolMajor = 11))
+    assertEquals(attempt(4 * ada, Vector(script), v11), "ConwayIncompleteWithdrawals")
   }
 
   test("withdrawals from key accounts need a DRep delegation from protocol version 10") {
     val staker = key()
     val in = txIn(1)
-    val base = withUtxo(conway, Vector(in -> out(alice.address(), 100 * ada)))
+    val funds = Vector(in -> out(alice.address(), 100 * ada))
     def world(drep: Option[DRep], pv: Int) =
-      base.copy(
-        params = base.params.copy(protocolMajor = pv),
-        accounts = Map(staker.credential -> Account(3 * ada, 2 * ada, None, drep)),
-        deposited = 2 * ada,
-        reserves = base.reserves - 5 * ada
+      withAccount(
+        conway(funds, conwayParams.copy(protocolMajor = pv)),
+        staker.credential,
+        3 * ada,
+        2 * ada,
+        drep
       )
     val b = body(
       "wd",
@@ -412,21 +501,23 @@ class ConwayRulesSuite extends FunSuite:
       200,
       withdrawals = Map(RewardAccount(0, staker.credential) -> (3 * ada))
     )
-    def run(s: LedgerState) = rule(rs.tx(s, tx(b, Vector(alice, staker)), env))
-    assertEquals(run(world(None, 9)), "accepted")
-    assertEquals(run(world(None, 10)), "ConwayWdrlNotDelegatedToDRep")
-    assertEquals(run(world(Some(DRep.AlwaysAbstain), 10)), "accepted")
+    def attempt(s: Nes) = rule(run(s, tx(b, Vector(alice, staker))))
+    assertEquals(attempt(world(None, 9)), "accepted")
+    assertEquals(attempt(world(None, 10)), "ConwayWdrlNotDelegatedToDRep")
+    assertEquals(attempt(world(Some(DRep.AlwaysAbstain), 10)), "accepted")
   }
 
   test("governance fields are checked: wrong deposit, unknown return account, unknown voter") {
     val in = txIn(1)
-    val s0 = withUtxo(conway, Vector(in -> out(alice.address(), 10000 * ada)))
     val staker = key()
-    val s = s0.copy(
-      params = s0.params.copy(govActionDeposit = 100 * ada),
-      accounts = Map(staker.credential -> Account(0, 2 * ada, None, None)),
-      deposited = 2 * ada,
-      reserves = s0.reserves - 2 * ada
+    val s = withAccount(
+      conway(
+        Vector(in -> out(alice.address(), 10000 * ada)),
+        conwayParams.copy(govActionDeposit = 100 * ada)
+      ),
+      staker.credential,
+      0,
+      2 * ada
     )
     def propose(deposit: BigInt, account: Credential) =
       val p = Proposal(deposit, RewardAccount(0, account), GovAction.Info)
@@ -437,7 +528,7 @@ class ConwayRulesSuite extends FunSuite:
         200,
         proposals = Vector(p)
       )
-      rule(rs.tx(s, tx(b, Vector(alice)), env))
+      rule(run(s, tx(b, Vector(alice))))
     assertEquals(propose(100 * ada, staker.credential), "accepted")
     assertEquals(propose(99 * ada, staker.credential), "ProposalDepositIncorrect")
     assertEquals(propose(100 * ada, bob.credential), "ProposalReturnAccountDoesNotExist")
@@ -449,41 +540,51 @@ class ConwayRulesSuite extends FunSuite:
       200,
       votes = Vector(Voter.DRepVoter(bob.credential) -> Vector(ghost -> Vote.Yes))
     )
-    assertEquals(rule(rs.tx(s, tx(vote, Vector(alice, bob)), env)), "VotersDoNotExist")
+    assertEquals(rule(run(s, tx(vote, Vector(alice, bob)))), "VotersDoNotExist")
   }
 
   test("committee certificates: unknown members and resigned members are refused") {
     val cold = key()
     val hot = key()
     val in = txIn(1)
-    val s0 = withUtxo(conway, Vector(in -> out(alice.address(), 100 * ada)))
-    val member = s0.copy(gov =
-      s0.gov.copy(committee = Some(Committee(Map(cold.credential -> BigInt(100)), Rational(1, 2))))
-    )
-    def run(s: LedgerState, cert: Certificate, signer: Key) =
-      val spend = s.utxo.keys.head
-      val coin = s.utxo.get(spend).map(_.value.coin).getOrElse(fail("spent input not in the UTxO"))
+    val s0 = conway(Vector(in -> out(alice.address(), 100 * ada)))
+    val member = ConwayNewEpochState.gov
+      .andThen(ConwayGovState.committee)
+      .replace(Some(Committee(Map(cold.credential -> BigInt(100)), Rational(1, 2))))(s0)
+    val coldCredential = ok(Convert.credential[ColdCommittee](cold.credential))
+    val hotCredential = ok(Convert.credential[HotCommittee](hot.credential))
+    def authorization(s: Nes) = s.es.ls.cert.vState.committeeState.creds.get(coldCredential)
+    def attempt(s: Nes, cert: Certificate, signer: Key) =
+      val (spend, spent) = utxo(s).iterator.nextOption().getOrElse(fail("the UTxO is empty"))
       val b = body(
         "cc",
         Vector(spend),
-        Vector(out(alice.address(), coin - 200)),
+        Vector(out(alice.address(), spent.value.coin - 200)),
         200,
         certificates = Vector(cert)
       )
-      rs.tx(s, tx(b, Vector(alice, signer)), env)
+      run(s, tx(b, Vector(alice, signer))).map(_.state)
     assertEquals(
-      rule(run(s0, Certificate.CommitteeAuthorize(cold.credential, hot.credential), cold)),
+      rule(attempt(s0, Certificate.CommitteeAuthorize(cold.credential, hot.credential), cold)),
       "ConwayCommitteeIsUnknown"
     )
     val authorised =
-      run(member, Certificate.CommitteeAuthorize(cold.credential, hot.credential), cold)
+      attempt(member, Certificate.CommitteeAuthorize(cold.credential, hot.credential), cold)
         .fold(f => fail(f.message), identity)
-    assertEquals(authorised.committeeState(cold.credential), CommitteeAuth.Hot(hot.credential))
-    val resigned = run(authorised, Certificate.CommitteeResign(cold.credential, None), cold)
-      .fold(f => fail(f.message), identity)
-    assertEquals(resigned.committeeState(cold.credential), CommitteeAuth.Resigned(None))
     assertEquals(
-      rule(run(resigned, Certificate.CommitteeAuthorize(cold.credential, hot.credential), cold)),
+      authorization(authorised),
+      Some(CommitteeAuthorization.CommitteeHotCredential(hotCredential))
+    )
+    val resigned = attempt(authorised, Certificate.CommitteeResign(cold.credential, None), cold)
+      .fold(f => fail(f.message), identity)
+    assertEquals(
+      authorization(resigned),
+      Some(CommitteeAuthorization.CommitteeMemberResigned(None))
+    )
+    assertEquals(
+      rule(
+        attempt(resigned, Certificate.CommitteeAuthorize(cold.credential, hot.credential), cold)
+      ),
       "ConwayCommitteeHasPreviouslyResigned"
     )
   }
@@ -491,19 +592,41 @@ class ConwayRulesSuite extends FunSuite:
   test("dormant epochs are counted when no proposal is open, and a proposal revives the DReps") {
     val drep = key()
     val in = txIn(1)
-    val s0 = withUtxo(conway, Vector(in -> out(alice.address(), 10000 * ada)))
     val staker = key()
-    val s = s0.copy(
-      params =
-        s0.params.copy(govActionDeposit = 100 * ada, drepActivity = 20, govActionLifetime = 5),
-      accounts = Map(staker.credential -> Account(0, 2 * ada, None, None)),
-      dreps = Map(drep.credential -> DRepState(500 * ada, 30)),
-      deposited = 502 * ada,
-      reserves = s0.reserves - 502 * ada
+    val drepCredential = ok(Convert.credential[DRepRole](drep.credential))
+    val registered = withAccount(
+      conway(
+        Vector(in -> out(alice.address(), 10000 * ada)),
+        conwayParams.copy(govActionDeposit = 100 * ada, drepActivity = 20, govActionLifetime = 5)
+      ),
+      staker.credential,
+      0,
+      2 * ada
     )
+    val s = paid(
+      ConwayNewEpochState.dreps.modify(
+        _.updated(
+          drepCredential,
+          native.DRepState(
+            EpochNo.fromUnsigned(30L),
+            None,
+            ok(CompactCoin.fromBigInt(500 * ada)),
+            Sorted.emptySet
+          )
+        )
+      )(registered),
+      500 * ada,
+      0
+    )
+    def dormant(nes: Nes): BigInt = nes.es.ls.cert.vState.numDormantEpochs.toBigInt
     val globals = LedgerGlobals(Supply, 100, Rational(1, 20), network = 0)
-    val idle = Iterator.iterate(s)(x => rs.boundary(x, globals)).drop(3).next()
-    assertEquals(idle.dormantEpochs, BigInt(3))
+    val idle = inConway(
+      Iterator
+        .iterate[EraNes](EraNes.InEra(ShelleyBasedEra.SConway, s))(NativeRules.boundary(_, globals))
+        .drop(3)
+        .next()
+    )
+    assertEquals(dormant(idle), BigInt(3))
     val p = Proposal(100 * ada, RewardAccount(0, staker.credential), GovAction.Info)
     val b = body(
       "p",
@@ -512,12 +635,15 @@ class ConwayRulesSuite extends FunSuite:
       200,
       proposals = Vector(p)
     )
-    val revived = rs
-      .tx(idle, tx(b, Vector(alice)), env.copy(epoch = idle.epoch))
-      .fold(f => fail(f.message), identity)
-    assertEquals(revived.dormantEpochs, BigInt(0))
-    assertEquals(revived.dreps(drep.credential).expiry, BigInt(33))
+    val revived = run(idle, tx(b, Vector(alice)), env.copy(epoch = idle.epoch.toBigInt))
+      .fold(f => fail(f.message), _.state)
+    assertEquals(dormant(revived), BigInt(0))
+    assertEquals(
+      revived.es.ls.cert.vState.dreps.get(drepCredential).map(_.expiry.toBigInt),
+      Some(BigInt(33))
+    )
     // with a proposal open the epochs are not dormant
-    val busy = rs.boundary(revived, globals)
-    assertEquals(busy.dormantEpochs, BigInt(0))
+    val busy =
+      inConway(NativeRules.boundary(EraNes.InEra(ShelleyBasedEra.SConway, revived), globals))
+    assertEquals(dormant(busy), BigInt(0))
   }
