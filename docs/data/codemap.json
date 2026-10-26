@@ -98,8 +98,8 @@
    "module": "protocol",
    "path": "protocol",
    "responsibility": "Pure mini-protocol codecs and state machines, versions, era and header tags",
-   "entryPoints": ["ChainSync", "BlockFetch", "Handshake", "TxSubmission2", "LocalStateQuery", "Mux", "KeepAlive", "PeerSharing"],
-   "suites": ["ChainSyncSuite", "BlockFetchSuite", "HandshakeSuite", "TxSubmission2Suite", "LocalStateQuerySuite", "MuxSuite", "KeepAliveSuite"],
+   "entryPoints": ["ChainSync", "BlockFetch", "Handshake", "TxSubmission2", "LocalStateQuery", "Mux", "KeepAlive", "PeerSharing", "LeiosFetch", "LeiosNotify", "LeiosWord", "EbHash", "LeiosTxHash"],
+   "suites": ["ChainSyncSuite", "BlockFetchSuite", "HandshakeSuite", "TxSubmission2Suite", "LocalStateQuerySuite", "MuxSuite", "KeepAliveSuite", "LeiosCodecSuite", "LeiosWordSuite"],
    "docs": ["docs/adr/0008-networking-as-implemented.md", "docs/design/domain-errors.md"]
   },
   {

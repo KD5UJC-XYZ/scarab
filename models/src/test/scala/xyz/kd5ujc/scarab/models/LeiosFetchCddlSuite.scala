@@ -3,27 +3,46 @@ package xyz.kd5ujc.scarab.models
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.models.leios.fetch.LeiosBlockFetchMessage
-import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, LeiosFetch, LeiosWireError, TxBitmaps}
+import xyz.kd5ujc.scarab.protocol.{
+  EbHash,
+  EbPoint,
+  LeiosFetch,
+  LeiosTxHash,
+  LeiosWireError,
+  LeiosWord,
+  TxBitmaps
+}
 
 /** The generated reader of the LeiosFetch messages (`models.conf`: the Blueprint's
   * `leios-fetch/messages.cddl` at `0460c5a6`, whose `base` is the consensus module plus `word16`
   * and which includes the `dijkstra` module for `dijkstra.block_transaction`) against the
   * hand-written codec of `protocol`: every message the one writes, the other reads as the same case
-  * with the same fields, writes back as the same bytes, and both refuse the same malformed ones.
+  * with the same fields, and writes back compatible bytes. Malformed-input comparisons below
+  * distinguish the native decoder from the Blueprint constraints.
   *
-  * Two differences are deliberate and tested below. The codec carries the bytes inside a
-  * transaction's tag 24 without reading them, as the reference decoder does, while the Blueprint's
-  * `.cbor dijkstra.block_transaction` makes the generated reader decode them. The CDDL has no bound
-  * on the number of entries where the codec has `maxTxsPerEb`. The older form of `MsgLeiosBlockTxs`
+  * The native and Blueprint differences are explicit and tested below. The codec carries the bytes
+  * inside a transaction's tag 24 without reading them, as the reference decoder does, while the
+  * Blueprint's `.cbor dijkstra.block_transaction` makes the generated reader decode them. The CDDL
+  * has no bound on the number of entries where the codec has `maxTxsPerEb`; its hash size
+  * constraint is absent from the native byte wrappers. The older form of `MsgLeiosBlockTxs`
   * (`fe4cceb9`) is read by the codec only (`LeiosFetch.Message.LegacyBlockTxs`).
   */
 class LeiosFetchCddlSuite extends munit.FunSuite:
   private def big(x: Any): BigInt = BigInt(x.toString)
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.message), identity)
   private def hash(n: Int): EbHash =
-    EbHash.fromBytes(Bytes.wrap(Array.fill[Byte](32)(n.toByte))).getOrElse(fail("hash"))
-  private val point = EbPoint(371614L, hash(7))
-  private val bitmaps = TxBitmaps(Vector(0 -> BigInt(1), 3 -> BigInt("ffffffffffffffff", 16)))
+    EbHash.fromBytes(Bytes.wrap(Array.fill[Byte](32)(n.toByte)))
+  private def word16(value: BigInt): LeiosWord.Word16 =
+    LeiosWord.Word16.from(value).fold(e => fail(e.toString), identity)
+  private def word32(value: BigInt): LeiosWord.Word32 =
+    LeiosWord.Word32.from(value).fold(e => fail(e.toString), identity)
+  private def word64(value: BigInt): LeiosWord.Word64 =
+    LeiosWord.Word64.from(value).fold(e => fail(e.toString), identity)
+  private def txHash(n: Int): LeiosTxHash = LeiosTxHash.fromBytes(hash(n).bytes)
+  private def bitmap(windows: Vector[(Int, BigInt)]): TxBitmaps =
+    TxBitmaps(windows.map((window, bits) => word16(window) -> word64(bits)))
+  private val point = EbPoint(word64(371614L), hash(7))
+  private val bitmaps = bitmap(Vector(0 -> BigInt(1), 3 -> BigInt("ffffffffffffffff", 16)))
   // two Dijkstra block transactions [body, witness set, auxiliary data, is_valid], with the inputs as the
   // generated writer writes a set (tag 258): the least one, and one with a time to live
   private val tx1Hex = "84" + "a3" + "00d9010280" + "0180" + "0200" + "a0f6f5"
@@ -38,7 +57,7 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
   private val messages: Vector[LeiosFetch.Message] = Vector(
     LeiosFetch.Message.Done,
     LeiosFetch.Message.BlockRequest(point),
-    LeiosFetch.Message.Block(Vector(hash(1) -> 100L, hash(2) -> 0xffffffffL)),
+    LeiosFetch.Message.Block(Vector(txHash(1) -> word32(100L), txHash(2) -> word32(0xffffffffL))),
     LeiosFetch.Message.BlockTxsRequest(point, TxBitmaps(Vector.empty)),
     LeiosFetch.Message.BlockTxsRequest(point, bitmaps),
     LeiosFetch.Message.BlockTxs(Vector.empty),
@@ -52,17 +71,17 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
       (m, generated(bytes).fold(e => fail(e.toString), identity)) match
         case (LeiosFetch.Message.Done, MsgDone) => ()
         case (LeiosFetch.Message.BlockRequest(p), MsgLeiosBlockRequest(q)) =>
-          assertEquals((big(q.slot.value), q.ebHash.value), (BigInt(p.slot), p.hash.bytes))
+          assertEquals((big(q.slot.value), q.ebHash.value), (p.slot.toBigInt, p.hash.bytes))
         case (LeiosFetch.Message.Block(txs), MsgLeiosBlock(eb)) =>
           assertEquals(
             eb.map((h, s) => (h.value, big(s.value))),
-            txs.map((h, s) => (h.bytes, BigInt(s)))
+            txs.map((h, s) => (h.bytes, BigInt(s.toLong)))
           )
         case (LeiosFetch.Message.BlockTxsRequest(p, b), MsgLeiosBlockTxsRequest(q, bs)) =>
-          assertEquals((big(q.slot.value), q.ebHash.value), (BigInt(p.slot), p.hash.bytes))
+          assertEquals((big(q.slot.value), q.ebHash.value), (p.slot.toBigInt, p.hash.bytes))
           assertEquals(
             bs.map((w, bits) => (big(w.value), big(bits.value))),
-            b.windows.map((w, bits) => (BigInt(w), bits))
+            b.windows.map((w, bits) => (BigInt(w.toInt), bits.toBigInt))
           )
         case (LeiosFetch.Message.BlockTxs(txs), MsgLeiosBlockTxs(list)) =>
           assertEquals(list.size, txs.size)
@@ -187,7 +206,7 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
       Right(
         LeiosFetch.Message.LegacyBlockTxs(
           point,
-          TxBitmaps(Vector(0 -> BigInt(1))),
+          bitmap(Vector(0 -> BigInt(1))),
           Vector(hex("a0"))
         )
       )
@@ -196,16 +215,14 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
 
   test("what the generated reader refuses, the codec refuses: bounds of the word types") {
     val p = "82" + "1a0005a91e" + "5820" + "07" * 32
-    // a window index beyond uint16, a bitmap beyond uint64, a size beyond uint32, a short hash
+    // a window index beyond uint16, a bitmap beyond uint64, a size beyond uint32
     val wideWindow = hex("83" + "03" + p + "a1" + "1a00010000" + "01")
     val wideBitmap = hex("83" + "03" + p + "a1" + "00" + "c249" + "01" + "00" * 8)
     val wideSize = hex("82" + "02" + "a1" + "5820" + "01" * 32 + "1b0000000100000000")
-    val shortHash = hex("82" + "01" + "82" + "1a0005a91e" + "5810" + "07" * 16)
     Vector(
       LeiosFetch.State.Idle -> wideWindow,
       LeiosFetch.State.Idle -> wideBitmap,
-      LeiosFetch.State.Block -> wideSize,
-      LeiosFetch.State.Idle -> shortHash
+      LeiosFetch.State.Block -> wideSize
     ).foreach { (state, bytes) =>
       assert(generated(bytes).isLeft, bytes.hex)
       assert(LeiosFetch.decodePrefix(state, bytes).isLeft, bytes.hex)
@@ -219,5 +236,21 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
     // [4, []] is the form of 0460c5a6; the point and the bitmaps before the list are the older form
     assert(generated(hex("820480")).isRight)
     assert(generated(hex("8404" + "82" + "1a0005a91e" + "5820" + "07" * 32 + "a0" + "80")).isLeft)
+  }
+
+  test("the native hash wrapper accepts short bytes outside the Blueprint hash constraint") {
+    val bytes = hex("8201821a0005a91e5810" + "07" * 16)
+    assert(generated(bytes).isLeft)
+    assertEquals(
+      LeiosFetch.decodePrefix(LeiosFetch.State.Idle, bytes),
+      Right(
+        (
+          LeiosFetch.Message.BlockRequest(
+            EbPoint(word64(370974), EbHash.fromBytes(hex("07" * 16)))
+          ),
+          bytes.size
+        )
+      )
+    )
   }
 end LeiosFetchCddlSuite

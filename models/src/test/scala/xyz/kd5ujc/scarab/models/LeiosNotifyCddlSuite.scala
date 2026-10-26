@@ -6,7 +6,7 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.bls.Vote
 import xyz.kd5ujc.scarab.models.leios.notify.LeiosNotifyMessage
-import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, LeiosNotify, LeiosWireError}
+import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, LeiosNotify, LeiosWireError, LeiosWord}
 
 /** The generated reader of the LeiosNotify messages (`models.conf`: consensus' `leiosNotify.cddl`,
   * which imports the ChainSync header, so `header.cddl` is a module of that name too) against the
@@ -35,8 +35,8 @@ class LeiosNotifyCddlSuite extends munit.FunSuite:
       .getOrElse(fail("fixture"))
 
   private val point = EbPoint(
-    371614L,
-    EbHash.fromBytes(hex("00" * 31 + "07")).getOrElse(fail("hash"))
+    LeiosWord.Word64.from(371614L).fold(e => fail(e.toString), identity),
+    EbHash.fromBytes(hex("00" * 31 + "07"))
   )
 
   private def written(m: LeiosNotify.Message): Bytes =
@@ -53,10 +53,17 @@ class LeiosNotifyCddlSuite extends munit.FunSuite:
       generated(written(LeiosNotify.Message.RequestNext)),
       Right(LeiosNotificationRequestNext)
     )
-    assert(generated(written(LeiosNotify.Message.BlockOffer(point, 199983L))).exists {
-      case LeiosBlockOffer(_, _) => true
-      case _                     => false
-    })
+    assert(
+      generated(
+        written(
+          LeiosNotify.Message
+            .BlockOffer(point, LeiosWord.Word32.from(199983L).fold(e => fail(e.toString), identity))
+        )
+      ).exists {
+        case LeiosBlockOffer(_, _) => true
+        case _                     => false
+      }
+    )
     assert(generated(written(LeiosNotify.Message.BlockTxsOffer(point))).exists {
       case LeiosBlockTxsOffer(_) => true
       case _                     => false

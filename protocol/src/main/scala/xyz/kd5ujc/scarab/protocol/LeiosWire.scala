@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.crypto.bls.BlsError
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import LeiosWord.{Word16, Word64}
 
 /** What a field of a Leios message should have been. */
 enum LeiosField:
@@ -24,6 +25,7 @@ enum LeiosWireError:
   case NotAdmitted(tag: Int)
   case WrongArity(tag: Int, expected: Int, actual: Int)
   case BadField(tag: Int, field: LeiosField)
+  case OutsideWord(field: LeiosField, value: BigInt)
 
   /** A vote inside `MsgLeiosVotes` failed strict decoding. */
   case BadVote(index: Int, error: BlsError)
@@ -58,15 +60,15 @@ enum LeiosWireError:
   case TransactionCountMismatch(expected: Long, actual: Int)
 
 /** A point on the Leios protocols: `[slot, eb_hash]`. */
-final case class EbPoint(slot: Long, hash: EbHash)
+final case class EbPoint(slot: Word64, hash: EbHash)
 
 /** The window bitmaps of a transaction request or answer: 64-transaction window index (16 bits) to
   * a 64-bit presence bitmap, in wire order.
   */
-final case class TxBitmaps(windows: Vector[(Int, BigInt)]):
+final case class TxBitmaps(windows: Vector[(Word16, Word64)]):
 
   /** The number of transactions the bitmaps name: the set bits of all windows. */
-  def count: Long = windows.foldLeft(0L)((n, w) => n + w._2.bitCount)
+  def count: Long = windows.foldLeft(0L)((n, w) => n + w._2.toBigInt.bitCount)
 
 private[protocol] object LeiosWire:
   /** Local policy: the CIP bounds an endorser block by 600 kB, a transaction list by the same
@@ -123,7 +125,7 @@ private[protocol] object LeiosWire:
 
   def hash(tag: Int, n: Node): Either[LeiosWireError, EbHash] = n.value match
     case Value.ByteString(b) =>
-      EbHash.fromBytes(b).toRight(LeiosWireError.BadField(tag, LeiosField.Hash))
+      Right(EbHash.fromBytes(b))
     case _ => Left(LeiosWireError.BadField(tag, LeiosField.Hash))
 
   def uint(tag: Int, n: Node, max: BigInt, field: LeiosField): Either[LeiosWireError, BigInt] =
@@ -134,9 +136,9 @@ private[protocol] object LeiosWire:
   def point(tag: Int, n: Node): Either[LeiosWireError, EbPoint] = n.value match
     case Value.Arr(Vector(s, h)) =>
       for
-        slot <- uint(tag, s, BigInt(Long.MaxValue), LeiosField.Slot)
+        slot <- uint(tag, s, Word64.Max, LeiosField.Slot).flatMap(Word64.from)
         hash <- hash(tag, h)
-      yield EbPoint(slot.toLong, hash)
+      yield EbPoint(slot, hash)
     case _ => Left(LeiosWireError.BadField(tag, LeiosField.Point))
 
   /** The checks of `decodeBitmaps` in ouroboros-consensus `MiniProtocol/LeiosFetch/Type.hs`
@@ -145,7 +147,7 @@ private[protocol] object LeiosWire:
     * not zero (427), a window below `MaxBitmapEntries` (430) and strictly above the window before
     * it (433).
     */
-  def checkBitmaps(tag: Int, windows: Vector[(Int, BigInt)]): Either[LeiosWireError, Unit] =
+  def checkBitmaps(tag: Int, windows: Vector[(Word16, Word64)]): Either[LeiosWireError, Unit] =
     val limit = LeiosFetch.MaxBitmapEntries
     if windows.size > limit then
       Left(LeiosWireError.TooMany(tag, LeiosField.Bitmaps, limit, windows.size))
@@ -153,11 +155,11 @@ private[protocol] object LeiosWire:
       windows.zipWithIndex.foldLeft[Either[LeiosWireError, Unit]](Right(())) {
         case (acc, ((window, bits), i)) =>
           acc.flatMap { _ =>
-            if bits.signum == 0 then Left(LeiosWireError.ZeroBitmap(tag, window))
-            else if window >= limit then
-              Left(LeiosWireError.BitmapWindowOutOfRange(tag, window, limit))
-            else if i > 0 && window <= windows(i - 1)._1 then
-              Left(LeiosWireError.BitmapWindowsNotAscending(tag, window))
+            if bits.toBigInt.signum == 0 then Left(LeiosWireError.ZeroBitmap(tag, window.toInt))
+            else if window.toInt >= limit then
+              Left(LeiosWireError.BitmapWindowOutOfRange(tag, window.toInt, limit))
+            else if i > 0 && window.toInt <= windows(i - 1)._1.toInt then
+              Left(LeiosWireError.BitmapWindowsNotAscending(tag, window.toInt))
             else Right(())
           }
       }
@@ -172,9 +174,9 @@ private[protocol] object LeiosWire:
         )
         windows <- all(entries) { case (k, v) =>
           for
-            window <- uint(tag, k, BigInt(0xffff), LeiosField.Word16)
-            bits <- uint(tag, v, (BigInt(1) << 64) - 1, LeiosField.Word64)
-          yield window.toInt -> bits
+            window <- uint(tag, k, Word16.Max, LeiosField.Word16).flatMap(Word16.from)
+            bits <- uint(tag, v, Word64.Max, LeiosField.Word64).flatMap(Word64.from)
+          yield window -> bits
         }
         _ <- checkBitmaps(tag, windows)
       yield TxBitmaps(windows)
@@ -220,7 +222,7 @@ private[protocol] object LeiosWire:
   def tagged(tag: Int, rest: Value*): Value =
     Value.Arr((Value.UInt(BigInt(tag)) +: rest.toVector).map(nodeOf))
   def pointValue(p: EbPoint): Value =
-    Value.Arr(Vector(nodeOf(Value.UInt(BigInt(p.slot))), nodeOf(Value.ByteString(p.hash.bytes))))
+    Value.Arr(Vector(nodeOf(Value.UInt(p.slot.toBigInt)), nodeOf(Value.ByteString(p.hash.bytes))))
 
   /** The bitmaps as the reference writes them, an indefinite-length map (`encodeBitmaps`, `Type.hs`
     * of ouroboros-consensus `7b239a16`, lines 387 to 393; the Blueprint draws the same). Refused,
@@ -232,8 +234,8 @@ private[protocol] object LeiosWire:
       _ <- checkBitmaps(tag, b.windows)
       entries <- all(b.windows) { case (w, bits) =>
         for
-          k <- encode(Value.UInt(BigInt(w)))
-          v <- encode(Value.UInt(bits))
+          k <- encode(Value.UInt(BigInt(w.toInt)))
+          v <- encode(Value.UInt(bits.toBigInt))
         yield k ++ v
       }
     yield entries.foldLeft(Bytes.fromArray(Array(0xbf.toByte)))(_ ++ _) ++ Bytes.fromArray(

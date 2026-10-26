@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.protocol
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value}
 
 import LeiosWire.*
+import LeiosWord.Word32
 
 /** Pure codec of the LeiosFetch mini-protocol (number 19), after the Blueprint's
   * `network/node-to-node/leios-fetch/messages.cddl` (cardano-blueprint `0460c5a6`, 2026-10-16:
@@ -71,7 +72,7 @@ object LeiosFetch:
     case BlockRequest(point: EbPoint)
 
     /** `{* hash => word32}`: transaction hash to serialised size, in wire order. */
-    case Block(transactions: Vector[(EbHash, Long)])
+    case Block(transactions: Vector[(LeiosTxHash, Word32)])
     case BlockTxsRequest(point: EbPoint, bitmaps: TxBitmaps)
 
     /** `[4, [* #6.24(bytes)]]`: the bytes inside each tag 24, as they came, in wire order. */
@@ -103,7 +104,7 @@ object LeiosFetch:
           tagged(
             2,
             Value.Map(txs.map { case (h, size) =>
-              (nodeOf(Value.ByteString(h.bytes)), nodeOf(Value.UInt(BigInt(size))))
+              (nodeOf(Value.ByteString(h.bytes)), nodeOf(Value.UInt(BigInt(size.toLong))))
             })
           )
         )
@@ -192,9 +193,11 @@ object LeiosFetch:
             _ <- bounded(tag, LeiosField.EndorserBlock, entries.size)
             txs <- all(entries) { case (k, v) =>
               for
-                h <- hash(tag, k)
-                size <- uint(tag, v, BigInt(0xffffffffL), LeiosField.Word32)
-              yield (h, size.toLong)
+                h <- k.value match
+                  case Value.ByteString(bytes) => Right(LeiosTxHash.fromBytes(bytes))
+                  case _ => Left(LeiosWireError.BadField(tag, LeiosField.Hash))
+                size <- uint(tag, v, Word32.Max, LeiosField.Word32).flatMap(Word32.from)
+              yield (h, size)
             }
           yield Message.Block(txs)
         case (State.BlockTxs, 4) if fields.size == 3 =>

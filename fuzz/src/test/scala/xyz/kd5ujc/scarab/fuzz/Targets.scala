@@ -177,13 +177,28 @@ object Targets:
     case Left(LeiosWireError.Incomplete) => DecodeResult.NeedMore
     case Left(e)                         => DecodeResult.Failed(ProtocolError.Leios(e))
 
+  /** Fixed seed values must satisfy the same constructors as runtime values. */
+  private def leiosSeed[A](value: Either[LeiosWireError, A]): A =
+    value.fold(error => throw new AssertionError(error.toString), identity)
+
   private val leiosFetchSeeds: () => Vector[Array[Byte]] = () =>
-    val point = EbPoint(371614L, EbHash.fromBytes(Bytes.fromArray(Array.fill(32)(7.toByte))).get)
-    val bitmaps = TxBitmaps(Vector(0 -> BigInt(1), 3 -> BigInt("ffffffffffffffff", 16)))
+    val point = EbPoint(
+      leiosSeed(LeiosWord.Word64.from(371614L)),
+      EbHash.fromBytes(Bytes.fromArray(Array.fill(32)(7.toByte)))
+    )
+    val bitmaps = TxBitmaps(
+      Vector(0 -> BigInt(1), 3 -> BigInt("ffffffffffffffff", 16)).map((window, bits) =>
+        leiosSeed(LeiosWord.Word16.from(window)) -> leiosSeed(LeiosWord.Word64.from(bits))
+      )
+    )
     val seeds = Vector(
       LeiosFetch.Message.Done,
       LeiosFetch.Message.BlockRequest(point),
-      LeiosFetch.Message.Block(Vector(point.hash -> 100L, point.hash -> 0xffffffffL)),
+      LeiosFetch.Message.Block(
+        Vector(100L, 0xffffffffL).map(size =>
+          LeiosTxHash.fromBytes(point.hash.bytes) -> leiosSeed(LeiosWord.Word32.from(size))
+        )
+      ),
       LeiosFetch.Message.BlockTxsRequest(point, bitmaps),
       LeiosFetch.Message.BlockTxs(Corpus.transactions.take(3).map(Bytes.fromArray)),
       // the older form of Blueprint fe4cceb9, which the decoder still reads (docs/leios.md 11.6, X12)
@@ -217,13 +232,16 @@ object Targets:
       netCorpus("leios-fetch:leiosBlockFetchMessage")()
 
   private val leiosNotifySeeds: () => Vector[Array[Byte]] = () =>
-    val point = EbPoint(371614L, EbHash.fromBytes(Bytes.fromArray(Array.fill(32)(7.toByte))).get)
+    val point = EbPoint(
+      leiosSeed(LeiosWord.Word64.from(371614L)),
+      EbHash.fromBytes(Bytes.fromArray(Array.fill(32)(7.toByte)))
+    )
     val seeds = Vector(
       LeiosNotify.Message.Done,
       LeiosNotify.Message.Quit,
       LeiosNotify.Message.Canceled,
       LeiosNotify.Message.RequestNext,
-      LeiosNotify.Message.BlockOffer(point, 199983L),
+      LeiosNotify.Message.BlockOffer(point, leiosSeed(LeiosWord.Word32.from(199983L))),
       LeiosNotify.Message.BlockTxsOffer(point)
     )
     seeds.flatMap(LeiosNotify.encode(_).toOption.map(_.toArray)) ++

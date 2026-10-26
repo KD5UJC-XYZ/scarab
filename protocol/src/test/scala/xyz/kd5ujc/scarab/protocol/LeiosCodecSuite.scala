@@ -2,7 +2,8 @@
 package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.crypto.bls.{BlsError, SeatId, Seed, SecretKey, Vote}
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
+import xyz.kd5ujc.scarab.codec.Bytes
+import LeiosWord.{Word16, Word32, Word64}
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
 import org.scalacheck.Gen
@@ -13,7 +14,14 @@ class LeiosCodecSuite extends ScalaCheckSuite:
   private def ok[A, E](e: Either[E, A]): A =
     e.fold(x => throw new AssertionError(x.toString), identity)
   private def hash(n: Int): EbHash =
-    EbHash.fromBytes(Bytes.wrap(Array.fill[Byte](32)(n.toByte))).get
+    EbHash.fromBytes(Bytes.wrap(Array.fill[Byte](32)(n.toByte)))
+
+  private def txHash(n: Int): LeiosTxHash = LeiosTxHash.fromBytes(hash(n).bytes)
+  private def word16(value: BigInt): Word16 = ok(Word16.from(value))
+  private def word32(value: BigInt): Word32 = ok(Word32.from(value))
+  private def word64(value: BigInt): Word64 = ok(Word64.from(value))
+  private def bitmaps(windows: Vector[(Int, BigInt)]): TxBitmaps =
+    TxBitmaps(windows.map((window, bits) => word16(window) -> word64(bits)))
 
   private lazy val sk: SecretKey =
     ok(
@@ -36,7 +44,7 @@ class LeiosCodecSuite extends ScalaCheckSuite:
     for
       slot <- Gen.choose(0L, Long.MaxValue)
       h <- Gen.choose(0, 255)
-    yield EbPoint(slot, hash(h))
+    yield EbPoint(word64(slot), hash(h))
   // what the reference accepts: ascending windows below 268, none of them zero
   private val genBitmaps: Gen[TxBitmaps] =
     Gen
@@ -44,7 +52,7 @@ class LeiosCodecSuite extends ScalaCheckSuite:
         Gen.zip(Gen.choose(0, LeiosFetch.MaxBitmapEntries - 1), Gen.choose(1L, Long.MaxValue))
       )
       .map { xs =>
-        TxBitmaps(xs.sortBy(_._1).distinctBy(_._1).map((w, b) => w -> BigInt(b)).toVector)
+        bitmaps(xs.sortBy(_._1).distinctBy(_._1).map((w, b) => w -> BigInt(b)).toVector)
       }
 
   private def notifyRoundTrip(state: LeiosNotify.State, m: LeiosNotify.Message): Unit =
@@ -58,8 +66,8 @@ class LeiosCodecSuite extends ScalaCheckSuite:
     notifyRoundTrip(State.Idle, Message.Quit)
     notifyRoundTrip(State.Busy, Message.Canceled)
     notifyRoundTrip(State.Quit, Message.Done)
-    notifyRoundTrip(State.Busy, Message.BlockOffer(EbPoint(77, hash(1)), 123456))
-    notifyRoundTrip(State.Busy, Message.BlockTxsOffer(EbPoint(77, hash(1))))
+    notifyRoundTrip(State.Busy, Message.BlockOffer(EbPoint(word64(77), hash(1)), word32(123456)))
+    notifyRoundTrip(State.Busy, Message.BlockTxsOffer(EbPoint(word64(77), hash(1))))
     val vs = Vector(vote(1, 1), vote(2, 1), vote(900, 2))
     val raw = vs.map(_.encode)
     notifyRoundTrip(State.Busy, Message.Votes(vs, raw))
@@ -70,7 +78,7 @@ class LeiosCodecSuite extends ScalaCheckSuite:
 
   property("LeiosNotify offers round-trip") {
     forAll(genPoint, Gen.choose(0L, 0xffffffffL)) { (p, size) =>
-      notifyRoundTrip(LeiosNotify.State.Busy, LeiosNotify.Message.BlockOffer(p, size))
+      notifyRoundTrip(LeiosNotify.State.Busy, LeiosNotify.Message.BlockOffer(p, word32(size)))
       notifyRoundTrip(LeiosNotify.State.Busy, LeiosNotify.Message.BlockTxsOffer(p))
     }
   }
@@ -91,7 +99,7 @@ class LeiosCodecSuite extends ScalaCheckSuite:
 
   test("LeiosNotify: incomplete input asks for more, at every prefix length") {
     import LeiosNotify.*
-    val bytes = ok(encode(Message.BlockOffer(EbPoint(5, hash(3)), 9)))
+    val bytes = ok(encode(Message.BlockOffer(EbPoint(word64(5), hash(3)), word32(9))))
     (0 until bytes.size).foreach { n =>
       assertEquals(
         decodePrefix(State.Busy, bytes.take(n)),
@@ -111,13 +119,6 @@ class LeiosCodecSuite extends ScalaCheckSuite:
     assertEquals(
       decodePrefix(State.Idle, bs(0x82, 0x03, 0x00)),
       Left(LeiosWireError.WrongArity(3, 0, 1))
-    )
-    // a point whose hash is 31 bytes
-    val shortHash =
-      bs(0x83, 0x05, 0x82, 0x01, 0x58, 31) ++ Bytes.wrap(new Array[Byte](31)) ++ bs(0x05)
-    assertEquals(
-      decodePrefix(State.Busy, shortHash),
-      Left(LeiosWireError.BadField(5, LeiosField.Hash))
     )
     // size above 32 bits
     val bigSize =
@@ -165,21 +166,24 @@ class LeiosCodecSuite extends ScalaCheckSuite:
       val bytes = ok(encode(m))
       assertEquals(decodePrefix(state, bytes), Right((m, bytes.size)))
       assert(next(state, m).isDefined)
-    val p = EbPoint(42, hash(7))
+    val p = EbPoint(word64(42), hash(7))
     rt(State.Idle, Message.Done)
     rt(State.Idle, Message.BlockRequest(p))
     rt(
       State.Idle,
-      Message.BlockTxsRequest(p, TxBitmaps(Vector(0 -> BigInt(1), 3 -> (BigInt(1) << 63))))
+      Message.BlockTxsRequest(p, bitmaps(Vector(0 -> BigInt(1), 3 -> (BigInt(1) << 63))))
     )
-    rt(State.Block, Message.Block(Vector(hash(1) -> 100L, hash(2) -> 0xffffffffL)))
+    rt(
+      State.Block,
+      Message.Block(Vector(txHash(1) -> word32(100), txHash(2) -> word32(0xffffffffL)))
+    )
     rt(State.BlockTxs, Message.BlockTxs(Vector(bs(0x81, 0x01), bs(0x01))))
     rt(State.BlockTxs, Message.BlockTxs(Vector.empty))
     rt(
       State.BlockTxs,
       Message.LegacyBlockTxs(
         p,
-        TxBitmaps(Vector(1 -> BigInt(5))),
+        bitmaps(Vector(1 -> BigInt(5))),
         Vector(bs(0x81, 0x01), bs(0x01))
       )
     )
@@ -195,17 +199,17 @@ class LeiosCodecSuite extends ScalaCheckSuite:
 
   test("LeiosFetch: an indefinite-length bitmaps map (as the Blueprint draws it) is accepted") {
     import LeiosFetch.*
-    val p = ok(encode(Message.BlockRequest(EbPoint(1, hash(9))))).drop(2) // the point item
+    val p = ok(encode(Message.BlockRequest(EbPoint(word64(1), hash(9))))).drop(2) // the point item
     val msg = bs(0x83, 0x03) ++ p ++ bs(0xbf, 0x00, 0x05, 0xff)
     assertEquals(
       decodePrefix(State.Idle, msg).map(_._1),
-      Right(Message.BlockTxsRequest(EbPoint(1, hash(9)), TxBitmaps(Vector(0 -> BigInt(5)))))
+      Right(Message.BlockTxsRequest(EbPoint(word64(1), hash(9)), bitmaps(Vector(0 -> BigInt(5)))))
     )
   }
 
   test("LeiosFetch: agency and malformed input") {
     import LeiosFetch.*
-    val block = ok(encode(Message.Block(Vector(hash(1) -> 1L))))
+    val block = ok(encode(Message.Block(Vector(txHash(1) -> word32(1)))))
     assertEquals(decodePrefix(State.Idle, block), Left(LeiosWireError.NotAdmitted(2)))
     assertEquals(
       decodePrefix(State.Block, bs(0x82, 0x02, 0x01)),
@@ -218,7 +222,7 @@ class LeiosCodecSuite extends ScalaCheckSuite:
     assertEquals(next(State.Block, Message.Done), None)
     assertEquals(decodePrefix(State.Idle, bs(0x82, 0x01)), Left(LeiosWireError.Incomplete))
   }
-  private val p0 = EbPoint(5, hash(3))
+  private val p0 = EbPoint(word64(5), hash(3))
   private def tag24(payload: Bytes): Bytes = // d8 18 and the byte string head of payload
     val n = payload.size
     val h =
@@ -299,7 +303,7 @@ class LeiosCodecSuite extends ScalaCheckSuite:
     "LeiosFetch: both forms of MsgLeiosBlockTxs encode at maxTxsPerEb and read back, and refuse one more"
   ) {
     import LeiosFetch.*
-    val bm = TxBitmaps(Vector.empty)
+    val bm = bitmaps(Vector.empty)
     val forms: Vector[Vector[Bytes] => Message] =
       Vector(Message.BlockTxs(_), Message.LegacyBlockTxs(p0, bm, _))
     forms.foreach { form =>
@@ -340,7 +344,7 @@ class LeiosCodecSuite extends ScalaCheckSuite:
     import LeiosFetch.*
     // [4, point, bitmaps, [tx...]] with each transaction any item, kept as the item's own bytes
     val txs = Vector(bs(0x82, 0x18, 0x02, 0x01), bs(0x41, 0xa0), bs(0xd8, 0x18, 0x41, 0x00))
-    val m = Message.LegacyBlockTxs(p0, TxBitmaps(Vector(0 -> BigInt(7))), txs)
+    val m = Message.LegacyBlockTxs(p0, bitmaps(Vector(0 -> BigInt(7))), txs)
     val bytes = ok(encode(m))
     assert(bytes.toArray.indexOfSlice(txs.flatMap(_.toArray)) >= 0, bytes.hex)
     assertEquals(bytes.take(2), bs(0x84, 0x04))
@@ -351,7 +355,7 @@ class LeiosCodecSuite extends ScalaCheckSuite:
     val old = bs(0x84, 0x04) ++ pt ++ bs(0xbf, 0x00, 0x07, 0xff, 0x9f, 0xa0, 0xff)
     assertEquals(
       decodePrefix(State.BlockTxs, old).map(_._1),
-      Right(Message.LegacyBlockTxs(p0, TxBitmaps(Vector(0 -> BigInt(7))), Vector(bs(0xa0))))
+      Right(Message.LegacyBlockTxs(p0, bitmaps(Vector(0 -> BigInt(7))), Vector(bs(0xa0))))
     )
     // a transaction list that is not a list
     assertEquals(
@@ -367,13 +371,13 @@ class LeiosCodecSuite extends ScalaCheckSuite:
 
   test("LeiosFetch: bitmaps are written as the indefinite-length map the reference writes") {
     import LeiosFetch.*
-    val m = Message.BlockTxsRequest(p0, TxBitmaps(Vector(0 -> BigInt(1), 3 -> (BigInt(1) << 63))))
+    val m = Message.BlockTxsRequest(p0, bitmaps(Vector(0 -> BigInt(1), 3 -> (BigInt(1) << 63))))
     val bytes = ok(encode(m))
     val entries = bs(0x00, 0x01, 0x03, 0x1b, 0x80, 0, 0, 0, 0, 0, 0, 0)
     assertEquals(bytes.drop(bytes.size - entries.size - 2), bs(0xbf) ++ entries ++ bs(0xff))
     assertEquals(decodePrefix(State.Idle, bytes), Right((m, bytes.size)))
     // the empty request is the empty indefinite map
-    val none = ok(encode(Message.BlockTxsRequest(p0, TxBitmaps(Vector.empty))))
+    val none = ok(encode(Message.BlockTxsRequest(p0, bitmaps(Vector.empty))))
     assertEquals(none.drop(none.size - 2), bs(0xbf, 0xff))
   }
 
@@ -443,19 +447,14 @@ class LeiosCodecSuite extends ScalaCheckSuite:
       )
     ).foreach { case (w, error) =>
       assertEquals(
-        encode(Message.BlockTxsRequest(p0, TxBitmaps(w))),
+        encode(Message.BlockTxsRequest(p0, bitmaps(w))),
         Left(error),
         w.take(3).toString
       )
     }
     assertEquals(
-      encode(Message.LegacyBlockTxs(p0, TxBitmaps(Vector(5 -> BigInt(0))), Vector.empty)),
+      encode(Message.LegacyBlockTxs(p0, bitmaps(Vector(5 -> BigInt(0))), Vector.empty)),
       Left(LeiosWireError.ZeroBitmap(4, 5))
-    )
-    // a value the CBOR encoder cannot write keeps the encoder's reason
-    assertEquals(
-      encode(Message.BlockRequest(EbPoint(-1, hash(3)))),
-      Left(LeiosWireError.Unencodable(Cbor.Error.ArgumentOutOfRange(BigInt(-1))))
     )
     // the older form carries the same bitmaps and the same checks
     val legacy = bs(0x84, 0x04) ++ pt ++ bs(0xa1, 0x05, 0x00, 0x80)
@@ -467,7 +466,7 @@ class LeiosCodecSuite extends ScalaCheckSuite:
 
   test("LeiosFetch: the client checks an answer against its own request") {
     import LeiosFetch.*
-    val request = TxBitmaps(Vector(0 -> BigInt(5), 3 -> (BigInt(1) << 63)))
+    val request = bitmaps(Vector(0 -> BigInt(5), 3 -> (BigInt(1) << 63)))
     assertEquals(request.count, 3L)
     val txs = Vector.fill(3)(bs(0xa0))
     assertEquals(answers(request, txs), Right(txs))

@@ -7,7 +7,7 @@ import cats.mtl.Handle
 import cats.syntax.all.*
 import com.comcast.ip4s.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
-import xyz.kd5ujc.scarab.protocol.{ChainSync, EbHash, EbPoint, Handshake, LeiosFetch}
+import xyz.kd5ujc.scarab.protocol.{ChainSync, EbHash, EbPoint, Handshake, LeiosFetch, LeiosWord}
 import scala.concurrent.duration.*
 
 /** Read-only probe of a public Leios relay, over one connection, one request in flight: the
@@ -67,12 +67,12 @@ object LeiosChainProbe extends IOApp:
         case Value.Arr(xs) if xs.size == 12 => Some(xs)
         case _                              => None
       slot <- fields(1).value match
-        case Value.UInt(s) => Some(s.toLong)
+        case Value.UInt(s) => LeiosWord.Word64.from(s).toOption
         case _             => None
       eb <- fields(11).value match
         case Value.Arr(Vector(h, _)) =>
           h.value match
-            case Value.ByteString(b) => EbHash.fromBytes(b)
+            case Value.ByteString(b) => Some(EbHash.fromBytes(b))
             case _                   => None
         case _ => None
     yield EbPoint(slot, eb)

@@ -108,6 +108,18 @@
   {
    "name": "ouroboros-consensus",
    "repository": "IntersectMBO/ouroboros-consensus",
+   "revision": "7b239a16465f1e517a1f3dd2a3761a2b2a153b51",
+   "urlPattern": "https://github.com/IntersectMBO/ouroboros-consensus/commit/{revision}",
+   "role": "Leios prototype wire types, unsigned word widths and byte-wrapper decoders.",
+   "dependents": [
+    "docs/leios.md",
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/LeiosWord.scala",
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/EbHash.scala"
+   ]
+  },
+  {
+   "name": "ouroboros-consensus",
+   "repository": "IntersectMBO/ouroboros-consensus",
    "revision": "8f56bc899b48423316155aef64096cd56e32bfd7",
    "urlPattern": "https://github.com/IntersectMBO/ouroboros-consensus/commit/{revision}",
    "role": "Vendored consensus CDDL (base, chainsync header, leiosnotify).",
