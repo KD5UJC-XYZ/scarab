@@ -161,7 +161,6 @@ object GovKernel
       raise: Raise[F, LedgerFailure],
       judge: Judge[F, PredicateFailure]
   ): F[Unit] =
-    val id = env.id
     val pp = env.pp
     val bootstrap = pp.protocolMajor == 9
     def gov(f: GovFailure): PredicateFailure = PredicateFailure.gov(f)
@@ -176,45 +175,55 @@ object GovKernel
       _ <-
         if pp.protocolMajor > 10 then
           val bad = unelected(env.committee, env.cert, signal.votes.map(_._1))
-          Refuse.unless[F](bad.isEmpty, id, gov(GovFailure.UnelectedCommitteeVoters(bad)))
+          Sts.predicate[F, PredicateFailure](
+            bad.isEmpty,
+            gov(GovFailure.UnelectedCommitteeVoters(bad))
+          )
         else Monad[F].unit
       before <- st.get
       proposals <- signal.proposals.zipWithIndex.foldM(before) { (ps, indexed) =>
         addProposal[F](env, network, bootstrap, accountRegistered, ps, indexed)
       }
-      // the voters must exist, and so must the actions they vote on
-      votes = signal.votes.flatMap { (voter, vs) => vs.map { (aid, v) => (voter, aid, v) } }
+      // the voters must exist, and so must the actions they vote on; only the votes of the voters
+      // that exist are processed (`knownVoters`, `Gov.hs:575-604`)
       // GOV.hs:597-604 checks named voters even when their individual vote maps are empty.
       hot =
         if signal.votes.isEmpty then Set.empty[Credential[HotCommittee]] else authorised(env.cert)
       unknownVoters <- votesKnown[F](env, hot, signal.votes)
-      _ <- Refuse.unless[F](
+      votes = signal.votes.filterNot((voter, _) => unknownVoters.contains(voter)).flatMap {
+        (voter, vs) => vs.map { (aid, v) => (voter, aid, v) }
+      }
+      _ <- Sts.predicate[F, PredicateFailure](
         unknownVoters.isEmpty,
-        id,
         gov(GovFailure.VotersDoNotExist(unknownVoters))
       )
       byId = if votes.isEmpty then Map.empty[GovActionId, GovActionState] else proposals.byId
-      unknownActions = votes.map(_._2).filterNot(byId.contains).distinct
-      _ <- Refuse.unless[F](
+      // one per vote on an action that does not exist (`foldrVotingProcedures`, `Gov.hs:579-594`)
+      unknownActions = votes.map(_._2).filterNot(byId.contains)
+      _ <- Sts.predicate[F, PredicateFailure](
         unknownActions.isEmpty,
-        id,
         gov(GovFailure.GovActionsDoNotExist(unknownActions))
       )
       // each vote on the action it names (all exist now)
       cast = votes.flatMap((voter, aid, v) => byId.get(aid).map(g => (voter, aid, v, g)))
-      _ <- Refuse.unless[F](
+      _ <- Sts.predicate[F, PredicateFailure](
         !bootstrap || bootstrapVotesOk(cast).isEmpty,
-        id,
         gov(GovFailure.DisallowedVotesDuringBootstrap(bootstrapVotesOk(cast)))
       )
       expired = cast.collect {
         case (voter, aid, _, g) if env.epoch > g.expiresAfter => voter -> aid
       }
-      _ <- Refuse.unless[F](expired.isEmpty, id, gov(GovFailure.VotingOnExpiredGovAction(expired)))
+      _ <- Sts.predicate[F, PredicateFailure](
+        expired.isEmpty,
+        gov(GovFailure.VotingOnExpiredGovAction(expired))
+      )
       disallowed = cast.collect {
         case (voter, aid, _, g) if !votingAllowed(voter, g.action) => voter -> aid
       }
-      _ <- Refuse.unless[F](disallowed.isEmpty, id, gov(GovFailure.DisallowedVoters(disallowed)))
+      _ <- Sts.predicate[F, PredicateFailure](
+        disallowed.isEmpty,
+        gov(GovFailure.DisallowedVoters(disallowed))
+      )
       voted = proposals.withVotes(votes.map((voter, aid, v) => (voter, v, aid)))
       unregistered = signal.certificates.collect { case Certificate.UnregisterDRep(c, _) =>
         c
@@ -278,13 +287,13 @@ object GovKernel
       registered: node.RewardAccount => F[Boolean],
       ps: Proposals,
       indexed: (Proposal, Int)
-  )(using Raise[F, LedgerFailure]): F[Proposals] =
+  )(using Raise[F, LedgerFailure], Judge[F, PredicateFailure]): F[Proposals] =
     val (proposal, idx) = indexed
     val id = env.id
     val pp = env.pp
     val action = proposal.action
     def check(ok: Boolean, f: => GovFailure): F[Unit] =
-      Refuse.unless[F](ok, id, PredicateFailure.gov(f))
+      Sts.predicate[F, PredicateFailure](ok, PredicateFailure.gov(f))
     for
       _ <- check(
         !bootstrap || GovChecks.isBootstrapAction(action),
@@ -383,9 +392,10 @@ object GovKernel
           )
         )
         .fold(
-          Refuse[F, Proposals](
-            id,
-            PredicateFailure.gov(GovFailure.InvalidPrevGovActionId(proposal))
-          )
+          Sts
+            .failBecause[F, PredicateFailure](
+              PredicateFailure.gov(GovFailure.InvalidPrevGovActionId(proposal))
+            )
+            .as(ps)
         )(_.pure[F])
     yield added

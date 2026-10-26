@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger.rules
 
 import cats.Monad
 import cats.mtl.{Ask, Raise, Stateful}
+import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
@@ -54,9 +55,10 @@ final case class PpupEnv(
     genDelegs: SortedMap[KeyHash[Genesis], xyz.kd5ujc.scarab.ledger.GenDelegPair]
 )
 
-/** PPUP (`Shelley/Rules/Ppup.hs:146`, `ppupTransitionNonEmpty`): the update proposals of a
-  * transaction. The genesis delegates may propose, the proposed protocol version must follow the
-  * one in force, and the epoch of the proposal is this one before the point of no return (two
+/** PPUP (`Shelley/Rules/Ppup.hs:146`, `ppupTransitionNonEmpty`, cardano-ledger `f649f975`): the
+  * update proposals of a transaction, every check recording its failure, the proposals recorded
+  * whatever failed. The genesis delegates may propose, the proposed protocol version must follow
+  * the one in force, and the epoch of the proposal is this one before the point of no return (two
   * stability windows before the end of the epoch) and the next after it. A proposal for this epoch
   * also makes the prediction of the parameters of the next, `votedFuturePParams` (`Ppup.hs:205`),
   * which the TICK rule solidifies and UPEC adopts.
@@ -72,28 +74,29 @@ object ShelleyPpup
     update.traverse_ { u =>
       val id = env.id
       val ctx = env.ctx
-      def refuse(f: PpupFailure): LedgerFailure =
-        LedgerFailure.Rejected(id, PredicateFailure.utxo(UtxoFailure.Update(f)))
+      def refuse(f: PpupFailure): PredicateFailure = PredicateFailure.utxo(UtxoFailure.Update(f))
       val known = env.genDelegs.keysIterator.map(_.bytes).toSet
       val tooLate = ctx.firstSlotNextEpoch - 2 * ctx.stabilityWindow
       val current = ctx.slot < tooLate
+      // `firstIllegalProtVerUpdate`: the first proposal, in the order of the genesis keys, whose
+      // protocol version cannot follow the one in force (`Ppup.hs:163-168`)
+      val firstIllegal = u.proposals.toVector
+        .sortBy(_._1)
+        .iterator
+        .map((_, p) => UpdateChecks.canFollow(env.pp, p))
+        .collectFirst { case Left(refusal) => refusal }
       for
-        _ <- Sts.check[F, LedgerFailure](
+        _ <- Sts.predicate[F, PredicateFailure](
           u.proposals.keys.forall(known.contains),
           refuse(PpupFailure.NonGenesisUpdate(Mismatch(u.proposals.keySet, known)))
         )
-        _ <- u.proposals.values.toVector.traverse_ { p =>
-          Sts.lift[F, LedgerFailure, Unit](
-            UpdateChecks
-              .canFollow(env.pp, p)
-              .leftMap {
-                case UpdateChecks.Refusal.Failed(f) => refuse(f)
-                case UpdateChecks.Refusal.Unreadable =>
-                  LedgerFailure.Undecodable(id, TxDefect.UnreadableProtocolVersion)
-              }
-          )
+        _ <- firstIllegal.traverse_ {
+          case UpdateChecks.Refusal.Failed(f) => Sts.failBecause[F, PredicateFailure](refuse(f))
+          case UpdateChecks.Refusal.Unreadable =>
+            (LedgerFailure.Undecodable(id, TxDefect.UnreadableProtocolVersion): LedgerFailure)
+              .raise[F, Unit]
         }
-        _ <- Sts.check[F, LedgerFailure](
+        _ <- Sts.predicate[F, PredicateFailure](
           u.epoch == (if current then ctx.epoch else ctx.epoch + 1),
           refuse(
             PpupFailure.PPUpdateWrongEpoch(

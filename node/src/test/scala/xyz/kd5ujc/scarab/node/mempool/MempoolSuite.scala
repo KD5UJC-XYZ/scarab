@@ -383,13 +383,19 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
         )
       )
     )
+    // from 11 GOV refuses the unelected voter, and goes on to find it is not known either
     assertEquals(
       attempt(11),
       Left(
         Rejection.Ledger(
           LedgerFailure.Rejected(
             id,
-            PredicateFailure.gov(GovFailure.UnelectedCommitteeVoters(Vector(hot.credential)))
+            NonEmptyChain(
+              PredicateFailure.gov(
+                GovFailure.VotersDoNotExist(Vector(Voter.CommitteeHot(hot.credential)))
+              ),
+              PredicateFailure.gov(GovFailure.UnelectedCommitteeVoters(Vector(hot.credential)))
+            )
           )
         )
       )
