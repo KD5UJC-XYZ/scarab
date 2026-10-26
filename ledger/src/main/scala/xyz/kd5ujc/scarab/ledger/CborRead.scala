@@ -171,6 +171,13 @@ private[ledger] object CborRead:
         )
     }
 
+  /** A constructor tag as a decoder dispatches on it: `decodeRecordSum` and `Summands` read it with
+    * `decodeWord`, at full width (`Binary/Decoding/Decoder.hs:670`, `Binary/Coders.hs`,
+    * cardano-ledger-binary of cardano-ledger f649f975), so a tag beyond `Int` is none of the small
+    * tags of any constructor, never its low 32 bits.
+    */
+  def small(tag: BigInt): Option[Int] = Option.when(tag.isValidInt)(tag.toInt)
+
   /** The interval a rational field is bounded to (`BoundedRatio`, `BaseTypes.hs`, f649f975). */
   enum Bound:
     /** `UnitInterval`: 0 to 1 (a pool margin, a committee quorum, a voting threshold). */

@@ -33,10 +33,12 @@ object Credential:
   /** Conway credential encoding `[0, keyhash] / [1, scripthash]`. */
   def decode(n: Node, what: DecodeSite)(using ByteStrings): Either[LedgerDecodeError, Credential] =
     CborRead.arrayN(n, 2, what).flatMap { xs =>
-      (CborRead.uint(xs(0), what).map(_.toInt), CborRead.bytesN(xs(1), 28, what)).tupled.flatMap {
-        case (0, h) => Right(Key(h))
-        case (1, h) => Right(Script(h))
-        case (t, _) => Left(LedgerDecodeError.UnknownTag(what, t))
+      // `Summands "Credential"` (`Credential.hs:327-334`): the tag is a full-width `Word`
+      (CborRead.uint(xs(0), what), CborRead.bytesN(xs(1), 28, what)).tupled.flatMap { (t, h) =>
+        CborRead.small(t) match
+          case Some(0) => Right(Key(h))
+          case Some(1) => Right(Script(h))
+          case _       => Left(LedgerDecodeError.UnknownTag(what, t))
       }
     }
 

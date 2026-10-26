@@ -16,7 +16,12 @@ corpus puts each to the unchanged released decoders at the era's decoder version
 
 Every key from 3 to 24 is written with a value that some era accepts, so the refusal of a key is for
 the key and not for its value; the three required keys are left out in turn; and a key that does not
-fit 32 bits is written beside a known key it would collide with if it were truncated.
+fit 32 bits is written beside a known key it would collide with if it were truncated. The constructor
+tags under the keys are read at full width too (`decodeRecordSum` and `Summands` read a `Word`): a
+certificate, a credential, a DRep, a voter and a governance action whose tag is `2^32` plus a tag of
+the era, which a truncation to 32 bits would read as that tag.
+
+No two cases of an era carry the same encoding.
 
     python3 scripts/oracle/conway-decoding/era_forms_cases.py --inputs /tmp/era-forms-inputs.json
     python3 scripts/oracle/conway-decoding/era_forms_cases.py --inputs /tmp/era-forms-inputs.json \\
@@ -39,6 +44,9 @@ FORM = "OutputForm"
 KEY = "UnknownFields"
 MISSING = "MissingField"
 DUPLICATE = "DuplicateKey"
+ARITY = "TaggedArity"
+TAG = "UnknownTag"
+INVALID = "not a valid key"
 
 
 def case(name, era, raw, expect=None, rule=None):
@@ -150,6 +158,10 @@ for era in ERAS:
             case(f"{era} collateral return: {form}", era, body(era, {16: OUTPUTS[form]}), *output_verdict(era, form))
 
     for k in sorted(VALUES):
+        # Shelley's body always has the key 3, and the collateral return of Babbage and Conway is
+        # written above with this value: the same encodings again.
+        if (k == 3 and era == "shelley") or (k == 16 and since(era, "babbage")):
+            continue
         case(f"{era} body key {k}", era, body(era, {k: VALUES[k]}), *key_verdict(era, k))
     for k in OUT_OF_RANGE:
         case(f"{era} body key {k}", era, body(era, {k: c.uint(0)}), KEY, "not a valid key")
@@ -165,6 +177,26 @@ for era in ERAS:
     # Keys beyond 32 bits: 2^32 + 3 is the key 3 (a time to live) if truncated to 32 bits.
     case(f"{era} body key 4294967299", era, body(era, {2**32 + 3: c.uint(1_000)}), "UnknownKey", "not a valid key")
     case(f"{era} body key 18446744073709551615", era, body(era, {2**64 - 1: c.uint(0)}), "UnknownKey", "not a valid key")
+
+    # Constructor tags beyond 32 bits: `2^32 + t` is the tag `t` of the era if truncated.
+    credential = c.array([c.uint(0), c.bstr(c.KEY_HASH)])
+    wide_cert = c.array([c.uint(2**32), credential])
+    case(f"{era} certificate tag 4294967296", era, body(era, {4: c.array([wide_cert])}), ARITY, INVALID)
+    wide_credential = c.array([c.uint(0), c.array([c.uint(2**32), c.bstr(c.KEY_HASH)])])
+    case(f"{era} credential tag 4294967296", era, body(era, {4: c.array([wide_credential])}), TAG, INVALID)
+    if era == "conway":
+        for name, drep in (
+            ("4294967296", c.array([c.uint(2**32), c.bstr(c.KEY_HASH)])),
+            ("4294967298", c.array([c.uint(2**32 + 2)])),
+        ):
+            delegation = c.array([c.uint(9), credential, drep])
+            case(f"{era} DRep tag {name}", era, body(era, {4: c.array([delegation])}), TAG, INVALID)
+        voter = c.array([c.uint(2**32 + 2), c.bstr(c.KEY_HASH)])
+        votes = c.cmap([(voter, c.cmap([(c.ACTION, c.VOTE)]))])
+        case(f"{era} voter tag 4294967298", era, body(era, {19: votes}), TAG, INVALID)
+        action = c.array([c.uint(2**32 + 3), c.NULL])
+        proposal = c.array([c.uint(1_000_000), c.bstr(b"\xe1" + c.h(0x55, 28)), action, c.ANCHOR])
+        case(f"{era} governance action tag 4294967299", era, body(era, {20: c.array([proposal])}), ARITY, INVALID)
 
 
 def merge(reference):
@@ -199,6 +231,8 @@ def main():
     assert len(names) == len(set(names)), "case names must be unique"
     ids = [x["id"] for x in CASES]
     assert len(ids) == len(set(ids)), "case ids must be unique"
+    encodings = [(x["era"], x["bytes"]) for x in CASES]
+    assert len(encodings) == len(set(encodings)), "no two cases of an era may carry one encoding"
     if args.inputs:
         with open(args.inputs, "w") as f:
             json.dump(CASES, f, indent=1)

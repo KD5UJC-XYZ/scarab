@@ -25,20 +25,23 @@ object DRep:
   def decode(n: Node)(using ByteStrings): Either[LedgerDecodeError, DRep] =
     CborRead.array(n, DecodeField.Drep).flatMap {
       case Vector(t, h) =>
+        // `Summands "DRep"` (`DRep.hs:90-99`): the tag is a full-width `Word`
         (
-          CborRead.uint(t, DecodeField.Drep).map(_.toInt),
+          CborRead.uint(t, DecodeField.Drep),
           CborRead.bytesN(h, 28, DecodeField.DrepHash)
         ).tupled
-          .flatMap {
-            case (0, hash) => Right(Registered(Credential.Key(hash)))
-            case (1, hash) => Right(Registered(Credential.Script(hash)))
-            case (tag, _)  => Left(LedgerDecodeError.UnknownTag(DecodeField.Drep, tag))
+          .flatMap { (tag, hash) =>
+            CborRead.small(tag) match
+              case Some(0) => Right(Registered(Credential.Key(hash)))
+              case Some(1) => Right(Registered(Credential.Script(hash)))
+              case _       => Left(LedgerDecodeError.UnknownTag(DecodeField.Drep, tag))
           }
       case Vector(t) =>
-        CborRead.uint(t, DecodeField.Drep).map(_.toInt).flatMap {
-          case 2   => Right(AlwaysAbstain)
-          case 3   => Right(AlwaysNoConfidence)
-          case tag => Left(LedgerDecodeError.UnknownTag(DecodeField.Drep, tag))
+        CborRead.uint(t, DecodeField.Drep).flatMap { tag =>
+          CborRead.small(tag) match
+            case Some(2) => Right(AlwaysAbstain)
+            case Some(3) => Right(AlwaysNoConfidence)
+            case _       => Left(LedgerDecodeError.UnknownTag(DecodeField.Drep, tag))
         }
       case _ =>
         Left(LedgerDecodeError.Expected(DecodeField.Drep, LedgerDecodeError.Shape.Array, n.value))
@@ -173,11 +176,13 @@ object Certificate:
           17 -> 3,
           18 -> 3
         )
-        _ <- arity
-          .get(tag.toInt)
-          .filter(_ == xs.size)
+        // `decodeRecordSum` (`Shelley/TxCert.hs:475-487`, `Conway/TxCert.hs`): the tag is a
+        // full-width `Word`, and a tag beyond `Int` names no certificate
+        small <- CborRead
+          .small(tag)
+          .filter(t => arity.get(t).contains(xs.size))
           .toRight(LedgerDecodeError.TaggedArity(DecodeField.Certificate, tag, xs.size))
-        cert <- tag.toInt match
+        cert <- small match
           case 0 => cred(1, xs).map(Register(_, None))
           case 1 => cred(1, xs).map(Unregister(_, None))
           case 2 => (cred(1, xs), pool(2, xs)).mapN((c, p) => Delegate(c, Some(p), None, None))

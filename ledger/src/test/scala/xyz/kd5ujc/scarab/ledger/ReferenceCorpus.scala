@@ -59,6 +59,7 @@ private[ledger] object ReferenceCorpus:
     case ZeroDenominator extends Refusal("ZeroDenominator")
     case Syntax extends Refusal("Syntax")
     case UnknownTag extends Refusal("UnknownTag")
+    case TaggedArity extends Refusal("TaggedArity")
     case Zero extends Refusal("Zero")
 
   object Refusal:
@@ -85,6 +86,7 @@ private[ledger] object ReferenceCorpus:
       case LedgerDecodeError.ZeroDenominator(_)           => Some(ZeroDenominator)
       case LedgerDecodeError.Syntax(_)                    => Some(Syntax)
       case LedgerDecodeError.UnknownTag(_, _)             => Some(UnknownTag)
+      case LedgerDecodeError.TaggedArity(_, _, _)         => Some(TaggedArity)
       case LedgerDecodeError.Zero(_)                      => Some(Zero)
       case LedgerDecodeError.Voting(VotingProcedures.DecodeError.InvalidStructure(cause)) =>
         of(cause)

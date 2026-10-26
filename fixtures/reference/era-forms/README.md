@@ -2,9 +2,9 @@
 
 Status: Current. Evidence for [#379](https://github.com/KD5UJC-XYZ/scarab/issues/379).
 
-`cases.jsonl` holds 231 lines, a case each: its original transaction body (`bytes`, written by
-`scripts/oracle/conway-decoding/era_forms_cases.py`) and the verdict of the reference, 89 accepted
-and 142 refused. The verdict (`accepted` and the `failure` text) is what the unchanged released
+`cases.jsonl` holds a line per case: its original transaction body (`bytes`, written by
+`scripts/oracle/conway-decoding/era_forms_cases.py`) and the verdict of the reference (the counts
+are in `provenance.json`). No two cases of an era carry the same encoding. The verdict (`accepted` and the `failure` text) is what the unchanged released
 decoders of cardano-ledger `f649f9751074d2ab3de033fc3912f29c9862c1f5` did with each:
 `decodeFullAnnotator` at the era's decoder version (Shelley 2, Allegra 3, Mary 4, Alonzo 5, Babbage
 7, Conway 9), with the complete failure text.
@@ -22,6 +22,10 @@ decoders of cardano-ledger `f649f9751074d2ab3de033fc3912f29c9862c1f5` did with e
 - The required keys: 0, 1 and 2 in every era, and the time to live (3) in Shelley alone.
 - A key twice, and keys beyond 32 bits (`2^32 + 3`, which a truncation would read as the time to
   live, and `2^64 - 1`).
+- Constructor tags beyond 32 bits, which `decodeRecordSum` and `Summands` read as a full `Word`
+  (`not a valid key`): a certificate and a credential of tag `2^32` in every era, and in Conway a
+  DRep of tag `2^32` and `2^32 + 2`, a voter of tag `2^32 + 2` and a governance action of tag
+  `2^32 + 3`, each of which a truncation to 32 bits would read as a tag of the era.
 
 `cases.jsonl` names for every refusal `rule` (a fragment of the reference failure) and `expect` (the
 Scarab error case). `EraFormsReferenceSuite` requires the same verdict, and for an acceptance that the
@@ -29,6 +33,7 @@ retained bytes (and so the transaction id) are the original ones. `provenance.js
 package versions, the hashes of the harness, the generator and the files, and the counts.
 
 Scope: wire decoding of transaction bodies only; no ledger rule, signature or script is run, and the
-values of a key (certificates, for instance) are the ones the other corpora measure.
+values of a key (certificates, for instance) beyond their constructor tags are the ones the other
+corpora measure.
 
 Regenerate with the [oracle recipe](../../../scripts/oracle/conway-decoding/README.md).
