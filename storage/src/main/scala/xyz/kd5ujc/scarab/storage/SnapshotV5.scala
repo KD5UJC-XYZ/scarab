@@ -197,7 +197,7 @@ object SnapshotV5:
       provenance: MirrorProvenance
   ): Either[StorageError, MirrorState] =
     for
-      file <- HaskellLedgerFile.decode(haskell).leftMap(e => corrupt(e))
+      file <- HaskellLedgerFile.decode(haskell).leftMap(DecodeFailure.native("snapshot", _))
       decoded <- file.ext.toRight(corrupt(SnapshotReadError.ByronLedgerInShelley))
       ext <- withUtxo(decoded, utxo)
       _ <- Either.cond(
@@ -255,7 +255,7 @@ object SnapshotV5:
             .decode[SnapshotSidecar](
               content.slice(start + fingerprint.length, end.toInt)
             )(using SnapshotSidecar.codec)
-            .leftMap(corrupt)
+            .leftMap(DecodeFailure.binary("snapshot sidecar", _))
             .map(_ -> Bytes.wrap(content).drop(end.toInt))
 
   /** The ledger state with the node's UTxO set put back where the Haskell section has `map(0)`. */

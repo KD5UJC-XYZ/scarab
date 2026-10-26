@@ -21,6 +21,8 @@ private[node] object StorageBoundary:
       case Right(value)                         => Async[F].pure(value)
       case Left(SnapshotFailure.Storage(error)) => fatal(Fatal.Storage(error)) *> Async[F].never[A]
       case Left(SnapshotFailure.Defect(cause))  => fatal(Fatal.Defect(cause)) *> Async[F].never[A]
+      case Left(SnapshotFailure.Reconstruction(what, cause)) =>
+        fatal(Fatal.Internal(StorageError.Reconstruction(what, cause))) *> Async[F].never[A]
     }
 
   /** A bounded producer keeps the scope alive for the whole store stream. Only typed values cross
@@ -45,6 +47,8 @@ private[node] object StorageBoundary:
             fatal(Fatal.Storage(error)) *> Async[F].never[A]
           case Left(SnapshotFailure.Defect(cause)) =>
             fatal(Fatal.Defect(cause)) *> Async[F].never[A]
+          case Left(SnapshotFailure.Reconstruction(what, cause)) =>
+            fatal(Fatal.Internal(StorageError.Reconstruction(what, cause))) *> Async[F].never[A]
         }
       }
     }
