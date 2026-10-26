@@ -44,7 +44,7 @@ class PreviewConwayRulesSuite extends FunSuite:
         case _                                     => r
     }
     val withdrawing = body.withdrawals.map { case (account, amount) =>
-      account.credential -> Account(amount, 2 * ada, None, Some(DRep.AlwaysAbstain))
+      account.credential -> Account(amount.value, 2 * ada, None, Some(DRep.AlwaysAbstain))
     }
     val credentials =
       body.proposals.map(_.returnAccount.credential) ++ body.proposals.flatMap(_.action match

@@ -173,7 +173,7 @@ object TestLedger:
       ttl = ttl,
       validityStart = validityStart,
       certificates = certificates,
-      withdrawals = withdrawals,
+      withdrawals = withdrawals.view.mapValues(xyz.kd5ujc.scarab.ledger.state.Coin(_)).toMap,
       mint = mint,
       collateral = collateral,
       requiredSigners = requiredSigners,

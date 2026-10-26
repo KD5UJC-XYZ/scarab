@@ -155,7 +155,7 @@ object ApplyBenchMain:
           case Certificate.RegisterPool(_) => true; case _ => false
         }
         val deposits = pp.keyDeposit * (registers - unregisters) + pp.poolDeposit * pools
-        val withdrawn = t.body.withdrawals.map(_._2).sum
+        val withdrawn = t.body.withdrawals.valuesIterator.map(_.value).sum
         val need =
           outValue + Value.coin(t.body.fee + deposits - withdrawn) - Value(0, t.body.mint) - known
         val needed = if need.coin > 0 then need else Value.coin(2000000)

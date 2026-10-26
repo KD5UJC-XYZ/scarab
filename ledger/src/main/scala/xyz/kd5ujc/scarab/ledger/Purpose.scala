@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.ledger.state.Coin
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** A place in a transaction a script can be asked to validate, with its position (the redeemer
@@ -57,14 +58,14 @@ object Purpose:
       case _                                       => None
 
   /** Withdrawals in the ledger's order: by reward account, script credentials first. */
-  def sortedWithdrawals(body: TxBody): Vector[(RewardAccount, BigInt)] =
+  def sortedWithdrawals(body: TxBody): Vector[(RewardAccount, Coin)] =
     sortedWithdrawals(body.withdrawals)
 
-  def sortedWithdrawals(withdrawals: Map[RewardAccount, BigInt]): Vector[(RewardAccount, BigInt)] =
+  def sortedWithdrawals(withdrawals: Map[RewardAccount, Coin]): Vector[(RewardAccount, Coin)] =
     withdrawals.toVector.sorted(using withdrawalOrder)
 
   /** By network, script credentials before key credentials, then the hash. */
-  private val withdrawalOrder: Ordering[(RewardAccount, BigInt)] = (a, b) =>
+  private val withdrawalOrder: Ordering[(RewardAccount, Coin)] = (a, b) =>
     val (x, y) = (a._1, b._1)
     val networks = Integer.compare(x.network, y.network)
     if networks != 0 then networks
