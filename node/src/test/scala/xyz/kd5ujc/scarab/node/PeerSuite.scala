@@ -50,23 +50,6 @@ class PeerSuite extends ScalaCheckSuite:
       Bytes.empty
     )
 
-  property("ranges cover the headers in order within the request limits") {
-    forAll(Gen.listOf(Gen.choose(0L, 90112L)).map(_.take(600))) { sizes =>
-      val headers = sizes.zipWithIndex.map((s, i) => header(i, s)).toVector
-      val runs = Peer.ranges(headers)
-      assertEquals(runs.flatten, headers)
-      runs.foreach { run =>
-        assert(run.size <= 100)
-        val bytes = run.map {
-          case h: Header.Shelley => h.bodySize.toLong + h.raw.size + 512
-          case _                 => 0L
-        }
-        // A run over the budget is a single oversized header, never several.
-        assert(bytes.sum <= 8000000L || run.size == 1)
-      }
-    }
-  }
-
   property("owned runs are the maximal stretches of owned headers, in order") {
     forAll(Gen.listOf(Gen.oneOf(true, false)).map(_.take(300))) { flags =>
       val headers = flags.indices.map(i => header(i, 1000L)).toVector

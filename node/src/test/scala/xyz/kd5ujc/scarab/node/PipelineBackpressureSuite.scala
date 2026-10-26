@@ -64,8 +64,10 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
           }
         yield
           val (slow, slowTaken, fast, received) = observed
+          // BlockFetch fetches the candidate independently of publication (State.hs:317–335);
+          // the retained window bounds the headers accepted beyond what was published.
           assert(
-            slow <= slowTaken + Peer.Depth + 1,
+            slow <= slowTaken + Peer.Depth + 1 + journalCapacity,
             s"$slow bodies prepared for $slowTaken consumed with ${Peer.Depth} publication credits"
           )
           assert(fast >= received.size)
@@ -117,10 +119,12 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
           // the publisher has taken every permit and the consumer has taken none back
           assertEquals(p.permitsFree, 0L, p.toString)
           assert(p.queued > 0, p.toString)
-          // the candidate is ahead of what was published and capacity room is gone
-          assert(p.unpublishedHeaders.exists(n => n > 0 && n <= p.candidateHeaders), p.toString)
-          assertEquals(p.candidateBase, p.publishedTip, p.toString)
-          assert(p.candidateTipSlot.exists(c => p.publishedTipSlot.forall(_ <= c)), p.toString)
+          // publication keeps up with the candidate, which never waits for a body; this
+          // coordinator decides nothing, so the full window's oldest block is never fetched and
+          // capacity room is gone
+          assertEquals(p.unpublishedHeaders, Some(0), p.toString)
+          assertEquals(p.candidateTip, p.publishedTip, p.toString)
+          assertEquals(p.capacityRoom, false, p.toString)
           // nothing arrived for the whole stall, and the last batch was handled after it arrived
           assert(p.lastReplyAcceptedAgo.exists(_ >= 10.minutes), p.toString)
           assert(p.lastReplyCollectedAgo.exists(_ >= 10.minutes), p.toString)

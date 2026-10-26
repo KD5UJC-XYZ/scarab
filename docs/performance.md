@@ -2793,6 +2793,24 @@ were observed (eleven KeepAlive client-idle timeouts and one no intersection);
 [#292](https://github.com/KD5UJC-XYZ/scarab/issues/292) tracks classification.
 This finite passing gate is not a zero-reconnect or old/new throughput comparison.
 
+The workload was rerun on 2026-10-25 UTC when the decisions moved to the reference's
+decision loop (#430): each peer's fetch client now takes the requests the loop adds from
+the whole candidate (24 headers at once), instead of offering 4-header publication batches.
+
+| Policy | All blocks available (virtual ms) | Fully drained (virtual ms) | Duplicate bytes |
+|---|---:|---:|---:|
+| Modeled idle/serial baseline | 1324.288 | 1324.288 | 0 |
+| Bulk, target 1 | 1592.864 | 1593.864 | 0 |
+| Bulk, target 2 | 1186.432 | 1187.432 | 0 |
+| Deadline, target 1 | 1592.864 | 1593.864 | 0 |
+| Deadline, target 2 | 1592.864 | 1993.144 | 786432 |
+
+With the whole candidate decided at once, target 1 serves it from the preferred fast
+peer alone in two 393216-byte requests (the GSV window plus the crossing block), so bulk
+target 1 no longer exercises the handover seen above; target 2 spreads it across both
+peers. Per-peer peaks stay within the window including complete-block overshoot, and all
+credit drains. The same caveats apply: a controlled service model, not a throughput claim.
+
 
 ## 38. Genesis integration observations (#33)
 

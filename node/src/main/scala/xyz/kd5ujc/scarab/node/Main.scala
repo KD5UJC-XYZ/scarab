@@ -274,18 +274,16 @@ object Main extends IOApp:
       }
     yield runtime
 
+  /** The Genesis governor. The BlockFetch decision loop is the pool's own
+    * ([[FetchCoordinator.watchDecisions]]), with the grace of the installed Genesis control.
+    */
   private def maintainDecisions(
       runtime: Option[GenesisRuntime[IO]],
-      pool: BlockPool[IO],
-      settings: GenesisSettings,
       fatal: Fatal => IO[Unit]
   ): Resource[IO, Unit] =
-    IO.both(
-      runtime.fold(IO.never[Unit])(_.governor.run.void),
-      pool.fetchCoordinator.watchDecisions(
-        if runtime.nonEmpty then settings.blockFetchGracePicos else BigInt(0)
-      )
-    ).handleErrorWith(cause => fatal(Fatal.Defect(cause)) *> IO.never)
+    runtime
+      .fold(IO.never[Unit])(_.governor.run.void)
+      .handleErrorWith(cause => fatal(Fatal.Defect(cause)) *> IO.never)
       .background
       .void
 
@@ -1089,12 +1087,7 @@ object Main extends IOApp:
               ref.get.map(_.state.geometry(genesis.geometry))
             )
             genesisGovernor = genesisRuntime.map(_.governor)
-            decisionMaintenance = maintainDecisions(
-              genesisRuntime,
-              blockPool,
-              setup.config.settings.genesis,
-              fatalSink
-            )
+            decisionMaintenance = maintainDecisions(genesisRuntime, fatalSink)
             // the connection manager (G2): one connection per peer address, limits, accounting
             manager <- ConnectionManager.create[IO](
               ConnectionManager.Limits(maxInbound = options.maxInbound),
@@ -1146,7 +1139,6 @@ object Main extends IOApp:
               observe = Some(observePeer),
               sharing = Some(sharing),
               pool = Some(blockPool),
-              fetchMode = Some(fetchModeRef.get),
               genesis = genesisRuntime,
               receivedBody = receivedBody,
               peerMetrics = Some(peerMetrics)
@@ -1194,7 +1186,6 @@ object Main extends IOApp:
               versus = candidate => follower.versus(candidate),
               lost = lost,
               fatal = fatalSink,
-              fetchMode = Some(fetchModeRef.get),
               serve = Some(handlers),
               genesis = genesisRuntime,
               receivedBody = receivedBody

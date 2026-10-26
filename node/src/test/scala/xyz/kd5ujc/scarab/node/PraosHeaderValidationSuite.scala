@@ -138,7 +138,16 @@ class PraosHeaderValidationSuite extends FailsOnUncaught:
                         .selected(c.blocks.take(index).map(_.header), applied.candidates),
                       headers = Some(HeaderClock.clocked(clock, inner))
                     )
-                    .use(peer => Fault.fiber(peer.intersect(applied.candidates) *> peer.next))
+                    .use(peer =>
+                      // The body is fetched from the decisions, independently of the header's
+                      // publication; the header's body is waited for before counting requests.
+                      Fault.fiber(
+                        peer.intersect(applied.candidates) *> peer.next.flatTap {
+                          case SyncEvent.RollForward(header, _) => peer.fetch(header).void
+                          case SyncEvent.RollBackward(_, _)     => IO.unit
+                        }
+                      )
+                    )
               }
             }
             .rescue(error => IO(fail(error.message)))

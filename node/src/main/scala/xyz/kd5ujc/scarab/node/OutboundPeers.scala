@@ -406,7 +406,6 @@ final class OutboundPeers[F[_]: Async, A] private (
                       .fold(hot.headers)(bound => hot.headers.map(_.withPatience(bound.patience))),
                     Some(metered(peer)),
                     Some(hot.pool),
-                    hot.fetchMode,
                     Some(rejectedCachedBlock(sourceKey, _)),
                     fetchIdentity = Some(peer.hashCode.toLong),
                     patience = genesis.map(_.patience),
@@ -619,9 +618,6 @@ object OutboundPeers:
     * @param fatal
     *   A session ended in a way no peer policy handles (storage, an internal failure, a defect):
     *   the node stops ([[FailurePolicy.disposition]]).
-    * @param fetchMode
-    *   The fetch mode, which BlockFetch reads to decide whether a block another session has claimed
-    *   may be requested too.
     * @param serve
     *   Responder protocols served on outbound peers whose diffusion mode is duplex.
     */
@@ -639,7 +635,6 @@ object OutboundPeers:
       versus: ChainSelection.Candidate => F[Gsm.Candidate],
       lost: PeerError => F[Unit],
       fatal: Fatal => F[Unit],
-      fetchMode: Option[F[FetchMode]] = None,
       serve: Option[ServerHandlers[F, NtNHeader]] = None,
       genesis: Option[GenesisRuntime[F]] = None,
       receivedBody: Option[Peer.BodySink[F]] = None

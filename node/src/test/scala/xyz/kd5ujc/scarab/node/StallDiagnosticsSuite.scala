@@ -87,7 +87,7 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
               val s = sessions.head.hcursor
               assertEquals(s.get[Long]("session"), Right(session.identity))
               assertEquals(s.get[Boolean]("busy"), Right(false))
-              assertEquals(s.get[Int]("pendingOffers"), Right(0))
+              assertEquals(s.get[Int]("pendingRequests"), Right(0))
               assertEquals(s.get[Int]("pendingHeaders"), Right(0))
               assertEquals(s.downField("active").focus, Some(Json.arr()))
               val p = s.downField("pipeline")
@@ -118,7 +118,6 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
               )
               assertEquals(f("fiberDump"), Json.Null)
               assertEquals(f("decisionLock"), Json.Null)
-              assertEquals(s.downField("reserving").focus, Some(Json.Null))
           )
         }
       }

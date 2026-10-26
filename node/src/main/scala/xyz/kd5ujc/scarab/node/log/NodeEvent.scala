@@ -132,7 +132,7 @@ enum NodeEvent:
     */
   case ChainSyncRounds(rounds: Long, headers: Long, avgMs: Long, maxMs: Long, maxDepth: Int)
 
-  /** A block fetched on its own took this long from the request to the block. */
+  /** A block's download completed this long after its range was requested. */
   case SlowFetch(millis: Long)
 
   /** What the inbound governor (G2) or the node-to-client listener did on a connection. */
@@ -171,13 +171,6 @@ object NodeEvent:
       case ChainSync.Point.Block(slot, hash) => Json.fromString(s"${slot.value}:${hash.hex}")
     }
 
-  private given Encoder[xyz.kd5ujc.scarab.node.FetchCoordinator.Phase] =
-    Encoder.instance {
-      case xyz.kd5ujc.scarab.node.FetchCoordinator.Phase.LockWait  => Json.fromString("LockWait")
-      case xyz.kd5ujc.scarab.node.FetchCoordinator.Phase.LockHeld  => Json.fromString("LockHeld")
-      case xyz.kd5ujc.scarab.node.FetchCoordinator.Phase.GrantWait => Json.fromString("GrantWait")
-    }
-
   private given Encoder[xyz.kd5ujc.scarab.node.FetchCoordinator.DecisionHolder] =
     Encoder.instance {
       case xyz.kd5ujc.scarab.node.FetchCoordinator.DecisionHolder.InstallGenesis =>
@@ -186,8 +179,8 @@ object NodeEvent:
         Json.fromString("transitionGenesis")
       case xyz.kd5ujc.scarab.node.FetchCoordinator.DecisionHolder.Change =>
         Json.fromString("change")
-      case xyz.kd5ujc.scarab.node.FetchCoordinator.DecisionHolder.Reserve =>
-        Json.fromString("reserve")
+      case xyz.kd5ujc.scarab.node.FetchCoordinator.DecisionHolder.Decide =>
+        Json.fromString("decide")
     }
 
   private given Encoder[xyz.kd5ujc.scarab.node.BlockAdmissions.WorkKind] =
@@ -226,7 +219,7 @@ object NodeEvent:
     Json.obj(
       "session" -> d.session.asJson,
       "busy" -> d.busy.asJson,
-      "pendingOffers" -> d.pendingOffers.asJson,
+      "pendingRequests" -> d.pendingRequests.asJson,
       "pendingHeaders" -> d.pendingHeaders.asJson,
       "active" -> d.active
         .map(a =>
@@ -238,9 +231,6 @@ object NodeEvent:
         )
         .asJson,
       "candidateHeaders" -> d.candidateHeaders.asJson,
-      "reserving" -> d.reserving.fold(Json.Null)(r =>
-        Json.obj("phase" -> r.phase.asJson, "runningMs" -> r.running.toMillis.asJson)
-      ),
       "pipeline" -> d.pipeline.fold(Json.Null)(p =>
         Json.obj(
           "peer" -> p.peer.toString.asJson,

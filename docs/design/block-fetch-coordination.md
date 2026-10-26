@@ -27,27 +27,45 @@ transitive, so both GSV orderings (ranking and preferred-peer admission) use
 `HaskellSort.sortBy`, the reference's GHC `Data.List.sortBy` algorithm, which
 reproduces the native order for such a relation; a `java.util` sort may reject it.
 
-One `FetchCoordinator` belongs to the shared `BlockPool`. Outbound peers, inbound
-duplex clients and single-block recovery use it. Its pure decision and reservation
-commit is atomic; wire effects run after the reservation is installed. Mode changes
-wake pending offers. Global targets default to one in either mode and retain the
-upstream preferred-peer handover exception, which can temporarily exceed a target.
-They are not per-block duplicate caps.
+One `FetchCoordinator` belongs to the shared `BlockPool`, and its decision loop mirrors
+`fetchLogicIterations` (`BlockFetch/State.hs`): an iteration registers the grace delay,
+waits until the trigger fingerprint (our chain's head, each peer's candidate head, each
+peer's fetch status with its in-flight set) differs or the grace expires, decides for every
+peer from its whole current ChainSync candidate, acts, and sleeps out the rest of its
+mode's decision interval. Fetched blocks, GSVs and the fetch mode are non-trigger state.
+The pool's coordinator runs the loop while it has sessions; a harness with its own clock
+runs it itself. Each session's candidate is an empty fragment until it announces one, as
+consensus registers it.
+
+The decision pipeline is the reference's: `filterPlausibleCandidates`,
+`selectForkSuffixes` and `filterNotAlreadyFetched` (`FetchCandidates`), then
+`filterNotAlreadyInFlightWithPeer`, `prioritisePeerChains`,
+`filterNotAlreadyInFlightWithOtherPeers` and `fetchRequestDecisions`
+(`BlockFetchPolicy.decide`). Every block of a plausible candidate's fork suffix that is
+neither fetched nor in flight is fetchable, so fork headers declined while their chain was
+not yet preferred are requested once it is (#430). A request is added to the peer's
+request slot (`addNewFetchRequest`), merged with one its client has not taken, and is in
+flight from then on; declines change nothing. Each session's fetch client takes the slot
+(`acknowledgeFetchRequest`), sends the request's ranges in order and collects each in a
+fiber of its own while it takes the next. A range's block budget is its fragment's length;
+bytes are bounded per message by the codec and per protocol by the multiplexer's ingress
+queue, not per range. The client's only deadlines are the reference's per-state ones
+(Busy and Streaming 60 s per message, Idle unbounded), with no whole-range deadline.
+Publishing ChainSync headers to the follower never waits for a body: ChainSync and
+BlockFetch progress independently. Global targets default to one in either mode and retain
+the upstream preferred-peer handover exception, which can temporarily exceed a target.
 
 The selected-chain input is a read-only follower snapshot. Transport fibers never
-write back to the consensus selection cache or acquire its application lock. The
-candidate boundary checks plausibility, retained intersection, suffix and downloaded
-holes before admission. Peer candidates survive empty replies and rollbacks within
-the retained history. Queued offers retain the candidate that made their headers
-fetchable, so a later rollback cannot strand a previously published header. Actual
+write back to the consensus selection cache or acquire its application lock. Actual
 ChainSync batches are capped at 2048 to fit the current plus three queued batches
-inside the 8192-header history; the configured read-ahead remains an upper bound. Announced Shelley sizes use body + header + 10 bytes, and
-Byron uses the advertised node-to-node size hint, retained outside signed headers.
+inside the 8192-header history; the configured read-ahead remains an upper bound. Announced
+Shelley sizes are the reference's `estimateBlockSize` (body + header + 10 bytes), and
+Byron uses the advertised node-to-node size hint (`byronHeaderBlockSizeHint`), retained
+outside signed headers.
 
 Per-peer request/byte limits use upstream high/low-water hysteresis and permit the
-last complete block to cross the high watermark. Pool claims may introduce holes:
-actual contiguous requests are reconciled before submission; surplus fragments are
-released and offered again rather than exceeding reserved request credit.
+last complete block to cross the high watermark. A pool claim is bookkeeping for a
+session that waits for a block; it never changes what was requested.
 
 ## Pipeline and lifetime
 
@@ -65,9 +83,9 @@ fault is retained before sibling cancellation and connection closure, preserving
 invalid-header cause rather than replacing it with a generic aborted connection.
 
 An admitted download remains waitable through preparation/cache publication. A
-session cannot mistake the gap between reservation and pool claim for a missing block.
-If another downloader fails, recovery retries through the same coordinator rather
-than blaming a healthy peer that has not yet been asked. Cache provenance and
+session cannot mistake the gap between a request's addition and its pool claim for a
+missing block. If a downloader fails, its blocks leave the flight and the next decision
+requests them again; a healthy peer that has not been asked is not blamed. Cache provenance and
 invalid-block attribution remain owned by the existing BlockPool session resources.
 
 ## Evidence and acceptance
@@ -80,8 +98,8 @@ refusal payloads, watermarks, durations and deadline probabilities without masks
 24 original generated protocol cases/298 ranges and cover outgoing FIFO pipelining,
 timeout, cancellation and resource release.
 
-Coordinator laws cover shared admission, preferred handover, holes, publication
-waiting, terminal credit release, hysteresis and mode transitions. The controlled
+Coordinator laws cover the decision trigger, shared admission, preferred handover,
+in-flight holes, borrower waiting, range credit release, hysteresis and mode transitions. The controlled
 workload in `FetchCoordinationBenchSuite` characterizes bulk/deadline targets with
 heterogeneous virtual peers; these are service-model measurements, not public-network
 throughput claims. Actual commands and results belong in [performance](../performance.md)

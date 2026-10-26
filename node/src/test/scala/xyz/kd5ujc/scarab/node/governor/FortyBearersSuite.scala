@@ -216,8 +216,7 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
         pool = pool,
         versus = follower.versus,
         lost = _ => IO.unit,
-        fatal = _ => IO.unit,
-        fetchMode = Some(modeRef.get)
+        fatal = _ => IO.unit
       )
       view = new PeerNetwork.ChainView[IO]:
         def tip = chainRef.get.map(c => c.tipRef.map(t => (t.slot, t.hash.hashCode.toLong)))

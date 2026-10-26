@@ -108,37 +108,44 @@ class FetchCoordinationBenchSuite extends FailsOnUncaught:
           (coordinator.session(p.id.toLong), cats.effect.Resource.eval(Semaphore[IO](1))).tupled
         )
         .use { sessions =>
+          // Each peer's fetch client takes the requests the decision loop adds and downloads
+          // them while it takes the next, as the session's fetch client does.
           peers.zip(sessions).traverse_ { case (peer, (session, _)) =>
             session.announce(headers.lastOption, peer.model, hints, Some(candidate))
-          } *> peers.zip(sessions).parTraverse_ { case (peer, (session, writer)) =>
-            def offer(initial: Vector[Header]): IO[Unit] =
-              cats.Monad[IO].tailRecM[Vector[Header], Unit](initial) { pending =>
-                session.reserve(pending, mode).use { allocation =>
-                  val download =
-                    if allocation.headers.isEmpty then IO.unit
-                    else
-                      stats.update(
-                        _.admitted(
-                          peer.id,
-                          allocation.requests,
-                          allocation.headers.size.toLong * blockBytes
-                        )
-                      ) *>
-                        IO.sleep(peer.rtt) *> writer.permit.use { _ =>
-                          allocation.headers.traverse_ { h =>
-                            deliver(stats, peer, h.hash) *> fetched.update(_ + h.hash) *>
-                              session.received(allocation, h.hash)
-                          } *> stats.update(_.completed(peer.id, allocation.requests)) *>
-                            List
-                              .fill(allocation.requests)(())
-                              .traverse_(_ => session.completed(allocation))
-                        }
-                  download.as(
-                    if allocation.remaining.isEmpty then Right(()) else Left(allocation.remaining)
+          } *> coordinator.setMode(mode) *> coordinator.watchDecisions(0).background.use { _ =>
+            peers.zip(sessions).parTraverse_ { case (peer, (session, writer)) =>
+              def download(allocation: FetchCoordinator.Allocation): IO[Unit] =
+                stats.update(
+                  _.admitted(
+                    peer.id,
+                    allocation.requests,
+                    allocation.headers.size.toLong * blockBytes
                   )
+                ) *> IO.sleep(peer.rtt) *> writer.permit.use { _ =>
+                  allocation.headers.traverse_ { h =>
+                    deliver(stats, peer, h.hash) *> fetched.update(_ + h.hash) *>
+                      session.received(allocation, h.hash)
+                  } *> stats.update(_.completed(peer.id, allocation.requests)) *>
+                    session.completed(allocation).replicateA_(allocation.requests) *>
+                    session.finished(allocation)
+                }
+              val drained = fetched.get.map(_.size == blockCount).flatMap { all =>
+                coordinator.inFlight.map(flight => all && flight.values.forall(_.requests == 0))
+              }
+              cats.effect.std.Supervisor[IO](await = true).use { downloads =>
+                cats.Monad[IO].tailRecM(()) { _ =>
+                  drained.flatMap {
+                    case true => IO.pure(Right(()))
+                    case false =>
+                      session.acquire(IO.sleep(1.millis)).flatMap {
+                        case None => IO.pure(Left(()))
+                        case Some(allocation) =>
+                          downloads.supervise(download(allocation)).as(Left(()))
+                      }
+                  }
                 }
               }
-            batches.parTraverse_(offer)
+            }
           }
         }
       ended <- IO.monotonic
