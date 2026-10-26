@@ -105,7 +105,7 @@ final class OutboundPeers[F[_]: Async, A] private (
             Peer.contramapped[F, PeerError, ConnectionError](summon)(e =>
               PeerError.Unavailable(PeerError.Unavailability.Connection(e))
             )
-          val open: Resource[F, (WarmConnection[F, NtNHeader], Supervisor[F])] =
+          val open: Resource[F, (WarmConnection[F, NtNHeader, Unit], Supervisor[F])] =
             for
               slot <- manager.outbound(remote, alongsideInbound = true)
               bearer <- transport.bearer(peer, remote)
@@ -653,7 +653,7 @@ object OutboundPeers:
     *   Completed once the connection has been released everywhere.
     */
   private[node] final class Link[F[_]](
-      val warm: WarmConnection[F, NtNHeader],
+      val warm: WarmConnection[F, NtNHeader, Unit],
       val release: Deferred[F, Unit],
       val gone: Deferred[F, Unit],
       val phase: Ref[F, Phase[F]],

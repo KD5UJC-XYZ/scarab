@@ -66,7 +66,8 @@ object BlockFetchClient:
   def resource[F[_]: Async](
       channel: MuxChannel[F],
       abort: NetworkError => F[Unit],
-      settings: Settings = Settings()
+      settings: Settings = Settings(),
+      completed: Option[F[Unit]] = None
   )(using Raise[F, NetworkError]): Resource[F, BlockFetchClient[F]] =
     BlockFetchRuntime
       .resource(
@@ -83,10 +84,11 @@ object BlockFetchClient:
           settings.timeouts
         )
       )
-      .map(adapt(_))
+      .map(adapt(_, completed))
 
   private def adapt[F[_]: cats.Monad](
-      runtime: BlockFetchRuntime.Client[F, Point, CardanoBlockFetch.RawNtNBlock]
+      runtime: BlockFetchRuntime.Client[F, Point, CardanoBlockFetch.RawNtNBlock],
+      completed: Option[F[Unit]] = None
   ): BlockFetchClient[F] =
     def range(from: Point, to: Point)(using
         Raise[F, NetworkError]
@@ -98,7 +100,7 @@ object BlockFetchClient:
           _.pure[F]
         )
     new BlockFetchClient[F]:
-      def done(using Raise[F, NetworkError]): F[Unit] = runtime.done
+      def done(using Raise[F, NetworkError]): F[Unit] = runtime.done *> completed.sequence_
       def idle: F[Boolean] = runtime.idle
       def requestRange(from: Point, to: Point)(using
           Raise[F, NetworkError]
