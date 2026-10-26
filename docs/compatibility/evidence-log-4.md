@@ -221,6 +221,11 @@ Other parts: [part 1](evidence-log-1.md), [part 2](evidence-log-2.md), [part 3](
   - **Commit:** branch `g4/handshake-v15-v16`
   - **Environment:** 2026-10-17, reference 11.1.3 image, `scarab-jdk:local`, 2 CPUs each
 
+- **Run:** LeiosFetch wire of Blueprint `0460c5a6` (#174), level 2: Docker `check` (scalafmt, `-Werror`, all modules, scalafix); `fuzz 100000 1 4` (all 84 targets); `cddl_crosscheck.py run --count 40`; script tests in the pinned venv; `check_test_coverage.py`, `check_local_paths.py`
+  - **Result:** Historical check passed (14 test runs, 8,592 tests, 16 skipped as before); fuzz 84 of 84 before the bitmap checks, leios-fetch again after them (4 x 100000); cross-check passed with leios-fetch 40/40 in each direction and no exemption; 620 script tests OK; the codec applies the reference's bitmap checks (zero bitmap, window at or above 268, windows not ascending, more than 268 entries) and writes the indefinite bitmaps map; the generated source of LeiosFetch changed with the pin (snapshot `pinned-output.sha256` refreshed). This evidence predates the subsequent wire-type and decoding review and does not establish current-head readiness.
+  - **Commit:** branch `feat/leios-fetch-wire-0460c5a6`, recorded before its `8cc19e36c` rebase
+  - **Environment:** 2026-10-22, `scarab-jdk:local`, `scarab-cuddle:1.8.1.0`
+
 - **Run:** CI rejection regression (#181, 2026-10-18)
   - **Result:** A forced healthy-first control reproduces the original missing-rejection timeout. The corrected test holds healthy headers until a typed invalid-block rejection and observes malformed bytes consumed from the original stream; it then checks healthy catch-up, released claims and no fatal error. All 32 focused tests and full Docker check/scalafix pass. Original failed CI39138433645 is retained. Production and private harness sources are unchanged from72ac3db9, whose E2E39138443978 passed all seven scenarios
   - **Commit:** this commit
