@@ -187,15 +187,20 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Set up tested JDK
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+      - name: Cache sbt launcher, boot, ivy and coursier
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          distribution: temurin
-          java-version: '21.0.11+10.0.LTS'
-          check-latest: false
-          overwrite-settings: false
-      - name: Install sbt launcher
-        uses: sbt/setup-sbt@6158cb0903b8ceeae04f830055f3155e1b6a5ad7 # v1.5.11
+          path: .cache/scarab
+          key: sbt-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'project/*.scala', 'scripts/sbtw', 'scripts/prepare_scalus.py', 'patches/scalus/**') }}
+          restore-keys: |
+            sbt-${{ runner.os }}-
+      - name: Build the tested JDK image
+        run: docker build -f docker/jdk.Dockerfile -t scarab-dependency-jdk:ci .
+      - name: Use the prepared project launcher
+        run: |
+          mkdir -p "$RUNNER_TEMP/scarab-dependency-bin"
+          install -m 755 scripts/dependency_sbt "$RUNNER_TEMP/scarab-dependency-bin/sbt"
+          echo "$RUNNER_TEMP/scarab-dependency-bin" >> "$GITHUB_PATH"
       - name: Submit the dependency graph to GitHub
         uses: scalacenter/sbt-dependency-submission@d84eef4c09e633bcf5f113bcad7fd5e9af1baee9 # v3.2.3
         with:
