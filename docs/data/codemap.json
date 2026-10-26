@@ -9,7 +9,6 @@
   "plutus": "Plutus evaluation through Scalus",
   "ledger": "Blocks, transactions, rules, native ledger state",
   "consensus": "Praos family, chain selection, hard fork, state mirror",
-  "legacy": "Flat node state, its conversion to the mirror and the genesis start path",
   "storage": "Stores, snapshots, migrations, Haskell formats, SCLS, Mithril",
   "models-gen": "CDDL parser and Scala generator (build time)",
   "models": "Generated CDDL models runtime and equivalence tests",
@@ -157,7 +156,7 @@
    "module": "ledger",
    "path": "ledger/rules",
    "responsibility": "Shelley to Conway rule interpreter: LEDGER, UTXO, BBODY, epoch, tick, rewards, governance",
-   "entryPoints": ["Ledger", "Utxo", "Bbody", "NewEpoch", "Tick", "RuleT", "Sts", "Gov", "Rewards"],
+   "entryPoints": ["Ledger", "Utxo", "Bbody", "NewEpoch", "Tick", "RuleT", "Sts", "Gov", "Rewards", "GenesisStart"],
    "suites": ["BbodySuite", "StsSuite", "TickRulesSuite", "EpochBoundarySuite", "RewardPulserSuite", "TxDependenciesSuite", "DuplicateWithdrawalsLedgerSuite"],
    "docs": ["docs/design/rule-interpreter-as-built.md", "docs/adr/0009-ledger-mirror-step-2.md", "docs/adr/0019-incremental-reward-calculation.md", "docs/adr/0011-stack-safety.md", "docs/design/reward-pulser.md"]
   },
@@ -189,17 +188,9 @@
    "module": "consensus",
    "path": "consensus/state",
    "responsibility": "Extended ledger state, chain-dependent state, era history, telescope, state mirror",
-   "entryPoints": ["ExtLedgerState", "ChainDepState", "HeaderState", "Telescope", "EraHistory", "StateMirror", "MirrorStep"],
+   "entryPoints": ["ExtLedgerState", "ChainDepState", "HeaderState", "Telescope", "EraHistory", "StateMirror", "MirrorStep", "GenesisMirror"],
    "suites": ["TelescopeSuite", "StateLawsSuite", "MirrorStepSuite", "MirrorProvenanceSuite", "DiffSuite"],
    "docs": ["docs/adr/0007-era-indexed-state.md", "docs/adr/0009-ledger-mirror-step-2.md", "docs/design/ledger-mirror-step2.md"]
-  },
-  {
-   "module": "legacy",
-   "path": "legacy",
-   "responsibility": "The flat node state, its conversion to the mirror and the genesis start path used by NodeSetup",
-   "entryPoints": ["GenesisState", "FlatNodeState", "Mirroring", "LedgerMirror", "NodeState", "Upgrade", "StateMirror", "LegacySeed"],
-   "suites": ["LedgerMirrorSuite", "StateMirrorSuite", "RulesMirrorSuite"],
-   "docs": ["docs/adr/0009-ledger-mirror-step-2.md", "docs/adr/0006-versioned-formats-migrate-on-open.md", "docs/design/ledger-mirror-step2.md"]
   },
   {
    "module": "storage",
@@ -262,7 +253,7 @@
    "path": "node",
    "responsibility": "Node wiring: config, setup, follower, block pool, fetch coordination, governors, header gate, Main",
    "entryPoints": ["Main", "NodeConfig", "NodeSetup", "Follower", "BlockPool", "FetchCoordinator", "InboundGovernor", "HeaderGate", "OutboundPeers", "PeerGovernor"],
-   "suites": ["FollowerSuite", "BlockPoolSuite", "FetchCoordinatorSuite", "ConfigSuite", "InboundGovernorSuite", "HeaderGateSuite", "OutboundLossReportSuite", "OutboundLinkIdentitySuite", "ConnectionMonitorSuite", "ConnectionResourcesSuite"],
+   "suites": ["FollowerSuite", "BlockPoolSuite", "FetchCoordinatorSuite", "ConfigSuite", "InboundGovernorSuite", "HeaderGateSuite", "OutboundLossReportSuite", "OutboundLinkIdentitySuite", "ConnectionMonitorSuite", "ConnectionResourcesSuite", "GenesisStartSuite"],
    "docs": ["docs/design/block-fetch-coordination.md", "docs/adr/0017-fibers-end-with-values.md", "docs/adr/0018-parallel-plutus-after-ordered-preparation.md", "docs/design/peer-selection.md"]
   },
   {

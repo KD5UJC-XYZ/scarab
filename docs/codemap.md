@@ -17,9 +17,8 @@ network     -> protocol
 plutus      -> codec
 ledger      -> protocol, plutus
 consensus   -> ledger
-legacy      -> consensus
 storage     -> consensus, models
-node        -> storage, legacy, network
+node        -> storage, network
 models-gen  -> (none)
 models      -> codec, crypto; test only: models-gen, protocol, ledger
 fuzz        -> codec, protocol, node, models-gen
@@ -90,7 +89,7 @@ Blocks, transactions, rules, native ledger state.
 | ledger | Blocks, headers, transactions, governance, parameters, scripts, ledger view and the closed error vocabulary | `Block`, `Header`, `Tx`, `GovAction`, `ProtocolParams`, `LedgerView`, `ScriptContexts`, `Prepared` | `TxDecodingSuite`, `ProtocolParamsSuite`, `PreparedBlockSuite`, `RatifySuite`, `ScriptContextOracleSuite`, `VotingProceduresSuite`, `WithdrawalContextsSuite` | [ADR 0007](adr/0007-era-indexed-state.md), [ADR 0009](adr/0009-ledger-mirror-step-2.md), [design domain-errors](design/domain-errors.md) |
 | ledger/byron | Byron ledger: transactions, delegation, update, parameters, transport | `ByronLedger`, `ByronTx`, `ByronUpdate`, `DelegationState`, `ByronParams`, `ByronTransport` | `ByronLedgerSuite`, `ByronUpdateSuite`, `ByronMainnetSuite`, `ByronTransportSuite` | [ADR 0001](adr/0001-haskell-node-as-reference.md), [architecture](architecture.md) |
 | ledger/mempack | MemPack TxOut codec and canonical CBOR used by the Haskell snapshot layout | `MemPack`, `TxOutMemPack`, `CanonicalCbor`, `MultiAssetRep` | `TxOutMemPackSuite` | [design haskell-snapshots](design/haskell-snapshots.md) |
-| ledger/rules | Shelley to Conway rule interpreter: LEDGER, UTXO, BBODY, epoch, tick, rewards, governance | `Ledger`, `Utxo`, `Bbody`, `NewEpoch`, `Tick`, `RuleT`, `Sts`, `Gov`, `Rewards` | `BbodySuite`, `StsSuite`, `TickRulesSuite`, `EpochBoundarySuite`, `RewardPulserSuite`, `TxDependenciesSuite`, `DuplicateWithdrawalsLedgerSuite` | [design rule-interpreter-as-built](design/rule-interpreter-as-built.md), [ADR 0009](adr/0009-ledger-mirror-step-2.md), [ADR 0019](adr/0019-incremental-reward-calculation.md), [ADR 0011](adr/0011-stack-safety.md), [design reward-pulser](design/reward-pulser.md) |
+| ledger/rules | Shelley to Conway rule interpreter: LEDGER, UTXO, BBODY, epoch, tick, rewards, governance | `Ledger`, `Utxo`, `Bbody`, `NewEpoch`, `Tick`, `RuleT`, `Sts`, `Gov`, `Rewards`, `GenesisStart` | `BbodySuite`, `StsSuite`, `TickRulesSuite`, `EpochBoundarySuite`, `RewardPulserSuite`, `TxDependenciesSuite`, `DuplicateWithdrawalsLedgerSuite` | [design rule-interpreter-as-built](design/rule-interpreter-as-built.md), [ADR 0009](adr/0009-ledger-mirror-step-2.md), [ADR 0019](adr/0019-incremental-reward-calculation.md), [ADR 0011](adr/0011-stack-safety.md), [design reward-pulser](design/reward-pulser.md) |
 | ledger/state | Era-indexed native ledger state: UTxO, accounts, certificates, snapshots, vocabulary, diffs | `LedgerState`, `EpochState`, `CertState`, `SnapShots`, `ShelleyBasedEra`, `KeyRole`, `Diff`, `MirrorEnv` | `LedgerStateSuite`, `EpochStateSuite`, `ErasSuite`, `VocabularySuite`, `DiffSuite`, `EmptySuite` | [ADR 0007](adr/0007-era-indexed-state.md), [ADR 0009](adr/0009-ledger-mirror-step-2.md) |
 
 ## consensus
@@ -101,15 +100,7 @@ Praos family, chain selection, hard fork, state mirror.
 |---|---|---|---|---|
 | consensus | Praos, TPraos and PBFT, chain selection, hard-fork triggers, header rules, volatile chain | `Praos`, `TPraos`, `ChainSelection`, `ForkTrigger`, `HeaderRules`, `VolatileChain`, `BlockRules`, `Scheduling` | `ChainSelectionSuite`, `TPraosSuite`, `HardForkSuite`, `VolatileChainSuite`, `SchedulingSuite`, `HeaderChainErrorSuite` | [ADR 0001](adr/0001-haskell-node-as-reference.md), [ADR 0007](adr/0007-era-indexed-state.md) |
 | consensus/genesis | Genesis density and diffusion punishment | `DiffusionPunishment`, `GenesisDensity` | `DiffusionPunishmentSuite`, `GenesisDensitySuite`, `UpstreamGenesisDensitySuite` | [design genesis](design/genesis.md) |
-| consensus/state | Extended ledger state, chain-dependent state, era history, telescope, state mirror | `ExtLedgerState`, `ChainDepState`, `HeaderState`, `Telescope`, `EraHistory`, `StateMirror`, `MirrorStep` | `TelescopeSuite`, `StateLawsSuite`, `MirrorStepSuite`, `MirrorProvenanceSuite`, `DiffSuite` | [ADR 0007](adr/0007-era-indexed-state.md), [ADR 0009](adr/0009-ledger-mirror-step-2.md), [design ledger-mirror-step2](design/ledger-mirror-step2.md) |
-
-## legacy
-
-Flat node state, its conversion to the mirror and the genesis start path.
-
-| Package | Responsibility | Entry points | Suites | Decisions |
-|---|---|---|---|---|
-| legacy | The flat node state, its conversion to the mirror and the genesis start path used by NodeSetup | `GenesisState`, `FlatNodeState`, `Mirroring`, `LedgerMirror`, `NodeState`, `Upgrade`, `StateMirror`, `LegacySeed` | `LedgerMirrorSuite`, `StateMirrorSuite`, `RulesMirrorSuite` | [ADR 0009](adr/0009-ledger-mirror-step-2.md), [ADR 0006](adr/0006-versioned-formats-migrate-on-open.md), [design ledger-mirror-step2](design/ledger-mirror-step2.md) |
+| consensus/state | Extended ledger state, chain-dependent state, era history, telescope, state mirror | `ExtLedgerState`, `ChainDepState`, `HeaderState`, `Telescope`, `EraHistory`, `StateMirror`, `MirrorStep`, `GenesisMirror` | `TelescopeSuite`, `StateLawsSuite`, `MirrorStepSuite`, `MirrorProvenanceSuite`, `DiffSuite` | [ADR 0007](adr/0007-era-indexed-state.md), [ADR 0009](adr/0009-ledger-mirror-step-2.md), [design ledger-mirror-step2](design/ledger-mirror-step2.md) |
 
 ## storage
 
@@ -129,7 +120,7 @@ The node: wiring, mempool, forging, relay, node-to-client, tools.
 
 | Package | Responsibility | Entry points | Suites | Decisions |
 |---|---|---|---|---|
-| node | Node wiring: config, setup, follower, block pool, fetch coordination, governors, header gate, Main | `Main`, `NodeConfig`, `NodeSetup`, `Follower`, `BlockPool`, `FetchCoordinator`, `InboundGovernor`, `HeaderGate`, `OutboundPeers`, `PeerGovernor` | `FollowerSuite`, `BlockPoolSuite`, `FetchCoordinatorSuite`, `ConfigSuite`, `InboundGovernorSuite`, `HeaderGateSuite`, `OutboundLossReportSuite`, `OutboundLinkIdentitySuite`, `ConnectionMonitorSuite`, `ConnectionResourcesSuite` | [design block-fetch-coordination](design/block-fetch-coordination.md), [ADR 0017](adr/0017-fibers-end-with-values.md), [ADR 0018](adr/0018-parallel-plutus-after-ordered-preparation.md), [design peer-selection](design/peer-selection.md) |
+| node | Node wiring: config, setup, follower, block pool, fetch coordination, governors, header gate, Main | `Main`, `NodeConfig`, `NodeSetup`, `Follower`, `BlockPool`, `FetchCoordinator`, `InboundGovernor`, `HeaderGate`, `OutboundPeers`, `PeerGovernor` | `FollowerSuite`, `BlockPoolSuite`, `FetchCoordinatorSuite`, `ConfigSuite`, `InboundGovernorSuite`, `HeaderGateSuite`, `OutboundLossReportSuite`, `OutboundLinkIdentitySuite`, `ConnectionMonitorSuite`, `ConnectionResourcesSuite`, `GenesisStartSuite` | [design block-fetch-coordination](design/block-fetch-coordination.md), [ADR 0017](adr/0017-fibers-end-with-values.md), [ADR 0018](adr/0018-parallel-plutus-after-ordered-preparation.md), [design peer-selection](design/peer-selection.md) |
 | node/forge | Block production: leadership, hot keys, KES files, block builder, forger | `Forger`, `BlockBuilder`, `HotKeys`, `KesFiles`, `KeyFiles`, `Leadership` | `ForgeSuite`, `KesRotationSuite`, `KeyFilesSuite`, `ForgerFailureSuite` | [ADR 0015](adr/0015-kes-key-written-back-and-checked-reload.md) |
 | node/log | Typed node log events, rendering, routing and severity | `Log`, `LogRouter`, `NodeEvent`, `Render`, `EventKind`, `Severity` | `LogRouterSuite`, `LogGoldenSuite`, `LogDocsSuite` | [ADR 0014](adr/0014-typed-log.md) |
 | node/mempool | Mempool state, capacity, local submission and monitor | `Mempool`, `MempoolState`, `LocalSubmission`, `LocalMonitor`, `Capacity` | `MempoolSuite`, `LocalSubmissionSuite`, `LocalMonitorSuite`, `MempoolBackpressureSuite` | [architecture](architecture.md) |

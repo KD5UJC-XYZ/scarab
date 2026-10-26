@@ -21,7 +21,6 @@ a cycle does not load.
 | `plutus` | `ScriptEvaluator[F]` algebra, the Scalus adapter, `NativeCrypto` (the start-up check of the Plutus native library), `PlutusData`, `ExUnits` | `F[_]` at the evaluator, pure otherwise |
 | `ledger` | Blocks, headers, genesis files, transactions, scripts, the Shelley to Conway rules, the Byron ledger, `Verdicts`, `OCertRules`, the node error hierarchy, `Nonce`, `LedgerView` | Pure |
 | `consensus` | Praos, TPraos and PBFT, chain selection, the hard-fork combinator, header rules, `VolatileChain`, `MirrorState` and the mirror's types, `BlockRules`, `Scheduling` | Pure, `Compute[F]` in `Scheduling` |
-| `legacy` | Flat genesis/domain vocabulary and its one-way conversion to the mirror (`Mirroring`, `LegacySeed`), retained for genesis conversion (#134); retired V1–V4 binary snapshot codecs are recovered from pinned history, not shipped runtime readers | Pure |
 | `storage` | `ImmutableStore`, `VolatileStore`, `LedgerSnapshots`, `ChainStorage`, `UtxoStore` (memory, RocksDB), derived `Codec`s, format migrations, the Haskell ImmutableDB reader and the Haskell ledger-state codec | Algebras over `F[_]` |
 | `node` | Peer, follower, header gate, block rules (`MirrorRules`, with what they share in `NodeRules`), mempool, forging, relay, node-to-client, query server, `Main` | Algebras over `F[_]`; `IO` only in `Main` and the tools |
 | `models-gen`, `models` | CDDL parser and Scala generator; the generated models, their runtime and the equivalence tests. A spike: the node does not decode with the generated models, only `storage` uses the runtime (docs/models.md) | Build-time tool; pure |
@@ -33,13 +32,12 @@ blst-native -> crypto (before blst-java on its class path)
 codec <- crypto <- protocol <- network ------------------------.
   ^                  ^                                          \
   |                  '--- ledger <- consensus <- storage <------ node
-  |                                           '--- legacy <------'
   '------ plutus <------'
 ```
 
-`ledger` depends on `protocol` and `plutus`; `consensus` on `ledger`; `legacy` on `consensus`; `storage` on `consensus` and
+`ledger` depends on `protocol` and `plutus`; `consensus` on `ledger`; `storage` on `consensus` and
 `models` (which stands on `codec` and `crypto`; the Haskell ledger-state codec reuses the models runtime; `models` itself sees `ledger` only in
-its tests); `node` on `storage`, `legacy` and `network`. The ledger cannot import the network runtime, and storage cannot
+its tests); `node` on `storage` and `network`. The ledger cannot import the network runtime, and storage cannot
 import the node. Note that `protocol/Mux.scala` (the pure framing) and `network/Mux.scala` (the
 effectful multiplexer) are different files. The pure `NetworkError` vocabulary lives in `protocol`;
 `network.NetworkError` aliases it. This lets ledger and node adapters retain transport causes
