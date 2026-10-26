@@ -21,8 +21,8 @@ import xyz.kd5ujc.scarab.protocol.Era
   * UTxO set its `mergeUtxoNoOverlap` error (`Shelley/Transition.hs:700-710`).
   */
 enum GenesisStartError extends DomainError derives Show:
-  /** A value of the genesis does not fit its type in the state (a hash of another length, a coin
-    * above 2^64).
+  /** A value of the genesis does not fit its type in the state (a hash of another length, a compact coin
+    * outside the unsigned 64-bit range).
     */
   case Vocab(cause: VocabError)
 
