@@ -57,9 +57,9 @@ val testDependencies = Seq(
 //   blstNative <- crypto
 //   codec <- crypto <- protocol <- network
 //   codec <- plutus
-//   protocol, plutus <- ledger <- consensus <- legacy, storage
+//   protocol, plutus <- ledger <- consensus <- storage
 //   models <- storage (the Haskell ledger-state codec reuses the models runtime)
-//   storage, legacy, network <- node
+//   storage, network <- node
 // Initialisation safety applies to main sources (-Ysafe-init on Scala 3.3, -Wsafe-init later).
 // Test sources exclude it because munit registers tests in constructors; the initial sweep found
 // 19 warnings for that idiom and none in main sources.
@@ -187,17 +187,6 @@ lazy val consensus = scarab("consensus")
     )
   )
 
-// The flat node state (`FlatNodeState`), its conversion to the era-indexed state (`Mirroring`) and
-// the genesis start state (`GenesisState.initial`) that `NodeSetup` builds the first state from. It
-// holds no snapshot reader (ADR 0009, amendment of 2026-10-25).
-lazy val legacy = scarab("legacy")
-  .dependsOn(consensus % "compile->compile;test->test")
-  .settings(
-    libraryDependencies ++= Seq(
-      Libraries.cats
-    )
-  )
-
 // Immutable and volatile stores, ledger snapshots, the UTxO store, the Haskell ImmutableDB reader.
 lazy val storage = scarab("storage")
   .dependsOn(
@@ -244,7 +233,6 @@ lazy val node = scarab("node")
   .enablePlugins(BuildInfoPlugin)
   .dependsOn(
     storage % "compile->compile;test->test",
-    legacy % "compile->compile;test->test",
     network % "compile->compile;test->test"
   )
   .settings(
@@ -427,7 +415,6 @@ lazy val root = project
     plutus,
     ledger,
     consensus,
-    legacy,
     storage,
     node,
     modelsGen,
@@ -482,7 +469,6 @@ val modules = Seq(
   "plutus",
   "ledger",
   "consensus",
-  "legacy",
   "storage",
   "node",
   "modelsGen",

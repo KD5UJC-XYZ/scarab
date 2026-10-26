@@ -130,21 +130,6 @@ object GenesisState:
           .cond(b.size == 28, b, ConfigError(ConfigProblem.ByteLength("hash", 28, h.length / 2)))
       )
 
-  /** Genesis injections live under `extraConfig.<name>.data`; older files use a top-level map. */
-  def injection[V: Decoder](
-      top: ACursor,
-      extra: ACursor,
-      name: String
-  ): Either[ConfigError, Map[String, V]] =
-    def at(c: ACursor) =
-      c.as[Option[Map[String, V]]]
-        .leftMap(e => ConfigError(ConfigProblem.JsonField("genesis injection", name, e)))
-    (at(extra.downField(name).downField("data")), at(top.downField(name))).tupled.flatMap {
-      case (Some(a), legacy) if legacy.forall(_.isEmpty) => Right(a)
-      case (None, legacy)                                => Right(legacy.getOrElse(Map.empty))
-      case _ => Left(ConfigError(ConfigProblem.DuplicateInjection(name)))
-    }
-
   /** `resolveInjectionSource` (`Shelley/Transition.hs:496-517`, cardano-ledger f649f975): with an
     * `extraConfig`, its `<name>` source when it names one, else the legacy field, and a conflict
     * when both are given; without one, the legacy field. The entries are in the order of the key,

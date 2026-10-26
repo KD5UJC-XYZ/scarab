@@ -11,8 +11,8 @@ import xyz.kd5ujc.scarab.protocol.Era
 
 // The consensus side of the mirror: the Haskell `ExtLedgerState` of the Cardano block
 // (`Ledger/Extended.hs:70-73`) with the node's bookkeeping beside it ([[MirrorState]]), the environment the
-// conversions read and their error. The conversion of the flat state of the old rules, which
-// the older snapshot files hold, is `legacy.StateMirror` (J2.9).
+// conversions read and their error. The state a chain starts from is built from its genesis
+// ([[ByronMirror]], [[GenesisMirror]]).
 
 /** What the consensus side of the conversion reads from the node's configuration: the ledger side's
   * ([[MirrorEnv]]) and what the era history is made from.
