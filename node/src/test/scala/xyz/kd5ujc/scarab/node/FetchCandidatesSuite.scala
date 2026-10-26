@@ -107,7 +107,9 @@ class FetchCandidatesSuite extends FunSuite:
   test("empty current fragment admits Byron boundary extension with equal chain difficulty") {
     val anchor = Fixtures.header(10, 100, None)
     val boundary =
-      Header.Byron(Bytes.empty, Bytes(Vector(99.toByte)), true, 1, 0, 101, 10, Some(anchor.hash))
+      Header
+        .UnsizedByron(Bytes.empty, Bytes(Vector(99.toByte)), true, 1, 0, 101, 10, Some(anchor.hash))
+        .withSizeHint(1)
     val selected = ChainSelection.Local(anchor.point, SelectView.of(anchor), Vector.empty)
     assert(
       FetchCandidates.plausible(

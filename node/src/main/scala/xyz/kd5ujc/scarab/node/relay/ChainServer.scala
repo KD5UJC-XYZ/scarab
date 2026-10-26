@@ -214,7 +214,7 @@ object ChainServer:
         block.header match
           case h: Header.Byron =>
             Info(
-              NtNHeader(Era.Byron, h.raw, Some(NtNHeader.ByronInfo(h.boundary, raw.size))),
+              NtNHeader(Era.Byron, h.raw, Some(NtNHeader.ByronInfo(h.boundary, h.blockSizeHint))),
               h.blockNo
             )
           case h => Info(NtNHeader(h.era, h.raw, None), h.blockNo)

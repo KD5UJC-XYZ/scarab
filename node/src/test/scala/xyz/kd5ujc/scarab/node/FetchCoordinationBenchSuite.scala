@@ -26,16 +26,18 @@ class FetchCoordinationBenchSuite extends FailsOnUncaught:
   private final case class Peer(id: Int, rtt: FiniteDuration):
     def model: FetchGsv.PeerGsv = FetchGsv.fromSample(0, BigInt(rtt.toNanos) * 1000)
   private val peers = Vector(Peer(0, 400.millis), Peer(1, 20.millis))
-  private def header(n: Int): Header = Header.Byron(
-    Bytes.empty,
-    Bytes(Vector(n.toByte)),
-    false,
-    0,
-    n,
-    21600,
-    n,
-    Option.when(n > 0)(Bytes(Vector((n - 1).toByte)))
-  )
+  private def header(n: Int): Header = Header
+    .UnsizedByron(
+      Bytes.empty,
+      Bytes(Vector(n.toByte)),
+      false,
+      0,
+      n,
+      21600,
+      n,
+      Option.when(n > 0)(Bytes(Vector((n - 1).toByte)))
+    )
+    .withSizeHint(blockBytes)
   private val anchor = header(0)
   private val headers = (1 to blockCount).toVector.map(header)
   private val batches = headers.grouped(4).map(_.toVector).toVector

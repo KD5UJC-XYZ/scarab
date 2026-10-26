@@ -6,6 +6,7 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Block, Header}
+import xyz.kd5ujc.scarab.protocol.NtNHeader
 
 /** Actual pinned CLI full-block decoder verdicts, not reference signature/ledger acceptance. */
 class ByronHeaderFixtureSuite extends FunSuite:
@@ -37,7 +38,18 @@ class ByronHeaderFixtureSuite extends FunSuite:
           {
             case b: Block.Byron =>
               assertEquals(b.header.blockVersion, version)
-              assertEquals(Header.byronFromRaw(b.header.raw, false, 21600), Right(b.header))
+              assertEquals(b.header.blockSizeHint, BigInt(b.size) + 9)
+              for hint <- List(BigInt(0), BigInt(1234), BigInt(0xffffffffL)) do
+                val wire =
+                  NtNHeader(b.header.era, b.header.raw, Some(NtNHeader.ByronInfo(false, hint)))
+                val sized = Header.fromNtN(wire, 21600).fold(e => fail(e.message), identity)
+                assertEquals(sized, b.header.copy(blockSizeHint = hint))
+                assertEquals(sized.raw, b.header.raw)
+                assertEquals(sized.hash, b.header.hash)
+              assertEquals(
+                Header.byronFromRaw(b.header.raw, false, 21600),
+                Right(b.header.withoutSizeHint)
+              )
             case _ => fail("expected Byron block")
           }
         )

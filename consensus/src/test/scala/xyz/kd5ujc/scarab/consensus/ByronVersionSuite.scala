@@ -137,7 +137,10 @@ class ByronVersionSuite extends ScalaCheckSuite:
     ) {
       val b = decoded(block(proposed, proposed))
       assertEquals(b.header.blockVersion, version(proposed))
-      assertEquals(Header.byronFromRaw(b.header.raw, false, config.epochSlots), Right(b.header))
+      assertEquals(
+        Header.byronFromRaw(b.header.raw, false, config.epochSlots),
+        Right(b.header.withoutSizeHint)
+      )
       val (after, check) =
         ByronRules.update(state(adopted), b, rulesConfig).fold(e => fail(e.toString), identity)
       assertEquals(

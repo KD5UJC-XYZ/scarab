@@ -11,16 +11,18 @@ import xyz.kd5ujc.scarab.protocol.ChainSync
 /** Headers, candidates and session steps shared by the fetch-decision suites. */
 private[node] object FetchTesting:
   /** A Byron header whose hash is `n` and whose predecessor is `n - 1`. */
-  def header(n: Int): Header = Header.Byron(
-    Bytes.empty,
-    Bytes.wrap(Array(n.toByte)),
-    false,
-    0,
-    n,
-    21600,
-    n,
-    Some(Bytes.wrap(Array((n - 1).toByte)))
-  )
+  def header(n: Int): Header.Byron = Header
+    .UnsizedByron(
+      Bytes.empty,
+      Bytes.wrap(Array(n.toByte)),
+      false,
+      0,
+      n,
+      21600,
+      n,
+      Some(Bytes.wrap(Array((n - 1).toByte)))
+    )
+    .withSizeHint(1)
 
   def candidate(headers: Vector[Header]): ChainSelection.Candidate =
     ChainSelection.Candidate(ChainSync.Point.Origin, headers)

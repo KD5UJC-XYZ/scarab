@@ -214,16 +214,18 @@ class HeaderRulesSuite extends ScalaCheckSuite:
   }
 
   test("a Shelley header state cannot accept a Byron header") {
-    val h = Header.Byron(
-      Bytes.empty,
-      Bytes.empty,
-      boundary = false,
-      epoch = 0,
-      slotInEpoch = 1,
-      epochSlots = 100,
-      blockNo = 1,
-      prevHash = None
-    )
+    val h = Header
+      .UnsizedByron(
+        Bytes.empty,
+        Bytes.empty,
+        boundary = false,
+        epoch = 0,
+        slotInEpoch = 1,
+        epochSlots = 100,
+        blockNo = 1,
+        prevHash = None
+      )
+      .withSizeHint(1)
     assertEquals(
       rules.validate(forged.genesis, None, rules.at(forged.genesis), h),
       Outcome.Invalid(

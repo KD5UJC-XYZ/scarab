@@ -144,8 +144,11 @@ class ChainSelectionSuite extends ScalaCheckSuite:
   }
 
   test("Byron EBB projection and preference retain the native equal-difficulty tie-break") {
-    val regular = Header.Byron(Bytes.empty, bytes(1, 32), false, 0, 49, 50, 10, None)
-    val boundary = Header.Byron(Bytes.empty, bytes(2, 32), true, 1, 0, 50, 10, Some(regular.hash))
+    val regular =
+      Header.UnsizedByron(Bytes.empty, bytes(1, 32), false, 0, 49, 50, 10, None).withSizeHint(1)
+    val boundary = Header
+      .UnsizedByron(Bytes.empty, bytes(2, 32), true, 1, 0, 50, 10, Some(regular.hash))
+      .withSizeHint(1)
     val regularView = SelectView.of(regular)
     val boundaryView = SelectView.of(boundary)
     assert(!regularView.boundary)
