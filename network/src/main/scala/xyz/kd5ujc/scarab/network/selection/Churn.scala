@@ -10,12 +10,11 @@ import xyz.kd5ujc.scarab.codec.Rational
   *
   * A port of `peerChurnGovernor` (`cardano-diffusion/lib/Cardano/Network/PeerSelection/Churn.hs`,
   * ouroboros-network 1.2.0.0; source provenance is recorded in
-  * docs/design/peer-selection/reference-model.md). The churn governor does not move peers.
-  * It writes the *targets* the governor works towards, one set
-  * at a time, and waits (for the counters to meet them, or for a timeout) before the next: decrease
-  * the active peers so that the governor demotes the least useful ones (the metrics of
-  * [[PeerMetrics]]), increase them again so that it promotes others, then refresh the established
-  * and known sets (`Churn.hs` 117-123, 561-654).
+  * docs/design/peer-selection/reference-model.md). The churn governor does not move peers. It
+  * writes the *targets* the governor works towards, one set at a time, and waits (for the counters
+  * to meet them, or for a timeout) before the next: decrease the active peers so that the governor
+  * demotes the least useful ones (the metrics of [[PeerMetrics]]), increase them again so that it
+  * promotes others, then refresh the established and known sets (`Churn.hs` 117-123, 561-654).
   *
   * The pinned policy retains all twelve actions, including disabled-ledger configurations. Raw
   * proposals can be insane; the independent peer governor ignores them while churn retains them for

@@ -4,7 +4,7 @@
 Part of [Running the node and the devnet scenarios](../running.md).
 
 Flags, as parsed by `Main.parse` (`node/src/main/scala/xyz/kd5ujc/scarab/node/Main.scala`). Every flag takes a
-value except `--forge` and `--dump-state-full`. An unknown flag, a repeated flag (except `--peer`, `--log-severity` and `--log-every`, which accumulate) and a flag without its value are refused with a typed `ConfigError` (M1).
+value except `--forge`, `--dump-state-full` and `--adopt-legacy-network-identity`. An unknown flag, a repeated flag (except `--peer`, `--log-severity` and `--log-every`, which accumulate) and a flag without its value are refused with a typed `ConfigError` (M1).
 
 | Flag | Default | Meaning |
 |---|---|---|

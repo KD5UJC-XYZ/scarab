@@ -8,10 +8,10 @@ import xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 
 /** How a peer failed, as far as the governor cares (owner decision 8, docs/design/peer-selection/
-  * decisions-and-risks.md section 8a): a network failure is retried after a backoff; a peer that broke
-  * the protocol, sent an invalid header or an oversize message is forgotten. The node maps each of
-  * its typed peer errors to one of these in a single function (`FailurePolicy`), which is the one
-  * place to change if the policy does.
+  * decisions-and-risks.md section 8a): a network failure is retried after a backoff; a peer that
+  * broke the protocol, sent an invalid header or an oversize message is forgotten. The node maps
+  * each of its typed peer errors to one of these in a single function (`FailurePolicy`), which is
+  * the one place to change if the policy does.
   */
 enum FailureClass:
   case Transient, Misbehaved

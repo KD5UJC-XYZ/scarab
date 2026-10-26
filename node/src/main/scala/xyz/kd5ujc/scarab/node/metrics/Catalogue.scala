@@ -136,9 +136,9 @@ object LatenessLabel:
 /** Every metric the node exports: the identity of a metric is a value here, never a string at the
   * place that records it. `cardano_node_metrics_*` are the names the Haskell node writes with
   * `PrometheusSimple suffix` (cardano-node 11.1.3: scraped from a running node for the ones the
-  * docs mark as verified, see `docs/running/metrics.md`); `scarab_*`, `jvm_*` and `process_*`
-  * are ours, after the Prometheus naming conventions (`_total` for counters, base units, `_seconds`
-  * and `_bytes`).
+  * docs mark as verified, see `docs/running/metrics.md`); `scarab_*`, `jvm_*` and `process_*` are
+  * ours, after the Prometheus naming conventions (`_total` for counters, base units, `_seconds` and
+  * `_bytes`).
   */
 object Catalogue:
   given LabelValue[Era] = LabelValue.derived
