@@ -97,8 +97,9 @@ whole log and the rebuild fails rather than guess:
 - A malformed line, or a log that ends inside a line, fails.
 - The rebuilt tip must be the follower's final tip. To record it, the harness stops the follower's only peer,
   reference node 1 (SIGSTOP inside the reference container; nodes 2 and 3 keep the chain growing), reads the
-  follower's `/tip` until two readings agree, writes it to `follower-tip.json`, removes the follower and
-  continues node 1 (`stop_follower`; `devnet.py oracle` does the same when the follower is still running).
+  follower's `/tip` until two readings agree, removes the follower and continues node 1 in cleanup, and
+  writes the tip to `follower-tip.json` only once the follower is confirmed gone (`stop_follower`;
+  `devnet.py oracle` does the same when the follower is still running).
 
 Any other digest is excluded with its reason, and the summary counts both kinds (`compared`, `matched`,
 `excluded`, `excludedByReason`, `exclusions`, `epochsWithoutMatch`, `finalChainsAgree`, `scope`):

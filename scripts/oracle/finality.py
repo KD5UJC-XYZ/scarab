@@ -32,6 +32,7 @@ class Block(NamedTuple):
     slot: int
     hash: str
     block_no: int
+    boundary: bool = False  # a Byron epoch boundary block
 
 
 class Verdict(enum.Enum):
@@ -125,13 +126,20 @@ def point_of(n, field):
     return slot, block_hash
 
 
-def follows(tip, b, era):
-    """True when `b` can be the block after `tip` (None: Origin): the next block number, a later slot. A Byron
-    epoch boundary block and the first block of its epoch share a slot (the genesis one is block 0, its successor
-    block 1, both at slot 0), so a Byron block may repeat its parent's slot."""
+def follows(tip, b, era, byron_epoch_slots):
+    """`b` as the block after `tip` (None: Origin), marked when it is a Byron epoch boundary block, or None when it
+    cannot follow. Scarab's `VolatileChain.extend` rule: a block takes the next number at a later slot; a boundary
+    block repeats its predecessor's number (the genesis one is block 0), and the block after a boundary block may
+    share its slot. The log does not mark boundary blocks, so a Byron block is one when it repeats the number at the
+    first slot of a Byron epoch (`byron_epoch_slots`, ten times the Byron `k`; None: no Byron epochs known)."""
+    number = tip.block_no if tip is not None else 0
+    if era == "Byron" and byron_epoch_slots and b.slot % byron_epoch_slots == 0 and b.block_no == number and \
+            (tip is None or b.slot > tip.slot):
+        return b._replace(boundary=True)
     if tip is None:
-        return b.block_no == 0
-    return b.block_no == tip.block_no + 1 and (b.slot > tip.slot or (era == "Byron" and b.slot == tip.slot))
+        return b if b.block_no == 0 else None
+    later = b.slot > tip.slot or (b.slot == tip.slot and tip.boundary)
+    return b if b.block_no == tip.block_no + 1 and later else None
 
 
 class FollowerChain:
@@ -166,8 +174,9 @@ class FollowerChain:
         return self.blocks[-(k + 1)] if len(self.blocks) > k else None
 
     @staticmethod
-    def from_events(events):
-        """The chain of numbered events [(line number, event)] (see `parse_log`)."""
+    def from_events(events, byron_epoch_slots=None):
+        """The chain of numbered events [(line number, event)] (see `parse_log`); `byron_epoch_slots` as in
+        `follows`."""
         blocks, position, seen = None, {}, set()
         connected = False
         for n, e in events:
@@ -191,8 +200,10 @@ class FollowerChain:
                     raise ChainRebuildError(Cause.INTERSECTION, n, "an extension before the session connected")
                 if b.hash in position:
                     raise ChainRebuildError(Cause.DUPLICATE_BLOCK, n, f"{b}")
-                if not follows(tip, b, e.get("era")):
+                linked = follows(tip, b, e.get("era"), byron_epoch_slots)
+                if linked is None:
                     raise ChainRebuildError(Cause.DISCONTINUOUS, n, f"{b} after {tip}")
+                b = linked
                 position[b.hash] = len(blocks)
                 blocks.append(b)
                 seen.add(b.hash)
@@ -343,7 +354,8 @@ def summarize(results, digests, k, immutable_tip, follower_tip, agree):
                                                                "referenceBlock")} for r in excluded],
                "epochsWithoutMatch": epochs_without_match(results),
                "referenceImmutableTip": immutable_tip,
-               "followerTip": follower_tip._asdict() if follower_tip else None,
+               "followerTip": {"slot": follower_tip.slot, "hash": follower_tip.hash,
+                               "blockNo": follower_tip.block_no} if follower_tip else None,
                "securityParam": k, "results": [rendered(r) for r in results]}
     failures = []
     bad = [r for r in compared if not r.get("matched")]

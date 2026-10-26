@@ -121,11 +121,27 @@ class FollowerChainTest(unittest.TestCase):
 
     def test_a_byron_boundary_block_may_share_its_successors_slot(self):
         ebb, first = blk(0, 1, 0), blk(0, 2, 1)
-        chain = chain_of([started(), connected(), extended(ebb, "Byron"), extended(first, "Byron")])
-        self.assertEqual(chain.blocks, [ebb, first])
+        chain = FollowerChain.from_events(numbered([started(), connected(), extended(ebb, "Byron"),
+                                                    extended(first, "Byron")]), 50)
+        self.assertEqual(chain.blocks, [ebb._replace(boundary=True), first])
         with self.assertRaises(ChainRebuildError) as e:
             chain_of([started(), connected(), extended(ebb, "Shelley"), extended(first, "Shelley")])
         self.assertIs(e.exception.cause, Cause.DISCONTINUOUS)
+
+    def test_a_later_byron_boundary_block_repeats_its_predecessors_number(self):
+        # regular -> boundary at the first slot of Byron epoch 1 -> regular at that slot, with 50-slot epochs
+        regular, boundary, after = blk(49, 1, 7), blk(50, 2, 7), blk(50, 3, 8)
+        events = [started(), connected(), extended(blk(0, 9, 0), "Byron"), *[extended(blk(i * 7, 10 + i, i), "Byron")
+                  for i in range(1, 7)], extended(regular, "Byron"), extended(boundary, "Byron"), extended(after, "Byron")]
+        chain = FollowerChain.from_events(numbered(events), 50)
+        self.assertEqual([b.hash for b in chain.blocks[-3:]], [regular.hash, boundary.hash, after.hash])
+        self.assertTrue(chain.blocks[-2].boundary)
+        for bad in (blk(51, 2, 7), blk(50, 2, 6)):  # a repeated number off the epoch's first slot; a lower number
+            with self.subTest(block=bad), self.assertRaises(ChainRebuildError) as e:
+                FollowerChain.from_events(numbered(events[:-2] + [extended(bad, "Byron")]), 50)
+            self.assertIs(e.exception.cause, Cause.DISCONTINUOUS)
+        with self.assertRaises(ChainRebuildError):  # the same slot after a block that is not a boundary block
+            FollowerChain.from_events(numbered(events[:-2] + [extended(blk(49, 4, 8), "Byron")]), 50)
 
     def test_a_missing_extension_is_a_gap(self):
         a, _, c = linear(3)
@@ -305,7 +321,7 @@ class SummaryTest(unittest.TestCase):
         self.assertEqual(summary["excludedByReason"], {"rolledBack": 1, "notYetImmutable": 1})
         self.assertEqual([e["slot"] for e in summary["exclusions"]], [20, 30])
         self.assertEqual(summary["epochsWithoutMatch"], [3])
-        self.assertEqual(summary["followerTip"], {"slot": 31, "hash": h(31), "block_no": 3})
+        self.assertEqual(summary["followerTip"], {"slot": 31, "hash": h(31), "blockNo": 3})
         written = json.loads(json.dumps(summary))
         self.assertEqual([r["verdict"] for r in written["results"]],
                          ["compare", "rolledBack", "compare", "notYetImmutable"])
@@ -371,6 +387,72 @@ class RunTest(unittest.TestCase):
             _, failures = devnet.run("pw-test", root)
         self.assertEqual(len(failures), 1)
         self.assertIn("cannot be rebuilt from its log", failures[0])
+
+
+class StopFollowerTest(unittest.TestCase):
+    """`stop_follower` against a scripted docker: SIGCONT and the follower's removal in every outcome."""
+    TIP = {"point": {"slot": 40, "hash": h(4)}}
+
+    def run_stop(self, stop=0, remove=0):
+        """stop/remove: 0 (exit 0), a nonzero exit code, or "timeout" (after delivery, for stop)."""
+        import subprocess
+        from types import SimpleNamespace
+        from oracle import devnet
+        calls = []
+
+        def docker(*args, check=True, capture=True, timeout=None):
+            calls.append(args)
+            if args[0] == "exec" and args[1].endswith("-ref") and "kill -STOP" in args[-1]:
+                if stop == "timeout":
+                    raise subprocess.TimeoutExpired(args, timeout)
+                return SimpleNamespace(returncode=stop, stdout="", stderr="")
+            if args[0] == "exec" and args[1].endswith("-scala"):
+                return SimpleNamespace(returncode=0, stdout=json.dumps(self.TIP), stderr="")
+            if args[0] == "rm":
+                if remove == "timeout":
+                    raise subprocess.TimeoutExpired(args, timeout)
+                return SimpleNamespace(returncode=remove, stdout="", stderr="")
+            if args[0] == "ps":
+                return SimpleNamespace(returncode=0, stdout="" if remove == 0 else "abc\n", stderr="")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        listing = SimpleNamespace(stdout=f"7 /bin/sh -c cardano-node run --database-path {devnet.NODE_DB} \n"
+                                         f"9 cardano-node run --database-path {devnet.NODE_DB} --port 1\n")
+        saved = devnet.docker, devnet.in_ref
+        devnet.docker, devnet.in_ref = docker, lambda name, script, timeout=300: listing
+        try:
+            with tempfile.TemporaryDirectory() as t:
+                root = pathlib.Path(t)
+                try:
+                    devnet.stop_follower("pw-test", root, settle_seconds=0, attempts=2)
+                    raised = None
+                except SystemExit as e:
+                    raised = str(e)
+                recorded = (root / devnet.FINAL_TIP).exists()
+        finally:
+            devnet.docker, devnet.in_ref = saved
+        kills = [c[-1] for c in calls if c[0] == "exec" and "kill" in c[-1]]
+        return kills, recorded, raised
+
+    def test_the_settled_tip_is_recorded_and_the_node_continued(self):
+        kills, recorded, raised = self.run_stop()
+        self.assertEqual(kills, ["kill -STOP 9", "kill -CONT 9"])
+        self.assertTrue(recorded)
+        self.assertIsNone(raised)
+
+    def test_a_timeout_after_the_stop_was_delivered_still_continues_the_node(self):
+        kills, recorded, raised = self.run_stop(stop="timeout")
+        self.assertEqual(kills, ["kill -STOP 9", "kill -CONT 9"])
+        self.assertFalse(recorded)
+        self.assertIsNone(raised)
+
+    def test_a_removal_that_times_out_or_fails_records_no_tip_and_fails(self):
+        for remove in ("timeout", 1):
+            with self.subTest(remove=remove):
+                kills, recorded, raised = self.run_stop(remove=remove)
+                self.assertEqual(kills, ["kill -STOP 9", "kill -CONT 9"])
+                self.assertFalse(recorded)
+                self.assertIn("could not be confirmed removed", raised)
 
 
 class LoadTest(unittest.TestCase):

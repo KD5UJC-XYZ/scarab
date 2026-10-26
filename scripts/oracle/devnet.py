@@ -77,10 +77,16 @@ def benign(line):
     return line.startswith("SLF4J") or is_starvation_warning(line)
 
 
+def byron_epoch_slots(root):
+    """Slots of a Byron epoch, ten times the Byron `k`, or None without a Byron genesis."""
+    genesis = root / "genesis" / "byron-genesis.json"
+    return 10 * json.loads(genesis.read_text())["protocolConsts"]["k"] if genesis.exists() else None
+
+
 def follower_chain(root):
     """The follower's final chain, rebuilt from `follower.jsonl` and checked against the recorded final tip."""
     events = finality.parse_log((root / "follower.jsonl").read_text(errors="strict"), benign)
-    chain = finality.FollowerChain.from_events(events)
+    chain = finality.FollowerChain.from_events(events, byron_epoch_slots(root))
     recorded = root / FINAL_TIP
     chain.check_final_tip(json.loads(recorded.read_text()) if recorded.exists() else None)
     return chain
@@ -90,7 +96,10 @@ def follower_tip(name):
     """The follower's tip ({slot, hash}) from its query server's `/tip`, or None when it does not answer."""
     url = f"http://127.0.0.1:{QUERY_PORT}/tip"
     script = f"import urllib.request,sys;sys.stdout.write(urllib.request.urlopen('{url}',timeout=10).read().decode())"
-    r = docker("exec", f"{name}-scala", "python3", "-c", script, check=False, timeout=30)
+    try:
+        r = docker("exec", f"{name}-scala", "python3", "-c", script, check=False, timeout=30)
+    except subprocess.TimeoutExpired:
+        return None
     try:
         point = json.loads(r.stdout)["point"] if r.returncode == 0 else None
     except (ValueError, KeyError, TypeError):
@@ -112,34 +121,63 @@ def node_pid(name, node):
 
 
 def signal_node(name, pid, sig):
-    in_ref(name, f"kill -{sig} {pid}", timeout=30)
+    """Send `sig` (STOP, CONT) to `pid` in the reference container; True when docker confirms it."""
+    try:
+        return docker("exec", ref(name), "/bin/sh", "-c", f"kill -{sig} {pid}", check=False,
+                      timeout=30).returncode == 0
+    except subprocess.TimeoutExpired:
+        return False
 
 
-def stop_follower(name, root, settle_seconds=2, attempts=15, node=1):
-    """Stop the follower with its final tip recorded in `root/follower-tip.json`.
+def remove_follower(name, timeout=60):
+    """Remove the follower's container; True only when it is confirmed gone."""
+    container = f"{name}-scala"
+    try:
+        removed = docker("rm", "-f", container, check=False, timeout=timeout)
+        left = docker("ps", "-aq", "--filter", f"name=^{container}$", check=False, timeout=30)
+    except subprocess.TimeoutExpired:
+        return False
+    return removed.returncode == 0 and left.returncode == 0 and not left.stdout.strip()
+
+
+def stop_follower(name, root, settle_seconds=2, attempts=15, node=1, remove_timeout=60, resume_attempts=3):
+    """Stop the follower, recording its final tip in `root/follower-tip.json`.
 
     The follower's only peer, reference node `node`, is stopped (SIGSTOP, by PID; the other two nodes keep the
-    chain growing), so no block or rollback reaches the follower. Once two readings of its `/tip`
-    `settle_seconds` apart agree, that is its final tip; the follower is removed and the node continued. Without
-    a settled tip nothing is recorded, and the comparison fails (`Cause.NO_FINAL_TIP`)."""
+    chain growing), so no block or rollback reaches the follower; the tip is final once two readings of its `/tip`
+    `settle_seconds` apart agree. The follower is then removed and the node continued, both in cleanup: SIGCONT is
+    sent whenever a SIGSTOP may have been delivered, even after an error or a timeout. The tip is recorded only
+    with the follower confirmed gone; without it the comparison fails (`Cause.NO_FINAL_TIP`). Raises SystemExit
+    when the follower is not confirmed gone or the node not confirmed continued."""
     recorded = root / FINAL_TIP
     recorded.unlink(missing_ok=True)
-    pid = node_pid(name, node)
-    if pid is not None:
-        signal_node(name, pid, "STOP")
+    pid, tip, removed, resumed = None, None, False, True
     try:
-        last = follower_tip(name) if pid is not None else None
-        for _ in range(attempts if pid is not None else 0):
-            time.sleep(settle_seconds)
-            now = follower_tip(name)
-            if now is not None and now == last:
-                recorded.write_text(json.dumps(now))
-                break
-            last = now
-        docker("rm", "-f", f"{name}-scala", check=False)
-    finally:
+        try:
+            pid = node_pid(name, node)
+        except (subprocess.TimeoutExpired, SystemExit):
+            pid = None
         if pid is not None:
-            signal_node(name, pid, "CONT")
+            resumed = False  # from here a SIGSTOP may have been delivered, whatever docker reports
+            if signal_node(name, pid, "STOP"):
+                last = follower_tip(name)
+                for _ in range(attempts):
+                    time.sleep(settle_seconds)
+                    now = follower_tip(name)
+                    if now is not None and now == last:
+                        tip = now
+                        break
+                    last = now
+    finally:
+        removed = remove_follower(name, remove_timeout)
+        if pid is not None:
+            resumed = any(signal_node(name, pid, "CONT") for _ in range(resume_attempts))
+    if not removed:
+        raise SystemExit(f"the follower container {name}-scala could not be confirmed removed")
+    if not resumed:
+        raise SystemExit(f"reference node {node} (pid {pid}) could not be confirmed continued after SIGSTOP")
+    if tip is not None:
+        recorded.write_text(json.dumps(tip))
 
 
 def run(name, root, log=print, wait_seconds=240):
