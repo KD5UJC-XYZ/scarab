@@ -166,12 +166,37 @@ object ProtocolParams:
     )
 
   /** Initial parameters from the Shelley, Alonzo and (when the chain starts in Conway) Conway
-    * genesis files.
+    * genesis files, with the Alonzo genesis `extraConfig.costModels` merged in.
     */
   def fromGenesis(
       shelley: Json,
       alonzo: Json,
       conway: Option[Json]
+  ): Either[ConfigError, ProtocolParams] = genesis(shelley, alonzo, conway, injected = true)
+
+  /** [[fromGenesis]] without the Alonzo genesis `extraConfig.costModels`: the parameters the era
+    * translations make, whose cost models are the Alonzo genesis `costModels` and the Conway
+    * genesis PlutusV3 model only (`upgradePParams`). The others are the injection's
+    * ([[injectedCostModels]]).
+    */
+  def translatedFromGenesis(
+      shelley: Json,
+      alonzo: Json,
+      conway: Option[Json]
+  ): Either[ConfigError, ProtocolParams] = genesis(shelley, alonzo, conway, injected = false)
+
+  /** The cost models the Alonzo genesis injects (`aecCostModels` of its `extraConfig`, which
+    * `alonzoInjectCostModels` lays over the current parameters' models, cardano-ledger f649f975
+    * `Alonzo/Transition.hs:47-66`), by language index.
+    */
+  def injectedCostModels(alonzo: Json): Either[ConfigError, Map[Int, Vector[BigInt]]] =
+    costModelsOf(alonzo.hcursor.downField("extraConfig").downField("costModels"))
+
+  private def genesis(
+      shelley: Json,
+      alonzo: Json,
+      conway: Option[Json],
+      injected: Boolean
   ): Either[ConfigError, ProtocolParams] =
     val s = shelley.hcursor.downField("protocolParams")
     val a = alonzo.hcursor
@@ -238,7 +263,8 @@ object ProtocolParams:
       baseModels <- costModelsOf(a.downField("costModels"))
       // Alonzo genesis files of Babbage-era clusters carry the later languages (PlutusV2) in
       // `extraConfig.costModels`; the ledger merges them into the genesis parameters.
-      extraModels <- costModelsOf(a.downField("extraConfig").downField("costModels"))
+      extraModels <-
+        if injected then injectedCostModels(alonzo) else Right(Map.empty[Int, Vector[BigInt]])
       alonzoModels = baseModels ++ extraModels
       v3Model = c.downField("plutusV3CostModel").as[Vector[BigInt]].toOption
       costModels = v3Model.fold(alonzoModels)(m => alonzoModels.updated(2, m))

@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.consensus.{BootstrapState, ByronState, HeaderCheckpoints}
+import xyz.kd5ujc.scarab.consensus.{BootstrapState, ByronState, ConsensusExtras, HeaderCheckpoints}
 import xyz.kd5ujc.scarab.consensus.state.{
+  ByronMirror,
   ConsensusMirrorEnv,
+  GenesisMirror,
   EraHistory,
   EraLedgerState,
   MirrorProvenance,
   MirrorState,
   ProtocolState
 }
-import xyz.kd5ujc.scarab.ledger.rules.FromByron
+import xyz.kd5ujc.scarab.ledger.rules.{FromByron, GenesisInjections, GenesisStart, Globals}
 import xyz.kd5ujc.scarab.ledger.state.{
   ConwayLedgerState,
   ConwayNewEpochState,
@@ -29,6 +31,7 @@ import xyz.kd5ujc.scarab.ledger.{
   GenesisFileHash,
   Genesis,
   NetworkIdentity,
+  ProtocolParams,
   ShelleyGenesis
 }
 import cats.{Applicative, Monad}
@@ -149,6 +152,61 @@ object NodeSetup:
       provenance = MirrorProvenance.complete
     )
 
+  /** The start of a chain that begins in Byron: the Byron ledger of the genesis, with the
+    * chain-dependent state Shelley starts from held beside it ([[ByronMirror]]). The reference
+    * injects nothing into a Byron state (`perEraInjections`, ouroboros-consensus 82ecba32
+    * `Cardano/Node.hs:957-959`); the Shelley state is made when the chain crosses into Shelley.
+    */
+  private def byronStart(
+      env: ConsensusMirrorEnv,
+      shelleyHash: Bytes,
+      lite: LiteLedger,
+      byron: ByronState
+  ): Either[ConfigError, MirrorState] =
+    val protocol = ProtocolState.initial(Era.Byron, shelleyHash)
+    ByronMirror
+      .of(
+        env,
+        None,
+        protocol.dep,
+        ConsensusExtras(BootstrapState.initial(lite), byron, protocol.extras),
+        MirrorProvenance.complete
+      )
+      .leftMap(e => ConfigError(ConfigProblem.StateMirror(e)))
+
+  /** The start of a chain whose first era `era` is Shelley-based: the Byron genesis UTxO carried
+    * through the translations up to `era` and the genesis injections of that era
+    * ([[GenesisStart.ledger]]), at the origin of its telescopes ([[GenesisMirror]]).
+    */
+  private def shelleyStart(
+      env: ConsensusMirrorEnv,
+      globals: Globals,
+      files: GenesisState.Files,
+      fromByron: FromByron,
+      era: Era,
+      shelleyHash: Bytes,
+      lite: LiteLedger
+  ): Either[ConfigError, MirrorState] =
+    val protocol = ProtocolState.initial(era, shelleyHash)
+    for
+      balances <- ByronGenesisFile.genesisBalances(files.byron)
+      byronUtxo <- ByronLedger
+        .genesisUtxo(balances._1, balances._2, files.byronNetworkMagic)
+        .leftMap(e => ConfigError(ConfigProblem.LedgerValue(e)))
+      injections <- GenesisInjections.read(files, conway = era == Era.Conway)
+      ledger <- GenesisStart
+        .ledger(globals, fromByron, byronUtxo, era, injections)
+        .leftMap(e => ConfigError(ConfigProblem.GenesisStart(e)))
+      mirror <- GenesisMirror
+        .of(
+          env,
+          ledger,
+          protocol.dep,
+          ConsensusExtras(BootstrapState.initial(lite), ByronState.initial, protocol.extras)
+        )
+        .leftMap(e => ConfigError(ConfigProblem.StateMirror(e)))
+    yield mirror
+
   val ConfigNames: List[String] = List("configuration.yaml", "configuration.json", "config.json")
 
   def fromDirectory(dir: Path): Either[ConfigError, NodeSetup] =
@@ -253,15 +311,23 @@ object NodeSetup:
   def assemble(
       config: NodeConfig,
       read: String => Option[Array[Byte]]
-  ): Either[ConfigError, NodeSetup] = assembleWithStart(config, read).map(_._1)
+  ): Either[ConfigError, NodeSetup] = assembleNative(config, read)
 
-  /** The setup, and the flat state of the old rules at the origin that its start state and
-    * hand-over were made from: the fixtures of the frozen formats are written from it.
-    */
+  /** The setup, and the flat state of the old rules at the origin. */
   private[scarab] def assembleWithStart(
       config: NodeConfig,
       read: String => Option[Array[Byte]]
   ): Either[ConfigError, (NodeSetup, legacy.FlatNodeState)] =
+    (assemble(config, read), legacyStart(config, read)).mapN((setup, old) => (setup, old._2))
+
+  /** The start state as the frozen flat path made it (`legacy.GenesisState`, converted once by
+    * `legacy.Mirroring`), and the flat state it was made from: kept only to prove the native
+    * construction equal to it before the flat path is removed.
+    */
+  private[scarab] def legacyStart(
+      config: NodeConfig,
+      read: String => Option[Array[Byte]]
+  ): Either[ConfigError, (MirrorState, legacy.FlatNodeState)] =
     val names = config.files
     def required(role: String, name: String): Either[ConfigError, Array[Byte]] =
       read(name).toRight(
@@ -348,28 +414,133 @@ object NodeSetup:
       mirrored <- legacy.Mirroring
         .toMirror(mirrorEnvOf(genesis, globals, praos, byronParams), None, start)
         .leftMap(e => ConfigError(ConfigProblem.StateMirror(e)))
-    yield (
-      NodeSetup(
-        genesis,
-        config,
-        byron,
-        globals,
-        praos,
-        nativeGenesis(mirrored.value),
-        byronRules.map(_ => FromByron(initial.genDelegs, initial.params, globals.maxSupply)),
-        identity = NetworkIdentity(
-          genesis.networkMagic,
-          Blake2b.hash256.hash(Bytes.fromArray(shelleyBytes)),
-          byron.map(_.hash),
-          GenesisFileHash(
-            Blake2b.hash256.hash(Bytes.fromArray(alonzoBytes))
-          ),
-          GenesisFileHash(
-            Blake2b.hash256.hash(Bytes.fromArray(conwayBytes))
+    yield (nativeGenesis(mirrored.value), start)
+
+  /** The setup a configuration describes. */
+  private def assembleNative(
+      config: NodeConfig,
+      read: String => Option[Array[Byte]]
+  ): Either[ConfigError, NodeSetup] =
+    val names = config.files
+    def required(role: String, name: String): Either[ConfigError, Array[Byte]] =
+      read(name).toRight(
+        ConfigError(ConfigProblem.FileMissing(role, name))
+      )
+    def text(bytes: Array[Byte]) = new String(bytes, "UTF-8")
+    def json(name: String, bytes: Array[Byte]): Either[ConfigError, Json] =
+      parser.parse(text(bytes)).leftMap(e => ConfigError(ConfigProblem.JsonSyntax(name, e)))
+    for
+      _ <- verifyHashes(config, read)
+      checkpoints <- names.checkpoints
+        .traverse(file =>
+          required("Checkpoints", file)
+            .flatMap(CheckpointsFile.parse(file, _, config.hashes.checkpoints))
+        )
+        .map(_.getOrElse(HeaderCheckpoints.empty))
+      shelleyBytes <- required("Shelley", names.shelley)
+      shelleyBase <- Genesis.shelley(text(shelleyBytes))
+      firstShelley = config.firstShelleyEpoch
+      byronBytes <- required("Byron", names.byron)
+      byron <-
+        if firstShelley.contains(BigInt(0)) then Right(None)
+        else ByronGenesisFile.parse(text(byronBytes), config.byronGenesisHash).map(Some(_))
+      alonzoBytes <- required("Alonzo", names.alonzo)
+      conwayBytes <- required("Conway", names.conway)
+      prefixed <- Genesis.withByronPrefix(shelleyBase, byron, firstShelley)
+      // the Byron genesis of a chain that starts in Shelley is read only for its parameters
+      byronParams = byron.orElse(ByronGenesisFile.parse(text(byronBytes), None).toOption)
+      genesis = Genesis.withSystemStart(prefixed, byronParams)
+      byronJson <- json(names.byron, byronBytes)
+      // The network magic Byron addresses carry: the configuration says whether the network
+      // requires one; without it, mainnet does not and the test networks do.
+      requiresMagic = config.requiresNetworkMagic.getOrElse(
+        byron.map(_.protocolMagic).getOrElse(genesis.networkMagic) != MainnetMagic
+      )
+      addressMagic = Option.when(requiresMagic)(
+        byron.map(_.protocolMagic).getOrElse(genesis.networkMagic)
+      )
+      files <- (
+        json(names.shelley, shelleyBytes),
+        json(names.alonzo, alonzoBytes),
+        json(names.conway, conwayBytes),
+        byronJson.asRight[ConfigError]
+      ).mapN(GenesisState.Files(_, _, _, _, addressMagic))
+      globals <- GenesisState.globals(files, genesis)
+      startsInConway = files.shelley.hcursor
+        .downField("protocolParams")
+        .downField("protocolVersion")
+        .downField("major")
+        .as[Int]
+        .exists(_ >= 9)
+      // The Shelley genesis parameters (`sgProtocolParams`), with the later eras' fields of the
+      // node's one parameter record from their genesis files: for the hand-over of a chain that
+      // starts in Byron with the Alonzo genesis `extraConfig` cost models merged in, and for a
+      // chain that starts in a Shelley-based era without them (its injection lays them over the
+      // current parameters, `GenesisStart.alonzoInjectCostModels`).
+      conwayFile = Option.when(startsInConway)(files.conway)
+      params <- ProtocolParams.fromGenesis(files.shelley, files.alonzo, conwayFile)
+      translated <- ProtocolParams.translatedFromGenesis(files.shelley, files.alonzo, conwayFile)
+      f = genesis.geometry.activeSlotsCoeff
+      active <- PraosLeaderThreshold.Fraction
+        .checked(BigInt(f.bigDecimal.unscaledValue), BigInt(10).pow(f.bigDecimal.scale.max(0)))
+        .leftMap(e => ConfigError(ConfigProblem.ActiveSlotsCoefficient(e)))
+      praos = PraosConfig(
+        genesis.geometry,
+        genesis.slotsPerKesPeriod,
+        genesis.maxKesEvolutions,
+        active,
+        HardForkConfig.fromEpochs(config.hardForkEpochs),
+        checkpoints = checkpoints
+      )
+      lite <- LiteLedger.fromGenesis(files.shelley, firstShelley.getOrElse(BigInt(0)))
+      byronRules <- byron.traverse { b =>
+        val ledgerConfig = ByronLedger.Config(b, requiresMagic)
+        ByronLedger
+          .initial(ledgerConfig)
+          .leftMap(e => ConfigError(ConfigProblem.LedgerValue(e)))
+          .map { ledger =>
+            ledger -> ByronRulesConfig(
+              ledgerConfig,
+              config.pbftSignatureThreshold.getOrElse(NodeConfig.DefaultPBftSignatureThreshold),
+              firstShelley
+            )
+          }
+      }
+      genDelegs <- LiteLedger.fromGenesis(files.shelley).map(_.genDelegs)
+      fromByron = FromByron(genDelegs, params, globals.maxSupply)
+      env = mirrorEnvOf(genesis, globals, praos, byronParams)
+      shelleyHash = Blake2b.hash256.hash(Bytes.fromArray(shelleyBytes))
+      start <- byronRules match
+        case Some((ledger, _)) => byronStart(env, shelleyHash, lite, ByronState.starting(ledger))
+        case None =>
+          shelleyStart(
+            env,
+            Globals(globals, genesis.geometry),
+            files,
+            fromByron.copy(protocolParams = translated),
+            praos.forks.eraAt(globals.firstEpoch, params.protocolMajor),
+            shelleyHash,
+            lite
           )
+    yield NodeSetup(
+      genesis,
+      config,
+      byron,
+      globals,
+      praos,
+      start,
+      byronRules.map(_ => fromByron),
+      identity = NetworkIdentity(
+        genesis.networkMagic,
+        Blake2b.hash256.hash(Bytes.fromArray(shelleyBytes)),
+        byron.map(_.hash),
+        GenesisFileHash(
+          Blake2b.hash256.hash(Bytes.fromArray(alonzoBytes))
         ),
-        byronParams = byronParams,
-        byronConfig = byronRules.map(_._2)
+        GenesisFileHash(
+          Blake2b.hash256.hash(Bytes.fromArray(conwayBytes))
+        )
       ),
-      start
+      byronParams = byronParams,
+      byronConfig = byronRules.map(_._2)
     )
