@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-10-26",
+  "scope": "Pure inner demanded-chunk/hash/key/value/accumulator fold only. Native file lifetime observations are preserved but not implemented or claimed.",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "imageId": "sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef",
+  "compiler": "ghc-9.10.3",
+  "freezeSha256": "f7e6220cf1d723bb8722b4a7e90be5993c4f1fa5a380e64a13c3303546e8a68c",
+  "consumer": {
+    "package": "cardano-ledger-shelley",
+    "version": "1.19.0.1",
+    "archiveSha256": "cc9d5b415742bc188fb933fae305743a2c1ee6f3ad7fa06fcfa1ac5bd95b59ce",
+    "file": "cardano-ledger-shelley-1.19.0.1/src/Cardano/Ledger/Shelley/Genesis.hs",
+    "sourceSha256": "834c21264330a9c8367e4e4b271bcc3ecc9e8084f5bd27bfd27e916968ae8eaa",
+    "matchesLedgerPin": true
+  },
+  "dependencyProvenance": "../injection-json/provenance.json",
+  "fsApi": {
+    "version": "0.4.0.0",
+    "archiveSha256": "b5018aaf7c037cbcfedc425f97f2c9e7baf71dbf8f0d7d8b77a252f718e989ab"
+  },
+  "caseCount": 57,
+  "completedInnerOutcomes": 50,
+  "nativeTimeoutNonResults": 6,
+  "unimplementedFilesystemCases": 1,
+  "observerSource": "scripts/oracle/injection-fold/Main.hs",
+  "observerSha256": "31d8db336ef9f811a9ab5aa24a12ca744ab413c441e68469197d040094bc06d5",
+  "corpusSha256": "6b03fa3762405a6722e2dc8e5a75829305642e59cc6275d9e1e76818a6be0794",
+  "originalObservations": "Each row retains originalSourceLine and originalNativeLine verbatim. nativeLine is the recapture with uniform direct resultEvents; original read events, complete results and refusal categories remain unchanged.",
+  "comparison": "Complete native Value events preserve object traversal and Scientific coefficient/exponent. Hash comparisons retain expected/actual hex. Parse comparisons distinguish typed Scala errors without native diagnostic-text parity. Test integer callbacks cover only the captured examples, not general Aeson decoding.",
+  "nonResults": [
+    "root-null",
+    "root-true",
+    "root-number",
+    "empty",
+    "incomplete",
+    "invalid-key-partial-value"
+  ],
+  "filesystemCase": "missing-file",
+  "lifetimeLimit": "Open/close failures and asynchronous cancellation are outside this pure cut. A Resource prototype did not preserve native close-error precedence during cancellation; full file loading remains incomplete under #499."
+}

@@ -28,6 +28,18 @@ injections or native refusals. The Scala reader exposes the same state. Separate
 not implement hash checking, effectful file reads or genesis source integration, and the permissive
 json-stream mechanism is separate from strict raw-genesis JSON admission (#497).
 
+The unused pure `InjectionFold` follows `Shelley/Genesis.hs:874-937`: it hashes every whole
+nonempty demanded chunk before parser feed, decodes a completed entry's key before its value,
+and folds it before advancing. `NeedChunk` requests 65,536 bytes; after the first empty read,
+`NeedEof` permits only empty resumes without another filesystem request or invented EOF refusal.
+The [57-case corpus](../../fixtures/reference/injection-fold/README.md) retains every original
+native input/output observation. Scala compares 50 completed inner outcomes and six bounded
+EOF observations; the native missing-file refusal is retained as an unimplemented boundary.
+Focused tests pass 63 assertions. Ordering, omitted-hash and erroneous-EOF-read negative controls
+fail their intended assertions; the restored implementation passes. This pure cut supplies no
+file-lifetime or cancellation implementation: the tested Resource prototype could not preserve
+native close-error precedence during asynchronous cancellation. #499 remains incomplete.
+
 ## Explicitly unchecked or unconfirmed
 
 Genesis pool relays/metadata and hash-checked `InjectionFromFile` support remain [#499](https://github.com/KD5UJC-XYZ/scarab/issues/499), approved for separate reference-alignment changes. Existing required-field/default and malformed-input parser differences remain [#497](https://github.com/KD5UJC-XYZ/scarab/issues/497). Preserving validation of the tested malformed extra cost model does not establish complete genesis-parser conformance. #496 is a required predecessor of the legacy deletion. Signed reserve arithmetic depends on [#492](https://github.com/KD5UJC-XYZ/scarab/issues/492). Focused boundary tests pass on the integrated arithmetic implementation; final predecessor integration, independent review and complete stage gates remain required. The twelve-case native API corpus covers Addr/Coin serialization and compaction; source-selection ordering is checked against the cited source with Scala regressions, not a claimed whole-transition native oracle. File loading is still unimplemented.
