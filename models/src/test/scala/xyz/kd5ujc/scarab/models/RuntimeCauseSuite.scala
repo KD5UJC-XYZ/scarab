@@ -103,8 +103,9 @@ class RuntimeCauseSuite extends FunSuite:
     val javaCommand = java.nio.file.Path.of(System.getProperty("java.home"), "bin", "java").toString
     val output = java.nio.file.Files.createTempFile("scarab-terminal-depth-", ".log")
     try
-      val process = new ProcessBuilder(
+      val builder = new ProcessBuilder(
         javaCommand,
+        "-XX:ActiveProcessorCount=2",
         "-Xss256k",
         "-Xmx128m",
         "-cp",
@@ -113,7 +114,11 @@ class RuntimeCauseSuite extends FunSuite:
       )
         .redirectErrorStream(true)
         .redirectOutput(output.toFile)
-        .start()
+      // JVM injection variables can override the explicit small-stack and resource controls.
+      Vector("JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS").foreach { name =>
+        builder.environment().remove(name)
+      }
+      val process = builder.start()
       val completed =
         try process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
         finally
@@ -130,6 +135,11 @@ class RuntimeCauseSuite extends FunSuite:
 object TerminalDepthProbe:
   def main(args: Array[String]): Unit =
     assert(args.isEmpty)
+    assert(
+      Vector("JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS").forall(
+        sys.env.get(_).isEmpty
+      )
+    )
     val original = new IllegalStateException("original")
     val leaf = DecodeError(DecodeError.Kind.Internal(original), List("model"), 7)
     val nested = (0 until 20000).foldLeft(leaf) { (cause, _) =>
