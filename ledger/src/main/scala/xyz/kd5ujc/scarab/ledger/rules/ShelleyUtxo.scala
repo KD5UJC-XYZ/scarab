@@ -313,12 +313,12 @@ object ShelleyUtxo:
         UtxoFailure.WrongNetworkInTxBody(Mismatch(body.networkId.fold(0)(_.toInt), ctx.network))
       )
       _ <- if !alonzo then TxChecks.outputNetwork(ctx, id, outputs) else Right(())
-      wrongWithdrawals = body.withdrawals.map(_._1).filter(_.network != ctx.network).toSet
+      wrongWithdrawals = body.withdrawals.keys.filter(_.network != ctx.network).toSet
       _ <- check(
         wrongWithdrawals.isEmpty,
         UtxoFailure.WrongNetworkWithdrawal(ctx.network, wrongWithdrawals)
       )
-      withdrawn = body.withdrawals.map(_._2).sum
+      withdrawn = body.withdrawals.valuesIterator.sum
       consumed = ann.spent.foldLeft(Value.zero)(_ + _.value) + Value.coin(withdrawn + refunds) +
         Value(0, body.mint)
       produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +

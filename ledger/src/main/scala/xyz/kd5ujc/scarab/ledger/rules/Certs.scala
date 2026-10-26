@@ -22,6 +22,7 @@ import xyz.kd5ujc.scarab.ledger.{
   PoolFailure,
   PoolParams,
   PredicateFailure,
+  Purpose,
   ProtocolParams,
   RewardAccount,
   Tx,
@@ -892,17 +893,18 @@ object Withdrawals:
 
   def view(
       accounts: SortedMap[Credential[Staking], ConwayAccountState],
-      withdrawals: Vector[(RewardAccount, BigInt)],
+      withdrawals: Map[RewardAccount, BigInt],
       network: Int
   ): Either[VocabError, View] = viewOf(accounts, withdrawals, network)(_.balance.toBigInt)
 
   /** [[view]] over the accounts of any era, whose balance is `balance`. */
   def viewOf[A](
       accounts: SortedMap[Credential[Staking], A],
-      withdrawals: Vector[(RewardAccount, BigInt)],
+      withdrawals: Map[RewardAccount, BigInt],
       network: Int
   )(balance: A => BigInt): Either[VocabError, View] =
-    withdrawals
+    Purpose
+      .sortedWithdrawals(withdrawals)
       .traverse { (account, amount) =>
         Convert.credential[Staking](account.credential).map(c => (account, amount, accounts.get(c)))
       }

@@ -141,13 +141,6 @@ private[ledger] object CborRead:
   def nonEmpty[A](xs: Vector[A], what: DecodeSite, required: Boolean): Result[Vector[A]] =
     Either.cond(!required || xs.nonEmpty, xs, LedgerDecodeError.Empty(what))
 
-  /** The entries of a map the reference reads with `Map.fromList` (`decodeMapByKey` below decoder
-    * version 9, `Decoder.hs:815-823` in cardano-ledger f649f975): a repeated key keeps its last
-    * value. Only the decoded entries are collapsed; the caller keeps the original bytes.
-    */
-  def lastWins[K, V](kvs: Vector[(K, V)]): Vector[(K, V)] =
-    kvs.reverse.distinctBy(_._1).reverse
-
   /** `xs` unless an element occurs twice (a `Map` or `Set` whose size is below the count read). */
   def unique[A](xs: Vector[A], what: DecodeSite): Result[Vector[A]] =
     Either.cond(xs.distinct.size == xs.size, xs, LedgerDecodeError.DuplicateElement(what))

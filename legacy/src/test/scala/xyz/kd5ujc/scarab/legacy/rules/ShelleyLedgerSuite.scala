@@ -242,7 +242,7 @@ class ShelleyLedgerSuite extends FunSuite:
       fee: BigInt = 200,
       extra: BigInt = 0,
       certificates: Vector[Certificate] = Vector.empty,
-      withdrawals: Vector[(RewardAccount, BigInt)] = Vector.empty,
+      withdrawals: Map[RewardAccount, BigInt] = Map.empty,
       update: Option[Update] = None,
       signers: Vector[Key] = Vector.empty,
       ttl: Option[BigInt] = None
@@ -493,17 +493,17 @@ class ShelleyLedgerSuite extends FunSuite:
         accounts = Map(bob.credential -> Account(7 * ada, 2 * ada, None, None))
       )
       val account = RewardAccount(0, bob.credential)
-      val full = pay("full", alice, withdrawals = Vector(account -> 7 * ada), signers = Vector(bob))
+      val full = pay("full", alice, withdrawals = Map(account -> 7 * ada), signers = Vector(bob))
       val next = accepted(c, s, full)
       assertEquals(next.accounts(bob.credential).balance, BigInt(0), c.name)
       val partial =
-        pay("partial", alice, withdrawals = Vector(account -> 3 * ada), signers = Vector(bob))
+        pay("partial", alice, withdrawals = Map(account -> 3 * ada), signers = Vector(bob))
       val n = newSide(c, s, partial, TestLedger.env)
       assertEquals(refusal(n, c), "ConwayIncompleteWithdrawals", c.name)
       val unknown = pay(
         "unknown",
         alice,
-        withdrawals = Vector(RewardAccount(0, carol.credential) -> 1),
+        withdrawals = Map(RewardAccount(0, carol.credential) -> 1),
         signers = Vector(carol)
       )
       val missing = newSide(c, s, unknown, TestLedger.env)
@@ -1011,7 +1011,7 @@ class ShelleyLedgerSuite extends FunSuite:
       alice,
       extra = 2 * ada * width,
       certificates = certificates,
-      withdrawals = keys.map(k => RewardAccount(0, k.credential) -> BigInt(1)),
+      withdrawals = keys.map(k => RewardAccount(0, k.credential) -> BigInt(1)).toMap,
       signers = keys ++ others
     )
     forEras { c =>

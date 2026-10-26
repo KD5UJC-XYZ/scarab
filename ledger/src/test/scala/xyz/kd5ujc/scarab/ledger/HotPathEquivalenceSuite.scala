@@ -128,9 +128,9 @@ class HotPathEquivalenceSuite extends ScalaCheckSuite:
       BigInt(amount)
     )
     forAll(Gen.listOf(genAccount)) { ws =>
-      val body = TestLedger.body("w", Vector.empty, Vector.empty, 0, withdrawals = ws.toVector)
+      val body = TestLedger.body("w", Vector.empty, Vector.empty, 0, withdrawals = ws.toMap)
       Purpose.sortedWithdrawals(body) ==
-        ws.toVector.sortBy(w =>
+        ws.toMap.toVector.sortBy(w =>
           (w._1.network, w._1.credential.isInstanceOf[Credential.Key], w._1.credential.hash.hex)
         )
     }

@@ -126,10 +126,30 @@ class DuplicateWithdrawalsLedgerSuite extends FunSuite:
       )
     }
 
+    test(s"$name: native transaction construction cannot count a withdrawal account twice") {
+      val decodedBody = decoded(wire, reward, 2 * reward)
+      val body = decodedBody.copy(withdrawals = Map(account -> reward, account -> reward))
+      assertEquals(body.raw, decodedBody.raw)
+      assertEquals(body.id, decodedBody.id)
+      assertEquals(
+        run(body),
+        Left(
+          LedgerFailure.Rejected(
+            body.id,
+            PredicateFailure.utxo(
+              UtxoFailure.ValueNotConserved(
+                Mismatch(Value.coin(funds + reward), Value.coin(funds + 2 * reward))
+              )
+            )
+          )
+        )
+      )
+    }
+
     test(s"$name: the last amount drains the account once and preserves value") {
       val body = decoded(wire, reward + 1, reward)
       val after = run(body).fold(e => fail(e.toString), identity).state
-      assertEquals(body.withdrawals, Vector(account -> reward))
+      assertEquals(body.withdrawals, Map(account -> reward))
       assertEquals(
         ShelleyCertLens.states.get(pre.cert.get(after)).get(stake).map(_.balance.toBigInt),
         Some(BigInt(0))
