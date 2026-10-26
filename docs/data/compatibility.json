@@ -827,14 +827,18 @@
       "id": "ledger-coin-arithmetic",
       "component": "Ledger: signed Coin and compact arithmetic (#492)",
       "status": "partial",
-      "summary": "Signed Coin and compact account arithmetic; stake aggregation and complete native arithmetic comparisons remain pending",
+      "summary": "Signed Coin and wrapped native compact account/stake arithmetic; accumulated MIR regression awaits interpreter integration",
       "evidence": {
         "suites": [
-          "VocabularySuite",
+          "CoinArithmeticReferenceSuite",
           "CompactCoinRulesSuite",
+          "CompactStakeSuite",
           "HaskellStateCodecSuite",
-          "DuplicateWithdrawalsLedgerSuite",
-          "WithdrawalContextsSuite"
+          "TickRulesSuite"
+        ],
+        "paths": [
+          "fixtures/reference/coin-arithmetic",
+          "scripts/oracle/coin-arithmetic"
         ],
         "issues": [
           492
