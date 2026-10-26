@@ -1,0 +1,77 @@
+--- a/scalus-core/shared/src/main/scala/scalus/uplc/Constant.scala
++++ b/scalus-core/shared/src/main/scala/scalus/uplc/Constant.scala
+@@ -10,7 +10,31 @@
+     def tpe: DefaultUni
+ }
+ 
+-object Constant {
++object Constant extends scala.deriving.Mirror.Sum {
++    given mirror: Constant.type = this
++    type MirroredType = Constant
++    type MirroredMonoType = Constant
++    type MirroredElemTypes = (Integer, ByteString, String, Unit.type, Bool, Data, List, Pair, Array,
++        BLS12_381_G1_Element, BLS12_381_G2_Element, BLS12_381_MlResult, BuiltinValue)
++    type MirroredElemLabels = ("Integer", "ByteString", "String", "Unit", "Bool", "Data", "List",
++        "Pair", "Array", "BLS12_381_G1_Element", "BLS12_381_G2_Element", "BLS12_381_MlResult", "BuiltinValue")
++    type MirroredLabel = "Constant"
++    def ordinal(value: Constant): Int = value match {
++        case _: Integer => 0
++        case _: ByteString => 1
++        case _: String => 2
++        case Unit => 3
++        case _: Bool => 4
++        case _: Data => 5
++        case _: List => 6
++        case _: Pair => 7
++        case _: Array => 8
++        case _: BLS12_381_G1_Element => 9
++        case _: BLS12_381_G2_Element => 10
++        case _: BLS12_381_MlResult => 11
++        case _: BuiltinValue => 12
++    }
++
+ 
+     trait LiftValue[-A]:
+         def lift(a: A): Constant
+@@ -88,8 +112,40 @@
+     case class ByteString(value: scalus.uplc.builtin.ByteString) extends Constant:
+         def tpe = DefaultUni.ByteString
+ 
+-    case class String(value: java.lang.String) extends Constant:
++    /** Scalar text with its construction-time UTF-8 measure. The primary constructor remains
++      * JVM-private: even companion factories enter through the normalizing public constructor.
++      * Plutus 507cab8cf6192e5143f12be5b2d3005a2928dc6d, plutus-core/plutus-core/src/PlutusCore/:
++      * Parser/Builtin.hs80-87 replaces surrogate scalars;
++      * Evaluation/Machine/ExMemoryUsage.hs336-341 reads retained UTF-8 length without traversal.
++      */
++    case class String private (value: java.lang.String)(val utf8ByteLength: Long) extends Constant:
++        def this(value: java.lang.String) =
++            this(String.normalize(value))(String.measure(value))
++        private def copy(value: java.lang.String)(utf8ByteLength: Long): String = new String(value)
++        def copy(value: java.lang.String = this.value): String = new String(value)
+         def tpe = DefaultUni.String
++
++    object String extends scala.deriving.Mirror.Product:
++        override def toString: java.lang.String = "String"
++        given mirror: String.type = this
++        type MirroredType = String
++        type MirroredMonoType = String
++        type MirroredElemTypes = Tuple1[java.lang.String]
++        type MirroredElemLabels = Tuple1["value"]
++        type MirroredLabel = "String"
++        def fromProduct(product: Product): String =
++            new String(product.productElement(0).asInstanceOf[java.lang.String])
++        private def apply(value: java.lang.String)(utf8ByteLength: Long): String = new String(value)
++        def apply(value: java.lang.String): String = new String(value)
++        private def normalize(value: java.lang.String): java.lang.String =
++            val points = value.codePoints().toArray.map { point =>
++                if point >= 0xd800 && point <= 0xdfff then 0xfffd else point
++            }
++            new java.lang.String(points, 0, points.length)
++        private def measure(value: java.lang.String): Long =
++            value.codePoints().toArray.foldLeft(0L) { (length, point) =>
++                length + (if point < 0x80 then 1 else if point < 0x800 then 2 else if point < 0x10000 then 3 else 4)
++            }
+ 
+     case object Unit extends Constant:
+         def tpe = DefaultUni.Unit

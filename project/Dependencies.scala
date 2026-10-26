@@ -20,7 +20,7 @@ object Dependencies {
     val slf4j = "2.0.17"
     val dnsjava = "3.6.5"
 
-    val scalus = "1.4.0-scarab-6848b684e1d02c60b6eedc4dfa37a12a30e74385388175400de13950ffd2d49e"
+    val scalus = "1.4.0-scarab-f142f10f92bbcb8252df5673e5920551c2ce9abf44ef9b8735b7a5702a51f82f"
     // Scalus 1.4.0 is built against 1.86 and would evict an older pin; declared equals resolved.
     val bouncyCastle = "1.86"
     val curve25519 = "0.1.3"

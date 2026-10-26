@@ -1,13 +1,20 @@
-# Scalus CEK charging hooks
+# Scalus CEK hooks and native scalar text
 
 The node still uses Scalus's CEK machine and builtins ([ADR 0003](../../docs/adr/0003-plutus-through-scalus.md)).
 The two protected hooks in `cek-hooks.patch` expose successful-result discharge and saturated-builtin
 charging without changing their default behavior. They are preparation for the reference budget repair
 [#485](https://github.com/KD5UJC-XYZ/scarab/issues/485), not that repair: settlement before discharge and demand-driven costing remain outstanding.
 
-`manifest.json` pins the complete upstream 1.4.0 source archive, its CEK source, patch, Scala/sbt versions
+The two native-text patches normalize unpaired surrogate values to U+FFFD, retain UTF-8 byte length
+with each immutable `Constant.String`, and align the actual `Program.parseUplc` string-token boundary
+with the pinned native parser. Numeric supplementary escapes preserve their complete scalar value;
+separate surrogate escapes stay separate replacements, `\&` is empty, and out-of-range scalars and
+the non-native `\u{...}` extension refuse. Production `FlatScan` already decodes UTF-8 strictly; this
+change does not align the dependency's generic Flat decoder or character-level helper API.
+
+`manifest.json` pins the complete upstream 1.4.0 source archive, each changed source file and patch, Scala/sbt versions
 and JDK. The source is upstream commit `b836856a5b4e54cd40fe0aa5947922478e8f1237`; its `Cek.scala`
-is byte-identical to that in the published 1.4.0 source artifact. The patch adds only:
+is byte-identical to that in the published 1.4.0 source artifact. The CEK patch adds only:
 
 - `beforeResultDischarge`, a no-op immediately before `dischargeCekValue` in `returnCek NoFrame`;
 - `spendBuiltinBudget`, whose default body is the existing costing call followed by the existing charge.
@@ -21,14 +28,16 @@ No transition, denotation, discharge implementation, exception boundary or nativ
 
 Run the ordinary `bash scripts/sbtw ...` inside the repository's pinned JDK image. It first runs
 `scripts/prepare_scalus.py`, which checks the JDK, downloads and verifies the source archive, applies
-the patch with exact context, and builds the upstream JVM artifact. It then produces one jar from the separately SHA-pinned released
-1.4.0 jar, replacing only the five explicit `CekMachine` class/TASTy members listed in the manifest.
+each patch with exact context, and builds the upstream JVM artifact. It then produces one jar from the separately SHA-pinned released
+1.4.0 jar, replacing only thirteen explicit class/TASTy members listed in the manifest: the original five CEK
+members and eight scalar-text/parser members. The complete affected source-family inventory of 52
+members is also pinned; untouched siblings retain their original released bytes.
 Every other released member's bytes, including license and manifest resources, must be unchanged;
-the compiler output cannot add an unlisted member to that family. The published POM is the pinned
+the compiler output cannot add an unlisted member to those source families. The published POM is the pinned
 original with only its root artifact version changed, preserving dependencies and license metadata.
 This avoids inheriting nondeterministic, unrelated on-chain compiler output from a full source rebuild.
 The result's version is
-`1.4.0-scarab-<SHA256>`, where the digest frames and hashes the complete manifest, patch and bootstrap
+`1.4.0-scarab-<SHA256>`, where the digest frames and hashes the complete manifest, all three ordered patches and bootstrap
 helper. `project/ScalusPatch.scala` computes the same identity and rejects a stale dependency version.
 When changing these inputs, update the literal version in `project/Dependencies.scala` and the matching
 NOTICE, runtime license table and license-index coordinate together. `check_notice.py` verifies the
@@ -64,6 +73,14 @@ same compiled control with the original and patched jar in separate JVMs compare
 successful terms, partial application, builtin and user errors, trace logs, budget refusal, and every
 charge in order. The bootstrap's Python controls reject wrong patch context, corrupted downloads or
 artifacts, incorrect publication coordinates, changed native crypto, and offline cache misses.
+
+`NativeTextReferenceSuite` replays all 26 native value/parser/UTF-8 observations and verifies public
+constructor, copy, product/sum Mirror, nested lifting, builtin production and small-stack behavior.
+The genuine case class keeps one `value` product field; explicit Mirrors preserve the original
+thirteen-case Constant sum. The public one-string constructor normalizes; only the class can call its
+JVM-private numeric primary constructor, so callers cannot forge a retained length. Existing compiled
+callers and complete public/protected descriptors are checked alongside the original default-machine
+controls. The new field is not yet a replacement for the pending native lazy-costing adapter.
 
 These controls do not establish full Plutus conformance or repair #485's remaining costing behavior.
 The ordinary upstream suite and exact cost-model fixtures remain unchanged and required for that work.
