@@ -624,14 +624,17 @@
       "evidence": {
         "suites": [
           "GenesisStartSuite",
-          "DuplicateWithdrawalsLedgerSuite"
+          "DuplicateWithdrawalsLedgerSuite",
+          "InjectionJsonSuite"
         ],
         "issues": [
           488,
-          496
+          496,
+          499
         ],
         "paths": [
-          "fixtures/devnet/lsq/genesis"
+          "fixtures/devnet/lsq/genesis",
+          "fixtures/reference/injection-json"
         ]
       },
       "limitations": {
