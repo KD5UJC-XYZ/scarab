@@ -129,7 +129,7 @@ class VerificationCacheSuite extends ScalaCheckSuite:
     b.shutdown()
   }
 
-  test("a witness defect met while warming is handed once to the validation, never asked again") {
+  test("a witness defect met while warming is discarded: the validation asks and decides") {
     val defect = ProviderDefect.Ed25519(
       VerificationError.ImplementationFailure(new IllegalStateException("provider broke"))
     )
@@ -153,16 +153,10 @@ class VerificationCacheSuite extends ScalaCheckSuite:
       .distinct
     val warmed = calls.get
     assertEquals(warmed, distinct.size)
-    // warming the same blocks again leaves the defect for the validation it was met for
-    cache.warm[IO](raws, setup.praos, 2).unsafeRunSync()
-    assertEquals(calls.get, warmed)
+    // the validation reuses every verdict warming found and asks the provider for the one check
+    // whose warming met the defect: its own answer decides
     val answers = distinct.map((k, s, m) => cache.witness(k, s, m))
-    assertEquals(answers.count(_ == Left(defect)), 1)
-    assert(
-      distinct.zip(answers).forall { case ((k, s, m), a) =>
-        a == Left(defect) || a == Verdicts.Direct.witness(k, s, m)
-      }
-    )
-    assertEquals(calls.get, warmed)
+    assertEquals(answers, distinct.map((k, s, m) => Verdicts.Direct.witness(k, s, m)))
+    assertEquals(calls.get, warmed + 1)
     cache.shutdown()
   }

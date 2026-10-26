@@ -33,12 +33,12 @@ import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
   * atomic, bounded (cleared at `Limit`), and holds only verdicts that are functions of their key,
   * so sharing one between threads changes timing, never results.
   *
-  * A provider defect ([[xyz.kd5ujc.scarab.ledger.ProviderDefect]]) met ahead of time is no verdict
-  * and is not kept as one. It is handed once to the validation it was computed for (a fetched
-  * block's, or header-first validation's through [[forHeaders]]) when that validation asks for the
-  * check, and the provider is not asked again. A check the rules never reach (the reference stops
-  * at an earlier refusal) never shows its defect, so the reference's evaluation order decides
-  * whether a defect is met, as it decides in `Protocol/Praos.hs` (ouroboros-consensus 82ecba32).
+  * The reference warms nothing: it asks the crypto provider once, when the rules reach the check
+  * (ouroboros-consensus 82ecba32 `Protocol/Praos.hs` 587–592 and 637–640). So only the call the
+  * validation makes decides. A provider defect ([[xyz.kd5ujc.scarab.ledger.ProviderDefect]]) met
+  * ahead of time is no information: it is discarded, never kept or handed over, and the validation
+  * that reaches the check asks the provider itself and meets its own answer. A verdict (accept or
+  * reject) computed ahead of time is a function of its key and is reused.
   *
   * @param direct
   *   the providers every verdict is computed with; [[Verdicts.Direct]] except in tests
@@ -52,28 +52,15 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
   )
 
   private val Limit = 100000
-  // Defects are bounded apart from the verdicts, so clearing verdicts at their limit does not drop a
-  // defect that a validation has still to meet.
-  private val DefectLimit = 4096
   private def MinChunk = VerificationCache.MinChunk
   private val witnesses = new ConcurrentHashMap[WitnessKey, java.lang.Boolean]()
   private val headers = new ConcurrentHashMap[HeaderKey, Either[OCertError, Unit]]()
   private val prepared = new ConcurrentHashMap[Bytes, Prepared]()
 
-  /** The validation a check computed ahead of time belongs to: a fetched block's (the rules through
-    * this cache) or header-first validation's (through [[forHeaders]]).
-    */
-  private enum Owner:
-    case Block, Header
-
-  private val witnessDefects = new ConcurrentHashMap[WitnessKey, ProviderDefect]()
-  private val headerDefects = new ConcurrentHashMap[(Owner, HeaderKey), ProviderDefect]()
-
   // VRF proofs depend on the epoch nonce, which only the sequential rules know; the verdicts are
   // keyed by the derived alpha string, so a block warmed under a wrong nonce is just a miss.
   private final case class VrfKey(kind: Int, alpha: Bytes, vkey: Bytes, proof: Bytes, output: Bytes)
   private val vrfs = new ConcurrentHashMap[VrfKey, Vrf.Result]()
-  private val vrfDefects = new ConcurrentHashMap[(Owner, VrfKey), Vrf.Result]()
   private val epochNonce = new AtomicReference[(BigInt, Nonce)]()
 
   /** The newest epoch nonce the rules have seen: blocks of that epoch can have their VRF proofs
@@ -100,7 +87,7 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
             .sortBy(_.block.header.slot)
           pending.asJava
             .parallelStream()
-            .forEach(p => warmVrf(p.block.header, config, epochNonce.get, Owner.Block))
+            .forEach(p => warmVrf(p.block.header, config, epochNonce.get))
         catch case scala.util.control.NonFatal(_) => ()
       }
 
@@ -117,9 +104,9 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
   override def tpraosVrf(alpha: Bytes, vkey: Bytes, proof: Bytes, output: Bytes): Vrf.Result =
     takenVrf(VrfKey(1, alpha, vkey, proof, output), direct.tpraosVrf(alpha, vkey, proof, output))
 
-  /** The block's warmed VRF answer of `key` (a verdict or a defect), taken once, or `verdict`. */
+  /** The block's warmed VRF verdict of `key`, taken once, or `verdict`. */
   private def takenVrf(key: VrfKey, verdict: => Vrf.Result): Vrf.Result =
-    val known = Option(vrfs.remove(key)).orElse(Option(vrfDefects.remove(Owner.Block -> key)))
+    val known = Option(vrfs.remove(key))
     vrfStats.record(known.isDefined)
     known.getOrElse(verdict)
 
@@ -133,8 +120,7 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
   private def warmVrf(
       header: Header.Shelley,
       config: PraosConfig,
-      hint: (BigInt, Nonce),
-      owner: Owner
+      hint: (BigInt, Nonce)
   ): Unit =
     if hint != null && config.geometry.epochOf(header.slot) == hint._1 then
       header.vrf match
@@ -142,7 +128,6 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
           Praos.vrfInput(hint._2, header.slot).foreach { input =>
             Vrf.alpha(input).foreach { alpha =>
               keepVrf(
-                Some(owner),
                 VrfKey(0, alpha, header.vrfVkey, cert.proof, cert.output),
                 direct.praosVrf(input, header.vrfVkey, cert.proof, cert.output)
               )
@@ -152,7 +137,6 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
           for (uc, cert) <- Seq(TPraos.SeedEta -> nonceCert, TPraos.SeedL -> leaderCert) do
             val alpha = TPraos.seed(uc, header.slot, hint._2)
             keepVrf(
-              Some(owner),
               VrfKey(1, alpha, header.vrfVkey, cert.proof, cert.output),
               direct.tpraosVrf(alpha, header.vrfVkey, cert.proof, cert.output)
             ): Unit
@@ -172,11 +156,10 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
         maxKesEvolutions: BigInt
     ): Either[OCertError | ProviderDefect, Unit] =
       if headers.size > Limit then headers.clear()
-      val key = HeaderKey(header.hash, slotsPerKesPeriod, maxKesEvolutions)
-      Option(headerDefects.remove(Owner.Header -> key)) match
-        case Some(defect) => Left(defect)
-        case None =>
-          keepHeader(None, key, direct.opCert(header, slotsPerKesPeriod, maxKesEvolutions))
+      keepHeader(
+        HeaderKey(header.hash, slotsPerKesPeriod, maxKesEvolutions),
+        direct.opCert(header, slotsPerKesPeriod, maxKesEvolutions)
+      )
 
     def praosVrf(input: Vrf.Input, vkey: Bytes, proof: Bytes, output: Bytes): Vrf.Result =
       Vrf.alpha(input) match
@@ -190,10 +173,10 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
     def tpraosVrf(alpha: Bytes, vkey: Bytes, proof: Bytes, output: Bytes): Vrf.Result =
       keptVrf(VrfKey(1, alpha, vkey, proof, output), direct.tpraosVrf(alpha, vkey, proof, output))
 
-    /** The defect warming met for header-first validation, taken once, or the kept verdict. */
+    /** The kept VRF verdict of `key`, or `verdict` kept now. */
     private def keptVrf(key: VrfKey, verdict: => Vrf.Result): Vrf.Result =
       if vrfs.size > 16384 then vrfs.clear()
-      Option(vrfDefects.remove(Owner.Header -> key)).getOrElse(keepVrf(None, key, verdict))
+      keepVrf(key, verdict)
 
     def keyHash(vkey: Bytes): Bytes = VerificationCache.this.keyHash(vkey)
     def takePrepared(hash: Bytes): Option[Prepared] = None
@@ -217,11 +200,10 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
           Async[F].blocking(
             try
               keepHeader(
-                Some(Owner.Header),
                 HeaderKey(h.hash, config.slotsPerKesPeriod, config.maxKesEvolutions),
                 direct.opCert(h, config.slotsPerKesPeriod, config.maxKesEvolutions)
               )
-              warmVrf(h, config, (epoch, nonce), Owner.Header)
+              warmVrf(h, config, (epoch, nonce))
             catch case scala.util.control.NonFatal(_) => ()
           )
         )
@@ -233,49 +215,31 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
   private def compute(key: WitnessKey): Either[ProviderDefect, Boolean] =
     direct.witness(key.vkey, key.signature, key.message)
 
-  /** The kept OCERT verdict of `key`, or `verdict` kept now. A provider defect is no verdict: when
-    * it is met ahead of time for `owner`, it waits for that validation (and a later warming does
-    * not ask the provider again); met by the validation itself (`owner` empty), it is only
-    * returned.
+  /** The kept OCERT verdict of `key`, or `verdict` kept now. A provider defect is no verdict and is
+    * not kept: it is only returned, and a later ask computes again.
     */
   private def keepHeader(
-      owner: Option[Owner],
       key: HeaderKey,
       verdict: => Either[OCertError | ProviderDefect, Unit]
   ): Either[OCertError | ProviderDefect, Unit] =
     val known = headers.get(key)
     if known != null then known
     else
-      owner.flatMap(o => Option(headerDefects.get(o -> key))) match
-        case Some(defect) => Left(defect)
-        case None =>
-          val computed = verdict
-          computed match
-            case Right(())           => headers.putIfAbsent(key, Right(())): Unit
-            case Left(e: OCertError) => headers.putIfAbsent(key, Left(e)): Unit
-            case Left(d: ProviderDefect) =>
-              owner.foreach { o =>
-                if headerDefects.size > DefectLimit then headerDefects.clear()
-                headerDefects.putIfAbsent(o -> key, d)
-              }
-          computed
+      val computed = verdict
+      computed match
+        case Right(())               => headers.putIfAbsent(key, Right(())): Unit
+        case Left(e: OCertError)     => headers.putIfAbsent(key, Left(e)): Unit
+        case Left(_: ProviderDefect) => ()
+      computed
 
   /** As [[keepHeader]] for a VRF answer. */
-  private def keepVrf(owner: Option[Owner], key: VrfKey, verdict: => Vrf.Result): Vrf.Result =
+  private def keepVrf(key: VrfKey, verdict: => Vrf.Result): Vrf.Result =
     val known = vrfs.get(key)
     if known != null then known
     else
-      owner.flatMap(o => Option(vrfDefects.get(o -> key))) match
-        case Some(defect) => defect
-        case None =>
-          val computed = verdict
-          if ProviderDefect.ofVrf(computed).isEmpty then vrfs.putIfAbsent(key, computed): Unit
-          else
-            owner.foreach { o =>
-              if vrfDefects.size > DefectLimit then vrfDefects.clear()
-              vrfDefects.putIfAbsent(o -> key, computed)
-            }
-          computed
+      val computed = verdict
+      if ProviderDefect.ofVrf(computed).isEmpty then vrfs.putIfAbsent(key, computed): Unit
+      computed
 
   private val keyHashes = new ConcurrentHashMap[Bytes, Bytes]()
 
@@ -313,9 +277,7 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
       message: Bytes
   ): Either[ProviderDefect, Boolean] =
     val key = WitnessKey(vkey, signature, message)
-    val known = Option(witnesses.remove(key))
-      .map(v => Right(v.booleanValue))
-      .orElse(Option(witnessDefects.remove(key)).map(Left(_)))
+    val known = Option(witnesses.remove(key)).map(v => Right(v.booleanValue))
     witnessStats.record(known.isDefined)
     known.getOrElse(compute(key))
 
@@ -329,7 +291,6 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
   ): Either[OCertError | ProviderDefect, Unit] =
     val key = HeaderKey(header.hash, slotsPerKesPeriod, maxKesEvolutions)
     val known = Option(headers.remove(key))
-      .orElse(Option(headerDefects.remove(Owner.Block -> key)).map(Left(_)))
     opCertStats.record(known.isDefined)
     known.getOrElse(direct.opCert(header, slotsPerKesPeriod, maxKesEvolutions))
 
@@ -378,25 +339,20 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
         Vector[Job](
           () =>
             keepHeader(
-              Some(Owner.Block),
               key,
               direct.opCert(b.header, config.slotsPerKesPeriod, config.maxKesEvolutions)
             ): Unit,
-          () => warmVrf(b.header, config, epochNonce.get, Owner.Block)
+          () => warmVrf(b.header, config, epochNonce.get)
         ) ++ triples.map { k =>
           (() =>
             // a verdict that is still there (the same block warmed again: a second peer's batch, a
             // range fetched again after a rollback) is a function of its key, so it is not computed
-            // again; nor is a defect waiting for the block's validation
-            val present = witnesses.containsKey(k) || witnessDefects.containsKey(k)
+            // again. A defect is discarded: the validation asks the provider itself
+            val present = witnesses.containsKey(k)
             warmedStats.record(present)
             if !present then
               keyHash(k.vkey)
-              compute(k) match
-                case Right(valid) => witnesses.put(k, valid): Unit
-                case Left(defect) =>
-                  if witnessDefects.size > DefectLimit then witnessDefects.clear()
-                  witnessDefects.put(k, defect): Unit
+              compute(k).foreach(valid => witnesses.put(k, valid)): Unit
           ): Job
         }
       val pending = new Pending(p, checks.size)

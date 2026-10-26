@@ -236,63 +236,91 @@ class ProviderDefectBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncau
     }
   }
 
-  /** The real verifiers, except that the first OCERT check of the target header meets `defect`: a
-    * provider that fails once and then succeeds. `calls` counts the target's OCERT checks.
+  /** The real verifiers, except that the first `failures` OCERT checks of the target header meet
+    * `defect`: a provider that fails and then succeeds. `calls` counts the target's OCERT checks.
+    * The first `overlap` of them wait until all `overlap` are in the provider at once, so that
+    * concurrent warmers are known to overlap.
     */
-  private final class FailsOnce(defect: ProviderDefect) extends Verdicts:
+  private final class Fails(defect: ProviderDefect, failures: Int, overlap: Int = 0)
+      extends Verdicts:
     export Verdicts.Direct.{keyHash, praosVrf, takePrepared, tpraosVrf, witness}
     private val counted = new java.util.concurrent.atomic.AtomicInteger(0)
+    private val together = new java.util.concurrent.CountDownLatch(overlap)
     def calls: Int = counted.get
     def opCert(
         header: Header.Shelley,
         slotsPerKesPeriod: BigInt,
         maxKesEvolutions: BigInt
     ): Either[OCertError | ProviderDefect, Unit] =
-      if header.hash == target.hash && counted.getAndIncrement() == 0 then Left(defect)
+      if header.hash == target.hash then
+        val call = counted.getAndIncrement()
+        if call < overlap then
+          together.countDown()
+          together.await(10, java.util.concurrent.TimeUnit.SECONDS): Unit
+        if call < failures then Left(defect)
+        else Verdicts.Direct.opCert(header, slotsPerKesPeriod, maxKesEvolutions)
       else Verdicts.Direct.opCert(header, slotsPerKesPeriod, maxKesEvolutions)
 
-  test("a defect met while warming a block reaches its validation, which does not ask again") {
-    val provider = FailsOnce(kesDefect)
+  /** The forged chain's blocks warmed through `cache` by `warmers` concurrent warmings. */
+  private def warmed(cache: VerificationCache, warmers: Int): IO[Unit] =
+    Vector
+      .fill(warmers)(cache.warm[IO](forged.raws, ForgedChain.config, 2))
+      .parSequence_
+
+  test("a defect met while warming is discarded: validation asks again and adopts the block") {
+    val provider = Fails(kesDefect, failures = 1)
     val cache = VerificationCache.unsafe(2, provider)
-    for
-      _ <- cache.warm[IO](Vector(forged.raws(index)), ForgedChain.config, 2)
-      refused <- Handle
-        .allow[NodeError](
-          blockRules(cache)
-            .apply(forged.states(index - 1), target, forged.raws(index))
-            .as(Option.empty[NodeError])
-        )
-        .rescue(e => IO.pure(Some(e)))
-    yield
-      cache.shutdown()
-      assertEquals(
-        refused,
-        Some(ValidationError(target.point, BlockFailure.Unverifiable(BlockRule.Praos, kesDefect)))
-      )
-      assertEquals(provider.calls, 1)
+    val run = warmed(cache, 1).flatMap(_ => session(cache)).guarantee(IO(cache.shutdown()))
+    run.map { (end, invalid, _, tip) =>
+      FailurePolicy.disposition(end) match
+        case Disposition.StopNode(fatal) => fail(s"the node stopped: $fatal")
+        case _                           => ()
+      assertEquals(invalid, Set.empty[Bytes])
+      assertEquals(tip, forged.headers.last.point)
+      // the warming met the defect; the validation asked itself and got its own answer
+      assertEquals(provider.calls, 2)
+    }
   }
 
-  test("a defect met while warming headers reaches header-first validation only, once") {
-    val provider = FailsOnce(kesDefect)
+  test("a defect at validation time stops the node, whatever warming met") {
+    val provider = Fails(kesDefect, failures = Int.MaxValue)
+    val cache = VerificationCache.unsafe(2, provider)
+    val run = warmed(cache, 1).flatMap(_ => session(cache)).guarantee(IO(cache.shutdown()))
+    run.map { (end, invalid, _, tip) =>
+      val held = VerificationDefect(target.point, VerificationDefect.Site.Header, kesDefect)
+      assertEquals(end, SessionEnd.Unverifiable(held))
+      assertEquals(FailurePolicy.disposition(end), Disposition.StopNode(Fatal.Unverifiable(held)))
+      assertEquals(invalid, Set.empty[Bytes])
+      assertEquals(tip, forged.headers(index - 1).point)
+      assertEquals(provider.calls, 2)
+    }
+  }
+
+  test("overlapping duplicate warmers never hide a defect at validation time") {
+    val provider = Fails(kesDefect, failures = Int.MaxValue, overlap = 2)
+    val cache = VerificationCache.unsafe(2, provider)
+    val run = warmed(cache, 2).flatMap(_ => session(cache)).guarantee(IO(cache.shutdown()))
+    run.map { (end, invalid, _, tip) =>
+      val held = VerificationDefect(target.point, VerificationDefect.Site.Header, kesDefect)
+      assertEquals(end, SessionEnd.Unverifiable(held))
+      assertEquals(FailurePolicy.disposition(end), Disposition.StopNode(Fatal.Unverifiable(held)))
+      assertEquals(invalid, Set.empty[Bytes])
+      assertEquals(tip, forged.headers(index - 1).point)
+      // both warmers asked, overlapping; the validation asked a third time
+      assertEquals(provider.calls, 3)
+    }
+  }
+
+  test("a defect met while warming headers is discarded: header-first validation asks again") {
+    val provider = Fails(kesDefect, failures = 1)
     val cache = VerificationCache.unsafe(2, provider)
     cache
       .warmHeaders[IO](Vector(target), forged.states(index - 1).protocol, ForgedChain.config)
       .map { _ =>
-        assertEquals(validate(cache.forHeaders, target), Outcome.Unverifiable(kesDefect))
-        assertEquals(provider.calls, 1)
-        // the block's own validation is another one: it was warmed for none, so it asks the
-        // provider itself
-        assertEquals(
-          cache.opCert(
-            target,
-            ForgedChain.config.slotsPerKesPeriod,
-            ForgedChain.config.maxKesEvolutions
-          ),
-          Right(())
-        )
+        assert(validate(cache.forHeaders, target).isInstanceOf[Outcome.Valid[?]])
         assertEquals(provider.calls, 2)
-        cache.shutdown()
       }
+      .guarantee(IO(cache.shutdown()))
   }
 
   test("negative control: the real verifier still rejects an invalid proof as a typed failure") {

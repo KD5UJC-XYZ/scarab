@@ -46,13 +46,15 @@ and `ByronRules` return `Either[PraosError | ProviderDefect, …]` (and the TPra
 equivalents), `Verdicts.witness` is `Either[ProviderDefect, Boolean]` and `Verdicts.opCert` is
 `Either[OCertError | ProviderDefect, Unit]`. No predicate failure (`PraosError`, `TPraosError`,
 `OCertError`, `ByronChainError`, `PredicateFailure`) has a case for it, so the conversions to
-`HeaderError` and `BlockFailure` must place it explicitly. `VerificationCache` never keeps a
-defect as a verdict: a defect met while warming is handed once to the validation it was computed
-for (a fetched block's, or header-first validation's) when that validation asks for the check, and
-the provider is not asked again. A check the rules never reach shows no defect, so the reference's
-evaluation order decides whether one is met: Praos checks the operational certificate, its
-cold-key signature, its KES signature and the counter before the VRF (ouroboros-consensus 82ecba32
-`Protocol/Praos.hs` 481–486 and 637–640).
+`HeaderError` and `BlockFailure` must place it explicitly. The reference warms nothing: it asks
+the provider once, when the rules reach the check (ouroboros-consensus 82ecba32 `Protocol/Praos.hs`
+587–592 and 637–640), so in Scarab only the validation's own call decides. `VerificationCache`
+reuses a verdict (accept or reject) computed while warming, but a defect met while warming is no
+information: it is discarded, never kept or handed to a validation, and the validation that reaches
+the check asks the provider and meets its own answer. A check the rules never reach shows no
+defect, so the reference's evaluation order decides whether one is met: Praos checks the
+operational certificate, its cold-key signature, its KES signature and the counter before the VRF
+(`Protocol/Praos.hs` 481–486 and 637–640).
 
 The reference's primitives answer only accept or reject, and the Praos rules turn only that answer
 into a predicate failure (ouroboros-consensus 82ecba32 `Protocol/Praos.hs` 587–592 and 637–640); a
