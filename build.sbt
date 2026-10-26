@@ -124,6 +124,8 @@ lazy val network = scarab("network")
     )
   )
 
+val scalusPrepared = ScalusPatch.requirePrepared(Dependencies.V.scalus)
+
 // The Plutus (UPLC) machine and builtins through Scalus; the script context and the rules are ours.
 lazy val plutus = scarab("plutus")
   .dependsOn(codec % "compile->compile;test->test")

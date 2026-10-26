@@ -76,7 +76,7 @@ were not regenerated here.
 | org.typelevel:cats-core_3 | 2.13.0 | MIT | direct |  |
 | org.typelevel:cats-effect_3 | 3.7.1 | Apache-2.0 | direct |  |
 | org.typelevel:cats-mtl_3 | 1.7.0 | Apache-2.0 | direct |  |
-| org.scalus:scalus_3 | 1.4.0 | Apache-2.0 | direct |  |
+| org.scalus:scalus_3 | 1.4.0-scarab-6848b684e1d02c60b6eedc4dfa37a12a30e74385388175400de13950ffd2d49e | Apache-2.0 | direct |  |
 | dnsjava:dnsjava | 3.6.5 | BSD-3-Clause | direct | Relay-root DNS resolver. POM read from Maven Central. |
 | org.typelevel:kittens_3 | 3.5.0 | Apache-2.0 | direct | POM read from Maven Central. |
 | org.scodec:scodec-core_3 | 2.3.3 | BSD-3-Clause | direct | POM read from Maven Central. |

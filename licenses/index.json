@@ -774,12 +774,6 @@
         "scalus-crypto-jni-0.1.0/LICENSE"
       ]
     },
-    "org.scalus:scalus_3:1.4.0": {
-      "licence": "Apache-2.0",
-      "texts": [
-        "scalus-1.4.0/LICENSE"
-      ]
-    },
     "org.scijava:native-lib-loader:2.5.0": {
       "licence": "BSD-2-Clause",
       "texts": [
@@ -944,6 +938,12 @@
       "texts": [
         "vault-3.7.0/LICENSE",
         "vault-3.7.0/NOTICE"
+      ]
+    },
+    "org.scalus:scalus_3:1.4.0-scarab-6848b684e1d02c60b6eedc4dfa37a12a30e74385388175400de13950ffd2d49e": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "scalus-1.4.0/LICENSE"
       ]
     }
   },

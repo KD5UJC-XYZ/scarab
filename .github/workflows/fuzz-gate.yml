@@ -49,7 +49,7 @@ jobs:
             fuzz codec crypto protocol ledger plutus models models-gen fixtures
             node/src/main/scala/xyz/kd5ujc/scarab/node/ntc
             node/src/main/scala/xyz/kd5ujc/scarab/node/mempool
-            build.sbt project scripts/sbtw
+            build.sbt project scripts/sbtw scripts/prepare_scalus.py patches/scalus
             .github/workflows/fuzz-gate.yml
           )
           if [ "$EVENT" = "workflow_dispatch" ]; then
@@ -79,7 +79,7 @@ jobs:
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: .cache/scarab
-          key: sbt-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'scripts/sbtw') }}
+          key: sbt-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'project/*.scala', 'scripts/sbtw', 'scripts/prepare_scalus.py', 'patches/scalus/**') }}
           restore-keys: |
             sbt-${{ runner.os }}-
       - name: Fuzz the decoders (100000 cases, seeds 1 to 4)

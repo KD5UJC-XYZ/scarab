@@ -21,4 +21,14 @@ printf '%s  %s\n' "$sha" "$jar" | sha256sum --check --status
 export XDG_RUNTIME_DIR="$cache/run"
 mkdir -p "$XDG_RUNTIME_DIR"
 export COURSIER_CACHE="$cache/coursier"
-exec java -Dsbt.server.autostart=false -Dsbt.server.forcestart=true -Dsbt.boot.directory="$cache/boot" -Dsbt.global.base="${SBT_GLOBAL_BASE:-$cache/global}" -Dsbt.ivy.home="$cache/ivy" -XX:ActiveProcessorCount=4 -Xms256m -Xmx2g -Dsbt.override.build.repos=true -Dsbt.repository.config=project/repositories -Dsbt.supershell=false -jar "$jar" "$@"
+processors="${SCARAB_BUILD_PROCESSORS:-4}"
+repositories=project/repositories
+# The small standalone version-contract fixture has no Scalus dependency or patch manifest.
+# A real build also requires this repository in build.sbt and cannot fall back to upstream 1.4.0.
+if [ -f patches/scalus/manifest.json ]; then
+  scalus_options=()
+  if [ "${SCARAB_OFFLINE:-0}" = 1 ]; then scalus_options+=(--offline); fi
+  repositories=$(python3 scripts/prepare_scalus.py --cache "$cache" --launcher "$jar" \
+    --processors "$processors" "${scalus_options[@]}")
+fi
+exec java -Dsbt.server.autostart=false -Dsbt.server.forcestart=true -Dsbt.boot.directory="$cache/boot" -Dsbt.global.base="${SBT_GLOBAL_BASE:-$cache/global}" -Dsbt.ivy.home="$cache/ivy" -XX:ActiveProcessorCount="$processors" -Xms256m -Xmx2g -Dsbt.override.build.repos=true -Dsbt.repository.config="$repositories" -Dsbt.supershell=false -jar "$jar" "$@"
