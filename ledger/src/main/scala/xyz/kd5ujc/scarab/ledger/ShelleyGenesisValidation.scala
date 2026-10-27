@@ -10,7 +10,7 @@ import xyz.kd5ujc.scarab.ledger.state.{NonZero, PositiveUnitInterval, Word64}
   * `eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs:673-762`).
   *
   * Not called, because the reference node does not call it. cardano-node 11.1.3 has one protocol
-  * configuration, `NodeProtocolConfigurationCardano` (`Cardano/Node/Types.hs:211-217`), and
+  * configuration, `NodeProtocolConfigurationCardano` (`Cardano/Node/Types.hs:211-220`), and
   * instantiates only it (`Cardano/Node/Protocol.hs:22-45`), reading the Shelley genesis without
   * validating it (`Cardano/Node/Protocol/Cardano.hs:122-125`); the call in
   * `mkSomeConsensusProtocolShelley` (`Cardano/Node/Protocol/Shelley.hs:84`) is unreachable.
@@ -32,7 +32,7 @@ object ShelleyGenesisValidation:
     case MaxKESEvolutionsUnsupported(requested: Word64, supported: Long)
     case QuorumTooSmall(quorum: Word64, maxTooSmall: Word64, genesisNodes: Word64)
 
-    /** `describeValidationErr` (`Genesis.hs:683-715`), word for word; `EpochSize` shows as
+    /** Text after `describeValidationErr` (`Genesis.hs:683-715`); `EpochSize` shows as
       * `EpochSize n` (`Show via Quiet`, cardano-slotting 0.2.2.0 `Slot.hs:140-143`).
       */
     def description: String = this match

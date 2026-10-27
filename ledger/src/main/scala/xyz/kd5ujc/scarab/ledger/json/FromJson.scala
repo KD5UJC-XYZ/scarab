@@ -28,6 +28,9 @@ enum NumberError extends DomainError:
   /** `typeMismatch "Number"`. */
   case TypeMismatch(found: JsonKind)
 
+  /** A defect, not a refusal: circe's text of a number it parsed is not an aeson number. */
+  case UnreadNumberText(text: String, cause: Option[NativeJson.Error])
+
   /** `parseBoundedIntegral "Word64"`: floating, or outside `0 .. 2^64 - 1`. */
   case NotWord64(value: Scientific)
 
@@ -61,11 +64,14 @@ enum NumberError extends DomainError:
   /** `fromRationalEither`: outside the type's bounds, or a component outside `Word64`. */
   case OutsideOfBounds(value: Rational)
 
-  /** The reference's text: aeson's messages (`Data/Aeson/Types/FromJSON.hs:194-212, 537-543,
-    * 799-810, 918-921, 1708-1724`) and cardano-ledger's `failWith` (`BaseTypes.hs:464-465`).
+  /** Text for logs, modelled on aeson's messages (`Data/Aeson/Types/FromJSON.hs:194-212, 537-543,
+    * 799-810, 918-921, 1708-1724`) and cardano-ledger's `failWith` (`BaseTypes.hs:464-465`); the
+    * cases, not the wording, are what mirror the reference.
     */
   def message: String = this match
     case TypeMismatch(found) => s"expected Number, but encountered $found"
+    case UnreadNumberText(text, cause) =>
+      s"defect: the number $text is not read by the aeson grammar${cause.fold("")(e => s" ($e)")}"
     case NotWord64(value) =>
       s"parsing Word64 failed, value is either floating or will cause over or underflow ${value.shown}"
     case Zero => "Encountered zero while trying to construct a NonZero value"
@@ -89,9 +95,11 @@ object FromJson:
   /** `FromJSON Scientific`: any JSON number. */
   def scientific(json: Json): Either[NumberError, Scientific] =
     json.asNumber.toRight(NumberError.TypeMismatch(JsonKind.of(json))).flatMap { n =>
-      NativeJson.parse(Bytes.fromArray(n.toString.getBytes("US-ASCII"))) match
+      val text = n.toString
+      NativeJson.parse(Bytes.fromArray(text.getBytes("US-ASCII"))) match
         case Right(JsonValue.Number(value)) => Right(value)
-        case _                              => Left(NumberError.TypeMismatch(JsonKind.of(json)))
+        case Right(_)                       => Left(NumberError.UnreadNumberText(text, None))
+        case Left(e)                        => Left(NumberError.UnreadNumberText(text, Some(e)))
     }
 
   /** `FromJSON Word64` (`parseBoundedIntegral`, `toBoundedInteger`): a whole number in
