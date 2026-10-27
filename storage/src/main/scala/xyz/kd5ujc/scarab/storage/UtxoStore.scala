@@ -340,20 +340,26 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
       case Left(e)  => StorageError.Io(what, e).raise[F, A]
     }
 
+  /** Written through [[AtomicFile.replaceStreaming]] (a temporary file, fsync, rename and fsync of
+    * the directory), so `utxo.bin` is durable before [[UtxoBacking.checkpoint]] digests it and the
+    * snapshot that binds it is written. That caller gives each anchor a fresh directory; a torn
+    * file would be refused by the digest at admission ([[CheckpointDigest]]), and its snapshot with
+    * it. The reference writes its in-memory tables without an fsync (ouroboros-consensus 82ecba32
+    * `Storage/LedgerDB/V2/InMemory.hs` 216-224); forcing them is an owner-approved deviation,
+    * recorded in #474 (2026-10-27).
+    */
   def checkpoint(dir: Path)(using Raise[F, StorageError]): F[Unit] =
     state.get.flatMap { c =>
-      guard(dir.toString) {
-        java.nio.file.Files.createDirectories(dir.toNioPath)
-        val file = dir.toNioPath.resolve("utxo.bin")
-        val os = new java.io.BufferedOutputStream(java.nio.file.Files.newOutputStream(file))
-        try
-          val out = Out(os)
-          import NodeCodecs.given
-          Codec[Map[TxIn, TxOut]].write(out, c.entries)
-          out.fixed64(c.stamp)
-          out.flush()
-        finally os.close()
-      }
+      guard(dir.toString)(java.nio.file.Files.createDirectories(dir.toNioPath)) *>
+        AtomicFile.replaceStreaming[F](dir / "utxo.bin") { os =>
+          F.blocking {
+            val out = Out(os)
+            import NodeCodecs.given
+            Codec[Map[TxIn, TxOut]].write(out, c.entries)
+            out.fixed64(c.stamp)
+            out.flush()
+          }
+        }
     }
 
   def restore(dir: Path)(using cats.mtl.Raise[F, StorageError]): F[Boolean] =
@@ -361,21 +367,24 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
     F.blocking(java.nio.file.Files.exists(file)).flatMap {
       case false => F.pure(false)
       case true =>
-        guard(file.toString) {
-          val size = java.nio.file.Files.size(file)
-          val is = new java.io.BufferedInputStream(java.nio.file.Files.newInputStream(file))
-          try
-            val in = In(is, size)
-            import NodeCodecs.given
-            for
-              entries <- Codec[Map[TxIn, TxOut]].read(in)
-              stamp <- in.fixed64()
-            yield Contents(entries, stamp)
-          finally is.close()
-        }.flatMap(
-          _.leftMap(e => StorageError.Corrupt(file.toString, e))
-            .fold(_.raise[F, Boolean], c => state.set(c).as(true))
+        val input = Resource.fromAutoCloseable(
+          F.blocking(new java.io.BufferedInputStream(java.nio.file.Files.newInputStream(file)))
         )
+        AtomicFile
+          .guarding(file.toString)(input.use { is =>
+            F.blocking {
+              val in = In(is, java.nio.file.Files.size(file))
+              import NodeCodecs.given
+              for
+                entries <- Codec[Map[TxIn, TxOut]].read(in)
+                stamp <- in.fixed64()
+              yield Contents(entries, stamp)
+            }
+          })
+          .flatMap(
+            _.leftMap(e => StorageError.Corrupt(file.toString, e))
+              .fold(_.raise[F, Boolean], c => state.set(c).as(true))
+          )
     }
 
 object MemoryUtxoStore:
