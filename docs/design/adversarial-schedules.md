@@ -111,7 +111,8 @@ Read from the nodes' own state, with no tolerance beyond the protocol's `k`:
 4. No Haskell pool exits unless the schedule killed it, and none reports a `DecoderFailure` with `ExceptionExit`.
 
 The job fails on a violation, prints the replay command, and uploads `fault-schedule.json` and `faults-summary.json` (small, kept
-30 days); a failure also uploads the Scala event log, the Haskell pool logs and the container output.
+30 days); a failure also uploads the Scala event log, the Haskell pool logs (the whole logs gzipped, with the pools'
+peer-selection, ChainSync and BlockFetch traces) and the container output.
 
 ### What it does not cover
 

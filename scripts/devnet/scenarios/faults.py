@@ -8,6 +8,7 @@ also crashes and restarts the Scala node (from its database) and the Haskell poo
 from the nodes' own state: tips, the Scala node's event log and the Haskell nodes' logs. A failure prints the
 command that repeats the run.
 """
+import gzip
 import json
 import shutil
 import subprocess
@@ -21,6 +22,29 @@ from .relay import SCALA_PORT, log_counts, tip_at
 
 POOL = 1                 # the number of the pool whose keys the Scala node takes
 HASKELL = {"p2": 2, "p3": 3}
+# The Haskell pools' diagnostic traces, so that a failed run shows why a pool stopped following a peer: its
+# peer-selection decisions, connection and inbound-governor transitions, ChainSync and BlockFetch clients
+# (trace-dispatcher namespaces of cardano-node 11.1.3). `maxFrequency` bounds the fetch decisions, which the
+# decision loop can emit every 10 ms.
+NATIVE_TRACES = {
+    "Net.PeerSelection": {"severity": "Debug"},
+    "Net.ConnectionManager.Local": {"severity": "Info"},
+    "Net.InboundGovernor.Local": {"severity": "Info"},
+    "ChainSync.Client": {"severity": "Info"},
+    "BlockFetch.Client": {"severity": "Info"},
+    "BlockFetch.Decision": {"severity": "Debug", "maxFrequency": 2.0},
+}
+# next to the cluster's configuration, whose genesis file names are relative to it
+POOL_CONFIG = f"{ENV}/faults-configuration.yaml"
+
+
+def pool_configuration(raw):
+    """The cluster's configuration (JSON) with `NATIVE_TRACES` added, for the Haskell pools."""
+    config = json.loads(raw)
+    options = config.setdefault("TraceOptions", {})
+    for namespace, option in NATIVE_TRACES.items():
+        options.setdefault(namespace, {}).update(option)
+    return json.dumps(config, indent=2)
 SETTLE_POLL = 2          # seconds between tip readings while settling
 SAMPLE_EVERY = 4         # seconds between tip readings during the run
 
@@ -38,7 +62,7 @@ def topology(own_dials):
 def node_script(name, n, port, append=False):
     """Start a Haskell pool; the shell records its pid first, so a crash is `kill -9` of that pid and no pattern."""
     pool = f"{ENV}/pools-keys/pool{n}"
-    return (f"cd {ENV} && echo $$ > /work/node{n}.pid && exec cardano-node run --config {ENV}/configuration.yaml "
+    return (f"cd {ENV} && echo $$ > /work/node{n}.pid && exec cardano-node run --config {POOL_CONFIG} "
             f"--topology {ENV}/node-data/node{n}/topology.json --database-path {ENV}/node-data/node{n}/db "
             f"--shelley-kes-key {pool}/kes.skey --shelley-vrf-key {pool}/vrf.skey "
             f"--shelley-operational-certificate {pool}/opcert.cert "
@@ -222,6 +246,8 @@ def faults(args):
         for f in ["shelley-genesis.json", "byron-genesis.json", "alonzo-genesis.json", "conway-genesis.json", "configuration.yaml"]:
             raw = subprocess.run(["docker", "exec", ref(args.name), "cat", f"{ENV}/{f}"], capture_output=True, check=True).stdout
             (root / "genesis" / f).write_bytes(raw)
+            if f == "configuration.yaml":
+                put_file(args.name, POOL_CONFIG, pool_configuration(raw))
         write_keys(root, args.name)
         run.shaper.install()
         netfaults.start_proxies(args.name, root, node_ports)
@@ -332,6 +358,11 @@ def faults(args):
                 result = docker("exec", ref(args.name), "/bin/sh", "-c",
                                 f"tail -c 200000 /work/node{n}.log", check=False, timeout=60)
                 (root / f"node{n}.log").write_text(result.stdout)
+                # a failure keeps the whole log: the traces that explain it are seldom in the tail
+                if failures:
+                    whole = docker("exec", ref(args.name), "cat", f"/work/node{n}.log", check=False, timeout=300)
+                    with gzip.open(root / f"node{n}.log.gz", "wt") as out:
+                        out.write(whole.stdout)
         summary["failures"] = failures
         summary["completed"] = completed
         summary["passed"] = completed and not failures

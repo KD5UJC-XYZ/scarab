@@ -283,6 +283,19 @@ class FakeScala:
         return self.returncode
 
 
+class PoolConfigurationTests(unittest.TestCase):
+    def test_the_traces_are_added_and_the_rest_is_kept(self):
+        raw = json.dumps({"Protocol": "Cardano", "TraceOptions": {"": {"severity": "Notice"},
+                                                                 "ChainSync.Client": {"detail": "DMaximum"}}})
+        config = json.loads(faults.pool_configuration(raw.encode()))
+        self.assertEqual(config["Protocol"], "Cardano")
+        self.assertEqual(config["TraceOptions"][""], {"severity": "Notice"})
+        self.assertEqual(config["TraceOptions"]["ChainSync.Client"], {"detail": "DMaximum", "severity": "Info"})
+        for namespace, option in faults.NATIVE_TRACES.items():
+            for key, value in option.items():
+                self.assertEqual(config["TraceOptions"][namespace][key], value)
+
+
 class ExecutionTests(unittest.TestCase):
     """`faults()` itself, with the cluster, Docker and the proxies stubbed out."""
 
@@ -324,7 +337,7 @@ class ExecutionTests(unittest.TestCase):
                  patch.object(faults, "pool_environment", return_value=({2: 4002, 3: 4003}, {})),
                  patch.object(faults, "load_plan", return_value=plan),
                  patch.object(faults, "put_file"),
-                 patch.object(faults.subprocess, "run", return_value=SimpleNamespace(stdout=b"")),
+                 patch.object(faults.subprocess, "run", return_value=SimpleNamespace(stdout=b"{}")),
                  patch.object(faults, "write_keys"),
                  patch.object(faults.netfaults, "Shaper"),
                  patch.object(faults.netfaults, "start_proxies"),
@@ -355,6 +368,18 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, 0)
         self.assertEqual(self.summary(root)["failures"], [])
         self.assertTrue(self.summary(root)["passed"])
+        # a passing run keeps only the tails of the pools' logs
+        self.assertFalse((root / "node2.log.gz").exists())
+
+    def test_the_pools_run_with_the_diagnostic_traces(self):
+        args, root = self.execute(FakeScala(alive=10**6))
+        with self.assertRaises(SystemExit):
+            faults.faults(args)
+        written = {call.args[1]: call.args[2] for call in faults.put_file.call_args_list}
+        options = json.loads(written[faults.POOL_CONFIG])["TraceOptions"]
+        self.assertEqual(options["Net.PeerSelection"], {"severity": "Debug"})
+        self.assertEqual(options["BlockFetch.Decision"], {"severity": "Debug", "maxFrequency": 2.0})
+        self.assertIn(f"--config {faults.POOL_CONFIG} ", faults.node_script("n", 2, 4002))
 
     def test_scala_exiting_after_the_last_action_fails_the_run(self):
         # alive through the schedule loop, gone when the cluster settles; its logged tip still matches the others
@@ -389,6 +414,8 @@ class ExecutionTests(unittest.TestCase):
             faults.faults(args)
         self.assertEqual(raised.exception.code, 1)
         self.assertTrue(any("scala: no new block after healing" in f for f in self.summary(root)["failures"]))
+        # a failure keeps the pools' whole logs
+        self.assertTrue((root / "node2.log.gz").exists() and (root / "node3.log.gz").exists())
 
     def test_scala_dying_during_log_collection_fails_the_run(self):
         args, root = self.execute(FakeScala(alive=10**6), die_while_collecting=True)
@@ -445,8 +472,10 @@ class ExecutionTests(unittest.TestCase):
             commands.append(argv)
             missing = argv[-1].startswith("tail -c ")
             text = kwargs.get("text", False)
+            # the cluster's configuration is read (as bytes) to derive the pools' copy
+            raw = b"{}" if argv[-1].endswith("/configuration.yaml") else b""
             return subprocess.CompletedProcess(
-                argv, 1 if missing else 0, stdout="" if text else b"",
+                argv, 1 if missing else 0, stdout="" if text else raw,
                 stderr="tail: cannot open pool log" if missing else ("" if text else b""))
 
         # Keep the real checked Docker wrappers: an unchecked stub would conceal the original bug.
