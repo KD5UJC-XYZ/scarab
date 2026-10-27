@@ -77,11 +77,11 @@ class UpstreamMuxLifecycleSuite extends FailsOnUncaught:
             pair <- Bearer.inMemory[IO]()
             (a, b) = pair
             result <- (
-              Mux.resource(a, Set(1), Mux.Config(maxSduPayload = sample.sduSize)),
+              Mux.resource(a, Set(1), Mux.Config(sduSize = sample.sduSize)),
               Mux.resource(
                 b,
                 Set(1),
-                Mux.Config(role = Mux.Role.Responder, maxSduPayload = sample.sduSize)
+                Mux.Config(role = Mux.Role.Responder, sduSize = sample.sduSize)
               )
             ).tupled.use { (client, server) =>
               for
@@ -133,8 +133,8 @@ class UpstreamMuxLifecycleSuite extends FailsOnUncaught:
           Peers
             .linked(
               protocols = Set(1),
-              client = Mux.Config(maxSduPayload = 3),
-              server = Mux.Config(role = Mux.Role.Responder, maxSduPayload = 3)
+              client = Mux.Config(sduSize = 3),
+              server = Mux.Config(role = Mux.Role.Responder, sduSize = 3)
             )
             .use { (client, server) =>
               for

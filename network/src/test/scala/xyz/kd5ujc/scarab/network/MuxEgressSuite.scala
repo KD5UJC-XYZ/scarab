@@ -42,7 +42,7 @@ class MuxEgressSuite extends FailsOnUncaught:
           .resource(
             bearer,
             Set(2, 3),
-            Mux.Config(duplex = true, maxSduPayload = 2, egressBufferBytes = 64)
+            Mux.Config(duplex = true, sduSize = 2, egressBufferBytes = 64)
           )
           .use { mux =>
             for
@@ -139,7 +139,7 @@ class MuxEgressSuite extends FailsOnUncaught:
           wait *> trace.update(_ :+ sdu)
       clock <- TestControl.execute(Peers.typed {
         Mux
-          .resource(bearer, Set(2, 3), Mux.Config(maxSduPayload = 2, egressBufferBytes = 4))
+          .resource(bearer, Set(2, 3), Mux.Config(sduSize = 2, egressBufferBytes = 4))
           .use { mux =>
             for
               bulk <- mux.channel(2)

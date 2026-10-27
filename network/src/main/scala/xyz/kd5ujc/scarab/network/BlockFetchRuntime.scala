@@ -72,8 +72,7 @@ object BlockFetchRuntime:
 
   final case class ServerSettings(
       limits: BlockFetchEngine.Limits = BlockFetchEngine.Limits(),
-      idleTimeout: FiniteDuration = 3373.seconds,
-      idleDeadline: Option[ProtocolDeadline] = None
+      idle: ProtocolDeadline = ProtocolDeadline.Unbounded
   )
 
   def client[F[_]: Temporal, P, B](
@@ -504,7 +503,7 @@ object BlockFetchRuntime:
     val step: F[Boolean] =
       Timed
         .within(
-          settings.idleDeadline.getOrElse(ProtocolDeadline.After(settings.idleTimeout)),
+          settings.idle,
           id,
           "idle"
         )(

@@ -108,13 +108,26 @@ object ChainSyncRuntime:
 
   final case class ServerSettings(
       limits: ChainSync.Limits = ChainSync.Limits(),
-      idleTimeout: FiniteDuration = 3373.seconds,
-      protocol: Int = Protocols.ChainSync,
-      idleDeadline: Option[ProtocolDeadline] = None
+      idle: ProtocolDeadline = ChainSyncRuntime.DefaultIdle,
+      protocol: Int = Protocols.ChainSync
   )
 
+  /** `StIdle` of the server in node-to-node:
+    * `defaultChainSyncIdleTimeout = ChainSyncIdleTimeout 3373` (cardano-diffusion
+    * `Cardano/Network/Diffusion/Configuration.hs`, ouroboros-network 2fb69829), the idle timeout of
+    * `timeLimitsChainSync` (`Cardano/Network/Protocol/ChainSync/Codec/TimeLimits.hs:59-60`).
+    */
+  val DefaultIdle: ProtocolDeadline = ProtocolDeadline.After(3373.seconds)
+
+  /** Node-to-client runs its protocols with `runPeer`, without time limits (ouroboros-consensus
+    * 82ecba32, `Ouroboros/Consensus/Network/NodeToClient.hs`, `mkApps`).
+    */
   val NodeToClient: ServerSettings =
-    ServerSettings(ChainSync.Limits.NodeToClient, protocol = Protocols.LocalChainSync)
+    ServerSettings(
+      ChainSync.Limits.NodeToClient,
+      idle = ProtocolDeadline.Unbounded,
+      protocol = Protocols.LocalChainSync
+    )
 
   def client[F[_]: Async, Q, T, P](
       channel: MuxChannel[F],
@@ -300,7 +313,7 @@ object ChainSyncRuntime:
     val step: F[Boolean] =
       Timed
         .within(
-          settings.idleDeadline.getOrElse(ProtocolDeadline.After(settings.idleTimeout)),
+          settings.idle,
           id,
           "idle"
         )(

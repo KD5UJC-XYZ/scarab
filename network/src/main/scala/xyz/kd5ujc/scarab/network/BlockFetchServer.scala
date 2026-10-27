@@ -9,7 +9,6 @@ import fs2.Stream
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{BlockFetch, CardanoBlockFetch}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
-import scala.concurrent.duration.*
 
 /** BlockFetch server: answers inclusive range requests from a [[BlockFetchServer.Blocks]] source,
   * one request at a time (a client that pipelines is served in order).
@@ -23,10 +22,13 @@ object BlockFetchServer:
       */
     def range(from: Point, to: Point): F[Option[Stream[F, Bytes]]]
 
+  /** @param idle
+    *   The wait for the client's next request: BFIdle is waitForever in timeLimitsBlockFetch
+    *   (BlockFetch/Codec.hs:65, ouroboros-network 2fb69829).
+    */
   final case class Settings(
       limits: BlockFetch.Limits = BlockFetch.Limits(),
-      idleTimeout: FiniteDuration = 3373.seconds,
-      idleDeadline: Option[ProtocolDeadline] = None
+      idle: ProtocolDeadline = ProtocolDeadline.Unbounded
   )
 
   def run[F[_]: Temporal](
@@ -71,7 +73,6 @@ object BlockFetchServer:
           .map(range => (range.from.point, range.to.point)),
       BlockFetchRuntime.ServerSettings(
         settings.limits,
-        settings.idleTimeout,
-        settings.idleDeadline
+        settings.idle
       )
     )

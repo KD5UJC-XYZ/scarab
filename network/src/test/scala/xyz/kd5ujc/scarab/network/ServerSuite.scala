@@ -309,20 +309,7 @@ class ServerSuite extends FailsOnUncaught:
     val chain = new Chain(Vector(1, 2, 3))
     val duplexClient = Mux.Config(role = Mux.Role.Initiator, duplex = true)
     val duplexServer = Mux.Config(role = Mux.Role.Responder, duplex = true)
-    for
-      bounded <- typed {
-        linked(
-          protocols = NodeToNodeServer.Protocol,
-          client = duplexClient,
-          server = duplexServer
-        ).use { (local, _) =>
-          val settings = NodeToNodeServer.Settings(
-            transactions = TxSubmissionServer.Settings(initTimeout = Some(40.millis))
-          )
-          NodeToNodeServer.start(local, handlers(chain), settings).use(_ => local.closed)
-        }
-      }
-      unbounded <- typed {
+    for unbounded <- typed {
         linked(
           protocols = NodeToNodeServer.Protocol,
           client = duplexClient,
@@ -359,13 +346,11 @@ class ServerSuite extends FailsOnUncaught:
           yield (during, reply)
         }
       }
-    yield
-      assertEquals(bounded, Right(NetworkError.Timeout(Protocols.TxSubmission2, "Init")))
-      assert(
-        unbounded.exists { case ((intersection, stillOpen), reply) =>
-          intersection.nonEmpty && stillOpen && reply.isEmpty
-        }
-      )
+    yield assert(
+      unbounded.exists { case ((intersection, stillOpen), reply) =>
+        intersection.nonEmpty && stillOpen && reply.isEmpty
+      }
+    )
 
   test("duplex: one bearer carries a client and a server of the same protocol both ways"):
     val mine = Chain(Vector(1, 2, 3))

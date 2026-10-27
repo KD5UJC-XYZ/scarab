@@ -56,13 +56,11 @@ class NativeChainSyncTimeoutsSuite extends FailsOnUncaught:
             List("sampleWord64", "sampleSeconds", "sampleNumerator", "sampleDenominator")
               .foreach(field => assert(c.downField(field).focus.exists(_.isNull)))
           if stateName == "Idle" then
-            val server = ChainSyncRuntime.ServerSettings(idleDeadline =
-              Option.when(get[Boolean]("noIdle"))(ProtocolDeadline.Unbounded)
+            val server = ChainSyncRuntime.ServerSettings(idle =
+              if get[Boolean]("noIdle") then ProtocolDeadline.Unbounded
+              else ChainSyncRuntime.DefaultIdle
             )
-            assertEquals(
-              server.idleDeadline.getOrElse(ProtocolDeadline.After(server.idleTimeout)),
-              nativeDeadline
-            )
+            assertEquals(server.idle, nativeDeadline)
             IO.unit
           else
             val state = stateName match

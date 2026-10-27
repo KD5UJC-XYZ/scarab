@@ -533,7 +533,8 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
                             tipCodec,
                             payloadCodec,
                             oracle,
-                            ChainSyncRuntime.ServerSettings(idleTimeout = 5.seconds)
+                            ChainSyncRuntime
+                              .ServerSettings(idle = ProtocolDeadline.After(5.seconds))
                           )
                       }
                       .start
@@ -644,7 +645,8 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
                               tipCodec,
                               payloadCodec,
                               oracle,
-                              ChainSyncRuntime.ServerSettings(idleTimeout = 5.seconds)
+                              ChainSyncRuntime
+                                .ServerSettings(idle = ProtocolDeadline.After(5.seconds))
                             )
                         }
                         .start
@@ -817,7 +819,7 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
                           tipCodec,
                           payloadCodec,
                           oracle,
-                          ChainSyncRuntime.ServerSettings(idleTimeout = 5.seconds)
+                          ChainSyncRuntime.ServerSettings(idle = ProtocolDeadline.After(5.seconds))
                         )
                       }
                       .start
