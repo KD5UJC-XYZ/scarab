@@ -23,6 +23,58 @@ final case class Scientific(coefficient: BigInt, base10Exponent: Long):
       val (stripped, zeros) = Scientific.stripZeros(coefficient)
       Scientific(stripped, base10Exponent + zeros)
 
+  /** `toBoundedInteger` (`Data/Scientific.hs:771-802`): the whole number in `[min, max]`, or `None`
+    * for a floating value or one outside the bounds. A value whose normalized exponent alone
+    * exceeds the bounds' digits is outside them without being expanded, as `dangerouslyBig` does.
+    */
+  def toBoundedInteger(min: BigInt, max: BigInt): Option[BigInt] =
+    if coefficient == 0 then Option.when(min <= 0 && 0 <= max)(BigInt(0))
+    else
+      val n = normalize
+      val digits = min.abs.max(max.abs).toString.length.toLong
+      if base10Exponent < 0 && n.base10Exponent < 0 then None
+      else if n.base10Exponent > digits then None
+      else
+        Some(n.coefficient * BigInt(10).pow(n.base10Exponent.toInt)).filter(i =>
+          min <= i && i <= max
+        )
+
+  /** The `Right` of `floatingOrInteger` (`Data/Scientific.hs:831-837`): the whole number when the
+    * exponent, as stored or normalized, is not negative. The caller bounds the exponent first, as
+    * aeson's `withBoundedScientific` does for `Integer`.
+    */
+  def wholeNumber: Option[BigInt] =
+    if base10Exponent >= 0 then Some(coefficient * BigInt(10).pow(base10Exponent.toInt))
+    else
+      val n = normalize
+      Option.when(n.base10Exponent >= 0)(n.coefficient * BigInt(10).pow(n.base10Exponent.toInt))
+
+  /** `show` (`Data/Scientific.hs:958-1001`): fixed notation for decimal exponents 0 to 7, otherwise
+    * `d.ddde<n>`, as the reference's error texts print a value.
+    */
+  def shown: String =
+    if coefficient < 0 then "-" + Scientific(-coefficient, base10Exponent).shown
+    else
+      val (ds, e) = decimalDigits
+      if e < 0 || e > 7 then
+        ds match
+          case "0"                => "0.0e0"
+          case d if d.sizeIs == 1 => s"$d.0e${e - 1}"
+          case d                  => s"${d.head}.${d.tail}e${e - 1}"
+      else if e <= 0 then "0." + "0" * (-e).toInt + ds
+      else
+        val whole = ds.take(e.toInt).padTo(e.toInt, '0')
+        val fraction = ds.drop(e.toInt)
+        whole + "." + (if fraction.isEmpty then "0" else fraction)
+
+  /** `toDecimalDigits` (`Data/Scientific.hs:1080-1091`) of a non-negative value. */
+  private def decimalDigits: (String, Long) =
+    if coefficient == 0 then ("0", 0L)
+    else
+      val n = normalize
+      val ds = n.coefficient.toString
+      (ds, ds.length + n.base10Exponent)
+
   override def equals(other: Any): Boolean = other match
     case that: Scientific =>
       val (a, b) = (normalize, that.normalize)
