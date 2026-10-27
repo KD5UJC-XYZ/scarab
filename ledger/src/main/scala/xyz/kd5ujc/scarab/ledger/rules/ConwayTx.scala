@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.ledger.{
   PredicateFailure,
   Script,
   Tx,
+  TxIn,
   TxOut,
   TxEnv,
   Utxo as NodeUtxo
@@ -62,11 +63,19 @@ final case class LedgerEnv(ctx: TxEnv, treasury: Coin)
 final case class StAnnTx(tx: Tx, utxo: NodeUtxo):
   def id: Bytes = tx.body.id
 
-  /** The outputs of the inputs, in the order of the inputs. */
+  /** The outputs of the inputs the set holds, in the order of the inputs. */
   lazy val spent: Vector[TxOut] = tx.body.inputs.flatMap(utxo.get)
 
-  /** The outputs of the reference inputs. */
+  /** The outputs of the inputs the set holds, by input (`txIns ◁ utxo`). */
+  lazy val spentByInput: Map[TxIn, TxOut] =
+    tx.body.inputs.flatMap(in => utxo.get(in).map(in -> _)).toMap
+
+  /** The outputs of the reference inputs the set holds. */
   lazy val referenced: Vector[TxOut] = tx.body.referenceInputs.flatMap(utxo.get)
+
+  /** The outputs of the reference inputs the set holds, by input. */
+  lazy val referencedByInput: Map[TxIn, TxOut] =
+    tx.body.referenceInputs.flatMap(in => utxo.get(in).map(in -> _)).toMap
 
   /** The scripts the transaction can use: its witnesses and the reference scripts of its inputs and
     * reference inputs (`scriptsProvided`).
@@ -77,7 +86,7 @@ final case class StAnnTx(tx: Tx, utxo: NodeUtxo):
   /** The hashes of the scripts it needs, with the redeemer pointers that use each
     * (`scriptsNeeded`); defined for a transaction whose inputs the set holds.
     */
-  lazy val needed: Map[Bytes, Set[(Int, BigInt)]] = TxChecks.scriptsNeeded(tx.body, spent)
+  lazy val needed: Map[Bytes, Set[(Int, BigInt)]] = TxChecks.scriptsNeeded(tx.body, spentByInput)
 
   /** The redeemer pointers of the needed scripts that are Plutus scripts. */
   lazy val plutusPurposes: Set[(Int, BigInt)] =
@@ -102,19 +111,27 @@ object CertLens:
       : Lens[ConwayCertState, SortedMap[Credential[ColdCommittee], CommitteeAuthorization]] =
     ConwayCertState.vState.andThen(VState.committeeState).andThen(CommitteeState.creds)
 
-/** What a rule of the transaction does when it refuses: the failure the node has always reported
-  * for it, `LedgerFailure.Rejected` of the transaction and the nested predicate failure.
+/** What a rule of the transaction does with a pure check's result: its predicate failures recorded,
+  * a defect raised.
   */
 private[rules] object Refuse:
-  /** Raises `failure` for the transaction `id`. */
-  def apply[F[_]: Applicative, A](id: Bytes, failure: PredicateFailure)(using
-      Raise[F, LedgerFailure]
-  ): F[A] = (LedgerFailure.Rejected(id, failure): LedgerFailure).raise[F, A]
-
-  /** `cond ?! failure`: raises unless `cond` holds. */
-  def unless[F[_]: Applicative](cond: Boolean, id: Bytes, failure: => PredicateFailure)(using
-      Raise[F, LedgerFailure]
-  ): F[Unit] = Sts.check(cond, LedgerFailure.Rejected(id, failure))
+  /** The value of a pure check of the transaction, or nothing with its predicate failures recorded
+    * (and the rule going on); a defect is raised.
+    */
+  def recorded[F[_]: Applicative, A](result: Either[LedgerFailure, A])(using
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
+  ): F[Option[A]] =
+    result.fold(
+      failure =>
+        Refusal.ledger
+          .split(failure)
+          .fold(
+            defect => (defect: LedgerFailure).raise[F, Option[A]],
+            failures => judge.tell(failures.toChain).as(Option.empty[A])
+          ),
+      a => Applicative[F].pure(Some(a))
+    )
 
   /** The value of a conversion into the state's vocabulary, or its refusal. */
   def vocab[F[_]: Applicative, A](result: Either[VocabError, A])(using

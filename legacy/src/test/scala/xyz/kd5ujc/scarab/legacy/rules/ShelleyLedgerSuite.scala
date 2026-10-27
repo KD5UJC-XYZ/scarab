@@ -100,7 +100,7 @@ class ShelleyLedgerSuite extends FunSuite:
   ): Either[LedgerFailure, (LedgerImage[E], Counted[LedgerState[E]])] =
     val image = run(mirror.to[E](at, s)).fold(e => fail(s"to the mirror: ${e.show}"), _.value)
     val nes = image.nes
-    Sts(ShelleyLedger.sts[E])(
+    JudgedSts(ShelleyLedger.sts[E])(LedgerFailure.Rejected(t.body.id, _))(
       globals,
       ShelleyLedgerEnv(ctx, nes.es.chainAccount),
       Counted(nes.es.ls, s.plutus),
@@ -139,8 +139,8 @@ class ShelleyLedgerSuite extends FunSuite:
           case Right((_, counted)) => k.pre.gov.get(counted.state.utxo)
 
   private def name(f: LedgerFailure): String = f match
-    case LedgerFailure.Rejected(_, p) => p.ruleName
-    case other                        => other.message
+    case LedgerFailure.Rejected.Single(_, p) => p.ruleName
+    case other                               => other.message
 
   /** The rules on one transaction: the state after it, or the refusal. */
   private def agree(c: Case[?], s: flat.LedgerState, t: Tx, ctx: TxEnv): Out = newSide(c, s, t, ctx)
@@ -201,7 +201,28 @@ class ShelleyLedgerSuite extends FunSuite:
 
   private val rich = 10000 * ada
 
-  Vector(alonzo, babbage).foreach { c =>
+  // Babbage's UTXO counts the collateral inputs of every transaction (`Babbage/Rules/Utxo.hs:412`);
+  // Alonzo's does not count them at all (`Alonzo/Rules/Utxo.hs:570-572`, cardano-ledger `f649f975`)
+  test("Alonzo LEDGER does not count the collateral inputs") {
+    val inputs = Vector(coinIn, txIn(2), txIn(3), txIn(4))
+    val s = base(alonzo, inputs.map(_ -> out(alice.address(), rich)))
+    accepted(
+      alonzo,
+      s,
+      tx(
+        body(
+          "collateral-count",
+          Vector(coinIn),
+          Vector(out(alice.address(), rich - 200)),
+          200,
+          collateral = inputs
+        ),
+        Vector(alice)
+      )
+    )
+  }
+
+  Vector(babbage).foreach { c =>
     test(s"${c.name} LEDGER refuses excessive collateral even without redeemers (#178)") {
       val inputs = Vector(coinIn, txIn(2), txIn(3), txIn(4))
       val s = base(c, inputs.map(_ -> out(alice.address(), rich)))
@@ -970,9 +991,18 @@ class ShelleyLedgerSuite extends FunSuite:
     )
     for t <- Vector(delegate, pay("cheap", alice, fee = 1)) do
       val rules = ShelleyLedger.sts[Babbage]
-      val onRuleT = Sts(rules)(globals, ledgerEnv, start, t)
+      val onRuleT =
+        JudgedSts(rules)(LedgerFailure.Rejected(t.body.id, _))(globals, ledgerEnv, start, t)
       val onStack = rules
-        .transition[K](ledgerEnv, t)(using summon, summon, summon, summon)
+        .transition[K](ledgerEnv, t)(using
+          summon,
+          summon,
+          summon,
+          summon,
+          Judge.raising[K, xyz.kd5ujc.scarab.ledger.PredicateFailure, LedgerFailure](
+            LedgerFailure.Rejected(t.body.id, _)
+          )
+        )
         .run(globals)
         .run(start)
         .map(_._1)

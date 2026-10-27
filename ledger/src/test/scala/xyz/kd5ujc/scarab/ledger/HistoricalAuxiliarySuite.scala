@@ -70,7 +70,9 @@ class HistoricalAuxiliarySuite extends FunSuite:
             Blake2b.hash256.hash(tx.auxiliary.getOrElse(fail("no auxiliary"))).hex
           )
           assertEquals(
-            TxChecks.auxiliaryChecks(TestLedger.params(major), tx, TestLedger.env),
+            TxChecks
+              .auxiliaryChecks(TestLedger.params(major), tx, TestLedger.env)
+              .flatMap(TestLedger.verdict(tx.body.id, _)),
             Right(())
           )
           assertEquals(reference(row, "valid"), Json.True)
@@ -78,7 +80,9 @@ class HistoricalAuxiliarySuite extends FunSuite:
         val parsed = Tx.fromEnvelope(bytes, era(row))
         assertEquals(parsed.isRight, decoded)
         parsed.foreach { tx =>
-          val checked = TxChecks.auxiliaryChecks(TestLedger.params(major), tx, TestLedger.env)
+          val checked = TxChecks
+            .auxiliaryChecks(TestLedger.params(major), tx, TestLedger.env)
+            .flatMap(TestLedger.verdict(tx.body.id, _))
           val wanted = failures(row)
           // The auxiliary bytes reach the predicate exactly as supplied.
           assertEquals(
@@ -90,7 +94,7 @@ class HistoricalAuxiliarySuite extends FunSuite:
             case Vector("MissingTxMetadata") =>
               assert(
                 checked.left.exists {
-                  case LedgerFailure.Rejected(
+                  case LedgerFailure.Rejected.Single(
                         _,
                         PredicateFailure.Utxow(_: UtxowFailure.MissingTxMetadata)
                       ) =>
@@ -102,7 +106,7 @@ class HistoricalAuxiliarySuite extends FunSuite:
             case Vector("MissingTxBodyMetadataHash") =>
               assert(
                 checked.left.exists {
-                  case LedgerFailure.Rejected(
+                  case LedgerFailure.Rejected.Single(
                         _,
                         PredicateFailure.Utxow(_: UtxowFailure.MissingTxBodyMetadataHash)
                       ) =>
@@ -114,7 +118,7 @@ class HistoricalAuxiliarySuite extends FunSuite:
             case Vector("ConflictingMetadataHash") =>
               assert(
                 checked.left.exists {
-                  case LedgerFailure.Rejected(
+                  case LedgerFailure.Rejected.Single(
                         _,
                         PredicateFailure.Utxow(_: UtxowFailure.ConflictingMetadataHash)
                       ) =>

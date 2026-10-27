@@ -11,8 +11,8 @@ import xyz.kd5ujc.scarab.ledger.{
   Certificate,
   RefScripts,
   GenDelegPair,
+  LedgerDefect,
   LedgerFailure,
-  Mismatch,
   PlutusStats,
   TxChecks,
   PredicateFailure,
@@ -21,12 +21,9 @@ import xyz.kd5ujc.scarab.ledger.{
   TxIn,
   TxOut,
   TxEnv,
-  UtxoFailure,
-  UtxosFailure,
   UtxowFailure,
   Value
 }
-import xyz.kd5ujc.scarab.ledger.byron.ByronAddress
 import xyz.kd5ujc.scarab.ledger.state.*
 
 // UTXOW, UTXO and UTXOS for Conway (`Conway/Rules/Utxow.hs`, `Utxo.hs`, `Utxos.hs`, with the Alonzo
@@ -128,33 +125,46 @@ object Deposits:
       }
     (deposits, refunds)
 
-/** UTXOS (`Conway/Rules/Utxos.hs:207`, `utxosTransition`): the evaluation of the Plutus scripts,
-  * whose verdict must equal the block's `is_valid` flag (a transaction flagged invalid must have a
-  * script that fails, one flagged valid none). The state is the node's counters of what was
-  * evaluated.
+/** UTXOS (`Conway/Rules/Utxos.hs:207`, `utxosTransition`, cardano-ledger `f649f975`): the
+  * evaluation of the Plutus scripts, whose verdict must equal the block's `is_valid` flag (a
+  * transaction flagged invalid must have a script that fails, one flagged valid none). The state is
+  * the node's counters of what was evaluated.
   */
-object Utxos extends Sts[UtxoEnv[Any], PlutusStats, StAnnTx, LedgerFailure]:
+object Utxos extends JudgedSts[UtxoEnv[Any], PlutusStats, StAnnTx, PredicateFailure, LedgerFailure]:
   def transition[F[_]: Monad](env: UtxoEnv[Any], ann: StAnnTx)(using
       ask: Ask[F, Globals],
       st: Stateful[F, PlutusStats],
-      raise: Raise[F, LedgerFailure]
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
+  ): F[Unit] = scripts[F](env, ann)
+
+  /** `expectScriptsToPass` (`Babbage/Rules/Utxos.hs:132-155`) and `babbageEvalScriptsTxInvalid`
+    * (`Babbage/Rules/Utxos.hs:194-220`): the contexts of the scripts are collected, and the scripts
+    * are evaluated only if nothing failed so far in the judgment (`whenFailureFree`).
+    */
+  def scripts[F[_]: Monad](env: UtxoEnv[Any], ann: StAnnTx)(using
+      st: Stateful[F, PlutusStats],
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
   ): F[Unit] =
     val tx = ann.tx
     for
+      failing <- judge.failing
       counters <- st.get
-      next <- Sts.lift[F, LedgerFailure, PlutusStats](
+      next <- Refuse.recorded[F, PlutusStats](
         TxChecks.phase2(
           env.pp,
           counters,
           tx,
           env.ctx,
           ann.scripts,
-          ann.spent,
-          ann.referenced,
-          ann.plutusPurposes
+          ann.spentByInput,
+          ann.referencedByInput,
+          ann.plutusPurposes,
+          evaluate = !failing
         )
       )
-      _ <- st.set(next)
+      _ <- next.traverse_(st.set)
     yield ()
 
 /** UTXO (`Conway/Rules/Utxo.hs:211`, `conwayUtxoTransition`, with `babbageUtxoValidation`,
@@ -164,74 +174,26 @@ object Utxos extends Sts[UtxoEnv[Any], PlutusStats, StAnnTx, LedgerFailure]:
   * that failed phase 2.
   */
 object Utxo
-    extends Sts[UtxoEnv[ConwayCertState], Counted[UTxOState[Conway]], StAnnTx, LedgerFailure]:
+    extends JudgedSts[UtxoEnv[ConwayCertState], Counted[
+      UTxOState[Conway]
+    ], StAnnTx, PredicateFailure, LedgerFailure]:
   given Embed[PlutusStats, Counted[UTxOState[Conway]], LedgerFailure, LedgerFailure] =
     Embed(Counted.plutus[UTxOState[Conway]], identity)
 
-  /** The inputs of the transaction exist (`InputSetEmptyUTxO`, `BadInputsUTxO`): what annotating
-    * the transaction with its outputs needs, so UTXOW makes the same check first. The inputs are
-    * the spent, the collateral and the reference inputs (`babbageAllInputsTxBodyF`,
-    * `Babbage/TxBody.hs:228`), whether or not the transaction has redeemers.
-    */
-  def resolvable(ann: StAnnTx): Either[LedgerFailure, Unit] =
-    val body = ann.tx.body
-    def refuse(f: UtxoFailure) = Left(LedgerFailure.Rejected(ann.id, PredicateFailure.utxo(f)))
-    val missing =
-      (body.inputs ++ body.collateral ++ body.referenceInputs).filterNot(ann.utxo.contains).toSet
-    if body.inputs.isEmpty then refuse(UtxoFailure.InputSetEmpty)
-    else if missing.nonEmpty then refuse(UtxoFailure.BadInputs(missing))
-    else Right(())
-
-  /** The checks of the outputs that hold a bootstrap (Byron) address: its attributes are at most 64
-    * bytes (`validateOutputBootAddrAttrsTooBig`, `Babbage/Rules/Utxo.hs:392`) and its network is
-    * the one of the ledger (`validateWrongNetwork`, `Babbage/Rules/Utxo.hs:397`, which takes the
-    * network of a bootstrap address from its attributes, `getNetwork`). The Shelley addresses are
-    * checked by [[TxChecks.outputsOk]]. A Byron-kind address has been decoded in full when its
-    * output was ([[Address.decode]]), so the decode below succeeds for every output of a decoded
-    * transaction.
-    */
-  private[ledger] def bootstrapOutputs(
-      network: Int,
-      outs: Vector[TxOut]
-  ): Either[PredicateFailure, Unit] =
-    val bootstrap = outs.flatMap(out =>
-      out.address.kind match
-        case Address.Kind.Byron(_) => ByronAddress.decode(out.address.raw).toOption.map(out -> _)
-        case _                     => None
-    )
-    val big = bootstrap.collect { case (out, a) if a.attributesSize > 64 => out }
-    val wrong = bootstrap.collect { case (out, a) if a.network != network => out.address.raw }
-    for
-      _ <- Either.cond(
-        big.isEmpty,
-        (),
-        PredicateFailure.utxo(UtxoFailure.OutputBootAddrAttrsTooBig(big))
-      )
-      _ <- Either.cond(
-        wrong.isEmpty,
-        (),
-        PredicateFailure.utxo(UtxoFailure.WrongNetwork(network, wrong.toSet))
-      )
-    yield ()
-
-  /** The checks of UTXO the node makes of a transaction, in the node's order, and the collateral of
-    * the transaction (`TxChecks.Collateral`).
+  /** The checks of UTXO (`babbageUtxoValidation`, [[UtxoTests.babbage]]): the minimum fee counts
+    * the reference scripts (`getMinFeeTxUtxo`, `Conway/Tx.hs`), and the value consumed and produced
+    * count the refunds, deposits and the donation.
     */
   def validate(
       env: UtxoEnv[ConwayCertState],
       ann: StAnnTx,
       deposits: BigInt,
       refunds: BigInt
-  ): Either[LedgerFailure, TxChecks.Collateral] =
+  ): Test[PredicateFailure] =
     val tx = ann.tx
     val body = tx.body
-    val id = ann.id
     val pp = env.pp
-    val ctx = env.ctx
     val wits = tx.witnesses
-    def refuse(f: UtxoFailure) = Left(LedgerFailure.Rejected(id, PredicateFailure.utxo(f)))
-    def check(ok: Boolean, f: => UtxoFailure): Either[LedgerFailure, Unit] =
-      if ok then Right(()) else refuse(f)
     val scriptFee =
       (pp.priceMem * Rational(wits.totalExUnits.mem) + pp.priceSteps * Rational(
         wits.totalExUnits.steps
@@ -242,60 +204,12 @@ object Utxo
           pp.minFeeRefScriptCostPerByte,
           RefScripts.refScriptsSize(ann.utxo, body)
         )
-    val overlap = body.inputs.toSet.intersect(body.referenceInputs.toSet)
-    val wrongWithdrawals = body.withdrawals.keys.filter(_.network != ctx.network).toSet
-    for
-      _ <- check(
-        pp.protocolMajor >= 11 || overlap.isEmpty,
-        UtxoFailure.BabbageNonDisjointRefInputs(overlap.toVector.sorted)
-      )
-      _ <- check(
-        body.ttl.forall(ctx.slot < _) && body.validityStart.forall(_ <= ctx.slot),
-        UtxoFailure.OutsideValidityInterval(body.validityStart, body.ttl, ctx.slot)
-      )
-      // f649f975: Babbage/Rules/Utxo.hs:368–375, also used by Conway/Rules/Utxo.hs:238.
-      // UTXOW resolves early for its annotations; standalone UTXO still owns these predicates.
-      _ <- check(body.inputs.nonEmpty, UtxoFailure.InputSetEmpty)
-      _ <- check(
-        tx.size <= pp.maxTxSize,
-        UtxoFailure.MaxTxSize(Mismatch(BigInt(tx.size), pp.maxTxSize))
-      )
-      _ <- check(body.fee >= minFee, UtxoFailure.FeeTooSmall(Mismatch(body.fee, minFee)))
-      _ <- resolvable(ann)
-      _ <- check(
-        body.networkId.forall(_ == ctx.network),
-        UtxoFailure.WrongNetworkInTxBody(Mismatch(body.networkId.fold(0)(_.toInt), ctx.network))
-      )
-      _ <- TxChecks
-        .outputsOk(pp, ctx, body.outputs ++ body.collateralReturn.toVector)
-        .leftMap(LedgerFailure.Rejected(id, _))
-      _ <- bootstrapOutputs(ctx.network, body.outputs ++ body.collateralReturn.toVector)
-        .leftMap(LedgerFailure.Rejected(id, _))
-      // `validateWrongNetworkWithdrawal` (`Babbage/Rules/Utxo.hs:400`), regardless of the validity tag
-      _ <- check(
-        wrongWithdrawals.isEmpty,
-        UtxoFailure.WrongNetworkWithdrawal(ctx.network, wrongWithdrawals)
-      )
-      _ <- check(
-        wits.totalExUnits.fits(pp.maxTxExUnits),
-        UtxoFailure.ExUnitsTooBig(Mismatch(wits.totalExUnits, pp.maxTxExUnits))
-      )
-      // `validateTooManyCollateralInputs` (`Babbage/Rules/Utxo.hs:412`): whether or not there are
-      // redeemers, which is all `collateralChecks` looks at
-      _ <- check(
-        TxChecks.collateralInputs(body).size <= pp.maxCollateralInputs,
-        UtxoFailure.TooManyCollateralInputs(
-          Mismatch(TxChecks.collateralInputs(body).size, pp.maxCollateralInputs.toInt)
-        )
-      )
-      collateral <- TxChecks.collateralChecks(ann.utxo, pp, tx)
-      withdrawn = body.withdrawals.valuesIterator.map(_.value).sum
-      consumed = ann.spent.foldLeft(Value.zero)(_ + _.value) + Value.coin(withdrawn + refunds) +
-        Value(0, body.mint)
-      produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +
-        Value.coin(body.fee + deposits + body.donation)
-      _ <- check(consumed == produced, UtxoFailure.ValueNotConserved(Mismatch(consumed, produced)))
-    yield collateral
+    val withdrawn = body.withdrawals.valuesIterator.map(_.value).sum
+    val consumed = ann.spent.foldLeft(Value.zero)(_ + _.value) +
+      Value.coin(withdrawn + refunds) + Value(0, body.mint)
+    val produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +
+      Value.coin(body.fee + deposits + body.donation)
+    UtxoTests.babbage(pp, env.ctx.network, env.ctx.slot, ann, minFee, consumed, produced)
 
   /** `updateUTxOState` and `updateTreasuryDonation` (`Babbage/Rules/Utxo.hs:449`,
     * `Conway/Rules/Utxo.hs:201`).
@@ -347,20 +261,16 @@ object Utxo
   def transition[F[_]: Monad](env: UtxoEnv[ConwayCertState], ann: StAnnTx)(using
       ask: Ask[F, Globals],
       st: Stateful[F, Counted[UTxOState[Conway]]],
-      raise: Raise[F, LedgerFailure]
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
   ): F[Unit] =
     val (deposits, refunds) = Deposits.of(env.pp, env.cert, ann.tx.body)
+    val collateral = TxChecks.collateral(ann.utxo, env.pp, ann.tx)
     for
-      collateral <- Sts.lift[F, LedgerFailure, TxChecks.Collateral](
-        validate(env, ann, deposits, refunds)
-      )
-      _ <- Sts.trans[F, UtxoEnv[Any], PlutusStats, Counted[
+      _ <- Sts.runTest[F, PredicateFailure](validate(env, ann, deposits, refunds))
+      _ <- JudgedSts.trans[F, UtxoEnv[Any], PlutusStats, Counted[
         UTxOState[Conway]
-      ], StAnnTx, LedgerFailure, LedgerFailure](
-        Utxos,
-        env,
-        ann
-      )
+      ], StAnnTx, PredicateFailure, LedgerFailure, LedgerFailure](Utxos, env, ann)
       s <- st.get
       next <- Refuse.vocab[F, UTxOState[Conway]](
         update(s.state, ann, collateral, deposits, refunds)
@@ -368,93 +278,155 @@ object Utxo
       _ <- st.set(s.copy(state = next))
     yield ()
 
-/** UTXOW (`Babbage/Rules/Utxow.hs:308`, `babbageUtxowTransition`, as Conway's UTXOW runs it, with
-  * the Alonzo rule it extends): the scripts the transaction provides are the ones it needs, its
-  * datums and redeemers match the Plutus scripts, the script integrity hash, the auxiliary data,
-  * and the signatures; then UTXO.
+/** UTXOW (`Babbage/Rules/Utxow.hs:308`, `babbageUtxowTransition`, as Conway's UTXOW runs it,
+  * cardano-ledger `f649f975`, with the Alonzo and Shelley rules it extends): the scripts the
+  * transaction provides are the ones it needs, its datums and redeemers match the Plutus scripts,
+  * the signatures, the auxiliary data, the scripts are well formed and the script integrity hash;
+  * then UTXO (`trans`). Every check records its failures and the rule goes on.
   *
-  * The two checks of UTXO that annotating the transaction depends on (inputs exist, `StAnnTx`) are
-  * made first ([[Utxo.resolvable]]), as Haskell's ledger does before it hands the annotated
-  * transaction to the rule.
+  * An input the UTxO set does not hold needs nothing here (the checks read `txIns ◁ utxo`); UTXO
+  * reports it.
   */
 object Utxow
-    extends Sts[UtxoEnv[ConwayCertState], Counted[UTxOState[Conway]], StAnnTx, LedgerFailure]:
-  /** The checks of the witnesses and scripts, in the node's order. */
-  def witnesses(env: UtxoEnv[ConwayCertState], ann: StAnnTx): Either[LedgerFailure, Unit] =
-    witnesses(env, Map.empty, ann)
+    extends JudgedSts[UtxoEnv[ConwayCertState], Counted[
+      UTxOState[Conway]
+    ], StAnnTx, PredicateFailure, LedgerFailure]:
+  private def utxow(f: UtxowFailure): PredicateFailure = PredicateFailure.utxow(f)
 
-  /** The same for any era: `genDelegs` are the genesis delegations of the certificate state before
-    * the transaction (the key hashes of the genesis delegates the update proposals and genesis
-    * delegation certificates need witnesses of; none from Conway, which has no such proposal).
+  /** The checks of UTXOW of the era of the parameters in force, in the reference's order, each a
+    * [[Test]] or the defect that leaves no verdict:
+    *
+    *   - Shelley to Mary (`transitionRulesUTXOW`, `Shelley/Rules/Utxow.hs:286-326`): the failing
+    *     native scripts, the missing and the extraneous scripts, the signatures, the needed
+    *     witnesses, the auxiliary data, the MIR quorum;
+    *   - Alonzo (`alonzoStyleWitness`, `Alonzo/Rules/Utxow.hs:309-374`): the same scripts, the
+    *     datums and the redeemers, the signatures, the needed witnesses, the MIR quorum, the
+    *     auxiliary data, the script integrity hash;
+    *   - Babbage and Conway (`babbageUtxowTransition`, `Babbage/Rules/Utxow.hs:321-391`, after the
+    *     MIR quorum in Babbage, `babbageUtxowMirTransition`): the failing needed native scripts,
+    *     the extraneous and the missing scripts beside the reference scripts, the datums, the
+    *     redeemers, the signatures, the needed witnesses, the auxiliary data, the well-formed
+    *     scripts and the script integrity hash.
+    *
+    * @param genDelegs
+    *   the genesis delegations of the certificate state before the transaction (the key hashes of
+    *   the genesis delegates the update proposals and genesis delegation certificates need
+    *   witnesses of; none from Conway, which has no such proposal)
+    * @param mir
+    *   the MIR quorum of an era before Conway (`validateMIRInsufficientGenesisSigs`)
     */
-  def witnesses(
+  def checks(
       env: UtxoEnv[Any],
       genDelegs: Map[Bytes, GenDelegPair],
-      ann: StAnnTx
-  ): Either[LedgerFailure, Unit] =
+      ann: StAnnTx,
+      mir: Test[PredicateFailure]
+  ): Vector[Either[LedgerDefect, Test[PredicateFailure]]] =
     val tx = ann.tx
-    val body = tx.body
-    val id = ann.id
     val pp = env.pp
-    val wits = tx.witnesses
-    def check(ok: Boolean, f: => UtxowFailure): Either[LedgerFailure, Unit] =
-      if ok then Right(())
-      else Left(LedgerFailure.Rejected(id, PredicateFailure.utxow(f)))
-    def check0(ok: Boolean, f: => PredicateFailure): Either[LedgerFailure, Unit] =
-      if ok then Right(()) else Left(LedgerFailure.Rejected(id, f))
+    val pv = pp.protocolMajor
     val scripts = ann.scripts
-    val needed = ann.needed
-    val referenced = (ann.spent ++ ann.referenced).flatMap(_.scriptRef).map(_.hash).toSet
-    val neededNonRef = needed.keySet -- referenced
-    val received = wits.scripts.map(_.hash).toSet
+    val needed = ann.needed.keySet
+    val received = tx.witnesses.scripts.map(_.hash).toSet
+    val vkeyHashes = tx.witnesses.vkeys.map(w => env.ctx.verdicts.keyHash(w._1))
+    val provided = TxChecks.providedKeyHashes(tx, vkeyHashes)
+    // A native script sees the vkey witnesses only; a bootstrap root is no signer of one.
+    val signers = vkeyHashes.toSet
     // The outputs the collateral inputs hold, whose key witnesses the transaction needs whether or
     // not it has redeemers: `spendableInputsTxBodyF` is the inputs and the collateral inputs from
     // Alonzo on (cardano-ledger f649f975, `Alonzo/TxBody.hs` `allInputsTxBodyF` and
     // `spendableInputsTxBodyF`; `Babbage/TxBody.hs` `babbageSpendableInputsTxBodyF`; Conway uses
     // the Babbage getter), and `getShelleyWitsVKeyNeededNoGov` (`Shelley/UTxO.hs`) takes the
     // payment key of each. An earlier era has no collateral field, so its set is empty.
-    val collateral = TxChecks.Collateral(body.collateral.flatMap(ann.utxo.get), BigInt(0))
-    for
-      _ <- check(
-        received.subsetOf(neededNonRef),
-        UtxowFailure.ExtraneousScriptWitnesses(received -- neededNonRef)
+    val collateral = TxChecks.Collateral(tx.body.collateral.flatMap(ann.utxo.get), BigInt(0))
+    def test(t: Test[PredicateFailure]) = Right(t)
+    val signatures = test(TxChecks.verifiedWits(tx, env.ctx.verdicts))
+    val witnesses =
+      test(TxChecks.neededWitnesses(genDelegs, tx, ann.spent, collateral, provided))
+    val metadata = TxChecks.auxiliaryChecks(pp, tx, env.ctx)
+    if pv < 7 then
+      // `validateMissingScripts` (`Shelley/Rules/Utxow.hs:375-388`): the scripts provided are the
+      // witnesses' before Babbage
+      val missingScripts = test(
+        Test.all(
+          Test.failureUnless(
+            needed.subsetOf(received),
+            utxow(UtxowFailure.MissingScriptWitnesses(needed -- received))
+          ),
+          Test.failureUnless(
+            received.subsetOf(needed),
+            utxow(UtxowFailure.ExtraneousScriptWitnesses(received -- needed))
+          )
+        )
       )
-      _ <- check(
-        neededNonRef.subsetOf(received),
-        UtxowFailure.MissingScriptWitnesses(neededNonRef -- received)
+      val native = test(TxChecks.failedNativeScripts(tx, scripts, None, signers))
+      TxChecks.plutusFieldsDefect(pp, tx).map(Left(_)).toVector ++ (
+        if pv < 5 then Vector(native, missingScripts, signatures, witnesses, metadata, test(mir))
+        else
+          Vector(
+            native,
+            missingScripts,
+            test(
+              TxChecks.datumChecks(pp, tx, ann.spentByInput, ann.referenced, scripts)
+            ),
+            test(TxChecks.redeemerChecks(tx, ann.spentByInput, scripts, ann.plutusPurposes)),
+            signatures,
+            witnesses,
+            test(mir),
+            metadata,
+            test(TxChecks.integrityCheck(pp, tx, ann.spentByInput, scripts))
+          )
       )
-      _ <- check(
-        needed.keySet.subsetOf(scripts.keySet),
-        UtxowFailure.MissingScriptWitnesses(needed.keySet -- scripts.keySet)
+    else
+      // `babbageMissingScripts` (`Babbage/Rules/Utxow.hs:192-207`): the needed scripts less the
+      // reference scripts of the inputs and reference inputs are the witnesses' scripts
+      val references = (ann.spent ++ ann.referenced).flatMap(_.scriptRef).map(_.hash).toSet
+      val neededNonRef = needed -- references
+      Vector(
+        test(mir),
+        test(TxChecks.failedNativeScripts(tx, scripts, Some(needed), signers)),
+        test(
+          Test.all(
+            Test.failureUnless(
+              received.subsetOf(neededNonRef),
+              utxow(UtxowFailure.ExtraneousScriptWitnesses(received -- neededNonRef))
+            ),
+            Test.failureUnless(
+              neededNonRef.subsetOf(received),
+              utxow(UtxowFailure.MissingScriptWitnesses(neededNonRef -- received))
+            )
+          )
+        ),
+        test(TxChecks.datumChecks(pp, tx, ann.spentByInput, ann.referenced, scripts)),
+        test(TxChecks.redeemerChecks(tx, ann.spentByInput, scripts, ann.plutusPurposes)),
+        signatures,
+        witnesses,
+        metadata,
+        TxChecks.scriptsWellFormed(pp, tx, env.ctx),
+        test(TxChecks.integrityCheck(pp, tx, ann.spentByInput, scripts))
       )
-      _ <- TxChecks.alonzoChecks(pp, tx, ann.spent, ann.referenced, scripts, ann.plutusPurposes)
-      _ <- TxChecks.auxiliaryChecks(pp, tx, env.ctx)
-      // a transaction flagged invalid has a Plutus script to fail (`validationTagMismatch`, which
-      // Haskell's UTXOS makes; the node makes it here, where its own rules do)
-      _ <- check0(
-        tx.isValid || ann.plutusPurposes.nonEmpty,
-        PredicateFailure.utxo(UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(false, None)))
-      )
-      _ <- TxChecks.witnessChecks(
-        genDelegs,
-        tx,
-        ann.spent,
-        collateral,
-        scripts,
-        needed,
-        wits.vkeys.map(w => env.ctx.verdicts.keyHash(w._1)),
-        env.ctx.verdicts
-      )
-      _ <- TxChecks.scriptsWellFormed(pp, tx, env.ctx)
-    yield ()
+
+  /** Records the checks in order: every failure of each, or the first defect raised. A check ends
+    * in a defect or a test, never a raised refusal.
+    */
+  def record[F[_]: Monad](checks: Vector[Either[LedgerDefect, Test[PredicateFailure]]])(using
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
+  ): F[Unit] =
+    checks.traverse_(check =>
+      Sts
+        .lift[F, LedgerFailure, Test[PredicateFailure]](check)
+        .flatMap(Sts.runTest[F, PredicateFailure])
+    )
 
   def transition[F[_]: Monad](env: UtxoEnv[ConwayCertState], ann: StAnnTx)(using
       ask: Ask[F, Globals],
       st: Stateful[F, Counted[UTxOState[Conway]]],
-      raise: Raise[F, LedgerFailure]
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
   ): F[Unit] =
     for
-      _ <- Sts.lift[F, LedgerFailure, Unit](Utxo.resolvable(ann))
-      _ <- Sts.lift[F, LedgerFailure, Unit](witnesses(env, ann))
-      _ <- Utxo.transition[F](env, ann)
+      _ <- record[F](checks(env, Map.empty, ann, Test.pass))
+      _ <- JudgedSts.trans[F, UtxoEnv[ConwayCertState], Counted[UTxOState[Conway]], Counted[
+        UTxOState[Conway]
+      ], StAnnTx, PredicateFailure, LedgerFailure, LedgerFailure](Utxo, env, ann)
     yield ()

@@ -41,6 +41,8 @@ paths = [
   '''^fixtures/reference/ledger-api-pool-goldens/head/queryPoolState\.json$''',
   '''^fixtures/reference/ntc-wallet-peers-11\.1\.3/peer-relays/genesis/shelley-genesis\.json$''',
   '''^fixtures/reference/plutus-forecast-horizon/conway-past-horizon/genesis/shelley-genesis\.json$''',
+  '''^fixtures/reference/refusals/conway-devnet/genesis/shelley-genesis\.json$''',
+  '''^fixtures/reference/refusals/genesis/0852102f056aae15273dd402b5ca44f103b4eef03b19f8a5717ceff2df8c1667-shelley-genesis\.json$''',
   '''^fixtures/reference/wallet-queries/manifest\.json$''',
   # A public operational-certificate verification key used as an expected value: the file now, and
   # where it was before the package rename (the scan covers the whole history, so both paths stay).
@@ -66,6 +68,16 @@ condition = "AND"
 regexTarget = "line"
 paths = ['''^docs/data/fixture-inventory\.json$''']
 regexes = ['''^\n?[ \t]*"(?:fixtures|[a-z][a-z0-9-]*/src/test/resources)/(?:[A-Za-z0-9_+.-]+/)*[A-Za-z0-9_+.-]+"[ \t]*:[ \t]*"[0-9a-f]{64}",?[ \t]*$''']
+
+# Exact public reward-account credentials from the native three-certificate capture.
+# These are Blake2b-224 stake key hashes, not signing material; other values still scan.
+[[rules.allowlists]]
+description = "native refusal corpus public stake credential hashes"
+condition = "AND"
+regexTarget = "secret"
+paths = ['''^fixtures/reference/refusals/conway-three-certificates/genesis/shelley-genesis\.json$''',
+         '''^fixtures/reference/refusals/genesis/41a5c6f0e32ada7b1da933d3603bdebb76adf616b0b32aac15fb5848262859f5-shelley-genesis\.json$''']
+regexes = ['''^(?:0f46326caf6fcd16ddd1efe09f604eb65ac69c613ffb2aafae06589c|541188416c999cf1199ec997f6abde82c2b2823583d99e73587e9387|eb28d57e2df235e8d85ce2498522f3b3a63741a6d525d87109fca0cf)$''']
 
 [[rules]]
 id = "cardano-text-envelope-signing-key"

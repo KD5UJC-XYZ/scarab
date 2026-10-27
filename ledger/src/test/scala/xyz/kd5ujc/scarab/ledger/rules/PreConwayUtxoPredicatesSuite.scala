@@ -81,15 +81,19 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
         0,
         0
       )
-    def rejected(tx: Tx, failure: UtxoFailure, network: Int = 0): Unit =
+    // every failure UTXO records, in its order
+    def rejected(tx: Tx, failures: UtxoFailure*): Unit = rejectedOn(tx, 0, failures*)
+    def rejectedOn(tx: Tx, network: Int, failures: UtxoFailure*): Unit =
       assertEquals(
-        validate(tx, network),
-        Left(LedgerFailure.Rejected(tx.body.id, PredicateFailure.utxo(failure)))
+        Test.failures(validate(tx, network)).map(_.iterator.toList),
+        Some(failures.toList.map(PredicateFailure.utxo))
       )
     def paying(address: Address, isValid: Boolean) =
       transaction(Vector(TestLedger.out(address, funds - fee)), isValid = isValid)
 
-    test(s"$name: collateral count is checked without redeemers under either validity flag") {
+    // Babbage's UTXO runs `validateTooManyCollateralInputs` (`Babbage/Rules/Utxo.hs:412`), Alonzo's
+    // does not (`Alonzo/Rules/Utxo.hs:570-572`)
+    test(s"$name: collateral count is checked from Babbage, without redeemers, either flag") {
       for valid <- Vector(true, false) do
         val tx = transaction(
           Vector(TestLedger.out(alice.address(), funds - fee)),
@@ -97,11 +101,9 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
           isValid = valid
         )
         assert(tx.witnesses.redeemers.isEmpty)
-        rejected(tx, UtxoFailure.TooManyCollateralInputs(Mismatch(4, 3)))
-        assertEquals(
-          validate(tx.copy(body = tx.body.copy(collateral = collateral.take(3)))),
-          Right(TxChecks.Collateral.none)
-        )
+        if major >= 7 then rejected(tx, UtxoFailure.TooManyCollateralInputs(Mismatch(4, 3)))
+        else assert(validate(tx).isValid)
+        assert(validate(tx.copy(body = tx.body.copy(collateral = collateral.take(3)))).isValid)
     }
 
     test(s"$name: semantic collateral inputs count and pay once, preserving original bytes") {
@@ -127,9 +129,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
       val witnesses =
         Witnesses.empty.copy(redeemers = Vector(Redeemer(0, 0, Bytes.empty, ExUnits.zero)))
       val tx = Tx(body, witnesses, 100, isValid = false, auxiliary = None)
-      val checked = TxChecks
-        .collateralChecks(inputs, pp, tx)
-        .fold(e => fail(e.toString), identity)
+      val checked = TxChecks.collateral(inputs, pp, tx)
       assertEquals(checked.outputs, Vector(out))
       assertEquals(checked.fee, read[BigInt]("collateralCoin"))
       val empty = Empty.ledgerState[E](pp).utxo
@@ -149,7 +149,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
     test(s"$name: bootstrap attribute payloads allow 64 bytes and refuse 65") {
       for valid <- Vector(true, false); derivation <- Vector(false, true) do
         val allowed = paying(bootstrap(64, Some(42), derivation), valid)
-        assert(validate(allowed).isRight)
+        assert(validate(allowed).isValid)
         val tx = paying(bootstrap(65, Some(42), derivation), valid)
         val original = tx.body.raw
         rejected(tx, UtxoFailure.OutputBootAddrAttrsTooBig(tx.body.outputs))
@@ -160,17 +160,21 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
       for valid <- Vector(true, false) do
         for magic <- Vector(1L, 42L) do
           val tx = paying(bootstrap(0, Some(magic)), valid)
-          assert(validate(tx).isRight)
-          rejected(tx, UtxoFailure.WrongNetwork(1, Set(tx.body.outputs.head.address.raw)), 1)
+          assert(validate(tx).isValid)
+          rejectedOn(tx, 1, UtxoFailure.WrongNetwork(1, Set(tx.body.outputs.head.address.raw)))
         val tx = paying(bootstrap(0, None), valid)
-        assert(validate(tx, 1).isRight)
+        assert(validate(tx, 1).isValid)
         rejected(tx, UtxoFailure.WrongNetwork(0, Set(tx.body.outputs.head.address.raw)))
     }
 
     test(s"$name: bootstrap attributes precede the combined output-network failure") {
       val big = TestLedger.out(bootstrap(65, None), funds / 2)
       val wrong = TestLedger.out(alice.address(1), funds / 2 - fee)
-      rejected(transaction(Vector(big, wrong)), UtxoFailure.OutputBootAddrAttrsTooBig(Vector(big)))
+      rejected(
+        transaction(Vector(big, wrong)),
+        UtxoFailure.OutputBootAddrAttrsTooBig(Vector(big)),
+        UtxoFailure.WrongNetwork(0, Set(big.address.raw, wrong.address.raw))
+      )
       val byron = big.copy(address = bootstrap(64, None))
       val tx = transaction(Vector(byron, wrong))
       rejected(tx, UtxoFailure.WrongNetwork(0, Set(byron.address.raw, wrong.address.raw)))
@@ -199,15 +203,16 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
     val pp = TestLedger.params(major)
     val initial = Empty.ledgerState[E](pp)
     val funded = initial.copy[E](utxo = initial.utxo.copy[E](utxo = UtxoTables(utxo)))
-    def admit(tx: Tx, network: Int = 0) = Sts(ShelleyLedger.sts[E])(
-      TestLedger.globals.copy(ledger = TestLedger.globals.ledger.copy(network = network)),
-      ShelleyLedgerEnv(
-        TestLedger.env.copy(network = network),
-        ChainAccountState(Coin.zero, Coin.zero)
-      ),
-      Counted(funded, PlutusStats.zero),
-      tx
-    )
+    def admit(tx: Tx, network: Int = 0) =
+      JudgedSts(ShelleyLedger.sts[E])(LedgerFailure.Rejected(tx.body.id, _))(
+        TestLedger.globals.copy(ledger = TestLedger.globals.ledger.copy(network = network)),
+        ShelleyLedgerEnv(
+          TestLedger.env.copy(network = network),
+          ChainAccountState(Coin.zero, Coin.zero)
+        ),
+        Counted(funded, PlutusStats.zero),
+        tx
+      )
     def rejected(tx: Tx, expected: UtxoFailure, network: Int = 0): Unit =
       assertEquals(
         admit(tx, network),
@@ -284,9 +289,13 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
           Witnesses.empty.copy(redeemers = Vector(Redeemer(0, 0, Bytes.empty, ExUnits.zero)))
         else Witnesses.empty
       val tx = Tx(body, witnesses, 100, isValid = valid, auxiliary = None)
-      val checked = ConwayUtxo
-        .validate(UtxoEnv(TestLedger.env, pp, empty.cert), StAnnTx(tx, inputs), 0, 0)
-        .fold(e => fail(e.toString), identity)
+      assertEquals(
+        Test.failures(
+          ConwayUtxo.validate(UtxoEnv(TestLedger.env, pp, empty.cert), StAnnTx(tx, inputs), 0, 0)
+        ),
+        None
+      )
+      val checked = TxChecks.collateral(inputs, pp, tx)
       assertEquals(checked.fee, if redeemers then read[BigInt]("collateralCoin") else BigInt(0))
       if !valid && redeemers then
         val stake = InstantStakeOps
@@ -341,15 +350,19 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
         .map(_.address.raw)
         .toSet ++
         bootstrap.collect { case (out, address) if address.network != network => out.address.raw }
-      val expected =
-        if !passed("attributes") then
-          Some(UtxoFailure.OutputBootAddrAttrsTooBig(bootstrap.collect {
+      // every failing predicate, in the order of the rule; Alonzo's UTXO does not count the
+      // collateral inputs (`Alonzo/Rules/Utxo.hs:570-572`), Babbage's does last
+      val expected = Vector(
+        Option.when(!passed("attributes"))(
+          UtxoFailure.OutputBootAddrAttrsTooBig(bootstrap.collect {
             case (out, address) if address.attributesSize > 64 => out
-          }))
-        else if !passed("addresses") then Some(UtxoFailure.WrongNetwork(network, wrong))
-        else if !passed("collateral") then
-          Some(UtxoFailure.TooManyCollateralInputs(Mismatch(body.collateral.toSet.size, 3)))
-        else None
+          })
+        ),
+        Option.when(!passed("addresses"))(UtxoFailure.WrongNetwork(network, wrong)),
+        Option.when(major >= 7 && !passed("collateral"))(
+          UtxoFailure.TooManyCollateralInputs(Mismatch(body.collateral.toSet.size, 3))
+        )
+      ).flatten
       assertEquals(body.inputs.size, 1)
       val spent = body.outputs.map(_.value.coin).sum + body.fee
       val inputs = Utxo.fromMap(
@@ -373,10 +386,8 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
           validate[Alonzo](using ShelleyBasedEra.SAlonzo, summon[PreConway[Alonzo]])
         else validate[Babbage](using ShelleyBasedEra.SBabbage, summon[PreConway[Babbage]])
       assertEquals(
-        actual,
-        expected.fold[Either[LedgerFailure, TxChecks.Collateral]](Right(TxChecks.Collateral.none))(
-          f => Left(LedgerFailure.Rejected(body.id, PredicateFailure.utxo(f)))
-        ),
+        Test.failures(actual).map(_.iterator.toList).getOrElse(Nil),
+        expected.toList.map(PredicateFailure.utxo),
         read[String]("name")
       )
       assertEquals(body.raw, raw)

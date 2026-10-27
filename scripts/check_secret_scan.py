@@ -83,6 +83,21 @@ def main():
     ]
     for content in malformed:
         scan(content, {("generic-api-key", 1)}, INVENTORY)
+    # The native refusal capture contains public reward-account key hashes. Permit only those
+    # exact values at that exact path, without hiding other tokens or signing envelopes there.
+    genesis_path = ("fixtures/reference/refusals/genesis/"
+                    "41a5c6f0e32ada7b1da933d3603bdebb76adf616b0b32aac15fb5848262859f5-shelley-genesis.json")
+    genesis = (ROOT / genesis_path).read_text()
+    scan(genesis, set(), genesis_path, git_history=True)
+    scan(genesis.rstrip("\n") + f'\napi_key = "{api_token}"\n' + private_fixture,
+         {("generic-api-key", len(genesis.splitlines()) + 1),
+          ("private-key", len(genesis.splitlines()) + 2)}, genesis_path, git_history=True)
+    public_hashes = [pool["accountAddress"]["credential"]["keyHash"]
+                     for pool in json.loads(genesis)["extraConfig"]["stakePools"]["data"].values()]
+    for public_hash in public_hashes:
+        assert len(public_hash) == 56 and all(c in "0123456789abcdef" for c in public_hash)
+        scan(f'keyHash = "{public_hash}"\n', {("generic-api-key", 1)},
+             "fixtures/reference/refusals/control-public-hash.json")
     # The signing key is random per run and exists only in memory and in the scanner's temporary directory.
     signing_envelope = text_envelope("PaymentSigningKeyShelley_ed25519", "5820" + secrets.token_hex(32))
     type_line = next(number for number, line in enumerate(signing_envelope.splitlines(), 1) if '"type"' in line)

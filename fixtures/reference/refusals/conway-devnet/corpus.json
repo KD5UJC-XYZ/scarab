@@ -1,0 +1,33 @@
+{
+  "format": 2,
+  "era": "conway",
+  "protocolVersion": [
+    10,
+    0
+  ],
+  "provenance": {
+    "reference": {
+      "node": "cardano-node 11.1.3 - linux-x86_64 - ghc-9.6",
+      "revision": "938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+      "image": "cardano-reference-11.1.3:local",
+      "imageId": "sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b"
+    },
+    "command": "python3 scripts/devnet.py --name <devnet> refusal-corpus --corpus conway-devnet",
+    "scarabCommit": "69a2f404a15d253b27d7ae640e7d431ee77cb2ea",
+    "scarabDirty": false,
+    "recorded": "2026-10-24T02:10:53Z"
+  },
+  "genesis": {
+    "byron-genesis.json": "fb70f7cfb18b24607604b74b2de8e91572984abe1b4e63ba2ce1ebe00ce4fe02",
+    "shelley-genesis.json": "0852102f056aae15273dd402b5ca44f103b4eef03b19f8a5717ceff2df8c1667",
+    "alonzo-genesis.json": "4291b3e5fbcdd1f1daed9ab8f78e4d0181eb7eac4506e34c8aa0fecab6051f3b",
+    "conway-genesis.json": "8413c41ca4be22184d9ba47774b032b2e852969fc0d72c96f0e11cb236fc2feb",
+    "configuration.yaml": "879960a310eccd7c435e7eb802638fa885f59da1c50ecbfeefd5756dcb747e15"
+  },
+  "cases": [
+    {
+      "file": "cases/cases.jsonl",
+      "sha256": "3b0ea0427a1690616982aca596604aa6ac93da1cb8b939c4eccdd612287a3517"
+    }
+  ]
+}

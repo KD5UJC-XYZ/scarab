@@ -1,0 +1,33 @@
+{
+  "format": 2,
+  "era": "babbage",
+  "protocolVersion": [
+    8,
+    0
+  ],
+  "provenance": {
+    "reference": {
+      "node": "cardano-node 11.1.3 - linux-x86_64 - ghc-9.6",
+      "revision": "938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+      "image": "cardano-reference-11.1.3:local",
+      "imageId": "sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b"
+    },
+    "command": "python3 scripts/devnet.py --name <devnet> refusal-corpus --era babbage --corpus babbage-devnet",
+    "scarabCommit": "a684baa8fd93df69fab232a45686f1f871d79260",
+    "scarabDirty": false,
+    "recorded": "2026-10-24T02:20:38Z"
+  },
+  "genesis": {
+    "byron-genesis.json": "49c6cf0dbfab708dc8b56da30f0397cadacc5e996438051c7232f637fd6c15c0",
+    "shelley-genesis.json": "a020ce4a7395fcdcc4b1031054e69f090375e5c6fe555d329836f1df358be4da",
+    "alonzo-genesis.json": "4291b3e5fbcdd1f1daed9ab8f78e4d0181eb7eac4506e34c8aa0fecab6051f3b",
+    "conway-genesis.json": "bd179bdbe333d83ed5622cc343bb3b18f113d74b223ed0c7ec4d96bb2b3ec6ca",
+    "configuration.yaml": "20a486d5bf823b0b881d2239b4423e7335432d5a173ffe2a232f944ea41fc56d"
+  },
+  "cases": [
+    {
+      "file": "cases/cases.jsonl",
+      "sha256": "277f39a22f1cddd72348a908b166a798955d1edd95073cae21b236f3676ab287"
+    }
+  ]
+}

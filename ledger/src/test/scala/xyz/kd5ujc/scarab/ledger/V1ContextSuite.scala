@@ -160,7 +160,7 @@ class V1ContextSuite extends FunSuite:
       case None =>
         assert(r.mismatch, r.text)
         failure match
-          case LedgerFailure.Rejected(
+          case LedgerFailure.Rejected.Single(
                 `id`,
                 PredicateFailure.Utxow(
                   UtxowFailure.Utxo(UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(flag, _)))
@@ -187,7 +187,7 @@ class V1ContextSuite extends FunSuite:
       pre: PreConway[E]
   ): Either[LedgerFailure, Counted[LedgerState[E]]] =
     val nes = Build.funded(Build.nes[E](5, c.params), utxoOf(c))
-    Sts(ShelleyLedger.sts[E])(
+    JudgedSts(ShelleyLedger.sts[E])(LedgerFailure.Rejected(c.tx.body.id, _))(
       globals,
       ShelleyLedgerEnv(TestLedger.env, nes.es.chainAccount),
       Build.counted(nes),

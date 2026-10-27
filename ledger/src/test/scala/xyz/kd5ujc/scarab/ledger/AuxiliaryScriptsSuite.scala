@@ -5,7 +5,6 @@ import cats.Id
 import io.circe.Json
 import io.circe.parser.parse
 import java.nio.file.{Files, Path}
-import java.util.concurrent.atomic.AtomicInteger
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -57,7 +56,10 @@ class AuxiliaryScriptsSuite extends FunSuite:
     )
 
   private def invalidMetadata(result: Either[LedgerFailure, Unit]): Unit = result match
-    case Left(LedgerFailure.Rejected(_, PredicateFailure.Utxow(UtxowFailure.InvalidMetadata))) => ()
+    case Left(
+          LedgerFailure.Rejected.Single(_, PredicateFailure.Utxow(UtxowFailure.InvalidMetadata))
+        ) =>
+      ()
     case other => fail(s"not InvalidMetadata: $other")
 
   rows.foreach { row =>
@@ -76,11 +78,10 @@ class AuxiliaryScriptsSuite extends FunSuite:
         decoded
       )
       for valid <- Vector(true, false) do
-        val checked = TxChecks.auxiliaryChecks(
-          TestLedger.params(major),
-          synthetic(bytes, valid),
-          TestLedger.env
-        )
+        val tx = synthetic(bytes, valid)
+        val checked = TxChecks
+          .auxiliaryChecks(TestLedger.params(major), tx, TestLedger.env)
+          .flatMap(TestLedger.verdict(tx.body.id, _))
         if !decoded then
           checked match
             case Left(LedgerFailure.Undecodable(_, _: TxDefect.AuxiliaryData)) => ()
@@ -90,38 +91,36 @@ class AuxiliaryScriptsSuite extends FunSuite:
     }
   }
 
-  test("structural decoder failures precede hashes; well-formed Flat failures follow hashes") {
-    val calls = new AtomicInteger()
-    val decoder: ScriptDecoder[Id] = (language, major, code) =>
-      calls.incrementAndGet()
-      ScalusEvaluator.defaultDecoder.validate(language, major, code)
+  // `validateMetadata` (`Shelley/Rules/Utxow.hs:427-443`): with the hash and the data, the hash and
+  // the well-formed scripts are both checked and both reported, the hash first
+  test(
+    "structural decoder failures are defects; a wrong hash and a malformed script are both reported"
+  ) {
     for valid <- Vector(true, false) do
       val malformedEnvelope = synthetic(auxiliary("v1-script-not-bytes"), valid)
       val badHash =
         malformedEnvelope.copy(body = malformedEnvelope.body.copy(auxDataHash = Some(Bytes.empty)))
       assert(
         TxChecks
-          .auxiliaryChecks(TestLedger.params(10), badHash, TestLedger.env.copy(decoder = decoder))
+          .auxiliaryChecks(TestLedger.params(10), badHash, TestLedger.env)
           .left
           .exists(_.isInstanceOf[LedgerFailure.Undecodable])
       )
       val malformedFlat = synthetic(auxiliary("v1-malformed"), valid)
       val wrongHash =
         malformedFlat.copy(body = malformedFlat.body.copy(auxDataHash = Some(Bytes.empty)))
-      TxChecks.auxiliaryChecks(
-        TestLedger.params(10),
-        wrongHash,
-        TestLedger.env.copy(decoder = decoder)
-      ) match
-        case Left(
-              LedgerFailure.Rejected(
-                _,
-                PredicateFailure.Utxow(_: UtxowFailure.ConflictingMetadataHash)
-              )
-            ) =>
-          ()
-        case other => fail(s"script admission preceded hash validation: $other")
-    assertEquals(calls.get(), 0)
+      TxChecks
+        .auxiliaryChecks(TestLedger.params(10), wrongHash, TestLedger.env)
+        .flatMap(TestLedger.verdict(wrongHash.body.id, _)) match
+        case Left(LedgerFailure.Rejected(_, failures)) =>
+          failures.iterator.toList match
+            case List(
+                  PredicateFailure.Utxow(_: UtxowFailure.ConflictingMetadataHash),
+                  PredicateFailure.Utxow(UtxowFailure.InvalidMetadata)
+                ) =>
+              ()
+            case other => fail(s"not the hash and then the scripts: $other")
+        case other => fail(s"not refused: $other")
   }
 
   private val unavailable: ScriptDecoder[Id] = (_, _, _) =>
@@ -187,7 +186,8 @@ class AuxiliaryScriptsSuite extends FunSuite:
       serial match
         case EraBlock.Outcome.Refused(
               BlockFailure.Tx(
-                LedgerFailure.Rejected(_, PredicateFailure.Utxow(UtxowFailure.InvalidMetadata))
+                LedgerFailure.Rejected
+                  .Single(_, PredicateFailure.Utxow(UtxowFailure.InvalidMetadata))
               )
             ) =>
           ()

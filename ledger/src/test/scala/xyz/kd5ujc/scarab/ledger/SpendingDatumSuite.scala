@@ -32,7 +32,7 @@ class SpendingDatumSuite extends FunSuite:
       .find(_.id + 1 == field[Int](datum, "language"))
       .getOrElse(fail("datum language"))
     val accepted = field[Boolean](field[Json](json, "reference"), "accepted")
-    val spent = c.tx.body.inputs.map(c.spent)
+    val spent = c.tx.body.inputs.map(in => in -> c.spent(in)).toMap
     val scripts = c.tx.witnesses.scriptsByHash
     val needed = TxChecks.scriptsNeeded(c.tx.body, spent).values.flatten.toSet
     val redeemer = c.tx.witnesses.redeemers.headOption.getOrElse(fail("no spending redeemer"))
@@ -82,7 +82,7 @@ class SpendingDatumSuite extends FunSuite:
       assertEquals(actual, LedgerFailure.Rejected(r.c.tx.body.id, PredicateFailure.utxow(expected)))
     case None =>
       actual match
-        case LedgerFailure.Rejected(
+        case LedgerFailure.Rejected.Single(
               _,
               PredicateFailure.Utxow(
                 UtxowFailure.Utxo(
@@ -145,13 +145,12 @@ class SpendingDatumSuite extends FunSuite:
         Right(1)
       )
       assertEquals(
-        TxChecks.alonzoChecks(
-          c.params,
-          c.tx,
-          r.spent,
-          c.references.values.toVector,
-          r.scripts,
-          r.needed
+        TestLedger.verdict(
+          c.tx.body.id,
+          rules.Test.all(
+            TxChecks.datumChecks(c.params, c.tx, r.spent, c.references.values.toVector, r.scripts),
+            TxChecks.redeemerChecks(c.tx, r.spent, r.scripts, r.needed)
+          )
         ),
         r.phase1
           .toLeft(())
@@ -166,13 +165,18 @@ class SpendingDatumSuite extends FunSuite:
           case PlutusLanguage.V3 => 9 to 11
         protocols.foreach { protocol =>
           assertEquals(
-            TxChecks.alonzoChecks(
-              c.params.copy(protocolMajor = protocol),
-              c.tx,
-              r.spent,
-              c.references.values.toVector,
-              r.scripts,
-              r.needed
+            TestLedger.verdict(
+              c.tx.body.id,
+              rules.Test.all(
+                TxChecks.datumChecks(
+                  c.params.copy(protocolMajor = protocol),
+                  c.tx,
+                  r.spent,
+                  c.references.values.toVector,
+                  r.scripts
+                ),
+                TxChecks.redeemerChecks(c.tx, r.spent, r.scripts, r.needed)
+              )
             ),
             r.phase1
               .toLeft(())

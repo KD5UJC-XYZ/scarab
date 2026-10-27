@@ -40,7 +40,8 @@ lists the scope, each `e2e-summary.json` records it, and the register entry `dev
 tracks it under [#433](https://github.com/KD5UJC-XYZ/scarab/issues/433). Runs before 2026-10-25 also
 left datums and reference-script hashes out of the Conway UTxO comparison, and hashed reference scripts
 over a re-encoding rather than their original bytes. In the `ntc` refusal
-comparison, every case is compared exactly except `withdrawal-network-flag-true`, which is compared by
-its first failure. The reference lists two failures and the Scala rules stop at the first
-([#412](https://github.com/KD5UJC-XYZ/scarab/issues/412), register entry `devnet-ntc-refusal-first-failure`).
-Runs before 2026-10-25 also masked the current slot in the two validity-interval refusals.
+comparison, every case is compared exactly (raw bytes and text), `withdrawal-network-flag-true` included:
+the reference lists two failures and the Scala rules record both
+([#412](https://github.com/KD5UJC-XYZ/scarab/issues/412)); runs before the rules accumulated compared
+that case by its first failure. Runs before 2026-10-25 also masked the current slot in the two
+validity-interval refusals.

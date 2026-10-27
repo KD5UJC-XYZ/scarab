@@ -39,6 +39,71 @@ cast, no `@unchecked`, and no `Any` value channel anywhere in the file; the comp
 each continuation receives its predecessor's exact result type — across `Bind`, `Handle` recovery
 and scoped globals.
 
+## The judgment (#412)
+
+The reference's small-steps interpreter (cardano-ledger `f649f975`,
+`libs/small-steps/src/Control/State/Transition/Extended.hs:668-730`) never aborts a rule on a
+predicate failure: it records the failure and continues, runs every sub-rule (`trans`), and skips a
+step only under `whenFailureFree`/`ifFailureFree`, which read a flag that is set once anything was
+recorded anywhere in the judgment. The machine now carries that judgment:
+
+- `RuleT[Rec, Fail, S, A]` records predicate failures of type `Rec` and raises `Fail`. A rule that
+  records nothing runs in `RuleT.Of[Fail, S]`, which is `RuleT[Nothing, Fail, S, *]`, as before.
+- Three program nodes: `Record(failures)` (`Tell`), `Failing()` (the flag) and `Nest(program)` (the
+  boundary of a sub-rule). The machine state gains the current rule's recorded `Trace` (`Chain.nil`
+  until something fails, so a valid transaction allocates none) and the failing flag.
+- A `Frame.Unnest(parent)` closes a nest: the failures recorded inside become one `Trace.Node` of
+  the parent's, after what the parent had recorded; a nest that recorded nothing adds nothing.
+  `Frame.Handler` saves and restores the trace and the flag together with the state.
+- The capability is `Judge[F, Fail]`, a cats-mtl `Tell[F, Chain[Fail]]` with `failing`, `nest` and
+  `contramap` (`wrapFailed`). `Sts.whenFailureFree`, `Sts.whenFailureFreeDefault` and
+  `Sts.ifFailureFree` read the flag.
+- `RuleT.Policy`: `Accumulate` records and continues; `FirstFailure` ends the judgment at the first
+  recorded failure, as a raise does. A program that records nothing runs identically under both.
+- `Judgment.flatten` puts the recorded failures in the reference's order. The reference prepends a
+  predicate's failures to the rule's list (`Extended.hs:708`) and folds a sub-rule's list in one
+  element at a time (`Extended.hs:720-722`), which reverses it, so the order alternates with the
+  depth of the nest from the applied rule. The flatten walks an explicit stack of pending blocks
+  with their direction (ADR 0011): linear in the failures, constant in the JVM stack.
+- `Judgment.run(rule, policy)` applies a rule and returns a defect, the refusal's predicate failures
+  (`NonEmptyChain`), or the state. `Refusal[Fail]` splits a raised failure into the two; for the
+  ledger, `LedgerFailure.Rejected` holds the predicate failures and the `LedgerDefect` cases
+  (`Undecodable`, `Unavailable`, `Vocab`) are defects.
+
+`JudgmentSuite` checks the order against a literal port of `Extended.hs:703-722` on random rule
+trees, the certificate recursion of CERTS and DELEGS (`gamma :|> c`) for one to eight certificates
+in the Babbage and Conway nesting, the flag, the two policies, `Monad` and `Tell` laws, and judgments
+of 100,000 failures, nests and certificates on a 256 KiB stack.
+
+### Rule boundaries (#412, part 2)
+
+- The rules of a transaction are `JudgedSts[Env, S, Sig, Rec, Fail]`: their transition also takes
+  `Judge[F, PredicateFailure]`. The epoch and tick rules stay `Sts` (their reference predicate
+  failures cannot occur), and so does the block's BBODY and LEDGERS.
+- `JudgedSts.trans` is the reference's `trans`, a nest at every site the reference has one:
+  MEMPOOL → LEDGER; Conway LEDGER → CERTS, GOV, UTXOW; Shelley-to-Babbage LEDGER → DELEGS, UTXOW;
+  UTXOW → UTXO → UTXOS; CERTS → CERTS (the prefix) and CERT → DELEG, POOL, GOVCERT; DELEGS →
+  DELEGS and DELPL → POOL, DELEG. CERTS and DELEGS recurse on the prefix of the certificates with
+  a fold that builds the nested program, so the first certificate is the deepest. PPUP is a
+  sub-rule of UTXO from Shelley to Mary and of UTXOS in Alonzo (after the scripts) and Babbage
+  (before them).
+- MEMPOOL (`Mempool`) is the root of a submitted Conway transaction, as in the reference; the
+  mempool runs it under `Accumulate`. Revalidation of held transactions runs LEDGER under
+  `FirstFailure`, where only the verdict counts.
+- LEDGERS runs a transaction's rules with `Judge.raising`: a recorded failure is raised as the
+  transaction's, so the block keeps its first-failure verdict, with no nest and no record in the
+  machine. `JudgedSts.apply` runs a rule that way.
+- The checks of LEDGER and MEMPOOL, and the base case of CERTS, record their failures in the
+  reference's `Test`/`runTest` style (`rules/Test.scala`, `Sts.runTest`, `Sts.predicate`,
+  `Sts.failOnNonEmpty`). Script evaluation runs only when nothing has failed (`whenFailureFree`);
+  the contexts are still collected, so `CollectErrors` is reported.
+- Every rule of a transaction records its predicate failures and raises only defects: UTXO, UTXOW
+  and UTXOS (parts 3 and 4), DELEG, POOL, GOVCERT, GOV, the Shelley DELEG with the MIR certificates,
+  and PPUP (part 5). Each goes on after a failure to the state the reference makes. The pure checks
+  that can also end in a defect have the type `Either[LedgerDefect, Test[PredicateFailure]]`, so a
+  raised refusal cannot come from them. While parts 2 to 4 were in flight, a sub-rule that still
+  raised its refusal ended alone at its nest; that boundary is gone.
+
 ## What is preserved
 
 - **Laws**: `Monad`, `Local`, `Stateful`, `Handle` — the suites are unchanged and green.

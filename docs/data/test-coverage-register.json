@@ -84,17 +84,18 @@
     },
     {
       "id": "ledger-refusal-membership",
-      "classification": "sampling-limit",
-      "status": "bounded",
-      "scope": "Fresh-ledger and multi-ledger refusal comparisons.",
-      "assertion": "The one complete typed Scarab failure is present in the native accumulated failure list.",
-      "rationale": "This proves failure membership, not native full-list cardinality, order or equality.",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The retained fresh-ledger and multi-ledger native refusal observations.",
+      "assertion": "Compare every complete encoded predicate-failure list, including cardinality, order and multiplicity, against unchanged native bytes.",
+      "rationale": "One-cause membership could not detect omitted or reordered failures; the diagnostic adapters now run complete accumulation.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/412",
-      "resolution": "Retained native cases execute the single complete typed-cause membership assertion; suite names and documentation exclude accumulated-list cardinality, ordering and equality. Covered once the rules accumulate failures in the reference's order and these comparisons assert whole lists (#412).",
+      "resolution": "All original fresh-ledger and multi-ledger cases compare complete native refusal bytes. The LEDGERS adapter mirrors the native outer fold, bounded TxIx enumeration and sub-rule nesting; production block application keeps its first-failure policy. Both rejected native batches fail the first-failure negative control. This is bounded to the recorded inputs, not complete era/family coverage (#401).",
       "evidence": [
         "node/src/test/scala/xyz/kd5ujc/scarab/node/UpstreamFreshLedgerConformanceSuite.scala",
-        "node/src/test/scala/xyz/kd5ujc/scarab/node/UpstreamMultiLedgerConformanceSuite.scala"
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/UpstreamMultiLedgerConformanceSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/UpstreamLedgerJudgments.scala"
       ],
       "candidateRequired": false
     },
@@ -138,11 +139,11 @@
       "classification": "native-parity",
       "status": "bounded",
       "scope": "All 17 original generated-cache contexts (nine native accepts and eight refusals), separately counted from 39 coherent-state inputs.",
-      "assertion": "Replay unchanged complete native accepted state fields and UTxO entries under the documented byte adapter; require one complete typed cause to occur in each native refusal list, without claiming full list/order equality. Pin 58 observations and 56 distinct rule inputs (37 accepts, 19 refusals).",
+      "assertion": "Replay unchanged complete native accepted state fields and UTxO entries under the documented byte adapter; compare every native refusal as a complete encoded list, including order and multiplicity. Pin 58 observations and 56 distinct rule inputs (37 accepts, 19 refusals).",
       "rationale": "The discrepancy was checked signed arithmetic versus native modular Word64 arithmetic and missing-entry insertion, not an evidenced native cache-coherence precondition.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/412",
-      "resolution": "Match modular arithmetic, absent-entry insertion, zero removal and native TxIn deletion order; retain checked CompactCoin construction, seven source-derived controls and all original fixture bytes. The refusal side stays one-cause membership until whole accumulated lists are compared (#412).",
+      "resolution": "Match modular arithmetic, absent-entry insertion, zero removal and native TxIn deletion order; retain checked CompactCoin construction, seven source-derived controls and all original fixture bytes. The refusal side now compares complete accumulated lists, including all eight original generated-cache refusals (#412).",
       "evidence": [
         "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Utxo.scala",
         "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Word64.scala",
@@ -563,22 +564,6 @@
       "candidateRequired": false
     },
     {
-      "id": "devnet-ntc-refusal-first-failure",
-      "classification": "known-divergence",
-      "status": "bounded",
-      "scope": "The ntc refusal case withdrawal-network-flag-true: a withdrawal from an account of the other network, which LEDGER and UTXO both refuse.",
-      "assertion": "The first failures are byte-equal and equal as cardano-cli text, the reference lists exactly two failures and the Scala node one; the case fails once the whole refusals are equal. Every other ntc refusal is compared exactly (raw ApplyTxErr bytes and text) at one tip of both nodes, without masks.",
-      "rationale": "The Scala rules stop at the first failure where the reference accumulates; comparing the whole list would fail on that documented divergence, and comparing nothing would hide a change in the first failure or the counts.",
-      "owner": "ledger maintainer",
-      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/412",
-      "resolution": "Remove ntccases.ACCUMULATED_WITHDRAWAL_FAILURES and compare the case exactly once the rules accumulate failures (#412); the scenario fails with divergenceResolved until then.",
-      "evidence": [
-        "scripts/devnet/ntccases.py",
-        "scripts/devnet/scenarios/ntc.py"
-      ],
-      "candidateRequired": false
-    },
-    {
       "id": "devnet-e2e-refusal-match",
       "classification": "reference-non-result",
       "status": "covered",
@@ -624,6 +609,25 @@
         "plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/NativeTextReferenceSuite.scala",
         "fixtures/reference/plutus-text/README.md",
         "patches/scalus/README.md"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "reference-refusal-corpus",
+      "classification": "native-parity",
+      "status": "open",
+      "scope": "Transactions the released reference node refused over node-to-client LocalTxSubmission in all six Shelley-based eras, with the ledger state, UTxO and genesis each was judged against; the families each era must cover are declared in the manifest. Byron transaction-error coverage is not established.",
+      "assertion": "Replay every case through Scarab (Conway: LocalSubmission and MempoolState.add on the reference's ticked state; Shelley through Babbage: the era's LEDGER rule and PreConwayFailureCbor) and require the complete ApplyTxErr bytes, every accumulated failure in order; every required family per era must have a case.",
+      "rationale": "First-failure comparisons cannot show check-order regressions or a missing accumulated failure, and replays of accepted chains never contain a refused transaction.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Covered when every recorded case compares equal and the complete required era/family scope is covered (#401). The 2026-10-26 corpus has 105 transactions comprising 103 complete byte comparisons and two incomplete PlutusFailure-text comparisons (#491). Those two remove only that text for the partial comparison, assert the original bytes still differ and cancel; they are not conformance passes. Other differing cases fail.",
+      "evidence": [
+        "fixtures/reference/refusals/manifest.json",
+        "fixtures/reference/refusals/README.md",
+        "scripts/devnet/refusalcorpus.py",
+        "scripts/devnet/refusalcases.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
       ],
       "candidateRequired": true
     }

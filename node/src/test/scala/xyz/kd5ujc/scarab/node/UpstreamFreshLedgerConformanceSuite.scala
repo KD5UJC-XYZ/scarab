@@ -16,12 +16,11 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   Counted,
   Globals,
   InstantStakeOps,
+  JudgedSts,
   Ledger,
   LedgerEnv,
-  Ledgers,
   LedgersEnv,
   StAnnTx,
-  Sts,
   Utxo,
   UtxoEnv,
   Utxow
@@ -33,7 +32,7 @@ import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.{Params, Wire}
 
 /** Actual distinct STS judgments with original signed bytes. Accepted cases compare native state;
-  * rejected cases establish typed failure membership, not accumulated-list or ordering equality.
+  * rejected cases compare complete accumulated failure bytes in native order.
   */
 class UpstreamFreshLedgerConformanceSuite extends FunSuite:
   import UpstreamNativeStates.given
@@ -118,27 +117,25 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
       None
     )
 
-  /** One complete typed Scala cause must occur in the native failure list; this does not compare
-    * the accumulated list or its order.
-    */
+  /** Compare the complete rule-level failure list with the unchanged native encoding. */
   private def rejection(rule: String, e: LedgerFailure, failures: Node): Unit =
-    val predicate = e match
-      case LedgerFailure.Rejected(_, cause) => cause
-      case other                            => fail(s"expected typed native refusal, got $other")
+    val predicates = e match
+      case LedgerFailure.Rejected(_, causes) => causes.toChain.toVector
+      case other                             => fail(s"expected typed native refusal, got $other")
     val answer = Cbor
-      .decode(PredicateFailureCbor.applyTxError(Vector(predicate)))
+      .decode(PredicateFailureCbor.applyTxError(predicates))
       .fold(e => fail(e.message), identity)
-    val ledgerFailure = array(array(array(answer).head)(1)).head
-    val encoded = rule match
-      case "UTXO"    => array(array(ledgerFailure)(1))(1)
-      case "UTXOW"   => array(ledgerFailure)(1)
-      case "LEDGERS" => ledgerFailure
-      case "LEDGER"  => ledgerFailure
-      case other     => fail(s"unsupported native STS rule $other")
-    assert(
-      array(failures).exists(_.value == encoded.value),
-      s"complete typed Scarab failure absent from native accumulated failures: $predicate"
-    )
+    val ledgerFailures = array(array(array(answer).head)(1))
+    val encoded = ledgerFailures.map { ledgerFailure =>
+      rule match
+        case "UTXO"    => array(array(ledgerFailure)(1))(1)
+        case "UTXOW"   => array(ledgerFailure)(1)
+        case "LEDGERS" => ledgerFailure
+        case "LEDGER"  => ledgerFailure
+        case other     => fail(s"unsupported native STS rule $other")
+    }
+    val bytes = Cbor.encode(Value.Arr(encoded)).fold(e => fail(e.message), identity)
+    assertEquals(bytes.hex, failures.original.hex, "complete native failure bytes, including order")
 
   private def cacheInvariant(state: UTxOState[Conway], incoherent: Boolean): Unit =
     val empty = ConwayInstantStake(
@@ -180,8 +177,19 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
       val signal = StAnnTx(transaction, before.utxo.utxo)
       val actual =
         if rule == "UTXO" then
-          Sts.apply(Utxo)(globals, execution, Counted(before, PlutusStats.zero), signal)
-        else Sts.apply(Utxow)(globals, execution, Counted(before, PlutusStats.zero), signal)
+          UpstreamLedgerJudgments.run(Utxo)(
+            globals,
+            execution,
+            Counted(before, PlutusStats.zero),
+            signal
+          )
+        else
+          UpstreamLedgerJudgments.run(Utxow)(
+            globals,
+            execution,
+            Counted(before, PlutusStats.zero),
+            signal
+          )
       result match
         case "accepted" =>
           sameUtxo(
@@ -221,14 +229,14 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
       assertEquals(pp, before.utxo.gov.curPParams)
       val actual =
         if rule == "LEDGERS" then
-          Sts.apply(Ledgers)(
+          UpstreamLedgerJudgments.run(UpstreamLedgerJudgments.ledgers)(
             globals,
             LedgersEnv(env(slot, epoch), account.treasury),
             Counted(before, PlutusStats.zero),
             array(read("signal")).map(tx)
           )
         else
-          Sts.apply(Ledger)(
+          UpstreamLedgerJudgments.run(Ledger)(
             globals,
             LedgerEnv(env(slot, epoch, index), account.treasury),
             Counted(before, PlutusStats.zero),
@@ -252,7 +260,7 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
     val id = text(row, "id")
     val rule = text(row, "rule")
     val scope =
-      if text(row, "native") == "rejected" then "typed native refusal membership"
+      if text(row, "native") == "rejected" then "complete ordered native refusal"
       else "native accepted-state replay"
     test(s"$rule $scope: $id") {
       replay(row, base.resolve(s"cases/$id"), text(row, "replayScope") == "incoherent-cache")
@@ -348,7 +356,7 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
     assertEquals(observed("state").original, node("utxo-274101", "state").original)
     assertEquals(observed("original-signal").original, node("utxo-274101", "signal").original)
     val signal = StAnnTx(transaction, before.utxo.utxo)
-    val actual = Sts.apply(Utxo)(
+    val actual = JudgedSts.apply(Utxo)(LedgerFailure.Rejected(signal.id, _))(
       globals,
       UtxoEnv(env(slot, geometry.epochOf(slot)), params, cert),
       Counted(before, PlutusStats.zero),

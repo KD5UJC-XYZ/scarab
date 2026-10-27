@@ -6,13 +6,30 @@ import xyz.kd5ujc.scarab.plutus.ExUnits
 import java.security.{KeyPair, KeyPairGenerator, Signature}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.rules.{Counted, Globals, Ledger, LedgerEnv, Sts}
+import xyz.kd5ujc.scarab.ledger.rules.{Counted, Globals, JudgedSts, Ledger, LedgerEnv, Test}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState as EraLedgerState, NewEpochState}
 
 /** Builders for ledger rule tests: parameters per era, funded states, keys that really sign, and
   * transactions assembled as values (no CBOR).
   */
 object TestLedger:
+  /** A pure check's verdict as the node reports it: the refusal of the transaction `id` with every
+    * failure of the test, or nothing.
+    */
+  def verdict(id: Bytes, test: Test[PredicateFailure]): Either[LedgerFailure, Unit] =
+    Test.failures(test).fold(Right(()))(failures => Left(LedgerFailure.Rejected(id, failures)))
+
+  /** The verdict of checks that may each end in a defect, as the rule records them in order. */
+  def verdict(
+      id: Bytes,
+      checks: Vector[Either[LedgerFailure, Test[PredicateFailure]]]
+  ): Either[LedgerFailure, Unit] =
+    checks
+      .foldLeft[Either[LedgerFailure, Test[PredicateFailure]]](Right(Test.pass)) { (done, next) =>
+        done.flatMap(t => next.map(Test.all(t, _)))
+      }
+      .flatMap(verdict(id, _))
+
   final case class Key(pair: KeyPair):
     val vkey: Bytes = Bytes.fromArray(pair.getPublic.getEncoded.takeRight(32))
     val hash: Bytes = Blake2b.hash224.hash(vkey)
@@ -109,7 +126,7 @@ object TestLedger:
       tx: Tx,
       env: TxEnv
   ): Either[LedgerFailure, Counted[EraLedgerState[Conway]]] =
-    Sts(Ledger)(
+    JudgedSts(Ledger)(LedgerFailure.Rejected(tx.body.id, _))(
       globals,
       LedgerEnv(env, nes.es.chainAccount.treasury),
       Counted(nes.es.ls, PlutusStats.zero),

@@ -33,9 +33,10 @@ class Phase2UnavailableSuite extends FunSuite:
         evaluator = evaluator
       ),
       scripts,
-      tx.body.inputs.flatMap(c.spent.get),
-      tx.body.referenceInputs.flatMap(c.references.get),
-      Set(0 -> BigInt(0))
+      tx.body.inputs.flatMap(in => c.spent.get(in).map(in -> _)).toMap,
+      tx.body.referenceInputs.flatMap(in => c.references.get(in).map(in -> _)).toMap,
+      Set(0 -> BigInt(0)),
+      evaluate = true
     )
 
   test("implementation unavailability supplies no verdict for either transaction validity flag") {
@@ -64,8 +65,8 @@ class Phase2UnavailableSuite extends FunSuite:
       _ => EvalResult.Failure(EvalFailure.OutOfBudget, ExUnits.zero, Vector.empty)
     assert(checked(c.tx.copy(isValid = false), failing).isRight)
     checked(c.tx.copy(isValid = true), failing) match
-      case Left(LedgerFailure.Rejected(_, _)) => ()
-      case other                              => fail(s"unexpected script-failure outcome: $other")
+      case Left(LedgerFailure.Rejected.Single(_, _)) => ()
+      case other => fail(s"unexpected script-failure outcome: $other")
   }
 
   test("a validity-tag mismatch retains the evaluator cause and its original exception") {
@@ -74,7 +75,7 @@ class Phase2UnavailableSuite extends FunSuite:
     val evaluator: ScriptEvaluator[Id] = _ => EvalResult.Failure(reason, ExUnits.zero, Vector.empty)
     checked(c.tx.copy(isValid = true), evaluator) match
       case Left(
-            LedgerFailure.Rejected(
+            LedgerFailure.Rejected.Single(
               _,
               PredicateFailure.Utxow(
                 UtxowFailure.Utxo(
@@ -124,7 +125,9 @@ class Phase2UnavailableSuite extends FunSuite:
         PredicateFailure.utxow(UtxowFailure.MalformedScriptWitnesses(Set(script.hash)))
       )
       assertEquals(
-        TxChecks.scriptsWellFormed(c.params, tx, TxEnv(c.slot, 189, 0, decoder = decoder)),
+        TxChecks
+          .scriptsWellFormed(c.params, tx, TxEnv(c.slot, 189, 0, decoder = decoder))
+          .flatMap(TestLedger.verdict(tx.body.id, _)),
         Left(expected)
       )
   }

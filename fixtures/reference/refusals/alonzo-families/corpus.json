@@ -1,0 +1,33 @@
+{
+  "format": 2,
+  "era": "alonzo",
+  "protocolVersion": [
+    6,
+    0
+  ],
+  "provenance": {
+    "reference": {
+      "node": "cardano-node 11.1.3 - linux-x86_64 - ghc-9.6",
+      "revision": "938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+      "image": "cardano-reference-11.1.3:local",
+      "imageId": "sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b"
+    },
+    "command": "python3 scripts/devnet.py --name <devnet> refusal-corpus --era alonzo --corpus alonzo-families",
+    "scarabCommit": "d4c1e1cb2522cd634a9f4b033c24dd47c23ae55b",
+    "scarabDirty": true,
+    "recorded": "2026-10-26T09:19:18Z"
+  },
+  "genesis": {
+    "byron-genesis.json": "cf098a5aac89a890befaa5829ed8b520e4d9c9957509e17c2c0bae07293e5e98",
+    "shelley-genesis.json": "6564c3decab6d7be06ebcb4c956c4dc5c4e174d1e7597928a146168830363bb1",
+    "alonzo-genesis.json": "4291b3e5fbcdd1f1daed9ab8f78e4d0181eb7eac4506e34c8aa0fecab6051f3b",
+    "conway-genesis.json": "bc1b7e34ed9aa99560c1c3276b6c77acfe58eb29663eba7ff36b549b8a1d557a",
+    "configuration.yaml": "fcd7dcec763b67c48b03292a9b08225f1735256186837f13646447da9784b81b"
+  },
+  "cases": [
+    {
+      "file": "cases/cases.jsonl",
+      "sha256": "f37006016fae33d5bdc1b815bcf94749b36fb40b0acfceda6b58ba7a1c58e6fb"
+    }
+  ]
+}

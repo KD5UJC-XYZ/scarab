@@ -29,6 +29,9 @@
     devnet.py assemble-chain-dep   write answers.json of the sampled points that are in the captured chain
     devnet.py e2e [--keep]         up-eras + Scala follower from Origin; assert every era and
                                    era transition was followed with no validation error
+    devnet.py refusal-corpus       the reference-refusal corpus (#401): each transaction of `refusalcases` submitted to the
+                                   reference over LocalTxSubmission; its complete rejection, the ledger state and UTxO
+                                   it was judged against and the genesis go to fixtures/reference/refusals
     devnet.py refused-fixture      write fixtures/devnet/refused-txs.jsonl from a finished
                                    `soak --governance-extended` run directory
     devnet.py oracle               compare the Scala node's epoch-boundary state digests (written by
@@ -54,6 +57,7 @@ from .follower import follow
 from .load import govload, load
 from .oracle_cmd import oracle
 from .refused_fixture import DEFAULT_OUT, refused_fixture
+from .refusalcorpus import DEFAULT_OUT as REFUSALS_OUT, refusal_corpus
 from .scenarios.faults import faults
 from .scenarios.e2e import CONWAY_EPOCHS, capture_eras, e2e
 from .scenarios.governor import governor
@@ -98,8 +102,11 @@ def main():
         eras.add_argument("--cross-rewards", action="store_true",
                            help="register the pools so reward accounts also delegate to other pools (e2e does)")
         return eras
-    sub.add_parser("up-eras", parents=[eras_options()],
-                   help="start in Byron and walk Shelley..Conway (one epoch per era step)").set_defaults(run=up_eras)
+    ue = sub.add_parser("up-eras", parents=[eras_options()],
+                        help="start in Byron and walk Shelley..Conway (one epoch per era step)")
+    ue.add_argument("--final-era", choices=["shelley", "allegra", "mary", "alonzo", "babbage"],
+                    help="stop walking in this era: no later hard fork is configured or proposed")
+    ue.set_defaults(run=up_eras)
     ce = sub.add_parser("capture-eras", help="capture the running up-eras chain as fixtures")
     ce.add_argument("--out", default=str(REPO / "fixtures/eras"), help="fixture directory")
     ce.add_argument("--conway-blocks", type=int, default=3, help="Conway blocks to capture")
@@ -281,6 +288,15 @@ def main():
     fl.add_argument("--byron-start-offset", type=int, default=0, help="seconds the Byron genesis' startTime is set off the Shelley systemStart")
     fl.add_argument("--keep", action="store_true", help="leave the reference container running")
     fl.set_defaults(run=faults)
+    rc = sub.add_parser("refusal-corpus", help="record the reference's complete refusals of the refusal corpus "
+                                               "(on a cluster already `up` under this name)")
+    rc.add_argument("--era", choices=["shelley", "allegra", "mary", "alonzo", "babbage", "conway"], default="conway",
+                    help="the era of the cluster: conway (`up`) or an earlier era (`up-eras --final-era <era>`)")
+    rc.add_argument("--corpus", help="the corpus directory to write under --out (default <era>-devnet)")
+    rc.add_argument("--cases", help="another case builder, `module:function` in scripts/devnet, called with the "
+                                    "devnet name and returning `refusalcases.Case`s")
+    rc.add_argument("--out", default=str(REFUSALS_OUT), help="the refusal corpus root (its manifest.json is updated)")
+    rc.set_defaults(run=refusal_corpus)
     rf = sub.add_parser("refused-fixture", help="write fixtures/devnet/refused-txs.jsonl from the run directory of a "
                                                 "`soak --governance-extended`")
     rf.add_argument("--out", default=str(DEFAULT_OUT), help="fixture file")

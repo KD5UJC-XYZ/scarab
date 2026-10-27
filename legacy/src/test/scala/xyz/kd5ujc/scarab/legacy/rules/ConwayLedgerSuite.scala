@@ -89,7 +89,13 @@ class ConwayLedgerSuite extends FunSuite:
         val treasury = nes.es.chainAccount.treasury
         val result =
           if block then Sts(Ledgers)(globals, LedgersEnv(ctx, treasury), start, Vector(t))
-          else Sts(Ledger)(globals, LedgerEnv(ctx, treasury), start, t)
+          else
+            JudgedSts(Ledger)(LedgerFailure.Rejected(t.body.id, _))(
+              globals,
+              LedgerEnv(ctx, treasury),
+              start,
+              t
+            )
         result match
           case Left(f)      => Out.Refused(f)
           case Right(after) =>
@@ -135,8 +141,8 @@ class ConwayLedgerSuite extends FunSuite:
     case other              => fail(s"expected the transaction to be accepted: $other")
 
   private def refusedWith(s: flat.LedgerState, t: Tx): String = agree(s, t) match
-    case Out.Refused(LedgerFailure.Rejected(_, f)) => f.ruleName
-    case other                                     => fail(s"expected a refusal: $other")
+    case Out.Refused(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
+    case other                                            => fail(s"expected a refusal: $other")
 
   // ---- a Conway state to start from
 
@@ -690,7 +696,7 @@ class ConwayLedgerSuite extends FunSuite:
       case Left(e) => fail(e.show)
       case Right(ls) =>
         assertEquals(Invariants.poolDelegators(ls.cert), Vector.empty)
-        Sts(Ledger)(
+        JudgedSts(Ledger)(LedgerFailure.Rejected(t.body.id, _))(
           globals,
           LedgerEnv(TestLedger.env, Coin.zero),
           Counted(ls, s.plutus),
@@ -728,9 +734,18 @@ class ConwayLedgerSuite extends FunSuite:
     )
     val cheap = pay("cheap", alice, 10000 * ada, 1)
     for t <- Vector(delegate, cheap) do
-      val onRuleT = Sts(Ledger)(globals, ledgerEnv, start, t)
+      val onRuleT =
+        JudgedSts(Ledger)(LedgerFailure.Rejected(t.body.id, _))(globals, ledgerEnv, start, t)
       val onStack = Ledger
-        .transition[K](ledgerEnv, t)(using summon, summon, summon, summon)
+        .transition[K](ledgerEnv, t)(using
+          summon,
+          summon,
+          summon,
+          summon,
+          Judge.raising[K, xyz.kd5ujc.scarab.ledger.PredicateFailure, LedgerFailure](
+            LedgerFailure.Rejected(t.body.id, _)
+          )
+        )
         .run(globals)
         .run(start)
         .map(_._1)
@@ -806,7 +821,7 @@ class ConwayLedgerSuite extends FunSuite:
       certificates = Vector(Certificate.RegisterPool(poolParams(one).copy(vrfKeyHash = other))),
       signers = Vector(one)
     )
-    val after = Sts(Ledger)(
+    val after = JudgedSts(Ledger)(LedgerFailure.Rejected(t.body.id, _))(
       globals,
       LedgerEnv(TestLedger.env, start.es.chainAccount.treasury),
       Build.counted(start),
@@ -983,7 +998,7 @@ class ConwayLedgerSuite extends FunSuite:
           assertEquals((next.plutus.failed, next.fees), (1L, 100 * ada))
         case other => fail(s"expected the collateral to be taken: $other")
       ScriptCase(pp, there).attempt(succeeds = false, isValid = false, block) match
-        case Out.Refused(LedgerFailure.Rejected(_, f)) =>
+        case Out.Refused(LedgerFailure.Rejected.Single(_, f)) =>
           assertEquals(f.ruleName, "WrongNetworkWithdrawal")
         case other => fail(s"expected the withdrawal of another network to be refused: $other")
       // the same for a transaction whose scripts succeed: here LEDGER's own check of the
@@ -993,7 +1008,7 @@ class ConwayLedgerSuite extends FunSuite:
         case Out.Accepted(next) => assert(!next.utxo.contains(validHere.lockedIn))
         case other              => fail(s"expected the transaction to be accepted: $other")
       ScriptCase(pp, there).attempt(succeeds = true, isValid = true, block) match
-        case Out.Refused(LedgerFailure.Rejected(_, f)) =>
+        case Out.Refused(LedgerFailure.Rejected.Single(_, f)) =>
           assertEquals(
             f.ruleName,
             if protocol < 11 then "WithdrawalsNotInRewardsCERTS"
@@ -1012,8 +1027,8 @@ class ConwayLedgerSuite extends FunSuite:
       case other              => fail(s"expected the collateral to be taken: $other")
     def refused(what: String, b: node.TxBody): String =
       c.attemptWith(succeeds = false, isValid = false, b) match
-        case Out.Refused(LedgerFailure.Rejected(_, f)) => f.ruleName
-        case other                                     => fail(s"$what: expected a refusal: $other")
+        case Out.Refused(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
+        case other => fail(s"$what: expected a refusal: $other")
     val otherNetwork = node.Address
       .decode(Bytes(0x61.toByte +: alice.hash.value))
       .fold(e => fail(e.toString), identity)
@@ -1026,9 +1041,11 @@ class ConwayLedgerSuite extends FunSuite:
       ),
       "WrongNetwork"
     )
+    // `feesOK` comes before the inputs (`Babbage/Rules/Utxo.hs:362-368`): the collateral that does
+    // not exist pays nothing, which is the first failure
     assertEquals(
       refused("missing collateral", c.bodyWith(c.hash, collateral = Vector(txIn(40)))),
-      "BadInputsUTxO"
+      "InsufficientCollateral"
     )
     assertEquals(
       refused(

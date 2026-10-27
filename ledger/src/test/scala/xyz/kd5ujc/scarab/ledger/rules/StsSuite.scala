@@ -21,7 +21,7 @@ import xyz.kd5ujc.scarab.ledger.{EpochGeometry, LedgerGlobals}
 class StsSuite extends DisciplineSuite:
   import StsSuite.*
 
-  type R[A] = RuleT[Fail, Int, A]
+  type R[A] = RuleT[Nothing, Fail, Int, A]
 
   private val globals = Globals(
     LedgerGlobals(BigInt(1000), 100, Rational(1, 20), network = 0),
@@ -30,7 +30,7 @@ class StsSuite extends DisciplineSuite:
   private val otherGlobals = globals.copy(ledger = globals.ledger.copy(network = 1))
 
   // Programs compare by what they do on a sample of environments and states.
-  given [A: Eq]: Eq[RuleT[Fail, Int, A]] = Eq.instance((x, y) =>
+  given [A: Eq]: Eq[RuleT[Nothing, Fail, Int, A]] = Eq.instance((x, y) =>
     List(globals, otherGlobals).forall(g =>
       List(0, 1, 2, -7, 100).forall(s => x.run(g, s) === y.run(g, s))
     )
@@ -44,7 +44,7 @@ class StsSuite extends DisciplineSuite:
   given Cogen[Globals] = Cogen[Int].contramap(_.networkId)
 
   // A random program: reads the state, maybe changes it, maybe fails, returns a value.
-  given [A: Arbitrary]: Arbitrary[RuleT[Fail, Int, A]] = Arbitrary(
+  given [A: Arbitrary]: Arbitrary[RuleT[Nothing, Fail, Int, A]] = Arbitrary(
     for
       a <- Arbitrary.arbitrary[A]
       f <- Arbitrary.arbitrary[Int => Int]

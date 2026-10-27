@@ -13,9 +13,10 @@ The Scala [replay suite](../../../scala/xyz/kd5ujc/scarab/node/UpstreamFreshLedg
 uses the original signed body and witness bytes and compares complete native
 states. Native inline MemPack does not retain `TxOut.raw` or Scala change-history
 bookkeeping; every decoded output/cache/accounting field is compared independently
-before comparing the remaining state. Rejections compare the complete typed
-Scarab failure payload for membership in native accumulated failures. This does not compare
-the complete failure list, order or multiplicity. Differing native/formal
+before comparing the remaining state. Rejections run the production transaction rules under
+accumulation and compare the complete encoded native failure list, including order and multiplicity.
+LEDGERS uses the native outer fold and sub-rule nesting through `UpstreamLedgerJudgments`;
+production block application retains its first-failure policy. Differing native/formal
 rejection text is retained; it is not claimed equal.
 
 ## Results and bounded scope
@@ -25,8 +26,7 @@ Twenty-six fixed runner invocations passed. They produced **41 lawful observatio
 Two repeated bootstrap funding hooks are retained and marked `duplicateOf`; they
 do not add coverage. Separately, nine original generated-cache regressions now compare
 complete unchanged native accepted outputs. The eight other original generated states also
-replay their retained native refusals,
-checking typed failure membership rather than accumulated-list equality. Together these are
+replay their retained native refusals with complete accumulated-list byte equality. Together these are
 **56 unique native rule inputs** (37 accepts and 19 refusals) across 58 observations;
 the coherent-state supplement and original cache cases remain
 separately counted. The focused Scala suite checks all original records and their provenance.

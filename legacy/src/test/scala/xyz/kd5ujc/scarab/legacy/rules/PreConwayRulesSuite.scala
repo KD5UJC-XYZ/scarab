@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.GenDelegPair
 import xyz.kd5ujc.scarab.ledger.byron.ByronCbor
+import xyz.kd5ujc.scarab.ledger.rules.{Test, UtxoTests}
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
@@ -29,9 +30,9 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     state(pv, Vector(in -> out(alice.address(), coin))) -> in
 
   private def rule(r: Either[LedgerFailure, LedgerState]): String = r match
-    case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
-    case Left(other)                        => other.message
-    case Right(_)                           => "accepted"
+    case Left(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
+    case Left(other)                               => other.message
+    case Right(_)                                  => "accepted"
 
   private def transfer(in: TxIn, pay: BigInt, change: BigInt, fee: BigInt = 200, id: String = "t") =
     body(id, Vector(in), Vector(out(bob.address(), pay), out(alice.address(), change)), fee)
@@ -243,9 +244,11 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       rule(rs.tx(s, tx(b, Vector(alice), withScript), env)),
       "ScriptWitnessNotValidatingUTXOW"
     )
+    // an extraneous script that holds: before Babbage every native script provided must hold
+    // (`validateFailedNativeScripts`, `Shelley/Rules/Utxow.hs:365-373`), and that check comes first
     val extra = Witnesses(
       Vector.empty,
-      scripts = Vector(policyScript, scriptOf(NativeScript.AnyOf(Vector.empty)))
+      scripts = Vector(policyScript, scriptOf(NativeScript.AllOf(Vector.empty)))
     )
     assertEquals(
       rule(rs.tx(s, tx(b, Vector(alice, signer), extra), env)),
@@ -412,13 +415,11 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       val (s, in) = funded(protocol)
       val outputs = referenced.map(r => out(bob.address(), 2 * ada).copy(scriptRef = Some(r)))
       val b = body("wf", Vector(in), outputs, 200)
+      val checked = tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts))
       rule(
         TxChecks
-          .scriptsWellFormed(
-            s.params,
-            tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts)),
-            env
-          )
+          .scriptsWellFormed(s.params, checked, env)
+          .flatMap(TestLedger.verdict(checked.body.id, _))
           .map(_ => s)
       )
     assertEquals(check(8, Vector(keccakV2), Vector.empty), "MalformedScriptWitnesses")
@@ -461,13 +462,11 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       val (s, in) = funded(protocol)
       val outputs = referenced.map(r => out(bob.address(), 2 * ada).copy(scriptRef = Some(r)))
       val b = body("wf", Vector(in), outputs, 200)
+      val checked = tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts))
       rule(
         TxChecks
-          .scriptsWellFormed(
-            s.params,
-            tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts)),
-            env
-          )
+          .scriptsWellFormed(s.params, checked, env)
+          .flatMap(TestLedger.verdict(checked.body.id, _))
           .map(_ => s)
       )
     for pv <- Seq(8, 10, 11) do
@@ -674,11 +673,17 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val v = Value(coin, assets)
     out(bob.address(), 0).copy(value = v)
 
+  /** The first failure of the output checks of UTXO, in the era's order. */
   private def outputRule(pp: ProtocolParams, o: TxOut): String =
-    TxChecks.outputChecks(pp, env, Bytes.empty, Vector(o)) match
-      case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
-      case Left(other)                        => other.message
-      case Right(_)                           => "accepted"
+    val outs = Vector(o)
+    val pv = pp.protocolMajor
+    val checks = Vector(
+      UtxoTests.outputTooSmall(pp, outs),
+      if pv >= 3 then UtxoTests.outputTooBig(pp, outs) else Test.pass,
+      UtxoTests.bootAddrAttrsTooBig(outs),
+      if pv >= 5 then UtxoTests.wrongNetwork(env.network, outs) else Test.pass
+    ).flatMap(Test.failures(_).toVector.flatMap(_.iterator))
+    checks.headOption.fold("accepted")(_.ruleName)
 
   test("Shelley and Allegra require exactly minUTxOValue, Mary scales it for native assets") {
     // ada-only outputs: the flat parameter in every Shelley-based era up to Mary

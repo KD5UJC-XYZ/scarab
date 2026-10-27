@@ -1,0 +1,33 @@
+{
+  "format": 2,
+  "era": "mary",
+  "protocolVersion": [
+    4,
+    0
+  ],
+  "provenance": {
+    "reference": {
+      "node": "cardano-node 11.1.3 - linux-x86_64 - ghc-9.6",
+      "revision": "938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+      "image": "cardano-reference-11.1.3:local",
+      "imageId": "sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b"
+    },
+    "command": "python3 scripts/devnet.py --name <devnet> refusal-corpus --era mary --corpus mary-families",
+    "scarabCommit": "d4c1e1cb2522cd634a9f4b033c24dd47c23ae55b",
+    "scarabDirty": true,
+    "recorded": "2026-10-26T09:14:54Z"
+  },
+  "genesis": {
+    "byron-genesis.json": "f52c408c49e301260b532e6310eae529b869f5df0da84874f0fc476ec70eacde",
+    "shelley-genesis.json": "5020a13b5937ae26914edf9f650c533823236c9c163a6a9c36f47d108e1aaa52",
+    "alonzo-genesis.json": "4291b3e5fbcdd1f1daed9ab8f78e4d0181eb7eac4506e34c8aa0fecab6051f3b",
+    "conway-genesis.json": "3ee6cf399e02f774276b66aabe74fc0b464a6f33338a2d3668343c67d6f4623a",
+    "configuration.yaml": "c5ee8553d3389177753354a4ee2a9297dead7e53cef834906b7efaed13b1d843"
+  },
+  "cases": [
+    {
+      "file": "cases/cases.jsonl",
+      "sha256": "5b128d15824313015d1e99eb3edba302b180e40d2a45010be3d462038952acce"
+    }
+  ]
+}

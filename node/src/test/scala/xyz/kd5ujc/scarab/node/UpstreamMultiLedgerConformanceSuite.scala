@@ -11,7 +11,7 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.mempack.TxOutMemPack
-import xyz.kd5ujc.scarab.ledger.rules.{Counted, Globals, Ledgers, LedgersEnv, Sts}
+import xyz.kd5ujc.scarab.ledger.rules.{Counted, Globals, LedgersEnv}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.{Codec, Node}
 import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
@@ -19,7 +19,7 @@ import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.Params
 
 /** Independent native LEDGERS observations of original signed, dependent transactions. Refusals
-  * compare one complete typed cause with native list membership, not full failure-list equality.
+  * compare every accumulated predicate failure, in native order, as complete CBOR bytes.
   */
 class UpstreamMultiLedgerConformanceSuite extends FunSuite:
   import UpstreamNativeStates.given
@@ -88,7 +88,7 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
   private val cases =
     Vector("ordered-three", "dependent-two", "reversed-dependency", "double-spend")
   cases.foreach { id =>
-    test(s"native multi-transaction LEDGERS state / typed-failure membership: $id") {
+    test(s"native multi-transaction LEDGERS state / complete ordered refusal: $id") {
       val before = decode(item(id, "state"), UpstreamNativeStates.nativeLedgerState)
       val env = array(item(id, "environment"))
       assertEquals(env.size, 4)
@@ -111,7 +111,7 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
       }
       assert(txs.size > 1)
       if id != "double-spend" then assertEquals(txs.map(_.body.id).distinct.size, txs.size)
-      val actual = Sts.apply(Ledgers)(
+      val actual = UpstreamLedgerJudgments.run(UpstreamLedgerJudgments.ledgers)(
         globals,
         LedgersEnv(
           TxEnv(
@@ -152,19 +152,15 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
             "implementation-rejected\nformal-not-invoked\n"
           )
           val failure = actual.swap.toOption.getOrElse(fail("native-rejected batch accepted"))
-          val predicate = failure match
-            case LedgerFailure.Rejected(_, cause) => cause
-            case other                            => fail(s"expected a ledger refusal, got $other")
-          // Native STS accumulates failures; Scarab fails fast. Its typed cause and complete
-          // payload must be an independently observed native failure, regardless of ordering.
+          val predicates = failure match
+            case LedgerFailure.Rejected(_, causes) => causes.toChain.toVector
+            case other                             => fail(s"expected a ledger refusal, got $other")
           val wire = Cbor
-            .decode(PredicateFailureCbor.applyTxError(Vector(predicate)))
+            .decode(PredicateFailureCbor.applyTxError(predicates))
             .fold(e => fail(e.message), identity)
-          val encoded = array(array(array(wire).head)(1)).head.value
-          assert(
-            array(item(id, "implementation-failure")).map(_.value).contains(encoded),
-            s"Scarab failure absent from native accumulated failures: $predicate"
-          )
+          val encoded = array(array(wire).head)(1).original
+          assertEquals(encoded.hex, item(id, "implementation-failure").original.hex)
+
     }
   }
 

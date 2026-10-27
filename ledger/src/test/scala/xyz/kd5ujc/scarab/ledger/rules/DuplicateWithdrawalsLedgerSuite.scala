@@ -100,7 +100,7 @@ class DuplicateWithdrawalsLedgerSuite extends FunSuite:
   ): Unit =
     def run(body: TxBody): Either[LedgerFailure, Counted[LedgerState[E]]] =
       val transaction: Tx = tx(body, Vector(alice, bob))
-      Sts(ShelleyLedger.sts[E])(
+      JudgedSts(ShelleyLedger.sts[E])(LedgerFailure.Rejected(transaction.body.id, _))(
         TestLedger.globals,
         ShelleyLedgerEnv(TestLedger.env, ChainAccountState(Coin.zero, Coin.zero)),
         Counted(state[E](major), PlutusStats.zero),

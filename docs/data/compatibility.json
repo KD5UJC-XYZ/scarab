@@ -647,7 +647,7 @@
       "id": "ledger-alonzo-babbage",
       "component": "Ledger: Alonzo and Babbage",
       "status": "implemented",
-      "summary": "Alonzo and Babbage ledger rules including collateral, inline datums, reference inputs and scripts",
+      "summary": "Collateral, inline datums and reference inputs/scripts; era-specific collateral-count checks",
       "evidence": {
         "suites": [
           "CollateralWitnessSuite",
@@ -689,14 +689,15 @@
       "id": "ledger-conway-utxo-babbage-validation",
       "component": "Ledger: Conway UTXO against `babbageUtxoValidation` (audit, #163)",
       "status": "implemented",
-      "summary": "Conway UTXO makes every predicate of the reference Babbage validation, whatever the validity tag",
+      "summary": "Era-specific UTXO predicates with accumulated transaction failures in reference order",
       "evidence": {
         "suites": [
           "ConwayLedgerSuite",
           "PredicateFailureCborSuite"
         ],
         "issues": [
-          163
+          163,
+          412
         ]
       },
       "limitations": {

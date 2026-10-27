@@ -23,10 +23,12 @@ fields in line, reversed where the ledger swaps them, sets under tag 258, `Stric
 one-element list), and `LocalSubmission.reasonItem` wraps the failures as the hard-fork combinator's
 `ApplyTxErr`: `[[6, [failure, ...]]]`; a transaction of another era gets the era mismatch
 `[[era, name], [6, "Conway"]]`. The LEDGER-level checks (treasury value, reference-script size,
-withdrawals), CERTS and GOV run before UTXOW, as in the ledger, so a transaction with one violation
-gets the one failure the reference gives. The ledger accumulates every failure of a transaction; the
-Scala rules stop at the first (one failure in the list), which is the same list for a transaction that
-breaks one rule.
+withdrawals), CERTS and GOV run before UTXOW, as in the ledger. A submitted transaction is judged
+by the ledger's MEMPOOL rule under the accumulating judgment (`rules/Judge.scala`,
+`docs/design/rule-interpreter-as-built.md`): every rule boundary of the reference is a sub-rule
+that always runs, so the failures of different rules are all reported, in the reference's order.
+Within each rule every check records its failure and the rule goes on to the state the reference
+makes, so a later certificate or sub-rule sees it (#412).
 
 **LocalStateQuery** (`protocol/LocalStateQuery.scala`, `network/LocalStateQueryServer.scala`,
 `node/ntc/`). The protocol codec is pure (states Idle, Acquiring, Acquired, Querying, Done; acquire at

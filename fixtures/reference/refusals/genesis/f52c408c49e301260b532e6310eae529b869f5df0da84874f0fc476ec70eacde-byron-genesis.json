@@ -1,0 +1,61 @@
+{
+  "bootStakeholders": {
+    "baf201dbe68f87a46e0430db35518bbdfc2c3c08e6e0038cf509802a": 1,
+    "d59a35fde750ecf12ea43f83ff61215198fea4058b1ab8bea22cf08e": 1,
+    "de72e1b3c1750c52adc80843c43a3f34c6fb7d871a32abc6532d5f80": 1
+  },
+  "heavyDelegation": {
+    "baf201dbe68f87a46e0430db35518bbdfc2c3c08e6e0038cf509802a": {
+      "omega": 0,
+      "issuerPk": "hrqa9q+eZMmxgQipRddoj+VzGUu2skXtbwl24L46iM1NB5G/4uNErMFl4OTrFl0aaZT1UYH/aFKRLmT1pkjqMg==",
+      "delegatePk": "NL2RXIsurELbTrCIMttOz8RPGz9NiDengEfFpvUf5DpQqq0GNi//m7wZTnnKlVOcNxcxZ8FFZU0n/mFuUES04Q==",
+      "cert": "39ed9bc32e0a1a3401d81113fc950aaf86dbec207236835dbb81e1acbddeeb1c3013903ca9479c4a05a26b0c734d5c2ae2aa8f667846d9b5c57e8b0607190407"
+    },
+    "d59a35fde750ecf12ea43f83ff61215198fea4058b1ab8bea22cf08e": {
+      "omega": 0,
+      "issuerPk": "FDhvFZqQTAeVvgxvxY2uCsYPyNWUxn1OgqZc58u2fNZzSvVhaMbf0m8zHDyoGAkGqV2HcKVgxS6hLXDtyAGO6w==",
+      "delegatePk": "JbgfqWbDCyIAMS64zxhvvpClCIeiXo3p49gzt51cVqJolqojC4SrQaVbj0DznYJME8FHIXeBZ+CjFwAJOI+Y3w==",
+      "cert": "35430f8650c1176323c39cb729a986cb9626ffaebd002d0b0cfbed5dc99ecab1ce932eb18b9c60edcea310d42603790fce8ad2ff5d3dd632536c03c39dba0f0f"
+    },
+    "de72e1b3c1750c52adc80843c43a3f34c6fb7d871a32abc6532d5f80": {
+      "omega": 0,
+      "issuerPk": "MvddMe+SC+5gzL07MWFALZiw0t9tmYenfXfQiqTUJnXUU7oSTP4P0QAas/quMt1TeoYVQekfUVzCHTCNKkU0iQ==",
+      "delegatePk": "KpkjbOG5Jjxa/WSm8fGQJuUwWY/pL6L07qWL0gE3iPqG+R2UoxoZwV3OGgAcyMUbrqFomt8TkSSClK7vSIFcuw==",
+      "cert": "5f7796061c69c984946588163964d50078306949139af126874ecf8b659154dc7f9ed90799fbb8ea859719444d16fda1e0bd1a377bc9c09c69714332fdf7be0b"
+    }
+  },
+  "startTime": 1793005941,
+  "nonAvvmBalances": {
+    "2cWKMJemoBahc3rg2Vo1oYu6LmL5mRC1tXNqx8RA7dwvFTaGAm1EBFZEkrtcK27fXcwAf": "3000000000",
+    "2cWKMJemoBaierrHBqwn7iJhGwN2hZpjm9o1ttRsjzQc97hVj9gVCZnstRVzDRTSyLQ78": "3000000000",
+    "2cWKMJemoBajXoTZjS1Qq7xcy4cp3MA2pWihSjwmpa1SumTteuzMHNPGyuQGQ7Q8ajTpB": "3000000000"
+  },
+  "blockVersionData": {
+    "scriptVersion": 0,
+    "slotDuration": "1000",
+    "maxBlockSize": "2000000",
+    "maxHeaderSize": "2000000",
+    "maxTxSize": "4096",
+    "maxProposalSize": "700",
+    "mpcThd": "20000000000000",
+    "heavyDelThd": "300000000000",
+    "updateVoteThd": "1000000000000",
+    "updateProposalThd": "100000000000000",
+    "updateImplicit": "10000",
+    "softforkRule": {
+      "initThd": "900000000000000",
+      "minThd": "600000000000000",
+      "thdDecrement": "50000000000000"
+    },
+    "txFeePolicy": {
+      "summand": "155381000000000",
+      "multiplier": "43946000000"
+    },
+    "unlockStakeEpoch": "18446744073709551615"
+  },
+  "protocolConsts": {
+    "k": 5,
+    "protocolMagic": 1082026
+  },
+  "avvmDistr": {}
+}
