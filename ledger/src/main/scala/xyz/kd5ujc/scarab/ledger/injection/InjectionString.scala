@@ -7,11 +7,17 @@ import java.nio.charset.{CharacterCodingException, CodingErrorAction, StandardCh
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Bytes
 
-/** json-stream's text-2 unescape path (`Data/JsonStream/Unescape.hs`). Raw control characters are
-  * preserved; escapes and UTF-8 scalar/surrogate validity follow that reader.
+/** json-stream's text-2 unescape path (`Data/JsonStream/Unescape.hs:99-466`). Raw control
+  * characters are preserved; escapes and UTF-8 scalar/surrogate validity follow that reader. Every
+  * refusal there is the same `DecodeError desc Nothing` (`Unescape.hs:102-105`), so `None` carries
+  * no cause; the parser records whether the string arrived as one token or in parts.
+  *
+  * The reference unescapes and validates bytes in one pass. Decoding UTF-8 first and then
+  * unescaping the text is an implementation difference with identical results, approved by the
+  * owner on 2026-10-27.
   */
 private[injection] object InjectionString:
-  private def utf8(bytes: Bytes): Either[InjectionJson.Error, String] =
+  private def utf8(bytes: Bytes): Option[String] =
     Either
       .catchOnly[CharacterCodingException] {
         StandardCharsets.UTF_8
@@ -21,7 +27,7 @@ private[injection] object InjectionString:
           .decode(ByteBuffer.wrap(bytes.toArray))
           .toString
       }
-      .leftMap(_ => InjectionJson.Error.StringEncoding)
+      .toOption
 
   private def hex(text: String, start: Int): Option[Int] =
     if start + 4 > text.length then None
@@ -35,14 +41,14 @@ private[injection] object InjectionString:
         n.flatMap(v => Option.when(digit >= 0)(v * 16 + digit))
       }
 
-  def read(bytes: Bytes): Either[InjectionJson.Error, String] = utf8(bytes).flatMap { text =>
-    @tailrec def loop(at: Int, pieces: List[String]): Either[InjectionJson.Error, String] =
-      if at == text.length then Right(pieces.reverseIterator.mkString)
+  def read(bytes: Bytes): Option[String] = utf8(bytes).flatMap { text =>
+    @tailrec def loop(at: Int, pieces: List[String]): Option[String] =
+      if at == text.length then Some(pieces.reverseIterator.mkString)
       else if text.charAt(at) != '\\' then
         val slash = text.indexOf('\\', at)
         val end = if slash < 0 then text.length else slash
         loop(end, text.substring(at, end) :: pieces)
-      else if at + 1 == text.length then Left(InjectionJson.Error.StringEscape)
+      else if at + 1 == text.length then None
       else
         text.charAt(at + 1) match
           case '"'  => loop(at + 2, "\"" :: pieces)
@@ -61,12 +67,12 @@ private[injection] object InjectionString:
                   hex(text, at + 8) match
                     case Some(low) if low >= 0xdc00 && low <= 0xdfff =>
                       loop(at + 12, s"${high.toChar}${low.toChar}" :: pieces)
-                    case _ => Left(InjectionJson.Error.StringSurrogate)
-                else Left(InjectionJson.Error.StringSurrogate)
+                    case _ => None
+                else None
               case Some(low) if low >= 0xdc00 && low <= 0xdfff =>
-                Left(InjectionJson.Error.StringSurrogate)
+                None
               case Some(value) => loop(at + 6, value.toChar.toString :: pieces)
-              case None        => Left(InjectionJson.Error.StringEscape)
-          case _ => Left(InjectionJson.Error.StringEscape)
+              case None        => None
+          case _ => None
     loop(0, Nil)
   }

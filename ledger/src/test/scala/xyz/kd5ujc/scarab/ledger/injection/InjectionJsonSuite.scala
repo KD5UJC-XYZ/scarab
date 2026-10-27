@@ -114,7 +114,8 @@ class InjectionJsonSuite extends FunSuite:
       assertEquals(observed, field[Vector[Json]](native, "pairEvents"))
       assertEquals(actual.remaining, field[Option[Int]](native, "remaining"))
       assertEquals(actual.remainingHex, field[Option[String]](native, "remainingHex"))
-      assertEquals(actual.error.nonEmpty, native.hcursor.get[String]("error").isRight)
+      // Each refusal renders the native diagnostic text exactly.
+      assertEquals(actual.error.map(_.message), native.hcursor.get[String]("error").toOption)
     }
   }
 
@@ -131,8 +132,7 @@ class InjectionJsonSuite extends FunSuite:
         assertEquals(
           next.pull,
           InjectionJson.Step.Failed(
-            InjectionJson.Error
-              .UnexpectedToken(InjectionJson.Expected.Value, InjectionJson.TokenKind.ObjectEnd)
+            InjectionJson.Error.UnexpectedToken(InjectionJson.End.ObjectEnd(Bytes.empty))
           )
         )
       case other => fail(s"expected first completed entry: $other")

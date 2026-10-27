@@ -93,7 +93,7 @@ class InjectionDecimalSuite extends FunSuite:
     @tailrec def read(step: InjectionLexer.Step, rest: Bytes): JsonValue = step match
       case InjectionLexer.Step.NeedData(input) if rest.nonEmpty =>
         read(InjectionLexer.pull(input.feed(rest.take(65536))), rest.drop(65536))
-      case InjectionLexer.Step.Emit(InjectionLexer.Token.Scalar(value), _) => value
+      case InjectionLexer.Step.Emit(InjectionLexer.Token.Value(scalar), _) => scalar.json
       case other => fail(s"expected complete root coefficient, got $other")
     val result = read(InjectionLexer.pull(InjectionLexer.initial), raw)
     assertEquals(result, JsonValue.Number(Scientific(BigInt(digits), 0)))
