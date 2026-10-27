@@ -30,14 +30,23 @@ class ForgeSkipSuite extends CatsEffectSuite:
       _ <- stats.skipped(0, ForgeSkip.Kind.Busy)
       _ <- stats.skipped(1, ForgeSkip.Kind.Busy)
       _ <- stats.skipped(1, ForgeSkip.Kind.TipTooOld)
-      _ <- stats.skipped(1, ForgeSkip.Kind.SlotOccupied)
+      _ <- stats.skipped(1, ForgeSkip.Kind.BlockFromFuture)
+      _ <- stats.skipped(1, ForgeSkip.Kind.SlotIsImmutable)
       _ <- stats.skipped(1, ForgeSkip.Kind.NotConnected)
       total <- stats.total
     yield
       val report = Json.obj(Reports.forgeStats(total)*)
-      assertEquals(report.hcursor.get[Long]("skipped"), Right(5L))
+      assertEquals(report.hcursor.get[Long]("skipped"), Right(6L))
       assertEquals(
         report.hcursor.get[Map[String, Long]]("skippedByReason"),
-        Right(Map("busy" -> 2L, "tipTooOld" -> 1L, "slotOccupied" -> 1L, "notConnected" -> 1L))
+        Right(
+          Map(
+            "busy" -> 2L,
+            "tipTooOld" -> 1L,
+            "blockFromFuture" -> 1L,
+            "slotIsImmutable" -> 1L,
+            "notConnected" -> 1L
+          )
+        )
       )
   }

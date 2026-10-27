@@ -70,8 +70,9 @@ then runs its slots a whole number of seconds away from the network's (roadmap H
 
 Counters (`ForgeStats`, per epoch; roadmap H5): slots checked for leadership, leader slots, forged, adopted,
 lost (slot battles lost at adoption, and blocks replaced later), failed, slots not checked by reason
-(`busy`: the loop was still on an earlier slot; `tipTooOld`; `slotOccupied`: a later slot is held, or the
-block in the slot is immutable; `notConnected`), and the forge latency (slot start to adoption: count, mean,
+(`busy`: the loop was still on an earlier slot; `tipTooOld`; `blockFromFuture`: the tip is in a later slot,
+the reference's `TraceBlockFromFuture`; `slotIsImmutable`: the immutable tip is in the slot or a later one,
+`TraceSlotIsImmutable`; `notConnected`), and the forge latency (slot start to adoption: count, mean,
 max). The first two reasons are also logged one by one as `forgeSkipped`. When the tip already holds the
 slot the pool leads, the forger does what `forkBlockForging` does (`mkCurrentBlockContext`): it forges an
 alternative to that block (same height, on its predecessor), and chain selection decides between the two;

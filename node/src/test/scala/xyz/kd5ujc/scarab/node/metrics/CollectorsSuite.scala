@@ -124,7 +124,7 @@ class CollectorsSuite extends CatsEffectSuite:
       assertEquals(gauge(s, Catalogue.slotsMissed, ()), Some(1.0))
       assertEquals(counter(s, Catalogue.forgeSkipped, SkipLabel.TipTooOld), Some(1.0))
       assertEquals(counter(s, Catalogue.forgeSkipped, SkipLabel.Other), Some(0.0))
-      assertEquals(counter(s, Catalogue.forgeSkipped, SkipLabel.SlotOccupied), Some(1.0))
+      assertEquals(counter(s, Catalogue.forgeSkipped, SkipLabel.BlockFromFuture), Some(1.0))
   }
 
   test("the JVM collector reads the memory, the threads and the process") {

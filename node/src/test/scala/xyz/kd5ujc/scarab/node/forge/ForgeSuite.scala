@@ -397,8 +397,11 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
         all <- forgedIn(h)
       yield
         assertEquals(initial.skipped, Map.empty[ForgeSkip.Kind, Long])
-        assertEquals(later.skipped, Map(ForgeSkip.Kind.SlotOccupied -> 1L))
-        assertEquals(immutable.skipped, Map(ForgeSkip.Kind.SlotOccupied -> 2L))
+        assertEquals(later.skipped, Map(ForgeSkip.Kind.BlockFromFuture -> 1L))
+        assertEquals(
+          immutable.skipped,
+          Map(ForgeSkip.Kind.BlockFromFuture -> 1L, ForgeSkip.Kind.SlotIsImmutable -> 1L)
+        )
         assertEquals(all.size, first.size)
     }
   }

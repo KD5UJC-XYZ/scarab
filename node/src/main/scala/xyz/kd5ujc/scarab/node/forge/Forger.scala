@@ -245,12 +245,14 @@ final class Forger[F[_]: Async, S](
           // the tip holds the slot: forge where the reference does, or skip when the block in the
           // slot is the immutable anchor
           sameSlotBase(current).fold(
-            stats.skipped(geometry.epochOf(slot), ForgeSkip.Kind.SlotOccupied)
+            stats.skipped(geometry.epochOf(slot), ForgeSkip.Kind.SlotIsImmutable)
           )(forge(_, slot))
         else if tipSlot.exists(_ > slot) then
-          // a later slot is occupied: the reference gives up (`TraceBlockFromFuture`, or
-          // `TraceSlotIsImmutable` for the anchor)
-          stats.skipped(geometry.epochOf(slot), ForgeSkip.Kind.SlotOccupied)
+          // a later slot is held: the reference gives up, telling the anchor from a volatile tip
+          val reason =
+            if current.blocks.isEmpty then ForgeSkip.Kind.SlotIsImmutable
+            else ForgeSkip.Kind.BlockFromFuture
+          stats.skipped(geometry.epochOf(slot), reason)
         else if slot - tipSlot.getOrElse(BigInt(0)) > maxTipAge then
           skipped(slot, ForgeSkip.TipTooOld(tipSlot))
         else forge(current, slot)
