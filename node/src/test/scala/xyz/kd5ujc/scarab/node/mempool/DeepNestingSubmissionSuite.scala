@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{IO, Resource}
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -33,8 +34,8 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
       Instant.EPOCH,
       1000,
       epochLength = 432000,
-      securityParam = 5,
-      activeSlotsCoeff = 0.05
+      securityParam = TestGeometry.k(5),
+      activeSlotsCoeff = TestGeometry.f("0.05")
     )
   private val env = MempoolEnv(globals, geometry)
   private val tipSlot = PreprodDeepTx.Slot - 1

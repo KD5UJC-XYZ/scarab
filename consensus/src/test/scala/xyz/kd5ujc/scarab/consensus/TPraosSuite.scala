@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus
 
-import xyz.kd5ujc.scarab.ledger.{Block, Genesis, Header, HeaderVrf}
+import xyz.kd5ujc.scarab.ledger.{Block, Genesis, Header, HeaderVrf, TestGeometry}
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -130,18 +130,18 @@ class TPraosSuite extends FunSuite:
     val keys = lite.genDelegs.keys.toVector.sortBy(_.hex)
     val one = Rational(1)
     assert((0 until 100).forall(s => TPraos.isOverlaySlot(0, one, s)))
-    assertEquals(TPraos.overlayOwner(0, keys, one, BigDecimal("0.05"), 0), Some(keys(0)))
-    assertEquals(TPraos.overlayOwner(0, keys, one, BigDecimal("0.05"), 20), Some(keys(1)))
-    assertEquals(TPraos.overlayOwner(0, keys, one, BigDecimal("0.05"), 140), Some(keys(0)))
-    assertEquals(TPraos.overlayOwner(0, keys, one, BigDecimal("0.05"), 21), None)
+    assertEquals(TPraos.overlayOwner(0, keys, one, TestGeometry.f("0.05"), 0), Some(keys(0)))
+    assertEquals(TPraos.overlayOwner(0, keys, one, TestGeometry.f("0.05"), 20), Some(keys(1)))
+    assertEquals(TPraos.overlayOwner(0, keys, one, TestGeometry.f("0.05"), 140), Some(keys(0)))
+    assertEquals(TPraos.overlayOwner(0, keys, one, TestGeometry.f("0.05"), 21), None)
   }
 
   test("overlay schedule: d = 1/2 owns every other slot, active every 20th overlay slot") {
     val keys = lite.genDelegs.keys.toVector.sortBy(_.hex)
     val half = Rational(1, 2)
     assertEquals((0 until 10).filter(s => TPraos.isOverlaySlot(0, half, s)), Vector(0, 2, 4, 6, 8))
-    assertEquals(TPraos.overlayOwner(0, keys, half, BigDecimal("0.05"), 40), Some(keys(1)))
-    assertEquals(TPraos.overlayOwner(0, keys, half, BigDecimal("0.05"), 20), None)
+    assertEquals(TPraos.overlayOwner(0, keys, half, TestGeometry.f("0.05"), 40), Some(keys(1)))
+    assertEquals(TPraos.overlayOwner(0, keys, half, TestGeometry.f("0.05"), 20), None)
     assert(!TPraos.isOverlaySlot(0, Rational(0), 5))
   }
 

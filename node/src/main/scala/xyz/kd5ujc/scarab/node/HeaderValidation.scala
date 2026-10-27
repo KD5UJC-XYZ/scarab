@@ -41,7 +41,9 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
         HeaderError.Structure(HeaderStructureProblem.EpochPrecedes(epoch, ledgerEpoch))
       )
     else if h.slot >= forecastLimit.getOrElse(
-        tip.fold(geometry.stabilityWindow)(t => t.slot + 1 + geometry.stabilityWindow)
+        tip.fold(geometry.stabilityWindow.toBigInt)(t =>
+          t.slot + 1 + geometry.stabilityWindow.toBigInt
+        )
       ) || epoch > ledgerEpoch + 1
     then
       HeaderRules.Prepared.Unknown(
@@ -68,8 +70,8 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
           )
           .leftMap(HeaderError.Envelope(_))
       val nonceWindow =
-        if h.era.ordinal >= Era.Conway.ordinal then geometry.randomnessStabilisationWindow
-        else geometry.stabilityWindow
+        if h.era.ordinal >= Era.Conway.ordinal then geometry.randomnessStabilisationWindow.toBigInt
+        else geometry.stabilityWindow.toBigInt
       val delegations = ledger.genDelegsAt(h.slot)
       HeaderRules.Prepared.Check(() =>
         val checked: Either[HeaderError, ProtocolState] =

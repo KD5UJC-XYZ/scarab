@@ -406,7 +406,7 @@ object LiteLedger:
       geometry: EpochGeometry
   ): Either[LedgerDecodeError, LiteLedger] = e match
     case Effect.Proposal(updates, target) =>
-      val tooLate = geometry.firstSlot(l.epoch + 1) - 2 * geometry.stabilityWindow
+      val tooLate = geometry.firstSlot(l.epoch + 1) - 2 * geometry.stabilityWindow.toBigInt
       if slot < tooLate then
         Either.cond(
           target == l.epoch,
@@ -429,6 +429,6 @@ object LiteLedger:
     case Effect.GenesisDelegation(gk, pair) =>
       Right(
         l.copy(futureGenDelegs =
-          l.futureGenDelegs :+ FutureGenDeleg(slot + geometry.stabilityWindow, gk, pair)
+          l.futureGenDelegs :+ FutureGenDeleg(slot + geometry.stabilityWindow.toBigInt, gk, pair)
         )
       )

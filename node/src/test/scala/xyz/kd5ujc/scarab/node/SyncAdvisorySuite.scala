@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import com.comcast.ip4s.*
 import java.time.Instant
 import munit.FunSuite
@@ -11,7 +12,8 @@ import xyz.kd5ujc.scarab.node.log.NodeEvent
 
 class SyncAdvisorySuite extends FunSuite:
   private val start = Instant.parse("2026-01-01T00:00:00Z")
-  private val geometry = EpochGeometry(start, 1000L, 100L, 10, BigDecimal("0.5"))
+  private val geometry =
+    EpochGeometry(start, 1000L, 100L, TestGeometry.k(10), TestGeometry.f("0.5"))
   // 100 slots of 1 s per epoch
   private val now = start.plusSeconds(1000)
 

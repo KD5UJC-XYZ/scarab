@@ -8,6 +8,7 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf, Verdicts, VrfCert}
 import xyz.kd5ujc.scarab.codec.Rational
+import xyz.kd5ujc.scarab.ledger.state.PositiveUnitInterval
 import xyz.kd5ujc.scarab.crypto.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
 
 /** TPraos header validation and chain-dependent state evolution: the Overlay, Prtcl, Updn, Tickn
@@ -29,12 +30,11 @@ object TPraos:
       firstSlot: BigInt,
       genesisKeys: Vector[Bytes],
       d: Rational,
-      activeSlotsCoeff: BigDecimal,
+      activeSlotsCoeff: PositiveUnitInterval,
       slot: BigInt
   ): Option[Bytes] =
     val position = ceiling(Rational(slot - firstSlot) * d)
-    val ascInv = Rational.fromDecimal(activeSlotsCoeff) match
-      case f => Rational(f.denominator, f.numerator).floor
+    val ascInv = Rational(activeSlotsCoeff.denominator, activeSlotsCoeff.numerator).floor
     Option.when(position % ascInv == 0 && genesisKeys.nonEmpty)(
       genesisKeys(((position / ascInv) % genesisKeys.size).toInt)
     )
@@ -208,7 +208,7 @@ object TPraos:
             ocertCounters = chain.protocol.ocertCounters.updated(issuerKey, sequence),
             evolvingNonce = evolving,
             candidateNonce =
-              if slot + geometry.stabilityWindow < nextEpoch then evolving
+              if slot + geometry.stabilityWindow.toBigInt < nextEpoch then evolving
               else chain.protocol.candidateNonce
           ),
           labNonce = header.prevHash.fold(Nonce.Neutral)(Nonce.Hash(_))

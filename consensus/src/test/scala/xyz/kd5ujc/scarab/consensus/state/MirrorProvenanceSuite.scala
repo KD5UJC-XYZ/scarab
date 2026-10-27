@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus.state
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import munit.FunSuite
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.ledger.state.Gap
@@ -53,7 +54,8 @@ class MirrorProvenanceSuite extends FunSuite:
     assertEquals(entered.gaps, gaps)
   }
 
-  private val geometry = EpochGeometry(java.time.Instant.EPOCH, 1000, 500, 5, BigDecimal("0.5"))
+  private val geometry =
+    EpochGeometry(java.time.Instant.EPOCH, 1000, 500, TestGeometry.k(5), TestGeometry.f("0.5"))
   private def count(slot: Int, epoch: Option[Int], previous: Int): Long =
     MirrorStep
       .afterVoting(geometry, BigInt(slot), epoch.map(BigInt(_)), Word32.fromUnsigned(previous))

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import java.time.Instant
 import munit.Assertions
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
@@ -23,7 +24,7 @@ object RewardPulserFixture extends Assertions:
       conway = None,
       alonzoCoinsPerUTxOWord = 34482
     ),
-    EpochGeometry(Instant.EPOCH, 1000, 10000, 5, BigDecimal("0.05"))
+    EpochGeometry(Instant.EPOCH, 1000, 10000, TestGeometry.k(5), TestGeometry.f("0.05"))
   )
 
   def bytes(n: Int, size: Int): Bytes =

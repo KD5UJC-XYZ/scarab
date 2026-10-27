@@ -309,7 +309,7 @@ object NodeEvent:
         "networkMagic" -> genesis.networkMagic.asJson,
         "systemStart" -> genesis.geometry.systemStart.toString.asJson,
         "epochLength" -> genesis.geometry.epochLength.asJson,
-        "securityParam" -> genesis.geometry.securityParam.asJson,
+        "securityParam" -> genesis.geometry.k.asJson,
         "byronEpochs" -> Option
           .unless(genesis.geometry.byron.derived)(genesis.geometry.byron.epochs)
           .asJson,

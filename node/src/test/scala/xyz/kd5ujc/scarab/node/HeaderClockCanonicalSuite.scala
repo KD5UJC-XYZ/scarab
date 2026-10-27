@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{IO, Ref}
 import cats.effect.testkit.TestControl
 import cats.mtl.{Handle, Raise}
@@ -12,7 +13,8 @@ import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.protocol.ChainSync
 
 class HeaderClockCanonicalSuite extends FailsOnUncaught:
-  private val geometry = EpochGeometry(Instant.EPOCH, 500, 432000, 2160, BigDecimal("0.05"))
+  private val geometry =
+    EpochGeometry(Instant.EPOCH, 500, 432000, TestGeometry.k(2160), TestGeometry.f("0.05"))
 
   private def typed[A](body: Handle[IO, PeerError] ?=> IO[A]): IO[Either[PeerError, A]] =
     Handle

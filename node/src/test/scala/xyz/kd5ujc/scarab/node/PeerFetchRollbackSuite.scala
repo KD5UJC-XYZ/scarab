@@ -71,7 +71,7 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
         closeReason <- Deferred[IO, NetworkError]
         chain <- Ref.of[IO, VolatileChain[BigInt]](
           VolatileChain(
-            ForgedChain.geometry.securityParam,
+            ForgedChain.geometry.k.toInt,
             Anchor(Some(BlockRef(base.slot, base.hash, base.blockNo)), base.blockNo),
             Vector.empty
           )

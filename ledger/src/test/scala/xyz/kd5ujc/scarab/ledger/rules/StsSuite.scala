@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.{Eq, Monad}
 import cats.laws.discipline.MonadTests
 import cats.mtl.{Ask, Handle, Local, Raise, Stateful}
@@ -25,7 +26,7 @@ class StsSuite extends DisciplineSuite:
 
   private val globals = Globals(
     LedgerGlobals(BigInt(1000), 100, Rational(1, 20), network = 0),
-    EpochGeometry(Instant.EPOCH, 1000, 100, 5, BigDecimal("0.05"))
+    EpochGeometry(Instant.EPOCH, 1000, 100, TestGeometry.k(5), TestGeometry.f("0.05"))
   )
   private val otherGlobals = globals.copy(ledger = globals.ledger.copy(network = 1))
 

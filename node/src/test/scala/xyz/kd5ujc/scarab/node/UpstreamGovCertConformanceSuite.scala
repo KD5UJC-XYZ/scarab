@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import java.time.Instant
@@ -62,7 +63,7 @@ class UpstreamGovCertConformanceSuite extends FunSuite:
     // ambient capability; all rule inputs it does read come from the exported judgment below.
     Globals(
       LedgerGlobals(BigInt(0), BigInt(1), Rational.zero, network = 0),
-      EpochGeometry(Instant.EPOCH, 1000L, 1L, 1, BigDecimal("0.1"))
+      EpochGeometry(Instant.EPOCH, 1000L, 1L, TestGeometry.k(1), TestGeometry.f("0.1"))
     )
 
   test("pinned upstream GOVCERT exports retain all generated verdicts and provenance") {

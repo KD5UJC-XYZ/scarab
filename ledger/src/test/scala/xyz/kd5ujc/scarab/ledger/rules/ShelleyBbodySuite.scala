@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import java.time.Instant
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
@@ -28,7 +29,8 @@ import xyz.kd5ujc.scarab.plutus.ExUnits
   * (`incrBlocks`, `isOverlaySlot`).
   */
 class ShelleyBbodySuite extends FunSuite:
-  private val geometry = EpochGeometry(Instant.EPOCH, 1000, 10000, 5, BigDecimal("0.05"))
+  private val geometry =
+    EpochGeometry(Instant.EPOCH, 1000, 10000, TestGeometry.k(5), TestGeometry.f("0.05"))
 
   private val globals = Globals(
     LedgerGlobals(TestLedger.Supply, 100, Rational(1, 2), network = 0, updateQuorum = 2),

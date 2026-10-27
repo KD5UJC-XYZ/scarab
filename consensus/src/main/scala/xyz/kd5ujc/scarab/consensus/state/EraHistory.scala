@@ -76,7 +76,7 @@ object EraHistory:
         acc :+ epoch.max(previous)
       }
     def bound(epoch: BigInt): Bound = boundAt(geometry, byron, epoch)
-    val safe = geometry.stabilityWindow
+    val safe = geometry.stabilityWindow.toBigInt
     val byronEra = EraSummary(
       bound(0),
       Some(bound(firstShelley)),
@@ -112,7 +112,7 @@ object EraHistory:
     if era == Era.Byron then
       Horizon.Params(byron.epochSlots, byron.slotLengthMillis, byron.k * 2, byron.k * 2)
     else
-      val safe = geometry.stabilityWindow
+      val safe = geometry.stabilityWindow.toBigInt
       Horizon.Params(BigInt(geometry.epochLength), BigInt(geometry.slotLengthMillis), safe, safe)
 
   /** The eras of a telescope in `era`, which started at `start` after the `past` eras, as the

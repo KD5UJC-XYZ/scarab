@@ -34,12 +34,12 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
         .competingForks(5000 until 5064, 5064 until 5128, leftSeed = 1, rightSeed = 2)
         .map { case (left, right) =>
           val common = left.headers.zip(right.headers).takeWhile { case (a, b) => a.hash == b.hash }
-          assert(common.size >= ForgedChain.geometry.securityParam)
+          assert(common.size >= ForgedChain.geometry.k.toInt)
           assert(left.headers.size > common.size)
           assert(right.headers.size > common.size)
           assertNotEquals(left.headers(common.size).hash, right.headers(common.size).hash)
-          assert(left.headers.size - common.size <= ForgedChain.geometry.securityParam)
-          assert(right.headers.size - common.size <= ForgedChain.geometry.securityParam)
+          assert(left.headers.size - common.size <= ForgedChain.geometry.k.toInt)
+          assert(right.headers.size - common.size <= ForgedChain.geometry.k.toInt)
         },
       seed = Some("MQ==")
     )
@@ -64,7 +64,7 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
         assertEquals(first.blockNo, BigInt(0))
         assertEquals(first.prev, None)
         assertEquals(first.relativeKesPeriod, 0)
-        assertEquals(chain.blocks.size, forged.size.min(geometry.securityParam))
+        assertEquals(chain.blocks.size, forged.size.min(geometry.k.toInt))
         assertEquals(chain.tipRef.map(_.hash), Some(forged.last.hash))
         // consecutive: each block extends the previous one
         forged.sliding(2).foreach {

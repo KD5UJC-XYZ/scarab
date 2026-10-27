@@ -64,11 +64,11 @@ class AdversarialScheduleSuite extends FailsOnUncaught:
   private def address(n: Int): PeerNetwork.Addr = InMemoryPeers.address(100 + n)
 
   private def initialChain(genesis: MirrorState, source: Option[ForgedChain]) =
-    source.fold(VolatileChain.genesis(ForgedChain.geometry.securityParam, genesis)) { forged =>
+    source.fold(VolatileChain.genesis(ForgedChain.geometry.k.toInt, genesis)) { forged =>
       forged.headers
         .zip(forged.states)
         .foldLeft(
-          VolatileChain.genesis(ForgedChain.geometry.securityParam, genesis)
+          VolatileChain.genesis(ForgedChain.geometry.k.toInt, genesis)
         ) { case (chain, (header, state)) =>
           chain.extend(header, state).fold(e => throw new AssertionError(e.message), _._1)
         }
@@ -367,7 +367,7 @@ class AdversarialScheduleSuite extends FailsOnUncaught:
                 afterRecovery <- observe("after-recovery", nodes)
                 openAfter <- peers.connections
               yield
-                val selectedK = ForgedChain.geometry.securityParam
+                val selectedK = ForgedChain.geometry.k.toInt
                 val observations = Vector(initial, whileWithheld, afterRelease, afterRecovery)
                 val traceText =
                   s"$trace, wait=$delay, release, converge=$firstConvergence, close/reopen node1; " +

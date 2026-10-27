@@ -148,7 +148,7 @@ class HeaderRulesSuite extends ScalaCheckSuite:
 
   test("a header beyond the stability window of the anchor has to wait for the chain to advance") {
     val i = forged.headers.indexWhere(
-      _.slot > forged.headers.head.slot + ForgedChain.geometry.stabilityWindow + 5
+      _.slot > forged.headers.head.slot + ForgedChain.geometry.stabilityWindow.toBigInt + 5
     )
     assert(i > 3)
     val laterTip = Some(ref(forged.headers(0)))
@@ -165,7 +165,7 @@ class HeaderRulesSuite extends ScalaCheckSuite:
   }
 
   test("an Origin ledger forecast excludes its native stability-window endpoint") {
-    val limit = ForgedChain.geometry.stabilityWindow
+    val limit = ForgedChain.geometry.stabilityWindow.toBigInt
     val header = forged.headers.head.copy(slot = limit)
     assertEquals(
       rules.validate(forged.genesis, None, rules.at(forged.genesis), header),
@@ -254,7 +254,7 @@ class HeaderRulesSuite extends ScalaCheckSuite:
     var prev = rules.at(crossing.states(last))
     val window = (firstOfNext until crossing.headers.size)
       .takeWhile(i =>
-        crossing.headers(i).slot <= crossing.headers(last).slot + geometry.stabilityWindow
+        crossing.headers(i).slot <= crossing.headers(last).slot + geometry.stabilityWindow.toBigInt
       )
     assert(window.nonEmpty)
     window.foreach { i =>

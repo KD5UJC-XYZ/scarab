@@ -86,12 +86,17 @@ class LiteLedgerSuite extends FunSuite:
     val scheduled = lite.copy(futureGenDelegs =
       Vector(
         xyz.kd5ujc.scarab.ledger
-          .FutureGenDeleg(100 + geometry.stabilityWindow, gkey, GenDelegPair(delegate, vrf))
+          .FutureGenDeleg(
+            100 + geometry.stabilityWindow.toBigInt,
+            gkey,
+            GenDelegPair(delegate, vrf)
+          )
       )
     )
     val before = LiteLedger.tick(scheduled, 100, geometry).toOption.get
     assertEquals(before.genDelegs(gkey), lite.genDelegs(gkey))
-    val after = LiteLedger.tick(scheduled, 100 + geometry.stabilityWindow, geometry).toOption.get
+    val after =
+      LiteLedger.tick(scheduled, 100 + geometry.stabilityWindow.toBigInt, geometry).toOption.get
     assertEquals(after.genDelegs(gkey), GenDelegPair(delegate, vrf))
   }
 

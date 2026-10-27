@@ -8,6 +8,8 @@ import java.time.Instant
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.byron.ByronParams
+import xyz.kd5ujc.scarab.ledger.json.{FromJson, NumberError}
+import xyz.kd5ujc.scarab.ledger.state.PositiveUnitInterval
 
 /** Network configuration read from the Shelley genesis file. */
 final case class ShelleyGenesis(
@@ -20,32 +22,44 @@ final case class ShelleyGenesis(
 )
 
 object Genesis:
+  /** The fields are read in the order of the reference's `FromJSON ShelleyGenesis` (cardano-ledger
+    * f649f975, `eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs:494-512`), so that of
+    * several malformed fields the same one is reported. `activeSlotsCoeff` and `securityParam` are
+    * read as that instance reads them: a `PositiveUnitInterval` and a `NonZero Word64`.
+    */
   def shelley(text: String): Either[ConfigError, ShelleyGenesis] =
     for
       json <- parser
         .parse(text)
         .leftMap(e => ConfigError(ConfigProblem.JsonSyntax("shelley genesis", e)))
       c = json.hcursor
-      magic <- field[Long](c, "networkMagic")
       start <- field[String](c, "systemStart").flatMap(s =>
         Either
           .catchNonFatal(Instant.parse(s))
           .leftMap(e => ConfigError(ConfigProblem.InvalidTimestamp(s, e)))
       )
-      slotLength <- field[BigDecimal](c, "slotLength")
+      magic <- field[Long](c, "networkMagic")
+      f <- number(c, GenesisNumberField.ActiveSlotsCoeff)(PositiveUnitInterval.fromJson)
+      k <- number(c, GenesisNumberField.SecurityParam)(FromJson.nonZeroWord64)
       epochLength <- field[Long](c, "epochLength")
-      k <- field[Int](c, "securityParam")
-      f <- field[BigDecimal](c, "activeSlotsCoeff")
+      kesPeriod <- field[BigInt](c, "slotsPerKESPeriod")
+      kesEvolutions <- field[BigInt](c, "maxKESEvolutions")
+      slotLength <- field[BigDecimal](c, "slotLength")
+      supply <- field[BigInt](c, "maxLovelaceSupply")
       millis <- Either.cond(
         (slotLength * 1000).isWhole,
         (slotLength * 1000).toLongExact,
         ConfigError(ConfigProblem.FractionalSlotMilliseconds(slotLength))
       )
       geometry <- EpochGeometry.checked(start, millis, epochLength, k, f)
-      kesPeriod <- field[BigInt](c, "slotsPerKESPeriod")
-      kesEvolutions <- field[BigInt](c, "maxKESEvolutions")
-      supply <- field[BigInt](c, "maxLovelaceSupply")
     yield ShelleyGenesis(magic, geometry, kesPeriod, kesEvolutions, supply, json)
+
+  private def number[A](c: ACursor, name: GenesisNumberField)(
+      read: Json => Either[NumberError, A]
+  ): Either[ConfigError, A] =
+    field[Json](c, name.key).flatMap(
+      read(_).leftMap(e => ConfigError(ConfigProblem.GenesisNumber(name, e)))
+    )
 
   /** The Shelley-based eras start at epoch `firstShelleyEpoch` (before it, the Byron epochs apply),
     * or, with none given, at an epoch the Byron ledger's update state decides.

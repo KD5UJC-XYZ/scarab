@@ -124,7 +124,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
       .eval {
         for
           ref <- Ref.of[IO, VolatileChain[MirrorState]](
-            VolatileChain.genesis(ForgedChain.geometry.securityParam, forged.genesis)
+            VolatileChain.genesis(ForgedChain.geometry.k.toInt, forged.genesis)
           )
           given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
           given Handle[IO, NodeError] <- NodeScope.forTest
@@ -587,7 +587,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
           .zip(forged.states)
           .take(prefix)
           .foldLeft(
-            VolatileChain.genesis(ForgedChain.geometry.securityParam, forged.genesis)
+            VolatileChain.genesis(ForgedChain.geometry.k.toInt, forged.genesis)
           ) { case (chain, (header, state)) =>
             chain.extend(header, state).fold(e => fail(e.message), _._1)
           }
@@ -814,7 +814,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
             advanced = forged.headers
               .zip(forged.states)
               .foldLeft(
-                VolatileChain.genesis(ForgedChain.geometry.securityParam, forged.genesis)
+                VolatileChain.genesis(ForgedChain.geometry.k.toInt, forged.genesis)
               ) { case (chain, (value, state)) =>
                 chain.extend(value, state).fold(error => fail(error.message), _._1)
               }

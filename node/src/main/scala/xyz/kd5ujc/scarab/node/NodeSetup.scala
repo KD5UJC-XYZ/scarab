@@ -110,9 +110,9 @@ object NodeSetup:
       praos.forks,
       byronParams.fold(
         EraHistory.ByronParams(
-          BigInt(geometry.securityParam) * 10,
+          geometry.k * 10,
           BigInt(20000),
-          BigInt(geometry.securityParam)
+          geometry.k
         )
       )(b =>
         EraHistory.ByronParams(b.epochSlots, BigInt(b.slotLengthMillis), BigInt(b.securityParam))
@@ -289,6 +289,11 @@ object NodeSetup:
         .map(_.getOrElse(HeaderCheckpoints.empty))
       shelleyBytes <- required("Shelley", names.shelley)
       shelleyBase <- Genesis.shelley(text(shelleyBytes))
+      // The chain store and the volatile chain count blocks in an `Int`: a larger security parameter
+      // is refused, which the reference's `NonZero Word64` would accept. An approved deviation,
+      // recorded in #474.
+      k = shelleyBase.geometry.k
+      _ <- Either.cond(k.isValidInt, (), ConfigError(ConfigProblem.SecurityParamBeyondStorage(k)))
       firstShelley = config.firstShelleyEpoch
       byronBytes <- required("Byron", names.byron)
       byron <-
@@ -333,7 +338,7 @@ object NodeSetup:
       params <- ProtocolParams.translatedFromGenesis(files.shelley, files.alonzo, conwayFile)
       f = genesis.geometry.activeSlotsCoeff
       active <- PraosLeaderThreshold.Fraction
-        .checked(BigInt(f.bigDecimal.unscaledValue), BigInt(10).pow(f.bigDecimal.scale.max(0)))
+        .checked(f.numerator, f.denominator)
         .leftMap(e => ConfigError(ConfigProblem.ActiveSlotsCoefficient(e)))
       praos = PraosConfig(
         genesis.geometry,

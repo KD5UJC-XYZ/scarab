@@ -317,8 +317,8 @@ object GenesisRuntime:
     * share a slot with a regular block. Forecasting, rather than a small fixed journal, bounds it.
     */
   def retainedHeaders(geometry: EpochGeometry): Int =
-    (2 * geometry.stabilityWindow.max(BigInt(2) * geometry.securityParam) +
-      BigInt(2) * geometry.securityParam + 1)
+    (2 * geometry.stabilityWindow.toBigInt.max(BigInt(2) * geometry.k) +
+      BigInt(2) * geometry.k + 1)
       .max(BlockPool.Retained)
       .min(BigInt(Int.MaxValue))
       .toInt

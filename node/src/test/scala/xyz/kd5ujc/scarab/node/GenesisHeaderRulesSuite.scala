@@ -85,7 +85,7 @@ class GenesisHeaderRulesSuite extends FunSuite:
           tipSlot,
           tipSlot + 1,
           tipSlot + 2 * c.setup.byronHistory.k,
-          tipSlot + c.setup.geometry.stabilityWindow,
+          tipSlot + c.setup.geometry.stabilityWindow.toBigInt,
           tipSlot + c.setup.geometry.epochLength
         )
         slots.distinct.foreach { slot =>
@@ -106,7 +106,7 @@ class GenesisHeaderRulesSuite extends FunSuite:
     val check = rules(c)
     val anchor = c.states(1)
     val tip = Some(ref(c.blocks.head.header))
-    val horizon = c.blocks.head.header.slot + 2 * c.setup.geometry.securityParam
+    val horizon = c.blocks.head.header.slot + 2 * c.setup.geometry.k.toInt
     val headers = c.blocks
       .drop(1)
       .takeWhile(b =>
@@ -173,7 +173,7 @@ class GenesisHeaderRulesSuite extends FunSuite:
       case NodeRules.Entry.Entering(first, _, _, _) => first
       case _                                        => fail("expected entry")
     val geometry = c.setup.geometry.resolved(first)
-    val limit = geometry.firstSlot(first) + geometry.stabilityWindow
+    val limit = geometry.firstSlot(first) + geometry.stabilityWindow.toBigInt
     val tooLate = h.copy(slot = limit)
     assertEquals(
       check.validate(anchor, tip, check.at(anchor), tooLate),

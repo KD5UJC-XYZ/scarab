@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{IO, Ref}
 import java.time.Instant
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -31,8 +32,8 @@ object TxKit:
         Instant.EPOCH,
         1000,
         epochLength = 1000,
-        securityParam = 5,
-        activeSlotsCoeff = 0.5
+        securityParam = TestGeometry.k(5),
+        activeSlotsCoeff = TestGeometry.f("0.5")
       )
     )
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.metrics
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{IO, Ref}
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -27,8 +28,8 @@ class CollectorsSuite extends CatsEffectSuite:
       java.time.Instant.EPOCH,
       1000,
       epochLength = 100,
-      securityParam = 3,
-      activeSlotsCoeff = 0.5
+      securityParam = TestGeometry.k(3),
+      activeSlotsCoeff = TestGeometry.f("0.5")
     )
 
   private def counter[L](s: Snapshot, d: CounterDef[L], l: L): Option[Double] =

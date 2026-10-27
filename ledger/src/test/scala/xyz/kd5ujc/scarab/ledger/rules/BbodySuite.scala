@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.Monad
 import cats.data.{Kleisli, StateT}
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
@@ -33,7 +34,7 @@ import xyz.kd5ujc.scarab.plutus.ExUnits
 class BbodySuite extends FunSuite:
   private val globals = Globals(
     LedgerGlobals(TestLedger.Supply, 100, Rational(1, 2), network = 0, updateQuorum = 2),
-    EpochGeometry(Instant.EPOCH, 1000, 10000, 5, BigDecimal("0.05"))
+    EpochGeometry(Instant.EPOCH, 1000, 10000, TestGeometry.k(5), TestGeometry.f("0.05"))
   )
 
   private def ok[A](either: Either[VocabError, A]): A =

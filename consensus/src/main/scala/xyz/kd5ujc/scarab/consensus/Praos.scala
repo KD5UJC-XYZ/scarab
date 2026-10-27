@@ -98,7 +98,8 @@ object Praos:
       nonceWindow: BigInt = BigInt(-1)
   ): Either[PraosError, (ProtocolState, LeaderCheck)] =
     val window =
-      if nonceWindow >= 0 then nonceWindow else config.geometry.randomnessStabilisationWindow
+      if nonceWindow >= 0 then nonceWindow
+      else config.geometry.randomnessStabilisationWindow.toBigInt
     header match
       case h: Header.Shelley =>
         h.vrf match

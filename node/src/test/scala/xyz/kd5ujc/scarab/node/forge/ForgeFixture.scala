@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{IO, Ref}
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.mtl.syntax.all.*
@@ -46,8 +47,8 @@ trait ForgeFixture:
     Instant.EPOCH,
     1000,
     epochLength = 1000,
-    securityParam = 5,
-    activeSlotsCoeff = 0.5
+    securityParam = TestGeometry.k(5),
+    activeSlotsCoeff = TestGeometry.f("0.5")
   )
   val slotsPerKes = BigInt(100)
   val config = PraosConfig(
@@ -93,9 +94,9 @@ trait ForgeFixture:
     MirrorEnv(globals.network, geometry, globals.updateQuorum),
     config.forks,
     EraHistory.ByronParams(
-      BigInt(geometry.securityParam) * 10,
+      geometry.k * 10,
       BigInt(20000),
-      BigInt(geometry.securityParam)
+      geometry.k
     )
   )
 
@@ -140,7 +141,7 @@ trait ForgeFixture:
     for
       start <- IO.pure(mirrorState(ledger))
       ref <- Ref.of[IO, VolatileChain[MirrorState]](
-        VolatileChain.genesis(geometry.securityParam, start)
+        VolatileChain.genesis(geometry.k.toInt, start)
       )
       given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
       realRules = MirrorRules[IO](config, globals, None, None, mirrorEnv.byron)

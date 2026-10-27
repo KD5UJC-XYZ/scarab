@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import java.time.Instant
 import munit.Assertions
 import scala.collection.immutable.SortedMap
@@ -29,8 +30,8 @@ object NativeRewardFixture extends Assertions:
         Instant.EPOCH,
         1000,
         slots,
-        security,
-        BigDecimal(active.numerator) / BigDecimal(active.denominator)
+        TestGeometry.k(security),
+        TestGeometry.f(active)
       )
     )
 

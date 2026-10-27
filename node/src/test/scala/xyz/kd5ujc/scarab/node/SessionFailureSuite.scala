@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{IO, Ref}
 import cats.effect.std.Queue
 import cats.mtl.{Raise, Stateful}
@@ -38,8 +39,8 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       java.time.Instant.EPOCH,
       1000,
       epochLength = 100,
-      securityParam = 5,
-      activeSlotsCoeff = 0.5
+      securityParam = TestGeometry.k(5),
+      activeSlotsCoeff = TestGeometry.f("0.5")
     )
   private val tip = ChainSync.Tip.Origin
   private val headers: Vector[Header] = Fixtures.chain(5)
@@ -72,7 +73,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     NodeScope.resource.use { node =>
       for
         ref <- Ref.of[IO, VolatileChain[BigInt]](
-          VolatileChain.genesis(geometry.securityParam, -1)
+          VolatileChain.genesis(geometry.k.toInt, -1)
         )
         given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
         stored <- Ref.of[IO, Vector[BlockRef]](Vector.empty)

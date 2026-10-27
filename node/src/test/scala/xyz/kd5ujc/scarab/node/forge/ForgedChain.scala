@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import xyz.kd5ujc.scarab.ledger.ChainError
 import cats.effect.{IO, Ref}
 import cats.mtl.{Handle, Raise, Stateful}
@@ -79,8 +80,8 @@ object ForgedChain:
       Instant.EPOCH,
       1000,
       epochLength = 1000,
-      securityParam = 5,
-      activeSlotsCoeff = 0.5
+      securityParam = TestGeometry.k(5),
+      activeSlotsCoeff = TestGeometry.f("0.5")
     )
   val config: PraosConfig = PraosConfig(
     geometry,
@@ -97,9 +98,9 @@ object ForgedChain:
     MirrorEnv(globals.network, geometry, globals.updateQuorum),
     config.forks,
     EraHistory.ByronParams(
-      BigInt(geometry.securityParam) * 10,
+      geometry.k * 10,
       BigInt(20000),
-      BigInt(geometry.securityParam)
+      geometry.k
     )
   )
 
@@ -245,8 +246,8 @@ object ForgedChain:
       left <- forgeFrom(start, leftPool, branchSlots, Some(prefix))
       right <- forgeFrom(start, rightPool, branchSlots, Some(prefix))
       commonLength = prefix.headers.size
-      leftLimit = commonLength + geometry.securityParam
-      rightLimit = commonLength + (geometry.securityParam - 2).max(1)
+      leftLimit = commonLength + geometry.k.toInt
+      rightLimit = commonLength + (geometry.k.toInt - 2).max(1)
       boundedLeft = left.copy(
         headers = left.headers.take(leftLimit),
         raws = left.raws.take(leftLimit),
@@ -265,11 +266,11 @@ object ForgedChain:
       slots: Range,
       prior: Option[ForgedChain]
   ): IO[ForgedChain] =
-    val initial = prior.fold(VolatileChain.genesis(geometry.securityParam, genesis)) { chain =>
+    val initial = prior.fold(VolatileChain.genesis(geometry.k.toInt, genesis)) { chain =>
       chain.headers
         .zip(chain.states)
         .foldLeft(
-          VolatileChain.genesis(geometry.securityParam, chain.genesis)
+          VolatileChain.genesis(geometry.k.toInt, chain.genesis)
         ) { case (current, (header, state)) =>
           current.extend(header, state).toOption.get._1
         }

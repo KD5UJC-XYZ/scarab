@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger.rules
 
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, LedgerGlobals}
+import xyz.kd5ujc.scarab.ledger.state.{NonZero, Word64}
 
 /** The constants of a network that the era-indexed rules read from their environment: Haskell's
   * `Globals` (`Cardano/Ledger/BaseTypes.hs:761-789`), the reader environment of `ShelleyBase =
@@ -28,17 +29,17 @@ final case class Globals(ledger: LedgerGlobals, geometry: EpochGeometry):
   def activeSlotCoeff: Rational = ledger.activeSlotsCoeff
 
   /** `securityParameter`: the most blocks that can be rolled back. */
-  def securityParameter: Int = geometry.securityParam
+  def securityParameter: NonZero[Word64] = geometry.securityParam
 
   /** `stabilityWindow` (3k/f): protocol updates must be submitted at least twice this before an
     * epoch boundary.
     */
-  def stabilityWindow: BigInt = geometry.stabilityWindow
+  def stabilityWindow: BigInt = geometry.stabilityWindow.toBigInt
 
   /** `randomnessStabilisationWindow` (4k/f): slots before the end of the epoch at which the
     * candidate nonce stops updating.
     */
-  def randomnessStabilisationWindow: BigInt = geometry.randomnessStabilisationWindow
+  def randomnessStabilisationWindow: BigInt = geometry.randomnessStabilisationWindow.toBigInt
 
   /** `epochInfo`, the two functions the rules use: the epoch of a slot, and the first slot of an
     * epoch.

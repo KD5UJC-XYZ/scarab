@@ -34,7 +34,13 @@ class GenesisConfigSuite extends FunSuite:
     val decimal = valid.deepMerge(Json.obj("activeSlotsCoeff" -> Json.fromString("not a ratio")))
     assertEquals(
       GenesisConfig.encode(decimal),
-      Left(GenesisConfig.Error.InvalidDecimal("activeSlotsCoeff"))
+      Left(
+        GenesisConfig.Error.InvalidActiveSlotsCoeff(
+          xyz.kd5ujc.scarab.ledger.json.NumberError.TypeMismatch(
+            xyz.kd5ujc.scarab.ledger.json.JsonKind.String
+          )
+        )
+      )
     )
     val start = valid.deepMerge(Json.obj("systemStart" -> Json.fromString("not a time")))
     assert(GenesisConfig.encode(start).left.exists {
@@ -67,4 +73,14 @@ class GenesisConfigSuite extends FunSuite:
       case GenesisConfig.Error.InvalidHex("genesis key", _) => true
       case _                                                => false
     })
+  }
+
+  test("the active slot coefficient is read as the reference's PositiveUnitInterval") {
+    val valid = genesis("preview")
+    def coefficient(value: Json) =
+      GenesisConfig.encode(valid.deepMerge(Json.obj("activeSlotsCoeff" -> value)))
+    val ratio = Json.obj("numerator" -> Json.fromInt(2), "denominator" -> Json.fromInt(40))
+    // the object form is reduced, so it encodes as the decimal 0.05 does
+    assertEquals(coefficient(ratio), GenesisConfig.encode(valid))
+    assert(coefficient(Json.fromBigDecimal(BigDecimal("1e-20"))).isLeft)
   }

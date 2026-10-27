@@ -51,7 +51,7 @@ object Placement:
       EraHistory.ByronParams(
         geometry.byron.epochSlots,
         BigInt(geometry.byron.slotLengthMillis),
-        BigInt(geometry.securityParam)
+        geometry.k
       ),
       forks
     )
@@ -186,7 +186,7 @@ object MirrorStep:
   ): Either[StateMirrorError, Word32] =
     val epoch = geometry.epochOf(slot)
     val before = if previousEpoch.contains(epoch) then previous.bits else 0
-    val deadline = (geometry.firstSlot(epoch + 1) - 2 * geometry.stabilityWindow).max(0)
+    val deadline = (geometry.firstSlot(epoch + 1) - 2 * geometry.stabilityWindow.toBigInt).max(0)
     if slot >= deadline && before == -1 then Left(StateMirrorError.TransitionCounterOverflow)
     else Right(Word32.fromUnsigned(if slot >= deadline then before + 1 else before))
 

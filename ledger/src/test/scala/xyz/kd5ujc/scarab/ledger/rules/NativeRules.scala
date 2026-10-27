@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.{
   EpochGeometry,
@@ -131,13 +132,19 @@ object NativeRules:
     * says nothing).
     */
   def globals(g: LedgerGlobals): Globals =
-    val f = BigDecimal(g.activeSlotsCoeff.numerator) / BigDecimal(g.activeSlotsCoeff.denominator)
+    val f = g.activeSlotsCoeff
     val k =
-      if g.startRewards.signum == 0 then 2
-      else (BigDecimal(g.startRewards) * f / 4).setScale(0, BigDecimal.RoundingMode.CEILING).toInt
-    val geometry = EpochGeometry(java.time.Instant.EPOCH, 1000L, g.epochLength.toLong, k, f)
-    if g.startRewards.signum != 0 && geometry.randomnessStabilisationWindow != g.startRewards then
-      broken(s"no security parameter makes the reward window ${g.startRewards} of $f")
+      if g.startRewards.signum == 0 then BigInt(2)
+      else (Rational(g.startRewards) * f / Rational(4)).ceil
+    val geometry = EpochGeometry(
+      java.time.Instant.EPOCH,
+      1000L,
+      g.epochLength.toLong,
+      TestGeometry.k(k.toLong),
+      TestGeometry.f(f)
+    )
+    if g.startRewards.signum != 0 && geometry.randomnessStabilisationWindow.toBigInt != g.startRewards
+    then broken(s"no security parameter makes the reward window ${g.startRewards} of $f")
     Globals(g, geometry)
 
   /** The constants the boundary suites use by default: [[TestLedger.globals]]' ledger. */

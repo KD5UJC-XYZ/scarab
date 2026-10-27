@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import java.time.Instant
@@ -27,7 +28,13 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
   private val base = Path.of("node/src/test/resources/upstream/conway-native-ledgers")
   private val originals = Path.of("node/src/test/resources/upstream/conway-native-refund/cases")
   private val geometry =
-    EpochGeometry(Instant.parse("2017-09-23T21:44:51Z"), 1000L, 4320L, 108, BigDecimal("0.2"))
+    EpochGeometry(
+      Instant.parse("2017-09-23T21:44:51Z"),
+      1000L,
+      4320L,
+      TestGeometry.k(108),
+      TestGeometry.f("0.2")
+    )
   private val globals = Globals(
     LedgerGlobals(BigInt("45000000000000000"), 4320, Rational(1, 5), 0),
     geometry
@@ -119,7 +126,7 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
             epoch,
             0,
             geometry.firstSlot(epoch + 1),
-            geometry.stabilityWindow,
+            geometry.stabilityWindow.toBigInt,
             clock = Some(
               xyz.kd5ujc.scarab.ledger.PosixClock.Total(s =>
                 BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s)

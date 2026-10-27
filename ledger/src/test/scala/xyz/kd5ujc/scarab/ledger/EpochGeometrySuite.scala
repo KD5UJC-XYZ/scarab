@@ -6,6 +6,7 @@ import java.time.Instant
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
 import org.scalacheck.Gen
+import xyz.kd5ujc.scarab.codec.Rational
 
 /** Slot/epoch arithmetic across the Byron prefix and the Shelley-based eras. */
 class EpochGeometrySuite extends ScalaCheckSuite:
@@ -18,8 +19,8 @@ class EpochGeometrySuite extends ScalaCheckSuite:
       start,
       100,
       epochLength,
-      5,
-      BigDecimal("0.2"),
+      TestGeometry.k(5),
+      TestGeometry.f("0.2"),
       if byronEpochs == 0 then ByronSpan.Absent else ByronSpan(byronEpochs, byronSlots, 1000)
     )
 
@@ -101,8 +102,8 @@ class EpochGeometrySuite extends ScalaCheckSuite:
     start.plusMillis(millis),
     slot,
     length,
-    5,
-    BigDecimal("0.2"),
+    TestGeometry.k(5),
+    TestGeometry.f("0.2"),
     if epochs == 0 then ByronSpan.Absent else ByronSpan(epochs, 50, 20000)
   )
 
@@ -125,7 +126,7 @@ class EpochGeometrySuite extends ScalaCheckSuite:
   }
 
   test("a fractional system start moves slot boundaries by the fraction, not by a second") {
-    val g = EpochGeometry(start.plusMillis(350), 100, 500, 5, BigDecimal("0.2"))
+    val g = EpochGeometry(start.plusMillis(350), 100, 500, TestGeometry.k(5), TestGeometry.f("0.2"))
     assertEquals(g.slotAt(start.plusMillis(349)), BigInt(0))
     assertEquals(g.slotAt(start.plusMillis(449)), BigInt(0))
     assertEquals(g.slotAt(start.plusMillis(450)), BigInt(1))
@@ -142,7 +143,9 @@ class EpochGeometrySuite extends ScalaCheckSuite:
   private def fixtureWindows(network: String): Either[ConfigError, (BigInt, BigInt)] =
     Genesis
       .shelley(Files.readString(Path.of(s"fixtures/$network/genesis/shelley-genesis.json")))
-      .map(g => (g.geometry.stabilityWindow, g.geometry.randomnessStabilisationWindow))
+      .map(g =>
+        (g.geometry.stabilityWindow.toBigInt, g.geometry.randomnessStabilisationWindow.toBigInt)
+      )
 
   test("3k/f and 4k/f of the real network configurations keep their values (exact 3k/f, 4k/f)") {
     // mainnet and preprod: k 2160, f 1/20; preview: k 432, f 1/20 (the Shelley genesis fixtures)
@@ -154,12 +157,101 @@ class EpochGeometrySuite extends ScalaCheckSuite:
   property("the windows are the exact ceilings of 3k/f and 4k/f") {
     forAll(Gen.choose(1, 5000), Gen.choose(1, 999)) { (k, thousandths) =>
       val g = geometry(0, 1, 1000000).copy(
-        securityParam = k,
-        activeSlotsCoeff = BigDecimal(thousandths) / 1000
+        securityParam = TestGeometry.k(k),
+        activeSlotsCoeff = TestGeometry.f(Rational(thousandths, 1000))
       )
       // ceil(a / b) for positive integers, in integer arithmetic only
       def ceilDiv(a: BigInt, b: BigInt): BigInt = (a + b - 1) / b
-      g.stabilityWindow == ceilDiv(BigInt(3 * k) * 1000, BigInt(thousandths)) &&
-      g.randomnessStabilisationWindow == ceilDiv(BigInt(4 * k) * 1000, BigInt(thousandths))
+      g.stabilityWindow.toBigInt == ceilDiv(BigInt(3 * k) * 1000, BigInt(thousandths)) &&
+      g.randomnessStabilisationWindow.toBigInt == ceilDiv(BigInt(4 * k) * 1000, BigInt(thousandths))
     }
+  }
+
+  test("the windows are Word64: ceiling of the exact 3k/f and 4k/f, low 64 bits kept") {
+    val maxWord = BigInt(2).pow(64) - 1
+    def windows(k: BigInt, f: Rational) =
+      val g = geometry(0, 1, 1000).copy(
+        securityParam = TestGeometry.k(k.toLong),
+        activeSlotsCoeff = TestGeometry.f(f)
+      )
+      (g.stabilityWindow.toBigInt, g.randomnessStabilisationWindow.toBigInt)
+    val modulus = BigInt(2).pow(64)
+    // 3 * 2^63 and 4 * 2^63 do not fit: 2^63 and 0 remain
+    assertEquals(windows(BigInt(2).pow(63), Rational.one), (BigInt(2).pow(63), BigInt(0)))
+    // 8 * (2^64 - 1) = 2^64 - 8 modulo 2^64
+    assertEquals(windows(maxWord, Rational(1, 2))._2, modulus - 8)
+    // the smallest coefficient, 10^-19: 3 * 2160 * 10^19 modulo 2^64
+    assertEquals(
+      windows(2160, Rational(1, BigInt(10).pow(19))),
+      ((3 * 2160 * BigInt(10).pow(19)) % modulus, (4 * 2160 * BigInt(10).pow(19)) % modulus)
+    )
+  }
+
+  private def shelley(edit: io.circe.JsonObject => io.circe.JsonObject) =
+    val text = Files.readString(Path.of("fixtures/preview/genesis/shelley-genesis.json"))
+    val json = io.circe.parser.parse(text).fold(e => fail(e.message), identity)
+    Genesis.shelley(json.mapObject(edit).noSpaces)
+
+  test("activeSlotsCoeff is a PositiveUnitInterval: the object form and the decimal limits") {
+    def coefficient(value: String) =
+      shelley(
+        _.add("activeSlotsCoeff", io.circe.parser.parse(value).fold(e => fail(e.message), identity))
+      )
+        .map(_.geometry.activeSlotsCoeff.rational)
+    assertEquals(coefficient("""{"numerator": 1, "denominator": 20}"""), Right(Rational(1, 20)))
+    assertEquals(
+      coefficient("0.1234567890123456789"),
+      Right(Rational(BigInt("1234567890123456789"), BigInt(10).pow(19)))
+    )
+    assertEquals(
+      coefficient("0.00000000000000000001"),
+      Left(
+        ConfigError(
+          ConfigProblem.GenesisNumber(
+            GenesisNumberField.ActiveSlotsCoeff,
+            json.NumberError.TooPrecise(json.Scientific(1, -20))
+          )
+        )
+      )
+    )
+    assertEquals(
+      coefficient("1.5"),
+      Left(
+        ConfigError(
+          ConfigProblem.GenesisNumber(
+            GenesisNumberField.ActiveSlotsCoeff,
+            json.NumberError.OutsideOfBounds(Rational(3, 2))
+          )
+        )
+      )
+    )
+  }
+
+  test("securityParam is a NonZero Word64") {
+    def k(value: io.circe.Json) =
+      shelley(
+        _.add("securityParam", value).add("epochLength", io.circe.Json.fromLong(Long.MaxValue))
+      )
+        .map(_.geometry.k)
+    assertEquals(k(io.circe.Json.fromLong(432)), Right(BigInt(432)))
+    assertEquals(k(io.circe.Json.fromBigInt(BigInt(2).pow(32))), Right(BigInt(2).pow(32)))
+    assertEquals(
+      k(io.circe.Json.fromLong(0)),
+      Left(
+        ConfigError(
+          ConfigProblem.GenesisNumber(GenesisNumberField.SecurityParam, json.NumberError.Zero)
+        )
+      )
+    )
+    assertEquals(
+      k(io.circe.Json.fromLong(-1)),
+      Left(
+        ConfigError(
+          ConfigProblem.GenesisNumber(
+            GenesisNumberField.SecurityParam,
+            json.NumberError.NotWord64(json.Scientific(-1, 0))
+          )
+        )
+      )
+    )
   }

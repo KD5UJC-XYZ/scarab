@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{Deferred, IO, Ref}
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
@@ -11,7 +12,8 @@ import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.protocol.ChainSync
 
 class FollowerReintersectionSuite extends FailsOnUncaught:
-  private val geometry = EpochGeometry(java.time.Instant.EPOCH, 1000, 100, 2, 0.5)
+  private val geometry =
+    EpochGeometry(java.time.Instant.EPOCH, 1000, 100, TestGeometry.k(2), TestGeometry.f("0.5"))
   private val headers = Fixtures.chain(10)
   private val tip = ChainSync.Tip.Origin
 

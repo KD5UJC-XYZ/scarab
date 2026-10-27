@@ -166,7 +166,7 @@ object BlockBuilder:
             epoch,
             globals.network,
             firstSlotNextEpoch = geometry.firstSlot(epoch + 1),
-            stabilityWindow = geometry.stabilityWindow,
+            stabilityWindow = geometry.stabilityWindow.toBigInt,
             txIndex = acc.chosen.size,
             updateQuorum = globals.updateQuorum,
             clock = Some(clock.getOrElse(PosixClock.total(geometry))),

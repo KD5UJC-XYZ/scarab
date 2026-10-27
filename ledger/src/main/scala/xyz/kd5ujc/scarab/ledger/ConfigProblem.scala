@@ -32,8 +32,15 @@ enum ConfigProblem:
   case CostModelLanguage(value: String)
   case NonPositive(context: String, value: BigDecimal)
   case Negative(context: String, value: BigDecimal)
-  case ActiveSlotRange(value: BigDecimal)
-  case EpochTooShort(epochLength: Long, randomnessWindow: BigInt)
+  case EpochTooShort(epochLength: Long, randomnessWindow: state.Word64)
+
+  /** A genesis number the reference's `FromJSON` instance refuses. */
+  case GenesisNumber(field: GenesisNumberField, cause: json.NumberError)
+
+  /** A security parameter the chain store cannot count in an `Int`, though the reference's
+    * `NonZero Word64` holds it. An approved deviation, recorded in #474.
+    */
+  case SecurityParamBeyondStorage(k: BigInt)
 
   case ExpectedObject(context: String, actual: io.circe.Json)
   case Selection(context: String, value: String, allowed: Set[String])
@@ -76,7 +83,10 @@ enum ConfigProblem:
   case AncillaryKeyRequired
 
   def message: String = this match
-    case ActiveSlotsCoefficient(e)        => e.message
+    case ActiveSlotsCoefficient(e)   => e.message
+    case GenesisNumber(field, cause) => s"genesis ${field.key}: ${cause.message}"
+    case SecurityParamBeyondStorage(k) =>
+      s"genesis securityParam $k: the chain store counts at most ${Int.MaxValue} blocks"
     case JsonSyntax(context, cause)       => s"$context is not JSON: ${cause.message}"
     case JsonField(context, field, cause) => s"$context $field: ${cause.message}"
     case MissingField(context, field)     => s"$context: missing required field $field"
@@ -100,3 +110,12 @@ enum ConfigProblem:
       "topology bootstrapPeers cannot be configured with ConsensusMode GenesisMode"
     case WithUsage(cause, usage) => s"${cause.message}\n$usage"
     case _                       => toString
+
+/** A Shelley genesis field read with a number instance of the reference. */
+enum GenesisNumberField:
+  case ActiveSlotsCoeff, SecurityParam
+
+  /** The JSON key. */
+  def key: String = this match
+    case ActiveSlotsCoeff => "activeSlotsCoeff"
+    case SecurityParam    => "securityParam"

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.Applicative
 import cats.effect.{IO, Ref}
 import cats.effect.testkit.TestControl
@@ -17,7 +18,8 @@ import xyz.kd5ujc.scarab.network.selection.{ChainSyncJumping, Gsm}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
 
 class GenesisRuntimeSuite extends FailsOnUncaught:
-  private val geometry = EpochGeometry(Instant.EPOCH, 1000, 100, 2, BigDecimal(1))
+  private val geometry =
+    EpochGeometry(Instant.EPOCH, 1000, 100, TestGeometry.k(2), TestGeometry.f("1"))
   private val empty = Fragment(ChainSync.Point.Origin, Vector.empty)
   private val local =
     ChainSelection.Local(ChainSync.Point.Origin, SelectView(-1, 0, None, 0, None), Vector.empty)

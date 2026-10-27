@@ -60,7 +60,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private val geometry = setup.geometry
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
   private given SnapshotFormat[IO, MirrorState] = SnapshotV7.format[IO](SnapshotCheck.Full)
-  private val k = geometry.securityParam
+  private val k = geometry.k.toInt
 
   private val raws: Vector[Bytes] =
     JFiles

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.genesis
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
 import cats.mtl.{Ask, Handle, Raise, Stateful, Tell}
@@ -164,7 +165,13 @@ object UpstreamGenesisReplay extends munit.Assertions:
        else UpstreamGenesisBlocks.build(scenario).leftMap(Problem.Blocks(_))) match
         case Left(problem) => IO.pure(Left(problem))
         case Right(universe) =>
-          val geometry = EpochGeometry(Instant.EPOCH, 20000, 1000000, scenario.k, BigDecimal(1))
+          val geometry = EpochGeometry(
+            Instant.EPOCH,
+            20000,
+            1000000,
+            TestGeometry.k(scenario.k),
+            TestGeometry.f("1")
+          )
           val protocol = ProtocolState.initial(Era.Babbage, Bytes(Vector.fill(32)(0.toByte)))
           def headerState(previous: Option[BlockRef]): NodeHeaderState =
             NodeHeaderState.Shelley(protocol, previous, None, None)
