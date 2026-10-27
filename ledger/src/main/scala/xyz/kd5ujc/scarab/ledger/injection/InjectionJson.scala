@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger.injection
 
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
-import xyz.kd5ujc.scarab.ledger.json.{JsonObject, JsonValue, Scientific}
+import xyz.kd5ujc.scarab.ledger.json.{JsonKey, JsonObject, JsonText, JsonValue, Scientific}
 
 /** Pull-based `objectItems value`, from json-stream 0.4.6.1 `Parser.hs:315-425,610-638,780-790`.
   * One completed entry is yielded before parsing the next entry. The consumer then decodes its
@@ -16,9 +16,9 @@ import xyz.kd5ujc.scarab.ledger.json.{JsonObject, JsonValue, Scientific}
 object InjectionJson:
   /** The refusals `objectItems value` can reach with this lexer, one case per reference message;
     * `message` is the reference's text. The parser's other messages are unreachable here: `array'`
-    * is entered only with `ArrayBegin` in hand (`Parser.hs:259`), a string continuation never
-    * meets another element (`Parser.hs:353,603,616`), and `StringEnd` comes only after
-    * `StringContent` (`Parser.hs:636`).
+    * is entered only with `ArrayBegin` in hand (`Parser.hs:259`), a string continuation never meets
+    * another element (`Parser.hs:353,603,616`), and `StringEnd` comes only after `StringContent`
+    * (`Parser.hs:636`).
     */
   enum Error extends DomainError:
     /** `TokFailed` (`CLexer.hs:193,214,218,234`) where the parser received it
@@ -95,12 +95,12 @@ object InjectionJson:
   private enum Parent:
     case Entry(key: String)
     case Item(values: List[JsonValue], up: Parent)
-    case Field(fields: List[(String, JsonValue)], key: String, up: Parent)
+    case Field(fields: List[(JsonKey, JsonValue)], key: JsonKey, up: Parent)
 
   /** The object whose keys are read: the outer one, whose entries are yielded, or a nested one. */
   private enum KeySite:
     case Outer
-    case Inner(fields: List[(String, JsonValue)], up: Parent)
+    case Inner(fields: List[(JsonKey, JsonValue)], up: Parent)
 
   private enum Resume:
     case Key(site: KeySite)
@@ -187,11 +187,11 @@ object InjectionJson:
       case None => refuse(Error.Undecodable(arrival))
       case Some(decoded) =>
         target match
-          case Target.Value(into) => value(lexer, JsonValue.String(decoded), into)
+          case Target.Value(into) => value(lexer, JsonValue.String(JsonText.pack(decoded)), into)
           case Target.Key(KeySite.Outer) =>
             tokens(lexer, Mode.Value(Parent.Entry(decoded)))
           case Target.Key(KeySite.Inner(fields, up)) =>
-            tokens(lexer, Mode.Value(Parent.Field(fields, decoded, up)))
+            tokens(lexer, Mode.Value(Parent.Field(fields, JsonKey.fromString(decoded), up)))
 
   // `aeValue` (`Parser.hs:400-411`).
   private def readValue(
