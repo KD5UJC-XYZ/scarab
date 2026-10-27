@@ -28,6 +28,7 @@ Three comparisons on one cluster, the Scala node following it with `--local-sock
      is compared as text on both sockets, and AwaitAcquire must wake on both.
 """
 import enum
+import itertools
 import json
 import os
 import subprocess
@@ -45,6 +46,8 @@ from ..util import ENTRY, ENV, MAGIC, QUERY_PORT, REFERENCE_IMAGE, USER, data_ro
 import threading
 
 SCALA_CLI = "/opt/reference/bin/cardano-cli"
+# Further LocalTxMonitor bursts allowed when no burst snapshot was bracketed with a non-empty mempool (#517).
+MONITOR_EXTRA_BURSTS = 6
 
 # `cardano-cli conway query` commands compared as text; {addr} is a funded address, {pool} a pool id
 CLI_QUERIES = [
@@ -489,17 +492,35 @@ def chain_sync_comparison(args, root, out):
     print(json.dumps({"chainSync": out}), flush=True)
 
 
-def mempool_chain(builder, wallet_number, count):
+def mempool_chain(builder, wallet_number, count, start=None):
     """`count` chained transactions of one wallet: each spends the output of the one before it, so all of
-    them are valid in one mempool."""
+    them are valid in one mempool. `start` (txin, lovelace) continues an earlier chain of the wallet."""
+    return chain_from(builder, wallet_number, count, start)[0]
+
+
+def chain_from(builder, wallet_number, count, start=None):
+    """`mempool_chain` and the (txin, lovelace) of its last output, from which a later chain continues."""
     from ..ntclocal import raw_tx_id
     w = builder.wallet(wallet_number)
-    txin, lovelace, txs = w["txin"], w["lovelace"], []
+    txin, lovelace = start or (w["txin"], w["lovelace"])
+    txs = []
     for _ in range(count):
         tx = builder.tx({**w, "txin": txin, "lovelace": lovelace}, fee=200000)
         txs.append(tx)
         txin, lovelace = f"{raw_tx_id(tx).hex()}#0", lovelace - 200000
-    return txs
+    return txs, (txin, lovelace)
+
+
+def extra_bursts(builder, chains, count, sampled):
+    """Further bursts while `sampled()` is false, that is while no `cardano-cli` snapshot was bracketed with a
+    non-empty mempool: a block can empty both pools before a snapshot runs (#517). Each continues a wallet's
+    chain in `chains` (wallet -> (txs, end)); at most MONITOR_EXTRA_BURSTS."""
+    for extra in range(MONITOR_EXTRA_BURSTS):
+        if sampled():
+            return
+        wallet = extra % 3 + 1
+        chains[wallet] = chain_from(builder, wallet, count, start=chains[wallet][1])
+        yield chains[wallet][0]
 
 
 def cli_script(args, which, commands):
@@ -540,14 +561,18 @@ def monitor_comparison(args, root, out):
     """LocalTxMonitor on both sockets: empty mempools, then bursts of chained transactions submitted
     through the Scala socket (it forwards them to the reference node)."""
     builder = Builder(args.name, f"{ENV}/socket/node1/sock")
-    bursts = [mempool_chain(builder, n, args.monitor_burst) for n in (1, 2, 3)]
+    chains = {n: chain_from(builder, n, args.monitor_burst) for n in (1, 2, 3)}
+    bursts = [chains[n][0] for n in (1, 2, 3)]
     stats = {"rounds": 0, "comparable": 0, "nonEmpty": 0, "differences": [], "maxTxs": 0}
     clis = []
+
+    extra = extra_bursts(builder, chains, args.monitor_burst,
+                         lambda: any(c.get("bracketed") and c.get("nonEmpty") for c in clis))
     with open_h(args) as h, open_s(root) as s:
         monitor_rounds(h, s, time.monotonic() + 4, stats=stats)
         out["quiet"] = {"comparable": stats["comparable"], "rounds": stats["rounds"]}
         clis.append({"state": "quiet", **cli_mempool(args, "0" * 64)})
-        for number, burst in enumerate(bursts, 1):
+        for number, burst in enumerate(itertools.chain(bursts, extra), 1):
             with open_s(root) as submitter:
                 refused = [r for r in (submitter.submit(tx) for tx in burst) if r is not None]
             ids = [tx_id_of(tx) for tx in burst]
