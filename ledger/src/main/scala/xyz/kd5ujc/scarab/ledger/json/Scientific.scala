@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger.json
 
 import scala.annotation.tailrec
 
-/** scientific 0.3.8.1 `Scientific` (`Data/Scientific.hs:139-150`):
+/** scientific 0.3.8.1 `Scientific` (`Data/Scientific.hs:139-167`):
   * `coefficient * 10^base10Exponent` with a machine-Int exponent, stored as parsed and never
   * normalized. Equality and hashing normalize first, as the reference's `Eq` and `Hashable` do
   * (`Data/Scientific.hs:194-213`), so `Scientific(1, 1) == Scientific(10, 0)`; read the fields to
