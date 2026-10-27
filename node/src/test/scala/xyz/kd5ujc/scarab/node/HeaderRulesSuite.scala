@@ -164,6 +164,18 @@ class HeaderRulesSuite extends ScalaCheckSuite:
     )
   }
 
+  test("a header two epochs past the ledger but inside the window is checked, not deferred") {
+    // epochs of 10 slots with 3k/f = 30: the forecast range of an Origin ledger, slots below 30,
+    // reaches epoch 2, which the reference forecasts with the current distribution and parameters
+    // (TICKF, `Shelley/Rules/Tick.hs:185-242`)
+    val short = ForgedChain.config.copy(geometry = ForgedChain.geometry.copy(epochLength = 10))
+    val shortRules = NodeHeaderRules[MirrorState](short, ForgedChain.globals)
+    val i = forged.headers.indexWhere(h => h.slot >= 20 && h.slot < 30)
+    assert(i >= 0, forged.headers.map(_.slot).toString)
+    val outcome = shortRules.validate(forged.genesis, None, before(i), forged.headers(i))
+    assert(!outcome.isInstanceOf[Outcome.Later[?]], outcome.toString)
+  }
+
   test("an Origin ledger forecast excludes its native stability-window endpoint") {
     val limit = ForgedChain.geometry.stabilityWindow.toBigInt
     val header = forged.headers.head.copy(slot = limit)

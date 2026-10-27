@@ -44,17 +44,22 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
         tip.fold(geometry.stabilityWindow.toBigInt)(t =>
           t.slot + 1 + geometry.stabilityWindow.toBigInt
         )
-      ) || epoch > ledgerEpoch + 1
+      )
     then
       HeaderRules.Prepared.Unknown(
         HeaderRules.ForecastReason.Horizon(h.slot, tipSlot)
       )
     else
-      val sameEpoch = epoch == ledgerEpoch
+      // `futureForecast` ticks with TICKF (cardano-ledger f649f975, `Shelley/Rules/Tick.hs:185-242`,
+      // `Conway/Rules/Tickf.hs:34-66`; forecast range in consensus 82ecba32
+      // `Shelley/Ledger/SupportsProtocol.hs:51-77, 100-125`): only into the next epoch does it take
+      // the mark distribution and the next parameters; for a later epoch the current ones stay
+      // (`curEpochNo /= succ (nesEL nes)`), and the genesis delegations are adopted at the slot.
+      val nextEpoch = epoch == ledgerEpoch + 1
       val params =
-        if sameEpoch then ledgerParams
-        else ledger.paramsNextEpoch(glob)
-      val pools = ledger.leaderPools(nextEpoch = !sameEpoch)
+        if nextEpoch then ledger.paramsNextEpoch(glob)
+        else ledgerParams
+      val pools = ledger.leaderPools(nextEpoch = nextEpoch)
       val envelope =
         cfg.forks
           .check(
