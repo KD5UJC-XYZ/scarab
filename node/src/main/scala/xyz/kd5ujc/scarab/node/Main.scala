@@ -172,7 +172,8 @@ object Main extends IOApp:
       _ <- mempool.sync(
         ledger,
         chain.tipRef.fold(BigInt(-1))(_.slot),
-        adopted
+        adopted,
+        chain.tipRef.map(_.hash)
       )
     yield ()
 
@@ -994,7 +995,8 @@ object Main extends IOApp:
               options.mempoolBytes,
               Log.mempool[IO].alongside(measured.mempool),
               utxoStore = Some(store),
-              environment = Some(mempoolEnvironment)
+              environment = Some(mempoolEnvironment),
+              tipHash = resumed.lastOption.map(_.ref).orElse(anchor).map(_.hash)
             )
             _ <- collectors.add(Collectors.mempool(mempool))
             served = server.persistence[MirrorState]

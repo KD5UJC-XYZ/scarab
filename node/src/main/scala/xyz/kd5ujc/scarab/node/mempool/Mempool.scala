@@ -92,12 +92,14 @@ trait Mempool[F[_]]:
   /** Revalidate against `ledger`, ticked to the successor of the new tip (`tipSlot`, or -1 at
     * Origin). `adopted` are the ids of the transactions in the blocks that just joined our chain:
     * held ones among them leave the pool as adopted, the others that no longer apply are returned
-    * with the reason.
+    * with the reason. `tipHash` is the new tip's hash ([[MempoolState.tipHash]]; none at Origin,
+    * and for the pools of tests that have no chain).
     */
   def sync(
       ledger: Either[ConwayView.Unavailable, MempoolLedger],
       tipSlot: BigInt,
-      adopted: Set[Bytes] = Set.empty
+      adopted: Set[Bytes] = Set.empty,
+      tipHash: Option[Bytes] = None
   )(using Raise[F, StorageError]): F[Vector[(Entry, Rejection)]]
 
   /** Remove the held transactions among `ids` even though they still apply, then revalidate the
@@ -135,6 +137,8 @@ object Mempool:
     *   of each transaction from it, as the block path does.
     * @param environment
     *   A caller may refresh backend capabilities between validations.
+    * @param tipHash
+    *   The hash of the chain tip at `tipSlot` ([[MempoolState.tipHash]]).
     */
   def create[F[_]: Async](
       ledger: Either[ConwayView.Unavailable, MempoolLedger],
@@ -143,10 +147,13 @@ object Mempool:
       capacityOverride: Option[Long],
       events: MempoolEvents[F],
       utxoStore: Option[UtxoStore[F]] = None,
-      environment: Option[Ask[F, MempoolEnv]] = None
+      environment: Option[Ask[F, MempoolEnv]] = None,
+      tipHash: Option[Bytes] = None
   ): F[Mempool[F]] =
     for
-      state <- Ref.of[F, MempoolState](MempoolState.empty(ledger, tipSlot, capacityOverride))
+      state <- Ref.of[F, MempoolState](
+        MempoolState.empty(ledger, tipSlot, capacityOverride, tipHash)
+      )
       version <- SignallingRef.of[F, Long](0L)
       lock <- Mutex[F]
       remoteFifo <- Semaphore[F](1)
@@ -244,7 +251,8 @@ object Mempool:
       def sync(
           ledger: Either[ConwayView.Unavailable, MempoolLedger],
           tipSlot: BigInt,
-          adopted: Set[Bytes]
+          adopted: Set[Bytes],
+          tipHash: Option[Bytes]
       )(using Raise[F, StorageError]) = lock.lock.surround {
         for
           current <- state.get
@@ -255,7 +263,8 @@ object Mempool:
           )
           activeEnv <- readEnv
           result <- F.blocking(current.sync(completed, tipSlot, activeEnv))
-          (next, dropped) = result
+          next = result._1.copy(tipHash = tipHash)
+          dropped = result._2
           _ <- state.set(next)
           _ <- version.update(_ + 1)
           (inBlock, invalid) = dropped.partition((entry, _) => adopted(entry.id))

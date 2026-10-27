@@ -232,6 +232,27 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
       assertEquals(offered.map(_.ticket), Vector(3L, 4L))
   }
 
+  test("the pool keeps the hash of the tip it was synchronised with, also across a removal") {
+    val base = ledger(2)
+    val (first, firstId) = pay(1)
+    val (second, _) = pay(2)
+    val tip = Bytes(Vector.fill(32)(7.toByte))
+    for
+      pool <- Mempool.create[IO](Right(base), 1000, env, None, MempoolEvents.none[IO])
+      initial <- pool.snapshot
+      _ <- pool.add(first, Source.Local)
+      _ <- pool.add(second, Source.Local)
+      _ <- pool.sync(Right(base), 1001, Set.empty, Some(tip))
+      synced <- pool.snapshot
+      _ <- pool.removeTxsEvenIfValid(Set(firstId))
+      removed <- pool.snapshot
+    yield
+      assertEquals(initial.tipHash, None)
+      assertEquals((synced.tipSlot, synced.tipHash), (BigInt(1001), Some(tip)))
+      assertEquals((removed.tipSlot, removed.tipHash), (BigInt(1001), Some(tip)))
+      assertEquals(removed.entries.size, 1)
+  }
+
   test("expiry removes a held ID and a rollback permits the same original bytes again") {
     val base = ledger(1)
     val (raw, id) = tx(
