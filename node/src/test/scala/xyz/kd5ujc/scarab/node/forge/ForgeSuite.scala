@@ -14,6 +14,9 @@ import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.ledger.ForgeError
 import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.node.Follower
+import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
+import xyz.kd5ujc.scarab.ledger.state.PoolDistr
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.node.mempool.{Source, TxKit}
 import xyz.kd5ujc.scarab.crypto.vrf.{Draft03Prover, PraosLeaderThreshold as Leader}
@@ -297,45 +300,163 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
         before <- h.chain
         // the tip is the block of the slot we lead (and so occupied), and its predecessor is the
         // block before it
-        tip = before.tipRef.get
+        tip <- IO.fromOption(before.tipRef)(new AssertionError("nothing was forged"))
         base = before.blocks.dropRight(1).lastOption.map(_._1)
         _ <- h.mempool.add(t2, Source.Local)
         _ <- h.forger.step(tip.slot)
         all <- forgedIn(h)
         after <- h.chain
       yield
-        assert(first.nonEmpty && first.last.slot == tip.slot)
+        assertEquals(first.lastOption.map(_.slot), Some(tip.slot))
         // one more block was forged, in the occupied slot, at the occupied block's height and on
         // its predecessor, carrying the transaction that arrived since
-        assertEquals(all.size, first.size + 1)
-        val alternative = all.last
-        assertEquals(alternative.slot, tip.slot)
-        assertEquals(alternative.blockNo, tip.blockNo)
-        assertEquals(alternative.prev, base.map(_.hash))
-        assertEquals(alternative.txs, Vector(id2))
-        assertNotEquals(alternative.hash, tip.hash)
+        val alternatives = all.drop(first.size)
+        assertEquals(
+          alternatives.map(f => (f.slot, f.blockNo, f.prev, f.txs)),
+          Vector((tip.slot, tip.blockNo, base.map(_.hash), Vector(id2)))
+        )
+        assert(!alternatives.exists(_.hash == tip.hash))
         // the same issuer's second block of the height is not preferred: chain selection keeps ours
         assertEquals(after.tipRef.map(_.hash), Some(tip.hash))
     }
   }
 
-  test("a slot held by a later block, or by the immutable anchor, is not forged") {
+  test("with one volatile block in the slot, the alternative is forged on the immutable anchor") {
+    val p = pool(kesStart = 50, seed = 8)
+    val (t2, id2) = TxKit.pay(2)
+    withHandle {
+      for
+        h <- harness(p, ledgerWith(p, 3))
+        _ <- (5000 until 5040).toList.traverse_(s => h.forger.step(s))
+        // only the oldest volatile block is left on the anchor
+        _ <- h.ref.update(c => c.copy(blocks = c.blocks.take(1)))
+        chain <- h.chain
+        anchor <- IO.fromOption(chain.anchor.block)(new AssertionError("no block is immutable"))
+        only <- IO.fromOption(chain.tipRef)(new AssertionError("no volatile block"))
+        first <- forgedIn(h)
+        _ <- h.mempool.add(t2, Source.Local)
+        _ <- h.forger.step(only.slot)
+        all <- forgedIn(h)
+        after <- h.chain
+      yield
+        assertNotEquals(only.hash, anchor.hash)
+        assertEquals(only.blockNo, anchor.blockNo + 1)
+        assertEquals(
+          all.drop(first.size).map(f => (f.slot, f.blockNo, f.prev, f.txs)),
+          Vector((only.slot, only.blockNo, Some(anchor.hash), Vector(id2)))
+        )
+        assertEquals(after.tipRef.map(_.hash), Some(only.hash))
+    }
+  }
+
+  test("a boundary block in the slot is extended in that slot, as the reference does") {
+    val p = pool(kesStart = 50, seed = 8)
+    withHandle {
+      for
+        h <- harness(p, ledgerWith(p, 1))
+        _ <- (5000 until 5040).toList.traverse_(s => h.forger.step(s))
+        // the tip, a block of a slot we lead, is marked as a boundary block: only the forger's
+        // choice of predecessor is under test, not the adoption of a block after a Conway one
+        _ <- h.ref.update(c =>
+          c.blocks.lastOption.fold(c)((r, s) =>
+            c.copy(blocks = c.blocks.dropRight(1) :+ (r.copy(boundary = true) -> s))
+          )
+        )
+        tip <- h.chain.flatMap(c => IO.fromOption(c.tipRef)(new AssertionError("no tip")))
+        first <- forgedIn(h)
+        _ <- h.forger.step(tip.slot)
+        all <- forgedIn(h)
+        stats <- h.forger.stats.total
+      yield
+        assert(tip.boundary)
+        assertEquals(
+          all.drop(first.size).map(f => (f.slot, f.blockNo, f.prev)),
+          Vector((tip.slot, tip.blockNo + 1, Some(tip.hash)))
+        )
+        assertEquals(stats.skipped, Map.empty[ForgeSkip.Kind, Long])
+    }
+  }
+
+  test("a slot held by a later block, or by the immutable anchor, is skipped as occupied") {
     val p = pool(kesStart = 50, seed = 8)
     withHandle {
       for
         h <- harness(p, ledgerWith(p, 1))
         _ <- (5000 until 5040).toList.traverse_(s => h.forger.step(s))
         first <- forgedIn(h)
-        tip = first.last.slot
-        _ <- h.forger.step(tip - 1)
+        initial <- h.forger.stats.total
+        chain <- h.chain
+        tip <- IO.fromOption(chain.tipRef)(new AssertionError("nothing was forged"))
+        anchor <- IO.fromOption(chain.anchor.block)(new AssertionError("no block is immutable"))
+        _ <- h.forger.step(tip.slot - 1)
+        later <- h.forger.stats.total
+        // no volatile block is left: the tip is the anchor, a block of a slot we lead
+        _ <- h.ref.update(_.copy(blocks = Vector.empty))
+        _ <- h.forger.step(anchor.slot)
+        immutable <- h.forger.stats.total
         all <- forgedIn(h)
-        // an empty chain (anchor only) with the slot at the anchor: nothing to be an alternative to
-        g <- harness(p, ledgerWith(p, 1))
-        _ <- g.forger.step(0)
-        none <- forgedIn(g)
       yield
+        assertEquals(initial.skipped, Map.empty[ForgeSkip.Kind, Long])
+        assertEquals(later.skipped, Map(ForgeSkip.Kind.SlotOccupied -> 1L))
+        assertEquals(immutable.skipped, Map(ForgeSkip.Kind.SlotOccupied -> 2L))
         assertEquals(all.size, first.size)
-        assertEquals(none, Vector.empty)
+    }
+  }
+
+  test("an alternative that chain selection prefers replaces another pool's block in the slot") {
+    val p = pool(kesStart = 50, seed = 8)
+    val q = pool(kesStart = 50, seed = 11)
+    val half = BigInt(500000)
+    val ledger = TxKit
+      .native(1)
+      .copy(pd =
+        PoolDistr.of(
+          ForgedChain.snapshotOf(
+            Vector((p.stake.credential, p.creds, half), (q.stake.credential, q.creds, half))
+          )
+        )
+      )
+    def elected(x: Pool, s: Int): Option[SelectView] =
+      Leadership
+        .check(s, epochNonce, x.creds.vrf, half, 2 * half, config.activeSlotsCoeff)
+        .toOption
+        .map(c => SelectView(0, s, Some(x.creds.coldVkey), x.creds.opCert.sequence, Some(c.output)))
+    // the first slot both pools lead in which our block (p's) is preferred to theirs (q's)
+    val battle = (5000 until 5200).find(s =>
+      (elected(q, s), elected(p, s))
+        .mapN(ChainSelection.prefers(ChainSelection.tiebreakerFor(Era.Conway), _, _))
+        .getOrElse(false)
+    )
+    withHandle {
+      for
+        slot <- IO.fromOption(battle)(new AssertionError("no slot both lead that ours wins"))
+        ours <- harness(p, ledger)
+        theirs <- harness(q, ledger)
+        _ <- theirs.forger.step(slot)
+        block <- theirs.chain.flatMap(c => IO.fromOption(c.tipRef)(new AssertionError("no block")))
+        raw <- theirs.raws.get.flatMap(r =>
+          IO.fromOption(r.get(block.hash))(new AssertionError("no raw"))
+        )
+        header <- IO.fromEither(
+          Block.decodeShelley(raw).bimap(e => new AssertionError(e.toString), _.header)
+        )
+        received <- ours.follower.adoptForged(header, raw)
+        _ <- ours.forger.step(slot)
+        forged <- forgedIn(ours)
+        stats <- ours.forger.stats.total
+        after <- ours.chain
+      yield
+        assertEquals(block.slot, BigInt(slot))
+        assert(received.isInstanceOf[Follower.Adoption.Adopted], received.toString)
+        // ours is an alternative to their block (same slot and height, on the same predecessor),
+        // adopted by switching to it
+        assertEquals(
+          forged.map(f => (f.slot, f.blockNo, f.prev)),
+          Vector((block.slot, block.blockNo, header.prevHash))
+        )
+        assertEquals(after.tipRef.map(_.hash), forged.headOption.map(_.hash))
+        assertEquals(after.blocks.map(_._1.hash), forged.map(_.hash))
+        assertEquals((stats.adopted, stats.lost), (1L, 0L))
     }
   }
 

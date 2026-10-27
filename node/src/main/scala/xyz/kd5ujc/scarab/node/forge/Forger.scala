@@ -242,32 +242,33 @@ final class Forger[F[_]: Async, S](
       _ <-
         if !connected then stats.skipped(geometry.epochOf(slot), ForgeSkip.Kind.NotConnected)
         else if tipSlot.contains(slot) then
-          alternativeBase(current).fold(
-            // the block in the slot is the newest immutable one, or a boundary block
+          // the tip holds the slot: forge where the reference does, or skip when the block in the
+          // slot is the immutable anchor
+          sameSlotBase(current).fold(
             stats.skipped(geometry.epochOf(slot), ForgeSkip.Kind.SlotOccupied)
           )(forge(_, slot))
         else if tipSlot.exists(_ > slot) then
-          // a later slot is occupied: the reference gives up (`TraceBlockFromFuture`)
+          // a later slot is occupied: the reference gives up (`TraceBlockFromFuture`, or
+          // `TraceSlotIsImmutable` for the anchor)
           stats.skipped(geometry.epochOf(slot), ForgeSkip.Kind.SlotOccupied)
         else if slot - tipSlot.getOrElse(BigInt(0)) > maxTipAge then
           skipped(slot, ForgeSkip.TipTooOld(tipSlot))
         else forge(current, slot)
     yield ()
 
-  /** The chain to forge on when a block already occupies the slot: the tip's predecessor, so the
-    * block is an alternative to the one in the slot, with its height. `forkBlockForging` of
-    * ouroboros-consensus does this in `mkCurrentBlockContext`
-    * (`Ouroboros.Consensus.NodeKernel.Forge`: the `EQ` case, "forge an alternative to `hdr`: same
-    * block no and same predecessor"); chain selection then decides between the two as it does for
-    * any pair of blocks of one height ([[Follower.adoptForged]]). `None` when the block in the slot
-    * is the chain's anchor (it is immutable) or a boundary block, which the reference extends in
-    * the same slot (Byron only).
+  /** The chain to forge on when its tip already holds the slot, as `forkBlockForging` picks it
+    * through `mkCurrentBlockContext` (consensus 82ecba329 NodeKernel.hs:585 and 831–891, the `EQ`
+    * case at 883–891). A boundary block is extended in its own slot (885–888): the block follows it
+    * with the next number, as after any tip (`blockContextFromPrevHeader`, whose `succ` is right
+    * for a boundary block, 819–820). Any other block gets an alternative, "same block no and same
+    * predecessor" (889–891): the chain without its tip, which is the anchor when the tip is the
+    * only volatile block. Chain selection then decides between the two as for any pair of blocks of
+    * one height ([[Follower.adoptForged]]). `None` when the tip is the anchor itself: the block in
+    * the slot is immutable, whatever its kind (`TraceSlotIsImmutable`, 846–850).
     */
-  private def alternativeBase(current: VolatileChain[S]): Option[VolatileChain[S]] =
-    current.blocks.lastOption.filterNot(_._1.boundary).flatMap { _ =>
-      val predecessor =
-        current.blocks.dropRight(1).lastOption.fold(current.anchor.point)(_._1.point)
-      current.rollback(predecessor).toOption
+  private def sameSlotBase(current: VolatileChain[S]): Option[VolatileChain[S]] =
+    current.blocks.lastOption.map { (tip, _) =>
+      if tip.boundary then current else current.copy(blocks = current.blocks.dropRight(1))
     }
 
   private def lift[A](e: Either[ForgeError, A])(using Handle[F, NodeError]): F[A] =
