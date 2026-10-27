@@ -287,6 +287,8 @@ def main():
     fl.add_argument("--start-delay", type=int, default=15, help="seconds from now to the system start")
     fl.add_argument("--byron-start-offset", type=int, default=0, help="seconds the Byron genesis' startTime is set off the Shelley systemStart")
     fl.add_argument("--keep", action="store_true", help="leave the reference container running")
+    fl.add_argument("--pool1", choices=("scala", "reference"), default="scala",
+                    help="what runs pool 1: the Scala node, or (the control arm) the reference node with the same keys, port and links")
     fl.set_defaults(run=faults)
     rc = sub.add_parser("refusal-corpus", help="record the reference's complete refusals of the refusal corpus "
                                                "(on a cluster already `up` under this name)")

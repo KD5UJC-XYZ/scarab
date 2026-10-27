@@ -299,12 +299,13 @@ class PoolConfigurationTests(unittest.TestCase):
 class ExecutionTests(unittest.TestCase):
     """`faults()` itself, with the cluster, Docker and the proxies stubbed out."""
 
-    def execute(self, scala, start_reference=None, actions=(), wedged=False, settle=5, die_while_collecting=False):
+    def execute(self, scala, start_reference=None, actions=(), wedged=False, settle=5, die_while_collecting=False,
+                pool1="scala"):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         root = pathlib.Path(tmp.name) / "run"
         plan = {"seed": 1, "duration": 0, "episodes": [], "actions": list(actions), "quiet": [], "inputs": {"k": 5}}
-        args = SimpleNamespace(name="n", schedule=None, seed=1, duration=0, settle=settle, keep=True)
+        args = SimpleNamespace(name="n", schedule=None, seed=1, duration=0, settle=settle, keep=True, pool1=pool1)
         clock = [0]
 
         def tick():
@@ -346,6 +347,7 @@ class ExecutionTests(unittest.TestCase):
                  patch.object(faults, "scala_container", return_value=[]),
                  patch.object(faults.Run, "start_scala", start_scala),
                  patch.object(faults.Run, "haskell_alive", return_value=True),
+                 patch.object(faults.Run, "pool1_alive", return_value=True),
                  patch.object(faults, "tip_at", side_effect=lambda *_: {"block": tick(), "hash": "h"}),
                  patch.object(faults, "log_counts", return_value=({"forgeStarted": 1, "extended": 1}, 0, 0)),
                  patch.object(faults, "read_log", side_effect=log),
@@ -496,6 +498,41 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual([p.read_text() for p in (root / "node2.log", root / "node3.log")], ["", ""])
         faults.netfaults.Shaper.return_value.remove.assert_called_once()
         self.assertIn(["docker", "rm", "-f", "n-ref"], commands)
+
+
+class ControlArmTests(unittest.TestCase):
+    """`--pool1 reference`: the same schedule with pool 1 as the reference node."""
+    execute = ExecutionTests.execute
+    summary = ExecutionTests.summary
+
+    def test_a_control_run_passes_without_the_scala_node(self):
+        args, root = self.execute(FakeScala(alive=10**6), pool1="reference")
+        with patch.object(faults.faultplan, "scala_failures", side_effect=AssertionError("read the Scala log")), \
+                patch.object(faults.faultplan, "rollback_failures", side_effect=AssertionError("read the Scala log")), \
+                patch.object(faults.faultplan, "rejoin_failures", side_effect=AssertionError("read the Scala log")), \
+                self.assertRaises(SystemExit) as raised:
+            faults.faults(args)
+        self.assertEqual(raised.exception.code, 0)
+        summary = self.summary(root)
+        self.assertTrue(summary["passed"])
+        self.assertEqual(summary["pool1"], "reference")
+        self.assertEqual(summary["notApplicable"], ["rollback depth", "Scala node log", "rejoin after restart"])
+        faults.freeze_classes.assert_not_called()
+
+    def test_the_schedule_crashes_and_restarts_the_reference_pool_1(self):
+        run = faults.Run(SimpleNamespace(name="n", pool1="reference"), pathlib.Path("/nonexistent"))
+        calls = []
+        with patch.object(faults, "docker", side_effect=lambda *a, **k: calls.append(a) or SimpleNamespace(returncode=0, stderr="")), \
+                patch.object(faults, "in_ref"):
+            run.apply({"at": 5, "op": "kill", "node": "scala"}, 5.0)
+            self.assertIn("scala", run.crashed)
+            self.assertIsNone(run.scala_lost())
+            run.apply({"at": 9, "op": "start", "node": "scala"}, 9.0)
+        self.assertNotIn("scala", run.crashed)
+        self.assertEqual(run.problems, [])
+        self.assertIn(f"kill -9 $(cat /work/node{faults.POOL}.pid)", calls[0][-1])
+        self.assertIn(f"--port {faults.SCALA_PORT} ", calls[1][-1])
+        self.assertIn(f"pools-keys/pool{faults.POOL}/", calls[1][-1])
 
 
 class ProxyTests(unittest.TestCase):
