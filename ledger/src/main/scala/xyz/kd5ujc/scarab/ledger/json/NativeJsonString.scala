@@ -76,7 +76,7 @@ private[json] object NativeJsonString:
           case _ => Left(Error.InvalidUtf8Stream)
     loop(0, Nil)
 
-  def read(input: Bytes, start: Int): Either[Error, (String, Int)] =
+  def read(input: Bytes, start: Int): Either[Error, (JsonText, Int)] =
     @tailrec def end(at: Int, escaped: Boolean): Either[Error, Int] =
       if at == input.size then Left(Error.StringEnd)
       else if escaped then end(at + 1, false)
@@ -90,4 +90,4 @@ private[json] object NativeJsonString:
       close <- end(start + 1, false)
       text <- utf8(input.slice(start + 1, close))
       value <- unescape(text)
-    yield (value, close + 1)
+    yield (JsonText.pack(value), close + 1)

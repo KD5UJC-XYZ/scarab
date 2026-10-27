@@ -5,7 +5,6 @@ import cats.{Order, Show}
 import scala.annotation.tailrec
 import scala.collection.immutable.TreeMap
 import scala.util.hashing.MurmurHash3
-import xyz.kd5ujc.scarab.codec.DomainError
 
 /** aeson 2.2.5.0 `Value` (`Data/Aeson/Types/Internal.hs:366-372`), the result of the reference's
   * JSON readers. Equality is the derived `Eq` and ordering the derived `Ord` (`494`), with numbers
@@ -16,7 +15,7 @@ import xyz.kd5ujc.scarab.codec.DomainError
 enum JsonValue:
   case Object(fields: JsonObject)
   case Array(items: Vector[JsonValue])
-  case String(text: Predef.String)
+  case String(text: JsonText)
   case Number(value: Scientific)
   case Bool(value: Boolean)
   case Null
@@ -71,7 +70,7 @@ object JsonValue:
     * order, then their fields. An object compares as containers 0.7's `Ord (Map k v)`
     * (`Data/Map/Internal.hs:4232-4233`), the lists of its pairs in key order; an array as vector
     * 0.13.2.0's `Ord (Vector a)` (`Data/Vector.hs:294-296`); both are list orders, where a proper
-    * prefix comes first. Strings compare as `Text` (`JsonKey.order`) and numbers as `Scientific`.
+    * prefix comes first. Strings and keys compare as `Text` and numbers as `Scientific`.
     */
   private def compare(a: JsonValue, b: JsonValue): Int =
     @tailrec def loop(todo: List[Compare]): Int = todo match
@@ -96,7 +95,7 @@ object JsonValue:
             val pairs = p.lazyZip(q).toList.map(Compare.Values.apply)
             loop(pairs ::: Compare.Sizes(p.size, q.size) :: rest)
           case (String(p), String(q)) =>
-            val c = JsonKey.textOrder(p, q)
+            val c = JsonText.order.compare(p, q)
             if c != 0 then c else loop(rest)
           case (Number(p), Number(q)) =>
             val c = Order[Scientific].compare(p, q)
@@ -139,7 +138,7 @@ object JsonValue:
           case Object(fields) =>
             val pairs = fields.toVector.map { (k, x) =>
               List(
-                Piece.Text("(" + HaskellShow.text(k.text) + ","),
+                Piece.Text("(" + HaskellShow.text(k.text.asString) + ","),
                 Piece.Value(x, 0),
                 Piece.Text(")")
               )
@@ -154,7 +153,10 @@ object JsonValue:
               out
             )
           case String(text) =>
-            loop(applied(d, "String ", List(Piece.Text(HaskellShow.text(text)))) ::: rest, out)
+            loop(
+              applied(d, "String ", List(Piece.Text(HaskellShow.text(text.asString)))) ::: rest,
+              out
+            )
           case Number(n) =>
             val shown = new StringBuilder
             n.showsPrec(11, shown)
@@ -164,33 +166,26 @@ object JsonValue:
           case Null => loop(rest, out.append("Null"))
     loop(List(Piece.Value(value, 0)), new StringBuilder)
 
-/** aeson `Key` (`Data/Aeson/Key.hs:44`), a newtype of `Text`. `Text` holds Unicode scalar values
-  * only, so a key is a string without an unpaired surrogate; the readers refuse such input before a
-  * key is built.
-  */
-opaque type JsonKey = String
+/** text 2.1.3 `Text`: Unicode scalar values only, ordered by code point. */
+opaque type JsonText = String
 
-object JsonKey:
-  enum Error extends DomainError:
-    /** The UTF-16 index of a surrogate code unit that is not half of a pair. */
-    case UnpairedSurrogate(index: Int)
-
-  def apply(text: String): Either[Error, JsonKey] =
-    @tailrec def loop(i: Int): Either[Error, JsonKey] =
-      if i == text.length then Right(text)
-      else
-        val c = text.charAt(i)
-        if Character.isHighSurrogate(c) then
-          if i + 1 < text.length && Character.isLowSurrogate(text.charAt(i + 1)) then loop(i + 2)
-          else Left(Error.UnpairedSurrogate(i))
-        else if Character.isLowSurrogate(c) then Left(Error.UnpairedSurrogate(i))
-        else loop(i + 1)
-    loop(0)
+object JsonText:
+  /** text 2.1.3 `pack` (`Data/Text/Internal.hs:245-272`), which writes `safe c`
+    * (`Data/Text/Internal.hs:146-149`) for each `Char`: a surrogate code point becomes U+FFFD. The
+    * `Char` s of a JVM string are its code points, a paired surrogate being one supplementary code
+    * point, so each unpaired surrogate is replaced.
+    */
+  def pack(text: String): JsonText =
+    def safe(c: Int): Int = if (c & 0x1ff800) != 0xd800 then c else 0xfffd
+    if text.codePoints.allMatch(c => safe(c) == c) then text
+    else
+      val points = text.codePoints.map(safe).toArray
+      new String(points, 0, points.length)
 
   /** text 2.1.3 `compareText` (`Data/Text.hs:496-498`) compares UTF-8 bytes, which is Unicode code
     * point order, not the JVM's UTF-16 code unit order.
     */
-  private[json] def textOrder(a: String, b: String): Int =
+  private def textOrder(a: String, b: String): Int =
     @tailrec def loop(i: Int, j: Int): Int =
       if i == a.length then if j == b.length then 0 else -1
       else if j == b.length then 1
@@ -200,11 +195,26 @@ object JsonKey:
         else loop(i + Character.charCount(x), j + Character.charCount(y))
     loop(0, 0)
 
+  given order: Order[JsonText] = Order.from(textOrder)
+  given Ordering[JsonText] = order.toOrdering
+
+  extension (t: JsonText) def asString: String = t
+
+/** aeson `Key` (`Data/Aeson/Key.hs:44`), a newtype of `Text`. */
+opaque type JsonKey = JsonText
+
+object JsonKey:
+  /** `Key.fromText` (`Data/Aeson/Key.hs:53-54`). */
+  def fromText(text: JsonText): JsonKey = text
+
+  /** `Key.fromString` (`Data/Aeson/Key.hs:47-48`): `Key . T.pack`. */
+  def fromString(text: String): JsonKey = JsonText.pack(text)
+
   /** `deriving newtype instance Ord Key` (`Data/Aeson/Key.hs:91`): `Text` order. */
-  given order: Order[JsonKey] = Order.from(textOrder)
+  given order: Order[JsonKey] = JsonText.order
   given Ordering[JsonKey] = order.toOrdering
 
-  extension (k: JsonKey) def text: String = k
+  extension (k: JsonKey) def text: JsonText = k
 
 /** aeson `KeyMap Value` built with `ordered-keymap` (`Data/Aeson/KeyMap.hs:143-144`): a `Map` keyed
   * by `Key` in `Text` order.

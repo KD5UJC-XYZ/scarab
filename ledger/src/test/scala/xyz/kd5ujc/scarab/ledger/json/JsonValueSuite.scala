@@ -9,11 +9,11 @@ import xyz.kd5ujc.scarab.ledger.PreprodDeepTx
 
 class JsonValueSuite extends FunSuite:
   private def number(c: BigInt, e: Long) = JsonValue.Number(Scientific(c, e))
-  private def key(text: String): JsonKey = JsonKey(text).fold(e => fail(e.toString), identity)
+  private def key(text: String): JsonKey = JsonKey.fromString(text)
   private def obj(pairs: (String, JsonValue)*) =
     JsonValue.Object(JsonObject.fromList(pairs.map((k, v) => key(k) -> v)))
   private def arr(items: JsonValue*) = JsonValue.Array(items.toVector)
-  private def str(text: String) = JsonValue.String(text)
+  private def str(text: String) = JsonValue.String(JsonText.pack(text))
   private def bytes(text: String) = Bytes.wrap(text.getBytes("UTF-8"))
   private def lines(block: String): Vector[String] =
     block.stripMargin.linesIterator.drop(1).toVector
@@ -349,16 +349,28 @@ class JsonValueSuite extends FunSuite:
         :+ (key("b") -> JsonValue.Bool(true))
     )
     // UTF-16 code units would put the surrogate pair (0xD83D) before U+FFFF.
-    assertEquals(o.toVector.map(_._1.text), Vector("b", "\uFFFF", supplementary))
+    assertEquals(o.toVector.map(_._1.text.asString), Vector("b", "\uFFFF", supplementary))
     assertEquals(o.get(key("b")), Some(JsonValue.Bool(true)))
   }
 
-  test("a key refuses an unpaired surrogate, which Text cannot hold") {
-    assertEquals(JsonKey("a\uD800"), Left(JsonKey.Error.UnpairedSurrogate(1)))
-    assertEquals(JsonKey("\uDC00a"), Left(JsonKey.Error.UnpairedSurrogate(0)))
-    assertEquals(JsonKey("\uDE00\uD83D"), Left(JsonKey.Error.UnpairedSurrogate(0)))
-    assertEquals(JsonKey("\uD83D\uDE00").map(_.text), Right("\uD83D\uDE00"))
-    assertEquals(JsonKey("").map(_.text), Right(""))
+  test("hand-built keys and strings replace each unpaired surrogate with U+FFFD, as T.pack does") {
+    val cases = List(
+      "a\uD800" -> "a\uFFFD",
+      "\uDC00a" -> "\uFFFDa",
+      "\uDE00\uD83D" -> "\uFFFD\uFFFD",
+      "\uD800\uD800\uDC00" -> "\uFFFD\uD800\uDC00",
+      "\uD83D\uDE00" -> "\uD83D\uDE00",
+      "" -> ""
+    )
+    cases.foreach { (raw, packed) =>
+      assertEquals(JsonText.pack(raw).asString, packed, raw)
+      assertEquals(JsonKey.fromString(raw).text.asString, packed, raw)
+      assertEquals(str(raw), str(packed))
+    }
+    // The reference's `show (String (T.pack "\55296"))` is `String "\65533"`.
+    assertEquals(str("\uD800").toString, "String \"\\65533\"")
+    assertEquals(obj("\uDC00" -> JsonValue.Null), obj("\uFFFD" -> JsonValue.Null))
+    assertEquals(Order[JsonValue].compare(str("\uD800"), str("\uFFFD")), 0)
   }
 
   test("the reader refuses a lone-surrogate key as it refuses such a value, before a key exists") {

@@ -1690,7 +1690,7 @@ object Targets:
     )
 
   private val nativeJson: Target =
-    import xyz.kd5ujc.scarab.ledger.json.{JsonKey, JsonValue, NativeJson}
+    import xyz.kd5ujc.scarab.ledger.json.{JsonValue, NativeJson}
     Target(
       "native-json",
       () =>
@@ -1721,20 +1721,6 @@ object Targets:
           case Right(value) =>
             if value.toString.isEmpty || cats.Order[JsonValue].compare(value, value) != 0 then
               throw new Violation("native-json: value not shown or not equal to itself")
-            // Every string the reader accepts is valid `Text`, so a key built from it never fails.
-            @scala.annotation.tailrec
-            def texts(todo: List[JsonValue]): Unit = todo match
-              case Nil => ()
-              case JsonValue.String(text) :: rest =>
-                if JsonKey(text).isLeft then throw new Violation("native-json: unpaired surrogate")
-                texts(rest)
-              case JsonValue.Array(items) :: rest => texts(items.toList ::: rest)
-              case JsonValue.Object(fields) :: rest =>
-                if fields.toVector.exists((k, _) => JsonKey(k.text).isLeft) then
-                  throw new Violation("native-json: unpaired surrogate in a key")
-                texts(fields.toVector.toList.map(_._2) ::: rest)
-              case _ :: rest => texts(rest)
-            texts(List(value))
             seen("native-json", true)
       }
     )

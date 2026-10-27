@@ -163,11 +163,9 @@ object NativeJson:
       case _ => Left(unexpected(input, at, Expected.Value))
 
   // `goRK`: a key from its opening quote. The reader refuses a lone surrogate (as an invalid UTF-8
-  // stream) before a key is built, so `JsonKey` refuses nothing that reaches it.
+  // stream), so `pack` keeps every accepted string as it is.
   private def key(input: Bytes, at: Int): Either[Error, (JsonKey, Int)] =
-    NativeJsonString.read(input, at).flatMap { (text, end) =>
-      JsonKey(text).left.map(_ => Error.InvalidUtf8Stream).map(_ -> end)
-    }
+    NativeJsonString.read(input, at).map((text, end) => JsonKey.fromText(text) -> end)
 
   private def advance(input: Bytes, original: State): Either[Error, Step] =
     val s = original.copy(at = space(input, original.at))

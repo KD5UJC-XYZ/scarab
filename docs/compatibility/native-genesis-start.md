@@ -35,10 +35,10 @@ cases that render the reference's message text, including its spelling and its q
 bytes from the comma when an object key is missing after one.
 
 It returns `JsonValue`, aeson's `Value` (`Data/Aeson/Types/Internal.hs:366-372`): objects are the
-ordered KeyMap in UTF-8/Text key order, keyed by `JsonKey`, which like `Text` cannot hold an unpaired
-surrogate (its constructor refuses one, where `Key.fromString` would substitute U+FFFD; the reader
-refuses such input first); numbers are `Scientific` with the parsed coefficient and signed-64 exponent, not
-normalized. Equality, ordering and hashing normalize them, as scientific 0.3.8.1's `Eq`, `Ord` and
+ordered KeyMap in UTF-8/Text key order. Keys and strings are `JsonKey` and `JsonText`, built as
+text 2.1.3's `pack` builds `Text`: an unpaired surrogate in a hand-built string becomes U+FFFD,
+and the reader refuses such input before it builds one. Numbers are `Scientific` with the parsed
+coefficient and signed-64 exponent, not normalized. Equality, ordering and hashing normalize them, as scientific 0.3.8.1's `Eq`, `Ord` and
 `Hashable` do; `JsonValue` ordering is the derived `Ord Value` and `toString` is `Show Value`, with
 `Show Scientific`'s text. Explicit frames admit outside-data nesting without a configured depth
 cutoff, and equality, ordering, hashing and showing a value walk an explicit stack.
