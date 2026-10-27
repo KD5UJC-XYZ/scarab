@@ -322,7 +322,8 @@ The file path's checks (`ReloadRefusal`, `HotKeys`) apply, in this order, before
 5. **Window and counter**: the certificate's window contains the current absolute period, and the counter is
    the chain's or one above it (`OCertRules.checkCounter`, the same code the header rules and the file reload
    use). During bootstrap the counter part is deferred — the node has no judged chain to compare with — and
-   forging is blocked then anyway by `tipTooOld`, so a key adopted without that check cannot produce a block.
+   forging is blocked then anyway by the forecast bound (`noLedgerView`), so a key adopted without that check
+   cannot produce a block.
 6. **Progress**: the bundle must not move the credentials backwards. Compare **lexicographically: counter
    first, then absolute period** (`startPeriod + index`). A rotation is a higher counter and a fresh key at
    index 0, which is ahead on the first component and therefore accepted; a same-key push must not lower the
@@ -363,11 +364,12 @@ silently forge with a key the pool did not authorise.
 
 ### Forging without a key
 
-`HotKeys` currently holds `Either[Fatal, PoolCredentials]` and `current` raises when it is empty. Agent mode
-needs a third state: "no key yet, keep trying". The design adds a `noKey` pause that the forger loop reports
-as `forgeSkipped` with a new reason, alongside `tipTooOld` and `notConnected`, and never signs. A key that
-arrives later resumes forging without a restart. This is the one change that touches the forging loop, and
-it is a level-3 change.
+`HotKeys` currently holds `Either[Fatal, PoolCredentials]` and `current` raises when it is empty, beside a
+non-fatal poisoned state for a key past its window. Agent mode needs "no key yet, keep trying": the reference
+starts the agent's hot key empty (`mkEmptyHotKey`, a poisoned key), so every slot that reaches the forge
+state update traces `forgeStateUpdateError` (`KESKeyAlreadyPoisoned`) and never signs, and the design reuses
+the poisoned state for it. A key that arrives later resumes forging without a restart. This is the one change
+that touches the forging loop, and it is a level-3 change.
 
 ### CLI and configuration
 
@@ -541,7 +543,8 @@ No decisions remain open for H2.
   can achieve.
 - **Counter check.** Apply `OCertRules.checkCounter` when the node has a judged chain — a selected chain whose
   tip is at or beyond the certificate's start period — and defer only that part during bootstrap, where the
-  forger is blocked by `tipTooOld` anyway, so a key adopted without the counter check cannot produce a block.
+  forger is blocked by the forecast bound (`noLedgerView`) anyway, so a key adopted without the counter check
+  cannot produce a block.
 - **Memory hardening.** Accept and document the in-process copy, with `-XX:+DisableAttachMechanism`,
   `-XX:-CreateCoredumpOnCrash` and a host-level compose example (`ulimit -c 0`, no swap, no hibernation); no
   off-heap/JNI key representation in H2.

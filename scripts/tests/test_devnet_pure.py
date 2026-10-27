@@ -503,7 +503,8 @@ class PoolOracleTest(unittest.TestCase):
         ev = [{"event": "extended", "at": self.at(5), "block": {"slot": 5, "hash": "a"}}]
         ev += [{"event": "forged", "at": self.at(s), "slot": s, "hash": f"f{s}"} for s in forged]
         ev += [{"event": "extended", "at": self.at(s), "block": {"slot": s, "hash": f"o{s}"}} for s in other]
-        ev += [{"event": "forgeSkipped", "at": self.at(30), "slot": 30, "reason": "busy"}]
+        # every slot of the window is started but 30, which the loop passed over
+        ev += [{"event": "startLeadershipCheck", "at": self.at(s), "slot": s} for s in range(6, end) if s != 30]
         ev += [{"event": "extended", "at": self.at(end), "block": {"slot": end, "hash": "z"}}]
         return ev
 
@@ -517,15 +518,18 @@ class PoolOracleTest(unittest.TestCase):
     def test_missed_slot_with_reason(self):
         r = pool.missed_leader_slots(self.events([10], []), {0: [10, 30, 50]}, self.SHELLEY)
         self.assertEqual(r["missed"], [30, 50])
-        self.assertEqual(r["missedReasons"], {30: "busy", 50: "not reported"})
+        self.assertEqual(r["missedReasons"], {30: pool.NOT_STARTED, 50: "not reported"})
 
     def test_missed_slot_with_a_reference_skip_event(self):
         ev = self.events([10], [])
         # before the last line, which ends the window
         ev[-1:-1] = [{"event": "blockFromFuture", "at": self.at(50), "current slot": 50, "tip": 51},
-                     {"event": "slotIsImmutable", "at": self.at(60), "slot": 60, "tip": "ab@60", "tipBlockNo": 3}]
-        r = pool.missed_leader_slots(ev, {0: [10, 50, 60]}, self.SHELLEY)
-        self.assertEqual(r["missedReasons"], {50: "blockFromFuture", 60: "slotIsImmutable"})
+                     {"event": "slotIsImmutable", "at": self.at(60), "slot": 60, "tip": "ab@60", "tipBlockNo": 3},
+                     {"event": "noLedgerView", "at": self.at(70), "slot": 70},
+                     {"event": "forgeFailed", "at": self.at(80), "slot": 80, "kind": "Assembly", "message": "x"}]
+        r = pool.missed_leader_slots(ev, {0: [10, 50, 60, 70, 80]}, self.SHELLEY)
+        self.assertEqual(r["missedReasons"], {50: "blockFromFuture", 60: "slotIsImmutable", 70: "noLedgerView",
+                                              80: "forgeFailed: Assembly"})
 
     def test_epoch_without_schedule(self):
         r = pool.missed_leader_slots(self.events([10], [], end=250), {0: [10], 2: [210]}, self.SHELLEY)

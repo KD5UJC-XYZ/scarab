@@ -344,11 +344,11 @@ def pool_dashboard():
             (inc(CHECKED, "1h"), "checked {{container}}"), (inc(LEADER, "1h"), "won {{container}}")],
             desc="Slots the forger checked for leadership against the slots the pool led; checked should be "
                  "about one per second of a Following node.")),
-        (12, series("Slots that could not be forged or were skipped", PROM, [
+        (12, series("Slots that could not be forged or were given up", PROM, [
             (per(CANNOT), "could not forge {{container}}"),
-            (per("cardano_node_metrics_slotsMissed_int"), "forger busy (missed) {{container}}"),
+            (per("cardano_node_metrics_slotsMissed_int"), "missed (ForgingStats) {{container}}"),
             (f'sum by (host, container, reason) (increase(scarab_forge_skipped_total{{{M}}}[1h]))',
-             "skipped/h {{reason}} {{container}}")])))
+             "given up/h {{reason}} {{container}}")])))
     p.row("KES key and operational certificate")
     p.line(
         (4, stat("KES periods remaining", PROM, per(REMAINING), decimals=0,
