@@ -73,9 +73,9 @@ then runs its slots a whole number of seconds away from the network's (roadmap H
 Counters (`ForgeStats`, per epoch; roadmap H5): slots checked for leadership, leader slots, forged, adopted,
 lost (slot battles lost at adoption, and blocks replaced later), failed, slots not checked by reason
 (`busy`: the loop was still on an earlier slot; `tipTooOld`; `blockFromFuture`: the tip is in a later slot,
-the reference's `TraceBlockFromFuture`; `slotIsImmutable`: the immutable tip is in the slot or a later one,
-`TraceSlotIsImmutable`; `notConnected`), and the forge latency (slot start to adoption: count, mean,
-max). The first two reasons are also logged one by one as `forgeSkipped`; `blockFromFuture` and
+the reference's `TraceBlockFromFuture`; `slotIsImmutable`: no volatile block, and the immutable tip is in the
+slot or a later one, `TraceSlotIsImmutable` (consensus 82ecba329 `NodeKernel.hs` 846-850); `notConnected`),
+and the forge latency (slot start to adoption: count, mean, max). The first two reasons are also logged one by one as `forgeSkipped`; `blockFromFuture` and
 `slotIsImmutable` are logged as events of their own, with the reference's fields, at `Error` as cardano-node
 logs `Forge.Loop.BlockFromFuture` and `Forge.Loop.SlotIsImmutable`. When the tip already holds the
 slot the pool leads, the forger does what `forkBlockForging` does (`mkCurrentBlockContext`): it forges an

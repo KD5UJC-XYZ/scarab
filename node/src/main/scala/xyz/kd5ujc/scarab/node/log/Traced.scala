@@ -362,7 +362,7 @@ object Traced:
         "file" -> file.asJson,
         "mode" -> ForgeKeyProblem.octal(mode).asJson
       )
-    // the reference's machine fields (cardano-node 11.1.3 `Tracers/Consensus.hs` 1282-1293); its
+    // the reference's machine fields (cardano-node 11.1.3 `Tracers/Consensus.hs` 1282-1294); its
     // `kind` is the event name
     case ForgeEvent.Skipped(_, ForgeSkip.SlotIsImmutable(slot, tip, tipBlockNo)) =>
       EventKind.SlotIsImmutable.line(

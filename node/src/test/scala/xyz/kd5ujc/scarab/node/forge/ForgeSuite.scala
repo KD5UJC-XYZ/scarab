@@ -405,6 +405,32 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     }
   }
 
+  test("with the only block on genesis in the slot, the alternative is forged on genesis") {
+    val p = pool(kesStart = 50, seed = 8)
+    withHandle {
+      for
+        h <- harness(p, ledgerWith(p, 3))
+        // the slots up to the first one the pool leads: one block, on genesis
+        _ <- (5000 until 5040).toList.foldLeftM(false) { (done, s) =>
+          if done then IO.pure(true)
+          else h.forger.step(s) *> forgedIn(h).map(_.nonEmpty)
+        }
+        chain <- h.chain
+        only <- IO.fromOption(chain.tipRef)(new AssertionError("nothing was forged"))
+        first <- forgedIn(h)
+        _ <- h.forger.step(only.slot)
+        all <- forgedIn(h)
+      yield
+        assertEquals(chain.anchor.block, None)
+        assertEquals(chain.blocks.map(_._1), Vector(only))
+        // "same block no and same predecessor": the genesis point
+        assertEquals(
+          all.drop(first.size).map(f => (f.slot, f.blockNo, f.prev)),
+          Vector((only.slot, only.blockNo, None))
+        )
+    }
+  }
+
   test("a boundary block in the slot is extended in that slot, as the reference does") {
     val p = pool(kesStart = 50, seed = 8)
     withHandle {
@@ -449,6 +475,8 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
         // no volatile block is left: the tip is the anchor, a block of a slot we lead
         _ <- h.ref.update(_.copy(blocks = Vector.empty))
         _ <- h.forger.step(anchor.slot)
+        // the anchor is in a later slot than this one: immutable as well
+        _ <- h.forger.step(anchor.slot - 1)
         immutable <- h.forger.stats.total
         all <- forgedIn(h)
         seen <- h.seen
@@ -461,6 +489,10 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
             ForgeEvent.Skipped(
               anchor.slot,
               ForgeSkip.SlotIsImmutable(anchor.slot, anchor.point, anchor.blockNo)
+            ),
+            ForgeEvent.Skipped(
+              anchor.slot - 1,
+              ForgeSkip.SlotIsImmutable(anchor.slot - 1, anchor.point, anchor.blockNo)
             )
           )
         )
@@ -468,7 +500,7 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
         assertEquals(later.skipped, Map(ForgeSkip.Kind.BlockFromFuture -> 1L))
         assertEquals(
           immutable.skipped,
-          Map(ForgeSkip.Kind.BlockFromFuture -> 1L, ForgeSkip.Kind.SlotIsImmutable -> 1L)
+          Map(ForgeSkip.Kind.BlockFromFuture -> 1L, ForgeSkip.Kind.SlotIsImmutable -> 2L)
         )
         assertEquals(all.size, first.size)
     }

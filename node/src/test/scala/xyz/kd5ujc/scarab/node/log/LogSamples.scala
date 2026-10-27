@@ -420,9 +420,7 @@ object LogSamples:
       BigInt(4203),
       ForgeSkip.SlotIsImmutable(
         BigInt(4203),
-        xyz.kd5ujc.scarab.consensus
-          .BlockRef(BigInt(4203), Bytes.fromArray(Array.fill(32)(9.toByte)), BigInt(170))
-          .point,
+        BlockRef(BigInt(4203), Bytes.fromArray(Array.fill(32)(9.toByte)), BigInt(170)).point,
         BigInt(170)
       )
     ),
