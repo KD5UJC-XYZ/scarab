@@ -109,7 +109,8 @@ trait ForgeEvents[F[_]]:
   *   The pool's keys as they were at the start; the VRF key and the cold key never change, the KES
   *   key and certificate are those of `hot`.
   * @param maxTipAge
-  *   The ledger view of a slot is only taken from a tip at most this many slots older.
+  *   The ledger view of a slot is only taken from a tip at most this many slots older: the tip of
+  *   the chain the block is built on.
   * @param ready
   *   True once the node has a peer to learn the chain from: a node that has not yet intersected
   *   with anyone would otherwise forge on its own empty chain.
@@ -246,17 +247,30 @@ final class Forger[F[_]: Async, S](
           // slot is the immutable anchor
           sameSlotBase(current).fold(
             stats.skipped(geometry.epochOf(slot), ForgeSkip.Kind.SlotIsImmutable)
-          )(forge(_, slot))
+          )(forgeOn(_, slot))
         else if tipSlot.exists(_ > slot) then
           // a later slot is held: the reference gives up, telling the anchor from a volatile tip
           val reason =
             if current.blocks.isEmpty then ForgeSkip.Kind.SlotIsImmutable
             else ForgeSkip.Kind.BlockFromFuture
           stats.skipped(geometry.epochOf(slot), reason)
-        else if slot - tipSlot.getOrElse(BigInt(0)) > maxTipAge then
-          skipped(slot, ForgeSkip.TipTooOld(tipSlot))
-        else forge(current, slot)
+        else forgeOn(current, slot)
     yield ()
+
+  /** Forge on `base`, the chain the block is built on, unless its tip is too old to forge from. The
+    * reference forecasts the ledger view from the ledger at `bcPrevPoint`, the predecessor of the
+    * block to forge (consensus 82ecba329 NodeKernel.hs:602), and gives up when the slot is outside
+    * the forecast range (`TraceNoLedgerView`, 613-629). The tip of `base` is that predecessor, also
+    * when the block is an alternative to the one in the slot ([[sameSlotBase]]).
+    */
+  private def forgeOn(base: VolatileChain[S], slot: BigInt)(using
+      Handle[F, NodeError],
+      Raise[F, Fatal]
+  ): F[Unit] =
+    val tipSlot = base.tipRef.map(_.slot)
+    if slot - tipSlot.getOrElse(BigInt(0)) > maxTipAge then
+      skipped(slot, ForgeSkip.TipTooOld(tipSlot))
+    else forge(base, slot)
 
   /** The chain to forge on when its tip already holds the slot, as `forkBlockForging` picks it
     * through `mkCurrentBlockContext` (consensus 82ecba329 NodeKernel.hs:585 and 831–891, the `EQ`

@@ -12,6 +12,8 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.ledger.ForgeError
+import xyz.kd5ujc.scarab.consensus.{BlockRef, VolatileChain}
+import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.node.Follower
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
@@ -346,6 +348,60 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
           Vector((only.slot, only.blockNo, Some(anchor.hash), Vector(id2)))
         )
         assertEquals(after.tipRef.map(_.hash), Some(only.hash))
+    }
+  }
+
+  test("the alternative is not forged from a predecessor too old to forge from") {
+    val p = pool(kesStart = 50, seed = 8)
+    // the chain `built`, whose tip holds `slot`, under a bound one slot shorter than the age of the
+    // predecessor `base` and under a bound equal to it: the reference forecasts the ledger view from
+    // the ledger at the predecessor (`bcPrevPoint`), so the tip's own age does not decide
+    def bounded(built: VolatileChain[MirrorState], slot: BigInt, base: BlockRef)(using
+        Handle[IO, NodeError]
+    ): IO[Unit] =
+      val gap = slot - base.slot
+      for
+        tooOld <- harness(p, ledgerWith(p, 3), maxTipAge = gap - 1)
+        _ <- tooOld.ref.set(built)
+        refusedStep <- tooOld.forger.step(slot)
+        refused <- tooOld.seen
+        refusedStats <- tooOld.forger.stats.total
+        within <- harness(p, ledgerWith(p, 3), maxTipAge = gap)
+        _ <- within.ref.set(built)
+        withinStep <- within.forger.step(slot)
+        forged <- forgedIn(within)
+        withinStats <- within.forger.stats.total
+      yield
+        assert(gap > 0, s"$slot $base")
+        assertEquals(refusedStep, Right(()))
+        assertEquals(
+          refused.filter {
+            case _: ForgeEvent.Skipped | _: ForgeEvent.Forged => true
+            case _                                            => false
+          },
+          Vector(ForgeEvent.Skipped(slot, ForgeSkip.TipTooOld(Some(base.slot))))
+        )
+        assertEquals(refusedStats.skipped, Map(ForgeSkip.Kind.TipTooOld -> 1L))
+        assertEquals(refusedStats.slotsChecked, 0L)
+        assertEquals(withinStep, Right(()))
+        assertEquals(forged.map(f => (f.slot, f.prev)), Vector((slot, Some(base.hash))))
+        assertEquals(withinStats.skipped, Map.empty[ForgeSkip.Kind, Long])
+    withHandle {
+      for
+        h <- harness(p, ledgerWith(p, 3))
+        _ <- (5000 until 5040).toList.traverse_(s => h.forger.step(s))
+        built <- h.chain
+        tip <- IO.fromOption(built.tipRef)(new AssertionError("nothing was forged"))
+        base <- IO.fromOption(built.blocks.dropRight(1).lastOption.map(_._1))(
+          new AssertionError("a single volatile block")
+        )
+        _ <- bounded(built, tip.slot, base)
+        // only the oldest volatile block is left: its predecessor is the immutable anchor
+        single = built.copy(blocks = built.blocks.take(1))
+        only <- IO.fromOption(single.tipRef)(new AssertionError("no volatile block"))
+        anchor <- IO.fromOption(single.anchor.block)(new AssertionError("no block is immutable"))
+        _ <- bounded(single, only.slot, anchor)
+      yield ()
     }
   }
 

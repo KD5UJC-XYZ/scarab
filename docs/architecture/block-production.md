@@ -52,7 +52,9 @@ the Praos threshold (`Leadership`, the same check as for received headers). When
    transactions.
 
 The forger does nothing until a peer session has intersected, and not from a tip older than the stability
-window (a node that is still syncing cannot know the slot's ledger view). Only Praos with Conway transactions
+window (a node that is still syncing cannot know the slot's ledger view). The tip checked is that of the chain
+the block is built on: the predecessor of the block to forge, also for an alternative to a block in the slot,
+as the reference forecasts the ledger view from the ledger at `bcPrevPoint`. Only Praos with Conway transactions
 is forged; a TPraos era or the bootstrap mode is `ForgeError.UnsupportedProtocol`.
 
 Errors are a closed ADT, `ForgeError`: `KeyFile`, `KeyMismatch`, `KeyPeriodOutOfRange`, `KesFailure`,
