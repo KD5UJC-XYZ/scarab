@@ -15,44 +15,37 @@ class NativeJsonSuite extends FunSuite:
     j.hcursor.get[A](name).fold(e => fail(e.message), identity)
 
   private enum Work:
-    case Visit(value: Json)
+    case Visit(value: JsonValue)
     case Key(value: String)
 
-  private val decimalToken = "(-?)([0-9]+)(?:\\.([0-9]+))?(?:[eE]([+-]?[0-9]+))?".r
-  private def valueEvents(value: Json): Vector[Json] =
+  private def valueEvents(value: JsonValue): Vector[Json] =
     def row(tag: String, values: Json*): Json = Json.arr((Json.fromString(tag) +: values)*)
     @tailrec def walk(todo: List[Work], acc: List[Json]): Vector[Json] = todo match
       case Nil                   => acc.reverse.toVector
       case Work.Key(key) :: rest => walk(rest, row("key", Json.fromString(key)) :: acc)
       case Work.Visit(value) :: rest =>
-        val (event, children) = value.fold[(Json, List[Work])](
-          (row("null"), Nil),
-          b => (row("bool", Json.fromBoolean(b)), Nil),
-          n =>
-            n.toString match
-              case decimalToken(sign, whole, fraction, power) =>
-                val decimals = Option(fraction).getOrElse("")
-                val coefficient = BigInt(sign + whole + decimals)
-                // Observe the returned representation: do not wrap or normalize it in the test.
-                val exponent = Option(power).fold(BigInt(0))(BigInt(_)) - decimals.length
-                (
-                  row(
-                    "number",
-                    Json.fromString(coefficient.toString),
-                    Json.fromString(exponent.toString)
-                  ),
-                  Nil
-                )
-              case other => fail(s"not a decimal Json number: $other"),
-          text => (row("string", Json.fromString(text)), Nil),
-          array => (row("array", Json.fromInt(array.size)), array.toList.map(Work.Visit.apply)),
-          obj =>
+        val (event, children) = value match
+          case JsonValue.Null    => (row("null"), Nil)
+          case JsonValue.Bool(b) => (row("bool", Json.fromBoolean(b)), Nil)
+          // The stored representation, neither wrapped nor normalized here.
+          case JsonValue.Number(n) =>
+            (
+              row(
+                "number",
+                Json.fromString(n.coefficient.toString),
+                Json.fromString(n.base10Exponent.toString)
+              ),
+              Nil
+            )
+          case JsonValue.String(text) => (row("string", Json.fromString(text)), Nil)
+          case JsonValue.Array(items) =>
+            (row("array", Json.fromInt(items.size)), items.toList.map(Work.Visit.apply))
+          case JsonValue.Object(fields) =>
             // Iteration is observed directly; sorting here would conceal a product ordering error.
             (
-              row("object", Json.fromInt(obj.size)),
-              obj.toVector.toList.flatMap { (key, v) => List(Work.Key(key), Work.Visit(v)) }
+              row("object", Json.fromInt(fields.size)),
+              fields.toVector.toList.flatMap((key, v) => List(Work.Key(key), Work.Visit(v)))
             )
-        )
         walk(children ::: rest, event :: acc)
     walk(List(Work.Visit(value)), Nil)
 

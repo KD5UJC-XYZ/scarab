@@ -28,9 +28,11 @@ Genesis pool relays/metadata and hash-checked `InjectionFromFile` support remain
 The unused `NativeJson` primitive mirrors installed Aeson 2.2.5.0's strict byte-to-Value boundary
 (`Decoding/ByteString.hs:33-119,143-175,197-276`, `Decoding/Conversion.hs:56-94`,
 `Decoding.hs:40-60`). Every original token is validated before first-wins duplicate collapse.
-Objects preserve the installed ordered KeyMap's UTF-8/Text traversal; numbers retain Scientific
-coefficient and signed-64 exponent without normalization. Explicit frames admit outside-data
-nesting without a configured depth cutoff.
+It returns `JsonValue`, aeson's `Value` (`Data/Aeson/Types/Internal.hs:366-372`): objects are the
+ordered KeyMap in UTF-8/Text key order, and numbers are `Scientific` with the parsed coefficient
+and signed-64 exponent, not normalized; equality normalizes them, as scientific 0.3.8.1's `Eq`
+does. Explicit frames admit outside-data nesting without a configured depth cutoff, and equality,
+hashing and rendering of a value walk an explicit stack.
 
 [All 350 actual native cases](../../fixtures/reference/native-json/README.md) retain the 302
 original upstream JSONTestSuite parsing inputs and 48 source-derived controls, with no filename
