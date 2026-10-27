@@ -86,7 +86,7 @@ Blocks, transactions, rules, native ledger state.
 
 | Package | Responsibility | Entry points | Suites | Decisions |
 |---|---|---|---|---|
-| ledger/json | Unused strict native raw JSON Value parser, original-token validation and ordered objects | `NativeJson` | `NativeJsonSuite` | [native-genesis-start](compatibility/native-genesis-start.md) |
+| ledger/json | aeson's Value with Scientific numbers and ordered objects; unused strict native raw JSON Value parser with original-token validation | `JsonValue`, `NativeJson` | `JsonValueSuite`, `NativeJsonSuite` | [native-genesis-start](compatibility/native-genesis-start.md) |
 | ledger | Blocks, headers, transactions, governance, parameters, scripts, ledger view and the closed error vocabulary | `Block`, `Header`, `Tx`, `GovAction`, `ProtocolParams`, `LedgerView`, `ScriptContexts`, `Prepared` | `TxDecodingSuite`, `ProtocolParamsSuite`, `PreparedBlockSuite`, `RatifySuite`, `ScriptContextOracleSuite`, `VotingProceduresSuite`, `WithdrawalContextsSuite` | [ADR 0007](adr/0007-era-indexed-state.md), [ADR 0009](adr/0009-ledger-mirror-step-2.md), [design domain-errors](design/domain-errors.md) |
 | ledger/byron | Byron ledger: transactions, delegation, update, parameters, transport | `ByronLedger`, `ByronTx`, `ByronUpdate`, `DelegationState`, `ByronParams`, `ByronTransport` | `ByronLedgerSuite`, `ByronUpdateSuite`, `ByronMainnetSuite`, `ByronTransportSuite` | [ADR 0001](adr/0001-haskell-node-as-reference.md), [architecture](architecture.md) |
 | ledger/mempack | MemPack TxOut codec and canonical CBOR used by the Haskell snapshot layout | `MemPack`, `TxOutMemPack`, `CanonicalCbor`, `MultiAssetRep` | `TxOutMemPackSuite` | [design haskell-snapshots](design/haskell-snapshots.md) |

@@ -19,12 +19,14 @@
 {
     "module": "ledger",
     "path": "ledger/json",
-    "responsibility": "Unused strict native raw JSON Value parser, original-token validation and ordered objects",
+    "responsibility": "aeson's Value with Scientific numbers and ordered objects; unused strict native raw JSON Value parser with original-token validation",
     "entryPoints": [
-       "NativeJson"
+       "JsonValue",
+        "NativeJson"
     ],
     "suites": [
-       "NativeJsonSuite"
+       "JsonValueSuite",
+        "NativeJsonSuite"
     ],
     "docs": [
        "docs/compatibility/native-genesis-start.md"

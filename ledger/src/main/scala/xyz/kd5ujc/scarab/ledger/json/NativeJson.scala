@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.json
 
-import io.circe.Json
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 
@@ -22,12 +21,11 @@ object NativeJson:
     case StringEncoding(offset: Int)
     case StringEscape(offset: Int)
     case StringSurrogate(offset: Int)
-    case NumberEncoding(offset: Int)
     case InvalidFrame
 
   private enum Frame:
-    case ArrayItems(values: List[Json])
-    case ObjectFields(values: List[(String, Json)], key: Option[String])
+    case ArrayItems(values: List[JsonValue])
+    case ObjectFields(values: List[(String, JsonValue)], key: Option[String])
 
   private enum Mode:
     case Value, ArrayAfter, ObjectAfter, Colon
@@ -37,7 +35,7 @@ object NativeJson:
   private final case class State(at: Int, mode: Mode, frames: List[Frame])
   private enum Step:
     case Continue(state: State)
-    case Done(value: Json)
+    case Done(value: JsonValue)
 
   private[json] def byte(input: Bytes, at: Int): Int = input(at) & 255
 
@@ -52,7 +50,12 @@ object NativeJson:
     if at == input.size then Error.End(at, what)
     else Error.Unexpected(at, what, byte(input, at))
 
-  private def finish(input: Bytes, at: Int, value: Json, frames: List[Frame]): Either[Error, Step] =
+  private def finish(
+      input: Bytes,
+      at: Int,
+      value: JsonValue,
+      frames: List[Frame]
+  ): Either[Error, Step] =
     frames match
       case Nil =>
         val end = space(input, at)
@@ -71,7 +74,7 @@ object NativeJson:
       input: Bytes,
       at: Int,
       text: String,
-      value: Json,
+      value: JsonValue,
       frames: List[Frame]
   ): Either[Error, Step] =
     if input.size - at >= text.length && text.indices.forall(i =>
@@ -94,11 +97,11 @@ object NativeJson:
           Right(Step.Continue(State(s.at + 1, Mode.ArrayFirst, Frame.ArrayItems(Nil) :: s.frames)))
         case 34 =>
           NativeJsonString.read(input, s.at).flatMap { (text, end) =>
-            finish(input, end, Json.fromString(text), s.frames)
+            finish(input, end, JsonValue.String(text), s.frames)
           }
-        case 110 => literal(input, s.at, "null", Json.Null, s.frames)
-        case 116 => literal(input, s.at, "true", Json.True, s.frames)
-        case 102 => literal(input, s.at, "false", Json.False, s.frames)
+        case 110 => literal(input, s.at, "null", JsonValue.Null, s.frames)
+        case 116 => literal(input, s.at, "true", JsonValue.Bool(true), s.frames)
+        case 102 => literal(input, s.at, "false", JsonValue.Bool(false), s.frames)
         case c if c == 45 || c >= 48 && c <= 57 =>
           NativeJsonNumber.read(input, s.at).flatMap { (number, end) =>
             finish(input, end, number, s.frames)
@@ -107,20 +110,13 @@ object NativeJson:
 
   private def closeArray(input: Bytes, s: State): Either[Error, Step] = s.frames match
     case Frame.ArrayItems(items) :: rest =>
-      finish(input, s.at + 1, Json.fromValues(items.reverse), rest)
+      finish(input, s.at + 1, JsonValue.Array(items.reverse.toVector), rest)
     case _ => Left(Error.InvalidFrame)
 
   private def closeObject(input: Bytes, s: State): Either[Error, Step] = s.frames match
     case Frame.ObjectFields(fields, None) :: rest =>
-      // Aeson's ordered KeyMap takes the last supplied pair, then traverses Text keys in UTF-8 order.
-      // These pairs are reversed, so the first original key wins. JVM UTF-16 order is different.
-      val ordered = fields.toMap.toVector
-        .map { (key, value) =>
-          (Bytes.wrap(key.getBytes(java.nio.charset.StandardCharsets.UTF_8)), key, value)
-        }
-        .sortBy(_._1)
-        .map { (_, key, value) => (key, value) }
-      finish(input, s.at + 1, Json.fromFields(ordered), rest)
+      // The pairs are reversed and `fromList` keeps a key's last pair, so the first original wins.
+      finish(input, s.at + 1, JsonValue.Object(JsonObject.fromList(fields)), rest)
     case _ => Left(Error.InvalidFrame)
 
   private def advance(input: Bytes, original: State): Either[Error, Step] =
@@ -156,8 +152,8 @@ object NativeJson:
         else if is(44) then next(Mode.ObjectKey(false))
         else Left(expected(input, s.at, Expected.ObjectSeparator))
 
-  def parse(input: Bytes): Either[Error, Json] =
-    @tailrec def loop(s: State): Either[Error, Json] = advance(input, s) match
+  def parse(input: Bytes): Either[Error, JsonValue] =
+    @tailrec def loop(s: State): Either[Error, JsonValue] = advance(input, s) match
       case Left(error)                => Left(error)
       case Right(Step.Done(value))    => Right(value)
       case Right(Step.Continue(next)) => loop(next)

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.json
 
-import io.circe.{Json, JsonNumber}
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Bytes
 
@@ -41,17 +40,7 @@ private[json] object NativeJsonNumber:
         (end, if negative then -magnitude else magnitude)
       }
 
-  private def scalar(coefficient: BigInt, exponent: Long, start: Int): Either[Error, Json] =
-    if exponent == 0 then Right(Json.fromBigInt(coefficient))
-    else if exponent >= -Int.MaxValue.toLong && exponent <= -Int.MinValue.toLong then
-      Right(Json.fromBigDecimal(BigDecimal(coefficient, (-exponent).toInt)))
-    else
-      JsonNumber
-        .fromString(s"${coefficient}e${exponent}")
-        .map(Json.fromJsonNumber)
-        .toRight(Error.NumberEncoding(start))
-
-  def read(input: Bytes, start: Int): Either[Error, (Json, Int)] =
+  def read(input: Bytes, start: Int): Either[Error, (JsonValue, Int)] =
     val negative = byte(input, start) == 45
     val first = start + (if negative then 1 else 0)
     for
@@ -72,5 +61,4 @@ private[json] object NativeJsonNumber:
             java.nio.charset.StandardCharsets.US_ASCII
           )
       coefficient = BigInt((if negative then "-" else "") + whole + fractionText)
-      value <- scalar(coefficient, exponentValue - width, start)
-    yield (value, end)
+    yield (JsonValue.Number(Scientific(coefficient, exponentValue - width)), end)
