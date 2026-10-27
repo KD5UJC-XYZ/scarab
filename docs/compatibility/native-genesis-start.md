@@ -19,6 +19,26 @@ The [Byron-origin cost-model oracle](../../fixtures/ntc-golden/byron-cost-models
 
 `DuplicateWithdrawalsLedgerSuite`, carried from [#496](https://github.com/KD5UJC-XYZ/scarab/pull/496), keeps the value-conservation regression on native ledger state when the legacy test module is deleted. These are scoped unit/source checks; full scenario evidence belongs in a dated evidence-log entry.
 
+The isolated `InjectionJson` pull reader follows json-stream 0.4.6.1's lexer and `objectItems value`,
+used by pinned `Shelley/Genesis.hs:903-925`, and yields each entry's value as `JsonValue` (aeson's
+`Value`, as json-stream builds it). Its [73 actual native traces](../../fixtures/reference/injection-json/README.md)
+retain raw bytes and chunk sizes, all yielded pairs, remaining bytes and completion/refusal decisions.
+Six traces still request data after three empty feeds; those are reference non-results, not completed
+injections or native refusals. The Scala reader exposes the same state. Separate ordering and
+20,000-layer small-stack tests exercise incremental delivery and explicit frames. These checks do
+not implement hash checking, effectful file reads or genesis source integration, and the permissive
+json-stream mechanism is separate from strict raw-genesis JSON admission (#497).
+
+The isolated reader's focused Docker checks pass 75 tests (73 native traces, entry ordering,
+and 20,000-level small-stack parsing). The portable native replay compares all 73 recorded
+outputs, including diagnostic text. The existing deterministic resource guards pass, and
+20,000 mutations with seed 1 pass for the `injection-json` target. An earlier fuzz attempt
+was terminated during failure shrinking without a completed result; the subsequent source
+change avoids parsing large numeric coefficients twice while preserving the native exponent
+range. These are bounded reader checks, not complete file-injection or whole-genesis gates.
+
+Native Value comparisons include ordered object traversal and unnormalized Scientific coefficient/exponent events. Four ordering assertions fail on the earlier insertion-order reader and pass after matching the installed ordered KeyMap. Serialized native pairs remain unchanged observations in the portable replay; reparsing the formatter's overflowed exponent is not a valid oracle for its in-memory Value. The earlier full fuzz run was stopped when this ordering defect was found; its partial progress is not a completed gate.
+
 ## Explicitly unchecked or unconfirmed
 
 Genesis pool relays/metadata and hash-checked `InjectionFromFile` support remain [#499](https://github.com/KD5UJC-XYZ/scarab/issues/499), approved for separate reference-alignment changes. Existing required-field/default and malformed-input parser differences remain [#497](https://github.com/KD5UJC-XYZ/scarab/issues/497). Preserving validation of the tested malformed extra cost model does not establish complete genesis-parser conformance. #496 is a required predecessor of the legacy deletion. Signed reserve arithmetic depends on [#492](https://github.com/KD5UJC-XYZ/scarab/issues/492). Focused boundary tests pass on the integrated arithmetic implementation; final predecessor integration, independent review and complete stage gates remain required. The twelve-case native API corpus covers Addr/Coin serialization and compaction; source-selection ordering is checked against the cited source with Scala regressions, not a claimed whole-transition native oracle. File loading is still unimplemented.

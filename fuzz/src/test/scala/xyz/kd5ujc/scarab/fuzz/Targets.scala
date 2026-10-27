@@ -1633,6 +1633,45 @@ object Targets:
       }
     )
 
+  private val injectionJson: Target =
+    import xyz.kd5ujc.scarab.ledger.injection.InjectionJson
+    Target(
+      "injection-json",
+      () =>
+        scala.util.Using.resource(
+          new java.util.zip.GZIPInputStream(
+            Files.newInputStream(
+              java.nio.file.Path.of("fixtures/reference/injection-json/cases.jsonl.gz")
+            )
+          )
+        ) { in =>
+          new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+            .split("\n")
+            .toVector
+            .filter(_.nonEmpty)
+            .map { line =>
+              val json =
+                io.circe.parser.parse(line).fold(e => throw new Violation(e.message), identity)
+              val hex = json.hcursor
+                .get[String]("inputHex")
+                .fold(e => throw new Violation(e.message), identity)
+              Bytes.fromHex(hex).fold(e => throw new Violation(e.toString), _.toArray)
+            }
+        },
+      probe("injection-json") { bytes =>
+        @scala.annotation.tailrec
+        def loop(step: InjectionJson.Step, remaining: Bytes, empties: Int): Unit = step match
+          case InjectionJson.Step.Entry(_, _, next) => loop(next.pull, remaining, empties)
+          case InjectionJson.Step.NeedData(input) if remaining.nonEmpty =>
+            loop(input.feed(remaining.take(65536)).pull, remaining.drop(65536), empties)
+          case InjectionJson.Step.NeedData(input) if empties > 0 =>
+            loop(input.feed(Bytes.empty).pull, remaining, empties - 1)
+          case InjectionJson.Step.Done(_) => hit("injection-json")
+          case _                          => ()
+        loop(InjectionJson.initial.pull, bytes, 3)
+      }
+    )
+
   private val genesisInjections: Target =
     import io.circe.{Json, parser}
     import xyz.kd5ujc.scarab.ledger.GenesisState.{FundAddress, InjectionData}
@@ -1730,5 +1769,6 @@ object Targets:
       Vector(
         sclsValues,
         genesisInjections,
-        nativeJson
+        nativeJson,
+        injectionJson
       ) ++ nativeSnapshots ++ ancillary ++ mithril ++ networkIdentity

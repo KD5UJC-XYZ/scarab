@@ -647,6 +647,23 @@
         "scripts/oracle/native-json/Main.hs"
       ],
       "candidateRequired": true
+    },
+    {
+      "id": "genesis-injection-json",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "73 captured incremental json-stream parser traces: original bytes/chunks, yielded keys/complete ordered Value events, remaining bytes, and completion/refusal/data-demand decisions.",
+      "assertion": "Compare every yielded key and native Value event (ordered object keys, unnormalized Scientific coefficient/exponent), read demand and remaining byte; preserve six bounded NeedData non-results. Native serialized pairs and errors remain exact portable replay observations, not JSON-rendering or diagnostic-wording parity claims.",
+      "rationale": "Whole-file parsing or map normalization would change order, chunk consumption and native acceptance. These assertions do not establish file/hash/domain decoding integration or native diagnostic wording.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/499",
+      "resolution": "Keep exact native replay and Scala trace tests, yield-before-later-failure ordering regression, and 20k-depth small-stack control; implement effectful file/hash/domain integration separately.",
+      "evidence": [
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/injection/InjectionJsonSuite.scala",
+        "fixtures/reference/injection-json/README.md",
+        "scripts/oracle/injection-json/Main.hs"
+      ],
+      "candidateRequired": true
     }
   ]
 }

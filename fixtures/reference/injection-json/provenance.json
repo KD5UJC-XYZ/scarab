@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-10-26",
+  "scope": "Unmodified native json-stream incremental parser traces; strict raw genesis JSON, filesystem/hash checking and domain decoding are separate.",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "imageId": "sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef",
+  "compiler": "ghc-9.10.3",
+  "freezeSha256": "f7e6220cf1d723bb8722b4a7e90be5993c4f1fa5a380e64a13c3303546e8a68c",
+  "jsonStream": {
+    "version": "0.4.6.1",
+    "archiveSha256": "fe2c7e70d4f7e546c78d0f49a0be43d48f2944f9c5d8bede5a4823ab6d3bd0e4",
+    "sourceFiles": [
+      {
+        "path": "json-stream-0.4.6.1/Data/JsonStream/CLexer.hs",
+        "sha256": "7bbce342ab5f2c91d97e7e4854c30a5c356f72be1e20cf36138fe5117895d41f"
+      },
+      {
+        "path": "json-stream-0.4.6.1/Data/JsonStream/Parser.hs",
+        "sha256": "21b6017ac3c99cfb8c1f1a03e41ac181b62a2b32470a027016290d600465f109"
+      },
+      {
+        "path": "json-stream-0.4.6.1/Data/JsonStream/TokenParser.hs",
+        "sha256": "145a68fbc5f9de4cf06a09ae42adbd8d723ae502aeab177ff7776bdfab379ac5"
+      },
+      {
+        "path": "json-stream-0.4.6.1/Data/JsonStream/Unescape.hs",
+        "sha256": "82fc258448dbe99fca2452fced468052b990f0484f0a4cd1582c104a9c385a8a"
+      },
+      {
+        "path": "json-stream-0.4.6.1/Data/JsonStream/CLexType.hsc",
+        "sha256": "a196f7e7fb9d26dc814b7578fc3df1267c09d1205b5f852de696b4b4766a8e7c"
+      },
+      {
+        "path": "json-stream-0.4.6.1/c_lib/lexer.c",
+        "sha256": "70234e6a70808f29524ca99196cc9baa14a38a75968977f560fa1e2333d466a2"
+      },
+      {
+        "path": "json-stream-0.4.6.1/c_lib/lexer.h",
+        "sha256": "40f6e25d05087aefb93c75754e8e3a182389b204993a49e99d052f30d4370deb"
+      },
+      {
+        "path": "json-stream-0.4.6.1/c_lib/unescape_string.c",
+        "sha256": "67f78f005c39959f53fac560c9d4f82fe717b7c5ecae56856d17daac8e16e4c5"
+      }
+    ]
+  },
+  "consumer": {
+    "package": "cardano-ledger-shelley",
+    "version": "1.19.0.1",
+    "archiveSha256": "cc9d5b415742bc188fb933fae305743a2c1ee6f3ad7fa06fcfa1ac5bd95b59ce",
+    "file": "cardano-ledger-shelley-1.19.0.1/src/Cardano/Ledger/Shelley/Genesis.hs",
+    "sourceSha256": "834c21264330a9c8367e4e4b271bcc3ecc9e8084f5bd27bfd27e916968ae8eaa",
+    "matchesLedgerPin": true
+  },
+  "caseCount": 73,
+  "completed": 56,
+  "refused": 11,
+  "needDataAfterThreeEmptyFeeds": 6,
+  "nonResultScope": "Six bounded native parser states still request data after three empty feeds. They are not successful/refused foldInjectionData results; separate timed probes were controlled cancellations, not native outcomes.",
+  "numericComparison": "Native pairEvents observe Scientific coefficient and signed-64 exponent directly; serialized pairs retain exact JSON numeric tokens for portable replay, not Scala Value equivalence.",
+  "scalaComparison": "Every yielded key and complete ordered Value event stream, chunk demands, remaining bytes and typed refusal decisions. Native diagnostic wording and JSON rendering are retained, not claimed identical.",
+  "artifacts": {
+    "scripts/oracle/injection-json/Main.hs": "ecd30a30967ddb58e99bf613c69a4af849e7bbddf6f725886064cd4a17af4fb5",
+    "scripts/oracle/injection-json/run.py": "a24edc9bb4e804d164b70fc1e9f28215b94bb1238567ff42f3ddfca59827eab5",
+    "fixtures/reference/injection-json/cases.jsonl.gz": "477e2a9354027e21347dc40a392f0a856ec101f0b2cfd9b964e23cd1d534be11"
+  },
+  "aesonKeyMap": {
+    "version": "2.2.5.0",
+    "orderedKeyMap": true,
+    "archiveSha256": "e22f9883adce9e02d77de6a1bba36f2f98d322c8a9fa3bc51596d31493d00ac5",
+    "sourceFiles": [
+      {
+        "member": "aeson-2.2.5.0/src/Data/Aeson/Key.hs",
+        "sha256": "9084bffb98c982e016bc790951be0733ac61dd445864f3bfebc53db4efde1261"
+      },
+      {
+        "member": "aeson-2.2.5.0/src/Data/Aeson/KeyMap.hs",
+        "sha256": "9a3eb9423e13016fbb79581d1567138813f9a06c814be6b028017b5731ebfd74"
+      }
+    ]
+  },
+  "formatterWitness": {
+    "input": "1.20e9223372036854775808",
+    "coefficient": "120",
+    "exponent": "9223372036854775806",
+    "serialized": "1.2e-9223372036854775808",
+    "scope": "Native formatter exponent overflow means reparsed JSON is not the consumed Scientific Value; all Scala comparisons use direct Value events uniformly."
+  }
+}

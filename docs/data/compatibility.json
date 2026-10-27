@@ -625,15 +625,18 @@
         "suites": [
           "GenesisStartSuite",
           "DuplicateWithdrawalsLedgerSuite",
-          "NativeJsonSuite"
+          "NativeJsonSuite",
+          "InjectionJsonSuite"
         ],
         "issues": [
           488,
-          496
+          496,
+          499
         ],
         "paths": [
           "fixtures/devnet/lsq/genesis",
-          "fixtures/reference/native-json"
+          "fixtures/reference/native-json",
+          "fixtures/reference/injection-json"
         ]
       },
       "limitations": {

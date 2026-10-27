@@ -46,6 +46,11 @@
       "file": "docs/performance/cast-erasure-interpreter.md",
       "title": "The typed rule interpreter and the cast-erasure batch",
       "prefix": "cast-erasure-interpreter"
+    },
+    {
+      "file": "docs/performance/injection-coefficients.md",
+      "title": "Incremental injection numeric coefficients",
+      "prefix": "injection-coefficients"
     }
   ],
   "entries": [
@@ -3496,6 +3501,60 @@
             "|---|---|---|",
             "| old | 10.341, 11.849, 11.197, 9.651, 12.777 | 168.95, 148.06, 136.52, 135.28, 135.20 |",
             "| new | 13.090, 11.947, 9.637, 10.587, 11.394 | 148.18, 130.37, 139.68, 140.83, 147.43 |"
+          ]
+        }
+      ],
+      "listings": []
+    },
+    {
+      "id": "perf-49",
+      "section": "43",
+      "heading": "43. Incremental injection numeric coefficients (#499)",
+      "subject": "Incremental injection numeric coefficients (#499)",
+      "date": "2026-10-26",
+      "dateSource": "text",
+      "issues": [
+        "#499"
+      ],
+      "commits": [
+        "798daf559",
+        "881ef506a"
+      ],
+      "links": [],
+      "page": "injection-coefficients",
+      "results": [
+        {
+          "id": "perf-49.t1",
+          "header": [
+            "Coefficient digits and shape",
+            "Original target (ms / MB)",
+            "Midpoint target (ms / MB)",
+            "`JsonValue` target (ms / MB)",
+            "Existing allocation bound (MB)"
+          ],
+          "separator": "|---|---:|---:|---:|---:|",
+          "rows": [
+            [
+              "262,145, object value (original native coefficient)",
+              "700 / 191.30",
+              "395 / 228.90",
+              "50 / 100.83",
+              "287.32"
+            ],
+            [
+              "327,674, object value",
+              "1,048 / 279.79",
+              "612 / 337.46",
+              "59 / 141.98",
+              "352.85"
+            ],
+            [
+              "327,679, root number",
+              "1,049 / 279.71",
+              "640 / 336.42",
+              "69 / 137.99",
+              "352.85"
+            ]
           ]
         }
       ],
