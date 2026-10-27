@@ -66,7 +66,8 @@ has to change both before they run out. The node does four things for that; a dr
   in `cardano-node.cabal` line 179), so the period-0 key stays on
   disk for ever. Scarab retains a different file-backed policy ([ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md)): when the key moves to a new period, at the first slot of the period
   in which the forge state is updated (as the reference's `updateForgeState` does it, before the leader check,
-  so whether or not the pool leads; a slot given up earlier, without a ledger view, does not evolve it), the
+  so whether or not the pool leads; a slot given up earlier, without a ledger view or for one of Scarab's own
+  refusals, does not evolve it, nor write the KES gauges), the
   new key is written back to the `--kes-skey` file and the earlier key
   is overwritten, before the key signs in the new period. The file stays a `cardano-cli` envelope: the period
   is read off the key itself (the erased seeds of the tree spell it), so there is no new format and no

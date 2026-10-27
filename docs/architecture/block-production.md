@@ -89,8 +89,11 @@ tick, and a body over the maximum size or a block that does not decode is `Assem
 (it forges in every Shelley-based era and bounds the body through the transaction selection); they are kept
 pending the owner's decision under [#399](https://github.com/KD5UJC-XYZ/scarab/issues/399).
 
-Errors are a closed ADT, `ForgeError`: `KeyFile`, `KeyMismatch`, `KeyPeriodOutOfRange`, `KesFailure`,
-`VrfFailure`, `NotLeader` (the ordinary answer), `LedgerViewUnavailable`, `UnsupportedProtocol`, `Assembly`.
+Errors are a closed ADT, `ForgeError` (`ledger/.../NodeError.scala`): the key files and their checks
+(`KeyFile`, `KesKey`, `KesKeyNotCertified`, `CertificateFailure`, `CertificateSignatureRejected`,
+`KesFileFailure`), the key's use (`KeyPeriodOutOfRange`, `KesEvolution`, `KesUpdateInterrupted`), the
+leader check (`VrfInput`, `VrfProof`, `LeaderThreshold`, `NotLeader`, the ordinary answer), and the
+refusals above (`LedgerViewUnavailable`, `UnsupportedProtocol`, `Assembly`).
 Scarab's own log events beside the reference's traces: `forgeStarted`, `forged` (slot, block number, hash,
 transaction ids, KES periods, stake), `adopted`, `lost` (the block did not join our chain, or was replaced at
 its height later), `kesEvolved`, `kesReloaded`, `kesReloadRefused`, `kesPersistFailed` (see "Rotating the KES

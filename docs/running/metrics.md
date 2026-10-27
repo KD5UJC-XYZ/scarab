@@ -203,7 +203,7 @@ section and the catalogue differ.
 | `cardano_node_metrics_Forge_node_not_leader_counter` | counter |  | Slots the pool did not lead (TraceNodeNotLeader). | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_Forge_forged_counter` | counter |  | Blocks forged (TraceForgedBlock). | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_Forge_adopted_counter` | counter |  | Forged blocks that became the tip of our chain (TraceAdoptedBlock). | same name; scraped from 11.1.3 |
-| `cardano_node_metrics_Forge_didnt_adopt_counter` | counter |  | Forged blocks, valid, that did not become the tip of our chain (TraceDidntAdoptBlock). | same name; from the binary's trace name `Forge.didnt-adopt`, not scraped (no such event in the run) |
+| `cardano_node_metrics_Forge_didnt_adopt_counter` | counter |  | Forged blocks, not refused by our rules, that did not become the tip of our chain (TraceDidntAdoptBlock). | same name; from the binary's trace name `Forge.didnt-adopt`, not scraped (no such event in the run) |
 | `cardano_node_metrics_blocksForged_int` | gauge |  | Blocks forged since the start, as of the start of the current slot (ForgingStats). | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_nodeIsLeader_int` | gauge |  | Slots the pool led and could forge in since the start, as of the start of the current slot (ForgingStats). | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_nodeCannotForge_int` | gauge |  | Slots the pool led but could not forge in since the start (TraceNodeCannotForge), as of the start of the current slot (ForgingStats). | same name; scraped from 11.1.3 |

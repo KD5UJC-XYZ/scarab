@@ -244,7 +244,7 @@ object Catalogue:
   )
   val forgeDidntAdopt = CounterDef(
     MetricName("cardano_node_metrics_Forge_didnt_adopt_counter"),
-    "Forged blocks, valid, that did not become the tip of our chain (TraceDidntAdoptBlock)."
+    "Forged blocks, not refused by our rules, that did not become the tip of our chain (TraceDidntAdoptBlock)."
   )
   val blocksForged = GaugeDef(
     MetricName("cardano_node_metrics_blocksForged_int"),

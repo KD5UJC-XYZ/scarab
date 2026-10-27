@@ -162,8 +162,8 @@ enum ForgeTrace:
       prevHash: Option[Bytes]
   )
 
-  /** The block was valid but did not become our tip (`TraceDidntAdoptBlock`, `NodeKernel.hs`
-    * 768-769).
+  /** The block, not refused by our rules, did not become our tip (`TraceDidntAdoptBlock`,
+    * `NodeKernel.hs` 768-769).
     */
   case DidntAdoptBlock(slot: BigInt, hash: Bytes)
 

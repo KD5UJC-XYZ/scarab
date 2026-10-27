@@ -166,7 +166,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `forgeTickedLedgerState` | `Forge.ForgeTickedLedgerState` | Debug | `slot`, `prev` |
 | `forgingMempoolSnapshot` | `Forge.ForgingMempoolSnapshot` | Debug | `slot`, `prev`, `mempoolHash` (the tip the mempool was last synchronised with, or `GenesisHash`), `mempoolSlot` |
 | `forgedBlock` | `Forge.ForgedBlock` | Info | `slot`, `block`, `blockNo`, `blockPrev` (or `GenesisHash`) |
-| `didntAdoptBlock` | `Forge.DidntAdoptBlock` | Error | `slot`: the block was valid but did not become the tip (a slot battle lost at adoption) |
+| `didntAdoptBlock` | `Forge.DidntAdoptBlock` | Error | `slot`: the block, not refused by our rules, did not become the tip (a slot battle lost at adoption; as in the reference, a block chain selection does not take is not validated) |
 | `forgedInvalidBlock` | `Forge.ForgedInvalidBlock` | Error | `slot`, `reason` (`rule`, `reason`: Scarab's rendering of its own rules' refusal, not the reference's `ExtValidationError`): its transactions leave the mempool |
 | `adoptedBlock` | `Forge.AdoptedBlock` | Info | `slot`, `blockHash`, `blockSize` (`estimateBlockSize`: header bytes, body size and 10) |
 | `stateInfo` | `Forge.StateInfo` | Info (Warning with seven KES periods left or fewer, Alert with one or none) | `credentials` (`Cardano`), `kind` (`KESInfo`, or `ExpiryLogMessage` with `keyExpiresIn` when seven periods or fewer are left), `startPeriod`, `endPeriod` (the key's current period), `evolution` (the end of the certificate's window): the reference's labels, after each update of the forge state |
