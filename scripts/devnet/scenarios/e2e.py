@@ -286,7 +286,7 @@ def e2e(args):
             failures += judge_comparisons(comparisons, args.min_comparisons, loader is not None)
         if args.oracle:
             from oracle import devnet as oracle_devnet
-            docker("rm", "-f", f"{args.name}-scala", check=False)  # no digests are written during the comparison
+            oracle_devnet.stop_follower(args.name, root)  # its final tip recorded; no digests during the comparison
             follower.wait()
             summary["oracle"], oracle_failures = oracle_devnet.run(
                 args.name, root, log=lambda m: print(json.dumps(m), flush=True))

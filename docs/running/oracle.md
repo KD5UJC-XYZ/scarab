@@ -85,3 +85,40 @@ compares at every epoch boundary the follower digested (`scripts/oracle/devnet.p
 `oracle-summary.json` of the run directory and in the `oracle` block of `e2e-summary.json`.
 The first epoch of a chain the follower started in Byron has no digest (the follower digests an epoch
 when it sees the epoch number change in Shelley-based blocks).
+
+A digest is compared only when its block, by header hash, is on both final chains: in node 1's ImmutableDB
+(`db-analyser --show-slot-block-no`) and on the follower's final chain
+([`scripts/oracle/finality.py`](../../scripts/oracle/finality.py), #91). The follower's chain is rebuilt from its
+whole log and the rebuild fails rather than guess:
+- Every `started` line begins a session from Origin. A session restored from a database cannot be modelled from
+  the log and fails.
+- Every `extended` must follow the tip by block number and slot. Every `rolledBack` must start at the tip and
+  remove exactly its `depth`, and every `connected` must intersect on the chain.
+- A malformed line, or a log that ends inside a line, fails.
+- The rebuilt tip must be the follower's final tip. To record it, the harness stops the follower's only peer,
+  reference node 1 (SIGSTOP inside the reference container; nodes 2 and 3 keep the chain growing), reads the
+  follower's `/tip` until two readings agree, removes the follower and continues node 1 in cleanup, and
+  writes the tip to `follower-tip.json` only once the follower is confirmed gone (`stop_follower`;
+  `devnet.py oracle` does the same when the follower is still running).
+
+Any other digest is excluded with its reason, and the summary counts both kinds (`compared`, `matched`,
+`excluded`, `excludedByReason`, `exclusions`, `epochsWithoutMatch`, `finalChainsAgree`, `scope`):
+
+| Reason | Meaning |
+|---|---|
+| `rolledBack` | Neither final chain holds the block: the follower's log shows it rolled back a short fork's block. |
+| `notFinalOnFollower` | The reference's final chain does not hold it; the follower still held it, less than `k` deep, when it stopped. |
+| `notYetImmutable` | The block is after the reference's immutable tip when the comparison ran. |
+| `rolledBackOnFollower` | Immutable on the reference; the follower rolled it back within its volatile part (after its immutable tip), so it can still adopt it. |
+
+The comparison fails in four cases:
+- on any difference or error in a compared digest;
+- when the final chains disagree: the follower's immutable tip, the block with `k` blocks after it as in the
+  reference's ChainDB, is not on the reference's chain, and the reference's immutable tip is not on the
+  follower's (`diverged`);
+- on a digest of a block the follower's log never extended (`unlogged`);
+- when no digest was compared and matched.
+
+An excluded digest is not evidence of agreement: `epochsWithoutMatch` lists the boundaries left unchecked. The
+follower digests an epoch once, at the first block it applies in that epoch, so an epoch whose boundary block
+was rolled back has no digest of the replacement block (#442).

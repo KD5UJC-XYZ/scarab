@@ -92,7 +92,11 @@ def soak(args):
         follower_alive = follower.poll() is None
         if follower_alive and own_build(args):
             scraped = scrape_metrics(args.name, root)
-        docker("rm", "-f", f"{args.name}-scala", check=False)
+        if getattr(args, "oracle", False):
+            from oracle import devnet as oracle_devnet
+            oracle_devnet.stop_follower(args.name, root)  # its final tip recorded for the oracle's check of its log
+        else:
+            docker("rm", "-f", f"{args.name}-scala", check=False)
         follower.wait()
     log, other = read_log(root / "follower.jsonl")
     summary = {
