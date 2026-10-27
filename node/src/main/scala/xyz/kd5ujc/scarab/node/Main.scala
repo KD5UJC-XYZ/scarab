@@ -779,8 +779,7 @@ object Main extends IOApp:
         compute = Some(scheduling.compute),
         parallelPlutus = Some(parallelPlutus)
       )
-      // An `Int`: `NodeSetup` refuses a security parameter the chain store cannot count.
-      k = genesis.geometry.k.toInt
+      k = setup.chainStoreK.blocks
       // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
       // node has seen begin so far.
       given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(eraStarts.get)

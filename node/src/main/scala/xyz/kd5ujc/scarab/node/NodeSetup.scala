@@ -68,7 +68,8 @@ final case class NodeSetup(
     handOver: Option[FromByron],
     byronParams: Option[ByronGenesis] = None,
     byronConfig: Option[ByronRules.Config] = None,
-    identity: NetworkIdentity
+    identity: NetworkIdentity,
+    chainStoreK: ChainStoreK
 ):
   def geometry: EpochGeometry = genesis.geometry
   def byronRules: Option[ByronRules.Config] = byronConfig
@@ -94,6 +95,18 @@ final case class NodeSetup(
 
   /** The hash the chain's first block must name as its predecessor. */
   def origin: Option[Bytes] = byron.map(_.hash)
+
+/** The security parameter as the chain store and the volatile chain count blocks: an `Int`. A
+  * larger one, which the reference's `NonZero Word64` holds, is refused at setup
+  * (`SecurityParamBeyondStorage`): an approved deviation, recorded in #474.
+  */
+opaque type ChainStoreK = Int
+
+object ChainStoreK:
+  def from(k: BigInt): Either[ConfigError, ChainStoreK] =
+    Either.cond(k.isValidInt, k.toInt, ConfigError(ConfigProblem.SecurityParamBeyondStorage(k)))
+
+  extension (k: ChainStoreK) def blocks: Int = k
 
 object NodeSetup:
   /** The environment of the mirror for a configuration. */
@@ -292,8 +305,7 @@ object NodeSetup:
       // The chain store and the volatile chain count blocks in an `Int`: a larger security parameter
       // is refused, which the reference's `NonZero Word64` would accept. An approved deviation,
       // recorded in #474.
-      k = shelleyBase.geometry.k
-      _ <- Either.cond(k.isValidInt, (), ConfigError(ConfigProblem.SecurityParamBeyondStorage(k)))
+      chainStoreK <- ChainStoreK.from(shelleyBase.geometry.k)
       firstShelley = config.firstShelleyEpoch
       byronBytes <- required("Byron", names.byron)
       byron <-
@@ -398,6 +410,7 @@ object NodeSetup:
           Blake2b.hash256.hash(Bytes.fromArray(conwayBytes))
         )
       ),
+      chainStoreK = chainStoreK,
       byronParams = byronParams,
       byronConfig = byronRules.map(_._2)
     )
