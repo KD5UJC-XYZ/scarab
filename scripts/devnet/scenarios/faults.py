@@ -84,6 +84,9 @@ class Run:
 
     def __init__(self, args, root):
         self.args, self.root, self.name = args, root, args.name
+        # The control arm runs pool 1 as a reference node with the same keys, port and links as the Scala node,
+        # so that a schedule's outcome can be compared with the reference's own under the same faults.
+        self.control = getattr(args, "pool1", "scala") == "reference"
         self.ports = {}
         self.scala = None
         self.scala_command = None
@@ -108,6 +111,15 @@ class Run:
         log = (self.root / "follower.jsonl").open("a")
         self.scala = subprocess.Popen(["docker", *self.scala_command], stdout=log, stderr=subprocess.STDOUT, text=True)
 
+    def start_pool1(self, append=False):
+        """Pool 1 in the control arm: the reference node on the Scala node's port, dialling its proxy ports."""
+        in_ref(self.name, f"mkdir -p {ENV}/socket/node{POOL}; rm -f {ENV}/socket/node{POOL}/sock")
+        docker("exec", "-d", ref(self.name), "/bin/sh", "-c", node_script(self.name, POOL, SCALA_PORT, append))
+
+    def pool1_alive(self):
+        done = docker("exec", ref(self.name), "/bin/sh", "-c", f"kill -0 $(cat /work/node{POOL}.pid)", check=False)
+        return done.returncode == 0
+
     # ------------------------------------------------------------ faults
     def apply(self, action, t):
         op = action["op"]
@@ -115,6 +127,11 @@ class Run:
             self.shaper.shape(action["link"], action["delayMs"], action["jitterMs"], action["lossPercent"])
         elif op == "heal":
             self.shaper.heal([action["link"]])
+        elif op == "kill" and action["node"] == "scala" and self.control:
+            self.crashed.add("scala")
+            done = docker("exec", ref(self.name), "/bin/sh", "-c", f"kill -9 $(cat /work/node{POOL}.pid)", check=False)
+            if done.returncode != 0:
+                self.problems.append(f"the crash of pool 1 at {round(t, 1)} s found no live process: {done.stderr.strip()[:200]}")
         elif op == "kill" and action["node"] == "scala":
             gone = self.scala.poll()
             if gone is not None:
@@ -129,6 +146,10 @@ class Run:
             done = docker("exec", ref(self.name), "/bin/sh", "-c", f"kill -9 $(cat /work/node{HASKELL[action['node']]}.pid)", check=False)
             if done.returncode != 0:
                 self.problems.append(f"the crash of {action['node']} at {round(t, 1)} s found no live process: {done.stderr.strip()[:200]}")
+        elif op == "start" and action["node"] == "scala" and self.control:
+            self.restarts.append({"at": round(t, 1)})
+            self.start_pool1(append=True)
+            self.crashed.discard("scala")
         elif op == "start" and action["node"] == "scala":
             self.restarts.append({"at": round(t, 1), "eventsBefore": len(read_log(self.root / "follower.jsonl")[0])})
             docker("rm", "-f", f"{self.name}-scala", check=False)
@@ -141,14 +162,22 @@ class Run:
 
     def scala_lost(self):
         """The exit status of the Scala node if it ended without the schedule's crash, else None; its log outlives it."""
-        if self.scala is None or "scala" in self.crashed:
+        if "scala" in self.crashed:
+            return None
+        if self.control:
+            return None if self.pool1_alive() else "a dead process"
+        if self.scala is None:
             return None
         return self.scala.poll()
 
     def tips(self):
         """(block number, hash) of every node's tip, or None for a node that does not answer."""
-        events, _ = read_log(self.root / "follower.jsonl")
-        out = {"scala": scala_tip(events)}
+        if self.control:
+            tip = tip_at(self.name, f"{ENV}/socket/node{POOL}/sock") if "scala" not in self.crashed else None
+            out = {"scala": (tip["block"], tip["hash"]) if tip else None}
+        else:
+            events, _ = read_log(self.root / "follower.jsonl")
+            out = {"scala": scala_tip(events)}
         for node, n in HASKELL.items():
             tip = tip_at(self.name, f"{ENV}/socket/node{n}/sock") if node not in self.crashed else None
             out[node] = (tip["block"], tip["hash"]) if tip else None
@@ -224,6 +253,36 @@ def settle(run, seconds, before):
         tips = run.tips()
 
 
+def start_scala_pool(args, root, run):
+    """Pool 1 as the Scala node: the frozen classes in the reference namespace, with pool 1's keys; returns once
+    the cluster and the Scala node are running."""
+    classpath = freeze_classes(root)
+    db = root / "scala-db"
+    db.mkdir()
+    db.chmod(0o777)
+    program = ["follow", "--genesis-dir", "/genesis", "--query-port", str(QUERY_PORT),
+               "--listen", f"127.0.0.1:{SCALA_PORT}", "--db", "/db",
+               "--forge", "--vrf-skey", "/keys/vrf.skey", "--kes-skey", "/keys/kes.skey", "--opcert", "/keys/opcert.cert"]
+    for port in netfaults.peer_ports("scala").values():
+        program += ["--peer", f"127.0.0.1:{port}"]
+    run.scala_command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,
+                                        mounts=[f"{root / 'genesis'}:/genesis:ro", *database_mounts(db), f"{root / 'keys'}:/keys"],
+                                        name=f"{args.name}-scala")
+    run.start_scala()
+    log = root / "follower.jsonl"
+    deadline = time.monotonic() + 180
+    while time.monotonic() < deadline:
+        tip = tip_at(args.name, f"{ENV}/socket/node2/sock")
+        counts, _, _ = log_counts(log)
+        if tip and tip["block"] > 0 and counts.get("forgeStarted") and counts.get("extended"):
+            break
+        if run.scala.poll() is not None:
+            raise SystemExit(f"the Scala node exited with {run.scala.returncode}; see {log}")
+        time.sleep(1)
+    else:
+        raise SystemExit("the cluster or the Scala node did not come up within 180 s")
+
+
 def faults(args):
     """Fresh 3-pool cluster, the Scala node as pool 1, the schedule of `--seed` over `--duration` seconds, then
     heal and settle; the run fails on a property violation. Exit status 0 only if every property held."""
@@ -260,33 +319,23 @@ def faults(args):
         netfaults.start_proxies(args.name, root, node_ports)
         for node in HASKELL:
             run.start_haskell(node)
-        classpath = freeze_classes(root)
-        db = root / "scala-db"
-        db.mkdir()
-        db.chmod(0o777)
-        program = ["follow", "--genesis-dir", "/genesis", "--query-port", str(QUERY_PORT),
-                   "--listen", f"127.0.0.1:{SCALA_PORT}", "--db", "/db",
-                   "--forge", "--vrf-skey", "/keys/vrf.skey", "--kes-skey", "/keys/kes.skey", "--opcert", "/keys/opcert.cert"]
-        for port in netfaults.peer_ports("scala").values():
-            program += ["--peer", f"127.0.0.1:{port}"]
-        run.scala_command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,
-                                            mounts=[f"{root / 'genesis'}:/genesis:ro", *database_mounts(db), f"{root / 'keys'}:/keys"],
-                                            name=f"{args.name}-scala")
-        run.start_scala()
-        log = root / "follower.jsonl"
-        deadline = time.monotonic() + 180
-        while time.monotonic() < deadline:
-            tip = tip_at(args.name, f"{ENV}/socket/node2/sock")
-            counts, _, _ = log_counts(log)
-            if tip and tip["block"] > 0 and counts.get("forgeStarted") and counts.get("extended"):
-                break
-            if run.scala.poll() is not None:
-                raise SystemExit(f"the Scala node exited with {run.scala.returncode}; see {log}")
-            time.sleep(1)
+        if run.control:
+            put_file(args.name, f"{ENV}/node-data/node{POOL}/topology.json",
+                     json.dumps(topology(netfaults.peer_ports("scala")), indent=2))
+            run.start_pool1()
+            deadline = time.monotonic() + 180
+            while time.monotonic() < deadline:
+                tips = [tip_at(args.name, f"{ENV}/socket/node{n}/sock") for n in (POOL, 2)]
+                if all(t and t["block"] > 0 for t in tips):
+                    break
+                if not run.pool1_alive():
+                    raise SystemExit("pool 1 (reference) exited during start-up; see its log")
+                time.sleep(1)
+            else:
+                raise SystemExit("the cluster did not come up within 180 s")
         else:
-            raise SystemExit("the cluster or the Scala node did not come up within 180 s")
-        print(json.dumps({"up": True, "ports": run.ports}), flush=True)
-
+            start_scala_pool(args, root, run)
+        print(json.dumps({"up": True, "pool1": "reference" if run.control else "scala", "ports": run.ports}), flush=True)
         # ------------------------------------------------ the schedule
         started = time.monotonic()
         pending = list(plan["actions"])
@@ -303,8 +352,10 @@ def faults(args):
                 tips = run.tips()
                 samples.append({"t": round(t, 1), "heights": {n: v and v[0] for n, v in tips.items()}})
                 print(json.dumps({"t": round(t, 1), "tips": {n: v and (v[0], v[1][:10]) for n, v in tips.items()}}), flush=True)
-            if run.scala.poll() is not None and "scala" not in run.crashed:
-                failures.append(f"the Scala node exited with {run.scala.returncode} at {round(t, 1)} s")
+            lost = run.scala_lost()
+            if lost is not None:
+                failures.append(f"pool 1 (reference) exited at {round(t, 1)} s" if run.control
+                                else f"the Scala node exited with {lost} at {round(t, 1)} s")
                 break
             if t >= plan["duration"] and not pending:
                 break
@@ -312,24 +363,29 @@ def faults(args):
         run.shaper.heal()
         healed = run.tips()
         final, baseline = settle(run, args.settle, healed)
-        events, other = read_log(root / "follower.jsonl")
-        text = (root / "follower.jsonl").read_text(errors="replace")
-        logs = {n: in_ref(args.name, f"cat /work/node{HASKELL[n]}.log").stdout for n in HASKELL}
+        pools = {**HASKELL, **({"pool1": POOL} if run.control else {})}
+        events, other = ([], []) if run.control else read_log(root / "follower.jsonl")
+        text = "" if run.control else (root / "follower.jsonl").read_text(errors="replace")
+        logs = {n: in_ref(args.name, f"cat /work/node{pools[n]}.log").stdout for n in pools}
         k = plan["inputs"]["k"]
         failures += run.problems
         failures += faultplan.growth_failures(samples, plan["quiet"])
         failures += faultplan.convergence_failures(final)
         failures += faultplan.progress_failures(baseline, final)
         failures += [f"{n} is still down at the end of the run" for n in sorted(run.crashed)]
-        failures += faultplan.rollback_failures(events, k)
-        failures += faultplan.scala_failures(events, other, text)
+        # the Scala node's own event log is read only when it is pool 1; the control arm reports those checks as
+        # not applicable rather than passed
+        if not run.control:
+            failures += faultplan.rollback_failures(events, k)
+            failures += faultplan.scala_failures(events, other, text)
+            failures += faultplan.rejoin_failures(run.restarts, events)
         failures += faultplan.haskell_failures(logs, [])
-        failures += faultplan.rejoin_failures(run.restarts, events)
         counts = {}
         for e in events:
             counts[e["event"]] = counts.get(e["event"], 0) + 1
         summary = {
-            "seed": plan["seed"], "duration": plan["duration"], "inputs": plan["inputs"],
+            "seed": plan["seed"], "duration": plan["duration"], "inputs": plan["inputs"], "pool1": "reference" if run.control else "scala",
+            "notApplicable": ["rollback depth", "Scala node log", "rejoin after restart"] if run.control else [],
             "episodes": [{key: e[key] for key in e if key in ("kind", "start", "end", "links", "node", "groups")}
                          for e in plan["episodes"]],
             "executedActions": len(run.executed),
@@ -361,7 +417,7 @@ def faults(args):
         if plan is not None and docker("inspect", ref(args.name), check=False).returncode == 0:
             # Setup may fail before a pool creates its log. Diagnostic collection must not hide
             # that failure or prevent the summary and remaining cleanup.
-            for n in HASKELL.values():
+            for n in [*HASKELL.values(), *([POOL] if run.control else [])]:
                 result = docker("exec", ref(args.name), "/bin/sh", "-c",
                                 f"tail -c 200000 /work/node{n}.log", check=False, timeout=60)
                 (root / f"node{n}.log").write_text(result.stdout)
