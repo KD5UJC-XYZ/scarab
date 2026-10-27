@@ -10,16 +10,18 @@ ouroboros-consensus https://github.com/IntersectMBO/ouroboros-consensus branch m
   ouroboros-consensus-cardano/cddl/node-to-node/leiosnotify/leiosNotify.cddl
     (one file from a newer commit: main 9b918f8a14a9564d0f95b7080a30dad30203a16b of 2026-10-16, the file last changed in
     144cb4f13b9c31937e3f140d66bfbb93c4486ee9, 2026-10-14; obtained with the GitHub API, not in the local checkout; N3, docs/leios.md 11.5)
-cardano-blueprint   https://github.com/cardano-scaling/cardano-blueprint branch main    commit fe4cceb94622d4205b23eb11ccf9e8b43a3af5d5 (2026-10-13)
+cardano-blueprint   https://github.com/cardano-scaling/cardano-blueprint branch main    commit 0460c5a6152ae094bcfdad64a54b1a6561d7e38a (2026-10-16)
   src/network/node-to-node/leios-fetch/messages.cddl
-    (the only LeiosFetch CDDL there is: neither ouroboros-consensus `main` 9b918f8a nor `leios-prototype` cef41f6b has one
-    under cddl/, ouroboros-network has none; X12 of docs/leios.md 11.6. Its `base` is the consensus module above plus
-    `word16 = uint .size 2` (../overrides/base-word16.cddl); its `tx` is ../overrides/leios-fetch-tx.cddl, `tx = any`.
-    The Blueprint's main (0460c5a6, 2026-10-16) changed the file to match ouroboros-consensus#2416 and the prototype
-    branch's breaking change of the same day: `MsgLeiosBlockTxs` is `[4, tx_list]`, a transaction is
-    `#6.24(bytes .cbor dijkstra.block_transaction)`, an endorser block names at least one transaction. The codec and
-    this copy stay on the form of the testnet release until that release moves; LICENSE and NOTICE of the Blueprint
-    are in fixtures/licenses/cardano-blueprint-*)
+    (obtained 2026-10-22 with the GitHub API at that commit, "LeiosFetch transactions are CBOR-in-CBOR, endorser blocks
+    non-empty"; it replaced the copy of fe4cceb94622d4205b23eb11ccf9e8b43a3af5d5 (2026-10-13), see #174 and X12 of
+    docs/leios.md 11.6. `MsgLeiosBlockTxs` is `[4, tx_list]`, a transaction is `#6.24(bytes .cbor dijkstra.block_transaction)`,
+    an endorser block names at least one transaction. The file imports `base` (the consensus module above plus
+    `word16 = uint .size 2`, ../overrides/base-word16.cddl) and includes `dijkstra` (the cardano-ledger era module
+    below). Of the Blueprint's `src/codecs/base.cddl` nothing changed between the two commits (same SHA-256).
+    ouroboros-consensus `main` has a LeiosFetch CDDL since #2416 was merged on 2026-10-20
+    (ouroboros-consensus-cardano/cddl/node-to-node/leiosfetch/leiosFetch.cddl, `tx = #6.24(bytes)`); it is not pinned
+    here, the Blueprint's stricter inner type is. LICENSE and NOTICE of the Blueprint are in
+    fixtures/licenses/cardano-blueprint-*)
 cardano-ledger      https://github.com/IntersectMBO/cardano-ledger      branch master  commit a51efc776146e696744a6c030826c542ee0e448c
   eras/{byron,shelley,allegra,mary,alonzo,babbage,conway,dijkstra}/**/*.cddl   (one file per era)
 

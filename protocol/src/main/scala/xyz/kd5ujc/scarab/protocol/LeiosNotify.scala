@@ -5,6 +5,7 @@ import xyz.kd5ujc.scarab.crypto.bls.Vote
 import xyz.kd5ujc.scarab.codec.{Bytes, Value}
 
 import LeiosWire.*
+import LeiosWord.Word32
 
 /** Pure codec of the LeiosNotify mini-protocol (number 18), after the Blueprint's
   * `network/node-to-node/leios-notify/messages.cddl` (cardano-blueprint `fe4cceb9`). The Blueprint
@@ -35,7 +36,7 @@ object LeiosNotify:
 
     /** The announcing ranking-block header, exactly as ChainSync diffuses it (original bytes). */
     case BlockAnnouncement(header: Bytes)
-    case BlockOffer(point: EbPoint, ebSize: Long)
+    case BlockOffer(point: EbPoint, ebSize: Word32)
     case BlockTxsOffer(point: EbPoint)
 
     /** `[1* vote]`, each strictly decoded; `raw` keeps the original bytes of every vote. */
@@ -61,7 +62,7 @@ object LeiosNotify:
     case Message.BlockAnnouncement(h) =>
       arrayWithVerbatim(Vector(Value.UInt(BigInt(4))), Vector(h))
     case Message.BlockOffer(p, size) =>
-      LeiosWire.encode(tagged(5, pointValue(p), Value.UInt(BigInt(size))))
+      LeiosWire.encode(tagged(5, pointValue(p), Value.UInt(BigInt(size.toLong))))
     case Message.BlockTxsOffer(p) => LeiosWire.encode(tagged(6, pointValue(p)))
     case Message.Votes(votes, _) =>
       all(votes)(v => embed(v.encode)).flatMap(ns => LeiosWire.encode(tagged(7, Value.Arr(ns))))
@@ -83,8 +84,8 @@ object LeiosNotify:
           for
             _ <- arity(tag, fields, 2)
             p <- point(tag, fields(0))
-            size <- uint(tag, fields(1), BigInt(0xffffffffL), LeiosField.Word32)
-          yield Message.BlockOffer(p, size.toLong)
+            size <- uint(tag, fields(1), Word32.Max, LeiosField.Word32).flatMap(Word32.from)
+          yield Message.BlockOffer(p, size)
         case (State.Busy, 6) =>
           arity(tag, fields, 1).flatMap(_ => point(tag, fields(0))).map(Message.BlockTxsOffer(_))
         case (State.Busy, 7) =>

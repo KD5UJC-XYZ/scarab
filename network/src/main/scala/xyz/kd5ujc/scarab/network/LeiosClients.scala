@@ -66,7 +66,7 @@ trait LeiosFetchClient[F[_]]:
   def done: F[Unit]
 
 object LeiosFetchClient:
-  final case class Settings(timeout: FiniteDuration = 60.seconds, maxMessageBytes: Int = 2500000)
+  final case class Settings(timeout: FiniteDuration = 60.seconds)
 
   def apply[F[_]: Temporal](channel: MuxChannel[F], settings: Settings = Settings())(using
       Raise[F, NetworkError]
@@ -80,7 +80,7 @@ object LeiosFetchClient:
       def block(point: EbPoint): F[Observed[LeiosFetch.Message]] =
         send(LeiosFetch.Message.BlockRequest(point)) *>
           Timed.within(settings.timeout, id, "Block")(
-            channel.recv(settings.maxMessageBytes)(bytes =>
+            channel.recv(LeiosFetch.BlockByteLimit)(bytes =>
               LeiosDecode.result(LeiosFetch.decodePrefix(LeiosFetch.State.Block, bytes), bytes)
             )
           )

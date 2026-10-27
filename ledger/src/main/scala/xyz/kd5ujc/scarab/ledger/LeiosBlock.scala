@@ -157,9 +157,7 @@ object LeiosHeader:
       for
         xs <- array(n, 2)
         hash <- bytes(xs(0), 32)
-        eb <- EbHash
-          .fromBytes(hash)
-          .toRight(fail(LedgerDecodeError.ByteLength(DecodeField.EndorserBlockHash, 32, hash.size)))
+        eb = EbHash.fromBytes(hash)
         size <- uint32(xs(1))
       yield Some(EbAnnouncement(eb, size.toLong))
 end LeiosHeader

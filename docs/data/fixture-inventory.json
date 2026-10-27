@@ -936,7 +936,7 @@
     "fixtures/witness/provenance/sodium-open.c": "2b345bf78695844262832eb14d0655da3a815024db0d437791142ee3b34b062d",
     "fixtures/witness/status.tsv": "f5b22e990b28f1bff90ef2304f3a1d19e1ba40d85e984bcf08a869cffbf44934",
     "fixtures/witness/vectors.tsv": "f79f0a87efbd99ebe159c18211497f6b0d282e7946f1839216dc31bbf99ef918",
-    "models-gen/src/test/resources/pinned-output.sha256": "163503655c1ac7da9f363dcf14ceba36fe0f5225ac3d491b3ed08d865cc05027",
+    "models-gen/src/test/resources/pinned-output.sha256": "1c6e7c5f1421a42160d4aaa24f1ff9401fb47c25276bbc27e7ee4b335b91ece1",
     "network/src/test/resources/upstream/mux-lifecycle/lifecycle.tsv": "e6a5dbbcbf7e80abf10d071cb14215cf5ca02dfce0a27d05ffadcdd3e529beaf",
     "network/src/test/resources/upstream/mux-lifecycle/lifecycle.tsv.manifest.json": "d3fe86cb2982eb11e87eabc002386ba22d8133241c6d8ccb890e6d28b6b08ef2",
     "network/src/test/resources/upstream/mux-lifecycle/observer.patch": "615c818019e7b1a4bce69f75c22994466a6bad2d0ab115690aec6256a643e043",
