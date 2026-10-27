@@ -379,6 +379,9 @@ class ExecutionTests(unittest.TestCase):
         options = json.loads(written[faults.POOL_CONFIG])["TraceOptions"]
         self.assertEqual(options["Net.PeerSelection"], {"severity": "Debug"})
         self.assertEqual(options["BlockFetch.Decision"], {"severity": "Debug", "maxFrequency": 2.0})
+        # a non-empty TraceOptions replaces the defaults, so the default selection is listed explicitly
+        for namespace in ("Forge", "ChainDB", "Net.ConnectionManager.Remote", "Net.InboundGovernor.Remote", "Startup"):
+            self.assertEqual(options[namespace], {"severity": "Info"})
         self.assertIn(f"--config {faults.POOL_CONFIG} ", faults.node_script("n", 2, 4002))
 
     def test_scala_exiting_after_the_last_action_fails_the_run(self):
