@@ -1013,6 +1013,30 @@ class NtcQueriesTest(unittest.TestCase):
         self.assertFalse(row["rawEqual"] or row["textEqual"])
         self.assertFalse(outcome.passes)
 
+    def test_monitor_extra_bursts_continue_chains_until_sampled(self):
+        class FakeBuilder:
+            def wallet(self, number):
+                return {"txin": f"{'0' * 63}{number}#0", "lovelace": 10_000_000}
+
+            def tx(self, w, fee):
+                body = cbor.enc({0: w["txin"], 1: w["lovelace"] - fee})
+                return b"\x84" + body + cbor.enc({}) + cbor.enc(True) + cbor.enc(None)
+
+        b = FakeBuilder()
+        chains = {n: ntc.chain_from(b, n, 2) for n in (1, 2, 3)}
+        first_end = chains[1][1]
+        self.assertEqual(first_end[1], 10_000_000 - 2 * 200000)
+        self.assertEqual(first_end[0], f"{ntclocal.raw_tx_id(chains[1][0][-1]).hex()}#0")
+        seen = []
+        for txs in ntc.extra_bursts(b, chains, 2, lambda: len(seen) >= 4):
+            seen.append(txs)
+        self.assertEqual(len(seen), 4)
+        # the fourth extra burst continues wallet 1's chain from the end of its second
+        self.assertEqual(chains[1][1][1], 10_000_000 - 6 * 200000)
+        unbounded = list(ntc.extra_bursts(b, chains, 1, lambda: False))
+        self.assertEqual(len(unbounded), ntc.MONITOR_EXTRA_BURSTS)
+        self.assertEqual(list(ntc.extra_bursts(b, chains, 1, lambda: True)), [])
+
     def test_a_submission_counts_only_when_one_tip_brackets_it(self):
         tip, other = (10, "aa"), (11, "bb")
         self.assertTrue(ntc.bracketed((tip, tip), (tip, tip)))
