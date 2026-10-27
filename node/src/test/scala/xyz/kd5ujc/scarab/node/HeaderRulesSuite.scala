@@ -15,7 +15,7 @@ import xyz.kd5ujc.scarab.ledger.state.EpochNo
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.ledger.state.Word64
 import xyz.kd5ujc.scarab.consensus.HeaderRules.Outcome
-import xyz.kd5ujc.scarab.node.forge.ForgedChain
+import xyz.kd5ujc.scarab.node.forge.{ForgedChain, ForgedChainSetup}
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
@@ -164,16 +164,69 @@ class HeaderRulesSuite extends ScalaCheckSuite:
     )
   }
 
-  test("a header two epochs past the ledger but inside the window is checked, not deferred") {
-    // epochs of 10 slots with 3k/f = 30: the forecast range of an Origin ledger, slots below 30,
-    // reaches epoch 2, which the reference forecasts with the current distribution and parameters
-    // (TICKF, `Shelley/Rules/Tick.hs:185-242`)
-    val short = ForgedChain.config.copy(geometry = ForgedChain.geometry.copy(epochLength = 10))
-    val shortRules = NodeHeaderRules[MirrorState](short, ForgedChain.globals)
-    val i = forged.headers.indexWhere(h => h.slot >= 20 && h.slot < 30)
-    assert(i >= 0, forged.headers.map(_.slot).toString)
-    val outcome = shortRules.validate(forged.genesis, None, before(i), forged.headers(i))
-    assert(!outcome.isInstanceOf[Outcome.Later[?]], outcome.toString)
+  // Epochs of 10 slots with 3k/f = 30, forged from a ledger in epoch 2 (slots 20-29) into epoch 3.
+  private val short = ForgedChainSetup(ForgedChain.geometry.copy(epochLength = 10))
+  private lazy val shortChain: ForgedChain = short.forge(20 until 40, epoch = 2).unsafeRunSync()
+  private val shortRules = NodeHeaderRules[MirrorState](short.config, short.globals)
+
+  private def shortBefore(i: Int): NodeHeaderState.Shelley =
+    NodeHeaderState.Shelley(
+      if i == 0 then shortChain.genesis.protocol else shortChain.states(i - 1).protocol,
+      shortChain.headers.take(i).lastOption.map(ref),
+      shortChain.genesis.consensus.byron.firstShelleyEpoch,
+      None
+    )
+
+  /** The state with the mark snapshot of its epoch state emptied. */
+  private def withoutMark(m: MirrorState): MirrorState =
+    m.ext.ledgerState.state match
+      case i: EraLedgerState.InShelleyEra[e] =>
+        val es = i.state.nes.es
+        val empty = es.snapshots.copy(mark = short.snapshotOf(Vector.empty))
+        m.copy(ext =
+          m.ext.copy(ledgerState =
+            m.ext.ledgerState.withState(
+              EraLedgerState.InShelleyEra(
+                i.era,
+                i.state.copy(nes = i.state.nes.copy(es = es.copy(snapshots = empty)))
+              )
+            )
+          )
+        )
+      case _ => fail("the state is in Byron")
+
+  test("a header two epochs past the ledger is forecast with the current distribution (TICKF)") {
+    // `futureForecast` ticks with TICKF (cardano-ledger f649f975, `Shelley/Rules/Tick.hs:185-242`,
+    // `Conway/Rules/Tickf.hs:34-66`): the mark distribution only into the next epoch, the current
+    // one for any later epoch
+    val i = shortChain.headers.indexWhere(h => short.geometry.epochOf(h.slot) == 3)
+    assert(i > 0, shortChain.headers.map(_.slot).toString)
+    val j = i - 1
+    assertEquals(short.geometry.epochOf(shortChain.headers(j).slot), BigInt(2))
+    val tip = Some(ref(shortChain.headers(j)))
+    val expected =
+      shortBefore(i).copy(
+        state = shortChain.states(i).protocol,
+        previous = Some(ref(shortChain.headers(i)))
+      )
+    // the ledger one epoch earlier than it is: the header is two epochs past it, checked with the
+    // current distribution and one nonce rotation from its parent's epoch
+    val older = withEpoch(shortChain.states(j), -1)
+    assertEquals(
+      shortRules.validate(older, tip, shortBefore(i), shortChain.headers(i)),
+      Outcome.Valid(expected)
+    )
+    // without a mark distribution the next epoch has no leader, but two epochs on is unaffected
+    val unmarked = withoutMark(shortChain.states(j))
+    assert(
+      !shortRules
+        .validate(unmarked, tip, shortBefore(i), shortChain.headers(i))
+        .isInstanceOf[Outcome.Valid[?]]
+    )
+    assertEquals(
+      shortRules.validate(withEpoch(unmarked, -1), tip, shortBefore(i), shortChain.headers(i)),
+      Outcome.Valid(expected)
+    )
   }
 
   test("an Origin ledger forecast excludes its native stability-window endpoint") {

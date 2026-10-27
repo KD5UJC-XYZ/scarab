@@ -74,8 +74,11 @@ final case class ForgedChain(
     states: Vector[MirrorState]
 )
 
-object ForgedChain:
-  val geometry: EpochGeometry =
+object ForgedChain extends ForgedChainSetup(ForgedChainSetup.defaultGeometry)
+
+object ForgedChainSetup:
+  /** One-second slots, epochs of 1000 slots, k = 5 and f = 1/2. */
+  val defaultGeometry: EpochGeometry =
     EpochGeometry(
       Instant.EPOCH,
       1000,
@@ -83,6 +86,9 @@ object ForgedChain:
       securityParam = TestGeometry.k(5),
       activeSlotsCoeff = TestGeometry.f("0.5")
     )
+
+/** Forging under `geometry`; [[ForgedChain]] is the default geometry's. */
+class ForgedChainSetup(val geometry: EpochGeometry):
   val config: PraosConfig = PraosConfig(
     geometry,
     slotsPerKesPeriod = 100,
@@ -90,7 +96,13 @@ object ForgedChain:
     activeSlotsCoeff = Leader.Fraction.checked(1, 2).toOption.get
   )
   val globals: LedgerGlobals =
-    LedgerGlobals(TestLedger.Supply, 1000, Rational(1, 2), network = 0, updateQuorum = 2)
+    LedgerGlobals(
+      TestLedger.Supply,
+      geometry.epochLength,
+      Rational(1, 2),
+      network = 0,
+      updateQuorum = 2
+    )
   val epochNonce: Nonce = Nonce.Hash(Blake2b.hash256.hash(Bytes(Vector(7))))
 
   /** What the mirror reads of this configuration. */
