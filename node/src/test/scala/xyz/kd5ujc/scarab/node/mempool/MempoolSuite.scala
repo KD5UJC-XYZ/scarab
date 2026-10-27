@@ -8,18 +8,10 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.codec.Rational
-import cats.data.{Kleisli, NonEmptyChain}
-import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
+import cats.data.NonEmptyChain
 import munit.{CatsEffectSuite, ScalaCheckSuite}
-import xyz.kd5ujc.scarab.ledger.state.{
-  Conway,
-  FlatStateGen,
-  MirrorEnv,
-  MirrorError,
-  SlotNo,
-  WithOrigin
-}
-import xyz.kd5ujc.scarab.legacy.{FlatTestLedger, LedgerMirror, LedgerState}
+import xyz.kd5ujc.scarab.ledger.rules.NativeRules
+import xyz.kd5ujc.scarab.ledger.state.{Conway, NewEpochState}
 import org.scalacheck.{Gen, Prop}
 import org.scalacheck.Prop.*
 
@@ -106,32 +98,18 @@ object TxKit:
       id
     )
 
-  private type Mirrored[A] = Kleisli[[X] =>> Either[MirrorError, X], MirrorEnv, A]
-  private val mirror: LedgerMirror[Mirrored] = LedgerMirror[Mirrored]
-  private val mirrorEnv: MirrorEnv = FlatStateGen.env.copy(network = 0, quorum = 2)
-
-  /** The Conway ledger of a flat test state: the flat state through the mirror, as the rule suites
-    * of the ledger module do it (`RuleSet`), once the test has built it with the flat builders.
+  /** The Conway state of the rule suites ([[NativeRules.stateIn]], protocol version 10) with `n`
+    * outputs of `value` for alice, at txIn(1..n).
     */
-  def conway(flat: LedgerState): MempoolLedger = MempoolLedger.of(native(flat))
-
-  def native(flat: LedgerState): xyz.kd5ujc.scarab.ledger.state.NewEpochState[Conway] =
-    val at = WithOrigin.At(SlotNo.fromUnsigned(50L))
-    mirror
-      .to[Conway](at, flat)
-      .run(mirrorEnv)
-      .fold(e => sys.error(s"to the mirror: $e"), image => image.value.nes)
+  def native(n: Int, value: BigInt = 100 * ada): NewEpochState[Conway] =
+    NativeRules
+      .stateIn[Conway](10, (1 to n).toVector.map(i => txIn(i) -> out(alice.address(), value)))
 
   /** The Conway ledger of a new-epoch state. */
-  def conway(nes: xyz.kd5ujc.scarab.ledger.state.NewEpochState[Conway]): MempoolLedger =
-    MempoolLedger.of(nes)
-
-  /** The flat state with `n` outputs of `value` for alice, at txIn(1..n). */
-  def flat(n: Int, value: BigInt = 100 * ada): LedgerState =
-    FlatTestLedger.state(10, (1 to n).toVector.map(i => txIn(i) -> out(alice.address(), value)))
+  def conway(nes: NewEpochState[Conway]): MempoolLedger = MempoolLedger.of(nes)
 
   /** The Conway ledger with `n` outputs of `value` for alice, at txIn(1..n). */
-  def ledger(n: Int, value: BigInt = 100 * ada): MempoolLedger = conway(flat(n, value))
+  def ledger(n: Int, value: BigInt = 100 * ada): MempoolLedger = conway(native(n, value))
 
   extension (l: MempoolLedger)
     /** The ledger with the protocol version changed (the rules read the version in force). */
@@ -169,7 +147,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
 
   test("the next-slot view applies the full epoch transition before transaction validation") {
     import xyz.kd5ujc.scarab.ledger.state.{DeltaCoin, FuturePParams, PulsingRewUpdate, RewardUpdate}
-    val before = native(flat(1))
+    val before = native(1)
     val nextParams = before.es.ls.utxo.gov.curPParams.copy(maxTxSize = 1)
     val pending = RewardUpdate.empty.copy(deltaT = DeltaCoin(123), deltaR = DeltaCoin(-123))
     val scheduled = before.copy(
@@ -213,7 +191,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
 
   test("next-slot tick handles origin and preserves a typed overflow failure") {
     val before =
-      native(flat(1)).copy(epoch = xyz.kd5ujc.scarab.ledger.state.EpochNo.fromUnsigned(0))
+      native(1).copy(epoch = xyz.kd5ujc.scarab.ledger.state.EpochNo.fromUnsigned(0))
     val origin = MempoolLedger.tick(before, None, env).fold(e => fail(e.toString), identity)
     assertEquals(origin.epoch, BigInt(0))
     val overflow = MempoolLedger.tick(before, Some((BigInt(1) << 64) - 1), env)

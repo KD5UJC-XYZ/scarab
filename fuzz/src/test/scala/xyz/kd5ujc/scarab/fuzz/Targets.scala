@@ -1589,6 +1589,65 @@ object Targets:
       }
     )
 
+  private val genesisInjections: Target =
+    import io.circe.{Json, parser}
+    import xyz.kd5ujc.scarab.ledger.GenesisState.{FundAddress, InjectionData}
+    import xyz.kd5ujc.scarab.ledger.rules.GenesisInjections
+    def readFixture(name: String): Json =
+      val path = java.nio.file.Path.of("fixtures/devnet/lsq/genesis", s"$name-genesis.json")
+      parser.parse(Files.readString(path)).fold(e => throw new Violation(e.message), identity)
+    Target(
+      "genesis-injections",
+      () =>
+        val fixture = Json.obj(
+          "shelley" -> readFixture("shelley"),
+          "alonzo" -> readFixture("alonzo"),
+          "conway" -> readFixture("conway")
+        )
+        val address = "60" + "19" * 28
+        val signed = Json.obj(
+          "shelley" -> Json.obj(
+            "networkId" -> Json.fromString("Testnet"),
+            "initialFunds" -> Json.obj(address -> Json.fromInt(-1)),
+            "extraConfig" -> Json.obj(
+              "initialFunds" -> Json.obj(
+                "file" -> Json.arr(Json.fromString("funds.json")),
+                "hash" -> Json.fromString("00" * 32)
+              )
+            )
+          ),
+          "alonzo" -> Json.obj(),
+          "conway" -> Json.obj()
+        )
+        Vector(fixture, signed).map(_.noSpaces.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+      ,
+      probe("genesis-injections") { bytes =>
+        val files = for
+          json <- parser
+            .parse(new String(bytes.toArray, java.nio.charset.StandardCharsets.UTF_8))
+            .toOption
+          shelley <- json.hcursor.get[Json]("shelley").toOption
+          alonzo <- json.hcursor.get[Json]("alonzo").toOption
+          conway <- json.hcursor.get[Json]("conway").toOption
+        yield GenesisState.Files(shelley, alonzo, conway, Json.obj())
+        files.flatMap(GenesisInjections.read(_).toOption).foreach { parsed =>
+          hit("genesis-injections")
+          val embedded = parsed.initialFunds.extra match
+            case InjectionData.Embedded(entries) => entries
+            case _                               => Vector.empty
+          (parsed.initialFunds.legacy ++ embedded).foreach { (address: FundAddress, _) =>
+            req(
+              GenesisState.address(address.canonicalBytes.hex) == Right(address),
+              "canonical genesis address changed when parsed again"
+            )
+          }
+        }
+      }
+    )
+
   val all: Vector[Target] =
     network ++ node ++ ledgerPeers ++ mempackTxOut ++ snapshotMeta ++ snapshotTables ++ sclsFraming ++
-      Vector(sclsValues) ++ nativeSnapshots ++ ancillary ++ mithril ++ networkIdentity
+      Vector(
+        sclsValues,
+        genesisInjections
+      ) ++ nativeSnapshots ++ ancillary ++ mithril ++ networkIdentity

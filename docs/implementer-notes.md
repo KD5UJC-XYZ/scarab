@@ -73,7 +73,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** Hard-coded 4000 bytes in Allegra and Mary; `maxValueSize` from Alonzo; unlimited in Shelley. The indefinite-map rule applies at decoder version 2 and above.
 - **Upstream reference:** cardano-ledger `Allegra/Rules/Utxo.hs`; `Alonzo/Rules/Utxo.hs:425-445`; `cardano-ledger-binary` `Encoding/Encoder.hs:397-408` (`encodeMap`), `:433-443` (`variableMapLenEncoding`, `lengthThreshold = 23`); `Mary/Value.hs:354-361`, `:163-164`.
 - **Chain evidence:** Preprod tx 06869a76 (block 1,558,703): 500 assets under one policy, 5001 bytes definite, 5000 bytes in the ledger, accepted by the chain. Devnet at 4000/4001 and 5000/5001 bytes. Roadmap B12.
-- **Pinned by:** [`PreConwayRulesSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/PreConwayRulesSuite.scala) (CBOR cross-check), [`fixtures/preprod/tx-06869a76.hex`](../fixtures/preprod/tx-06869a76.hex), e2e `value-*`
+- **Pinned by:** [`PreConwayRulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreConwayRulesSuite.scala) (CBOR cross-check), [`fixtures/preprod/tx-06869a76.hex`](../fixtures/preprod/tx-06869a76.hex), e2e `value-*`
 - **Status:** confirmed in source
 
 #### IN-3 Mary minimum output uses `scaledMinDeposit` with divisor 27 and distinct asset names
@@ -82,7 +82,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** Mary only.
 - **Upstream reference:** cardano-ledger `Mary/TxOut.hs`, `Mary/Value.hs`.
 - **Chain evidence:** Devnet e2e at the boundary. Roadmap B7.
-- **Pinned by:** [`PreConwayRulesSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/PreConwayRulesSuite.scala), `scripts/tests/test_devnet_pure.py`, e2e `min-*`
+- **Pinned by:** [`PreConwayRulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreConwayRulesSuite.scala), `scripts/tests/test_devnet_pure.py`, e2e `min-*`
 - **Status:** confirmed in source
 
 #### IN-4 Before Babbage, bytes after a valid address in an output are dropped (B28)
@@ -109,7 +109,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** Not gated; seen in Conway.
 - **Upstream reference:** cardano-ledger `Shelley/UTxO.hs` lines 210-228 (`getShelleyWitsVKeyNeededNoGov`); `Shelley/Rules/Utxow.hs` lines 412-423 (`validateNeededWitnesses`).
 - **Chain evidence:** Preprod tx 0c22edee (block 3,158,876, slot 83,038,792, epoch 196, Conway) spends two Byron outputs of address root 533bcb8d with a vkey witness. Roadmap B14.
-- **Pinned by:** [`PreprodByronKeyWitnessSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/PreprodByronKeyWitnessSuite.scala), [`fixtures/preprod/tx-0c22edee.hex`](../fixtures/preprod/tx-0c22edee.hex)
+- **Pinned by:** [`PreprodByronKeyWitnessSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodByronKeyWitnessSuite.scala), [`fixtures/preprod/tx-0c22edee.hex`](../fixtures/preprod/tx-0c22edee.hex)
 - **Status:** confirmed in source
 
 #### IN-7 Shelley's time to live is the last valid slot
@@ -118,7 +118,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** Shelley only (`ExactEra ShelleyEra`).
 - **Upstream reference:** cardano-ledger `Shelley/Rules/Utxo.hs` lines 414-423 (`validateTimeToLive`).
 - **Chain evidence:** Mainnet slot 4,498,780 (epoch 208, block hash prefix c3015880): tx c7e8a043 has `ttl` 4,498,780. Roadmap B23.
-- **Pinned by:** [`PreConwayRulesSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/PreConwayRulesSuite.scala)
+- **Pinned by:** [`PreConwayRulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreConwayRulesSuite.scala)
 - **Status:** confirmed in source
 
 #### IN-8 The fee size counts array header, body, witnesses and auxiliary data, not the `is_valid` byte
@@ -136,7 +136,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** Conway; the block count differs at protocol 10 and below.
 - **Upstream reference:** implemented from the ledger source; no line numbers in our docs.
 - **Chain evidence:** Checked on Preview Conway blocks.
-- **Pinned by:** [`ConwayRulesSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/ConwayRulesSuite.scala)
+- **Pinned by:** [`ConwayRulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/ConwayRulesSuite.scala)
 - **Status:** observed
 
 #### IN-10 Zero-lovelace Byron genesis outputs are dropped at the Byron to Shelley translation
@@ -156,7 +156,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** All eras (the window is era dependent through `k` and `f`).
 - **Upstream reference:** cardano-ledger `Rupd.hs` `determineRewardTiming`; `Rupd.hs:101`.
 - **Chain evidence:** Devnet reward-update comparison (commit 1ff2934).
-- **Pinned by:** [`ConwayRulesSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/ConwayRulesSuite.scala), [`PreConwayRulesSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/PreConwayRulesSuite.scala)
+- **Pinned by:** [`ConwayRulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/ConwayRulesSuite.scala), [`PreConwayRulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreConwayRulesSuite.scala)
 - **Status:** confirmed in source
 
 #### IN-12 Pre-Babbage reward prefilter: only accounts registered at the start slot
@@ -165,7 +165,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** `hardforkBabbageForgoRewardPrefilter`: protocol version greater than 6 forgoes the prefilter.
 - **Upstream reference:** cardano-ledger `Rupd.hs`; the gate named above.
 - **Chain evidence:** Devnet e2e, deregistration before and after the start slot. Roadmap B8.
-- **Pinned by:** [`RewardsSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/RewardsSuite.scala) (cut-off and boundary cases), e2e `dereg-early`, `dereg-late`
+- **Pinned by:** [`RewardsSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/RewardsSuite.scala) (cut-off and boundary cases), e2e `dereg-early`, `dereg-late`
 - **Status:** confirmed in source
 
 #### IN-13 Pre-Allegra reward aggregation keeps one reward per account, a leader reward before a member reward
@@ -174,7 +174,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** `hardforkAllegraAggregatedRewards`: protocol version greater than 2 aggregates.
 - **Upstream reference:** cardano-ledger `Rewards.hs`, `Cardano.Ledger.Rewards`.
 - **Chain evidence:** Devnet e2e with cross-paying pools, protocol 2. Roadmap B7.
-- **Pinned by:** [`RewardsSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/RewardsSuite.scala)
+- **Pinned by:** [`RewardsSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/RewardsSuite.scala)
 - **Status:** confirmed in source
 
 #### IN-14 The expected number of blocks in the reward calculation is floored
@@ -183,7 +183,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** All eras.
 - **Upstream reference:** cardano-ledger `PulsingReward.hs:127-129`.
 - **Chain evidence:** Found by reading the rule, not by chain data.
-- **Pinned by:** [`RewardsSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/RewardsSuite.scala) (integral cases only)
+- **Pinned by:** [`RewardsSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/RewardsSuite.scala) (integral cases only)
 - **Status:** confirmed in source
 
 #### IN-15 Only the stake delegated to the pool counts for a pool owner's pledge
@@ -192,7 +192,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** Not gated.
 - **Upstream reference:** none cited in our docs.
 - **Chain evidence:** Preview epoch 493, found by comparing reserves, treasury, reward pot and single-pool stake with Koios (commit 74a01ae).
-- **Pinned by:** [`RewardsSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/RewardsSuite.scala)
+- **Pinned by:** [`RewardsSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/RewardsSuite.scala)
 - **Status:** observed
 
 #### IN-16 Stake snapshots hold non-zero stake only
@@ -221,7 +221,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** Protocol version 5.
 - **Upstream reference:** cardano-ledger `Deleg.hs`, `Mir.hs`, `NewEpoch.hs`; `Rules/Deleg.hs:353,363`.
 - **Chain evidence:** Devnet e2e. Roadmap B7.
-- **Pinned by:** [`PreConwayRulesSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/PreConwayRulesSuite.scala), e2e `mir-*`
+- **Pinned by:** [`PreConwayRulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreConwayRulesSuite.scala), e2e `mir-*`
 - **Status:** confirmed in source
 
 #### IN-19 Pointer addresses do not count in the stake snapshot at the Babbage to Conway boundary
@@ -266,7 +266,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** Protocol 9 and 10.
 - **Upstream reference:** none cited in our docs.
 - **Chain evidence:** Devnet soak and Preview (commit 1926b1b).
-- **Pinned by:** [`ConwayGovernanceSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/ConwayGovernanceSuite.scala), [`PreviewConwayGovernanceSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreviewConwayGovernanceSuite.scala)
+- **Pinned by:** [`ConwayGovernanceSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/ConwayGovernanceSuite.scala), [`PreviewConwayGovernanceSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreviewConwayGovernanceSuite.scala)
 - **Status:** observed
 
 #### IN-24 Governance state in the first epoch and just after a boundary
@@ -286,7 +286,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** Protocol version greater than 4.
 - **Upstream reference:** cardano-ledger `eras/shelley/impl/src/Cardano/Ledger/Shelley/Era.hs:246-251`; `Shelley/Rules/Pool.hs:230-243`.
 - **Chain evidence:** Mainnet slot 4,495,760 (epoch 208, block hash prefix fb4e87a0): tx 49be5965 registers pool ff5181ba with a reward account on network 0. Roadmap B22.
-- **Pinned by:** [`MainnetPoolNetworkSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/MainnetPoolNetworkSuite.scala), [`fixtures/mainnet/shelley-pool-network-block.hex`](../fixtures/mainnet/shelley-pool-network-block.hex)
+- **Pinned by:** [`MainnetPoolNetworkSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/MainnetPoolNetworkSuite.scala), [`fixtures/mainnet/shelley-pool-network-block.hex`](../fixtures/mainnet/shelley-pool-network-block.hex)
 - **Status:** confirmed in source
 
 #### IN-26 A registered pool's reward account has no network in the ledger state
@@ -313,7 +313,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** `hardforkConwayDisallowDuplicatedVRFKeys`: protocol version greater than 10.
 - **Upstream reference:** cardano-ledger `Shelley/Rules/Pool.hs:265` (and `265-284`); `Conway/Rules/HardFork.hs:75`.
 - **Chain evidence:** Devnet: ten registrations around two pools' key hashes, five refused. Roadmap B5.
-- **Pinned by:** [`ConwayGovernanceSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/ConwayGovernanceSuite.scala), [`DevnetRefusedTxSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/ledger/DevnetRefusedTxSuite.scala)
+- **Pinned by:** [`ConwayGovernanceSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/ConwayGovernanceSuite.scala), [`DevnetRefusedTxSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/ledger/DevnetRefusedTxSuite.scala)
 - **Status:** confirmed in source
 
 ### Governance
@@ -351,7 +351,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** Conway.
 - **Upstream reference:** cardano-ledger `Rules/Epoch.hs:423` (`updateCommitteeState`).
 - **Chain evidence:** Found building the devnet scenarios.
-- **Pinned by:** [`ConwayGovernanceSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/ConwayGovernanceSuite.scala)
+- **Pinned by:** [`ConwayGovernanceSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/ConwayGovernanceSuite.scala)
 - **Status:** confirmed in source
 
 #### IN-33 Votes by unelected committee hot keys: GOV refuses from protocol 11, the mempool before
@@ -360,7 +360,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** `hardforkConwayDisallowUnelectedCommitteeFromVoting`: protocol 11.
 - **Upstream reference:** cardano-ledger `Rules/Gov.hs:478`; `Rules/Mempool.hs:128`.
 - **Chain evidence:** Devnet: both a proposed member's key and a former member's key refused at 11. Preprod epochs 187 to 193 carry 648,752 committee votes of authorised hot keys. Roadmap B5.
-- **Pinned by:** [`ConwayGovernanceSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/ConwayGovernanceSuite.scala), [`MempoolSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/node/mempool/MempoolSuite.scala), [`DevnetRefusedTxSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/ledger/DevnetRefusedTxSuite.scala), [`ConwayLedgerSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/ConwayLedgerSuite.scala)
+- **Pinned by:** [`ConwayGovernanceSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/ConwayGovernanceSuite.scala), [`MempoolSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/node/mempool/MempoolSuite.scala), [`DevnetRefusedTxSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/ledger/DevnetRefusedTxSuite.scala), [`ConwayLedgerSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/rules/ConwayLedgerSuite.scala)
 - **Status:** confirmed in source
 
 #### IN-34 Before protocol 11 a withdrawal that does not drain its account is `WithdrawalsNotInRewardsCERTS`
@@ -369,7 +369,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** `hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule`: protocol above 10.
 - **Upstream reference:** cardano-ledger `Rules/Ledger.hs`, `Rules/Certs.hs`.
 - **Chain evidence:** The reference prints the CERTS form at 10.
-- **Pinned by:** [`ConwayRulesSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/ConwayRulesSuite.scala)
+- **Pinned by:** [`ConwayRulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/ConwayRulesSuite.scala)
 - **Status:** confirmed in source
 
 #### IN-35 Script credentials need a script witness per purpose
@@ -378,7 +378,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** Conway.
 - **Upstream reference:** none cited in our docs.
 - **Chain evidence:** Devnet: registration, delegation, vote and withdrawal of one Plutus V3 credential. Roadmap B4.
-- **Pinned by:** [`ConwayRulesSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/ConwayRulesSuite.scala)
+- **Pinned by:** [`ConwayRulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/ConwayRulesSuite.scala)
 - **Status:** observed
 
 #### IN-36 The MEMPOOL rule runs before LEDGER; CERTS and GOV run before UTXOW
@@ -407,7 +407,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** Protocol 9, 10, 11.
 - **Upstream reference:** cardano-ledger `Babbage/Rules/Utxo.hs:209-216`; `Conway/TxInfo.hs:512`.
 - **Chain evidence:** Devnet: refused at 10, accepted without scripts at 11, refused for a V3 mint at 11. Roadmap B5.
-- **Pinned by:** [`ConwayRulesSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/ConwayRulesSuite.scala), [`DevnetRefusedTxSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/ledger/DevnetRefusedTxSuite.scala)
+- **Pinned by:** [`ConwayRulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/ConwayRulesSuite.scala), [`DevnetRefusedTxSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/ledger/DevnetRefusedTxSuite.scala)
 - **Status:** confirmed in source
 
 #### IN-39 The V1 cost model is a map of named integers in sorted name order, not file order
@@ -452,7 +452,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** Per language and protocol version, as listed.
 - **Upstream reference:** plutus-ledger-api 1.70.0.0 `PlutusLedgerApi.Common.Versions.builtinsAvailableIn`; cardano-ledger `validateScriptsWellFormed`; `mkTermToEvaluate`.
 - **Chain evidence:** Preview from genesis to epoch 168: 975,398 Plutus transactions evaluated successfully and 86 to failure, every verdict equal to `is_valid`. Roadmap B9.
-- **Pinned by:** [`PlutusAvailabilitySuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/PlutusAvailabilitySuite.scala), [`PreConwayRulesSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/PreConwayRulesSuite.scala)
+- **Pinned by:** [`PlutusAvailabilitySuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/PlutusAvailabilitySuite.scala), [`PreConwayRulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreConwayRulesSuite.scala)
 - **Status:** confirmed in source
 
 #### IN-44 V1 and V2 `TxInfo` differ from V3; interval bounds change at Conway
@@ -470,7 +470,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** V1 and V2 ignore the remainder; V3 fails.
 - **Upstream reference:** plutus-ledger-api `PlutusLedgerApi/Common/SerialisedScript.hs` lines 251-263.
 - **Chain evidence:** Preprod tx aee75c1c (block 4,045,972, slot 105,654,302, epoch 248, protocol 10): an output carries the V2 reference script 5272e713 as a 1078-byte item twice (2156 bytes), created by this transaction. Roadmap B16.
-- **Pinned by:** [`PreprodMalformedRefScriptSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/PreprodMalformedRefScriptSuite.scala), [`fixtures/preprod/tx-aee75c1c.hex`](../fixtures/preprod/tx-aee75c1c.hex), [`PlutusScriptBytesSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/PlutusScriptBytesSuite.scala)
+- **Pinned by:** [`PreprodMalformedRefScriptSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodMalformedRefScriptSuite.scala), [`fixtures/preprod/tx-aee75c1c.hex`](../fixtures/preprod/tx-aee75c1c.hex), [`PlutusScriptBytesSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/PlutusScriptBytesSuite.scala)
 - **Status:** confirmed in source
 
 #### IN-46 Native script `n_of_k`: `n` is a signed 64-bit integer; slots are unsigned 64-bit
@@ -479,7 +479,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** Allegra onwards.
 - **Upstream reference:** cardano-ledger Allegra `Timelock`, `evalTimelock` (`isValidMOf`); file and line not recorded in our docs.
 - **Chain evidence:** Preprod tx b1db2a41 (block 5,184,855, slot 133,902,219, epoch 313) carries `[3, -1, [sig, sig]]`. Roadmap B19.
-- **Pinned by:** [`PreprodNOfKSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/PreprodNOfKSuite.scala), [`fixtures/preprod/tx-b1db2a41.hex`](../fixtures/preprod/tx-b1db2a41.hex)
+- **Pinned by:** [`PreprodNOfKSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodNOfKSuite.scala), [`fixtures/preprod/tx-b1db2a41.hex`](../fixtures/preprod/tx-b1db2a41.hex)
 - **Status:** confirmed in source
 
 #### IN-47 No nesting limit below the size of the block
@@ -497,7 +497,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** Plutus V2 onwards.
 - **Upstream reference:** `PlutusCore.Crypto.Secp256k1` over `Cardano.Crypto.DSIGN.EcdsaSecp256k1` and libsecp256k1 (`secp256k1_ec_pubkey_parse`, `secp256k1_ecdsa_signature_parse_compact`).
 - **Chain evidence:** Preprod tx 97b31e35 (slot 92,114,397, epoch 217, Plutus V2) calls the builtin with an all-zero signature. Roadmap B15.
-- **Pinned by:** [`PreprodSecp256k1RulesSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/PreprodSecp256k1RulesSuite.scala), [`Secp256k1Suite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/Secp256k1Suite.scala), [`fixtures/preprod/tx-97b31e35.hex`](../fixtures/preprod/tx-97b31e35.hex)
+- **Pinned by:** [`PreprodSecp256k1RulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodSecp256k1RulesSuite.scala), [`Secp256k1Suite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/Secp256k1Suite.scala), [`fixtures/preprod/tx-97b31e35.hex`](../fixtures/preprod/tx-97b31e35.hex)
 - **Status:** confirmed in source
 
 #### IN-49 `serialiseData` writes a constructor index outside 0 to 127 as an unsigned 64-bit integer
@@ -506,7 +506,7 @@ are the ones most in need of a second reading.
 - **Era or protocol-version gate:** Not gated.
 - **Upstream reference:** `PlutusCore.Data.encodeData`; file and line not recorded in our docs.
 - **Chain evidence:** Preprod tx 2edd684f (slot 80,239,053, epoch 189): a Hydra head fanout whose outputs carry datums with such indices. Filed as B12 in findings.md (the same label as the value-size row of the roadmap).
-- **Pinned by:** [`PreprodConwayRulesSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/PreprodConwayRulesSuite.scala), `fixtures/preprod/plutus/tx-2edd684f.json`, [`DataSerialiserSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/DataSerialiserSuite.scala)
+- **Pinned by:** [`PreprodConwayRulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodConwayRulesSuite.scala), `fixtures/preprod/plutus/tx-2edd684f.json`, [`DataSerialiserSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/DataSerialiserSuite.scala)
 - **Status:** confirmed in source
 
 #### IN-50 BLS12-381 in the reference is built portable, without `mulx`/`adcx`
@@ -679,7 +679,7 @@ are the ones most in need of a second reading.
 - **Specification or CDDL says:** The native-script CDDL types the `n` of `script_n_of_k` as `int` and the slots of `invalid_before` and `invalid_hereafter` as `uint`. Neither type states a bound.
 - **Implementation does:** The decoder reads `n` as `Int` (cborg `decodeInt`, -2^63 to 2^63 - 1, negative allowed) and slots as `SlotNo` (`Word64`). A bignum or a value outside the range fails the decode. A decoder written from the CDDL alone reads `n` as unsigned and refuses a script the chain accepted, or accepts a value the reference refuses.
 - **Evidence:** Preprod tx b1db2a41 (block 5,184,855, slot 133,902,219, epoch 313): `[3, -1, [sig, sig]]`, accepted by the chain. Roadmap B19.
-- **Pinned by:** [`PreprodNOfKSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/PreprodNOfKSuite.scala) (properties at the 64-bit boundaries against a transcription of the reference).
+- **Pinned by:** [`PreprodNOfKSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodNOfKSuite.scala) (properties at the 64-bit boundaries against a transcription of the reference).
 - **Suggested upstream action:** cardano-ledger CDDL (`eras/allegra` native script section): add the 64-bit bounds as comments or `.le` constraints, and note that `n <= 0` is satisfied by any signer set.
 - **Status:** confirmed in source
 
@@ -699,7 +699,7 @@ are the ones most in need of a second reading.
 - **Specification or CDDL says:** The rule limits the size of the serialised value (4000 bytes in Allegra and Mary, `maxValueSize` later). A reader takes this to mean the bytes in the transaction.
 - **Implementation does:** The size is that of the ledger's own encoding. A map of more than 23 entries is written indefinite-length, so the measured size can be one byte below the minimal definite form (and below the transaction's own bytes).
 - **Evidence:** Preprod tx 06869a76 (block 1,558,703): 500 assets under one policy, 5001 bytes definite, 5000 in the ledger, accepted by the chain. Roadmap B12.
-- **Pinned by:** [`PreConwayRulesSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/PreConwayRulesSuite.scala) (CBOR cross-check), [`fixtures/preprod/tx-06869a76.hex`](../fixtures/preprod/tx-06869a76.hex). The upstream references are in the Part A entry on output value size.
+- **Pinned by:** [`PreConwayRulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreConwayRulesSuite.scala) (CBOR cross-check), [`fixtures/preprod/tx-06869a76.hex`](../fixtures/preprod/tx-06869a76.hex). The upstream references are in the Part A entry on output value size.
 - **Suggested upstream action:** formal ledger specification and cardano-ledger documentation: state that the size is of the re-encoded value and give the indefinite-map threshold.
 - **Status:** confirmed in source
 
@@ -709,7 +709,7 @@ are the ones most in need of a second reading.
 - **Specification or CDDL says:** The CDDL types a Plutus script as `bytes`, and the ledger API describes it as a CBOR-wrapped flat program. No text says what follows the first CBOR item.
 - **Implementation does:** `deserialiseScript` ignores the remainder for V1 and V2 and raises `RemainderError` for V3. A reference script that carries its item twice (2156 bytes) is valid on chain and is the same script.
 - **Evidence:** Preprod tx aee75c1c (block 4,045,972, protocol 10). Roadmap B16.
-- **Pinned by:** [`PreprodMalformedRefScriptSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/PreprodMalformedRefScriptSuite.scala), [`PlutusScriptBytesSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/PlutusScriptBytesSuite.scala). Upstream reference in the Part A entry on script bytes.
+- **Pinned by:** [`PreprodMalformedRefScriptSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodMalformedRefScriptSuite.scala), [`PlutusScriptBytesSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/PlutusScriptBytesSuite.scala). Upstream reference in the Part A entry on script bytes.
 - **Suggested upstream action:** Plutus (plutus-ledger-api): document the language-dependent remainder rule next to `deserialiseScript`.
 - **Status:** confirmed in source
 
@@ -759,7 +759,7 @@ are the ones most in need of a second reading.
 - **Specification or CDDL says:** See the Part A entry on secp256k1: zero `r` or `s` and a high `s` give `False`.
 - **Implementation does:** Scalus 1.2.0 and 1.3.0 require `r > 0` and `s > 0` and raise an error. Fixed in Scalus 1.4.0 (verification through libsecp256k1 in scalus-crypto-jni); the node's replacement of the builtin is removed.
 - **Evidence:** Preprod tx 97b31e35 (slot 92,114,397, epoch 217). Roadmap B15. Not filed upstream yet.
-- **Pinned by:** [`PreprodSecp256k1RulesSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/PreprodSecp256k1RulesSuite.scala), [`Secp256k1Suite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/Secp256k1Suite.scala).
+- **Pinned by:** [`PreprodSecp256k1RulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodSecp256k1RulesSuite.scala), [`Secp256k1Suite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/Secp256k1Suite.scala).
 - **Suggested upstream action:** None: fixed in Scalus 1.4.0.
 - **Status:** confirmed in source
 
@@ -769,7 +769,7 @@ are the ones most in need of a second reading.
 - **Specification or CDDL says:** See the Part A entry on script bytes: V1 and V2 ignore a remainder.
 - **Implementation does:** `DeBruijnedProgram.fromCbor` fails on any trailing input.
 - **Evidence:** Preprod tx aee75c1c. Roadmap B16. Not filed upstream yet.
-- **Pinned by:** [`PreprodMalformedRefScriptSuite`](../legacy/src/test/scala/xyz/kd5ujc/scarab/legacy/rules/PreprodMalformedRefScriptSuite.scala).
+- **Pinned by:** [`PreprodMalformedRefScriptSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodMalformedRefScriptSuite.scala).
 - **Suggested upstream action:** Scalus: expose the first-item length or accept a remainder for V1 and V2 (not filed yet).
 - **Status:** confirmed in source
 

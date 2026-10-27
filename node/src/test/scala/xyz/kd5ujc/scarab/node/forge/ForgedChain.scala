@@ -11,24 +11,49 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.consensus.Anchor
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.consensus.BootstrapState
+import xyz.kd5ujc.scarab.consensus.{BootstrapState, ByronState}
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.ledger.{NodeError, ValidationError}
 import xyz.kd5ujc.scarab.node.Follower
-import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraHistory, MirrorState}
+import xyz.kd5ujc.scarab.consensus.ConsensusExtras
+import xyz.kd5ujc.scarab.consensus.state.{
+  ConsensusMirrorEnv,
+  EraHistory,
+  GenesisMirror,
+  MirrorState
+}
 import xyz.kd5ujc.scarab.ledger.state.MirrorEnv
 import xyz.kd5ujc.scarab.node.MirrorRules
 import xyz.kd5ujc.scarab.node.RefStateful
-import xyz.kd5ujc.scarab.legacy.{FlatNodeState, LedgerState, Mirroring, Snapshot, Snapshots}
 import xyz.kd5ujc.scarab.node.mempool.MempoolLedger
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.consensus.PraosConfig
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, PraosState, ProtocolExtras, ProtocolState}
-import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash, Sorted, WithOrigin, Word64}
+import xyz.kd5ujc.scarab.ledger.rules.{Convert, EraNes, StakeDistribution}
+import xyz.kd5ujc.scarab.ledger.state.{
+  ActiveStake,
+  BlockIssuer,
+  CompactCoin,
+  Conway,
+  EpochNo,
+  KeyHash,
+  NewEpochState,
+  NonZero,
+  PoolDistr,
+  ShelleyBasedEra,
+  SnapShot,
+  SnapShots,
+  Sorted,
+  StakePool,
+  StakeWithDelegation,
+  VocabError,
+  WithOrigin,
+  Word64
+}
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.TestLedger.Key
@@ -99,39 +124,57 @@ object ForgedChain:
     val oc = Header.OpCert(kes.verificationKey, 0, kesStart, cold.sign(signable))
     Pool(PoolCredentials(vrf, kes, oc, cold.vkey), TestLedger.key())
 
-  private def ledgerWith(p: Pool, epoch: BigInt): LedgerState = ledgerWith(Vector(p), epoch)
+  private def ledgerWith(p: Pool, epoch: BigInt): NewEpochState[Conway] =
+    ledgerWith(Vector(p), epoch)
 
-  private def ledgerWith(pools: Vector[Pool], epoch: BigInt): LedgerState =
+  /** The state of one output of the test kit in `epoch`, whose pools share the stake equally in
+    * each of the three snapshots and in the distribution of the epoch. The pools are not
+    * registered: the leader check reads the distribution only.
+    */
+  private def ledgerWith(pools: Vector[Pool], epoch: BigInt): NewEpochState[Conway] =
     val amount = BigInt(1000000) / pools.size
-    val registrations = pools.map { p =>
-      val cred = p.stake.credential
-      val params = PoolParams(
-        p.creds.poolId,
-        p.creds.vrfKeyHash,
-        0,
-        0,
-        Rational.zero,
-        RewardAccount(0, cred),
-        Set.empty,
-        Bytes.empty,
-        None
-      )
-      (cred, p.creds.poolId, p.creds.poolId -> params)
-    }
-    val dist = Snapshot(
-      registrations.map((cred, _, _) => cred -> amount).toMap,
-      registrations.map((cred, poolId, _) => cred -> poolId).toMap,
-      registrations.map((_, _, params) => params).toMap
+    val dist = snapshotOf(pools.map(p => (p.stake.credential, p.creds, amount)))
+    val nes = TxKit.native(1)
+    nes.copy(
+      epoch = vocab(EpochNo.fromBigInt(epoch)),
+      es = nes.es.copy(snapshots = SnapShots(dist, dist, dist, nes.es.snapshots.fee)),
+      pd = PoolDistr.of(dist)
     )
-    TxKit
-      .flat(1)
-      .copy(
-        epoch = epoch,
-        poolDistribution = dist,
-        snapshots = Snapshots(dist, dist, dist, 0)
-      )
 
-  private def nodeState(ledger: LedgerState): FlatNodeState =
+  private def vocab[A](e: Either[VocabError, A]): A =
+    e.fold(v => throw new AssertionError(s"$v"), identity)
+
+  /** The stake snapshot in which each credential delegates its amount to its pool, of which it is
+    * the only delegator and the reward account (no pledge, cost, margin or owners).
+    */
+  def snapshotOf(entries: Vector[(Credential, PoolCredentials, BigInt)]): SnapShot =
+    val deposit = vocab(CompactCoin.fromBigInt(0))
+    val delegated = entries.map { (cred, creds, amount) =>
+      val params =
+        PoolParams(
+          creds.poolId,
+          creds.vrfKeyHash,
+          0,
+          0,
+          Rational.zero,
+          RewardAccount(0, cred),
+          Set.empty,
+          Bytes.empty,
+          None
+        )
+      val staking = vocab(Convert.credential[xyz.kd5ujc.scarab.ledger.state.Staking](cred))
+      val id = vocab(KeyHash.fromBytes[StakePool](creds.poolId))
+      val stake = vocab(CompactCoin.fromBigInt(amount).flatMap(NonZero.from))
+      val pool = vocab(Convert.poolState(params, deposit, Sorted.set(List(staking))))
+      (staking -> StakeWithDelegation(stake, id), id -> pool)
+    }
+    StakeDistribution.snapshot(
+      ActiveStake(Sorted.map(delegated.map(_._1))),
+      Sorted.map(delegated.map(_._2))
+    )
+
+  /** The chain's state at the origin: `ledger` in Conway, its epoch nonce [[epochNonce]]. */
+  def genesisOf(env: ConsensusMirrorEnv, ledger: NewEpochState[Conway]): MirrorState =
     val lite = LiteLedger(
       0,
       LiteParams((10, 0), Rational.zero, Nonce.Neutral, 65536, 16384, 1100),
@@ -155,32 +198,31 @@ object ForgedChain:
           Nonce.Neutral
         )
       ),
-      ProtocolExtras(ledger.epoch, Nonce.Neutral)
+      ProtocolExtras(ledger.epoch.toBigInt, Nonce.Neutral)
     )
-    FlatNodeState(praos, ledger, BootstrapState.initial(lite))
+    GenesisMirror
+      .of(
+        env,
+        EraNes.InEra(ShelleyBasedEra.SConway, ledger),
+        praos.dep,
+        ConsensusExtras(BootstrapState.initial(lite), ByronState.initial, praos.extras)
+      )
+      .fold(e => throw new AssertionError(e.toString), identity)
 
   /** Forge in the given slots (the pool leads about half of them) starting from a ledger in
     * `epoch`, and return the blocks with the state after each.
     */
   def forge(slots: Range, epoch: BigInt = 5, seed: Int = 1): IO[ForgedChain] =
     val p = pool(kesStart = ((slots.head / 100).toInt - 1).max(0), seed)
-    val flatGenesis = nodeState(ledgerWith(p, epoch))
-    val env = mirrorEnv
-    // the chain the pool forges on is the mirror of the fixture's flat state; the blocks are then
-    // applied again, one by one, to give the states the header-rule suites read
-    val start = Mirroring
-      .toMirror(env, None, flatGenesis)
-      .fold(e => throw new AssertionError(e.toString), _.value)
-    forgeFrom(start, p, slots, None)
+    // the blocks are applied again, one by one, to give the states the header-rule suites read
+    forgeFrom(genesisOf(mirrorEnv, ledgerWith(p, epoch)), p, slots, None)
 
   /** Distinct signed forks from one pool and one genesis, for the diffusion tentative-header
     * criterion's repeated issuer/opcert identity at the same height.
     */
   def sameIssuerForks(leftSlots: Range, rightSlots: Range): IO[(ForgedChain, ForgedChain)] =
     val p = pool(kesStart = (leftSlots.head / 100).toInt - 1, seed = 1)
-    val start = Mirroring
-      .toMirror(mirrorEnv, None, nodeState(ledgerWith(p, epoch = 5)))
-      .fold(e => throw new AssertionError(e.toString), _.value)
+    val start = genesisOf(mirrorEnv, ledgerWith(p, epoch = 5))
     (forgeFrom(start, p, leftSlots, None), forgeFrom(start, p, rightSlots, None)).tupled
 
   /** Two valid chains with a shared generated prefix and independently forged suffixes. Both pool
@@ -197,10 +239,7 @@ object ForgedChain:
     val kesStart = (prefixSlots.head / 100).toInt - 1
     val leftPool = pool(kesStart, leftSeed)
     val rightPool = pool(kesStart, rightSeed)
-    val flatGenesis = nodeState(ledgerWith(Vector(leftPool, rightPool), epoch = 5))
-    val start = Mirroring
-      .toMirror(mirrorEnv, None, flatGenesis)
-      .fold(e => throw new AssertionError(e.toString), _.value)
+    val start = genesisOf(mirrorEnv, ledgerWith(Vector(leftPool, rightPool), epoch = 5))
     for
       prefix <- forgeFrom(start, leftPool, prefixSlots, None)
       left <- forgeFrom(start, leftPool, branchSlots, Some(prefix))

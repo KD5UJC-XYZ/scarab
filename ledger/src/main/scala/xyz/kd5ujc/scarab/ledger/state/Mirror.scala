@@ -7,13 +7,13 @@ import cats.derived.*
 import scala.reflect.ClassTag
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 
-// Vocabulary for completeness metadata and the frozen flat-state conversion in
-// `legacy.LedgerMirror`. Native states carry their source gaps through transitions and snapshots;
+// Vocabulary for completeness metadata, which states converted from the flat state of the retired
+// snapshot formats still carry. Native states carry their source gaps through transitions and snapshots;
 // freshly computed reward attribution and resumable updates do not reconstruct missing history.
 
-/** What a mirror built from the legacy flat state does not carry, or carries only in part. A mirror
-  * is always accompanied by the set of gaps it has; the set is a function of the source state alone
-  * (`LedgerMirror.gaps`), so the laws can state it exactly.
+/** What a mirror built from the flat state of the retired snapshot formats does not carry, or
+  * carries only in part (the conversion went with the `legacy` module, #488). A mirror is always
+  * accompanied by the set of gaps it has; the set was a function of the source state alone.
   */
 enum Gap derives Eq, Show, Diff:
   /** `esNonMyopic` and the non-myopic part of the reward update (`PoolRank.hs:231-236`): the pool
@@ -55,8 +55,8 @@ object Mirrored:
   given Functor[Mirrored] with
     def map[A, B](m: Mirrored[A])(f: A => B): Mirrored[B] = Mirrored(f(m.value), m.gaps)
 
-/** The pieces of a mirror that are derived from the others (`legacy.LedgerMirrorBack.from`
-  * recomputes them and refuses a mirror that disagrees).
+/** The pieces of a mirror that are derived from the others (the retired flat conversion recomputed
+  * them and refused a mirror that disagreed).
   */
 enum Derived derives Show:
   /** `psVRFKeyHashes`. */

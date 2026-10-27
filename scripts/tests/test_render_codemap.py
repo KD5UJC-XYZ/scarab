@@ -62,7 +62,7 @@ class GraphCase(unittest.TestCase):
     def test_real_build_matches_documented_direction(self):
         root = Path(__file__).resolve().parents[2]
         graph = rc.parse_build((root / "build.sbt").read_text(encoding="utf-8"))
-        self.assertEqual([e.target for e in graph["node"]], ["storage", "legacy", "network"])
+        self.assertEqual([e.target for e in graph["node"]], ["storage", "network"])
 
 
 class CheckCase(unittest.TestCase):

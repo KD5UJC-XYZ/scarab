@@ -65,8 +65,10 @@ body size, Conway mainnet header version).
   from the update state exactly as the hard-fork combinator does (`byronTransition`): a candidate for
   protocol major version 2 that is stable (`k` blocks since it became a candidate, or `2k` slots)
   is adopted in the epoch after the one containing `candidate slot + 4k`. The first Shelley block
-  hands the final Byron UTxO to `GenesisState.initial` (Shelley `initialFunds` plus the Byron UTxO,
-  reserves the rest of the supply), sets the ledger epoch and drops the Byron state. The Praos state
+  hands the final Byron UTxO to `Handover.toShelley` (the reference's Byron to Shelley translation:
+  the Byron UTxO, the reserves the rest of the supply; no Shelley `initialFunds`, which only a chain
+  whose first era is Shelley-based injects, `GenesisStart`), sets the ledger epoch and drops the
+  Byron state. The Praos state
   starts with every nonce equal to the Shelley genesis hash and is untouched by Byron blocks; the
   first Shelley block ticks it to the first Shelley epoch. The JSON log has an `epochValidated`
   line per Byron epoch (`signatureVerified`, `offSchedule`, `transactions`).

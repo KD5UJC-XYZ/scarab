@@ -9,10 +9,10 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.node.mempool.MempoolState
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.legacy.{FlatTestLedger, LedgerState}
+import xyz.kd5ujc.scarab.ledger.rules.NativeRules
+import xyz.kd5ujc.scarab.ledger.state.{Build, Coin, Conway, ConwayNewEpochState, NewEpochState}
 
 import TestLedger.*
-import FlatTestLedger.state
 
 /** Transactions that the Haskell reference node refused on the devnet
   * (`fixtures/devnet/refused-txs.jsonl`, written by `scripts/devnet/govextra.py`), replayed through
@@ -41,9 +41,10 @@ class DevnetRefusedTxSuite extends FunSuite:
 
   private def scenario(name: String) = entries.filter(_.str("scenario") == name)
 
-  /** `base` with the inputs of `tx` added: the first holds whatever makes the transaction balance.
+  /** `base` with the inputs of `tx` added: the first holds whatever makes the transaction balance;
+    * the reserves are what the outputs leave of the supply.
     */
-  private def funded(base: LedgerState, tx: Tx): LedgerState =
+  private def funded(base: NewEpochState[Conway], tx: Tx): NewEpochState[Conway] =
     val body = tx.body
     val owner = xyz.kd5ujc.scarab.ledger.Verdicts.Direct.keyHash(tx.witnesses.vkeys.head._1)
     val address =
@@ -54,20 +55,32 @@ class DevnetRefusedTxSuite extends FunSuite:
     val values = inputs.zipWithIndex.map { case (in, i) =>
       in -> out(address, if i == 0 then needed - spare * (inputs.size - 1) else spare)
     }
-    val utxo = base.utxo ++ values.filterNot(v => base.utxo.contains(v._1))
-    base.copy(utxo = utxo, reserves = Supply - utxo.valuesIterator.map(_.value.coin).sum)
+    val held = base.es.ls.utxo.utxo.utxo.toMap
+    val utxo = held ++ values.filterNot(v => held.contains(v._1))
+    val reserves = Coin(Supply - utxo.valuesIterator.map(_.value.coin).sum)
+    ConwayNewEpochState.reserves.replace(reserves)(Build.funded(base, utxo))
 
-  private def withParams(s: LedgerState, major: Int): LedgerState =
-    s.copy(params = s.params.copy(protocolMajor = major, poolDeposit = 0, minUTxOValue = 0))
+  /** The empty state of the suites at protocol version `major`, with no pool deposit and no minimum
+    * output value, as its current and previous parameters.
+    */
+  private def state(major: Int): NewEpochState[Conway] =
+    val params = TestLedger.params(major).copy(poolDeposit = 0, minUTxOValue = 0)
+    ConwayNewEpochState.gov.modify(_.copy(curPParams = params, prevPParams = params))(
+      NativeRules.stateIn[Conway](major, Vector.empty)
+    )
 
-  private def rule(r: Either[LedgerFailure, LedgerState]): String = r match
+  /** The LEDGER rules of Conway on `tx`. */
+  private def run(s: NewEpochState[Conway], tx: Tx): Either[LedgerFailure, NewEpochState[Conway]] =
+    NativeRules.txIn[Conway](s, tx, env).map(_.state)
+
+  private def rule(r: Either[LedgerFailure, ?]): String = r match
     case Left(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
     case Left(other)                               => other.message
     case Right(_)                                  => "accepted"
 
   /** The failure as `cardano-cli` prints it (Haskell `Show`), for the constructors of this fixture.
     */
-  private def shown(r: Either[LedgerFailure, LedgerState]): String = r match
+  private def shown(r: Either[LedgerFailure, ?]): String = r match
     case Left(LedgerFailure.Rejected.Single(_, f)) =>
       def key(h: Bytes) = s"""KeyHash {unKeyHash = "${h.hex}"}"""
       f match
@@ -100,34 +113,31 @@ class DevnetRefusedTxSuite extends FunSuite:
 
   test("VRF key hashes: the reference's sequence of accepted and refused registrations replays") {
     val context = scenario("vrf").find(_.opt("context").isDefined).get
+    // the pools registered, each VRF key hash once in the registry (the reference populates it from
+    // the pools at protocol version 11, `populateVRFKeyHashes`)
     val pools = context.json.hcursor
       .get[Map[String, String]]("pools")
       .fold(e => fail(e.message), identity)
       .map { case (op, vrf) =>
         val operator = Bytes.fromHex(op).fold(e => fail(e.message), identity)
-        operator -> PoolState(
-          PoolParams(
-            operator,
-            Bytes.fromHex(vrf).fold(e => fail(e.message), identity),
-            0,
-            0,
-            Rational.zero,
-            RewardAccount(0, Credential.Key(operator)),
-            Set.empty,
-            Bytes.empty,
-            None
-          ),
-          0
+        PoolParams(
+          operator,
+          Bytes.fromHex(vrf).fold(e => fail(e.message), identity),
+          0,
+          0,
+          Rational.zero,
+          RewardAccount(0, Credential.Key(operator)),
+          Set.empty,
+          Bytes.empty,
+          None
         )
       }
-    val start =
-      withParams(state(context.int("protocolMajor"), Vector.empty), context.int("protocolMajor"))
-        .copy(pools = pools)
+    val start = pools.foldLeft(state(context.int("protocolMajor")))(Build.pool(_, _, 0))
     val steps = scenario("vrf").filter(_.opt("label").isDefined)
     assert(steps.size >= 10, steps.size)
     steps.foldLeft(start) { (s, step) =>
       val (_, tx) = step.tx
-      val result = RuleSet.tx(funded(s, tx), tx, env)
+      val result = run(funded(s, tx), tx)
       step.str("outcome") match
         case "accepted" =>
           result.fold(f => fail(s"${step.str("label")}: ${f.message}"), identity)
@@ -147,8 +157,7 @@ class DevnetRefusedTxSuite extends FunSuite:
   ) {
     scenario("unelected").foreach { e =>
       val (_, tx) = e.tx
-      val s11 = funded(withParams(state(11, Vector.empty), 11), tx)
-      val result = RuleSet.tx(s11, tx, env)
+      val result = run(funded(state(11), tx), tx)
       assertEquals(rule(result), "UnelectedCommitteeVoters", e.str("label"))
       assert(e.str("error").contains(shown(result)), s"${shown(result)} not in ${e.str("error")}")
     }
@@ -159,11 +168,9 @@ class DevnetRefusedTxSuite extends FunSuite:
   ) {
     scenario("refoverlap").foreach { e =>
       val (_, tx) = e.tx
-      val s10 = funded(withParams(state(10, Vector.empty), 10), tx)
-      val result = RuleSet.tx(s10, tx, env)
+      val result = run(funded(state(10), tx), tx)
       assertEquals(rule(result), "BabbageNonDisjointRefInputs", e.str("label"))
       assert(e.str("error").contains(shown(result)), s"${shown(result)} not in ${e.str("error")}")
-      val s11 = funded(withParams(state(11, Vector.empty), 11), tx)
-      assertEquals(rule(RuleSet.tx(s11, tx, env)), "accepted", e.str("label"))
+      assertEquals(rule(run(funded(state(11), tx), tx)), "accepted", e.str("label"))
     }
   }

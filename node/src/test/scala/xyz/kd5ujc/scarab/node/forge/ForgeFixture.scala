@@ -11,24 +11,27 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.consensus.Anchor
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.consensus.BootstrapState
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.ledger.NodeError
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraHistory, MirrorState}
-import xyz.kd5ujc.scarab.ledger.state.{BlocksMade, MirrorEnv, StakePool}
+import xyz.kd5ujc.scarab.ledger.state.{
+  BlocksMade,
+  Conway,
+  MirrorEnv,
+  NewEpochState,
+  PoolDistr,
+  StakePool
+}
 import xyz.kd5ujc.scarab.node.Follower
 import xyz.kd5ujc.scarab.node.MirrorRules
 import xyz.kd5ujc.scarab.node.RefStateful
 import xyz.kd5ujc.scarab.node.mempool.MempoolLedger
-import xyz.kd5ujc.scarab.legacy.{FlatNodeState, LedgerState, Mirroring, Snapshot}
 import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.consensus.PraosConfig
-import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, PraosState, ProtocolExtras, ProtocolState}
-import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash, Sorted, WithOrigin, Word64}
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.TestLedger.Key
@@ -73,55 +76,17 @@ trait ForgeFixture:
     val oc = Header.OpCert(kes.verificationKey, 0, kesStart, cold.sign(signable))
     Pool(PoolCredentials(vrf, kes, oc, cold.vkey), cold, TestLedger.key())
 
-  def ledgerWith(p: Pool, funds: Int): LedgerState =
-    val base = TxKit.flat(funds)
-    val cred = p.stake.credential
-    val params = PoolParams(
-      p.id,
-      p.creds.vrfKeyHash,
-      0,
-      0,
-      Rational.zero,
-      RewardAccount(0, cred),
-      Set.empty,
-      Bytes.empty,
-      None
-    )
-    base.copy(
-      poolDistribution = Snapshot(
-        Map(cred -> BigInt(1000000)),
-        Map(cred -> p.id),
-        Map(p.id -> params)
-      )
-    )
-
-  def nodeState(ledger: LedgerState): FlatNodeState =
-    val lite = LiteLedger(
-      0,
-      LiteParams((10, 0), Rational.zero, Nonce.Neutral, 65536, 16384, 1100),
-      Map.empty,
-      Vector.empty,
-      Map.empty,
-      Map.empty,
-      Map.empty,
-      2
-    )
-    val praos = ProtocolState(
-      ChainDepState.Praos(
-        PraosState(
-          WithOrigin.Origin,
-          Sorted.empty[KeyHash[BlockIssuer], Word64],
-          Nonce.Neutral,
-          Nonce.Neutral,
-          epochNonce,
-          Nonce.Neutral,
-          Nonce.Neutral,
-          Nonce.Neutral
+  /** The state of `funds` outputs of the test kit in which the pool has all the stake of the
+    * epoch's distribution; it is not registered and is in no snapshot.
+    */
+  def ledgerWith(p: Pool, funds: Int): NewEpochState[Conway] =
+    TxKit
+      .native(funds)
+      .copy(pd =
+        PoolDistr.of(
+          ForgedChain.snapshotOf(Vector((p.stake.credential, p.creds, BigInt(1000000))))
         )
-      ),
-      ProtocolExtras(5, Nonce.Neutral)
-    )
-    FlatNodeState(praos, ledger, BootstrapState.initial(lite))
+      )
 
   /** What the mirror reads of this configuration. */
   lazy val mirrorEnv: ConsensusMirrorEnv = ConsensusMirrorEnv(
@@ -134,11 +99,9 @@ trait ForgeFixture:
     )
   )
 
-  /** The chain's state at the origin: the node's state through the mirror, once, at the start. */
-  def mirrorState(ledger: LedgerState): MirrorState =
-    Mirroring
-      .toMirror(mirrorEnv, None, nodeState(ledger))
-      .fold(e => throw new AssertionError(e.toString), _.value)
+  /** The chain's state at the origin, with `ledger` as its Conway state. */
+  def mirrorState(ledger: NewEpochState[Conway]): MirrorState =
+    ForgedChain.genesisOf(mirrorEnv, ledger)
 
   /** The blocks the pool made in the epoch of the tip, in the state's own count. */
   def blocksMade(c: VolatileChain[MirrorState], id: Bytes): Option[BigInt] =
@@ -163,7 +126,7 @@ trait ForgeFixture:
 
   def harness(
       p: Pool,
-      ledger: LedgerState,
+      ledger: NewEpochState[Conway],
       connected: Boolean = true,
       maxTipAge: BigInt = 1000000,
       live: Boolean = false,

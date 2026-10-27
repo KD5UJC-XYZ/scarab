@@ -236,6 +236,6 @@ unconverted V4 database, stop that producer, or access signing keys as part of t
 A one-shot bridge must name its exact old source/compiler/schema, refuse unexpected fingerprints,
 keep original inputs read-only, write separate outputs and verify them with the current reader.
 Archive its recipe and conversion manifest. There is no general shipped snapshot-bridge CLI: do not
-present a private conversion harness as an installed command. Retiring snapshot readers does not
-by itself remove legacy domain code still used by genesis conversion (#134) or the independent
-RocksDB checkpoint-key migration.
+present a private conversion harness as an installed command. Retiring snapshot readers did not by
+itself remove the flat domain code the genesis start still used; that went with the native genesis
+start (#488). The RocksDB checkpoint-key migration is independent of both.

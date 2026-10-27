@@ -8,13 +8,24 @@ import munit.CatsEffectSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState}
-import xyz.kd5ujc.scarab.ledger.state.{SlotNo, WithOrigin}
-import xyz.kd5ujc.scarab.legacy
-import xyz.kd5ujc.scarab.node.read.InEra
-import xyz.kd5ujc.scarab.ledger.{Block, Certificate, Credential, PoolParams, PoolState, Tx}
+import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraLedgerState, MirrorState}
+import xyz.kd5ujc.scarab.ledger.rules.{Convert, StakeDistribution}
+import xyz.kd5ujc.scarab.ledger.state.{
+  CompactCoin,
+  FlatView,
+  KeyHash,
+  LedgerState,
+  NewEpochState,
+  PState,
+  Shelley,
+  ShelleyBasedEra,
+  SnapShot,
+  Sorted,
+  StakePool,
+  VocabError
+}
+import xyz.kd5ujc.scarab.ledger.{Block, Certificate, Credential, PoolParams, RewardAccount, Tx}
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
-import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** B27: the mainnet pool `ff5181ba` registered in transaction 49be5965c31a60c3 (block at slot
@@ -26,8 +37,8 @@ import xyz.kd5ujc.scarab.protocol.Era
   * network (`stakePoolStateToStakePoolParams`, `State/StakePool.hs:275-292`); the future parameters
   * of a re-registration are `StakePoolParams`, whose account keeps its network byte.
   *
-  * The registration is put into a Shelley state of the eras capture, on mainnet: registered, in the
-  * `mark` snapshot and re-registered. The V5 snapshot of that state is written with the full
+  * The registration is put into the Shelley state of the eras capture, on mainnet: registered, in
+  * the `mark` snapshot and re-registered. The V5 snapshot of that state is written with the full
   * read-back check and comes back as the mirror normalises it.
   */
 class MainnetPoolNetworkSnapshotSuite extends CatsEffectSuite:
@@ -89,46 +100,54 @@ class MainnetPoolNetworkSnapshotSuite extends CatsEffectSuite:
       CheckpointBinding.Unbacked
     )
 
-  private def at(anchor: Option[BlockRef]): WithOrigin[SlotNo] =
-    anchor.fold[WithOrigin[SlotNo]](WithOrigin.Origin)(a =>
-      WithOrigin.At(SlotNo.fromUnsigned(a.slot.toLong))
-    )
+  private def vocab[A](e: Either[VocabError, A]): A = e.fold(v => fail(s"$v"), identity)
 
-  /** The flat ledger state a mirror stands for, on the mainnet configuration. */
-  private def flatLedger(m: MirrorState, anchor: Option[BlockRef]): legacy.LedgerState =
-    m.ledger(anchor) match
-      case Right(Some(InEra.Of(era, read))) =>
-        read.nes
-          .flatMap(nes =>
-            legacy.LedgerMirrorBack.flatOf(env.ledger, at(anchor), nes, m.plutus)(using era)
-          )
-          .fold(e => fail(s"flat read-back: $e"), identity)
-      case other => fail(s"no Shelley-based ledger state: $other")
+  /** The Shelley new-epoch state of a mirror. */
+  private def shelleyState(m: MirrorState): NewEpochState[Shelley] =
+    m.ext.ledgerState.state match
+      case EraLedgerState.InShelleyEra(ShelleyBasedEra.SShelley, state) => state.nes
+      case other => fail(s"not a Shelley state: ${other.era}")
 
-  /** The state with the pool registered, in the `mark` snapshot and re-registered: edited as the
-    * flat ledger state, which the mirror turns back into the state the rules run on.
+  /** The mirror with its Shelley new-epoch state changed by `f`. */
+  private def editShelley(m: MirrorState)(
+      f: NewEpochState[Shelley] => NewEpochState[Shelley]
+  ): MirrorState =
+    m.ext.ledgerState.state match
+      case EraLedgerState.InShelleyEra(ShelleyBasedEra.SShelley, state) =>
+        val next =
+          EraLedgerState.InShelleyEra(ShelleyBasedEra.SShelley, state.copy(nes = f(state.nes)))
+        m.copy(ext = m.ext.copy(ledgerState = m.ext.ledgerState.withState(next)))
+      case other => fail(s"not a Shelley state: ${other.era}")
+
+  private val poolId: KeyHash[StakePool] = vocab(
+    KeyHash.fromBytes[StakePool](registration.operator)
+  )
+
+  /** The state with the pool registered (with the deposit in force and no delegators), in the
+    * `mark` snapshot (no stake) and re-registered.
     */
   private lazy val withPool: StateSnapshot[MirrorState] =
-    val id = registration.operator
-    val ledger = flatLedger(shelley.state, shelley.anchor)
-    val mark = ledger.snapshots.mark
-    val edited = ledger.copy(
-      pools = ledger.pools.updated(id, PoolState(registration, ledger.params.poolDeposit)),
-      futurePools = ledger.futurePools.updated(id, registration),
-      snapshots =
-        ledger.snapshots.copy(mark = mark.copy(pools = mark.pools.updated(id, registration)))
-    )
-    val flat = legacy.FlatNodeState(
-      shelley.state.protocol,
-      edited,
-      shelley.state.consensus.boot,
-      shelley.state.consensus.byron
-    )
-    shelley.copy(state =
-      legacy.Mirroring
-        .toMirror(env, shelley.anchor, flat)
-        .fold(e => fail(s"the state does not mirror: $e"), _.value)
-    )
+    shelley.copy(state = editShelley(shelley.state) { nes =>
+      val ls = nes.es.ls
+      val deposit = vocab(
+        CompactCoin.fromBigInt(nes.es.ls.utxo.gov.curPParams.poolDeposit)
+      )
+      val state = vocab(Convert.poolState(registration, deposit, Sorted.emptySet))
+      val pools = LedgerState.pState[Shelley].get(ls)
+      val registered = pools.copy(
+        stakePools = pools.stakePools.updated(poolId, state),
+        future = pools.future.updated(poolId, registration)
+      )
+      val mark = nes.es.snapshots.mark
+      val inMark = StakeDistribution.poolSnapshot(mark.activeStake, mark.activeStake.total, state)
+      nes.copy(es =
+        nes.es.copy(
+          ls = LedgerState.pState[Shelley].replace(registered)(ls),
+          snapshots = nes.es.snapshots
+            .copy(mark = SnapShot.pools.modify(_.updated(poolId, inMark))(mark))
+        )
+      )
+    })
 
   private lazy val written: IO[Array[Byte]] =
     format.encode(withPool).flatMap(r => IO(r.fold(e => fail(s"refused: $e"), identity)))
@@ -154,19 +173,38 @@ class MainnetPoolNetworkSnapshotSuite extends CatsEffectSuite:
       format.decode(bytes).map { r =>
         val back = r.fold(e => fail(e.message), identity)
         assertEquals(back.anchor, withPool.anchor)
-        val id = registration.operator
-        val ledger = flatLedger(back.state, back.anchor)
-        // registered and in the snapshot: the credential, on the node's network (a snapshot holds
-        // the pool's parameters without its owners, relays and metadata, as the reference's does)
-        assertEquals(ledger.pools(id).params, registration.registeredOn(Mainnet))
+        val nes = shelleyState(back.state)
+        val pools: PState = LedgerState.pState[Shelley].get(nes.es.ls)
+        // registered: the credential, read back on the node's network
         assertEquals(
-          ledger.snapshots.mark.pools(id),
-          registration
-            .registeredOn(Mainnet)
-            .copy(owners = Set.empty, relays = Bytes.empty, metadata = None)
+          FlatView.pools(Mainnet, pools.stakePools).get(registration.operator).map(_.params),
+          Some(registration.registeredOn(Mainnet))
+        )
+        // in the snapshot: the credential too, and the pool's parameters without its owners, relays
+        // and metadata, as the reference's `StakePoolSnapShot` holds them
+        val inMark = nes.es.snapshots.mark.pools.get(poolId)
+        assertEquals(
+          inMark.map(p =>
+            PoolParams(
+              registration.operator,
+              p.vrf.bytes,
+              p.pledge.value,
+              p.cost.value,
+              p.margin,
+              RewardAccount(Mainnet, Convert.back(p.accountId)),
+              p.selfDelegatedOwners.iterator.map(_.bytes).toSet,
+              Bytes.empty,
+              None
+            )
+          ),
+          Some(
+            registration
+              .registeredOn(Mainnet)
+              .copy(owners = Set.empty, relays = Bytes.empty, metadata = None)
+          )
         )
         // the future parameters: as registered, network 0
-        assertEquals(ledger.futurePools(id), registration)
+        assertEquals(pools.future.get(poolId), Some(registration))
       }
     )
   }

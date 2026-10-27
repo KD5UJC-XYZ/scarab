@@ -43,6 +43,34 @@ identifier of a snapshot family that no registered version spells raises `Storag
 and any other leading bytes are `StorageError.Corrupt`; `ChainStorage.preflight` applies these
 before mutable stores are acquired.
 
-`legacy` remains because the genesis start path uses it: `NodeSetup` builds the first ledger state
+~~`legacy` remains because the genesis start path uses it: `NodeSetup` builds the first ledger state
 with `legacy.GenesisState.initial`, holds it as `legacy.FlatNodeState` and converts it to the
-era-indexed state with `legacy.Mirroring`.
+era-indexed state with `legacy.Mirroring`.~~ ([superseded, amended 2026-10-25: the native genesis
+start](#amendment-2026-10-25-the-genesis-start-is-native-and-the-legacy-module-is-gone))
+
+## Amendment (2026-10-25): the genesis start is native and the `legacy` module is gone
+
+- **What changed.** D3 kept the flat types frozen in a `legacy` module for the older snapshot
+  formats. Once the V1–V4 readers were retired (#83), the module's one production use was the
+  genesis start: `NodeSetup` built the flat `GenesisState`, held it as `FlatNodeState` and converted
+  it once with `Mirroring` into the era-indexed state. #488 builds the start state natively, the way
+  the reference does, and deletes the module.
+- **The construction.** A chain that starts in Byron starts from the Byron ledger of its genesis
+  (`ByronMirror`), as before, and is handed over to Shelley when it crosses (`Handover`). A chain
+  whose first era is Shelley-based starts from `GenesisStart.ledger` and `GenesisMirror`, which follow
+  ouroboros-consensus 82ecba32 `mkInitExtLedgerStateCardano` (`Cardano/Node.hs:933-986`): the Byron
+  genesis UTxO translated to Shelley (`translateLedgerStateByronToShelleyWrapper`), the hard forks of
+  the first slot executed (`injectInitialExtLedgerState`, `Embed/Nary.hs:272-328`), then the era's
+  `injectIntoTestState` (cardano-ledger f649f975 `Shelley/Transition.hs`, `Alonzo/Transition.hs`,
+  `Conway/Transition.hs`).
+- **The proof.** Before the flat path was deleted, a test built the start state both ways on every
+  genesis set in the repository and on the devnet genesis started in each Shelley-based era. Byron
+  starts agreed exactly. Era-skipping starts agreed except in four fields where the flat path had
+  not made the reference's state: `futurePParams` (`NoPParamsUpdate`, not a predicted update),
+  `nesRu` (empty, not a precomputed reward update), the pointers of the injected staking keys before
+  Conway (`indexToPtr`, not all zero), and the Alonzo genesis `extraConfig.costModels` (laid over the
+  current parameters only, from Alonzo, not merged into every era's current and previous ones). Each
+  was asserted against the reference's value.
+- **Tests.** The rule suites that were written over the flat state run on native state and moved
+  to the `ledger` test sources, the node suites that used the flat fixtures run on native state,
+  and the suites of the conversion itself went with it.

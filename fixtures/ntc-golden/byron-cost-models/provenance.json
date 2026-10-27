@@ -1,0 +1,58 @@
+{
+  "imageId": "sha256:0d7d3971a5ff78c8a6786459d191f39b166d69a4d71a6eb310c9d8338d6e035e",
+  "reference": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "sources": [
+    {
+      "package": "cardano-ledger-alonzo",
+      "version": "1.16.0.0",
+      "source": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Genesis.hs",
+      "sha256": "dd471cdae7e509f0e60fc56a5d8bd4a1c33026f8fe2b7d9a589abaa8926ef752",
+      "matchesPinnedSource": true
+    },
+    {
+      "package": "cardano-ledger-alonzo",
+      "version": "1.16.0.0",
+      "source": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+      "sha256": "5c494a8339bacbbc3ca0537b7f31527074afdad64f6743a19386158caaa307f1",
+      "matchesPinnedSource": true
+    },
+    {
+      "package": "cardano-ledger-babbage",
+      "version": "1.14.0.0",
+      "source": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+      "sha256": "dd631dc8a2771d0c259e2c1d41edeacb45fae270530a983924ba1b17abe4a862",
+      "matchesPinnedSource": true
+    },
+    {
+      "package": "cardano-ledger-conway",
+      "version": "1.23.0.0",
+      "source": "eras/conway/impl/src/Cardano/Ledger/Conway/Genesis.hs",
+      "sha256": "1ded64659f7722653a9fea688e2b6092920f9e061f2797d518a3a7c1191881f8",
+      "matchesPinnedSource": true
+    },
+    {
+      "package": "cardano-ledger-conway",
+      "version": "1.23.0.0",
+      "source": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+      "sha256": "ba8712e61f23f067988b7d585194321a954ccedea2191df65e7d72f736db26ab",
+      "matchesPinnedSource": true
+    },
+    {
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0",
+      "source": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs",
+      "sha256": "5fd2ab01dabc4a7998b46f1bce8a8db2ddd89912fc6d680416d5f9d5a1becf47",
+      "matchesPinnedSource": true
+    }
+  ],
+  "inputFiles": {
+    "alonzo-genesis.json": "4291b3e5fbcdd1f1daed9ab8f78e4d0181eb7eac4506e34c8aa0fecab6051f3b",
+    "conway-genesis.json": "5dfe8592e671f9ac08ae13f0047afcccf1bb572e038afd4f796b7397af5e150c"
+  },
+  "compiler": "GHC9.10.3",
+  "binaryVersion": "1.9.1.0",
+  "protocolVersion": 9,
+  "scope": "Native Alonzo/Babbage/Conway parameter upgrades applied to the exact eras-capture Alonzo/Conway genesis; comparison concerns complete cost-model maps only, not complete chain/query state.",
+  "oracleSha256": "9eab849b5245cf25352488105c28fcc135a9e4dae95d7354ab2c91ab5921ea57",
+  "nativeSha256": "b3d4cf7f17ff779de9b6ce8f7992b9e5f4a8b4f78a338ae8ef281e05c66f132a"
+}

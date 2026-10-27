@@ -1,0 +1,1107 @@
+{
+  "rows": 265,
+  "baselineMatchesEveryOldGolden": true,
+  "restoredMatchesCurrentRaw": true,
+  "candidateMatchesEveryCurrentGolden": true,
+  "nativeConwayCostModelsSha256": "5cc10dbe5acac958b29ed4726c5e93fc0cd57077db15505b26e4424411f40521",
+  "changedRows": 25,
+  "unchangedRows": 240,
+  "scope": "Every changed span is precisely removal of V2 with the complete original genesis extra model; remaining V1/V3 bytes equal independently executed native translation. Inverse replacement restores all original raw answers byte-for-byte. Not a native oracle for every query or whole state.",
+  "changes": [
+    {
+      "state": "conway-0",
+      "query": "GetCurrentPParams",
+      "costModelSpans": [
+        {
+          "path": [
+            15
+          ],
+          "oldStart": 46,
+          "oldEnd": 1641,
+          "newStart": 46,
+          "newEnd": 1175
+        }
+      ],
+      "oldSha256": "6eb93749fbd65bc05dcf7a9f427c54727df575f1518420e62203f79fc4b1cb99",
+      "newSha256": "4f0e605c7dc40e08be278a98b4ae936c93741b62d441d51b986286923f3f5786"
+    },
+    {
+      "state": "conway-0",
+      "query": "DebugEpochState",
+      "costModelSpans": [
+        {
+          "path": [
+            1,
+            1,
+            3,
+            3,
+            15
+          ],
+          "oldStart": 1202,
+          "oldEnd": 2797,
+          "newStart": 1202,
+          "newEnd": 2331
+        },
+        {
+          "path": [
+            1,
+            1,
+            3,
+            4,
+            15
+          ],
+          "oldStart": 2998,
+          "oldEnd": 4593,
+          "newStart": 2532,
+          "newEnd": 3661
+        },
+        {
+          "path": [
+            1,
+            1,
+            3,
+            6,
+            1,
+            0,
+            2,
+            15
+          ],
+          "oldStart": 4968,
+          "oldEnd": 6563,
+          "newStart": 4036,
+          "newEnd": 5165
+        },
+        {
+          "path": [
+            1,
+            1,
+            3,
+            6,
+            1,
+            0,
+            3,
+            15
+          ],
+          "oldStart": 6764,
+          "oldEnd": 8359,
+          "newStart": 5366,
+          "newEnd": 6495
+        }
+      ],
+      "oldSha256": "aed404a9e1d3de95e7294a0af1e00038c5eab03f0ed81db06cfcee9d23c6fb07",
+      "newSha256": "831d02f067bb718caa915b1868ef6e1fc79d3fed6f79b0258410caf868811e30"
+    },
+    {
+      "state": "conway-0",
+      "query": "DebugNewEpochState",
+      "costModelSpans": [
+        {
+          "path": [
+            3,
+            1,
+            1,
+            3,
+            3,
+            15
+          ],
+          "oldStart": 1332,
+          "oldEnd": 2927,
+          "newStart": 1332,
+          "newEnd": 2461
+        },
+        {
+          "path": [
+            3,
+            1,
+            1,
+            3,
+            4,
+            15
+          ],
+          "oldStart": 3128,
+          "oldEnd": 4723,
+          "newStart": 2662,
+          "newEnd": 3791
+        },
+        {
+          "path": [
+            3,
+            1,
+            1,
+            3,
+            6,
+            1,
+            0,
+            2,
+            15
+          ],
+          "oldStart": 5098,
+          "oldEnd": 6693,
+          "newStart": 4166,
+          "newEnd": 5295
+        },
+        {
+          "path": [
+            3,
+            1,
+            1,
+            3,
+            6,
+            1,
+            0,
+            3,
+            15
+          ],
+          "oldStart": 6894,
+          "oldEnd": 8489,
+          "newStart": 5496,
+          "newEnd": 6625
+        }
+      ],
+      "oldSha256": "797d749e4dea2fd1d7499270853956b2a02ef356b7cdd8f2107d62fc3ab5e5fe",
+      "newSha256": "8d95448d649a6a8da96592b0c28411b48fa5e3caf22358a711113b79d3e17124"
+    },
+    {
+      "state": "conway-0",
+      "query": "GetGovState",
+      "costModelSpans": [
+        {
+          "path": [
+            3,
+            15
+          ],
+          "oldStart": 100,
+          "oldEnd": 1695,
+          "newStart": 100,
+          "newEnd": 1229
+        },
+        {
+          "path": [
+            4,
+            15
+          ],
+          "oldStart": 1896,
+          "oldEnd": 3491,
+          "newStart": 1430,
+          "newEnd": 2559
+        },
+        {
+          "path": [
+            6,
+            1,
+            0,
+            2,
+            15
+          ],
+          "oldStart": 3866,
+          "oldEnd": 5461,
+          "newStart": 2934,
+          "newEnd": 4063
+        },
+        {
+          "path": [
+            6,
+            1,
+            0,
+            3,
+            15
+          ],
+          "oldStart": 5662,
+          "oldEnd": 7257,
+          "newStart": 4264,
+          "newEnd": 5393
+        }
+      ],
+      "oldSha256": "ff4141fa9a438d70c1ef39c41c256fb0042fa6969c416e1a53dff7e533820a2f",
+      "newSha256": "bfb96e6d096759b6ba20fbd715481433e59b3a67c343e710631d69bee0454284"
+    },
+    {
+      "state": "conway-0",
+      "query": "GetRatifyState",
+      "costModelSpans": [
+        {
+          "path": [
+            0,
+            2,
+            15
+          ],
+          "oldStart": 94,
+          "oldEnd": 1689,
+          "newStart": 94,
+          "newEnd": 1223
+        },
+        {
+          "path": [
+            0,
+            3,
+            15
+          ],
+          "oldStart": 1890,
+          "oldEnd": 3485,
+          "newStart": 1424,
+          "newEnd": 2553
+        }
+      ],
+      "oldSha256": "ab26387502188188ccf3fc4fe12a9ece65d6b3752402d8d928151f17f49c63e2",
+      "newSha256": "4b844df5a126b0ae91e27ef1e548c24476bc5e094ec8275eceb61c1438f6471b"
+    },
+    {
+      "state": "conway-1",
+      "query": "GetCurrentPParams",
+      "costModelSpans": [
+        {
+          "path": [
+            15
+          ],
+          "oldStart": 46,
+          "oldEnd": 1641,
+          "newStart": 46,
+          "newEnd": 1175
+        }
+      ],
+      "oldSha256": "6eb93749fbd65bc05dcf7a9f427c54727df575f1518420e62203f79fc4b1cb99",
+      "newSha256": "4f0e605c7dc40e08be278a98b4ae936c93741b62d441d51b986286923f3f5786"
+    },
+    {
+      "state": "conway-1",
+      "query": "DebugEpochState",
+      "costModelSpans": [
+        {
+          "path": [
+            1,
+            1,
+            3,
+            3,
+            15
+          ],
+          "oldStart": 1202,
+          "oldEnd": 2797,
+          "newStart": 1202,
+          "newEnd": 2331
+        },
+        {
+          "path": [
+            1,
+            1,
+            3,
+            4,
+            15
+          ],
+          "oldStart": 2998,
+          "oldEnd": 4593,
+          "newStart": 2532,
+          "newEnd": 3661
+        },
+        {
+          "path": [
+            1,
+            1,
+            3,
+            6,
+            1,
+            0,
+            2,
+            15
+          ],
+          "oldStart": 4968,
+          "oldEnd": 6563,
+          "newStart": 4036,
+          "newEnd": 5165
+        },
+        {
+          "path": [
+            1,
+            1,
+            3,
+            6,
+            1,
+            0,
+            3,
+            15
+          ],
+          "oldStart": 6764,
+          "oldEnd": 8359,
+          "newStart": 5366,
+          "newEnd": 6495
+        }
+      ],
+      "oldSha256": "aed404a9e1d3de95e7294a0af1e00038c5eab03f0ed81db06cfcee9d23c6fb07",
+      "newSha256": "831d02f067bb718caa915b1868ef6e1fc79d3fed6f79b0258410caf868811e30"
+    },
+    {
+      "state": "conway-1",
+      "query": "DebugNewEpochState",
+      "costModelSpans": [
+        {
+          "path": [
+            3,
+            1,
+            1,
+            3,
+            3,
+            15
+          ],
+          "oldStart": 1363,
+          "oldEnd": 2958,
+          "newStart": 1363,
+          "newEnd": 2492
+        },
+        {
+          "path": [
+            3,
+            1,
+            1,
+            3,
+            4,
+            15
+          ],
+          "oldStart": 3159,
+          "oldEnd": 4754,
+          "newStart": 2693,
+          "newEnd": 3822
+        },
+        {
+          "path": [
+            3,
+            1,
+            1,
+            3,
+            6,
+            1,
+            0,
+            2,
+            15
+          ],
+          "oldStart": 5129,
+          "oldEnd": 6724,
+          "newStart": 4197,
+          "newEnd": 5326
+        },
+        {
+          "path": [
+            3,
+            1,
+            1,
+            3,
+            6,
+            1,
+            0,
+            3,
+            15
+          ],
+          "oldStart": 6925,
+          "oldEnd": 8520,
+          "newStart": 5527,
+          "newEnd": 6656
+        }
+      ],
+      "oldSha256": "012f2df3f6f6b6d35244aef2e609d4eb277d23fece1426895e9dca7db5d34ad8",
+      "newSha256": "1e3766a62fb6cbe04240d49ec815bd162b381fdb7906a6339bd431588d748088"
+    },
+    {
+      "state": "conway-1",
+      "query": "GetGovState",
+      "costModelSpans": [
+        {
+          "path": [
+            3,
+            15
+          ],
+          "oldStart": 100,
+          "oldEnd": 1695,
+          "newStart": 100,
+          "newEnd": 1229
+        },
+        {
+          "path": [
+            4,
+            15
+          ],
+          "oldStart": 1896,
+          "oldEnd": 3491,
+          "newStart": 1430,
+          "newEnd": 2559
+        },
+        {
+          "path": [
+            6,
+            1,
+            0,
+            2,
+            15
+          ],
+          "oldStart": 3866,
+          "oldEnd": 5461,
+          "newStart": 2934,
+          "newEnd": 4063
+        },
+        {
+          "path": [
+            6,
+            1,
+            0,
+            3,
+            15
+          ],
+          "oldStart": 5662,
+          "oldEnd": 7257,
+          "newStart": 4264,
+          "newEnd": 5393
+        }
+      ],
+      "oldSha256": "ff4141fa9a438d70c1ef39c41c256fb0042fa6969c416e1a53dff7e533820a2f",
+      "newSha256": "bfb96e6d096759b6ba20fbd715481433e59b3a67c343e710631d69bee0454284"
+    },
+    {
+      "state": "conway-1",
+      "query": "GetRatifyState",
+      "costModelSpans": [
+        {
+          "path": [
+            0,
+            2,
+            15
+          ],
+          "oldStart": 94,
+          "oldEnd": 1689,
+          "newStart": 94,
+          "newEnd": 1223
+        },
+        {
+          "path": [
+            0,
+            3,
+            15
+          ],
+          "oldStart": 1890,
+          "oldEnd": 3485,
+          "newStart": 1424,
+          "newEnd": 2553
+        }
+      ],
+      "oldSha256": "ab26387502188188ccf3fc4fe12a9ece65d6b3752402d8d928151f17f49c63e2",
+      "newSha256": "4b844df5a126b0ae91e27ef1e548c24476bc5e094ec8275eceb61c1438f6471b"
+    },
+    {
+      "state": "conway-2",
+      "query": "GetCurrentPParams",
+      "costModelSpans": [
+        {
+          "path": [
+            15
+          ],
+          "oldStart": 46,
+          "oldEnd": 1641,
+          "newStart": 46,
+          "newEnd": 1175
+        }
+      ],
+      "oldSha256": "6eb93749fbd65bc05dcf7a9f427c54727df575f1518420e62203f79fc4b1cb99",
+      "newSha256": "4f0e605c7dc40e08be278a98b4ae936c93741b62d441d51b986286923f3f5786"
+    },
+    {
+      "state": "conway-2",
+      "query": "DebugEpochState",
+      "costModelSpans": [
+        {
+          "path": [
+            1,
+            1,
+            3,
+            3,
+            15
+          ],
+          "oldStart": 1202,
+          "oldEnd": 2797,
+          "newStart": 1202,
+          "newEnd": 2331
+        },
+        {
+          "path": [
+            1,
+            1,
+            3,
+            4,
+            15
+          ],
+          "oldStart": 2998,
+          "oldEnd": 4593,
+          "newStart": 2532,
+          "newEnd": 3661
+        },
+        {
+          "path": [
+            1,
+            1,
+            3,
+            6,
+            1,
+            0,
+            2,
+            15
+          ],
+          "oldStart": 4968,
+          "oldEnd": 6563,
+          "newStart": 4036,
+          "newEnd": 5165
+        },
+        {
+          "path": [
+            1,
+            1,
+            3,
+            6,
+            1,
+            0,
+            3,
+            15
+          ],
+          "oldStart": 6764,
+          "oldEnd": 8359,
+          "newStart": 5366,
+          "newEnd": 6495
+        }
+      ],
+      "oldSha256": "aed404a9e1d3de95e7294a0af1e00038c5eab03f0ed81db06cfcee9d23c6fb07",
+      "newSha256": "831d02f067bb718caa915b1868ef6e1fc79d3fed6f79b0258410caf868811e30"
+    },
+    {
+      "state": "conway-2",
+      "query": "DebugNewEpochState",
+      "costModelSpans": [
+        {
+          "path": [
+            3,
+            1,
+            1,
+            3,
+            3,
+            15
+          ],
+          "oldStart": 1394,
+          "oldEnd": 2989,
+          "newStart": 1394,
+          "newEnd": 2523
+        },
+        {
+          "path": [
+            3,
+            1,
+            1,
+            3,
+            4,
+            15
+          ],
+          "oldStart": 3190,
+          "oldEnd": 4785,
+          "newStart": 2724,
+          "newEnd": 3853
+        },
+        {
+          "path": [
+            3,
+            1,
+            1,
+            3,
+            6,
+            1,
+            0,
+            2,
+            15
+          ],
+          "oldStart": 5160,
+          "oldEnd": 6755,
+          "newStart": 4228,
+          "newEnd": 5357
+        },
+        {
+          "path": [
+            3,
+            1,
+            1,
+            3,
+            6,
+            1,
+            0,
+            3,
+            15
+          ],
+          "oldStart": 6956,
+          "oldEnd": 8551,
+          "newStart": 5558,
+          "newEnd": 6687
+        }
+      ],
+      "oldSha256": "36ba9dc2cdcf46b0ae7033698351cb22ef31d10621eb341c76bdbdfe4e6a2a77",
+      "newSha256": "cee741378ac97f664aebfc14b79cb031aa5a3a97686d5339fad3f362afcb86de"
+    },
+    {
+      "state": "conway-2",
+      "query": "GetGovState",
+      "costModelSpans": [
+        {
+          "path": [
+            3,
+            15
+          ],
+          "oldStart": 100,
+          "oldEnd": 1695,
+          "newStart": 100,
+          "newEnd": 1229
+        },
+        {
+          "path": [
+            4,
+            15
+          ],
+          "oldStart": 1896,
+          "oldEnd": 3491,
+          "newStart": 1430,
+          "newEnd": 2559
+        },
+        {
+          "path": [
+            6,
+            1,
+            0,
+            2,
+            15
+          ],
+          "oldStart": 3866,
+          "oldEnd": 5461,
+          "newStart": 2934,
+          "newEnd": 4063
+        },
+        {
+          "path": [
+            6,
+            1,
+            0,
+            3,
+            15
+          ],
+          "oldStart": 5662,
+          "oldEnd": 7257,
+          "newStart": 4264,
+          "newEnd": 5393
+        }
+      ],
+      "oldSha256": "ff4141fa9a438d70c1ef39c41c256fb0042fa6969c416e1a53dff7e533820a2f",
+      "newSha256": "bfb96e6d096759b6ba20fbd715481433e59b3a67c343e710631d69bee0454284"
+    },
+    {
+      "state": "conway-2",
+      "query": "GetRatifyState",
+      "costModelSpans": [
+        {
+          "path": [
+            0,
+            2,
+            15
+          ],
+          "oldStart": 94,
+          "oldEnd": 1689,
+          "newStart": 94,
+          "newEnd": 1223
+        },
+        {
+          "path": [
+            0,
+            3,
+            15
+          ],
+          "oldStart": 1890,
+          "oldEnd": 3485,
+          "newStart": 1424,
+          "newEnd": 2553
+        }
+      ],
+      "oldSha256": "ab26387502188188ccf3fc4fe12a9ece65d6b3752402d8d928151f17f49c63e2",
+      "newSha256": "4b844df5a126b0ae91e27ef1e548c24476bc5e094ec8275eceb61c1438f6471b"
+    },
+    {
+      "state": "rich",
+      "query": "GetCurrentPParams",
+      "costModelSpans": [
+        {
+          "path": [
+            15
+          ],
+          "oldStart": 46,
+          "oldEnd": 1641,
+          "newStart": 46,
+          "newEnd": 1175
+        }
+      ],
+      "oldSha256": "6eb93749fbd65bc05dcf7a9f427c54727df575f1518420e62203f79fc4b1cb99",
+      "newSha256": "4f0e605c7dc40e08be278a98b4ae936c93741b62d441d51b986286923f3f5786"
+    },
+    {
+      "state": "rich",
+      "query": "DebugEpochState",
+      "costModelSpans": [
+        {
+          "path": [
+            1,
+            1,
+            3,
+            3,
+            15
+          ],
+          "oldStart": 5323,
+          "oldEnd": 6918,
+          "newStart": 5323,
+          "newEnd": 6452
+        },
+        {
+          "path": [
+            1,
+            1,
+            3,
+            4,
+            15
+          ],
+          "oldStart": 7119,
+          "oldEnd": 8714,
+          "newStart": 6653,
+          "newEnd": 7782
+        },
+        {
+          "path": [
+            1,
+            1,
+            3,
+            5,
+            1,
+            0,
+            15
+          ],
+          "oldStart": 8918,
+          "oldEnd": 10513,
+          "newStart": 7986,
+          "newEnd": 9115
+        },
+        {
+          "path": [
+            1,
+            1,
+            3,
+            6,
+            1,
+            0,
+            2,
+            15
+          ],
+          "oldStart": 12883,
+          "oldEnd": 14478,
+          "newStart": 11485,
+          "newEnd": 12614
+        },
+        {
+          "path": [
+            1,
+            1,
+            3,
+            6,
+            1,
+            0,
+            3,
+            15
+          ],
+          "oldStart": 14679,
+          "oldEnd": 16274,
+          "newStart": 12815,
+          "newEnd": 13944
+        }
+      ],
+      "oldSha256": "1b0e3f8bac72ff841940985f9e01842bcc09572ad38321547f4ecb48e5896dd3",
+      "newSha256": "8aa8e46ee19934017bf27f681e7536f040e3385025cfcb4261e39330e84a875a"
+    },
+    {
+      "state": "rich",
+      "query": "DebugNewEpochState",
+      "costModelSpans": [
+        {
+          "path": [
+            3,
+            1,
+            1,
+            3,
+            3,
+            15
+          ],
+          "oldStart": 5515,
+          "oldEnd": 7110,
+          "newStart": 5515,
+          "newEnd": 6644
+        },
+        {
+          "path": [
+            3,
+            1,
+            1,
+            3,
+            4,
+            15
+          ],
+          "oldStart": 7311,
+          "oldEnd": 8906,
+          "newStart": 6845,
+          "newEnd": 7974
+        },
+        {
+          "path": [
+            3,
+            1,
+            1,
+            3,
+            5,
+            1,
+            0,
+            15
+          ],
+          "oldStart": 9110,
+          "oldEnd": 10705,
+          "newStart": 8178,
+          "newEnd": 9307
+        },
+        {
+          "path": [
+            3,
+            1,
+            1,
+            3,
+            6,
+            1,
+            0,
+            2,
+            15
+          ],
+          "oldStart": 13075,
+          "oldEnd": 14670,
+          "newStart": 11677,
+          "newEnd": 12806
+        },
+        {
+          "path": [
+            3,
+            1,
+            1,
+            3,
+            6,
+            1,
+            0,
+            3,
+            15
+          ],
+          "oldStart": 14871,
+          "oldEnd": 16466,
+          "newStart": 13007,
+          "newEnd": 14136
+        }
+      ],
+      "oldSha256": "3ea3d87c660fcb9eaa390966d85bf19c356f0a270f5a22fdc9be8a6f9b41d165",
+      "newSha256": "24c29f93f91790a0a171095ead945f018a85ba5caaf00bcebe39fa2ddaa7e011"
+    },
+    {
+      "state": "rich",
+      "query": "GetGovState",
+      "costModelSpans": [
+        {
+          "path": [
+            3,
+            15
+          ],
+          "oldStart": 3305,
+          "oldEnd": 4900,
+          "newStart": 3305,
+          "newEnd": 4434
+        },
+        {
+          "path": [
+            4,
+            15
+          ],
+          "oldStart": 5101,
+          "oldEnd": 6696,
+          "newStart": 4635,
+          "newEnd": 5764
+        },
+        {
+          "path": [
+            5,
+            1,
+            0,
+            15
+          ],
+          "oldStart": 6900,
+          "oldEnd": 8495,
+          "newStart": 5968,
+          "newEnd": 7097
+        },
+        {
+          "path": [
+            6,
+            1,
+            0,
+            2,
+            15
+          ],
+          "oldStart": 10865,
+          "oldEnd": 12460,
+          "newStart": 9467,
+          "newEnd": 10596
+        },
+        {
+          "path": [
+            6,
+            1,
+            0,
+            3,
+            15
+          ],
+          "oldStart": 12661,
+          "oldEnd": 14256,
+          "newStart": 10797,
+          "newEnd": 11926
+        }
+      ],
+      "oldSha256": "b60222464a9cdce0f27d6d5a1c80f29862cb503447a415b8e8effe9a3496576f",
+      "newSha256": "4f7b93f1587933cce8fcff9423350c041a3ae731ae0764da07c817086003d149"
+    },
+    {
+      "state": "rich",
+      "query": "GetRatifyState",
+      "costModelSpans": [
+        {
+          "path": [
+            0,
+            2,
+            15
+          ],
+          "oldStart": 220,
+          "oldEnd": 1815,
+          "newStart": 220,
+          "newEnd": 1349
+        },
+        {
+          "path": [
+            0,
+            3,
+            15
+          ],
+          "oldStart": 2016,
+          "oldEnd": 3611,
+          "newStart": 1550,
+          "newEnd": 2679
+        }
+      ],
+      "oldSha256": "382b61b24b4d58f611da70e2a58603f16320047a2685493509f1dd85f79aa9bb",
+      "newSha256": "9dacdf48d1ef4eaf87f8bce2aa6496c151074d1d08ef176e4f4642268491ab63"
+    },
+    {
+      "state": "rich",
+      "query": "GetFuturePParams",
+      "costModelSpans": [
+        {
+          "path": [
+            0,
+            15
+          ],
+          "oldStart": 47,
+          "oldEnd": 1642,
+          "newStart": 47,
+          "newEnd": 1176
+        }
+      ],
+      "oldSha256": "10e526d00309468ae635652be4a67bc55c4595e661e6b2070ab3896f93c3091a",
+      "newSha256": "22baaad4fc863b9abd12d53be4c9a47b322b49a4bb4ddf43c9e74fb16ed444e5"
+    },
+    {
+      "state": "rich-genesis",
+      "query": "GetCurrentPParams",
+      "costModelSpans": [
+        {
+          "path": [
+            15
+          ],
+          "oldStart": 46,
+          "oldEnd": 1641,
+          "newStart": 46,
+          "newEnd": 1175
+        }
+      ],
+      "oldSha256": "6eb93749fbd65bc05dcf7a9f427c54727df575f1518420e62203f79fc4b1cb99",
+      "newSha256": "4f0e605c7dc40e08be278a98b4ae936c93741b62d441d51b986286923f3f5786"
+    },
+    {
+      "state": "rich-genesis",
+      "query": "DebugEpochState",
+      "costModelSpans": [
+        {
+          "path": [
+            1,
+            1,
+            3,
+            3,
+            15
+          ],
+          "oldStart": 5323,
+          "oldEnd": 6918,
+          "newStart": 5323,
+          "newEnd": 6452
+        }
+      ],
+      "oldSha256": "42a46ec722521871a39ba6d18be987ecccd9056e855fb42e56e25fe6581b7022",
+      "newSha256": "bd651ad95efd63e07ca6809761c6447e8746f97693cb3e41b55aad473325f010"
+    },
+    {
+      "state": "rich-genesis",
+      "query": "DebugNewEpochState",
+      "costModelSpans": [
+        {
+          "path": [
+            3,
+            1,
+            1,
+            3,
+            3,
+            15
+          ],
+          "oldStart": 5515,
+          "oldEnd": 7110,
+          "newStart": 5515,
+          "newEnd": 6644
+        }
+      ],
+      "oldSha256": "c26f97c8655e60aa8ed99fc0049cb2c80991e1755eeb9910647481642a3e991e",
+      "newSha256": "46b0eef2f9baf6a10b23aac188c92f6501e19cb03b0cd4581d4f0efde53df7b7"
+    },
+    {
+      "state": "rich-genesis",
+      "query": "GetGovState",
+      "costModelSpans": [
+        {
+          "path": [
+            3,
+            15
+          ],
+          "oldStart": 3305,
+          "oldEnd": 4900,
+          "newStart": 3305,
+          "newEnd": 4434
+        }
+      ],
+      "oldSha256": "08c06e46098c36bcbdc09ad95b7ea875a29793c64bdcf60d46f908cad438d034",
+      "newSha256": "c596a3054c7d291d17f9e421242296664605b5ad711a16e7adf304e021af4798"
+    }
+  ],
+  "oldGoldenSha256": "8378752a18995e0a13029cacbe8e2458689a2a81664ca41fc87a508f610a19f5",
+  "newGoldenSha256": "c381c8558ba3c224fe7f81f9edf443e8da21d7039edc65f3eac8c9a6fbc69ae5",
+  "rawCaptureSha256": {
+    "baseline": "eab2bd1daffb0ef833713ae013a46d1535acbbe0f3f2671a607b75fb65df527d",
+    "current": "a94aa31df09953da057f4443cd8dbf3baaf18a29359007d458ef670de04a60c5",
+    "restored": "a94aa31df09953da057f4443cd8dbf3baaf18a29359007d458ef670de04a60c5"
+  },
+  "baselineChange": "Only NodeSetup params binding: ProtocolParams.translatedFromGenesis replaced by the former ProtocolParams.fromGenesis. Exact source restoration and separate recompilation reproduced the current raw bytes."
+}
