@@ -49,11 +49,8 @@ object BlockFetch:
   type Received = BlockFetchEngine.Received
   object Received:
     val Empty: Received = BlockFetchEngine.Received.Empty
-    def add(
-        previous: Received,
-        bytes: Int,
-        limits: RequestLimits
-    ): Either[ProtocolError, Received] = BlockFetchEngine.Received.add(previous, bytes, limits)
+    def add(previous: Received, limits: RequestLimits): Either[ProtocolError, Received] =
+      BlockFetchEngine.Received.add(previous, limits)
 
   private val cardanoPointCodec: BlockFetchEngine.PointCodec[Point] = CardanoBlockFetch.pointCodec
 

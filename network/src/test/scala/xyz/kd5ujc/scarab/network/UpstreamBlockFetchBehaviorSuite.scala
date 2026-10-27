@@ -151,7 +151,7 @@ class UpstreamBlockFetchBehaviorSuite extends FailsOnUncaught:
       )
       val serverBlocks = new OracleBlocks(caseRanges)
       val clientSettings = BlockFetchRuntime.ClientSettings(
-        request = BlockFetchEngine.RequestLimits(maxBlocks = 128, maxRawBytes = 100000000L)
+        request = BlockFetchEngine.RequestLimits(maxBlocks = 128)
       )
       Peers
         .typed {

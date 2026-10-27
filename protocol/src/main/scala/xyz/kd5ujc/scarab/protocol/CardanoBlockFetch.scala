@@ -184,7 +184,7 @@ object CardanoBlockFetch:
                 Left(ProtocolError.ExtraBlockInRequestedBatch)
               else
                 for
-                  count <- BlockFetch.Received.add(received, block.bytes.size, plan.limits)
+                  count <- BlockFetch.Received.add(received, plan.limits)
                   point <- identify(block)
                   _ <- Either.cond(
                     point == plan.expected(blocks.size),
