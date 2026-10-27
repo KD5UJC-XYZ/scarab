@@ -147,6 +147,8 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `kesPersistFailed` | `Forge.KesPersistFailed` | Error | `kesPeriod`, `kind`, `message` |
 | `keyFileGroupAccess` | `Forge.KeyFileGroupAccess` | Warning | `file`, `mode` |
 | `forgeSkipped` | `Forge.ForgeSkipped` | Info | `slot`, `reason` |
+| `slotIsImmutable` | `Forge.SlotIsImmutable` | Error | `slot`, `tip` (`<hash>@<slot>`), `tipBlockNo`: no volatile block, and the immutable tip is in the slot or a later one; cardano-node 11.1.3 `Forge.Loop.SlotIsImmutable` with its machine fields (`kind` is the event name) |
+| `blockFromFuture` | `Forge.BlockFromFuture` | Error | `current slot` (the key has a space, as in the reference; quoted in the human format), `tip` (the tip's slot): the chain's tip is in a later slot; cardano-node 11.1.3 `Forge.Loop.BlockFromFuture` with its machine fields |
 | `forgeFailed` | `Forge.ForgeFailed` | Error | `slot`, `kind`, `message` |
 | `forgeEpoch` | `Forge.ForgeEpoch` | Notice | `epoch`, `slotsChecked`, `leaderSlots`, `forged`, `adopted`, `lostSlotBattles`, `failed`, `skipped`, `skippedByReason`, `forgeLatencyMs` |
 | `formatMigrated` | `Storage.FormatMigrated` | Notice | `kind`, `from`, `to`, `count` |

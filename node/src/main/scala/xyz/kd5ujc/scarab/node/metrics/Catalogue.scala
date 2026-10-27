@@ -102,14 +102,15 @@ object RejectionLabel:
 /** Why the forger did not check a slot. `Other` remains as a zero-valued series for compatibility.
   */
 enum SkipLabel derives LabelValue:
-  case Busy, TipTooOld, SlotOccupied, NotConnected, Other
+  case Busy, TipTooOld, BlockFromFuture, SlotIsImmutable, NotConnected, Other
 
 object SkipLabel:
   def of(reason: ForgeSkip.Kind): SkipLabel = reason match
-    case ForgeSkip.Kind.Busy         => Busy
-    case ForgeSkip.Kind.TipTooOld    => TipTooOld
-    case ForgeSkip.Kind.SlotOccupied => SlotOccupied
-    case ForgeSkip.Kind.NotConnected => NotConnected
+    case ForgeSkip.Kind.Busy            => Busy
+    case ForgeSkip.Kind.TipTooOld       => TipTooOld
+    case ForgeSkip.Kind.BlockFromFuture => BlockFromFuture
+    case ForgeSkip.Kind.SlotIsImmutable => SlotIsImmutable
+    case ForgeSkip.Kind.NotConnected    => NotConnected
 
 /** What became of a reload of the KES key and certificate: the credentials were replaced (or
   * confirmed), or the reload was refused and the old ones kept.

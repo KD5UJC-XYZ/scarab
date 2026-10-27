@@ -203,6 +203,9 @@ def missed_leader_slots(events, schedules, shelley):
     scheduled = sorted(s for slots in schedules.values() for s in slots if window[0] <= s <= window[1])
     mine = set(forged.values())
     skipped = {e["slot"]: e["reason"] for e in events if e["event"] == "forgeSkipped"}
+    # the two skips logged as the reference's events, with its fields
+    skipped |= {e["slot"]: e["event"] for e in events if e["event"] == "slotIsImmutable"}
+    skipped |= {e["current slot"]: e["event"] for e in events if e["event"] == "blockFromFuture"}
     return {"window": list(window), "scheduled": len(scheduled),
             "missed": [s for s in scheduled if s not in mine and s not in others],
             "missedReasons": {s: skipped.get(s, "not reported") for s in scheduled

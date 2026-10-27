@@ -13,6 +13,7 @@ import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.consensus.FollowerEvent
 import xyz.kd5ujc.scarab.ledger.PeerError
 import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeSkip}
 
 /** The settings the flags give, and what the router lets through to which sink. */
 class LogRouterSuite extends CatsEffectSuite:
@@ -221,6 +222,16 @@ class LogRouterSuite extends CatsEffectSuite:
     assertEquals(
       Render.human(line, java.time.Instant.parse("2026-10-16T12:00:00Z")),
       "[2026-10-16T12:00:00Z][Net.Inbound](Warning) inbound remote=10.0.0.1:3001 state=refused reason=refused inbound connection from 10.0.0.1:3001: 64 connections accepted already"
+    )
+  }
+
+  test("the human format quotes a field name with a space, as blockFromFuture's `current slot`") {
+    val line = summon[Traced[ForgeEvent]].line(
+      ForgeEvent.Skipped(BigInt(4204), ForgeSkip.BlockFromFuture(BigInt(4204), BigInt(4206)))
+    )
+    assertEquals(
+      Render.human(line, java.time.Instant.parse("2026-10-16T12:00:00Z")),
+      "[2026-10-16T12:00:00Z][Forge.BlockFromFuture](Error) blockFromFuture \"current slot\"=4204 tip=4206"
     )
   }
 

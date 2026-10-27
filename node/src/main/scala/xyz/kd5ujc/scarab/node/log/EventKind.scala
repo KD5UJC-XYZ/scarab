@@ -137,6 +137,13 @@ enum EventKind(val area: Area, val severity: Severity):
   case KesPersistFailed extends EventKind(Area.Forge, Severity.Error)
   case KeyFileGroupAccess extends EventKind(Area.Forge, Severity.Warning)
   case ForgeSkipped extends EventKind(Area.Forge, Severity.Info)
+
+  /** cardano-node 11.1.3 `Forge.Loop.SlotIsImmutable` and `Forge.Loop.BlockFromFuture`, severity
+    * `Error` (`Cardano/Node/Tracing/Tracers/Consensus.hs` 1543-1546, 1581-1582), one level
+    * shallower.
+    */
+  case SlotIsImmutable extends EventKind(Area.Forge, Severity.Error)
+  case BlockFromFuture extends EventKind(Area.Forge, Severity.Error)
   case ForgeFailed extends EventKind(Area.Forge, Severity.Error)
   case ForgeEpoch extends EventKind(Area.Forge, Severity.Notice)
 

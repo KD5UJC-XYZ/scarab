@@ -21,11 +21,16 @@ object Render:
   /** For a person: `[time][namespace](Severity) event key=value ...`, after trace-dispatcher's
     * human format (`[time][host:namespace](Severity,thread) message`, hermod-tracing
     * `trace-dispatcher/src/Cardano/Logging/Formatter.hs` 188-212) without the host and the thread.
-    * A string value is written as it is, any other value as compact JSON.
+    * A string value is written as it is, any other value as compact JSON. A key with white space in
+    * it (`current slot`, a field of the reference's `BlockFromFuture`) is written as a JSON string,
+    * so that it is not read as two fields.
     */
   def human(line: Line, at: Instant): String =
     val fields =
-      line.fields.map((key, value) => s"$key=${value.asString.getOrElse(value.noSpaces)}")
+      line.fields.map { (key, value) =>
+        val name = if key.exists(_.isWhitespace) then Json.fromString(key).noSpaces else key
+        s"$name=${value.asString.getOrElse(value.noSpaces)}"
+      }
     (s"[$at][${line.kind.namespace}](${line.severity}) ${line.kind.name}" :: fields).mkString(" ")
 
   def apply(format: Format, line: Line, at: Instant): String = format match

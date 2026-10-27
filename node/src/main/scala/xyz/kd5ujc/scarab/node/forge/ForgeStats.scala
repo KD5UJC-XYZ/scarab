@@ -14,7 +14,8 @@ import scala.collection.immutable.SortedMap
   *
   * @param skipped
   *   Slots not checked, by reason: `busy` (the loop was still on an earlier slot), `tipTooOld`,
-  *   `slotOccupied` (a block already held the slot or a later one), `notConnected`.
+  *   `blockFromFuture` (the tip is in a later slot), `slotIsImmutable` (the immutable tip is in
+  *   this slot or a later one), `notConnected`.
   */
 final case class ForgeEpochStats(
     slotsChecked: Long = 0,
