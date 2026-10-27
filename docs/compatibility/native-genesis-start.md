@@ -31,13 +31,13 @@ injections or native refusals. The Scala reader exposes the same state. Separate
 not implement hash checking, effectful file reads or genesis source integration, and the permissive
 json-stream mechanism is separate from strict raw-genesis JSON admission (#497).
 
-The isolated reader's focused Docker checks pass 125 tests (123 native traces, entry ordering,
-and 20,000-level small-stack parsing). The portable native replay compares all 123 recorded
-outputs, including diagnostic text. The existing deterministic resource guards pass, and
-20,000 mutations with seed 1 pass for the `injection-json` target. An earlier fuzz attempt
-was terminated during failure shrinking without a completed result; the subsequent source
-change avoids parsing large numeric coefficients twice while preserving the native exponent
-range. These are bounded reader checks, not complete file-injection or whole-genesis gates.
+`InjectionJsonSuite` compares every recorded native trace, including the refusal text, and
+checks entry ordering and 20,000-level small-stack parsing; the portable native replay compares
+the same recorded outputs. On 2026-10-27 at 2f4994c03 the deterministic resource guards passed
+and `fuzz 100000 2 1 injection-json` completed its 100,000 cases; an independent differential
+run of 12,000 random inputs at random chunk sizes against the native parser matched every
+trace, refusal messages included. These are bounded reader checks, not complete file-injection
+or whole-genesis gates.
 
 Native Value comparisons include ordered object traversal and unnormalized Scientific coefficient/exponent events. Four ordering assertions fail on the earlier insertion-order reader and pass after matching the installed ordered KeyMap. Serialized native pairs remain unchanged observations in the portable replay; reparsing the formatter's overflowed exponent is not a valid oracle for its in-memory Value. The earlier full fuzz run was stopped when this ordering defect was found; its partial progress is not a completed gate.
 

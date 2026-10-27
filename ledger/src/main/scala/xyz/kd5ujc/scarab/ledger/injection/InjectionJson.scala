@@ -16,8 +16,9 @@ import xyz.kd5ujc.scarab.ledger.json.{JsonObject, JsonValue, Scientific}
 object InjectionJson:
   /** The refusals `objectItems value` can reach with this lexer, one case per reference message;
     * `message` is the reference's text. The parser's other messages are unreachable here: `array'`
-    * is entered only with `ArrayBegin` in hand (`Parser.hs:259`), and a string continuation never
-    * meets another element (`Parser.hs:353,603,616,636`).
+    * is entered only with `ArrayBegin` in hand (`Parser.hs:259`), a string continuation never
+    * meets another element (`Parser.hs:353,603,616`), and `StringEnd` comes only after
+    * `StringContent` (`Parser.hs:636`).
     */
   enum Error extends DomainError:
     /** `TokFailed` (`CLexer.hs:193,214,218,234`) where the parser received it
