@@ -128,10 +128,8 @@ trait ForgeFixture:
   def harness(
       p: Pool,
       ledger: NewEpochState[Conway],
-      connected: Boolean = true,
-      maxTipAge: BigInt = 1000000,
+      forecastWindow: BigInt = 1000000,
       live: Boolean = false,
-      ready: Option[IO[Boolean]] = None,
       offsetMillis: Long = 0,
       source: Option[HotKeySource[IO]] = None,
       ruleFailure: Option[BlockFailure] = None,
@@ -196,7 +194,9 @@ trait ForgeFixture:
                   .left
                   .map(ChainError.MempoolTick(c.tipRef.fold(BigInt(0))(_.slot + 1), _))
               )
-              .flatMap(mempool.sync(_, c.tipRef.fold(BigInt(0))(_.slot), Set.empty))
+              .flatMap(
+                mempool.sync(_, c.tipRef.fold(BigInt(0))(_.slot), Set.empty, c.tipRef.map(_.hash))
+              )
               .void
           )
         )
@@ -210,8 +210,7 @@ trait ForgeFixture:
         follower,
         mempool,
         e => seen.update(_ :+ e),
-        ready.getOrElse(IO.pure(connected)),
-        maxTipAge = Some(maxTipAge),
+        forecastWindow = Some(forecastWindow),
         now = clock.orElse(
           Some(
             if live then IO.realTimeInstant.map(_.plusSeconds(5000).plusMillis(offsetMillis))
@@ -238,3 +237,11 @@ trait ForgeFixture:
 
   def forgedIn(h: Harness): IO[Vector[ForgeEvent.Forged]] =
     h.seen.map(_.collect { case f: ForgeEvent.Forged => f })
+
+  /** The loop's traces among the events, in order. */
+  def tracesIn(h: Harness): IO[Vector[ForgeTrace]] =
+    h.seen.map(_.collect { case ForgeEvent.Loop(t) => t })
+
+  /** The names of the loop's traces of `slot`, in order: the constructors of `TraceForgeEvent`. */
+  def namesIn(h: Harness, slot: BigInt): IO[Vector[String]] =
+    tracesIn(h).map(_.filter(_.slot == slot).map(_.productPrefix))

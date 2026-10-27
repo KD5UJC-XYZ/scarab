@@ -102,30 +102,65 @@ class CollectorsSuite extends CatsEffectSuite:
       assertEquals(gauge(s, Catalogue.cpuLongestStep, ()), Some(0.3))
   }
 
-  test("the forging collector gives the counters of /forging under the Haskell node's names") {
+  test(
+    "the forging collector gives the counters of the loop's traces under the reference's names"
+  ) {
+    import xyz.kd5ujc.scarab.node.forge.{CannotForge, ForgeTrace, OutsideForecastRange}
+    val origin = xyz.kd5ujc.scarab.protocol.ChainSync.Point.Origin
+    val hash = xyz.kd5ujc.scarab.codec.Bytes(Vector(1))
+    val traces = List(
+      ForgeTrace.StartLeadershipCheck(10),
+      ForgeTrace.NodeNotLeader(10),
+      ForgeTrace.StartLeadershipCheck(11),
+      ForgeTrace.NodeIsLeader(11),
+      ForgeTrace.ForgedBlock(11, origin, hash, 0, None),
+      ForgeTrace.AdoptedBlock(11, hash, 100, Vector.empty),
+      ForgeTrace.StartLeadershipCheck(12),
+      ForgeTrace.NodeCannotForge(12, CannotForge.KeyNotUsableYet(0, 1)),
+      ForgeTrace.StartLeadershipCheck(13),
+      ForgeTrace.SlotIsImmutable(13, origin, 0),
+      ForgeTrace.StartLeadershipCheck(14),
+      ForgeTrace.BlockFromFuture(14, 15),
+      ForgeTrace.StartLeadershipCheck(15),
+      ForgeTrace.NoLedgerView(15, OutsideForecastRange(None, 15, 15)),
+      ForgeTrace.StartLeadershipCheck(16),
+      ForgeTrace.NodeIsLeader(16),
+      ForgeTrace.ForgedBlock(16, origin, hash, 1, Some(hash)),
+      ForgeTrace.DidntAdoptBlock(16, hash),
+      ForgeTrace.StartLeadershipCheck(18),
+      ForgeTrace.NodeNotLeader(18),
+      ForgeTrace.StartLeadershipCheck(19)
+    )
     for
       metrics <- registry
       stats <- ForgeStats.create[IO]
-      _ <- (1 to 5).toList.traverse_(_ => stats.checked(0))
-      _ <- stats.leader(0) *> stats.leader(0) *> stats.forged(0) *> stats.forged(0)
-      _ <- stats.adopted(0, 100) *> stats.lost(0) *> stats.failed(0)
-      _ <- xyz.kd5ujc.scarab.node.forge.ForgeSkip.Kind.values.toList.traverse_(stats.skipped(0, _))
+      _ <- traces.traverse_(stats.record(0, _))
+      _ <- stats.replaced(0) *> stats.failed(0)
       s <- {
         given Metrics[IO] = metrics
         Collectors.forging(stats) *> metrics.snapshot
       }
     yield
-      assertEquals(counter(s, Catalogue.forgeAboutToLead, ()), Some(5.0))
+      assertEquals(counter(s, Catalogue.forgeAboutToLead, ()), Some(9.0))
+      assertEquals(counter(s, Catalogue.forgeSlotIsImmutable, ()), Some(1.0))
+      assertEquals(counter(s, Catalogue.forgeBlockFromFuture, ()), Some(1.0))
       assertEquals(counter(s, Catalogue.forgeNodeIsLeader, ()), Some(2.0))
-      assertEquals(counter(s, Catalogue.forgeNodeNotLeader, ()), Some(3.0))
+      assertEquals(counter(s, Catalogue.forgeNodeNotLeader, ()), Some(2.0))
       assertEquals(counter(s, Catalogue.forgeForged, ()), Some(2.0))
       assertEquals(counter(s, Catalogue.forgeAdopted, ()), Some(1.0))
       assertEquals(counter(s, Catalogue.forgeDidntAdopt, ()), Some(1.0))
+      assertEquals(counter(s, Catalogue.forgeReplaced, ()), Some(1.0))
+      assertEquals(counter(s, Catalogue.forgeFailed, ()), Some(1.0))
+      // ForgingStats as of the start of slot 19: the not-led slot 18 after the leader slot 16
+      // counts 18 - 16 = 2 missed
       assertEquals(gauge(s, Catalogue.nodeCannotForge, ()), Some(1.0))
-      assertEquals(gauge(s, Catalogue.slotsMissed, ()), Some(1.0))
-      assertEquals(counter(s, Catalogue.forgeSkipped, SkipLabel.TipTooOld), Some(1.0))
-      assertEquals(counter(s, Catalogue.forgeSkipped, SkipLabel.Other), Some(0.0))
+      assertEquals(gauge(s, Catalogue.nodeIsLeader, ()), Some(2.0))
+      assertEquals(gauge(s, Catalogue.blocksForged, ()), Some(2.0))
+      assertEquals(gauge(s, Catalogue.slotsMissed, ()), Some(2.0))
+      assertEquals(counter(s, Catalogue.forgeSkipped, SkipLabel.NoLedgerView), Some(1.0))
+      assertEquals(counter(s, Catalogue.forgeSkipped, SkipLabel.SlotIsImmutable), Some(1.0))
       assertEquals(counter(s, Catalogue.forgeSkipped, SkipLabel.BlockFromFuture), Some(1.0))
+      assertEquals(counter(s, Catalogue.forgeSkipped, SkipLabel.Other), Some(0.0))
   }
 
   test("the JVM collector reads the memory, the threads and the process") {

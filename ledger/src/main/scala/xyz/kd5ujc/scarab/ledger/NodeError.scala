@@ -467,9 +467,6 @@ enum ForgeError extends NodeError:
   /** The block body or header could not be assembled within the protocol limits. */
   case Assembly(cause: ForgeAssemblyProblem)
 
-  /** Our own block rules refuse the block we built. */
-  case SelfRejected(error: ValidationError)
-
   def message: String = this match
     case KeyFile(f, r) => s"key file $f: ${r.message}"
     case KesFileFailure(f, op, cause) =>
@@ -492,7 +489,6 @@ enum ForgeError extends NodeError:
     case LedgerViewUnavailable(slot, r) => s"no ledger view for slot $slot: $r"
     case UnsupportedProtocol(r)         => s"cannot forge: $r"
     case Assembly(r)                    => s"block assembly: $r"
-    case SelfRejected(e) => s"our own ${e.rule} rules refuse the forged block: ${e.reason}"
 
 enum KesFileOperation:
   case StageWrite, StageSync, StageReadback, DirectorySyncBeforeErase

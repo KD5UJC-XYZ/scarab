@@ -350,7 +350,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
                         .left
                         .map(xyz.kd5ujc.scarab.ledger.ChainError.MempoolTick(tip.slot + 1, _))
                     )
-                    .flatMap(mempool.sync(_, tip.slot, Set.empty))
+                    .flatMap(mempool.sync(_, tip.slot, Set.empty, Some(tip.hash)))
                     .void
                 )
               )
@@ -363,8 +363,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
             follower,
             mempool,
             _ => IO.unit,
-            IO.pure(true),
-            maxTipAge = Some(BigInt(1000000)),
+            forecastWindow = Some(BigInt(1000000)),
             now = Some(IO.pure(Instant.EPOCH)),
             sleep = Some(_ => IO.unit)
           )

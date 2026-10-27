@@ -8,7 +8,14 @@ import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, SchedulingReport}
 import xyz.kd5ujc.scarab.network.{ConnectionEvent, DiffTime}
 import xyz.kd5ujc.scarab.ledger.ForgeKeyProblem
 import xyz.kd5ujc.scarab.node.Reports
-import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeSkip}
+import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.node.forge.{
+  CannotForge,
+  ForgeEvent,
+  ForgeTrace,
+  KesEvolutionError,
+  KesInfo
+}
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, Rejection}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.storage.StorageEvent
@@ -287,6 +294,115 @@ object Traced:
         "dropped" -> dropped.asJson
       )
 
+  /** A `ChainHash` as the reference renders it: the full hash, or `GenesisHash` (cardano-node
+    * 11.1.3 `Cardano/Node/Tracing/Render.hs` 176-178).
+    */
+  private[log] def chainHash(h: Option[Bytes]): Json = h.fold("GenesisHash")(_.hex).asJson
+
+  /** `HotKey.KESInfo` as cardano-node 11.1.3 renders it (`Tracers/KESInfo.hs` 60-86), its labels
+    * included: `endPeriod` is the key's period and `evolution` the end of its window.
+    */
+  private[log] def kesInfo(i: KesInfo): List[(String, Json)] =
+    val tail = List(
+      "startPeriod" -> i.start.asJson,
+      "endPeriod" -> i.period.asJson,
+      "evolution" -> i.end.asJson
+    )
+    if i.remaining > 7 then ("kind" -> "KESInfo".asJson) :: tail
+    else ("kind" -> "ExpiryLogMessage".asJson) :: ("keyExpiresIn" -> i.remaining.asJson) :: tail
+
+  /** The severity of `Forge.StateInfo` (`Tracers/KESInfo.hs` 132-148). */
+  private def kesSeverity(i: KesInfo): Severity =
+    if i.remaining > 7 then Severity.Info
+    else if i.remaining <= 1 then Severity.Alert
+    else Severity.Warning
+
+  /** The forging loop's traces with the reference's machine fields (cardano-node 11.1.3
+    * `Tracers/Consensus.hs` 1277-1410, the `DNormal` forms); its `kind` is the event name. The
+    * reasons are rendered as the reference renders them through the hard-fork combinator
+    * (`Tracing/Era/HardFork.hs` 288-348, `Tracers/KESInfo.hs` 170-182, `Tracing/Era/Shelley.hs`
+    * 1318-1323), except that of a block our rules refuse, which is Scarab's `ValidationError`
+    * (`rule`, `reason`).
+    */
+  given Traced[ForgeTrace] =
+    case ForgeTrace.StartLeadershipCheck(slot) =>
+      EventKind.StartLeadershipCheck.line("slot" -> slot.asJson)
+    case ForgeTrace.SlotIsImmutable(slot, tip, tipBlockNo) =>
+      EventKind.SlotIsImmutable.line(
+        "slot" -> slot.asJson,
+        "tip" -> pointForDetails(tip).asJson,
+        "tipBlockNo" -> tipBlockNo.asJson
+      )
+    case ForgeTrace.BlockFromFuture(slot, tip) =>
+      EventKind.BlockFromFuture.line("current slot" -> slot.asJson, "tip" -> tip.asJson)
+    case ForgeTrace.BlockContext(slot, blockNo, prev) =>
+      EventKind.BlockContext.line(
+        "current slot" -> slot.asJson,
+        "tip" -> pointForDetails(prev).asJson,
+        "tipBlockNo" -> blockNo.asJson
+      )
+    case ForgeTrace.LedgerState(slot, _)  => EventKind.LedgerState.line("slot" -> slot.asJson)
+    case ForgeTrace.NoLedgerView(slot, _) => EventKind.NoLedgerView.line("slot" -> slot.asJson)
+    case ForgeTrace.LedgerView(slot)      => EventKind.LedgerView.line("slot" -> slot.asJson)
+    case ForgeTrace.ForgeStateUpdateError(slot, error) =>
+      val kind = error match
+        case KesEvolutionError.CouldNotEvolve(_, _)     => "KESCouldNotEvolve"
+        case KesEvolutionError.KeyAlreadyPoisoned(_, _) => "KESKeyAlreadyPoisoned"
+      EventKind.ForgeStateUpdateError.line(
+        "slot" -> slot.asJson,
+        "reason" -> Json.obj(
+          "kind" -> "HardForkForgeStateUpdateError".asJson,
+          "forgeStateUpdateError" -> Json.obj(
+            "kind" -> kind.asJson,
+            "kesInfo" -> Json.obj(kesInfo(error.info)*),
+            "targetPeriod" -> error.target.asJson
+          )
+        )
+      )
+    case ForgeTrace.NodeCannotForge(slot, CannotForge.KeyNotUsableYet(current, start)) =>
+      EventKind.NodeCannotForge.line(
+        "slot" -> slot.asJson,
+        "reason" -> Json.obj(
+          "kind" -> "PraosCannotForgeKeyNotUsableYet".asJson,
+          "currentKesPeriod" -> current.asJson,
+          "opCertStartingKesPeriod" -> start.asJson
+        )
+      )
+    case ForgeTrace.NodeNotLeader(slot) => EventKind.NodeNotLeader.line("slot" -> slot.asJson)
+    case ForgeTrace.NodeIsLeader(slot)  => EventKind.NodeIsLeader.line("slot" -> slot.asJson)
+    case ForgeTrace.ForgeTickedLedgerState(slot, prev) =>
+      EventKind.ForgeTickedLedgerState.line(
+        "slot" -> slot.asJson,
+        "prev" -> pointForDetails(prev).asJson
+      )
+    case ForgeTrace.ForgingMempoolSnapshot(slot, prev, mempoolHash, mempoolSlot) =>
+      EventKind.ForgingMempoolSnapshot.line(
+        "slot" -> slot.asJson,
+        "prev" -> pointForDetails(prev).asJson,
+        "mempoolHash" -> chainHash(mempoolHash),
+        "mempoolSlot" -> mempoolSlot.asJson
+      )
+    case ForgeTrace.ForgedBlock(slot, _, hash, blockNo, prevHash) =>
+      EventKind.ForgedBlock.line(
+        "slot" -> slot.asJson,
+        "block" -> hash.hex.asJson,
+        "blockNo" -> blockNo.asJson,
+        "blockPrev" -> chainHash(prevHash)
+      )
+    case ForgeTrace.DidntAdoptBlock(slot, _) =>
+      EventKind.DidntAdoptBlock.line("slot" -> slot.asJson)
+    case ForgeTrace.ForgedInvalidBlock(slot, _, reason) =>
+      EventKind.ForgedInvalidBlock.line(
+        "slot" -> slot.asJson,
+        "reason" -> Json.obj("rule" -> reason.rule.asJson, "reason" -> reason.reason.asJson)
+      )
+    case ForgeTrace.AdoptedBlock(slot, hash, blockSize, _) =>
+      EventKind.AdoptedBlock.line(
+        "slot" -> slot.asJson,
+        "blockHash" -> hash.hex.asJson,
+        "blockSize" -> blockSize.asJson
+      )
+
   given Traced[ForgeEvent] =
     case ForgeEvent.Started(pool, vrfHash, start, evolutions, counter, period) =>
       EventKind.ForgeStarted.line(
@@ -298,6 +414,13 @@ object Traced:
         "kesPeriod" -> period.asJson,
         "remainingKesPeriods" -> (start + evolutions - period).asJson
       )
+    case ForgeEvent.Loop(trace) => Traced[ForgeTrace].line(trace)
+    // the label of the reference's one block forging for all eras (consensus 82ecba329
+    // `Cardano/Node.hs` 1024), ahead of the key's fields (`TraceLabelCreds`, `Consensus.hs` 104-106)
+    case ForgeEvent.StateInfo(info) =>
+      EventKind.StateInfo
+        .line(("credentials" -> "Cardano".asJson) :: kesInfo(info)*)
+        .at(kesSeverity(info))
     case ForgeEvent.Forged(
           slot,
           epoch,
@@ -362,18 +485,6 @@ object Traced:
         "file" -> file.asJson,
         "mode" -> ForgeKeyProblem.octal(mode).asJson
       )
-    // the reference's machine fields (cardano-node 11.1.3 `Tracers/Consensus.hs` 1282-1294); its
-    // `kind` is the event name
-    case ForgeEvent.Skipped(_, ForgeSkip.SlotIsImmutable(slot, tip, tipBlockNo)) =>
-      EventKind.SlotIsImmutable.line(
-        "slot" -> slot.asJson,
-        "tip" -> pointForDetails(tip).asJson,
-        "tipBlockNo" -> tipBlockNo.asJson
-      )
-    case ForgeEvent.Skipped(_, ForgeSkip.BlockFromFuture(currentSlot, tip)) =>
-      EventKind.BlockFromFuture.line("current slot" -> currentSlot.asJson, "tip" -> tip.asJson)
-    case ForgeEvent.Skipped(slot, reason) =>
-      EventKind.ForgeSkipped.line("slot" -> slot.asJson, "reason" -> reason.message.asJson)
     case ForgeEvent.Failed(slot, error) =>
       EventKind.ForgeFailed.line(
         "slot" -> slot.asJson,

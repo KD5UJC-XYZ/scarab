@@ -16,7 +16,13 @@ import xyz.kd5ujc.scarab.crypto.vrf.{
   * here is accepted there.
   */
 object Leadership:
-  /** The VRF certificate of the header if the pool leads `slot`, else [[ForgeError.NotLeader]]. */
+  /** The VRF certificate of the header if the pool leads `slot`, else [[ForgeError.NotLeader]]. The
+    * check is on the stake alone, as `checkIsLeader` of `Protocol/Praos.hs` (consensus 82ecba329,
+    * 402-428) makes it: whether the VRF key is the one the pool registered is for the block's
+    * validation to say. A pool absent from the distribution has a relative stake of zero
+    * (`meetsLeaderThreshold`, 535-555), which leads no slot unless the active-slot coefficient is
+    * one.
+    */
   def check(
       slot: BigInt,
       epochNonce: Nonce,
@@ -25,26 +31,24 @@ object Leadership:
       totalStake: BigInt,
       activeSlotsCoeff: Leader.Fraction
   ): Either[ForgeError, VrfCert] =
-    if stake <= 0 || totalStake <= 0 then Left(ForgeError.NotLeader(slot))
-    else
-      for
-        nonce <- epochNonce match
-          case Nonce.Neutral => Right(Vrf.NeutralNonce)
-          case Nonce.Hash(b) => Vrf.Hash32.fromBytes(b).leftMap(ForgeError.VrfInput(_))
-        s <- Vrf.Slot.fromBigInt(slot).leftMap(ForgeError.VrfInput(_))
-        input <- Vrf.Input.create(s, nonce).leftMap(ForgeError.VrfInput(_))
-        alpha <- Vrf.alpha(input).leftMap(ForgeError.VrfInput(_))
-        proved <- key.prove(alpha).leftMap(ForgeError.VrfProof(_))
-        value <- Leader.leaderValue(proved.output).leftMap(ForgeError.LeaderThreshold(_))
-        fraction <- Leader.Fraction
-          .checked(stake, totalStake)
-          .leftMap(ForgeError.LeaderThreshold(_))
-        decision <- Leader
-          .check(value, fraction, activeSlotsCoeff)
-          .leftMap(ForgeError.LeaderThreshold(_))
-        cert <- Either.cond(
-          decision == Leader.Decision.Eligible,
-          VrfCert(proved.output, proved.proof),
-          ForgeError.NotLeader(slot)
-        )
-      yield cert
+    for
+      nonce <- epochNonce match
+        case Nonce.Neutral => Right(Vrf.NeutralNonce)
+        case Nonce.Hash(b) => Vrf.Hash32.fromBytes(b).leftMap(ForgeError.VrfInput(_))
+      s <- Vrf.Slot.fromBigInt(slot).leftMap(ForgeError.VrfInput(_))
+      input <- Vrf.Input.create(s, nonce).leftMap(ForgeError.VrfInput(_))
+      alpha <- Vrf.alpha(input).leftMap(ForgeError.VrfInput(_))
+      proved <- key.prove(alpha).leftMap(ForgeError.VrfProof(_))
+      value <- Leader.leaderValue(proved.output).leftMap(ForgeError.LeaderThreshold(_))
+      fraction <- (if stake <= 0 then Leader.Fraction.checked(0, 1)
+                   else Leader.Fraction.checked(stake, totalStake))
+        .leftMap(ForgeError.LeaderThreshold(_))
+      decision <- Leader
+        .check(value, fraction, activeSlotsCoeff)
+        .leftMap(ForgeError.LeaderThreshold(_))
+      cert <- Either.cond(
+        decision == Leader.Decision.Eligible,
+        VrfCert(proved.output, proved.proof),
+        ForgeError.NotLeader(slot)
+      )
+    yield cert

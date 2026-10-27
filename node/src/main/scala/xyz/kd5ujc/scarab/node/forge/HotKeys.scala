@@ -111,9 +111,16 @@ object HotKeySource:
   * never twice in a period with different key states: the key only moves forward (a period's
   * signature is deterministic in the key, which does not change within a period) and it is written
   * back, and its predecessor overwritten, before it signs in the new period.
+  *
+  * @param poisoned
+  *   The key's state when it was poisoned, as the reference poisons a key whose window has passed
+  *   (`HotKey.hs` 405-410): the key is erased from memory, every later [[update]] fails with
+  *   `KESKeyAlreadyPoisoned`, and a [[reload]] that installs a new key ends it. Unlike the first
+  *   failure of `state`, it is not fatal.
   */
 final class HotKeys[F[_]: Async] private (
     state: Ref[F, Either[Fatal, PoolCredentials]],
+    poisoned: Ref[F, Option[KesInfo]],
     lock: Mutex[F],
     source: Option[HotKeySource[F]],
     config: PraosConfig,
@@ -179,17 +186,33 @@ final class HotKeys[F[_]: Async] private (
         })
     }
 
-  /** At a slot: evolve to the slot's period when it has moved on (inside the certificate's window),
-    * so the earlier key is gone from memory and disk as soon as the period changes, whether or not
-    * the pool leads a slot in it. A failed write stops this forging worker.
+  /** `updateForgeState` of the reference at a slot whose KES period is `kesPeriod`: `HotKey.evolve`
+    * (`evolveKey`, consensus 82ecba329 `Protocol/Ledger/HotKey.hs` 385-418, called from
+    * `Shelley/Node/Praos.hs` 83-85). Before the certificate's window the key is left as it is (the
+    * leader check then finds it not usable yet); inside it, the key evolves to the period when that
+    * is later than its own, and is written back before anything signs with it; at or past the end
+    * of the window it is poisoned and the update fails (`KESCouldNotEvolve`), as every later one
+    * does (`KESKeyAlreadyPoisoned`) until a reload installs another key. The key's state after the
+    * update is the value, or a [[ForgeError]] the reference has no counterpart for (a key that
+    * cannot reach a period the certificate allows). A failed write stops this forging worker.
     */
-  def advance(kesPeriod: BigInt)(using Raise[F, Fatal]): F[Unit] =
+  def update(kesPeriod: BigInt)(using
+      Raise[F, Fatal]
+  ): F[Either[ForgeError, Either[KesEvolutionError, KesInfo]]] =
     usingKey { c =>
-      val relative = kesPeriod - c.opCert.kesPeriod
-      val inside =
-        relative >= 0 && relative < config.maxKesEvolutions && relative < Sum6KesSigning.Periods
-      if inside && relative.toInt > c.kes.period then evolved(c, kesPeriod).void
-      else F.unit
+      val now = HotKeys.info(c, config)
+      poisoned.get.flatMap {
+        case Some(stale) =>
+          F.pure(Right(Left(KesEvolutionError.KeyAlreadyPoisoned(stale, kesPeriod))))
+        case None if kesPeriod < now.start => F.pure(Right(Right(now)))
+        case None if kesPeriod >= now.end =>
+          F.delay(c.kes.forget()) *> poisoned
+            .set(Some(now))
+            .as(Right(Left(KesEvolutionError.CouldNotEvolve(now, kesPeriod))))
+        case None if kesPeriod - now.start <= c.kes.period => F.pure(Right(Right(now)))
+        case None =>
+          evolved(c, kesPeriod).map(_.map(_ => Right(HotKeys.info(c, config))))
+      }
     }
 
   /** Re-read the key and certificate and switch to them if they are good (see
@@ -232,6 +255,7 @@ final class HotKeys[F[_]: Async] private (
     for
       _ <- F.delay(if sameKey then candidate.kes.forget() else cur.kes.forget())
       _ <- state.set(Right(next))
+      _ <- poisoned.set(None)
       _ <- found.adopt
       // the key in use, further on than the file it was read again from, is written there too
       _ <- write(next, kesPeriod).whenA(sameKey)
@@ -254,10 +278,17 @@ object HotKeys:
       config: PraosConfig,
       events: ForgeEvents[F]
   ): F[HotKeys[F]] =
-    (Ref.of[F, Either[Fatal, PoolCredentials]](Right(credentials)), Mutex[F]).mapN {
-      (state, lock) =>
-        new HotKeys[F](state, lock, source, config, events)
+    (
+      Ref.of[F, Either[Fatal, PoolCredentials]](Right(credentials)),
+      Ref.of[F, Option[KesInfo]](None),
+      Mutex[F]
+    ).mapN { (state, poisoned, lock) =>
+      new HotKeys[F](state, poisoned, lock, source, config, events)
     }
+
+  /** The `KESInfo` of the key in use: its certificate's window and its evolution. */
+  def info(c: PoolCredentials, config: PraosConfig): KesInfo =
+    KesInfo(c.opCert.kesPeriod, c.opCert.kesPeriod + config.maxKesEvolutions, c.kes.period)
 
   /** An absent replacement file is an operator refusal on reload only. Other I/O is a storage
     * failure; an unexpected exception remains a defect, even if the file adapter wrapped it.

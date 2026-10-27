@@ -152,19 +152,34 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `mempoolRemoved` | `Mempool.MempoolRemoved` | Info | `tx` |
 | `mempoolSynced` | `Mempool.MempoolSynced` | Info | `count`, `bytes`, `dropped` |
 | `forgeStarted` | `Forge.ForgeStarted` | Notice | `pool`, `vrfKeyHash`, `kesStart`, `kesEvolutions`, `opCertCounter`, `kesPeriod`, `remainingKesPeriods` |
-| `forged` | `Forge.Forged` | Info | `slot`, `epoch`, `blockNo`, `hash`, `prev`, `txs`, `bodySize`, `kesPeriod`, `relativeKesPeriod`, `stake`, `totalStake`, `opCertCounter` |
-| `adopted` | `Forge.Adopted` | Info | `block`, `latencyMs` |
-| `lost` | `Forge.Lost` | Notice | `slot`, `hash`, `reason` |
+| `startLeadershipCheck` | `Forge.StartLeadershipCheck` | Info | `slot`; the first trace of every slot the forging loop runs. This and the rows down to `adoptedBlock` are cardano-node 11.1.3 `Forge.Loop.*` (one level shallower) with its severities and machine fields (`kind` is the event name), in the order `forkBlockForging` traces them; see [block production](../architecture/block-production.md#the-forging-loop) |
+| `slotIsImmutable` | `Forge.SlotIsImmutable` | Error | `slot`, `tip` (`<hash>@<slot>`), `tipBlockNo`: no volatile block, and the immutable tip is in the slot or a later one |
+| `blockFromFuture` | `Forge.BlockFromFuture` | Error | `current slot` (the key has a space, as in the reference; quoted in the human format), `tip` (the tip's slot): the chain's tip is in a later slot |
+| `blockContext` | `Forge.BlockContext` | Debug | `current slot`, `tip` (the predecessor of the block to forge, `<hash>@<slot>` or `genesis (origin)`), `tipBlockNo` (the number of the block to forge, as the reference fills it) |
+| `ledgerState` | `Forge.LedgerState` | Debug | `slot` |
+| `noLedgerView` | `Forge.NoLedgerView` | Error | `slot`: the slot is outside the forecast range of the predecessor's ledger state (the stability window after its successor) |
+| `ledgerView` | `Forge.LedgerView` | Debug | `slot` |
+| `forgeStateUpdateError` | `Forge.ForgeStateUpdateError` | Critical | `slot`, `reason` (`kind` `HardForkForgeStateUpdateError`, `forgeStateUpdateError`: `kind` `KESCouldNotEvolve` or `KESKeyAlreadyPoisoned`, `kesInfo` as in `stateInfo`, `targetPeriod`): the KES key's window has passed and the key is poisoned |
+| `nodeCannotForge` | `Forge.NodeCannotForge` | Error | `slot`, `reason` (`kind` `PraosCannotForgeKeyNotUsableYet`, `currentKesPeriod`, `opCertStartingKesPeriod`): the pool leads the slot but its certificate's window has not begun |
+| `nodeNotLeader` | `Forge.NodeNotLeader` | Info | `slot` |
+| `nodeIsLeader` | `Forge.NodeIsLeader` | Info | `slot` |
+| `forgeTickedLedgerState` | `Forge.ForgeTickedLedgerState` | Debug | `slot`, `prev` |
+| `forgingMempoolSnapshot` | `Forge.ForgingMempoolSnapshot` | Debug | `slot`, `prev`, `mempoolHash` (the tip the mempool was last synchronised with, or `GenesisHash`), `mempoolSlot` |
+| `forgedBlock` | `Forge.ForgedBlock` | Info | `slot`, `block`, `blockNo`, `blockPrev` (or `GenesisHash`) |
+| `didntAdoptBlock` | `Forge.DidntAdoptBlock` | Error | `slot`: the block was valid but did not become the tip (a slot battle lost at adoption) |
+| `forgedInvalidBlock` | `Forge.ForgedInvalidBlock` | Error | `slot`, `reason` (`rule`, `reason`: Scarab's rendering of its own rules' refusal, not the reference's `ExtValidationError`): its transactions leave the mempool |
+| `adoptedBlock` | `Forge.AdoptedBlock` | Info | `slot`, `blockHash`, `blockSize` (`estimateBlockSize`: header bytes, body size and 10) |
+| `stateInfo` | `Forge.StateInfo` | Info (Warning with seven KES periods left or fewer, Alert with one or none) | `credentials` (`Cardano`), `kind` (`KESInfo`, or `ExpiryLogMessage` with `keyExpiresIn` when seven periods or fewer are left), `startPeriod`, `endPeriod` (the key's current period), `evolution` (the end of the certificate's window): the reference's labels, after each update of the forge state |
+| `forged` | `Forge.Forged` | Info | `slot`, `epoch`, `blockNo`, `hash`, `prev`, `txs`, `bodySize`, `kesPeriod`, `relativeKesPeriod`, `stake`, `totalStake`, `opCertCounter`; Scarab's account of a block, after `forgedBlock` |
+| `adopted` | `Forge.Adopted` | Info | `block`, `latencyMs`; after `adoptedBlock` |
+| `lost` | `Forge.Lost` | Notice | `slot`, `hash`, `reason`; after `didntAdoptBlock`, or when an adopted block is replaced later |
 | `kesEvolved` | `Forge.KesEvolved` | Info | `kesPeriod`, `relativeKesPeriod` |
 | `kesReloaded` | `Forge.KesReloaded` | Notice | `opCertCounter`, `kesStart`, `kesEvolutions`, `kesPeriod`, `remainingKesPeriods` |
 | `kesReloadRefused` | `Forge.KesReloadRefused` | Error | `kind`, `message` |
 | `kesPersistFailed` | `Forge.KesPersistFailed` | Error | `kesPeriod`, `kind`, `message` |
 | `keyFileGroupAccess` | `Forge.KeyFileGroupAccess` | Warning | `file`, `mode` |
-| `forgeSkipped` | `Forge.ForgeSkipped` | Info | `slot`, `reason` |
-| `slotIsImmutable` | `Forge.SlotIsImmutable` | Error | `slot`, `tip` (`<hash>@<slot>`), `tipBlockNo`: no volatile block, and the immutable tip is in the slot or a later one; cardano-node 11.1.3 `Forge.Loop.SlotIsImmutable` with its machine fields (`kind` is the event name) |
-| `blockFromFuture` | `Forge.BlockFromFuture` | Error | `current slot` (the key has a space, as in the reference; quoted in the human format), `tip` (the tip's slot): the chain's tip is in a later slot; cardano-node 11.1.3 `Forge.Loop.BlockFromFuture` with its machine fields |
-| `forgeFailed` | `Forge.ForgeFailed` | Error | `slot`, `kind`, `message` |
-| `forgeEpoch` | `Forge.ForgeEpoch` | Notice | `epoch`, `slotsChecked`, `leaderSlots`, `forged`, `adopted`, `lostSlotBattles`, `failed`, `skipped`, `skippedByReason`, `forgeLatencyMs` |
+| `forgeFailed` | `Forge.ForgeFailed` | Error | `slot`, `kind`, `message`: a slot given up for a reason of Scarab's own, which the reference does not have |
+| `forgeEpoch` | `Forge.ForgeEpoch` | Notice | `epoch`, `slotsChecked`, `leaderSlots`, `notLeader`, `cannotForge`, `stateUpdateError`, `forged`, `adopted`, `lostSlotBattles`, `forgedInvalid`, `replaced`, `failed`, `skipped`, `skippedByReason`, `forgeLatencyMs` |
 | `formatMigrated` | `Storage.FormatMigrated` | Notice | `kind`, `from`, `to`, `count` |
 | `immutableOpened` | `Storage.ImmutableOpened` | Info | `tip`, `blocks`, `chunks`, `truncatedEntries`, `truncatedBytes` |
 | `volatileOpened` | `Storage.VolatileOpened` | Info | `blocks`, `files`, `truncatedBytes`, `removedFiles` |

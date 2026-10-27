@@ -757,7 +757,6 @@ object Main extends IOApp:
       praosConfig <- Ref.of[IO, consensus.PraosConfig](setup.praos)
       warm = (raw: Vector[xyz.kd5ujc.scarab.codec.Bytes]) =>
         praosConfig.get.flatMap(cache.warm[IO](raw, _))
-      connected <- Ref.of[IO, Boolean](false)
       eraStarts <- Ref.of[IO, Map[xyz.kd5ujc.scarab.protocol.Era, BigInt]](Map.empty)
       // The measurements: every event goes to the log and to the metrics ([[EventSink]]).
       metrics <- Metrics.create[IO](Catalogue.all)
@@ -795,7 +794,6 @@ object Main extends IOApp:
       events = new FollowerEvents[IO]:
         def emit(event: FollowerEvent): IO[Unit] =
           (event match
-            case FollowerEvent.Connected(_) => connected.set(true)
             case FollowerEvent.EraEntered(_, to, _, epoch) =>
               eraStarts.update(_.updatedWith(to)(_.orElse(Some(epoch))))
             case FollowerEvent.Extended(block, _, peerTip, _) =>
@@ -1405,7 +1403,6 @@ object Main extends IOApp:
                   follower,
                   mempool,
                   Log.sink[ForgeEvents, ForgeEvent, IO].alongside(measured.forge),
-                  connected.get,
                   utxoStore = Some(store),
                   source = Some(source)
                 )

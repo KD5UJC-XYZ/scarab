@@ -149,6 +149,34 @@ enum EventKind(val area: Area, val severity: Severity):
 
   // forging
   case ForgeStarted extends EventKind(Area.Forge, Severity.Notice)
+
+  /** The forging loop's traces, cardano-node 11.1.3 `Forge.Loop.*` one level shallower, with the
+    * reference's names and severities (`Cardano/Node/Tracing/Tracers/Consensus.hs` 1541-1600).
+    */
+  case StartLeadershipCheck extends EventKind(Area.Forge, Severity.Info)
+  case SlotIsImmutable extends EventKind(Area.Forge, Severity.Error)
+  case BlockFromFuture extends EventKind(Area.Forge, Severity.Error)
+  case BlockContext extends EventKind(Area.Forge, Severity.Debug)
+  case LedgerState extends EventKind(Area.Forge, Severity.Debug)
+  case NoLedgerView extends EventKind(Area.Forge, Severity.Error)
+  case LedgerView extends EventKind(Area.Forge, Severity.Debug)
+  case ForgeStateUpdateError extends EventKind(Area.Forge, Severity.Critical)
+  case NodeCannotForge extends EventKind(Area.Forge, Severity.Error)
+  case NodeNotLeader extends EventKind(Area.Forge, Severity.Info)
+  case NodeIsLeader extends EventKind(Area.Forge, Severity.Info)
+  case ForgeTickedLedgerState extends EventKind(Area.Forge, Severity.Debug)
+  case ForgingMempoolSnapshot extends EventKind(Area.Forge, Severity.Debug)
+  case ForgedBlock extends EventKind(Area.Forge, Severity.Info)
+  case DidntAdoptBlock extends EventKind(Area.Forge, Severity.Error)
+  case ForgedInvalidBlock extends EventKind(Area.Forge, Severity.Error)
+  case AdoptedBlock extends EventKind(Area.Forge, Severity.Info)
+
+  /** cardano-node 11.1.3 `Forge.StateInfo`: `Info`, raised to `Warning` with seven KES periods or
+    * fewer left and to `Alert` with one or none (`Tracers/KESInfo.hs` 129-150).
+    */
+  case StateInfo extends EventKind(Area.Forge, Severity.Info)
+
+  // Scarab's own accounts of the forger
   case Forged extends EventKind(Area.Forge, Severity.Info)
   case Adopted extends EventKind(Area.Forge, Severity.Info)
   case Lost extends EventKind(Area.Forge, Severity.Notice)
@@ -157,14 +185,6 @@ enum EventKind(val area: Area, val severity: Severity):
   case KesReloadRefused extends EventKind(Area.Forge, Severity.Error)
   case KesPersistFailed extends EventKind(Area.Forge, Severity.Error)
   case KeyFileGroupAccess extends EventKind(Area.Forge, Severity.Warning)
-  case ForgeSkipped extends EventKind(Area.Forge, Severity.Info)
-
-  /** cardano-node 11.1.3 `Forge.Loop.SlotIsImmutable` and `Forge.Loop.BlockFromFuture`, severity
-    * `Error` (`Cardano/Node/Tracing/Tracers/Consensus.hs` 1543-1546, 1581-1582), one level
-    * shallower.
-    */
-  case SlotIsImmutable extends EventKind(Area.Forge, Severity.Error)
-  case BlockFromFuture extends EventKind(Area.Forge, Severity.Error)
   case ForgeFailed extends EventKind(Area.Forge, Severity.Error)
   case ForgeEpoch extends EventKind(Area.Forge, Severity.Notice)
 
