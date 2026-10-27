@@ -25,21 +25,32 @@ Genesis pool relays/metadata and hash-checked `InjectionFromFile` support remain
 
 ## Strict raw JSON prerequisite (#497)
 
-The unused `NativeJson` primitive mirrors installed Aeson 2.2.5.0's strict byte-to-Value boundary
-(`Decoding/ByteString.hs:33-119,143-175,197-276`, `Decoding/Conversion.hs:56-94`,
-`Decoding.hs:40-60`). Every original token is validated before first-wins duplicate collapse.
+The unused `NativeJson` primitive mirrors installed Aeson 2.2.5.0's strict byte-to-Value boundary:
+`bsToTokens` (`Decoding/ByteString.hs:32-126,132-166,182-273`), read into a Value as
+`Decoding/Conversion.hs:48-94` does, then `eitherDecodeStrict`'s trailing-input check
+(`Decoding.hs:48-53`). `parse` returns the value and where it ends, and `onlySpace` is the separate
+`bsSpace` check, so a later typed decoder can run between them as the reference's `ifromJSON` does.
+Every original token is validated before first-wins duplicate collapse. Refusals are closed typed
+cases that render the reference's message text, including its spelling and its quoting of the
+bytes from the comma when an object key is missing after one.
+
 It returns `JsonValue`, aeson's `Value` (`Data/Aeson/Types/Internal.hs:366-372`): objects are the
-ordered KeyMap in UTF-8/Text key order, and numbers are `Scientific` with the parsed coefficient
-and signed-64 exponent, not normalized; equality normalizes them, as scientific 0.3.8.1's `Eq`
-does. Explicit frames admit outside-data nesting without a configured depth cutoff, and equality,
-hashing and rendering of a value walk an explicit stack.
+ordered KeyMap in UTF-8/Text key order, keyed by `JsonKey`, which like `Text` cannot hold an unpaired
+surrogate (its constructor refuses one, where `Key.fromString` would substitute U+FFFD; the reader
+refuses such input first); numbers are `Scientific` with the parsed coefficient and signed-64 exponent, not
+normalized. Equality, ordering and hashing normalize them, as scientific 0.3.8.1's `Eq`, `Ord` and
+`Hashable` do; `JsonValue` ordering is the derived `Ord Value` and `toString` is `Show Value`, with
+`Show Scientific`'s text. Explicit frames admit outside-data nesting without a configured depth
+cutoff, and equality, ordering, hashing and showing a value walk an explicit stack.
 
 [All 350 actual native cases](../../fixtures/reference/native-json/README.md) retain the 302
 original upstream JSONTestSuite parsing inputs and 48 source-derived controls, with no filename
 category used as an expected-failure exemption. Full flat Value events make every accepted
-primitive/order observable without deep recursive equality. All350 small-stack Scala checks pass;
-temporary duplicate/order/number-normalization faults fail19 assertions and exact restoration
-passes. Native error strings are preserved but are not a Scala diagnostic-wording claim.
+primitive/order observable without deep recursive equality, and every refused case's rendered
+message equals the native error text. All 350 small-stack Scala checks pass; temporary
+duplicate/order/number-normalization faults fail 19 assertions and exact restoration passes.
+`JsonValueSuite` compares `show` and `compare` against goldens that GHC 9.10.3 printed in the
+pinned reference image. JVM hash values are consistent with equality but are not hashable's values.
 
 This parser is not wired into genesis loaders. Original-file hash/parse ordering, required fields,
 field decoders and multi-file failure order remain incomplete under #497. The separate permissive

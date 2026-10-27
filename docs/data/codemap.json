@@ -19,7 +19,7 @@
 {
     "module": "ledger",
     "path": "ledger/json",
-    "responsibility": "aeson's Value with Scientific numbers and ordered objects; unused strict native raw JSON Value parser with original-token validation",
+    "responsibility": "aeson's Value with Scientific numbers, Text keys, its Eq, Ord and Show; unused strict native raw JSON Value parser with original-token validation and the reference's error texts",
     "entryPoints": [
        "JsonValue",
        "NativeJson"

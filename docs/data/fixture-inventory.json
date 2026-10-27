@@ -506,7 +506,7 @@
     "fixtures/reference/ledger-api-pool-goldens/pin/queryStakePoolRelays.cbor": "3ae735200d5dd0b27a2c87930b9e65edd5f34b970fdd0863dab742cd149a56c2",
     "fixtures/reference/native-json/JSONTestSuite-LICENSE": "8bd0e0578be788c617ea01d18b2a8146e3746ae50bddadc65a5f9d3aad08ad49",
     "fixtures/reference/native-json/cases.jsonl.gz": "06f14a3fdf75ebdb0df800c68737bc2f41aa86e26fe0d97bcd34a70af1e86cbb",
-    "fixtures/reference/native-json/provenance.json": "9ecc96883be8059115444d2834fda90b51b3bf8008997672f4458ccbc3597236",
+    "fixtures/reference/native-json/provenance.json": "836fc2d70106be044538e36c1a1a62352a123d9148303cc0d32fe9a5a5db38cf",
     "fixtures/reference/network-mux-sdu/cases.tsv": "49befe17b1a319bc3723fcce332517976203aa3296494dc74555354d29c87105",
     "fixtures/reference/network-mux-sdu/cases.tsv.manifest.json": "7025a31e7f2b767efc505d5089ddc855ba75782ff53fc9e8e52f2ef607798a97",
     "fixtures/reference/ntc-wallet-peers-11.1.3/manifest.json": "f0d245bee7bc44c6a11e5a966057514e6cdba21c5d19f9ee09efed2773ed98a2",

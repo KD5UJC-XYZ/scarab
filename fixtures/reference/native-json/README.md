@@ -22,7 +22,7 @@ signed-64 exponent, including zero and trailing decimal zeros, without normaliza
 
 `NativeJsonSuite` compares all 350 native admission results and complete accepted Value event
 streams on a small-stack thread. Native errors are retained and reproduced exactly by the portable
-oracle; Scala returns closed typed errors and does not claim diagnostic text equivalence. Temporary
+oracle; Scala's closed typed errors render the same text, and the suite compares all 208. Temporary
 last-wins, UTF-16 ordering and Scientific-normalizing variants fail 19 assertions; exact source
 restoration passes all 350. No original input is excluded or relabeled.
 

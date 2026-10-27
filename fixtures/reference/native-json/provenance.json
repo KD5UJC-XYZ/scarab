@@ -56,7 +56,7 @@
     "gitBlob": "c4b3621d5d59f56b7b43d84386e5501f72f4ce9c",
     "file": "JSONTestSuite-LICENSE"
   },
-  "comparison": "Full native acceptance and ordered flat Value events; Scientific coefficient/exponent strings retain representation. Native error text retained, not Scala diagnostic parity.",
+  "comparison": "Full native acceptance and ordered flat Value events; Scientific coefficient/exponent strings retain representation. Native error text retained; Scala typed errors render it exactly.",
   "artifacts": {
     "scripts/oracle/native-json/Main.hs": "f6f313f5918b28031fd801da6dc74a9b8ccc67f189a70f755d5b45441bb798e1",
     "scripts/oracle/native-json/run.py": "ca8a6c17b0ae95e0613b0b0aefd98f01dbefdd6a175636ed18dcc299e5014d5d",
