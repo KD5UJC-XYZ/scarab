@@ -180,7 +180,7 @@ class ShelleyLedgerSuite extends FunSuite:
       ctx: TxEnv
   ): PredicateFailure =
     run(c, s, t, ctx) match
-      case Left(LedgerFailure.Rejected(_, p)) => p
+      case Left(LedgerFailure.Rejected.Single(_, p)) => p
       case Left(other) => fail(s"${c.name}: expected a rule's refusal: ${other.message}")
       case Right(_)    => fail(s"${c.name}: expected a refusal")
 
@@ -254,7 +254,25 @@ class ShelleyLedgerSuite extends FunSuite:
   private val rich = 10000 * ada
   private val poolDeposit = 500 * ada
 
-  Vector(alonzo, babbage).foreach { case c: Case[e] =>
+  // Babbage's UTXO counts the collateral inputs of every transaction (`Babbage/Rules/Utxo.hs:412`);
+  // Alonzo's does not count them at all (`Alonzo/Rules/Utxo.hs:570-572`, cardano-ledger `f649f975`)
+  test("Alonzo LEDGER does not count the collateral inputs") {
+    val inputs = Vector(coinIn, txIn(2), txIn(3), txIn(4))
+    val s = base(alonzo, inputs.map(_ -> out(alice.address(), rich)))
+    val t = tx(
+      body(
+        "collateral-count",
+        Vector(coinIn),
+        Vector(out(alice.address(), rich - 200)),
+        200,
+        collateral = inputs
+      ),
+      Vector(alice)
+    )
+    accepted(alonzo, s, t)
+  }
+
+  Vector(babbage).foreach { case c: Case[e] =>
     test(s"${c.name} LEDGER refuses excessive collateral even without redeemers (#178)") {
       val inputs = Vector(coinIn, txIn(2), txIn(3), txIn(4))
       val s = base(c, inputs.map(_ -> out(alice.address(), rich)))
@@ -1055,9 +1073,18 @@ class ShelleyLedgerSuite extends FunSuite:
     )
     for t <- Vector(delegate, pay("cheap", alice, fee = 1)) do
       val rules = ShelleyLedger.sts[Babbage]
-      val onRuleT = Sts(rules)(globals, ledgerEnv, start, t)
+      val onRuleT =
+        JudgedSts(rules)(LedgerFailure.Rejected(t.body.id, _))(globals, ledgerEnv, start, t)
       val onStack = rules
-        .transition[K](ledgerEnv, t)(using summon, summon, summon, summon)
+        .transition[K](ledgerEnv, t)(using
+          summon,
+          summon,
+          summon,
+          summon,
+          Judge.raising[K, xyz.kd5ujc.scarab.ledger.PredicateFailure, LedgerFailure](
+            LedgerFailure.Rejected(t.body.id, _)
+          )
+        )
         .run(globals)
         .run(start)
         .map(_._1)

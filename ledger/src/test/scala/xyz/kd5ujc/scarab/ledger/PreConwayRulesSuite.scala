@@ -17,7 +17,9 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   NativeRules,
   PreConway,
   ShelleyInstantStakeOps,
-  StakeDistribution
+  StakeDistribution,
+  Test,
+  UtxoTests
 }
 import xyz.kd5ujc.scarab.ledger.state.{
   Alonzo,
@@ -226,9 +228,9 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     NativeRules.boundary(NativeRules.tick(EraNes.InEra(era, nes), last, g), g)
 
   private def rule(r: Either[LedgerFailure, ?]): String = r match
-    case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
-    case Left(other)                        => other.message
-    case Right(_)                           => "accepted"
+    case Left(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
+    case Left(other)                               => other.message
+    case Right(_)                                  => "accepted"
 
   private def transfer(in: TxIn, pay: BigInt, change: BigInt, fee: BigInt = 200, id: String = "t") =
     body(id, Vector(in), Vector(out(bob.address(), pay), out(alice.address(), change)), fee)
@@ -438,9 +440,11 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       rule(run(s, tx(b, Vector(alice), withScript))),
       "ScriptWitnessNotValidatingUTXOW"
     )
+    // an extraneous script that holds: before Babbage every native script provided must hold
+    // (`validateFailedNativeScripts`, `Shelley/Rules/Utxow.hs:365-373`), and that check comes first
     val extra = Witnesses(
       Vector.empty,
-      scripts = Vector(policyScript, scriptOf(NativeScript.AnyOf(Vector.empty)))
+      scripts = Vector(policyScript, scriptOf(NativeScript.AllOf(Vector.empty)))
     )
     assertEquals(
       rule(run(s, tx(b, Vector(alice, signer), extra))),
@@ -597,12 +601,11 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
   private def wellFormed(protocol: Int, scripts: Vector[Script], referenced: Vector[Script]) =
     val outputs = referenced.map(r => out(bob.address(), 2 * ada).copy(scriptRef = Some(r)))
     val b = body("wf", Vector(txIn(1)), outputs, 200)
+    val checked = tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts))
     rule(
-      TxChecks.scriptsWellFormed(
-        TestLedger.params(protocol),
-        tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts)),
-        env
-      )
+      TxChecks
+        .scriptsWellFormed(TestLedger.params(protocol), checked, env)
+        .flatMap(TestLedger.verdict(checked.body.id, _))
     )
 
   test("from Babbage a Plutus script must deserialise: an unavailable builtin is phase-1 invalid") {
@@ -892,11 +895,17 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val v = Value(coin, assets)
     out(bob.address(), 0).copy(value = v)
 
+  /** The first failure of the output checks of UTXO, in the era's order. */
   private def outputRule(pp: ProtocolParams, o: TxOut): String =
-    TxChecks.outputChecks(pp, env, Bytes.empty, Vector(o)) match
-      case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
-      case Left(other)                        => other.message
-      case Right(_)                           => "accepted"
+    val outs = Vector(o)
+    val pv = pp.protocolMajor
+    val checks = Vector(
+      UtxoTests.outputTooSmall(pp, outs),
+      if pv >= 3 then UtxoTests.outputTooBig(pp, outs) else Test.pass,
+      UtxoTests.bootAddrAttrsTooBig(outs),
+      if pv >= 5 then UtxoTests.wrongNetwork(env.network, outs) else Test.pass
+    ).flatMap(Test.failures(_).toVector.flatMap(_.iterator))
+    checks.headOption.fold("accepted")(_.ruleName)
 
   test("Shelley and Allegra require exactly minUTxOValue, Mary scales it for native assets") {
     // ada-only outputs: the flat parameter in every Shelley-based era up to Mary

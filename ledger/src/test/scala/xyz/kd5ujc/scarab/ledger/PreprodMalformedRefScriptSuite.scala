@@ -112,9 +112,11 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
     val bad = c.tx.copy(body =
       c.tx.body.copy(outputs = c.tx.body.outputs.updated(at, out.copy(raw = raw3)))
     )
-    TxChecks.scriptsWellFormed(params, bad, env) match
+    TxChecks
+      .scriptsWellFormed(params, bad, env)
+      .flatMap(TestLedger.verdict(bad.body.id, _)) match
       case Left(
-            LedgerFailure.Rejected(
+            LedgerFailure.Rejected.Single(
               _,
               PredicateFailure.Utxow(UtxowFailure.MalformedReferenceScripts(hashes))
             )

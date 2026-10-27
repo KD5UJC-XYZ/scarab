@@ -95,7 +95,7 @@ object NativeRules:
       Counted(nes.copy(es = nes.es.copy(ls = c.state)), c.plutus)
     era match
       case ShelleyBasedEra.SConway =>
-        Sts(Ledger)(
+        JudgedSts(Ledger)(LedgerFailure.Rejected(t.body.id, _))(
           globals,
           LedgerEnv(ctx, nes.es.chainAccount.treasury),
           Counted(nes.es.ls, plutus),
@@ -119,7 +119,7 @@ object NativeRules:
       plutus: PlutusStats,
       globals: Globals
   )(using ShelleyBasedEra[E], PreConway[E]): Either[LedgerFailure, Counted[LedgerState[E]]] =
-    Sts(ShelleyLedger.sts[E])(
+    JudgedSts(ShelleyLedger.sts[E])(LedgerFailure.Rejected(t.body.id, _))(
       globals,
       ShelleyLedgerEnv(ctx, nes.es.chainAccount),
       Counted(nes.es.ls, plutus),

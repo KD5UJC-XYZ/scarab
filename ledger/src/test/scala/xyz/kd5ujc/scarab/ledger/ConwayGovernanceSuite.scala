@@ -278,9 +278,9 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
 
   /** The rule's refusal of a transaction, or `None` if it is accepted. */
   private def refusal[A](r: Either[LedgerFailure, A]): Option[PredicateFailure] = r match
-    case Left(LedgerFailure.Rejected(_, f)) => Some(f)
-    case Left(other)                        => fail(s"not a rule's refusal: ${other.message}")
-    case Right(_)                           => None
+    case Left(LedgerFailure.Rejected.Single(_, f)) => Some(f)
+    case Left(other) => fail(s"not a rule's refusal: ${other.message}")
+    case Right(_)    => None
 
   /** The state one epoch later: the tick into the next epoch, on the state the rules left. */
   private def boundary(st: Step): Step =

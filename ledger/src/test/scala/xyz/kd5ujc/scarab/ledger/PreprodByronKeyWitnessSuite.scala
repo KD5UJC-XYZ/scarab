@@ -79,7 +79,7 @@ class PreprodByronKeyWitnessSuite extends FunSuite:
     */
   private def missingRoot(t: Tx): Unit = judged(t) match
     case Left(
-          LedgerFailure.Rejected(
+          LedgerFailure.Rejected.Single(
             _,
             PredicateFailure.Utxow(UtxowFailure.MissingVKeyWitnesses(hashes))
           )

@@ -94,7 +94,7 @@ class PreprodConwayRulesSuite extends FunSuite:
     val invalid = c.tx.copy(isValid = false)
     NativeRules.txIn[Conway](world, invalid, env(ScalusEvaluator.default)) match
       case Left(
-            LedgerFailure.Rejected(
+            LedgerFailure.Rejected.Single(
               _,
               PredicateFailure.Utxow(
                 UtxowFailure.Utxo(

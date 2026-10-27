@@ -104,8 +104,8 @@ class ConwayLedgerSuite extends FunSuite:
     case Left(f)     => fail(s"expected the transaction to be accepted: $f")
 
   private def refusedWith(s: NewEpochState[Conway], t: Tx): String = run(s, t) match
-    case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
-    case other                              => fail(s"expected a refusal: ${outcome(other)}")
+    case Left(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
+    case other                                     => fail(s"expected a refusal: ${outcome(other)}")
 
   /** What the rules did, for the message of a failed test: the refusal, or that they accepted. */
   private def outcome(r: Either[LedgerFailure, Counted[NewEpochState[Conway]]]): String =
@@ -776,7 +776,7 @@ class ConwayLedgerSuite extends FunSuite:
       signers = Vector(bob)
     )
     assertEquals(Invariants.poolDelegators(ConwayLedgerState.cert.get(s.es.ls)), Vector.empty)
-    Sts(Ledger)(
+    JudgedSts(Ledger)(LedgerFailure.Rejected(t.body.id, _))(
       globals,
       LedgerEnv(TestLedger.env, Coin.zero),
       Build.counted(s),
@@ -813,9 +813,18 @@ class ConwayLedgerSuite extends FunSuite:
     )
     val cheap = pay("cheap", alice, 10000 * ada, 1)
     for t <- Vector(delegate, cheap) do
-      val onRuleT = Sts(Ledger)(globals, ledgerEnv, start, t)
+      val onRuleT =
+        JudgedSts(Ledger)(LedgerFailure.Rejected(t.body.id, _))(globals, ledgerEnv, start, t)
       val onStack = Ledger
-        .transition[K](ledgerEnv, t)(using summon, summon, summon, summon)
+        .transition[K](ledgerEnv, t)(using
+          summon,
+          summon,
+          summon,
+          summon,
+          Judge.raising[K, xyz.kd5ujc.scarab.ledger.PredicateFailure, LedgerFailure](
+            LedgerFailure.Rejected(t.body.id, _)
+          )
+        )
         .run(globals)
         .run(start)
         .map(_._1)
@@ -894,7 +903,7 @@ class ConwayLedgerSuite extends FunSuite:
       certificates = Vector(Certificate.RegisterPool(poolParams(one).copy(vrfKeyHash = other))),
       signers = Vector(one)
     )
-    val after = Sts(Ledger)(
+    val after = JudgedSts(Ledger)(LedgerFailure.Rejected(t.body.id, _))(
       globals,
       LedgerEnv(TestLedger.env, start.es.chainAccount.treasury),
       Build.counted(start),
@@ -1067,7 +1076,7 @@ class ConwayLedgerSuite extends FunSuite:
           assertEquals((next.plutus.failed, feesOf(next.state)), (1L, 100 * ada))
         case Left(f) => fail(s"expected the collateral to be taken: $f")
       ScriptCase(pp, there).attempt(succeeds = false, isValid = false, block) match
-        case Left(LedgerFailure.Rejected(_, f)) =>
+        case Left(LedgerFailure.Rejected.Single(_, f)) =>
           assertEquals(f.ruleName, "WrongNetworkWithdrawal")
         case other =>
           fail(s"expected the withdrawal of another network to be refused: ${outcome(other)}")
@@ -1078,7 +1087,7 @@ class ConwayLedgerSuite extends FunSuite:
         case Right(next) => assert(!utxoOf(next.state).contains(validHere.lockedIn))
         case Left(f)     => fail(s"expected the transaction to be accepted: $f")
       ScriptCase(pp, there).attempt(succeeds = true, isValid = true, block) match
-        case Left(LedgerFailure.Rejected(_, f)) =>
+        case Left(LedgerFailure.Rejected.Single(_, f)) =>
           assertEquals(
             f.ruleName,
             if protocol < 11 then "WithdrawalsNotInRewardsCERTS"
@@ -1098,7 +1107,7 @@ class ConwayLedgerSuite extends FunSuite:
       case Left(f)     => fail(s"expected the collateral to be taken: $f")
     def refused(what: String, b: node.TxBody): String =
       c.attemptWith(succeeds = false, isValid = false, b) match
-        case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
+        case Left(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
         case other => fail(s"$what: expected a refusal: ${outcome(other)}")
     val otherNetwork = node.Address
       .decode(Bytes(0x61.toByte +: alice.hash.value))
@@ -1112,9 +1121,11 @@ class ConwayLedgerSuite extends FunSuite:
       ),
       "WrongNetwork"
     )
+    // `feesOK` comes before the inputs (`Babbage/Rules/Utxo.hs:362-368`): the collateral that does
+    // not exist pays nothing, which is the first failure
     assertEquals(
       refused("missing collateral", c.bodyWith(c.hash, collateral = Vector(txIn(40)))),
-      "BadInputsUTxO"
+      "InsufficientCollateral"
     )
     assertEquals(
       refused(

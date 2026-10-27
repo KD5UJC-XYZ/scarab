@@ -5,7 +5,7 @@ import java.nio.file.{Files, Path}
 import cats.syntax.all.*
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.rules.{CertEnv, EraNes, NativeRules, Pool, PoolCert, Sts}
+import xyz.kd5ujc.scarab.ledger.rules.{CertEnv, EraNes, JudgedSts, NativeRules, Pool, PoolCert}
 import xyz.kd5ujc.scarab.ledger.state.{LedgerState, ShelleyBasedEra}
 
 import TestLedger.*
@@ -49,7 +49,7 @@ class MainnetPoolNetworkSuite extends FunSuite:
         given ShelleyBasedEra[x] = i.era
         val pools = LedgerState.pState[x].get(i.nes.es.ls)
         registrations.traverse_ { cert =>
-          Sts(Pool)(
+          JudgedSts(Pool)(LedgerFailure.Rejected(tx.body.id, _))(
             NativeRules.globalsOf(ctx),
             CertEnv(tx.body.id, TestLedger.params(pv), ctx.epoch, None, Map.empty),
             pools,
@@ -75,7 +75,7 @@ class MainnetPoolNetworkSuite extends FunSuite:
     List(5, 6, 7, 8).foreach { pv =>
       register(pv) match
         case Left(
-              LedgerFailure.Rejected(
+              LedgerFailure.Rejected.Single(
                 _,
                 PredicateFailure.Certs(
                   CertsFailure.Cert(
