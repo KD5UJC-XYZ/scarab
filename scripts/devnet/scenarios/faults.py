@@ -25,8 +25,15 @@ HASKELL = {"p2": 2, "p3": 3}
 # The Haskell pools' diagnostic traces, so that a failed run shows why a pool stopped following a peer: its
 # peer-selection decisions, connection and inbound-governor transitions, ChainSync and BlockFetch clients
 # (trace-dispatcher namespaces of cardano-node 11.1.3). `maxFrequency` bounds the fetch decisions, which the
-# decision loop can emit every 10 ms.
+# decision loop can emit every 10 ms. A non-empty `TraceOptions` replaces the node's default selection rather
+# than adding to it, so the namespaces an empty one logged (forging, the ChainDB, the remote connection and
+# inbound-governor transitions, start-up) are listed too.
 NATIVE_TRACES = {
+    "Forge": {"severity": "Info"},
+    "ChainDB": {"severity": "Info"},
+    "Net.ConnectionManager.Remote": {"severity": "Info"},
+    "Net.InboundGovernor.Remote": {"severity": "Info"},
+    "Startup": {"severity": "Info"},
     "Net.PeerSelection": {"severity": "Debug"},
     "Net.ConnectionManager.Local": {"severity": "Info"},
     "Net.InboundGovernor.Local": {"severity": "Info"},
