@@ -2,13 +2,13 @@
 package xyz.kd5ujc.scarab.storage
 
 import cats.Monad
-import cats.effect.Sync
+import cats.effect.{Resource, Sync}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import fs2.io.file.Path
 import java.nio.channels.FileChannel
-import java.nio.file.{Files, StandardCopyOption, StandardOpenOption}
+import java.nio.file.{Files, OpenOption, StandardCopyOption, StandardOpenOption}
 import xyz.kd5ujc.scarab.ledger.{FileKind, FormatVersion, StorageError}
 
 /** What a migration did: `count` files of `kind` found at `from` and brought to `to`. This is what
@@ -97,14 +97,20 @@ object Migrate:
 /** Writing a file so that a crash leaves either the old content or the new, never a mixture. */
 object AtomicFile:
 
+  /** `fa`, an operating-system action on `what`, with its exceptions mapped to [[StorageError.Io]].
+    */
+  def guarding[F[_]: Sync, A](what: String)(fa: F[A])(using Raise[F, StorageError]): F[A] =
+    fa.attempt.flatMap(_.fold(e => StorageError.Io(what, e).raise[F, A], Sync[F].pure))
+
   /** Run `body`, an operating-system action on `what`, mapping its exceptions to
     * [[StorageError.Io]].
     */
   def guard[F[_]: Sync, A](what: String)(body: => A)(using Raise[F, StorageError]): F[A] =
-    Sync[F].blocking(body).attempt.flatMap {
-      case Right(a) => Sync[F].pure(a)
-      case Left(e)  => StorageError.Io(what, e).raise[F, A]
-    }
+    guarding(what)(Sync[F].blocking(body))
+
+  /** The file channel of `path`, closed when the resource is released. */
+  private def channel[F[_]: Sync](path: java.nio.file.Path, options: OpenOption*) =
+    Resource.fromAutoCloseable(Sync[F].blocking(FileChannel.open(path, options*)))
 
   /** Replace `file` by `bytes`: a temporary file next to it (the same directory, so the rename
     * cannot cross a file system), fsync of the data, atomic rename over the original, fsync of the
@@ -120,33 +126,38 @@ object AtomicFile:
   def replaceAll[F[_]: Sync](file: Path, parts: Seq[Array[Byte]])(using
       Raise[F, StorageError]
   ): F[Unit] =
-    replaceStreaming[F](file) { out =>
-      parts.foreach(bytes => out.write(bytes))
-    }
+    replaceStreaming[F](file)(out => parts.traverse_(bytes => Sync[F].blocking(out.write(bytes))))
 
   /** As [[replace]] for a file that `write` produces onto a stream: the content never has to exist
     * in memory as one array. The stream is flushed before the data is forced to disk.
     */
-  def replaceStreaming[F[_]: Sync](file: Path)(write: java.io.OutputStream => Unit)(using
+  def replaceStreaming[F[_]: Sync](file: Path)(write: java.io.OutputStream => F[Unit])(using
       Raise[F, StorageError]
   ): F[Unit] =
     val target = file.toNioPath
-    val tmp = target.resolveSibling(target.getFileName.toString + ".tmp")
-    guard[F, Unit](file.toString) {
-      val ch = FileChannel.open(
-        tmp,
-        StandardOpenOption.CREATE,
-        StandardOpenOption.TRUNCATE_EXISTING,
-        StandardOpenOption.WRITE
-      )
-      try
-        val out = new java.io.BufferedOutputStream(java.nio.channels.Channels.newOutputStream(ch))
-        write(out)
-        out.flush()
-        ch.force(true)
-      finally ch.close()
-      Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-      val dir = FileChannel.open(target.getParent, StandardOpenOption.READ)
-      try dir.force(true)
-      finally dir.close()
+    val temporary = target.resolveSibling(s"${target.getFileName}.tmp")
+    // The buffered stream is not closed: closing it would close the channel the resource owns.
+    val written = channel[F](
+      temporary,
+      StandardOpenOption.CREATE,
+      StandardOpenOption.TRUNCATE_EXISTING,
+      StandardOpenOption.WRITE
+    ).use { ch =>
+      Sync[F]
+        .delay(new java.io.BufferedOutputStream(java.nio.channels.Channels.newOutputStream(ch)))
+        .flatMap(out => write(out) *> Sync[F].blocking(out.flush()))
+        .productR(Sync[F].blocking(ch.force(true)))
     }
+    val moved = Sync[F].blocking(
+      Files.move(
+        temporary,
+        target,
+        StandardCopyOption.ATOMIC_MOVE,
+        StandardCopyOption.REPLACE_EXISTING
+      )
+    )
+    val directorySynced =
+      channel[F](target.getParent, StandardOpenOption.READ).use(dir =>
+        Sync[F].blocking(dir.force(true))
+      )
+    guarding(file.toString)(written *> moved *> directorySynced)

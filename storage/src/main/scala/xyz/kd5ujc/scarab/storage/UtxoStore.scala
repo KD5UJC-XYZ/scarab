@@ -352,11 +352,13 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
     state.get.flatMap { c =>
       guard(dir.toString)(java.nio.file.Files.createDirectories(dir.toNioPath)) *>
         AtomicFile.replaceStreaming[F](dir / "utxo.bin") { os =>
-          val out = Out(os)
-          import NodeCodecs.given
-          Codec[Map[TxIn, TxOut]].write(out, c.entries)
-          out.fixed64(c.stamp)
-          out.flush()
+          F.blocking {
+            val out = Out(os)
+            import NodeCodecs.given
+            Codec[Map[TxIn, TxOut]].write(out, c.entries)
+            out.fixed64(c.stamp)
+            out.flush()
+          }
         }
     }
 
@@ -365,21 +367,24 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
     F.blocking(java.nio.file.Files.exists(file)).flatMap {
       case false => F.pure(false)
       case true =>
-        guard(file.toString) {
-          val size = java.nio.file.Files.size(file)
-          val is = new java.io.BufferedInputStream(java.nio.file.Files.newInputStream(file))
-          try
-            val in = In(is, size)
-            import NodeCodecs.given
-            for
-              entries <- Codec[Map[TxIn, TxOut]].read(in)
-              stamp <- in.fixed64()
-            yield Contents(entries, stamp)
-          finally is.close()
-        }.flatMap(
-          _.leftMap(e => StorageError.Corrupt(file.toString, e))
-            .fold(_.raise[F, Boolean], c => state.set(c).as(true))
+        val input = Resource.fromAutoCloseable(
+          F.blocking(new java.io.BufferedInputStream(java.nio.file.Files.newInputStream(file)))
         )
+        AtomicFile
+          .guarding(file.toString)(input.use { is =>
+            F.blocking {
+              val in = In(is, java.nio.file.Files.size(file))
+              import NodeCodecs.given
+              for
+                entries <- Codec[Map[TxIn, TxOut]].read(in)
+                stamp <- in.fixed64()
+              yield Contents(entries, stamp)
+            }
+          })
+          .flatMap(
+            _.leftMap(e => StorageError.Corrupt(file.toString, e))
+              .fold(_.raise[F, Boolean], c => state.set(c).as(true))
+          )
     }
 
 object MemoryUtxoStore:
