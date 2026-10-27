@@ -778,6 +778,22 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     // a proposal for the wrong epoch is refused
     val late = b.copy(update = Some(u.copy(epoch = 9)))
     assertEquals(rule(run(s, tx(late, Vector(alice, delegates(0))))), "PPUpdateWrongEpoch")
+    // `getTheSlotOfNoReturn` is monus (`Slot.hs:106-114`): with 2 * 3k/f past the next epoch's first
+    // slot the point is slot 0, so even slot 0 votes for the next epoch
+    val past = env.copy(slot = 0, stabilityWindow = env.firstSlotNextEpoch)
+    run(s, tx(b, Vector(alice, delegates(0))), past) match
+      case Left(LedgerFailure.Rejected(_, fs)) =>
+        assertEquals(
+          fs.toChain.toVector,
+          Vector(
+            PredicateFailure.utxo(
+              UtxoFailure.Update(
+                PpupFailure.PPUpdateWrongEpoch(env.epoch, 5, VotingPeriod.VoteForNextEpoch)
+              )
+            )
+          )
+        )
+      case other => fail(s"expected PPUpdateWrongEpoch, got $other")
   }
 
   test(

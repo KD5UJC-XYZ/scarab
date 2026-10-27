@@ -396,10 +396,10 @@ object LiteLedger:
     block.transactions.filter(_.isValid).foldLeftM(l) { (s, tx) =>
       effects(tx.body, block.era)
         .leftMap(LedgerDecodeError.Transaction(tx.id, _))
-        .flatMap(_.foldLeftM(s)(apply(_, _, slot, geometry)))
+        .flatMap(_.foldLeftM(s)(applyEffect(_, _, slot, geometry)))
     }
 
-  private def apply(
+  private[ledger] def applyEffect(
       l: LiteLedger,
       e: Effect,
       slot: BigInt,
