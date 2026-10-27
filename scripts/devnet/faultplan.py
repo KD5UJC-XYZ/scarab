@@ -24,18 +24,23 @@ FIRST_START = (30, 45)       # seconds after the chain runs before the first epi
 QUIET = (25, 45)             # minimum checked quiet window after the grace period, drawn per gap
 GRACE = {"latency": 20, "loss": 20, "partition": 20, "crash": 40}
 MIN_PARTITION = 3
+PARTITION_BLOCKS = 5         # blocks the network grows in the longest partition (the devnet's k of the first schedules)
 MAX_CRASH_DOWN = 20
 MIN_DURATION = 150           # the longest first start, episode, grace and quiet window all fit, so every seed holds an episode
 
 
 def max_partition_seconds(k, active_slots_coeff, slot_length):
-    """The longest partition: the time in which the whole network is expected to grow `k` blocks.
+    """The longest partition: the time in which the whole network is expected to grow `PARTITION_BLOCKS` blocks,
+    or `k` blocks when `k` is smaller.
 
     A node holding one third of the stake grows a third of that on its own side, so a partition of this
-    length costs it about k/3 blocks of rollback on reunion, comfortably under the common-prefix bound
-    (a branch deeper than `k` could not rejoin, which is the protocol working and not a defect).
+    length costs it about a third as many blocks of rollback on reunion, comfortably under the common-prefix bound
+    (a branch deeper than `k` could not rejoin, which is the protocol working and not a defect). The bound does
+    not grow with `k`: the faults devnet's mainnet-like `k` (issue 527) is room for the reference's reconnection
+    delays after a fault, not for longer partitions, and a schedule of a seed is the same under any `k` from
+    `PARTITION_BLOCKS` up.
     """
-    return max(MIN_PARTITION, int(k * slot_length / active_slots_coeff))
+    return max(MIN_PARTITION, int(min(k, PARTITION_BLOCKS) * slot_length / active_slots_coeff))
 
 
 class Draw:

@@ -77,12 +77,19 @@ reference container's namespace (the reference image ships `tc`), so no node ima
 | crash, then restart | `docker kill` of the Scala container, or `kill -9` of a Haskell pool by its recorded pid, down 5 to 20 s; the Scala node restarts from its database and keys, the Haskell pool from its database |
 
 Episodes never overlap. After each one comes a grace period (20 s, 40 s after a crash) and then a quiet window of at least 25 s
-with no fault. A partition lasts at most the time in which the whole network is expected to grow `k` blocks
-(`k * slotLength / activeSlotsCoeff`, 10 s for the devnet's k = 5, f = 0.05, 0.1 s slots). A node with a third of the stake
-grows a third of that on its own side, so a reunion costs it about `k/3` blocks of rollback. A branch deeper than `k` cannot
-rejoin under Praos, which is the protocol working and not a defect; the bound keeps the schedule inside what the protocol
-promises, and a rare Poisson excess can still reach it (about one partition in a hundred), which would show as a failure of
-the rollback check and is to be judged by hand, not ignored.
+with no fault. A partition lasts at most the time in which the whole network is expected to grow five blocks, or `k`
+blocks if `k` is smaller (`min(k, 5) * slotLength / activeSlotsCoeff`, 10 s at f = 0.05 and 0.1 s slots). A node with a third
+of the stake grows a third of that on its own side, so a reunion costs it about two blocks of rollback.
+
+The faults devnet runs a mainnet-like `k` = 100, with epochs of 10k/f = 20,000 slots (2,000 s), the ratio of the public
+networks ([#527](https://github.com/KD5UJC-XYZ/scarab/issues/527)). At the sandbox's `k` = 5 the reference itself fails these
+schedules: a node that falls more than `k` behind is refused with `ForkTooDeep` and reconnects only after
+ouroboros-network's re-promotion delay (about two minutes), in which a fork outgrows a small `k`. The reference's own
+testers run restart and disconnect cases on a mainnet-like `k` and epoch for that reason (cardano-node-tests,
+`agent_docs/e2e_tests.md`). The larger `k` is room for those delays, not for longer partitions, so the partition bound
+does not grow with it, and a seed draws the same schedule under any `k` from five up. A branch deeper than `k` cannot
+rejoin under Praos, which is the protocol working and not a defect. The pools' KES periods are 1,000 slots, so their 60
+evolutions last 6,000 s.
 
 ### Seeds, schedules and replay
 
@@ -91,7 +98,8 @@ it, with the seed, the duration and the genesis parameters it used (`k`, f, slot
 run directory before the first fault; the explicit action list (`shape`, `heal`, `kill`, `start` at a second) is part of the
 file. The schedule is a pure function of those inputs (a prefix does not change with a longer duration), so:
 
-- the nightly run uses the run number as its seed and prints it, the replay command and the job summary;
+- the nightly run (600 s, inside the first epoch) uses the run number as its seed and prints it, the replay command and
+  the job summary; a weekly run of 2,400 s does the same and crosses an epoch boundary under faults;
 - `workflow_dispatch` takes a `seed` (and a `duration`) to rerun one;
 - locally, the same seed over the same duration regenerates the same file: `python3 scripts/devnet.py --name mine faults --seed N --duration S`;
 - `--schedule FILE` runs a recorded file as it is, whatever the generator has become since.
@@ -125,7 +133,9 @@ peer-selection, ChainSync and BlockFetch traces) and the container output.
 - Clock skew is not covered: all nodes read the host's clock and the devnet has no per-node clock offset. (`AdversarialScheduleSuite`
   covers header-clock offsets in process.)
 - Disk faults, memory pressure and CPU starvation are not injected. Only the Scala node and the Haskell pools crash; the proxies do not.
-- Partitions are bounded by `k` as described; a deeper partition is not tested, because the outcome is the protocol's.
+- Partitions are bounded as described, far inside `k`; a partition deeper than `k` is not tested, because the outcome is
+  the protocol's.
+- Only the weekly run crosses an epoch boundary under faults; the nightly one stays inside the first epoch.
 - Packet corruption, reordering as such (jitter does reorder) and bandwidth limits are not injected.
 
 ### First runs

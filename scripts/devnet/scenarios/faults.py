@@ -212,6 +212,19 @@ def liveness_failures(run):
     return failures
 
 
+def genesis_problems(shelley, seconds):
+    """Why a genesis cannot carry a faults run of `seconds`: an epoch no longer than the randomness stabilisation
+    window (4k/f slots, which a Conway start uses), or KES keys whose evolutions end before the run does."""
+    k, f, slot = shelley["securityParam"], shelley["activeSlotsCoeff"], shelley["slotLength"]
+    problems = []
+    if shelley["epochLength"] <= 4 * k / f:
+        problems.append(f"epochLength {shelley['epochLength']} is not longer than 4k/f = {4 * k / f:g} slots")
+    lifetime = shelley["maxKESEvolutions"] * shelley["slotsPerKESPeriod"] * slot
+    if lifetime <= seconds:
+        problems.append(f"the KES keys last {lifetime:g} s, not the {seconds} s of the run")
+    return problems
+
+
 def write_keys(root, name):
     """The Scala pool's keys, from the reference environment (the Haskell node of this pool is never started)."""
     (root / "keys").mkdir(mode=0o700)
@@ -300,6 +313,9 @@ def faults(args):
     try:
         start_reference(args.name)
         run.ports, shelley = pool_environment(args)
+        problems = genesis_problems(shelley, args.start_delay + args.duration + args.settle)
+        if problems:
+            raise SystemExit("; ".join(problems))
         (root / "ports.json").write_text(json.dumps(run.ports))
         plan = load_plan(args, shelley)
         (root / "fault-schedule.json").write_text(faultplan.render(plan))
