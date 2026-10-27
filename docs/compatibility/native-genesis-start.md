@@ -43,14 +43,17 @@ coefficient and signed-64 exponent, not normalized. Equality, ordering and hashi
 `Show Scientific`'s text. Explicit frames admit outside-data nesting without a configured depth
 cutoff, and equality, ordering, hashing and showing a value walk an explicit stack.
 
-[All 350 actual native cases](../../fixtures/reference/native-json/README.md) retain the 302
-original upstream JSONTestSuite parsing inputs and 48 source-derived controls, with no filename
+[All 356 actual native cases](../../fixtures/reference/native-json/README.md) retain the 302
+original upstream JSONTestSuite parsing inputs and 54 source-derived controls, with no filename
 category used as an expected-failure exemption. Full flat Value events make every accepted
 primitive/order observable without deep recursive equality, and every refused case's rendered
-message equals the native error text. All 350 small-stack Scala checks pass; temporary
-duplicate/order/number-normalization faults fail 19 assertions and exact restoration passes.
+message equals the native error text. All 356 small-stack Scala checks pass; a combined temporary
+last-wins/UTF-16-order/parse-normalization fault failed 22 of them on 2026-10-27, as the corpus
+README details, and exact restoration passes.
 `JsonValueSuite` compares `show` and `compare` against goldens that GHC 9.10.3 printed in the
-pinned reference image. JVM hash values are consistent with equality but are not hashable's values.
+pinned reference image. JVM hash values are consistent with equality but are not hashable's
+values, an owner decision recorded in [#474](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6452723958)
+(2026-10-27).
 
 This parser is not wired into genesis loaders. Original-file hash/parse ordering, required fields,
 field decoders and multi-file failure order remain incomplete under #497. The separate permissive
