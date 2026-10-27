@@ -132,3 +132,88 @@ class InjectionDecimalSuite extends FunSuite:
       assertEquals(number(text, text.length + 6), (coefficient, 0L))
     }
   }
+
+  // `parseNumber` (`CLexer.hs:130-172`) as written: the whole and fraction digits folded one at a
+  // time into an Integer, combined as `num * 10^frdigits + frac` with exponent `texp - frdigits`;
+  // the exponent folds in the 64-bit `Int` and wraps.
+  private def referenceNumber(text: String): Option[(BigInt, Long)] =
+    def sign(at: Int): (Int, Int) =
+      if at < text.length && text(at) == '+' then (1, at + 1)
+      else if at < text.length && text(at) == '-' then (-1, at + 1)
+      else (1, at)
+    @tailrec def digits(at: Int, value: BigInt, count: Int): (BigInt, Int, Int) =
+      if at < text.length && text(at) >= '0' && text(at) <= '9' then
+        digits(at + 1, value * 10 + (text(at) - '0'), count + 1)
+      else (value, count, at)
+    @tailrec def int(at: Int, value: Long): (Long, Int) =
+      if at < text.length && text(at) >= '0' && text(at) <= '9' then
+        int(at + 1, value * 10 + (text(at) - '0'))
+      else (value, at)
+    val (csign, r1) = sign(0)
+    val (num, numdigits, r2) = digits(r1, 0, 0)
+    val (frac, frdigits, r3) =
+      if r2 < text.length && text(r2) == '.' then digits(r2 + 1, 0, 0) else (BigInt(0), 0, r2)
+    val (texp, rest) =
+      if r3 < text.length && (text(r3) == 'e' || text(r3) == 'E') then
+        val (esign, r4) = sign(r3 + 1)
+        val (dnum, r5) = int(r4, 0)
+        (dnum * esign, r5)
+      else (0L, r3)
+    Option.when(numdigits != 0 && rest == text.length)(
+      (csign * (num * BigInt(10).pow(frdigits) + frac), texp - frdigits)
+    )
+
+  private def general(text: String): Option[(BigInt, Long)] =
+    InjectionLexer.generalNumber(text).map(n => (n.coefficient, n.base10Exponent))
+
+  test("midpoint coefficients equal the reference's one-pass digit fold at the split boundaries") {
+    val random = new scala.util.Random(499L)
+    def digitsOf(n: Int): String = Iterator.fill(n)(('0' + random.nextInt(10)).toChar).mkString
+    val widths = Vector(10239, 10240, 10241, 20479, 20480, 20481, 40959, 40960, 40961)
+    val shapes = widths.flatMap { width =>
+      val half = width / 2
+      Vector(
+        digitsOf(width),
+        // The right half begins with zeros, or is all zeros, at the midpoint split.
+        digitsOf(half) + "000" + digitsOf(width - half - 3),
+        "1" + "0" * (width - 1),
+        digitsOf(half) + "0" * (width - half),
+        "0" * half + digitsOf(width - half)
+      )
+    }
+    val inputs = shapes.flatMap { digits =>
+      val cut = digits.length / 3
+      Vector(
+        digits,
+        s"-${digits}e9223372036854775807",
+        s"-${digits.take(cut)}.${digits.drop(cut)}e-17",
+        s"+${digits.take(cut)}.${digits.drop(cut)}E+18446744073709551616"
+      )
+    }
+    inputs.foreach(text => assertEquals(general(text), referenceNumber(text), text.take(40)))
+  }
+
+  test("midpoint coefficients equal the reference's one-pass digit fold on random inputs") {
+    val random = new scala.util.Random(0x499L)
+    val alphabet = "0123456789+-.eE"
+    // Short strings over the lexer's number characters also reach parseNumber's refusals.
+    val syntax = Vector.fill(2000)(
+      Iterator.fill(random.nextInt(12))(alphabet(random.nextInt(alphabet.length))).mkString
+    )
+    val long = Vector.fill(40) {
+      val width = 1 + random.nextInt(40000)
+      val digits = Iterator
+        .fill(width)(if random.nextInt(4) == 0 then '0' else ('0' + random.nextInt(10)).toChar)
+        .mkString
+      val cut = random.nextInt(width + 1)
+      val sign = Vector("", "-", "+")(random.nextInt(3))
+      val fraction =
+        if random.nextBoolean() then s"${digits.take(cut)}.${digits.drop(cut)}" else digits
+      val exponent = if random.nextBoolean() then s"e${random.nextLong()}" else ""
+      sign + (if fraction.startsWith(".") then "0" + fraction else fraction) + exponent
+    }
+    (syntax ++ long).foreach(text =>
+      assertEquals(general(text), referenceNumber(text), text.take(40))
+    )
+    assert(syntax.exists(referenceNumber(_).isEmpty) && syntax.exists(referenceNumber(_).nonEmpty))
+  }
