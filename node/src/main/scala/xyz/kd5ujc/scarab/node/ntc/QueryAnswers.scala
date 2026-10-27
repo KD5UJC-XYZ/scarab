@@ -158,7 +158,7 @@ final class ConwayFacts(val l: EraRead[Conway]):
     for
       c <- cert
       instant <- instantStake
-      active <- StakeDistribution
+      active = StakeDistribution
         .resolve(
           instant.credentialStake,
           EraViews
@@ -170,8 +170,7 @@ final class ConwayFacts(val l: EraRead[Conway]):
           SortedMap.empty[Ptr, mirror.Credential[mirror.Staking]],
           SortedMap.empty[Ptr, mirror.CompactCoin]
         )
-        .leftMap(MirrorError.Vocab(_))
-      snap <- StakeDistribution.snapshot(active, c.pState.stakePools).leftMap(MirrorError.Vocab(_))
+      snap = StakeDistribution.snapshot(active, c.pState.stakePools)
     yield snap
 
 /** Pure answers to node-to-client queries. `answer` returns the result item of the `MsgResult`

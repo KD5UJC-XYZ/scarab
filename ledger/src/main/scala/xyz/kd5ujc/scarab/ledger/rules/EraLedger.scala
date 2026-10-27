@@ -283,7 +283,7 @@ object EraLedger:
     */
   def activeStake[E <: EraTag](ls: LedgerState[E])(using
       era: ShelleyBasedEra[E]
-  ): Either[VocabError, ActiveStake] = era match
+  ): ActiveStake = era match
     case ShelleyBasedEra.SConway =>
       StakeDistribution.resolve(
         ls.utxo.instantStake.credentialStake,

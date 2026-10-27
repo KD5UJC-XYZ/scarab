@@ -6,6 +6,7 @@ import cats.syntax.all.*
 import io.circe.{ACursor, Decoder}
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.ledger.ConfigError
+import xyz.kd5ujc.scarab.ledger.state.CompactCoin
 
 /** `[url, data_hash]` attached to certificates, proposals and the constitution. */
 final case class Anchor(url: String, hash: Bytes)
@@ -186,9 +187,13 @@ final case class Proposals(actions: Vector[GovActionState], roots: PrevIds):
 
   def totalDeposits: BigInt = actions.foldLeft(BigInt(0))(_ + _.proposal.deposit)
 
-  /** Proposal deposits summed by return-account credential. */
-  def depositsByCredential: Map[Credential, BigInt] =
-    actions.groupMapReduce(_.proposal.returnAccount.credential)(_.proposal.deposit)(_ + _)
+  /** `proposalsDeposits` (`Conway/Governance/Proposals.hs:566–580`): non-compactible deposits
+    * become zero before grouping; compact sums wrap modulo 2^64.
+    */
+  def depositsByCredential: Map[Credential, CompactCoin] =
+    actions.groupMapReduce(_.proposal.returnAccount.credential)(g =>
+      CompactCoin.fromBigInt(g.proposal.deposit).getOrElse(CompactCoin.zero)
+    )((a, b) => a.add(b))
 
 object Proposals:
   val empty: Proposals = Proposals(Vector.empty, PrevIds())

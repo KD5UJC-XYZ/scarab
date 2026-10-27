@@ -1,0 +1,69 @@
+{
+  "ledgerPin": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "image": "sha256:0d7d3971a5ff78c8a6786459d191f39b166d69a4d71a6eb310c9d8338d6e035e",
+  "compiler": "GHC 9.10.3",
+  "protocolVersion": 11,
+  "sourceIdentity": "Each listed installed package archive source is byte-identical to the pinned Git object.",
+  "sources": [
+    {
+      "path": "libs/cardano-ledger-core/src/Cardano/Ledger/Coin.hs",
+      "sha256": "fd4fb02a353f0dcaf1e17945fb816993802d0c2b3e51ee674d311b74a7bc4dc0",
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0"
+    },
+    {
+      "path": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes/NonZero.hs",
+      "sha256": "bfa9b3d06f33eb05690ba86c0fa205291f92baca8c99794ef14ab6cf5ed9f24e",
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0"
+    },
+    {
+      "path": "libs/cardano-ledger-core/src/Cardano/Ledger/State/Account.hs",
+      "sha256": "717a768bbc19cc01e61e6b671404dab7f39642a93ff50a60f9d2b58988c585ac",
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0"
+    },
+    {
+      "path": "libs/cardano-ledger-core/src/Cardano/Ledger/State/Stake.hs",
+      "sha256": "fb2fb46f6e3c2506c77c33e87cb407b1ce038717fc99f040915f7fe46f98ba62",
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0"
+    },
+    {
+      "path": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/Account.hs",
+      "sha256": "3eb5e2d7c06731a81940f80541cf66df7796ce014999a7b086d644407ccf1c2b",
+      "package": "cardano-ledger-shelley",
+      "version": "1.19.0.1"
+    },
+    {
+      "path": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/Stake.hs",
+      "sha256": "d96f48dc8fa687a1650b3974fedf873cf34eb5f255640420a6b38eeacc4f8d27",
+      "package": "cardano-ledger-shelley",
+      "version": "1.19.0.1"
+    }
+  ],
+  "units": [
+    {
+      "id": "cardano-ledger-binary-1.9.1.0-93fac3e5034ba74b4def74d66d2bbb1f70e4253832078b1296786d0598e34580",
+      "pkg-name": "cardano-ledger-binary",
+      "pkg-version": "1.9.1.0"
+    },
+    {
+      "id": "cardano-ledger-core-1.21.0.0-a518dc82925c344bb5b353a39280ec624a60690ea811fb8e390724ba6f026669",
+      "pkg-name": "cardano-ledger-core",
+      "pkg-version": "1.21.0.0"
+    },
+    {
+      "id": "cardano-ledger-shelley-1.19.0.1-b584a6c3e89173f757f4a3dddbe3e1d52f63a413796a743c78cee38ff60e871f",
+      "pkg-name": "cardano-ledger-shelley",
+      "pkg-version": "1.19.0.1"
+    }
+  ],
+  "oracleSha256": "6af0cc08f0362816cf982456e8baf6b1867f4964c0e1f899bb984d30557c7824",
+  "casesSha256": "46ee511995ef46d6316670986118f45119a9d73a0517eee11f05ead227094581",
+  "cases": 11,
+  "scope": "Native Coin addition/encoding/compaction; compact addition/subtraction; Shelley account balance/deposit sums and credit; active credential stake resolution and total. Not whole-ledger conformance.",
+  "replay": "python3 scripts/oracle/coin-arithmetic/run.py --image sha256:0d7d3971a5ff78c8a6786459d191f39b166d69a4d71a6eb310c9d8338d6e035e",
+  "result": "11 captured native cases, all compared by Scala ledger and storage suites.",
+  "binaryScope": "Installed binary1.9.1.0 is recorded explicitly. The six arithmetic source files are identical to f649; this does not claim the complete installed package graph is identical to the pin."
+}
