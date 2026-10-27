@@ -83,8 +83,15 @@ class MirrorProvenanceSuite extends FunSuite:
     assertEquals(count(500, Some(0), -1), 0L)
   }
 
-  test("the native voting deadline saturates at slot zero for a short configured epoch") {
+  test("a voting deadline below slot zero wraps as the release reference's subSlots does") {
+    // 2 * 3k/f = 60 exceeds the first slot of epoch 1 (50): the Word64 subtraction wraps past every
+    // slot, so no block of epoch 0 counts; epoch 1 ends at 100, so its deadline is slot 40
     val short = geometry.copy(epochLength = 50)
-    val result = MirrorStep.afterVoting(short, BigInt(0), None, Word32.fromUnsigned(0))
-    assertEquals(result.map(_.toLong), Right(1L))
+    def shortCount(slot: Int, epoch: Option[Int], previous: Int) =
+      MirrorStep
+        .afterVoting(short, BigInt(slot), epoch.map(BigInt(_)), Word32.fromUnsigned(previous))
+        .map(_.toLong)
+    assertEquals(shortCount(0, None, 0), Right(0L))
+    assertEquals(shortCount(49, Some(0), 0), Right(0L))
+    assertEquals(shortCount(50, Some(0), 0), Right(1L))
   }
