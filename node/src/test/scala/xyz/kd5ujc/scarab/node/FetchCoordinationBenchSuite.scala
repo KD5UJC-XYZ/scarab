@@ -26,22 +26,23 @@ class FetchCoordinationBenchSuite extends FailsOnUncaught:
   private final case class Peer(id: Int, rtt: FiniteDuration):
     def model: FetchGsv.PeerGsv = FetchGsv.fromSample(0, BigInt(rtt.toNanos) * 1000)
   private val peers = Vector(Peer(0, 400.millis), Peer(1, 20.millis))
-  private def header(n: Int): Header = Header.Byron(
-    Bytes.empty,
-    Bytes(Vector(n.toByte)),
-    false,
-    0,
-    n,
-    21600,
-    n,
-    Option.when(n > 0)(Bytes(Vector((n - 1).toByte)))
-  )
+  private def header(n: Int): Header = Header
+    .UnsizedByron(
+      Bytes.empty,
+      Bytes(Vector(n.toByte)),
+      false,
+      0,
+      n,
+      21600,
+      n,
+      Option.when(n > 0)(Bytes(Vector((n - 1).toByte)))
+    )
+    .withSizeHint(FetchTesting.sizeHint(blockBytes))
   private val anchor = header(0)
   private val headers = (1 to blockCount).toVector.map(header)
   private val batches = headers.grouped(4).map(_.toVector).toVector
   private val candidate = ChainSelection.Candidate(anchor.point, headers)
   private val local = ChainSelection.Local(anchor.point, SelectView.of(anchor), Vector.empty)
-  private val hints = headers.map(_.hash -> blockBytes).toMap
 
   private final case class Observation(
       unique: Set[Bytes] = Set.empty,
@@ -108,37 +109,44 @@ class FetchCoordinationBenchSuite extends FailsOnUncaught:
           (coordinator.session(p.id.toLong), cats.effect.Resource.eval(Semaphore[IO](1))).tupled
         )
         .use { sessions =>
+          // Each peer's fetch client takes the requests the decision loop adds and downloads
+          // them while it takes the next, as the session's fetch client does.
           peers.zip(sessions).traverse_ { case (peer, (session, _)) =>
-            session.announce(headers.lastOption, peer.model, hints, Some(candidate))
-          } *> peers.zip(sessions).parTraverse_ { case (peer, (session, writer)) =>
-            def offer(initial: Vector[Header]): IO[Unit] =
-              cats.Monad[IO].tailRecM[Vector[Header], Unit](initial) { pending =>
-                session.reserve(pending, mode).use { allocation =>
-                  val download =
-                    if allocation.headers.isEmpty then IO.unit
-                    else
-                      stats.update(
-                        _.admitted(
-                          peer.id,
-                          allocation.requests,
-                          allocation.headers.size.toLong * blockBytes
-                        )
-                      ) *>
-                        IO.sleep(peer.rtt) *> writer.permit.use { _ =>
-                          allocation.headers.traverse_ { h =>
-                            deliver(stats, peer, h.hash) *> fetched.update(_ + h.hash) *>
-                              session.received(allocation, h.hash)
-                          } *> stats.update(_.completed(peer.id, allocation.requests)) *>
-                            List
-                              .fill(allocation.requests)(())
-                              .traverse_(_ => session.completed(allocation))
-                        }
-                  download.as(
-                    if allocation.remaining.isEmpty then Right(()) else Left(allocation.remaining)
+            session.announce(headers.lastOption, peer.model, Some(candidate))
+          } *> coordinator.setMode(mode) *> coordinator.watchDecisions(0).background.use { _ =>
+            peers.zip(sessions).parTraverse_ { case (peer, (session, writer)) =>
+              def download(allocation: FetchCoordinator.Allocation): IO[Unit] =
+                stats.update(
+                  _.admitted(
+                    peer.id,
+                    allocation.requests,
+                    allocation.headers.size.toLong * blockBytes
                   )
+                ) *> IO.sleep(peer.rtt) *> writer.permit.use { _ =>
+                  allocation.headers.traverse_ { h =>
+                    deliver(stats, peer, h.hash) *> fetched.update(_ + h.hash) *>
+                      session.received(allocation, h.hash)
+                  } *> stats.update(_.completed(peer.id, allocation.requests)) *>
+                    session.completed(allocation).replicateA_(allocation.requests) *>
+                    session.finished(allocation)
+                }
+              val drained = fetched.get.map(_.size == blockCount).flatMap { all =>
+                coordinator.inFlight.map(flight => all && flight.values.forall(_.requests == 0))
+              }
+              cats.effect.std.Supervisor[IO](await = true).use { downloads =>
+                cats.Monad[IO].tailRecM(()) { _ =>
+                  drained.flatMap {
+                    case true => IO.pure(Right(()))
+                    case false =>
+                      session.tryAcquire.flatMap {
+                        case None => IO.sleep(1.millis).as(Left(()))
+                        case Some(allocation) =>
+                          downloads.supervise(download(allocation)).as(Left(()))
+                      }
+                  }
                 }
               }
-            batches.parTraverse_(offer)
+            }
           }
         }
       ended <- IO.monotonic

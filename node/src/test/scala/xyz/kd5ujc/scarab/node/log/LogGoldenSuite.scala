@@ -83,17 +83,10 @@ class LogGoldenSuite extends CatsEffectSuite:
                 xyz.kd5ujc.scarab.node.FetchCoordinator.SessionDiagnostic(
                   session = 3L,
                   busy = true,
-                  pendingOffers = 1,
+                  pendingRequests = 1,
                   pendingHeaders = 20,
                   active = Vector(xyz.kd5ujc.scarab.node.FetchCoordinator.ActiveFetch(5L, 2, 40)),
                   candidateHeaders = Some(100),
-                  reserving = Some(
-                    xyz.kd5ujc.scarab.node.FetchCoordinator
-                      .Reserving(
-                        xyz.kd5ujc.scarab.node.FetchCoordinator.Phase.LockWait,
-                        570.seconds
-                      )
-                  ),
                   pipeline = Some(
                     xyz.kd5ujc.scarab.node.Peer.PipelineState(
                       peer = SocketAddress(host"10.0.0.1", port"3001"),
@@ -134,7 +127,7 @@ class LogGoldenSuite extends CatsEffectSuite:
               ),
               Some(
                 xyz.kd5ujc.scarab.node.FetchCoordinator.LockHolder(
-                  xyz.kd5ujc.scarab.node.FetchCoordinator.DecisionHolder.Reserve,
+                  xyz.kd5ujc.scarab.node.FetchCoordinator.DecisionHolder.Decide,
                   580.seconds
                 )
               ),

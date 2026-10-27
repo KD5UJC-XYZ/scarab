@@ -73,6 +73,7 @@ class PeerRootReloadSuite extends FailsOnUncaught:
         transport <- Resource.eval(InMemoryPeers.create(42L))
         manager <- Resource.eval(ConnectionManager.create[IO]())
         pool <- Resource.eval(BlockPool.create[IO])
+        _ <- FetchTesting.decisions(pool)
         mode <- Resource.eval(Ref.of[IO, FetchMode](FetchMode.BulkSync))
         hot = OutboundPeers.Hot[IO](
           magic = 42L,

@@ -9,16 +9,18 @@ import xyz.kd5ujc.scarab.ledger.{BlockFailure, Header, ValidationError}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 
 class InvalidBlocksSuite extends FailsOnUncaught:
-  private def header(n: Int): Header = Header.Byron(
-    Bytes.empty,
-    Bytes(Vector(n.toByte)),
-    false,
-    0,
-    n,
-    21600,
-    n,
-    Some(Bytes(Vector((n - 1).toByte)))
-  )
+  private def header(n: Int): Header = Header
+    .UnsizedByron(
+      Bytes.empty,
+      Bytes(Vector(n.toByte)),
+      false,
+      0,
+      n,
+      21600,
+      n,
+      Some(Bytes(Vector((n - 1).toByte)))
+    )
+    .withSizeHint(FetchTesting.sizeHint(1))
   private def refused(n: Int): ValidationError =
     ValidationError(header(n).point, BlockFailure.EpochPrecedesLedger(n))
 

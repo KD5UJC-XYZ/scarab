@@ -374,18 +374,18 @@ class BlockPoolSuite extends CatsEffectSuite:
       _ <- (pool.session, pool.fetchCoordinator.session(0)).tupled.use { (claims, fetcher) =>
         for
           _ <- fetcher.announce(Some(h), FetchGsv.default, candidate = Some(candidate))
-          _ <- fetcher.reserve(headers, FetchMode.BulkSync, Some(candidate)).use { allocation =>
-            IO(assertEquals(allocation.headers, Vector.empty))
-          }
+          _ <- pool.fetchCoordinator.step
+          recovered <- fetcher.tryAcquire
+          _ <- IO(assertEquals(recovered, None))
           first <- claims.take(h.hash)
           _ <- IO(assertEquals(first.map(_.origin), Some(BlockPool.Source.Recovered)))
           _ <- claims.distrust(
             BlockPool.Source.Recovered,
             ValidationError(h.point, BlockFailure.HeaderDiffers)
           )
-          _ <- fetcher.reserve(headers, FetchMode.BulkSync, Some(candidate)).use { allocation =>
-            IO(assertEquals(allocation.headers, headers))
-          }
+          _ <- pool.fetchCoordinator.step
+          refetched <- fetcher.tryAcquire
+          _ <- IO(assertEquals(refetched.map(_.headers), Some(headers)))
         yield ()
       }
     yield ()

@@ -20,7 +20,9 @@ class AvailableBlocksSuite extends FunSuite:
       slot: Int,
       boundary: Boolean = false
   ): Header.Byron =
-    Header.Byron(hash(id), hash(id), boundary, 0, slot, 100000, number, parent)
+    Header
+      .UnsizedByron(hash(id), hash(id), boundary, 0, slot, 100000, number, parent)
+      .withSizeHint(FetchTesting.sizeHint(1))
   private def chain(headers: Header*): Map[Bytes, Header] = headers.map(h => h.hash -> h).toMap
   private val origin =
     ChainSelection.Local(Point.Origin, SelectView(-1, 0, None, 0, None), Vector.empty)

@@ -92,7 +92,15 @@ object Block:
     for
       parts <- array(n, 3)
       header <- Header.byronFromRaw(parts(0).original, boundary, epochSlots)
-    yield Byron(header, parts(1).original, parts(2).original, n.original.size)
+      hint <- Header.byronSizeHint(BigInt(n.original.size) + 9)
+    // GetHeader ByronBlock includes the CBOR-in-CBOR and EBB tag overhead (7 + 2),
+    // consensus 82ecba329 Byron/Ledger/Block.hs:154–175.
+    yield Byron(
+      header.withSizeHint(hint),
+      parts(1).original,
+      parts(2).original,
+      n.original.size
+    )
 
   private def shelley(era: Era, n: Node): Either[ChainError, Block] =
     for

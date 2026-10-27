@@ -202,8 +202,8 @@ Thread dumps (39 samples): exactly one `scarab-cpu-*` thread busy, in `Verificat
 `Verdicts.Direct.witness` -> `StrictEd25519.verify`.
 
 **Cause.** `warm` was `blocks.parTraverseN(parallelism)(warmBlock)`: parallel across the blocks of a batch only. The
-caller (`Peer.prefetchRange`) warms each fetched range as soon as it arrives and before the block is taken, which is as early
-as possible, but a range is the unit it has and since #124 the ranges are small (a block of this stretch is 60 to 80 KB with
+range-prefetch caller in `Peer` warmed each fetched range as soon as it arrived and before the block was taken. At the time
+of this measurement a range was the unit it had, and since #124 the ranges were small (a block of this stretch is 60 to 80 KB with
 50 or more transactions; ranges are claimed per session from the shared `BlockPool`). With one block in a batch, all of its
 witnesses, its operational certificate and its VRF proof ran serially. Handing `warm` a larger batch was not an option
 (it would wait for the next fetch before verifying what it has); the work has to be split below the block.

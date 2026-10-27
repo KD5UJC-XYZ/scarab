@@ -18,16 +18,18 @@ object SelectionReviewBenchmark extends IOApp.Simple:
   private def hash(n: Int): Bytes = Bytes(Vector.tabulate(4)(i => (n >>> (i * 8)).toByte))
   private def forest(size: Int, forks: Boolean): Map[Bytes, Header] =
     (1 to size).map { n =>
-      val h = Header.Byron(
-        Bytes.empty,
-        hash(n),
-        false,
-        0,
-        n,
-        21600,
-        n,
-        Option.when(!forks && n > 1)(hash(n - 1))
-      )
+      val h = Header
+        .UnsizedByron(
+          Bytes.empty,
+          hash(n),
+          false,
+          0,
+          n,
+          21600,
+          n,
+          Option.when(!forks && n > 1)(hash(n - 1))
+        )
+        .withSizeHint(FetchTesting.sizeHint(1))
       h.hash -> h
     }.toMap
 

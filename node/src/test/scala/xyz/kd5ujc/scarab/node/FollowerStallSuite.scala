@@ -99,8 +99,13 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         Ref.of[IO, Int](0).map { served =>
           new ChainSyncServer.Source[IO, NtNHeader]:
             def intersect(points: Vector[Point]) = inner.intersect(points)
+            // The second half of the headers follows the first answered range, so that its
+            // blocks are a range of their own: BlockFetch requests whatever the candidate holds.
             def poll = served.getAndUpdate(_ + 1).flatMap { n =>
-              if n < headers then inner.poll else IO.never
+              if n < headers / 2 then inner.poll
+              else if n < headers then
+                (IO.sleep(10.millis) *> answered.get).iterateUntil(_ > 0) *> inner.poll
+              else IO.never
             }
             def await = inner.await
         }
@@ -211,7 +216,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               ForgedChain.geometry
             )
             fatals <- Ref.of[IO, Vector[Fatal]](Vector.empty)
-            pool <- BlockPool.create[IO]
+            pool <- BlockPool.create[IO](BlockPool.FetchPolicy(), follower.fetchSelection)
             stalledFailure <- Deferred[IO, Unit]
             stall <- serving(forged.raws).map(stalling(_, headers = 16))
             (stalled, ranges) = stall
@@ -235,7 +240,8 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               ),
               follow = (peer, track) => follower.session(peer, track),
               prepare = _ => IO.unit,
-              heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin,
+              // A reconnecting peer intersects with the chain we have adopted, as in the node.
+              heightSnapshot = ChainSyncHeights.of(chainRef),
               headers = None,
               transactions = None,
               observe = None,
@@ -282,7 +288,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               GsmRunner.Marker.none[IO],
               LedgerPeersSource.none[IO]
             )
-            reconnects <- network.use { net =>
+            reconnects <- network.flatTap(_ => FetchTesting.decisions(pool)).use { net =>
               // as in Main: the governor runs beside the node, and ends it only by a fault
               // Live cache occupancy is not pending-claim ownership. BlockPoolSuite checks
               // scoped claim release while allowing filled blocks to remain cached.
@@ -418,7 +424,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             GsmRunner.Marker.none[IO],
             LedgerPeersSource.none[IO]
           )
-          _ <- network.use { net =>
+          _ <- network.flatTap(_ => FetchTesting.decisions(pool)).use { net =>
             net.run.background.use { _ =>
               eventually("our chain reaches the tip")(chainRef.get.map(_.tip))(_ == last.point) *>
                 // Native transport decoding precedes ChainDB admission: this exact typed protocol
@@ -598,7 +604,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               .zip(forged.raws.take(8))
               .map((header, raw) => header.hash -> raw)
             (origin.claim(loaned.map(_._1)) *> origin.fill(loaned)).whenA(unavailable) *>
-              network.use { net =>
+              network.flatTap(_ => FetchTesting.decisions(pool)).use { net =>
                 net.run.background.use { _ =>
                   eventually("the node is told to stop")(fatals.get)(_.nonEmpty)
                 }
@@ -721,7 +727,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           GsmRunner.Marker.none[IO],
           LedgerPeersSource.none[IO]
         )
-        stillRunning <- network.use { net =>
+        stillRunning <- network.flatTap(_ => FetchTesting.decisions(pool)).use { net =>
           net.run.background.use { outcome =>
             // what was reported, what was opened and what the governor did, for a run in which
             // the reports do not come

@@ -454,3 +454,56 @@ class BlockFetchPipelineSuite extends FailsOnUncaught:
         assert(blocks.map(_.bytes.size.toLong).sum > 10000000L)
         assertEquals(fetched, Some(blocks.map(_.bytes)))
       }
+
+  for pipelined <- List(false, true) do
+    test(s"too few requested blocks fail before Completed; pipelined=$pipelined") {
+      Peers
+        .typed {
+          Peers.linked(protocols = Set(Protocols.BlockFetch)).use { (clientMux, serverMux) =>
+            for
+              c <- clientMux.channel(Protocols.BlockFetch)
+              s <- serverMux.channel(Protocols.BlockFetch)
+              result <- (if pipelined then BlockFetchClient.resource(c, clientMux.abort)
+                         else cats.effect.Resource.eval(BlockFetchClient(c))).use { client =>
+                for
+                  events <- Ref.of[IO, Vector[BlockFetchRuntime.Event]](Vector.empty)
+                  result <- cats.effect.Resource
+                    .make(
+                      Peers
+                        .typed(
+                          client.requestBlocks(Peers.point(1), Peers.point(2), 2)(
+                            _ => IO.pure(Right(())),
+                            event => events.update(_ :+ event)
+                          )
+                        )
+                        .start
+                    )(_.cancel)
+                    .use { downloading =>
+                      for
+                        _ <- request(s)
+                        _ <- send(s, BlockFetch.State.Busy, BlockFetch.Message.StartBatch)
+                        _ <- send(s, BlockFetch.State.Streaming, BlockFetch.Message.BatchDone)
+                        outcome <- downloading.joinWithNever
+                        seen <- events.get
+                      yield (outcome, seen)
+                    }
+                yield result
+              }
+            yield result
+          }
+        }
+        .timeout(5.seconds)
+        .map { result =>
+          val (outcome, seen) = result.fold(e => fail(e.message), identity)
+          assertEquals(
+            outcome,
+            Left(
+              NetworkError.IllegalTransition(
+                Protocols.BlockFetch,
+                NetworkError.RuntimeViolation.BlockFetchTooFewBlocks(2, 0)
+              )
+            )
+          )
+          assert(!seen.exists(_.isInstanceOf[BlockFetchRuntime.Event.Completed]))
+        }
+    }

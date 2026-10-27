@@ -78,7 +78,7 @@ class PraosHeaderValidationSuite extends FailsOnUncaught:
       ChainSync.UInt64.from(target.blockNo).fold(e => fail(e.toString), identity)
     )
     val byron = target match
-      case h: Header.Byron => Some(NtNHeader.ByronInfo(h.boundary, c.raws(index).size))
+      case h: Header.Byron => Some(NtNHeader.ByronInfo(h.boundary, h.blockSizeHint.value))
       case _               => None
     val wire = NtNHeader(target.era, rawHeader, byron)
     for
@@ -138,7 +138,16 @@ class PraosHeaderValidationSuite extends FailsOnUncaught:
                         .selected(c.blocks.take(index).map(_.header), applied.candidates),
                       headers = Some(HeaderClock.clocked(clock, inner))
                     )
-                    .use(peer => Fault.fiber(peer.intersect(applied.candidates) *> peer.next))
+                    .use(peer =>
+                      // The body is fetched from the decisions, independently of the header's
+                      // publication; the header's body is waited for before counting requests.
+                      Fault.fiber(
+                        peer.intersect(applied.candidates) *> peer.next.flatTap {
+                          case SyncEvent.RollForward(header, _) => peer.fetch(header).void
+                          case SyncEvent.RollBackward(_, _)     => IO.unit
+                        }
+                      )
+                    )
               }
             }
             .rescue(error => IO(fail(error.message)))

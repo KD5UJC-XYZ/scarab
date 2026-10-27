@@ -129,7 +129,7 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
         GsmRunner.Marker.none[IO],
         LedgerPeersSource.none[IO]
       )
-      result <- network.use { net =>
+      result <- network.flatTap(_ => FetchTesting.decisions(pool)).use { net =>
         net.run.background.use { _ =>
           def counters = net.state.get.map(st => st.view(Duration.Zero).counters)
           for
@@ -216,8 +216,7 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
         pool = pool,
         versus = follower.versus,
         lost = _ => IO.unit,
-        fatal = _ => IO.unit,
-        fetchMode = Some(modeRef.get)
+        fatal = _ => IO.unit
       )
       view = new PeerNetwork.ChainView[IO]:
         def tip = chainRef.get.map(c => c.tipRef.map(t => (t.slot, t.hash.hashCode.toLong)))
@@ -241,7 +240,7 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
         GsmRunner.Marker.none[IO],
         LedgerPeersSource.none[IO]
       )
-      result <- network.use { net =>
+      result <- network.flatTap(_ => FetchTesting.decisions(pool)).use { net =>
         net.run.background.use { _ =>
           for
             _ <- eventually("the chain reaches the tip")(chainRef.get.map(_.tip))(

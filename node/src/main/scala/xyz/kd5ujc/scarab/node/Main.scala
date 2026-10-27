@@ -276,18 +276,16 @@ object Main extends IOApp:
       }
     yield runtime
 
+  /** NodeKernel.hs:382–393 (consensus 82ecba329): the node owns the BlockFetch loop, independently
+    * of how many peer sessions currently exist.
+    */
   private def maintainDecisions(
-      runtime: Option[GenesisRuntime[IO]],
       pool: BlockPool[IO],
-      settings: GenesisSettings,
+      runtime: Option[GenesisRuntime[IO]],
       fatal: Fatal => IO[Unit]
   ): Resource[IO, Unit] =
-    IO.both(
-      runtime.fold(IO.never[Unit])(_.governor.run.void),
-      pool.fetchCoordinator.watchDecisions(
-        if runtime.nonEmpty then settings.blockFetchGracePicos else BigInt(0)
-      )
-    ).handleErrorWith(cause => fatal(Fatal.Defect(cause)) *> IO.never)
+    IO.both(pool.fetchCoordinator.run, runtime.fold(IO.never[Unit])(_.governor.run.void))
+      .handleErrorWith(cause => fatal(Fatal.Defect(cause)) *> IO.never)
       .background
       .void
 
@@ -1098,12 +1096,7 @@ object Main extends IOApp:
               ref.get.map(_.state.geometry(genesis.geometry))
             )
             genesisGovernor = genesisRuntime.map(_.governor)
-            decisionMaintenance = maintainDecisions(
-              genesisRuntime,
-              blockPool,
-              setup.config.settings.genesis,
-              fatalSink
-            )
+            decisionMaintenance = maintainDecisions(blockPool, genesisRuntime, fatalSink)
             // the connection manager (G2): one connection per peer address, limits, accounting
             accepted = options.accepted(setup.config.settings)
             connectionEvents = loggedConnections.alongside(measured.connection)
@@ -1156,8 +1149,7 @@ object Main extends IOApp:
               events = Some(loggedInbound.alongside(measured.inbound)),
               observe = Some(observePeer),
               sharing = Some(sharing),
-              pool = Some(blockPool),
-              fetchMode = Some(fetchModeRef.get),
+              pool = blockPool,
               genesis = genesisRuntime,
               receivedBody = receivedBody,
               peerMetrics = Some(peerMetrics)
@@ -1205,7 +1197,6 @@ object Main extends IOApp:
               versus = candidate => follower.versus(candidate),
               lost = lost,
               fatal = fatalSink,
-              fetchMode = Some(fetchModeRef.get),
               serve = Some(handlers),
               genesis = genesisRuntime,
               receivedBody = receivedBody

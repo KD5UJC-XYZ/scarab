@@ -103,6 +103,7 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
         given Handle[IO, NodeError] = node
         for
           pool <- BlockPool.create[IO]
+          _ <- supervisor.supervise(pool.fetchCoordinator.run)
           transport <- InMemoryPeers.create(magic)
           _ <- transport.serve(peer, handlers)
           manager <- ConnectionManager.create[IO](ConnectionManager.Limits(maxOutbound = 4))

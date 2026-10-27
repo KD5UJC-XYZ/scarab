@@ -5,7 +5,7 @@ import scala.annotation.unused
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
-import xyz.kd5ujc.scarab.protocol.{ChainSync, Era, NtNHeader}
+import xyz.kd5ujc.scarab.protocol.{ChainSync, Era, NtNHeader, ProtocolError}
 import xyz.kd5ujc.scarab.ledger.byron.ByronVersion
 
 /** VRF certificate: 64-byte output and 80-byte proof. */
@@ -57,6 +57,41 @@ object Header:
       kesSignature: Bytes
   ) extends Header
 
+  /** A Byron header decoded without its BlockFetch size hint: native UnsizedHeader, consensus
+    * 82ecba329 Byron/Ledger/Block.hs:274–338. Raw header bytes cannot determine the block's size.
+    * Joining the actual wire hint or full-block estimate creates a Header.
+    */
+  final case class UnsizedByron(
+      raw: Bytes,
+      hash: Bytes,
+      boundary: Boolean,
+      epoch: BigInt,
+      slotInEpoch: BigInt,
+      epochSlots: BigInt,
+      blockNo: BigInt,
+      prevHash: Option[Bytes],
+      protocolMagic: BigInt = 0,
+      bodyProof: Bytes = Bytes(Vector.empty),
+      main: Option[ByronMain] = None,
+      blockVersion: ByronVersion = ByronVersion.zero
+  ):
+    def slot: BigInt = epoch * epochSlots + slotInEpoch
+    def withSizeHint(blockSizeHint: Unsigned[Unsigned.Width.W32]): Byron = Byron(
+      raw,
+      hash,
+      boundary,
+      epoch,
+      slotInEpoch,
+      epochSlots,
+      blockNo,
+      prevHash,
+      blockSizeHint,
+      protocolMagic,
+      bodyProof,
+      main,
+      blockVersion
+    )
+
   /** Byron main or epoch-boundary header. For a boundary block `slotInEpoch` is 0; `blockNo` is the
     * header's chain difficulty (a boundary block repeats its predecessor's). `main` holds what a
     * main header adds: issuer key, signature and the bytes the signature covers.
@@ -70,6 +105,7 @@ object Header:
       epochSlots: BigInt,
       blockNo: BigInt,
       prevHash: Option[Bytes],
+      blockSizeHint: Unsigned[Unsigned.Width.W32],
       protocolMagic: BigInt = 0,
       bodyProof: Bytes = Bytes(Vector.empty),
       main: Option[ByronMain] = None,
@@ -78,6 +114,20 @@ object Header:
     def era: Era = Era.Byron
     def slot: BigInt = epoch * epochSlots + slotInEpoch
     override def isBoundary: Boolean = boundary
+    def withoutSizeHint: UnsizedByron = UnsizedByron(
+      raw,
+      hash,
+      boundary,
+      epoch,
+      slotInEpoch,
+      epochSlots,
+      blockNo,
+      prevHash,
+      protocolMagic,
+      bodyProof,
+      main,
+      blockVersion
+    )
 
   /** How a Byron main block header is signed: only heavyweight delegation exists (the signature
     * tags for no delegation and light delegation are not decodable upstream). `cert` is the
@@ -123,8 +173,22 @@ object Header:
       byronEpochSlots: BigInt
   ): Either[ChainError, Header] =
     h.byron match
-      case Some(info) => byronFromRaw(h.raw, info.boundary, byronEpochSlots)
-      case None       => fromRaw(h.era, h.raw)
+      case Some(info) =>
+        for
+          hint <- byronSizeHint(info.sizeHint)
+          header <- byronFromRaw(h.raw, info.boundary, byronEpochSlots)
+        yield header.withSizeHint(hint)
+      case None => fromRaw(h.era, h.raw)
+
+  /** The native SizeInBytes is a Word32; keep an invalid outer wrapper out of a sized header. */
+  private[ledger] def byronSizeHint(
+      value: BigInt
+  ): Either[ChainError, Unsigned[Unsigned.Width.W32]] =
+    Unsigned
+      .from[Unsigned.Width.W32](value)
+      .toRight(
+        fail(LedgerDecodeError.Protocol(ProtocolError.SizeHint(value)))
+      )
 
   /** Decode a Shelley-based raw header `[header_body, kes_signature]` of the given era. */
   def fromRaw(era: Era, raw: Bytes): Either[ChainError, Header.Shelley] =
@@ -216,7 +280,7 @@ object Header:
       raw: Bytes,
       boundary: Boolean,
       epochSlots: BigInt
-  ): Either[ChainError, Header.Byron] =
+  ): Either[ChainError, Header.UnsizedByron] =
     for
       root <- CborRead.decode(raw, headerLimits).leftMap(fail)
       h <- array(root, 5)
@@ -250,7 +314,7 @@ object Header:
             )
           yield (epoch, inEpoch, no, Some(ByronMain(leader, signature, signed)), version)
       (epoch, inEpoch, no, main, version) = parsed
-    yield Header.Byron(
+    yield Header.UnsizedByron(
       raw,
       Blake2b.hash256.hash(
         Bytes(Vector(0x82.toByte, (if boundary then 0 else 1).toByte) ++ raw.value)
