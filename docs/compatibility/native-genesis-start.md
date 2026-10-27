@@ -90,8 +90,8 @@ json-stream mechanism for injection files must not reuse this strict grammar.
 `activeSlotsCoeff` is a `PositiveUnitInterval` (`BaseTypes.hs:437-531`): a decimal with at most 19
 decimal places once normalized, refused when negative or with an exponent above 19, or the
 `{"numerator", "denominator"}` object form of aeson `Integer`s, reduced; both forms are bounded to
-`Word64` components and to `[10^-19, 1]`. The failures are typed (`NumberError`) and carry the
-reference's texts. The local `GetGenesisConfig` answer reads the coefficient the same way.
+`Word64` components and to `[10^-19, 1]`. The failures are typed (`NumberError`), one case for each way the
+reference refuses a value; the rendered text is not a conformance claim. The local `GetGenesisConfig` answer reads the coefficient the same way.
 `stabilityWindow` and `randomnessStabilisationWindow` are `Word64`: the ceiling of the exact
 `3k/f` and `4k/f`, low 64 bits kept (`StabilityWindow.hs:14-35`); callers convert them for their
 own slot arithmetic.
@@ -110,15 +110,19 @@ deadlines that subtract a window from the next epoch's first slot are monus, as 
 `*-` (`Slot.hs:63-64`): the MIR certificate deadline (`checkSlotNotTooLate`,
 `Shelley/Rules/Deleg.hs:396-404`) and the protocol-update point of no return
 (`getTheSlotOfNoReturn`, `Slot.hs:106-114`), so a window past that slot gives slot 0, as
-`PreConwayRulesSuite` checks for the MIR refusal.
+`PreConwayRulesSuite` checks for the MIR refusal. Two consensus consequences of short epochs follow
+the reference too: a header forecast into an epoch two or more past the ledger keeps the current
+distribution and parameters (TICKF, `Shelley/Rules/Tick.hs:185-242`, `Conway/Rules/Tickf.hs:34-66`;
+`HeaderRulesSuite`), and the after-voting count uses the release `subSlots`, which wraps rather than
+stopping at zero (consensus `82ecba32` `Shelley/Ledger/Ledger.hs:737-741`,
+`HardFork/History/Util.hs:25-26`; `MirrorProvenanceSuite`).
 
 Evidence: `PositiveUnitIntervalSuite` (19 against 20 decimal places, `1e-19`, negative before
 precision, `0`, `1`, `1e19`, `1e20`, the object form's reduction and `Word64` limits, missing,
 floating and over-exponent components, zero denominator, `Word64` and `NonZero` limits, `Show
 Scientific`), `EpochGeometrySuite` (the Mainnet, Preprod and Preview windows unchanged, `Word64`
 wrap of the windows, the genesis readers), `ShelleyGenesisValidationSuite` (each check at its
-boundary, the `Double` case `21 / 0.7`, the `3 * k` wrap, the order of several failures, the
-texts, and the three network configurations passing).
+boundary, the `Double` case `21 / 0.7`, the `3 * k` wrap, the order of several failures, and the three network configurations passing).
 
 Not the reference's and kept: `EpochGeometry.checked` refuses a slot length or epoch length that is
 not positive (an approved deviation, recorded in #474); slot lengths are whole
