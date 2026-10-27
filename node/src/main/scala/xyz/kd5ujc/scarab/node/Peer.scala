@@ -1113,12 +1113,12 @@ object Peer:
               yield ()
             }(requestHeadersRolling(_, publish, capacity))
 
-          /** Validate and announce a complete batch, or one streaming Genesis reply. */
           /** Headers come from the supervised streaming producer, not the unsupervised one. */
           def streamed: Boolean =
             connection.chainSyncPipeline.nonEmpty || patience.nonEmpty || genesis.nonEmpty ||
               workSession.nonEmpty
 
+          /** Validate and announce a complete batch, or one streamed reply. */
           def acceptUpdates(updates: Vector[ChainSyncClient.Update[NtNHeader]])(using
               Raise[F, PeerError]
           ): F[Vector[SyncEvent]] =

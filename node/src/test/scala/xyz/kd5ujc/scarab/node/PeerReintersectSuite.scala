@@ -20,6 +20,7 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, NtNHeader}
 class PeerReintersectSuite extends FailsOnUncaught:
   private final case class Run(
       offered: Vector[Vector[ChainSync.Point]],
+      outstandingAtReintersection: Option[Int],
       events: Either[Fault, Vector[SyncEvent]]
   )
 
@@ -43,19 +44,21 @@ class PeerReintersectSuite extends FailsOnUncaught:
         gates <- Ref.of[IO, Int](0)
         closeSignal <- Deferred[IO, NetworkError]
         pending <- Ref.of[IO, Vector[ChainSyncClient.Update[NtNHeader]]](
-          Vector(ChainSyncClient.Update.RollForward(wire(headers(2)), tip))
+          Vector.fill(3)(ChainSyncClient.Update.RollForward(wire(headers(2)), tip))
         )
         inFlight <- Ref.of[IO, Int](0)
+        atReintersection <- Ref.of[IO, Option[Int]](None)
         pipeline = new ChainSyncClient.Pipeline[IO, NtNHeader]:
           def findIntersect(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
             offered.updateAndGet(_ :+ points).flatMap { calls =>
               if calls.size == 1 then IO.pure(Some(ChainSync.Point.Origin -> tip))
               else
-                reintersection.traverse { i =>
-                  pending
-                    .set(Vector(ChainSyncClient.Update.RollForward(wire(headers(i + 1)), tip)))
-                    .as(headers(i).point -> tip)
-                }
+                inFlight.get.flatMap(n => atReintersection.set(Some(n))) *> reintersection
+                  .traverse { i =>
+                    pending
+                      .set(Vector(ChainSyncClient.Update.RollForward(wire(headers(i + 1)), tip)))
+                      .as(headers(i).point -> tip)
+                  }
             }
           def findIntersectResult(points: Vector[ChainSync.Point])(using
               Raise[IO, NetworkError]
@@ -155,7 +158,8 @@ class PeerReintersectSuite extends FailsOnUncaught:
               .timeout(1.minute)
           }
         calls <- offered.get
-      yield Run(calls, events)
+        drained <- atReintersection.get
+      yield Run(calls, drained, events)
     }
 
   test("a detached candidate re-intersects with our chain and the session continues") {
@@ -163,6 +167,8 @@ class PeerReintersectSuite extends FailsOnUncaught:
       session(headers, Some(0)).map { run =>
         assertEquals(run.offered.size, 2)
         assertEquals(run.offered(1), Vector(headers(0).point, ChainSync.Point.Origin))
+        // the pipe is drained before the new FindIntersect (drainThePipe, Client.hs:1500)
+        assertEquals(run.outstandingAtReintersection, Some(0))
         val events = run.events.fold(f => fail(s"session ended: $f"), identity)
         assertEquals(
           events.map {
