@@ -1114,6 +1114,11 @@ object Peer:
             }(requestHeadersRolling(_, publish, capacity))
 
           /** Validate and announce a complete batch, or one streaming Genesis reply. */
+          /** Headers come from the supervised streaming producer, not the unsupervised one. */
+          def streamed: Boolean =
+            connection.chainSyncPipeline.nonEmpty || patience.nonEmpty || genesis.nonEmpty ||
+              workSession.nonEmpty
+
           def acceptUpdates(updates: Vector[ChainSyncClient.Update[NtNHeader]])(using
               Raise[F, PeerError]
           ): F[Vector[SyncEvent]] =
@@ -1168,11 +1173,15 @@ object Peer:
                     .set(Some(PeerError.RolledBackPastIntersection(point)))
                     .as(Vector.empty[SyncEvent])
                 case HeaderGate.Acceptance.Restart(point) =>
-                  genesis.fold(
+                  // NoLongerIntersects: drain the pipeline and find a new intersection with our
+                  // current chain; only no intersection ends the session (consensus 82ecba329,
+                  // ChainSync/Client.hs:1497–1511). The unsupervised producer of tests and tools
+                  // has no re-intersection and ends the session.
+                  if streamed then pendingRestart.set(Some(point)).as(Vector.empty[SyncEvent])
+                  else
                     PeerError
                       .Diverged(PeerError.Divergence.DetachedCandidate(point))
                       .raise[F, Vector[SyncEvent]]
-                  )(_ => pendingRestart.set(Some(point)).as(Vector.empty[SyncEvent]))
               _ <- observe.traverse_ { report =>
                 val slots = result.collect { case SyncEvent.RollForward(h, _) => h.slot.toLong }
                 report(Peer.Observation.HeadersArrived(slots, arrived)).whenA(slots.nonEmpty)
@@ -1505,13 +1514,21 @@ object Peer:
                   updateJournal(candidate, tip, false, false)
                 }
               _ <- supervised {
-                def restart(control: GenesisPeer[F])(using Raise[F, PeerError]): F[Unit] =
+
+                /** Find a new intersection with our current chain. `candidates` offers points when
+                  * neither a captured fragment nor the pipeline's local points are available;
+                  * `restarted` tells chain-sync jumping about the new gate.
+                  */
+                def restart(
+                    candidates: F[Vector[ChainSync.Point]],
+                    restarted: (ChainSync.Point, HeaderGate[F]) => F[Unit]
+                )(using Raise[F, PeerError]): F[Unit] =
                   for
                     captured <- headers.traverse(_.capture).map(_.flatten)
                     metadata <- heightSnapshot.capture
                     points <- captured.fold(
                       if connection.chainSyncPipeline.nonEmpty then F.pure(metadata.points)
-                      else control.restartCandidates
+                      else candidates
                     )(c => F.pure(c.points))
                     offeredHeights = captured.fold(metadata.heights)(_.heights)
                     _ <- heights.set(offeredHeights.updated(ChainSync.Point.Origin, None))
@@ -1526,7 +1543,7 @@ object Peer:
                           )
                           .flatMap { nextGate =>
                             val candidate = ChainSelection.Candidate(point, Vector.empty)
-                            gate.set(nextGate) *> control.restarted(point, nextGate) *> remember(
+                            gate.set(nextGate) *> restarted(point, nextGate) *> remember(
                               candidate
                             ) *>
                               capturedHeight(point).flatMap(height =>
@@ -1535,11 +1552,25 @@ object Peer:
                               updateJournal(candidate, Some(tip), false, true)
                           }
                   yield ()
+                def restartWith(control: GenesisPeer[F])(using Raise[F, PeerError]): F[Unit] =
+                  restart(control.restartCandidates, control.restarted)
                 def request(using Raise[F, PeerError]): F[Unit] =
-                  genesis.fold(requestHeadersStreaming(publish, capacity)) { control =>
+                  genesis.fold(
+                    pendingRestart.getAndSet(None).flatMap {
+                      case Some(point) =>
+                        // Without local points to offer, the detached candidate ends the session.
+                        restart(
+                          PeerError
+                            .Diverged(PeerError.Divergence.DetachedCandidate(point))
+                            .raise[F, Vector[ChainSync.Point]],
+                          (_, _) => F.unit
+                        )
+                      case None => requestHeadersStreaming(publish, capacity)
+                    }
+                  ) { control =>
                     import xyz.kd5ujc.scarab.network.selection.ChainSyncJumping.Instruction
                     pendingRestart.getAndSet(None).flatMap {
-                      case Some(_) => restart(control)
+                      case Some(_) => restartWith(control)
                       case None =>
                         F.race(
                           drainRequested.get.flatMap(_.get),
@@ -1550,7 +1581,7 @@ object Peer:
                             instruction match {
                               case Instruction.RunNormally =>
                                 requestHeadersStreaming(publish, capacity)
-                              case Instruction.Restart         => restart(control)
+                              case Instruction.Restart         => restartWith(control)
                               case Instruction.Wait            => F.cede
                               case Instruction.Failed(problem) => control.failed[Unit](problem)
                               case Instruction.Jump(info, goodPoint) =>
@@ -1571,7 +1602,7 @@ object Peer:
                                         )
                                         .flatMap {
                                           case GenesisPeer.Applied.Retained => F.unit
-                                          case GenesisPeer.Applied.Restart  => restart(control)
+                                          case GenesisPeer.Applied.Restart  => restartWith(control)
                                           case GenesisPeer.Applied.Grafted(candidate) =>
                                             remember(candidate) *>
                                               capturedHeight(candidate.tip).flatMap(height =>
@@ -1680,8 +1711,7 @@ object Peer:
                     supervised(refreshFetchPerformance(read, fetcher.updatePerformance))
                   ))
                   .unlessA(alreadyRunning)
-              } *> (if connection.chainSyncPipeline.nonEmpty || patience.nonEmpty || genesis.nonEmpty || workSession.nonEmpty
-                    then supervised(streaming)
+              } *> (if streamed then supervised(streaming)
                     else
                       supervised(
                         candidateHeaders.get
