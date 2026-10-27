@@ -36,6 +36,8 @@ object Word64:
 
   private[ledger] def wrappingSubtract(left: Word64, right: Word64): Word64 = left - right
 
+  private[ledger] def wrappingMultiply(left: Word64, right: Word64): Word64 = left * right
+
   extension (w: Word64)
     /** The two's-complement bits, for a codec that writes the word as 8 bytes. */
     def bits: Long = w
