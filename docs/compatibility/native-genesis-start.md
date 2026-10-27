@@ -21,16 +21,18 @@ The [Byron-origin cost-model oracle](../../fixtures/ntc-golden/byron-cost-models
 
 The isolated `InjectionJson` pull reader follows json-stream 0.4.6.1's lexer and `objectItems value`,
 used by pinned `Shelley/Genesis.hs:903-925`, and yields each entry's value as `JsonValue` (aeson's
-`Value`, as json-stream builds it). Its [73 actual native traces](../../fixtures/reference/injection-json/README.md)
+`Value`, as json-stream builds it). Its [123 actual native traces](../../fixtures/reference/injection-json/README.md)
 retain raw bytes and chunk sizes, all yielded pairs, remaining bytes and completion/refusal decisions.
+Each refusal is a closed typed error for one reachable json-stream message, and its rendered text
+equals the native diagnostic, including the Haskell `show` of the element the message prints.
 Six traces still request data after three empty feeds; those are reference non-results, not completed
 injections or native refusals. The Scala reader exposes the same state. Separate ordering and
 20,000-layer small-stack tests exercise incremental delivery and explicit frames. These checks do
 not implement hash checking, effectful file reads or genesis source integration, and the permissive
 json-stream mechanism is separate from strict raw-genesis JSON admission (#497).
 
-The isolated reader's focused Docker checks pass 75 tests (73 native traces, entry ordering,
-and 20,000-level small-stack parsing). The portable native replay compares all 73 recorded
+The isolated reader's focused Docker checks pass 125 tests (123 native traces, entry ordering,
+and 20,000-level small-stack parsing). The portable native replay compares all 123 recorded
 outputs, including diagnostic text. The existing deterministic resource guards pass, and
 20,000 mutations with seed 1 pass for the `injection-json` target. An earlier fuzz attempt
 was terminated during failure shrinking without a completed result; the subsequent source

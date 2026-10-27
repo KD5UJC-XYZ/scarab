@@ -1,6 +1,8 @@
 {
   "schemaVersion": 1,
   "capturedAt": "2026-10-26",
+  "refusalCasesCapturedAt": "2026-10-27",
+  "refusalCasesScope": "50 refusal-* cases appended with the same image and unchanged oracle: one or more inputs for every message objectItems value can reach with this lexer, including Haskell show of each printed element.",
   "scope": "Unmodified native json-stream incremental parser traces; strict raw genesis JSON, filesystem/hash checking and domain decoding are separate.",
   "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
   "imageId": "sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef",
@@ -52,17 +54,17 @@
     "sourceSha256": "834c21264330a9c8367e4e4b271bcc3ecc9e8084f5bd27bfd27e916968ae8eaa",
     "matchesLedgerPin": true
   },
-  "caseCount": 73,
+  "caseCount": 123,
   "completed": 56,
-  "refused": 11,
+  "refused": 61,
   "needDataAfterThreeEmptyFeeds": 6,
   "nonResultScope": "Six bounded native parser states still request data after three empty feeds. They are not successful/refused foldInjectionData results; separate timed probes were controlled cancellations, not native outcomes.",
   "numericComparison": "Native pairEvents observe Scientific coefficient and signed-64 exponent directly; serialized pairs retain exact JSON numeric tokens for portable replay, not Scala Value equivalence.",
-  "scalaComparison": "Every yielded key and complete ordered Value event stream, chunk demands, remaining bytes and typed refusal decisions. Native diagnostic wording and JSON rendering are retained, not claimed identical.",
+  "scalaComparison": "Every yielded key and complete ordered Value event stream, chunk demands, remaining bytes, typed refusal decisions and each refusal's rendered message against the native diagnostic text. Native JSON rendering of serialized pairs is retained, not claimed identical.",
   "artifacts": {
     "scripts/oracle/injection-json/Main.hs": "ecd30a30967ddb58e99bf613c69a4af849e7bbddf6f725886064cd4a17af4fb5",
     "scripts/oracle/injection-json/run.py": "a24edc9bb4e804d164b70fc1e9f28215b94bb1238567ff42f3ddfca59827eab5",
-    "fixtures/reference/injection-json/cases.jsonl.gz": "477e2a9354027e21347dc40a392f0a856ec101f0b2cfd9b964e23cd1d534be11"
+    "fixtures/reference/injection-json/cases.jsonl.gz": "9859b6638aa8a7c9f02c33b26bc894ef373bb6f7e64cadc74dc7af3e519ec747"
   },
   "aesonKeyMap": {
     "version": "2.2.5.0",

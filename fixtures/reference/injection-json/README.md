@@ -1,14 +1,14 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Streaming injection JSON reader
 
-These 73 synthetic cases execute the unchanged `objectItems value` parser from json-stream
+These 123 synthetic cases execute the unchanged `objectItems value` parser from json-stream
 0.4.6.1, the dependency used by cardano-ledger f649f975 `Shelley/Genesis.hs:903-925`.
 They retain every original input byte and requested chunk size. The corpus is gzip-compressed
 without timestamps; decompression reveals ordinary JSON lines with `inputHex` and native traces.
 
 The Scala gate compares all yielded keys and complete native Value events in encounter order, parse verdicts, demanded
-chunk lengths and remaining bytes. Native diagnostic text is retained; Scala uses closed typed
-errors, so this is not an identical-message claim. Native bounded traces that remain `NeedData`
+chunk lengths and remaining bytes. Each Scala refusal is a closed typed error whose rendered
+message must equal the native diagnostic text. Native bounded traces that remain `NeedData`
 after three empty feeds are non-results, not refusals or successful completed injections.
 No input is removed for that behavior.
 
@@ -22,8 +22,13 @@ native JSON-rendering parity claim.
 
 Cases include outer duplicates, nested first-wins duplicates, trailing bytes, ignored roots,
 chunk-sensitive large-key skipping, malformed UTF-8/escapes, split strings/numbers, the C numeric
-fast path, wrapped Scientific exponents, and the partial-number size check. The independent
-ordering test stops at an entry before a later syntax failure; a small-stack test reads 20,000
+fast path, wrapped Scientific exponents, and the partial-number size check. The 50 `refusal-*`
+cases, captured on 2026-10-27 with the same image, reach every message `objectItems value` can
+produce with this lexer: `TokFailed` before and after the outer object opens, one-token (key
+and value) and multi-part decoding failures, and the unexpected-element messages with the Haskell
+`show` of each element they print (fast-path `JInteger` versus `JValue` numbers, Scientific
+formatting at the exponent boundaries and wrapped exponents, and the rest of the chunk with every
+escape form). The independent ordering test stops at an entry before a later syntax failure; a small-stack test reads 20,000
 nested arrays. `injection-json` fuzzing checks crashes and termination of individual pull steps;
 it is not differential native fuzzing.
 
