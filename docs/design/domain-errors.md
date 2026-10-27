@@ -145,8 +145,8 @@ The reference queue also releases its request after completion or failure via `b
 ([consensus `82ecba329`, Snapshots.hs:887–905](https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LedgerDB/Snapshots.hs#L887)).
 This comparison establishes queue cleanup; it does not claim identical snapshot-failure policy.
 
-`BearerServer.listen` and `listenUnix` require a failure reporter and a handler with a caller-local
-`Handle[F, E]`. `HandlerFailure.Domain[E]` preserves an intentional service error;
+`BearerServer.listen` and `LocalServer.resource` (the node-to-client socket) require a failure reporter
+and a handler with a caller-local `Handle[F, E]`. `HandlerFailure.Domain[E]` preserves an intentional service error;
 `HandlerFailure.Defect` preserves an unexpected exception. The listener reports each failed handler
 once, releases its connection and keeps accepting. Cancellation releases the handler without
 calling the reporter. The node's reporter logs typed network endings and sends both raw handler

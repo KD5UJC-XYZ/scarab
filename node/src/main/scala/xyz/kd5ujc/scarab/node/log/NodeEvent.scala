@@ -21,7 +21,8 @@ import xyz.kd5ujc.scarab.node.{
   SyncAdvisory,
   Topology
 }
-import xyz.kd5ujc.scarab.network.BearerServer
+import xyz.kd5ujc.scarab.network.{DiffusionFailure, LocalServer as LocalServerTraces}
+import xyz.kd5ujc.scarab.network.SocketConfigError as SocketConfig
 import xyz.kd5ujc.scarab.network.selection.{
   AfterSlot,
   Churn,
@@ -139,10 +140,20 @@ enum NodeEvent:
   /** What the inbound governor (G2) or the node-to-client listener did on a connection. */
   case Inbound(remote: String, event: InboundEvent)
 
-  /** The node-to-client socket or its directory is open to more users than the check after the bind
-    * allows ([[xyz.kd5ujc.scarab.network.BearerServer.InsecureLocalSocket]]).
+  /** The node-to-client socket and its server, as the reference traces them
+    * ([[xyz.kd5ujc.scarab.network.LocalServer.Trace]]).
     */
-  case InsecureLocalSocket(warning: BearerServer.InsecureLocalSocket)
+  case LocalServer(trace: LocalServerTraces.Trace)
+
+  /** The configured node-to-client socket cannot be used and the node does not start (the
+    * reference's `StartupSocketConfigError`).
+    */
+  case SocketConfigError(error: SocketConfig)
+
+  /** The node-to-client side of the network stopped and the node with it (the reference's
+    * `DiffusionErrored`).
+    */
+  case DiffusionErrored(failure: DiffusionFailure)
 
   /** A decision of the peer governor or what became of one (G1). */
   case PeerSelection(trace: Trace[SocketAddress[Host]])
@@ -511,16 +522,10 @@ object NodeEvent:
         case InboundEvent.Closed(reason) => inbound(remote, "closed", Some(reason.message))
         case InboundEvent.Refused(reason) =>
           inbound(remote, "refused", Some(reason.message)).at(Severity.Warning)
-    case InsecureLocalSocket(warning) =>
-      // the reference's machine fields (ouroboros-network 2fb69829,
-      // `ouroboros-network/tracing/Ouroboros/Network/Tracing/PeerSelection.hs` 73-82), its kind
-      // being the event; the mode in octal after `0o`, as `showOct`
-      val (kind, path, mode) = warning match
-        case BearerServer.InsecureLocalSocket.Permissions(path, mode) =>
-          (EventKind.InsecureLocalSocketPermissions, path, mode)
-        case BearerServer.InsecureLocalSocket.Directory(path, mode) =>
-          (EventKind.InsecureLocalSocketDirectory, path, mode)
-      kind.line("path" -> path.asJson, "mode" -> s"0o${Integer.toOctalString(mode)}".asJson)
+    case LocalServer(trace)       => LocalServerLines.line(trace)
+    case SocketConfigError(error) => EventKind.SocketConfigError.line("error" -> error.shown.asJson)
+    case DiffusionErrored(failure) =>
+      EventKind.DiffusionErrored.line("error" -> failure.shown.asJson)
     case PeerEstablishmentFailed(peer, error) =>
       EventKind.PeerSelectionPromote
         .line(
@@ -546,3 +551,47 @@ object NodeEvent:
           "thrown" -> thrown.asJson
         )
         .at(severity)
+
+/** The lines of the node-to-client socket and server: the reference's names, severities and machine
+  * fields (ouroboros-network 2fb69829,
+  * `ouroboros-network/tracing/Ouroboros/Network/Tracing/PeerSelection.hs` 29-113 and
+  * `ouroboros-network/tracing/Ouroboros/Network/Tracing/Server.hs` 72-97), the event standing for
+  * the reference's `kind`. A path is `show` of its `LocalAddress` where the reference shows one
+  * (`LocalAddress "/p"`) and the plain path where it encodes the address to JSON.
+  */
+private object LocalServerLines:
+  import LocalServerTraces.Trace
+
+  private def mode(m: Int): Json = s"0o${Integer.toOctalString(m)}".asJson
+
+  def line(trace: Trace): Line = trace match
+    case Trace.CreateSystemdSocketForSnocketPath(a) =>
+      EventKind.CreateSystemdSocketForSnocketPath.line("path" -> a.shown.asJson)
+    case Trace.CreatedLocalSocket(a) => EventKind.CreatedLocalSocket.line("path" -> a.shown.asJson)
+    case Trace.ConfiguringLocalSocket(a, fd) =>
+      EventKind.ConfiguringLocalSocket.line("path" -> a.shown.asJson, "socket" -> fd.shown.asJson)
+    case Trace.ConfiguredLocalSocket(a, fd) =>
+      EventKind.ConfiguredLocalSocket.line("path" -> a.shown.asJson, "socket" -> fd.shown.asJson)
+    case Trace.ListeningLocalSocket(a, fd) =>
+      EventKind.ListeningLocalSocket.line("path" -> a.shown.asJson, "socket" -> fd.shown.asJson)
+    case Trace.LocalSocketUp(a, fd) =>
+      EventKind.LocalSocketUp.line("path" -> a.shown.asJson, "socket" -> fd.shown.asJson)
+    case Trace.InsecureLocalSocketPermissions(a, m) =>
+      EventKind.InsecureLocalSocketPermissions.line("path" -> a.shown.asJson, "mode" -> mode(m))
+    case Trace.InsecureLocalSocketDirectory(a, m) =>
+      EventKind.InsecureLocalSocketDirectory.line("path" -> a.shown.asJson, "mode" -> mode(m))
+    case Trace.RunLocalServer(a) => EventKind.RunLocalServer.line("localAddress" -> a.shown.asJson)
+    case Trace.ServerStarted(addresses) =>
+      EventKind.ServerStarted.line(
+        "addresses" -> addresses.map(a => Json.obj("path" -> a.path.asJson)).asJson
+      )
+    case Trace.AcceptConnection(id) =>
+      EventKind.AcceptConnection.line(
+        "address" -> Json.obj(
+          "localAddress" -> id.local.path.asJson,
+          "remoteAddress" -> id.remote.path.asJson
+        )
+      )
+    case Trace.AcceptError(error)   => EventKind.AcceptError.line("reason" -> error.shown.asJson)
+    case Trace.ServerStopped        => EventKind.ServerStopped.line()
+    case Trace.ServerError(failure) => EventKind.ServerError.line("reason" -> failure.shown.asJson)

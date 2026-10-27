@@ -29,12 +29,21 @@ import xyz.kd5ujc.scarab.ledger.{
   ValidationError
 }
 import xyz.kd5ujc.scarab.network.{
-  BearerServer,
   ConnectionEnd,
   ConnectionError,
   ConnectionEvent,
   DiffTime,
+  DiffusionFailure,
+  Errno,
+  ErrnoCause,
+  FileDescriptor,
+  LocalAddress,
+  LocalConnectionId,
+  LocalServer,
   NetworkError,
+  SocketConfigError,
+  SystemCall,
+  SystemCallError,
   Word32
 }
 import xyz.kd5ujc.scarab.node.{
@@ -276,11 +285,43 @@ object LogSamples:
     (Gsm.Phase.PreSyncing, Gsm.Event.LeaveCaughtUp(Gsm.DurationFromNow.After(90.seconds)))
   )
 
-  /** A socket left to the umask 022 (`0o140755`) and a directory anyone may write (`0o41777`). */
-  val insecureLocalSocket: List[BearerServer.InsecureLocalSocket] = List(
-    BearerServer.InsecureLocalSocket.Permissions("/ipc/node.socket", 0xc1ed),
-    BearerServer.InsecureLocalSocket.Directory("/tmp/node.socket", 0x43ff)
+  private val socket = LocalAddress("/ipc/node.socket")
+  private val descriptor = FileDescriptor(20)
+  private val exhausted =
+    SystemCallError(SystemCall.Accept, ErrnoCause.Known(Errno.EMFILE), None)
+
+  /** The node-to-client socket set up, warned of (a socket left to the umask 022, `0o140755`, and a
+    * directory anyone may write, `0o41777`), and its server: a client accepted, an accept that
+    * failed, the server stopped and ended by an error.
+    */
+  val localServer: List[LocalServer.Trace] = List(
+    LocalServer.Trace.CreateSystemdSocketForSnocketPath(socket),
+    LocalServer.Trace.CreatedLocalSocket(socket),
+    LocalServer.Trace.ConfiguringLocalSocket(socket, descriptor),
+    LocalServer.Trace.ConfiguredLocalSocket(socket, descriptor),
+    LocalServer.Trace.ListeningLocalSocket(socket, descriptor),
+    LocalServer.Trace.LocalSocketUp(socket, descriptor),
+    LocalServer.Trace.InsecureLocalSocketPermissions(socket, 0xc1ed),
+    LocalServer.Trace.InsecureLocalSocketDirectory(LocalAddress("/tmp/node é.socket"), 0x43ff),
+    LocalServer.Trace.RunLocalServer(socket),
+    LocalServer.Trace.ServerStarted(List(socket)),
+    LocalServer.Trace.AcceptConnection(
+      LocalConnectionId(socket, LocalAddress("/ipc/node.socket@0"))
+    ),
+    LocalServer.Trace.AcceptError(exhausted),
+    LocalServer.Trace.ServerStopped,
+    LocalServer.Trace.ServerError(DiffusionFailure.System(exhausted))
   )
+
+  /** A directory where the socket should be, as the reference names it. */
+  val socketConfigError: SocketConfigError = SocketConfigError.LocalSocketError(
+    "/ipc/node.socket",
+    SystemCallError(SystemCall.RemoveLink, ErrnoCause.Known(Errno.EISDIR), Some("/ipc/node.socket"))
+  )
+
+  /** A bind into a directory that is not there. */
+  val diffusionErrored: DiffusionFailure =
+    DiffusionFailure.System(SystemCallError(SystemCall.Bind, ErrnoCause.Known(Errno.ENOENT), None))
 
   val inbound: List[InboundEvent] = List(
     InboundEvent.Accepted,

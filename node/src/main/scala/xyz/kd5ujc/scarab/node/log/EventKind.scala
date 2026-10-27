@@ -65,12 +65,28 @@ enum EventKind(val area: Area, val severity: Severity):
   case PraosSyncUntrusted extends EventKind(Area.Node, Severity.Warning)
   case PlutusCrypto extends EventKind(Area.Node, Severity.Info)
   case Listening extends EventKind(Area.Node, Severity.Notice)
+  // the node-to-client socket as the network layer sets it up, the reference's
+  // `Startup.DiffusionInit` traces of it (ouroboros-network 2fb69829,
+  // `ouroboros-network/tracing/Ouroboros/Network/Tracing/PeerSelection.hs` 155-174)
+  case CreateSystemdSocketForSnocketPath extends EventKind(Area.Node, Severity.Info)
+  case CreatedLocalSocket extends EventKind(Area.Node, Severity.Info)
+  case ConfiguringLocalSocket extends EventKind(Area.Node, Severity.Info)
+  case InsecureLocalSocketPermissions extends EventKind(Area.Node, Severity.Warning)
+  case InsecureLocalSocketDirectory extends EventKind(Area.Node, Severity.Warning)
+  case ConfiguredLocalSocket extends EventKind(Area.Node, Severity.Info)
+  case ListeningLocalSocket extends EventKind(Area.Node, Severity.Info)
+  case LocalSocketUp extends EventKind(Area.Node, Severity.Info)
+  case RunLocalServer extends EventKind(Area.Node, Severity.Info)
+  case DiffusionErrored extends EventKind(Area.Node, Severity.Critical)
   case Memory extends EventKind(Area.Node, Severity.Info)
   case CpuStarvation extends EventKind(Area.Node, Severity.Warning)
   case StateDump extends EventKind(Area.Node, Severity.Info)
   case StateDumpRefused extends EventKind(Area.Node, Severity.Warning)
   case VerificationCache extends EventKind(Area.Node, Severity.Debug)
   case Error extends EventKind(Area.Node, Severity.Error)
+  // the reference's `Startup.SocketConfigError` (cardano-node 11.1.3,
+  // `cardano-node/src/Cardano/Node/Tracing/Tracers/Startup.hs` 323-324, 372)
+  case SocketConfigError extends EventKind(Area.Node, Severity.Error)
   case Fatal extends EventKind(Area.Node, Severity.Error)
   case Finished extends EventKind(Area.Node, Severity.Notice)
 
@@ -98,8 +114,13 @@ enum EventKind(val area: Area, val severity: Severity):
   // connections
   case Connection extends EventKind(Area.Net, Severity.Info)
   case Inbound extends EventKind(Area.Net, Severity.Info)
-  case InsecureLocalSocketPermissions extends EventKind(Area.Net, Severity.Warning)
-  case InsecureLocalSocketDirectory extends EventKind(Area.Net, Severity.Warning)
+  // the node-to-client server, the reference's `Net.Server.Local` traces (ouroboros-network
+  // 2fb69829, `ouroboros-network/tracing/Ouroboros/Network/Tracing/Server.hs` 99-113)
+  case ServerStarted extends EventKind(Area.Net, Severity.Notice)
+  case AcceptConnection extends EventKind(Area.Net, Severity.Debug)
+  case AcceptError extends EventKind(Area.Net, Severity.Error)
+  case ServerStopped extends EventKind(Area.Net, Severity.Notice)
+  case ServerError extends EventKind(Area.Net, Severity.Critical)
 
   // the peer governor (G1): the targets, the roots, the moves between temperatures, the sensitive
   // state, the counters, the Genesis State Machine

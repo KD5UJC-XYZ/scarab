@@ -683,7 +683,7 @@ class ConfigSuite extends FunSuite:
       .toOption
       .get
     val (fromFile, _, _) = Main.configured(bare).fold(e => fail(e.message), identity)
-    assertEquals(fromFile.localSocket, Some(Path.of("/s/node.socket")))
+    assertEquals(fromFile.localSocket, Some("/s/node.socket"))
     assertEquals(fromFile.db, Some(Path.of("/d")))
     assertEquals(fromFile.mempoolBytes, Some(3000000L))
     val flagged = bare.copy(db = Some(Path.of("/mine")), mempoolBytes = Some(5L))

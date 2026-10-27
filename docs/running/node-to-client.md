@@ -64,14 +64,37 @@ longer than that is told there is no intersection.
 
 ### The socket path
 
-As in the reference node, at start-up whatever is at the `--local-socket` path is removed before the bind
-(`removeStaleLocalSocket`, cardano-node 11.1.3): a socket left by an earlier run, a file, or a symbolic link (the
-link, not its target). A directory there, empty or not, is not removed and the node does not start (a
-`LocalSocket` configuration error), nor does it when the removal fails for another reason. No mode is set on
-the socket, so it has the one the process umask gives it; who can connect is decided by that mode and by the
-directory that holds the socket. Once bound, the node warns, without refusing, when others may read or write
-the socket or when the group or others may write its directory (`checkLocalSocket`, ouroboros-network): the
-`insecureLocalSocketPermissions` and `insecureLocalSocketDirectory` events in [logging](logging.md#log-events).
+As in the reference node, whatever is at the socket path (`--local-socket`, or the configuration's
+`SocketPath`) is removed at start-up, once the configuration is read and before the topology and the
+database are (`removeStaleLocalSocket` in `gatherConfiguredSockets`, cardano-node 11.1.3). It is one
+`unlink`: a socket left by an earlier run, a file or a symbolic link (the link, not its target) goes, and
+nothing there is fine. Any other failure refuses the start: a directory at the path, empty or not, is
+left, and the start ends with one `socketConfigError` line whose `error` is the reference's
+(`LocalSocketError "<path>" <path>: removeLink: inappropriate type (Is a directory)`) and exit code 1.
+The path is used as written, not normalised.
+
+The socket itself is set up once the node runs, as the reference's network layer sets it up
+(`withLocalSocket`, ouroboros-network): created, bound, checked, then listened on with a backlog of 8,
+with the reference's `Startup.DiffusionInit` lines (`createSystemdSocketForSnocketPath`,
+`createdLocalSocket`, `configuringLocalSocket`, `configuredLocalSocket`, `listeningLocalSocket`,
+`localSocketUp`, `runLocalServer`; in [logging](logging.md#log-events)). No mode is set on the socket,
+so it has the one the process umask gives it; who can connect is decided by that mode and by the
+directory that holds the socket. The check after the bind only warns, when others may read or write the
+socket or when the group or others may write its directory (`checkLocalSocket`): the
+`insecureLocalSocketPermissions` and `insecureLocalSocketDirectory` lines. A bind that fails (a
+directory that is not there or that the node may not write, a path of more than 108 characters), or a
+status of the socket or its directory that cannot be read, stops the node with one `diffusionErrored`
+line carrying the reference's text (`Network.Socket.bind: does not exist (No such file or directory)`)
+and exit code 1.
+
+Clients are accepted without a limit on their number (the reference's local
+`AcceptedConnectionsLimit maxBound maxBound 0`), each named `<path>@<n>` as the reference names them
+(`acceptConnection`, a Debug line). An accept that fails is an `acceptError` line: after `ECONNABORTED`
+(the client gave up first) the server accepts again half a second later; any other failure stops the
+server (`serverStopped`, `serverError`) and the node (`diffusionErrored`, exit code 1). When the node
+stops, the socket is closed and its file is left where it is, as the reference leaves it; the next start
+removes it. The error texts are the reference's: GHC's kind of the `errno` and musl's text for it (the
+reference's release binary is a static musl build), whatever C library the JVM runs on.
 
 ## Query server
 
