@@ -1690,7 +1690,7 @@ object Targets:
     )
 
   private val nativeJson: Target =
-    import xyz.kd5ujc.scarab.ledger.json.NativeJson
+    import xyz.kd5ujc.scarab.ledger.json.{JsonValue, NativeJson}
     Target(
       "native-json",
       () =>
@@ -1715,7 +1715,13 @@ object Targets:
             }
         },
       probe("native-json") { bytes =>
-        seen("native-json", NativeJson.parse(bytes).isRight)
+        NativeJson.decodeStrict(bytes) match
+          case Left(error) =>
+            if error.message.isEmpty then throw new Violation("native-json: empty error text")
+          case Right(value) =>
+            if value.toString.isEmpty || cats.Order[JsonValue].compare(value, value) != 0 then
+              throw new Violation("native-json: value not shown or not equal to itself")
+            seen("native-json", true)
       }
     )
 

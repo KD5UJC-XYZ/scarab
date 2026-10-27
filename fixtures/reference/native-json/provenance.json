@@ -39,9 +39,9 @@
       }
     ]
   },
-  "caseCount": 350,
+  "caseCount": 356,
   "accepted": 142,
-  "refused": 208,
+  "refused": 214,
   "upstreamInputs": {
     "count": 302,
     "file": "cases.jsonl.gz",
@@ -50,17 +50,17 @@
     "originalPayloadSha256Field": "sha256",
     "nameMapping": "Strip the upstream/ prefix from each case name to recover the original JSONTestSuite filename."
   },
-  "syntheticControlCount": 48,
+  "syntheticControlCount": 54,
   "license": {
     "url": "https://github.com/nst/JSONTestSuite/blob/master/LICENSE",
     "gitBlob": "c4b3621d5d59f56b7b43d84386e5501f72f4ce9c",
     "file": "JSONTestSuite-LICENSE"
   },
-  "comparison": "Full native acceptance and ordered flat Value events; Scientific coefficient/exponent strings retain representation. Native error text retained, not Scala diagnostic parity.",
+  "comparison": "Full native acceptance and ordered flat Value events; Scientific coefficient/exponent strings retain representation. Native error text retained; Scala typed errors render it exactly.",
   "artifacts": {
     "scripts/oracle/native-json/Main.hs": "f6f313f5918b28031fd801da6dc74a9b8ccc67f189a70f755d5b45441bb798e1",
     "scripts/oracle/native-json/run.py": "ca8a6c17b0ae95e0613b0b0aefd98f01dbefdd6a175636ed18dcc299e5014d5d",
-    "fixtures/reference/native-json/cases.jsonl.gz": "06f14a3fdf75ebdb0df800c68737bc2f41aa86e26fe0d97bcd34a70af1e86cbb",
+    "fixtures/reference/native-json/cases.jsonl.gz": "6cd915c4733e8f52b1278dc89d729a890f0f935805181b9a105acd559daed253",
     "fixtures/reference/native-json/JSONTestSuite-LICENSE": "8bd0e0578be788c617ea01d18b2a8146e3746ae50bddadc65a5f9d3aad08ad49"
   }
 }

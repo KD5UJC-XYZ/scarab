@@ -7,13 +7,16 @@ import java.nio.charset.{CharacterCodingException, CodingErrorAction, StandardCh
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Bytes
 
-/** aeson 2.2.5.0 `Decoding/ByteString.hs:143-175` and its `Internal/Unescape.hs` text >= 2 branch:
-  * raw controls are forbidden, UTF-8 is strict, and escaped surrogates must form a scalar pair.
+/** aeson 2.2.5.0 `scanStringLiteral` (`Decoding/ByteString.hs:132-166`) and its
+  * `Internal/Unescape.hs` text >= 2 branch (`55-400`): raw controls are forbidden, UTF-8 is strict
+  * (well-formed UTF-8 only, as the JVM decoder and the reference's automaton both accept), and
+  * escaped surrogates must form a scalar pair. Every UTF-8 or escape failure is the reference's one
+  * `UnicodeException`.
   */
 private[json] object NativeJsonString:
-  import NativeJson.{Error, Expected, byte}
+  import NativeJson.{Error, byte}
 
-  private def utf8(input: Bytes, start: Int): Either[Error, String] =
+  private def utf8(input: Bytes): Either[Error, String] =
     Either
       .catchOnly[CharacterCodingException] {
         StandardCharsets.UTF_8
@@ -23,7 +26,7 @@ private[json] object NativeJsonString:
           .decode(ByteBuffer.wrap(input.toArray))
           .toString
       }
-      .leftMap(_ => Error.StringEncoding(start))
+      .leftMap(_ => Error.InvalidUtf8Stream)
 
   private def hex(text: String, at: Int): Option[Int] =
     if text.length - at < 4 then None
@@ -37,14 +40,14 @@ private[json] object NativeJsonString:
         value.flatMap(n => Option.when(digit >= 0)(n * 16 + digit))
       }
 
-  private def unescape(text: String, start: Int): Either[Error, String] =
+  private def unescape(text: String): Either[Error, String] =
     @tailrec def loop(at: Int, pieces: List[String]): Either[Error, String] =
       if at == text.length then Right(pieces.reverseIterator.mkString)
       else if text.charAt(at) != '\\' then
         val slash = text.indexOf('\\', at)
         val end = if slash < 0 then text.length else slash
         loop(end, text.substring(at, end) :: pieces)
-      else if text.length - at < 2 then Left(Error.StringEscape(start))
+      else if text.length - at < 2 then Left(Error.InvalidUtf8Stream)
       else
         text.charAt(at + 1) match
           case '"'  => loop(at + 2, "\"" :: pieces)
@@ -65,26 +68,26 @@ private[json] object NativeJsonString:
                   hex(text, at + 8) match
                     case Some(low) if low >= 0xdc00 && low <= 0xdfff =>
                       loop(at + 12, s"${high.toChar}${low.toChar}" :: pieces)
-                    case _ => Left(Error.StringSurrogate(start))
-                else Left(Error.StringSurrogate(start))
-              case Some(low) if low >= 0xdc00 && low <= 0xdfff => Left(Error.StringSurrogate(start))
+                    case _ => Left(Error.InvalidUtf8Stream)
+                else Left(Error.InvalidUtf8Stream)
+              case Some(low) if low >= 0xdc00 && low <= 0xdfff => Left(Error.InvalidUtf8Stream)
               case Some(value) => loop(at + 6, value.toChar.toString :: pieces)
-              case None        => Left(Error.StringEscape(start))
-          case _ => Left(Error.StringEscape(start))
+              case None        => Left(Error.InvalidUtf8Stream)
+          case _ => Left(Error.InvalidUtf8Stream)
     loop(0, Nil)
 
-  def read(input: Bytes, start: Int): Either[Error, (String, Int)] =
+  def read(input: Bytes, start: Int): Either[Error, (JsonText, Int)] =
     @tailrec def end(at: Int, escaped: Boolean): Either[Error, Int] =
-      if at == input.size then Left(Error.End(at, Expected.StringEnd))
+      if at == input.size then Left(Error.StringEnd)
       else if escaped then end(at + 1, false)
       else
         byte(input, at) match
           case 34          => Right(at)
           case 92          => end(at + 1, true)
-          case c if c < 32 => Left(Error.StringControl(at, c))
+          case c if c < 32 => Left(Error.StringControl)
           case _           => end(at + 1, false)
     for
       close <- end(start + 1, false)
-      text <- utf8(input.slice(start + 1, close), start)
-      value <- unescape(text, start)
-    yield (value, close + 1)
+      text <- utf8(input.slice(start + 1, close))
+      value <- unescape(text)
+    yield (JsonText.pack(value), close + 1)
