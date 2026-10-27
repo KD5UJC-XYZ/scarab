@@ -416,6 +416,17 @@ object LogSamples:
     ),
     ForgeEvent.KeyFileGroupAccess("vrf.skey", 0x1a0),
     ForgeEvent.Skipped(BigInt(4201), ForgeSkip.Busy),
+    ForgeEvent.Skipped(
+      BigInt(4203),
+      ForgeSkip.SlotIsImmutable(
+        BigInt(4203),
+        xyz.kd5ujc.scarab.consensus
+          .BlockRef(BigInt(4203), Bytes.fromArray(Array.fill(32)(9.toByte)), BigInt(170))
+          .point,
+        BigInt(170)
+      )
+    ),
+    ForgeEvent.Skipped(BigInt(4204), ForgeSkip.BlockFromFuture(BigInt(4204), BigInt(4206))),
     ForgeEvent.Failed(BigInt(4202), ForgeError.KeyPeriodOutOfRange(33, 0, 32)),
     ForgeEvent.EpochSummary(BigInt(3), forgeStats),
     ForgeEvent.EpochSummary(BigInt(4), ForgeEpochStats())

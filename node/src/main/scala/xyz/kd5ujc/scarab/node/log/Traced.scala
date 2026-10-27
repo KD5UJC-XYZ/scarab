@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, SchedulingReport}
 import xyz.kd5ujc.scarab.network.{ConnectionEvent, DiffTime}
 import xyz.kd5ujc.scarab.ledger.ForgeKeyProblem
 import xyz.kd5ujc.scarab.node.Reports
-import xyz.kd5ujc.scarab.node.forge.ForgeEvent
+import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeSkip}
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, Rejection}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.storage.StorageEvent
@@ -33,6 +33,15 @@ object Traced:
     case ChainSync.Point.Origin => Json.obj("origin" -> true.asJson)
     case ChainSync.Point.Block(slot, hash) =>
       Json.obj("slot" -> slot.value.asJson, "hash" -> hash.hex.asJson)
+
+  /** A point as the reference renders it at the default detail level (`DNormal`): the full hash,
+    * `@`, the slot, or `genesis (origin)` (cardano-node 11.1.3 `Cardano/Node/Tracing/Render.hs`
+    * 123-135 `renderPointForDetails`, 180-184 `trimHashTextForDetails`).
+    */
+  private[log] def pointForDetails(p: ChainSync.Point): String = p match
+    case ChainSync.Point.Origin            => "genesis (origin)"
+    case ChainSync.Point.Block(slot, hash) => s"${hash.hex}@${slot.value}"
+
   private[log] def block(b: BlockRef): Json =
     Json.obj("slot" -> b.slot.asJson, "blockNo" -> b.blockNo.asJson, "hash" -> b.hash.hex.asJson)
   private[log] def anchor(b: Option[BlockRef]): Json = b.fold(Json.Null)(block)
@@ -353,6 +362,16 @@ object Traced:
         "file" -> file.asJson,
         "mode" -> ForgeKeyProblem.octal(mode).asJson
       )
+    // the reference's machine fields (cardano-node 11.1.3 `Tracers/Consensus.hs` 1282-1293); its
+    // `kind` is the event name
+    case ForgeEvent.Skipped(_, ForgeSkip.SlotIsImmutable(slot, tip, tipBlockNo)) =>
+      EventKind.SlotIsImmutable.line(
+        "slot" -> slot.asJson,
+        "tip" -> pointForDetails(tip).asJson,
+        "tipBlockNo" -> tipBlockNo.asJson
+      )
+    case ForgeEvent.Skipped(_, ForgeSkip.BlockFromFuture(currentSlot, tip)) =>
+      EventKind.BlockFromFuture.line("current slot" -> currentSlot.asJson, "tip" -> tip.asJson)
     case ForgeEvent.Skipped(slot, reason) =>
       EventKind.ForgeSkipped.line("slot" -> slot.asJson, "reason" -> reason.message.asJson)
     case ForgeEvent.Failed(slot, error) =>

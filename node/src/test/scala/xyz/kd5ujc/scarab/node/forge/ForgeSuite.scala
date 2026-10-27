@@ -451,7 +451,19 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
         _ <- h.forger.step(anchor.slot)
         immutable <- h.forger.stats.total
         all <- forgedIn(h)
+        seen <- h.seen
       yield
+        // each skip carries the fields of the reference's trace
+        assertEquals(
+          seen.collect { case s: ForgeEvent.Skipped => s },
+          Vector(
+            ForgeEvent.Skipped(tip.slot - 1, ForgeSkip.BlockFromFuture(tip.slot - 1, tip.slot)),
+            ForgeEvent.Skipped(
+              anchor.slot,
+              ForgeSkip.SlotIsImmutable(anchor.slot, anchor.point, anchor.blockNo)
+            )
+          )
+        )
         assertEquals(initial.skipped, Map.empty[ForgeSkip.Kind, Long])
         assertEquals(later.skipped, Map(ForgeSkip.Kind.BlockFromFuture -> 1L))
         assertEquals(

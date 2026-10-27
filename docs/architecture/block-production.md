@@ -62,7 +62,7 @@ Errors are a closed ADT, `ForgeError`: `KeyFile`, `KeyMismatch`, `KeyPeriodOutOf
 `SelfRejected`. Log events: `forgeStarted`, `forged` (slot, block number, hash, transaction ids, KES periods,
 stake), `adopted`, `lost` (the block did not join our chain, or was replaced at its height later),
 `kesEvolved`, `kesReloaded`, `kesReloadRefused`, `kesPersistFailed` (see "Rotating the KES key" in
-[running.md](../running.md)), `forgeSkipped`, `forgeFailed`.
+[running.md](../running.md)), `forgeSkipped`, `slotIsImmutable`, `blockFromFuture`, `forgeFailed`.
 
 The slot clock starts at the Byron genesis' `startTime` (whole seconds) when there is a Byron genesis
 file, as the reference's hard-fork combinator does, and at the Shelley `systemStart` otherwise
@@ -75,7 +75,9 @@ lost (slot battles lost at adoption, and blocks replaced later), failed, slots n
 (`busy`: the loop was still on an earlier slot; `tipTooOld`; `blockFromFuture`: the tip is in a later slot,
 the reference's `TraceBlockFromFuture`; `slotIsImmutable`: the immutable tip is in the slot or a later one,
 `TraceSlotIsImmutable`; `notConnected`), and the forge latency (slot start to adoption: count, mean,
-max). The first two reasons are also logged one by one as `forgeSkipped`. When the tip already holds the
+max). The first two reasons are also logged one by one as `forgeSkipped`; `blockFromFuture` and
+`slotIsImmutable` are logged as events of their own, with the reference's fields, at `Error` as cardano-node
+logs `Forge.Loop.BlockFromFuture` and `Forge.Loop.SlotIsImmutable`. When the tip already holds the
 slot the pool leads, the forger does what `forkBlockForging` does (`mkCurrentBlockContext`): it forges an
 alternative to that block (same height, on its predecessor), and chain selection decides between the two;
 after a boundary block it forges the boundary block's successor in the same slot. A `forgeEpoch` line

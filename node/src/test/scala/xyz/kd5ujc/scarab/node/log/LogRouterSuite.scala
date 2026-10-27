@@ -224,6 +224,19 @@ class LogRouterSuite extends CatsEffectSuite:
     )
   }
 
+  test("the human format quotes a field name with a space, as blockFromFuture's `current slot`") {
+    val line = summon[Traced[xyz.kd5ujc.scarab.node.forge.ForgeEvent]].line(
+      xyz.kd5ujc.scarab.node.forge.ForgeEvent.Skipped(
+        BigInt(4204),
+        xyz.kd5ujc.scarab.node.forge.ForgeSkip.BlockFromFuture(BigInt(4204), BigInt(4206))
+      )
+    )
+    assertEquals(
+      Render.human(line, java.time.Instant.parse("2026-10-16T12:00:00Z")),
+      "[2026-10-16T12:00:00Z][Forge.BlockFromFuture](Error) blockFromFuture \"current slot\"=4204 tip=4206"
+    )
+  }
+
   test("SLF4J finds the node's backend, and a library's line goes to the sinks as Library.Slf4j") {
     tempDir.flatMap { dir =>
       val file = dir.resolve("node.jsonl")

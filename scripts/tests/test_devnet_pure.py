@@ -519,6 +519,14 @@ class PoolOracleTest(unittest.TestCase):
         self.assertEqual(r["missed"], [30, 50])
         self.assertEqual(r["missedReasons"], {30: "busy", 50: "not reported"})
 
+    def test_missed_slot_with_a_reference_skip_event(self):
+        ev = self.events([10], [])
+        # before the last line, which ends the window
+        ev[-1:-1] = [{"event": "blockFromFuture", "at": self.at(50), "current slot": 50, "tip": 51},
+                     {"event": "slotIsImmutable", "at": self.at(60), "slot": 60, "tip": "ab@60", "tipBlockNo": 3}]
+        r = pool.missed_leader_slots(ev, {0: [10, 50, 60]}, self.SHELLEY)
+        self.assertEqual(r["missedReasons"], {50: "blockFromFuture", 60: "slotIsImmutable"})
+
     def test_epoch_without_schedule(self):
         r = pool.missed_leader_slots(self.events([10], [], end=250), {0: [10], 2: [210]}, self.SHELLEY)
         self.assertEqual(r["absentEpochs"], [1])

@@ -84,7 +84,7 @@ enum ForgeEvent:
     */
   case KeyFileGroupAccess(file: String, mode: Int)
 
-  /** A slot we cannot forge on (the tip is too old to forge from). */
+  /** A slot that was not checked for leadership, and why ([[ForgeSkip]]). */
   case Skipped(slot: BigInt, reason: ForgeSkip)
 
   /** A real problem (not simply losing the leader lottery). */
@@ -239,29 +239,46 @@ final class Forger[F[_]: Async, S](
     for
       current <- chain.get
       connected <- ready
-      tipSlot = current.tipRef.map(_.slot)
       _ <-
         if !connected then stats.skipped(geometry.epochOf(slot), ForgeSkip.Kind.NotConnected)
-        else if tipSlot.contains(slot) then
-          // the tip holds the slot: forge where the reference does, or skip when the block in the
-          // slot is the immutable anchor
-          sameSlotBase(current).fold(
-            stats.skipped(geometry.epochOf(slot), ForgeSkip.Kind.SlotIsImmutable)
-          )(forgeOn(_, slot))
-        else if tipSlot.exists(_ > slot) then
-          // a later slot is held: the reference gives up, telling the anchor from a volatile tip
-          val reason =
-            if current.blocks.isEmpty then ForgeSkip.Kind.SlotIsImmutable
-            else ForgeSkip.Kind.BlockFromFuture
-          stats.skipped(geometry.epochOf(slot), reason)
-        else forgeOn(current, slot)
+        else blockContext(current, slot).fold(skipped(slot, _), forgeOn(_, slot))
     yield ()
+
+  /** The chain to forge on in `slot`, as `forkBlockForging` picks it through
+    * `mkCurrentBlockContext` (consensus 82ecba329 NodeKernel.hs:585 and 831–891), or why there is
+    * none.
+    *
+    * Without a volatile block the block follows the anchor (the immutable tip) if the anchor is in
+    * an earlier slot, and otherwise the slot is immutable (`TraceSlotIsImmutable`, 846–850). A tip
+    * in an earlier slot is extended; a tip in a later one gives up (`TraceBlockFromFuture`, 880).
+    * When the tip holds the slot (the `EQ` case, 883–891), a boundary block is extended in its own
+    * slot (885–888): the block follows it with the next number, as after any tip
+    * (`blockContextFromPrevHeader`, whose `succ` is right for a boundary block, 819–820). Any other
+    * block gets an alternative, "same block no and same predecessor" (889–891): the chain without
+    * its tip, which is the anchor when the tip is the only volatile block. Chain selection then
+    * decides between the two as for any pair of blocks of one height ([[Follower.adoptForged]]).
+    */
+  private def blockContext(
+      current: VolatileChain[S],
+      slot: BigInt
+  ): Either[ForgeSkip, VolatileChain[S]] =
+    current.blocks.lastOption match
+      case None =>
+        current.anchor.block match
+          case Some(anchor) if anchor.slot >= slot =>
+            Left(ForgeSkip.SlotIsImmutable(slot, anchor.point, anchor.blockNo))
+          case _ => Right(current)
+      case Some((tip, _)) =>
+        if tip.slot < slot then Right(current)
+        else if tip.slot > slot then Left(ForgeSkip.BlockFromFuture(slot, tip.slot))
+        else if tip.boundary then Right(current)
+        else Right(current.copy(blocks = current.blocks.dropRight(1)))
 
   /** Forge on `base`, the chain the block is built on, unless its tip is too old to forge from. The
     * reference forecasts the ledger view from the ledger at `bcPrevPoint`, the predecessor of the
     * block to forge (consensus 82ecba329 NodeKernel.hs:602), and gives up when the slot is outside
     * the forecast range (`TraceNoLedgerView`, 613-629). The tip of `base` is that predecessor, also
-    * when the block is an alternative to the one in the slot ([[sameSlotBase]]).
+    * when the block is an alternative to the one in the slot ([[blockContext]]).
     */
   private def forgeOn(base: VolatileChain[S], slot: BigInt)(using
       Handle[F, NodeError],
@@ -271,21 +288,6 @@ final class Forger[F[_]: Async, S](
     if slot - tipSlot.getOrElse(BigInt(0)) > maxTipAge then
       skipped(slot, ForgeSkip.TipTooOld(tipSlot))
     else forge(base, slot)
-
-  /** The chain to forge on when its tip already holds the slot, as `forkBlockForging` picks it
-    * through `mkCurrentBlockContext` (consensus 82ecba329 NodeKernel.hs:585 and 831–891, the `EQ`
-    * case at 883–891). A boundary block is extended in its own slot (885–888): the block follows it
-    * with the next number, as after any tip (`blockContextFromPrevHeader`, whose `succ` is right
-    * for a boundary block, 819–820). Any other block gets an alternative, "same block no and same
-    * predecessor" (889–891): the chain without its tip, which is the anchor when the tip is the
-    * only volatile block. Chain selection then decides between the two as for any pair of blocks of
-    * one height ([[Follower.adoptForged]]). `None` when the tip is the anchor itself: the block in
-    * the slot is immutable, whatever its kind (`TraceSlotIsImmutable`, 846–850).
-    */
-  private def sameSlotBase(current: VolatileChain[S]): Option[VolatileChain[S]] =
-    current.blocks.lastOption.map { (tip, _) =>
-      if tip.boundary then current else current.copy(blocks = current.blocks.dropRight(1))
-    }
 
   private def lift[A](e: Either[ForgeError, A])(using Handle[F, NodeError]): F[A] =
     e.fold(_.raise[F, A], F.pure)
