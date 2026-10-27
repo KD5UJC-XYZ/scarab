@@ -44,7 +44,7 @@ class NativeJsonSuite extends FunSuite:
             // Iteration is observed directly; sorting here would conceal a product ordering error.
             (
               row("object", Json.fromInt(fields.size)),
-              fields.toVector.toList.flatMap((key, v) => List(Work.Key(key), Work.Visit(v)))
+              fields.toVector.toList.flatMap((key, v) => List(Work.Key(key.text), Work.Visit(v)))
             )
         walk(children ::: rest, event :: acc)
     walk(List(Work.Visit(value)), Nil)
@@ -65,8 +65,10 @@ class NativeJsonSuite extends FunSuite:
     test(field[String](c, "name")) {
       val raw = Bytes.fromHex(field[String](c, "inputHex")).fold(e => fail(e.toString), identity)
       val native = field[Json](c, "native")
-      val result = PreprodDeepTx.onSmallStack(NativeJson.parse(raw).map(valueEvents))
+      val result = PreprodDeepTx.onSmallStack(NativeJson.decodeStrict(raw).map(valueEvents))
       assertEquals(result.isRight, field[Boolean](native, "accepted"))
-      result.foreach(events => assertEquals(events, field[Vector[Json]](native, "events")))
+      result match
+        case Right(events) => assertEquals(events, field[Vector[Json]](native, "events"))
+        case Left(error)   => assertEquals(error.message, field[String](native, "error"))
     }
   }
