@@ -21,6 +21,7 @@ import xyz.kd5ujc.scarab.node.{
   SyncAdvisory,
   Topology
 }
+import xyz.kd5ujc.scarab.network.BearerServer
 import xyz.kd5ujc.scarab.network.selection.{
   AfterSlot,
   Churn,
@@ -137,6 +138,11 @@ enum NodeEvent:
 
   /** What the inbound governor (G2) or the node-to-client listener did on a connection. */
   case Inbound(remote: String, event: InboundEvent)
+
+  /** The node-to-client socket or its directory is open to more users than the check after the bind
+    * allows ([[xyz.kd5ujc.scarab.network.BearerServer.InsecureLocalSocket]]).
+    */
+  case InsecureLocalSocket(warning: BearerServer.InsecureLocalSocket)
 
   /** A decision of the peer governor or what became of one (G1). */
   case PeerSelection(trace: Trace[SocketAddress[Host]])
@@ -505,6 +511,16 @@ object NodeEvent:
         case InboundEvent.Closed(reason) => inbound(remote, "closed", Some(reason.message))
         case InboundEvent.Refused(reason) =>
           inbound(remote, "refused", Some(reason.message)).at(Severity.Warning)
+    case InsecureLocalSocket(warning) =>
+      // the reference's machine fields (ouroboros-network 2fb69829,
+      // `ouroboros-network/tracing/Ouroboros/Network/Tracing/PeerSelection.hs` 73-82), its kind
+      // being the event; the mode in octal after `0o`, as `showOct`
+      val (kind, path, mode) = warning match
+        case BearerServer.InsecureLocalSocket.Permissions(path, mode) =>
+          (EventKind.InsecureLocalSocketPermissions, path, mode)
+        case BearerServer.InsecureLocalSocket.Directory(path, mode) =>
+          (EventKind.InsecureLocalSocketDirectory, path, mode)
+      kind.line("path" -> path.asJson, "mode" -> s"0o${Integer.toOctalString(mode)}".asJson)
     case PeerEstablishmentFailed(peer, error) =>
       EventKind.PeerSelectionPromote
         .line(
