@@ -400,7 +400,7 @@ class UtxoStoreSuite extends ScalaCheckSuite:
     }
   }
 
-  test("a memory checkpoint replaces its file atomically and leaves no temporary file") {
+  test("a stale temporary file beside a memory checkpoint is ignored and then overwritten") {
     val dir = tempDir()
     val cp = Path.fromNioPath(dir) / "cp"
     val file = dir.resolve("cp").resolve("utxo.bin")

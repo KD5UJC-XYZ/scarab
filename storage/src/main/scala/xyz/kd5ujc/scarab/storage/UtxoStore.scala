@@ -340,8 +340,11 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
       case Left(e)  => StorageError.Io(what, e).raise[F, A]
     }
 
-  /** Written through [[AtomicFile.replaceStreaming]]: a temporary file, fsync, atomic rename and
-    * fsync of the directory, so a crash leaves the previous checkpoint or this one, never a prefix.
+  /** Written through [[AtomicFile.replaceStreaming]] (a temporary file, fsync, rename and fsync of
+    * the directory), so `utxo.bin` is durable before [[UtxoBacking.checkpoint]] digests it and the
+    * snapshot that binds it is written. That caller gives each anchor a fresh directory; a torn
+    * file would be refused by the digest at admission ([[CheckpointDigest]]), and its snapshot with
+    * it.
     */
   def checkpoint(dir: Path)(using Raise[F, StorageError]): F[Unit] =
     state.get.flatMap { c =>
