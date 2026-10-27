@@ -283,7 +283,13 @@ def main():
     fl.add_argument("--duration", type=int, default=600, help="seconds of the schedule, from the moment the chain is running (at least 150)")
     fl.add_argument("--settle", type=int, default=90, help="seconds after the last heal in which all tips must become equal")
     fl.add_argument("--schedule", help="run this schedule file (the fault-schedule.json of an earlier run) instead of drawing one from the seed")
-    fl.add_argument("--epoch-length", type=int, default=500, help="slots per epoch")
+    # issue 527: the reference's own testers run restart and disconnect cases on a mainnet-like k and epoch, because
+    # ouroboros-network's reconnection delays are tuned for them; at the devnet's k = 5 the reference fails these schedules
+    fl.add_argument("--security-param", type=int, default=100, help="k of the Byron and Shelley genesis")
+    fl.add_argument("--epoch-length", type=int, default=20000,
+                    help="slots per epoch (default 10k/f at the default k and f = 0.05, the ratio of the public networks)")
+    fl.add_argument("--kes-slots", type=int, default=1000,
+                    help="slotsPerKESPeriod: the pools' 60 KES evolutions must outlast the run (100 s periods at 0.1 s slots)")
     fl.add_argument("--start-delay", type=int, default=15, help="seconds from now to the system start")
     fl.add_argument("--byron-start-offset", type=int, default=0, help="seconds the Byron genesis' startTime is set off the Shelley systemStart")
     fl.add_argument("--keep", action="store_true", help="leave the reference container running")

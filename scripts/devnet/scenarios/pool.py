@@ -74,7 +74,7 @@ def pool_environment(args):
     start = int(time.time()) + args.start_delay
     shelley = read_json(args.name, f"{ENV}/shelley-genesis.json")
     shelley["systemStart"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(start))
-    shelley["slotsPerKESPeriod"] = POOL_KES_SLOTS
+    shelley["slotsPerKESPeriod"] = getattr(args, "kes_slots", POOL_KES_SLOTS)
     if getattr(args, "rotate", False):
         shelley["maxKESEvolutions"] = args.max_kes_evolutions  # a small window: the rotation is what keeps the pool forging
     # The reference nodes start their clock at the Byron genesis' startTime, not at the Shelley systemStart
@@ -83,6 +83,10 @@ def pool_environment(args):
     # `--byron-start-offset` skews the Byron one on purpose to check that the Scala node follows the Byron one.
     byron = read_json(args.name, f"{ENV}/byron-genesis.json")
     byron["startTime"] = start + args.byron_start_offset
+    k = getattr(args, "security_param", None)
+    if k is not None:  # both eras' k, as cardano-testnet writes them (`Testnet/Components/Configuration.hs`)
+        shelley["securityParam"] = k
+        byron["protocolConsts"]["k"] = k
     put_file(args.name, f"{ENV}/byron-genesis.json", json.dumps(byron, indent=2))
     put_file(args.name, f"{ENV}/shelley-genesis.json", json.dumps(shelley, indent=2))
     # what the rest of the scenario measures slots against: the network's clock

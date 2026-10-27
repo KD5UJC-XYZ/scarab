@@ -5,10 +5,12 @@ name: Nightly fault injection
 # seeded, randomized schedule of network faults (tc netem latency and loss, partitions and heals, node crashes
 # and restarts). It is a separate workflow so that it neither lengthens nor disturbs the `e2e` jobs. Each night
 # draws a fresh seed from the run number; `workflow_dispatch` reruns any seed. The schedule file is the replay:
-# see docs/design/adversarial-schedules.md.
+# see docs/design/adversarial-schedules.md. The nightly run (600 s) stays inside the devnet's first epoch (2,000 s,
+# issue 527); the weekly one runs 2,400 s, so that an epoch boundary falls inside the faults.
 on:
   schedule:
     - cron: '29 5 * * *'
+    - cron: '29 7 * * 0'
   workflow_dispatch:
     inputs:
       seed:
@@ -16,7 +18,7 @@ on:
         required: false
         default: ''
       duration:
-        description: 'Seconds of the fault schedule (150 to 1800)'
+        description: 'Seconds of the fault schedule (150 to 3600)'
         required: false
         default: '600'
 
@@ -31,7 +33,7 @@ jobs:
   faults:
     name: faults
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 90
     defaults:
       run:
         shell: bash
@@ -42,14 +44,17 @@ jobs:
       SEED_INPUT: ${{ inputs.seed }}
       DURATION_INPUT: ${{ inputs.duration }}
       RUN_NUMBER: ${{ github.run_number }}
+      EVENT_SCHEDULE: ${{ github.event.schedule }}
     steps:
       - name: Choose and validate the seed and the duration
         run: |
           seed="${SEED_INPUT:-$RUN_NUMBER}"
-          duration="${DURATION_INPUT:-600}"
+          default=600
+          if [ "$EVENT_SCHEDULE" = '29 7 * * 0' ]; then default=2400; fi
+          duration="${DURATION_INPUT:-$default}"
           if ! [[ "$seed" =~ ^[0-9]{1,18}$ ]]; then echo "seed must be an integer, got '$seed'" >&2; exit 1; fi
-          if ! [[ "$duration" =~ ^[0-9]{3,4}$ ]] || [ "$duration" -lt 150 ] || [ "$duration" -gt 1800 ]; then
-            echo "duration must be 150 to 1800 seconds, got '$duration'" >&2; exit 1
+          if ! [[ "$duration" =~ ^[0-9]{3,4}$ ]] || [ "$duration" -lt 150 ] || [ "$duration" -gt 3600 ]; then
+            echo "duration must be 150 to 3600 seconds, got '$duration'" >&2; exit 1
           fi
           echo "FAULT_SEED=$seed" >> "$GITHUB_ENV"
           echo "FAULT_DURATION=$duration" >> "$GITHUB_ENV"

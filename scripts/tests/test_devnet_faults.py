@@ -18,6 +18,9 @@ from devnet import faultplan, netfaults, util
 from devnet.scenarios import faults
 
 PARAMS = (5, 0.05, 0.1)   # k, active slot coefficient, slot length of a cardano-testnet environment
+# the faults devnet's genesis under the scenario's defaults (issue 527)
+GENESIS = {"securityParam": 100, "activeSlotsCoeff": 0.05, "slotLength": 0.1, "epochLength": 20000,
+           "maxKESEvolutions": 60, "slotsPerKESPeriod": 1000}
 
 
 class ScheduleTests(unittest.TestCase):
@@ -91,8 +94,30 @@ class ScheduleTests(unittest.TestCase):
 
     def test_partition_bound_follows_the_genesis(self):
         self.assertEqual(faultplan.max_partition_seconds(5, 0.05, 0.1), 10)
-        self.assertEqual(faultplan.max_partition_seconds(2160, 0.05, 1), 43200)
+        self.assertEqual(faultplan.max_partition_seconds(2160, 0.05, 1), 100)
+        self.assertEqual(faultplan.max_partition_seconds(3, 0.05, 0.1), 6)
         self.assertEqual(faultplan.max_partition_seconds(1, 0.5, 0.1), faultplan.MIN_PARTITION)
+
+    def test_the_default_genesis_carries_the_longest_run(self):
+        self.assertEqual(faults.genesis_problems(GENESIS, 15 + 2400 + 90), [])
+        self.assertEqual(faults.genesis_problems(GENESIS, 15 + 3600 + 90), [])
+
+    def test_a_genesis_that_cannot_carry_the_run_is_refused(self):
+        short_epoch = faults.genesis_problems(dict(GENESIS, epochLength=8000), 600)
+        self.assertEqual(len(short_epoch), 1)
+        self.assertIn("4k/f = 8000", short_epoch[0])
+        # the sandbox's 250-slot KES periods end after 1500 s
+        short_keys = faults.genesis_problems(dict(GENESIS, slotsPerKESPeriod=250), 15 + 1800 + 90)
+        self.assertEqual(len(short_keys), 1)
+        self.assertIn("1500 s", short_keys[0])
+
+    def test_a_larger_k_draws_the_same_schedule(self):
+        # issue 527: k is headroom after a fault, not room for longer partitions
+        for seed in range(50):
+            small = faultplan.generate(seed, 600, *PARAMS)
+            large = faultplan.generate(seed, 600, 100, *PARAMS[1:])
+            self.assertEqual(large["actions"], small["actions"], seed)
+            self.assertEqual(large["inputs"]["k"], 100)
 
     def test_all_kinds_occur(self):
         kinds = {e["kind"] for s in range(50) for e in faultplan.generate(s, 600, *PARAMS)["episodes"]}
@@ -305,7 +330,8 @@ class ExecutionTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         root = pathlib.Path(tmp.name) / "run"
         plan = {"seed": 1, "duration": 0, "episodes": [], "actions": list(actions), "quiet": [], "inputs": {"k": 5}}
-        args = SimpleNamespace(name="n", schedule=None, seed=1, duration=0, settle=settle, keep=True, pool1=pool1)
+        args = SimpleNamespace(name="n", schedule=None, seed=1, duration=0, settle=settle, keep=True, pool1=pool1,
+                               start_delay=15)
         clock = [0]
 
         def tick():
@@ -335,7 +361,7 @@ class ExecutionTests(unittest.TestCase):
 
         stubs = [patch.object(faults, "data_root", return_value=root),
                  patch.object(faults, "start_reference", side_effect=start_reference or started),
-                 patch.object(faults, "pool_environment", return_value=({2: 4002, 3: 4003}, {})),
+                 patch.object(faults, "pool_environment", return_value=({2: 4002, 3: 4003}, GENESIS)),
                  patch.object(faults, "load_plan", return_value=plan),
                  patch.object(faults, "put_file"),
                  patch.object(faults.subprocess, "run", return_value=SimpleNamespace(stdout=b"{}")),
