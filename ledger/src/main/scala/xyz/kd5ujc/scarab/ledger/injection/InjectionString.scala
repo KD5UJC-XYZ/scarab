@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
   *
   * The reference unescapes and validates bytes in one pass. Decoding UTF-8 first and then
   * unescaping the text is an implementation difference with identical results, approved by the
-  * owner on 2026-10-27.
+  * owner and recorded in #474 (2026-10-27).
   */
 private[injection] object InjectionString:
   private def utf8(bytes: Bytes): Option[String] =

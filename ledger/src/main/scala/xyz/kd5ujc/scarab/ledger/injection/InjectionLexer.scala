@@ -119,8 +119,8 @@ private[injection] object InjectionLexer:
 
   // Integer concatenation is exact: left * 10^rightWidth + right. Midpoint splitting limits
   // the JVM decimal constructor's quadratic work without changing Scientific's representation.
-  // The owner approved this construction on 2026-10-27 as an implementation difference with
-  // results identical to the reference's one-pass digit fold (`CLexer.hs:130-172`). The measured
+  // An owner-approved implementation difference (recorded in #474, 2026-10-27) with results
+  // identical to the reference's one-pass digit fold (`CLexer.hs:130-172`). The measured
   // leaf size balances CPU time against intermediate allocation; see
   // docs/performance/injection-coefficients.md.
   private def decimalCoefficient(digits: String): BigInt =

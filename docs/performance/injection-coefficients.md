@@ -40,8 +40,8 @@ stores that pair without normalization. Grammar, signs, fraction width, wrapped 
 chunk-sensitive acceptance and native partial-number limits remain unchanged. The algorithm does
 not impose a new digit limit. The returned `Scientific` holds the same coefficient and exponent the
 reader computed before; equality compares normalized values, as scientific's `Eq` does. The owner
-approved this midpoint construction on 2026-10-27 as an implementation difference whose results are
-identical to the reference's one-pass digit fold.
+approved this midpoint construction as an implementation difference whose results are identical to
+the reference's one-pass digit fold (recorded in #474, 2026-10-27).
 
 Measurements used the same Docker JDK 21.0.11 image, a two-CPU quota, `-Xss8m` and a 12-GiB
 container memory limit. Each row measures the unchanged target's complete parse and existing
