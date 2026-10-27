@@ -344,7 +344,9 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
     * the directory), so `utxo.bin` is durable before [[UtxoBacking.checkpoint]] digests it and the
     * snapshot that binds it is written. That caller gives each anchor a fresh directory; a torn
     * file would be refused by the digest at admission ([[CheckpointDigest]]), and its snapshot with
-    * it.
+    * it. The reference writes its in-memory tables without an fsync (ouroboros-consensus 82ecba32
+    * `Storage/LedgerDB/V2/InMemory.hs` 216-224); forcing them is an owner-approved deviation
+    * (2026-10-27).
     */
   def checkpoint(dir: Path)(using Raise[F, StorageError]): F[Unit] =
     state.get.flatMap { c =>
