@@ -115,9 +115,10 @@ object JsonObject:
           else loop(i + Character.charCount(x), j + Character.charCount(y))
       loop(0, 0)
 
-  val empty: JsonObject = TreeMap.empty(using TextOrder)
-
-  /** `KeyMap.fromList`: when a key repeats, its last pair wins. */
+  /** `KeyMap.fromList` (`Data/Aeson/KeyMap.hs:239-247`): when a key repeats, its last pair wins.
+    * aeson's `Text` cannot hold a lone surrogate and the readers refuse one; for such a key the
+    * order is still total and agrees with `String` equality.
+    */
   def fromList(pairs: IterableOnce[(String, JsonValue)]): JsonObject =
     TreeMap.from(pairs)(using TextOrder)
 

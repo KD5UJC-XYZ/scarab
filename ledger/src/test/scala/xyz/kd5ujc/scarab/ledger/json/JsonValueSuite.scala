@@ -51,13 +51,13 @@ class JsonValueSuite extends FunSuite:
   }
 
   test("an object keeps the last pair of a key and orders keys by code point") {
-    val supplementary = "😀"
+    val supplementary = "\uD83D\uDE00"
     val o = JsonObject.fromList(
-      List("b" -> JsonValue.Null, supplementary -> JsonValue.Null, "￿" -> JsonValue.Null)
+      List("b" -> JsonValue.Null, supplementary -> JsonValue.Null, "\uFFFF" -> JsonValue.Null)
         :+ ("b" -> JsonValue.Bool(true))
     )
     // UTF-16 code units would put the surrogate pair (0xD83D) before U+FFFF.
-    assertEquals(o.toVector.map(_._1), Vector("b", "￿", supplementary))
+    assertEquals(o.toVector.map(_._1), Vector("b", "\uFFFF", supplementary))
     assertEquals(o.get("b"), Some(JsonValue.Bool(true)))
   }
 
@@ -72,6 +72,11 @@ class JsonValueSuite extends FunSuite:
       JsonValue.Object(JsonObject.fromList(List("j" -> JsonValue.Null, "k" -> number(50, -1))))
     )
     assertNotEquals(o, JsonValue.Object(JsonObject.fromList(List("k" -> number(5, 0)))))
+    val pairs = List("z" -> number(1, 0), "a" -> JsonValue.Null, "m" -> number(10, -1))
+    assertEquals(
+      JsonValue.Object(JsonObject.fromList(pairs)).hashCode,
+      JsonValue.Object(JsonObject.fromList(pairs.reverse)).hashCode
+    )
   }
 
   test("parsed numbers keep their representation and compare by value") {

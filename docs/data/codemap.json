@@ -22,11 +22,11 @@
     "responsibility": "aeson's Value with Scientific numbers and ordered objects; unused strict native raw JSON Value parser with original-token validation",
     "entryPoints": [
        "JsonValue",
-        "NativeJson"
+       "NativeJson"
     ],
     "suites": [
        "JsonValueSuite",
-        "NativeJsonSuite"
+       "NativeJsonSuite"
     ],
     "docs": [
        "docs/compatibility/native-genesis-start.md"
