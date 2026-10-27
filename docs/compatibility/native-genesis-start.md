@@ -22,3 +22,23 @@ The [Byron-origin cost-model oracle](../../fixtures/ntc-golden/byron-cost-models
 ## Explicitly unchecked or unconfirmed
 
 Genesis pool relays/metadata and hash-checked `InjectionFromFile` support remain [#499](https://github.com/KD5UJC-XYZ/scarab/issues/499), approved for separate reference-alignment changes. Existing required-field/default and malformed-input parser differences remain [#497](https://github.com/KD5UJC-XYZ/scarab/issues/497). Preserving validation of the tested malformed extra cost model does not establish complete genesis-parser conformance. #496 is a required predecessor of the legacy deletion. Signed reserve arithmetic depends on [#492](https://github.com/KD5UJC-XYZ/scarab/issues/492). Focused boundary tests pass on the integrated arithmetic implementation; final predecessor integration, independent review and complete stage gates remain required. The twelve-case native API corpus covers Addr/Coin serialization and compaction; source-selection ordering is checked against the cited source with Scala regressions, not a claimed whole-transition native oracle. File loading is still unimplemented.
+
+## Strict raw JSON prerequisite (#497)
+
+The unused `NativeJson` primitive mirrors installed Aeson 2.2.5.0's strict byte-to-Value boundary
+(`Decoding/ByteString.hs:33-119,143-175,197-276`, `Decoding/Conversion.hs:56-94`,
+`Decoding.hs:40-60`). Every original token is validated before first-wins duplicate collapse.
+Objects preserve the installed ordered KeyMap's UTF-8/Text traversal; numbers retain Scientific
+coefficient and signed-64 exponent without normalization. Explicit frames admit outside-data
+nesting without a configured depth cutoff.
+
+[All 350 actual native cases](../../fixtures/reference/native-json/README.md) retain the 302
+original upstream JSONTestSuite parsing inputs and 48 source-derived controls, with no filename
+category used as an expected-failure exemption. Full flat Value events make every accepted
+primitive/order observable without deep recursive equality. All350 small-stack Scala checks pass;
+temporary duplicate/order/number-normalization faults fail19 assertions and exact restoration
+passes. Native error strings are preserved but are not a Scala diagnostic-wording claim.
+
+This parser is not wired into genesis loaders. Original-file hash/parse ordering, required fields,
+field decoders and multi-file failure order remain incomplete under #497. The separate permissive
+json-stream mechanism for injection files must not reuse this strict grammar.

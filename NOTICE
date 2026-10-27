@@ -218,3 +218,8 @@ fixtures/reference/ntc-wallet-peers-11.1.3 retains original cardano-node 11.1.3 
 public genesis/configuration and synthetic native ledger states from throwaway networks. No signing
 keys are included. The manifest and README pin runtime/source provenance; upstream Apache-2.0
 notices remain in fixtures/licenses. The capture tools are original Apache-2.0 code.
+fixtures/reference/native-json retains all 302 original JSONTestSuite parsing inputs distributed
+with aeson 2.2.5.0, plus 48 original controls and unchanged native decoder observations.
+JSONTestSuite is Copyright (c) 2016 Nicolas Seriot, MIT licensed; the complete license is in
+fixtures/reference/native-json/JSONTestSuite-LICENSE. Original-byte/archive identities and the
+license source are in provenance.json. The observer and Scala implementation are Apache-2.0.

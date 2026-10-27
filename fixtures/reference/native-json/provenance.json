@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-10-26",
+  "scope": "Unused strict raw byte-to-Value primitive; no genesis loader/field or file-injection integration",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "imageId": "sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef",
+  "compiler": "ghc-9.10.3",
+  "freezeSha256": "f7e6220cf1d723bb8722b4a7e90be5993c4f1fa5a380e64a13c3303546e8a68c",
+  "aeson": {
+    "version": "2.2.5.0",
+    "archiveSha256": "e22f9883adce9e02d77de6a1bba36f2f98d322c8a9fa3bc51596d31493d00ac5",
+    "orderedKeyMap": true,
+    "keyMapSources": [
+      {
+        "member": "aeson-2.2.5.0/src/Data/Aeson/Key.hs",
+        "sha256": "9084bffb98c982e016bc790951be0733ac61dd445864f3bfebc53db4efde1261"
+      },
+      {
+        "member": "aeson-2.2.5.0/src/Data/Aeson/KeyMap.hs",
+        "sha256": "9a3eb9423e13016fbb79581d1567138813f9a06c814be6b028017b5731ebfd74"
+      }
+    ],
+    "decodingSources": [
+      {
+        "path": "aeson-2.2.5.0/src/Data/Aeson/Decoding/ByteString.hs",
+        "sha256": "8686dd60166648c7da5d780b4444560bb53e7e20ff6f4921064abcc4952a4028"
+      },
+      {
+        "path": "aeson-2.2.5.0/src/Data/Aeson/Decoding/Conversion.hs",
+        "sha256": "e13173af9e3b59a5a396ed2b301d1521c99891d4754af2f2743ff6b1e8f00cff"
+      },
+      {
+        "path": "aeson-2.2.5.0/src/Data/Aeson/Decoding.hs",
+        "sha256": "b4152cd651cd5557900f7a0914b0863523ddf38933e2402ef655a9e8fe5e7a2e"
+      },
+      {
+        "path": "aeson-2.2.5.0/src/Data/Aeson/Internal/Unescape.hs",
+        "sha256": "9395dc5d9882b698aad2a95cc40691e08630a70fa13066a4df41b63d4b287d3e"
+      }
+    ]
+  },
+  "caseCount": 350,
+  "accepted": 142,
+  "refused": 208,
+  "upstreamInputs": {
+    "count": 302,
+    "file": "cases.jsonl.gz",
+    "namePrefix": "upstream/",
+    "archiveMemberField": "sourceMember",
+    "originalPayloadSha256Field": "sha256",
+    "nameMapping": "Strip the upstream/ prefix from each case name to recover the original JSONTestSuite filename."
+  },
+  "syntheticControlCount": 48,
+  "license": {
+    "url": "https://github.com/nst/JSONTestSuite/blob/master/LICENSE",
+    "gitBlob": "c4b3621d5d59f56b7b43d84386e5501f72f4ce9c",
+    "file": "JSONTestSuite-LICENSE"
+  },
+  "comparison": "Full native acceptance and ordered flat Value events; Scientific coefficient/exponent strings retain representation. Native error text retained, not Scala diagnostic parity.",
+  "artifacts": {
+    "scripts/oracle/native-json/Main.hs": "f6f313f5918b28031fd801da6dc74a9b8ccc67f189a70f755d5b45441bb798e1",
+    "scripts/oracle/native-json/run.py": "ca8a6c17b0ae95e0613b0b0aefd98f01dbefdd6a175636ed18dcc299e5014d5d",
+    "fixtures/reference/native-json/cases.jsonl.gz": "06f14a3fdf75ebdb0df800c68737bc2f41aa86e26fe0d97bcd34a70af1e86cbb",
+    "fixtures/reference/native-json/JSONTestSuite-LICENSE": "8bd0e0578be788c617ea01d18b2a8146e3746ae50bddadc65a5f9d3aad08ad49"
+  }
+}

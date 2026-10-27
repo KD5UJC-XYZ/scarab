@@ -624,14 +624,16 @@
       "evidence": {
         "suites": [
           "GenesisStartSuite",
-          "DuplicateWithdrawalsLedgerSuite"
+          "DuplicateWithdrawalsLedgerSuite",
+          "NativeJsonSuite"
         ],
         "issues": [
           488,
           496
         ],
         "paths": [
-          "fixtures/devnet/lsq/genesis"
+          "fixtures/devnet/lsq/genesis",
+          "fixtures/reference/native-json"
         ]
       },
       "limitations": {
