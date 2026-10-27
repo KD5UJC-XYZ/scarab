@@ -102,9 +102,15 @@ at most 64 KES evolutions (`Sum6KES`), and an update quorum above half the genes
 start does not call it, because the reference node does not: cardano-node 11.1.3 instantiates only
 the Cardano protocol (`Cardano/Node/Protocol.hs:22-45`), which reads the Shelley genesis without
 validating it (`Cardano/Node/Protocol/Cardano.hs:122-125`), and ouroboros-consensus `82ecba32`
-(the release that node builds with) calls it only through `assertWithMsg` (`Cardano/Node.hs:596-597`), a no-op unless the
-`asserts` flag is set (`Util/Assert.hs:9-13`, flag default off); release builds leave it off. Whether
-the node start should run it is open for the owner.
+(the release that node builds with) calls it only through `assertWithMsg`
+(`Cardano/Node.hs:596-597`), a no-op unless the `asserts` flag is set (`Util/Assert.hs:9-13`, flag
+default off); release builds leave it off. The node start matches the release node (decided in
+#474): the former refusal of an epoch no longer than `4k/f` (`EpochTooShort`) is removed. The
+deadlines that subtract a window from the next epoch's first slot are monus, as the reference's
+`*-` (`Slot.hs:63-64`): the MIR certificate deadline (`checkSlotNotTooLate`,
+`Shelley/Rules/Deleg.hs:396-404`) and the protocol-update point of no return
+(`getTheSlotOfNoReturn`, `Slot.hs:106-114`), so a window past that slot gives slot 0, as
+`PreConwayRulesSuite` checks for the MIR refusal.
 
 Evidence: `PositiveUnitIntervalSuite` (19 against 20 decimal places, `1e-19`, negative before
 precision, `0`, `1`, `1e19`, `1e20`, the object form's reduction and `Word64` limits, missing,
@@ -115,9 +121,7 @@ boundary, the `Double` case `21 / 0.7`, the `3 * k` wrap, the order of several f
 texts, and the three network configurations passing).
 
 Not the reference's and kept: `EpochGeometry.checked` refuses a slot length or epoch length that is
-not positive (an approved deviation, recorded in #474) and an epoch no longer than `4k/f`
-(`EpochTooShort`; its removal is pending in #474, because the MIR certificate deadline
-`checkSlotNotTooLate` subtracts without the reference's monus); slot lengths are whole
+not positive (an approved deviation, recorded in #474); slot lengths are whole
 milliseconds (`FractionalSlotMilliseconds`), not `Micro`; `networkMagic`, `epochLength`,
 `slotsPerKESPeriod`, `maxKESEvolutions` and `maxLovelaceSupply` are not read with their `Word32` or
 `Word64` instances; `NodeSetup` refuses a security parameter above 2^31 - 1

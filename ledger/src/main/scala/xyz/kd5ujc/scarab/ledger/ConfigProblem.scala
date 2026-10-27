@@ -32,7 +32,6 @@ enum ConfigProblem:
   case CostModelLanguage(value: String)
   case NonPositive(context: String, value: BigDecimal)
   case Negative(context: String, value: BigDecimal)
-  case EpochTooShort(epochLength: Long, randomnessWindow: state.Word64)
 
   /** A genesis number the reference's `FromJSON` instance refuses. */
   case GenesisNumber(field: GenesisNumberField, cause: json.NumberError)

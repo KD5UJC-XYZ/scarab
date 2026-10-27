@@ -108,11 +108,10 @@ final case class EpochGeometry(
 
 object EpochGeometry:
   /** The geometry of the Shelley genesis values. `securityParam` and `activeSlotsCoeff` are bounded
-    * by their types as the reference's `FromJSON` reads them. The three checks here are not the
-    * reference's. A slot length and an epoch length that are not positive are refused: an approved
-    * deviation, recorded in #474 (the reference accepts 0, and the era arithmetic here divides by
-    * both). An epoch no longer than 4k/f is refused (`EpochTooShort`), which the reference node
-    * does not do (see [[ShelleyGenesisValidation]]); its removal is pending in #474.
+    * by their types as the reference's `FromJSON` reads them. A slot length and an epoch length
+    * that are not positive are refused: an approved deviation, recorded in #474 (the reference
+    * accepts 0, and the era arithmetic here divides by both). Nothing else is checked, as the
+    * reference node runs no genesis validation (see [[ShelleyGenesisValidation]]).
     */
   def checked(
       systemStart: Instant,
@@ -121,12 +120,11 @@ object EpochGeometry:
       securityParam: NonZero[Word64],
       activeSlotsCoeff: PositiveUnitInterval
   ): Either[ConfigError, EpochGeometry] =
-    val g =
-      EpochGeometry(systemStart, slotLengthMillis, epochLength, securityParam, activeSlotsCoeff)
     if slotLengthMillis <= 0 then
       Left(ConfigError(ConfigProblem.NonPositive("slot length", BigDecimal(slotLengthMillis))))
     else if epochLength <= 0 then
       Left(ConfigError(ConfigProblem.NonPositive("epoch length", BigDecimal(epochLength))))
-    else if g.randomnessStabilisationWindow.toBigInt >= epochLength then
-      Left(ConfigError(ConfigProblem.EpochTooShort(epochLength, g.randomnessStabilisationWindow)))
-    else Right(g)
+    else
+      Right(
+        EpochGeometry(systemStart, slotLengthMillis, epochLength, securityParam, activeSlotsCoeff)
+      )

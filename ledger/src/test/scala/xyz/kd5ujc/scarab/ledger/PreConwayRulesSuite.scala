@@ -1144,6 +1144,21 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     assertEquals(rule(mirTx(holding, in, d, greedy)), "InsufficientForInstantaneousRewardsDELEG")
   }
 
+  test("the MIR deadline is monus: 3k/f past the next epoch's first slot gives slot 0, not below") {
+    // `checkSlotNotTooLate`, `firstSlot *- Duration sp` (cardano-ledger f649f975,
+    // `Shelley/Rules/Deleg.hs:396-404`, `Slot.hs:63-64`)
+    val (s, in, stake, d) = mirState[Mary](4)
+    val cert = Vector(Certificate.MoveRewards(Pot.Reserves, Right(Map(stake.credential -> ada))))
+    val late = env.copy(slot = 0, stabilityWindow = env.firstSlotNextEpoch + 10)
+    val failures = mirTx(s, in, d, cert, late) match
+      case Left(LedgerFailure.Rejected(_, fs)) => fs.toChain.toVector
+      case other                               => fail(s"expected a refusal, got $other")
+    assertEquals(
+      failures,
+      Vector(PredicateFailure.deleg(DelegFailure.MIRCertificateTooLateinEpoch(Mismatch(0, 0))))
+    )
+  }
+
   test("MIR entries survive stake key deregistration and are dropped at the boundary") {
     val (s0, in, stake, _) = mirState[Mary](4)
     val ir =

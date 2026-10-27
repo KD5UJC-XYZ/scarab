@@ -406,7 +406,10 @@ object LiteLedger:
       geometry: EpochGeometry
   ): Either[LedgerDecodeError, LiteLedger] = e match
     case Effect.Proposal(updates, target) =>
-      val tooLate = geometry.firstSlot(l.epoch + 1) - 2 * geometry.stabilityWindow.toBigInt
+      // `getTheSlotOfNoReturn` (cardano-ledger f649f975, `Slot.hs:106-114`, used by
+      // `Shelley/Rules/Ppup.hs:177`): `*-` is monus, so it does not go below slot 0
+      val tooLate =
+        (geometry.firstSlot(l.epoch + 1) - 2 * geometry.stabilityWindow.toBigInt).max(0)
       if slot < tooLate then
         Either.cond(
           target == l.epoch,

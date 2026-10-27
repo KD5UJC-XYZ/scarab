@@ -76,7 +76,9 @@ object ShelleyPpup
       val ctx = env.ctx
       def refuse(f: PpupFailure): PredicateFailure = PredicateFailure.utxo(UtxoFailure.Update(f))
       val known = env.genDelegs.keysIterator.map(_.bytes).toSet
-      val tooLate = ctx.firstSlotNextEpoch - 2 * ctx.stabilityWindow
+      // `getTheSlotOfNoReturn` (cardano-ledger f649f975, `Slot.hs:106-114`, used by
+      // `Shelley/Rules/Ppup.hs:177`): `*-` is monus, so it does not go below slot 0
+      val tooLate = (ctx.firstSlotNextEpoch - 2 * ctx.stabilityWindow).max(0)
       val current = ctx.slot < tooLate
       // `firstIllegalProtVerUpdate`: the first proposal, in the order of the genesis keys, whose
       // protocol version cannot follow the one in force (`Ppup.hs:163-168`)

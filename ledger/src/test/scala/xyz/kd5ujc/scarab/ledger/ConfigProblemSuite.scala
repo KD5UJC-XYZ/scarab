@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.ledger
 import java.time.Instant
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.state.Word64
 
 class ConfigProblemSuite extends FunSuite:
   test("genesis syntax preserves the JSON parser failure") {
@@ -33,7 +32,14 @@ class ConfigProblemSuite extends FunSuite:
       Left(ConfigError(ConfigProblem.NonPositive("slot length", BigDecimal(0))))
     )
     assertEquals(
-      EpochGeometry.checked(Instant.EPOCH, 1000, 4, TestGeometry.k(1), TestGeometry.f("1")),
-      Left(ConfigError(ConfigProblem.EpochTooShort(4, Word64.fromUnsigned(4))))
+      EpochGeometry.checked(Instant.EPOCH, 1000, 0, TestGeometry.k(1), TestGeometry.f("1")),
+      Left(ConfigError(ConfigProblem.NonPositive("epoch length", BigDecimal(0))))
+    )
+    // an epoch no longer than 4k/f is accepted, as the reference node accepts it (#474)
+    assertEquals(
+      EpochGeometry
+        .checked(Instant.EPOCH, 1000, 4, TestGeometry.k(1), TestGeometry.f("1"))
+        .map(_.epochLength),
+      Right(4L)
     )
   }
