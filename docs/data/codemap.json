@@ -162,6 +162,14 @@
   },
   {
    "module": "ledger",
+   "path": "ledger/injection",
+   "responsibility": "Pure native streaming JSON mechanism for genesis injection files; file/hash wiring remains separate",
+   "entryPoints": ["InjectionJson"],
+   "suites": ["InjectionJsonSuite", "InjectionDecimalSuite"],
+   "docs": ["docs/compatibility/native-genesis-start.md"]
+  },
+  {
+   "module": "ledger",
    "path": "ledger/mempack",
    "responsibility": "MemPack TxOut codec and canonical CBOR used by the Haskell snapshot layout",
    "entryPoints": ["MemPack", "TxOutMemPack", "CanonicalCbor", "MultiAssetRep"],

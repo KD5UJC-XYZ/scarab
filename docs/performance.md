@@ -67,4 +67,5 @@ One row per measurement section, in the order the sections were written; the sec
 | 40 | 2026-10-25 | Flat script decoding: an imperative walker against a functional one |  | [Rewards, parallel Plutus and script decoding](performance/rewards-and-evaluation.md#40-flat-script-decoding-an-imperative-walker-against-a-functional-one) |
 | 41 | 2026-10-25 | Mux stream decoder partial frames |  | [Peers, connections and the network path](performance/peers-and-network.md#41-mux-stream-decoder-partial-frames) |
 | 42 | 2026-10-24 | The judgment in the rule interpreter (#412, foundation) | #412, #420 | [The typed rule interpreter and the cast-erasure batch](performance/cast-erasure-interpreter.md#42-the-judgment-in-the-rule-interpreter-412-foundation) |
+| 43 | 2026-10-26 | Incremental injection numeric coefficients (#499) | #499 | [Incremental injection numeric coefficients](performance/injection-coefficients.md#43-incremental-injection-numeric-coefficients-499) |
 <!-- /register -->
