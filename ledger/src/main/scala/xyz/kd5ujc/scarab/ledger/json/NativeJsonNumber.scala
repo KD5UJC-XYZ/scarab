@@ -15,7 +15,7 @@ private[json] object NativeJsonNumber:
   @tailrec private def digits(input: Bytes, at: Int): Int =
     if at < input.size && digit(byte(input, at)) then digits(input, at + 1) else at
 
-  // `state_start` and `state_after0` (`194-203`): the integer part; a refused byte is a `Word8`.
+  // `state_start` and `state_after0` (`188-203`): the integer part; a refused byte is a `Word8`.
   private def integer(input: Bytes, at: Int): Either[Error, Int] =
     if at == input.size then Left(Error.NumberEnd)
     else if !digit(byte(input, at)) then Left(Error.NumberByte(byte(input, at)))

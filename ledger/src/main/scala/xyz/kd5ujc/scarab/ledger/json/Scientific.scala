@@ -14,8 +14,8 @@ import scala.annotation.tailrec
 final case class Scientific(coefficient: BigInt, base10Exponent: Long):
   /** `normalize` (`Data/Scientific.hs:1101-1111`): trailing decimal zeros of the coefficient move
     * into the exponent, which wraps as the reference's 64-bit `Int` does; zero is `Scientific 0 0`.
-    * The owner approved (2026-10-27) its logarithmic number of divisions as an implementation
-    * difference from the reference's one division per zero, with the same result.
+    * Its logarithmic number of divisions, instead of the reference's one per zero, is an
+    * owner-approved implementation difference with the same result, recorded in #474 (2026-10-27).
     */
   def normalize: Scientific =
     if coefficient == 0 then Scientific(0, 0)
@@ -36,17 +36,13 @@ final case class Scientific(coefficient: BigInt, base10Exponent: Long):
   /** `showsPrec d` (`Data/Scientific.hs:958-973`): a negative number is parenthesized above the
     * prefix-minus precedence 6.
     */
-  def showsPrec(d: Int, out: StringBuilder): Unit =
+  def showsPrec(d: Int): String =
     if coefficient < 0 then
-      if d > 6 then out.append('(')
-      out.append('-').append(Scientific.showPositive(Scientific(-coefficient, base10Exponent)))
-      if d > 6 then out.append(')')
-    else out.append(Scientific.showPositive(this))
+      val shown = "-" + Scientific.showPositive(Scientific(-coefficient, base10Exponent))
+      if d > 6 then s"($shown)" else shown
+    else Scientific.showPositive(this)
 
-  override def toString: String =
-    val out = new StringBuilder
-    showsPrec(0, out)
-    out.result()
+  override def toString: String = showsPrec(0)
 
 object Scientific:
   // The reference divides once per zero. Dividing by 10^1, 10^2, 10^4, … and then by the same

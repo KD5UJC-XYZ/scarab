@@ -282,9 +282,7 @@ class JsonValueSuite extends FunSuite:
   test("Scientific shows as the reference's show and showsPrec 11") {
     assertEquals(scientifics.size, scientificShown.size)
     scientifics.lazyZip(scientificShown).foreach { (s, expected) =>
-      val at11 = new StringBuilder
-      s.showsPrec(11, at11)
-      assertEquals(List(s.toString, at11.result()), expected)
+      assertEquals(List(s.toString, s.showsPrec(11)), expected)
     }
   }
 

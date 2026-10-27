@@ -158,9 +158,8 @@ object JsonValue:
               out
             )
           case Number(n) =>
-            val shown = new StringBuilder
-            n.showsPrec(11, shown)
-            loop(applied(d, "Number ", List(Piece.Text(shown.result()))) ::: rest, out)
+            val shown = n.showsPrec(11)
+            loop(applied(d, "Number ", List(Piece.Text(shown))) ::: rest, out)
           case Bool(b) =>
             loop(applied(d, "Bool ", List(Piece.Text(if b then "True" else "False"))) ::: rest, out)
           case Null => loop(rest, out.append("Null"))

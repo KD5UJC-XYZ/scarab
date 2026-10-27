@@ -8,7 +8,7 @@ import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** aeson 2.2.5.0 `scanStringLiteral` (`Decoding/ByteString.hs:132-166`) and its
-  * `Internal/Unescape.hs` text >= 2 branch (`55-399`): raw controls are forbidden, UTF-8 is strict
+  * `Internal/Unescape.hs` text >= 2 branch (`55-400`): raw controls are forbidden, UTF-8 is strict
   * (well-formed UTF-8 only, as the JVM decoder and the reference's automaton both accept), and
   * escaped surrogates must form a scalar pair. Every UTF-8 or escape failure is the reference's one
   * `UnicodeException`.
