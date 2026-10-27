@@ -77,6 +77,49 @@ pinned reference image. JVM hash values are consistent with equality but are not
 values, an owner decision recorded in [#474](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6452723958)
 (2026-10-27).
 
-This parser is not wired into genesis loaders. Original-file hash/parse ordering, required fields,
-field decoders and multi-file failure order remain incomplete under #497. The separate permissive
+This parser is not wired into genesis loaders; the genesis number readers below use it only to read
+a number's text into aeson's `Scientific`. Original-file hash/parse ordering, required fields,
+the other field decoders and multi-file failure order remain incomplete under #497. The separate permissive
 json-stream mechanism for injection files must not reuse this strict grammar.
+
+## Shelley genesis numbers and validation (#399)
+
+`Genesis.shelley` reads its fields in the order of `FromJSON ShelleyGenesis` (cardano-ledger
+`f649f975`, `Shelley/Genesis.hs:494-512`). `securityParam` is a `NonZero Word64` (aeson's
+`FromJSON Word64`: any whole-number notation, `0 .. 2^64 - 1`; zero refused by `nonZeroM`).
+`activeSlotsCoeff` is a `PositiveUnitInterval` (`BaseTypes.hs:437-531`): a decimal with at most 19
+decimal places once normalized, refused when negative or with an exponent above 19, or the
+`{"numerator", "denominator"}` object form of aeson `Integer`s, reduced; both forms are bounded to
+`Word64` components and to `[10^-19, 1]`. The failures are typed (`NumberError`) and carry the
+reference's texts. The local `GetGenesisConfig` answer reads the coefficient the same way.
+`stabilityWindow` and `randomnessStabilisationWindow` are `Word64`: the ceiling of the exact
+`3k/f` and `4k/f`, low 64 bits kept (`StabilityWindow.hs:14-35`); callers convert them for their
+own slot arithmetic.
+
+`ShelleyGenesisValidation` mirrors `validateGenesis` and `describeValidationErr`
+(`Shelley/Genesis.hs:673-762`): `ceiling (3k / f)` in `Double` with `3 * k` wrapping in `Word64`,
+at most 64 KES evolutions (`Sum6KES`), and an update quorum above half the genesis nodes. The node
+start does not call it, because the reference node does not: cardano-node 11.1.3 instantiates only
+the Cardano protocol (`Cardano/Node/Protocol.hs:22-45`), which reads the Shelley genesis without
+validating it (`Cardano/Node/Protocol/Cardano.hs:122-125`), and ouroboros-consensus `82ecba32`
+(the release that node builds with) calls it only through `assertWithMsg` (`Cardano/Node.hs:596-597`), a no-op unless the
+`asserts` flag is set (`Util/Assert.hs:9-13`, flag default off); release builds leave it off. Whether
+the node start should run it is open for the owner.
+
+Evidence: `PositiveUnitIntervalSuite` (19 against 20 decimal places, `1e-19`, negative before
+precision, `0`, `1`, `1e19`, `1e20`, the object form's reduction and `Word64` limits, missing,
+floating and over-exponent components, zero denominator, `Word64` and `NonZero` limits, `Show
+Scientific`), `EpochGeometrySuite` (the Mainnet, Preprod and Preview windows unchanged, `Word64`
+wrap of the windows, the genesis readers), `ShelleyGenesisValidationSuite` (each check at its
+boundary, the `Double` case `21 / 0.7`, the `3 * k` wrap, the order of several failures, the
+texts, and the three network configurations passing).
+
+Not the reference's and kept: `EpochGeometry.checked` refuses a slot length or epoch length that is
+not positive (an approved deviation, recorded in #474) and an epoch no longer than `4k/f`
+(`EpochTooShort`; its removal is pending in #474, because the MIR certificate deadline
+`checkSlotNotTooLate` subtracts without the reference's monus); slot lengths are whole
+milliseconds (`FractionalSlotMilliseconds`), not `Micro`; `networkMagic`, `epochLength`,
+`slotsPerKESPeriod`, `maxKESEvolutions` and `maxLovelaceSupply` are not read with their `Word32` or
+`Word64` instances; `NodeSetup` refuses a security parameter above 2^31 - 1
+(`SecurityParamBeyondStorage`), because the chain store and the volatile chain count blocks in an
+`Int`: an approved deviation, recorded in #474.
