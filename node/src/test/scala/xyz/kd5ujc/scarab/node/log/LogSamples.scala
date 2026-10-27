@@ -29,6 +29,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ValidationError
 }
 import xyz.kd5ujc.scarab.network.{
+  BearerServer,
   ConnectionEnd,
   ConnectionError,
   ConnectionEvent,
@@ -273,6 +274,12 @@ object LogSamples:
     (Gsm.Phase.CaughtUp, Gsm.Event.EnterCaughtUp(2)),
     (Gsm.Phase.PreSyncing, Gsm.Event.LeaveCaughtUp(Gsm.DurationFromNow.Already)),
     (Gsm.Phase.PreSyncing, Gsm.Event.LeaveCaughtUp(Gsm.DurationFromNow.After(90.seconds)))
+  )
+
+  /** A socket left to the umask 022 (`0o140755`) and a directory anyone may write (`0o41777`). */
+  val insecureLocalSocket: List[BearerServer.InsecureLocalSocket] = List(
+    BearerServer.InsecureLocalSocket.Permissions("/ipc/node.socket", 0xc1ed),
+    BearerServer.InsecureLocalSocket.Directory("/tmp/node.socket", 0x43ff)
   )
 
   val inbound: List[InboundEvent] = List(

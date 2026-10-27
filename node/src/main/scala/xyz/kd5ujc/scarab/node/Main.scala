@@ -1292,9 +1292,13 @@ object Main extends IOApp:
               )
             )
             local = options.localSocket.fold(Resource.unit[IO])(path =>
+              // a path the node cannot use refuses the start, as the reference's SocketConfigError
+              given Raise[IO, BearerServer.LocalSocketError] =
+                Peer.contramapped(handle)(e => ConfigError(ConfigProblem.LocalSocket(e)))
               BearerServer
-                .listenUnix[IO, NetworkError](path)(failure =>
-                  ListenerFailures.report(path.toString, failure, logged, fatalSink)
+                .listenUnix[IO, NetworkError](path)(
+                  failure => ListenerFailures.report(path.toString, failure, logged, fatalSink),
+                  warning => logged(NodeEvent.InsecureLocalSocket(warning))
                 ) { bearer =>
                   logged(NodeEvent.Inbound(path.toString, InboundEvent.Accepted)) *>
                     landLocalBackend(

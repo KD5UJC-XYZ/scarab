@@ -1,0 +1,3 @@
+### Changed (node-to-client socket, #399)
+
+- **The `--local-socket` path is prepared and checked as `cardano-node` 11.1.3 does:** before the bind, whatever is at the path is removed as `removeStaleLocalSocket` does (a socket, a file or a symbolic link, not its target), and a directory there, empty or not, or a removal that fails, refuses the start with a typed `LocalSocket` configuration error; Java's own delete had removed an empty directory. After the bind the socket is checked as ouroboros-network's `checkLocalSocket` does, warning (`insecureLocalSocketPermissions`, `insecureLocalSocketDirectory`) when others may read or write the socket or the group or others may write its directory. No mode is set on the socket, as in the reference.

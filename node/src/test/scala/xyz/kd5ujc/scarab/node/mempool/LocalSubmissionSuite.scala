@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import cats.Functor
 import cats.effect.{Deferred, IO, Ref, Resource}
-import cats.mtl.Handle
+import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
 import com.comcast.ip4s.UnixSocketAddress
 import fs2.io.net.Network
@@ -19,6 +20,11 @@ import TxKit.*
   * over a Unix socket into a real mempool.
   */
 class LocalSubmissionSuite extends FailsOnUncaught:
+  /** The socket paths of these tests are fresh: a local socket error fails the test. */
+  private given Raise[IO, BearerServer.LocalSocketError] with
+    def functor: Functor[IO] = Functor[IO]
+    def raise[E <: BearerServer.LocalSocketError, A](e: E): IO[A] = IO(fail(e.message))
+
   private val magic = 42L
 
   private def wrap(tx: Bytes): Bytes =
@@ -59,20 +65,21 @@ class LocalSubmissionSuite extends FailsOnUncaught:
         Resource.eval(IO(java.nio.file.Files.createTempDirectory("csl-ntc"))).flatMap { dir =>
           val path = dir.resolve("node.socket")
           BearerServer
-            .listenUnix[IO, NetworkError](path)(error => IO(fail(error.toString))) { bearer =>
-              Handle
-                .allow[NetworkError](
-                  LocalTxSubmissionServer
-                    .accept(
-                      bearer,
-                      magic,
-                      LocalSubmission
-                        .handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure")))
-                    )
-                    .map(_.message)
-                )
-                .rescue(e => IO.pure(e.message))
-                .void
+            .listenUnix[IO, NetworkError](path)(error => IO(fail(error.toString)), _ => IO.unit) {
+              bearer =>
+                Handle
+                  .allow[NetworkError](
+                    LocalTxSubmissionServer
+                      .accept(
+                        bearer,
+                        magic,
+                        LocalSubmission
+                          .handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure")))
+                      )
+                      .map(_.message)
+                  )
+                  .rescue(e => IO.pure(e.message))
+                  .void
             }
             .as((mempool, path))
         }
@@ -219,18 +226,19 @@ class LocalSubmissionSuite extends FailsOnUncaught:
       yield (mempool, context, ended, dir.resolve("node.socket")))
       .flatMap { (mempool, context, ended, path) =>
         BearerServer
-          .listenUnix[IO, NetworkError](path)(error => IO(fail(error.toString))) { bearer =>
-            Handle
-              .allow[NetworkError](
-                NodeToClientServer.accept(
-                  bearer,
-                  magic,
-                  LocalSubmission
-                    .handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure")))
+          .listenUnix[IO, NetworkError](path)(error => IO(fail(error.toString)), _ => IO.unit) {
+            bearer =>
+              Handle
+                .allow[NetworkError](
+                  NodeToClientServer.accept(
+                    bearer,
+                    magic,
+                    LocalSubmission
+                      .handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure")))
+                  )
                 )
-              )
-              .rescue(error => IO.pure(LocalTxSubmissionServer.End.ConnectionClosed(error)))
-              .flatMap(end => ended.complete(end).void)
+                .rescue(error => IO.pure(LocalTxSubmissionServer.End.ConnectionClosed(error)))
+                .flatMap(end => ended.complete(end).void)
           }
           .as((mempool, context, ended, path))
       }

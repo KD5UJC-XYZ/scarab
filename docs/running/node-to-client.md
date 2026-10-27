@@ -62,6 +62,17 @@ chain, with the same intersection, roll-forward, roll-backward and await behavio
 Without `--db` only the last `k` blocks can be served, so a client that starts from Origin once the chain is
 longer than that is told there is no intersection.
 
+### The socket path
+
+As in the reference node, at start-up whatever is at the `--local-socket` path is removed before the bind
+(`removeStaleLocalSocket`, cardano-node 11.1.3): a socket left by an earlier run, a file, or a symbolic link (the
+link, not its target). A directory there, empty or not, is not removed and the node does not start (a
+`LocalSocket` configuration error), nor does it when the removal fails for another reason. No mode is set on
+the socket, so it has the one the process umask gives it; who can connect is decided by that mode and by the
+directory that holds the socket. Once bound, the node warns, without refusing, when others may read or write
+the socket or when the group or others may write its directory (`checkLocalSocket`, ouroboros-network): the
+`insecureLocalSocketPermissions` and `insecureLocalSocketDirectory` events in [logging](logging.md#log-events).
+
 ## Query server
 
 `GET /tip` and `GET /state?slot=<n>&hash=<hex>` serve the node's projection of the ledger and

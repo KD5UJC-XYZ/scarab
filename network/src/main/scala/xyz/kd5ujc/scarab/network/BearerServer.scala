@@ -3,11 +3,14 @@ package xyz.kd5ujc.scarab.network
 
 import cats.effect.{Async, Resource}
 import cats.effect.syntax.all.*
-import cats.mtl.Handle
+import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
 import fs2.Stream
 import fs2.io.net.Network
+import java.io.IOException
+import java.nio.file.{Files, LinkOption, NoSuchFileException, Path}
+import java.nio.file.attribute.BasicFileAttributes
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.DomainError
 
@@ -65,17 +68,123 @@ object BearerServer:
           .as(server.address.asIpUnsafe)
       }
 
-  /** The same on a Unix domain socket at `path` (an existing file there is replaced), for
-    * node-to-client clients such as `cardano-cli`.
+  /** Why the node-to-client socket cannot be set up; the node does not start. Before the bind, the
+    * reference's `LocalSocketError` (cardano-node 11.1.3,
+    * `cardano-node/src/Cardano/Node/Configuration/Socket.hs` 65-73, 101-103).
     */
-  def listenUnix[F[_]: Async, E <: DomainError](path: java.nio.file.Path, maxConnections: Int = 16)(
-      onFailure: HandlerFailure[E] => F[Unit]
+  enum LocalSocketError extends DomainError:
+    /** A directory, empty or not, is at the path: `removeFile` (unlink) does not remove one. */
+    case Directory(path: String)
+
+    /** What is at the path could not be removed, for another reason than that it is missing. */
+    case Remove(path: String, cause: IOException)
+
+    /** The bound socket or its directory could not be read for the check after the bind
+      * (`getFileStatus` in `checkLocalSocket`, which throws there).
+      */
+    case Inspect(path: String, cause: IOException)
+
+    def message: String = this match
+      case Directory(p) =>
+        s"Failure while attempting to remove the stale local socket: $p : is a directory"
+      case Remove(p, e) =>
+        s"Failure while attempting to remove the stale local socket: $p : ${e.getMessage}"
+      case Inspect(p, e) => s"cannot check the permissions of the local socket $p: ${e.getMessage}"
+
+  /** A warning of the check after the bind: the socket, or the directory it is in, is open to more
+    * users than its owner's group. The reference's `InsecureLocalSocketPermissions` and
+    * `InsecureLocalSocketDirectory` (ouroboros-network 2fb69829,
+    * `ouroboros-network/lib/Ouroboros/Network/Diffusion.hs` 966-990); `mode` is the whole
+    * `st_mode`, file type included, as `Unix.fileMode` gives it.
+    */
+  enum InsecureLocalSocket:
+    /** Others may read or write the socket. */
+    case Permissions(path: String, mode: Int)
+
+    /** The group or others may write the directory that holds the socket. */
+    case Directory(path: String, mode: Int)
+
+  /** `S_IROTH | S_IWOTH` (`0o006`) and `S_IWGRP | S_IWOTH` (`0o022`). */
+  private val OtherReadWrite = 0x6
+  private val GroupOtherWrite = 0x12
+
+  /** The warning for a socket whose `st_mode` is `mode`, if others may read or write it. */
+  private[network] def permissions(path: String, mode: Int): Option[InsecureLocalSocket] =
+    Option.when((mode & OtherReadWrite) != 0)(InsecureLocalSocket.Permissions(path, mode))
+
+  /** The warning for a socket directory whose `st_mode` is `mode`, if the group or others may write
+    * it.
+    */
+  private[network] def directory(path: String, mode: Int): Option[InsecureLocalSocket] =
+    Option.when((mode & GroupOtherWrite) != 0)(InsecureLocalSocket.Directory(path, mode))
+
+  /** The directory of the socket at `path`, as the `parentDirectory` of `checkLocalSocket` takes
+    * it: what is before the last `/`, `/` when that is empty, `.` when there is no `/`.
+    */
+  private[network] def parentDirectory(path: String): String =
+    path.lastIndexOf('/') match
+      case -1 => "."
+      case 0  => "/"
+      case at => path.substring(0, at)
+
+  /** Remove what an earlier run left at `path` before the bind, as `removeStaleLocalSocket` does
+    * (`Socket.hs` 211-224): `removeFile`, which is unlink, so a socket, a file or a symbolic link
+    * (not its target) is removed, a missing path is fine, and a directory is refused. Java's own
+    * delete would remove an empty directory, so the type is read first, without following a link.
+    */
+  private[network] def removeStale(path: Path): Either[LocalSocketError, Unit] =
+    val shown = path.toString
+    def missingIsFine(e: IOException): Either[LocalSocketError, Unit] = e match
+      case _: NoSuchFileException => Right(())
+      case other                  => Left(LocalSocketError.Remove(shown, other))
+    Either
+      .catchOnly[IOException](
+        Files.readAttributes(path, classOf[BasicFileAttributes], LinkOption.NOFOLLOW_LINKS)
+      )
+      .fold(
+        missingIsFine,
+        attributes =>
+          if attributes.isDirectory then Left(LocalSocketError.Directory(shown))
+          else Either.catchOnly[IOException](Files.delete(path)).fold(missingIsFine, Right(_))
+      )
+
+  /** The `st_mode` of `path`, following a link as `getFileStatus` (stat) does. */
+  private def mode(path: Path): Either[IOException, Int] =
+    Either.catchOnly[IOException](Files.getAttribute(path, "unix:mode").asInstanceOf[Integer].toInt)
+
+  /** The check after the bind, `checkLocalSocket`: warn when others may read or write the socket,
+    * then when the group or others may write its directory. It only warns; no mode is set, the
+    * socket has the one the umask gives it.
+    */
+  private def checkLocalSocket[F[_]: Async](path: Path)(
+      warn: InsecureLocalSocket => F[Unit]
+  )(using Raise[F, LocalSocketError]): F[Unit] =
+    val shown = path.toString
+    def stat(of: Path): F[Int] =
+      Async[F]
+        .blocking(mode(of))
+        .flatMap(m =>
+          Raise[F, LocalSocketError].fromEither(m.leftMap(LocalSocketError.Inspect(shown, _)))
+        )
+    stat(path).flatMap(m => permissions(shown, m).traverse_(warn)) *>
+      stat(Path.of(parentDirectory(shown))).flatMap(m => directory(shown, m).traverse_(warn))
+
+  /** The same on a Unix domain socket at `path`, for node-to-client clients such as `cardano-cli`.
+    * What an earlier run left at the path is removed first ([[removeStale]]), and the bound socket
+    * is checked ([[checkLocalSocket]]): `onInsecure` receives its warnings. Either failing is a
+    * [[LocalSocketError]] raised while the resource is acquired.
+    */
+  def listenUnix[F[_]: Async, E <: DomainError](path: Path, maxConnections: Int = 16)(
+      onFailure: HandlerFailure[E] => F[Unit],
+      onInsecure: InsecureLocalSocket => F[Unit]
   )(
       handle: Handle[F, E] ?=> Bearer[F] => F[Unit]
-  ): Resource[F, Unit] =
+  )(using Raise[F, LocalSocketError]): Resource[F, Unit] =
     import com.comcast.ip4s.UnixSocketAddress
     import fs2.io.net.Network
-    Resource.eval(Async[F].blocking(java.nio.file.Files.deleteIfExists(path))) *>
+    Resource.eval(
+      Async[F].blocking(removeStale(path)).flatMap(Raise[F, LocalSocketError].fromEither)
+    ) *>
       Network
         .forAsync[F]
         .bindAndAccept(UnixSocketAddress(path.toString))
@@ -93,9 +202,10 @@ object BearerServer:
       // the socket file appears once the server has bound it
       Resource.eval(
         Async[F]
-          .blocking(java.nio.file.Files.exists(path))
+          .blocking(Files.exists(path))
           .flatMap(found => Async[F].sleep(5.millis).unlessA(found).as(found))
           .iterateUntil(identity)
           .timeout(5.seconds)
           .void
-      )
+      ) *>
+      Resource.eval(checkLocalSocket(path)(onInsecure))

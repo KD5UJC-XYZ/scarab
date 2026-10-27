@@ -98,6 +98,8 @@ enum EventKind(val area: Area, val severity: Severity):
   // connections
   case Connection extends EventKind(Area.Net, Severity.Info)
   case Inbound extends EventKind(Area.Net, Severity.Info)
+  case InsecureLocalSocketPermissions extends EventKind(Area.Net, Severity.Warning)
+  case InsecureLocalSocketDirectory extends EventKind(Area.Net, Severity.Warning)
 
   // the peer governor (G1): the targets, the roots, the moves between temperatures, the sensitive
   // state, the counters, the Genesis State Machine
