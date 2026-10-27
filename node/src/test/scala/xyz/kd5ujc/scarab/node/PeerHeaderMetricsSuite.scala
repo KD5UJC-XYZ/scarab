@@ -120,7 +120,25 @@ class PeerHeaderMetricsSuite extends FailsOnUncaught:
                       _ <- release.complete(())
                       _ <-
                         if result == Result.Accepted then credited.get
-                        else running.joinWithNever.flatMap(outcome => IO(assert(outcome.isLeft)))
+                        else
+                          running.joinWithNever.flatMap(outcome =>
+                            IO(
+                              if result == Result.Restart then
+                                // the unsupervised producer has no re-intersection (#523)
+                                assertEquals(
+                                  outcome.left.toOption,
+                                  Some(
+                                    Fault.Failed(
+                                      PeerError.Diverged(
+                                        PeerError.Divergence
+                                          .DetachedCandidate(ChainSync.Point.Origin)
+                                      )
+                                    )
+                                  )
+                                )
+                              else assert(outcome.isLeft)
+                            )
+                          )
                       events <- reported.get
                       validatedAt <- validationEnded.get
                     yield
