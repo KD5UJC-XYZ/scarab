@@ -7,7 +7,7 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, ForgeError, Header, LedgerFailure, VrfCert}
 import xyz.kd5ujc.scarab.ledger.LedgerFailure.reach
-import xyz.kd5ujc.scarab.ledger.{LedgerGlobals, PosixClock, RefScripts, TxEnv}
+import xyz.kd5ujc.scarab.ledger.{LedgerGlobals, PosixClock, ProtocolParams, RefScripts, TxEnv}
 import xyz.kd5ujc.scarab.ledger.rules.Globals
 import xyz.kd5ujc.scarab.plutus.{
   BackendFailure,
@@ -17,7 +17,9 @@ import xyz.kd5ujc.scarab.plutus.{
   ScriptEvaluator
 }
 import cats.Id
-import xyz.kd5ujc.scarab.node.mempool.{Entry, MempoolLedger}
+import scala.annotation.tailrec
+import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
+import xyz.kd5ujc.scarab.node.mempool.{Capacity, Entry, MempoolLedger}
 
 /** Conway block assembly, pure: choose the transactions that fit the protocol limits, encode the
   * body, the header body and the block. Every function is deterministic in its arguments; the
@@ -118,16 +120,41 @@ object BlockBuilder:
       head(5, aux.size.toLong).length + aux.map((i, a) => headLength(i) + a.size).sum +
       headLength(invalid.size) + invalid.map(i => headLength(i)).sum
 
-  /** What fits: the protocol's block limits for a block at `slot` on top of `ticked`. */
-  final case class Limits(maxBodyBytes: Long, maxExUnits: ExUnits)
+  /** The protocol's block limits for a block on top of `ticked`: its maximum body size and its
+    * maximum execution units.
+    */
+  final case class Limits(maxBodyBytes: Long, maxExUnits: ExUnits):
+    /** What the transactions of one block may count for, `blockCapacityConwayMeasure` (consensus
+      * 82ecba329 `Shelley/Ledger/Mempool.hs`): the body size less `fixedBlockBodyOverhead`, the
+      * execution units, and the reference-script bytes of a block, in the measure of
+      * [[Capacity.measure]].
+      */
+    def capacity: TxMeasure =
+      TxMeasure(
+        (maxBodyBytes - Capacity.FixedBlockBodyOverhead).max(0L),
+        maxExUnits.mem,
+        maxExUnits.steps,
+        RefScripts.MaxRefScriptSizePerBlock.toLong
+      )
 
-  /** Choose, in order, the candidates that still apply one after another to the ticked ledger in
-    * the block's own environment and fit the body size, execution unit and reference script limits.
-    * A candidate that does not apply (its inputs were spent by the block, it expired, a script now
-    * fails) is skipped, not an error: the pool of a mempool is advisory. The rules are LEDGER of
-    * Conway on the era-indexed state ([[MempoolLedger]], the same that validates the pool). Missing
-    * evaluator support has no ledger verdict and stops selection instead of skipping it; a defect
-    * one transaction triggers in the evaluator skips that transaction.
+  object Limits:
+    def of(params: ProtocolParams): Limits =
+      Limits(params.maxBlockBodySize.toLong, params.maxBlockExUnits)
+
+  /** The transactions of the block, as the reference takes them from its mempool (consensus
+    * 82ecba329 `NodeKernel.hs` 693-715): the held transactions are revalidated in order against the
+    * ticked ledger in the block's own environment (`getSnapshotFor`, `Mempool/Query.hs` 29-50, and
+    * `computeSnapshot`, `Mempool/Impl/Common.hs` 459-484, which drops the ones that no longer apply
+    * without counting them), and of those that still apply the longest prefix whose measures add up
+    * to no more than the block's capacity in every component is taken (`snapshotTake`,
+    * `splitAfterTxSize` of `Mempool/TxSeq.hs` 205-215): the first one that does not fit ends the
+    * selection. Each transaction counts for the measure it was admitted with ([[Capacity.measure]],
+    * the ticket's measure the reference keeps).
+    *
+    * The rules are LEDGER of Conway on the era-indexed state ([[MempoolLedger]], the same that
+    * validates the pool). Missing evaluator support has no ledger verdict and stops the selection
+    * instead of dropping the transaction; a defect one transaction triggers in the evaluator drops
+    * that transaction.
     */
   def select(
       ticked: MempoolLedger,
@@ -142,41 +169,29 @@ object BlockBuilder:
       decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
       evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default
   ): Either[LedgerFailure.Unavailable, Vector[(Entry, Piece)]] =
-    final case class Acc(
-        state: MempoolLedger,
-        chosen: Vector[(Entry, Piece)],
-        units: ExUnits,
-        refBytes: Long
-    )
+    import Capacity.fits
+    final case class Acc(state: MempoolLedger, chosen: Vector[(Entry, Piece)], used: TxMeasure)
     val rules = Globals(globals, geometry)
-    candidates
-      .foldM(Acc(ticked, Vector.empty, ExUnits.zero, 0L)) { (acc, entry) =>
-        piece(entry).toOption.fold(Right(acc): Either[LedgerFailure.Unavailable, Acc]) { p =>
-          val units = acc.units + entry.tx.witnesses.totalExUnits
-          val size = bodySize(acc.chosen.map(_._2) :+ p)
-          val refUsed =
-            if acc.state.params.protocolMajor >= 9 then
-              acc.refBytes + RefScripts.refScriptsSize(
-                if acc.state.params.protocolMajor <= 10 then ticked.utxo else acc.state.utxo,
-                entry.tx.body
-              )
-            else 0L
-          val env = TxEnv(
-            slot,
-            epoch,
-            globals.network,
-            firstSlotNextEpoch = geometry.firstSlot(epoch + 1),
-            stabilityWindow = geometry.stabilityWindow.toBigInt,
-            txIndex = acc.chosen.size,
-            updateQuorum = globals.updateQuorum,
-            clock = Some(clock.getOrElse(PosixClock.total(geometry))),
-            decoder = decoder,
-            evaluator = evaluator
-          )
-          if size > limit.maxBodyBytes || !units.fits(limit.maxExUnits) ||
-            refUsed > RefScripts.MaxRefScriptSizePerBlock
-          then Right(acc)
-          else
+    val capacity = limit.capacity
+    @tailrec
+    def go(rest: List[Entry], acc: Acc): Either[LedgerFailure.Unavailable, Acc] = rest match
+      case Nil => Right(acc)
+      case entry :: more =>
+        val env = TxEnv(
+          slot,
+          epoch,
+          globals.network,
+          firstSlotNextEpoch = geometry.firstSlot(epoch + 1),
+          stabilityWindow = geometry.stabilityWindow.toBigInt,
+          txIndex = acc.chosen.size,
+          updateQuorum = globals.updateQuorum,
+          clock = Some(clock.getOrElse(PosixClock.total(geometry))),
+          decoder = decoder,
+          evaluator = evaluator
+        )
+        val applied = piece(entry).toOption match
+          case None => Right(None)
+          case Some(p) =>
             acc
               .state(entry.tx, env, rules)
               .fold(
@@ -186,14 +201,19 @@ object BlockBuilder:
                   case unavailable: LedgerFailure.Unavailable =>
                     unavailable.reach match
                       case BackendFailure.Reach.Implementation => Left(unavailable)
-                      case BackendFailure.Reach.Input          => Right(acc)
-                  case _ => Right(acc)
+                      case BackendFailure.Reach.Input          => Right(None)
+                  case _ => Right(None)
                 },
-                next => Right(Acc(next, acc.chosen :+ (entry -> p), units, refUsed))
+                next => Right(Some((next, p)))
               )
-        }
-      }
-      .map(_.chosen)
+        applied match
+          case Left(unavailable) => Left(unavailable)
+          case Right(None)       => go(more, acc)
+          case Right(Some((next, p))) =>
+            val used = acc.used + Capacity.measure(entry)
+            if used.fits(capacity) then go(more, Acc(next, acc.chosen :+ (entry -> p), used))
+            else Right(acc)
+    go(candidates.toList, Acc(ticked, Vector.empty, TxMeasure.zero)).map(_.chosen)
 
   /** The ten-element Praos `header_body`; its exact bytes are what the KES key signs. */
   def headerBody(
