@@ -238,7 +238,7 @@ object CastErasureBench:
     val commitment = BodyCommitment(100, Bytes.fromArray(Array.fill(32)(1.toByte)))
     Sts(Bbody)(
       globals,
-      BbodyEnv(TestLedger.env, pp, ok(Coin.fromBigInt(0))),
+      BbodyEnv(TestLedger.env, pp, Coin(0)),
       from,
       BbodySignal(txs, issuer, commitment, commitment)
     )

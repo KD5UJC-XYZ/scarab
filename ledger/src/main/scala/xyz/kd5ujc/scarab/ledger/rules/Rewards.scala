@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger.rules
 
 import cats.syntax.all.*
-import scala.annotation.tailrec
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.state.*
@@ -73,24 +72,31 @@ object Rewards:
   private def delivered(major: BigInt, rewards: RewardSet): Iterable[Reward] =
     if aggregated(major) then rewards.rewards else rewards.rewards.headOption
 
-  /** `aggregateRewards` (`Rewards.hs:186`): the coin each credential receives, in the order of the
-    * credential. Amounts are sums of the non-negative rewards, so they are coins.
-    */
+  /** `aggregateRewards` (`Rewards.hs:186`): sum Coin amounts for each credential in its order. */
   def aggregate(
       major: BigInt,
       rs: Iterable[(Credential[Staking], RewardSet)]
-  ): Either[VocabError, Vector[(Credential[Staking], Coin)]] =
-    @tailrec def go(
-        it: Iterator[(Credential[Staking], RewardSet)],
-        out: Vector[(Credential[Staking], Coin)]
-    ): Either[VocabError, Vector[(Credential[Staking], Coin)]] =
-      if !it.hasNext then Right(out)
-      else
-        val (c, set) = it.next()
-        Coin.fromBigInt(delivered(major, set).foldLeft(BigInt(0))(_ + _.rewardAmount.value)) match
-          case Left(error) => Left(error)
-          case Right(n)    => go(it, out :+ (c -> n))
-    go(rs.iterator, Vector.empty)
+  ): Vector[(Credential[Staking], Coin)] =
+    rs.iterator.map { (credential, rewards) =>
+      credential -> Coin(delivered(major, rewards).foldLeft(BigInt(0))(_ + _.rewardAmount.value))
+    }.toVector
+
+  /** `aggregateCompactRewards` (`Shelley/Rewards.hs:205–210`): convert each delivered reward before
+    * the compact fold. A negative or oversized individual reward still fails conversion.
+    */
+  def aggregateCompact(
+      major: BigInt,
+      rs: Iterable[(Credential[Staking], RewardSet)]
+  ): Either[VocabError, SortedMap[Credential[Staking], CompactCoin]] =
+    rs.toList
+      .traverse { (credential, rewards) =>
+        delivered(major, rewards).toList
+          .foldLeftM(CompactCoin.zero)((sum, reward) =>
+            CompactCoin.fromCoin(reward.rewardAmount).map(sum.add(_))
+          )
+          .map(credential -> _)
+      }
+      .map(Sorted.map(_))
 
   /** `sumRewards` (`Rewards.hs:159`). */
   def total(major: BigInt, rs: Iterable[(Credential[Staking], RewardSet)]): BigInt =
@@ -190,8 +196,8 @@ object Rewards:
         val poolPot = (performance * Rational(maxP)).floor
         for
           blockCount <- RewardBlockCount.fromBigInt(made.toBigInt)
-          rewardPot <- Coin.fromBigInt(poolPot)
-          leader <- Coin.fromBigInt(
+          rewardPot = Coin(poolPot)
+          leader = Coin(
             operatorReward(
               poolPot,
               spss.cost.value,
@@ -219,10 +225,10 @@ object Rewards:
         ((BigInt(go.activeStake.entries.size) + 4 * BigInt(security.value) - 1) /
           (4 * BigInt(security.value))).max(1)
       )
-      stake <- Coin.fromBigInt(totalStake)
-      deltaR <- Coin.fromBigInt(deltaR1)
-      r <- Coin.fromBigInt(pot)
-      deltaT <- Coin.fromBigInt(deltaT1)
+      stake = Coin(totalStake)
+      deltaR = Coin(deltaR1)
+      r = Coin(pot)
+      deltaT = Coin(deltaT1)
     yield PulsingRewUpdate.Pulsing(
       RewardSnapShot(
         es.snapshots.fee,
@@ -277,10 +283,7 @@ object Rewards:
             info.relativeStake
           )
           if amount == 0 then Right(None)
-          else
-            Coin
-              .fromBigInt(amount)
-              .map(n => Some(Reward(RewardType.MemberReward, swd.delegation, n)))
+          else Right(Some(Reward(RewardType.MemberReward, swd.delegation, Coin(amount))))
 
   private def members(
       pulser: RewardPulser,

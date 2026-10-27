@@ -89,8 +89,8 @@ class UpstreamPoolGoldenSuite extends FunSuite:
     val registered = parameters.map { p =>
       val native = StakePoolState(
         vrfHash,
-        checked(Coin.fromBigInt(p.pledge)),
-        checked(Coin.fromBigInt(p.cost)),
+        Coin(p.pledge),
+        Coin(p.cost),
         p.margin,
         NativeCredential.KeyHashObj(hash[Staking](owner)),
         Sorted.set(p.owners.map(hash[Staking])),

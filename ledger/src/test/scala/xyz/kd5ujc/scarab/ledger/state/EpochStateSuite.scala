@@ -89,7 +89,7 @@ class EpochStateSuite extends DisciplineSuite:
       .toOption
       .get
 
-  private def coin(n: Long): Coin = Coin.fromBigInt(BigInt(n)).toOption.get
+  private def coin(n: Long): Coin = Coin(BigInt(n))
   private def compact(n: Long): CompactCoin = CompactCoin.fromUnsigned(n)
   private val vrf: VRFVerKeyHash =
     VRFVerKeyHash

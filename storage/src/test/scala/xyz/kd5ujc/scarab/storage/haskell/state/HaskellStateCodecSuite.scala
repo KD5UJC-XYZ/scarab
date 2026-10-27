@@ -77,13 +77,14 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
 
   test("amounts: Coin is written as an Integer and read as a Word64 (Coin.hs:93,111)") {
     val big = (BigInt(1) << 64) - 1
-    val c = Coin.fromBigInt(big).fold(e => fail(e.toString), identity)
+    val c = Coin(big)
     assertEquals(coin.encodeUnchecked(c).hex, "1bffffffffffffffff")
     assertEquals(readOk(coin, coin.encodeUnchecked(c)), c)
     // above 2^64 - 1 the writer would emit a bignum, which the Word64 reader refuses
     val over = bytesOf(_.integer(BigInt(1) << 64))
     assert(failure(coin, over).kind.isInstanceOf[Kind.TypeMismatch], "a bignum is not a Word64")
-    val negative = bytesOf(_.int(BigInt(-1)))
+    val negative = coin.encodeUnchecked(Coin(-1))
+    assertEquals(negative.hex, "20")
     assert(failure(coin, negative).kind.isInstanceOf[Kind.TypeMismatch])
     // a DeltaCoin is an Integer both ways, bignums included
     val delta = DeltaCoin(-(BigInt(1) << 70))
@@ -366,7 +367,7 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
   }
 
   private def coinOf(n: Long): Coin =
-    Coin.fromBigInt(BigInt(n)).fold(e => fail(e.toString), identity)
+    Coin(BigInt(n))
 
   // ---- what the decoders refuse, with a typed error
 

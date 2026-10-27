@@ -110,7 +110,9 @@ object Hash32:
 
 // ---- amounts
 
-/** `Coin` (`Coin.hs:93`, an `Integer`): lovelace, never negative here (`Negative` otherwise). */
+/** `Coin` (`Coin.hs:93`, an `Integer`): every integer; bounds belong to decoders and rule
+  * predicates.
+  */
 opaque type Coin = BigInt
 
 object Coin:
@@ -121,8 +123,7 @@ object Coin:
     */
   val oneNonZero: NonZero[Coin] = BigInt(1)
 
-  def fromBigInt(n: BigInt): Either[VocabError, Coin] =
-    Either.cond(n.signum >= 0, n, VocabError.Negative(VocabError.Kind.Coin, n))
+  def apply(n: BigInt): Coin = n
 
   extension (c: Coin) def value: BigInt = c
 
@@ -147,6 +148,8 @@ object DeltaCoin:
 opaque type CompactCoin = Word64
 
 object CompactCoin:
+  val zero: CompactCoin = Word64.zero
+
   def fromBigInt(n: BigInt): Either[VocabError, CompactCoin] =
     Word64.fromBigInt(VocabError.Kind.CompactCoin, n)
 
@@ -157,6 +160,15 @@ object CompactCoin:
   extension (c: CompactCoin)
     def word: Word64 = c
     def toBigInt: BigInt = Word64.toBigInt(c)
+    def toCoin: Coin = Coin(toBigInt)
+
+    /** `addCompactCoin` and `subtractCompactCoin` (`Coin.hs:202–219`): Word64 arithmetic. */
+    def add(other: CompactCoin): CompactCoin = Word64.wrappingAdd(c, other)
+    def subtract(amount: CompactCoin): CompactCoin = Word64.wrappingSubtract(c, amount)
+
+  /** `sumCompactCoin` (`Coin.hs:205–206`): wrap before conversion to Coin. */
+  def sum(values: IterableOnce[CompactCoin]): CompactCoin =
+    values.iterator.foldLeft(zero)((total, amount) => total.add(amount))
 
   given HasZero[CompactCoin] = HasZero.instance(Word64.isZero(_))
   given Order[CompactCoin] = Word64.order

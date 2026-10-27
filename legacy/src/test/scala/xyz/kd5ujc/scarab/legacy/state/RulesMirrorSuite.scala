@@ -31,7 +31,7 @@ class RulesMirrorSuite extends FunSuite:
     val conway = c.protocolMajor >= 9
     val withdrawing = c.tx.body.withdrawals.map { (account, amount) =>
       account.credential -> node.Account(
-        amount,
+        amount.value,
         2 * ada,
         None,
         Option.when(conway)(node.DRep.AlwaysAbstain)

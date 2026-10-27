@@ -41,7 +41,7 @@ trait VocabularyCodecs:
     def decode(n: Node): Decoded[Coin] =
       under
         .decode(n)
-        .flatMap(v => Coin.fromBigInt(v).left.map(e => DecodeError.at(n, violation(e))))
+        .map(Coin(_))
     def encode(a: Coin, out: Writer): Unit = out.integer(Coin.value(a))
 
   /** `DeltaCoin` (`Coin.hs:115-119`): an `Integer` both ways. */

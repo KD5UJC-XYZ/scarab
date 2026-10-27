@@ -43,12 +43,12 @@ object ActiveStake:
 
   extension (a: ActiveStake)
     /** `sumAllActiveStake` (`State/Stake.hs:157-160`): the total, which is one lovelace when there
-      * is none, because the total is a denominator. A sum of non-zero amounts is never negative, so
-      * the `Left` of the smart constructor is unreachable and falls to the same default.
+      * is none, because the total is a denominator. Each compact amount is converted to Coin before
+      * the fold, so this total has arbitrary precision.
       */
     def total: NonZero[Coin] =
       val sum = a.entries.valuesIterator.foldLeft(BigInt(0))(_ + _.stake.value.toBigInt)
-      Coin.fromBigInt(sum).flatMap(NonZero.from(_)).getOrElse(Coin.oneNonZero)
+      NonZero.from(Coin(sum)).getOrElse(Coin.oneNonZero)
 
 /** `StakePoolSnapShot` (`State/SnapShots.hs:156-183`, encoding `239-252`: `array(10)` in this
   * order): what the reward calculation needs of one pool, resolved when the snapshot is taken.

@@ -142,22 +142,19 @@ object Translate:
   def shelleyToAllegra(nes: NewEpochState[Shelley]): Either[TickFailure, NewEpochState[Allegra]] =
     val stash = nes.avvm.utxo
     val returned = stash.coin
-    Coin
-      .fromBigInt(nes.es.chainAccount.reserves.value + returned)
-      .left
-      .map(TickFailure.Vocab(_))
-      .map { reserves =>
-        val translated = reindex[Shelley, Allegra](nes, ())(identity)
-        translated.copy(es =
-          translated.es.copy(
-            chainAccount = translated.es.chainAccount.copy(reserves = reserves),
-            ls = translated.es.ls.copy[Allegra](utxo =
-              translated.es.ls.utxo
-                .copy(utxo = UtxoTables(translated.es.ls.utxo.utxo.utxo.removeKnown(stash.toMap)))
-            )
+    val reserves = Coin(nes.es.chainAccount.reserves.value + returned)
+    Right {
+      val translated = reindex[Shelley, Allegra](nes, ())(identity)
+      translated.copy(es =
+        translated.es.copy(
+          chainAccount = translated.es.chainAccount.copy(reserves = reserves),
+          ls = translated.es.ls.copy[Allegra](utxo =
+            translated.es.ls.utxo
+              .copy(utxo = UtxoTables(translated.es.ls.utxo.utxo.utxo.removeKnown(stash.toMap)))
           )
         )
-      }
+      )
+    }
 
   // ---- Allegra to Mary: the same
 

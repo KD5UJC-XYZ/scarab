@@ -107,16 +107,16 @@ object NewEpoch:
     val major = EraLedger.prevPParams(es.ls.utxo.gov).protocolMajor
     val (registered, unregistered) =
       partitionRegistered(update.rs, EraLedger.registeredAscending(es.ls))
-    for
-      delivered <- Rewards.aggregate(major, registered)
-      treasury <- Coin.fromBigInt(
-        es.chainAccount.treasury.value + update.deltaT.value + Rewards.total(major, unregistered)
-      )
-      reserves <- Coin.fromBigInt(es.chainAccount.reserves.value + update.deltaR.value)
-      fees <- Coin.fromBigInt(es.ls.utxo.fees.value + update.deltaF.value)
-      credited <- EraLedger.creditAscending(es.ls, delivered)
-    yield es.copy(
-      chainAccount = ChainAccountState(treasury, reserves),
-      ls = credited.copy[E](utxo = credited.utxo.copy(fees = fees)),
-      nonMyopic = update.nonMyopic
+    val treasury = Coin(
+      es.chainAccount.treasury.value + update.deltaT.value + Rewards.total(major, unregistered)
     )
+    val reserves = Coin(es.chainAccount.reserves.value + update.deltaR.value)
+    val fees = Coin(es.ls.utxo.fees.value + update.deltaF.value)
+    Rewards.aggregateCompact(major, registered).map { delivered =>
+      val credited = EraLedger.creditAscending(es.ls, delivered)
+      es.copy(
+        chainAccount = ChainAccountState(treasury, reserves),
+        ls = credited.copy[E](utxo = credited.utxo.copy(fees = fees)),
+        nonMyopic = update.nonMyopic
+      )
+    }

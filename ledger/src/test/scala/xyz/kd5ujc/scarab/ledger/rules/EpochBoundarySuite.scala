@@ -90,16 +90,16 @@ class EpochBoundarySuite extends ScalaCheckSuite:
   private val balance: Lens[CompactCoin, CompactCoin] =
     Lens[CompactCoin, CompactCoin](identity)(b => _ => b)
 
-  property("crediting ascending amounts is crediting them one by one, and refuses the same") {
+  property("crediting ascending compact amounts is crediting them one by one") {
     forAll(
       sorted(Gen.zip(credential, Arbitrary.arbitrary[CompactCoin])),
-      sorted(Gen.zip(credential, Arbitrary.arbitrary[Coin]))
+      sorted(Gen.zip(credential, Arbitrary.arbitrary[CompactCoin]))
     ) { (states, amounts) =>
       val ascending = amounts.toVector
       val merged = EraLedger.mergeStates(states, balance, ascending)
       val oneByOne = EraLedger.creditStates(states, balance, ascending)
-      assertEquals(merged.map(_.toList), oneByOne.map(_.toList))
-      merged.foreach(m => assert(m.ordering eq states.ordering))
+      assertEquals(merged.toList, oneByOne.toList)
+      assert(merged.ordering eq states.ordering)
       true
     }
   }

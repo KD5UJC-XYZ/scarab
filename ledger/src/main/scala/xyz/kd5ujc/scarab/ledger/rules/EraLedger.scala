@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger.rules
 
 import cats.Order
-import cats.syntax.all.*
 import monocle.Lens
 import scala.annotation.tailrec
 import scala.collection.immutable.SortedMap
@@ -171,65 +170,54 @@ object EraLedger:
   /** The sum of the deposits the accounts hold (`obligationCertState`'s key deposits). */
   def keyDeposits[E <: EraTag](ls: LedgerState[E])(using ShelleyBasedEra[E]): BigInt =
     foldCert[E, BigInt](ls.cert)(
-      _.dState.accounts.states.valuesIterator.foldLeft(BigInt(0))(_ + _.deposit.toBigInt),
-      _.dState.accounts.states.valuesIterator.foldLeft(BigInt(0))(_ + _.deposit.toBigInt)
+      c => CompactCoin.sum(c.dState.accounts.states.valuesIterator.map(_.deposit)).toBigInt,
+      c => CompactCoin.sum(c.dState.accounts.states.valuesIterator.map(_.deposit)).toBigInt
     )
 
-  /** `addToBalanceAccounts` (`State/Account.hs`): adds each amount to the balance of its account;
-    * an amount for a credential that is not registered is not added (the callers have partitioned
-    * those off first, as Haskell's do). A balance leaving the 64-bit word is the vocabulary's
-    * refusal.
+  /** `addToBalanceAccounts` (`State/Account.hs:131–147`): compact balances add modulo 2^64. Callers
+    * perform their own reference conversion before this operation and supply registered account
+    * keys. A missing account is left absent, as in the reference's non-asserting build.
     */
-  def credit[E <: EraTag](ls: LedgerState[E], amounts: Iterable[(Credential[Staking], Coin)])(using
-      ShelleyBasedEra[E]
-  ): Either[VocabError, LedgerState[E]] =
+  def credit[E <: EraTag](
+      ls: LedgerState[E],
+      amounts: Map[Credential[Staking], CompactCoin]
+  )(using ShelleyBasedEra[E]): LedgerState[E] =
     def shelley(c: ShelleyCertState) =
-      creditStates(c.dState.accounts.states, ShelleyAccountState.balance, amounts)
-        .map(s => c.copy(dState = c.dState.copy(accounts = c.dState.accounts.copy(states = s))))
+      val states = creditStates(c.dState.accounts.states, ShelleyAccountState.balance, amounts)
+      c.copy(dState = c.dState.copy(accounts = c.dState.accounts.copy(states = states)))
     def conway(c: ConwayCertState) =
-      creditStates(c.dState.accounts.states, ConwayAccountState.balance, amounts)
-        .map(s => c.copy(dState = c.dState.copy(accounts = c.dState.accounts.copy(states = s))))
-    traverseCert(ls)(shelley, conway)
+      val states = creditStates(c.dState.accounts.states, ConwayAccountState.balance, amounts)
+      c.copy(dState = c.dState.copy(accounts = c.dState.accounts.copy(states = states)))
+    onCert(ls)(shelley, conway)
 
   private[rules] def creditStates[A](
       states: SortedMap[Credential[Staking], A],
       balance: Lens[A, CompactCoin],
-      amounts: Iterable[(Credential[Staking], Coin)]
-  ): Either[VocabError, SortedMap[Credential[Staking], A]] =
-    amounts.toList.foldM(states) { case (acc, (credential, by)) =>
-      acc.get(credential) match
-        case None => Right(acc)
-        case Some(a) =>
-          CompactCoin
-            .fromBigInt(balance.get(a).toBigInt + by.value)
-            .map(b => acc.updated(credential, balance.replace(b)(a)))
+      amounts: Iterable[(Credential[Staking], CompactCoin)]
+  ): SortedMap[Credential[Staking], A] =
+    amounts.foldLeft(states) { case (acc, (credential, by)) =>
+      acc.updatedWith(credential)(_.map(a => balance.replace(balance.get(a).add(by))(a)))
     }
 
-  /** [[credit]] for many amounts that come in the ascending order of the credential, each
-    * credential once (the rewards of the boundary): the accounts and the amounts are walked
-    * together and the map is built once from the result, where `credit` would copy a path of the
-    * tree for each amount. The result is the one `credit` gives, and so is the refusal.
+  /** [[credit]] for an ordered map (the rewards of the boundary): the accounts and amounts are
+    * walked together and the map is built once. Both this path and the sparse path perform the same
+    * native compact addition.
     */
   def creditAscending[E <: EraTag](
       ls: LedgerState[E],
-      amounts: scala.collection.IndexedSeq[(Credential[Staking], Coin)]
-  )(using ShelleyBasedEra[E]): Either[VocabError, LedgerState[E]] =
-    def shelley(c: ShelleyCertState) =
-      mergeStates(c.dState.accounts.states, ShelleyAccountState.balance, amounts)
-        .map(s => c.copy(dState = c.dState.copy(accounts = c.dState.accounts.copy(states = s))))
-    def conway(c: ConwayCertState) =
-      mergeStates(c.dState.accounts.states, ConwayAccountState.balance, amounts)
-        .map(s => c.copy(dState = c.dState.copy(accounts = c.dState.accounts.copy(states = s))))
-    // a few amounts are cheaper one at a time than a pass over all the accounts
-    def one(c: ShelleyCertState) =
-      creditStates(c.dState.accounts.states, ShelleyAccountState.balance, amounts)
-        .map(s => c.copy(dState = c.dState.copy(accounts = c.dState.accounts.copy(states = s))))
-    def oneConway(c: ConwayCertState) =
-      creditStates(c.dState.accounts.states, ConwayAccountState.balance, amounts)
-        .map(s => c.copy(dState = c.dState.copy(accounts = c.dState.accounts.copy(states = s))))
-    if amounts.isEmpty then Right(ls)
-    else if amounts.size * SparseFactor < accountCount(ls) then traverseCert(ls)(one, oneConway)
-    else traverseCert(ls)(shelley, conway)
+      amounts: SortedMap[Credential[Staking], CompactCoin]
+  )(using ShelleyBasedEra[E]): LedgerState[E] =
+    if amounts.isEmpty then ls
+    else if amounts.size * SparseFactor < accountCount(ls) then credit(ls, amounts)
+    else
+      val ascending = amounts.toVector
+      def shelley(c: ShelleyCertState) =
+        val states = mergeStates(c.dState.accounts.states, ShelleyAccountState.balance, ascending)
+        c.copy(dState = c.dState.copy(accounts = c.dState.accounts.copy(states = states)))
+      def conway(c: ConwayCertState) =
+        val states = mergeStates(c.dState.accounts.states, ConwayAccountState.balance, ascending)
+        c.copy(dState = c.dState.copy(accounts = c.dState.accounts.copy(states = states)))
+      onCert(ls)(shelley, conway)
 
   /** Fewer amounts than one in this many accounts are credited one by one. */
   private val SparseFactor = 24
@@ -240,31 +228,24 @@ object EraLedger:
   private[rules] def mergeStates[A](
       states: SortedMap[Credential[Staking], A],
       balance: Lens[A, CompactCoin],
-      amounts: scala.collection.IndexedSeq[(Credential[Staking], Coin)]
-  ): Either[VocabError, SortedMap[Credential[Staking], A]] =
+      amounts: scala.collection.IndexedSeq[(Credential[Staking], CompactCoin)]
+  ): SortedMap[Credential[Staking], A] =
     val order = summon[Order[Credential[Staking]]]
     val out = mutable.ArrayBuffer.empty[(Credential[Staking], A)]
     out.sizeHint(states.size)
-    @tailrec def go(
-        accounts: Iterator[(Credential[Staking], A)],
-        i: Int
-    ): Either[VocabError, SortedMap[Credential[Staking], A]] =
-      if !accounts.hasNext then Right(Sorted.fromAscending(out))
-      else
+    @tailrec def go(accounts: Iterator[(Credential[Staking], A)], i: Int): Unit =
+      if accounts.hasNext then
         val (credential, account) = accounts.next()
-        // an amount for no account is not added (`credit`)
         var j = i
         while j < amounts.size && order.lt(amounts(j)._1, credential) do j += 1
         if j < amounts.size && order.eqv(amounts(j)._1, credential) then
-          CompactCoin.fromBigInt(balance.get(account).toBigInt + amounts(j)._2.value) match
-            case Left(error) => Left(error)
-            case Right(b) =>
-              out += credential -> balance.replace(b)(account)
-              go(accounts, j + 1)
+          out += credential -> balance.replace(balance.get(account).add(amounts(j)._2))(account)
+          go(accounts, j + 1)
         else
           out += credential -> account
           go(accounts, j)
     go(states.iterator, 0)
+    Sorted.fromAscending(out)
 
   /** `removeStakePoolDelegations` (`State/Account.hs`): the accounts of `delegators` delegate to no
     * pool.
@@ -294,15 +275,6 @@ object EraLedger:
           )
         )
     )
-
-  private def traverseCert[E <: EraTag](ls: LedgerState[E])(
-      shelley: ShelleyCertState => Either[VocabError, ShelleyCertState],
-      conway: ConwayCertState => Either[VocabError, ConwayCertState]
-  )(using era: ShelleyBasedEra[E]): Either[VocabError, LedgerState[E]] = era match
-    case ShelleyBasedEra.SConway => conway(ls.cert).map(c => ls.copy[E](cert = c))
-    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-      shelley(ls.cert).map(c => ls.copy[E](cert = c))
 
   /** `resolveInstantStake` (`State/Stake.hs:220`, `Shelley/State/Stake.hs:148`, `Conway/State/
     * Stake.hs:123`): the stake of the registered accounts that delegate to a pool, from the instant

@@ -140,8 +140,8 @@ object ConwayEpoch:
     */
   def totalObligation(ls: LedgerState[Conway]): BigInt =
     EraLedger.keyDeposits(ls) +
-      ls.cert.pState.stakePools.valuesIterator.foldLeft(BigInt(0))(_ + _.deposit.toBigInt) +
-      ls.cert.vState.dreps.valuesIterator.foldLeft(BigInt(0))(_ + _.deposit.toBigInt) +
+      CompactCoin.sum(ls.cert.pState.stakePools.valuesIterator.map(_.deposit)).toBigInt +
+      CompactCoin.sum(ls.cert.vState.dreps.valuesIterator.map(_.deposit)).toBigInt +
       ls.utxo.gov.proposals.totalDeposits
 
   /** The rest of the rule once SNAP and POOLREAP have run: `es0` is the state the rule began with
@@ -176,19 +176,23 @@ object ConwayEpoch:
       futurePParams = FuturePParams.PotentialPParamsUpdate(None)
     )
     for
-      withdrawn <- successful.traverse((c, n) => Coin.fromBigInt(n).map(c -> _))
-      withdrawnTotal = successful.foldLeft(BigInt(0))(_ + _._2)
-      afterWithdrawals <- EraLedger.credit(ls1, withdrawn)
+      withdrawn <- successful.traverse((c, n) => CompactCoin.fromCoin(Coin(n)).map(c -> _))
+      withdrawnTotal = CompactCoin.sum(withdrawn.iterator.map(_._2)).toBigInt
+      afterWithdrawals = EraLedger.credit(ls1, withdrawn.toMap)
       // proposal deposits go back to their accounts, or to the treasury where there is none
       refunds <- removed.traverse { gas =>
         Convert
           .credential[Staking](gas.proposal.returnAccount.credential)
-          .flatMap(c => Coin.fromBigInt(gas.proposal.deposit).map(c -> _))
+          .map(c => c -> Coin(gas.proposal.deposit))
       }
       (refundable, unclaimedRefunds) = refunds.partition((c, _) =>
         EraLedger.isRegistered(afterWithdrawals, c)
       )
-      refunded <- EraLedger.credit(afterWithdrawals, refundable)
+      compactRefunds <- refundable.traverse((c, n) => CompactCoin.fromCoin(n).map(c -> _))
+      refunded = EraLedger.credit(
+        afterWithdrawals,
+        compactRefunds.groupMapReduce(_._1)(_._2)((a, b) => a.add(b))
+      )
       unclaimed = unclaimedRefunds.foldLeft(BigInt(0))(_ + _._2.value)
       dormant <- {
         val active = proposals.actions.exists(epoch.toBigInt <= _.expiresAfter)
@@ -198,7 +202,7 @@ object ConwayEpoch:
       committeeState = refunded.cert.vState.committeeState.creds.filter((cold, _) =>
         enacted.committee.exists(_.members.contains(Convert.back(cold)))
       )
-      treasury <- Coin.fromBigInt(
+      treasury = Coin(
         es1.chainAccount.treasury.value - withdrawnTotal + es0.ls.utxo.donation.value + unclaimed
       )
       cert2 = refunded.cert.copy(vState =
@@ -208,7 +212,7 @@ object ConwayEpoch:
         )
       )
       ls2 = LedgerState[Conway](cert2, ls1.utxo.copy(gov = gov1))
-      deposited <- Coin.fromBigInt(totalObligation(ls2))
+      deposited = Coin(totalObligation(ls2))
       ls3 = ls2.copy[Conway](utxo = ls2.utxo.copy(deposited = deposited, donation = Coin.zero))
       es2 = es1.copy(chainAccount = es1.chainAccount.copy(treasury = treasury), ls = ls3)
     yield

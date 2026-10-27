@@ -74,7 +74,7 @@ object StakeDistribution:
     )
     for
       poolStake <- CompactCoin.fromBigInt(stake)
-      selfStake <- Coin.fromBigInt(ownersStake)
+      selfStake = Coin(ownersStake)
       count <- Word64.fromBigInt(VocabError.Kind.BlockCount, BigInt(pool.delegators.size))
     yield StakePoolSnapShot(
       poolStake,

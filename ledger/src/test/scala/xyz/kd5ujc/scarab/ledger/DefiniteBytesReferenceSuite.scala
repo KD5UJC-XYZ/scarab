@@ -78,7 +78,8 @@ class DefiniteBytesReferenceSuite extends FunSuite:
               "the id hashes the original bytes"
             )
           row.withdrawals.foreach { recorded =>
-            val expected = recorded.traverse((a, n) => RewardAccount.decode(a).tupleRight(n))
+            val expected =
+              recorded.traverse((a, n) => RewardAccount.decode(a).tupleRight(state.Coin(n)))
             val decoded = TxBody.decode(row.raw, row.era).map(_.withdrawals)
             assertEquals(decoded.map(_.size), expected.map(_.size), "one entry per account")
             assertEquals(

@@ -50,7 +50,7 @@ object VocabularyGen:
   )
 
   given Arbitrary[Coin] = Arbitrary(
-    Gen.oneOf(0L, 1L, 2L, Long.MaxValue).map(n => valid(Coin.fromBigInt(BigInt(n))))
+    Gen.oneOf(0L, 1L, 2L, Long.MaxValue).map(n => Coin(BigInt(n)))
   )
   given Arbitrary[DeltaCoin] = Arbitrary(
     Gen.oneOf(-1L, 0L, 1L, Long.MinValue).map(n => DeltaCoin(BigInt(n)))

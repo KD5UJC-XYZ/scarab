@@ -37,12 +37,13 @@ object Mir:
     val availableT = es.chainAccount.treasury.value + ir.deltaTreasury.value
     val cleared = es.copy(ls = EraLedger.withIRewards(es.ls, none))
     if totalR <= availableR && totalT <= availableT then
-      for
-        reserves <- Coin.fromBigInt(availableR - totalR)
-        treasury <- Coin.fromBigInt(availableT - totalT)
-        credited <- EraLedger.credit(
-          cleared.ls,
-          (toReserves.iterator ++ toTreasury.iterator).toVector
+      // The reference unions the Coin amounts before applying compactCoinOrError to each sum.
+      val update = (toReserves.iterator ++ toTreasury.iterator).toVector
+        .groupMapReduce(_._1)(_._2.value)(_ + _)
+      update.toList.traverse((c, n) => CompactCoin.fromCoin(Coin(n)).map(c -> _)).map { amounts =>
+        es.copy(
+          ls = EraLedger.credit(cleared.ls, amounts.toMap),
+          chainAccount = ChainAccountState(Coin(availableT - totalT), Coin(availableR - totalR))
         )
-      yield es.copy(ls = credited, chainAccount = ChainAccountState(treasury, reserves))
+      }
     else Right(cleared)

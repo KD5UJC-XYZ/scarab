@@ -156,7 +156,7 @@ object RuleSet:
         val rewards = image.extras.rewardAmounts.toList.map { (c, n) =>
           val credential =
             Convert.credential[Staking](c).fold(e => broken(s"credential: $e"), identity)
-          val coin = Coin.fromBigInt(n).fold(e => broken(s"coin: $e"), identity)
+          val coin = Coin(n)
           credential -> RewardSet(List(Reward(RewardType.MemberReward, placeholder, coin)))
         }
         nes.copy(ru = Some(PulsingRewUpdate.Complete(update.copy(rs = Sorted.map(rewards)))))

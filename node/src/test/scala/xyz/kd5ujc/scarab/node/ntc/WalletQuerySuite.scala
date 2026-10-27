@@ -54,9 +54,7 @@ class WalletQuerySuite extends FunSuite:
         asked(LedgerQuery.GetCBOR(LedgerQuery.GetRewardInfoPools)),
         CborOut.build(_.array(1).tag(24).bytes(info))
       )
-      val widePot = xyz.kd5ujc.scarab.ledger.state.Coin
-        .fromBigInt(BigInt(1) << 80)
-        .fold(e => fail(e.toString), identity)
+      val widePot = xyz.kd5ujc.scarab.ledger.state.Coin(BigInt(1) << 80)
       val wide = nes.es.nonMyopic.copy(rewardPot = widePot)
       assertEquals(
         RewardQueries.info(facts.l.params, total, snap, wide).hex,
@@ -172,7 +170,7 @@ class WalletQuerySuite extends FunSuite:
         Left(Unanswered.Unwritable)
       )
     )
-    val huge = Coin.fromBigInt(BigInt(1) << 4096).fold(e => fail(e.toString), identity)
+    val huge = Coin(BigInt(1) << 4096)
     val nonfinite =
       base.copy(es = base.es.copy(nonMyopic = base.es.nonMyopic.copy(rewardPot = huge)))
     assertEquals(ask(nonfinite, NtcGolden.queryEnv, queries(1)), Left(Unanswered.Unwritable))

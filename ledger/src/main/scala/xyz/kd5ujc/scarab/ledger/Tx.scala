@@ -8,6 +8,7 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.Block
+import xyz.kd5ujc.scarab.ledger.state.Coin
 
 /** DRep a stake credential delegates its vote to. */
 enum DRep:
@@ -289,7 +290,7 @@ final case class TxBody(
     ttl: Option[BigInt],
     validityStart: Option[BigInt],
     certificates: Vector[Certificate],
-    withdrawals: Map[RewardAccount, BigInt],
+    withdrawals: Map[RewardAccount, Coin],
     mint: Map[Bytes, Map[Bytes, BigInt]],
     collateral: Vector[TxIn],
     requiredSigners: Vector[Bytes],
@@ -414,7 +415,7 @@ object TxBody:
               .flatMap(_.traverse { case (k, v) =>
                 (
                   CborRead.bytes(k, DecodeField.WithdrawalAccount).flatMap(RewardAccount.decode),
-                  CborRead.uint(v, DecodeField.Withdrawal)
+                  CborRead.uint(v, DecodeField.Withdrawal).map(Coin(_))
                 ).tupled
               })
               // The decoded/API map enforces the unique keys of Withdrawals (Map AccountAddress Coin).

@@ -54,7 +54,7 @@ class DuplicateWithdrawalsLedgerSuite extends FunSuite:
       empty.copy[E](utxo =
         empty.utxo.copy[E](
           utxo = UtxoTables(Utxo.empty ++ Vector(input -> out(alice.address(), funds))),
-          deposited = Coin.fromBigInt(deposit).fold(e => fail(e.toString), identity)
+          deposited = Coin(deposit)
         )
       )
     )
@@ -128,7 +128,8 @@ class DuplicateWithdrawalsLedgerSuite extends FunSuite:
 
     test(s"$name: native transaction construction cannot count a withdrawal account twice") {
       val decodedBody = decoded(wire, reward, 2 * reward)
-      val body = decodedBody.copy(withdrawals = Map(account -> reward, account -> reward))
+      val body =
+        decodedBody.copy(withdrawals = Map(account -> Coin(reward), account -> Coin(reward)))
       assertEquals(body.raw, decodedBody.raw)
       assertEquals(body.id, decodedBody.id)
       assertEquals(
@@ -149,7 +150,7 @@ class DuplicateWithdrawalsLedgerSuite extends FunSuite:
     test(s"$name: the last amount drains the account once and preserves value") {
       val body = decoded(wire, reward + 1, reward)
       val after = run(body).fold(e => fail(e.toString), identity).state
-      assertEquals(body.withdrawals, Map(account -> reward))
+      assertEquals(body.withdrawals, Map(account -> Coin(reward)))
       assertEquals(
         ShelleyCertLens.states.get(pre.cert.get(after)).get(stake).map(_.balance.toBigInt),
         Some(BigInt(0))
