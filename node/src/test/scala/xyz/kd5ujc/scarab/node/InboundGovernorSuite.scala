@@ -275,7 +275,9 @@ class InboundGovernorSuite extends FailsOnUncaught:
     case ConnectionEnd.Closed(NetworkError.Closure.AbortedBy(error: PeerError)) => error
     case other => fail(s"unexpected $other")
 
-  test("an unexpected inbound transport exception remains a defect with the original cause") {
+  // the reference closes the connection for an exception in a bearer thread (`ShutdownPeer`,
+  // issue 463): the cause is kept, the node goes on
+  test("an exception of the inbound bearer's reader closes that connection, not the node") {
     val defect = new IllegalStateException("injected read defect")
     val bearer = new Bearer[IO]:
       def reads = fs2.Stream.raiseError[IO](defect)
@@ -291,11 +293,9 @@ class InboundGovernorSuite extends FailsOnUncaught:
             table <- us.manager.snapshot
           yield
             outcome match
-              case ConnectionEnd.Defect(cause) => assert(cause eq defect)
-              case other                       => fail(s"unexpected $other")
-            fatalities match
-              case Vector(Fatal.Defect(cause)) => assert(cause eq defect)
-              case other                       => fail(s"unexpected $other")
+              case ConnectionEnd.Failed(NetworkError.BearerDefect(cause)) => assert(cause eq defect)
+              case other => fail(s"unexpected $other")
+            assertEquals(fatalities, Vector.empty)
             assertEquals(table.counters, ConnectionState.Counters.zero)
         }
     yield nodeTestResult

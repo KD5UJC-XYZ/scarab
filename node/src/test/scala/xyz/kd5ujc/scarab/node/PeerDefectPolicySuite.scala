@@ -29,6 +29,7 @@ class PeerDefectPolicySuite extends FailsOnUncaught:
   private val sites = Vector(
     PeerError.InputSite.Wire(Protocols.ChainSync),
     PeerError.InputSite.Wire(Protocols.KeepAlive),
+    PeerError.InputSite.Bearer,
     PeerError.InputSite.ChainSyncHeader,
     PeerError.InputSite.FetchedBlock(ChainSync.Point.Origin)
   )
@@ -37,6 +38,15 @@ class PeerDefectPolicySuite extends FailsOnUncaught:
     Peer.networkFault(NetworkError.DecoderDefect(Protocols.ChainSync, cause)) match
       case Fault.Failed(PeerError.InputDefect(PeerError.InputSite.Wire(protocol), thrown)) =>
         assertEquals(protocol, Protocols.ChainSync)
+        assert(thrown eq cause)
+      case other => fail(s"unexpected $other")
+  }
+
+  test(
+    "the bearer reader's defect reaches the node as a failure of the peer with its cause (issue 463)"
+  ) {
+    Peer.networkFault(NetworkError.BearerDefect(cause)) match
+      case Fault.Failed(PeerError.InputDefect(PeerError.InputSite.Bearer, thrown)) =>
         assert(thrown eq cause)
       case other => fail(s"unexpected $other")
   }

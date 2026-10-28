@@ -473,7 +473,10 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
           }
         }
         .map {
-          case Right(NetworkError.Defect(found)) if unexpected => assert(found eq cause)
+          // the reader's exception is the connection's (issue 463); the writer's stays a defect
+          case Right(NetworkError.BearerDefect(found)) if unexpected && !writing =>
+            assert(found eq cause)
+          case Right(NetworkError.Defect(found)) if unexpected && writing => assert(found eq cause)
           case Right(NetworkError.BearerClosed(NetworkError.Closure.Transport(_, found)))
               if !unexpected =>
             assert(found eq cause)

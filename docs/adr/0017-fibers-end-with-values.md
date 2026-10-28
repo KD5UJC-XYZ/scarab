@@ -122,8 +122,9 @@ rules refused, a storage failure and a bug in the node were all retried like a l
   Expected transport `IOException`s remain connection failures; an unexpected network exception of
   unknown origin preserves its cause as `NetworkError.Defect` until the node's `Fatal.Defect` boundary
   (exit 7), and one thrown by a decoder on a peer's bytes is `NetworkError.DecoderDefect`, a failure of
-  that connection (decision 5). The bearer's reader fiber is not yet covered: an exception thrown while
-  it reads or routes remains `Defect` and fatal, a gap recorded here until the reader can name its input.
+  that connection (decision 5). ~~The bearer's reader fiber is not yet covered: an exception thrown while
+  it reads or routes remains `Defect` and fatal, a gap recorded here until the reader can name its input.~~
+  ([superseded](#amendment-2026-10-28-the-bearer-readers-exception-is-the-connections))
   A fatal outcome marks and releases the connection before reporting the fatal event; it produces no
   `Lost` observation or `Transient` projection. Exits 5 (storage) and 6 (internal) are unchanged.
 - **Recovery addendum (#152).** `Follower` restarts intersection when its candidate leaves the
@@ -219,3 +220,18 @@ header-first path it ends that peer's session and nothing else (`Node/RethrowPol
 caller's `Raise`, classified `Transient`. The hold of the 2026-10-23 amendment is for the evaluator
 only. The as-built contract and the reference correspondence, including the mempool and local
 submission, are in [domain errors](../design/domain-errors.md).
+
+## Amendment (2026-10-28): the bearer reader's exception is the connection's
+
+An exception the multiplexer's bearer reader throws while it reads the peer's bytes or routes them is
+`NetworkError.BearerDefect(cause)`, an exception of that connection's input (issue 463): `Peer.networkFault`
+makes it `PeerError.InputDefect(InputSite.Bearer, cause)`, so the connection closes, the peer backs off
+and the node goes on, with the cause kept, as decision 5 does for a decoder. This is the reference's
+policy for an exception in a bearer thread (ouroboros-network `2fb69829` `RethrowPolicy.hs`: an
+exception no policy names is `ShutdownPeer`; `ConnectionHandler.hs` `classifyExceptions`). A transport
+`IOException` stays a closed connection.
+
+The bearer's writer encodes and sends the node's own messages, so an exception there is the node's own
+bug and says nothing about the peer: it stays `Defect` and stops the node, and the peer is not charged.
+The reference's policy closes the connection there too (`ourBug` is `ShutdownPeer`); this is an
+owner-approved deviation (2026-10-28).

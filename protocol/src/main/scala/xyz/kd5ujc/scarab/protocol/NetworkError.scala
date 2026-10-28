@@ -48,6 +48,15 @@ enum NetworkError extends DomainError:
     */
   case DecoderDefect(protocol: Int, cause: Throwable)
 
+  /** The bearer's reader threw while it read the peer's bytes or routed them to their protocol:
+    * still a defect with its original cause, but one met on this connection's input. As for an
+    * exception in a bearer thread in the reference, the connection is closed and the peer is
+    * charged, the node goes on (network `RethrowPolicy.hs`: an exception no policy names is
+    * `ShutdownPeer`; `ConnectionHandler.hs` `classifyExceptions`). An `IOException` of the socket
+    * stays a closed connection ([[fromThrowable]]).
+    */
+  case BearerDefect(cause: Throwable)
+
   /** The peer's bytes are not a well-formed multiplexer frame (a header that cannot be read, a
     * payload past the limit): the multiplexer cannot tell which protocol was meant.
     */
@@ -79,9 +88,10 @@ enum NetworkError extends DomainError:
     case Defect(t) => s"network defect: ${NetworkError.describe(t)}"
     case DecoderDefect(p, t) =>
       s"${Protocols.name(p)} decoder defect: ${NetworkError.describe(t)}"
-    case Framing(e)  => s"multiplexer framing: ${e.message}"
-    case MuxSetup(e) => s"multiplexer setup: ${e.message}"
-    case MuxWrite(e) => s"multiplexer write: ${e.message}"
+    case BearerDefect(t) => s"bearer reader defect: ${NetworkError.describe(t)}"
+    case Framing(e)      => s"multiplexer framing: ${e.message}"
+    case MuxSetup(e)     => s"multiplexer setup: ${e.message}"
+    case MuxWrite(e)     => s"multiplexer write: ${e.message}"
 
 object NetworkError:
   /** Internal invariant failure crossing from the network's peer-error scope to the node owner. */
@@ -160,6 +170,13 @@ object NetworkError:
     case io: java.io.IOException =>
       BearerClosed(Closure.Transport(context, io))
     case other => Defect(other)
+
+  /** An exception of the bearer's reader: a transport failure is a closed connection, any other a
+    * [[BearerDefect]] of this connection.
+    */
+  def ofReader(cause: Throwable): NetworkError = cause match
+    case io: java.io.IOException => BearerClosed(Closure.Transport("bearer failed", io))
+    case other                   => BearerDefect(other)
 
 /** Mini-protocol numbers: the node-to-node ones and the node-to-client ones (5, 6, 7 and 9). */
 object Protocols:

@@ -545,10 +545,12 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 def bearer(peer: PeerNetwork.Addr, remote: SocketAddress[IpAddress])(using
                     cats.mtl.Raise[IO, NetworkError]
                 ) =
+                  // the writer's exception is the node's own (an approved deviation, ADR 0017
+                  // amendment of 2026-10-28); the reader's would be the connection's (issue 463)
                   cats.effect.Resource.pure[IO, Bearer[IO]](new Bearer[IO]:
-                    def reads =
-                      fs2.Stream.raiseError[IO](new IllegalStateException("injected network"))
-                    def write(bytes: fs2.Chunk[Byte]) = IO.unit
+                    def reads = fs2.Stream.never[IO]
+                    def write(bytes: fs2.Chunk[Byte]) =
+                      IO.raiseError[Unit](new IllegalStateException("injected network"))
                     def close = IO.unit)
           manager <- ConnectionManager.create[IO]()
           last = forged.headers.last

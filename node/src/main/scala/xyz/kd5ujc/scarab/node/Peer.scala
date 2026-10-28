@@ -506,6 +506,8 @@ object Peer:
     case NetworkError.Defect(cause) => Fault.Defect(cause)
     case NetworkError.DecoderDefect(protocol, cause) =>
       Fault.Failed(PeerError.InputDefect(PeerError.InputSite.Wire(protocol), cause))
+    case NetworkError.BearerDefect(cause) =>
+      Fault.Failed(PeerError.InputDefect(PeerError.InputSite.Bearer, cause))
     case NetworkError.Framing(cause)  => Fault.Failed(PeerError.Framing(cause))
     case NetworkError.MuxSetup(cause) => Fault.Failed(PeerError.MuxSetup(cause))
     case NetworkError.MuxWrite(cause) => Fault.Failed(PeerError.MuxWrite(cause))

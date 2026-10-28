@@ -554,7 +554,7 @@ object Mux:
           .compile
           .last
           .map(_.getOrElse(closedByPeer))
-          .handleError(t => NetworkError.fromThrowable("bearer failed", t))
+          .handleError(NetworkError.ofReader)
 
       val writer: F[NetworkError] =
         outbound
