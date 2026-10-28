@@ -41,6 +41,9 @@ enum ConfigProblem:
   /** A genesis number the reference's `FromJSON` instance refuses. */
   case GenesisNumber(field: GenesisNumberField, cause: json.NumberError)
 
+  /** A field of a genesis file that the reference's parser refuses ([[GenesisSchema]]). */
+  case GenesisField(file: GenesisFile, path: Vector[String], cause: GenesisFieldError)
+
   /** A security parameter the chain store cannot count in an `Int`, though the reference's
     * `NonZero Word64` holds it. An approved deviation, recorded in #474.
     */
@@ -88,6 +91,8 @@ enum ConfigProblem:
   def message: String = this match
     case ActiveSlotsCoefficient(e)   => e.message
     case GenesisNumber(field, cause) => s"genesis ${field.key}: ${cause.message}"
+    case GenesisField(file, path, cause) =>
+      s"${file.label} genesis ${path.mkString(".")}: ${cause.message}"
     case SecurityParamBeyondStorage(k) =>
       s"genesis securityParam $k: the chain store counts at most ${Int.MaxValue} blocks"
     case JsonSyntax(context, cause)       => s"$context is not JSON: ${cause.message}"
@@ -115,6 +120,45 @@ enum ConfigProblem:
     case GenesisCostModel(cause)    => s"genesis cost models: ${cause.message}"
     case WithUsage(cause, usage)    => s"${cause.message}\n$usage"
     case _                          => toString
+
+/** A genesis file of the Shelley-based eras. */
+enum GenesisFile:
+  case Shelley, Alonzo, Conway
+
+  def label: String = this match
+    case Shelley => "Shelley"
+    case Alonzo  => "Alonzo"
+    case Conway  => "Conway"
+
+/** Why the reference's genesis parser refuses a field ([[GenesisSchema]]). */
+enum GenesisFieldError:
+  /** `.:` of an absent key. */
+  case Missing
+
+  /** A JSON value of another type than the instance reads (`typeMismatch`). */
+  case Kind(expected: json.JsonKind, found: json.JsonKind)
+
+  /** A number its instance refuses. */
+  case Number(cause: json.NumberError)
+
+  /** A text outside the values the instance knows (`Network`, the `Nonce` tag). */
+  case Choice(value: String, allowed: Vector[String])
+
+  /** Hexadecimal text of the wrong length or alphabet (a hash). */
+  case Hash(expectedBytes: Int, value: String)
+
+  /** A value a reader of its own refuses: an address ([[GenesisState.address]]) or a credential
+    * ([[GenesisState.credential]]).
+    */
+  case Nested(cause: ConfigProblem)
+
+  def message: String = this match
+    case Missing                => "key not found"
+    case Kind(expected, found)  => s"expected $expected, but encountered $found"
+    case Number(cause)          => cause.message
+    case Choice(value, allowed) => s"$value is not one of ${allowed.mkString(", ")}"
+    case Hash(bytes, value)     => s"expected $bytes bytes of hexadecimal, got $value"
+    case Nested(cause)          => cause.message
 
 /** A Shelley genesis field read with a number instance of the reference. */
 enum GenesisNumberField:
