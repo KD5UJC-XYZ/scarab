@@ -84,10 +84,15 @@ class GenesisCostModelsSuite extends FunSuite:
     )
     Models(known.toMap, unknown.toMap)
 
-  private def expectation(row: Json): Either[String, Json] =
+  /** The reference's verdict on a row: the value it read, or its refusal (whose text is shown). */
+  private enum Verdict:
+    case Accepted(result: Json)
+    case Refused(failure: String)
+
+  private def expectation(row: Json): Verdict =
     val verdict = field[Json](row, "reference")
-    if field[Boolean](verdict, "accepted") then Right(field[Json](verdict, "result"))
-    else Left(field[String](verdict, "failure"))
+    if field[Boolean](verdict, "accepted") then Verdict.Accepted(field[Json](verdict, "result"))
+    else Verdict.Refused(field[String](verdict, "failure"))
 
   private def agree[A](row: Json, actual: Either[CostModelProblem, A])(
       same: (A, Json) => Unit
@@ -95,12 +100,13 @@ class GenesisCostModelsSuite extends FunSuite:
     val name = field[String](row, "name")
     val wanted = category(row)
     (actual, expectation(row)) match
-      case (Right(value), Right(result)) =>
+      case (Right(value), Verdict.Accepted(result)) =>
         assertEquals(wanted, Category.Accepted, name)
         same(value, result)
-      case (Left(problem), Left(_))  => assertEquals(category(problem), wanted, name)
-      case (Right(_), Left(failure)) => fail(s"$name: accepted, the reference refused: $failure")
-      case (Left(problem), Right(_)) =>
+      case (Left(problem), Verdict.Refused(_)) => assertEquals(category(problem), wanted, name)
+      case (Right(_), Verdict.Refused(failure)) =>
+        fail(s"$name: accepted, the reference refused: $failure")
+      case (Left(problem), Verdict.Accepted(_)) =>
         fail(s"$name: refused (${problem.message}), the reference accepted")
 
   private def rowsOf(kind: String): Vector[Json] = rows.filter(field[String](_, "kind") == kind)
