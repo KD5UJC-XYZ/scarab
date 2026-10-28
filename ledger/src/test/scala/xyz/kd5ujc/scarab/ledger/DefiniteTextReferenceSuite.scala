@@ -40,7 +40,9 @@ class DefiniteTextReferenceSuite extends FunSuite:
     assertEquals(rows.map(_.name).distinct.size, rows.size)
   }
 
-  test("every case was recorded for the rule it breaks, and the metadata agrees with the reference") {
+  test(
+    "every case was recorded for the rule it breaks, and the metadata agrees with the reference"
+  ) {
     for row <- rows do
       assertEquals(row.accepted, row.expect.isEmpty, row.name)
       row.rule.foreach(r => assert(row.failure.exists(r.explains), s"${row.name}: ${row.failure}"))
