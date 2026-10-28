@@ -222,6 +222,7 @@ trait ForgeFixture:
       forger <- Forger.create[IO, MirrorState](
         config,
         globals,
+        mirrorEnv.byron,
         p.creds,
         follower,
         mempool,

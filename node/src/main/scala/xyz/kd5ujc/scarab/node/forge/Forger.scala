@@ -25,7 +25,7 @@ import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash}
 import xyz.kd5ujc.scarab.node.{Fatal, Follower, SessionEnd}
 import xyz.kd5ujc.scarab.consensus.{Praos, PraosConfig}
-import xyz.kd5ujc.scarab.consensus.state.{Placement, ProtocolState}
+import xyz.kd5ujc.scarab.consensus.state.{EraHistory, Placement, ProtocolState}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{LedgerGlobals, PoolDistribution}
 import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Globals, Hfc}
@@ -132,6 +132,9 @@ trait ForgeEvents[F[_]]:
   * slot is attempted: slots that pass while an attempt runs are not attempted, and nothing is said
   * of them, as the reference's `knownSlotWatcher` passes over them.
   *
+  * @param byronHistory
+  *   The Byron parameters of the era history, from the Byron genesis: those the block rules and the
+  *   mempool translate time with ([[Placement]]).
   * @param credentials
   *   The pool's keys as they were at the start; the VRF key and the cold key never change, the KES
   *   key and certificate are those of `hot`.
@@ -152,6 +155,7 @@ trait ForgeEvents[F[_]]:
 final class Forger[F[_]: Async, S](
     config: PraosConfig,
     globals: LedgerGlobals,
+    byronHistory: EraHistory.ByronParams,
     credentials: PoolCredentials,
     val hot: HotKeys[F],
     follower: Follower[F, S],
@@ -523,7 +527,7 @@ final class Forger[F[_]: Async, S](
           BlockBuilder.Limits.of(ticked.params),
           Some(
             base.state.clock(
-              Placement.of(base.state.geometry(geometry), config.forks),
+              Placement(base.state.geometry(geometry), byronHistory, config.forks),
               Era.Conway,
               slot
             )
@@ -797,11 +801,12 @@ object Forger:
     * of the current ledger, `hfbtGetLedgerState`): the horizon of [[ChainRead.clock]], the same one
     * the transactions' time translation has.
     */
-  def withinHorizon[S](config: PraosConfig)(using
+  def withinHorizon[S](config: PraosConfig, byronHistory: EraHistory.ByronParams)(using
       read: ChainRead[S]
   ): (VolatileChain[S], BigInt) => Boolean =
     (current, slot) =>
-      val placement = Placement.of(current.state.geometry(config.geometry), config.forks)
+      val placement =
+        Placement(current.state.geometry(config.geometry), byronHistory, config.forks)
       current.state.clock(placement, Era.Conway, slot).posix(slot).isRight
 
   /** The tip's ledger and chain-dependent state carried into an epoch, and the pool distribution of
@@ -839,13 +844,16 @@ object Forger:
     /** `estimateBlockSize` of the header (see [[ForgeTrace.AdoptedBlock]]). */
     def estimatedSize: Long = header.raw.size.toLong + body.size + 10
 
-  /** @param source
+  /** @param byronHistory
+    *   The Byron parameters of the era history ([[Forger]]).
+    * @param source
     *   Where the KES key is written back after evolving and read from again at a reload; none: the
     *   key is kept in memory only, as the Haskell node does.
     */
   def create[F[_]: Async, S](
       config: PraosConfig,
       globals: LedgerGlobals,
+      byronHistory: EraHistory.ByronParams,
       credentials: PoolCredentials,
       follower: Follower[F, S],
       mempool: Mempool[F],
@@ -870,6 +878,7 @@ object Forger:
       new Forger[F, S](
         config,
         globals,
+        byronHistory,
         credentials,
         hot,
         follower,
@@ -879,7 +888,7 @@ object Forger:
         now.getOrElse(Clock[F].realTimeInstant),
         sleep.getOrElse(d => Async[F].sleep(d)),
         unknownSlotBackoff,
-        horizon.getOrElse(Forger.withinHorizon(config)),
+        horizon.getOrElse(Forger.withinHorizon(config, byronHistory)),
         cache,
         pending,
         utxoStore,

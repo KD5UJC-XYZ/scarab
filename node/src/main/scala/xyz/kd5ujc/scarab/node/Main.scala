@@ -1399,6 +1399,7 @@ object Main extends IOApp:
                 forger <- Forger.create[IO, MirrorState](
                   setup.praos.copy(geometry = geometry),
                   globals,
+                  setup.byronHistory,
                   pool,
                   follower,
                   mempool,
