@@ -923,12 +923,28 @@
           485
         ]
       },
-      "limitations": {
+      "limitations": {},
+      "page": "docs/compatibility/ledger-genesis-cost-models.md"
+    },
+    {
+      "id": "ledger-genesis-fields",
+      "component": "Ledger: genesis fields (#497)",
+      "status": "implemented",
+      "summary": "Every field of the Shelley, Alonzo and Conway genesis files read as the reference's FromJSON instances read it",
+      "evidence": {
+        "suites": [
+          "GenesisSchemaSuite"
+        ],
         "issues": [
           497
         ]
       },
-      "page": "docs/compatibility/ledger-genesis-cost-models.md"
+      "limitations": {
+        "issues": [
+          563
+        ]
+      },
+      "page": "docs/compatibility/ledger-genesis-fields.md"
     },
     {
       "id": "plutus-phase-2",
