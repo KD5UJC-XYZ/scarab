@@ -1,0 +1,16 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+# Ledger: definite text, decoder versions 2 to 9 (#435)
+
+Part of the [compatibility matrix](../compatibility.md); the register entry is `ledger-definite-text` in [compatibility.json](../data/compatibility.json).
+
+## Status as recorded
+
+implemented: every text field of a block body is read through one instance, `instance DecCBOR T.Text where decCBOR = decodeString` (`DecCBOR.hs:356-358`, cardano-ledger `f649f975`), and cborg's `decodeString` takes a **definite-length** string in every decoder version. `Url` and `DnsName` read that same reader through `textDecCBOR` (`BaseTypes.hs:644-668`, the instances at `678-697`). Scarab's `CborRead.text` now refuses an indefinite (chunked) string, whose head is `0x7f`, with the typed `IndefiniteLength` of its place: a pool metadata url (read in `PoolParams.metadataHash`) and a governance anchor url (read in `Anchor.decode`, reached by a DRep registration, a proposal and a vote) are refused where the released decoders fail them with `expected string`. `PoolRelays.dns` reads text itself rather than through `CborRead.text` and refuses a chunked DNS name with `PoolRelayError.IndefiniteDnsName`, which surfaces wherever relays are decoded (SCLS import, node peer selection) — at body decode only under #436. Transaction metadata does not take this policy: it matches text directly and keeps its chunked reader (`decodeMetadatum`, `Metadata.hs:153-222`), and it is still accepted. Nothing is re-encoded: the original bytes are hashed and retained.
+
+## Evidence
+
+`DefiniteTextReferenceSuite`: 19 original encodings (`fixtures/reference/definite-text/cases.jsonl`, oracle `scripts/oracle/conway-decoding/definite_text_cases.py`, harness unchanged, image `scarab-conway-decoding:local`): the pool metadata url of a registration in each era from Shelley to Conway as a definite string (accepted) and as one chunk (refused), the anchor url of a Conway DRep registration, proposal and vote likewise, and one chunked metadata text in a whole Conway transaction that the reference accepts. 10 accepted, 9 refused, each refusal recorded with the `expected string` fragment of the reference failure and with the Scarab error case it must be. `DefiniteTextSuite`: the same three readers at unit level, including the relay reader, each with its definite twin.
+
+## Explicitly unchecked or unconfirmed
+
+A relay DNS name at body decode (#436: a registration's relays are kept as their original bytes and decoded with the body only there). The length bound of these fields — `textSizeN` bounds them at 64 bytes of UTF-8 below decoder version 9 and 128 from it, and neither the anchor nor the pool metadata url applies a bound yet (#550). Byron's application name takes the same reader and is definite-only after this change, but no Byron case is in this corpus. Plutus `Data` carries no text.
