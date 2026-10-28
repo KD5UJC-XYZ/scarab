@@ -155,7 +155,7 @@ object MithrilBootstrapCommand:
       (setup, ledger) = imported
       slots <- ChunkSlots
         .fromSecurityParam(
-          setup.byron.fold(setup.genesis.geometry.securityParam.toLong)(_.securityParam.toLong)
+          setup.byron.fold(setup.genesis.geometry.k.toLong)(_.securityParam.toLong)
         )
         .toRight(Problem.InvalidChunkSize)
       source = options.source.fold[MithrilClient.Source](MithrilClient.Source.Download)(p =>

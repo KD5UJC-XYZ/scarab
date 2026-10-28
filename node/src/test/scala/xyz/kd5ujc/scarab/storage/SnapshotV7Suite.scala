@@ -584,7 +584,8 @@ class SnapshotV7Suite extends CatsEffectSuite:
       )
       .fold(e => fail(e.toString), identity)
     val epoch = setup.geometry.epochOf(header.slot)
-    val deadline = (setup.geometry.firstSlot(epoch + 1) - 2 * setup.geometry.stabilityWindow).max(0)
+    val deadline =
+      (setup.geometry.firstSlot(epoch + 1) - 2 * setup.geometry.stabilityWindow.toBigInt).max(0)
     val expected = if header.slot >= deadline then 42L else 41L
     projected.ext.ledgerState.state match
       case i: EraLedgerState.InShelleyEra[e] =>

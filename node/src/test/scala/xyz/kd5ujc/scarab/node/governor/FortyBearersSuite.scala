@@ -70,7 +70,7 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
   test("forty peers: the node converges to the targets, reaches the tip and repairs the hot set") {
     for
       chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
-        VolatileChain.genesis(ForgedChain.geometry.securityParam, forged.genesis)
+        VolatileChain.genesis(ForgedChain.geometry.k.toInt, forged.genesis)
       )
       given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
       given Handle[IO, NodeError] <- NodeScope.forTest
@@ -178,7 +178,7 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
       else ForgedChain.geometry
     for
       chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
-        VolatileChain.genesis(ForgedChain.geometry.securityParam, forged.genesis)
+        VolatileChain.genesis(ForgedChain.geometry.k.toInt, forged.genesis)
       )
       given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
       given Handle[IO, NodeError] <- NodeScope.forTest

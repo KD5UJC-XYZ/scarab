@@ -396,17 +396,20 @@ object LiteLedger:
     block.transactions.filter(_.isValid).foldLeftM(l) { (s, tx) =>
       effects(tx.body, block.era)
         .leftMap(LedgerDecodeError.Transaction(tx.id, _))
-        .flatMap(_.foldLeftM(s)(apply(_, _, slot, geometry)))
+        .flatMap(_.foldLeftM(s)(applyEffect(_, _, slot, geometry)))
     }
 
-  private def apply(
+  private[ledger] def applyEffect(
       l: LiteLedger,
       e: Effect,
       slot: BigInt,
       geometry: EpochGeometry
   ): Either[LedgerDecodeError, LiteLedger] = e match
     case Effect.Proposal(updates, target) =>
-      val tooLate = geometry.firstSlot(l.epoch + 1) - 2 * geometry.stabilityWindow
+      // `getTheSlotOfNoReturn` (cardano-ledger f649f975, `Slot.hs:106-114`, used by
+      // `Shelley/Rules/Ppup.hs:177`): `*-` is monus, so it does not go below slot 0
+      val tooLate =
+        (geometry.firstSlot(l.epoch + 1) - 2 * geometry.stabilityWindow.toBigInt).max(0)
       if slot < tooLate then
         Either.cond(
           target == l.epoch,
@@ -429,6 +432,6 @@ object LiteLedger:
     case Effect.GenesisDelegation(gk, pair) =>
       Right(
         l.copy(futureGenDelegs =
-          l.futureGenDelegs :+ FutureGenDeleg(slot + geometry.stabilityWindow, gk, pair)
+          l.futureGenDelegs :+ FutureGenDeleg(slot + geometry.stabilityWindow.toBigInt, gk, pair)
         )
       )

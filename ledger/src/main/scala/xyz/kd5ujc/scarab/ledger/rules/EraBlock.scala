@@ -219,7 +219,7 @@ object EraBlock:
       epoch,
       globals.networkId,
       firstSlotNextEpoch = geometry.firstSlot(epoch + 1),
-      stabilityWindow = geometry.stabilityWindow,
+      stabilityWindow = geometry.stabilityWindow.toBigInt,
       txIndex = 0,
       updateQuorum = globals.quorum,
       clock = Some(ctx.clock.getOrElse(PosixClock.total(geometry))),

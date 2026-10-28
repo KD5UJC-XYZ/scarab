@@ -68,7 +68,8 @@ final case class NodeSetup(
     handOver: Option[FromByron],
     byronParams: Option[ByronGenesis] = None,
     byronConfig: Option[ByronRules.Config] = None,
-    identity: NetworkIdentity
+    identity: NetworkIdentity,
+    chainStoreK: ChainStoreK
 ):
   def geometry: EpochGeometry = genesis.geometry
   def byronRules: Option[ByronRules.Config] = byronConfig
@@ -95,6 +96,18 @@ final case class NodeSetup(
   /** The hash the chain's first block must name as its predecessor. */
   def origin: Option[Bytes] = byron.map(_.hash)
 
+/** The security parameter as the chain store and the volatile chain count blocks: an `Int`. A
+  * larger one, which the reference's `NonZero Word64` holds, is refused at setup
+  * (`SecurityParamBeyondStorage`): an approved deviation, recorded in #474.
+  */
+opaque type ChainStoreK = Int
+
+object ChainStoreK:
+  def from(k: BigInt): Either[ConfigError, ChainStoreK] =
+    Either.cond(k.isValidInt, k.toInt, ConfigError(ConfigProblem.SecurityParamBeyondStorage(k)))
+
+  extension (k: ChainStoreK) def blocks: Int = k
+
 object NodeSetup:
   /** The environment of the mirror for a configuration. */
   private def mirrorEnvOf(
@@ -110,9 +123,9 @@ object NodeSetup:
       praos.forks,
       byronParams.fold(
         EraHistory.ByronParams(
-          BigInt(geometry.securityParam) * 10,
+          geometry.k * 10,
           BigInt(20000),
-          BigInt(geometry.securityParam)
+          geometry.k
         )
       )(b =>
         EraHistory.ByronParams(b.epochSlots, BigInt(b.slotLengthMillis), BigInt(b.securityParam))
@@ -289,6 +302,10 @@ object NodeSetup:
         .map(_.getOrElse(HeaderCheckpoints.empty))
       shelleyBytes <- required("Shelley", names.shelley)
       shelleyBase <- Genesis.shelley(text(shelleyBytes))
+      // The chain store and the volatile chain count blocks in an `Int`: a larger security parameter
+      // is refused, which the reference's `NonZero Word64` would accept. An approved deviation,
+      // recorded in #474.
+      chainStoreK <- ChainStoreK.from(shelleyBase.geometry.k)
       firstShelley = config.firstShelleyEpoch
       byronBytes <- required("Byron", names.byron)
       byron <-
@@ -333,7 +350,7 @@ object NodeSetup:
       params <- ProtocolParams.translatedFromGenesis(files.shelley, files.alonzo, conwayFile)
       f = genesis.geometry.activeSlotsCoeff
       active <- PraosLeaderThreshold.Fraction
-        .checked(BigInt(f.bigDecimal.unscaledValue), BigInt(10).pow(f.bigDecimal.scale.max(0)))
+        .checked(f.numerator, f.denominator)
         .leftMap(e => ConfigError(ConfigProblem.ActiveSlotsCoefficient(e)))
       praos = PraosConfig(
         genesis.geometry,
@@ -393,6 +410,7 @@ object NodeSetup:
           Blake2b.hash256.hash(Bytes.fromArray(conwayBytes))
         )
       ),
+      chainStoreK = chainStoreK,
       byronParams = byronParams,
       byronConfig = byronRules.map(_._2)
     )

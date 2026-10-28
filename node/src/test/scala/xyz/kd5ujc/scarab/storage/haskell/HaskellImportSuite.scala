@@ -31,7 +31,7 @@ class HaskellImportSuite extends CatsEffectSuite:
       .fromDirectory(JPath.of("fixtures/preview/genesis"))
       .fold(e => fail(e.message), identity)
   private val previewChunk = ChunkSlots
-    .fromSecurityParam(previewSetup.geometry.securityParam.toLong)
+    .fromSecurityParam(previewSetup.geometry.k.toLong)
     .getOrElse(fail("chunk size"))
 
   private def sha256(a: Array[Byte]): String =
@@ -274,7 +274,7 @@ class HaskellImportSuite extends CatsEffectSuite:
   private val erasSetup =
     NodeSetup.fromDirectory(JPath.of("fixtures/eras/genesis")).fold(e => fail(e.message), identity)
   private val erasChunk = ChunkSlots
-    .fromSecurityParam(erasSetup.geometry.securityParam.toLong)
+    .fromSecurityParam(erasSetup.geometry.k.toLong)
     .getOrElse(fail("chunk size"))
   private val erasRaw: Vector[Bytes] =
     JFiles

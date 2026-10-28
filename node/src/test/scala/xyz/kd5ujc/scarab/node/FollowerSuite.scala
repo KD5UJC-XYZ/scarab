@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import xyz.kd5ujc.scarab.consensus.{
   BlockRules,
   Compute,
@@ -33,8 +34,8 @@ class FollowerSuite extends FailsOnUncaught:
       java.time.Instant.EPOCH,
       1000,
       epochLength = 100,
-      securityParam = 5,
-      activeSlotsCoeff = 0.5
+      securityParam = TestGeometry.k(5),
+      activeSlotsCoeff = TestGeometry.f("0.5")
     )
   private val tip = ChainSync.Tip.Origin
 
@@ -83,7 +84,7 @@ class FollowerSuite extends FailsOnUncaught:
       applied: Option[Ref[IO, List[String]]] = None
   ): IO[(Either[NodeError, Unit], VolatileChain[BigInt], List[Vector[ChainSync.Point]])] =
     for
-      ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.securityParam, -1))
+      ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.k.toInt, -1))
       offered <- Ref.of[IO, List[Vector[ChainSync.Point]]](Nil)
       given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
       outcome <- Handle
@@ -223,7 +224,7 @@ class FollowerSuite extends FailsOnUncaught:
       until: FiniteDuration = 30.seconds
   ): IO[(Either[NodeError, Unit], VolatileChain[BigInt])] =
     for
-      ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.securityParam, -1))
+      ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.k.toInt, -1))
       given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
       outcome <- Handle
         .allow[NodeError] {
@@ -365,7 +366,7 @@ class FollowerSuite extends FailsOnUncaught:
       def next(using Raise[IO, PeerError]) = IO.never
       def fetch(header: Header)(using Raise[IO, PeerError]) = IO.pure(Bytes.empty))
     for
-      ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.securityParam, -1))
+      ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.k.toInt, -1))
       given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
       outcome <- Handle
         .allow[NodeError] {
@@ -514,7 +515,7 @@ class FollowerSuite extends FailsOnUncaught:
     TestControl.executeEmbed {
       val header = Fixtures.chain(1).head
       for
-        ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.securityParam, -1))
+        ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.k.toInt, -1))
         given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
         entered <- Deferred[IO, Unit]
         release <- Deferred[IO, Unit]
@@ -583,7 +584,7 @@ class FollowerSuite extends FailsOnUncaught:
   ) {
     val header = Fixtures.chain(1).head
     for
-      ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.securityParam, -1))
+      ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.k.toInt, -1))
       given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
       notified <- Ref.of[IO, Vector[ValidationError]](Vector.empty)
       peer = new Peer[IO]:

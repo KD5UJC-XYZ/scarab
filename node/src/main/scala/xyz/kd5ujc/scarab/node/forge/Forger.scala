@@ -676,7 +676,7 @@ object Forger:
         follower,
         mempool,
         events,
-        maxTipAge.getOrElse(config.geometry.stabilityWindow),
+        maxTipAge.getOrElse(config.geometry.stabilityWindow.toBigInt),
         ready,
         now.getOrElse(Clock[F].realTimeInstant),
         sleep.getOrElse(d => Async[F].sleep(d)),

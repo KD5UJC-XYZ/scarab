@@ -129,7 +129,7 @@ class PastHorizonReferenceSuite extends FunSuite:
     )
     val transition = EraHistory.transition(
       forks,
-      BigInt(setup.geometry.securityParam),
+      setup.geometry.k,
       era,
       epoch,
       None,
@@ -187,7 +187,7 @@ class PastHorizonReferenceSuite extends FunSuite:
       epoch = ticked.epoch.toBigInt,
       network = env.globals.network,
       firstSlotNextEpoch = env.geometry.firstSlot(ticked.epoch.toBigInt + 1),
-      stabilityWindow = env.geometry.stabilityWindow,
+      stabilityWindow = env.geometry.stabilityWindow.toBigInt,
       txIndex = 0,
       updateQuorum = env.globals.updateQuorum,
       clock = Some(clockAt(setup, era, nes.epoch.toBigInt, r.tip)),

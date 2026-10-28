@@ -312,7 +312,7 @@ object NtcGolden:
     )(mark)
     val translated = params.copy(costModels = params.costModels - PlutusV2)
     val pointOfNoReturn =
-      mirrorEnv.geometry.firstSlot(epoch + 1) - 2 * mirrorEnv.geometry.stabilityWindow
+      mirrorEnv.geometry.firstSlot(epoch + 1) - 2 * mirrorEnv.geometry.stabilityWindow.toBigInt
     val nextGov = native.ConwayGovState(
       Proposals(states, roots),
       Some(committee),

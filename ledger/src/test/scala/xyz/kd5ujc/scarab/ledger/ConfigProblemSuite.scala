@@ -28,11 +28,18 @@ class ConfigProblemSuite extends FunSuite:
 
   test("invalid epoch geometry retains the field and value") {
     assertEquals(
-      EpochGeometry.checked(Instant.EPOCH, 0, 100, 1, BigDecimal(1)),
+      EpochGeometry.checked(Instant.EPOCH, 0, 100, TestGeometry.k(1), TestGeometry.f("1")),
       Left(ConfigError(ConfigProblem.NonPositive("slot length", BigDecimal(0))))
     )
     assertEquals(
-      EpochGeometry.checked(Instant.EPOCH, 1000, 100, 1, BigDecimal(2)),
-      Left(ConfigError(ConfigProblem.ActiveSlotRange(BigDecimal(2))))
+      EpochGeometry.checked(Instant.EPOCH, 1000, 0, TestGeometry.k(1), TestGeometry.f("1")),
+      Left(ConfigError(ConfigProblem.NonPositive("epoch length", BigDecimal(0))))
+    )
+    // an epoch no longer than 4k/f is accepted, as the reference node accepts it (#474)
+    assertEquals(
+      EpochGeometry
+        .checked(Instant.EPOCH, 1000, 4, TestGeometry.k(1), TestGeometry.f("1"))
+        .map(_.epochLength),
+      Right(4L)
     )
   }

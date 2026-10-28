@@ -51,7 +51,7 @@ object Placement:
       EraHistory.ByronParams(
         geometry.byron.epochSlots,
         BigInt(geometry.byron.slotLengthMillis),
-        BigInt(geometry.securityParam)
+        geometry.k
       ),
       forks
     )
@@ -173,11 +173,16 @@ object MirrorStep:
         )
 
   /** Consensus `Shelley/Ledger/Ledger.hs:568-575,713-741` (82ecba3): reset at a new epoch, then
-    * increment at/after the voting deadline. `subSlots` saturates at zero. Native `succ` throws on
-    * Word32 overflow; this pure boundary reports a typed refusal instead of an uncaught exception.
-    * Across-Shelley translation preserves the counter (`Cardano/CanHardFork.hs:704`); Byron enters
-    * with zero (:360).
+    * increment at/after the voting deadline `subSlots (2 * swindow) startOfNextEpoch`. `subSlots`
+    * is `assert (x >= n) $ SlotNo (x - n)` (`HardFork/History/Util.hs:25-26`); release builds
+    * compile the assertion out, so when `2 * swindow` exceeds the next epoch's first slot the
+    * `Word64` subtraction wraps, the deadline lies past every slot and the counter does not move.
+    * Native `succ` throws on Word32 overflow; this pure boundary reports a typed refusal instead of
+    * an uncaught exception. Across-Shelley translation preserves the counter
+    * (`Cardano/CanHardFork.hs:704`); Byron enters with zero (:360).
     */
+  private val Word64Modulus: BigInt = BigInt(2).pow(64)
+
   private[state] def afterVoting(
       geometry: EpochGeometry,
       slot: BigInt,
@@ -186,7 +191,9 @@ object MirrorStep:
   ): Either[StateMirrorError, Word32] =
     val epoch = geometry.epochOf(slot)
     val before = if previousEpoch.contains(epoch) then previous.bits else 0
-    val deadline = (geometry.firstSlot(epoch + 1) - 2 * geometry.stabilityWindow).max(0)
+    // `2 * swindow` and the subtraction are `Word64`, modulo 2^64
+    val twice = (2 * geometry.stabilityWindow.toBigInt).mod(Word64Modulus)
+    val deadline = (geometry.firstSlot(epoch + 1) - twice).mod(Word64Modulus)
     if slot >= deadline && before == -1 then Left(StateMirrorError.TransitionCounterOverflow)
     else Right(Word32.fromUnsigned(if slot >= deadline then before + 1 else before))
 

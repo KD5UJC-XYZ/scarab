@@ -41,18 +41,25 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
         HeaderError.Structure(HeaderStructureProblem.EpochPrecedes(epoch, ledgerEpoch))
       )
     else if h.slot >= forecastLimit.getOrElse(
-        tip.fold(geometry.stabilityWindow)(t => t.slot + 1 + geometry.stabilityWindow)
-      ) || epoch > ledgerEpoch + 1
+        tip.fold(geometry.stabilityWindow.toBigInt)(t =>
+          t.slot + 1 + geometry.stabilityWindow.toBigInt
+        )
+      )
     then
       HeaderRules.Prepared.Unknown(
         HeaderRules.ForecastReason.Horizon(h.slot, tipSlot)
       )
     else
-      val sameEpoch = epoch == ledgerEpoch
+      // `futureForecast` ticks with TICKF (cardano-ledger f649f975, `Shelley/Rules/Tick.hs:185-242`,
+      // `Conway/Rules/Tickf.hs:34-66`; forecast range in consensus 82ecba32
+      // `Shelley/Ledger/SupportsProtocol.hs:51-77, 100-125`): only into the next epoch does it take
+      // the mark distribution and the next parameters; for a later epoch the current ones stay
+      // (`curEpochNo /= succ (nesEL nes)`), and the genesis delegations are adopted at the slot.
+      val nextEpoch = epoch == ledgerEpoch + 1
       val params =
-        if sameEpoch then ledgerParams
-        else ledger.paramsNextEpoch(glob)
-      val pools = ledger.leaderPools(nextEpoch = !sameEpoch)
+        if nextEpoch then ledger.paramsNextEpoch(glob)
+        else ledgerParams
+      val pools = ledger.leaderPools(nextEpoch = nextEpoch)
       val envelope =
         cfg.forks
           .check(
@@ -68,8 +75,8 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
           )
           .leftMap(HeaderError.Envelope(_))
       val nonceWindow =
-        if h.era.ordinal >= Era.Conway.ordinal then geometry.randomnessStabilisationWindow
-        else geometry.stabilityWindow
+        if h.era.ordinal >= Era.Conway.ordinal then geometry.randomnessStabilisationWindow.toBigInt
+        else geometry.stabilityWindow.toBigInt
       val delegations = ledger.genDelegsAt(h.slot)
       HeaderRules.Prepared.Check(() =>
         val checked: Either[HeaderError, ProtocolState] =

@@ -54,8 +54,8 @@ object GenesisHistory:
               else
                 Parameters(
                   geometry.epochLength,
-                  geometry.stabilityWindow,
-                  geometry.stabilityWindow
+                  geometry.stabilityWindow.toBigInt,
+                  geometry.stabilityWindow.toBigInt
                 ))
     }.toMap
 
@@ -90,7 +90,9 @@ object GenesisHistory:
             .futurePParams(ledger.nes.es.ls.utxo.gov)
             .definite
             .filter(p =>
-              p.protocolMajor == major && ledger.transition.afterVoting.toLong >= config.geometry.securityParam
+              p.protocolMajor == major && BigInt(
+                ledger.transition.afterVoting.toLong
+              ) >= config.geometry.k
             )
             .map(_ => ledger.nes.epoch.toBigInt + 1)
       }

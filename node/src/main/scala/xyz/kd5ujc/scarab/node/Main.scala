@@ -779,7 +779,7 @@ object Main extends IOApp:
         compute = Some(scheduling.compute),
         parallelPlutus = Some(parallelPlutus)
       )
-      k = genesis.geometry.securityParam
+      k = setup.chainStoreK.blocks
       // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
       // node has seen begin so far.
       given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(eraStarts.get)
@@ -797,7 +797,7 @@ object Main extends IOApp:
         )
       ) { dir =>
         val policy = options.snapshotEvery match
-          case None => SnapshotPolicy.reference(BigInt(genesis.geometry.securityParam))
+          case None                            => SnapshotPolicy.reference(genesis.geometry.k)
           case Some(SnapshotInterval.Slots(n)) => SnapshotPolicy.EverySlots(BigInt(n))
           case Some(SnapshotInterval.Epochs(n)) =>
             SnapshotPolicy.EverySlots(BigInt(n) * genesis.geometry.epochLength)
@@ -1276,9 +1276,9 @@ object Main extends IOApp:
                 setup.praos.forks,
                 byronGenesis.fold(
                   EraHistory.ByronParams(
-                    BigInt(genesis.geometry.securityParam) * 10,
+                    genesis.geometry.k * 10,
                     BigInt(20000),
-                    BigInt(genesis.geometry.securityParam)
+                    genesis.geometry.k
                   )
                 )(b =>
                   EraHistory

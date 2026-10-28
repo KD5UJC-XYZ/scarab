@@ -62,11 +62,11 @@ object GenesisState:
         LedgerGlobals(
           genesis.maxLovelaceSupply,
           genesis.geometry.epochLength,
-          Rational.fromDecimal(genesis.geometry.activeSlotsCoeff),
+          genesis.geometry.activeSlotsCoeff.rational,
           network = if genesis.networkMagic == 764824073L then 1 else 0,
           updateQuorum = quorum.getOrElse(5),
-          stabilityWindow = genesis.geometry.stabilityWindow,
-          startRewards = genesis.geometry.randomnessStabilisationWindow,
+          stabilityWindow = genesis.geometry.stabilityWindow.toBigInt,
+          startRewards = genesis.geometry.randomnessStabilisationWindow.toBigInt,
           firstEpoch = genesis.geometry.firstShelleyEpoch,
           conway = conway,
           alonzoCoinsPerUTxOWord = perWord

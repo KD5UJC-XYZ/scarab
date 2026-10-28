@@ -778,6 +778,22 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     // a proposal for the wrong epoch is refused
     val late = b.copy(update = Some(u.copy(epoch = 9)))
     assertEquals(rule(run(s, tx(late, Vector(alice, delegates(0))))), "PPUpdateWrongEpoch")
+    // `getTheSlotOfNoReturn` is monus (`Slot.hs:106-114`): with 2 * 3k/f past the next epoch's first
+    // slot the point is slot 0, so even slot 0 votes for the next epoch
+    val past = env.copy(slot = 0, stabilityWindow = env.firstSlotNextEpoch)
+    run(s, tx(b, Vector(alice, delegates(0))), past) match
+      case Left(LedgerFailure.Rejected(_, fs)) =>
+        assertEquals(
+          fs.toChain.toVector,
+          Vector(
+            PredicateFailure.utxo(
+              UtxoFailure.Update(
+                PpupFailure.PPUpdateWrongEpoch(env.epoch, 5, VotingPeriod.VoteForNextEpoch)
+              )
+            )
+          )
+        )
+      case other => fail(s"expected PPUpdateWrongEpoch, got $other")
   }
 
   test(
@@ -1142,6 +1158,21 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val greedy =
       Vector(Certificate.MoveRewards(Pot.Treasury, Right(Map(stake.credential -> 6 * ada))))
     assertEquals(rule(mirTx(holding, in, d, greedy)), "InsufficientForInstantaneousRewardsDELEG")
+  }
+
+  test("the MIR deadline is monus: 3k/f past the next epoch's first slot gives slot 0, not below") {
+    // `checkSlotNotTooLate`, `firstSlot *- Duration sp` (cardano-ledger f649f975,
+    // `Shelley/Rules/Deleg.hs:396-404`, `Slot.hs:63-64`)
+    val (s, in, stake, d) = mirState[Mary](4)
+    val cert = Vector(Certificate.MoveRewards(Pot.Reserves, Right(Map(stake.credential -> ada))))
+    val late = env.copy(slot = 0, stabilityWindow = env.firstSlotNextEpoch + 10)
+    val failures = mirTx(s, in, d, cert, late) match
+      case Left(LedgerFailure.Rejected(_, fs)) => fs.toChain.toVector
+      case other                               => fail(s"expected a refusal, got $other")
+    assertEquals(
+      failures,
+      Vector(PredicateFailure.deleg(DelegFailure.MIRCertificateTooLateinEpoch(Mismatch(0, 0))))
+    )
   }
 
   test("MIR entries survive stake key deregistration and are dropped at the boundary") {

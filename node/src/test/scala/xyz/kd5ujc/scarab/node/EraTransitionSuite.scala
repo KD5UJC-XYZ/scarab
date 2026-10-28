@@ -379,8 +379,8 @@ class EraTransitionSuite extends CatsEffectSuite:
     val byEpoch = shelley.groupBy(i => geometry.epochOf(headers(i).slot))
     byEpoch.foreach { (epoch, indices) =>
       val window =
-        if eraAt(indices.head) == Era.Conway then geometry.randomnessStabilisationWindow
-        else geometry.stabilityWindow
+        if eraAt(indices.head) == Era.Conway then geometry.randomnessStabilisationWindow.toBigInt
+        else geometry.stabilityWindow.toBigInt
       val next = geometry.firstSlot(epoch + 1)
       val frozen = indices.filter(i => headers(i).slot + window < next)
       val last = indices.last
@@ -600,7 +600,7 @@ class EraTransitionSuite extends CatsEffectSuite:
     val bodies = headers.map(_.hash).zip(raws).toMap
     for
       chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
-        VolatileChain.genesis(geometry.securityParam, setup.mirrorStart, setup.origin)
+        VolatileChain.genesis(geometry.k.toInt, setup.mirrorStart, setup.origin)
       )
       eventsRef <- Ref.of[IO, Vector[FollowerEvent]](Vector.empty)
       queue <- Queue.unbounded[IO, SyncEvent]
@@ -662,7 +662,7 @@ class EraTransitionSuite extends CatsEffectSuite:
       )
       assertEquals(events.count(_.isInstanceOf[FollowerEvent.Extended]), blocks.size)
       assertEquals(chain.tip, headers.last.point)
-      assertEquals(chain.length, geometry.securityParam)
+      assertEquals(chain.length, geometry.k.toInt)
       assertEquals(chain.state.consensus.boot.era, Some(Era.Conway))
       assert(!events.exists(_.isInstanceOf[FollowerEvent.RolledBack]))
     }
@@ -682,7 +682,7 @@ class EraTransitionSuite extends CatsEffectSuite:
             rules(c.state, headers(i), raws(i))
               .map(next => c.extend(headers(i), next).fold(e => fail(e.message), _._1))
           }
-        val genesis = VolatileChain.genesis(geometry.securityParam, setup.mirrorStart, setup.origin)
+        val genesis = VolatileChain.genesis(geometry.k.toInt, setup.mirrorStart, setup.origin)
         for
           first <- apply(genesis, 0 until b + 3)
           rolled = first.rollback(headers(b - 1).point).fold(e => fail(e.message), identity)

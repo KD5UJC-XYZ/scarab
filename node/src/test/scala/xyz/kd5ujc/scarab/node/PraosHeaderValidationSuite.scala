@@ -58,7 +58,7 @@ class PraosHeaderValidationSuite extends FailsOnUncaught:
       .zip(c.states.drop(1))
       .foldLeft(
         VolatileChain.genesis(
-          c.setup.geometry.securityParam,
+          c.setup.geometry.k.toInt,
           c.setup.mirrorStart,
           c.setup.byronRules.map(_.ledger.genesis.hash)
         )

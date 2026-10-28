@@ -238,8 +238,9 @@ object NodeRules:
     val geometry = config.geometry
     val epoch = geometry.epochOf(header.slot)
     val nonceWindow =
-      if header.era.ordinal >= Era.Conway.ordinal then geometry.randomnessStabilisationWindow
-      else geometry.stabilityWindow
+      if header.era.ordinal >= Era.Conway.ordinal then
+        geometry.randomnessStabilisationWindow.toBigInt
+      else geometry.stabilityWindow.toBigInt
     for
       _ <- config.forks
         .check(

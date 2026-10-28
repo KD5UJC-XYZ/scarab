@@ -138,7 +138,7 @@ object HaskellImportCommand:
       // Use 10 * k of the first era, including the Byron genesis when the chain starts there.
       chunkSlots <- ChunkSlots
         .fromSecurityParam(
-          setup.byron.fold(setup.genesis.geometry.securityParam.toLong)(_.securityParam.toLong)
+          setup.byron.fold(setup.genesis.geometry.k.toLong)(_.securityParam.toLong)
         )
         .toRight(ConfigError(ConfigProblem.MissingChunkSize))
     yield (setup, chunkSlots)

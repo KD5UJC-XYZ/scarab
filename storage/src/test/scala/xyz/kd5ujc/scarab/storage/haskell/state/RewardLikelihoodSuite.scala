@@ -59,7 +59,10 @@ class RewardLikelihoodSuite extends FunSuite:
     Option.when(count > 0)(id(row) -> ok(Word64.fromBigInt(VocabError.Kind.BlockCount, count)))
   }))
   private val realGlobals =
-    globals.copy(geometry = globals.geometry.copy(epochLength = 86400, securityParam = 432))
+    globals.copy(geometry =
+      globals.geometry
+        .copy(epochLength = 86400, securityParam = xyz.kd5ujc.scarab.ledger.TestGeometry.k(432))
+    )
 
   private def likelihoods(
       json: Json

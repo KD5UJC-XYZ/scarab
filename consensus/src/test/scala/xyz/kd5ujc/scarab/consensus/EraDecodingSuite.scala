@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import xyz.kd5ujc.scarab.ledger.{Block, EpochGeometry, Header, HeaderVrf}
 import java.nio.file.{Files, Path}
 import java.time.Instant
@@ -105,7 +106,8 @@ class EraDecodingSuite extends FunSuite:
 
   test("Praos validation rejects TPraos headers with a typed error") {
     val tpraos = blocks("fixtures/preview/alonzo-first-20.hex").head.header
-    val geometry = EpochGeometry(Instant.EPOCH, 1000, 86400, 432, BigDecimal("0.05"))
+    val geometry =
+      EpochGeometry(Instant.EPOCH, 1000, 86400, TestGeometry.k(432), TestGeometry.f("0.05"))
     val config = PraosConfig(geometry, 129600, 62, Fraction.checked(1, 20).toOption.get)
     val state = ProtocolState.initial(Era.Conway, Bytes.empty)
     val result = Praos.update(state, tpraos, PoolDistribution(Map.empty, Map.empty), config)

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{IO, Ref}
 import cats.effect.testkit.TestControl
 import cats.mtl.{Handle, Raise}
@@ -19,7 +20,8 @@ import xyz.kd5ujc.scarab.protocol.ChainSync
   * the system start at the epoch and one-second slots, so slot `n` begins `n` seconds in.
   */
 class HeaderClockSuite extends CatsEffectSuite with ScalaCheckSuite:
-  private val history = EpochGeometry(Instant.EPOCH, 1000, 432000, 2160, BigDecimal("0.05"))
+  private val history =
+    EpochGeometry(Instant.EPOCH, 1000, 432000, TestGeometry.k(2160), TestGeometry.f("0.05"))
   private val skew = 2.seconds
   private def at(millis: Long): Instant = Instant.ofEpochMilli(millis)
   private def judge(slot: BigInt, arrivalMillis: Long) =
@@ -67,8 +69,8 @@ class HeaderClockSuite extends CatsEffectSuite with ScalaCheckSuite:
       Instant.EPOCH,
       1000,
       432000,
-      2160,
-      BigDecimal("0.05"),
+      TestGeometry.k(2160),
+      TestGeometry.f("0.05"),
       ByronSpan.derived(21600, 20000)
     )
     val slot = BigInt(21700)

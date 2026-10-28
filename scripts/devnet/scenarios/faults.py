@@ -214,7 +214,10 @@ def liveness_failures(run):
 
 def genesis_problems(shelley, seconds):
     """Why a genesis cannot carry a faults run of `seconds`: an epoch no longer than the randomness stabilisation
-    window (4k/f slots, which a Conway start uses), or KES keys whose evolutions end before the run does."""
+    window (4k/f slots, which a Conway start uses), or KES keys whose evolutions end before the run does. Both are
+    sanity checks of the test genesis: neither node refuses such an epoch (the reference runs no genesis
+    validation, and Scarab matches it, #474), but an epoch inside 4k/f never makes a reward update and its candidate
+    nonce is frozen from the start, so the run would not exercise what it is meant to."""
     k, f, slot = shelley["securityParam"], shelley["activeSlotsCoeff"], shelley["slotLength"]
     problems = []
     if shelley["epochLength"] <= 4 * k / f:

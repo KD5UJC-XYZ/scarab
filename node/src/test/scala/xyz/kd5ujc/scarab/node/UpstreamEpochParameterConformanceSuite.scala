@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import java.time.Instant
@@ -30,7 +31,7 @@ class UpstreamEpochParameterConformanceSuite extends FunSuite:
       network = 0,
       updateQuorum = 5
     ),
-    EpochGeometry(Instant.EPOCH, 1000L, 100L, 10, BigDecimal("0.9"))
+    EpochGeometry(Instant.EPOCH, 1000L, 100L, TestGeometry.k(10), TestGeometry.f("0.9"))
   )
 
   private def decode[A](id: String, name: String, codec: Codec[A]): A =

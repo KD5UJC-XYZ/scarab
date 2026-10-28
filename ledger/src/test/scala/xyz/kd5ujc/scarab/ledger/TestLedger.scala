@@ -108,7 +108,7 @@ object TestLedger:
     */
   val geometry: EpochGeometry =
     EpochGeometry
-      .checked(java.time.Instant.EPOCH, 1000L, 100L, 2, BigDecimal("0.5"))
+      .checked(java.time.Instant.EPOCH, 1000L, 100L, TestGeometry.k(2), TestGeometry.f("0.5"))
       .fold(e => sys.error(e.message), identity)
 
   /** The constants of the rules over [[geometry]]. */

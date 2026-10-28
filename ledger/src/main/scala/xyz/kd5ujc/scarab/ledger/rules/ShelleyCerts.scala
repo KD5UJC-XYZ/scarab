@@ -256,8 +256,9 @@ object ShelleyDeleg
       account = env.delegs.account
       availableR = account.reserves.value + ir.deltaReserves.value
       availableT = account.treasury.value + ir.deltaTreasury.value
-      // `checkSlotNotTooLate`
-      tooLate = ctx.firstSlotNextEpoch - ctx.stabilityWindow
+      // `checkSlotNotTooLate` (cardano-ledger f649f975, `Shelley/Rules/Deleg.hs:396-404`):
+      // `firstSlot *- Duration sp`, monus, so it does not go below slot 0 (`Slot.hs:63-64`)
+      tooLate = (ctx.firstSlotNextEpoch - ctx.stabilityWindow).max(0)
       _ <- ensure(
         ctx.slot < tooLate,
         DelegFailure.MIRCertificateTooLateinEpoch(Mismatch(ctx.slot, tooLate))

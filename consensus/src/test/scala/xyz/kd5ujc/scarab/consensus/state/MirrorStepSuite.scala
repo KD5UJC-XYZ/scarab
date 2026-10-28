@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus.state
 
+import xyz.kd5ujc.scarab.ledger.TestGeometry
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{ForkTrigger, HardForkConfig}
@@ -18,8 +19,8 @@ class MirrorStepSuite extends FunSuite:
     java.time.Instant.EPOCH,
     1000,
     epochLength = 500,
-    securityParam = 5,
-    activeSlotsCoeff = 0.5
+    securityParam = TestGeometry.k(5),
+    activeSlotsCoeff = TestGeometry.f("0.5")
   )
   private val byron = EraHistory.ByronParams(50, 20000, 5)
 

@@ -118,7 +118,7 @@ final class NodeHeaderRules[S](
                     old.state,
                     h,
                     forecastLimit = old.firstEpoch.map(first =>
-                      cfg.geometry.firstSlot(first) + cfg.geometry.stabilityWindow
+                      cfg.geometry.firstSlot(first) + cfg.geometry.stabilityWindow.toBigInt
                     ),
                     genericEnvelope = envelope(ledgerTip, h, previousBoundary = false)
                   ),
@@ -295,7 +295,8 @@ final class NodeHeaderRules[S](
               tip,
               pending,
               header,
-              forecastLimit = Some(cfg.geometry.firstSlot(first) + cfg.geometry.stabilityWindow),
+              forecastLimit =
+                Some(cfg.geometry.firstSlot(first) + cfg.geometry.stabilityWindow.toBigInt),
               genericEnvelope = envelope(parent, header, previous.previous.exists(_.boundary))
             ),
           header,

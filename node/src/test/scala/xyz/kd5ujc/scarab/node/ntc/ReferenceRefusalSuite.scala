@@ -190,7 +190,7 @@ class ReferenceRefusalSuite extends FunSuite:
         epoch = ticked.epoch.toBigInt,
         network = env.globals.network,
         firstSlotNextEpoch = env.geometry.firstSlot(ticked.epoch.toBigInt + 1),
-        stabilityWindow = env.geometry.stabilityWindow,
+        stabilityWindow = env.geometry.stabilityWindow.toBigInt,
         txIndex = 0,
         updateQuorum = env.globals.updateQuorum,
         clock = Some(PosixClock.total(env.geometry)),

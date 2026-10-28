@@ -8,6 +8,8 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.protocol.NtcVersion
 import xyz.kd5ujc.scarab.ledger.Nonce
+import xyz.kd5ujc.scarab.ledger.json.NumberError
+import xyz.kd5ujc.scarab.ledger.state.PositiveUnitInterval
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.storage.haskell.state.{NodeOrders, Versions, Wire}
 
@@ -25,12 +27,14 @@ object GenesisConfig:
     case InvalidField(field: String, cause: io.circe.DecodingFailure)
     case InvalidHex(field: String, cause: Bytes.HexError)
     case InvalidDecimal(field: String)
+    case InvalidActiveSlotsCoeff(cause: NumberError)
     case InvalidSystemStart(value: String, cause: Throwable)
 
     def message: String = this match
       case InvalidField(field, detail)  => s"genesis $field: $detail"
       case InvalidHex(field, detail)    => s"genesis $field: $detail"
       case InvalidDecimal(field)        => s"genesis $field"
+      case InvalidActiveSlotsCoeff(e)   => s"genesis activeSlotsCoeff: ${e.message}"
       case InvalidSystemStart(value, _) => s"systemStart $value"
 
   private type R[A] = Either[Error, A]
@@ -71,7 +75,9 @@ object GenesisConfig:
       )
       magic <- get[BigInt](c, "networkMagic")
       network <- get[String](c, "networkId")
-      active <- decimal(c, "activeSlotsCoeff")
+      active <- get[Json](c, "activeSlotsCoeff").flatMap(
+        PositiveUnitInterval.fromJson(_).leftMap(Error.InvalidActiveSlotsCoeff(_))
+      )
       k <- get[BigInt](c, "securityParam")
       epochLength <- get[BigInt](c, "epochLength")
       kesPeriod <- get[BigInt](c, "slotsPerKESPeriod")

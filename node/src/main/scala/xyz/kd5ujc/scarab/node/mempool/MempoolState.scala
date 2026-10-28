@@ -139,7 +139,7 @@ final case class MempoolEnv(
       epoch = ledger.epoch,
       network = globals.network,
       firstSlotNextEpoch = geometry.firstSlot(ledger.epoch + 1),
-      stabilityWindow = geometry.stabilityWindow,
+      stabilityWindow = geometry.stabilityWindow.toBigInt,
       txIndex = index,
       updateQuorum = globals.updateQuorum,
       clock = Some(clock.getOrElse(PosixClock.total(geometry))),

@@ -51,7 +51,7 @@ object MirrorClock:
         given xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra[e] = i.era
         EraHistory.transition(
           placement.forks,
-          BigInt(placement.geometry.securityParam),
+          placement.geometry.k,
           era,
           nes.epoch.toBigInt,
           EraLedger.futurePParams(nes.es.ls.utxo.gov).definite.map(_.protocolMajor),
@@ -61,7 +61,7 @@ object MirrorClock:
       case _ =>
         EraHistory.transition(
           placement.forks,
-          BigInt(placement.geometry.securityParam),
+          placement.geometry.k,
           era,
           0,
           None,

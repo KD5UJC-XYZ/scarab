@@ -1,0 +1,7 @@
+### Changed (Shelley genesis, #399)
+
+- Read `securityParam` as a `NonZero Word64` and `activeSlotsCoeff` as a `PositiveUnitInterval`, as cardano-ledger's `FromJSON ShelleyGenesis` does: at most 19 decimal places, the `{"numerator", "denominator"}` object form, and `Word64` bounds, refusing the same cases with typed failures. The node setup still refuses a security parameter above 2^31 - 1, which its chain store cannot count, now with its own typed failure. The stability windows are `Word64`, as `computeStabilityWindow` returns them.
+- Add `ShelleyGenesisValidation`, the reference's `validateGenesis` (the 3k/f epoch length in `Double`, KES evolutions, update quorum) as a pure function. The node start does not run it, as cardano-node 11.1.3 does not, and no longer refuses an epoch no longer than 4k/f.
+- The MIR certificate deadline and the protocol-update point of no return floor at slot 0, as the reference's monus does, instead of going negative when the window reaches past the next epoch's first slot.
+- A header up to the forecast horizon is validated even when it lies two or more epochs past the ledger, with the current pool distribution and parameters, as the reference's forecast tick (TICKF) does; it was deferred.
+- The count of blocks after the voting deadline does not move when twice the stability window reaches past the next epoch's first slot, as the release reference's wrapping `subSlots` leaves it; it counted every block.

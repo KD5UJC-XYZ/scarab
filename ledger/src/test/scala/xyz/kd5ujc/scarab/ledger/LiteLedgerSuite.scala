@@ -48,6 +48,23 @@ class LiteLedgerSuite extends FunSuite:
     assertEquals(applied.curProposals, Map(gkey -> ParamUpdate(Map(12 -> zero))))
   }
 
+  test("the proposal point of no return is monus: a window past the next epoch gives slot 0") {
+    // `getTheSlotOfNoReturn` (cardano-ledger f649f975, `Slot.hs:106-114`): with 2 * 3k/f beyond the
+    // first slot of the next epoch the point is slot 0, so every slot proposes for the next epoch
+    val short = geometry.copy(epochLength = geometry.stabilityWindow.toBigInt.toLong)
+    val update = Map(lite.genDelegs.keys.head -> ParamUpdate(Map(12 -> zero)))
+    assertEquals(
+      LiteLedger.applyEffect(lite, LiteLedger.Effect.Proposal(update, 0), 0, short),
+      Left(LedgerDecodeError.ProposalEpochMismatch(0, 0, false))
+    )
+    assertEquals(
+      LiteLedger
+        .applyEffect(lite, LiteLedger.Effect.Proposal(update, 1), 0, short)
+        .map(_.futureProposals),
+      Right(update)
+    )
+  }
+
   test("a quorum of identical proposals changes d at the next epoch boundary; fewer do not") {
     val keys = lite.genDelegs.keys.toVector.sortBy(_.hex)
     def withVotes(n: Int) =
@@ -86,12 +103,17 @@ class LiteLedgerSuite extends FunSuite:
     val scheduled = lite.copy(futureGenDelegs =
       Vector(
         xyz.kd5ujc.scarab.ledger
-          .FutureGenDeleg(100 + geometry.stabilityWindow, gkey, GenDelegPair(delegate, vrf))
+          .FutureGenDeleg(
+            100 + geometry.stabilityWindow.toBigInt,
+            gkey,
+            GenDelegPair(delegate, vrf)
+          )
       )
     )
     val before = LiteLedger.tick(scheduled, 100, geometry).toOption.get
     assertEquals(before.genDelegs(gkey), lite.genDelegs(gkey))
-    val after = LiteLedger.tick(scheduled, 100 + geometry.stabilityWindow, geometry).toOption.get
+    val after =
+      LiteLedger.tick(scheduled, 100 + geometry.stabilityWindow.toBigInt, geometry).toOption.get
     assertEquals(after.genDelegs(gkey), GenDelegPair(delegate, vrf))
   }
 

@@ -220,7 +220,7 @@ object Rewards:
             rs.updated(account, RewardSet(rs.getOrElse(account, RewardSet.empty).rewards + reward))
           else rs
       }
-      security <- RewardPulseSize.fromBigInt(globals.securityParameter)
+      security <- RewardPulseSize.fromBigInt(globals.securityParameter.value.toBigInt)
       size <- RewardPulseSize.fromBigInt(
         ((BigInt(go.activeStake.entries.size) + 4 * BigInt(security.value) - 1) /
           (4 * BigInt(security.value))).max(1)

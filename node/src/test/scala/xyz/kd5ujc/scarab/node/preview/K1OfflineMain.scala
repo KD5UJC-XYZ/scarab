@@ -208,7 +208,7 @@ object K1OfflineMain extends IOApp:
                     .open[IO, MirrorState](
                       FsPath.fromNioPath(c.db),
                       ChainStorage.Config(
-                        SnapshotPolicy.reference(BigInt(setup.genesis.geometry.securityParam)),
+                        SnapshotPolicy.reference(setup.genesis.geometry.k),
                         keepSnapshots = 2,
                         byronEpochSlots = setup.geometry.byron.epochSlots,
                         progressEvery = 10000

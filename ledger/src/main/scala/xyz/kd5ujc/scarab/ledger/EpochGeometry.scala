@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import java.time.Instant
 import xyz.kd5ujc.scarab.codec.Rational
+import xyz.kd5ujc.scarab.ledger.state.{NonZero, PositiveUnitInterval, Word64}
 
 /** The Byron prefix of the era history: `epochs` Byron epochs of `epochSlots` slots, each slot
   * `slotLengthMillis` long, before the Shelley-based eras begin. A chain that starts in Shelley
@@ -32,13 +33,19 @@ object ByronSpan:
   * boundaries). Slots and epochs are absolute from the system start: the first Shelley epoch is
   * `byron.epochs` and starts at slot `byron.epochs * byron.epochSlots`. Every value comes from the
   * genesis files and the node configuration; nothing here assumes a particular network.
+  *
+  * @param securityParam
+  *   `sgSecurityParam :: NonZero Word64` (cardano-ledger f649f975,
+  *   `eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs:312`).
+  * @param activeSlotsCoeff
+  *   `sgActiveSlotsCoeff :: PositiveUnitInterval` (same file, 311).
   */
 final case class EpochGeometry(
     systemStart: Instant,
     slotLengthMillis: Long,
     epochLength: Long,
-    securityParam: Int,
-    activeSlotsCoeff: BigDecimal,
+    securityParam: NonZero[Word64],
+    activeSlotsCoeff: PositiveUnitInterval,
     byron: ByronSpan = ByronSpan.Absent
 ):
   /** The same history once the chain is known to enter Shelley at `firstShelleyEpoch`. */
@@ -81,39 +88,43 @@ final case class EpochGeometry(
     else if BigInt(elapsed) < byronMillis then BigInt(elapsed) / byron.slotLengthMillis
     else byron.slots + (BigInt(elapsed) - byronMillis) / slotLengthMillis
 
-  /** 3k/f: slots after which the chain is stable (Shelley stability window), exact rational
-    * arithmetic rounded up, as `computeStabilityWindow` (cardano-ledger f649f975,
-    * `eras/shelley/impl/src/Cardano/Ledger/Shelley/StabilityWindow.hs` 14-21).
+  /** 3k/f: slots after which the chain is stable, as `computeStabilityWindow` (cardano-ledger
+    * f649f975, `eras/shelley/impl/src/Cardano/Ledger/Shelley/StabilityWindow.hs:14-21`).
     */
-  lazy val stabilityWindow: BigInt = windowOf(3)
+  lazy val stabilityWindow: Word64 = windowOf(3)
 
   /** 4k/f: randomness stabilisation window used by Praos nonce freezing, as
     * `computeRandomnessStabilisationWindow` (same file, 28-35).
     */
-  lazy val randomnessStabilisationWindow: BigInt = windowOf(4)
+  lazy val randomnessStabilisationWindow: Word64 = windowOf(4)
 
-  // The product is a Rational upstream, so it cannot overflow there either.
-  private def windowOf(factor: Int): BigInt =
-    (Rational(BigInt(factor) * securityParam) / Rational.fromDecimal(activeSlotsCoeff)).ceil
+  /** The security parameter as a number, for the callers' slot arithmetic. */
+  def k: BigInt = securityParam.value.toBigInt
+
+  // `ceiling $ (n * fromIntegral k) /. f`: the product and the quotient are exact `Rational`s, and
+  // `ceiling` into `Word64` goes through `properFraction`, whose `fromInteger` keeps the low 64 bits.
+  private def windowOf(factor: Int): Word64 =
+    Word64.fromUnsigned((Rational(factor * k) / activeSlotsCoeff.rational).ceil.toLong)
 
 object EpochGeometry:
+  /** The geometry of the Shelley genesis values. `securityParam` and `activeSlotsCoeff` are bounded
+    * by their types as the reference's `FromJSON` reads them. A slot length and an epoch length
+    * that are not positive are refused: an approved deviation, recorded in #474 (the reference
+    * accepts 0, and the era arithmetic here divides by both). Nothing else is checked, as the
+    * reference node runs no genesis validation (see [[ShelleyGenesisValidation]]).
+    */
   def checked(
       systemStart: Instant,
       slotLengthMillis: Long,
       epochLength: Long,
-      securityParam: Int,
-      activeSlotsCoeff: BigDecimal
+      securityParam: NonZero[Word64],
+      activeSlotsCoeff: PositiveUnitInterval
   ): Either[ConfigError, EpochGeometry] =
-    val g =
-      EpochGeometry(systemStart, slotLengthMillis, epochLength, securityParam, activeSlotsCoeff)
     if slotLengthMillis <= 0 then
       Left(ConfigError(ConfigProblem.NonPositive("slot length", BigDecimal(slotLengthMillis))))
     else if epochLength <= 0 then
       Left(ConfigError(ConfigProblem.NonPositive("epoch length", BigDecimal(epochLength))))
-    else if securityParam <= 0 then
-      Left(ConfigError(ConfigProblem.NonPositive("security parameter", BigDecimal(securityParam))))
-    else if activeSlotsCoeff <= 0 || activeSlotsCoeff > 1 then
-      Left(ConfigError(ConfigProblem.ActiveSlotRange(activeSlotsCoeff)))
-    else if g.randomnessStabilisationWindow >= epochLength then
-      Left(ConfigError(ConfigProblem.EpochTooShort(epochLength, g.randomnessStabilisationWindow)))
-    else Right(g)
+    else
+      Right(
+        EpochGeometry(systemStart, slotLengthMillis, epochLength, securityParam, activeSlotsCoeff)
+      )
