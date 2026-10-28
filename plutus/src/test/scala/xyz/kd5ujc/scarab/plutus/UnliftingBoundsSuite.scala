@@ -15,6 +15,9 @@ import xyz.kd5ujc.scarab.codec.Bytes
   * protocol 11 (variants A to C) it does not.
   */
 class UnliftingBoundsSuite extends FunSuite:
+  // the corpus parses 142 scripts with constants at the bounds (78,914-digit integers, 65 KB byte
+  // strings) and evaluates 426 requests
+  override val munitTimeout = scala.concurrent.duration.Duration(10, "min")
   private val evaluator = ScalusEvaluator.pure
   private val budget = ExUnits(BigInt(1) << 40, BigInt(1) << 60)
 
