@@ -111,10 +111,10 @@ object ConnectionManager:
     *   the reference has no per-address limit (ADR 0008).
     * @param timeWait
     *   How long a connection whose end holds the time-wait ([[holdsTimeWait]]) is held in
-    *   `Terminating` after its release (`defaultTimeWaitTimeout = 60`,
-    *   ouroboros-network `2fb69829` `ConnectionManager/Core.hs`): meanwhile an outbound connection
-    *   to its address is refused ([[ConnectionError.TimeWait]]), an inbound one from it is taken,
-    *   and it counts neither inbound nor outbound.
+    *   `Terminating` after its release (`defaultTimeWaitTimeout = 60`, ouroboros-network `2fb69829`
+    *   `ConnectionManager/Core.hs`): meanwhile an outbound connection to its address is refused
+    *   ([[ConnectionError.TimeWait]]), an inbound one from it is taken, and it counts neither
+    *   inbound nor outbound.
     */
   final case class Limits(
       accepted: AcceptedConnectionsLimit = AcceptedConnectionsLimit.default,
@@ -143,9 +143,9 @@ object ConnectionManager:
   /** Whether a connection whose owner recorded `end` is held in time-wait when released. The
     * reference's connection thread waits `timeWaitTimeout` only when its cleanup finds the
     * connection in `TerminatingState` (ouroboros-network 2fb69829 `ConnectionManager/Core.hs`
-    * `forkConnectionHandler`'s `cleanup`). An idle release enters that state (`Commit` in
-    * `releaseInboundConnection`, the outbound idle timeout of `releaseOutboundConnection`), and
-    * so does a handshake that agrees no version (`computeConnStateOnError`; `HandshakeFailure` in
+    * `forkConnectionHandler` 's `cleanup`). An idle release enters that state (`Commit` in
+    * `releaseInboundConnection`, the outbound idle timeout of `releaseOutboundConnection`), and so
+    * does a handshake that agrees no version (`computeConnStateOnError`; `HandshakeFailure` in
     * `classifyHandlerError`, `ConnectionHandler.hs`). From any other state, a connect that failed
     * (`ReservedOutboundState`) or a connection whose mux or protocols ended with an error, it goes
     * to `TerminatedState` at once. An end nobody recorded is such a teardown.
@@ -158,8 +158,8 @@ object ConnectionManager:
       true
     case _ => false
 
-  /** `outer`, which first records a handshake that agreed no version as the end of `connection`,
-    * so that its release holds the time-wait ([[holdsTimeWait]]). Any other error is raised as is.
+  /** `outer`, which first records a handshake that agreed no version as the end of `connection`, so
+    * that its release holds the time-wait ([[holdsTimeWait]]). Any other error is raised as is.
     */
   def recordingRefusal[F[_]: FlatMap](connection: Connection[F])(using
       outer: Raise[F, NetworkError]

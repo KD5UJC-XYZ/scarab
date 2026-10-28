@@ -1069,7 +1069,8 @@ object OutboundPeers:
   /** A connection of ours, and what its owner can do to it.
     *
     * @param connection
-    *   The manager's slot, where a clean close records its end ([[ConnectionManager.holdsTimeWait]]).
+    *   The manager's slot, where a clean close records its end
+    *   ([[ConnectionManager.holdsTimeWait]]).
     * @param release
     *   Completed to let go of the connection.
     * @param gone

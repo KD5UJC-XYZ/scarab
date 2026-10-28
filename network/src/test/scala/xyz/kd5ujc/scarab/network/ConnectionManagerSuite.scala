@@ -42,8 +42,12 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
       .rescue(e => IO.pure(Some(e)))
 
   /** Open an outbound connection to `remote` and release it after recording `end`. */
-  private def ended(cm: ConnectionManager[IO], remote: SocketAddress[IpAddress], end: ConnectionEnd)(
-      using Handle[IO, ConnectionError]
+  private def ended(
+      cm: ConnectionManager[IO],
+      remote: SocketAddress[IpAddress],
+      end: ConnectionEnd
+  )(using
+      Handle[IO, ConnectionError]
   ) = cm.outbound(remote).use(_.close(end))
 
   // ouroboros-network 2fb69829 `ConnectionManager/Core.hs`: a connection released from
