@@ -166,10 +166,14 @@ final class OutboundPeers[F[_]: Async, A] private (
           Peer.contramapped[F, PeerError, ConnectionError](summon)(e =>
             PeerError.Unavailable(PeerError.Unavailability.Connection(e))
           )
-        val open: Resource[F, (WarmConnection[F, NtNHeader, SessionEnd], Supervisor[F])] =
+        val open: Resource[
+          F,
+          (Connection[F], WarmConnection[F, NtNHeader, SessionEnd], Supervisor[F])
+        ] =
           for
             slot <- manager.outbound(remote, alongsideInbound = true)
             bearer <- transport.bearer(peer, remote)
+            // a handshake that agrees no version holds the slot's time-wait
             warm <- NodeToNode.warmOverWithResults[F, NtNHeader, SessionEnd](
               bearer,
               hot.magic,
@@ -179,7 +183,7 @@ final class OutboundPeers[F[_]: Async, A] private (
               serve = mode match
                 case DiffusionMode.InitiatorOnly         => None
                 case DiffusionMode.InitiatorAndResponder => hot.serve
-            )
+            )(using summon, ConnectionManager.recordingRefusal(slot))
             children <- Supervisor[F](await = false)
             _ <- Resource.eval(
               slot.connected *> slot.negotiated(
@@ -187,17 +191,18 @@ final class OutboundPeers[F[_]: Async, A] private (
                 else ConnectionState.DataFlow.Unidirectional
               )
             )
-          yield (warm, children)
+          yield (slot, warm, children)
 
         ConnectionResources
           .retainReleaseDefects(open)(defect => releaseDefects.update(_ :+ defect))
-          .use { (warm, children) =>
+          .use { (slot, warm, children) =>
             for
               phase <- Ref.of[F, Phase[F]](Phase.Warm())
               terminal <- Deferred[F, SessionEnd]
               transitions <- Mutex[F]
               identity <- connectionCounter.updateAndGet(_ + 1)
               link = Link(
+                slot,
                 warm,
                 release,
                 gone,
@@ -935,8 +940,11 @@ final class OutboundPeers[F[_]: Async, A] private (
           F.timeoutTo(stopApplications.map(Some(_)), config.closeTimeout, F.pure(None)).flatMap {
             case Some(ProtocolResults.LastToFinish.SomeErrored(errors)) =>
               abortAction(link, PeerActionError.ApplicationFailures(errors)).map(Left(_))
+            // every application returned: the reference's idle release, which holds the
+            // time-wait ([[ConnectionManager.holdsTimeWait]])
             case Some(ProtocolResults.LastToFinish.AllSucceeded(_)) =>
-              link.release.complete(()).void *> completed()
+              link.connection.close(ConnectionEnd.Released) *>
+                link.release.complete(()).void *> completed()
             case None =>
               val error = NetworkError.Timeout(Protocols.KeepAlive, "close")
               link.warm.applications.abortRunning(error) *> link.warm.mux.abort(error) *>
@@ -1062,12 +1070,15 @@ object OutboundPeers:
 
   /** A connection of ours, and what its owner can do to it.
     *
+    * @param connection
+    *   The manager's slot, where a clean close records its end ([[ConnectionManager.holdsTimeWait]]).
     * @param release
     *   Completed to let go of the connection.
     * @param gone
     *   Completed once the connection has been released everywhere.
     */
   private[node] final class Link[F[_]](
+      val connection: Connection[F],
       val warm: WarmConnection[F, NtNHeader, SessionEnd],
       val release: Deferred[F, Unit],
       val gone: Deferred[F, Unit],

@@ -41,13 +41,19 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
       .allow[ConnectionError](cm.outbound(remote).use(_ => IO.unit).as(None))
       .rescue(e => IO.pure(Some(e)))
 
-  // ouroboros-network 2fb69829 `ConnectionManager/Core.hs`: a released connection stays in
-  // `TerminatingState` for `timeWaitTimeout` (60 s), refusing a new outbound one to the address
+  /** Open an outbound connection to `remote` and release it after recording `end`. */
+  private def ended(cm: ConnectionManager[IO], remote: SocketAddress[IpAddress], end: ConnectionEnd)(
+      using Handle[IO, ConnectionError]
+  ) = cm.outbound(remote).use(_.close(end))
+
+  // ouroboros-network 2fb69829 `ConnectionManager/Core.hs`: a connection released from
+  // `TerminatingState` stays there for `timeWaitTimeout` (60 s), refusing a new outbound one to
+  // the address
   test("a released connection is in time-wait for 60 s: no outbound connection to it until then") {
     TestControl
       .executeEmbed(managed() { cm =>
         for
-          _ <- cm.outbound(peer(1)).use(_ => IO.unit)
+          _ <- ended(cm, peer(1), ConnectionEnd.Released)
           during <- cm.snapshot
           _ <- IO.sleep(59.seconds)
           early <- dial(cm, peer(1))
@@ -62,7 +68,7 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
         assertEquals(during.connections, Vector(peer(1) -> ConnectionState.Terminating))
         assertEquals(early, Some(ConnectionError.TimeWait(peer(1).toString)))
         assertEquals(late, None)
-        assertEquals(after.connections, Vector(peer(1) -> ConnectionState.Terminating))
+        assertEquals(after.connections, Vector.empty, "the late connection ended unrecorded")
       }
   }
 
@@ -70,7 +76,7 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
     TestControl
       .executeEmbed(managed() { cm =>
         for
-          _ <- cm.outbound(peer(1)).use(_ => IO.unit)
+          _ <- ended(cm, peer(1), ConnectionEnd.Released)
           inbound <- Handle
             .allow[ConnectionError](cm.inbound(peer(1)).use(_.state).map(Right(_)))
             .rescue(e => IO.pure(Left(e)))
@@ -80,6 +86,67 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
       .map { r =>
         val (inbound, other) = result(r)
         assertEquals(inbound, Right(ConnectionState.Unnegotiated(Provenance.Inbound)))
+        assertEquals(other, None)
+      }
+  }
+
+  // the cleanup of `forkConnectionHandler` goes to `TerminatedState` at once from every state but
+  // `TerminatingState`: a failed connect (`ReservedOutboundState`, the `bracketOnError` of
+  // `acquireOutboundConnectionImpl`) and a connection whose mux ended with an error
+  test("a connection that ends unrecorded or by an error is removed at once, without time-wait") {
+    TestControl
+      .executeEmbed(managed() { cm =>
+        for
+          _ <- cm.outbound(peer(1)).use(_ => IO.unit)
+          unrecorded <- dial(cm, peer(1))
+          _ <- ended(cm, peer(2), ConnectionEnd.Closed(NetworkError.Closure.PeerClosed))
+          closed <- dial(cm, peer(2))
+          _ <- ended(cm, peer(3), ConnectionEnd.Failed(NetworkError.Timeout(2, "StIdle")))
+          failed <- dial(cm, peer(3))
+          after <- cm.snapshot
+        yield (unrecorded, closed, failed, after)
+      })
+      .map { r =>
+        val (unrecorded, closed, failed, after) = result(r)
+        assertEquals((unrecorded, closed, failed), (None, None, None))
+        assertEquals(after.connections, Vector.empty)
+      }
+  }
+
+  // `computeConnStateOnError`: a handshake that agrees no version (`HandshakeFailure`,
+  // `ConnectionHandler.hs` `classifyHandlerError`) leaves the connection in `TerminatingState`
+  test("a handshake that agrees no version holds the time-wait; recordingRefusal records it") {
+    val mismatch = NetworkError.VersionMismatch(Vector(14), Vector(13))
+    TestControl
+      .executeEmbed(managed() { cm =>
+        for
+          _ <- cm
+            .outbound(peer(1))
+            .use(c =>
+              Handle
+                .allow[NetworkError](
+                  ConnectionManager.recordingRefusal(c).raise[NetworkError, Unit](mismatch)
+                )
+                .rescue(_ => IO.unit)
+            )
+          refused <- dial(cm, peer(1))
+          _ <- cm
+            .outbound(peer(2))
+            .use(c =>
+              Handle
+                .allow[NetworkError](
+                  ConnectionManager
+                    .recordingRefusal(c)
+                    .raise[NetworkError, Unit](NetworkError.Timeout(0, "StPropose"))
+                )
+                .rescue(_ => IO.unit)
+            )
+          other <- dial(cm, peer(2))
+        yield (refused, other)
+      })
+      .map { r =>
+        val (refused, other) = result(r)
+        assertEquals(refused, Some(ConnectionError.TimeWait(peer(1).toString)))
         assertEquals(other, None)
       }
   }

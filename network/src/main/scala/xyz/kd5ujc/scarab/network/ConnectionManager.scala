@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import cats.FlatMap
 import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -109,7 +110,8 @@ object ConnectionManager:
     *   top of the reference's global accept limits, protecting inbound slots from a single address;
     *   the reference has no per-address limit (ADR 0008).
     * @param timeWait
-    *   How long a released connection is held in `Terminating` (`defaultTimeWaitTimeout = 60`,
+    *   How long a connection whose end holds the time-wait ([[holdsTimeWait]]) is held in
+    *   `Terminating` after its release (`defaultTimeWaitTimeout = 60`,
     *   ouroboros-network `2fb69829` `ConnectionManager/Core.hs`): meanwhile an outbound connection
     *   to its address is refused ([[ConnectionError.TimeWait]]), an inbound one from it is taken,
     *   and it counts neither inbound nor outbound.
@@ -137,6 +139,37 @@ object ConnectionManager:
     address.host
       .resolve[F](using fs2.io.net.Network.forAsync[F].dns, Async[F])
       .map(ip => SocketAddress(ip, address.port))
+
+  /** Whether a connection whose owner recorded `end` is held in time-wait when released. The
+    * reference's connection thread waits `timeWaitTimeout` only when its cleanup finds the
+    * connection in `TerminatingState` (ouroboros-network 2fb69829 `ConnectionManager/Core.hs`
+    * `forkConnectionHandler`'s `cleanup`). An idle release enters that state (`Commit` in
+    * `releaseInboundConnection`, the outbound idle timeout of `releaseOutboundConnection`), and
+    * so does a handshake that agrees no version (`computeConnStateOnError`; `HandshakeFailure` in
+    * `classifyHandlerError`, `ConnectionHandler.hs`). From any other state, a connect that failed
+    * (`ReservedOutboundState`) or a connection whose mux or protocols ended with an error, it goes
+    * to `TerminatedState` at once. An end nobody recorded is such a teardown.
+    */
+  def holdsTimeWait(end: Option[ConnectionEnd]): Boolean = end match
+    case Some(ConnectionEnd.Released) => true
+    case Some(
+          ConnectionEnd.Failed(_: (NetworkError.HandshakeRefused | NetworkError.VersionMismatch))
+        ) =>
+      true
+    case _ => false
+
+  /** `outer`, which first records a handshake that agreed no version as the end of `connection`,
+    * so that its release holds the time-wait ([[holdsTimeWait]]). Any other error is raised as is.
+    */
+  def recordingRefusal[F[_]: FlatMap](connection: Connection[F])(using
+      outer: Raise[F, NetworkError]
+  ): Raise[F, NetworkError] =
+    new Raise[F, NetworkError]:
+      def functor = outer.functor
+      def raise[E <: NetworkError, A](e: E): F[A] = e match
+        case refused: (NetworkError.HandshakeRefused | NetworkError.VersionMismatch) =>
+          connection.close(ConnectionEnd.Failed(refused)) *> outer.raise[NetworkError, A](e)
+        case _ => outer.raise[NetworkError, A](e)
 
   private final case class Entry[F[_]](
       id: Long,
@@ -299,10 +332,11 @@ object ConnectionManager:
           )
         yield connection
 
-      /** Release: through Terminating, then the time-wait, whatever state the connection is in. The
-        * connection is closed now ([[Connection.closed]] completes); its entry stays in
-        * `Terminating` for [[Limits.timeWait]] and is removed after, as the reference's connection
-        * thread waits `timeWaitTimeout` after closing the socket (`ConnectionManager/Core.hs`).
+      /** Release: through Terminating, whatever state the connection is in. The connection is
+        * closed now ([[Connection.closed]] completes). When its end holds the time-wait
+        * ([[holdsTimeWait]]) its entry stays in `Terminating` for [[Limits.timeWait]] and is
+        * removed after, as the reference's connection thread waits `timeWaitTimeout` after closing
+        * the socket (`ConnectionManager/Core.hs`); otherwise it is removed at once.
         */
       def release(c: Connection[F]): F[Unit] =
         val at = c.remote
@@ -311,7 +345,7 @@ object ConnectionManager:
           _.traverse_ { e =>
             val reason = e.reason.getOrElse(ConnectionEnd.Released)
             val held =
-              if limits.timeWait <= Duration.Zero then
+              if limits.timeWait <= Duration.Zero || !holdsTimeWait(e.reason) then
                 apply(key, e.id, Event.Released) *>
                   table.update(m => m.get(key).filter(_.id == e.id).fold(m)(_ => m - key))
               else
