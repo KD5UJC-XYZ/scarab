@@ -194,9 +194,8 @@ capacity plus cancelled-waiter reuse. Existing abort/lifecycle tests retain firs
 Fair service applies after admission within a fence prefix. A full admission budget can still delay
 `send`; KeepAlive's response timer starts after that call. A flush deliberately prevents later traffic
 from passing its predecessors. This is not an unconditional latency bound under arbitrary rates or
-full queues. It meets the useful scheduler contract with Scarab's fs2 design, which predates the
-current [ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md) and is superseded by it: aligning the multiplexer's structure with the reference
-is [#477](https://github.com/KD5UJC-XYZ/scarab/issues/477) work. Broader upstream/property coverage remains #49.
+full queues. It meets the useful scheduler contract with Scarab's fs2 design; aligning the multiplexer's structure with the
+reference ([ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md)) is [#477](https://github.com/KD5UJC-XYZ/scarab/issues/477) work. Broader upstream/property coverage remains #49.
 
 ## Same-connection ChainSync recovery (#152)
 

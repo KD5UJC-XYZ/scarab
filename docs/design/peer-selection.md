@@ -32,11 +32,9 @@ targets and choices (feedback from the chain).
 | D9 | SRV and DNS root selection | #142 implements topology and ledger SRV roots, all successful A/AAAA answers, TTL refresh, and SIGHUP topology reload. DNS follows the pinned `ouroboros-network` RootPeersDNS policy; see section 6.1 and the remaining limits in section 8. |
 | D10 | ADR | One ADR at G1.1: "Outbound peer selection is a pure decision function over a status-carrying state" (D2), so the next sessions do not reopen it. |
 
-**Superseded (2026-10-25).** D1's internal structure "from Scarab's own style", D2's state
-representation and D10's ADR were decided under the earlier ADR 0008, which let networking keep its
-own structure. The current [ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md) requires the reference's structure as well as its behaviour, so
-those structural decisions no longer stand: each structural difference from the reference governor
-is alignment work under [#477](https://github.com/KD5UJC-XYZ/scarab/issues/477).
+D1's internal structure "from Scarab's own style", D2's state representation and D10's ADR do not
+stand: [ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md) requires the reference's structure as well as its behaviour, and each
+structural difference from the reference governor is alignment work under [#477](https://github.com/KD5UJC-XYZ/scarab/issues/477).
 
 ## Pages
 

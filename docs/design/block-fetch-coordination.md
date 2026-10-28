@@ -9,9 +9,8 @@ The target is the Praos bulk/deadline policy in ouroboros-network
 `BlockFetch/DeltaQ.hs` and `Network/DeltaQ.hs`, with the consensus candidate
 boundary in ouroboros-consensus `82ecba329`. Full Genesis selection remains #33.
 This change compares decision values and observable protocol/resource behavior,
-without requiring identical thread schedules. It predates the current
-[ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md), which requires the reference's structure as well: the offer-driven
-coordination is superseded, and its alignment with the reference's `fetchDecisions`
+without requiring identical thread schedules. [ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md) requires the reference's
+structure as well: aligning the offer-driven coordination with the reference's `fetchDecisions`
 loop is [#430](https://github.com/KD5UJC-XYZ/scarab/issues/430) under [#477](https://github.com/KD5UJC-XYZ/scarab/issues/477).
 
 ## Ownership and decisions

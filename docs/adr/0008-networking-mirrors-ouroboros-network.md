@@ -3,16 +3,12 @@
 - **Status**: Accepted
 - **Date**: 2026-10-25
 - **Issue**: [#477](https://github.com/KD5UJC-XYZ/scarab/issues/477) (alignment plan)
-- **Replaces**: the earlier ADR 0008, "Networking stays as implemented, not mirrored from Haskell"
-  (2026-10-15, `0008-networking-as-implemented.md`), in full. Replacing an ADR in full is a one-time
-  exception approved by the owner on 2026-10-25; the rule that an accepted ADR's text is not
-  rewritten, only amended with a dated section, still applies to every other ADR.
 
 ## Context
 
-The previous version of this ADR (2026-10-15) kept Scarab's own internal structure for the network
-layer on the grounds that wire compatibility was enough. Two structural divergences showed that was
-wrong: [#430](https://github.com/KD5UJC-XYZ/scarab/issues/430) (offer-driven fetch logic instead of
+Wire compatibility alone is not enough for the network layer: a structure of its own lets behaviour
+drift from the reference where the wire does not show it. Two structural divergences show this:
+[#430](https://github.com/KD5UJC-XYZ/scarab/issues/430) (offer-driven fetch logic instead of
 the `fetchDecisions` loop) and [#448](https://github.com/KD5UJC-XYZ/scarab/issues/448) (two loss
 reporters instead of one `peerMonitoringLoop`). The alignment plan is #477.
 

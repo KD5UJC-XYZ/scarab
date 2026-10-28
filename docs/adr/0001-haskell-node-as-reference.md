@@ -40,5 +40,5 @@ Only after that approval is it implemented, with a written reason that records t
 Existing code, earlier PRs, review notes and design documents are not approval. If exact fidelity
 seems impossible, stop and ask the owner.
 
-Networking is no longer an exception: it is mirrored in structure and behaviour too
-([0008](0008-networking-mirrors-ouroboros-network.md), which replaced the earlier ADR 0008).
+Networking is mirrored in structure and behaviour too
+([0008](0008-networking-mirrors-ouroboros-network.md)).
