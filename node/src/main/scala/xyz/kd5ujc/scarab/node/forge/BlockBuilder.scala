@@ -146,10 +146,10 @@ object BlockBuilder:
     *
     * A transaction was validated when the pool admitted it, so it is applied again as the
     * reference's forging snapshot applies it (`revalidateTxsFor` and `reapplyTx`,
-    * [[MempoolLedger.reapply]]): MEMPOOL and LEDGER of Conway on the era-indexed state without their
-    * static checks, so no signature is verified and no script is evaluated again. A result without
-    * a ledger verdict would stop the selection instead of dropping the transaction: the forger
-    * raises it and the node stops.
+    * [[MempoolLedger.reapply]]): MEMPOOL and LEDGER of Conway on the era-indexed state without
+    * their static checks, so no signature is verified and no script is evaluated again. A result
+    * without a ledger verdict would stop the selection instead of dropping the transaction: the
+    * forger raises it and the node stops.
     */
   def select(
       ticked: MempoolLedger,
