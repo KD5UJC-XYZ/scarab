@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import cats.effect.testkit.TestControl
 import cats.effect.{IO, Ref, Resource}
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -33,6 +34,55 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
 
   private def result[A](either: Either[ConnectionError, A]): A =
     either.fold(e => fail(e.message), identity)
+
+  /** Whether an outbound connection to `remote` is admitted now, or why not. */
+  private def dial(cm: ConnectionManager[IO], remote: SocketAddress[IpAddress]) =
+    Handle
+      .allow[ConnectionError](cm.outbound(remote).use(_ => IO.unit).as(None))
+      .rescue(e => IO.pure(Some(e)))
+
+  // ouroboros-network 2fb69829 `ConnectionManager/Core.hs`: a released connection stays in
+  // `TerminatingState` for `timeWaitTimeout` (60 s), refusing a new outbound one to the address
+  test("a released connection is in time-wait for 60 s: no outbound connection to it until then") {
+    TestControl
+      .executeEmbed(managed() { cm =>
+        for
+          _ <- cm.outbound(peer(1)).use(_ => IO.unit)
+          during <- cm.snapshot
+          _ <- IO.sleep(59.seconds)
+          early <- dial(cm, peer(1))
+          _ <- IO.sleep(1.second)
+          late <- dial(cm, peer(1))
+          after <- cm.snapshot
+        yield (during, early, late, after)
+      })
+      .map { r =>
+        val (during, early, late, after) = result(r)
+        assertEquals(during.counters, Counters.zero, "a time-wait entry counts in no direction")
+        assertEquals(during.connections, Vector(peer(1) -> ConnectionState.Terminating))
+        assertEquals(early, Some(ConnectionError.TimeWait(peer(1).toString)))
+        assertEquals(late, None)
+        assertEquals(after.connections, Vector(peer(1) -> ConnectionState.Terminating))
+      }
+  }
+
+  test("an inbound connection from an address in time-wait is taken; other addresses are free") {
+    TestControl
+      .executeEmbed(managed() { cm =>
+        for
+          _ <- cm.outbound(peer(1)).use(_ => IO.unit)
+          inbound <- Handle
+            .allow[ConnectionError](cm.inbound(peer(1)).use(_.state).map(Right(_)))
+            .rescue(e => IO.pure(Left(e)))
+          other <- dial(cm, peer(2))
+        yield (inbound, other)
+      })
+      .map { r =>
+        val (inbound, other) = result(r)
+        assertEquals(inbound, Right(ConnectionState.Unnegotiated(Provenance.Inbound)))
+        assertEquals(other, None)
+      }
+  }
 
   test("an inbound connection is admitted, negotiated and released; the table follows") {
     managed() { cm =>
