@@ -10,7 +10,8 @@ import java.io.IOException
 import java.net.{StandardProtocolFamily, UnixDomainSocketAddress}
 import java.nio.ByteBuffer
 import java.nio.channels.{ServerSocketChannel, SocketChannel}
-import java.nio.file.{Files, Path, SecureDirectoryStream}
+import java.nio.file.{Files, LinkOption, Path}
+import java.nio.file.attribute.BasicFileAttributes
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import xyz.kd5ujc.scarab.codec.DomainError
@@ -184,6 +185,16 @@ object LocalSockets:
       def bind: F[Either[DiffusionFailure, Unit]] =
         if address.path.codePointCount(0, address.path.length) > UnixPathMax then
           F.pure(Left(DiffusionFailure.PathTooLong(address.path)))
+        // a socket cannot be made at a path that ends in `/` (the kernel's `ENOENT`); the JDK
+        // would drop the slash and bind the path without it
+        else if address.path.endsWith("/") then
+          F.pure(
+            Left(
+              DiffusionFailure.System(
+                SystemCallError(SystemCall.Bind, ErrnoCause.Known(Errno.ENOENT), None)
+              )
+            )
+          )
         else
           F.blocking(
             Either
@@ -236,27 +247,27 @@ object LocalSockets:
 
       def close: F[Unit] = F.blocking(client.shutdownOutput()).void
 
-  /** One `unlink` of `path`, relative to its directory (`unlinkat(dir, name, 0)` through
-    * `SecureDirectoryStream.deleteFile`), which refuses a directory as `unlink` does: Java's own
-    * `Files.delete` reads the type first and removes an empty directory with `rmdir`.
+  /** `unlink(path)` of the path as written, which needs write and search permission on its
+    * directory only. A path that ends in `/` names a directory: `unlink` refuses a directory there
+    * (`EISDIR`) and anything else (`ENOTDIR`), and nothing there is `ENOENT`. Otherwise the type is
+    * read without following a link and a directory is refused, as `unlink` refuses it; anything
+    * else is deleted. Java's own delete would remove an empty directory (`rmdir`), so it is never
+    * given one; one replaced by an empty directory between the two calls is the one race left.
     */
   private def unlink(path: String): Either[ErrnoCause, Unit] =
+    def io[A](call: => A): Either[ErrnoCause, A] =
+      Either.catchOnly[IOException](call).leftMap(Errno.of)
     val target = Path.of(path)
-    val directory = Option(target.getParent).getOrElse(Path.of("."))
-    Option(target.getFileName) match
-      // `/` has no name in a directory: unlink of the root
-      case None => Left(ErrnoCause.Known(Errno.EISDIR))
-      case Some(name) =>
-        Either
-          .catchOnly[IOException](
-            Using.resource(Files.newDirectoryStream(directory)) {
-              case secure: SecureDirectoryStream[Path @unchecked] =>
-                Right(secure.deleteFile(name))
-              case _ => Left(ErrnoCause.Unrecognised("no SecureDirectoryStream on this platform"))
-            }
-          )
-          .leftMap(Errno.of)
-          .flatten
+    if path.endsWith("/") then
+      io(Files.readAttributes(target, classOf[BasicFileAttributes])).flatMap(found =>
+        Left(ErrnoCause.Known(if found.isDirectory then Errno.EISDIR else Errno.ENOTDIR))
+      )
+    else
+      io(
+        Files.readAttributes(target, classOf[BasicFileAttributes], LinkOption.NOFOLLOW_LINKS)
+      ).flatMap(found =>
+        if found.isDirectory then Left(ErrnoCause.Known(Errno.EISDIR)) else io(Files.delete(target))
+      )
 
   /** The process's own sockets, read from `/proc` (Linux). */
   private object Proc:

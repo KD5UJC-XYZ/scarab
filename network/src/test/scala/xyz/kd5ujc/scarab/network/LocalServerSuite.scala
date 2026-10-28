@@ -140,6 +140,66 @@ class LocalServerSuite extends FailsOnUncaught:
     }
   }
 
+  test("a write-only directory is enough to remove the stale socket, as unlink needs") {
+    temporary.use { root =>
+      val dropBox = root.resolve("drop-box")
+      val path = dropBox.resolve("node.socket")
+      for
+        _ <- IO.blocking(Files.createDirectory(dropBox)) *> staleSocket(path)
+        _ <- chmod(dropBox, "-wx------")
+        // root may read any directory: then the case is not exercised
+        readable <- IO.blocking(Files.isReadable(dropBox))
+        result <- removeStale(path)
+        _ <- chmod(dropBox, "rwx------")
+        gone <- IO.blocking(!Files.exists(path, LinkOption.NOFOLLOW_LINKS))
+      yield
+        assume(!readable, "running as root")
+        assertEquals(result, Right(()))
+        assert(gone)
+    }
+  }
+
+  test("a path ending in a slash names a directory, as unlink takes it") {
+    temporary.use { root =>
+      val file = root.resolve("file")
+      val directory = root.resolve("directory")
+      def refusal(path: String, errno: Errno) = Left(
+        SocketConfigError.LocalSocketError(
+          path,
+          SystemCallError(SystemCall.RemoveLink, ErrnoCause.Known(errno), Some(path))
+        )
+      )
+      def remove(path: String) =
+        attempt[SocketConfigError, Unit](LocalServer.removeStale(jdk, path))
+      for
+        _ <- IO.blocking(Files.writeString(file, "kept")) *> IO.blocking(
+          Files.createDirectory(directory)
+        )
+        onFile <- remove(s"$file/")
+        onDirectory <- remove(s"$directory/")
+        onNothing <- remove(s"${root.resolve("absent")}/")
+        kept <- IO.blocking(Files.exists(file) && Files.isDirectory(directory))
+        bound <- jdk
+          .open(LocalAddress(s"${root.resolve("absent")}/"))
+          .use(
+            _.fold(e => IO.pure(Left(DiffusionFailure.System(e))), _.bind)
+          )
+      yield
+        assertEquals(onFile, refusal(s"$file/", Errno.ENOTDIR))
+        assertEquals(onDirectory, refusal(s"$directory/", Errno.EISDIR))
+        assertEquals(onNothing, Right(()))
+        assert(kept)
+        assertEquals(
+          bound,
+          Left(
+            DiffusionFailure.System(
+              SystemCallError(SystemCall.Bind, ErrnoCause.Known(Errno.ENOENT), None)
+            )
+          )
+        )
+    }
+  }
+
   /** The calls of the server on the sockets, in order. */
   private enum Call:
     case Open, Bind, Listen, Accept
