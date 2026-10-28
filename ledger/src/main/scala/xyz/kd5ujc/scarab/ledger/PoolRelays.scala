@@ -179,6 +179,12 @@ enum PoolRelayError:
   /** The DNS name of relay `index` is not text. */
   case BadDnsName(index: Int)
 
+  /** The DNS name of relay `index` is an indefinite (chunked) string. The reference reads it with
+    * `textDecCBOR`, which is `decodeString`: a definite string only, in every decoder version
+    * (`BaseTypes.hs:644-668, 691-697`).
+    */
+  case IndefiniteDnsName(index: Int)
+
   /** The DNS name of relay `index` is longer than 128 bytes (`textSizeN 128`,
     * `BaseTypes.hs:691-697`).
     */
@@ -313,8 +319,10 @@ object PoolRelays:
   private def dns(n: Node, index: Int): Either[PoolRelayError, String] =
     n.value match
       case Value.Text(s) =>
-        val size = s.getBytes(StandardCharsets.UTF_8).length
-        Either.cond(size <= MaxDnsNameBytes, s, PoolRelayError.DnsNameTooLong(index, size))
+        if CborRead.indefinite(n) then Left(PoolRelayError.IndefiniteDnsName(index))
+        else
+          val size = s.getBytes(StandardCharsets.UTF_8).length
+          Either.cond(size <= MaxDnsNameBytes, s, PoolRelayError.DnsNameTooLong(index, size))
       case _ => Left(PoolRelayError.BadDnsName(index))
 
   // ---------------------------------------------------------------------------------- encoding

@@ -34,6 +34,16 @@ private[ledger] object CborRead:
     case Value.NInt(v) => Right(v)
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Integer, n.value))
 
+  /** The item's head is the indefinite-length marker (additional information 31), read from the
+    * original bytes: the item is a string, array or map whose members follow the head. A node built
+    * by hand without original bytes was not read from an indefinite item.
+    *
+    * [[definite]] is the stricter Byron form: it also refuses a node with no original bytes,
+    * because a Byron decoder never sees one.
+    */
+  private[ledger] def indefinite(n: Node): Boolean =
+    n.original.size > 0 && (n.original(0) & 31) == 31
+
   /** A byte string in a form `strings` reads ([[ByteStrings]]): an indefinite (chunked) string,
     * whose head is `0x5f`, is refused where only a definite one is read. The value is the joined
     * chunks, and the node keeps its original bytes either way. A node built by hand without
@@ -45,7 +55,7 @@ private[ledger] object CborRead:
         case ByteStrings.Chunked => Right(v)
         case ByteStrings.Definite =>
           Either.cond(
-            n.original.size == 0 || (n.original(0) & 0xff) != 0x5f,
+            !indefinite(n),
             v,
             LedgerDecodeError.IndefiniteLength(what)
           )
@@ -66,8 +76,23 @@ private[ledger] object CborRead:
       LedgerDecodeError.IndefiniteLength(what)
     )
 
+  /** A text value the reference reads as a text field: a definite-length string only.
+    *
+    * Every text field of a block body is read with `decodeString` (cborg, through `instance DecCBOR
+    * Text` in `libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs:356-358`,
+    * cardano-ledger f649f975), which takes a definite string in every decoder version: an
+    * indefinite (chunked) one, whose head is `0x7f`, is not text there and cborg fails it with
+    * "expected string". The forms that stay chunked have their own readers: transaction metadata
+    * (`decodeMetadatum`, `Metadata.hs:153-222`) and Plutus `Data`. A node built by hand without
+    * original bytes was not read from a chunked string.
+    */
   def text(n: Node, what: DecodeSite): Result[String] = n.value match
-    case Value.Text(v) => Right(v)
+    case Value.Text(v) =>
+      Either.cond(
+        !indefinite(n),
+        v,
+        LedgerDecodeError.IndefiniteLength(what)
+      )
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Text, n.value))
 
   def bool(n: Node, what: DecodeSite): Result[Boolean] = n.value match

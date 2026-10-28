@@ -828,6 +828,30 @@
       "page": "docs/compatibility/ledger-definite-byte-strings.md"
     },
     {
+      "id": "ledger-definite-text",
+      "component": "Ledger: definite text, decoder versions 2 to 9 (#435)",
+      "status": "implemented",
+      "summary": "A text field of a transaction body refuses an indefinite (chunked) string where the reference reads it with decodeString: the pool metadata url and a governance anchor url; transaction metadata keeps its chunked reader",
+      "evidence": {
+        "suites": [
+          "DefiniteTextReferenceSuite",
+          "DefiniteTextSuite"
+        ],
+        "paths": [
+          "fixtures/reference/definite-text/cases.jsonl",
+          "scripts/oracle/conway-decoding/definite_text_cases.py"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          436,
+          550,
+          552
+        ]
+      },
+      "page": "docs/compatibility/ledger-definite-text.md"
+    },
+    {
       "id": "ledger-repeated-withdrawals",
       "component": "Ledger: repeated withdrawal accounts, decoder versions 2 to 9 (#494)",
       "status": "implemented",
