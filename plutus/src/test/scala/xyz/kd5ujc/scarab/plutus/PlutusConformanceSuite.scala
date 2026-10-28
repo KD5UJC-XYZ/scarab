@@ -45,7 +45,9 @@ class PlutusConformanceSuite extends FunSuite:
       Language.fromId(language.id)
     )
     assertEquals(variant, BuiltinSemanticsVariant.E)
-    ScalusEvaluator.corrected(language, protocol, costModel)
+    ScalusEvaluator
+      .corrected(language, protocol, costModel)
+      .fold(failure => fail(failure.message), identity)
 
   private val Unlimited = ExUnits(BigInt(1) << 60, BigInt(1) << 60)
 

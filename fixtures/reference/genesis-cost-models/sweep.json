@@ -1,0 +1,14 @@
+{
+ "PlutusV1": {
+  "observations": 1372,
+  "refused": []
+ },
+ "PlutusV2": {
+  "observations": 1372,
+  "refused": []
+ },
+ "PlutusV3": {
+  "observations": 1444,
+  "refused": []
+ }
+}

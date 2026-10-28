@@ -12,45 +12,59 @@ class ProtocolParamsSuite extends FunSuite:
     parse(Files.readString(Path.of("fixtures/preview/genesis/shelley-genesis.json")))
       .fold(e => fail(e.getMessage), identity)
 
-  private def alonzo(costModels: Json): Json = Json.obj(
-    "lovelacePerUTxOWord" -> Json.fromInt(34482),
-    "executionPrices" -> Json.obj(
-      "prSteps" -> Json
-        .obj("numerator" -> Json.fromInt(721), "denominator" -> Json.fromInt(10000000)),
-      "prMem" -> Json.obj("numerator" -> Json.fromInt(577), "denominator" -> Json.fromInt(10000))
-    ),
-    "maxTxExUnits" -> Json.obj("exUnitsMem" -> Json.fromInt(1), "exUnitsSteps" -> Json.fromInt(1)),
-    "maxBlockExUnits" -> Json
-      .obj("exUnitsMem" -> Json.fromInt(1), "exUnitsSteps" -> Json.fromInt(1)),
-    "maxValueSize" -> Json.fromInt(5000),
-    "collateralPercentage" -> Json.fromInt(150),
-    "maxCollateralInputs" -> Json.fromInt(3),
-    "costModels" -> costModels
-  )
+  private def genesis(path: String): Json =
+    parse(Files.readString(Path.of(path))).fold(e => fail(e.getMessage), identity)
 
-  test("a genesis cost model is ordered by parameter name, not by the order of the file") {
-    val shuffled = Json.obj(
-      "PlutusV1" -> Json.obj(
-        "sha2_256-memory-arguments" -> Json.fromInt(4),
-        "addInteger-cpu-arguments-slope" -> Json.fromInt(2),
-        "cekDelayCost-exBudgetMemory" -> Json.fromInt(3),
-        "addInteger-cpu-arguments-intercept" -> Json.fromInt(1)
+  private val previewAlonzo = genesis("fixtures/preview/genesis/alonzo-genesis.json")
+  private val previewConway = genesis("fixtures/preview/genesis/conway-genesis.json")
+  private val erasAlonzo = genesis("fixtures/eras/genesis/alonzo-genesis.json")
+
+  private def costModels(alonzo: Json, conway: Option[Json]) =
+    ProtocolParams
+      .fromGenesis(shelley, alonzo, conway)
+      .fold(e => fail(e.message), _.costModels)
+
+  private def withCostModels(alonzo: Json, models: Json): Json =
+    alonzo.mapObject(_.add("costModels", models))
+
+  test("a genesis cost model given by name is ordered by the parameter list, not by the file") {
+    val named = previewAlonzo.hcursor.downField("costModels").downField("PlutusV1").focus
+    val object1 =
+      named.flatMap(_.asObject).getOrElse(fail("the preview genesis names its parameters"))
+    val reversed = Json.obj(
+      "PlutusV1" -> Json.fromJsonObject(
+        io.circe.JsonObject.fromIterable(object1.toVector.reverse)
       )
     )
-    val params = ProtocolParams
-      .fromGenesis(shelley, alonzo(shuffled), None)
-      .fold(e => fail(e.message), identity)
-    assertEquals(params.costModels, Map(0 -> Vector[BigInt](1, 2, 3, 4)))
+    val models = costModels(previewAlonzo, None)
+    assertEquals(costModels(withCostModels(previewAlonzo, reversed), None), models)
+    assertEquals(models.keySet, Set(0))
+    assertEquals(models(0).size, 166)
   }
 
-  test("array cost models keep their order; the Conway genesis adds PlutusV3") {
-    val conway =
-      Json.obj("plutusV3CostModel" -> Json.arr(Json.fromInt(9), Json.fromInt(8), Json.fromInt(7)))
-    val arrays = Json.obj("PlutusV1" -> Json.arr(Json.fromInt(3), Json.fromInt(1), Json.fromInt(2)))
-    val params = ProtocolParams
-      .fromGenesis(shelley, alonzo(arrays), Some(conway))
-      .fold(e => fail(e.message), identity)
-    assertEquals(params.costModels, Map(0 -> Vector[BigInt](3, 1, 2), 2 -> Vector[BigInt](9, 8, 7)))
+  test(
+    "array cost models keep their order; the extra config and the Conway genesis add languages"
+  ) {
+    val models = costModels(erasAlonzo, Some(previewConway))
+    assertEquals(models.keySet, Set(0, 1, 2))
+    assertEquals(models.view.mapValues(_.size).toMap, Map(0 -> 166, 1 -> 175, 2 -> 251))
+    val v3 = previewConway.hcursor.get[Vector[BigInt]]("plutusV3CostModel")
+    assertEquals(Right(models(2)), v3)
+    val v1 = erasAlonzo.hcursor.downField("costModels").get[Vector[BigInt]]("PlutusV1")
+    assertEquals(Right(models(0)), v1)
+  }
+
+  test("a genesis the reference refuses is refused: a cost model of the wrong length") {
+    val short = Json.obj("PlutusV1" -> Json.arr(Json.fromInt(3), Json.fromInt(1), Json.fromInt(2)))
+    val refused = ProtocolParams.fromGenesis(shelley, withCostModels(erasAlonzo, short), None)
+    assertEquals(
+      refused.left.map(_.problem),
+      Left(
+        ConfigProblem.GenesisCostModel(
+          CostModelProblem.ParameterCount(CostModelLanguage.PlutusV1, 3, 166)
+        )
+      )
+    )
   }
 
   test("overlay: what an update changed over the snapshot's fields goes onto the whole set") {

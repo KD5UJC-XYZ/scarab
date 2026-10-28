@@ -908,6 +908,29 @@
       "page": "docs/compatibility/ledger-cost-models-in-updates.md"
     },
     {
+      "id": "ledger-genesis-cost-models",
+      "component": "Ledger: genesis cost models (#369)",
+      "status": "implemented",
+      "summary": "Genesis cost models read as parseCostModels and FromJSON AlonzoGenesis; the evaluator's budget arithmetic is the reference's",
+      "evidence": {
+        "suites": [
+          "GenesisCostModelsSuite",
+          "CostModelLengthSuite",
+          "ProtocolParamsSuite"
+        ],
+        "issues": [
+          369,
+          485
+        ]
+      },
+      "limitations": {
+        "issues": [
+          497
+        ]
+      },
+      "page": "docs/compatibility/ledger-genesis-cost-models.md"
+    },
+    {
       "id": "plutus-phase-2",
       "component": "Plutus phase 2 (V1, V2, V3)",
       "status": "implemented",

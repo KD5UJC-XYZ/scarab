@@ -34,7 +34,7 @@ enum ConfigProblem:
   case GenesisUnverifiable(cause: ProviderDefect)
   case Credential(value: String)
   case DRep(value: String)
-  case CostModelLanguage(value: String)
+  case GenesisCostModel(cause: CostModelProblem)
   case NonPositive(context: String, value: BigDecimal)
   case Negative(context: String, value: BigDecimal)
 
@@ -112,6 +112,7 @@ enum ConfigProblem:
     case BootstrapPeersInGenesisMode =>
       "topology bootstrapPeers cannot be configured with ConsensusMode GenesisMode"
     case GenesisUnverifiable(cause) => s"no verdict on the genesis: ${cause.message}"
+    case GenesisCostModel(cause)    => s"genesis cost models: ${cause.message}"
     case WithUsage(cause, usage)    => s"${cause.message}\n$usage"
     case _                          => toString
 
