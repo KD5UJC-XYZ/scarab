@@ -43,69 +43,18 @@ class ByronVersionSuite extends ScalaCheckSuite:
   private def version(v: Version): ByronVersion =
     ByronVersion.from(v._1, v._2, v._3).fold(e => fail(e.message), identity)
 
-  private def encodedVersion(v: Version): Bytes =
-    Cb.arr(ByronCbor.uint(v._1), ByronCbor.uint(v._2), ByronCbor.uint(v._3))
-
-  private def proposal(v: Version): Bytes =
-    val body = Seq(
-      encodedVersion(v),
-      Cb.arr(Seq.fill(14)(Cb.arr())*),
-      Cb.arr(Cb.text("cardano-sl"), Cb.uint(1)),
-      Cb.map(),
-      Cb.map()
-    )
-    val signed = ByronCbor.of(0x85) ++ ByronCbor.concat(body*)
-    val signature = delegates(0).sign(
-      ByronSig.tag(ByronSig.SignUpdateProposal, config.magic) ++ signed
-    )
-    Cb.arr((body ++ Seq(Cb.bytes(delegates(0).extended), Cb.bytes(signature)))*)
+  private def encodedVersion(v: Version): Bytes = ByronTestKit.encodedVersion(v._1, v._2, v._3)
 
   private def block(headerVersion: Version, proposalVersion: Version): Bytes =
-    val updates = Cb.arr(Cb.arr(proposal(proposalVersion)), Cb.arr())
-    val delegation = Cb.arr()
-    val body = Cb.arr(Cb.indef(transaction.raw), Cb.arr(), delegation, updates)
-    val proof = Cb.arr(
-      Cb.arr(
-        Cb.uint(1),
-        Cb.bytes(ByronTx.merkleRoot(Vector(transaction.tx.raw))),
-        Cb.bytes(Blake2b.hash256.hash(Cb.indef(transaction.rawWitnesses)))
-      ),
-      Cb.arr(),
-      Cb.bytes(Blake2b.hash256.hash(delegation)),
-      Cb.bytes(Blake2b.hash256.hash(updates))
+    ByronTestKit.signedBlock(
+      config,
+      genesis,
+      genesisKeys(0),
+      delegates(0),
+      transaction,
+      ByronTestKit.signedProposal(config, delegates(0), proposalVersion),
+      headerVersion
     )
-    val slot = Cb.arr(Cb.uint(0), Cb.uint(1))
-    val difficulty = Cb.arr(Cb.uint(1))
-    val extra = Cb.arr(
-      encodedVersion(headerVersion),
-      Cb.arr(Cb.text("cardano-sl"), Cb.uint(1)),
-      Cb.map(),
-      Cb.bytes(Blake2b.hash256.hash(Cb.arr()))
-    )
-    val previous = Cb.bytes(genesis.hash)
-    val signed = Cb.arr(previous, proof, slot, difficulty, extra)
-    val signature = delegates(0).sign(
-      ByronCbor.of(0x30, 0x31) ++ genesisKeys(0).extended ++ ByronCbor.of(
-        0x09
-      ) ++ config.magic ++ signed
-    )
-    val certificate = genesis.delegations
-      .find(_.issuer == genesisKeys(0).extended)
-      .fold(fail("missing genesis certificate"))(_.cert)
-    val proxy = Cb.arr(
-      Cb.uint(0),
-      Cb.bytes(genesisKeys(0).extended),
-      Cb.bytes(delegates(0).extended),
-      Cb.bytes(certificate)
-    )
-    val consensus = Cb.arr(
-      slot,
-      Cb.bytes(genesisKeys(0).extended),
-      difficulty,
-      Cb.arr(Cb.uint(2), Cb.arr(proxy, Cb.bytes(signature)))
-    )
-    val header = Cb.arr(Cb.uint(Magic), previous, proof, consensus, extra)
-    Cb.arr(Cb.uint(1), Cb.arr(header, body, Cb.arr()))
 
   private def decoded(bytes: Bytes): Block.Byron =
     Block

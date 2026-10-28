@@ -154,7 +154,8 @@ object BlockBuilder:
     * The rules are LEDGER of Conway on the era-indexed state ([[MempoolLedger]], the same that
     * validates the pool). Missing evaluator support has no ledger verdict and stops the selection
     * instead of dropping the transaction; a defect one transaction triggers in the evaluator drops
-    * that transaction.
+    * that transaction. A crypto provider that fails on a witness stops the selection too: the
+    * forger raises it as a [[VerificationDefect]].
     */
   def select(
       ticked: MempoolLedger,
@@ -168,13 +169,16 @@ object BlockBuilder:
   )(using
       decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
       evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default
-  ): Either[LedgerFailure.Unavailable, Vector[(Entry, Piece)]] =
+  ): Either[LedgerFailure.Unavailable | LedgerFailure.Unverifiable, Vector[(Entry, Piece)]] =
     import Capacity.fits
     final case class Acc(state: MempoolLedger, chosen: Vector[(Entry, Piece)], used: TxMeasure)
     val rules = Globals(globals, geometry)
     val capacity = limit.capacity
     @tailrec
-    def go(rest: List[Entry], acc: Acc): Either[LedgerFailure.Unavailable, Acc] = rest match
+    def go(
+        rest: List[Entry],
+        acc: Acc
+    ): Either[LedgerFailure.Unavailable | LedgerFailure.Unverifiable, Acc] = rest match
       case Nil => Right(acc)
       case entry :: more =>
         val env = TxEnv(
@@ -202,7 +206,9 @@ object BlockBuilder:
                     unavailable.reach match
                       case BackendFailure.Reach.Implementation => Left(unavailable)
                       case BackendFailure.Reach.Input          => Right(None)
-                  case _ => Right(None)
+                  // a crypto provider that failed on a witness stops selection: no verdict
+                  case unverifiable: LedgerFailure.Unverifiable => Left(unverifiable)
+                  case _                                        => Right(None)
                 },
                 next => Right(Some((next, p)))
               )

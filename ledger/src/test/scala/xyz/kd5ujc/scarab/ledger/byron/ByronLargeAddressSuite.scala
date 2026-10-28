@@ -88,7 +88,7 @@ class ByronLargeAddressSuite extends FunSuite:
     // parameters of the time (raised by an update proposal) are needed
     val params = genesis.params.copy(maxTxSize = BigInt(65536))
     val after = ByronLedger.applyTx(config, params, inputs, body.txs.head)
-    assert(after.isRight, after.left.map(_.message).toString)
+    assert(after.isRight, after.left.toString)
     assertEquals(after.map(_.size), Right(2))
   }
 

@@ -6,7 +6,7 @@ import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
-import xyz.kd5ujc.scarab.ledger.CborRead
+import xyz.kd5ujc.scarab.ledger.{CborRead, ProviderDefect}
 
 /** An update proposal: a protocol version with parameter changes, a software version, metadata. */
 final case class ByronProposal(
@@ -139,6 +139,13 @@ final case class UpdateState(
 )
 
 object ByronUpdate:
+  extension [A](result: Either[UpdateError | ProviderDefect, A])
+    /** The refusal as the enclosing rule's, a provider defect as itself. */
+    def refusedAs[E](refusal: UpdateError => E): Either[E | ProviderDefect, A] = result match
+      case Right(a)                => Right(a)
+      case Left(e: UpdateError)    => Left(refusal(e))
+      case Left(d: ProviderDefect) => Left(d)
+
   /** What the rules read: the protocol magic bytes, `k`, the slot and the delegation map. */
   final case class Env(
       magicId: BigInt,
@@ -146,7 +153,8 @@ object ByronUpdate:
       k: BigInt,
       slot: BigInt,
       genesisKeys: Int,
-      delegation: Map[Bytes, Bytes]
+      delegation: Map[Bytes, Bytes],
+      signatures: ByronSig.Verifier = ByronSig.Standard
   ):
     def delegatorOf(delegate: Bytes): Option[Bytes] =
       delegation.collectFirst { case (g, d) if d == delegate => g }
@@ -174,7 +182,7 @@ object ByronUpdate:
       env: Env,
       st: UpdateState,
       p: ByronProposal
-  ): Either[UpdateError, UpdateState] =
+  ): Either[UpdateError | ProviderDefect, UpdateState] =
     val proposer = ByronCbor.keyHash(p.issuer)
     val adopted = st.adoptedParams
     val protocolChanged = !(p.version == st.adoptedVersion && p.update(adopted) == adopted)
@@ -184,15 +192,13 @@ object ByronUpdate:
       (env.slot == BigInt(969188) || env.slot == BigInt(1915231))
     for
       _ <- Either.cond(env.isDelegate(proposer), (), UpdateError.InvalidProposer(proposer))
-      _ <- Either.cond(
-        ByronSig.verify(
-          p.issuer,
-          p.signature,
-          ByronSig.tag(ByronSig.SignUpdateProposal, env.magic) ++ p.signedBody
-        ),
-        (),
-        UpdateError.InvalidSignature
+      signed <- ByronSig.verify(
+        p.issuer,
+        p.signature,
+        ByronSig.tag(ByronSig.SignUpdateProposal, env.magic) ++ p.signedBody,
+        env.signatures
       )
+      _ <- Either.cond(signed, (), UpdateError.InvalidSignature)
       _ <- Either.cond(
         protocolChanged || softwareChanged || exempt,
         (),
@@ -282,7 +288,7 @@ object ByronUpdate:
       env: Env,
       st: UpdateState,
       v: ByronVote
-  ): Either[UpdateError, UpdateState] =
+  ): Either[UpdateError | ProviderDefect, UpdateState] =
     val voter = ByronCbor.keyHash(v.voter)
     val signed = ByronCbor.of(0x82) ++ v.rawProposalId ++ ByronCbor.of(0xf5)
     for
@@ -297,15 +303,13 @@ object ByronUpdate:
         (),
         UpdateError.VoteAlreadyCast(delegator)
       )
-      _ <- Either.cond(
-        ByronSig.verify(
-          v.voter,
-          v.signature,
-          ByronSig.tag(ByronSig.SignUpdateVote, env.magic) ++ signed
-        ),
-        (),
-        UpdateError.InvalidSignature
+      verified <- ByronSig.verify(
+        v.voter,
+        v.signature,
+        ByronSig.tag(ByronSig.SignUpdateVote, env.magic) ++ signed,
+        env.signatures
       )
+      _ <- Either.cond(verified, (), UpdateError.InvalidSignature)
     yield
       val votes = st.votes.updated(
         v.proposalId,
@@ -322,17 +326,21 @@ object ByronUpdate:
       env: Env,
       st: UpdateState,
       votes: Vector[ByronVote]
-  ): Either[UpdateError, UpdateState] =
-    votes.foldLeftM(st)(registerVote(env, _, _)).map { after =>
-      val confirmedSoftware = after.registeredSoftware.view.filterKeys(after.confirmed.contains)
-      val appVersions = confirmedSoftware.values.map { (name, number) =>
-        name -> AppVersion(number, env.slot)
-      }.toMap
-      after.copy(
-        appVersions = after.appVersions ++ appVersions,
-        registeredSoftware = after.registeredSoftware.removedAll(after.confirmed.keys)
+  ): Either[UpdateError | ProviderDefect, UpdateState] =
+    votes
+      .foldLeftM[[A] =>> Either[UpdateError | ProviderDefect, A], UpdateState](st)(
+        registerVote(env, _, _)
       )
-    }
+      .map { after =>
+        val confirmedSoftware = after.registeredSoftware.view.filterKeys(after.confirmed.contains)
+        val appVersions = confirmedSoftware.values.map { (name, number) =>
+          name -> AppVersion(number, env.slot)
+        }.toMap
+        after.copy(
+          appVersions = after.appVersions ++ appVersions,
+          registeredSoftware = after.registeredSoftware.removedAll(after.confirmed.keys)
+        )
+      }
 
   // ---------------------------------------------------------------- endorsements
 
@@ -385,7 +393,7 @@ object ByronUpdate:
       payload: UpdatePayload,
       version: ByronVersion,
       issuer: Bytes
-  ): Either[UpdateError, UpdateState] =
+  ): Either[UpdateError | ProviderDefect, UpdateState] =
     for
       withProposal <- payload.proposal.fold(Right(st))(registerProposal(env, st, _))
       withVotes <- registerVotes(env, withProposal, payload.votes)

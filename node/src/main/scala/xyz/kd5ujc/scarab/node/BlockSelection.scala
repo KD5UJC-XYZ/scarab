@@ -164,7 +164,11 @@ private[node] final class BlockSelection[F[_]: Async] private (
             case SessionEnd.Unavailable(cause) => Fatal.Unavailable(cause)
             // selection holds such a block where it applies one (`held`); nothing else raises one
             case SessionEnd.Held(cause) => Fatal.Unavailable(cause)
-            case _                      => Fatal.Internal(error)
+            // a crypto provider that fails on a block stops the node, as the exception ends the
+            // reference's linked addBlockRunner thread (consensus 82ecba32
+            // Storage/ChainDB/Impl/Background.hs:107-108,142)
+            case SessionEnd.Unverifiable(cause) => Fatal.Unverifiable(cause)
+            case _                              => Fatal.Internal(error)
         )
         application
           .locked(selectLocked(None, Phase.Startup)) *> ready.complete(Right(())).void *>
@@ -227,10 +231,11 @@ private[node] object BlockSelection:
           )(_.cancel)
           result <- Resource.eval(ready.get)
           _ <- Resource.eval(result match
-            case Right(_)                       => Async[F].unit
-            case Left(Fatal.Storage(cause))     => owner.raise[NodeError, Unit](cause)
-            case Left(Fatal.Unavailable(cause)) => owner.raise[NodeError, Unit](cause)
-            case Left(Fatal.Internal(cause))    => owner.raise[NodeError, Unit](cause)
-            case Left(Fatal.Defect(cause))      => Async[F].raiseError[Unit](cause))
+            case Right(_)                        => Async[F].unit
+            case Left(Fatal.Storage(cause))      => owner.raise[NodeError, Unit](cause)
+            case Left(Fatal.Unavailable(cause))  => owner.raise[NodeError, Unit](cause)
+            case Left(Fatal.Internal(cause))     => owner.raise[NodeError, Unit](cause)
+            case Left(Fatal.Unverifiable(cause)) => owner.raise[NodeError, Unit](cause)
+            case Left(Fatal.Defect(cause))       => Async[F].raiseError[Unit](cause))
         yield ())
     }

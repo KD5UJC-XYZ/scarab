@@ -12,7 +12,12 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.{Block, Header}
-import xyz.kd5ujc.scarab.ledger.{EvaluationUnavailable, ForgeError}
+import xyz.kd5ujc.scarab.ledger.{
+  EvaluationUnavailable,
+  ForgeError,
+  LedgerFailure,
+  VerificationDefect
+}
 import xyz.kd5ujc.scarab.ledger.{ClockProblem, NodeError}
 import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash}
@@ -429,13 +434,23 @@ final class Forger[F[_]: Async, S](
         case Follower.Adoption.Invalid(e) =>
           SessionEnd.of(e) match
             case SessionEnd.Unavailable(unavailable) => perform(unavailable.raise[F, Unit])
+            // a crypto provider failed on our own block: an exception in the forging thread, which
+            // is linked to the node in the reference, so the forger stops with Fatal.Unverifiable
+            // and nothing leaves the pool (consensus 82ecba32 NodeKernel.hs forkBlockForging,
+            // Background.hs:107-108,142)
+            case SessionEnd.Unverifiable(defect) => perform(defect.raise[F, Unit])
             // a refusal, or a defect a transaction of ours triggers (SessionEnd.Held): the block's
             // transactions leave the pool, valid or not, so that the next leader slot does not
             // repeat the failure (`NodeKernel.hs` 770-783), and the slot ends
             case _ =>
               val ids = chosen.map(_._1.id).toSet
               say(ForgeTrace.ForgedInvalidBlock(slot, block.header.hash, e)) *>
-                perform(mempool.removeTxsEvenIfValid(ids).void.whenA(ids.nonEmpty))
+                perform(
+                  mempool
+                    .removeTxsEvenIfValid(ids)(using summon, Mempool.raisedAt[F](context.base.tip))
+                    .void
+                    .whenA(ids.nonEmpty)
+                )
     yield ()).value.void
 
   /** The chain to forge on in `slot`, as `forkBlockForging` picks it through
@@ -515,9 +530,16 @@ final class Forger[F[_]: Async, S](
         )
       )
       chosen <- selection.fold(
-        unavailable =>
-          EvaluationUnavailable(base.tip, unavailable)
-            .raise[F, Vector[(Entry, BlockBuilder.Piece)]],
+        {
+          case unavailable: LedgerFailure.Unavailable =>
+            EvaluationUnavailable(base.tip, unavailable)
+              .raise[F, Vector[(Entry, BlockBuilder.Piece)]]
+          // the forging thread is linked to the node in the reference, which re-applies the pool's
+          // transactions in it (consensus 82ecba32 Node/NodeKernel.hs `forkBlockForging`)
+          case LedgerFailure.Unverifiable(tx, defect) =>
+            VerificationDefect(base.tip, VerificationDefect.Site.Witness(tx), defect)
+              .raise[F, Vector[(Entry, BlockBuilder.Piece)]]
+        },
         F.pure
       )
     yield chosen
@@ -740,7 +762,9 @@ object Forger:
           // BlockBuilder.select skips a transaction that triggers a defect, and adoption makes it
           // a refusal of our own block, so none reaches here; were one to, there is no verdict
           case SessionEnd.Held(e) => Fatal.Unavailable(e)
-          case _                  => Fatal.Internal(error)
+          // a crypto provider that fails on our own block is raised by `build`, with nothing evicted
+          case SessionEnd.Unverifiable(e) => Fatal.Unverifiable(e)
+          case _                          => Fatal.Internal(error)
         terminal.raise[Fatal, A](fatal)
       }
     }

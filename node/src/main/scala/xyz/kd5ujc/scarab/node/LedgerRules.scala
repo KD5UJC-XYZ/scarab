@@ -201,7 +201,10 @@ object NodeRules:
         }
       validated <- ByronRules
         .update(ByronRules.State(state.tip, ledger, state.pbft), block, cfg)
-        .leftMap(BlockFailure.Byron(_))
+        .leftMap {
+          case defect: ProviderDefect => BlockFailure.Unverifiable(BlockRule.Byron, defect)
+          case error: ByronChainError => BlockFailure.Byron(error)
+        }
       (next, check) = validated
     yield
       val sameEpoch = state.stats.filter(_.epoch == header.epoch)
@@ -265,7 +268,10 @@ object NodeRules:
               config
             )
             .map(v => v.state -> v.leader)
-            .leftMap(BlockFailure.TPraos(_))
+            .leftMap {
+              case defect: ProviderDefect => BlockFailure.Unverifiable(BlockRule.TPraos, defect)
+              case error: TPraosError     => BlockFailure.TPraos(error)
+            }
         else
           Praos
             .validate(
@@ -275,5 +281,8 @@ object NodeRules:
               config,
               nonceWindow
             )
-            .leftMap(BlockFailure.Praos(_))
+            .leftMap {
+              case defect: ProviderDefect => BlockFailure.Unverifiable(BlockRule.Praos, defect)
+              case error: PraosError      => BlockFailure.Praos(error)
+            }
     yield validated

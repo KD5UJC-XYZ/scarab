@@ -180,7 +180,9 @@ class UpstreamTxSubmission2BehaviorSuite extends FailsOnUncaught:
         def body(id: Bytes): IO[Option[Bytes]] = IO.pure(byId.get(id))
       sink = new TxSubmission2Runtime.Sink[IO, Bytes, Bytes]:
         def known(id: Bytes): IO[Boolean] = IO.pure(false)
-        def submit(originals: Vector[Bytes]): IO[Unit] = received.update(_ ++ originals)
+        def submit(originals: Vector[Bytes])(using
+            cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+        ): IO[Unit] = received.update(_ ++ originals)
       clientChannelAndServerChannel <- linked(protocols = Set(4)).use { (clientPeer, serverPeer) =>
         for
           clientChannel <- clientPeer.channel(4)

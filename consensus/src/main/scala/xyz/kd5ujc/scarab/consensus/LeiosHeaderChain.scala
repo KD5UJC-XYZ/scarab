@@ -5,7 +5,14 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.state.ProtocolState
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.ledger.{PraosError, LeaderCheck, LeiosHeader, PoolDistribution, StakeView}
+import xyz.kd5ujc.scarab.ledger.{
+  LeaderCheck,
+  LeiosHeader,
+  PoolDistribution,
+  PraosError,
+  ProviderDefect,
+  StakeView
+}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** Header-only validation of a chain of Leios headers (the shape of `dijkstra.cddl` 's `header`,
@@ -60,6 +67,9 @@ object LeiosHeaderChain:
     case SlotNotAfterTip(tipSlot: BigInt, slot: BigInt)
     case Praos(error: PraosError)
 
+    /** A crypto provider failed on the header: no verdict on it ([[ProviderDefect]]). */
+    case Unverifiable(defect: ProviderDefect)
+
   /** Epochs led by the genesis pools: the schedule of epoch `e` uses the stake snapshot of the end
     * of epoch `e - 2`, so until a transaction can have changed the stake the genesis distribution
     * is the one in force for epochs 0 and 1.
@@ -105,7 +115,10 @@ object LeiosHeaderChain:
           view,
           config
         )
-        .leftMap(Fault.Praos(_))
+        .leftMap {
+          case defect: ProviderDefect => Fault.Unverifiable(defect)
+          case error: PraosError      => Fault.Praos(error)
+        }
       (protocol, leader) = validated
     yield State(
       Some(Tip(header.hash, header.blockNo, header.slot)),

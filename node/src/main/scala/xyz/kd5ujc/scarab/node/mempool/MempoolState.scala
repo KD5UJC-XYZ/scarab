@@ -121,13 +121,15 @@ final case class Entry(id: Bytes, raw: Bytes, tx: Tx, ticket: Long, refScriptByt
 /** What the transaction rules need besides the ledger state. `clock` is the slot to time
   * translation of the era history at the chain tip the pool is judged against, with its forecast
   * horizon; none is the geometry alone, without a horizon, for pools of tests that have no chain.
+  * `verdicts` are the signature verifiers of the witness checks.
   */
 final case class MempoolEnv(
     globals: LedgerGlobals,
     geometry: EpochGeometry,
     evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default,
     decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
-    clock: Option[PosixClock] = None
+    clock: Option[PosixClock] = None,
+    verdicts: xyz.kd5ujc.scarab.ledger.Verdicts = xyz.kd5ujc.scarab.ledger.Verdicts.Direct
 ):
   /** The environment in which a transaction is validated for inclusion in the next block: the slot
     * after the tip, in the epoch of the fully ticked ledger.
@@ -144,7 +146,8 @@ final case class MempoolEnv(
       updateQuorum = globals.updateQuorum,
       clock = Some(clock.getOrElse(PosixClock.total(geometry))),
       evaluator = evaluator,
-      decoder = decoder
+      decoder = decoder,
+      verdicts = verdicts
     )
 
   /** The constants the rules of the era-indexed state read. */
@@ -358,25 +361,28 @@ final case class MempoolState(
 
   /** Move to a new chain tip: keep, in order, the transactions that still apply to `ledger` and
     * report the others with the rule that now refuses them. Transactions that a block contains fail
-    * here because their inputs are spent.
+    * here because their inputs are spent. The first transaction the rules have no verdict on stops
+    * the revalidation, and no new state is made ([[MempoolState.NoVerdict]]).
     */
   def sync(
       ledger: Either[ConwayView.Unavailable, MempoolLedger],
       slot: BigInt,
       env: MempoolEnv
-  ): (MempoolState, Vector[(Entry, Rejection)]) =
+  ): Either[MempoolState.NoVerdict, (MempoolState, Vector[(Entry, Rejection)])] =
     ledger match
       case Left(why) =>
         // no ledger to validate against: nothing is held, and everything held is dropped
-        (
-          copy(
-            base = Left(why),
-            tipSlot = slot,
-            current = Left(why),
-            entries = Vector.empty,
-            bytes = 0
-          ),
-          entries.map(_ -> Rejection.NoLedger(why))
+        Right(
+          (
+            copy(
+              base = Left(why),
+              tipSlot = slot,
+              current = Left(why),
+              entries = Vector.empty,
+              bytes = 0
+            ),
+            entries.map(_ -> Rejection.NoLedger(why))
+          )
         )
       case Right(l) =>
         val start =
@@ -387,8 +393,11 @@ final case class MempoolState(
             entries = Vector.empty,
             bytes = 0
           )
-        entries.foldLeft((start, Vector.empty[(Entry, Rejection)])) {
-          case ((state, dropped), entry) =>
+        entries.foldLeft(
+          (start, Vector.empty[(Entry, Rejection)]).asRight[MempoolState.NoVerdict]
+        ) {
+          case (stopped @ Left(_), _) => stopped
+          case (Right((state, dropped)), entry) =>
             state.current
               .leftMap(Rejection.NoLedger(_))
               .flatMap(
@@ -396,21 +405,28 @@ final case class MempoolState(
                   .leftMap(Rejection.Ledger(_))
               ) match
               case Right(next) =>
-                (
-                  state.copy(
-                    current = Right(next),
-                    entries = state.entries :+ entry,
-                    bytes = state.bytes + entry.size
-                  ),
-                  dropped
+                Right(
+                  (
+                    state.copy(
+                      current = Right(next),
+                      entries = state.entries :+ entry,
+                      bytes = state.bytes + entry.size
+                    ),
+                    dropped
+                  )
                 )
-              case Left(rejection) => (state, dropped :+ (entry -> rejection))
+              case Left(Rejection.Ledger(noVerdict: LedgerFailure.Unverifiable)) =>
+                Left(noVerdict)
+              case Left(rejection) => Right((state, dropped :+ (entry -> rejection)))
         }
 
   /** Remove transactions by id (and, because later ones may spend their outputs, revalidate the
     * rest).
     */
-  def remove(ids: Set[Bytes], env: MempoolEnv): (MempoolState, Vector[(Entry, Rejection)]) =
+  def remove(
+      ids: Set[Bytes],
+      env: MempoolEnv
+  ): Either[MempoolState.NoVerdict, (MempoolState, Vector[(Entry, Rejection)])] =
     copy(entries = entries.filterNot(e => ids(e.id)))
       .sync(base, tipSlot, env)
 
@@ -426,6 +442,14 @@ final case class MempoolState(
   def after(ticket: Long): Vector[Entry] = entries.filter(_.ticket > ticket)
 
 object MempoolState:
+  /** A held transaction that revalidation has no verdict on: a crypto provider failed on one of its
+    * witnesses. In the reference the exception aborts the state operation, so the pool keeps its
+    * state and nothing is traced (consensus 82ecba32 `Mempool/Update.hs` 467–495 and 587–622,
+    * `withTMVar`), and the revalidation watcher, linked to the node, stops it (`Mempool/Init.hs`
+    * 64–77).
+    */
+  type NoVerdict = LedgerFailure.Unverifiable
+
   /** A credential as the ledger's `Show` instance prints it. */
   def showCredential(c: Credential): String = c match
     case Credential.Key(h)    => "KeyHashObj (KeyHash {unKeyHash = \"" + h.hex + "\"})"

@@ -21,6 +21,17 @@ import Capacity.fits
 
 /** Real transaction bytes over a synthetic Conway ledger. */
 object TxKit:
+  extension [A](result: Either[MempoolState.NoVerdict, A])
+    /** The revalidation of a test that expects a verdict on every transaction. */
+    def verdict: A =
+      result.fold(noVerdict => munit.Assertions.fail(s"no verdict: $noVerdict"), identity)
+
+  /** Fails the test: its revalidations expect a verdict on every transaction. */
+  given noVerdictFails: cats.mtl.Raise[IO, MempoolState.NoVerdict] with
+    def functor = cats.Functor[IO]
+    def raise[E <: MempoolState.NoVerdict, A](noVerdict: E): IO[A] =
+      IO(munit.Assertions.fail(s"no verdict: $noVerdict"))
+
   val alice: Key = key()
   val bob: Key = key()
   val ada: BigInt = 1000000
@@ -135,7 +146,13 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
   private given cats.mtl.Raise[IO, StorageError] with
     def functor = cats.Functor[IO]
     def raise[E <: StorageError, A](error: E): IO[A] = IO(fail(error.message))
+
+  private given cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError] with
+    def functor = cats.effect.IO.asyncForIO
+    def raise[E <: xyz.kd5ujc.scarab.network.NetworkError, A](error: E): IO[A] =
+      IO(fail(error.message))
   import TxKit.*
+  import TxKit.given
 
   private def pool(ledger: MempoolLedger, capacityOverride: Option[Long] = None) =
     MempoolState.empty(Right(ledger), 1000, capacityOverride)
@@ -184,7 +201,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
       .empty(Right(old), 5999, None)
       .add(raw, env, Source.Local)
       .fold(e => fail(e.message), _._1)
-    val (synced, dropped) = held.sync(Right(ticked), 5999, env)
+    val (synced, dropped) = held.sync(Right(ticked), 5999, env).verdict
     assertEquals(synced.entries, Vector.empty)
     assertEquals(dropped.map(_._1.raw), Vector(raw))
     assertEquals(scheduled.ru, Some(PulsingRewUpdate.Complete(pending)))
@@ -446,12 +463,12 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
       val (_, tx) = MempoolState.parse(raw).toOption.get
       l.applied(tx)
     }
-    val (synced, dropped) = s.sync(Right(l1), 1001, env)
+    val (synced, dropped) = s.sync(Right(l1), 1001, env).verdict
     assertEquals(dropped.map(_._1.id).toSet, Set(id1, id2))
     assertEquals(synced.entries.map(_.id), Vector(idChild))
     assertEquals(synced.bytes, child.size.toLong)
     // a rollback of that block: the child no longer has its parent and is dropped, nothing is added back
-    val (back, droppedAgain) = synced.sync(Right(l0), 1000, env)
+    val (back, droppedAgain) = synced.sync(Right(l0), 1000, env).verdict
     assertEquals(back.entries, Vector.empty)
     assertEquals(droppedAgain.map(_._1.id), Vector(idChild))
   }
@@ -464,7 +481,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     val s = List(t1, child, t2).foldLeft(pool(ledger(3)))((s, t) =>
       add(s, t).fold(r => fail(r.message), identity)
     )
-    val (rest, dropped) = s.remove(Set(id1), env)
+    val (rest, dropped) = s.remove(Set(id1), env).verdict
     assertEquals(rest.entries.map(_.id), Vector(id2))
     assertEquals(dropped.map(_._1.id), Vector(idChild))
   }
@@ -521,18 +538,18 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
         case Op.Add(i) =>
           s.add(candidates(i)._1, env, Source.Local).foreach { case (next, _) => s = next }
         case Op.Remove(i) =>
-          s = s.remove(Set(candidates(i)._2), env)._1
+          s = s.remove(Set(candidates(i)._2), env).verdict._1
         case Op.Block(n) =>
           val adopted = s.entries.take(n)
           val base = s.base.fold(u => sys.error(u.toString), identity)
           val l1 = adopted.foldLeft(base)((l, e) => l.applied(e.tx, s.tipSlot))
           history = base :: history
-          s = s.sync(Right(l1), s.tipSlot + 1, env)._1
+          s = s.sync(Right(l1), s.tipSlot + 1, env).verdict._1
         case Op.Rollback =>
           history match
             case previous :: rest =>
               history = rest
-              s = s.sync(Right(previous), s.tipSlot - 1, env)._1
+              s = s.sync(Right(previous), s.tipSlot - 1, env).verdict._1
             case Nil => ()
       }
       assertEquals(replay(s).map(_.utxo), Right(s.current.toOption.get.utxo))
@@ -697,6 +714,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
 /** The pool reads inputs from the UTxO store, like the block path does. */
 class MempoolStoreSuite extends CatsEffectSuite:
   import TxKit.*
+  import TxKit.given
   import xyz.kd5ujc.scarab.ledger.StorageError
   import xyz.kd5ujc.scarab.storage.{MemoryUtxoStore, UtxoStore}
 

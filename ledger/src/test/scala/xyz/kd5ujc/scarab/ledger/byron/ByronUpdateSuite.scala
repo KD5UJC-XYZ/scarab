@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
-import xyz.kd5ujc.scarab.ledger.CborRead
+import xyz.kd5ujc.scarab.ledger.{CborRead, ProviderDefect}
 import xyz.kd5ujc.scarab.codec.Bytes
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
@@ -44,15 +44,39 @@ class ByronUpdateSuite extends ScalaCheckSuite:
   private val newDelegate = key()
 
   test("a certificate is valid under the certificate tag and the issuer's key only") {
-    assert(cert(gKeys(0), newDelegate, 1).isValid(magic))
-    assert(!cert(gKeys(0), newDelegate, 1, tamper = true).isValid(magic))
-    assert(!cert(gKeys(0), newDelegate, 1).isValid(ByronCbor.uint(Magic + 1)))
+    assertEquals(cert(gKeys(0), newDelegate, 1).isValid(magic), Right(true))
+    assertEquals(cert(gKeys(0), newDelegate, 1, tamper = true).isValid(magic), Right(false))
+    assertEquals(cert(gKeys(0), newDelegate, 1).isValid(ByronCbor.uint(Magic + 1)), Right(false))
+  }
+
+  // Issue 438: a provider that fails on a signature is no verdict on it, not an invalid one.
+  private val failure = providerFailure
+  private val defect = ProviderDefect.Ed25519(failure)
+
+  test("a verifier that fails on a certificate is a provider defect, not InvalidCertificate") {
+    val c = cert(gKeys(0), newDelegate, 1)
+    val failing = delegationEnv(0, 5).copy(
+      signatures = failingOn(ByronSig.SignCertificate, magic, failure)
+    )
+    assertEquals(c.isValid(magic, failing.signatures), Left(defect))
+    assertEquals(DelegationRules.schedule(failing, fresh, c).map(_ => ()), Left(defect))
+    assert(DelegationRules.schedule(delegationEnv(0, 5), fresh, c).isRight)
+    assertEquals(
+      DelegationRules.schedule(delegationEnv(0, 5), fresh, cert(gKeys(0), newDelegate, 1, true)),
+      Left(DelegationError.InvalidCertificate)
+    )
+  }
+
+  test("a certificate in a block with a failing verifier is a provider defect (update)") {
+    val c = cert(gKeys(0), newDelegate, 1)
+    val failing = delegationEnv(0, 5).copy(signatures = failingVerifier(failure))
+    assertEquals(DelegationRules.update(failing, fresh, Vector(c)).map(_ => ()), Left(defect))
   }
 
   test("a certificate takes effect 2k slots after the block that carries it, not before") {
     val c = cert(gKeys(0), newDelegate, 1)
     val scheduled =
-      DelegationRules.schedule(delegationEnv(0, 5), fresh, c).fold(e => fail(e.message), identity)
+      DelegationRules.schedule(delegationEnv(0, 5), fresh, c).fold(e => fail(e.toString), identity)
     assertEquals(scheduled.scheduled.map(_.slot), Vector(BigInt(25)))
     val before = DelegationRules.tick(scheduled, 0, 24)
     assertEquals(before.delegationMap(gKeys(0).keyHash), gKeys(0).keyHash)
@@ -184,7 +208,7 @@ class ByronUpdateSuite extends ScalaCheckSuite:
       .fold(e => fail(e.toString), identity)
 
   private def version(major: BigInt, minor: BigInt, alt: BigInt): ByronVersion =
-    ByronVersion.from(major, minor, alt).fold(e => fail(e.message), identity)
+    ByronVersion.from(major, minor, alt).fold(e => fail(e.toString), identity)
 
   private val v1 = version(1, 0, 0)
   private val v2 = version(2, 0, 0)
@@ -211,15 +235,15 @@ class ByronUpdateSuite extends ScalaCheckSuite:
     val p = payload(Some(pb), Nil)
     val id = p.proposal.get.id
     val v =
-      ByronVersion.from(version._1, version._2, version._3).fold(e => fail(e.message), identity)
+      ByronVersion.from(version._1, version._2, version._3).fold(e => fail(e.toString), identity)
     val s1 = register(
       st,
       from,
       p,
-      ByronVersion.from(v.major - 1, 0, 0).fold(e => fail(e.message), identity),
+      ByronVersion.from(v.major - 1, 0, 0).fold(e => fail(e.toString), identity),
       dKeys(0)
     )
-      .fold(e => fail(e.message), identity)
+      .fold(e => fail(e.toString), identity)
     assertEquals(s1.registeredProtocol.keySet, Set(id))
     val s2 = register(
       s1,
@@ -228,17 +252,48 @@ class ByronUpdateSuite extends ScalaCheckSuite:
       ByronVersion.zero,
       dKeys(0)
     )
-      .fold(e => fail(e.message), identity)
+      .fold(e => fail(e.toString), identity)
     assertEquals(s2.confirmed.get(id), Some(BigInt(from + 1)))
     // stable 2k = 20 slots after the confirmation; two endorsements are needed (floor(0.6 * 4))
     val endorseAt = from + 1 + 20
     val s3 =
-      register(s2, endorseAt, payload(None, Nil), v, dKeys(0)).fold(e => fail(e.message), identity)
+      register(s2, endorseAt, payload(None, Nil), v, dKeys(0)).fold(e => fail(e.toString), identity)
     assert(s3.candidates.isEmpty, "one endorsement is not enough")
     val s4 = register(s3, endorseAt + 1, payload(None, Nil), v, dKeys(1))
-      .fold(e => fail(e.message), identity)
+      .fold(e => fail(e.toString), identity)
     assertEquals(s4.candidates.map(c => (c.slot, c.version)), Vector((BigInt(endorseAt + 1), v)))
     (s4, endorseAt + 1)
+
+  test("a verifier that fails on a proposal is a provider defect, not InvalidSignature") {
+    val p = payload(Some(proposalBytes(dKeys(0), (1, 0, 0))), Nil)
+    val failing = env(5).copy(signatures = failingOn(ByronSig.SignUpdateProposal, magic, failure))
+    assertEquals(
+      ByronUpdate.register(failing, state0, p, ByronVersion.zero, dKeys(0).keyHash).map(_ => ()),
+      Left(defect)
+    )
+    assert(register(state0, 5, p, ByronVersion.zero, dKeys(0)).isRight)
+    val forged = payload(Some(proposalBytes(dKeys(0), (1, 0, 0), tamper = true)), Nil)
+    assertEquals(
+      register(state0, 5, forged, ByronVersion.zero, dKeys(0)).map(_ => ()),
+      Left(UpdateError.InvalidSignature)
+    )
+  }
+
+  test("a verifier that fails on a vote is a provider defect, not InvalidSignature") {
+    val p = payload(Some(proposalBytes(dKeys(0), (1, 0, 0))), Nil)
+    val id = p.proposal.get.id
+    val registered = register(state0, 5, p, ByronVersion.zero, dKeys(0))
+      .fold(e => fail(e.toString), identity)
+    val votes = payload(None, Seq(voteBytes(dKeys(0), id)))
+    val failing = env(6).copy(signatures = failingOn(ByronSig.SignUpdateVote, magic, failure))
+    assertEquals(
+      ByronUpdate
+        .register(failing, registered, votes, ByronVersion.zero, dKeys(0).keyHash)
+        .map(_ => ()),
+      Left(defect)
+    )
+    assert(register(registered, 6, votes, ByronVersion.zero, dKeys(0)).isRight)
+  }
 
   test("proposal, votes, endorsements and the epoch boundary adopt a new protocol version") {
     val (s, candidateSlot) = adopt(state0, (1, 0, 0), from = 5)

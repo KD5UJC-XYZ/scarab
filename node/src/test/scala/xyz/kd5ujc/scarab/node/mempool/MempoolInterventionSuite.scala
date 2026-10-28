@@ -20,6 +20,11 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
     def functor = cats.Functor[IO]
     def raise[E <: StorageError, A](error: E): IO[A] = IO(fail(error.message))
 
+  private given cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError] with
+    def functor = cats.effect.IO.asyncForIO
+    def raise[E <: xyz.kd5ujc.scarab.network.NetworkError, A](error: E): IO[A] =
+      IO(fail(error.message))
+
   private val mempoolEnv = TxKit.env
 
   /** A recorded case, its parts as received and the ledger that holds what it reads. */
@@ -123,7 +128,9 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
     val held = failing.pool
       .add(failing.raw(true), mempoolEnv, Source.Remote)
       .fold(r => fail(r.message), _._1)
-    val (synced, dropped) = held.sync(Right(failing.ledger), failing.tipSlot, mempoolEnv)
+    val (synced, dropped) = held
+      .sync(Right(failing.ledger), failing.tipSlot, mempoolEnv)
+      .fold(noVerdict => fail(s"no verdict: $noVerdict"), identity)
     assertEquals(dropped, Vector.empty)
     assertEquals(synced.entries.map(_.raw), held.entries.map(_.raw))
     assertEquals(synced.entries.map(_.tx.isValid), Vector(false))

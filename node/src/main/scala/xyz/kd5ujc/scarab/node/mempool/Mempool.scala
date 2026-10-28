@@ -4,11 +4,12 @@ package xyz.kd5ujc.scarab.node.mempool
 import cats.effect.{Async, Ref}
 import cats.effect.std.{Mutex, Semaphore}
 import cats.mtl.{Ask, Raise}
-import xyz.kd5ujc.scarab.ledger.StorageError
+import cats.mtl.syntax.all.*
+import xyz.kd5ujc.scarab.ledger.{LedgerFailure, StorageError, VerificationDefect}
 import cats.syntax.all.*
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.network.{TxSubmissionClient, TxSubmissionServer}
+import xyz.kd5ujc.scarab.network.{NetworkError, TxSubmissionClient, TxSubmissionServer}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.node.{Fatal, StorageBoundary}
@@ -93,21 +94,25 @@ trait Mempool[F[_]]:
     * Origin). `adopted` are the ids of the transactions in the blocks that just joined our chain:
     * held ones among them leave the pool as adopted, the others that no longer apply are returned
     * with the reason. `tipHash` is the new tip's hash ([[MempoolState.tipHash]]; none at Origin,
-    * and for the pools of tests that have no chain).
+    * and for the pools of tests that have no chain). A transaction the rules have no verdict on is
+    * raised before anything changes: the state, its version, the waiters and the events stay as
+    * they were.
     */
   def sync(
       ledger: Either[ConwayView.Unavailable, MempoolLedger],
       tipSlot: BigInt,
       adopted: Set[Bytes] = Set.empty,
       tipHash: Option[Bytes] = None
-  )(using Raise[F, StorageError]): F[Vector[(Entry, Rejection)]]
+  )(using Raise[F, StorageError], Raise[F, MempoolState.NoVerdict]): F[Vector[(Entry, Rejection)]]
 
   /** Remove the held transactions among `ids` even though they still apply, then revalidate the
     * rest in order and return the ones that depended on them (`implRemoveTxsEvenIfValid`). Ids that
-    * are not held change nothing. Unlike `sync` it does not move the pool's tip.
+    * are not held change nothing. Unlike `sync` it does not move the pool's tip. A transaction the
+    * rules have no verdict on is raised before anything changes, as in `sync`.
     */
   def removeTxsEvenIfValid(ids: Set[Bytes])(using
-      Raise[F, StorageError]
+      Raise[F, StorageError],
+      Raise[F, MempoolState.NoVerdict]
   ): F[Vector[(Entry, Rejection)]]
 
   /** Offer our transactions to a peer (we are the TxSubmission2 client). */
@@ -117,6 +122,25 @@ trait Mempool[F[_]]:
   def sink(fatal: Fatal => F[Unit]): TxSubmissionServer.Sink[F]
 
 object Mempool:
+  /** The transaction a revalidation (`sync`, `removeTxsEvenIfValid`) has no verdict on, as the
+    * defect of the block it was revalidated for at `at`. The reference's revalidation watcher is
+    * linked to the node (consensus 82ecba32 `Mempool/Init.hs:64-77`), so the node stops
+    * ([[Fatal.Unverifiable]]).
+    */
+  def unverifiable(
+      noVerdict: MempoolState.NoVerdict,
+      at: xyz.kd5ujc.scarab.protocol.ChainSync.Point
+  ): VerificationDefect =
+    VerificationDefect(at, VerificationDefect.Site.Witness(noVerdict.txId), noVerdict.defect)
+
+  /** A revalidation's no-verdict raised as the node's defect at `at` ([[unverifiable]]). */
+  def raisedAt[F[_]](at: xyz.kd5ujc.scarab.protocol.ChainSync.Point)(using
+      node: Raise[F, VerificationDefect]
+  ): Raise[F, MempoolState.NoVerdict] = new Raise[F, MempoolState.NoVerdict]:
+    def functor = node.functor
+    def raise[E <: MempoolState.NoVerdict, A](noVerdict: E): F[A] =
+      node.raise(unverifiable(noVerdict, at))
+
   /** How many submissions wait for their turn: `remote` behind the peer's transaction that holds
     * the remote line, `common` behind the one that holds the common line.
     */
@@ -253,7 +277,7 @@ object Mempool:
           tipSlot: BigInt,
           adopted: Set[Bytes],
           tipHash: Option[Bytes]
-      )(using Raise[F, StorageError]) = lock.lock.surround {
+      )(using Raise[F, StorageError], Raise[F, MempoolState.NoVerdict]) = lock.lock.surround {
         for
           current <- state.get
           completed <- ledger.traverse(l =>
@@ -263,8 +287,9 @@ object Mempool:
           )
           activeEnv <- readEnv
           result <- F.blocking(current.sync(completed, tipSlot, activeEnv))
-          next = result._1.copy(tipHash = tipHash)
-          dropped = result._2
+          synced <- Raise[F, MempoolState.NoVerdict].fromEither(result)
+          next = synced._1.copy(tipHash = tipHash)
+          dropped = synced._2
           _ <- state.set(next)
           _ <- version.update(_ + 1)
           (inBlock, invalid) = dropped.partition((entry, _) => adopted(entry.id))
@@ -278,7 +303,10 @@ object Mempool:
         yield invalid
       }
 
-      def removeTxsEvenIfValid(ids: Set[Bytes])(using Raise[F, StorageError]) =
+      def removeTxsEvenIfValid(ids: Set[Bytes])(using
+          Raise[F, StorageError],
+          Raise[F, MempoolState.NoVerdict]
+      ) =
         lock.lock.surround {
           for
             current <- state.get
@@ -294,7 +322,8 @@ object Mempool:
                   )
                   activeEnv <- readEnv
                   result <- F.blocking(current.copy(base = completed).remove(ids, activeEnv))
-                  (next, dependants) = result
+                  revalidated <- Raise[F, MempoolState.NoVerdict].fromEither(result)
+                  (next, dependants) = revalidated
                   _ <- state.set(next)
                   _ <- version.update(_ + 1)
                   _ <- removed.traverse_(entry => events.emit(MempoolEvent.Removed(entry.id)))
@@ -333,5 +362,19 @@ object Mempool:
           // outside every protocol deadline (`TxSubmission2Runtime.server` times the read of a
           // message, not the sink), the peer sits in StIdle where it may wait for ever, and its
           // other mini-protocols and our outbound direction run in fibers of their own.
-          def submit(originals: Vector[Bytes]) =
-            StorageBoundary.run(fatal)(originals.traverse_(add(_, Source.Remote).void))
+          //
+          // A crypto provider that fails on a witness gives no verdict on the transaction. It is not
+          // a rejection: it closes this peer's connection, with the peer tried again later and
+          // nothing recorded, as the exception does in the reference's inbound TxSubmission2 thread
+          // (consensus 82ecba32 Node/NodeKernel.hs `getMempoolWriter`, `Mempool/Update.hs`
+          // `doAddTx`, `Node/RethrowPolicy.hs:40-45`). The transactions after it are not offered.
+          def submit(originals: Vector[Bytes])(using Raise[F, NetworkError]) =
+            originals.traverse_ { original =>
+              StorageBoundary.run(fatal)(add(original, Source.Remote)).flatMap {
+                case Left(Rejection.Ledger(defect: LedgerFailure.Unverifiable)) =>
+                  NetworkError
+                    .BearerClosed(NetworkError.Closure.AbortedBy(defect))
+                    .raise[F, Unit]
+                case _ => F.unit
+              }
+            }

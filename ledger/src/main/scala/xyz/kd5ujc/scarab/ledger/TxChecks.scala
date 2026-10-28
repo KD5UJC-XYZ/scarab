@@ -512,15 +512,25 @@ object TxChecks:
   /** `validateVerifiedWits` (`Shelley/Rules/Utxow.hs:380-397`): the vkey and bootstrap witnesses
     * whose signature of the body does not verify.
     */
-  private[ledger] def verifiedWits(tx: Tx, verdicts: Verdicts): Test[PredicateFailure] =
+  private[ledger] def verifiedWits(
+      tx: Tx,
+      verdicts: Verdicts
+  ): Either[LedgerDefect, Test[PredicateFailure]] =
     val id = tx.body.id
     val wits = tx.witnesses
-    val invalid = wits.vkeys.collect {
-      case (vkey, signature) if !verdicts.witness(vkey, signature, id) => vkey
-    } ++ wits.bootstrap.collect {
-      case w if !verdicts.witness(w.vkey, w.signature, id) => w.vkey
-    }
-    Test.failureUnless(invalid.isEmpty, utxow(UtxowFailure.InvalidWitnesses(invalid)))
+    // A verifier that fails is no verdict on the transaction (`LedgerFailure.Unverifiable`), never
+    // an invalid witness: the reference's `verifyWitVKey` is a Boolean, and a failure of the library
+    // is an exception (see `ProviderDefect`).
+    (wits.vkeys ++ wits.bootstrap.map(w => w.vkey -> w.signature))
+      .traverse((vkey, signature) =>
+        verdicts.witness(vkey, signature, id).map(valid => Option.unless(valid)(vkey))
+      )
+      .bimap(
+        LedgerFailure.Unverifiable(id, _),
+        invalid =>
+          val keys = invalid.flatten
+          Test.failureUnless(keys.isEmpty, utxow(UtxowFailure.InvalidWitnesses(keys)))
+      )
 
   /** `validateNeededWitnesses` (`Shelley/Rules/Utxow.hs:399-412`): the key hashes that must sign
     * (`witsVKeyNeeded`) and that no witness provides. Reads of the state: the genesis delegations

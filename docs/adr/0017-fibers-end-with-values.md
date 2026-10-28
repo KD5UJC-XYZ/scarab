@@ -205,3 +205,17 @@ borer `Overflow`, `StackOverflowError` and `RuntimeException` at the decoder and
 (Input) with linkage, initialiser, out-of-memory and unknown-builtin controls (Implementation); the
 `MachineError` subclasses of the pinned Scalus jar are enumerated and pinned; `SessionFailureSuite`
 holds a block without an invalid record, blame or stop; `StallWatchdogSuite` names it.
+
+## Amendment (2026-10-25): a crypto provider defect is not held (#393)
+
+A verifier that throws or breaks its contract (Ed25519, VRF, KES, certificate signature) gives no
+verdict, and the reference treats it as the exception it is. On the block path it ends the linked
+add-block runner and stops the node (ouroboros-consensus 82ecba32
+`Storage/ChainDB/Impl/Background.hs` 107-108 and 142): the rules return `ProviderDefect`,
+`SessionEnd.of` places it as `SessionEnd.Unverifiable`, and the disposition is
+`StopNode(Fatal.Unverifiable)` (exit 7), with no `InvalidBlocks` entry and no peer blamed. On the
+header-first path it ends that peer's session and nothing else (`Node/RethrowPolicy.hs` 36-48 and
+128-140, `ShutdownPeer`): header-first validation raises it as `PeerError.Unverifiable` through the
+caller's `Raise`, classified `Transient`. The hold of the 2026-10-23 amendment is for the evaluator
+only. The as-built contract and the reference correspondence, including the mempool and local
+submission, are in [domain errors](../design/domain-errors.md).

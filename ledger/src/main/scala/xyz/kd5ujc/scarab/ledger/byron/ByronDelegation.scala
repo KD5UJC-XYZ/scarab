@@ -6,24 +6,50 @@ import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.ledger.CborRead
-import xyz.kd5ujc.scarab.crypto.witness.{ByronEd25519, VerificationResult}
+import xyz.kd5ujc.scarab.ledger.ProviderDefect
+import xyz.kd5ujc.scarab.crypto.witness.{
+  ByronEd25519,
+  VerificationError,
+  VerificationResult,
+  WitnessInputError
+}
 
 /** Verifies a signature of an extended Byron key (64 bytes: the Ed25519 key then a chain code),
   * with the Byron verification semantics of the reference ([[ByronEd25519]]).
+  *
+  * A malformed key or signature and a rejected signature are `false`; a verifier that fails is the
+  * [[ProviderDefect]], no verdict on the signature ([[ProviderDefect.witness]]).
   */
 object ByronSig:
-  def verify(extendedKey: Bytes, signature: Bytes, message: Bytes): Boolean =
-    extendedKey.size >= 32 && signature.size == 64 &&
-      (ByronEd25519.verify(extendedKey.take(32), signature, message) match
-        case Right(VerificationResult.SignatureVerified) => true
-        case _                                           => false)
+  /** An Ed25519 verifier: `(key, signature, message)` to its answer. The ledger and the header
+    * rules take it from their configuration, so that a test injects a failing provider.
+    */
+  type Verifier =
+    (Bytes, Bytes, Bytes) => Either[WitnessInputError | VerificationError, VerificationResult]
+
+  /** [[ByronEd25519.verify]], one instance so that configurations compare equal. */
+  val Standard: Verifier = ByronEd25519.verify(_, _, _)
+
+  def verify(
+      extendedKey: Bytes,
+      signature: Bytes,
+      message: Bytes,
+      verifier: Verifier = Standard
+  ): Either[ProviderDefect, Boolean] =
+    if extendedKey.size >= 32 && signature.size == 64 then
+      ProviderDefect.witness(verifier(extendedKey.take(32), signature, message))
+    else Right(false)
 
   /** A redeem signature: plain Ed25519 under a 32-byte key. */
-  def verifyRedeem(key: Bytes, signature: Bytes, message: Bytes): Boolean =
-    key.size == 32 && signature.size == 64 &&
-      (ByronEd25519.verify(key, signature, message) match
-        case Right(VerificationResult.SignatureVerified) => true
-        case _                                           => false)
+  def verifyRedeem(
+      key: Bytes,
+      signature: Bytes,
+      message: Bytes,
+      verifier: Verifier = Standard
+  ): Either[ProviderDefect, Boolean] =
+    if key.size == 32 && signature.size == 64 then
+      ProviderDefect.witness(verifier(key, signature, message))
+    else Right(false)
 
   /** The signing tag of a message kind followed by the CBOR protocol magic (`signTag`). */
   def tag(kind: Int, magic: Bytes): Bytes = ByronCbor.of(kind) ++ magic
@@ -51,11 +77,19 @@ final case class ByronCert(
   /** `Certificate.isValid`: the issuer signed `"00" || delegate || epoch`, wrapped as a CBOR byte
     * string, under the certificate tag and the protocol magic.
     */
-  def isValid(magic: Bytes): Boolean =
+  def isValid(
+      magic: Bytes,
+      signatures: ByronSig.Verifier = ByronSig.Standard
+  ): Either[ProviderDefect, Boolean] =
     val signed = ByronCbor.bytes(
       ByronCbor.concat(ByronCbor.of(0x30, 0x30), delegate, rawEpoch)
     )
-    ByronSig.verify(issuer, signature, ByronSig.tag(ByronSig.SignCertificate, magic) ++ signed)
+    ByronSig.verify(
+      issuer,
+      signature,
+      ByronSig.tag(ByronSig.SignCertificate, magic) ++ signed,
+      signatures
+    )
 
 object ByronCert:
   def decode(n: Node): Either[LedgerDecodeError, ByronCert] =
@@ -109,7 +143,8 @@ object DelegationRules:
       allowedDelegators: Set[Bytes],
       currentEpoch: BigInt,
       currentSlot: BigInt,
-      k: BigInt
+      k: BigInt,
+      signatures: ByronSig.Verifier = ByronSig.Standard
   )
 
   /** Genesis keys delegate to themselves until a certificate says otherwise. */
@@ -125,11 +160,14 @@ object DelegationRules:
   private def insert(m: Map[Bytes, Bytes], a: Bytes, b: Bytes): Map[Bytes, Bytes] =
     m.filterNot((k, v) => k == a || v == b) + (a -> b)
 
+  /** Schedule a certificate. A verifier that fails is the [[ProviderDefect]], beside the refusals
+    * and never an [[DelegationError.InvalidCertificate]].
+    */
   def schedule(
       env: Env,
       st: DelegationState,
       cert: ByronCert
-  ): Either[DelegationError, DelegationState] =
+  ): Either[DelegationError | ProviderDefect, DelegationState] =
     val delegator = cert.issuerHash
     val activation = env.currentSlot + 2 * env.k
     for
@@ -153,7 +191,8 @@ object DelegationRules:
         (),
         DelegationError.MultipleDelegationsForSlot(env.currentSlot, delegator)
       )
-      _ <- Either.cond(cert.isValid(env.magic), (), DelegationError.InvalidCertificate)
+      valid <- cert.isValid(env.magic, env.signatures)
+      _ <- Either.cond(valid, (), DelegationError.InvalidCertificate)
     yield st.copy(
       scheduled = st.scheduled :+ ScheduledDelegation(activation, delegator, cert.delegateHash),
       keyEpochDelegations = st.keyEpochDelegations + ((cert.epoch, delegator))
@@ -184,15 +223,25 @@ object DelegationRules:
       env: Env,
       st: DelegationState,
       certs: Vector[ByronCert]
-  ): Either[DelegationError, DelegationState] =
+  ): Either[DelegationError | ProviderDefect, DelegationState] =
     certs
-      .foldLeftM(st)(schedule(env, _, _))
+      .foldLeftM[[A] =>> Either[DelegationError | ProviderDefect, A], DelegationState](st)(
+        schedule(env, _, _)
+      )
       .map(tick(_, env.currentEpoch, env.currentSlot))
 
   /** The state at slot 0: the genesis heavy delegation certificates applied with `k = 0`. */
   def initial(
       magic: Bytes,
       genesisKeys: Vector[Bytes],
-      certs: Vector[ByronCert]
-  ): Either[DelegationError, DelegationState] =
-    update(Env(magic, genesisKeys.toSet, 0, 0, 0), empty(genesisKeys), certs)
+      certs: Vector[ByronCert],
+      signatures: ByronSig.Verifier = ByronSig.Standard
+  ): Either[DelegationError | ProviderDefect, DelegationState] =
+    update(Env(magic, genesisKeys.toSet, 0, 0, 0, signatures), empty(genesisKeys), certs)
+
+  extension [A](result: Either[DelegationError | ProviderDefect, A])
+    /** The refusal as the enclosing rule's, a provider defect as itself. */
+    def refusedAs[E](refusal: DelegationError => E): Either[E | ProviderDefect, A] = result match
+      case Right(a)                 => Right(a)
+      case Left(e: DelegationError) => Left(refusal(e))
+      case Left(d: ProviderDefect)  => Left(d)

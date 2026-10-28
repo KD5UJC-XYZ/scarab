@@ -30,7 +30,9 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
       def range(from: ChainSync.Point, to: ChainSync.Point) = IO.pure(None)
     val transactions = new TxSubmissionServer.Sink[IO]:
       def known(id: xyz.kd5ujc.scarab.codec.Bytes) = IO.pure(false)
-      def submit(originals: Vector[xyz.kd5ujc.scarab.codec.Bytes]) = IO.unit
+      def submit(originals: Vector[xyz.kd5ujc.scarab.codec.Bytes])(using
+          cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+      ) = IO.unit
     ServerHandlers(NtNHeader.codec, Resource.pure(cursor), blocks, transactions)
 
   private final class GatedTransport(

@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger.byron
 
 import scala.annotation.unused
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.TxIn
+import xyz.kd5ujc.scarab.ledger.{ProviderDefect, TxIn}
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
 import org.scalacheck.Gen
@@ -79,7 +79,7 @@ class ByronLedgerSuite extends ScalaCheckSuite:
     ByronLedger.applyTx(config, params, u, a)
 
   private def minFee(a: ByronTxAux): Long =
-    params.txFeePolicy.minimumFee(a.raw.size).fold(e => fail(e.message), _.toLong)
+    params.txFeePolicy.minimumFee(a.raw.size).fold(e => fail(e.toString), _.toLong)
 
   /** A payment from Alice that pays exactly the minimum fee (the size depends on the fee, so the
     * amount is found by iterating once).
@@ -92,7 +92,7 @@ class ByronLedgerSuite extends ScalaCheckSuite:
     val probe = spendAlice(Seq(bobAddr -> 1000000, aliceAddr -> 50000000))
     val fee = 100000000L - 1000000L - 50000000L
     assert(fee >= minFee(probe))
-    val next = apply(probe).fold(e => fail(e.message), identity)
+    val next = apply(probe).fold(e => fail(e.toString), identity)
     assert(!next.contains(addrIn(aliceAddr)))
     assertEquals(next(TxIn(probe.tx.id, 0)).value, BigInt(1000000))
     assertEquals(next(TxIn(probe.tx.id, 1)).value, BigInt(50000000))
@@ -227,7 +227,7 @@ class ByronLedgerSuite extends ScalaCheckSuite:
 
   test("a redeem input needs a redeem witness and pays no fee") {
     val redeem = aux(config, Seq((addrIn(redeemAddr), redeemer, true)), Seq(aliceAddr -> 5000000))
-    val next = apply(redeem).fold(e => fail(e.message), identity)
+    val next = apply(redeem).fold(e => fail(e.toString), identity)
     assert(!next.contains(addrIn(redeemAddr)))
     assertEquals(next(TxIn(redeem.tx.id, 0)).value, BigInt(5000000))
     // a verification-key witness cannot spend a redeem address
@@ -264,7 +264,7 @@ class ByronLedgerSuite extends ScalaCheckSuite:
       Seq((in, alice, false), (in, alice, false)),
       Seq(bobAddr -> 1000000, aliceAddr -> 50000000)
     )
-    val next = apply(twice).fold(e => fail(e.message), identity)
+    val next = apply(twice).fold(e => fail(e.toString), identity)
     assertEquals(next.size, 4)
   }
 
@@ -315,8 +315,39 @@ class ByronLedgerSuite extends ScalaCheckSuite:
           val paid = BigInt(100000000L) - tx.tx.outputs.map(_.value).sum
           after == before - paid && params.txFeePolicy.minimumFee(tx.raw.size).exists(paid >= _)
         case Left(ByronError.FeeTooSmall(min, actual)) => actual < min
-        case Left(other)                               => fail(other.message)
+        case Left(other)                               => fail(other.toString)
     }
+  }
+
+  // Issue 438: a provider that fails on a witness is no verdict on it, not a wrong signature.
+  private val failure = providerFailure
+  private val defect = ProviderDefect.Ed25519(failure)
+
+  test("a verifier that fails on a witness is a provider defect, not WrongSignature") {
+    val spend = spendAlice(Seq(bobAddr -> 1000000, aliceAddr -> 50000000))
+    val failing = config.copy(signatures = failingOn(ByronSig.SignTx, config.magic, failure))
+    assertEquals(
+      ByronLedger.applyTx(failing, params, utxo0, spend).map(_ => ()),
+      Left(defect)
+    )
+    // the working provider accepts the same transaction
+    assert(apply(spend).isRight)
+  }
+
+  test("a verifier that fails on a redeem witness is a provider defect, not WrongSignature") {
+    val spend = aux(config, Seq((addrIn(redeemAddr), redeemer, true)), Seq(bobAddr -> 4000000))
+    val failing = config.copy(signatures = failingOn(ByronSig.SignRedeemTx, config.magic, failure))
+    assertEquals(
+      ByronLedger.applyTx(failing, params, utxo0, spend).map(_ => ()),
+      Left(defect)
+    )
+    assert(apply(spend).isRight)
+  }
+
+  test("the ledger cannot be started when the provider fails on a genesis certificate") {
+    val failing = config.copy(signatures = failingVerifier(failure))
+    assertEquals(ByronLedger.initial(failing).map(_ => ()), Left(defect))
+    assert(ByronLedger.initial(config).isRight)
   }
 
   test("the Merkle root of transactions splits at the largest power of two below the count") {

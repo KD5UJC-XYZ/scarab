@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.byron.ByronError
 import xyz.kd5ujc.scarab.ledger.state.VocabError
-import xyz.kd5ujc.scarab.crypto.witness.{VerificationError, WitnessInputError}
+import xyz.kd5ujc.scarab.crypto.witness.WitnessInputError
 
 /** PBFT and Byron linkage failures, shared by consensus and block validation. */
 enum ByronChainError:
@@ -23,7 +23,6 @@ enum ByronChainError:
   case SlotOrder(slot: BigInt, previous: BigInt)
   case SignatureRejected
   case SignatureInput(cause: WitnessInputError)
-  case SignatureFailure(cause: VerificationError)
 
   def message: String = this match
     case ProtocolMagic(a, e)    => s"protocol magic $a differs from the genesis $e"
@@ -40,7 +39,6 @@ enum ByronChainError:
     case InitialBoundaryRequired => "the chain must start with the epoch 0 boundary"
     case BoundaryOrder(e, p, b) =>
       s"boundary block of epoch $e after epoch $p${if b then " boundary" else ""}"
-    case SlotOrder(s, p)     => s"slot $s does not follow $p"
-    case SignatureRejected   => "block signature rejected"
-    case SignatureInput(e)   => s"signature input failed: $e"
-    case SignatureFailure(e) => s"signature check failed: $e"
+    case SlotOrder(s, p)   => s"slot $s does not follow $p"
+    case SignatureRejected => "block signature rejected"
+    case SignatureInput(e) => s"signature input failed: $e"

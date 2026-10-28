@@ -112,7 +112,7 @@ object WarmBenchMain:
         (o + t2 - t1, n + t3 - t2)
       }
       val verdictsAgree =
-        sample.forall((a, b, c) => before(a, b, c) == Verdicts.Direct.witness(a, b, c))
+        sample.forall((a, b, c) => Right(before(a, b, c)) == Verdicts.Direct.witness(a, b, c))
       println(
         f"alternating: before ${oldNs / 4e3 / sample.size.max(1)}%.1f us, now ${newNs / 4e3 / sample.size.max(1)}%.1f us each, verdicts agree: $verdictsAgree"
       )

@@ -15,7 +15,8 @@ import xyz.kd5ujc.scarab.protocol.Era
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{EpochGeometry, Header, HeaderVrf}
+import xyz.kd5ujc.scarab.ledger.{EpochGeometry, Header, HeaderVrf, ProviderDefect}
+import xyz.kd5ujc.scarab.ledger.OCertRules.refusedAs
 import xyz.kd5ujc.scarab.crypto.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
 
 /** @param verdicts
@@ -84,11 +85,12 @@ object Praos:
       header: Header,
       pools: PoolDistribution,
       config: PraosConfig
-  ): Either[PraosError, ProtocolState] =
+  ): Either[PraosError | ProviderDefect, ProtocolState] =
     validate(state, header, StakeView.Known(pools), config).map(_._1)
 
   /** As [[update]], also reporting how leadership was established. With an unknown stake view every
-    * cryptographic check runs but the leader threshold is reported as unchecked.
+    * cryptographic check runs but the leader threshold is reported as unchecked. A crypto provider
+    * that fails is a [[ProviderDefect]] beside the refusals, never a [[PraosError]].
     */
   def validate(
       state: ProtocolState,
@@ -96,7 +98,7 @@ object Praos:
       stake: StakeView,
       config: PraosConfig,
       nonceWindow: BigInt = BigInt(-1)
-  ): Either[PraosError, (ProtocolState, LeaderCheck)] =
+  ): Either[PraosError | ProviderDefect, (ProtocolState, LeaderCheck)] =
     val window =
       if nonceWindow >= 0 then nonceWindow
       else config.geometry.randomnessStabilisationWindow.toBigInt
@@ -133,13 +135,33 @@ object Praos:
       stakeView: StakeView,
       config: PraosConfig,
       window: BigInt
-  ): Either[PraosError, (PraosState, LeaderCheck)] =
+  ): Either[PraosError | ProviderDefect, (PraosState, LeaderCheck)] =
     val pool = Blake2b.hash224.hash(header.issuerVkey)
     val vrfHash = Blake2b.hash256.hash(header.vrfVkey)
+    val distributed = stakeView match
+      case StakeView.Known(pools)      => pools.stake.contains(pool)
+      case StakeView.Unknown(registry) => registry.contains(pool)
     for
       issuer <- issuerKey(header.issuerVkey).leftMap(PraosError.Vocabulary(_))
       lastSlot <- slotOf(header.slot).leftMap(PraosError.Vocabulary(_))
       sequence <- counterOf(header.opCert.sequence).leftMap(PraosError.Vocabulary(_))
+      // The certificate, its KES signature and its counter come before the VRF checks, as in the
+      // reference (ouroboros-consensus 82ecba32 `Protocol/Praos.hs` 481–486): a header that fails
+      // both is refused for its certificate, and the VRF verifier is not asked about it.
+      _ <- config.verdicts
+        .opCert(header, config.slotsPerKesPeriod, config.maxKesEvolutions)
+        .refusedAs(PraosError.OCert(_))
+      _ <- OCertRules
+        // an issuer without a counter may start at 0 if its pool is in the stake distribution
+        // (`currentIssueNo`, `Protocol/Praos.hs` 658–665)
+        .checkCounter(
+          state.ocertCounters.get(issuer).map(_.toBigInt),
+          pool,
+          header.opCert.sequence,
+          known = distributed,
+          bounded = true
+        )
+        .leftMap(PraosError.OCert(_))
       registered <- stakeView match
         case StakeView.Known(pools) =>
           for
@@ -164,10 +186,12 @@ object Praos:
               PraosError.VrfKeyMismatch(pool, vrfHash, keys)
             )
           yield None
-      input <- vrfInput(state.epochNonce, header.slot).leftMap(PraosError.VrfInput(_))
-      output <- config.verdicts.praosVrf(input, header.vrfVkey, vrf.proof, vrf.output) match
-        case Vrf.Result.VerifiedCertificate(o) => Right(o)
-        case other                             => Left(PraosError.VrfRejected(other))
+      input <- ProviderDefect.vrfInput(vrfInput(state.epochNonce, header.slot))(
+        PraosError.VrfInput(_)
+      )
+      output <- ProviderDefect.vrf(
+        config.verdicts.praosVrf(input, header.vrfVkey, vrf.proof, vrf.output)
+      )(PraosError.VrfRejected(_))
       leader <- registered match
         case Some((stake, total)) =>
           for
@@ -183,19 +207,6 @@ object Praos:
             )
           yield LeaderCheck.Threshold
         case None => Right(LeaderCheck.Unchecked(LeaderCheck.UncheckedReason.BootstrapStakeUnknown))
-      _ <- config.verdicts
-        .opCert(header, config.slotsPerKesPeriod, config.maxKesEvolutions)
-        .leftMap(PraosError.OCert(_))
-      _ <- OCertRules
-        // reaching here means the pool is in the stake view
-        .checkCounter(
-          state.ocertCounters.get(issuer).map(_.toBigInt),
-          pool,
-          header.opCert.sequence,
-          known = true,
-          bounded = true
-        )
-        .leftMap(PraosError.OCert(_))
     yield
       val evolving = state.evolvingNonce.combine(nonceValue(output))
       val nextEpoch = config.geometry.firstSlot(config.geometry.epochOf(header.slot) + 1)

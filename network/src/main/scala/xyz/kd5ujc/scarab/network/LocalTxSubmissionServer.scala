@@ -19,8 +19,12 @@ object LocalTxSubmissionServer:
   enum Unavailable:
     case ScriptEvaluation[E <: DomainError](cause: E)
 
+    /** A crypto provider failed while verifying the transaction: no verdict on it. */
+    case Verification[E <: DomainError](cause: E)
+
     def message: String = this match
       case ScriptEvaluation(cause) => s"script evaluation unavailable: $cause"
+      case Verification(cause)     => s"signature verification unavailable: $cause"
 
   enum Response:
     case Accepted

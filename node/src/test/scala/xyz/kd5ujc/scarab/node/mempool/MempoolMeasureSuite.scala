@@ -238,6 +238,7 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     // a duplicate on a pool without room is answered as a duplicate, not as full
     val over = held(pool(ledger(2)), t1)
       .sync(Right(narrow(ledger(2))), 1000, env)
+      .verdict
       ._1
     assert(over.free.bytes < 0)
     assertEquals(add(over, t1), Left(Rejection.AlreadyHeld(id1)))
@@ -258,7 +259,7 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     assertEquals(s0.capacity.bytes, 2 * unit)
     assertEquals(s0.capacity.refScriptsBytes, 2L * RefScripts.MaxRefScriptSizePerBlock)
     val grown = l.withParams(_.copy(maxBlockBodySize = 1024 + 3 * unit))
-    val (synced, dropped) = s0.sync(Right(grown), 1000, env)
+    val (synced, dropped) = s0.sync(Right(grown), 1000, env).verdict
     assertEquals(dropped, Vector.empty)
     assertEquals(synced.capacity.bytes, 6 * unit)
     assertEquals(synced.capacity, Capacity.of(grown.params, None))
@@ -283,7 +284,7 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     val (t3, _) = pay(3)
     val s = held(held(pool(ledger(3)), t1), t2)
     val shrunk = ledger(3).withParams(_.copy(maxBlockBodySize = 1024 + 10))
-    val (synced, dropped) = s.sync(Right(shrunk), 1000, env)
+    val (synced, dropped) = s.sync(Right(shrunk), 1000, env).verdict
     assertEquals(dropped, Vector.empty)
     assertEquals(synced.entries.size, 2)
     assert(!synced.used.fits(synced.capacity))
@@ -299,7 +300,10 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
       pool(l, Some(1)),
       pool(l, Some(5 * unit)),
       held(pool(l), pay(1)._1),
-      pool(l).sync(Right(l.withParams(_.copy(maxBlockBodySize = 1024 + 7 * unit))), 1000, env)._1,
+      pool(l)
+        .sync(Right(l.withParams(_.copy(maxBlockBodySize = 1024 + 7 * unit))), 1000, env)
+        .verdict
+        ._1,
       pool(l).copy(base = Left(xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.InByron))
     )
     states.foreach { s =>
