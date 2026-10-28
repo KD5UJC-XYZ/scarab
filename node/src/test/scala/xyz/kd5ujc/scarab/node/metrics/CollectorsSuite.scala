@@ -144,6 +144,9 @@ class CollectorsSuite extends CatsEffectSuite:
       assertEquals(counter(s, Catalogue.forgeAboutToLead, ()), Some(9.0))
       assertEquals(counter(s, Catalogue.forgeSlotIsImmutable, ()), Some(1.0))
       assertEquals(counter(s, Catalogue.forgeBlockFromFuture, ()), Some(1.0))
+      // NoLedgerView and NodeCannotForge, as `Forge.could-not-forge` counts them
+      assertEquals(counter(s, Catalogue.forgeCouldNotForge, ()), Some(2.0))
+      assertEquals(counter(s, Catalogue.forgeForgedInvalid, ()), Some(0.0))
       assertEquals(counter(s, Catalogue.forgeNodeIsLeader, ()), Some(2.0))
       assertEquals(counter(s, Catalogue.forgeNodeNotLeader, ()), Some(2.0))
       assertEquals(counter(s, Catalogue.forgeForged, ()), Some(2.0))

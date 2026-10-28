@@ -160,6 +160,7 @@ class EventMetricsSuite extends CatsEffectSuite:
       yield
         assertEquals(gauge(s, Catalogue.opCertStartKesPeriod, ()), Some(10.0))
         assertEquals(gauge(s, Catalogue.opCertExpiryKesPeriod, ()), Some(72.0))
+        assertEquals(gauge(s, Catalogue.forgeStateUpdateError, ()), Some(7200.0))
         assertEquals(gauge(s, Catalogue.currentKesPeriod, ()), Some(0.0))
         assertEquals(gauge(s, Catalogue.remainingKesPeriods, ()), Some(0.0))
     }

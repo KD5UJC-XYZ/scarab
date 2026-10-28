@@ -140,11 +140,9 @@ of an enum label that never happened are absent, except `scarab_era` (written fo
 sessions of `GET /connections` count headers), `utxoSize_int` and `delegMapSize_int` (see
 `scarab_ledger_utxo_entries` for the UTxO set, once per epoch), `blockReplayProgress_real`, `txsSyncDuration*`,
 `tipBlock` and `basicInfo`, `inboundGovernor_*`, the `blockfetchclient_*` series (see
-`scarab_blockfetch_seconds`), the GHC runtime's `RTS_*`, `rts_gc_*`, `Mem_*` and `Stat_*`, and of the forging
-loop's (`Tracers/Consensus.hs` 1487-1538) `Forge_could_not_forge_counter`, `Forge_forged_invalid_counter`,
-`Forge_adoption_thread_died_counter` and the `Forge_StateUpdateError_int` gauge (the slot of the last failed
-update of the forge state); the traces they count are logged (`noLedgerView`, `nodeCannotForge`,
-`forgedInvalidBlock`, `forgeStateUpdateError`) and counted in `GET /forging`.
+`scarab_blockfetch_seconds`), the GHC runtime's `RTS_*`, `rts_gc_*`, `Mem_*` and `Stat_*`, and
+`Forge_adoption_thread_died_counter`, whose trace cannot happen here (the forged block is adopted in the
+forging fiber itself).
 
 The full list follows, in the order of the catalogue
 (`node/src/main/scala/xyz/kd5ujc/scarab/node/metrics/Catalogue.scala`); `DocsSuite` fails when this
@@ -199,11 +197,14 @@ section and the catalogue differ.
 | `cardano_node_metrics_Forge_about_to_lead_counter` | counter |  | Slots the forging loop started (TraceStartLeadershipCheck). | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_Forge_slot_is_immutable_counter` | counter |  | Slots given up because the immutable tip is in the slot or a later one (TraceSlotIsImmutable). | same name; from the binary's trace name `Forge.slot-is-immutable` (`Tracers/Consensus.hs` 1509-1510), not scraped |
 | `cardano_node_metrics_Forge_block_from_future_counter` | counter |  | Slots given up because the tip of the chain is in a later slot (TraceBlockFromFuture). | same name; from the binary's trace name `Forge.block-from-future` (`Tracers/Consensus.hs` 1511-1512), not scraped |
+| `cardano_node_metrics_Forge_could_not_forge_counter` | counter |  | Slots given up for the ledger view or a leader slot that could not be forged (TraceNoLedgerState, TraceNoLedgerView, TraceNodeCannotForge). | same name; from the binary's trace name `Forge.could-not-forge` (`Tracers/Consensus.hs` 1513-1521), not scraped |
 | `cardano_node_metrics_Forge_node_is_leader_counter` | counter |  | Slots the pool led and could forge in (TraceNodeIsLeader). | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_Forge_node_not_leader_counter` | counter |  | Slots the pool did not lead (TraceNodeNotLeader). | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_Forge_forged_counter` | counter |  | Blocks forged (TraceForgedBlock). | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_Forge_adopted_counter` | counter |  | Forged blocks that became the tip of our chain (TraceAdoptedBlock). | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_Forge_forged_invalid_counter` | counter |  | Forged blocks our own rules refused (TraceForgedInvalidBlock). | same name; from the binary's trace name `Forge.forged-invalid` (`Tracers/Consensus.hs` 1533-1534), not scraped |
 | `cardano_node_metrics_Forge_didnt_adopt_counter` | counter |  | Forged blocks, not refused by our rules, that did not become the tip of our chain (TraceDidntAdoptBlock). | same name; from the binary's trace name `Forge.didnt-adopt`, not scraped (no such event in the run) |
+| `cardano_node_metrics_Forge_StateUpdateError_int` | gauge |  | The slot of the last failed update of the forge state (TraceForgeStateUpdateError). | same name; from the binary's `IntM "Forge.StateUpdateError"` (`Tracers/Consensus.hs` 1487-1488), not scraped |
 | `cardano_node_metrics_blocksForged_int` | gauge |  | Blocks forged since the start, as of the start of the current slot (ForgingStats). | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_nodeIsLeader_int` | gauge |  | Slots the pool led and could forge in since the start, as of the start of the current slot (ForgingStats). | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_nodeCannotForge_int` | gauge |  | Slots the pool led but could not forge in since the start (TraceNodeCannotForge), as of the start of the current slot (ForgingStats). | same name; scraped from 11.1.3 |

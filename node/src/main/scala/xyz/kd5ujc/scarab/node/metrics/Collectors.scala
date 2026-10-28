@@ -136,6 +136,8 @@ object Collectors:
       metrics.advance(forgeAboutToLead, t.slotsChecked.toDouble) *>
         metrics.advance(forgeSlotIsImmutable, t.slotIsImmutable.toDouble) *>
         metrics.advance(forgeBlockFromFuture, t.blockFromFuture.toDouble) *>
+        metrics.advance(forgeCouldNotForge, (t.noLedgerView + t.cannotForge).toDouble) *>
+        metrics.advance(forgeForgedInvalid, t.forgedInvalid.toDouble) *>
         metrics.advance(forgeNodeIsLeader, t.leaderSlots.toDouble) *>
         metrics.advance(forgeNodeNotLeader, t.notLeader.toDouble) *>
         metrics.advance(forgeForged, t.forged.toDouble) *>

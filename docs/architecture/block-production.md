@@ -32,8 +32,12 @@ cross-checked: the certificate must name this KES key and be signed by its cold 
   the slot's period (`slot / slotsPerKESPeriod - certificate start`) before it signs.
 
 **Forging** (`node/forge`). `Forger` runs one attempt per slot from the wall clock over the era history
-(`EpochGeometry`). A passed slot is never forged late. A slot that passes while an earlier attempt is still
-running is passed over without a trace, as the reference's `knownSlotWatcher` passes over it.
+(`EpochGeometry`), as the reference's `knownSlotWatcher` hands slots to `forkBlockForging`: only a known slot
+runs, that is after the system start and while the era history at the tip of the chain translates the wall
+clock's slot (its horizon, the one the transactions' time translation has); otherwise nothing runs, nothing is
+traced or counted, and the clock is asked again after 60 seconds (`CurrentSlotUnknown`, `BackoffDelay`). A
+passed slot is never forged late, and a slot that passes while an earlier attempt is still running is passed
+over without a trace. The slot never goes back.
 
 ### The forging loop
 
@@ -61,7 +65,10 @@ the rows from `startLeadershipCheck` to `adoptedBlock`, and `stateInfo`):
    is left as it is.
 5. The leader check is on the stake alone (`checkIsLeader`): `Leadership` proves
    `Blake2b-256(slot || epochNonce)` with the VRF key and compares the output with the Praos threshold of the
-   pool's relative stake in that epoch's distribution, the same check as for received headers. A VRF key that
+   pool's relative stake in the forecast ledger view's distribution, the same check and the same
+   distribution as for received headers: the predecessor's current one in its own epoch and two or more
+   epochs on, the mark snapshot in the next epoch (TICKF, cardano-ledger f649f975 `Shelley/Rules/Tick.hs`
+   201-242). A VRF key that
    is not the registered one is found by the block's validation, as in the reference. Not elected:
    `nodeNotLeader`. Elected with a certificate whose window has not begun: `nodeCannotForge`
    (`PraosCannotForgeKeyNotUsableYet`). Otherwise `nodeIsLeader`.
@@ -103,8 +110,9 @@ The slot clock starts at the Byron genesis' `startTime` (whole seconds) when the
 file, as the reference's hard-fork combinator does, and at the Shelley `systemStart` otherwise
 (`Genesis.withSystemStart`; the `started` line logs the instant as `systemStart`). The two files agree on
 the public networks, but a hand-made network can write them apart, and a node that used the Shelley value
-then runs its slots a whole number of seconds away from the network's (roadmap H6). Unlike the reference's
-`knownSlotWatcher`, the loop does not wait while the wall clock is past the era history's horizon at the tip.
+then runs its slots a whole number of seconds away from the network's (roadmap H6). Unlike the reference, a
+clock set back by more than 20 seconds is not fatal (`SystemClockMovedBack`): the loop waits for the slot it
+had reached.
 
 Counters (`ForgeStats`, per epoch; roadmap H5) are folded over the loop's traces, so the log, `GET /forging`
 and the metrics cannot disagree: slots started (`slotsChecked`, the reference's `Forge.about-to-lead`), led

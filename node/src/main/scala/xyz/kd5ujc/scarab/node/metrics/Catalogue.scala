@@ -226,6 +226,10 @@ object Catalogue:
     MetricName("cardano_node_metrics_Forge_block_from_future_counter"),
     "Slots given up because the tip of the chain is in a later slot (TraceBlockFromFuture)."
   )
+  val forgeCouldNotForge = CounterDef(
+    MetricName("cardano_node_metrics_Forge_could_not_forge_counter"),
+    "Slots given up for the ledger view or a leader slot that could not be forged (TraceNoLedgerState, TraceNoLedgerView, TraceNodeCannotForge)."
+  )
   val forgeNodeIsLeader = CounterDef(
     MetricName("cardano_node_metrics_Forge_node_is_leader_counter"),
     "Slots the pool led and could forge in (TraceNodeIsLeader)."
@@ -242,9 +246,17 @@ object Catalogue:
     MetricName("cardano_node_metrics_Forge_adopted_counter"),
     "Forged blocks that became the tip of our chain (TraceAdoptedBlock)."
   )
+  val forgeForgedInvalid = CounterDef(
+    MetricName("cardano_node_metrics_Forge_forged_invalid_counter"),
+    "Forged blocks our own rules refused (TraceForgedInvalidBlock)."
+  )
   val forgeDidntAdopt = CounterDef(
     MetricName("cardano_node_metrics_Forge_didnt_adopt_counter"),
     "Forged blocks, not refused by our rules, that did not become the tip of our chain (TraceDidntAdoptBlock)."
+  )
+  val forgeStateUpdateError = GaugeDef(
+    MetricName("cardano_node_metrics_Forge_StateUpdateError_int"),
+    "The slot of the last failed update of the forge state (TraceForgeStateUpdateError)."
   )
   val blocksForged = GaugeDef(
     MetricName("cardano_node_metrics_blocksForged_int"),
@@ -1007,11 +1019,14 @@ object Catalogue:
     forgeAboutToLead,
     forgeSlotIsImmutable,
     forgeBlockFromFuture,
+    forgeCouldNotForge,
     forgeNodeIsLeader,
     forgeNodeNotLeader,
     forgeForged,
     forgeAdopted,
+    forgeForgedInvalid,
     forgeDidntAdopt,
+    forgeStateUpdateError,
     blocksForged,
     nodeIsLeader,
     nodeCannotForge,

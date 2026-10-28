@@ -80,9 +80,9 @@ final class EventMetrics[F[_]: Sync] private (
 
   val forge: ForgeEvents[F] = new ForgeEvents[F]:
     /** The KES gauges of the reference's `Forge.StateInfo` (cardano-node 11.1.3
-      * `Tracers/KESInfo.hs` 110-120) and of its `TraceForgeStateUpdateError`, which writes the
-      * key's window and zero for the current and remaining periods (`Tracers/Consensus.hs`
-      * 1487-1504).
+      * `Tracers/KESInfo.hs` 110-120) and of its `TraceForgeStateUpdateError`, which writes the slot
+      * (`Forge.StateUpdateError`), the key's window and zero for the current and remaining periods
+      * (`Tracers/Consensus.hs` 1487-1504).
       */
     private def kes(info: KesInfo, current: BigInt, remaining: BigInt): F[Unit] =
       metrics.set(opCertStartKesPeriod, number(info.start)) *>
@@ -98,7 +98,8 @@ final class EventMetrics[F[_]: Sync] private (
       case ForgeEvent.KesReloadRefused(_)    => metrics.inc(kesReloads, ReloadLabel.Refused)
       case ForgeEvent.KesPersistFailed(_, _) => metrics.inc(kesPersistFailures)
       case ForgeEvent.StateInfo(info)        => kes(info, info.period, info.remaining)
-      case ForgeEvent.Loop(ForgeTrace.ForgeStateUpdateError(_, error)) => kes(error.info, 0, 0)
+      case ForgeEvent.Loop(ForgeTrace.ForgeStateUpdateError(slot, error)) =>
+        metrics.set(forgeStateUpdateError, number(slot)) *> kes(error.info, 0, 0)
       case ForgeEvent.Loop(ForgeTrace.ForgedBlock(slot, _, _, _, _)) =>
         metrics.set(forgedSlotLast, number(slot))
       case ForgeEvent.Adopted(_, latency) =>
