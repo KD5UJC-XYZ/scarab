@@ -36,6 +36,9 @@ enum Area:
   case Mempool
   case Forge
 
+  /** The slot clock over the era history (the reference's `BlockchainTime`). */
+  case BlockchainTime
+
   /** The chain database: blocks, snapshots, replay. */
   case Storage
 
@@ -170,6 +173,13 @@ enum EventKind(val area: Area, val severity: Severity):
   case DidntAdoptBlock extends EventKind(Area.Forge, Severity.Error)
   case ForgedInvalidBlock extends EventKind(Area.Forge, Severity.Error)
   case AdoptedBlock extends EventKind(Area.Forge, Severity.Info)
+
+  /** The blockchain time's traces (cardano-node 11.1.3 `BlockchainTime.*`, `Tracers/Consensus.hs`
+    * 1841-1846).
+    */
+  case StartTimeInTheFuture extends EventKind(Area.BlockchainTime, Severity.Warning)
+  case CurrentSlotUnknown extends EventKind(Area.BlockchainTime, Severity.Warning)
+  case SystemClockMovedBack extends EventKind(Area.BlockchainTime, Severity.Warning)
 
   /** cardano-node 11.1.3 `Forge.StateInfo`: `Info`, raised to `Warning` with seven KES periods or
     * fewer left and to `Alert` with one or none (`Tracers/KESInfo.hs` 129-150).

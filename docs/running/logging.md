@@ -10,7 +10,7 @@ Every line the node writes is a typed event (roadmap J3a, [#92](https://github.c
 **severity** (`Debug`, `Info`, `Notice`, `Warning`, `Error`, `Critical`, `Alert`, `Emergency`, the levels of the
 Haskell node's trace-dispatcher). The JSON line is `{"event": ..., "at": ..., <fields>}`, the `event` being the
 kind's name (`extended`); the catalogue below lists every kind. **Without a `--log-*` flag** every line of the node
-goes, as JSON, to stdout, the libraries' lines (`Library`) from `Info` up, and nothing goes to stderr. The scenarios of `devnet.py` and the run watchers parse
+goes, as JSON, to stdout, except that the libraries' lines (`Library`) and the forging loop's (`Forge`, as the reference's default `Forge.Loop` setting) go from `Info` up, and nothing goes to stderr. The scenarios of `devnet.py` and the run watchers parse
 these lines; the field names and values are fixed by a golden (`fixtures/log/golden.jsonl`, `LogGoldenSuite`).
 
 | Flag | Default | Meaning |
@@ -21,7 +21,7 @@ these lines; the field names and values are fixed by a golden (`fixtures/log/gol
 | `--log-file-format json\|human` | `json` | with `--log-file` |
 | `--log-file-size N[K\|M\|G]` | `100M` | with `--log-file`: the size at which the file turns over (powers of 1024, at least `1K`); a line is never split |
 | `--log-file-keep N` | `10` | with `--log-file`: rotated files kept |
-| `--log-severity [<sink>:]<namespace>=<Severity\|Silence>` | everything but `Library`, which is `Info` (stderr: `Warning`) | repeatable: the least severity `<sink>` (`stdout`, `stderr` or `file`; every sink without the prefix) lets through for `<namespace>`; `Silence` lets nothing through |
+| `--log-severity [<sink>:]<namespace>=<Severity\|Silence>` | everything but `Library` and `Forge`, which are `Info` (stderr: `Warning`) | repeatable: the least severity `<sink>` (`stdout`, `stderr` or `file`; every sink without the prefix) lets through for `<namespace>`; `Silence` lets nothing through |
 | `--log-every [<sink>:]<namespace>=N` | `1` | repeatable: `<sink>` keeps the first line of every `N` of `<namespace>` (one count for the namespace named) |
 
 A namespace is `*` (everything), an area (`Node`, `Chain`, `Ledger`, `Rules`, `Net`, `Mempool`, `Forge`, `Storage`,
@@ -169,6 +169,9 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `didntAdoptBlock` | `Forge.DidntAdoptBlock` | Error | `slot`: the block, not refused by our rules, did not become the tip (a slot battle lost at adoption; as in the reference, a block chain selection does not take is not validated) |
 | `forgedInvalidBlock` | `Forge.ForgedInvalidBlock` | Error | `slot`, `reason` (`rule`, `reason`: Scarab's rendering of its own rules' refusal, not the reference's `ExtValidationError`): its transactions leave the mempool |
 | `adoptedBlock` | `Forge.AdoptedBlock` | Info | `slot`, `blockHash`, `blockSize` (`estimateBlockSize`: header bytes, body size and 10) |
+| `startTimeInTheFuture` | `BlockchainTime.StartTimeInTheFuture` | Warning | `systemStart`, `toWait`: the forging loop waits for the system start. This and the next two rows are cardano-node 11.1.3 `BlockchainTime.*` with its severities and machine fields |
+| `currentSlotUnknown` | `BlockchainTime.CurrentSlotUnknown` | Warning | `time`: the wall clock is past the horizon of the era history at the tip, so the slot is unknown; the forging loop asks again after 60 s |
+| `systemClockMovedBack` | `BlockchainTime.SystemClockMovedBack` | Warning | `prevTime`, `newTime`: the wall clock moved back by 20 s or less, so the slot is kept; further back the node stops (`fatal`, `ClockProblem.SystemClockMovedBack`) |
 | `stateInfo` | `Forge.StateInfo` | Info (Warning with seven KES periods left or fewer, Alert with one or none) | `credentials` (`Cardano`), `kind` (`KESInfo`, or `ExpiryLogMessage` with `keyExpiresIn` when seven periods or fewer are left), `startPeriod`, `endPeriod` (the key's current period), `evolution` (the end of the certificate's window): the reference's labels, after each update of the forge state |
 | `forged` | `Forge.Forged` | Info | `slot`, `epoch`, `blockNo`, `hash`, `prev`, `txs`, `bodySize`, `kesPeriod`, `relativeKesPeriod`, `stake`, `totalStake`, `opCertCounter`; Scarab's account of a block, after `forgedBlock` |
 | `adopted` | `Forge.Adopted` | Info | `block`, `latencyMs`; after `adoptedBlock` |

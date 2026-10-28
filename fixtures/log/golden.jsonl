@@ -147,6 +147,9 @@
 {"event":"forgeStateUpdateError","at":"2026-10-16T12:00:00Z","slot":6201,"reason":{"kind":"HardForkForgeStateUpdateError","forgeStateUpdateError":{"kind":"KESKeyAlreadyPoisoned","kesInfo":{"kind":"ExpiryLogMessage","keyExpiresIn":1,"startPeriod":0,"endPeriod":61,"evolution":62},"targetPeriod":62}}}
 {"event":"forgingMempoolSnapshot","at":"2026-10-16T12:00:00Z","slot":1,"prev":"genesis (origin)","mempoolHash":"GenesisHash","mempoolSlot":0}
 {"event":"forgedBlock","at":"2026-10-16T12:00:00Z","slot":1,"block":"abababababababababababababababababababababababababababababababab","blockNo":0,"blockPrev":"GenesisHash"}
+{"event":"startTimeInTheFuture","at":"2026-10-16T12:00:00Z","systemStart":"2026-10-01T00:00:00Z","toWait":"1.5s"}
+{"event":"currentSlotUnknown","at":"2026-10-16T12:00:00Z","time":"2026-10-01T05:00:00Z"}
+{"event":"systemClockMovedBack","at":"2026-10-16T12:00:00Z","prevTime":"2026-10-01T05:00:10Z","newTime":"2026-10-01T05:00:02Z"}
 {"event":"stateInfo","at":"2026-10-16T12:00:00Z","credentials":"Cardano","kind":"KESInfo","startPeriod":30,"endPeriod":33,"evolution":92}
 {"event":"stateInfo","at":"2026-10-16T12:00:00Z","credentials":"Cardano","kind":"ExpiryLogMessage","keyExpiresIn":7,"startPeriod":30,"endPeriod":85,"evolution":92}
 {"event":"stateInfo","at":"2026-10-16T12:00:00Z","credentials":"Cardano","kind":"ExpiryLogMessage","keyExpiresIn":1,"startPeriod":30,"endPeriod":91,"evolution":92}

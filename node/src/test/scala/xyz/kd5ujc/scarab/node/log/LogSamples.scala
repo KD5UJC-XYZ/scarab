@@ -59,6 +59,7 @@ import xyz.kd5ujc.scarab.ledger.state.{Derived, MirrorError}
 import xyz.kd5ujc.scarab.ledger.PoolRelayError
 import xyz.kd5ujc.scarab.node.forge.{
   CannotForge,
+  ClockTrace,
   ForgeEpochStats,
   ForgeEvent,
   ForgeTrace,
@@ -466,6 +467,18 @@ object LogSamples:
     ForgeEvent.Started(other, hash, BigInt(0), BigInt(62), BigInt(3), BigInt(10))
   ) ++ forgeTraces.map(ForgeEvent.Loop(_)) ++ List(
     // far from expiry, at seven periods left, and at one
+    ForgeEvent.Clock(
+      ClockTrace.StartTimeInTheFuture(java.time.Instant.parse("2026-10-01T00:00:00Z"), 1500.millis)
+    ),
+    ForgeEvent.Clock(
+      ClockTrace.CurrentSlotUnknown(java.time.Instant.parse("2026-10-01T05:00:00Z"))
+    ),
+    ForgeEvent.Clock(
+      ClockTrace.SystemClockMovedBack(
+        java.time.Instant.parse("2026-10-01T05:00:10Z"),
+        java.time.Instant.parse("2026-10-01T05:00:02Z")
+      )
+    ),
     ForgeEvent.StateInfo(KesInfo(BigInt(30), BigInt(92), 3)),
     ForgeEvent.StateInfo(KesInfo(BigInt(30), BigInt(92), 55)),
     ForgeEvent.StateInfo(KesInfo(BigInt(30), BigInt(92), 61)),

@@ -88,7 +88,9 @@ object LogSettings:
 
   /** The least severity `sink` lets through for `area` when no `--log-severity` names a scope of
     * it: `Warning` on stderr; `Info` for the libraries' lines, whose `Debug` (a DNS resolver's
-    * lookups, a native loader's search) is noise to an operator; `Debug` for the node's own. The
+    * lookups, a native loader's search) is noise to an operator; `Info` for the forging loop, as
+    * the reference's default configuration sets `Forge.Loop` (`DefaultTraceConfig.hs` 39-40), so
+    * its `Debug` traces are not written for every slot; `Debug` for the node's other lines. The
     * Haskell node's default configuration likewise sets its root at `Notice` and lowers chosen
     * namespaces only (cardano-node 11.1.3, `Cardano/Node/Tracing/DefaultTraceConfig.hs` 15-56). A
     * fallback, not a setting: any scope that covers the libraries' lines (`*`, `Library`,
@@ -97,6 +99,7 @@ object LogSettings:
   def defaultThreshold(sink: Sink, area: Area): Threshold = (sink, area) match
     case (Sink.Stderr, _)  => Threshold.AtLeast(Severity.Warning)
     case (_, Area.Library) => Threshold.AtLeast(Severity.Info)
+    case (_, Area.Forge)   => Threshold.AtLeast(Severity.Info)
     case _                 => Threshold.AtLeast(Severity.Debug)
 
   val DefaultFileBytes: Long = 100L * 1024 * 1024

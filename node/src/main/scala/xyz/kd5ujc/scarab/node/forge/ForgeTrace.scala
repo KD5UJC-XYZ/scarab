@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import java.time.Instant
+import scala.concurrent.duration.FiniteDuration
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.ValidationError
 import xyz.kd5ujc.scarab.protocol.ChainSync
@@ -180,3 +182,17 @@ enum ForgeTrace:
     *   The ids of the transactions taken from the mempool.
     */
   case AdoptedBlock(slot: BigInt, hash: Bytes, blockSize: Long, txs: Vector[Bytes])
+
+/** The blockchain time's traces, `TraceBlockchainTimeEvent` (consensus 82ecba329
+  * `BlockchainTime/WallClock/Util.hs` 36-58), each at `Warning` in cardano-node 11.1.3
+  * (`Tracers/Consensus.hs` 1807-1846).
+  */
+enum ClockTrace:
+  /** The system start is ahead: the clock waits `toWait` for it. */
+  case StartTimeInTheFuture(systemStart: Instant, toWait: FiniteDuration)
+
+  /** The wall clock is past the horizon of the era history at the tip, so the slot is unknown. */
+  case CurrentSlotUnknown(time: Instant)
+
+  /** The wall clock went back by no more than the tolerated rewind; the slot is kept. */
+  case SystemClockMovedBack(previous: Instant, now: Instant)

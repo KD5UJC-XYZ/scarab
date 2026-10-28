@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.{Block, Header}
 import xyz.kd5ujc.scarab.ledger.{EvaluationUnavailable, ForgeError}
-import xyz.kd5ujc.scarab.ledger.NodeError
+import xyz.kd5ujc.scarab.ledger.{ClockProblem, NodeError}
 import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash}
 import xyz.kd5ujc.scarab.node.{Fatal, Follower, SessionEnd}
@@ -47,6 +47,9 @@ enum ForgeEvent:
 
   /** A trace of the forging loop, as the reference's `forkBlockForging` traces it. */
   case Loop(trace: ForgeTrace)
+
+  /** A trace of the blockchain time the loop reads its slots from. */
+  case Clock(trace: ClockTrace)
 
   /** The KES key's state after the forge state was updated at a slot: what the reference traces
     * through its `forgeStateInfoTracer` (`Block/Forging.hs` 218-220), cardano-node 11.1.3
@@ -204,46 +207,81 @@ final class Forger[F[_]: Async, S](
     yield ()
   }
 
-  /** The current slot as the reference's blockchain time gives it (`hardForkBlockchainTime`,
-    * consensus 82ecba329 `BlockchainTime/WallClock/HardFork.hs`), or how long to wait before asking
-    * again: until the system start before it (`systemTimeWait`), and `unknownSlotBackoff` while the
-    * wall clock is past the horizon of the era history at the tip of the chain (`wallclockToSlot`
-    * failing: `CurrentSlotUnknown`).
+  /** What the blockchain time reads at `instant` (`hardForkBlockchainTime`, consensus 82ecba329
+    * `BlockchainTime/WallClock/HardFork.hs`): before the system start, how long to wait for it
+    * (`systemTimeWait`); past the horizon of the era history at the tip of the chain, unknown
+    * (`wallclockToSlot` failing); otherwise the slot.
     */
-  private def currentSlot(instant: Instant): F[Either[FiniteDuration, BigInt]] =
+  private def read(instant: Instant): F[Forger.Reading] =
     if instant.isBefore(geometry.systemStart) then
-      F.pure(Left(Duration.between(instant, geometry.systemStart).toMillis.max(1L).millis))
+      F.pure(
+        Forger.Reading.BeforeStart(
+          Duration.between(instant, geometry.systemStart).toMillis.max(1L).millis
+        )
+      )
     else
       chain.get.map { current =>
         val slot = geometry.slotAt(instant)
-        Either.cond(horizon(current, slot), slot, unknownSlotBackoff)
+        if horizon(current, slot) then Forger.Reading.Known(slot) else Forger.Reading.Unknown
       }
 
-  /** The slots, as `knownSlotWatcher` hands them to `forkBlockForging` (`BlockchainTime/API.hs`
-    * 57-77): each slot that becomes current is attempted once; a slot passed while an attempt runs
-    * is not; and while the current slot is unknown nothing runs, nothing is traced and nothing is
-    * counted, the clock being asked again after `unknownSlotBackoff` (the reference's
-    * `BackoffDelay`, 60 seconds, `Node.hs` 550).
+  private def clockTrace(t: ClockTrace): F[Unit] = events.emit(ForgeEvent.Clock(t))
+
+  /** Until the next slot, as the reading at `instant` puts it (`timeLeft` of `getCurrentSlot'`),
+    * waited on the monotonic clock as `threadDelay` waits: `elapsed` of it is already spent, and a
+    * wall clock moved meanwhile does not lengthen it.
     */
-  private def loop(last: Option[BigInt])(using Handle[F, NodeError], Raise[F, Fatal]): F[Unit] =
-    now.flatMap(currentSlot).flatMap {
-      case Left(wait) => sleep(wait) *> loop(last)
-      case Right(slot) =>
-        for
-          // the epoch the previous slot was in has ended: its counters are final
-          _ <- last.traverse_ { l =>
-            val ended = geometry.epochOf(l)
-            if geometry.epochOf(slot) > ended then
-              stats.epoch(ended).flatMap(s => events.emit(ForgeEvent.EpochSummary(ended, s)))
-            else F.unit
-          }
-          _ <- if last.exists(_ >= slot) then F.unit else stepInScope(slot)
-          after <- now
-          untilNext = Duration.between(after, geometry.slotStart(slot + 1))
-          _ <- sleep(untilNext.toMillis.max(1L).millis)
-          // the slot never goes back (`checkValidClockChange`)
-          _ <- loop(Some(last.fold(slot)(_.max(slot))))
-        yield ()
+  private def untilNext(slot: BigInt, instant: Instant, elapsed: FiniteDuration): F[Unit] =
+    val left = Duration.between(instant, geometry.slotStart(slot + 1)).toMillis.millis - elapsed
+    sleep(left.max(1.millis))
+
+  /** The slots, as the reference's blockchain time and `knownSlotWatcher` hand them to
+    * `forkBlockForging` (`HardFork.hs` 103-151, `BlockchainTime/API.hs` 57-77). Each reading is
+    * checked against the previous one (`checkValidClockChange`): a later slot is taken; the same or
+    * an earlier slot within `MaxClockRewind` of the previous reading's time is traced
+    * (`SystemClockMovedBack`) and the previous slot kept; further back, the node stops
+    * ([[ClockProblem.SystemClockMovedBack]]). While the slot is unknown it is traced
+    * (`CurrentSlotUnknown`), nothing else runs, and the clock is asked again after
+    * `unknownSlotBackoff`. A slot is attempted when the known slot changes; a slot passed while an
+    * attempt runs is not.
+    */
+  private def loop(
+      previous: Option[(Option[BigInt], Instant)]
+  )(using Handle[F, NodeError], Raise[F, Fatal]): F[Unit] =
+    now.flatMap { instant =>
+      read(instant).flatMap {
+        case Forger.Reading.BeforeStart(wait) =>
+          clockTrace(ClockTrace.StartTimeInTheFuture(geometry.systemStart, wait)) *>
+            sleep(wait) *> loop(previous)
+        case Forger.Reading.Unknown =>
+          clockTrace(ClockTrace.CurrentSlotUnknown(instant)) *> sleep(unknownSlotBackoff) *>
+            loop(Some(None -> instant))
+        case Forger.Reading.Known(slot) =>
+          previous.flatMap((known, at) => known.map(_ -> at)) match
+            case Some((last, at)) if slot <= last =>
+              if !Duration.between(instant, at).minus(Forger.MaxClockRewind).isPositive then
+                clockTrace(ClockTrace.SystemClockMovedBack(at, instant)) *>
+                  untilNext(slot, instant, 0.millis) *>
+                  loop(Some(Some(last) -> instant))
+              else
+                (Fatal.Internal(ClockProblem.SystemClockMovedBack(last, slot)): Fatal)
+                  .raise[F, Unit]
+            case lastKnown =>
+              for
+                // the epoch the previous slot was in has ended: its counters are final
+                _ <- lastKnown.traverse_ { (l, _) =>
+                  val ended = geometry.epochOf(l)
+                  if geometry.epochOf(slot) > ended then
+                    stats.epoch(ended).flatMap(s => events.emit(ForgeEvent.EpochSummary(ended, s)))
+                  else F.unit
+                }
+                started <- F.monotonic
+                _ <- stepInScope(slot)
+                finished <- F.monotonic
+                _ <- untilNext(slot, instant, finished - started)
+                _ <- loop(Some(Some(slot) -> instant))
+              yield ()
+      }
     }
 
   /** One slot in its own scope: a forging refusal permits another slot; a service failure or defect
@@ -674,6 +712,18 @@ final class Forger[F[_]: Async, S](
     }
 
 object Forger:
+  /** What the blockchain time reads: the wait for the system start, an unknown slot, or the slot.
+    */
+  private[forge] enum Reading:
+    case BeforeStart(remaining: FiniteDuration)
+    case Unknown
+    case Known(slot: BigInt)
+
+  /** How far back the wall clock may move without stopping the node (`hfbtMaxClockRewind`,
+    * consensus 82ecba329 `Node.hs` 560).
+    */
+  private[forge] val MaxClockRewind: Duration = Duration.ofSeconds(20)
+
   /** Like runExceptT at the forging worker boundary: typed failures and defects finish as values.
     * The scope and the body are constructed inside defer (cats-mtl 1.7.0 Handle.rescue invokes its
     * body eagerly); cancellation passes through unchanged.

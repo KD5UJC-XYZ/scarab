@@ -29,15 +29,25 @@ class LogRouterSuite extends CatsEffectSuite:
       .parse(many.view.mapValues(_.last).toMap, many)
       .fold(_.problem, s => fail(s"accepted: $s"))
 
-  test("no flag: every line of the node and the libraries' from Info, as JSON on stdout") {
+  test(
+    "no flag: every line of the node, and the libraries' and forging loop's from Info, as JSON"
+  ) {
     val s = settings()
     assertEquals(s.sinks, List(Sink.Stdout -> Format.Json))
-    val (library, own) = EventKind.values.toList.partition(_.area == Area.Library)
-    assertEquals(library, List(EventKind.Slf4j))
+    val (fromInfo, own) =
+      EventKind.values.toList.partition(k => k.area == Area.Library || k.area == Area.Forge)
+    assert(fromInfo.contains(EventKind.Slf4j) && fromInfo.contains(EventKind.LedgerView))
     List(Sink.Stdout, Sink.File).foreach { sink =>
       assertEquals(own.map(s.threshold(sink, _)).distinct, List(Threshold.AtLeast(Severity.Debug)))
-      assertEquals(library.map(s.threshold(sink, _)), List(Threshold.AtLeast(Severity.Info)))
+      assertEquals(
+        fromInfo.map(s.threshold(sink, _)).distinct,
+        List(Threshold.AtLeast(Severity.Info))
+      )
     }
+    assertEquals(
+      settings("log-severity" -> "Forge=Debug").threshold(Sink.Stdout, EventKind.LedgerView),
+      Threshold.AtLeast(Severity.Debug)
+    )
     assertEquals(
       EventKind.values.toList.map(s.threshold(Sink.Stderr, _)).distinct,
       List(Threshold.AtLeast(Severity.Warning))

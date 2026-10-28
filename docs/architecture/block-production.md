@@ -35,9 +35,14 @@ cross-checked: the certificate must name this KES key and be signed by its cold 
 (`EpochGeometry`), as the reference's `knownSlotWatcher` hands slots to `forkBlockForging`: only a known slot
 runs, that is after the system start and while the era history at the tip of the chain translates the wall
 clock's slot (its horizon, the one the transactions' time translation has); otherwise nothing runs, nothing is
-traced or counted, and the clock is asked again after 60 seconds (`CurrentSlotUnknown`, `BackoffDelay`). A
-passed slot is never forged late, and a slot that passes while an earlier attempt is still running is passed
-over without a trace. The slot never goes back.
+counted, the reading is traced (`currentSlotUnknown`) and the clock is asked again after 60 seconds
+(`BackoffDelay`). A passed slot is never forged late, and a slot that passes while an earlier attempt is still
+running is passed over without a trace. Each reading is checked against the previous one as the reference's
+`checkValidClockChange` checks it (consensus 82ecba329 `BlockchainTime/WallClock/HardFork.hs` 121-151): the
+same or an earlier slot within 20 seconds of the previous reading's time (`hfbtMaxClockRewind`) is traced
+(`systemClockMovedBack`) and the previous slot kept; further back the node stops
+(`ClockProblem.SystemClockMovedBack`). The wait for the next slot is fixed at the reading and timed on the
+monotonic clock.
 
 ### The forging loop
 
@@ -110,9 +115,7 @@ The slot clock starts at the Byron genesis' `startTime` (whole seconds) when the
 file, as the reference's hard-fork combinator does, and at the Shelley `systemStart` otherwise
 (`Genesis.withSystemStart`; the `started` line logs the instant as `systemStart`). The two files agree on
 the public networks, but a hand-made network can write them apart, and a node that used the Shelley value
-then runs its slots a whole number of seconds away from the network's (roadmap H6). Unlike the reference, a
-clock set back by more than 20 seconds is not fatal (`SystemClockMovedBack`): the loop waits for the slot it
-had reached.
+then runs its slots a whole number of seconds away from the network's (roadmap H6).
 
 Counters (`ForgeStats`, per epoch; roadmap H5) are folded over the loop's traces, so the log, `GET /forging`
 and the metrics cannot disagree: slots started (`slotsChecked`, the reference's `Forge.about-to-lead`), led

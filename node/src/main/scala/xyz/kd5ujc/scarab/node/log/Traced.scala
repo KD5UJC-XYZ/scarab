@@ -12,6 +12,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.node.forge.{
   CannotForge,
   ForgeEvent,
+  ClockTrace,
   ForgeTrace,
   KesEvolutionError,
   KesInfo
@@ -324,6 +325,23 @@ object Traced:
     * 1318-1323), except that of a block our rules refuse, which is Scarab's `ValidationError`
     * (`rule`, `reason`).
     */
+  /** The blockchain time's traces with the reference's machine fields (cardano-node 11.1.3
+    * `Tracers/Consensus.hs` 1810-1823).
+    */
+  given Traced[ClockTrace] =
+    case ClockTrace.StartTimeInTheFuture(start, wait) =>
+      EventKind.StartTimeInTheFuture.line(
+        "systemStart" -> start.toString.asJson,
+        "toWait" -> s"${wait.toMillis / 1000.0}s".asJson
+      )
+    case ClockTrace.CurrentSlotUnknown(time) =>
+      EventKind.CurrentSlotUnknown.line("time" -> time.toString.asJson)
+    case ClockTrace.SystemClockMovedBack(previous, now) =>
+      EventKind.SystemClockMovedBack.line(
+        "prevTime" -> previous.toString.asJson,
+        "newTime" -> now.toString.asJson
+      )
+
   given Traced[ForgeTrace] =
     case ForgeTrace.StartLeadershipCheck(slot) =>
       EventKind.StartLeadershipCheck.line("slot" -> slot.asJson)
@@ -414,7 +432,8 @@ object Traced:
         "kesPeriod" -> period.asJson,
         "remainingKesPeriods" -> (start + evolutions - period).asJson
       )
-    case ForgeEvent.Loop(trace) => Traced[ForgeTrace].line(trace)
+    case ForgeEvent.Loop(trace)  => Traced[ForgeTrace].line(trace)
+    case ForgeEvent.Clock(trace) => Traced[ClockTrace].line(trace)
     // the label of the reference's one block forging for all eras (consensus 82ecba329
     // `Cardano/Node.hs` 1024), ahead of the key's fields (`TraceLabelCreds`, `Consensus.hs` 104-106)
     case ForgeEvent.StateInfo(info) =>

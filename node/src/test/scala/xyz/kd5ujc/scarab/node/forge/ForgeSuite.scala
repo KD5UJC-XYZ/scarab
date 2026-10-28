@@ -15,7 +15,7 @@ import xyz.kd5ujc.scarab.ledger.ForgeError
 import xyz.kd5ujc.scarab.consensus.{BlockRef, VolatileChain}
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.VrfCert
-import xyz.kd5ujc.scarab.node.Follower
+import xyz.kd5ujc.scarab.node.{Fatal, Follower}
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
 import xyz.kd5ujc.scarab.ledger.state.PoolDistr
 import xyz.kd5ujc.scarab.protocol.Era
@@ -242,6 +242,50 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
         yield
           assertEquals(beyond, Vector.empty[Int])
           assertEquals(early, Vector(0, 1, 2))
+      }
+    )
+  }
+
+  test("a clock moved back 20 s or less is traced and the slot kept; further back the node stops") {
+    val p = pool(kesStart = 50, seed = 9)
+    def run(back: Long)(using Handle[IO, NodeError]) =
+      for
+        shift <- IO.ref(0L)
+        clock = (shift.get, IO.realTimeInstant).mapN((s, t) => t.plusSeconds(5000).plusMillis(s))
+        h <- harness(p, ledgerWith(p, 1), live = true, unbounded = true, clock = Some(clock))
+        fiber <- h.forger.run.start
+        _ <- IO.sleep(3500.millis)
+        _ <- shift.set(-back)
+        _ <- IO.sleep(5000.millis)
+        outcome <- fiber.join
+          .flatMap(
+            _.fold(IO.pure(None), e => IO.raiseError(e), fa => fa.map(Some(_)))
+          )
+          .timeoutTo(1.second, fiber.cancel.as(None))
+        events <- h.seen
+      yield (outcome, events)
+    TestControl.executeEmbed(
+      withHandle {
+        for
+          nearRun <- run(10000)
+          farRun <- run(30000)
+        yield
+          val (near, nearEvents) = nearRun
+          val far = farRun._1
+          // within the tolerance: no slot is attempted twice, the move is traced, the loop goes on
+          val attempted = nearEvents.collect {
+            case ForgeEvent.Loop(ForgeTrace.StartLeadershipCheck(s)) => s
+          }
+          assertEquals(attempted, attempted.distinct)
+          assert(nearEvents.exists {
+            case ForgeEvent.Clock(_: ClockTrace.SystemClockMovedBack) => true
+            case _                                                    => false
+          })
+          assertEquals(near, None)
+          far match
+            case Some(Left(Fatal.Internal(ClockProblem.SystemClockMovedBack(m, n)))) =>
+              assert(n < m)
+            case other => fail(s"expected the node to stop: $other")
       }
     )
   }

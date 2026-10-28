@@ -104,9 +104,10 @@ final class EventMetrics[F[_]: Sync] private (
         metrics.set(forgedSlotLast, number(slot))
       case ForgeEvent.Adopted(_, latency) =>
         latency.traverse_(ms => metrics.observe(forgeAdoptionSeconds, ms / 1000.0))
-      case ForgeEvent.Loop(_) | ForgeEvent.Forged(_, _, _, _, _, _, _, _, _, _, _, _) |
-          ForgeEvent.KesEvolved(_, _) | ForgeEvent.Lost(_, _, _) | ForgeEvent.Failed(_, _) |
-          ForgeEvent.EpochSummary(_, _) | ForgeEvent.KeyFileGroupAccess(_, _) =>
+      case ForgeEvent.Loop(_) | ForgeEvent.Clock(_) |
+          ForgeEvent.Forged(_, _, _, _, _, _, _, _, _, _, _, _) | ForgeEvent.KesEvolved(_, _) |
+          ForgeEvent.Lost(_, _, _) | ForgeEvent.Failed(_, _) | ForgeEvent.EpochSummary(_, _) |
+          ForgeEvent.KeyFileGroupAccess(_, _) =>
         // counted from the forger's own statistics at every scrape ([[Collectors.forging]])
         Sync[F].unit
 
