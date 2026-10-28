@@ -44,13 +44,13 @@ import xyz.kd5ujc.scarab.storage.UtxoStore
   *
   * The chain's state is the mirror ([[MirrorState]]: the Haskell `ExtLedgerState` and the node's
   * bookkeeping). A block is applied as the hard-fork combinator applies it: the ledger state is
-  * ticked to the block's slot (`Hfc.tick`: the translation into
-  * the era the chain has entered), the header is validated against the ticked state (the envelope,
-  * the leader check against `nesPd`, the operational certificate, the KES signature), the body is
-  * applied by the era's BBODY on the ticked state, and the mirror is rebuilt with the tip, the
-  * state, the chain-dependent state and, where the state is of a later era than the mirror's, its
-  * two telescopes extended into the era ([[MirrorStep]]). Nothing is converted between the node's
-  * flat state and the mirror: the state is the mirror from the first block to the last.
+  * ticked to the block's slot (`Hfc.tick`: the translation into the era the chain has entered), the
+  * header is validated against the ticked state (the envelope, the leader check against `nesPd`,
+  * the operational certificate, the KES signature), the body is applied by the era's BBODY on the
+  * ticked state, and the mirror is rebuilt with the tip, the state, the chain-dependent state and,
+  * where the state is of a later era than the mirror's, its two telescopes extended into the era
+  * ([[MirrorStep]]). Nothing is converted between the node's flat state and the mirror: the state
+  * is the mirror from the first block to the last.
   *
   * The chain's Byron prefix is the Byron rules' ([[NodeRules.byronStep]]) on the Byron state the
   * mirror carries; its hand-over to Shelley is the reference's translation (`Handover`,

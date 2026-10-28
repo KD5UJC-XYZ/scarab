@@ -235,8 +235,8 @@ class TickRulesSuite extends FunSuite:
   // `extendToSlot` (ouroboros-consensus 82ecba32 `HardFork/Combinator/State.hs`) translates while
   // the slot is at or past the end of the state's era, whatever the state's own epoch
   test("a tick across an epoch with no block still translates into an era that began in it") {
-    val laterConway: Hfc.EraAt = (epoch, major) =>
-      if epoch >= 7 && major >= 9 then Era.Conway else Era.Babbage
+    val laterConway: Hfc.EraAt =
+      (epoch, major) => if epoch >= 7 && major >= 9 then Era.Conway else Era.Babbage
     val from = EraNes.InEra(ShelleyBasedEra.SBabbage, babbage(conway(5, 10, 2)))
     val after = Hfc
       .tick(globals, laterConway)(from, ok(SlotNo.fromBigInt(first(8) + 10)))
