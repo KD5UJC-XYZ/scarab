@@ -441,7 +441,8 @@ def scala_container(args, root, classpath, main_class, program_args, mounts=(), 
         command += ["-v", mount]
     # G1 with a short pause goal also with one CPU, where the JVM would pick the serial collector:
     # a collector pause stops every thread, so it is the timers' lateness (roadmap D8).
-    jvm = ["-Xmx768m", "-XX:+UseG1GC", "-XX:MaxGCPauseMillis=20"]
+    # Scala 3.3's lazy vals use sun.misc.Unsafe, on which Java 25 warns (docker/candidate.Dockerfile).
+    jvm = ["-Xmx768m", "-XX:+UseG1GC", "-XX:MaxGCPauseMillis=20", "--sun-misc-unsafe-memory-access=allow"]
     return command + ["--entrypoint", "java", jdk_image(), *jvm, "-cp", classpath, main_class, *program_args]
 
 

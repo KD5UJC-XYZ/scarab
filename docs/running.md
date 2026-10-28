@@ -67,7 +67,7 @@ operations per second (`opsPerSecond`); exit code 0 when all pass. The class pat
 ## `follow`: the node
 
 ```sh
-java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow \
+java --sun-misc-unsafe-memory-access=allow -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow \
   (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> | --topology <topology.json>) [options]
 ```
 

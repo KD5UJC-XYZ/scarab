@@ -13,4 +13,6 @@ ENV MALLOC_ARENA_MAX=2
 WORKDIR /opt/scarab
 COPY --chmod=0444 app.jar /opt/scarab/scarab.jar
 USER 10001:10001
-ENTRYPOINT ["java", "-jar", "/opt/scarab/scarab.jar"]
+# Scala 3.3's lazy vals (scala.runtime.LazyVals) use sun.misc.Unsafe, on which Java 25 warns once
+# per process (JEP 498); the flag allows it without the warning.
+ENTRYPOINT ["java", "--sun-misc-unsafe-memory-access=allow", "-jar", "/opt/scarab/scarab.jar"]
