@@ -17,7 +17,7 @@ Scarab uses plain SemVer, with protected Git tags as the release authority. Card
 is an evidence-backed matrix, not encoded in Scarab's major version. GitHub Actions is the
 authorized publisher: runnable binary artifacts in GitHub Releases, and OCI images in GHCR linked
 from those releases by immutable digest. A runnable JVM fat JAR is a binary deliverable requiring
-Java 21; this plan does not promise a standalone native executable or untested platforms.
+Java 25; this plan does not promise a standalone native executable or untested platforms.
 
 The adopted preprod block remains a v0.2 exit gate. Per the owner's 2026-10-21 scheduling update,
 production cannot happen before October 23; that date is not evidence the gate passed. Planning,

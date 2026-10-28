@@ -6,9 +6,9 @@
   "archiveSha256": "a8a534e023bb994cce7884b6ca393a5e7b06d0cbc6cdd5a052038a8539e4be82",
   "scalaVersion": "3.3.8",
   "sbtVersion": "1.13.0",
-  "javaVersion": "21.0.11",
+  "javaVersion": "25.0.4.1",
   "javaVendor": "Eclipse Adoptium",
-  "javaRuntimeVersion": "21.0.11+10-LTS",
+  "javaRuntimeVersion": "25.0.4.1+1-LTS",
   "sourceDateEpoch": 315532800,
   "baseJar": {
     "url": "https://repo.maven.apache.org/maven2/org/scalus/scalus_3/1.4.0/scalus_3-1.4.0.jar",

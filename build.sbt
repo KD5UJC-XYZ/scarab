@@ -279,7 +279,13 @@ lazy val node = scarab("node")
     assembly / mainClass := (Compile / mainClass).value,
     assembly / assemblyJarName := s"scarab-node-${version.value}-assembly.jar",
     assemblyRepeatableBuild := true,
-    assembly / packageOptions += Package.ManifestAttributes("Multi-Release" -> "true"),
+    // The node calls native code (the local socket's unlink through the FFM linker, the Plutus
+    // crypto's JNI library); `java -jar` reads this attribute in place of
+    // `--enable-native-access=ALL-UNNAMED`, so the JDK does not warn on the first such call.
+    assembly / packageOptions += Package.ManifestAttributes(
+      "Multi-Release" -> "true",
+      "Enable-Native-Access" -> "ALL-UNNAMED"
+    ),
     assemblyMergeStrategy := {
       // The portable resource in blst-native must retain precedence.
       case "supranational/blst/Linux/amd64/libblst.so" => MergeStrategy.preferProject
@@ -330,7 +336,13 @@ lazy val node = scarab("node")
       }
       (metadata +: notices) ++ texts
     }.taskValue,
-    Compile / run / fork := true
+    Compile / run / fork := true,
+    // Scala 3.3's lazy vals use sun.misc.Unsafe, on which Java 25 warns (docker/candidate.Dockerfile);
+    // from a classpath the JAR's Enable-Native-Access attribute does not apply
+    Compile / run / javaOptions ++= Seq(
+      "--sun-misc-unsafe-memory-access=allow",
+      "--enable-native-access=ALL-UNNAMED"
+    )
   )
 
 // Schema-first models, step 1: CDDL parser and Scala generator (build-time tool; see docs/models.md).

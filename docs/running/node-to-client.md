@@ -68,8 +68,8 @@ As in the reference node, whatever is at the socket path (`--local-socket`, or t
 `SocketPath`) is removed at start-up, once the configuration, the genesis and, with `--forge`, the VRF
 key's permissions and the credentials are read, and before the topology and the database are
 (`removeStaleLocalSocket` in `gatherConfiguredSockets`, cardano-node 11.1.3). It is one `unlink(2)` of
-the path, made through Java's foreign-function interface (the JVM writes one warning about it to stderr;
-the move to JDK 25 replaces that with the jar's `Enable-Native-Access` manifest attribute), so the directory needs
+the path, made through Java's foreign-function interface (the release JAR's `Enable-Native-Access` manifest
+attribute allows it; started from a classpath, `--enable-native-access=ALL-UNNAMED` does), so the directory needs
 write and search permission only: a socket left by an earlier run, a file or a symbolic link (the link,
 not its target) goes, and nothing there is fine. A path that ends in `/` names a directory, as `unlink`
 takes it: something other than a directory there refuses the start (`ENOTDIR`), and with nothing there
