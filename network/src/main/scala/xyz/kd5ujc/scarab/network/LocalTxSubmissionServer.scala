@@ -31,6 +31,12 @@ object LocalTxSubmissionServer:
     case Rejected(reason: Bytes)
     case ServiceUnavailable(error: Unavailable)
 
+    /** The node's decoder threw on the submitted transaction: no answer, and the connection ends
+      * with [[NetworkError.DecoderDefect]], as an exception of the codec ends it in the reference
+      * (issue 465).
+      */
+    case InputDefect(cause: Throwable)
+
   enum End:
     case ClientFinished
     case ConnectionClosed(error: NetworkError)
@@ -64,6 +70,7 @@ object LocalTxSubmissionServer:
                 send(LocalTxSubmission.State.Busy, LocalTxSubmission.Message.RejectTx(reason))
                   .as(Left(()))
               case Response.ServiceUnavailable(error) => Temporal[F].pure(Right(Some(error)))
+              case Response.InputDefect(cause)        => NetworkError.DecoderDefect(id, cause).raise
             }
           case LocalTxSubmission.Message.Done => Temporal[F].pure(Right(None))
           case other => illegal(RuntimeViolation.LocalTxSubmissionUnexpected(other))

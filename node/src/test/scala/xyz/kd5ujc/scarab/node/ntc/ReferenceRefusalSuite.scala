@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.node.mempool.LocalSubmission.message
 import cats.Show
 import cats.data.NonEmptyChain
 import cats.syntax.all.*
@@ -15,7 +16,6 @@ import xyz.kd5ujc.scarab.ledger.{
   ConfigError,
   LedgerDecodeError,
   LedgerDefect,
-  LedgerFailure,
   PlutusStats,
   PosixClock,
   PredicateFailure,
@@ -373,7 +373,7 @@ object ReferenceRefusalSuite:
   enum Judgement:
     case Refused(reason: Bytes)
     case Accepted
-    case Unavailable(failure: LedgerFailure.Unavailable | LedgerFailure.Unverifiable)
+    case Unavailable(failure: xyz.kd5ujc.scarab.node.mempool.LocalSubmission.NoReply)
     case Unencodable(failures: NonEmptyChain[PredicateFailure])
     case NotRefused(defect: LedgerDefect)
 

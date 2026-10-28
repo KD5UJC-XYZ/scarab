@@ -73,15 +73,24 @@ enum Rejection:
     */
   case NoLedger(why: ConwayView.Unavailable)
 
+  /** The transaction's decoder threw on the submitted bytes instead of answering: no verdict on the
+    * transaction and no refusal of it, but a defect met on the input of the connection it came
+    * from, which is closed, the node going on (issue 465; ADR 0017 decision 5). In the reference
+    * the transaction is decoded by the mini-protocol's codec, where an exception ends the
+    * connection (network `RethrowPolicy.hs`: `ShutdownPeer`).
+    */
+  case InputDefect(cause: Throwable)
+
   def message: String = this match
     case Malformed(d)    => s"malformed transaction: ${d.message}"
     case AlreadyHeld(id) => s"tx ${id.hex.take(16)} is already in the mempool"
     case Ledger(f)       => f.message
     case Limits(id, fs) =>
       s"tx ${id.hex.take(16)} violates ${fs.map(_.detail).toList.mkString("; ")}"
-    case f: Full       => f.problem.message
-    case WrongEra(e)   => s"era $e is not Conway"
-    case NoLedger(why) => s"no Conway ledger state: ${cats.Show[ConwayView.Unavailable].show(why)}"
+    case f: Full        => f.problem.message
+    case WrongEra(e)    => s"era $e is not Conway"
+    case NoLedger(why)  => s"no Conway ledger state: ${cats.Show[ConwayView.Unavailable].show(why)}"
+    case InputDefect(t) => s"the transaction decoder threw: $t"
 
 object Rejection:
   extension (full: Full)
@@ -504,7 +513,16 @@ object MempoolState:
   def parse(raw: Bytes): Either[Rejection, (Bytes, Tx)] =
     parseParts(raw).map(p => (p.id, p.tx))
 
-  def parseParts(raw: Bytes): Either[Rejection, Parsed] =
+  def parseParts(raw: Bytes): Either[Rejection, Parsed] = decoding(decodeParts(raw))
+
+  /** `decode` with an exception of the decoders as [[Rejection.InputDefect]]: a defect of the
+    * submitted bytes' connection, never a refusal of the transaction (issue 465).
+    */
+  private[mempool] def decoding[A](decode: => Either[Rejection, A]): Either[Rejection, A] =
+    Either.catchNonFatal(decode).fold(cause => Left(Rejection.InputDefect(cause)), identity)
+
+  /** [[parseParts]] with the decoders' own exceptions not yet caught. */
+  private def decodeParts(raw: Bytes): Either[Rejection, Parsed] =
     def malformed[A](detail: TransactionDecodeProblem): Either[Rejection, A] = Left(
       Rejection.Malformed(detail)
     )

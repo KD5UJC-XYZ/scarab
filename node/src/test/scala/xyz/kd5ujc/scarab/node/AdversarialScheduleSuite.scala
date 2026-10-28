@@ -34,6 +34,11 @@ import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
   * bearers; adversarial behavior is a bounded wrapper around one real ChainServer response path.
   */
 class AdversarialScheduleSuite extends FailsOnUncaught:
+  // the scenario reconnects to a peer at once; the time-wait is ConnectionManagerSuite's subject
+  private val noTimeWait =
+    xyz.kd5ujc.scarab.network.ConnectionManager
+      .Limits(timeWait = scala.concurrent.duration.Duration.Zero)
+
   override def munitIOTimeout: FiniteDuration = 120.seconds
 
   private val magic = 780L
@@ -172,7 +177,7 @@ class AdversarialScheduleSuite extends FailsOnUncaught:
       _ <- Resource.make(IO.unit)(_ => peers.stop(address))
       pool <- Resource.eval(BlockPool.create[IO])
       _ <- FetchTesting.decisions(pool)
-      manager <- Resource.eval(ConnectionManager.create[IO]())
+      manager <- Resource.eval(ConnectionManager.create[IO](noTimeWait))
       mode <- Resource.eval(Ref.of[IO, FetchMode](FetchMode.BulkSync))
       root = RootConfig(false, DiffusionMode.InitiatorAndResponder, Provenance.Outbound, false)
       roots = PeerNetwork.Roots(

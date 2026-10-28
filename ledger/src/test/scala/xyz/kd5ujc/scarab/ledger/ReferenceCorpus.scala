@@ -23,6 +23,7 @@ private[ledger] object ReferenceCorpus:
     case ConwayDecoding extends Corpus("conway-decoding", Layout.Pair)
     case PreConwaySets extends Corpus("pre-conway-sets", Layout.Pair)
     case DefiniteBytes extends Corpus("definite-bytes", Layout.Lines)
+    case DefiniteText extends Corpus("definite-text", Layout.Lines)
     case EraForms extends Corpus("era-forms", Layout.Lines)
 
   /** How a corpus is stored: `cases.json` beside `reference.json`, or one `cases.jsonl` with a case

@@ -17,6 +17,17 @@ import xyz.kd5ujc.scarab.network.LocalTxSubmissionServer
   * CBOR-in-CBOR (tag 24).
   */
 object LocalSubmission:
+  /** What has no rejection bytes to send: an implementation limit, a crypto provider that failed on
+    * a witness, or a decoder that threw on the transaction.
+    */
+  type NoReply = LedgerFailure.Unavailable | LedgerFailure.Unverifiable | Rejection.InputDefect
+
+  extension (reason: NoReply)
+    def message: String = reason match
+      case f: LedgerFailure.Unavailable  => f.message
+      case f: LedgerFailure.Unverifiable => f.message
+      case d: Rejection.InputDefect      => d.message
+
   val ConwayEra = 6
 
   /** The original transaction bytes inside a wrapped one. */
@@ -55,34 +66,36 @@ object LocalSubmission:
     */
   def reasonItem(
       rejection: Rejection
-  ): Either[LedgerFailure.Unavailable | LedgerFailure.Unverifiable, Bytes] = rejection match
-    case Rejection.Ledger(error: LedgerFailure.Unavailable)  => Left(error)
-    case Rejection.Ledger(error: LedgerFailure.Unverifiable) => Left(error)
-    case Rejection.WrongEra(era) =>
-      Right(
-        PredicateFailureCbor.eraMismatch(
-          era,
-          Era.fromIndex(BigInt(era)).fold("Unknown")(_.toString)
+  ): Either[NoReply, Bytes] =
+    rejection match
+      case Rejection.Ledger(error: LedgerFailure.Unavailable)  => Left(error)
+      case Rejection.Ledger(error: LedgerFailure.Unverifiable) => Left(error)
+      case defect: Rejection.InputDefect                       => Left(defect)
+      case Rejection.WrongEra(era) =>
+        Right(
+          PredicateFailureCbor.eraMismatch(
+            era,
+            Era.fromIndex(BigInt(era)).fold("Unknown")(_.toString)
+          )
         )
-      )
-    case Rejection.Ledger(LedgerFailure.Rejected(_, failures)) =>
-      Right(PredicateFailureCbor.applyTxError(failures.toChain.toVector))
-    case Rejection.Ledger(error) => Right(text(MempoolProblem.Ledger(error)))
-    case Rejection.AlreadyHeld(_) =>
-      Right(text(MempoolProblem.AllInputsSpent))
-    case Rejection.Malformed(cause) => Right(text(MempoolProblem.Malformed(cause)))
-    case Rejection.Limits(_, failures) =>
-      Right(PredicateFailureCbor.applyTxError(failures.toList.toVector))
-    case full: Rejection.Full => Right(text(full.problem))
-    case Rejection.NoLedger(why) =>
-      val cause = why match
-        case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.InByron =>
-          MempoolLedgerProblem.InByron
-        case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.InEarlier(era) =>
-          MempoolLedgerProblem.Earlier(era)
-        case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.Refused(error) =>
-          MempoolLedgerProblem.Refused(error)
-      Right(text(MempoolProblem.NoLedger(cause)))
+      case Rejection.Ledger(LedgerFailure.Rejected(_, failures)) =>
+        Right(PredicateFailureCbor.applyTxError(failures.toChain.toVector))
+      case Rejection.Ledger(error) => Right(text(MempoolProblem.Ledger(error)))
+      case Rejection.AlreadyHeld(_) =>
+        Right(text(MempoolProblem.AllInputsSpent))
+      case Rejection.Malformed(cause) => Right(text(MempoolProblem.Malformed(cause)))
+      case Rejection.Limits(_, failures) =>
+        Right(PredicateFailureCbor.applyTxError(failures.toList.toVector))
+      case full: Rejection.Full => Right(text(full.problem))
+      case Rejection.NoLedger(why) =>
+        val cause = why match
+          case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.InByron =>
+            MempoolLedgerProblem.InByron
+          case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.InEarlier(era) =>
+            MempoolLedgerProblem.Earlier(era)
+          case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.Refused(error) =>
+            MempoolLedgerProblem.Refused(error)
+        Right(text(MempoolProblem.NoLedger(cause)))
 
   private def text(message: MempoolProblem): Bytes =
     PredicateFailureCbor.applyTxError(Vector(PredicateFailure.Mempool(message)))
@@ -90,7 +103,7 @@ object LocalSubmission:
   /** Service unavailability has no ledger rejection bytes. The transport closes this connection;
     * admitting an external transaction does not require stopping the node.
     */
-  private def response(rejection: Rejection): LocalTxSubmissionServer.Response =
+  private[mempool] def response(rejection: Rejection): LocalTxSubmissionServer.Response =
     reasonItem(rejection).fold(
       {
         case error: LedgerFailure.Unavailable =>
@@ -101,6 +114,8 @@ object LocalSubmission:
           LocalTxSubmissionServer.Response.ServiceUnavailable(
             LocalTxSubmissionServer.Unavailable.Verification(error)
           )
+        // the decoder threw on the client's bytes: no reply, the client's connection is closed
+        case Rejection.InputDefect(cause) => LocalTxSubmissionServer.Response.InputDefect(cause)
       },
       LocalTxSubmissionServer.Response.Rejected(_)
     )
