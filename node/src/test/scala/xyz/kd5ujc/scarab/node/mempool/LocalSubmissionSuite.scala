@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.node.mempool.LocalSubmission.message
 import cats.Functor
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.mtl.{Handle, Raise}
