@@ -34,7 +34,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ValidationError
 }
 import xyz.kd5ujc.scarab.ledger.rules.{EraBlock, EraNes, FromByron, Globals, Handover, TickFailure}
-import xyz.kd5ujc.scarab.ledger.state.{EpochNo, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.state.{EpochNo, ShelleyBasedEra, VocabError}
 import xyz.kd5ujc.scarab.node.read.MirrorEraRead
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.storage.UtxoStore
@@ -44,13 +44,13 @@ import xyz.kd5ujc.scarab.storage.UtxoStore
   *
   * The chain's state is the mirror ([[MirrorState]]: the Haskell `ExtLedgerState` and the node's
   * bookkeeping). A block is applied as the hard-fork combinator applies it: the ledger state is
-  * ticked to the block's slot (`Hfc.tick`: the epoch boundaries on the way and the translation into
-  * the era the chain has entered), the header is validated against the ticked state (the envelope,
-  * the leader check against `nesPd`, the operational certificate, the KES signature), the body is
-  * applied by the era's BBODY on the ticked state, and the mirror is rebuilt with the tip, the
-  * state, the chain-dependent state and, where the state is of a later era than the mirror's, its
-  * two telescopes extended into the era ([[MirrorStep]]). Nothing is converted between the node's
-  * flat state and the mirror: the state is the mirror from the first block to the last.
+  * ticked to the block's slot (`Hfc.tick`: the translation into the era the chain has entered), the
+  * header is validated against the ticked state (the envelope, the leader check against `nesPd`,
+  * the operational certificate, the KES signature), the body is applied by the era's BBODY on the
+  * ticked state, and the mirror is rebuilt with the tip, the state, the chain-dependent state and,
+  * where the state is of a later era than the mirror's, its two telescopes extended into the era
+  * ([[MirrorStep]]). Nothing is converted between the node's flat state and the mirror: the state
+  * is the mirror from the first block to the last.
   *
   * The chain's Byron prefix is the Byron rules' ([[NodeRules.byronStep]]) on the Byron state the
   * mirror carries; its hand-over to Shelley is the reference's translation (`Handover`,
@@ -89,7 +89,8 @@ final class MirrorRules[F[_]: Monad](
 
   def apply(state: MirrorState, header: Header, raw: Bytes)(using
       Raise[F, ValidationError],
-      Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]
+      Raise[F, xyz.kd5ujc.scarab.ledger.StorageError],
+      Raise[F, xyz.kd5ujc.scarab.ledger.ChainError]
   ): F[MirrorState] =
     def run(s: MirrorState, prepared: Option[Prepared]): F[MirrorState] =
       val applied = parallelPlutus match
@@ -126,7 +127,10 @@ final class MirrorRules[F[_]: Monad](
       applied
         .flatMap(
           _.fold(
-            failure => ValidationError(header.point, failure).raise[F, MirrorState],
+            failure =>
+              MirrorRules.stateOutOfRange(header, failure) match
+                case Some(fault) => fault.raise[F, MirrorState]
+                case None        => ValidationError(header.point, failure).raise[F, MirrorState],
             next => afterBlock.fold(next.pure[F])(f => f(header, next).as(next))
           )
         )
@@ -154,6 +158,23 @@ final class MirrorRules[F[_]: Monad](
       case _ => run(state, None)
 
 object MirrorRules:
+  /** A quantity of the ledger state outside its vocabulary type, met by the tick or by a rule of a
+    * transaction ([[BlockFailure.stateOutOfRange]]), or the consensus state's per-epoch transition
+    * counter past `Word32` ([[StateMirrorError.TransitionCounterOverflow]]): no verdict on the
+    * block. The reference aborts with an exception there (`compactCoinOrError`; the counter's
+    * `succ`, which throws at `maxBound`), so this is the node's stop and never a refusal.
+    */
+  private[node] def stateOutOfRange(
+      header: Header,
+      failure: BlockFailure
+  ): Option[xyz.kd5ujc.scarab.ledger.ChainError] =
+    failure.stateOutOfRange
+      .orElse(failure match
+        case BlockFailure.Mirror(StateMirrorError.TransitionCounterOverflow) =>
+          Some(VocabError.OutOfRange(VocabError.Kind.Word32, BigInt(1) << 32))
+        case _ => None)
+      .map(xyz.kd5ujc.scarab.ledger.ChainError.StateOutOfRange(header.slot, _))
+
   /** The label a block application is recorded under: a block that crossed an epoch boundary or ran
     * Plutus scripts says so, as those are the steps that take long.
     */

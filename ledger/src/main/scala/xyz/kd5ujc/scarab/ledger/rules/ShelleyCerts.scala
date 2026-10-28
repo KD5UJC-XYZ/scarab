@@ -167,7 +167,8 @@ object ShelleyDeleg
             !ShelleyCertLens.states.get(s).contains(cred),
             DelegFailure.StakeKeyAlreadyRegistered(c)
           )
-          deposit <- Refuse.vocab[F, CompactCoin](CompactCoin.fromBigInt(pp.keyDeposit))
+          // `compactCoinOrError (pp ^. ppKeyDepositL)` (`Deleg.hs:268`)
+          deposit <- Refuse.state[F, CompactCoin](id, CompactCoin.fromBigInt(pp.keyDeposit))
           _ <- st.set(ShelleyCertOps.register(s, cred, env.ptr, deposit))
         yield ()
       case Certificate.Unregister(c, _) =>
@@ -416,7 +417,7 @@ object ShelleyDelegs
           LedgerFailure
         ](
           ShelleyDelpl,
-          ShelleyDelegEnv(env, Ptr(env.ctx.slot, env.ctx.txIndex, ix)),
+          ShelleyDelegEnv(env, Ptr.ofCertificate(env.ctx.slot, env.ctx.txIndex, ix)),
           cert
         )
     }

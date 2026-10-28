@@ -441,6 +441,8 @@ object ChainStorage:
             if actual != ref then F.pure(done)
             else
               handle.attempt(rules(chain.state, header, raw)).flatMap {
+                // A ledger state out of range stops the node: it does not end the chain here.
+                case Left(fatal: ChainError.StateOutOfRange) => fatal.raise[F, Vector[Resumed[S]]]
                 // A crypto provider that fails is no refusal: the stored tail was selected on a
                 // verdict of an earlier run, so the start stops (Fatal.Unverifiable, as the
                 // exception ends the reference's linked thread) and nothing is rolled back.

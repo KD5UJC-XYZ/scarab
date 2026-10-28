@@ -69,7 +69,8 @@ object TxKit:
       votes: Vector[Byte] = Vector.empty,
       referenceScript: Option[(ScriptKind, Bytes)] = None,
       expires: Option[BigInt] = None,
-      exUnits: Option[(BigInt, BigInt)] = None
+      exUnits: Option[(BigInt, BigInt)] = None,
+      certificates: Vector[Byte] = Vector.empty
   ): (Bytes, Bytes) =
     val ins =
       head(4, inputs.size) ++ inputs.flatMap(i => head(4, 2) ++ bstr(i.id) ++ head(0, i.index))
@@ -82,12 +83,17 @@ object TxKit:
         }
       }
     val body = Bytes(
-      head(5, 3 + (if votes.isEmpty then 0 else 1) + expires.size) ++ Vector(
+      head(
+        5,
+        3 + (if votes.isEmpty then 0 else 1) + expires.size + (if certificates.isEmpty then 0
+                                                               else 1)
+      ) ++ Vector(
         0x00.toByte
       ) ++ ins ++ Vector(
         0x01.toByte
       ) ++ outs ++ Vector(0x02.toByte) ++ head(0, fee) ++
         expires.fold(Vector.empty[Byte])(slot => Vector(0x03.toByte) ++ head(0, slot)) ++
+        (if certificates.isEmpty then Vector.empty else Vector(0x04.toByte) ++ certificates) ++
         (if votes.isEmpty then Vector.empty else Vector(0x13.toByte) ++ votes)
     )
     val id = Blake2b.hash256.hash(body)

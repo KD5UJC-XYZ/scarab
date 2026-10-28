@@ -320,6 +320,17 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     assertEquals(ptr.encodeUnchecked(xyz.kd5ujc.scarab.ledger.Ptr(1, 2, 3)).hex, "83010203")
   }
 
+  // LEDGERS enumerates `TxIx` with `zip [minBound ..]` (cardano-ledger f649f975
+  // `Shelley/Rules/Ledgers.hs:201-211`, `BaseTypes.hs:918-921`): no pointer past 65,535 is made
+  test(
+    "the pointer of the last transaction position is written and read back; one past is refused"
+  ) {
+    val last = xyz.kd5ujc.scarab.ledger.Ptr.ofCertificate(BigInt(12), TxIx.count - 1, 0)
+    assertEquals(ptr.check(last), None)
+    assertEquals(ptr.decodeBytes(ptr.encodeUnchecked(last)), Right(last))
+    assert(ptr.check(xyz.kd5ujc.scarab.ledger.Ptr(12, TxIx.count, 0)).isDefined)
+  }
+
   test("golden: a DRepState with a delegator is [expiry, [], deposit, #258[credential]]") {
     val d = DRepState(
       EpochNo.fromUnsigned(7),

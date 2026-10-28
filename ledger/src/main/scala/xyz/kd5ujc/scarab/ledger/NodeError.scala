@@ -269,11 +269,23 @@ enum ChainError extends NodeError:
   case NoIntersection
   case MempoolTick(slot: BigInt, cause: rules.TickFailure)
 
+  /** The rules run for `slot` (a block's tick, its transactions, the Byron hand-over, a forging
+    * attempt) met a quantity of the ledger state, its parameters included, outside the range of its
+    * vocabulary type ([[BlockFailure.stateOutOfRange]]). The reference aborts with an exception
+    * there (`compactCoinOrError`, cardano-ledger f649f975 `Coin.hs:184-188`) in a linked thread
+    * (ouroboros-consensus 82ecba32 `Storage/ChainDB/Impl/Background.hs:107-109,142` for the block
+    * runner, `NodeKernel.hs:378-380` for the forger), so the node stops: this is neither a verdict
+    * on a block nor a fault of the peer that sent it.
+    */
+  case StateOutOfRange(slot: BigInt, cause: xyz.kd5ujc.scarab.ledger.state.VocabError)
+
   def message: String = this match
     case MempoolTick(slot, cause) => s"cannot tick mempool ledger to slot $slot: $cause"
-    case StateAcquire(cause)      => cause.message
-    case Decode(w, r)             => s"decode ${w.show}: ${r.show}"
-    case NotConnected(p, t)       => s"${Points.show(p)} does not extend tip ${Points.show(t)}"
+    case StateOutOfRange(slot, cause) =>
+      s"the ledger state in the rules for slot $slot is out of range: ${cats.Show[xyz.kd5ujc.scarab.ledger.state.VocabError].show(cause)}"
+    case StateAcquire(cause) => cause.message
+    case Decode(w, r)        => s"decode ${w.show}: ${r.show}"
+    case NotConnected(p, t)  => s"${Points.show(p)} does not extend tip ${Points.show(t)}"
     case RollbackBeyondAnchor(t, a) =>
       s"rollback to ${Points.show(t)} beyond anchor ${Points.show(a)}"
     case NoIntersection => "peer shares no point with the local chain"

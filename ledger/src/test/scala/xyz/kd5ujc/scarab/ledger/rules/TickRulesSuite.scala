@@ -138,13 +138,17 @@ class TickRulesSuite extends FunSuite:
     assertEquals(pots(after), pots(before))
   }
 
-  test("an epoch with no block is crossed boundary by boundary") {
+  // NEWEPOCH does nothing for an epoch that is not the next one (`pure src`, cardano-ledger
+  // f649f975 `Shelley/Rules/NewEpoch.hs:148`; Conway also predicts the future parameters,
+  // `Conway/Rules/NewEpoch.hs:154-166`), and TICK runs once (`Tick.hs:160`).
+  test("a tick over an epoch with no block runs no boundary, as the reference does") {
     val before = tick(conway(5, 20, 4), late(5))
     val after = tick(before, first(8) + 10)
-    assertEquals(after.epoch, ok(EpochNo.fromBigInt(8)))
-    // three boundaries: the reward update of the epoch before the gap is applied once
+    assertEquals(after.epoch, ok(EpochNo.fromBigInt(5)))
+    assertEquals(after.bcur, before.bcur)
+    assertEquals(after.bprev, before.bprev)
+    assertEquals(after.es.snapshots, before.es.snapshots)
     assertEquals(pots(after), pots(before))
-    assert(after.bprev == BlocksMade.empty, "the epoch before the last had no blocks")
   }
 
   test("a retiring pool is refunded to its reward account, or to the treasury if it is gone") {
@@ -226,6 +230,19 @@ class TickRulesSuite extends FunSuite:
     assert(nes.es.ls.cert.dState.accounts.states.valuesIterator.forall(_.drep.isEmpty))
     // the first Conway epoch is dormant: no proposals
     assertEquals(nes.es.ls.cert.vState.numDormantEpochs, EpochNo.fromUnsigned(1L))
+  }
+
+  // `extendToSlot` (ouroboros-consensus 82ecba32 `HardFork/Combinator/State.hs`) translates while
+  // the slot is at or past the end of the state's era, whatever the state's own epoch
+  test("a tick across an epoch with no block still translates into an era that began in it") {
+    val laterConway: Hfc.EraAt =
+      (epoch, major) => if epoch >= 7 && major >= 9 then Era.Conway else Era.Babbage
+    val from = EraNes.InEra(ShelleyBasedEra.SBabbage, babbage(conway(5, 10, 2)))
+    val after = Hfc
+      .tick(globals, laterConway)(from, ok(SlotNo.fromBigInt(first(8) + 10)))
+      .fold(e => fail(s"refused: $e"), identity)
+    assertEquals(after.toEra, Era.Conway)
+    assertEquals(after.epoch, ok(EpochNo.fromBigInt(5)))
   }
 
   test("the translation into Conway of 150,000 accounts runs on a 256 KiB stack") {

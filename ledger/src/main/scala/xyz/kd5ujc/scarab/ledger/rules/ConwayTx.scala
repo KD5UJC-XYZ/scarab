@@ -137,3 +137,11 @@ private[rules] object Refuse:
   def vocab[F[_]: Applicative, A](result: Either[VocabError, A])(using
       Raise[F, LedgerFailure]
   ): F[A] = Sts.lift[F, LedgerFailure, A](result.leftMap(LedgerFailure.Vocab(_)))
+
+  /** The value of a conversion of a quantity of the ledger state, its parameters included, into its
+    * vocabulary type; out of range it is no refusal of the transaction `id` but the node's stop
+    * ([[LedgerFailure.StateOutOfRange]]: the reference's `compactCoinOrError`).
+    */
+  def state[F[_]: Applicative, A](id: Bytes, result: Either[VocabError, A])(using
+      Raise[F, LedgerFailure]
+  ): F[A] = Sts.lift[F, LedgerFailure, A](result.leftMap(LedgerFailure.StateOutOfRange(id, _)))

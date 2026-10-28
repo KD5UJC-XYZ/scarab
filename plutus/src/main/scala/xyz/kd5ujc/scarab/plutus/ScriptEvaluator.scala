@@ -53,12 +53,17 @@ enum BackendFailure:
   case Defect(cause: Throwable)
   case BuiltinUnavailable(builtin: scalus.uplc.DefaultFun)
 
+  /** Scalus's cost model gives the builtin a costing function that [[ReferenceCosting]] does not
+    * mirror, so the reference's budget for it is unknown.
+    */
+  case CostingUnmirrored(builtin: scalus.uplc.DefaultFun)
   def message: String = this match
     case NoResult                    => "backend did not return a result"
     case StackExhausted              => "backend stack exhausted"
     case BudgetOutOfRange(_)         => "execution budget exceeds 64 bits"
     case Defect(cause)               => Option(cause.getMessage).getOrElse(cause.getClass.getName)
     case BuiltinUnavailable(builtin) => s"builtin $builtin unavailable"
+    case CostingUnmirrored(builtin)  => s"the costing function of $builtin is not mirrored"
 
 final case class ScriptFailure(cause: Throwable, logs: Vector[String]):
   def message: String =
