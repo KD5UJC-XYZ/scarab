@@ -22,6 +22,13 @@ enum ConnectionError extends DomainError:
   /** An event the connection's state does not allow. */
   case IllegalTransition(remote: String, problem: ConnectionState.Illegal)
 
+  /** A connection with `remote` ended less than the time-wait ago: no outbound connection to it
+    * until then, as the reference's connection manager refuses one to a peer it holds in
+    * `TerminatingState` (`ConnectionInTerminatingState`, ouroboros-network `2fb69829`
+    * `ConnectionManager/Core.hs`).
+    */
+  case TimeWait(remote: String)
+
   def message: String = this match
     case InboundLimit(r, l) =>
       s"refused inbound connection from $r: $l connections accepted already"
@@ -30,3 +37,4 @@ enum ConnectionError extends DomainError:
     case OutboundLimit(r, l)    => s"refused outbound connection to $r: $l connections open already"
     case AlreadyConnected(r, s) => s"already connected to $r ($s)"
     case IllegalTransition(r, p) => s"$r: ${p.message}"
+    case TimeWait(r) => s"refused outbound connection to $r: its last connection is in time-wait"

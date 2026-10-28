@@ -18,6 +18,11 @@ import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
   * the source. Its innocent consumer's bearer stays open.
   */
 class CachedBlockSourceSuite extends FailsOnUncaught:
+  // the scenario reconnects to a peer at once; the time-wait is ConnectionManagerSuite's subject
+  private val noTimeWait =
+    xyz.kd5ujc.scarab.network.ConnectionManager
+      .Limits(timeWait = scala.concurrent.duration.Duration.Zero)
+
   private val magic = 42L
   private val hash = Bytes.wrap(Array[Byte](1))
   private val block = Bytes.wrap(Array[Byte](2))
@@ -51,7 +56,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
             source = InMemoryPeers.address(1)
             consumer = InMemoryPeers.address(2)
             _ <- List(source, consumer).traverse_(transport.serve(_, handlers))
-            manager <- ConnectionManager.create[IO]()
+            manager <- ConnectionManager.create[IO](noTimeWait)
             events <- Ref.of[IO, Vector[Event[PeerNetwork.Addr]]](Vector.empty)
             entered <- cats.effect.std.Queue.unbounded[IO, Unit]
             finalized <- Ref.of[IO, Int](0)
@@ -269,7 +274,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
               transport <- InMemoryPeers.create(magic)
               peer = InMemoryPeers.address(1)
               _ <- transport.serve(peer, servers)
-              manager <- ConnectionManager.create[IO]()
+              manager <- ConnectionManager.create[IO](noTimeWait)
               metrics <- Ref.of[IO, PeerMetrics[PeerNetwork.Addr]](PeerMetrics.empty())
               follow: OutboundPeers.Follow[IO] = (over, _) =>
                 (caller: Raise[IO, NodeError]) ?=>

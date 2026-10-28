@@ -1,0 +1,3 @@
+### Changed (network, #462)
+
+- **A connection released from `TerminatingState` is held in time-wait for 60 s**, as the reference's connection manager holds it (`defaultTimeWaitTimeout`, ouroboros-network `2fb69829`). This covers a clean close: an outbound one whose applications all returned, or an inbound one released when idle. It also covers a handshake that agrees no version. Meanwhile an outbound connection to that address is refused (`ConnectionError.TimeWait`, a transient failure the peer backs off from), an inbound one from it is taken, and it counts neither as inbound nor as outbound. A connect that fails, or a connection that ends by an error, is removed at once, as the reference's cleanup does from every other state.

@@ -49,6 +49,11 @@ import scala.concurrent.duration.*
   * stayed open and blocked the other session).
   */
 class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
+  // the scenario reconnects to a peer at once; the time-wait is ConnectionManagerSuite's subject
+  private val noTimeWait =
+    xyz.kd5ujc.scarab.network.ConnectionManager
+      .Limits(timeWait = scala.concurrent.duration.Duration.Zero)
+
   override def munitIOTimeout: FiniteDuration = 90.seconds
 
   private val magic = 42L
@@ -227,7 +232,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             first = InMemoryPeers.address(1)
             second = InMemoryPeers.address(2)
             _ <- peers.serve(first, stalled) *> peers.serve(second, healthy)
-            manager <- ConnectionManager.create[IO]()
+            manager <- ConnectionManager.create[IO](noTimeWait)
             last = forged.headers.last
             hot = OutboundPeers.Hot[IO](
               magic = magic,
@@ -378,7 +383,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               second,
               intersectAfter(healthyReady.complete(()).void *> rejected.get, good)
             )
-          manager <- ConnectionManager.create[IO]()
+          manager <- ConnectionManager.create[IO](noTimeWait)
           last = forged.headers.last
           hot = OutboundPeers.Hot[IO](
             magic = magic,
@@ -552,7 +557,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                     def write(bytes: fs2.Chunk[Byte]) =
                       IO.raiseError[Unit](new IllegalStateException("injected network"))
                     def close = IO.unit)
-          manager <- ConnectionManager.create[IO]()
+          manager <- ConnectionManager.create[IO](noTimeWait)
           last = forged.headers.last
           hot = OutboundPeers.Hot[IO](
             magic = magic,
@@ -679,7 +684,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         peers <- InMemoryPeers.create(magic)
         first = InMemoryPeers.address(1)
         _ <- peers.serve(first, good)
-        manager <- ConnectionManager.create[IO]()
+        manager <- ConnectionManager.create[IO](noTimeWait)
         hot = OutboundPeers.Hot[IO](
           magic = magic,
           network = NodeToNode.Settings(),
