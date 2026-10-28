@@ -486,6 +486,40 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     assertEquals(MirrorRules.stateOutOfRange(header, BlockFailure.HeaderDiffers), None)
   }
 
+  // the per-epoch transition counter of the consensus state is a Word32 whose `succ` throws at
+  // maxBound in the reference: the node stops, the block is not refused (owner decision on #483)
+  test(
+    "the transition counter past Word32 is a stop; another state the mirror cannot hold is not"
+  ) {
+    val header = headers(2)
+    assertEquals(
+      MirrorRules.stateOutOfRange(
+        header,
+        BlockFailure.Mirror(
+          xyz.kd5ujc.scarab.consensus.state.StateMirrorError.TransitionCounterOverflow
+        )
+      ),
+      Some(
+        ChainError.StateOutOfRange(
+          header.slot,
+          xyz.kd5ujc.scarab.ledger.state.VocabError
+            .OutOfRange(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.Word32, BigInt(1) << 32)
+        )
+      )
+    )
+    assertEquals(
+      MirrorRules.stateOutOfRange(
+        header,
+        BlockFailure.Mirror(
+          xyz.kd5ujc.scarab.consensus.state.StateMirrorError.ExtrasMismatch(
+            xyz.kd5ujc.scarab.protocol.Era.Conway
+          )
+        )
+      ),
+      None
+    )
+  }
+
   // the Byron to Shelley hand-over of the header forecast met the state out of range: the header
   // pipeline ends the session with it, and the node stops without blaming the peer
   test("a state out of range in the header forecast stops the node: no invalid record, no blame") {
