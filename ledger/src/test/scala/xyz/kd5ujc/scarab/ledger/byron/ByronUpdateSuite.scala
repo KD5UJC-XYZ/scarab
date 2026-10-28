@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
-import xyz.kd5ujc.scarab.ledger.{CborRead, ProviderDefect}
+import xyz.kd5ujc.scarab.ledger.{CborRead, DecodeField, LedgerDecodeError, ProviderDefect}
 import xyz.kd5ujc.scarab.codec.Bytes
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
@@ -206,6 +206,27 @@ class ByronUpdateSuite extends ScalaCheckSuite:
       .decode(encoded)
       .flatMap(UpdatePayload.decode)
       .fold(e => fail(e.toString), identity)
+
+  test("a chunked software name is refused: `ApplicationName` decodes text with decodeString") {
+    // The proposal of `proposalBytes`, with the software name as one indefinite chunk instead of a
+    // definite string. `ApplicationName` is a `newtype` over `Text` whose `decCBOR` is `decCBOR`
+    // (`Update/ApplicationName.hs:41-62`, cardano-ledger f649f975), so the name is text.
+    val chunkedName = Bytes.fromArray(Array(0x7f.toByte, 0x61, 0x61, 0xff.toByte))
+    val elements = Seq(
+      Cb.arr(Cb.uint(1), Cb.uint(0), Cb.uint(0)),
+      Cb.arr(Seq.fill(14)(Cb.arr())*),
+      Cb.arr(chunkedName, Cb.uint(1)),
+      Cb.map(),
+      Cb.map()
+    )
+    val signed = ByronCbor.of(0x85) ++ ByronCbor.concat(elements*)
+    val sig = gKeys(0).sign(ByronSig.tag(ByronSig.SignUpdateProposal, magic) ++ signed)
+    val proposal = Cb.arr((elements ++ Seq(Cb.bytes(gKeys(0).extended), Cb.bytes(sig)))*)
+    assertEquals(
+      CborRead.decode(Cb.arr(Cb.arr(proposal), Cb.arr())).flatMap(UpdatePayload.decode),
+      Left(LedgerDecodeError.IndefiniteLength(DecodeField.SoftwareName))
+    )
+  }
 
   private def version(major: BigInt, minor: BigInt, alt: BigInt): ByronVersion =
     ByronVersion.from(major, minor, alt).fold(e => fail(e.toString), identity)

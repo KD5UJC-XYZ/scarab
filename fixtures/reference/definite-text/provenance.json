@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-10-28",
+  "scope": "Unchanged released decoders (decodeFullAnnotator) of a transaction body of each era from Shelley to Conway at the era's decoder version (2, 3, 4, 5, 7, 9) and of a whole Conway transaction with auxiliary data at 9, each text field of the body written as a definite string and as an indefinite one: the pool metadata url of a registration in every era, the anchor url of a Conway DRep registration, a proposal and a vote, and one chunked metadata text as the contrast that stays accepted; no ledger rule, signature or script is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "compiler": "GHC 9.10.3",
+  "referenceNode": "11.1.3 (matching embedded ledger package versions, not a bit-identical node release build)",
+  "packages": {
+    "cardano-ledger-binary": "1.9.1.0",
+    "cardano-ledger-core": "1.21.0.0",
+    "cardano-ledger-shelley": "1.19.0.1",
+    "cardano-ledger-allegra": "1.10.1.0",
+    "cardano-ledger-mary": "1.11.0.0",
+    "cardano-ledger-alonzo": "1.16.0.0",
+    "cardano-ledger-babbage": "1.14.0.0",
+    "cardano-ledger-conway": "1.23.0.0",
+    "cborg": "0.2.10.0"
+  },
+  "sourceFiles": {
+    "textInstance": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs",
+      "sourceSha256": "fc3976b22364883b70f785be75c63dd586e3b3c68ee67178fc3b5be128f19e6d",
+      "matchesPin": true,
+      "note": "instance DecCBOR T.Text where decCBOR = decodeString (356-358): one instance decides every text field of a body"
+    },
+    "baseTypes": {
+      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+      "sourceSha256": "0b86d1ecdd5abb0cf89194e7324fe1f62e58214cbd7386a1c50aeaf1c605866e",
+      "matchesPin": true,
+      "note": "textSizeN, textDecCBOR, textToUrl and textToDns (644-668); instance DecCBOR Url and instance DecCBOR DnsName (678-697)"
+    }
+  },
+  "sourceArchive": {
+    "url": "https://codeload.github.com/IntersectMBO/cardano-ledger/tar.gz/f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "sha256": "b545b1eda2067c756add6d98701aacc217a380fe177f984daa1da655607a0b68",
+    "kind": "repository tarball at the pinned commit"
+  },
+  "harness": {
+    "file": "scripts/oracle/conway-decoding/Main.hs",
+    "sha256": "56e41ca86274a36f8e433b6f49ddb55b0f17720c75298c7b56e56e63f52170ce",
+    "image": "scarab-conway-decoding:local, built from scripts/oracle/conway-decoding/Dockerfile on scarab-plutus176-context-reference:local on scarab-byron171-full-reference:local on scarab-plutus175-oracle:local",
+    "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-conway-decoding:local /fixtures/definite-text-inputs.json",
+    "unchanged": true
+  },
+  "generatorSha256": "d13af5a31d11e31fe38f65b9d1c04b9973f6b34753ce178f4277ec6b12533023",
+  "harnessInputSha256": "97d87380d8154a2b1129a004109c2dccb9c91d4c1cfa63bbad66f3ef471c7cf3",
+  "harnessOutputSha256": "f94ab3d9e62dcd23068dc5a1aa3e238a9bd62b51bb1b8cdf889fdb5495ddd391",
+  "casesSha256": "93ac2d95549a8b83b24af1f58d11782fe5fbe8e74cc80525b7cabc23ea519090",
+  "cases": 19,
+  "accepted": 10,
+  "refused": 9,
+  "originalBytesRetained": true,
+  "notCovered": {
+    "relayDnsName": "a registration's relays are kept as their original bytes and are decoded with the body only under #436; the refusal exists in PoolRelays.decode and its cases belong to that change",
+    "lengthBound": "the reference also bounds these fields with textSizeN (64 bytes below decoder version 9, 128 from it); no case here is at or over the bound (#550)"
+  }
+}

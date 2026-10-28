@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import cats.FlatMap
 import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -9,6 +10,7 @@ import com.comcast.ip4s.{Host, IpAddress, SocketAddress}
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.protocol.ConnectionState
 import xyz.kd5ujc.scarab.protocol.ConnectionState.{Counters, DataFlow, Event, Provenance}
+import scala.concurrent.duration.*
 
 /** What the manager did, for the log. */
 enum ConnectionEvent:
@@ -48,7 +50,7 @@ trait Connection[F[_]]:
   /** Mark the connection closing with a reason (kept for the log); the owner then ends it. */
   def close(reason: ConnectionEnd): F[Unit]
 
-  /** Completes once the connection has been released and removed. */
+  /** Completes once the connection has been released (its entry may stay for the time-wait). */
   def closed: F[Unit]
 
 /** The node's table of node-to-node connections: at most one live connection per peer address and
@@ -107,11 +109,18 @@ object ConnectionManager:
     *   Deviation approved by the owner on 2026-10-25: a per-address inbound limit (default 64) on
     *   top of the reference's global accept limits, protecting inbound slots from a single address;
     *   the reference has no per-address limit (ADR 0008).
+    * @param timeWait
+    *   How long a connection whose end holds the time-wait ([[holdsTimeWait]]) is held in
+    *   `Terminating` after its release (`defaultTimeWaitTimeout = 60`, ouroboros-network `2fb69829`
+    *   `ConnectionManager/Core.hs`): meanwhile an outbound connection to its address is refused
+    *   ([[ConnectionError.TimeWait]]), an inbound one from it is taken, and it counts neither
+    *   inbound nor outbound.
     */
   final case class Limits(
       accepted: AcceptedConnectionsLimit = AcceptedConnectionsLimit.default,
       maxOutbound: Int = 64,
-      maxInboundPerAddress: Int = 64
+      maxInboundPerAddress: Int = 64,
+      timeWait: FiniteDuration = 60.seconds
   )
 
   final case class Live[F[_]](
@@ -131,13 +140,48 @@ object ConnectionManager:
       .resolve[F](using fs2.io.net.Network.forAsync[F].dns, Async[F])
       .map(ip => SocketAddress(ip, address.port))
 
+  /** Whether a connection whose owner recorded `end` is held in time-wait when released. The
+    * reference's connection thread waits `timeWaitTimeout` only when its cleanup finds the
+    * connection in `TerminatingState` (ouroboros-network 2fb69829 `ConnectionManager/Core.hs`
+    * `forkConnectionHandler` 's `cleanup`). An idle release enters that state (`Commit` in
+    * `releaseInboundConnection`, the outbound idle timeout of `releaseOutboundConnection`), and so
+    * does a handshake that agrees no version (`computeConnStateOnError`; `HandshakeFailure` in
+    * `classifyHandlerError`, `ConnectionHandler.hs`). From any other state, a connect that failed
+    * (`ReservedOutboundState`) or a connection whose mux or protocols ended with an error, it goes
+    * to `TerminatedState` at once. An end nobody recorded is such a teardown.
+    */
+  def holdsTimeWait(end: Option[ConnectionEnd]): Boolean = end match
+    case Some(ConnectionEnd.Released) => true
+    case Some(
+          ConnectionEnd.Failed(_: (NetworkError.HandshakeRefused | NetworkError.VersionMismatch))
+        ) =>
+      true
+    case _ => false
+
+  /** `outer`, which first records a handshake that agreed no version as the end of `connection`, so
+    * that its release holds the time-wait ([[holdsTimeWait]]). Any other error is raised as is.
+    */
+  def recordingRefusal[F[_]: FlatMap](connection: Connection[F])(using
+      outer: Raise[F, NetworkError]
+  ): Raise[F, NetworkError] =
+    new Raise[F, NetworkError]:
+      def functor = outer.functor
+      def raise[E <: NetworkError, A](e: E): F[A] = e match
+        case refused: (NetworkError.HandshakeRefused | NetworkError.VersionMismatch) =>
+          connection.close(ConnectionEnd.Failed(refused)) *> outer.raise[NetworkError, A](e)
+        case _ => outer.raise[NetworkError, A](e)
+
   private final case class Entry[F[_]](
       id: Long,
       provenance: Provenance,
       state: ConnectionState,
       closed: Deferred[F, Unit],
-      reason: Option[ConnectionEnd]
-  )
+      reason: Option[ConnectionEnd],
+      releasedAt: Option[FiniteDuration] = None
+  ):
+    /** Released and still in time-wait at `now`. */
+    def waiting(now: FiniteDuration, timeWait: FiniteDuration): Boolean =
+      releasedAt.exists(now - _ < timeWait)
 
   def create[F[_]: Async](
       limits: Limits = Limits(),
@@ -156,6 +200,12 @@ object ConnectionManager:
 
       def counters(m: Map[ConnectionManager.Key, Entry[F]]): Counters =
         Counters.of(m.values.map(_.state))
+
+      // the entries whose time-wait has ended are removed when the table is next changed
+      def purge(now: FiniteDuration)(
+          m: Map[ConnectionManager.Key, Entry[F]]
+      ): Map[ConnectionManager.Key, Entry[F]] =
+        m.filterNot((_, e) => e.releasedAt.isDefined && !e.waiting(now, limits.timeWait))
 
       /** Apply `event` to our entry. */
       def apply(
@@ -207,7 +257,9 @@ object ConnectionManager:
         def remote = at
         def provenance = origin
         def state = table.get.map(
-          _.get(key).filter(_.id == id).fold[ConnectionState](ConnectionState.Terminated)(_.state)
+          _.get(key)
+            .filter(e => e.id == id && e.releasedAt.isEmpty)
+            .fold[ConnectionState](ConnectionState.Terminated)(_.state)
         )
         def connected(using Raise[F, ConnectionError]) = step(key, id, Event.Connected)
         def negotiated(flow: DataFlow)(using Raise[F, ConnectionError]) =
@@ -229,7 +281,9 @@ object ConnectionManager:
         for
           closed <- Deferred[F, Unit]
           id <- ids.updateAndGet(_ + 1)
-          admitted <- table.modify { m =>
+          now <- F.monotonic
+          admitted <- table.modify { held =>
+            val m = purge(now)(held)
             val key = (remote, provenance)
             val other = provenance match
               case Provenance.Inbound  => (remote, Provenance.Outbound)
@@ -245,8 +299,12 @@ object ConnectionManager:
                   .filterNot(_ => alongside)
               )
             val c = counters(m)
+            // the reference keys its connections by the peer's address alone
+            val inTimeWait = provenance == Provenance.Outbound &&
+              Vector(key, other).exists(k => m.get(k).exists(_.waiting(now, limits.timeWait)))
             if taken.isDefined then
               (m, Left(ConnectionError.AlreadyConnected(remote.toString, taken.get.state)))
+            else if inTimeWait then (m, Left(ConnectionError.TimeWait(remote.toString)))
             else if provenance == Provenance.Inbound && c.inbound + 1L > hardLimit then
               (m, Left(ConnectionError.InboundLimit(remote.toString, hardLimit)))
             else if provenance == Provenance.Inbound &&
@@ -274,16 +332,31 @@ object ConnectionManager:
           )
         yield connection
 
-      /** Release: through Terminating to removal, whatever state the connection is in. */
+      /** Release: through Terminating, whatever state the connection is in. The connection is
+        * closed now ([[Connection.closed]] completes). When its end holds the time-wait
+        * ([[holdsTimeWait]]) its entry stays in `Terminating` for [[Limits.timeWait]] and is
+        * removed after, as the reference's connection thread waits `timeWaitTimeout` after closing
+        * the socket (`ConnectionManager/Core.hs`); otherwise it is removed at once.
+        */
       def release(c: Connection[F]): F[Unit] =
         val at = c.remote
         val key = (at, c.provenance)
-        table.get.map(_.get(key)).flatMap {
+        table.get.map(_.get(key).filter(_.releasedAt.isEmpty)).flatMap {
           _.traverse_ { e =>
             val reason = e.reason.getOrElse(ConnectionEnd.Released)
-            c.close(reason) *> apply(key, e.id, Event.Released) *>
-              table.update(m => m.get(key).filter(_.id == e.id).fold(m)(_ => m - key)) *>
-              e.closed.complete(()) *>
+            val held =
+              if limits.timeWait <= Duration.Zero || !holdsTimeWait(e.reason) then
+                apply(key, e.id, Event.Released) *>
+                  table.update(m => m.get(key).filter(_.id == e.id).fold(m)(_ => m - key))
+              else
+                F.monotonic.flatMap(now =>
+                  table.update(m =>
+                    m.get(key)
+                      .filter(_.id == e.id)
+                      .fold(m)(entry => m.updated(key, entry.copy(releasedAt = Some(now))))
+                  )
+                )
+            c.close(reason) *> held *> e.closed.complete(()) *>
               emit(ConnectionEvent.Closed(at.toString, e.provenance, reason))
           }
         }
@@ -313,10 +386,16 @@ object ConnectionManager:
           table.discrete.map(counters(_).inbound).takeThrough(_ >= limit).compile.drain
 
         def snapshot =
-          table.get.map(m =>
-            Snapshot(
-              counters(m),
-              m.toVector.map((k, e) => k._1 -> e.state).sortBy(_._1.toString)
-            )
+          F.monotonic.flatMap(now =>
+            table.modify { held =>
+              val m = purge(now)(held)
+              (
+                m,
+                Snapshot(
+                  counters(m),
+                  m.toVector.map((k, e) => k._1 -> e.state).sortBy(_._1.toString)
+                )
+              )
+            }
           )
     }
