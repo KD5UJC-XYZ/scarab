@@ -37,17 +37,21 @@ private[selection] object Events:
       case None => Reported(st, None, false)
       case Some(r) =>
         val unforgettable = r.origin.unforgettable
-        val count = r.failCount + 1
+        // a failure of the node's own code is not counted against the peer
+        val count = if failure == FailureClass.NotThePeers then r.failCount else r.failCount + 1
         val forget = failure match
           case FailureClass.Misbehaved => !unforgettable
           case FailureClass.Transient =>
             r.failCount >= policy.maxConnectionRetries && !unforgettable
+          case FailureClass.NotThePeers => false
         if forget then Reported(st.copy(peers = st.peers - peer), None, true)
         else
           val delay = failure match
             case FailureClass.Misbehaved =>
               (policy.baseColdRetry * (1L << policy.maxColdRetryBackoff.toLong))
             case FailureClass.Transient => delayFor(count)
+            // the peer's standing as it was, at least the base delay: not a busy reconnection
+            case FailureClass.NotThePeers => delayFor(count.max(1))
           val moved = r.copy(
             status = Status.Cold(Some(now + delay)),
             failCount = count,

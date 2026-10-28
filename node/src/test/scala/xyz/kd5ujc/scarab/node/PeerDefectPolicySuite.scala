@@ -51,6 +51,17 @@ class PeerDefectPolicySuite extends FailsOnUncaught:
       case other => fail(s"unexpected $other")
   }
 
+  test("the node's own exception answering a peer reaches the peer, never the node (issue 564)") {
+    Peer.networkFault(NetworkError.ServingDefect(Protocols.TxSubmission2, cause)) match
+      case Fault.Failed(error @ PeerError.ServingDefect(protocol, thrown)) =>
+        assertEquals(protocol, Protocols.TxSubmission2)
+        assert(thrown eq cause)
+        // the connection closes and nothing is counted against the peer
+        assertEquals(FailurePolicy.classify(error), FailureClass.NotThePeers)
+        assertEquals(FailurePolicy.disposition(SessionEnd.Failed(error)), Disposition.Backoff)
+      case other => fail(s"unexpected $other")
+  }
+
   test("control: a defect of unknown origin is still the node's") {
     assertEquals(Peer.networkFault(NetworkError.Defect(cause)), Fault.Defect(cause))
   }
@@ -124,6 +135,22 @@ class PeerDefectPolicySuite extends FailsOnUncaught:
 
   test("a listener connection that ends with a decoder defect is reported without stopping") {
     val error = NetworkError.DecoderDefect(Protocols.LocalTxSubmission, cause)
+    reported(HandlerFailure.Domain(error)).map { (events, fatals) =>
+      assertEquals(fatals, Vector.empty[Fatal])
+      assertEquals(
+        events,
+        Vector(
+          NodeEvent.Inbound(
+            "listener-test",
+            InboundEvent.Closed(InboundEnd.Connection(ConnectionEnd.fromNetwork(error)))
+          )
+        )
+      )
+    }
+  }
+
+  test("a listener connection whose answer met the node's own exception ends without stopping") {
+    val error = NetworkError.ServingDefect(Protocols.LocalTxSubmission, cause)
     reported(HandlerFailure.Domain(error)).map { (events, fatals) =>
       assertEquals(fatals, Vector.empty[Fatal])
       assertEquals(

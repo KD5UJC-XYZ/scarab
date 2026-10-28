@@ -151,6 +151,21 @@ class PeerSelectionSuite extends FunSuite:
     assertEquals(rootFailed.peers(7).failCount, 9)
   }
 
+  // issue 564: the node's own code failed while it answered the peer; nothing is counted
+  test("a failure of the node's own code is never counted against the peer nor forgets it") {
+    val roots = settle(start(List(group(1, 1, 7))), t0)._1.withStatus(7, Status.Cold(None))
+    val withOther = roots.copy(peers = roots.peers.updated(8, PeerRecord.cold(Origin.Other)))
+    val ours = (1 to 9).foldLeft(withOther) { (s, i) =>
+      complete(
+        s.withStatus(8, Status.Connecting),
+        Outcome.ConnectFailed(8, FailureClass.NotThePeers),
+        i.minutes
+      )
+    }
+    assert(ours.peers.contains(8), "never forgotten")
+    assertEquals(ours.peers(8).failCount, 0)
+  }
+
   test(
     "a peer that misbehaved is forgotten, a root that misbehaved waits out the longest backoff"
   ) {

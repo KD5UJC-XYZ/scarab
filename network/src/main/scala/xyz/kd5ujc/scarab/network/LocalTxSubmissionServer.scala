@@ -37,6 +37,12 @@ object LocalTxSubmissionServer:
       */
     case InputDefect(cause: Throwable)
 
+    /** The node's own code threw on the submitted transaction (the ledger rules): no answer, and
+      * the connection ends with [[NetworkError.ServingDefect]], the node going on, as the exception
+      * ends the mini-protocol's thread in the reference (issue 564).
+      */
+    case ServingDefect(cause: Throwable)
+
   enum End:
     case ClientFinished
     case ConnectionClosed(error: NetworkError)
@@ -71,6 +77,7 @@ object LocalTxSubmissionServer:
                   .as(Left(()))
               case Response.ServiceUnavailable(error) => Temporal[F].pure(Right(Some(error)))
               case Response.InputDefect(cause)        => NetworkError.DecoderDefect(id, cause).raise
+              case Response.ServingDefect(cause)      => NetworkError.ServingDefect(id, cause).raise
             }
           case LocalTxSubmission.Message.Done => Temporal[F].pure(Right(None))
           case other => illegal(RuntimeViolation.LocalTxSubmissionUnexpected(other))

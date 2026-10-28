@@ -390,6 +390,10 @@ object Mempool:
                 // the decoder threw on the peer's bytes (issue 465): this connection's defect
                 case Left(Rejection.InputDefect(cause)) =>
                   NetworkError.DecoderDefect(Protocols.TxSubmission2, cause).raise[F, Unit]
+                // the rules threw on the peer's transaction: this connection ends, the node goes
+                // on and the peer is not charged (issue 564)
+                case Left(Rejection.RulesDefect(cause)) =>
+                  NetworkError.ServingDefect(Protocols.TxSubmission2, cause).raise[F, Unit]
                 case _ => F.unit
               }
             }
