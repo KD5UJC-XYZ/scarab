@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.ledger.{
 import cats.syntax.all.*
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.network.{NetworkError, TxSubmissionClient, TxSubmissionServer}
+import xyz.kd5ujc.scarab.network.{NetworkError, Protocols, TxSubmissionClient, TxSubmissionServer}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.node.{Fatal, StorageBoundary}
@@ -387,6 +387,9 @@ object Mempool:
                   NetworkError
                     .BearerClosed(NetworkError.Closure.AbortedBy(defect))
                     .raise[F, Unit]
+                // the decoder threw on the peer's bytes (issue 465): this connection's defect
+                case Left(Rejection.InputDefect(cause)) =>
+                  NetworkError.DecoderDefect(Protocols.TxSubmission2, cause).raise[F, Unit]
                 case _ => F.unit
               }
             }

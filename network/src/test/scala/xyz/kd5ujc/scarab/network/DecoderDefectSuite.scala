@@ -167,6 +167,37 @@ class DecoderDefectSuite extends FailsOnUncaught:
       assert(result.left.exists(_.isInstanceOf[NetworkError.Decode]), result.toString)
     )
 
+  test("local submission: the node's transaction decoder threw, the connection ends (issue 465)"):
+    val cause = injected
+    typed {
+      linked(
+        protocols = Set(Protocols.LocalTxSubmission),
+        client = Mux.Config.nodeToClient.copy(role = Mux.Role.Initiator),
+        server = Mux.Config.nodeToClient
+      ).use { (client, server) =>
+        for
+          theirs <- client.channel(Protocols.LocalTxSubmission)
+          ours <- server.channel(Protocols.LocalTxSubmission)
+          submit = xyz.kd5ujc.scarab.protocol.LocalTxSubmission.encode(
+            xyz.kd5ujc.scarab.protocol.LocalTxSubmission.State.Idle,
+            xyz.kd5ujc.scarab.protocol.ChainSync.Role.Client,
+            xyz.kd5ujc.scarab.protocol.LocalTxSubmission.Message
+              .SubmitTx(Bytes(Vector(0x80.toByte)))
+          )
+          _ <- submit.fold(e => IO(fail(e.toString)), theirs.send)
+          ended <- LocalTxSubmissionServer.run(
+            ours,
+            _ => IO.pure(LocalTxSubmissionServer.Response.InputDefect(cause))
+          )
+        yield ended
+      }
+    }.map(result =>
+      result.fold(
+        expectDecoderDefect(Protocols.LocalTxSubmission, cause),
+        ended => fail(s"expected a failure, got $ended")
+      )
+    )
+
   test("the node-to-client servers: a throwing decoder is DecoderDefect, not a node defect"):
     val cause = injected
     val protocols = Set(
