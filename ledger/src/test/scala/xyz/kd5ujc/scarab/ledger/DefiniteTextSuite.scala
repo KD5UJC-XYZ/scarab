@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import munit.FunSuite
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 
 /** Text a block body carries is read with `decodeString`, which takes a definite-length string in
   * every decoder version (cborg through `instance DecCBOR Text`,
@@ -18,6 +18,9 @@ class DefiniteTextSuite extends FunSuite:
   private def hex(s: String): Bytes =
     Bytes.fromHex(s.filterNot(_.isWhitespace)).fold(e => fail(e.toString), identity)
 
+  private def node(s: String): Node =
+    CborRead.decode(hex(s)).fold(e => fail(s"not one CBOR item: $e"), identity)
+
   private val hash = "ab" * 32
 
   /** `[url, data_hash]` (`Anchor`, `PoolMetadata`): the same array with a definite and a chunked
@@ -29,20 +32,21 @@ class DefiniteTextSuite extends FunSuite:
   private val chunkedUrl = "7f 61 61 ff" // "a" as one chunk
 
   test("CborRead.text takes a definite string and refuses a chunked one") {
-    val definite = CborRead.decode(hex(definiteUrl)).toOption.get
-    val chunked = CborRead.decode(hex(chunkedUrl)).toOption.get
     assertEquals(
-      CborRead.text(definite, DecodeField.PoolMetadataURL),
+      CborRead.text(node(definiteUrl), DecodeField.PoolMetadataURL),
       Right("a")
     )
     assertEquals(
-      CborRead.text(chunked, DecodeField.PoolMetadataURL),
+      CborRead.text(node(chunkedUrl), DecodeField.PoolMetadataURL),
       Left(LedgerDecodeError.IndefiniteLength(DecodeField.PoolMetadataURL))
     )
   }
 
   test("a pool metadata url is definite: the reference reads PoolMetadata with decodeString") {
-    assertEquals(PoolParams.metadataHash(hex(pair(definiteUrl))).isRight, true)
+    assert(
+      PoolParams.metadataHash(hex(pair(definiteUrl))).isRight,
+      "a definite url with a 32-byte hash is read"
+    )
     assertEquals(
       PoolParams.metadataHash(hex(pair(chunkedUrl))),
       Left(LedgerDecodeError.IndefiniteLength(DecodeField.PoolMetadataURL))
@@ -50,12 +54,9 @@ class DefiniteTextSuite extends FunSuite:
   }
 
   test("an anchor url is definite: `Url` decodes textDecCBOR, and textDecCBOR is decodeString") {
+    assertEquals(Anchor.decode(node(pair(definiteUrl))).map(_.url), Right("a"))
     assertEquals(
-      Anchor.decode(CborRead.decode(hex(pair(definiteUrl))).toOption.get).map(_.url),
-      Right("a")
-    )
-    assertEquals(
-      Anchor.decode(CborRead.decode(hex(pair(chunkedUrl))).toOption.get),
+      Anchor.decode(node(pair(chunkedUrl))),
       Left(LedgerDecodeError.IndefiniteLength(DecodeField.AnchorUrl))
     )
   }
@@ -78,5 +79,18 @@ class DefiniteTextSuite extends FunSuite:
     assertEquals(
       PoolRelays.decode(hex(s"81 82 02 $chunkedUrl")),
       Left(PoolRelayError.IndefiniteDnsName(0))
+    )
+  }
+
+  test("a Byron software name is definite: ApplicationName decodes text") {
+    // `ApplicationName` is `newtype ... = ApplicationName Text` with `decCBOR = ... <$> decCBOR`
+    // (`Update/ApplicationName.hs:41-62`, cardano-ledger f649f975), so it takes `decodeString`.
+    assertEquals(
+      CborRead.text(node(definiteUrl), DecodeField.SoftwareName),
+      Right("a")
+    )
+    assertEquals(
+      CborRead.text(node(chunkedUrl), DecodeField.SoftwareName),
+      Left(LedgerDecodeError.IndefiniteLength(DecodeField.SoftwareName))
     )
   }

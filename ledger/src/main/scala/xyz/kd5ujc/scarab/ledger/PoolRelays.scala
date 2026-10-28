@@ -319,8 +319,7 @@ object PoolRelays:
   private def dns(n: Node, index: Int): Either[PoolRelayError, String] =
     n.value match
       case Value.Text(s) =>
-        if n.original.size > 0 && (n.original(0) & 31) == 31 then
-          Left(PoolRelayError.IndefiniteDnsName(index))
+        if CborRead.indefinite(n) then Left(PoolRelayError.IndefiniteDnsName(index))
         else
           val size = s.getBytes(StandardCharsets.UTF_8).length
           Either.cond(size <= MaxDnsNameBytes, s, PoolRelayError.DnsNameTooLong(index, size))
