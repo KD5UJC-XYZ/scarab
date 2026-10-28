@@ -10,8 +10,17 @@ import java.io.IOException
 import java.net.{StandardProtocolFamily, UnixDomainSocketAddress}
 import java.nio.ByteBuffer
 import java.nio.channels.{ServerSocketChannel, SocketChannel}
-import java.nio.file.{Files, LinkOption, Path}
-import java.nio.file.attribute.BasicFileAttributes
+import java.lang.foreign.{
+  Arena,
+  FunctionDescriptor,
+  Linker,
+  MemoryLayout,
+  MemorySegment,
+  ValueLayout
+}
+import java.lang.invoke.MethodHandle
+import java.nio.file.{Files, Path}
+import scala.jdk.OptionConverters.*
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import xyz.kd5ujc.scarab.codec.DomainError
@@ -86,6 +95,12 @@ enum DiffusionFailure extends DomainError:
   /** An exception that is not one of the socket's own, from a library or a bug. */
   case Defect(cause: Throwable)
 
+  /** SIGINT reached the node while it ran: GHC's `UserInterrupt`, which the reference's diffusion
+    * traces before it rethrows (`Diffusion.hs` 905-911); SIGTERM ends the reference with
+    * `ExitSuccess`, which it does not trace.
+    */
+  case UserInterrupt
+
   /** The `show` of the exception, the `error` field of `DiffusionErrored`. */
   def shown: String = this match
     case System(error) => error.shown
@@ -94,6 +109,7 @@ enum DiffusionFailure extends DomainError:
       s"pokeSockAddr: path is too long in SockAddrUnix ${HaskellShow.string(path)}, length $length, " +
         s"unixPathMax ${LocalSockets.UnixPathMax}\n" + LocalSockets.PokeSockAddrCallStack
     case Defect(cause) => cause.toString
+    case UserInterrupt => "user interrupt"
 
 /** The calls the local socket makes, one for each of the reference's (`removeFile`,
   * `getFileStatus`, the `Snocket` of a Unix socket), each failure a typed value.
@@ -148,7 +164,7 @@ object LocalSockets:
     */
   def jdk[F[_]](using F: Async[F]): LocalSockets[F] = new LocalSockets[F]:
     def removeFile(path: String): F[Either[SystemCallError, Unit]] =
-      F.blocking(unlink(path)).map(_.leftMap(SystemCallError(SystemCall.RemoveLink, _, Some(path))))
+      F.blocking(Unlink(path)).map(_.leftMap(SystemCallError(SystemCall.RemoveLink, _, Some(path))))
 
     def fileMode(path: String): F[Either[SystemCallError, Int]] =
       F.blocking(
@@ -247,27 +263,47 @@ object LocalSockets:
 
       def close: F[Unit] = F.blocking(client.shutdownOutput()).void
 
-  /** `unlink(path)` of the path as written, which needs write and search permission on its
-    * directory only. A path that ends in `/` names a directory: `unlink` refuses a directory there
-    * (`EISDIR`) and anything else (`ENOTDIR`), and nothing there is `ENOENT`. Otherwise the type is
-    * read without following a link and a directory is refused, as `unlink` refuses it; anything
-    * else is deleted. Java's own delete would remove an empty directory (`rmdir`), so it is never
-    * given one; one replaced by an empty directory between the two calls is the one race left.
+  /** `unlink(2)` of the path as written, one call, as the reference's `removeFile`: it needs write
+    * and search permission on the directory only, refuses a directory (`EISDIR`), and takes a path
+    * that ends in `/` as naming a directory (`ENOTDIR` on anything else). The JDK has no such call
+    * (its deletes read the type first and remove an empty directory with `rmdir`), so it is made
+    * through the foreign-function interface, which on Java 21 is a preview API: only the calls that
+    * Java 22 kept unchanged are used, and the JVM warns once unless started with
+    * `--enable-native-access=ALL-UNNAMED`.
     */
-  private def unlink(path: String): Either[ErrnoCause, Unit] =
-    def io[A](call: => A): Either[ErrnoCause, A] =
-      Either.catchOnly[IOException](call).leftMap(Errno.of)
-    val target = Path.of(path)
-    if path.endsWith("/") then
-      io(Files.readAttributes(target, classOf[BasicFileAttributes])).flatMap(found =>
-        Left(ErrnoCause.Known(if found.isDirectory then Errno.EISDIR else Errno.ENOTDIR))
-      )
-    else
-      io(
-        Files.readAttributes(target, classOf[BasicFileAttributes], LinkOption.NOFOLLOW_LINKS)
-      ).flatMap(found =>
-        if found.isDirectory then Left(ErrnoCause.Known(Errno.EISDIR)) else io(Files.delete(target))
-      )
+  private object Unlink:
+    private val linker = Linker.nativeLinker()
+    private val state = Linker.Option.captureStateLayout()
+    private val errnoOffset = state.byteOffset(MemoryLayout.PathElement.groupElement("errno"))
+    private lazy val call: Option[MethodHandle] =
+      linker
+        .defaultLookup()
+        .find("unlink")
+        .toScala
+        .map(
+          linker.downcallHandle(
+            _,
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS),
+            Linker.Option.captureCallState("errno")
+          )
+        )
+
+    def apply(path: String): Either[ErrnoCause, Unit] =
+      call.fold(ErrnoCause.Unrecognised("no unlink in the C library").asLeft[Unit]) { unlink =>
+        Using.resource(Arena.ofConfined()) { arena =>
+          val bytes = path.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+          val name = arena.allocate(bytes.length + 1L)
+          MemorySegment.copy(bytes, 0, name, ValueLayout.JAVA_BYTE, 0L, bytes.length)
+          name.set(ValueLayout.JAVA_BYTE, bytes.length.toLong, 0.toByte)
+          val captured = arena.allocate(state)
+          val result = unlink.invokeWithArguments(captured, name).asInstanceOf[Integer].intValue
+          Either.cond(
+            result == 0,
+            (),
+            Errno.ofNumber(captured.get(ValueLayout.JAVA_INT, errnoOffset))
+          )
+        }
+      }
 
   /** The process's own sockets, read from `/proc` (Linux). */
   private object Proc:

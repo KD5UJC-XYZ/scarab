@@ -12,4 +12,4 @@ ENV MALLOC_ARENA_MAX=2
 WORKDIR /opt/scarab
 COPY --chmod=0444 app.jar /opt/scarab/scarab.jar
 USER 10001:10001
-ENTRYPOINT ["java", "-jar", "/opt/scarab/scarab.jar"]
+ENTRYPOINT ["java", "--enable-native-access=ALL-UNNAMED", "-jar", "/opt/scarab/scarab.jar"]

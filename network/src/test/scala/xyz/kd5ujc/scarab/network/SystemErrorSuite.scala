@@ -171,3 +171,10 @@ class SystemErrorSuite extends FunSuite:
     assertEquals(FileDescriptor(20).shown, "FileDescriptor 20")
     assertEquals(FileDescriptor.Invalid.shown, "FileDescriptor (-1)")
   }
+
+  test("a native call's errno number names its errno") {
+    assertEquals(Errno.ofNumber(21), ErrnoCause.Known(Errno.EISDIR))
+    assertEquals(Errno.ofNumber(20), ErrnoCause.Known(Errno.ENOTDIR))
+    assertEquals(Errno.values.map(_.number).distinct.length, Errno.values.length)
+    assertEquals(Errno.ofNumber(4095), ErrnoCause.Unrecognised("errno 4095"))
+  }

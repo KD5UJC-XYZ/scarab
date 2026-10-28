@@ -639,9 +639,8 @@ object Main extends IOApp:
     // the VRF key's permissions, then the credentials: before the sockets, the topology and the
     // database, as the reference's `runNode` reads them before `handleSimpleNode` (`Run.hs` 193-201)
     def credentials(files: ForgeFiles): IO[PoolCredentials] =
-      KeyGuard.permissions[IO](files.vrfSkey, Log.sink[ForgeEvents, ForgeEvent, IO]) *>
-        IO.blocking(KeyFiles.load(files.vrfSkey, files.kesSkey, files.opCert))
-          .flatMap(_.fold(e => Handle[IO, NodeError].raise[NodeError, PoolCredentials](e), IO.pure))
+      IO.blocking(KeyFiles.load(files.vrfSkey, files.kesSkey, files.opCert))
+        .flatMap(_.fold(e => Handle[IO, NodeError].raise[NodeError, PoolCredentials](e), IO.pure))
     // the stale socket goes once the configuration is read, before the topology and the database,
     // as the reference's `gatherConfiguredSockets` (`Run.hs` 317-324)
     def removedStale(setup: NodeSetup): IO[Either[SocketConfigError, Unit]] =
@@ -654,6 +653,14 @@ object Main extends IOApp:
         .rescue(error => IO.pure(error.asLeft[Unit]))
     for
       _ <- nativeLibrary
+      // the configuration, then the VRF key's permissions, then the genesis and the credentials
+      // (`Run.hs` 183-201)
+      _ <- requested.configFile.traverse_(file =>
+        IO.blocking(NodeSetup.readConfig(file)).flatMap(admitted)
+      )
+      _ <- requested.forge.traverse_(files =>
+        KeyGuard.permissions[IO](files.vrfSkey, Log.sink[ForgeEvents, ForgeEvent, IO])
+      )
       setup <- IO.blocking(nodeSetup(requested)).flatMap(admitted)
       pool <- requested.forge.traverse(credentials)
       removal <- removedStale(setup)
@@ -1520,25 +1527,34 @@ object Main extends IOApp:
             _ <- advisory.traverse_(logged)
             // a stall that lasts --stall-exit-after ends the run like a signal does: the stores
             // close and the shutdown snapshot is taken, then the process exits with its own code
-            ended <- IO
-              .race(
-                Handle
-                  .allow[DiffusionFailure] {
-                    val running = run(summon[Raise[IO, DiffusionFailure]])
-                    options.seconds
-                      .fold(running)(s => running.timeoutTo(s.seconds, IO.unit))
-                      .as(Option.empty[DiffusionFailure])
-                  }
-                  .rescue(failure => IO.pure(Some(failure))),
-                IO.race(stall.exit.get, faulted.get)
+            // SIGINT while the node runs ends the run as the reference's `UserInterrupt` does: traced
+            // as `DiffusionErrored` (`Diffusion.hs` 905-911), the process then exits as interrupted
+            interrupted <- Deferred[IO, Unit]
+            ended <- Signals
+              .interrupt[IO](interrupted.complete(()).void)
+              .surround(
+                IO.race(
+                  Handle
+                    .allow[DiffusionFailure] {
+                      val running = run(summon[Raise[IO, DiffusionFailure]])
+                      options.seconds
+                        .fold(running)(s => running.timeoutTo(s.seconds, IO.unit))
+                        .as(Option.empty[DiffusionFailure])
+                    }
+                    .rescue(failure => IO.pure(Some(failure))),
+                  IO.race(IO.race(stall.exit.get, faulted.get), interrupted.get)
+                )
               )
               .map {
-                case Left(None)            => RunEnd.Finished
-                case Left(Some(failure))   => RunEnd.Errored(failure)
-                case Right(Left(_))        => RunEnd.Stalled
-                case Right(Right(failure)) => RunEnd.Faulted(failure)
+                case Left(None)                  => RunEnd.Finished
+                case Left(Some(failure))         => RunEnd.Errored(failure)
+                case Right(Left(Left(_)))        => RunEnd.Stalled
+                case Right(Left(Right(failure))) => RunEnd.Faulted(failure)
+                case Right(Right(_))             => RunEnd.Interrupted
               }
             _ <- ended match
+              case RunEnd.Interrupted =>
+                logged(NodeEvent.DiffusionErrored(DiffusionFailure.UserInterrupt))
               case RunEnd.Errored(failure) =>
                 logged(NodeEvent.DiffusionErrored(failure)) *>
                   failedStart(s"DiffusionError ${failure.shown}")
@@ -1567,14 +1583,23 @@ object Main extends IOApp:
       */
     case Errored(failure: DiffusionFailure)
 
+    /** SIGINT ended the run. */
+    case Interrupted
+
   private def exitCode(end: RunEnd): ExitCode = end match
     case RunEnd.Finished       => ExitCode.Success
     case RunEnd.Stalled        => StallExitCode
     case RunEnd.Faulted(fault) => FaultExitCode(fault)
     case RunEnd.Errored(_)     => ExitCode.Error
+    case RunEnd.Interrupted    => InterruptExitCode
 
   /** The exit code of a run that ended because a stall lasted `--stall-exit-after`. */
   val StallExitCode: ExitCode = ExitCode(4)
+
+  /** A run ended by SIGINT exits as a process killed by it would (128 + 2), as the reference's
+    * does: GHC re-raises the signal once `UserInterrupt` reaches its top-level handler.
+    */
+  val InterruptExitCode: ExitCode = ExitCode(130)
 
   /** The exit code of a run that a session's failure stopped: the storage failed (5), the node
     * failed itself (6), something threw that nobody expected (7), or evaluation was unavailable

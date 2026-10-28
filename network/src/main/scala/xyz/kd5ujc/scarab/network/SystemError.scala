@@ -28,113 +28,153 @@ enum IoErrorType(val shown: String):
   case ProtocolError extends IoErrorType("protocol error")
   case UnsupportedOperation extends IoErrorType("unsupported operation")
 
-/** The Linux `errno` values a call of the local socket can fail with. Each carries its text in the
-  * C library the JVM runs on (glibc, what the JDK puts in its exceptions), its text in musl (the C
-  * library of the reference's static release binary, so the text the reference shows), and the kind
-  * GHC gives it (`Foreign.C.Error.errnoToIOError`, base 4.18).
+/** The Linux `errno` values a call of the local socket can fail with. Each carries its number, its
+  * text in the C library the JVM runs on (glibc, what the JDK puts in its exceptions), its text in
+  * musl (the C library of the reference's static release binary, so the text the reference shows),
+  * and the kind GHC gives it (`Foreign.C.Error.errnoToIOError`, base 4.18).
   */
-enum Errno(val glibc: String, val musl: String, val kind: IoErrorType):
+enum Errno(val number: Int, val glibc: String, val musl: String, val kind: IoErrorType):
   case EPERM
       extends Errno(
+        1,
         "Operation not permitted",
         "Operation not permitted",
         IoErrorType.PermissionDenied
       )
   case ENOENT
       extends Errno(
+        2,
         "No such file or directory",
         "No such file or directory",
         IoErrorType.NoSuchThing
       )
   case EINTR
-      extends Errno("Interrupted system call", "Interrupted system call", IoErrorType.Interrupted)
-  case EIO extends Errno("Input/output error", "I/O error", IoErrorType.HardwareFault)
+      extends Errno(
+        4,
+        "Interrupted system call",
+        "Interrupted system call",
+        IoErrorType.Interrupted
+      )
+  case EIO extends Errno(5, "Input/output error", "I/O error", IoErrorType.HardwareFault)
   case EBADF
-      extends Errno("Bad file descriptor", "Bad file descriptor", IoErrorType.InvalidArgument)
+      extends Errno(9, "Bad file descriptor", "Bad file descriptor", IoErrorType.InvalidArgument)
   case EAGAIN
       extends Errno(
+        11,
         "Resource temporarily unavailable",
         "Resource temporarily unavailable",
         IoErrorType.ResourceExhausted
       )
   case ENOMEM
-      extends Errno("Cannot allocate memory", "Out of memory", IoErrorType.ResourceExhausted)
-  case EACCES extends Errno("Permission denied", "Permission denied", IoErrorType.PermissionDenied)
-  case EFAULT extends Errno("Bad address", "Bad address", IoErrorType.OtherError)
-  case EBUSY extends Errno("Device or resource busy", "Resource busy", IoErrorType.ResourceBusy)
-  case EEXIST extends Errno("File exists", "File exists", IoErrorType.AlreadyExists)
-  case ENOTDIR extends Errno("Not a directory", "Not a directory", IoErrorType.InappropriateType)
-  case EISDIR extends Errno("Is a directory", "Is a directory", IoErrorType.InappropriateType)
-  case EINVAL extends Errno("Invalid argument", "Invalid argument", IoErrorType.InvalidArgument)
+      extends Errno(12, "Cannot allocate memory", "Out of memory", IoErrorType.ResourceExhausted)
+  case EACCES
+      extends Errno(13, "Permission denied", "Permission denied", IoErrorType.PermissionDenied)
+  case EFAULT extends Errno(14, "Bad address", "Bad address", IoErrorType.OtherError)
+  case EBUSY extends Errno(16, "Device or resource busy", "Resource busy", IoErrorType.ResourceBusy)
+  case EEXIST extends Errno(17, "File exists", "File exists", IoErrorType.AlreadyExists)
+  case ENOTDIR
+      extends Errno(20, "Not a directory", "Not a directory", IoErrorType.InappropriateType)
+  case EISDIR extends Errno(21, "Is a directory", "Is a directory", IoErrorType.InappropriateType)
+  case EINVAL extends Errno(22, "Invalid argument", "Invalid argument", IoErrorType.InvalidArgument)
   case ENFILE
       extends Errno(
+        23,
         "Too many open files in system",
         "Too many open files in system",
         IoErrorType.ResourceExhausted
       )
   case EMFILE
       extends Errno(
+        24,
         "Too many open files",
         "No file descriptors available",
         IoErrorType.ResourceExhausted
       )
   case ENOSPC
       extends Errno(
+        28,
         "No space left on device",
         "No space left on device",
         IoErrorType.ResourceExhausted
       )
   case EROFS
-      extends Errno("Read-only file system", "Read-only file system", IoErrorType.PermissionDenied)
+      extends Errno(
+        30,
+        "Read-only file system",
+        "Read-only file system",
+        IoErrorType.PermissionDenied
+      )
   case ENAMETOOLONG
-      extends Errno("File name too long", "Filename too long", IoErrorType.InvalidArgument)
+      extends Errno(36, "File name too long", "Filename too long", IoErrorType.InvalidArgument)
   case ELOOP
       extends Errno(
+        40,
         "Too many levels of symbolic links",
         "Symbolic link loop",
         IoErrorType.InvalidArgument
       )
   case EOVERFLOW
       extends Errno(
+        75,
         "Value too large for defined data type",
         "Value too large for data type",
         IoErrorType.OtherError
       )
-  case EPROTO extends Errno("Protocol error", "Protocol error", IoErrorType.ProtocolError)
+  case EPROTO extends Errno(71, "Protocol error", "Protocol error", IoErrorType.ProtocolError)
   case ENOTSOCK
-      extends Errno("Socket operation on non-socket", "Not a socket", IoErrorType.InvalidArgument)
+      extends Errno(
+        88,
+        "Socket operation on non-socket",
+        "Not a socket",
+        IoErrorType.InvalidArgument
+      )
   case EPROTONOSUPPORT
-      extends Errno("Protocol not supported", "Protocol not supported", IoErrorType.ProtocolError)
+      extends Errno(
+        93,
+        "Protocol not supported",
+        "Protocol not supported",
+        IoErrorType.ProtocolError
+      )
   case ESOCKTNOSUPPORT
       extends Errno(
+        94,
         "Socket type not supported",
         "Socket type not supported",
         IoErrorType.UnsupportedOperation
       )
   case EOPNOTSUPP
-      extends Errno("Operation not supported", "Not supported", IoErrorType.UnsupportedOperation)
+      extends Errno(
+        95,
+        "Operation not supported",
+        "Not supported",
+        IoErrorType.UnsupportedOperation
+      )
   case EAFNOSUPPORT
       extends Errno(
+        97,
         "Address family not supported by protocol",
         "Address family not supported by protocol",
         IoErrorType.UnsupportedOperation
       )
   case EADDRINUSE
-      extends Errno("Address already in use", "Address in use", IoErrorType.ResourceBusy)
+      extends Errno(98, "Address already in use", "Address in use", IoErrorType.ResourceBusy)
   case EADDRNOTAVAIL
       extends Errno(
+        99,
         "Cannot assign requested address",
         "Address not available",
         IoErrorType.UnsupportedOperation
       )
   case ECONNABORTED
       extends Errno(
+        103,
         "Software caused connection abort",
         "Connection aborted",
         IoErrorType.OtherError
       )
   case ENOBUFS
       extends Errno(
+        105,
         "No buffer space available",
         "No buffer space available",
         IoErrorType.ResourceExhausted
@@ -142,6 +182,11 @@ enum Errno(val glibc: String, val musl: String, val kind: IoErrorType):
 
 object Errno:
   private val byGlibc: Map[String, Errno] = values.map(e => e.glibc -> e).toMap
+  private val byNumber: Map[Int, Errno] = values.map(e => e.number -> e).toMap
+
+  /** The errno a native call set. */
+  def ofNumber(number: Int): ErrnoCause =
+    byNumber.get(number).fold(ErrnoCause.Unrecognised(s"errno $number"))(ErrnoCause.Known(_))
 
   /** What the JDK appends to the text of `ELOOP` (`sun.nio.fs.UnixException`). */
   private val LoopSuffix = " or unable to access attributes of symbolic link"

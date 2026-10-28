@@ -34,4 +34,4 @@ fi
 # -Xss is the compiler's thread stack: an incremental recompile of node's Main.scala overflows the
 # 1 MiB default in PostTyper. Forked test JVMs take their own javaOptions, and the stack-safety
 # suites pin explicit small-stack threads, so this does not reach them.
-exec java -Dsbt.server.autostart=false -Dsbt.server.forcestart=true -Dsbt.boot.directory="$cache/boot" -Dsbt.global.base="${SBT_GLOBAL_BASE:-$cache/global}" -Dsbt.ivy.home="$cache/ivy" -XX:ActiveProcessorCount="$processors" -Xms256m -Xmx2g -Xss8m -Dsbt.override.build.repos=true -Dsbt.repository.config="$repositories" -Dsbt.supershell=false -jar "$jar" "$@"
+exec java --enable-native-access=ALL-UNNAMED -Dsbt.server.autostart=false -Dsbt.server.forcestart=true -Dsbt.boot.directory="$cache/boot" -Dsbt.global.base="${SBT_GLOBAL_BASE:-$cache/global}" -Dsbt.ivy.home="$cache/ivy" -XX:ActiveProcessorCount="$processors" -Xms256m -Xmx2g -Xss8m -Dsbt.override.build.repos=true -Dsbt.repository.config="$repositories" -Dsbt.supershell=false -jar "$jar" "$@"

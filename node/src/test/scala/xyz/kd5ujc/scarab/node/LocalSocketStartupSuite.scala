@@ -184,3 +184,48 @@ class LocalSocketStartupSuite extends CatsEffectSuite:
         assert(afterPermissions && afterCredentials, "the stale socket is still there")
     }
   }
+
+  test("the VRF key's permissions are checked before the genesis is read") {
+    temporary.use { root =>
+      val vrf = root.resolve("vrf.skey")
+      val log = root.resolve("node.log")
+      val noGenesis = root.resolve("no-genesis")
+      for
+        _ <- IO.blocking(Files.createDirectory(noGenesis))
+        _ <- IO.blocking(Files.writeString(vrf, "{}"))
+        _ <- IO.blocking(
+          Files.setPosixFilePermissions(
+            vrf,
+            java.nio.file.attribute.PosixFilePermissions.fromString("rw-r--r--")
+          )
+        )
+        code <- Main.run(
+          List(
+            "follow",
+            "--genesis-dir",
+            noGenesis.toString,
+            "--peer",
+            "127.0.0.1:1",
+            "--forge",
+            "--vrf-skey",
+            vrf.toString,
+            "--kes-skey",
+            root.resolve("absent.kes").toString,
+            "--opcert",
+            root.resolve("absent.opcert").toString,
+            "--log-stdout",
+            "off",
+            "--log-file",
+            log.toString
+          )
+        )
+        lines <- IO.blocking(Files.readAllLines(log).asScala.toList)
+      yield
+        val kinds = lines
+          .flatMap(io.circe.parser.parse(_).toOption)
+          .filter(_.hcursor.get[String]("event").toOption.contains("error"))
+          .flatMap(_.hcursor.get[String]("kind").toOption)
+        assertEquals(code, ExitCode(1))
+        assertEquals(kinds, List("KeyFile"))
+    }
+  }

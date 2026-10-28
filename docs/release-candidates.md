@@ -61,7 +61,8 @@ incomplete name, never as a verified candidate.
    as another tested platform.
 5. The image is built once from the verified JAR and the digest-pinned Temurin 21.0.11+10 JRE.
    It runs as numeric user `10001:10001`, with entrypoint
-   `java -jar /opt/scarab/scarab.jar`. Read-only runtime smoke checks need executable JNI scratch:
+   `java --enable-native-access=ALL-UNNAMED -jar /opt/scarab/scarab.jar` (the stale-socket removal
+   calls `unlink` through the foreign-function interface; without the flag Java 21 only warns once). Read-only runtime smoke checks need executable JNI scratch:
    `--tmpfs /tmp:rw,exec,nosuid,size=256m`; Docker's default `--tmpfs /tmp` is `noexec`.
    CLI and portable native/Plutus smoke checks run in the actual image. The existing resource,
    service, multi-release, BuildInfo, BouncyCastle and RocksDB verifier is compiled once in the

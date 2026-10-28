@@ -67,11 +67,13 @@ longer than that is told there is no intersection.
 As in the reference node, whatever is at the socket path (`--local-socket`, or the configuration's
 `SocketPath`) is removed at start-up, once the configuration, the genesis and, with `--forge`, the VRF
 key's permissions and the credentials are read, and before the topology and the database are
-(`removeStaleLocalSocket` in `gatherConfiguredSockets`, cardano-node 11.1.3). It is an `unlink` of the
-path, so the directory needs write and search permission only: a socket left by an earlier run, a file or
-a symbolic link (the link, not its target) goes, and nothing there is fine. A path that ends in `/` names
-a directory, as `unlink` takes it: something other than a directory there refuses the start (`ENOTDIR`),
-and with nothing there the bind fails later. Any other failure refuses the start: a directory at the path, empty or not, is
+(`removeStaleLocalSocket` in `gatherConfiguredSockets`, cardano-node 11.1.3). It is one `unlink(2)` of
+the path, made through Java's foreign-function interface (the JVM warns once unless started with
+`--enable-native-access=ALL-UNNAMED`, as the image and the devnet start it), so the directory needs
+write and search permission only: a socket left by an earlier run, a file or a symbolic link (the link,
+not its target) goes, and nothing there is fine. A path that ends in `/` names a directory, as `unlink`
+takes it: something other than a directory there refuses the start (`ENOTDIR`), and with nothing there
+the bind fails later. Any other failure refuses the start: a directory at the path, empty or not, is
 left, and the start ends with one `socketConfigError` line whose `error` is the reference's
 (`LocalSocketError "<path>" <path>: removeLink: inappropriate type (Is a directory)`) and exit code 1.
 The path is used as written, not normalised.
@@ -89,12 +91,16 @@ directory that is not there or that the node may not write, a path of more than 
 status of the socket or its directory that cannot be read, stops the node with one `diffusionErrored`
 line carrying the reference's text (`Network.Socket.bind: does not exist (No such file or directory)`)
 and exit code 1. A start that fails, here or in the removal above, also says why on standard error,
-as the reference's top-level handler does.
+as the reference's top-level handler does. SIGINT while the node runs is a `diffusionErrored` line with
+`user interrupt` and exit code 130, as the reference's `UserInterrupt`; SIGTERM ends the run without
+it, as the reference's `ExitSuccess` does.
 
 One approved deviation (owner decision recorded on [#474](https://github.com/KD5UJC-XYZ/scarab/issues/474)):
 the JDK binds and listens in one call, so the socket listens before the check after the bind rather than
 after it, and a client that connects in between waits in the backlog instead of being refused; the lines
-and the failures keep the reference's order. systemd socket activation (a socket passed in `LISTEN_FDS`)
+and the failures keep the reference's order. Also approved (same record): the path is passed to the
+kernel as UTF-8 and the JDK refuses one of 108 bytes or more, where the reference truncates each
+character to a byte (`castCharToCChar`) and allows 108 characters. systemd socket activation (a socket passed in `LISTEN_FDS`)
 is not supported yet: [#542](https://github.com/KD5UJC-XYZ/scarab/issues/542).
 
 Clients are accepted without a limit on their number (the reference's local

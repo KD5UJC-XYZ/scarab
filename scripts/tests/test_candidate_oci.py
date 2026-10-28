@@ -36,7 +36,7 @@ class CandidateOciTest(unittest.TestCase):
         layer = self.tar({'opt/scarab/scarab.jar': self.jar.read_bytes() if jar is None else jar})
         config = json.dumps(dict(architecture='amd64', os='linux',
             rootfs=dict(type='layers', diff_ids=['sha256:' + hashlib.sha256(layer).hexdigest()]),
-            config=dict(Entrypoint=['java', '-jar', '/opt/scarab/scarab.jar'], User='10001:10001',
+            config=dict(Entrypoint=['java', '--enable-native-access=ALL-UNNAMED', '-jar', '/opt/scarab/scarab.jar'], User='10001:10001',
                         Labels={'org.opencontainers.image.revision': 'a' * 40,
                                 'org.opencontainers.image.version': version}))).encode()
         archive = self.root / 'docker.tar'

@@ -99,7 +99,7 @@ def verify(archive_path, artifact, identity, expected_manifest=None):
         labels = runtime['Labels']
         if labels.get('org.opencontainers.image.revision') != identity['gitCommit'] or labels.get('org.opencontainers.image.version') != identity['version']:
             raise ValueError('image labels differ from frozen source identity')
-        if runtime.get('Entrypoint') != ['java', '-jar', '/opt/scarab/scarab.jar'] or runtime.get('User') != '10001:10001':
+        if runtime.get('Entrypoint') != ['java', '--enable-native-access=ALL-UNNAMED', '-jar', '/opt/scarab/scarab.jar'] or runtime.get('User') != '10001:10001':
             raise ValueError('candidate image runtime contract changed')
         layers = manifest['layers']
         diff_ids = []
