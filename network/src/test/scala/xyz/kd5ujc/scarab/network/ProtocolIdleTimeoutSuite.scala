@@ -34,7 +34,8 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
     * together with the server's eventual end and the time the handshake completed.
     */
   private def scenario[A](
-      body: Net ?=> (Mux[IO], IO[Option[ConnectionEnd]], FiniteDuration) => IO[A]
+      body: Net ?=> (Mux[IO], IO[Option[ConnectionEnd]], FiniteDuration) => IO[A],
+      ownClients: Boolean = false
   ): IO[Either[NetworkError, A]] =
     typed {
       Resource
@@ -42,7 +43,9 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
         .flatMap { (ours, theirs) =>
           for
             ended <- Resource.eval(IO.deferred[Either[NetworkError, ConnectionEnd]])
-            _ <- typed(NodeToNodeServer.accept(theirs, magic, handlers))
+            _ <- typed(
+              NodeToNodeServer.accept(theirs, magic, handlers, ownClients = _ => ownClients)
+            )
               .flatMap(ended.complete)
               .background
             mux <- Mux.handshakeResource(
@@ -106,6 +109,71 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
           open <- ended
         yield open
       })
+      .map {
+        case Right(open) => assertEquals(open, None)
+        case Left(error) => fail(error.message)
+      }
+
+  // `WaitIdleRemote`: the timer is armed again when the last running responder ends (issue 461)
+  test("the timer is armed again when the last responder ends: released one timeout later"):
+    TestControl
+      .executeEmbed(scenario { (mux, ended, began) =>
+        for
+          _ <- IO.sleep(1.second)
+          channel <- mux.channel(xyz.kd5ujc.scarab.protocol.Protocols.KeepAlive)
+          client <- KeepAliveClient[IO](channel)
+          _ <- client.ping
+          _ <- IO.sleep(1.second)
+          _ <- client.done
+          endedAt <- IO.monotonic
+          _ <- IO.sleep(4900.millis)
+          early <- ended
+          _ <- IO.sleep(200.millis)
+          late <- ended
+        yield (early, late, endedAt - began)
+      })
+      .map {
+        case Right((early, late, endedAt)) =>
+          assertEquals(endedAt, 2.seconds)
+          assertEquals(early, None)
+          assertEquals(late, Some(ConnectionEnd.Released))
+        case Left(error) => fail(error.message)
+      }
+
+  test("no timer while a responder runs: an open KeepAlive keeps the connection"):
+    TestControl
+      .executeEmbed(scenario { (mux, ended, _) =>
+        for
+          _ <- IO.sleep(1.second)
+          channel <- mux.channel(xyz.kd5ujc.scarab.protocol.Protocols.KeepAlive)
+          client <- KeepAliveClient[IO](channel)
+          _ <- client.ping
+          _ <- IO.sleep(30.seconds)
+          open <- ended
+        yield open
+      })
+      .map {
+        case Right(open) => assertEquals(open, None)
+        case Left(error) => fail(error.message)
+      }
+
+  test("a connection our own clients use is not released when its remote side goes idle"):
+    TestControl
+      .executeEmbed(
+        scenario(
+          (mux, ended, _) =>
+            for
+              _ <- IO.sleep(1.second)
+              channel <- mux.channel(xyz.kd5ujc.scarab.protocol.Protocols.KeepAlive)
+              client <- KeepAliveClient[IO](channel)
+              _ <- client.ping
+              _ <- client.done
+              _ <- IO.sleep(30.seconds)
+              open <- ended
+            yield open,
+          ownClients = true
+        )
+      )
       .map {
         case Right(open) => assertEquals(open, None)
         case Left(error) => fail(error.message)

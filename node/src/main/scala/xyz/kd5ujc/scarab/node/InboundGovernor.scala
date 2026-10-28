@@ -147,7 +147,10 @@ final class InboundGovernor[F[_]: Async] private (
                   config.magic,
                   handlers,
                   config.server,
-                  negotiated = (agreed, mux) => negotiated(connection, remote, agreed, mux)
+                  negotiated = (agreed, mux) => negotiated(connection, remote, agreed, mux),
+                  // our clients run on a duplex connection (`negotiated`): then the remote side's
+                  // idleness does not release it
+                  ownClients = agreed => !agreed.data.initiatorOnly && config.runClients
                 )
               }
               .rescue {

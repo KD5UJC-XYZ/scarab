@@ -1,0 +1,3 @@
+### Changed (network, #461)
+
+- **An inbound connection is released again when it falls silent later.** The protocol-idle timer (5 s) is armed again each time the last running responder of an inbound connection ends, as the reference's inbound governor does (`WaitIdleRemote`, ouroboros-network `2fb69829`), not only after the handshake. Each responder counts as running from its mini-protocol's first byte until that protocol ends; KeepAlive is restarted on demand by any responder's first byte (`StartOnDemandAny`). A duplex connection our own clients run on (`--inbound-sync on`) is not released by its remote side's idleness.
