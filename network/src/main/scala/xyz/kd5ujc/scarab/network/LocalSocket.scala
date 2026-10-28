@@ -268,8 +268,8 @@ object LocalSockets:
     * that ends in `/` as naming a directory (`ENOTDIR` on anything else). The JDK has no such call
     * (its deletes read the type first and remove an empty directory with `rmdir`), so it is made
     * through the foreign-function interface, which on Java 21 is a preview API: only the calls that
-    * Java 22 kept unchanged are used, and the JVM warns once unless started with
-    * `--enable-native-access=ALL-UNNAMED`.
+    * Java 22 kept unchanged are used, and the JVM writes one warning about the native access (no
+    * flag is added to the command line).
     */
   private object Unlink:
     private val linker = Linker.nativeLinker()
