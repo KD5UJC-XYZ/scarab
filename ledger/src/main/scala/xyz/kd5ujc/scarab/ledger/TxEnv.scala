@@ -7,6 +7,7 @@ import cats.Id
 import cats.data.NonEmptyChain
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.state.VocabError
+import xyz.kd5ujc.scarab.ledger.rules.Test
 import xyz.kd5ujc.scarab.plutus.{ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
 
 /** What a decoded transaction holds that its era cannot have. The reference ledger refuses all of
@@ -122,13 +123,6 @@ object LedgerFailure:
     */
   final case class Vocab(error: VocabError) extends LedgerDefect
 
-  extension (failure: LedgerFailure.Unavailable)
-    /** Whose failure it is ([[xyz.kd5ujc.scarab.plutus.BackendFailure.Reach]]): the
-      * implementation's (no transaction can be trusted to get a verdict) or this transaction's (a
-      * defect its scripts trigger; only it lacks a verdict).
-      */
-    def reach: xyz.kd5ujc.scarab.plutus.BackendFailure.Reach = failure.reason.reason.reach
-
 /** Block-level context of a transaction.
   *
   * @param clock
@@ -143,6 +137,8 @@ object LedgerFailure:
   *   supply a verdict; callbacks must complete normally.
   * @param verdicts
   *   Signature verdicts (memoised ahead of time in the node, computed in place otherwise).
+  * @param validation
+  *   Whether the static checks run ([[TxEnv.Validation]]).
   */
 final case class TxEnv(
     slot: BigInt,
@@ -157,8 +153,39 @@ final case class TxEnv(
     decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
     observer: Option[Phase2.Observation => Unit] = None,
     verdicts: xyz.kd5ujc.scarab.ledger.Verdicts = xyz.kd5ujc.scarab.ledger.Verdicts.Direct,
-    private[ledger] val preparation: Option[Phase2.Preparation] = None
-)
+    private[ledger] val preparation: Option[Phase2.Preparation] = None,
+    validation: TxEnv.Validation = TxEnv.Validation.All
+):
+  /** `check` when the static checks run, and a pass otherwise: `runTestOnSignal`
+    * (`Cardano/Ledger/Rules/ValidationMode.hs`), which skips a test labelled static unless the
+    * policy validates it.
+    */
+  private[ledger] def static(
+      check: => Test[PredicateFailure]
+  ): Test[PredicateFailure] = validation match
+    case TxEnv.Validation.All       => check
+    case TxEnv.Validation.NonStatic => Test.pass
+
+  /** [[static]] of a check that may end in a defect: a skipped check meets no defect either. */
+  private[ledger] def staticOrDefect(
+      check: => Either[LedgerDefect, Test[PredicateFailure]]
+  ): Either[LedgerDefect, Test[PredicateFailure]] = validation match
+    case TxEnv.Validation.All       => check
+    case TxEnv.Validation.NonStatic => Right(Test.pass)
 
 object TxEnv:
   type Result[A] = Either[LedgerFailure, A]
+
+  /** Which checks the rules run (the ledger's `ValidationPolicy`, cardano-ledger f649f975
+    * `Cardano/Ledger/Rules/ValidationMode.hs`). A transaction is applied with every check
+    * (`ValidateAll`); a transaction validated before is applied again without the static ones
+    * (`reapplyTx`, `ValidateSuchThat (notElem lblStatic)`, `Shelley/API/Mempool.hs` 472–473). The
+    * static checks are those under `runTestOnSignal` and `when2Phase` (`Alonzo/Rules/Utxos.hs`
+    * 420–421): for Conway the input set not empty, the bootstrap attribute size, the networks of
+    * the outputs, withdrawals and body and the transaction size (`Babbage/Rules/Utxo.hs` 368–406);
+    * the witness signatures, the auxiliary data and the well-formed scripts
+    * (`Babbage/Rules/Utxow.hs` 366–379); and the evaluation of the Plutus scripts, with the
+    * validity flag it is compared with (`Babbage/Rules/Utxos.hs` 145, 208).
+    */
+  enum Validation:
+    case All, NonStatic

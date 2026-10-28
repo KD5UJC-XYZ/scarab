@@ -161,7 +161,8 @@ object Utxos extends JudgedSts[UtxoEnv[Any], PlutusStats, StAnnTx, PredicateFail
           ann.spentByInput,
           ann.referencedByInput,
           ann.plutusPurposes,
-          evaluate = !failing
+          // `when2Phase`: a transaction applied again collects its scripts' contexts only
+          evaluate = !failing && env.ctx.validation == TxEnv.Validation.All
         )
       )
       _ <- next.traverse_(st.set)
@@ -209,7 +210,7 @@ object Utxo
       Value.coin(withdrawn + refunds) + Value(0, body.mint)
     val produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +
       Value.coin(body.fee + deposits + body.donation)
-    UtxoTests.babbage(pp, env.ctx.network, env.ctx.slot, ann, minFee, consumed, produced)
+    UtxoTests.babbage(pp, env.ctx, ann, minFee, consumed, produced)
 
   /** `updateUTxOState` and `updateTreasuryDonation` (`Babbage/Rules/Utxo.hs:449`,
     * `Conway/Rules/Utxo.hs:201`).
@@ -339,10 +340,14 @@ object Utxow
     // payment key of each. An earlier era has no collateral field, so its set is empty.
     val collateral = TxChecks.Collateral(tx.body.collateral.flatMap(ann.utxo.get), BigInt(0))
     def test(t: Test[PredicateFailure]) = Right(t)
-    val signatures = TxChecks.verifiedWits(tx, env.ctx.verdicts)
+    // Under `runTestOnSignal` in every era, and so skipped when a transaction is applied again
+    // ([[TxEnv.static]]): the signatures, the auxiliary data, the failing native scripts before
+    // Babbage (`Shelley/Rules/Utxow.hs:301-316`, `Alonzo/Rules/Utxow.hs:326-364`) and the
+    // well-formed scripts from Babbage (`Babbage/Rules/Utxow.hs:366-379`).
+    val signatures = env.ctx.staticOrDefect(TxChecks.verifiedWits(tx, env.ctx.verdicts))
     val witnesses =
       test(TxChecks.neededWitnesses(genDelegs, tx, ann.spent, collateral, provided))
-    val metadata = TxChecks.auxiliaryChecks(pp, tx, env.ctx)
+    val metadata = env.ctx.staticOrDefect(TxChecks.auxiliaryChecks(pp, tx, env.ctx))
     if pv < 7 then
       // `validateMissingScripts` (`Shelley/Rules/Utxow.hs:375-388`): the scripts provided are the
       // witnesses' before Babbage
@@ -358,7 +363,7 @@ object Utxow
           )
         )
       )
-      val native = test(TxChecks.failedNativeScripts(tx, scripts, None, signers))
+      val native = test(env.ctx.static(TxChecks.failedNativeScripts(tx, scripts, None, signers)))
       TxChecks.plutusFieldsDefect(pp, tx).map(Left(_)).toVector ++ (
         if pv < 5 then Vector(native, missingScripts, signatures, witnesses, metadata, test(mir))
         else
@@ -401,7 +406,7 @@ object Utxow
         signatures,
         witnesses,
         metadata,
-        TxChecks.scriptsWellFormed(pp, tx, env.ctx),
+        env.ctx.staticOrDefect(TxChecks.scriptsWellFormed(pp, tx, env.ctx)),
         test(TxChecks.integrityCheck(pp, tx, ann.spentByInput, scripts))
       )
 

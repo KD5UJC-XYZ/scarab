@@ -54,7 +54,6 @@ object FailurePolicy:
         case FailureClass.Transient  => Disposition.Backoff
     case _: SessionEnd.Rejected     => Disposition.Forget
     case SessionEnd.Unavailable(e)  => Disposition.StopNode(Fatal.Unavailable(e))
-    case SessionEnd.Held(e)         => Disposition.Hold(e)
     case SessionEnd.Unverifiable(e) => Disposition.StopNode(Fatal.Unverifiable(e))
     case SessionEnd.Storage(e)      => Disposition.StopNode(Fatal.Storage(e))
     case SessionEnd.Internal(e)     => Disposition.StopNode(Fatal.Internal(e))

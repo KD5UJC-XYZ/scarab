@@ -333,8 +333,6 @@ final class OutboundPeers[F[_]: Async, A] private (
           case Disposition.StopNode(problem) => fatal(problem)
           case Disposition.Forget | Disposition.Backoff =>
             SessionEnd.peerError(end).traverse_(lost(_))
-          case Disposition.Hold(_) =>
-            lost(PeerError.Unavailable(PeerError.Unavailability.SessionEnded))
           case Disposition.Settled => F.unit)
 
     val loop = F.tailRecM(()) { _ =>

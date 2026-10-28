@@ -176,3 +176,51 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       assert(tagMismatch(true).applyOrElse(local, _ => false), local.toString)
       assertEquals(held.entries.map(_.tx.isValid), Vector(false))
   }
+
+  test(
+    "a held transaction is applied again without its static checks: no script is evaluated or " +
+      "decoded and no signature verified (reapplyTx)"
+  ) {
+    val ok = scenario("raw-dst-pass-valid-true")
+    val evaluated = new java.util.concurrent.atomic.AtomicInteger(0)
+    val decoded = new java.util.concurrent.atomic.AtomicInteger(0)
+    val verified = new java.util.concurrent.atomic.AtomicInteger(0)
+    val evaluator: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[cats.Id] = request =>
+      evaluated.incrementAndGet()
+      xyz.kd5ujc.scarab.plutus.ScalusEvaluator.default.evaluate(request)
+    val decoder: xyz.kd5ujc.scarab.plutus.ScriptDecoder[cats.Id] = (language, pv, script) =>
+      decoded.incrementAndGet()
+      xyz.kd5ujc.scarab.plutus.ScalusEvaluator.defaultDecoder.validate(language, pv, script)
+    val verdicts = new Verdicts:
+      export Verdicts.Direct.{keyHash, opCert, praosVrf, takePrepared, tpraosVrf}
+      def witness(vkey: Bytes, signature: Bytes, message: Bytes) =
+        verified.incrementAndGet()
+        Verdicts.Direct.witness(vkey, signature, message)
+    val counted = mempoolEnv.copy(evaluator = evaluator, decoder = decoder, verdicts = verdicts)
+    def counts = (evaluated.get, decoded.get, verified.get)
+    val held = ok.pool
+      .add(ok.raw(true), counted, Source.Local)
+      .fold(r => fail(r.message), _._1)
+    val admitted = counts
+    assert(admitted._1 > 0 && admitted._2 > 0 && admitted._3 > 0, admitted.toString)
+    val (synced, dropped) = held
+      .sync(Right(ok.ledger), ok.tipSlot, counted)
+      .fold(noVerdict => fail(s"no verdict: $noVerdict"), identity)
+    assertEquals(dropped, Vector.empty)
+    assertEquals(synced.entries.map(_.id), held.entries.map(_.id))
+    val (kept, _) = synced
+      .remove(Set.empty, counted)
+      .fold(noVerdict => fail(s"no verdict: $noVerdict"), identity)
+    assertEquals(kept.entries.map(_.id), held.entries.map(_.id))
+    val selected = BlockBuilder.select(
+      ok.ledger,
+      ok.tipSlot + 1,
+      ok.ledger.epoch,
+      mempoolEnv.geometry,
+      mempoolEnv.globals,
+      synced.entries,
+      BlockBuilder.Limits(65536, xyz.kd5ujc.scarab.plutus.ExUnits(14000000, 10000000000L))
+    )(using decoder, evaluator)
+    assertEquals(selected.map(_.map(_._1.id)), Right(held.entries.map(_.id)))
+    assertEquals(counts, admitted)
+  }

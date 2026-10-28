@@ -34,8 +34,9 @@ object TxChecks:
     *   the outputs of the reference inputs the UTxO set holds, by input
     * @param evaluate
     *   whether the scripts are evaluated: they are not once the judgment has a failure
-    *   (`whenFailureFree`, `Alonzo/Rules/Utxos.hs:180-182`), and then only their contexts are
-    *   collected (`CollectErrors`)
+    *   (`whenFailureFree`, `Alonzo/Rules/Utxos.hs:180-182`) nor when the transaction is applied
+    *   again (`when2Phase`, [[TxEnv.Validation]]), and then only their contexts are collected
+    *   (`CollectErrors`)
     */
   private[ledger] def phase2(
       pp: ProtocolParams,
@@ -61,18 +62,18 @@ object TxChecks:
       else
         val posix = env.clock.toRight(TranslationError.NoEraHistory).map(c => c.posix)
         env.preparation match
-          case Some(recording) =>
+          case Some(recording) if env.validation == TxEnv.Validation.All =>
             val requests =
               Phase2.collect(tx, pp, scripts, spent, references, slot => posix.flatMap(_(slot)))
             recording.append(
               Phase2.job(env.txIndex, tx, pp, env.slot, spent, references, env.clock, requests)
             )
             requests.fold(errors => checkedPhase2(stats, tx, Left(errors)), _ => Right(stats))
-          case None if !evaluate =>
+          case _ if !evaluate =>
             Phase2
               .collect(tx, pp, scripts, spent, references, slot => posix.flatMap(_(slot)))
               .fold(errors => checkedPhase2(stats, tx, Left(errors)), _ => Right(stats))
-          case None =>
+          case _ =>
             val outcome = Phase2.evaluate(
               tx,
               pp,

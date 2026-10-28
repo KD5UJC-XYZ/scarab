@@ -439,8 +439,7 @@ final class Forger[F[_]: Async, S](
             // and nothing leaves the pool (consensus 82ecba32 NodeKernel.hs forkBlockForging,
             // Background.hs:107-108,142)
             case SessionEnd.Unverifiable(defect) => perform(defect.raise[F, Unit])
-            // a refusal, or a defect a transaction of ours triggers (SessionEnd.Held): the block's
-            // transactions leave the pool, valid or not, so that the next leader slot does not
+            // a refusal: the block's transactions leave the pool, valid or not, so that the next leader slot does not
             // repeat the failure (`NodeKernel.hs` 770-783), and the slot ends
             case _ =>
               val ids = chosen.map(_._1.id).toSet
@@ -759,9 +758,6 @@ object Forger:
         val fatal = SessionEnd.of(error) match
           case SessionEnd.Storage(e)     => Fatal.Storage(e)
           case SessionEnd.Unavailable(e) => Fatal.Unavailable(e)
-          // BlockBuilder.select skips a transaction that triggers a defect, and adoption makes it
-          // a refusal of our own block, so none reaches here; were one to, there is no verdict
-          case SessionEnd.Held(e) => Fatal.Unavailable(e)
           // a crypto provider that fails on our own block is raised by `build`, with nothing evicted
           case SessionEnd.Unverifiable(e) => Fatal.Unverifiable(e)
           case _                          => Fatal.Internal(error)
