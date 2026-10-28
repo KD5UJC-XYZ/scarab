@@ -229,5 +229,9 @@ makes it `PeerError.InputDefect(InputSite.Bearer, cause)`, so the connection clo
 and the node goes on, with the cause kept, as decision 5 does for a decoder. This is the reference's
 policy for an exception in a bearer thread (ouroboros-network `2fb69829` `RethrowPolicy.hs`: an
 exception no policy names is `ShutdownPeer`; `ConnectionHandler.hs` `classifyExceptions`). A transport
-`IOException` stays a closed connection. The bearer's writer is not covered by this amendment: its
-exceptions are still `Defect`, where the reference's policy closes the connection there too.
+`IOException` stays a closed connection.
+
+The bearer's writer encodes and sends the node's own messages, so an exception there is the node's own
+bug and says nothing about the peer: it stays `Defect` and stops the node, and the peer is not charged.
+The reference's policy closes the connection there too (`ourBug` is `ShutdownPeer`); this is an
+owner-approved deviation (2026-10-28).
