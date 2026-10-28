@@ -32,7 +32,6 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   Globals,
   JudgedSts,
   Judgment,
-  Ledger,
   LedgerEnv,
   Mempool,
   Sts,
