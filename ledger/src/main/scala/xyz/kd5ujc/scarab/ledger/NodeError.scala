@@ -122,6 +122,9 @@ object PeerError:
     /** A mini-protocol message, in the multiplexer's channel (`MuxChannel.recv`). */
     case Wire(protocol: Int)
 
+    /** The connection's bytes, read and routed by the multiplexer's bearer reader. */
+    case Bearer
+
     /** The ledger header inside a ChainSync roll-forward. */
     case ChainSyncHeader
 
@@ -129,6 +132,7 @@ object PeerError:
     case FetchedBlock(point: ChainSync.Point)
     def message: String = this match
       case Wire(protocol)  => s"a ${xyz.kd5ujc.scarab.protocol.Protocols.name(protocol)} message"
+      case Bearer          => "the connection's bytes"
       case ChainSyncHeader => "a ChainSync header"
       case FetchedBlock(point) => s"the fetched block ${Points.show(point)}"
 
