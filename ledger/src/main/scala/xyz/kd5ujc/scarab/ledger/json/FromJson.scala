@@ -97,9 +97,9 @@ object FromJson:
     json.asNumber.toRight(NumberError.TypeMismatch(JsonKind.of(json))).flatMap { n =>
       val text = n.toString
       NativeJson.parse(Bytes.fromArray(text.getBytes("US-ASCII"))) match
-        case Right(JsonValue.Number(value)) => Right(value)
-        case Right(_)                       => Left(NumberError.UnreadNumberText(text, None))
-        case Left(e)                        => Left(NumberError.UnreadNumberText(text, Some(e)))
+        case Right(NativeJson.Parsed(JsonValue.Number(value), _)) => Right(value)
+        case Right(_) => Left(NumberError.UnreadNumberText(text, None))
+        case Left(e)  => Left(NumberError.UnreadNumberText(text, Some(e)))
     }
 
   /** `FromJSON Word64` (`parseBoundedIntegral`, `toBoundedInteger`): a whole number in
