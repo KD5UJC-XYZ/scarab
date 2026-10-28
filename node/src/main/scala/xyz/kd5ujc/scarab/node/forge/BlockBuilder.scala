@@ -114,8 +114,9 @@ object BlockBuilder:
       headLength(invalid.size) + invalid.map(i => headLength(i)).sum
 
   /** What ends selection instead of dropping a transaction: missing evaluator support or a crypto
-    * provider that failed on a witness (no ledger verdict), or a quantity of the ledger state outside its vocabulary type, which the reference's
-    * `compactCoinOrError` throws on in the forging thread (the node's stop).
+    * provider that failed on a witness (no ledger verdict), or a quantity of the ledger state
+    * outside its vocabulary type, which the reference's `compactCoinOrError` throws on in the
+    * forging thread (the node's stop).
     */
   type Stop = LedgerFailure.Unavailable | LedgerFailure.Unverifiable | LedgerFailure.StateOutOfRange
 
