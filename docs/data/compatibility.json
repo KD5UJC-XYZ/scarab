@@ -845,7 +845,8 @@
       "limitations": {
         "issues": [
           436,
-          550
+          550,
+          552
         ]
       },
       "page": "docs/compatibility/ledger-definite-text.md"
