@@ -405,8 +405,8 @@ object ScalusEvaluator:
     * when every cost parameter is `Int64` 's minimum (issue 485).
     *
     * Reproducers: `DataSerialiserSuite`, `ConstrIndexReferenceSuite`, `DataEqualityReferenceSuite`,
-    * `ReferenceBudgetSuite`, `UnliftingBoundsSuite`; regressions: `PreprodConwayRulesSuite`, `PreprodSecp256k1RulesSuite`,
-    * `CostModelLengthSuite`, `BuiltinCostingOracleSuite`.
+    * `ReferenceBudgetSuite`, `UnliftingBoundsSuite`; regressions: `PreprodConwayRulesSuite`,
+    * `PreprodSecp256k1RulesSuite`, `CostModelLengthSuite`, `BuiltinCostingOracleSuite`.
     */
   private[plutus] final class CorrectedVm(
       language: Language,
