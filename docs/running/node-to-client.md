@@ -65,10 +65,13 @@ longer than that is told there is no intersection.
 ### The socket path
 
 As in the reference node, whatever is at the socket path (`--local-socket`, or the configuration's
-`SocketPath`) is removed at start-up, once the configuration is read and before the topology and the
-database are (`removeStaleLocalSocket` in `gatherConfiguredSockets`, cardano-node 11.1.3). It is one
-`unlink`: a socket left by an earlier run, a file or a symbolic link (the link, not its target) goes, and
-nothing there is fine. Any other failure refuses the start: a directory at the path, empty or not, is
+`SocketPath`) is removed at start-up, once the configuration, the genesis and, with `--forge`, the VRF
+key's permissions and the credentials are read, and before the topology and the database are
+(`removeStaleLocalSocket` in `gatherConfiguredSockets`, cardano-node 11.1.3). It is an `unlink` of the
+path, so the directory needs write and search permission only: a socket left by an earlier run, a file or
+a symbolic link (the link, not its target) goes, and nothing there is fine. A path that ends in `/` names
+a directory, as `unlink` takes it: something other than a directory there refuses the start (`ENOTDIR`),
+and with nothing there the bind fails later. Any other failure refuses the start: a directory at the path, empty or not, is
 left, and the start ends with one `socketConfigError` line whose `error` is the reference's
 (`LocalSocketError "<path>" <path>: removeLink: inappropriate type (Is a directory)`) and exit code 1.
 The path is used as written, not normalised.
@@ -85,13 +88,24 @@ socket or when the group or others may write its directory (`checkLocalSocket`):
 directory that is not there or that the node may not write, a path of more than 108 characters), or a
 status of the socket or its directory that cannot be read, stops the node with one `diffusionErrored`
 line carrying the reference's text (`Network.Socket.bind: does not exist (No such file or directory)`)
-and exit code 1.
+and exit code 1. A start that fails, here or in the removal above, also says why on standard error,
+as the reference's top-level handler does.
+
+One approved deviation (owner decision recorded on [#474](https://github.com/KD5UJC-XYZ/scarab/issues/474)):
+the JDK binds and listens in one call, so the socket listens before the check after the bind rather than
+after it, and a client that connects in between waits in the backlog instead of being refused; the lines
+and the failures keep the reference's order. systemd socket activation (a socket passed in `LISTEN_FDS`)
+is not supported yet: [#542](https://github.com/KD5UJC-XYZ/scarab/issues/542).
 
 Clients are accepted without a limit on their number (the reference's local
 `AcceptedConnectionsLimit maxBound maxBound 0`), each named `<path>@<n>` as the reference names them
 (`acceptConnection`, a Debug line). An accept that fails is an `acceptError` line: after `ECONNABORTED`
 (the client gave up first) the server accepts again half a second later; any other failure stops the
-server (`serverStopped`, `serverError`) and the node (`diffusionErrored`, exit code 1). When the node
+server (`serverStopped`, `serverError`) and the node (`diffusionErrored`, exit code 1). Whatever ends a
+client's connection ends that connection only, never the node: the reference's policy for local
+connections (`rethrowPolicy <> mempty`) stops the node only for a Windows I/O manager error. A storage
+failure, an internal failure or an unexpected exception while serving a client closes it with an
+`inbound ... closed` line naming the cause. When the node
 stops, the socket is closed and its file is left where it is, as the reference leaves it; the next start
 removes it. The error texts are the reference's: GHC's kind of the `errno` and musl's text for it (the
 reference's release binary is a static musl build), whatever C library the JVM runs on.

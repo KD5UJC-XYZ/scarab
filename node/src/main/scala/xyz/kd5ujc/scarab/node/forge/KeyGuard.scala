@@ -89,8 +89,16 @@ object KeyGuard:
   def resource[F[_]: Sync](vrf: Path, kes: Path, lock: Boolean, events: ForgeEvents[F])(using
       Raise[F, ForgeError]
   ): Resource[F, Unit] =
+    Resource.eval(permissions(vrf, events)) *> held(kes, lock)
+
+  /** The VRF key's permission check alone, as the reference runs it before it reads the genesis and
+    * the credentials (cardano-node 11.1.3, `cardano-node/src/Cardano/Node/Run.hs` 193-194).
+    */
+  def permissions[F[_]: Sync](vrf: Path, events: ForgeEvents[F])(using
+      Raise[F, ForgeError]
+  ): F[Unit] =
     val F = Sync[F]
-    val permissions = F
+    F
       .blocking(KeyFilePermissions.check(vrf))
       .flatMap(
         _.fold(
@@ -103,6 +111,10 @@ object KeyGuard:
           events.emit(ForgeEvent.KeyFileGroupAccess(vrf.toString, mode))
         case KeyFileAccess.OwnerOnly | KeyFileAccess.NotChecked => F.unit
       }
+
+  /** The lock beside the KES key alone (`lock` off: nothing). */
+  def held[F[_]: Sync](kes: Path, lock: Boolean)(using Raise[F, ForgeError]): Resource[F, Unit] =
+    val F = Sync[F]
     val path = lockFile(kes)
     val acquire = F
       .blocking {
@@ -131,12 +143,10 @@ object KeyGuard:
             .KeyFile(path.toString, ForgeKeyProblem.Io(e))
             .raise[F, (FileChannel, FileLock)]
       }
-    val held =
-      if !lock then Resource.unit[F]
-      else
-        Resource
-          .make(acquire)((channel, lease) =>
-            F.blocking(lease.release()).guarantee(F.blocking(channel.close()))
-          )
-          .void
-    Resource.eval(permissions) *> held
+    if !lock then Resource.unit[F]
+    else
+      Resource
+        .make(acquire)((channel, lease) =>
+          F.blocking(lease.release()).guarantee(F.blocking(channel.close()))
+        )
+        .void

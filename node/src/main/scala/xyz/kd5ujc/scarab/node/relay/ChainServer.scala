@@ -69,11 +69,20 @@ final class ChainServer[F[_]: Async] private (
 
   /** One cursor per connected node-to-node ChainSync client: headers. */
   def source: Resource[F, ChainSyncServer.Source[F, NtNHeader]] =
-    cursor(s => Some(s.header), raw => headerOf(raw).toOption.map(_.ntn))
+    cursor(s => Some(s.header), raw => headerOf(raw).toOption.map(_.ntn), fatal)
 
   /** One cursor per connected node-to-client ChainSync client: whole blocks, as stored. */
-  def blockSource: Resource[F, ChainSyncServer.Source[F, RawNtNBlock]] =
-    cursor(served => RawNtNBlock.from(served.raw).toOption, raw => RawNtNBlock.from(raw).toOption)
+  def blockSource: Resource[F, ChainSyncServer.Source[F, RawNtNBlock]] = blockSource(fatal)
+
+  /** The same, with a storage failure under the cursor given to `failed` instead of the node's
+    * fatal sink (a node-to-client connection ends alone).
+    */
+  def blockSource(failed: Fatal => F[Unit]): Resource[F, ChainSyncServer.Source[F, RawNtNBlock]] =
+    cursor(
+      served => RawNtNBlock.from(served.raw).toOption,
+      raw => RawNtNBlock.from(raw).toOption,
+      failed
+    )
 
   /** One cursor per connected ChainSync client, closed with the connection. `ofServed` and
     * `ofStored` give what the client is sent for a volatile and an immutable block (a block that
@@ -81,7 +90,8 @@ final class ChainServer[F[_]: Async] private (
     */
   private def cursor[P](
       ofServed: Served => Option[P],
-      ofStored: Bytes => Option[P]
+      ofStored: Bytes => Option[P],
+      fatal: Fatal => F[Unit]
   ): Resource[F, ChainSyncServer.Source[F, P]] =
     Resource
       .make(state.modify(_.open()))(id => state.update(_.close(id)))

@@ -75,7 +75,8 @@ import xyz.kd5ujc.scarab.node.forge.{
   Forger,
   HotKeySource,
   KeyFiles,
-  KeyGuard
+  KeyGuard,
+  PoolCredentials
 }
 import xyz.kd5ujc.scarab.node.log.{LibraryLogs, Log, LogRouter, LogSettings, NodeEvent, Severity}
 import xyz.kd5ujc.scarab.node.metrics.EventSink.alongside
@@ -131,15 +132,13 @@ import scala.concurrent.duration.*
   * VRF key, KES key and operational certificate it also produces blocks in the slots it leads.
   */
 object Main extends IOApp:
-  /** Land a backend error after the network adapter has released its protocol resources. */
+  /** Land a backend error after the network adapter has released its protocol resources: on a
+    * node-to-client connection it ends that connection only ([[ListenerFailures.reportLocal]]).
+    */
   private[node] def landLocalBackend(
-      result: IO[Either[StorageError, LocalTxSubmissionServer.End]],
-      fatalSink: Fatal => IO[Unit]
+      result: IO[Either[StorageError, LocalTxSubmissionServer.End]]
   ): IO[InboundEnd] =
-    result.flatMap {
-      case Left(error) => fatalSink(Fatal.Storage(error)).as(InboundEnd.Storage(error))
-      case Right(end)  => IO.pure(InboundEnd.Local(end))
-    }
+    result.map(_.fold(InboundEnd.Storage(_), InboundEnd.Local(_)))
 
   private[node] def synchronizeMempool(
       mempool: Mempool[IO],
@@ -472,7 +471,7 @@ object Main extends IOApp:
             .allow[NodeError](follow(options))
             .rescue { error =>
               val (event, code) = startupFailure(error)
-              logged(event).as(code)
+              logged(event) *> failedStart(error.message).as(code)
             }
         }
 
@@ -625,43 +624,59 @@ object Main extends IOApp:
         )
         .flatMap(report => Log[IO].emit[NodeEvent](NodeEvent.PlutusCrypto(report)))
 
+  /** A start that fails says why on standard error as well as in the log, as the reference's
+    * top-level handler does before it exits with 1 (cardano-node 11.1.3,
+    * `cardano-node/src/Cardano/Node/Handlers/TopLevel.hs` 190-195).
+    */
+  private def failedStart(text: String): IO[Unit] = IO.consoleForIO.errorln(s"scarab: $text")
+
   private def follow(requested: Options)(using
       Handle[IO, NodeError],
       Log[IO]
   ): IO[ExitCode] =
     def admitted[A](result: Either[ConfigError, A]): IO[A] =
       result.fold(e => Handle[IO, NodeError].raise[NodeError, A](e), IO.pure)
-    nativeLibrary *> IO
-      .blocking(nodeSetup(requested))
-      .flatMap(admitted)
-      .flatMap(setup =>
-        // the stale socket goes once the configuration is read, before the topology and the
-        // database, as the reference's `gatherConfiguredSockets` (`Run.hs` 317-324)
-        Handle
-          .allow[SocketConfigError](
-            socketPath(requested, setup)
-              .traverse_(LocalServer.removeStale(LocalSockets.jdk[IO], _))
-              .as(setup.asRight[SocketConfigError])
-          )
-          .rescue(error => IO.pure(error.asLeft[NodeSetup]))
-      )
-      .flatMap {
-        case Left(error) =>
-          Log[IO].emit[NodeEvent](NodeEvent.SocketConfigError(error)).as(ExitCode.Error)
-        case Right(setup) =>
+    // the VRF key's permissions, then the credentials: before the sockets, the topology and the
+    // database, as the reference's `runNode` reads them before `handleSimpleNode` (`Run.hs` 193-201)
+    def credentials(files: ForgeFiles): IO[PoolCredentials] =
+      KeyGuard.permissions[IO](files.vrfSkey, Log.sink[ForgeEvents, ForgeEvent, IO]) *>
+        IO.blocking(KeyFiles.load(files.vrfSkey, files.kesSkey, files.opCert))
+          .flatMap(_.fold(e => Handle[IO, NodeError].raise[NodeError, PoolCredentials](e), IO.pure))
+    // the stale socket goes once the configuration is read, before the topology and the database,
+    // as the reference's `gatherConfiguredSockets` (`Run.hs` 317-324)
+    def removedStale(setup: NodeSetup): IO[Either[SocketConfigError, Unit]] =
+      Handle
+        .allow[SocketConfigError](
+          socketPath(requested, setup)
+            .traverse_(LocalServer.removeStale(LocalSockets.jdk[IO], _))
+            .map(_.asRight[SocketConfigError])
+        )
+        .rescue(error => IO.pure(error.asLeft[Unit]))
+    for
+      _ <- nativeLibrary
+      setup <- IO.blocking(nodeSetup(requested)).flatMap(admitted)
+      pool <- requested.forge.traverse(credentials)
+      removal <- removedStale(setup)
+      code <- removal.fold(
+        error =>
+          Log[IO].emit[NodeEvent](NodeEvent.SocketConfigError(error)) *>
+            failedStart(error.message).as(ExitCode.Error),
+        _ =>
           IO.blocking(completed(requested, setup))
             .flatMap(admitted)
             .flatMap((options, setup, topology) =>
-              started(options, setup, topology, requested.peers)
+              started(options, setup, topology, requested.peers, pool)
             )
-      }
+      )
+    yield code
 
   /** The node from its completed options on: the database, the stores and the run. */
   private def started(
       options: Options,
       setup: NodeSetup,
       topology: Option[Topology],
-      cliPeers: List[SocketAddress[Host]]
+      cliPeers: List[SocketAddress[Host]],
+      credentials: Option[PoolCredentials]
   )(using Handle[IO, NodeError], Log[IO]): IO[ExitCode] =
     val ownership = options.db.fold(Resource.unit[IO])(db =>
       xyz.kd5ujc.scarab.storage.DatabaseOwnership.resource[IO](fs2.io.file.Path.fromNioPath(db))
@@ -684,14 +699,8 @@ object Main extends IOApp:
           )
       )
     )
-    val keys = options.forge.fold(Resource.unit[IO])(f =>
-      KeyGuard.resource[IO](
-        f.vrfSkey,
-        f.kesSkey,
-        options.keyLock,
-        Log.sink[ForgeEvents, ForgeEvent, IO]
-      )
-    )
+    val keys =
+      options.forge.fold(Resource.unit[IO])(f => KeyGuard.held[IO](f.kesSkey, options.keyLock))
     (ownership *> keys *> compatible *> (
       utxoBacking(options),
       VerificationCache.resource[IO](),
@@ -707,7 +716,8 @@ object Main extends IOApp:
         backing(store, checkpoints),
         cache,
         scheduling,
-        StallDiagnostics.abandoning(supervisor)
+        StallDiagnostics.abandoning(supervisor),
+        credentials
       )
     }
 
@@ -720,7 +730,8 @@ object Main extends IOApp:
       backing: StateBacking[IO, MirrorState],
       cache: VerificationCache,
       scheduling: Scheduling[IO],
-      background: IO[Unit] => IO[Unit]
+      background: IO[Unit] => IO[Unit],
+      credentials: Option[PoolCredentials]
   )(using
       handle: Handle[IO, NodeError],
       log: Log[IO]
@@ -1346,38 +1357,42 @@ object Main extends IOApp:
                     LocalSockets.jdk[IO],
                     LocalAddress(path),
                     trace => logged(NodeEvent.LocalServer(trace))
-                  )((_, failure) => ListenerFailures.report(path, failure, logged, fatalSink)) {
+                  )((_, failure) => ListenerFailures.reportLocal(path, failure, logged)) {
                     (bearer, _) =>
-                      logged(NodeEvent.Inbound(path, InboundEvent.Accepted)) *>
-                        landLocalBackend(
+                      // what would stop the node on a node-to-node connection ends this client
+                      // only (the reference's local rethrow policy): the backends report it here
+                      Deferred[IO, Fatal].flatMap { failed =>
+                        val ends = (fault: Fatal) => failed.complete(fault).void
+                        val served = landLocalBackend(
                           NodeToClientServer.acceptBackend[IO, StorageError](
                             bearer,
                             genesis.networkMagic,
-                            LocalSubmission.handler(mempool)(fatalSink),
+                            LocalSubmission.handler(mempool)(ends),
                             Some(
                               StateQuerySource[IO, MirrorState](ref, queryEnv, store, chainGate)
                             ),
-                            chainSync = Some(server.blockSource),
+                            chainSync = Some(server.blockSource(ends)),
                             txMonitor = Some(LocalMonitor.source(mempool))
-                          ),
-                          fatalSink
-                        )
-                          .flatMap(reason =>
-                            logged(NodeEvent.Inbound(path, InboundEvent.Closed(reason)))
                           )
+                        )
+                        logged(NodeEvent.Inbound(path, InboundEvent.Accepted)) *>
+                          IO.race(failed.get.map(InboundEnd.Fault(_)), served)
+                            .map(_.merge)
+                            .flatMap(reason =>
+                              logged(NodeEvent.Inbound(path, InboundEvent.Closed(reason)))
+                            )
+                      }
                   }
                   .evalTap(_ => logged(NodeEvent.Listening(path)))
               )
-            forging <- options.forge.traverse { files =>
+            // the credentials were read at start-up, before the sockets ([[follow]])
+            forging <- (options.forge, credentials).tupled.traverse { (files, pool) =>
               for
-                credentials <- IO
-                  .blocking(KeyFiles.load(files.vrfSkey, files.kesSkey, files.opCert))
-                  .flatMap(_.fold(fail, IO.pure))
                 source <- HotKeySource.files[IO](files.kesSkey, files.opCert)
                 forger <- Forger.create[IO, MirrorState](
                   setup.praos.copy(geometry = geometry),
                   globals,
-                  credentials,
+                  pool,
                   follower,
                   mempool,
                   Log.sink[ForgeEvents, ForgeEvent, IO].alongside(measured.forge),
@@ -1524,8 +1539,10 @@ object Main extends IOApp:
                 case Right(Right(failure)) => RunEnd.Faulted(failure)
               }
             _ <- ended match
-              case RunEnd.Errored(failure) => logged(NodeEvent.DiffusionErrored(failure))
-              case _                       => IO.unit
+              case RunEnd.Errored(failure) =>
+                logged(NodeEvent.DiffusionErrored(failure)) *>
+                  failedStart(s"DiffusionError ${failure.shown}")
+              case _ => IO.unit
             last <- ref.get
             _ <- finishedLine(ended, logged(NodeEvent.finished(last)))
           yield ended

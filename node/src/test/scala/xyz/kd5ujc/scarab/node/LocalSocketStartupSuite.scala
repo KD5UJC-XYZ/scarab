@@ -129,3 +129,58 @@ class LocalSocketStartupSuite extends CatsEffectSuite:
         )
     }
   }
+
+  test("the forging credentials are checked and read before the stale socket is removed") {
+    temporary.use { root =>
+      val socket = root.resolve("node.socket")
+      val vrf = root.resolve("vrf.skey")
+      val log = root.resolve("node.log")
+      def run(kes: Path) = Main.run(
+        List(
+          "follow",
+          "--genesis-dir",
+          "fixtures/eras/genesis",
+          "--peer",
+          "127.0.0.1:1",
+          "--local-socket",
+          socket.toString,
+          "--forge",
+          "--vrf-skey",
+          vrf.toString,
+          "--kes-skey",
+          kes.toString,
+          "--opcert",
+          root.resolve("absent.opcert").toString,
+          "--log-stdout",
+          "off",
+          "--log-file",
+          log.toString
+        )
+      )
+      def left = IO.blocking(Files.exists(socket, LinkOption.NOFOLLOW_LINKS))
+      for
+        _ <- IO.blocking(Files.writeString(socket, "left by an earlier run"))
+        _ <- IO.blocking(Files.writeString(vrf, "{}"))
+        // others may read the VRF key: the reference refuses before anything else
+        _ <- IO.blocking(
+          Files.setPosixFilePermissions(
+            vrf,
+            java.nio.file.attribute.PosixFilePermissions.fromString("rw-r--r--")
+          )
+        )
+        refused <- run(root.resolve("absent.kes"))
+        afterPermissions <- left
+        _ <- IO.blocking(
+          Files.setPosixFilePermissions(
+            vrf,
+            java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")
+          )
+        )
+        // a credential that cannot be read refuses before the socket is touched as well
+        unreadable <- run(root.resolve("absent.kes"))
+        afterCredentials <- left
+      yield
+        assertEquals((refused, unreadable), (ExitCode(1), ExitCode(1)))
+        assert(afterPermissions && afterCredentials, "the stale socket is still there")
+    }
+  }
