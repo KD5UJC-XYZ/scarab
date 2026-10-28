@@ -1,0 +1,3 @@
+### Changed (node)
+
+- A block whose own Plutus scripts make the evaluator fail is no longer held. The reference has no such path: an exception met while a block is validated ends the linked add-block thread and stops the node (ouroboros-consensus `Storage/ChainDB/Impl/Background.hs`). The node now stops with exit code 8, as it already did for a missing evaluator implementation, in the follower, the selection runner, the forger and replay; nothing is recorded as invalid and no peer is blamed. A transaction the evaluator fails on closes the local client's connection or the peer's TxSubmission2 session. The `blockHeld` and `stalledBehind` log events and `scarab_blocks_held_total` are removed.

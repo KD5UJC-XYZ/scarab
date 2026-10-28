@@ -154,7 +154,7 @@ class ProviderDefectBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncau
     }
 
     test(s"a session over real rules stops the node on a $name: no record, no blame") {
-      session(verdicts).map { (end, invalid, events, tip) =>
+      session(verdicts).map { (end, invalid, _, tip) =>
         val held = VerificationDefect(target.point, VerificationDefect.Site.Header, defect)
         assertEquals(end, SessionEnd.Unverifiable(held))
         assertEquals(
@@ -163,7 +163,6 @@ class ProviderDefectBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncau
         )
         assertEquals(SessionEnd.peerError(end), None)
         assertEquals(invalid, Set.empty[Bytes])
-        assertEquals(events.collect { case e: FollowerEvent.Held => e }, Vector.empty)
         assertEquals(tip, forged.headers(index - 1).point)
       }
     }
@@ -337,10 +336,9 @@ class ProviderDefectBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncau
   }
 
   test("negative control: a session over the real verifiers adopts the whole forged chain") {
-    session(Verdicts.Direct).map { (end, invalid, events, tip) =>
+    session(Verdicts.Direct).map { (end, invalid, _, tip) =>
       assertEquals(end, SessionEnd.Stopped(false))
       assertEquals(invalid, Set.empty[Bytes])
-      assertEquals(events.collect { case e: FollowerEvent.Held => e }, Vector.empty)
       assertEquals(tip, forged.headers.last.point)
     }
   }

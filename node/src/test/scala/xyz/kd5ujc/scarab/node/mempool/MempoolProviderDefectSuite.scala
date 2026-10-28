@@ -7,22 +7,26 @@ import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.witness.VerificationError
 import xyz.kd5ujc.scarab.ledger.{
+  EvaluationUnavailable,
   LedgerFailure,
   ProviderDefect,
+  ScriptLocation,
   StorageError,
   Verdicts,
   VerificationDefect
 }
 import xyz.kd5ujc.scarab.network.{LocalTxSubmissionServer, NetworkError}
+import xyz.kd5ujc.scarab.plutus.{BackendFailure, EvalFailure}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 
 import TxKit.*
 
-/** Issue 393: a crypto provider that fails on a transaction witness outside a block. The reference
-  * lets the exception end the thread that met it (consensus 82ecba32 `Mempool/Update.hs` `doAddTx`
-  * evaluates `pureTryAddTx` there): a local client's connection closes, a peer's connection closes,
-  * and the revalidation watcher, which is linked to the node, stops the node. Nothing is a
-  * rejection, so the pool is not changed by the transaction.
+/** Issue 393: a crypto provider that fails on a transaction witness outside a block (and, as the
+  * evaluator that fails on its scripts, the same). The reference lets the exception end the thread
+  * that met it (consensus 82ecba32 `Mempool/Update.hs` `doAddTx` evaluates `pureTryAddTx` there): a
+  * local client's connection closes and a peer's connection closes. Nothing is a rejection, so the
+  * pool is not changed by the transaction. Revalidation applies a held transaction again without
+  * its static checks (`reapplyTx`), so it verifies no witness and the provider is not asked.
   */
 class MempoolProviderDefectSuite extends CatsEffectSuite:
   private val boom = new IllegalStateException("provider broke")
@@ -78,23 +82,38 @@ class MempoolProviderDefectSuite extends CatsEffectSuite:
       assert(!held.contains(id2))
   }
 
-  test("a revalidation met by a provider defect is the node's defect at the new tip") {
+  test("a revalidation does not ask a provider that now fails: it verifies no witness again") {
     val (t1, id) = pay(1)
     val point = ChainSync.Point.Origin
     val held = MempoolState
       .empty(Right(ledger(2)), 1000, None)
       .add(t1, env, Source.Local)
       .fold(r => fail(r.toString), _._1)
-    val stopped = held.sync(Right(ledger(2)), 1001, defective).left.toOption
-    assertEquals(stopped, Some(noVerdict(id)))
     assertEquals(
-      stopped.map(Mempool.unverifiable(_, point)),
-      Some(VerificationDefect(point, VerificationDefect.Site.Witness(id), defect))
+      held.sync(Right(ledger(2)), 1001, defective).map(_._1.entries.map(_.id)),
+      Right(Vector(id))
     )
-    assertEquals(held.remove(Set.empty, defective).left.toOption, Some(noVerdict(id)))
+    assertEquals(held.remove(Set.empty, defective).map(_._1.entries.map(_.id)), Right(Vector(id)))
+    // a result without a verdict, which no revalidation reaches, would be the node's defect
+    assertEquals(
+      Mempool.noVerdict(unverifiable(id), point),
+      VerificationDefect(point, VerificationDefect.Site.Witness(id), defect)
+    )
   }
 
-  private def noVerdict(id: Bytes): MempoolState.NoVerdict = LedgerFailure.Unverifiable(id, defect)
+  test("a revalidation met by an evaluator that has no verdict is the node's defect too") {
+    val (_, id) = pay(1)
+    val point = ChainSync.Point.Origin
+    val failure: LedgerFailure.Unavailable = LedgerFailure.Unavailable(
+      id,
+      ScriptLocation.Phase1(id),
+      EvalFailure.Unsupported(BackendFailure.StackExhausted)
+    )
+    assertEquals(Mempool.noVerdict(failure, point), EvaluationUnavailable(point, failure))
+  }
+
+  private def unverifiable(id: Bytes): MempoolState.NoVerdict =
+    LedgerFailure.Unverifiable(id, defect)
 
   private given Raise[IO, StorageError] with
     def functor = cats.Functor[IO]
@@ -135,24 +154,26 @@ class MempoolProviderDefectSuite extends CatsEffectSuite:
       events <- emitted.get
     yield (raised, before, after, events.drop(seen.size))
 
-  test("a defective sync changes nothing: the state stays, no Dropped or Synced event") {
+  private def dropped(events: Vector[MempoolEvent]) =
+    events.collect { case d: MempoolEvent.Dropped => d }
+
+  test("a sync under a provider that now fails asks it nothing: the pool keeps its transactions") {
     val (_, id1) = pay(1)
+    val (_, id2) = pay(2)
     revalidated(m => m.sync(Right(ledger(3)), 1001).void).map { (raised, before, after, events) =>
-      assertEquals(raised, Some(noVerdict(id1)))
-      assertEquals(before.entries.size, 2)
-      assertEquals(after, before)
-      assertEquals(events, Vector.empty)
+      assertEquals(raised, None)
+      assertEquals(before.entries.map(_.id), Vector(id1, id2))
+      assertEquals(after.entries.map(_.id), Vector(id1, id2))
+      assertEquals(dropped(events), Vector.empty)
     }
   }
 
-  test(
-    "a defective removeTxsEvenIfValid changes nothing: the state stays, no Removed or Dropped event"
-  ) {
+  test("a removeTxsEvenIfValid under a provider that now fails asks it nothing either") {
     val (_, id1) = pay(1)
     val (_, id2) = pay(2)
-    revalidated(m => m.removeTxsEvenIfValid(Set(id1)).void).map { (raised, before, after, events) =>
-      assertEquals(raised, Some(noVerdict(id2)))
-      assertEquals(after, before)
-      assertEquals(events, Vector.empty)
+    revalidated(m => m.removeTxsEvenIfValid(Set(id1)).void).map { (raised, _, after, events) =>
+      assertEquals(raised, None)
+      assertEquals(after.entries.map(_.id), Vector(id2))
+      assertEquals(dropped(events), Vector.empty)
     }
   }

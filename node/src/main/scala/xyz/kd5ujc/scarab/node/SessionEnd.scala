@@ -15,9 +15,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ValidationError,
   VerificationDefect
 }
-import xyz.kd5ujc.scarab.ledger.LedgerFailure.reach
 import xyz.kd5ujc.scarab.network.{Fibers, NetworkError}
-import xyz.kd5ujc.scarab.plutus.BackendFailure
 
 /** What a fiber of the pipeline of a session ends with, as a value: the peer or the connection
   * failed, or something that is not ours threw (a library, a bug).
@@ -76,18 +74,13 @@ enum SessionEnd:
     */
   case Rejected(error: ValidationError)
 
-  /** This implementation cannot evaluate the block: there is no ledger verdict. The node stops
-    * without peer blame; reconnecting cannot supply a missing implementation.
+  /** This implementation cannot evaluate the block: there is no ledger verdict, whether the
+    * implementation is missing or its evaluator failed on the block's own scripts. The exception
+    * ends the reference's linked add-block thread and stops the node (ouroboros-consensus 82ecba32
+    * `Storage/ChainDB/Impl/Background.hs` 107-108 and 142), so the node stops, without peer blame
+    * and with nothing recorded as invalid.
     */
   case Unavailable(error: EvaluationUnavailable)
-
-  /** This implementation has no verdict on a block because its evaluator failed on the block's own
-    * scripts (a defect the block triggers,
-    * [[xyz.kd5ujc.scarab.plutus.BackendFailure.Reach.Input]]). The block is not adopted and not
-    * recorded as invalid, the peer is not blamed and the node goes on, behind that block, until an
-    * implementation that decides it is installed (ADR 0017, amendment of 2026-10-23).
-    */
-  case Held(error: EvaluationUnavailable)
 
   /** A crypto provider failed while the rules verified a block: an exception from a library, as the
     * reference's block application sees it, and the node stops (ADR 0017, amendment on provider
@@ -127,10 +120,10 @@ object SessionEnd:
     case PeerError.InvalidBlock(
           ValidationError(point, BlockFailure.Tx(failure: LedgerFailure.Unavailable))
         ) =>
-      unavailable(EvaluationUnavailable(point, failure))
+      Unavailable(EvaluationUnavailable(point, failure))
     case ValidationError(point, BlockFailure.Tx(failure: LedgerFailure.Unavailable)) =>
-      unavailable(EvaluationUnavailable(point, failure))
-    case e: EvaluationUnavailable => unavailable(e)
+      Unavailable(EvaluationUnavailable(point, failure))
+    case e: EvaluationUnavailable => Unavailable(e)
     case e: VerificationDefect    => Unverifiable(e)
     case e @ PeerError.InvalidBlock(refused) =>
       refused.unverifiable.fold(Failed(e))(Unverifiable(_))
@@ -140,14 +133,6 @@ object SessionEnd:
     case e: ValidationError => e.unverifiable.fold(Rejected(e))(Unverifiable(_))
     case e: StorageError    => Storage(e)
     case other              => Internal(other)
-
-  /** No verdict: the node stops for a missing implementation and holds the block for a defect the
-    * block triggers.
-    */
-  private def unavailable(error: EvaluationUnavailable): SessionEnd =
-    error.failure.reach match
-      case BackendFailure.Reach.Implementation => Unavailable(error)
-      case BackendFailure.Reach.Input          => Held(error)
 
   /** The session owns a fresh node-error scope for its rule/store operations. The enclosing `node`
     * scope remains live for compatibility with other enclosing services; its errors are caught in
@@ -188,7 +173,6 @@ object SessionEnd:
       Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(PeerError.InvalidBlock(error))))
     case Unavailable(error) =>
       Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(Fatal.Unavailable(error))))
-    case Held(error) => Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
     case Unverifiable(error) =>
       Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(Fatal.Unverifiable(error))))
     case Storage(error) =>
@@ -269,12 +253,6 @@ enum Disposition:
 
   /** Nothing to do: we ended it, or it returned. */
   case Settled
-
-  /** A block the peer sent has no verdict here (a defect it triggers in the evaluator): it is not
-    * adopted, the peer is not blamed and is tried again after the delay of a lost connection, and
-    * the node goes on.
-    */
-  case Hold(error: EvaluationUnavailable)
 
   /** The node stops (storage, an internal failure, a defect). */
   case StopNode(fatal: Fatal)

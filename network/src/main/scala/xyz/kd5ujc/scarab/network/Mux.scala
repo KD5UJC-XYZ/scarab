@@ -7,6 +7,7 @@ import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import fs2.{Chunk, Pull}
+import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
 import xyz.kd5ujc.scarab.protocol.Mux as WireMux
@@ -60,6 +61,15 @@ trait Mux[F[_]]:
     * Handshake traffic and responses to our own initiators do not activate responders.
     */
   def awaitResponderActivity(using Raise[F, NetworkError]): F[Unit]
+
+  /** Wait until the responder channel of `protocol` holds bytes not yet read: the reference starts
+    * a responder on demand when its mini-protocol's first byte arrives (`StartOnDemand`). The
+    * default, for multiplexers that track no channel, is the first responder activity.
+    */
+  def awaitResponderInput(@scala.annotation.unused protocol: Int)(using
+      Raise[F, NetworkError]
+  ): F[Unit] =
+    awaitResponderActivity
 
   /** Finish the handshake mux and install exactly the negotiated application and directions. */
   def installApplication(initiators: Set[Int], responders: Set[Int])(using
@@ -154,7 +164,7 @@ object Mux:
     */
   private final class Ingress[F[_]: Async](
       queue: Queue[F, (BigInt, Bytes)],
-      queued: Ref[F, Long],
+      queued: SignallingRef[F, Long],
       received: Ref[F, BigInt],
       consumed: Ref[F, BigInt],
       read: F[Unit],
@@ -182,6 +192,9 @@ object Mux:
     def tryTake: F[Option[Bytes]] = queue.tryTake.flatMap(_.traverse(taken))
     def take: F[Bytes] = queue.take.flatMap(taken)
     def pendingFrames: F[Boolean] = (received.get, consumed.get).mapN(_ > _)
+
+    /** Wait until bytes are queued that the channel has not taken. */
+    def awaitBytes: F[Unit] = queued.waitUntil(_ > 0)
 
     /** The bytes queued now (tests). */
     def held: F[Long] = queued.get
@@ -377,7 +390,7 @@ object Mux:
           .traverse { key =>
             (
               Queue.unbounded[F, (BigInt, Bytes)],
-              Ref.of[F, Long](0L),
+              SignallingRef.of[F, Long](0L),
               Ref.of[F, BigInt](0),
               Ref.of[F, BigInt](0)
             ).mapN((queue, queued, received, consumed) =>
@@ -554,7 +567,7 @@ object Mux:
           .compile
           .last
           .map(_.getOrElse(closedByPeer))
-          .handleError(t => NetworkError.fromThrowable("bearer failed", t))
+          .handleError(NetworkError.ofReader)
 
       val writer: F[NetworkError] =
         outbound
@@ -624,6 +637,12 @@ object Mux:
         override val connectionId = transportId
         def awaitResponderActivity(using Raise[F, NetworkError]): F[Unit] =
           F.race(done.get, dispatch.active.get).flatMap(_.fold(_.raise[F, Unit], F.pure))
+        override def awaitResponderInput(protocol: Int)(using Raise[F, NetworkError]): F[Unit] =
+          inbound
+            .get(protocol -> Role.Responder)
+            .fold(F.never[Unit])(ingress =>
+              F.race(done.get, ingress.awaitBytes).flatMap(_.fold(_.raise[F, Unit], F.pure))
+            )
         def installApplication(initiators: Set[Int], responders: Set[Int])(using
             Raise[F, NetworkError]
         ): F[Unit] =

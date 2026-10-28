@@ -540,15 +540,6 @@ object LogSamples:
     )
   )
 
-  /** A block with no verdict: the evaluator overflowed its stack on one of its scripts. */
-  val held: xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable =
-    xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable(
-      hash,
-      xyz.kd5ujc.scarab.ledger.ScriptLocation.Phase1(hash),
-      xyz.kd5ujc.scarab.plutus.EvalFailure
-        .Unsupported(xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted)
-    )
-
   val follower: List[FollowerEvent] = List(
     FollowerEvent.Connected(ChainSync.Point.Origin),
     FollowerEvent.Connected(point),
@@ -565,7 +556,6 @@ object LogSamples:
       ),
       3
     ),
-    FollowerEvent.Held(point, held),
     FollowerEvent.EraEntered(None, Era.Byron, block, BigInt(0)),
     FollowerEvent.EraEntered(Some(Era.Babbage), Era.Conway, block, BigInt(5)),
     FollowerEvent.EpochValidated(BigInt(2), Era.Shelley, 10L, 20L, 3L),

@@ -6,7 +6,7 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorExtras, MirrorProvenance}
-import xyz.kd5ujc.scarab.ledger.{ConfigProblem, GenesisState, ProtocolParams, Ptr}
+import xyz.kd5ujc.scarab.ledger.{ConfigProblem, CostModelProblem, GenesisState, ProtocolParams, Ptr}
 import xyz.kd5ujc.scarab.ledger.rules.{
   CertLens,
   GenesisInjections,
@@ -99,7 +99,7 @@ class GenesisStartSuite extends FunSuite:
             "networkId" -> Json.fromString("Testnet"),
             "initialFunds" -> Json.obj(enterpriseFund -> field[Json]("amount"))
           ),
-          Json.obj(),
+          json("alonzo-genesis.json"),
           Json.obj(),
           Json.obj()
         )
@@ -128,7 +128,7 @@ class GenesisStartSuite extends FunSuite:
     value.mapObject(_.add("extraConfig", Json.fromJsonObject(extra.add(name, source))))
 
   private def sourceFiles(shelley: Json): GenesisState.Files =
-    GenesisState.Files(shelley, Json.obj(), Json.obj(), Json.obj())
+    GenesisState.Files(shelley, json("alonzo-genesis.json"), Json.obj(), Json.obj())
 
   private def fundSources(extra: Json): Json = Json.obj(
     "networkId" -> Json.fromString("Testnet"),
@@ -668,7 +668,7 @@ class GenesisStartSuite extends FunSuite:
         )
     }
     problem match
-      case ConfigProblem.JsonField("protocol parameters", "cost model", _) => ()
+      case ConfigProblem.GenesisCostModel(CostModelProblem.NotObjectOrArray(_, _)) => ()
       case other => fail(s"unexpected refusal: $other")
   }
 

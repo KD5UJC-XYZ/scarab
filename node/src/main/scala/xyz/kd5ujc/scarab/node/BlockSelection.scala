@@ -54,21 +54,6 @@ private[node] final class BlockSelection[F[_]: Async] private (
           )
         )(a => pool.invalidated(a.taken, header, error))
 
-  /** `apply`, where a block held for a defect it triggers in the evaluator ([[SessionEnd.Held]],
-    * reported by the follower) leaves the chain as it is instead of ending the runner: the block is
-    * neither adopted nor recorded as invalid, and the next admission tries the candidates again.
-    */
-  private def held(
-      apply: Raise[F, NodeError] ?=> F[Unit]
-  )(using owner: Raise[F, NodeError]): F[Unit] =
-    Handle
-      .allow[NodeError](apply)
-      .rescue(error =>
-        SessionEnd.of(error) match
-          case SessionEnd.Held(_) => F.unit
-          case _                  => owner.raise[NodeError, Unit](error)
-      )
-
   private def selectLocked(
       adding: Option[BlockPool.Admission],
       phase: Phase = Phase.Admission
@@ -103,13 +88,11 @@ private[node] final class BlockSelection[F[_]: Async] private (
           )
           ordered <- application.project(truncated, phase)
           _ <- ordered.headOption.traverse_(candidate =>
-            held(
-              application.apply(
-                reader(candidate, bodies),
-                candidate,
-                adding.fold(Peer.Validation.none[F])(Peer.Validation.admission(pool, _)),
-                phase
-              )
+            application.apply(
+              reader(candidate, bodies),
+              candidate,
+              adding.fold(Peer.Validation.none[F])(Peer.Validation.admission(pool, _)),
+              phase
             )
           )
           after <- pool.invalidBlocks.snapshot
@@ -162,8 +145,6 @@ private[node] final class BlockSelection[F[_]: Async] private (
           SessionEnd.of(error) match
             case SessionEnd.Storage(cause)     => Fatal.Storage(cause)
             case SessionEnd.Unavailable(cause) => Fatal.Unavailable(cause)
-            // selection holds such a block where it applies one (`held`); nothing else raises one
-            case SessionEnd.Held(cause) => Fatal.Unavailable(cause)
             // a crypto provider that fails on a block stops the node, as the exception ends the
             // reference's linked addBlockRunner thread (consensus 82ecba32
             // Storage/ChainDB/Impl/Background.hs:107-108,142)

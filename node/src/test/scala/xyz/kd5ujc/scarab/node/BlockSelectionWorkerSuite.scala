@@ -133,66 +133,42 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
     yield ()
   }
 
-  test("selection holds a block its own scripts make the evaluator fail, and goes on") {
-    for
-      chain <- ForgedChain.forge(5000 until 5060)
-      bodies <- checked(chain, 3)
-      defect = xyz.kd5ujc.scarab.plutus.BackendFailure.Defect(new NullPointerException("Scalus"))
-      _ <- node(Set.empty, unavailable = Map(bodies(1).header.hash -> defect)) { n =>
-        n.pool.session(Some(e => n.reports.update(_ :+ e))).use { sender =>
-          for
-            _ <- add(sender, bodies.take(2)) *> n.pool.admissions.reprocess
-            held <- n.state.get
-            // a later admission is still processed: the runner did not stop
-            _ <- add(sender, bodies.drop(2)) *> n.pool.admissions.reprocess
-            after <- n.state.get
-            known <- n.pool.invalidBlocks.snapshot
-            reports <- n.reports.get
-            fatals <- n.fatals.get
-            _ <- IO {
-              assertEquals(held.tipRef.map(_.hash), Some(bodies(0).header.hash))
-              assertEquals(after.tipRef.map(_.hash), Some(bodies(0).header.hash))
-              assertEquals(known.entries, Map.empty)
-              assertEquals(reports, Vector.empty)
-              assertEquals(fatals, Vector.empty)
-            }
-          yield ()
+  List(
+    "a missing implementation" -> xyz.kd5ujc.scarab.plutus.BackendFailure
+      .BuiltinUnavailable(scalus.uplc.DefaultFun.Bls12_381_G1_hashToGroup),
+    "an evaluator defect a block triggers" -> xyz.kd5ujc.scarab.plutus.BackendFailure
+      .Defect(new NullPointerException("Scalus"))
+  ).foreach { (name, missing) =>
+    test(s"$name stops selection and records no invalid block") {
+      for
+        chain <- ForgedChain.forge(5000 until 5060)
+        bodies <- checked(chain, 2)
+        stopped <- Deferred[IO, Unit]
+        _ <- node(
+          Set.empty,
+          fatalAction = _ => stopped.complete(()).void,
+          unavailable = Map(bodies(1).header.hash -> missing)
+        ) { n =>
+          n.pool.session(Some(e => n.reports.update(_ :+ e))).use { sender =>
+            for
+              _ <- add(sender, bodies)
+              // the runner reports its fatal outcome when it ends: wait for that report
+              _ <- stopped.get.timeout(4.seconds)
+              fatals <- n.fatals.get
+              known <- n.pool.invalidBlocks.snapshot
+              reports <- n.reports.get
+              _ <- IO {
+                fatals match
+                  case Vector(Fatal.Unavailable(e)) => assertEquals(e.point, bodies(1).header.point)
+                  case other                        => fail(s"unexpected $other")
+                assertEquals(known.entries, Map.empty)
+                assertEquals(reports, Vector.empty)
+              }
+            yield ()
+          }
         }
-      }
-    yield ()
-  }
-
-  test("a missing implementation stops selection and records no invalid block") {
-    for
-      chain <- ForgedChain.forge(5000 until 5060)
-      bodies <- checked(chain, 2)
-      missing = xyz.kd5ujc.scarab.plutus.BackendFailure
-        .BuiltinUnavailable(scalus.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
-      stopped <- Deferred[IO, Unit]
-      _ <- node(
-        Set.empty,
-        fatalAction = _ => stopped.complete(()).void,
-        unavailable = Map(bodies(1).header.hash -> missing)
-      ) { n =>
-        n.pool.session(Some(e => n.reports.update(_ :+ e))).use { sender =>
-          for
-            _ <- add(sender, bodies)
-            // the runner reports its fatal outcome when it ends: wait for that report
-            _ <- stopped.get.timeout(4.seconds)
-            fatals <- n.fatals.get
-            known <- n.pool.invalidBlocks.snapshot
-            reports <- n.reports.get
-            _ <- IO {
-              fatals match
-                case Vector(Fatal.Unavailable(e)) => assertEquals(e.point, bodies(1).header.point)
-                case other                        => fail(s"unexpected $other")
-              assertEquals(known.entries, Map.empty)
-              assertEquals(reports, Vector.empty)
-            }
-          yield ()
-        }
-      }
-    yield ()
+      yield ()
+    }
   }
 
   test("FIFO processing excludes later queued bodies and retains the same-hot issuer trap") {

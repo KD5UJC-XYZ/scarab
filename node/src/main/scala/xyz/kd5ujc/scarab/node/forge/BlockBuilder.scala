@@ -6,16 +6,9 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, ForgeError, Header, LedgerFailure, VrfCert}
-import xyz.kd5ujc.scarab.ledger.LedgerFailure.reach
 import xyz.kd5ujc.scarab.ledger.{LedgerGlobals, PosixClock, ProtocolParams, RefScripts, TxEnv}
 import xyz.kd5ujc.scarab.ledger.rules.Globals
-import xyz.kd5ujc.scarab.plutus.{
-  BackendFailure,
-  ExUnits,
-  ScalusEvaluator,
-  ScriptDecoder,
-  ScriptEvaluator
-}
+import xyz.kd5ujc.scarab.plutus.{ExUnits, ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
 import cats.Id
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
@@ -151,11 +144,12 @@ object BlockBuilder:
     * selection. Each transaction counts for the measure it was admitted with ([[Capacity.measure]],
     * the ticket's measure the reference keeps).
     *
-    * The rules are LEDGER of Conway on the era-indexed state ([[MempoolLedger]], the same that
-    * validates the pool). Missing evaluator support has no ledger verdict and stops the selection
-    * instead of dropping the transaction; a defect one transaction triggers in the evaluator drops
-    * that transaction. A crypto provider that fails on a witness stops the selection too: the
-    * forger raises it as a [[VerificationDefect]].
+    * A transaction was validated when the pool admitted it, so it is applied again as the
+    * reference's forging snapshot applies it (`revalidateTxsFor` and `reapplyTx`,
+    * [[MempoolLedger.reapply]]): MEMPOOL and LEDGER of Conway on the era-indexed state without
+    * their static checks, so no signature is verified and no script is evaluated again. A result
+    * without a ledger verdict would stop the selection instead of dropping the transaction: the
+    * forger raises it and the node stops.
     */
   def select(
       ticked: MempoolLedger,
@@ -196,17 +190,12 @@ object BlockBuilder:
         val applied = piece(entry).toOption match
           case None => Right(None)
           case Some(p) =>
-            acc
-              .state(entry.tx, env, rules)
+            acc.state
+              .reapply(entry.tx, env, rules)
               .fold(
                 {
-                  // a defect the transaction's own scripts trigger leaves it out, like a refusal;
-                  // a missing implementation stops selection
-                  case unavailable: LedgerFailure.Unavailable =>
-                    unavailable.reach match
-                      case BackendFailure.Reach.Implementation => Left(unavailable)
-                      case BackendFailure.Reach.Input          => Right(None)
-                  // a crypto provider that failed on a witness stops selection: no verdict
+                  // no verdict on the transaction (evaluator, crypto provider): selection stops
+                  case unavailable: LedgerFailure.Unavailable   => Left(unavailable)
                   case unverifiable: LedgerFailure.Unverifiable => Left(unverifiable)
                   case _                                        => Right(None)
                 },

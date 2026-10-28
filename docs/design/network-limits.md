@@ -5,12 +5,13 @@
 - **Reference**: ouroboros-network `2fb69829a19b5c04e4fb212bdd78fb63f9d2d776`, the existing
   protocol source pin; actual interoperability uses reference node 11.1.3.
 
-Networking keeps its fs2 structure under [ADR0008](../adr/0008-networking-as-implemented.md).
+Networking mirrors ouroboros-network in structure and behaviour ([ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md)).
 Every mini-protocol state's time limit is the pinned reference's (`timeLimits*`, cited per row), except
 the BlockFetch client's cumulative request time (the BlockFetch client rework, #430). The TxSubmission
 byte/item profile (the TxSubmission alignment, #477), the BlockFetch client's aggregate bounds (#430), the
 ChainSync intersection-list count (the ChainSync alignment) and the other local bounds that the matrix
-lists remain explicit until they are aligned. The node already had ingress budgets, finite outbound queues, bounded codecs and
+lists remain explicit until they are aligned: each difference from the reference recorded here is
+alignment work, not a permitted deviation, unless ADR 0008 lists it as approved. The node already had ingress budgets, finite outbound queues, bounded codecs and
 state timers. G5 adds the missing SDU deadlines, checks completed-message byte limits and bounds
 TxSubmission's retained request state. It changes no persisted format or original transaction bytes.
 
@@ -193,8 +194,8 @@ capacity plus cancelled-waiter reuse. Existing abort/lifecycle tests retain firs
 Fair service applies after admission within a fence prefix. A full admission budget can still delay
 `send`; KeepAlive's response timer starts after that call. A flush deliberately prevents later traffic
 from passing its predecessors. This is not an unconditional latency bound under arbitrary rates or
-full queues. It meets the useful scheduler contract while retaining Scarab's fs2 design under
-[ADR0008](../adr/0008-networking-as-implemented.md); broader upstream/property coverage remains #49.
+full queues. It meets the useful scheduler contract with Scarab's fs2 design; aligning the multiplexer's structure with the
+reference ([ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md)) is [#477](https://github.com/KD5UJC-XYZ/scarab/issues/477) work. Broader upstream/property coverage remains #49.
 
 ## Same-connection ChainSync recovery (#152)
 

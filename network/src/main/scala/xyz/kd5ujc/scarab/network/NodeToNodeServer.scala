@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.effect.{Async, Resource}
+import fs2.concurrent.SignallingRef
 import cats.effect.syntax.all.*
 import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
@@ -82,7 +83,8 @@ object NodeToNodeServer:
       handlers: ServerHandlers[F, P],
       settings: Settings = Settings(),
       peerSharing: Boolean = false,
-      initiators: Boolean = false
+      initiators: Boolean = false,
+      responders: Option[Responders[F]] = None
   )(using Raise[F, NetworkError]): Resource[F, Unit] =
     // each server fiber runs in an error scope of its own and ends the connection with the reason
     def guarded(name: String)(program: Handle[F, NetworkError] ?=> F[Unit]): F[Unit] =
@@ -91,6 +93,14 @@ object NodeToNodeServer:
         .flatMap(_.fold(mux.abort, _ => Async[F].unit))
     def channel(protocol: Int) = Resource.eval(mux.channel(protocol, Mux.Role.Responder))
     val installed = applicationProtocols(peerSharing)
+    // one run of a responder, started on demand by `trigger`: counted while it runs, when the
+    // connection counts its responders (inbound connections, for the idle timer)
+    def episode(trigger: F[Unit])(run: F[Unit]): F[Unit] =
+      responders.fold(run)(counted => trigger *> counted.running(run))
+    def onDemand(protocol: Int): F[Unit] = mux.awaitResponderInput(protocol)
+    // `StartOnDemandAny`: the first byte of any responder starts it
+    val onDemandAny: F[Unit] =
+      installed.toList.map(onDemand).reduceLeft((a, b) => Async[F].race(a, b).void)
     for
       _ <- Resource.eval(
         mux.installApplication(if initiators then installed else Set.empty, installed)
@@ -100,55 +110,96 @@ object NodeToNodeServer:
       txs <- channel(Protocols.TxSubmission2)
       keepAlive <- channel(Protocols.KeepAlive)
       _ <- guarded("chain-sync")(
-        handlers.chainSync
-          .use(ChainSyncServer.run(chainSync, handlers.codec, _, settings.chainSync))
-          .foreverM[Unit]
+        episode(onDemand(Protocols.ChainSync))(
+          handlers.chainSync
+            .use(ChainSyncServer.run(chainSync, handlers.codec, _, settings.chainSync))
+            .void
+        ).foreverM[Unit]
       ).background
       _ <- guarded("block-fetch")(
-        BlockFetchServer.run(blockFetch, handlers.blocks, settings.blockFetch).foreverM[Unit]
+        episode(onDemand(Protocols.BlockFetch))(
+          BlockFetchServer.run(blockFetch, handlers.blocks, settings.blockFetch).void
+        ).foreverM[Unit]
       ).background
       _ <- guarded("tx-submission")(
-        TxSubmissionServer.run(txs, handlers.transactions, settings.transactions).foreverM[Unit]
+        episode(onDemand(Protocols.TxSubmission2))(
+          TxSubmissionServer.run(txs, handlers.transactions, settings.transactions).void
+        ).foreverM[Unit]
       ).background
       // cardano-diffusion NodeToNode.hs:310: KeepAlive uses StartOnDemandAny.
+      // restarted on demand when the client ends it, as the reference's inbound governor restarts
+      // its responders, when the connection counts them
       _ <- guarded("keep-alive")(
-        mux.awaitResponderActivity *> KeepAliveServer.run(keepAlive, settings.keepAlive)
+        responders.fold(
+          mux.awaitResponderActivity *> KeepAliveServer.run(keepAlive, settings.keepAlive).void
+        )(_ =>
+          episode(onDemandAny)(KeepAliveServer.run(keepAlive, settings.keepAlive).void)
+            .foreverM[Unit]
+        )
       ).background
       _ <- Option
         .when(peerSharing)(handlers.peerSharing.getOrElse(PeerSharingServer.empty[F]))
         .traverse_ { source =>
           channel(Protocols.PeerSharing).flatMap { shared =>
             guarded("peer-sharing")(
-              PeerSharingServer.run(shared, source, settings.peerSharing).foreverM[Unit]
+              episode(onDemand(Protocols.PeerSharing))(
+                PeerSharingServer.run(shared, source, settings.peerSharing).void
+              ).foreverM[Unit]
             ).background
           }
         }
     yield ()
 
-  /** The initial idle window of the reference's inbound governor: end the connection with
-    * [[NetworkError.ProtocolIdleTimeout]] unless a remote-initiated mini-protocol sends a byte
-    * within `after`. The reference arms the timer again (`WaitIdleRemote`) when the last responder
-    * terminates; this port covers the first window only, the one a connection that never speaks
-    * holds a slot for.
+  /** The responders of one inbound connection that are running: each is started on demand by its
+    * mini-protocol's first byte and ends with that protocol, as the reference's inbound governor
+    * starts and restarts them (`InboundGovernor.hs`, ouroboros-network `2fb69829`).
+    */
+  private[network] final class Responders[F[_]: Async] private (count: SignallingRef[F, Int]):
+    /** `run`, counted while it runs. */
+    def running[A](run: F[A]): F[A] =
+      Async[F].bracket(count.update(_ + 1))(_ => run)(_ => count.update(_ - 1))
+    def awaitBusy: F[Unit] = count.waitUntil(_ > 0)
+    def awaitIdle: F[Unit] = count.waitUntil(_ == 0)
+
+  private[network] object Responders:
+    def create[F[_]: Async]: F[Responders[F]] = SignallingRef.of[F, Int](0).map(new Responders(_))
+
+  /** The idle timer of the reference's inbound governor: end the connection with
+    * [[NetworkError.ProtocolIdleTimeout]] when no responder runs for `after`, first after the
+    * handshake and, when `rearm`, again each time the last running responder ends
+    * (`WaitIdleRemote`, `InboundGovernor.hs` and `ConnectionManager/Core.hs`, ouroboros-network
+    * `2fb69829`). A connection that our own clients use is not released when its remote side goes
+    * idle (the reference keeps a duplex connection in outbound use), so it is armed once only.
     */
   private[network] def idleWatch[F[_]: Async](
       mux: Mux[F],
-      after: FiniteDuration
+      responders: Responders[F],
+      after: FiniteDuration,
+      rearm: Boolean
   ): Resource[F, Unit] =
-    Fibers
-      .scoped[F, NetworkError, Boolean](t => NetworkError.fromThrowable("protocol-idle", t))(
-        Async[F].race(mux.awaitResponderActivity, Async[F].sleep(after)).map(_.isRight)
-      )
-      .flatMap {
-        case Left(reason) => mux.abort(reason)
-        case Right(idle)  => mux.abort(NetworkError.ProtocolIdleTimeout(after)).whenA(idle)
+    val F = Async[F]
+    // whether the window passed with no responder started
+    val window: F[Boolean] = F.race(responders.awaitBusy, F.sleep(after)).map(_.isRight)
+    val watch: F[Unit] = F.tailRecM(()) { _ =>
+      window.flatMap {
+        case true           => mux.abort(NetworkError.ProtocolIdleTimeout(after)).as(Right(()))
+        case false if rearm => responders.awaitIdle.as(Left(()))
+        case false          => F.pure(Right(()))
       }
+    }
+    Fibers
+      .scoped[F, NetworkError, Unit](t => NetworkError.fromThrowable("protocol-idle", t))(watch)
+      .flatMap(_.fold(mux.abort, F.pure))
       .background
       .void
 
   /** An inbound connection: negotiate, serve, and return the reason it ended. `negotiated` runs
     * once the handshake succeeded and may use the multiplexer (a duplex connection also carries our
     * clients, see [[Mux.Config.duplex]]).
+    *
+    * @param ownClients
+    *   whether our own clients run on the connection once negotiated; the protocol-idle timer is
+    *   then armed once only ([[idleWatch]])
     */
   def accept[F[_]: Async, P](
       bearer: Bearer[F],
@@ -156,7 +207,8 @@ object NodeToNodeServer:
       handlers: ServerHandlers[F, P],
       settings: Settings = Settings(),
       negotiated: (HandshakeClient.Agreed, Mux[F]) => Resource[F, Unit] = (_, _: Mux[F]) =>
-        Resource.unit[F]
+        Resource.unit[F],
+      ownClients: HandshakeClient.Agreed => Boolean = _ => false
   )(using Raise[F, NetworkError]): F[ConnectionEnd] =
     val config = settings.mux.copy(role = Mux.Role.Responder, duplex = settings.duplex)
     Mux.handshakeResource(bearer, Protocol, config).use { mux =>
@@ -175,14 +227,21 @@ object NodeToNodeServer:
               ProtocolDeadline.After(settings.handshakeTimeout)
             )
           )
+        responders <- Responders.create[F]
         reason <- (
           start(
             mux,
             handlers,
             settings,
             agreed.data.peerSharing,
-            initiators = !agreed.data.initiatorOnly
-          ) *> idleWatch(mux, settings.protocolIdleTimeout) *> negotiated(agreed, mux)
+            initiators = !agreed.data.initiatorOnly,
+            responders = Some(responders)
+          ) *> idleWatch(
+            mux,
+            responders,
+            settings.protocolIdleTimeout,
+            rearm = !ownClients(agreed)
+          ) *> negotiated(agreed, mux)
         ).surround(mux.closed)
         result <- reason match
           case defect: NetworkError.Defect => defect.raise[F, ConnectionEnd]

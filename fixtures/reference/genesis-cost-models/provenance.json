@@ -1,0 +1,44 @@
+{
+ "schemaVersion": 1,
+ "scope": "Genesis cost-model parsing (Alonzo and Conway genesis files, parseCostModels, mkCostModel) and Plutus evaluation under cost-model lists of every length; not the application of a protocol-parameter update",
+ "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+ "plutusSourceCommit": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+ "compiler": "GHC 9.10.3",
+ "packages": {
+  "cardano-ledger-alonzo": "1.16.0.0",
+  "cardano-ledger-conway": "1.23.0.0",
+  "cardano-ledger-core": "1.21.0.0",
+  "plutus-core": "1.70.0.0",
+  "plutus-ledger-api": "1.70.0.0"
+ },
+ "sourceFiles": {
+  "costModels": {
+   "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs",
+   "sha256": "5fd2ab01dabc4a7998b46f1bce8a8db2ddd89912fc6d680416d5f9d5a1becf47",
+   "matchesPin": true
+  },
+  "alonzoGenesis": {
+   "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Genesis.hs",
+   "sha256": "dd471cdae7e509f0e60fc56a5d8bd4a1c33026f8fe2b7d9a589abaa8926ef752",
+   "matchesPin": true
+  },
+  "conwayPParams": {
+   "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+   "sha256": "ba8712e61f23f067988b7d585194321a954ccedea2191df65e7d72f736db26ab",
+   "matchesPin": true
+  }
+ },
+ "network": "none",
+ "genesisSha256": "3ceb0c528a72480eefe39f631bb9ef755a46fd64f60aa7bb276bb654a19c6bfe",
+ "sweepSha256": "840ff1943e701bd89081bc1acf9bddf6f625f9482248588a1acf9092519e5576",
+ "evaluationSha256": "9807b69fb12bcc9b0f851b03ffe9a13d2092b403c329b5ed524d731a279657cf",
+ "modelsSha256": "d89911246e07d1b269d86cf4ab0833955e8f14d0ede68bcd4e6dd70f1bb3b9f8",
+ "harnessSha256": "2ad87977386c01ab3bc25691ac873f34532fcd2169f32188aa981441ae4910c1",
+ "casesSha256": "6f1fab1574438f6bba89c4d7653585c6e494c825bd2980319fd04b09ee1a033d",
+ "imageId": "sha256:192f07da4dd1c652243a4f935d9e2c400d0e377dfdef0968efc93fcb5204c70c",
+ "baseImageId": "sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef",
+ "costingImageId": "sha256:01961cacb7812313680b6dd5641ddf7ad77c2159d3492d5a7d3b3887274f092b",
+ "cases": 135,
+ "sweepObservations": 4188,
+ "evaluationObservations": 5661
+}

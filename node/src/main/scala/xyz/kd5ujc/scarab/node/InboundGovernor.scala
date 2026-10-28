@@ -147,7 +147,10 @@ final class InboundGovernor[F[_]: Async] private (
                   config.magic,
                   handlers,
                   config.server,
-                  negotiated = (agreed, mux) => negotiated(connection, remote, agreed, mux)
+                  negotiated = (agreed, mux) => negotiated(connection, remote, agreed, mux),
+                  // our clients run on a duplex connection (`negotiated`): then the remote side's
+                  // idleness does not release it
+                  ownClients = agreed => !agreed.data.initiatorOnly && config.runClients
                 )
               }
               .rescue {
@@ -321,8 +324,7 @@ final class InboundGovernor[F[_]: Async] private (
         case Disposition.Forget | Disposition.Backoff =>
           SessionEnd.peerError(end).map(InboundGovernor.SessionFailure.Peer(_))
         case Disposition.StopNode(f) => Some(InboundGovernor.SessionFailure.Fatal(f))
-        // no verdict on the block and no blame: the follower already reported the held block
-        case Disposition.Settled | Disposition.Hold(_) => None
+        case Disposition.Settled     => None
       drop = disposition == Disposition.Forget
       _ <- reason.traverse_ { why =>
         val closure = SessionEnd
@@ -423,14 +425,13 @@ final class InboundGovernor[F[_]: Async] private (
                               _.copy(ended = Some(InboundGovernor.SessionFailure.Peer(problem)))
                             )
                           )
-                      case Disposition.Settled | Disposition.Hold(_) => F.unit
+                      case Disposition.Settled => F.unit
                     record *> peer.quiesce.whenA(SessionEnd.returnDelay(end).nonEmpty) *> SessionEnd
                       .networkFailure(end)
                       .traverse_(connection.mux.abort) *> (end match
                       case SessionEnd.Failed(error)      => caller.raise[NodeError, Unit](error)
                       case SessionEnd.Rejected(error)    => caller.raise[NodeError, Unit](error)
                       case SessionEnd.Unavailable(error) => caller.raise[NodeError, Unit](error)
-                      case SessionEnd.Held(error)        => caller.raise[NodeError, Unit](error)
                       case SessionEnd.Unverifiable(error) =>
                         caller.raise[NodeError, Unit](error)
                       case SessionEnd.Storage(error)  => caller.raise[NodeError, Unit](error)
