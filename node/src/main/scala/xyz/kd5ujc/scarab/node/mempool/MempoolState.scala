@@ -170,11 +170,10 @@ final case class MempoolLedger(ls: LedgerState[Conway], treasury: Coin, epoch: B
 
   /** A transaction validated before, applied again to its first failure, where only the verdict
     * counts: MEMPOOL and LEDGER without their static checks (`reapplyTx`, ouroboros-consensus
-    * 82ecba32 `Shelley/Ledger/Mempool.hs` 325–338; cardano-ledger f649f975
-    * `Shelley/API/Mempool.hs` 472–473, whose Conway rule is MEMPOOL, `Conway.hs` 57). The pool
-    * revalidates its transactions so, and so does block production (`revalidateTxsFor`,
-    * `Mempool/Impl/Common.hs` 403–422): no signature is verified and no script is evaluated again
-    * ([[TxEnv.Validation]]).
+    * 82ecba32 `Shelley/Ledger/Mempool.hs` 325–338; cardano-ledger f649f975 `Shelley/API/Mempool.hs`
+    * 472–473, whose Conway rule is MEMPOOL, `Conway.hs` 57). The pool revalidates its transactions
+    * so, and so does block production (`revalidateTxsFor`, `Mempool/Impl/Common.hs` 403–422): no
+    * signature is verified and no script is evaluated again ([[TxEnv.Validation]]).
     */
   def reapply(tx: Tx, env: TxEnv, rules: Globals): Either[LedgerFailure, MempoolLedger] =
     judged(Mempool, Judgment.Policy.FirstFailure)(
@@ -447,10 +446,10 @@ final case class MempoolState(
 
 object MempoolState:
   /** A held transaction that revalidation has no verdict on: a crypto provider failed on one of its
-    * witnesses, or the evaluator on one of its scripts. In the reference the exception aborts the state operation, so the pool keeps its
-    * state and nothing is traced (consensus 82ecba32 `Mempool/Update.hs` 467–495 and 587–622,
-    * `withTMVar`), and the revalidation watcher, linked to the node, stops it (`Mempool/Init.hs`
-    * 64–77).
+    * witnesses, or the evaluator on one of its scripts. In the reference the exception aborts the
+    * state operation, so the pool keeps its state and nothing is traced (consensus 82ecba32
+    * `Mempool/Update.hs` 467–495 and 587–622, `withTMVar`), and the revalidation watcher, linked to
+    * the node, stops it (`Mempool/Init.hs` 64–77).
     */
   type NoVerdict = LedgerFailure.Unverifiable | LedgerFailure.Unavailable
 

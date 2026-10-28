@@ -123,7 +123,6 @@ object LedgerFailure:
     */
   final case class Vocab(error: VocabError) extends LedgerDefect
 
-
 /** Block-level context of a transaction.
   *
   * @param clock
