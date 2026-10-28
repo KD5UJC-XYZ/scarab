@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-# Linux/amd64 Temurin 21.0.11+10 JRE (the same Java release as the verified builder).
-FROM eclipse-temurin@sha256:9af01c30e85b5a9b15fe249a84fb6dcb19e06ee84fbf23ea2d116b0e195c2ce9
+# Linux/amd64 Temurin 25.0.4.1+1 JRE on Ubuntu 26.04 (resolute): tag eclipse-temurin:25.0.4.1_1-jre-resolute, index
+# digest checked on 2026-10-28 (the same Java release as the verified builder).
+FROM eclipse-temurin@sha256:acd83cdf6c9b5bfcd7c4e9d3e1969bacaacdcfa034c074500ab28610fb840f81
 ARG SCARAB_VERSION
 ARG SCARAB_COMMIT
 LABEL org.opencontainers.image.title="Scarab" \

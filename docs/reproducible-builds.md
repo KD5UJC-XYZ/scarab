@@ -15,7 +15,7 @@ java --enable-native-access=ALL-UNNAMED -jar node/target/scala-3.3.8/scarab-node
 ```
 
 The versioned filename follows the build's project and Scala versions. The fat JAR contains the
-application, Scala libraries, runtime dependencies and native resources; it needs Java 21 but no
+application, Scala libraries, runtime dependencies and native resources; it needs Java 25 but no
 checkout, dependency cache, launcher script or external classpath.
 
 The pinned [sbt-assembly plugin](https://github.com/sbt/sbt-assembly#usage) supplies assembly and

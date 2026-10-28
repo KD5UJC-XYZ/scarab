@@ -11,7 +11,7 @@ funds (see [SECURITY.md](../SECURITY.md)).
 
 | Image | Built from | Used for |
 |---|---|---|
-| `scarab-jdk:local` | `docker/jdk.Dockerfile` (digest-pinned Temurin 21 plus Python 3) | building, running the node, `devnet.py` |
+| `scarab-jdk:local` | `docker/jdk.Dockerfile` (digest-pinned Temurin 25 plus Python 3) | building, running the node, `devnet.py` |
 | `cardano-reference-11.1.3:local` | the checksum-pinned official release archive, see [reference-image.md](reference-image.md) | the Haskell reference cluster for the scenarios |
 
 ```sh
@@ -71,7 +71,7 @@ java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main 
   (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> | --topology <topology.json>) [options]
 ```
 
-(Inside the JDK image with the checkout mounted, or on a host with JDK 21.) The sbt form is
+(Inside the JDK image with the checkout mounted, or on a host with JDK 25.) The sbt form is
 `sbt "node/runMain xyz.kd5ujc.scarab.node.Main follow ..."`. The node logs one JSON object per line on stdout
 (`started`, `extended`, `eraTransition`, `epochValidated`, `ledgerEpoch`, `snapshotWritten`,
 `volatileResumed`, `shutdownSnapshot`, `forged`, ...). The epoch lines carry a `scheduling` object

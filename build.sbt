@@ -279,7 +279,13 @@ lazy val node = scarab("node")
     assembly / mainClass := (Compile / mainClass).value,
     assembly / assemblyJarName := s"scarab-node-${version.value}-assembly.jar",
     assemblyRepeatableBuild := true,
-    assembly / packageOptions += Package.ManifestAttributes("Multi-Release" -> "true"),
+    // The node calls native code (the local socket's unlink through the FFM linker, the Plutus
+    // crypto's JNI library); `java -jar` reads this attribute in place of
+    // `--enable-native-access=ALL-UNNAMED`, so the JDK does not warn on the first such call.
+    assembly / packageOptions += Package.ManifestAttributes(
+      "Multi-Release" -> "true",
+      "Enable-Native-Access" -> "ALL-UNNAMED"
+    ),
     assemblyMergeStrategy := {
       // The portable resource in blst-native must retain precedence.
       case "supranational/blst/Linux/amd64/libblst.so" => MergeStrategy.preferProject

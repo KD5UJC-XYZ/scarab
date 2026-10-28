@@ -21,7 +21,7 @@ import reproducible_build
 
 SYFT = 'anchore/syft@sha256:b83763ae05df444f7f768655ce2ea6d7c2f8280d58f9bee221a69d2971d98883'
 CYCLONEDX = 'cyclonedx/cyclonedx-cli@sha256:8c6606f62497671f246e30f5894000dbee47167c3ebda127acda04777e881c26'
-BASE = 'eclipse-temurin@sha256:9af01c30e85b5a9b15fe249a84fb6dcb19e06ee84fbf23ea2d116b0e195c2ce9'
+BASE = 'eclipse-temurin@sha256:acd83cdf6c9b5bfcd7c4e9d3e1969bacaacdcfa034c074500ab28610fb840f81'
 
 
 def run(command, log, **options):

@@ -59,7 +59,7 @@ incomplete name, never as a verified candidate.
    hashes must match those native build inputs. Only Linux/amd64 runtime behavior is evidenced;
    every other bundled JNI resource is inventoried with its actual owner and hash, not advertised
    as another tested platform.
-5. The image is built once from the verified JAR and the digest-pinned Temurin 21.0.11+10 JRE.
+5. The image is built once from the verified JAR and the digest-pinned Temurin 25.0.4.1+1 JRE.
    It runs as numeric user `10001:10001`, with entrypoint
    `java -jar /opt/scarab/scarab.jar`. Read-only runtime smoke checks need executable JNI scratch:
    `--tmpfs /tmp:rw,exec,nosuid,size=256m`; Docker's default `--tmpfs /tmp` is `noexec`.
