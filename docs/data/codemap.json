@@ -102,7 +102,7 @@
    "responsibility": "Pure mini-protocol codecs and state machines, versions, era and header tags",
    "entryPoints": ["ChainSync", "BlockFetch", "Handshake", "TxSubmission2", "LocalStateQuery", "Mux", "KeepAlive", "PeerSharing", "LeiosFetch", "LeiosNotify", "LeiosWord", "EbHash", "LeiosTxHash"],
    "suites": ["ChainSyncSuite", "BlockFetchSuite", "HandshakeSuite", "TxSubmission2Suite", "LocalStateQuerySuite", "MuxSuite", "KeepAliveSuite", "LeiosCodecSuite", "LeiosWordSuite", "LeiosFetchDecoderSuite"],
-   "docs": ["docs/adr/0008-networking-as-implemented.md", "docs/design/domain-errors.md"]
+   "docs": ["docs/adr/0008-networking-mirrors-ouroboros-network.md", "docs/design/domain-errors.md"]
   },
   {
    "module": "network",
@@ -110,7 +110,7 @@
    "responsibility": "fs2 bearer, multiplexer, connection manager, client and server roles of each mini-protocol",
    "entryPoints": ["Mux", "Bearer", "ConnectionManager", "NodeToNode", "HandshakeClient", "ChainSyncClient", "BlockFetchClient", "NodeToNodeServer", "ProtocolResults"],
    "suites": ["MuxSuite", "ConnectionManagerSuite", "NodeToNodeSuite", "HandshakeSuite", "ChainSyncRuntimeSuite", "BlockFetchPipelineSuite", "ProtocolResultsSuite", "WarmHotSuite", "LeiosFetchClientSuite"],
-   "docs": ["docs/adr/0008-networking-as-implemented.md", "docs/adr/0017-fibers-end-with-values.md", "docs/design/chainsync-pipeline.md", "docs/design/network-limits.md"]
+   "docs": ["docs/adr/0008-networking-mirrors-ouroboros-network.md", "docs/adr/0017-fibers-end-with-values.md", "docs/design/chainsync-pipeline.md", "docs/design/network-limits.md"]
   },
   {
    "module": "network",
