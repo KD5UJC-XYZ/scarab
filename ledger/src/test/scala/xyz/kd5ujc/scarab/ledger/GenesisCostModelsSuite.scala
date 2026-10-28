@@ -162,7 +162,11 @@ class GenesisCostModelsSuite extends FunSuite:
     val made = rowsOf("mkCostModel")
     assert(made.size > 20)
     made.foreach { row =>
-      assertEquals(field[Boolean](field[Json](row, "reference"), "accepted"), true)
+      val name = field[String](row, "name")
+      val verdict = field[Json](row, "reference")
+      // the request ran (`accepted`) and `mkCostModel` returned a model (`result.valid`)
+      assertEquals(field[Boolean](verdict, "accepted"), true, name)
+      assertEquals(field[Boolean](field[Json](verdict, "result"), "valid"), true, name)
     }
   }
 
