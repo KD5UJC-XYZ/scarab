@@ -13,8 +13,12 @@ enum InboundEnd:
   case Storage(error: StorageError)
   case Defect(cause: Throwable)
 
+  /** What would stop the node on a node-to-node connection ended a node-to-client one alone. */
+  case Fault(fault: Fatal)
+
   def message: String = this match
     case Connection(end) => end.message
     case Local(end)      => end.message
     case Storage(error)  => s"storage: ${error.message}"
     case Defect(cause)   => s"failed: ${cause.getClass.getSimpleName}: ${cause.getMessage}"
+    case Fault(fault)    => fault.message

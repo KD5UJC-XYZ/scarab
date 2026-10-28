@@ -13,8 +13,22 @@
 {"event":"cpuStarvation","at":"2026-10-16T12:00:00Z","clockDriftMs":250,"threshold":0.1,"intervalMs":1000}
 {"event":"praosSyncUntrusted","at":"2026-10-16T12:00:00Z","consensusMode":"PraosMode","start":"origin","slotsBehind":null}
 {"event":"praosSyncUntrusted","at":"2026-10-16T12:00:00Z","consensusMode":"PraosMode","start":"behind","slotsBehind":432001}
-{"event":"insecureLocalSocketPermissions","at":"2026-10-16T12:00:00Z","path":"/ipc/node.socket","mode":"0o140755"}
-{"event":"insecureLocalSocketDirectory","at":"2026-10-16T12:00:00Z","path":"/tmp/node.socket","mode":"0o41777"}
+{"event":"createSystemdSocketForSnocketPath","at":"2026-10-16T12:00:00Z","path":"LocalAddress \"/ipc/node.socket\""}
+{"event":"createdLocalSocket","at":"2026-10-16T12:00:00Z","path":"LocalAddress \"/ipc/node.socket\""}
+{"event":"configuringLocalSocket","at":"2026-10-16T12:00:00Z","path":"LocalAddress \"/ipc/node.socket\"","socket":"FileDescriptor 20"}
+{"event":"configuredLocalSocket","at":"2026-10-16T12:00:00Z","path":"LocalAddress \"/ipc/node.socket\"","socket":"FileDescriptor 20"}
+{"event":"listeningLocalSocket","at":"2026-10-16T12:00:00Z","path":"LocalAddress \"/ipc/node.socket\"","socket":"FileDescriptor 20"}
+{"event":"localSocketUp","at":"2026-10-16T12:00:00Z","path":"LocalAddress \"/ipc/node.socket\"","socket":"FileDescriptor 20"}
+{"event":"insecureLocalSocketPermissions","at":"2026-10-16T12:00:00Z","path":"LocalAddress \"/ipc/node.socket\"","mode":"0o140755"}
+{"event":"insecureLocalSocketDirectory","at":"2026-10-16T12:00:00Z","path":"LocalAddress \"/tmp/node \\233.socket\"","mode":"0o41777"}
+{"event":"runLocalServer","at":"2026-10-16T12:00:00Z","localAddress":"LocalAddress \"/ipc/node.socket\""}
+{"event":"serverStarted","at":"2026-10-16T12:00:00Z","addresses":[{"path":"/ipc/node.socket"}]}
+{"event":"acceptConnection","at":"2026-10-16T12:00:00Z","address":{"localAddress":"/ipc/node.socket","remoteAddress":"/ipc/node.socket@0"}}
+{"event":"acceptError","at":"2026-10-16T12:00:00Z","reason":"Network.Socket.accept: resource exhausted (No file descriptors available)"}
+{"event":"serverStopped","at":"2026-10-16T12:00:00Z"}
+{"event":"serverError","at":"2026-10-16T12:00:00Z","reason":"Network.Socket.accept: resource exhausted (No file descriptors available)"}
+{"event":"socketConfigError","at":"2026-10-16T12:00:00Z","error":"LocalSocketError \"/ipc/node.socket\" /ipc/node.socket: removeLink: inappropriate type (Is a directory)"}
+{"event":"diffusionErrored","at":"2026-10-16T12:00:00Z","error":"Network.Socket.bind: does not exist (No such file or directory)"}
 {"event":"listening","at":"2026-10-16T12:00:00Z","address":"0.0.0.0:3001"}
 {"event":"headersChecked","at":"2026-10-16T12:00:00Z","validated":50000,"unchecked":12,"waited":3}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"/tmp/node.socket","state":"accepted","reason":null}

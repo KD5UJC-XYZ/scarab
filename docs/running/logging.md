@@ -88,12 +88,23 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `praosSyncUntrusted` | `Node.PraosSyncUntrusted` | Warning | `consensusMode`, `start` (`origin` or `behind`), `slotsBehind` |
 | `plutusCrypto` | `Node.PlutusCrypto` | Info | `platform`, `library` (`source`, `path`, `sha256`) |
 | `listening` | `Node.Listening` | Notice | `address` |
+| `createSystemdSocketForSnocketPath` | `Node.CreateSystemdSocketForSnocketPath` | Info | `path`; the node-to-client socket is about to be created. Like the rest of these lines, the reference's `Startup.DiffusionInit` trace of that name: `path` is the reference's `show` of the address, `LocalAddress "<path>"`, the path as configured; see [node-to-client](node-to-client.md#the-socket-path) |
+| `createdLocalSocket` | `Node.CreatedLocalSocket` | Info | `path` |
+| `configuringLocalSocket` | `Node.ConfiguringLocalSocket` | Info | `path`, `socket` (`FileDescriptor <n>`, the socket's descriptor); the bind follows |
+| `insecureLocalSocketPermissions` | `Node.InsecureLocalSocketPermissions` | Warning | `path`, `mode` (the socket's whole `st_mode` in octal after `0o`, file type included); others may read or write the socket, checked once after the bind as the reference's `InsecureLocalSocketPermissions` |
+| `insecureLocalSocketDirectory` | `Node.InsecureLocalSocketDirectory` | Warning | `path` (the socket's), `mode` (its directory's, as above); the group or others may write the directory that holds the socket, as the reference's `InsecureLocalSocketDirectory` |
+| `configuredLocalSocket` | `Node.ConfiguredLocalSocket` | Info | `path`, `socket` |
+| `listeningLocalSocket` | `Node.ListeningLocalSocket` | Info | `path`, `socket` |
+| `localSocketUp` | `Node.LocalSocketUp` | Info | `path`, `socket` |
+| `runLocalServer` | `Node.RunLocalServer` | Info | `localAddress` (as `path`) |
+| `diffusionErrored` | `Node.DiffusionErrored` | Critical | `error`, the reference's text of the failure; the node-to-client socket could not be set up (its bind, or the status of the socket or its directory, failed) or its accept loop stopped, and the node exits with 1 |
 | `memory` | `Node.Memory` | Info | `sample` |
 | `cpuStarvation` | `Node.CpuStarvation` | Warning | `clockDriftMs`, `threshold`, `intervalMs` |
 | `stateDump` | `Node.StateDump` | Info | `slot`, `hash`, `epoch`, `millis` |
 | `stateDumpRefused` | `Node.StateDumpRefused` | Warning | `slot`, `hash`, `epoch`, `error` |
 | `verificationCache` | `Node.VerificationCache` | Debug | `summary` |
 | `error` | `Node.Error` | Error | `kind`, `message` |
+| `socketConfigError` | `Node.SocketConfigError` | Error | `error`, the reference's `show` of its `LocalSocketError`: what was at the `--local-socket` path could not be removed (a directory, a directory the node may not write, ...); the node does not start and exits with 1 |
 | `fatal` | `Node.Fatal` | Error | `kind` (`storage`, `internal`, `defect` or `unavailable`), `message`, `exitCode` |
 | `finished` | `Node.Finished` | Notice | `tip`, `retained` |
 | `connected` | `Chain.Connected` | Info | `intersection` |
@@ -115,8 +126,11 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `ledgerEpoch` | `Ledger.LedgerEpoch` | Info | `epoch`, `utxo`, `accounts`, `pools`, `treasury`, `reserves`, `protocolVersion`, `phase2`, `scriptIntegrityHashChecked`, `scheduling` |
 | `connection` | `Net.Connection` | Info (Warning when `what` is `refused` or `acceptHardLimit`) | `remote`, `what`, `provenance`, `from`, `to`, `reason`; the accept loop's `acceptRateLimited` (`delaySeconds`, exact, and `connections`), `acceptHardLimit` (`limit`) and `acceptResumed` (`connections`) are the reference's `AcceptConnectionsPolicyTrace` |
 | `inbound` | `Net.Inbound` | Info (Warning when `state` is `refused` or `cachedBlockRejected`) | `remote`, `state`, `reason` |
-| `insecureLocalSocketPermissions` | `Net.InsecureLocalSocketPermissions` | Warning | `path`, `mode` (the socket's whole `st_mode` in octal after `0o`, file type included); others may read or write the `--local-socket` socket, checked once after the bind as the reference's `InsecureLocalSocket.Permissions`, see [node-to-client](node-to-client.md#the-socket-path) |
-| `insecureLocalSocketDirectory` | `Net.InsecureLocalSocketDirectory` | Warning | `path` (the socket's), `mode` (its directory's, as above); the group or others may write the directory that holds the socket, as the reference's `InsecureLocalSocket.Directory` |
+| `serverStarted` | `Net.ServerStarted` | Notice | `addresses` (each `path`); the node-to-client server accepts clients. Like the next four, the reference's `Net.Server.Local` trace (`Started`, `AcceptConnection`, `AcceptError`, `Stopped`, `Error`) |
+| `acceptConnection` | `Net.AcceptConnection` | Debug | `address` (`localAddress`, the socket's path, and `remoteAddress`, `<path>@<n>` for the `n`th client accepted) |
+| `acceptError` | `Net.AcceptError` | Error | `reason`; an accept failed: after `ECONNABORTED` the server accepts again half a second later, any other failure stops it |
+| `serverStopped` | `Net.ServerStopped` | Notice | none |
+| `serverError` | `Net.ServerError` | Critical | `reason`; the accept loop stopped on a failure (a `diffusionErrored` line follows) |
 | `peerSelectionTargets` | `Net.PeerSelectionTargets` | Notice | `root`, `known`, `established`, `active`, `knownBigLedger`, `establishedBigLedger`, `activeBigLedger` |
 | `peerSelectionRoots` | `Net.PeerSelectionRoots` | Info (Warning when `action` is `failure`) | `action`, `bigLedger`, `before`, `after`, `target`, `current`, `found`, `backoffs`, `retryInSeconds`; sharing actions `pickInbound`, `peerShareRequests`, `peerShareResults` add `peers`, `amount`, `results`, `added` |
 | `peerSelectionPromote` | `Net.PeerSelectionPromote` | Info (Warning when `action` is `failed`) | `action`, `bigLedger`, `from`, `to`, `peers`, `peer`, `local`, `target`, `current`, `failure`, `retryInSeconds`, `forgotten`, `reason`, `operation` |

@@ -62,7 +62,12 @@ import xyz.kd5ujc.scarab.network.{
   LocalTxSubmissionServer,
   NodeToNodeServer,
   NetworkError,
-  ServerHandlers
+  DiffusionFailure,
+  LocalAddress,
+  LocalServer,
+  LocalSockets,
+  ServerHandlers,
+  SocketConfigError
 }
 import xyz.kd5ujc.scarab.node.forge.{
   ForgeEvent,
@@ -70,7 +75,8 @@ import xyz.kd5ujc.scarab.node.forge.{
   Forger,
   HotKeySource,
   KeyFiles,
-  KeyGuard
+  KeyGuard,
+  PoolCredentials
 }
 import xyz.kd5ujc.scarab.node.log.{LibraryLogs, Log, LogRouter, LogSettings, NodeEvent, Severity}
 import xyz.kd5ujc.scarab.node.metrics.EventSink.alongside
@@ -126,15 +132,13 @@ import scala.concurrent.duration.*
   * VRF key, KES key and operational certificate it also produces blocks in the slots it leads.
   */
 object Main extends IOApp:
-  /** Land a backend error after the network adapter has released its protocol resources. */
+  /** Land a backend error after the network adapter has released its protocol resources: on a
+    * node-to-client connection it ends that connection only ([[ListenerFailures.reportLocal]]).
+    */
   private[node] def landLocalBackend(
-      result: IO[Either[StorageError, LocalTxSubmissionServer.End]],
-      fatalSink: Fatal => IO[Unit]
+      result: IO[Either[StorageError, LocalTxSubmissionServer.End]]
   ): IO[InboundEnd] =
-    result.flatMap {
-      case Left(error) => fatalSink(Fatal.Storage(error)).as(InboundEnd.Storage(error))
-      case Right(end)  => IO.pure(InboundEnd.Local(end))
-    }
+    result.map(_.fold(InboundEnd.Storage(_), InboundEnd.Local(_)))
 
   private[node] def synchronizeMempool(
       mempool: Mempool[IO],
@@ -365,7 +369,7 @@ object Main extends IOApp:
       mempoolBytes: Option[Long] = None,
       configFile: Option[Path] = None,
       topologyFile: Option[Path] = None,
-      localSocket: Option[Path] = None,
+      localSocket: Option[String] = None,
       forge: Option[ForgeFiles] = None,
       utxoStore: Option[String] = None,
       utxoCacheMb: Int = 256,
@@ -467,7 +471,7 @@ object Main extends IOApp:
             .allow[NodeError](follow(options))
             .rescue { error =>
               val (event, code) = startupFailure(error)
-              logged(event).as(code)
+              logged(event) *> failedStart(error.message).as(code)
             }
         }
 
@@ -519,13 +523,31 @@ object Main extends IOApp:
   private[node] def configured(
       options: Options
   ): Either[ConfigError, (Options, NodeSetup, Option[Topology])] =
+    nodeSetup(options).flatMap(completed(options, _))
+
+  /** The node configuration and genesis the options point to. */
+  private[node] def nodeSetup(options: Options): Either[ConfigError, NodeSetup] =
+    options.configFile match
+      case Some(file) => NodeSetup.fromConfigFile(file, options.genesisDir)
+      case None =>
+        options.genesisDir
+          .toRight(ConfigError(ConfigProblem.RequiredOneOf(Set("--config", "--genesis-dir"))))
+          .flatMap(NodeSetup.fromDirectory)
+
+  /** The node-to-client socket path: `--local-socket`, else, with `--config`, the file's
+    * `SocketPath`, as it was written (the reference's `ncSocketPath`, not normalised).
+    */
+  private[node] def socketPath(options: Options, setup: NodeSetup): Option[String] =
+    options.localSocket.orElse(
+      Option.when(options.configFile.isDefined)(setup.config.settings.socketPath).flatten
+    )
+
+  /** The options completed from the configuration `setup` and the topology they point to. */
+  private[node] def completed(
+      options: Options,
+      setup: NodeSetup
+  ): Either[ConfigError, (Options, NodeSetup, Option[Topology])] =
     for
-      setup <- options.configFile match
-        case Some(file) => NodeSetup.fromConfigFile(file, options.genesisDir)
-        case None =>
-          options.genesisDir
-            .toRight(ConfigError(ConfigProblem.RequiredOneOf(Set("--config", "--genesis-dir"))))
-            .flatMap(NodeSetup.fromDirectory)
       loadedTopology <- topologyRoots(options, setup)
       topology = loadedTopology._1
       roots = loadedTopology._2
@@ -538,9 +560,7 @@ object Main extends IOApp:
         roots = Some(roots),
         db =
           options.db.orElse(Option.when(fromFile)(settings.databasePath).flatten.map(Path.of(_))),
-        localSocket = options.localSocket.orElse(
-          Option.when(fromFile)(settings.socketPath).flatten.map(Path.of(_))
-        ),
+        localSocket = socketPath(options, setup),
         mempoolBytes = options.mempoolBytes.orElse(
           Option.when(fromFile)(settings.mempoolCapacityBytes).flatten
         )
@@ -604,67 +624,109 @@ object Main extends IOApp:
         )
         .flatMap(report => Log[IO].emit[NodeEvent](NodeEvent.PlutusCrypto(report)))
 
+  /** A start that fails says why on standard error as well as in the log, as the reference's
+    * top-level handler does before it exits with 1 (cardano-node 11.1.3,
+    * `cardano-node/src/Cardano/Node/Handlers/TopLevel.hs` 190-195).
+    */
+  private def failedStart(text: String): IO[Unit] = IO.consoleForIO.errorln(s"scarab: $text")
+
   private def follow(requested: Options)(using
       Handle[IO, NodeError],
       Log[IO]
   ): IO[ExitCode] =
-    nativeLibrary *> IO
-      .blocking(configured(requested))
-      .flatMap(
-        _.fold(
-          e => Handle[IO, NodeError].raise[NodeError, (Options, NodeSetup, Option[Topology])](e),
-          IO.pure
+    def admitted[A](result: Either[ConfigError, A]): IO[A] =
+      result.fold(e => Handle[IO, NodeError].raise[NodeError, A](e), IO.pure)
+    // the VRF key's permissions, then the credentials: before the sockets, the topology and the
+    // database, as the reference's `runNode` reads them before `handleSimpleNode` (`Run.hs` 193-201)
+    def credentials(files: ForgeFiles): IO[PoolCredentials] =
+      IO.blocking(KeyFiles.load(files.vrfSkey, files.kesSkey, files.opCert))
+        .flatMap(_.fold(e => Handle[IO, NodeError].raise[NodeError, PoolCredentials](e), IO.pure))
+    // the stale socket goes once the configuration is read, before the topology and the database,
+    // as the reference's `gatherConfiguredSockets` (`Run.hs` 317-324)
+    def removedStale(setup: NodeSetup): IO[Either[SocketConfigError, Unit]] =
+      Handle
+        .allow[SocketConfigError](
+          socketPath(requested, setup)
+            .traverse_(LocalServer.removeStale(LocalSockets.jdk[IO], _))
+            .map(_.asRight[SocketConfigError])
         )
+        .rescue(error => IO.pure(error.asLeft[Unit]))
+    for
+      _ <- nativeLibrary
+      // the configuration, then the VRF key's permissions, then the genesis and the credentials
+      // (`Run.hs` 183-201)
+      _ <- requested.configFile.traverse_(file =>
+        IO.blocking(NodeSetup.readConfig(file)).flatMap(admitted)
       )
-      .flatMap { (options, setup, topology) =>
-        val ownership = options.db.fold(Resource.unit[IO])(db =>
-          xyz.kd5ujc.scarab.storage.DatabaseOwnership.resource[IO](fs2.io.file.Path.fromNioPath(db))
-        )
-        val compatible = Resource.eval(
-          options.db.traverse_(db =>
-            ChainStorage
-              .preflight[IO](
-                fs2.io.file.Path.fromNioPath(db),
-                Some(setup.identity),
-                options.adoptLegacyNetworkIdentity,
-                setup.genesis.geometry.byron.epochSlots
-              )
-              .flatMap(admission =>
-                NetworkIdentityFile.admit[IO](
-                  fs2.io.file.Path.fromNioPath(db),
-                  setup.identity,
-                  admission
-                )
-              )
+      _ <- requested.forge.traverse_(files =>
+        KeyGuard.permissions[IO](files.vrfSkey, Log.sink[ForgeEvents, ForgeEvent, IO])
+      )
+      setup <- IO.blocking(nodeSetup(requested)).flatMap(admitted)
+      pool <- requested.forge.traverse(credentials)
+      removal <- removedStale(setup)
+      code <- removal.fold(
+        error =>
+          Log[IO].emit[NodeEvent](NodeEvent.SocketConfigError(error)) *>
+            failedStart(error.message).as(ExitCode.Error),
+        _ =>
+          IO.blocking(completed(requested, setup))
+            .flatMap(admitted)
+            .flatMap((options, setup, topology) =>
+              started(options, setup, topology, requested.peers, pool)
+            )
+      )
+    yield code
+
+  /** The node from its completed options on: the database, the stores and the run. */
+  private def started(
+      options: Options,
+      setup: NodeSetup,
+      topology: Option[Topology],
+      cliPeers: List[SocketAddress[Host]],
+      credentials: Option[PoolCredentials]
+  )(using Handle[IO, NodeError], Log[IO]): IO[ExitCode] =
+    val ownership = options.db.fold(Resource.unit[IO])(db =>
+      xyz.kd5ujc.scarab.storage.DatabaseOwnership.resource[IO](fs2.io.file.Path.fromNioPath(db))
+    )
+    val compatible = Resource.eval(
+      options.db.traverse_(db =>
+        ChainStorage
+          .preflight[IO](
+            fs2.io.file.Path.fromNioPath(db),
+            Some(setup.identity),
+            options.adoptLegacyNetworkIdentity,
+            setup.genesis.geometry.byron.epochSlots
           )
-        )
-        val keys = options.forge.fold(Resource.unit[IO])(f =>
-          KeyGuard.resource[IO](
-            f.vrfSkey,
-            f.kesSkey,
-            options.keyLock,
-            Log.sink[ForgeEvents, ForgeEvent, IO]
+          .flatMap(admission =>
+            NetworkIdentityFile.admit[IO](
+              fs2.io.file.Path.fromNioPath(db),
+              setup.identity,
+              admission
+            )
           )
-        )
-        (ownership *> keys *> compatible *> (
-          utxoBacking(options),
-          VerificationCache.resource[IO](),
-          Scheduling.resource[IO](options.cpuThreads),
-          Supervisor[IO](await = false)
-        ).tupled).use { case ((store, checkpoints), cache, scheduling, supervisor) =>
-          followWith(
-            options,
-            requested.peers,
-            setup,
-            topology,
-            store,
-            backing(store, checkpoints),
-            cache,
-            scheduling,
-            StallDiagnostics.abandoning(supervisor)
-          )
-        }
-      }
+      )
+    )
+    val keys =
+      options.forge.fold(Resource.unit[IO])(f => KeyGuard.held[IO](f.kesSkey, options.keyLock))
+    (ownership *> keys *> compatible *> (
+      utxoBacking(options),
+      VerificationCache.resource[IO](),
+      Scheduling.resource[IO](options.cpuThreads),
+      Supervisor[IO](await = false)
+    ).tupled).use { case ((store, checkpoints), cache, scheduling, supervisor) =>
+      followWith(
+        options,
+        cliPeers,
+        setup,
+        topology,
+        store,
+        backing(store, checkpoints),
+        cache,
+        scheduling,
+        StallDiagnostics.abandoning(supervisor),
+        credentials
+      )
+    }
 
   private def followWith(
       options: Options,
@@ -675,7 +737,8 @@ object Main extends IOApp:
       backing: StateBacking[IO, MirrorState],
       cache: VerificationCache,
       scheduling: Scheduling[IO],
-      background: IO[Unit] => IO[Unit]
+      background: IO[Unit] => IO[Unit],
+      credentials: Option[PoolCredentials]
   )(using
       handle: Handle[IO, NodeError],
       log: Log[IO]
@@ -1291,43 +1354,52 @@ object Main extends IOApp:
                 genesis.networkMagic.toLong
               )
             )
-            local = options.localSocket.fold(Resource.unit[IO])(path =>
-              // a path the node cannot use refuses the start, as the reference's SocketConfigError
-              given Raise[IO, BearerServer.LocalSocketError] =
-                Peer.contramapped(handle)(e => ConfigError(ConfigProblem.LocalSocket(e)))
-              BearerServer
-                .listenUnix[IO, NetworkError](path)(
-                  failure => ListenerFailures.report(path.toString, failure, logged, fatalSink),
-                  warning => logged(NodeEvent.InsecureLocalSocket(warning))
-                ) { bearer =>
-                  logged(NodeEvent.Inbound(path.toString, InboundEvent.Accepted)) *>
-                    landLocalBackend(
-                      NodeToClientServer.acceptBackend[IO, StorageError](
-                        bearer,
-                        genesis.networkMagic,
-                        LocalSubmission.handler(mempool)(fatalSink),
-                        Some(StateQuerySource[IO, MirrorState](ref, queryEnv, store, chainGate)),
-                        chainSync = Some(server.blockSource),
-                        txMonitor = Some(LocalMonitor.source(mempool))
-                      ),
-                      fatalSink
-                    )
-                      .flatMap(reason =>
-                        logged(NodeEvent.Inbound(path.toString, InboundEvent.Closed(reason)))
-                      )
-                }
-                .evalMap(_ => logged(NodeEvent.Listening(path.toString)))
-            )
-            forging <- options.forge.traverse { files =>
+            // the node-to-client server; a failure to set it up, or an accept loop that stops,
+            // stops the node as the reference's `DiffusionErrored` does
+            local = (raise: Raise[IO, DiffusionFailure]) =>
+              given Raise[IO, DiffusionFailure] = raise
+              options.localSocket.fold(Resource.pure[IO, IO[DiffusionFailure]](IO.never))(path =>
+                LocalServer
+                  .resource[IO, NetworkError](
+                    LocalSockets.jdk[IO],
+                    LocalAddress(path),
+                    trace => logged(NodeEvent.LocalServer(trace))
+                  )((_, failure) => ListenerFailures.reportLocal(path, failure, logged)) {
+                    (bearer, _) =>
+                      // what would stop the node on a node-to-node connection ends this client
+                      // only (the reference's local rethrow policy): the backends report it here
+                      Deferred[IO, Fatal].flatMap { failed =>
+                        val ends = (fault: Fatal) => failed.complete(fault).void
+                        val served = landLocalBackend(
+                          NodeToClientServer.acceptBackend[IO, StorageError](
+                            bearer,
+                            genesis.networkMagic,
+                            LocalSubmission.handler(mempool)(ends),
+                            Some(
+                              StateQuerySource[IO, MirrorState](ref, queryEnv, store, chainGate)
+                            ),
+                            chainSync = Some(server.blockSource(ends)),
+                            txMonitor = Some(LocalMonitor.source(mempool))
+                          )
+                        )
+                        logged(NodeEvent.Inbound(path, InboundEvent.Accepted)) *>
+                          IO.race(failed.get.map(InboundEnd.Fault(_)), served)
+                            .map(_.merge)
+                            .flatMap(reason =>
+                              logged(NodeEvent.Inbound(path, InboundEvent.Closed(reason)))
+                            )
+                      }
+                  }
+                  .evalTap(_ => logged(NodeEvent.Listening(path)))
+              )
+            // the credentials were read at start-up, before the sockets ([[follow]])
+            forging <- (options.forge, credentials).tupled.traverse { (files, pool) =>
               for
-                credentials <- IO
-                  .blocking(KeyFiles.load(files.vrfSkey, files.kesSkey, files.opCert))
-                  .flatMap(_.fold(fail, IO.pure))
                 source <- HotKeySource.files[IO](files.kesSkey, files.opCert)
                 forger <- Forger.create[IO, MirrorState](
                   setup.praos.copy(geometry = geometry),
                   globals,
-                  credentials,
+                  pool,
                   follower,
                   mempool,
                   Log.sink[ForgeEvents, ForgeEvent, IO].alongside(measured.forge),
@@ -1359,80 +1431,85 @@ object Main extends IOApp:
                   MemoryReport
                     .sample(stores)
                     .flatMap(sample => logged(NodeEvent.Memory(sample)))).foreverM.background.void
-            run = decisionMaintenance
-              .flatMap(_ => blockPool.maintenance)
-              .flatMap(_ =>
-                selectionWorker(
-                  follower,
-                  blockPool,
-                  genesisRuntime.map(_.work),
-                  receivedBlocks,
-                  warm,
-                  fatalSink,
-                  setup.origin
+            run = (raise: Raise[IO, DiffusionFailure]) =>
+              decisionMaintenance
+                .flatMap(_ => blockPool.maintenance)
+                .flatMap(_ =>
+                  selectionWorker(
+                    follower,
+                    blockPool,
+                    genesisRuntime.map(_.work),
+                    receivedBlocks,
+                    warm,
+                    fatalSink,
+                    setup.origin
+                  )
                 )
-              )
-              .surround(network.use { net =>
-                val reloadTopology: IO[Unit] = options.topologyFile.traverse_ { _ =>
-                  // `options.peers` includes the topology loaded at startup. Keep reload roots tied
-                  // to the original CLI peers so a removed topology peer cannot become permanent.
-                  IO.blocking(topologyRoots(options.copy(peers = cliPeers), loaded)).flatMap {
-                    case Left(error) =>
-                      logged(
-                        NodeEvent.Library(
-                          "scarab.topology",
-                          Severity.Warning,
-                          s"topology reload refused: ${error.message}",
-                          None
+                .surround(network.use { net =>
+                  val reloadTopology: IO[Unit] = options.topologyFile.traverse_ { _ =>
+                    // `options.peers` includes the topology loaded at startup. Keep reload roots tied
+                    // to the original CLI peers so a removed topology peer cannot become permanent.
+                    IO.blocking(topologyRoots(options.copy(peers = cliPeers), loaded)).flatMap {
+                      case Left(error) =>
+                        logged(
+                          NodeEvent.Library(
+                            "scarab.topology",
+                            Severity.Warning,
+                            s"topology reload refused: ${error.message}",
+                            None
+                          )
                         )
-                      )
-                    case Right((_, nextRoots)) => net.reloadRoots(nextRoots)
-                  }
-                }
-                val reload =
-                  forging.traverse_(f => f.reload.flatMap(_.fold(fatalSink, _ => IO.unit))) *>
-                    reloadTopology
-                val signals =
-                  if options.topologyFile.isDefined || forging.isDefined then
-                    Signals.hangup[IO](reload)
-                  else Resource.unit[IO]
-                // the governor ends the node only by a fault (an invariant, the bootstrap timeout)
-                val sync: IO[Unit] =
-                  collectors.add(Collectors.peerMetrics(net.metrics)) *>
-                    IO.race(net.run, net.fatal.get).flatMap {
-                      case Left(done) => done
-                      case Right(fault) =>
-                        PeerNetwork.fatalForGovernor(fault) match
-                          case Some(nodeFault) => fatalSink(nodeFault) *> IO.never
-                          case None            => fail[Unit](fault)
+                      case Right((_, nextRoots)) => net.reloadRoots(nextRoots)
                     }
-                QueryServer
-                  .resource[IO, MirrorState](
-                    ChainView.fromRef(ref),
-                    options.query,
-                    Some(store),
-                    Some(scheduling.stats.total.map(Reports.schedulingTotal)),
-                    Some(
-                      (manager.snapshot, governor.sessions, net.state.get, IO.monotonic).mapN {
-                        (connections, sessions, selection, now) =>
-                          InboundGovernor
-                            .json(connections, sessions)
-                            .deepMerge(
-                              io.circe.Json.obj("peerSelection" -> PeerNetwork.json(selection, now))
-                            )
+                  }
+                  val reload =
+                    forging.traverse_(f => f.reload.flatMap(_.fold(fatalSink, _ => IO.unit))) *>
+                      reloadTopology
+                  val signals =
+                    if options.topologyFile.isDefined || forging.isDefined then
+                      Signals.hangup[IO](reload)
+                    else Resource.unit[IO]
+                  // the governor ends the node only by a fault (an invariant, the bootstrap timeout)
+                  val sync: IO[Unit] =
+                    collectors.add(Collectors.peerMetrics(net.metrics)) *>
+                      IO.race(net.run, net.fatal.get).flatMap {
+                        case Left(done) => done
+                        case Right(fault) =>
+                          PeerNetwork.fatalForGovernor(fault) match
+                            case Some(nodeFault) => fatalSink(nodeFault) *> IO.never
+                            case None            => fail[Unit](fault)
                       }
-                    ),
-                    forging.map(_.stats.byEpoch.map(Reports.forgeReport)),
-                    Some(scrape)
-                  )(fatalSink)
-                  .flatMap(_ => relay)
-                  .flatMap(_ => local)
-                  .flatMap(_ => signals)
-                  .flatMap(_ => production)
-                  .flatMap(_ => reporting)
-                  .flatMap(_ => watching)
-                  .surround(sync)
-              })
+                  QueryServer
+                    .resource[IO, MirrorState](
+                      ChainView.fromRef(ref),
+                      options.query,
+                      Some(store),
+                      Some(scheduling.stats.total.map(Reports.schedulingTotal)),
+                      Some(
+                        (manager.snapshot, governor.sessions, net.state.get, IO.monotonic).mapN {
+                          (connections, sessions, selection, now) =>
+                            InboundGovernor
+                              .json(connections, sessions)
+                              .deepMerge(
+                                io.circe.Json.obj(
+                                  "peerSelection" -> PeerNetwork.json(selection, now)
+                                )
+                              )
+                        }
+                      ),
+                      forging.map(_.stats.byEpoch.map(Reports.forgeReport)),
+                      Some(scrape)
+                    )(fatalSink)
+                    .flatMap(_ => relay)
+                    .flatMap(_ => local(raise))
+                    .flatTap(_ => signals)
+                    .flatTap(_ => production)
+                    .flatTap(_ => reporting)
+                    .flatTap(_ => watching)
+                    .use(localStopped =>
+                      IO.race(sync, localStopped.flatMap(raise.raise[DiffusionFailure, Unit])).void
+                    )
+                })
             _ <- metrics.set(
               Catalogue.buildInfo,
               (BuildInfo.version, BuildInfo.scalaVersion, BuildInfo.gitCommit),
@@ -1450,16 +1527,38 @@ object Main extends IOApp:
             _ <- advisory.traverse_(logged)
             // a stall that lasts --stall-exit-after ends the run like a signal does: the stores
             // close and the shutdown snapshot is taken, then the process exits with its own code
-            ended <- IO
-              .race(
-                options.seconds.fold(run)(s => run.timeoutTo(s.seconds, IO.unit)),
-                IO.race(stall.exit.get, faulted.get)
+            // SIGINT while the node runs ends the run as the reference's `UserInterrupt` does: traced
+            // as `DiffusionErrored` (`Diffusion.hs` 905-911), the process then exits as interrupted
+            interrupted <- Deferred[IO, Unit]
+            ended <- Signals
+              .interrupt[IO](interrupted.complete(()).void)
+              .surround(
+                IO.race(
+                  Handle
+                    .allow[DiffusionFailure] {
+                      val running = run(summon[Raise[IO, DiffusionFailure]])
+                      options.seconds
+                        .fold(running)(s => running.timeoutTo(s.seconds, IO.unit))
+                        .as(Option.empty[DiffusionFailure])
+                    }
+                    .rescue(failure => IO.pure(Some(failure))),
+                  IO.race(IO.race(stall.exit.get, faulted.get), interrupted.get)
+                )
               )
               .map {
-                case Left(_)               => RunEnd.Finished
-                case Right(Left(_))        => RunEnd.Stalled
-                case Right(Right(failure)) => RunEnd.Faulted(failure)
+                case Left(None)                  => RunEnd.Finished
+                case Left(Some(failure))         => RunEnd.Errored(failure)
+                case Right(Left(Left(_)))        => RunEnd.Stalled
+                case Right(Left(Right(failure))) => RunEnd.Faulted(failure)
+                case Right(Right(_))             => RunEnd.Interrupted
               }
+            _ <- ended match
+              case RunEnd.Interrupted =>
+                logged(NodeEvent.DiffusionErrored(DiffusionFailure.UserInterrupt))
+              case RunEnd.Errored(failure) =>
+                logged(NodeEvent.DiffusionErrored(failure)) *>
+                  failedStart(s"DiffusionError ${failure.shown}")
+              case _ => IO.unit
             last <- ref.get
             _ <- finishedLine(ended, logged(NodeEvent.finished(last)))
           yield ended
@@ -1479,13 +1578,28 @@ object Main extends IOApp:
     case Stalled
     case Faulted(fault: Fatal)
 
+    /** The node-to-client side of the network stopped (the reference's `DiffusionErrored`): the
+      * process exits with 1, as the reference's top-level handler does.
+      */
+    case Errored(failure: DiffusionFailure)
+
+    /** SIGINT ended the run. */
+    case Interrupted
+
   private def exitCode(end: RunEnd): ExitCode = end match
     case RunEnd.Finished       => ExitCode.Success
     case RunEnd.Stalled        => StallExitCode
     case RunEnd.Faulted(fault) => FaultExitCode(fault)
+    case RunEnd.Errored(_)     => ExitCode.Error
+    case RunEnd.Interrupted    => InterruptExitCode
 
   /** The exit code of a run that ended because a stall lasted `--stall-exit-after`. */
   val StallExitCode: ExitCode = ExitCode(4)
+
+  /** A run ended by SIGINT exits as a process killed by it would (128 + 2), as the reference's
+    * does: GHC re-raises the signal once `UserInterrupt` reaches its top-level handler.
+    */
+  val InterruptExitCode: ExitCode = ExitCode(130)
 
   /** The exit code of a run that a session's failure stopped: the storage failed (5), the node
     * failed itself (6), something threw that nobody expected (7), or evaluation was unavailable
@@ -1688,7 +1802,7 @@ object Main extends IOApp:
             .traverse(t =>
               Peer.parseAddress(t).leftMap(e => ConfigError(ConfigProblem.PeerAddress(e)))
             )
-          localSocket = flags.get("local-socket").map(Path.of(_))
+          localSocket = flags.get("local-socket")
           mempool <- flags
             .get("mempool-bytes")
             .traverse(_.toLongOption.filter(_ > 0).toRight(invalid("mempool-bytes")))

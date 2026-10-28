@@ -145,17 +145,18 @@ The reference queue also releases its request after completion or failure via `b
 ([consensus `82ecba329`, Snapshots.hs:887–905](https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LedgerDB/Snapshots.hs#L887)).
 This comparison establishes queue cleanup; it does not claim identical snapshot-failure policy.
 
-`BearerServer.listen` and `listenUnix` require a failure reporter and a handler with a caller-local
-`Handle[F, E]`. `HandlerFailure.Domain[E]` preserves an intentional service error;
+`BearerServer.listen` and `LocalServer.resource` (the node-to-client socket) require a failure reporter
+and a handler with a caller-local `Handle[F, E]`. `HandlerFailure.Domain[E]` preserves an intentional service error;
 `HandlerFailure.Defect` preserves an unexpected exception. The listener reports each failed handler
 once, releases its connection and keeps accepting. Cancellation releases the handler without
-calling the reporter. The node's reporter logs typed network endings and sends both raw handler
-defects and `NetworkError.Defect` to the existing `Fatal.Defect` sink (exit 7), without peer blame.
+calling the reporter. On node-to-node connections the node's reporter logs typed network endings and
+sends both raw handler defects and `NetworkError.Defect` to the existing `Fatal.Defect` sink (exit 7),
+without peer blame. On node-to-client connections `ListenerFailures.reportLocal` only logs the ending:
+the reference's local policy closes the client alone (see [node-to-client](../running/node-to-client.md#the-socket-path)).
 `NetworkError.DecoderDefect`, a decoder that threw on the connection's own bytes
 ([ADR 0017](../adr/0017-fibers-end-with-values.md), decision 5), is a typed ending like the others:
 the reporter logs it and the connection closes, with no fatal event, and the listener keeps accepting.
-The Unix handler no longer catches an unexpected exception merely to log and continue. The local
-state acquisition invariant policy is described below; its typed cause reaches `Fatal.Internal`.
+The local state acquisition invariant policy is described below.
 
 The reference traces non-cancellation server exceptions before rethrowing
 ([network `2fb69829`, Server.hs:169–175](https://github.com/IntersectMBO/ouroboros-network/blob/2fb69829a19b5c04e4fb212bdd78fb63f9d2d776/ouroboros-network/framework/lib/Ouroboros/Network/Server.hs#L169)).
@@ -188,16 +189,19 @@ ledger point and captures its backing generation under the same publication mute
 uses. `UtxoPinnedReadView` returns storage failures as values while its native snapshot is held;
 `LocalStateQueryServer` and `NodeToClientServer.acceptBackend` carry those values to the owner.
 The acquired view and sibling protocol resources are released before `Main.landLocalBackend`
-reports a backend `StorageError` as `Fatal.Storage` (exit 5). These paths do not park inside
+lands a backend `StorageError` as the connection's ending (`InboundEnd.Storage`); on a node-to-client
+connection it closes that client only, as the reference's local rethrow policy does. These paths do not park inside
 `StorageBoundary`, which would delay that cleanup until shutdown.
 
 A backing generation outside the selected ledger view's valid stamp interval is a local invariant
 failure, not a wire acquisition refusal. `NetworkError.StateAcquireFailure` retains the point and
 all three stamp values through protocol cleanup. The listener is the authoritative policy boundary:
-`ListenerFailures.report` wraps that original typed cause in `ChainError.StateAcquire` and sends
-`Fatal.Internal` (exit 6) to the node owner. It neither blames a client nor retries the acquisition.
-Tests exercise the real LSQ/NodeToClient backend path and require the acquired view and a sibling
-ChainSync cursor to be released before the fatal reporter runs.
+on the node-to-client socket `ListenerFailures.reportLocal` logs it as that connection's ending and
+the node keeps running, as the reference's local policy closes a failed client alone
+(`ListenerFailures.report`, the node-to-node reporter, would make it `Fatal.Internal`, exit 6). It
+neither blames a client nor retries the acquisition. Tests exercise the real LSQ/NodeToClient
+backend path and require the acquired view and a sibling ChainSync cursor to be released before the
+reporter runs.
 
 Forging `run`, `step` and `reload` finish with `Either[Fatal, Unit]`. Expected leadership, protocol,
 credential and self-validation refusals remain recoverable domain outcomes. Storage failures,

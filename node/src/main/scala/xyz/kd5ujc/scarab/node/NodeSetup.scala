@@ -206,15 +206,19 @@ object NodeSetup:
       genesisDir: Option[Path] = None
   ): Either[ConfigError, NodeSetup] =
     for
-      bytes <- Either
-        .catchNonFatal(Files.readAllBytes(config))
-        .leftMap(e => ConfigError(ConfigProblem.FileRead(config.toString, e)))
-      parsed <- NodeConfig.parse(new String(bytes, "UTF-8"), strict = true)
+      parsed <- readConfig(config)
       base = genesisDir.getOrElse(Option(config.toAbsolutePath.getParent).getOrElse(Path.of(".")))
       read = (name: String) =>
         Option.when(Files.exists(base.resolve(name)))(Files.readAllBytes(base.resolve(name)))
       setup <- assemble(parsed, read)
     yield setup
+
+  /** The configuration file alone, before any genesis file is read. */
+  def readConfig(config: Path): Either[ConfigError, NodeConfig] =
+    Either
+      .catchNonFatal(Files.readAllBytes(config))
+      .leftMap(e => ConfigError(ConfigProblem.FileRead(config.toString, e)))
+      .flatMap(bytes => NodeConfig.parse(new String(bytes, "UTF-8"), strict = true))
 
   def fromFiles(read: String => Option[Array[Byte]]): Either[ConfigError, NodeSetup] =
     def text(bytes: Array[Byte]) = new String(bytes, "UTF-8")

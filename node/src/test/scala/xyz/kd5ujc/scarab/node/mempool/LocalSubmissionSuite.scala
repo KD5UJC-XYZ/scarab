@@ -21,9 +21,19 @@ import TxKit.*
   */
 class LocalSubmissionSuite extends FailsOnUncaught:
   /** The socket paths of these tests are fresh: a local socket error fails the test. */
-  private given Raise[IO, BearerServer.LocalSocketError] with
+  private given Raise[IO, DiffusionFailure] with
     def functor: Functor[IO] = Functor[IO]
-    def raise[E <: BearerServer.LocalSocketError, A](e: E): IO[A] = IO(fail(e.message))
+    def raise[E <: DiffusionFailure, A](e: E): IO[A] = IO(fail(e.shown))
+
+  /** The node-to-client server at `path`, as the node runs it. */
+  private def serving(path: java.nio.file.Path)(
+      handle: Handle[IO, NetworkError] ?=> Bearer[IO] => IO[Unit]
+  ): Resource[IO, IO[DiffusionFailure]] =
+    LocalServer.resource[IO, NetworkError](
+      LocalSockets.jdk[IO],
+      LocalAddress(path.toString),
+      _ => IO.unit
+    )((_, error) => IO(fail(error.toString)))((bearer, _) => handle(bearer))
 
   private val magic = 42L
 
@@ -64,23 +74,21 @@ class LocalSubmissionSuite extends FailsOnUncaught:
       .flatMap { mempool =>
         Resource.eval(IO(java.nio.file.Files.createTempDirectory("csl-ntc"))).flatMap { dir =>
           val path = dir.resolve("node.socket")
-          BearerServer
-            .listenUnix[IO, NetworkError](path)(error => IO(fail(error.toString)), _ => IO.unit) {
-              bearer =>
-                Handle
-                  .allow[NetworkError](
-                    LocalTxSubmissionServer
-                      .accept(
-                        bearer,
-                        magic,
-                        LocalSubmission
-                          .handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure")))
-                      )
-                      .map(_.message)
+          serving(path) { bearer =>
+            Handle
+              .allow[NetworkError](
+                LocalTxSubmissionServer
+                  .accept(
+                    bearer,
+                    magic,
+                    LocalSubmission
+                      .handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure")))
                   )
-                  .rescue(e => IO.pure(e.message))
-                  .void
-            }
+                  .map(_.message)
+              )
+              .rescue(e => IO.pure(e.message))
+              .void
+          }
             .as((mempool, path))
         }
       }
@@ -225,21 +233,19 @@ class LocalSubmissionSuite extends FailsOnUncaught:
         dir <- IO(java.nio.file.Files.createTempDirectory("scarab-unavailable-submission"))
       yield (mempool, context, ended, dir.resolve("node.socket")))
       .flatMap { (mempool, context, ended, path) =>
-        BearerServer
-          .listenUnix[IO, NetworkError](path)(error => IO(fail(error.toString)), _ => IO.unit) {
-            bearer =>
-              Handle
-                .allow[NetworkError](
-                  NodeToClientServer.accept(
-                    bearer,
-                    magic,
-                    LocalSubmission
-                      .handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure")))
-                  )
-                )
-                .rescue(error => IO.pure(LocalTxSubmissionServer.End.ConnectionClosed(error)))
-                .flatMap(end => ended.complete(end).void)
-          }
+        serving(path) { bearer =>
+          Handle
+            .allow[NetworkError](
+              NodeToClientServer.accept(
+                bearer,
+                magic,
+                LocalSubmission
+                  .handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure")))
+              )
+            )
+            .rescue(error => IO.pure(LocalTxSubmissionServer.End.ConnectionClosed(error)))
+            .flatMap(end => ended.complete(end).void)
+        }
           .as((mempool, context, ended, path))
       }
       .use { (mempool, context, ended, path) =>

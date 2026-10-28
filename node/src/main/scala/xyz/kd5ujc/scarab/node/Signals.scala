@@ -24,17 +24,26 @@ object Signals:
     * The effect runs on its own fiber: a slow reload does not hold the signal thread, and two
     * signals in a row run one after the other (`Dispatcher.sequential`).
     */
-  def hangup[F[_]: Async](onHangup: F[Unit]): Resource[F, Unit] =
+  def hangup[F[_]: Async](onHangup: F[Unit]): Resource[F, Unit] = on("HUP", onHangup)
+
+  /** Run `onInterrupt` when the process gets SIGINT, for as long as the resource is held, in place
+    * of the JVM's own handler (which would start the shutdown hooks): the caller ends the run
+    * itself, as the reference's main thread ends on `UserInterrupt`. SIGTERM keeps the JVM's
+    * handler.
+    */
+  def interrupt[F[_]: Async](onInterrupt: F[Unit]): Resource[F, Unit] = on("INT", onInterrupt)
+
+  private def on[F[_]: Async](name: String, run: F[Unit]): Resource[F, Unit] =
     Dispatcher.sequential[F].flatMap { dispatcher =>
       Resource
         .make(
           Sync[F].delay(
             Either.catchNonFatal(
-              Signal.handle(new Signal("HUP"), handler(dispatcher.unsafeRunAndForget(onHangup)))
+              Signal.handle(new Signal(name), handler(dispatcher.unsafeRunAndForget(run)))
             )
           )
         )(previous =>
-          previous.traverse_(old => Sync[F].delay { Signal.handle(new Signal("HUP"), old); () })
+          previous.traverse_(old => Sync[F].delay { Signal.handle(new Signal(name), old); () })
         )
         .void
     }
