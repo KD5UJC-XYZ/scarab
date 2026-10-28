@@ -18,6 +18,8 @@ import xyz.kd5ujc.scarab.ledger.{
   EvaluationUnavailable,
   Fixtures,
   Header,
+  HeaderError,
+  HeaderStructureProblem,
   NodeError,
   PeerError,
   ProviderDefect,
@@ -30,6 +32,8 @@ import xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate
 import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
 import xyz.kd5ujc.scarab.crypto.witness.VerificationError
 import xyz.kd5ujc.scarab.ledger.byron.ByronSig
+import xyz.kd5ujc.scarab.ledger.rules.TickFailure
+import xyz.kd5ujc.scarab.ledger.state.VocabError
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.storage.ChainPersistence
 import scala.concurrent.duration.*
@@ -79,7 +83,8 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       explode: Option[Int] = None,
       unavailable: Option[Int] = None,
       held: Option[Int] = None,
-      unverifiable: Option[(Int, BlockFailure)] = None
+      unverifiable: Option[(Int, BlockFailure)] = None,
+      outOfRange: Option[Int] = None
   ): IO[Result] =
     NodeScope.resource.use { node =>
       for
@@ -133,6 +138,10 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           else if unverifiable.exists(_._1 == header.blockNo.toInt) then
             Raise[IO, ValidationError].raise[ValidationError, BigInt](
               ValidationError(header.point, unverifiable.fold(BlockFailure.HeaderDiffers)(_._2))
+            )
+          else if outOfRange.contains(header.blockNo.toInt) then
+            Raise[IO, ChainError].raise[ChainError, BigInt](
+              ChainError.StateOutOfRange(header.slot, pot)
             )
           else if held.contains(header.blockNo.toInt) then
             Raise[IO, ValidationError].raise[ValidationError, BigInt](
@@ -195,6 +204,9 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       xyz.kd5ujc.scarab.plutus.BackendFailure.Defect(new NullPointerException("in Scalus"))
     )
   )
+
+  /** A pot that left the range of its type. */
+  private val pot: VocabError = VocabError.OutOfRange(VocabError.Kind.CompactCoin, BigInt(1) << 64)
 
   private def blockNos(blocks: Vector[BlockRef]) = blocks.map(_.blockNo.toInt)
 
@@ -428,6 +440,121 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(left.chain.tip, headers(1).point)
       assertEquals(blockNos(left.stored), Vector(0, 1))
     }
+  }
+
+  // cardano-ledger f649f975 `compactCoinOrError` is an `error`; ouroboros-consensus 82ecba32
+  // `Storage/ChainDB/Impl/Background.hs:107-109,142`: the block runner is a linked thread
+  test("a ledger state out of range stops the node: no refusal, no invalid record, no blame") {
+    session(outOfRange = Some(2)).map { left =>
+      val fault = ChainError.StateOutOfRange(headers(2).slot, pot)
+      assertEquals(left.end, SessionEnd.Internal(fault))
+      assertEquals(
+        FailurePolicy.disposition(left.end),
+        Disposition.StopNode(Fatal.Internal(fault))
+      )
+      assertEquals(SessionEnd.peerError(left.end), None)
+      assertEquals(left.invalid, Set.empty[Bytes])
+      assertEquals(left.chain.tip, headers(1).point)
+      assertEquals(blockNos(left.stored), Vector(0, 1))
+    }
+  }
+
+  test(
+    "a quantity of the state out of range in the tick or a transaction rule is a stop; a number of the block is a refusal"
+  ) {
+    val header = headers(2)
+    val fault = Some(ChainError.StateOutOfRange(header.slot, pot))
+    assertEquals(
+      MirrorRules.stateOutOfRange(header, BlockFailure.Tick(TickFailure.Vocab(pot))),
+      fault
+    )
+    assertEquals(
+      MirrorRules.stateOutOfRange(
+        header,
+        BlockFailure.Tx(LedgerFailure.StateOutOfRange(Bytes.empty, pot))
+      ),
+      fault
+    )
+    assertEquals(
+      MirrorRules.stateOutOfRange(header, BlockFailure.Tick(TickFailure.Input(pot))),
+      None
+    )
+    assertEquals(
+      MirrorRules.stateOutOfRange(header, BlockFailure.Tx(LedgerFailure.Vocab(pot))),
+      None
+    )
+    assertEquals(MirrorRules.stateOutOfRange(header, BlockFailure.HeaderDiffers), None)
+  }
+
+  // the per-epoch transition counter of the consensus state is a Word32 whose `succ` throws at
+  // maxBound in the reference: the node stops, the block is not refused (owner decision on #483)
+  test(
+    "the transition counter past Word32 is a stop; another state the mirror cannot hold is not"
+  ) {
+    val header = headers(2)
+    assertEquals(
+      MirrorRules.stateOutOfRange(
+        header,
+        BlockFailure.Mirror(
+          xyz.kd5ujc.scarab.consensus.state.StateMirrorError.TransitionCounterOverflow
+        )
+      ),
+      Some(
+        ChainError.StateOutOfRange(
+          header.slot,
+          xyz.kd5ujc.scarab.ledger.state.VocabError
+            .OutOfRange(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.Word32, BigInt(1) << 32)
+        )
+      )
+    )
+    assertEquals(
+      MirrorRules.stateOutOfRange(
+        header,
+        BlockFailure.Mirror(
+          xyz.kd5ujc.scarab.consensus.state.StateMirrorError.ExtrasMismatch(
+            xyz.kd5ujc.scarab.protocol.Era.Conway
+          )
+        )
+      ),
+      None
+    )
+  }
+
+  // the Byron to Shelley hand-over of the header forecast met the state out of range: the header
+  // pipeline ends the session with it, and the node stops without blaming the peer
+  test("a state out of range in the header forecast stops the node: no invalid record, no blame") {
+    val header = headers(2)
+    val forecast = PeerError.InvalidHeader(
+      header.point,
+      HeaderError.Structure(
+        HeaderStructureProblem.Transition(BlockFailure.Tick(TickFailure.Vocab(pot)))
+      )
+    )
+    val script = headers.take(2).toList.map(h => Right(SyncEvent.RollForward(h, tip))) :+
+      Left(forecast)
+    session(script).map { left =>
+      val fault = ChainError.StateOutOfRange(header.slot, pot)
+      assertEquals(left.end, SessionEnd.Internal(fault))
+      assertEquals(
+        FailurePolicy.disposition(left.end),
+        Disposition.StopNode(Fatal.Internal(fault))
+      )
+      assertEquals(SessionEnd.peerError(left.end), None)
+      assertEquals(left.invalid, Set.empty[Bytes])
+      assertEquals(blockNos(left.stored), Vector(0, 1))
+    }
+  }
+
+  test(
+    "a number of the block that is out of range in the header forecast stays an invalid header"
+  ) {
+    val refused = PeerError.InvalidHeader(
+      headers(2).point,
+      HeaderError.Structure(
+        HeaderStructureProblem.Transition(BlockFailure.Tick(TickFailure.Input(pot)))
+      )
+    )
+    assertEquals(SessionEnd.of(refused), SessionEnd.Failed(refused))
   }
 
   test("an implementation limit is never recorded as an invalid block") {

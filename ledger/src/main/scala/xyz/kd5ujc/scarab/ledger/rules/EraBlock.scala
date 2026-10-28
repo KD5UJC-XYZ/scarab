@@ -163,7 +163,7 @@ object EraBlock:
       )
       _ <- Either.cond(block.header.hash == header.hash, (), BlockFailure.HeaderDiffers)
       _ <- Either.cond(epoch >= from.epoch.toBigInt, (), BlockFailure.EpochPrecedesLedger(epoch))
-      slot <- SlotNo.fromBigInt(header.slot).leftMap(e => BlockFailure.Tick(TickFailure.Vocab(e)))
+      slot <- SlotNo.fromBigInt(header.slot).leftMap(e => BlockFailure.Tick(TickFailure.Input(e)))
       ticked <- Hfc.tick(globals, ctx.eraAt)(from, slot).leftMap(BlockFailure.Tick(_))
     yield ticked
 
@@ -234,7 +234,7 @@ object EraBlock:
   private def issuer(header: Header.Shelley): Either[BlockFailure, KeyHash[StakePool]] =
     KeyHash
       .fromBytes[StakePool](Blake2b.hash224.hash(header.issuerVkey))
-      .leftMap(e => BlockFailure.Tick(TickFailure.Vocab(e)))
+      .leftMap(e => BlockFailure.Tick(TickFailure.Input(e)))
 
   private def signal(
       header: Header.Shelley,

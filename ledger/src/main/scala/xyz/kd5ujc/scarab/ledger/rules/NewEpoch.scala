@@ -17,9 +17,9 @@ import xyz.kd5ujc.scarab.ledger.state.*
   * epoch Conway predicts the future parameters again (`Conway/Rules/NewEpoch.hs:160-165`) and the
   * earlier eras change nothing.
   *
-  * Haskell does nothing for an epoch that is not the next one (`pure src`), and consensus never
-  * ticks across a whole epoch with no blocks; the node's chains can (a test cluster), so [[Hfc]]
-  * runs this rule once for each epoch crossed.
+  * For an epoch that is not the next one the reference does nothing (`pure src`; Conway also
+  * predicts the future parameters again and pulses the DRep pulser). [[Hfc]] runs the tick once, so
+  * a state is never carried across an epoch with no block, as in the reference.
   */
 object NewEpoch:
   def sts[E <: EraTag](using
