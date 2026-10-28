@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.plutus
 
+import io.circe.Json
+import java.nio.charset.StandardCharsets
+import java.nio.file.{Files, Path}
 import munit.FunSuite
+import scala.jdk.CollectionConverters.*
 import scalus.uplc.{BuiltinSemanticsVariant, DefaultFun, Program}
 import xyz.kd5ujc.scarab.codec.Bytes
 
@@ -101,4 +105,67 @@ class UnliftingBoundsSuite extends FunSuite:
       DefaultFun.values.filter(f => UnliftingBounds.of(f, BuiltinSemanticsVariant.D).nonEmpty)
     assertEquals(bounded.size, 35)
     assert(!bounded.contains(DefaultFun.EqualsInteger))
+  }
+
+  // the reference's verdict on every probe of UnliftingBoundsCorpus (plutus 1.70.0.0, the costing
+  // oracle of `scripts/oracle/plutus/costing`): the stage and, on success, the exact budget
+  private val rows = Files
+    .readAllLines(Path.of("fixtures/reference/plutus-unlifting-bounds/verdicts.jsonl"))
+    .asScala
+    .toVector
+    .map(line => io.circe.parser.parse(line).fold(throw _, identity))
+
+  private def field[A: io.circe.Decoder](row: Json, name: String): A =
+    row.hcursor.get[A](name).fold(error => fail(error.message), identity)
+
+  test("the recorded verdicts cover every probe in every setting") {
+    val expected = (for
+      probe <- UnliftingBoundsCorpus.probes
+      (language, protocol) <- UnliftingBoundsCorpus.settings
+    yield (probe.id, language.id + 1, protocol)).toSet
+    val actual = rows
+      .map(row =>
+        (field[String](row, "id"), field[Int](row, "language"), field[Int](row, "protocol"))
+      )
+      .toSet
+    assertEquals(rows.size, expected.size)
+    assertEquals(actual, expected)
+  }
+
+  test("every probe: the verdict and, on success, the budget equal the reference's") {
+    val probes = UnliftingBoundsCorpus.probes.map(p => p.id -> p).toMap
+    val differences = rows.flatMap { row =>
+      val probe = probes(field[String](row, "id"))
+      val language = PlutusLanguage.values
+        .find(_.id + 1 == field[Int](row, "language"))
+        .getOrElse(fail("language"))
+      val protocol = field[Int](row, "protocol")
+      val model = PlutusBoundaryCorpus.costModel(language, protocol)
+      val modelBytes =
+        Json.arr(model.map(Json.fromLong)*).noSpaces.getBytes(StandardCharsets.UTF_8)
+      assertEquals(NativeCrypto.sha256Hex(probe.script.toArray), field[String](row, "scriptSha256"))
+      assertEquals(NativeCrypto.sha256Hex(modelBytes), field[String](row, "costModelSha256"))
+      val ours = evaluator.evaluate(
+        EvalRequest(
+          language,
+          protocol,
+          probe.script,
+          Vector.empty,
+          model,
+          UnliftingBoundsCorpus.budget
+        )
+      ) match
+        case EvalResult.Success(used, _)                     => ("success", Some(used))
+        case EvalResult.Failure(EvalFailure.Script(_), _, _) => ("evaluation", None)
+        case other                                           => (s"unexpected $other", None)
+      val stage = field[String](row, "stage")
+      val theirs = (
+        stage,
+        Option.when(stage == "success")(
+          ExUnits(BigInt(field[Long](row, "memory")), BigInt(field[Long](row, "cpu")))
+        )
+      )
+      Option.when(ours != theirs)(s"${probe.id} V${language.id + 1}/$protocol: $ours != $theirs")
+    }
+    assertEquals(differences, Vector.empty)
   }
