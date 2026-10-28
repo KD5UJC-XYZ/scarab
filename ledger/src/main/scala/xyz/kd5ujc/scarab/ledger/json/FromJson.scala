@@ -34,6 +34,12 @@ enum NumberError extends DomainError:
   /** `parseBoundedIntegral "Word64"`: floating, or outside `0 .. 2^64 - 1`. */
   case NotWord64(value: Scientific)
 
+  /** `parseBoundedIntegral` of `Word16` or `Word32`: floating, or outside `0 .. 2^bits - 1`. */
+  case NotWord(bits: Int, value: Scientific)
+
+  /** `FromJSON Natural`: a negative whole number. */
+  case NotNatural(value: Scientific)
+
   /** `nonZeroM` (`BaseTypes/NonZero.hs:126-129` at cardano-ledger f649f975). */
   case Zero
 
@@ -74,7 +80,10 @@ enum NumberError extends DomainError:
       s"defect: the number $text is not read by the aeson grammar${cause.fold("")(e => s" ($e)")}"
     case NotWord64(value) =>
       s"parsing Word64 failed, value is either floating or will cause over or underflow ${value.shown}"
-    case Zero => "Encountered zero while trying to construct a NonZero value"
+    case NotWord(bits, value) =>
+      s"parsing Word$bits failed, value is either floating or will cause over or underflow ${value.shown}"
+    case NotNatural(value) => s"parsing Natural failed, unexpected negative number ${value.shown}"
+    case Zero              => "Encountered zero while trying to construct a NonZero value"
     case ExponentOutOfBounds(value) =>
       val side = if value.base10Exponent > 0 then "greater than 1024" else "less than -1024"
       s"parsing Integer failed, found a number with exponent ${value.base10Exponent}, but it must not be $side"
@@ -111,6 +120,19 @@ object FromJson:
         .toRight(NumberError.NotWord64(s))
         .map(n => Word64.fromUnsigned(n.toLong))
     )
+
+  /** `FromJSON Word16` and `FromJSON Word32` (`parseBoundedIntegral`): as [[word64]], within
+    * `0 .. 2^bits - 1`.
+    */
+  def word(bits: Int)(json: Json): Either[NumberError, BigInt] =
+    scientific(json).flatMap(s =>
+      s.toBoundedInteger(0, BigInt(2).pow(bits) - 1).toRight(NumberError.NotWord(bits, s))
+    )
+
+  /** `FromJSON Natural` (`parseIntegral`, then the sign): a whole [[integer]] that is not negative.
+    */
+  def natural(json: Json): Either[NumberError, BigInt] =
+    integer(json).flatMap(n => Either.cond(n >= 0, n, NumberError.NotNatural(Scientific(n, 0))))
 
   /** `FromJSON (NonZero Word64)` (`BaseTypes/NonZero.hs:108-109`). */
   def nonZeroWord64(json: Json): Either[NumberError, NonZero[Word64]] =
