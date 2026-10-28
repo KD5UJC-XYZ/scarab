@@ -19,6 +19,7 @@ import scalus.uplc.builtin.{ByteString, Data, platform}
 import scalus.uplc.eval.{
   BudgetSpender,
   BuiltinError,
+  CostingFun,
   BuiltinException,
   DeserializationError,
   InvalidReturnValue,
@@ -391,6 +392,9 @@ object ScalusEvaluator:
     *     variants D and E, where the reference takes an unsigned 64-bit integer only.
     *   - `equalsData` is [[DataEquality]]: Scalus 1.4.0, like 1.3.0, compares a `Data.Map` as a set
     *     of its entries, where the reference compares the ordered list of entries.
+    *   - In variants D and E the 35 builtins that take `CInteger` or `CByteString` refuse an
+    *     argument outside its unlifting bounds ([[UnliftingBounds]]), at no cost; Scalus 1.4.0 has
+    *     no such bound (issue 498).
     *
     * Every builtin is costed by [[ReferenceCosting]] (`costing`, the reference's argument measures
     * and costing functions in `SatInt` arithmetic, as a budget stream), and every machine is spent
@@ -401,7 +405,7 @@ object ScalusEvaluator:
     * when every cost parameter is `Int64` 's minimum (issue 485).
     *
     * Reproducers: `DataSerialiserSuite`, `ConstrIndexReferenceSuite`, `DataEqualityReferenceSuite`,
-    * `ReferenceBudgetSuite`; regressions: `PreprodConwayRulesSuite`, `PreprodSecp256k1RulesSuite`,
+    * `ReferenceBudgetSuite`, `UnliftingBoundsSuite`; regressions: `PreprodConwayRulesSuite`, `PreprodSecp256k1RulesSuite`,
     * `CostModelLengthSuite`, `BuiltinCostingOracleSuite`.
     */
   private[plutus] final class CorrectedVm(
@@ -467,8 +471,28 @@ object ScalusEvaluator:
         case DefaultFun.EqualsData    => equalsData
         case _                        => native.getOrElse(fun, cardano.getBuiltinRuntime(fun))
 
+    /** `runtime` with the `ensurable` variants' unlifting bounds ([[UnliftingBounds]]): an argument
+      * outside them costs the application nothing and fails the script, as a failed unlifting does
+      * in the reference (`toMonoF`, `mempty`), checked before the builtin's cost.
+      */
+    private def bounded(fun: DefaultFun, runtime: BuiltinRuntime): BuiltinRuntime =
+      val positions = UnliftingBounds.of(fun, variant)
+      if !ensurable || positions.isEmpty then runtime
+      else
+        val cost = runtime.costFunction
+        runtime.copy(
+          costFunction = new CostingFun:
+            def calculateCost(values: CekValue*): ScalusExUnits =
+              if UnliftingBounds.admits(positions, values) then cost.calculateCost(values*)
+              else ScalusExUnits(0L, 0L)
+          ,
+          f = (logger, args) =>
+            if UnliftingBounds.admits(positions, args) then runtime.f(logger, args)
+            else throw new BuiltinException(s"$fun: an argument is outside its unlifting bounds")
+        )
+
     private val runtimes: Map[DefaultFun, BuiltinRuntime] =
-      costing.map((fun, cost) => fun -> meaning(fun).copy(costFunction = cost))
+      costing.map((fun, cost) => fun -> bounded(fun, meaning(fun).copy(costFunction = cost)))
 
     private[plutus] def runtime(fun: DefaultFun): BuiltinRuntime =
       runtimes.getOrElse(fun, meaning(fun))
