@@ -748,7 +748,7 @@ are the ones most in need of a second reading.
 - **Era:** Plutus, protocol 11 and 12
 - **Specification or CDDL says:** The Plutus conformance suite (plutus 1.70.0.0, 1009 evaluation cases) fixes the behaviour of the reference.
 - **Implementation does:** Scalus 1.2.0 and 1.3.0 pass the same 987. Differences: (1) the flat decoder accepts `value` constants that `buildValueWith` rejects (unsorted or repeated currency symbols or token names, an empty inner map, a zero quantity); (2) `case` on a `Data.Constr` is enabled from protocol 12 in 1.3.0, so `data-01` and `data-02` fail at protocol 11; (3) `bls12_381_G1/G2_hashToGroup` with a 255-byte DST, and with a 32-byte DST of arbitrary bytes, returns another point; (4) the flat encoder writes a BLS12-381 constant as an application of `uncompress`, and the units spent after an out-of-budget `dropList` with a huge count wrap negative.
-- **Evidence:** Roadmap I1. Item (1) is filed as scalus3/scalus#396. Triage (AUD-03, [plutus-conformance.md](plutus-conformance.md)): item (1) is reachable by a transaction and handled in the node (`FlatScan`); item (2) is not a divergence (the reference ledger refuses `case` on `Data` below protocol 12 too); item (3) is reachable for a domain separation tag with a byte of 0x80 or more, cause: the tag is handed to blst as a Latin-1 string; fixed in Scalus 1.4.0, which passes the tag as bytes; item (4) is not reachable (both flat refusal and out-of-budget agree).
+- **Evidence:** Roadmap I1. Item (1) is filed as scalus3/scalus#396. Triage (AUD-03, [plutus-conformance.md](plutus-conformance.md)): item (1) is reachable by a transaction and handled in the node (`FlatScan`); item (2) is not a divergence (the reference ledger refuses `case` on `Data` below protocol 12 too); item (3) is reachable for a domain separation tag with a byte of 0x80 or more, cause: the tag is handed to blst as a Latin-1 string; fixed in Scalus 1.4.0, which passes the tag as bytes; item (4): the flat refusal agrees; the units spent are now the reference's, since the evaluator spends through `ReferenceBudget` (IN-84).
 - **Pinned by:** [`ScalusConformanceReproducersSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/ScalusConformanceReproducersSuite.scala), `PlutusConformanceSuite`.
 - **Suggested upstream action:** Scalus: item (1) is reported as scalus3/scalus#396; item (3) is fixed in Scalus 1.4.0, adopted with the node's raw-DST path removed; (2) is fixed in 1.3.0; (4) needs no report. IN-75 is fixed in Scalus 1.4.0; IN-76 and IN-77 are worked around in the node (`PlutusScriptBytes`, `DataSerialiser`) and remain upstream candidates.
 - **Status:** observed
@@ -846,6 +846,17 @@ are the ones most in need of a second reading.
 - **Suggested upstream action:** None.
 - **Status:** confirmed in source
 
+### IN-84 Scalus: the budget arithmetic under negative or extreme cost-model parameters
+
+- **Era:** Plutus V1 to V3 (any cost model the ledger accepts: decoder version 9 stores any `Int64` list)
+- **Specification or CDDL says:** plutus 1.70.0.0 (`507cab8c`) computes every cost and the remaining budget in `SatInt`, which saturates at `Int64`'s bounds (`Data/SatInt.hs` lines 51-195; `ExMemory.hs` lines 72-75, 114). It measures arguments as trees of costs flattened into streams (`ExMemoryUsage.hs`), runs the costing functions over the streams in a fixed order of saturating operations (`CostingFun/Core.hs`, `CostStream.hs`), charges a builtin's budget stream element by element, counts machine steps and charges them per kind every 200 steps and on return (`Cek/Internal.hs` lines 1011-1064), and compares the remaining budget with zero after every charge (`restricting`, `Cek/ExBudgetMode.hs` lines 126-172). An argument it cannot unlift costs nothing (`Builtin/Meaning.hs` lines 245-262).
+- **Implementation does:** Scalus 1.4.0 keeps the remaining budget in a `Long` that wraps (`RestrictingBudgetSpender`), charges every step at once, sums each argument into one number, evaluates its costing functions in another order of the same operations, halves `expModInteger`'s penalty with Java's division instead of `dividedBy`, and saturates the product of -1 and `Int64`'s minimum at the minimum. With every parameter at `Int64`'s minimum the startup cost alone wraps the remaining budget below zero, so Scalus reports an exhausted budget where the reference evaluates ([#485](https://github.com/KD5UJC-XYZ/scarab/issues/485)). With the published parameters the two agree.
+- **Evidence:** 5,661 observations of unchanged Plutus 1.70.0.0 (111 programs under 51 lists, among them all `Int64` minimum, negated defaults and lists of mixed signs up to the bounds; `fixtures/reference/genesis-cost-models`): Scalus alone differs on 506 (173 under the all-minimum lists, 333 under the mixed ones).
+- **Scarab does:** `ScalusEvaluator.CorrectedVm` costs every builtin with `ReferenceCosting` and spends through `ReferenceBudget` (`Steps`, `Restricting`); the 5,661 observations agree in stage and exact budget, with none excluded. Not filed upstream yet.
+- **Pinned by:** [`ReferenceBudgetSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/ReferenceBudgetSuite.scala) (reproducers of each Scalus difference and the corrections), [`CostModelLengthSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/CostModelLengthSuite.scala), `BuiltinCostingOracleSuite`, `PlutusConformanceSuite`.
+- **Suggested upstream action:** Scalus: saturate the restricting spender and the costing arithmetic as the reference does (not filed yet).
+- **Status:** confirmed in source
+
 ## Part C: index
 
 | ID | Title | Era | Status | Evidence |
@@ -933,6 +944,7 @@ are the ones most in need of a second reading.
 | [IN-81](#in-81-mempool-the-capacity-is-two-blocks-of-the-current-parameters-and-a-transaction-is-measured-before-any-ledger-rule-runs) | Mempool: the capacity is two blocks of the current parameters, and a transaction is measured before any ledger rule runs | Alonzo onwards (reference-script measure: Conway) | confirmed in source | none (read from source) |
 | [IN-82](#in-82-mempool-a-transaction-that-finds-no-room-waits-for-the-pool-to-change-in-a-line-that-serves-local-clients-first) | Mempool: a transaction that finds no room waits for the pool to change, in a line that serves local clients first | All | confirmed in source | none (read from source) |
 | [IN-83](#in-83-forging-keys-the-vrf-file-permission-check-is-the-references-and-a-single-instance-lock-is-added) | Forging keys: the VRF file permission check is the reference's, and a single-instance lock is added | Praos (Conway) | confirmed in source | `KeyGuardSuite` |
+| [IN-84](#in-84-scalus-the-budget-arithmetic-under-negative-or-extreme-cost-model-parameters) | Scalus: the budget arithmetic under negative or extreme cost-model parameters | Plutus V1 to V3 | confirmed in source | 5,661 reference observations |
 
 ## Related pages
 

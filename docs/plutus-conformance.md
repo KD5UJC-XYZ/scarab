@@ -281,10 +281,14 @@ flat bytes that handles the `value` constants:
 Scalus 1.4.0 evaluates the cryptographic builtins on `libscalus_crypto` of scalus-crypto-jni 0.1.0
 (libsodium, libsecp256k1 and portable blst 0.3.15) and passes `hashToGroup`'s tag as bytes, so the
 earlier raw-byte DST backport into Scarab's portable libblst is no longer used by Plutus
-([ADR 0020](adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md)). Costing and the 255-byte
-DST length check are Scalus's own, and the original upstream conformance assertions plus the
-independently exported G1/G2 point vectors pass through the production evaluator. The start-up
-check of the library computes the `hashToGroup` known answers for a non-ASCII tag. A builtin the
+([ADR 0020](adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md)). The cost-model shapes and
+the 255-byte DST length check are Scalus's own; the budget arithmetic is the reference's
+(`ReferenceCosting` measures the arguments and runs the costing functions in `SatInt` arithmetic
+as budget streams, `ReferenceBudget` charges steps in batches of 200 and compares a saturating
+remaining budget after every charge; IN-84, [#485](https://github.com/KD5UJC-XYZ/scarab/issues/485)).
+The conformance suite's counting spender is charged through the same machine, and the
+original upstream conformance assertions plus the independently exported G1/G2 point vectors pass
+through the production evaluator. The start-up check of the library computes the `hashToGroup` known answers for a non-ASCII tag. A builtin the
 library backs is a typed `BuiltinUnavailable` when it did not load. The complete upstream suite
 passes 1,009/1,009 cases with zero exceptions under its own term/counting profile; the obsolete
 known-failure resource is removed.

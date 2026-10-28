@@ -40,3 +40,5 @@ submissions and 145 unchanged-reference API cases. Derived probes, direct constr
 whole-transaction admission evidence have separate provenance and assertions.
 
 [Pre-Conway cost-model decoding](cost-models/README.md) (#332) retains 98 transactions (49 cases in each of the Alonzo and Babbage eras) measured against the unchanged released ledger decoders at decoder versions 5 and 7.
+
+[Genesis cost models](genesis-cost-models/README.md) (#369) retains 135 cases of the Alonzo and Conway genesis cost-model parsers, a 4,188-list sweep of `mkCostModel` and 3,441 Plutus evaluations under cost-model lists of every length, measured against the unchanged released ledger libraries and Plutus 1.70.0.0.

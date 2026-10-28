@@ -51,6 +51,11 @@
       "file": "docs/performance/injection-coefficients.md",
       "title": "Incremental injection numeric coefficients",
       "prefix": "injection-coefficients"
+    },
+    {
+      "file": "docs/performance/plutus-budget-arithmetic.md",
+      "title": "The reference's budget arithmetic in the evaluator",
+      "prefix": "plutus-budget-arithmetic"
     }
   ],
   "entries": [
@@ -3554,6 +3559,47 @@
               "640 / 336.42",
               "69 / 137.99",
               "352.85"
+            ]
+          ]
+        }
+      ],
+      "listings": []
+    },
+    {
+      "id": "perf-50",
+      "section": "44",
+      "heading": "44. The reference's budget arithmetic in the evaluator (#485)",
+      "subject": "The reference's budget arithmetic in the evaluator (#485)",
+      "date": "2026-10-25",
+      "dateSource": "text",
+      "issues": [
+        "#485"
+      ],
+      "commits": [
+        "56b5075af"
+      ],
+      "links": [],
+      "page": "plutus-budget-arithmetic",
+      "results": [
+        {
+          "id": "perf-50.t1",
+          "header": [
+            "build",
+            "seconds"
+          ],
+          "separator": "|---|---:|",
+          "rows": [
+            [
+              "before (PR #493 at `91b1cd4a`, Scalus's spender and costing)",
+              "22.9 (23.6)"
+            ],
+            [
+              "first version, every cost stream a `Vector`",
+              "25.9 (26.2)"
+            ],
+            [
+              "after (single-cost fast path)",
+              "21.3 (21.3)"
             ]
           ]
         }
