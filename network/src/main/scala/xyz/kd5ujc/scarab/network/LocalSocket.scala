@@ -268,8 +268,7 @@ object LocalSockets:
     * that ends in `/` as naming a directory (`ENOTDIR` on anything else). The JDK has no such call
     * (its deletes read the type first and remove an empty directory with `rmdir`), so it is made
     * through the foreign-function interface. The release JAR's `Enable-Native-Access` manifest
-    * attribute allows the native access; started from a classpath instead, the JVM writes one
-    * warning about it (no flag is added to the command line).
+    * attribute allows the native access; started from a classpath, `--enable-native-access` does.
     */
   private object Unlink:
     private val linker = Linker.nativeLinker()

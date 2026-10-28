@@ -69,7 +69,7 @@ As in the reference node, whatever is at the socket path (`--local-socket`, or t
 key's permissions and the credentials are read, and before the topology and the database are
 (`removeStaleLocalSocket` in `gatherConfiguredSockets`, cardano-node 11.1.3). It is one `unlink(2)` of
 the path, made through Java's foreign-function interface (the release JAR's `Enable-Native-Access` manifest
-attribute allows it; started from a classpath, the JVM writes one warning about it to stderr), so the directory needs
+attribute allows it; started from a classpath, `--enable-native-access=ALL-UNNAMED` does), so the directory needs
 write and search permission only: a socket left by an earlier run, a file or a symbolic link (the link,
 not its target) goes, and nothing there is fine. A path that ends in `/` names a directory, as `unlink`
 takes it: something other than a directory there refuses the start (`ENOTDIR`), and with nothing there

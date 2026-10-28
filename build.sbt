@@ -337,8 +337,12 @@ lazy val node = scarab("node")
       (metadata +: notices) ++ texts
     }.taskValue,
     Compile / run / fork := true,
-    // Scala 3.3's lazy vals use sun.misc.Unsafe, on which Java 25 warns (docker/candidate.Dockerfile)
-    Compile / run / javaOptions += "--sun-misc-unsafe-memory-access=allow"
+    // Scala 3.3's lazy vals use sun.misc.Unsafe, on which Java 25 warns (docker/candidate.Dockerfile);
+    // from a classpath the JAR's Enable-Native-Access attribute does not apply
+    Compile / run / javaOptions ++= Seq(
+      "--sun-misc-unsafe-memory-access=allow",
+      "--enable-native-access=ALL-UNNAMED"
+    )
   )
 
 // Schema-first models, step 1: CDDL parser and Scala generator (build-time tool; see docs/models.md).
