@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.ledger.GenesisCostModels.Models
 
 /** The genesis cost models against the unchanged reference libraries (issue #369).
   *
-  * `fixtures/reference/genesis-cost-models/genesis.json` holds one measurement per row: the JSON
+  * `fixtures/reference/genesis-cost-models/genesis.jsonl` holds one measurement per line: the JSON
   * the unchanged `FromJSON AlonzoGenesis`, `FromJSON ConwayGenesis`, `parseCostModels` and
   * `mkCostModel` of cardano-ledger `f649f975` were given (the genesis rows are a tracked genesis
   * file with a few keys replaced or removed), the typed refusal Scarab must give for it and the
@@ -24,11 +24,11 @@ class GenesisCostModelsSuite extends FunSuite:
     row.hcursor.get[A](key).fold(e => fail(e.message), identity)
 
   private val rows: Vector[Json] =
-    parser
-      .parse(Files.readString(directory.resolve("genesis.json")))
-      .fold(throw _, identity)
-      .asArray
-      .getOrElse(fail("genesis.json is not an array"))
+    Files
+      .readString(directory.resolve("genesis.jsonl"))
+      .linesIterator
+      .map(parser.parse(_).fold(throw _, identity))
+      .toVector
 
   private val templates = Map(
     "alonzo-preview" -> "fixtures/preview/genesis/alonzo-genesis.json",

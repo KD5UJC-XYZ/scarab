@@ -38,7 +38,7 @@ class CostModelLengthSuite extends FunSuite:
       .map(row => field[String](row, "id") -> field[String](row, "script"))
       .toMap
   private val models: Map[String, Json] =
-    jsonOf(directory.resolve("evaluation-models.json")).asArray.get
+    lines(directory.resolve("evaluation-models.jsonl"))
       .map(model => field[String](model, "id") -> model)
       .toMap
   private val observations = lines(directory.resolve("evaluation.jsonl"))

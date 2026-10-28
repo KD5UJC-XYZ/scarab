@@ -24,10 +24,10 @@ import tempfile
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 DIRECTORY = ROOT / "fixtures/reference/genesis-cost-models"
-GENESIS = DIRECTORY / "genesis.json"
+GENESIS = DIRECTORY / "genesis.jsonl"
 SWEEP = DIRECTORY / "sweep.json"
 EVALUATION = DIRECTORY / "evaluation.jsonl"
-MODELS = DIRECTORY / "evaluation-models.json"
+MODELS = DIRECTORY / "evaluation-models.jsonl"
 PROVENANCE = DIRECTORY / "provenance.json"
 IMAGE = "scarab-genesis-cost-models369-oracle:local"
 BASE_IMAGE = "scarab-plutus176-context-reference:local"
@@ -66,6 +66,14 @@ SOURCE_FILES = {
 def require(condition, message):
     if not condition:
         raise ValueError(message)
+
+
+def lines(rows):
+    return "".join(json.dumps(row, separators=(",", ":")) + "\n" for row in rows)
+
+
+def read_lines(path):
+    return [json.loads(line) for line in path.read_text().splitlines() if line]
 
 
 def sha256(path):
@@ -141,12 +149,12 @@ def inputs(rows):
 
 
 def verify():
-    rows = json.loads(GENESIS.read_text())
+    rows = read_lines(GENESIS)
     require(inputs(rows) == CASES.cases(), "fixture inputs differ from the generator")
     check(rows)
     ids = [json.loads(line)["id"] for line in EVALUATION.read_text().splitlines()]
     require(ids == [r["id"] for r in CASES.evaluation_requests()], "evaluation inputs differ from the generator")
-    require(json.loads(MODELS.read_text()) == CASES.evaluation_models(), "evaluation models differ from the generator")
+    require(read_lines(MODELS) == CASES.evaluation_models(), "evaluation models differ from the generator")
     provenance = json.loads(PROVENANCE.read_text())
     for name, path in (("genesisSha256", GENESIS), ("sweepSha256", SWEEP), ("evaluationSha256", EVALUATION), ("modelsSha256", MODELS),
                        ("harnessSha256", HERE / "Main.hs"), ("casesSha256", HERE / "cases.py")):
@@ -175,11 +183,11 @@ def record():
     rows = [{**case, "reference": m["reference"]} for case, m in zip(cases, measured)]
     check(rows)
     DIRECTORY.mkdir(parents=True, exist_ok=True)
-    GENESIS.write_text(json.dumps(rows, indent=1) + "\n")
+    GENESIS.write_text(lines(rows))
     SWEEP.write_text(json.dumps(run_sweeps(), indent=1) + "\n")
     evaluation = run_evaluation(CASES.evaluation_requests())
-    MODELS.write_text(json.dumps(CASES.evaluation_models(), indent=1) + "\n")
-    EVALUATION.write_text("".join(json.dumps(row, separators=(",", ":")) + "\n" for row in evaluation))
+    MODELS.write_text(lines(CASES.evaluation_models()))
+    EVALUATION.write_text(lines(evaluation))
     PROVENANCE.write_text(json.dumps({
         "schemaVersion": 1,
         "scope": "Genesis cost-model parsing (Alonzo and Conway genesis files, parseCostModels, mkCostModel) and Plutus "
