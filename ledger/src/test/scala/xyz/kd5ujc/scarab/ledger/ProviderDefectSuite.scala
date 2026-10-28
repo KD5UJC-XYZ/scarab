@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.crypto.kes.Sum6Kes
 import xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate
 import xyz.kd5ujc.scarab.crypto.vrf.{PraosVrfCertificate as Vrf, StrictDraft03}
 import xyz.kd5ujc.scarab.crypto.witness.{VerificationError, VerificationResult, WitnessInputError}
+import xyz.kd5ujc.scarab.ledger.rules.Test
 
 /** A provider defect is never a predicate failure (issue 393): an injected failing provider makes
   * the rule return the [[ProviderDefect]] beside its refusals, and an invalid signature, proof or
@@ -46,22 +47,12 @@ class ProviderDefectSuite extends FunSuite:
       export Verdicts.Direct.{keyHash, opCert, praosVrf, takePrepared, tpraosVrf}
       def witness(vkey: Bytes, signature: Bytes, message: Bytes): Either[ProviderDefect, Boolean] =
         Left(ProviderDefect.Ed25519(failing))
-    def check(rules: Verdicts) =
-      TxChecks.witnessChecks(
-        Map.empty,
-        tx,
-        Vector.empty,
-        TxChecks.Collateral.none,
-        Map.empty,
-        Map.empty,
-        tx.witnesses.vkeys.map(w => Verdicts.Direct.keyHash(w._1)),
-        rules
-      )
+    def check(rules: Verdicts) = TxChecks.verifiedWits(tx, rules)
     assertEquals(
       check(verdicts),
       Left(LedgerFailure.Unverifiable(body.id, ProviderDefect.Ed25519(failing)))
     )
-    assertEquals(check(Verdicts.Direct), Right(()))
+    assertEquals(check(Verdicts.Direct), Right(Test.pass))
   }
 
   test("a rejected or malformed witness is false, never a defect") {

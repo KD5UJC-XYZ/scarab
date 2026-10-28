@@ -373,7 +373,7 @@ object ReferenceRefusalSuite:
   enum Judgement:
     case Refused(reason: Bytes)
     case Accepted
-    case Unavailable(failure: LedgerFailure.Unavailable)
+    case Unavailable(failure: LedgerFailure.Unavailable | LedgerFailure.Unverifiable)
     case Unencodable(failures: NonEmptyChain[PredicateFailure])
     case NotRefused(defect: LedgerDefect)
 

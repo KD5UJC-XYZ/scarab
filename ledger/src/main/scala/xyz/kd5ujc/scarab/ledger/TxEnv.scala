@@ -75,9 +75,9 @@ sealed trait LedgerFailure extends DomainError:
     case LedgerFailure.Vocab(e)            => s"transaction outside the state's vocabulary: $e"
 
 /** What ends a judgment of the rules without a verdict: the transaction cannot be what its era
-  * decodes, a script cannot be evaluated here, a verifier failed, or a value is outside the
-  * state's vocabulary. The
-  * reference has no predicate failure for any of them, so none is part of a refusal's list.
+  * decodes, a script cannot be evaluated here, a verifier failed, or a value is outside the state's
+  * vocabulary. The reference has no predicate failure for any of them, so none is part of a
+  * refusal's list.
   */
 sealed trait LedgerDefect extends LedgerFailure
 

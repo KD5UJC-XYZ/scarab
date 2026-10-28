@@ -355,7 +355,7 @@ class ProviderDefectBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncau
     NodeScope.resource.use { node =>
       for
         ref <- Ref.of[IO, VolatileChain[MirrorState]](
-          VolatileChain.genesis(ForgedChain.geometry.securityParam, forged.genesis)
+          VolatileChain.genesis(ForgedChain.geometry.k.toInt, forged.genesis)
         )
         given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
         emitted <- Ref.of[IO, Vector[FollowerEvent]](Vector.empty)

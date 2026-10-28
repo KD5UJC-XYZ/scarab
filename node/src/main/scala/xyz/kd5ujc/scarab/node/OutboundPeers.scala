@@ -274,10 +274,11 @@ final class OutboundPeers[F[_]: Async, A] private (
 
   private def stop(link: Link[F], fatal: Fatal): F[Unit] =
     val end = fatal match
-      case Fatal.Unavailable(error) => SessionEnd.Unavailable(error)
-      case Fatal.Storage(error)     => SessionEnd.Storage(error)
-      case Fatal.Internal(error)    => SessionEnd.Internal(error)
-      case Fatal.Defect(cause)      => SessionEnd.Defect(cause)
+      case Fatal.Unavailable(error)  => SessionEnd.Unavailable(error)
+      case Fatal.Storage(error)      => SessionEnd.Storage(error)
+      case Fatal.Internal(error)     => SessionEnd.Internal(error)
+      case Fatal.Defect(cause)       => SessionEnd.Defect(cause)
+      case Fatal.Unverifiable(error) => SessionEnd.Unverifiable(error)
     publish(link, end)
 
   /** One job outside both the bearer and the hot session: PeerStateActions.hs:662–776,838–848 at
