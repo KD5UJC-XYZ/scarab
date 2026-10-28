@@ -91,7 +91,7 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     TestControl.executeEmbed(
       withHandle {
         for
-          h <- harness(p, ledgerWith(p, 1), live = true)
+          h <- harness(p, ledgerWith(p, 1), live = true, unbounded = true)
           fiber <- h.forger.run.start
           _ <- IO.sleep(200500.millis)
           _ <- fiber.cancel
@@ -117,7 +117,7 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     TestControl.executeEmbed(
       withHandle {
         for
-          h <- harness(p, ledgerWith(p, 1), live = true, offsetMillis = 437)
+          h <- harness(p, ledgerWith(p, 1), live = true, offsetMillis = 437, unbounded = true)
           fiber <- h.forger.run.start
           _ <- IO.sleep(200500.millis)
           _ <- fiber.cancel
@@ -142,7 +142,7 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     TestControl.executeEmbed(
       withHandle {
         for
-          h <- harness(p, ledgerWith(p, 1), live = true, offsetMillis = 990000)
+          h <- harness(p, ledgerWith(p, 1), live = true, offsetMillis = 990000, unbounded = true)
           fiber <- h.forger.run.start
           _ <- IO.sleep(30500.millis)
           _ <- fiber.cancel
@@ -198,7 +198,14 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
               writes
                 .getAndUpdate(_ + 1)
                 .flatMap(n => IO.sleep(3500.millis).whenA(n == 0).as(Persisted.Written))
-          h <- harness(p, ledgerWith(p, 1), live = true, offsetMillis = 99000, source = Some(slow))
+          h <- harness(
+            p,
+            ledgerWith(p, 1),
+            live = true,
+            offsetMillis = 99000,
+            source = Some(slow),
+            unbounded = true
+          )
           fiber <- h.forger.run.start
           _ <- IO.sleep(6500.millis)
           _ <- fiber.cancel
@@ -209,6 +216,32 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
         yield
           assertEquals(started.take(4), Vector(5099, 5100, 5103, 5104))
           assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]), events.toString)
+      }
+    )
+  }
+
+  test("a slot runs only once known: after the system start and within the tip's era history") {
+    val p = pool(kesStart = 50, seed = 9)
+    def started(offsetMillis: Long, millis: Long)(using Handle[IO, NodeError]) =
+      for
+        h <- harness(p, ledgerWith(p, 1), live = true, offsetMillis = offsetMillis)
+        fiber <- h.forger.run.start
+        _ <- IO.sleep(millis.millis)
+        _ <- fiber.cancel
+        traces <- tracesIn(h)
+      yield traces.collect { case ForgeTrace.StartLeadershipCheck(s) => s.toInt }
+    TestControl.executeEmbed(
+      withHandle {
+        for
+          // (first, as the test clock starts at the system start) two seconds before the system
+          // start: nothing until then, then slots 0, 1, 2, ...
+          early <- started(-5002000L, 4500)
+          // the chain is at genesis: its era history ends a safe zone after it, so at slot 5000 the
+          // current slot is unknown and the loop runs nothing (`CurrentSlotUnknown`)
+          beyond <- started(0, 200000)
+        yield
+          assertEquals(beyond, Vector.empty[Int])
+          assertEquals(early, Vector(0, 1, 2))
       }
     )
   }
@@ -450,6 +483,38 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
           ),
           events.toString
         )
+    }
+  }
+
+  test("past the next epoch the leader check takes the tip's current distribution, as TICKF") {
+    val p = pool(kesStart = 50, seed = 9)
+    val ledger = ledgerWith(p, 1)
+    val tipEpoch = ledger.epoch.toBigInt
+    // the pool has all the stake of the current distribution and none of the mark snapshot; our own
+    // rules refuse every block, so the chain stays at its origin and each slot is forecast from it
+    def led(h: Harness, epoch: BigInt): IO[Int] =
+      val first = geometry.firstSlot(epoch)
+      (first until first + 40).toList.traverse_(s => h.forger.step(s)) *>
+        tracesIn(h).map(_.count {
+          case ForgeTrace.NodeIsLeader(s) => geometry.epochOf(s) == epoch
+          case _                          => false
+        })
+    withHandle {
+      for
+        h <- harness(
+          p,
+          ledger,
+          ruleFailure = Some(xyz.kd5ujc.scarab.ledger.BlockFailure.HeaderDiffers)
+        )
+        next <- led(h, tipEpoch + 1)
+        later <- led(h, tipEpoch + 2)
+        chain <- h.chain
+      yield
+        assertEquals(chain.tipRef, None)
+        // into the next epoch the mark distribution, which does not have the pool
+        assertEquals(next, 0)
+        // two epochs on, the current one again (`curEpochNo /= succ (nesEL nes)`)
+        assert(later > 0, later.toString)
     }
   }
 

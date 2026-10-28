@@ -20,11 +20,11 @@ import xyz.kd5ujc.scarab.node.{Fatal, Follower, SessionEnd}
 import xyz.kd5ujc.scarab.consensus.{Praos, PraosConfig}
 import xyz.kd5ujc.scarab.consensus.state.{Placement, ProtocolState}
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.ledger.LedgerGlobals
+import xyz.kd5ujc.scarab.ledger.{LedgerGlobals, PoolDistribution}
 import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Globals, Hfc}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, NewEpochState, ShelleyBasedEra, SlotNo}
 import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView}
-import xyz.kd5ujc.scarab.node.read.LeaderPools.given
+import xyz.kd5ujc.scarab.node.read.MirrorEraRead
 import xyz.kd5ujc.scarab.node.mempool.{Entry, Mempool, MempoolLedger, MempoolState}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.storage.UtxoStore
@@ -130,6 +130,10 @@ trait ForgeEvents[F[_]]:
   *   stability window (`SL.stabilityWindow`) of `ledgerViewForecastAt`.
   * @param now
   *   `now` for tests; the real clock by default.
+  * @param unknownSlotBackoff
+  *   How long the loop waits before it asks the clock again while the current slot is unknown.
+  * @param horizon
+  *   Whether the era history at the tip of a chain translates a slot ([[Forger.withinHorizon]]).
   * @param utxoStore
   *   The backing store of the UTxO set: the read set of the candidates is fetched from it.
   * @param stats
@@ -146,6 +150,8 @@ final class Forger[F[_]: Async, S](
     forecastWindow: BigInt,
     now: F[Instant],
     sleep: FiniteDuration => F[Unit],
+    unknownSlotBackoff: FiniteDuration,
+    horizon: (VolatileChain[S], BigInt) => Boolean,
     cache: Ref[F, Option[Forger.Crossed]],
     pending: Ref[F, Vector[Forger.Forged]],
     utxoStore: Option[UtxoStore[F]],
@@ -198,23 +204,47 @@ final class Forger[F[_]: Async, S](
     yield ()
   }
 
-  private def loop(last: Option[BigInt])(using Handle[F, NodeError], Raise[F, Fatal]): F[Unit] =
-    for
-      instant <- now
-      slot = geometry.slotAt(instant)
-      // the epoch the previous slot was in has ended: its counters are final
-      _ <- last.traverse_ { l =>
-        val ended = geometry.epochOf(l)
-        if geometry.epochOf(slot) > ended then
-          stats.epoch(ended).flatMap(s => events.emit(ForgeEvent.EpochSummary(ended, s)))
-        else F.unit
+  /** The current slot as the reference's blockchain time gives it (`hardForkBlockchainTime`,
+    * consensus 82ecba329 `BlockchainTime/WallClock/HardFork.hs`), or how long to wait before asking
+    * again: until the system start before it (`systemTimeWait`), and `unknownSlotBackoff` while the
+    * wall clock is past the horizon of the era history at the tip of the chain (`wallclockToSlot`
+    * failing: `CurrentSlotUnknown`).
+    */
+  private def currentSlot(instant: Instant): F[Either[FiniteDuration, BigInt]] =
+    if instant.isBefore(geometry.systemStart) then
+      F.pure(Left(Duration.between(instant, geometry.systemStart).toMillis.max(1L).millis))
+    else
+      chain.get.map { current =>
+        val slot = geometry.slotAt(instant)
+        Either.cond(horizon(current, slot), slot, unknownSlotBackoff)
       }
-      _ <- if last.exists(_ >= slot) then F.unit else stepInScope(slot)
-      after <- now
-      untilNext = Duration.between(after, geometry.slotStart(slot + 1))
-      _ <- sleep(untilNext.toMillis.max(1L).millis)
-      _ <- loop(Some(slot))
-    yield ()
+
+  /** The slots, as `knownSlotWatcher` hands them to `forkBlockForging` (`BlockchainTime/API.hs`
+    * 57-77): each slot that becomes current is attempted once; a slot passed while an attempt runs
+    * is not; and while the current slot is unknown nothing runs, nothing is traced and nothing is
+    * counted, the clock being asked again after `unknownSlotBackoff` (the reference's
+    * `BackoffDelay`, 60 seconds, `Node.hs` 550).
+    */
+  private def loop(last: Option[BigInt])(using Handle[F, NodeError], Raise[F, Fatal]): F[Unit] =
+    now.flatMap(currentSlot).flatMap {
+      case Left(wait) => sleep(wait) *> loop(last)
+      case Right(slot) =>
+        for
+          // the epoch the previous slot was in has ended: its counters are final
+          _ <- last.traverse_ { l =>
+            val ended = geometry.epochOf(l)
+            if geometry.epochOf(slot) > ended then
+              stats.epoch(ended).flatMap(s => events.emit(ForgeEvent.EpochSummary(ended, s)))
+            else F.unit
+          }
+          _ <- if last.exists(_ >= slot) then F.unit else stepInScope(slot)
+          after <- now
+          untilNext = Duration.between(after, geometry.slotStart(slot + 1))
+          _ <- sleep(untilNext.toMillis.max(1L).millis)
+          // the slot never goes back (`checkValidClockChange`)
+          _ <- loop(Some(last.fold(slot)(_.max(slot))))
+        yield ()
+    }
 
   /** One slot in its own scope: a forging refusal permits another slot; a service failure or defect
     * is returned to the owner and never enters the recoverable forging channel.
@@ -272,7 +302,7 @@ final class Forger[F[_]: Async, S](
           info => perform(events.emit(ForgeEvent.StateInfo(info))).as(info)
         )
       )
-      pools = crossed.nes.leaderPools
+      pools = crossed.pools
       stake = pools.stake.getOrElse(credentials.poolId, BigInt(0))
       cert <- perform(
         F.blocking(
@@ -594,12 +624,21 @@ final class Forger[F[_]: Async, S](
           )
           c <- F
             .blocking {
-              // the boundaries between the tip's epoch and the slot's, so that the pool distribution
-              // is the one in force in the slot's epoch; the slot's own work is done per attempt
+              // the ledger view of the leader check is the forecast of the tip's ledger
+              // (`futureForecast`, which ticks with TICKF: cardano-ledger f649f975
+              // `Shelley/Rules/Tick.hs` 201-242, `Conway/Rules/Tickf.hs` 42-66): into the next
+              // epoch the mark distribution, in the tip's epoch and two or more epochs on the
+              // current one, as the header rules take it (`ShelleyHeaderForecast`)
+              val pools = MirrorEraRead(nes)(using ShelleyBasedEra.SConway)
+                .leaderPools(nextEpoch = epoch == nes.epoch.toBigInt + 1)
+              // the boundaries between the tip's epoch and the slot's, for the block's own ledger
+              // (`applyChainTick`); the slot's own work is done per attempt
               val start =
                 if epoch > nes.epoch.toBigInt then ticked(nes, geometry.firstSlot(epoch))
                 else Right(nes)
-              start.map(Forger.Crossed(key, _, Praos.tick(state.protocol, Era.Conway, epoch)))
+              start.map(
+                Forger.Crossed(key, _, pools, Praos.tick(state.protocol, Era.Conway, epoch))
+              )
             }
             .flatMap(lift)
           _ <- cache.set(Some(c))
@@ -656,10 +695,29 @@ object Forger:
       }
     }
 
-  /** The tip's ledger and chain-dependent state carried into an epoch. */
+  /** How long the blockchain time waits before it asks again for a slot it could not translate
+    * (`BackoffDelay 60`, consensus 82ecba329 `Node.hs` 550).
+    */
+  val UnknownSlotBackoff: FiniteDuration = 60.seconds
+
+  /** Whether the era history at the chain's tip translates `slot` (`wallclockToSlot` of the summary
+    * of the current ledger, `hfbtGetLedgerState`): the horizon of [[ChainRead.clock]], the same one
+    * the transactions' time translation has.
+    */
+  def withinHorizon[S](config: PraosConfig)(using
+      read: ChainRead[S]
+  ): (VolatileChain[S], BigInt) => Boolean =
+    (current, slot) =>
+      val placement = Placement.of(current.state.geometry(config.geometry), config.forks)
+      current.state.clock(placement, Era.Conway, slot).posix(slot).isRight
+
+  /** The tip's ledger and chain-dependent state carried into an epoch, and the pool distribution of
+    * its forecast ledger view.
+    */
   final case class Crossed(
       key: (Option[Bytes], BigInt),
       nes: NewEpochState[Conway],
+      pools: PoolDistribution,
       protocol: ProtocolState
   )
 
@@ -702,6 +760,8 @@ object Forger:
       forecastWindow: Option[BigInt] = None,
       now: Option[F[Instant]] = None,
       sleep: Option[FiniteDuration => F[Unit]] = None,
+      unknownSlotBackoff: FiniteDuration = Forger.UnknownSlotBackoff,
+      horizon: Option[(VolatileChain[S], BigInt) => Boolean] = None,
       utxoStore: Option[UtxoStore[F]] = None,
       source: Option[HotKeySource[F]] = None
   )(using
@@ -725,6 +785,8 @@ object Forger:
         forecastWindow.getOrElse(config.geometry.stabilityWindow.toBigInt),
         now.getOrElse(Clock[F].realTimeInstant),
         sleep.getOrElse(d => Async[F].sleep(d)),
+        unknownSlotBackoff,
+        horizon.getOrElse(Forger.withinHorizon(config)),
         cache,
         pending,
         utxoStore,

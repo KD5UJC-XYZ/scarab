@@ -134,7 +134,8 @@ trait ForgeFixture:
       source: Option[HotKeySource[IO]] = None,
       ruleFailure: Option[BlockFailure] = None,
       storageFailure: Option[StorageError] = None,
-      clock: Option[IO[Instant]] = None
+      clock: Option[IO[Instant]] = None,
+      unbounded: Boolean = false
   )(using Handle[IO, NodeError]): IO[Harness] =
     for
       start <- IO.pure(mirrorState(ledger))
@@ -218,6 +219,9 @@ trait ForgeFixture:
           )
         ),
         sleep = if live then None else Some(_ => IO.unit),
+        // a live loop over a chain left at genesis while the clock is thousands of slots on: the
+        // era history at that tip would not translate the slot, so such tests lift the horizon
+        horizon = Option.when(unbounded)((_, _) => true),
         source = source
       )
     yield new Harness(follower, forger, ref, mempool, seen, raws)

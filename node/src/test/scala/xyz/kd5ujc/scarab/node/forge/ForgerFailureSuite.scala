@@ -156,7 +156,8 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
           p,
           ledgerWith(p, 1),
           source = Some(defective(cause, calls)),
-          clock = Some(IO.pure(java.time.Instant.EPOCH.plusSeconds(5100)))
+          clock = Some(IO.pure(java.time.Instant.EPOCH.plusSeconds(5100))),
+          unbounded = true
         )
         result <- h.forger.run
         count <- calls.get
