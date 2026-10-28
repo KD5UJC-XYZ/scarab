@@ -16,9 +16,14 @@ object Reports:
     List(
       "slotsChecked" -> s.slotsChecked.asJson,
       "leaderSlots" -> s.leaderSlots.asJson,
+      "notLeader" -> s.notLeader.asJson,
+      "cannotForge" -> s.cannotForge.asJson,
+      "stateUpdateError" -> s.stateUpdateError.asJson,
       "forged" -> s.forged.asJson,
       "adopted" -> s.adopted.asJson,
-      "lostSlotBattles" -> s.lost.asJson,
+      "lostSlotBattles" -> s.didntAdopt.asJson,
+      "forgedInvalid" -> s.forgedInvalid.asJson,
+      "replaced" -> s.replaced.asJson,
       "failed" -> s.failed.asJson,
       "skipped" -> s.skippedTotal.asJson,
       "skippedByReason" -> s.skipped.toList

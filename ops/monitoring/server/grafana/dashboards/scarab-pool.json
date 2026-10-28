@@ -1324,7 +1324,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Slots that could not be forged or were skipped",
+      "title": "Slots that could not be forged or were given up",
       "description": "",
       "datasource": {
         "type": "prometheus",
@@ -1346,7 +1346,7 @@
             "uid": "prometheus"
           },
           "expr": "max by (host, container) (cardano_node_metrics_slotsMissed_int{host=~\"$host\", container=~\"$container\"})",
-          "legendFormat": "forger busy (missed) {{container}}",
+          "legendFormat": "missed (ForgingStats) {{container}}",
           "refId": "B"
         },
         {
@@ -1355,7 +1355,7 @@
             "uid": "prometheus"
           },
           "expr": "sum by (host, container, reason) (increase(scarab_forge_skipped_total{host=~\"$host\", container=~\"$container\"}[1h]))",
-          "legendFormat": "skipped/h {{reason}} {{container}}",
+          "legendFormat": "given up/h {{reason}} {{container}}",
           "refId": "C"
         }
       ],
@@ -3391,7 +3391,7 @@
         {
           "type": "logs",
           "title": "Our producer outcomes",
-          "description": "Local adoption, lost candidates, skip/failure reasons and epoch summaries. Adopted here means adopted by our node, not independently verified public-chain finality.",
+          "description": "Local adoption, lost candidates, the reasons a slot was given up and epoch summaries. Adopted here means adopted by our node, not independently verified public-chain finality.",
           "datasource": {
             "type": "loki",
             "uid": "loki"
@@ -3402,7 +3402,7 @@
                 "type": "loki",
                 "uid": "loki"
               },
-              "expr": "{host=~\"$host\", container=~\"$container\", event=~\"adopted|lost|forgeSkipped|forgeFailed|forgeEpoch\"}",
+              "expr": "{host=~\"$host\", container=~\"$container\", event=~\"adoptedBlock|didntAdoptBlock|lost|slotIsImmutable|blockFromFuture|noLedgerView|forgeStateUpdateError|nodeCannotForge|forgedInvalidBlock|forgeFailed|forgeEpoch\"}",
               "refId": "A",
               "maxLines": 200
             }

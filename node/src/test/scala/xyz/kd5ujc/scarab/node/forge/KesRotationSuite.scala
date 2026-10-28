@@ -649,6 +649,51 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     )
   }
 
+  test("a key poisoned past its window is usable again once a reload installs a new one") {
+    val p = pool(kesStart = 0, seed = 13) // the window is periods 0..61, slot 6200 is period 62
+    TestControl.executeEmbed(
+      withDir { f =>
+        f.install(p.creds.hot)
+        val next = hotFor(p.cold, seed = 23, start = 62, sequence = 0)
+        withHandle {
+          for
+            src <- source(f)
+            h <- harness(
+              p,
+              ledgerWith(p, 1),
+              source = Some(src),
+              clock = Some(IO.pure(java.time.Instant.EPOCH.plusSeconds(6200)))
+            )
+            _ <- h.forger.step(6200)
+            _ <- h.forger.step(6201)
+            _ = f.install(next)
+            _ <- h.forger.reload
+            _ <- (6202 until 6240).toList.traverse_(s => h.forger.step(s))
+            traces <- tracesIn(h)
+            events <- h.seen
+          yield
+            assertEquals(
+              traces.collect { case ForgeTrace.ForgeStateUpdateError(s, e) =>
+                (s.toInt, e.productPrefix)
+              },
+              Vector(6200 -> "CouldNotEvolve", 6201 -> "KeyAlreadyPoisoned")
+            )
+            assert(events.exists(_.isInstanceOf[ForgeEvent.KesReloaded]), events.toString)
+            // the forge state is updated again, with the new key, and the leader check follows
+            // (in epoch 6 the fixture's pool has no stake left, so it leads no slot there)
+            assertEquals(
+              events.collect { case ForgeEvent.StateInfo(info) => info }.distinct,
+              Vector(KesInfo(62, 124, 0))
+            )
+            assertEquals(
+              traces.collect { case ForgeTrace.NodeNotLeader(s) => s.toInt },
+              (6202 until 6240).toVector
+            )
+        }
+      }
+    )
+  }
+
   test("a reload that is refused keeps the credentials in force and says why") {
     val p = pool(kesStart = 50, seed = 12)
     val stranger = TestLedger.key()

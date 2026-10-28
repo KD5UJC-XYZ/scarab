@@ -232,6 +232,7 @@ class LogGoldenSuite extends CatsEffectSuite:
     covered(connection, cases[ConnectionEvent])
     covered(mempool, cases[MempoolEvent])
     covered(forge, cases[ForgeEvent])
+    covered(forgeTraces, cases[xyz.kd5ujc.scarab.node.forge.ForgeTrace])
     covered(inbound, cases[InboundEvent])
     covered(localServer, cases[xyz.kd5ujc.scarab.network.LocalServer.Trace])
     covered(peerSelection, cases[Trace[SocketAddress[Host]]])

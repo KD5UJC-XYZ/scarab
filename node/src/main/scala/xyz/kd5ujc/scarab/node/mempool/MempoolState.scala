@@ -263,6 +263,12 @@ object MempoolLedger:
   * `base` is the complete ledger ticked to the successor of the chain tip the pool was last
   * synchronised with. `tipSlot` is -1 at Origin, making its successor slot zero. Every operation is
   * a pure function; [[Mempool]] serialises them.
+  *
+  * @param tipHash
+  *   The hash of that chain tip, none at Origin: the reference's `snapshotStateHash`, the
+  *   `pointHash` of the tip the pool's state was computed for (consensus 82ecba329
+  *   `Mempool/Impl/Common.hs` `snapshotFromTxSeq`), which the forger traces
+  *   (`TraceForgingMempoolSnapshot`).
   */
 final case class MempoolState(
     base: Either[ConwayView.Unavailable, MempoolLedger],
@@ -271,7 +277,8 @@ final case class MempoolState(
     entries: Vector[Entry],
     bytes: Long,
     nextTicket: Long,
-    capacityOverride: Option[Long]
+    capacityOverride: Option[Long],
+    tipHash: Option[Bytes] = None
 ):
   /** The capacity: `computeMempoolCapacity` of the parameters of the ticked ledger at the base of
     * the pool, so it follows a parameter change at the next revalidation ([[sync]]), and is zero
@@ -436,9 +443,10 @@ object MempoolState:
   def empty(
       ledger: Either[ConwayView.Unavailable, MempoolLedger],
       tipSlot: BigInt,
-      capacityOverride: Option[Long]
+      capacityOverride: Option[Long],
+      tipHash: Option[Bytes] = None
   ): MempoolState =
-    MempoolState(ledger, tipSlot, ledger, Vector.empty, 0L, 1L, capacityOverride)
+    MempoolState(ledger, tipSlot, ledger, Vector.empty, 0L, 1L, capacityOverride, tipHash)
 
   private val limits = Cbor.Limits(
     maxInputBytes = 1048576,

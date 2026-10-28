@@ -24,7 +24,7 @@ import xyz.kd5ujc.scarab.node.{
   PeerNetwork,
   StallWatchdog
 }
-import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents}
+import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents, ForgeTrace, KesInfo}
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, MempoolEvents}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
 import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
@@ -33,12 +33,11 @@ import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
   * value of a closed event type; this is the one place where those values become metrics, so the
   * call sites know nothing of them (the JSON log listens to the same events, see [[EventSink]]).
   *
-  * It keeps the few facts an event does not carry on its own: how many blocks the immutable chain
-  * holds, and when the operational certificate expires.
+  * It keeps the one fact an event does not carry on its own: how many blocks the immutable chain
+  * holds.
   */
 final class EventMetrics[F[_]: Sync] private (
-    immutableCount: Ref[F, Long],
-    kesExpiry: Ref[F, Option[BigInt]]
+    immutableCount: Ref[F, Long]
 )(using metrics: Metrics[F]):
   import Catalogue.*
 
@@ -80,44 +79,35 @@ final class EventMetrics[F[_]: Sync] private (
         Sync[F].unit
 
   val forge: ForgeEvents[F] = new ForgeEvents[F]:
-    private def kes(period: BigInt): F[Unit] =
-      metrics.set(currentKesPeriod, number(period)) *>
-        kesExpiry.get.flatMap(
-          _.traverse_(expiry => metrics.set(remainingKesPeriods, number(expiry - period)))
-        )
-
-    /** The operational certificate in force, at start-up and after every reload: where its window
-      * is, its counter, and how many periods are left now.
+    /** The KES gauges of the reference's `Forge.StateInfo` (cardano-node 11.1.3
+      * `Tracers/KESInfo.hs` 110-120) and of its `TraceForgeStateUpdateError`, which writes the slot
+      * (`Forge.StateUpdateError`), the key's window and zero for the current and remaining periods
+      * (`Tracers/Consensus.hs` 1487-1504).
       */
-    private def certificate(
-        start: BigInt,
-        evolutions: BigInt,
-        counter: BigInt,
-        period: BigInt
-    ): F[Unit] =
-      kesExpiry.set(Some(start + evolutions)) *>
-        metrics.set(opCertStartKesPeriod, number(start)) *>
-        metrics.set(opCertExpiryKesPeriod, number(start + evolutions)) *>
-        metrics.set(opCertCounter, number(counter)) *>
-        kes(period)
+    private def kes(info: KesInfo, current: BigInt, remaining: BigInt): F[Unit] =
+      metrics.set(opCertStartKesPeriod, number(info.start)) *>
+        metrics.set(opCertExpiryKesPeriod, number(info.end)) *>
+        metrics.set(currentKesPeriod, number(current)) *>
+        metrics.set(remainingKesPeriods, number(remaining))
 
     def emit(event: ForgeEvent): F[Unit] = event match
-      case ForgeEvent.Started(_, _, start, evolutions, counter, period) =>
-        certificate(start, evolutions, counter, period) *> metrics.set(forgingEnabled, 1.0)
-      case ForgeEvent.KesReloaded(counter, start, evolutions, period) =>
-        certificate(start, evolutions, counter, period) *> metrics.inc(
-          kesReloads,
-          ReloadLabel.Reloaded
-        )
+      case ForgeEvent.Started(_, _, _, _, counter, _) =>
+        metrics.set(opCertCounter, number(counter)) *> metrics.set(forgingEnabled, 1.0)
+      case ForgeEvent.KesReloaded(counter, _, _, _) =>
+        metrics.set(opCertCounter, number(counter)) *> metrics.inc(kesReloads, ReloadLabel.Reloaded)
       case ForgeEvent.KesReloadRefused(_)    => metrics.inc(kesReloads, ReloadLabel.Refused)
       case ForgeEvent.KesPersistFailed(_, _) => metrics.inc(kesPersistFailures)
-      case ForgeEvent.Forged(slot, _, _, _, _, _, _, period, _, _, _, _) =>
-        metrics.set(forgedSlotLast, number(slot)) *> kes(period)
-      case ForgeEvent.KesEvolved(period, _) => kes(period)
+      case ForgeEvent.StateInfo(info)        => kes(info, info.period, info.remaining)
+      case ForgeEvent.Loop(ForgeTrace.ForgeStateUpdateError(slot, error)) =>
+        metrics.set(forgeStateUpdateError, number(slot)) *> kes(error.info, 0, 0)
+      case ForgeEvent.Loop(ForgeTrace.ForgedBlock(slot, _, _, _, _)) =>
+        metrics.set(forgedSlotLast, number(slot))
       case ForgeEvent.Adopted(_, latency) =>
         latency.traverse_(ms => metrics.observe(forgeAdoptionSeconds, ms / 1000.0))
-      case ForgeEvent.Lost(_, _, _) | ForgeEvent.Skipped(_, _) | ForgeEvent.Failed(_, _) |
-          ForgeEvent.EpochSummary(_, _) | ForgeEvent.KeyFileGroupAccess(_, _) =>
+      case ForgeEvent.Loop(_) | ForgeEvent.Clock(_) |
+          ForgeEvent.Forged(_, _, _, _, _, _, _, _, _, _, _, _) | ForgeEvent.KesEvolved(_, _) |
+          ForgeEvent.Lost(_, _, _) | ForgeEvent.Failed(_, _) | ForgeEvent.EpochSummary(_, _) |
+          ForgeEvent.KeyFileGroupAccess(_, _) =>
         // counted from the forger's own statistics at every scrape ([[Collectors.forging]])
         Sync[F].unit
 
@@ -306,6 +296,7 @@ final class EventMetrics[F[_]: Sync] private (
 
 object EventMetrics:
   def create[F[_]: Sync](using Metrics[F]): F[EventMetrics[F]] =
-    (Ref.of[F, Long](0L), Ref.of[F, Option[BigInt]](None))
-      .mapN(new EventMetrics(_, _))
+    Ref
+      .of[F, Long](0L)
+      .map(new EventMetrics(_))
       .flatTap(_.phase(PhaseLabel.Restoring))

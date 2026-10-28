@@ -107,8 +107,8 @@ Meanings and units worth knowing before building a dashboard:
 or `Terminated`; `event` is, for `scarab_connection_events_total`, `Opened`, `Changed`, `Refused` or `Closed`, and for
 `scarab_inbound_events_total`, `Accepted`, `Duplex`, `Unidirectional`, `Following`, `SessionEnded`, `SessionReturned`,
 `SessionDropped`, `CachedBlockRejected`, `Closed` or `Refused`; `reason` is, for `scarab_mempool_rejected_total`, `Malformed`,
-`AlreadyHeld`, `Ledger`, `Full` or `WrongEra`, and for `scarab_forge_skipped_total`, `Busy`, `TipTooOld`,
-`BlockFromFuture`, `SlotIsImmutable`, `NotConnected` or `Other`; `kind` (snapshots) is `Skipped`, `Failed` or `Refused`; `over_ms` is
+`AlreadyHeld`, `Ledger`, `Full` or `WrongEra`, and for `scarab_forge_skipped_total`, `SlotIsImmutable`,
+`BlockFromFuture`, `NoLedgerView` or `Other`; `kind` (snapshots) is `Skipped`, `Failed` or `Refused`; `over_ms` is
 `50` or `100`; `area` is `heap` or `nonheap`; `gc` is the name the JVM gives the collector (`G1 Young
 Generation`, `G1 Old Generation`, `G1 Concurrent GC`); `version`, `scala_version` and `git_commit` of
 `scarab_build_info` are the build's (`git_commit` is `unknown` when the build could not read `.git`). The series
@@ -122,23 +122,27 @@ of an enum label that never happened are absent, except `scarab_era` (written fo
   node computes it over the fragment of its ChainDB (`fragmentChainDensity`, cardano-node
   `Cardano/Node/Tracing/Tracers/ChainDB.hs`; the formula is from the source as remembered, not read line by
   line in this work, and the two agree in magnitude on the devnet).
-- `cardano_node_metrics_slotsMissed_int` is ours for the slots the forger skipped because it was still busy
-  with an earlier one (the `busy` reason); the Haskell node counts the slots it failed to lead in time.
 - `cardano_node_metrics_connectionManager_{inbound,outbound,duplex}Conns_int` count the connections of our
   connection manager (one per peer address, either direction); the Haskell manager has more states and counts
   all of them.
-- `cardano_node_metrics_currentKESPeriod_int` and `remainingKESPeriods_int` appear at start, and again after every key evolution and every reload;
-  `operationalCertificate{Start,Expiry}KESPeriod_int`, `scarab_opcert_counter` and `forging_enabled_int` at start and
-  after every reload.
-- The Haskell gauges `blocksForged_int`, `nodeIsLeader_int` and the `Forge_*_counter` counters are two views
-  of the same counts; both are exported.
+- The forger's series mean what the reference's do: the `Forge_*_counter` counters count the forging loop's
+  traces of the same name (cardano-node 11.1.3 `Tracers/Consensus.hs` 1507-1538), and `blocksForged_int`,
+  `nodeIsLeader_int`, `nodeCannotForge_int` and `slotsMissed_int` are the reference's `ForgingStats`
+  (`Tracers/ForgingStats.hs`), written as it writes them, at the start of each slot, with its count of missed
+  slots (at a slot the pool does not lead after a gap, the slot less the last slot led or not led, one more than
+  the slots in the gap). The KES gauges are written after each update of the forge state (`Forge.StateInfo`,
+  `Tracers/KESInfo.hs` 110-120), and a failed update writes the certificate's window and zero for the current
+  and remaining periods; `scarab_opcert_counter` and `forging_enabled_int` are written at start and after
+  every reload.
 
 **Not exported** (cardano-node 11.1.3 has them; tracked in roadmap J3e): `cardano_node_metrics_served_block_counter`,
 `served_header_counter` and `served_block_latest_counter` (what the node served to peers; only the inbound
 sessions of `GET /connections` count headers), `utxoSize_int` and `delegMapSize_int` (see
 `scarab_ledger_utxo_entries` for the UTxO set, once per epoch), `blockReplayProgress_real`, `txsSyncDuration*`,
 `tipBlock` and `basicInfo`, `inboundGovernor_*`, the `blockfetchclient_*` series (see
-`scarab_blockfetch_seconds`), and the GHC runtime's `RTS_*`, `rts_gc_*`, `Mem_*` and `Stat_*`.
+`scarab_blockfetch_seconds`), the GHC runtime's `RTS_*`, `rts_gc_*`, `Mem_*` and `Stat_*`, and
+`Forge_adoption_thread_died_counter`, whose trace cannot happen here (the forged block is adopted in the
+forging fiber itself).
 
 The full list follows, in the order of the catalogue
 (`node/src/main/scala/xyz/kd5ujc/scarab/node/metrics/Catalogue.scala`); `DocsSuite` fails when this
@@ -190,26 +194,33 @@ section and the catalogue differ.
 
 | Metric | Type | Labels | Meaning | cardano-node 11.1.3 |
 |---|---|---|---|---|
-| `cardano_node_metrics_Forge_about_to_lead_counter` | counter |  | Slots checked for leadership. | same name; scraped from 11.1.3 |
-| `cardano_node_metrics_Forge_node_is_leader_counter` | counter |  | Slots the pool led. | same name; scraped from 11.1.3 |
-| `cardano_node_metrics_Forge_node_not_leader_counter` | counter |  | Slots checked that the pool did not lead. | same name; scraped from 11.1.3 |
-| `cardano_node_metrics_Forge_forged_counter` | counter |  | Blocks forged. | same name; scraped from 11.1.3 |
-| `cardano_node_metrics_Forge_adopted_counter` | counter |  | Forged blocks that became the tip of our chain. | same name; scraped from 11.1.3 |
-| `cardano_node_metrics_Forge_didnt_adopt_counter` | counter |  | Forged blocks that did not stay on our chain (lost slot battles, replaced later). | same name; from the binary's trace name `Forge.didnt-adopt`, not scraped (no such event in the run) |
-| `cardano_node_metrics_blocksForged_int` | gauge |  | Blocks forged since the start. | same name; scraped from 11.1.3 |
-| `cardano_node_metrics_nodeIsLeader_int` | gauge |  | Slots the pool led since the start. | same name; scraped from 11.1.3 |
-| `cardano_node_metrics_nodeCannotForge_int` | gauge |  | Slots the pool led but could not forge in, since the start. | same name; scraped from 11.1.3 |
-| `cardano_node_metrics_slotsMissed_int` | gauge |  | Slots the forger skipped because it was still busy with an earlier one, since the start. | same name; scraped from 11.1.3 (see "Differences in meaning") |
+| `cardano_node_metrics_Forge_about_to_lead_counter` | counter |  | Slots the forging loop started (TraceStartLeadershipCheck). | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_Forge_slot_is_immutable_counter` | counter |  | Slots given up because the immutable tip is in the slot or a later one (TraceSlotIsImmutable). | same name; from the binary's trace name `Forge.slot-is-immutable` (`Tracers/Consensus.hs` 1509-1510), not scraped |
+| `cardano_node_metrics_Forge_block_from_future_counter` | counter |  | Slots given up because the tip of the chain is in a later slot (TraceBlockFromFuture). | same name; from the binary's trace name `Forge.block-from-future` (`Tracers/Consensus.hs` 1511-1512), not scraped |
+| `cardano_node_metrics_Forge_could_not_forge_counter` | counter |  | Slots given up for the ledger view or a leader slot that could not be forged (TraceNoLedgerState, TraceNoLedgerView, TraceNodeCannotForge). | same name; from the binary's trace name `Forge.could-not-forge` (`Tracers/Consensus.hs` 1513-1521), not scraped |
+| `cardano_node_metrics_Forge_node_is_leader_counter` | counter |  | Slots the pool led and could forge in (TraceNodeIsLeader). | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_Forge_node_not_leader_counter` | counter |  | Slots the pool did not lead (TraceNodeNotLeader). | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_Forge_forged_counter` | counter |  | Blocks forged (TraceForgedBlock). | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_Forge_adopted_counter` | counter |  | Forged blocks that became the tip of our chain (TraceAdoptedBlock). | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_Forge_forged_invalid_counter` | counter |  | Forged blocks our own rules refused (TraceForgedInvalidBlock). | same name; from the binary's trace name `Forge.forged-invalid` (`Tracers/Consensus.hs` 1533-1534), not scraped |
+| `cardano_node_metrics_Forge_didnt_adopt_counter` | counter |  | Forged blocks, not refused by our rules, that did not become the tip of our chain (TraceDidntAdoptBlock). | same name; from the binary's trace name `Forge.didnt-adopt`, not scraped (no such event in the run) |
+| `cardano_node_metrics_Forge_StateUpdateError_int` | gauge |  | The slot of the last failed update of the forge state (TraceForgeStateUpdateError). | same name; from the binary's `IntM "Forge.StateUpdateError"` (`Tracers/Consensus.hs` 1487-1488), not scraped |
+| `cardano_node_metrics_blocksForged_int` | gauge |  | Blocks forged since the start, as of the start of the current slot (ForgingStats). | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_nodeIsLeader_int` | gauge |  | Slots the pool led and could forge in since the start, as of the start of the current slot (ForgingStats). | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_nodeCannotForge_int` | gauge |  | Slots the pool led but could not forge in since the start (TraceNodeCannotForge), as of the start of the current slot (ForgingStats). | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_slotsMissed_int` | gauge |  | Slots missed since the start, as the reference's ForgingStats counts them at each slot the pool does not lead. | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_forgedSlotLast_int` | gauge |  | Slot of the last block forged. | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_forging_enabled_int` | gauge |  | 1 when the node has forging credentials. | same name; scraped from 11.1.3 |
-| `cardano_node_metrics_currentKESPeriod_int` | gauge |  | The KES period of the last block forged or of the last key evolution. | same name; scraped from 11.1.3 |
-| `cardano_node_metrics_remainingKESPeriods_int` | gauge |  | KES periods left before the operational certificate expires. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_currentKESPeriod_int` | gauge |  | The KES key's period after the last update of the forge state; 0 after a failed update. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_remainingKESPeriods_int` | gauge |  | KES periods left before the operational certificate expires, after the last update of the forge state; 0 after a failed update. | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_operationalCertificateStartKESPeriod_int` | gauge |  | The first KES period of the operational certificate. | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_operationalCertificateExpiryKESPeriod_int` | gauge |  | The KES period at which the operational certificate expires. | same name; scraped from 11.1.3 |
 | `scarab_opcert_counter` | gauge |  | The issue counter of the operational certificate in use. | none |
 | `scarab_kes_reloads_total` | counter | `outcome` | Reloads of the KES key and operational certificate (SIGHUP), by outcome. | none |
 | `scarab_kes_persist_failures_total` | counter |  | Evolved KES keys that could not be written back to the key file. | none |
-| `scarab_forge_skipped_total` | counter | `reason` | Slots the forger did not check, by reason. | none |
+| `scarab_forge_skipped_total` | counter | `reason` | Slots the forger gave up before the leader check, by reason. | none (the first two reasons are also `Forge.slot-is-immutable` and `Forge.block-from-future`; `NoLedgerView` is one of the causes the reference counts as `Forge.could-not-forge`) |
+| `scarab_forge_replaced_total` | counter |  | Forged blocks adopted and later replaced on our chain by another block at their height. | none |
+| `scarab_forge_failed_total` | counter |  | Slots given up for a reason of Scarab's own, which the reference does not have (forgeFailed). | none |
 | `scarab_forge_adoption_seconds` | histogram |  | Time from the start of the slot to the adoption of the block forged in it. | none |
 
 ### Peers and connections

@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node.forge
 
 import xyz.kd5ujc.scarab.ledger.{ForgeAssemblyProblem, ForgeLedgerProblem, ForgeProtocolProblem}
-import scala.annotation.unused
+import cats.data.EitherT
 import cats.effect.{Async, Clock, Ref}
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.mtl.syntax.all.*
@@ -11,21 +11,22 @@ import java.time.{Duration, Instant}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.VolatileChain
-import xyz.kd5ujc.scarab.ledger.Block
+import xyz.kd5ujc.scarab.ledger.{Block, Header}
 import xyz.kd5ujc.scarab.ledger.{EvaluationUnavailable, ForgeError}
-import xyz.kd5ujc.scarab.ledger.NodeError
+import xyz.kd5ujc.scarab.ledger.{ClockProblem, NodeError}
 import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash}
 import xyz.kd5ujc.scarab.node.{Fatal, Follower, SessionEnd}
 import xyz.kd5ujc.scarab.consensus.{Praos, PraosConfig}
 import xyz.kd5ujc.scarab.consensus.state.{Placement, ProtocolState}
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.ledger.LedgerGlobals
+import xyz.kd5ujc.scarab.ledger.{LedgerGlobals, PoolDistribution}
 import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Globals, Hfc}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, NewEpochState, ShelleyBasedEra, SlotNo}
 import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView}
-import xyz.kd5ujc.scarab.node.read.LeaderPools.given
-import xyz.kd5ujc.scarab.node.mempool.{Mempool, MempoolLedger}
+import xyz.kd5ujc.scarab.node.read.MirrorEraRead
+import xyz.kd5ujc.scarab.node.mempool.{Entry, Mempool, MempoolLedger, MempoolState}
+import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.storage.UtxoStore
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.Fibers
@@ -44,7 +45,21 @@ enum ForgeEvent:
       kesPeriod: BigInt
   )
 
-  /** The pool led `slot` and a block was assembled and signed (not yet adopted). */
+  /** A trace of the forging loop, as the reference's `forkBlockForging` traces it. */
+  case Loop(trace: ForgeTrace)
+
+  /** A trace of the blockchain time the loop reads its slots from. */
+  case Clock(trace: ClockTrace)
+
+  /** The KES key's state after the forge state was updated at a slot: what the reference traces
+    * through its `forgeStateInfoTracer` (`Block/Forging.hs` 218-220), cardano-node 11.1.3
+    * `Forge.StateInfo` (`Tracers/KESInfo.hs`), with the label of its block forging (`credentials`).
+    */
+  case StateInfo(info: KesInfo)
+
+  /** Scarab's account of a block it forged (with [[ForgeTrace.ForgedBlock]]): its transactions,
+    * size, KES periods and the stake it was elected with.
+    */
   case Forged(
       slot: BigInt,
       epoch: BigInt,
@@ -60,10 +75,14 @@ enum ForgeEvent:
       opCertCounter: BigInt
   )
 
-  /** The forged block is now the tip of our chain (and is served to peers). */
+  /** The forged block is now the tip of our chain (and is served to peers), with the time from the
+    * start of its slot (with [[ForgeTrace.AdoptedBlock]]).
+    */
   case Adopted(block: BlockRef, latencyMs: Option[Long] = None)
 
-  /** The forged block did not become part of our chain, or was replaced by another one later. */
+  /** The forged block did not become part of our chain (with [[ForgeTrace.DidntAdoptBlock]]), or
+    * was replaced by another one later.
+    */
   case Lost(slot: BigInt, hash: Bytes, reason: String)
 
   /** The KES key moved to a new period. */
@@ -84,10 +103,7 @@ enum ForgeEvent:
     */
   case KeyFileGroupAccess(file: String, mode: Int)
 
-  /** A slot that was not checked for leadership, and why ([[ForgeSkip]]). */
-  case Skipped(slot: BigInt, reason: ForgeSkip)
-
-  /** A real problem (not simply losing the leader lottery). */
+  /** A slot given up for a reason the reference does not have (see [[ForgeError]]). */
   case Failed(slot: BigInt, error: ForgeError)
 
   /** The forger's counters for an epoch that has just ended (see [[ForgeStats]]). */
@@ -96,30 +112,35 @@ enum ForgeEvent:
 trait ForgeEvents[F[_]]:
   def emit(event: ForgeEvent): F[Unit]
 
-/** Block production for one pool, in the Praos protocol: once per slot, check leadership with the
-  * stake of the ledger view the tip implies for that slot; if elected, build a block from the
-  * mempool, KES-sign it, validate it with the node's own block rules and adopt it through the
-  * [[Follower]], which tells the chain server (peers fetch it) and the mempool.
+/** Block production for one pool, in the Praos protocol, as the reference's `forkBlockForging` does
+  * it (consensus 82ecba329 `NodeKernel.hs` 549-796): once per slot, find the block to build on, the
+  * ledger view of the slot from its predecessor, update the KES key, check leadership with the
+  * stake of that ledger view, and if elected build a block from the mempool, KES-sign it, validate
+  * it with the node's own block rules and adopt it through the [[Follower]], which tells the chain
+  * server (peers fetch it) and the mempool. Every step is traced as the reference traces it
+  * ([[ForgeTrace]]), and the counters are folded over those traces.
   *
   * The slot clock is the wall clock over the era history (`EpochGeometry`); `F` is any `Async` so
   * tests drive it with a test clock. At most one attempt is made per slot, and only the current
-  * slot is attempted (a slot that has passed is not forged late).
+  * slot is attempted: slots that pass while an attempt runs are not attempted, and nothing is said
+  * of them, as the reference's `knownSlotWatcher` passes over them.
   *
   * @param credentials
   *   The pool's keys as they were at the start; the VRF key and the cold key never change, the KES
   *   key and certificate are those of `hot`.
-  * @param maxTipAge
-  *   The ledger view of a slot is only taken from a tip at most this many slots older: the tip of
-  *   the chain the block is built on.
-  * @param ready
-  *   True once the node has a peer to learn the chain from: a node that has not yet intersected
-  *   with anyone would otherwise forge on its own empty chain.
+  * @param forecastWindow
+  *   How far the ledger view can be forecast from the ledger state of the block's predecessor: the
+  *   stability window (`SL.stabilityWindow`) of `ledgerViewForecastAt`.
   * @param now
   *   `now` for tests; the real clock by default.
+  * @param unknownSlotBackoff
+  *   How long the loop waits before it asks the clock again while the current slot is unknown.
+  * @param horizon
+  *   Whether the era history at the tip of a chain translates a slot ([[Forger.withinHorizon]]).
   * @param utxoStore
   *   The backing store of the UTxO set: the read set of the candidates is fetched from it.
   * @param stats
-  *   Per-epoch counters (H5): checked and led slots, blocks, skips by reason, forge latency.
+  *   Per-epoch counters (H5) and the reference's `ForgingStats`, folded over the traces.
   */
 final class Forger[F[_]: Async, S](
     config: PraosConfig,
@@ -129,10 +150,11 @@ final class Forger[F[_]: Async, S](
     follower: Follower[F, S],
     mempool: Mempool[F],
     events: ForgeEvents[F],
-    maxTipAge: BigInt,
-    ready: F[Boolean],
+    forecastWindow: BigInt,
     now: F[Instant],
     sleep: FiniteDuration => F[Unit],
+    unknownSlotBackoff: FiniteDuration,
+    horizon: (VolatileChain[S], BigInt) => Boolean,
     cache: Ref[F, Option[Forger.Crossed]],
     pending: Ref[F, Vector[Forger.Forged]],
     utxoStore: Option[UtxoStore[F]],
@@ -185,35 +207,82 @@ final class Forger[F[_]: Async, S](
     yield ()
   }
 
-  private def loop(last: Option[BigInt])(using Handle[F, NodeError], Raise[F, Fatal]): F[Unit] =
-    for
-      instant <- now
-      slot = geometry.slotAt(instant)
-      // slots that passed while the previous step was still running are never attempted: say so
-      _ <- last.fold(F.unit)(l =>
-        (l + 1 until slot)
-          .take(Forger.MaxReportedMissed)
-          .toList
-          .traverse_(missed => skipped(missed, ForgeSkip.Busy))
+  /** What the blockchain time reads at `instant` (`hardForkBlockchainTime`, consensus 82ecba329
+    * `BlockchainTime/WallClock/HardFork.hs`): before the system start, how long to wait for it
+    * (`systemTimeWait`); past the horizon of the era history at the tip of the chain, unknown
+    * (`wallclockToSlot` failing); otherwise the slot.
+    */
+  private def read(instant: Instant): F[Forger.Reading] =
+    if instant.isBefore(geometry.systemStart) then
+      F.pure(
+        Forger.Reading.BeforeStart(
+          Duration.between(instant, geometry.systemStart).toMillis.max(1L).millis
+        )
       )
-      // the epoch the previous slot was in has ended: its counters are final
-      _ <- last.traverse_ { l =>
-        val ended = geometry.epochOf(l)
-        if geometry.epochOf(slot) > ended then
-          stats.epoch(ended).flatMap(s => events.emit(ForgeEvent.EpochSummary(ended, s)))
-        else F.unit
+    else
+      chain.get.map { current =>
+        val slot = geometry.slotAt(instant)
+        if horizon(current, slot) then Forger.Reading.Known(slot) else Forger.Reading.Unknown
       }
-      _ <- if last.exists(_ >= slot) then F.unit else stepInScope(slot)
-      after <- now
-      untilNext = Duration.between(after, geometry.slotStart(slot + 1))
-      _ <- sleep(untilNext.toMillis.max(1L).millis)
-      _ <- loop(Some(slot))
-    yield ()
 
-  private def skipped(slot: BigInt, reason: ForgeSkip): F[Unit] =
-    stats.skipped(geometry.epochOf(slot), reason.kind) *> events.emit(
-      ForgeEvent.Skipped(slot, reason)
-    )
+  private def clockTrace(t: ClockTrace): F[Unit] = events.emit(ForgeEvent.Clock(t))
+
+  /** Until the next slot, as the reading at `instant` puts it (`timeLeft` of `getCurrentSlot'`),
+    * waited on the monotonic clock as `threadDelay` waits: `elapsed` of it is already spent, and a
+    * wall clock moved meanwhile does not lengthen it.
+    */
+  private def untilNext(slot: BigInt, instant: Instant, elapsed: FiniteDuration): F[Unit] =
+    val left = Duration.between(instant, geometry.slotStart(slot + 1)).toMillis.millis - elapsed
+    sleep(left.max(1.millis))
+
+  /** The slots, as the reference's blockchain time and `knownSlotWatcher` hand them to
+    * `forkBlockForging` (`HardFork.hs` 103-151, `BlockchainTime/API.hs` 57-77). Each reading is
+    * checked against the previous one (`checkValidClockChange`): a later slot is taken; the same or
+    * an earlier slot within `MaxClockRewind` of the previous reading's time is traced
+    * (`SystemClockMovedBack`) and the previous slot kept; further back, the node stops
+    * ([[ClockProblem.SystemClockMovedBack]]). While the slot is unknown it is traced
+    * (`CurrentSlotUnknown`), nothing else runs, and the clock is asked again after
+    * `unknownSlotBackoff`. A slot is attempted when the known slot changes; a slot passed while an
+    * attempt runs is not.
+    */
+  private def loop(
+      previous: Option[(Option[BigInt], Instant)]
+  )(using Handle[F, NodeError], Raise[F, Fatal]): F[Unit] =
+    now.flatMap { instant =>
+      read(instant).flatMap {
+        case Forger.Reading.BeforeStart(wait) =>
+          clockTrace(ClockTrace.StartTimeInTheFuture(geometry.systemStart, wait)) *>
+            sleep(wait) *> loop(previous)
+        case Forger.Reading.Unknown =>
+          clockTrace(ClockTrace.CurrentSlotUnknown(instant)) *> sleep(unknownSlotBackoff) *>
+            loop(Some(None -> instant))
+        case Forger.Reading.Known(slot) =>
+          previous.flatMap((known, at) => known.map(_ -> at)) match
+            case Some((last, at)) if slot <= last =>
+              if !Duration.between(instant, at).minus(Forger.MaxClockRewind).isPositive then
+                clockTrace(ClockTrace.SystemClockMovedBack(at, instant)) *>
+                  untilNext(slot, instant, 0.millis) *>
+                  loop(Some(Some(last) -> instant))
+              else
+                (Fatal.Internal(ClockProblem.SystemClockMovedBack(last, slot)): Fatal)
+                  .raise[F, Unit]
+            case lastKnown =>
+              for
+                // the epoch the previous slot was in has ended: its counters are final
+                _ <- lastKnown.traverse_ { (l, _) =>
+                  val ended = geometry.epochOf(l)
+                  if geometry.epochOf(slot) > ended then
+                    stats.epoch(ended).flatMap(s => events.emit(ForgeEvent.EpochSummary(ended, s)))
+                  else F.unit
+                }
+                started <- F.monotonic
+                _ <- stepInScope(slot)
+                finished <- F.monotonic
+                _ <- untilNext(slot, instant, finished - started)
+                _ <- loop(Some(Some(slot) -> instant))
+              yield ()
+      }
+    }
 
   /** One slot in its own scope: a forging refusal permits another slot; a service failure or defect
     * is returned to the owner and never enters the recoverable forging channel.
@@ -224,9 +293,8 @@ final class Forger[F[_]: Async, S](
   private def stepInScope(
       slot: BigInt
   )(using handle: Handle[F, NodeError], terminal: Raise[F, Fatal]): F[Unit] =
-    handle.attempt(F.defer(hot.advance(kesPeriodOf(slot)) *> attempt(slot))).flatMap {
-      case Right(_)                      => F.unit
-      case Left(_: ForgeError.NotLeader) => F.unit
+    handle.attempt(F.defer(attempt(slot))).flatMap {
+      case Right(_) => F.unit
       case Left(e: ForgeError) =>
         HotKeys.infrastructureFailure(e).fold(failed(slot, e))(_.raise[F, Unit])
       case Left(other) => other.raise[F, Unit]
@@ -235,18 +303,144 @@ final class Forger[F[_]: Async, S](
   private def failed(slot: BigInt, error: ForgeError): F[Unit] =
     stats.failed(geometry.epochOf(slot)) *> events.emit(ForgeEvent.Failed(slot, error))
 
+  /** A step of the loop that may end the slot early, as `withEarlyExit` does in the reference: the
+    * left side is the slot given up, after its trace.
+    */
+  private type Step[A] = EitherT[F, Unit, A]
+
+  private def trace(t: ForgeTrace): F[Unit] =
+    stats.record(geometry.epochOf(t.slot), t) *> events.emit(ForgeEvent.Loop(t))
+
+  private def say(t: ForgeTrace): Step[Unit] = EitherT.liftF(trace(t))
+
+  private def giveUp[A](t: ForgeTrace): Step[A] = EitherT.left(trace(t))
+
+  private def perform[A](fa: F[A]): Step[A] = EitherT.liftF(fa)
+
+  private def proceed[A](a: A): Step[A] = EitherT.rightT(a)
+
+  /** The slot, step by step as `forkBlockForging`'s `go` (`NodeKernel.hs` 573-796). */
   private def attempt(slot: BigInt)(using Handle[F, NodeError], Raise[F, Fatal]): F[Unit] =
-    for
-      current <- chain.get
-      connected <- ready
+    val epoch = geometry.epochOf(slot)
+    val period = kesPeriodOf(slot)
+    (for
+      _ <- say(ForgeTrace.StartLeadershipCheck(slot))
+      current <- perform(chain.get)
+      context <- blockContext(current, slot).fold(giveUp, proceed)
+      _ <- say(ForgeTrace.BlockContext(slot, context.blockNo, context.prev))
+      _ <- say(ForgeTrace.LedgerState(slot, context.prev))
+      _ <- forecast(context.base, slot).fold(r => giveUp(ForgeTrace.NoLedgerView(slot, r)), proceed)
+      crossed <- perform(crossedTo(context.base, epoch, slot))
+      _ <- say(ForgeTrace.LedgerView(slot))
+      // `checkShouldForge` (`Block/Forging.hs` 192-226): the forge state, then the leader check,
+      // then whether a leader can forge
+      key <- perform(hot.update(period).flatMap(lift)).flatMap(
+        _.fold(
+          e => giveUp(ForgeTrace.ForgeStateUpdateError(slot, e)),
+          info => perform(events.emit(ForgeEvent.StateInfo(info))).as(info)
+        )
+      )
+      pools = crossed.pools
+      stake = pools.stake.getOrElse(credentials.poolId, BigInt(0))
+      cert <- perform(
+        F.blocking(
+          Leadership.check(
+            slot,
+            crossed.protocol.epochNonce,
+            credentials.vrf,
+            stake,
+            pools.total,
+            config.activeSlotsCoeff
+          )
+        )
+      ).flatMap {
+        case Right(cert)                   => proceed(cert)
+        case Left(_: ForgeError.NotLeader) => giveUp(ForgeTrace.NodeNotLeader(slot))
+        case Left(e)                       => perform(e.raise[F, VrfCert])
+      }
+      // `praosCheckCanForge` (`Protocol/Praos.hs` 691-711)
       _ <-
-        if !connected then stats.skipped(geometry.epochOf(slot), ForgeSkip.Kind.NotConnected)
-        else blockContext(current, slot).fold(skipped(slot, _), forgeOn(_, slot))
-    yield ()
+        if key.start > period then
+          giveUp(ForgeTrace.NodeCannotForge(slot, CannotForge.KeyNotUsableYet(period, key.start)))
+        else proceed(())
+      _ <- say(ForgeTrace.NodeIsLeader(slot))
+      ticked <- perform(lift(tick(crossed.nes, slot)))
+      _ <- say(ForgeTrace.ForgeTickedLedgerState(slot, context.prev))
+      _ <- perform(
+        lift(
+          Either.cond(
+            ticked.params.protocolMajor >= 9,
+            (),
+            ForgeError.UnsupportedProtocol(
+              ForgeProtocolProblem.Version(ticked.params.protocolMajor)
+            )
+          )
+        )
+      )
+      held <- perform(mempool.snapshot)
+      chosen <- perform(select(context.base, slot, epoch, ticked, held))
+      _ <- say(
+        ForgeTrace.ForgingMempoolSnapshot(slot, context.prev, held.tipHash, held.tipSlot + 1)
+      )
+      block <- perform(assemble(context, slot, ticked, cert, chosen.map(_._2)))
+      _ <- say(
+        ForgeTrace.ForgedBlock(
+          slot,
+          context.prev,
+          block.header.hash,
+          block.header.blockNo,
+          block.header.prevHash
+        )
+      )
+      _ <- perform(
+        events.emit(
+          ForgeEvent.Forged(
+            slot,
+            epoch,
+            block.header.blockNo,
+            block.header.hash,
+            block.header.prevHash,
+            block.body.ids,
+            block.body.size,
+            period,
+            block.relativeKesPeriod.toInt,
+            stake,
+            pools.total,
+            block.counter
+          )
+        )
+      )
+      adoption <- perform(follower.adoptForged(block.header, block.raw))
+      _ <- adoption match
+        case Follower.Adoption.Adopted(ref) =>
+          for
+            at <- perform(now)
+            latency = Duration.between(geometry.slotStart(slot), at).toMillis
+            _ <- perform(stats.latency(epoch, latency.max(0L)))
+            _ <- perform(pending.update(_ :+ Forger.Forged(ref, slot)))
+            _ <- say(
+              ForgeTrace.AdoptedBlock(slot, ref.hash, block.estimatedSize, block.body.ids)
+            )
+            _ <- perform(events.emit(ForgeEvent.Adopted(ref, Some(latency))))
+          yield ()
+        case Follower.Adoption.Lost(reason) =>
+          say(ForgeTrace.DidntAdoptBlock(slot, block.header.hash)) *>
+            perform(events.emit(ForgeEvent.Lost(slot, block.header.hash, reason.message)))
+        case Follower.Adoption.Invalid(e) =>
+          SessionEnd.of(e) match
+            case SessionEnd.Unavailable(unavailable) => perform(unavailable.raise[F, Unit])
+            // a refusal, or a defect a transaction of ours triggers (SessionEnd.Held): the block's
+            // transactions leave the pool, valid or not, so that the next leader slot does not
+            // repeat the failure (`NodeKernel.hs` 770-783), and the slot ends
+            case _ =>
+              val ids = chosen.map(_._1.id).toSet
+              say(ForgeTrace.ForgedInvalidBlock(slot, block.header.hash, e)) *>
+                perform(mempool.removeTxsEvenIfValid(ids).void.whenA(ids.nonEmpty))
+    yield ()).value.void
 
   /** The chain to forge on in `slot`, as `forkBlockForging` picks it through
-    * `mkCurrentBlockContext` (consensus 82ecba329 NodeKernel.hs:585 and 831–891), or why there is
-    * none.
+    * `mkCurrentBlockContext` (consensus 82ecba329 NodeKernel.hs:585 and 831–891), or the trace of
+    * why there is none.
     *
     * Without a volatile block the block follows the anchor (the immutable tip) if the anchor is in
     * an earlier slot, and otherwise the slot is immutable (`TraceSlotIsImmutable`, 846–850). A tip
@@ -261,84 +455,42 @@ final class Forger[F[_]: Async, S](
   private def blockContext(
       current: VolatileChain[S],
       slot: BigInt
-  ): Either[ForgeSkip, VolatileChain[S]] =
+  ): Either[ForgeTrace, Forger.Context[S]] =
     current.blocks.lastOption match
       case None =>
         current.anchor.block match
           case Some(anchor) if anchor.slot >= slot =>
-            Left(ForgeSkip.SlotIsImmutable(slot, anchor.point, anchor.blockNo))
-          case _ => Right(current)
+            Left(ForgeTrace.SlotIsImmutable(slot, anchor.point, anchor.blockNo))
+          case _ => Right(Forger.Context(current))
       case Some((tip, _)) =>
-        if tip.slot < slot then Right(current)
-        else if tip.slot > slot then Left(ForgeSkip.BlockFromFuture(slot, tip.slot))
-        else if tip.boundary then Right(current)
-        else Right(current.copy(blocks = current.blocks.dropRight(1)))
+        if tip.slot < slot then Right(Forger.Context(current))
+        else if tip.slot > slot then Left(ForgeTrace.BlockFromFuture(slot, tip.slot))
+        else if tip.boundary then Right(Forger.Context(current))
+        else Right(Forger.Context(current.copy(blocks = current.blocks.dropRight(1))))
 
-  /** Forge on `base`, the chain the block is built on, unless its tip is too old to forge from. The
-    * reference forecasts the ledger view from the ledger at `bcPrevPoint`, the predecessor of the
-    * block to forge (consensus 82ecba329 NodeKernel.hs:602), and gives up when the slot is outside
-    * the forecast range (`TraceNoLedgerView`, 613-629). The tip of `base` is that predecessor, also
-    * when the block is an alternative to the one in the slot ([[blockContext]]).
+  /** Whether the ledger view of `slot` can be forecast from the ledger state at the tip of `base`,
+    * the predecessor of the block to forge (`NodeKernel.hs` 611-629): `ledgerViewForecastAt` of the
+    * Praos eras (consensus 82ecba329 `Shelley/Ledger/SupportsProtocol.hs` 100-127) answers for the
+    * tip's own slot and for every slot before `maxFor`, the stability window after the successor of
+    * the tip's slot (`succWithOrigin`, zero at Origin), and for no other.
     */
-  private def forgeOn(base: VolatileChain[S], slot: BigInt)(using
-      Handle[F, NodeError],
-      Raise[F, Fatal]
-  ): F[Unit] =
-    val tipSlot = base.tipRef.map(_.slot)
-    if slot - tipSlot.getOrElse(BigInt(0)) > maxTipAge then
-      skipped(slot, ForgeSkip.TipTooOld(tipSlot))
-    else forge(base, slot)
+  private def forecast(base: VolatileChain[S], slot: BigInt): Either[OutsideForecastRange, Unit] =
+    val at = base.tipRef.map(_.slot)
+    val maxFor = at.fold(BigInt(0))(_ + 1) + forecastWindow
+    Either.cond(at.contains(slot) || slot < maxFor, (), OutsideForecastRange(at, maxFor, slot))
 
   private def lift[A](e: Either[ForgeError, A])(using Handle[F, NodeError]): F[A] =
     e.fold(_.raise[F, A], F.pure)
 
-  private def forge(current: VolatileChain[S], slot: BigInt)(using
-      Handle[F, NodeError],
-      Raise[F, Fatal]
-  ): F[Unit] =
-    val epoch = geometry.epochOf(slot)
-    val tip = current.tipRef
+  /** The transactions of the block, from the mempool's held ones ([[BlockBuilder.select]]). */
+  private def select(
+      base: VolatileChain[S],
+      slot: BigInt,
+      epoch: BigInt,
+      ticked: MempoolLedger,
+      held: MempoolState
+  )(using Handle[F, NodeError]): F[Vector[(Entry, BlockBuilder.Piece)]] =
     for
-      crossed <- crossedTo(current, epoch, slot)
-      _ <- stats.checked(epoch)
-      pools = crossed.nes.leaderPools
-      stake = pools.stake.getOrElse(credentials.poolId, BigInt(0))
-      // a pool must be registered with this very VRF key to be elected
-      _ <- lift(
-        Either.cond(
-          pools.vrf.get(credentials.poolId).contains(credentials.vrfKeyHash),
-          (),
-          ForgeError.NotLeader(slot)
-        )
-      )
-      cert <- F
-        .blocking(
-          Leadership.check(
-            slot,
-            crossed.protocol.epochNonce,
-            credentials.vrf,
-            stake,
-            pools.total,
-            config.activeSlotsCoeff
-          )
-        )
-        .flatMap(lift)
-      _ <- stats.leader(epoch)
-      ticked <- lift(tick(crossed.nes, slot))
-      _ <- lift(
-        Either.cond(
-          ticked.params.protocolMajor >= 9,
-          (),
-          ForgeError.UnsupportedProtocol(
-            ForgeProtocolProblem.Version(ticked.params.protocolMajor)
-          )
-        )
-      )
-      held <- mempool.snapshot
-      limits = BlockBuilder.Limits(
-        ticked.params.maxBlockBodySize.toLong,
-        ticked.params.maxBlockExUnits
-      )
       readable <- UtxoStore.complete(
         utxoStore,
         ticked.utxo,
@@ -352,10 +504,10 @@ final class Forger[F[_]: Async, S](
           geometry,
           globals,
           held.entries,
-          limits,
+          BlockBuilder.Limits.of(ticked.params),
           Some(
-            current.state.clock(
-              Placement.of(current.state.geometry(geometry), config.forks),
+            base.state.clock(
+              Placement.of(base.state.geometry(geometry), config.forks),
               Era.Conway,
               slot
             )
@@ -364,47 +516,25 @@ final class Forger[F[_]: Async, S](
       )
       chosen <- selection.fold(
         unavailable =>
-          EvaluationUnavailable(current.tip, unavailable)
-            .raise[F, Vector[(xyz.kd5ujc.scarab.node.mempool.Entry, BlockBuilder.Piece)]],
+          EvaluationUnavailable(base.tip, unavailable)
+            .raise[F, Vector[(Entry, BlockBuilder.Piece)]],
         F.pure
       )
-      outcome <- build(
-        current,
-        tip,
-        slot,
-        epoch,
-        ticked,
-        cert,
-        chosen.map(_._2),
-        stake,
-        pools.total
-      )
-      _ <- outcome match
-        case Left(e: ForgeError.SelfRejected) if chosen.nonEmpty =>
-          // never let a transaction we mis-judged cost the block: try again without any
-          // the reference removes the block's transactions from the pool, valid or not, so that the
-          // next leader slot does not repeat the failure (`NodeKernel.hs`, `removeTxsEvenIfValid`)
-          failed(slot, e) *>
-            mempool.removeTxsEvenIfValid(chosen.map(_._1.id).toSet).void *>
-            build(current, tip, slot, epoch, ticked, cert, Vector.empty, stake, pools.total)
-              .flatMap(_.fold(e2 => failed(slot, e2), _ => F.unit))
-        case Left(e)  => failed(slot, e)
-        case Right(_) => F.unit
-    yield ()
+    yield chosen
 
-  private def build(
-      @unused current: VolatileChain[S],
-      tip: Option[BlockRef],
+  /** Build and sign the block (`forgeBlock`). The checks here are Scarab's own and never refuse a
+    * block the steps before let through: the key's window, the body size and the decoding of the
+    * block just built.
+    */
+  private def assemble(
+      context: Forger.Context[S],
       slot: BigInt,
-      epoch: BigInt,
       ticked: MempoolLedger,
       cert: VrfCert,
-      pieces: Vector[BlockBuilder.Piece],
-      stake: BigInt,
-      totalStake: BigInt
-  )(using Handle[F, NodeError], Raise[F, Fatal]): F[Either[ForgeError, Unit]] =
+      pieces: Vector[BlockBuilder.Piece]
+  )(using Handle[F, NodeError], Raise[F, Fatal]): F[Forger.Built] =
     val body = BlockBuilder.body(pieces)
-    val kesPeriod = slot / config.slotsPerKesPeriod
+    val kesPeriod = kesPeriodOf(slot)
     // the header, the key's evolution and the signature all use the credentials of one moment: a
     // reload (SIGHUP) waits until the block is signed
     val assembled: F[Either[ForgeError, (Bytes, Bytes, BigInt, BigInt)]] = hot.locked { c =>
@@ -423,9 +553,9 @@ final class Forger[F[_]: Async, S](
           )
         )
       yield BlockBuilder.headerBody(
-        tip.fold(BigInt(0))(_.blockNo + 1),
+        context.blockNo,
         slot,
-        tip.map(_.hash),
+        context.base.tipRef.map(_.hash),
         c.coldVkey,
         c.vrf.publicKey,
         cert,
@@ -447,49 +577,15 @@ final class Forger[F[_]: Async, S](
                 )
           }
     }
-    assembled.flatMap {
-      case Left(e) => F.pure(Left(e))
-      case Right((headerBody, signature, relative, counter)) =>
-        val raw = BlockBuilder.block(headerBody, signature, body)
-        Block.decode(raw, geometry.byron.epochSlots) match
-          case Left(e) =>
-            F.pure(Left(ForgeError.Assembly(ForgeAssemblyProblem.BlockDecode(e))))
-          case Right(decoded) =>
-            val h = decoded.header
-            val forged = ForgeEvent.Forged(
-              slot,
-              epoch,
-              h.blockNo,
-              h.hash,
-              h.prevHash,
-              body.ids,
-              body.size,
-              kesPeriod,
-              relative.toInt,
-              stake,
-              totalStake,
-              counter
-            )
-            stats.forged(epoch) *> events.emit(forged) *> follower.adoptForged(h, raw).flatMap {
-              case Follower.Adoption.Adopted(ref) =>
-                now.flatMap { at =>
-                  val latency = Duration.between(geometry.slotStart(slot), at).toMillis
-                  stats.adopted(epoch, latency.max(0L)) *>
-                    pending.update(_ :+ Forger.Forged(ref, slot)) *>
-                    events.emit(ForgeEvent.Adopted(ref, Some(latency))).as(Right(()))
-                }
-              case Follower.Adoption.Lost(reason) =>
-                stats.lost(epoch) *>
-                  events.emit(ForgeEvent.Lost(slot, h.hash, reason.message)).as(Right(()))
-              case Follower.Adoption.Invalid(e) =>
-                SessionEnd.of(e) match
-                  case SessionEnd.Unavailable(unavailable) =>
-                    unavailable.raise[F, Either[ForgeError, Unit]]
-                  // a refusal, or a defect a transaction of ours triggers (SessionEnd.Held): the
-                  // block is not adopted, its transactions leave the pool and an empty block is
-                  // tried instead
-                  case _ => F.pure(Left(ForgeError.SelfRejected(e)))
-            }
+    assembled.flatMap(lift).flatMap { (headerBody, signature, relative, counter) =>
+      val raw = BlockBuilder.block(headerBody, signature, body)
+      lift(
+        Block
+          .decode(raw, geometry.byron.epochSlots)
+          .left
+          .map(e => ForgeError.Assembly(ForgeAssemblyProblem.BlockDecode(e)))
+          .map(decoded => Forger.Built(decoded.header, raw, body, relative, counter))
+      )
     }
 
   /** The Conway ledger state at `slot` from the state at the tip: the combinator's tick
@@ -524,7 +620,9 @@ final class Forger[F[_]: Async, S](
     yield conway
 
   /** The ledger and Praos state of the tip carried to `epoch` (cached per tip and epoch: the epoch
-    * boundary is the expensive part and every slot of a new epoch needs it).
+    * boundary is the expensive part and every slot of a new epoch needs it). This is where the
+    * ledger view of the slot comes from; the refusals here are Scarab's own (only Praos with Conway
+    * transactions is forged, on a fully validated ledger).
     */
   private def crossedTo(
       current: VolatileChain[S],
@@ -564,12 +662,21 @@ final class Forger[F[_]: Async, S](
           )
           c <- F
             .blocking {
-              // the boundaries between the tip's epoch and the slot's, so that the pool distribution
-              // is the one in force in the slot's epoch; the slot's own work is done per attempt
+              // the ledger view of the leader check is the forecast of the tip's ledger
+              // (`futureForecast`, which ticks with TICKF: cardano-ledger f649f975
+              // `Shelley/Rules/Tick.hs` 201-242, `Conway/Rules/Tickf.hs` 42-66): into the next
+              // epoch the mark distribution, in the tip's epoch and two or more epochs on the
+              // current one, as the header rules take it (`ShelleyHeaderForecast`)
+              val pools = MirrorEraRead(nes)(using ShelleyBasedEra.SConway)
+                .leaderPools(nextEpoch = epoch == nes.epoch.toBigInt + 1)
+              // the boundaries between the tip's epoch and the slot's, for the block's own ledger
+              // (`applyChainTick`); the slot's own work is done per attempt
               val start =
                 if epoch > nes.epoch.toBigInt then ticked(nes, geometry.firstSlot(epoch))
                 else Right(nes)
-              start.map(Forger.Crossed(key, _, Praos.tick(state.protocol, Era.Conway, epoch)))
+              start.map(
+                Forger.Crossed(key, _, pools, Praos.tick(state.protocol, Era.Conway, epoch))
+              )
             }
             .flatMap(lift)
           _ <- cache.set(Some(c))
@@ -592,7 +699,7 @@ final class Forger[F[_]: Async, S](
           val settled = keep.filter(f => tipNo.exists(_ >= f.ref.blockNo + current.k))
           pending.set(keep.filterNot(settled.contains)) *>
             lost.traverse_(f =>
-              stats.lost(geometry.epochOf(f.slot)) *>
+              stats.replaced(geometry.epochOf(f.slot)) *>
                 events.emit(
                   ForgeEvent.Lost(
                     f.slot,
@@ -605,6 +712,18 @@ final class Forger[F[_]: Async, S](
     }
 
 object Forger:
+  /** What the blockchain time reads: the wait for the system start, an unknown slot, or the slot.
+    */
+  private[forge] enum Reading:
+    case BeforeStart(remaining: FiniteDuration)
+    case Unknown
+    case Known(slot: BigInt)
+
+  /** How far back the wall clock may move without stopping the node (`hfbtMaxClockRewind`,
+    * consensus 82ecba329 `Node.hs` 560).
+    */
+  private[forge] val MaxClockRewind: Duration = Duration.ofSeconds(20)
+
   /** Like runExceptT at the forging worker boundary: typed failures and defects finish as values.
     * The scope and the body are constructed inside defer (cats-mtl 1.7.0 Handle.rescue invokes its
     * body eagerly); cancellation passes through unchanged.
@@ -626,20 +745,56 @@ object Forger:
       }
     }
 
-  /** At most this many missed slots are reported at once (a suspended machine would report
-    * millions).
+  /** How long the blockchain time waits before it asks again for a slot it could not translate
+    * (`BackoffDelay 60`, consensus 82ecba329 `Node.hs` 550).
     */
-  private val MaxReportedMissed = 1000
+  val UnknownSlotBackoff: FiniteDuration = 60.seconds
 
-  /** The tip's ledger and chain-dependent state carried into an epoch. */
+  /** Whether the era history at the chain's tip translates `slot` (`wallclockToSlot` of the summary
+    * of the current ledger, `hfbtGetLedgerState`): the horizon of [[ChainRead.clock]], the same one
+    * the transactions' time translation has.
+    */
+  def withinHorizon[S](config: PraosConfig)(using
+      read: ChainRead[S]
+  ): (VolatileChain[S], BigInt) => Boolean =
+    (current, slot) =>
+      val placement = Placement.of(current.state.geometry(config.geometry), config.forks)
+      current.state.clock(placement, Era.Conway, slot).posix(slot).isRight
+
+  /** The tip's ledger and chain-dependent state carried into an epoch, and the pool distribution of
+    * its forecast ledger view.
+    */
   final case class Crossed(
       key: (Option[Bytes], BigInt),
       nes: NewEpochState[Conway],
+      pools: PoolDistribution,
       protocol: ProtocolState
   )
 
   /** A block we forged and adopted, kept to notice if it is replaced later. */
   final case class Forged(ref: BlockRef, slot: BigInt)
+
+  /** Where the block goes, `BlockContext` (`NodeKernel.hs` 809-818): the chain it is built on,
+    * whose tip is its predecessor (`bcPrevPoint`), and so its number (`bcBlockNo`).
+    */
+  final case class Context[S](base: VolatileChain[S]):
+    def prev: ChainSync.Point = base.tip
+
+    /** The successor's number of the predecessor (`succ` of an Origin block number is the first,
+      * zero), which is right after a boundary block too.
+      */
+    def blockNo: BigInt = base.tipRef.fold(BigInt(0))(_.blockNo + 1)
+
+  /** A block built and signed, not yet adopted. */
+  final case class Built(
+      header: Header,
+      raw: Bytes,
+      body: BlockBuilder.Body,
+      relativeKesPeriod: BigInt,
+      counter: BigInt
+  ):
+    /** `estimateBlockSize` of the header (see [[ForgeTrace.AdoptedBlock]]). */
+    def estimatedSize: Long = header.raw.size.toLong + body.size + 10
 
   /** @param source
     *   Where the KES key is written back after evolving and read from again at a reload; none: the
@@ -652,10 +807,11 @@ object Forger:
       follower: Follower[F, S],
       mempool: Mempool[F],
       events: ForgeEvents[F],
-      ready: F[Boolean],
-      maxTipAge: Option[BigInt] = None,
+      forecastWindow: Option[BigInt] = None,
       now: Option[F[Instant]] = None,
       sleep: Option[FiniteDuration => F[Unit]] = None,
+      unknownSlotBackoff: FiniteDuration = Forger.UnknownSlotBackoff,
+      horizon: Option[(VolatileChain[S], BigInt) => Boolean] = None,
       utxoStore: Option[UtxoStore[F]] = None,
       source: Option[HotKeySource[F]] = None
   )(using
@@ -676,10 +832,11 @@ object Forger:
         follower,
         mempool,
         events,
-        maxTipAge.getOrElse(config.geometry.stabilityWindow.toBigInt),
-        ready,
+        forecastWindow.getOrElse(config.geometry.stabilityWindow.toBigInt),
         now.getOrElse(Clock[F].realTimeInstant),
         sleep.getOrElse(d => Async[F].sleep(d)),
+        unknownSlotBackoff,
+        horizon.getOrElse(Forger.withinHorizon(config)),
         cache,
         pending,
         utxoStore,

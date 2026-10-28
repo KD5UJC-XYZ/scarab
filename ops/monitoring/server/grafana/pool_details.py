@@ -77,8 +77,10 @@ def extend_pool_dashboard(ui, dashboard):
                     'stake, totalStake and certificate counters. Source: log/Traced.scala ForgeEvent.Forged. '
                     'These are locally forged candidates; inspect outcomes below.')), h=10)
     p.line(
-        (12, logs('Our producer outcomes', 'adopted|lost|forgeSkipped|forgeFailed|forgeEpoch',
-                  'Local adoption, lost candidates, skip/failure reasons and epoch summaries. '
+        (12, logs('Our producer outcomes',
+                  'adoptedBlock|didntAdoptBlock|lost|slotIsImmutable|blockFromFuture|noLedgerView|'
+                  'forgeStateUpdateError|nodeCannotForge|forgedInvalidBlock|forgeFailed|forgeEpoch',
+                  'Local adoption, lost candidates, the reasons a slot was given up and epoch summaries. '
                   'Adopted here means adopted by our node, not independently verified public-chain finality.')),
         (12, logs('KES and producer failure details',
                   'kesReloaded|kesReloadRefused|kesPersistFailed|forgeFailed',

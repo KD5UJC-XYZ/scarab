@@ -126,22 +126,29 @@ object Collectors:
         metrics.set(cpuLongestStep, r.longest.fold(0.0)(_._2.maxMs / 1000.0))
     }
 
-  /** The forger's counters for the whole run (the same ones `/forging` serves). */
+  /** The forger's counters for the whole run (the same ones `/forging` serves), and the reference's
+    * `ForgingStats` gauges as of the start of the current slot.
+    */
   def forging[F[_]: Monad](stats: ForgeStats[F])(using metrics: Metrics[F]): F[Unit] =
     import Catalogue.*
-    stats.total.flatMap { t =>
-      val skipped =
-        t.skipped.toList.groupMapReduce((reason, _) => SkipLabel.of(reason))(_._2)(_ + _)
+    (stats.total, stats.forgingStats).tupled.flatMap { (t, f) =>
+      val skipped = t.skipped.map((reason, n) => SkipLabel.of(reason) -> n)
       metrics.advance(forgeAboutToLead, t.slotsChecked.toDouble) *>
+        metrics.advance(forgeSlotIsImmutable, t.slotIsImmutable.toDouble) *>
+        metrics.advance(forgeBlockFromFuture, t.blockFromFuture.toDouble) *>
+        metrics.advance(forgeCouldNotForge, (t.noLedgerView + t.cannotForge).toDouble) *>
+        metrics.advance(forgeForgedInvalid, t.forgedInvalid.toDouble) *>
         metrics.advance(forgeNodeIsLeader, t.leaderSlots.toDouble) *>
-        metrics.advance(forgeNodeNotLeader, (t.slotsChecked - t.leaderSlots).toDouble) *>
+        metrics.advance(forgeNodeNotLeader, t.notLeader.toDouble) *>
         metrics.advance(forgeForged, t.forged.toDouble) *>
         metrics.advance(forgeAdopted, t.adopted.toDouble) *>
-        metrics.advance(forgeDidntAdopt, t.lost.toDouble) *>
-        metrics.set(blocksForged, t.forged.toDouble) *>
-        metrics.set(nodeIsLeader, t.leaderSlots.toDouble) *>
-        metrics.set(nodeCannotForge, t.failed.toDouble) *>
-        metrics.set(slotsMissed, skipped.getOrElse(SkipLabel.Busy, 0L).toDouble) *>
+        metrics.advance(forgeDidntAdopt, t.didntAdopt.toDouble) *>
+        metrics.advance(forgeReplaced, t.replaced.toDouble) *>
+        metrics.advance(forgeFailed, t.failed.toDouble) *>
+        metrics.set(blocksForged, f.blocksForged.toDouble) *>
+        metrics.set(nodeIsLeader, f.nodeIsLeader.toDouble) *>
+        metrics.set(nodeCannotForge, f.nodeCannotForge.toDouble) *>
+        metrics.set(slotsMissed, f.slotsMissed.toDouble) *>
         SkipLabel.values.toList.traverse_(label =>
           metrics.advance(forgeSkipped, label, skipped.getOrElse(label, 0L).toDouble)
         )

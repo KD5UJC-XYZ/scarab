@@ -57,7 +57,17 @@ import xyz.kd5ujc.scarab.node.{
 }
 import xyz.kd5ujc.scarab.ledger.state.{Derived, MirrorError}
 import xyz.kd5ujc.scarab.ledger.PoolRelayError
-import xyz.kd5ujc.scarab.node.forge.{ForgeSkip, ForgeEpochStats, ForgeEvent, ReloadRefusal}
+import xyz.kd5ujc.scarab.node.forge.{
+  CannotForge,
+  ClockTrace,
+  ForgeEpochStats,
+  ForgeEvent,
+  ForgeTrace,
+  KesEvolutionError,
+  KesInfo,
+  OutsideForecastRange,
+  ReloadRefusal
+}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, Rejection}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, Era}
@@ -402,18 +412,76 @@ object LogSamples:
 
   val forgeStats: ForgeEpochStats = ForgeEpochStats(
     slotsChecked = 100,
+    blockFromFuture = 2,
+    noLedgerView = 1,
+    notLeader = 92,
     leaderSlots = 5,
     forged = 5,
     adopted = 4,
-    lost = 1,
-    failed = 0,
-    skipped = Map(ForgeSkip.Kind.Busy -> 2L, ForgeSkip.Kind.TipTooOld -> 1L),
+    didntAdopt = 1,
+    replaced = 1,
     latencyCount = 4,
     latencyTotalMs = 50,
     latencyMaxMs = 20
   )
+
+  /** Every trace of the forging loop once. */
+  val forgeTraces: List[ForgeTrace] =
+    val tip = BlockRef(BigInt(4203), Bytes.fromArray(Array.fill(32)(9.toByte)), BigInt(170)).point
+    List(
+      ForgeTrace.StartLeadershipCheck(BigInt(4201)),
+      ForgeTrace.SlotIsImmutable(BigInt(4203), tip, BigInt(170)),
+      ForgeTrace.BlockFromFuture(BigInt(4204), BigInt(4206)),
+      ForgeTrace.BlockContext(BigInt(4201), BigInt(18), point),
+      ForgeTrace.LedgerState(BigInt(4201), point),
+      ForgeTrace.NoLedgerView(BigInt(4201), OutsideForecastRange(Some(BigInt(10)), 141, 4201)),
+      ForgeTrace.LedgerView(BigInt(4201)),
+      ForgeTrace.ForgeStateUpdateError(
+        BigInt(6200),
+        KesEvolutionError.CouldNotEvolve(KesInfo(BigInt(0), BigInt(62), 61), BigInt(62))
+      ),
+      ForgeTrace.NodeCannotForge(BigInt(4201), CannotForge.KeyNotUsableYet(33, 40)),
+      ForgeTrace.NodeNotLeader(BigInt(4201)),
+      ForgeTrace.NodeIsLeader(BigInt(4201)),
+      ForgeTrace.ForgeTickedLedgerState(BigInt(4201), point),
+      ForgeTrace.ForgingMempoolSnapshot(BigInt(4201), point, Some(hash), BigInt(4201)),
+      ForgeTrace.ForgedBlock(BigInt(4201), point, hash, BigInt(18), Some(hash)),
+      ForgeTrace.DidntAdoptBlock(BigInt(4201), hash),
+      ForgeTrace.ForgedInvalidBlock(
+        BigInt(4201),
+        hash,
+        ValidationError(point, BlockFailure.HeaderDiffers)
+      ),
+      ForgeTrace.AdoptedBlock(BigInt(4201), hash, 1890L, Vector(hash))
+    ) ++ List(
+      // the first block, on genesis; a key already poisoned; the mempool at the origin
+      ForgeTrace.BlockContext(BigInt(1), BigInt(0), ChainSync.Point.Origin),
+      ForgeTrace.ForgeStateUpdateError(
+        BigInt(6201),
+        KesEvolutionError.KeyAlreadyPoisoned(KesInfo(BigInt(0), BigInt(62), 61), BigInt(62))
+      ),
+      ForgeTrace.ForgingMempoolSnapshot(BigInt(1), ChainSync.Point.Origin, None, BigInt(0)),
+      ForgeTrace.ForgedBlock(BigInt(1), ChainSync.Point.Origin, hash, BigInt(0), None)
+    )
   val forge: List[ForgeEvent] = List(
-    ForgeEvent.Started(other, hash, BigInt(0), BigInt(62), BigInt(3), BigInt(10)),
+    ForgeEvent.Started(other, hash, BigInt(0), BigInt(62), BigInt(3), BigInt(10))
+  ) ++ forgeTraces.map(ForgeEvent.Loop(_)) ++ List(
+    // far from expiry, at seven periods left, and at one
+    ForgeEvent.Clock(
+      ClockTrace.StartTimeInTheFuture(java.time.Instant.parse("2026-10-01T00:00:00Z"), 1500.millis)
+    ),
+    ForgeEvent.Clock(
+      ClockTrace.CurrentSlotUnknown(java.time.Instant.parse("2026-10-01T05:00:00Z"))
+    ),
+    ForgeEvent.Clock(
+      ClockTrace.SystemClockMovedBack(
+        java.time.Instant.parse("2026-10-01T05:00:10Z"),
+        java.time.Instant.parse("2026-10-01T05:00:02Z")
+      )
+    ),
+    ForgeEvent.StateInfo(KesInfo(BigInt(30), BigInt(92), 3)),
+    ForgeEvent.StateInfo(KesInfo(BigInt(30), BigInt(92), 55)),
+    ForgeEvent.StateInfo(KesInfo(BigInt(30), BigInt(92), 61)),
     ForgeEvent.Forged(
       BigInt(4200),
       BigInt(3),
@@ -456,16 +524,6 @@ object LogSamples:
       )
     ),
     ForgeEvent.KeyFileGroupAccess("vrf.skey", 0x1a0),
-    ForgeEvent.Skipped(BigInt(4201), ForgeSkip.Busy),
-    ForgeEvent.Skipped(
-      BigInt(4203),
-      ForgeSkip.SlotIsImmutable(
-        BigInt(4203),
-        BlockRef(BigInt(4203), Bytes.fromArray(Array.fill(32)(9.toByte)), BigInt(170)).point,
-        BigInt(170)
-      )
-    ),
-    ForgeEvent.Skipped(BigInt(4204), ForgeSkip.BlockFromFuture(BigInt(4204), BigInt(4206))),
     ForgeEvent.Failed(BigInt(4202), ForgeError.KeyPeriodOutOfRange(33, 0, 32)),
     ForgeEvent.EpochSummary(BigInt(3), forgeStats),
     ForgeEvent.EpochSummary(BigInt(4), ForgeEpochStats())

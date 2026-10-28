@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node.metrics
 
 import xyz.kd5ujc.scarab.ledger.BlockRule
-import xyz.kd5ujc.scarab.node.forge.ForgeSkip
+import xyz.kd5ujc.scarab.node.forge.ForgeEpochStats
 import xyz.kd5ujc.scarab.network.selection.{Churn, GovernorState, Origin}
 import xyz.kd5ujc.scarab.node.mempool.Rejection
 import xyz.kd5ujc.scarab.protocol.{ConnectionState, Era}
@@ -99,18 +99,18 @@ object RejectionLabel:
     case Rejection.WrongEra(_)    => WrongEra
     case Rejection.NoLedger(_)    => NoLedger
 
-/** Why the forger did not check a slot. `Other` remains as a zero-valued series for compatibility.
+/** Why the forger gave a slot up before the leader check: the reference's `TraceSlotIsImmutable`,
+  * `TraceBlockFromFuture` and `TraceNoLedgerView`. `Other` remains as a zero-valued series for
+  * compatibility.
   */
 enum SkipLabel derives LabelValue:
-  case Busy, TipTooOld, BlockFromFuture, SlotIsImmutable, NotConnected, Other
+  case SlotIsImmutable, BlockFromFuture, NoLedgerView, Other
 
 object SkipLabel:
-  def of(reason: ForgeSkip.Kind): SkipLabel = reason match
-    case ForgeSkip.Kind.Busy            => Busy
-    case ForgeSkip.Kind.TipTooOld       => TipTooOld
-    case ForgeSkip.Kind.BlockFromFuture => BlockFromFuture
-    case ForgeSkip.Kind.SlotIsImmutable => SlotIsImmutable
-    case ForgeSkip.Kind.NotConnected    => NotConnected
+  def of(reason: ForgeEpochStats.Skip): SkipLabel = reason match
+    case ForgeEpochStats.Skip.SlotIsImmutable => SlotIsImmutable
+    case ForgeEpochStats.Skip.BlockFromFuture => BlockFromFuture
+    case ForgeEpochStats.Skip.NoLedgerView    => NoLedgerView
 
 /** What became of a reload of the KES key and certificate: the credentials were replaced (or
   * confirmed), or the reload was refused and the old ones kept.
@@ -211,47 +211,68 @@ object Catalogue:
     "Transactions removed from the mempool on request although they still apply (a forged block that our own chain refused)."
   )
 
-  // ---- forging (only on a node that forges)
+  // ---- forging (only on a node that forges): the counters of the loop's traces, cardano-node
+  // 11.1.3 `Tracers/Consensus.hs` 1507-1538
 
   val forgeAboutToLead = CounterDef(
     MetricName("cardano_node_metrics_Forge_about_to_lead_counter"),
-    "Slots checked for leadership."
+    "Slots the forging loop started (TraceStartLeadershipCheck)."
+  )
+  val forgeSlotIsImmutable = CounterDef(
+    MetricName("cardano_node_metrics_Forge_slot_is_immutable_counter"),
+    "Slots given up because the immutable tip is in the slot or a later one (TraceSlotIsImmutable)."
+  )
+  val forgeBlockFromFuture = CounterDef(
+    MetricName("cardano_node_metrics_Forge_block_from_future_counter"),
+    "Slots given up because the tip of the chain is in a later slot (TraceBlockFromFuture)."
+  )
+  val forgeCouldNotForge = CounterDef(
+    MetricName("cardano_node_metrics_Forge_could_not_forge_counter"),
+    "Slots given up for the ledger view or a leader slot that could not be forged (TraceNoLedgerState, TraceNoLedgerView, TraceNodeCannotForge)."
   )
   val forgeNodeIsLeader = CounterDef(
     MetricName("cardano_node_metrics_Forge_node_is_leader_counter"),
-    "Slots the pool led."
+    "Slots the pool led and could forge in (TraceNodeIsLeader)."
   )
   val forgeNodeNotLeader = CounterDef(
     MetricName("cardano_node_metrics_Forge_node_not_leader_counter"),
-    "Slots checked that the pool did not lead."
+    "Slots the pool did not lead (TraceNodeNotLeader)."
   )
   val forgeForged = CounterDef(
     MetricName("cardano_node_metrics_Forge_forged_counter"),
-    "Blocks forged."
+    "Blocks forged (TraceForgedBlock)."
   )
   val forgeAdopted = CounterDef(
     MetricName("cardano_node_metrics_Forge_adopted_counter"),
-    "Forged blocks that became the tip of our chain."
+    "Forged blocks that became the tip of our chain (TraceAdoptedBlock)."
+  )
+  val forgeForgedInvalid = CounterDef(
+    MetricName("cardano_node_metrics_Forge_forged_invalid_counter"),
+    "Forged blocks our own rules refused (TraceForgedInvalidBlock)."
   )
   val forgeDidntAdopt = CounterDef(
     MetricName("cardano_node_metrics_Forge_didnt_adopt_counter"),
-    "Forged blocks that did not stay on our chain (lost slot battles, replaced later)."
+    "Forged blocks, not refused by our rules, that did not become the tip of our chain (TraceDidntAdoptBlock)."
+  )
+  val forgeStateUpdateError = GaugeDef(
+    MetricName("cardano_node_metrics_Forge_StateUpdateError_int"),
+    "The slot of the last failed update of the forge state (TraceForgeStateUpdateError)."
   )
   val blocksForged = GaugeDef(
     MetricName("cardano_node_metrics_blocksForged_int"),
-    "Blocks forged since the start."
+    "Blocks forged since the start, as of the start of the current slot (ForgingStats)."
   )
   val nodeIsLeader = GaugeDef(
     MetricName("cardano_node_metrics_nodeIsLeader_int"),
-    "Slots the pool led since the start."
+    "Slots the pool led and could forge in since the start, as of the start of the current slot (ForgingStats)."
   )
   val nodeCannotForge = GaugeDef(
     MetricName("cardano_node_metrics_nodeCannotForge_int"),
-    "Slots the pool led but could not forge in, since the start."
+    "Slots the pool led but could not forge in since the start (TraceNodeCannotForge), as of the start of the current slot (ForgingStats)."
   )
   val slotsMissed = GaugeDef(
     MetricName("cardano_node_metrics_slotsMissed_int"),
-    "Slots the forger skipped because it was still busy with an earlier one, since the start."
+    "Slots missed since the start, as the reference's ForgingStats counts them at each slot the pool does not lead."
   )
   val forgedSlotLast = GaugeDef(
     MetricName("cardano_node_metrics_forgedSlotLast_int"),
@@ -263,11 +284,11 @@ object Catalogue:
   )
   val currentKesPeriod = GaugeDef(
     MetricName("cardano_node_metrics_currentKESPeriod_int"),
-    "The KES period of the last block forged or of the last key evolution."
+    "The KES key's period after the last update of the forge state; 0 after a failed update."
   )
   val remainingKesPeriods = GaugeDef(
     MetricName("cardano_node_metrics_remainingKESPeriods_int"),
-    "KES periods left before the operational certificate expires."
+    "KES periods left before the operational certificate expires, after the last update of the forge state; 0 after a failed update."
   )
   val opCertStartKesPeriod = GaugeDef(
     MetricName("cardano_node_metrics_operationalCertificateStartKESPeriod_int"),
@@ -292,8 +313,16 @@ object Catalogue:
   )
   val forgeSkipped = CounterDef(
     MetricName("scarab_forge_skipped_total"),
-    "Slots the forger did not check, by reason.",
+    "Slots the forger gave up before the leader check, by reason.",
     Labels.one[SkipLabel](LabelName("reason"))
+  )
+  val forgeReplaced = CounterDef(
+    MetricName("scarab_forge_replaced_total"),
+    "Forged blocks adopted and later replaced on our chain by another block at their height."
+  )
+  val forgeFailed = CounterDef(
+    MetricName("scarab_forge_failed_total"),
+    "Slots given up for a reason of Scarab's own, which the reference does not have (forgeFailed)."
   )
   val forgeAdoptionSeconds = HistogramDef(
     MetricName("scarab_forge_adoption_seconds"),
@@ -988,11 +1017,16 @@ object Catalogue:
     mempoolAdopted,
     mempoolRemoved,
     forgeAboutToLead,
+    forgeSlotIsImmutable,
+    forgeBlockFromFuture,
+    forgeCouldNotForge,
     forgeNodeIsLeader,
     forgeNodeNotLeader,
     forgeForged,
     forgeAdopted,
+    forgeForgedInvalid,
     forgeDidntAdopt,
+    forgeStateUpdateError,
     blocksForged,
     nodeIsLeader,
     nodeCannotForge,
@@ -1007,6 +1041,8 @@ object Catalogue:
     kesReloads,
     kesPersistFailures,
     forgeSkipped,
+    forgeReplaced,
+    forgeFailed,
     forgeAdoptionSeconds,
     inboundConns,
     outboundConns,

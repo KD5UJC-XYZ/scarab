@@ -27,7 +27,7 @@ rotation driver's come from a textfile (below) with `host` only.
 
 **Dashboard rows.** Alerts and state (alerts firing, node up, forging enabled, phase, stalled, uptime); Forging
 (`Forge_forged_counter`, `Forge_adopted_counter`, `Forge_didnt_adopt_counter` as forged, adopted and lost; `nodeCannotForge_int` as
-forge failures; `Forge_about_to_lead_counter` and `Forge_node_is_leader_counter` as leader slots checked and won; blocks per
+leader slots that could not be forged; `Forge_about_to_lead_counter` and `Forge_node_is_leader_counter` as leader slots checked and won; blocks per
 epoch against the expectation: the `expected` box, 14 by default, and the `epoch` box, 5d on Preprod); KES
 and certificate (`remainingKESPeriods_int`, `currentKESPeriod_int`, `operationalCertificate{Start,Expiry}KESPeriod_int`,
 `scarab_opcert_counter`, `scarab_kes_reloads_total{outcome}`, `scarab_kes_persist_failures_total`); Rotation driver; Sync and
@@ -66,8 +66,8 @@ them in the file (`promtool test rules` covers them: `ops/monitoring/server/prom
 | `PoolKesRotationFailing` | `last_exit_status != 0`, 10 m | warning | The last run failed; the exit status says why. |
 | `PoolKesPersistFailed` | `increase(kes_persist_failures_total[15m]) > 0` | critical | Key persistence failed (`kesPersistFailed`); signing stopped. Repair the cause and restart. |
 | `PoolForgedBlockNotAdopted` | forged minus adopted minus didnt_adopt over 30 m > 0, 10 m | critical | A block was forged and neither adopted nor lost. |
-| `PoolBlockLost` | `increase(Forge_didnt_adopt_counter[15m]) > 0` | warning | A slot battle lost or a block replaced. |
-| `PoolForgeFailed` | `delta(nodeCannotForge_int[15m]) > 0` | critical | `forgeFailed`: the pool led a slot and could not forge. |
+| `PoolBlockLost` | `increase(Forge_didnt_adopt_counter[15m]) > 0` | warning | A slot battle lost at adoption (`didntAdoptBlock`); a block replaced later is `scarab_forge_replaced_total`. |
+| `PoolForgeFailed` | `delta(nodeCannotForge_int[15m]) > 0` or `increase(scarab_forge_failed_total[15m]) > 0` | critical | `nodeCannotForge` (the pool led a slot and the certificate's window has not begun) or `forgeFailed` (a refusal of Scarab's own). |
 | `PoolForgingDisabled` | `forging_enabled_int == 0`, 5 m | critical | No credentials. |
 | `PoolNotCheckingSlots` | no `about_to_lead` increase in 15 m while Following, 5 m | warning | The forger is not running. |
 | `PoolNoBlocksFor48h` | no adopted block in 48 h and uptime above 48 h, 1 h | info | 14 blocks in 5 days leave 48 h empty under 1 percent of the time. Fires before the stake is active (epoch 321 on Preprod): silence it until then. |

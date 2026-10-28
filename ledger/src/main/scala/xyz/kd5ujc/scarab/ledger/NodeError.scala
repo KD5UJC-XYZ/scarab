@@ -207,6 +207,17 @@ enum ChainSyncInternalProblem extends NodeError:
     case InvalidPipelineMarks(low, high) => s"invalid ChainSync pipeline marks $low/$high"
     case NegativeOutstanding(count)      => s"negative ChainSync outstanding count $count"
 
+/** The blockchain time cannot go on (consensus 82ecba329 `BlockchainTime/WallClock/HardFork.hs`
+  * 121-151): the wall clock went back further than the tolerated rewind, so the current slot would
+  * go back from `previous` to `now`. The reference throws `SystemClockMovedBack` and the node
+  * stops.
+  */
+enum ClockProblem extends NodeError:
+  case SystemClockMovedBack(previous: BigInt, now: BigInt)
+  def message: String = this match
+    case SystemClockMovedBack(previous, now) =>
+      s"the system clock moved back from slot $previous to slot $now"
+
 enum GenesisInternalProblem extends NodeError:
   case PatienceWatcherFailed(cause: NetworkError)
   case MissingSharedBlockPool, UnsupportedHeaderFamily, MissingConnectionIdentity
@@ -467,9 +478,6 @@ enum ForgeError extends NodeError:
   /** The block body or header could not be assembled within the protocol limits. */
   case Assembly(cause: ForgeAssemblyProblem)
 
-  /** Our own block rules refuse the block we built. */
-  case SelfRejected(error: ValidationError)
-
   def message: String = this match
     case KeyFile(f, r) => s"key file $f: ${r.message}"
     case KesFileFailure(f, op, cause) =>
@@ -492,7 +500,6 @@ enum ForgeError extends NodeError:
     case LedgerViewUnavailable(slot, r) => s"no ledger view for slot $slot: $r"
     case UnsupportedProtocol(r)         => s"cannot forge: $r"
     case Assembly(r)                    => s"block assembly: $r"
-    case SelfRejected(e) => s"our own ${e.rule} rules refuse the forged block: ${e.reason}"
 
 enum KesFileOperation:
   case StageWrite, StageSync, StageReadback, DirectorySyncBeforeErase

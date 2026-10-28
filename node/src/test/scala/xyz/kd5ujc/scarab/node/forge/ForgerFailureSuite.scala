@@ -97,10 +97,11 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
       yield
         assertEquals(result, Right(()))
         assertEquals(chain.tipRef, None)
-        val refused = events.collect { case ForgeEvent.Failed(_, ForgeError.SelfRejected(error)) =>
-          error.failure
+        val refused = events.collect {
+          case ForgeEvent.Loop(ForgeTrace.ForgedInvalidBlock(_, _, error)) => error.failure
         }
         assertEquals(refused, Vector(cause))
+        assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]), events.toString)
     }
   }
 
@@ -120,13 +121,22 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     }
   }
 
+  /** A key source whose write-back fails with a defect, counting its calls. */
+  private def defective(cause: Throwable, calls: Ref[IO, Int]) =
+    new HotKeySource[IO]:
+      def read = IO.pure(Left(unreadable))
+      def persist(key: Sum6KesSigning.SigningKey) =
+        calls.update(_ + 1) *> IO.raiseError[Persisted](cause)
+
   test("a slot defect retains its cause without recording a recoverable forge failure") {
     val p = pool(kesStart = 50)
-    val cause = new IllegalStateException("readiness bug")
+    val cause = new IllegalStateException("write-back bug")
     withHandle {
       for
-        h <- harness(p, ledgerWith(p, 1), ready = Some(IO.raiseError(cause)))
-        result <- h.forger.step(5000)
+        calls <- Ref.of[IO, Int](0)
+        h <- harness(p, ledgerWith(p, 1), source = Some(defective(cause, calls)))
+        // slot 5100 is KES period 51: the key evolves and is written back
+        result <- h.forger.step(5100)
         events <- h.seen
         stats <- h.forger.stats.total
       yield
@@ -138,14 +148,16 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
 
   test("run finishes on its first fatal outcome instead of attempting another slot") {
     val p = pool(kesStart = 50)
-    val cause = new IllegalStateException("readiness bug")
+    val cause = new IllegalStateException("write-back bug")
     withHandle {
       for
         calls <- Ref.of[IO, Int](0)
         h <- harness(
           p,
           ledgerWith(p, 1),
-          ready = Some(calls.update(_ + 1) *> IO.raiseError(cause))
+          source = Some(defective(cause, calls)),
+          clock = Some(IO.pure(java.time.Instant.EPOCH.plusSeconds(5100))),
+          unbounded = true
         )
         result <- h.forger.run
         count <- calls.get
@@ -344,7 +356,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
             case _: ForgeEvent.KesPersistFailed => reporting.complete(()) *> release.get
             case _                              => IO.unit)
       )
-      failing <- Forger.scoped(keys.advance(51)).start
+      failing <- Forger.scoped(keys.update(51)).start
       _ <- reporting.get.timeout(3.seconds)
       signer <- Forger
         .scoped(

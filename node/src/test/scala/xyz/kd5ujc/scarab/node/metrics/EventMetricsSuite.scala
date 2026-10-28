@@ -11,7 +11,7 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.selection.{Churn, FetchMode}
 import xyz.kd5ujc.scarab.node.{HeaderGate, InboundEvent, InboundGovernor, Output, Peer}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
-import xyz.kd5ujc.scarab.node.forge.ForgeEvent
+import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeTrace, KesEvolutionError, KesInfo}
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, MempoolEvents, Rejection}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, Era}
 import xyz.kd5ujc.scarab.storage.{ImmutableStore, StorageEvent}
@@ -125,18 +125,44 @@ class EventMetricsSuite extends CatsEffectSuite:
     }
   }
 
-  test("the key evolution gives the periods left until the certificate expires") {
+  test("the forge state gives the KES gauges as the reference's StateInfo does") {
     fixture.flatMap { (metrics, em) =>
       for
         _ <- em.forge.emit(ForgeEvent.Started(hash, hash, 10, 62, 2, 12))
-        _ <- em.forge.emit(ForgeEvent.KesEvolved(15, 5))
+        started <- metrics.snapshot
+        _ <- em.forge.emit(ForgeEvent.StateInfo(KesInfo(10, 72, 5)))
         s <- metrics.snapshot
       yield
-        assertEquals(gauge(s, Catalogue.forgingEnabled, ()), Some(1.0))
+        assertEquals(gauge(started, Catalogue.forgingEnabled, ()), Some(1.0))
+        assertEquals(gauge(started, Catalogue.opCertCounter, ()), Some(2.0))
+        // nothing of the key until the forge state is first updated in a slot
+        assertEquals(gauge(started, Catalogue.currentKesPeriod, ()), None)
         assertEquals(gauge(s, Catalogue.opCertStartKesPeriod, ()), Some(10.0))
         assertEquals(gauge(s, Catalogue.opCertExpiryKesPeriod, ()), Some(72.0))
         assertEquals(gauge(s, Catalogue.currentKesPeriod, ()), Some(15.0))
         assertEquals(gauge(s, Catalogue.remainingKesPeriods, ()), Some(57.0))
+    }
+  }
+
+  test("a failed forge state update zeroes the current and remaining KES periods") {
+    fixture.flatMap { (metrics, em) =>
+      for
+        _ <- em.forge.emit(ForgeEvent.StateInfo(KesInfo(10, 72, 61)))
+        _ <- em.forge.emit(
+          ForgeEvent.Loop(
+            ForgeTrace.ForgeStateUpdateError(
+              7200,
+              KesEvolutionError.CouldNotEvolve(KesInfo(10, 72, 61), 72)
+            )
+          )
+        )
+        s <- metrics.snapshot
+      yield
+        assertEquals(gauge(s, Catalogue.opCertStartKesPeriod, ()), Some(10.0))
+        assertEquals(gauge(s, Catalogue.opCertExpiryKesPeriod, ()), Some(72.0))
+        assertEquals(gauge(s, Catalogue.forgeStateUpdateError, ()), Some(7200.0))
+        assertEquals(gauge(s, Catalogue.currentKesPeriod, ()), Some(0.0))
+        assertEquals(gauge(s, Catalogue.remainingKesPeriods, ()), Some(0.0))
     }
   }
 

@@ -90,9 +90,11 @@ bounded contracts identified after #188:
   `UtxosFailure.ValidationTagMismatch`; only the rejection encoder renders the cause. Byron
   proof components, lovelace contexts and attribute owners are closed enums, with the previous
   diagnostic labels retained at presentation.
-- `ForgeSkip` retains the detailed reason, including an old tip, and `ForgeSkip.Kind` keys the
-  counters. Metrics map those cases directly; the legacy `Other` series remains at zero for
-  compatibility. Logs and JSON render the existing field names and keys.
+- `ForgeTrace` retains each trace of the forging loop with its typed fields (the forecast range of a
+  `NoLedgerView`, the `KesEvolutionError` and `CannotForge` reasons, the `ValidationError` of a block our
+  rules refuse), and the counters fold over those cases; `ForgeEpochStats.Skip` keys the reasons a slot is
+  given up before the leader check. Metrics map those cases directly; the legacy `Other` series remains at
+  zero for compatibility. Logs and JSON render the reference's field names.
 - `ConnectionEnd` distinguishes normal release, transport closure, protocol failure, admission
   refusal and defects. The manager, inbound server, session state and events retain typed
   values and original causes. `InboundEnd` also retains local-client outcomes until logging.

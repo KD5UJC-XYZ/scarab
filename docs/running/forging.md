@@ -65,7 +65,10 @@ has to change both before they run out. The node does four things for that; a dr
   `release-ouroboros-consensus-4.2.1.0`, the release series that cardano-node 11.1.3 requires, `^>= 4.2.0.1`
   in `cardano-node.cabal` line 179), so the period-0 key stays on
   disk for ever. Scarab retains a different file-backed policy ([ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md)): when the key moves to a new period, at the first slot of the period
-  whether or not the pool leads in it, the new key is written back to the `--kes-skey` file and the earlier key
+  in which the forge state is updated (as the reference's `updateForgeState` does it, before the leader check,
+  so whether or not the pool leads; a slot given up earlier, without a ledger view or for one of Scarab's own
+  refusals, does not evolve it, nor write the KES gauges), the
+  new key is written back to the `--kes-skey` file and the earlier key
   is overwritten, before the key signs in the new period. The file stays a `cardano-cli` envelope: the period
   is read off the key itself (the erased seeds of the tree spell it), so there is no new format and no
   migration. A restart needs no earlier key than the live file contains. This reduces the state available from
@@ -116,10 +119,12 @@ has to change both before they run out. The node does four things for that; a dr
   Other filesystem errors, verifier defects and failures to persist an evolved key are terminal,
   with their typed cause preserved. An interrupted key update prevents later signing until restart;
   cancellation itself remains cancellation.
-- **Alerts.** `cardano_node_metrics_remainingKESPeriods_int`, `currentKESPeriod_int`,
-  `operationalCertificate{Start,Expiry}KESPeriod_int` and `scarab_opcert_counter` are set at start-up and after
-  every reload (the first two also after every evolution); `forgeStarted` and `kesReloaded` carry the same
-  numbers. Alert on `remainingKESPeriods_int` falling below the driver's threshold while the driver's service is
+- **Alerts.** `cardano_node_metrics_remainingKESPeriods_int`, `currentKESPeriod_int` and
+  `operationalCertificate{Start,Expiry}KESPeriod_int` are set at each update of the forge state, as the
+  reference's `Forge.StateInfo` sets them (a failed update, for a key past its window, zeroes the first two),
+  and `scarab_opcert_counter` at start-up and after every reload; `forgeStarted` and `kesReloaded` carry the
+  certificate's numbers. A key past its window is poisoned as in the reference: every slot then logs
+  `forgeStateUpdateError` until a reload installs a new key. Alert on `remainingKESPeriods_int` falling below the driver's threshold while the driver's service is
   failing: the driver's exit status is the signal (below), and "Pool monitoring" lists the alerts and the dashboard.
 - **Nothing in the node needs the cold key.** It is never read by the node and need not be mounted into its
   container.

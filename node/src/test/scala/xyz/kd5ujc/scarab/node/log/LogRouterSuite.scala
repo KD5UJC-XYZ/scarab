@@ -13,7 +13,7 @@ import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.consensus.FollowerEvent
 import xyz.kd5ujc.scarab.ledger.PeerError
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeSkip}
+import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeTrace}
 
 /** The settings the flags give, and what the router lets through to which sink. */
 class LogRouterSuite extends CatsEffectSuite:
@@ -29,15 +29,25 @@ class LogRouterSuite extends CatsEffectSuite:
       .parse(many.view.mapValues(_.last).toMap, many)
       .fold(_.problem, s => fail(s"accepted: $s"))
 
-  test("no flag: every line of the node and the libraries' from Info, as JSON on stdout") {
+  test(
+    "no flag: every line of the node, and the libraries' and forging loop's from Info, as JSON"
+  ) {
     val s = settings()
     assertEquals(s.sinks, List(Sink.Stdout -> Format.Json))
-    val (library, own) = EventKind.values.toList.partition(_.area == Area.Library)
-    assertEquals(library, List(EventKind.Slf4j))
+    val (fromInfo, own) =
+      EventKind.values.toList.partition(k => k.area == Area.Library || k.area == Area.Forge)
+    assert(fromInfo.contains(EventKind.Slf4j) && fromInfo.contains(EventKind.LedgerView))
     List(Sink.Stdout, Sink.File).foreach { sink =>
       assertEquals(own.map(s.threshold(sink, _)).distinct, List(Threshold.AtLeast(Severity.Debug)))
-      assertEquals(library.map(s.threshold(sink, _)), List(Threshold.AtLeast(Severity.Info)))
+      assertEquals(
+        fromInfo.map(s.threshold(sink, _)).distinct,
+        List(Threshold.AtLeast(Severity.Info))
+      )
     }
+    assertEquals(
+      settings("log-severity" -> "Forge=Debug").threshold(Sink.Stdout, EventKind.LedgerView),
+      Threshold.AtLeast(Severity.Debug)
+    )
     assertEquals(
       EventKind.values.toList.map(s.threshold(Sink.Stderr, _)).distinct,
       List(Threshold.AtLeast(Severity.Warning))
@@ -227,7 +237,7 @@ class LogRouterSuite extends CatsEffectSuite:
 
   test("the human format quotes a field name with a space, as blockFromFuture's `current slot`") {
     val line = summon[Traced[ForgeEvent]].line(
-      ForgeEvent.Skipped(BigInt(4204), ForgeSkip.BlockFromFuture(BigInt(4204), BigInt(4206)))
+      ForgeEvent.Loop(ForgeTrace.BlockFromFuture(BigInt(4204), BigInt(4206)))
     )
     assertEquals(
       Render.human(line, java.time.Instant.parse("2026-10-16T12:00:00Z")),

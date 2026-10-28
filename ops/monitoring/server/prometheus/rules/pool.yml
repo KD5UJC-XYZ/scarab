@@ -82,16 +82,20 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "{{ $labels.container }}: a forged block did not stay on our chain"
-          description: A slot battle lost, or a block replaced later. Expected now and then; a run of them is not.
+          description: >-
+            A slot battle lost at adoption (`didntAdoptBlock`). Expected now and then; a run of them is not. A block
+            replaced later is counted in scarab_forge_replaced_total.
       - alert: PoolForgeFailed
-        expr: delta(cardano_node_metrics_nodeCannotForge_int[15m]) > 0
+        expr: >-
+          delta(cardano_node_metrics_nodeCannotForge_int[15m]) > 0
+          or increase(scarab_forge_failed_total[15m]) > 0
         for: 0m
         labels: {severity: critical}
         annotations:
-          summary: "{{ $labels.container }}: the pool led a slot and could not forge in it"
+          summary: "{{ $labels.container }}: the forger gave a slot up for a fault of its own"
           description: >-
-            `forgeFailed` in the node log: the leader check passed and the block could not be made (credentials,
-            clock, the KES key). A block was lost.
+            `nodeCannotForge` (the pool led the slot and the certificate's window has not begun) or `forgeFailed`
+            (a refusal of Scarab's own: the ledger view, the protocol, the block's assembly) in the node log.
       - alert: PoolForgingDisabled
         expr: cardano_node_metrics_forging_enabled_int == 0
         for: 5m

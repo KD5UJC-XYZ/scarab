@@ -21,6 +21,18 @@ from ..util import CLI, ENTRY, ENV, MAGIC, QUERY_PORT, data_root, docker, in_ref
 
 POOL_KES_SLOTS = 250   # slotsPerKESPeriod of the pool scenario (the sandbox default, 129600, never changes period)
 
+# A scheduled slot the forging loop never started: it was still on an earlier slot, and the reference's
+# `knownSlotWatcher` passes over such a slot without a trace, as the Scala node does.
+NOT_STARTED = "not started: the forger was still on an earlier slot"
+
+# The forging loop's traces that end a slot without a block, as the reference names them; `blockFromFuture`
+# names its slot `current slot`.
+ENDING_EVENTS = ("slotIsImmutable", "blockFromFuture", "noLedgerView", "forgeStateUpdateError", "nodeCannotForge",
+                 "nodeNotLeader", "forgedInvalidBlock", "didntAdoptBlock")
+
+# Traces that a healthy pool never logs: the run fails on any of them.
+FORGE_PROBLEMS = ("forgeFailed", "forgeStateUpdateError", "nodeCannotForge", "forgedInvalidBlock")
+
 
 def pool_metrics_failures(name, before, fetch):
     """The forger's Prometheus series (the Haskell node's names) against its own `/forging` counters, read before
@@ -34,14 +46,19 @@ def pool_metrics_failures(name, before, fetch):
         return [f"GET /metrics is not well formed: {e}"]
     after = json.loads(docker("exec", f"{name}-scala", "python3", "-c", fetch, check=False, timeout=60).stdout)["total"]
     failures = []
-    for metric, key in (("cardano_node_metrics_Forge_about_to_lead_counter", "slotsChecked"),
-                        ("cardano_node_metrics_Forge_node_is_leader_counter", "leaderSlots"),
-                        ("cardano_node_metrics_Forge_forged_counter", "forged"),
-                        ("cardano_node_metrics_Forge_adopted_counter", "adopted"),
-                        ("cardano_node_metrics_Forge_didnt_adopt_counter", "lostSlotBattles")):
+    def skips(reason):
+        return lambda total: total["skippedByReason"].get(reason, 0)
+    for metric, of in (("cardano_node_metrics_Forge_about_to_lead_counter", lambda t: t["slotsChecked"]),
+                       ("cardano_node_metrics_Forge_node_is_leader_counter", lambda t: t["leaderSlots"]),
+                       ("cardano_node_metrics_Forge_node_not_leader_counter", lambda t: t["notLeader"]),
+                       ("cardano_node_metrics_Forge_forged_counter", lambda t: t["forged"]),
+                       ("cardano_node_metrics_Forge_adopted_counter", lambda t: t["adopted"]),
+                       ("cardano_node_metrics_Forge_didnt_adopt_counter", lambda t: t["lostSlotBattles"]),
+                       ("cardano_node_metrics_Forge_slot_is_immutable_counter", skips("slotIsImmutable")),
+                       ("cardano_node_metrics_Forge_block_from_future_counter", skips("blockFromFuture"))):
         v = node_metrics.value(samples, metric)
-        if v is None or not before[key] <= v <= after[key]:
-            failures.append(f"{metric} is {v}, /forging gave {before[key]} before and {after[key]} after")
+        if v is None or not of(before) <= v <= of(after):
+            failures.append(f"{metric} is {v}, /forging gave {of(before)} before and {of(after)} after")
     for metric in ("cardano_node_metrics_forging_enabled_int", "cardano_node_metrics_currentKESPeriod_int",
                    "cardano_node_metrics_remainingKESPeriods_int",
                    "cardano_node_metrics_operationalCertificateStartKESPeriod_int",
@@ -202,14 +219,17 @@ def missed_leader_slots(events, schedules, shelley):
         window = (window[0], (window[1] // length) * length - 1)
     scheduled = sorted(s for slots in schedules.values() for s in slots if window[0] <= s <= window[1])
     mine = set(forged.values())
-    skipped = {e["slot"]: e["reason"] for e in events if e["event"] == "forgeSkipped"}
-    # the two skips logged as the reference's events, with its fields
-    skipped |= {e["slot"]: e["event"] for e in events if e["event"] == "slotIsImmutable"}
-    skipped |= {e["current slot"]: e["event"] for e in events if e["event"] == "blockFromFuture"}
+    started = {e["slot"] for e in events if e["event"] == "startLeadershipCheck"}
+    # the trace that ended each slot the loop started without a block, by the reference's name
+    ended = {e["current slot"] if e["event"] == "blockFromFuture" else e["slot"]: e["event"]
+             for e in events if e["event"] in ENDING_EVENTS}
+    ended |= {e["slot"]: f"forgeFailed: {e['kind']}" for e in events if e["event"] == "forgeFailed"}
+
+    def reason(s):
+        return ended.get(s, "not reported" if s in started else NOT_STARTED)
     return {"window": list(window), "scheduled": len(scheduled),
             "missed": [s for s in scheduled if s not in mine and s not in others],
-            "missedReasons": {s: skipped.get(s, "not reported") for s in scheduled
-                              if s not in mine and s not in others},
+            "missedReasons": {s: reason(s) for s in scheduled if s not in mine and s not in others},
             "occupied": [s for s in scheduled if s not in mine and s in others],
             "absentEpochs": [e for e in range(window[0] // length, window[1] // length + 1) if e not in schedules]}
 
@@ -415,8 +435,10 @@ def pool(args):
             "pool": {"id": pool_id, "number": ours, "stakeFraction": round(sigma, 4)},
             "slotsPerKesPeriod": POOL_KES_SLOTS,
             "forging": {"forged": len(forged), "adopted": len(adopted), "lost": len(lost),
-                        "onFinalChain": len(on_chain), "forgeFailed": counts.get("forgeFailed", 0),
-                        "kesEvolved": counts.get("kesEvolved", 0)},
+                        "onFinalChain": len(on_chain), "kesEvolved": counts.get("kesEvolved", 0),
+                        **{k_: counts.get(k_, 0) for k_ in ("startLeadershipCheck", "didntAdoptBlock",
+                                                           "noLedgerView", "slotIsImmutable", "blockFromFuture")
+                           + FORGE_PROBLEMS}},
             "haskellBlocksMadeByPool": {"total": haskell_count, "perEpoch": per_epoch,
                                         "scalaBlocksOnChainUpToLastComparedTip": upto_compared},
             "expectedBlocks": round(expected, 1), "tolerance": round(tolerance, 1), "activeSlots": active_slots,
@@ -492,9 +514,10 @@ def pool(args):
             failures += [f"rotation: {f}" for f in rotation_failures]
         if counts.get("error"):
             failures.append(f"{counts['error']} error events in the Scala log")
-        if counts.get("forgeFailed"):
-            failures.append(f"{counts['forgeFailed']} forgeFailed events: "
-                            f"{[e for e in events if e['event'] == 'forgeFailed'][:2]}")
+        for problem in FORGE_PROBLEMS:
+            if counts.get(problem):
+                failures.append(f"{counts[problem]} {problem} events: "
+                                f"{[e for e in events if e['event'] == problem][:2]}")
         if other:
             failures.append(f"unexpected Scala output: {other[0][:200]}")
         clock = summary["slotClock"]
@@ -522,7 +545,7 @@ def pool(args):
         summary["host"] = {"atStart": load_at_start, "atEnd": host_load()}
         # misses that are all "the forger was busy" on an oversubscribed host say nothing about the slot clock
         busy_only = (summary.get("oracle", {}).get("missed") and
-                     set(summary["oracle"]["missedReasons"].values()) == {"the forger was busy with an earlier slot"} and
+                     set(summary["oracle"]["missedReasons"].values()) == {NOT_STARTED} and
                      all("scheduled leader slots were neither" in f for f in failures))
         inconclusive = bool(failures) and busy_only and overloaded(load_at_start, summary["host"]["atEnd"])
         summary["verdict"] = ("inconclusive: host overloaded (load average above the CPU count) and the only misses are "
