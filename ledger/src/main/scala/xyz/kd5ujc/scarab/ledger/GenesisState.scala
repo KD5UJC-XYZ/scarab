@@ -29,49 +29,55 @@ object GenesisState:
       genesis: xyz.kd5ujc.scarab.ledger.ShelleyGenesis
   ): Either[ConfigError, LedgerGlobals] =
     val c = files.conway.hcursor
+    // `FromJSON ConwayGenesis` requires every field read here: a refusal is the node's, not "no
+    // Conway parameters" ([[GenesisSchema.conway]])
     val conway =
-      (
-        get[BigInt](c, "dRepDeposit"),
-        get[BigInt](c, "dRepActivity"),
-        get[BigInt](c, "govActionDeposit"),
-        get[BigInt](c, "govActionLifetime"),
-        get[BigDecimal](c, "minFeeRefScriptCostPerByte").map(Rational.fromDecimal)
-      ).mapN(ConwayParams(_, _, _, _, _))
-        .toOption
-        .flatMap { base =>
-          (ConwayGenesis.votingParams(c), ConwayGenesis.committeeAndConstitution(c)).mapN {
-            case ((pool, drep, minSize, maxTerm), (committee, constitution)) =>
-              base.copy(
-                plutusV3CostModel =
-                  c.downField("plutusV3CostModel").as[Vector[BigInt]].getOrElse(Vector.empty),
-                poolVotingThresholds = pool,
-                drepVotingThresholds = drep,
-                committeeMinSize = minSize,
-                committeeMaxTermLength = maxTerm,
-                committee = committee,
-                constitution = constitution
-              )
-          }.toOption
-        }
-    files.shelley.hcursor
-      .downField("updateQuorum")
-      .as[Option[Int]]
-      .leftMap(e => ConfigError(ConfigProblem.JsonField("genesis", "updateQuorum", e)))
-      .product(get[BigInt](files.alonzo.hcursor, "lovelacePerUTxOWord"))
-      .map { (quorum, perWord) =>
-        LedgerGlobals(
-          genesis.maxLovelaceSupply,
-          genesis.geometry.epochLength,
-          genesis.geometry.activeSlotsCoeff.rational,
-          network = if genesis.networkMagic == 764824073L then 1 else 0,
-          updateQuorum = quorum.getOrElse(5),
-          stabilityWindow = genesis.geometry.stabilityWindow.toBigInt,
-          startRewards = genesis.geometry.randomnessStabilisationWindow.toBigInt,
-          firstEpoch = genesis.geometry.firstShelleyEpoch,
-          conway = conway,
-          alonzoCoinsPerUTxOWord = perWord
+      for
+        base <- (
+          get[BigInt](c, "dRepDeposit"),
+          get[BigInt](c, "dRepActivity"),
+          get[BigInt](c, "govActionDeposit"),
+          get[BigInt](c, "govActionLifetime"),
+          GenesisSchema.ratio(GenesisFile.Conway, json.BoundedRatio.NonNegative)(
+            c.downField("minFeeRefScriptCostPerByte"),
+            Vector("minFeeRefScriptCostPerByte")
+          )
+        ).mapN(ConwayParams(_, _, _, _, _))
+        voting <- ConwayGenesis.votingParams(c)
+        governance <- ConwayGenesis.committeeAndConstitution(c)
+        v3 <- GenesisCostModels
+          .conwayPlutusV3(files.conway)
+          .leftMap(e => ConfigError(ConfigProblem.GenesisCostModel(e)))
+      yield
+        val (pool, drep, minSize, maxTerm) = voting
+        val (committee, constitution) = governance
+        base.copy(
+          plutusV3CostModel = v3.map(BigInt(_)),
+          poolVotingThresholds = pool,
+          drepVotingThresholds = drep,
+          committeeMinSize = minSize,
+          committeeMaxTermLength = maxTerm,
+          committee = committee,
+          constitution = constitution
         )
-      }
+    (
+      conway,
+      GenesisSchema.updateQuorum(files.shelley),
+      get[BigInt](files.alonzo.hcursor, "lovelacePerUTxOWord")
+    ).mapN { (conwayParams, quorum, perWord) =>
+      LedgerGlobals(
+        genesis.maxLovelaceSupply,
+        genesis.geometry.epochLength,
+        genesis.geometry.activeSlotsCoeff.rational,
+        network = if genesis.networkMagic == 764824073L then 1 else 0,
+        updateQuorum = quorum,
+        stabilityWindow = genesis.geometry.stabilityWindow.toBigInt,
+        startRewards = genesis.geometry.randomnessStabilisationWindow.toBigInt,
+        firstEpoch = genesis.geometry.firstShelleyEpoch,
+        conway = Some(conwayParams),
+        alonzoCoinsPerUTxOWord = perWord
+      )
+    }
 
   def output(hex: String, coin: BigInt): Either[ConfigError, (TxIn, TxOut)] =
     Bytes.fromHex(hex).leftMap(e => ConfigError(ConfigProblem.Hex(e))).flatMap(outputBytes(_, coin))

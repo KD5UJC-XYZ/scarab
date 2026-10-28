@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import cats.syntax.all.*
+import xyz.kd5ujc.scarab.ledger.json.BoundedRatio
 import io.circe.{ACursor, Decoder, Json}
 import xyz.kd5ujc.scarab.codec.Node
 import xyz.kd5ujc.scarab.ledger.ConfigError
@@ -202,65 +203,62 @@ object ProtocolParams:
   ): Either[ConfigError, ProtocolParams] =
     val s = shelley.hcursor.downField("protocolParams")
     val a = alonzo.hcursor
-    val c = conway.getOrElse(Json.obj()).hcursor
     def opt[A: Decoder](cur: ACursor, name: String): Either[ConfigError, Option[A]] =
       cur
         .downField(name)
         .as[Option[A]]
         .leftMap(e => ConfigError(ConfigProblem.JsonField("protocol parameters", name, e)))
-    // Alonzo genesis files differ in key names; absent values are zero.
-    def anyInt(cur: ACursor, names: String*): Either[ConfigError, BigInt] =
-      Right(
-        names.iterator
-          .map(n => cur.downField(n).as[Option[BigInt]].toOption.flatten)
-          .collectFirst { case Some(v) => v }
-          .getOrElse(BigInt(0))
+    // The ratios, units and prices with the instances the reference reads them with
+    // ([[GenesisSchema]]): a bounded ratio as a decimal or as its object form, a unit and a price
+    // under either name of `<|>` (cardano-ledger f649f975 Plutus/ExUnits.hs:118-128, 176-181).
+    def shelleyRatio(name: String, interval: BoundedRatio) =
+      GenesisSchema.ratio(GenesisFile.Shelley, interval)(
+        s.downField(name),
+        Vector("protocolParams", name)
       )
-    def rational(cur: ACursor, names: String*): Either[ConfigError, Rational] =
-      Right(
-        names.iterator
-          .map { name =>
-            val q = cur.downField(name)
-            q.downField("numerator")
-              .as[BigInt]
-              .toOption
-              .zip(q.downField("denominator").as[BigInt].toOption)
-              .map { case (n, d) => Rational(n, d) }
-              .orElse(q.as[BigDecimal].toOption.map(Rational.fromDecimal))
-          }
-          .collectFirst { case Some(r) => r }
-          .getOrElse(Rational.zero)
-      )
+    def price(first: String, second: String) =
+      val prices = a.downField("executionPrices")
+      def one(name: String) =
+        GenesisSchema.ratio(GenesisFile.Alonzo, BoundedRatio.NonNegative)(
+          prices.downField(name),
+          Vector("executionPrices", name)
+        )
+      one(first).orElse(one(second))
+    def unit(units: String, first: String, second: String) =
+      GenesisSchema.unit(GenesisFile.Alonzo)(a.downField(units), Vector(units), first, second)
+    // The Conway fields come from the Conway genesis when the chain starts in Conway; before, the
+    // parameters have none and they are zero
+    def conwayField[A: Decoder](name: String, none: A): Either[ConfigError, A] =
+      conway.fold(Right(none))(c => get[A](c.hcursor, name))
     for
       minFeeA <- get[BigInt](s, "minFeeA")
       minFeeB <- get[BigInt](s, "minFeeB")
       maxTxSize <- get[BigInt](s, "maxTxSize")
       maxBlockBodySize <- get[BigInt](s, "maxBlockBodySize")
-      maxBlockHeaderSize <- opt[BigInt](s, "maxBlockHeaderSize").map(_.getOrElse(BigInt(1100)))
+      maxBlockHeaderSize <- get[BigInt](s, "maxBlockHeaderSize")
       maxValueSize <- get[BigInt](a, "maxValueSize")
       perWord <- get[BigInt](a, "lovelacePerUTxOWord")
       keyDeposit <- get[BigInt](s, "keyDeposit")
       poolDeposit <- get[BigInt](s, "poolDeposit")
       eMax <- get[BigInt](s, "eMax")
       nOpt <- get[BigInt](s, "nOpt")
-      a0 <- get[BigDecimal](s, "a0").map(Rational.fromDecimal)
-      rho <- get[BigDecimal](s, "rho").map(Rational.fromDecimal)
-      tau <- get[BigDecimal](s, "tau").map(Rational.fromDecimal)
-      d <- opt[BigDecimal](s, "decentralisationParam").map(
-        _.fold(Rational.zero)(Rational.fromDecimal)
-      )
-      minPoolCost <- get[BigInt](s, "minPoolCost")
+      a0 <- shelleyRatio("a0", BoundedRatio.NonNegative)
+      rho <- shelleyRatio("rho", BoundedRatio.Unit)
+      tau <- shelleyRatio("tau", BoundedRatio.Unit)
+      d <- shelleyRatio("decentralisationParam", BoundedRatio.Unit)
+      // `.:? "minPoolCost" .!= mempty` (Shelley/Genesis.hs:424)
+      minPoolCost <- opt[BigInt](s, "minPoolCost").map(_.getOrElse(BigInt(0)))
       minUTxO <- opt[BigInt](s, "minUTxOValue").map(_.getOrElse(BigInt(0)))
       major <- get[BigInt](s.downField("protocolVersion"), "major")
       minor <- get[BigInt](s.downField("protocolVersion"), "minor")
-      priceMem <- rational(a.downField("executionPrices"), "prMem", "priceMemory")
-      priceSteps <- rational(a.downField("executionPrices"), "prSteps", "priceSteps")
-      txMem <- anyInt(a.downField("maxTxExUnits"), "exUnitsMem", "memory")
-      txSteps <- anyInt(a.downField("maxTxExUnits"), "exUnitsSteps", "steps")
-      blockMem <- anyInt(a.downField("maxBlockExUnits"), "exUnitsMem", "memory")
-      blockSteps <- anyInt(a.downField("maxBlockExUnits"), "exUnitsSteps", "steps")
-      collateralPct <- anyInt(a, "collateralPercentage")
-      maxCollateral <- anyInt(a, "maxCollateralInputs")
+      priceMem <- price("priceMemory", "prMem")
+      priceSteps <- price("priceSteps", "prSteps")
+      txMem <- unit("maxTxExUnits", "memory", "exUnitsMem")
+      txSteps <- unit("maxTxExUnits", "steps", "exUnitsSteps")
+      blockMem <- unit("maxBlockExUnits", "memory", "exUnitsMem")
+      blockSteps <- unit("maxBlockExUnits", "steps", "exUnitsSteps")
+      collateralPct <- get[BigInt](a, "collateralPercentage")
+      maxCollateral <- get[BigInt](a, "maxCollateralInputs")
       entropy <- extraEntropy(s)
       alonzoCostModels <- GenesisCostModels.alonzo(alonzo).leftMap(genesisCostModel)
       // The Conway genesis, when the chain starts in Conway, brings the PlutusV3 model, which the
@@ -281,14 +279,19 @@ object ProtocolParams:
           )
         )
         .flatten
-      drepDeposit <- opt[BigInt](c, "dRepDeposit").map(_.getOrElse(BigInt(0)))
-      drepActivity <- opt[BigInt](c, "dRepActivity").map(_.getOrElse(BigInt(0)))
-      govDeposit <- opt[BigInt](c, "govActionDeposit").map(_.getOrElse(BigInt(0)))
-      govLifetime <- opt[BigInt](c, "govActionLifetime").map(_.getOrElse(BigInt(0)))
-      refCost <- opt[BigDecimal](c, "minFeeRefScriptCostPerByte").map(
-        _.fold(Rational.zero)(Rational.fromDecimal)
+      drepDeposit <- conwayField[BigInt]("dRepDeposit", BigInt(0))
+      drepActivity <- conwayField[BigInt]("dRepActivity", BigInt(0))
+      govDeposit <- conwayField[BigInt]("govActionDeposit", BigInt(0))
+      govLifetime <- conwayField[BigInt]("govActionLifetime", BigInt(0))
+      refCost <- conway.fold(Right(Rational.zero))(c =>
+        GenesisSchema.ratio(GenesisFile.Conway, BoundedRatio.NonNegative)(
+          c.hcursor.downField("minFeeRefScriptCostPerByte"),
+          Vector("minFeeRefScriptCostPerByte")
+        )
       )
-      voting <- ConwayGenesis.votingParams(c)
+      voting <- conway.fold(
+        Right((PoolVotingThresholds.zero, DRepVotingThresholds.zero, BigInt(0), BigInt(0)))
+      )(c => ConwayGenesis.votingParams(c.hcursor))
     // Babbage translation: coinsPerUTxOByte = lovelacePerUTxOWord / 8 (8-byte words), floored.
     yield ProtocolParams(
       minFeeA,
@@ -330,17 +333,26 @@ object ProtocolParams:
       committeeMaxTermLength = voting._4
     )
 
+  /** `parseNonce` (cardano-ledger f649f975 Shelley/Genesis.hs:427-437): the tag is required, and
+    * only `Nonce` (with its `contents`) and `NeutralNonce` are read.
+    */
   private def extraEntropy(s: ACursor): Either[ConfigError, Nonce] =
-    s.downField("extraEntropy").downField("tag").as[Option[String]] match
-      case Right(None) | Right(Some("NeutralNonce")) => Right(Nonce.Neutral)
-      case Right(Some(_)) =>
-        get[String](s.downField("extraEntropy"), "contents")
+    val entropy = s.downField("extraEntropy")
+    get[String](entropy, "tag").flatMap {
+      case "NeutralNonce" => Right(Nonce.Neutral)
+      case "Nonce" =>
+        get[String](entropy, "contents")
           .flatMap(h =>
             xyz.kd5ujc.scarab.codec.Bytes.fromHex(h).leftMap(e => ConfigError(ConfigProblem.Hex(e)))
           )
           .map(Nonce.Hash(_))
-      case Left(e) =>
-        Left(ConfigError(ConfigProblem.JsonField("protocol parameters", "extraEntropy", e)))
+      case other =>
+        Left(
+          ConfigError(
+            ConfigProblem.Selection("extraEntropy tag", other, Set("Nonce", "NeutralNonce"))
+          )
+        )
+    }
 
   private def genesisCostModel(problem: CostModelProblem): ConfigError =
     ConfigError(ConfigProblem.GenesisCostModel(problem))
