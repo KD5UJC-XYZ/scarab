@@ -73,7 +73,7 @@ rules refused, a storage failure and a bug in the node were all retried like a l
    ouroboros-consensus `82ecba329` `Node/RethrowPolicy.hs` 131 to 139); only storage is `ShutdownNode`
    (55 to 90). Making every `NetworkError.Defect` the peer's would undo issue 154, because the node's
    own code produces `Defect` too (a fiber scope's wrapped exception, the rules, the storage). So
-   `NetworkError.Defect`, `fromThrowable`, `SessionEnd.Defect` (rules and storage) and `Fault.Defect`
+   `NetworkError.Defect`, `fromThrowable`, `SessionEnd.Defect` ~~(rules and storage)~~ (storage, and the rules on a block; see [the rules on a submitted transaction](#amendment-2026-10-28-the-rules-exception-on-a-submitted-transaction-is-the-connections)) and `Fault.Defect`
    still reach `Fatal.Defect`, and the storage, internal and unavailable cases still stop the node. A
    peer must not be able to stop the whole process by what it sends, which is the reasoning of the
    process-wide denial of service below.
@@ -265,3 +265,24 @@ The bearer's writer encodes and sends the node's own messages, so an exception t
 bug and says nothing about the peer: it stays `Defect` and stops the node, and the peer is not charged.
 The reference's policy closes the connection there too (`ourBug` is `ShutdownPeer`); this is an
 owner-approved deviation (2026-10-28).
+
+## Amendment (2026-10-28): the rules' exception on a submitted transaction is the connection's
+
+An exception the ledger rules throw while they judge a transaction submitted to the mempool is no verdict on it
+(`Rejection.RulesDefect`, issue 564). It ends the connection it came from, and the node goes on: a local client's
+connection ends with `NetworkError.ServingDefect(LocalTxSubmission, cause)`, and a peer's TxSubmission2 session
+with `ServingDefect(TxSubmission2, cause)`, the cause kept. This is where the reference has the exception: the
+mempool adds a transaction in the caller's thread, the mini-protocol's (consensus `82ecba329`
+`Mempool/Update.hs:183-245`, `doAddTx`; `MiniProtocol/LocalTxSubmission/Server.hs:31-36`). Only the sync watcher is
+linked to the node (`Mempool/Init.hs:66`), and an exception no rethrow policy names ends the peer
+(`ShutdownPeer`). Decision 5's rule that a defect of the rules stops the node made a transaction a peer sends a
+way to stop it, against the same decision's "a peer must not be able to stop the whole process by what it sends".
+The rules on a block, the mempool's revalidation and storage still stop the node, as the reference's linked
+threads do.
+
+The peer is not charged: `PeerError.ServingDefect` is `FailureClass.NotThePeers`. The connection closes and the
+governor counts no failure against the peer, which keeps its standing (at least the base delay before it is
+tried again). The reference charges the error delay (`ShutdownPeer`). This is an owner-approved deviation
+(2026-10-28): a failure of the node's own code shows nothing against the peer. A transaction the rules refuse is
+a verdict, and is unchanged.
+
