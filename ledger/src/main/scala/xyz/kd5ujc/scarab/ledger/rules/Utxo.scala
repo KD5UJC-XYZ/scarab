@@ -339,7 +339,7 @@ object Utxow
     // payment key of each. An earlier era has no collateral field, so its set is empty.
     val collateral = TxChecks.Collateral(tx.body.collateral.flatMap(ann.utxo.get), BigInt(0))
     def test(t: Test[PredicateFailure]) = Right(t)
-    val signatures = test(TxChecks.verifiedWits(tx, env.ctx.verdicts))
+    val signatures = TxChecks.verifiedWits(tx, env.ctx.verdicts)
     val witnesses =
       test(TxChecks.neededWitnesses(genDelegs, tx, ann.spent, collateral, provided))
     val metadata = TxChecks.auxiliaryChecks(pp, tx, env.ctx)

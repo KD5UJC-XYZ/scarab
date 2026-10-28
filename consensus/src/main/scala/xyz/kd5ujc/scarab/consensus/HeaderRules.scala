@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus
 
-import xyz.kd5ujc.scarab.ledger.HeaderError
+import xyz.kd5ujc.scarab.ledger.{HeaderError, ProviderDefect}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.BlockRef
@@ -26,6 +26,13 @@ trait HeaderRules[S, H]:
   def validate(anchor: S, tip: Option[BlockRef], prev: H, header: Header): HeaderRules.Outcome[H]
 
 object HeaderRules:
+  /** The outcome of a header check that ran: valid, refused, or no verdict for a provider defect.
+    */
+  def outcome[H](checked: Either[HeaderError | ProviderDefect, H]): Outcome[H] = checked match
+    case Right(next)                  => Outcome.Valid(next)
+    case Left(error: HeaderError)     => Outcome.Invalid(error)
+    case Left(defect: ProviderDefect) => Outcome.Unverifiable(defect)
+
   enum TimeForecast:
     case Known(onsetPicos: BigInt)
     case Unknown(reason: ForecastReason)
@@ -50,6 +57,7 @@ object HeaderRules:
           run() match
             case Outcome.Valid(next)             => Outcome.Valid(f(next))
             case Outcome.Invalid(error)          => Outcome.Invalid(error)
+            case Outcome.Unverifiable(defect)    => Outcome.Unverifiable(defect)
             case Outcome.Later(reason)           => Outcome.Later(reason)
             case Outcome.Unchecked(reason, next) => Outcome.Unchecked(reason, next.map(f))
         )
@@ -99,6 +107,11 @@ object HeaderRules:
 
     /** A rule is violated. */
     case Invalid(error: HeaderError)
+
+    /** A crypto provider failed while a rule verified the header: there is no verdict on it, and
+      * its sender is not at fault ([[xyz.kd5ujc.scarab.ledger.ProviderDefect]]).
+      */
+    case Unverifiable(defect: ProviderDefect)
 
     /** The ledger view of the header's slot cannot be forecast from this anchor yet: ask again once
       * the node's chain has advanced.

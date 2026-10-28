@@ -77,7 +77,7 @@ class ByronHandoverUtxoSuite extends CatsEffectSuite:
     val config = ByronLedger.Config(mainnetGenesis, requiresNetworkMagic = false)
     val after = ByronLedger
       .applyTx(config, mainnetGenesis.params, inputs, body.txs.head)
-      .fold(e => fail(e.message), identity)
+      .fold(e => fail(e.toString), identity)
     assertEquals(after.keySet.map(_.id.hex), Set(Key))
     after
 

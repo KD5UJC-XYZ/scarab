@@ -169,12 +169,13 @@ object Main extends IOApp:
           )
         )
         .flatMap(Raise[IO, NodeError].fromEither(_))
+      // a transaction revalidation has no verdict on stops the node before the pool changes
       _ <- mempool.sync(
         ledger,
         chain.tipRef.fold(BigInt(-1))(_.slot),
         adopted,
         chain.tipRef.map(_.hash)
-      )
+      )(using summon, Mempool.raisedAt[IO](chain.tip))
     yield ()
 
   private def seedReceived(
@@ -484,6 +485,7 @@ object Main extends IOApp:
     SessionEnd.of(error) match
       case SessionEnd.Unavailable(unavailable) => faulted(Fatal.Unavailable(unavailable))
       case SessionEnd.Held(unavailable)        => faulted(Fatal.Unavailable(unavailable))
+      case SessionEnd.Unverifiable(defect)     => faulted(Fatal.Unverifiable(defect))
       case _                                   => (NodeEvent.Failed(error), ExitCode(1))
 
   private def faulted(fatal: Fatal): (NodeEvent, ExitCode) =
@@ -1610,6 +1612,8 @@ object Main extends IOApp:
     case _: Fatal.Storage     => ExitCode(5)
     case _: Fatal.Internal    => ExitCode(6)
     case _: Fatal.Defect      => ExitCode(7)
+    // a library failed where a verdict is needed: the same class as an exception from a library
+    case _: Fatal.Unverifiable => ExitCode(7)
 
   /** `30s`, `10m`, `2h`: a positive whole number of seconds, minutes or hours. */
   private[node] def parseDuration(text: String): Option[FiniteDuration] =

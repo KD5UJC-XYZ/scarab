@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.ledger.*
 
 import TestLedger.txIn
 import TxKit.*
+import TxKit.given
 
 /** `implAddTx` of the reference: a transaction that finds no room waits for the pool to change
   * instead of being refused, in a line that serves local clients before queued peers, and it holds
@@ -25,6 +26,11 @@ class MempoolBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
   private given cats.mtl.Raise[IO, StorageError] with
     def functor = cats.Functor[IO]
     def raise[E <: StorageError, A](error: E): IO[A] = IO(fail(error.message))
+
+  private given cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError] with
+    def functor = cats.effect.IO.asyncForIO
+    def raise[E <: xyz.kd5ujc.scarab.network.NetworkError, A](error: E): IO[A] =
+      IO(fail(error.message))
 
   private val failsafe = 20.seconds
 

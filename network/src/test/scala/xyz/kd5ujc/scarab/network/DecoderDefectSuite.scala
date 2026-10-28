@@ -38,7 +38,9 @@ class DecoderDefectSuite extends FailsOnUncaught:
     (_, _) => IO.pure(None),
     new TxSubmissionServer.Sink[IO]:
       def known(id: Bytes) = IO.pure(false)
-      def submit(originals: Vector[Bytes]) = IO.unit
+      def submit(originals: Vector[Bytes])(using
+          cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+      ) = IO.unit
   )
   private val transactions: TxSubmissionClient.Source[IO] = new TxSubmissionClient.Source[IO]:
     def after(ticket: Long, max: Int) = IO.pure(Vector.empty)

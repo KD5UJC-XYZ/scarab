@@ -6,7 +6,8 @@ import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, ProtocolState, TPraosSt
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf, Verdicts, VrfCert}
+import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf, ProviderDefect, Verdicts, VrfCert}
+import xyz.kd5ujc.scarab.ledger.OCertRules.refusedAs
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.state.PositiveUnitInterval
 import xyz.kd5ujc.scarab.crypto.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
@@ -60,15 +61,14 @@ object TPraos:
   /** `mkNonceFromOutputVRF`: the block's nonce contribution, `blake2b256(vrf output)`. */
   def nonceValue(output: Bytes): Nonce = Nonce.Hash(Blake2b.hash256.hash(output))
 
-  private[scarab] def verifyVrf(
+  /** The certificate's verdict: a refusal as `refused` makes it, a provider defect as itself. */
+  private[scarab] def verifyVrf[E](
       verdicts: Verdicts,
       alpha: Bytes,
       vkey: Bytes,
       cert: VrfCert
-  ): Either[Vrf.Result, Unit] =
-    verdicts.tpraosVrf(alpha, vkey, cert.proof, cert.output) match
-      case Vrf.Result.VerifiedCertificate(_) => Right(())
-      case other                             => Left(other)
+  )(refused: Vrf.Result => E): Either[E | ProviderDefect, Unit] =
+    ProviderDefect.vrf(verdicts.tpraosVrf(alpha, vkey, cert.proof, cert.output))(refused).void
 
   /** Validate `header` against `view` (the ledger view of its epoch) and `state` (already ticked to
     * that epoch, see [[Praos.tick]]).
@@ -78,7 +78,7 @@ object TPraos:
       header: Header,
       view: LedgerView,
       config: PraosConfig
-  ): Either[TPraosError, Validated] =
+  ): Either[TPraosError | ProviderDefect, Validated] =
     header match
       case h: Header.Shelley =>
         h.vrf match
@@ -102,7 +102,7 @@ object TPraos:
       leaderCert: VrfCert,
       view: LedgerView,
       config: PraosConfig
-  ): Either[TPraosError, (TPraosState, LeaderCheck)] =
+  ): Either[TPraosError | ProviderDefect, (TPraosState, LeaderCheck)] =
     val geometry = config.geometry
     val slot = header.slot
     val firstSlot = geometry.firstSlot(geometry.epochOf(slot))
@@ -111,12 +111,12 @@ object TPraos:
     val epochNonce = state.chainDep.tickn.epochNonce
     val nonceSeed = seed(SeedEta, slot, epochNonce)
     val leaderSeed = seed(SeedL, slot, epochNonce)
-    def vrfChecks: Either[TPraosError, Unit] =
+    def vrfChecks: Either[TPraosError | ProviderDefect, Unit] =
       for
-        _ <- verifyVrf(config.verdicts, nonceSeed, header.vrfVkey, nonceCert).leftMap(
+        _ <- verifyVrf(config.verdicts, nonceSeed, header.vrfVkey, nonceCert)(
           TPraosError.BadNonceVrf(_)
         )
-        _ <- verifyVrf(config.verdicts, leaderSeed, header.vrfVkey, leaderCert).leftMap(
+        _ <- verifyVrf(config.verdicts, leaderSeed, header.vrfVkey, leaderCert)(
           TPraosError.BadLeaderVrf(_)
         )
       yield ()
@@ -187,7 +187,7 @@ object TPraos:
           yield LeaderCheck.Overlay(gkey)
       _ <- config.verdicts
         .opCert(header, config.slotsPerKesPeriod, config.maxKesEvolutions)
-        .leftMap(TPraosError.OCert(_))
+        .refusedAs(TPraosError.OCert(_))
       _ <- OCertRules
         .checkCounter(
           state.chainDep.protocol.ocertCounters.get(issuerKey).map(_.toBigInt),

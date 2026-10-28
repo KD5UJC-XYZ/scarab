@@ -27,7 +27,7 @@ private[network] object TxSubmission2Runtime:
 
   trait Sink[F[_], I, B]:
     def known(id: I): F[Boolean]
-    def submit(originals: Vector[B]): F[Unit]
+    def submit(originals: Vector[B])(using Raise[F, NetworkError]): F[Unit]
 
   trait Rules[I]:
     def acknowledge(

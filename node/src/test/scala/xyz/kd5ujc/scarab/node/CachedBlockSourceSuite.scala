@@ -32,7 +32,9 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
       def range(from: ChainSync.Point, to: ChainSync.Point) = IO.pure(None)
     val transactions = new TxSubmissionServer.Sink[IO]:
       def known(id: Bytes) = IO.pure(false)
-      def submit(originals: Vector[Bytes]) = IO.unit
+      def submit(originals: Vector[Bytes])(using
+          cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+      ) = IO.unit
     ServerHandlers(NtNHeader.codec, Resource.pure(cursor), blocks, transactions)
 
   List((true, false), (false, false), (false, true)).foreach { (originalLive, replacement) =>

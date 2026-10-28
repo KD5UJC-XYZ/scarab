@@ -8,7 +8,7 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.consensus.state.PBftState
-import xyz.kd5ujc.scarab.ledger.{Block, ByronGenesisFile, TxIn}
+import xyz.kd5ujc.scarab.ledger.{Block, ByronGenesisFile, ProviderDefect, TxIn}
 import xyz.kd5ujc.scarab.ledger.byron.*
 
 /** Actual unchanged Haskell registration, proposal/transaction admission and block-ledger APIs,
@@ -70,7 +70,7 @@ class ByronRegistrationFixtureSuite extends FunSuite:
   }
 
   private def checkRegistration(
-      result: Either[UpdateError, UpdateState],
+      result: Either[UpdateError | ProviderDefect, UpdateState],
       reference: Verdict,
       proposal: ByronProposal,
       adopted: ByronVersion
@@ -110,7 +110,7 @@ class ByronRegistrationFixtureSuite extends FunSuite:
             proposal.signature,
             ByronSig.tag(ByronSig.SignUpdateProposal, config.magic) ++ proposal.signedBody
           ),
-          field[Boolean](reference, "proposalSignature")
+          Right(field[Boolean](reference, "proposalSignature"))
         )
         val env = ByronUpdate.Env(
           config.magicId,
@@ -156,7 +156,7 @@ class ByronRegistrationFixtureSuite extends FunSuite:
         val applied = ByronLedger.applyMain(config, ticked, block.header, block.size, body)
         verdict(reference, "ledgerBlock") match
           case Verdict.Accepted =>
-            val after = applied.fold(e => fail(e.message), identity)
+            val after = applied.fold(e => fail(e.toString), identity)
             assertEquals(
               after.update.registeredProtocol.values.map(_.version).toSet,
               versions(reference, "blockVersions")

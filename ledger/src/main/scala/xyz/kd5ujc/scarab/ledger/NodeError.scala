@@ -58,6 +58,14 @@ enum PeerError extends NodeError:
     */
   case InputDefect(site: PeerError.InputSite, cause: Throwable)
 
+  /** A crypto provider failed while a header rule verified a header this peer announced: an
+    * exception from a library, not a verdict on the header. The peer is neither forgotten nor
+    * blamed and nothing is recorded as invalid; the connection closes and the peer is tried again
+    * after the error delay, as the reference's default `ShutdownPeer` does for an exception no
+    * rethrow policy names ([[xyz.kd5ujc.scarab.node.FailurePolicy.classify]]).
+    */
+  case Unverifiable(error: VerificationDefect)
+
   def message: String = this match
     case Handshake(r)   => s"handshake: ${r.message}"
     case Protocol(r)    => s"protocol: ${PeerError.protocolMessage(r)}"
@@ -74,6 +82,7 @@ enum PeerError extends NodeError:
     case InvalidBlock(e)     => s"invalid block ${e.message}"
     case InputDefect(site, cause) =>
       s"defect decoding ${site.message}: ${NetworkError.describe(cause)}"
+    case Unverifiable(e) => e.message
 
 object PeerError:
   enum GenesisProblem:
@@ -272,6 +281,17 @@ final case class ValidationError(point: ChainSync.Point, failure: BlockFailure) 
   def reason: String = failure.reason
   def message: String = s"${Points.show(point)} rejected by $rule: $reason"
 
+  /** The provider defect this "refusal" is in fact, if any: a crypto provider failed on the block,
+    * so the rules have no verdict on it ([[ProviderDefect]]). It is never recorded as invalid and
+    * its peer is not blamed: the node stops ([[Fatal.Unverifiable]]).
+    */
+  def unverifiable: Option[VerificationDefect] = failure match
+    case BlockFailure.Unverifiable(_, defect) =>
+      Some(VerificationDefect(point, VerificationDefect.Site.Header, defect))
+    case BlockFailure.Tx(LedgerFailure.Unverifiable(txId, defect)) =>
+      Some(VerificationDefect(point, VerificationDefect.Site.Witness(txId), defect))
+    case _ => None
+
 object ValidationError:
   given cats.Show[ValidationError] = cats.Show.show(_.message)
 
@@ -279,6 +299,27 @@ object ValidationError:
 final case class EvaluationUnavailable(point: ChainSync.Point, failure: LedgerFailure.Unavailable)
     extends NodeError:
   def message: String = s"${Points.show(point)} evaluation unavailable: ${failure.message}"
+
+/** A crypto provider failed while the rules verified the block at `point` ([[ProviderDefect]]): an
+  * exception from a library, not a verdict. The reference lets it end the thread that applies the
+  * block, and that thread is linked to the node (ouroboros-consensus 82ecba32
+  * `Storage/ChainDB/Impl/Background.hs:107-108,142`), so the node stops: `Fatal.Unverifiable`.
+  */
+final case class VerificationDefect(
+    point: ChainSync.Point,
+    site: VerificationDefect.Site,
+    defect: ProviderDefect
+) extends NodeError:
+  def message: String = s"${Points.show(point)} has no verdict: ${site.message}: ${defect.message}"
+
+object VerificationDefect:
+  /** What was being verified: the header's VRF, KES or certificate, or a transaction witness. */
+  enum Site:
+    case Header
+    case Witness(txId: Bytes)
+    def message: String = this match
+      case Header      => "header"
+      case Witness(tx) => s"witness of tx ${tx.hex.take(16)}"
 
 /** Why a UTxO checkpoint of the RocksDB store cannot be restored by this build. */
 enum CheckpointProblem:

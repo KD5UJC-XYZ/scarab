@@ -45,7 +45,9 @@ class WarmHotSuite extends FailsOnUncaught:
       )
     val sink = new TxSubmissionServer.Sink[IO]:
       def known(id: Bytes) = IO.pure(false)
-      def submit(originals: Vector[Bytes]) = IO.unit
+      def submit(originals: Vector[Bytes])(using
+          cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+      ) = IO.unit
     ServerHandlers[IO, Bytes](ChainSyncFixtures.rawItem, source, blocks, sink)
 
   /** A source that never has a transaction: the client's offer stays a blocking request. */

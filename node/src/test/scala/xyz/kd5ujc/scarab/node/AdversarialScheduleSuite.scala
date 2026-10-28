@@ -163,7 +163,9 @@ class AdversarialScheduleSuite extends FailsOnUncaught:
       )
       sink = new TxSubmissionServer.Sink[IO]:
         def known(id: Bytes) = IO.pure(false)
-        def submit(originals: Vector[Bytes]) = IO.unit
+        def submit(originals: Vector[Bytes])(using
+            cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+        ) = IO.unit
       handlers = ServerHandlers[IO, NtNHeader](NtNHeader.codec, server.source, server.blocks, sink)
       advertised = gate.fold(handlers)(gated(handlers, _))
       _ <- Resource.eval(peers.serve(address, advertised))

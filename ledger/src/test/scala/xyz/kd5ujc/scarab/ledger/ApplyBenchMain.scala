@@ -22,7 +22,8 @@ import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
   */
 object ApplyBenchMain:
   private object Unverified extends Verdicts:
-    def witness(vkey: Bytes, signature: Bytes, message: Bytes): Boolean = true
+    def witness(vkey: Bytes, signature: Bytes, message: Bytes): Either[ProviderDefect, Boolean] =
+      Right(true)
     def opCert(h: Header.Shelley, a: BigInt, b: BigInt) = Verdicts.Direct.opCert(h, a, b)
     def praosVrf(i: Vrf.Input, v: Bytes, p: Bytes, o: Bytes) = Verdicts.Direct.praosVrf(i, v, p, o)
     def tpraosVrf(a: Bytes, v: Bytes, p: Bytes, o: Bytes) = Verdicts.Direct.tpraosVrf(a, v, p, o)

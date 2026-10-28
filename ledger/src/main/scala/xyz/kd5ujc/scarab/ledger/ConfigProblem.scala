@@ -27,6 +27,11 @@ enum ConfigProblem:
   case ByteLength(context: String, expected: Int, actual: Int)
   case LedgerValue(cause: LedgerDecodeError)
   case GenesisAddressEncoding(cause: xyz.kd5ujc.scarab.codec.Cbor.Error)
+
+  /** A crypto provider failed while the configuration was checked (a Byron genesis delegation
+    * certificate): there is no verdict on the genesis, which is not a fault of the genesis.
+    */
+  case GenesisUnverifiable(cause: ProviderDefect)
   case Credential(value: String)
   case DRep(value: String)
   case CostModelLanguage(value: String)
@@ -106,8 +111,9 @@ enum ConfigProblem:
     case NoPeers => "no peer to follow: the topology names no local root, bootstrap or public root"
     case BootstrapPeersInGenesisMode =>
       "topology bootstrapPeers cannot be configured with ConsensusMode GenesisMode"
-    case WithUsage(cause, usage) => s"${cause.message}\n$usage"
-    case _                       => toString
+    case GenesisUnverifiable(cause) => s"no verdict on the genesis: ${cause.message}"
+    case WithUsage(cause, usage)    => s"${cause.message}\n$usage"
+    case _                          => toString
 
 /** A Shelley genesis field read with a number instance of the reference. */
 enum GenesisNumberField:

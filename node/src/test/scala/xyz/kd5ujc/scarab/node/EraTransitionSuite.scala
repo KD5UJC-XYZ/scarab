@@ -25,7 +25,7 @@ import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
-import xyz.kd5ujc.scarab.consensus.{ByronCheck, ByronRules}
+import xyz.kd5ujc.scarab.consensus.{ByronCheck, ByronRules, ByronRulesConfig}
 import xyz.kd5ujc.scarab.consensus.state.{
   MirrorExtras,
   MirrorState,
@@ -448,13 +448,17 @@ class EraTransitionSuite extends CatsEffectSuite:
   private def byronUpdate(
       i: Int,
       block: Block.Byron,
-      from: Int = -1
-  ): Either[xyz.kd5ujc.scarab.ledger.ByronChainError, (ByronRules.State, ByronCheck)] =
+      from: Int = -1,
+      signatures: ByronRulesConfig.Verifier = ByronRulesConfig.ByronSignatures
+  ): Either[
+    xyz.kd5ujc.scarab.ledger.ByronChainError | xyz.kd5ujc.scarab.ledger.ProviderDefect,
+    (ByronRules.State, ByronCheck)
+  ] =
     val before = states(if from >= 0 then from else i).consensus.byron
     ByronRules.update(
       ByronRules.State(before.tip, before.ledger.get, before.pbft),
       block,
-      setup.byronRules.get
+      setup.byronRules.get.copy(signatures = signatures)
     )
 
   private def withHeader(i: Int)(f: Header.Byron => Header.Byron): Block.Byron =
@@ -475,6 +479,17 @@ class EraTransitionSuite extends CatsEffectSuite:
       result.left.exists(_ == xyz.kd5ujc.scarab.ledger.ByronChainError.SignatureRejected),
       result.toString
     )
+  }
+
+  test("a Byron signature verifier that fails is no verdict, not a rejected block (issue 393)") {
+    val failure = xyz.kd5ujc.scarab.crypto.witness.VerificationError
+      .ImplementationFailure(new IllegalStateException("provider broke"))
+    val result = byronUpdate(5, byronBlock(5), signatures = (_, _, _) => Left(failure))
+    assertEquals(
+      result.map(_ => ()),
+      Left(xyz.kd5ujc.scarab.ledger.ProviderDefect.Ed25519(failure))
+    )
+    assert(byronUpdate(5, byronBlock(5)).isRight)
   }
 
   test("a Byron header signed over different content is rejected") {

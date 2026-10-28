@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus.{BlockRef, ChainSelection, Compute, SelectView, VolatileChain}
-import xyz.kd5ujc.scarab.ledger.{GenesisInternalProblem, Header, PeerError}
+import xyz.kd5ujc.scarab.ledger.{GenesisInternalProblem, Header, PeerError, VerificationDefect}
 import cats.Applicative
 import cats.effect.{Async, Ref}
 import cats.mtl.{Ask, Handle, Raise, Stateful, Tell}
@@ -651,6 +651,13 @@ object HeaderCheck:
                 case Outcome.Unchecked(_, next) =>
                   record(header, next) *> tally.update(c => c.copy(unchecked = c.unchecked + 1))
                 case Outcome.Invalid(error) => invalid(header, error)
+                // no verdict on the header: this peer's session ends, through this fiber's own `Raise`
+                case Outcome.Unverifiable(defect) =>
+                  PeerError
+                    .Unverifiable(
+                      VerificationDefect(header.point, VerificationDefect.Site.Header, defect)
+                    )
+                    .raise[F, Unit]
                 case Outcome.Later(_) =>
                   protocol(PeerError.ProtocolProblem.HeaderValidationDidNotSettle)
             }

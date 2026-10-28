@@ -34,7 +34,13 @@ import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{ByronRules, ByronRulesConfig, HardForkConfig, PraosConfig}
-import xyz.kd5ujc.scarab.ledger.{GenesisState, LedgerGlobals, LiteLedger}
+import xyz.kd5ujc.scarab.ledger.{
+  GenesisState,
+  LedgerDecodeError,
+  LedgerGlobals,
+  LiteLedger,
+  ProviderDefect
+}
 import xyz.kd5ujc.scarab.ledger.byron.ByronLedger
 import xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold
 
@@ -369,7 +375,10 @@ object NodeSetup:
         val ledgerConfig = ByronLedger.Config(b, requiresMagic)
         ByronLedger
           .initial(ledgerConfig)
-          .leftMap(e => ConfigError(ConfigProblem.LedgerValue(e)))
+          .leftMap {
+            case e: LedgerDecodeError => ConfigError(ConfigProblem.LedgerValue(e))
+            case d: ProviderDefect    => ConfigError(ConfigProblem.GenesisUnverifiable(d))
+          }
           .map { ledger =>
             ledger -> ByronRulesConfig(
               ledgerConfig,

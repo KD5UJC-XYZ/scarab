@@ -220,7 +220,9 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
           called <- Ref.of[IO, Boolean](false)
           sink = new TxSubmissionServer.Sink[IO]:
             def known(txId: Bytes) = called.set(true).as(false)
-            def submit(originals: Vector[Bytes]) = called.set(true)
+            def submit(originals: Vector[Bytes])(using
+                cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+            ) = called.set(true)
           result <- typed {
             linked(protocols = Set(4)).use { (client, server) =>
               for
@@ -249,7 +251,9 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
 
   private val sink: TxSubmissionServer.Sink[IO] = new TxSubmissionServer.Sink[IO]:
     def known(txId: Bytes) = IO.pure(false)
-    def submit(originals: Vector[Bytes]) = IO.unit
+    def submit(originals: Vector[Bytes])(using
+        cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+    ) = IO.unit
 
   test("requested bodies use the reference shortWait10s instead of the old60s"):
     TestControl

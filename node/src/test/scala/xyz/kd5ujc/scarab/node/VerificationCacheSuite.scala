@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.ledger.{Prepared, Verdicts}
+import xyz.kd5ujc.scarab.ledger.{Prepared, ProviderDefect, Verdicts}
+import xyz.kd5ujc.scarab.crypto.witness.VerificationError
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import java.nio.file.{Files, Path}
@@ -118,12 +119,44 @@ class VerificationCacheSuite extends ScalaCheckSuite:
     val b = VerificationCache.unsafe(2)
     a.warm[IO](raws, setup.praos, 2).unsafeRunSync()
     val (k, s, m) = witnesses.head
-    assertEquals(a.witness(k, s, m), true)
+    assertEquals(a.witness(k, s, m), Right(true))
     assertEquals(a.witnessStats.toString, "1/1")
-    assertEquals(a.witness(k, s, m), true)
+    assertEquals(a.witness(k, s, m), Right(true))
     assertEquals(a.witnessStats.toString, "1/2")
-    assertEquals(b.witness(k, s, m), true)
+    assertEquals(b.witness(k, s, m), Right(true))
     assertEquals(b.witnessStats.toString, "0/1")
     a.shutdown()
     b.shutdown()
+  }
+
+  test("a witness defect met while warming is discarded: the validation asks and decides") {
+    val defect = ProviderDefect.Ed25519(
+      VerificationError.ImplementationFailure(new IllegalStateException("provider broke"))
+    )
+    val calls = new java.util.concurrent.atomic.AtomicInteger(0)
+    // the real verifier, except that its first answer is a defect: it fails once, then succeeds
+    val failsOnce = new Verdicts:
+      export Verdicts.Direct.{keyHash, opCert, praosVrf, takePrepared, tpraosVrf}
+      def witness(vkey: Bytes, signature: Bytes, message: Bytes): Either[ProviderDefect, Boolean] =
+        if calls.getAndIncrement() == 0 then Left(defect)
+        else Verdicts.Direct.witness(vkey, signature, message)
+    val cache = VerificationCache.unsafe(2, failsOnce)
+    cache.warm[IO](raws, setup.praos, 2).unsafeRunSync()
+    // every check warming makes: vkey and bootstrap witnesses alike
+    val distinct = prepared
+      .flatMap(_.txs.flatMap(_.toOption))
+      .flatMap { tx =>
+        (tx.witnesses.vkeys ++ tx.witnesses.bootstrap.map(w => w.vkey -> w.signature)).map {
+          (k, s) => (k, s, tx.body.id)
+        }
+      }
+      .distinct
+    val warmed = calls.get
+    assertEquals(warmed, distinct.size)
+    // the validation reuses every verdict warming found and asks the provider for the one check
+    // whose warming met the defect: its own answer decides
+    val answers = distinct.map((k, s, m) => cache.witness(k, s, m))
+    assertEquals(answers, distinct.map((k, s, m) => Verdicts.Direct.witness(k, s, m)))
+    assertEquals(calls.get, warmed + 1)
+    cache.shutdown()
   }

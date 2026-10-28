@@ -12,7 +12,8 @@ import xyz.kd5ujc.scarab.ledger.{
   NodeError,
   PeerError,
   StorageError,
-  ValidationError
+  ValidationError,
+  VerificationDefect
 }
 import xyz.kd5ujc.scarab.ledger.LedgerFailure.reach
 import xyz.kd5ujc.scarab.network.{Fibers, NetworkError}
@@ -88,6 +89,12 @@ enum SessionEnd:
     */
   case Held(error: EvaluationUnavailable)
 
+  /** A crypto provider failed while the rules verified a block: an exception from a library, as the
+    * reference's block application sees it, and the node stops (ADR 0017, amendment on provider
+    * defects). Nothing is recorded as invalid and no peer is blamed.
+    */
+  case Unverifiable(error: VerificationDefect)
+
   /** The storage failed under the session. Nothing a reconnect can repair: the node stops and
     * recovers from disk on the next start.
     */
@@ -123,13 +130,16 @@ object SessionEnd:
       unavailable(EvaluationUnavailable(point, failure))
     case ValidationError(point, BlockFailure.Tx(failure: LedgerFailure.Unavailable)) =>
       unavailable(EvaluationUnavailable(point, failure))
-    case e: EvaluationUnavailable                    => unavailable(e)
+    case e: EvaluationUnavailable => unavailable(e)
+    case e: VerificationDefect    => Unverifiable(e)
+    case e @ PeerError.InvalidBlock(refused) =>
+      refused.unverifiable.fold(Failed(e))(Unverifiable(_))
     case PeerError.NoIntersection                    => NoMoreIntersection
     case PeerError.RolledBackPastIntersection(point) => RolledBackPastIntersection(point)
     case e: PeerError                                => Failed(e)
-    case e: ValidationError                          => Rejected(e)
-    case e: StorageError                             => Storage(e)
-    case other                                       => Internal(other)
+    case e: ValidationError => e.unverifiable.fold(Rejected(e))(Unverifiable(_))
+    case e: StorageError    => Storage(e)
+    case other              => Internal(other)
 
   /** No verdict: the node stops for a missing implementation and holds the block for a defect the
     * block triggers.
@@ -179,6 +189,8 @@ object SessionEnd:
     case Unavailable(error) =>
       Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(Fatal.Unavailable(error))))
     case Held(error) => Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
+    case Unverifiable(error) =>
+      Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(Fatal.Unverifiable(error))))
     case Storage(error) =>
       Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(Fatal.Storage(error))))
     case Internal(error) =>
@@ -231,11 +243,18 @@ enum Fatal extends DomainError:
   case Internal(error: NodeError)
   case Defect(cause: Throwable)
 
+  /** A crypto provider failed while the node verified a block (a block from a peer, a stored block
+    * on replay or recovery, our own block): an exception from a library, which stops the node as it
+    * does in the reference (exit 7).
+    */
+  case Unverifiable(error: VerificationDefect)
+
   def message: String = this match
-    case Unavailable(e) => e.message
-    case Storage(e)     => s"storage: ${e.message}"
-    case Internal(e)    => s"internal: ${e.message}"
-    case Defect(t)      => s"defect: ${Option(t.getMessage).getOrElse(t.getClass.getName)}"
+    case Unverifiable(e) => e.message
+    case Unavailable(e)  => e.message
+    case Storage(e)      => s"storage: ${e.message}"
+    case Internal(e)     => s"internal: ${e.message}"
+    case Defect(t)       => s"defect: ${Option(t.getMessage).getOrElse(t.getClass.getName)}"
 
 /** What the node does with a peer after its session ended: the one place the outcomes are given a
   * policy (owner decision 8 for peers; the reference's `consensusRethrowPolicy` for the rest).

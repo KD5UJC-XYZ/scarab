@@ -30,12 +30,13 @@ class ByronProposalFixtureSuite extends FunSuite:
     val expected = ByronVersion.from(65535, 65535, 255).fold(e => fail(e.message), identity)
     assertEquals(proposal.version, expected)
     assertEquals(proposal.raw, bytes)
-    assert(
+    assertEquals(
       ByronSig.verify(
         proposal.issuer,
         proposal.signature,
         ByronSig.tag(ByronSig.SignUpdateProposal, ByronCbor.uint(4242)) ++ proposal.signedBody
-      )
+      ),
+      Right(true)
     )
   }
 

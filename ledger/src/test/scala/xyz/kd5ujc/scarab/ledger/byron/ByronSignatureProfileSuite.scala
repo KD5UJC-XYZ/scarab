@@ -33,8 +33,12 @@ class ByronSignatureProfileSuite extends FunSuite:
   test("Byron witnesses accept the reference-accepted rows; later eras refuse them") {
     referenceAccepted.foreach { id =>
       val (key, signature, message) = rows.getOrElse(id, fail(s"missing row $id"))
-      assert(ByronSig.verifyRedeem(key, signature, message), id)
-      assert(ByronSig.verify(key ++ Bytes.fromArray(new Array[Byte](32)), signature, message), id)
-      assert(!Verdicts.Direct.witness(key, signature, message), id)
+      assertEquals(ByronSig.verifyRedeem(key, signature, message), Right(true), id)
+      assertEquals(
+        ByronSig.verify(key ++ Bytes.fromArray(new Array[Byte](32)), signature, message),
+        Right(true),
+        id
+      )
+      assertEquals(Verdicts.Direct.witness(key, signature, message), Right(false), id)
     }
   }

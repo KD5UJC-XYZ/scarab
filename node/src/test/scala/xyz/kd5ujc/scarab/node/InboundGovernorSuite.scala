@@ -79,7 +79,9 @@ class InboundGovernorSuite extends FailsOnUncaught:
           ranges.update(_ :+ (from -> to)) *> server.blocks.range(from, to)
       sink = new TxSubmissionServer.Sink[IO]:
         def known(id: Bytes) = IO.pure(false)
-        def submit(originals: Vector[Bytes]) = IO.unit
+        def submit(
+            originals: Vector[Bytes]
+        )(using cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]) = IO.unit
     yield new Remote(
       ServerHandlers[IO, NtNHeader](
         NtNHeader.codec,
@@ -214,7 +216,9 @@ class InboundGovernorSuite extends FailsOnUncaught:
               (_, _) => IO.pure(None),
               new TxSubmissionServer.Sink[IO]:
                 def known(id: Bytes) = IO.pure(false)
-                def submit(originals: Vector[Bytes]) = IO.unit
+                def submit(originals: Vector[Bytes])(using
+                    cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
+                ) = IO.unit
             ),
             follow = peer => followSession.fold(follower.session(peer))(_(peer)),
             prepare = _ => IO.unit,
