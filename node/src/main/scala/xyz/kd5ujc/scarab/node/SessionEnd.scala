@@ -127,8 +127,8 @@ object SessionEnd:
       Unavailable(EvaluationUnavailable(point, failure))
     case ValidationError(point, BlockFailure.Tx(failure: LedgerFailure.Unavailable)) =>
       Unavailable(EvaluationUnavailable(point, failure))
-    case e: EvaluationUnavailable => Unavailable(e)
-    case e: VerificationDefect    => Unverifiable(e)
+    case e: EvaluationUnavailable  => Unavailable(e)
+    case e: VerificationDefect     => Unverifiable(e)
     case StateFaultInHeader(fault) => Internal(fault)
     case e @ PeerError.InvalidBlock(refused) =>
       refused.unverifiable.fold(Failed(e))(Unverifiable(_))
