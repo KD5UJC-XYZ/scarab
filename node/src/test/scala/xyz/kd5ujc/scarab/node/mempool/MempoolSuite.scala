@@ -136,7 +136,7 @@ object TxKit:
 
     /** The ledger after the transaction, which the test knows to be valid. */
     def applied(tx: Tx, slot: BigInt = 1000): MempoolLedger =
-      l(tx, env.txEnv(slot, l, 0), env.rules).fold(f => sys.error(f.message), identity)
+      l.submit(tx, env.txEnv(slot, l, 0), env.rules).fold(f => sys.error(f.message), identity)
 
   /** Alice pays `value - fee` to bob from `txIn(i)`. */
   def pay(i: Int, fee: BigInt = ada, value: BigInt = 100 * ada): (Bytes, Bytes) =
@@ -527,7 +527,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     val base = s.base.fold(u => sys.error(u.toString), identity)
     s.entries.zipWithIndex.foldLeft[Either[LedgerFailure, MempoolLedger]](Right(base)) {
       case (Right(l), (e, i)) =>
-        l(e.tx, env.txEnv(s.tipSlot, base, i), env.rules)
+        l.reapply(e.tx, env.txEnv(s.tipSlot, base, i), env.rules)
       case (left, _) => left
     }
 
