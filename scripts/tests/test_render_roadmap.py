@@ -227,6 +227,75 @@ class CheckModeTest(unittest.TestCase):
         self.assertEqual([p.kind for p in rr.run(self.root, check=True, states={7: OPEN})[0]], [Kind.DONE_ISSUE_OPEN])
 
 
+class DriftTest(unittest.TestCase):
+    """Issue state fails only the change that causes a disagreement; the rest is a notice."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        (self.root / "docs/data").mkdir(parents=True)
+
+    def head(self, *items):
+        reg = register(*items)
+        (self.root / rr.REGISTER).write_text(json.dumps(reg), encoding="utf-8")
+        (self.root / rr.OUTPUT).write_text(rr.render(reg), encoding="utf-8")
+
+    def test_drift_the_base_already_has_is_a_notice(self):
+        self.head(item())
+        notices = []
+        baseline = rr.Baseline(register(item()), {7: OPEN})
+        self.assertEqual(rr.run(self.root, True, {7: OPEN}, baseline, notices)[0], [])
+        self.assertEqual([n.kind for n in notices], [Kind.DONE_ISSUE_OPEN])
+
+    def test_drift_the_change_brings_fails(self):
+        self.head(item(status="planned"))
+        baseline = rr.Baseline(register(item(status="planned")), {7: OPEN})
+        problems = rr.run(self.root, True, {7: CLOSED}, baseline, [])[0]
+        self.assertEqual([p.kind for p in problems], [Kind.ACTIVE_ISSUE_CLOSED])
+        self.head(item(status="done"))
+        self.assertEqual(rr.run(self.root, True, {7: OPEN}, rr.Baseline(register(item(status="planned")), {7: OPEN}), [])[0]
+                         [0].kind, Kind.DONE_ISSUE_OPEN)
+
+    def test_a_base_without_a_register_charges_every_disagreement(self):
+        self.head(item())
+        self.assertEqual([p.kind for p in rr.run(self.root, True, {7: OPEN}, rr.Baseline(None, {7: OPEN}), [])[0]],
+                         [Kind.DONE_ISSUE_OPEN])
+
+    def test_without_a_pull_request_every_disagreement_is_a_notice(self):
+        self.head(item())
+        notices = []
+        self.assertEqual(rr.run(self.root, True, {7: OPEN}, None, notices)[0], [])
+        self.assertEqual(len(notices), 1)
+
+    def test_caused_counts_with_multiplicity(self):
+        a = rr.Problem(Kind.DONE_ISSUE_OPEN, "A1", "status done, #7 open")
+        self.assertEqual(rr.caused([a, a], [a]), [a])
+        self.assertEqual(rr.caused([a], [a, a]), [])
+
+    def test_the_base_register_is_read_at_the_base_commit(self):
+        calls = []
+
+        def fake(args):
+            calls.append(list(args))
+            if args[0] == "pr":
+                return "abc123\n"
+            return json.dumps(register(item()))
+        self.assertEqual(rr.base_register("12", fake), register(item()))
+        self.assertIn(f"repos/{rr.REPOSITORY}/contents/{rr.REGISTER}?ref=abc123", calls[1])
+
+        def missing(args):
+            if args[0] == "pr":
+                return "abc123\n"
+            raise Unavailable("gh: Not Found (HTTP 404)")
+        self.assertIsNone(rr.base_register("12", missing))
+
+        def offline(args):
+            raise Unavailable("error connecting to api.github.com")
+        with self.assertRaises(Unavailable):
+            rr.base_register("12", offline)
+
+
 class RepositoryTest(unittest.TestCase):
     """The committed register and markdown agree (issue states are CI's, not the unit tests')."""
 

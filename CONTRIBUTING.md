@@ -291,8 +291,9 @@ A claim of compatibility needs evidence a reader can check:
   (`docs/compatibility.md` is generated; CI runs the script with `--check`), and updates the roadmap item it
   closes in `docs/data/roadmap.json` (status `done`, never renumber), then regenerates the roadmap with
   `python3 scripts/render_roadmap.py` (`docs/roadmap.md` is generated; CI's `--check` also compares each
-  item's status with its issue's state, so an issue closed or reopened by hand needs the same register
-  edit).
+  item's status with its issue's state, and fails a pull request only for a disagreement that pull request
+  brings, such as closing an item's issue without marking the item; an issue closed or reopened by hand is
+  reported, and its register edit can land with any later change).
 - Performance numbers go in [docs/performance.md](docs/performance.md) with the setup: an entry in
   `docs/data/performance-log.json`, then `python3 scripts/render_performance.py --write`.
 

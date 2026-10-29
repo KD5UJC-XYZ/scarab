@@ -26,14 +26,19 @@ Issue state (`--check` only): every issue of the register is read from GitHub in
   decision      no state rule: the item records a decision, whatever its issue's state (the issue must exist)
 
 An item without issues is not checked. Planned and in-progress are told apart by the issue's `status:` label, which
-this check does not read. With `--pr N` (CI passes the pull request under test; `--pr auto` reads the pull request of
-the current branch) the issues GitHub will close when that pull request merges (`closingIssuesReferences`, which holds
-only issues and only for a pull request into the default branch) count as closed, so the check judges the state after
-the merge: a pull request that closes an item's issue must also mark the item.
+this check does not read.
+
+Issue state is a property of the repository, not of a change, so it fails only the pull request that causes it. With
+`--pr N` (CI passes the pull request under test; `--pr auto` reads the pull request of the current branch) the issues
+GitHub will close when that pull request merges (`closingIssuesReferences`, which holds only issues and only for a pull
+request into the default branch) count as closed, and the disagreements after the merge are compared with those of the
+register at the pull request's base (read from GitHub at `baseRefOid`) under today's issue states. A disagreement the
+base already has (an issue closed or reopened by hand, or by another merge) is printed as a notice; one that the pull
+request brings (it edits an item, or closes an item's issue without marking the item) fails. Without `--pr` (a push
+to `main`, a branch without a pull request) every disagreement is a notice; the nightly triage report lists them.
 When `gh` is missing, unauthenticated or offline the state part (and the pull request read) is skipped with a notice
 and the exit status depends on the rest (`--require-issue-state`, which CI passes, makes that a failure);
-`--no-issue-state` skips it on purpose. Closing or reopening an issue by hand therefore needs the matching register
-edit, or the check fails on every branch.
+`--no-issue-state` skips it on purpose.
 
 Usage:
   python3 scripts/render_roadmap.py                      write docs/roadmap.md
@@ -328,14 +333,48 @@ def github_states(wanted: set[int], run: Gh = gh) -> dict[int, IssueState]:
     return states
 
 
+def resolve_pr(pr: str) -> str:
+    """`auto` is the pull request of the current branch, which `gh pr view` finds by the branch name."""
+    if pr != "auto":
+        return pr
+    return subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True,
+                          check=False).stdout.strip()
+
+
 def closed_by(pr: str, run: Gh = gh) -> set[int]:
-    """The issues GitHub closes when pull request `pr` merges; `auto` is the pull request of the current branch."""
-    if pr == "auto":
-        pr = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True,
-                            check=False).stdout.strip()
-    numbers = run(["pr", "view", pr, "--repo", REPOSITORY, "--json", "closingIssuesReferences",
+    """The issues GitHub closes when pull request `pr` merges."""
+    numbers = run(["pr", "view", resolve_pr(pr), "--repo", REPOSITORY, "--json", "closingIssuesReferences",
                    "--jq", ".closingIssuesReferences[].number"])
     return {int(n) for n in numbers.split() if n.isdigit()}
+
+
+def base_register(pr: str, run: Gh = gh) -> object | None:
+    """The register at the pull request's base commit, or None when the base has none (or an unreadable one)."""
+    base = run(["pr", "view", resolve_pr(pr), "--repo", REPOSITORY, "--json", "baseRefOid", "--jq", ".baseRefOid"]).strip()
+    try:
+        text = run(["api", f"repos/{REPOSITORY}/contents/{REGISTER}?ref={base}",
+                    "-H", "Accept: application/vnd.github.raw"])
+    except Unavailable as error:
+        if "404" in str(error) or "Not Found" in str(error):
+            return None
+        raise
+    try:
+        register = json.loads(text)
+    except ValueError:
+        return None
+    return register if not validate(register) else None
+
+
+def caused(after: Sequence[Problem], before: Sequence[Problem]) -> list[Problem]:
+    """The disagreements of `after` that `before` does not have, counted with multiplicity."""
+    remaining = list(before)
+    out = []
+    for problem in after:
+        if problem in remaining:
+            remaining.remove(problem)
+        else:
+            out.append(problem)
+    return out
 
 
 def after_merge(states: States, closing: set[int]) -> dict[int, IssueState]:
@@ -401,15 +440,37 @@ def load(root: Path) -> tuple[object, list[Problem]]:
     return register, validate(register)
 
 
-def run(root: Path, check: bool, states: States | None = None) -> tuple[list[Problem], str | None]:
-    """Validate and render; with `check`, also compare the committed file and, when `states` is given, the issues."""
+@dataclass(frozen=True)
+class Baseline:
+    """What issue-state disagreements a change is not charged with: those of the base register under today's
+    states. `register` None means the base has no register, so every disagreement is the change's."""
+    register: object | None
+    states: States
+
+
+def run(root: Path, check: bool, states: States | None = None, baseline: Baseline | None = None,
+        notices: list[Problem] | None = None) -> tuple[list[Problem], str | None]:
+    """Validate and render; with `check`, also compare the committed file and, when `states` is given, the issues.
+
+    With `baseline`, only the disagreements the change brings are problems; the rest go to `notices`. Without one,
+    and with `notices` given, every disagreement is a notice; with neither, every disagreement is a problem."""
     register, problems = load(root)
     if problems:
         return problems, None
     rendered = render(register)  # type: ignore[arg-type]
     if check:
         if states is not None:
-            problems += state_problems(register, states)  # type: ignore[arg-type]
+            found = state_problems(register, states)  # type: ignore[arg-type]
+            if baseline is not None:
+                before = [] if baseline.register is None else state_problems(baseline.register, baseline.states)  # type: ignore[arg-type]
+                new = caused(found, before)
+                problems += new
+                if notices is not None:
+                    notices += [p for p in found if p not in new]
+            elif notices is not None:
+                notices += found
+            else:
+                problems += found
         target = root / OUTPUT
         current = target.read_text(encoding="utf-8") if target.is_file() else None
         if current != rendered:
@@ -427,19 +488,27 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="fail instead of skipping when GitHub cannot be read (CI, where a token is always set)")
     args = parser.parse_args(argv)
     states: dict[int, IssueState] | None = None
+    baseline: Baseline | None = None
     wanted: set[int] = set()
     unavailable = False
     register, invalid = load(args.root)
     if args.check and not args.no_issue_state and not invalid:
         wanted = wanted_issues(register)  # type: ignore[arg-type]
         try:
-            states = github_states(wanted)
-            if args.pr:
-                states = after_merge(states, closed_by(args.pr))
+            base = base_register(args.pr) if args.pr else None
+            if base is not None:
+                wanted |= wanted_issues(base)  # type: ignore[arg-type]
+            current = github_states(wanted)
+            states = after_merge(current, closed_by(args.pr)) if args.pr else current
+            baseline = Baseline(base, current) if args.pr else None
         except Unavailable as error:
             print(f"roadmap register: notice: issue states NOT checked, GitHub unavailable ({error})", file=sys.stderr)
             states, unavailable = None, True
-    problems, rendered = run(args.root, args.check, states)
+    notices: list[Problem] = []
+    problems, rendered = run(args.root, args.check, states, baseline, notices)
+    for notice in notices:
+        print(f"roadmap register: notice (not caused by this change; the nightly triage report lists it): {notice}",
+              file=sys.stderr)
     if problems:
         for problem in problems:
             print(f"roadmap register: {problem}", file=sys.stderr)
