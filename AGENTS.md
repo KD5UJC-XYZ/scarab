@@ -12,17 +12,14 @@ they differ from this file or CONTRIBUTING, this file and CONTRIBUTING win.
 
 ## Before you start
 
-1. Read [docs/process.md](docs/process.md) (how work is tracked) and find the modules and suites the
-   work touches in [docs/codemap.md](docs/codemap.md).
-2. Run `python3 scripts/status.py` (`--area <area>` for one area) and check the issue's state. If it is
-   `status:in-progress` and you were not asked to take it over, someone else is on it.
-3. Find the issue's roadmap ID in [docs/roadmap.md](docs/roadmap.md), if it has one. A follow-up issue often
-   has none: then read the issue it follows up (linked in its body) and that issue's roadmap item.
-4. Read the issue, then any [design document](docs/design/README.md) and [ADRs](docs/adr/README.md) it
-   links, and the [decisions](docs/decisions.md) that cite it.
-5. Pick the [playbook](docs/playbooks/README.md) for the task, if one exists.
-6. Name the level of the change and its gates
-   ([CONTRIBUTING.md](CONTRIBUTING.md#gates-and-ceremony-by-level-of-change)).
+1. Run `python3 scripts/status.py --issue <N>` first. It prints the issue's state, labels and milestone, its
+   roadmap ID (or those of the issues it follows up), the [decisions](docs/decisions.md) that cite it, the
+   [playbooks](docs/playbooks/README.md) for its areas, a suggested level with its gates
+   ([CONTRIBUTING.md](CONTRIBUTING.md#gates-and-ceremony-by-level-of-change) decides), and its own triage
+   problems. If it is `status:in-progress` and you were not asked to take it over, someone else is on it.
+2. Read the issue, then any [design document](docs/design/README.md) and [ADRs](docs/adr/README.md) it links;
+   [docs/process.md](docs/process.md) says how work is tracked, and [docs/codemap.md](docs/codemap.md) where
+   the code and its suites are.
 
 Then:
 
