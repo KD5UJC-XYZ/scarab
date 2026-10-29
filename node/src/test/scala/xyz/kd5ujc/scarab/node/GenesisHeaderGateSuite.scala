@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.{IO, Ref}
+import cats.effect.{Deferred, IO, Ref}
 import fs2.concurrent.SignallingRef
 import cats.effect.testkit.TestControl
 import cats.mtl.{Ask, Stateful, Tell}
@@ -93,6 +93,24 @@ class GenesisHeaderGateSuite extends FailsOnUncaught:
         before.extend(header, header.blockNo).leftMap(e => new AssertionError(e.message))
       ).map(_._1)
     }
+
+  // issue 567 (H7): the session's own channel, which ends that connection; the suite's node-wide
+  // channel fails the test if it is told
+  test("an invariant met on a session's chain is told to that connection, not to the node") {
+    val headers = Fixtures.chain(3)
+    for
+      applied <- chain(headers, 50)
+      state <- Ref.of[IO, VolatileChain[BigInt]](applied)
+      given Stateful[IO, VolatileChain[BigInt]] = RefStateful(state)
+      given Ask[IO, ChainSelection.Local] = selected(state, headers)
+      told <- Deferred[IO, GenesisInternalProblem]
+      check = HeaderCheck
+        .forGenesisChain[IO, BigInt](model(100), Compute.inline[IO], 100)
+        .withInvariant(problem => told.complete(problem).void)
+      off = Fixtures.chain(1, salt = 9).head.point
+      problem <- check.start(off).background.use(_ => told.get.timeout(5.seconds))
+    yield assertEquals(problem, GenesisInternalProblem.HeaderSelectionUnavailable(off))
+  }
 
   test("canonical snapshots include and can graft the local immutable-to-intersection prefix") {
     val headers = Fixtures.chain(5)

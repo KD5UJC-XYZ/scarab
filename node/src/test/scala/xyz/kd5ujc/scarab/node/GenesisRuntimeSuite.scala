@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.Applicative
 import cats.effect.{IO, Ref}
 import cats.effect.testkit.TestControl
-import cats.mtl.Raise
+import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
 import java.time.Instant
 import scala.concurrent.duration.*
@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.consensus.{ChainSelection, HeaderChain, SelectView}
 import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity.{Fragment, LatestSlot}
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, Header, HeaderVrf, PeerError, VrfCert}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
-import xyz.kd5ujc.scarab.network.selection.{ChainSyncJumping, Gsm}
+import xyz.kd5ujc.scarab.network.selection.{ChainSyncJumping, FailureClass, Gsm}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
 
 class GenesisRuntimeSuite extends FailsOnUncaught:
@@ -252,16 +252,20 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
           .of[IO, Vector[xyz.kd5ujc.scarab.ledger.GenesisInternalProblem]](Vector.empty)
         acquired <- Ref.of[IO, Boolean](false)
         runtime <- setup()
-        _ <- GenesisRuntime
-          .controls(
-            Some(runtime),
-            None,
-            1,
-            None,
-            _ => IO.unit,
-            problem => failures.update(_ :+ problem)
+        _ <- Handle
+          .allow[PeerError](
+            GenesisRuntime
+              .controls(
+                Some(runtime),
+                None,
+                1,
+                None,
+                _ => IO.unit,
+                problem => failures.update(_ :+ problem)
+              )
+              .use(_ => acquired.set(true))
           )
-          .use(_ => acquired.set(true))
+          .rescue(error => IO(fail(s"unexpected $error")))
           .background
           .use { _ =>
             for
@@ -559,26 +563,56 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
         .InvalidConnectionIdentity(identityError)
     )
   do
-    test(s"production Genesis controls reject missing or invalid TCP identity: $metadata") {
+    // issue 567 (H7): an invariant of one connection ends that connection, not the node
+    test(s"a connection without a valid TCP identity ends, typed and uncharged: $metadata") {
       TestControl.executeEmbed {
         for
           problems <- Ref
             .of[IO, Vector[xyz.kd5ujc.scarab.ledger.GenesisInternalProblem]](Vector.empty)
           runtime <- setup()
           pool <- BlockPool.create[IO]
-          _ <- GenesisRuntime
-            .controls(
-              Some(runtime),
-              Some(pool),
-              1,
-              metadata,
-              _ => IO.unit,
-              problem => problems.update(_ :+ problem)
+          raised <- Handle
+            .allow[PeerError](
+              GenesisRuntime
+                .controls(
+                  Some(runtime),
+                  Some(pool),
+                  1,
+                  metadata,
+                  _ => IO.unit,
+                  problem => problems.update(_ :+ problem)
+                )
+                .use(_ => IO.raiseError(new AssertionError("invalid identity was accepted")))
+                .as(Option.empty[PeerError])
             )
-            .use(_ => IO.raiseError(new AssertionError("invalid identity was accepted")))
-            .background
-            .use(_ => IO.sleep(1.millis))
+            .rescue(error => IO.pure(Some(error)))
           seen <- problems.get
-        yield assertEquals(seen, Vector(expected))
+        yield
+          assertEquals(raised, Some(PeerError.GenesisInvariant(expected)))
+          assertEquals(seen, Vector.empty)
       }
     }
+
+  test("an invariant of one connection ends it, uncharged; one of the node's wiring stops it") {
+    import xyz.kd5ujc.scarab.ledger.GenesisInternalProblem as Problem
+    val point = ChainSync.Point.Origin
+    val ofConnection = List(
+      Problem.MissingConnectionIdentity,
+      Problem.MissingDynamoJumpInfo,
+      Problem.UnexpectedIntersection,
+      Problem.GraftMissingPoint(point),
+      Problem.HeaderTimeUnavailable(point),
+      Problem.HeaderSelectionUnavailable(point),
+      Problem.HeaderStateUnavailable(point)
+    )
+    ofConnection.foreach { problem =>
+      GenesisRuntime.ending(problem) match
+        case Right(error @ PeerError.GenesisInvariant(found)) =>
+          assertEquals(found, problem)
+          assertEquals(FailurePolicy.classify(error), FailureClass.NotThePeers)
+        case other => fail(s"unexpected $other for $problem")
+    }
+    List(Problem.MissingSharedBlockPool, Problem.UnsupportedHeaderFamily).foreach { problem =>
+      assertEquals(GenesisRuntime.ending(problem), Left(Fatal.Internal(problem)))
+    }
+  }

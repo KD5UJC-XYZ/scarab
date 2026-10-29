@@ -86,6 +86,12 @@ trait HeaderCheck[F[_]]:
 
   def withPatience(patience: LimitOnPatience[F]): HeaderCheck[F] = this
 
+  /** This check with `invariant` told an invariant of the Genesis code that does not hold on the
+    * session's chain, in place of the node-wide one: the connection's own, which ends that
+    * connection (issue 567, H7).
+    */
+  def withInvariant(invariant: GenesisInternalProblem => F[Unit]): HeaderCheck[F] = this
+
   def observed(observer: HeaderCheck.Event => F[Unit]): HeaderCheck[F] = this
 
 object HeaderCheck:
@@ -262,6 +268,22 @@ object HeaderCheck:
         publication,
         stateWitness,
         canonical
+      )
+
+    override def withInvariant(invariant: GenesisInternalProblem => F[Unit]): HeaderCheck[F] =
+      forChain(
+        rules,
+        compute,
+        warm,
+        stall,
+        poll,
+        retained,
+        observe,
+        added,
+        patience,
+        publication,
+        stateWitness,
+        canonical.map(_.copy(invariant = invariant))
       )
 
     override def observed(observer: Event => F[Unit]): HeaderCheck[F] =

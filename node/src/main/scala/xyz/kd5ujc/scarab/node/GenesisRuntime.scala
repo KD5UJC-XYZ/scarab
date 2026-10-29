@@ -2,7 +2,8 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Async, Ref, Resource}
-import cats.mtl.Handle
+import cats.mtl.{Handle, Raise}
+import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, HeaderChain}
 import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity.{Fragment, LatestSlot}
@@ -323,6 +324,31 @@ object GenesisRuntime:
       .min(BigInt(Int.MaxValue))
       .toInt
 
+  /** What an invariant of the Genesis code that does not hold ends: the connection it was met on,
+    * or the node. Most are of one connection, the reference's `ourBug` (`ShutdownPeer`,
+    * ouroboros-consensus 82ecba329 `Node/RethrowPolicy.hs`): that connection closes, uncharged. The
+    * shared block pool and the header family are the node's own wiring, which the reference's types
+    * fix when it is built: every connection would fail alike, so the node stops.
+    */
+  private[node] def ending(problem: GenesisInternalProblem): Either[Fatal, PeerError] =
+    problem match
+      case GenesisInternalProblem.MissingSharedBlockPool |
+          GenesisInternalProblem.UnsupportedHeaderFamily =>
+        Left(Fatal.Internal(problem))
+      case _: GenesisInternalProblem.PatienceWatcherFailed |
+          GenesisInternalProblem.MissingConnectionIdentity |
+          _: GenesisInternalProblem.InvalidConnectionIdentity |
+          GenesisInternalProblem.MissingDynamoJumpInfo |
+          GenesisInternalProblem.UnexpectedIntersection |
+          _: GenesisInternalProblem.GraftMissingPoint |
+          _: GenesisInternalProblem.HeaderTimeUnavailable |
+          _: GenesisInternalProblem.HeaderSelectionUnavailable |
+          _: GenesisInternalProblem.HeaderStateUnavailable =>
+        Right(PeerError.GenesisInvariant(problem))
+
+  /** The Genesis controls of one connection. `fatal` is told an invariant that does not hold in a
+    * fiber of the connection; one met while the controls are acquired is raised to the caller.
+    */
   def controls[F[_]: Async](
       runtime: Option[GenesisRuntime[F]],
       pool: Option[BlockPool[F]],
@@ -333,6 +359,8 @@ object GenesisRuntime:
       ]],
       disconnect: PeerError => F[Unit],
       fatal: GenesisInternalProblem => F[Unit]
+  )(using
+      Raise[F, PeerError]
   ): Resource[F, (Option[FetchCoordinator.Session[F]], Option[Bound[F]])] =
     (runtime, pool) match
       case (Some(genesis), Some(shared)) =>
@@ -341,13 +369,15 @@ object GenesisRuntime:
             Resource.pure[F, GenesisGovernor.OrderKey](GenesisGovernor.OrderKey.Tcp(connection))
           case Some(Left(cause)) =>
             Resource.eval(
-              fatal(GenesisInternalProblem.InvalidConnectionIdentity(cause)) *> Async[F]
-                .never[GenesisGovernor.OrderKey]
+              PeerError
+                .GenesisInvariant(GenesisInternalProblem.InvalidConnectionIdentity(cause))
+                .raise[F, GenesisGovernor.OrderKey]
             )
           case None =>
             Resource.eval(
-              fatal(GenesisInternalProblem.MissingConnectionIdentity) *> Async[F]
-                .never[GenesisGovernor.OrderKey]
+              PeerError
+                .GenesisInvariant(GenesisInternalProblem.MissingConnectionIdentity)
+                .raise[F, GenesisGovernor.OrderKey]
             )
         key
           .flatMap(order => genesis.bind(shared, identity, disconnect, fatal, order))
