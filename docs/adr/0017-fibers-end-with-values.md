@@ -381,9 +381,8 @@ The owner decision of the amendment above, applied to three paths it left open (
   again (`BlockBuilder.select`: the evaluator, a crypto provider, a state out of range) is withheld: it leaves the
   pool with its reason (`Mempool.withdraw`, `Dropped`) and the block is built from the rest. The reference has no such
   case: the exception ends its linked forging thread and the node stops (ouroboros-consensus `82ecba32`
-  `NodeKernel.hs` `forkBlockForging`; `compactCoinOrError`, cardano-ledger `f649f975` `Coin.hs` 184-188). This is a
-  deviation the owner approved explicitly on 2026-10-28: "this is the behavior I want, THIS IS THE EXPLICIT OWNER
-  APPROVAL", for "the transaction leaves the pool and the block is built from the rest".
+  `NodeKernel.hs` `forkBlockForging`; `compactCoinOrError`, cardano-ledger `f649f975` `Coin.hs` 184-188). This is an
+  owner-approved deviation (2026-10-28, issue 584).
 - **The forger's tick.** A tick of the tip's state whose state is out of range leaves the ledger view of the slot
   unavailable, as any other tick failure (`ForgeError.LedgerViewUnavailable`): the slot ends, and the node goes on.
 - **A crypto provider failing on a header.** The connection still closes in both directions, but nothing is counted
