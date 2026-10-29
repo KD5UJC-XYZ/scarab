@@ -148,15 +148,19 @@ object LiteLedger:
         .downField("minor")
         .as[BigInt]
         .leftMap(err("minor", _))
-      d <- pp.downField("decentralisationParam").as[BigDecimal].leftMap(err("d", _))
+      d <- GenesisSchema.ratio(GenesisFile.Shelley, json.BoundedRatio.Unit)(
+        pp.downField("decentralisationParam"),
+        Vector("protocolParams", "decentralisationParam")
+      )
+      // `parseNonce` (cardano-ledger f649f975 Shelley/Genesis.hs:427-437): the tag is required
       tag <- pp
         .downField("extraEntropy")
         .downField("tag")
-        .as[Option[String]]
+        .as[String]
         .leftMap(err("entropy", _))
       entropy <- tag match
-        case None | Some("NeutralNonce") => Right(Nonce.Neutral)
-        case Some(_) =>
+        case "NeutralNonce" => Right(Nonce.Neutral)
+        case "Nonce" =>
           pp.downField("extraEntropy")
             .downField("contents")
             .as[String]
@@ -164,15 +168,21 @@ object LiteLedger:
             .flatMap(h =>
               Bytes.fromHex(h).leftMap(e => ConfigError(ConfigProblem.Hex(e))).map(Nonce.Hash(_))
             )
+        case other =>
+          Left(
+            ConfigError(
+              ConfigProblem.Selection("extraEntropy tag", other, Set("Nonce", "NeutralNonce"))
+            )
+          )
       maxBB <- pp.downField("maxBlockBodySize").as[BigInt].leftMap(err("maxBlockBodySize", _))
       maxTx <- pp.downField("maxTxSize").as[BigInt].leftMap(err("maxTxSize", _))
       maxBH <- pp.downField("maxBlockHeaderSize").as[BigInt].leftMap(err("maxBlockHeaderSize", _))
-      quorum <- c.downField("updateQuorum").as[Int].leftMap(err("updateQuorum", _))
+      quorum <- GenesisSchema.updateQuorum(shelley)
       delegs <- c
         .downField("genDelegs")
-        .as[Option[Map[String, Map[String, String]]]]
+        .as[Map[String, Map[String, String]]]
         .leftMap(err("genDelegs", _))
-        .flatMap(_.getOrElse(Map.empty).toVector.traverse { case (g, m) =>
+        .flatMap(_.toVector.traverse { case (g, m) =>
           for
             gk <- Bytes.fromHex(g).leftMap(e => ConfigError(ConfigProblem.Hex(e)))
             dk <- m
@@ -187,7 +197,7 @@ object LiteLedger:
         })
     yield LiteLedger(
       startEpoch,
-      LiteParams((major, minor), Rational.fromDecimal(d), entropy, maxBB, maxTx, maxBH),
+      LiteParams((major, minor), d, entropy, maxBB, maxTx, maxBH),
       delegs.toMap,
       Vector.empty,
       Map.empty,
