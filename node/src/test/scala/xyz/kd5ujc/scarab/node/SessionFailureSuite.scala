@@ -72,10 +72,10 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   /** Run a session of the follower over a peer that announces `headers` in turn and then waits.
     * `refuse` is the header the rules reject, `breakStorage` the number of the block whose
     * persistence fails, `breakTip` the number of the block after which telling the mempool fails,
-    * `explode` the number of the block whose rules throw, `throwTip` the number of the block after
-    * which telling the mempool throws, `fetchThrows` the number of the block whose fetch throws,
-    * `unverifiable` the number of the block on which a crypto provider fails and the failure the
-    * rules report for it.
+    * `explode` the number of the block whose rules throw (`throwEagerly`: while they build their
+    * effect), `throwTip` the number of the block after which telling the mempool throws,
+    * `fetchThrows` the number of the block whose fetch throws, `unverifiable` the number of the
+    * block on which a crypto provider fails and the failure the rules report for it.
     */
   private def session(
       script: List[Either[PeerError, SyncEvent]] =
@@ -84,6 +84,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       breakStorage: Option[Int] = None,
       breakTip: Option[Int] = None,
       explode: Option[Int] = None,
+      throwEagerly: Option[Int] = None,
       throwTip: Option[Int] = None,
       fetchThrows: Option[Int] = None,
       unavailable: Option[Int] = None,
@@ -123,6 +124,9 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         rules: BlockRules[IO, BigInt] = BlockRules.from { (_, header, _) =>
           if explode.contains(header.blockNo.toInt) then
             IO.raiseError(new IllegalStateException("a bug in the rules"))
+          // a bug that throws while the rules build their effect, before any `IO` runs
+          else if throwEagerly.contains(header.blockNo.toInt) then
+            throw new IllegalStateException("a bug building the rules' effect")
           else if unavailable.contains(header.blockNo.toInt) then
             Raise[IO, ValidationError].raise[ValidationError, BigInt](
               ValidationError(
@@ -288,6 +292,14 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     session(explode = Some(1)).map { left =>
       withheld(left, 1) { case BlockNoVerdict.Defect(cause) =>
         assertEquals(cause.getMessage, "a bug in the rules")
+      }
+    }
+  }
+
+  test("rules that throw while they build their effect withhold the block too") {
+    session(throwEagerly = Some(1)).map { left =>
+      withheld(left, 1) { case BlockNoVerdict.Defect(cause) =>
+        assertEquals(cause.getMessage, "a bug building the rules' effect")
       }
     }
   }

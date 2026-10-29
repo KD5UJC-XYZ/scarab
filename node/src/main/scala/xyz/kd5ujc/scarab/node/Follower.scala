@@ -577,14 +577,18 @@ final class Follower[F[_]: Async, S] private (
                   )
                   .unlessA(previous.addedPoint.contains(header.point))
                 // The judgement alone, in a scope that never raises outward: an exception it throws
-                // is the rules', not an outer scope's.
-                judged = Handle
-                  .allow[NodeError](
-                    rules(before.state, header, block).map(state =>
-                      Right(state): Either[NodeError, S]
-                    )
+                // is the rules', not an outer scope's. It is built inside `defer`: `rescue` invokes
+                // its body at once (cats-mtl 1.7.0), so rules that throw while they build their
+                // effect are caught too.
+                judged = F
+                  .defer(
+                    Handle
+                      .allow[NodeError](
+                        rules(before.state, header, block)
+                          .map(state => Right(state): Either[NodeError, S])
+                      )
+                      .rescue(error => F.pure(Left(error)))
                   )
-                  .rescue(error => F.pure(Left(error)))
                   .attempt
                 checked = judged.flatMap {
                   case Right(Right(state)) => F.pure(Right(state): Either[Judged, S])
