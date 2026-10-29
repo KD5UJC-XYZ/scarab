@@ -16,7 +16,8 @@ they differ from this file or CONTRIBUTING, this file and CONTRIBUTING win.
    work touches in [docs/codemap.md](docs/codemap.md).
 2. Run `python3 scripts/status.py` (`--area <area>` for one area) and check the issue's state. If it is
    `status:in-progress` and you were not asked to take it over, someone else is on it.
-3. Find the issue's roadmap ID in [docs/roadmap.md](docs/roadmap.md).
+3. Find the issue's roadmap ID in [docs/roadmap.md](docs/roadmap.md), if it has one. A follow-up issue often
+   has none: then read the issue it follows up (linked in its body) and that issue's roadmap item.
 4. Read the issue, then any [design document](docs/design/README.md) and [ADRs](docs/adr/README.md) it
    links, and the [decisions](docs/decisions.md) that cite it.
 5. Pick the [playbook](docs/playbooks/README.md) for the task, if one exists.
