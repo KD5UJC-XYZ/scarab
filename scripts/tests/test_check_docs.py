@@ -189,7 +189,7 @@ class FragmentLinkTest(DocsCase):
         files = {
             "docs/a.md": "# A\n",
             "changes/1-x.md": "### Fixed (x, #1)\n- [rel](../docs/a.md) [root](docs/a.md) [abs](https://github.com/o/r/blob/0123abc/docs/a.md)\n"
-                              "- `RuleSet.Old` and `fixtures/gone/` are history.\n",
+                              "- `Retired.member` and `fixtures/gone/` are history.\n",
             "changes/README.md": "[ok](../docs/a.md) [gone](../docs/missing.md)\n",
         }
         self.assertEqual(sorted(self.kinds(files), key=str), sorted([
