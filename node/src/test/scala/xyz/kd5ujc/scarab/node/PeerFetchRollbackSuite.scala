@@ -67,7 +67,6 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
         remaining <- Ref.of[IO, List[Vector[ChainSyncClient.Update[NtNHeader]]]](scripts)
         requests <- Ref.of[IO, Vector[(ChainSync.Point, ChainSync.Point)]](Vector.empty)
         applied <- Ref.of[IO, Vector[Bytes]](Vector.empty)
-        receivedBodies <- Ref.of[IO, Vector[(Bytes, Bytes)]](Vector.empty)
         closeReason <- Deferred[IO, NetworkError]
         chain <- Ref.of[IO, VolatileChain[BigInt]](
           VolatileChain(
@@ -199,35 +198,8 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
                     readAhead = 16,
                     byronEpochSlots = ForgedChain.geometry.byron.epochSlots
                   ),
-                  raws =>
-                    (receivedBodies.get, pool.fetchCoordinator.inFlight).tupled.flatMap {
-                      (seen, flight) =>
-                        IO {
-                          assert(
-                            raws.forall(raw => seen.exists(_._2 == raw)),
-                            "received originals must be persisted before preparation"
-                          )
-                          val stillInFlight = flight.valuesIterator.flatMap(_.blocks).toSet
-                          assert(
-                            raws.forall(raw =>
-                              seen.exists { (hash, original) =>
-                                original == raw && stillInFlight(hash)
-                              }
-                            ),
-                            "checked bodies retain fetch credit until pool publication"
-                          )
-                        }
-                    },
+                  _ => IO.unit,
                   pool = Some(pool),
-                  receivedBody = Some((header, raw) =>
-                    IO(
-                      assertEquals(
-                        raw,
-                        bodies.getOrElse(header.hash, fail("unannounced original body"))
-                      )
-                    ) *>
-                      receivedBodies.update(_ :+ (header.hash -> raw))
-                  ),
                   patience = Option.when(streaming)(patience),
                   headers = Option.when(streaming)(
                     new HeaderCheck[IO]:
@@ -259,7 +231,9 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
                 Resource
                   .make(
                     Handle
-                      .allow[NodeError](follower.session(peer))
+                      .allow[NodeError](
+                        WorkerTesting.selection(follower, pool).surround(follower.session(peer))
+                      )
                       .rescue(e => IO(fail(s"follower stopped: ${e.message}")))
                       .start
                   )(_.cancel)

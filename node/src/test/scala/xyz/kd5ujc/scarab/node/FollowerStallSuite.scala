@@ -22,7 +22,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ValidationError
 }
 import xyz.kd5ujc.scarab.storage.ChainPersistence
-import cats.effect.{Deferred, IO, Ref}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
 import cats.mtl.{Handle, Stateful}
 import cats.mtl.syntax.all.*
@@ -302,20 +302,24 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               GsmRunner.Marker.none[IO],
               LedgerPeersSource.none[IO]
             )
-            reconnects <- network.flatTap(_ => FetchTesting.decisions(pool)).use { net =>
-              // as in Main: the governor runs beside the node, and ends it only by a fault
-              // Live cache occupancy is not pending-claim ownership. BlockPoolSuite checks
-              // scoped claim release while allowing filled blocks to remain cached.
-              net.run.background.use { _ =>
-                eventually("our chain reaches the tip")(chainRef.get.map(_.tip))(_ == last.point) *>
-                  // the stalling peer failed: a typed, logged loss of the connection
-                  eventually("the stalling peer is lost")(seen.get)(_.exists {
-                    case FollowerEvent.Reconnecting(_: PeerError.Unavailable, _) => true
-                    case _                                                       => false
-                  }) <*
-                  net.fatal.tryGet.map(fault => assertEquals(fault, None))
+            reconnects <- network
+              .flatTap(_ => FetchTesting.decisions(pool) *> WorkerTesting.selection(follower, pool))
+              .use { net =>
+                // as in Main: the governor runs beside the node, and ends it only by a fault
+                // Live cache occupancy is not pending-claim ownership. BlockPoolSuite checks
+                // scoped claim release while allowing filled blocks to remain cached.
+                net.run.background.use { _ =>
+                  eventually("our chain reaches the tip")(chainRef.get.map(_.tip))(
+                    _ == last.point
+                  ) *>
+                    // the stalling peer failed: a typed, logged loss of the connection
+                    eventually("the stalling peer is lost")(seen.get)(_.exists {
+                      case FollowerEvent.Reconnecting(_: PeerError.Unavailable, _) => true
+                      case _                                                       => false
+                    }) <*
+                    net.fatal.tryGet.map(fault => assertEquals(fault, None))
+                }
               }
-            }
             asked <- ranges.get
             stopped <- fatals.get
           yield
@@ -376,7 +380,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           measured <- EventMetrics.create[IO](using summon, metrics)
           lost <- Reconnects.create[IO](events.alongside(measured.follower))
           fatals <- Ref.of[IO, Vector[Fatal]](Vector.empty)
-          pool <- BlockPool.create[IO]
+          pool <- WorkerTesting.pool(follower)
           garbled <- serving(forged.raws).flatMap(garbling)
           (bad, malformed) = garbled
           good <- serving(forged.raws)
@@ -438,25 +442,27 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             GsmRunner.Marker.none[IO],
             LedgerPeersSource.none[IO]
           )
-          _ <- network.flatTap(_ => FetchTesting.decisions(pool)).use { net =>
-            net.run.background.use { _ =>
-              eventually("our chain reaches the tip")(chainRef.get.map(_.tip))(_ == last.point) *>
-                // Native transport decoding precedes ChainDB admission: this exact typed protocol
-                // failure forgets its sender without poisoning the valid announced header hash.
-                eventually("the lying peer is lost")(seen.get)(_.exists {
-                  case FollowerEvent.Reconnecting(
-                        PeerError.Protocol(
-                          PeerError.ProtocolProblem
-                            .FetchedBlockIntegrity(_: BlockTransportError.Decode)
-                        ),
-                        _
-                      ) =>
-                    true
-                  case _ => false
-                }) *>
-                net.fatal.tryGet.map(fault => assertEquals(fault, None))
+          _ <- network
+            .flatTap(_ => FetchTesting.decisions(pool) *> WorkerTesting.selection(follower, pool))
+            .use { net =>
+              net.run.background.use { _ =>
+                eventually("our chain reaches the tip")(chainRef.get.map(_.tip))(_ == last.point) *>
+                  // Native transport decoding precedes ChainDB admission: this exact typed protocol
+                  // failure forgets its sender without poisoning the valid announced header hash.
+                  eventually("the lying peer is lost")(seen.get)(_.exists {
+                    case FollowerEvent.Reconnecting(
+                          PeerError.Protocol(
+                            PeerError.ProtocolProblem
+                              .FetchedBlockIntegrity(_: BlockTransportError.Decode)
+                          ),
+                          _
+                        ) =>
+                      true
+                    case _ => false
+                  }) *>
+                  net.fatal.tryGet.map(fault => assertEquals(fault, None))
+              }
             }
-          }
           served <- malformed.tryGet
           stopped <- fatals.get
           invalid <- pool.invalidBlocks.snapshot
@@ -556,7 +562,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             persistence = Some(failing)
           )
           fatals <- Ref.of[IO, Vector[Fatal]](Vector.empty)
-          pool <- BlockPool.create[IO]
+          pool <- WorkerTesting.pool(follower)
           good <- serving(forged.raws)
           peers <- InMemoryPeers.create(magic)
           first = InMemoryPeers.address(1)
@@ -613,12 +619,23 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           _ <- pool.session.use { origin =>
             val unavailable =
               injected == FatalCase.Unavailable || injected == FatalCase.UnavailablePhase1
+            // another session delivered these checked originals; the worker adopts them
             val loaned = forged.headers
               .take(8)
               .zip(forged.raws.take(8))
-              .map((header, raw) => header.hash -> raw)
-            (origin.claim(loaned.map(_._1)) *> origin.fill(loaned)).whenA(unavailable) *>
-              network.flatTap(_ => FetchTesting.decisions(pool)).use { net =>
+              .map((header, raw) =>
+                BlockPool.Delivered.checked(header, raw).fold(e => fail(e.message), identity)
+              )
+            network
+              .flatTap(_ =>
+                FetchTesting.decisions(pool) *>
+                  WorkerTesting.selection(follower, pool, f => fatals.update(_ :+ f)) *>
+                  Resource.eval(
+                    (origin.claim(loaned.map(_.header.hash)) *> origin.fillDelivered(loaned))
+                      .whenA(unavailable)
+                  )
+              )
+              .use { net =>
                 net.run.background.use { _ =>
                   if unavailable then
                     eventually("the block is withheld")(seen.get)(_.exists {
@@ -630,12 +647,12 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               } *>
               (for
                 blamed <- origin.blamed.map(Option(_)).timeoutTo(50.millis, IO.pure(None))
-                retained <- pool.take(loaned.last._1)
+                retained <- pool.take(loaned.last.header.hash)
               yield
                 assertEquals(blamed, None)
                 // The failing block was borrowed. Treating unavailability as a rejection would
                 // call over.refused/distrust, blame its origin and discard this remaining block.
-                assertEquals(retained, Some(loaned.last._2))
+                assertEquals(retained, Some(loaned.last.block))
               ).whenA(unavailable)
           }
           stopped <- fatals.get
@@ -695,7 +712,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         twice <- Deferred[IO, Unit]
         fatals <- Ref.of[IO, Vector[Fatal]](Vector.empty)
         governor <- Ref.of[IO, Vector[Output[PeerNetwork.Addr]]](Vector.empty)
-        pool <- BlockPool.create[IO]
+        pool <- WorkerTesting.pool(follower)
         good <- serving(forged.raws)
         peers <- InMemoryPeers.create(magic)
         first = InMemoryPeers.address(1)
@@ -752,35 +769,37 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           GsmRunner.Marker.none[IO],
           LedgerPeersSource.none[IO]
         )
-        stillRunning <- network.flatTap(_ => FetchTesting.decisions(pool)).use { net =>
-          net.run.background.use { outcome =>
-            // what was reported, what was opened and what the governor did, for a run in which
-            // the reports do not come
-            def stuck(why: String): IO[Nothing] =
-              (lost.get, fatals.get, peers.connections, governor.get).tupled.flatMap {
-                (seen, stopped, opened, trace) =>
-                  IO(
-                    fail(
-                      s"$why: lost $seen, fatal $stopped, connections $opened, governor" +
-                        trace.takeRight(60).mkString("\n  ", "\n  ", "")
+        stillRunning <- network
+          .flatTap(_ => FetchTesting.decisions(pool) *> WorkerTesting.selection(follower, pool))
+          .use { net =>
+            net.run.background.use { outcome =>
+              // what was reported, what was opened and what the governor did, for a run in which
+              // the reports do not come
+              def stuck(why: String): IO[Nothing] =
+                (lost.get, fatals.get, peers.connections, governor.get).tupled.flatMap {
+                  (seen, stopped, opened, trace) =>
+                    IO(
+                      fail(
+                        s"$why: lost $seen, fatal $stopped, connections $opened, governor" +
+                          trace.takeRight(60).mkString("\n  ", "\n  ", "")
+                      )
                     )
-                  )
-              }
-            for
-              // two reports, or the node ending before them; the bound only turns reports that
-              // never come into a failure that says so
-              waited <- IO
-                .race(twice.get, outcome)
-                .timeoutTo(60.seconds, stuck("two losses are not reported"))
-              _ <- waited.fold(
-                _ => IO.unit,
-                ended => stuck(s"the node ended ($ended) before two losses were reported")
-              )
-              // the node does not end
-              ended <- outcome.map(Option(_)).timeoutTo(500.millis, IO.pure(None))
-            yield ended.isEmpty
+                }
+              for
+                // two reports, or the node ending before them; the bound only turns reports that
+                // never come into a failure that says so
+                waited <- IO
+                  .race(twice.get, outcome)
+                  .timeoutTo(60.seconds, stuck("two losses are not reported"))
+                _ <- waited.fold(
+                  _ => IO.unit,
+                  ended => stuck(s"the node ended ($ended) before two losses were reported")
+                )
+                // the node does not end
+                ended <- outcome.map(Option(_)).timeoutTo(500.millis, IO.pure(None))
+              yield ended.isEmpty
+            }
           }
-        }
         reported <- lost.get
         stopped <- fatals.get
         opened <- peers.connections
