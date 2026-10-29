@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
+import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigNumberField, ConfigProblem}
+import xyz.kd5ujc.scarab.ledger.json.FromJson
 import cats.syntax.all.*
 import io.circe.{Decoder, HCursor, Json, parser}
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -233,6 +234,19 @@ object NodeConfig:
           _.as[A].leftMap(e => ConfigError(ConfigProblem.JsonField("configuration", name, e)))
         )
 
+    /** `FromJSON Word64` (`parseBoundedIntegral`): `EpochNo` derives it, and `Word` is 64 bits wide
+      * on the platforms the reference is built for.
+      */
+    def word64(field: ConfigNumberField): Either[ConfigError, Option[BigInt]] =
+      c.downField(field.key)
+        .focus
+        .filterNot(_.isNull)
+        .traverse(
+          FromJson
+            .word64(_)
+            .bimap(e => ConfigError(ConfigProblem.ConfigNumber(field, e)), _.toBigInt)
+        )
+
     def hash(name: String): Either[ConfigError, Option[Bytes]] =
       opt[String](name).flatMap(
         _.traverse(h =>
@@ -317,10 +331,10 @@ object NodeConfig:
       k = Keys(json.hcursor)
       byronHash <- k.hash("ByronGenesisHash")
       forks <- Eras.traverse(era =>
-        k.opt[BigInt](s"Test${era}HardForkAtEpoch").map(_.map(era -> _))
+        k.word64(ConfigNumberField.HardForkAtEpoch(era)).map(_.map(era -> _))
       )
       versions <- Eras.traverse(era =>
-        k.opt[BigInt](s"Test${era}HardForkAtVersion").map(_.map(era -> _))
+        k.word64(ConfigNumberField.HardForkAtVersion(era)).map(_.map(era -> _))
       )
       magic <- k
         .opt[String]("RequiresNetworkMagic")

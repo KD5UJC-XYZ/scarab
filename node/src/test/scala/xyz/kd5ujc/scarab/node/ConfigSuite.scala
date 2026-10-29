@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import scala.annotation.unused
-import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
+import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigNumberField, ConfigProblem}
 import io.circe.Json
 import io.circe.parser
 import java.nio.file.{Files, Path}
@@ -227,6 +227,42 @@ class ConfigSuite extends FunSuite:
       ("shelley-genesis.json", "shelley-genesis.json")
     )
     assertEquals(config.settings.lastKnownBlockVersion, Some((3, 0, 0)))
+  }
+
+  test("the hard-fork triggers are read as the reference's EpochNo and Word: Word64 numbers") {
+    val base = parser.parse(text("preprod", "config.json")).toOption.get
+    def parse(key: String, value: Json) =
+      NodeConfig.parse(base.deepMerge(Json.obj(key -> value)).noSpaces)
+    val beyond = Json.fromBigInt(BigInt(2).pow(64))
+    val max = BigInt(2).pow(64) - 1
+    def refused(key: String, value: Json, field: ConfigNumberField) =
+      parse(key, value).left.map(_.problem) match
+        case Left(ConfigProblem.ConfigNumber(`field`, _)) => ()
+        case other                                        => fail(s"$key = $value: $other")
+    val epoch = ConfigNumberField.HardForkAtEpoch(Era.Shelley)
+    refused("TestShelleyHardForkAtEpoch", beyond, epoch)
+    refused("TestShelleyHardForkAtEpoch", Json.fromInt(-1), epoch)
+    refused("TestShelleyHardForkAtEpoch", Json.fromDoubleOrNull(1.5), epoch)
+    refused("TestShelleyHardForkAtEpoch", Json.fromString("5"), epoch)
+    refused(
+      "TestConwayHardForkAtVersion",
+      beyond,
+      ConfigNumberField.HardForkAtVersion(Era.Conway)
+    )
+    assertEquals(
+      parse("TestShelleyHardForkAtEpoch", Json.fromBigInt(max)).map(_.firstShelleyEpoch),
+      Right(Some(max))
+    )
+    // `parseBoundedIntegral` takes any notation of a whole number, and `.:?` reads null as absent
+    val notations = parser.parse("""{"TestShelleyHardForkAtEpoch": 0.5e1}""").toOption.get
+    assertEquals(
+      NodeConfig.parse(base.deepMerge(notations).noSpaces).map(_.firstShelleyEpoch),
+      Right(Some(BigInt(5)))
+    )
+    assertEquals(
+      parse("TestShelleyHardForkAtEpoch", Json.Null).map(_.firstShelleyEpoch),
+      Right(None)
+    )
   }
 
   test("Genesis bucket settings preserve the reference signed-integer domain") {
