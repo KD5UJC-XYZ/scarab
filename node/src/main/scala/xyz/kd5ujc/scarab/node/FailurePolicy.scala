@@ -43,6 +43,8 @@ object FailurePolicy:
     // reference ends the peer (`ShutdownPeer`, its default); the node goes on and the peer is not
     // charged (owner decision 2026-10-28, issue 567)
     case _: PeerError.ConnectionDefect => FailureClass.NotThePeers
+    // the same for an invariant of our own Genesis code on the connection (issue 567, H7)
+    case _: PeerError.GenesisInvariant => FailureClass.NotThePeers
     // Consensus 82ecba329 Node/RethrowPolicy.hs maps every ChainSyncClientException,
     // including EmptyBucket, DensityTooLow and HistoricityError, to ShutdownPeer.
     // Network 2fb69829 PeerStateActions.hs uses epErrorDelay (10s default), preserving

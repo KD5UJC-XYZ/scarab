@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.node.{
   Fatal,
   InboundEvent,
   LedgerPeersTrace,
+  LocalRootsTrace,
   Main,
   NodeConfig,
   StallDiagnostics,
@@ -163,6 +164,9 @@ enum NodeEvent:
   /** The ledger-peers worker (G1.3): the snapshot, the stake maps it rebuilt, the pools it skipped.
     */
   case LedgerPeers(trace: LedgerPeersTrace)
+
+  /** The local roots' DNS: a lookup that threw. */
+  case LocalRoots(trace: LocalRootsTrace)
 
   /** The counters of the peer governor changed. */
   case PeerCounters(counters: GovernorState.Counters)
@@ -530,6 +534,7 @@ object NodeEvent:
     case PeerSelection(trace)        => PeerSelectionLines.trace(trace)
     case PeerChurn(trace)            => PeerSelectionLines.churn(trace)
     case LedgerPeers(trace)          => PeerSelectionLines.ledger(trace)
+    case LocalRoots(trace)           => PeerSelectionLines.localRoots(trace)
     case PeerCounters(counters)      => PeerSelectionLines.counters(counters)
     case OutboundConnections(state)  => PeerSelectionLines.outbound(state)
     case GsmTransition(phase, event) => PeerSelectionLines.gsm(phase, event)

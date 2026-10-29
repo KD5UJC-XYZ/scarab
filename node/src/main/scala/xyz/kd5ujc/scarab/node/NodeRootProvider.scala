@@ -10,6 +10,13 @@ import xyz.kd5ujc.scarab.ledger.LedgerRelay
 import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.network.selection.Rng
 
+/** What the local roots' DNS tells besides its answers (`TraceLocalRootPeers`,
+  * `RootPeersDNS/LocalRootPeers.hs` of ouroboros-network 2fb69829).
+  */
+enum LocalRootsTrace:
+  /** The lookup of `domain` threw (`TraceLocalRootError`); the lookups start again at once. */
+  case Error(domain: DnsName, cause: Throwable)
+
 /** The roots the governor asks for, from the topology and from the ledger
   * (`requestPublicRootPeersImpl`, `Cardano/Network/PeerSelection/PeerSelectionActions.hs` 40-100,
   * and `Ouroboros/Network/PeerSelection/PeerSelectionActions.hs` 125-184):
@@ -34,6 +41,10 @@ object NodeRootProvider:
   private[node] enum LocalDnsInput:
     case Host(name: DnsName, port: Port)
     case Service(name: DnsName)
+
+    def domain: DnsName = this match
+      case Host(name, _) => name
+      case Service(name) => name
 
   /** Includes source position for duplicate entries and the configured name for stale pruning. */
   private[node] final case class LocalDnsKey(

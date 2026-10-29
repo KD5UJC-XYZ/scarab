@@ -481,17 +481,20 @@ final class Follower[F[_]: Async, S] private (
   /** The judgement of one block before anything of it is committed (R1, issue 567): valid, refused
     * by the protocol's rules, or no verdict of ours. `run` applies the rules in a scope of its own,
     * which never raises outward, so an exception it throws is the rules', not an outer scope's;
-    * storage and every other failure of the node are raised to the caller.
+    * storage and every other failure of the node are raised to the caller. The scope is built
+    * inside `defer`: `rescue` invokes its body at once (cats-mtl 1.7.0), so rules that throw while
+    * they build their effect are caught too.
     */
   private def judge(run: Raise[F, NodeError] ?=> F[S])(using
       Raise[F, NodeError]
   ): F[Either[Judged, S]] =
-    Handle
-      .allow[NodeError]((scope: Handle[F, NodeError]) ?=>
-        run(using scope).map(state => Right(state): Either[NodeError, S])
-      )
-      .rescue(error => F.pure(Left(error)))
-      .attempt
+    F.defer(
+      Handle
+        .allow[NodeError]((scope: Handle[F, NodeError]) ?=>
+          run(using scope).map(state => Right(state): Either[NodeError, S])
+        )
+        .rescue(error => F.pure(Left(error)))
+    ).attempt
       .flatMap {
         case Right(Right(state)) => F.pure(Right(state): Either[Judged, S])
         // No verdict is no refusal: the block is neither adopted nor recorded as invalid

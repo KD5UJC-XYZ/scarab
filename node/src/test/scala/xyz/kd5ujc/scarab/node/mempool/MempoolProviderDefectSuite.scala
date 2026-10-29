@@ -147,6 +147,11 @@ class MempoolProviderDefectSuite extends CatsEffectSuite:
       assertEquals(after.entries.map(_.id), Vector(id2))
       assertEquals(dropped(events), Vector(MempoolEvent.Dropped(id1, reason)))
       assert(!events.exists(_.isInstanceOf[MempoolEvent.Removed]), events.toString)
+      // the summary counts the withdrawn one among the dropped
+      assertEquals(
+        events.collect { case MempoolEvent.Synced(_, _, dropped) => dropped }.lastOption,
+        Some(1)
+      )
     }
   }
 

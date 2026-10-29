@@ -308,16 +308,20 @@ object Mempool:
       }
 
       def removeTxsEvenIfValid(ids: Set[Bytes])(using Raise[F, StorageError]) =
-        removing(ids, entry => events.emit(MempoolEvent.Removed(entry.id)))
+        removing(ids, entry => events.emit(MempoolEvent.Removed(entry.id)), droppedNamed = false)
 
       def withdraw(reasons: Map[Bytes, Rejection])(using Raise[F, StorageError]) =
         removing(
           reasons.keySet,
           entry =>
-            reasons.get(entry.id).traverse_(r => events.emit(MempoolEvent.Dropped(entry.id, r)))
+            reasons.get(entry.id).traverse_(r => events.emit(MempoolEvent.Dropped(entry.id, r))),
+          droppedNamed = true
         )
 
-      private def removing(ids: Set[Bytes], report: Entry => F[Unit])(using
+      /** Remove `ids` and revalidate the rest; `droppedNamed` counts the named ones among the dropped
+        * of the summary (`Synced`), as a withdrawal drops them.
+        */
+      private def removing(ids: Set[Bytes], report: Entry => F[Unit], droppedNamed: Boolean)(using
           Raise[F, StorageError]
       ): F[Vector[(Entry, Rejection)]] =
         lock.lock.surround {
@@ -343,7 +347,11 @@ object Mempool:
                     events.emit(MempoolEvent.Dropped(entry.id, reason))
                   }
                   _ <- events.emit(
-                    MempoolEvent.Synced(next.entries.size, next.bytes, dependants.size)
+                    MempoolEvent.Synced(
+                      next.entries.size,
+                      next.bytes,
+                      dependants.size + (if droppedNamed then removed.size else 0)
+                    )
                   )
                 yield dependants
           yield out

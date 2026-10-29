@@ -100,6 +100,7 @@
 {"event":"ledgerPeers","at":"2026-10-16T12:00:00Z","action":"refreshed","source":"Nothing","pools":0,"bigLedgerPools":0,"ledgerSlot":"origin"}
 {"event":"ledgerPeers","at":"2026-10-16T12:00:00Z","action":"poolSkipped","pool":"07070707070707070707070707070707070707070707070707070707","reason":"BadPort(1)"}
 {"event":"ledgerPeers","at":"2026-10-16T12:00:00Z","action":"unreadable","reason":"DerivedMismatch(VrfKeyHashes)"}
+{"event":"localRoots","at":"2026-10-16T12:00:00Z","action":"error","domainAddress":"relay.example.","reason":"injected lookup defect"}
 {"event":"outboundConnections","at":"2026-10-16T12:00:00Z","state":"TrustedStateWithExternalPeers","trusted":true}
 {"event":"outboundConnections","at":"2026-10-16T12:00:00Z","state":"UntrustedState","trusted":false}
 {"event":"gsmTransition","at":"2026-10-16T12:00:00Z","transition":"preSyncingToSyncing","state":"Syncing"}
