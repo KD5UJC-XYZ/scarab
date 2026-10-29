@@ -232,9 +232,10 @@ This comparison establishes queue cleanup; it does not claim identical snapshot-
 and a handler with a caller-local `Handle[F, E]`. `HandlerFailure.Domain[E]` preserves an intentional service error;
 `HandlerFailure.Defect` preserves an unexpected exception. The listener reports each failed handler
 once, releases its connection and keeps accepting. Cancellation releases the handler without
-calling the reporter. On node-to-node connections the node's reporter logs typed network endings and
-sends both raw handler defects and `NetworkError.Defect` to the existing `Fatal.Defect` sink (exit 7),
-without peer blame. On node-to-client connections `ListenerFailures.reportLocal` only logs the ending:
+calling the reporter. On node-to-node connections the node's reporter logs typed network endings, raw handler defects and
+`NetworkError.Defect` alike: the connection closes and the node goes on, without peer blame
+([ADR 0017](../adr/0017-fibers-end-with-values.md#amendment-2026-10-28-an-exception-of-a-connections-own-work-ends-that-connection),
+issue 567). Only a `StateAcquireFailure` (below) still stops the node. On node-to-client connections `ListenerFailures.reportLocal` only logs the ending:
 the reference's local policy closes the client alone (see [node-to-client](../running/node-to-client.md#the-socket-path)).
 `NetworkError.DecoderDefect`, a decoder that threw on the connection's own bytes
 ([ADR 0017](../adr/0017-fibers-end-with-values.md), decision 5), is a typed ending like the others:
@@ -259,11 +260,12 @@ and keeps the whole-run handle as a lifetime backstop. Local handling of `NoInte
 same wider error channel, so changing the capability does not change same-connection retry policy.
 
 HTTP state projection, local submission and relay callbacks own their storage scopes.
-`StorageBoundary` preserves an ordinary `StorageError` as `Fatal.Storage` and an unexpected
-exception, including a retained decoder exception, as `Fatal.Defect`. A structured reconstruction
-failure is `Fatal.Internal` with its original typed cause. After reporting, the callback waits cancelably for shutdown; it supplies neither a
-ledger refusal nor peer blame. A streamed store read runs in a scoped producer with a one-element
-queue of typed results. Its scope and iterator remain alive through consumption, and cancellation
+`StorageBoundary` preserves an ordinary `StorageError` as `Fatal.Storage` and stored data that does
+not decode (`StorageError.DecoderDefect`) as `Fatal.Defect`. A structured reconstruction failure is
+`Fatal.Internal` with its original typed cause. After reporting, the callback waits cancelably for
+shutdown; it supplies neither a ledger refusal nor peer blame. Any other exception of the callback is
+raised again, so the serving connection's scope ends that connection and the node goes on (issue 567). A streamed store read runs in a scoped producer with a one-element
+queue of typed results and thrown exceptions. Its scope and iterator remain alive through consumption, and cancellation
 releases both. Mempool `add` and `sync` use the caller's storage capability; their network adapters
 supply scopes of their own.
 

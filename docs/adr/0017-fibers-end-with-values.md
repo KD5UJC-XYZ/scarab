@@ -73,7 +73,7 @@ rules refused, a storage failure and a bug in the node were all retried like a l
    ouroboros-consensus `82ecba329` `Node/RethrowPolicy.hs` 131 to 139); only storage is `ShutdownNode`
    (55 to 90). Making every `NetworkError.Defect` the peer's would undo issue 154, because the node's
    own code produces `Defect` too (a fiber scope's wrapped exception, the rules, the storage). So
-   `NetworkError.Defect`, `fromThrowable`, `SessionEnd.Defect` (rules and storage) and `Fault.Defect`
+   ~~`NetworkError.Defect`, `fromThrowable`,~~ ([superseded](#amendment-2026-10-28-an-exception-of-a-connections-own-work-ends-that-connection)) `SessionEnd.Defect` (rules and storage) and `Fault.Defect`
    still reach `Fatal.Defect`, and the storage, internal and unavailable cases still stop the node. A
    peer must not be able to stop the whole process by what it sends, which is the reasoning of the
    process-wide denial of service below.
@@ -110,8 +110,9 @@ rules refused, a storage failure and a bug in the node were all retried like a l
   G7-F2 gives periodic/shutdown snapshots their own storage-error scopes, with caller-scoped
   capabilities along the snapshot call path and `SnapshotFailure` values at the event boundary.
   G7-F4 gives TCP/Unix handlers their own scopes and a required typed failure reporter; ~~unexpected
-  handler defects reach `Fatal.Defect`~~ unexpected handler defects reach `Fatal.Defect`, except an exception
-  of the rules on a submitted transaction ([amendment](#amendment-2026-10-28-the-rules-exception-on-a-submitted-transaction-is-the-connections)). See the [as-built contracts](../design/domain-errors.md#snapshot-and-listener-scopes-g7-f2g7-f4).
+  handler defects reach `Fatal.Defect`~~ unexpected handler defects end their connection
+  ([amendment](#amendment-2026-10-28-an-exception-of-a-connections-own-work-ends-that-connection);
+  for the rules on a submitted transaction, [this one](#amendment-2026-10-28-the-rules-exception-on-a-submitted-transaction-is-the-connections)). See the [as-built contracts](../design/domain-errors.md#snapshot-and-listener-scopes-g7-f2g7-f4).
   G7-F3 gives forging and reload terminal failure values and prevents signing after a key durability
   failure. G7-F5 retains bounded source attribution after a cache-producing session ends, with a
   governor observation that can distrust a disconnected or reconnected source. See the
@@ -263,7 +264,8 @@ exception no policy names is `ShutdownPeer`; `ConnectionHandler.hs` `classifyExc
 `IOException` stays a closed connection.
 
 The bearer's writer encodes and sends the node's own messages, so an exception there is the node's own
-bug and says nothing about the peer: it stays `Defect` and stops the node, and the peer is not charged.
+bug and says nothing about the peer: ~~it stays `Defect` and stops the node, and~~ it ends that connection
+([amendment](#amendment-2026-10-28-an-exception-of-a-connections-own-work-ends-that-connection)), and the peer is not charged.
 The reference's policy closes the connection there too (`ourBug` is `ShutdownPeer`); this is an
 owner-approved deviation (2026-10-28).
 
@@ -287,4 +289,36 @@ governor counts no failure against the peer, which keeps its standing (at least 
 tried again). The reference charges the error delay (`ShutdownPeer`). This is an owner-approved deviation
 (2026-10-28): a failure of the node's own code shows nothing against the peer. A transaction the rules refuse is
 a verdict, and is unchanged.
+
+## Amendment (2026-10-28): an exception of a connection's own work ends that connection
+
+An exception of the node's own code met while it deals with one peer or local client, of no more precise origin
+than `NetworkError.Defect` (a fiber of the connection, its servers, its clients, its establishment, its peer sharing,
+its monitor), ends that connection, and the node goes on (issue 567). This is the reference's default: an exception
+no rethrow policy names is `ShutdownPeer` (ouroboros-network `2fb69829` `RethrowPolicy.hs` 61 to 70 and 99 to 103;
+ouroboros-consensus `82ecba329` `Node/RethrowPolicy.hs`, where `ourBug` is `ShutdownPeer` too and only storage,
+the database lock and the clock are `shutdownNode`). Decision 5 turned it into `Fatal.Defect`. That made every bug
+a peer's message could reach a way to stop the node, against decision 5's own "a peer must not be able to stop
+the whole process by what it sends".
+
+- `Peer.networkFault` makes `NetworkError.Defect` `PeerError.ConnectionDefect`, `FailureClass.NotThePeers`: the
+  connection closes and the governor counts nothing against the peer. The reference charges the error delay; this
+  is the owner-approved deviation of the amendment above, a crash of our own code shows nothing against the peer.
+- An inbound node-to-node connection, and a listener's handler, that end with a defect are reported and close.
+- A connection that fails while it is established (`EstablishmentError.Defect`) ends that attempt, uncharged.
+- Peer sharing, and a connection's monitor, that fail abort their connection.
+- The bearer's writer: an exception encoding or sending our own messages is `NetworkError.Defect` (`Mux`'s writer,
+  `NetworkError.fromThrowable`), so it ends that connection, uncharged, and no longer stops the node. Owner
+  decision of 2026-10-28 (issue 567, A1), replacing the earlier one of the same day: what we send depends on the
+  peer's requests, so a writer that throws must not be a way to stop the node.
+- `StorageBoundary`: a typed storage failure and stored data that does not decode still stop the node, as the
+  reference's `ChainDbFailure`, `UnexpectedFailure` and `FsError` do. Any other exception of a serving callback is
+  raised in the connection's scope, which ends that connection. The reference does not catch a raw `IOException`
+  in its policy either, so an untyped one ends the peer there too.
+
+Still stopping the node, decided separately (issue 567):
+- the block path (`SessionEnd.Defect`, `Unavailable`, `Unverifiable`, `Internal`);
+- the mempool's revalidation and forging;
+- a defect in releasing a connection's resources (`ConnectionResources`);
+- an internal failure of the node's state (`InternalFailure`, `StateAcquireFailure`).
 
