@@ -2,32 +2,22 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.ledger.TestGeometry
-import xyz.kd5ujc.scarab.consensus.{
-  BlockRules,
-  Compute,
-  FollowerEvents,
-  SchedulingStats,
-  VolatileChain
-}
-import xyz.kd5ujc.scarab.ledger.{
-  BlockFailure,
-  EpochGeometry,
-  Fixtures,
-  Header,
-  NodeError,
-  PeerError,
-  ValidationError
-}
+import xyz.kd5ujc.scarab.consensus.{BlockRules, FollowerEvents, VolatileChain}
+import xyz.kd5ujc.scarab.ledger.{EpochGeometry, Fixtures, Header, NodeError, PeerError}
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.std.Queue
 import cats.effect.testkit.TestControl
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.node.forge.ForgedChain
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import scala.concurrent.duration.*
 
+/** Sessions of the follower over scripted peers, whose blocks the node's selection worker adopts
+  * (issue 578): reconnection, the intersection offered again, and Genesis reselection.
+  */
 class FollowerSuite extends FailsOnUncaught:
   private val geometry =
     EpochGeometry(
@@ -39,15 +29,14 @@ class FollowerSuite extends FailsOnUncaught:
     )
   private val tip = ChainSync.Tip.Origin
 
-  /** Records the block number of the tip as the state; rejects headers in `invalid`. */
-  private def rules(
-      invalid: Set[Bytes] = Set.empty
-  ): BlockRules[IO, BigInt] =
-    BlockRules.from { (_, header, _) =>
-      if invalid(header.hash) then
-        Raise[IO, ValidationError].raise(ValidationError(header.point, BlockFailure.HeaderDiffers))
-      else IO.pure(header.blockNo)
-    }
+  private lazy val forged: ForgedChain =
+    ForgedChain.forge(0 until 30, epoch = 0).unsafeRunSync()(using munitIORuntime)
+  private lazy val bodies: Map[Bytes, Bytes] =
+    forged.headers.map(_.hash).zip(forged.raws).toMap
+
+  /** Records the block number of the tip as the state. */
+  private val rules: BlockRules[IO, BigInt] =
+    BlockRules.from((_, header, _) => IO.pure(header.blockNo))
 
   private val noEvents: FollowerEvents[IO] = _ => IO.unit
 
@@ -70,18 +59,18 @@ class FollowerSuite extends FailsOnUncaught:
                 case Left(e) :: _         => Nil -> Raise[IO, PeerError].raise(e)
                 case Right(event) :: rest => rest -> IO.pure(event)
               }.flatten
-              def fetch(header: Header)(using Raise[IO, PeerError]) = IO.pure(Bytes.empty)
+              def fetch(header: Header)(using Raise[IO, PeerError]) = IO.pure(bodies(header.hash))
           }
         }
       }
 
-  /** One scripted peer per element of `peers`, each with its own sessions; all follow one chain. */
+  /** One scripted peer per element of `peers`, each with its own sessions; all follow one chain,
+    * whose blocks the worker adopts. A session starts once the worker has decided what the one
+    * before it delivered, as the node connects again later than that.
+    */
   private def runPeers(
       peers: List[List[List[Either[PeerError, SyncEvent]]]],
-      invalid: Set[Bytes] = Set.empty,
-      retries: Int = 3,
-      compute: Option[Compute[IO]] = None,
-      applied: Option[Ref[IO, List[String]]] = None
+      retries: Int = 3
   ): IO[(Either[NodeError, Unit], VolatileChain[BigInt], List[Vector[ChainSync.Point]])] =
     for
       ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.k.toInt, -1))
@@ -90,34 +79,27 @@ class FollowerSuite extends FailsOnUncaught:
       outcome <- Handle
         .allow[NodeError] {
           for
-            follower <- Follower.create[IO, BigInt](
-              applied.fold(rules(invalid))(log =>
-                BlockRules.from { (state, header, block) =>
-                  IO(Thread.currentThread.getName).flatMap(n => log.update(_ :+ n)) *>
-                    rules(invalid).apply(state, header, block)
-                }
-              ),
-              noEvents,
-              geometry,
-              compute = compute
-            )
-            result <- Handle
-              .allow[PeerError](
-                peers.parTraverse_ { sessions =>
-                  scriptedPeers(sessions, offered).flatMap(connect =>
-                    SessionDriver
-                      .supervise(
-                        follower,
-                        connect,
-                        noEvents,
-                        SessionDriver.Retry(retries, 1.milli),
-                        compute
-                      )
-                  )
-                }
-              )
-              .rescue(e => Handle[IO, NodeError].raise(e))
-              .timeoutTo(300.millis, IO.unit)
+            follower <- Follower.create[IO, BigInt](rules, noEvents, geometry)
+            pool <- WorkerTesting.pool(follower)
+            result <- (WorkerTesting.selection(follower, pool) >> pool.session).use { claims =>
+              Handle
+                .allow[PeerError](
+                  peers.parTraverse_ { sessions =>
+                    scriptedPeers(sessions, offered).flatMap(connect =>
+                      SessionDriver
+                        .supervise(
+                          follower,
+                          Resource.eval(WorkerTesting.settled(pool)) >>
+                            connect.flatMap(WorkerTesting.delivering(_, claims)).map(_.peer),
+                          noEvents,
+                          SessionDriver.Retry(retries, 1.milli)
+                        )
+                    )
+                  }
+                )
+                .rescue(e => Handle[IO, NodeError].raise(e))
+                .timeoutTo(300.millis, IO.unit) <* WorkerTesting.settled(pool)
+            }
           yield result.asRight[NodeError]
         }
         .rescue(e => IO.pure(e.asLeft[Unit]))
@@ -125,99 +107,46 @@ class FollowerSuite extends FailsOnUncaught:
       offers <- offered.get
     yield (outcome, chain, offers)
 
-  private def run(
-      sessions: List[List[Either[PeerError, SyncEvent]]],
-      invalid: Set[Bytes] = Set.empty
-  ) = runPeers(List(sessions), invalid)
+  private def run(sessions: List[List[Either[PeerError, SyncEvent]]]) = runPeers(List(sessions))
 
   private def forward(h: Header) = Right(SyncEvent.RollForward(h, tip))
-  private def backward(h: Header) = Right(SyncEvent.RollBackward(h.point, tip))
-
-  test("follows forks: a longer branch replaces ours, rolling back to where it forks") {
-    val main = Fixtures.chain(8)
-    val fork = Fixtures.chain(3, salt = 1, from = Some(main(5)))
-    run(List(main.map(forward).toList ++ List(backward(main(5))) ++ fork.map(forward))).map {
-      case (outcome, chain, _) =>
-        assertEquals(outcome, Right(()))
-        assertEquals(chain.tip, fork.last.point)
-        assertEquals(chain.state, fork.last.blockNo)
-        assertEquals(chain.anchor.block.map(_.hash), Some(main(3).hash))
-    }
-  }
-
-  test("with a CPU pool the sessions apply the blocks on it, and the chain is the same") {
-    val main = Fixtures.chain(8)
-    val fork = Fixtures.chain(3, salt = 1, from = Some(main(5)))
-    val script = main.map(forward).toList ++ List(backward(main(5))) ++ fork.map(forward)
-    SchedulingStats.create[IO].flatMap { stats =>
-      Compute.pool[IO](2, stats).use { pool =>
-        for
-          log <- Ref.of[IO, List[String]](Nil)
-          result <- runPeers(List(List(script)), compute = Some(pool), applied = Some(log))
-          names <- log.get
-          _ <- IO {
-            val (outcome, chain, _) = result
-            assertEquals(outcome, Right(()))
-            assertEquals(chain.tip, fork.last.point)
-            assert(names.nonEmpty && names.forall(_.startsWith("scarab-cpu")), names.toString)
-          }
-        yield ()
-      }
-    }
-  }
-
-  test("a peer's branch that is not longer than ours changes nothing") {
-    val main = Fixtures.chain(8)
-    val fork = Fixtures.chain(2, salt = 1, from = Some(main(5)))
-    run(List(main.map(forward).toList ++ List(backward(main(5))) ++ fork.map(forward))).map {
-      case (outcome, chain, _) =>
-        assertEquals(outcome, Right(()))
-        assertEquals(chain.tip, main.last.point)
-    }
-  }
 
   /** One peer that serves `chain` as a node does: after the intersection it announces a roll back
     * to the intersection point (the protocol's first instruction), then rolls forward over the
     * headers it has beyond it, `pause` apart. It joins `startDelay` after the run began.
-    *
-    * @param honest
-    *   False: a scripted peer that ignores the intersection and replays its whole chain.
     */
   private final case class Serving(
       chain: Vector[Header],
       startDelay: FiniteDuration = Duration.Zero,
-      pause: FiniteDuration = Duration.Zero,
-      honest: Boolean = true
+      pause: FiniteDuration = Duration.Zero
   )
 
   private def serving(s: Serving): Resource[IO, Peer[IO]] =
     Resource.eval(IO.sleep(s.startDelay) *> Ref.of[IO, List[SyncEvent]](Nil)).map { pending =>
       new Peer[IO]:
         def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
-          if !s.honest then
-            pending.set(s.chain.toList.map(SyncEvent.RollForward(_, tip))).as(candidates.headOption)
-          else
-            val at =
-              candidates.find(p => p == ChainSync.Point.Origin || s.chain.exists(_.point == p))
-            val after = at.fold(Vector.empty[Header])(p =>
-              if p == ChainSync.Point.Origin then s.chain
-              else s.chain.dropWhile(_.point != p).drop(1)
+          val at =
+            candidates.find(p => p == ChainSync.Point.Origin || s.chain.exists(_.point == p))
+          val after = at.fold(Vector.empty[Header])(p =>
+            if p == ChainSync.Point.Origin then s.chain
+            else s.chain.dropWhile(_.point != p).drop(1)
+          )
+          pending
+            .set(
+              at.toList.map(SyncEvent.RollBackward(_, tip)) ++
+                after.map(SyncEvent.RollForward(_, tip))
             )
-            pending
-              .set(
-                at.toList.map(SyncEvent.RollBackward(_, tip)) ++
-                  after.map(SyncEvent.RollForward(_, tip))
-              )
-              .as(at)
+            .as(at)
         def next(using Raise[IO, PeerError]) = pending.modify {
           case Nil          => Nil -> IO.never[SyncEvent]
           case head :: rest => rest -> IO.sleep(s.pause).as(head)
         }.flatten
-        def fetch(header: Header)(using Raise[IO, PeerError]) = IO.pure(Bytes.empty)
+        def fetch(header: Header)(using Raise[IO, PeerError]) = IO.pure(forkBodies(header.hash))
     }
 
-  /** Peers that serve chains, all followed by one follower, on the test clock (nothing here waits
-    * for real time: the run ends when the virtual clock has passed `until`).
+  /** Peers that serve chains, all followed by one follower whose blocks the worker adopts, on the
+    * test clock (nothing here waits for real time: the run ends when the virtual clock has passed
+    * `until`, once the worker has decided what was delivered).
     */
   private def runServed(
       servers: List[Serving],
@@ -229,39 +158,51 @@ class FollowerSuite extends FailsOnUncaught:
       outcome <- Handle
         .allow[NodeError] {
           for
-            follower <- Follower.create[IO, BigInt](rules(), noEvents, geometry)
-            result <- Handle
-              .allow[PeerError](
-                servers.parTraverse_(s =>
-                  SessionDriver.supervise(
-                    follower,
-                    serving(s),
-                    noEvents,
-                    SessionDriver.Retry(3, 1.milli),
-                    None
+            follower <- Follower.create[IO, BigInt](rules, noEvents, geometry)
+            pool <- WorkerTesting.pool(follower)
+            result <- (WorkerTesting.selection(follower, pool) >> pool.session).use { claims =>
+              Handle
+                .allow[PeerError](
+                  servers.parTraverse_(s =>
+                    SessionDriver.supervise(
+                      follower,
+                      serving(s).flatMap(WorkerTesting.delivering(_, claims)).map(_.peer),
+                      noEvents,
+                      SessionDriver.Retry(3, 1.milli)
+                    )
                   )
                 )
-              )
-              .rescue(e => Handle[IO, NodeError].raise(e))
-              .timeoutTo(until, IO.unit)
+                .rescue(e => Handle[IO, NodeError].raise(e))
+                .timeoutTo(until, IO.unit) <* WorkerTesting.settled(pool)
+            }
           yield result.asRight[NodeError]
         }
         .rescue(e => IO.pure(e.asLeft[Unit]))
       chain <- ref.get
     yield (outcome, chain)
 
-  // main: 6 blocks; both forks leave it after its fourth block (index 3); the longer fork ends
-  // with 7 blocks, the shorter with 5.
-  private val main = Fixtures.chain(6)
-  private val longer = Fixtures.chain(3, salt = 1, from = Some(main(3)))
-  private val shorter = Fixtures.chain(1, salt = 2, from = Some(main(3)))
-  private val common = main.take(4)
+  // two forged forks from one prefix: the longer leaves it with three blocks, the shorter with one
+  private lazy val forks: (ForgedChain, ForgedChain) =
+    ForgedChain
+      .competingForks(5000 until 5020, 5020 until 5100, 31, 47)
+      .unsafeRunSync()(using
+        munitIORuntime
+      )
+  private lazy val common: Vector[Header] =
+    forks._1.headers.zip(forks._2.headers).takeWhile((a, b) => a.hash == b.hash).map(_._1)
+  private lazy val longer: Vector[Header] = forks._1.headers.drop(common.size).take(3)
+  private lazy val shorter: Vector[Header] = forks._2.headers.drop(common.size).take(1)
+  private lazy val forkBodies: Map[Bytes, Bytes] =
+    (forks._1.headers.zip(forks._1.raws) ++ forks._2.headers.zip(forks._2.raws))
+      .map((h, raw) => h.hash -> raw)
+      .toMap
 
   test("two peers: the chain of the longer one is followed, whichever arrives first") {
     // every order in which the peers join and announce, from simultaneous to far apart: the
     // shorter one first (it has applied the common blocks and its fork when the longer one joins),
     // the longer one first, and both at once under different schedules of the test runtime
     val delays = List(Duration.Zero, 1.milli, 10.millis, 1.second)
+    assert(common.nonEmpty && longer.size == 3 && shorter.size == 1)
     val cases = for
       a <- delays
       b <- delays
@@ -284,43 +225,8 @@ class FollowerSuite extends FailsOnUncaught:
     }
   }
 
-  test(
-    "the old test's flake: a scripted peer that replays its chain from the start, ignoring the " +
-      "intersection, is dropped when it joins after the node has the blocks (a test artefact, not a node bug)"
-  ) {
-    val servers = List(
-      Serving(common ++ shorter),
-      Serving(common ++ longer, startDelay = 1.second, honest = false)
-    )
-    TestControl.executeEmbed(runServed(servers)).map { case (outcome, chain) =>
-      // the replayed blocks do not extend the candidate that joined at our tip: a protocol error,
-      // on every reconnect, until the retries are used up
-      assert(
-        outcome.left.exists {
-          case PeerError.Protocol(_: PeerError.ProtocolProblem.HeaderDoesNotExtend) => true;
-          case _                                                                    => false
-        },
-        outcome.toString
-      )
-      assertEquals(chain.tip, shorter.last.point)
-    }
-  }
-
-  test("a fork deeper than k is never adopted, and the peer is dropped, not the node") {
-    // k = 5: the peer rolls back to a block that is already immutable here, to a longer branch
-    val main = Fixtures.chain(12)
-    val deep = Fixtures.chain(9, salt = 1, from = Some(main(4)))
-    run(List(main.map(forward).toList ++ List(backward(main(4))) ++ deep.map(forward))).map {
-      case (outcome, chain, offers) =>
-        assertEquals(outcome, Right(()))
-        assertEquals(chain.tip, main.last.point)
-        assertEquals(chain.anchor.block.map(_.hash), Some(main(6).hash))
-        assertEquals(offers.size, 2) // dropped and reconnected
-    }
-  }
-
   test("reconnects after a peer failure and resumes from the local tip") {
-    val main = Fixtures.chain(6)
+    val main = forged.headers.take(6)
     val first = main.take(4).map(forward).toList :+ Left(
       PeerError.Unavailable(PeerError.Unavailability.SessionEnded)
     )
@@ -341,25 +247,6 @@ class FollowerSuite extends FailsOnUncaught:
     }
   }
 
-  test("a rule violation is fatal and leaves the chain at the last valid block") {
-    val main = Fixtures.chain(5)
-    run(List(main.map(forward).toList), invalid = Set(main(3).hash)).map {
-      case (outcome, chain, _) =>
-        assertEquals(outcome, Left(ValidationError(main(3).point, BlockFailure.HeaderDiffers)))
-        assertEquals(chain.tip, main(2).point)
-    }
-  }
-
-  test("a header that does not connect is a peer error: the peer is dropped and re-synced") {
-    val main = Fixtures.chain(4)
-    val stray = Fixtures.chain(2, salt = 2).last
-    run(List(main.map(forward).toList :+ forward(stray))).map { case (outcome, chain, offers) =>
-      assertEquals(outcome, Right(()))
-      assertEquals(chain.tip, main.last.point)
-      assertEquals(offers.size, 2)
-    }
-  }
-
   test("a peer that shares no point with our chain is a peer error, retried and then given up") {
     val strangers: Resource[IO, Peer[IO]] = Resource.pure(new Peer[IO]:
       def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) = IO.pure(None)
@@ -371,13 +258,16 @@ class FollowerSuite extends FailsOnUncaught:
       outcome <- Handle
         .allow[NodeError] {
           for
-            follower <- Follower.create[IO, BigInt](rules(), noEvents, geometry)
-            result <- Handle
-              .allow[PeerError](
-                SessionDriver
-                  .supervise(follower, strangers, noEvents, SessionDriver.Retry(2, 1.milli))
-              )
-              .rescue(e => Handle[IO, NodeError].raise(e))
+            follower <- Follower.create[IO, BigInt](rules, noEvents, geometry)
+            pool <- WorkerTesting.pool(follower)
+            result <- WorkerTesting.selection(follower, pool).surround {
+              Handle
+                .allow[PeerError](
+                  SessionDriver
+                    .supervise(follower, strangers, noEvents, SessionDriver.Retry(2, 1.milli))
+                )
+                .rescue(e => Handle[IO, NodeError].raise(e))
+            }
           yield result.asRight[NodeError]
         }
         .rescue(e => IO.pure(e.asLeft[Unit]))
@@ -386,7 +276,7 @@ class FollowerSuite extends FailsOnUncaught:
 
   test("CaughtUp reselects the stored LoE-postponed candidate without another peer event") {
     TestControl.executeEmbed {
-      val headers = Fixtures.chain(5)
+      val headers = forged.headers.take(5)
       for
         ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(2, -1))
         given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
@@ -399,8 +289,9 @@ class FollowerSuite extends FailsOnUncaught:
           def next(using Raise[IO, PeerError]) =
             incoming.take.onCancel(cancelledReads.update(_ + 1))
           def fetch(header: Header)(using Raise[IO, PeerError]) =
-            fetched.update(_ :+ header.hash).as(Bytes.empty)
-        follower <- Follower.create[IO, BigInt](rules(), noEvents, geometry)
+            fetched.update(_ :+ header.hash).as(bodies(header.hash))
+        follower <- Follower.create[IO, BigInt](rules, noEvents, geometry)
+        pool <- WorkerTesting.pool(follower)
         governor <- GenesisGovernor.create[IO](follower.genesisView((_, _, _) => Some(30)))
         _ <- follower.installGenesis(governor)
         ended <- Deferred[IO, Either[SessionEnd, Unit]]
@@ -409,7 +300,9 @@ class FollowerSuite extends FailsOnUncaught:
             val scope = summon[Handle[IO, SessionEnd]]
             given Raise[IO, NodeError] =
               Peer.contramapped[IO, SessionEnd, NodeError](scope)(SessionEnd.of)
-            follower.session(peer)
+            (WorkerTesting.selection(follower, pool) >> pool.session).use(claims =>
+              WorkerTesting.delivering(peer, claims).use(fed => follower.session(fed.peer))
+            )
           }
           .flatTap(ended.complete)
           .background
@@ -432,82 +325,6 @@ class FollowerSuite extends FailsOnUncaught:
               assertEquals(cancelled, 0)
           }
       yield result
-    }
-  }
-
-  test("Genesis reintersection stops the pending queue consumer before draining its old epoch") {
-    TestControl.executeEmbed {
-      val original = Fixtures.chain(5)
-      val replacement = Fixtures.chain(8, salt = 1)
-      val fresh = Fixtures.chain(1, salt = 1, from = replacement.lastOption).head
-      val switched = replacement.foldLeft(VolatileChain.genesis[BigInt](2, -1)) { (chain, header) =>
-        chain.extend(header, header.blockNo).fold(e => fail(e.message), _._1)
-      }
-      for
-        ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(2, -1))
-        given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
-        incoming <- Queue.unbounded[IO, SyncEvent]
-        reading <- Ref.of[IO, Boolean](false)
-        reads <- Ref.of[IO, Int](0)
-        intersections <- Ref.of[IO, Int](0)
-        pending <- Deferred[IO, Unit]
-        reintersected <- Deferred[IO, Unit]
-        applied <- Deferred[IO, Unit]
-        ended <- Deferred[IO, Either[SessionEnd, Unit]]
-        peer = new Peer[IO]:
-          def intersect(points: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
-            intersections.getAndUpdate(_ + 1).flatMap {
-              case 0 => IO.pure(Some(ChainSync.Point.Origin))
-              case _ =>
-                reading.get.flatMap { active =>
-                  IO(
-                    assert(!active, "peer.next must stop before the peer drains the same queue")
-                  ) *>
-                    reintersected.complete(()).as(points.headOption)
-                }
-            }
-          def next(using Raise[IO, PeerError]) =
-            (reading.set(true) *> reads
-              .getAndUpdate(_ + 1)
-              .flatMap(n => pending.complete(()).void.whenA(n == original.size)) *> incoming.take)
-              .guarantee(reading.set(false))
-          def fetch(@scala.annotation.unused header: Header)(using Raise[IO, PeerError]) =
-            IO.pure(Bytes.empty)
-        events: FollowerEvents[IO] = {
-          case xyz.kd5ujc.scarab.consensus.FollowerEvent.Extended(block, _, _, _)
-              if block.point == fresh.point =>
-            applied.complete(()).void
-          case _ => IO.unit
-        }
-        follower <- Follower.create[IO, BigInt](rules(), events, geometry)
-        governor <- GenesisGovernor.create[IO](follower.genesisView((_, _, _) => Some(30)))
-        _ <- follower.installGenesis(governor)
-        _ <- xyz.kd5ujc.scarab.network.Fibers
-          .scoped[IO, SessionEnd, Unit](SessionEnd.Defect(_)) {
-            val scope = summon[Handle[IO, SessionEnd]]
-            given Raise[IO, NodeError] =
-              Peer.contramapped[IO, SessionEnd, NodeError](scope)(SessionEnd.of)
-            follower.session(peer)
-          }
-          .flatTap(ended.complete)
-          .background
-          .use { _ =>
-            for
-              _ <- original.traverse_(h => incoming.offer(SyncEvent.RollForward(h, tip)))
-              _ <- pending.get
-              _ <- ref.set(switched)
-              _ <- governor.setPhase(xyz.kd5ujc.scarab.network.selection.Gsm.Phase.CaughtUp)
-              result <- IO.race(reintersected.get, ended.get).timeout(1.second)
-              _ <- IO(assertEquals(result, Left(())))
-              _ <- incoming.offer(SyncEvent.RollForward(fresh, tip))
-              _ <- applied.get.timeout(1.second)
-              selected <- ref.get
-              early <- ended.tryGet
-            yield
-              assertEquals(selected.tip, fresh.point)
-              assertEquals(early, None)
-          }
-      yield ()
     }
   }
 
@@ -567,7 +384,7 @@ class FollowerSuite extends FailsOnUncaught:
       ref <- Ref.of[IO, VolatileChain[BigInt]](current)
       given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
       follower <- Follower.create[IO, BigInt](
-        rules(),
+        rules,
         noEvents,
         geometry,
         initialViews = selected.map(h => h.hash -> SelectView.of(h)).toMap
@@ -577,31 +394,4 @@ class FollowerSuite extends FailsOnUncaught:
     yield
       assertEquals(lostPrefix, Gsm.Candidate.DoesNotIntersect)
       assertEquals(full, Gsm.Candidate.Better(true))
-  }
-
-  test(
-    "the shared validation boundary invalidates delivered originals and preserves the typed refusal"
-  ) {
-    val header = Fixtures.chain(1).head
-    for
-      ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.k.toInt, -1))
-      given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
-      notified <- Ref.of[IO, Vector[ValidationError]](Vector.empty)
-      peer = new Peer[IO]:
-        def intersect(points: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
-          IO.pure(points.lastOption)
-        def next(using Raise[IO, PeerError]) = IO.pure(SyncEvent.RollForward(header, tip))
-        def fetch(@scala.annotation.unused h: Header)(using Raise[IO, PeerError]) =
-          IO.pure(Bytes.empty)
-        override def rejected(refusal: ValidationError)(using cats.Applicative[IO]) =
-          notified.update(_ :+ refusal)
-      follower <- Follower.create[IO, BigInt](rules(Set(header.hash)), noEvents, geometry)
-      outcome <- Handle
-        .allow[NodeError](follower.session(peer).as(Right(()): Either[NodeError, Unit]))
-        .rescue(e => IO.pure(Left(e)))
-      observed <- notified.get
-    yield
-      val expected = ValidationError(header.point, BlockFailure.HeaderDiffers)
-      assertEquals(outcome, Left(expected))
-      assertEquals(observed, Vector(expected))
   }

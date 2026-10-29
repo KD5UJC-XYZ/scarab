@@ -22,7 +22,7 @@ import xyz.kd5ujc.scarab.protocol.NtNHeader
   * target (30) and the active target (20). The node must converge to the targets, reach the tip of
   * the chain the peers serve, and repair the hot set when hot peers die.
   */
-class FortyBearersSuite extends munit.CatsEffectSuite:
+class FortyBearersSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   override def munitIOTimeout: FiniteDuration = 120.seconds
 
   private val magic = 42L
@@ -85,7 +85,7 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
           )
         }
         .rescue(e => IO.raiseError(new RuntimeException(e.message)))
-      pool <- BlockPool.create[IO]
+      pool <- WorkerTesting.pool(follower)
       handlers <- serving(forged.raws)
       peers <- InMemoryPeers.create(magic)
       all = (1 to 40).map(InMemoryPeers.address).toList
@@ -131,34 +131,36 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
         GsmRunner.Marker.none[IO],
         LedgerPeersSource.none[IO]
       )
-      result <- network.flatTap(_ => FetchTesting.decisions(pool)).use { net =>
-        net.run.background.use { _ =>
-          def counters = net.state.get.map(st => st.view(Duration.Zero).counters)
-          for
-            // the targets: 30 established, 20 of them hot, out of the 40 the node knows
-            converged <- eventually("the targets are met")(
-              net.state.get.flatMap(st => IO.monotonic.map(st.view(_).counters))
-            )(c => c.known == 40 && c.established == 30 && c.hot == 20)
-            _ <- eventually("the chain reaches the tip")(chainRef.get.map(_.tip))(
-              _ == forged.headers.last.point
-            )
-            // eight hot peers die (32 are left, more than the established target): the node replaces them and the dead ones are not hot
-            hotPeers <- net.state.get.map(
-              _.peers.collect { case (p, r) if r.status == Status.Hot => p }.toList
-            )
-            dead = hotPeers.take(8)
-            _ <- dead.traverse_(peers.kill)
-            repaired <- eventually("the hot set is repaired")(
-              net.state.get.flatMap(st => IO.monotonic.map(t => st -> st.view(t).counters))
-            ) { (st, c) =>
-              c.hot == 20 && c.established == 30 &&
-              dead.forall(p => st.peers.get(p).forall(!_.status.established))
-            }
-            fatal <- net.fatal.tryGet
-            _ <- counters
-          yield (converged, repaired._2, fatal)
+      result <- network
+        .flatTap(_ => FetchTesting.decisions(pool) *> WorkerTesting.selection(follower, pool))
+        .use { net =>
+          net.run.background.use { _ =>
+            def counters = net.state.get.map(st => st.view(Duration.Zero).counters)
+            for
+              // the targets: 30 established, 20 of them hot, out of the 40 the node knows
+              converged <- eventually("the targets are met")(
+                net.state.get.flatMap(st => IO.monotonic.map(st.view(_).counters))
+              )(c => c.known == 40 && c.established == 30 && c.hot == 20)
+              _ <- eventually("the chain reaches the tip")(chainRef.get.map(_.tip))(
+                _ == forged.headers.last.point
+              )
+              // eight hot peers die (32 are left, more than the established target): the node replaces them and the dead ones are not hot
+              hotPeers <- net.state.get.map(
+                _.peers.collect { case (p, r) if r.status == Status.Hot => p }.toList
+              )
+              dead = hotPeers.take(8)
+              _ <- dead.traverse_(peers.kill)
+              repaired <- eventually("the hot set is repaired")(
+                net.state.get.flatMap(st => IO.monotonic.map(t => st -> st.view(t).counters))
+              ) { (st, c) =>
+                c.hot == 20 && c.established == 30 &&
+                dead.forall(p => st.peers.get(p).forall(!_.status.established))
+              }
+              fatal <- net.fatal.tryGet
+              _ <- counters
+            yield (converged, repaired._2, fatal)
+          }
         }
-      }
     yield
       val (converged, repaired, fatal) = result
       assertEquals((converged.known, converged.established, converged.hot), (40, 30, 20))
@@ -193,7 +195,7 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
           )
         }
         .rescue(e => IO.raiseError(new RuntimeException(e.message)))
-      pool <- BlockPool.create[IO](BlockPool.FetchPolicy(concurrency))
+      pool <- BlockPool.create[IO](BlockPool.FetchPolicy(concurrency), follower.fetchSelection)
       modeRef <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
       handlers <- serving(forged.raws)
       peers <- InMemoryPeers.create(magic)
@@ -242,21 +244,23 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
         GsmRunner.Marker.none[IO],
         LedgerPeersSource.none[IO]
       )
-      result <- network.flatTap(_ => FetchTesting.decisions(pool)).use { net =>
-        net.run.background.use { _ =>
-          for
-            _ <- eventually("the chain reaches the tip")(chainRef.get.map(_.tip))(
-              _ == forged.headers.last.point
-            )
-            // the mode is published once a second
-            mode <- eventually("the mode is published")(modeRef.get)(m =>
-              (m == FetchMode.Deadline) == deadline
-            )
-            boards <- net.metrics.get.map(_.sizes)
-            scores <- net.metrics.get.map(_.hotScores)
-          yield (mode, boards, scores)
+      result <- network
+        .flatTap(_ => FetchTesting.decisions(pool) *> WorkerTesting.selection(follower, pool))
+        .use { net =>
+          net.run.background.use { _ =>
+            for
+              _ <- eventually("the chain reaches the tip")(chainRef.get.map(_.tip))(
+                _ == forged.headers.last.point
+              )
+              // the mode is published once a second
+              mode <- eventually("the mode is published")(modeRef.get)(m =>
+                (m == FetchMode.Deadline) == deadline
+              )
+              boards <- net.metrics.get.map(_.sizes)
+              scores <- net.metrics.get.map(_.hotScores)
+            yield (mode, boards, scores)
+          }
         }
-      }
     yield
       val (mode, boards, scores) = result
       // both boards hold slots, and some peer was first with something

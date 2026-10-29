@@ -175,8 +175,13 @@ class AdversarialScheduleSuite extends FailsOnUncaught:
       advertised = gate.fold(handlers)(gated(handlers, _))
       _ <- Resource.eval(peers.serve(address, advertised))
       _ <- Resource.make(IO.unit)(_ => peers.stop(address))
-      pool <- Resource.eval(BlockPool.create[IO])
-      _ <- FetchTesting.decisions(pool)
+      // wired as the node wires it (`Main.followWith`)
+      pool <- Resource.eval(BlockPool.create[IO](BlockPool.FetchPolicy(), follower.fetchSelection))
+      _ <- Resource.eval(
+        follower.installFetchCoordinator(pool.fetchCoordinator) *>
+          follower.installInvalidBlocks(pool.invalidBlocks)
+      )
+      _ <- FetchTesting.decisions(pool) *> WorkerTesting.selection(follower, pool)
       manager <- Resource.eval(ConnectionManager.create[IO](noTimeWait))
       mode <- Resource.eval(Ref.of[IO, FetchMode](FetchMode.BulkSync))
       root = RootConfig(false, DiffusionMode.InitiatorAndResponder, Provenance.Outbound, false)
