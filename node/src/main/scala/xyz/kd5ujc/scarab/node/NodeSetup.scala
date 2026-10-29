@@ -35,6 +35,7 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{ByronRules, ByronRulesConfig, HardForkConfig, PraosConfig}
 import xyz.kd5ujc.scarab.ledger.{
+  GenesisSchema,
   GenesisState,
   LedgerDecodeError,
   LedgerGlobals,
@@ -342,6 +343,10 @@ object NodeSetup:
         json(names.conway, conwayBytes),
         byronJson.asRight[ConfigError]
       ).mapN(GenesisState.Files(_, _, _, _, addressMagic))
+      // each file as the reference node reads it at start-up, before any reader of ours
+      _ <- GenesisSchema.shelley(files.shelley)
+      _ <- GenesisSchema.alonzo(files.alonzo)
+      _ <- GenesisSchema.conway(files.conway)
       injections <- GenesisInjections.read(files)
       globals <- GenesisState.globals(files, genesis)
       startsInConway = files.shelley.hcursor

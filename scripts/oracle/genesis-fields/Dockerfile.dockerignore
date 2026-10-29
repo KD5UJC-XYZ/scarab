@@ -1,0 +1,7 @@
+*
+!scripts/
+scripts/*
+!scripts/oracle/
+scripts/oracle/*
+!scripts/oracle/genesis-fields/
+!scripts/oracle/genesis-fields/Main.hs
