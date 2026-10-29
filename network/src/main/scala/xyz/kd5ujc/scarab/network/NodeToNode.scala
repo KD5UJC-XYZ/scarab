@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.Monad
+import cats.{Applicative, Monad}
 import cats.effect.{Async, Ref, Resource}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -137,16 +137,21 @@ final class WarmConnection[F[_], P, A] private[network] (
       }
       chainSyncChannel <- Resource.eval(mux.channel(Protocols.ChainSync, role))
       blockFetchChannel <- Resource.eval(mux.channel(Protocols.BlockFetch, role))
+      ended = (result: ProtocolResults.Run[F, A]) =>
+        (error: NetworkError) =>
+          NodeToNode
+            .protocolEnd(mux, error)
+            .flatMap(cause => result.complete(Left(cause))) *> mux.abort(error)
       chainSync <- ChainSyncClient.resource(
         chainSyncChannel,
         codec,
-        error => results.chainSync.complete(Left(error)) *> mux.abort(error),
+        ended(results.chainSync),
         settings.chainSync.withPeerTrust(peerTrust),
         maxOutstanding = settings.chainSync.pipelineCapacity
       )
       blockFetch <- BlockFetchClient.resource(
         blockFetchChannel,
-        error => results.blockFetch.complete(Left(error)) *> mux.abort(error),
+        ended(results.blockFetch),
         settings.blockFetch,
         completed = Some(results.blockFetch.complete(Right(noInitiatorResult)))
       )
@@ -163,6 +168,25 @@ final class WarmConnection[F[_], P, A] private[network] (
     )
 
 object NodeToNode:
+
+  /** What a hot protocol that ended with `error` reports. Its own failure is itself. A protocol
+    * that was only cancelled (its end is the plain `Aborted` of a cancellation) reports the
+    * connection's failure if it has failed, as a mini-protocol still running when the mux fails
+    * completes with `Shutdown (Just e)` (ouroboros-network 2fb69829
+    * network-mux/src/Network/Mux.hs:459–464, 800–812, `completionAction`), and the cancellation
+    * otherwise. Without it the connection's monitor, which takes the lowest-numbered finished
+    * protocol, would take a cancelled ChainSync's `Aborted` for the fault that ended the connection
+    * (issue 597).
+    */
+  private[network] def protocolEnd[F[_]: Applicative](
+      mux: Mux[F],
+      error: NetworkError
+  ): F[NetworkError] =
+    error match
+      case NetworkError.BearerClosed(NetworkError.Closure.Aborted) =>
+        mux.failure.map(_.getOrElse(error))
+      case own => Applicative[F].pure(own)
+
   /** @param offerPeerSharing
     *   Take part in peer sharing: offered in the handshake; the connection does if the peer does
     *   too.

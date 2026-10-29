@@ -173,6 +173,7 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
             ): IO[MuxChannel[IO]] =
               channel(protocol)
             def closed = closeReason.get
+            def failure = closeReason.tryGet
             def abort(reason: NetworkError) = closeReason.complete(reason).void
           val rules = BlockRules.from[IO, BigInt] { (_, header, raw) =>
             IO(assertEquals(raw, bodies.getOrElse(header.hash, fail("unannounced block")))) *>

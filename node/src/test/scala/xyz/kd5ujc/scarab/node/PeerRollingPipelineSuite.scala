@@ -74,6 +74,7 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
           def channel(protocol: Int, role: Mux.Role)(using Raise[IO, NetworkError]) =
             channel(protocol)
           def closed = closeSignal.get
+          def failure = closeSignal.tryGet
           def abort(cause: NetworkError) = closeSignal.complete(cause).void
         observer = new ChainSyncClient.Observer[IO]:
           override def capture(using cats.Applicative[IO]): IO[ChainSyncClient.Observer[IO]] =

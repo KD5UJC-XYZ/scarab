@@ -80,6 +80,7 @@ class PeerCsjBoundarySuite extends FailsOnUncaught:
               Raise[IO, NetworkError]
           ) = channel(protocol)
           def closed = closeSignal.get
+          def failure = closeSignal.tryGet
           def abort(error: NetworkError) = closeSignal.complete(error).void
         control = new GenesisPeer[IO]:
           def restartCandidates = IO.pure(Vector(ChainSync.Point.Origin))
