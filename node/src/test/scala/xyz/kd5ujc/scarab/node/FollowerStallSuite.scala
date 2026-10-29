@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules, FollowerEvent, FollowerEvents}
+import xyz.kd5ujc.scarab.consensus.{
+  Anchor,
+  BlockNoVerdict,
+  BlockRef,
+  BlockRules,
+  FollowerEvent,
+  FollowerEvents
+}
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.{
@@ -478,7 +485,9 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   for injected <- FatalCase.values.toList
   do
-    test(s"an injected $injected stops without reconnecting or blaming the peer") {
+    // issue 567: storage and an exception of a commit stop the node; no verdict of the evaluator
+    // withholds the block and the node goes on
+    test(s"an injected $injected stops or withholds, without reconnecting or blaming the peer") {
       val storageCause = new java.io.IOException("injected")
       node {
         for
@@ -611,7 +620,12 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             (origin.claim(loaned.map(_._1)) *> origin.fill(loaned)).whenA(unavailable) *>
               network.flatTap(_ => FetchTesting.decisions(pool)).use { net =>
                 net.run.background.use { _ =>
-                  eventually("the node is told to stop")(fatals.get)(_.nonEmpty)
+                  if unavailable then
+                    eventually("the block is withheld")(seen.get)(_.exists {
+                      case FollowerEvent.NoVerdict(_, _) => true
+                      case _                             => false
+                    }).void
+                  else eventually("the node is told to stop")(fatals.get)(_.nonEmpty).void
                 }
               } *>
               (for
@@ -632,10 +646,18 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             case Vector(Fatal.Storage(StorageError.Io("volatile", cause)))
                 if injected == FatalCase.Storage =>
               assert(cause eq storageCause)
-            case Vector(Fatal.Unavailable(error))
+            case Vector()
                 if injected == FatalCase.Unavailable || injected == FatalCase.UnavailablePhase1 =>
-              val phase1 = error.failure.location.isInstanceOf[ScriptLocation.Phase1]
-              assertEquals(phase1, injected == FatalCase.UnavailablePhase1)
+              val withheld = lostEvents.collect {
+                case FollowerEvent.NoVerdict(point, BlockNoVerdict.Evaluation(error)) =>
+                  point -> error.failure
+              }
+              withheld.headOption match
+                case Some((point, BlockFailure.Tx(failure: LedgerFailure.Unavailable))) =>
+                  assertEquals(point, unavailableAt)
+                  val phase1 = failure.location.isInstanceOf[ScriptLocation.Phase1]
+                  assertEquals(phase1, injected == FatalCase.UnavailablePhase1)
+                case other => fail(s"unexpected $other")
             case Vector(Fatal.Defect(cause)) if injected == FatalCase.Defect =>
               assertEquals(cause.getMessage, "injected")
             case other => fail(s"unexpected $other")
