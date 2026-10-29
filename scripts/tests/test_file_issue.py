@@ -31,29 +31,37 @@ def refused(argv):
 class CommandCase(unittest.TestCase):
     def test_a_triaged_issue_becomes_one_gh_issue_create(self):
         runner, err = FakeRunner(), io.StringIO()
-        argv = BASE + ["--area", "area:networking", "--priority", "P2", "--status", "backlog",
+        argv = BASE + ["--area", "area:network", "--priority", "P2", "--status", "backlog",
                        "--milestone", "reference-parity", "--label", "audit"]
         with contextlib.redirect_stderr(err):
             self.assertEqual(file_issue.main(argv, runner), 0)
         expected = ["gh", "issue", "create", "--title", "Network: a gap", "--body", "What and why.",
-                    "--label", "area:networking", "--label", "priority:P2", "--label", "status:backlog",
+                    "--label", "area:network", "--label", "priority:P2", "--label", "status:backlog",
                     "--label", "audit", "--milestone", "reference-parity"]
         self.assertEqual(runner.calls, [expected])
         self.assertEqual(err.getvalue(), "+ gh issue create --title 'Network: a gap' --body 'What and why.' "
-                                         "--label area:networking --label priority:P2 --label status:backlog "
+                                         "--label area:network --label priority:P2 --label status:backlog "
                                          "--label audit --milestone reference-parity\n")
+
+    def test_work_that_spans_modules_takes_each_area_once(self):
+        runner = FakeRunner()
+        argv = BASE + ["--area", "network", "--area", "area:node", "--area", "network", "--priority", "P2",
+                       "--status", "backlog", "--milestone", "reference-parity"]
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(file_issue.main(argv, runner), 0)
+        self.assertEqual(runner.calls[0][7:11], ["--label", "area:network", "--label", "area:node"])
 
     def test_idea_and_parked_need_no_milestone_and_gh_exit_status_is_returned(self):
         for status in ("idea", "status:parked"):
             runner = FakeRunner(code=4)
             with self.subTest(status=status), contextlib.redirect_stderr(io.StringIO()):
-                self.assertEqual(file_issue.main(BASE + ["--area", "ops", "--priority", "P1", "--status", status],
+                self.assertEqual(file_issue.main(BASE + ["--area", "scripts", "--priority", "P1", "--status", status],
                                                  runner), 4)
                 self.assertNotIn("--milestone", runner.calls[0])
 
     def test_dry_run_prints_and_runs_nothing(self):
         runner, err = FakeRunner(), io.StringIO()
-        argv = ["--title", "t", "--body-file", "b.md", "--area", "ops", "--priority", "P0", "--status", "idea",
+        argv = ["--title", "t", "--body-file", "b.md", "--area", "scripts", "--priority", "P0", "--status", "idea",
                 "--dry-run"]
         with contextlib.redirect_stderr(err):
             self.assertEqual(file_issue.main(argv, runner), 0)
@@ -61,7 +69,7 @@ class CommandCase(unittest.TestCase):
         self.assertIn("--body-file b.md", err.getvalue())
 
     def test_the_triplet_is_required(self):
-        triplet = {"--area": "ops", "--priority": "P2", "--status": "idea"}
+        triplet = {"--area": "scripts", "--priority": "P2", "--status": "idea"}
         for missing in triplet:
             argv = BASE + [part for flag, v in triplet.items() if flag != missing for part in (flag, v)]
             with self.subTest(missing=missing):
@@ -71,7 +79,7 @@ class CommandCase(unittest.TestCase):
 
     def test_values_outside_the_vocabulary_are_refused(self):
         for flag, bad in (("--area", "area:nowhere"), ("--priority", "P3"), ("--status", "doing")):
-            options = {"--area": "ops", "--priority": "P2", "--status": "idea"}
+            options = {"--area": "scripts", "--priority": "P2", "--status": "idea"}
             options[flag] = bad
             argv = BASE + [part for item in options.items() for part in item]
             with self.subTest(flag=flag):
@@ -80,14 +88,14 @@ class CommandCase(unittest.TestCase):
                 self.assertIn("is not one of", err)
 
     def test_the_milestone_follows_the_status(self):
-        backlog = BASE + ["--area", "ops", "--priority", "P2", "--status", "backlog"]
+        backlog = BASE + ["--area", "scripts", "--priority", "P2", "--status", "backlog"]
         self.assertIn("needs --milestone", refused(backlog)[1])
         self.assertIn("is not one of", refused(backlog + ["--milestone", "v0.2"])[1])
-        idea = BASE + ["--area", "ops", "--priority", "P2", "--status", "idea", "--milestone", "reference-parity"]
+        idea = BASE + ["--area", "scripts", "--priority", "P2", "--status", "idea", "--milestone", "reference-parity"]
         self.assertIn("carries no milestone", refused(idea)[1])
 
     def test_triage_labels_go_through_their_own_flags(self):
-        argv = BASE + ["--area", "ops", "--priority", "P2", "--status", "idea", "--label", "status:blocked"]
+        argv = BASE + ["--area", "scripts", "--priority", "P2", "--status", "idea", "--label", "status:blocked"]
         self.assertIn("give it with --area, --priority or --status", refused(argv)[1])
 
 

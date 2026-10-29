@@ -1,7 +1,9 @@
 ### Added (issue triage, #400)
 
+- Issue areas are the sbt modules of the code map, plus `area:build`, `area:scripts` and `area:docs` for work in
+  no module; an issue takes one or more.
 - `python3 scripts/status.py --check` lists, grouped by rule, each open issue missing an `area:`, `priority:`
-  or `status:` label, without a milestone while neither `status:idea` nor `status:parked`, with two `status:`
+  or `status:` label, with an area outside that set, without a milestone while neither `status:idea` nor `status:parked`, with two `status:`
   labels, or stale in `status:in-progress` (7 days) or `status:needs-owner` (14 days), and exits non-zero when
   any is found. A nightly workflow writes its report into the one issue titled "Triage report", and
   `scripts/preflight` shows it without failing.

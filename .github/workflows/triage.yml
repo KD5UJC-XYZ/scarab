@@ -55,7 +55,7 @@ jobs:
             --jq '.[] | select(.pull_request == null and .title == "Triage report") | .number' | sort -n | head -n 1)
           if [ -z "$number" ]; then
             url=$(gh issue create --title "Triage report" --body-file "$body" \
-              --label area:hygiene --label priority:P2 --label status:backlog --milestone reference-parity)
+              --label area:scripts --label priority:P2 --label status:backlog --milestone reference-parity)
             gh issue pin "$url" || echo "::warning::could not pin $url"
           else
             if [ "$(gh issue view "$number" --json state --jq .state)" = "CLOSED" ]; then gh issue reopen "$number"; fi

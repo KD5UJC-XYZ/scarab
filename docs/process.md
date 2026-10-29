@@ -85,12 +85,13 @@ Changing your mind is normal, not a failure of planning:
 
 ### Labels and milestones
 
-Every open issue carries one `area:`, one `priority:` and one `status:` label, and a milestone unless its
+Every open issue carries one or more `area:` labels, one `priority:` and one `status:` label, and a milestone unless its
 status is `status:idea` or `status:parked` (owner decision, 2026-10-29):
 
-- areas: `area:block-production`, `area:byron`, `area:ecosystem`, `area:fast-start`, `area:future-eras`,
-  `area:hygiene`, `area:leios`, `area:networking`, `area:node-to-client`, `area:ops`, `area:plutus`,
-  `area:publication`, `area:scale`, `area:unconfirmed-rule`, `area:verification`;
+- areas: `area:<module>` for each sbt module of the [code map](codemap.md) (so a new module is an area at
+  once), and for work in no module `area:build` (the build, CI and releases), `area:scripts` (devnet, tooling,
+  guards) and `area:docs`; the work stream of an issue is its roadmap item, not a label (owner decision,
+  2026-10-29);
 - priorities: `priority:P0`, `priority:P1`, `priority:P2`, highest first;
 - statuses: the states of the table above;
 - milestones are scope buckets, not versions: `reference-parity`, `mainnet-evidence`, `leios-dijkstra`

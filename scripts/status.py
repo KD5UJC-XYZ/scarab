@@ -18,10 +18,12 @@ roadmap id comes from `docs/roadmap.md`: the bold id that leads a line whose lea
 failing that the first line that cites the issue at all. Labels follow docs/process.md: `priority:P0..P2`,
 `status:*`, `area:*`.
 
-The check reports, grouped by violation: an open issue missing an `area:`, `priority:` or `status:` label; one
-without a milestone whose status is neither `status:idea` nor `status:parked`; one with two `status:` labels;
-`status:in-progress` not updated for 7 days and `status:needs-owner` not updated for 14. It exits 0 when clean,
-1 on violations and 2 when `gh` fails. The vocabulary below is the one docs/process.md lists.
+The check reports, grouped by violation: an open issue missing an `area:`, `priority:` or `status:` label; an
+`area:` label that names neither an sbt module nor `build`, `scripts` or `docs`; one without a milestone whose
+status is neither `status:idea` nor `status:parked`; one with two `status:` labels; `status:in-progress` not
+updated for 7 days and `status:needs-owner` not updated for 14. It exits 0 when clean, 1 on violations and 2 when
+`gh` fails. The areas are read from `docs/data/codemap.json` (one per module, as `build.sbt` defines them) and the
+rest of the vocabulary is the one docs/process.md lists.
 
 Pure standard library; the only network use is a read-only `gh issue list` or `gh api` GET, and `--from`
 avoids it.
@@ -45,8 +47,18 @@ NO_AREA = "none"
 ISSUE_LINK = re.compile(r"issues/(\d+)")
 LEADING = re.compile(r"^\s*-\s+\*\*([^*]+)\*\*((?:\s*\[#\d+\]\([^)]*issues/\d+\)\s*,?)*)")
 
-AREAS = ("block-production", "byron", "ecosystem", "fast-start", "future-eras", "hygiene", "leios", "networking",
-         "node-to-client", "ops", "plutus", "publication", "scale", "unconfirmed-rule", "verification")
+CODEMAP = Path(__file__).resolve().parents[1] / "docs/data/codemap.json"
+# Work that lives in no sbt module: the build, CI and releases; the scripts (devnet, tooling, guards); the documents.
+OUTSIDE_MODULES = ("build", "scripts", "docs")
+
+
+def module_areas(codemap: Path = CODEMAP) -> tuple[str, ...]:
+    """One area per sbt module of the code map (generated from build.sbt), then the areas outside the modules."""
+    modules = json.loads(codemap.read_text(encoding="utf-8"))["modules"]
+    return tuple(m if isinstance(m, str) else m["name"] for m in modules) + OUTSIDE_MODULES
+
+
+AREAS = module_areas()
 PRIORITIES = ("P0", "P1", "P2")
 STATUSES = ("idea", "backlog", "in-progress", "blocked", "parked", "needs-owner")
 MILESTONES = ("reference-parity", "mainnet-evidence", "leios-dijkstra")
@@ -60,6 +72,7 @@ class GhFailure(Exception):
 
 class Kind(Enum):
     MISSING_LABEL = "missing an area, priority or status label"
+    UNKNOWN_AREA = "an area label that is neither an sbt module nor build, scripts or docs"
     NO_MILESTONE = "no milestone, and the status is neither idea nor parked"
     TWO_STATUSES = "more than one status label"
     STALE_IN_PROGRESS = "status:in-progress not updated for more than 7 days"
@@ -162,6 +175,9 @@ def check(raw: list[dict], now: datetime) -> list[Violation]:
                    if not any(label.startswith(prefix + ":") for label in labels)]
         if missing:
             found.append(Violation(Kind.MISSING_LABEL, number, title, "missing " + ", ".join(missing)))
+        unknown = [label for label in labels if label.startswith("area:") and label.removeprefix("area:") not in AREAS]
+        if unknown:
+            found.append(Violation(Kind.UNKNOWN_AREA, number, title, ", ".join(unknown)))
         if issue.get("milestone") is None and not WITHOUT_MILESTONE.intersection(statuses):
             found.append(Violation(Kind.NO_MILESTONE, number, title,
                                    "status " + ("/".join(statuses) if statuses else "none")))

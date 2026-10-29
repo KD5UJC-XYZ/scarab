@@ -16,7 +16,7 @@ from status import Kind, Violation
 
 ROOT = Path(__file__).resolve().parents[2]
 NOW = datetime(2026, 10, 29, 12, 0, tzinfo=timezone.utc)
-TRIAGED = ("area:networking", "priority:P2", "status:backlog")
+TRIAGED = ("area:network", "priority:P2", "status:backlog")
 
 
 def issue(number, *labels, milestone="reference-parity", updated="2026-10-28T09:00:00Z", title=None):
@@ -38,35 +38,39 @@ class CheckCase(unittest.TestCase):
         self.assertEqual(status.check([issue(1, *TRIAGED)], NOW), [])
 
     def test_each_missing_label_is_named(self):
-        found = status.check([issue(2, "priority:P1", "status:backlog"), issue(3, "area:ops")], NOW)
+        found = status.check([issue(2, "priority:P1", "status:backlog"), issue(3, "area:scripts")], NOW)
         self.assertEqual(found, [
             Violation(Kind.MISSING_LABEL, 2, "Issue 2", "missing area"),
             Violation(Kind.MISSING_LABEL, 3, "Issue 3", "missing priority, status"),
         ])
 
+    def test_an_area_outside_the_modules_and_the_three_others_is_reported(self):
+        found = status.check([issue(4, "area:network", "area:node", "area:networking", "priority:P2", "status:backlog")], NOW)
+        self.assertEqual(found, [Violation(Kind.UNKNOWN_AREA, 4, "Issue 4", "area:networking")])
+
     def test_a_milestone_is_required_unless_idea_or_parked(self):
         raw = [
             issue(4, *TRIAGED, milestone=None),
-            issue(5, "area:ops", "priority:P2", "status:idea", milestone=None),
-            issue(6, "area:ops", "priority:P2", "status:parked", milestone=None),
-            issue(7, "area:ops", "priority:P2", milestone=None),
+            issue(5, "area:scripts", "priority:P2", "status:idea", milestone=None),
+            issue(6, "area:scripts", "priority:P2", "status:parked", milestone=None),
+            issue(7, "area:scripts", "priority:P2", milestone=None),
         ]
         self.assertEqual(kinds(raw), [(Kind.MISSING_LABEL, 7), (Kind.NO_MILESTONE, 4), (Kind.NO_MILESTONE, 7)])
         self.assertEqual([v.detail for v in status.check(raw, NOW) if v.kind is Kind.NO_MILESTONE],
                          ["status backlog", "status none"])
 
     def test_two_status_labels(self):
-        found = status.check([issue(8, "area:ops", "priority:P1", "status:backlog", "status:blocked")], NOW)
+        found = status.check([issue(8, "area:scripts", "priority:P1", "status:backlog", "status:blocked")], NOW)
         self.assertEqual(found, [Violation(Kind.TWO_STATUSES, 8, "Issue 8", "status:backlog, status:blocked")])
 
     def test_in_progress_is_stale_after_seven_days(self):
-        labels = ("area:ops", "priority:P1", "status:in-progress")
+        labels = ("area:scripts", "priority:P1", "status:in-progress")
         raw = [issue(9, *labels, updated="2026-10-22T13:00:00Z"), issue(10, *labels, updated="2026-10-22T11:00:00Z")]
         self.assertEqual(status.check(raw, NOW),
                          [Violation(Kind.STALE_IN_PROGRESS, 10, "Issue 10", "updated 7 days ago (2026-10-22)")])
 
     def test_needs_owner_is_stale_after_fourteen_days(self):
-        labels = ("area:ops", "priority:P1", "status:needs-owner")
+        labels = ("area:scripts", "priority:P1", "status:needs-owner")
         raw = [issue(11, *labels, updated="2026-10-16T12:00:00Z"), issue(12, *labels, updated="2026-10-01T12:00:00Z")]
         self.assertEqual(kinds(raw), [(Kind.STALE_NEEDS_OWNER, 12)])
 
@@ -85,7 +89,7 @@ class RenderCase(unittest.TestCase):
         self.assertEqual(status.render_check([], 3), "triage check: clean (3 open issues)")
 
     def test_grouped_one_line_per_issue(self):
-        raw = [issue(2, "area:ops", title="  A title "), issue(3, *TRIAGED, milestone=None)]
+        raw = [issue(2, "area:scripts", title="  A title "), issue(3, *TRIAGED, milestone=None)]
         self.assertEqual(status.render_check(status.check(raw, NOW), 2).splitlines(), [
             "triage check: 2 violations over 2 open issues",
             f"{Kind.MISSING_LABEL.value} (1)",
@@ -128,7 +132,7 @@ class SourceCase(unittest.TestCase):
     def test_main_reads_a_file_and_prints_json(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "issues.json"
-            source.write_text(json.dumps([[issue(5, "area:ops", "priority:P0", "status:idea", milestone=None)]]))
+            source.write_text(json.dumps([[issue(5, "area:scripts", "priority:P0", "status:idea", milestone=None)]]))
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 self.assertEqual(status.main(["--check", "--from", str(source), "--json"]), 0)
@@ -136,11 +140,16 @@ class SourceCase(unittest.TestCase):
 
 
 class VocabularyCase(unittest.TestCase):
-    """The vocabulary lives in docs/process.md; the script and the issue forms follow it."""
+    """The areas come from the code map; the rest of the vocabulary lives in docs/process.md; the issue forms follow."""
+
+    def test_areas_are_the_code_map_modules_and_the_three_outside_them(self):
+        modules = [m if isinstance(m, str) else m["name"]
+                   for m in json.loads((ROOT / "docs/data/codemap.json").read_text(encoding="utf-8"))["modules"]]
+        self.assertEqual(status.AREAS, (*modules, "build", "scripts", "docs"))
 
     def test_process_lists_the_same_labels_and_milestones(self):
         text = (ROOT / "docs/process.md").read_text(encoding="utf-8")
-        self.assertEqual(set(re.findall(r"`area:([a-z][a-z-]*)`", text)), set(status.AREAS))
+        self.assertEqual(set(re.findall(r"`area:([a-z][a-z-]*)`", text)), set(status.OUTSIDE_MODULES))
         self.assertEqual(set(re.findall(r"`status:([a-z][a-z-]*)`", text)), set(status.STATUSES))
         self.assertEqual(set(re.findall(r"`priority:(P\d)`", text)), set(status.PRIORITIES))
         for milestone in status.MILESTONES:
