@@ -217,7 +217,11 @@ scan of the checked-out commit's full history, including merge parents (unrelate
 are scanned in their own runs; `.gitleaks.toml`; a new false positive is allowlisted there by path or
 commit, scoped to its rule, with a reason) and, on pull requests, a dependency review. A red
 nightly is fixed first, before new work lands: it is the cheapest point at which to find what the
-per-change gates did not cover.
+per-change gates did not cover. Run the E2E scenarios on a branch with `python3 scripts/dispatch_e2e.py --ref
+<branch>`, which waits until no E2E run is waiting before it dispatches: the workflow's concurrency group keeps one
+run going and one waiting, and a plain `gh workflow run` replaces, and so cancels, the waiting one.
+`.github/workflows/flaky-tests.yml` reads the last day's CI runs every night: a test that failed and then passed on
+the same commit gets an issue of its own, or a comment on its existing one (`scripts/flaky_tests.py`).
 
 The scenarios need the reference image (see [docs/reference-image.md](docs/reference-image.md))
 and are described in [docs/running.md](docs/running.md). `prepare_reference_image.py --download`

@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Flaky tests
+
+# Tests that failed and then passed on the same commit, from the CI runs of the last 26 hours, each tracked in an
+# issue of its own or added to the existing one (scripts/flaky_tests.py --apply). Read-only on code and runs; it
+# only opens and comments on issues.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * *'
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: flaky-tests
+  cancel-in-progress: false
+
+jobs:
+  flaky:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out the detector
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Find and track flaky tests
+        run: python3 scripts/flaky_tests.py --apply
