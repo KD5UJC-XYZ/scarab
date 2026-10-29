@@ -8,5 +8,5 @@
   - The Genesis controls take the shared block pool itself, not an option of it.
   - Only the node's own header check can graft a jump's headers (`HeaderCheck.Grafting`). A Genesis runtime is built
     with it, and each session uses the check its controls hand it.
-  - `GenesisInternalProblem.MissingSharedBlockPool` and `UnsupportedHeaderFamily`, which stopped the node, are gone.
+  - The `MissingSharedBlockPool` and `UnsupportedHeaderFamily` Genesis invariants, which stopped the node, are gone.
   - A jump accepted before the session started a gate ends that connection, uncharged.

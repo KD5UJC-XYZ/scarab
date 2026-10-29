@@ -393,10 +393,10 @@ Not yet covered, tracked in issue 584:
 Issue 581. The two invariants of the Genesis code that were the node's own wiring, not one connection's, cannot be
 met any more: as in the reference, whose types fix both when the node is assembled, they cannot be written.
 - **The shared block pool.** `GenesisRuntime.controls` takes the pool, not an option of it; both directions always
-  had one. `GenesisInternalProblem.MissingSharedBlockPool` is gone.
+  had one. The `MissingSharedBlockPool` case is gone.
 - **A header gate that can graft.** Only a gate of the node's own header check can take a jump's headers
   (`HeaderGate.Grafting`, `HeaderCheck.Grafting`, made by `HeaderCheck.forNodeChain`); `HeaderGate` no longer has
-  `graft`, and `HeaderCheck.GraftError.Unsupported` and `GenesisInternalProblem.UnsupportedHeaderFamily` are gone. A
+  `graft`, and `GraftError`'s `Unsupported` case and the `UnsupportedHeaderFamily` case are gone. A
   Genesis runtime is built with that check (`GenesisRuntime.create`), and each connection's session uses the check its
   controls hand it (`GenesisRuntime.Bound.headers`), which keeps the gate it starts. `GenesisPeer` uses that gate, not
   one passed in by the session. A jump accepted before the session started a gate is an invariant of that connection
