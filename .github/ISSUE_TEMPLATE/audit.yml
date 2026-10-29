@@ -1,12 +1,48 @@
 # SPDX-License-Identifier: Apache-2.0
 name: Audit finding
 description: A finding from an independent audit or review of main (docs/process.md, "Findings from an independent audit")
-labels: [audit]
+labels: [audit, status:backlog]
 body:
   - type: markdown
     attributes:
       value: |
-        Exploitable security problems: do not file here, see SECURITY.md. A public ticket states the missing property and what the reference does, never how to trigger it. Title: the audit ID, then a short imperative title (for example `[AUD3-22] ...`). Add one `priority:` label, an area label and the milestone.
+        Exploitable security problems: do not file here, see SECURITY.md. A public ticket states the missing property and what the reference does, never how to trigger it. Title: the audit ID, then a short imperative title (for example `[AUD3-22] ...`). Pick the area and priority below; triage applies them as labels and sets the milestone.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      description: The sbt module the work is in (docs/codemap.md), or build, scripts or docs; choose more than one when it spans modules.
+      options:
+        - area:blst-native
+        - area:codec
+        - area:crypto
+        - area:protocol
+        - area:network
+        - area:plutus
+        - area:ledger
+        - area:consensus
+        - area:storage
+        - area:models-gen
+        - area:models
+        - area:node
+        - area:fuzz
+        - area:build
+        - area:scripts
+        - area:docs
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: The `priority:` label (docs/process.md, "Labels and milestones").
+      options:
+        - priority:P0
+        - priority:P1
+        - priority:P2
+    validations:
+      required: true
   - type: input
     id: boundary
     attributes:

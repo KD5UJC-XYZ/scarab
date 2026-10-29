@@ -1,11 +1,47 @@
 name: Bug or divergence report
 description: Wrong behaviour, a crash, or a disagreement with the Haskell node or the chain
-labels: [bug]
+labels: [bug, status:backlog]
 body:
   - type: markdown
     attributes:
       value: |
         Exploitable security problems: do not file here, see SECURITY.md. This is unofficial research software.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      description: The sbt module the work is in (docs/codemap.md), or build, scripts or docs; choose more than one when it spans modules.
+      options:
+        - area:blst-native
+        - area:codec
+        - area:crypto
+        - area:protocol
+        - area:network
+        - area:plutus
+        - area:ledger
+        - area:consensus
+        - area:storage
+        - area:models-gen
+        - area:models
+        - area:node
+        - area:fuzz
+        - area:build
+        - area:scripts
+        - area:docs
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: The `priority:` label (docs/process.md, "Labels and milestones").
+      options:
+        - priority:P0
+        - priority:P1
+        - priority:P2
+    validations:
+      required: true
   - type: textarea
     id: what
     attributes:

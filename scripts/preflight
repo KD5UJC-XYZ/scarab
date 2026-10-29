@@ -37,6 +37,15 @@ step "documented flags" python3 scripts/check_flags_doc.py
 step "documentation drift" python3 scripts/check_docs.py
 step "code map is current" python3 scripts/render_codemap.py --check
 
+# The triage check reads the live issue list, which is a property of the repository, not of the change under
+# test, so its result is shown but never fails preflight; the nightly triage workflow keeps the report.
+printf '== %s\n' "triage check (advisory, read-only)"
+if gh auth status > /dev/null 2>&1; then
+  python3 scripts/status.py --check | grep -v '^  ' | sed 's/^/   /'
+else
+  printf '   skipped: gh is not authenticated\n'
+fi
+
 if [ "${1:-}" = "--check" ]; then
   cache=$(python3 -c 'import sys; sys.path.insert(0, "scripts"); from devnet.util import cache_dir; print(cache_dir())')
   step "sbt check (JDK image)" \
