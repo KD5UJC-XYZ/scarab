@@ -328,7 +328,7 @@ Still stopping the node, decided separately (issue 567):
 - the block path in the selection worker: ~~an exception of the rules,~~ an exception of a commit (`Fatal.Defect`),
   ~~`Unavailable`, `Unverifiable`,~~ `Internal` ([superseded in part](#amendment-2026-10-28-no-verdict-on-a-block-a-held-transaction-or-our-own-block-does-not-stop-the-node));
 - a defect the node publishes to a session (`SessionEnd.Defect`);
-- a connection's monitor whose recovery fails after the monitor failed (`lost`, then `Fatal.Defect`; issue 579 tracks its test);
+- a connection's monitor whose recovery fails after the monitor failed (`lost`, then `Fatal.Defect`; ~~issue 579 tracks its test~~ [tested](#amendment-2026-10-29-the-outbound-connection-monitors-failure-is-tested));
 - ~~the mempool's revalidation and forging;~~ ([superseded](#amendment-2026-10-28-no-verdict-on-a-block-a-held-transaction-or-our-own-block-does-not-stop-the-node))
 - a defect in releasing a connection's resources (`ConnectionResources`);
 - an internal failure of the node's state (`InternalFailure`, `StateAcquireFailure`).
@@ -388,3 +388,11 @@ Not yet covered, tracked in issue 584:
 - on our own block, a state out of range or an exception of the rules still stops the node (`Follower.adoptForged`);
 - the forger's tick whose state is out of range still stops the node (`Forger.tickFault`).
 
+## Amendment (2026-10-29): the outbound connection monitor's failure is tested
+
+Issue 579. Both branches of `OutboundPeers.peerMonitoringLoop`'s fallback are tested (`OutboundMonitorFailureSuite`), with
+an exception injected where the monitor observes the connection's applications (`OutboundPeers.create`'s
+`beforeObservation`, a test seam the node does not use):
+- a monitor that throws ends its own connection: the connection is released, the governor sees `PeerError.ConnectionDefect`
+  with the cause, `NotThePeers`, nothing reaches the fatal sink, and the same peer is connected to and promoted again;
+- a recovery that throws again stops the node with `Fatal.Defect` of the second exception, as listed above.
