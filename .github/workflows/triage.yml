@@ -4,7 +4,8 @@ name: Triage report
 # The triage check of docs/process.md ("Labels and milestones") over the open issues, read-only through
 # scripts/status.py --check. Its report replaces the body of the one issue titled "Triage report", created
 # with its own labels and milestone on the first run, so the report never lists itself and never adds comments.
-# A closed "Triage report" issue is reopened: closing it does not stop the report.
+# A closed "Triage report" issue is reopened: closing it does not stop the report. The roadmap register's drift
+# (scripts/render_roadmap.py --check without --pr, so every disagreement is a notice) is appended to the same report.
 on:
   workflow_dispatch:
   schedule:
@@ -41,6 +42,14 @@ jobs:
           cat "$RUNNER_TEMP/triage.txt"
           # 1 is a report with violations, which is this workflow's output; anything else is a failed check.
           if [ "$code" -gt 1 ]; then exit "$code"; fi
+      - name: Run the roadmap register check
+        run: |
+          # Without --pr every disagreement between an item and its issues is a notice: the drift no pull request
+          # caused (an issue closed or reopened by hand). A defect of the register itself also lands in the report.
+          set +e
+          python3 scripts/render_roadmap.py --check --require-issue-state > "$RUNNER_TEMP/roadmap.txt" 2>&1
+          set -e
+          cat "$RUNNER_TEMP/roadmap.txt"
       - name: Write the report into the triage issue
         run: |
           body="$RUNNER_TEMP/body.md"
@@ -49,6 +58,12 @@ jobs:
             echo
             echo '~~~text'
             head -n 800 "$RUNNER_TEMP/triage.txt"
+            echo '~~~'
+            echo
+            echo "Roadmap register, from \`python3 scripts/render_roadmap.py --check\` (items whose status disagrees with their issues):"
+            echo
+            echo '~~~text'
+            head -n 200 "$RUNNER_TEMP/roadmap.txt"
             echo '~~~'
           } > "$body"
           number=$(gh api --paginate 'repos/{owner}/{repo}/issues?state=all&per_page=100' \
