@@ -31,6 +31,7 @@ import xyz.kd5ujc.scarab.node.MirrorRules
 import xyz.kd5ujc.scarab.node.RefStateful
 import xyz.kd5ujc.scarab.node.mempool.MempoolLedger
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
+import xyz.kd5ujc.scarab.node.read.TxClock
 import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.consensus.PraosConfig
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, PraosState, ProtocolExtras, ProtocolState}
@@ -104,6 +105,9 @@ class ForgedChainSetup(val geometry: EpochGeometry):
       updateQuorum = 2
     )
   val epochNonce: Nonce = Nonce.Hash(Blake2b.hash256.hash(Bytes(Vector(7))))
+
+  /** The transactions' time translation, placed by this configuration's era history. */
+  given TxClock[MirrorState] = TxClock.of(geometry, mirrorEnv.byron, config.forks)
 
   /** What the mirror reads of this configuration. */
   val mirrorEnv: ConsensusMirrorEnv = ConsensusMirrorEnv(
@@ -364,7 +368,6 @@ class ForgedChainSetup(val geometry: EpochGeometry):
           forger <- Forger.create[IO, MirrorState](
             config,
             globals,
-            mirrorEnv.byron,
             p.creds,
             follower,
             mempool,

@@ -25,12 +25,12 @@ import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash}
 import xyz.kd5ujc.scarab.node.{Fatal, Follower, SessionEnd}
 import xyz.kd5ujc.scarab.consensus.{Praos, PraosConfig}
-import xyz.kd5ujc.scarab.consensus.state.{EraHistory, Placement, ProtocolState}
+import xyz.kd5ujc.scarab.consensus.state.ProtocolState
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{LedgerGlobals, PoolDistribution}
 import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Globals, Hfc}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, NewEpochState, ShelleyBasedEra, SlotNo}
-import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView}
+import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView, TxClock}
 import xyz.kd5ujc.scarab.node.read.MirrorEraRead
 import xyz.kd5ujc.scarab.node.mempool.{Entry, Mempool, MempoolLedger, MempoolState}
 import xyz.kd5ujc.scarab.protocol.ChainSync
@@ -132,9 +132,6 @@ trait ForgeEvents[F[_]]:
   * slot is attempted: slots that pass while an attempt runs are not attempted, and nothing is said
   * of them, as the reference's `knownSlotWatcher` passes over them.
   *
-  * @param byronHistory
-  *   The Byron parameters of the era history, from the Byron genesis: those the block rules and the
-  *   mempool translate time with ([[Placement]]).
   * @param credentials
   *   The pool's keys as they were at the start; the VRF key and the cold key never change, the KES
   *   key and certificate are those of `hot`.
@@ -155,7 +152,6 @@ trait ForgeEvents[F[_]]:
 final class Forger[F[_]: Async, S](
     config: PraosConfig,
     globals: LedgerGlobals,
-    byronHistory: EraHistory.ByronParams,
     credentials: PoolCredentials,
     val hot: HotKeys[F],
     follower: Follower[F, S],
@@ -172,7 +168,8 @@ final class Forger[F[_]: Async, S](
     val stats: ForgeStats[F]
 )(using
     chain: Stateful[F, VolatileChain[S]],
-    read: ChainRead[S]
+    read: ChainRead[S],
+    clock: TxClock[S]
 ):
   private val F = Async[F]
   private val geometry = config.geometry
@@ -525,13 +522,7 @@ final class Forger[F[_]: Async, S](
           globals,
           held.entries,
           BlockBuilder.Limits.of(ticked.params),
-          Some(
-            base.state.clock(
-              Placement(base.state.geometry(geometry), byronHistory, config.forks),
-              Era.Conway,
-              slot
-            )
-          )
+          Some(clock.at(base.state, Era.Conway, slot))
         )
       )
       chosen <- selection.fold(
@@ -801,13 +792,8 @@ object Forger:
     * of the current ledger, `hfbtGetLedgerState`): the horizon of [[ChainRead.clock]], the same one
     * the transactions' time translation has.
     */
-  def withinHorizon[S](config: PraosConfig, byronHistory: EraHistory.ByronParams)(using
-      read: ChainRead[S]
-  ): (VolatileChain[S], BigInt) => Boolean =
-    (current, slot) =>
-      val placement =
-        Placement(current.state.geometry(config.geometry), byronHistory, config.forks)
-      current.state.clock(placement, Era.Conway, slot).posix(slot).isRight
+  def withinHorizon[S](using clock: TxClock[S]): (VolatileChain[S], BigInt) => Boolean =
+    (current, slot) => clock.translates(current.state, slot)
 
   /** The tip's ledger and chain-dependent state carried into an epoch, and the pool distribution of
     * its forecast ledger view.
@@ -844,16 +830,13 @@ object Forger:
     /** `estimateBlockSize` of the header (see [[ForgeTrace.AdoptedBlock]]). */
     def estimatedSize: Long = header.raw.size.toLong + body.size + 10
 
-  /** @param byronHistory
-    *   The Byron parameters of the era history ([[Forger]]).
-    * @param source
+  /** @param source
     *   Where the KES key is written back after evolving and read from again at a reload; none: the
     *   key is kept in memory only, as the Haskell node does.
     */
   def create[F[_]: Async, S](
       config: PraosConfig,
       globals: LedgerGlobals,
-      byronHistory: EraHistory.ByronParams,
       credentials: PoolCredentials,
       follower: Follower[F, S],
       mempool: Mempool[F],
@@ -867,7 +850,8 @@ object Forger:
       source: Option[HotKeySource[F]] = None
   )(using
       Stateful[F, VolatileChain[S]],
-      ChainRead[S]
+      ChainRead[S],
+      TxClock[S]
   ): F[Forger[F, S]] =
     (
       Ref.of[F, Option[Crossed]](None),
@@ -878,7 +862,6 @@ object Forger:
       new Forger[F, S](
         config,
         globals,
-        byronHistory,
         credentials,
         hot,
         follower,
@@ -888,7 +871,7 @@ object Forger:
         now.getOrElse(Clock[F].realTimeInstant),
         sleep.getOrElse(d => Async[F].sleep(d)),
         unknownSlotBackoff,
-        horizon.getOrElse(Forger.withinHorizon(config, byronHistory)),
+        horizon.getOrElse(Forger.withinHorizon[S]),
         cache,
         pending,
         utxoStore,

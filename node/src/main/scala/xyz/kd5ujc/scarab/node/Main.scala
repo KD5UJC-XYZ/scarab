@@ -46,7 +46,7 @@ import xyz.kd5ujc.scarab.storage.{
   UtxoStore
 }
 import cats.mtl.{Ask, Handle, Raise, Stateful, Tell}
-import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState, Placement}
+import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState}
 import cats.syntax.all.*
 import java.nio.file.Path
 import com.comcast.ip4s.{Host, Port, SocketAddress}
@@ -99,6 +99,7 @@ import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
 import xyz.kd5ujc.scarab.network.ConnectionEvent
 import xyz.kd5ujc.scarab.node.ntc.{EraHistory, QueryEnv, StateQuerySource}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
+import xyz.kd5ujc.scarab.node.read.TxClock
 import xyz.kd5ujc.scarab.network.NodeToNode
 import xyz.kd5ujc.scarab.network.selection.{Churn, FetchMode, PeerMetrics, Targets, UseLedgerPeers}
 import xyz.kd5ujc.scarab.node.relay.{ChainServer, Persistence}
@@ -963,17 +964,22 @@ object Main extends IOApp:
                 .persistence[MirrorState]
                 .extended(r.ref, r.raw, Vector.empty, Anchor(anchor, state))
             )
+            // the transactions' time translation, placed by the node's era history parameters: the
+            // mempool and the forger use it as the block rules translate time
+            txClock = TxClock.of[MirrorState](
+              genesis.geometry,
+              setup.byronHistory,
+              setup.praos.forks
+            )
             mempoolEnvironment = new cats.mtl.Ask[IO, MempoolEnv]:
               val applicative = summon[cats.Applicative[IO]]
               def ask[E >: MempoolEnv]: IO[E] =
                 ref.get.map { chain =>
-                  val geometry = chain.state.geometry(genesis.geometry)
-                  val placement = Placement(geometry, setup.byronHistory, setup.praos.forks)
                   val tip = chain.tipRef.fold(BigInt(0))(_.slot)
                   MempoolEnv(
                     globals,
-                    geometry,
-                    clock = Some(chain.state.clock(placement, Era.Conway, tip + 1))
+                    chain.state.geometry(genesis.geometry),
+                    clock = Some(txClock.at(chain.state, Era.Conway, tip + 1))
                   ): E
                 }
             mempoolLedger <- scheduling.compute
@@ -1396,17 +1402,19 @@ object Main extends IOApp:
             forging <- (options.forge, credentials).tupled.traverse { (files, pool) =>
               for
                 source <- HotKeySource.files[IO](files.kesSkey, files.opCert)
-                forger <- Forger.create[IO, MirrorState](
-                  setup.praos.copy(geometry = geometry),
-                  globals,
-                  setup.byronHistory,
-                  pool,
-                  follower,
-                  mempool,
-                  Log.sink[ForgeEvents, ForgeEvent, IO].alongside(measured.forge),
-                  utxoStore = Some(store),
-                  source = Some(source)
-                )
+                forger <- {
+                  given TxClock[MirrorState] = txClock
+                  Forger.create[IO, MirrorState](
+                    setup.praos.copy(geometry = geometry),
+                    globals,
+                    pool,
+                    follower,
+                    mempool,
+                    Log.sink[ForgeEvents, ForgeEvent, IO].alongside(measured.forge),
+                    utxoStore = Some(store),
+                    source = Some(source)
+                  )
+                }
               yield forger
             }
             _ <- forging.traverse_(f => collectors.add(Collectors.forging(f.stats)))
