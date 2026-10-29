@@ -354,8 +354,16 @@ recorded as invalid and its sender punished.
   may hold half-written state there, and the reference's `ChainDbFailure` is `shutdownNode` too.
 - **A held transaction (R2).** The mempool's revalidation drops a transaction it has no verdict on with that
   reason, as a refused one, and goes on to the new tip.
-- **Our own block (R3).** No verdict on a block we forged is handled as a refusal: its transactions leave the pool
-  and the slot ends without a block.
+- **Our own block (R3).** When the evaluator or a crypto provider has no verdict on a block we forged, it is handled
+  as a refusal: its transactions leave the pool and the slot ends without a block.
 
-Replay of the node's own stored chain is local data, not a peer's, and still stops the node on such a failure.
+Replay of the node's own stored chain is local data, not a peer's, and still stops the node on such a failure. So
+does the mempool's tick to a new tip, which runs after the commit point, as the reference's mempool sync thread is
+linked to the node.
+
+Not yet covered, tracked in issue 584:
+- a header whose state is out of range still stops the node (`SessionEnd.of`, `StateFaultInHeader`);
+- a crypto provider that fails on a header charges the peer (`PeerError.Unverifiable` is `Transient`);
+- on our own block, a state out of range or an exception of the rules still stops the node (`Follower.adoptForged`);
+- the forger's tick whose state is out of range still stops the node (`Forger.tickFault`).
 
