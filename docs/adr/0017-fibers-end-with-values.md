@@ -73,8 +73,9 @@ rules refused, a storage failure and a bug in the node were all retried like a l
    ouroboros-consensus `82ecba329` `Node/RethrowPolicy.hs` 131 to 139); only storage is `ShutdownNode`
    (55 to 90). Making every `NetworkError.Defect` the peer's would undo issue 154, because the node's
    own code produces `Defect` too (a fiber scope's wrapped exception, the rules, the storage). So
-   ~~`NetworkError.Defect`, `fromThrowable`,~~ ([superseded](#amendment-2026-10-28-an-exception-of-a-connections-own-work-ends-that-connection)) `SessionEnd.Defect` (rules and storage) and `Fault.Defect`
-   still reach `Fatal.Defect`, and the storage, internal and unavailable cases still stop the node. A
+   ~~`NetworkError.Defect`, `fromThrowable`, `SessionEnd.Defect` (rules and storage) and `Fault.Defect`
+   still reach `Fatal.Defect`, and~~ ([superseded](#amendment-2026-10-28-an-exception-of-a-connections-own-work-ends-that-connection))
+   the storage, internal and unavailable cases still stop the node. A
    peer must not be able to stop the whole process by what it sends, which is the reasoning of the
    process-wide denial of service below.
 6. **The tip is published after the blocks are stored.** `Follower.commit` persists, then replaces the
@@ -307,6 +308,11 @@ the whole process by what it sends".
 - An inbound node-to-node connection, and a listener's handler, that end with a defect are reported and close.
 - A connection that fails while it is established (`EstablishmentError.Defect`) ends that attempt, uncharged.
 - Peer sharing, and a connection's monitor, that fail abort their connection.
+- A hot session's own work (our ChainSync and BlockFetch clients, the header pipeline, a fiber the session lands):
+  an exception there ends the session as `PeerError.ConnectionDefect`, uncharged (`SessionEnd.scoped`,
+  `InboundGovernor.pipelineEnd`). A session of the node commits no block: the selection worker owns every commit, in
+  a scope of its own that stops the node (`BlockSelection.run`). The follower still adopts inside a session where no
+  selection worker runs, which only tests do; issue 578 tracks closing that path.
 - The bearer's writer: an exception encoding or sending our own messages is `NetworkError.Defect` (`Mux`'s writer,
   `NetworkError.fromThrowable`), so it ends that connection, uncharged, and no longer stops the node. Owner
   decision of 2026-10-28 (issue 567, A1), replacing the earlier one of the same day: what we send depends on the
@@ -317,7 +323,10 @@ the whole process by what it sends".
   in its policy either, so an untyped one ends the peer there too.
 
 Still stopping the node, decided separately (issue 567):
-- the block path (`SessionEnd.Defect`, `Unavailable`, `Unverifiable`, `Internal`);
+- the block path in the selection worker: an exception of the rules or of a commit (`Fatal.Defect`), `Unavailable`,
+  `Unverifiable`, `Internal`;
+- a defect the node publishes to a session (`SessionEnd.Defect`);
+- a connection's monitor whose recovery fails after the monitor failed (`lost`, then `Fatal.Defect`; issue 579 tracks its test);
 - the mempool's revalidation and forging;
 - a defect in releasing a connection's resources (`ConnectionResources`);
 - an internal failure of the node's state (`InternalFailure`, `StateAcquireFailure`).
