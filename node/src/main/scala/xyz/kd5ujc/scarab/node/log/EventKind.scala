@@ -101,6 +101,9 @@ enum EventKind(val area: Area, val severity: Severity):
   case EraTransition extends EventKind(Area.Chain, Severity.Notice)
   case EpochValidated extends EventKind(Area.Chain, Severity.Info)
   case Reconnecting extends EventKind(Area.Chain, Severity.Warning)
+
+  /** The node has no verdict on a block (issue 567): an error of its own implementation. */
+  case BlockNoVerdict extends EventKind(Area.Chain, Severity.Error)
   case Stalled extends EventKind(Area.Chain, Severity.Warning)
   case StallState extends EventKind(Area.Chain, Severity.Warning)
   case StallDump extends EventKind(Area.Chain, Severity.Warning)

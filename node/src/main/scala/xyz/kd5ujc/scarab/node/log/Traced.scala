@@ -68,7 +68,8 @@ object Traced:
     */
   type FollowerLine = FollowerEvent.Connected | FollowerEvent.Extended | FollowerEvent.RolledBack |
     FollowerEvent.EpochEntered | FollowerEvent.Reconnecting | FollowerEvent.EraEntered |
-    FollowerEvent.EpochValidated | FollowerEvent.ByronEpochValidated | FollowerEvent.LedgerEpoch
+    FollowerEvent.EpochValidated | FollowerEvent.ByronEpochValidated | FollowerEvent.LedgerEpoch |
+    FollowerEvent.NoVerdict
 
   given Traced[FollowerLine] =
     case FollowerEvent.Connected(p) => EventKind.Connected.line("intersection" -> point(p))
@@ -128,6 +129,17 @@ object Traced:
       )
     case FollowerEvent.Reconnecting(reason, attempt) =>
       EventKind.Reconnecting.line("reason" -> reason.message.asJson, "attempt" -> attempt.asJson)
+    case FollowerEvent.NoVerdict(at, cause) =>
+      EventKind.BlockNoVerdict.line(
+        "block" -> point(at),
+        "kind" -> (cause match
+          case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.Evaluation(_)      => "evaluation"
+          case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.Verification(_)    => "verification"
+          case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.StateOutOfRange(_) => "stateOutOfRange"
+          case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.Defect(_)          => "defect"
+        ).asJson,
+        "reason" -> cause.message.asJson
+      )
 
   given Traced[StorageEvent] =
     case StorageEvent.FormatMigrated(m) =>

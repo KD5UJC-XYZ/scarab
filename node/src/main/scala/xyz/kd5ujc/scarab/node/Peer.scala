@@ -50,6 +50,9 @@ trait Peer[F[_]]:
   def selectionWork: Option[SelectionWork.Session[F]] = None
   def invalidBlocks: Option[InvalidBlocks[F]] = None
 
+  /** The shared set of blocks the node has no verdict on ([[NoVerdictBlocks]], issue 567). */
+  def noVerdictBlocks: Option[NoVerdictBlocks[F]] = None
+
   def invalidated(
       @scala.annotation.unused header: Header,
       @scala.annotation.unused refusal: ValidationError
