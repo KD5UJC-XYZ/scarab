@@ -101,11 +101,10 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
 
   // issue 567: the reference traces a domain monitor that throws (`TraceLocalRootError`) and
   // starts its monitors again (LocalRootPeers.hs 146-168 of ouroboros-network 2fb69829)
-  test("a DNS lookup that throws is traced with its domain, not a stop; a snapshot defect is") {
+  test("a DNS lookup that throws is traced with its domain, not a stop") {
     for
       dnsCause <- IO.delay(new IllegalStateException("injected DNS defect"))
       good <- name("good-root.example")
-      snapshotCause <- IO.delay(new IllegalArgumentException("injected snapshot defect"))
       config = RootConfig(
         advertise = true,
         DiffusionMode.InitiatorOnly,
@@ -135,19 +134,6 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
       rng <- Ref.of[IO, Rng](Rng(18L))
       refreshed <- PeerNetwork.refreshLocalDnsCache(roots, cache, dns, rng)
       (kept, dnsError) = refreshed
-      queue <- Queue.unbounded[IO, Event[PeerNetwork.Addr]]
-      snapshotFatal <- Deferred[IO, GovernorFault]
-      snapshotJob = PeerNetwork.reportBackgroundDefect(
-        PeerNetwork.runSnapshotCheck(
-          IO.raiseError[Boolean](snapshotCause),
-          IO.never,
-          BigInt(4),
-          queue
-        ),
-        snapshotFatal,
-        GovernorFault.SnapshotVerificationDefect.apply
-      )
-      snapshotOutcome <- IO.race(snapshotJob, snapshotFatal.get)
       _ <- IO(
         assert(dnsError.exists { case LocalRootsTrace.Error(domain, cause) =>
           domain.value == "defect-root.example." && (cause eq dnsCause)
@@ -163,21 +149,50 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
           Set(SocketAddress[Host](ipv4"192.0.2.30", port"3100"))
         )
       )
-      _ <- IO(
-        assert(snapshotOutcome.toOption.exists {
-          case GovernorFault.SnapshotVerificationDefect(cause) => cause eq snapshotCause
-          case _                                               => false
-        })
-      )
     yield ()
   }
 
-  test("snapshot store faults retain storage classification and defect causes stay unchanged") {
+  // issue 586: `jobVerifyPeerSnapshot` is `Job job (const (completion False))` (ouroboros-network
+  // 2fb69829 Governor/Monitor.hs 689-712): any failure of the verification is no match
+  test(
+    "a snapshot verification that throws, or whose store fails, answers no match; never a stop"
+  ) {
+    val storage = StorageError.Io("immutable", new java.io.IOException("injected read failure"))
+    for
+      told <- Ref.of[IO, Vector[StorageError]](Vector.empty)
+      tell = (error: StorageError) => told.update(_ :+ error)
+      matched <- PeerNetwork.snapshotMatches[IO](IO.pure(true), tell)
+      thrown <- PeerNetwork.snapshotMatches[IO](
+        IO.raiseError[Boolean](new IllegalArgumentException("injected snapshot defect")),
+        tell
+      )
+      afterThrown <- told.get
+      failed <- PeerNetwork.snapshotMatches[IO](
+        cats.mtl.Raise[IO, StorageError].raise[StorageError, Boolean](storage),
+        tell
+      )
+      afterFailed <- told.get
+      queue <- Queue.unbounded[IO, Event[PeerNetwork.Addr]]
+      _ <- PeerNetwork.runSnapshotCheck(
+        PeerNetwork.snapshotMatches[IO](cats.mtl.Raise[IO, StorageError].raise(storage), tell),
+        IO.never,
+        BigInt(4),
+        queue
+      )
+      completed <- queue.take
+    yield
+      assertEquals(matched, true)
+      assertEquals(thrown, false)
+      // only a failed store is told, with its cause
+      assertEquals(afterThrown, Vector.empty)
+      assertEquals(failed, false)
+      assertEquals(afterFailed, Vector(storage))
+      assertEquals(completed, Event.SnapshotVerificationCompleted(BigInt(4), false))
+  }
+
+  test("a defect of the local roots' refresh outside its lookups stops the node, cause unchanged") {
     val cause = new java.io.IOException("snapshot index unavailable")
-    val storage = StorageError.Io("snapshot metadata", cause)
-    val storageFatal = PeerNetwork.fatalForGovernor(GovernorFault.SnapshotStorage(storage))
     val defectFatal = PeerNetwork.fatalForGovernor(GovernorFault.LocalDnsRefreshDefect(cause))
-    assertEquals(storageFatal, Some(Fatal.Storage(storage)))
     assert(defectFatal.exists {
       case Fatal.Defect(found) => found eq cause
       case _                   => false
