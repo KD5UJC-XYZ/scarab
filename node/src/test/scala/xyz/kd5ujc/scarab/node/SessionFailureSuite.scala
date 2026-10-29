@@ -35,6 +35,7 @@ import xyz.kd5ujc.scarab.ledger.byron.ByronSig
 import xyz.kd5ujc.scarab.ledger.rules.TickFailure
 import xyz.kd5ujc.scarab.ledger.state.VocabError
 import xyz.kd5ujc.scarab.protocol.ChainSync
+import xyz.kd5ujc.scarab.network.selection.FailureClass
 import xyz.kd5ujc.scarab.storage.ChainPersistence
 import scala.concurrent.duration.*
 
@@ -71,8 +72,9 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   /** Run a session of the follower over a peer that announces `headers` in turn and then waits.
     * `refuse` is the header the rules reject, `breakStorage` the number of the block whose
     * persistence fails, `breakTip` the number of the block after which telling the mempool fails,
-    * `explode` the number of the block whose rules throw, `unverifiable` the number of the block on
-    * which a crypto provider fails and the failure the rules report for it.
+    * `explode` the number of the block whose rules throw, `fetchThrows` the number of the block
+    * whose fetch throws, `unverifiable` the number of the block on which a crypto provider fails
+    * and the failure the rules report for it.
     */
   private def session(
       script: List[Either[PeerError, SyncEvent]] =
@@ -81,6 +83,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       breakStorage: Option[Int] = None,
       breakTip: Option[Int] = None,
       explode: Option[Int] = None,
+      fetchThrows: Option[Int] = None,
       unavailable: Option[Int] = None,
       held: Option[Int] = None,
       unverifiable: Option[(Int, BlockFailure)] = None,
@@ -182,7 +185,10 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             case Some(Left(error))  => raise.raise[PeerError, SyncEvent](error)
             case None               => IO.never[SyncEvent]
           }
-          def fetch(header: Header)(using Raise[IO, PeerError]) = IO.pure(Bytes.empty)
+          def fetch(header: Header)(using Raise[IO, PeerError]) =
+            if fetchThrows.contains(header.blockNo.toInt) then
+              IO.raiseError(new IllegalStateException("a bug in the client"))
+            else IO.pure(Bytes.empty)
         // the session as the governor runs it: in its own scope, ending with a value
         end <- SessionEnd
           .scoped(node) { (_, _) ?=>
@@ -279,6 +285,23 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       withheld(left, 1) { case BlockNoVerdict.Defect(cause) =>
         assertEquals(cause.getMessage, "a bug in the rules")
       }
+    }
+  }
+
+  /** The end of a session that an exception of its own work ended: the connection, uncharged. */
+  private def connectionDefect(left: Result, message: String): Unit =
+    left.end match
+      case SessionEnd.Failed(error @ PeerError.ConnectionDefect(cause)) =>
+        assertEquals(cause.getMessage, message)
+        assertEquals(FailurePolicy.classify(error), FailureClass.NotThePeers)
+      case other => fail(s"unexpected $other")
+    assertEquals(FailurePolicy.disposition(left.end), Disposition.Backoff)
+
+  test("an exception of the session's own work ends its connection, uncharged; the node goes on") {
+    session(fetchThrows = Some(2)).map { left =>
+      connectionDefect(left, "a bug in the client")
+      assertEquals(left.chain.tip, headers(1).point)
+      assert(left.invalid.isEmpty)
     }
   }
 

@@ -72,6 +72,26 @@ class PeerDefectPolicySuite extends FailsOnUncaught:
       case other => fail(s"unexpected $other")
   }
 
+  test(
+    "a header pipeline's own exception ends its connection; a failure of the node's state stops"
+  ) {
+    InboundGovernor.pipelineEnd(Fault.Defect(cause)) match
+      case Right(error @ PeerError.ConnectionDefect(thrown)) =>
+        assert(thrown eq cause)
+        assertEquals(FailurePolicy.classify(error), FailureClass.NotThePeers)
+      case other => fail(s"unexpected $other")
+    val state = new NetworkError.InternalFailure(
+      NetworkError.StateAcquireFailure(ChainSync.Point.Origin, 1, 0, 1)
+    )
+    InboundGovernor.pipelineEnd(Fault.Defect(state)) match
+      case Left(Fatal.Defect(thrown)) => assert(thrown eq state)
+      case other                      => fail(s"unexpected $other")
+    assertEquals(
+      InboundGovernor.pipelineEnd(Fault.Failed(PeerError.NoIntersection)),
+      Right(PeerError.NoIntersection)
+    )
+  }
+
   test("an input defect closes the connection and backs off: transient, never forgotten") {
     sites.foreach { site =>
       val error = PeerError.InputDefect(site, cause)
