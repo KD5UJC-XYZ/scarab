@@ -383,7 +383,8 @@ does the mempool's tick to a new tip, which runs after the commit point, as the 
 linked to the node.
 
 Not yet covered, tracked in issue 584:
-- a header whose state is out of range still stops the node (`SessionEnd.of`, `StateFaultInHeader`);
+- ~~a header whose state is out of range still stops the node (`SessionEnd.of`, `StateFaultInHeader`);~~
+  ([superseded](#amendment-2026-10-29-a-headers-state-out-of-range-is-an-invariant-not-a-peers-path))
 - ~~a crypto provider that fails on a header charges the peer (`PeerError.Unverifiable` is `Transient`);~~
   ([superseded](#amendment-2026-10-28-no-verdict-on-our-own-block-or-the-forgers-tick-and-a-provider-failing-on-a-header))
 - ~~on our own block, a state out of range or an exception of the rules still stops the node (`Follower.adoptForged`);~~
@@ -411,8 +412,8 @@ The owner decision of the amendment above, applied to three paths it left open (
   owner-approved deviation of the amendment
   [an exception of a connection's own work ends that connection](#amendment-2026-10-28-an-exception-of-a-connections-own-work-ends-that-connection).
 
-A header whose state is out of range still stops the node; issue 584 tracks it, as its values come from the genesis,
-which the reference refuses when it reads it. A crypto provider failing on the forging keys' own VRF proof
+~~A header whose state is out of range still stops the node; issue 584 tracks it, as its values come from the genesis,
+which the reference refuses when it reads it.~~ ([superseded](#amendment-2026-10-29-a-headers-state-out-of-range-is-an-invariant-not-a-peers-path)) A crypto provider failing on the forging keys' own VRF proof
 (`HotKeys.infrastructureFailure`) stops the node, as the reference's forging thread does; that is the reference's
 behaviour, not a gap.
 
@@ -448,3 +449,21 @@ waiting fiber is cancelled.
 - inbound: `InboundGovernorSuite`, the session being a `background` resource of the connection.
 
 The teardown needed no change.
+
+## Amendment (2026-10-29): a header's state out of range is an invariant, not a peer's path
+
+The first item that issue 584 tracks is no path a peer can reach. The only values of the header path that can fall
+outside their implementation type are those of the Byron to Shelley hand-over of the header forecast
+(`NodeHeaderRules`): the first Shelley epoch, converted to an `EpochNo`, and the keys of the genesis delegations,
+converted to key hashes. The reference's forecast is total over its typed translation context (`mkInitialShelleyForecast`,
+cardano-ledger `f649f975` `TPraos/API.hs` 656-668), and neither value can fail in Scarab:
+- the genesis delegations' keys are 28-byte hashes once the Shelley genesis is read (`GenesisSchema`);
+- a configured first epoch (`TestShelleyHardForkAtEpoch`) is a `Word64` once the configuration is read, as the
+  reference's `Maybe EpochNo` (cardano-node `11.1.3` `Configuration/POM.hs` 670, `Types.hs` 301); a value out of range is
+  refused at startup with `ConfigProblem.ConfigNumber`;
+- the hand-over is entered only for a header whose epoch, of a `Word64` slot, is at least the first Shelley epoch
+  (`NodeRules.entry`), whether the configuration or the Byron ledger's update state names it.
+
+`SessionEnd`'s `StateFaultInHeader` therefore stays as an invariant of the node: were it met, the node's own state
+would be at fault, and the node stops (`SessionEnd.Internal`). The stricter configuration reading is the reference's,
+and there is no deviation from the reference.

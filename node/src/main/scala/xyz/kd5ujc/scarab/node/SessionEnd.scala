@@ -143,13 +143,21 @@ object SessionEnd:
     case other              => Internal(other)
 
   /** A header whose validation met a quantity of the node's own ledger state outside its vocabulary
-    * type (the Byron to Shelley hand-over of the header forecast, [[NodeHeaderRules]]): no verdict
-    * on the header and no fault of the peer, so the node stops; the block path withholds such a
-    * block instead ([[BlockFailure.stateOutOfRange]], ADR 0017), and issue 584 tracks the header.
+    * type: an invariant of the node that does not hold, never the peer's fault, so the node stops.
     * The header pipeline has one error channel, the peer's, and this is where its value is placed.
-    * The reference's forecast (`mkInitialShelleyForecast`, cardano-ledger f649f975
-    * `TPraos/API.hs:656-668`) is total over a typed translation context: the values that fail here
-    * are of the genesis, which the reference refuses when it reads it.
+    *
+    * The only such values on the header path are those of the Byron to Shelley hand-over of the
+    * header forecast ([[NodeHeaderRules]]): the first Shelley epoch and the keys of the genesis
+    * delegations. The reference's forecast (`mkInitialShelleyForecast`, cardano-ledger f649f975
+    * `TPraos/API.hs:656-668`) is total over its typed translation context, and neither value can
+    * fail here:
+    *   - the delegations' keys are 28-byte hashes once the genesis is read
+    *     ([[xyz.kd5ujc.scarab.ledger.GenesisSchema]]);
+    *   - a configured first epoch is a `Word64` once the configuration is read ([[NodeConfig]], as
+    *     the reference's `EpochNo`);
+    *   - the hand-over is entered only for a header whose epoch, of a `Word64` slot, is at least
+    *     the first one ([[NodeRules.entry]]), whether the configuration or the Byron ledger's
+    *     update state names it.
     */
   private object StateFaultInHeader:
     def unapply(error: PeerError): Option[ChainError] = error match

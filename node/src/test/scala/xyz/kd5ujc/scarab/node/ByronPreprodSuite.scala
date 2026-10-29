@@ -200,6 +200,26 @@ class ByronPreprodSuite extends CatsEffectSuite:
     assert(lastByron.left.exists(_.rule == BlockRule.Structure), lastByron.toString)
   }
 
+  test("a first Shelley epoch outside Word64 never reaches the hand-over: the header precedes it") {
+    // `SessionEnd`'s `StateFaultInHeader` is an invariant: the hand-over converts the first epoch
+    // to an `EpochNo` only after this check, which bounds it by the epoch of a `Word64` slot
+    val byronState = states(byronCount).consensus.byron
+    val header = blocks(byronCount).header match
+      case h: Header.Shelley => h
+      case other             => fail(s"not a Shelley header: $other")
+    val last = header.copy(slot = BigInt(2).pow(64) - 1)
+    for
+      first <- List(BigInt(2).pow(64), BigInt(-1))
+      shelley <- List(header, last)
+    do
+      val rules = setup.byronRules.map(_.copy(configuredShelleyEpoch = Some(first)))
+      val entry = NodeRules.entry(byronState, shelley, setup.praos, setup.globals, rules)
+      assert(
+        entry.left.exists(_.isInstanceOf[BlockFailure.ShelleyBeforeTransition]),
+        s"first $first, slot ${shelley.slot}: $entry"
+      )
+  }
+
   test("the header and body of a Byron block are bound: a changed update payload is refused") {
     val i = 23 // the block carrying the version 2.0.0 proposal and its votes
     val b = blocks(i).asInstanceOf[Block.Byron]
