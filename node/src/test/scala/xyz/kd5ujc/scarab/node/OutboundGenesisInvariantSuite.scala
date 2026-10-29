@@ -24,7 +24,8 @@ import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 
 /** An invariant of the Genesis code met in a fiber of an outbound connection ends that connection,
   * uncharged, and the node goes on (ADR 0017, issue 583). The fiber that met it waits in `never`
-  * until the connection's teardown cancels it: the monitor aborts the running applications.
+  * until the connection's teardown cancels it: the hot session lives under the connection's own
+  * supervisor, which the connection's release ends.
   */
 class OutboundGenesisInvariantSuite extends FailsOnUncaught:
   override def munitIOTimeout: FiniteDuration = 60.seconds
@@ -81,7 +82,7 @@ class OutboundGenesisInvariantSuite extends FailsOnUncaught:
       cancelled: Deferred[IO, Unit]
   ) extends HeaderCheck.Grafting[IO]:
     def start(intersection: ChainSync.Point): IO[HeaderGate[IO]] =
-      invariant(problem) *> IO.never[HeaderGate[IO]].onCancel(cancelled.complete(()).void)
+      (invariant(problem) *> IO.never[HeaderGate[IO]]).onCancel(cancelled.complete(()).void)
     override def withInvariant(told: GenesisInternalProblem => IO[Unit]): HeaderCheck[IO] =
       Breaking(problem, told, cancelled)
     def recording(started: HeaderGate.Grafting[IO] => IO[Unit]): HeaderCheck[IO] = this
@@ -120,6 +121,11 @@ class OutboundGenesisInvariantSuite extends FailsOnUncaught:
                 GenesisGovernor.View(Fragment(ChainSync.Point.Origin, Vector.empty), 2, _ => None)
               )
             )
+            // held to the node's clock, as every live session's check is in the node (`Main`)
+            check = HeaderClock.grafting[IO](
+              SlotClock.system[IO](IO.pure(geometry)),
+              Breaking(problem, p => toNode.update(_ :+ p), cancelled)
+            )
             runtime <- GenesisRuntime.create[IO](
               governor,
               GenesisSettings(),
@@ -127,12 +133,11 @@ class OutboundGenesisInvariantSuite extends FailsOnUncaught:
               IO.pure(geometry),
               IO.pure(BigInt(0)),
               IO.unit,
-              // held to the node's clock, as every live session's check is in the node (`Main`)
-              HeaderClock.grafting[IO](
-                SlotClock.system[IO](IO.pure(geometry)),
-                Breaking(problem, p => toNode.update(_ :+ p), cancelled)
-              )
+              check
             )
+            // as the follower does: find the intersection, then take what the peer announces
+            follow: OutboundPeers.Follow[IO] = (session, _) =>
+              session.intersect(Vector(ChainSync.Point.Origin)) *> session.next.foreverM
             hot = OutboundPeers.Hot[IO](
               magic = magic,
               network = NodeToNode.Settings(),
@@ -141,9 +146,7 @@ class OutboundGenesisInvariantSuite extends FailsOnUncaught:
                 magic,
                 byronEpochSlots = 21600
               ),
-              // as the follower does: find the intersection, then take what the peer announces
-              follow = (session, _) =>
-                session.intersect(Vector(ChainSync.Point.Origin)) *> session.next.foreverM,
+              follow = follow,
               prepare = _ => IO.unit,
               heightSnapshot = ChainSyncHeights.origin,
               headers = None,

@@ -378,7 +378,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
   ) extends HeaderCheck.Grafting[IO]:
     def start(intersection: Point): IO[HeaderGate[IO]] = IO.pure(new HeaderGate[IO]:
       def accept(batch: Vector[SyncEvent])(using cats.mtl.Raise[IO, PeerError]) =
-        invariant(problem) *> IO.never[Unit].onCancel(cancelled.complete(()).void)
+        (invariant(problem) *> IO.never[Unit]).onCancel(cancelled.complete(()).void)
       def counts = IO.pure(HeaderGate.Counts(0, 0, 0)))
     override def withInvariant(told: GenesisInternalProblem => IO[Unit]): HeaderCheck[IO] =
       Breaking(problem, told, cancelled)

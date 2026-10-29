@@ -416,7 +416,7 @@ live session and checks the whole path: the connection ends with `PeerError.Gene
 against the peer (`NotThePeers`), nothing reaches the node's fatal sink or its node-wide invariant channel, and the
 waiting fiber is cancelled.
 - outbound: `OutboundGenesisInvariantSuite`, with the check held to the node's clock as in the node (`HeaderClock.grafting`);
-  the monitor's `abortRunning` ends the session;
+  the hot session lives under the connection's own supervisor, which the connection's release ends;
 - inbound: `InboundGovernorSuite`, the session being a `background` resource of the connection.
 
 The teardown needed no change.
