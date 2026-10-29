@@ -97,7 +97,7 @@ status is `status:idea` or `status:parked` (owner decision, 2026-10-29):
   (owner decision, 2026-10-29).
 
 `status:in-progress` means an open PR or an active worktree exists for the issue. One not updated for 7 days
-is reported as stale, and so is a `status:needs-owner` issue not updated for 14 (owner decision, 2026-10-29).
+is reported as stale, and so is a `status:needs-owner` issue not updated for 14 (triage rule of [#400](https://github.com/KD5UJC-XYZ/scarab/issues/400)).
 `python3 scripts/status.py --check` lists every open issue that breaks these rules, and the nightly
 [triage workflow](../.github/workflows/triage.yml) writes that list into the one issue titled "Triage
 report". File an issue through a form or through `python3 scripts/file_issue.py` (`--help` shows its
