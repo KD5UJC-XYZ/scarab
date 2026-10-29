@@ -240,6 +240,9 @@ object LogSamples:
     LedgerPeersTrace.SnapshotLoaded(WithOrigin.At(BigInt(123624952)), 37),
     LedgerPeersTrace.SnapshotIgnored(PeerSnapshotError.Missing("bigLedgerPools")),
     LedgerPeersTrace.SnapshotVerified(matches = true),
+    LedgerPeersTrace.SnapshotVerificationFailed(
+      xyz.kd5ujc.scarab.ledger.StorageError.Io("immutable", new java.io.IOException("read failed"))
+    ),
     LedgerPeersTrace.Refreshed(StakeSource.Ledger, 612, 118, WithOrigin.At(BigInt(125430904))),
     LedgerPeersTrace.Refreshed(StakeSource.Nothing, 0, 0, WithOrigin.Origin),
     LedgerPeersTrace
