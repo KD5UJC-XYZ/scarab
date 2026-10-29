@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 """Documentation drift check that ratchets.
 
-Checked files: `docs/**/*.md`, `README.md`, `AGENTS.md`, `CONTRIBUTING.md`. Fenced code blocks are never
-inspected. Every finding is a `Violation` of one `Kind`:
+Checked files: `docs/**/*.md`, `README.md`, `AGENTS.md`, `CONTRIBUTING.md`, and for FRAGMENT_LINK only the changelog
+fragments `changes/*.md` (a fragment records a change as it was, so it may name what has since been removed). Fenced
+code blocks are never inspected. Every finding is a `Violation` of one `Kind`:
 
   BROKEN_LINK       a relative markdown link whose file is missing
   BROKEN_ANCHOR     a link to a heading (`file.md#slug`, `#slug`) that does not exist (GitHub slug rules, ATX
@@ -26,6 +27,14 @@ inspected. Every finding is a `Violation` of one `Kind`:
                     names an upstream repository) that no registered pin covers
   PIN_REGISTRY      a registry defect: a dependent path that does not exist, or a dependent that no longer mentions
                     the pin's version or revision
+  FRAGMENT_LINK     a relative link in a changelog fragment (`changes/*.md` other than its README): a fragment is read
+                    from `changes/`, from `CHANGELOG.md` and from release notes, so its links are absolute URLs
+                    (pinned to a revision for a historical reference), as docs/changelog-preparation.md says
+  STALE_CURRENT     a version called latest or current that is not the current one: a watched name with a registered
+                    version (`Scalus 1.3.0 (the latest release)`), or a ledger snapshot magic other than the newest
+                    one of `PersistedFormat.scala` (`SCRBSNP5`), within a few words of `latest`, `current`,
+                    `currently` or `now`. History that names an older version without calling it current is not
+                    reported
   ADR_UNINDEXED     (only when `docs/adr/README.md` exists) a decision record `docs/adr/NNNN-*.md` that the ADR index
                     does not link, so a reader starting from the index cannot find it
 
@@ -66,6 +75,9 @@ BASELINE_PATH = "docs/data/docs-check-baseline.json"
 ADR_INDEX_PATH = "docs/adr/README.md"
 ADR_RECORD = re.compile(r"^docs/adr/\d{4}-[^/]+\.md$")
 PINS_PATH = "docs/data/reference-pins.json"
+PERSISTED_FORMAT_PATH = "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala"
+FRAGMENTS_DIR = "changes/"
+FRAGMENTS_README = "changes/README.md"
 ROOT_FILES = ("README.md", "AGENTS.md", "CONTRIBUTING.md")
 SOURCE_SUFFIXES = (".scala", ".sbt", ".py", ".java")
 DEFAULT_MAX_FILE_BYTES = 60_000
@@ -113,6 +125,8 @@ class Kind(str, Enum):
     UNREGISTERED_PIN = "unregistered-pin"
     PIN_REGISTRY = "pin-registry"
     ADR_UNINDEXED = "adr-unindexed"
+    FRAGMENT_LINK = "fragment-link"
+    STALE_CURRENT = "stale-current"
 
     @property
     def blocking(self) -> bool:
@@ -196,7 +210,14 @@ class Repo:
 
     def doc_files(self) -> list[str]:
         return sorted(n for n in self.files
-                      if n in ROOT_FILES or (n.startswith("docs/") and n.endswith(".md")))
+                      if n in ROOT_FILES or (n.startswith("docs/") and n.endswith(".md")) or n == FRAGMENTS_README)
+
+    def fragment_files(self) -> list[str]:
+        return sorted(n for n in self.files
+                      if self.is_fragment(n))
+
+    def is_fragment(self, path: str) -> bool:
+        return path.startswith(FRAGMENTS_DIR) and path.endswith(".md") and path != FRAGMENTS_README
 
     def read(self, path: str) -> str:
         return (self.root / path).read_text(encoding="utf-8", errors="replace")
@@ -308,9 +329,13 @@ def link_targets(line: Line) -> list[str]:
 def check_links(repo: Repo, doc: str, lines: Sequence[Line], anchor_cache: dict[str, frozenset[str]]) -> list[Violation]:
     out: list[Violation] = []
     own = posixpath.dirname(doc)
+    fragment = repo.is_fragment(doc)
     for line in lines:
         for target in link_targets(line):
             if not target or SCHEME.match(target) or target.startswith("//"):
+                continue
+            if fragment:
+                out.append(Violation(Kind.FRAGMENT_LINK, doc, target, line.number))
                 continue
             path_part, _, anchor = target.partition("#")
             path_part = unquote(path_part)
@@ -532,6 +557,49 @@ def check_pin_citations(doc: str, lines: Sequence[Line], pins: Sequence[Pin]) ->
     return out
 
 
+# A currency word this many characters or fewer from a citation calls the cited version current.
+CURRENT_PROXIMITY = 30
+CURRENT_WORD = re.compile(r"\b(?:latest|current|currently|now)\b", re.IGNORECASE)
+SNAPSHOT_MAGIC = re.compile(r"\bSCRBSNP(\d+)\b")
+SNAPSHOT_HISTORY = re.compile(r'FormatVersion\.V\d+\s*->\s*"SCRBSNP(\d+)"')
+
+
+def current_snapshot_magic(repo: Repo) -> int | None:
+    """The newest `SCRBSNP<n>` of the snapshot kind's history, or None when the register is not in the tree."""
+    if PERSISTED_FORMAT_PATH not in repo.files:
+        return None
+    numbers = [int(n) for n in SNAPSHOT_HISTORY.findall(repo.read(PERSISTED_FORMAT_PATH))]
+    return max(numbers) if numbers else None
+
+
+def called_current(text: str, start: int, end: int) -> bool:
+    return CURRENT_WORD.search(text[max(0, start - CURRENT_PROXIMITY):end + CURRENT_PROXIMITY]) is not None
+
+
+def check_current_claims(doc: str, lines: Sequence[Line], pins: Sequence[Pin] | None, magic: int | None) -> list[Violation]:
+    out: list[Violation] = []
+    registered: dict[str, set[str]] = {}
+    for pin in pins or ():
+        if pin.version:
+            for name in (pin.name, *pin.aliases):
+                registered.setdefault(name.lower(), set()).add(pin.version)
+    version_cite = re.compile(
+        r"(?<![\w-])(" + "|".join(sorted(map(re.escape, registered), key=len, reverse=True)) +
+        r")[ `=@-]{1,2}v?(\d+\.\d+(?:\.\d+){0,2})(?![\w.]*\w)(?!\.\d)", re.IGNORECASE) if registered else None
+    for line in lines:
+        text = line.text
+        if version_cite is not None:
+            for match in version_cite.finditer(text):
+                name, version = match.group(1).lower(), match.group(2)
+                if version not in registered[name] and called_current(text, match.start(), match.end()):
+                    out.append(Violation(Kind.STALE_CURRENT, doc, f"{name} {version}", line.number))
+        if magic is not None:
+            for match in SNAPSHOT_MAGIC.finditer(text):
+                if int(match.group(1)) != magic and called_current(text, match.start(), match.end()):
+                    out.append(Violation(Kind.STALE_CURRENT, doc, f"SCRBSNP{match.group(1)}", line.number))
+    return out
+
+
 def check_adr_index(repo: Repo) -> list[Violation]:
     """Every decision record is linked from the ADR index."""
     if ADR_INDEX_PATH not in repo.files:
@@ -552,6 +620,7 @@ def check_adr_index(repo: Repo) -> list[Violation]:
 
 def collect(repo: Repo, budgets: Budgets) -> list[Violation]:
     pins = load_pins(repo)
+    magic = current_snapshot_magic(repo)
     tokens = source_token_sets(repo)
     anchor_cache: dict[str, frozenset[str]] = {}
     found: list[Violation] = []
@@ -565,6 +634,9 @@ def collect(repo: Repo, budgets: Budgets) -> list[Violation]:
         found += check_size(doc, text, lines, budgets)
         if pins is not None:
             found += check_pin_citations(doc, lines, pins)
+        found += check_current_claims(doc, lines, pins, magic)
+    for fragment in repo.fragment_files():
+        found += check_links(repo, fragment, prose_lines(repo.read(fragment)), anchor_cache)
     if pins is not None:
         found += check_pin_registry(repo, pins)
     found += check_adr_index(repo)
