@@ -12,22 +12,31 @@ they differ from this file or CONTRIBUTING, this file and CONTRIBUTING win.
 
 ## Before you start
 
-1. Read [docs/process.md](docs/process.md) (how work is tracked), then the issue you are working on,
-   then any [design document](docs/design/README.md) and [ADRs](docs/adr/README.md) it links.
-2. Check the issue's state. If it is `status:in-progress` and you were not asked to take it over,
-   someone else is on it.
-3. Work in your own git worktree from `main` for now, and rebase onto the PR target before reporting.
-   The owner will activate `feat/*` -> `dev` -> `main` promotion under
-   [the release design](docs/design/releases.md): after cutover only same-repository `dev` may
-   target `main`; other targets accept any source. `release/alpha`, `release/beta`,
-   `release/preprod` and `release/prod` also use protected PRs. Until then `main` remains the
-   working target. At cutover use the [reviewed promotion workflow](docs/promotion-cutover.md)
-   for `dev` -> `main`; do not treat a shared commit's green check as source-branch authority.
-   #161 tracks enforcement;
-   do not claim protections are enabled or change repository settings.
-4. Feedback from the owner arrives as inline commit comments and issues labelled `owner-review`; triage
-   it as [CONTRIBUTING.md](CONTRIBUTING.md#owner-review-feedback) says, and a general rule goes into this
-   file together with a sweep of the tree.
+1. Read [docs/process.md](docs/process.md) (how work is tracked) and find the modules and suites the
+   work touches in [docs/codemap.md](docs/codemap.md).
+2. Run `python3 scripts/status.py` (`--area <area>` for one area) and check the issue's state. If it is
+   `status:in-progress` and you were not asked to take it over, someone else is on it.
+3. Find the issue's roadmap ID in [docs/roadmap.md](docs/roadmap.md).
+4. Read the issue, then any [design document](docs/design/README.md) and [ADRs](docs/adr/README.md) it
+   links, and the [decisions](docs/decisions.md) that cite it.
+5. Pick the [playbook](docs/playbooks/README.md) for the task, if one exists.
+6. Name the level of the change and its gates
+   ([CONTRIBUTING.md](CONTRIBUTING.md#gates-and-ceremony-by-level-of-change)).
+
+Then:
+
+- Work in your own git worktree from `main` for now, and rebase onto the PR target before reporting.
+  The owner will activate `feat/*` -> `dev` -> `main` promotion under
+  [the release design](docs/design/releases.md): after cutover only same-repository `dev` may
+  target `main`; other targets accept any source. `release/alpha`, `release/beta`,
+  `release/preprod` and `release/prod` also use protected PRs. Until then `main` remains the
+  working target. At cutover use the [reviewed promotion workflow](docs/promotion-cutover.md)
+  for `dev` -> `main`; do not treat a shared commit's green check as source-branch authority.
+  #161 tracks enforcement;
+  do not claim protections are enabled or change repository settings.
+- Feedback from the owner arrives as inline commit comments and issues labelled `owner-review`; triage
+  it as [CONTRIBUTING.md](CONTRIBUTING.md#owner-review-feedback) says, and a general rule goes into this
+  file together with a sweep of the tree.
 
 ## Build and run: Docker only
 
