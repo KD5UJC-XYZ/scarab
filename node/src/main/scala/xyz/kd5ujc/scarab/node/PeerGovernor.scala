@@ -133,6 +133,9 @@ enum Output[A]:
   /** The ledger-peers worker did something: loaded a snapshot, rebuilt its maps. */
   case LedgerPeers(trace: LedgerPeersTrace)
 
+  /** The local roots' DNS met a lookup that threw. */
+  case LocalRoots(trace: LocalRootsTrace)
+
 /** Peer-sharing effects. A request owns its error scope and returns a closed discovery result;
   * implementation defects are reported to the node fatal sink before returning.
   */

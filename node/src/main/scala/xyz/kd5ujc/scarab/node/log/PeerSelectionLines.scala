@@ -6,7 +6,8 @@ import io.circe.Json
 import io.circe.syntax.*
 import scala.concurrent.duration.FiniteDuration
 import xyz.kd5ujc.scarab.network.selection.*
-import xyz.kd5ujc.scarab.node.LedgerPeersTrace
+import xyz.kd5ujc.scarab.network.NetworkError
+import xyz.kd5ujc.scarab.node.{LedgerPeersTrace, LocalRootsTrace}
 
 /** The lines of the peer governor: what it decided and what became of it, in the words of the
   * reference's `TracePeerSelection` (`Governor/Types.hs` 1646-1840), the counters it publishes, the
@@ -317,6 +318,17 @@ private[log] object PeerSelectionLines:
 
   def fetchMode(mode: FetchMode): Line =
     EventKind.FetchModeChanged.line("mode" -> mode.toString.asJson)
+
+  /** The local roots' DNS: a lookup that threw, at the reference's severity (`LocalRootError`,
+    * Info, with its `domainAddress` and `reason`).
+    */
+  def localRoots(t: LocalRootsTrace): Line = t match
+    case LocalRootsTrace.Error(domain, cause) =>
+      EventKind.LocalRoots.line(
+        "action" -> "error".asJson,
+        "domainAddress" -> domain.value.asJson,
+        "reason" -> NetworkError.describe(cause).asJson
+      )
 
   /** The ledger-peers worker: the snapshot it was given, its rebuilt stake maps, the pools it left
     * out and the ledger state it could not read.
