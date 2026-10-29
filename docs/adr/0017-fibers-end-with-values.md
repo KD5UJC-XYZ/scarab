@@ -347,8 +347,8 @@ A judgement of the peer's chain is unchanged: GDD and LoP disconnect as
 - ~~`GenesisRuntime.ending` says which:~~ ([amended](#amendment-2026-10-29-the-genesis-nodes-wiring-is-fixed-when-it-is-built)) an invariant met in a fiber of the connection aborts that connection; one met
   while the controls are acquired (the connection's identity) is raised to the session in its own fiber. The header
   gate tells its invariants to the connection's channel (`HeaderCheck.withInvariant`), not to the node-wide one.
-  The fiber that met an invariant waits until the connection's teardown cancels it; issue 583 tracks a test of that
-  for both directions.
+  The fiber that met an invariant waits until the connection's teardown cancels it; ~~issue 583 tracks a test of that
+  for both directions.~~ ([tested](#amendment-2026-10-29-the-teardown-after-a-genesis-invariant-is-tested))
 - ~~The node's own wiring still stops the node (`Fatal.Internal`): a Genesis node without the shared block pool
   (`MissingSharedBlockPool`) or with a header gate that cannot graft (`UnsupportedHeaderFamily`). Every connection
   would fail alike, and the reference's types refuse both when the node is built; issue 581 tracks refusing them at
@@ -407,3 +407,16 @@ connection as `PeerError.GenesisInvariant`. The clock that holds a session's hea
 (`HeaderClock.clocked`) now passes a connection's invariant channel on to the check it wraps; it did not, so an
 invariant met by the header gate of a production session was told to the node-wide channel and stopped the node,
 against the amendment above.
+
+## Amendment (2026-10-29): the teardown after a Genesis invariant is tested
+
+Issue 583. The fiber that meets an invariant of the Genesis code on one connection tells the connection's channel and
+waits in `never`; the connection's teardown cancels it. A test in each direction meets a header gate's invariant on a
+live session and checks the whole path: the connection ends with `PeerError.GenesisInvariant`, nothing is counted
+against the peer (`NotThePeers`), nothing reaches the node's fatal sink or its node-wide invariant channel, and the
+waiting fiber is cancelled.
+- outbound: `OutboundGenesisInvariantSuite`, with the check held to the node's clock as in the node (`HeaderClock.grafting`);
+  the monitor's `abortRunning` ends the session;
+- inbound: `InboundGovernorSuite`, the session being a `background` resource of the connection.
+
+The teardown needed no change.
