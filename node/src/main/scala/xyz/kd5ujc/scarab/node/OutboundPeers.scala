@@ -424,9 +424,11 @@ final class OutboundPeers[F[_]: Async, A] private (
                       }
       yield next
     }
-    // the monitor of one connection that fails ends that connection, not the node (issue 567)
+    // the monitor of one connection that fails ends that connection, not the node (issue 567); if
+    // ending it fails too, the node's own connection state is broken, and that stops the node
     loop.handleErrorWith(cause =>
-      link.warm.mux.abort(NetworkError.Defect(cause)) *> lost(PeerError.ConnectionDefect(cause))
+      (link.warm.mux.abort(NetworkError.Defect(cause)) *> lost(PeerError.ConnectionDefect(cause)))
+        .handleErrorWith(again => fatal(Fatal.Defect(again)))
     )
 
   /** Match the adding hot BlockFetch client, never a later activation on the same bearer. The
