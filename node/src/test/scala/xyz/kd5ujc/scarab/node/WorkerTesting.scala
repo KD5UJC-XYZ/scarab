@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.{Deferred, IO, Ref, Resource}
+import cats.effect.{Deferred, IO, Outcome, Ref, Resource}
 import cats.syntax.all.*
 import cats.mtl.{Raise, Stateful}
 import cats.mtl.syntax.all.*
@@ -145,8 +145,17 @@ private[scarab] object WorkerTesting extends munit.Assertions:
               done *> settled(blocks) *> fed.due.flatMap(_.fold(IO.unit)(_ => IO.never))
             )
           )
-          .guarantee(IO.race(stopped.get, settled(blocks)).void)
-        IO.race(stopped.get, following).map(_.left.toOption)
+          // Closed admissions self-cancel the barrier. A masked finalizer must observe that
+          // outcome: race would cancel the fatal waiter too, then wait forever on cancellation.
+          .guarantee(
+            stopped.get.void.raceOutcome(settled(blocks)).flatMap(_.merge.embed(IO.unit))
+          )
+        stopped.get.raceOutcome(following).flatMap {
+          case Left(outcome) => outcome.embedNever.map(Some(_))
+          // Closing admissions can cancel delivery before the worker reports its fatal value.
+          case Right(Outcome.Canceled()) => stopped.get.map(Some(_))
+          case Right(outcome)            => outcome.embedNever.as(None)
+        }
       }
     }
 
