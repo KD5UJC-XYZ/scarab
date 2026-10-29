@@ -478,6 +478,55 @@ final class Follower[F[_]: Async, S] private (
     case Refusal(error: ValidationError)
     case NoVerdict(cause: BlockNoVerdict)
 
+  /** The judgement of one block before anything of it is committed (R1, issue 567): valid, refused
+    * by the protocol's rules, or no verdict of ours. `run` applies the rules in a scope of its own,
+    * which never raises outward, so an exception it throws is the rules', not an outer scope's;
+    * storage and every other failure of the node are raised to the caller.
+    */
+  private def judge(run: Raise[F, NodeError] ?=> F[S])(using
+      Raise[F, NodeError]
+  ): F[Either[Judged, S]] =
+    Handle
+      .allow[NodeError]((scope: Handle[F, NodeError]) ?=>
+        run(using scope).map(state => Right(state): Either[NodeError, S])
+      )
+      .rescue(error => F.pure(Left(error)))
+      .attempt
+      .flatMap {
+        case Right(Right(state)) => F.pure(Right(state): Either[Judged, S])
+        // No verdict is no refusal: the block is neither adopted nor recorded as invalid
+        // and nobody is punished. Our evaluator or a crypto provider that fails on the
+        // block, a quantity of the state outside its implementation type (#573) or an
+        // exception of the rules no longer stop the node, where the reference's linked
+        // addBlockRunner thread stops it (consensus 82ecba32
+        // Storage/ChainDB/Impl/Background.hs:107-108,142): owner decision 2026-10-28,
+        // issue 567.
+        case Right(
+              Left(
+                unavailable @ ValidationError(
+                  _,
+                  BlockFailure.Tx(_: LedgerFailure.Unavailable)
+                )
+              )
+            ) =>
+          F.pure(Left(Judged.NoVerdict(BlockNoVerdict.Evaluation(unavailable))))
+        case Right(Left(refused: ValidationError)) =>
+          F.pure(
+            Left(
+              refused.unverifiable.fold[Judged](Judged.Refusal(refused))(defect =>
+                Judged.NoVerdict(BlockNoVerdict.Verification(defect))
+              )
+            )
+          )
+        case Right(
+              Left(outOfRange: xyz.kd5ujc.scarab.ledger.ChainError.StateOutOfRange)
+            ) =>
+          F.pure(Left(Judged.NoVerdict(BlockNoVerdict.StateOutOfRange(outOfRange))))
+        // storage and every other failure of the node stay the node's
+        case Right(Left(other)) => other.raise[F, Either[Judged, S]]
+        case Left(thrown)       => F.pure(Left(Judged.NoVerdict(BlockNoVerdict.Defect(thrown))))
+      }
+
   /** Switch if preferred; no candidate means its intersection left our retained window. */
   private def adopt(
       peer: Peer[F],
@@ -576,50 +625,7 @@ final class Follower[F[_]: Async, S] private (
                     }
                   )
                   .unlessA(previous.addedPoint.contains(header.point))
-                // The judgement alone, in a scope that never raises outward: an exception it throws
-                // is the rules', not an outer scope's.
-                judged = Handle
-                  .allow[NodeError](
-                    rules(before.state, header, block).map(state =>
-                      Right(state): Either[NodeError, S]
-                    )
-                  )
-                  .rescue(error => F.pure(Left(error)))
-                  .attempt
-                checked = judged.flatMap {
-                  case Right(Right(state)) => F.pure(Right(state): Either[Judged, S])
-                  // No verdict is no refusal: the block is neither adopted nor recorded as invalid
-                  // and nobody is punished. Our evaluator or a crypto provider that fails on the
-                  // block, a quantity of the state outside its implementation type (#573) or an
-                  // exception of the rules no longer stop the node, where the reference's linked
-                  // addBlockRunner thread stops it (consensus 82ecba32
-                  // Storage/ChainDB/Impl/Background.hs:107-108,142): owner decision 2026-10-28,
-                  // issue 567.
-                  case Right(
-                        Left(
-                          unavailable @ ValidationError(
-                            _,
-                            BlockFailure.Tx(_: LedgerFailure.Unavailable)
-                          )
-                        )
-                      ) =>
-                    F.pure(Left(Judged.NoVerdict(BlockNoVerdict.Evaluation(unavailable))))
-                  case Right(Left(refused: ValidationError)) =>
-                    F.pure(
-                      Left(
-                        refused.unverifiable.fold[Judged](Judged.Refusal(refused))(defect =>
-                          Judged.NoVerdict(BlockNoVerdict.Verification(defect))
-                        )
-                      )
-                    )
-                  case Right(
-                        Left(outOfRange: xyz.kd5ujc.scarab.ledger.ChainError.StateOutOfRange)
-                      ) =>
-                    F.pure(Left(Judged.NoVerdict(BlockNoVerdict.StateOutOfRange(outOfRange))))
-                  // storage and every other failure of the node stay the node's
-                  case Right(Left(other)) => other.raise[F, Either[Judged, S]]
-                  case Left(thrown) => F.pure(Left(Judged.NoVerdict(BlockNoVerdict.Defect(thrown))))
-                }
+                checked = judge(rules(before.state, header, block))
                 verdict <- peer.selectionWork.fold(checked)(work =>
                   work.processing(header.hash).surround(checked)
                 )
@@ -846,10 +852,15 @@ final class Follower[F[_]: Async, S] private (
           case Right((at, depth)) =>
             for
               rolled <- before.rollback(at).fold(_.raise[F, VolatileChain[S]], _.pure[F])
-              outcome <- handle.attempt(cpu.within(rules(rolled.state, header, raw))).flatMap {
-                case Left(e: ValidationError) => F.pure(Follower.Adoption.Invalid(e).asLeft[S])
-                case Left(other)              => other.raise[F, Either[Follower.Adoption, S]]
-                case Right(next)              => F.pure(next.asRight[Follower.Adoption])
+              outcome <- judge(cpu.within(rules(rolled.state, header, raw))).flatMap {
+                case Left(Judged.Refusal(e)) => F.pure(Follower.Adoption.Invalid(e).asLeft[S])
+                // no verdict of ours on our own block: it is withheld as a peer's would be, and
+                // the forger handles it as a refusal (R3, issue 567, #584)
+                case Left(Judged.NoVerdict(cause)) =>
+                  events
+                    .emit(FollowerEvent.NoVerdict(header.point, cause))
+                    .as(Follower.Adoption.NoVerdict(cause).asLeft[S])
+                case Right(next) => F.pure(next.asRight[Follower.Adoption])
               }
               adopted <- outcome match
                 case Left(refused) => F.pure(refused)
@@ -962,6 +973,9 @@ object Follower:
     case Adopted(block: BlockRef)
     case Lost(reason: Follower.AdoptionLoss)
     case Invalid(error: ValidationError)
+
+    /** Our own implementation has no verdict on the block (R3, issue 567). */
+    case NoVerdict(cause: BlockNoVerdict)
 
   /** @param epochOf
     *   The epoch of a slot as the state sees it (a chain whose Byron span is derived learns it).

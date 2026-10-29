@@ -27,12 +27,11 @@ object FailurePolicy:
     // our bug on valid data, and forgetting would then drop every honest peer that sends it.
     case _: PeerError.InputDefect => FailureClass.Transient
     // A crypto provider failed on the peer's header: an exception in that peer's ChainSync thread,
-    // which no rethrow policy names, so the same policy as a decoder defect: the connection closes
-    // in both directions and the peer is charged a failure with the error delay, never forgotten
+    // which no rethrow policy names, so the connection closes in both directions, never forgotten
     // and never recorded as invalid (consensus 82ecba329 Node/RethrowPolicy.hs:40-45 and 131-139).
-    // The reconnect delay is the one of any lost connection: `OutboundPeers.Config.repromoteDelay`
-    // (10 s) plus the governor's `coldReconnectFuzz` (`selection.Events.observedConnection`).
-    case _: PeerError.Unverifiable => FailureClass.Transient
+    // The reference charges the error delay; the failure is our implementation's, so nothing is
+    // counted against the peer (owner decision 2026-10-28, issue 567; #584).
+    case _: PeerError.Unverifiable => FailureClass.NotThePeers
     // The node's own code threw while it answered the peer (the ledger rules on a transaction the
     // peer submitted): the connection closes, as the exception ends that mini-protocol in the
     // reference (consensus 82ecba329 Mempool/Update.hs `doAddTx`, in the TxSubmission2 thread;

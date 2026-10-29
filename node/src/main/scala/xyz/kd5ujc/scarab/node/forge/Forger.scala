@@ -13,7 +13,6 @@ import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.{Block, Header}
 import xyz.kd5ujc.scarab.ledger.{
-  BlockFailure,
   ChainError,
   EvaluationUnavailable,
   ForgeError,
@@ -434,16 +433,21 @@ final class Forger[F[_]: Async, S](
         case Follower.Adoption.Lost(reason) =>
           say(ForgeTrace.DidntAdoptBlock(slot, block.header.hash)) *>
             perform(events.emit(ForgeEvent.Lost(slot, block.header.hash, reason.message)))
-        // A refusal of our own block, or no verdict on it (the evaluator or a crypto provider failed
-        // on it, which in the reference is an exception in the linked forging thread that stops
-        // the node, consensus 82ecba32 NodeKernel.hs forkBlockForging): the block's transactions
-        // leave the pool, valid or not, so that the next leader slot does not repeat the failure
-        // (`NodeKernel.hs` 770-783), and the slot ends. A failure of our own implementation does
-        // not stop the node (owner decision 2026-10-28, issue 567).
+        // A refusal of our own block: the block's transactions leave the pool, valid or not, so
+        // that the next leader slot does not repeat the failure (`NodeKernel.hs` 770-783), and the
+        // slot ends.
         case Follower.Adoption.Invalid(e) =>
           val ids = chosen.map(_._1.id).toSet
           say(ForgeTrace.ForgedInvalidBlock(slot, block.header.hash, e)) *>
             perform(mempool.removeTxsEvenIfValid(ids).void.whenA(ids.nonEmpty))
+        // No verdict on it (the evaluator or a crypto provider failed on it, a quantity of the state
+        // is out of range, or the rules threw; in the reference an exception in the linked forging
+        // thread that stops the node, consensus 82ecba32 NodeKernel.hs forkBlockForging): handled
+        // as a refusal, and the follower reports it (`Chain.BlockNoVerdict`). A failure of our own
+        // implementation does not stop the node (owner decision 2026-10-28, issue 567, #584).
+        case Follower.Adoption.NoVerdict(_) =>
+          val ids = chosen.map(_._1.id).toSet
+          perform(mempool.removeTxsEvenIfValid(ids).void.whenA(ids.nonEmpty))
     yield ()).value.void
 
   /** The chain to forge on in `slot`, as `forkBlockForging` picks it through
@@ -737,22 +741,18 @@ object Forger:
     */
   private[forge] val MaxClockRewind: Duration = Duration.ofSeconds(20)
 
-  /** What a failed tick of the tip's state to `slot` is. A quantity of the state outside its
-    * vocabulary type is no forging failure but the node's stop ([[ChainError.StateOutOfRange]]):
-    * the reference's `compactCoinOrError` throws in the forging thread, which is linked
-    * (ouroboros-consensus 82ecba32 `NodeKernel.hs:378-380`), so the node stops and no later slot is
-    * tried. Any other failure leaves the ledger view of this slot unavailable.
+  /** What a failed tick of the tip's state to `slot` is: the ledger view of this slot is
+    * unavailable, and the slot ends without a block. A quantity of the state outside its vocabulary
+    * type is no exception: the reference's `compactCoinOrError` throws in the forging thread, which
+    * is linked (ouroboros-consensus 82ecba32 `NodeKernel.hs:378-380`), so the reference stops; the
+    * owner decided the node does not (2026-10-28, issue 567, ADR 0017), and the failure keeps its
+    * cause (`BlockFailure.stateOutOfRange` of the tick, #573).
     */
   private[forge] def tickFault(
       slot: BigInt,
       failure: xyz.kd5ujc.scarab.ledger.rules.TickFailure
   ): NodeError =
-    BlockFailure
-      .Tick(failure)
-      .stateOutOfRange
-      .fold[NodeError](ForgeError.LedgerViewUnavailable(slot, ForgeLedgerProblem.Tick(failure)))(
-        ChainError.StateOutOfRange(slot, _)
-      )
+    ForgeError.LedgerViewUnavailable(slot, ForgeLedgerProblem.Tick(failure))
 
   /** Like runExceptT at the forging worker boundary: typed failures and defects finish as values.
     * The scope and the body are constructed inside defer (cats-mtl 1.7.0 Handle.rescue invokes its

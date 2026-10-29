@@ -90,8 +90,11 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     .OutOfRange(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.CompactCoin, BigInt(1) << 64)
 
   // `compactCoinOrError` (cardano-ledger f649f975 `Coin.hs:184-188`) throws in the forging thread,
-  // which is linked (ouroboros-consensus 82ecba32 `NodeKernel.hs:378-380`)
-  test("a ledger state out of range is fatal: no recoverable forge failure, no later slot") {
+  // which is linked (ouroboros-consensus 82ecba32 `NodeKernel.hs:378-380`), so the reference stops;
+  // the owner decided the node does not (issue 567, #584): our block is withheld as a refusal
+  test(
+    "a ledger state out of range on our own block withholds it: the slot ends, the node goes on"
+  ) {
     val p = pool(kesStart = 50)
     val fault = ChainError.StateOutOfRange(leaderSlot(p), outOfRange)
     withHandle {
@@ -102,25 +105,28 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
         chain <- h.chain
         stats <- h.forger.stats.total
       yield
-        assertEquals(result, Left(Fatal.Internal(fault)))
+        assertEquals(result, Right(()))
         assertEquals(chain.tipRef, None)
         assertEquals(stats.failed, 0L)
+        assert(!events.exists(_.isInstanceOf[ForgeEvent.Adopted]))
         assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]))
     }
   }
 
-  test("a tick of the tip's state out of range is the node's stop; another tick failure is not") {
-    val state = xyz.kd5ujc.scarab.ledger.rules.TickFailure.Vocab(outOfRange)
-    assertEquals(Forger.tickFault(7, state), ChainError.StateOutOfRange(7, outOfRange))
-    val input = xyz.kd5ujc.scarab.ledger.rules.TickFailure.Input(outOfRange)
-    assertEquals(
-      Forger.tickFault(7, input),
-      ForgeError.LedgerViewUnavailable(7, xyz.kd5ujc.scarab.ledger.ForgeLedgerProblem.Tick(input))
-    )
-    for fatal <- Forger.scoped[IO, Unit](
-        summon[Handle[IO, NodeError]].raise(Forger.tickFault(7, state))
+  // issue 567 (#584): the reference stops; the owner decided the node does not
+  test(
+    "a tick of the tip's state out of range ends the slot without a block, as any tick failure"
+  ) {
+    List(
+      xyz.kd5ujc.scarab.ledger.rules.TickFailure.Vocab(outOfRange),
+      xyz.kd5ujc.scarab.ledger.rules.TickFailure.Input(outOfRange)
+    ).foreach { failure =>
+      assertEquals(
+        Forger.tickFault(7, failure),
+        ForgeError
+          .LedgerViewUnavailable(7, xyz.kd5ujc.scarab.ledger.ForgeLedgerProblem.Tick(failure))
       )
-    yield assertEquals(fatal, Left(Fatal.Internal(ChainError.StateOutOfRange(7, outOfRange))))
+    }
   }
 
   test(
