@@ -103,8 +103,9 @@ enum SessionEnd:
     */
   case Internal(error: NodeError)
 
-  /** An exception of the node that reached the session: a defect the node published to it, or a
-    * failure to acquire the node's own state. The node stops, as it does for storage.
+  /** An exception of the node that reached the session: a defect the node published to it, an
+    * exception while a chain was committed, or a failure to acquire the node's own state. The node
+    * stops, as it does for storage.
     */
   case Defect(cause: Throwable)
 
@@ -128,9 +129,10 @@ object SessionEnd:
       Unavailable(EvaluationUnavailable(point, failure))
     case ValidationError(point, BlockFailure.Tx(failure: LedgerFailure.Unavailable)) =>
       Unavailable(EvaluationUnavailable(point, failure))
-    case e: EvaluationUnavailable  => Unavailable(e)
-    case e: VerificationDefect     => Unverifiable(e)
-    case StateFaultInHeader(fault) => Internal(fault)
+    case e: EvaluationUnavailable       => Unavailable(e)
+    case e: VerificationDefect          => Unverifiable(e)
+    case StateFaultInHeader(fault)      => Internal(fault)
+    case ChainError.CommitDefect(cause) => Defect(cause)
     case e @ PeerError.InvalidBlock(refused) =>
       refused.unverifiable.fold(Failed(e))(Unverifiable(_))
     case PeerError.NoIntersection                    => NoMoreIntersection
@@ -163,7 +165,8 @@ object SessionEnd:
     * the reference's `consensusRethrowPolicy` shuts down only the peer for an exception that is
     * neither of the storage nor of the clock (consensus 82ecba329 `Node/RethrowPolicy.hs`). A
     * session of the node commits no block: the selection worker does, in a scope of its own that
-    * stops the node ([[BlockSelection]]). A failure to acquire the node's state
+    * stops the node ([[BlockSelection]]); and a commit, wherever it runs, raises its own exceptions
+    * as [[ChainError.CommitDefect]], which stops the node. A failure to acquire the node's state
     * ([[NetworkError.InternalFailure]]) is left a defect of the node (issue 567).
     */
   private def thrown(cause: Throwable): SessionEnd = cause match
