@@ -349,6 +349,10 @@ private[log] object PeerSelectionLines:
         "action" -> "snapshotVerified".asJson,
         "matchesImmutablePoint" -> matches.asJson
       )
+    case LedgerPeersTrace.SnapshotVerificationFailed(error) =>
+      EventKind.LedgerPeers
+        .line("action" -> "snapshotVerificationFailed".asJson, "reason" -> error.message.asJson)
+        .at(Severity.Error)
     case LedgerPeersTrace.Refreshed(source, ordinary, big, slot) =>
       EventKind.LedgerPeers.line(
         "action" -> "refreshed".asJson,

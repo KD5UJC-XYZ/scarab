@@ -318,8 +318,8 @@ object Mempool:
           droppedNamed = true
         )
 
-      /** Remove `ids` and revalidate the rest; `droppedNamed` counts the named ones among the dropped
-        * of the summary (`Synced`), as a withdrawal drops them.
+      /** Remove `ids` and revalidate the rest; `droppedNamed` counts the named ones among the
+        * dropped of the summary (`Synced`), as a withdrawal drops them.
         */
       private def removing(ids: Set[Bytes], report: Entry => F[Unit], droppedNamed: Boolean)(using
           Raise[F, StorageError]

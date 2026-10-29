@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.codec.Node
+
 /** The encodings of a byte string a ledger decoder reads. The reference reads a byte string with
   * `decodeBytes` or `decodeByteArray`, which take a definite-length string below decoder version 12
   * and also an indefinite (chunked) one, its chunks joined, from 12 (`ifDecoderVersionAtLeast
@@ -25,6 +27,18 @@ enum ByteStrings:
   case Chunked
 
 object ByteStrings:
-  /** `ifDecoderVersionAtLeast (natVersion @12)`. */
+  /** Whether the item may be read under this policy: a chunked string is refused unless the policy
+    * is `Chunked`. `CborRead.bytes` and `NtcQuery.bytes` ask this, so the policy has one answer
+    * rather than two expressions that can drift; the era-derived readers reach it only through
+    * `CborRead.bytes`.
+    */
+  extension (policy: ByteStrings)
+    def reads(n: Node): Boolean = policy match
+      case Chunked  => true
+      case Definite => !n.isIndefinite
+
+  /** `ifDecoderVersionAtLeast (natVersion @12)`. The form test itself is
+    * [[xyz.kd5ujc.scarab.codec.Node.isIndefinite]].
+    */
   def of(version: DecoderVersion): ByteStrings =
     if version.atLeast(12) then Chunked else Definite

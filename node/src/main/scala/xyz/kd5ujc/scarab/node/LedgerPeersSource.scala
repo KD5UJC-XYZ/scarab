@@ -9,7 +9,7 @@ import cats.syntax.all.*
 import scala.concurrent.duration.FiniteDuration
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.consensus.VolatileChain
-import xyz.kd5ujc.scarab.ledger.{LedgerRelay, PoolRelayError, PoolRelays}
+import xyz.kd5ujc.scarab.ledger.{LedgerRelay, PoolRelayError, PoolRelays, StorageError}
 import xyz.kd5ujc.scarab.ledger.state.{
   EraTag,
   KeyHash,
@@ -44,6 +44,12 @@ enum LedgerPeersTrace:
 
   /** Whether a Genesis peer snapshot's exact immutable slot and hash were found. */
   case SnapshotVerified(matches: Boolean)
+
+  /** The storage failed while the snapshot was verified: the verification answers no match, as the
+    * reference's does for any failure, and this line names the cause, which the reference does not
+    * trace (an owner-approved deviation, 2026-10-28, issue 586).
+    */
+  case SnapshotVerificationFailed(error: StorageError)
 
   /** The stake maps were rebuilt from `source`, with `ordinary` pools and `big` big ledger pools.
     */

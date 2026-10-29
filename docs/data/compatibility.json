@@ -828,6 +828,28 @@
       "page": "docs/compatibility/ledger-definite-byte-strings.md"
     },
     {
+      "id": "ledger-definite-byte-strings-headers-queries",
+      "component": "Ledger: definite byte strings in headers and node-to-client query arguments (#437)",
+      "status": "implemented",
+      "summary": "A block header and a node-to-client query argument read a byte string in the form the era's decoder version implies \u2014 header fields through decodeFixedSized or their own DecCBOR instances, query arguments through fromEraCBOR at the era's lowest protocol version \u2014 which below version 12 refuses a chunked string",
+      "evidence": {
+        "suites": [
+          "HeaderByteStringsSuite",
+          "NtcQueryByteStringsSuite"
+        ],
+        "paths": []
+      },
+      "limitations": {
+        "issues": [
+          568,
+          570,
+          574,
+          587
+        ]
+      },
+      "page": "docs/compatibility/ledger-definite-byte-strings-headers-queries.md"
+    },
+    {
       "id": "ledger-definite-text",
       "component": "Ledger: definite text, decoder versions 2 to 9 (#435)",
       "status": "implemented",
