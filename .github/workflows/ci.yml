@@ -63,10 +63,6 @@ jobs:
     name: scripts (compile, unit tests, help)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    permissions:
-      contents: read
-      issues: read
-      pull-requests: read
     defaults:
       run:
         shell: bash
@@ -95,11 +91,8 @@ jobs:
         run: python3 scripts/check_notice.py
       - name: Compatibility register (validation and generated docs/compatibility.md)
         run: python3 scripts/render_compatibility.py --check
-      - name: Roadmap register (validation, generated docs/roadmap.md, item status against issue state)
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: python3 scripts/render_roadmap.py --check --require-issue-state ${PR_NUMBER:+--pr "$PR_NUMBER"}
+      - name: Roadmap register (validation and generated docs/roadmap.md, from the committed issue-state snapshot)
+        run: python3 scripts/render_roadmap.py --check
       - name: Documentation drift (links, cited paths and symbols, reference pins; size budgets warn only)
         run: python3 scripts/check_docs.py
       - name: Code map is current (generated file, entry points, suites, documents, packages)

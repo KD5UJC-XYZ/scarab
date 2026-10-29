@@ -110,7 +110,6 @@
       "id": "A8",
       "section": "A",
       "title": "Secret scanning and dependency review in CI",
-      "status": "done",
       "priority": "P1",
       "issues": [
         2
@@ -131,7 +130,6 @@
       "id": "A5",
       "section": "A",
       "title": "Legal and provenance review",
-      "status": "done",
       "detail": ": secret scan for v0.1.0; licence, fixture and wording review 2026-10-11",
       "priority": "P0",
       "issues": [
@@ -163,7 +161,6 @@
       "id": "B1",
       "section": "B",
       "title": "Conway VRF tie-break restriction in chain selection, confirmed against ouroboros-consensus 4.2.0.0 `comparePraos`",
-      "status": "done",
       "priority": null,
       "issues": [
         3
@@ -174,7 +171,6 @@
       "id": "B2",
       "section": "B",
       "title": "SPO default votes after the bootstrap phase",
-      "status": "done",
       "priority": "P1",
       "issues": [
         4
@@ -185,7 +181,6 @@
       "id": "B3",
       "section": "B",
       "title": "Committee rules",
-      "status": "done",
       "priority": "P1",
       "issues": [
         5
@@ -196,7 +191,6 @@
       "id": "B4",
       "section": "B",
       "title": "Treasury withdrawals and script DReps",
-      "status": "done",
       "priority": "P1",
       "issues": [
         6
@@ -207,7 +201,6 @@
       "id": "B5",
       "section": "B",
       "title": "Protocol-11 rules",
-      "status": "done",
       "priority": "P1",
       "issues": [
         7
@@ -218,7 +211,6 @@
       "id": "B6",
       "section": "B",
       "title": "Empty-redeemers integrity hash",
-      "status": "done",
       "priority": null,
       "issues": [
         8
@@ -229,7 +221,6 @@
       "id": "B7",
       "section": "B",
       "title": "Pre-Allegra and Shelley-era details",
-      "status": "done",
       "detail": " after v0.1.0",
       "priority": null,
       "issues": [
@@ -241,7 +232,6 @@
       "id": "B8",
       "section": "B",
       "title": "Pre-Babbage reward prefilter timing (registered at epoch start + 4k/f)",
-      "status": "done",
       "detail": " after v0.1.0",
       "priority": null,
       "issues": [
@@ -253,7 +243,6 @@
       "id": "B9",
       "section": "B",
       "title": "Plutus builtin availability per language and protocol version (`PlutusAvailability`)",
-      "status": "done",
       "detail": "; Preview regression from genesis to epoch 168: 975,398 Plutus transactions evaluated successfully and 86 to failure, every verdict equal to `is_valid`, 0 errors",
       "priority": null,
       "issues": [
@@ -265,7 +254,6 @@
       "id": "REF-02/03",
       "section": "B",
       "title": "Era-specific V1 context translation and preparation of every context before script evaluation",
-      "status": "done",
       "priority": null,
       "issues": [
         164,
@@ -277,7 +265,6 @@
       "id": "REF-11",
       "section": "B",
       "title": "Reference-shaped context error payloads, required-script collection and exact Conway failure CBOR",
-      "status": "done",
       "priority": null,
       "issues": [
         176
@@ -288,7 +275,6 @@
       "id": "REF-12",
       "section": "B",
       "title": "Optional spending datum lookup and arguments match the reference",
-      "status": "done",
       "priority": null,
       "issues": [
         177
@@ -299,7 +285,6 @@
       "id": "B10",
       "section": "B",
       "title": "Plutus semantics-variant C costing for `modInteger` and `remainderInteger`",
-      "status": "done",
       "priority": null,
       "issues": [
         12
@@ -310,7 +295,6 @@
       "id": "B11",
       "section": "B",
       "title": "Scalus deviations",
-      "status": "done",
       "detail": ": reported as [scalus3/scalus#387](https://github.com/scalus3/scalus/issues/387) and [#388](https://github.com/scalus3/scalus/issues/388)",
       "priority": null,
       "issues": [
@@ -322,7 +306,6 @@
       "id": "B12",
       "section": "B",
       "title": "Mary output-size and value-size checks",
-      "status": "done",
       "detail": " after v0.1.0",
       "priority": null,
       "issues": [
@@ -334,7 +317,6 @@
       "id": "B13",
       "section": "B",
       "title": "Hard-fork rules",
-      "status": "done",
       "priority": null,
       "issues": [
         15
@@ -381,7 +363,6 @@
       "id": "B18",
       "section": "B",
       "title": "The mempool",
-      "status": "done",
       "priority": "P1",
       "issues": [
         84
@@ -493,7 +474,6 @@
       "id": "B30",
       "section": "B",
       "title": "Alonzo/Babbage phase-1 collateral-count and bootstrap-output predicates",
-      "status": "done",
       "priority": "P2",
       "issues": [
         178
@@ -504,7 +484,6 @@
       "id": "C1",
       "section": "C",
       "title": "Byron ledger",
-      "status": "done",
       "priority": null,
       "issues": [
         16
@@ -515,7 +494,6 @@
       "id": "C2",
       "section": "C",
       "title": "Byron consensus (PBFT)",
-      "status": "done",
       "priority": null,
       "issues": [
         17
@@ -526,7 +504,6 @@
       "id": "REF-07",
       "section": "C",
       "title": "Byron protocol versions use bounded Word16/Word16/Word8 components in headers",
-      "status": "done",
       "priority": null,
       "issues": [
         171
@@ -537,7 +514,6 @@
       "id": "C3",
       "section": "C",
       "title": "Byron epoch length is `10 * k` of `byron-genesis.json` everywhere; no decoder has a default.",
-      "status": "done",
       "priority": null,
       "issues": [
         18
@@ -548,7 +524,6 @@
       "id": "C4",
       "section": "C",
       "title": "Verification on preprod",
-      "status": "done",
       "detail": " 2026-10-15",
       "priority": null,
       "issues": [
@@ -560,7 +535,6 @@
       "id": "D1",
       "section": "D",
       "title": "More state on disk",
-      "status": "declined",
       "priority": null,
       "issues": [
         20
@@ -571,7 +545,6 @@
       "id": "D2",
       "section": "D",
       "title": "Parallel or optimised apply",
-      "status": "done",
       "detail": "; acceptance merged in PR #209",
       "priority": null,
       "issues": [
@@ -583,7 +556,6 @@
       "id": "D3",
       "section": "D",
       "title": "ChainSync pipelining depth",
-      "status": "done",
       "priority": "P1",
       "issues": [
         22
@@ -594,7 +566,6 @@
       "id": "D4",
       "section": "D",
       "title": "Volatile blocks",
-      "status": "done",
       "priority": null,
       "issues": [
         23
@@ -605,7 +576,6 @@
       "id": "D5",
       "section": "D",
       "title": "DB network identity",
-      "status": "done",
       "priority": null,
       "issues": [
         24,
@@ -617,7 +587,6 @@
       "id": "D6",
       "section": "D",
       "title": "Mainnet sync",
-      "status": "planned",
       "priority": null,
       "issues": [
         25
@@ -628,7 +597,6 @@
       "id": "D7",
       "section": "D",
       "title": "Ed25519 throughput",
-      "status": "done",
       "priority": null,
       "issues": [
         26
@@ -639,7 +607,6 @@
       "id": "D8",
       "section": "D",
       "title": "Scheduling fairness",
-      "status": "declined",
       "detail": ": remaining target not planned for v0.2; owner-accepted limitation, 2026-10-19",
       "priority": null,
       "issues": [
@@ -651,7 +618,6 @@
       "id": "D9",
       "section": "D",
       "title": "Mainnet",
-      "status": "planned",
       "priority": "P1",
       "issues": [
         69
@@ -662,7 +628,6 @@
       "id": "D10",
       "section": "D",
       "title": "Versioned persisted formats and reader retirement ([ADR 0006](adr/0006-versioned-formats-migrate-on-open.md))",
-      "status": "done",
       "priority": "P1",
       "issues": [
         83
@@ -673,7 +638,6 @@
       "id": "D11",
       "section": "D",
       "title": "Historical live-sync/replay gap investigated and fixes measured over the same 12,000 blocks",
-      "status": "done",
       "priority": "P2",
       "issues": [
         124
@@ -684,7 +648,6 @@
       "id": "D12",
       "section": "D",
       "title": "Signature verification is about half the CPU of live sync after D11",
-      "status": "done",
       "detail": ": parallel witness checks (4e0fce00) and the faster strict verifier (672ef090, #147); a point cache and batch verification were measured and rejected in #147",
       "priority": "P2",
       "issues": [
@@ -696,7 +659,6 @@
       "id": "D13",
       "section": "D",
       "title": "The new rules' epoch boundary is 1.4 to 1.7x the old rules' on the largest Preview state",
-      "status": "done",
       "detail": ": a34dfa27 brought the p99 ratio to 1.12 (gate 1.25); the reward calculation moved to D15 (#135)",
       "priority": "P2",
       "issues": [
@@ -708,7 +670,6 @@
       "id": "D14",
       "section": "D",
       "title": "Per-block ledger application in late Alonzo takes 38 ms a block against the reference's 13 ms",
-      "status": "done",
       "detail": ": 47a16387 and follow-ups (main 14160fbf); what is left is in the D11 (#124) checklist",
       "priority": "P2",
       "issues": [
@@ -720,7 +681,6 @@
       "id": "D15",
       "section": "D",
       "title": "Reward-update pulsing landed in PR #197 (`235cd12a`)",
-      "status": "done",
       "priority": "P2",
       "issues": [
         135
@@ -731,7 +691,6 @@
       "id": "D16",
       "section": "D",
       "title": "Era-indexed MemPack TxOut codec and stored-value measurement (Step D S1)",
-      "status": "done",
       "priority": null,
       "issues": [
         143
@@ -742,7 +701,6 @@
       "id": "D17",
       "section": "D",
       "title": "Profile-driven follow-ups",
-      "status": "declined",
       "detail": ": #146 closed as not planned on 2026-10-17 and folded into the D11 (#124) checklist",
       "priority": "P2",
       "issues": [
@@ -754,7 +712,6 @@
       "id": "E1",
       "section": "E",
       "title": "Certified Mithril bootstrap",
-      "status": "done",
       "priority": "P1",
       "issues": [
         27
@@ -765,7 +722,6 @@
       "id": "E2",
       "section": "E",
       "title": "Step D",
-      "status": "done",
       "priority": "P1",
       "issues": [
         140
@@ -776,7 +732,6 @@
       "id": "E3",
       "section": "E",
       "title": "Replaying a Preview database with format-1 snapshots fails with `BadInputsUTxO` right after the restore.",
-      "status": "done",
       "detail": ": fixed in 5551376e",
       "priority": "P2",
       "issues": [
@@ -788,7 +743,6 @@
       "id": "F1",
       "section": "F",
       "title": "LocalStateQuery across the full query surface",
-      "status": "done",
       "detail": " for the `cardano-cli` surface of the Conway era",
       "priority": null,
       "issues": [
@@ -800,7 +754,6 @@
       "id": "REF-04",
       "section": "F",
       "title": "Retain the negotiated node-to-client version through query sessions",
-      "status": "done",
       "priority": null,
       "issues": [
         168
@@ -811,7 +764,6 @@
       "id": "F2",
       "section": "F",
       "title": "LocalTxMonitor and local ChainSync",
-      "status": "done",
       "priority": null,
       "issues": [
         29
@@ -822,7 +774,6 @@
       "id": "F3",
       "section": "F",
       "title": "ApplyTxErr encoding",
-      "status": "done",
       "detail": " for the Conway rules",
       "priority": null,
       "issues": [
@@ -834,7 +785,6 @@
       "id": "F4",
       "section": "F",
       "title": "The `ntc` gate runs the real `cardano-cli` against a chain older than 213 days and one that starts in Byron",
-      "status": "planned",
       "priority": "P2",
       "issues": [
         118
@@ -845,7 +795,6 @@
       "id": "F5",
       "section": "F",
       "title": "The era history of a node restarted past a version-triggered hard fork",
-      "status": "planned",
       "priority": "P2",
       "issues": [
         119
@@ -856,7 +805,6 @@
       "id": "F6",
       "section": "F",
       "title": "Failure encodings not yet written",
-      "status": "planned",
       "priority": "P2",
       "issues": [
         123
@@ -867,7 +815,6 @@
       "id": "F7",
       "section": "F",
       "title": "`PoolMedataHashTooBig` from protocol 4.1 and bootstrap-output attributes/network in Shelley",
-      "status": "done",
       "priority": "P2",
       "issues": [
         141
@@ -878,7 +825,6 @@
       "id": "REF-05",
       "section": "F",
       "title": "Nested local queries are stack safe through semantic decoding",
-      "status": "done",
       "priority": "P2",
       "issues": [
         169
@@ -889,7 +835,6 @@
       "id": "REF-06",
       "section": "F",
       "title": "Explicit HTTP state points require exactly one unsigned 64-bit slot and one 32-byte hexadecimal hash",
-      "status": "done",
       "priority": null,
       "issues": [
         170
@@ -900,7 +845,6 @@
       "id": "REF-08",
       "section": "F",
       "title": "Decode exact hard-fork query constructor tags and arities",
-      "status": "done",
       "priority": "P2",
       "issues": [
         172
@@ -911,7 +855,6 @@
       "id": "G1",
       "section": "G",
       "title": "P2P governor",
-      "status": "done",
       "priority": "P1",
       "issues": [
         31
@@ -923,7 +866,6 @@
       "section": "G",
       "parent": "G1",
       "title": "Peer metrics and churn",
-      "status": "done",
       "detail": ", \"G1.2 as built\" in the design",
       "priority": "P2",
       "issues": [
@@ -936,7 +878,6 @@
       "section": "G",
       "parent": "G1",
       "title": "Ledger peers and big ledger peers",
-      "status": "done",
       "detail": "; \"G1.3a/b as built\" in the design",
       "priority": "P2",
       "issues": [
@@ -949,7 +890,6 @@
       "section": "G",
       "parent": "G1",
       "title": "PeerSharing mini-protocol",
-      "status": "done",
       "priority": "P2",
       "issues": [
         138
@@ -961,7 +901,6 @@
       "section": "G",
       "parent": "G1",
       "title": "Genesis hooks for the governor",
-      "status": "done",
       "priority": "P2",
       "issues": [
         139
@@ -973,7 +912,6 @@
       "section": "G",
       "parent": "G1",
       "title": "Governor follow-ups",
-      "status": "done",
       "priority": "P2",
       "issues": [
         142
@@ -985,7 +923,6 @@
       "section": "G",
       "parent": "G1",
       "title": "BlockFetch reads the fetch mode",
-      "status": "done",
       "detail": ", built with G1.2",
       "priority": "P2",
       "issues": [
@@ -997,7 +934,6 @@
       "id": "G2",
       "section": "G",
       "title": "Connection management",
-      "status": "done",
       "priority": "P1",
       "issues": [
         32
@@ -1008,7 +944,6 @@
       "id": "G3",
       "section": "G",
       "title": "Ouroboros Genesis",
-      "status": "done",
       "detail": ": PR #309, merged 2026-10-22",
       "priority": "P2",
       "issues": [
@@ -1020,7 +955,6 @@
       "id": "G4",
       "section": "G",
       "title": "Protocol versions",
-      "status": "done",
       "priority": "P2",
       "issues": [
         34
@@ -1031,7 +965,6 @@
       "id": "G5",
       "section": "G",
       "title": "Adversarial robustness",
-      "status": "done",
       "priority": "P1",
       "issues": [
         35
@@ -1054,7 +987,6 @@
       "section": "G",
       "parent": "G5",
       "title": "Fair Mux egress",
-      "status": "done",
       "priority": "P1",
       "issues": [
         258
@@ -1065,7 +997,6 @@
       "id": "G6",
       "section": "G",
       "title": "Header-first validation",
-      "status": "done",
       "priority": "P1",
       "issues": [
         36
@@ -1076,7 +1007,6 @@
       "id": "G7",
       "section": "G",
       "title": "Remove `PeerFailure`",
-      "status": "done",
       "priority": "P2",
       "issues": [
         132
@@ -1087,7 +1017,6 @@
       "id": "H1",
       "section": "H",
       "title": "Public pool",
-      "status": "done",
       "detail": " 2026-10-25; retargeted from Preview to preprod",
       "priority": "P1",
       "issues": [
@@ -1099,7 +1028,6 @@
       "id": "H1a",
       "section": "H",
       "title": "Test-network pool",
-      "status": "done",
       "detail": " 2026-10-25",
       "priority": "P1",
       "issues": [
@@ -1111,7 +1039,6 @@
       "id": "H2",
       "section": "H",
       "title": "Integrate the upstream KES agent as a separate process",
-      "status": "planned",
       "priority": null,
       "issues": [
         38
@@ -1122,7 +1049,6 @@
       "id": "H2a",
       "section": "H",
       "title": "Unattended KES rotation for the test-network pool",
-      "status": "done",
       "detail": ", landed 5293c6ab",
       "priority": "P1",
       "issues": [
@@ -1134,7 +1060,6 @@
       "id": "H2a durability",
       "section": "H",
       "title": "Complete short key-file writes",
-      "status": "done",
       "priority": "P2",
       "issues": [
         157
@@ -1145,7 +1070,6 @@
       "id": "H2b",
       "section": "H",
       "title": "Mainnet pool",
-      "status": "planned",
       "priority": "P2",
       "issues": [
         120
@@ -1156,7 +1080,6 @@
       "id": "H3",
       "section": "H",
       "title": "TPraos forging, for historical or test eras only (low priority).",
-      "status": "planned",
       "priority": null,
       "issues": [
         39
@@ -1167,7 +1090,6 @@
       "id": "H4",
       "section": "H",
       "title": "Mempool",
-      "status": "done",
       "priority": null,
       "issues": [
         40
@@ -1178,7 +1100,6 @@
       "id": "H5",
       "section": "H",
       "title": "Forging-loop hardening",
-      "status": "done",
       "priority": null,
       "issues": [
         41
@@ -1189,7 +1110,6 @@
       "id": "H6",
       "section": "H",
       "title": "The Scala node's slot clock was sometimes exactly 1.0 s behind the network's",
-      "status": "done",
       "priority": null,
       "issues": [
         67
@@ -1212,7 +1132,6 @@
       "id": "I1",
       "section": "I",
       "title": "Conformance",
-      "status": "done",
       "priority": null,
       "issues": [
         42
@@ -1223,7 +1142,6 @@
       "id": "I2",
       "section": "I",
       "title": "Own evaluator",
-      "status": "planned",
       "priority": null,
       "issues": [
         43
@@ -1234,7 +1152,6 @@
       "id": "I3",
       "section": "I",
       "title": "Routine era-load V1/V2 spending/minting",
-      "status": "done",
       "detail": ": PR #291, merged 2026-10-21",
       "priority": null,
       "issues": [
@@ -1246,7 +1163,6 @@
       "id": "I3a",
       "section": "I",
       "title": "Independent A–E builtin costing and era/language/purpose/protocol context verification",
-      "status": "done",
       "detail": ": PR #291, merged 2026-10-21",
       "priority": null,
       "issues": [
@@ -1259,7 +1175,6 @@
       "id": "I3b",
       "section": "I",
       "title": "Independently verify and align Shelley/Allegra/Mary auxiliary metadata/native structural admission",
-      "status": "done",
       "detail": ": PR #303, merged 2026-10-21",
       "priority": "P2",
       "issues": [
@@ -1271,7 +1186,6 @@
       "id": "I4",
       "section": "I",
       "title": "Unchanged-reference three-script oracle covers all pass/fail patterns in V1/V2/V3",
-      "status": "done",
       "priority": "P2",
       "issues": [
         195
@@ -1282,7 +1196,6 @@
       "id": "I4a",
       "section": "I",
       "title": "Consider exact Haskell diagnostic wording if a concrete consumer needs it; no v0.2 requirement",
-      "status": "planned",
       "detail": ", later",
       "priority": null,
       "issues": [
@@ -1294,7 +1207,6 @@
       "id": "J1",
       "section": "J",
       "title": "Config and topology",
-      "status": "done",
       "priority": null,
       "issues": [
         45
@@ -1305,7 +1217,6 @@
       "id": "J2",
       "section": "J",
       "title": "CLI parity",
-      "status": "planned",
       "priority": null,
       "issues": [
         46
@@ -1316,7 +1227,6 @@
       "id": "J3",
       "section": "J",
       "title": "Observability",
-      "status": "done",
       "detail": ": original Prometheus acceptance",
       "priority": null,
       "issues": [
@@ -1329,7 +1239,6 @@
       "section": "J",
       "parent": "J3",
       "title": "Pool dashboard panels and 17 Prometheus alert rules, with the KES rotation driver's textfile metrics",
-      "status": "done",
       "priority": "P2",
       "issues": [
         117
@@ -1341,7 +1250,6 @@
       "section": "J",
       "parent": "J3",
       "title": "Library",
-      "status": "done",
       "detail": ": PR #454, merged 2026-10-25",
       "priority": "P2",
       "issues": [
@@ -1363,7 +1271,6 @@
       "id": "K1",
       "section": "K",
       "title": "db-analyser comparison",
-      "status": "done",
       "detail": " for Preview, 2026-10-15",
       "priority": null,
       "issues": [
@@ -1375,7 +1282,6 @@
       "id": "K2",
       "section": "K",
       "title": "Upstream conformance suites",
-      "status": "done",
       "detail": " for the bounded v0.2 scope, 2026-10-20",
       "priority": null,
       "issues": [
@@ -1388,7 +1294,6 @@
       "section": "K",
       "parent": "K2",
       "title": "classify and retain invalid original EPOCH/NEWEPOCH inputs",
-      "status": "done",
       "detail": ": PR #273, merged 2026-10-20",
       "priority": null,
       "issues": [
@@ -1405,7 +1310,6 @@
       "section": "K",
       "parent": "K2",
       "title": "validate every actual source-watch root",
-      "status": "done",
       "priority": null,
       "issues": [
         273
@@ -1416,7 +1320,6 @@
       "id": "K3",
       "section": "K",
       "title": "Fuzzing",
-      "status": "done",
       "priority": null,
       "issues": [
         50
@@ -1428,7 +1331,6 @@
       "section": "K",
       "parent": "K3",
       "title": "Native-serialized whole-transaction seeds for Shelley",
-      "status": "done",
       "detail": ": PR #279, merged 2026-10-20, with more seeds in #300",
       "priority": null,
       "issues": [
@@ -1440,7 +1342,6 @@
       "id": "K4",
       "section": "K",
       "title": "Long-run stability",
-      "status": "in-progress",
       "priority": null,
       "issues": [
         51
@@ -1451,7 +1352,6 @@
       "id": "K5",
       "section": "K",
       "title": "Single-build evidence",
-      "status": "planned",
       "priority": null,
       "issues": [
         52
@@ -1462,7 +1362,6 @@
       "id": "K6",
       "section": "K",
       "title": "Memory profile of the RSS growth to 5.66 GB",
-      "status": "done",
       "priority": null,
       "issues": [
         53
@@ -1473,7 +1372,6 @@
       "id": "K7",
       "section": "K",
       "title": "Continuous ledger-state verification on a live network",
-      "status": "planned",
       "priority": "P1",
       "issues": [
         68
@@ -1484,7 +1382,6 @@
       "id": "K8",
       "section": "K",
       "title": "SCLS binary import/export alongside Haskell snapshots; V5 restart state retained",
-      "status": "done",
       "priority": "P1",
       "issues": [
         77
@@ -1505,7 +1402,6 @@
       "id": "K9",
       "section": "K",
       "title": "Deterministic three-runtime adversarial schedules",
-      "status": "done",
       "detail": ", 2026-10-18",
       "priority": null,
       "issues": [
@@ -1517,7 +1413,6 @@
       "id": "K9a",
       "section": "K",
       "title": "Nightly seeded network-fault run of the Docker devnet (`devnet.py faults`, `.github/workflows/faults.yml`)",
-      "status": "done",
       "priority": null,
       "issues": [
         224
@@ -1528,7 +1423,6 @@
       "id": "K10",
       "section": "K",
       "title": "Cross-check generated CDDL codecs against pinned Cuddle 1.8.1.0 in CI, in both directions",
-      "status": "done",
       "detail": " for the bounded corpus",
       "priority": "P1",
       "issues": [
@@ -1540,7 +1434,6 @@
       "id": "K11",
       "section": "K",
       "title": "`Credential` ordering renders a hex string per comparison; order by tag and raw bytes (follow-up of #94, see K6).",
-      "status": "in-progress",
       "priority": "P2",
       "issues": [
         96
@@ -1551,7 +1444,6 @@
       "id": "K12",
       "section": "K",
       "title": "Finish credential sharing on decode",
-      "status": "planned",
       "priority": "P2",
       "issues": [
         97
@@ -1562,7 +1454,6 @@
       "id": "K13",
       "section": "K",
       "title": "`devnet.py e2e --oracle`",
-      "status": "in-progress",
       "priority": "P2",
       "issues": [
         91
@@ -1573,7 +1464,6 @@
       "id": "L1",
       "section": "L",
       "title": "Dijkstra, the next era, is already in the 11.x configs",
-      "status": "planned",
       "priority": null,
       "issues": [
         54
@@ -1584,7 +1474,6 @@
       "id": "M1",
       "section": "M",
       "title": "Reject unknown `follow` flags (the parser accepts any `--name value` pair); consider a declarative parser.",
-      "status": "done",
       "detail": " in v0.1.0",
       "priority": "P1",
       "issues": [
@@ -1596,7 +1485,6 @@
       "id": "M2",
       "section": "M",
       "title": "Remove unsafe partial calls in main code",
-      "status": "done",
       "detail": " in v0.1.0",
       "priority": "P1",
       "issues": [
@@ -1608,7 +1496,6 @@
       "id": "M3",
       "section": "M",
       "title": "The deliberate global caches are instance-scoped",
-      "status": "done",
       "priority": "P1",
       "issues": [
         57
@@ -1619,7 +1506,6 @@
       "id": "M4",
       "section": "M",
       "title": "Test-only code is out of main",
-      "status": "done",
       "priority": "P1",
       "issues": [
         58
@@ -1630,7 +1516,6 @@
       "id": "M5",
       "section": "M",
       "title": "Reformat the cryptographic Java sources",
-      "status": "done",
       "detail": " in v0.1.0",
       "priority": "P1",
       "issues": [
@@ -1642,7 +1527,6 @@
       "id": "M6",
       "section": "M",
       "title": "Split the largest files",
-      "status": "planned",
       "priority": "P2",
       "issues": [
         60
@@ -1653,7 +1537,6 @@
       "id": "M7",
       "section": "M",
       "title": "Naming",
-      "status": "done",
       "detail": " in the #82 reorg: package root `xyz.kd5ujc.scarab`, organisation `xyz.kd5ujc`, artifacts `scarab-<module>`",
       "priority": "P2",
       "issues": [
@@ -1665,7 +1548,6 @@
       "id": "M8",
       "section": "M",
       "title": "Serial test execution (`Tags.limit(Test, 1)`)",
-      "status": "planned",
       "priority": "P2",
       "issues": [
         62
@@ -1676,7 +1558,6 @@
       "id": "M9",
       "section": "M",
       "title": "READMEs for `fixtures/{network,praos,sum6,vrf}`; Koios attribution for the data in `fixtures/preview`.",
-      "status": "done",
       "priority": "P2",
       "issues": [
         63
@@ -1687,7 +1568,6 @@
       "id": "M10",
       "section": "M",
       "title": "Flaky `FollowerSuite` two-peer chain-selection test",
-      "status": "done",
       "priority": "P1",
       "issues": [
         66
@@ -1698,7 +1578,6 @@
       "id": "M11",
       "section": "M",
       "title": "Reorg",
-      "status": "done",
       "detail": "; the module split and rename are done; step 1 of the ledger-state mirror is complete with S9: the state converts both ways, the Haskell codec reads and writes it, `DebugEpochState`/`DebugNewEpochState` are answered with a documented gap mask, `follow --mirror-check` verified it live until J2.9 removed it; step 2 ([design](design/ledger-mirror-step2.md)) is done: the rule suites over the flat state ran on both rule sets (J2.6), the default rules became the era-indexed ones (J2.8), **and the old rules, the flat state and the differential harness are removed (J2.9): the chain's state is the mirror, the snapshot is format 5, `--rules`, `--mirror-check`, `--on-divergence` and `--repro-dir` are refused; the epoch boundary of the new rules is slower than the old by 46% at p99 on the largest Preview state ([#131](https://github.com/KD5UJC-XYZ/scarab/issues/131)); the gaps J2.8 leaves are [#128](https://github.com/KD5UJC-XYZ/scarab/issues/128) (an old-rules snapshot of the Shelley era of a Byron-start chain has no redeem stash) and [#129](https://github.com/KD5UJC-XYZ/scarab/issues/129) (the gaps of the sidecar, J3.1)**",
       "priority": "P1",
       "issues": [
@@ -1710,7 +1589,6 @@
       "id": "M11-E",
       "section": "M",
       "title": "The original reorganisation #82 is closed",
-      "status": "done",
       "detail": ": runtime migration #188 and semantic follow-up #190 merged; level-3 gates passed",
       "priority": "P1",
       "issues": [
@@ -1722,7 +1600,6 @@
       "id": "M12",
       "section": "M",
       "title": "Era-indexed consensus, as the Hard Fork Combinator does it",
-      "status": "planned",
       "detail": ", after the ledger-state mirror and its step 2 under M11",
       "priority": "P2",
       "issues": [
@@ -1734,7 +1611,6 @@
       "id": "M13",
       "section": "M",
       "title": "Named unsigned comparison controls and greedy optional-before-required groups now generate",
-      "status": "planned",
       "detail": ", remaining generator features",
       "priority": "P2",
       "issues": [
@@ -1746,7 +1622,6 @@
       "id": "M14",
       "section": "M",
       "title": "Adopt the generated models in the node",
-      "status": "planned",
       "detail": "; coordinate with M12",
       "priority": "P2",
       "issues": [
@@ -1758,7 +1633,6 @@
       "id": "N1",
       "section": "N",
       "title": "Study CIP-164",
-      "status": "done",
       "detail": ": design note",
       "priority": "P1",
       "issues": [
@@ -1770,7 +1644,6 @@
       "id": "N2",
       "section": "N",
       "title": "BLS12-381 MinSig keys",
-      "status": "done",
       "detail": " 2026-10-14, `docs/leios.md` section 9",
       "priority": "P2",
       "issues": [
@@ -1782,7 +1655,6 @@
       "id": "N3",
       "section": "N",
       "title": "Follow the public Leios testnet read-only (original scope)",
-      "status": "done",
       "detail": " 2026-10-16, `docs/leios.md` section 11: the published configuration pinned with hashes; `HfcHeader`, `LeiosHeader`, `LeiosBlock` decoders, `LeiosHeaderChain` header rules, tools `LeiosCaptureMain` and `LeiosCheckMain`; all 154,698 headers of the testnet validated from its genesis, six blocks decoded and matched to their headers, the generated `dijkstra.Header` codec checked on them; open then, folded into [#73](https://github.com/KD5UJC-XYZ/scarab/issues/73) on 2026-10-17: the gaps X1 to X13 of section 11.6, above all that the node itself cannot follow the chain (X1, X2), the relay never answering protocols 18 and 19 (X8) and the committee (X5); the LeiosFetch codec and its pinned CDDL follow Blueprint `0460c5a6` since [#174](https://github.com/KD5UJC-XYZ/scarab/issues/174), reading the `fe4cceb9` form of `MsgLeiosBlockTxs` until a capture or a testnet release settles which form a relay speaks",
       "priority": "P2",
       "issues": [
@@ -1794,7 +1666,6 @@
       "id": "N4",
       "section": "N",
       "title": "A devnet scenario with Haskell Leios nodes and the Scala node",
-      "status": "planned",
       "detail": ", needs N3",
       "priority": "P2",
       "issues": [
@@ -1976,7 +1847,6 @@
       "id": "N5",
       "section": "N",
       "title": "A Leios-grade mempool",
-      "status": "planned",
       "priority": "P1",
       "issues": [
         79
@@ -1987,7 +1857,6 @@
       "id": "O1",
       "section": "O",
       "title": "Threat model and security-review scope",
-      "status": "planned",
       "priority": "P1",
       "issues": [
         74
@@ -1998,7 +1867,6 @@
       "id": "O2",
       "section": "O",
       "title": "Reproducible, signed releases with an SBOM and published images",
-      "status": "in-progress",
       "priority": "P1",
       "issues": [
         75
@@ -2009,7 +1877,6 @@
       "id": "O3",
       "section": "O",
       "title": "Operator packaging",
-      "status": "planned",
       "priority": "P2",
       "issues": [
         76
@@ -2020,7 +1887,6 @@
       "id": "O4",
       "section": "O",
       "title": "Node-diversity participation",
-      "status": "declined",
       "detail": ": owner-managed, closed outside development",
       "priority": null,
       "issues": [
@@ -2032,7 +1898,6 @@
       "id": "O5",
       "section": "O",
       "title": "Reproducible reviewer evidence bundle",
-      "status": "in-progress",
       "detail": "; deferred until audit candidate selection",
       "priority": "P1",
       "issues": [

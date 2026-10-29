@@ -1,51 +1,43 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Render `docs/roadmap.md` from the register `docs/data/roadmap.json`, and check it against the issues.
+"""Render `docs/roadmap.md` from the register `docs/data/roadmap.json` and a snapshot of its issues' states.
 
 The register has one entry per roadmap item: a stable id (`G3`, `N4-X1`, `K2 follow-ups`), the section it belongs to,
-an optional parent item (rendered as a nested bullet), a one-line title, a status from the closed `Status` enum, an
-optional status detail (text shown after the status word inside the parentheses, starting with its own separator:
-`: `, `; `, `, ` or a space), the priority (`P0`, `P1`, `P2` or null), the issue numbers (the first is the primary
-issue), the item's prose (`notes`, markdown with links relative to `docs/`) and, for a folded item, `folded_into`, the
-issue that now carries its work. Sections hold their heading and optional prose before (`intro`) and after (`outro`)
-their items; a section without items holds `text` (the order of work, the milestones). The rendered file is
-generated, and `--check` fails when the committed file differs from the render, so an edit by hand cannot land.
+an optional parent item (rendered as a nested bullet), a one-line title, an optional status detail (text shown after
+the status word inside the parentheses, starting with its own separator: `: `, `; `, `, ` or a space), the priority
+(`P0`, `P1`, `P2` or null), the issue numbers (the first is the primary issue), the item's prose (`notes`, markdown with
+links relative to `docs/`) and, for a folded item, `folded_into`, the issue that now carries its work. Sections hold
+their heading and optional prose before (`intro`) and after (`outro`) their items; a section without items holds
+`text` (the order of work, the milestones). The rendered file is generated, and `--check` fails when the committed file
+differs from the render, so an edit by hand cannot land.
 
-Validation (always run, also by `--check`): the status and priority enums hold, ids are unique single lines, every
-issue number is a positive int, titles are one bounded line, notes are nonempty, sections and parents exist, and
-`folded_into` is present exactly for folded items.
+Status is derived from the issues, so it cannot drift from them (owner decision, 2026-10-29). An item with issues takes
+its status from the snapshot `docs/data/issue-states.json`:
 
-Issue state (`--check` only): every issue of the register is read from GitHub in one paginated, read-only
-`gh api repos/KD5UJC-XYZ/scarab/issues?state=all` listing (any issue missing from it is read by number). Rules:
+  done          every issue is closed, and one as completed
+  declined      every issue is closed as not planned
+  in-progress   an issue is open and the primary one carries `status:in-progress`
+  planned       an issue is open otherwise
+  not synced    an issue is not in the snapshot yet (the next refresh adds it)
 
-  done          every listed issue is closed
-  planned       the primary issue is open
-  in-progress   the primary issue is open
-  folded        the primary issue is closed; `folded_into` exists (open or closed)
-  declined      the primary issue is closed
-  decision      no state rule: the item records a decision, whatever its issue's state (the issue must exist)
+A status is stored in the register only where no issue can give it: `decision` (the item records a decision, whatever
+its issue's state) and `folded` (its work continues in `folded_into`, and its primary issue is closed), and on an item
+without issues. Validation (always run, also by `--check`) holds the enums, unique single-line ids, positive int issue
+numbers, bounded one-line titles, nonempty notes, known sections and parents, `folded_into` exactly on folded items, a
+status exactly where it is stored, and a well-formed snapshot.
 
-An item without issues is not checked. Planned and in-progress are told apart by the issue's `status:` label, which
-this check does not read.
-
-Issue state is a property of the repository, not of a change, so it fails only the pull request that causes it. With
-`--pr N` (CI passes the pull request under test; `--pr auto` reads the pull request of the current branch) the issues
-GitHub will close when that pull request merges (`closingIssuesReferences`, which holds only issues and only for a pull
-request into the default branch) count as closed, and the disagreements after the merge are compared with those of the
-register at the pull request's base (read from GitHub at `baseRefOid`) under today's issue states. A disagreement the
-base already has (an issue closed or reopened by hand, or by another merge) is printed as a notice; one that the pull
-request brings (it edits an item, or closes an item's issue without marking the item) fails. Without `--pr` (a push
-to `main`, a branch without a pull request) every disagreement is a notice; the nightly triage report lists them.
-When `gh` is missing, unauthenticated or offline the state part (and the pull request read) is skipped with a notice
-and the exit status depends on the rest (`--require-issue-state`, which CI passes, makes that a failure);
-`--no-issue-state` skips it on purpose.
+The snapshot is the only issue state the check reads, so `--check` needs no network and judges a pull request by its
+own files. It is refreshed with `--refresh-states` (adds the issues the register names that it lacks, for a change that
+adds an item) or `--refresh-states --all` (every issue again, and drops the ones no item names); the nightly triage
+workflow runs the second and proposes the result as a pull request. Each refresh reads one paginated, read-only
+`gh api repos/KD5UJC-XYZ/scarab/issues?state=all` listing, and a number missing from it by number.
 
 Usage:
-  python3 scripts/render_roadmap.py                      write docs/roadmap.md
-  python3 scripts/render_roadmap.py --check              validate, compare issue states, fail on a stale render
-  python3 scripts/render_roadmap.py --check --pr 123     the same, as if pull request 123 were merged
+  python3 scripts/render_roadmap.py                          write docs/roadmap.md
+  python3 scripts/render_roadmap.py --check                  validate and fail on a stale render (offline)
+  python3 scripts/render_roadmap.py --refresh-states [--all] refresh the snapshot from GitHub, then render
 
-Pure standard library; the only network use is read-only `gh` in `--check` (`gh api` GETs and `gh pr view`).
+Pure standard library; the only network use is read-only `gh api` in `--refresh-states`.
 """
 from __future__ import annotations
 
@@ -61,6 +53,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 REGISTER = "docs/data/roadmap.json"
 OUTPUT = "docs/roadmap.md"
+SNAPSHOT = "docs/data/issue-states.json"
 REPOSITORY = "KD5UJC-XYZ/scarab"
 ISSUE_BASE = f"https://github.com/{REPOSITORY}/issues/"
 SCHEMA_VERSION = 1
@@ -109,15 +102,11 @@ class Kind(str, Enum):
     BAD_FOLDED_INTO = "bad-folded-into"
     BAD_JSON = "bad-json"
     STALE_RENDER = "stale-render"
-    DONE_ISSUE_OPEN = "done-issue-open"
-    ACTIVE_ISSUE_CLOSED = "active-issue-closed"
+    BAD_SNAPSHOT = "bad-snapshot"
     FOLDED_ISSUE_OPEN = "folded-issue-open"
-    DECLINED_ISSUE_OPEN = "declined-issue-open"
     UNKNOWN_ISSUE = "unknown-issue"
 
 
-STATE_KINDS = frozenset({Kind.DONE_ISSUE_OPEN, Kind.ACTIVE_ISSUE_CLOSED, Kind.FOLDED_ISSUE_OPEN,
-                         Kind.DECLINED_ISSUE_OPEN, Kind.UNKNOWN_ISSUE})
 
 
 @dataclass(frozen=True)
@@ -134,7 +123,8 @@ TOP_FIELDS = frozenset({"schemaVersion", "intro", "sections", "items"})
 SECTION_FIELDS = frozenset({"id", "heading", "intro", "outro", "text"})
 ITEM_FIELDS = frozenset({"id", "section", "parent", "title", "status", "detail", "priority", "issues", "notes",
                          "folded_into"})
-REQUIRED_ITEM_FIELDS = ("id", "section", "title", "status", "priority", "issues", "notes")
+REQUIRED_ITEM_FIELDS = ("id", "section", "title", "priority", "issues", "notes")
+STORED_WITH_ISSUES = frozenset({"decision", "folded"})
 
 
 def read_json(path: Path) -> object:
@@ -215,8 +205,15 @@ def validate(register: object) -> list[Problem]:
         if not one_line(title) or len(title) > TITLE_CHARS or "|" in title:
             problems.append(Problem(Kind.BAD_TITLE, subject, f"one nonempty line of at most {TITLE_CHARS} characters"))
         status = item.get("status")
-        if not isinstance(status, str) or status not in {s.value for s in Status}:
+        has_issues = isinstance(item.get("issues"), list) and bool(item["issues"])
+        if status is None:
+            if isinstance(item.get("issues"), list) and not item["issues"]:
+                problems.append(Problem(Kind.BAD_STATUS, subject, "an item without issues stores its status"))
+        elif not isinstance(status, str) or status not in {s.value for s in Status}:
             problems.append(Problem(Kind.BAD_STATUS, subject, repr(status)))
+        elif has_issues and status not in STORED_WITH_ISSUES:
+            problems.append(Problem(Kind.BAD_STATUS, subject,
+                                    f"{status!r} is derived from the issues; only decision or folded is stored"))
         detail = item.get("detail")
         if detail is not None and (not isinstance(detail, str) or "\n" in detail
                                    or not detail.startswith(DETAIL_SEPARATORS) or not detail.strip()):
@@ -249,38 +246,39 @@ def validate(register: object) -> list[Problem]:
 # ---------------------------------------------------------------------------------------------------------------
 # Issue state
 
-States = Mapping[int, IssueState]
+@dataclass(frozen=True)
+class IssueRecord:
+    """What the snapshot keeps of an issue: its state, why it was closed, and whether it is marked in progress."""
+    state: IssueState
+    reason: str
+    in_progress: bool
 
 
-def state_problems(register: Mapping[str, object], states: States) -> list[Problem]:
-    """Every disagreement between an item's status and the state of its issues."""
+Snapshot = Mapping[int, IssueRecord]
+REASONS = frozenset({"", "completed", "not_planned", "reopened", "duplicate"})
+
+
+def derive(item: Mapping[str, object], snapshot: Snapshot) -> Status | None:
+    """The item's status: the stored one, or the one its issues give; None when an issue is not in the snapshot."""
+    if "status" in item:
+        return Status(item["status"])
+    issues: list[int] = item["issues"]  # type: ignore[assignment]
+    if any(n not in snapshot for n in issues):
+        return None
+    records = [snapshot[n] for n in issues]
+    if all(r.state is IssueState.CLOSED for r in records):
+        return Status.DONE if any(r.reason != "not_planned" for r in records) else Status.DECLINED
+    return Status.IN_PROGRESS if records[0].in_progress and records[0].state is IssueState.OPEN else Status.PLANNED
+
+
+def snapshot_problems(register: Mapping[str, object], snapshot: Snapshot) -> list[Problem]:
+    """A stored status the snapshot contradicts: a folded item whose primary issue is open."""
     problems: list[Problem] = []
-
-    def state(item_id: str, number: int) -> IssueState | None:
-        if number not in states:
-            problems.append(Problem(Kind.UNKNOWN_ISSUE, item_id, f"#{number} is not an issue of {REPOSITORY}"))
-            return None
-        return states[number]
-
     for item in register["items"]:  # type: ignore[union-attr]
-        issues: list[int] = item["issues"]
-        if not issues:
-            continue
-        iid, status = item["id"], Status(item["status"])
-        primary = state(iid, issues[0])
-        if status is Status.DONE:
-            for number in issues:
-                current = primary if number == issues[0] else state(iid, number)
-                if current is IssueState.OPEN:
-                    problems.append(Problem(Kind.DONE_ISSUE_OPEN, iid, f"status done, #{number} open"))
-        elif status in (Status.PLANNED, Status.IN_PROGRESS) and primary is IssueState.CLOSED:
-            problems.append(Problem(Kind.ACTIVE_ISSUE_CLOSED, iid, f"status {status.value}, #{issues[0]} closed"))
-        elif status is Status.FOLDED:
-            if primary is IssueState.OPEN:
-                problems.append(Problem(Kind.FOLDED_ISSUE_OPEN, iid, f"status folded, #{issues[0]} open"))
-            state(iid, item["folded_into"])
-        elif status is Status.DECLINED and primary is IssueState.OPEN:
-            problems.append(Problem(Kind.DECLINED_ISSUE_OPEN, iid, f"status declined, #{issues[0]} open"))
+        if item.get("status") == Status.FOLDED.value and item["issues"]:
+            record = snapshot.get(item["issues"][0])
+            if record is not None and record.state is IssueState.OPEN:
+                problems.append(Problem(Kind.FOLDED_ISSUE_OPEN, item["id"], f"status folded, #{item['issues'][0]} open"))
     return problems
 
 
@@ -291,6 +289,34 @@ def wanted_issues(register: Mapping[str, object]) -> set[int]:
         if "folded_into" in item:
             wanted.add(item["folded_into"])
     return wanted
+
+
+def read_snapshot(root: Path) -> tuple[dict[int, IssueRecord], list[Problem]]:
+    """The committed snapshot; a missing file is an empty snapshot, a malformed one a defect."""
+    path = root / SNAPSHOT
+    if not path.is_file():
+        return {}, []
+    try:
+        data = read_json(path)
+        if not isinstance(data, dict) or data.get("schemaVersion") != SCHEMA_VERSION or not isinstance(data.get("issues"), dict):
+            raise ValueError(f"schemaVersion {SCHEMA_VERSION} and an issues object")
+        snapshot = {}
+        for key, value in data["issues"].items():
+            state, reason, in_progress = value
+            if not key.isdigit() or reason not in REASONS or not isinstance(in_progress, bool):
+                raise ValueError(f"entry {key!r}")
+            snapshot[int(key)] = IssueRecord(IssueState(state), reason, in_progress)
+    except (OSError, ValueError, TypeError) as error:
+        return {}, [Problem(Kind.BAD_SNAPSHOT, SNAPSHOT, str(error))]
+    return snapshot, []
+
+
+def write_snapshot(root: Path, snapshot: Snapshot) -> None:
+    """One issue per line, in number order, so a refresh's diff names exactly the issues that changed."""
+    entries = [f'  "{n}": {json.dumps([r.state.value, r.reason, r.in_progress])}' for n, r in sorted(snapshot.items())]
+    body = ",\n".join(entries)
+    (root / SNAPSHOT).write_text(f'{{\n "schemaVersion": {SCHEMA_VERSION},\n "issues": {{\n{body}\n }}\n}}\n',
+                                 encoding="utf-8")
 
 
 class Unavailable(Exception):
@@ -312,73 +338,45 @@ def gh(args: Sequence[str]) -> str:
     return done.stdout
 
 
-def parse_state(text: str) -> IssueState:
-    return IssueState(text.strip().lower())
+RECORD_JQ = '[.number, .state, (.state_reason // ""), (([.labels[].name] | index("status:in-progress")) != null)] | @tsv'
 
 
-def github_states(wanted: set[int], run: Gh = gh) -> dict[int, IssueState]:
-    """The state of every wanted issue (or pull request); a number GitHub does not know is left out."""
-    listing = run(["api", "--paginate", f"repos/{REPOSITORY}/issues?state=all&per_page=100",
-                   "--jq", ".[] | [.number, .state] | @tsv"])
-    states: dict[int, IssueState] = {}
-    for line in listing.splitlines():
-        number, _, state = line.partition("\t")
-        if number.strip().isdigit():
-            states[int(number)] = parse_state(state)
-    for number in sorted(wanted - states.keys()):
+def parse_record(line: str) -> tuple[int, IssueRecord] | None:
+    fields = line.rstrip("\n").split("\t")
+    if len(fields) != 4 or not fields[0].strip().isdigit():
+        return None
+    return int(fields[0]), IssueRecord(IssueState(fields[1].strip().lower()), fields[2].strip(), fields[3].strip() == "true")
+
+
+def github_records(wanted: set[int], run: Gh | None = None) -> dict[int, IssueRecord]:
+    """The record of every wanted issue; a number GitHub does not know is left out."""
+    run = run or gh
+    listing = run(["api", "--paginate", f"repos/{REPOSITORY}/issues?state=all&per_page=100", "--jq", ".[] | " + RECORD_JQ])
+    records = {n: r for n, r in filter(None, map(parse_record, listing.splitlines())) if n in wanted}
+    for number in sorted(wanted - records.keys()):
         try:
-            states[number] = parse_state(run(["api", f"repos/{REPOSITORY}/issues/{number}", "--jq", ".state"]))
+            found = parse_record(run(["api", f"repos/{REPOSITORY}/issues/{number}", "--jq", RECORD_JQ]))
         except Unavailable:
             continue
-    return states
+        if found is not None:
+            records[number] = found[1]
+    return records
 
 
-def resolve_pr(pr: str) -> str:
-    """`auto` is the pull request of the current branch, which `gh pr view` finds by the branch name."""
-    if pr != "auto":
-        return pr
-    return subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True,
-                          check=False).stdout.strip()
-
-
-def closed_by(pr: str, run: Gh = gh) -> set[int]:
-    """The issues GitHub closes when pull request `pr` merges."""
-    numbers = run(["pr", "view", resolve_pr(pr), "--repo", REPOSITORY, "--json", "closingIssuesReferences",
-                   "--jq", ".closingIssuesReferences[].number"])
-    return {int(n) for n in numbers.split() if n.isdigit()}
-
-
-def base_register(pr: str, run: Gh = gh) -> object | None:
-    """The register at the pull request's base commit, or None when the base has none (or an unreadable one)."""
-    base = run(["pr", "view", resolve_pr(pr), "--repo", REPOSITORY, "--json", "baseRefOid", "--jq", ".baseRefOid"]).strip()
-    try:
-        text = run(["api", f"repos/{REPOSITORY}/contents/{REGISTER}?ref={base}",
-                    "-H", "Accept: application/vnd.github.raw"])
-    except Unavailable as error:
-        if "404" in str(error) or "Not Found" in str(error):
-            return None
-        raise
-    try:
-        register = json.loads(text)
-    except ValueError:
-        return None
-    return register if not validate(register) else None
-
-
-def caused(after: Sequence[Problem], before: Sequence[Problem]) -> list[Problem]:
-    """The disagreements of `after` that `before` does not have, counted with multiplicity."""
-    remaining = list(before)
-    out = []
-    for problem in after:
-        if problem in remaining:
-            remaining.remove(problem)
-        else:
-            out.append(problem)
-    return out
-
-
-def after_merge(states: States, closing: set[int]) -> dict[int, IssueState]:
-    return {n: (IssueState.CLOSED if n in closing else s) for n, s in states.items()}
+def refresh(root: Path, every: bool, run: Gh | None = None) -> list[Problem]:
+    """Update the snapshot from GitHub: the missing issues, or with `every` all of them (dropping unnamed ones)."""
+    register, problems = load(root)
+    if problems:
+        return problems
+    snapshot, problems = read_snapshot(root)
+    if problems and not every:
+        return problems
+    wanted = wanted_issues(register)  # type: ignore[arg-type]
+    fetch = wanted if every else wanted - snapshot.keys()
+    fresh = github_records(fetch, run) if fetch else {}
+    kept = {} if every else {n: r for n, r in snapshot.items() if n in wanted}
+    write_snapshot(root, {**kept, **fresh})
+    return [Problem(Kind.UNKNOWN_ISSUE, REGISTER, f"#{n} is not an issue of {REPOSITORY}") for n in sorted(fetch - fresh.keys())]
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -388,9 +386,15 @@ def issue_link(number: int) -> str:
     return f"[#{number}]({ISSUE_BASE}{number})"
 
 
-def item_line(item: Mapping[str, object]) -> str:
-    status = Status(item["status"])
-    label = f"folded into {issue_link(item['folded_into'])}" if status is Status.FOLDED else status.label  # type: ignore[arg-type]
+NOT_SYNCED = "state not yet synced"
+
+
+def item_line(item: Mapping[str, object], snapshot: Snapshot) -> str:
+    status = derive(item, snapshot)
+    if status is Status.FOLDED:
+        label = f"folded into {issue_link(item['folded_into'])}"  # type: ignore[arg-type]
+    else:
+        label = NOT_SYNCED if status is None else status.label
     paren = ", ".join(p for p in (item.get("priority"), label) if p) + str(item.get("detail") or "")
     links = ", ".join(issue_link(n) for n in item["issues"])  # type: ignore[union-attr]
     notes = str(item["notes"])
@@ -399,21 +403,22 @@ def item_line(item: Mapping[str, object]) -> str:
         + ("" if notes.startswith((":", ",", ";", ".")) else " ") + notes
 
 
-def render(register: Mapping[str, object]) -> str:
+def render(register: Mapping[str, object], snapshot: Snapshot) -> str:
     statuses = ", ".join(f"**{s.label}**" for s in Status)
     out = [
         "<!-- SPDX-License-Identifier: Apache-2.0 -->",
         f"<!-- Generated by scripts/render_roadmap.py from {REGISTER}. Do not edit by hand. -->",
         "# Roadmap",
         "",
-        "> Generated from [roadmap.json](data/roadmap.json) by `scripts/render_roadmap.py`; do not edit this file "
-        "by hand. Change the register, then run the script; CI runs it with `--check`, which also compares each "
-        "item's status with the state of its issues.",
+        "> Generated from [roadmap.json](data/roadmap.json) and the issue-state snapshot "
+        "[issue-states.json](data/issue-states.json) by `scripts/render_roadmap.py`; do not edit this file by hand. "
+        "An item's status comes from its issues; a nightly job refreshes the snapshot.",
         "",
         str(register["intro"]),
         "",
-        f"Status values: {statuses}. A done item's issues are closed; a planned or in-progress item's first issue "
-        f"is open (its `status:` label tells the two apart); a folded item's work continues in the issue it names.",
+        f"Status values: {statuses}. A done item's issues are closed; a planned or in-progress item has an open issue "
+        f"(the primary issue's `status:in-progress` label tells the two apart); a folded item's work continues in the "
+        f"issue it names; a decision records a decision.",
     ]
     items: list[Mapping[str, object]] = register["items"]  # type: ignore[assignment]
     for section in register["sections"]:  # type: ignore[union-attr]
@@ -424,8 +429,8 @@ def render(register: Mapping[str, object]) -> str:
             out += [section["intro"], ""]
         own = [item for item in items if item["section"] == section["id"]]
         for top in (item for item in own if "parent" not in item):
-            out.append(item_line(top))
-            out += [item_line(child) for child in own if child.get("parent") == top["id"]]
+            out.append(item_line(top, snapshot))
+            out += [item_line(child, snapshot) for child in own if child.get("parent") == top["id"]]
         if "outro" in section:
             out += ["", section["outro"]]
     return "\n".join(out) + "\n"
@@ -440,37 +445,15 @@ def load(root: Path) -> tuple[object, list[Problem]]:
     return register, validate(register)
 
 
-@dataclass(frozen=True)
-class Baseline:
-    """What issue-state disagreements a change is not charged with: those of the base register under today's
-    states. `register` None means the base has no register, so every disagreement is the change's."""
-    register: object | None
-    states: States
-
-
-def run(root: Path, check: bool, states: States | None = None, baseline: Baseline | None = None,
-        notices: list[Problem] | None = None) -> tuple[list[Problem], str | None]:
-    """Validate and render; with `check`, also compare the committed file and, when `states` is given, the issues.
-
-    With `baseline`, only the disagreements the change brings are problems; the rest go to `notices`. Without one,
-    and with `notices` given, every disagreement is a notice; with neither, every disagreement is a problem."""
+def run(root: Path, check: bool) -> tuple[list[Problem], str | None]:
+    """Validate and render from the committed snapshot; with `check`, also compare the committed file. Offline."""
     register, problems = load(root)
-    if problems:
-        return problems, None
-    rendered = render(register)  # type: ignore[arg-type]
+    snapshot, broken = read_snapshot(root)
+    if problems or broken:
+        return problems + broken, None
+    rendered = render(register, snapshot)  # type: ignore[arg-type]
     if check:
-        if states is not None:
-            found = state_problems(register, states)  # type: ignore[arg-type]
-            if baseline is not None:
-                before = [] if baseline.register is None else state_problems(baseline.register, baseline.states)  # type: ignore[arg-type]
-                new = caused(found, before)
-                problems += new
-                if notices is not None:
-                    notices += [p for p in found if p not in new]
-            elif notices is not None:
-                notices += found
-            else:
-                problems += found
+        problems += snapshot_problems(register, snapshot)  # type: ignore[arg-type]
         target = root / OUTPUT
         current = target.read_text(encoding="utf-8") if target.is_file() else None
         if current != rendered:
@@ -481,44 +464,30 @@ def run(root: Path, check: bool, states: States | None = None, baseline: Baselin
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--root", type=Path, default=ROOT)
-    parser.add_argument("--check", action="store_true", help="validate, compare issue states, fail on a stale render")
-    parser.add_argument("--pr", help="count the issues this pull request closes as closed (a number, or auto)")
-    parser.add_argument("--no-issue-state", action="store_true", help="skip the comparison with GitHub issue states")
-    parser.add_argument("--require-issue-state", action="store_true",
-                        help="fail instead of skipping when GitHub cannot be read (CI, where a token is always set)")
+    parser.add_argument("--check", action="store_true", help="validate and fail on a stale render (offline)")
+    parser.add_argument("--refresh-states", action="store_true",
+                        help="add the missing issues to the snapshot from GitHub, then render")
+    parser.add_argument("--all", action="store_true", help="with --refresh-states: read every issue again")
     args = parser.parse_args(argv)
-    states: dict[int, IssueState] | None = None
-    baseline: Baseline | None = None
-    wanted: set[int] = set()
-    unavailable = False
-    register, invalid = load(args.root)
-    if args.check and not args.no_issue_state and not invalid:
-        wanted = wanted_issues(register)  # type: ignore[arg-type]
+    if args.all and not args.refresh_states:
+        parser.error("--all goes with --refresh-states")
+    if args.refresh_states:
         try:
-            base = base_register(args.pr) if args.pr else None
-            if base is not None:
-                wanted |= wanted_issues(base)  # type: ignore[arg-type]
-            current = github_states(wanted)
-            states = after_merge(current, closed_by(args.pr)) if args.pr else current
-            baseline = Baseline(base, current) if args.pr else None
+            unknown_issues = refresh(args.root, args.all)
         except Unavailable as error:
-            print(f"roadmap register: notice: issue states NOT checked, GitHub unavailable ({error})", file=sys.stderr)
-            states, unavailable = None, True
-    notices: list[Problem] = []
-    problems, rendered = run(args.root, args.check, states, baseline, notices)
-    for notice in notices:
-        print(f"roadmap register: notice (not caused by this change; the nightly triage report lists it): {notice}",
-              file=sys.stderr)
+            print(f"roadmap register: GitHub unavailable, snapshot not refreshed ({error})", file=sys.stderr)
+            return 2
+        for problem in unknown_issues:
+            print(f"roadmap register: {problem}", file=sys.stderr)
+        if unknown_issues and any(p.kind is not Kind.UNKNOWN_ISSUE for p in unknown_issues):
+            return 1
+    problems, rendered = run(args.root, args.check)
     if problems:
         for problem in problems:
             print(f"roadmap register: {problem}", file=sys.stderr)
         return 1
-    if unavailable and args.require_issue_state:
-        print("roadmap register: --require-issue-state: failing because issue states were not read", file=sys.stderr)
-        return 1
     if args.check:
-        checked = f"issue states checked for {len(wanted)} issues" if states is not None else "issue states skipped"
-        print(f"roadmap register ok; docs/roadmap.md is the current render; {checked}")
+        print("roadmap register ok; docs/roadmap.md is the current render")
     else:
         assert rendered is not None
         (args.root / OUTPUT).write_text(rendered, encoding="utf-8")

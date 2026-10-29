@@ -7,14 +7,21 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import render_roadmap as rr
-from render_roadmap import IssueState, Kind, Status, Unavailable
+from render_roadmap import IssueRecord, IssueState, Kind, Status, Unavailable
 
 ROOT = Path(__file__).resolve().parents[2]
 OPEN, CLOSED = IssueState.OPEN, IssueState.CLOSED
 
 
+def rec(state, reason="", in_progress=False):
+    return IssueRecord(state, reason, in_progress)
+
+
+DONE, OPEN_BACKLOG = rec(CLOSED, "completed"), rec(OPEN)
+
+
 def item(**overrides):
-    base = {"id": "A1", "section": "A", "title": "Alpha thing", "status": "done", "priority": "P1",
+    base = {"id": "A1", "section": "A", "title": "Alpha thing", "priority": "P1",
             "issues": [7], "notes": "Alpha thing: [guide](guide.md)."}
     base.update(overrides)
     return {k: v for k, v in base.items() if v is not ...}
@@ -69,6 +76,12 @@ class ValidationTest(unittest.TestCase):
         nested = register(item(), item(id="A2", parent="A1"), item(id="A3", parent="A2"))
         self.assertEqual(kinds(rr.validate(nested)), [("bad-parent", "A3")])
 
+    def test_a_status_is_stored_exactly_where_no_issue_gives_it(self):
+        self.assertEqual(kinds(rr.validate(register(item(status="done")))), [("bad-status", "A1")])
+        self.assertIn("derived from the issues", rr.validate(register(item(status="planned")))[0].detail)
+        self.assertEqual(kinds(rr.validate(register(item(issues=[])))), [("bad-status", "A1")])
+        self.assertEqual(rr.validate(register(item(issues=[], status="done"), item(id="A2", status="decision"))), [])
+
     def test_folded_into_exactly_on_folded_items(self):
         self.assertEqual(rr.validate(register(item(status="folded", folded_into=73))), [])
         self.assertEqual(kinds(rr.validate(register(item(status="folded")))), [("bad-folded-into", "A1")])
@@ -93,100 +106,96 @@ class ValidationTest(unittest.TestCase):
                 rr.read_json(path)
 
 
-class StateTest(unittest.TestCase):
-    """One negative case per state rule, with a fixed provider: no network."""
+class DeriveTest(unittest.TestCase):
+    """The status an item's issues give, from a fixed snapshot: no network."""
 
-    def problems(self, entry, states):
-        return [(p.kind, p.subject) for p in rr.state_problems(register(entry), states)]
+    def test_done_declined_in_progress_planned_and_not_synced(self):
+        self.assertIs(rr.derive(item(issues=[7, 8]), {7: DONE, 8: rec(CLOSED, "not_planned")}), Status.DONE)
+        self.assertIs(rr.derive(item(issues=[7, 8]), {7: rec(CLOSED, "not_planned"), 8: rec(CLOSED, "not_planned")}),
+                      Status.DECLINED)
+        self.assertIs(rr.derive(item(issues=[7, 8]), {7: rec(OPEN, "", True), 8: DONE}), Status.IN_PROGRESS)
+        self.assertIs(rr.derive(item(issues=[7, 8]), {7: DONE, 8: rec(OPEN, "", True)}), Status.PLANNED)
+        self.assertIs(rr.derive(item(issues=[7]), {7: rec(OPEN, "reopened")}), Status.PLANNED)
+        self.assertIsNone(rr.derive(item(issues=[7, 8]), {7: DONE}))
 
-    def test_done_needs_every_issue_closed(self):
-        self.assertEqual(self.problems(item(issues=[7, 8]), {7: CLOSED, 8: CLOSED}), [])
-        found = rr.state_problems(register(item(issues=[7, 8])), {7: CLOSED, 8: OPEN})
-        self.assertEqual([(p.kind, p.subject) for p in found], [(Kind.DONE_ISSUE_OPEN, "A1")])
-        self.assertIn("#8 open", found[0].detail)
-        self.assertIn("status done", found[0].detail)
+    def test_a_stored_status_is_kept(self):
+        self.assertIs(rr.derive(item(status="decision"), {7: OPEN_BACKLOG}), Status.DECISION)
+        self.assertIs(rr.derive(item(issues=[], status="planned"), {}), Status.PLANNED)
 
-    def test_planned_and_in_progress_need_the_primary_open(self):
-        for status in ("planned", "in-progress"):
-            self.assertEqual(self.problems(item(status=status, issues=[7, 8]), {7: OPEN, 8: CLOSED}), [])
-            self.assertEqual(self.problems(item(status=status), {7: CLOSED}), [(Kind.ACTIVE_ISSUE_CLOSED, "A1")])
-
-    def test_folded_needs_the_primary_closed_and_a_known_target(self):
-        folded = item(status="folded", folded_into=73)
-        self.assertEqual(self.problems(folded, {7: CLOSED, 73: OPEN}), [])
-        self.assertEqual(self.problems(folded, {7: CLOSED, 73: CLOSED}), [])
-        self.assertEqual(self.problems(folded, {7: OPEN, 73: OPEN}), [(Kind.FOLDED_ISSUE_OPEN, "A1")])
-        self.assertEqual(self.problems(folded, {7: CLOSED}), [(Kind.UNKNOWN_ISSUE, "A1")])
-
-    def test_declined_needs_the_primary_closed(self):
-        self.assertEqual(self.problems(item(status="declined"), {7: CLOSED}), [])
-        self.assertEqual(self.problems(item(status="declined"), {7: OPEN}), [(Kind.DECLINED_ISSUE_OPEN, "A1")])
-
-    def test_a_decision_and_an_item_without_issues_are_not_checked(self):
-        self.assertEqual(self.problems(item(status="decision"), {7: OPEN}), [])
-        self.assertEqual(self.problems(item(issues=[]), {}), [])
-
-    def test_an_unknown_issue_is_reported(self):
-        self.assertEqual(self.problems(item(), {}), [(Kind.UNKNOWN_ISSUE, "A1")])
-
-    def test_issues_a_pull_request_closes_count_as_closed(self):
-        merged = rr.after_merge({7: OPEN, 8: OPEN}, {7})
-        self.assertEqual(merged, {7: CLOSED, 8: OPEN})
-        self.assertEqual(self.problems(item(), merged), [])
-        self.assertEqual(self.problems(item(status="in-progress"), merged), [(Kind.ACTIVE_ISSUE_CLOSED, "A1")])
+    def test_a_folded_item_with_its_primary_open_is_a_problem(self):
+        folded = register(item(status="folded", folded_into=73))
+        self.assertEqual(rr.snapshot_problems(folded, {7: DONE}), [])
+        self.assertEqual([p.kind for p in rr.snapshot_problems(folded, {7: OPEN_BACKLOG})], [Kind.FOLDED_ISSUE_OPEN])
+        self.assertEqual(rr.snapshot_problems(folded, {}), [])
 
 
-class GithubTest(unittest.TestCase):
-    """The provider and the pull-request reader over a fake `gh`."""
+class SnapshotTest(unittest.TestCase):
+    """The committed snapshot, and its refresh over a fake `gh`."""
 
-    def test_states_come_from_one_listing_and_misses_by_number(self):
-        calls = []
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        (self.root / "docs/data").mkdir(parents=True)
+        (self.root / rr.REGISTER).write_text(json.dumps(register(item(issues=[7, 8]), item(id="A2", issues=[9]))),
+                                             encoding="utf-8")
 
-        def fake(args):
+    def test_write_and_read_round_trip_one_line_per_issue(self):
+        rr.write_snapshot(self.root, {8: rec(OPEN, "", True), 7: DONE})
+        text = (self.root / rr.SNAPSHOT).read_text(encoding="utf-8")
+        self.assertIn('  "7": ["closed", "completed", false],\n  "8": ["open", "", true]\n', text)
+        self.assertEqual(rr.read_snapshot(self.root), ({7: DONE, 8: rec(OPEN, "", True)}, []))
+
+    def test_a_malformed_snapshot_is_a_defect(self):
+        for bad in ('{"schemaVersion": 1, "issues": {"7": ["closed", "maybe", false]}}', '{"issues": {}}', "{"):
+            (self.root / rr.SNAPSHOT).write_text(bad, encoding="utf-8")
+            with self.subTest(bad=bad):
+                self.assertEqual([p.kind for p in rr.read_snapshot(self.root)[1]], [Kind.BAD_SNAPSHOT])
+
+    def fake(self, calls, missing=()):
+        def run(args):
             calls.append(list(args))
             if "--paginate" in args:
-                return "7\topen\n8\tclosed\n"
-            if args[1].endswith("/issues/9"):
-                return "closed\n"
+                return "7\tclosed\tcompleted\tfalse\n8\topen\t\ttrue\n99\topen\t\tfalse\n"
+            if args[1].endswith("/issues/9") and 9 not in missing:
+                return "9\tclosed\tnot_planned\tfalse\n"
             raise Unavailable("HTTP 404")
-        self.assertEqual(rr.github_states({7, 8, 9, 10}, fake), {7: OPEN, 8: CLOSED, 9: CLOSED})
+        return run
+
+    def test_refresh_all_reads_every_issue_and_keeps_only_the_named_ones(self):
+        calls = []
+        self.assertEqual(rr.refresh(self.root, True, self.fake(calls)), [])
+        snapshot, _ = rr.read_snapshot(self.root)
+        self.assertEqual(snapshot, {7: DONE, 8: rec(OPEN, "", True), 9: rec(CLOSED, "not_planned")})
         self.assertTrue(all(arg[0] == "api" and "-X" not in arg and "--method" not in arg for arg in calls))
 
-    def test_a_pull_request_closes_what_github_lists(self):
+    def test_refresh_without_all_adds_only_the_missing_issues(self):
+        rr.write_snapshot(self.root, {7: rec(OPEN), 8: rec(OPEN), 50: DONE})
         calls = []
+        rr.refresh(self.root, False, self.fake(calls))
+        snapshot, _ = rr.read_snapshot(self.root)
+        self.assertEqual(snapshot, {7: rec(OPEN), 8: rec(OPEN), 9: rec(CLOSED, "not_planned")})
 
-        def fake(args):
-            calls.append(list(args))
-            return "7\n9\n"
-        self.assertEqual(rr.closed_by("12", fake), {7, 9})
-        self.assertEqual(calls, [["pr", "view", "12", "--repo", rr.REPOSITORY, "--json", "closingIssuesReferences",
-                                  "--jq", ".closingIssuesReferences[].number"]])
-        self.assertEqual(rr.closed_by("12", lambda args: ""), set())
+    def test_an_issue_github_does_not_know_is_reported(self):
+        problems = rr.refresh(self.root, True, self.fake([], missing={9}))
+        self.assertEqual([(p.kind, p.detail) for p in problems], [(Kind.UNKNOWN_ISSUE, f"#9 is not an issue of {rr.REPOSITORY}")])
 
-    def test_unavailable_github_is_a_notice_not_a_failure(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "docs/data").mkdir(parents=True)
-            (root / rr.REGISTER).write_text(json.dumps(register(item())), encoding="utf-8")
-            self.assertEqual(rr.main(["--root", str(root)]), 0)
-            original = rr.github_states
-
-            def offline(wanted, run=None):
-                raise Unavailable("not logged in")
-            rr.github_states = offline
-            try:
-                self.assertEqual(rr.main(["--root", str(root), "--check"]), 0)
-                self.assertEqual(rr.main(["--root", str(root), "--check", "--require-issue-state"]), 1)
-                (root / rr.REGISTER).write_text("{", encoding="utf-8")
-                self.assertEqual(rr.main(["--root", str(root), "--check", "--require-issue-state"]), 1)
-                self.assertEqual([p.kind for p in rr.run(root, check=True)[0]], [Kind.BAD_JSON])
-            finally:
-                rr.github_states = original
+    def test_unavailable_github_fails_the_refresh_and_not_the_check(self):
+        def offline(args):
+            raise Unavailable("not logged in")
+        original = rr.gh
+        rr.gh = offline
+        try:
+            self.assertEqual(rr.main(["--root", str(self.root), "--refresh-states"]), 2)
+        finally:
+            rr.gh = original
+        self.assertEqual(rr.main(["--root", str(self.root)]), 0)
+        self.assertEqual(rr.main(["--root", str(self.root), "--check"]), 0)
 
 
 class RenderTest(unittest.TestCase):
     def test_item_line_shape_matches_status_py(self):
-        line = rr.item_line(item(issues=[7, 8], detail="; merged in PR #9"))
+        line = rr.item_line(item(issues=[7, 8], detail="; merged in PR #9"), {7: DONE, 8: DONE})
         self.assertEqual(line, "- **A1** [#7](https://github.com/KD5UJC-XYZ/scarab/issues/7), "
                                "[#8](https://github.com/KD5UJC-XYZ/scarab/issues/8) (P1, done; merged in PR #9) "
                                "Alpha thing: [guide](guide.md).")
@@ -195,9 +204,10 @@ class RenderTest(unittest.TestCase):
 
     def test_labels_children_and_text_sections(self):
         child = item(id="A1a", parent="A1", status="folded", folded_into=73, priority=None, notes=": rest.")
-        text = rr.render(register(item(status="in-progress"), child))
+        text = rr.render(register(item(), child, item(id="A2", issues=[8])), {7: rec(OPEN, "", True)})
         self.assertIn("Do not edit by hand", text)
         self.assertIn("(P1, in progress)", text)
+        self.assertIn("(P1, state not yet synced)", text)
         self.assertIn("  - **A1a** [#7](https://github.com/KD5UJC-XYZ/scarab/issues/7) "
                       "(folded into [#73](https://github.com/KD5UJC-XYZ/scarab/issues/73)): rest.", text)
         self.assertIn("## Order of work\n\nFirst alpha.", text)
@@ -220,84 +230,19 @@ class CheckModeTest(unittest.TestCase):
         (self.root / rr.OUTPUT).write_text(rendered + "hand edit\n", encoding="utf-8")
         self.assertEqual([p.kind for p in rr.run(self.root, check=True)[0]], [Kind.STALE_RENDER])
 
-    def test_state_problems_fail_the_check(self):
+    def test_the_check_reads_only_the_committed_snapshot(self):
         _, rendered = rr.run(self.root, check=False)
+        self.assertIn("state not yet synced", rendered)
         (self.root / rr.OUTPUT).write_text(rendered, encoding="utf-8")
-        self.assertEqual(rr.run(self.root, check=True, states={7: CLOSED})[0], [])
-        self.assertEqual([p.kind for p in rr.run(self.root, check=True, states={7: OPEN})[0]], [Kind.DONE_ISSUE_OPEN])
-
-
-class DriftTest(unittest.TestCase):
-    """Issue state fails only the change that causes a disagreement; the rest is a notice."""
-
-    def setUp(self):
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.root = Path(tmp.name)
-        (self.root / "docs/data").mkdir(parents=True)
-
-    def head(self, *items):
-        reg = register(*items)
-        (self.root / rr.REGISTER).write_text(json.dumps(reg), encoding="utf-8")
-        (self.root / rr.OUTPUT).write_text(rr.render(reg), encoding="utf-8")
-
-    def test_drift_the_base_already_has_is_a_notice(self):
-        self.head(item())
-        notices = []
-        baseline = rr.Baseline(register(item()), {7: OPEN})
-        self.assertEqual(rr.run(self.root, True, {7: OPEN}, baseline, notices)[0], [])
-        self.assertEqual([n.kind for n in notices], [Kind.DONE_ISSUE_OPEN])
-
-    def test_drift_the_change_brings_fails(self):
-        self.head(item(status="planned"))
-        baseline = rr.Baseline(register(item(status="planned")), {7: OPEN})
-        problems = rr.run(self.root, True, {7: CLOSED}, baseline, [])[0]
-        self.assertEqual([p.kind for p in problems], [Kind.ACTIVE_ISSUE_CLOSED])
-        self.head(item(status="done"))
-        self.assertEqual(rr.run(self.root, True, {7: OPEN}, rr.Baseline(register(item(status="planned")), {7: OPEN}), [])[0]
-                         [0].kind, Kind.DONE_ISSUE_OPEN)
-
-    def test_a_base_without_a_register_charges_every_disagreement(self):
-        self.head(item())
-        self.assertEqual([p.kind for p in rr.run(self.root, True, {7: OPEN}, rr.Baseline(None, {7: OPEN}), [])[0]],
-                         [Kind.DONE_ISSUE_OPEN])
-
-    def test_without_a_pull_request_every_disagreement_is_a_notice(self):
-        self.head(item())
-        notices = []
-        self.assertEqual(rr.run(self.root, True, {7: OPEN}, None, notices)[0], [])
-        self.assertEqual(len(notices), 1)
-
-    def test_caused_counts_with_multiplicity(self):
-        a = rr.Problem(Kind.DONE_ISSUE_OPEN, "A1", "status done, #7 open")
-        self.assertEqual(rr.caused([a, a], [a]), [a])
-        self.assertEqual(rr.caused([a], [a, a]), [])
-
-    def test_the_base_register_is_read_at_the_base_commit(self):
-        calls = []
-
-        def fake(args):
-            calls.append(list(args))
-            if args[0] == "pr":
-                return "abc123\n"
-            return json.dumps(register(item()))
-        self.assertEqual(rr.base_register("12", fake), register(item()))
-        self.assertIn(f"repos/{rr.REPOSITORY}/contents/{rr.REGISTER}?ref=abc123", calls[1])
-
-        def missing(args):
-            if args[0] == "pr":
-                return "abc123\n"
-            raise Unavailable("gh: Not Found (HTTP 404)")
-        self.assertIsNone(rr.base_register("12", missing))
-
-        def offline(args):
-            raise Unavailable("error connecting to api.github.com")
-        with self.assertRaises(Unavailable):
-            rr.base_register("12", offline)
+        self.assertEqual(rr.run(self.root, check=True)[0], [])
+        rr.write_snapshot(self.root, {7: DONE})
+        self.assertEqual([p.kind for p in rr.run(self.root, check=True)[0]], [Kind.STALE_RENDER])
+        _, rendered = rr.run(self.root, check=False)
+        self.assertIn("(P1, done)", rendered)
 
 
 class RepositoryTest(unittest.TestCase):
-    """The committed register and markdown agree (issue states are CI's, not the unit tests')."""
+    """The committed register, snapshot and markdown agree."""
 
     def test_committed_register_validates_and_markdown_is_current(self):
         problems, _ = rr.run(ROOT, check=True)

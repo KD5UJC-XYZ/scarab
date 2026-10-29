@@ -32,7 +32,7 @@ step "closed error channel guard" python3 scripts/check_error_channels.py
 step "no absolute home paths" python3 scripts/check_local_paths.py
 step "licence records" python3 scripts/check_notice.py
 step "compatibility register" python3 scripts/render_compatibility.py --check
-step "roadmap register" python3 scripts/render_roadmap.py --check --pr auto
+step "roadmap register" python3 scripts/render_roadmap.py --check
 step "performance register" python3 scripts/render_performance.py
 step "documented flags" python3 scripts/check_flags_doc.py
 step "documentation drift" python3 scripts/check_docs.py

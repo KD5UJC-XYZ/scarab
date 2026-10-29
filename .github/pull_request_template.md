@@ -17,7 +17,7 @@
 - [ ] Level 3: compatibility register entry and its page updated (docs/data/compatibility.json, docs/compatibility/<id>.md), including "explicitly unchecked", and docs/compatibility.md regenerated with `python3 scripts/render_compatibility.py`; which component: 
 - [ ] Level 3: the design document's "as built" section updated, if the change belongs to a design
 - [ ] Level 4: evidence-log entry in docs/compatibility/evidence-log-N.md with commit, date and command
-- [ ] Roadmap item marked done or updated (docs/roadmap.md); IDs not renumbered
+- [ ] A new roadmap item, or a new issue on one, in docs/data/roadmap.json with `render_roadmap.py --refresh-states` run; IDs not renumbered (status follows the issues)
 - [ ] Findings added if something was learned against real data (docs/findings.md)
 - [ ] Relative links in changed docs resolve
 

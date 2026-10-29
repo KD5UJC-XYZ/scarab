@@ -288,12 +288,11 @@ A claim of compatibility needs evidence a reader can check:
 - A change in what is verified updates the matching component of the compatibility register
   (`docs/data/compatibility.json` and its page `docs/compatibility/<id>.md`), including the "explicitly
   unchecked" section, then regenerates the matrix with `python3 scripts/render_compatibility.py`
-  (`docs/compatibility.md` is generated; CI runs the script with `--check`), and updates the roadmap item it
-  closes in `docs/data/roadmap.json` (status `done`, never renumber), then regenerates the roadmap with
-  `python3 scripts/render_roadmap.py` (`docs/roadmap.md` is generated; CI's `--check` also compares each
-  item's status with its issue's state, and fails a pull request only for a disagreement that pull request
-  brings, such as closing an item's issue without marking the item; an issue closed or reopened by hand is
-  reported, and its register edit can land with any later change).
+  (`docs/compatibility.md` is generated; CI runs the script with `--check`). A roadmap item's status comes from
+  its issues: closing the issue is what marks it done, and the nightly triage workflow refreshes the
+  issue-state snapshot (`docs/data/issue-states.json`) and renders `docs/roadmap.md` again in a pull request of
+  its own. A change that adds an item, or an issue to one, runs `python3 scripts/render_roadmap.py
+  --refresh-states` (adds the issues the snapshot lacks); IDs are never renumbered.
 - Performance numbers go in [docs/performance.md](docs/performance.md) with the setup: an entry in
   `docs/data/performance-log.json`, then `python3 scripts/render_performance.py --write`.
 
