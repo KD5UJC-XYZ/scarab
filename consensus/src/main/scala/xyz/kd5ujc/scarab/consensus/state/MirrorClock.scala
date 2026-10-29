@@ -26,7 +26,13 @@ object MirrorClock:
     * Where `era` is later than the state's, the tick extends the telescope into it first
     * (`extendToSlot`): the state's era ends where `era` starts ([[MirrorStep.startOf]]) and the
     * eras between are empty. The transition of such a state is read from its configuration alone,
-    * for the translated state is not at hand before the tick.
+    * which is what the reference reads from the translated state. Every translation into a Shelley
+    * era starts the transition counter at zero (`shelleyLedgerTransition = ShelleyTransitionInfo
+    * 0`, consensus 82ecba329 `Shelley/ShelleyHFC.hs:381` and `Cardano/CanHardFork.hs:360-361`), and
+    * a version trigger needs `shelleyAfterVoting >= k` (`shelleyTransition`,
+    * `ShelleyHFC.hs:220-227`), so the translated state has no transition by version; an epoch
+    * trigger is configuration. The counter, the epoch and the future parameters are therefore those
+    * of [[EraHistory.transition]]'s `afterVoting = 0` case whatever the translated state holds.
     */
   def of(
       state: MirrorState,

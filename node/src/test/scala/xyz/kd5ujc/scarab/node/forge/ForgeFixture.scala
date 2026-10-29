@@ -31,6 +31,7 @@ import xyz.kd5ujc.scarab.node.RefStateful
 import xyz.kd5ujc.scarab.node.mempool.MempoolLedger
 import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
+import xyz.kd5ujc.scarab.node.read.TxClock
 import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.consensus.PraosConfig
 import xyz.kd5ujc.scarab.ledger.*
@@ -88,6 +89,9 @@ trait ForgeFixture:
           ForgedChain.snapshotOf(Vector((p.stake.credential, p.creds, BigInt(1000000))))
         )
       )
+
+  /** The transactions' time translation, placed by this configuration's era history. */
+  given TxClock[MirrorState] = TxClock.of(geometry, mirrorEnv.byron, config.forks)
 
   /** What the mirror reads of this configuration. */
   lazy val mirrorEnv: ConsensusMirrorEnv = ConsensusMirrorEnv(

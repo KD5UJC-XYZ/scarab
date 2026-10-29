@@ -173,7 +173,10 @@ object Horizon:
     * to `slotToPOSIXTime` of the ledger. The source locations are those of the reference node
     * 11.1.3's build (ouroboros-consensus 4.2.1.0, cardano-slotting 0.2.2.0, cardano-ledger-core
     * 1.21.0.0), the package names with the unit hashes of that build; the constant is what the
-    * reference's refusal contains, byte for byte.
+    * reference's refusal contains, byte for byte. It is the same on every path that translates a
+    * transaction's time, the block rules and the mempool alike: the stack ends at the call in
+    * `slotToPOSIXTime` (cardano-ledger f649f975 `Cardano/Ledger/Plutus/TxInfo.hs:164-171`), which
+    * has no `HasCallStack`, so no frame of its callers is recorded.
     */
   private val CallStack: String =
     def frame(
