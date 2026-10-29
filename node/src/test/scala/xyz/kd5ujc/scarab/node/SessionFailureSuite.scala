@@ -72,9 +72,10 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   /** Run a session of the follower over a peer that announces `headers` in turn and then waits.
     * `refuse` is the header the rules reject, `breakStorage` the number of the block whose
     * persistence fails, `breakTip` the number of the block after which telling the mempool fails,
-    * `explode` the number of the block whose rules throw, `fetchThrows` the number of the block
-    * whose fetch throws, `unverifiable` the number of the block on which a crypto provider fails
-    * and the failure the rules report for it.
+    * `explode` the number of the block whose rules throw, `throwTip` the number of the block after
+    * which telling the mempool throws, `fetchThrows` the number of the block whose fetch throws,
+    * `unverifiable` the number of the block on which a crypto provider fails and the failure the
+    * rules report for it.
     */
   private def session(
       script: List[Either[PeerError, SyncEvent]] =
@@ -83,6 +84,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       breakStorage: Option[Int] = None,
       breakTip: Option[Int] = None,
       explode: Option[Int] = None,
+      throwTip: Option[Int] = None,
       fetchThrows: Option[Int] = None,
       unavailable: Option[Int] = None,
       held: Option[Int] = None,
@@ -110,7 +112,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               Raise[IO, xyz.kd5ujc.scarab.ledger.ChainError]
           ) =
             if breakStorage.contains(block.blockNo.toInt) then
-              node.raise[NodeError, Unit](
+              Raise[IO, StorageError].raise[StorageError, Unit](
                 StorageError.Io("volatile", new java.io.IOException("disk full"))
               )
             else stored.update(_ :+ block)
@@ -169,7 +171,9 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                     .raise[NodeError, Unit](ChainError.NoIntersection)
                     .whenA(
                       breakTip.contains(tipRef.blockNo.toInt)
-                    )
+                    ) *>
+                  IO.raiseError(new IllegalStateException("a bug after the commit"))
+                    .whenA(throwTip.contains(tipRef.blockNo.toInt))
               )
             )
           )
@@ -284,6 +288,19 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       connectionDefect(client, "a bug in the client")
       assertEquals(client.chain.tip, headers(1).point)
       assert(client.invalid.isEmpty)
+  }
+
+  test("an exception after the commit stops the node: the chain is published and stored") {
+    session(throwTip = Some(2)).map { left =>
+      left.end match
+        case SessionEnd.Defect(cause) => assertEquals(cause.getMessage, "a bug after the commit")
+        case other                    => fail(s"unexpected $other")
+      assertEquals(left.chain.tip, headers(2).point)
+      assertEquals(blockNos(left.stored), Vector(0, 1, 2))
+      FailurePolicy.disposition(left.end) match
+        case Disposition.StopNode(Fatal.Defect(_)) => ()
+        case other                                 => fail(s"unexpected $other")
+    }
   }
 
   test("a peer that breaks the protocol is forgotten, one that is unreachable is tried again") {

@@ -296,8 +296,17 @@ enum ChainError extends NodeError:
     */
   case StateOutOfRange(slot: BigInt, cause: xyz.kd5ujc.scarab.ledger.state.VocabError)
 
+  /** An exception while the node committed a chain it selected (persisting it, publishing it,
+    * telling the mempool). The reference commits in the ChainDB's background thread, which is
+    * linked to the node (ouroboros-consensus 82ecba32 `Storage/ChainDB/Impl/Background.hs:107-108,
+    * 142`), so the node stops, whichever fiber asked for the commit.
+    */
+  case CommitDefect(cause: Throwable)
+
   def message: String = this match
     case MempoolTick(slot, cause) => s"cannot tick mempool ledger to slot $slot: $cause"
+    case CommitDefect(cause) =>
+      s"the node's own code threw while committing a chain: ${NetworkError.describe(cause)}"
     case StateOutOfRange(slot, cause) =>
       s"the ledger state in the rules for slot $slot is out of range: ${cats.Show[xyz.kd5ujc.scarab.ledger.state.VocabError].show(cause)}"
     case StateAcquire(cause) => cause.message
