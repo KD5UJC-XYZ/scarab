@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 name: PR policy
 
-# Evaluate metadata using trusted default-branch code. No PR checkout, cache, secret or build.
+# Evaluate metadata using trusted default-branch code. No PR checkout, cache, secret or build; the only network use is
+# a read of the pull request's changed paths, for the level floors of scripts/pr_policy.py.
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, edited, ready_for_review]
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: pr-policy-${{ github.event.pull_request.number }}
@@ -24,7 +26,14 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Read the changed paths
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename' \
+            > "$RUNNER_TEMP/files.txt"
       - name: Validate event metadata
         env:
           SCARAB_PROMOTION_POLICY: ${{ vars.SCARAB_PROMOTION_POLICY }}
-        run: python3 scripts/pr_policy.py
+        run: python3 scripts/pr_policy.py --files "$RUNNER_TEMP/files.txt"

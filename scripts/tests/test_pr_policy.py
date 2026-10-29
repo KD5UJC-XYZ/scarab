@@ -125,6 +125,18 @@ class PrBodyTests(unittest.TestCase):
             with self.subTest(message=message), self.assertRaisesRegex(policy.PolicyError, message):
                 self.check(body)
 
+    def test_the_changed_files_set_a_floor_under_the_stated_level(self):
+        pr = pull_request(head="feature")
+        pr["body"], pr["user"] = body_of(0), {"type": "User"}
+        self.assertEqual(policy.check_body(pr, ["docs/a.md", "changes/x.md", "README.md"]), 0)
+        with self.assertRaisesRegex(policy.PolicyError, "level 0 is below 1"):
+            policy.check_body(pr, ["docs/a.md", "node/src/main/scala/A.scala"])
+        pr["body"] = body_of(2, "None", "None")
+        with self.assertRaisesRegex(policy.PolicyError, "level 2 is below 3: the persisted-format"):
+            policy.check_body(pr, [policy.PERSISTED_FORMAT])
+        pr["body"] = body_of(3, "None", "None")
+        self.assertEqual(policy.check_body(pr, [policy.PERSISTED_FORMAT]), 3)
+
     def test_the_promotion_controller_path_does_not_read_the_body(self):
         pr = pull_request()
         pr["body"] = ""

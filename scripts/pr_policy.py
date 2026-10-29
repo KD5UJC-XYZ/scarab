@@ -6,7 +6,9 @@ Besides the title and the promotion source, the body states the level of the cha
 pull request of level 2 or higher carries the two sections CONTRIBUTING.md asks for ("Commits and pull requests"):
 "Deviations from the reference" (`None`, or a table of behaviour, the pinned reference, what Scarab does and the
 approval link) and "Gaps" (`None`, or bullets that each start with an issue link). A section that opens with
-`None` may go on in prose. A bot's pull request (a release
+`None` may go on in prose. The stated level has floors from the changed files (`--files`, the pull request's file
+list): a file that is not documentation makes it at least 1, and the persisted-format register at least 3, as the
+levels table of CONTRIBUTING.md defines them. A bot's pull request (a release
 proposal, a dependency update) and a promotion of `dev` to `main` are not checked for these. The promotion controller
 (`promote_main.py`) calls `evaluate` only, never the body checks.
 """
@@ -31,6 +33,8 @@ GAPS = "gaps"
 ISSUE_LINK = re.compile(r"(?:\[#\d+\]\([^)]*\)|#\d+\b|https://github\.com/[^/\s]+/[^/\s]+/issues/\d+)")
 APPROVAL = re.compile(r"(?:https?://|#\d+|\]\()")
 SECTION_LEVEL = 2
+DOCUMENTATION = re.compile(r"(?:.*\.md|docs/.*|changes/.*|LICENSE|NOTICE)")
+PERSISTED_FORMAT = "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala"
 
 
 class PolicyError(ValueError):
@@ -94,7 +98,14 @@ def check_gaps(text):
                 "Gaps: each bullet starts with the issue that tracks the gap")
 
 
-def check_body(pr):
+def level_floor(files):
+    """The lowest level the changed files allow, from the levels table of CONTRIBUTING.md."""
+    if PERSISTED_FORMAT in files:
+        return 3
+    return 1 if any(not DOCUMENTATION.fullmatch(f) for f in files) else 0
+
+
+def check_body(pr, files=()):
     """The level the body states; None for a bot's pull request and for a promotion of `dev`, whose changes each
     passed this check as their own pull request."""
     if (pr.get("user") or {}).get("type") == "Bot":
@@ -104,6 +115,10 @@ def check_body(pr):
     body = pr.get("body") or ""
     level = level_of(body)
     require(level is not None, "state the level of the change in the body (pull request template)")
+    floor = level_floor(files)
+    require(level >= floor, f"level {level} is below {floor}: " + (
+        "the persisted-format register changed (CONTRIBUTING.md, Levels)" if floor == 3
+        else "a file other than documentation changed (CONTRIBUTING.md, Levels)"))
     if level >= SECTION_LEVEL:
         found = sections(body)
         check_deviations(found.get(DEVIATIONS))
@@ -141,6 +156,7 @@ def main():
     parser.add_argument("--repository", default=os.environ.get("GITHUB_REPOSITORY"), required=False)
     parser.add_argument("--repository-id", type=int, default=os.environ.get("GITHUB_REPOSITORY_ID"))
     parser.add_argument("--mode", default=os.environ.get("SCARAB_PROMOTION_POLICY") or "transition")
+    parser.add_argument("--files", type=Path, help="the pull request's changed paths, one per line")
     args = parser.parse_args()
     require(args.event is not None and args.repository is not None, "require event and repository identity")
     event = json.loads(args.event.read_text())
@@ -148,7 +164,8 @@ def main():
             "event repository identity differs from the trusted runner")
     pr = event.get("pull_request", {})
     result = evaluate(pr, args.repository, args.repository_id, args.mode)
-    print(json.dumps(dict(result, level=check_body(pr)), sort_keys=True))
+    files = args.files.read_text(encoding="utf-8").split() if args.files else []
+    print(json.dumps(dict(result, level=check_body(pr, files)), sort_keys=True))
 
 
 if __name__ == "__main__":
