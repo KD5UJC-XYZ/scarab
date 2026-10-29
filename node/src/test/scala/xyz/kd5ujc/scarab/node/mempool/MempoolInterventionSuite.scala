@@ -130,7 +130,6 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       .fold(r => fail(r.message), _._1)
     val (synced, dropped) = held
       .sync(Right(failing.ledger), failing.tipSlot, mempoolEnv)
-      .fold(noVerdict => fail(s"no verdict: $noVerdict"), identity)
     assertEquals(dropped, Vector.empty)
     assertEquals(synced.entries.map(_.raw), held.entries.map(_.raw))
     assertEquals(synced.entries.map(_.tx.isValid), Vector(false))
@@ -205,12 +204,10 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
     assert(admitted._1 > 0 && admitted._2 > 0 && admitted._3 > 0, admitted.toString)
     val (synced, dropped) = held
       .sync(Right(ok.ledger), ok.tipSlot, counted)
-      .fold(noVerdict => fail(s"no verdict: $noVerdict"), identity)
     assertEquals(dropped, Vector.empty)
     assertEquals(synced.entries.map(_.id), held.entries.map(_.id))
     val (kept, _) = synced
       .remove(Set.empty, counted)
-      .fold(noVerdict => fail(s"no verdict: $noVerdict"), identity)
     assertEquals(kept.entries.map(_.id), held.entries.map(_.id))
     val selected = BlockBuilder.select(
       ok.ledger,

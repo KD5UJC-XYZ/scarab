@@ -211,11 +211,7 @@ trait ForgeFixture:
                   .map(ChainError.MempoolTick(c.tipRef.fold(BigInt(0))(_.slot + 1), _))
               )
               .flatMap(
-                mempool.sync(_, c.tipRef.fold(BigInt(0))(_.slot), Set.empty, c.tipRef.map(_.hash))(
-                  using
-                  summon,
-                  Mempool.raisedAt[IO](c.tip)
-                )
+                mempool.sync(_, c.tipRef.fold(BigInt(0))(_.slot), Set.empty, c.tipRef.map(_.hash))
               )
               .void
           )

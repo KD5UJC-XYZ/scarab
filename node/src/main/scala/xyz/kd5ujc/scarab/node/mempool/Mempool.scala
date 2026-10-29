@@ -5,12 +5,7 @@ import cats.effect.{Async, Ref}
 import cats.effect.std.{Mutex, Semaphore}
 import cats.mtl.{Ask, Raise}
 import cats.mtl.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.{
-  EvaluationUnavailable,
-  LedgerFailure,
-  StorageError,
-  VerificationDefect
-}
+import xyz.kd5ujc.scarab.ledger.{LedgerFailure, StorageError}
 import cats.syntax.all.*
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -99,25 +94,23 @@ trait Mempool[F[_]]:
     * Origin). `adopted` are the ids of the transactions in the blocks that just joined our chain:
     * held ones among them leave the pool as adopted, the others that no longer apply are returned
     * with the reason. `tipHash` is the new tip's hash ([[MempoolState.tipHash]]; none at Origin,
-    * and for the pools of tests that have no chain). A transaction the rules have no verdict on is
-    * raised before anything changes: the state, its version, the waiters and the events stay as
-    * they were.
+    * and for the pools of tests that have no chain). A transaction the rules have no verdict on
+    * leaves the pool with its reason, as a refused one does ([[MempoolState.sync]]).
     */
   def sync(
       ledger: Either[ConwayView.Unavailable, MempoolLedger],
       tipSlot: BigInt,
       adopted: Set[Bytes] = Set.empty,
       tipHash: Option[Bytes] = None
-  )(using Raise[F, StorageError], Raise[F, MempoolState.NoVerdict]): F[Vector[(Entry, Rejection)]]
+  )(using Raise[F, StorageError]): F[Vector[(Entry, Rejection)]]
 
   /** Remove the held transactions among `ids` even though they still apply, then revalidate the
     * rest in order and return the ones that depended on them (`implRemoveTxsEvenIfValid`). Ids that
     * are not held change nothing. Unlike `sync` it does not move the pool's tip. A transaction the
-    * rules have no verdict on is raised before anything changes, as in `sync`.
+    * rules have no verdict on leaves the pool with its reason, as in `sync`.
     */
   def removeTxsEvenIfValid(ids: Set[Bytes])(using
-      Raise[F, StorageError],
-      Raise[F, MempoolState.NoVerdict]
+      Raise[F, StorageError]
   ): F[Vector[(Entry, Rejection)]]
 
   /** Offer our transactions to a peer (we are the TxSubmission2 client). */
@@ -144,27 +137,6 @@ object Mempool:
       case Rejection.RulesDefect(cause) =>
         Some(NetworkError.ServingDefect(Protocols.TxSubmission2, cause))
       case _ => None
-
-  /** The transaction a revalidation (`sync`, `removeTxsEvenIfValid`) has no verdict on (a crypto
-    * provider or the evaluator failed on it), as the defect of the block it was revalidated for at
-    * `at`. The reference's revalidation watcher is linked to the node (consensus 82ecba32
-    * `Mempool/Init.hs:64-77`), so the node stops.
-    */
-  def noVerdict(
-      noVerdict: MempoolState.NoVerdict,
-      at: xyz.kd5ujc.scarab.protocol.ChainSync.Point
-  ): VerificationDefect | EvaluationUnavailable = noVerdict match
-    case LedgerFailure.Unverifiable(tx, defect) =>
-      VerificationDefect(at, VerificationDefect.Site.Witness(tx), defect)
-    case failure: LedgerFailure.Unavailable => EvaluationUnavailable(at, failure)
-
-  /** A revalidation's no-verdict raised as the node's defect at `at` ([[noVerdict]]). */
-  def raisedAt[F[_]](at: xyz.kd5ujc.scarab.protocol.ChainSync.Point)(using
-      node: Raise[F, VerificationDefect | EvaluationUnavailable]
-  ): Raise[F, MempoolState.NoVerdict] = new Raise[F, MempoolState.NoVerdict]:
-    def functor = node.functor
-    def raise[E <: MempoolState.NoVerdict, A](failure: E): F[A] =
-      node.raise(noVerdict(failure, at))
 
   /** How many submissions wait for their turn: `remote` behind the peer's transaction that holds
     * the remote line, `common` behind the one that holds the common line.
@@ -302,7 +274,7 @@ object Mempool:
           tipSlot: BigInt,
           adopted: Set[Bytes],
           tipHash: Option[Bytes]
-      )(using Raise[F, StorageError], Raise[F, MempoolState.NoVerdict]) = lock.lock.surround {
+      )(using Raise[F, StorageError]) = lock.lock.surround {
         for
           current <- state.get
           completed <- ledger.traverse(l =>
@@ -311,8 +283,7 @@ object Mempool:
               .map(l.withUtxo)
           )
           activeEnv <- readEnv
-          result <- F.blocking(current.sync(completed, tipSlot, activeEnv))
-          synced <- Raise[F, MempoolState.NoVerdict].fromEither(result)
+          synced <- F.blocking(current.sync(completed, tipSlot, activeEnv))
           next = synced._1.copy(tipHash = tipHash)
           dropped = synced._2
           _ <- state.set(next)
@@ -328,10 +299,7 @@ object Mempool:
         yield invalid
       }
 
-      def removeTxsEvenIfValid(ids: Set[Bytes])(using
-          Raise[F, StorageError],
-          Raise[F, MempoolState.NoVerdict]
-      ) =
+      def removeTxsEvenIfValid(ids: Set[Bytes])(using Raise[F, StorageError]) =
         lock.lock.surround {
           for
             current <- state.get
@@ -346,8 +314,7 @@ object Mempool:
                       .map(l.withUtxo)
                   )
                   activeEnv <- readEnv
-                  result <- F.blocking(current.copy(base = completed).remove(ids, activeEnv))
-                  revalidated <- Raise[F, MempoolState.NoVerdict].fromEither(result)
+                  revalidated <- F.blocking(current.copy(base = completed).remove(ids, activeEnv))
                   (next, dependants) = revalidated
                   _ <- state.set(next)
                   _ <- version.update(_ + 1)

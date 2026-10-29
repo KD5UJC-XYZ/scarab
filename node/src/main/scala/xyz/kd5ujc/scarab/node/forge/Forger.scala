@@ -434,25 +434,16 @@ final class Forger[F[_]: Async, S](
         case Follower.Adoption.Lost(reason) =>
           say(ForgeTrace.DidntAdoptBlock(slot, block.header.hash)) *>
             perform(events.emit(ForgeEvent.Lost(slot, block.header.hash, reason.message)))
+        // A refusal of our own block, or no verdict on it (the evaluator or a crypto provider failed
+        // on it, which in the reference is an exception in the linked forging thread that stops
+        // the node, consensus 82ecba32 NodeKernel.hs forkBlockForging): the block's transactions
+        // leave the pool, valid or not, so that the next leader slot does not repeat the failure
+        // (`NodeKernel.hs` 770-783), and the slot ends. A failure of our own implementation does
+        // not stop the node (owner decision 2026-10-28, issue 567).
         case Follower.Adoption.Invalid(e) =>
-          SessionEnd.of(e) match
-            case SessionEnd.Unavailable(unavailable) => perform(unavailable.raise[F, Unit])
-            // a crypto provider failed on our own block: an exception in the forging thread, which
-            // is linked to the node in the reference, so the forger stops with Fatal.Unverifiable
-            // and nothing leaves the pool (consensus 82ecba32 NodeKernel.hs forkBlockForging,
-            // Background.hs:107-108,142)
-            case SessionEnd.Unverifiable(defect) => perform(defect.raise[F, Unit])
-            // a refusal: the block's transactions leave the pool, valid or not, so that the next leader slot does not
-            // repeat the failure (`NodeKernel.hs` 770-783), and the slot ends
-            case _ =>
-              val ids = chosen.map(_._1.id).toSet
-              say(ForgeTrace.ForgedInvalidBlock(slot, block.header.hash, e)) *>
-                perform(
-                  mempool
-                    .removeTxsEvenIfValid(ids)(using summon, Mempool.raisedAt[F](context.base.tip))
-                    .void
-                    .whenA(ids.nonEmpty)
-                )
+          val ids = chosen.map(_._1.id).toSet
+          say(ForgeTrace.ForgedInvalidBlock(slot, block.header.hash, e)) *>
+            perform(mempool.removeTxsEvenIfValid(ids).void.whenA(ids.nonEmpty))
     yield ()).value.void
 
   /** The chain to forge on in `slot`, as `forkBlockForging` picks it through

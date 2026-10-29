@@ -54,7 +54,9 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
       assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]))
   }
 
-  test("rule implementation unavailability is fatal, never a self-rejected forged block") {
+  // issue 567: our own evaluator's unavailability is no verdict on our block; the slot ends without
+  // a block and the node goes on
+  test("rule implementation unavailability ends the slot without a block, never a stop") {
     val p = pool(kesStart = 50)
     val cause = xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable(
       xyz.kd5ujc.scarab.codec.Bytes.empty,
@@ -76,9 +78,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
         events <- h.seen
         chain <- h.chain
       yield
-        result match
-          case Left(Fatal.Unavailable(unavailable)) => assertEquals(unavailable.failure, cause)
-          case other => fail(s"expected unavailable evaluator, got $other")
+        assertEquals(result, Right(()))
         assertEquals(chain.tipRef, None)
         assert(!events.exists(_.isInstanceOf[ForgeEvent.Adopted]))
         assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]))
@@ -191,7 +191,9 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     }
   }
 
-  test("a provider defect on our own block is fatal and evicts nothing (issue 393)") {
+  // issue 567: a provider defect on our own block is no verdict: its transactions leave the pool so
+  // the next leader slot does not repeat it, the slot ends without a block, and the node goes on
+  test("a provider defect on our own block ends the slot and evicts its transactions (issue 567)") {
     val p = pool(kesStart = 50)
     val boom = new IllegalStateException("provider broke")
     val failing = new xyz.kd5ujc.scarab.ledger.Verdicts:
@@ -218,17 +220,9 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
         chain <- h.chain
         held <- h.mempool.snapshot
       yield
-        result match
-          case Left(Fatal.Unverifiable(error)) =>
-            assertEquals(
-              error.defect,
-              xyz.kd5ujc.scarab.ledger.ProviderDefect.VrfVerifier(
-                xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate.Result.InternalFailure(boom)
-              )
-            )
-          case other => fail(s"expected an unverifiable block, got $other")
-        // no transaction is evicted, no empty block is tried, nothing is adopted
-        assertEquals(held.entries.size, 1)
+        assertEquals(result, Right(()))
+        // the block's transaction is evicted, no empty block is tried, nothing is adopted
+        assertEquals(held.entries.size, 0)
         assertEquals(chain.tipRef, None)
         assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]))
         assert(!events.exists(_.isInstanceOf[ForgeEvent.Adopted]))
