@@ -72,8 +72,10 @@ Mithril and snapshot-interoperability evidence each have their own scope and exc
   file plus a Scarab sidecar (step 2 of the mirror, done). Still open: the gaps that keep some
   debug-query answers from being byte-equal to the reference, and the cost of the epoch boundary
   ([#82](https://github.com/KD5UJC-XYZ/scarab/issues/82), [#131](https://github.com/KD5UJC-XYZ/scarab/issues/131)).
-- **Networking follow-ups**: the target-driven P2P governor is implemented; full Ouroboros Genesis
-  density and ledger-dependent fork choice remain [G3, #33](https://github.com/KD5UJC-XYZ/scarab/issues/33).
+- **Networking follow-ups**: the target-driven P2P governor and Ouroboros Genesis
+  ([G3, #33](https://github.com/KD5UJC-XYZ/scarab/issues/33): GSM, LoE/GDD, LoP, ChainSync jumping and
+  devoted fetching) are implemented; [its compatibility page](docs/compatibility/ouroboros-genesis.md)
+  records the evidence and the limits.
   The [as-built governor design](docs/design/peer-selection.md) records the implemented scope.
 - **Mainnet**: a full validation of every mainnet block from genesis ([D6, #25](https://github.com/KD5UJC-XYZ/scarab/issues/25)).
 - **Ouroboros Leios** (CIP-164): design note and BLS12-381 voting primitives ([docs/leios.md](docs/leios.md)).

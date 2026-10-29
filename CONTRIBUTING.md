@@ -289,7 +289,9 @@ A claim of compatibility needs evidence a reader can check:
   (`docs/data/compatibility.json` and its page `docs/compatibility/<id>.md`), including the "explicitly
   unchecked" section, then regenerates the matrix with `python3 scripts/render_compatibility.py`
   (`docs/compatibility.md` is generated; CI runs the script with `--check`), and updates the roadmap item it
-  closes (mark it done, never renumber).
+  closes in `docs/data/roadmap.json` (status `done`, never renumber), then regenerates the roadmap with
+  `python3 scripts/render_roadmap.py` (`docs/roadmap.md` is generated; CI's `--check` also compares each
+  item's status with its issue's state).
 - Performance numbers go in [docs/performance.md](docs/performance.md) with the setup: an entry in
   `docs/data/performance-log.json`, then `python3 scripts/render_performance.py --write`.
 
