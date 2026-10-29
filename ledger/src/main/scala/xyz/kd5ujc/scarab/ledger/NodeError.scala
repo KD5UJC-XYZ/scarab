@@ -64,6 +64,13 @@ enum PeerError extends NodeError:
     */
   case ServingDefect(protocol: Int, cause: Throwable)
 
+  /** An exception of the node's own code on this connection whose origin is not known more
+    * precisely (`NetworkError.Defect`: a fiber of the connection, its servers, clients or
+    * establishment). The connection closes and the peer is not charged; the node goes on, as an
+    * exception no rethrow policy names ends only that peer in the reference (issue 567).
+    */
+  case ConnectionDefect(cause: Throwable)
+
   /** A crypto provider failed while a header rule verified a header this peer announced: an
     * exception from a library, not a verdict on the header. The peer is neither forgotten nor
     * blamed and nothing is recorded as invalid; the connection closes and the peer is tried again
@@ -88,6 +95,8 @@ enum PeerError extends NodeError:
     case InvalidBlock(e)     => s"invalid block ${e.message}"
     case InputDefect(site, cause) =>
       s"defect decoding ${site.message}: ${NetworkError.describe(cause)}"
+    case ConnectionDefect(cause) =>
+      s"the node's own code threw on this connection: ${NetworkError.describe(cause)}"
     case ServingDefect(protocol, cause) =>
       s"the node's own code threw answering ${xyz.kd5ujc.scarab.protocol.Protocols.name(protocol)}: ${NetworkError.describe(cause)}"
     case Unverifiable(e) => e.message

@@ -503,7 +503,11 @@ object Peer:
   def networkFault(error: NetworkError): Fault = error match
     case NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error: PeerError)) =>
       Fault.Failed(error)
-    case NetworkError.Defect(cause) => Fault.Defect(cause)
+    // An exception of the connection's own work (its fibers, servers and clients): the
+    // reference's default for an exception no rethrow policy names, `ShutdownPeer`, ends that peer
+    // and not the node (network 2fb69829 RethrowPolicy.hs 61-70, 99-103; consensus 82ecba329
+    // Node/RethrowPolicy.hs, `ourBug`). The peer is not charged (owner decision, issue 567).
+    case NetworkError.Defect(cause) => Fault.Failed(PeerError.ConnectionDefect(cause))
     case NetworkError.DecoderDefect(protocol, cause) =>
       Fault.Failed(PeerError.InputDefect(PeerError.InputSite.Wire(protocol), cause))
     case NetworkError.BearerDefect(cause) =>

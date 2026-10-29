@@ -101,9 +101,9 @@ final class OutboundPeers[F[_]: Async, A] private (
             yield result
           }
       }
-      .handleErrorWith { cause =>
-        hot.fatal(Fatal.Defect(cause)).as(Left(EstablishmentError.Defect(cause)))
-      }
+      // an exception of our own while connecting ends that attempt, not the node; the governor
+      // counts nothing against the peer for it ([[PeerGovernor]], issue 567)
+      .handleErrorWith(cause => F.pure(Left(EstablishmentError.Defect(cause))))
 
   /** The life of one connection: opened, registered, held until the governor lets go of it or the
     * bearer closes, and released in every case. It runs in a fiber of its own, in an error scope of
@@ -140,7 +140,7 @@ final class OutboundPeers[F[_]: Async, A] private (
 
       // The Resource has unwound before a startup failure reaches this boundary. Reset partial
       // installation before publishing Left; a monitor may not have been started yet.
-      def startupFailed(error: EstablishmentError, notifyFatal: Boolean = true): F[Unit] =
+      def startupFailed(error: EstablishmentError): F[Unit] =
         val cause = error match
           case EstablishmentError.Failed(problem) =>
             SessionEnd.networkFailure(SessionEnd.Failed(problem))
@@ -154,11 +154,7 @@ final class OutboundPeers[F[_]: Async, A] private (
                   link.phase.set(Phase.Cold()) *> link.warm.applications.notifyChange
               )
             )
-          ) *> (error match
-            case EstablishmentError.Defect(problem) =>
-              hot.fatal(Fatal.Defect(problem)).whenA(notifyFatal)
-            case _ => F.unit) *>
-            ready.complete(Left(error)).void
+          ) *> ready.complete(Left(error)).void
         }
 
       val body: Raise[F, PeerError] ?=> F[Option[EstablishmentError]] =
@@ -244,15 +240,19 @@ final class OutboundPeers[F[_]: Async, A] private (
             yield result
           }
 
-      def failed(error: EstablishmentError, notifyFatal: Boolean = true): F[Unit] =
+      def failed(error: EstablishmentError): F[Unit] =
         ready.tryGet.flatMap {
           case Some(Right(_)) =>
             error match
               case EstablishmentError.Failed(problem) =>
                 linked.get.flatMap(_.traverse_(publish(_, SessionEnd.Failed(problem))))
-              case EstablishmentError.Defect(_)  => startupFailed(error, notifyFatal)
+              // an exception of our own on the live connection ends it as a lost one, uncharged
+              case EstablishmentError.Defect(cause) =>
+                linked.get.flatMap(
+                  _.traverse_(publish(_, SessionEnd.Failed(PeerError.ConnectionDefect(cause))))
+                )
               case EstablishmentError.Superseded => F.unit
-          case _ => startupFailed(error, notifyFatal)
+          case _ => startupFailed(error)
         }
 
       F.uncancelable { poll =>
@@ -261,8 +261,7 @@ final class OutboundPeers[F[_]: Async, A] private (
             publishReleaseDefects(defects) *> (outcome match
               case Right(error)              => error.traverse_(startupFailed(_))
               case Left(Fault.Failed(error)) => failed(EstablishmentError.Failed(error))
-              case Left(Fault.Defect(cause)) =>
-                failed(EstablishmentError.Defect(cause), !defects.exists(_.cause eq cause)))
+              case Left(Fault.Defect(cause)) => failed(EstablishmentError.Defect(cause)))
           }
         }
       }.guarantee(
@@ -425,7 +424,10 @@ final class OutboundPeers[F[_]: Async, A] private (
                       }
       yield next
     }
-    loop.handleErrorWith(cause => fatal(Fatal.Defect(cause)))
+    // the monitor of one connection that fails ends that connection, not the node (issue 567)
+    loop.handleErrorWith(cause =>
+      link.warm.mux.abort(NetworkError.Defect(cause)) *> lost(PeerError.ConnectionDefect(cause))
+    )
 
   /** Match the adding hot BlockFetch client, never a later activation on the same bearer. The
     * bounded pool reporter retains only immutable metadata; resource-owned callbacks disappear
@@ -498,8 +500,8 @@ final class OutboundPeers[F[_]: Async, A] private (
               )(client.request(amount))
               .flatMap {
                 case Right(peers) => F.pure(PeerShare.Result.Peers(peers.flatMap(address)))
-                case Left(NetworkError.Defect(cause)) =>
-                  stop(link, Fatal.Defect(cause)).as(PeerShare.Result.NotRegistered())
+                // an exception of ours processing the reply ends that connection like any other
+                // failure of it (issue 567)
                 case Left(error) => link.warm.mux.abort(error).as(PeerShare.Result.Failed(error))
               }
     }

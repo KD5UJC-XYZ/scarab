@@ -502,7 +502,8 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
 
   List(false, true).foreach { resolution =>
     test(
-      s"a pre-ready defect reaches its caller and fatal sink without success (resolution=$resolution)"
+      // issue 567: our own exception while connecting ends that attempt, not the node
+      s"a pre-ready defect reaches its caller, not the fatal sink, without success (resolution=$resolution)"
     ) {
       for
         firstStarted <- Deferred[IO, Unit]
@@ -523,11 +524,11 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
             result <- current.outbound
               .establish(peer, DiffusionMode.InitiatorOnly, Provenance.Outbound)
               .timeout(5.seconds)
-            stopped <- fatal.get.timeout(5.seconds)
+            stopped <- fatal.tryGet
             handle <- current.outbound.monitorPeerConnection(peer)
             _ <- IO {
               assertEquals(result, Left(EstablishmentError.Defect(defect)))
-              assertEquals(stopped, Fatal.Defect(defect))
+              assertEquals(stopped, None)
               assertEquals(handle, None)
             }
           yield ()
@@ -562,7 +563,7 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
             result <- current.outbound
               .establish(peer, DiffusionMode.InitiatorOnly, Provenance.Outbound)
               .timeout(5.seconds)
-            stopped <- fatal.get.timeout(5.seconds)
+            stopped <- fatal.tryGet
             handle <- current.outbound
               .monitorPeerConnection(peer)
               .flatMap(_.liftTo[IO](new AssertionError("missing partially installed handle")))
@@ -571,7 +572,7 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
             closed <- current.transport.closedConnections
             _ <- IO {
               assertEquals(result, Left(EstablishmentError.Defect(defect)))
-              assertEquals(stopped, Fatal.Defect(defect))
+              assertEquals(stopped, None)
               assertEquals(status.status, PeerStatus.Cold)
               assert(live.forall(!_.state.isLive))
               assertEquals(closed.getOrElse(peer, 0), 1)
@@ -795,7 +796,9 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
     yield ()
   }
 
-  test("an acquisition defect survives caller cancellation queued during resource cleanup") {
+  // issue 567: an acquisition defect ends that attempt; under a cancellation queued during the
+  // cleanup the attempt still completes, and nothing reaches the fatal sink
+  test("an acquisition defect under caller cancellation queued during cleanup stops nothing") {
     for
       firstStarted <- Deferred[IO, Unit]
       releaseFirst <- Deferred[IO, Unit]
@@ -839,7 +842,7 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
                 result,
                 Some(cats.effect.kernel.Outcome.Succeeded[cats.Id, Throwable, Unit](()))
               )
-              assertEquals(calls, Vector(Fatal.Defect(defect)))
+              assertEquals(calls, Vector.empty[Fatal])
             }
           yield ()
         }

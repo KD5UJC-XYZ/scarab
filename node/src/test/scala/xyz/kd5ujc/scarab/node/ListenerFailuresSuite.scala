@@ -167,7 +167,8 @@ class ListenerFailuresSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     yield ()
   }
 
-  test("an unexpected handler failure stops with the original defect and reports the connection") {
+  // issue 567: a handler's own exception ends its connection; the node goes on
+  test("an unexpected handler failure reports the connection with its defect and does not stop") {
     val cause = new IllegalStateException("listener handler defect")
     reported(HandlerFailure.Defect(cause)).map { (events, fatals) =>
       assertEquals(
@@ -179,11 +180,11 @@ class ListenerFailuresSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           )
         )
       )
-      assertEquals(fatals, Vector(Fatal.Defect(cause)))
+      assertEquals(fatals, Vector.empty[Fatal])
     }
   }
 
-  test("a typed network defect also retains its original cause and stops the node") {
+  test("a typed network defect also retains its original cause and does not stop the node") {
     val cause = new IllegalArgumentException("typed defect")
     reported(HandlerFailure.Domain(NetworkError.Defect(cause))).map { (events, fatals) =>
       assertEquals(
@@ -195,6 +196,6 @@ class ListenerFailuresSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           )
         )
       )
-      assertEquals(fatals, Vector(Fatal.Defect(cause)))
+      assertEquals(fatals, Vector.empty[Fatal])
     }
   }

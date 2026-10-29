@@ -40,6 +40,10 @@ object FailurePolicy:
     // delay; here nothing is counted against the peer, since nothing it did is shown wrong
     // (owner decision 2026-10-28, ADR 0017 amendment, issue 564).
     case _: PeerError.ServingDefect => FailureClass.NotThePeers
+    // An exception of the node's own code on the connection, of no more precise origin: the
+    // reference ends the peer (`ShutdownPeer`, its default); the node goes on and the peer is not
+    // charged (owner decision 2026-10-28, issue 567)
+    case _: PeerError.ConnectionDefect => FailureClass.NotThePeers
     // Consensus 82ecba329 Node/RethrowPolicy.hs maps every ChainSyncClientException,
     // including EmptyBucket, DensityTooLow and HistoricityError, to ShutdownPeer.
     // Network 2fb69829 PeerStateActions.hs uses epErrorDelay (10s default), preserving

@@ -133,12 +133,18 @@ class PeerSuite extends ScalaCheckSuite:
     assert(Peer.networkFault(NetworkError.IngressLimit(2, 1L)).isInstanceOf[Fault.Failed])
   }
 
-  test("network defects keep their original cause outside peer policy") {
+  // issue 567: the connection's own exception ends that connection, uncharged, with its cause
+  test("network defects keep their original cause and end only the connection") {
+    import xyz.kd5ujc.scarab.ledger.PeerError
     val cause = new IllegalStateException("injected")
-    assertEquals(
-      Peer.networkFault(xyz.kd5ujc.scarab.network.NetworkError.Defect(cause)),
-      Fault.Defect(cause)
-    )
+    Peer.networkFault(xyz.kd5ujc.scarab.network.NetworkError.Defect(cause)) match
+      case Fault.Failed(error @ PeerError.ConnectionDefect(thrown)) =>
+        assert(thrown eq cause)
+        assertEquals(
+          FailurePolicy.classify(error),
+          xyz.kd5ujc.scarab.network.selection.FailureClass.NotThePeers
+        )
+      case other => fail(s"unexpected $other")
   }
 
   test("mux causes reach node policy unchanged, with local failures separate from peer framing") {

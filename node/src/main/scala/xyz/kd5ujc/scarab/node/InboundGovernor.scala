@@ -153,11 +153,10 @@ final class InboundGovernor[F[_]: Async] private (
                   ownClients = agreed => !agreed.data.initiatorOnly && config.runClients
                 )
               }
-              .rescue {
-                case NetworkError.Defect(cause) =>
-                  fatal(Fatal.Defect(cause)).as(ConnectionEnd.Defect(cause))
-                case other => F.pure(ConnectionEnd.fromNetwork(other))
-              }
+              // an exception of the connection's own work ends that connection, reported as a
+              // defect with its cause, and the node goes on: the reference's default `ShutdownPeer`
+              // (network 2fb69829 RethrowPolicy.hs 61-70, 99-103; issue 567)
+              .rescue(error => F.pure(ConnectionEnd.fromNetwork(error)))
               .flatTap(reason => connection.close(reason))
         }
       }
@@ -392,6 +391,8 @@ final class InboundGovernor[F[_]: Async] private (
                       if s.ended.isDefined then s
                       else s.copy(ended = Some(InboundGovernor.SessionFailure.Peer(error)))
                     )
+                  // left: an internal failure of the node's state (`InternalFailure`), not the
+                  // connection's (H6 of issue 567)
                   case Fault.Defect(cause) =>
                     reportFatal(remote, Fatal.Defect(cause))
                 }

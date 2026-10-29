@@ -471,8 +471,10 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     )
   }
 
+  // A writer that throws (`NetworkError.Defect`) no longer stops the node: it ends that connection,
+  // uncharged (issue 567; `PeerSuite`, `PeerDefectPolicySuite`).
   private enum FatalCase:
-    case Storage, Unavailable, UnavailablePhase1, Defect, NetworkDefect
+    case Storage, Unavailable, UnavailablePhase1, Defect
 
   for injected <- FatalCase.values.toList
   do
@@ -523,7 +525,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                         BlockFailure.Tx(failure)
                       )
                     )
-                  case FatalCase.Defect | FatalCase.NetworkDefect =>
+                  case FatalCase.Defect =>
                     IO.raiseError(new IllegalStateException("injected"))
             }
             def rolledBack(to: Point)(using
@@ -542,21 +544,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           peers <- InMemoryPeers.create(magic)
           first = InMemoryPeers.address(1)
           _ <- peers.serve(first, good)
-          transport: Transport[IO, PeerNetwork.Addr] =
-            if injected != FatalCase.NetworkDefect then peers
-            else
-              new Transport[IO, PeerNetwork.Addr]:
-                def resolve(peer: PeerNetwork.Addr) = peers.resolve(peer)
-                def bearer(peer: PeerNetwork.Addr, remote: SocketAddress[IpAddress])(using
-                    cats.mtl.Raise[IO, NetworkError]
-                ) =
-                  // the writer's exception is the node's own (an approved deviation, ADR 0017
-                  // amendment of 2026-10-28); the reader's would be the connection's (issue 463)
-                  cats.effect.Resource.pure[IO, Bearer[IO]](new Bearer[IO]:
-                    def reads = fs2.Stream.never[IO]
-                    def write(bytes: fs2.Chunk[Byte]) =
-                      IO.raiseError[Unit](new IllegalStateException("injected network"))
-                    def close = IO.unit)
+          transport: Transport[IO, PeerNetwork.Addr] = peers
           manager <- ConnectionManager.create[IO](noTimeWait)
           last = forged.headers.last
           hot = OutboundPeers.Hot[IO](
@@ -642,8 +630,6 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               assertEquals(phase1, injected == FatalCase.UnavailablePhase1)
             case Vector(Fatal.Defect(cause)) if injected == FatalCase.Defect =>
               assertEquals(cause.getMessage, "injected")
-            case Vector(Fatal.Defect(cause)) if injected == FatalCase.NetworkDefect =>
-              assertEquals(cause.getMessage, "injected network")
             case other => fail(s"unexpected $other")
           // the tip that was published is one that is stored: never past the block that failed
           assert(tipNow != last.point, "the chain went past the block that could not be stored")
