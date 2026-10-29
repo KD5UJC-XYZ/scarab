@@ -427,9 +427,10 @@ met any more: as in the reference, whose types fix both when the node is assembl
   (`HeaderGate.Grafting`, `HeaderCheck.Grafting`, made by `HeaderCheck.forNodeChain`); `HeaderGate` no longer has
   `graft`, and `GraftError`'s `Unsupported` case and the `UnsupportedHeaderFamily` case are gone. A
   Genesis runtime is built with that check (`GenesisRuntime.create`), and each connection's session uses the check its
-  controls hand it (`GenesisRuntime.Bound.headers`), which keeps the gate it starts. `GenesisPeer` uses that gate, not
+  controls hand it (`GenesisRuntime.Bound.headers`)~~, which keeps the gate it starts. `GenesisPeer` uses that gate, not
   one passed in by the session. A jump accepted before the session started a gate is an invariant of that connection
-  (`HeaderStateUnavailable`), which ends it, uncharged.
+  (`HeaderStateUnavailable`), which ends it, uncharged.~~
+  ([superseded](#amendment-2026-10-29-a-genesis-sessions-header-state-is-its-own)).
 
 Every remaining `GenesisInternalProblem` is of one connection, so `GenesisRuntime.ending` is gone: an invariant ends its
 connection as `PeerError.GenesisInvariant`. The clock that holds a session's headers to the node's time
@@ -476,3 +477,19 @@ an exception injected where the monitor observes the connection's applications (
 - a monitor that throws ends its own connection: the connection is released, the governor sees `PeerError.ConnectionDefect`
   with the cause, `NotThePeers`, nothing reaches the fatal sink, and the same peer is connected to and promoted again;
 - a recovery that throws again stops the node with `Fatal.Defect` of the second exception, as listed above.
+
+## Amendment (2026-10-29): a Genesis session's header state is its own
+
+Issues 603 and 593; owner decision of 2026-10-29: the faithful design. The amendment of issue 581 had the Genesis runtime
+keep the gate a session's check started and apply a jump to it, so that a jump before any gate was a case of its own.
+The reference's ChainSync client owns its state: it takes the jumping governor's next instruction only from its own
+loop, once it holds its `KnownIntersectionState`, and applies an accepted jump to that state (ouroboros-consensus
+`82ecba329` `ChainSync/Client.hs` 1254-1272 and 1307-1380).
+
+- The session holds its gate. A Genesis session (`Peer.Chain.Genesis`, the check and the controls together) starts a
+  gate that grafts (`HeaderCheck.Grafting.startGrafting`) at each intersection it finds and keeps it from the first
+  one on. It takes jump instructions only after that.
+- The session hands its gate to the controls (`GenesisPeer.observed`, `restarted`, `processJump`). The runtime keeps
+  no gate, only what the session last published of its history, as the reference's client writes its candidate.
+- A jump before a gate cannot be written, and that invariant is gone. `HeaderStateUnavailable` remains for a graft that
+  finds no state.
