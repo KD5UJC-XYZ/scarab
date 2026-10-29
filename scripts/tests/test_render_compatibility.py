@@ -96,6 +96,16 @@ class ValidationTest(RepoCase):
         self.assertIn(("missing-page", "alpha"), self.kinds(register(entry())))
         self.assertIn(("missing-page", "alpha"), self.kinds(register(entry(page="docs/compatibility/other.md"))))
 
+    def test_an_implemented_component_needs_evidence(self):
+        for evidence in ({}, {"suites": [], "paths": [], "docs": [], "issues": []}):
+            self.assertEqual(self.kinds(register(entry(evidence=evidence))), [("missing-evidence", "alpha")])
+        self.assertEqual(self.kinds(register(entry(evidence={"issues": [7]}))), [])
+        bare = entry()
+        del bare["evidence"]
+        self.assertEqual(self.kinds(register(bare)), [("missing-evidence", "alpha")])
+        for status in ("partial", "not implemented"):
+            self.assertEqual(self.kinds(register(entry(status=status, evidence={}))), [])
+
     def test_a_component_without_page_is_allowed(self):
         (self.root / "docs/compatibility/alpha.md").unlink()
         self.assertEqual(rc.validate(self.root, register(entry(page=None))), [])
