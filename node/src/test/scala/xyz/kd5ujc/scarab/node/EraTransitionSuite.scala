@@ -49,7 +49,7 @@ import scala.jdk.CollectionConverters.*
   * hashes, then runs the node's own block rules (Byron, TPraos, Praos) from the genesis state and
   * checks nonce carry-over and the epoch-nonce tick at each boundary. It needs no Docker.
   */
-class EraTransitionSuite extends CatsEffectSuite:
+class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private val fixtures = Path.of("fixtures/eras")
 
   private val setup: NodeSetup =

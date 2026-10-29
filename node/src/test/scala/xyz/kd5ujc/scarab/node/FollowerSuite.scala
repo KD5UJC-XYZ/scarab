@@ -111,6 +111,120 @@ class FollowerSuite extends FailsOnUncaught:
 
   private def forward(h: Header) = Right(SyncEvent.RollForward(h, tip))
 
+  /** One peer that serves `chain` as a node does: after the intersection it announces a roll back
+    * to the intersection point (the protocol's first instruction), then rolls forward over the
+    * headers it has beyond it, `pause` apart. It joins `startDelay` after the run began.
+    */
+  private final case class Serving(
+      chain: Vector[Header],
+      startDelay: FiniteDuration = Duration.Zero,
+      pause: FiniteDuration = Duration.Zero
+  )
+
+  private def serving(s: Serving): Resource[IO, Peer[IO]] =
+    Resource.eval(IO.sleep(s.startDelay) *> Ref.of[IO, List[SyncEvent]](Nil)).map { pending =>
+      new Peer[IO]:
+        def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
+          val at =
+            candidates.find(p => p == ChainSync.Point.Origin || s.chain.exists(_.point == p))
+          val after = at.fold(Vector.empty[Header])(p =>
+            if p == ChainSync.Point.Origin then s.chain
+            else s.chain.dropWhile(_.point != p).drop(1)
+          )
+          pending
+            .set(
+              at.toList.map(SyncEvent.RollBackward(_, tip)) ++
+                after.map(SyncEvent.RollForward(_, tip))
+            )
+            .as(at)
+        def next(using Raise[IO, PeerError]) = pending.modify {
+          case Nil          => Nil -> IO.never[SyncEvent]
+          case head :: rest => rest -> IO.sleep(s.pause).as(head)
+        }.flatten
+        def fetch(header: Header)(using Raise[IO, PeerError]) = IO.pure(forkBodies(header.hash))
+    }
+
+  /** Peers that serve chains, all followed by one follower whose blocks the worker adopts, on the
+    * test clock (nothing here waits for real time: the run ends when the virtual clock has passed
+    * `until`, once the worker has decided what was delivered).
+    */
+  private def runServed(
+      servers: List[Serving],
+      until: FiniteDuration = 30.seconds
+  ): IO[(Either[NodeError, Unit], VolatileChain[BigInt])] =
+    for
+      ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.k.toInt, -1))
+      given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
+      outcome <- Handle
+        .allow[NodeError] {
+          for
+            follower <- Follower.create[IO, BigInt](rules, noEvents, geometry)
+            pool <- WorkerTesting.pool(follower)
+            result <- (WorkerTesting.selection(follower, pool) >> pool.session).use { claims =>
+              Handle
+                .allow[PeerError](
+                  servers.parTraverse_(s =>
+                    SessionDriver.supervise(
+                      follower,
+                      serving(s).flatMap(WorkerTesting.delivering(_, claims)).map(_.peer),
+                      noEvents,
+                      SessionDriver.Retry(3, 1.milli)
+                    )
+                  )
+                )
+                .rescue(e => Handle[IO, NodeError].raise(e))
+                .timeoutTo(until, IO.unit) <* WorkerTesting.settled(pool)
+            }
+          yield result.asRight[NodeError]
+        }
+        .rescue(e => IO.pure(e.asLeft[Unit]))
+      chain <- ref.get
+    yield (outcome, chain)
+
+  // two forged forks from one prefix: the longer leaves it with three blocks, the shorter with one
+  private lazy val forks: (ForgedChain, ForgedChain) =
+    ForgedChain
+      .competingForks(5000 until 5020, 5020 until 5100, 31, 47)
+      .unsafeRunSync()(using
+        munitIORuntime
+      )
+  private lazy val common: Vector[Header] =
+    forks._1.headers.zip(forks._2.headers).takeWhile((a, b) => a.hash == b.hash).map(_._1)
+  private lazy val longer: Vector[Header] = forks._1.headers.drop(common.size).take(3)
+  private lazy val shorter: Vector[Header] = forks._2.headers.drop(common.size).take(1)
+  private lazy val forkBodies: Map[Bytes, Bytes] =
+    (forks._1.headers.zip(forks._1.raws) ++ forks._2.headers.zip(forks._2.raws))
+      .map((h, raw) => h.hash -> raw)
+      .toMap
+
+  test("two peers: the chain of the longer one is followed, whichever arrives first") {
+    // every order in which the peers join and announce, from simultaneous to far apart: the
+    // shorter one first (it has applied the common blocks and its fork when the longer one joins),
+    // the longer one first, and both at once under different schedules of the test runtime
+    val delays = List(Duration.Zero, 1.milli, 10.millis, 1.second)
+    assert(common.nonEmpty && longer.size == 3 && shorter.size == 1)
+    val cases = for
+      a <- delays
+      b <- delays
+      pauseA <- List(Duration.Zero, 5.millis)
+      pauseB <- List(Duration.Zero, 5.millis)
+    yield List(
+      Serving(common ++ shorter, a, pauseA),
+      Serving(common ++ longer, b, pauseB)
+    )
+    cases.traverse_ { servers =>
+      (0 until 4).toList
+        .map(n => java.util.Base64.getEncoder.encodeToString(s"1$n".getBytes))
+        .traverse_ { seed =>
+          TestControl.executeEmbed(runServed(servers), seed = Some(seed)).map {
+            case (outcome, chain) =>
+              assertEquals(outcome, Right(()), servers.toString)
+              assertEquals(chain.tip, longer.last.point, s"seed $seed, $servers")
+          }
+        }
+    }
+  }
+
   test("reconnects after a peer failure and resumes from the local tip") {
     val main = forged.headers.take(6)
     val first = main.take(4).map(forward).toList :+ Left(

@@ -215,7 +215,6 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           }
           .timeout(20.seconds)
         fatal <- stopped.get
-        _ <- WorkerTesting.settled(pool).whenA(fatal.isEmpty)
         chain <- ref.get
         left <- (stored.get, published.get, emitted.get, pool.invalidBlocks.snapshot).mapN(
           (s, p, e, invalid) => Result(end, chain, s, p, e, invalid.entries.keySet, fatal)

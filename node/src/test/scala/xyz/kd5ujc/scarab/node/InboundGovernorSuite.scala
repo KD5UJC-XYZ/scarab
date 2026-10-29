@@ -132,7 +132,8 @@ class InboundGovernorSuite extends FailsOnUncaught:
       events: Option[InboundEvents[IO]] = None,
       keepAliveInterval: FiniteDuration = 30.seconds,
       followSession: Option[InboundGovernor.Follow[IO]] = None,
-      canonical: Boolean = false
+      canonical: Boolean = false,
+      track: Ref[IO, ChainSelection.Candidate] => IO[Unit] = _ => IO.unit
   )(using RepromotionWait[IO]): Resource[IO, Local] =
     Resource
       .eval {
@@ -250,7 +251,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
                     cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
                 ) = IO.unit
             ),
-            follow = peer => followSession.fold(follower.session(peer))(_(peer)),
+            follow = peer => followSession.fold(follower.session(peer, track))(_(peer)),
             prepare = _ => IO.unit,
             fatal = fatal,
             headers = headerCheck,
@@ -626,10 +627,12 @@ class InboundGovernorSuite extends FailsOnUncaught:
         remoteNode.intersections,
         remoteNode.extend
       )
+      tracked <- Ref.of[IO, Vector[Ref[IO, ChainSelection.Candidate]]](Vector.empty)
       nodeTestResult <- local(
         transactions = Some(nothingToOffer),
         readAhead = 2,
-        canonical = true
+        canonical = true,
+        track = candidate => tracked.update(_ :+ candidate)
       ).use { us =>
         val prefix = forged.headers.size / 2
         val advanced = forged.headers(prefix - 1).point
@@ -654,10 +657,21 @@ class InboundGovernorSuite extends FailsOnUncaught:
               points <- intersections.get
               fetched <- remoteNode.ranges.get
               applied <- us.applied.get
-            yield (points, fetched, applied)
+              sessions <- us.governor.sessions
+              candidates <- tracked.get.flatMap(_.traverse(_.get))
+            yield (points, fetched, applied, sessions, candidates)
           }
         yield
-          val ((points, fetched, applied), _) = result
+          val ((points, fetched, applied, sessions, candidates), _) = result
+          // one session on the lagging connection, still running (its report keeps the first
+          // intersection: issue 602)
+          val lagging = sessions.filter(_.remote == remote.toString)
+          assertEquals(lagging.size, 1, sessions.toString)
+          assertEquals(lagging.head.number, BigInt(1))
+          assertEquals(lagging.head.ended, None)
+          // the connection's one tracked candidate followed it there and on to the tip
+          assertEquals(candidates.size, 2, "one tracked candidate per session")
+          assert(candidates.exists(_.tip == forged.headers.last.point), candidates.toString)
           // NoLongerIntersects: the same connection finds a new intersection at our tip
           // (consensus 82ecba329 ChainSync/Client.hs:1499–1511)
           assertEquals(points, Vector(Point.Origin, advanced))

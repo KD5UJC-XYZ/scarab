@@ -49,7 +49,6 @@ private[scarab] object WorkerTesting extends munit.Assertions:
   /** A scripted peer as its session sees it, delivering through a pool session's claims. */
   final class Fed private[WorkerTesting] (
       val peer: Peer[IO],
-      blamed: Ref[IO, Option[ValidationError]],
       candidate: Ref[IO, Vector[Header]],
       claims: BlockPool.Claims[IO]
   ):
@@ -57,7 +56,7 @@ private[scarab] object WorkerTesting extends munit.Assertions:
       * peer, or an invalid block in its candidate before the tip.
       */
     def due: IO[Option[ValidationError]] =
-      blamed.get.flatMap(
+      claims.blamedYet.flatMap(
         _.fold(
           (candidate.get, claims.invalidBlocks.snapshot).mapN((headers, known) =>
             Fed.rejected(headers, known.entries)
@@ -82,11 +81,7 @@ private[scarab] object WorkerTesting extends munit.Assertions:
     * predecessor of a header it announces (`checkKnownInvalid`, Client.hs:1642–1694).
     */
   def delivering(peer: Peer[IO], claims: BlockPool.Claims[IO]): Resource[IO, Fed] =
-    for
-      candidate <- Resource.eval(Ref.of[IO, Vector[Header]](Vector.empty))
-      blamed <- Resource.eval(Ref.of[IO, Option[ValidationError]](None))
-      _ <- claims.blamed.flatMap(refusal => blamed.set(Some(refusal))).background
-    yield
+    Resource.eval(Ref.of[IO, Vector[Header]](Vector.empty)).map { candidate =>
       def invalid(refusal: Option[ValidationError])(using Raise[IO, PeerError]): IO[Unit] =
         refusal.traverse_(PeerError.InvalidBlock(_).raise[IO, Unit])
 
@@ -128,7 +123,8 @@ private[scarab] object WorkerTesting extends munit.Assertions:
                 .as(event)
           }
         def fetch(header: Header)(using Raise[IO, PeerError]) = peer.fetch(header)
-      new Fed(fed, blamed, candidate, claims)
+      new Fed(fed, candidate, claims)
+    }
 
   /** `follower` 's session over the scripted `peer` with the worker installed over `blocks`, until
     * `done` and the worker has decided every block the peer delivered (the session still running
@@ -164,11 +160,8 @@ private[scarab] object WorkerTesting extends munit.Assertions:
       _.traverse_(fault => IO(fail(s"the node was told to stop: $fault")))
     )
 
-  /** Until the worker has nothing reserved, queued, in hand or waiting to be published: every
-    * delivered block has been decided. A bounded poll of the worker's own occupancy.
+  /** Until the worker has decided every block delivered before: its own reprocessing, queued behind
+    * them, has run (`BlockAdmissions.reprocess`, first in, first out).
     */
   def settled(pool: BlockPool[IO]): IO[Unit] =
-    (IO.sleep(5.millis) *> pool.admissions.occupancy)
-      .iterateUntil(o => o.held == 0 && o.queued == 0 && o.worker.isEmpty && o.publishWaiting == 0)
-      .timeout(30.seconds)
-      .void
+    pool.admissions.reprocess.timeout(30.seconds)

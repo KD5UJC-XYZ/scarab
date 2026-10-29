@@ -631,6 +631,9 @@ object BlockPool:
       */
     def blamed: F[ValidationError] = blame.get
 
+    /** As [[blamed]], without waiting: the refusal this session was blamed for, if it has been. */
+    private[node] def blamedYet: F[Option[ValidationError]] = blame.tryGet
+
   /** A block and the session that delivered it. */
   enum Source:
     case Session(owner: Long)
