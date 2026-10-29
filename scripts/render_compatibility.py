@@ -8,9 +8,10 @@ limitation pointers (issue numbers, roadmap ids) and an optional long-form evide
 `docs/compatibility/<id>.md`, which holds the unabridged evidence prose. The rendered file is a short status table; it
 is generated, and `--check` fails when the committed file differs from the render, so an edit by hand cannot land.
 
-Validation (always run, also by `--check`): the status enum holds, ids are unique and file-name safe, every suite name
-is a `class`/`object`/`trait` of some Scala file under `*/src/test`, every referenced path and documentation anchor
-exists, every page exists and is referenced exactly once, and no rendered table cell exceeds the per-cell budget of
+Validation (always run, also by `--check`): the status enum holds, ids are unique and file-name safe, an `implemented`
+component names at least one evidence pointer (a `partial` or `not implemented` one may name none; its limitations say
+why), every suite name is a `class`/`object`/`trait` of some Scala file under `*/src/test`, every referenced path and
+documentation anchor exists, every page exists and is referenced exactly once, and no rendered table cell exceeds the per-cell budget of
 `check_docs` (an oversized cell is an error, never truncated silently: evidence lists are cut at their own, smaller
 budget with an explicit count of the remainder).
 
@@ -59,6 +60,7 @@ class Kind(str, Enum):
     BAD_ID = "bad-id"
     BAD_STATUS = "bad-status"
     BAD_SUMMARY = "bad-summary"
+    MISSING_EVIDENCE = "missing-evidence"
     MISSING_SUITE = "missing-suite"
     MISSING_PATH = "missing-path"
     BAD_ANCHOR = "bad-anchor"
@@ -170,6 +172,8 @@ def validate(root: Path, register: object) -> list[Problem]:
             problems.append(Problem(Kind.SCHEMA, subject, "evidence must be an object"))
             evidence = {}
         problems += unknown(subject, evidence, EVIDENCE_FIELDS)
+        if entry.get("status") == Status.IMPLEMENTED.value and not any(evidence.get(key) for key in EVIDENCE_FIELDS):
+            problems.append(Problem(Kind.MISSING_EVIDENCE, subject, "an implemented component needs an evidence pointer"))
         for key in ("suites", "paths", "docs"):
             if key in evidence and string_list(evidence[key]) is None:
                 problems.append(Problem(Kind.SCHEMA, subject, f"evidence.{key} must be a list of strings"))

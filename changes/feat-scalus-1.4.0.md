@@ -2,7 +2,7 @@
 
 - Plutus evaluation uses Scalus 1.4.0. Its cryptographic builtins (Ed25519, secp256k1,
   BLS12-381) run on `libscalus_crypto` of `org.scalus:scalus-crypto-jni:0.1.0`, which replaces
-  blst-java and scalus-secp256k1-jni on the Plutus path ([ADR 0020](docs/adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md)).
+  blst-java and scalus-secp256k1-jni on the Plutus path ([ADR 0020](https://github.com/KD5UJC-XYZ/scarab/blob/ebdfca0b2e0845e65bbe89ebad169c52ff686649/docs/adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md)).
 - `follow` checks that library at start-up and refuses to start with `NativeLibraryError` if it is
   not the pinned build of the platform, is shadowed on `java.library.path`, does not load, or
   fails a known answer. A `plutusCrypto` event reports it. Linux needs glibc 2.33 or newer

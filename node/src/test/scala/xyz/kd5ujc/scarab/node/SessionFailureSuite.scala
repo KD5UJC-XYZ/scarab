@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{Deferred, IO, Ref}
 import cats.effect.std.Queue
+import cats.effect.testkit.TestControl
 import cats.mtl.{Raise, Stateful}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -333,7 +334,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  test("an exception after the commit stops the node: the chain is published and stored") {
+  private def committedAfterException: IO[Unit] =
     session(throwTip = Some(2)).map { left =>
       left.fatal match
         case Some(Fatal.Defect(cause)) => assertEquals(cause.getMessage, "a bug after the commit")
@@ -342,6 +343,17 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(left.chain.tip, headers(2).point)
       assertEquals(blockNos(left.stored), Vector(0, 1, 2))
     }
+
+  test("an exception after the commit stops the node: the chain is published and stored") {
+    committedAfterException
+  }
+
+  test("a worker fatal releases the session when closed admissions cancel its settlement") {
+    // This schedule made the settlement barrier self-cancel before the fatal waiter ran (#617).
+    TestControl.executeEmbed(
+      committedAfterException,
+      seed = Some("NDg0NzEwOTQ1MjI3OTE4MDMxNQ==")
+    )
   }
 
   test("a peer that breaks the protocol is forgotten, one that is unreachable is tried again") {

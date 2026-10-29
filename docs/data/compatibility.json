@@ -377,6 +377,18 @@
       "component": "Network: servers (ChainSync, BlockFetch, KeepAlive, TxSubmission2, PeerSharing) and duplex",
       "status": "implemented",
       "summary": "ChainSync, BlockFetch, KeepAlive, TxSubmission2 and PeerSharing servers over duplex bearers",
+      "evidence": {
+        "suites": [
+          "ServerSuite",
+          "NodeToNodeSuite",
+          "ChainServerSuite",
+          "InboundGovernorSuite",
+          "TxSubmission2Suite"
+        ],
+        "docs": [
+          "docs/design/network-limits.md#reference-and-implementation-matrix"
+        ]
+      },
       "page": "docs/compatibility/network-servers-duplex.md"
     },
     {
@@ -402,6 +414,14 @@
       "component": "Network: PeerSharing (mini-protocol 10, client and server)",
       "status": "implemented",
       "summary": "PeerSharing mini-protocol 10, client and server: reference codec, wire limits, publication policy, governor use",
+      "evidence": {
+        "suites": [
+          "PeerSharingSuite",
+          "PeerShareSuite",
+          "PeerShareGovernorSuite",
+          "UpstreamPeerSharingBehaviorSuite"
+        ]
+      },
       "page": "docs/compatibility/network-peersharing.md"
     },
     {
@@ -430,6 +450,21 @@
       "component": "Semantic error contracts (M11-E/#189)",
       "status": "implemented",
       "summary": "Typed causes survive from script evaluation, Byron selectors, sessions and generators to their encoders",
+      "evidence": {
+        "suites": [
+          "DomainErrorContractSuite",
+          "Phase2UnavailableSuite",
+          "ConnectionEndSuite",
+          "GenErrorSuite",
+          "SamplerTerminationSuite"
+        ],
+        "docs": [
+          "docs/design/domain-errors.md#scope-and-contracts"
+        ],
+        "issues": [
+          189
+        ]
+      },
       "limitations": {
         "issues": [
           180,
@@ -455,6 +490,13 @@
       "component": "Consensus: Praos headers (Babbage, Conway)",
       "status": "implemented",
       "summary": "Praos header checks for Babbage and Conway: VRF, KES, opcert counters, nonce evolution, leader threshold",
+      "evidence": {
+        "suites": [
+          "PraosHeaderValidationSuite",
+          "PraosLeaderThresholdSuite",
+          "PraosVrfCertificateSuite"
+        ]
+      },
       "page": "docs/compatibility/consensus-praos-headers.md"
     },
     {
@@ -462,6 +504,11 @@
       "component": "Consensus: TPraos headers (Shelley to Alonzo)",
       "status": "implemented",
       "summary": "TPraos header checks for Shelley to Alonzo: overlay schedule, two VRF certificates, 512-bit leader value",
+      "evidence": {
+        "suites": [
+          "TPraosSuite"
+        ]
+      },
       "page": "docs/compatibility/consensus-tpraos-headers.md"
     },
     {
@@ -487,6 +534,14 @@
       "component": "Ledger: Byron",
       "status": "implemented",
       "summary": "Byron ledger: witnessed UTxO, fees, genesis UTxO, delegation, update proposals, votes and adoption",
+      "evidence": {
+        "suites": [
+          "ByronLedgerSuite",
+          "ByronUpdateSuite",
+          "ByronMainnetSuite",
+          "ByronPreprodSuite"
+        ]
+      },
       "page": "docs/compatibility/ledger-byron.md"
     },
     {
@@ -532,6 +587,12 @@
       "component": "Chain selection",
       "status": "implemented",
       "summary": "Longer chain, opcert issue number, VRF tie-break, maximum rollback and several peers",
+      "evidence": {
+        "suites": [
+          "ChainSelectionSuite",
+          "CandidateSelectionSuite"
+        ]
+      },
       "page": "docs/compatibility/chain-selection.md"
     },
     {
@@ -936,6 +997,15 @@
       "component": "Ledger: Conway governance",
       "status": "implemented",
       "summary": "Conway governance: proposals, votes, ratification, enactment, DRep pulser, guardrails, committee",
+      "evidence": {
+        "suites": [
+          "ConwayGovernanceSuite",
+          "VotingProceduresSuite",
+          "RatifySuite",
+          "UpstreamRatifyConformanceSuite",
+          "UpstreamEnactConformanceSuite"
+        ]
+      },
       "page": "docs/compatibility/ledger-conway-governance.md"
     },
     {
@@ -1123,6 +1193,14 @@
       "component": "Relay and mempool",
       "status": "implemented",
       "summary": "Pure mempool state, TxSubmission2 in both roles and typed rejections",
+      "evidence": {
+        "suites": [
+          "MempoolSuite",
+          "MempoolMeasureSuite",
+          "MempoolBackpressureSuite",
+          "TxSubmission2Suite"
+        ]
+      },
       "page": "docs/compatibility/relay-and-mempool.md"
     },
     {
@@ -1292,6 +1370,14 @@
       "component": "Ouroboros Leios (CIP-164)",
       "status": "not implemented",
       "summary": "Not implemented in the node; read-only decoders and header rules for the public Leios testnet chain",
+      "limitations": {
+        "issues": [
+          73
+        ],
+        "roadmap": [
+          "N4"
+        ]
+      },
       "page": "docs/compatibility/ouroboros-leios.md"
     },
     {
