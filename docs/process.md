@@ -99,15 +99,21 @@ status is `status:idea` or `status:parked` (owner decision, 2026-10-29):
 - milestones are scope buckets, not versions: `reference-parity`, `mainnet-evidence`, `leios-dijkstra`
   (owner decision, 2026-10-29).
 
-`status:in-progress` means an open PR or an active worktree exists for the issue. One not updated for 7 days
-is reported as stale, and so is a `status:needs-owner` issue not updated for 14 (triage rule of [#400](https://github.com/KD5UJC-XYZ/scarab/issues/400)).
-`python3 scripts/status.py --check` lists every open issue that breaks these rules, and the nightly
-[triage workflow](../.github/workflows/triage.yml) writes that list into the one issue titled "Triage
-report". File an issue through a form or through `python3 scripts/file_issue.py` (`--help` shows its
-options), which refuses one without the three labels and a milestone. A form records the area and the
-priority in the body; triage applies them as labels and sets the milestone, until
-[#605](https://github.com/KD5UJC-XYZ/scarab/issues/605) applies them
-automatically.
+`status:in-progress` means an open PR or an active worktree exists for the issue. One not updated for 7 days is
+reported as stale (the nightly fix below moves it to the backlog unless a pull request names it), and so is a
+`status:needs-owner` issue not updated for 14 (triage rule of [#400](https://github.com/KD5UJC-XYZ/scarab/issues/400)).
+File an issue through a form or through `python3 scripts/file_issue.py` (`--help` shows its options), which refuses
+one without the three labels and a milestone.
+
+The nightly [triage workflow](../.github/workflows/triage.yml), which also runs when an issue is opened, fixes the
+mechanical drift itself with `python3 scripts/triage_fix.py --apply` (owner decision, 2026-10-29; the script's
+`--help` and docstring list the rules): a form's area and priority answers become labels and a missing status
+becomes `status:backlog`; a `status:in-progress` issue that no open pull request names and that has had no activity
+for 7 days moves to `status:backlog`, with a comment that says how to undo it; a shaped issue without a milestone
+gets the bucket its title names, or `reference-parity`, with a comment; a closed issue loses the statuses that
+claim work; an open pull request whose merge into `main` changes nothing gets one comment. Run the script without
+`--apply` to see what it would do. What needs a person, `python3 scripts/status.py --check` lists, and the workflow
+writes that list into the one issue titled "Triage report".
 
 ### Triage and health check
 

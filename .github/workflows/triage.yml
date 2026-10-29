@@ -4,9 +4,12 @@ name: Triage report
 # The triage check of docs/process.md ("Labels and milestones") over the open issues, read-only through
 # scripts/status.py --check. Its report replaces the body of the one issue titled "Triage report", created
 # with its own labels and milestone on the first run, so the report never lists itself and never adds comments.
-# A closed "Triage report" issue is reopened: closing it does not stop the report. The same run refreshes the roadmap's
-# issue-state snapshot (scripts/render_roadmap.py --refresh-states --all); a change is proposed as one standing pull
-# request from bot/roadmap-sync by the sync App (vars.SCARAB_SYNC_APP_CLIENT_ID, secrets.SCARAB_SYNC_APP_PRIVATE_KEY),
+# A closed "Triage report" issue is reopened: closing it does not stop the report. Before the check, the run fixes
+# the mechanical drift itself (scripts/triage_fix.py --apply: form answers as labels, stale in-progress work, default
+# milestones, statuses left on closed issues, a comment on an empty pull request), so the report lists only what
+# needs a person. It also runs when an issue is opened, so a form's answers become labels at once. The same run
+# refreshes the roadmap's issue-state snapshot (scripts/render_roadmap.py --refresh-states --all); a change is
+# proposed as one standing pull request from bot/roadmap-sync by the sync App (vars.SCARAB_SYNC_APP_CLIENT_ID, secrets.SCARAB_SYNC_APP_PRIVATE_KEY),
 # whose pull requests run CI, and the next run merges it once green if it changes only the snapshot and the render
 # (scripts/roadmap_sync.py; owner decision 2026-10-29: this pull request only, no repository auto-merge). Without the
 # App the report lists the change only.
@@ -14,6 +17,8 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '53 5 * * *'
+  issues:
+    types: [opened]
 
 permissions:
   contents: read
@@ -26,7 +31,7 @@ concurrency:
 jobs:
   report:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -37,6 +42,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Fix the mechanical drift
+        run: |
+          set -o pipefail
+          python3 scripts/triage_fix.py --apply | tee "$RUNNER_TEMP/fixes.txt"
       - name: Run the triage check
         run: |
           set +e
@@ -117,6 +127,12 @@ jobs:
             echo
             echo '~~~text'
             head -n 200 "$RUNNER_TEMP/roadmap.txt"
+            echo '~~~'
+            echo
+            echo "Fixed by this run (\`python3 scripts/triage_fix.py --apply\`):"
+            echo
+            echo '~~~text'
+            head -n 300 "$RUNNER_TEMP/fixes.txt"
             echo '~~~'
           } > "$body"
           number=$(gh api --paginate 'repos/{owner}/{repo}/issues?state=all&per_page=100' \
