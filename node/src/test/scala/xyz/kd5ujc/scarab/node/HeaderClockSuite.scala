@@ -10,7 +10,15 @@ import java.time.Instant
 import munit.{CatsEffectSuite, ScalaCheckSuite}
 import org.scalacheck.{Gen, Prop}
 import scala.concurrent.duration.*
-import xyz.kd5ujc.scarab.ledger.{ByronSpan, EpochGeometry, Fixtures, Header, HeaderError, PeerError}
+import xyz.kd5ujc.scarab.ledger.{
+  ByronSpan,
+  EpochGeometry,
+  Fixtures,
+  GenesisInternalProblem,
+  Header,
+  HeaderError,
+  PeerError
+}
 import xyz.kd5ujc.scarab.network.selection.FailureClass
 import xyz.kd5ujc.scarab.node.HeaderEligibility.*
 import xyz.kd5ujc.scarab.protocol.ChainSync
@@ -292,4 +300,34 @@ class HeaderClockSuite extends CatsEffectSuite with ScalaCheckSuite:
         n <- calls.get
       yield n
     }.assertEquals(reads)
+  }
+
+  // issue 567 (H7): the connection's invariant reaches the check the clock wraps, so that an
+  // invariant of the Genesis code met on a session ends that session, not the node
+  test("the clock passes a connection's invariant on to the check it wraps") {
+    val problem = GenesisInternalProblem.HeaderSelectionUnavailable(
+      ChainSync.Point.Origin
+    )
+    def reporting(told: GenesisInternalProblem => IO[Unit]): HeaderCheck[IO] =
+      new HeaderCheck[IO]:
+        def start(intersection: ChainSync.Point) =
+          told(problem).as(HeaderGate.none[IO])
+        override def withInvariant(
+            invariant: GenesisInternalProblem => IO[Unit]
+        ) = reporting(invariant)
+    run {
+      for
+        node <- Ref.of[IO, Vector[GenesisInternalProblem]](Vector.empty)
+        connection <- Ref.of[IO, Vector[GenesisInternalProblem]](
+          Vector.empty
+        )
+        clock <- stepped
+        _ <- HeaderClock
+          .clocked[IO](clock, reporting(p => node.update(_ :+ p)), skew)
+          .withInvariant(p => connection.update(_ :+ p))
+          .start(ChainSync.Point.Origin)
+        toNode <- node.get
+        toConnection <- connection.get
+      yield (toNode, toConnection)
+    }.assertEquals((Vector.empty, Vector(problem)))
   }

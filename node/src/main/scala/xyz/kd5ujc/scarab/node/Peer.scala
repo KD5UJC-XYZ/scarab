@@ -1151,7 +1151,7 @@ object Peer:
               accepted <- gate.get.flatMap(g =>
                 g.acceptOrRestart(batch).flatTap {
                   case HeaderGate.Acceptance.Accepted =>
-                    batch.traverse_(e => genesis.traverse_(_.observed(g, e)))
+                    batch.traverse_(e => genesis.traverse_(_.observed(e)))
                   case HeaderGate.Acceptance.Restart(_) | HeaderGate.Acceptance.End(_) => F.unit
                 }
               )
@@ -1528,11 +1528,11 @@ object Peer:
 
                 /** Find a new intersection with our current chain. `candidates` offers points when
                   * neither a captured fragment nor the pipeline's local points are available;
-                  * `restarted` tells chain-sync jumping about the new gate.
+                  * `restarted` tells chain-sync jumping that the session restarted at a point.
                   */
                 def restart(
                     candidates: F[Vector[ChainSync.Point]],
-                    restarted: (ChainSync.Point, HeaderGate[F]) => F[Unit]
+                    restarted: ChainSync.Point => F[Unit]
                 )(using Raise[F, PeerError]): F[Unit] =
                   for
                     captured <- headers.traverse(_.capture).map(_.flatten)
@@ -1554,7 +1554,7 @@ object Peer:
                           )
                           .flatMap { nextGate =>
                             val candidate = ChainSelection.Candidate(point, Vector.empty)
-                            gate.set(nextGate) *> restarted(point, nextGate) *> remember(
+                            gate.set(nextGate) *> restarted(point) *> remember(
                               candidate
                             ) *>
                               capturedHeight(point).flatMap(height =>
@@ -1574,7 +1574,7 @@ object Peer:
                           PeerError
                             .Diverged(PeerError.Divergence.DetachedCandidate(point))
                             .raise[F, Vector[ChainSync.Point]],
-                          (_, _) => F.unit
+                          _ => F.unit
                         )
                       case None => requestHeadersStreaming(publish, capacity)
                     }
@@ -1603,14 +1603,9 @@ object Peer:
                                         progress
                                           .set(Some(result.tip -> height.fold(BigInt(0))(_.value)))
                                       )
-                                    ) *> gate.get.flatMap { currentGate =>
+                                    ) *>
                                       control
-                                        .processJump(
-                                          info,
-                                          goodPoint,
-                                          result.toOption.map(_._1),
-                                          currentGate
-                                        )
+                                        .processJump(info, goodPoint, result.toOption.map(_._1))
                                         .flatMap {
                                           case GenesisPeer.Applied.Retained => F.unit
                                           case GenesisPeer.Applied.Restart  => restartWith(control)
@@ -1630,7 +1625,6 @@ object Peer:
                                                 true
                                               )
                                         }
-                                    }
                                 }
                             }
                         }
@@ -1860,7 +1854,7 @@ object Peer:
                     captured.fold(headers.traverse_(_.start(point).flatMap(gate.set)))(
                       _.start(point).flatMap(gate.set)
                     ) *>
-                    gate.get.flatMap(g => genesis.traverse_(_.restarted(point, g))) *>
+                    genesis.traverse_(_.restarted(point)) *>
                     capturedHeight(point).flatMap(height =>
                       progress.set(Some(tip -> height.fold(BigInt(0))(_.value)))
                     )

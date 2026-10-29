@@ -9,7 +9,7 @@ import cats.syntax.all.*
 import cats.effect.syntax.all.*
 import java.time.Instant
 import scala.concurrent.duration.*
-import xyz.kd5ujc.scarab.ledger.{EpochGeometry, HeaderError, PeerError}
+import xyz.kd5ujc.scarab.ledger.{EpochGeometry, GenesisInternalProblem, HeaderError, PeerError}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.network.genesis.LimitOnPatience
 import xyz.kd5ujc.scarab.consensus.HeaderChain
@@ -131,6 +131,11 @@ object HeaderClock:
     override def withPatience(value: LimitOnPatience[F]): HeaderCheck[F] =
       clocked(clock, inner.withPatience(value), skew, Some(value))
 
+    override def withInvariant(
+        invariant: GenesisInternalProblem => F[Unit]
+    ): HeaderCheck[F] =
+      clocked(clock, inner.withInvariant(invariant), skew, patience)
+
     override def observed(observer: HeaderCheck.Event => F[Unit]): HeaderCheck[F] =
       clocked(clock, inner.observed(observer), skew, patience)
 
@@ -145,6 +150,34 @@ object HeaderClock:
           )
         )
       )
+
+  /** [[clocked]] for a check that grafts: its gates are held to the clock, and the gates it tells
+    * `recording` of are those of `inner`, which the clock only wraps.
+    */
+  def grafting[F[_]: Temporal](
+      clock: SlotClock[F],
+      inner: HeaderCheck.Grafting[F],
+      skew: FiniteDuration = HeaderEligibility.DefaultSkew,
+      patience: Option[LimitOnPatience[F]] = None
+  ): HeaderCheck.Grafting[F] = new HeaderCheck.Grafting[F]:
+    private val plain = clocked(clock, inner, skew, patience)
+
+    def start(intersection: ChainSync.Point): F[HeaderGate[F]] = plain.start(intersection)
+
+    override def capture(using cats.Applicative[F]): F[Option[HeaderCheck.Captured[F]]] =
+      plain.capture
+
+    override def withPatience(value: LimitOnPatience[F]): HeaderCheck[F] =
+      plain.withPatience(value)
+
+    override def withInvariant(invariant: GenesisInternalProblem => F[Unit]): HeaderCheck[F] =
+      plain.withInvariant(invariant)
+
+    override def observed(observer: HeaderCheck.Event => F[Unit]): HeaderCheck[F] =
+      plain.observed(observer)
+
+    def recording(started: HeaderGate.Grafting[F] => F[Unit]): HeaderCheck[F] =
+      clocked(clock, inner.recording(started), skew, patience)
 
   private final class Gated[F[_]: Temporal](
       clock: SlotClock[F],
@@ -171,14 +204,6 @@ object HeaderClock:
     override def intersectionSelection(using
         cats.Applicative[F]
     ): F[Option[xyz.kd5ujc.scarab.consensus.ChainSelection.Local]] = inner.intersectionSelection
-
-    override def graft(
-        snapshot: HeaderChain[NodeHeaderState],
-        point: ChainSync.Point,
-        selection: xyz.kd5ujc.scarab.consensus.ChainSelection.Local
-    )(using
-        cats.Applicative[F]
-    ): F[Either[HeaderCheck.GraftError, Unit]] = inner.graft(snapshot, point, selection)
 
     def accept(batch: Vector[SyncEvent])(using Raise[F, PeerError]): F[Unit] =
       eligible(batch).flatMap {

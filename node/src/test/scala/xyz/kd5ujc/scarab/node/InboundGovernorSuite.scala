@@ -3,7 +3,16 @@ package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, Compute, VolatileChain}
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
-import xyz.kd5ujc.scarab.ledger.{Block, Header, HeaderError, NodeError, PeerError, Points}
+import xyz.kd5ujc.scarab.ledger.{
+  Block,
+  GenesisInternalProblem,
+  Header,
+  HeaderError,
+  NodeError,
+  PeerError,
+  Points
+}
+import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity.Fragment
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.mtl.{Handle, Stateful}
 import cats.syntax.all.*
@@ -120,7 +129,8 @@ class InboundGovernorSuite extends FailsOnUncaught:
       pool: Option[BlockPool[IO]] = None,
       events: Option[InboundEvents[IO]] = None,
       keepAliveInterval: FiniteDuration = 30.seconds,
-      followSession: Option[InboundGovernor.Follow[IO]] = None
+      followSession: Option[InboundGovernor.Follow[IO]] = None,
+      genesis: Option[HeaderCheck.Grafting[IO]] = None
   )(using RepromotionWait[IO]): Resource[IO, Local] =
     Resource
       .eval {
@@ -197,6 +207,23 @@ class InboundGovernorSuite extends FailsOnUncaught:
             BlockPool.create[IO](BlockPool.FetchPolicy(), follower.fetchSelection)
           )(IO.pure)
           _ <- follower.installFetchCoordinator(sharedPool.fetchCoordinator)
+          runtime <- genesis.traverse(check =>
+            GenesisGovernor
+              .create[IO](
+                IO.pure(GenesisGovernor.View(Fragment(Point.Origin, Vector.empty), 2, _ => None))
+              )
+              .flatMap(governor =>
+                GenesisRuntime.create[IO](
+                  governor,
+                  GenesisSettings(),
+                  follower.fetchSelection,
+                  IO.pure(ForgedChain.geometry),
+                  IO.pure(BigInt(0)),
+                  IO.unit,
+                  check
+                )
+              )
+          )
           governor <- InboundGovernor.create[IO](
             manager,
             InboundGovernor.Config(
@@ -228,7 +255,8 @@ class InboundGovernorSuite extends FailsOnUncaught:
             events = events,
             pool = sharedPool,
             heightSnapshot = heights,
-            peerMetrics = Some(metrics)
+            peerMetrics = Some(metrics),
+            genesis = runtime
           )
         yield new Local(ref, manager, governor, applied, metrics, sharedPool)
       }
@@ -241,12 +269,14 @@ class InboundGovernorSuite extends FailsOnUncaught:
   private def connect[A](
       remoteNode: Option[Remote],
       us: Local,
-      observeWrite: fs2.Chunk[Byte] => IO[Unit] = _ => IO.unit
+      observeWrite: fs2.Chunk[Byte] => IO[Unit] = _ => IO.unit,
+      identity: Option[ConnectionId] = None
   )(
       during: IO[ConnectionEnd] => IO[A]
   ): IO[(A, ConnectionEnd)] =
     Bearer.inMemory[IO](256).flatMap { (theirs, ours) =>
       val observed = new Bearer[IO]:
+        override def connectionId = identity.map(id => IO.pure(Right(id)))
         def reads = ours.reads
         def write(bytes: fs2.Chunk[Byte]) = observeWrite(bytes) *> ours.write(bytes)
         def close = ours.close
@@ -331,6 +361,68 @@ class InboundGovernorSuite extends FailsOnUncaught:
             xyz.kd5ujc.scarab.network.selection.FailureClass.Transient
           )
           assertEquals(fatalities, Vector.empty[Fatal])
+          assertEquals(table.counters, ConnectionState.Counters.zero)
+      }
+    yield nodeTestResult
+  }
+
+  /** The node's header check as a Genesis node has it, whose gate meets an invariant of the Genesis
+    * code on its first batch the way the header gate does (`invariant(...) *> F.never`): told to
+    * `invariant`, the node-wide channel until the connection gives its own. `cancelled` completes
+    * when the fiber that waits after it is cancelled.
+    */
+  private final class Breaking(
+      problem: GenesisInternalProblem,
+      invariant: GenesisInternalProblem => IO[Unit],
+      cancelled: Deferred[IO, Unit]
+  ) extends HeaderCheck.Grafting[IO]:
+    def start(intersection: Point): IO[HeaderGate[IO]] = IO.pure(new HeaderGate[IO]:
+      def accept(batch: Vector[SyncEvent])(using cats.mtl.Raise[IO, PeerError]) =
+        (invariant(problem) *> IO.never[Unit]).onCancel(cancelled.complete(()).void)
+      def counts = IO.pure(HeaderGate.Counts(0, 0, 0)))
+    override def withInvariant(told: GenesisInternalProblem => IO[Unit]): HeaderCheck[IO] =
+      Breaking(problem, told, cancelled)
+    def recording(started: HeaderGate.Grafting[IO] => IO[Unit]): HeaderCheck[IO] = this
+
+  // issue 583: the fiber that met the invariant waits until the connection's teardown cancels it;
+  // the connection's end, after its session, shows that the teardown reaches it
+  test(
+    "a Genesis invariant met by an inbound session's header gate ends that session, not the node"
+  ) {
+    val problem = GenesisInternalProblem.HeaderSelectionUnavailable(Point.Origin)
+    val identity = ConnectionId
+      .fromSocketAddresses(SocketAddress(ip"10.9.9.9", port"3001"), remote)
+      .fold(e => fail(e.message), id => id)
+    for
+      remoteNode <- serving(forged.raws)
+      reported <- Ref.of[IO, Vector[Fatal]](Vector.empty)
+      toNode <- Ref.of[IO, Vector[GenesisInternalProblem]](Vector.empty)
+      cancelled <- Deferred[IO, Unit]
+      nodeTestResult <- local(
+        fatal = value => reported.update(_ :+ value),
+        genesis = Some(Breaking(problem, p => toNode.update(_ :+ p), cancelled))
+      ).use { us =>
+        for
+          outcome <- connect(Some(remoteNode), us, identity = Some(identity))(ended => ended)
+          waiter <- cancelled.tryGet
+          sessions <- us.governor.sessions
+          fatalities <- reported.get
+          told <- toNode.get
+          table <- us.manager.snapshot
+        yield
+          val error = peerFailure(outcome._2)
+          assertEquals(error, PeerError.GenesisInvariant(problem))
+          assertEquals(
+            FailurePolicy.classify(error),
+            xyz.kd5ujc.scarab.network.selection.FailureClass.NotThePeers
+          )
+          assertEquals(
+            sessions.map(_.ended),
+            Vector(Some(InboundGovernor.SessionFailure.Peer(error)))
+          )
+          assertEquals(fatalities, Vector.empty[Fatal])
+          assertEquals(told, Vector.empty)
+          assertEquals(waiter, Some(()))
           assertEquals(table.counters, ConnectionState.Counters.zero)
       }
     yield nodeTestResult
