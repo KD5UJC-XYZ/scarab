@@ -43,29 +43,61 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
   private def gate(
       history: HeaderChain[NodeHeaderState],
       selected: ChainSelection.Local = local
-  ): HeaderGate[IO] = new HeaderGate[IO]:
+  ): HeaderGate.Grafting[IO] = new HeaderGate.Grafting[IO]:
     def accept(batch: Vector[SyncEvent])(using Raise[IO, PeerError]): IO[Unit] = IO.unit
     def counts: IO[HeaderGate.Counts] = IO.pure(HeaderGate.Counts(0, 0, 0))
     override def snapshot(using Applicative[IO]): IO[Option[HeaderChain[NodeHeaderState]]] =
       IO.pure(Some(history))
     override def intersectionSelection(using Applicative[IO]): IO[Option[ChainSelection.Local]] =
       IO.pure(Some(selected))
+    def graft(
+        snapshot: HeaderChain[NodeHeaderState],
+        point: ChainSync.Point,
+        selection: ChainSelection.Local
+    ): IO[Either[HeaderCheck.GraftError, Unit]] =
+      IO.pure(Left(HeaderCheck.GraftError.MissingPoint(point)))
+
+  // A Genesis node's check whose gates are `next`: a test installs a gate on a session by starting
+  // it, as the session's ChainSync client does once it has found its intersection.
+  private def checkOf(next: Ref[IO, HeaderGate.Grafting[IO]]): HeaderCheck.Grafting[IO] =
+    new HeaderCheck.Grafting[IO]:
+      def start(intersection: ChainSync.Point): IO[HeaderGate[IO]] = next.get.widen
+      def recording(started: HeaderGate.Grafting[IO] => IO[Unit]): HeaderCheck[IO] =
+        new HeaderCheck[IO]:
+          def start(intersection: ChainSync.Point): IO[HeaderGate[IO]] =
+            next.get.flatTap(started).widen
+
+  private def installOn(
+      next: Ref[IO, HeaderGate.Grafting[IO]],
+      bound: GenesisRuntime.Bound[IO],
+      gate: HeaderGate.Grafting[IO]
+  ): IO[Unit] = next.set(gate) *> bound.headers.start(ChainSync.Point.Origin).void
+
+  private final case class Rig(runtime: GenesisRuntime[IO], next: Ref[IO, HeaderGate.Grafting[IO]]):
+    export runtime.{demoteDynamo, governor, session}
+    def install(bound: GenesisRuntime.Bound[IO], gate: HeaderGate.Grafting[IO]): IO[Unit] =
+      installOn(next, bound, gate)
+
   private def setup(
       settings: GenesisSettings = GenesisSettings(),
       changed: IO[Unit] = IO.unit,
       selected: ChainSelection.Local = local
-  ) =
+  ): IO[Rig] =
     for
       governor <- GenesisGovernor.create[IO](IO.pure(GenesisGovernor.View(empty, 2, _ => Some(8))))
+      next <- Ref.of[IO, HeaderGate.Grafting[IO]](
+        gate(HeaderChain(ChainSync.Point.Origin, None, Vector.empty))
+      )
       runtime <- GenesisRuntime.create[IO](
         governor,
         settings,
         IO.pure(selected),
         IO.pure(geometry),
         IO.pure(BigInt(0)),
-        changed
+        changed,
+        checkOf(next)
       )
-    yield runtime
+    yield Rig(runtime, next)
 
   test("LoP expiry returns to its watcher, permitting a later GSM refill to expire again") {
     TestControl.executeEmbed {
@@ -171,16 +203,18 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
           val rollback = SyncEvent.RollBackward(ChainSync.Point.Origin, tip)
           for
             _ <- runtime.governor.setPhase(Gsm.Phase.Syncing)
-            _ <- bound.control.observed(gate(history), SyncEvent.RollForward(h, tip))
+            _ <- runtime.install(bound, gate(history))
+            _ <- bound.control.observed(SyncEvent.RollForward(h, tip))
             _ <- bound.received(SyncEvent.RollForward(h, tip))
             before <- runtime.governor.revision
             _ <- bound.received(rollback)
             unvalidated <- runtime.governor.revision
             _ <- IO(assertEquals(unvalidated, before))
-            _ <- bound.control.observed(
-              gate(HeaderChain(ChainSync.Point.Origin, None, Vector.empty)),
-              rollback
+            _ <- runtime.install(
+              bound,
+              gate(HeaderChain(ChainSync.Point.Origin, None, Vector.empty))
             )
+            _ <- bound.control.observed(rollback)
             after <- runtime.governor.revision
             _ <- IO(assert(after > before))
           yield ()
@@ -217,8 +251,10 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
             Vector(HeaderChain.Entry(sparse, None))
           )
           for
-            _ <- a.control.observed(gate(history), SyncEvent.RollForward(sparse, tip))
-            _ <- b.control.observed(gate(history), SyncEvent.RollForward(sparse, tip))
+            _ <- runtime.install(a, gate(history))
+            _ <- a.control.observed(SyncEvent.RollForward(sparse, tip))
+            _ <- runtime.install(b, gate(history))
+            _ <- b.control.observed(SyncEvent.RollForward(sparse, tip))
             _ <- a.received(SyncEvent.RollForward(header(9), tip))
             _ <- b.received(SyncEvent.RollForward(header(9), tip))
             _ <- dense.publish(
@@ -245,46 +281,6 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
     }
   }
 
-  test("a Genesis listener without its shared pool reports a typed local invariant") {
-    TestControl.executeEmbed {
-      for
-        failures <- Ref
-          .of[IO, Vector[xyz.kd5ujc.scarab.ledger.GenesisInternalProblem]](Vector.empty)
-        acquired <- Ref.of[IO, Boolean](false)
-        runtime <- setup()
-        _ <- Handle
-          .allow[PeerError](
-            GenesisRuntime
-              .controls(
-                Some(runtime),
-                None,
-                1,
-                None,
-                _ => IO.unit,
-                problem => failures.update(_ :+ problem)
-              )
-              .use(_ => acquired.set(true))
-          )
-          .rescue(error => IO(fail(s"unexpected $error")))
-          .background
-          .use { _ =>
-            for
-              _ <- IO.sleep(1.millis)
-              seen <- failures.get
-              opened <- acquired.get
-              _ <- IO {
-                assertEquals(
-                  seen,
-                  Vector(xyz.kd5ujc.scarab.ledger.GenesisInternalProblem.MissingSharedBlockPool)
-                )
-                assert(!opened)
-              }
-            yield ()
-          }
-      yield ()
-    }
-  }
-
   test("an intersection different from the offered jump is rejected before mutating the gate") {
     TestControl.executeEmbed {
       for
@@ -300,7 +296,7 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
               GenesisPeer.Checkpoint(history, local, ChainSync.Point.Origin)
             )
             bound.control
-              .processJump(info, false, Some(header(1).point), gate(history))
+              .processJump(info, false, Some(header(1).point))
               .background
               .use { _ =>
                 IO.sleep(1.millis) *> failures.get.flatMap { seen =>
@@ -340,7 +336,8 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
           runtime.session(2, ChainSync.Point.Origin, _ => IO.unit, _ => IO.unit)
         ).tupled.use { (first, second) =>
           for
-            _ <- first.control.observed(gate(history, selected), SyncEvent.RollForward(two, tip))
+            _ <- runtime.install(first, gate(history, selected))
+            _ <- first.control.observed(SyncEvent.RollForward(two, tip))
             _ <- first.received(SyncEvent.RollForward(header(3), tip))
             instruction <- second.control.next
             _ <- IO(instruction match
@@ -368,7 +365,7 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
         installed <- Ref.of[IO, HeaderChain[NodeHeaderState]](
           HeaderChain(ChainSync.Point.Origin, None, Vector.empty)
         )
-        target = new HeaderGate[IO]:
+        target = new HeaderGate.Grafting[IO]:
           def accept(batch: Vector[SyncEvent])(using Raise[IO, PeerError]): IO[Unit] = IO.unit
           def counts: IO[HeaderGate.Counts] = IO.pure(HeaderGate.Counts(0, 0, 0))
           override def snapshot(using Applicative[IO]): IO[Option[HeaderChain[NodeHeaderState]]] =
@@ -376,12 +373,10 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
           override def intersectionSelection(using
               Applicative[IO]
           ): IO[Option[ChainSelection.Local]] = IO.pure(Some(local))
-          override def graft(
+          def graft(
               source: HeaderChain[NodeHeaderState],
               point: ChainSync.Point,
               @scala.annotation.unused selected: ChainSelection.Local
-          )(using
-              Applicative[IO]
           ): IO[Either[HeaderCheck.GraftError, Unit]] =
             if source.tipPoint == point then installed.set(source).as(Right(()))
             else IO.pure(Left(HeaderCheck.GraftError.MissingPoint(point)))
@@ -398,13 +393,15 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
         ).tupled.use { (first, second) =>
           for
             _ <- runtime.governor.setPhase(Gsm.Phase.Syncing)
-            _ <- first.control.observed(gate(history), SyncEvent.RollForward(one, tip))
+            _ <- runtime.install(first, gate(history))
+            _ <- first.control.observed(SyncEvent.RollForward(one, tip))
             _ <- first.received(SyncEvent.RollForward(header(2), tip))
             _ <- IO.sleep(1.second)
             instruction <- second.control.next
             _ <- instruction match
               case ChainSyncJumping.Instruction.Jump(info, false) =>
-                second.control.processJump(info, false, Some(info.tip), target).flatMap { result =>
+                (runtime.install(second, target) *>
+                  second.control.processJump(info, false, Some(info.tip))).flatMap { result =>
                   IO(
                     assertEquals(
                       result,
@@ -423,6 +420,46 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
               assertEquals(credited.level, xyz.kd5ujc.scarab.codec.Rational(10))
             }
           yield ()
+        }
+      yield ()
+    }
+  }
+
+  // issue 581: the gate a jump grafts onto is the one the session's check started; a jump before
+  // the session started one is an invariant of that connection, which ends it, not the node
+  test("a jump accepted before the session started a gate is an invariant of its connection") {
+    TestControl.executeEmbed {
+      val one = header(1)
+      val history = HeaderChain[NodeHeaderState](
+        ChainSync.Point.Origin,
+        None,
+        Vector(HeaderChain.Entry(one, None))
+      )
+      val tip = ChainSync.Tip(one.point, ChainSync.UInt64.saturating(1))
+      for
+        problems <- Ref
+          .of[IO, Vector[xyz.kd5ujc.scarab.ledger.GenesisInternalProblem]](Vector.empty)
+        runtime <- setup(GenesisSettings(jumpSlots = 0))
+        _ <- (
+          runtime.session(1, ChainSync.Point.Origin, _ => IO.unit, _ => IO.unit),
+          runtime.session(2, ChainSync.Point.Origin, _ => IO.unit, p => problems.update(_ :+ p))
+        ).tupled.use { (first, second) =>
+          for
+            _ <- runtime.install(first, gate(history))
+            _ <- first.control.observed(SyncEvent.RollForward(one, tip))
+            _ <- first.received(SyncEvent.RollForward(header(2), tip))
+            instruction <- second.control.next
+            info <- instruction match
+              case ChainSyncJumping.Instruction.Jump(info, false) => IO.pure(info)
+              case other => IO.raiseError(new AssertionError(s"expected ordinary jump, got $other"))
+            _ <- second.control.processJump(info, false, Some(info.tip)).background.use { _ =>
+              IO.sleep(1.millis)
+            }
+            seen <- problems.get
+          yield assertEquals(
+            seen,
+            Vector(xyz.kd5ujc.scarab.ledger.GenesisInternalProblem.HeaderStateUnavailable(info.tip))
+          )
         }
       yield ()
     }
@@ -447,8 +484,10 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
           runtime.session(2, ChainSync.Point.Origin, _ => IO.unit, _ => IO.unit)
         ).tupled.use { (first, second) =>
           for
-            _ <- first.control.observed(gate(history), SyncEvent.RollForward(three, tip))
-            _ <- second.control.observed(gate(history), SyncEvent.RollForward(three, tip))
+            _ <- runtime.install(first, gate(history))
+            _ <- first.control.observed(SyncEvent.RollForward(three, tip))
+            _ <- runtime.install(second, gate(history))
+            _ <- second.control.observed(SyncEvent.RollForward(three, tip))
             _ <- first.received(SyncEvent.RollForward(header(4), tip))
             instruction <- second.control.next
             _ <- IO(instruction match
@@ -507,24 +546,25 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
           governor <- GenesisGovernor.create[IO](
             IO.pure(GenesisGovernor.View(empty, 2, _ => Some(8)))
           )
+          next <- Ref.of[IO, HeaderGate.Grafting[IO]](gate(atOne, selectedAtOne))
           runtime <- GenesisRuntime.create[IO](
             governor,
             GenesisSettings(enableCSJ = csjEnabled),
             IO.pure(selectedAtOne),
             IO.pure(geometry),
             IO.pure(arrival),
-            IO.unit
+            IO.unit,
+            checkOf(next)
           )
           _ <- runtime
             .session(1, ChainSync.Point.Origin, e => failures.update(_ :+ e), _ => IO.unit)
             .use { bound =>
               for
-                _ <- bound.control.restarted(one.point, gate(atOne, selectedAtOne))
+                _ <- installOn(next, bound, gate(atOne, selectedAtOne))
+                _ <- bound.control.restarted(one.point)
                 request <- bound.observer.capture
-                _ <- bound.control.observed(
-                  gate(atTwo, selectedAtOne),
-                  SyncEvent.RollForward(two, tip)
-                )
+                _ <- installOn(next, bound, gate(atTwo, selectedAtOne))
+                _ <- bound.control.observed(SyncEvent.RollForward(two, tip))
                 _ <- bound.control.nextAfterReply
                 _ <- request.awaitReply.background.use { _ =>
                   IO.sleep(1.millis) *> failures.get.flatMap { seen =>
@@ -575,8 +615,8 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
             .allow[PeerError](
               GenesisRuntime
                 .controls(
-                  Some(runtime),
-                  Some(pool),
+                  Some(runtime.runtime),
+                  pool,
                   1,
                   metadata,
                   _ => IO.unit,
@@ -593,10 +633,10 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
       }
     }
 
-  test("an invariant of one connection ends it, uncharged; one of the node's wiring stops it") {
+  test("an invariant of the Genesis code ends its connection, uncharged") {
     import xyz.kd5ujc.scarab.ledger.GenesisInternalProblem as Problem
     val point = ChainSync.Point.Origin
-    val ofConnection = List(
+    List(
       Problem.MissingConnectionIdentity,
       Problem.MissingDynamoJumpInfo,
       Problem.UnexpectedIntersection,
@@ -604,15 +644,10 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
       Problem.HeaderTimeUnavailable(point),
       Problem.HeaderSelectionUnavailable(point),
       Problem.HeaderStateUnavailable(point)
+    ).foreach(problem =>
+      assertEquals(
+        FailurePolicy.classify(PeerError.GenesisInvariant(problem)),
+        FailureClass.NotThePeers
+      )
     )
-    ofConnection.foreach { problem =>
-      GenesisRuntime.ending(problem) match
-        case Right(error @ PeerError.GenesisInvariant(found)) =>
-          assertEquals(found, problem)
-          assertEquals(FailurePolicy.classify(error), FailureClass.NotThePeers)
-        case other => fail(s"unexpected $other for $problem")
-    }
-    List(Problem.MissingSharedBlockPool, Problem.UnsupportedHeaderFamily).foreach { problem =>
-      assertEquals(GenesisRuntime.ending(problem), Left(Fatal.Internal(problem)))
-    }
   }

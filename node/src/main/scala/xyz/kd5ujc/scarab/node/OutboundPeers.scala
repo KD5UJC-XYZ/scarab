@@ -64,7 +64,8 @@ final class OutboundPeers[F[_]: Async, A] private (
     liveSources: Ref[F, Map[BigInt, PeerError => F[Unit]]],
     sourceLock: Mutex[F],
     handles: Ref[F, Map[A, PeerStateActions.Connection[F]]],
-    connectionCounter: Ref[F, BigInt]
+    connectionCounter: Ref[F, BigInt],
+    beforeObservation: Option[F[Unit]]
 ) extends PeerStateActions[F, A],
       PeerStateActions.Connections[F, A]:
   import OutboundPeers.*
@@ -276,15 +277,6 @@ final class OutboundPeers[F[_]: Async, A] private (
   private def publish(link: Link[F], end: SessionEnd): F[Unit] =
     link.terminal.complete(end).void *> link.warm.applications.notifyChange
 
-  private def stop(link: Link[F], fatal: Fatal): F[Unit] =
-    val end = fatal match
-      case Fatal.Unavailable(error)  => SessionEnd.Unavailable(error)
-      case Fatal.Storage(error)      => SessionEnd.Storage(error)
-      case Fatal.Internal(error)     => SessionEnd.Internal(error)
-      case Fatal.Defect(cause)       => SessionEnd.Defect(cause)
-      case Fatal.Unverifiable(error) => SessionEnd.Unverifiable(error)
-    publish(link, end)
-
   /** One job outside both the bearer and the hot session: PeerStateActions.hs:662–776,838–848 at
     * ouroboros-network 2fb69829. The loop observes retained application results, handles a clean
     * hot return by deactivation, and waits for manager release before Cooling becomes Cold.
@@ -341,6 +333,7 @@ final class OutboundPeers[F[_]: Async, A] private (
 
     val loop = F.tailRecM(()) { _ =>
       for
+        _ <- beforeObservation.sequence_
         observed <- link.transition(
           (link.warm.applications.snapshot, link.terminal.tryGet, link.phase.get).tupled
         )
@@ -642,14 +635,13 @@ final class OutboundPeers[F[_]: Async, A] private (
           .use { (connection, sourceKey) =>
             val abort: PeerError => F[Unit] = error =>
               connection.mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
-            // an invariant of the Genesis code met on this connection ends it, or the node for its
-            // own wiring ([[GenesisRuntime.ending]])
+            // an invariant of the Genesis code met on this connection ends it, uncharged
             val invariant: GenesisInternalProblem => F[Unit] =
-              problem => GenesisRuntime.ending(problem).fold(stop(link, _), abort)
+              problem => abort(PeerError.GenesisInvariant(problem))
             GenesisRuntime
               .controls(
                 hot.genesis,
-                Some(hot.pool),
+                hot.pool,
                 peer.hashCode.toLong,
                 connection.mux.connectionId,
                 abort,
@@ -662,10 +654,8 @@ final class OutboundPeers[F[_]: Async, A] private (
                     hot.peer,
                     hot.prepare,
                     hot.heightSnapshot,
-                    hot.headers.map(check =>
-                      genesis
-                        .fold(check)(bound => check.withPatience(bound.patience))
-                        .withInvariant(invariant)
+                    genesis.fold(hot.headers.map(_.withInvariant(invariant)))(bound =>
+                      Some(bound.headers)
                     ),
                     Some(metered(peer)),
                     Some(hot.pool),
@@ -1137,6 +1127,12 @@ object OutboundPeers:
         Deferred[F, ProtocolResults.Run[F, SessionEnd]]
       ).mapN(new Session[F](_, _, _, _, _))
 
+  /** The outbound connections of the node.
+    *
+    * @param beforeObservation
+    *   run by each connection's monitor before it observes the connection's applications: a test
+    *   seam for a monitor that fails (issue 579); the node passes none
+    */
   def create[F[_]: Async, A](
       transport: Transport[F, A],
       manager: ConnectionManager[F],
@@ -1145,7 +1141,8 @@ object OutboundPeers:
       supervisor: Supervisor[F],
       report: Event[A] => F[Unit],
       metrics: Stateful[F, PeerMetrics[A]],
-      connected: Option[(A, SocketAddress[IpAddress]) => F[Unit]] = None
+      connected: Option[(A, SocketAddress[IpAddress]) => F[Unit]] = None,
+      beforeObservation: Option[F[Unit]] = None
   )(using node: Handle[F, NodeError]): F[OutboundPeers[F, A]] =
     (
       Ref.of[F, Map[A, Link[F]]](Map.empty),
@@ -1170,6 +1167,7 @@ object OutboundPeers:
         sources,
         lock,
         handles,
-        connections
+        connections,
+        beforeObservation
       )
     }

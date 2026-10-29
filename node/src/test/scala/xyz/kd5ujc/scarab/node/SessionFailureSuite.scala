@@ -465,7 +465,9 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  test("a provider defect on a header disconnects the peer: recorded nowhere, tried again later") {
+  test(
+    "a provider defect on a header disconnects the peer, uncharged: recorded nowhere, again later"
+  ) {
     val held = VerificationDefect(
       headers(2).point,
       VerificationDefect.Site.Header,
@@ -477,6 +479,10 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     session(script = script).map { left =>
       assertEquals(left.end, SessionEnd.Failed(PeerError.Unverifiable(held)))
       assertEquals(FailurePolicy.disposition(left.end), Disposition.Backoff)
+      assertEquals(
+        FailurePolicy.classify(PeerError.Unverifiable(held)),
+        xyz.kd5ujc.scarab.network.selection.FailureClass.NotThePeers
+      )
       assertEquals(left.invalid, Set.empty[Bytes])
     }
   }

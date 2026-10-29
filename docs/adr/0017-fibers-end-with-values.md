@@ -329,7 +329,7 @@ Still stopping the node, decided separately (issue 567):
 - the block path in the selection worker: ~~an exception of the rules,~~ an exception of a commit (`Fatal.Defect`),
   ~~`Unavailable`, `Unverifiable`,~~ `Internal` ([superseded in part](#amendment-2026-10-28-no-verdict-on-a-block-a-held-transaction-or-our-own-block-does-not-stop-the-node));
 - a defect the node publishes to a session (`SessionEnd.Defect`);
-- a connection's monitor whose recovery fails after the monitor failed (`lost`, then `Fatal.Defect`; issue 579 tracks its test);
+- a connection's monitor whose recovery fails after the monitor failed (`lost`, then `Fatal.Defect`; ~~issue 579 tracks its test~~ [tested](#amendment-2026-10-29-the-outbound-connection-monitors-failure-is-tested));
 - ~~the mempool's revalidation and forging;~~ ([superseded](#amendment-2026-10-28-no-verdict-on-a-block-a-held-transaction-or-our-own-block-does-not-stop-the-node))
 - a defect in releasing a connection's resources (`ConnectionResources`);
 - an internal failure of the node's state (`InternalFailure`, `StateAcquireFailure`).
@@ -345,15 +345,15 @@ peer is not charged and the node goes on, as `ourBug` is `ShutdownPeer` in the r
 A judgement of the peer's chain is unchanged: GDD and LoP disconnect as
 `PeerError.Genesis`, the reference's `ChainSyncClientException` (`theyBuggyOrEvil`).
 
-- `GenesisRuntime.ending` says which: an invariant met in a fiber of the connection aborts that connection; one met
+- ~~`GenesisRuntime.ending` says which:~~ ([amended](#amendment-2026-10-29-the-genesis-nodes-wiring-is-fixed-when-it-is-built)) an invariant met in a fiber of the connection aborts that connection; one met
   while the controls are acquired (the connection's identity) is raised to the session in its own fiber. The header
   gate tells its invariants to the connection's channel (`HeaderCheck.withInvariant`), not to the node-wide one.
-  The fiber that met an invariant waits until the connection's teardown cancels it; issue 583 tracks a test of that
-  for both directions.
-- The node's own wiring still stops the node (`Fatal.Internal`): a Genesis node without the shared block pool
+  The fiber that met an invariant waits until the connection's teardown cancels it; ~~issue 583 tracks a test of that
+  for both directions.~~ ([tested](#amendment-2026-10-29-the-teardown-after-a-genesis-invariant-is-tested))
+- ~~The node's own wiring still stops the node (`Fatal.Internal`): a Genesis node without the shared block pool
   (`MissingSharedBlockPool`) or with a header gate that cannot graft (`UnsupportedHeaderFamily`). Every connection
   would fail alike, and the reference's types refuse both when the node is built; issue 581 tracks refusing them at
-  startup.
+  startup.~~ ([amended](#amendment-2026-10-29-the-genesis-nodes-wiring-is-fixed-when-it-is-built))
 
 ## Amendment (2026-10-28): no verdict on a block, a held transaction or our own block does not stop the node
 
@@ -384,10 +384,99 @@ does the mempool's tick to a new tip, which runs after the commit point, as the 
 linked to the node.
 
 Not yet covered, tracked in issue 584:
-- a header whose state is out of range still stops the node (`SessionEnd.of`, `StateFaultInHeader`);
-- a crypto provider that fails on a header charges the peer (`PeerError.Unverifiable` is `Transient`);
-- on our own block, a state out of range or an exception of the rules still stops the node (`Follower.adoptForged`);
-- the forger's tick whose state is out of range still stops the node (`Forger.tickFault`).
+- ~~a header whose state is out of range still stops the node (`SessionEnd.of`, `StateFaultInHeader`);~~
+  ([superseded](#amendment-2026-10-29-a-headers-state-out-of-range-is-an-invariant-not-a-peers-path))
+- ~~a crypto provider that fails on a header charges the peer (`PeerError.Unverifiable` is `Transient`);~~
+  ([superseded](#amendment-2026-10-28-no-verdict-on-our-own-block-or-the-forgers-tick-and-a-provider-failing-on-a-header))
+- ~~on our own block, a state out of range or an exception of the rules still stops the node (`Follower.adoptForged`);~~
+  ([superseded](#amendment-2026-10-28-no-verdict-on-our-own-block-or-the-forgers-tick-and-a-provider-failing-on-a-header))
+- ~~the forger's tick whose state is out of range still stops the node (`Forger.tickFault`).~~
+  ([superseded](#amendment-2026-10-28-no-verdict-on-our-own-block-or-the-forgers-tick-and-a-provider-failing-on-a-header))
+
+## Amendment (2026-10-28): no verdict on our own block or the forger's tick, and a provider failing on a header
+
+The owner decision of the amendment above, applied to three paths it left open (issue 584):
+- **Our own block.** `Follower.adoptForged` judges it with the follower's judgement of a block (`Follower.judge`): every
+  no-verdict outcome (the evaluator, a crypto provider, a state out of range, an exception of the rules) is
+  `Adoption.NoVerdict`, reported as `Chain.BlockNoVerdict`, and the forger handles it as a refusal: the block's
+  transactions leave the pool and the slot ends without a block.
+- **Building our own block.** A held transaction the node has no verdict on when the block's transactions are applied
+  again (`BlockBuilder.select`: the evaluator, a crypto provider, a state out of range) is withheld: it leaves the
+  pool with its reason (`Mempool.withdraw`, `Dropped`) and the block is built from the rest. The reference has no such
+  case: the exception ends its linked forging thread and the node stops (ouroboros-consensus `82ecba32`
+  `NodeKernel.hs` `forkBlockForging`; `compactCoinOrError`, cardano-ledger `f649f975` `Coin.hs` 184-188). This is an
+  owner-approved deviation (2026-10-28, issue 584).
+- **The forger's tick.** A tick of the tip's state whose state is out of range leaves the ledger view of the slot
+  unavailable, as any other tick failure (`ForgeError.LedgerViewUnavailable`): the slot ends, and the node goes on.
+- **A crypto provider failing on a header.** The connection still closes in both directions, but nothing is counted
+  against the peer (`FailureClass.NotThePeers`); the reference charges the error delay, and the uncharged end is the
+  owner-approved deviation of the amendment
+  [an exception of a connection's own work ends that connection](#amendment-2026-10-28-an-exception-of-a-connections-own-work-ends-that-connection).
+
+~~A header whose state is out of range still stops the node; issue 584 tracks it, as its values come from the genesis,
+which the reference refuses when it reads it.~~ ([superseded](#amendment-2026-10-29-a-headers-state-out-of-range-is-an-invariant-not-a-peers-path)) A crypto provider failing on the forging keys' own VRF proof
+(`HotKeys.infrastructureFailure`) stops the node, as the reference's forging thread does; that is the reference's
+behaviour, not a gap.
+
+## Amendment (2026-10-29): the Genesis node's wiring is fixed when it is built
+
+Issue 581. The two invariants of the Genesis code that were the node's own wiring, not one connection's, cannot be
+met any more: as in the reference, whose types fix both when the node is assembled, they cannot be written.
+- **The shared block pool.** `GenesisRuntime.controls` takes the pool, not an option of it; both directions always
+  had one. The `MissingSharedBlockPool` case is gone.
+- **A header gate that can graft.** Only a gate of the node's own header check can take a jump's headers
+  (`HeaderGate.Grafting`, `HeaderCheck.Grafting`, made by `HeaderCheck.forNodeChain`); `HeaderGate` no longer has
+  `graft`, and `GraftError`'s `Unsupported` case and the `UnsupportedHeaderFamily` case are gone. A
+  Genesis runtime is built with that check (`GenesisRuntime.create`), and each connection's session uses the check its
+  controls hand it (`GenesisRuntime.Bound.headers`), which keeps the gate it starts. `GenesisPeer` uses that gate, not
+  one passed in by the session. A jump accepted before the session started a gate is an invariant of that connection
+  (`HeaderStateUnavailable`), which ends it, uncharged.
+
+Every remaining `GenesisInternalProblem` is of one connection, so `GenesisRuntime.ending` is gone: an invariant ends its
+connection as `PeerError.GenesisInvariant`. The clock that holds a session's headers to the node's time
+(`HeaderClock.clocked`) now passes a connection's invariant channel on to the check it wraps; it did not, so an
+invariant met by the header gate of a production session was told to the node-wide channel and stopped the node,
+against the amendment above.
+
+## Amendment (2026-10-29): the teardown after a Genesis invariant is tested
+
+Issue 583. The fiber that meets an invariant of the Genesis code on one connection tells the connection's channel and
+waits in `never`; the connection's teardown cancels it. A test in each direction meets a header gate's invariant on a
+live session and checks the whole path: the connection ends with `PeerError.GenesisInvariant`, nothing is counted
+against the peer (`NotThePeers`), nothing reaches the node's fatal sink or its node-wide invariant channel, and the
+waiting fiber is cancelled.
+- outbound: `OutboundGenesisInvariantSuite`, with the check held to the node's clock as in the node (`HeaderClock.grafting`);
+  the hot session lives under the connection's own supervisor, which the connection's release ends;
+- inbound: `InboundGovernorSuite`, the session being a `background` resource of the connection.
+
+The teardown needed no change.
+
+## Amendment (2026-10-29): a header's state out of range is an invariant, not a peer's path
+
+The first item that issue 584 tracks is no path a peer can reach. The only values of the header path that can fall
+outside their implementation type are those of the Byron to Shelley hand-over of the header forecast
+(`NodeHeaderRules`): the first Shelley epoch, converted to an `EpochNo`, and the keys of the genesis delegations,
+converted to key hashes. The reference's forecast is total over its typed translation context (`mkInitialShelleyForecast`,
+cardano-ledger `f649f975` `TPraos/API.hs` 656-668), and neither value can fail in Scarab:
+- the genesis delegations' keys are 28-byte hashes once the Shelley genesis is read (`GenesisSchema`);
+- a configured first epoch (`TestShelleyHardForkAtEpoch`) is a `Word64` once the configuration is read, as the
+  reference's `Maybe EpochNo` (cardano-node `11.1.3` `Configuration/POM.hs` 670, `Types.hs` 301); a value out of range is
+  refused at startup with `ConfigProblem.ConfigNumber`;
+- the hand-over is entered only for a header whose epoch, of a `Word64` slot, is at least the first Shelley epoch
+  (`NodeRules.entry`), whether the configuration or the Byron ledger's update state names it.
+
+`SessionEnd`'s `StateFaultInHeader` therefore stays as an invariant of the node: were it met, the node's own state
+would be at fault, and the node stops (`SessionEnd.Internal`). The stricter configuration reading is the reference's,
+and there is no deviation from the reference.
+
+## Amendment (2026-10-29): the outbound connection monitor's failure is tested
+
+Issue 579. Both branches of `OutboundPeers.peerMonitoringLoop`'s fallback are tested (`OutboundMonitorFailureSuite`), with
+an exception injected where the monitor observes the connection's applications (`OutboundPeers.create`'s
+`beforeObservation`, a test seam the node does not use):
+- a monitor that throws ends its own connection: the connection is released, the governor sees `PeerError.ConnectionDefect`
+  with the cause, `NotThePeers`, nothing reaches the fatal sink, and the same peer is connected to and promoted again;
+- a recovery that throws again stops the node with `Fatal.Defect` of the second exception, as listed above.
 
 ## Amendment (2026-10-29): a session never adopts a block
 

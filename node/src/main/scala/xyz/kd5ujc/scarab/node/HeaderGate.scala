@@ -46,15 +46,46 @@ trait HeaderGate[F[_]]:
 
   def intersectionSelection(using F: Applicative[F]): F[Option[ChainSelection.Local]] = F.pure(None)
 
-  def graft(
-      @scala.annotation.unused snapshot: HeaderChain[NodeHeaderState],
-      @scala.annotation.unused point: ChainSync.Point,
-      @scala.annotation.unused selection: ChainSelection.Local
-  )(using
-      F: Applicative[F]
-  ): F[Either[HeaderCheck.GraftError, Unit]] = F.pure(Left(HeaderCheck.GraftError.Unsupported))
-
 object HeaderGate:
+  /** A gate that can take the validated headers of a Genesis jump as its own (`graft`): a gate of
+    * the node's own header check ([[HeaderCheck.forNodeChain]]), which is what a Genesis node is
+    * built with ([[HeaderCheck.Grafting]]).
+    */
+  trait Grafting[F[_]] extends HeaderGate[F]:
+    def graft(
+        snapshot: HeaderChain[NodeHeaderState],
+        point: ChainSync.Point,
+        selection: ChainSelection.Local
+    ): F[Either[HeaderCheck.GraftError, Unit]]
+
+  /** A gate that forwards everything to `inner`: the base of a gate that adds to it. */
+  private[node] abstract class Forwarding[F[_]](inner: HeaderGate[F]) extends HeaderGate[F]:
+    def accept(batch: Vector[SyncEvent])(using Raise[F, PeerError]): F[Unit] = inner.accept(batch)
+
+    override def acceptOrRestart(
+        batch: Vector[SyncEvent]
+    )(using Raise[F, PeerError], cats.Functor[F]): F[HeaderGate.Acceptance] =
+      inner.acceptOrRestart(batch)
+
+    override def forecastTime(header: Header)(using
+        Applicative[F]
+    ): F[Option[HeaderGate.TimeForecast]] = inner.forecastTime(header)
+
+    override def canonicalTiming: Boolean = inner.canonicalTiming
+
+    override def prepareHeader(header: Header)(using
+        Applicative[F],
+        Raise[F, PeerError]
+    ): F[HeaderGate.Acceptance] = inner.prepareHeader(header)
+
+    def counts: F[HeaderGate.Counts] = inner.counts
+
+    override def snapshot(using Applicative[F]): F[Option[HeaderChain[NodeHeaderState]]] =
+      inner.snapshot
+
+    override def intersectionSelection(using Applicative[F]): F[Option[ChainSelection.Local]] =
+      inner.intersectionSelection
+
   enum TimeForecast:
     case Known(onsetPicos: BigInt)
     case Invalid(error: xyz.kd5ujc.scarab.ledger.HeaderError)
@@ -120,7 +151,6 @@ object HeaderCheck:
     case End(point: ChainSync.Point)
 
   enum GraftError:
-    case Unsupported
     case MissingPoint(point: ChainSync.Point)
     case MissingSelection(point: ChainSync.Point)
     case MissingState(point: ChainSync.Point)
@@ -152,25 +182,30 @@ object HeaderCheck:
       Stateful[F, VolatileChain[S]],
       Ask[F, ChainSelection.Local],
       Tell[F, GenesisInternalProblem]
-  ): HeaderCheck[F] =
-    forChain(
-      rules,
-      compute,
-      warm = warm,
-      stall = stall,
-      poll = poll,
-      retained = retained,
-      observe = observe,
-      added = added,
-      stateWitness = Some(summon[NodeHeaderState =:= NodeHeaderState]),
-      canonical = Some(
-        Canonical(
-          rules,
-          Ask[F, ChainSelection.Local].ask,
-          problem => Tell[F, GenesisInternalProblem].tell(problem),
-          changes
+  ): Grafting[F] =
+    NodeChain(
+      ChainCheck(
+        rules,
+        compute,
+        warm,
+        stall,
+        poll,
+        retained,
+        observe,
+        added,
+        None,
+        None,
+        Some(summon[NodeHeaderState =:= NodeHeaderState]),
+        Some(
+          Canonical(
+            rules,
+            Ask[F, ChainSelection.Local].ask,
+            problem => Tell[F, GenesisInternalProblem].tell(problem),
+            changes
+          )
         )
-      )
+      ),
+      _ => Async[F].unit
     )
 
   /** Canonical Genesis sessions use the same header rules and forecast as Praos sessions. */
@@ -188,7 +223,7 @@ object HeaderCheck:
       Stateful[F, VolatileChain[S]],
       Ask[F, ChainSelection.Local],
       Tell[F, GenesisInternalProblem]
-  ): HeaderCheck[F] =
+  ): Grafting[F] =
     forNodeChain(rules, compute, retained, stall, poll, warm, observe, added, changes)
 
   /** Header-first validation against the node's own chain.
@@ -219,8 +254,93 @@ object HeaderCheck:
       stateWitness: Option[H =:= NodeHeaderState] = None,
       canonical: Option[Canonical[F, S, H]] = None
   )(using
+      Stateful[F, VolatileChain[S]]
+  ): HeaderCheck[F] =
+    ChainCheck(
+      rules,
+      compute,
+      warm,
+      stall,
+      poll,
+      retained,
+      observe,
+      added,
+      patience,
+      publication,
+      stateWitness,
+      canonical
+    )
+
+  /** A check that can graft ([[HeaderGate.Grafting]]): the node's own ([[forNodeChain]]), which a
+    * Genesis node is built with, so that every gate of a Genesis session can take a jump's headers.
+    */
+  trait Grafting[F[_]] extends HeaderCheck[F]:
+    /** This check with `started` told every gate it starts, by `start` or by a captured start, as
+      * the gate that grafts. Patience, invariants and observers are added after it, so that they
+      * apply to the gates `started` is told of.
+      */
+    def recording(started: HeaderGate.Grafting[F] => F[Unit]): HeaderCheck[F]
+
+  /** The grafting front of [[forNodeChain]]: each gate of `inner` grafts, and `started` is told it.
+    */
+  private final class NodeChain[F[_]: Async, S](
+      inner: ChainCheck[F, S, NodeHeaderState],
+      started: HeaderGate.Grafting[F] => F[Unit]
+  ) extends Grafting[F]:
+    private def front(gate: ChainGate[F, NodeHeaderState]): F[HeaderGate[F]] =
+      val grafting = new HeaderGate.Forwarding[F](gate) with HeaderGate.Grafting[F]:
+        def graft(
+            snapshot: HeaderChain[NodeHeaderState],
+            point: ChainSync.Point,
+            selection: ChainSelection.Local
+        ): F[Either[GraftError, Unit]] =
+          gate.graftWith(summon[NodeHeaderState =:= NodeHeaderState])(snapshot, point, selection)
+      started(grafting).as(grafting)
+
+    def start(intersection: ChainSync.Point): F[HeaderGate[F]] =
+      inner.startGate(intersection).flatMap(front)
+
+    override def capture(using Applicative[F]): F[Option[Captured[F]]] = inner.captureWith(front)
+
+    override def withPatience(patience: LimitOnPatience[F]): NodeChain[F, S] =
+      NodeChain(inner.withPatience(patience), started)
+
+    override def withInvariant(invariant: GenesisInternalProblem => F[Unit]): NodeChain[F, S] =
+      NodeChain(inner.withInvariant(invariant), started)
+
+    override def observed(observer: Event => F[Unit]): NodeChain[F, S] =
+      NodeChain(inner.observed(observer), started)
+
+    def recording(hook: HeaderGate.Grafting[F] => F[Unit]): NodeChain[F, S] =
+      NodeChain(inner, gate => started(gate) *> hook(gate))
+
+  /** A gate of [[forChain]]. It grafts once its caller knows that its header state is the node's
+    * ([[NodeChain]]); a check of another state has nothing to graft.
+    */
+  private trait ChainGate[F[_], H] extends HeaderGate[F]:
+    def graftWith(equality: H =:= NodeHeaderState)(
+        snapshot: HeaderChain[NodeHeaderState],
+        point: ChainSync.Point,
+        selection: ChainSelection.Local
+    ): F[Either[GraftError, Unit]]
+
+  /** [[forChain]]'s check, whose gates are [[ChainGate]]s. */
+  private final class ChainCheck[F[_]: Async, S, H](
+      rules: HeaderRules[S, H],
+      compute: Compute[F],
+      warm: Option[(Vector[Header], H) => F[Unit]],
+      stall: FiniteDuration,
+      poll: FiniteDuration,
+      retained: Int,
+      observe: Option[HeaderGate.Counts => F[Unit]],
+      added: Option[HeaderGate.Counts => F[Unit]],
+      patience: Option[LimitOnPatience[F]],
+      publication: Option[Event => F[Unit]],
+      stateWitness: Option[H =:= NodeHeaderState],
+      canonical: Option[Canonical[F, S, H]]
+  )(using
       chain: Stateful[F, VolatileChain[S]]
-  ): HeaderCheck[F] = new HeaderCheck[F]:
+  ) extends HeaderCheck[F]:
     private val F = Async[F]
     private val timing = canonical.map(_.timing)
 
@@ -254,8 +374,8 @@ object HeaderCheck:
         }
       }
 
-    override def withPatience(value: LimitOnPatience[F]): HeaderCheck[F] =
-      forChain(
+    override def withPatience(value: LimitOnPatience[F]): ChainCheck[F, S, H] =
+      ChainCheck(
         rules,
         compute,
         warm,
@@ -270,8 +390,8 @@ object HeaderCheck:
         canonical
       )
 
-    override def withInvariant(invariant: GenesisInternalProblem => F[Unit]): HeaderCheck[F] =
-      forChain(
+    override def withInvariant(invariant: GenesisInternalProblem => F[Unit]): ChainCheck[F, S, H] =
+      ChainCheck(
         rules,
         compute,
         warm,
@@ -286,8 +406,8 @@ object HeaderCheck:
         canonical.map(_.copy(invariant = invariant))
       )
 
-    override def observed(observer: Event => F[Unit]): HeaderCheck[F] =
-      forChain(
+    override def observed(observer: Event => F[Unit]): ChainCheck[F, S, H] =
+      ChainCheck(
         rules,
         compute,
         warm,
@@ -303,12 +423,16 @@ object HeaderCheck:
       )
 
     override def capture(using Applicative[F]): F[Option[Captured[F]]] =
+      captureWith(gate => F.pure[HeaderGate[F]](gate))
+
+    /** [[capture]], each gate started from it given to `front`. */
+    def captureWith(front: ChainGate[F, H] => F[HeaderGate[F]]): F[Option[Captured[F]]] =
       canonical.traverse(_ =>
         coherentCurrent.map { pair =>
           val current = pair._1
           Captured(
             current.blocks.reverse.map(_._1.point) :+ current.anchor.point,
-            point => startAt(pair, point),
+            point => startAt(pair, point).flatMap(front),
             (current.anchor.block.toVector ++ current.blocks.map(_._1))
               .map(block => block.point -> Option(block.blockNo))
               .toMap
@@ -317,13 +441,15 @@ object HeaderCheck:
         }
       )
 
-    def start(intersection: ChainSync.Point): F[HeaderGate[F]] =
+    def start(intersection: ChainSync.Point): F[HeaderGate[F]] = startGate(intersection).widen
+
+    def startGate(intersection: ChainSync.Point): F[ChainGate[F, H]] =
       coherentCurrent.flatMap(pair => startAt(pair, intersection))
 
     private def startAt(
         pair: (VolatileChain[S], Option[ChainSelection.Local]),
         intersection: ChainSync.Point
-    ): F[HeaderGate[F]] =
+    ): F[ChainGate[F, H]] =
       val (current, selected) = pair
       for
         based <- F.pure(current.rollback(intersection).toOption)
@@ -385,8 +511,8 @@ object HeaderCheck:
         released: Ref[F, Int],
         prepared: Ref[F, Option[(Header, ChainSync.Point, () => Outcome[H])]],
         knownSelection: Ref[F, Option[ChainSelection.Local]]
-    ): HeaderGate[F] =
-      new HeaderGate[F]:
+    ): ChainGate[F, H] =
+      new ChainGate[F, H]:
         def counts = tally.get
 
         private def sparse(
@@ -516,58 +642,52 @@ object HeaderCheck:
         override def intersectionSelection(using Applicative[F]): F[Option[ChainSelection.Local]] =
           knownSelection.get
 
-        override def graft(
+        def graftWith(equality: H =:= NodeHeaderState)(
             snapshot: HeaderChain[NodeHeaderState],
             point: ChainSync.Point,
             selection: ChainSelection.Local
-        )(using
-            Applicative[F]
         ): F[Either[GraftError, Unit]] =
-          stateWitness match
-            case None => F.pure(Left(GraftError.Unsupported))
-            case Some(equality) =>
-              snapshot.rollback(point) match
-                case None => F.pure(Left(GraftError.MissingPoint(point)))
-                case Some(prefix) if prefix.baseState.isEmpty =>
-                  F.pure(Left(GraftError.MissingState(prefix.base)))
-                case Some(prefix) if prefix.prefix.exists(_.state.isEmpty) =>
-                  F.pure(
-                    Left(
-                      GraftError.MissingState(
-                        prefix.prefix.find(_.state.isEmpty).fold(prefix.base)(_.point)
-                      )
-                    )
+          snapshot.rollback(point) match
+            case None => F.pure(Left(GraftError.MissingPoint(point)))
+            case Some(prefix) if prefix.baseState.isEmpty =>
+              F.pure(Left(GraftError.MissingState(prefix.base)))
+            case Some(prefix) if prefix.prefix.exists(_.state.isEmpty) =>
+              F.pure(
+                Left(
+                  GraftError.MissingState(
+                    prefix.prefix.find(_.state.isEmpty).fold(prefix.base)(_.point)
                   )
-                case Some(prefix) if prefix.entries.exists(_.state.isEmpty) =>
-                  F.pure(
-                    Left(
-                      GraftError.MissingState(
-                        prefix.entries.find(_.state.isEmpty).fold(prefix.base)(_.header.point)
-                      )
-                    )
+                )
+              )
+            case Some(prefix) if prefix.entries.exists(_.state.isEmpty) =>
+              F.pure(
+                Left(
+                  GraftError.MissingState(
+                    prefix.entries.find(_.state.isEmpty).fold(prefix.base)(_.header.point)
                   )
-                case Some(prefix)
-                    if prefix.base != ChainSync.Point.Origin && prefix.baseView.isEmpty =>
-                  F.pure(Left(GraftError.MissingSelection(prefix.base)))
-                case Some(prefix)
-                    if prefix.prefix
-                      .exists(k => k.point != ChainSync.Point.Origin && k.view.isEmpty) =>
-                  F.pure(
-                    Left(
-                      GraftError.MissingSelection(
-                        prefix.prefix
-                          .find(k => k.point != ChainSync.Point.Origin && k.view.isEmpty)
-                          .fold(prefix.base)(_.point)
-                      )
-                    )
+                )
+              )
+            case Some(prefix) if prefix.base != ChainSync.Point.Origin && prefix.baseView.isEmpty =>
+              F.pure(Left(GraftError.MissingSelection(prefix.base)))
+            case Some(prefix)
+                if prefix.prefix
+                  .exists(k => k.point != ChainSync.Point.Origin && k.view.isEmpty) =>
+              F.pure(
+                Left(
+                  GraftError.MissingSelection(
+                    prefix.prefix
+                      .find(k => k.point != ChainSync.Point.Origin && k.view.isEmpty)
+                      .fold(prefix.base)(_.point)
                   )
-                case Some(prefix) =>
-                  val restored = prefix.map(equality.flip)
-                  F.uncancelable(_ =>
-                    state.set(restored) *> knownSelection.set(Some(selection)) *> prepared.set(
-                      None
-                    ) *> released.set(restored.entries.size)
-                  ).as(Right(()))
+                )
+              )
+            case Some(prefix) =>
+              val restored = prefix.map(equality.flip)
+              F.uncancelable(_ =>
+                state.set(restored) *> knownSelection.set(Some(selection)) *> prepared.set(
+                  None
+                ) *> released.set(restored.entries.size)
+              ).as(Right(()))
 
         def accept(batch: Vector[SyncEvent])(using Raise[F, PeerError]): F[Unit] =
           Handle.allow[Reintersection](acceptChecked(batch)).rescue {

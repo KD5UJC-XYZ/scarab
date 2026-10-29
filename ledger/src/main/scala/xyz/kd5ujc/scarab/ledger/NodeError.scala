@@ -261,7 +261,7 @@ enum ClockProblem extends NodeError:
 
 enum GenesisInternalProblem extends NodeError:
   case PatienceWatcherFailed(cause: NetworkError)
-  case MissingSharedBlockPool, UnsupportedHeaderFamily, MissingConnectionIdentity
+  case MissingConnectionIdentity
   case InvalidConnectionIdentity(cause: xyz.kd5ujc.scarab.protocol.ConnectionIdentityError)
   case MissingDynamoJumpInfo, UnexpectedIntersection
   case GraftMissingPoint(point: ChainSync.Point)
@@ -273,9 +273,6 @@ enum GenesisInternalProblem extends NodeError:
     case MissingDynamoJumpInfo        => "Genesis dynamo has no validated jump snapshot"
     case UnexpectedIntersection =>
       "Genesis jumper with a settled intersection received another jump result"
-    case UnsupportedHeaderFamily =>
-      "Genesis requires a header gate supporting typed snapshot grafts"
-    case MissingSharedBlockPool    => "Genesis requires the shared block pool"
     case MissingConnectionIdentity => "Genesis requires the established TCP connection identity"
     case InvalidConnectionIdentity(cause) => s"Genesis TCP connection identity: ${cause.message}"
     case GraftMissingPoint(point)         => s"Genesis jump snapshot lacks ${Points.show(point)}"

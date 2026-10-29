@@ -5,6 +5,7 @@ import xyz.kd5ujc.scarab.codec.DomainError
 import io.circe.{DecodingFailure, ParsingFailure}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold as Leader
+import xyz.kd5ujc.scarab.protocol.Era
 
 /** Configuration failures retain parsed inputs and source causes; text is rendered at presentation.
   */
@@ -40,6 +41,9 @@ enum ConfigProblem:
 
   /** A genesis number the reference's `FromJSON` instance refuses. */
   case GenesisNumber(field: GenesisNumberField, cause: json.NumberError)
+
+  /** A configuration number the reference's `FromJSON` instance refuses. */
+  case ConfigNumber(field: ConfigNumberField, cause: json.NumberError)
 
   /** A field of a genesis file that the reference's parser refuses ([[GenesisSchema]]). */
   case GenesisField(file: GenesisFile, path: Vector[String], cause: GenesisFieldError)
@@ -91,6 +95,7 @@ enum ConfigProblem:
   def message: String = this match
     case ActiveSlotsCoefficient(e)   => e.message
     case GenesisNumber(field, cause) => s"genesis ${field.key}: ${cause.message}"
+    case ConfigNumber(field, cause)  => s"configuration ${field.key}: ${cause.message}"
     case GenesisField(file, path, cause) =>
       s"${file.label} genesis ${path.mkString(".")}: ${cause.message}"
     case SecurityParamBeyondStorage(k) =>
@@ -159,6 +164,20 @@ enum GenesisFieldError:
     case Choice(value, allowed) => s"$value is not one of ${allowed.mkString(", ")}"
     case Hash(bytes, value)     => s"expected $bytes bytes of hexadecimal, got $value"
     case Nested(cause)          => cause.message
+
+/** A configuration field read with a number instance of the reference: the hard-fork triggers of
+  * the test networks, `Maybe EpochNo` and `Maybe Word` (cardano-node 11.1.3
+  * `cardano-node/src/Cardano/Node/Types.hs:301-376`, read by `.:?` in
+  * `Configuration/POM.hs:670-690`).
+  */
+enum ConfigNumberField:
+  case HardForkAtEpoch(era: Era)
+  case HardForkAtVersion(era: Era)
+
+  /** The JSON key. */
+  def key: String = this match
+    case HardForkAtEpoch(era)   => s"Test${era}HardForkAtEpoch"
+    case HardForkAtVersion(era) => s"Test${era}HardForkAtVersion"
 
 /** A Shelley genesis field read with a number instance of the reference. */
 enum GenesisNumberField:
