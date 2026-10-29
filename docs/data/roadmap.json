@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "intro": "The work of Scarab after the v0.1.0 research preview, done and open. Item IDs (A1, B3, ...) are stable: issues and pull\nrequests reference them, and they are not renumbered when items are done (done items are marked, not\ndeleted). Priorities:\n\n- **P0** is needed for the research preview or blocks collaborators.\n- **P1** is needed for a full reference-compatible node.\n- **P2** is hardening or nice-to-have.\n\nEach open item links to its GitHub issue, which carries its state (`status:` labels) and milestone; how items move from idea to done is in [process.md](process.md). Large items have a [design document](design/README.md), and the decisions behind them are [ADRs](adr/README.md). How each area stands today is in [compatibility.md](compatibility.md).",
+  "intro": "The work of Scarab after the v0.1.0 research preview, done and open. Item IDs (A1, B3, ...) are stable: issues and pull\nrequests reference them, and they are not renumbered when items are done (done items are marked, not\ndeleted). Priorities:\n\n- **P0** is needed for the research preview or blocks collaborators.\n- **P1** is needed for a full reference-compatible node.\n- **P2** is hardening or nice-to-have.\n\nEach item with an issue links to it; the issue carries its state (`status:` labels) and milestone; how items move from idea to done is in [process.md](process.md). Large items have a [design document](design/README.md), and the decisions behind them are [ADRs](adr/README.md). How each area stands today is in [compatibility.md](compatibility.md).",
   "sections": [
     {
       "id": "A",
@@ -56,23 +56,23 @@
     },
     {
       "id": "N",
-      "heading": "N. Ouroboros Leios (v0.3)",
+      "heading": "N. Ouroboros Leios",
       "intro": "Linear Leios (CIP-164) is planned for the Dijkstra hard fork (L1). The design note, sources and\nthe observed divergences between the CIP text and the prototype are in [leios.md](leios.md).\nN2 does not depend on L1 or G4; N3 needs L1 (Dijkstra decoding) and, if the testnet requires it,\nG4; N4 needs N3 and a buildable reference Leios node."
     },
     {
       "id": "O",
-      "heading": "O. Review readiness and operations (v0.3)",
+      "heading": "O. Review readiness and operations",
       "outro": "The O1/O5 evidence review must distinguish historical masked runs from the strict comparison\ncontract integrated by [#285](https://github.com/KD5UJC-XYZ/scarab/pull/285). The former\n`NonMyopic`, `SnapshotNumDelegators`, `VrfKeyHashes` and `RewardUpdate` masks were removed;\ncomplete debug-ledger answers now require wire-byte equality and valid framing, and projection\ncomparisons no longer round numeric values. The [compatibility evidence](compatibility.md)\nrecords 330/330 private same-point query answers, including 20 debug-state pairs, on runtime\n`d9d089039`; later rebased CI is separate evidence. This finite observation does not establish\nuniversal state equality or the twelve-case external candidate campaign. Operational provenance\ninventory, backups and copy rehearsals remain under M11/J3.1\n([#129](https://github.com/KD5UJC-XYZ/scarab/issues/129))."
     },
     {
       "id": "order",
-      "heading": "Order of work (set 2026-10-29)",
-      "text": "The order of the open work, with the reason for it. IDs are the roadmap IDs; the issues carry the\nstate and the milestone. This section is rewritten when the order changes.\n\n**v0.2, reference-grade evidence (complete)**\n\nThe v0.2 exit gate, a Scala-forged block adopted on preprod (H1/H1a,\n[#37](https://github.com/KD5UJC-XYZ/scarab/issues/37)/[#115](https://github.com/KD5UJC-XYZ/scarab/issues/115)),\nwas met on 2026-10-25, and `v0.2.0-alpha.1` was tagged the same day as a pre-release. The other v0.2 steps\nwere complete before it: executable reference coverage K2 (#49), throughput acceptance D2 (#21, PR #209),\nreward pulsing D15 (#135), the sync/replay investigation D11 (#124), strict Ed25519 D7 (#26) and pool\nmonitoring J3c (#117); D8 (#65) closed with its one-CPU timing target accepted as a limitation. Retained\nevidence includes the Preview epoch comparisons (K1), preprod sync (C4), the memory investigation (K6),\nMithril bootstrap (E1) and snapshot interoperability (E2). The dedicated campaigns D6, K4, K5, K7 and D9\nleft v0.2 with their acceptance criteria unchanged (owner decision, 2026-10-18, PR #184); that decision\nauthorizes no new public synchronization or operational change.\n\nRelease management stays open under AUD-09\n([#161](https://github.com/KD5UJC-XYZ/scarab/issues/161)): the planned protected PR promotion `feat/*` ->\n`dev` -> `main` (only same-repository `dev` may target `main`) and the planned protected `release/alpha`,\n`release/beta`, `release/preprod` and `release/prod` branches, whose tag suffixes are `-alpha.N`,\n`-beta.N`, `-rc.N` and no suffix. Work targets `main` until the cutover. Plain Scarab SemVer and\nprotected Git tags govern releases; the compatibility matrix states reference support separately. The\n[release design](design/releases.md), [release PR preparation](release-pr-preparation.md) and the\n[promotion cutover guide](promotion-cutover.md) record the tooling; activation, settings and platform\nacceptance are owner work under #161.\n\n**Next, in this order**\n\n1. *Review readiness:* the threat model O1 (#74), reproducible signed releases and the SBOM O2 (#75),\n   the reviewer evidence bundle O5 (#349), packaging O3 (#76), and the open audit tickets. The audit\n   candidate is cut after the required readiness evidence exists.\n2. *Dedicated public-chain evidence:* mainnet genesis-to-tip throughput and memory D6 (#25),\n   multi-day stability K4 (#51), exact tagged-build genesis sync K5 (#52), at least 30 consecutive live\n   Preview epochs K7 (#68), and a mainnet Mithril start followed by at least a week at tip D9 (#69).\n   These issues stay open with their existing acceptance criteria; ordering them does not claim their\n   evidence exists.\n3. *Leios, built against the testnet and the reference node and refactored as the design moves*\n   (owner decision, 2026-10-18): the plan is [leios.md](leios.md) 11.8 for N4\n   ([#73](https://github.com/KD5UJC-XYZ/scarab/issues/73)), whose checklist holds the former X1 to X13:\n   get the Leios team's reference node (pinned), settle the mini-protocol gating on a loopback network\n   with its trace, follow the Dijkstra chain (X1, X2), the committee and certificates (X5),\n   mini-protocols 18 and 19 (X8, X7), then the devnet scenario against the reference. The rules for a\n   moving target: Leios integrates through `dev` and promotes to `main`, behind the era selector and the\n   configuration (`ExperimentalHardForksEnabled` is the switch; a short-lived branch is for one\n   disruptive change at a time, such as the eighth era in the telescope); every revision (testnet, CDDL,\n   reference build) is pinned and recorded in leios.md; Leios code sits behind its own era and\n   protocol-version gates so Conway and mainnet paths are untouched; codecs and Dijkstra types are\n   versioned so a design change is a new version; the testnet chain from genesis is the regression. The\n   protocol prerequisites are done: handshake versions G4 (#34), Ouroboros Genesis G3 (#33), the\n   header intake AUD-01 (#153) and the fiber boundary G7 (#132). The Dijkstra era L1 ([#54](https://github.com/KD5UJC-XYZ/scarab/issues/54))\n   and the Leios mempool N5 ([#79](https://github.com/KD5UJC-XYZ/scarab/issues/79)) follow the follower.\n\n**Later (no milestone yet):** mainnet-pool readiness (#120, the offline cold key and a KES agent)\nand an external audit, both after the audit candidate."
+      "heading": "Order of work",
+      "text": "Set 2026-10-29. The order of the open work, with the reason for it. IDs are the roadmap IDs; the issues carry the\nstate and the milestone. This section is rewritten when the order changes.\n\n**v0.2, reference-grade evidence (complete)**\n\nThe v0.2 exit gate, a Scala-forged block adopted on preprod (H1/H1a,\n[#37](https://github.com/KD5UJC-XYZ/scarab/issues/37)/[#115](https://github.com/KD5UJC-XYZ/scarab/issues/115)),\nwas met on 2026-10-25, and `v0.2.0-alpha.1` was tagged the same day as a pre-release. The other v0.2 steps\nwere complete before it: executable reference coverage K2 (#49), throughput acceptance D2 (#21, PR #209),\nreward pulsing D15 (#135), the sync/replay investigation D11 (#124), strict Ed25519 D7 (#26) and pool\nmonitoring J3c (#117); D8 (#65) closed with its one-CPU timing target accepted as a limitation. Retained\nevidence includes the Preview epoch comparisons (K1), preprod sync (C4), the memory investigation (K6),\nMithril bootstrap (E1) and snapshot interoperability (E2). The dedicated campaigns D6, K4, K5, K7 and D9\nleft v0.2 with their acceptance criteria unchanged (owner decision, 2026-10-18, PR #184); that decision\nauthorizes no new public synchronization or operational change.\n\nRelease management stays open under AUD-09\n([#161](https://github.com/KD5UJC-XYZ/scarab/issues/161)): the planned protected PR promotion `feat/*` ->\n`dev` -> `main` (only same-repository `dev` may target `main`) and the planned protected `release/alpha`,\n`release/beta`, `release/preprod` and `release/prod` branches, whose tag suffixes are `-alpha.N`,\n`-beta.N`, `-rc.N` and no suffix. Work targets `main` until the cutover. Plain Scarab SemVer and\nprotected Git tags govern releases; the compatibility matrix states reference support separately. The\n[release design](design/releases.md), [release PR preparation](release-pr-preparation.md) and the\n[promotion cutover guide](promotion-cutover.md) record the tooling; activation, settings and platform\nacceptance are owner work under #161.\n\n**Next, in this order**\n\n1. *Review readiness:* the threat model O1 (#74), reproducible signed releases and the SBOM O2 (#75),\n   the reviewer evidence bundle O5 (#349), packaging O3 (#76), and the open audit tickets. The audit\n   candidate is cut after the required readiness evidence exists.\n2. *Dedicated public-chain evidence:* mainnet genesis-to-tip throughput and memory D6 (#25),\n   multi-day stability K4 (#51), exact tagged-build genesis sync K5 (#52), at least 30 consecutive live\n   Preview epochs K7 (#68), and a mainnet Mithril start followed by at least a week at tip D9 (#69).\n   These issues stay open with their existing acceptance criteria; ordering them does not claim their\n   evidence exists.\n3. *Leios, built against the testnet and the reference node and refactored as the design moves*\n   (owner decision, 2026-10-18): the plan is [leios.md](leios.md) 11.8 for N4\n   ([#73](https://github.com/KD5UJC-XYZ/scarab/issues/73)), whose checklist holds the former X1 to X13:\n   get the Leios team's reference node (pinned), settle the mini-protocol gating on a loopback network\n   with its trace, follow the Dijkstra chain (X1, X2), the committee and certificates (X5),\n   mini-protocols 18 and 19 (X8, X7), then the devnet scenario against the reference. The rules for a\n   moving target: Leios integrates through `dev` and promotes to `main`, behind the era selector and the\n   configuration (`ExperimentalHardForksEnabled` is the switch; a short-lived branch is for one\n   disruptive change at a time, such as the eighth era in the telescope); every revision (testnet, CDDL,\n   reference build) is pinned and recorded in leios.md; Leios code sits behind its own era and\n   protocol-version gates so Conway and mainnet paths are untouched; codecs and Dijkstra types are\n   versioned so a design change is a new version; the testnet chain from genesis is the regression. The\n   protocol prerequisites are done: handshake versions G4 (#34), Ouroboros Genesis G3 (#33), the\n   header intake AUD-01 (#153) and the fiber boundary G7 (#132). The LeiosFetch CDDL module (X12) has bounded generation. The Dijkstra era L1 ([#54](https://github.com/KD5UJC-XYZ/scarab/issues/54))\n   and the Leios mempool N5 ([#79](https://github.com/KD5UJC-XYZ/scarab/issues/79)) follow the follower.\n\n**Later (no milestone yet):** mainnet-pool readiness (#120, the offline cold key and a KES agent)\nand an external audit, both after the audit candidate."
     },
     {
       "id": "milestones",
       "heading": "Milestones",
-      "text": "Milestones are scope buckets named for what they hold. The version milestones v0.2 and v0.3 were\nclosed on 2026-10-29 with no open issue left in them; open work is in these:\n\n- **reference-parity**: behaviour and evidence parity with the reference cardano-node: rules,\n  protocols, queries, forging eras, decoder strictness, verification tooling and the hygiene that\n  protects them.\n- **mainnet-evidence**: public-chain evidence at scale: mainnet sync and Mithril start, continuous\n  epoch comparisons, long-run stability, memory and throughput.\n- **leios-dijkstra**: the next era and Leios/Peras: Dijkstra, Leios protocols, the Leios-grade mempool\n  and research scaffolding."
+      "text": "Milestones are scope buckets named for what they hold. The version milestones v0.2 and v0.3 were\nclosed on 2026-10-29 with no open issue left in them. Open issues are grouped into these; an\nissue without a milestone (parked work and ideas among them) belongs to none:\n\n- **reference-parity**: behaviour and evidence parity with the reference cardano-node: rules,\n  protocols, queries, forging eras, decoder strictness, verification tooling and the hygiene that\n  protects them.\n- **mainnet-evidence**: public-chain evidence at scale: mainnet sync and Mithril start, continuous\n  epoch comparisons, long-run stability, memory and throughput.\n- **leios-dijkstra**: the next era and Leios/Peras: Dijkstra, Leios protocols, the Leios-grade mempool\n  and research scaffolding."
     }
   ],
   "items": [
@@ -606,7 +606,6 @@
       "section": "D",
       "title": "DB network identity",
       "status": "done",
-      "detail": "; extended by #159",
       "priority": null,
       "issues": [
         24,
@@ -619,7 +618,6 @@
       "section": "D",
       "title": "Mainnet sync",
       "status": "planned",
-      "detail": ", v0.3",
       "priority": null,
       "issues": [
         25
@@ -654,7 +652,6 @@
       "section": "D",
       "title": "Mainnet",
       "status": "planned",
-      "detail": ", v0.3",
       "priority": "P1",
       "issues": [
         69
@@ -1444,7 +1441,6 @@
       "section": "K",
       "title": "Long-run stability",
       "status": "in-progress",
-      "detail": ", v0.3",
       "priority": null,
       "issues": [
         51
@@ -1456,7 +1452,6 @@
       "section": "K",
       "title": "Single-build evidence",
       "status": "planned",
-      "detail": ", v0.3",
       "priority": null,
       "issues": [
         52
@@ -1479,7 +1474,6 @@
       "section": "K",
       "title": "Continuous ledger-state verification on a live network",
       "status": "planned",
-      "detail": ", v0.3",
       "priority": "P1",
       "issues": [
         68
@@ -1717,7 +1711,7 @@
       "section": "M",
       "title": "The original reorganisation #82 is closed",
       "status": "done",
-      "detail": ": runtime migration #188 and semantic follow-up #190 merged",
+      "detail": ": runtime migration #188 and semantic follow-up #190 merged; level-3 gates passed",
       "priority": "P1",
       "issues": [
         189

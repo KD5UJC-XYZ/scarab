@@ -2,7 +2,7 @@
 
 **Status: Historical dependency inventory.** The resolved versions and licence review below
 describe the recorded build, not a continuously generated SBOM; regenerate them for a release
-or external audit under [O2](roadmap.md#o-review-readiness-and-operations-v03).
+or external audit under [O2](roadmap.md#o-review-readiness-and-operations).
 
 Research software, not legal advice. This is a record of what the build resolves, so that the list in
 [NOTICE](../NOTICE) can be checked against it.

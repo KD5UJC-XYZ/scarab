@@ -74,6 +74,13 @@ class ValidationTest(unittest.TestCase):
         self.assertEqual(kinds(rr.validate(register(item(status="folded")))), [("bad-folded-into", "A1")])
         self.assertEqual(kinds(rr.validate(register(item(folded_into=73)))), [("bad-folded-into", "A1")])
 
+    def test_a_text_section_holds_no_items(self):
+        self.assertEqual(kinds(rr.validate(register(item(section="order")))), [("unknown-section", "A1")])
+
+    def test_wrongly_typed_values_are_problems_not_tracebacks(self):
+        found = kinds(rr.validate(register(item(section=["A"], status={"x": 1}, priority=[1], parent=["A1"]))))
+        self.assertEqual([k for k, _ in found], ["bad-parent", "bad-priority", "bad-status", "unknown-section"])
+
     def test_unknown_and_missing_fields_are_refused(self):
         self.assertEqual(kinds(rr.validate(register(item(extra=1)))), [("unknown-field", "A1")])
         self.assertEqual(kinds(rr.validate(register(item(priority=...)))), [("schema", "A1")])
@@ -145,10 +152,16 @@ class GithubTest(unittest.TestCase):
         self.assertEqual(rr.github_states({7, 8, 9, 10}, fake), {7: OPEN, 8: CLOSED, 9: CLOSED})
         self.assertTrue(all(arg[0] == "api" and "-X" not in arg and "--method" not in arg for arg in calls))
 
-    def test_closing_keywords_of_a_pull_request(self):
+    def test_a_pull_request_closes_what_github_lists(self):
+        calls = []
+
         def fake(args):
-            return "fix(x): thing (#5)\nFixes #7, closes: #8 and resolved KD5UJC-XYZ/scarab#9; part of #400; #10\n"
-        self.assertEqual(rr.closed_by("12", fake), {7, 8, 9})
+            calls.append(list(args))
+            return "7\n9\n"
+        self.assertEqual(rr.closed_by("12", fake), {7, 9})
+        self.assertEqual(calls, [["pr", "view", "12", "--repo", rr.REPOSITORY, "--json", "closingIssuesReferences",
+                                  "--jq", ".closingIssuesReferences[].number"]])
+        self.assertEqual(rr.closed_by("12", lambda args: ""), set())
 
     def test_unavailable_github_is_a_notice_not_a_failure(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -164,6 +177,9 @@ class GithubTest(unittest.TestCase):
             try:
                 self.assertEqual(rr.main(["--root", str(root), "--check"]), 0)
                 self.assertEqual(rr.main(["--root", str(root), "--check", "--require-issue-state"]), 1)
+                (root / rr.REGISTER).write_text("{", encoding="utf-8")
+                self.assertEqual(rr.main(["--root", str(root), "--check", "--require-issue-state"]), 1)
+                self.assertEqual([p.kind for p in rr.run(root, check=True)[0]], [Kind.BAD_JSON])
             finally:
                 rr.github_states = original
 

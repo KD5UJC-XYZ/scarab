@@ -69,7 +69,8 @@ in its closing comment and, when it shapes the design, in an ADR: *adopt* (follo
 
 - **Now**: issues labelled `status:in-progress`. Keep this short (about three parallel tracks); more
   than that means something should be parked.
-- **Next**: the `status:backlog` issues of each milestone, by priority.
+- **Next**: the `status:backlog` issues of each milestone, in the [order of work](roadmap.md#order-of-work),
+  then by priority.
 - **Later**: ideas and parked issues, which carry no milestone.
 
 ### Changing course
