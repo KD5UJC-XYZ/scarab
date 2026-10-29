@@ -231,6 +231,31 @@ class PeerSelectionSuite extends FunSuite:
     assertEquals(cold.peers(8).failCount, 1)
   }
 
+  // issue 564: a hot session lost to a failure of the node's own code, as `OutboundPeers.lost`
+  // reports it: cold again, with the count and the pending reset the peer had
+  test("a session lost to the node's own failure keeps the peer's count and pending reset") {
+    val (st1, _, _) = settle(start(List(group(1, 1, 7))), t0)
+    val st2 = complete(st1, Outcome.Connected(7), t0)
+    val (st3, _, _) = settle(st2, t0)
+    val hot = complete(st3, Outcome.Activated(7), t0)
+    val pending = hot.peers(7).clearFailAt
+    assert(pending.isDefined, "activation schedules the reset of the count")
+    val failed = hot.copy(peers = hot.peers.updated(7, hot.peers(7).copy(failCount = 2)))
+    def lost(st: S, released: Boolean, at: Time) =
+      PeerSelection
+        .apply(
+          st,
+          Event
+            .Observed(7, Observation.Lost(FailureClass.NotThePeers, 5.seconds, released, "ours")),
+          at
+        )
+        .state
+    val cold = lost(lost(failed, released = false, 1.minute), released = true, 1.minute + 1.second)
+    assert(statusOf(cold, 7).isInstanceOf[Status.Cold])
+    assertEquals(cold.peers(7).failCount, 2)
+    assertEquals(cold.peers(7).clearFailAt, pending)
+  }
+
   test("an outcome that arrives after the peer was lost changes nothing and is traced as aborted") {
     val (st1, _, _) = settle(start(List(group(1, 1, 7))), t0)
     val st2 = complete(st1, Outcome.Connected(7), t0)

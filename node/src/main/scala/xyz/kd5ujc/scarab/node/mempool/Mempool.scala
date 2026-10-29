@@ -127,6 +127,24 @@ trait Mempool[F[_]]:
   def sink(fatal: Fatal => F[Unit]): TxSubmissionServer.Sink[F]
 
 object Mempool:
+  /** How a peer's transaction ends its TxSubmission2 session, when it does: no verdict on it, so
+    * the connection closes and the node goes on. A crypto provider or the evaluator that fails on
+    * it closes the connection with the failure; a decoder that threw is the connection's input
+    * defect (issue 465); rules that threw are the node's own failure while serving the peer, which
+    * is not charged (issue 564). A refusal, or any other answer, ends nothing.
+    */
+  private[mempool] def peerConnectionEnd(rejection: Rejection): Option[NetworkError] =
+    rejection match
+      case Rejection.Ledger(
+            defect @ (_: LedgerFailure.Unverifiable | _: LedgerFailure.Unavailable)
+          ) =>
+        Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(defect)))
+      case Rejection.InputDefect(cause) =>
+        Some(NetworkError.DecoderDefect(Protocols.TxSubmission2, cause))
+      case Rejection.RulesDefect(cause) =>
+        Some(NetworkError.ServingDefect(Protocols.TxSubmission2, cause))
+      case _ => None
+
   /** The transaction a revalidation (`sync`, `removeTxsEvenIfValid`) has no verdict on (a crypto
     * provider or the evaluator failed on it), as the defect of the block it was revalidated for at
     * `at`. The reference's revalidation watcher is linked to the node (consensus 82ecba32
@@ -378,22 +396,9 @@ object Mempool:
           // `doAddTx`, `Node/RethrowPolicy.hs:40-45`). The transactions after it are not offered.
           def submit(originals: Vector[Bytes])(using Raise[F, NetworkError]) =
             originals.traverse_ { original =>
-              StorageBoundary.run(fatal)(add(original, Source.Remote)).flatMap {
-                case Left(
-                      Rejection.Ledger(
-                        defect @ (_: LedgerFailure.Unverifiable | _: LedgerFailure.Unavailable)
-                      )
-                    ) =>
-                  NetworkError
-                    .BearerClosed(NetworkError.Closure.AbortedBy(defect))
-                    .raise[F, Unit]
-                // the decoder threw on the peer's bytes (issue 465): this connection's defect
-                case Left(Rejection.InputDefect(cause)) =>
-                  NetworkError.DecoderDefect(Protocols.TxSubmission2, cause).raise[F, Unit]
-                // the rules threw on the peer's transaction: this connection ends, the node goes
-                // on and the peer is not charged (issue 564)
-                case Left(Rejection.RulesDefect(cause)) =>
-                  NetworkError.ServingDefect(Protocols.TxSubmission2, cause).raise[F, Unit]
-                case _ => F.unit
-              }
+              StorageBoundary
+                .run(fatal)(add(original, Source.Remote))
+                .flatMap(
+                  _.left.toOption.flatMap(Mempool.peerConnectionEnd).traverse_(_.raise[F, Unit])
+                )
             }

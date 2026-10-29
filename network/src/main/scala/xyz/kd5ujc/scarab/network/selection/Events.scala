@@ -55,7 +55,8 @@ private[selection] object Events:
           val moved = r.copy(
             status = Status.Cold(Some(now + delay)),
             failCount = count,
-            clearFailAt = None
+            // a failure of the node's own code leaves the peer's pending reset as it was
+            clearFailAt = if failure == FailureClass.NotThePeers then r.clearFailAt else None
           )
           Reported(st.copy(peers = st.peers.updated(peer, moved)), Some(delay), false)
 

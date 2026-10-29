@@ -73,7 +73,7 @@ rules refused, a storage failure and a bug in the node were all retried like a l
    ouroboros-consensus `82ecba329` `Node/RethrowPolicy.hs` 131 to 139); only storage is `ShutdownNode`
    (55 to 90). Making every `NetworkError.Defect` the peer's would undo issue 154, because the node's
    own code produces `Defect` too (a fiber scope's wrapped exception, the rules, the storage). So
-   `NetworkError.Defect`, `fromThrowable`, `SessionEnd.Defect` ~~(rules and storage)~~ (storage, and the rules on a block; see [the rules on a submitted transaction](#amendment-2026-10-28-the-rules-exception-on-a-submitted-transaction-is-the-connections)) and `Fault.Defect`
+   `NetworkError.Defect`, `fromThrowable`, `SessionEnd.Defect` (rules and storage) and `Fault.Defect`
    still reach `Fatal.Defect`, and the storage, internal and unavailable cases still stop the node. A
    peer must not be able to stop the whole process by what it sends, which is the reasoning of the
    process-wide denial of service below.
@@ -109,8 +109,9 @@ rules refused, a storage failure and a bug in the node were all retried like a l
   `ChainError.StateAcquire` and reports `Fatal.Internal` (exit 6), without client blame or retry.
   G7-F2 gives periodic/shutdown snapshots their own storage-error scopes, with caller-scoped
   capabilities along the snapshot call path and `SnapshotFailure` values at the event boundary.
-  G7-F4 gives TCP/Unix handlers their own scopes and a required typed failure reporter; unexpected
-  handler defects reach `Fatal.Defect`. See the [as-built contracts](../design/domain-errors.md#snapshot-and-listener-scopes-g7-f2g7-f4).
+  G7-F4 gives TCP/Unix handlers their own scopes and a required typed failure reporter; ~~unexpected
+  handler defects reach `Fatal.Defect`~~ unexpected handler defects reach `Fatal.Defect`, except an exception
+  of the rules on a submitted transaction ([amendment](#amendment-2026-10-28-the-rules-exception-on-a-submitted-transaction-is-the-connections)). See the [as-built contracts](../design/domain-errors.md#snapshot-and-listener-scopes-g7-f2g7-f4).
   G7-F3 gives forging and reload terminal failure values and prevents signing after a key durability
   failure. G7-F5 retains bounded source attribution after a cache-producing session ends, with a
   governor observation that can distrust a disconnected or reconnected source. See the
@@ -275,8 +276,9 @@ with `ServingDefect(TxSubmission2, cause)`, the cause kept. This is where the re
 mempool adds a transaction in the caller's thread, the mini-protocol's (consensus `82ecba329`
 `Mempool/Update.hs:183-245`, `doAddTx`; `MiniProtocol/LocalTxSubmission/Server.hs:31-36`). Only the sync watcher is
 linked to the node (`Mempool/Init.hs:66`), and an exception no rethrow policy names ends the peer
-(`ShutdownPeer`). Decision 5's rule that a defect of the rules stops the node made a transaction a peer sends a
-way to stop it, against the same decision's "a peer must not be able to stop the whole process by what it sends".
+(`ShutdownPeer`). Before, the exception reached `StorageBoundary.run` of the serving callback, whose `SnapshotFailure.capture` made
+it `Fatal.Defect` (G7-F4: "unexpected handler defects reach `Fatal.Defect`"). That made a transaction a peer sends a
+way to stop the node, against decision 5's "a peer must not be able to stop the whole process by what it sends".
 The rules on a block, the mempool's revalidation and storage still stop the node, as the reference's linked
 threads do.
 

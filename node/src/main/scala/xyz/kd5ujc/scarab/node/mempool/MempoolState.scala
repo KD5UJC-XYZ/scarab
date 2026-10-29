@@ -371,17 +371,18 @@ final case class MempoolState(
           admitted <- ledger
             .admit(tx, env.txEnv(tipSlot, baseLedger, entries.size), env.rules, source)
             .leftMap(Rejection.Ledger(_))
-        yield (refScriptBytes, admitted)
+          (_, held) = admitted
+          // The flag is neither hashed nor signed (the id is the hash of the body alone), so the
+          // transaction is relayed with its other three parts as received and the flag of the
+          // verdict, as the reference relays `[body, witnesses, flag, auxiliary_data]` it rebuilt.
+          kept =
+            if held.isValid == tx.isValid then raw
+            else MempoolState.encode(parts.copy(isValid = held.isValid))
+        yield (refScriptBytes, admitted, kept)
       )
-      (refScriptBytes, admitted) = judged
+      (refScriptBytes, admitted, kept) = judged
     yield
       val (next, held) = admitted
-      // The flag is neither hashed nor signed (the id is the hash of the body alone), so the
-      // transaction is relayed with its other three parts as received and the flag of the verdict,
-      // as the reference relays `[body, witnesses, flag, auxiliary_data]` it rebuilt.
-      val kept =
-        if held.isValid == tx.isValid then raw
-        else MempoolState.encode(parts.copy(isValid = held.isValid))
       val entry = Entry(id, kept, held, nextTicket, refScriptBytes)
       (
         copy(

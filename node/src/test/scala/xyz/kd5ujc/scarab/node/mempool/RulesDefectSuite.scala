@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node.mempool
 
 import munit.FunSuite
-import xyz.kd5ujc.scarab.network.LocalTxSubmissionServer
+import xyz.kd5ujc.scarab.network.{LocalTxSubmissionServer, NetworkError, Protocols}
 
 /** The ledger rules that throw while they judge a submitted transaction (issue 564): no verdict on
   * it and no refusal of it, and the connection it came from ends while the node goes on, as in the
@@ -31,4 +31,19 @@ class RulesDefectSuite extends FunSuite:
       case LocalTxSubmissionServer.Response.ServingDefect(thrown) => assert(thrown eq cause)
       case other                                                  => fail(s"unexpected $other")
     assert(LocalSubmission.reasonItem(Rejection.RulesDefect(cause)).isLeft)
+  }
+
+  test("a peer's session ends with ServingDefect for the rules, DecoderDefect for the decoder") {
+    assertEquals(
+      Mempool.peerConnectionEnd(Rejection.RulesDefect(cause)),
+      Some(NetworkError.ServingDefect(Protocols.TxSubmission2, cause))
+    )
+    assertEquals(
+      Mempool.peerConnectionEnd(Rejection.InputDefect(cause)),
+      Some(NetworkError.DecoderDefect(Protocols.TxSubmission2, cause))
+    )
+  }
+
+  test("control: a refusal of the peer's transaction ends nothing") {
+    assertEquals(Mempool.peerConnectionEnd(Rejection.WrongEra(5)), None)
   }
