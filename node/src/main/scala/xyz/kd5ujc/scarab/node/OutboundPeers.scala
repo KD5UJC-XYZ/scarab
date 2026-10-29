@@ -654,8 +654,8 @@ final class OutboundPeers[F[_]: Async, A] private (
                     hot.peer,
                     hot.prepare,
                     hot.heightSnapshot,
-                    genesis.fold(hot.headers.map(_.withInvariant(invariant)))(bound =>
-                      Some(bound.headers)
+                    genesis.fold(Peer.Chain.Praos(hot.headers.map(_.withInvariant(invariant))))(
+                      _.chain
                     ),
                     Some(metered(peer)),
                     Some(hot.pool),
@@ -665,7 +665,6 @@ final class OutboundPeers[F[_]: Async, A] private (
                     received = genesis.map(_.received),
                     chainSyncObserver = genesis.map(_.observer),
                     fetchSession = fetching,
-                    genesis = genesis.map(_.control),
                     receivedBody = hot.receivedBody,
                     retainedHeaders = genesis.fold(BlockPool.Retained)(_.retainedHeaders),
                     selectionWork = genesis.map(_.work)

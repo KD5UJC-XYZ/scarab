@@ -187,7 +187,7 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
                         pipelineWindow = pipelineWindow
                       ),
                       prepare,
-                      headers = check,
+                      chain = Peer.Chain.Praos(check),
                       pipelineFailed = pipelineFailed,
                       heightSnapshot = heightSnapshot,
                       retainedHeaders = journalCapacity,

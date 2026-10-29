@@ -151,8 +151,8 @@ object HeaderClock:
         )
       )
 
-  /** [[clocked]] for a check that grafts: its gates are held to the clock, and the gates it tells
-    * `recording` of are those of `inner`, which the clock only wraps.
+  /** [[clocked]] for a check that grafts: its gates are held to the clock and graft through to the
+    * gates of `inner` they wrap.
     */
   def grafting[F[_]: Temporal](
       clock: SlotClock[F],
@@ -160,26 +160,39 @@ object HeaderClock:
       skew: FiniteDuration = HeaderEligibility.DefaultSkew,
       patience: Option[LimitOnPatience[F]] = None
   ): HeaderCheck.Grafting[F] = new HeaderCheck.Grafting[F]:
-    private val plain = clocked(clock, inner, skew, patience)
+    private def held(gate: HeaderGate.Grafting[F]): HeaderGate.Grafting[F] =
+      new Gated[F](clock, gate, skew, patience) with HeaderGate.Grafting[F]:
+        def graft(
+            snapshot: xyz.kd5ujc.scarab.consensus.HeaderChain[NodeHeaderState],
+            point: ChainSync.Point,
+            selection: xyz.kd5ujc.scarab.consensus.ChainSelection.Local
+        ) = gate.graft(snapshot, point, selection)
 
-    def start(intersection: ChainSync.Point): F[HeaderGate[F]] = plain.start(intersection)
+    def startGrafting(intersection: ChainSync.Point): F[HeaderGate.Grafting[F]] =
+      inner.startGrafting(intersection).map(held)
+
+    def start(intersection: ChainSync.Point): F[HeaderGate[F]] = startGrafting(intersection).widen
 
     override def capture(using cats.Applicative[F]): F[Option[HeaderCheck.Captured[F]]] =
-      plain.capture
+      captureGrafting.map(
+        _.map(c => HeaderCheck.Captured(c.points, point => c.start(point).widen, c.heights))
+      )
 
-    override def withPatience(value: LimitOnPatience[F]): HeaderCheck[F] =
-      plain.withPatience(value)
+    def captureGrafting(using cats.Applicative[F]): F[Option[HeaderCheck.GraftingCaptured[F]]] =
+      inner.captureGrafting.map(_.map(c => c.copy(start = point => c.start(point).map(held))))
 
-    override def withInvariant(invariant: GenesisInternalProblem => F[Unit]): HeaderCheck[F] =
-      plain.withInvariant(invariant)
+    override def withPatience(value: LimitOnPatience[F]): HeaderCheck.Grafting[F] =
+      grafting(clock, inner.withPatience(value), skew, Some(value))
 
-    override def observed(observer: HeaderCheck.Event => F[Unit]): HeaderCheck[F] =
-      plain.observed(observer)
+    override def withInvariant(
+        invariant: GenesisInternalProblem => F[Unit]
+    ): HeaderCheck.Grafting[F] =
+      grafting(clock, inner.withInvariant(invariant), skew, patience)
 
-    def recording(started: HeaderGate.Grafting[F] => F[Unit]): HeaderCheck[F] =
-      clocked(clock, inner.recording(started), skew, patience)
+    override def observed(observer: HeaderCheck.Event => F[Unit]): HeaderCheck.Grafting[F] =
+      grafting(clock, inner.observed(observer), skew, patience)
 
-  private final class Gated[F[_]: Temporal](
+  private class Gated[F[_]: Temporal](
       clock: SlotClock[F],
       inner: HeaderGate[F],
       skew: FiniteDuration,

@@ -223,9 +223,11 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
               .as(ChainSyncJumping.Instruction.RunNormally)
           def restartCandidates = IO.pure(Vector(ChainSync.Point.Origin))
           def failed[A](error: ChainSyncJumping.Error): IO[A] = IO(fail(error.toString))
-          def observed(event: SyncEvent) = IO.unit
-          def restarted(point: ChainSync.Point) = IO.unit
+          def current(gate: HeaderGate.Grafting[IO]) = IO.unit
+          def observed(gate: HeaderGate.Grafting[IO], event: SyncEvent) = IO.unit
+          def restarted(gate: HeaderGate.Grafting[IO], point: ChainSync.Point) = IO.unit
           def processJump(
+              gate: HeaderGate.Grafting[IO],
               info: ChainSyncJumping.JumpInfo[GenesisPeer.Checkpoint],
               goodPoint: Boolean,
               found: Option[ChainSync.Point]
@@ -248,13 +250,15 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
             ),
             _ => IO.unit,
             heights,
-            headers = Option.unless(unknownRollback || offeredHeight.nonEmpty)(check),
+            chain = TestChains.chain(
+              Option.unless(unknownRollback || offeredHeight.nonEmpty)(check),
+              Option.when(blocked == Blocked.Jumping || emptyGraft || rejectedJump)(control)
+            ),
             chainSyncObserver = Some(observer),
             observe = Some {
               case Peer.Observation.HeaderReceived => completedHeaders.update(_ + 1)
               case _                               => IO.unit
-            },
-            genesis = Option.when(blocked == Blocked.Jumping || emptyGraft || rejectedJump)(control)
+            }
           )
           .use { peer =>
             if offeredHeight.nonEmpty then

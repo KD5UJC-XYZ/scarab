@@ -41,14 +41,16 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
         timeout: NetworkError.Timeout = NetworkError.Timeout(2, "NextCanAwait")
         closeSignal <- Deferred[IO, NetworkError]
         chainSync = new ChainSyncClient[IO, NtNHeader]:
+          // the session's first FindIntersect is answered; the scripted failure is the producer's
+          // restart's, after it
           def findIntersect(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
-            intersections.update(_ + 1) *> {
-              if operation == Operation.RestartTimeout then
+            intersections.getAndUpdate(_ + 1).flatMap { asked =>
+              if operation == Operation.RestartTimeout && asked > 0 then
                 Raise[IO, NetworkError]
                   .raise[NetworkError, Option[(ChainSync.Point, ChainSync.Tip)]](
                     timeout
                   )
-              else if operation == Operation.NoIntersection then IO.pure(None)
+              else if operation == Operation.NoIntersection && asked > 0 then IO.pure(None)
               else
                 IO.pure(
                   Option.when(points.contains(ChainSync.Point.Origin))(
@@ -135,15 +137,19 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
               IO.pure(ChainSyncJumping.Instruction.RunNormally)
             case Operation.RestartTimeout | Operation.NoIntersection =>
               IO.pure(ChainSyncJumping.Instruction.Restart)
+          def current(@scala.annotation.unused gate: HeaderGate.Grafting[IO]) = IO.unit
           def observed(
+              @scala.annotation.unused gate: HeaderGate.Grafting[IO],
               @scala.annotation.unused event: SyncEvent
           ) = IO.unit
           def processJump(
+              @scala.annotation.unused gate: HeaderGate.Grafting[IO],
               @scala.annotation.unused info: ChainSyncJumping.JumpInfo[GenesisPeer.Checkpoint],
               @scala.annotation.unused goodPoint: Boolean,
               @scala.annotation.unused found: Option[ChainSync.Point]
           ) = IO.pure(GenesisPeer.Applied.Retained)
           def restarted(
+              @scala.annotation.unused gate: HeaderGate.Grafting[IO],
               @scala.annotation.unused point: ChainSync.Point
           ) = IO.unit
         _ <- Peer
@@ -152,27 +158,29 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
             Peer
               .Settings(SocketAddress[Host](ip"10.5.0.1", port"3001"), 42, byronEpochSlots = 21600),
             _ => IO.unit,
-            genesis = Option.when(operation != Operation.LegacyRollbackEnd)(control),
-            headers = Option.when(
-              (operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd || operation == Operation.DrainBatch)
-            )(
-              new HeaderCheck[IO]:
-                def start(@scala.annotation.unused point: ChainSync.Point) =
-                  IO.pure(new HeaderGate[IO]:
-                    def accept(@scala.annotation.unused batch: Vector[SyncEvent])(using
-                        Raise[IO, PeerError]
-                    ) = IO.unit
-                    override def acceptOrRestart(
-                        @scala.annotation.unused batch: Vector[SyncEvent]
-                    )(using Raise[IO, PeerError], cats.Functor[IO]) =
-                      if operation == Operation.DrainBatch then
-                        validations.getAndUpdate(_ + 1).flatMap {
-                          case 0 => waiting.complete(()).void *> IO.never[HeaderGate.Acceptance]
-                          case _ =>
-                            IO.raiseError(new AssertionError("a drained reply was validated"))
-                        }
-                      else IO.pure(HeaderGate.Acceptance.End(ChainSync.Point.Origin))
-                    def counts = IO.pure(HeaderGate.Counts(0, 0, 0)))
+            chain = TestChains.chain(
+              Option.when(
+                (operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd || operation == Operation.DrainBatch)
+              )(
+                new HeaderCheck[IO]:
+                  def start(@scala.annotation.unused point: ChainSync.Point) =
+                    IO.pure(new HeaderGate[IO]:
+                      def accept(@scala.annotation.unused batch: Vector[SyncEvent])(using
+                          Raise[IO, PeerError]
+                      ) = IO.unit
+                      override def acceptOrRestart(
+                          @scala.annotation.unused batch: Vector[SyncEvent]
+                      )(using Raise[IO, PeerError], cats.Functor[IO]) =
+                        if operation == Operation.DrainBatch then
+                          validations.getAndUpdate(_ + 1).flatMap {
+                            case 0 => waiting.complete(()).void *> IO.never[HeaderGate.Acceptance]
+                            case _ =>
+                              IO.raiseError(new AssertionError("a drained reply was validated"))
+                          }
+                        else IO.pure(HeaderGate.Acceptance.End(ChainSync.Point.Origin))
+                      def counts = IO.pure(HeaderGate.Counts(0, 0, 0)))
+              ),
+              Option.when(operation != Operation.LegacyRollbackEnd)(control)
             ),
             heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin
           )
@@ -180,12 +188,7 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
             if operation != Operation.Waiting && operation != Operation.DrainBatch then
               Handle
                 .allow[PeerError](
-                  (peer
-                    .intersect(Vector(ChainSync.Point.Origin))
-                    .void
-                    .whenA(
-                      (operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd || operation == Operation.DrainBatch)
-                    ) *> peer.next)
+                  (peer.intersect(Vector(ChainSync.Point.Origin)).void *> peer.next)
                     .as(Right(()): Either[PeerError, Unit])
                 )
                 .rescue(e => IO.pure(Left(e)))
@@ -220,10 +223,7 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
             else
               Handle
                 .allow[PeerError](
-                  peer
-                    .intersect(Vector(ChainSync.Point.Origin))
-                    .void
-                    .whenA(operation == Operation.DrainBatch)
+                  peer.intersect(Vector(ChainSync.Point.Origin)).void
                 )
                 .rescue(e => IO(fail(e.message))) *> Resource
                 .make(

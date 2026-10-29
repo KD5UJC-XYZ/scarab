@@ -98,15 +98,19 @@ class PeerCsjBoundarySuite extends FailsOnUncaught:
                 case Action.Restart => ChainSyncJumping.Instruction.Restart)
             case _ => IO.never[ChainSyncJumping.Instruction[GenesisPeer.Checkpoint]]
           }
+          def current(@scala.annotation.unused gate: HeaderGate.Grafting[IO]) = IO.unit
           def observed(
+              @scala.annotation.unused gate: HeaderGate.Grafting[IO],
               @scala.annotation.unused event: SyncEvent
           ) = accepted.update(_ + 1)
           def processJump(
+              @scala.annotation.unused gate: HeaderGate.Grafting[IO],
               @scala.annotation.unused info: ChainSyncJumping.JumpInfo[GenesisPeer.Checkpoint],
               @scala.annotation.unused goodPoint: Boolean,
               @scala.annotation.unused found: Option[ChainSync.Point]
           ) = check.as(GenesisPeer.Applied.Retained)
           def restarted(
+              @scala.annotation.unused gate: HeaderGate.Grafting[IO],
               @scala.annotation.unused point: ChainSync.Point
           ) =
             intersections.get.flatMap(n => check.whenA(n > 1))
@@ -116,7 +120,7 @@ class PeerCsjBoundarySuite extends FailsOnUncaught:
             Peer
               .Settings(SocketAddress[Host](ip"10.5.0.1", port"3001"), 42, byronEpochSlots = 21600),
             _ => IO.unit,
-            genesis = Some(control),
+            chain = TestChains.chain(None, Some(control)),
             heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin
           )
           .use { peer =>

@@ -92,6 +92,14 @@ trait Peer[F[_]]:
   def fetch(header: Header)(using Raise[F, PeerError]): F[Bytes]
 
 object Peer:
+  /** How a session validates the headers its peer announces. A Genesis session's check grafts, and
+    * the session hands the gates it starts to its Genesis controls, never the other way round
+    * (issues 593, 603).
+    */
+  enum Chain[F[_]]:
+    case Praos(headers: Option[HeaderCheck[F]])
+    case Genesis(headers: HeaderCheck.Grafting[F], control: GenesisPeer[F])
+
   enum Rejection:
     case Forgiven, PunishedCurrent, PunishedForeign, NotImplicated, NoAddingClient
 
@@ -562,7 +570,7 @@ object Peer:
           settings,
           prepare,
           heightSnapshot,
-          headers,
+          Chain.Praos(headers),
           observe,
           pool,
           invalidCachedBlock
@@ -593,7 +601,7 @@ object Peer:
       settings: Settings,
       prepare: Prepare[F],
       heightSnapshot: HeightSnapshot[F],
-      headers: Option[HeaderCheck[F]] = None,
+      chain: Chain[F] = Chain.Praos[F](None),
       observe: Option[Peer.Observation => F[Unit]] = None,
       pool: Option[BlockPool[F]] = None,
       invalidCachedBlock: Option[ValidationError => F[Unit]] = None,
@@ -604,26 +612,37 @@ object Peer:
       chainSyncObserver: Option[ChainSyncClient.Observer[F]] = None,
       retainedHeaders: Int = BlockPool.Retained,
       fetchSession: Option[FetchCoordinator.Session[F]] = None,
-      genesis: Option[GenesisPeer[F]] = None,
       selectionWork: Option[SelectionWork.Session[F]] = None,
       receivedBody: Option[BodySink[F]] = None,
       diffusion: BlockPool.Diffusion = BlockPool.Diffusion.On
   ): Resource[F, Controlled[F]] =
     val F = Async[F]
     val workSession = selectionWork
+    val genesis: Option[GenesisPeer[F]] = chain match
+      case Chain.Praos(_)            => None
+      case Chain.Genesis(_, control) => Some(control)
     def protocol[A](reason: PeerError.ProtocolFailure)(using Raise[F, PeerError]): F[A] =
       PeerError.Protocol(reason).raise[F, A]
 
-    def observer(captured: Option[ChainSyncClient.Observer[F]]): ChainSyncClient.Observer[F] =
+    /** The ChainSync observer, `captured` told after a Genesis session has published its gate as it
+      * stands: the controls read the session's state only as the session hands it to them.
+      */
+    def observer(
+        captured: Option[ChainSyncClient.Observer[F]],
+        owned: Deferred[F, Ref[F, HeaderGate.Grafting[F]]]
+    ): ChainSyncClient.Observer[F] =
+      val current = genesis.traverse_(control =>
+        owned.tryGet.flatMap(_.traverse_(_.get.flatMap(control.current)))
+      )
       new ChainSyncClient.Observer[F]:
         override def capture(using cats.Applicative[F]): F[ChainSyncClient.Observer[F]] =
-          captured.traverse(_.capture).map(observer)
+          current *> captured.traverse(_.capture).map(observer(_, owned))
         def awaitReply: F[Unit] =
           patience.traverse_(_.setPaused(LimitOnPatience.PauseReason.AwaitReply, true)) *>
-            captured.traverse_(_.awaitReply)
+            current *> captured.traverse_(_.awaitReply)
         def reply: F[Unit] =
           patience.traverse_(_.setPaused(LimitOnPatience.PauseReason.AwaitReply, false)) *>
-            captured.traverse_(_.reply)
+            current *> captured.traverse_(_.reply)
 
     // The session's claims on the pool come first, so they are released last: after the supervisor
     // has cancelled and awaited the fibers that fetch, nothing the session claimed is left open.
@@ -646,9 +665,10 @@ object Peer:
           Map(ChainSync.Point.Origin -> None)
         )
       )
-      _ <- connection.chainSync.observe(observer(chainSyncObserver))
-    yield (claims, fetcher, (supervisor, heights))).evalMap { (claims, fetcher, lifecycle) =>
-      val (supervisor, heights) = lifecycle
+      owned <- Resource.eval(Deferred[F, Ref[F, HeaderGate.Grafting[F]]])
+      _ <- connection.chainSync.observe(observer(chainSyncObserver, owned))
+    yield (claims, fetcher, (supervisor, heights, owned))).evalMap { (claims, fetcher, lifecycle) =>
+      val (supervisor, heights, owned) = lifecycle
       // Read-ahead: while the peer is far ahead, ChainSync requests are pipelined, and the
       // accepted headers are published to `queue` in order, up to `Depth` batches ahead of the
       // consumer. Their blocks are fetched independently: the session's fetch client takes the
@@ -704,6 +724,48 @@ object Peer:
         ) =>
           def finishChainSync(using Raise[F, PeerError]): F[Unit] =
             connection.chainSync.done *> chainSyncFinished.set(true)
+
+          /** A Genesis session's own header state: the gate that grafts, from its first
+            * intersection on, as the reference's client holds its `KnownIntersectionState` once it
+            * has found one (consensus 82ecba329 ChainSync/Client.hs:1254–1272). Jump instructions
+            * are taken only after that intersection.
+            */
+          def ownGate: F[HeaderGate.Grafting[F]] = owned.get.flatMap(_.get)
+
+          def own(next: HeaderGate.Grafting[F]): F[Unit] =
+            owned.tryGet.flatMap(
+              _.fold(Ref.of[F, HeaderGate.Grafting[F]](next).flatMap(owned.complete).void)(
+                _.set(next)
+              )
+            )
+
+          /** The points and heights to offer in FindIntersect, captured before it is sent
+            * (`Client.hs` 1065–1148), and how the session's gate starts at the point found from
+            * them. A Genesis session's gate grafts; the session keeps it and tells the controls it
+            * restarted there.
+            */
+          def offer: F[
+            (
+                Option[(Vector[ChainSync.Point], Map[ChainSync.Point, Option[BigInt]])],
+                ChainSync.Point => F[Unit]
+            )
+          ] = chain match
+            case Chain.Praos(check) =>
+              check.traverse(_.capture).map(_.flatten).map { captured =>
+                captured.map(c => c.points -> c.heights) -> { (point: ChainSync.Point) =>
+                  captured
+                    .fold(check.fold(F.pure(HeaderGate.none[F]))(_.start(point)))(_.start(point))
+                    .flatMap(gate.set)
+                }
+              }
+            case Chain.Genesis(check, control) =>
+              check.captureGrafting.map { captured =>
+                captured.map(c => c.points -> c.heights) -> { (point: ChainSync.Point) =>
+                  captured
+                    .fold(check.startGrafting(point))(_.start(point))
+                    .flatMap(next => gate.set(next) *> own(next) *> control.restarted(next, point))
+                }
+              }
 
           /** Native checkKnownInvalid (Client.hs:1642–1694) excludes a tentative tip only when
             * diffusion pipelining is on. Ordered RequestNext batching does not select this mode.
@@ -949,7 +1011,7 @@ object Peer:
                       drain.nonEmpty || restart.nonEmpty || end.nonEmpty || jump.nonEmpty
                     }
                 def submit: F[Unit] = F.uncancelable { poll =>
-                  observer(chainSyncObserver).capture.flatMap { captured =>
+                  observer(chainSyncObserver, owned).capture.flatMap { captured =>
                     poll(
                       pipeline.submitObserved(
                         new ChainSyncClient.ReceiverHook[F]:
@@ -1151,7 +1213,9 @@ object Peer:
               accepted <- gate.get.flatMap(g =>
                 g.acceptOrRestart(batch).flatTap {
                   case HeaderGate.Acceptance.Accepted =>
-                    batch.traverse_(e => genesis.traverse_(_.observed(e)))
+                    genesis.traverse_(control =>
+                      ownGate.flatMap(own => batch.traverse_(control.observed(own, _)))
+                    )
                   case HeaderGate.Acceptance.Restart(_) | HeaderGate.Acceptance.End(_) => F.unit
                 }
               )
@@ -1531,40 +1595,32 @@ object Peer:
                   * `restarted` tells chain-sync jumping that the session restarted at a point.
                   */
                 def restart(
-                    candidates: F[Vector[ChainSync.Point]],
-                    restarted: ChainSync.Point => F[Unit]
+                    candidates: F[Vector[ChainSync.Point]]
                 )(using Raise[F, PeerError]): F[Unit] =
                   for
-                    captured <- headers.traverse(_.capture).map(_.flatten)
+                    offered <- offer
+                    (captured, startAt) = offered
                     metadata <- heightSnapshot.capture
                     points <- captured.fold(
                       if connection.chainSyncPipeline.nonEmpty then F.pure(metadata.points)
                       else candidates
-                    )(c => F.pure(c.points))
-                    offeredHeights = captured.fold(metadata.heights)(_.heights)
+                    )(c => F.pure(c._1))
+                    offeredHeights = captured.fold(metadata.heights)(_._2)
                     _ <- heights.set(offeredHeights.updated(ChainSync.Point.Origin, None))
                     found <- connection.chainSync.findIntersect(thin(points))
                     _ <- found match
                       case None =>
                         finishChainSync *> PeerError.NoIntersection.raise[F, Unit]
                       case Some((point, tip)) =>
-                        captured
-                          .fold(headers.fold(F.pure(HeaderGate.none[F]))(_.start(point)))(
-                            _.start(point)
-                          )
-                          .flatMap { nextGate =>
-                            val candidate = ChainSelection.Candidate(point, Vector.empty)
-                            gate.set(nextGate) *> restarted(point) *> remember(
-                              candidate
-                            ) *>
-                              capturedHeight(point).flatMap(height =>
-                                progress.set(Some(tip -> height.fold(BigInt(0))(_.value)))
-                              ) *>
-                              updateJournal(candidate, Some(tip), false, true)
-                          }
+                        val candidate = ChainSelection.Candidate(point, Vector.empty)
+                        startAt(point) *> remember(candidate) *>
+                          capturedHeight(point).flatMap(height =>
+                            progress.set(Some(tip -> height.fold(BigInt(0))(_.value)))
+                          ) *>
+                          updateJournal(candidate, Some(tip), false, true)
                   yield ()
                 def restartWith(control: GenesisPeer[F])(using Raise[F, PeerError]): F[Unit] =
-                  restart(control.restartCandidates, control.restarted)
+                  restart(control.restartCandidates)
                 def request(using Raise[F, PeerError]): F[Unit] =
                   genesis.fold(
                     pendingRestart.getAndSet(None).flatMap {
@@ -1573,8 +1629,7 @@ object Peer:
                         restart(
                           PeerError
                             .Diverged(PeerError.Divergence.DetachedCandidate(point))
-                            .raise[F, Vector[ChainSync.Point]],
-                          _ => F.unit
+                            .raise[F, Vector[ChainSync.Point]]
                         )
                       case None => requestHeadersStreaming(publish, capacity)
                     }
@@ -1585,7 +1640,11 @@ object Peer:
                       case None =>
                         F.race(
                           drainRequested.get.flatMap(_.get),
-                          pendingJump.getAndSet(None).flatMap(_.fold(control.next)(F.pure))
+                          // instructions are taken only once the session holds its gate, as the
+                          // reference's client loop exists only with its KnownIntersectionState
+                          ownGate *> pendingJump
+                            .getAndSet(None)
+                            .flatMap(_.fold(control.next)(F.pure))
                         ).flatMap {
                           case Left(_) => F.unit
                           case Right(instruction) =>
@@ -1604,8 +1663,15 @@ object Peer:
                                           .set(Some(result.tip -> height.fold(BigInt(0))(_.value)))
                                       )
                                     ) *>
-                                      control
-                                        .processJump(info, goodPoint, result.toOption.map(_._1))
+                                      ownGate
+                                        .flatMap(
+                                          control.processJump(
+                                            _,
+                                            info,
+                                            goodPoint,
+                                            result.toOption.map(_._1)
+                                          )
+                                        )
                                         .flatMap {
                                           case GenesisPeer.Applied.Retained => F.unit
                                           case GenesisPeer.Applied.Restart  => restartWith(control)
@@ -1838,12 +1904,13 @@ object Peer:
                   candidateHeaders.set(
                     ChainSelection.Candidate(ChainSync.Point.Origin, Vector.empty)
                   )
-                captured <- headers.traverse(_.capture).map(_.flatten)
+                offered <- offer
+                (captured, startAt) = offered
                 metadata <- heightSnapshot.capture
-                offeredHeights = captured.fold(metadata.heights)(_.heights)
+                offeredHeights = captured.fold(metadata.heights)(_._2)
                 offeredPoints = captured.fold(
                   if connection.chainSyncPipeline.nonEmpty then metadata.points else candidates
-                )(_.points)
+                )(_._1)
                 _ <- heights.set(offeredHeights.updated(ChainSync.Point.Origin, None))
                 found <- connection.chainSync.findIntersect(
                   thin(offeredPoints)
@@ -1851,10 +1918,7 @@ object Peer:
                 _ <- finishChainSync.whenA(found.isEmpty)
                 _ <- found.traverse_ { (point, tip) =>
                   candidateHeaders.set(ChainSelection.Candidate(point, Vector.empty)) *>
-                    captured.fold(headers.traverse_(_.start(point).flatMap(gate.set)))(
-                      _.start(point).flatMap(gate.set)
-                    ) *>
-                    genesis.traverse_(_.restarted(point)) *>
+                    startAt(point) *>
                     capturedHeight(point).flatMap(height =>
                       progress.set(Some(tip -> height.fold(BigInt(0))(_.value)))
                     )

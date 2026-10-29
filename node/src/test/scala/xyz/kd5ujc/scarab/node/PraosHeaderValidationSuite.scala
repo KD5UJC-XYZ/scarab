@@ -138,7 +138,7 @@ class PraosHeaderValidationSuite extends FailsOnUncaught:
                       _ => IO.unit,
                       ChainSyncHeights
                         .selected(c.blocks.take(index).map(_.header), applied.candidates),
-                      headers = Some(HeaderClock.clocked(clock, inner))
+                      chain = Peer.Chain.Praos(Some(HeaderClock.clocked(clock, inner)))
                     )
                     .use(peer =>
                       // The body is fetched from the decisions, independently of the header's
