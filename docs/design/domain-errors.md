@@ -106,12 +106,12 @@ that meets it, and Scarab does the same in each place:
   LEDGER without their static checks (cardano-ledger f649f975 `Shelley/API/Mempool.hs` 472–473):
   no witness signature is verified and no script is decoded or evaluated, so no provider is asked.
   Scarab does the same (`MempoolLedger.reapply`, `TxEnv.Validation.NonStatic`). A result without
-  a verdict therefore does not arise there; were one to, the revalidation stops at it
-  (`MempoolState.NoVerdict`) and raises it before the pool's state, version, waiters or events
-  change, as an exception aborts the reference's state operation (`Mempool/Update.hs` 467–495 and
-  587–622) and stops the node through the linked watcher (`Mempool/Init.hs` 64–77,
-  `Node/NodeKernel.hs` 549–560); the node raises it as `VerificationDefect` or
-  `EvaluationUnavailable` (`Mempool.raisedAt`, the forger).
+  a verdict therefore does not arise there; were one to, or were the rules to throw, the
+  transaction leaves the pool with that reason and the revalidation goes on to the new tip
+  (`MempoolState.sync`, `MempoolState.judging`). The reference's exception aborts the state
+  operation (`Mempool/Update.hs` 467–495 and 587–622) and stops the node through the linked
+  watcher (`Mempool/Init.hs` 64–77, `Node/NodeKernel.hs` 549–560); not stopping is the owner's
+  decision of 2026-10-28 (issue 567).
 
 The Byron ledger's own signature checks (`ByronSig`: transaction witnesses, delegation
 certificates, update proposals and votes) follow the same rule:
