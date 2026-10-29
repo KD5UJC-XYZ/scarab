@@ -41,9 +41,9 @@ the linked source comparisons, fixtures and recorded runs.
 |---|---|
 | **Eras** | Byron (PBFT, ledger, update system) through Shelley, Allegra, Mary, Alonzo, Babbage and Conway, including the hard forks between them |
 | **Consensus** | TPraos and Praos header validation (VRF, KES, operational certificates, nonces, leader schedule), chain selection, the hard-fork combinator |
-| **Ledger** | Every Shelley-based rule set; native scripts and Plutus V1 to V3 (evaluator: [Scalus](https://github.com/scalus3/scalus), behind our own interface); all certificates; Conway governance (proposals, votes, DReps, ratification, enactment) |
-| **Networking** | Node-to-node ChainSync, BlockFetch, TxSubmission2 and KeepAlive, client and server; inbound and duplex connections; serves a Haskell relay |
-| **Node** | Persistent chain (immutable and volatile stores, ledger snapshots, a RocksDB UTxO set), mempool, Praos block forging, node-to-client LocalStateQuery / LocalTxSubmission / LocalTxMonitor / ChainSync |
+| **Ledger** | Every Shelley-based rule set; native scripts and Plutus V1 to V3 (evaluator: [Scalus](https://github.com/scalus3/scalus), behind our own interface); all certificates; Conway governance (proposals, votes, DReps, ratification, enactment); the state is held in the Haskell node's own types (`NewEpochState`, `ExtLedgerState`, the hard-fork telescope), indexed by era so that a rule cannot touch another era's data |
+| **Networking** | Node-to-node ChainSync, BlockFetch, TxSubmission2, KeepAlive and PeerSharing, client and server; inbound and duplex connections; the target-driven P2P governor ([as built](docs/design/peer-selection.md)) and connection manager; Ouroboros Genesis (GSM, LoE/GDD, LoP, ChainSync jumping, devoted fetching; [scope and limits](docs/compatibility/ouroboros-genesis.md)); serves a Haskell relay |
+| **Node** | Persistent chain (immutable and volatile stores, ledger snapshots, a RocksDB UTxO set), mempool, Praos block forging in Conway (other eras: [#544](https://github.com/KD5UJC-XYZ/scarab/issues/544)), node-to-client LocalStateQuery / LocalTxSubmission / LocalTxMonitor / ChainSync |
 | **Haskell formats** | Reads the Haskell ImmutableDB; reads and writes the Haskell ledger-state file byte for byte (see below) |
 
 ## Verified against the Haskell node
@@ -55,6 +55,7 @@ the linked source comparisons, fixtures and recorded runs.
 | **Preview, genesis to tip** | 4,748,226 blocks in 3 h 37 min on one build, 0 errors; 3.2M Plutus evaluations, each verdict equal to the chain's `is_valid` |
 | **Haskell ledger-state file** | The 40.6 MB Preview `state` file written by `cardano-node`, and a devnet `state` file of each era from Byron to Conway, decoded and **re-encoded byte for byte** |
 | **Devnet scenarios** | Against Haskell nodes on a local cluster: Byron→Conway follow with per-era ledger comparisons (`e2e`), governance and Plutus load (`soak`), a Haskell relay fed only by Scarab (`relay`), Scarab forging as a stake pool (`pool`), node-to-client answers byte-compared (`ntc`) |
+| **Preprod block production (H1a)** | The Scarab block producer forged a block in each of its first 7 leader slots of preprod epoch 321; 6 are on the canonical chain, checked against Koios ([#115](https://github.com/KD5UJC-XYZ/scarab/issues/115)) |
 | **Plutus conformance** | The pinned `plutus-conformance` suite (plutus 1.70.0.0): 1,009 of 1,009 cases pass, with zero exclusions ([scope and corrections](docs/plutus-conformance.md)) |
 | **Fuzzing** | Every decoder entry point under structured fuzzing, nightly |
 
@@ -66,19 +67,17 @@ Mithril and snapshot-interoperability evidence each have their own scope and exc
 
 ## In progress
 
-- **Haskell-shaped ledger state.** The node's state is the Haskell node's own types (`NewEpochState`,
-  `ExtLedgerState`, the hard-fork telescope), indexed by era so that a rule cannot touch another era's
-  data. The era-indexed rules are the only rules and the ledger snapshot is the Haskell ledger-state
-  file plus a Scarab sidecar (step 2 of the mirror, done). Still open: the gaps that keep some
-  debug-query answers from being byte-equal to the reference, and the cost of the epoch boundary
-  ([#82](https://github.com/KD5UJC-XYZ/scarab/issues/82), [#131](https://github.com/KD5UJC-XYZ/scarab/issues/131)).
-- **Networking follow-ups**: the target-driven P2P governor and Ouroboros Genesis
-  ([G3, #33](https://github.com/KD5UJC-XYZ/scarab/issues/33): GSM, LoE/GDD, LoP, ChainSync jumping and
-  devoted fetching) are implemented; [its compatibility page](docs/compatibility/ouroboros-genesis.md)
-  records the evidence and the limits.
-  The [as-built governor design](docs/design/peer-selection.md) records the implemented scope.
-- **Mainnet**: a full validation of every mainnet block from genesis ([D6, #25](https://github.com/KD5UJC-XYZ/scarab/issues/25)).
-- **Ouroboros Leios** (CIP-164): design note and BLS12-381 voting primitives ([docs/leios.md](docs/leios.md)).
+- **Reference parity**: the audit of behavioural deviations recorded in the tree ([#474](https://github.com/KD5UJC-XYZ/scarab/issues/474)), input
+  from a peer or a local client that stops the node ([#567](https://github.com/KD5UJC-XYZ/scarab/issues/567)), predicate failures accumulated in the
+  reference's order ([#412](https://github.com/KD5UJC-XYZ/scarab/issues/412)), and the live-mirror sidecar gaps ([J3.1, #129](https://github.com/KD5UJC-XYZ/scarab/issues/129)).
+- **Block production**: forging in every era the reference forges in ([#544](https://github.com/KD5UJC-XYZ/scarab/issues/544)), and the upstream
+  KES agent as a separate process ([H2, #38](https://github.com/KD5UJC-XYZ/scarab/issues/38)).
+- **Mainnet**: a full validation of every mainnet block from genesis ([D6, #25](https://github.com/KD5UJC-XYZ/scarab/issues/25)), a start from a
+  Mithril snapshot that follows to the tip ([D9, #69](https://github.com/KD5UJC-XYZ/scarab/issues/69)), and long-run stability at the tip
+  ([K4, #51](https://github.com/KD5UJC-XYZ/scarab/issues/51)).
+- **Ouroboros Leios** (CIP-164): design note, BLS12-381 voting keys and a read-only follow of the public
+  Leios testnet are done ([docs/leios.md](docs/leios.md)); a devnet with Haskell Leios nodes is next
+  ([N4, #73](https://github.com/KD5UJC-XYZ/scarab/issues/73)).
 
 Everything planned, with stable IDs, is in [docs/roadmap.md](docs/roadmap.md).
 
@@ -183,6 +182,7 @@ Alongside: `fixtures/` (test vectors and captured chain data, each with its prov
 | [Performance](docs/performance.md) | Sync numbers, profiles, memory and disk |
 | [Roadmap](docs/roadmap.md) | Tracked work with stable IDs |
 | [Process](docs/process.md) | How work moves from idea to done; the definition of done |
+| [Playbooks](docs/playbooks/README.md) | Short recipes for recurring tasks |
 | [Threat model](docs/security/threat-model.md) | Assets, trust boundaries, assumptions, invariants and existing regression controls |
 | [External review brief](docs/security/external-review.md) | Proposed professional review scope, staged deliverables and quotation questions |
 | [Decisions](docs/adr/README.md) | Architecture decision records |
