@@ -96,6 +96,7 @@ class BackgroundFibersSuite extends FailsOnUncaught:
           def channel(protocol: Int, role: Mux.Role)(using cats.mtl.Raise[IO, NetworkError]) =
             IO.pure(broken)
           def closed = ended.get
+          def failure = ended.tryGet
           def abort(reason: NetworkError) = ended.complete(reason).void
         outcome <- KeepAliveClient
           .pinger(broken, mux, KeepAliveClient.Settings())

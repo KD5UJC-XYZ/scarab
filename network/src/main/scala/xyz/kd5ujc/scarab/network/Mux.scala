@@ -94,6 +94,12 @@ trait Mux[F[_]]:
     */
   def closed: F[NetworkError]
 
+  /** The reason the connection ended, once it has, without waiting for it: the reference's mux
+    * status (`Failed e` after a failure; ouroboros-network 2fb69829
+    * network-mux/src/Network/Mux.hs:459–464).
+    */
+  def failure: F[Option[NetworkError]]
+
   /** Close the connection locally for `reason`: every pending and later operation of a channel
     * raises it. The first reason wins.
     */
@@ -697,6 +703,7 @@ object Mux:
                     .raise[F, MuxChannel[F]]
           }
         def closed = done.get
+        def failure = done.tryGet
         def abort(reason: NetworkError) = done.complete(reason).void
     }
 

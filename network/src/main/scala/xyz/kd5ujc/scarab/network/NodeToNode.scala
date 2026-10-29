@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.Monad
-import cats.effect.{Async, Concurrent, Deferred, Ref, Resource}
+import cats.{Applicative, Monad}
+import cats.effect.{Async, Ref, Resource}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -137,10 +137,11 @@ final class WarmConnection[F[_], P, A] private[network] (
       }
       chainSyncChannel <- Resource.eval(mux.channel(Protocols.ChainSync, role))
       blockFetchChannel <- Resource.eval(mux.channel(Protocols.BlockFetch, role))
-      failure <- Resource.eval(NodeToNode.FirstFailure.create[F])
       ended = (result: ProtocolResults.Run[F, A]) =>
         (error: NetworkError) =>
-          failure.ended(error).flatMap(cause => result.complete(Left(cause))) *> mux.abort(error)
+          NodeToNode
+            .protocolEnd(mux, error)
+            .flatMap(cause => result.complete(Left(cause))) *> mux.abort(error)
       chainSync <- ChainSyncClient.resource(
         chainSyncChannel,
         codec,
@@ -168,25 +169,23 @@ final class WarmConnection[F[_], P, A] private[network] (
 
 object NodeToNode:
 
-  /** The first failure of a hot protocol is the connection's, as the reference's mux status becomes
-    * `Failed e` when a mini-protocol throws `e`. A protocol that is only cancelled after it (its
-    * own end is the plain `Aborted` of a cancellation) reports that cause, as a mini-protocol still
-    * running then completes with `Shutdown (Just e)` (ouroboros-network 2fb69829
-    * network-mux/src/Network/Mux.hs:459–464, 800–812); a protocol's own failure reports itself.
-    * Without it the connection's monitor, which takes the lowest-numbered finished protocol, would
-    * take a cancelled ChainSync's `Aborted` for the peer's fault that BlockFetch met (issue 597).
+  /** What a hot protocol that ended with `error` reports. Its own failure is itself. A protocol
+    * that was only cancelled (its end is the plain `Aborted` of a cancellation) reports the
+    * connection's failure if it has failed, as a mini-protocol still running when the mux fails
+    * completes with `Shutdown (Just e)` (ouroboros-network 2fb69829
+    * network-mux/src/Network/Mux.hs:459–464, 800–812, `completionAction`), and the cancellation
+    * otherwise. Without it the connection's monitor, which takes the lowest-numbered finished
+    * protocol, would take a cancelled ChainSync's `Aborted` for the fault that ended the connection
+    * (issue 597).
     */
-  private[network] final class FirstFailure[F[_]: Concurrent] private (
-      first: Deferred[F, NetworkError]
-  ):
-    def ended(error: NetworkError): F[NetworkError] = error match
+  private[network] def protocolEnd[F[_]: Applicative](
+      mux: Mux[F],
+      error: NetworkError
+  ): F[NetworkError] =
+    error match
       case NetworkError.BearerClosed(NetworkError.Closure.Aborted) =>
-        first.tryGet.map(_.getOrElse(error))
-      case cause => first.complete(cause).as(cause)
-
-  private[network] object FirstFailure:
-    def create[F[_]: Concurrent]: F[FirstFailure[F]] =
-      Deferred[F, NetworkError].map(new FirstFailure(_))
+        mux.failure.map(_.getOrElse(error))
+      case own => Applicative[F].pure(own)
 
   /** @param offerPeerSharing
     *   Take part in peer sharing: offered in the handshake; the connection does if the peer does

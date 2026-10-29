@@ -87,6 +87,7 @@ class PeerSelectionWorkSuite extends FailsOnUncaught:
             Raise[IO, NetworkError]
         ) = channel(protocol)
         def closed = closeSignal.get
+        def failure = closeSignal.tryGet
         def abort(cause: NetworkError) = closeSignal.complete(cause).void
       given BlockSelection.Before[IO] = BlockSelection.Before.noop[IO]
       _ <- Handle

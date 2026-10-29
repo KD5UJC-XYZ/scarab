@@ -23,6 +23,7 @@ final class PoisonedMux(underlying: Mux[IO], poisoned: Int, injected: Throwable)
   def channel(protocol: Int, role: Mux.Role)(using Raise[IO, NetworkError]): IO[MuxChannel[IO]] =
     underlying.channel(protocol, role).map(wrap)
   def closed: IO[NetworkError] = underlying.closed
+  def failure: IO[Option[NetworkError]] = underlying.failure
   def abort(reason: NetworkError): IO[Unit] = underlying.abort(reason)
 
   private def wrap(channel: MuxChannel[IO]): MuxChannel[IO] =
