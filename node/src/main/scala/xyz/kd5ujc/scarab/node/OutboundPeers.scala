@@ -64,7 +64,8 @@ final class OutboundPeers[F[_]: Async, A] private (
     liveSources: Ref[F, Map[BigInt, PeerError => F[Unit]]],
     sourceLock: Mutex[F],
     handles: Ref[F, Map[A, PeerStateActions.Connection[F]]],
-    connectionCounter: Ref[F, BigInt]
+    connectionCounter: Ref[F, BigInt],
+    beforeObservation: Option[F[Unit]]
 ) extends PeerStateActions[F, A],
       PeerStateActions.Connections[F, A]:
   import OutboundPeers.*
@@ -332,6 +333,7 @@ final class OutboundPeers[F[_]: Async, A] private (
 
     val loop = F.tailRecM(()) { _ =>
       for
+        _ <- beforeObservation.sequence_
         observed <- link.transition(
           (link.warm.applications.snapshot, link.terminal.tryGet, link.phase.get).tupled
         )
@@ -1125,6 +1127,12 @@ object OutboundPeers:
         Deferred[F, ProtocolResults.Run[F, SessionEnd]]
       ).mapN(new Session[F](_, _, _, _, _))
 
+  /** The outbound connections of the node.
+    *
+    * @param beforeObservation
+    *   run by each connection's monitor before it observes the connection's applications: a test
+    *   seam for a monitor that fails (issue 579); the node passes none
+    */
   def create[F[_]: Async, A](
       transport: Transport[F, A],
       manager: ConnectionManager[F],
@@ -1133,7 +1141,8 @@ object OutboundPeers:
       supervisor: Supervisor[F],
       report: Event[A] => F[Unit],
       metrics: Stateful[F, PeerMetrics[A]],
-      connected: Option[(A, SocketAddress[IpAddress]) => F[Unit]] = None
+      connected: Option[(A, SocketAddress[IpAddress]) => F[Unit]] = None,
+      beforeObservation: Option[F[Unit]] = None
   )(using node: Handle[F, NodeError]): F[OutboundPeers[F, A]] =
     (
       Ref.of[F, Map[A, Link[F]]](Map.empty),
@@ -1158,6 +1167,7 @@ object OutboundPeers:
         sources,
         lock,
         handles,
-        connections
+        connections,
+        beforeObservation
       )
     }

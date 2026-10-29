@@ -328,7 +328,7 @@ Still stopping the node, decided separately (issue 567):
 - the block path in the selection worker: ~~an exception of the rules,~~ an exception of a commit (`Fatal.Defect`),
   ~~`Unavailable`, `Unverifiable`,~~ `Internal` ([superseded in part](#amendment-2026-10-28-no-verdict-on-a-block-a-held-transaction-or-our-own-block-does-not-stop-the-node));
 - a defect the node publishes to a session (`SessionEnd.Defect`);
-- a connection's monitor whose recovery fails after the monitor failed (`lost`, then `Fatal.Defect`; issue 579 tracks its test);
+- a connection's monitor whose recovery fails after the monitor failed (`lost`, then `Fatal.Defect`; ~~issue 579 tracks its test~~ [tested](#amendment-2026-10-29-the-outbound-connection-monitors-failure-is-tested));
 - ~~the mempool's revalidation and forging;~~ ([superseded](#amendment-2026-10-28-no-verdict-on-a-block-a-held-transaction-or-our-own-block-does-not-stop-the-node))
 - a defect in releasing a connection's resources (`ConnectionResources`);
 - an internal failure of the node's state (`InternalFailure`, `StateAcquireFailure`).
@@ -467,3 +467,12 @@ cardano-ledger `f649f975` `TPraos/API.hs` 656-668), and neither value can fail i
 `SessionEnd`'s `StateFaultInHeader` therefore stays as an invariant of the node: were it met, the node's own state
 would be at fault, and the node stops (`SessionEnd.Internal`). The stricter configuration reading is the reference's,
 and there is no deviation from the reference.
+
+## Amendment (2026-10-29): the outbound connection monitor's failure is tested
+
+Issue 579. Both branches of `OutboundPeers.peerMonitoringLoop`'s fallback are tested (`OutboundMonitorFailureSuite`), with
+an exception injected where the monitor observes the connection's applications (`OutboundPeers.create`'s
+`beforeObservation`, a test seam the node does not use):
+- a monitor that throws ends its own connection: the connection is released, the governor sees `PeerError.ConnectionDefect`
+  with the cause, `NotThePeers`, nothing reaches the fatal sink, and the same peer is connected to and promoted again;
+- a recovery that throws again stops the node with `Fatal.Defect` of the second exception, as listed above.
