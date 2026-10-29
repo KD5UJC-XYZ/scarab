@@ -41,14 +41,16 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
         timeout: NetworkError.Timeout = NetworkError.Timeout(2, "NextCanAwait")
         closeSignal <- Deferred[IO, NetworkError]
         chainSync = new ChainSyncClient[IO, NtNHeader]:
+          // the session's first FindIntersect is answered; the scripted failure is the producer's
+          // restart's, after it
           def findIntersect(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
-            intersections.update(_ + 1) *> {
-              if operation == Operation.RestartTimeout then
+            intersections.getAndUpdate(_ + 1).flatMap { asked =>
+              if operation == Operation.RestartTimeout && asked > 0 then
                 Raise[IO, NetworkError]
                   .raise[NetworkError, Option[(ChainSync.Point, ChainSync.Tip)]](
                     timeout
                   )
-              else if operation == Operation.NoIntersection then IO.pure(None)
+              else if operation == Operation.NoIntersection && asked > 0 then IO.pure(None)
               else
                 IO.pure(
                   Option.when(points.contains(ChainSync.Point.Origin))(
@@ -134,6 +136,7 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
               IO.pure(ChainSyncJumping.Instruction.RunNormally)
             case Operation.RestartTimeout | Operation.NoIntersection =>
               IO.pure(ChainSyncJumping.Instruction.Restart)
+          def current(@scala.annotation.unused gate: HeaderGate.Grafting[IO]) = IO.unit
           def observed(
               @scala.annotation.unused gate: HeaderGate.Grafting[IO],
               @scala.annotation.unused event: SyncEvent
@@ -184,12 +187,7 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
             if operation != Operation.Waiting && operation != Operation.DrainBatch then
               Handle
                 .allow[PeerError](
-                  (peer
-                    .intersect(Vector(ChainSync.Point.Origin))
-                    .void
-                    .whenA(
-                      (operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd || operation == Operation.DrainBatch)
-                    ) *> peer.next)
+                  (peer.intersect(Vector(ChainSync.Point.Origin)).void *> peer.next)
                     .as(Right(()): Either[PeerError, Unit])
                 )
                 .rescue(e => IO.pure(Left(e)))
@@ -224,10 +222,7 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
             else
               Handle
                 .allow[PeerError](
-                  peer
-                    .intersect(Vector(ChainSync.Point.Origin))
-                    .void
-                    .whenA(operation == Operation.DrainBatch)
+                  peer.intersect(Vector(ChainSync.Point.Origin)).void
                 )
                 .rescue(e => IO(fail(e.message))) *> Resource
                 .make(

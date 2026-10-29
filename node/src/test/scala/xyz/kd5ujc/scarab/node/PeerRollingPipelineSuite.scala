@@ -222,6 +222,7 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
               .as(ChainSyncJumping.Instruction.RunNormally)
           def restartCandidates = IO.pure(Vector(ChainSync.Point.Origin))
           def failed[A](error: ChainSyncJumping.Error): IO[A] = IO(fail(error.toString))
+          def current(gate: HeaderGate.Grafting[IO]) = IO.unit
           def observed(gate: HeaderGate.Grafting[IO], event: SyncEvent) = IO.unit
           def restarted(gate: HeaderGate.Grafting[IO], point: ChainSync.Point) = IO.unit
           def processJump(

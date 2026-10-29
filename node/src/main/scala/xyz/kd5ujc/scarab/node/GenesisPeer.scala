@@ -18,6 +18,9 @@ trait GenesisPeer[F[_]]:
   def next: F[ChainSyncJumping.Instruction[GenesisPeer.Checkpoint]]
   def nextAfterReply: F[ChainSyncJumping.Instruction[GenesisPeer.Checkpoint]] = next
 
+  /** The session's gate as it stands, for the readings and the observer to see. */
+  def current(gate: HeaderGate.Grafting[F]): F[Unit]
+
   /** The session's gate accepted `event`. */
   def observed(gate: HeaderGate.Grafting[F], event: SyncEvent): F[Unit]
 

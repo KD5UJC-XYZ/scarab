@@ -397,8 +397,6 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
     }
   }
 
-  // issue 581: the gate a jump grafts onto is the one the session's check started; a jump before
-  // the session started one is an invariant of that connection, which ends it, not the node
   test("captured immutable-to-intersection points remain in GDD and offered CSJ fragments") {
     TestControl.executeEmbed {
       val one = header(1)

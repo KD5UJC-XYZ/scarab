@@ -624,16 +624,25 @@ object Peer:
     def protocol[A](reason: PeerError.ProtocolFailure)(using Raise[F, PeerError]): F[A] =
       PeerError.Protocol(reason).raise[F, A]
 
-    def observer(captured: Option[ChainSyncClient.Observer[F]]): ChainSyncClient.Observer[F] =
+    /** The ChainSync observer, `captured` told after a Genesis session has published its gate as it
+      * stands: the controls read the session's state only as the session hands it to them.
+      */
+    def observer(
+        captured: Option[ChainSyncClient.Observer[F]],
+        owned: Deferred[F, Ref[F, HeaderGate.Grafting[F]]]
+    ): ChainSyncClient.Observer[F] =
+      val current = genesis.traverse_(control =>
+        owned.tryGet.flatMap(_.traverse_(_.get.flatMap(control.current)))
+      )
       new ChainSyncClient.Observer[F]:
         override def capture(using cats.Applicative[F]): F[ChainSyncClient.Observer[F]] =
-          captured.traverse(_.capture).map(observer)
+          current *> captured.traverse(_.capture).map(observer(_, owned))
         def awaitReply: F[Unit] =
           patience.traverse_(_.setPaused(LimitOnPatience.PauseReason.AwaitReply, true)) *>
-            captured.traverse_(_.awaitReply)
+            current *> captured.traverse_(_.awaitReply)
         def reply: F[Unit] =
           patience.traverse_(_.setPaused(LimitOnPatience.PauseReason.AwaitReply, false)) *>
-            captured.traverse_(_.reply)
+            current *> captured.traverse_(_.reply)
 
     // The session's claims on the pool come first, so they are released last: after the supervisor
     // has cancelled and awaited the fibers that fetch, nothing the session claimed is left open.
@@ -656,9 +665,10 @@ object Peer:
           Map(ChainSync.Point.Origin -> None)
         )
       )
-      _ <- connection.chainSync.observe(observer(chainSyncObserver))
-    yield (claims, fetcher, (supervisor, heights))).evalMap { (claims, fetcher, lifecycle) =>
-      val (supervisor, heights) = lifecycle
+      owned <- Resource.eval(Deferred[F, Ref[F, HeaderGate.Grafting[F]]])
+      _ <- connection.chainSync.observe(observer(chainSyncObserver, owned))
+    yield (claims, fetcher, (supervisor, heights, owned))).evalMap { (claims, fetcher, lifecycle) =>
+      val (supervisor, heights, owned) = lifecycle
       // Read-ahead: while the peer is far ahead, ChainSync requests are pipelined, and the
       // accepted headers are published to `queue` in order, up to `Depth` batches ahead of the
       // consumer. Their blocks are fetched independently: the session's fetch client takes the
@@ -689,8 +699,7 @@ object Peer:
         Ref.of[F, Boolean](false),
         Ref.of[F, Option[ValidationError]](None),
         Ref.of[F, Option[ChainSyncJumping.Instruction[GenesisPeer.Checkpoint]]](None),
-        Ref.of[F, Peer.Replies](Peer.Replies()),
-        Deferred[F, Ref[F, HeaderGate.Grafting[F]]]
+        Ref.of[F, Peer.Replies](Peer.Replies())
       ).mapN {
         (
             queue,
@@ -711,8 +720,7 @@ object Peer:
             chainSyncFinished,
             handledSemantic,
             pendingJump,
-            replies,
-            owned
+            replies
         ) =>
           def finishChainSync(using Raise[F, PeerError]): F[Unit] =
             connection.chainSync.done *> chainSyncFinished.set(true)
@@ -1003,7 +1011,7 @@ object Peer:
                       drain.nonEmpty || restart.nonEmpty || end.nonEmpty || jump.nonEmpty
                     }
                 def submit: F[Unit] = F.uncancelable { poll =>
-                  observer(chainSyncObserver).capture.flatMap { captured =>
+                  observer(chainSyncObserver, owned).capture.flatMap { captured =>
                     poll(
                       pipeline.submitObserved(
                         new ChainSyncClient.ReceiverHook[F]:
@@ -1632,7 +1640,11 @@ object Peer:
                       case None =>
                         F.race(
                           drainRequested.get.flatMap(_.get),
-                          pendingJump.getAndSet(None).flatMap(_.fold(control.next)(F.pure))
+                          // instructions are taken only once the session holds its gate, as the
+                          // reference's client loop exists only with its KnownIntersectionState
+                          ownGate *> pendingJump
+                            .getAndSet(None)
+                            .flatMap(_.fold(control.next)(F.pure))
                         ).flatMap {
                           case Left(_) => F.unit
                           case Right(instruction) =>

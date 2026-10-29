@@ -176,6 +176,7 @@ final class GenesisRuntime[F[_]: Async] private (
                 case _ => F.unit
               }
         def next: F[Instruction[GenesisPeer.Checkpoint]] = nextAfterReply
+        def current(gate: HeaderGate.Grafting[F]): F[Unit] = publishedBy(gate).void
         def observed(gate: HeaderGate.Grafting[F], event: SyncEvent): F[Unit] =
           publishedBy(gate)
             .flatMap { history =>

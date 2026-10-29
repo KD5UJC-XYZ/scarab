@@ -488,8 +488,9 @@ loop, once it holds its `KnownIntersectionState`, and applies an accepted jump t
 
 - The session holds its gate. A Genesis session (`Peer.Chain.Genesis`, the check and the controls together) starts a
   gate that grafts (`HeaderCheck.Grafting.startGrafting`) at each intersection it finds and keeps it from the first
-  one on. It takes jump instructions only after that.
-- The session hands its gate to the controls (`GenesisPeer.observed`, `restarted`, `processJump`). The runtime keeps
-  no gate, only what the session last published of its history, as the reference's client writes its candidate.
-- A jump before a gate cannot be written, and that invariant is gone. `HeaderStateUnavailable` remains for a graft that
-  finds no state.
+  one on. It takes jump instructions only once it holds that gate.
+- The session hands its gate to the controls (`GenesisPeer.current`, `observed`, `restarted`, `processJump`). The
+  runtime keeps no gate, only what the session last published of its history, as the reference's client writes its
+  candidate; the session publishes its gate as it stands before the observer's request, wait and reply.
+- A jump is applied to the gate the session hands over, so the invariant of a jump without a gate is gone.
+  `HeaderStateUnavailable` remains for a graft that finds no state.

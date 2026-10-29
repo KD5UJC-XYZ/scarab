@@ -97,6 +97,7 @@ class PeerCsjBoundarySuite extends FailsOnUncaught:
                 case Action.Restart => ChainSyncJumping.Instruction.Restart)
             case _ => IO.never[ChainSyncJumping.Instruction[GenesisPeer.Checkpoint]]
           }
+          def current(@scala.annotation.unused gate: HeaderGate.Grafting[IO]) = IO.unit
           def observed(
               @scala.annotation.unused gate: HeaderGate.Grafting[IO],
               @scala.annotation.unused event: SyncEvent
