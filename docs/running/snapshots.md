@@ -41,8 +41,10 @@ Caveats:
   before first open if rollback matters. The identity file is separately backed up during explicit
   legacy adoption.
   A database of a format newer than the build refuses to open (`UnknownVersion`) and nothing is rewritten.
-- Native ledger snapshots remain format 5 (`SCRBSNP5`, Haskell ledger CBOR plus a typed sidecar,
-  framing and checksum). Snapshot payload formats 1–4 are known retired identifiers, refused with
+- Native ledger snapshots are format 7 (`SCRBSNP7`): the binding of the UTxO checkpoint the snapshot
+  was written with, then the format 5 body (Haskell ledger CBOR plus a typed sidecar), with framing and
+  checksum. A format 5 file (`SCRBSNP5`) is migrated to 7 on open, its body unchanged behind a `Legacy`
+  binding. Snapshot payload formats 1–4 are known retired identifiers, refused with
   `RetiredVersion`; an unknown identifier of the family is `UnknownVersion`. Database ownership,
   read-only identity verification and snapshot preflight happen before opening RocksDB, migrating
   identity or recovering immutable/volatile stores. The old readers and one-shot conversions are
