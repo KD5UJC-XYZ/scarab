@@ -62,8 +62,34 @@ class PeerDefectPolicySuite extends FailsOnUncaught:
       case other => fail(s"unexpected $other")
   }
 
-  test("control: a defect of unknown origin is still the node's") {
-    assertEquals(Peer.networkFault(NetworkError.Defect(cause)), Fault.Defect(cause))
+  // issue 567: of unknown origin on a connection, the connection's: it ends, uncharged
+  test("a defect of unknown origin on a connection ends that connection, not the node") {
+    Peer.networkFault(NetworkError.Defect(cause)) match
+      case Fault.Failed(error @ PeerError.ConnectionDefect(thrown)) =>
+        assert(thrown eq cause)
+        assertEquals(FailurePolicy.classify(error), FailureClass.NotThePeers)
+        assertEquals(FailurePolicy.disposition(SessionEnd.Failed(error)), Disposition.Backoff)
+      case other => fail(s"unexpected $other")
+  }
+
+  test(
+    "a header pipeline's own exception ends its connection; a failure of the node's state stops"
+  ) {
+    InboundGovernor.pipelineEnd(Fault.Defect(cause)) match
+      case Right(error @ PeerError.ConnectionDefect(thrown)) =>
+        assert(thrown eq cause)
+        assertEquals(FailurePolicy.classify(error), FailureClass.NotThePeers)
+      case other => fail(s"unexpected $other")
+    val state = new NetworkError.InternalFailure(
+      NetworkError.StateAcquireFailure(ChainSync.Point.Origin, 1, 0, 1)
+    )
+    InboundGovernor.pipelineEnd(Fault.Defect(state)) match
+      case Left(Fatal.Defect(thrown)) => assert(thrown eq state)
+      case other                      => fail(s"unexpected $other")
+    assertEquals(
+      InboundGovernor.pipelineEnd(Fault.Failed(PeerError.NoIntersection)),
+      Right(PeerError.NoIntersection)
+    )
   }
 
   test("an input defect closes the connection and backs off: transient, never forgotten") {

@@ -153,11 +153,10 @@ final class InboundGovernor[F[_]: Async] private (
                   ownClients = agreed => !agreed.data.initiatorOnly && config.runClients
                 )
               }
-              .rescue {
-                case NetworkError.Defect(cause) =>
-                  fatal(Fatal.Defect(cause)).as(ConnectionEnd.Defect(cause))
-                case other => F.pure(ConnectionEnd.fromNetwork(other))
-              }
+              // an exception of the connection's own work ends that connection, reported as a
+              // defect with its cause, and the node goes on: the reference's default `ShutdownPeer`
+              // (network 2fb69829 RethrowPolicy.hs 61-70, 99-103; issue 567)
+              .rescue(error => F.pure(ConnectionEnd.fromNetwork(error)))
               .flatTap(reason => connection.close(reason))
         }
       }
@@ -386,15 +385,15 @@ final class InboundGovernor[F[_]: Async] private (
                 receivedBody = receivedBody,
                 retainedHeaders = bound.fold(BlockPool.Retained)(_.retainedHeaders),
                 selectionWork = bound.map(_.work),
-                pipelineFailed = Some {
-                  case Fault.Failed(error) =>
-                    update(remote)(s =>
-                      if s.ended.isDefined then s
-                      else s.copy(ended = Some(InboundGovernor.SessionFailure.Peer(error)))
-                    )
-                  case Fault.Defect(cause) =>
-                    reportFatal(remote, Fatal.Defect(cause))
-                }
+                pipelineFailed = Some(fault =>
+                  InboundGovernor.pipelineEnd(fault) match
+                    case Left(problem) => reportFatal(remote, problem)
+                    case Right(error) =>
+                      update(remote)(s =>
+                        if s.ended.isDefined then s
+                        else s.copy(ended = Some(InboundGovernor.SessionFailure.Peer(error)))
+                      )
+                )
               )
               .use { peer =>
                 SessionEnd
@@ -485,6 +484,16 @@ final class InboundGovernor[F[_]: Async] private (
   private def tipBlock(tip: ChainSync.Tip): Option[BigInt] = Some(tip.blockNo.value)
 
 object InboundGovernor:
+  /** What the failure of a session's header pipeline is: the peer's error, or the node's stop. An
+    * exception of the pipeline's own work ends this connection only, uncharged, as in
+    * [[SessionEnd.scoped]]; a failure to acquire the node's own state is the node's (H6 of issue
+    * 567).
+    */
+  private[node] def pipelineEnd(fault: Fault): Either[Fatal, PeerError] = fault match
+    case Fault.Failed(error)                                 => Right(error)
+    case Fault.Defect(failure: NetworkError.InternalFailure) => Left(Fatal.Defect(failure))
+    case Fault.Defect(cause) => Right(PeerError.ConnectionDefect(cause))
+
   enum ReturnReason:
     case NoMoreIntersection
     case RolledBackPastIntersection(point: ChainSync.Point)

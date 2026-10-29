@@ -53,8 +53,9 @@ object Fault:
     case Left(Fault.Defect(cause)) => F.raiseError[A](cause)
 
 /** How a hot session ended: the closed set of outcomes, and nothing else. A session ends by one of
-  * these and by no exception: an unexpected exception is [[SessionEnd.Defect]], never a failure of
-  * the connection (issue 154).
+  * these and by no exception: an exception of the session's own work is a
+  * [[PeerError.ConnectionDefect]] that is not the peer's, one of the node is [[SessionEnd.Defect]]
+  * (issues 154, 567).
   */
 enum SessionEnd:
   /** The session returned (the follower never does). */
@@ -102,8 +103,9 @@ enum SessionEnd:
     */
   case Internal(error: NodeError)
 
-  /** An exception nobody expected: a bug, or a library that threw. The node stops, as it does for
-    * storage.
+  /** An exception of the node that reached the session: a defect the node published to it, an
+    * exception while a chain was committed, or a failure to acquire the node's own state. The node
+    * stops, as it does for storage.
     */
   case Defect(cause: Throwable)
 
@@ -127,9 +129,10 @@ object SessionEnd:
       Unavailable(EvaluationUnavailable(point, failure))
     case ValidationError(point, BlockFailure.Tx(failure: LedgerFailure.Unavailable)) =>
       Unavailable(EvaluationUnavailable(point, failure))
-    case e: EvaluationUnavailable  => Unavailable(e)
-    case e: VerificationDefect     => Unverifiable(e)
-    case StateFaultInHeader(fault) => Internal(fault)
+    case e: EvaluationUnavailable       => Unavailable(e)
+    case e: VerificationDefect          => Unverifiable(e)
+    case StateFaultInHeader(fault)      => Internal(fault)
+    case ChainError.CommitDefect(cause) => Defect(cause)
     case e @ PeerError.InvalidBlock(refused) =>
       refused.unverifiable.fold(Failed(e))(Unverifiable(_))
     case PeerError.NoIntersection                    => NoMoreIntersection
@@ -157,15 +160,29 @@ object SessionEnd:
         failure.stateOutOfRange.map(ChainError.StateOutOfRange(slot.value, _))
       case _ => None
 
+  /** An exception of a session's own work (our ChainSync or BlockFetch client, the header pipeline,
+    * a fiber the session landed) ends the session and its connection, and the peer is not charged:
+    * the reference's `consensusRethrowPolicy` shuts down only the peer for an exception that is
+    * neither of the storage nor of the clock (consensus 82ecba329 `Node/RethrowPolicy.hs`). A
+    * session of the node commits no block: the selection worker does, in a scope of its own that
+    * stops the node ([[BlockSelection]]); and a commit, wherever it runs, raises its own exceptions
+    * as [[ChainError.CommitDefect]], which stops the node. A failure to acquire the node's state
+    * ([[NetworkError.InternalFailure]]) is left a defect of the node (issue 567).
+    */
+  private def thrown(cause: Throwable): SessionEnd = cause match
+    case failure: NetworkError.InternalFailure => Defect(failure)
+    case other                                 => Failed(PeerError.ConnectionDefect(other))
+
   /** The session owns a fresh node-error scope for its rule/store operations. The enclosing `node`
     * scope remains live for compatibility with other enclosing services; its errors are caught in
-    * the session that meets them. Neither scope turns an unexpected exception into a peer failure.
+    * the session that meets them. Neither scope turns an exception into a fault of the peer
+    * ([[thrown]]).
     */
   def scoped[F[_]: MonadThrow: Defer](node: Handle[F, NodeError])(
       body: (Handle[F, SessionEnd], Handle[F, NodeError]) ?=> F[SessionEnd]
   ): F[SessionEnd] =
     Fibers
-      .scoped[F, SessionEnd, SessionEnd](Defect(_)) {
+      .scoped[F, SessionEnd, SessionEnd](thrown) {
         val scope = summon[Handle[F, SessionEnd]]
         node
           .attempt {

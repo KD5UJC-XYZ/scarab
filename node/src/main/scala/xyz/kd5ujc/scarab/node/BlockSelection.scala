@@ -149,6 +149,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
             // reference's linked addBlockRunner thread (consensus 82ecba32
             // Storage/ChainDB/Impl/Background.hs:107-108,142)
             case SessionEnd.Unverifiable(cause) => Fatal.Unverifiable(cause)
+            case SessionEnd.Defect(cause)       => Fatal.Defect(cause)
             case _                              => Fatal.Internal(error)
         )
         application

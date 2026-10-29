@@ -35,6 +35,7 @@ import xyz.kd5ujc.scarab.ledger.byron.ByronSig
 import xyz.kd5ujc.scarab.ledger.rules.TickFailure
 import xyz.kd5ujc.scarab.ledger.state.VocabError
 import xyz.kd5ujc.scarab.protocol.ChainSync
+import xyz.kd5ujc.scarab.network.selection.FailureClass
 import xyz.kd5ujc.scarab.storage.ChainPersistence
 import scala.concurrent.duration.*
 
@@ -71,8 +72,10 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   /** Run a session of the follower over a peer that announces `headers` in turn and then waits.
     * `refuse` is the header the rules reject, `breakStorage` the number of the block whose
     * persistence fails, `breakTip` the number of the block after which telling the mempool fails,
-    * `explode` the number of the block whose rules throw, `unverifiable` the number of the block on
-    * which a crypto provider fails and the failure the rules report for it.
+    * `explode` the number of the block whose rules throw, `throwTip` the number of the block after
+    * which telling the mempool throws, `fetchThrows` the number of the block whose fetch throws,
+    * `unverifiable` the number of the block on which a crypto provider fails and the failure the
+    * rules report for it.
     */
   private def session(
       script: List[Either[PeerError, SyncEvent]] =
@@ -81,6 +84,8 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       breakStorage: Option[Int] = None,
       breakTip: Option[Int] = None,
       explode: Option[Int] = None,
+      throwTip: Option[Int] = None,
+      fetchThrows: Option[Int] = None,
       unavailable: Option[Int] = None,
       held: Option[Int] = None,
       unverifiable: Option[(Int, BlockFailure)] = None,
@@ -107,7 +112,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               Raise[IO, xyz.kd5ujc.scarab.ledger.ChainError]
           ) =
             if breakStorage.contains(block.blockNo.toInt) then
-              node.raise[NodeError, Unit](
+              Raise[IO, StorageError].raise[StorageError, Unit](
                 StorageError.Io("volatile", new java.io.IOException("disk full"))
               )
             else stored.update(_ :+ block)
@@ -166,7 +171,9 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                     .raise[NodeError, Unit](ChainError.NoIntersection)
                     .whenA(
                       breakTip.contains(tipRef.blockNo.toInt)
-                    )
+                    ) *>
+                  IO.raiseError(new IllegalStateException("a bug after the commit"))
+                    .whenA(throwTip.contains(tipRef.blockNo.toInt))
               )
             )
           )
@@ -182,7 +189,10 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             case Some(Left(error))  => raise.raise[PeerError, SyncEvent](error)
             case None               => IO.never[SyncEvent]
           }
-          def fetch(header: Header)(using Raise[IO, PeerError]) = IO.pure(Bytes.empty)
+          def fetch(header: Header)(using Raise[IO, PeerError]) =
+            if fetchThrows.contains(header.blockNo.toInt) then
+              IO.raiseError(new IllegalStateException("a bug in the client"))
+            else IO.pure(Bytes.empty)
         // the session as the governor runs it: in its own scope, ending with a value
         end <- SessionEnd
           .scoped(node) { (_, _) ?=>
@@ -258,12 +268,35 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  test("an exception that is not ours is a defect, not a failure of the connection") {
-    session(explode = Some(1)).map { left =>
+  /** The end of a session that an exception of its own work ended: the connection, uncharged. */
+  private def connectionDefect(left: Result, message: String): Unit =
+    left.end match
+      case SessionEnd.Failed(error @ PeerError.ConnectionDefect(cause)) =>
+        assertEquals(cause.getMessage, message)
+        assertEquals(FailurePolicy.classify(error), FailureClass.NotThePeers)
+      case other => fail(s"unexpected $other")
+    assertEquals(FailurePolicy.disposition(left.end), Disposition.Backoff)
+
+  test("an exception of the session's own work ends its connection, uncharged; the node goes on") {
+    for
+      rules <- session(explode = Some(1))
+      client <- session(fetchThrows = Some(2))
+    yield
+      connectionDefect(rules, "a bug in the rules")
+      assertEquals(rules.chain.tip, headers(0).point)
+      assert(rules.invalid.isEmpty)
+      connectionDefect(client, "a bug in the client")
+      assertEquals(client.chain.tip, headers(1).point)
+      assert(client.invalid.isEmpty)
+  }
+
+  test("an exception after the commit stops the node: the chain is published and stored") {
+    session(throwTip = Some(2)).map { left =>
       left.end match
-        case SessionEnd.Defect(cause) => assertEquals(cause.getMessage, "a bug in the rules")
+        case SessionEnd.Defect(cause) => assertEquals(cause.getMessage, "a bug after the commit")
         case other                    => fail(s"unexpected $other")
-      assertEquals(left.chain.tip, headers(0).point)
+      assertEquals(left.chain.tip, headers(2).point)
+      assertEquals(blockNos(left.stored), Vector(0, 1, 2))
       FailurePolicy.disposition(left.end) match
         case Disposition.StopNode(Fatal.Defect(_)) => ()
         case other                                 => fail(s"unexpected $other")

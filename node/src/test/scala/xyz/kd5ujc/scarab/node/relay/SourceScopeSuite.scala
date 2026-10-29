@@ -93,19 +93,22 @@ class SourceScopeSuite extends FailsOnUncaught:
     yield ()
   }
 
-  test("strict stream construction defects retain their cause and cancellation completes") {
+  // issue 567: an exception that is not a storage failure is the serving connection's
+  test(
+    "strict stream construction defects reach the stream's consumer with their cause, not the node"
+  ) {
     val cause = new IllegalStateException("stream construction")
     for
       reported <- Deferred[IO, Fatal]
-      _ <- StorageBoundary
+      result <- StorageBoundary
         .stream[IO, Unit](failure => reported.complete(failure).void) {
           throw cause
         }
         .compile
         .drain
-        .background
-        .use { _ =>
-          reported.get.map(failure => assertEquals(failure, Fatal.Defect(cause)))
-        }
-    yield ()
+        .attempt
+      stopped <- reported.tryGet
+    yield
+      assertEquals(result, Left(cause))
+      assertEquals(stopped, None)
   }

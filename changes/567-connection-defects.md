@@ -1,0 +1,3 @@
+### Fixed (network, #567)
+
+- **An exception of the node's own code while it deals with one peer or local client no longer stops the node.** That covers its servers, its clients, its connection setup, peer sharing, the connection's monitor and the bearer's writer. Only that connection closes, and the peer is not charged a failure (owner decision). This is the reference's default (`ShutdownPeer`), which Scarab had inverted. A storage failure, and stored data that does not decode, still stop the node, as in the reference. The block path, the mempool's revalidation and forging are unchanged here, and will follow under #567.

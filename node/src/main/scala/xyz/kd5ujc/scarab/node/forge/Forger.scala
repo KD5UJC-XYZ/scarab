@@ -778,7 +778,9 @@ object Forger:
           case SessionEnd.Unavailable(e) => Fatal.Unavailable(e)
           // a crypto provider that fails on our own block is raised by `build`, with nothing evicted
           case SessionEnd.Unverifiable(e) => Fatal.Unverifiable(e)
-          case _                          => Fatal.Internal(error)
+          // an exception while our block was committed (`ChainError.CommitDefect`)
+          case SessionEnd.Defect(cause) => Fatal.Defect(cause)
+          case _                        => Fatal.Internal(error)
         terminal.raise[Fatal, A](fatal)
       }
     }

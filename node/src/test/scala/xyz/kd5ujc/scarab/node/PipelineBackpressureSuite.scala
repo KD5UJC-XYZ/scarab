@@ -384,7 +384,8 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
           result <- Fault.fiber(peer.intersect(Vector(ChainSync.Point.Origin)))
           count <- intersections.get
         yield
-          assertEquals(result, Left(Fault.Defect(defect)))
+          // the connection's own exception, with its cause: that connection ends (issue 567)
+          assertEquals(result, Left(Fault.Failed(PeerError.ConnectionDefect(defect))))
           assertEquals(count, 1)
       }
     yield ()

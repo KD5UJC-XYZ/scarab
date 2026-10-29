@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, FollowerEvent, FollowerEvents}
+import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules, FollowerEvent, FollowerEvents}
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.{
@@ -471,8 +471,10 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     )
   }
 
+  // A writer that throws (`NetworkError.Defect`) no longer stops the node: it ends that connection,
+  // uncharged (issue 567; `PeerSuite`, `PeerDefectPolicySuite`).
   private enum FatalCase:
-    case Storage, Unavailable, UnavailablePhase1, Defect, NetworkDefect
+    case Storage, Unavailable, UnavailablePhase1, Defect
 
   for injected <- FatalCase.values.toList
   do
@@ -502,36 +504,44 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               else
                 injected match
                   case FatalCase.Storage =>
-                    summon[Handle[IO, NodeError]].raise[NodeError, Unit](
-                      StorageError.Io("volatile", storageCause)
-                    )
-                  case FatalCase.Unavailable | FatalCase.UnavailablePhase1 =>
-                    val failure = LedgerFailure.Unavailable(
-                      Bytes.empty,
-                      if injected == FatalCase.UnavailablePhase1 then
-                        ScriptLocation.Phase1(Bytes.empty)
-                      else ScriptLocation.Phase2(Redeemer(0, 0, Bytes.empty, ExUnits.zero)),
-                      EvalFailure
-                        .Unsupported(
-                          xyz.kd5ujc.scarab.plutus.BackendFailure
-                            .BuiltinUnavailable(scalus.uplc.DefaultFun.VerifyEd25519Signature)
-                        )
-                    )
-                    summon[Handle[IO, NodeError]].raise[NodeError, Unit](
-                      ValidationError(
-                        ref.point,
-                        BlockFailure.Tx(failure)
-                      )
-                    )
-                  case FatalCase.Defect | FatalCase.NetworkDefect =>
+                    cats.mtl
+                      .Raise[IO, StorageError]
+                      .raise[StorageError, Unit](StorageError.Io("volatile", storageCause))
+                  case FatalCase.Defect =>
                     IO.raiseError(new IllegalStateException("injected"))
+                  // the rules have no verdict on the block (below), so it is never stored
+                  case FatalCase.Unavailable | FatalCase.UnavailablePhase1 => IO.unit
             }
             def rolledBack(to: Point)(using
                 cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
                 cats.mtl.Raise[IO, ChainError]
             ) = IO.unit
+          // the evaluator has no verdict on the fifth block: it is the rules that say so, before
+          // anything of the block is stored
+          unavailableAt = forged.headers(4).point
+          rules = BlockRules.from[IO, MirrorState] { (state, header, raw) =>
+            if header.point != unavailableAt || injected == FatalCase.Storage ||
+              injected == FatalCase.Defect
+            then ForgedChain.rules.apply(state, header, raw)
+            else
+              val failure = LedgerFailure.Unavailable(
+                Bytes.empty,
+                if injected == FatalCase.UnavailablePhase1 then ScriptLocation.Phase1(Bytes.empty)
+                else ScriptLocation.Phase2(Redeemer(0, 0, Bytes.empty, ExUnits.zero)),
+                EvalFailure
+                  .Unsupported(
+                    xyz.kd5ujc.scarab.plutus.BackendFailure
+                      .BuiltinUnavailable(scalus.uplc.DefaultFun.VerifyEd25519Signature)
+                  )
+              )
+              cats.mtl
+                .Raise[IO, ValidationError]
+                .raise[ValidationError, MirrorState](
+                  ValidationError(header.point, BlockFailure.Tx(failure))
+                )
+          }
           follower <- Follower.create[IO, MirrorState](
-            ForgedChain.rules,
+            rules,
             events,
             ForgedChain.geometry,
             persistence = Some(failing)
@@ -542,21 +552,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           peers <- InMemoryPeers.create(magic)
           first = InMemoryPeers.address(1)
           _ <- peers.serve(first, good)
-          transport: Transport[IO, PeerNetwork.Addr] =
-            if injected != FatalCase.NetworkDefect then peers
-            else
-              new Transport[IO, PeerNetwork.Addr]:
-                def resolve(peer: PeerNetwork.Addr) = peers.resolve(peer)
-                def bearer(peer: PeerNetwork.Addr, remote: SocketAddress[IpAddress])(using
-                    cats.mtl.Raise[IO, NetworkError]
-                ) =
-                  // the writer's exception is the node's own (an approved deviation, ADR 0017
-                  // amendment of 2026-10-28); the reader's would be the connection's (issue 463)
-                  cats.effect.Resource.pure[IO, Bearer[IO]](new Bearer[IO]:
-                    def reads = fs2.Stream.never[IO]
-                    def write(bytes: fs2.Chunk[Byte]) =
-                      IO.raiseError[Unit](new IllegalStateException("injected network"))
-                    def close = IO.unit)
+          transport: Transport[IO, PeerNetwork.Addr] = peers
           manager <- ConnectionManager.create[IO](noTimeWait)
           last = forged.headers.last
           hot = OutboundPeers.Hot[IO](
@@ -642,8 +638,6 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               assertEquals(phase1, injected == FatalCase.UnavailablePhase1)
             case Vector(Fatal.Defect(cause)) if injected == FatalCase.Defect =>
               assertEquals(cause.getMessage, "injected")
-            case Vector(Fatal.Defect(cause)) if injected == FatalCase.NetworkDefect =>
-              assertEquals(cause.getMessage, "injected network")
             case other => fail(s"unexpected $other")
           // the tip that was published is one that is stored: never past the block that failed
           assert(tipNow != last.point, "the chain went past the block that could not be stored")

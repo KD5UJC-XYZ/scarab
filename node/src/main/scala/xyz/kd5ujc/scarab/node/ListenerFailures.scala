@@ -7,7 +7,9 @@ import xyz.kd5ujc.scarab.network.{ConnectionEnd, HandlerFailure, NetworkError}
 import xyz.kd5ujc.scarab.node.log.NodeEvent
 import xyz.kd5ujc.scarab.ledger.ChainError
 
-/** Listener failures belong to the node when they are defects, never to a peer's reputation. */
+/** Listener failures: a connection's ends that connection, never a peer's reputation, and only an
+  * internal failure of the node's state stops the node.
+  */
 object ListenerFailures:
   def report[F[_]: Monad](
       remote: String,
@@ -21,12 +23,11 @@ object ListenerFailures:
           InboundEnd.Connection(ConnectionEnd.fromNetwork(error)),
           Some(Fatal.Internal(ChainError.StateAcquire(error)))
         )
-      case HandlerFailure.Domain(NetworkError.Defect(cause)) =>
-        (InboundEnd.Connection(ConnectionEnd.Defect(cause)), Some(Fatal.Defect(cause)))
+      // an exception of a connection's own work ends that connection; the node goes on and the
+      // peer is not charged (the reference's default `ShutdownPeer`; issue 567)
       case HandlerFailure.Domain(error) =>
         (InboundEnd.Connection(ConnectionEnd.fromNetwork(error)), None)
-      case HandlerFailure.Defect(cause) =>
-        (InboundEnd.Defect(cause), Some(Fatal.Defect(cause)))
+      case HandlerFailure.Defect(cause) => (InboundEnd.Defect(cause), None)
     fatal.traverse_(stop) *> emit(NodeEvent.Inbound(remote, InboundEvent.Closed(end)))
 
   /** A node-to-client connection that failed closes alone, whatever the failure: the reference's

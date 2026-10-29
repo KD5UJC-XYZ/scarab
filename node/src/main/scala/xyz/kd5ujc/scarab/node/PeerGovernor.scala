@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust
 import xyz.kd5ujc.scarab.network.{PeerActionError, PeerOperation, PeerStatus}
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
+import xyz.kd5ujc.scarab.ledger.PeerError
 
 /** What the governor asks of the world to move a peer between temperatures (the reference's
   * `PeerStateActions`, `PeerSelection/PeerStateActions.hs` 590-: establish, activate, deactivate,
@@ -348,7 +349,10 @@ object PeerGovernor:
             case Left(error) =>
               val failure = error match
                 case EstablishmentError.Failed(cause) => FailurePolicy.classify(cause)
-                case _                                => FailureClass.Transient
+                // an exception of our own while connecting: nothing against the peer (issue 567)
+                case EstablishmentError.Defect(cause) =>
+                  FailurePolicy.classify(PeerError.ConnectionDefect(cause))
+                case EstablishmentError.Superseded => FailureClass.Transient
               out.tell(Output.EstablishmentFailed(peer, error)) *>
                 events.offer(Event.Completed(Outcome.ConnectFailed(peer, failure, generation)))
           })
