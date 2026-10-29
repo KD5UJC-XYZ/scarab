@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.ledger.{Header, NodeError, PeerError, Points, ValidationError}
+import xyz.kd5ujc.scarab.ledger.{
+  GenesisInternalProblem,
+  Header,
+  NodeError,
+  PeerError,
+  Points,
+  ValidationError
+}
 import cats.effect.{Async, Ref, Resource}
 import cats.effect.syntax.all.*
 import cats.effect.std.Mutex
@@ -355,16 +362,22 @@ final class InboundGovernor[F[_]: Async] private (
     Handle
       .allow[NodeError] {
         val caller = summon[Raise[F, NodeError]]
+        // the controls raise to this scope, in the session's own fiber
+        given Raise[F, PeerError] = caller
+        val abort: PeerError => F[Unit] = error =>
+          connection.mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
+        // an invariant of the Genesis code met on this connection ends it, or the node for its
+        // own wiring ([[GenesisRuntime.ending]])
+        val invariant: GenesisInternalProblem => F[Unit] =
+          problem => GenesisRuntime.ending(problem).fold(reportFatal(remote, _), abort)
         GenesisRuntime
           .controls(
             genesis,
             Some(pool),
             remote.hashCode.toLong,
             connection.mux.connectionId,
-            error =>
-              connection.mux
-                .abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error))),
-            problem => reportFatal(remote, Fatal.Internal(problem))
+            abort,
+            invariant
           )
           .use { (fetching, bound) =>
             Peer
@@ -373,7 +386,11 @@ final class InboundGovernor[F[_]: Async] private (
                 config.peer.copy(address = SocketAddress(remote.host, remote.port)),
                 prepare,
                 heightSnapshot,
-                bound.fold(headers)(value => headers.map(_.withPatience(value.patience))),
+                headers.map(check =>
+                  bound
+                    .fold(check)(value => check.withPatience(value.patience))
+                    .withInvariant(invariant)
+                ),
                 metered(remote),
                 Some(pool),
                 invalidCachedBlock = Some(rejectedCachedBlock(source, _)),

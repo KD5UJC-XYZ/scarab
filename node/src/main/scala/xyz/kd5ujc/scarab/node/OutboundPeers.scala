@@ -9,7 +9,7 @@ import cats.syntax.all.*
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.consensus.ChainSelection
-import xyz.kd5ujc.scarab.ledger.{NodeError, PeerError, ValidationError}
+import xyz.kd5ujc.scarab.ledger.{GenesisInternalProblem, NodeError, PeerError, ValidationError}
 import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.protocol.{ConnectionState, NtNHeader}
@@ -639,16 +639,20 @@ final class OutboundPeers[F[_]: Async, A] private (
               .map(_ -> key)
           )
           .use { (connection, sourceKey) =>
+            val abort: PeerError => F[Unit] = error =>
+              connection.mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
+            // an invariant of the Genesis code met on this connection ends it, or the node for its
+            // own wiring ([[GenesisRuntime.ending]])
+            val invariant: GenesisInternalProblem => F[Unit] =
+              problem => GenesisRuntime.ending(problem).fold(stop(link, _), abort)
             GenesisRuntime
               .controls(
                 hot.genesis,
                 Some(hot.pool),
                 peer.hashCode.toLong,
                 connection.mux.connectionId,
-                error =>
-                  connection.mux
-                    .abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error))),
-                problem => stop(link, Fatal.Internal(problem))
+                abort,
+                invariant
               )
               .use { (fetching, genesis) =>
                 Peer
@@ -657,8 +661,11 @@ final class OutboundPeers[F[_]: Async, A] private (
                     hot.peer,
                     hot.prepare,
                     hot.heightSnapshot,
-                    genesis
-                      .fold(hot.headers)(bound => hot.headers.map(_.withPatience(bound.patience))),
+                    hot.headers.map(check =>
+                      genesis
+                        .fold(check)(bound => check.withPatience(bound.patience))
+                        .withInvariant(invariant)
+                    ),
                     Some(metered(peer)),
                     Some(hot.pool),
                     Some(rejectedCachedBlock(sourceKey, _)),
