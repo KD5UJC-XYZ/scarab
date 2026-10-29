@@ -581,6 +581,7 @@ object BlockPool:
       pool.claim(owner, hashes, mode, allowOverlap)
     def fill(blocks: Vector[(Bytes, Bytes)]): F[Unit] = pool.fillOpaque(owner, blocks)
     private[node] def invalidBlocks: InvalidBlocks[F] = pool.invalidBlocks
+    private[node] def noVerdictBlocks: NoVerdictBlocks[F] = pool.noVerdictBlocks
     private[node] def invalidated(
         taken: Taken,
         header: Header,

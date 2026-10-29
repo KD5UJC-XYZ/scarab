@@ -590,6 +590,7 @@ final class OutboundPeers[F[_]: Async, A] private (
           override def headerCandidate = over.headerCandidate
           override def selectionWork = over.selectionWork
           override def invalidBlocks = over.invalidBlocks
+          override def noVerdictBlocks = over.noVerdictBlocks
           override def invalidated(
               header: xyz.kd5ujc.scarab.ledger.Header,
               refusal: ValidationError

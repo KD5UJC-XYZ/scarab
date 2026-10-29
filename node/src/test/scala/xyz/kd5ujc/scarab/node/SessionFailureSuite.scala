@@ -9,13 +9,13 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, ExUnits}
 import xyz.kd5ujc.scarab.ledger.{LedgerFailure, Redeemer, ScriptLocation}
+import xyz.kd5ujc.scarab.consensus.BlockNoVerdict
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules, FollowerEvent, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{
   BlockFailure,
   BlockRule,
   ChainError,
   EpochGeometry,
-  EvaluationUnavailable,
   Fixtures,
   Header,
   HeaderError,
@@ -210,6 +210,21 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   private def blockNos(blocks: Vector[BlockRef]) = blocks.map(_.blockNo.toInt)
 
+  /** No verdict on block `at` (issue 567): the block is withheld, neither adopted nor recorded as
+    * invalid, nobody is blamed, the session goes on (the harness ends it by its timeout), and the
+    * cause is reported; `cause` checks it.
+    */
+  private def withheld(left: Result, at: Int)(cause: PartialFunction[BlockNoVerdict, Unit]): Unit =
+    assertEquals(left.end, SessionEnd.Stopped(false))
+    assertEquals(left.invalid, Set.empty[Bytes])
+    assertEquals(left.chain.tip, headers(at - 1).point)
+    assertEquals(blockNos(left.stored), (0 until at).toVector)
+    val reported = left.events.collect {
+      case FollowerEvent.NoVerdict(point, c) if point == headers(at).point => c
+    }
+    assert(reported.nonEmpty, s"no NoVerdict for block $at in ${left.events}")
+    reported.foreach(c => assert(cause.isDefinedAt(c), s"unexpected cause $c"))
+
   test("control: the peer announces five blocks and waits: all are stored and published") {
     session().map { left =>
       assertEquals(left.end, SessionEnd.Stopped(false))
@@ -258,15 +273,12 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  test("an exception that is not ours is a defect, not a failure of the connection") {
+  // issue 567: the rules' exception is no verdict on the block, not a stop of the node
+  test("an exception of the rules withholds the block: no verdict, no blame, the node goes on") {
     session(explode = Some(1)).map { left =>
-      left.end match
-        case SessionEnd.Defect(cause) => assertEquals(cause.getMessage, "a bug in the rules")
-        case other                    => fail(s"unexpected $other")
-      assertEquals(left.chain.tip, headers(0).point)
-      FailurePolicy.disposition(left.end) match
-        case Disposition.StopNode(Fatal.Defect(_)) => ()
-        case other                                 => fail(s"unexpected $other")
+      withheld(left, 1) { case BlockNoVerdict.Defect(cause) =>
+        assertEquals(cause.getMessage, "a bug in the rules")
+      }
     }
   }
 
@@ -379,22 +391,14 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     )
 
   providerDefects.foreach { (name, failure, site) =>
-    test(s"a $name provider defect stops the node: no invalid record, no blame") {
+    test(s"a $name provider defect withholds the block: no invalid record, no blame, no stop") {
       session(unverifiable = Some(2 -> failure)).map { left =>
         val defect = failure match
           case BlockFailure.Unverifiable(_, d)                   => d
           case BlockFailure.Tx(LedgerFailure.Unverifiable(_, d)) => d
           case other                                             => fail(s"unexpected $other")
         val held = VerificationDefect(headers(2).point, site, defect)
-        assertEquals(left.end, SessionEnd.Unverifiable(held))
-        assertEquals(
-          FailurePolicy.disposition(left.end),
-          Disposition.StopNode(Fatal.Unverifiable(held))
-        )
-        assertEquals(SessionEnd.peerError(left.end), None)
-        assertEquals(left.invalid, Set.empty[Bytes])
-        assertEquals(left.chain.tip, headers(1).point)
-        assertEquals(blockNos(left.stored), Vector(0, 1))
+        withheld(left, 2) { case BlockNoVerdict.Verification(d) => assertEquals(d, held) }
       }
     }
   }
@@ -425,37 +429,25 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     assertEquals(code.code, 7)
   }
 
-  test("a defect a block triggers stops the node: no invalid record, no blame") {
+  test("a defect a block triggers withholds it: no invalid record, no blame, no stop") {
     session(held = Some(2)).map { left =>
-      left.end match
-        case SessionEnd.Unavailable(error) =>
-          assertEquals(error, EvaluationUnavailable(headers(2).point, heldFailure))
-          assertEquals(
-            FailurePolicy.disposition(left.end),
-            Disposition.StopNode(Fatal.Unavailable(error))
-          )
-        case other => fail(s"unexpected $other")
-      assertEquals(SessionEnd.peerError(left.end), None)
-      assertEquals(left.invalid, Set.empty[Bytes])
-      assertEquals(left.chain.tip, headers(1).point)
-      assertEquals(blockNos(left.stored), Vector(0, 1))
+      withheld(left, 2) { case BlockNoVerdict.Evaluation(ValidationError(point, failure)) =>
+        assertEquals(point, headers(2).point)
+        assertEquals(failure, BlockFailure.Tx(heldFailure))
+      }
     }
   }
 
   // cardano-ledger f649f975 `compactCoinOrError` is an `error`; ouroboros-consensus 82ecba32
   // `Storage/ChainDB/Impl/Background.hs:107-109,142`: the block runner is a linked thread
-  test("a ledger state out of range stops the node: no refusal, no invalid record, no blame") {
+  // the reference stops (#573); owner decision 2026-10-28: no verdict, the node goes on
+  test(
+    "a ledger state out of range withholds the block: no refusal, no record, no blame, no stop"
+  ) {
     session(outOfRange = Some(2)).map { left =>
-      val fault = ChainError.StateOutOfRange(headers(2).slot, pot)
-      assertEquals(left.end, SessionEnd.Internal(fault))
-      assertEquals(
-        FailurePolicy.disposition(left.end),
-        Disposition.StopNode(Fatal.Internal(fault))
-      )
-      assertEquals(SessionEnd.peerError(left.end), None)
-      assertEquals(left.invalid, Set.empty[Bytes])
-      assertEquals(left.chain.tip, headers(1).point)
-      assertEquals(blockNos(left.stored), Vector(0, 1))
+      withheld(left, 2) { case BlockNoVerdict.StateOutOfRange(fault) =>
+        assertEquals(fault, ChainError.StateOutOfRange(headers(2).slot, pot))
+      }
     }
   }
 
@@ -563,19 +555,10 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  test("an implementation limit stops without a ledger verdict or peer failure, exit eight") {
+  test("an implementation limit withholds the block: no ledger verdict, no peer failure, no stop") {
     session(unavailable = Some(2)).map { left =>
-      left.end match
-        case SessionEnd.Unavailable(error) =>
-          assertEquals(error.point, headers(2).point)
-          assertEquals(Main.FaultExitCode(Fatal.Unavailable(error)).code, 8)
-          assertEquals(
-            FailurePolicy.disposition(left.end),
-            Disposition.StopNode(Fatal.Unavailable(error))
-          )
-        case other => fail(s"unexpected $other")
-      assertEquals(SessionEnd.peerError(left.end), None)
-      assertEquals(left.chain.tip, headers(1).point)
-      assertEquals(blockNos(left.stored), Vector(0, 1))
+      withheld(left, 2) { case BlockNoVerdict.Evaluation(ValidationError(point, _)) =>
+        assertEquals(point, headers(2).point)
+      }
     }
   }

@@ -89,7 +89,8 @@ final class Follower[F[_]: Async, S] private (
     window: SignallingRef[F, Follower.Committed[S]],
     genesis: Ref[F, Option[GenesisGovernor[F]]],
     selectionChanged: Ref[F, F[Unit]],
-    invalidBlocks: Ref[F, Option[InvalidBlocks[F]]]
+    invalidBlocks: Ref[F, Option[InvalidBlocks[F]]],
+    ownNoVerdict: NoVerdictBlocks[F]
 )(using
     chain: Stateful[F, VolatileChain[S]]
 ):
@@ -187,6 +188,12 @@ final class Follower[F[_]: Async, S] private (
             case _ => BlockPoolProblem.SelectionProjectionChanged(candidate.tip).raise[F, Unit]
         }
     BlockSelection.resource(pool, work, fatal, application, originPredecessor)
+
+  /** The blocks without a verdict: the shared set the peer offers (the block pool's), else the
+    * follower's own (issue 567).
+    */
+  private def noVerdictFor(peer: Peer[F]): NoVerdictBlocks[F] =
+    peer.noVerdictBlocks.getOrElse(ownNoVerdict)
 
   private def registryFor(peer: Peer[F])(using Raise[F, NodeError]): F[InvalidBlocks[F]] =
     for
@@ -499,8 +506,11 @@ final class Follower[F[_]: Async, S] private (
       limit <- control.traverse(_.limitAt(selected)).map(_.flatten)
       current <- chain.get
       invalid <- registry.snapshot
+      withheld <- noVerdictFor(peer).hashes
       validPrefix = candidate.copy(headers =
-        candidate.headers.takeWhile(h => !invalid.entries.contains(h.hash))
+        candidate.headers.takeWhile(h =>
+          !invalid.entries.contains(h.hash) && !withheld.contains(h.hash)
+        )
       )
       bounded = Follower.limitCandidate(current.k, l, validPrefix, limit)
       result <- bounded match
@@ -657,7 +667,7 @@ final class Follower[F[_]: Async, S] private (
         case Left(withheld: Withheld) =>
           F.uncancelable { _ =>
             for
-              _ <- peer.noVerdictBlocks.traverse_(_.record(withheld.header, withheld.cause))
+              _ <- noVerdictFor(peer).record(withheld.header, withheld.cause)
               _ <- events.emit(FollowerEvent.NoVerdict(withheld.header.point, withheld.cause))
               localNow <- local
               prefix = take.take(withheld.valid.size)
@@ -967,8 +977,9 @@ object Follower:
         SignallingRef[F, Committed[S]](Committed(initial, selected)),
         Ref.of[F, Option[GenesisGovernor[F]]](None),
         Ref.of[F, F[Unit]](Async[F].unit),
-        Ref.of[F, Option[InvalidBlocks[F]]](None)
-      ).mapN { (views, lock, window, genesis, selectionChanged, invalidBlocks) =>
+        Ref.of[F, Option[InvalidBlocks[F]]](None),
+        NoVerdictBlocks.create[F]
+      ).mapN { (views, lock, window, genesis, selectionChanged, invalidBlocks, noVerdict) =>
         new Follower[F, S](
           rules,
           events,
@@ -983,7 +994,8 @@ object Follower:
           window,
           genesis,
           selectionChanged,
-          invalidBlocks
+          invalidBlocks,
+          noVerdict
         )
       }
     }

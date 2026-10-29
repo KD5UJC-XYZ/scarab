@@ -1873,6 +1873,7 @@ object Peer:
             def next(using Raise[F, PeerError]): F[SyncEvent] = pull
 
             override def invalidBlocks = Some(claims.invalidBlocks)
+            override def noVerdictBlocks = Some(claims.noVerdictBlocks)
             override def invalidated(header: Header, refusal: ValidationError)(using
                 cats.Applicative[F]
             ): F[Either[BlockPoolProblem, Unit]] = last.get.flatMap {

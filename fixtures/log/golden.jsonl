@@ -171,6 +171,7 @@
 {"event":"rolledBack","at":"2026-10-16T12:00:00Z","from":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"},"to":{"origin":true},"depth":2}
 {"event":"epoch","at":"2026-10-16T12:00:00Z","epoch":4,"first":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"reconnecting","at":"2026-10-16T12:00:00Z","reason":"unavailable: connect 10.0.0.1:3001: connection refused","attempt":3}
+{"event":"blockNoVerdict","at":"2026-10-16T12:00:00Z","block":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"},"kind":"defect","reason":"the rules threw: java.lang.IllegalStateException: injected rules defect"}
 {"event":"eraTransition","at":"2026-10-16T12:00:00Z","from":null,"to":"Byron","epoch":0,"slot":4200,"block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"eraTransition","at":"2026-10-16T12:00:00Z","from":"Babbage","to":"Conway","epoch":5,"slot":4200,"block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"epochValidated","at":"2026-10-16T12:00:00Z","era":"Shelley","epoch":2,"headers":33,"thresholdChecked":10,"overlay":20,"leaderUnchecked":3,"scheduling":{"timerSamples":1,"maxTimerLatenessMs":70,"timersLateOver50Ms":1,"timersLateOver100Ms":0,"cpuSteps":1,"longestStepMs":40,"longestStep":"rules"}}
@@ -182,6 +183,7 @@
 {"event":"rolledBack","at":"2026-10-16T12:00:00Z","from":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"},"to":{"origin":true},"depth":2}
 {"event":"epoch","at":"2026-10-16T12:00:00Z","epoch":4,"first":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"reconnecting","at":"2026-10-16T12:00:00Z","reason":"unavailable: connect 10.0.0.1:3001: connection refused","attempt":3}
+{"event":"blockNoVerdict","at":"2026-10-16T12:00:00Z","block":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"},"kind":"defect","reason":"the rules threw: java.lang.IllegalStateException: injected rules defect"}
 {"event":"eraTransition","at":"2026-10-16T12:00:00Z","from":null,"to":"Byron","epoch":0,"slot":4200,"block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"eraTransition","at":"2026-10-16T12:00:00Z","from":"Babbage","to":"Conway","epoch":5,"slot":4200,"block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"epochValidated","at":"2026-10-16T12:00:00Z","era":"Shelley","epoch":2,"headers":33,"thresholdChecked":10,"overlay":20,"leaderUnchecked":3}
