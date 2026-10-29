@@ -10,7 +10,6 @@ import org.scalacheck.Prop.forAll
 import scala.concurrent.duration.*
 
 import TxKit.*
-import TxKit.given
 
 /** The mempool as LocalTxMonitor reports it, against the rules the reference's server applies. */
 class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaCheckSuite:

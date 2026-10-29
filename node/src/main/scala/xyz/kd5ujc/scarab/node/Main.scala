@@ -169,13 +169,13 @@ object Main extends IOApp:
           )
         )
         .flatMap(Raise[IO, NodeError].fromEither(_))
-      // a transaction revalidation has no verdict on stops the node before the pool changes
+      // a transaction revalidation has no verdict on leaves the pool with its reason (issue 567)
       _ <- mempool.sync(
         ledger,
         chain.tipRef.fold(BigInt(-1))(_.slot),
         adopted,
         chain.tipRef.map(_.hash)
-      )(using summon, Mempool.raisedAt[IO](chain.tip))
+      )
     yield ()
 
   private def seedReceived(

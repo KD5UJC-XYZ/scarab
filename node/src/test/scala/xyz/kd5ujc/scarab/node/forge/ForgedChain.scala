@@ -351,10 +351,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
                         .map(xyz.kd5ujc.scarab.ledger.ChainError.MempoolTick(tip.slot + 1, _))
                     )
                     .flatMap(
-                      mempool.sync(_, tip.slot, Set.empty, Some(tip.hash))(using
-                        summon,
-                        Mempool.raisedAt[IO](c.tip)
-                      )
+                      mempool.sync(_, tip.slot, Set.empty, Some(tip.hash))
                     )
                     .void
                 )

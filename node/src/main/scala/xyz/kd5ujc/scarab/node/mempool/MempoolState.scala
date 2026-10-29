@@ -396,28 +396,29 @@ final case class MempoolState(
 
   /** Move to a new chain tip: keep, in order, the transactions that still apply to `ledger` and
     * report the others with the rule that now refuses them. Transactions that a block contains fail
-    * here because their inputs are spent. The first transaction the rules have no verdict on stops
-    * the revalidation, and no new state is made ([[MempoolState.NoVerdict]]).
+    * here because their inputs are spent. A transaction the rules have no verdict on (a crypto
+    * provider or the evaluator failed on it, or the rules threw) is dropped too, with that reason,
+    * and the revalidation goes on: a failure of the node's own implementation on one held
+    * transaction does not stop the node (owner decision 2026-10-28, issue 567; the reference's
+    * revalidation watcher is linked to its node, `Mempool/Init.hs` 64–77, and stops it).
     */
   def sync(
       ledger: Either[ConwayView.Unavailable, MempoolLedger],
       slot: BigInt,
       env: MempoolEnv
-  ): Either[MempoolState.NoVerdict, (MempoolState, Vector[(Entry, Rejection)])] =
+  ): (MempoolState, Vector[(Entry, Rejection)]) =
     ledger match
       case Left(why) =>
         // no ledger to validate against: nothing is held, and everything held is dropped
-        Right(
-          (
-            copy(
-              base = Left(why),
-              tipSlot = slot,
-              current = Left(why),
-              entries = Vector.empty,
-              bytes = 0
-            ),
-            entries.map(_ -> Rejection.NoLedger(why))
-          )
+        (
+          copy(
+            base = Left(why),
+            tipSlot = slot,
+            current = Left(why),
+            entries = Vector.empty,
+            bytes = 0
+          ),
+          entries.map(_ -> Rejection.NoLedger(why))
         )
       case Right(l) =>
         val start =
@@ -428,42 +429,34 @@ final case class MempoolState(
             entries = Vector.empty,
             bytes = 0
           )
-        entries.foldLeft(
-          (start, Vector.empty[(Entry, Rejection)]).asRight[MempoolState.NoVerdict]
-        ) {
-          case (stopped @ Left(_), _) => stopped
-          case (Right((state, dropped)), entry) =>
-            state.current
-              .leftMap(Rejection.NoLedger(_))
-              .flatMap(
-                _.reapply(entry.tx, env.txEnv(slot, l, state.entries.size), env.rules)
-                  .leftMap(Rejection.Ledger(_))
-              ) match
-              case Right(next) =>
-                Right(
-                  (
-                    state.copy(
-                      current = Right(next),
-                      entries = state.entries :+ entry,
-                      bytes = state.bytes + entry.size
-                    ),
-                    dropped
-                  )
+        entries.foldLeft((start, Vector.empty[(Entry, Rejection)])) {
+          case ((state, dropped), entry) =>
+            MempoolState.judging(
+              state.current
+                .leftMap(Rejection.NoLedger(_))
+                .flatMap(
+                  _.reapply(entry.tx, env.txEnv(slot, l, state.entries.size), env.rules)
+                    .leftMap(Rejection.Ledger(_))
                 )
-              case Left(Rejection.Ledger(noVerdict: LedgerFailure.Unverifiable)) =>
-                Left(noVerdict)
-              case Left(Rejection.Ledger(noVerdict: LedgerFailure.Unavailable)) =>
-                Left(noVerdict)
-              case Left(rejection) => Right((state, dropped :+ (entry -> rejection)))
+            ) match
+              case Right(next) =>
+                (
+                  state.copy(
+                    current = Right(next),
+                    entries = state.entries :+ entry,
+                    bytes = state.bytes + entry.size
+                  ),
+                  dropped
+                )
+              // a refusal, or no verdict (`Ledger(Unverifiable | Unavailable)`, `RulesDefect`):
+              // the transaction leaves the pool with its reason
+              case Left(rejection) => (state, dropped :+ (entry -> rejection))
         }
 
   /** Remove transactions by id (and, because later ones may spend their outputs, revalidate the
     * rest).
     */
-  def remove(
-      ids: Set[Bytes],
-      env: MempoolEnv
-  ): Either[MempoolState.NoVerdict, (MempoolState, Vector[(Entry, Rejection)])] =
+  def remove(ids: Set[Bytes], env: MempoolEnv): (MempoolState, Vector[(Entry, Rejection)]) =
     copy(entries = entries.filterNot(e => ids(e.id)))
       .sync(base, tipSlot, env)
 
