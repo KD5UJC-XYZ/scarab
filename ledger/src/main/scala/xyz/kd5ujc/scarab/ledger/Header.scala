@@ -192,18 +192,19 @@ object Header:
 
   /** Decode a Shelley-based raw header `[header_body, kes_signature]` of the given era. */
   def fromRaw(era: Era, raw: Bytes): Either[ChainError, Header.Shelley] =
+    val strings = ByteStrings.of(DecoderVersion.of(era))
     for
       _ <- Either.cond(era != Era.Byron, (), fail(LedgerDecodeError.ByronLayout))
       root <- CborRead.decode(raw, headerLimits).leftMap(fail)
       outer <- array(root, 2)
-      kes <- bytes(outer(1), 448)
+      kes <- bytes(outer(1), 448, strings)
       body <- array(outer(0), if era.usesTPraos then 15 else 10)
       blockNo <- uint(body(0))
       slot <- uint(body(1))
-      prev <- optHash(body(2))
-      issuer <- bytes(body(3), 32)
-      vrfVkey <- bytes(body(4), 32)
-      layout <- if era.usesTPraos then tpraosTail(body) else praosTail(body)
+      prev <- optHash(body(2), strings)
+      issuer <- bytes(body(3), 32, strings)
+      vrfVkey <- bytes(body(4), 32, strings)
+      layout <- if era.usesTPraos then tpraosTail(body, strings) else praosTail(body, strings)
       (vrf, bodySize, bodyHash, opCert, pv) = layout
     yield Shelley(
       era,
@@ -228,16 +229,16 @@ object Header:
   /** TPraos tail: nonce_vrf, leader_vrf, size, hash, hot_vkey, seq, kes_period, sigma, major,
     * minor.
     */
-  private def tpraosTail(body: Vector[Node]): Either[ChainError, Tail] =
+  private def tpraosTail(body: Vector[Node], strings: ByteStrings): Either[ChainError, Tail] =
     for
-      nonce <- vrfCert(body(5))
-      leader <- vrfCert(body(6))
+      nonce <- vrfCert(body(5), strings)
+      leader <- vrfCert(body(6), strings)
       size <- uint(body(7))
-      hash <- bytes(body(8), 32)
-      hot <- bytes(body(9), 32)
+      hash <- bytes(body(8), 32, strings)
+      hot <- bytes(body(9), 32, strings)
       seq <- uint(body(10))
       period <- uint(body(11))
-      sigma <- bytes(body(12), 64)
+      sigma <- bytes(body(12), 64, strings)
       major <- uint(body(13))
       minor <- uint(body(14))
     yield (
@@ -249,26 +250,29 @@ object Header:
     )
 
   /** Praos tail: vrf_result, size, hash, operational_cert, protocol_version. */
-  private def praosTail(body: Vector[Node]): Either[ChainError, Tail] =
+  private def praosTail(body: Vector[Node], strings: ByteStrings): Either[ChainError, Tail] =
     for
-      vrf <- vrfCert(body(5))
+      vrf <- vrfCert(body(5), strings)
       size <- uint(body(6))
-      hash <- bytes(body(7), 32)
+      hash <- bytes(body(7), 32, strings)
       oc <- array(body(8), 4)
-      hot <- bytes(oc(0), 32)
+      hot <- bytes(oc(0), 32, strings)
       seq <- uint(oc(1))
       period <- uint(oc(2))
-      sigma <- bytes(oc(3), 64)
+      sigma <- bytes(oc(3), 64, strings)
       pv <- array(body(9), 2)
       major <- uint(pv(0))
       minor <- uint(pv(1))
     yield (HeaderVrf.Praos(vrf), size, hash, OpCert(hot, seq, period, sigma), (major, minor))
 
   private[ledger] def vrfCert(n: Node): Either[ChainError, VrfCert] =
+    vrfCert(n, ByteStrings.Chunked)
+
+  private[ledger] def vrfCert(n: Node, strings: ByteStrings): Either[ChainError, VrfCert] =
     for
       xs <- array(n, 2)
-      out <- bytes(xs(0), 64)
-      proof <- bytes(xs(1), 80)
+      out <- bytes(xs(0), 64, strings)
+      proof <- bytes(xs(1), 80, strings)
     yield VrfCert(out, proof)
 
   /** Byron header. Main: `[magic, prev, bodyProof,
@@ -350,9 +354,15 @@ object Header:
       sig <- bytes(proxy(1), 64)
     yield ByronSignature.Delegated(epoch, issuer, delegate, cert, sig)
 
-  private[ledger] def optHash(n: Node): Either[ChainError, Option[Bytes]] = n.value match
+  private[ledger] def optHash(n: Node): Either[ChainError, Option[Bytes]] =
+    optHash(n, ByteStrings.Chunked)
+
+  private[ledger] def optHash(
+      n: Node,
+      strings: ByteStrings
+  ): Either[ChainError, Option[Bytes]] = n.value match
     case Value.Null => Right(None)
-    case _          => bytes(n, 32).map(Some(_))
+    case _          => bytes(n, 32, strings).map(Some(_))
 
   private[ledger] def fail(reason: LedgerDecodeError): ChainError =
     ChainError.Decode(DecodeField.Header, reason)
@@ -366,7 +376,29 @@ object Header:
           LedgerDecodeError.Expected(DecodeField.Header, LedgerDecodeError.Shape.Unsigned, n.value)
         )
       )
-  // Headers keep reading chunked byte strings until the reference's header decoder is measured
-  // (#437): the decoding oracle reads transactions only.
+  // Shelley headers read a byte string in the form of the era's own decoder version, as the reference
+  // does. Two decoder paths, both bottoming out in `decodeBytes`, which refuses an indefinite string
+  // below decoder version 12 (`Decoder.hs:350-373`, cardano-ledger f649f975): the fixed-size fields —
+  // the 448-byte KES signature and the VRF certificate's 64-byte output and 80-byte proof — use
+  // `decodeFixedSized`, which is `rawDecodeFixedSized =<< decodeBytes` (`Decoder.hs:375-376`); the
+  // issuer key, the VRF key, the previous hash and the body hash use their own `DecCBOR` instances —
+  // `DecCBOR (VerKeyDSIGN)` (`DecCBOR.hs:472`) and `DecCBOR (Hash h a)` through
+  // `DecCBOR ByteString = decodeBytes` (`DecCBOR.hs:353, 492-496`). A Shelley header is serialised and
+  // decoded at the era's lowest protocol version — the header's own codec at ouroboros-consensus
+  // 82ecba32: `Block.hs:337` is `encodeShelleyHeader = toEraCBOR @era`, and `:346` is the
+  // `eraDecoder @era` inside `decodeShelleyHeader` — 2..9 from Shelley to Conway, so `Header.fromRaw`
+  // passes `ByteStrings.of(DecoderVersion.of(era))` and every era Scarab reads takes a definite string.
+  //
+  // The policy-less forms (`bytes(n, size)`, `optHash(n)`, `vrfCert(n)`) keep the policy this file had
+  // before #437: `Chunked`. They serve the Byron header paths and `LeiosBlock`, which this change does
+  // not measure — narrowing them to `Definite` would be a conformance change of its own (#574 Byron,
+  // #570 Leios) rather than a side effect of a Shelley fix. Evidence: #437.
   private[ledger] def bytes(n: Node, size: Int): Either[ChainError, Bytes] =
-    CborRead.bytesN(n, size, DecodeField.Header)(using ByteStrings.Chunked).leftMap(fail)
+    bytes(n, size, ByteStrings.Chunked)
+
+  private[ledger] def bytes(
+      n: Node,
+      size: Int,
+      strings: ByteStrings
+  ): Either[ChainError, Bytes] =
+    CborRead.bytesN(n, size, DecodeField.Header)(using strings).leftMap(fail)

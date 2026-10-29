@@ -6,8 +6,8 @@ import cats.Monad
 import cats.syntax.all.*
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
-import xyz.kd5ujc.scarab.ledger.{ByteStrings, Credential, DRep, GovActionId, TxIn}
-import xyz.kd5ujc.scarab.protocol.NtcVersion
+import xyz.kd5ujc.scarab.ledger.{ByteStrings, Credential, DRep, DecoderVersion, GovActionId, TxIn}
+import xyz.kd5ujc.scarab.protocol.{Era, NtcVersion}
 
 /** The two native `LedgerPeersKind` cases of a peer snapshot query. */
 enum LedgerPeerKind:
@@ -104,6 +104,10 @@ object NtcQuery:
     case ExpectedArray(field: String)
     case ExpectedUnsigned(field: String)
     case ExpectedBytes(field: String)
+    // `field` is a `String` like the cases around it. Typing the field names, rather than keying
+    // errors by a description, is owed across this enum under #575 (#82 and #189, cited before, are
+    // both closed).
+    case IndefiniteBytes(field: String)
     case InvalidHash(field: String)
     case InvalidCredential
     case InvalidDRep
@@ -122,6 +126,7 @@ object NtcQuery:
       case ExpectedArray(field)           => s"$field: expected array"
       case ExpectedUnsigned(field)        => s"$field: expected small unsigned integer"
       case ExpectedBytes(field)           => s"$field: expected byte string"
+      case IndefiniteBytes(field)         => s"$field: expected a definite-length byte string"
       case InvalidHash(field)             => s"$field: expected 28 bytes"
       case InvalidCredential              => "credential: bad kind or hash"
       case InvalidDRep                    => "drep: bad kind or arity"
@@ -139,6 +144,18 @@ object NtcQuery:
     maxItems = 200000,
     maxStringBytes = 1000000
   )
+
+  /** The byte-string policy of a query argument. The reference decodes the argument at the era's
+    * lowest protocol version (`fromEraCBOR @era`, `Era.hs:236-243`, cardano-ledger f649f975), so
+    * the form follows the era's own version rather than a hard-coded answer; every era from Shelley
+    * to Conway is below version 12 and therefore reads a definite string.
+    *
+    * An era index this node does not know falls back to `Definite`, the answer every era this node
+    * knows gives: the reference decodes an argument only for an era it knows, so there is no
+    * reference verdict here, and this is stated as our choice rather than measured. Evidence: #437.
+    */
+  private def strings(era: Int): ByteStrings =
+    Era.fromIndex(BigInt(era)).fold(ByteStrings.Definite)(e => ByteStrings.of(DecoderVersion.of(e)))
 
   def decode(raw: Bytes): R[NtcQuery] =
     Cbor.decode(raw, limits).leftMap(Error.MalformedCbor(_)).flatMap(top)
@@ -161,9 +178,13 @@ object NtcQuery:
     case Value.UInt(v) if v.isValidInt => Right(v.toInt)
     case _                             => Left(Error.ExpectedUnsigned(what))
 
-  private def bytes(n: Node, what: String): R[Bytes] = n.value match
-    case Value.ByteString(b) => Right(b)
-    case _                   => Left(Error.ExpectedBytes(what))
+  private def bytes(n: Node, what: String)(using strings: ByteStrings): R[Bytes] = n.value match
+    case Value.ByteString(b) =>
+      // The reference joins a chunked string's chunks from decoder version 12 (`decodeBytes`), so the
+      // form is refused only where the era's policy is definite. `ByteStrings.reads` is the one place
+      // that answers this, shared with `CborRead.bytes`.
+      Either.cond(strings.reads(n), b, Error.IndefiniteBytes(what))
+    case _ => Left(Error.ExpectedBytes(what))
 
   /** Elements of a set: an array, optionally under tag 258. */
   private def elements(n: Node, what: String): R[Vector[Node]] = n.value match
@@ -173,7 +194,7 @@ object NtcQuery:
   private def set[A](n: Node, what: String)(each: Node => R[A]): R[Set[A]] =
     elements(n, what).flatMap(_.traverse(each)).map(_.toSet)
 
-  private def credential(n: Node): R[Credential] =
+  private def credential(n: Node)(using ByteStrings): R[Credential] =
     arr(n, "credential").flatMap {
       case Vector(t, h) =>
         (uint(t, "credential kind"), bytes(h, "credential hash")).tupled.flatMap {
@@ -184,15 +205,19 @@ object NtcQuery:
       case xs => Left(Error.Arity("credential", 2, xs.size))
     }
 
-  private def keyHash(n: Node): R[Bytes] =
+  private def keyHash(n: Node)(using ByteStrings): R[Bytes] =
     bytes(n, "key hash").filterOrElse(_.size == 28, Error.InvalidHash("key hash"))
 
-  // Query arguments keep reading chunked byte strings until the reference's query decoders are
-  // measured (#437); the decoding oracle reads transactions only.
-  private def txIn(n: Node): R[TxIn] =
-    TxIn.decode(n)(using ByteStrings.Chunked).leftMap(Error.InvalidTxIn(_))
+  // Query arguments read a definite byte string, as the reference's query decoders do: consensus
+  // decodes them with `fromEraCBOR @era` (the `(2, 15)` GetUTxOByTxIn case,
+  // `Ouroboros/Consensus/Shelley/Ledger/Query.hs:960` at ouroboros-consensus 82ecba32), which is
+  // `eraDecoder @era decCBOR` at the era's *lowest* protocol version (`Era.hs:236-243`, cardano-ledger
+  // f649f975) — 2..9, below the version 12 where `decodeBytes` starts taking a chunked string.
+  // Evidence: #437.
+  private def txIn(n: Node)(using strings: ByteStrings): R[TxIn] =
+    TxIn.decode(n)(using strings).leftMap(Error.InvalidTxIn(_))
 
-  private def drep(n: Node): R[DRep] =
+  private def drep(n: Node)(using ByteStrings): R[DRep] =
     arr(n, "drep").flatMap { xs =>
       xs.headOption.toRight(Error.Empty("drep")).flatMap(uint(_, "drep kind")).flatMap {
         case 0 if xs.size == 2 => keyHash(xs(1)).map(h => DRep.Registered(Credential.Key(h)))
@@ -203,7 +228,7 @@ object NtcQuery:
       }
     }
 
-  private def govActionId(n: Node): R[GovActionId] =
+  private def govActionId(n: Node)(using ByteStrings): R[GovActionId] =
     arr(n, "gov action id").flatMap {
       case Vector(i, ix) =>
         (bytes(i, "gov action tx id"), uint(ix, "gov action index")).mapN((t, k) =>
@@ -241,7 +266,8 @@ object NtcQuery:
           case 0 if xs.size == 2 =>
             arr(xs(1), "query in era").flatMap {
               case Vector(era, q) =>
-                (uint(era, "era index"), shelley(q)).mapN(NtcQuery.IfCurrent(_, _))
+                uint(era, "era index")
+                  .flatMap(e => shelley(q, strings(e)).map(NtcQuery.IfCurrent(e, _)))
               case qs => Left(Error.Arity("query in era", 2, qs.size))
             }
           case 1 if xs.size == 3 =>
@@ -270,8 +296,11 @@ object NtcQuery:
         }
     }
 
-  /** The Shelley block query (`decodeShelleyQuery`). */
-  def shelley(n: Node): R[LedgerQuery] =
+  /** The Shelley block query, reading its byte strings under `policy`. Package-scoped: the caller
+    * has already decoded the era, so this is not a query entry point of its own.
+    */
+  private[ntc] def shelley(n: Node, policy: ByteStrings): R[LedgerQuery] =
+    given ByteStrings = policy
     final case class Pending(node: Node, depth: Int)
     Monad[R].tailRecM(Pending(n, 0)) { pending =>
       arr(pending.node, "ledger query").flatMap {
@@ -284,7 +313,7 @@ object NtcQuery:
       }
     }
 
-  private def shelleyLeaf(n: Node): R[LedgerQuery] =
+  private def shelleyLeaf(n: Node)(using ByteStrings): R[LedgerQuery] =
     arr(n, "ledger query").flatMap { xs =>
       xs.headOption
         .toRight(Error.Empty("ledger query"))

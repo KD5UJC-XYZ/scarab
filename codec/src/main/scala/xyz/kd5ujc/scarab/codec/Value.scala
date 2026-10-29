@@ -18,6 +18,16 @@ sealed abstract class Node:
   /** The exact bytes of the item as read: what anything hashed or signed is hashed over. */
   def original: Bytes
 
+  /** Whether the item's head marks an indefinite-length item — string, array or map (additional
+    * information 31) — so its payload arrives in chunks. Callers here apply it to byte strings and
+    * text, where the reference's decoders refuse the form. A node built by hand without original
+    * bytes was not read from such a head. The reference's decoders refuse this form wherever they
+    * take a definite string: cborg's `decodeBytes` and `decodeString`, and cardano-ledger-binary's
+    * `decodeBytes` below decoder version 12 (`Decoder.hs:350-373`, cardano-ledger f649f975). Byte
+    * strings and text ask the same question of the item, not of the reader.
+    */
+  final def isIndefinite: Boolean = original.size > 0 && (original(0) & 31) == 31
+
   /** Where the item's head is in the array that `original` is a window of (the start of `original`,
     * without making it), for locating an error.
     */
