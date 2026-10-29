@@ -102,7 +102,8 @@ is reported as stale, and so is a `status:needs-owner` issue not updated for 14 
 [triage workflow](../.github/workflows/triage.yml) writes that list into the one issue titled "Triage
 report". File an issue through a form or through `python3 scripts/file_issue.py` (`--help` shows its
 options), which refuses one without the three labels and a milestone. A form records the area and the
-priority in the body; triage applies them as labels and sets the milestone, until #605 applies them
+priority in the body; triage applies them as labels and sets the milestone, until
+[#605](https://github.com/KD5UJC-XYZ/scarab/issues/605) applies them
 automatically.
 
 ### Triage and health check

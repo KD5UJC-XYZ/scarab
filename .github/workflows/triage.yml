@@ -4,6 +4,7 @@ name: Triage report
 # The triage check of docs/process.md ("Labels and milestones") over the open issues, read-only through
 # scripts/status.py --check. Its report replaces the body of the one issue titled "Triage report", created
 # with its own labels and milestone on the first run, so the report never lists itself and never adds comments.
+# A closed "Triage report" issue is reopened: closing it does not stop the report.
 on:
   workflow_dispatch:
   schedule:
