@@ -132,6 +132,29 @@ class MempoolProviderDefectSuite extends CatsEffectSuite:
     }
   }
 
+  // issue 584: a transaction the forger had no verdict on leaves the pool with its reason
+  test("withdraw drops the named transactions with their reasons, not as removed") {
+    val (_, id1) = pay(1)
+    val (_, id2) = pay(2)
+    val reason = Rejection.Ledger(
+      LedgerFailure.StateOutOfRange(
+        id1,
+        xyz.kd5ujc.scarab.ledger.state.VocabError
+          .OutOfRange(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.CompactCoin, BigInt(1) << 64)
+      )
+    )
+    revalidated(m => m.withdraw(Map(id1 -> reason)).void).map { (_, after, events) =>
+      assertEquals(after.entries.map(_.id), Vector(id2))
+      assertEquals(dropped(events), Vector(MempoolEvent.Dropped(id1, reason)))
+      assert(!events.exists(_.isInstanceOf[MempoolEvent.Removed]), events.toString)
+      // the summary counts the withdrawn one among the dropped
+      assertEquals(
+        events.collect { case MempoolEvent.Synced(_, _, dropped) => dropped }.lastOption,
+        Some(1)
+      )
+    }
+  }
+
   test("a removeTxsEvenIfValid under a provider that now fails asks it nothing either") {
     val (_, id1) = pay(1)
     val (_, id2) = pay(2)

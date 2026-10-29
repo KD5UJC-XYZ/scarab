@@ -185,7 +185,7 @@ class HeaderGateSuite extends CatsEffectSuite with ScalaCheckSuite:
       assertEquals(end, SessionEnd.Failed(PeerError.Unverifiable(held)))
       assertEquals(
         FailurePolicy.classify(PeerError.Unverifiable(held)),
-        xyz.kd5ujc.scarab.network.selection.FailureClass.Transient
+        xyz.kd5ujc.scarab.network.selection.FailureClass.NotThePeers
       )
       assertEquals(FailurePolicy.disposition(end), Disposition.Backoff)
     }

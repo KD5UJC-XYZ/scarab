@@ -113,12 +113,17 @@ object BlockBuilder:
       head(5, aux.size.toLong).length + aux.map((i, a) => headLength(i) + a.size).sum +
       headLength(invalid.size) + invalid.map(i => headLength(i)).sum
 
-  /** What ends selection instead of dropping a transaction: missing evaluator support or a crypto
-    * provider that failed on a witness (no ledger verdict), or a quantity of the ledger state
-    * outside its vocabulary type, which the reference's `compactCoinOrError` throws on in the
-    * forging thread (the node's stop).
+  /** No verdict of ours on a held transaction: missing evaluator support or a crypto provider that
+    * failed on a witness, or a quantity of the ledger state outside its vocabulary type, which the
+    * reference's `compactCoinOrError` throws on in the forging thread (the reference's stop).
     */
-  type Stop = LedgerFailure.Unavailable | LedgerFailure.Unverifiable | LedgerFailure.StateOutOfRange
+  type NoVerdict =
+    LedgerFailure.Unavailable | LedgerFailure.Unverifiable | LedgerFailure.StateOutOfRange
+
+  /** The transactions of the block, and the held ones it was built without because the node has no
+    * verdict on them ([[NoVerdict]]): those leave the pool.
+    */
+  final case class Selection(chosen: Vector[(Entry, Piece)], withheld: Vector[(Entry, NoVerdict)])
 
   /** The protocol's block limits for a block on top of `ticked`: its maximum body size and its
     * maximum execution units.
@@ -154,9 +159,13 @@ object BlockBuilder:
     * A transaction was validated when the pool admitted it, so it is applied again as the
     * reference's forging snapshot applies it (`revalidateTxsFor` and `reapplyTx`,
     * [[MempoolLedger.reapply]]): MEMPOOL and LEDGER of Conway on the era-indexed state without
-    * their static checks, so no signature is verified and no script is evaluated again. A result
-    * without a ledger verdict, and a quantity of the state out of range ([[Stop]]), stop the
-    * selection instead of dropping the transaction: the forger raises it and the node stops.
+    * their static checks, so no signature is verified and no script is evaluated again.
+    *
+    * A transaction the node has no verdict on ([[NoVerdict]]) is withheld: the block is built from
+    * the rest and the transaction leaves the pool with its reason. The reference has no such case:
+    * the exception ends its linked forging thread and the node stops (consensus 82ecba32
+    * `NodeKernel.hs` `forkBlockForging`). This is the owner's explicit decision of 2026-10-28
+    * (issue 584, ADR 0017).
     */
   def select(
       ticked: MempoolLedger,
@@ -170,14 +179,19 @@ object BlockBuilder:
   )(using
       decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
       evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default
-  ): Either[Stop, Vector[(Entry, Piece)]] =
+  ): Selection =
     import Capacity.fits
-    final case class Acc(state: MempoolLedger, chosen: Vector[(Entry, Piece)], used: TxMeasure)
+    final case class Acc(
+        state: MempoolLedger,
+        chosen: Vector[(Entry, Piece)],
+        withheld: Vector[(Entry, NoVerdict)],
+        used: TxMeasure
+    )
     val rules = Globals(globals, geometry)
     val capacity = limit.capacity
     @tailrec
-    def go(rest: List[Entry], acc: Acc): Either[Stop, Acc] = rest match
-      case Nil => Right(acc)
+    def go(rest: List[Entry], acc: Acc): Acc = rest match
+      case Nil => acc
       case entry :: more =>
         val env = TxEnv(
           slot,
@@ -199,7 +213,7 @@ object BlockBuilder:
               .fold(
                 {
                   // no verdict on the transaction (evaluator, crypto provider) or a quantity of the
-                  // state out of range: selection stops
+                  // state out of range: it is withheld and the selection goes on
                   case unavailable: LedgerFailure.Unavailable    => Left(unavailable)
                   case unverifiable: LedgerFailure.Unverifiable  => Left(unverifiable)
                   case outOfRange: LedgerFailure.StateOutOfRange => Left(outOfRange)
@@ -208,13 +222,16 @@ object BlockBuilder:
                 next => Right(Some((next, p)))
               )
         applied match
-          case Left(unavailable) => Left(unavailable)
-          case Right(None)       => go(more, acc)
+          case Left(noVerdict) =>
+            go(more, acc.copy(withheld = acc.withheld :+ (entry -> noVerdict)))
+          case Right(None) => go(more, acc)
           case Right(Some((next, p))) =>
             val used = acc.used + Capacity.measure(entry)
-            if used.fits(capacity) then go(more, Acc(next, acc.chosen :+ (entry -> p), used))
-            else Right(acc)
-    go(candidates.toList, Acc(ticked, Vector.empty, TxMeasure.zero)).map(_.chosen)
+            if used.fits(capacity) then
+              go(more, acc.copy(state = next, chosen = acc.chosen :+ (entry -> p), used = used))
+            else acc
+    val done = go(candidates.toList, Acc(ticked, Vector.empty, Vector.empty, TxMeasure.zero))
+    Selection(done.chosen, done.withheld)
 
   /** The ten-element Praos `header_body`; its exact bytes are what the KES key signs. */
   def headerBody(
