@@ -1,0 +1,3 @@
+### Fixed (node, #567)
+
+- **A block our own implementation cannot judge no longer stops the node.** This covers the evaluator, a crypto provider, an exception of the rules, and a ledger quantity out of range (#573). The block is withheld: not adopted, not recorded as invalid, and its sender is neither blamed nor disconnected. Chain selection excludes it until the next restart, so it is not judged again, and a competing chain that avoids it is adopted. It is logged at error severity (`Chain.BlockNoVerdict`) and counted in `scarab_block_no_verdict_total`. A block the protocol's rules refuse is unchanged. Storage failures still stop the node. Owner decision; the reference node stops here.
