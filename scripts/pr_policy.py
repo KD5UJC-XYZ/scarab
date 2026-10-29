@@ -5,7 +5,8 @@
 Besides the title and the promotion source, the body states the level of the change (CONTRIBUTING.md, "Levels"), and a
 pull request of level 2 or higher carries the two sections CONTRIBUTING.md asks for ("Commits and pull requests"):
 "Deviations from the reference" (`None`, or a table of behaviour, the pinned reference, what Scarab does and the
-approval link) and "Gaps" (`None`, or bullets that each start with an issue link). A bot's pull request (a release
+approval link) and "Gaps" (`None`, or bullets that each start with an issue link). A section that opens with
+`None` may go on in prose. A bot's pull request (a release
 proposal, a dependency update) and a promotion of `dev` to `main` are not checked for these. The promotion controller
 (`promote_main.py`) calls `evaluate` only, never the body checks.
 """
@@ -59,8 +60,12 @@ def sections(body):
             for i, h in enumerate(heads)}
 
 
+NONE = re.compile(r"none\b(?![-\w])", re.IGNORECASE)
+
+
 def is_none(text):
-    return text.rstrip(".").strip().lower() == "none"
+    """The section opens with the word None; prose may follow it ("None. This removes one deviation ...")."""
+    return NONE.match(text.strip()) is not None
 
 
 def check_deviations(text):

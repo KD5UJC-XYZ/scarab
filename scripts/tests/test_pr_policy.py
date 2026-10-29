@@ -106,6 +106,10 @@ class PrBodyTests(unittest.TestCase):
 
     def test_level_two_needs_both_sections_none_or_well_formed(self):
         self.assertEqual(self.check(body_of(2, "None", "None.")), 2)
+        self.assertEqual(self.check(body_of(2, "None. This removes one deviation of #474.", "None: all tracked.")), 2)
+        for opening in ["Nonetheless, see below", "Non-blocking", "Some: none recorded"]:
+            with self.subTest(opening=opening), self.assertRaises(policy.PolicyError):
+                self.check(body_of(2, opening, "None"))
         self.assertEqual(self.check(body_of(3, TABLE, "- #612: the owner-decision label check\n  continued")), 3)
         self.assertEqual(self.check(body_of(2, "None", "- [#605](https://github.com/o/r/issues/605): forms")), 2)
         for body, message in [
