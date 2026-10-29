@@ -373,7 +373,7 @@ final class InboundGovernor[F[_]: Async] private (
         GenesisRuntime
           .controls(
             genesis,
-            Some(pool),
+            pool,
             remote.hashCode.toLong,
             connection.mux.connectionId,
             abort,

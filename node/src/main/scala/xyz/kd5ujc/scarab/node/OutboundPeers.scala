@@ -649,7 +649,7 @@ final class OutboundPeers[F[_]: Async, A] private (
             GenesisRuntime
               .controls(
                 hot.genesis,
-                Some(hot.pool),
+                hot.pool,
                 peer.hashCode.toLong,
                 connection.mux.connectionId,
                 abort,

@@ -327,13 +327,12 @@ object GenesisRuntime:
   /** What an invariant of the Genesis code that does not hold ends: the connection it was met on,
     * or the node. Most are of one connection, the reference's `ourBug` (`ShutdownPeer`,
     * ouroboros-consensus 82ecba329 `Node/RethrowPolicy.hs`): that connection closes, uncharged. The
-    * shared block pool and the header family are the node's own wiring, which the reference's types
-    * fix when it is built: every connection would fail alike, so the node stops.
+    * header family is the node's own wiring, which the reference's types fix when it is built:
+    * every connection would fail alike, so the node stops.
     */
   private[node] def ending(problem: GenesisInternalProblem): Either[Fatal, PeerError] =
     problem match
-      case GenesisInternalProblem.MissingSharedBlockPool |
-          GenesisInternalProblem.UnsupportedHeaderFamily =>
+      case GenesisInternalProblem.UnsupportedHeaderFamily =>
         Left(Fatal.Internal(problem))
       case _: GenesisInternalProblem.PatienceWatcherFailed |
           GenesisInternalProblem.MissingConnectionIdentity |
@@ -351,7 +350,7 @@ object GenesisRuntime:
     */
   def controls[F[_]: Async](
       runtime: Option[GenesisRuntime[F]],
-      pool: Option[BlockPool[F]],
+      pool: BlockPool[F],
       identity: Long,
       connectionId: Option[Either[
         xyz.kd5ujc.scarab.protocol.ConnectionIdentityError,
@@ -362,8 +361,8 @@ object GenesisRuntime:
   )(using
       Raise[F, PeerError]
   ): Resource[F, (Option[FetchCoordinator.Session[F]], Option[Bound[F]])] =
-    (runtime, pool) match
-      case (Some(genesis), Some(shared)) =>
+    runtime match
+      case Some(genesis) =>
         val key = connectionId match
           case Some(Right(connection)) =>
             Resource.pure[F, GenesisGovernor.OrderKey](GenesisGovernor.OrderKey.Tcp(connection))
@@ -380,14 +379,9 @@ object GenesisRuntime:
                 .raise[F, GenesisGovernor.OrderKey]
             )
         key
-          .flatMap(order => genesis.bind(shared, identity, disconnect, fatal, order))
+          .flatMap(order => genesis.bind(pool, identity, disconnect, fatal, order))
           .map((fetching, bound) => Some(fetching) -> Some(bound))
-      case (Some(_), None) =>
-        Resource.eval(
-          fatal(GenesisInternalProblem.MissingSharedBlockPool) *>
-            Async[F].never[(Option[FetchCoordinator.Session[F]], Option[Bound[F]])]
-        )
-      case (None, _) => Resource.pure(None -> None)
+      case None => Resource.pure(None -> None)
 
   final case class Bound[F[_]](
       patience: LimitOnPatience[F],

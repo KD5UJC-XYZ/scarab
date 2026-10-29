@@ -245,46 +245,6 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
     }
   }
 
-  test("a Genesis listener without its shared pool reports a typed local invariant") {
-    TestControl.executeEmbed {
-      for
-        failures <- Ref
-          .of[IO, Vector[xyz.kd5ujc.scarab.ledger.GenesisInternalProblem]](Vector.empty)
-        acquired <- Ref.of[IO, Boolean](false)
-        runtime <- setup()
-        _ <- Handle
-          .allow[PeerError](
-            GenesisRuntime
-              .controls(
-                Some(runtime),
-                None,
-                1,
-                None,
-                _ => IO.unit,
-                problem => failures.update(_ :+ problem)
-              )
-              .use(_ => acquired.set(true))
-          )
-          .rescue(error => IO(fail(s"unexpected $error")))
-          .background
-          .use { _ =>
-            for
-              _ <- IO.sleep(1.millis)
-              seen <- failures.get
-              opened <- acquired.get
-              _ <- IO {
-                assertEquals(
-                  seen,
-                  Vector(xyz.kd5ujc.scarab.ledger.GenesisInternalProblem.MissingSharedBlockPool)
-                )
-                assert(!opened)
-              }
-            yield ()
-          }
-      yield ()
-    }
-  }
-
   test("an intersection different from the offered jump is rejected before mutating the gate") {
     TestControl.executeEmbed {
       for
@@ -576,7 +536,7 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
               GenesisRuntime
                 .controls(
                   Some(runtime),
-                  Some(pool),
+                  pool,
                   1,
                   metadata,
                   _ => IO.unit,
@@ -612,7 +572,7 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
           assertEquals(FailurePolicy.classify(error), FailureClass.NotThePeers)
         case other => fail(s"unexpected $other for $problem")
     }
-    List(Problem.MissingSharedBlockPool, Problem.UnsupportedHeaderFamily).foreach { problem =>
+    List(Problem.UnsupportedHeaderFamily).foreach { problem =>
       assertEquals(GenesisRuntime.ending(problem), Left(Fatal.Internal(problem)))
     }
   }
