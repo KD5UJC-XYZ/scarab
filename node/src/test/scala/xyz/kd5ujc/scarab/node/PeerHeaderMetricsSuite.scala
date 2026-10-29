@@ -98,7 +98,7 @@ class PeerHeaderMetricsSuite extends FailsOnUncaught:
                 ),
                 _ => IO.unit,
                 heightSnapshot = ChainSyncHeights.origin,
-                headers = Some(check),
+                chain = Peer.Chain.Praos(Some(check)),
                 observe = Some(event =>
                   reported.update(_ :+ event) *> (event match
                     case Peer.Observation.HeadersArrived(_, _) => credited.complete(()).void

@@ -204,8 +204,7 @@ object HeaderCheck:
             changes
           )
         )
-      ),
-      _ => Async[F].unit
+      )
     )
 
   /** Canonical Genesis sessions use the same header rules and forecast as Praos sessions. */
@@ -273,46 +272,62 @@ object HeaderCheck:
 
   /** A check that can graft ([[HeaderGate.Grafting]]): the node's own ([[forNodeChain]]), which a
     * Genesis node is built with, so that every gate of a Genesis session can take a jump's headers.
+    * The session holds the gate it starts and hands it to the jump it accepts, as the reference's
+    * ChainSync client applies a jump to its own state (consensus 82ecba329
+    * ChainSync/Client.hs:1307–1380, `offerJump`).
     */
   trait Grafting[F[_]] extends HeaderCheck[F]:
-    /** This check with `started` told every gate it starts, by `start` or by a captured start, as
-      * the gate that grafts. Patience, invariants and observers are added after it, so that they
-      * apply to the gates `started` is told of.
-      */
-    def recording(started: HeaderGate.Grafting[F] => F[Unit]): HeaderCheck[F]
+    def startGrafting(intersection: ChainSync.Point): F[HeaderGate.Grafting[F]]
 
-  /** The grafting front of [[forNodeChain]]: each gate of `inner` grafts, and `started` is told it.
-    */
-  private final class NodeChain[F[_]: Async, S](
-      inner: ChainCheck[F, S, NodeHeaderState],
-      started: HeaderGate.Grafting[F] => F[Unit]
-  ) extends Grafting[F]:
-    private def front(gate: ChainGate[F, NodeHeaderState]): F[HeaderGate[F]] =
-      val grafting = new HeaderGate.Forwarding[F](gate) with HeaderGate.Grafting[F]:
+    /** As [[capture]], with gates that graft. */
+    def captureGrafting(using Applicative[F]): F[Option[GraftingCaptured[F]]]
+
+    override def withPatience(patience: LimitOnPatience[F]): Grafting[F] = this
+    override def withInvariant(invariant: GenesisInternalProblem => F[Unit]): Grafting[F] = this
+    override def observed(observer: Event => F[Unit]): Grafting[F] = this
+
+  /** [[Captured]], whose gates graft. */
+  final case class GraftingCaptured[F[_]](
+      points: Vector[ChainSync.Point],
+      start: ChainSync.Point => F[HeaderGate.Grafting[F]],
+      heights: Map[ChainSync.Point, Option[BigInt]]
+  )
+
+  /** The grafting front of [[forNodeChain]]: each gate of `inner` grafts. */
+  private final class NodeChain[F[_]: Async, S](inner: ChainCheck[F, S, NodeHeaderState])
+      extends Grafting[F]:
+    private def front(gate: ChainGate[F, NodeHeaderState]): HeaderGate.Grafting[F] =
+      new HeaderGate.Forwarding[F](gate) with HeaderGate.Grafting[F]:
         def graft(
             snapshot: HeaderChain[NodeHeaderState],
             point: ChainSync.Point,
             selection: ChainSelection.Local
         ): F[Either[GraftError, Unit]] =
           gate.graftWith(summon[NodeHeaderState =:= NodeHeaderState])(snapshot, point, selection)
-      started(grafting).as(grafting)
 
-    def start(intersection: ChainSync.Point): F[HeaderGate[F]] =
-      inner.startGate(intersection).flatMap(front)
+    def startGrafting(intersection: ChainSync.Point): F[HeaderGate.Grafting[F]] =
+      inner.startGate(intersection).map(front)
 
-    override def capture(using Applicative[F]): F[Option[Captured[F]]] = inner.captureWith(front)
+    def start(intersection: ChainSync.Point): F[HeaderGate[F]] = startGrafting(intersection).widen
+
+    override def capture(using Applicative[F]): F[Option[Captured[F]]] =
+      inner
+        .captureWith(gate => Async[F].pure[HeaderGate[F]](front(gate)))
+        .map(_.map((points, start, heights) => Captured(points, start, heights)))
+
+    def captureGrafting(using Applicative[F]): F[Option[GraftingCaptured[F]]] =
+      inner
+        .captureWith(gate => Async[F].pure(front(gate)))
+        .map(_.map((points, start, heights) => GraftingCaptured(points, start, heights)))
 
     override def withPatience(patience: LimitOnPatience[F]): NodeChain[F, S] =
-      NodeChain(inner.withPatience(patience), started)
+      NodeChain(inner.withPatience(patience))
 
     override def withInvariant(invariant: GenesisInternalProblem => F[Unit]): NodeChain[F, S] =
-      NodeChain(inner.withInvariant(invariant), started)
+      NodeChain(inner.withInvariant(invariant))
 
     override def observed(observer: Event => F[Unit]): NodeChain[F, S] =
-      NodeChain(inner.observed(observer), started)
-
-    def recording(hook: HeaderGate.Grafting[F] => F[Unit]): NodeChain[F, S] =
-      NodeChain(inner, gate => started(gate) *> hook(gate))
+      NodeChain(inner.observed(observer))
 
   /** A gate of [[forChain]]. It grafts once its caller knows that its header state is the node's
     * ([[NodeChain]]); a check of another state has nothing to graft.
@@ -424,15 +439,22 @@ object HeaderCheck:
 
     override def capture(using Applicative[F]): F[Option[Captured[F]]] =
       captureWith(gate => F.pure[HeaderGate[F]](gate))
+        .map(_.map((points, start, heights) => Captured(points, start, heights)))
 
-    /** [[capture]], each gate started from it given to `front`. */
-    def captureWith(front: ChainGate[F, H] => F[HeaderGate[F]]): F[Option[Captured[F]]] =
+    /** [[capture]]'s points, a start of a gate at a point found from them, given to `front`, and
+      * the points' heights.
+      */
+    def captureWith[G](front: ChainGate[F, H] => F[G]): F[
+      Option[
+        (Vector[ChainSync.Point], ChainSync.Point => F[G], Map[ChainSync.Point, Option[BigInt]])
+      ]
+    ] =
       canonical.traverse(_ =>
         coherentCurrent.map { pair =>
           val current = pair._1
-          Captured(
+          (
             current.blocks.reverse.map(_._1.point) :+ current.anchor.point,
-            point => startAt(pair, point).flatMap(front),
+            (point: ChainSync.Point) => startAt(pair, point).flatMap(front),
             (current.anchor.block.toVector ++ current.blocks.map(_._1))
               .map(block => block.point -> Option(block.blockNo))
               .toMap

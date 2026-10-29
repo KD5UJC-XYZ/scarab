@@ -147,7 +147,7 @@ class PeerReintersectSuite extends FailsOnUncaught:
             ),
             _ => IO.unit,
             heightSnapshot = ChainSyncHeights.origin,
-            headers = Some(check)
+            chain = Peer.Chain.Praos(Some(check))
           )
           .use { peer =>
             Fault

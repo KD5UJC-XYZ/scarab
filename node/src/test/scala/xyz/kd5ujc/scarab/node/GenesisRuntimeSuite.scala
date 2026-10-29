@@ -57,26 +57,8 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
     ): IO[Either[HeaderCheck.GraftError, Unit]] =
       IO.pure(Left(HeaderCheck.GraftError.MissingPoint(point)))
 
-  // A Genesis node's check whose gates are `next`: a test installs a gate on a session by starting
-  // it, as the session's ChainSync client does once it has found its intersection.
-  private def checkOf(next: Ref[IO, HeaderGate.Grafting[IO]]): HeaderCheck.Grafting[IO] =
-    new HeaderCheck.Grafting[IO]:
-      def start(intersection: ChainSync.Point): IO[HeaderGate[IO]] = next.get.widen
-      def recording(started: HeaderGate.Grafting[IO] => IO[Unit]): HeaderCheck[IO] =
-        new HeaderCheck[IO]:
-          def start(intersection: ChainSync.Point): IO[HeaderGate[IO]] =
-            next.get.flatTap(started).widen
-
-  private def installOn(
-      next: Ref[IO, HeaderGate.Grafting[IO]],
-      bound: GenesisRuntime.Bound[IO],
-      gate: HeaderGate.Grafting[IO]
-  ): IO[Unit] = next.set(gate) *> bound.headers.start(ChainSync.Point.Origin).void
-
-  private final case class Rig(runtime: GenesisRuntime[IO], next: Ref[IO, HeaderGate.Grafting[IO]]):
+  private final case class Rig(runtime: GenesisRuntime[IO]):
     export runtime.{demoteDynamo, governor, session}
-    def install(bound: GenesisRuntime.Bound[IO], gate: HeaderGate.Grafting[IO]): IO[Unit] =
-      installOn(next, bound, gate)
 
   private def setup(
       settings: GenesisSettings = GenesisSettings(),
@@ -85,9 +67,6 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
   ): IO[Rig] =
     for
       governor <- GenesisGovernor.create[IO](IO.pure(GenesisGovernor.View(empty, 2, _ => Some(8))))
-      next <- Ref.of[IO, HeaderGate.Grafting[IO]](
-        gate(HeaderChain(ChainSync.Point.Origin, None, Vector.empty))
-      )
       runtime <- GenesisRuntime.create[IO](
         governor,
         settings,
@@ -95,9 +74,9 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
         IO.pure(geometry),
         IO.pure(BigInt(0)),
         changed,
-        checkOf(next)
+        TestChains.grafting(None)
       )
-    yield Rig(runtime, next)
+    yield Rig(runtime)
 
   test("LoP expiry returns to its watcher, permitting a later GSM refill to expire again") {
     TestControl.executeEmbed {
@@ -203,18 +182,16 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
           val rollback = SyncEvent.RollBackward(ChainSync.Point.Origin, tip)
           for
             _ <- runtime.governor.setPhase(Gsm.Phase.Syncing)
-            _ <- runtime.install(bound, gate(history))
-            _ <- bound.control.observed(SyncEvent.RollForward(h, tip))
+            _ <- bound.control.observed(gate(history), SyncEvent.RollForward(h, tip))
             _ <- bound.received(SyncEvent.RollForward(h, tip))
             before <- runtime.governor.revision
             _ <- bound.received(rollback)
             unvalidated <- runtime.governor.revision
             _ <- IO(assertEquals(unvalidated, before))
-            _ <- runtime.install(
-              bound,
-              gate(HeaderChain(ChainSync.Point.Origin, None, Vector.empty))
+            _ <- bound.control.observed(
+              gate(HeaderChain(ChainSync.Point.Origin, None, Vector.empty)),
+              rollback
             )
-            _ <- bound.control.observed(rollback)
             after <- runtime.governor.revision
             _ <- IO(assert(after > before))
           yield ()
@@ -251,10 +228,8 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
             Vector(HeaderChain.Entry(sparse, None))
           )
           for
-            _ <- runtime.install(a, gate(history))
-            _ <- a.control.observed(SyncEvent.RollForward(sparse, tip))
-            _ <- runtime.install(b, gate(history))
-            _ <- b.control.observed(SyncEvent.RollForward(sparse, tip))
+            _ <- a.control.observed(gate(history), SyncEvent.RollForward(sparse, tip))
+            _ <- b.control.observed(gate(history), SyncEvent.RollForward(sparse, tip))
             _ <- a.received(SyncEvent.RollForward(header(9), tip))
             _ <- b.received(SyncEvent.RollForward(header(9), tip))
             _ <- dense.publish(
@@ -296,7 +271,7 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
               GenesisPeer.Checkpoint(history, local, ChainSync.Point.Origin)
             )
             bound.control
-              .processJump(info, false, Some(header(1).point))
+              .processJump(gate(history), info, false, Some(header(1).point))
               .background
               .use { _ =>
                 IO.sleep(1.millis) *> failures.get.flatMap { seen =>
@@ -336,8 +311,7 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
           runtime.session(2, ChainSync.Point.Origin, _ => IO.unit, _ => IO.unit)
         ).tupled.use { (first, second) =>
           for
-            _ <- runtime.install(first, gate(history, selected))
-            _ <- first.control.observed(SyncEvent.RollForward(two, tip))
+            _ <- first.control.observed(gate(history, selected), SyncEvent.RollForward(two, tip))
             _ <- first.received(SyncEvent.RollForward(header(3), tip))
             instruction <- second.control.next
             _ <- IO(instruction match
@@ -393,15 +367,13 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
         ).tupled.use { (first, second) =>
           for
             _ <- runtime.governor.setPhase(Gsm.Phase.Syncing)
-            _ <- runtime.install(first, gate(history))
-            _ <- first.control.observed(SyncEvent.RollForward(one, tip))
+            _ <- first.control.observed(gate(history), SyncEvent.RollForward(one, tip))
             _ <- first.received(SyncEvent.RollForward(header(2), tip))
             _ <- IO.sleep(1.second)
             instruction <- second.control.next
             _ <- instruction match
               case ChainSyncJumping.Instruction.Jump(info, false) =>
-                (runtime.install(second, target) *>
-                  second.control.processJump(info, false, Some(info.tip))).flatMap { result =>
+                second.control.processJump(target, info, false, Some(info.tip)).flatMap { result =>
                   IO(
                     assertEquals(
                       result,
@@ -427,44 +399,6 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
 
   // issue 581: the gate a jump grafts onto is the one the session's check started; a jump before
   // the session started one is an invariant of that connection, which ends it, not the node
-  test("a jump accepted before the session started a gate is an invariant of its connection") {
-    TestControl.executeEmbed {
-      val one = header(1)
-      val history = HeaderChain[NodeHeaderState](
-        ChainSync.Point.Origin,
-        None,
-        Vector(HeaderChain.Entry(one, None))
-      )
-      val tip = ChainSync.Tip(one.point, ChainSync.UInt64.saturating(1))
-      for
-        problems <- Ref
-          .of[IO, Vector[xyz.kd5ujc.scarab.ledger.GenesisInternalProblem]](Vector.empty)
-        runtime <- setup(GenesisSettings(jumpSlots = 0))
-        _ <- (
-          runtime.session(1, ChainSync.Point.Origin, _ => IO.unit, _ => IO.unit),
-          runtime.session(2, ChainSync.Point.Origin, _ => IO.unit, p => problems.update(_ :+ p))
-        ).tupled.use { (first, second) =>
-          for
-            _ <- runtime.install(first, gate(history))
-            _ <- first.control.observed(SyncEvent.RollForward(one, tip))
-            _ <- first.received(SyncEvent.RollForward(header(2), tip))
-            instruction <- second.control.next
-            info <- instruction match
-              case ChainSyncJumping.Instruction.Jump(info, false) => IO.pure(info)
-              case other => IO.raiseError(new AssertionError(s"expected ordinary jump, got $other"))
-            _ <- second.control.processJump(info, false, Some(info.tip)).background.use { _ =>
-              IO.sleep(1.millis)
-            }
-            seen <- problems.get
-          yield assertEquals(
-            seen,
-            Vector(xyz.kd5ujc.scarab.ledger.GenesisInternalProblem.HeaderStateUnavailable(info.tip))
-          )
-        }
-      yield ()
-    }
-  }
-
   test("captured immutable-to-intersection points remain in GDD and offered CSJ fragments") {
     TestControl.executeEmbed {
       val one = header(1)
@@ -484,10 +418,8 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
           runtime.session(2, ChainSync.Point.Origin, _ => IO.unit, _ => IO.unit)
         ).tupled.use { (first, second) =>
           for
-            _ <- runtime.install(first, gate(history))
-            _ <- first.control.observed(SyncEvent.RollForward(three, tip))
-            _ <- runtime.install(second, gate(history))
-            _ <- second.control.observed(SyncEvent.RollForward(three, tip))
+            _ <- first.control.observed(gate(history), SyncEvent.RollForward(three, tip))
+            _ <- second.control.observed(gate(history), SyncEvent.RollForward(three, tip))
             _ <- first.received(SyncEvent.RollForward(header(4), tip))
             instruction <- second.control.next
             _ <- IO(instruction match
@@ -546,7 +478,6 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
           governor <- GenesisGovernor.create[IO](
             IO.pure(GenesisGovernor.View(empty, 2, _ => Some(8)))
           )
-          next <- Ref.of[IO, HeaderGate.Grafting[IO]](gate(atOne, selectedAtOne))
           runtime <- GenesisRuntime.create[IO](
             governor,
             GenesisSettings(enableCSJ = csjEnabled),
@@ -554,17 +485,18 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
             IO.pure(geometry),
             IO.pure(arrival),
             IO.unit,
-            checkOf(next)
+            TestChains.grafting(None)
           )
           _ <- runtime
             .session(1, ChainSync.Point.Origin, e => failures.update(_ :+ e), _ => IO.unit)
             .use { bound =>
               for
-                _ <- installOn(next, bound, gate(atOne, selectedAtOne))
-                _ <- bound.control.restarted(one.point)
+                _ <- bound.control.restarted(gate(atOne, selectedAtOne), one.point)
                 request <- bound.observer.capture
-                _ <- installOn(next, bound, gate(atTwo, selectedAtOne))
-                _ <- bound.control.observed(SyncEvent.RollForward(two, tip))
+                _ <- bound.control.observed(
+                  gate(atTwo, selectedAtOne),
+                  SyncEvent.RollForward(two, tip)
+                )
                 _ <- bound.control.nextAfterReply
                 _ <- request.awaitReply.background.use { _ =>
                   IO.sleep(1.millis) *> failures.get.flatMap { seen =>

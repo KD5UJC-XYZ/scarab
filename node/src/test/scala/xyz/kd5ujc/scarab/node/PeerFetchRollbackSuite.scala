@@ -228,26 +228,28 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
                       receivedBodies.update(_ :+ (header.hash -> raw))
                   ),
                   patience = Option.when(streaming)(patience),
-                  headers = Option.when(streaming)(
-                    new HeaderCheck[IO]:
-                      def start(intersection: ChainSync.Point): IO[HeaderGate[IO]] =
-                        IO.pure(new HeaderGate[IO]:
-                          def counts = IO.pure(HeaderGate.Counts(0, 0, 0))
-                          def accept(batch: Vector[SyncEvent])(using
-                              Raise[IO, xyz.kd5ujc.scarab.ledger.PeerError]
-                          ): IO[Unit] =
-                            val needsEarlierBlock = batch.exists {
-                              case SyncEvent.RollForward(h, _) => h.hash == a(2).hash
-                              case _                           => false
-                            }
-                            IO(assertEquals(intersection, base.point)) *>
-                              cats.Monad[IO].tailRecM(()) { _ =>
-                                applied.get.flatMap { hashes =>
-                                  if !needsEarlierBlock || hashes.contains(a(1).hash) then
-                                    IO.pure(Right(()))
-                                  else IO.sleep(5.millis).as(Left(()))
-                                }
-                              })
+                  chain = Peer.Chain.Praos(
+                    Option.when(streaming)(
+                      new HeaderCheck[IO]:
+                        def start(intersection: ChainSync.Point): IO[HeaderGate[IO]] =
+                          IO.pure(new HeaderGate[IO]:
+                            def counts = IO.pure(HeaderGate.Counts(0, 0, 0))
+                            def accept(batch: Vector[SyncEvent])(using
+                                Raise[IO, xyz.kd5ujc.scarab.ledger.PeerError]
+                            ): IO[Unit] =
+                              val needsEarlierBlock = batch.exists {
+                                case SyncEvent.RollForward(h, _) => h.hash == a(2).hash
+                                case _                           => false
+                              }
+                              IO(assertEquals(intersection, base.point)) *>
+                                cats.Monad[IO].tailRecM(()) { _ =>
+                                  applied.get.flatMap { hashes =>
+                                    if !needsEarlierBlock || hashes.contains(a(1).hash) then
+                                      IO.pure(Right(()))
+                                    else IO.sleep(5.millis).as(Left(()))
+                                  }
+                                })
+                    )
                   ),
                   heightSnapshot =
                     ChainSyncHeights.selected(left.headers.take(common), Vector(base.point))

@@ -376,13 +376,20 @@ class InboundGovernorSuite extends FailsOnUncaught:
       invariant: GenesisInternalProblem => IO[Unit],
       cancelled: Deferred[IO, Unit]
   ) extends HeaderCheck.Grafting[IO]:
-    def start(intersection: Point): IO[HeaderGate[IO]] = IO.pure(new HeaderGate[IO]:
-      def accept(batch: Vector[SyncEvent])(using cats.mtl.Raise[IO, PeerError]) =
-        (invariant(problem) *> IO.never[Unit]).onCancel(cancelled.complete(()).void)
-      def counts = IO.pure(HeaderGate.Counts(0, 0, 0)))
-    override def withInvariant(told: GenesisInternalProblem => IO[Unit]): HeaderCheck[IO] =
+    def startGrafting(intersection: Point): IO[HeaderGate.Grafting[IO]] =
+      IO.pure(new HeaderGate.Grafting[IO]:
+        def accept(batch: Vector[SyncEvent])(using cats.mtl.Raise[IO, PeerError]) =
+          (invariant(problem) *> IO.never[Unit]).onCancel(cancelled.complete(()).void)
+        def counts = IO.pure(HeaderGate.Counts(0, 0, 0))
+        def graft(
+            snapshot: xyz.kd5ujc.scarab.consensus.HeaderChain[NodeHeaderState],
+            point: Point,
+            selection: xyz.kd5ujc.scarab.consensus.ChainSelection.Local
+        ) = IO.pure(Right(())))
+    def start(intersection: Point): IO[HeaderGate[IO]] = startGrafting(intersection).widen
+    def captureGrafting(using cats.Applicative[IO]) = IO.pure(None)
+    override def withInvariant(told: GenesisInternalProblem => IO[Unit]): HeaderCheck.Grafting[IO] =
       Breaking(problem, told, cancelled)
-    def recording(started: HeaderGate.Grafting[IO] => IO[Unit]): HeaderCheck[IO] = this
 
   // issue 583: the fiber that met the invariant waits until the connection's teardown cancels it;
   // the connection's end, after its session, shows that the teardown reaches it

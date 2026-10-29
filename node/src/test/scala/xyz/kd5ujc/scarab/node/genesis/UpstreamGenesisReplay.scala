@@ -85,10 +85,15 @@ object UpstreamGenesisReplay extends munit.Assertions:
     * owner can record its terminal outcome, preserving every delegated gate capability.
     */
   private def observeDirectRefusals(
-      check: HeaderCheck[IO],
+      check: HeaderCheck.Grafting[IO],
       note: PeerError => IO[Unit]
-  ): HeaderCheck[IO] =
-    def wrap(gate: HeaderGate[IO]): HeaderGate[IO] = new HeaderGate[IO]:
+  ): HeaderCheck.Grafting[IO] =
+    def wrap(gate: HeaderGate.Grafting[IO]): HeaderGate.Grafting[IO] = new HeaderGate.Grafting[IO]:
+      def graft(
+          snapshot: xyz.kd5ujc.scarab.consensus.HeaderChain[NodeHeaderState],
+          point: ChainSync.Point,
+          selection: xyz.kd5ujc.scarab.consensus.ChainSelection.Local
+      ) = gate.graft(snapshot, point, selection)
       private def observe[A](body: Raise[IO, PeerError] ?=> IO[A])(using
           errors: Raise[IO, PeerError]
       ): IO[A] =
@@ -111,11 +116,16 @@ object UpstreamGenesisReplay extends munit.Assertions:
         }
       override def snapshot(using cats.Applicative[IO]) = gate.snapshot
       override def intersectionSelection(using cats.Applicative[IO]) = gate.intersectionSelection
-    new HeaderCheck[IO]:
-      def start(point: ChainSync.Point) = check.start(point).map(wrap)
-      override def capture(using cats.Applicative[IO]) =
-        check.capture.map(
+    new HeaderCheck.Grafting[IO]:
+      def startGrafting(point: ChainSync.Point) = check.startGrafting(point).map(wrap)
+      def start(point: ChainSync.Point) = startGrafting(point).widen
+      def captureGrafting(using cats.Applicative[IO]) =
+        check.captureGrafting.map(
           _.map(captured => captured.copy(start = point => captured.start(point).map(wrap)))
+        )
+      override def capture(using cats.Applicative[IO]) =
+        captureGrafting.map(
+          _.map(c => HeaderCheck.Captured(c.points, point => c.start(point).widen, c.heights))
         )
       override def withPatience(patience: xyz.kd5ujc.scarab.network.genesis.LimitOnPatience[IO]) =
         observeDirectRefusals(check.withPatience(patience), note)
@@ -577,7 +587,7 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                                         .fold(e => fail(e.toString), identity)
                                                   ),
                                                   _ => IO.unit,
-                                                  headers = Some(
+                                                  chain = Peer.Chain.Genesis(
                                                     observeDirectRefusals(
                                                       controls.headers,
                                                       error =>
@@ -585,7 +595,8 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                                           _ :+ Lifecycle
                                                             .DirectRefusal(id, Problem.Node(error))
                                                         )
-                                                    )
+                                                    ),
+                                                    controls.control
                                                   ),
                                                   pool = Some(pool),
                                                   patience = Some(controls.patience),
@@ -609,7 +620,6 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                                   chainSyncObserver = Some(controls.observer),
                                                   retainedHeaders = controls.retainedHeaders,
                                                   fetchSession = Some(fetchSession),
-                                                  genesis = Some(controls.control),
                                                   selectionWork = Some(controls.work),
                                                   receivedBody = Some((header, raw) =>
                                                     Fibers

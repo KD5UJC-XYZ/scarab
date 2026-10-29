@@ -81,11 +81,13 @@ class OutboundGenesisInvariantSuite extends FailsOnUncaught:
       invariant: GenesisInternalProblem => IO[Unit],
       cancelled: Deferred[IO, Unit]
   ) extends HeaderCheck.Grafting[IO]:
-    def start(intersection: ChainSync.Point): IO[HeaderGate[IO]] =
-      (invariant(problem) *> IO.never[HeaderGate[IO]]).onCancel(cancelled.complete(()).void)
-    override def withInvariant(told: GenesisInternalProblem => IO[Unit]): HeaderCheck[IO] =
+    def startGrafting(intersection: ChainSync.Point): IO[HeaderGate.Grafting[IO]] =
+      (invariant(problem) *> IO.never[HeaderGate.Grafting[IO]])
+        .onCancel(cancelled.complete(()).void)
+    def start(intersection: ChainSync.Point): IO[HeaderGate[IO]] = startGrafting(intersection).widen
+    def captureGrafting(using cats.Applicative[IO]) = IO.pure(None)
+    override def withInvariant(told: GenesisInternalProblem => IO[Unit]): HeaderCheck.Grafting[IO] =
       Breaking(problem, told, cancelled)
-    def recording(started: HeaderGate.Grafting[IO] => IO[Unit]): HeaderCheck[IO] = this
 
   test(
     "a Genesis invariant met by an outbound session's header gate ends that session, not the node"
