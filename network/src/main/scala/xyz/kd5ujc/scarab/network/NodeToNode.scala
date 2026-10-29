@@ -168,14 +168,13 @@ final class WarmConnection[F[_], P, A] private[network] (
 
 object NodeToNode:
 
-  /** The first failure of a hot protocol is the connection's, as the reference's mux status
-    * becomes `Failed e` when a mini-protocol throws `e`. A protocol that is only cancelled after it
-    * (its own end is the plain `Aborted` of a cancellation) reports that cause, as a mini-protocol
-    * still running then completes with `Shutdown (Just e)` (ouroboros-network 2fb69829
+  /** The first failure of a hot protocol is the connection's, as the reference's mux status becomes
+    * `Failed e` when a mini-protocol throws `e`. A protocol that is only cancelled after it (its
+    * own end is the plain `Aborted` of a cancellation) reports that cause, as a mini-protocol still
+    * running then completes with `Shutdown (Just e)` (ouroboros-network 2fb69829
     * network-mux/src/Network/Mux.hs:459–464, 800–812); a protocol's own failure reports itself.
-    * Without it the connection's monitor, which takes the lowest-numbered finished protocol,
-    * would take a cancelled ChainSync's `Aborted` for the peer's fault that BlockFetch met (issue
-    * 597).
+    * Without it the connection's monitor, which takes the lowest-numbered finished protocol, would
+    * take a cancelled ChainSync's `Aborted` for the peer's fault that BlockFetch met (issue 597).
     */
   private[network] final class FirstFailure[F[_]: Concurrent] private (
       first: Deferred[F, NetworkError]
