@@ -312,8 +312,9 @@ the whole process by what it sends".
 - A hot session's own work (our ChainSync and BlockFetch clients, the header pipeline, a fiber the session lands):
   an exception there ends the session as `PeerError.ConnectionDefect`, uncharged (`SessionEnd.scoped`,
   `InboundGovernor.pipelineEnd`). A session of the node commits no block: the selection worker owns every commit, in
-  a scope of its own that stops the node (`BlockSelection.run`). The follower still adopts inside a session where no
-  selection worker runs, which only tests do; issue 578 tracks closing that path.
+  a scope of its own that stops the node (`BlockSelection.run`). A commit, wherever it runs, also raises its own
+  exceptions as `ChainError.CommitDefect`, which stops the node (`Follower.commit`). So the boundary holds on the
+  follower's direct adoption inside a session too, which only tests use; issue 578 tracks removing that path.
 - The bearer's writer: an exception encoding or sending our own messages is `NetworkError.Defect` (`Mux`'s writer,
   `NetworkError.fromThrowable`), so it ends that connection, uncharged, and no longer stops the node. Owner
   decision of 2026-10-28 (issue 567, A1), replacing the earlier one of the same day: what we send depends on the

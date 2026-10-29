@@ -14,6 +14,7 @@ import xyz.kd5ujc.scarab.ledger.{
   EpochGeometry,
   BlockFailure,
   BlockPoolProblem,
+  ChainError,
   Header,
   LedgerFailure,
   NodeError,
@@ -729,6 +730,30 @@ final class Follower[F[_]: Async, S] private (
     * as the reference's `consensusRethrowPolicy` does) and recovers from disk.
     */
   private def commit(
+      original: VolatileChain[S],
+      to: ChainSync.Point,
+      depth: Int,
+      steps: Vector[Applied],
+      peerTip: ChainSync.Tip
+  )(using Raise[F, NodeError]): F[Unit] =
+    // An exception here is the commit's, whichever fiber asked for it, and stops the node; a hot
+    // session would otherwise take it for an exception of its own connection (SessionEnd.scoped).
+    // What the commit raises through the capabilities it is given keeps its typed cause.
+    F.defer(
+      Handle
+        .allow[NodeError]((scope: Handle[F, NodeError]) ?=>
+          committing(original, to, depth, steps, peerTip)(using scope)
+            .map(_.asRight[Either[NodeError, Throwable]])
+        )
+        .rescue(error => F.pure(Left(Left(error))))
+    ).handleError(cause => Left(Right(cause)))
+      .flatMap {
+        case Right(())          => F.unit
+        case Left(Left(error))  => error.raise[F, Unit]
+        case Left(Right(cause)) => (ChainError.CommitDefect(cause): NodeError).raise[F, Unit]
+      }
+
+  private def committing(
       original: VolatileChain[S],
       to: ChainSync.Point,
       depth: Int,

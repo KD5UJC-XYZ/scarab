@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, FollowerEvent, FollowerEvents}
+import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules, FollowerEvent, FollowerEvents}
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.{
@@ -504,36 +504,44 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               else
                 injected match
                   case FatalCase.Storage =>
-                    summon[Handle[IO, NodeError]].raise[NodeError, Unit](
-                      StorageError.Io("volatile", storageCause)
-                    )
-                  case FatalCase.Unavailable | FatalCase.UnavailablePhase1 =>
-                    val failure = LedgerFailure.Unavailable(
-                      Bytes.empty,
-                      if injected == FatalCase.UnavailablePhase1 then
-                        ScriptLocation.Phase1(Bytes.empty)
-                      else ScriptLocation.Phase2(Redeemer(0, 0, Bytes.empty, ExUnits.zero)),
-                      EvalFailure
-                        .Unsupported(
-                          xyz.kd5ujc.scarab.plutus.BackendFailure
-                            .BuiltinUnavailable(scalus.uplc.DefaultFun.VerifyEd25519Signature)
-                        )
-                    )
-                    summon[Handle[IO, NodeError]].raise[NodeError, Unit](
-                      ValidationError(
-                        ref.point,
-                        BlockFailure.Tx(failure)
-                      )
-                    )
+                    cats.mtl
+                      .Raise[IO, StorageError]
+                      .raise[StorageError, Unit](StorageError.Io("volatile", storageCause))
                   case FatalCase.Defect =>
                     IO.raiseError(new IllegalStateException("injected"))
+                  // the rules have no verdict on the block (below), so it is never stored
+                  case FatalCase.Unavailable | FatalCase.UnavailablePhase1 => IO.unit
             }
             def rolledBack(to: Point)(using
                 cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
                 cats.mtl.Raise[IO, ChainError]
             ) = IO.unit
+          // the evaluator has no verdict on the fifth block: it is the rules that say so, before
+          // anything of the block is stored
+          unavailableAt = forged.headers(4).point
+          rules = BlockRules.from[IO, MirrorState] { (state, header, raw) =>
+            if header.point != unavailableAt || injected == FatalCase.Storage ||
+              injected == FatalCase.Defect
+            then ForgedChain.rules.apply(state, header, raw)
+            else
+              val failure = LedgerFailure.Unavailable(
+                Bytes.empty,
+                if injected == FatalCase.UnavailablePhase1 then ScriptLocation.Phase1(Bytes.empty)
+                else ScriptLocation.Phase2(Redeemer(0, 0, Bytes.empty, ExUnits.zero)),
+                EvalFailure
+                  .Unsupported(
+                    xyz.kd5ujc.scarab.plutus.BackendFailure
+                      .BuiltinUnavailable(scalus.uplc.DefaultFun.VerifyEd25519Signature)
+                  )
+              )
+              cats.mtl
+                .Raise[IO, ValidationError]
+                .raise[ValidationError, MirrorState](
+                  ValidationError(header.point, BlockFailure.Tx(failure))
+                )
+          }
           follower <- Follower.create[IO, MirrorState](
-            ForgedChain.rules,
+            rules,
             events,
             ForgedChain.geometry,
             persistence = Some(failing)
