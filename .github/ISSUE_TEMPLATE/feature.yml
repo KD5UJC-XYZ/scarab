@@ -1,7 +1,41 @@
 name: Feature or roadmap item
 description: Propose a feature or pick up an item from docs/roadmap.md
-labels: [enhancement]
+labels: [enhancement, status:backlog]
 body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: The `area:` label this belongs under (docs/process.md, "Labels and milestones").
+      options:
+        - area:block-production
+        - area:byron
+        - area:ecosystem
+        - area:fast-start
+        - area:future-eras
+        - area:hygiene
+        - area:leios
+        - area:networking
+        - area:node-to-client
+        - area:ops
+        - area:plutus
+        - area:publication
+        - area:scale
+        - area:unconfirmed-rule
+        - area:verification
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: The `priority:` label (docs/process.md, "Labels and milestones").
+      options:
+        - priority:P0
+        - priority:P1
+        - priority:P2
+    validations:
+      required: true
   - type: input
     id: roadmap
     attributes:

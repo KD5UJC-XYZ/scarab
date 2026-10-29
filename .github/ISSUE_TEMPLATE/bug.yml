@@ -1,11 +1,45 @@
 name: Bug or divergence report
 description: Wrong behaviour, a crash, or a disagreement with the Haskell node or the chain
-labels: [bug]
+labels: [bug, status:backlog]
 body:
   - type: markdown
     attributes:
       value: |
         Exploitable security problems: do not file here, see SECURITY.md. This is unofficial research software.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: The `area:` label this belongs under (docs/process.md, "Labels and milestones").
+      options:
+        - area:block-production
+        - area:byron
+        - area:ecosystem
+        - area:fast-start
+        - area:future-eras
+        - area:hygiene
+        - area:leios
+        - area:networking
+        - area:node-to-client
+        - area:ops
+        - area:plutus
+        - area:publication
+        - area:scale
+        - area:unconfirmed-rule
+        - area:verification
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: The `priority:` label (docs/process.md, "Labels and milestones").
+      options:
+        - priority:P0
+        - priority:P1
+        - priority:P2
+    validations:
+      required: true
   - type: textarea
     id: what
     attributes:

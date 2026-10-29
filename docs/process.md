@@ -11,7 +11,7 @@ work can be parked and resumed, and nothing goes stale silently.
 |---|---|---|
 | What work exists, and what state is it in? | [GitHub issues](https://github.com/KD5UJC-XYZ/scarab/issues), one per roadmap ID, with a `status:` label | whoever moves the work, when it moves |
 | What is planned, grouped by area? | [roadmap.md](roadmap.md): one line per item, ID and issue link, done items marked | the change that finishes or adds an item |
-| What goes into the next release? | [Milestones](https://github.com/KD5UJC-XYZ/scarab/milestones) (`v0.2`, `v0.3`, …) | triage |
+| Which body of work does an item belong to? | [Milestones](https://github.com/KD5UJC-XYZ/scarab/milestones), scope buckets ([labels and milestones](#labels-and-milestones)) | triage |
 | Why is it built this way? | [Architecture decision records](adr/README.md) | a new ADR when a decision is made or reversed |
 | How will a large piece of work be built? | [Design documents](design/README.md): approved plans, with their stages | the plan's owner, as stages land |
 | What is verified, against what? | [compatibility.md](compatibility.md) (generated matrix; register in `data/compatibility.json`, pages and evidence log in `compatibility/`) | the change that adds evidence |
@@ -69,8 +69,8 @@ in its closing comment and, when it shapes the design, in an ADR: *adopt* (follo
 
 - **Now**: issues labelled `status:in-progress`. Keep this short (about three parallel tracks); more
   than that means something should be parked.
-- **Next**: the current milestone's open issues, by priority.
-- **Later**: open issues with no milestone, and ideas.
+- **Next**: the `status:backlog` issues of each milestone, by priority.
+- **Later**: ideas and parked issues, which carry no milestone.
 
 ### Changing course
 
@@ -83,11 +83,33 @@ Changing your mind is normal, not a failure of planning:
   label it `status:parked`. Parked work is resumed from the comment, not from memory.
 - **A reversed decision** gets a new ADR that supersedes the old one; the old one is kept and marked.
 
+### Labels and milestones
+
+Every open issue carries one `area:`, one `priority:` and one `status:` label, and a milestone unless its
+status is `status:idea` or `status:parked` (owner decision, 2026-10-29):
+
+- areas: `area:block-production`, `area:byron`, `area:ecosystem`, `area:fast-start`, `area:future-eras`,
+  `area:hygiene`, `area:leios`, `area:networking`, `area:node-to-client`, `area:ops`, `area:plutus`,
+  `area:publication`, `area:scale`, `area:unconfirmed-rule`, `area:verification`;
+- priorities: `priority:P0`, `priority:P1`, `priority:P2`, highest first;
+- statuses: the states of the table above;
+- milestones are scope buckets, not versions: `reference-parity`, `mainnet-evidence`, `leios-dijkstra`
+  (owner decision, 2026-10-29).
+
+`status:in-progress` means an open PR or an active worktree exists for the issue. One not updated for 7 days
+is reported as stale, and so is a `status:needs-owner` issue not updated for 14 (owner decision, 2026-10-29).
+`python3 scripts/status.py --check` lists every open issue that breaks these rules, and the nightly
+[triage workflow](../.github/workflows/triage.yml) writes that list into the one issue titled "Triage
+report". File an issue through a form or through `python3 scripts/file_issue.py` (`--help` shows its
+options), which refuses one without the three labels and a milestone. A form records the area and the
+priority in the body; triage applies them as labels and sets the milestone, until #605 applies them
+automatically.
+
 ### Triage and health check
 
-At each release milestone, and whenever the list feels stale:
+Nightly, the triage report; at each release, and whenever the list feels stale:
 
-- every open issue has an area and a priority, or `status:idea`;
+- the triage report is clean;
 - every `status:in-progress` issue really is moving, and every `status:parked` one has its resume comment;
 - [roadmap.md](roadmap.md), the issue states and the milestones agree;
 - every document's status line is still true (current, proposal, spike or historical);
