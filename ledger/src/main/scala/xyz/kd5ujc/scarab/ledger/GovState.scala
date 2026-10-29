@@ -247,10 +247,10 @@ object ConwayGenesis:
   def votingParams(
       c: ACursor
   ): Either[ConfigError, (PoolVotingThresholds, DRepVotingThresholds, BigInt, BigInt)] =
+    // every field is required (`UpgradeConwayPParams`, Conway/PParams.hs:1082-1095 at cardano-ledger
+    // f649f975); [[GenesisSchema.conway]] checks their types
     def thresholds(name: String, keys: Vector[String]) =
-      val cur = c.downField(name)
-      if cur.focus.isEmpty then Right(Vector.fill(keys.size)(Rational.zero))
-      else keys.traverse(k => decimalOrRatio(cur.downField(k)))
+      keys.traverse(k => decimalOrRatio(c.downField(name).downField(k)))
     for
       pool <- thresholds(
         "poolVotingThresholds",
@@ -285,13 +285,15 @@ object ConwayGenesis:
         .leftMap(e => ConfigError(ConfigProblem.LedgerValue(e)))
       minSize <- c
         .downField("committeeMinSize")
-        .as[Option[BigInt]]
-        .leftMap(e => ConfigError(ConfigProblem.JsonField("conway genesis", "governance", e)))
+        .as[BigInt]
+        .leftMap(e => ConfigError(ConfigProblem.JsonField("conway genesis", "committeeMinSize", e)))
       maxTerm <- c
         .downField("committeeMaxTermLength")
-        .as[Option[BigInt]]
-        .leftMap(e => ConfigError(ConfigProblem.JsonField("conway genesis", "governance", e)))
-    yield (p, d, minSize.getOrElse(BigInt(0)), maxTerm.getOrElse(BigInt(0)))
+        .as[BigInt]
+        .leftMap(e =>
+          ConfigError(ConfigProblem.JsonField("conway genesis", "committeeMaxTermLength", e))
+        )
+    yield (p, d, minSize, maxTerm)
 
   private def credential(s: String): Either[ConfigError, Credential] =
     def hex(h: String) =
@@ -303,8 +305,9 @@ object ConwayGenesis:
     else if s.startsWith("scriptHash-") then hex(s.drop(11)).map(Credential.Script(_))
     else Left(ConfigError(ConfigProblem.Credential(s)))
 
-  /** The genesis committee and constitution; absent entries give an empty committee and
-    * constitution with an empty anchor, as the genesis defaults do.
+  /** The genesis committee and constitution. The committee's members and threshold and the
+    * constitution's anchor are required, its script optional (`FromJSON ConwayGenesis`,
+    * Conway/Genesis.hs:156-165, and `Conway/Governance/Procedures.hs` at cardano-ledger f649f975).
     */
   def committeeAndConstitution(
       c: ACursor
@@ -313,31 +316,27 @@ object ConwayGenesis:
       members <- c
         .downField("committee")
         .downField("members")
-        .as[Option[Map[String, BigInt]]]
+        .as[Map[String, BigInt]]
         .leftMap(e =>
           ConfigError(ConfigProblem.JsonField("conway genesis", "committee members", e))
         )
-      parsed <- members.getOrElse(Map.empty).toVector.traverse { case (k, v) =>
-        credential(k).map(_ -> v)
-      }
-      threshold <-
-        if c.downField("committee").downField("threshold").focus.isEmpty then Right(Rational.zero)
-        else decimalOrRatio(c.downField("committee").downField("threshold"))
+      parsed <- members.toVector.traverse { case (k, v) => credential(k).map(_ -> v) }
+      threshold <- decimalOrRatio(c.downField("committee").downField("threshold"))
       url <- c
         .downField("constitution")
         .downField("anchor")
         .downField("url")
-        .as[Option[String]]
-        .leftMap(e => ConfigError(ConfigProblem.JsonField("conway genesis", "governance", e)))
+        .as[String]
+        .leftMap(e => ConfigError(ConfigProblem.JsonField("conway genesis", "constitution url", e)))
       hash <- c
         .downField("constitution")
         .downField("anchor")
         .downField("dataHash")
-        .as[Option[String]]
-        .leftMap(e => ConfigError(ConfigProblem.JsonField("conway genesis", "governance", e)))
-      hashBytes <- hash.traverse(h =>
-        Bytes.fromHex(h).leftMap(e => ConfigError(ConfigProblem.Hex(e)))
-      )
+        .as[String]
+        .leftMap(e =>
+          ConfigError(ConfigProblem.JsonField("conway genesis", "constitution dataHash", e))
+        )
+      hashBytes <- Bytes.fromHex(hash).leftMap(e => ConfigError(ConfigProblem.Hex(e)))
       script <- c
         .downField("constitution")
         .downField("script")
@@ -350,7 +349,7 @@ object ConwayGenesis:
     yield (
       Some(Committee(parsed.toMap, threshold)),
       Constitution(
-        Anchor(url.getOrElse(""), hashBytes.getOrElse(noAnchor.hash)),
+        Anchor(url, hashBytes),
         scriptBytes
       )
     )
