@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.ledger.TestGeometry
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{ForkTrigger, HardForkConfig}
-import xyz.kd5ujc.scarab.ledger.EpochGeometry
+import xyz.kd5ujc.scarab.ledger.{EpochGeometry, Horizon}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** The extension of a telescope into the era a block enters (`MirrorStep.into`), the combinator's
@@ -78,4 +78,31 @@ class MirrorStepSuite extends FunSuite:
     )
     assertEquals(MirrorStep.startOf(placement, Era.Alonzo, slotInEpoch6, bound(2)), bound(6))
     assertEquals(MirrorStep.startOf(placement, Era.Alonzo, slotInEpoch6, bound(8)), bound(8))
+  }
+
+  // consensus 82ecba329: a state translated into a Shelley era has `ShelleyTransitionInfo 0`
+  // (`Shelley/ShelleyHFC.hs:381`), and `shelleyTransition` needs `shelleyAfterVoting >= k`
+  // (`ShelleyHFC.hs:220-227`); `MirrorClock.of` reads an era entered in the tick this way
+  test("a state translated in the tick has no transition by version: its counter starts at zero") {
+    val forks = HardForkConfig(
+      Map(Era.Babbage -> ForkTrigger.AtVersion(7), Era.Conway -> ForkTrigger.AtVersion(9)),
+      10
+    )
+    val tip = Some(BigInt(2100))
+    // the translated Babbage state: the future parameters at Conway's version, the counter at zero
+    assertEquals(
+      EraHistory.transition(forks, 5, Era.Babbage, 4, Some(9), 0, tip),
+      Horizon.Transition.Unknown(tip)
+    )
+    // the same state once k blocks have followed the vote
+    assertEquals(
+      EraHistory.transition(forks, 5, Era.Babbage, 4, Some(9), 5, tip),
+      Horizon.Transition.Known(5)
+    )
+    // an epoch trigger is configuration alone
+    val atEpoch = HardForkConfig(Map(Era.Conway -> ForkTrigger.AtEpoch(BigInt(12))), 10)
+    assertEquals(
+      EraHistory.transition(atEpoch, 5, Era.Babbage, 4, None, 0, tip),
+      Horizon.Transition.Known(12)
+    )
   }
