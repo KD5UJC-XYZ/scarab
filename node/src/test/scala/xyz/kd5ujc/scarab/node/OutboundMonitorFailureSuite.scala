@@ -104,8 +104,9 @@ class OutboundMonitorFailureSuite extends FailsOnUncaught:
       yield outbound).use(outbound => use(outbound, armed.set(true), peers, told))
     yield result
 
+  // the governor's and the node's callbacks are the observable condition; poll them, bounded
   private def settled(told: Ref[IO, Told])(done: Told => Boolean): IO[Told] =
-    told.get.iterateUntil(done).timeout(15.seconds)
+    (IO.sleep(5.millis) *> told.get).iterateUntil(done).timeout(15.seconds)
 
   test("a monitor that throws ends its own connection, uncharged, and the node goes on") {
     val cause = new IllegalStateException("injected monitor defect")
