@@ -30,7 +30,7 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
-import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
+import xyz.kd5ujc.scarab.consensus.{BlockNoVerdict, ChainSelection, SelectView}
 import xyz.kd5ujc.scarab.storage.ChainPersistence
 import xyz.kd5ujc.scarab.network.selection.Gsm
 import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity
@@ -90,7 +90,8 @@ final class Follower[F[_]: Async, S] private (
     window: SignallingRef[F, Follower.Committed[S]],
     genesis: Ref[F, Option[GenesisGovernor[F]]],
     selectionChanged: Ref[F, F[Unit]],
-    invalidBlocks: Ref[F, Option[InvalidBlocks[F]]]
+    invalidBlocks: Ref[F, Option[InvalidBlocks[F]]],
+    ownNoVerdict: NoVerdictBlocks[F]
 )(using
     chain: Stateful[F, VolatileChain[S]]
 ):
@@ -188,6 +189,12 @@ final class Follower[F[_]: Async, S] private (
             case _ => BlockPoolProblem.SelectionProjectionChanged(candidate.tip).raise[F, Unit]
         }
     BlockSelection.resource(pool, work, fatal, application, originPredecessor)
+
+  /** The blocks without a verdict: the shared set the peer offers (the block pool's), else the
+    * follower's own (issue 567).
+    */
+  private def noVerdictFor(peer: Peer[F]): NoVerdictBlocks[F] =
+    peer.noVerdictBlocks.getOrElse(ownNoVerdict)
 
   private def registryFor(peer: Peer[F])(using Raise[F, NodeError]): F[InvalidBlocks[F]] =
     for
@@ -447,12 +454,29 @@ final class Follower[F[_]: Async, S] private (
       era: Era
   )
 
+  /** Where applying a candidate stopped before its end: a refusal of a block, or no verdict on it.
+    */
+  private sealed trait Stopped
+
   private final case class Refused(
       header: Header,
       error: ValidationError,
       before: VolatileChain[S],
       valid: Vector[Applied]
-  )
+  ) extends Stopped
+
+  /** The node has no verdict on `header`'s block (issue 567). */
+  private final case class Withheld(
+      header: Header,
+      cause: BlockNoVerdict,
+      before: VolatileChain[S],
+      valid: Vector[Applied]
+  ) extends Stopped
+
+  /** What the judgement of one block says when it does not apply it. */
+  private enum Judged:
+    case Refusal(error: ValidationError)
+    case NoVerdict(cause: BlockNoVerdict)
 
   /** Switch if preferred; no candidate means its intersection left our retained window. */
   private def adopt(
@@ -483,8 +507,11 @@ final class Follower[F[_]: Async, S] private (
       limit <- control.traverse(_.limitAt(selected)).map(_.flatten)
       current <- chain.get
       invalid <- registry.snapshot
+      withheld <- noVerdictFor(peer).hashes
       validPrefix = candidate.copy(headers =
-        candidate.headers.takeWhile(h => !invalid.entries.contains(h.hash))
+        candidate.headers.takeWhile(h =>
+          !invalid.entries.contains(h.hash) && !withheld.contains(h.hash)
+        )
       )
       bounded = Follower.limitCandidate(current.k, l, validPrefix, limit)
       result <- bounded match
@@ -528,7 +555,7 @@ final class Follower[F[_]: Async, S] private (
       rolled <- original.rollback(to).fold(_.raise[F, VolatileChain[S]], _.pure[F])
       causal <- Ref.of[F, Peer.Validation[F]](validation)
       outcome <- F
-        .tailRecM[(VolatileChain[S], Vector[Applied], Int), Either[Refused, Vector[Applied]]](
+        .tailRecM[(VolatileChain[S], Vector[Applied], Int), Either[Stopped, Vector[Applied]]](
           (rolled, Vector.empty, 0)
         ) { (before, done, index) =>
           take.lift(index) match
@@ -549,40 +576,69 @@ final class Follower[F[_]: Async, S] private (
                     }
                   )
                   .unlessA(previous.addedPoint.contains(header.point))
-                checked = Handle
-                  .allow[NodeError](
-                    rules(before.state, header, block)
-                      .map(state => Right(state): Either[ValidationError, S])
-                  )
-                  .rescue {
-                    // No verdict is no refusal: the block is not recorded as invalid and nobody is
-                    // punished. An evaluator that is unavailable or fails on the block's scripts,
-                    // or a crypto provider that fails on the block, stops the node (Fatal), as the
-                    // exception does that ends the reference's linked addBlockRunner thread
-                    // (consensus 82ecba32 Storage/ChainDB/Impl/Background.hs:107-108,142).
-                    case unavailable @ ValidationError(
-                          _,
-                          BlockFailure.Tx(_: LedgerFailure.Unavailable)
-                        ) =>
-                      unavailable.raise[F, Either[ValidationError, S]]
-                    case refused: ValidationError =>
-                      refused.unverifiable.fold(F.pure(Left(refused)))(
-                        _.raise[F, Either[ValidationError, S]]
+                // The judgement alone, in a scope that never raises outward: an exception it throws
+                // is the rules', not an outer scope's. It is built inside `defer`: `rescue` invokes
+                // its body at once (cats-mtl 1.7.0), so rules that throw while they build their
+                // effect are caught too.
+                judged = F
+                  .defer(
+                    Handle
+                      .allow[NodeError](
+                        rules(before.state, header, block)
+                          .map(state => Right(state): Either[NodeError, S])
                       )
-                    case other => other.raise[F, Either[ValidationError, S]]
-                  }
+                      .rescue(error => F.pure(Left(error)))
+                  )
+                  .attempt
+                checked = judged.flatMap {
+                  case Right(Right(state)) => F.pure(Right(state): Either[Judged, S])
+                  // No verdict is no refusal: the block is neither adopted nor recorded as invalid
+                  // and nobody is punished. Our evaluator or a crypto provider that fails on the
+                  // block, a quantity of the state outside its implementation type (#573) or an
+                  // exception of the rules no longer stop the node, where the reference's linked
+                  // addBlockRunner thread stops it (consensus 82ecba32
+                  // Storage/ChainDB/Impl/Background.hs:107-108,142): owner decision 2026-10-28,
+                  // issue 567.
+                  case Right(
+                        Left(
+                          unavailable @ ValidationError(
+                            _,
+                            BlockFailure.Tx(_: LedgerFailure.Unavailable)
+                          )
+                        )
+                      ) =>
+                    F.pure(Left(Judged.NoVerdict(BlockNoVerdict.Evaluation(unavailable))))
+                  case Right(Left(refused: ValidationError)) =>
+                    F.pure(
+                      Left(
+                        refused.unverifiable.fold[Judged](Judged.Refusal(refused))(defect =>
+                          Judged.NoVerdict(BlockNoVerdict.Verification(defect))
+                        )
+                      )
+                    )
+                  case Right(
+                        Left(outOfRange: xyz.kd5ujc.scarab.ledger.ChainError.StateOutOfRange)
+                      ) =>
+                    F.pure(Left(Judged.NoVerdict(BlockNoVerdict.StateOutOfRange(outOfRange))))
+                  // storage and every other failure of the node stay the node's
+                  case Right(Left(other)) => other.raise[F, Either[Judged, S]]
+                  case Left(thrown) => F.pure(Left(Judged.NoVerdict(BlockNoVerdict.Defect(thrown))))
+                }
                 verdict <- peer.selectionWork.fold(checked)(work =>
                   work.processing(header.hash).surround(checked)
                 )
                 result <- verdict match
-                  case Left(refused) => F.pure(Right(Left(Refused(header, refused, before, done))))
+                  case Left(Judged.Refusal(refused)) =>
+                    F.pure(Right(Left(Refused(header, refused, before, done))))
+                  case Left(Judged.NoVerdict(cause)) =>
+                    F.pure(Right(Left(Withheld(header, cause, before, done))))
                   case Right(next) =>
                     before
                       .extend(header, next)
                       .fold(
                         _.raise[F, Either[
                           (VolatileChain[S], Vector[Applied], Int),
-                          Either[Refused, Vector[Applied]]
+                          Either[Stopped, Vector[Applied]]
                         ]],
                         extended =>
                           val ref =
@@ -609,8 +665,31 @@ final class Follower[F[_]: Async, S] private (
               yield result
         }
       committed <- outcome match
-        case Right(steps)  => commit(original, to, depth, steps, peerTip).as(Some(take.last.point))
-        case Left(refused) =>
+        case Right(steps) => commit(original, to, depth, steps, peerTip).as(Some(take.last.point))
+        // No verdict on a block: it is recorded so that selection does not judge it again,
+        // reported, and the valid prefix before it is reconsidered as for a refusal; nothing is
+        // recorded as invalid and nobody is punished (issue 567)
+        case Left(withheld: Withheld) =>
+          F.uncancelable { _ =>
+            for
+              _ <- noVerdictFor(peer).record(withheld.header, withheld.cause)
+              _ <- events.emit(FollowerEvent.NoVerdict(withheld.header.point, withheld.cause))
+              localNow <- local
+              prefix = take.take(withheld.valid.size)
+              preferred = prefix.lastOption.exists(h =>
+                ChainSelection.prefersCandidate(
+                  tiebreaker(h.era),
+                  localNow.tipView,
+                  SelectView.of(h)
+                )
+              )
+              delegated <- registry.selectionActive
+              _ <- commit(original, to, depth, withheld.valid, peerTip).whenA(
+                preferred && !delegated
+              )
+            yield Option.when(preferred && !delegated)(withheld.before.tip)
+          }
+        case Left(refused: Refused) =>
           // Native validation records invalidity and punishes first (ChainSel.hs:1315–1344),
           // then reconsiders a preferred valid prefix (1147–1186). The ChainDB worker survives
           // sender-thread cancellation, so this local commit boundary must survive it too.
@@ -927,8 +1006,9 @@ object Follower:
         SignallingRef[F, Committed[S]](Committed(initial, selected)),
         Ref.of[F, Option[GenesisGovernor[F]]](None),
         Ref.of[F, F[Unit]](Async[F].unit),
-        Ref.of[F, Option[InvalidBlocks[F]]](None)
-      ).mapN { (views, lock, window, genesis, selectionChanged, invalidBlocks) =>
+        Ref.of[F, Option[InvalidBlocks[F]]](None),
+        NoVerdictBlocks.create[F]
+      ).mapN { (views, lock, window, genesis, selectionChanged, invalidBlocks, noVerdict) =>
         new Follower[F, S](
           rules,
           events,
@@ -943,7 +1023,8 @@ object Follower:
           window,
           genesis,
           selectionChanged,
-          invalidBlocks
+          invalidBlocks,
+          noVerdict
         )
       }
     }

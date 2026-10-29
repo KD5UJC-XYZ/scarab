@@ -144,12 +144,12 @@ object SessionEnd:
 
   /** A header whose validation met a quantity of the node's own ledger state outside its vocabulary
     * type (the Byron to Shelley hand-over of the header forecast, [[NodeHeaderRules]]): no verdict
-    * on the header and no fault of the peer, so the node stops, as for the same failure on the
-    * block path ([[BlockFailure.stateOutOfRange]]). The header pipeline has one error channel, the
-    * peer's, and this is where its value is placed. The reference's forecast
-    * (`mkInitialShelleyForecast`, cardano-ledger f649f975 `TPraos/API.hs:656-668`) is total over a
-    * typed translation context: the values that fail here are of the genesis, which the reference
-    * refuses when it reads it.
+    * on the header and no fault of the peer, so the node stops; the block path withholds such a
+    * block instead ([[BlockFailure.stateOutOfRange]], ADR 0017), and issue 584 tracks the header.
+    * The header pipeline has one error channel, the peer's, and this is where its value is placed.
+    * The reference's forecast (`mkInitialShelleyForecast`, cardano-ledger f649f975
+    * `TPraos/API.hs:656-668`) is total over a typed translation context: the values that fail here
+    * are of the genesis, which the reference refuses when it reads it.
     */
   private object StateFaultInHeader:
     def unapply(error: PeerError): Option[ChainError] = error match

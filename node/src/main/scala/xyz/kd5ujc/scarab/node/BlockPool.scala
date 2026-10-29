@@ -47,6 +47,7 @@ final class BlockPool[F[_]: Async] private (
     private[node] val fetchCoordinator: FetchCoordinator[F],
     recovered: Option[BlockPool.Recovered[F]],
     private[node] val invalidBlocks: InvalidBlocks[F],
+    private[node] val noVerdictBlocks: NoVerdictBlocks[F],
     private[node] val admissions: BlockAdmissions[F]
 ):
   import BlockPool.*
@@ -580,6 +581,7 @@ object BlockPool:
       pool.claim(owner, hashes, mode, allowOverlap)
     def fill(blocks: Vector[(Bytes, Bytes)]): F[Unit] = pool.fillOpaque(owner, blocks)
     private[node] def invalidBlocks: InvalidBlocks[F] = pool.invalidBlocks
+    private[node] def noVerdictBlocks: NoVerdictBlocks[F] = pool.noVerdictBlocks
     private[node] def invalidated(
         taken: Taken,
         header: Header,
@@ -733,10 +735,12 @@ object BlockPool:
             ),
             policy.peerSalt
           )
-          .flatMap(coordinator =>
+          .flatMap(coordinator => NoVerdictBlocks.create[F].map(coordinator -> _))
+          .flatMap((coordinator, noVerdict) =>
             InvalidBlocks
               .create[F](cutoff =>
-                slots.update { current =>
+                // the blocks without a verdict are pruned at the same cutoff as the invalid ones
+                noVerdict.pruneBefore(cutoff) *> slots.update { current =>
                   val expired = current.headers.collect {
                     case (hash, metadata)
                         if metadata.header.slot < cutoff && !current.fresh(hash) =>
@@ -763,6 +767,7 @@ object BlockPool:
                       coordinator,
                       recovered,
                       invalid,
+                      noVerdict,
                       admissions
                     )
                   )

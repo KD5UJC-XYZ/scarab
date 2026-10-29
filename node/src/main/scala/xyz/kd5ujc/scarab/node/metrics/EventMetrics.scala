@@ -72,6 +72,7 @@ final class EventMetrics[F[_]: Sync] private (
           metrics.set(ledgerAccounts, accounts.toDouble) *>
           metrics.set(ledgerPools, pools.toDouble)
       case FollowerEvent.Reconnecting(_, _) => metrics.inc(peerReconnects)
+      case FollowerEvent.NoVerdict(_, _)    => metrics.inc(blockNoVerdict)
       case FollowerEvent.Connected(_) | FollowerEvent.EpochEntered(_, _) |
           FollowerEvent.EraEntered(_, _, _, _) | FollowerEvent.EpochValidated(_, _, _, _, _) |
           FollowerEvent.ByronEpochValidated(_, _, _, _, _) =>

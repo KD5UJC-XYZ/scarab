@@ -475,6 +475,7 @@ final class InboundGovernor[F[_]: Async] private (
     override def headerCandidate = peer.headerCandidate
     override def selectionWork = peer.selectionWork
     override def invalidBlocks = peer.invalidBlocks
+    override def noVerdictBlocks = peer.noVerdictBlocks
     override def invalidated(header: Header, refusal: ValidationError)(using cats.Applicative[F]) =
       peer.invalidated(header, refusal)
     override def validation(header: Header)(using cats.Applicative[F], Raise[F, PeerError]) =

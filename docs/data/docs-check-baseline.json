@@ -372,12 +372,6 @@
    "count": 1
   },
   {
-   "kind": "missing-symbol",
-   "path": "docs/architecture/persistence.md",
-   "key": "Verification.warm",
-   "count": 1
-  },
-  {
    "kind": "missing-path",
    "path": "docs/architecture/relay.md",
    "key": "consensus/ChainSelection.scala",
@@ -399,12 +393,6 @@
    "kind": "unregistered-pin",
    "path": "docs/architecture/relay.md",
    "key": "ouroboros-network 1.2.0.0",
-   "count": 1
-  },
-  {
-   "kind": "missing-symbol",
-   "path": "docs/architecture/scale-and-scheduling.md",
-   "key": "Verification.warm",
    "count": 1
   },
   {

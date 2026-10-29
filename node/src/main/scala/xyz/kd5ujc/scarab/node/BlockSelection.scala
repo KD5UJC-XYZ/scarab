@@ -31,6 +31,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
       bodies: Map[Bytes, BlockPool.Admission]
   )(using Raise[F, NodeError]): Peer[F] = new Peer[F]:
     override def invalidBlocks = Some(pool.invalidBlocks)
+    override def noVerdictBlocks = Some(pool.noVerdictBlocks)
     def intersect(@scala.annotation.unused points: Vector[ChainSync.Point])(using
         Raise[F, PeerError]
     ) =
@@ -62,11 +63,13 @@ private[node] final class BlockSelection[F[_]: Async] private (
       current <- application.local
       bodies <- pool.processedSnapshot
       known <- pool.invalidBlocks.snapshot
+      // a block the node has no verdict on is not judged again (issue 567)
+      withheld <- pool.noVerdictBlocks.hashes
       original <- AvailableBlocks
         .candidates(
           if phase == Phase.Startup then current.copy(blocks = Vector.empty) else current,
           bodies.view.mapValues(_.delivered.header).toMap,
-          known.entries.keySet,
+          known.entries.keySet ++ withheld,
           adding.map(_.delivered.header.hash),
           originPredecessor
         )
@@ -81,9 +84,12 @@ private[node] final class BlockSelection[F[_]: Async] private (
           before <- pool.invalidBlocks.snapshot
           // ChainSel.hs:1145–1186 truncates and reinserts the original candidate pool. An unrelated
           // branch cannot become attributed to this adding client during an invalid-prefix retry.
+          excluded <- pool.noVerdictBlocks.hashes
           truncated = original.map(candidate =>
             candidate.copy(headers =
-              candidate.headers.takeWhile(h => !before.entries.contains(h.hash))
+              candidate.headers.takeWhile(h =>
+                !before.entries.contains(h.hash) && !excluded.contains(h.hash)
+              )
             )
           )
           ordered <- application.project(truncated, phase)
@@ -96,7 +102,11 @@ private[node] final class BlockSelection[F[_]: Async] private (
             )
           )
           after <- pool.invalidBlocks.snapshot
-        yield if after.revision != before.revision then Left(()) else Right(())
+          withheldAfter <- pool.noVerdictBlocks.hashes
+        // select again when a block was refused, or withheld for want of a verdict
+        yield
+          if after.revision != before.revision || withheldAfter != excluded then Left(())
+          else Right(())
       }
     yield ()
 

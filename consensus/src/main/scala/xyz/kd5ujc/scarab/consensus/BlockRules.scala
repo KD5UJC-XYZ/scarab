@@ -32,6 +32,30 @@ object BlockRules:
         cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.ChainError]
     ): F[S] = run(state, header, block)
 
+/** Why the node has no verdict on a block: its own implementation could not judge it. None of these
+  * is a refusal of the block by the protocol's rules, so nobody is blamed for it.
+  */
+enum BlockNoVerdict:
+  /** The evaluator cannot evaluate a script of the block (`LedgerFailure.Unavailable`). */
+  case Evaluation(error: xyz.kd5ujc.scarab.ledger.ValidationError)
+
+  /** A crypto provider failed on the block (`VerificationDefect`). */
+  case Verification(defect: xyz.kd5ujc.scarab.ledger.VerificationDefect)
+
+  /** A quantity of the ledger state the block's rules convert is outside its implementation type
+    * (`ChainError.StateOutOfRange`); what the protocol specification says is #573.
+    */
+  case StateOutOfRange(error: xyz.kd5ujc.scarab.ledger.ChainError)
+
+  /** The rules threw while they judged the block. */
+  case Defect(cause: Throwable)
+
+  def message: String = this match
+    case Evaluation(error)      => s"evaluation unavailable: ${error.message}"
+    case Verification(defect)   => s"verification failed: ${defect.message}"
+    case StateOutOfRange(error) => error.message
+    case Defect(cause)          => s"the rules threw: $cause"
+
 /** Observable follower milestones. */
 enum FollowerEvent:
   case Connected(intersection: ChainSync.Point)
@@ -40,6 +64,11 @@ enum FollowerEvent:
   case EpochEntered(epoch: BigInt, first: BlockRef)
   case Immutable(block: BlockRef)
   case Reconnecting(reason: PeerError, attempt: Int)
+
+  /** The node has no verdict on `block`: its own implementation could not judge it. The block is
+    * neither adopted nor recorded as invalid, nobody is blamed, and the node goes on (issue 567).
+    */
+  case NoVerdict(block: ChainSync.Point, cause: BlockNoVerdict)
 
   /** The first block of a new era was applied (`from` is empty for the chain's first era). */
   case EraEntered(from: Option[Era], to: Era, first: BlockRef, epoch: BigInt)
