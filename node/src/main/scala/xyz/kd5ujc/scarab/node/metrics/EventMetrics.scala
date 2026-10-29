@@ -200,6 +200,7 @@ final class EventMetrics[F[_]: Sync] private (
     */
   def peerSelection(out: Output[PeerNetwork.Addr]): F[Unit] = out match
     case Output.EstablishmentFailed(_, _) => Sync[F].unit
+    case Output.LocalRoots(_)             => Sync[F].unit
     case Output.Counted(c) =>
       peerSelectionGauges.traverse_((gauge, of) => metrics.set(gauge, of(c).toDouble)) *>
         c.byOrigin.toList.traverse_((origin, n) => metrics.set(peerOrigins, origin, n.toDouble))

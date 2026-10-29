@@ -716,7 +716,7 @@ object PeerNetwork:
               )
             ).flatMap {
               case Right(_) => F.pure(Left(()))
-              case Left(cache) =>
+              case Left((cache, error)) =>
                 val resolved = NodeRootProvider.localGroupsFromCache(
                   captured.roots.local,
                   captured.roots.localSrv,
@@ -755,11 +755,18 @@ object PeerNetwork:
                           (current.copy(localDnsCache = cache), current.copy(localDnsCache = cache))
                         else (current, current)
                       }
-                  now <- Clock[F].monotonic
-                  delay = LocalRootDnsCache
-                    .nextDelay(current.localDnsCache, now)
-                    .getOrElse(900.seconds)
-                  _ <- F.race(F.sleep(delay), rootRefreshWake.take).void
+                  // a lookup that threw is traced and the lookups start again at once, as the
+                  // reference restarts its domain monitors after one of them fails
+                  // (`TraceLocalRootError`, LocalRootPeers.hs 146-168 of ouroboros-network
+                  // 2fb69829); it is still due, so the next pass asks for it again
+                  _ <- error.traverse_(trace => emit(Output.LocalRoots(trace)))
+                  _ <- (for
+                    now <- Clock[F].monotonic
+                    delay = LocalRootDnsCache
+                      .nextDelay(current.localDnsCache, now)
+                      .getOrElse(900.seconds)
+                    _ <- F.race(F.sleep(delay), rootRefreshWake.take).void
+                  yield ()).whenA(error.isEmpty)
                 yield Left(())
             }
           }
@@ -827,12 +834,17 @@ object PeerNetwork:
   private val LocalDnsParallelism = 4
 
   /** Run due local DNS lookups with a fixed job bound and apply each result to its own key. */
+  /** One pass over the local roots' DNS names that are due: the cache it leaves, and the first
+    * lookup that threw, if any. A lookup that throws is the reference's domain monitor that fails
+    * (`waitAnyCatchSTMWithCtx`, LocalRootPeers.hs 146-158 of ouroboros-network 2fb69829): it is
+    * traced, never a stop of the node, and the answers of the other names are kept.
+    */
   private[node] def refreshLocalDnsCache[F[_]: Async](
       roots: Roots,
       previous: LocalRootDnsCache.State[NodeRootProvider.LocalDnsKey, Addr],
       dns: PeerDns[F],
       rng: Ref[F, Rng]
-  ): F[LocalRootDnsCache.State[NodeRootProvider.LocalDnsKey, Addr]] =
+  ): F[(LocalRootDnsCache.State[NodeRootProvider.LocalDnsKey, Addr], Option[LocalRootsTrace])] =
     val F = Async[F]
     for
       now <- Clock[F].monotonic
@@ -846,15 +858,22 @@ object PeerNetwork:
           NodeRootProvider
             .resolveLocalDns(entry, dns, rng)
             .product(Clock[F].monotonic)
-            .map { case (result, at) => (request, result, at) }
+            .attempt
+            .map(
+              _.bimap(
+                cause => LocalRootsTrace.Error(entry.key.input.domain, cause),
+                (result, at) => (request, result, at)
+              )
+            )
         }
       }
-      updated <- completed.flatten.foldLeftM(tracked) { case (state, (request, result, at)) =>
+      (threw, answered) = completed.flatten.separate
+      updated <- answered.foldLeftM(tracked) { case (state, (request, result, at)) =>
         LocalRootDnsCache.complete(state, request, at, result) match
           case Left(LocalRootDnsCache.CacheError.StaleRequest) => F.pure(state)
           case Right(next)                                     => F.pure(next)
       }
-    yield updated
+    yield (updated, threw.headOption)
 
   /** `readFetchModeDefault` (Praos): bulk sync in the sensitive state, else by the distance of the
     * chain from the wall clock.

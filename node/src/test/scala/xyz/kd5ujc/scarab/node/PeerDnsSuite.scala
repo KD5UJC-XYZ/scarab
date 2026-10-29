@@ -99,9 +99,12 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
     yield ()
   }
 
-  test("supervised DNS and snapshot defects reach the owner unchanged") {
+  // issue 567: the reference traces a domain monitor that throws (`TraceLocalRootError`) and
+  // starts its monitors again (LocalRootPeers.hs 146-168 of ouroboros-network 2fb69829)
+  test("a DNS lookup that throws is traced with its domain, not a stop; a snapshot defect is") {
     for
       dnsCause <- IO.delay(new IllegalStateException("injected DNS defect"))
+      good <- name("good-root.example")
       snapshotCause <- IO.delay(new IllegalArgumentException("injected snapshot defect"))
       config = RootConfig(
         advertise = true,
@@ -113,22 +116,25 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
         RootGroupSpec(
           1,
           1,
-          List(SocketAddress[Host](host"defect-root.example", port"3100") -> config)
+          List(
+            SocketAddress[Host](host"defect-root.example", port"3100") -> config,
+            SocketAddress[Host](host"good-root.example", port"3100") -> config
+          )
         )
       )
       roots = PeerNetwork.Roots(groups, Set.empty, None, UseLedgerPeers.Disabled)
       dns = new PeerDns[IO]:
-        def addresses(_query: DnsName) = IO.raiseError[DnsAddressAnswer](dnsCause)
+        def addresses(query: DnsName) =
+          if query == good then
+            IO.pure(
+              DnsAddressAnswer(Vector(DnsAddressRecord(ipv4"192.0.2.30", 60.seconds)), Vector.empty)
+            )
+          else IO.raiseError[DnsAddressAnswer](dnsCause)
         def services(_query: DnsName) = IO.pure(Left(PeerDnsError.Lookup(Vector.empty)))
       cache = LocalRootDnsCache.empty[NodeRootProvider.LocalDnsKey, NodeRootProvider.Addr]
       rng <- Ref.of[IO, Rng](Rng(18L))
-      dnsFatal <- Deferred[IO, GovernorFault]
-      dnsJob = PeerNetwork.reportBackgroundDefect(
-        PeerNetwork.refreshLocalDnsCache(roots, cache, dns, rng),
-        dnsFatal,
-        GovernorFault.LocalDnsRefreshDefect.apply
-      )
-      dnsOutcome <- IO.race(dnsJob, dnsFatal.get)
+      refreshed <- PeerNetwork.refreshLocalDnsCache(roots, cache, dns, rng)
+      (kept, dnsError) = refreshed
       queue <- Queue.unbounded[IO, Event[PeerNetwork.Addr]]
       snapshotFatal <- Deferred[IO, GovernorFault]
       snapshotJob = PeerNetwork.reportBackgroundDefect(
@@ -143,10 +149,19 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
       )
       snapshotOutcome <- IO.race(snapshotJob, snapshotFatal.get)
       _ <- IO(
-        assert(dnsOutcome.toOption.exists {
-          case GovernorFault.LocalDnsRefreshDefect(cause) => cause eq dnsCause
-          case _                                          => false
+        assert(dnsError.exists { case LocalRootsTrace.Error(domain, cause) =>
+          domain.value == "defect-root.example." && (cause eq dnsCause)
         })
+      )
+      // the answer of the other name is kept
+      _ <- IO(
+        assertEquals(
+          NodeRootProvider
+            .localGroupsFromCache(groups, List.empty, kept)
+            .flatMap(_.members.map(_._1))
+            .toSet,
+          Set(SocketAddress[Host](ipv4"192.0.2.30", port"3100"))
+        )
       )
       _ <- IO(
         assert(snapshotOutcome.toOption.exists {
@@ -634,12 +649,14 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
         )
       )
       rng <- Ref.of[IO, Rng](Rng(5L))
-      refreshed <- PeerNetwork.refreshLocalDnsCache(
-        PeerNetwork.Roots(groups, Set.empty, None, UseLedgerPeers.Disabled, localSrv = services),
-        seeded,
-        dns,
-        rng
-      )
+      refreshed <- PeerNetwork
+        .refreshLocalDnsCache(
+          PeerNetwork.Roots(groups, Set.empty, None, UseLedgerPeers.Disabled, localSrv = services),
+          seeded,
+          dns,
+          rng
+        )
+        .map(_._1)
       roots = PeerNetwork.Roots(
         groups,
         Set.empty,

@@ -1277,6 +1277,7 @@ object Main extends IOApp:
                 case Output.Traced(trace)      => logged(NodeEvent.PeerSelection(trace))
                 case Output.Churned(trace)     => logged(NodeEvent.PeerChurn(trace))
                 case Output.LedgerPeers(trace) => logged(NodeEvent.LedgerPeers(trace))
+                case Output.LocalRoots(trace)  => logged(NodeEvent.LocalRoots(trace))
                 case Output.Counted(c)         => logged(NodeEvent.PeerCounters(c))
                 case Output.Connections(c)     => logged(NodeEvent.OutboundConnections(c)))
             network = PeerNetwork.resource[IO](
