@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.consensus.BlockNoVerdict
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules, FollowerEvent, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{
   BlockFailure,
+  BlockPoolProblem,
   BlockRule,
   ChainError,
   EpochGeometry,
@@ -622,5 +623,38 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       withheld(left, 2) { case BlockNoVerdict.Evaluation(ValidationError(point, _)) =>
         assertEquals(point, headers(2).point)
       }
+    }
+  }
+
+  // the node installs the selection worker before any session (`Main`): a session without it is
+  // the node's own wiring, and nothing it announced would ever be adopted
+  test("a session started without the selection worker stops the node: no peer is blamed") {
+    NodeScope.resource.use { node =>
+      for
+        ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.k.toInt, -1))
+        given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
+        intersected <- Ref.of[IO, Boolean](false)
+        follower <- Follower.create[IO, BigInt](
+          BlockRules.from((_, header, _) => IO.pure(header.blockNo)),
+          _ => IO.unit,
+          geometry
+        )
+        peer = new Peer[IO]:
+          def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
+            intersected.set(true).as(candidates.headOption)
+          def next(using Raise[IO, PeerError]) = IO.never[SyncEvent]
+          def fetch(header: Header)(using Raise[IO, PeerError]) = IO.pure(bodies(header.hash))
+        end <- SessionEnd
+          .scoped(node)((_, _) ?=> follower.session(peer).as(SessionEnd.Returned))
+          .timeout(5.seconds)
+        asked <- intersected.get
+      yield
+        assertEquals(end, SessionEnd.Internal(BlockPoolProblem.NoSelectionWorker))
+        assertEquals(
+          FailurePolicy.disposition(end),
+          Disposition.StopNode(Fatal.Internal(BlockPoolProblem.NoSelectionWorker))
+        )
+        assertEquals(SessionEnd.peerError(end), None)
+        assert(!asked, "the peer was asked for an intersection")
     }
   }

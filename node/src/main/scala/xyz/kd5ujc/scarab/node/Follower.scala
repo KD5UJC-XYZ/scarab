@@ -184,7 +184,7 @@ final class Follower[F[_]: Async, S] private (
                 if validation.addedPoint.exists(point => take.exists(_.point == point)) then
                   validation
                 else Peer.Validation.none[F]
-              switchTo(peer, to, depth, take, ChainSync.Tip.Origin, pool.invalidBlocks, causal).void
+              switchTo(peer, to, depth, take, ChainSync.Tip.Origin, pool.invalidBlocks, causal)
             case ChainSelection.Decision.Keep if phase == BlockSelection.Phase.Startup => F.unit
             case _ => BlockPoolProblem.SelectionProjectionChanged(candidate.tip).raise[F, Unit]
         }
@@ -208,12 +208,6 @@ final class Follower[F[_]: Async, S] private (
         .whenA(peer.invalidBlocks.exists(_ ne selected))
     yield selected
 
-  private def protocol[A](reason: PeerError.ProtocolFailure)(using Raise[F, PeerError]): F[A] =
-    PeerError.Protocol(reason).raise[F, A]
-
-  private def diverged[A](reason: PeerError.Divergence)(using Raise[F, PeerError]): F[A] =
-    PeerError.Diverged(reason).raise[F, A]
-
   private[node] def genesisView(
       windowAt: (S, BigInt, BigInt) => Option[BigInt]
   ): F[GenesisGovernor.View] = window.get.map { snapshot =>
@@ -226,12 +220,13 @@ final class Follower[F[_]: Async, S] private (
     )
   }
 
-  /** Run one peer session until the peer fails (a raised [[PeerError]]) or forever. `track` is
-    * handed the validated header candidate when the node-owned body selector is active; this may be
-    * ahead of body delivery. Direct domain sessions expose their own selection candidate. The two
-    * conversations are independent upstream: consensus 82ecba329 ChainSync/Client.hs retains the
-    * validated candidate, while BlockFetch/ClientInterface.hs:192–225 queues actual originals
-    * through addBlockAsync. Body delivery never reconstructs that header candidate.
+  /** Run one peer session until the peer fails (a raised [[PeerError]]) or forever. The session
+    * follows the peer's chain and `track` is handed its validated header candidate; the node's
+    * selection worker ([[blockSelection]]), installed before any session starts, adopts the blocks
+    * the session delivers (issue 578). The two conversations are independent upstream: consensus
+    * 82ecba329 ChainSync/Client.hs retains the validated candidate, while
+    * BlockFetch/ClientInterface.hs:192–225 queues actual originals through addBlockAsync. Body
+    * delivery never reconstructs that header candidate.
     */
   def session(
       peer: Peer[F],
@@ -239,68 +234,12 @@ final class Follower[F[_]: Async, S] private (
   )(using Raise[F, NodeError]): F[Unit] =
     for
       registry <- registryFor(peer)
+      selecting <- registry.selectionActive
+      _ <- BlockPoolProblem.NoSelectionWorker.raise[F, Unit].unlessA(selecting)
       initial <- intersect(peer)
       candidate <- Ref.of[F, ChainSelection.Candidate](initial)
-      delegated <- registry.selectionActive
-      _ <- track(if delegated then peer.headerCandidate.getOrElse(candidate) else candidate)
-      control <- genesis.get
-      _ <- control.fold(
-        Monad[F].foreverM(
-          peer.next.flatMap(event => step(peer, candidate, event, intersect(peer), registry))
-        )
-      ) { governor =>
-        SessionInput.resource(peer).use { input =>
-          for
-            serial <- Mutex[F]
-            lastTip <- Ref.of[F, ChainSync.Tip](ChainSync.Tip.Origin)
-            consume = Monad[F].foreverM(input.next.flatMap { read =>
-              serial.lock.surround {
-                input.current(read).flatMap { current =>
-                  if !current then F.unit
-                  else
-                    val tip = read.event match
-                      case SyncEvent.RollForward(_, value)  => value
-                      case SyncEvent.RollBackward(_, value) => value
-                    lastTip.set(tip) *> step(
-                      peer,
-                      candidate,
-                      read.event,
-                      input.reintersect(intersect(peer)),
-                      registry
-                    )
-                }
-              }
-            })
-            reselect = registry.selectionActive.flatMap {
-              case true => F.never[Unit]
-              case false =>
-                F.tailRecM[Long, Unit](-1L) { previous =>
-                  governor.selectionChanged(previous).flatMap { revision =>
-                    serial.lock
-                      .surround {
-                        (candidate.get, lastTip.get).tupled.flatMap { (known, tip) =>
-                          if known.headers.isEmpty then F.unit
-                          else
-                            registry.selectionActive
-                              .flatMap {
-                                case true  => F.pure(Some(known))
-                                case false => adopt(peer, known, tip, registry)
-                              }
-                              .flatMap {
-                                case Some(kept) => candidate.set(kept)
-                                case None =>
-                                  input.reintersect(intersect(peer)).flatMap(candidate.set)
-                              }
-                        }
-                      }
-                      .as(Left(revision))
-                  }
-                }
-            }
-            _ <- F.both(consume, reselect).void
-          yield ()
-        }
-      }
+      _ <- track(peer.headerCandidate.getOrElse(candidate))
+      _ <- Monad[F].foreverM(peer.next.flatMap(step(candidate, _)))
     yield ()
 
   private def intersect(peer: Peer[F])(using Raise[F, NodeError]): F[ChainSelection.Candidate] =
@@ -349,67 +288,16 @@ final class Follower[F[_]: Async, S] private (
       }
     }
 
-  private def step(
-      peer: Peer[F],
-      candidate: Ref[F, ChainSelection.Candidate],
-      event: SyncEvent,
-      reintersect: F[ChainSelection.Candidate],
-      registry: InvalidBlocks[F]
-  )(using Raise[F, NodeError]): F[Unit] =
-    registry.selectionActive.flatMap {
-      // ChainSync validates and retains the header fragment; ChainDB independently selects actual
-      // body admissions (consensus 82ecba329 BlockFetch/ClientInterface.hs:192–225).
-      // The body journal may lag that fragment and must not validate an older rollback again.
-      case true =>
-        event match
-          case SyncEvent.RollForward(header, _) =>
-            candidate.set(ChainSelection.Candidate(header.point, Vector.empty))
-          case SyncEvent.RollBackward(point, _) =>
-            candidate.set(ChainSelection.Candidate(point, Vector.empty))
-      case false => directStep(peer, candidate, event, reintersect, registry)
-    }
-
-  private def directStep(
-      peer: Peer[F],
-      candidate: Ref[F, ChainSelection.Candidate],
-      event: SyncEvent,
-      reintersect: F[ChainSelection.Candidate],
-      registry: InvalidBlocks[F]
-  )(using Raise[F, NodeError]): F[Unit] = event match
-    case SyncEvent.RollBackward(point, _) =>
-      candidate.get.flatMap { c =>
-        c.rollback(point) match
-          case Some(rolled) => candidate.set(rolled)
-          case None         =>
-            // Before the join point: the peer's chain below it is ours as long as it is retained.
-            lock.lock.surround(local).flatMap { l =>
-              if l.contains(point) then candidate.set(ChainSelection.Candidate(point, Vector.empty))
-              else diverged(PeerError.Divergence.RollbackOutsideChain(point))
-            }
-      }
-    case SyncEvent.RollForward(header, tip) =>
-      candidate.get.flatMap { c =>
-        val extended =
-          if c.headers.isEmpty && c.base == ChainSync.Point.Origin then
-            Some(c.copy(headers = Vector(header)))
-          else c.extend(header)
-        extended match
-          case None =>
-            protocol(PeerError.ProtocolProblem.HeaderDoesNotExtend(header.point, c.tip))
-          case Some(grown) =>
-            peer
-              .validation(header)
-              .flatMap(_.fold(_.raise[F, Peer.Validation[F]], F.pure))
-              .flatMap { validation =>
-                candidate.set(grown) *> adopt(peer, grown, tip, registry, validation).flatMap {
-                  case Some(kept) => candidate.set(kept)
-                  // NoLongerIntersects: drain the pipeline and find a new intersection on this
-                  // connection (consensus 82ecba329, ChainSync/Client.hs:1499–1511). Another session
-                  // may have advanced the retained window while this candidate was catching up.
-                  case None => reintersect.flatMap(candidate.set)
-                }
-              }
-      }
+  /** ChainSync validates and retains the header fragment; ChainDB independently selects actual body
+    * admissions (consensus 82ecba329 BlockFetch/ClientInterface.hs:192–225). The body journal may
+    * lag that fragment and must not validate an older rollback again.
+    */
+  private def step(candidate: Ref[F, ChainSelection.Candidate], event: SyncEvent): F[Unit] =
+    event match
+      case SyncEvent.RollForward(header, _) =>
+        candidate.set(ChainSelection.Candidate(header.point, Vector.empty))
+      case SyncEvent.RollBackward(point, _) =>
+        candidate.set(ChainSelection.Candidate(point, Vector.empty))
 
   /** Our chain as chain selection sees it. The window is kept between calls and updated by
     * [[commit]] (an append and a truncation per change, not the `k` blocks again for every header);
@@ -461,85 +349,16 @@ final class Follower[F[_]: Async, S] private (
   private final case class Refused(
       header: Header,
       error: ValidationError,
-      before: VolatileChain[S],
-      valid: Vector[Applied]
+      before: VolatileChain[S]
   ) extends Stopped
 
   /** The node has no verdict on `header`'s block (issue 567). */
-  private final case class Withheld(
-      header: Header,
-      cause: BlockNoVerdict,
-      before: VolatileChain[S],
-      valid: Vector[Applied]
-  ) extends Stopped
+  private final case class Withheld(header: Header, cause: BlockNoVerdict) extends Stopped
 
   /** What the judgement of one block says when it does not apply it. */
   private enum Judged:
     case Refusal(error: ValidationError)
     case NoVerdict(cause: BlockNoVerdict)
-
-  /** Switch if preferred; no candidate means its intersection left our retained window. */
-  private def adopt(
-      peer: Peer[F],
-      candidate: ChainSelection.Candidate,
-      peerTip: ChainSync.Tip,
-      registry: InvalidBlocks[F],
-      validation: Peer.Validation[F] = Peer.Validation.none[F]
-  )(using Raise[F, NodeError]): F[Option[ChainSelection.Candidate]] =
-    lock.lock.surround(adoptLocked(peer, candidate, peerTip, registry, validation))
-
-  private def adoptLocked(
-      peer: Peer[F],
-      candidate: ChainSelection.Candidate,
-      peerTip: ChainSync.Tip,
-      registry: InvalidBlocks[F],
-      validation: Peer.Validation[F]
-  )(using Raise[F, NodeError]): F[Option[ChainSelection.Candidate]] = {
-    for
-      l <- local
-      control <- genesis.get
-      selected = Fragment(
-        l.anchor,
-        l.blocks.map(_.point).collect { case block: ChainSync.Point.Block =>
-          block
-        }
-      )
-      limit <- control.traverse(_.limitAt(selected)).map(_.flatten)
-      current <- chain.get
-      invalid <- registry.snapshot
-      withheld <- noVerdictFor(peer).hashes
-      validPrefix = candidate.copy(headers =
-        candidate.headers.takeWhile(h =>
-          !invalid.entries.contains(h.hash) && !withheld.contains(h.hash)
-        )
-      )
-      bounded = Follower.limitCandidate(current.k, l, validPrefix, limit)
-      result <- bounded match
-        case None => considered(peer, candidate).as(Some(candidate))
-        case Some(eligible) =>
-          ChainSelection.decide(
-            tiebreaker(eligible.headers.lastOption.fold(candidate.headers.last.era)(_.era)),
-            l,
-            eligible
-          ) match
-            case ChainSelection.Decision.Keep =>
-              considered(peer, candidate).as(Some(candidate.rebase(eligible.base)))
-            case ChainSelection.Decision.Detached => considered(peer, candidate).as(None)
-            case ChainSelection.Decision.Switch(to, depth, take) =>
-              val causal =
-                if validation.addedPoint.exists(point => take.exists(_.point == point)) then
-                  validation
-                else Peer.Validation.none[F]
-              switchTo(peer, to, depth, take, peerTip, registry, causal).flatMap { committed =>
-                considered(peer, candidate).as(Some(committed.fold(candidate)(candidate.rebase)))
-              }
-    yield result
-  }
-
-  private def considered(peer: Peer[F], candidate: ChainSelection.Candidate): F[Unit] =
-    peer.selectionWork.traverse_(work =>
-      candidate.headers.traverse_(h => work.processing(h.hash).use(_ => F.unit))
-    )
 
   private def switchTo(
       peer: Peer[F],
@@ -549,7 +368,7 @@ final class Follower[F[_]: Async, S] private (
       peerTip: ChainSync.Tip,
       registry: InvalidBlocks[F],
       validation: Peer.Validation[F]
-  )(using Raise[F, NodeError]): F[Option[ChainSync.Point]] =
+  )(using Raise[F, NodeError]): F[Unit] =
     for
       original <- chain.get
       rolled <- original.rollback(to).fold(_.raise[F, VolatileChain[S]], _.pure[F])
@@ -629,9 +448,9 @@ final class Follower[F[_]: Async, S] private (
                 )
                 result <- verdict match
                   case Left(Judged.Refusal(refused)) =>
-                    F.pure(Right(Left(Refused(header, refused, before, done))))
+                    F.pure(Right(Left(Refused(header, refused, before))))
                   case Left(Judged.NoVerdict(cause)) =>
-                    F.pure(Right(Left(Withheld(header, cause, before, done))))
+                    F.pure(Right(Left(Withheld(header, cause))))
                   case Right(next) =>
                     before
                       .extend(header, next)
@@ -664,62 +483,35 @@ final class Follower[F[_]: Async, S] private (
                       )
               yield result
         }
-      committed <- outcome match
-        case Right(steps) => commit(original, to, depth, steps, peerTip).as(Some(take.last.point))
-        // No verdict on a block: it is recorded so that selection does not judge it again,
-        // reported, and the valid prefix before it is reconsidered as for a refusal; nothing is
-        // recorded as invalid and nobody is punished (issue 567)
+      _ <- outcome match
+        case Right(steps) => commit(original, to, depth, steps, peerTip)
+        // No verdict on a block: it is recorded so that selection does not judge it again, and
+        // reported; nothing is recorded as invalid and nobody is punished (issue 567). The worker
+        // reconsiders the valid prefix before it, as for a refusal.
         case Left(withheld: Withheld) =>
           F.uncancelable { _ =>
-            for
-              _ <- noVerdictFor(peer).record(withheld.header, withheld.cause)
-              _ <- events.emit(FollowerEvent.NoVerdict(withheld.header.point, withheld.cause))
-              localNow <- local
-              prefix = take.take(withheld.valid.size)
-              preferred = prefix.lastOption.exists(h =>
-                ChainSelection.prefersCandidate(
-                  tiebreaker(h.era),
-                  localNow.tipView,
-                  SelectView.of(h)
-                )
-              )
-              delegated <- registry.selectionActive
-              _ <- commit(original, to, depth, withheld.valid, peerTip).whenA(
-                preferred && !delegated
-              )
-            yield Option.when(preferred && !delegated)(withheld.before.tip)
+            noVerdictFor(peer).record(withheld.header, withheld.cause) *>
+              events.emit(FollowerEvent.NoVerdict(withheld.header.point, withheld.cause))
           }
         case Left(refused: Refused) =>
-          // Native validation records invalidity and punishes first (ChainSel.hs:1315–1344),
-          // then reconsiders a preferred valid prefix (1147–1186). The ChainDB worker survives
-          // sender-thread cancellation, so this local commit boundary must survive it too.
+          // Native validation records invalidity and punishes first (ChainSel.hs:1315–1344); the
+          // worker then reconsiders a preferred valid prefix (1147–1186). The ChainDB worker
+          // survives sender-thread cancellation, so this local boundary must survive it too.
           F.uncancelable { _ =>
             for
               _ <- peer
                 .invalidated(refused.header, refused.error)
                 .flatMap(_.fold(_.raise[F, Unit], F.pure))
               _ <- registry.record(refused.header, refused.error).whenA(peer.invalidBlocks.isEmpty)
+              // the adding session is punished through the pool, never by raising here: the
+              // worker's validations come from admissions (`Peer.Validation.admission`) or none
               adding <- causal.get
-              decision <- adding
+              _ <- adding
                 .rejected(refused.error, refused.before.tip)
                 .flatMap(_.fold(_.raise[F, Peer.Rejection], F.pure))
-              localNow <- local
-              prefix = take.take(refused.valid.size)
-              preferred = prefix.lastOption.exists(h =>
-                ChainSelection.prefersCandidate(
-                  tiebreaker(h.era),
-                  localNow.tipView,
-                  SelectView.of(h)
-                )
-              )
-              delegated <- registry.selectionActive
-              _ <- commit(original, to, depth, refused.valid, peerTip).whenA(
-                preferred && !delegated
-              )
-              _ <- refused.error.raise[F, Unit].whenA(decision == Peer.Rejection.PunishedCurrent)
-            yield Option.when(preferred && !delegated)(refused.before.tip)
+            yield ()
           }
-    yield committed
+    yield ()
 
   /** Everything applied: persist, replace the chain, announce and tell the mempool.
     *
