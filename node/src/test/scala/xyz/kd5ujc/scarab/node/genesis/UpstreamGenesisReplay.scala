@@ -111,11 +111,6 @@ object UpstreamGenesisReplay extends munit.Assertions:
         }
       override def snapshot(using cats.Applicative[IO]) = gate.snapshot
       override def intersectionSelection(using cats.Applicative[IO]) = gate.intersectionSelection
-      override def graft(
-          snapshot: HeaderChain[NodeHeaderState],
-          point: ChainSync.Point,
-          selection: ChainSelection.Local
-      )(using cats.Applicative[IO]) = gate.graft(snapshot, point, selection)
     new HeaderCheck[IO]:
       def start(point: ChainSync.Point) = check.start(point).map(wrap)
       override def capture(using cats.Applicative[IO]) =
@@ -124,6 +119,8 @@ object UpstreamGenesisReplay extends munit.Assertions:
         )
       override def withPatience(patience: xyz.kd5ujc.scarab.network.genesis.LimitOnPatience[IO]) =
         observeDirectRefusals(check.withPatience(patience), note)
+      override def withInvariant(invariant: GenesisInternalProblem => IO[Unit]) =
+        observeDirectRefusals(check.withInvariant(invariant), note)
       override def observed(observer: HeaderCheck.Event => IO[Unit]) =
         observeDirectRefusals(check.observed(observer), note)
 
@@ -375,6 +372,13 @@ object UpstreamGenesisReplay extends munit.Assertions:
                               IO.pure(geometry),
                               clock.now,
                               pool.fetchCoordinator.refreshGenesis,
+                              HeaderCheck.forGenesisChain(
+                                headerRules,
+                                Compute.inline[IO],
+                                GenesisRuntime.retainedHeaders(geometry),
+                                stall = 120000000000000L.nanos,
+                                poll = 20000000000L.nanos
+                              ),
                               Some(clock)
                             )
                             _ <- follower.installGenesis(governor)
@@ -575,15 +579,7 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                                   _ => IO.unit,
                                                   headers = Some(
                                                     observeDirectRefusals(
-                                                      HeaderCheck
-                                                        .forGenesisChain(
-                                                          headerRules,
-                                                          Compute.inline[IO],
-                                                          controls.retainedHeaders,
-                                                          stall = 120000000000000L.nanos,
-                                                          poll = 20000000000L.nanos
-                                                        )
-                                                        .withPatience(controls.patience),
+                                                      controls.headers,
                                                       error =>
                                                         lifecycle.update(
                                                           _ :+ Lifecycle

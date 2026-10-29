@@ -119,8 +119,12 @@ class GenesisHeaderGateSuite extends FailsOnUncaught:
       state <- Ref.of[IO, VolatileChain[BigInt]](applied)
       given Stateful[IO, VolatileChain[BigInt]] = RefStateful(state)
       given Ask[IO, ChainSelection.Local] = selected(state, headers)
-      check = HeaderCheck.forGenesisChain[IO, BigInt](model(100), Compute.inline[IO], 100)
-      gate <- check.start(applied.tip)
+      started <- Ref.of[IO, Option[HeaderGate.Grafting[IO]]](None)
+      check = HeaderCheck
+        .forGenesisChain[IO, BigInt](model(100), Compute.inline[IO], 100)
+        .recording(gate => started.set(Some(gate)))
+      _ <- check.start(applied.tip)
+      gate <- started.get.flatMap(IO.fromOption(_)(new AssertionError("no grafting gate")))
       original <- gate.snapshot
       snapshot <- IO.fromOption(original)(new AssertionError("canonical snapshot missing"))
       _ <- IO(assertEquals(snapshot.points, ChainSync.Point.Origin +: headers.take(4).map(_.point)))

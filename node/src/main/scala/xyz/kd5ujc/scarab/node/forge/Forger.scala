@@ -12,14 +12,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.{Block, Header}
-import xyz.kd5ujc.scarab.ledger.{
-  BlockFailure,
-  ChainError,
-  EvaluationUnavailable,
-  ForgeError,
-  LedgerFailure,
-  VerificationDefect
-}
+import xyz.kd5ujc.scarab.ledger.ForgeError
 import xyz.kd5ujc.scarab.ledger.{ClockProblem, NodeError}
 import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash}
@@ -32,7 +25,7 @@ import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Globals, Hfc}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, NewEpochState, ShelleyBasedEra, SlotNo}
 import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView, TxClock}
 import xyz.kd5ujc.scarab.node.read.MirrorEraRead
-import xyz.kd5ujc.scarab.node.mempool.{Entry, Mempool, MempoolLedger, MempoolState}
+import xyz.kd5ujc.scarab.node.mempool.{Entry, Mempool, MempoolLedger, MempoolState, Rejection}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.storage.UtxoStore
 import scala.concurrent.duration.*
@@ -434,16 +427,21 @@ final class Forger[F[_]: Async, S](
         case Follower.Adoption.Lost(reason) =>
           say(ForgeTrace.DidntAdoptBlock(slot, block.header.hash)) *>
             perform(events.emit(ForgeEvent.Lost(slot, block.header.hash, reason.message)))
-        // A refusal of our own block, or no verdict on it (the evaluator or a crypto provider failed
-        // on it, which in the reference is an exception in the linked forging thread that stops
-        // the node, consensus 82ecba32 NodeKernel.hs forkBlockForging): the block's transactions
-        // leave the pool, valid or not, so that the next leader slot does not repeat the failure
-        // (`NodeKernel.hs` 770-783), and the slot ends. A failure of our own implementation does
-        // not stop the node (owner decision 2026-10-28, issue 567).
+        // A refusal of our own block: the block's transactions leave the pool, valid or not, so
+        // that the next leader slot does not repeat the failure (`NodeKernel.hs` 770-783), and the
+        // slot ends.
         case Follower.Adoption.Invalid(e) =>
           val ids = chosen.map(_._1.id).toSet
           say(ForgeTrace.ForgedInvalidBlock(slot, block.header.hash, e)) *>
             perform(mempool.removeTxsEvenIfValid(ids).void.whenA(ids.nonEmpty))
+        // No verdict on it (the evaluator or a crypto provider failed on it, a quantity of the state
+        // is out of range, or the rules threw; in the reference an exception in the linked forging
+        // thread that stops the node, consensus 82ecba32 NodeKernel.hs forkBlockForging): handled
+        // as a refusal, and the follower reports it (`Chain.BlockNoVerdict`). A failure of our own
+        // implementation does not stop the node (owner decision 2026-10-28, issue 567, #584).
+        case Follower.Adoption.NoVerdict(_) =>
+          val ids = chosen.map(_._1.id).toSet
+          perform(mempool.removeTxsEvenIfValid(ids).void.whenA(ids.nonEmpty))
     yield ()).value.void
 
   /** The chain to forge on in `slot`, as `forkBlockForging` picks it through
@@ -516,23 +514,16 @@ final class Forger[F[_]: Async, S](
           Some(clock.at(base.state, Era.Conway, slot))
         )
       )
-      chosen <- selection.fold(
-        {
-          case unavailable: LedgerFailure.Unavailable =>
-            EvaluationUnavailable(base.tip, unavailable)
-              .raise[F, Vector[(Entry, BlockBuilder.Piece)]]
-          // the forging thread is linked to the node in the reference, which re-applies the pool's
-          // transactions in it (consensus 82ecba32 Node/NodeKernel.hs `forkBlockForging`)
-          case LedgerFailure.Unverifiable(tx, defect) =>
-            VerificationDefect(base.tip, VerificationDefect.Site.Witness(tx), defect)
-              .raise[F, Vector[(Entry, BlockBuilder.Piece)]]
-          case outOfRange: LedgerFailure.StateOutOfRange =>
-            ChainError
-              .StateOutOfRange(slot, outOfRange.error)
-              .raise[F, Vector[(Entry, BlockBuilder.Piece)]]
-        },
-        F.pure
-      )
+      // the held transactions we have no verdict on leave the pool with their reason, and the
+      // block is built from the rest: the owner's decision of 2026-10-28 (issue 584), where the
+      // reference's linked forging thread stops the node (consensus 82ecba32 Node/NodeKernel.hs
+      // `forkBlockForging`)
+      _ <- mempool
+        .withdraw(
+          selection.withheld.map((entry, failure) => entry.id -> Rejection.Ledger(failure)).toMap
+        )
+        .whenA(selection.withheld.nonEmpty)
+      chosen = selection.chosen
     yield chosen
 
   /** Build and sign the block (`forgeBlock`). The checks here are Scarab's own and never refuse a
@@ -737,22 +728,18 @@ object Forger:
     */
   private[forge] val MaxClockRewind: Duration = Duration.ofSeconds(20)
 
-  /** What a failed tick of the tip's state to `slot` is. A quantity of the state outside its
-    * vocabulary type is no forging failure but the node's stop ([[ChainError.StateOutOfRange]]):
-    * the reference's `compactCoinOrError` throws in the forging thread, which is linked
-    * (ouroboros-consensus 82ecba32 `NodeKernel.hs:378-380`), so the node stops and no later slot is
-    * tried. Any other failure leaves the ledger view of this slot unavailable.
+  /** What a failed tick of the tip's state to `slot` is: the ledger view of this slot is
+    * unavailable, and the slot ends without a block. A quantity of the state outside its vocabulary
+    * type is no exception: the reference's `compactCoinOrError` throws in the forging thread, which
+    * is linked (ouroboros-consensus 82ecba32 `NodeKernel.hs:378-380`), so the reference stops; the
+    * owner decided the node does not (2026-10-28, issue 567, ADR 0017), and the failure keeps its
+    * cause (`BlockFailure.stateOutOfRange` of the tick, #573).
     */
   private[forge] def tickFault(
       slot: BigInt,
       failure: xyz.kd5ujc.scarab.ledger.rules.TickFailure
   ): NodeError =
-    BlockFailure
-      .Tick(failure)
-      .stateOutOfRange
-      .fold[NodeError](ForgeError.LedgerViewUnavailable(slot, ForgeLedgerProblem.Tick(failure)))(
-        ChainError.StateOutOfRange(slot, _)
-      )
+    ForgeError.LedgerViewUnavailable(slot, ForgeLedgerProblem.Tick(failure))
 
   /** Like runExceptT at the forging worker boundary: typed failures and defects finish as values.
     * The scope and the body are constructed inside defer (cats-mtl 1.7.0 Handle.rescue invokes its

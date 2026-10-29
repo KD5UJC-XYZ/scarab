@@ -113,6 +113,14 @@ trait Mempool[F[_]]:
       Raise[F, StorageError]
   ): F[Vector[(Entry, Rejection)]]
 
+  /** As [[removeTxsEvenIfValid]], for held transactions the forger has no verdict on while it
+    * builds a block: each leaves the pool with its reason (`Dropped`), as revalidation drops one
+    * (issue 584).
+    */
+  def withdraw(reasons: Map[Bytes, Rejection])(using
+      Raise[F, StorageError]
+  ): F[Vector[(Entry, Rejection)]]
+
   /** Offer our transactions to a peer (we are the TxSubmission2 client). */
   def source: TxSubmissionClient.Source[F]
 
@@ -300,6 +308,22 @@ object Mempool:
       }
 
       def removeTxsEvenIfValid(ids: Set[Bytes])(using Raise[F, StorageError]) =
+        removing(ids, entry => events.emit(MempoolEvent.Removed(entry.id)), droppedNamed = false)
+
+      def withdraw(reasons: Map[Bytes, Rejection])(using Raise[F, StorageError]) =
+        removing(
+          reasons.keySet,
+          entry =>
+            reasons.get(entry.id).traverse_(r => events.emit(MempoolEvent.Dropped(entry.id, r))),
+          droppedNamed = true
+        )
+
+      /** Remove `ids` and revalidate the rest; `droppedNamed` counts the named ones among the
+        * dropped of the summary (`Synced`), as a withdrawal drops them.
+        */
+      private def removing(ids: Set[Bytes], report: Entry => F[Unit], droppedNamed: Boolean)(using
+          Raise[F, StorageError]
+      ): F[Vector[(Entry, Rejection)]] =
         lock.lock.surround {
           for
             current <- state.get
@@ -318,12 +342,16 @@ object Mempool:
                   (next, dependants) = revalidated
                   _ <- state.set(next)
                   _ <- version.update(_ + 1)
-                  _ <- removed.traverse_(entry => events.emit(MempoolEvent.Removed(entry.id)))
+                  _ <- removed.traverse_(report)
                   _ <- dependants.traverse_ { (entry, reason) =>
                     events.emit(MempoolEvent.Dropped(entry.id, reason))
                   }
                   _ <- events.emit(
-                    MempoolEvent.Synced(next.entries.size, next.bytes, dependants.size)
+                    MempoolEvent.Synced(
+                      next.entries.size,
+                      next.bytes,
+                      dependants.size + (if droppedNamed then removed.size else 0)
+                    )
                   )
                 yield dependants
           yield out

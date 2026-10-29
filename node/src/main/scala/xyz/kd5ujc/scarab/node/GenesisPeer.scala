@@ -13,14 +13,13 @@ trait GenesisPeer[F[_]]:
   def failed[A](error: ChainSyncJumping.Error): F[A]
   def next: F[ChainSyncJumping.Instruction[GenesisPeer.Checkpoint]]
   def nextAfterReply: F[ChainSyncJumping.Instruction[GenesisPeer.Checkpoint]] = next
-  def observed(gate: HeaderGate[F], event: SyncEvent): F[Unit]
+  def observed(event: SyncEvent): F[Unit]
   def processJump(
       info: ChainSyncJumping.JumpInfo[GenesisPeer.Checkpoint],
       goodPoint: Boolean,
-      found: Option[Point],
-      gate: HeaderGate[F]
+      found: Option[Point]
   ): F[GenesisPeer.Applied]
-  def restarted(point: Point, gate: HeaderGate[F]): F[Unit]
+  def restarted(point: Point): F[Unit]
 
 object GenesisPeer:
   final case class Checkpoint(

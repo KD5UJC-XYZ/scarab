@@ -90,8 +90,11 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     .OutOfRange(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.CompactCoin, BigInt(1) << 64)
 
   // `compactCoinOrError` (cardano-ledger f649f975 `Coin.hs:184-188`) throws in the forging thread,
-  // which is linked (ouroboros-consensus 82ecba32 `NodeKernel.hs:378-380`)
-  test("a ledger state out of range is fatal: no recoverable forge failure, no later slot") {
+  // which is linked (ouroboros-consensus 82ecba32 `NodeKernel.hs:378-380`), so the reference stops;
+  // the owner decided the node does not (issue 567, #584): our block is withheld as a refusal
+  test(
+    "a ledger state out of range on our own block withholds it: the slot ends, the node goes on"
+  ) {
     val p = pool(kesStart = 50)
     val fault = ChainError.StateOutOfRange(leaderSlot(p), outOfRange)
     withHandle {
@@ -102,30 +105,57 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
         chain <- h.chain
         stats <- h.forger.stats.total
       yield
-        assertEquals(result, Left(Fatal.Internal(fault)))
+        assertEquals(result, Right(()))
         assertEquals(chain.tipRef, None)
         assertEquals(stats.failed, 0L)
+        assert(!events.exists(_.isInstanceOf[ForgeEvent.Adopted]))
         assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]))
     }
   }
 
-  test("a tick of the tip's state out of range is the node's stop; another tick failure is not") {
-    val state = xyz.kd5ujc.scarab.ledger.rules.TickFailure.Vocab(outOfRange)
-    assertEquals(Forger.tickFault(7, state), ChainError.StateOutOfRange(7, outOfRange))
-    val input = xyz.kd5ujc.scarab.ledger.rules.TickFailure.Input(outOfRange)
-    assertEquals(
-      Forger.tickFault(7, input),
-      ForgeError.LedgerViewUnavailable(7, xyz.kd5ujc.scarab.ledger.ForgeLedgerProblem.Tick(input))
-    )
-    for fatal <- Forger.scoped[IO, Unit](
-        summon[Handle[IO, NodeError]].raise(Forger.tickFault(7, state))
+  // issue 567 (#584): the reference stops; the owner decided the node does not
+  test(
+    "a tick of the tip's state out of range ends the slot without a block, as any tick failure"
+  ) {
+    List(
+      xyz.kd5ujc.scarab.ledger.rules.TickFailure.Vocab(outOfRange),
+      xyz.kd5ujc.scarab.ledger.rules.TickFailure.Input(outOfRange)
+    ).foreach { failure =>
+      assertEquals(
+        Forger.tickFault(7, failure),
+        ForgeError
+          .LedgerViewUnavailable(7, xyz.kd5ujc.scarab.ledger.ForgeLedgerProblem.Tick(failure))
       )
-    yield assertEquals(fatal, Left(Fatal.Internal(ChainError.StateOutOfRange(7, outOfRange))))
+    }
   }
 
-  test(
-    "a deposit of the parameters out of range stops block selection, not skipping the transaction"
-  ) {
+  // issue 567 (#584): the reference's linked forging thread would stop; our block is withheld
+  test("an exception of the rules on our own block withholds it: the slot ends, the node goes on") {
+    val p = pool(kesStart = 50)
+    withHandle {
+      for
+        h <- harness(
+          p,
+          ledgerWith(p, 1),
+          rulesThrow = Some(new IllegalStateException("a bug in the rules"))
+        )
+        result <- h.forger.step(leaderSlot(p))
+        events <- h.seen
+        chain <- h.chain
+        stats <- h.forger.stats.total
+      yield
+        assertEquals(result, Right(()))
+        assertEquals(chain.tipRef, None)
+        assertEquals(stats.failed, 0L)
+        assert(!events.exists(_.isInstanceOf[ForgeEvent.Adopted]))
+        assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]))
+    }
+  }
+
+  // the reference stops the node here (`compactCoinOrError` in the linked forging thread); the
+  // owner decided (2026-10-28, issue 584) that the transaction leaves the pool and the block is
+  // built from the rest
+  test("a deposit of the parameters out of range withholds that transaction; the rest is chosen") {
     import xyz.kd5ujc.scarab.node.mempool.TxKit
     import xyz.kd5ujc.scarab.node.mempool.TxKit.*
     // a stake registration `[0, [0, key hash]]` (Conway `RegTxCert`, which takes `ppKeyDeposit`)
@@ -141,18 +171,17 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     )
     val base = TxKit.ledger(2).withParams(_.copy(keyDeposit = BigInt(1) << 64))
     val limit = BlockBuilder.Limits(65536, xyz.kd5ujc.scarab.plutus.ExUnits(14000000, 10000000000L))
-    BlockBuilder.select(
-      base,
-      1001,
-      1,
-      geometry,
-      globals,
-      Vector(MempoolStateFixture.entry(raw)),
-      limit
-    ) match
-      case Left(xyz.kd5ujc.scarab.ledger.LedgerFailure.StateOutOfRange(_, error)) =>
+    val registering = MempoolStateFixture.entry(raw)
+    val paying = MempoolStateFixture.entry(TxKit.pay(2)._1)
+    BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(registering, paying), limit) match
+      case BlockBuilder.Selection(
+            chosen,
+            Vector((withheld, xyz.kd5ujc.scarab.ledger.LedgerFailure.StateOutOfRange(_, error)))
+          ) =>
+        assertEquals(withheld.id, registering.id)
         assertEquals(error, outOfRange)
-      case other => fail(s"expected the state out of range, got $other")
+        assertEquals(chosen.map(_._1.id), Vector(paying.id))
+      case other => fail(s"expected the registration withheld, got $other")
   }
 
   test("an actual rule rejection remains recoverable and retains its predicate failure") {
@@ -574,8 +603,9 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
             failing(reason),
             xyz.kd5ujc.scarab.plutus.ScalusEvaluator.default
           )
-          .map(_.map(_._1.id)),
-        Right(Vector(id))
+          .chosen
+          .map(_._1.id),
+        Vector(id)
       )
     }
     val invalid = entry.copy(tx = tx.copy(body = tx.body.copy(fee = -1)))
@@ -584,7 +614,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
         xyz.kd5ujc.scarab.plutus.ScalusEvaluator.defaultDecoder,
         xyz.kd5ujc.scarab.plutus.ScalusEvaluator.default
       ),
-      Right(Vector.empty)
+      BlockBuilder.Selection(Vector.empty, Vector.empty)
     )
   }
 

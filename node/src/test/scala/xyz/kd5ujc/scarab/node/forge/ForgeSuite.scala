@@ -1022,19 +1022,20 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     def pick(entries: Vector[xyz.kd5ujc.scarab.node.mempool.Entry], room: Long) =
       BlockBuilder
         .select(base, 1001, 1, geometry, globals, entries, BlockBuilder.Limits(room + 1024, units))
-        .map(_.map(_._1.id))
+        .chosen
+        .map(_._1.id)
     assert(bytes(large) > bytes(small3))
     // the capacity is the body size less 1024, and each transaction counts its size plus 4
     assertEquals(bytes(small1), small1.tx.size + 4L)
     // room for the first and the large one exactly: the invalid one in between costs nothing
     assertEquals(
       pick(Vector(small1, invalid, large), bytes(small1) + bytes(large)),
-      Right(Vector(small1.id, large.id))
+      Vector(small1.id, large.id)
     )
     // one byte short of the large one: the selection ends there, though the next would fit
     assertEquals(
       pick(Vector(small1, large, small3), bytes(small1) + bytes(large) - 1),
-      Right(Vector(small1.id))
+      Vector(small1.id)
     )
   }
 
