@@ -33,6 +33,13 @@ object FailurePolicy:
     // The reconnect delay is the one of any lost connection: `OutboundPeers.Config.repromoteDelay`
     // (10 s) plus the governor's `coldReconnectFuzz` (`selection.Events.observedConnection`).
     case _: PeerError.Unverifiable => FailureClass.Transient
+    // The node's own code threw while it answered the peer (the ledger rules on a transaction the
+    // peer submitted): the connection closes, as the exception ends that mini-protocol in the
+    // reference (consensus 82ecba329 Mempool/Update.hs `doAddTx`, in the TxSubmission2 thread;
+    // network 2fb69829 RethrowPolicy.hs: `ShutdownPeer`). The reference also charges the error
+    // delay; here nothing is counted against the peer, since nothing it did is shown wrong
+    // (owner decision 2026-10-28, ADR 0017 amendment, issue 564).
+    case _: PeerError.ServingDefect => FailureClass.NotThePeers
     // Consensus 82ecba329 Node/RethrowPolicy.hs maps every ChainSyncClientException,
     // including EmptyBucket, DensityTooLow and HistoricityError, to ShutdownPeer.
     // Network 2fb69829 PeerStateActions.hs uses epErrorDelay (10s default), preserving
@@ -52,6 +59,9 @@ object FailurePolicy:
       classify(error) match
         case FailureClass.Misbehaved => Disposition.Forget
         case FailureClass.Transient  => Disposition.Backoff
+        // the session ends and the connection closes as for a backoff; the governor reads the
+        // class from [[classify]] and counts nothing against the peer
+        case FailureClass.NotThePeers => Disposition.Backoff
     case _: SessionEnd.Rejected     => Disposition.Forget
     case SessionEnd.Unavailable(e)  => Disposition.StopNode(Fatal.Unavailable(e))
     case SessionEnd.Unverifiable(e) => Disposition.StopNode(Fatal.Unverifiable(e))

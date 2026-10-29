@@ -58,6 +58,12 @@ enum PeerError extends NodeError:
     */
   case InputDefect(site: PeerError.InputSite, cause: Throwable)
 
+  /** The node's own code threw while it answered this peer on `protocol` (the ledger rules on a
+    * transaction it submitted): no verdict, and nothing shown against the peer. The connection
+    * closes and the peer is not charged (`FailurePolicy`, issue 564).
+    */
+  case ServingDefect(protocol: Int, cause: Throwable)
+
   /** A crypto provider failed while a header rule verified a header this peer announced: an
     * exception from a library, not a verdict on the header. The peer is neither forgotten nor
     * blamed and nothing is recorded as invalid; the connection closes and the peer is tried again
@@ -82,6 +88,8 @@ enum PeerError extends NodeError:
     case InvalidBlock(e)     => s"invalid block ${e.message}"
     case InputDefect(site, cause) =>
       s"defect decoding ${site.message}: ${NetworkError.describe(cause)}"
+    case ServingDefect(protocol, cause) =>
+      s"the node's own code threw answering ${xyz.kd5ujc.scarab.protocol.Protocols.name(protocol)}: ${NetworkError.describe(cause)}"
     case Unverifiable(e) => e.message
 
 object PeerError:

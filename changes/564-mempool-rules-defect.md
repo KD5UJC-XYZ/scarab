@@ -1,0 +1,3 @@
+### Fixed (mempool, #564)
+
+- **A transaction that makes the ledger rules throw no longer stops the node.** The exception is no verdict on the transaction: the submitter's connection ends (a local client's, or a peer's TxSubmission2 session) and the node goes on, as in the reference, where the mempool adds a transaction in the mini-protocol's thread. The peer is not charged a failure, since nothing it did is shown wrong (owner decision). `scarab_mempool_rejected_total` counts it as `reason="RulesDefect"`. Blocks, the mempool's revalidation and storage still stop the node on such an exception, as in the reference.

@@ -87,7 +87,7 @@ enum FetchModeLabel derives LabelValue:
 
 /** Why the mempool refused a transaction ([[xyz.kd5ujc.scarab.node.mempool.Rejection]]). */
 enum RejectionLabel derives LabelValue:
-  case Malformed, AlreadyHeld, Ledger, Full, WrongEra, NoLedger, InputDefect
+  case Malformed, AlreadyHeld, Ledger, Full, WrongEra, NoLedger, InputDefect, RulesDefect
 
 object RejectionLabel:
   def of(reason: Rejection): RejectionLabel = reason match
@@ -99,6 +99,7 @@ object RejectionLabel:
     case Rejection.WrongEra(_)    => WrongEra
     case Rejection.NoLedger(_)    => NoLedger
     case Rejection.InputDefect(_) => InputDefect
+    case Rejection.RulesDefect(_) => RulesDefect
 
 /** Why the forger gave a slot up before the leader check: the reference's `TraceSlotIsImmutable`,
   * `TraceBlockFromFuture` and `TraceNoLedgerView`. `Other` remains as a zero-valued series for

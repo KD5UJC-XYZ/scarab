@@ -18,15 +18,17 @@ import xyz.kd5ujc.scarab.network.LocalTxSubmissionServer
   */
 object LocalSubmission:
   /** What has no rejection bytes to send: an implementation limit, a crypto provider that failed on
-    * a witness, or a decoder that threw on the transaction.
+    * a witness, or a decoder or the rules that threw on the transaction.
     */
-  type NoReply = LedgerFailure.Unavailable | LedgerFailure.Unverifiable | Rejection.InputDefect
+  type NoReply = LedgerFailure.Unavailable | LedgerFailure.Unverifiable | Rejection.InputDefect |
+    Rejection.RulesDefect
 
   extension (reason: NoReply)
     def message: String = reason match
       case f: LedgerFailure.Unavailable  => f.message
       case f: LedgerFailure.Unverifiable => f.message
       case d: Rejection.InputDefect      => d.message
+      case d: Rejection.RulesDefect      => d.message
 
   val ConwayEra = 6
 
@@ -71,6 +73,7 @@ object LocalSubmission:
       case Rejection.Ledger(error: LedgerFailure.Unavailable)  => Left(error)
       case Rejection.Ledger(error: LedgerFailure.Unverifiable) => Left(error)
       case defect: Rejection.InputDefect                       => Left(defect)
+      case defect: Rejection.RulesDefect                       => Left(defect)
       case Rejection.WrongEra(era) =>
         Right(
           PredicateFailureCbor.eraMismatch(
@@ -116,6 +119,9 @@ object LocalSubmission:
           )
         // the decoder threw on the client's bytes: no reply, the client's connection is closed
         case Rejection.InputDefect(cause) => LocalTxSubmissionServer.Response.InputDefect(cause)
+        // the rules threw on the transaction: no reply, the client's connection is closed and the
+        // node goes on (issue 564)
+        case Rejection.RulesDefect(cause) => LocalTxSubmissionServer.Response.ServingDefect(cause)
       },
       LocalTxSubmissionServer.Response.Rejected(_)
     )

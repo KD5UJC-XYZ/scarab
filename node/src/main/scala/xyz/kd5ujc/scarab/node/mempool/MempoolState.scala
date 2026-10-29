@@ -81,6 +81,16 @@ enum Rejection:
     */
   case InputDefect(cause: Throwable)
 
+  /** The ledger rules threw while they judged the transaction instead of answering: no verdict on
+    * it and no refusal of it. Its connection is closed and the node goes on, as the exception ends
+    * the mini-protocol's thread in the reference, where the mempool adds the transaction in the
+    * caller's thread (consensus 82ecba329 `Mempool/Update.hs:183-245`, `doAddTx`, `evaluate
+    * (pureTryAddTx ...)`; only the sync watcher is linked to the node, `Mempool/Init.hs:66`). The
+    * submitter is not charged, since nothing it did is shown wrong (owner decision 2026-10-28,
+    * issue 564).
+    */
+  case RulesDefect(cause: Throwable)
+
   def message: String = this match
     case Malformed(d)    => s"malformed transaction: ${d.message}"
     case AlreadyHeld(id) => s"tx ${id.hex.take(16)} is already in the mempool"
@@ -91,6 +101,7 @@ enum Rejection:
     case WrongEra(e)    => s"era $e is not Conway"
     case NoLedger(why)  => s"no Conway ledger state: ${cats.Show[ConwayView.Unavailable].show(why)}"
     case InputDefect(t) => s"the transaction decoder threw: $t"
+    case RulesDefect(t) => s"the ledger rules threw on the transaction: $t"
 
 object Rejection:
   extension (full: Full)
@@ -343,27 +354,35 @@ final case class MempoolState(
       MempoolState.Parsed(id, tx, parts) = parsed
       ledger <- current.leftMap(Rejection.NoLedger(_))
       baseLedger <- base.leftMap(Rejection.NoLedger(_))
-      phase1 <- Capacity.phase1(tx, ledger.params).leftMap(Rejection.Limits(id, _))
-      _ <- Either.cond(!contains(id), (), Rejection.AlreadyHeld(id))
-      _ <- room(phase1)
-      refScriptBytes <- Capacity
-        .phase2(ledger, tx)
-        .leftMap(f => Rejection.Ledger(LedgerFailure.Rejected(id, f)))
-      _ <- room(phase1.copy(refScriptsBytes = refScriptBytes.toLong))
-      // The MEMPOOL rule of the ledger (`Rules/Mempool.hs`, [[Mempool]]) judges the transaction:
-      // one none of whose inputs is unspent is "probably a duplicate" and is refused with that
-      // alone; then LEDGER.
-      admitted <- ledger
-        .admit(tx, env.txEnv(tipSlot, baseLedger, entries.size), env.rules, source)
-        .leftMap(Rejection.Ledger(_))
+      // the measures and the rules run as `pureTryAddTx` does in the caller's thread: an exception
+      // of theirs is no verdict and ends the submitter's connection, not the node (issue 564)
+      judged <- MempoolState.judging(
+        for
+          phase1 <- Capacity.phase1(tx, ledger.params).leftMap(Rejection.Limits(id, _))
+          _ <- Either.cond(!contains(id), (), Rejection.AlreadyHeld(id))
+          _ <- room(phase1)
+          refScriptBytes <- Capacity
+            .phase2(ledger, tx)
+            .leftMap(f => Rejection.Ledger(LedgerFailure.Rejected(id, f)))
+          _ <- room(phase1.copy(refScriptsBytes = refScriptBytes.toLong))
+          // The MEMPOOL rule of the ledger (`Rules/Mempool.hs`, [[Mempool]]) judges the
+          // transaction: one none of whose inputs is unspent is "probably a duplicate" and is
+          // refused with that alone; then LEDGER.
+          admitted <- ledger
+            .admit(tx, env.txEnv(tipSlot, baseLedger, entries.size), env.rules, source)
+            .leftMap(Rejection.Ledger(_))
+          (_, held) = admitted
+          // The flag is neither hashed nor signed (the id is the hash of the body alone), so the
+          // transaction is relayed with its other three parts as received and the flag of the
+          // verdict, as the reference relays `[body, witnesses, flag, auxiliary_data]` it rebuilt.
+          kept =
+            if held.isValid == tx.isValid then raw
+            else MempoolState.encode(parts.copy(isValid = held.isValid))
+        yield (refScriptBytes, admitted, kept)
+      )
+      (refScriptBytes, admitted, kept) = judged
     yield
       val (next, held) = admitted
-      // The flag is neither hashed nor signed (the id is the hash of the body alone), so the
-      // transaction is relayed with its other three parts as received and the flag of the verdict,
-      // as the reference relays `[body, witnesses, flag, auxiliary_data]` it rebuilt.
-      val kept =
-        if held.isValid == tx.isValid then raw
-        else MempoolState.encode(parts.copy(isValid = held.isValid))
       val entry = Entry(id, kept, held, nextTicket, refScriptBytes)
       (
         copy(
@@ -514,6 +533,12 @@ object MempoolState:
     parseParts(raw).map(p => (p.id, p.tx))
 
   def parseParts(raw: Bytes): Either[Rejection, Parsed] = decoding(decodeParts(raw))
+
+  /** `judge` with an exception of the rules as [[Rejection.RulesDefect]]: no verdict on the
+    * transaction, the connection's end rather than the node's (issue 564).
+    */
+  private[mempool] def judging[A](judge: => Either[Rejection, A]): Either[Rejection, A] =
+    Either.catchNonFatal(judge).fold(cause => Left(Rejection.RulesDefect(cause)), identity)
 
   /** `decode` with an exception of the decoders as [[Rejection.InputDefect]]: a defect of the
     * submitted bytes' connection, never a refusal of the transaction (issue 465).

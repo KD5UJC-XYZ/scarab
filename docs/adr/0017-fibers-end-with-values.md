@@ -109,8 +109,9 @@ rules refused, a storage failure and a bug in the node were all retried like a l
   `ChainError.StateAcquire` and reports `Fatal.Internal` (exit 6), without client blame or retry.
   G7-F2 gives periodic/shutdown snapshots their own storage-error scopes, with caller-scoped
   capabilities along the snapshot call path and `SnapshotFailure` values at the event boundary.
-  G7-F4 gives TCP/Unix handlers their own scopes and a required typed failure reporter; unexpected
-  handler defects reach `Fatal.Defect`. See the [as-built contracts](../design/domain-errors.md#snapshot-and-listener-scopes-g7-f2g7-f4).
+  G7-F4 gives TCP/Unix handlers their own scopes and a required typed failure reporter; ~~unexpected
+  handler defects reach `Fatal.Defect`~~ unexpected handler defects reach `Fatal.Defect`, except an exception
+  of the rules on a submitted transaction ([amendment](#amendment-2026-10-28-the-rules-exception-on-a-submitted-transaction-is-the-connections)). See the [as-built contracts](../design/domain-errors.md#snapshot-and-listener-scopes-g7-f2g7-f4).
   G7-F3 gives forging and reload terminal failure values and prevents signing after a key durability
   failure. G7-F5 retains bounded source attribution after a cache-producing session ends, with a
   governor observation that can distrust a disconnected or reconnected source. See the
@@ -265,3 +266,25 @@ The bearer's writer encodes and sends the node's own messages, so an exception t
 bug and says nothing about the peer: it stays `Defect` and stops the node, and the peer is not charged.
 The reference's policy closes the connection there too (`ourBug` is `ShutdownPeer`); this is an
 owner-approved deviation (2026-10-28).
+
+## Amendment (2026-10-28): the rules' exception on a submitted transaction is the connection's
+
+An exception the ledger rules throw while they judge a transaction submitted to the mempool is no verdict on it
+(`Rejection.RulesDefect`, issue 564). It ends the connection it came from, and the node goes on: a local client's
+connection ends with `NetworkError.ServingDefect(LocalTxSubmission, cause)`, and a peer's TxSubmission2 session
+with `ServingDefect(TxSubmission2, cause)`, the cause kept. This is where the reference has the exception: the
+mempool adds a transaction in the caller's thread, the mini-protocol's (consensus `82ecba329`
+`Mempool/Update.hs:183-245`, `doAddTx`; `MiniProtocol/LocalTxSubmission/Server.hs:31-36`). Only the sync watcher is
+linked to the node (`Mempool/Init.hs:66`), and an exception no rethrow policy names ends the peer
+(`ShutdownPeer`). Before, the exception reached `StorageBoundary.run` of the serving callback, whose `SnapshotFailure.capture` made
+it `Fatal.Defect` (G7-F4: "unexpected handler defects reach `Fatal.Defect`"). That made a transaction a peer sends a
+way to stop the node, against decision 5's "a peer must not be able to stop the whole process by what it sends".
+The rules on a block, the mempool's revalidation and storage still stop the node, as the reference's linked
+threads do.
+
+The peer is not charged: `PeerError.ServingDefect` is `FailureClass.NotThePeers`. The connection closes and the
+governor counts no failure against the peer, which keeps its standing (at least the base delay before it is
+tried again). The reference charges the error delay (`ShutdownPeer`). This is an owner-approved deviation
+(2026-10-28): a failure of the node's own code shows nothing against the peer. A transaction the rules refuse is
+a verdict, and is unchanged.
+

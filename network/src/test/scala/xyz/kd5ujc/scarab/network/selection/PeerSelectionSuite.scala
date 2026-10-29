@@ -151,6 +151,21 @@ class PeerSelectionSuite extends FunSuite:
     assertEquals(rootFailed.peers(7).failCount, 9)
   }
 
+  // issue 564: the node's own code failed while it answered the peer; nothing is counted
+  test("a failure of the node's own code is never counted against the peer nor forgets it") {
+    val roots = settle(start(List(group(1, 1, 7))), t0)._1.withStatus(7, Status.Cold(None))
+    val withOther = roots.copy(peers = roots.peers.updated(8, PeerRecord.cold(Origin.Other)))
+    val ours = (1 to 9).foldLeft(withOther) { (s, i) =>
+      complete(
+        s.withStatus(8, Status.Connecting),
+        Outcome.ConnectFailed(8, FailureClass.NotThePeers),
+        i.minutes
+      )
+    }
+    assert(ours.peers.contains(8), "never forgotten")
+    assertEquals(ours.peers(8).failCount, 0)
+  }
+
   test(
     "a peer that misbehaved is forgotten, a root that misbehaved waits out the longest backoff"
   ) {
@@ -214,6 +229,31 @@ class PeerSelectionSuite extends FunSuite:
       .state
     assert(statusOf(cold, 8).isInstanceOf[Status.Cold])
     assertEquals(cold.peers(8).failCount, 1)
+  }
+
+  // issue 564: a hot session lost to a failure of the node's own code, as `OutboundPeers.lost`
+  // reports it: cold again, with the count and the pending reset the peer had
+  test("a session lost to the node's own failure keeps the peer's count and pending reset") {
+    val (st1, _, _) = settle(start(List(group(1, 1, 7))), t0)
+    val st2 = complete(st1, Outcome.Connected(7), t0)
+    val (st3, _, _) = settle(st2, t0)
+    val hot = complete(st3, Outcome.Activated(7), t0)
+    val pending = hot.peers(7).clearFailAt
+    assert(pending.isDefined, "activation schedules the reset of the count")
+    val failed = hot.copy(peers = hot.peers.updated(7, hot.peers(7).copy(failCount = 2)))
+    def lost(st: S, released: Boolean, at: Time) =
+      PeerSelection
+        .apply(
+          st,
+          Event
+            .Observed(7, Observation.Lost(FailureClass.NotThePeers, 5.seconds, released, "ours")),
+          at
+        )
+        .state
+    val cold = lost(lost(failed, released = false, 1.minute), released = true, 1.minute + 1.second)
+    assert(statusOf(cold, 7).isInstanceOf[Status.Cold])
+    assertEquals(cold.peers(7).failCount, 2)
+    assertEquals(cold.peers(7).clearFailAt, pending)
   }
 
   test("an outcome that arrives after the peer was lost changes nothing and is traced as aborted") {

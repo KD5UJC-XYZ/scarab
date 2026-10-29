@@ -13,8 +13,13 @@ import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
   * each of its typed peer errors to one of these in a single function (`FailurePolicy`), which is
   * the one place to change if the policy does.
   */
+/** How a peer's failure counts against it: [[Transient]] adds a failure and grows its backoff (the
+  * reference's `ShutdownPeer` with the error delay), [[Misbehaved]] forgets it, and [[NotThePeers]]
+  * closes the connection without counting a failure, for a failure of the node's own code that
+  * shows nothing against the peer (owner decision 2026-10-28, issue 564).
+  */
 enum FailureClass:
-  case Transient, Misbehaved
+  case Transient, Misbehaved, NotThePeers
 
 /** The temperatures a transition goes between. */
 enum Temperature:

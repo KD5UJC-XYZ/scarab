@@ -81,3 +81,11 @@ acceptance scope; they retain the pure decision function and single status recor
   delay. The old "fatal after 30 consecutive failures" of the outbound supervisor is gone.
 - Revisit if peer sharing or churn (G1.2 to G1.4) need state the record cannot carry without a second source of
   truth, or if the per-decision views show up in a profile.
+
+## Amendment (2026-10-28): a third failure class, the node's own
+
+Decision 5 has a third class, `FailureClass.NotThePeers`, for a failure of the node's own code while it serves the
+peer (`PeerError.ServingDefect`, issue 564). The connection closes, and the governor counts no failure against the
+peer: its count and its pending reset stay as they were, and it waits at least the base delay before it is tried
+again. Owner decision of 2026-10-28, recorded with its reference correspondence in the
+[ADR 0017 amendment](0017-fibers-end-with-values.md#amendment-2026-10-28-the-rules-exception-on-a-submitted-transaction-is-the-connections).

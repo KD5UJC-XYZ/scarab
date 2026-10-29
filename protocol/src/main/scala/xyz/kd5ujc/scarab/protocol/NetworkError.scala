@@ -48,6 +48,15 @@ enum NetworkError extends DomainError:
     */
   case DecoderDefect(protocol: Int, cause: Throwable)
 
+  /** The node's own code threw while it answered the peer's message on `protocol` (the ledger rules
+    * on a submitted transaction): no verdict, and nothing the peer is shown to have done wrong. As
+    * in the reference, where the exception ends that mini-protocol's thread, the connection is
+    * closed and the node goes on (consensus 82ecba329 `Mempool/Update.hs` `doAddTx`; network
+    * `RethrowPolicy.hs`: `ShutdownPeer`). Unlike the reference, the peer is not charged: owner
+    * decision of 2026-10-28, ADR 0017 amendment of that date (issue 564).
+    */
+  case ServingDefect(protocol: Int, cause: Throwable)
+
   /** The bearer's reader threw while it read the peer's bytes or routed them to their protocol:
     * still a defect with its original cause, but one met on this connection's input. As for an
     * exception in a bearer thread in the reference, the connection is closed and the peer is
@@ -86,6 +95,8 @@ enum NetworkError extends DomainError:
     case ProtocolIdleTimeout(after) =>
       s"no mini-protocol activity within ${after.toSeconds} s of the handshake"
     case Defect(t) => s"network defect: ${NetworkError.describe(t)}"
+    case ServingDefect(p, t) =>
+      s"${Protocols.name(p)}: the node's own code threw while answering: ${NetworkError.describe(t)}"
     case DecoderDefect(p, t) =>
       s"${Protocols.name(p)} decoder defect: ${NetworkError.describe(t)}"
     case BearerDefect(t) => s"bearer reader defect: ${NetworkError.describe(t)}"
