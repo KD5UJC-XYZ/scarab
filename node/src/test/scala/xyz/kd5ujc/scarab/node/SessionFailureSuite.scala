@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.ledger.TestGeometry
-import cats.effect.{IO, Ref}
+import cats.effect.{Deferred, IO, Ref}
 import cats.effect.std.Queue
 import cats.mtl.{Raise, Stateful}
 import cats.syntax.all.*
@@ -16,7 +16,6 @@ import xyz.kd5ujc.scarab.ledger.{
   BlockRule,
   ChainError,
   EpochGeometry,
-  Fixtures,
   Header,
   HeaderError,
   HeaderStructureProblem,
@@ -37,6 +36,7 @@ import xyz.kd5ujc.scarab.ledger.state.VocabError
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.network.selection.FailureClass
 import xyz.kd5ujc.scarab.storage.ChainPersistence
+import xyz.kd5ujc.scarab.node.forge.ForgedChain
 import scala.concurrent.duration.*
 
 /** How a session of the follower ends, whatever goes wrong in it (issue 154): every failure is one
@@ -57,7 +57,11 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       activeSlotsCoeff = TestGeometry.f("0.5")
     )
   private val tip = ChainSync.Tip.Origin
-  private val headers: Vector[Header] = Fixtures.chain(5)
+  private lazy val forged: ForgedChain =
+    ForgedChain.forge(0 until 30, epoch = 0).unsafeRunSync()(using munitIORuntime)
+  private lazy val headers: Vector[Header] = forged.headers.take(5)
+  private lazy val bodies: Map[Bytes, Bytes] =
+    forged.headers.map(_.hash).zip(forged.raws).toMap
 
   /** What a session left behind. */
   private final case class Result(
@@ -66,7 +70,8 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       stored: Vector[BlockRef],
       published: Vector[Header],
       events: Vector[FollowerEvent] = Vector.empty,
-      invalid: Set[Bytes] = Set.empty
+      invalid: Set[Bytes] = Set.empty,
+      fatal: Option[Fatal] = None
   )
 
   /** Run a session of the follower over a peer that announces `headers` in turn and then waits.
@@ -101,7 +106,6 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         stored <- Ref.of[IO, Vector[BlockRef]](Vector.empty)
         published <- Ref.of[IO, Vector[Header]](Vector.empty)
         emitted <- Ref.of[IO, Vector[FollowerEvent]](Vector.empty)
-        registry <- InvalidBlocks.create[IO]
         persistence = new ChainPersistence[IO, BigInt]:
           def extended(
               block: BlockRef,
@@ -182,30 +186,38 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             )
           )
         )
-        _ <- follower.installInvalidBlocks(registry)
+        pool <- WorkerTesting.pool(follower)
         queue <- Queue.unbounded[IO, Either[PeerError, SyncEvent]]
         _ <- script.traverse_(queue.offer)
+        done <- Deferred[IO, Unit]
         peer = new Peer[IO]:
           def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
             IO.pure(candidates.headOption)
           def next(using raise: Raise[IO, PeerError]) = queue.tryTake.flatMap {
             case Some(Right(event)) => IO.pure(event)
             case Some(Left(error))  => raise.raise[PeerError, SyncEvent](error)
-            case None               => IO.never[SyncEvent]
+            case None               => done.complete(()) *> IO.never[SyncEvent]
           }
           def fetch(header: Header)(using Raise[IO, PeerError]) =
             if fetchThrows.contains(header.blockNo.toInt) then
               IO.raiseError(new IllegalStateException("a bug in the client"))
-            else IO.pure(Bytes.empty)
-        // the session as the governor runs it: in its own scope, ending with a value
+            else IO.pure(bodies(header.hash))
+        stopped <- Ref.of[IO, Option[Fatal]](None)
+        // the session as the governor runs it, in its own scope, ending with a value; still
+        // running once the worker decided every delivered block, or the node told to stop
         end <- SessionEnd
           .scoped(node) { (_, _) ?=>
-            follower.session(peer).as(SessionEnd.Returned)
+            WorkerTesting
+              .run(follower, pool, peer, done.get)
+              .flatMap(stopped.set)
+              .as(SessionEnd.Stopped(false))
           }
-          .timeoutTo(2.seconds, IO.pure(SessionEnd.Stopped(false)))
+          .timeout(20.seconds)
+        fatal <- stopped.get
+        _ <- WorkerTesting.settled(pool).whenA(fatal.isEmpty)
         chain <- ref.get
-        left <- (stored.get, published.get, emitted.get, registry.snapshot).mapN(
-          (s, p, e, invalid) => Result(end, chain, s, p, e, invalid.entries.keySet)
+        left <- (stored.get, published.get, emitted.get, pool.invalidBlocks.snapshot).mapN(
+          (s, p, e, invalid) => Result(end, chain, s, p, e, invalid.entries.keySet, fatal)
         )
       yield left
     }
@@ -247,13 +259,16 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
+  // the worker refuses the block; the session whose candidate holds it ends with it
+  // (`invalidBlockRejector`, consensus 82ecba329 ChainSync/Client.hs:2082–2156)
   test(
     "before the tip: the rules refuse a block: a rejection, the chain stays at the block before"
   ) {
     session(refuse = Some(2)).map { left =>
       left.end match
-        case SessionEnd.Rejected(e) => assertEquals(e.point, headers(2).point)
-        case other                  => fail(s"unexpected $other")
+        case SessionEnd.Failed(PeerError.InvalidBlock(e)) =>
+          assertEquals(e.point, headers(2).point)
+        case other => fail(s"unexpected $other")
       assertEquals(left.chain.tip, headers(1).point)
       assertEquals(blockNos(left.stored), Vector(0, 1))
       // the peer sent invalid data: forgotten, as for a broken header
@@ -263,27 +278,24 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   test("before the tip: the storage fails: the node stops, the tip is not published") {
     session(breakStorage = Some(2)).map { left =>
-      left.end match
-        case SessionEnd.Storage(StorageError.Io("volatile", _)) => ()
-        case other                                              => fail(s"unexpected $other")
+      // the worker tells the node to stop; the session is not the one that ends
+      left.fatal match
+        case Some(Fatal.Storage(StorageError.Io("volatile", _))) => ()
+        case other                                               => fail(s"unexpected $other")
+      assertEquals(left.end, SessionEnd.Stopped(false))
       // the block that could not be stored is not on the published chain
       assertEquals(left.chain.tip, headers(1).point)
       assertEquals(blockNos(left.stored), Vector(0, 1))
-      FailurePolicy.disposition(left.end) match
-        case Disposition.StopNode(Fatal.Storage(_)) => ()
-        case other                                  => fail(s"unexpected $other")
     }
   }
 
   test("during publication: the chain is published and stored when telling the mempool fails") {
     session(breakTip = Some(2)).map { left =>
-      assertEquals(left.end, SessionEnd.Internal(ChainError.NoIntersection))
+      assertEquals(left.fatal, Some(Fatal.Internal(ChainError.NoIntersection)))
+      assertEquals(left.end, SessionEnd.Stopped(false))
       // the block is on the chain and on disk: nothing published outruns what is stored
       assertEquals(left.chain.tip, headers(2).point)
       assertEquals(blockNos(left.stored), Vector(0, 1, 2))
-      FailurePolicy.disposition(left.end) match
-        case Disposition.StopNode(Fatal.Internal(_)) => ()
-        case other                                   => fail(s"unexpected $other")
     }
   }
 
@@ -323,14 +335,12 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   test("an exception after the commit stops the node: the chain is published and stored") {
     session(throwTip = Some(2)).map { left =>
-      left.end match
-        case SessionEnd.Defect(cause) => assertEquals(cause.getMessage, "a bug after the commit")
-        case other                    => fail(s"unexpected $other")
+      left.fatal match
+        case Some(Fatal.Defect(cause)) => assertEquals(cause.getMessage, "a bug after the commit")
+        case other                     => fail(s"unexpected $other")
+      assertEquals(left.end, SessionEnd.Stopped(false))
       assertEquals(left.chain.tip, headers(2).point)
       assertEquals(blockNos(left.stored), Vector(0, 1, 2))
-      FailurePolicy.disposition(left.end) match
-        case Disposition.StopNode(Fatal.Defect(_)) => ()
-        case other                                 => fail(s"unexpected $other")
     }
   }
 

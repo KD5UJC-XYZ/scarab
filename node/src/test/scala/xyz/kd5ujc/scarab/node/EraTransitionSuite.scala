@@ -638,7 +638,10 @@ class EraTransitionSuite extends CatsEffectSuite:
           Follower
             .create[IO, MirrorState](rules, events, geometry, NodeRules.observe(geometry))
             .flatMap(follower =>
-              IO.race(follower.session(peer), done.get.timeout(60.seconds))
+              WorkerTesting
+                .pool(follower)
+                .flatMap(blocks => WorkerTesting.follow(follower, blocks, peer, done.get))
+                .timeout(60.seconds)
                 .as(().asRight[NodeError])
             )
         }
