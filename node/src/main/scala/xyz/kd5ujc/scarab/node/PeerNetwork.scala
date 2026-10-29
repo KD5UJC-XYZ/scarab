@@ -38,6 +38,27 @@ object PeerNetwork:
       case Right(())     => Async[F].unit
     }
 
+  /** The verification of the peer snapshot against the immutable chain, as the reference's
+    * `jobVerifyPeerSnapshot` (ouroboros-network 2fb69829 `cardano-diffusion/lib/Cardano/Network/
+    * PeerSelection/Governor/Monitor.hs` 689-712): a job whose failure of any kind is `false` (`Job
+    * job (const (completion False))`), never a stop of the node. A failed store is told to
+    * `storageFailed` first, so the cause is not lost behind "no match" (an owner-approved
+    * deviation, 2026-10-28, issue 586); the node's other storage paths still stop it on such a
+    * failure.
+    */
+  private[node] def snapshotMatches[F[_]: Async](
+      check: Raise[F, StorageError] ?=> F[Boolean],
+      storageFailed: StorageError => F[Unit]
+  ): F[Boolean] =
+    Async[F]
+      .defer(
+        Handle
+          .allow[StorageError](check.map(_.asRight[StorageError]))
+          .rescue(error => Async[F].pure(error.asLeft[Boolean]))
+      )
+      .handleError(_ => false.asRight[StorageError])
+      .flatMap(_.fold(error => storageFailed(error).as(false), Async[F].pure))
+
   private[node] def publishSnapshotVerification[F[_]: Async, A](
       event: Event[A],
       activeGeneration: F[BigInt],
@@ -63,10 +84,8 @@ object PeerNetwork:
     }
 
   private[node] def fatalForGovernor(fault: GovernorFault): Option[Fatal] = fault match
-    case GovernorFault.SnapshotStorage(error)            => Some(Fatal.Storage(error))
-    case GovernorFault.SnapshotVerificationDefect(cause) => Some(Fatal.Defect(cause))
-    case GovernorFault.LocalDnsRefreshDefect(cause)      => Some(Fatal.Defect(cause))
-    case _                                               => None
+    case GovernorFault.LocalDnsRefreshDefect(cause) => Some(Fatal.Defect(cause))
+    case _                                          => None
 
   /** The roots of the node, from `--peer` and the topology.
     *
@@ -532,26 +551,22 @@ object PeerNetwork:
                 .flatMap {
                   case false => F.unit
                   case true =>
+                    val check = immutable.fold(F.pure(false)) { store =>
+                      PeerNetwork.snapshotMatches[F](
+                        ImmutablePeerSnapshotVerifier.matches(store, slot, hash),
+                        error =>
+                          emit(
+                            Output.LedgerPeers(LedgerPeersTrace.SnapshotVerificationFailed(error))
+                          )
+                      )
+                    }
                     supervisor
                       .supervise(
-                        reportBackgroundDefect(
-                          {
-                            val check = immutable.fold(F.pure(false)) { store =>
-                              given Raise[F, StorageError] = new Raise[F, StorageError]:
-                                def functor = F
-                                def raise[E2 <: StorageError, B](error: E2): F[B] =
-                                  fatal.complete(GovernorFault.SnapshotStorage(error)) *> F.never[B]
-                              ImmutablePeerSnapshotVerifier.matches(store, slot, hash)
-                            }
-                            runSnapshotCheck(
-                              check,
-                              captured.snapshotCheckCanceled.get,
-                              captured.generation,
-                              events
-                            )
-                          },
-                          fatal,
-                          GovernorFault.SnapshotVerificationDefect.apply
+                        runSnapshotCheck(
+                          check,
+                          captured.snapshotCheckCanceled.get,
+                          captured.generation,
+                          events
                         )
                       )
                       .void
