@@ -229,7 +229,8 @@ object Main extends IOApp:
       setup: NodeSetup,
       follower: Follower[IO, MirrorState],
       blockPool: BlockPool[IO],
-      geometry: IO[xyz.kd5ujc.scarab.ledger.EpochGeometry]
+      geometry: IO[xyz.kd5ujc.scarab.ledger.EpochGeometry],
+      headers: HeaderCheck.Grafting[IO]
   ): IO[Option[GenesisRuntime[IO]]] =
     for
       governor <- Option
@@ -261,7 +262,8 @@ object Main extends IOApp:
               (BigInt(setup.geometry.systemStart.getEpochSecond) * 1000000000000L +
                 BigInt(setup.geometry.systemStart.getNano) * 1000)
           ),
-          blockPool.fetchCoordinator.refreshGenesis
+          blockPool.fetchCoordinator.refreshGenesis,
+          headers
         )
       )
       _ <- runtime.traverse_ { runtime =>
@@ -1055,47 +1057,49 @@ object Main extends IOApp:
             // header-first validation (G6): signatures are verified through the cache's keeping
             // view, so the block's own validation does not repeat them. Every live session also
             // holds its headers to the node's clock (AUD-01, #153), with or without header-first.
-            headerCheck = Some(
-              HeaderClock.clocked[IO](
-                SlotClock.system[IO](ref.get.map(_.state.geometry(genesis.geometry))),
-                if options.headerFirst || setup.config.settings.consensusMode ==
-                    xyz.kd5ujc.scarab.network.selection.ConsensusMode.GenesisMode
-                then
-                  HeaderCheck.forNodeChain[IO, MirrorState](
-                    {
-                      given HeaderTimeRead[MirrorState] = HeaderTimeRead.mirror(setup.byronHistory)
-                      NodeHeaderRules(
-                        setup.praos.copy(verdicts = cache.forHeaders),
-                        setup.globals,
-                        setup.byronRules,
-                        setup.handOver
-                      )
-                    },
-                    scheduling.compute,
-                    GenesisRuntime.retainedHeaders(genesis.geometry),
-                    warm = Some((headers, state) =>
-                      state.protocol.traverse_(protocol =>
-                        praosConfig.get.flatMap(cache.warmHeaders[IO](headers, protocol, _))
-                      )
-                    ),
-                    observe = Some(counts =>
-                      headersLogged
-                        .modify(last =>
-                          if counts.validated - last >= 50000 then (counts.validated, true)
-                          else (last, false)
-                        )
-                        .flatMap(
-                          logged(
-                            NodeEvent
-                              .HeadersChecked(counts.validated, counts.unchecked, counts.waited)
-                          ).whenA(_)
-                        )
-                    ),
-                    added = Some(measured.headers),
-                    changes = Some(follower.headerChanges)
+            slotClock = SlotClock.system[IO](ref.get.map(_.state.geometry(genesis.geometry)))
+            // the node's own check: a Genesis node is built with it, as its gates can graft
+            nodeChain = HeaderClock.grafting[IO](
+              slotClock,
+              HeaderCheck.forNodeChain[IO, MirrorState](
+                {
+                  given HeaderTimeRead[MirrorState] = HeaderTimeRead.mirror(setup.byronHistory)
+                  NodeHeaderRules(
+                    setup.praos.copy(verdicts = cache.forHeaders),
+                    setup.globals,
+                    setup.byronRules,
+                    setup.handOver
                   )
-                else HeaderCheck.none[IO]
+                },
+                scheduling.compute,
+                GenesisRuntime.retainedHeaders(genesis.geometry),
+                warm = Some((headers, state) =>
+                  state.protocol.traverse_(protocol =>
+                    praosConfig.get.flatMap(cache.warmHeaders[IO](headers, protocol, _))
+                  )
+                ),
+                observe = Some(counts =>
+                  headersLogged
+                    .modify(last =>
+                      if counts.validated - last >= 50000 then (counts.validated, true)
+                      else (last, false)
+                    )
+                    .flatMap(
+                      logged(
+                        NodeEvent
+                          .HeadersChecked(counts.validated, counts.unchecked, counts.waited)
+                      ).whenA(_)
+                    )
+                ),
+                added = Some(measured.headers),
+                changes = Some(follower.headerChanges)
               )
+            )
+            headerCheck = Some(
+              if options.headerFirst || setup.config.settings.consensusMode ==
+                  xyz.kd5ujc.scarab.network.selection.ConsensusMode.GenesisMode
+              then nodeChain
+              else HeaderClock.clocked[IO](slotClock, HeaderCheck.none[IO])
             )
             // how long the ChainSync pipeline's rounds take (D3), summarised every 200 rounds
             observeRounds = (requested: Int, received: Int, millis: Long) =>
@@ -1162,7 +1166,8 @@ object Main extends IOApp:
               setup,
               follower,
               blockPool,
-              ref.get.map(_.state.geometry(genesis.geometry))
+              ref.get.map(_.state.geometry(genesis.geometry)),
+              nodeChain
             )
             genesisGovernor = genesisRuntime.map(_.governor)
             decisionMaintenance = maintainDecisions(blockPool, genesisRuntime, fatalSink)

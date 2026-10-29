@@ -135,18 +135,15 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
             case Operation.RestartTimeout | Operation.NoIntersection =>
               IO.pure(ChainSyncJumping.Instruction.Restart)
           def observed(
-              @scala.annotation.unused gate: HeaderGate[IO],
               @scala.annotation.unused event: SyncEvent
           ) = IO.unit
           def processJump(
               @scala.annotation.unused info: ChainSyncJumping.JumpInfo[GenesisPeer.Checkpoint],
               @scala.annotation.unused goodPoint: Boolean,
-              @scala.annotation.unused found: Option[ChainSync.Point],
-              @scala.annotation.unused gate: HeaderGate[IO]
+              @scala.annotation.unused found: Option[ChainSync.Point]
           ) = IO.pure(GenesisPeer.Applied.Retained)
           def restarted(
-              @scala.annotation.unused point: ChainSync.Point,
-              @scala.annotation.unused gate: HeaderGate[IO]
+              @scala.annotation.unused point: ChainSync.Point
           ) = IO.unit
         _ <- Peer
           .over(
