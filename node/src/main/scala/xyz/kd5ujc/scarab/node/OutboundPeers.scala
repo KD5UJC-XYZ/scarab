@@ -276,15 +276,6 @@ final class OutboundPeers[F[_]: Async, A] private (
   private def publish(link: Link[F], end: SessionEnd): F[Unit] =
     link.terminal.complete(end).void *> link.warm.applications.notifyChange
 
-  private def stop(link: Link[F], fatal: Fatal): F[Unit] =
-    val end = fatal match
-      case Fatal.Unavailable(error)  => SessionEnd.Unavailable(error)
-      case Fatal.Storage(error)      => SessionEnd.Storage(error)
-      case Fatal.Internal(error)     => SessionEnd.Internal(error)
-      case Fatal.Defect(cause)       => SessionEnd.Defect(cause)
-      case Fatal.Unverifiable(error) => SessionEnd.Unverifiable(error)
-    publish(link, end)
-
   /** One job outside both the bearer and the hot session: PeerStateActions.hs:662–776,838–848 at
     * ouroboros-network 2fb69829. The loop observes retained application results, handles a clean
     * hot return by deactivation, and waits for manager release before Cooling becomes Cold.
@@ -642,10 +633,9 @@ final class OutboundPeers[F[_]: Async, A] private (
           .use { (connection, sourceKey) =>
             val abort: PeerError => F[Unit] = error =>
               connection.mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
-            // an invariant of the Genesis code met on this connection ends it, or the node for its
-            // own wiring ([[GenesisRuntime.ending]])
+            // an invariant of the Genesis code met on this connection ends it, uncharged
             val invariant: GenesisInternalProblem => F[Unit] =
-              problem => GenesisRuntime.ending(problem).fold(stop(link, _), abort)
+              problem => abort(PeerError.GenesisInvariant(problem))
             GenesisRuntime
               .controls(
                 hot.genesis,
@@ -662,10 +652,8 @@ final class OutboundPeers[F[_]: Async, A] private (
                     hot.peer,
                     hot.prepare,
                     hot.heightSnapshot,
-                    hot.headers.map(check =>
-                      genesis
-                        .fold(check)(bound => check.withPatience(bound.patience))
-                        .withInvariant(invariant)
+                    genesis.fold(hot.headers.map(_.withInvariant(invariant)))(bound =>
+                      Some(bound.headers)
                     ),
                     Some(metered(peer)),
                     Some(hot.pool),

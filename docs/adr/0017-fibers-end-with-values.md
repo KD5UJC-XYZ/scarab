@@ -344,15 +344,15 @@ peer is not charged and the node goes on, as `ourBug` is `ShutdownPeer` in the r
 A judgement of the peer's chain is unchanged: GDD and LoP disconnect as
 `PeerError.Genesis`, the reference's `ChainSyncClientException` (`theyBuggyOrEvil`).
 
-- `GenesisRuntime.ending` says which: an invariant met in a fiber of the connection aborts that connection; one met
+- ~~`GenesisRuntime.ending` says which:~~ ([amended](#amendment-2026-10-29-the-genesis-nodes-wiring-is-fixed-when-it-is-built)) an invariant met in a fiber of the connection aborts that connection; one met
   while the controls are acquired (the connection's identity) is raised to the session in its own fiber. The header
   gate tells its invariants to the connection's channel (`HeaderCheck.withInvariant`), not to the node-wide one.
   The fiber that met an invariant waits until the connection's teardown cancels it; issue 583 tracks a test of that
   for both directions.
-- The node's own wiring still stops the node (`Fatal.Internal`): a Genesis node without the shared block pool
+- ~~The node's own wiring still stops the node (`Fatal.Internal`): a Genesis node without the shared block pool
   (`MissingSharedBlockPool`) or with a header gate that cannot graft (`UnsupportedHeaderFamily`). Every connection
   would fail alike, and the reference's types refuse both when the node is built; issue 581 tracks refusing them at
-  startup.
+  startup.~~ ([amended](#amendment-2026-10-29-the-genesis-nodes-wiring-is-fixed-when-it-is-built))
 
 ## Amendment (2026-10-28): no verdict on a block, a held transaction or our own block does not stop the node
 
@@ -388,3 +388,22 @@ Not yet covered, tracked in issue 584:
 - on our own block, a state out of range or an exception of the rules still stops the node (`Follower.adoptForged`);
 - the forger's tick whose state is out of range still stops the node (`Forger.tickFault`).
 
+## Amendment (2026-10-29): the Genesis node's wiring is fixed when it is built
+
+Issue 581. The two invariants of the Genesis code that were the node's own wiring, not one connection's, cannot be
+met any more: as in the reference, whose types fix both when the node is assembled, they cannot be written.
+- **The shared block pool.** `GenesisRuntime.controls` takes the pool, not an option of it; both directions always
+  had one. `GenesisInternalProblem.MissingSharedBlockPool` is gone.
+- **A header gate that can graft.** Only a gate of the node's own header check can take a jump's headers
+  (`HeaderGate.Grafting`, `HeaderCheck.Grafting`, made by `HeaderCheck.forNodeChain`); `HeaderGate` no longer has
+  `graft`, and `HeaderCheck.GraftError.Unsupported` and `GenesisInternalProblem.UnsupportedHeaderFamily` are gone. A
+  Genesis runtime is built with that check (`GenesisRuntime.create`), and each connection's session uses the check its
+  controls hand it (`GenesisRuntime.Bound.headers`), which keeps the gate it starts. `GenesisPeer` uses that gate, not
+  one passed in by the session. A jump accepted before the session started a gate is an invariant of that connection
+  (`HeaderStateUnavailable`), which ends it, uncharged.
+
+Every remaining `GenesisInternalProblem` is of one connection, so `GenesisRuntime.ending` is gone: an invariant ends its
+connection as `PeerError.GenesisInvariant`. The clock that holds a session's headers to the node's time
+(`HeaderClock.clocked`) now passes a connection's invariant channel on to the check it wraps; it did not, so an
+invariant met by the header gate of a production session was told to the node-wide channel and stopped the node,
+against the amendment above.

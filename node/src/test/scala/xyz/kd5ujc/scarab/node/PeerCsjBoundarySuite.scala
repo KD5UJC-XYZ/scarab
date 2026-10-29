@@ -98,18 +98,15 @@ class PeerCsjBoundarySuite extends FailsOnUncaught:
             case _ => IO.never[ChainSyncJumping.Instruction[GenesisPeer.Checkpoint]]
           }
           def observed(
-              @scala.annotation.unused gate: HeaderGate[IO],
               @scala.annotation.unused event: SyncEvent
           ) = accepted.update(_ + 1)
           def processJump(
               @scala.annotation.unused info: ChainSyncJumping.JumpInfo[GenesisPeer.Checkpoint],
               @scala.annotation.unused goodPoint: Boolean,
-              @scala.annotation.unused found: Option[ChainSync.Point],
-              @scala.annotation.unused gate: HeaderGate[IO]
+              @scala.annotation.unused found: Option[ChainSync.Point]
           ) = check.as(GenesisPeer.Applied.Retained)
           def restarted(
-              @scala.annotation.unused point: ChainSync.Point,
-              @scala.annotation.unused gate: HeaderGate[IO]
+              @scala.annotation.unused point: ChainSync.Point
           ) =
             intersections.get.flatMap(n => check.whenA(n > 1))
         _ <- Peer

@@ -366,10 +366,9 @@ final class InboundGovernor[F[_]: Async] private (
         given Raise[F, PeerError] = caller
         val abort: PeerError => F[Unit] = error =>
           connection.mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
-        // an invariant of the Genesis code met on this connection ends it, or the node for its
-        // own wiring ([[GenesisRuntime.ending]])
+        // an invariant of the Genesis code met on this connection ends it, uncharged
         val invariant: GenesisInternalProblem => F[Unit] =
-          problem => GenesisRuntime.ending(problem).fold(reportFatal(remote, _), abort)
+          problem => abort(PeerError.GenesisInvariant(problem))
         GenesisRuntime
           .controls(
             genesis,
@@ -386,11 +385,7 @@ final class InboundGovernor[F[_]: Async] private (
                 config.peer.copy(address = SocketAddress(remote.host, remote.port)),
                 prepare,
                 heightSnapshot,
-                headers.map(check =>
-                  bound
-                    .fold(check)(value => check.withPatience(value.patience))
-                    .withInvariant(invariant)
-                ),
+                bound.fold(headers.map(_.withInvariant(invariant)))(value => Some(value.headers)),
                 metered(remote),
                 Some(pool),
                 invalidCachedBlock = Some(rejectedCachedBlock(source, _)),
