@@ -69,5 +69,63 @@ class PrPolicyTests(unittest.TestCase):
             self.evaluate(pr)
 
 
+def body_of(level, deviations=None, gaps=None):
+    parts = [f"## Level and gates\n\n- Level: {level}\n"]
+    if deviations is not None:
+        parts.append(f"## Deviations from the reference\n\n<!-- None, or a table -->\n{deviations}\n")
+    if gaps is not None:
+        parts.append(f"## Gaps\n\n{gaps}\n")
+    return "\n".join(parts)
+
+
+TABLE = ("| Behaviour | Reference (pinned) | Scarab | Approval |\n|---|---|---|---|\n"
+         "| accept limit per address | network 2fb69829 `Server.hs:40` | 64 per address | "
+         "[#474](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6404228543) |")
+
+
+class PrBodyTests(unittest.TestCase):
+    def check(self, body, head="feature", user_type="User"):
+        pr = pull_request(head=head)
+        pr["body"], pr["user"] = body, {"type": user_type}
+        return policy.check_body(pr)
+
+    def test_the_level_is_read_in_its_usual_forms_and_the_unfilled_template_is_none(self):
+        for text, level in [("- Level: 1 (tooling)", 1), ("**Level 1** (scripts)", 1), ("Level 0 docs.", 0),
+                            ("- Level: 0 docs / 1 small code / 2 behaviour", None), ("a level 2 change", None), ("", None)]:
+            with self.subTest(text=text):
+                self.assertEqual(policy.level_of(text), level)
+
+    def test_a_body_without_a_level_fails_unless_a_bot_or_a_promotion_opened_it(self):
+        with self.assertRaisesRegex(policy.PolicyError, "state the level"):
+            self.check("## What and why\n\nNo level here.")
+        self.assertIsNone(self.check("", user_type="Bot"))
+        self.assertIsNone(self.check("", head="dev"))
+
+    def test_levels_below_two_need_no_sections(self):
+        self.assertEqual(self.check(body_of(1)), 1)
+
+    def test_level_two_needs_both_sections_none_or_well_formed(self):
+        self.assertEqual(self.check(body_of(2, "None", "None.")), 2)
+        self.assertEqual(self.check(body_of(3, TABLE, "- #612: the owner-decision label check\n  continued")), 3)
+        self.assertEqual(self.check(body_of(2, "None", "- [#605](https://github.com/o/r/issues/605): forms")), 2)
+        for body, message in [
+            (body_of(2, gaps="None"), "Deviations from the reference"),
+            (body_of(2, deviations="None"), "Gaps"),
+            (body_of(2, "Some, see below", "None"), "a table"),
+            (body_of(2, TABLE.replace("[#474](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6404228543)",
+                                      "approved"), "None"), "approval cell"),
+            (body_of(2, TABLE.rsplit("|", 2)[0] + "|", "None"), "four nonempty cells"),
+            (body_of(2, "None", "- the label is missing (#612)"), "starts with the issue"),
+            (body_of(2, "None", "the label is missing"), "starts with the issue"),
+        ]:
+            with self.subTest(message=message), self.assertRaisesRegex(policy.PolicyError, message):
+                self.check(body)
+
+    def test_the_promotion_controller_path_does_not_read_the_body(self):
+        pr = pull_request()
+        pr["body"] = ""
+        self.assertEqual(policy.evaluate(pr, "example/scarab", 42, "dev-only-main")["head"], "dev")
+
+
 if __name__ == "__main__":
     unittest.main()

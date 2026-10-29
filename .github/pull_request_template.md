@@ -10,6 +10,20 @@
 - [ ] One scenario per area touched (level 2 and above), with its result:
 - [ ] Persisted format: version bump, migration, a test that reads the previous version (ADR 0006)
 
+## Deviations from the reference
+
+<!-- Level 2 and above: `None`, or one row per deviation, each with the owner's approval
+(ADR 0001; docs/decisions.md). The PR policy check reads this section.
+| Behaviour | Reference (pinned) | Scarab | Approval |
+|---|---|---|---|
+| what differs | repository revision `File.hs:line` | what Scarab does | link to the decision |
+-->
+
+## Gaps
+
+<!-- Level 2 and above: `None`, or one bullet per remaining gap, each starting with its issue:
+- #123: what remains -->
+
 ## Evidence and docs
 
 - [ ] New behaviour has tests or properties; bugs found on real data have a regression fixture

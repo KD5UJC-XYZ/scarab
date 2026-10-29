@@ -300,7 +300,12 @@ A claim of compatibility needs evidence a reader can check:
 - Describe the why in the body when it is not obvious; reference roadmap IDs.
 - Do not rewrite shared history. Do not commit generated run data (`/tmp/scarab`
   is outside the checkout on purpose; set `SCARAB_DATA_DIR` to move it; the old name `CSL_DATA_DIR` still works, and an existing `/tmp/cardano-scala-lab` is used while `/tmp/scarab` is absent).
-- Fill in the pull request template; it asks for the level of the change and the gates you ran.
+- Fill in the pull request template; it asks for the level of the change and the gates you ran. At level 2 and
+  above, the body also has a "Deviations from the reference" section (`None`, or a table of the behaviour, the
+  reference file and line at its pin, what Scarab does and the link to the owner's approval) and a "Gaps" section
+  (`None`, or bullets that each start with the issue tracking the gap). `scripts/pr_policy.py` checks the level and
+  both sections on every pull request event, except for a bot's pull request and a promotion of `dev`
+  (decided 2026-10-29, [#400](https://github.com/KD5UJC-XYZ/scarab/issues/400#issuecomment-6506671003)).
 
 For a persisted-format change, follow the [storage migration procedure](docs/storage-migrations.md)
 alongside the applicable gates above.
