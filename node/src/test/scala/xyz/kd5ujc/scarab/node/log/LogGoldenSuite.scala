@@ -19,7 +19,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.network.selection.{FetchMode, Gsm, Trace}
 import xyz.kd5ujc.scarab.ledger.{ChainError, StorageError}
-import xyz.kd5ujc.scarab.node.{Fatal, InboundEvent, LedgerPeersTrace, SyncAdvisory}
+import xyz.kd5ujc.scarab.node.{Fatal, InboundEvent, LedgerPeersTrace, LocalRootsTrace, SyncAdvisory}
 import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents}
 import xyz.kd5ujc.scarab.node.mempool.MempoolEvent
 import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
@@ -176,6 +176,7 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- peerCounters.traverse_(c => node(NodeEvent.PeerCounters(c)))
         _ <- churnTraces.traverse_(t => node(NodeEvent.PeerChurn(t)))
         _ <- ledgerPeers.traverse_(t => node(NodeEvent.LedgerPeers(t)))
+        _ <- localRoots.traverse_(t => node(NodeEvent.LocalRoots(t)))
         _ <- outboundStates.traverse_(c => node(NodeEvent.OutboundConnections(c)))
         _ <- gsmEvents.traverse_((phase, e) => node(NodeEvent.GsmTransition(phase, e)))
         _ <- FetchMode.values.toList.traverse_(m => node(NodeEvent.FetchModeChanged(m)))
@@ -237,6 +238,7 @@ class LogGoldenSuite extends CatsEffectSuite:
     covered(peerSelection, cases[Trace[SocketAddress[Host]]])
     covered(gsmEvents.map(_._2), cases[Gsm.Event])
     covered(ledgerPeers, cases[LedgerPeersTrace])
+    covered(localRoots, cases[LocalRootsTrace])
   }
 
   test("the JSON line is the event, the time and the fields, as JsonLog wrote it") {

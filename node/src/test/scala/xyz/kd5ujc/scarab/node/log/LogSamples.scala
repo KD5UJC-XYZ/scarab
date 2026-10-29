@@ -50,7 +50,9 @@ import xyz.kd5ujc.scarab.node.{
   InboundEnd,
   InboundEvent,
   InboundGovernor,
+  DnsName,
   LedgerPeersTrace,
+  LocalRootsTrace,
   NodeSetup,
   PeerSnapshotError,
   Topology
@@ -244,6 +246,16 @@ object LogSamples:
       .PoolSkipped(Bytes.fromArray(Array.fill(28)(7.toByte)), PoolRelayError.BadPort(1)),
     LedgerPeersTrace.Unreadable(MirrorError.DerivedMismatch(Derived.VrfKeyHashes))
   )
+
+  /** Every case of the local roots' DNS trace (an invalid name leaves it empty, and the coverage
+    * check fails).
+    */
+  val localRoots: List[LocalRootsTrace] =
+    DnsName
+      .from("relay.example")
+      .toOption
+      .toList
+      .map(LocalRootsTrace.Error(_, new IllegalStateException("injected lookup defect")))
 
   private val counters: GovernorState.Counters =
     given Ordering[SocketAddress[Host]] = Ordering.by(_.toString)

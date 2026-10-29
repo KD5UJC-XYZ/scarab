@@ -138,6 +138,7 @@ enum EventKind(val area: Area, val severity: Severity):
   case PeerSelectionCounters extends EventKind(Area.Net, Severity.Info)
   case PeerSelectionChurn extends EventKind(Area.Net, Severity.Info)
   case LedgerPeers extends EventKind(Area.Net, Severity.Info)
+  case LocalRoots extends EventKind(Area.Net, Severity.Info)
   case OutboundConnections extends EventKind(Area.Net, Severity.Info)
   case GsmTransition extends EventKind(Area.Net, Severity.Notice)
   case FetchModeChanged extends EventKind(Area.Net, Severity.Info)
