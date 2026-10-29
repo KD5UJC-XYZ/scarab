@@ -648,7 +648,15 @@ final class OutboundPeers[F[_]: Async, A] private (
                 error =>
                   connection.mux
                     .abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error))),
-                problem => stop(link, Fatal.Internal(problem))
+                problem =>
+                  GenesisRuntime
+                    .ending(problem)
+                    .fold(
+                      stop(link, _),
+                      error =>
+                        connection.mux
+                          .abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
+                    )
               )
               .use { (fetching, genesis) =>
                 Peer

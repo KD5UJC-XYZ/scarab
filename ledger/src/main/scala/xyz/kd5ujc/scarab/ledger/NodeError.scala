@@ -71,6 +71,13 @@ enum PeerError extends NodeError:
     */
   case ConnectionDefect(cause: Throwable)
 
+  /** An invariant of the node's own Genesis code that does not hold for this connection (its
+    * identity, its jump state, a header's state, time or selection view). It says nothing about the
+    * peer: the connection closes, the peer is not charged and the node goes on, as `ourBug` is
+    * `ShutdownPeer` in the reference (issue 567, H7).
+    */
+  case GenesisInvariant(problem: GenesisInternalProblem)
+
   /** A crypto provider failed while a header rule verified a header this peer announced: an
     * exception from a library, not a verdict on the header. The peer is neither forgotten nor
     * blamed and nothing is recorded as invalid; the connection closes and the peer is tried again
@@ -97,6 +104,7 @@ enum PeerError extends NodeError:
       s"defect decoding ${site.message}: ${NetworkError.describe(cause)}"
     case ConnectionDefect(cause) =>
       s"the node's own code threw on this connection: ${NetworkError.describe(cause)}"
+    case GenesisInvariant(problem) => s"the node's own Genesis state broke: ${problem.message}"
     case ServingDefect(protocol, cause) =>
       s"the node's own code threw answering ${xyz.kd5ujc.scarab.protocol.Protocols.name(protocol)}: ${NetworkError.describe(cause)}"
     case Unverifiable(e) => e.message

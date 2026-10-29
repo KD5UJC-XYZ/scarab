@@ -332,3 +332,19 @@ Still stopping the node, decided separately (issue 567):
 - a defect in releasing a connection's resources (`ConnectionResources`);
 - an internal failure of the node's state (`InternalFailure`, `StateAcquireFailure`).
 
+## Amendment (2026-10-28): an invariant of the Genesis code on one connection ends that connection
+
+An invariant of our own Genesis code that does not hold for one connection (`GenesisInternalProblem`: its TCP
+identity, the patience watcher, the jumper's state, a header's time, state or selection view, a graft) no longer stops
+the node (issue 567, H7). It is `PeerError.GenesisInvariant`, `FailureClass.NotThePeers`: that connection closes, the
+peer is not charged and the node goes on, as `ourBug` is `ShutdownPeer` in the reference (ouroboros-consensus
+`82ecba329` `Node/RethrowPolicy.hs`). A judgement of the peer's chain is unchanged: GDD and LoP disconnect as
+`PeerError.Genesis`, the reference's `ChainSyncClientException` (`theyBuggyOrEvil`).
+
+- `GenesisRuntime.ending` says which: an invariant met in a fiber of the connection aborts that connection; one met
+  while the controls are acquired (the connection's identity) is raised to the session in its own fiber.
+- The node's own wiring still stops the node (`Fatal.Internal`): a Genesis node without the shared block pool
+  (`MissingSharedBlockPool`) or with a header gate that cannot graft (`UnsupportedHeaderFamily`). Every connection
+  would fail alike, and the reference's types refuse both when the node is built; issue 581 tracks refusing them at
+  startup.
+

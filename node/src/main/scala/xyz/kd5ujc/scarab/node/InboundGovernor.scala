@@ -364,7 +364,15 @@ final class InboundGovernor[F[_]: Async] private (
             error =>
               connection.mux
                 .abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error))),
-            problem => reportFatal(remote, Fatal.Internal(problem))
+            problem =>
+              GenesisRuntime
+                .ending(problem)
+                .fold(
+                  reportFatal(remote, _),
+                  error =>
+                    connection.mux
+                      .abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
+                )
           )
           .use { (fetching, bound) =>
             Peer
