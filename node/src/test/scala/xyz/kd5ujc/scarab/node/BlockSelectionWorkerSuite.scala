@@ -139,36 +139,101 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
     "an evaluator defect a block triggers" -> xyz.kd5ujc.scarab.plutus.BackendFailure
       .Defect(new NullPointerException("Scalus"))
   ).foreach { (name, missing) =>
-    test(s"$name stops selection and records no invalid block") {
+    // issue 567: no verdict on a block withholds it; selection, and the node, go on
+    test(s"$name withholds the block: no stop, no invalid record, no blame") {
       for
         chain <- ForgedChain.forge(5000 until 5060)
         bodies <- checked(chain, 2)
-        stopped <- Deferred[IO, Unit]
-        _ <- node(
-          Set.empty,
-          fatalAction = _ => stopped.complete(()).void,
-          unavailable = Map(bodies(1).header.hash -> missing)
-        ) { n =>
+        _ <- node(Set.empty, unavailable = Map(bodies(1).header.hash -> missing)) { n =>
           n.pool.session(Some(e => n.reports.update(_ :+ e))).use { sender =>
             for
               _ <- add(sender, bodies)
-              // the runner reports its fatal outcome when it ends: wait for that report
-              _ <- stopped.get.timeout(4.seconds)
+              _ <- n.pool.admissions.reprocess
+              withheld <- n.pool.noVerdictBlocks.hashes
               fatals <- n.fatals.get
               known <- n.pool.invalidBlocks.snapshot
               reports <- n.reports.get
+              tip <- n.state.get.map(_.tip)
               _ <- IO {
-                fatals match
-                  case Vector(Fatal.Unavailable(e)) => assertEquals(e.point, bodies(1).header.point)
-                  case other                        => fail(s"unexpected $other")
+                assertEquals(withheld, Set(bodies(1).header.hash))
+                assertEquals(fatals, Vector.empty)
                 assertEquals(known.entries, Map.empty)
                 assertEquals(reports, Vector.empty)
+                assertEquals(tip, bodies(0).header.point)
               }
             yield ()
           }
         }
       yield ()
     }
+  }
+
+  // issue 567: a withheld block is not judged again when selection runs again
+  test("a block without a verdict is judged once: selecting again does not judge it again") {
+    for
+      chain <- ForgedChain.forge(5000 until 5060)
+      bodies <- checked(chain, 2)
+      judged <- Ref.of[IO, Map[Bytes, Int]](Map.empty)
+      _ <- node(
+        Set.empty,
+        beforeRule = h => judged.update(m => m.updated(h.hash, m.getOrElse(h.hash, 0) + 1)),
+        unavailable = Map(
+          bodies(1).header.hash -> xyz.kd5ujc.scarab.plutus.BackendFailure
+            .BuiltinUnavailable(scalus.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+        )
+      ) { n =>
+        n.pool.session(Some(e => n.reports.update(_ :+ e))).use { sender =>
+          for
+            _ <- add(sender, bodies)
+            _ <- n.pool.admissions.reprocess
+            _ <- n.pool.admissions.reprocess
+            _ <- n.pool.admissions.reprocess
+            counts <- judged.get
+            fatals <- n.fatals.get
+            _ <- IO {
+              assertEquals(counts.get(bodies(1).header.hash), Some(1))
+              assertEquals(fatals, Vector.empty)
+            }
+          yield ()
+        }
+      }
+    yield ()
+  }
+
+  // issue 567: a block without a verdict does not hold the node on its chain: a competing chain
+  // that avoids it is adopted
+  test("a competing chain that avoids a block without a verdict is adopted") {
+    for
+      forks <- ForgedChain.sameIssuerForks(5000 until 5060, 5060 until 5120)
+      left <- checked(forks._1, 3)
+      right <- checked(forks._2, 3)
+      _ <- node(
+        Set.empty,
+        unavailable = Map(
+          left(1).header.hash -> xyz.kd5ujc.scarab.plutus.BackendFailure
+            .Defect(new NullPointerException("Scalus"))
+        )
+      ) { n =>
+        n.pool.session(Some(e => n.reports.update(_ :+ e))).use { sender =>
+          for
+            _ <- add(sender, left)
+            _ <- n.pool.admissions.reprocess
+            stuck <- n.state.get.map(_.tip)
+            _ <- add(sender, right)
+            _ <- n.pool.admissions.reprocess
+            tip <- n.state.get.map(_.tip)
+            fatals <- n.fatals.get
+            known <- n.pool.invalidBlocks.snapshot
+            _ <- IO {
+              assertEquals(stuck, left(0).header.point)
+              assertEquals(tip, right.last.header.point)
+              assertEquals(fatals, Vector.empty)
+              assertEquals(known.entries, Map.empty)
+            }
+          yield ()
+        }
+      }
+    yield ()
   }
 
   test("FIFO processing excludes later queued bodies and retains the same-hot issuer trap") {

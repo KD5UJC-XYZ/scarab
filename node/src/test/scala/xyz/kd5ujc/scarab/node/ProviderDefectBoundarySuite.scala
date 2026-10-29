@@ -6,6 +6,7 @@ import cats.effect.std.Queue
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.consensus.BlockNoVerdict
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, VolatileChain}
 import xyz.kd5ujc.scarab.consensus.HeaderRules.Outcome
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
@@ -128,6 +129,24 @@ class ProviderDefectBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncau
       }
     )
 
+  /** No verdict on the target block (issue 567): withheld, neither adopted nor recorded as invalid,
+    * nobody blamed, the session going on (its timeout ends it), the defect reported.
+    */
+  private def withheld(
+      end: SessionEnd,
+      invalid: Set[Bytes],
+      events: Vector[FollowerEvent],
+      tip: ChainSync.Point,
+      held: VerificationDefect
+  ): Unit =
+    assertEquals(end, SessionEnd.Stopped(false))
+    assertEquals(invalid, Set.empty[Bytes])
+    assertEquals(tip, forged.headers(index - 1).point)
+    assert(
+      events.contains(FollowerEvent.NoVerdict(target.point, BlockNoVerdict.Verification(held))),
+      events.toString
+    )
+
   primitives.foreach { (name, verdicts, defect) =>
     test(s"header-first: a $name is no verdict, not an invalid header") {
       assertEquals(validate(verdicts, target), Outcome.Unverifiable(defect))
@@ -153,17 +172,17 @@ class ProviderDefectBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncau
       }
     }
 
-    test(s"a session over real rules stops the node on a $name: no record, no blame") {
-      session(verdicts).map { (end, invalid, _, tip) =>
-        val held = VerificationDefect(target.point, VerificationDefect.Site.Header, defect)
-        assertEquals(end, SessionEnd.Unverifiable(held))
-        assertEquals(
-          FailurePolicy.disposition(end),
-          Disposition.StopNode(Fatal.Unverifiable(held))
+    test(
+      s"a session over real rules withholds the block on a $name: no record, no blame, no stop"
+    ) {
+      session(verdicts).map { (end, invalid, events, tip) =>
+        withheld(
+          end,
+          invalid,
+          events,
+          tip,
+          VerificationDefect(target.point, VerificationDefect.Site.Header, defect)
         )
-        assertEquals(SessionEnd.peerError(end), None)
-        assertEquals(invalid, Set.empty[Bytes])
-        assertEquals(tip, forged.headers(index - 1).point)
       }
     }
   }
@@ -201,18 +220,15 @@ class ProviderDefectBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncau
   private val rejectedProof = Vrf.Result.OutputMismatch
 
   test(
-    "an OCERT defect beside an invalid VRF proof: the certificate is checked first, the node stops"
+    "an OCERT defect beside an invalid VRF proof: the certificate is checked first, no verdict"
   ) {
     val headerFirst = Ordered(Left(kesDefect), rejectedProof)
     assertEquals(validate(headerFirst, target), Outcome.Unverifiable(kesDefect))
     assertEquals(headerFirst.calls, Vector(Verifier.OCert))
     val block = Ordered(Left(kesDefect), rejectedProof)
-    session(block).map { (end, invalid, _, tip) =>
+    session(block).map { (end, invalid, events, tip) =>
       val held = VerificationDefect(target.point, VerificationDefect.Site.Header, kesDefect)
-      assertEquals(end, SessionEnd.Unverifiable(held))
-      assertEquals(FailurePolicy.disposition(end), Disposition.StopNode(Fatal.Unverifiable(held)))
-      assertEquals(invalid, Set.empty[Bytes])
-      assertEquals(tip, forged.headers(index - 1).point)
+      withheld(end, invalid, events, tip, held)
       assert(!block.calls.contains(Verifier.Vrf), block.calls.toString)
     }
   }
@@ -281,16 +297,13 @@ class ProviderDefectBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncau
     }
   }
 
-  test("a defect at validation time stops the node, whatever warming met") {
+  test("a defect at validation time withholds the block, whatever warming met") {
     val provider = Fails(kesDefect, failures = Int.MaxValue)
     val cache = VerificationCache.unsafe(2, provider)
     val run = warmed(cache, 1).flatMap(_ => session(cache)).guarantee(IO(cache.shutdown()))
-    run.map { (end, invalid, _, tip) =>
+    run.map { (end, invalid, events, tip) =>
       val held = VerificationDefect(target.point, VerificationDefect.Site.Header, kesDefect)
-      assertEquals(end, SessionEnd.Unverifiable(held))
-      assertEquals(FailurePolicy.disposition(end), Disposition.StopNode(Fatal.Unverifiable(held)))
-      assertEquals(invalid, Set.empty[Bytes])
-      assertEquals(tip, forged.headers(index - 1).point)
+      withheld(end, invalid, events, tip, held)
       assertEquals(provider.calls, 2)
     }
   }
@@ -299,12 +312,9 @@ class ProviderDefectBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncau
     val provider = Fails(kesDefect, failures = Int.MaxValue, overlap = 2)
     val cache = VerificationCache.unsafe(2, provider)
     val run = warmed(cache, 2).flatMap(_ => session(cache)).guarantee(IO(cache.shutdown()))
-    run.map { (end, invalid, _, tip) =>
+    run.map { (end, invalid, events, tip) =>
       val held = VerificationDefect(target.point, VerificationDefect.Site.Header, kesDefect)
-      assertEquals(end, SessionEnd.Unverifiable(held))
-      assertEquals(FailurePolicy.disposition(end), Disposition.StopNode(Fatal.Unverifiable(held)))
-      assertEquals(invalid, Set.empty[Bytes])
-      assertEquals(tip, forged.headers(index - 1).point)
+      withheld(end, invalid, events, tip, held)
       // both warmers asked, overlapping; the validation asked a third time
       assertEquals(provider.calls, 3)
     }

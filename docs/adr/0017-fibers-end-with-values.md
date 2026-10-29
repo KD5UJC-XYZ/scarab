@@ -120,7 +120,7 @@ rules refused, a storage failure and a bug in the node were all retried like a l
   for the bounds and policy differences from the reference.
 
 - An evaluator or decoder implementation limit is `Unavailable`, carrying the closed ledger failure,
-  not a consensus rejection. It stops the node with exit 8, bypassing peer blame and reconnect policy.
+  not a consensus rejection. ~~It stops the node with exit 8,~~ ([superseded](#amendment-2026-10-28-no-verdict-on-a-block-a-held-transaction-or-our-own-block-does-not-stop-the-node)) bypassing peer blame and reconnect policy.
   Expected transport `IOException`s remain connection failures; an unexpected network exception of
   unknown origin preserves its cause as `NetworkError.Defect` until the node's `Fatal.Defect` boundary
   (exit 7), and one thrown by a decoder on a peer's bytes is `NetworkError.DecoderDefect`, a failure of
@@ -214,9 +214,9 @@ holds a block without an invalid record, blame or stop; `StallWatchdogSuite` nam
 A verifier that throws or breaks its contract (Ed25519, VRF, KES, certificate signature) gives no
 verdict, and the reference treats it as the exception it is. On the block path it ends the linked
 add-block runner and stops the node (ouroboros-consensus 82ecba32
-`Storage/ChainDB/Impl/Background.hs` 107-108 and 142): the rules return `ProviderDefect`,
-`SessionEnd.of` places it as `SessionEnd.Unverifiable`, and the disposition is
-`StopNode(Fatal.Unverifiable)` (exit 7), with no `InvalidBlocks` entry and no peer blamed. On the
+`Storage/ChainDB/Impl/Background.hs` 107-108 and 142): the rules return `ProviderDefect`, ~~`SessionEnd.of`
+places it as `SessionEnd.Unverifiable`, and the disposition is `StopNode(Fatal.Unverifiable)` (exit 7),~~
+([superseded](#amendment-2026-10-28-no-verdict-on-a-block-a-held-transaction-or-our-own-block-does-not-stop-the-node)) with no `InvalidBlocks` entry and no peer blamed. On the
 header-first path it ends that peer's session and nothing else (`Node/RethrowPolicy.hs` 36-48 and
 128-140, `ShutdownPeer`): header-first validation raises it as `PeerError.Unverifiable` through the
 caller's `Raise`, classified `Transient`. ~~The hold of the 2026-10-23 amendment is for the evaluator
@@ -230,14 +230,14 @@ made the evaluator fail was not adopted and not recorded as invalid while the no
 it. The reference has no such path: an exception met while a block is validated ends the add-block
 runner, which is a linked thread of the ChainDB registry, and stops the node (ouroboros-consensus
 82ecba32 `Storage/ChainDB/Impl/Background.hs` 107-108 and 142). The hold had been added so that a
-peer-supplied block that triggers a Scalus evaluator bug could not stop the node; with this change
-such a block stops the node, as the exception does in the reference. Whatever failed:
+peer-supplied block that triggers a Scalus evaluator bug could not stop the node; ~~with this change
+such a block stops the node, as the exception does in the reference~~ ([superseded](#amendment-2026-10-28-no-verdict-on-a-block-a-held-transaction-or-our-own-block-does-not-stop-the-node)). Whatever failed:
 
 - the follower re-raises any `LedgerFailure.Unavailable` instead of treating it as a refusal, so
   nothing is recorded in `InvalidBlocks` and nobody is blamed;
 - `SessionEnd.of` places it as `SessionEnd.Unavailable`, whose disposition is
-  `StopNode(Fatal.Unavailable)`, exit 8, in the follower, the selection runner, the forger and
-  replay of the stored chain alike;
+  `StopNode(Fatal.Unavailable)`, exit 8, in ~~the follower, the selection runner, the forger and~~
+  ([superseded](#amendment-2026-10-28-no-verdict-on-a-block-a-held-transaction-or-our-own-block-does-not-stop-the-node)) replay of the stored chain ~~alike~~;
 - SessionEnd.Held, Disposition.Hold, FollowerEvent.Held (log Chain.BlockHeld, metric
   scarab_blocks_held_total) and the stall watchdog's Chain.StalledBehind are removed;
 - BackendFailure.reach and LedgerFailure.reach, on which nothing branches any more, are removed, so
@@ -251,7 +251,8 @@ without evaluating its scripts (`reapplyTx`), so they do not meet it (see
 [domain errors](../design/domain-errors.md)). A crypto provider defect is not held either (the
 amendment above).
 
-Tests: `SessionFailureSuite` stops the node on such a block without an invalid record or blame.
+Tests: ~~`SessionFailureSuite` stops the node on such a block without an invalid record or blame.~~
+([superseded](#amendment-2026-10-28-no-verdict-on-a-block-a-held-transaction-or-our-own-block-does-not-stop-the-node))
 
 ## Amendment (2026-10-28): the bearer reader's exception is the connection's
 
@@ -281,8 +282,8 @@ linked to the node (`Mempool/Init.hs:66`), and an exception no rethrow policy na
 (`ShutdownPeer`). Before, the exception reached `StorageBoundary.run` of the serving callback, whose `SnapshotFailure.capture` made
 it `Fatal.Defect` (G7-F4: "unexpected handler defects reach `Fatal.Defect`"). That made a transaction a peer sends a
 way to stop the node, against decision 5's "a peer must not be able to stop the whole process by what it sends".
-The rules on a block, the mempool's revalidation and storage still stop the node, as the reference's linked
-threads do.
+~~The rules on a block, the mempool's revalidation and~~ ([superseded](#amendment-2026-10-28-no-verdict-on-a-block-a-held-transaction-or-our-own-block-does-not-stop-the-node)) Storage still stops the node,
+as the reference's linked threads do.
 
 The peer is not charged: `PeerError.ServingDefect` is `FailureClass.NotThePeers`. The connection closes and the
 governor counts no failure against the peer, which keeps its standing (at least the base delay before it is
@@ -317,8 +318,34 @@ the whole process by what it sends".
   in its policy either, so an untyped one ends the peer there too.
 
 Still stopping the node, decided separately (issue 567):
-- the block path (`SessionEnd.Defect`, `Unavailable`, `Unverifiable`, `Internal`);
-- the mempool's revalidation and forging;
+- ~~the block path (`SessionEnd.Defect`, `Unavailable`, `Unverifiable`, `Internal`);~~
+- ~~the mempool's revalidation and forging;~~ ([superseded](#amendment-2026-10-28-no-verdict-on-a-block-a-held-transaction-or-our-own-block-does-not-stop-the-node))
 - a defect in releasing a connection's resources (`ConnectionResources`);
 - an internal failure of the node's state (`InternalFailure`, `StateAcquireFailure`).
+
+## Amendment (2026-10-28): no verdict on a block, a held transaction or our own block does not stop the node
+
+Owner decision (2026-10-28, issue 567): a failure of Scarab's own implementation on what a peer sent does not stop
+the node, where the reference's linked threads stop it. This covers the evaluator that cannot evaluate a script
+(`LedgerFailure.Unavailable`), a crypto provider that fails (`VerificationDefect`), and an exception of the rules.
+It also covers a quantity of the ledger state outside its implementation type (`ChainError.StateOutOfRange`,
+`compactCoinOrError` in the reference). That last is not Scarab-specific, but the owner chose not to crash on it
+until the protocol specification is read (#573). A refusal by the protocol's rules is unchanged: the block is
+recorded as invalid and its sender punished.
+
+- **A block (R1).** `Follower`'s judgement of one block, before anything is committed, has three outcomes: valid,
+  refused, or no verdict (`BlockNoVerdict`). With no verdict the block is withheld: not adopted, not recorded in
+  `InvalidBlocks`, nobody punished (a ChainSync client does not punish a peer that announces it). It goes into
+  `NoVerdictBlocks`, a bounded, in-memory, non-persisted set shared through the block pool. Chain selection
+  excludes it, so it is not judged again; a restart (a fixed build) judges it again. The valid prefix before it is
+  reconsidered as after a refusal (`ChainSel.hs` 1147-1186), and a competing chain that avoids it is adopted. It
+  is reported at error severity (`Chain.BlockNoVerdict`) and counted (`scarab_block_no_verdict_total`). Its sender
+  stays connected and is not charged. Storage, and anything after the commit point, still stop the node: the node
+  may hold half-written state there, and the reference's `ChainDbFailure` is `shutdownNode` too.
+- **A held transaction (R2).** The mempool's revalidation drops a transaction it has no verdict on with that
+  reason, as a refused one, and goes on to the new tip.
+- **Our own block (R3).** No verdict on a block we forged is handled as a refusal: its transactions leave the pool
+  and the slot ends without a block.
+
+Replay of the node's own stored chain is local data, not a peer's, and still stops the node on such a failure.
 
