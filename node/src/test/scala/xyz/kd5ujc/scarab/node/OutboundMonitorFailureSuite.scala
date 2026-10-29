@@ -117,7 +117,13 @@ class OutboundMonitorFailureSuite extends FailsOnUncaught:
         established <- outbound.establish(peer, DiffusionMode.InitiatorOnly, Provenance.Outbound)
         ended <- settled(told)(_.observed.exists(_.released))
         closed <- peers.closedConnections
-        retained <- outbound.monitorPeerConnection(peer).flatMap(_.traverse(_.read))
+        // the retained report reads the applications' results, which take the abort a moment
+        // after the release is observed: poll it, bounded
+        retained <- (IO.sleep(5.millis) *> outbound
+          .monitorPeerConnection(peer)
+          .flatMap(_.traverse(_.read)))
+          .iterateUntil(_.exists(_.failure.nonEmpty))
+          .timeout(15.seconds)
         // the node goes on: the same peer is connected to again and promoted
         again <- outbound.establish(peer, DiffusionMode.InitiatorOnly, Provenance.Outbound)
         promoted <- outbound.activate(peer)
