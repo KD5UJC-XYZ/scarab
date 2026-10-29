@@ -377,6 +377,13 @@ The owner decision of the amendment above, applied to three paths it left open (
   no-verdict outcome (the evaluator, a crypto provider, a state out of range, an exception of the rules) is
   `Adoption.NoVerdict`, reported as `Chain.BlockNoVerdict`, and the forger handles it as a refusal: the block's
   transactions leave the pool and the slot ends without a block.
+- **Building our own block.** A held transaction the node has no verdict on when the block's transactions are applied
+  again (`BlockBuilder.select`: the evaluator, a crypto provider, a state out of range) is withheld: it leaves the
+  pool with its reason (`Mempool.withdraw`, `Dropped`) and the block is built from the rest. The reference has no such
+  case: the exception ends its linked forging thread and the node stops (ouroboros-consensus `82ecba32`
+  `NodeKernel.hs` `forkBlockForging`; `compactCoinOrError`, cardano-ledger `f649f975` `Coin.hs` 184-188). This is a
+  deviation the owner approved explicitly on 2026-10-28: "this is the behavior I want, THIS IS THE EXPLICIT OWNER
+  APPROVAL", for "the transaction leaves the pool and the block is built from the rest".
 - **The forger's tick.** A tick of the tip's state whose state is out of range leaves the ledger view of the slot
   unavailable, as any other tick failure (`ForgeError.LedgerViewUnavailable`): the slot ends, and the node goes on.
 - **A crypto provider failing on a header.** The connection still closes in both directions, but nothing is counted
@@ -385,5 +392,7 @@ The owner decision of the amendment above, applied to three paths it left open (
   [an exception of a connection's own work ends that connection](#amendment-2026-10-28-an-exception-of-a-connections-own-work-ends-that-connection).
 
 A header whose state is out of range still stops the node; issue 584 tracks it, as its values come from the genesis,
-which the reference refuses when it reads it.
+which the reference refuses when it reads it. A crypto provider failing on the forging keys' own VRF proof
+(`HotKeys.infrastructureFailure`) stops the node, as the reference's forging thread does; that is the reference's
+behaviour, not a gap.
 

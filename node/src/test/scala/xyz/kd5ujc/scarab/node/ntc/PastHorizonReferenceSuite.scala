@@ -270,7 +270,9 @@ class PastHorizonReferenceSuite extends FunSuite:
             limits,
             Some(clock)
           )
-          .fold(e => fail(e.message), _.size)
+          .match
+            case BlockBuilder.Selection(chosen, Vector()) => chosen.size
+            case other                                    => fail(s"withheld: ${other.withheld}")
       assertEquals(chosen(bounded), 0)
       assertEquals(chosen(PosixClock.total(setup.geometry)), 1)
     }

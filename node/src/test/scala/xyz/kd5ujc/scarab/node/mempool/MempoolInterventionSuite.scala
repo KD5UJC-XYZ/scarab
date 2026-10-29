@@ -153,7 +153,8 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       synced.entries,
       BlockBuilder.Limits(65536, xyz.kd5ujc.scarab.plutus.ExUnits(14000000, 10000000000L))
     )
-    assertEquals(selected.map(_.map(_._1.id)), Right(Vector(entry.id)))
+    assertEquals(selected, BlockBuilder.Selection(selected.chosen, Vector.empty))
+    assertEquals(selected.chosen.map(_._1.id), Vector(entry.id))
   }
 
   test(
@@ -218,6 +219,7 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       synced.entries,
       BlockBuilder.Limits(65536, xyz.kd5ujc.scarab.plutus.ExUnits(14000000, 10000000000L))
     )(using decoder, evaluator)
-    assertEquals(selected.map(_.map(_._1.id)), Right(held.entries.map(_.id)))
+    assertEquals(selected, BlockBuilder.Selection(selected.chosen, Vector.empty))
+    assertEquals(selected.chosen.map(_._1.id), held.entries.map(_.id))
     assertEquals(counts, admitted)
   }

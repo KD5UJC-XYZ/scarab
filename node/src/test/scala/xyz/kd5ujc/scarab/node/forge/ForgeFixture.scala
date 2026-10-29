@@ -139,6 +139,7 @@ trait ForgeFixture:
       ruleFailure: Option[BlockFailure] = None,
       verdicts: xyz.kd5ujc.scarab.ledger.Verdicts = xyz.kd5ujc.scarab.ledger.Verdicts.Direct,
       chainFailure: Option[ChainError] = None,
+      rulesThrow: Option[Throwable] = None,
       storageFailure: Option[StorageError] = None,
       clock: Option[IO[Instant]] = None,
       unbounded: Boolean = false
@@ -162,11 +163,13 @@ trait ForgeFixture:
             Raise[IO, StorageError],
             Raise[IO, ChainError]
         ): IO[MirrorState] =
-          chainFailure.fold(
-            ruleFailure.fold(realRules(state, header, raw))(failure =>
-              ValidationError(header.point, failure).raise[IO, MirrorState]
-            )
-          )(_.raise[IO, MirrorState])
+          rulesThrow.fold(
+            chainFailure.fold(
+              ruleFailure.fold(realRules(state, header, raw))(failure =>
+                ValidationError(header.point, failure).raise[IO, MirrorState]
+              )
+            )(_.raise[IO, MirrorState])
+          )(IO.raiseError[MirrorState](_))
       mempoolBase <- cats.mtl
         .Raise[IO, NodeError]
         .fromEither(

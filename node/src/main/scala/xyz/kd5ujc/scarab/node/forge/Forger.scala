@@ -12,13 +12,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.{Block, Header}
-import xyz.kd5ujc.scarab.ledger.{
-  ChainError,
-  EvaluationUnavailable,
-  ForgeError,
-  LedgerFailure,
-  VerificationDefect
-}
+import xyz.kd5ujc.scarab.ledger.ForgeError
 import xyz.kd5ujc.scarab.ledger.{ClockProblem, NodeError}
 import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash}
@@ -31,7 +25,7 @@ import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Globals, Hfc}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, NewEpochState, ShelleyBasedEra, SlotNo}
 import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView, TxClock}
 import xyz.kd5ujc.scarab.node.read.MirrorEraRead
-import xyz.kd5ujc.scarab.node.mempool.{Entry, Mempool, MempoolLedger, MempoolState}
+import xyz.kd5ujc.scarab.node.mempool.{Entry, Mempool, MempoolLedger, MempoolState, Rejection}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.storage.UtxoStore
 import scala.concurrent.duration.*
@@ -520,23 +514,16 @@ final class Forger[F[_]: Async, S](
           Some(clock.at(base.state, Era.Conway, slot))
         )
       )
-      chosen <- selection.fold(
-        {
-          case unavailable: LedgerFailure.Unavailable =>
-            EvaluationUnavailable(base.tip, unavailable)
-              .raise[F, Vector[(Entry, BlockBuilder.Piece)]]
-          // the forging thread is linked to the node in the reference, which re-applies the pool's
-          // transactions in it (consensus 82ecba32 Node/NodeKernel.hs `forkBlockForging`)
-          case LedgerFailure.Unverifiable(tx, defect) =>
-            VerificationDefect(base.tip, VerificationDefect.Site.Witness(tx), defect)
-              .raise[F, Vector[(Entry, BlockBuilder.Piece)]]
-          case outOfRange: LedgerFailure.StateOutOfRange =>
-            ChainError
-              .StateOutOfRange(slot, outOfRange.error)
-              .raise[F, Vector[(Entry, BlockBuilder.Piece)]]
-        },
-        F.pure
-      )
+      // the held transactions we have no verdict on leave the pool with their reason, and the
+      // block is built from the rest: the owner's decision of 2026-10-28 (issue 584), where the
+      // reference's linked forging thread stops the node (consensus 82ecba32 Node/NodeKernel.hs
+      // `forkBlockForging`)
+      _ <- mempool
+        .withdraw(
+          selection.withheld.map((entry, failure) => entry.id -> Rejection.Ledger(failure)).toMap
+        )
+        .whenA(selection.withheld.nonEmpty)
+      chosen = selection.chosen
     yield chosen
 
   /** Build and sign the block (`forgeBlock`). The checks here are Scarab's own and never refuse a

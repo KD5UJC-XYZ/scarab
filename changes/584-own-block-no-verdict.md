@@ -6,3 +6,6 @@
   rather than stopping the node.
 - **A crypto provider that fails on a peer's header still closes that connection, but no longer charges the peer.**
   Part of issue 584.
+- **A held transaction the node has no verdict on while it builds its own block leaves the pool with its reason, and
+  the block is built from the rest.** This is an owner-approved deviation: the reference's forging thread stops the
+  node.
