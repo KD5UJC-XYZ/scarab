@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.{IO, Ref}
+import cats.effect.{Deferred, IO, Ref}
 import cats.effect.std.Queue
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
@@ -354,8 +354,10 @@ class ProviderDefectBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncau
   }
 
   /** A follower session over the real block rules of the forged chain, with `verdicts` as the
-    * crypto providers, against a peer that announces every forged header: how it ended, what the
-    * invalid-block registry holds, the follower's events and the tip it reached.
+    * crypto providers, against a peer that announces every forged header, whose blocks the node's
+    * selection worker adopts: how it ended (`Stopped(false)`: still running once the worker decided
+    * every block), what the invalid-block registry holds, the follower's events and the tip it
+    * reached.
     */
   private def session(
       verdicts: Verdicts
@@ -367,33 +369,33 @@ class ProviderDefectBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncau
         )
         given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
         emitted <- Ref.of[IO, Vector[FollowerEvent]](Vector.empty)
-        registry <- InvalidBlocks.create[IO]
         follower <- Follower.create[IO, MirrorState](
           blockRules(verdicts),
           event => emitted.update(_ :+ event),
           ForgedChain.geometry
         )
-        _ <- follower.installInvalidBlocks(registry)
+        pool <- WorkerTesting.pool(follower)
         queue <- Queue.unbounded[IO, SyncEvent]
         _ <- forged.headers.traverse_(h =>
           queue.offer(SyncEvent.RollForward(h, ChainSync.Tip.Origin))
         )
+        done <- Deferred[IO, Unit]
         raws = forged.headers.map(_.hash).zip(forged.raws).toMap
         peer = new Peer[IO]:
           def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
             IO.pure(candidates.headOption)
           def next(using Raise[IO, PeerError]) = queue.tryTake.flatMap {
             case Some(event) => IO.pure(event)
-            case None        => IO.never[SyncEvent]
+            case None        => done.complete(()) *> IO.never[SyncEvent]
           }
           def fetch(header: Header)(using Raise[IO, PeerError]) = IO.pure(raws(header.hash))
         end <- SessionEnd
           .scoped(node) { (_, _) ?=>
-            follower.session(peer).as(SessionEnd.Returned)
+            WorkerTesting.follow(follower, pool, peer, done.get).as(SessionEnd.Stopped(false))
           }
-          .timeoutTo(10.seconds, IO.pure(SessionEnd.Stopped(false)))
+          .timeout(30.seconds)
         chain <- ref.get
-        invalid <- registry.snapshot
+        invalid <- pool.invalidBlocks.snapshot
         events <- emitted.get
       yield (end, invalid.entries.keySet, events, chain.tip)
     }

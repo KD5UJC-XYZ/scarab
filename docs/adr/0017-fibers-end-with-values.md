@@ -313,8 +313,9 @@ the whole process by what it sends".
   an exception there ends the session as `PeerError.ConnectionDefect`, uncharged (`SessionEnd.scoped`,
   `InboundGovernor.pipelineEnd`). A session of the node commits no block: the selection worker owns every commit, in
   a scope of its own that stops the node (`BlockSelection.run`). A commit, wherever it runs, also raises its own
-  exceptions as `ChainError.CommitDefect`, which stops the node (`Follower.commit`). So the boundary holds on the
-  follower's direct adoption inside a session too, which only tests use; issue 578 tracks removing that path.
+  exceptions as `ChainError.CommitDefect`, which stops the node (`Follower.commit`). ~~So the boundary holds on the
+  follower's direct adoption inside a session too, which only tests use; issue 578 tracks removing that path.~~
+  ([removed](#amendment-2026-10-29-a-session-never-adopts-a-block))
 - The bearer's writer: an exception encoding or sending our own messages is `NetworkError.Defect` (`Mux`'s writer,
   `NetworkError.fromThrowable`), so it ends that connection, uncharged, and no longer stops the node. Owner
   decision of 2026-10-28 (issue 567, A1), replacing the earlier one of the same day: what we send depends on the
@@ -477,6 +478,15 @@ an exception injected where the monitor observes the connection's applications (
 - a monitor that throws ends its own connection: the connection is released, the governor sees `PeerError.ConnectionDefect`
   with the cause, `NotThePeers`, nothing reaches the fatal sink, and the same peer is connected to and promoted again;
 - a recovery that throws again stops the node with `Fatal.Defect` of the second exception, as listed above.
+
+## Amendment (2026-10-29): a session never adopts a block
+
+Issue 578. The follower's adoption inside a session, which only tests used, is removed: `Follower.session` follows
+the peer's headers and every block a session delivers is adopted by the selection worker, in its own scope
+(`BlockSelection.run`). So no exception or refusal of a block's judgement or commit is met in a session's fiber.
+The worker is installed before the network starts (`Main`); a session started without it is the node's own
+wiring and stops the node (`BlockPoolProblem.NoSelectionWorker`, `Fatal.Internal`). The follower suites now run
+their sessions on the worker. Issue 599 tracks the session's `Peer` methods that only the removed path called.
 
 ## Amendment (2026-10-29): a Genesis session's header state is its own
 

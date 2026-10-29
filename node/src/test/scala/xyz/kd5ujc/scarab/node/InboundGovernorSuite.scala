@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, Compute, VolatileChain}
+import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, ChainSelection, Compute, VolatileChain}
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.{
   Block,
@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity.Fragment
 import cats.effect.{Deferred, IO, Ref, Resource}
-import cats.mtl.{Handle, Stateful}
+import cats.mtl.{Ask, Handle, Stateful, Tell}
 import cats.syntax.all.*
 import com.comcast.ip4s.*
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -34,6 +34,8 @@ class InboundGovernorSuite extends FailsOnUncaught:
   override def munitIOTimeout: FiniteDuration = 60.seconds
 
   private val magic = 42L
+  private val elsewhere: SocketAddress[IpAddress] =
+    SocketAddress(ip"10.4.8.9", port"3001")
   private val remote: SocketAddress[IpAddress] =
     SocketAddress(ip"10.1.2.3", port"3001")
 
@@ -116,7 +118,8 @@ class InboundGovernorSuite extends FailsOnUncaught:
       val governor: InboundGovernor[IO],
       val applied: Ref[IO, Vector[Bytes]],
       val metrics: Ref[IO, PeerMetrics[PeerNetwork.Addr]],
-      val pool: BlockPool[IO]
+      val pool: BlockPool[IO],
+      val selection: Resource[IO, Unit]
   )
 
   private def local(
@@ -125,11 +128,13 @@ class InboundGovernorSuite extends FailsOnUncaught:
       transactions: Option[TxSubmissionClient.Source[IO]] = None,
       readAhead: Int = 16,
       clock: Option[SlotClock[IO]] = None,
-      fatal: Fatal => IO[Unit] = _ => IO.unit,
+      fatal: Fatal => IO[Unit] = WorkerTesting.unexpected,
       pool: Option[BlockPool[IO]] = None,
       events: Option[InboundEvents[IO]] = None,
       keepAliveInterval: FiniteDuration = 30.seconds,
       followSession: Option[InboundGovernor.Follow[IO]] = None,
+      canonical: Boolean = false,
+      track: Ref[IO, ChainSelection.Candidate] => IO[Unit] = _ => IO.unit,
       genesis: Option[HeaderCheck.Grafting[IO]] = None
   )(using RepromotionWait[IO]): Resource[IO, Local] =
     Resource
@@ -173,12 +178,30 @@ class InboundGovernorSuite extends FailsOnUncaught:
             )
           )
           metrics <- Ref.of[IO, PeerMetrics[PeerNetwork.Addr]](PeerMetrics.empty())
-          validating = Option.when(headerFirst)(
-            HeaderCheck.forChain[IO, MirrorState, NodeHeaderState](
-              NodeHeaderRules[MirrorState](ForgedChain.config, ForgedChain.globals),
-              Compute.inline[IO]
+          // with `canonical`, the node's own header check, as `Main` builds it: it follows our
+          // selection and finds a new intersection when our chain leaves the candidate's
+          // (NoLongerIntersects)
+          validating = Option
+            .when(headerFirst && !canonical)(
+              HeaderCheck.forChain[IO, MirrorState, NodeHeaderState](
+                NodeHeaderRules[MirrorState](ForgedChain.config, ForgedChain.globals),
+                Compute.inline[IO]
+              )
             )
-          )
+            .orElse(Option.when(headerFirst) {
+              given Ask[IO, ChainSelection.Local] = new Ask[IO, ChainSelection.Local]:
+                val applicative: cats.Applicative[IO] = cats.Applicative[IO]
+                def ask[E2 >: ChainSelection.Local]: IO[E2] = follower.fetchSelection.widen[E2]
+              given Tell[IO, GenesisInternalProblem] = new Tell[IO, GenesisInternalProblem]:
+                val functor: cats.Functor[IO] = cats.Functor[IO]
+                def tell(problem: GenesisInternalProblem): IO[Unit] = fatal(Fatal.Internal(problem))
+              HeaderCheck.forNodeChain[IO, MirrorState](
+                NodeHeaderRules[MirrorState](ForgedChain.config, ForgedChain.globals),
+                Compute.inline[IO],
+                4096,
+                changes = Some(follower.headerChanges)
+              )
+            })
           // with a clock, the headers are also held to it (AUD-01), whether or not they are validated
           headerCheck = clock.fold(validating)(c =>
             Some(HeaderClock.clocked[IO](c, validating.getOrElse(HeaderCheck.none[IO])))
@@ -247,7 +270,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
                     cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
                 ) = IO.unit
             ),
-            follow = peer => followSession.fold(follower.session(peer))(_(peer)),
+            follow = peer => followSession.fold(follower.session(peer, track))(_(peer)),
             prepare = _ => IO.unit,
             fatal = fatal,
             headers = headerCheck,
@@ -258,18 +281,29 @@ class InboundGovernorSuite extends FailsOnUncaught:
             peerMetrics = Some(metrics),
             genesis = runtime
           )
-        yield new Local(ref, manager, governor, applied, metrics, sharedPool)
+        yield new Local(
+          ref,
+          manager,
+          governor,
+          applied,
+          metrics,
+          sharedPool,
+          WorkerTesting.selection(follower, sharedPool, fatal)
+        )
       }
       .flatTap(local => FetchTesting.decisions(local.pool))
+      .flatTap(_.selection)
 
-  /** The remote peer dials `us` (duplex when it serves `remoteNode` 's chain, else initiator-only);
-    * `during` runs while the connection is up and is given the time at which our side ended. When
-    * it is done the peer lets go. Returns its result and why our side of the connection ended.
+  /** The remote peer at `from` dials `us` (duplex when it serves `remoteNode` 's chain, else
+    * initiator-only); `during` runs while the connection is up and is given the time at which our
+    * side ended. When it is done the peer lets go. Returns its result and why our side of the
+    * connection ended.
     */
   private def connect[A](
       remoteNode: Option[Remote],
       us: Local,
       observeWrite: fs2.Chunk[Byte] => IO[Unit] = _ => IO.unit,
+      from: SocketAddress[IpAddress] = remote,
       identity: Option[ConnectionId] = None
   )(
       during: IO[ConnectionEnd] => IO[A]
@@ -280,7 +314,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
         def reads = ours.reads
         def write(bytes: fs2.Chunk[Byte]) = observeWrite(bytes) *> ours.write(bytes)
         def close = ours.close
-      us.governor.serve(observed, remote).start.flatMap { served =>
+      us.governor.serve(observed, from).start.flatMap { served =>
         val ended = served.joinWithNever.timeout(15.seconds)
         Handle
           .allow[NetworkError] {
@@ -684,44 +718,61 @@ class InboundGovernorSuite extends FailsOnUncaught:
         remoteNode.intersections,
         remoteNode.extend
       )
-      nodeTestResult <- local(transactions = Some(nothingToOffer), readAhead = 2).use { us =>
+      tracked <- Ref.of[IO, Vector[Ref[IO, ChainSelection.Candidate]]](Vector.empty)
+      nodeTestResult <- local(
+        transactions = Some(nothingToOffer),
+        readAhead = 2,
+        canonical = true,
+        track = candidate => tracked.update(_ :+ candidate)
+      ).use { us =>
         val prefix = forged.headers.size / 2
-        val advanced = forged.headers
-          .zip(forged.states)
-          .take(prefix)
-          .foldLeft(
-            VolatileChain.genesis(ForgedChain.geometry.k.toInt, forged.genesis)
-          ) { case (chain, (header, state)) =>
-            chain.extend(header, state).fold(e => fail(e.message), _._1)
-          }
-        for result <- connect(Some(delayed), us) { _ =>
+        val advanced = forged.headers(prefix - 1).point
+        for
+          faster <- serving(forged.raws.take(prefix))
+          result <- connect(Some(delayed), us) { _ =>
             for
               _ <- waiting.get.timeout(10.seconds)
-              // Model the faster session's validated adoption while the inbound reply is delayed.
-              _ <- us.chain.set(advanced)
+              // a faster peer's session advances our chain past this candidate's intersection
+              // (k = 5) while the inbound reply is delayed
+              _ <- connect(Some(faster), us, from = elsewhere) { _ =>
+                eventually("the faster peer's prefix is adopted")(us.chain.get.map(_.tip))(
+                  _ == advanced
+                )
+              }
               _ <- release.complete(())
               _ <- eventually("the recovered follower reaches the remote tip")(
                 us.chain.get.map(_.tip)
               )(
                 _ == forged.headers.last.point
               )
-              sessions <- us.governor.sessions
               points <- intersections.get
               fetched <- remoteNode.ranges.get
               applied <- us.applied.get
-              connections <- us.manager.snapshot
-            yield (sessions, points, fetched, applied, connections)
+              sessions <- us.governor.sessions
+              candidates <- tracked.get.flatMap(_.traverse(_.get))
+            yield (points, fetched, applied, sessions, candidates)
           }
         yield
-          val ((sessions, points, fetched, applied, connections), _) = result
-          assertEquals(points, Vector(Point.Origin, advanced.tip))
-          assertEquals(sessions.size, 1)
-          assertEquals(sessions.head.number, BigInt(1))
-          assertEquals(sessions.head.ended, None)
-          assertEquals(sessions.head.intersection, Some(Points.show(advanced.tip)))
-          assertEquals(connections.counters.inbound, 1)
+          val ((points, fetched, applied, sessions, candidates), _) = result
+          // one session on the lagging connection, still running (its report keeps the first
+          // intersection: issue 602)
+          val lagging = sessions.filter(_.remote == remote.toString)
+          assertEquals(lagging.size, 1, sessions.toString)
+          assertEquals(lagging.head.number, BigInt(1))
+          assertEquals(lagging.head.ended, None)
+          // the connection's one tracked candidate followed it there and on to the tip
+          assertEquals(candidates.size, 2, "one tracked candidate per session")
+          assert(candidates.exists(_.tip == forged.headers.last.point), candidates.toString)
+          // NoLongerIntersects: the same connection finds a new intersection at our tip
+          // (consensus 82ecba329 ChainSync/Client.hs:1499–1511)
+          assertEquals(points, Vector(Point.Origin, advanced))
+          // the lagging peer is asked only for what our chain does not hold
           assert(fetched.nonEmpty)
-          assertEquals(applied, forged.raws.drop(prefix))
+          assert(
+            fetched.forall((from, _) => forged.headers.indexWhere(_.point == from) >= prefix),
+            fetched.toString
+          )
+          assertEquals(applied, forged.raws)
       }
     yield nodeTestResult
   }
@@ -1030,50 +1081,6 @@ class InboundGovernorSuite extends FailsOnUncaught:
         }
       yield nodeTestResult
     }
-  }
-
-  test("an inbound validation refusal invalidates recovered originals through the counted peer") {
-    val expected = forged.headers.head
-    // The peer advertises its valid first header. An unrelated recovered original is cached
-    // under that hash; the current peer did not deliver those bytes.
-    val invalid = forged.raws(1)
-    for
-      persisted <- Ref.of[IO, Map[Bytes, Bytes]](Map(expected.hash -> invalid))
-      invalidated <- Ref.of[IO, Set[Bytes]](Set.empty)
-      pool <- BlockPool.create[IO](
-        BlockPool.FetchPolicy(),
-        IO.pure(
-          xyz.kd5ujc.scarab.consensus.ChainSelection.Local(
-            Point.Origin,
-            xyz.kd5ujc.scarab.consensus.SelectView(-1, 0, None, 0, None),
-            Vector.empty
-          )
-        ),
-        BlockPool.Recovered(
-          persisted.get.map(_.keySet),
-          hash => persisted.get.map(_.get(hash)),
-          hash => invalidated.update(_ + hash) *> persisted.update(_ - hash)
-        )
-      )
-      nodeTestResult <- local(headerFirst = false, pool = Some(pool)).use { us =>
-        for
-          bad <- serving(forged.raws.take(1))
-          outcome <- connect(Some(bad), us)(ended => ended)
-          rejected <- invalidated.get
-          remaining <- persisted.get
-          cached <- pool.takeFilled(expected.hash)
-          chain <- us.chain.get
-        yield
-          peerFailure(outcome._2) match
-            case PeerError.Diverged(PeerError.Divergence.ForeignBlock(refusal)) =>
-              assertEquals(refusal.point, expected.point)
-            case other => fail(s"cached source refusal blamed the requesting peer: $other")
-          assertEquals(rejected, Set(expected.hash))
-          assertEquals(remaining, Map.empty[Bytes, Bytes])
-          assertEquals(cached, None)
-          assertEquals(chain.tip, ChainSync.Point.Origin)
-      }
-    yield nodeTestResult
   }
 
   test("warm repromotion gates hot requests, retains one KeepAlive, and cancels with its bearer") {

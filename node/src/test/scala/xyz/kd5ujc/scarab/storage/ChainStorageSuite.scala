@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.node.WorkerTesting
 import scala.annotation.unused
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.std.Queue
@@ -228,7 +229,10 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                     geometry,
                     persistence = Some(recovered.persistence)
                   )
-                  _ <- IO.race(follower.session(peer), done.get.timeout(60.seconds))
+                  _ <- xyz.kd5ujc.scarab.node.WorkerTesting
+                    .pool(follower)
+                    .flatMap(blocks => WorkerTesting.follow(follower, blocks, peer, done.get))
+                    .timeout(60.seconds)
                   // Snapshots are written in the background; let them land.
                   _ <- IO.sleep(500.millis)
                   chain <- chainRef.get
@@ -607,7 +611,10 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                        )
                        .use(_ => startupApplications.get)
                    else startupApplications.get)
-                _ <- IO.race(follower.session(peer), done.get.timeout(60.seconds))
+                _ <- xyz.kd5ujc.scarab.node.WorkerTesting
+                  .pool(follower)
+                  .flatMap(blocks => WorkerTesting.follow(follower, blocks, peer, done.get))
+                  .timeout(60.seconds)
                 chain <- chainRef.get
                 offers <- offered.get
               yield (resumed, recovered.anchor, chain, offers, startupReplayed)

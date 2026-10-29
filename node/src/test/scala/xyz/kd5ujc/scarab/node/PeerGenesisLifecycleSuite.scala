@@ -122,6 +122,7 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
               Raise[IO, NetworkError]
           ): IO[MuxChannel[IO]] = channel(protocol)
           def closed = closeSignal.get
+          def failure = closeSignal.tryGet
           def abort(reason: NetworkError) = closeSignal.complete(reason).void
         control = new GenesisPeer[IO]:
           def restartCandidates = IO.pure(Vector(ChainSync.Point.Origin))

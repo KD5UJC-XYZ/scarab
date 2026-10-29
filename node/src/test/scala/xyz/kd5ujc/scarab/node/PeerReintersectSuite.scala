@@ -99,6 +99,7 @@ class PeerReintersectSuite extends FailsOnUncaught:
           def channel(protocol: Int, role: Mux.Role)(using Raise[IO, NetworkError]) =
             channel(protocol)
           def closed = closeSignal.get
+          def failure = closeSignal.tryGet
           def abort(cause: NetworkError) = closeSignal.complete(cause).void
         blocks = new BlockFetchClient[IO]:
           def requestRange(from: ChainSync.Point, to: ChainSync.Point)(using

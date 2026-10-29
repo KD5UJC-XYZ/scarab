@@ -215,6 +215,7 @@ object PeerError:
 enum BlockPoolProblem extends NodeError:
   case MissingDeliveredHeader(point: ChainSync.Point)
   case DifferentInvalidRegistry
+  case NoSelectionWorker
   case AvailableHashMismatch(key: Bytes, actual: Bytes)
   case SelectionProjectionChanged(point: ChainSync.Point)
   case AvailableCycle(hash: Bytes)
@@ -229,6 +230,8 @@ enum BlockPoolProblem extends NodeError:
     case AvailableCycle(hash) => s"available block ancestry contains a cycle at ${hash.hex}"
     case DifferentInvalidRegistry =>
       "follower sessions do not share the same invalid-block registry"
+    case NoSelectionWorker =>
+      "a follower session started without the node's selection worker, which adopts its blocks"
 
 /** Missing local metadata in the rolling ChainSync interpreter; never a remote refusal. */
 enum ChainSyncInternalProblem extends NodeError:
