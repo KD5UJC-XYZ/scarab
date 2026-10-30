@@ -140,7 +140,25 @@ object ByronTransport:
         32,
         DecodeField.SoftwareNumber
       )
-      metadata <- map(fields(3), DecodeField.InstallerMetadata)
+      _ <- installerMetadata(fields(3))
+      _ <- emptyAttributes(fields(4), DecodeField.ProposalAttributes)
+      _ <- fixedBytes(fields(5), 64, DecodeField.ProposalIssuer) *> fixedBytes(
+        fields(6),
+        64,
+        DecodeField.ProposalSignature
+      )
+    yield ()
+
+  /** A proposal's `metadata`, `Map SystemTag InstallerHash` (`Update/Proposal.hs:216`,
+    * cardano-ledger f649f975), read at the Byron decoder version: a definite map whose keys
+    * (`SystemTag`, a `newtype` over `Text`, `Update/SystemTag.hs:41-65`) are definite text,
+    * strictly ascending (`decodeMapSkel`, `Decoder.hs:736-766`), and whose values are an
+    * `InstallerHash`: four byte strings, the second a 32-byte hash
+    * (`Update/InstallerHash.hs:58-65`).
+    */
+  private[byron] def installerMetadata(node: Node): Result[Unit] =
+    for
+      metadata <- map(node, DecodeField.InstallerMetadata)
       names <- metadata.traverse { (key, value) =>
         for
           name <- text(key, DecodeField.SystemTag)
@@ -150,14 +168,8 @@ object ByronTransport:
           ) *> bytes(hashes(3))
         yield name.codePoints().toArray.toVector
       }
-      _ <- ascending(names, fields(3), DecodeField.InstallerMetadata)((a, b) =>
+      _ <- ascending(names, node, DecodeField.InstallerMetadata)((a, b) =>
         a.zip(b).collectFirst { case (x, y) if x != y => x < y }.getOrElse(a.size < b.size)
-      )
-      _ <- emptyAttributes(fields(4), DecodeField.ProposalAttributes)
-      _ <- fixedBytes(fields(5), 64, DecodeField.ProposalIssuer) *> fixedBytes(
-        fields(6),
-        64,
-        DecodeField.ProposalSignature
       )
     yield ()
 
@@ -242,7 +254,8 @@ object ByronTransport:
       _ <- ascending(values.map(_._1), node, context)(_ < _)
     yield values
 
-  private def emptyAttributes(node: Node, context: DecodeSite): Result[Unit] =
+  /** `dropEmptyAttributes` (`Common/Attributes.hs:241-244`): a definite map of no entries. */
+  private[byron] def emptyAttributes(node: Node, context: DecodeSite): Result[Unit] =
     map(node, context).flatMap(values =>
       Either.cond(
         values.isEmpty,

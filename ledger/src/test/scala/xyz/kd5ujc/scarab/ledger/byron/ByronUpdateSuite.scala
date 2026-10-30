@@ -228,6 +228,73 @@ class ByronUpdateSuite extends ScalaCheckSuite:
     )
   }
 
+  /** A proposal of `proposalBytes` 's shape with `metadata` and `attributes` as given; the
+    * signature is not what these tests are about, so it is any 64 bytes.
+    */
+  private def proposalWith(
+      metadata: Bytes,
+      attributes: Bytes
+  ): Either[LedgerDecodeError, UpdatePayload] =
+    val elements = Seq(
+      Cb.arr(Cb.uint(1), Cb.uint(0), Cb.uint(0)),
+      Cb.arr(Seq.fill(14)(Cb.arr())*),
+      Cb.arr(Cb.text("cardano-sl"), Cb.uint(1)),
+      metadata,
+      attributes
+    )
+    val proposal = Cb.arr(
+      (elements ++ Seq(Cb.bytes(gKeys(0).extended), Cb.bytes(Bytes.fromArray(Array.fill(64)(0)))))*
+    )
+    CborRead.decode(Cb.arr(Cb.arr(proposal), Cb.arr())).flatMap(UpdatePayload.decode)
+
+  // `InstallerHash`: four byte strings, the second a 32-byte hash (`Update/InstallerHash.hs:58-65`)
+  private val installer =
+    Cb.arr(
+      Cb.bytes(Bytes.empty),
+      Cb.bytes(Bytes.fromArray(Array.fill(32)(7))),
+      Cb.bytes(Bytes.empty),
+      Cb.bytes(Bytes.empty)
+    )
+
+  test("a proposal's metadata keys are SystemTag text: a chunked key is refused (#552)") {
+    // `Map SystemTag InstallerHash` (`Update/Proposal.hs:216`), and `SystemTag` decodes `Text`
+    // (`Update/SystemTag.hs:41-65`, cardano-ledger f649f975): a definite string only
+    val chunkedTag = Bytes.fromArray(Array(0x7f.toByte, 0x63, 0x6c, 0x69, 0x6e, 0xff.toByte))
+    assert(proposalWith(Cb.map(Cb.text("lin") -> installer), Cb.map()).isRight)
+    assertEquals(
+      proposalWith(Cb.map(chunkedTag -> installer), Cb.map()),
+      Left(LedgerDecodeError.IndefiniteLength(DecodeField.SystemTag))
+    )
+  }
+
+  test(
+    "a proposal's metadata is read as the reference reads it: ascending keys, installer hashes"
+  ) {
+    assert(
+      proposalWith(
+        Cb.map(Cb.text("lin") -> installer, Cb.text("win") -> installer),
+        Cb.map()
+      ).isRight
+    )
+    // `decodeMapSkel` at the Byron version: keys strictly ascending
+    assert(
+      proposalWith(
+        Cb.map(Cb.text("win") -> installer, Cb.text("lin") -> installer),
+        Cb.map()
+      ).isLeft
+    )
+    // a value that is not an `InstallerHash`
+    assert(proposalWith(Cb.map(Cb.text("lin") -> Cb.uint(0)), Cb.map()).isLeft)
+  }
+
+  test("a proposal's attributes are empty: `dropEmptyAttributes` refuses any entry (#552)") {
+    // `Common/Attributes.hs:241-244`: `DecoderErrorSizeMismatch "Attributes" 0 len`
+    assertEquals(
+      proposalWith(Cb.map(), Cb.map(Cb.uint(0) -> Cb.bytes(Bytes.empty))),
+      Left(LedgerDecodeError.NumberOutOfRange(DecodeField.ProposalAttributes, 1, 0, 0))
+    )
+  }
+
   private def version(major: BigInt, minor: BigInt, alt: BigInt): ByronVersion =
     ByronVersion.from(major, minor, alt).fold(e => fail(e.toString), identity)
 
