@@ -443,6 +443,98 @@ class SessionDeadlineTest(unittest.TestCase):
         self.assertEqual([f["query"] for f in failures], ["GetUTxOWhole/GetGovState"] * 2)
 
 
+class LoadThreadEndingTest(unittest.TestCase):
+    """A load thread that ends before the run asks it to stop is recorded and reported, never silent (#591)."""
+    CONWAY = {"era": "Conway", "epoch": 10, "slot": 4928, "slotInEpoch": 428}
+
+    def loader(self):
+        logs = []
+        loader = eraload.EraLoad("n", lambda: None, log=logs.append)
+        loader.ready.set()
+        return loader, logs
+
+    def run_worker(self, loader, compare):
+        import threading
+        with patch.object(loader, "epoch_info", return_value=dict(self.CONWAY)), \
+                patch.object(loader, "epoch_batch"), patch.object(eraload.time, "sleep"):
+            worker = threading.Thread(target=loader.run, args=(compare, None), daemon=True)
+            worker.start()
+            worker.join(10)
+        self.assertFalse(worker.is_alive())
+
+    def test_a_system_exit_in_the_worker_is_recorded_not_silent(self):
+        # threading ignores SystemExit: unguarded, the worker ended with no trace and compared no more
+        loader, logs = self.loader()
+
+        def compare(era, label):
+            raise SystemExit("docker exec scarab-ref /bin/sh failed: socket gone")
+        self.run_worker(loader, compare)
+        self.assertIn("SystemExit", loader.ended["worker"]["error"])
+        self.assertEqual(loader.ended["worker"]["tip"]["slot"], 4928)
+        self.assertEqual([m["loadThreadEnded"] for m in logs if "loadThreadEnded" in m], ["worker"])
+
+    def test_a_worker_asked_to_stop_is_not_an_ending(self):
+        loader, _ = self.loader()
+
+        def compare(era, label):
+            loader.stop.set()
+        self.run_worker(loader, compare)
+        self.assertEqual(loader.ended, {})
+
+    def test_a_body_that_returns_before_stop_is_an_ending(self):
+        loader, _ = self.loader()
+        loader.guarded("governance", lambda: None)
+        self.assertEqual(loader.ended["governance"]["error"], "returned before the run asked it to stop")
+
+    def test_a_timed_action_waits_out_a_failed_reading_inside_its_window(self):
+        # a reading that fails once must not mark the action done: it runs on the next pass, still in its window
+        loader, logs = self.loader()
+        allegra = {"era": "Allegra", "epoch": 3, "slot": 1650, "slotInEpoch": 150}
+        calls = []
+
+        def epoch_info():
+            calls.append(len(calls))
+            if len(calls) == 2:  # the timed action's reading in the first pass
+                raise subprocess.TimeoutExpired("docker", 60)
+            if len(calls) > 50:  # bounds the run when the action was dropped
+                loader.stop.set()
+            return dict(allegra)
+        ran = []
+
+        def dereg_after_start(era):
+            ran.append(era)
+            loader.stop.set()
+        with patch.object(loader, "epoch_info", side_effect=epoch_info), \
+                patch.object(loader, "epoch_batch"), patch.object(loader, "dereg_after_start", side_effect=dereg_after_start), \
+                patch.object(eraload.time, "sleep"):
+            loader.run(lambda era, label: None, None)
+        self.assertEqual(ran, ["allegra"])
+        self.assertEqual([m for m in logs if "skipped" in m], [])
+        self.assertEqual(loader.ended, {})
+
+    def test_a_failed_tip_reading_within_an_epoch_does_not_end_the_worker(self):
+        loader, _ = self.loader()
+        with patch.object(loader, "epoch_info", side_effect=subprocess.TimeoutExpired("docker", 60)):
+            self.assertEqual(loader.reading(), {})
+        with patch.object(loader, "epoch_info", side_effect=json.JSONDecodeError("empty", "", 0)):
+            self.assertEqual(loader.reading(), {})
+
+    def test_a_system_exit_in_a_comparison_is_recorded_as_its_error(self):
+        recorded = []
+        comparisons = types.SimpleNamespace(record=lambda era, label, result: recorded.append((era, label, result)))
+        with patch.object(compare, "compare_once_detailed", side_effect=SystemExit("docker exec failed")):
+            compare.compare_era("n", "conway", "mid", comparisons)
+        self.assertEqual([(e, lbl) for e, lbl, _ in recorded], [("conway", "mid")])
+        self.assertIn("SystemExit", recorded[0][2]["error"])
+
+    def test_the_run_names_the_ended_thread_first(self):
+        from devnet.scenarios import e2e
+        why = {"error": "SystemExit('docker exec failed')", "tip": dict(self.CONWAY)}
+        self.assertEqual(e2e.ended_failure("worker", why),
+                         "the worker load thread ended in Conway epoch 10 at slot 4928 before the run asked it to "
+                         "stop: SystemExit('docker exec failed')")
+
+
 class ReferenceImageTest(unittest.TestCase):
     def test_pinned_constants_and_rejection(self):
         import tempfile

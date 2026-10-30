@@ -169,7 +169,15 @@ def query_bundle(name):
     keys = [k for k, _ in BUNDLE]
     try:
         pin.start()
-        tip = json.loads(in_ref(name, f"{CLI} query tip {util.SOCKET}").stdout)
+        # A failed tip read is a failed attempt, as a failed query of the bundle is. `in_ref` would raise
+        # SystemExit, which a load thread's handlers do not catch and which ends that thread silently (#591).
+        read = in_ref(name, f"{CLI} query tip {util.SOCKET}", check=False)
+        if read.returncode != 0:
+            return None, {"query": "tip", "exit": str(read.returncode), "stderr": read.stderr.strip()[-400:]}
+        try:
+            tip = json.loads(read.stdout)
+        except json.JSONDecodeError as e:
+            return None, {"query": "tip", "unparsable": type(e).__name__}
         pin.point = [tip["slot"], bytes.fromhex(tip["hash"])]
         q = "/work/q"
         lines = [f"mkdir -p {q}", pin.ready_script()]
@@ -180,7 +188,11 @@ def query_bundle(name):
                          f"echo $? > {q}/{key}.rc; echo $(( ($(date +%s%N) - s) / 1000000 )) > {q}/{key}.ms) &")
         lines.append("wait")
         lines.append(f"for f in {' '.join(keys)}; do for s in '' .err .rc .ms; do echo \"@@$f$s\"; cat {q}/$f$s; done; done")
-        out = in_ref(name, "\n".join(lines), timeout=180).stdout
+        run = in_ref(name, "\n".join(lines), timeout=180, check=False)
+        if run.returncode != 0:
+            return None, {"query": "bundle", "exit": str(run.returncode), "stderr": run.stderr.strip()[-400:],
+                          "slot": tip["slot"]}
+        out = run.stdout
         acquires = pin.acquires()
         foreign = pin.foreign()
     finally:
@@ -412,7 +424,9 @@ def compare_era(name, era, label, comparisons):
                                 "queryFailureCount": len(failures)}
         else:
             result = compare_pre_conway(name, era)
-    except Exception as e:  # a comparison problem must not stop the cluster walk
+    except (Exception, SystemExit) as e:  # a comparison problem must not stop the cluster walk
+        # SystemExit too: the devnet helpers raise it for a failed command, and in a load thread it would end the
+        # thread without a trace (threading ignores SystemExit), so the walk would stop comparing unseen (#591)
         import traceback
         result = {"error": repr(e), "traceback": traceback.format_exc()[-1500:]}
     comparisons.record(era, label, result)

@@ -34,6 +34,13 @@ def blocked_stacks(threads):
 LOAD_JOIN_SECONDS = 90  # how long the load threads get to end once they were asked to stop
 
 
+def ended_failure(name, why):
+    """The failure for a load thread that ended before the run asked it to stop (`EraLoad.ended`)."""
+    tip = why.get("tip") or {}
+    at = f" in {tip.get('era')} epoch {tip.get('epoch')} at slot {tip.get('slot')}" if tip else ""
+    return f"the {name} load thread ended{at} before the run asked it to stop: {why['error']}"
+
+
 def join_stopped(threads, timeout=LOAD_JOIN_SECONDS):
     """Wait up to `timeout` seconds in all for the load threads (name -> thread or None) to end; the names of the ones
     still running. The run summarises and removes the containers only after this, so no thread submits to a node
@@ -274,9 +281,13 @@ def e2e(args):
         exit_code = follower.poll()
         events, other = read_log(log)
         summary, failures = summarize_e2e(events, other, expected, exit_code)
+        ended = {} if loader is None else dict(loader.ended)
+        # a load thread that ended early is the cause of what the run then misses (comparisons, stages): first
+        failures[:0] = [ended_failure(name, why) for name, why in sorted(ended.items())]
         if late:
             failures.append(f"load threads still running {LOAD_JOIN_SECONDS} s after they were asked to stop: {late}")
         summary["blockedThreads"] = blocked
+        summary["endedThreads"] = ended
         summary["stoppedBecause"] = reason
         summary["cpuStarvationWarnings"] = starvation_warnings(log)
         summary["targetConwayEpoch"] = target
