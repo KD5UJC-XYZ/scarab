@@ -1070,10 +1070,12 @@
       "id": "H2b",
       "section": "H",
       "title": "Mainnet pool",
+      "status": "folded",
       "priority": "P2",
       "issues": [
         120
       ],
+      "folded_into": 38,
       "notes": "Mainnet pool: the cold key stays offline, so rotation prepares the new KES key and an unsigned request, notifies the operator before expiry and installs the certificate once signed (follow-up of H2a)."
     },
     {
@@ -1197,10 +1199,12 @@
       "section": "I",
       "title": "Consider exact Haskell diagnostic wording if a concrete consumer needs it; no v0.2 requirement",
       "detail": ", later",
+      "status": "folded",
       "priority": null,
       "issues": [
         208
       ],
+      "folded_into": 491,
       "notes": "Consider exact Haskell diagnostic wording if a concrete consumer needs it; no v0.2 requirement. Retain the existing typed causes and exact reconstruction payloads."
     },
     {
@@ -1217,10 +1221,12 @@
       "id": "J2",
       "section": "J",
       "title": "CLI parity",
+      "status": "folded",
       "priority": null,
       "issues": [
         46
       ],
+      "folded_into": 222,
       "notes": "CLI parity: flags compatible with `cardano-node run`."
     },
     {
@@ -1444,10 +1450,12 @@
       "id": "K12",
       "section": "K",
       "title": "Finish credential sharing on decode",
+      "status": "folded",
       "priority": "P2",
       "issues": [
         97
       ],
+      "folded_into": 96,
       "notes": "Finish credential sharing on decode: `.interned` per role for the typed credentials, the DRep pulser's proposals, the initial table size (follow-up of #94)."
     },
     {
