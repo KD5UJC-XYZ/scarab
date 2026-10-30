@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.unsafe.IORuntime
+import cats.effect.unsafe.{IORuntime, IORuntimeConfig}
 import java.util.concurrent.ConcurrentLinkedQueue
 import munit.CatsEffectSuite
 import scala.annotation.tailrec
@@ -19,8 +19,17 @@ trait FailsOnUncaught extends CatsEffectSuite:
   // shutting a work-stealing pool down from one of its own threads (munit's afterAll runs there)
   // does not return.
 
+  /** The configuration of the suite's runtime. A suite may make fibers yield more often, so that a
+    * race between a fiber's end and its join is taken often enough to be seen.
+    */
+  protected def runtimeConfig: IORuntimeConfig = IORuntimeConfig()
+
   override implicit lazy val munitIORuntime: IORuntime =
-    IORuntime.builder().setFailureReporter(t => { reported.add(t); () }).build()
+    IORuntime
+      .builder()
+      .setConfig(runtimeConfig)
+      .setFailureReporter(t => { reported.add(t); () })
+      .build()
 
   override def beforeEach(context: BeforeEach): Unit =
     reported.clear()
@@ -30,16 +39,28 @@ trait FailsOnUncaught extends CatsEffectSuite:
   protected def takeUncaught(): List[Throwable] =
     FailsOnUncaught.drain(reported)
 
-  override def afterEach(context: AfterEach): Unit =
-    val uncaught = takeUncaught()
-    super.afterEach(context)
-    if uncaught.nonEmpty then
-      fail(
-        s"the runtime reported ${uncaught.size} uncaught fiber failure(s): " +
-          uncaught
-            .map(t => t.getClass.getName + Option(t.getMessage).fold("")(": " + _))
-            .mkString("; ")
-      )
+  // The check runs as part of the test's body: munit 1.0.2 discards what `afterEach` throws
+  // (`MUnitRunner.runTestBody` keeps the body's result), so a check there never failed a test.
+  override def munitTestTransforms: List[TestTransform] =
+    super.munitTestTransforms :+ new TestTransform(
+      "fails on uncaught fiber failures",
+      test =>
+        test.withBody(() =>
+          test
+            .body()
+            .map { value =>
+              val uncaught = takeUncaught()
+              if uncaught.nonEmpty then
+                fail(
+                  s"the runtime reported ${uncaught.size} uncaught fiber failure(s): " +
+                    uncaught
+                      .map(t => t.getClass.getName + Option(t.getMessage).fold("")(": " + _))
+                      .mkString("; ")
+                )(using test.location)
+              value
+            }(using munitExecutionContext)
+        )
+    )
 
 object FailsOnUncaught:
   private[network] def drain(reported: ConcurrentLinkedQueue[Throwable]): List[Throwable] =
