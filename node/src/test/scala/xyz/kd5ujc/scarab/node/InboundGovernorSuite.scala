@@ -719,11 +719,16 @@ class InboundGovernorSuite extends FailsOnUncaught:
         remoteNode.extend
       )
       tracked <- Ref.of[IO, Vector[Ref[IO, ChainSelection.Candidate]]](Vector.empty)
+      seen <- Ref.of[IO, Vector[(String, InboundEvent)]](Vector.empty)
       nodeTestResult <- local(
         transactions = Some(nothingToOffer),
         readAhead = 2,
         canonical = true,
-        track = candidate => tracked.update(_ :+ candidate)
+        track = candidate => tracked.update(_ :+ candidate),
+        events = Some(
+          new InboundEvents[IO]:
+            def emit(remote: String, event: InboundEvent) = seen.update(_ :+ (remote -> event))
+        )
       ).use { us =>
         val prefix = forged.headers.size / 2
         val advanced = forged.headers(prefix - 1).point
@@ -750,16 +755,29 @@ class InboundGovernorSuite extends FailsOnUncaught:
               applied <- us.applied.get
               sessions <- us.governor.sessions
               candidates <- tracked.get.flatMap(_.traverse(_.get))
-            yield (points, fetched, applied, sessions, candidates)
+              events <- seen.get
+            yield (points, fetched, applied, sessions, candidates, events)
           }
         yield
-          val ((points, fetched, applied, sessions, candidates), _) = result
-          // one session on the lagging connection, still running (its report keeps the first
-          // intersection: issue 602)
+          val ((points, fetched, applied, sessions, candidates, events), _) = result
+          // one session on the lagging connection, still running
           val lagging = sessions.filter(_.remote == remote.toString)
           assertEquals(lagging.size, 1, sessions.toString)
           assertEquals(lagging.head.number, BigInt(1))
           assertEquals(lagging.head.ended, None)
+          // its report and its events follow the re-intersection made inside the session, as
+          // the reference traces every intersection found (issue 602)
+          assertEquals(
+            lagging.head.intersection,
+            Some(xyz.kd5ujc.scarab.ledger.Points.show(advanced))
+          )
+          assertEquals(
+            events.collect {
+              case (from, InboundEvent.Following(point)) if from == remote.toString =>
+                point
+            },
+            Vector(Point.Origin, advanced)
+          )
           // the connection's one tracked candidate followed it there and on to the tip
           assertEquals(candidates.size, 2, "one tracked candidate per session")
           assert(candidates.exists(_.tip == forged.headers.last.point), candidates.toString)
