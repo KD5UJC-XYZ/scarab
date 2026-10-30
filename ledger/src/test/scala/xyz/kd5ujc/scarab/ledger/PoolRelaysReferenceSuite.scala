@@ -2,10 +2,11 @@
 package xyz.kd5ujc.scarab.ledger
 
 import munit.FunSuite
+import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.protocol.Era
 
-import ReferenceCorpus.{Case, Corpus, Refusal, Rule}
+import ReferenceCorpus.{Case, Corpus, Refusal}
 
 /** The reference decodes a pool registration's relays with the transaction body
   * (`decodeStakePoolParamsFlat`, `instance DecCBOR StakePoolRelay`,
@@ -35,10 +36,20 @@ class PoolRelaysReferenceSuite extends FunSuite:
   }
 
   test("a DNS name of 65 bytes is refused below decoder version 9 and taken from it") {
-    val bound =
-      rows.filter(r => r.rule.contains(Rule.TextBound64) || r.rule.contains(Rule.TextBound128))
-    assert(bound.filter(_.era == Era.Conway).forall(_.rule.contains(Rule.TextBound128)))
-    assert(bound.filter(_.era != Era.Conway).forall(_.rule.contains(Rule.TextBound64)))
+    // [[1, null, name]] with a name of 65 bytes
+    val name = "r" * 57 + ".example"
+    val raw = Bytes(
+      Vector(0x81, 0x83, 0x01, 0xf6, 0x78, 65).map(_.toByte) ++ name.getBytes("UTF-8").toVector
+    )
+    val node = CborRead.decode(raw).fold(e => fail(e.toString), identity)
+    assertEquals(
+      PoolRelays.fromBody(node, DecoderVersion.of(Era.Babbage)),
+      Left(PoolRelayError.DnsNameTooLong(0, 65))
+    )
+    assertEquals(
+      PoolRelays.fromBody(node, DecoderVersion.of(Era.Conway)),
+      Right(Vector(PoolRelay.SingleHostName(None, name)))
+    )
   }
 
   for row <- rows do
