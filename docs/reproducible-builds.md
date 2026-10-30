@@ -121,8 +121,8 @@ The assembly uses the plugin's documented defaults unless an explicit rule is ne
   rule. Unexpected differing classes or other resources fail deduplication.
 - License and notice metadata are retained through the standard rename strategy. Scarab's own
   `LICENSE` and `NOTICE` remain under `META-INF/scarab/`; dependency metadata is not an SBOM.
-- The committed portable Linux/amd64 blst resource wins over blst-java's alternate resource at the
-  same path. Other native resources retain their original bytes, among them `libscalus_crypto` of
+- Native resources retain their original bytes: jblst's `libblst` libraries (pinned by hash at
+  start-up and checked against those pins, [ADR 0025](adr/0025-jblst.md)) and `libscalus_crypto` of
   scalus-crypto-jni (pinned by hash at start-up, [ADR 0020](adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md)).
   Packaging does not rebuild them.
 - Dependency manifests, obsolete JAR indexes and invalidated dependency signature files are removed.
@@ -171,7 +171,8 @@ The contract is identical committed source, JDK image/runtime, sbt/compiler/plug
 resolved dependency bytes. The existing pinned dependencies and SHA-256-checked sbt launcher are
 build inputs; dependency versions alone do not authenticate downloaded bytes. The two builds use
 one image and one trusted download cache, so this does not establish independent dependency supply
-chains, cross-JDK or cross-platform reproducibility. The [native source rebuild and byte comparison](../blst-native/native/README.md)
-is a separate check from preserving packaged native bytes. The [candidate pipeline](release-candidates.md)
+chains, cross-JDK or cross-platform reproducibility. No native library is rebuilt from source here:
+`scripts/check_native_identity.py` checks that the packaged BLS12-381 libraries are jblst's pinned
+bytes ([ADR 0025](adr/0025-jblst.md)). The [candidate pipeline](release-candidates.md)
 combines those contracts with SBOM/image inventories. Signed releases, independent dependency
 authentication, provenance attestations and published-image verification remain under #75.

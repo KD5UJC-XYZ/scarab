@@ -34,9 +34,9 @@ Any x86-64 CPU or aarch64 that blst supports: nothing beyond what the architectu
 particular `adx`, `bmi2` and `avx` are not needed; an older 2-core x86-64 CPU runs the node. Two
 native libraries carry BLS12-381, and both pick the ADX/BMI2 multiplication at run time:
 
-- The Leios BLS keys (`MinSig`) use blst v0.3.15 built with `-D__BLST_PORTABLE__` by this
-  repository ([ADR 0012](adr/0012-portable-blst.md)); blst-java's own library executed `mulx`
-  unconditionally and killed the JVM with SIGILL on a CPU without it. At start `follow` checks the
+- The Leios BLS keys (`MinSig`) use blst v0.3.17 from `tech.pegasys:jblst`, whose Linux/amd64
+  library is a portable build ([ADR 0025](adr/0025-jblst.md)); the library of the earlier blst-java
+  executed `mulx` unconditionally and killed the JVM with SIGILL on a CPU without it. At start `follow` checks the
   library and `/proc/cpuinfo` and logs a `blst` event (`platform`, CPU `features`, `library`
   `portable`); a library that is not the portable one on a processor not shown to have ADX and BMI2
   is refused.
@@ -61,8 +61,8 @@ docker run --rm -v "$PWD":/app:ro scarab-jdk:local sh -c 'java -cp "$(cat /app/c
 
 It prints one JSON line: the platform, the CPU features, the library, the Plutus native library
 (`plutusCrypto`), three Plutus V3 scripts with the BLS12-381 builtins (`builtins`), and, with `bench`,
-operations per second (`opsPerSecond`); exit code 0 when all pass. The class path must list the
-`blst-native` module directory before the jars (`node/runtimeClasspathFile` does).
+operations per second (`opsPerSecond`); exit code 0 when all pass. It runs on the node's class path
+(`node/runtimeClasspathFile`).
 
 ## `follow`: the node
 

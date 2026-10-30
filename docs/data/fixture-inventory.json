@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "corpora": [
-    "blst-native/src/test/resources",
+    "crypto/src/test/resources/blst",
     "fixtures/byron-version",
     "fixtures/chain-dep",
     "fixtures/chainsync-timeouts",
@@ -122,7 +122,7 @@
     "storage/src/test/resources/rewards-timing-1.19.0.1"
   ],
   "files": {
-    "blst-native/src/test/resources/blst-exports.txt": "c2af2f275fd9021e5f8e46a775d6b8537ca85e825497710d60757ce0ceb5966e",
+    "crypto/src/test/resources/blst/jblst-exports.txt": "c7dd6e75a720576752993f4520a29a451f914286e3f6e78261632538704bb028",
     "fixtures/byron-version/alt-overflow.hex": "28b5e46f3961cd9207527af463cbb66dc9c8af64e61066630c84f9322d61d453",
     "fixtures/byron-version/full-registration/build-plan.json": "f783ab570526685be0b784ddbdf41512ffa96b8a1960a3622778ca7aeef82bf8",
     "fixtures/byron-version/full-registration/cases.json": "0fa861c68af141101568975b9cd77222a8bb7f515fce833c30bc2f7430e93e1f",

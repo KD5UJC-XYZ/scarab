@@ -6,16 +6,14 @@ Part of [Architecture](../architecture.md).
 ## Modules
 
 The module table names directories; `build.sbt` defines their project and artifact names
-(organisation `xyz.kd5ujc`). Most share their directory name; `blst-native` uses project
-`blstNative` and package `xyz.kd5ujc.scarab.blst`, while `models-gen` uses project `modelsGen`
-and package `xyz.kd5ujc.scarab.models.gen`. The dependency direction is enforced by sbt:
+(organisation `xyz.kd5ujc`). Most share their directory name; `models-gen` uses project
+`modelsGen` and package `xyz.kd5ujc.scarab.models.gen`. The dependency direction is enforced by sbt:
 a cycle does not load.
 
 | Module | Contents | Effect style |
 |---|---|---|
-| `blst-native` | The portable libblst (ADR 0012) at the resource path blst-java loads for the Leios BLS keys (`MinSig`), and `Blst`, the start-up check of the library and the CPU (sbt project `blstNative`) | `F[_]` with `Sync`/`Raise` |
 | `codec` | CBOR with original-bytes preservation (`Cbor`, `Node`, `Value`), `Bytes`, `Rational` | Pure |
-| `crypto` | Blake2b, Ed25519 (strict profile), VRF draft-03 verify and prove, Sum6 KES verify, sign and evolve, BLS12-381 (Leios), operational certificates | Pure |
+| `crypto` | Blake2b, Ed25519 (strict profile), VRF draft-03 verify and prove, Sum6 KES verify, sign and evolve, BLS12-381 (Leios, through jblst, ADR 0025) and `Blst`, the start-up check of its native library and the CPU, operational certificates | Pure; `Blst` in `F[_]` with `Sync`/`Raise` |
 | `protocol` | Ouroboros mini-protocol codecs and state machines: handshake, mux framing, ChainSync, BlockFetch, KeepAlive, TxSubmission2, LocalTxSubmission, LocalStateQuery, LocalTxMonitor, Leios, era and header tags (`Era`, `NtNHeader`), pure network error vocabulary | Pure |
 | `network` | fs2 bearer, multiplexer (duplex), handshake, client and server roles of every mini-protocol over one connection | `F[_]` with `Async`/`Raise` |
 | `plutus` | `ScriptEvaluator[F]` algebra, the Scalus adapter, `NativeCrypto` (the start-up check of the Plutus native library), `PlutusData`, `ExUnits` | `F[_]` at the evaluator, pure otherwise |
@@ -27,8 +25,6 @@ a cycle does not load.
 | `fuzz` | Structured fuzzing of every decoder entry point (test only) | |
 
 ```
-blst-native -> crypto (before blst-java on its class path)
-
 codec <- crypto <- protocol <- network ------------------------.
   ^                  ^                                          \
   |                  '--- ledger <- consensus <- storage <------ node

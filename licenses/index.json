@@ -8,21 +8,6 @@
       },
       "sha256": "0e01f1549c9022f406392ac2947d32223b7c2e977d21ea2f8c182fdeb4dae5fd"
     },
-    "blst-java-0.3.2/LICENSE": {
-      "source": {
-        "git": "https://github.com/icon-project/blst-java",
-        "ref": "v0.3.2",
-        "commit": "a280335051988f2b672644714d35c03f10463af7",
-        "path": "LICENSE"
-      },
-      "sha256": "f1bf50646984757dc1ce037f95c7210ace76e8a42a135b97e44247e6386616bc"
-    },
-    "blst-native/LICENSE-blst": {
-      "source": {
-        "file": "blst-native/LICENSE-blst"
-      },
-      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
-    },
     "borer-1.18.0/LICENSE": {
       "source": {
         "jar": "io.bullet:borer-core_3:1.18.0",
@@ -156,6 +141,12 @@
       },
       "sha256": "6da1ab7189ff26151d1b007947c87d494e7c1e4039b83dbd96a22625fd25a64a"
     },
+    "crypto/LICENSE-blst": {
+      "source": {
+        "file": "crypto/licenses/LICENSE-blst"
+      },
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
     "crypto/LICENSE-curve25519-elisabeth": {
       "source": {
         "file": "crypto/licenses/LICENSE-curve25519-elisabeth"
@@ -263,6 +254,15 @@
         "path": "LICENSE"
       },
       "sha256": "6d6579dfe40d23a56021afeaaf122469c7cb5af099b22340d8274830910bc764"
+    },
+    "jblst-0.3.18/LICENSE": {
+      "source": {
+        "git": "https://github.com/Consensys-Incorporated/jblst",
+        "ref": "0.3.18",
+        "commit": "f69781237306fbb7eb72d596be43453a4ec27791",
+        "path": "LICENSE"
+      },
+      "sha256": "543068930e623b7a226885f3033244b3b0321011a0f2f56f184ff7157435daa1"
     },
     "jsoniter-scala-2.41.2/LICENSE": {
       "source": {
@@ -628,12 +628,6 @@
         "dnsjava-3.6.5/LICENSE"
       ]
     },
-    "foundation.icon:blst-java:0.3.2": {
-      "licence": "Apache-2.0",
-      "texts": [
-        "blst-java-0.3.2/LICENSE"
-      ]
-    },
     "io.bullet:borer-core_3:1.18.0": {
       "licence": "MPL-2.0",
       "texts": [
@@ -772,6 +766,12 @@
       "licence": "Apache-2.0",
       "texts": [
         "scalus-crypto-jni-0.1.0/LICENSE"
+      ]
+    },
+    "org.scalus:scalus_3:1.4.0-scarab-8f34d0a964eaab8f565e40642bc37f35a44c234536e6ab870a3365d47a8196db": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "scalus-1.4.0/LICENSE"
       ]
     },
     "org.scijava:native-lib-loader:2.5.0": {
@@ -940,10 +940,11 @@
         "vault-3.7.0/NOTICE"
       ]
     },
-    "org.scalus:scalus_3:1.4.0-scarab-8f34d0a964eaab8f565e40642bc37f35a44c234536e6ab870a3365d47a8196db": {
-      "licence": "Apache-2.0",
+    "tech.pegasys:jblst:0.3.18": {
+      "licence": "Apache-2.0 AND MIT",
       "texts": [
-        "scalus-1.4.0/LICENSE"
+        "jblst-0.3.18/LICENSE",
+        "crypto/LICENSE-blst"
       ]
     }
   },
@@ -989,28 +990,21 @@
         "scalus-crypto-jni-0.1.0/LICENSE",
         "plutus/LICENSE-libsodium",
         "plutus/LICENSE-libsecp256k1",
-        "blst-native/LICENSE-blst"
+        "crypto/LICENSE-blst"
       ]
     },
     {
       "paths": [
         "supranational/blst/Linux/aarch64/libblst.so",
+        "supranational/blst/Linux/amd64/libblst.so",
         "supranational/blst/Mac/aarch64/libblst.dylib",
-        "supranational/blst/Mac/x86_64/libblst.dylib"
+        "supranational/blst/Mac/x86_64/libblst.dylib",
+        "supranational/blst/Windows/amd64/blst.dll"
       ],
-      "contents": "blst-java 0.3.2 natives, built from supranational/blst v0.3.10 (its build.yml); blst LICENSE is the same blob at v0.3.10 and v0.3.15",
+      "contents": "jblst 0.3.18 natives: supranational/blst v0.3.17 (54e6e5567), portable on Linux/amd64, pinned in Blst.pinned (ADR 0025)",
       "texts": [
-        "blst-java-0.3.2/LICENSE",
-        "blst-native/LICENSE-blst"
-      ]
-    },
-    {
-      "paths": [
-        "supranational/blst/Linux/amd64/libblst.so"
-      ],
-      "contents": "blst-native: supranational/blst v0.3.15 built by docker/blst.Dockerfile (ADR 0012)",
-      "texts": [
-        "blst-native/LICENSE-blst"
+        "jblst-0.3.18/LICENSE",
+        "crypto/LICENSE-blst"
       ]
     }
   ]

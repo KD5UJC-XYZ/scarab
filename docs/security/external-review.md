@@ -15,7 +15,7 @@ or ledger divergence, corrupted recovery state, or attacker-driven loss of servi
 that can be reproduced and fixed, and state the assurance limits in language an operator can use.
 Scarab remains research software under [SECURITY.md](../../SECURITY.md).
 
-Cover the runtime modules `blst-native`, `codec`, `crypto`, `protocol`, `network`, `plutus`, `ledger`,
+Cover the runtime modules `codec`, `crypto`, `protocol`, `network`, `plutus`, `ledger`,
 `consensus`, `legacy`, `storage` and `node`, including their dependency boundaries and import/rotation
 scripts. Inspect generated `models` runtime use and `models-gen` where it affects accepted bytes or
 build integrity; use `fuzz` and existing test/oracle tools as review inputs, not substitutes for review.
