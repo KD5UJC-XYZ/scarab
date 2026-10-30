@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.{Deferred, IO}
+import cats.effect.{Deferred, IO, Ref}
 import cats.syntax.all.*
 import fs2.Chunk
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -465,23 +465,54 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
             def close = IO.unit
           typed {
             Mux.resource(bearer, Set(2)).use { mux =>
-              // Let send finish queue admission before the writer reports the injected failure.
-              (if writing then mux.channel(2).flatMap(_.send(Bytes(Vector(0.toByte))))
-               else IO.unit) *>
-                failWrite.complete(()).void *> mux.closed
+              for
+                channel <- mux.channel(2)
+                // Let send finish queue admission before the writer reports the injected failure.
+                _ <- channel.send(Bytes(Vector(0.toByte))).whenA(writing)
+                _ <- failWrite.complete(())
+                reason <- mux.closed
+                // once the connection is closed, a caller's send fails with the same reason (#264)
+                after <- typed(channel.send(Bytes(Vector(1.toByte))))
+              yield (reason, after)
             }
           }
         }
         .map {
-          // the reader's exception is the connection's (issue 463); the writer's stays a defect
-          case Right(NetworkError.BearerDefect(found)) if unexpected && !writing =>
-            assert(found eq cause)
-          case Right(NetworkError.Defect(found)) if unexpected && writing => assert(found eq cause)
-          case Right(NetworkError.BearerClosed(NetworkError.Closure.Transport(_, found)))
-              if !unexpected =>
-            assert(found eq cause)
+          case Right((reason, after)) =>
+            assertEquals(after, Left(reason))
+            reason match
+              // the reader's exception is the connection's (issue 463); the writer's stays a defect
+              case NetworkError.BearerDefect(found) if unexpected && !writing =>
+                assert(found eq cause)
+              case NetworkError.Defect(found) if unexpected && writing => assert(found eq cause)
+              case NetworkError.BearerClosed(NetworkError.Closure.Transport(_, found))
+                  if !unexpected =>
+                assert(found eq cause)
+              case other => fail(s"unexpected $other")
           case other => fail(s"unexpected $other")
         }
+    }
+
+  test("a payload queued as the connection closes is delivered before the closure (#389)"):
+    val last = Bytes(Vector(0x81.toByte, 0x02.toByte))
+    val ended = NetworkError.BearerClosed(NetworkError.Closure.PeerClosed)
+    (
+      Ref.of[IO, Vector[Bytes]](Vector.empty),
+      Ref.of[IO, Option[NetworkError]](None),
+      Ref.of[IO, Int](0)
+    ).tupled.flatMap { (queue, closure, looks) =>
+      // The reader runs between the channel's first look at its queue and its look at the
+      // closure: it queues the last SDU of a clean shutdown, then records the end of the bearer.
+      val reader = queue.update(_ :+ last) *> closure.set(Some(ended))
+      val tryTake = looks.getAndUpdate(_ + 1).flatMap { look =>
+        queue.modify(q => (q.drop(1), q.headOption)) <* reader.whenA(look == 0)
+      }
+      for
+        first <- Mux.queuedOrClosed(tryTake, closure.get)
+        second <- Mux.queuedOrClosed(tryTake, closure.get)
+      yield
+        assertEquals(first, Some(Right(last)))
+        assertEquals(second, Some(Left(ended)))
     }
 
   for

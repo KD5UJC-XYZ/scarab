@@ -707,6 +707,25 @@ object Mux:
         def abort(reason: NetworkError) = done.complete(reason).void
     }
 
+  /** A queued payload, else the connection's closure, else nothing yet. The reader queues every SDU
+    * it has read before it records the closure, so once the closure is seen the queue is looked at
+    * again: a payload queued between the first look and the closure is delivered before the closure
+    * is reported (issue 389, where a clean shutdown's last message was reported as the peer's close
+    * instead).
+    */
+  private[network] def queuedOrClosed[F[_]: cats.Monad](
+      tryTake: F[Option[Bytes]],
+      closure: F[Option[NetworkError]]
+  ): F[Option[Either[NetworkError, Bytes]]] =
+    tryTake.flatMap {
+      case Some(payload) => cats.Monad[F].pure(Some(Right(payload)))
+      case None =>
+        closure.flatMap {
+          case None         => cats.Monad[F].pure(None)
+          case Some(reason) => tryTake.map(again => Some(again.toRight(reason)))
+        }
+    }
+
   private def channel[F[_]: Async](
       id: Int,
       role: Role,
@@ -747,20 +766,17 @@ object Mux:
 
     // Queued SDUs are delivered before a close is reported; the reader closes only after enqueueing.
     private def nextPayload(using Raise[F, NetworkError]): F[Bytes] = permitted *>
-      ingress.tryTake.flatMap {
-        case Some(payload) => F.pure(payload)
+      queuedOrClosed(ingress.tryTake, closed.tryGet).flatMap {
+        case Some(Right(payload)) => F.pure(payload)
+        case Some(Left(reason))   => reason.raise[F, Bytes]
         case None =>
-          closed.tryGet.flatMap {
-            case Some(reason) => reason.raise[F, Bytes]
-            case None =>
-              val waiting = dispatch.configured.flatMap {
-                case true => ingress.take
-                case false =>
-                  F.race(dispatch.installed.get, ingress.take)
-                    .flatMap(_.fold(_ => nextPayload, F.pure))
-              }
-              F.race(closed.get, waiting).flatMap(_.fold(_ => nextPayload, F.pure))
+          val waiting = dispatch.configured.flatMap {
+            case true => ingress.take
+            case false =>
+              F.race(dispatch.installed.get, ingress.take)
+                .flatMap(_.fold(_ => nextPayload, F.pure))
           }
+          F.race(closed.get, waiting).flatMap(_.fold(_ => nextPayload, F.pure))
       }
 
     // An SDU that did not fit beside the buffered bytes while batching: held for the next round,
