@@ -535,6 +535,25 @@ class LoadThreadEndingTest(unittest.TestCase):
                          "stop: SystemExit('docker exec failed')")
 
 
+class ReferenceLogsTest(unittest.TestCase):
+    def test_a_failed_pool_run_keeps_the_end_of_each_haskell_pools_log(self):
+        # the reference container goes with the run; without these, the pools' view of a failure is lost (#609)
+        calls = []
+
+        def run(command, stdout, **kwargs):
+            calls.append(command)
+            stdout.write(f"log of {command[-1]}\n")
+            return subprocess.CompletedProcess(command, 0)
+        with tempfile.TemporaryDirectory() as d, patch.object(pool.subprocess, "run", side_effect=run):
+            root = pathlib.Path(d)
+            pool.keep_reference_logs("n", root, [2, 3])
+            kept = {f.name: f.read_text() for f in root.iterdir()}
+        self.assertEqual(kept, {"reference-node2.log": "log of /work/node2.log\n",
+                                "reference-node3.log": "log of /work/node3.log\n"})
+        self.assertEqual(calls[0], ["docker", "exec", util.ref("n"), "tail", "-c", str(pool.REFERENCE_LOG_BYTES),
+                                    "/work/node2.log"])
+
+
 class ReferenceImageTest(unittest.TestCase):
     def test_pinned_constants_and_rejection(self):
         import tempfile
