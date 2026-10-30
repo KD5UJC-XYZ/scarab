@@ -100,6 +100,20 @@ final class InboundGovernor[F[_]: Async] private (
       Some(PeerMetricsObserver[F, PeerNetwork.Addr](remote, observe))
     }
 
+  /** What a session observes of its peer: every intersection its ChainSync client finds, at the
+    * start or again inside the session (issue 602), is the session's report and a `Following`
+    * event; the rest goes to the peer metrics and the node's observer.
+    */
+  private def observed(remote: SocketAddress[IpAddress]): Peer.Observation => F[Unit] =
+    val rest = metered(remote)
+    observation =>
+      (observation match
+        case Peer.Observation.Intersected(point) =>
+          update(remote)(_.copy(intersection = Some(Points.show(point)))) *>
+            emit(remote, InboundEvent.Following(point))
+        case _ => F.unit
+      ) *> rest.traverse_(_(observation))
+
   /** Sessions of the connections accepted so far (the newest ones, ended or not). */
   def sessions: F[Vector[InboundGovernor.Session]] =
     sessionTable.get.map(_.values.toVector.sortBy(_.remote))
@@ -386,7 +400,7 @@ final class InboundGovernor[F[_]: Async] private (
                 prepare,
                 heightSnapshot,
                 bound.fold(Peer.Chain.Praos(headers.map(_.withInvariant(invariant))))(_.chain),
-                metered(remote),
+                Some(observed(remote)),
                 Some(pool),
                 invalidCachedBlock = Some(rejectedCachedBlock(source, _)),
                 patience = bound.map(_.patience),
@@ -479,12 +493,7 @@ final class InboundGovernor[F[_]: Async] private (
     ) =
       peer.rejected(refusal)
     def intersect(candidates: Vector[ChainSync.Point])(using Raise[F, PeerError]) =
-      peer.intersect(candidates).flatTap { found =>
-        found.traverse_ { point =>
-          update(remote)(_.copy(intersection = Some(Points.show(point)))) *>
-            emit(remote, InboundEvent.Following(point))
-        }
-      }
+      peer.intersect(candidates)
     def next(using Raise[F, PeerError]) = peer.next.flatTap {
       case SyncEvent.RollForward(_, tip) =>
         update(remote)(s => s.copy(headers = s.headers + 1, peerTip = tipBlock(tip)))

@@ -275,7 +275,7 @@ final class EventMetrics[F[_]: Sync] private (
     case Peer.Observation.HeaderReceived => metrics.inc(chainSyncHeaders)
     case Peer.Observation.Fetched(millis) =>
       metrics.observe(blockFetchSeconds, millis / 1000.0)
-    case Peer.Observation.Announced(_) => Sync[F].unit
+    case Peer.Observation.Announced(_) | Peer.Observation.Intersected(_) => Sync[F].unit
     case Peer.Observation.HeadersArrived(_, _) | Peer.Observation.BlocksArrived(_, _) =>
       Sync[F].unit
 

@@ -315,6 +315,14 @@ object Peer:
     /** The tip the peer announced with the last instruction of a batch of ChainSync replies. */
     case Announced(tip: ChainSync.Tip)
 
+    /** Our ChainSync client found an intersection with the peer's chain at `point`: at the
+      * session's start, and again each time it finds a new one (after NoLongerIntersects, or a
+      * restart of chain-sync jumping), as the reference traces `TraceFoundIntersection` on every
+      * intersection found (consensus 82ecba329 ChainSync/Client.hs 1092–1102, 1276–1285 and
+      * 1502–1511; issue 602).
+      */
+    case Intersected(point: ChainSync.Point)
+
     /** The headers of one batch of ChainSync replies reached us together, at `at` on the monotonic
       * clock; `slots` are those of the roll-forwards, in order. The peer metrics
       * (`PeerMetrics.reportHeader`, the reference's `reportHeader` per header) count the peer that
@@ -1617,7 +1625,8 @@ object Peer:
                           capturedHeight(point).flatMap(height =>
                             progress.set(Some(tip -> height.fold(BigInt(0))(_.value)))
                           ) *>
-                          updateJournal(candidate, Some(tip), false, true)
+                          updateJournal(candidate, Some(tip), false, true) *>
+                          observe.traverse_(_(Observation.Intersected(point)))
                   yield ()
                 def restartWith(control: GenesisPeer[F])(using Raise[F, PeerError]): F[Unit] =
                   restart(control.restartCandidates)
@@ -1921,7 +1930,8 @@ object Peer:
                     startAt(point) *>
                     capturedHeight(point).flatMap(height =>
                       progress.set(Some(tip -> height.fold(BigInt(0))(_.value)))
-                    )
+                    ) *>
+                    observe.traverse_(_(Observation.Intersected(point)))
                 }
                 _ <- Deferred[F, Unit].flatMap(drainRequested.set) *> drainCompletion.set(
                   None

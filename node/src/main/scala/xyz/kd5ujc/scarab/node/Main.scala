@@ -1310,7 +1310,7 @@ object Main extends IOApp:
           observeRounds(requested, received, millis)
         case Peer.Observation.Announced(tip) => instruments.watchdog.announced(tip.blockNo.value)
         case Peer.Observation.HeaderReceived | Peer.Observation.HeadersArrived(_, _) |
-            Peer.Observation.BlocksArrived(_, _) =>
+            Peer.Observation.BlocksArrived(_, _) | Peer.Observation.Intersected(_) =>
           IO.unit)
     Headers(nodeChain, headerCheck, observePeer)
 
