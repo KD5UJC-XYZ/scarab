@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.effect.{Deferred, IO, Ref}
+import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import fs2.Chunk
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -520,21 +521,30 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
     val frame = WireMux
       .encode(WireMux.Sdu(0, 2, WireMux.Direction.Responder, last))
       .fold(error => fail(error.message), identity)
-    // The receive waits before the SDU arrives; the reader queues it and records the end of the
-    // bearer at once, so the closure and the payload reach the waiting receive together.
-    (1 to 300).toList.traverse_ { _ =>
-      typed {
-        Bearer.inMemory[IO]().flatMap { (ours, raw) =>
-          Mux.resource(ours, Set(2)).use { mux =>
-            for
-              channel <- mux.channel(2)
-              waiting <- typed(channel.recv(10)(exactly(2))).start
-              _ <- raw.write(Chunk.array(frame.toArray)) *> raw.close
-              received <- waiting.joinWithNever
-            yield received
-          }
-        }
-      }.map(result => assertEquals(result, Right(Right(last))))
+    // Under TestControl the sleep ends only once every fiber is blocked, so the receive is waiting
+    // on its empty queue before the SDU arrives. The reader then queues the SDU and records the end
+    // of the bearer at once. Each seed orders the reader, the closure and the waiting receive
+    // differently, and replays that order on every run.
+    (1 to 200).toList.traverse_ { n =>
+      val seed = java.util.Base64.getEncoder.encodeToString(n.toString.getBytes)
+      TestControl
+        .executeEmbed(
+          typed {
+            Bearer.inMemory[IO]().flatMap { (ours, raw) =>
+              Mux.resource(ours, Set(2)).use { mux =>
+                for
+                  channel <- mux.channel(2)
+                  waiting <- typed(channel.recv(10)(exactly(2))).start
+                  _ <- IO.sleep(1.second)
+                  _ <- raw.write(Chunk.array(frame.toArray)) *> raw.close
+                  received <- waiting.joinWithNever
+                yield received
+              }
+            }
+          },
+          seed = Some(seed)
+        )
+        .map(result => assertEquals(result, Right(Right(last)), s"seed $n"))
     }
 
   for
