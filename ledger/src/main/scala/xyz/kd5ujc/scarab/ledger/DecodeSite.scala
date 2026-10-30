@@ -394,6 +394,7 @@ enum DecodeField(val label: String) extends DecodeSite:
   case SoftwareNumber extends DecodeField("software number")
   case SoftwareVersion extends DecodeField("software version")
   case SSCPayload extends DecodeField("SSC payload")
+  case SSCProof extends DecodeField("SSC proof")
   case SSCTag extends DecodeField("SSC tag")
   case Summand extends DecodeField("summand")
   case SystemTag extends DecodeField("system tag")

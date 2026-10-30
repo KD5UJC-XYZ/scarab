@@ -161,6 +161,46 @@ object ByronTransport:
       )
     yield ()
 
+  /** A header's body proof as the reference reads it at decoder version 1. A boundary header's is
+    * dropped with `dropBytes` (`Block/Header.hs:620-621`): a definite byte string. A main header's
+    * is a `Proof` (`Block/Proof.hs:82-85`): the `TxProof` (`UTxO/TxProof.hs:82-85`: a `Word32`
+    * count, the Merkle root and the witnesses hash), the SSC proof (`dropSscProof`,
+    * `Ssc.hs:169-188`), and the delegation and update payload hashes; each hash is a 32-byte
+    * definite byte string (cardano-ledger f649f975).
+    */
+  private[ledger] def bodyProof(node: Node, boundary: Boolean): Result[Unit] =
+    if boundary then bytes(node)
+    else
+      for
+        fields <- tuple(node, 4, DecodeField.BodyProof)
+        tx <- tuple(fields(0), 3, DecodeField.TxProof)
+        _ <- word(tx(0), 32, DecodeField.TxCount)
+        _ <- fixedBytes(tx(1), 32, DecodeField.TxRoot)
+        _ <- fixedBytes(tx(2), 32, DecodeField.WitnessesHash)
+        _ <- sscProof(fields(1))
+        _ <- fixedBytes(fields(2), 32, DecodeField.DelegationProof)
+        _ <- fixedBytes(fields(3), 32, DecodeField.UpdateProof)
+      yield ()
+
+  /** `dropSscProof`: a `Word8` tag, then two byte strings for tags 0 to 2 and one for tag 3. */
+  private def sscProof(node: Node): Result[Unit] =
+    for
+      fields <- definite(node, DecodeField.SSCProof) *> CborRead.array(node, DecodeField.SSCProof)
+      tag <- fields.headOption
+        .toRight(LedgerDecodeError.Empty(DecodeField.SSCProof))
+        .flatMap(word(_, 8, DecodeField.SSCTag))
+      size <- tag match
+        case t if t >= 0 && t <= 2 => Right(3)
+        case t if t == 3           => Right(2)
+        case t                     => Left(LedgerDecodeError.UnknownTag(DecodeField.SSCProof, t))
+      _ <- Either.cond(
+        fields.size == size,
+        (),
+        LedgerDecodeError.ArrayLength(DecodeField.SSCProof, size, fields.size)
+      )
+      _ <- fields.drop(1).traverse_(bytes)
+    yield ()
+
   private def vote(node: Node): Result[Unit] =
     for
       fields <- tuple(node, 4, DecodeField.UpdateVote)
