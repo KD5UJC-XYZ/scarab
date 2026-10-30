@@ -12,6 +12,11 @@
                                                    breaks the labelling rules of docs/process.md
     python3 scripts/status.py --check --from p.json the check over the output of
                                                    `gh api --paginate --slurp 'repos/{owner}/{repo}/issues?state=open'`
+    python3 scripts/status.py --issue 567          what a session needs before it works on issue 567: its state,
+                                                   labels and milestone, its roadmap id (or those of the issues it
+                                                   cites), the decisions of docs/decisions.md that cite it, the
+                                                   playbooks for its areas, a suggested level, and its own triage
+                                                   problems
 
 A line shows the number, priority, status label, roadmap id, and the title cut to the terminal width. The
 roadmap id comes from `docs/roadmap.md`: the bold id that leads a line whose leading links cite the issue, and
@@ -236,6 +241,86 @@ def run_check(source: Path | None, as_json: bool, now: datetime, run=subprocess.
     return 1 if violations else 0
 
 
+DECISION_ROW = re.compile(r"^\|\s*(\d{4}-\d{2}-\d{2})\s*\|([^|]*)\|([^|]*)\|")
+PLAYBOOK_ROW = re.compile(r"^\|[^|]*\|\s*\[([^\]]+)\]\(([^)]+)\)\s*\|([^|]*)\|")
+CITED = re.compile(r"(?<![\w/])#(\d+)\b|issues/(\d+)")
+CRITICAL_AREAS = frozenset({"ledger", "consensus", "storage", "protocol", "crypto"})
+LEVELS_LINK = "CONTRIBUTING.md#levels"
+
+
+def decisions_citing(number: int, text: str) -> list[str]:
+    """The rows of docs/decisions.md whose issue column cites `number`: date and the decision's first words."""
+    rows = []
+    for line in text.splitlines():
+        row = DECISION_ROW.match(line)
+        if row and number in {int(n) for n in ISSUE_LINK.findall(row.group(2))}:
+            decision = re.sub(r"\s+", " ", row.group(3)).strip()
+            struck = decision.startswith("~~")
+            rows.append(f"{row.group(1)}{' (superseded)' if struck else ''}: {decision.strip('~')[:110]}")
+    return rows
+
+
+def playbooks_for(areas: list[str], text: str) -> list[str]:
+    """The playbooks of docs/playbooks/README.md for these areas, then those for any area."""
+    specific, general = [], []
+    for line in text.splitlines():
+        row = PLAYBOOK_ROW.match(line)
+        if not row:
+            continue
+        wanted = {a.strip() for a in row.group(3).split(",")}
+        entry = f"docs/playbooks/{row.group(2)}"
+        if "any" in wanted:
+            general.append(entry)
+        elif wanted & set(areas):
+            specific.append(entry)
+    return specific + general
+
+
+def suggested_level(areas: list[str]) -> str:
+    """A starting point from the areas; CONTRIBUTING.md decides."""
+    if not areas:
+        return f"unknown (no area label); see {LEVELS_LINK}"
+    if set(areas) <= {"docs"}:
+        return f"0 (documentation); see {LEVELS_LINK}"
+    if set(areas) <= {"docs", "scripts", "build"}:
+        return f"1 (tooling); see {LEVELS_LINK}"
+    if CRITICAL_AREAS & set(areas):
+        return f"3 if it changes rules, chain selection, a persisted format or forging, else 1 or 2; see {LEVELS_LINK}"
+    return f"1 for a refactor or test-only change, 2 for a behaviour change; see {LEVELS_LINK}"
+
+
+def issue_brief(issue: dict, roadmap: dict[int, str], decisions: str, playbooks: str, now: datetime) -> str:
+    """What docs/process.md asks a session to find before it starts on an issue, in one place."""
+    number, labels = int(issue["number"]), label_names(issue)
+    areas = [l.removeprefix("area:") for l in labels if l.startswith("area:")]
+    milestone = (issue.get("milestone") or {}).get("title", "none")
+    lines = [f"#{number} {issue['title'].strip()}",
+             f"  state: {issue['state']}; labels: {', '.join(labels) or 'none'}; milestone: {milestone}"]
+    if "status:in-progress" in labels and issue["state"] == "open":
+        lines.append("  in progress: someone else is on it unless you were asked to take it over")
+    if number in roadmap:
+        lines.append(f"  roadmap: {roadmap[number]}")
+    else:
+        cited = sorted({int(a or b) for a, b in CITED.findall(issue.get("body") or "")} - {number})
+        parents = [f"{roadmap[n]} (#{n})" for n in cited if n in roadmap]
+        lines.append("  roadmap: none" + (f"; the issues it cites: {', '.join(parents)}" if parents else ""))
+    rows = decisions_citing(number, decisions)
+    lines.append("  decisions: none" if not rows else "  decisions (docs/decisions.md):")
+    lines += [f"    {r}" for r in rows]
+    lines.append("  playbooks: " + (", ".join(playbooks_for(areas, playbooks)) or "none"))
+    lines.append(f"  suggested level: {suggested_level(areas)}")
+    problems = check([issue], now) if issue["state"] == "open" else []
+    lines.append("  triage: " + ("clean" if not problems else "; ".join(f"{v.kind.value} [{v.detail}]" for v in problems)))
+    return "\n".join(lines)
+
+
+def fetch_issue(number: int, run=subprocess.run) -> dict:
+    done = run(["gh", "api", f"repos/{{owner}}/{{repo}}/issues/{number}"], capture_output=True, text=True, check=False)
+    if done.returncode != 0:
+        raise GhFailure(done.stderr.strip())
+    return json.loads(done.stdout)
+
+
 def load_issues(source: Path | None, run=subprocess.run) -> list[dict]:
     if source is not None:
         return json.loads(source.read_text(encoding="utf-8"))
@@ -255,7 +340,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--roadmap", type=Path, default=root / "docs/roadmap.md")
     parser.add_argument("--width", type=int, help="line width (default: the terminal's)")
     parser.add_argument("--check", action="store_true", help="the triage check of docs/process.md; exit 1 on violations")
+    parser.add_argument("--issue", type=int, help="what to know before working on this issue")
     args = parser.parse_args(argv)
+    if args.issue is not None:
+        try:
+            issue = json.loads(args.source.read_text(encoding="utf-8")) if args.source else fetch_issue(args.issue)
+        except GhFailure as failure:
+            print(f"gh api failed: {failure}", file=sys.stderr)
+            return 2
+        read = lambda p: (root / p).read_text(encoding="utf-8") if (root / p).is_file() else ""
+        roadmap = roadmap_ids(args.roadmap.read_text(encoding="utf-8")) if args.roadmap.is_file() else {}
+        print(issue_brief(issue, roadmap, read("docs/decisions.md"), read("docs/playbooks/README.md"),
+                          datetime.now(timezone.utc)))
+        return 0
     if args.check:
         return run_check(args.source, args.json, datetime.now(timezone.utc))
     roadmap = roadmap_ids(args.roadmap.read_text(encoding="utf-8")) if args.roadmap.is_file() else {}

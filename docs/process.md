@@ -13,6 +13,7 @@ work can be parked and resumed, and nothing goes stale silently.
 | What is planned, grouped by area? | [roadmap.md](roadmap.md): one line per item, ID and issue link, done items marked | the change that finishes or adds an item |
 | Which body of work does an item belong to? | [Milestones](https://github.com/KD5UJC-XYZ/scarab/milestones), scope buckets ([labels and milestones](#labels-and-milestones)) | triage |
 | Why is it built this way? | [Architecture decision records](adr/README.md) | a new ADR when a decision is made or reversed |
+| What has the owner decided, and what would reopen it? | [decisions.md](decisions.md): one row per decision, linking its record (the ADR or the issue comment) | the change that first relies on the decision |
 | How will a large piece of work be built? | [Design documents](design/README.md): approved plans, with their stages | the plan's owner, as stages land |
 | What is verified, against what? | [compatibility.md](compatibility.md) (generated matrix; register in `data/compatibility.json`, pages and evidence log in `compatibility/`) | the change that adds evidence |
 | What changed? | [CHANGELOG.md](../CHANGELOG.md), and the fragments in [changes/](../changes/README.md) until a release folds them in | every change a user could notice, as a fragment |
