@@ -515,6 +515,28 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
         assertEquals(second, Some(Left(ended)))
     }
 
+  test("a receive already waiting gets the payload the peer sent just before closing (#389)"):
+    val last = Bytes(Vector(0x81.toByte, 0x02.toByte))
+    val frame = WireMux
+      .encode(WireMux.Sdu(0, 2, WireMux.Direction.Responder, last))
+      .fold(error => fail(error.message), identity)
+    // The receive waits before the SDU arrives; the reader queues it and records the end of the
+    // bearer at once, so the closure and the payload reach the waiting receive together.
+    (1 to 300).toList.traverse_ { _ =>
+      typed {
+        Bearer.inMemory[IO]().flatMap { (ours, raw) =>
+          Mux.resource(ours, Set(2)).use { mux =>
+            for
+              channel <- mux.channel(2)
+              waiting <- typed(channel.recv(10)(exactly(2))).start
+              _ <- raw.write(Chunk.array(frame.toArray)) *> raw.close
+              received <- waiting.joinWithNever
+            yield received
+          }
+        }
+      }.map(result => assertEquals(result, Right(Right(last))))
+    }
+
   for
     protocol <- Vector(Protocols.Handshake, 99)
     direction <- Vector(WireMux.Direction.Initiator, WireMux.Direction.Responder)

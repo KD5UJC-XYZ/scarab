@@ -197,7 +197,6 @@ object Mux:
       queued.update(_ - value._2.size) *> consumed.set(value._1) *> read.as(value._2)
 
     def tryTake: F[Option[Bytes]] = queue.tryTake.flatMap(_.traverse(taken))
-    def take: F[Bytes] = queue.take.flatMap(taken)
     def pendingFrames: F[Boolean] = (received.get, consumed.get).mapN(_ > _)
 
     /** Wait until bytes are queued that the channel has not taken. */
@@ -770,14 +769,15 @@ object Mux:
       queuedOrClosed(ingress.tryTake, closed.tryGet).flatMap {
         case Some(Right(payload)) => F.pure(payload)
         case Some(Left(reason))   => reason.raise[F, Bytes]
+        // Nothing yet: wait until bytes are queued, the connection closes or the application is
+        // installed, then look again. The wait takes nothing from the queue, so a closure that wins
+        // the race never cancels a receive that has already dequeued a payload (issue 389).
         case None =>
-          val waiting = dispatch.configured.flatMap {
-            case true => ingress.take
-            case false =>
-              F.race(dispatch.installed.get, ingress.take)
-                .flatMap(_.fold(_ => nextPayload, F.pure))
+          val queued = dispatch.configured.flatMap {
+            case true  => ingress.awaitBytes
+            case false => F.race(dispatch.installed.get, ingress.awaitBytes).void
           }
-          F.race(closed.get, waiting).flatMap(_.fold(_ => nextPayload, F.pure))
+          F.race(closed.get, queued) *> F.cede *> nextPayload
       }
 
     // An SDU that did not fit beside the buffered bytes while batching: held for the next round,
