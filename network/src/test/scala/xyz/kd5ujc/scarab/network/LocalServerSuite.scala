@@ -200,6 +200,71 @@ class LocalServerSuite extends FailsOnUncaught:
     }
   }
 
+  test("a blocking call cancelled by closing its channel leaves no uncaught failure (#644)") {
+    // On one FIFO worker thread the order is fixed: the cancel drops the join of `cancelable` and
+    // runs `closing`, which wakes the call and then yields, as the blocking close of a real channel
+    // moves to another pool and back. The call raises and ends before `cancelable` joins it again,
+    // so an exception it ends with has no observer. The runtime keeps every failure it reports.
+    val program =
+      for
+        started <- Deferred[IO, Unit]
+        closed <- Deferred[IO, Unit]
+        call = IO.uncancelable(_ =>
+          started.complete(()) *> closed.get *>
+            IO.raiseError[Int](java.nio.channels.AsynchronousCloseException())
+        )
+        fiber <- LocalSockets.interruptible(call, closed.complete(()) *> IO.cede).start
+        _ <- started.get
+        _ <- fiber.cancel
+        outcome <- fiber.join
+      yield outcome
+    Resource
+      .make(IO(java.util.concurrent.Executors.newSingleThreadExecutor()))(pool =>
+        IO(pool.shutdown())
+      )
+      .flatMap(pool =>
+        Resource
+          .make(IO(cats.effect.unsafe.IORuntime.createDefaultScheduler()))((_, close) =>
+            IO(close())
+          )
+          .map((scheduler, _) => (pool, scheduler))
+      )
+      .flatMap { (pool, scheduler) =>
+        val reported = java.util.concurrent.ConcurrentLinkedQueue[Throwable]()
+        val worker = new scala.concurrent.ExecutionContext:
+          def execute(task: Runnable): Unit = pool.execute(task)
+          def reportFailure(cause: Throwable): Unit = reported.add(cause): Unit
+        // the runtime's own shutdown unregisters what `IORuntime.apply` registers
+        Resource
+          .make(
+            IO(
+              cats.effect.unsafe.IORuntime(
+                worker,
+                worker,
+                scheduler,
+                () => (),
+                cats.effect.unsafe.IORuntimeConfig()
+              )
+            )
+          )(runtime => IO(runtime.shutdown()))
+          .map(runtime => (runtime, reported))
+      }
+      .use { (runtime, reported) =>
+        IO.fromFuture(IO(program.unsafeToFuture()(using runtime))).map { outcome =>
+          assert(outcome.isCanceled, outcome.toString)
+          assertEquals(reported.toArray.toList, Nil)
+        }
+      }
+  }
+
+  test("a blocking call that is not cancelled raises its failure as before (#644)") {
+    val failure = java.nio.channels.ClosedChannelException()
+    LocalSockets
+      .interruptible(IO.raiseError[Int](failure), IO.unit)
+      .attempt
+      .map(result => assertEquals(result, Left(failure)))
+  }
+
   /** The calls of the server on the sockets, in order. */
   private enum Call:
     case Open, Bind, Listen, Accept
