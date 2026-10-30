@@ -201,23 +201,51 @@ class LocalServerSuite extends FailsOnUncaught:
   }
 
   test("a blocking call cancelled by closing its channel leaves no uncaught failure (#644)") {
-    // The call blocks until its channel is closed and then throws, as a channel's read does when
-    // another thread closes it. `started` makes sure it is blocked before it is cancelled. Closing
-    // takes time, as the blocking `close` of a real channel does (it moves to the blocking pool
-    // and back), and the call ends while it does, before the cancel waits for it. The suite fails
-    // on any failure the runtime reports that nobody joined.
-    (1 to 50).toList.traverse_ { _ =>
+    // On one FIFO worker thread the order is fixed: the cancel drops the join of `cancelable` and
+    // runs `closing`, which wakes the call and then yields, as the blocking close of a real channel
+    // moves to another pool and back. The call raises and ends before `cancelable` joins it again,
+    // so an exception it ends with has no observer. The runtime keeps every failure it reports.
+    val program =
       for
         started <- Deferred[IO, Unit]
         closed <- Deferred[IO, Unit]
-        call = started.complete(()) *> closed.get *>
-          IO.raiseError[Int](java.nio.channels.AsynchronousCloseException())
-        fiber <- LocalSockets.interruptible(call, closed.complete(()) *> IO.sleep(5.millis)).start
+        call = IO.uncancelable(_ =>
+          started.complete(()) *> closed.get *>
+            IO.raiseError[Int](java.nio.channels.AsynchronousCloseException())
+        )
+        fiber <- LocalSockets.interruptible(call, closed.complete(()) *> IO.cede).start
         _ <- started.get
         _ <- fiber.cancel
         outcome <- fiber.join
-      yield assert(outcome.isCanceled, outcome.toString)
-    }
+      yield outcome
+    Resource
+      .make(IO(java.util.concurrent.Executors.newSingleThreadExecutor()))(pool =>
+        IO(pool.shutdown())
+      )
+      .flatMap(pool =>
+        Resource
+          .make(IO(cats.effect.unsafe.IORuntime.createDefaultScheduler()))((_, close) =>
+            IO(close())
+          )
+          .map((scheduler, _) => (pool, scheduler))
+      )
+      .use { (pool, scheduler) =>
+        val reported = java.util.concurrent.ConcurrentLinkedQueue[Throwable]()
+        val worker = new scala.concurrent.ExecutionContext:
+          def execute(task: Runnable): Unit = pool.execute(task)
+          def reportFailure(cause: Throwable): Unit = reported.add(cause): Unit
+        val runtime = cats.effect.unsafe.IORuntime(
+          worker,
+          worker,
+          scheduler,
+          () => (),
+          cats.effect.unsafe.IORuntimeConfig()
+        )
+        IO.fromFuture(IO(program.unsafeToFuture()(using runtime))).map { outcome =>
+          assert(outcome.isCanceled, outcome.toString)
+          assertEquals(reported.toArray.toList, Nil)
+        }
+      }
   }
 
   test("a blocking call that is not cancelled raises its failure as before (#644)") {
