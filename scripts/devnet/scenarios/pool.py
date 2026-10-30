@@ -285,6 +285,7 @@ def pool(args):
     load_at_start = host_load()
     comparisons, samples = [], []
     schedules = {}  # epoch -> the slots the oracle says the Scala pool leads
+    completed = False  # the run reached its verdict; an exception other than SystemExit leaves this False
     try:
         ports, shelley = pool_environment(args)
         (root / "ports.json").write_text(json.dumps(ports))
@@ -546,6 +547,7 @@ def pool(args):
         if limit is not None and summary["scheduling"]["cpuStarvationWarnings"] > limit:
             failures.append(f"{summary['scheduling']['cpuStarvationWarnings']} cats-effect CPU-starvation warnings "
                             f"(allowed {limit}) with the Scala node on {args.scala_cpus} CPUs")
+        completed = True
     except SystemExit as e:
         failures.append(str(e))
     finally:
@@ -570,7 +572,9 @@ def pool(args):
                               "passed" if not failures else "failed")
         if root.exists():
             (root / "pool-summary.json").write_text(json.dumps(summary, indent=2))
-            if failures:
+            # every unsuccessful run, including one that an unexpected exception ends before any failure
+            # is recorded (a reference query timing out); that exception goes on after this block
+            if failures or not completed:
                 try:
                     keep_reference_logs(args.name, root, others)
                 except (OSError, subprocess.SubprocessError) as e:  # evidence only: never hides the run's verdict

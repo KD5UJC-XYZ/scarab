@@ -3,6 +3,8 @@
 
 Run from the repository root:  python3 -m unittest discover -s scripts/tests -v
 """
+import contextlib
+import io
 import json
 import pathlib
 import shutil
@@ -552,6 +554,32 @@ class ReferenceLogsTest(unittest.TestCase):
                                 "reference-node3.log": "log of /work/node3.log\n"})
         self.assertEqual(calls[0], ["docker", "exec", util.ref("n"), "tail", "-c", str(pool.REFERENCE_LOG_BYTES),
                                     "/work/node2.log"])
+
+
+class PoolReferenceLogsOnExceptionTest(unittest.TestCase):
+    def test_an_exception_before_any_failure_keeps_the_logs_before_the_container_goes(self):
+        # a reference query timing out raises TimeoutExpired, which pool() does not catch: with no failure
+        # recorded, the logs must still be kept, before the reference container is removed (#609)
+        events = []
+
+        def docker(*command, **kwargs):
+            events.append(("docker", command[:3]))
+            return subprocess.CompletedProcess(command, 0, "", "")
+        args = types.SimpleNamespace(name="n", pool=1, keep=False)
+        with tempfile.TemporaryDirectory() as d, \
+                patch.object(pool, "data_root", return_value=pathlib.Path(d) / "run"), \
+                patch.object(pool, "start_reference"), patch.object(pool, "host_load", return_value={}), \
+                patch.object(pool, "pool_environment", side_effect=subprocess.TimeoutExpired("docker", 30)), \
+                patch.object(pool, "docker", side_effect=docker), \
+                patch.object(pool, "keep_reference_logs",
+                             side_effect=lambda name, root, nodes: events.append(("logs", tuple(nodes)))), \
+                patch.object(util, "SOCKET", util.SOCKET):
+            with self.assertRaises(subprocess.TimeoutExpired), contextlib.redirect_stdout(io.StringIO()):
+                pool.pool(args)
+            summary = json.loads((pathlib.Path(d) / "run" / "pool-summary.json").read_text())
+        self.assertIn(("logs", (2, 3)), events)
+        self.assertLess(events.index(("logs", (2, 3))), events.index(("docker", ("rm", "-f", util.ref("n")))))
+        self.assertEqual(summary["failures"], [])
 
 
 class ReferenceImageTest(unittest.TestCase):
