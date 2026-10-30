@@ -200,6 +200,34 @@ class LocalServerSuite extends FailsOnUncaught:
     }
   }
 
+  test("a blocking call cancelled by closing its channel leaves no uncaught failure (#644)") {
+    // The call blocks until its channel is closed and then throws, as a channel's read does when
+    // another thread closes it. `started` makes sure it is blocked before it is cancelled. Closing
+    // takes time, as the blocking `close` of a real channel does (it moves to the blocking pool
+    // and back), and the call ends while it does, before the cancel waits for it. The suite fails
+    // on any failure the runtime reports that nobody joined.
+    (1 to 50).toList.traverse_ { _ =>
+      for
+        started <- Deferred[IO, Unit]
+        closed <- Deferred[IO, Unit]
+        call = started.complete(()) *> closed.get *>
+          IO.raiseError[Int](java.nio.channels.AsynchronousCloseException())
+        fiber <- LocalSockets.interruptible(call, closed.complete(()) *> IO.sleep(5.millis)).start
+        _ <- started.get
+        _ <- fiber.cancel
+        outcome <- fiber.join
+      yield assert(outcome.isCanceled, outcome.toString)
+    }
+  }
+
+  test("a blocking call that is not cancelled raises its failure as before (#644)") {
+    val failure = java.nio.channels.ClosedChannelException()
+    LocalSockets
+      .interruptible(IO.raiseError[Int](failure), IO.unit)
+      .attempt
+      .map(result => assertEquals(result, Left(failure)))
+  }
+
   /** The calls of the server on the sockets, in order. */
   private enum Call:
     case Open, Bind, Listen, Accept

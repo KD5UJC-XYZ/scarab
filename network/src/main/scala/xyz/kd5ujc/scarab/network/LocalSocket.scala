@@ -162,6 +162,15 @@ object LocalSockets:
     * is read back from the exception ([[Errno.of]]); and it does not tell a socket's descriptor, so
     * that is read from `/proc` (Linux).
     */
+  /** A blocking call that is cancelled by closing its channel (`closing`), which makes the call
+    * throw `AsynchronousCloseException` in the fiber `cancelable` runs it on. That fiber ends with
+    * the exception as a value (`attempt`), so a cancelled call leaves no failure that nobody joins
+    * (ADR 0017; issue 644). A call that is not cancelled raises as before (`rethrow`).
+    */
+  private[network] def interruptible[F[_], A](call: F[A], closing: F[Unit])(using
+      F: Async[F]
+  ): F[A] = call.attempt.cancelable(closing).rethrow
+
   def jdk[F[_]](using F: Async[F]): LocalSockets[F] = new LocalSockets[F]:
     def removeFile(path: String): F[Either[SystemCallError, Unit]] =
       F.blocking(Unlink(path)).map(_.leftMap(SystemCallError(SystemCall.RemoveLink, _, Some(path))))
@@ -246,18 +255,20 @@ object LocalSockets:
     private def stream(client: SocketChannel, writes: Mutex[F]): Bearer[F] = new Bearer[F]:
       private val closing = F.blocking(client.close())
 
+      private def interruptible[A](call: F[A]): F[A] = LocalSockets.interruptible(call, closing)
+
       private val chunk: F[Option[Chunk[Byte]]] =
-        F.blocking {
+        interruptible(F.blocking {
           val buffer = ByteBuffer.allocate(ReadSize)
           val read = client.read(buffer)
           Option.when(read >= 0)(Chunk.array(buffer.array, 0, read))
-        }.cancelable(closing)
+        })
 
       def reads: Stream[F, Byte] = Stream.repeatEval(chunk).unNoneTerminate.unchunks
 
       def write(bytes: Chunk[Byte]): F[Unit] =
         def rest(buffer: ByteBuffer): F[Unit] =
-          F.blocking(client.write(buffer)).cancelable(closing) *>
+          interruptible(F.blocking(client.write(buffer))) *>
             F.delay(buffer.hasRemaining).ifM(rest(buffer), F.unit)
         writes.lock.surround(F.delay(bytes.toByteBuffer).flatMap(rest))
 
