@@ -284,8 +284,9 @@ object Header:
     * `libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Version.hs:162-163`, cardano-ledger
     * f649f975), where `decodeBytes` takes a definite string only (`Decoder.hs:350-373`): the
     * previous hash, the leader's key and the delegation certificate and signature
-    * (`Block/Header.hs:351-374`), and the body proof ([[byron.ByronTransport.bodyProof]]), whose
-    * original bytes are kept.
+    * (`Block/Header.hs:351-374`), a verification key also with its length in the shortest form
+    * ([[verificationKey]]), and the body proof ([[byron.ByronTransport.bodyProof]]), whose original
+    * bytes are kept.
     */
   def byronFromRaw(
       raw: Bytes,
@@ -314,7 +315,7 @@ object Header:
             slotId <- array(consensus(0), 2)
             epoch <- uint(slotId(0))
             inEpoch <- uint(slotId(1))
-            leader <- bytes(consensus(1), 64, ByteStrings.Definite)
+            leader <- verificationKey(consensus(1))
             diff <- array(consensus(2), 1)
             no <- uint(diff(0))
             signature <- byronSignature(consensus(3))
@@ -345,6 +346,15 @@ object Header:
       version
     )
 
+  /** A Byron `VerificationKey`: 64 bytes read with `decodeBytesCanonical` (`decCBORXPub`,
+    * `eras/byron/crypto/src/Cardano/Crypto/Signing/VerificationKey.hs:96-97`, cardano-ledger
+    * f649f975), so the length is in its shortest form. A `Signature` reads plain `decodeBytes`
+    * (`Signing/Signature.hs:129-130`).
+    */
+  private def verificationKey(n: Node): Either[ChainError, Bytes] =
+    ByronTransport.canonicalBytes(n, DecodeField.Header).leftMap(fail) *>
+      bytes(n, 64, ByteStrings.Definite)
+
   /** `[2, [[epoch, issuer, delegate, cert], sig]]`: heavyweight delegation, the only kind. */
   private def byronSignature(n: Node): Either[ChainError, ByronSignature] =
     for
@@ -358,8 +368,8 @@ object Header:
       proxy <- array(outer(1), 2)
       psk <- array(proxy(0), 4)
       epoch <- uint(psk(0))
-      issuer <- bytes(psk(1), 64, ByteStrings.Definite)
-      delegate <- bytes(psk(2), 64, ByteStrings.Definite)
+      issuer <- verificationKey(psk(1))
+      delegate <- verificationKey(psk(2))
       cert <- bytes(psk(3), 64, ByteStrings.Definite)
       sig <- bytes(proxy(1), 64, ByteStrings.Definite)
     yield ByronSignature.Delegated(epoch, issuer, delegate, cert, sig)

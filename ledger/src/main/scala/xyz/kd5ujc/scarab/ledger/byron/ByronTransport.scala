@@ -331,7 +331,7 @@ object ByronTransport:
       )
     )
 
-  private[byron] def canonicalBytes(node: Node, context: DecodeSite): Result[Unit] =
+  private[ledger] def canonicalBytes(node: Node, context: DecodeSite): Result[Unit] =
     bytes(node) *> CborRead.bytes(node, context).flatMap { value =>
       val size = value.size
       val expected =

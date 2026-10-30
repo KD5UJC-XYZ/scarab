@@ -71,10 +71,56 @@ class ByronHeaderBytesSuite extends FunSuite:
     val psk = items(proxy(0))
     // the leader's key is the certificate's issuer: its first copy is the leader, its second psk(1)
     assertEquals(consensus(1).original, psk(1).original)
-    refused(chunked(main, consensus(1), occurrence = Some(0)), boundary = false)
-    refused(chunked(main, psk(1), occurrence = Some(1)), boundary = false)
-    for field <- Vector(h(1), psk(2), psk(3), proxy(1)) do
-      refused(chunked(main, field), boundary = false)
+    // a verification key is read with `decodeBytesCanonical`, whose definite test names the bytes
+    def key(raw: Bytes): Unit =
+      assertEquals(
+        verdict(raw, false),
+        Left(Header.fail(LedgerDecodeError.IndefiniteLength(DecodeField.ByronBytes)))
+      )
+    key(chunked(main, consensus(1), occurrence = Some(0)))
+    key(chunked(main, psk(1), occurrence = Some(1)))
+    key(chunked(main, psk(2)))
+    for field <- Vector(h(1), psk(3), proxy(1)) do refused(chunked(main, field), boundary = false)
+  }
+
+  test(
+    "a verification key in a longer length form than its shortest is refused; a signature is not"
+  ) {
+    // `decodeBytesCanonical` for a key (`Signing/VerificationKey.hs:96-97`), `decodeBytes` for a
+    // signature (`Signing/Signature.hs:129-130`): 64 bytes as `59 0040` instead of `58 40`
+    val h = items(node(main))
+    val consensus = items(h(3))
+    val proxy = items(items(consensus(3))(1))
+    val psk = items(proxy(0))
+    def widened(field: Node, occurrence: Int): Bytes =
+      val all = Iterator
+        .iterate(main.value.indexOfSlice(field.original.value))(i =>
+          main.value.indexOfSlice(field.original.value, i + 1)
+        )
+        .takeWhile(_ >= 0)
+        .toVector
+      val at = all(occurrence)
+      val payload = field.original.value.drop(2)
+      assertEquals(field.original.value.take(2), Vector(0x58, 0x40).map(_.toByte))
+      Bytes(
+        main.value.take(at) ++ (Vector(0x59, 0x00, 0x40).map(_.toByte) ++ payload) ++
+          main.value.drop(at + field.original.size)
+      )
+    val canonical = Left(
+      Header.fail(
+        LedgerDecodeError.Expected(
+          DecodeField.Header / xyz.kd5ujc.scarab.ledger.DecodeSite.Qualifier.Canonical,
+          LedgerDecodeError.Shape.Bytes,
+          consensus(1).value
+        )
+      )
+    )
+    assert(verdict(widened(consensus(1), 0), false).isLeft, "the leader's key")
+    assert(verdict(widened(psk(1), 1), false).isLeft, "the certificate's issuer")
+    assert(verdict(widened(psk(2), 0), false).isLeft, "the delegate")
+    assert(verdict(widened(psk(3), 0), false).isRight, "the certificate is a signature")
+    assert(verdict(widened(proxy(1), 0), false).isRight, "the block signature")
+    assertEquals(verdict(widened(consensus(1), 0), false), canonical)
   }
 
   test("a chunked previous hash or body proof is refused (boundary header)") {
