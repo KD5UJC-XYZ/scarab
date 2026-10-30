@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.rules.{
   CertEnv,
   JudgedSts,
+  Judgment,
   Pool,
   PoolCert,
   PreConway,
@@ -62,7 +63,7 @@ class RemainingPredicateReferenceSuite extends FunSuite:
   }
 
   test(
-    "native POOL reference agrees on all version gates, boundaries, re-registrations and first failures"
+    "native POOL reference agrees on all version gates, boundaries, re-registrations and complete failure lists"
   ) {
     val fixtures = rows("pool.json")
     assertEquals(fixtures.size, 43)
@@ -75,9 +76,10 @@ class RemainingPredicateReferenceSuite extends FunSuite:
           minPoolCost = field[BigInt](row, "minCost"),
           poolDeposit = 0
         )
+      val env = CertEnv(id, pp, 5, None, Map.empty)
       def apply(state: PState, p: PoolParams) = JudgedSts(Pool)(LedgerFailure.Rejected(id, _))(
         TestLedger.globals,
-        CertEnv(id, pp, 5, None, Map.empty),
+        env,
         state,
         PoolCert.RegPool(p)
       )
@@ -86,32 +88,36 @@ class RemainingPredicateReferenceSuite extends FunSuite:
         apply(empty, params(old)).fold(e => fail(s"$name prior registration: $e"), identity)
       )
       val result = field[Json](row, "result")
-      apply(before, params(field[String](row, "params"))) match
-        case Right(state) =>
+      // POOL applied as the root of the judgment, as the native harness applies it (`applySTS`):
+      // every failure it records, in the order the reference reports them
+      Judgment.run(Pool, Judgment.Policy.Accumulate)(
+        TestLedger.globals,
+        env,
+        before,
+        PoolCert.RegPool(params(field[String](row, "params")))
+      ) match
+        case Right(Right(state)) =>
           assert(field[Boolean](result, "accepted"), name)
           assertEquals(state, poolState(field[String](result, "stateCbor")), name)
-        case Left(
-              LedgerFailure.Rejected.Single(
-                _,
-                PredicateFailure.Certs(CertsFailure.Cert(CertFailure.Pool(f)))
-              )
-            ) =>
+        case Right(Left(failures)) =>
           assert(!field[Boolean](result, "accepted"), name)
-          val actual = CborOut.build(w => PredicateFailureCbor.pool(w, f))
-          // applySTS prepends failures, so the last recorded failure is the first
-          // predicate in source order. Scarab deliberately returns that first failure.
-          val expected = field[Vector[String]](result, "failureCbor").lastOption
-            .getOrElse(fail(s"$name native failures"))
-          assertEquals(actual, hex(expected), name)
+          val pool = failures.toChain.toVector.map {
+            case PredicateFailure.Certs(CertsFailure.Cert(CertFailure.Pool(f))) => f
+            case other => fail(s"$name: not a POOL failure: $other")
+          }
+          val actual = pool.map(f => CborOut.build(w => PredicateFailureCbor.pool(w, f)))
+          val expected = field[Vector[String]](result, "failureCbor").map(hex)
+          assertEquals(actual, expected, name)
           // The shared POOL encoding must reach clients in every Shelley-based era.
-          val failure = PredicateFailure.pool(f)
-          for era <- Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway)
+          for
+            (f, bytes) <- pool.zip(actual)
+            era <- Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway)
           do
             val reason = PredicateFailureCbor
-              .applyTxError(era, Vector(failure))
+              .applyTxError(era, Vector(PredicateFailure.pool(f)))
               .getOrElse(fail(s"$name $era encoding"))
-            assert(reason.hex.endsWith(actual.hex), s"$name $era")
-        case other => fail(s"$name unexpected result: $other")
+            assert(reason.hex.endsWith(bytes.hex), s"$name $era")
+        case Left(defect) => fail(s"$name defect: $defect")
     }
   }
 
