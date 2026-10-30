@@ -144,11 +144,12 @@ final case class ShelleyBbodyState[E <: EraTag](
 )
 
 /** BBODY (`Shelley/Rules/Bbody.hs:207`, `bbodyTransition`, and `Alonzo/Rules/Bbody.hs:169`): the
-  * body of a block against what its header says, the execution units of the transactions against
-  * the limit of the block (Alonzo on), LEDGERS, and the block counted for its issuer unless the
-  * slot is one of the overlay schedule (`incrBlocks`, `BlockBody/Internal.hs:295`: a block of the
-  * overlay is made by a genesis delegate, whose count the pool performance does not use). Babbage
-  * has no decentralisation parameter (`ppDG` is zero), so its slots have no overlay.
+  * body of a block against what its header says, LEDGERS, the execution units of the transactions
+  * against the limit of the block (Alonzo on, after LEDGERS: `Alonzo/Rules/Bbody.hs:212`), and the
+  * block counted for its issuer unless the slot is one of the overlay schedule (`incrBlocks`,
+  * `BlockBody/Internal.hs:295`: a block of the overlay is made by a genesis delegate, whose count
+  * the pool performance does not use). Babbage has no decentralisation parameter (`ppDG` is zero),
+  * so its slots have no overlay.
   *
   * The signal is Conway's ([[BbodySignal]]); LEDGERS runs on the ledger part of the state, its
   * failures wrapped as the block's (`BlockFailure.Tx`).
@@ -186,11 +187,6 @@ object ShelleyBbody:
             signal.declared == signal.actual,
             BlockFailure.BodyCommitment
           )
-          _ <- Sts.require[F, BlockFailure](
-            Bbody
-              .exUnitsExceeded(pp, signal.txs)
-              .map(BlockFailure.BlockExUnitsTooBig(_, pp.maxBlockExUnits))
-          )
           globals <- Sts.globals[F]
           _ <- Sts.trans[F, ShelleyLedgerEnv, Counted[
             LedgerState[E]
@@ -198,6 +194,11 @@ object ShelleyBbody:
             ShelleyLedgers.sts[E],
             ShelleyLedgerEnv(env.ctx, env.account),
             signal.txs
+          )
+          _ <- Sts.require[F, BlockFailure](
+            Bbody
+              .exUnitsExceeded(pp, signal.txs)
+              .map(BlockFailure.BlockExUnitsTooBig(_, pp.maxBlockExUnits))
           )
           counted = !isOverlaySlot(globals.firstSlot(env.ctx.epoch), pp.effectiveD, env.ctx.slot)
           _ <- st.modify(s =>

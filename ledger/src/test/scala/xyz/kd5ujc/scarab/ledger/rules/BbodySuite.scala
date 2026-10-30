@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.ledger.{
   LedgerGlobals,
   PlutusStats,
   Redeemer,
+  RefScripts,
   TestLedger,
   Tx,
   TxIn,
@@ -88,14 +89,38 @@ class BbodySuite extends FunSuite:
     assertEquals(run(pp, Vector.empty, state(pp), other), Left(BlockFailure.BodyCommitment))
   }
 
-  test("the execution units of the block are limited, the failure naming the prefix that exceeds") {
+  test("the execution units of the block are limited, the failure naming the units of the block") {
     val half = ExUnits(pp.maxBlockExUnits.mem / 2 + 1, 1)
     val txs = Vector(redeeming(half, "a"), redeeming(half, "b"), redeeming(half, "c"))
-    assertEquals(
-      run(pp, txs, state(pp)),
-      Left(BlockFailure.BlockExUnitsTooBig(half + half, pp.maxBlockExUnits))
-    )
+    // `validateExUnits` names `foldMap totExUnits txs`, not the prefix that first exceeds
+    assertEquals(Bbody.exUnitsExceeded(pp, txs), Some(half + half + half))
     assertEquals(Bbody.exUnitsExceeded(pp, txs.take(1)), None)
+  }
+
+  test("LEDGERS is judged before the execution units of the block, as the reference does") {
+    val half = ExUnits(pp.maxBlockExUnits.mem / 2 + 1, 1)
+    // the transactions spend an input the set does not hold, and together exceed the units
+    val txs = Vector(redeeming(half, "a"), redeeming(half, "b"))
+    run(pp, txs, state(pp)) match
+      case Left(BlockFailure.Tx(_)) => ()
+      case other                    => fail(s"expected the transaction's refusal, got $other")
+  }
+
+  test("the reference scripts of the block are checked before the body commitment") {
+    val alice = key()
+    val held = Vector.tabulate(18)(i => TxIn(Bytes.fromArray(Array.fill(32)(i.toByte)), 0))
+    val utxo = Utxo.empty ++ held.map(_ -> withScript(alice.address(), 60000))
+    val naming = tx(
+      body("naming", Vector(txIn(1)), Vector.empty, 0, referenceInputs = held),
+      Vector.empty
+    )
+    assert(
+      Bbody.refScriptsSize(pp, utxo, Vector(naming)) > RefScripts.MaxRefScriptSizePerBlock.toLong
+    )
+    assertEquals(
+      run(pp, Vector(naming), state(pp, utxo), BodyCommitment(101, commitment.hash)),
+      Left(BlockFailure.RefScriptsTooLarge(RefScripts.MaxRefScriptSizePerBlock.toLong))
+    )
   }
 
   test("BBODY agrees with the reference stack on signed transactions and failures") {
