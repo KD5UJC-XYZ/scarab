@@ -68,21 +68,29 @@ class PeerReintersectSuite extends FailsOnUncaught:
           def submitObserved(hook: ChainSyncClient.ReceiverHook[IO])(using
               Raise[IO, NetworkError]
           ) = inFlight.update(_ + 1)
-          def tryCollect(onAwait: IO[Unit])(using Raise[IO, NetworkError]) =
+          def tryCollect(onAwait: Raise[IO, NetworkError] ?=> IO[Unit])(using
+              Raise[IO, NetworkError]
+          ) =
             (inFlight.get, pending.get).tupled.flatMap {
               case (n, next +: rest) if n > 0 =>
                 pending.set(rest) *> inFlight.update(_ - 1).as(Some(next))
               case _ => IO.pure(None)
             }
-          def collect(onAwait: IO[Unit])(using Raise[IO, NetworkError]) =
+          def collect(onAwait: Raise[IO, NetworkError] ?=> IO[Unit])(using
+              Raise[IO, NetworkError]
+          ) =
             tryCollect(onAwait).flatMap(
               _.fold(IO.never[ChainSyncClient.Update[NtNHeader]])(IO.pure)
             )
-          def serviceAwait(onAwait: IO[Unit])(using Raise[IO, NetworkError]) = IO.unit
+          def serviceAwait(onAwait: Raise[IO, NetworkError] ?=> IO[Unit])(using
+              Raise[IO, NetworkError]
+          ) = IO.unit
           def outstanding = inFlight.get
           // The outstanding requests are answered at once and their replies discarded.
-          def drain(onAwait: IO[Unit])(onUpdate: ChainSyncClient.Update[NtNHeader] => IO[Unit])(
-              using Raise[IO, NetworkError]
+          def drain(
+              onAwait: Raise[IO, NetworkError] ?=> IO[Unit]
+          )(onUpdate: ChainSyncClient.Update[NtNHeader] => IO[Unit])(using
+              Raise[IO, NetworkError]
           ) = inFlight.set(0) *> pending.set(Vector.empty)
           def requestNext(using Raise[IO, NetworkError]) = IO(fail("legacy request"))
           def requestNextBatch(n: Int)(using Raise[IO, NetworkError]) = IO(fail("legacy batch"))

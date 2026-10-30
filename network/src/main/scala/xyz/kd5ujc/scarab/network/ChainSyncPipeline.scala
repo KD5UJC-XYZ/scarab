@@ -151,8 +151,25 @@ private[network] object ChainSyncPipeline:
           )
           .as {
             new ChainSyncRuntime.Pipeline[F, Q, T, P]:
-              private def guarded[A](operation: F[A]): F[A] =
-                operation.onCancel(terminate(cancelled)).onError { case _ => terminate(cancelled) }
+              /** `operation`, whose end is published as the protocol's: a cancellation as the
+                * cancellation marker, and an operation's own failure as itself (issue 600), as a
+                * mini-protocol's own exception is its result (ouroboros-network 2fb69829
+                * network-mux/src/Network/Mux.hs 356-366). A typed failure raised through the
+                * caller's capability is published before it reaches the caller, and a callback the
+                * collector runs (`onAwait`) raises through the capability it is given, so its typed
+                * failure is too; an exception is published as a defect and propagates unchanged.
+                * Only the first failure is published ([[terminate]]).
+                */
+              private def guarded[A](operation: Raise[F, NetworkError] ?=> F[A])(using
+                  caller: Raise[F, NetworkError]
+              ): F[A] =
+                val own = new Raise[F, NetworkError]:
+                  def functor: cats.Functor[F] = F
+                  def raise[E2 <: NetworkError, B](error: E2): F[B] =
+                    terminate(error) *> caller.raise[NetworkError, B](error)
+                operation(using own)
+                  .onCancel(terminate(cancelled))
+                  .onError { case thrown => terminate(NetworkError.Defect(thrown)) }
 
               def outstanding: F[Int] = count.get
               def idle: F[Boolean] =
@@ -213,7 +230,9 @@ private[network] object ChainSyncPipeline:
                     }
                 }
 
-              def serviceAwait(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Unit] = guarded {
+              def serviceAwait(onAwait: Raise[F, NetworkError] ?=> F[Unit])(using
+                  Raise[F, NetworkError]
+              ): F[Unit] = guarded {
                 F.tailRecM(()) { _ =>
                   peek.flatMap {
                     case Some(Await(ack)) =>
@@ -227,7 +246,9 @@ private[network] object ChainSyncPipeline:
               private def completed(update: Update): F[Update] =
                 count.update(_ - 1) *> awaiting.set(false).as(update)
 
-              def tryCollect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Option[Update]] =
+              def tryCollect(onAwait: Raise[F, NetworkError] ?=> F[Unit])(using
+                  Raise[F, NetworkError]
+              ): F[Option[Update]] =
                 guarded {
                   serviceAwait(onAwait) *> peek.flatMap {
                     case Some(Reply(update)) => head.set(None) *> completed(update).map(Some(_))
@@ -239,7 +260,9 @@ private[network] object ChainSyncPipeline:
                   }
                 }
 
-              def collect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Update] = guarded {
+              def collect(onAwait: Raise[F, NetworkError] ?=> F[Unit])(using
+                  Raise[F, NetworkError]
+              ): F[Update] = guarded {
                 count.get.flatMap { n =>
                   if n <= 0 then illegal(NetworkError.RuntimeViolation.ReplyNotExpected(State.Idle))
                   else
@@ -253,8 +276,8 @@ private[network] object ChainSyncPipeline:
                 }
               }
 
-              def drain(onAwait: F[Unit])(onUpdate: Update => F[Unit])(using
-                  Raise[F, NetworkError]
+              def drain(onAwait: Raise[F, NetworkError] ?=> F[Unit])(onUpdate: Update => F[Unit])(
+                  using Raise[F, NetworkError]
               ): F[Unit] =
                 F.tailRecM(())(_ =>
                   count.get.flatMap {

@@ -43,11 +43,17 @@ object ChainSyncClient:
   trait Pipeline[F[_], P] extends ChainSyncClient[F, P]:
     def submit(using Raise[F, NetworkError]): F[Unit]
     def submitObserved(hook: ReceiverHook[F])(using Raise[F, NetworkError]): F[Unit]
-    def tryCollect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Option[Update[P]]]
-    def collect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Update[P]]
-    def serviceAwait(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Unit]
+    def tryCollect(onAwait: Raise[F, NetworkError] ?=> F[Unit])(using
+        Raise[F, NetworkError]
+    ): F[Option[Update[P]]]
+    def collect(onAwait: Raise[F, NetworkError] ?=> F[Unit])(using
+        Raise[F, NetworkError]
+    ): F[Update[P]]
+    def serviceAwait(onAwait: Raise[F, NetworkError] ?=> F[Unit])(using
+        Raise[F, NetworkError]
+    ): F[Unit]
     def outstanding: F[Int]
-    def drain(onAwait: F[Unit])(onUpdate: Update[P] => F[Unit])(using
+    def drain(onAwait: Raise[F, NetworkError] ?=> F[Unit])(onUpdate: Update[P] => F[Unit])(using
         Raise[F, NetworkError]
     ): F[Unit]
 
@@ -90,14 +96,20 @@ object ChainSyncClient:
           def outstanding: F[Int] = runtime.outstanding
           def idle: F[Boolean] = runtime.idle
           def idling: F[Boolean] = runtime.idling
-          def serviceAwait(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Unit] =
-            runtime.serviceAwait(onAwait)
-          def tryCollect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Option[Update[P]]] =
-            runtime.tryCollect(onAwait).map(_.map(translated))
-          def collect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Update[P]] =
-            runtime.collect(onAwait).map(translated)
-          def drain(onAwait: F[Unit])(onUpdate: Update[P] => F[Unit])(using
+          def serviceAwait(onAwait: Raise[F, NetworkError] ?=> F[Unit])(using
               Raise[F, NetworkError]
+          ): F[Unit] =
+            runtime.serviceAwait(onAwait)
+          def tryCollect(onAwait: Raise[F, NetworkError] ?=> F[Unit])(using
+              Raise[F, NetworkError]
+          ): F[Option[Update[P]]] =
+            runtime.tryCollect(onAwait).map(_.map(translated))
+          def collect(onAwait: Raise[F, NetworkError] ?=> F[Unit])(using
+              Raise[F, NetworkError]
+          ): F[Update[P]] =
+            runtime.collect(onAwait).map(translated)
+          def drain(onAwait: Raise[F, NetworkError] ?=> F[Unit])(onUpdate: Update[P] => F[Unit])(
+              using Raise[F, NetworkError]
           ): F[Unit] =
             runtime.drain(onAwait)(u => onUpdate(translated(u)))
           def findIntersectResult(points: Vector[Point])(using

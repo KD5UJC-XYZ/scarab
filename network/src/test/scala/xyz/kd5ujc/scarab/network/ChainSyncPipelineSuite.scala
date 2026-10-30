@@ -248,6 +248,71 @@ class ChainSyncPipelineSuite extends FailsOnUncaught:
     }.map(result => assertEquals(result, Right(())))
   }
 
+  test("a collector's callback that throws is published as ChainSync's own failure (issue 600)") {
+    val boom = new RuntimeException("onAwait")
+    typed {
+      script.flatMap { s =>
+        s.input.offer(encoded(State.NextCanAwait, Message.AwaitReply)) *>
+          ChainSyncClient
+            .resource(s.channel, ChainSyncFixtures.rawItem, e => s.aborts.update(_ :+ e), settings)
+            .use { client =>
+              for
+                _ <- client.submit
+                collected <- typed(client.collect(IO.raiseError(boom))).attempt
+                next <- typed(client.submit)
+                aborted <- s.aborts.get
+              yield
+                assertEquals(collected, Left(boom))
+                assertEquals(next, Left(NetworkError.Defect(boom)))
+                assertEquals(aborted, Vector(NetworkError.Defect(boom)))
+            }
+      }
+    }.map(result => assertEquals(result, Right(())))
+  }
+
+  test("a collector's callback that raises is published with its typed cause (issue 600)") {
+    val timedOut = NetworkError.Timeout(Protocols.ChainSync, "onAwait")
+    typed {
+      script.flatMap { s =>
+        s.input.offer(encoded(State.NextCanAwait, Message.AwaitReply)) *>
+          ChainSyncClient
+            .resource(s.channel, ChainSyncFixtures.rawItem, e => s.aborts.update(_ :+ e), settings)
+            .use { client =>
+              for
+                _ <- client.submit
+                collected <- typed(client.collect(timedOut.raise[IO, Unit]))
+                next <- typed(client.submit)
+                aborted <- s.aborts.get
+              yield
+                assertEquals(collected, Left(timedOut))
+                assertEquals(next, Left(timedOut))
+                assertEquals(aborted, Vector(timedOut))
+            }
+      }
+    }.map(result => assertEquals(result, Right(())))
+  }
+
+  test("an operation's typed failure is published as itself, not as a cancellation (issue 600)") {
+    val unexpected = NetworkError.IllegalTransition(
+      Protocols.ChainSync,
+      NetworkError.RuntimeViolation.ReplyNotExpected(State.Idle)
+    )
+    typed {
+      script.flatMap { s =>
+        ChainSyncClient
+          .resource(s.channel, ChainSyncFixtures.rawItem, e => s.aborts.update(_ :+ e), settings)
+          .use { client =>
+            for
+              collected <- typed(client.collect(IO.unit))
+              aborted <- s.aborts.get
+            yield
+              assertEquals(collected, Left(unexpected))
+              assertEquals(aborted, Vector(unexpected))
+          }
+      }
+    }.map(result => assertEquals(result, Right(())))
+  }
+
   test("AwaitReply alone never counts as a complete reply ready to collect") {
     typed {
       script.flatMap { s =>
