@@ -486,6 +486,32 @@ class LoadThreadEndingTest(unittest.TestCase):
         loader.guarded("governance", lambda: None)
         self.assertEqual(loader.ended["governance"]["error"], "returned before the run asked it to stop")
 
+    def test_a_timed_action_waits_out_a_failed_reading_inside_its_window(self):
+        # a reading that fails once must not mark the action done: it runs on the next pass, still in its window
+        loader, logs = self.loader()
+        allegra = {"era": "Allegra", "epoch": 3, "slot": 1650, "slotInEpoch": 150}
+        calls = []
+
+        def epoch_info():
+            calls.append(len(calls))
+            if len(calls) == 2:  # the timed action's reading in the first pass
+                raise subprocess.TimeoutExpired("docker", 60)
+            if len(calls) > 50:  # bounds the run when the action was dropped
+                loader.stop.set()
+            return dict(allegra)
+        ran = []
+
+        def dereg_after_start(era):
+            ran.append(era)
+            loader.stop.set()
+        with patch.object(loader, "epoch_info", side_effect=epoch_info), \
+                patch.object(loader, "epoch_batch"), patch.object(loader, "dereg_after_start", side_effect=dereg_after_start), \
+                patch.object(eraload.time, "sleep"):
+            loader.run(lambda era, label: None, None)
+        self.assertEqual(ran, ["allegra"])
+        self.assertEqual([m for m in logs if "skipped" in m], [])
+        self.assertEqual(loader.ended, {})
+
     def test_a_failed_tip_reading_within_an_epoch_does_not_end_the_worker(self):
         loader, _ = self.loader()
         with patch.object(loader, "epoch_info", side_effect=subprocess.TimeoutExpired("docker", 60)):

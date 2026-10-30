@@ -1284,8 +1284,10 @@ class EraLoad:
                 for first, ordinal, lo, hi, action in self.TIMED:
                     if era == first and epoch - self.era_first[era] == ordinal and (key, "batch") in seen \
                             and (key, action) not in seen and in_epoch >= lo:
-                        seen.add((key, action))
                         now = self.reading()
+                        if not now:
+                            continue  # the tip could not be read: the action stays pending for the next pass
+                        seen.add((key, action))
                         if now.get("epoch") == epoch and now.get("slotInEpoch", 0) <= hi:
                             try:
                                 getattr(self, action)(era)
