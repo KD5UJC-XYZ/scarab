@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import cats.Monad
 import cats.effect.{Async, Clock, Deferred, Ref, Resource}
 import cats.effect.std.{Mutex, Queue}
 import cats.mtl.Raise
@@ -713,15 +714,15 @@ object Mux:
     * is reported (issue 389, where a clean shutdown's last message was reported as the peer's close
     * instead).
     */
-  private[network] def queuedOrClosed[F[_]: cats.Monad](
+  private[network] def queuedOrClosed[F[_]: Monad](
       tryTake: F[Option[Bytes]],
       closure: F[Option[NetworkError]]
   ): F[Option[Either[NetworkError, Bytes]]] =
     tryTake.flatMap {
-      case Some(payload) => cats.Monad[F].pure(Some(Right(payload)))
+      case Some(payload) => Monad[F].pure(Some(Right(payload)))
       case None =>
         closure.flatMap {
-          case None         => cats.Monad[F].pure(None)
+          case None         => Monad[F].pure(None)
           case Some(reason) => tryTake.map(again => Some(again.toRight(reason)))
         }
     }
