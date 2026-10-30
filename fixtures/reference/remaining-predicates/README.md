@@ -12,7 +12,9 @@ complete native PState bytes; refusals retain every native predicate failure and
 The generic Conway POOL instance exercises the shared Shelley rule under each protocol version;
 this does not claim complete early-era transaction admission through a Conway ledger.
 Native `applySTS` prepends failures, so its recorded list is reverse predicate execution order.
-Scarab returns the first failure in source order, as documented by its STS interface.
+`RemainingPredicateReferenceSuite` judges POOL as the root of an accumulating judgment and compares
+the complete list, every failure and its order, byte for byte (#412); the two rejections with
+several failures (`11-metadata-before-cost`, `11-network-before-metadata`) check that order.
 
 `outputs.json` contains 36 original Shelley/Allegra/Mary bodies. Two actual native predicate APIs
 run per body: 72 calls across unknown and derivation-path attributes with 0/64/65-byte payloads,
