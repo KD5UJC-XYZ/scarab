@@ -18,7 +18,7 @@ class VotingProceduresSuite extends FunSuite:
         Cbor.Limits(maxInputBytes = 2500000, maxItems = 1000000)
       )
       .fold(e => fail(e.toString), identity)
-    VotingProcedures.decode(node)
+    VotingProcedures.decode(node, DecoderVersion.of(xyz.kd5ujc.scarab.protocol.Era.Conway))
 
   test("an invalid ballot is a typed value failure, independent of the optional anchor") {
     assertEquals(

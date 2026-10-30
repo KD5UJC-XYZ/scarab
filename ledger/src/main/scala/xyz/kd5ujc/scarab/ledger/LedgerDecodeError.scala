@@ -36,6 +36,9 @@ enum LedgerDecodeError extends DomainError:
 
   /** The relays of a pool registration, read with the body (`PoolRelays.fromBody`). */
   case PoolRelay(cause: PoolRelayError)
+
+  /** Text longer than its field takes, in bytes of UTF-8 (`textSizeN`, `BaseTypes.hs:644-656`). */
+  case TextTooLong(site: DecodeSite, limit: Int, actual: Int)
   case ZeroDenominator(site: DecodeSite)
   case RationalOutOfBounds(site: DecodeSite, numerator: BigInt, denominator: BigInt)
   case UnknownTag(site: DecodeSite, tag: BigInt)

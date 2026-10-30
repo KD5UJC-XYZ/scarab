@@ -78,6 +78,19 @@ private[ledger] object CborRead:
       )
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Text, n.value))
 
+  /** A `Url` or a `DnsName`: definite text ([[text]]) of at most 64 bytes of UTF-8 below decoder
+    * version 9 and 128 from it (`instance DecCBOR Url`, `instance DecCBOR DnsName`:
+    * `ifDecoderVersionAtLeast (natVersion @9) (textDecCBOR 128) (textDecCBOR 64)`, `textSizeN`
+    * measuring `lengthWord8`; `libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs:644-697`,
+    * cardano-ledger f649f975).
+    */
+  def url(n: Node, what: DecodeSite, version: DecoderVersion): Result[String] =
+    text(n, what).flatMap { s =>
+      val limit = if version.atLeast(9) then 128 else 64
+      val size = s.getBytes(java.nio.charset.StandardCharsets.UTF_8).length
+      Either.cond(size <= limit, s, LedgerDecodeError.TextTooLong(what, limit, size))
+    }
+
   def bool(n: Node, what: DecodeSite): Result[Boolean] = n.value match
     case Value.Bool(v) => Right(v)
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Boolean, n.value))

@@ -26,6 +26,7 @@ private[ledger] object ReferenceCorpus:
     case DefiniteText extends Corpus("definite-text", Layout.Lines)
     case EraForms extends Corpus("era-forms", Layout.Lines)
     case PoolRelays extends Corpus("pool-relays", Layout.Lines)
+    case UrlLength extends Corpus("url-length", Layout.Lines)
 
   /** How a corpus is stored: `cases.json` beside `reference.json`, or one `cases.jsonl` with a case
     * and its verdict (`accepted`, `failure`) on each line.
@@ -64,6 +65,7 @@ private[ledger] object ReferenceCorpus:
     case TaggedArity extends Refusal("TaggedArity")
     case Zero extends Refusal("Zero")
     case PoolRelay extends Refusal("PoolRelay")
+    case TextTooLong extends Refusal("TextTooLong")
 
   object Refusal:
     /** The tag of the case of an error, if the corpus names it; a voting-procedure structure error
@@ -92,6 +94,7 @@ private[ledger] object ReferenceCorpus:
       case LedgerDecodeError.TaggedArity(_, _, _)         => Some(TaggedArity)
       case LedgerDecodeError.Zero(_)                      => Some(Zero)
       case LedgerDecodeError.PoolRelay(_)                 => Some(PoolRelay)
+      case LedgerDecodeError.TextTooLong(_, _, _)         => Some(TextTooLong)
       case LedgerDecodeError.Voting(VotingProcedures.DecodeError.InvalidStructure(cause)) =>
         of(cause)
       case LedgerDecodeError.NativeScript(NativeScript.DecodeError.Malformed(cause)) => of(cause)
