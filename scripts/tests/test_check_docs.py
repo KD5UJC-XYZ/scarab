@@ -184,6 +184,47 @@ class PinTest(DocsCase):
             self.collect({"docs/data/reference-pins.json": json.dumps({"pins": [{"name": "x"}]}), "README.md": ""})
 
 
+class FragmentLinkTest(DocsCase):
+    def test_a_fragment_links_only_absolute_urls_and_is_checked_for_nothing_else(self):
+        files = {
+            "docs/a.md": "# A\n",
+            "changes/1-x.md": "### Fixed (x, #1)\n- [rel](../docs/a.md) [root](docs/a.md) [abs](https://github.com/o/r/blob/0123abc/docs/a.md)\n"
+                              "- `Retired.member` and `fixtures/gone/` are history.\n",
+            "changes/README.md": "[ok](../docs/a.md) [gone](../docs/missing.md)\n",
+        }
+        self.assertEqual(sorted(self.kinds(files), key=str), sorted([
+            (Kind.FRAGMENT_LINK, "../docs/a.md"),
+            (Kind.FRAGMENT_LINK, "docs/a.md"),
+            (Kind.BROKEN_LINK, "../docs/missing.md"),
+        ], key=str))
+
+
+class StaleCurrentTest(DocsCase):
+    PINS = {"schemaVersion": 1, "pins": [{"name": "Scalus", "version": "1.4.0", "dependents": ["scripts/ref.py"]}]}
+    FORMAT = 'FormatVersion.V5 -> "SCRBSNP5",\nFormatVersion.V7 -> "SCRBSNP7"\n'
+    FILES = {"docs/data/reference-pins.json": json.dumps(PINS), "scripts/ref.py": "1.4.0",
+             check_docs.PERSISTED_FORMAT_PATH: FORMAT}
+
+    def test_an_older_version_called_current_is_reported(self):
+        doc = ("Scalus 1.3.0 (the latest release) and the current Scalus 1.4.0.\n"
+               "Snapshots are currently `SCRBSNP5`. The current magic is `SCRBSNP7`.\n")
+        self.assertEqual(sorted(self.kinds({"docs/x.md": doc, **self.FILES}), key=str), sorted([
+            (Kind.UNREGISTERED_PIN, "scalus 1.3.0"),
+            (Kind.STALE_CURRENT, "scalus 1.3.0"),
+            (Kind.STALE_CURRENT, "SCRBSNP5"),
+        ], key=str))
+
+    def test_history_that_does_not_call_a_version_current_is_not_reported(self):
+        doc = ("Scalus 1.2.0 costed it wrongly; fixed in a later release that this sentence describes at length.\n"
+               "A V5 file is the same from the sidecar on, under the magic `SCRBSNP5`.\n")
+        kinds = self.kinds({"docs/x.md": doc, **self.FILES})
+        self.assertNotIn(Kind.STALE_CURRENT, [k for k, _ in kinds])
+
+    def test_no_format_register_means_no_magic_check(self):
+        files = {k: v for k, v in self.FILES.items() if k != check_docs.PERSISTED_FORMAT_PATH}
+        self.assertEqual(self.kinds({"docs/x.md": "currently `SCRBSNP5`\n", **files}), [])
+
+
 class RatchetTest(unittest.TestCase):
     A = (Kind.MISSING_PATH, "README.md", "x/y")
     B = (Kind.BROKEN_LINK, "docs/a.md", "gone.md")

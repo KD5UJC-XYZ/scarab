@@ -286,7 +286,7 @@ decisive measurement is a JFR of the follower after a deploy, with the same clas
 `an5` classification of the table above) and `scarab_block_apply_seconds` against its 31 ms mean.
 
 **Not done, and why.**
-- The CEK machine itself is 23% of the samples. Inside Scalus 1.3.0 (the latest release) the machine's environment is an
+- The CEK machine itself is 23% of the samples. Inside Scalus 1.3.0 (the version these samples ran on) the machine's environment is an
   `ArraySeq` extended with `:+` (a copy of the whole environment per binding: `Array.copyOf` was 18% of the evaluator's
   samples) and `CorrectedVm.runtime` was 14% (the `getBuiltinRuntime` call; a per-ordinal memo made no difference on the
   Preview scripts and was dropped). A faster machine means a change upstream; the redeemers of one transaction are independent,
