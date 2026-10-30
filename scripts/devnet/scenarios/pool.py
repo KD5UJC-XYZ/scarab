@@ -69,6 +69,20 @@ def pool_metrics_failures(name, before, fetch):
     return failures
 
 
+# The bytes kept of each Haskell pool's log when a run fails: the end of the run, where a failure shows.
+REFERENCE_LOG_BYTES = 40_000_000
+
+
+def keep_reference_logs(name, root, nodes):
+    """Copy the end of each Haskell pool's log (`/work/node<n>.log` in the reference container) into the run
+    directory as `reference-node<n>.log`, which the E2E workflow collects. The container, and the logs with it,
+    is removed at the end of the run, so a failure that needs the pools' view (#609) is kept for diagnosis."""
+    for n in nodes:
+        with (root / f"reference-node{n}.log").open("w") as out:
+            subprocess.run(["docker", "exec", ref(name), "tail", "-c", str(REFERENCE_LOG_BYTES), f"/work/node{n}.log"],
+                           stdout=out, stderr=subprocess.DEVNULL, text=True, timeout=120, check=False)
+
+
 def pool_topology(name, others, ports):
     """Each remaining Haskell pool peers with the other remaining pools and with the Scala node."""
     for n in others:
@@ -271,6 +285,7 @@ def pool(args):
     load_at_start = host_load()
     comparisons, samples = [], []
     schedules = {}  # epoch -> the slots the oracle says the Scala pool leads
+    completed = False  # the run reached its verdict; an exception other than SystemExit leaves this False
     try:
         ports, shelley = pool_environment(args)
         (root / "ports.json").write_text(json.dumps(ports))
@@ -532,6 +547,7 @@ def pool(args):
         if limit is not None and summary["scheduling"]["cpuStarvationWarnings"] > limit:
             failures.append(f"{summary['scheduling']['cpuStarvationWarnings']} cats-effect CPU-starvation warnings "
                             f"(allowed {limit}) with the Scala node on {args.scala_cpus} CPUs")
+        completed = True
     except SystemExit as e:
         failures.append(str(e))
     finally:
@@ -556,6 +572,13 @@ def pool(args):
                               "passed" if not failures else "failed")
         if root.exists():
             (root / "pool-summary.json").write_text(json.dumps(summary, indent=2))
+            # every unsuccessful run, including one that an unexpected exception ends before any failure
+            # is recorded (a reference query timing out); that exception goes on after this block
+            if failures or not completed:
+                try:
+                    keep_reference_logs(args.name, root, others)
+                except (OSError, subprocess.SubprocessError) as e:  # evidence only: never hides the run's verdict
+                    print(json.dumps({"referenceLogsNotKept": repr(e)}), flush=True)
         print(json.dumps(summary, indent=2))
         if not args.keep:
             docker("rm", "-f", ref(args.name), check=False)
