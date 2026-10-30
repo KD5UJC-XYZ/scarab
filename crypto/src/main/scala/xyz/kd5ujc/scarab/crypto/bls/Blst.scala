@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package xyz.kd5ujc.scarab.blst
+package xyz.kd5ujc.scarab.crypto.bls
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
@@ -7,6 +7,7 @@ import java.security.MessageDigest
 import cats.effect.kernel.Sync
 import cats.mtl.Raise
 import cats.syntax.all.*
+import scala.util.Using
 import scala.util.control.NonFatal
 import supranational.blst.{blstJNI, P1, P2, PT}
 
@@ -51,17 +52,18 @@ object CpuSupport:
 
 /** Which libblst the JVM is going to load. */
 enum LibraryBuild:
-  /** The library of this repository: blst built with `-D__BLST_PORTABLE__`, which chooses the
-    * ADX/BMI2 multiplication at run time.
+  /** The library jblst ships for this platform, pinned by its sha-256 ([[Blst.pinned]]): on
+    * Linux/amd64 a portable build, which chooses the ADX/BMI2 multiplication at run time (ADR 0025;
+    * CI checks it with `scripts/check_native_isa.py`).
     */
   case Portable
 
-  /** Any other library found as the resource blst-java loads (the one inside blst-java, unless a
-    * system property points elsewhere), by the sha-256 of its bytes.
+  /** Any other library found as the resource `blstJNI` loads (a system property pointing
+    * elsewhere, or another jar first on the class path), by the sha-256 of its bytes.
     */
   case Other(sha256: String)
 
-  /** No such resource: blst-java falls back to `System.loadLibrary("blst")`. */
+  /** No such resource: `blstJNI` falls back to `System.loadLibrary("blst")`. */
   case OnLibraryPath
 
 /** Where this JVM runs, as far as the choice of the native library goes. */
@@ -97,19 +99,24 @@ enum BlstProblem:
       val cpu =
         if missing.isEmpty then "the processor's features cannot be read"
         else s"the processor lacks ${missing.map(_.flag).toList.sorted.mkString(", ")}"
-      s"the BLS12-381 library in use is not the portable build ($build) and $cpu; " +
-        "put blst-native before blst-java on the class path (docs/adr/0012-portable-blst.md)"
+      s"the BLS12-381 library in use is not the pinned jblst build ($build) and $cpu; " +
+        "load the library jblst ships (docs/adr/0025-jblst.md)"
     case Unusable(answer, failure) =>
       s"the BLS12-381 library fails its known answer $answer: $failure"
 
-/** The portable libblst of this repository and the check that the JVM is going to use it (ADR
-  * 0012). blst-java (`blstJNI`) looks up `<os>/<arch>/libblst.so` as a resource of its own package,
-  * copies it to a temporary file and loads it; `blst-native` ships the resource of Linux/amd64 and,
-  * being a project before the libraries on the class path, is found first.
+/** The check that the JVM is going to use the libblst jblst ships (ADR 0025). jblst's `blstJNI`
+  * looks up `<os>/<arch>/libblst.so` as a resource of its own package, copies it to a temporary file
+  * and loads it.
   */
 object Blst:
-  /** sha-256 of `supranational/blst/Linux/amd64/libblst.so` in this repository. */
-  val portableSha256: String = "5e5176a1056c0fcf5b253315fefb997466187f79977a0f65e1ee78e74c569e21"
+  /** sha-256 of each library in `tech.pegasys:jblst` 0.3.18 (blst v0.3.17), by resource name. */
+  val pinned: Map[String, String] = Map(
+    "Linux/amd64/libblst.so" -> "6a87d87cc982078dcf40f034f21959839d1fe20d45229d37de9c82c178f2a0ce",
+    "Linux/aarch64/libblst.so" -> "b47e669bcd521a0cc3b5753beab0c9ddb5cc81988d5d555722de3149db75b52b",
+    "Mac/x86_64/libblst.dylib" -> "17aa48bb47a6df714d68ebdfa622341866e3df5d5ba632c3abf526f92f7cbb98",
+    "Mac/aarch64/libblst.dylib" -> "7fd78cc498f3f3998070f50d5645cff71b1af01be94699da393235a5cfebdbe4",
+    "Windows/amd64/blst.dll" -> "3cbd35dbf7859829a38720444098b72cfe9d2d79c1f39c2e43fa26b94e1c99a5"
+  )
 
   /** The name `blstJNI` gives the library resource (`blstJNI.java`, SWIG output of blst
     * `bindings/java`): `<os.name up to the first blank>/<os.arch>/libblst.so`, replaceable through
@@ -133,11 +140,8 @@ object Blst:
     Option(classOf[blstJNI].getResourceAsStream(name)) match
       case None => LibraryBuild.OnLibraryPath
       case Some(in) =>
-        val bytes =
-          try in.readAllBytes()
-          finally in.close()
-        val sha = sha256Hex(bytes)
-        if sha == portableSha256 then LibraryBuild.Portable else LibraryBuild.Other(sha)
+        val sha = sha256Hex(Using.resource(in)(_.readAllBytes()))
+        if pinned.get(name).contains(sha) then LibraryBuild.Portable else LibraryBuild.Other(sha)
   }
 
   /** The processor, from `/proc/cpuinfo` (Linux; elsewhere [[CpuSupport.Unknown]]). */
@@ -148,9 +152,9 @@ object Blst:
     else CpuSupport.Unknown
   }
 
-  /** Whether the JVM may load the library. On Linux/amd64 it may when it is the portable build, or
-    * when the processor is shown to have every feature the upstream build assumes. Other platforms
-    * are not affected: libblst is built there without such an assumption.
+  /** Whether the JVM may load the library. On Linux/amd64 it may when it is the pinned jblst build,
+    * or when the processor is shown to have every feature an unpinned build may assume. Other
+    * platforms are not affected: libblst is built there without such an assumption.
     */
   def admissible(report: BlstReport): Either[BlstProblem, BlstReport] = report match
     case BlstReport(Platform.LinuxAmd64, cpu, build)

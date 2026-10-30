@@ -8,7 +8,7 @@ import io.circe.syntax.*
 import scalus.cardano.ledger.CardanoInfo
 import scalus.uplc.Program
 import supranational.blst.{P1, P2, PT}
-import xyz.kd5ujc.scarab.blst.{Blst, BlstProblem, BlstReport, CpuSupport, LibraryBuild}
+import xyz.kd5ujc.scarab.crypto.bls.{Blst, BlstProblem, BlstReport, CpuSupport, LibraryBuild}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.bls.*
 import xyz.kd5ujc.scarab.plutus.{

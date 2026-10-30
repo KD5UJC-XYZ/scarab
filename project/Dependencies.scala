@@ -24,7 +24,8 @@ object Dependencies {
     // Scalus 1.4.0 is built against 1.86 and would evict an older pin; declared equals resolved.
     val bouncyCastle = "1.86"
     val curve25519 = "0.1.3"
-    val blstJava = "0.3.2"
+    // Consensys jblst: blst v0.3.17 with its portable native libraries (ADR 0025)
+    val jblst = "0.3.18"
     val rocksdb = "10.2.1"
 
     val munit = "1.0.2"
@@ -60,7 +61,8 @@ object Dependencies {
     val bouncyCastle = "org.bouncycastle" % "bcprov-jdk18on" % V.bouncyCastle
     val curve25519 = "com.weavechain" % "curve25519-elisabeth" % V.curve25519
     // BLS12-381 (MinSig voting keys of Leios); Apache-2.0, bundles libblst. Declared directly, not via Scalus.
-    val blstJava = "foundation.icon" % "blst-java" % V.blstJava
+    // Guava is a runtime dependency of the POM that no jblst class uses (issue 651)
+    val jblst = ("tech.pegasys" % "jblst" % V.jblst).exclude("com.google.guava", "guava")
     // The on-disk UTxO set (an embedded LSM tree; native library bundled in the jar).
     val rocksdb = "org.rocksdb" % "rocksdbjni" % V.rocksdb
     // Declared by http4s-core but referenced by no class on the node's runtime classpath (#214);

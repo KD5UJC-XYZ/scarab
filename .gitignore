@@ -39,4 +39,4 @@ Thumbs.db
 project/metals.sbt
 project/project/
 sbt-launch.jar
-/blst-native/out/
+

@@ -119,7 +119,7 @@ object ProofOfPossession:
   * cardano-base's `BLS12381MinSigDSIGN` (`Cardano.Crypto.DSIGN.BLS12381.Internal`) and CIP-164.
   *
   * Pure from the caller's side: every function is a total function of its arguments returning a
-  * [[BlsError]] on failure. blst is called through blst-java; its handles are used as local
+  * [[BlsError]] on failure. blst is called through jblst (ADR 0025); its handles are used as local
   * accumulators only and never shared. The native code is not audited by this repository and is not
   * guaranteed constant-time in this binding; do not sign with real long-lived keys from this code.
   */
@@ -169,7 +169,9 @@ object MinSig:
       message: Bytes,
       dst: String
   ): Either[BlsError, P1_Affine] =
-    guard(new P1().hash_to(message.toArray, dst, null).sign_with(sk.blst).to_affine())
+    // no augmentation: the overload without it, not a null array, which the JNI glue of blst v0.3.17
+    // reads (issue 651)
+    guard(new P1().hash_to(message.toArray, dst).sign_with(sk.blst).to_affine())
 
   def verify(vk: VerificationKey, message: Bytes, sig: Signature): Either[BlsError, Unit] =
     verifyUnder(vk, message, sig.point, signatureDst)
@@ -180,7 +182,7 @@ object MinSig:
       sig: P1_Affine,
       dst: String
   ): Either[BlsError, Unit] =
-    guard(sig.core_verify(vk.point, true, message.toArray, dst, null)).flatMap { r =>
+    guard(sig.core_verify(vk.point, true, message.toArray, dst)).flatMap { r =>
       if r == BLST_ERROR.BLST_SUCCESS then Right(()) else Left(BlsError.SignatureInvalid)
     }
 

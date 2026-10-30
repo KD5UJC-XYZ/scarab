@@ -51,10 +51,9 @@ val testDependencies = Seq(
   Libraries.munitTest
 )
 
-// Modules use `<id>` for the project and directory, with explicit overrides for blst-native and
-// models-gen below. Artifact names start with `scarab-`; sbt enforces an acyclic dependency graph:
+// Modules use `<id>` for the project and directory, with an explicit override for models-gen
+// below. Artifact names start with `scarab-`; sbt enforces an acyclic dependency graph:
 //
-//   blstNative <- crypto
 //   codec <- crypto <- protocol <- network
 //   codec <- plutus
 //   protocol, plutus <- ledger <- consensus <- storage
@@ -74,35 +73,25 @@ def scarab(id: String, dir: String = null): Project =
       libraryDependencies ++= testDependencies
     )
 
-// The portable libblst (ADR 0012) as the resource blst-java loads, and the start-up check that the JVM
-// is going to use it. Every module that reaches blst depends on it so that it comes before blst-java
-// on their class paths.
-lazy val blstNative = scarab("blstNative", "blst-native")
-  .settings(
-    name := "scarab-blst-native",
-    libraryDependencies ++= Seq(
-      Libraries.blstJava,
-      Libraries.cats,
-      Libraries.catsEffect,
-      Libraries.catsMtl
-    )
-  )
-
 // CBOR with original-bytes preservation, the byte-string type and exact rationals.
 lazy val codec = scarab("codec")
   .settings(
     libraryDependencies += Libraries.catsKernel
   )
 
-// Ed25519, VRF, KES, BLS12-381, Blake2b and the operational certificate.
+// Ed25519, VRF, KES, BLS12-381 (jblst, with the start-up check of its native library), Blake2b and
+// the operational certificate.
 lazy val crypto = scarab("crypto")
-  .dependsOn(codec % "compile->compile;test->test", blstNative)
+  .dependsOn(codec % "compile->compile;test->test")
   .settings(
     libraryDependencies ++= Seq(
       Libraries.bouncyCastle,
       Libraries.curve25519,
       Libraries.circeParserTest,
-      Libraries.blstJava
+      Libraries.jblst,
+      Libraries.cats,
+      Libraries.catsEffect,
+      Libraries.catsMtl
     )
   )
 
@@ -287,8 +276,6 @@ lazy val node = scarab("node")
       "Enable-Native-Access" -> "ALL-UNNAMED"
     ),
     assemblyMergeStrategy := {
-      // The portable resource in blst-native must retain precedence.
-      case "supranational/blst/Linux/amd64/libblst.so" => MergeStrategy.preferProject
       case path if path == "module-info.class" || path.endsWith("/module-info.class") =>
         MergeStrategy.discard
       case PathList("META-INF", name)
@@ -325,7 +312,7 @@ lazy val node = scarab("node")
         root / "crypto" / "licenses" -> "crypto"
       ).flatMap { case (dir, name) =>
         (dir * "LICENSE-*").get.map(file => file -> s"$name/${file.getName}")
-      } :+ (root / "blst-native" / "LICENSE-blst" -> "blst-native/LICENSE-blst")
+      }
       val tree = (root / "licenses").allPaths.filter(_.isFile).get.map { file =>
         file -> IO.relativize(root / "licenses", file).getOrElse(file.getName)
       }
@@ -419,7 +406,6 @@ lazy val root = project
   .in(file("."))
   .disablePlugins(TpolecatPlugin)
   .aggregate(
-    blstNative,
     codec,
     crypto,
     protocol,
@@ -473,7 +459,6 @@ lazy val root = project
   )
 
 val modules = Seq(
-  "blstNative",
   "codec",
   "crypto",
   "protocol",

@@ -5,7 +5,7 @@ import io.circe.{Encoder, Json}
 import io.circe.syntax.*
 import scala.concurrent.duration.FiniteDuration
 import com.comcast.ip4s.{Host, SocketAddress}
-import xyz.kd5ujc.scarab.blst.{BlstReport, CpuSupport, LibraryBuild}
+import xyz.kd5ujc.scarab.crypto.bls.{BlstReport, CpuSupport, LibraryBuild}
 import xyz.kd5ujc.scarab.plutus.{CryptoLibrary, NativeCryptoReport}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.VolatileChain
