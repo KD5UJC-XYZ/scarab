@@ -898,7 +898,8 @@
       "evidence": {
         "suites": [
           "HeaderByteStringsSuite",
-          "NtcQueryByteStringsSuite"
+          "NtcQueryByteStringsSuite",
+          "ByronHeaderBytesSuite"
         ],
         "paths": []
       },

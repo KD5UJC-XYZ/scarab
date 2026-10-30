@@ -6,7 +6,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era, NtNHeader, ProtocolError}
-import xyz.kd5ujc.scarab.ledger.byron.ByronVersion
+import xyz.kd5ujc.scarab.ledger.byron.{ByronTransport, ByronVersion}
 
 /** VRF certificate: 64-byte output and 80-byte proof. */
 final case class VrfCert(output: Bytes, proof: Bytes)
@@ -279,6 +279,14 @@ object Header:
     * [[epoch, slot], pubkey, [difficulty], sig], extra]`; boundary: `[magic, prev, bodyProof, [epoch, [difficulty]],
     * extra]`. The block hash is Blake2b-256 of `0x82 subtag header` (the CBOR pair
     * `[subtag, header]`).
+    *
+    * Its byte strings are read at Byron's decoder version 1 (`byronProtVer`,
+    * `libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Version.hs:162-163`, cardano-ledger
+    * f649f975), where `decodeBytes` takes a definite string only (`Decoder.hs:350-373`): the
+    * previous hash, the leader's key and the delegation certificate and signature
+    * (`Block/Header.hs:351-374`), a verification key also with its length in the shortest form
+    * ([[verificationKey]]), and the body proof ([[byron.ByronTransport.bodyProof]]), whose original
+    * bytes are kept.
     */
   def byronFromRaw(
       raw: Bytes,
@@ -288,9 +296,12 @@ object Header:
     for
       root <- CborRead.decode(raw, headerLimits).leftMap(fail)
       h <- array(root, 5)
-      prev <- bytes(h(1), 32)
+      prev <- bytes(h(1), 32, ByteStrings.Definite)
       magic <- uint(h(0))
-      proof <- Right(Bytes(h(2).original.value))
+      proof <- ByronTransport
+        .bodyProof(h(2), boundary)
+        .leftMap(fail)
+        .as(Bytes(h(2).original.value))
       consensus <- array(h(3), if boundary then 2 else 4)
       parsed <-
         if boundary then
@@ -304,7 +315,7 @@ object Header:
             slotId <- array(consensus(0), 2)
             epoch <- uint(slotId(0))
             inEpoch <- uint(slotId(1))
-            leader <- bytes(consensus(1), 64)
+            leader <- verificationKey(consensus(1))
             diff <- array(consensus(2), 1)
             no <- uint(diff(0))
             signature <- byronSignature(consensus(3))
@@ -335,6 +346,15 @@ object Header:
       version
     )
 
+  /** A Byron `VerificationKey`: 64 bytes read with `decodeBytesCanonical` (`decCBORXPub`,
+    * `eras/byron/crypto/src/Cardano/Crypto/Signing/VerificationKey.hs:96-97`, cardano-ledger
+    * f649f975), so the length is in its shortest form. A `Signature` reads plain `decodeBytes`
+    * (`Signing/Signature.hs:129-130`).
+    */
+  private def verificationKey(n: Node): Either[ChainError, Bytes] =
+    ByronTransport.canonicalBytes(n, DecodeField.Header).leftMap(fail) *>
+      bytes(n, 64, ByteStrings.Definite)
+
   /** `[2, [[epoch, issuer, delegate, cert], sig]]`: heavyweight delegation, the only kind. */
   private def byronSignature(n: Node): Either[ChainError, ByronSignature] =
     for
@@ -348,10 +368,10 @@ object Header:
       proxy <- array(outer(1), 2)
       psk <- array(proxy(0), 4)
       epoch <- uint(psk(0))
-      issuer <- bytes(psk(1), 64)
-      delegate <- bytes(psk(2), 64)
-      cert <- bytes(psk(3), 64)
-      sig <- bytes(proxy(1), 64)
+      issuer <- verificationKey(psk(1))
+      delegate <- verificationKey(psk(2))
+      cert <- bytes(psk(3), 64, ByteStrings.Definite)
+      sig <- bytes(proxy(1), 64, ByteStrings.Definite)
     yield ByronSignature.Delegated(epoch, issuer, delegate, cert, sig)
 
   private[ledger] def optHash(n: Node): Either[ChainError, Option[Bytes]] =
@@ -390,9 +410,8 @@ object Header:
   // passes `ByteStrings.of(DecoderVersion.of(era))` and every era Scarab reads takes a definite string.
   //
   // The policy-less forms (`bytes(n, size)`, `optHash(n)`, `vrfCert(n)`) keep the policy this file had
-  // before #437: `Chunked`. They serve the Byron header paths and `LeiosBlock`, which this change does
-  // not measure — narrowing them to `Definite` would be a conformance change of its own (#574 Byron,
-  // #570 Leios) rather than a side effect of a Shelley fix. Evidence: #437.
+  // before #437: `Chunked`. They serve `LeiosBlock`, which #437 did not measure (#570 Leios). The
+  // Byron header reads at decoder version 1, `Definite` (#574). Evidence: #437.
   private[ledger] def bytes(n: Node, size: Int): Either[ChainError, Bytes] =
     bytes(n, size, ByteStrings.Chunked)
 

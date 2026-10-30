@@ -213,7 +213,8 @@ object ByronTestKit:
         Cb.bytes(ByronTx.merkleRoot(Vector(transaction.tx.raw))),
         Cb.bytes(blake.hash(Cb.indef(transaction.rawWitnesses)))
       ),
-      Cb.arr(),
+      // an SSC proof as `dropSscProof` reads it: tag 3 (certificates) and one hash
+      Cb.arr(Cb.uint(3), Cb.bytes(blake.hash(Cb.arr()))),
       Cb.bytes(blake.hash(delegation)),
       Cb.bytes(blake.hash(updates))
     )
