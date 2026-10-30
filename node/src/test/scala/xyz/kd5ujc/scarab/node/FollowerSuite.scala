@@ -72,13 +72,16 @@ class FollowerSuite extends FailsOnUncaught:
 
   /** One scripted peer per element of `peers`, each with its own sessions; all follow one chain,
     * whose blocks the worker adopts. A session starts once the worker has decided what the one
-    * before it delivered, as the node connects again later than that.
+    * before it delivered, as the node connects again later than that. With `until`, the sessions
+    * end once the chain's tip is that point (a 30-second watchdog fails the run otherwise); without
+    * it, after 300 ms.
     */
   private def runPeers(
       peers: List[List[List[Either[PeerError, SyncEvent]]]],
       retries: Int = 3,
       compute: Option[Compute[IO]] = None,
-      applied: Option[Ref[IO, List[String]]] = None
+      applied: Option[Ref[IO, List[String]]] = None,
+      until: Option[ChainSync.Point] = None
   ): IO[(Either[NodeError, Unit], VolatileChain[BigInt], List[Vector[ChainSync.Point]])] =
     for
       ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.k.toInt, -1))
@@ -100,7 +103,7 @@ class FollowerSuite extends FailsOnUncaught:
             )
             pool <- WorkerTesting.pool(follower)
             result <- (WorkerTesting.selection(follower, pool) >> pool.session).use { claims =>
-              Handle
+              val sessions = Handle
                 .allow[PeerError](
                   peers.parTraverse_ { sessions =>
                     scriptedPeers(sessions, offered).flatMap(connect =>
@@ -116,7 +119,13 @@ class FollowerSuite extends FailsOnUncaught:
                   }
                 )
                 .rescue(e => Handle[IO, NodeError].raise(e))
-                .timeoutTo(300.millis, IO.unit) <* WorkerTesting.settled(pool)
+              def adopted(point: ChainSync.Point): IO[Unit] =
+                ref.get.flatMap(chain =>
+                  if chain.tip == point then IO.unit else IO.sleep(1.milli) *> adopted(point)
+                )
+              until.fold(sessions.timeoutTo(300.millis, IO.unit))(point =>
+                IO.race(sessions, adopted(point).timeout(30.seconds)).void
+              ) <* WorkerTesting.settled(pool)
             }
           yield result.asRight[NodeError]
         }
@@ -136,7 +145,8 @@ class FollowerSuite extends FailsOnUncaught:
           result <- runPeers(
             List(List(main.map(forward).toList)),
             compute = Some(pool),
-            applied = Some(log)
+            applied = Some(log),
+            until = Some(main.last.point)
           )
           names <- log.get
           _ <- IO {
