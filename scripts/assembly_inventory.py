@@ -25,8 +25,6 @@ def digest(raw):
 def policy(name):
     """These are the pinned plugin rules plus the explicit overrides in build.sbt."""
     leaf = name.rsplit('/', 1)[-1].lower()
-    if name == PORTABLE:
-        return 'project-native-overlay'
     if name == 'module-info.class' or name.endswith('/module-info.class'):
         return 'discard-module-descriptor'
     if leaf in {'.ds_store', 'thumbs.db'}:
@@ -123,11 +121,7 @@ def reconcile(artifact, inventory):
             if name not in actual:
                 raise ValueError(f'lost assembly input: {name}')
             raw = actual[name]
-            if rule == 'project-native-overlay':
-                project = [s for s in sources if s['component'].startswith('project:')]
-                if len(project) != 1 or digest(raw) != project[0]['sha256']:
-                    raise ValueError('portable native overlay is not the exact project input')
-            elif rule == 'concat':
+            if rule == 'concat':
                 expected = b''.join(s['raw'] + (b'' if s['raw'].endswith(b'\n') else b'\n') for s in sources)
                 if raw != expected:
                     raise ValueError(f'changed concatenated resource: {name}')
