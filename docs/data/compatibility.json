@@ -746,7 +746,8 @@
           "PreConwayUtxoPredicatesSuite",
           "ShelleyLedgerSuite",
           "ShelleyInstantStakeReferenceSuite",
-          "PreviewEmptyRedeemersSuite"
+          "PreviewEmptyRedeemersSuite",
+          "ShelleyBbodySuite"
         ],
         "paths": [
           "fixtures/reference/instant-stake/README.md",
@@ -767,7 +768,8 @@
       "summary": "Conway ledger rules including scripts, all certificates, treasury donation and the protocol-11 pool rule",
       "evidence": {
         "suites": [
-          "DevnetRefusedTxSuite"
+          "DevnetRefusedTxSuite",
+          "BbodySuite"
         ]
       },
       "limitations": {

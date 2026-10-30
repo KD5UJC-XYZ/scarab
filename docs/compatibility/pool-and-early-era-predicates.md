@@ -13,4 +13,4 @@ implemented: metadata hashes over 32 bytes are refused from protocol 4.1; Shelle
 
 ## Explicitly unchecked or unconfirmed
 
-Native early-era output captures call the individual predicates, rather than complete native LEDGER admission. Scala retains its documented first-failure interface; complete native failure lists remain in the corpus
+Native early-era output captures call the individual predicates, rather than complete native LEDGER admission, so they are compared by their first failure. The rules record every failure in the reference's order since #412; complete native LEDGER refusals are compared in the [reference-refusal corpus](../../fixtures/reference/refusals/README.md)

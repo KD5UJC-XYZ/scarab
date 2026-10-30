@@ -5,7 +5,7 @@ Part of the [compatibility matrix](../compatibility.md); the register entry is `
 
 ## Status as recorded
 
-implemented incl. collateral, inline datums, reference inputs and scripts; Babbage checks the collateral count without redeemers and Alonzo does not check it, as the reference (`Babbage/Rules/Utxo.hs:412`; `Alonzo/Rules/Utxo.hs:570-572` has no such test, cardano-ledger f649f975; #412), and bootstrap output attributes/network are checked under either validity flag (#178); UTXO records every failing predicate in the era's order (#412); the payment key (or Byron root) of every collateral input is a needed key witness whether or not the transaction has redeemers, in every era from Alonzo (`getShelleyWitsVKeyNeededNoGov` over `spendableInputsTxBodyF`, cardano-ledger f649f975 `Shelley/UTxO.hs`, `Alonzo/TxBody.hs`, `Babbage/TxBody.hs`, `Conway/TxBody.hs`; #331)
+implemented incl. collateral, inline datums, reference inputs and scripts; Babbage checks the collateral count without redeemers and Alonzo does not check it, as the reference (`Babbage/Rules/Utxo.hs:412`; `Alonzo/Rules/Utxo.hs:570-572` has no such test, cardano-ledger f649f975; #412), and bootstrap output attributes/network are checked under either validity flag (#178); UTXO records every failing predicate in the era's order (#412); the payment key (or Byron root) of every collateral input is a needed key witness whether or not the transaction has redeemers, in every era from Alonzo (`getShelleyWitsVKeyNeededNoGov` over `spendableInputsTxBodyF`, cardano-ledger f649f975 `Shelley/UTxO.hs`, `Alonzo/TxBody.hs`, `Babbage/TxBody.hs`, `Conway/TxBody.hs`; #331); BBODY checks the body, LEDGERS and then the execution units of the whole block, as `alonzoBbodyTransition` does (`Alonzo/Rules/Bbody.hs:149-167,186-214`, #412)
 
 ## Evidence
 
@@ -13,4 +13,4 @@ implemented incl. collateral, inline datums, reference inputs and scripts; Babba
 
 ## Explicitly unchecked or unconfirmed
 
-block execution-unit limits are validated (protocol >= 5) but only by unit tests (`BlockExUnitsSuite`) and the sync; no Alonzo-era transaction with datums and no redeemers exists on Preview, so that case of the integrity hash (`0x80` redeemers) has no chain evidence of its own (the Babbage case is the same code)
+block execution-unit limits are validated (protocol >= 5) but only by unit tests (`ShelleyBbodySuite`, `BbodySuite`) and the sync; no Alonzo-era transaction with datums and no redeemers exists on Preview, so that case of the integrity hash (`0x80` redeemers) has no chain evidence of its own (the Babbage case is the same code)

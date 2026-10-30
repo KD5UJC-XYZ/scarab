@@ -42,18 +42,21 @@ final case class BbodySignal(
     actual: BodyCommitment
 )
 
-/** BBODY (`Conway/Rules/Bbody.hs:270`, `conwayBbodyTransition`, and `Alonzo/Rules/Bbody.hs`): the
-  * body of a block against what its header says, the reference scripts and execution units of the
-  * transactions against the limits of the block, LEDGERS, and the block counted for its issuer.
+/** BBODY (`Conway/Rules/Bbody.hs:268`, `conwayBbodyTransition` then `alonzoBbodyTransition` of
+  * `Alonzo/Rules/Bbody.hs:186`, cardano-ledger f649f975), in the reference's order: the reference
+  * scripts of the transactions against the limit of the block, the body against what its header
+  * says, LEDGERS, the execution units of the transactions against the limit of the block, and the
+  * block counted for its issuer. The header's protocol version (`HeaderProtVerTooHigh`, the first
+  * check of `conwayBbodyTransition`) is checked with the header (`consensus.HardFork`).
   *
   *   - The reference scripts the transactions of a block use sum to at most one megabyte
-  *     (`validateBodyRefScriptsSizeTooBig`, `Bbody.hs:330`). Up to protocol version 10 each
+  *     (`validateBodyRefScriptsSizeTooBig`, `Bbody.hs:314`). Up to protocol version 10 each
   *     transaction is measured against the UTxO set as the block meets it; from 11 against that set
-  *     with the outputs of the transactions before it (`totalRefScriptSizeInBlock`,
-  *     `Bbody.hs:357`).
+  *     with the outputs of the transactions before it (`totalRefScriptSizeInBlock`).
   *   - The redeemers of all the transactions of a block (valid or not) use at most
-  *     `maxBlockExUnits` of the parameters in force when the block starts (`TooManyExUnits`); the
-  *     failure names the units of the prefix of transactions that first exceeds it.
+  *     `maxBlockExUnits` of the parameters in force when the block starts (`validateExUnits`,
+  *     `Alonzo/Rules/Bbody.hs:149-167`, after LEDGERS at line 212); the failure names the units of
+  *     the whole block.
   *   - The slots of Conway have no overlay: every block counts for its issuer (`incrBlocks False`).
   *
   * The state is [[BbodyState]]; LEDGERS runs on its ledger part, its failures wrapped as the
@@ -86,14 +89,14 @@ object Bbody extends Sts[BbodyEnv, BbodyState, BbodySignal, BlockFailure]:
     }
     total
 
-  /** The execution units of the first prefix of the transactions that exceeds the limit, if any. */
+  /** The execution units of all the transactions of the block when they exceed the limit, from
+    * Alonzo (`validateExUnits`: `foldMap totExUnits txs`, compared point-wise).
+    */
   def exUnitsExceeded(pp: ProtocolParams, txs: Vector[Tx]): Option[ExUnits] =
     if pp.protocolMajor < 5 then None
     else
-      txs.iterator
-        .scanLeft(ExUnits.zero)(_ + _.witnesses.totalExUnits)
-        .drop(1)
-        .find(!_.fits(pp.maxBlockExUnits))
+      Some(txs.foldLeft(ExUnits.zero)(_ + _.witnesses.totalExUnits))
+        .filterNot(_.fits(pp.maxBlockExUnits))
 
   def transition[F[_]: Monad](env: BbodyEnv, signal: BbodySignal)(using
       ask: Ask[F, Globals],
@@ -102,22 +105,22 @@ object Bbody extends Sts[BbodyEnv, BbodyState, BbodySignal, BlockFailure]:
   ): F[Unit] =
     val pp = env.pp
     for
-      _ <- Sts.check[F, BlockFailure](signal.declared == signal.actual, BlockFailure.BodyCommitment)
       before <- st.get
       refBytes = refScriptsSize(pp, before.ledger.state.utxo.utxo.utxo, signal.txs)
       _ <- Sts.check[F, BlockFailure](
         pp.protocolMajor < 9 || refBytes <= RefScripts.MaxRefScriptSizePerBlock,
         BlockFailure.RefScriptsTooLarge(RefScripts.MaxRefScriptSizePerBlock.toLong)
       )
-      _ <- Sts.require[F, BlockFailure](
-        exUnitsExceeded(pp, signal.txs).map(BlockFailure.BlockExUnitsTooBig(_, pp.maxBlockExUnits))
-      )
+      _ <- Sts.check[F, BlockFailure](signal.declared == signal.actual, BlockFailure.BodyCommitment)
       _ <- Sts
         .trans[F, LedgersEnv, ConwayLedger, BbodyState, Vector[Tx], LedgerFailure, BlockFailure](
           Ledgers,
           LedgersEnv(env.ctx, env.treasury),
           signal.txs
         )
+      _ <- Sts.require[F, BlockFailure](
+        exUnitsExceeded(pp, signal.txs).map(BlockFailure.BlockExUnitsTooBig(_, pp.maxBlockExUnits))
+      )
       _ <- st.modify(s =>
         s.copy(blocksMade =
           BlocksMade(

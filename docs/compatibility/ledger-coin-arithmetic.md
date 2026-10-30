@@ -47,9 +47,9 @@ checks, not full-ledger equivalence.
 
 ## Explicitly unchecked or unconfirmed
 
-The accumulated MIR negative-update state regression requires the rule interpreter integration
-under [#411](https://github.com/KD5UJC-XYZ/scarab/pull/411); the predecessor interpreter remains
-fail-fast. Compact-conversion defect classification is separately tracked by
+The accumulated MIR negative-update state regression is in the
+[reference-refusal corpus](../../fixtures/reference/refusals/README.md) (`babbage-certificate-order`,
+#411). Compact-conversion defect classification is separately tracked by
 [#483](https://github.com/KD5UJC-XYZ/scarab/pull/483). The remaining reward-account payload
 decoding alignment belongs to [#477](https://github.com/KD5UJC-XYZ/scarab/issues/477).
 The native genesis initial-funds regression for signed reserves is part of

@@ -134,11 +134,18 @@ class ShelleyBbodySuite extends FunSuite:
     val pp = params(5)
     val half = ExUnits(pp.maxBlockExUnits.mem / 2 + 1, 1)
     val txs = Vector(redeeming(half, "a"), redeeming(half, "b"), redeeming(half, "c"))
-    assertEquals(
-      run[Alonzo](pp, txs, state[Alonzo](pp)),
-      Left(BlockFailure.BlockExUnitsTooBig(half + half, pp.maxBlockExUnits))
-    )
+    assertEquals(Bbody.exUnitsExceeded(pp, txs), Some(half + half + half))
     assertEquals(Bbody.exUnitsExceeded(params(4), txs), None)
+  }
+
+  test("from Alonzo LEDGERS is judged before the execution units of the block") {
+    val pp = params(5)
+    val half = ExUnits(pp.maxBlockExUnits.mem / 2 + 1, 1)
+    // the transactions spend an input the set does not hold, and together exceed the units
+    val txs = Vector(redeeming(half, "a"), redeeming(half, "b"))
+    run[Alonzo](pp, txs, state[Alonzo](pp)) match
+      case Left(BlockFailure.Tx(_)) => ()
+      case other                    => fail(s"expected the transaction's refusal, got $other")
   }
 
   test("a block of 10,000 transactions runs on a 256 KiB stack") {

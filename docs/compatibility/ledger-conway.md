@@ -5,7 +5,7 @@ Part of the [compatibility matrix](../compatibility.md); the register entry is `
 
 ## Status as recorded
 
-implemented incl. scripts, all certificates, treasury donation, the protocol-11 pool rule (VRF key-hash uniqueness)
+implemented incl. scripts, all certificates, treasury donation, the protocol-11 pool rule (VRF key-hash uniqueness); BBODY in the reference's order: the reference scripts of the block, the body, LEDGERS, then the execution units of the whole block (`Conway/Rules/Bbody.hs:268,314`, `Alonzo/Rules/Bbody.hs:149-167,186-214`, #412)
 
 ## Evidence
 
