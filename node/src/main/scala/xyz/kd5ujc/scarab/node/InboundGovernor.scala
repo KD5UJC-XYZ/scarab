@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.ledger.{
   GenesisInternalProblem,
-  Header,
   NodeError,
   PeerError,
   Points,
@@ -72,7 +71,6 @@ final class InboundGovernor[F[_]: Async] private (
     config: InboundGovernor.Config,
     handlers: ServerHandlers[F, NtNHeader],
     follow: InboundGovernor.Follow[F],
-    prepare: Peer.Prepare[F],
     heightSnapshot: Peer.HeightSnapshot[F],
     headers: Option[HeaderCheck[F]],
     transactions: Option[TxSubmissionClient.Source[F]],
@@ -82,7 +80,6 @@ final class InboundGovernor[F[_]: Async] private (
     sharing: Option[PeerSharingRuntime[F]],
     pool: BlockPool[F],
     genesis: Option[GenesisRuntime[F]],
-    receivedBody: Option[Peer.BodySink[F]],
     repromotion: RepromotionWait[F],
     sessionTable: Ref[F, Map[String, InboundGovernor.Session]],
     sourceCounter: Ref[F, BigInt],
@@ -397,7 +394,6 @@ final class InboundGovernor[F[_]: Async] private (
               .over(
                 connection,
                 config.peer.copy(address = SocketAddress(remote.host, remote.port)),
-                prepare,
                 heightSnapshot,
                 bound.fold(Peer.Chain.Praos(headers.map(_.withInvariant(invariant))))(_.chain),
                 Some(observed(remote)),
@@ -407,7 +403,6 @@ final class InboundGovernor[F[_]: Async] private (
                 received = bound.map(_.received),
                 chainSyncObserver = bound.map(_.observer),
                 fetchSession = fetching,
-                receivedBody = receivedBody,
                 retainedHeaders = bound.fold(BlockPool.Retained)(_.retainedHeaders),
                 selectionWork = bound.map(_.work),
                 pipelineFailed = Some(fault =>
@@ -424,17 +419,6 @@ final class InboundGovernor[F[_]: Async] private (
                 SessionEnd
                   .scoped(node) { (_, _) ?=>
                     follow(counted(remote, peer)).as(SessionEnd.Returned)
-                  }
-                  .flatMap {
-                    case SessionEnd.Rejected(refusal) =>
-                      peer.refused(refusal).map { foreign =>
-                        if foreign then
-                          SessionEnd.Failed(
-                            PeerError.Diverged(PeerError.Divergence.ForeignBlock(refusal))
-                          )
-                        else SessionEnd.Rejected(refusal)
-                      }
-                    case other => F.pure(other)
                   }
                   .flatMap { end =>
                     val record = FailurePolicy.disposition(end) match
@@ -483,15 +467,6 @@ final class InboundGovernor[F[_]: Async] private (
     override def headerCandidate = peer.headerCandidate
     override def selectionWork = peer.selectionWork
     override def invalidBlocks = peer.invalidBlocks
-    override def noVerdictBlocks = peer.noVerdictBlocks
-    override def invalidated(header: Header, refusal: ValidationError)(using cats.Applicative[F]) =
-      peer.invalidated(header, refusal)
-    override def validation(header: Header)(using cats.Applicative[F], Raise[F, PeerError]) =
-      peer.validation(header)
-    override def rejected(refusal: xyz.kd5ujc.scarab.ledger.ValidationError)(using
-        cats.Applicative[F]
-    ) =
-      peer.rejected(refusal)
     def intersect(candidates: Vector[ChainSync.Point])(using Raise[F, PeerError]) =
       peer.intersect(candidates)
     def next(using Raise[F, PeerError]) = peer.next.flatTap {
@@ -500,7 +475,6 @@ final class InboundGovernor[F[_]: Async] private (
       case SyncEvent.RollBackward(_, tip) =>
         update(remote)(s => s.copy(rollbacks = s.rollbacks + 1, peerTip = tipBlock(tip)))
     }
-    def fetch(header: Header)(using Raise[F, PeerError]) = peer.fetch(header)
 
   private def tipBlock(tip: ChainSync.Tip): Option[BigInt] = Some(tip.blockNo.value)
 
@@ -611,7 +585,6 @@ object InboundGovernor:
       config: Config,
       handlers: ServerHandlers[F, NtNHeader],
       follow: Follow[F],
-      prepare: Peer.Prepare[F],
       fatal: Fatal => F[Unit],
       heightSnapshot: Peer.HeightSnapshot[F],
       pool: BlockPool[F],
@@ -621,7 +594,6 @@ object InboundGovernor:
       observe: Option[Peer.Observation => F[Unit]] = None,
       sharing: Option[PeerSharingRuntime[F]] = None,
       genesis: Option[GenesisRuntime[F]] = None,
-      receivedBody: Option[Peer.BodySink[F]] = None,
       peerMetrics: Option[Ref[F, PeerMetrics[PeerNetwork.Addr]]] = None
   )(using node: Handle[F, NodeError], repromotion: RepromotionWait[F]): F[InboundGovernor[F]] =
     (
@@ -637,7 +609,6 @@ object InboundGovernor:
         config,
         handlers,
         follow,
-        prepare,
         heightSnapshot,
         headers,
         transactions,
@@ -647,7 +618,6 @@ object InboundGovernor:
         sharing,
         pool,
         genesis,
-        receivedBody,
         repromotion,
         sessions,
         counter,

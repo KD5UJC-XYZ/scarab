@@ -97,7 +97,6 @@ class PeerHeaderMetricsSuite extends FailsOnUncaught:
                   42,
                   byronEpochSlots = 21600
                 ),
-                _ => IO.unit,
                 heightSnapshot = ChainSyncHeights.origin,
                 chain = Peer.Chain.Praos(Some(check)),
                 observe = Some(event =>

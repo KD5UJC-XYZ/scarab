@@ -381,7 +381,7 @@ class ProviderDefectBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncau
         )
         done <- Deferred[IO, Unit]
         raws = forged.headers.map(_.hash).zip(forged.raws).toMap
-        peer = new Peer[IO]:
+        peer = new WorkerTesting.Scripted[IO]:
           def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
             IO.pure(candidates.headOption)
           def next(using Raise[IO, PeerError]) = queue.tryTake.flatMap {

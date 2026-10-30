@@ -583,17 +583,6 @@ final class OutboundPeers[F[_]: Async, A] private (
           override def headerCandidate = over.headerCandidate
           override def selectionWork = over.selectionWork
           override def invalidBlocks = over.invalidBlocks
-          override def noVerdictBlocks = over.noVerdictBlocks
-          override def invalidated(
-              header: xyz.kd5ujc.scarab.ledger.Header,
-              refusal: ValidationError
-          )(using cats.Applicative[F]) = over.invalidated(header, refusal)
-          override def validation(header: xyz.kd5ujc.scarab.ledger.Header)(using
-              cats.Applicative[F],
-              Raise[F, PeerError]
-          ) = over.validation(header)
-          override def rejected(refusal: ValidationError)(using cats.Applicative[F]) =
-            over.rejected(refusal)
           def intersect(candidates: Vector[xyz.kd5ujc.scarab.protocol.ChainSync.Point])(using
               Raise[F, PeerError]
           ) = over.intersect(candidates)
@@ -605,8 +594,6 @@ final class OutboundPeers[F[_]: Async, A] private (
               case Left(_)       => scope.raise[SessionEnd, SyncEvent](SessionEnd.Stopped(false))
               case Right(result) => Fault.land(result)
             }
-          def fetch(header: xyz.kd5ujc.scarab.ledger.Header)(using Raise[F, PeerError]) =
-            over.fetch(header)
         hot
           .follow(gated, candidate => session.candidate.complete(candidate).void)
           .as(SessionEnd.Returned)
@@ -652,7 +639,6 @@ final class OutboundPeers[F[_]: Async, A] private (
                   .over(
                     connection,
                     hot.peer,
-                    hot.prepare,
                     hot.heightSnapshot,
                     genesis.fold(Peer.Chain.Praos(hot.headers.map(_.withInvariant(invariant))))(
                       _.chain
@@ -665,29 +651,12 @@ final class OutboundPeers[F[_]: Async, A] private (
                     received = genesis.map(_.received),
                     chainSyncObserver = genesis.map(_.observer),
                     fetchSession = fetching,
-                    receivedBody = hot.receivedBody,
                     retainedHeaders = genesis.fold(BlockPool.Retained)(_.retainedHeaders),
                     selectionWork = genesis.map(_.work)
                   )
                   .use { over =>
                     session.connection.complete(connection) *> started.complete(Right(())) *>
                       follow(over)
-                        .flatMap {
-                          // the pool is shared: a block that another session delivered and the rules
-                          // refuse is no fault of this peer, which fetches it itself when it tries again
-                          case SessionEnd.Rejected(refusal) =>
-                            over
-                              .refused(refusal)
-                              .map(foreign =>
-                                if foreign then
-                                  SessionEnd.Failed(
-                                    PeerError
-                                      .Diverged(PeerError.Divergence.ForeignBlock(refusal))
-                                  )
-                                else SessionEnd.Rejected(refusal)
-                              )
-                          case other => F.pure(other)
-                        }
                         .flatTap {
                           // asked to stop: bring the pipeline to rest before the wire is ended
                           case SessionEnd.Stopped(_) => asked.flatMap(a => over.quiesce.whenA(a))
@@ -1053,7 +1022,6 @@ object OutboundPeers:
       network: NodeToNode.Settings,
       peer: Peer.Settings,
       follow: Follow[F],
-      prepare: Peer.Prepare[F],
       heightSnapshot: Peer.HeightSnapshot[F],
       headers: Option[HeaderCheck[F]],
       transactions: Option[TxSubmissionClient.Source[F]],
@@ -1063,8 +1031,7 @@ object OutboundPeers:
       lost: PeerError => F[Unit],
       fatal: Fatal => F[Unit],
       serve: Option[ServerHandlers[F, NtNHeader]] = None,
-      genesis: Option[GenesisRuntime[F]] = None,
-      receivedBody: Option[Peer.BodySink[F]] = None
+      genesis: Option[GenesisRuntime[F]] = None
   )
 
   /** A connection of ours, and what its owner can do to it.

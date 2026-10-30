@@ -42,7 +42,6 @@ import xyz.kd5ujc.scarab.plutus.{EvalFailure, ExUnits}
 import xyz.kd5ujc.scarab.node.{MirrorRules, MirrorSteps}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.NodeSetup
-import xyz.kd5ujc.scarab.node.Peer
 import xyz.kd5ujc.scarab.node.RefStateful
 import xyz.kd5ujc.scarab.node.SyncEvent
 import scala.concurrent.duration.*
@@ -214,7 +213,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   done <- Deferred[IO, Unit]
                   offered <- Ref.of[IO, Vector[Vector[ChainSync.Point]]](Vector.empty)
                   bodies = headers.map(_.hash).zip(raws).toMap
-                  peer = new Peer[IO]:
+                  peer = new WorkerTesting.Scripted[IO]:
                     def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
                       offered.update(_ :+ candidates).as(candidates.headOption)
                     def next(using Raise[IO, PeerError]) = queue.tryTake.flatMap {
@@ -576,7 +575,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 offered <- Ref.of[IO, Vector[Vector[ChainSync.Point]]](Vector.empty)
                 count <- Ref.of[IO, Int](0)
                 bodies = headers.map(_.hash).zip(raws).toMap
-                peer = new Peer[IO]:
+                peer = new WorkerTesting.Scripted[IO]:
                   def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
                     offered.update(_ :+ candidates).as(candidates.headOption)
                   def next(using Raise[IO, PeerError]) =

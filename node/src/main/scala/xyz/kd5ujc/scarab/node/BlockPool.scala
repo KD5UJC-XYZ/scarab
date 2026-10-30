@@ -353,25 +353,6 @@ final class BlockPool[F[_]: Async] private (
           invalidBlocks.record(header, error) *> fetchCoordinator.refreshGenesis.as(Right(()))
       }
 
-  /** A body starts chain selection once, with its first adding client's immutable context. Another
-    * peer may process its cached original first; ownership must not become that peer's.
-    */
-  private def takeAddition(
-      owner: Long,
-      announced: Header
-  ): F[Either[BlockPoolProblem, Option[Taken]]] =
-    slots.modify { before =>
-      val hash = announced.hash
-      if !before.fresh(hash) then before -> Right(None)
-      else
-        val context = (before.entries.get(hash), before.headers.get(hash)) match
-          case (Some(Slot.Done(block, _, origin)), Some(header)) =>
-            Right(Some(Taken(block, origin == Source.Session(owner), origin, Some(header))))
-          case _ =>
-            Left(BlockPoolProblem.MissingDeliveredHeader(announced.point))
-        before.copy(fresh = before.fresh - hash) -> context
-    }
-
   /** ChainSel.hs:1326–1344 associates invalidity with the body which caused chain selection, not
     * necessarily the invalid body in that candidate's prefix. Semantic rejection retains every
     * received original, just as the native VolatileDB does; the invalid map excludes it.
@@ -582,15 +563,6 @@ object BlockPool:
     def fill(blocks: Vector[(Bytes, Bytes)]): F[Unit] = pool.fillOpaque(owner, blocks)
     private[node] def invalidBlocks: InvalidBlocks[F] = pool.invalidBlocks
     private[node] def noVerdictBlocks: NoVerdictBlocks[F] = pool.noVerdictBlocks
-    private[node] def invalidated(
-        taken: Taken,
-        header: Header,
-        error: ValidationError
-    ): F[Either[BlockPoolProblem, Unit]] =
-      pool.invalidated(taken, header, error)
-    private[node] def takeAddition(header: Header): F[Either[BlockPoolProblem, Option[Taken]]] =
-      pool.takeAddition(owner, header)
-    private[node] def usesSelectionWorker: F[Boolean] = pool.admissions.active
     def fillDelivered(blocks: Vector[Delivered]): F[Unit] = pool.deliver(owner, blocks)
 
     /** Provenance of original bytes delivered by this connection, independently of which peer won a
@@ -622,7 +594,7 @@ object BlockPool:
         lastValid: ChainSync.Point
     ): F[Either[BlockPoolProblem, Rejection]] = pool.reject(taken, added, error, lastValid)
 
-    /** A staged body cannot outlive invalidation or the retained attribution of its source. */
+    /** Whether the pool still retains the body `hash` with its attribution to `origin`. */
     private[node] def retained(origin: Source, hash: Bytes): F[Boolean] =
       pool.retained(origin, hash)
 

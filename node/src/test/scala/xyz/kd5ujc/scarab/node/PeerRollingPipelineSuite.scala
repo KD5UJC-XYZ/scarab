@@ -256,7 +256,6 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
               pipelineWindow =
                 ChainSyncPipelineDecision.Window.checked(2, 4).fold(e => fail(e.toString), identity)
             ),
-            _ => IO.unit,
             heights,
             chain = TestChains.chain(
               Option.unless(unknownRollback || offeredHeight.nonEmpty)(check),

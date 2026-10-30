@@ -91,8 +91,7 @@ final class Follower[F[_]: Async, S] private (
     window: SignallingRef[F, Follower.Committed[S]],
     genesis: Ref[F, Option[GenesisGovernor[F]]],
     selectionChanged: Ref[F, F[Unit]],
-    invalidBlocks: Ref[F, Option[InvalidBlocks[F]]],
-    ownNoVerdict: NoVerdictBlocks[F]
+    invalidBlocks: Ref[F, Option[InvalidBlocks[F]]]
 )(using
     chain: Stateful[F, VolatileChain[S]]
 ):
@@ -156,7 +155,7 @@ final class Follower[F[_]: Async, S] private (
             CandidateSelection.startup(current.k, selected, candidates, limit, tiebreaker)
           else CandidateSelection.project(current.k, selected, candidates, limit, tiebreaker)
       def apply(
-          peer: Peer[F],
+          bodies: BlockSelection.Bodies[F],
           candidate: ChainSelection.Candidate,
           validation: Peer.Validation[F],
           phase: BlockSelection.Phase
@@ -185,17 +184,11 @@ final class Follower[F[_]: Async, S] private (
                 if validation.addedPoint.exists(point => take.exists(_.point == point)) then
                   validation
                 else Peer.Validation.none[F]
-              switchTo(peer, to, depth, take, ChainSync.Tip.Origin, pool.invalidBlocks, causal)
+              switchTo(bodies, to, depth, take, ChainSync.Tip.Origin, pool.noVerdictBlocks, causal)
             case ChainSelection.Decision.Keep if phase == BlockSelection.Phase.Startup => F.unit
             case _ => BlockPoolProblem.SelectionProjectionChanged(candidate.tip).raise[F, Unit]
         }
     BlockSelection.resource(pool, work, fatal, application, originPredecessor)
-
-  /** The blocks without a verdict: the shared set the peer offers (the block pool's), else the
-    * follower's own (issue 567).
-    */
-  private def noVerdictFor(peer: Peer[F]): NoVerdictBlocks[F] =
-    peer.noVerdictBlocks.getOrElse(ownNoVerdict)
 
   private def registryFor(peer: Peer[F])(using Raise[F, NodeError]): F[InvalidBlocks[F]] =
     for
@@ -414,18 +407,17 @@ final class Follower[F[_]: Async, S] private (
       }
 
   private def switchTo(
-      peer: Peer[F],
+      bodies: BlockSelection.Bodies[F],
       to: ChainSync.Point,
       depth: Int,
       take: Vector[Header],
       peerTip: ChainSync.Tip,
-      registry: InvalidBlocks[F],
+      withheldBlocks: NoVerdictBlocks[F],
       validation: Peer.Validation[F]
   )(using Raise[F, NodeError]): F[Unit] =
     for
       original <- chain.get
       rolled <- original.rollback(to).fold(_.raise[F, VolatileChain[S]], _.pure[F])
-      causal <- Ref.of[F, Peer.Validation[F]](validation)
       outcome <- F
         .tailRecM[(VolatileChain[S], Vector[Applied], Int), Either[Stopped, Vector[Applied]]](
           (rolled, Vector.empty, 0)
@@ -434,25 +426,9 @@ final class Follower[F[_]: Async, S] private (
             case None => F.pure(Right(Right(done)))
             case Some(header) =>
               for
-                block <- peer.fetch(header)
-                previous <- causal.get
-                _ <- peer
-                  .validation(header)
-                  .flatMap(_.fold(_.raise[F, Peer.Validation[F]], F.pure))
-                  .flatMap(next =>
-                    causal.update { current =>
-                      if next.admissionOrder
-                          .exists(order => current.admissionOrder.forall(_ < order))
-                      then next
-                      else current
-                    }
-                  )
-                  .unlessA(previous.addedPoint.contains(header.point))
+                block <- bodies.fetch(header)
                 // the block rules run on the CPU pool, as a forged block's do (D8, #596)
-                checked = judge(cpu.within(rules(before.state, header, block)))
-                verdict <- peer.selectionWork.fold(checked)(work =>
-                  work.processing(header.hash).surround(checked)
-                )
+                verdict <- judge(cpu.within(rules(before.state, header, block)))
                 result <- verdict match
                   case Left(Judged.Refusal(refused)) =>
                     F.pure(Right(Left(Refused(header, refused, before))))
@@ -497,7 +473,7 @@ final class Follower[F[_]: Async, S] private (
         // reconsiders the valid prefix before it, as for a refusal.
         case Left(withheld: Withheld) =>
           F.uncancelable { _ =>
-            noVerdictFor(peer).record(withheld.header, withheld.cause) *>
+            withheldBlocks.record(withheld.header, withheld.cause) *>
               events.emit(FollowerEvent.NoVerdict(withheld.header.point, withheld.cause))
           }
         case Left(refused: Refused) =>
@@ -506,14 +482,12 @@ final class Follower[F[_]: Async, S] private (
           // survives sender-thread cancellation, so this local boundary must survive it too.
           F.uncancelable { _ =>
             for
-              _ <- peer
+              _ <- bodies
                 .invalidated(refused.header, refused.error)
                 .flatMap(_.fold(_.raise[F, Unit], F.pure))
-              _ <- registry.record(refused.header, refused.error).whenA(peer.invalidBlocks.isEmpty)
               // the adding session is punished through the pool, never by raising here: the
               // worker's validations come from admissions (`Peer.Validation.admission`) or none
-              adding <- causal.get
-              _ <- adding
+              _ <- validation
                 .rejected(refused.error, refused.before.tip)
                 .flatMap(_.fold(_.raise[F, Peer.Rejection], F.pure))
             yield ()
@@ -813,9 +787,8 @@ object Follower:
         SignallingRef[F, Committed[S]](Committed(initial, selected)),
         Ref.of[F, Option[GenesisGovernor[F]]](None),
         Ref.of[F, F[Unit]](Async[F].unit),
-        Ref.of[F, Option[InvalidBlocks[F]]](None),
-        NoVerdictBlocks.create[F]
-      ).mapN { (views, lock, window, genesis, selectionChanged, invalidBlocks, noVerdict) =>
+        Ref.of[F, Option[InvalidBlocks[F]]](None)
+      ).mapN { (views, lock, window, genesis, selectionChanged, invalidBlocks) =>
         new Follower[F, S](
           rules,
           events,
@@ -830,8 +803,7 @@ object Follower:
           window,
           genesis,
           selectionChanged,
-          invalidBlocks,
-          noVerdict
+          invalidBlocks
         )
       }
     }

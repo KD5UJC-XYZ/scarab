@@ -44,7 +44,7 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
           prepared <- Ref.of[IO, Int](0)
           delivered <- Ref
             .of[IO, Vector[(ChainSync.Point, xyz.kd5ujc.scarab.codec.Bytes)]](Vector.empty)
-          observed <- connected(prepare = raws => prepared.update(_ + raws.size)) { (peer, _) =>
+          observed <- connected(fetched = prepared.update(_ + 1)) { (peer, _) =>
             val pull = peer.next.flatMap {
               case SyncEvent.RollForward(header, _) =>
                 peer.fetch(header).flatMap(raw => delivered.update(_ :+ (header.point -> raw)))
@@ -137,7 +137,7 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
   private def connected[A](
       check: Option[HeaderCheck[IO]] = None,
       finish: Boolean = true,
-      prepare: Peer.Prepare[IO] = _ => IO.unit,
+      fetched: IO[Unit] = IO.unit,
       heightSnapshot: Peer.HeightSnapshot[IO] = ChainSyncHeights.origin,
       pipelineFailed: Option[Fault => IO[Unit]] = None,
       fetchSession: Option[FetchCoordinator.Session[IO]] = None
@@ -186,8 +186,12 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
                         byronEpochSlots = ForgedChain.geometry.byron.epochSlots,
                         pipelineWindow = pipelineWindow
                       ),
-                      prepare,
                       chain = Peer.Chain.Praos(check),
+                      // each block's download completes in the fetch client's receive path
+                      observe = Some {
+                        case Peer.Observation.Fetched(_) => fetched
+                        case _                           => IO.unit
+                      },
                       pipelineFailed = pipelineFailed,
                       heightSnapshot = heightSnapshot,
                       retainedHeaders = journalCapacity,
@@ -377,7 +381,7 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
       published <- Deferred[IO, Fault]
       _ <- connected(
         finish = false,
-        prepare = _ => entered.complete(()).void *> release.get *> IO.raiseError[Unit](defect),
+        fetched = entered.complete(()).void *> release.get *> IO.raiseError[Unit](defect),
         pipelineFailed = Some(problem => published.complete(problem).void)
       ) { (peer, intersections) =>
         for

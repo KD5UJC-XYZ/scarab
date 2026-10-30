@@ -72,7 +72,6 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
                   byronEpochSlots = 21600
                 ),
               (_, _) => (entered.offer(()) *> IO.never[Unit]).guarantee(finalized.update(_ + 1)),
-              _ => IO.unit,
               ChainSyncHeights.origin,
               None,
               None,
@@ -296,7 +295,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
                               h <- next match
                                 case SyncEvent.RollForward(h, _) => IO.pure(h)
                                 case other => IO(fail(s"expected actual header, got $other"))
-                              raw <- over.fetch(h)
+                              raw <- WorkerTesting.deliveredBody(pool, h)
                               _ <- IO(assertEquals(raw, chain.raws.head))
                               _ <- delivered.complete(()) *> finishFirst.get
                               missing <- over.intersect(Vector(chain.headers.last.point))
@@ -320,7 +319,6 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
                   byronEpochSlots = 21600
                 ),
                 follow,
-                _ => IO.unit,
                 heights,
                 None,
                 None,

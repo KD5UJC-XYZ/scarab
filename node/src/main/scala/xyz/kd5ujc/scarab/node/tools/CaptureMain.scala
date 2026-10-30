@@ -68,7 +68,6 @@ object CaptureMain extends IOApp:
                 Peer
                   .nodeToNode[IO](
                     Peer.Settings(peer, magic, byronEpochSlots = epochSlots),
-                    _ => IO.unit,
                     heights
                   )
                   .use(peer =>
@@ -94,7 +93,7 @@ object CaptureMain extends IOApp:
       yield ChainSync.Point.Block(s, h)
     case _ => None
 
-  private def capture(peer: Peer[IO], n: Int, from: ChainSync.Point)(using
+  private def capture(peer: Peer.Controlled[IO], n: Int, from: ChainSync.Point)(using
       Raise[IO, NodeError]
   ): IO[Vector[Bytes]] =
     def loop(chain: Vector[(Header, Bytes)]): IO[Vector[Bytes]] =

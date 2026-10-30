@@ -119,7 +119,6 @@ class PeerCsjBoundarySuite extends FailsOnUncaught:
             NodeToNodeConnection(15, chainSync, blockFetch, mux),
             Peer
               .Settings(SocketAddress[Host](ip"10.5.0.1", port"3001"), 42, byronEpochSlots = 21600),
-            _ => IO.unit,
             chain = TestChains.chain(None, Some(control)),
             heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin
           )

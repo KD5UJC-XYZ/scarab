@@ -8,10 +8,9 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.ChainSelection
-import xyz.kd5ujc.scarab.ledger.{BlockPoolProblem, Header, NodeError, PeerError, ValidationError}
+import xyz.kd5ujc.scarab.ledger.{BlockPoolProblem, Header, NodeError, ValidationError}
 import xyz.kd5ujc.scarab.network.Fibers
 import xyz.kd5ujc.scarab.node.BlockAdmissions.{AdmissionStage, WorkKind}
-import xyz.kd5ujc.scarab.protocol.ChainSync
 
 /** The single ChainDB add-block runner (consensus 82ecba329, Background.hs:658–708). Its forest
   * contains processed bodies only: later queued receipts cannot change an earlier adding cause.
@@ -26,34 +25,24 @@ private[node] final class BlockSelection[F[_]: Async] private (
   private val F = Async[F]
   import BlockSelection.Phase
 
-  private def reader(
-      candidate: ChainSelection.Candidate,
-      bodies: Map[Bytes, BlockPool.Admission]
-  )(using Raise[F, NodeError]): Peer[F] = new Peer[F]:
-    override def invalidBlocks = Some(pool.invalidBlocks)
-    override def noVerdictBlocks = Some(pool.noVerdictBlocks)
-    def intersect(@scala.annotation.unused points: Vector[ChainSync.Point])(using
-        Raise[F, PeerError]
-    ) =
-      F.pure(Some(candidate.base))
-    def next(using Raise[F, PeerError]) = F.never[SyncEvent]
-    def fetch(header: Header)(using Raise[F, PeerError]) = bodies
-      .get(header.hash)
-      .fold(BlockPoolProblem.MissingDeliveredHeader(header.point).raise[F, Bytes])(a =>
-        F.pure(a.taken.block)
-      )
-    override def validation(
-        @scala.annotation.unused header: Header
-    )(using cats.Applicative[F], Raise[F, PeerError]) =
-      F.pure(Right(Peer.Validation.none[F]): Either[BlockPoolProblem, Peer.Validation[F]])
-    override def invalidated(header: Header, error: ValidationError)(using cats.Applicative[F]) =
-      bodies
+  /** The bodies of `candidate` as the pool admitted them, and where a refusal of one is recorded
+    * against its original.
+    */
+  private def reader(bodies: Map[Bytes, BlockPool.Admission]): BlockSelection.Bodies[F] =
+    new BlockSelection.Bodies[F]:
+      def fetch(header: Header)(using Raise[F, NodeError]) = bodies
         .get(header.hash)
-        .fold(
-          F.pure[Either[BlockPoolProblem, Unit]](
-            Left(BlockPoolProblem.MissingDeliveredHeader(header.point))
-          )
-        )(a => pool.invalidated(a.taken, header, error))
+        .fold(BlockPoolProblem.MissingDeliveredHeader(header.point).raise[F, Bytes])(a =>
+          F.pure(a.taken.block)
+        )
+      def invalidated(header: Header, error: ValidationError) =
+        bodies
+          .get(header.hash)
+          .fold(
+            F.pure[Either[BlockPoolProblem, Unit]](
+              Left(BlockPoolProblem.MissingDeliveredHeader(header.point))
+            )
+          )(a => pool.invalidated(a.taken, header, error))
 
   private def selectLocked(
       adding: Option[BlockPool.Admission],
@@ -95,7 +84,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
           ordered <- application.project(truncated, phase)
           _ <- ordered.headOption.traverse_(candidate =>
             application.apply(
-              reader(candidate, bodies),
+              reader(bodies),
               candidate,
               adding.fold(Peer.Validation.none[F])(Peer.Validation.admission(pool, _)),
               phase
@@ -185,6 +174,13 @@ private[node] object BlockSelection:
           using Raise[F, NodeError]
       ): F[Unit] = cats.Applicative[F].unit
 
+  /** What the worker applies a candidate from: the bodies the pool admitted, and where a refusal of
+    * one is recorded against its original (issue 599). A peer session has no part in it.
+    */
+  trait Bodies[F[_]]:
+    def fetch(header: Header)(using Raise[F, NodeError]): F[Bytes]
+    def invalidated(header: Header, error: ValidationError): F[Either[BlockPoolProblem, Unit]]
+
   trait Application[F[_]]:
     def local: F[ChainSelection.Local]
     def admits(header: Header): F[Boolean]
@@ -195,7 +191,7 @@ private[node] object BlockSelection:
         phase: Phase
     ): F[Vector[ChainSelection.Candidate]]
     def apply(
-        peer: Peer[F],
+        bodies: Bodies[F],
         candidate: ChainSelection.Candidate,
         validation: Peer.Validation[F],
         phase: Phase

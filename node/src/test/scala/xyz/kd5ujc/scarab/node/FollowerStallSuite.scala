@@ -253,7 +253,6 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 byronEpochSlots = ForgedChain.geometry.byron.epochSlots
               ),
               follow = (peer, track) => follower.session(peer, track),
-              prepare = _ => IO.unit,
               // A reconnecting peer intersects with the chain we have adopted, as in the node.
               heightSnapshot = ChainSyncHeights.of(chainRef),
               headers = None,
@@ -406,7 +405,6 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               byronEpochSlots = ForgedChain.geometry.byron.epochSlots
             ),
             follow = (peer, track) => follower.session(peer, track),
-            prepare = _ => IO.unit,
             heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin,
             headers = None,
             transactions = None,
@@ -580,7 +578,6 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               byronEpochSlots = ForgedChain.geometry.byron.epochSlots
             ),
             follow = (peer, track) => follower.session(peer, track),
-            prepare = _ => IO.unit,
             heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin,
             headers = None,
             transactions = None,
@@ -729,7 +726,6 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           ),
           // the session meets a decoder that throws, as `Peer` does at its decode sites
           follow = (_, _) => Peer.decodingInput[IO, Unit](site)(throw cause),
-          prepare = _ => IO.unit,
           heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin,
           headers = None,
           transactions = None,

@@ -586,7 +586,6 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                                         .checked(10, 20)
                                                         .fold(e => fail(e.toString), identity)
                                                   ),
-                                                  _ => IO.unit,
                                                   chain = Peer.Chain.Genesis(
                                                     observeDirectRefusals(
                                                       controls.headers,
@@ -621,31 +620,6 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                                   retainedHeaders = controls.retainedHeaders,
                                                   fetchSession = Some(fetchSession),
                                                   selectionWork = Some(controls.work),
-                                                  receivedBody = Some((header, raw) =>
-                                                    Fibers
-                                                      .scoped[IO, StorageError, Unit](e =>
-                                                        StorageError
-                                                          .Io("simulator received journal", e)
-                                                      ) {
-                                                        opened.received.put(
-                                                          BlockRef(
-                                                            header.slot,
-                                                            header.hash,
-                                                            header.blockNo
-                                                          ),
-                                                          raw
-                                                        )
-                                                      }
-                                                      .flatMap(
-                                                        _.fold(
-                                                          e =>
-                                                            refused
-                                                              .complete(Problem.Storage(e))
-                                                              .void *> IO.never[Unit],
-                                                          IO.pure
-                                                        )
-                                                      )
-                                                  ),
                                                   heightSnapshot =
                                                     xyz.kd5ujc.scarab.node.ChainSyncHeights.origin
                                                 )

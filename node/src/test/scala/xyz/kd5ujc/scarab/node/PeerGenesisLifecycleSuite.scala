@@ -157,7 +157,6 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
             NodeToNodeConnection(15, chainSync, blockFetch, mux),
             Peer
               .Settings(SocketAddress[Host](ip"10.5.0.1", port"3001"), 42, byronEpochSlots = 21600),
-            _ => IO.unit,
             chain = TestChains.chain(
               Option.when(
                 (operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd || operation == Operation.DrainBatch)

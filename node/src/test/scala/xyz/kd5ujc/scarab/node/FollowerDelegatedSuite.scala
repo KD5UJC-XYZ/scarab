@@ -5,7 +5,7 @@ import cats.effect.{IO, Ref}
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.{BlockRules, ChainSelection, VolatileChain}
-import xyz.kd5ujc.scarab.ledger.{Fixtures, Header, NodeError, PeerError}
+import xyz.kd5ujc.scarab.ledger.{Fixtures, NodeError, PeerError}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.network.genesis.PicosClock
 import xyz.kd5ujc.scarab.network.selection.Gsm
@@ -66,8 +66,6 @@ class FollowerDelegatedSuite extends FailsOnUncaught:
               case Some(event) => seen.update(_ + 1).as(event)
               case None        => Raise[IO, PeerError].raise(PeerError.NoIntersection)
             }
-        def fetch(@scala.annotation.unused header: Header)(using Raise[IO, PeerError]) =
-          IO(fail("delegated body consumption must not fetch or apply blocks"))
       follower <- Follower.create[IO, BigInt](
         BlockRules.from((_, _, _) => IO(fail("selection belongs to the node worker"))),
         _ => IO.unit,

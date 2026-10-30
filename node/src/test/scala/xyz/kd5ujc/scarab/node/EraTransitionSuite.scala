@@ -624,7 +624,7 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
       events = new FollowerEvents[IO]:
         def emit(event: FollowerEvent) = eventsRef.update(_ :+ event)
-      peer = new Peer[IO]:
+      peer = new WorkerTesting.Scripted[IO]:
         def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
           IO.pure(candidates.lastOption)
         def next(using Raise[IO, PeerError]) = queue.tryTake.flatMap {
