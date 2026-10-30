@@ -1001,7 +1001,20 @@ object Targets:
         "voting-procedures",
         () => Corpus.sampled("conway:voting_procedures", 40) ++ Corpus.tricky,
         probe("voting-procedures") { b =>
-          Cbor.decode(b).foreach(n => seen("voting-procedures", VotingProcedures.decode(n).isRight))
+          Cbor
+            .decode(b)
+            .foreach(n =>
+              seen(
+                "voting-procedures",
+                VotingProcedures
+                  .decode(
+                    n,
+                    xyz.kd5ujc.scarab.ledger.DecoderVersion
+                      .of(xyz.kd5ujc.scarab.protocol.Era.Conway)
+                  )
+                  .isRight
+              )
+            )
         }
       ),
       Target(

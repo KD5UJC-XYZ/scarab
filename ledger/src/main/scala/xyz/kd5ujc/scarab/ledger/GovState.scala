@@ -12,21 +12,28 @@ import xyz.kd5ujc.scarab.ledger.state.CompactCoin
 final case class Anchor(url: String, hash: Bytes)
 
 object Anchor:
-  def decode(n: Node)(using ByteStrings): Either[LedgerDecodeError, Anchor] =
+  /** `Anchor` (`Cardano/Ledger/BaseTypes.hs`, cardano-ledger f649f975): a `Url` ([[CborRead.url]])
+    * and the hash of the data.
+    */
+  def decode(n: Node, version: DecoderVersion)(using
+      ByteStrings
+  ): Either[LedgerDecodeError, Anchor] =
     CborRead
       .arrayN(n, 2, DecodeField.Anchor)
       .flatMap(xs =>
         (
-          CborRead.text(xs(0), DecodeField.AnchorUrl),
+          CborRead.url(xs(0), DecodeField.AnchorUrl, version),
           CborRead.bytesN(xs(1), 32, DecodeField.AnchorHash)
         )
           .mapN(Anchor(_, _))
       )
 
-  def optional(n: Node)(using ByteStrings): Either[LedgerDecodeError, Option[Anchor]] =
+  def optional(n: Node, version: DecoderVersion)(using
+      ByteStrings
+  ): Either[LedgerDecodeError, Option[Anchor]] =
     n.value match
       case xyz.kd5ujc.scarab.codec.Value.Null => Right(None)
-      case _                                  => decode(n).map(Some(_))
+      case _                                  => decode(n, version).map(Some(_))
 
 /** The constitution: an anchor and the optional guardrails script. */
 final case class Constitution(anchor: Anchor, script: Option[Bytes])

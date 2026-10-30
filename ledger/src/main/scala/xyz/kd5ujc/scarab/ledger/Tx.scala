@@ -70,17 +70,29 @@ final case class PoolParams(
 )
 
 object PoolParams:
-  /** `PoolMetadata` (`State/StakePool.hs:516-524`, f649f975) keeps the hash as arbitrary bytes;
-    * POOL, rather than decoding, enforces its upper bound after protocol 4.0. Keep the original
-    * metadata term for hashing, snapshots and transaction presentation.
+  /** `PoolMetadata` (`State/StakePool.hs:516-524`, f649f975) of a registration in a body read at
+    * `version`: its url is a `Url` ([[CborRead.url]]); the hash is arbitrary bytes, whose upper
+    * bound POOL, rather than decoding, enforces after protocol 4.0. The original metadata term is
+    * kept for hashing, snapshots and transaction presentation.
     */
+  private[ledger] def decodeMetadata(raw: Bytes, version: DecoderVersion)(using
+      ByteStrings
+  ): Either[LedgerDecodeError, Bytes] =
+    metadata(raw, CborRead.url(_, DecodeField.PoolMetadataURL, version))
+
+  /** The hash of a metadata term the body decoder took ([[decodeMetadata]]), for POOL. */
   private[ledger] def metadataHash(
       raw: Bytes
   )(using ByteStrings): Either[LedgerDecodeError, Bytes] =
+    metadata(raw, CborRead.text(_, DecodeField.PoolMetadataURL))
+
+  private def metadata(raw: Bytes, url: Node => Either[LedgerDecodeError, String])(using
+      ByteStrings
+  ): Either[LedgerDecodeError, Bytes] =
     for
       node <- CborRead.decode(raw)
       fields <- CborRead.arrayN(node, 2, DecodeField.PoolMetadata)
-      _ <- CborRead.text(fields(0), DecodeField.PoolMetadataURL)
+      _ <- url(fields(0))
       hash <- CborRead.bytes(fields(1), DecodeField.PoolMetadataHash)
     yield hash
 
@@ -213,11 +225,11 @@ object Certificate:
             (cred(1, xs), pool(2, xs), drep(3, xs), coin(4, xs))
               .mapN((c, p, v, d) => Delegate(c, Some(p), Some(v), Some(d)))
           case 14 => (cred(1, xs), cred(2, xs)).mapN(CommitteeAuthorize(_, _))
-          case 15 => (cred(1, xs), Anchor.optional(xs(2))).mapN(CommitteeResign(_, _))
+          case 15 => (cred(1, xs), Anchor.optional(xs(2), version)).mapN(CommitteeResign(_, _))
           case 16 =>
-            (cred(1, xs), coin(2, xs), Anchor.optional(xs(3))).mapN(RegisterDRep(_, _, _))
+            (cred(1, xs), coin(2, xs), Anchor.optional(xs(3), version)).mapN(RegisterDRep(_, _, _))
           case 17 => (cred(1, xs), coin(2, xs)).mapN(UnregisterDRep(_, _))
-          case 18 => (cred(1, xs), Anchor.optional(xs(2))).mapN(UpdateDRep(_, _))
+          case 18 => (cred(1, xs), Anchor.optional(xs(2), version)).mapN(UpdateDRep(_, _))
           case t  => Left(LedgerDecodeError.UnknownTag(DecodeField.Certificate, t))
       yield cert
     }
@@ -262,7 +274,7 @@ object Certificate:
       _ <- PoolRelays.fromBody(xs(7), version).leftMap(LedgerDecodeError.PoolRelay(_))
       metadata <- xs(8).value match
         case xyz.kd5ujc.scarab.codec.Value.Null => Right(None)
-        case _ => PoolParams.metadataHash(xs(8).original).map(_ => Some(xs(8).original))
+        case _ => PoolParams.decodeMetadata(xs(8).original, version).map(_ => Some(xs(8).original))
     // Match the ledger-state codec's typed representation: the empty relay sequence is the
     // empty value (Bytes.empty), while non-empty relay sequences retain their original wire.
     yield PoolParams(
@@ -461,7 +473,7 @@ object TxBody:
         f.get(19)
           .traverse(
             VotingProcedures
-              .decode(_)
+              .decode(_, version)
               .flatMap(v => if conway then VotingProcedures.requireBodyDecodable(v) else Right(v))
               .leftMap(LedgerDecodeError.Voting(_))
           )

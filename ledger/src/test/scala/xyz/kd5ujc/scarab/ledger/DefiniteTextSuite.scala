@@ -23,6 +23,8 @@ class DefiniteTextSuite extends FunSuite:
 
   private val hash = "ab" * 32
 
+  private val conway = DecoderVersion.of(xyz.kd5ujc.scarab.protocol.Era.Conway)
+
   /** `[url, data_hash]` (`Anchor`, `PoolMetadata`): the same array with a definite and a chunked
     * url.
     */
@@ -54,9 +56,9 @@ class DefiniteTextSuite extends FunSuite:
   }
 
   test("an anchor url is definite: `Url` decodes textDecCBOR, and textDecCBOR is decodeString") {
-    assertEquals(Anchor.decode(node(pair(definiteUrl))).map(_.url), Right("a"))
+    assertEquals(Anchor.decode(node(pair(definiteUrl)), conway).map(_.url), Right("a"))
     assertEquals(
-      Anchor.decode(node(pair(chunkedUrl))),
+      Anchor.decode(node(pair(chunkedUrl)), conway),
       Left(LedgerDecodeError.IndefiniteLength(DecodeField.AnchorUrl))
     )
   }

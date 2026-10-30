@@ -184,7 +184,7 @@ object Proposal:
         .bytes(xs(1), DecodeField.ProposalRewardAccount)
         .flatMap(RewardAccount.decode)
       action <- action(xs(2), version)
-      anchor <- Anchor.decode(xs(3))
+      anchor <- Anchor.decode(xs(3), version)
     yield Proposal(deposit, account, action, anchor)
 
   /** A map whose repeated key fails from decoder version 9 (`decodeMap`, Decoder.hs). */
@@ -259,7 +259,7 @@ object Proposal:
               GovActionId.optional(xs(1)),
               CborRead
                 .arrayN(xs(2), 2, DecodeField.Constitution)
-                .flatMap(c => (optionalHash(c(1)), Anchor.decode(c(0))).tupled)
+                .flatMap(c => (optionalHash(c(1)), Anchor.decode(c(0), version)).tupled)
             ).mapN((p, c) => GovAction.NewConstitution(p, c._1, c._2))
           case (Some(6), 1) => Right(GovAction.Info)
           case (_, k) => Left(LedgerDecodeError.TaggedArity(DecodeField.GovernanceAction, tag, k))
@@ -279,7 +279,8 @@ object VotingProcedures:
       case InvalidVote(value)      => s"vote $value"
 
   def decode(
-      n: Node
+      n: Node,
+      version: DecoderVersion
   )(using
       ByteStrings
   ): Either[DecodeError, Vector[(Voter, Vector[(GovActionId, VotingProcedure)])]] =
@@ -310,7 +311,10 @@ object VotingProcedures:
                 anchor <- p(1).value match
                   case CborValue.Null => Right(None)
                   case _ =>
-                    Anchor.decode(p(1)).leftMap(DecodeError.InvalidStructure(_)).map(Some(_))
+                    Anchor
+                      .decode(p(1), version)
+                      .leftMap(DecodeError.InvalidStructure(_))
+                      .map(Some(_))
               yield actionId -> VotingProcedure(vote, anchor)
             })
         yield v -> votes

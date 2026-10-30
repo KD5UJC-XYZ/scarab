@@ -54,8 +54,8 @@ python3 scripts/oracle/conway-decoding/definite_text_cases.py --inputs /tmp/defi
   [#436](https://github.com/KD5UJC-XYZ/scarab/issues/436), are in the
   [pool-relays corpus](../pool-relays/README.md).
 - **The length bound.** The same readers bound the field with `textSizeN`: 64 bytes of UTF-8 below
-  decoder version 9, 128 from it. No case here is at or over the bound, and neither the anchor nor
-  the pool metadata url applies one yet
+  decoder version 9, 128 from it. No case here is at or over the bound; the
+  [url-length corpus](../url-length/README.md) holds those cases
   ([#550](https://github.com/KD5UJC-XYZ/scarab/issues/550)).
 - Byron's application name (`ApplicationName`, `DecCBOR` over `Text`) takes the same reader and is
   definite-only in the code after this change; no Byron case is in this corpus.

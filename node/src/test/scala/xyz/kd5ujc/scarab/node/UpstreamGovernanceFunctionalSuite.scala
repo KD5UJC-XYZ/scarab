@@ -175,7 +175,12 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
 
   private def govSignal(id: String): GovSignal = node(id, "signal").value match
     case Value.Arr(Vector(votes, proposals, certificates)) =>
-      val voting = VotingProcedures.decode(votes).fold(e => fail(e.message), identity)
+      val voting = VotingProcedures
+        .decode(
+          votes,
+          xyz.kd5ujc.scarab.ledger.DecoderVersion.of(xyz.kd5ujc.scarab.protocol.Era.Conway)
+        )
+        .fold(e => fail(e.message), identity)
       val proposalNodes = proposals.value match
         case Value.Tag(258, inner) => inner
         case _                     => proposals
