@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.{Deferred, IO}
+import cats.effect.{Deferred, IO, Ref}
+import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import fs2.Chunk
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -465,23 +466,85 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
             def close = IO.unit
           typed {
             Mux.resource(bearer, Set(2)).use { mux =>
-              // Let send finish queue admission before the writer reports the injected failure.
-              (if writing then mux.channel(2).flatMap(_.send(Bytes(Vector(0.toByte))))
-               else IO.unit) *>
-                failWrite.complete(()).void *> mux.closed
+              for
+                channel <- mux.channel(2)
+                // Let send finish queue admission before the writer reports the injected failure.
+                _ <- channel.send(Bytes(Vector(0.toByte))).whenA(writing)
+                _ <- failWrite.complete(())
+                reason <- mux.closed
+                // once the connection is closed, a caller's send fails with the same reason (#264)
+                after <- typed(channel.send(Bytes(Vector(1.toByte))))
+              yield (reason, after)
             }
           }
         }
         .map {
-          // the reader's exception is the connection's (issue 463); the writer's stays a defect
-          case Right(NetworkError.BearerDefect(found)) if unexpected && !writing =>
-            assert(found eq cause)
-          case Right(NetworkError.Defect(found)) if unexpected && writing => assert(found eq cause)
-          case Right(NetworkError.BearerClosed(NetworkError.Closure.Transport(_, found)))
-              if !unexpected =>
-            assert(found eq cause)
+          case Right((reason, after)) =>
+            assertEquals(after, Left(reason))
+            reason match
+              // the reader's exception is the connection's (issue 463); the writer's stays a defect
+              case NetworkError.BearerDefect(found) if unexpected && !writing =>
+                assert(found eq cause)
+              case NetworkError.Defect(found) if unexpected && writing => assert(found eq cause)
+              case NetworkError.BearerClosed(NetworkError.Closure.Transport(_, found))
+                  if !unexpected =>
+                assert(found eq cause)
+              case other => fail(s"unexpected $other")
           case other => fail(s"unexpected $other")
         }
+    }
+
+  test("a payload queued as the connection closes is delivered before the closure (#389)"):
+    val last = Bytes(Vector(0x81.toByte, 0x02.toByte))
+    val ended = NetworkError.BearerClosed(NetworkError.Closure.PeerClosed)
+    (
+      Ref.of[IO, Vector[Bytes]](Vector.empty),
+      Ref.of[IO, Option[NetworkError]](None),
+      Ref.of[IO, Int](0)
+    ).tupled.flatMap { (queue, closure, looks) =>
+      // The reader runs between the channel's first look at its queue and its look at the
+      // closure: it queues the last SDU of a clean shutdown, then records the end of the bearer.
+      val reader = queue.update(_ :+ last) *> closure.set(Some(ended))
+      val tryTake = looks.getAndUpdate(_ + 1).flatMap { look =>
+        queue.modify(q => (q.drop(1), q.headOption)) <* reader.whenA(look == 0)
+      }
+      for
+        first <- Mux.queuedOrClosed(tryTake, closure.get)
+        second <- Mux.queuedOrClosed(tryTake, closure.get)
+      yield
+        assertEquals(first, Some(Right(last)))
+        assertEquals(second, Some(Left(ended)))
+    }
+
+  test("a receive already waiting gets the payload the peer sent just before closing (#389)"):
+    val last = Bytes(Vector(0x81.toByte, 0x02.toByte))
+    val frame = WireMux
+      .encode(WireMux.Sdu(0, 2, WireMux.Direction.Responder, last))
+      .fold(error => fail(error.message), identity)
+    // Under TestControl the sleep ends only once every fiber is blocked, so the receive is waiting
+    // on its empty queue before the SDU arrives. The reader then queues the SDU and records the end
+    // of the bearer at once. Each seed orders the reader, the closure and the waiting receive
+    // differently, and replays that order on every run.
+    (1 to 200).toList.traverse_ { n =>
+      val seed = java.util.Base64.getEncoder.encodeToString(n.toString.getBytes)
+      TestControl
+        .executeEmbed(
+          typed {
+            Bearer.inMemory[IO]().flatMap { (ours, raw) =>
+              Mux.resource(ours, Set(2)).use { mux =>
+                for
+                  channel <- mux.channel(2)
+                  waiting <- typed(channel.recv(10)(exactly(2))).start
+                  _ <- IO.sleep(1.second)
+                  _ <- raw.write(Chunk.array(frame.toArray)) *> raw.close
+                  received <- waiting.joinWithNever
+                yield received
+              }
+            }
+          },
+          seed = Some(seed)
+        )
+        .map(result => assertEquals(result, Right(Right(last)), s"seed $n"))
     }
 
   for
