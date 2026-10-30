@@ -151,8 +151,24 @@ private[network] object ChainSyncPipeline:
           )
           .as {
             new ChainSyncRuntime.Pipeline[F, Q, T, P]:
-              private def guarded[A](operation: F[A]): F[A] =
-                operation.onCancel(terminate(cancelled)).onError { case _ => terminate(cancelled) }
+              /** `operation`, whose end is published as the protocol's: a cancellation as the
+                * cancellation marker, and an operation's own failure as itself (issue 600), as a
+                * mini-protocol's own exception is its result (ouroboros-network 2fb69829
+                * network-mux/src/Network/Mux.hs 356-366). A typed failure raised through the
+                * caller's capability is published before it reaches the caller; an exception (of a
+                * callback the collector runs, for one) is published as a defect and propagates
+                * unchanged. Only the first failure is published ([[terminate]]).
+                */
+              private def guarded[A](operation: Raise[F, NetworkError] ?=> F[A])(using
+                  caller: Raise[F, NetworkError]
+              ): F[A] =
+                val own = new Raise[F, NetworkError]:
+                  def functor: cats.Functor[F] = F
+                  def raise[E2 <: NetworkError, B](error: E2): F[B] =
+                    terminate(error) *> caller.raise[NetworkError, B](error)
+                operation(using own)
+                  .onCancel(terminate(cancelled))
+                  .onError { case thrown => terminate(NetworkError.Defect(thrown)) }
 
               def outstanding: F[Int] = count.get
               def idle: F[Boolean] =
