@@ -373,7 +373,6 @@ enum DecodeField(val label: String) extends DecodeSite:
   case ProposalAttributes extends DecodeField("proposal attributes")
   case ProposalID extends DecodeField("proposal ID")
   case ProposalIssuer extends DecodeField("proposal issuer")
-  case ProposalMetadata extends DecodeField("proposal metadata")
   case ProposalSignature extends DecodeField("proposal signature")
   case ProtocolAlternative extends DecodeField("protocol alternative")
   case ProtocolMajor extends DecodeField("protocol major")

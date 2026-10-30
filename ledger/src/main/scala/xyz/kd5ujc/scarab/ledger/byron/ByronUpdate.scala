@@ -44,8 +44,10 @@ object UpdatePayload:
         sv <- CborRead.arrayN(xs(2), 2, DecodeField.SoftwareVersion)
         name <- CborRead.text(sv(0), DecodeField.SoftwareName)
         number <- CborRead.uint(sv(1), DecodeField.SoftwareNumber)
-        _ <- CborRead.map(xs(3), DecodeField.ProposalMetadata)
-        _ <- CborRead.map(xs(4), DecodeField.ProposalAttributes)
+        // the metadata and the attributes as the reference reads them, as the fetched body's
+        // transport check does (`ByronTransport`): the keys are decoded, not only counted
+        _ <- ByronTransport.installerMetadata(xs(3))
+        _ <- ByronTransport.emptyAttributes(xs(4), DecodeField.ProposalAttributes)
         issuer <- CborRead.bytesN(xs(5), 64, DecodeField.ProposalIssuer)
         signature <- CborRead.bytesN(xs(6), 64, DecodeField.ProposalSignature)
       yield ByronProposal(
