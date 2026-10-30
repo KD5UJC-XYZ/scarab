@@ -733,6 +733,87 @@ object Main extends IOApp:
       )
     }
 
+  /** What every phase of a run reads: the completed options and setup, and what was opened before
+    * the run ([[started]]). `setup` is `loaded` with the verification cache as its verdicts.
+    */
+  private final case class Startup(
+      options: Options,
+      cliPeers: List[SocketAddress[Host]],
+      loaded: NodeSetup,
+      setup: NodeSetup,
+      topology: Option[Topology],
+      store: UtxoStore[IO],
+      cache: VerificationCache,
+      scheduling: Scheduling[IO],
+      credentials: Option[PoolCredentials]
+  ):
+    def genesis: xyz.kd5ujc.scarab.ledger.ShelleyGenesis = setup.genesis
+
+  /** What the run measures and reports with, made before any store is open. */
+  private final case class Instruments(
+      metrics: Metrics[IO],
+      measured: EventMetrics[IO],
+      stall: StallDiagnostics.Watch[IO],
+      faulted: Deferred[IO, Fatal],
+      fatalSink: Fatal => IO[Unit],
+      watchdog: StallWatchdog[IO],
+      collectors: Collectors.Registry[IO],
+      eraStarts: Ref[IO, Map[Era, BigInt]],
+      followerEvents: FollowerEvents[IO],
+      headersLogged: Ref[IO, Long],
+      rounds: Ref[IO, (Long, Long, Long, Long, Int)]
+  )
+
+  /** The block rules, and the rule configuration the signature pre-verification reads. */
+  private final case class Rules(
+      praosConfig: Ref[IO, consensus.PraosConfig],
+      warm: Peer.Prepare[IO],
+      rules: MirrorRules[IO]
+  )
+
+  /** The selected chain once the stores are open, with what serves and extends it. */
+  private final case class Chain(
+      ref: Ref[IO, VolatileChain[MirrorState]],
+      server: ChainServer[IO],
+      txClock: TxClock[MirrorState],
+      mempoolEnvironment: Ask[IO, MempoolEnv],
+      mempool: Mempool[IO],
+      chainGate: Mutex[IO],
+      follower: Follower[IO, MirrorState],
+      receivedBody: Option[Peer.BodySink[IO]],
+      stateful: Stateful[IO, VolatileChain[MirrorState]]
+  )
+
+  /** How the sessions check headers, and what they observe. */
+  private final case class Headers(
+      nodeChain: HeaderCheck.Grafting[IO],
+      check: Option[HeaderCheck[IO]],
+      observePeer: Peer.Observation => IO[Unit]
+  )
+
+  /** The blocks fetched ahead, shared by every session, and the Genesis runtime when it runs. */
+  private final case class Supply(
+      blockPool: BlockPool[IO],
+      genesisRuntime: Option[GenesisRuntime[IO]]
+  )
+
+  /** The connections: the manager, the inbound governor, the outbound network and the listener. */
+  private final case class Connections(
+      manager: ConnectionManager[IO],
+      governor: InboundGovernor[IO],
+      network: Resource[IO, PeerNetwork.Running[IO, PeerNetwork.Addr]],
+      relay: Resource[IO, Unit]
+  )
+
+  /** The services beside the network: the node-to-client server, the forger and the watchers. */
+  private final case class Services(
+      local: Raise[IO, DiffusionFailure] => Resource[IO, IO[DiffusionFailure]],
+      forging: Option[Forger[IO, MirrorState]],
+      production: Resource[IO, Unit],
+      watching: Resource[IO, Unit],
+      reporting: Resource[IO, Unit]
+  )
+
   private def followWith(
       options: Options,
       cliPeers: List[SocketAddress[Host]],
@@ -748,66 +829,99 @@ object Main extends IOApp:
       handle: Handle[IO, NodeError],
       log: Log[IO]
   ): IO[ExitCode] =
-    def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
-    def logged(event: NodeEvent): IO[Unit] = Log[IO].emit(event)
     val setup = loaded.copy(praos = loaded.praos.copy(verdicts = cache))
+    val run =
+      Startup(options, cliPeers, loaded, setup, topology, store, cache, scheduling, credentials)
+    instrumented(run, background).flatMap { instruments =>
+      given Metrics[IO] = instruments.metrics
+      ruled(run).flatMap { rules =>
+        // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
+        // node has seen begin so far.
+        given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(instruments.eraStarts.get)
+        given SnapshotFormat[IO, MirrorState] = SnapshotV7.format[IO](options.snapshotCheck)
+        // What a scrape reads besides the counters the events keep: each source answers for itself
+        // and is added when it exists, so the endpoint can listen before the stores are opened (a
+        // collector that is not there yet leaves its gauges absent).
+        val exposed = options.metricsListen.fold(Resource.unit[IO])(address =>
+          MetricsServer.resource[IO](address, instruments.collectors.scrape).void
+        )
+        exposed
+          .surround(
+            storage(run, instruments, rules, backing).use(following(run, instruments, rules, _))
+          )
+          .map(exitCode)
+      }
+    }
+
+  /** The run's instruments, in the order the run makes them. */
+  private def instrumented(run: Startup, background: IO[Unit] => IO[Unit])(using
+      Log[IO]
+  ): IO[Instruments] =
+    import run.{options, scheduling}
+    def logged(event: NodeEvent): IO[Unit] = Log[IO].emit(event)
+    // The measurements: every event goes to the log and to the metrics ([[EventSink]]).
+    Metrics.create[IO](Catalogue.all).flatMap { metrics =>
+      given Metrics[IO] = metrics
+      for
+        headersLogged <- Ref.of[IO, Long](0L)
+        rounds <- Ref.of[IO, (Long, Long, Long, Long, Int)]((0L, 0L, 0L, 0L, 0))
+        eraStarts <- Ref.of[IO, Map[xyz.kd5ujc.scarab.protocol.Era, BigInt]](Map.empty)
+        measured <- EventMetrics.create[IO]
+        // a follower that stops extending its chain while a peer has more says so (issue 130)
+        // (and, from issue 371, where its report reads from once the block pool exists)
+        stall <- StallDiagnostics.Watch.create[IO](options.stallDump, e => logged(e), background)
+        // a session that ends in a way no peer policy handles stops the node ([[Fatal]]): the event
+        // is logged where it happens, and the run ends like a signal does (the stores close, the
+        // shutdown snapshot is taken) with an exit code of its own
+        faulted <- Deferred[IO, Fatal]
+        fatalReporter <- FatalReporter.create[IO](
+          fault => logged(NodeEvent.Faulted(fault)),
+          fault => faulted.complete(fault).void
+        )
+        watchdog <- StallWatchdog.create[IO](
+          BigInt(0),
+          options.stallMinutes.minutes,
+          options.stallExitAfter,
+          stall.react(measured.stall)
+        )
+        collectors <- Collectors.Registry.create[IO]
+        _ <- collectors.add(Collectors.jvm[IO])
+        _ <- collectors.add(Collectors.scheduling(scheduling.stats))
+      yield
+        val followerLog = Log.follower[IO](Some(scheduling.stats))
+        val events = new FollowerEvents[IO]:
+          def emit(event: FollowerEvent): IO[Unit] =
+            (event match
+              case FollowerEvent.EraEntered(_, to, _, epoch) =>
+                eraStarts.update(_.updatedWith(to)(_.orElse(Some(epoch))))
+              case FollowerEvent.Extended(block, _, peerTip, _) =>
+                watchdog.announced(peerTip.blockNo.value) *> watchdog.extended(block.blockNo)
+              case _ => IO.unit
+            ) *> followerLog.emit(event)
+        Instruments(
+          metrics,
+          measured,
+          stall,
+          faulted,
+          (fault: Fatal) => fatalReporter.report(fault),
+          watchdog,
+          collectors,
+          eraStarts,
+          events.alongside(measured.follower),
+          headersLogged,
+          rounds
+        )
+    }
+
+  /** The block rules: what each applied block also does, and where its scripts run. */
+  private def ruled(run: Startup)(using Log[IO]): IO[Rules] =
+    import run.{cache, options, scheduling, setup, store}
+    def logged(event: NodeEvent): IO[Unit] = Log[IO].emit(event)
     for
-      genesis <- IO.pure(setup.genesis)
       blocks <- Ref.of[IO, Long](0L)
-      headersLogged <- Ref.of[IO, Long](0L)
-      rounds <- Ref.of[IO, (Long, Long, Long, Long, Int)]((0L, 0L, 0L, 0L, 0))
       // The rule configuration the signature pre-verification uses: a chain with a derived Byron
       // span learns its first Shelley epoch from the state.
       praosConfig <- Ref.of[IO, consensus.PraosConfig](setup.praos)
-      warm = (raw: Vector[xyz.kd5ujc.scarab.codec.Bytes]) =>
-        praosConfig.get.flatMap(cache.warm[IO](raw, _))
-      eraStarts <- Ref.of[IO, Map[xyz.kd5ujc.scarab.protocol.Era, BigInt]](Map.empty)
-      // The measurements: every event goes to the log and to the metrics ([[EventSink]]).
-      metrics <- Metrics.create[IO](Catalogue.all)
-      given Metrics[IO] = metrics
-      measured <- EventMetrics.create[IO]
-      // a follower that stops extending its chain while a peer has more says so (issue 130)
-      // (and, from issue 371, where its report reads from once the block pool exists)
-      stall <- StallDiagnostics.Watch.create[IO](options.stallDump, e => logged(e), background)
-      // a session that ends in a way no peer policy handles stops the node ([[Fatal]]): the event
-      // is logged where it happens, and the run ends like a signal does (the stores close, the
-      // shutdown snapshot is taken) with an exit code of its own
-      faulted <- Deferred[IO, Fatal]
-      fatalReporter <- FatalReporter.create[IO](
-        fault => logged(NodeEvent.Faulted(fault)),
-        fault => faulted.complete(fault).void
-      )
-      fatalSink = (fault: Fatal) => fatalReporter.report(fault)
-      watchdog <- StallWatchdog.create[IO](
-        BigInt(0),
-        options.stallMinutes.minutes,
-        options.stallExitAfter,
-        stall.react(measured.stall)
-      )
-      // What a scrape reads besides the counters the events keep: each source answers for itself
-      // and is added when it exists, so the endpoint can listen before the stores are opened (a
-      // collector that is not there yet leaves its gauges absent).
-      collectors <- Collectors.Registry.create[IO]
-      _ <- collectors.add(Collectors.jvm[IO])
-      _ <- collectors.add(Collectors.scheduling(scheduling.stats))
-      scrape = collectors.scrape
-      exposed = options.metricsListen.fold(Resource.unit[IO])(address =>
-        MetricsServer.resource[IO](address, scrape).void
-      )
-      followerLog = Log.follower[IO](Some(scheduling.stats))
-      events = new FollowerEvents[IO]:
-        def emit(event: FollowerEvent): IO[Unit] =
-          (event match
-            case FollowerEvent.EraEntered(_, to, _, epoch) =>
-              eraStarts.update(_.updatedWith(to)(_.orElse(Some(epoch))))
-            case FollowerEvent.Extended(block, _, peerTip, _) =>
-              watchdog.announced(peerTip.blockNo.value) *> watchdog.extended(block.blockNo)
-            case _ => IO.unit
-          ) *> followerLog.emit(event)
-      followerEvents = events.alongside(measured.follower)
-      storageEvents = Log.sink[StorageEvents, StorageEvent, IO].alongside(measured.storage)
-      loggedConnections = Log.sink[ConnectionEvents, ConnectionEvent, IO]
-      loggedInbound = Log.inbound[IO]
       cases = options.plutusCases.map { dir =>
         java.nio.file.Files.createDirectories(dir)
         tools.PlutusCases(dir, perKind = 2, max = 400)
@@ -832,7 +946,10 @@ object Main extends IOApp:
               logged(NodeEvent.VerificationCache(cache.summary)).whenA(n % 20000 == 0)
             }
       parallelPlutus <- ParallelPlutus.create[IO](options.plutusWorkers)
-      rules = MirrorRules[IO](
+    yield Rules(
+      praosConfig,
+      raw => praosConfig.get.flatMap(cache.warm[IO](raw, _)),
+      MirrorRules[IO](
         setup.praos,
         setup.globals,
         setup.byronRules,
@@ -844,740 +961,914 @@ object Main extends IOApp:
         compute = Some(scheduling.compute),
         parallelPlutus = Some(parallelPlutus)
       )
-      k = setup.chainStoreK.blocks
-      // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
-      // node has seen begin so far.
-      given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(eraStarts.get)
-      given SnapshotFormat[IO, MirrorState] = SnapshotV7.format[IO](options.snapshotCheck)
-      storage = options.db.fold(
-        Resource.pure[IO, Storage[MirrorState]](
-          Storage(
-            None,
-            setup.mirrorStart,
-            Vector.empty,
-            Some(ChainPersistence.backingOnly[IO, MirrorState](backing)),
-            None,
-            None
-          )
+    )
+
+  /** The chain database, or without `--db` the state the node starts from. */
+  private def storage(
+      run: Startup,
+      instruments: Instruments,
+      rules: Rules,
+      backing: StateBacking[IO, MirrorState]
+  )(using
+      Ask[IO, ConsensusMirrorEnv],
+      SnapshotFormat[IO, MirrorState],
+      Handle[IO, NodeError],
+      Log[IO]
+  ): Resource[IO, Storage[MirrorState]] =
+    import run.{genesis, options, scheduling, setup}
+    val k = setup.chainStoreK.blocks
+    val storageEvents =
+      Log.sink[StorageEvents, StorageEvent, IO].alongside(instruments.measured.storage)
+    options.db.fold(
+      Resource.pure[IO, Storage[MirrorState]](
+        Storage(
+          None,
+          setup.mirrorStart,
+          Vector.empty,
+          Some(ChainPersistence.backingOnly[IO, MirrorState](backing)),
+          None,
+          None
         )
-      ) { dir =>
-        val policy = options.snapshotEvery match
-          case None                            => SnapshotPolicy.reference(genesis.geometry.k)
-          case Some(SnapshotInterval.Slots(n)) => SnapshotPolicy.EverySlots(BigInt(n))
-          case Some(SnapshotInterval.Epochs(n)) =>
-            SnapshotPolicy.EverySlots(BigInt(n) * genesis.geometry.epochLength)
-        ChainStorage
-          .open[IO, MirrorState](
-            fs2.io.file.Path.fromNioPath(dir),
-            ChainStorage.Config(
-              policy,
-              options.keepSnapshots,
-              byronEpochSlots = genesis.geometry.byron.epochSlots,
-              identity = Some(setup.identity),
-              adoptLegacyNetworkIdentity = options.adoptLegacyNetworkIdentity
-            ),
-            rules,
-            setup.mirrorStart,
-            storageEvents,
-            backing,
-            warm,
-            Some(scheduling.compute),
-            Some(SnapshotMigration.toCurrent[IO])
-          )
-          .evalMap { r =>
-            ChainStorage
-              .resume[IO, MirrorState](
-                r,
-                k,
-                setup.origin,
-                rules,
-                genesis.geometry.byron.epochSlots,
-                storageEvents,
-                warm,
-                Some(scheduling.compute)
+      )
+    ) { dir =>
+      val policy = options.snapshotEvery match
+        case None                            => SnapshotPolicy.reference(genesis.geometry.k)
+        case Some(SnapshotInterval.Slots(n)) => SnapshotPolicy.EverySlots(BigInt(n))
+        case Some(SnapshotInterval.Epochs(n)) =>
+          SnapshotPolicy.EverySlots(BigInt(n) * genesis.geometry.epochLength)
+      ChainStorage
+        .open[IO, MirrorState](
+          fs2.io.file.Path.fromNioPath(dir),
+          ChainStorage.Config(
+            policy,
+            options.keepSnapshots,
+            byronEpochSlots = genesis.geometry.byron.epochSlots,
+            identity = Some(setup.identity),
+            adoptLegacyNetworkIdentity = options.adoptLegacyNetworkIdentity
+          ),
+          rules.rules,
+          setup.mirrorStart,
+          storageEvents,
+          backing,
+          rules.warm,
+          Some(scheduling.compute),
+          Some(SnapshotMigration.toCurrent[IO])
+        )
+        .evalMap { r =>
+          ChainStorage
+            .resume[IO, MirrorState](
+              r,
+              k,
+              setup.origin,
+              rules.rules,
+              genesis.geometry.byron.epochSlots,
+              storageEvents,
+              rules.warm,
+              Some(scheduling.compute)
+            )
+            .map(resumed =>
+              Storage(
+                r.anchor,
+                r.state,
+                resumed,
+                Some(r.persistence),
+                Some(r.store),
+                Some(r.received)
               )
-              .map(resumed =>
-                Storage(
-                  r.anchor,
-                  r.state,
-                  resumed,
-                  Some(r.persistence),
-                  Some(r.store),
-                  Some(r.received)
-                )
+            )
+        }
+    }
+
+  /** The run once the stores are open and the stored blocks applied, until it ends. */
+  private def following(
+      run: Startup,
+      instruments: Instruments,
+      rules: Rules,
+      opened: Storage[MirrorState]
+  )(using Handle[IO, NodeError], Log[IO], Metrics[IO]): IO[RunEnd] =
+    import run.{genesis, setup}
+    // A chain whose Byron span is derived learns the first Shelley epoch when it enters
+    // Shelley; a restored state past that point knows it, a fresh sync learns it on the way
+    // (the forger still needs a restart after that, see docs/compatibility.md).
+    val globals =
+      opened.state.consensus.byron.firstShelleyEpoch.fold(setup.globals)(e =>
+        setup.globals.copy(firstEpoch = e)
+      )
+    selected(run, instruments, rules, opened, globals).flatMap { chain =>
+      given Stateful[IO, VolatileChain[MirrorState]] = chain.stateful
+      given Ask[IO, consensus.ChainSelection.Local] = new Ask[
+        IO,
+        consensus.ChainSelection.Local
+      ]:
+        val applicative: cats.Applicative[IO] = cats.Applicative[IO]
+        def ask[E2 >: consensus.ChainSelection.Local]: IO[E2] =
+          chain.follower.fetchSelection.widen[E2]
+      given Tell[IO, xyz.kd5ujc.scarab.ledger.GenesisInternalProblem] =
+        new Tell[IO, xyz.kd5ujc.scarab.ledger.GenesisInternalProblem]:
+          val functor: cats.Functor[IO] = cats.Functor[IO]
+          def tell(problem: xyz.kd5ujc.scarab.ledger.GenesisInternalProblem): IO[Unit] =
+            instruments.fatalSink(Fatal.Internal(problem))
+      val headers = headerChecks(run, instruments, rules, chain)
+      for
+        supply <- supplied(run, instruments, chain, headers, opened.received)
+        connections <- connected(run, instruments, rules, chain, headers, supply, opened.immutable)
+        services <- served(
+          run,
+          instruments,
+          chain,
+          globals,
+          opened.state.geometry(genesis.geometry)
+        )
+        ended <- ran(run, instruments, rules, chain, supply, connections, services, opened.received)
+      yield ended
+    }
+
+  /** The selected chain: the volatile chain from the stored blocks, its server, the mempool at its
+    * tip and the follower that extends it.
+    */
+  private def selected(
+      run: Startup,
+      instruments: Instruments,
+      rules: Rules,
+      opened: Storage[MirrorState],
+      globals: xyz.kd5ujc.scarab.ledger.LedgerGlobals
+  )(using Handle[IO, NodeError], Log[IO], Metrics[IO]): IO[Chain] =
+    import run.{genesis, options, scheduling, setup, store}
+    import instruments.{collectors, fatalSink, measured}
+    import opened.{anchor, persistence, resumed, state}
+    def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
+    val geometry = state.geometry(genesis.geometry)
+    val k = setup.chainStoreK.blocks
+    for
+      // Older databases have only the selected-chain log. Preserve those known originals
+      // without inventing downloaded fork history that the old writer never recorded.
+      _ <- opened.received.traverse_(received =>
+        resumed.traverse_(block => received.restoreSelected(block.ref, block.raw))
+      )
+      receivedBody: Option[Peer.BodySink[IO]] = opened.received.map { received => (header, raw) =>
+        Handle
+          .allow[StorageError] {
+            received
+              .put(
+                BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary),
+                raw
               )
+              .as(Option.empty[StorageError])
+          }
+          .rescue(error => IO.pure(Some(error)))
+          .flatMap {
+            case None        => IO.unit
+            case Some(error) => fatalSink(Fatal.Storage(error)) *> IO.never[Unit]
           }
       }
-      ended <- exposed.surround(storage.use {
-        case Storage(anchor, state, resumed, persistence, immutable, receivedBlocks) =>
-          // A chain whose Byron span is derived learns the first Shelley epoch when it enters
-          // Shelley; a restored state past that point knows it, a fresh sync learns it on the way
-          // (the forger still needs a restart after that, see docs/compatibility.md).
-          val geometry = state.geometry(genesis.geometry)
-          val globals =
-            state.consensus.byron.firstShelleyEpoch.fold(setup.globals)(e =>
-              setup.globals.copy(firstEpoch = e)
-            )
-          for
-            // Older databases have only the selected-chain log. Preserve those known originals
-            // without inventing downloaded fork history that the old writer never recorded.
-            _ <- receivedBlocks.traverse_(received =>
-              resumed.traverse_(block => received.restoreSelected(block.ref, block.raw))
-            )
-            receivedBody: Option[Peer.BodySink[IO]] = receivedBlocks.map {
-              received => (header, raw) =>
-                Handle
-                  .allow[StorageError] {
-                    received
-                      .put(
-                        BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary),
-                        raw
-                      )
-                      .as(Option.empty[StorageError])
-                  }
-                  .rescue(error => IO.pure(Some(error)))
-                  .flatMap {
-                    case None        => IO.unit
-                    case Some(error) => fatalSink(Fatal.Storage(error)) *> IO.never[Unit]
-                  }
-            }
-            // the stores are open and the stored blocks applied
-            _ <- measured.phase(PhaseLabel.Following)
-            _ <- praosConfig.update(c => c.copy(geometry = state.geometry(c.geometry)))
-            ref <- Ref.of[IO, VolatileChain[MirrorState]](
-              VolatileChain(
-                k,
-                Anchor(anchor, state),
-                resumed.map(r => r.ref -> r.state),
-                setup.origin
+      // the stores are open and the stored blocks applied
+      _ <- measured.phase(PhaseLabel.Following)
+      _ <- rules.praosConfig.update(c => c.copy(geometry = state.geometry(c.geometry)))
+      ref <- Ref.of[IO, VolatileChain[MirrorState]](
+        VolatileChain(
+          k,
+          Anchor(anchor, state),
+          resumed.map(r => r.ref -> r.state),
+          setup.origin
+        )
+      )
+      given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
+      _ <- collectors.add(Collectors.chain[IO, MirrorState](_.geometry(genesis.geometry)))
+      _ <- opened.received.traverse_(r => collectors.add(Collectors.received(r)))
+      server <- ChainServer.open[IO](
+        opened.immutable,
+        anchor,
+        ChainServer.headerOfBlock(genesis.geometry.byron.epochSlots),
+        fatalSink
+      )
+      _ <- resumed.traverse_(r =>
+        server
+          .persistence[MirrorState]
+          .extended(r.ref, r.raw, Vector.empty, Anchor(anchor, state))
+      )
+      // the transactions' time translation, placed by the node's era history parameters: the
+      // mempool and the forger use it as the block rules translate time
+      txClock = TxClock.of[MirrorState](
+        genesis.geometry,
+        setup.byronHistory,
+        setup.praos.forks
+      )
+      mempoolEnvironment = new cats.mtl.Ask[IO, MempoolEnv]:
+        val applicative = summon[cats.Applicative[IO]]
+        def ask[E >: MempoolEnv]: IO[E] =
+          ref.get.map { chain =>
+            val tip = chain.tipRef.fold(BigInt(0))(_.slot)
+            MempoolEnv(
+              globals,
+              chain.state.geometry(genesis.geometry),
+              clock = Some(txClock.at(chain.state, Era.Conway, tip + 1))
+            ): E
+          }
+      mempoolLedger <- scheduling.compute
+        .within(IO.delay {
+          val tip = resumed.lastOption.map(_.ref).orElse(anchor)
+          val current = resumed.lastOption.fold(state)(_.state)
+          MempoolLedger
+            .at(current, tip, MempoolEnv(globals, current.geometry(genesis.geometry)))
+            .left
+            .map(ChainError.MempoolTick(tip.fold(BigInt(0))(_.slot + 1), _))
+        })
+        .flatMap(_.fold(fail, IO.pure))
+      mempool <- Mempool.create[IO](
+        mempoolLedger,
+        resumed.lastOption.map(_.ref).orElse(anchor).fold(BigInt(-1))(_.slot),
+        MempoolEnv(globals, geometry),
+        options.mempoolBytes,
+        Log.mempool[IO].alongside(measured.mempool),
+        utxoStore = Some(store),
+        environment = Some(mempoolEnvironment),
+        tipHash = resumed.lastOption.map(_.ref).orElse(anchor).map(_.hash)
+      )
+      _ <- collectors.add(Collectors.mempool(mempool))
+      served = server.persistence[MirrorState]
+      chainGate <- Mutex[IO]
+      follower <- Follower.create[IO, MirrorState](
+        MeteredRules[IO, MirrorState](rules.rules),
+        instruments.followerEvents,
+        genesis.geometry,
+        NodeRules.observe(genesis.geometry),
+        Some(persistence.fold(served)(Persistence.both(_, served))),
+        Some(
+          new Follower.OnTip[IO, MirrorState]:
+            def apply(
+                chain: VolatileChain[MirrorState],
+                added: Vector[xyz.kd5ujc.scarab.codec.Bytes]
+            )(using
+                Raise[IO, NodeError]
+            ): IO[Unit] =
+              given Ask[IO, MempoolEnv] = mempoolEnvironment
+              synchronizeMempool(mempool, scheduling, genesis.geometry.byron.epochSlots)(
+                chain,
+                added
               )
+        ),
+        epochOf = Some((s, slot) => s.geometry(genesis.geometry).epochOf(slot)),
+        initialViews = resumed.map(r => r.ref.hash -> r.view).toMap,
+        compute = Some(scheduling.compute),
+        chainGate = Some(chainGate)
+      )
+    yield Chain(
+      ref,
+      server,
+      txClock,
+      mempoolEnvironment,
+      mempool,
+      chainGate,
+      follower,
+      receivedBody,
+      summon[Stateful[IO, VolatileChain[MirrorState]]]
+    )
+
+  /** The sessions' header checks and what they observe of each peer. */
+  private def headerChecks(
+      run: Startup,
+      instruments: Instruments,
+      rules: Rules,
+      chain: Chain
+  )(using
+      Log[IO],
+      Stateful[IO, VolatileChain[MirrorState]],
+      Ask[IO, consensus.ChainSelection.Local],
+      Tell[IO, xyz.kd5ujc.scarab.ledger.GenesisInternalProblem]
+  ): Headers =
+    import run.{cache, genesis, options, scheduling, setup}
+    import instruments.{headersLogged, measured, rounds}
+    def logged(event: NodeEvent): IO[Unit] = Log[IO].emit(event)
+    // header-first validation (G6): signatures are verified through the cache's keeping
+    // view, so the block's own validation does not repeat them. Every live session also
+    // holds its headers to the node's clock (AUD-01, #153), with or without header-first.
+    val slotClock = SlotClock.system[IO](chain.ref.get.map(_.state.geometry(genesis.geometry)))
+    // the node's own check: a Genesis node is built with it, as its gates can graft
+    val nodeChain = HeaderClock.grafting[IO](
+      slotClock,
+      HeaderCheck.forNodeChain[IO, MirrorState](
+        {
+          given HeaderTimeRead[MirrorState] = HeaderTimeRead.mirror(setup.byronHistory)
+          NodeHeaderRules(
+            setup.praos.copy(verdicts = cache.forHeaders),
+            setup.globals,
+            setup.byronRules,
+            setup.handOver
+          )
+        },
+        scheduling.compute,
+        GenesisRuntime.retainedHeaders(genesis.geometry),
+        warm = Some((headers, state) =>
+          state.protocol.traverse_(protocol =>
+            rules.praosConfig.get.flatMap(cache.warmHeaders[IO](headers, protocol, _))
+          )
+        ),
+        observe = Some(counts =>
+          headersLogged
+            .modify(last =>
+              if counts.validated - last >= 50000 then (counts.validated, true)
+              else (last, false)
             )
-            given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
-            _ <- collectors.add(Collectors.chain[IO, MirrorState](_.geometry(genesis.geometry)))
-            _ <- receivedBlocks.traverse_(r => collectors.add(Collectors.received(r)))
-            server <- ChainServer.open[IO](
-              immutable,
-              anchor,
-              ChainServer.headerOfBlock(genesis.geometry.byron.epochSlots),
-              fatalSink
+            .flatMap(
+              logged(
+                NodeEvent
+                  .HeadersChecked(counts.validated, counts.unchecked, counts.waited)
+              ).whenA(_)
             )
-            _ <- resumed.traverse_(r =>
-              server
-                .persistence[MirrorState]
-                .extended(r.ref, r.raw, Vector.empty, Anchor(anchor, state))
-            )
-            // the transactions' time translation, placed by the node's era history parameters: the
-            // mempool and the forger use it as the block rules translate time
-            txClock = TxClock.of[MirrorState](
-              genesis.geometry,
-              setup.byronHistory,
-              setup.praos.forks
-            )
-            mempoolEnvironment = new cats.mtl.Ask[IO, MempoolEnv]:
-              val applicative = summon[cats.Applicative[IO]]
-              def ask[E >: MempoolEnv]: IO[E] =
-                ref.get.map { chain =>
-                  val tip = chain.tipRef.fold(BigInt(0))(_.slot)
-                  MempoolEnv(
-                    globals,
-                    chain.state.geometry(genesis.geometry),
-                    clock = Some(txClock.at(chain.state, Era.Conway, tip + 1))
-                  ): E
-                }
-            mempoolLedger <- scheduling.compute
-              .within(IO.delay {
-                val tip = resumed.lastOption.map(_.ref).orElse(anchor)
-                val current = resumed.lastOption.fold(state)(_.state)
-                MempoolLedger
-                  .at(current, tip, MempoolEnv(globals, current.geometry(genesis.geometry)))
-                  .left
-                  .map(ChainError.MempoolTick(tip.fold(BigInt(0))(_.slot + 1), _))
-              })
-              .flatMap(_.fold(fail, IO.pure))
-            mempool <- Mempool.create[IO](
-              mempoolLedger,
-              resumed.lastOption.map(_.ref).orElse(anchor).fold(BigInt(-1))(_.slot),
-              MempoolEnv(globals, geometry),
-              options.mempoolBytes,
-              Log.mempool[IO].alongside(measured.mempool),
-              utxoStore = Some(store),
-              environment = Some(mempoolEnvironment),
-              tipHash = resumed.lastOption.map(_.ref).orElse(anchor).map(_.hash)
-            )
-            _ <- collectors.add(Collectors.mempool(mempool))
-            served = server.persistence[MirrorState]
-            chainGate <- Mutex[IO]
-            follower <- Follower.create[IO, MirrorState](
-              MeteredRules[IO, MirrorState](rules),
-              followerEvents,
-              genesis.geometry,
-              NodeRules.observe(genesis.geometry),
-              Some(persistence.fold(served)(Persistence.both(_, served))),
-              Some(
-                new Follower.OnTip[IO, MirrorState]:
-                  def apply(
-                      chain: VolatileChain[MirrorState],
-                      added: Vector[xyz.kd5ujc.scarab.codec.Bytes]
-                  )(using
-                      Raise[IO, NodeError]
-                  ): IO[Unit] =
-                    given Ask[IO, MempoolEnv] = mempoolEnvironment
-                    synchronizeMempool(mempool, scheduling, genesis.geometry.byron.epochSlots)(
-                      chain,
-                      added
-                    )
-              ),
-              epochOf = Some((s, slot) => s.geometry(genesis.geometry).epochOf(slot)),
-              initialViews = resumed.map(r => r.ref.hash -> r.view).toMap,
-              compute = Some(scheduling.compute),
-              chainGate = Some(chainGate)
-            )
-            given Ask[IO, consensus.ChainSelection.Local] = new Ask[
-              IO,
-              consensus.ChainSelection.Local
-            ]:
-              val applicative: cats.Applicative[IO] = cats.Applicative[IO]
-              def ask[E2 >: consensus.ChainSelection.Local]: IO[E2] =
-                follower.fetchSelection.widen[E2]
-            given Tell[IO, xyz.kd5ujc.scarab.ledger.GenesisInternalProblem] =
-              new Tell[IO, xyz.kd5ujc.scarab.ledger.GenesisInternalProblem]:
-                val functor: cats.Functor[IO] = cats.Functor[IO]
-                def tell(problem: xyz.kd5ujc.scarab.ledger.GenesisInternalProblem): IO[Unit] =
-                  fatalSink(Fatal.Internal(problem))
-            seed <- IO.delay(java.util.concurrent.ThreadLocalRandom.current().nextLong())
-            sharing <- PeerSharingRuntime.create[IO](seed)
-            peerSharing = setup.config.settings.peerSharingEnabled(options.forge.isDefined)
-            handlers = ServerHandlers[IO, NtNHeader](
-              NtNHeader.codec,
-              server.source,
-              server.blocks,
-              mempool.sink(fatalSink),
-              peerSharing = Some(sharing.source)
-            )
-            // header-first validation (G6): signatures are verified through the cache's keeping
-            // view, so the block's own validation does not repeat them. Every live session also
-            // holds its headers to the node's clock (AUD-01, #153), with or without header-first.
-            slotClock = SlotClock.system[IO](ref.get.map(_.state.geometry(genesis.geometry)))
-            // the node's own check: a Genesis node is built with it, as its gates can graft
-            nodeChain = HeaderClock.grafting[IO](
-              slotClock,
-              HeaderCheck.forNodeChain[IO, MirrorState](
-                {
-                  given HeaderTimeRead[MirrorState] = HeaderTimeRead.mirror(setup.byronHistory)
-                  NodeHeaderRules(
-                    setup.praos.copy(verdicts = cache.forHeaders),
-                    setup.globals,
-                    setup.byronRules,
-                    setup.handOver
-                  )
+        ),
+        added = Some(measured.headers),
+        changes = Some(chain.follower.headerChanges)
+      )
+    )
+    val headerCheck = Some(
+      if options.headerFirst || setup.config.settings.consensusMode ==
+          xyz.kd5ujc.scarab.network.selection.ConsensusMode.GenesisMode
+      then nodeChain
+      else HeaderClock.clocked[IO](slotClock, HeaderCheck.none[IO])
+    )
+    // how long the ChainSync pipeline's rounds take (D3), summarised every 200 rounds
+    val observeRounds = (requested: Int, received: Int, millis: Long) =>
+      rounds
+        .modify { case (n, headers, total, max, depth) =>
+          val next = (
+            n + 1,
+            headers + received,
+            total + millis,
+            max.max(millis),
+            depth.max(requested)
+          )
+          if next._1 % 200 == 0 then (next, Some(next)) else (next, None)
+        }
+        .flatMap(_.traverse_ { case (n, headers, total, max, depth) =>
+          logged(NodeEvent.ChainSyncRounds(n, headers, total / n, max, depth))
+        })
+    val observePeer = (o: Peer.Observation) =>
+      measured.peer(o) *> (o match
+        case Peer.Observation.Fetched(millis) =>
+          logged(NodeEvent.SlowFetch(millis)).whenA(millis >= 250)
+        case Peer.Observation.Round(requested, received, millis) =>
+          observeRounds(requested, received, millis)
+        case Peer.Observation.Announced(tip) => instruments.watchdog.announced(tip.blockNo.value)
+        case Peer.Observation.HeaderReceived | Peer.Observation.HeadersArrived(_, _) |
+            Peer.Observation.BlocksArrived(_, _) =>
+          IO.unit)
+    Headers(nodeChain, headerCheck, observePeer)
+
+  /** The blocks fetched ahead, shared by the sessions of all peers (one peer fetches each block),
+    * seeded from the received log, and the Genesis runtime in Genesis mode.
+    */
+  private def supplied(
+      run: Startup,
+      instruments: Instruments,
+      chain: Chain,
+      headers: Headers,
+      receivedBlocks: Option[ReceivedBlocks[IO]]
+  )(using
+      Handle[IO, NodeError],
+      Log[IO],
+      Ask[IO, consensus.ChainSelection.Local],
+      Tell[IO, xyz.kd5ujc.scarab.ledger.GenesisInternalProblem]
+  ): IO[Supply] =
+    import run.{genesis, setup}
+    import instruments.{fatalSink, stall}
+    import chain.follower
+    for
+      fetchSalt <- cats.effect.std.Random.scalaUtilRandom[IO].flatMap(_.nextLong)
+      fetchPolicy = BlockPool.FetchPolicy(
+        deadlineConcurrency = setup.config.settings.maxConcurrencyDeadline.getOrElse(1),
+        bulkConcurrency = setup.config.settings.maxConcurrencyBulkSync.getOrElse(1),
+        peerSalt = fetchSalt
+      )
+      blockPool <- receivedBlocks.fold(
+        BlockPool.create[IO](fetchPolicy, follower.fetchSelection)
+      )(received =>
+        BlockPool.create[IO](
+          fetchPolicy,
+          follower.fetchSelection,
+          BlockPool.Recovered[IO](
+            received.hashes,
+            // read back from the received log in the calling session's fiber, under a
+            // scope of its own: a failure of the file system stops the node, as one of
+            // `put` does
+            hash =>
+              Handle
+                .allow[StorageError](received.get(hash).map(found => Right(found.map(_._2))))
+                .rescue(error => IO.pure(Left(error)))
+                .flatMap {
+                  case Right(found) => IO.pure(found)
+                  case Left(error)  => fatalSink(Fatal.Storage(error)) *> IO.never
                 },
-                scheduling.compute,
-                GenesisRuntime.retainedHeaders(genesis.geometry),
-                warm = Some((headers, state) =>
-                  state.protocol.traverse_(protocol =>
-                    praosConfig.get.flatMap(cache.warmHeaders[IO](headers, protocol, _))
-                  )
-                ),
-                observe = Some(counts =>
-                  headersLogged
-                    .modify(last =>
-                      if counts.validated - last >= 50000 then (counts.validated, true)
-                      else (last, false)
-                    )
-                    .flatMap(
-                      logged(
-                        NodeEvent
-                          .HeadersChecked(counts.validated, counts.unchecked, counts.waited)
-                      ).whenA(_)
-                    )
-                ),
-                added = Some(measured.headers),
-                changes = Some(follower.headerChanges)
-              )
+            received.invalidate
+          )
+        )
+      )
+      _ <- stall.reporter.install(
+        StallDiagnostics.Sources(blockPool.fetchCoordinator, blockPool.admissions)
+      ) *> seedReceived(blockPool, receivedBlocks, genesis.geometry.byron.epochSlots) *>
+        follower.installFetchCoordinator(blockPool.fetchCoordinator) *>
+        follower.installInvalidBlocks(blockPool.invalidBlocks)
+      genesisRuntime <- createGenesisRuntime(
+        setup,
+        follower,
+        blockPool,
+        chain.ref.get.map(_.state.geometry(genesis.geometry)),
+        headers.nodeChain
+      )
+    yield Supply(blockPool, genesisRuntime)
+
+  /** The node's connections: the manager, the inbound governor, the outbound peer network and the
+    * relay's listener.
+    */
+  private def connected(
+      run: Startup,
+      instruments: Instruments,
+      rules: Rules,
+      chain: Chain,
+      headers: Headers,
+      supply: Supply,
+      immutable: Option[ImmutableStore[IO]]
+  )(using
+      Handle[IO, NodeError],
+      Log[IO],
+      Metrics[IO],
+      Stateful[IO, VolatileChain[MirrorState]],
+      Ask[IO, consensus.ChainSelection.Local],
+      Tell[IO, xyz.kd5ujc.scarab.ledger.GenesisInternalProblem]
+  ): IO[Connections] =
+    import run.{genesis, options, scheduling, setup}
+    import instruments.{collectors, fatalSink, measured}
+    import chain.{follower, mempool, ref, server}
+    import supply.{blockPool, genesisRuntime}
+    def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
+    def logged(event: NodeEvent): IO[Unit] = Log[IO].emit(event)
+    val warm = rules.warm
+    val genesisGovernor = genesisRuntime.map(_.governor)
+    val peerSharing = setup.config.settings.peerSharingEnabled(options.forge.isDefined)
+    // the connection manager (G2): one connection per peer address, limits, accounting
+    val accepted = options.accepted(setup.config.settings)
+    val connectionEvents =
+      Log.sink[ConnectionEvents, ConnectionEvent, IO].alongside(measured.connection)
+    for
+      seed <- IO.delay(java.util.concurrent.ThreadLocalRandom.current().nextLong())
+      sharing <- PeerSharingRuntime.create[IO](seed)
+      handlers = ServerHandlers[IO, NtNHeader](
+        NtNHeader.codec,
+        server.source,
+        server.blocks,
+        mempool.sink(fatalSink),
+        peerSharing = Some(sharing.source)
+      )
+      manager <- ConnectionManager.create[IO](
+        ConnectionManager.Limits(accepted = accepted),
+        Some(connectionEvents)
+      )
+      _ <- collectors.add(Collectors.connections(manager))
+      fetchModeRef <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
+      peerMetrics <- Ref.of[IO, PeerMetrics[PeerNetwork.Addr]](PeerMetrics.empty())
+      chainSyncHeights = new Peer.HeightSnapshot[IO]:
+        def capture = ref.get.map { chain =>
+          val refs = chain.anchor.block.toVector ++ chain.blocks.map(_._1)
+          Peer.HeightSnapshot.Captured(
+            chain.blocks.reverse.map(_._1.point) :+ chain.anchor.point,
+            refs
+              .map(block => block.point -> Option(block.blockNo))
+              .toMap
+              .updated(ChainSync.Point.Origin, None)
+          )
+        }
+        def unavailable[A](cause: xyz.kd5ujc.scarab.ledger.ChainSyncInternalProblem): IO[A] =
+          fatalSink(Fatal.Internal(cause)) *> IO.never[A]
+      // Inbound duplex sessions use the same follower and compute pool as outbound sessions.
+      governor <- InboundGovernor.create[IO](
+        manager,
+        InboundGovernor.Config(
+          genesis.networkMagic,
+          NodeToNodeServer.Settings(
+            offerPeerSharing = peerSharing,
+            maxVersion = setup.config.settings.maxNtnVersion
+          ),
+          Peer.Settings(
+            SocketAddress(Host.fromString("0.0.0.0").get, Port.fromInt(0).get),
+            genesis.networkMagic,
+            readAhead = options.readAhead,
+            network = NodeToNode.Settings().pipelining(options.chainSyncWindow.high),
+            byronEpochSlots = genesis.geometry.byron.epochSlots,
+            pipelineWindow = options.chainSyncWindow
+          ),
+          runClients = options.inboundSync
+        ),
+        handlers,
+        follow = peer => scheduling.compute.within(follower.session(peer)),
+        prepare = warm,
+        fatal = fatalSink,
+        heightSnapshot = chainSyncHeights,
+        headers = headers.check,
+        transactions = Some(mempool.source),
+        events = Some(Log.inbound[IO].alongside(measured.inbound)),
+        observe = Some(headers.observePeer),
+        sharing = Some(sharing),
+        pool = blockPool,
+        genesis = genesisRuntime,
+        receivedBody = chain.receivedBody,
+        peerMetrics = Some(peerMetrics)
+      )
+      // The outbound peer network (G1): the governor chooses the peers, moves them between
+      // temperatures and replaces the ones that fail; the Genesis State Machine tells it
+      // whether the ledger is too old.
+      defaults = if options.forge.isDefined then Targets.blockProducer else Targets.relay
+      targets <- setup.config.settings
+        .peerTargets(defaults)
+        .fold(e => fail[Targets](e), IO.pure)
+      syncTargets <- setup.config.settings
+        .syncTargets(Targets.sync)
+        .fold(e => fail[Targets](e), IO.pure)
+      lost <- Reconnects.create[IO](instruments.followerEvents)
+    yield
+      val chainView = new PeerNetwork.ChainView[IO]:
+        def tip = ref.get.map(c => c.tipRef.map(t => (t.slot, t.hash.hashCode.toLong)))
+        def geometry = ref.get.map(_.state.geometry(genesis.geometry))
+      val marker =
+        options.db.fold(GsmRunner.Marker.none[IO])(d => GsmRunner.Marker.file[IO](d.resolve("gsm")))
+      val hot = OutboundPeers.Hot[IO](
+        magic = genesis.networkMagic,
+        network = NodeToNode
+          .Settings(
+            offerPeerSharing = peerSharing,
+            maxVersion = setup.config.settings.maxNtnVersion
+          )
+          .pipelining(options.chainSyncWindow.high),
+        peer = Peer.Settings(
+          SocketAddress(Host.fromString("0.0.0.0").get, Port.fromInt(0).get),
+          genesis.networkMagic,
+          readAhead = options.readAhead,
+          network = NodeToNode.Settings().pipelining(options.chainSyncWindow.high),
+          byronEpochSlots = genesis.geometry.byron.epochSlots,
+          pipelineWindow = options.chainSyncWindow
+        ),
+        follow = (peer, track) => scheduling.compute.within(follower.session(peer, track)),
+        prepare = warm,
+        heightSnapshot = chainSyncHeights,
+        headers = headers.check,
+        transactions = Some(mempool.source),
+        observe = Some(headers.observePeer),
+        pool = blockPool,
+        versus = candidate => follower.versus(candidate),
+        lost = lost,
+        fatal = fatalSink,
+        serve = Some(handlers),
+        genesis = genesisRuntime,
+        receivedBody = chain.receivedBody
+      )
+      val emitOutput = (out: Output[PeerNetwork.Addr]) =>
+        measured.peerSelection(out) *> (out match
+          case Output.EstablishmentFailed(peer, error) =>
+            logged(NodeEvent.PeerEstablishmentFailed(peer, error))
+          case Output.Traced(trace)      => logged(NodeEvent.PeerSelection(trace))
+          case Output.Churned(trace)     => logged(NodeEvent.PeerChurn(trace))
+          case Output.LedgerPeers(trace) => logged(NodeEvent.LedgerPeers(trace))
+          case Output.LocalRoots(trace)  => logged(NodeEvent.LocalRoots(trace))
+          case Output.Counted(c)         => logged(NodeEvent.PeerCounters(c))
+          case Output.Connections(c)     => logged(NodeEvent.OutboundConnections(c)))
+      val network = PeerNetwork.resource[IO](
+        PeerNetwork.Settings(
+          options.roots.getOrElse(
+            PeerNetwork.Roots(Nil, Set.empty, None, UseLedgerPeers.Disabled)
+          ),
+          targets,
+          consensusMode = setup.config.settings.consensusMode,
+          syncTargets = syncTargets,
+          minBigLedgerPeersForTrustedState = setup.config.settings.minBigLedgerPeersForTrustedState,
+          peerSharing = peerSharing,
+          intervals = options.churnInterval.fold(Churn.Intervals())(Churn.Intervals.every),
+          timeouts = options.churnInterval.fold(Churn.Timeouts())(Churn.Timeouts().within),
+          seed = seed
+        ),
+        PeerNetwork.tcp[IO](10.seconds),
+        manager,
+        OutboundPeers.Config(),
+        hot,
+        chainView,
+        fetchModeRef,
+        emitOutput,
+        (phase, event) =>
+          blockPool.fetchCoordinator.transitionGenesis(
+            genesisGovernor.traverse_(_.setPhase(phase))
+          ) *> measured.gsm(phase) *> logged(NodeEvent.GsmTransition(phase, event)),
+        phase =>
+          blockPool.fetchCoordinator.transitionGenesis(
+            genesisGovernor.traverse_(_.setPhase(phase))
+          ) *> measured.gsm(phase),
+        mode =>
+          blockPool.fetchCoordinator.setMode(mode) *>
+            measured.fetchMode(mode) *> logged(NodeEvent.FetchModeChanged(mode)),
+        marker,
+        LedgerPeersSource.fromChain[IO, MirrorState](ref.get),
+        sharing = Some(sharing),
+        immutable = immutable,
+        genesisReadings = genesisRuntime.map(_.gsmReadings(follower.versusHeaders)),
+        peerMetrics = Some(peerMetrics)
+      )
+      val relay = options.listen.fold(Resource.unit[IO])(address =>
+        BearerServer
+          .listen[IO, NetworkError](
+            Some(address.host),
+            Some(address.port),
+            maxConnections = None,
+            beforeAccept = Some(
+              AcceptedConnectionsLimit.rateLimit(manager, accepted, connectionEvents)
             )
-            headerCheck = Some(
-              if options.headerFirst || setup.config.settings.consensusMode ==
-                  xyz.kd5ujc.scarab.network.selection.ConsensusMode.GenesisMode
-              then nodeChain
-              else HeaderClock.clocked[IO](slotClock, HeaderCheck.none[IO])
-            )
-            // how long the ChainSync pipeline's rounds take (D3), summarised every 200 rounds
-            observeRounds = (requested: Int, received: Int, millis: Long) =>
-              rounds
-                .modify { case (n, headers, total, max, depth) =>
-                  val next = (
-                    n + 1,
-                    headers + received,
-                    total + millis,
-                    max.max(millis),
-                    depth.max(requested)
-                  )
-                  if next._1 % 200 == 0 then (next, Some(next)) else (next, None)
-                }
-                .flatMap(_.traverse_ { case (n, headers, total, max, depth) =>
-                  logged(NodeEvent.ChainSyncRounds(n, headers, total / n, max, depth))
-                })
-            observePeer = (o: Peer.Observation) =>
-              measured.peer(o) *> (o match
-                case Peer.Observation.Fetched(millis) =>
-                  logged(NodeEvent.SlowFetch(millis)).whenA(millis >= 250)
-                case Peer.Observation.Round(requested, received, millis) =>
-                  observeRounds(requested, received, millis)
-                case Peer.Observation.Announced(tip) => watchdog.announced(tip.blockNo.value)
-                case Peer.Observation.HeaderReceived | Peer.Observation.HeadersArrived(_, _) |
-                    Peer.Observation.BlocksArrived(_, _) =>
-                  IO.unit)
-            // blocks fetched ahead, shared by the sessions of all peers: one peer fetches each block
-            fetchSalt <- cats.effect.std.Random.scalaUtilRandom[IO].flatMap(_.nextLong)
-            fetchPolicy = BlockPool.FetchPolicy(
-              deadlineConcurrency = setup.config.settings.maxConcurrencyDeadline.getOrElse(1),
-              bulkConcurrency = setup.config.settings.maxConcurrencyBulkSync.getOrElse(1),
-              peerSalt = fetchSalt
-            )
-            blockPool <- receivedBlocks.fold(
-              BlockPool.create[IO](fetchPolicy, follower.fetchSelection)
-            )(received =>
-              BlockPool.create[IO](
-                fetchPolicy,
-                follower.fetchSelection,
-                BlockPool.Recovered[IO](
-                  received.hashes,
-                  // read back from the received log in the calling session's fiber, under a
-                  // scope of its own: a failure of the file system stops the node, as one of
-                  // `put` does
-                  hash =>
-                    Handle
-                      .allow[StorageError](received.get(hash).map(found => Right(found.map(_._2))))
-                      .rescue(error => IO.pure(Left(error)))
-                      .flatMap {
-                        case Right(found) => IO.pure(found)
-                        case Left(error)  => fatalSink(Fatal.Storage(error)) *> IO.never
-                      },
-                  received.invalidate
-                )
-              )
-            )
-            _ <- stall.reporter.install(
-              StallDiagnostics.Sources(blockPool.fetchCoordinator, blockPool.admissions)
-            ) *> seedReceived(blockPool, receivedBlocks, genesis.geometry.byron.epochSlots) *>
-              follower.installFetchCoordinator(blockPool.fetchCoordinator) *>
-              follower.installInvalidBlocks(blockPool.invalidBlocks)
-            genesisRuntime <- createGenesisRuntime(
-              setup,
-              follower,
-              blockPool,
-              ref.get.map(_.state.geometry(genesis.geometry)),
-              nodeChain
-            )
-            genesisGovernor = genesisRuntime.map(_.governor)
-            decisionMaintenance = maintainDecisions(blockPool, genesisRuntime, fatalSink)
-            // the connection manager (G2): one connection per peer address, limits, accounting
-            accepted = options.accepted(setup.config.settings)
-            connectionEvents = loggedConnections.alongside(measured.connection)
-            manager <- ConnectionManager.create[IO](
-              ConnectionManager.Limits(accepted = accepted),
-              Some(connectionEvents)
-            )
-            _ <- collectors.add(Collectors.connections(manager))
-            fetchModeRef <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
-            peerMetrics <- Ref.of[IO, PeerMetrics[PeerNetwork.Addr]](PeerMetrics.empty())
-            chainSyncHeights = new Peer.HeightSnapshot[IO]:
-              def capture = ref.get.map { chain =>
-                val refs = chain.anchor.block.toVector ++ chain.blocks.map(_._1)
-                Peer.HeightSnapshot.Captured(
-                  chain.blocks.reverse.map(_._1.point) :+ chain.anchor.point,
-                  refs
-                    .map(block => block.point -> Option(block.blockNo))
-                    .toMap
-                    .updated(ChainSync.Point.Origin, None)
-                )
-              }
-              def unavailable[A](cause: xyz.kd5ujc.scarab.ledger.ChainSyncInternalProblem): IO[A] =
-                fatalSink(Fatal.Internal(cause)) *> IO.never[A]
-            // Inbound duplex sessions use the same follower and compute pool as outbound sessions.
-            governor <- InboundGovernor.create[IO](
-              manager,
-              InboundGovernor.Config(
-                genesis.networkMagic,
-                NodeToNodeServer.Settings(
-                  offerPeerSharing = peerSharing,
-                  maxVersion = setup.config.settings.maxNtnVersion
-                ),
-                Peer.Settings(
-                  SocketAddress(Host.fromString("0.0.0.0").get, Port.fromInt(0).get),
+          )((remote, failure) =>
+            ListenerFailures.report(remote.toString, failure, logged, fatalSink)
+          ) { (bearer, remote) =>
+            governor.serve(bearer, remote).void
+          }
+          .evalMap(bound => logged(NodeEvent.Listening(bound.toString)))
+      )
+      Connections(manager, governor, network, relay)
+
+  /** The services beside the peer network: the node-to-client server, the forger with `--forge`,
+    * the stall watchdog and the memory report.
+    */
+  private def served(
+      run: Startup,
+      instruments: Instruments,
+      chain: Chain,
+      globals: xyz.kd5ujc.scarab.ledger.LedgerGlobals,
+      geometry: xyz.kd5ujc.scarab.ledger.EpochGeometry
+  )(using
+      Handle[IO, NodeError],
+      Log[IO],
+      Metrics[IO],
+      Stateful[IO, VolatileChain[MirrorState]]
+  ): IO[Services] =
+    import run.{credentials, genesis, options, setup, store}
+    import instruments.{collectors, fatalSink, measured, watchdog}
+    import chain.{chainGate, follower, mempool, ref, server}
+    def logged(event: NodeEvent): IO[Unit] = Log[IO].emit(event)
+    val byronGenesis = setup.byronParams
+    val queryEnv = instruments.eraStarts.get.map(observed =>
+      QueryEnv(
+        byronGenesis
+          .flatMap(_.startTime)
+          .fold(genesis.geometry.systemStart)(java.time.Instant.ofEpochSecond),
+        genesis.geometry,
+        setup.praos.forks,
+        byronGenesis.fold(
+          EraHistory.ByronParams(
+            genesis.geometry.k * 10,
+            BigInt(20000),
+            genesis.geometry.k
+          )
+        )(b =>
+          EraHistory
+            .ByronParams(b.epochSlots, BigInt(b.slotLengthMillis), BigInt(b.securityParam))
+        ),
+        setup.globals.maxSupply,
+        genesis.raw,
+        setup.mirrorEnv(observed).ledger,
+        observed,
+        genesis.networkMagic.toLong
+      )
+    )
+    // the node-to-client server; a failure to set it up, or an accept loop that stops,
+    // stops the node as the reference's `DiffusionErrored` does
+    val local = (raise: Raise[IO, DiffusionFailure]) =>
+      given Raise[IO, DiffusionFailure] = raise
+      options.localSocket.fold(Resource.pure[IO, IO[DiffusionFailure]](IO.never))(path =>
+        LocalServer
+          .resource[IO, NetworkError](
+            LocalSockets.jdk[IO],
+            LocalAddress(path),
+            trace => logged(NodeEvent.LocalServer(trace))
+          )((_, failure) => ListenerFailures.reportLocal(path, failure, logged)) { (bearer, _) =>
+            // what would stop the node on a node-to-node connection ends this client
+            // only (the reference's local rethrow policy): the backends report it here
+            Deferred[IO, Fatal].flatMap { failed =>
+              val ends = (fault: Fatal) => failed.complete(fault).void
+              val served = landLocalBackend(
+                NodeToClientServer.acceptBackend[IO, StorageError](
+                  bearer,
                   genesis.networkMagic,
-                  readAhead = options.readAhead,
-                  network = NodeToNode.Settings().pipelining(options.chainSyncWindow.high),
-                  byronEpochSlots = genesis.geometry.byron.epochSlots,
-                  pipelineWindow = options.chainSyncWindow
-                ),
-                runClients = options.inboundSync
-              ),
-              handlers,
-              follow = peer => scheduling.compute.within(follower.session(peer)),
-              prepare = warm,
-              fatal = fatalSink,
-              heightSnapshot = chainSyncHeights,
-              headers = headerCheck,
-              transactions = Some(mempool.source),
-              events = Some(loggedInbound.alongside(measured.inbound)),
-              observe = Some(observePeer),
-              sharing = Some(sharing),
-              pool = blockPool,
-              genesis = genesisRuntime,
-              receivedBody = receivedBody,
-              peerMetrics = Some(peerMetrics)
-            )
-            // The outbound peer network (G1): the governor chooses the peers, moves them between
-            // temperatures and replaces the ones that fail; the Genesis State Machine tells it
-            // whether the ledger is too old.
-            defaults = if options.forge.isDefined then Targets.blockProducer else Targets.relay
-            targets <- setup.config.settings
-              .peerTargets(defaults)
-              .fold(e => fail[Targets](e), IO.pure)
-            syncTargets <- setup.config.settings
-              .syncTargets(Targets.sync)
-              .fold(e => fail[Targets](e), IO.pure)
-            lost <- Reconnects.create[IO](followerEvents)
-            chainView = new PeerNetwork.ChainView[IO]:
-              def tip = ref.get.map(c => c.tipRef.map(t => (t.slot, t.hash.hashCode.toLong)))
-              def geometry = ref.get.map(_.state.geometry(genesis.geometry))
-            marker = options.db.fold(GsmRunner.Marker.none[IO])(d =>
-              GsmRunner.Marker.file[IO](d.resolve("gsm"))
-            )
-            hot = OutboundPeers.Hot[IO](
-              magic = genesis.networkMagic,
-              network = NodeToNode
-                .Settings(
-                  offerPeerSharing = peerSharing,
-                  maxVersion = setup.config.settings.maxNtnVersion
+                  LocalSubmission.handler(mempool)(ends),
+                  Some(
+                    StateQuerySource[IO, MirrorState](ref, queryEnv, store, chainGate)
+                  ),
+                  chainSync = Some(server.blockSource(ends)),
+                  txMonitor = Some(LocalMonitor.source(mempool))
                 )
-                .pipelining(options.chainSyncWindow.high),
-              peer = Peer.Settings(
-                SocketAddress(Host.fromString("0.0.0.0").get, Port.fromInt(0).get),
-                genesis.networkMagic,
-                readAhead = options.readAhead,
-                network = NodeToNode.Settings().pipelining(options.chainSyncWindow.high),
-                byronEpochSlots = genesis.geometry.byron.epochSlots,
-                pipelineWindow = options.chainSyncWindow
-              ),
-              follow = (peer, track) => scheduling.compute.within(follower.session(peer, track)),
-              prepare = warm,
-              heightSnapshot = chainSyncHeights,
-              headers = headerCheck,
-              transactions = Some(mempool.source),
-              observe = Some(observePeer),
-              pool = blockPool,
-              versus = candidate => follower.versus(candidate),
-              lost = lost,
-              fatal = fatalSink,
-              serve = Some(handlers),
-              genesis = genesisRuntime,
-              receivedBody = receivedBody
-            )
-            emitOutput = (out: Output[PeerNetwork.Addr]) =>
-              measured.peerSelection(out) *> (out match
-                case Output.EstablishmentFailed(peer, error) =>
-                  logged(NodeEvent.PeerEstablishmentFailed(peer, error))
-                case Output.Traced(trace)      => logged(NodeEvent.PeerSelection(trace))
-                case Output.Churned(trace)     => logged(NodeEvent.PeerChurn(trace))
-                case Output.LedgerPeers(trace) => logged(NodeEvent.LedgerPeers(trace))
-                case Output.LocalRoots(trace)  => logged(NodeEvent.LocalRoots(trace))
-                case Output.Counted(c)         => logged(NodeEvent.PeerCounters(c))
-                case Output.Connections(c)     => logged(NodeEvent.OutboundConnections(c)))
-            network = PeerNetwork.resource[IO](
-              PeerNetwork.Settings(
-                options.roots.getOrElse(
-                  PeerNetwork.Roots(Nil, Set.empty, None, UseLedgerPeers.Disabled)
-                ),
-                targets,
-                consensusMode = setup.config.settings.consensusMode,
-                syncTargets = syncTargets,
-                minBigLedgerPeersForTrustedState =
-                  setup.config.settings.minBigLedgerPeersForTrustedState,
-                peerSharing = peerSharing,
-                intervals = options.churnInterval.fold(Churn.Intervals())(Churn.Intervals.every),
-                timeouts = options.churnInterval.fold(Churn.Timeouts())(Churn.Timeouts().within),
-                seed = seed
-              ),
-              PeerNetwork.tcp[IO](10.seconds),
-              manager,
-              OutboundPeers.Config(),
-              hot,
-              chainView,
-              fetchModeRef,
-              emitOutput,
-              (phase, event) =>
-                blockPool.fetchCoordinator.transitionGenesis(
-                  genesisGovernor.traverse_(_.setPhase(phase))
-                ) *> measured.gsm(phase) *> logged(NodeEvent.GsmTransition(phase, event)),
-              phase =>
-                blockPool.fetchCoordinator.transitionGenesis(
-                  genesisGovernor.traverse_(_.setPhase(phase))
-                ) *> measured.gsm(phase),
-              mode =>
-                blockPool.fetchCoordinator.setMode(mode) *>
-                  measured.fetchMode(mode) *> logged(NodeEvent.FetchModeChanged(mode)),
-              marker,
-              LedgerPeersSource.fromChain[IO, MirrorState](ref.get),
-              sharing = Some(sharing),
-              immutable = immutable,
-              genesisReadings = genesisRuntime.map(_.gsmReadings(follower.versusHeaders)),
-              peerMetrics = Some(peerMetrics)
-            )
-            relay = options.listen.fold(Resource.unit[IO])(address =>
-              BearerServer
-                .listen[IO, NetworkError](
-                  Some(address.host),
-                  Some(address.port),
-                  maxConnections = None,
-                  beforeAccept = Some(
-                    AcceptedConnectionsLimit.rateLimit(manager, accepted, connectionEvents)
-                  )
-                )((remote, failure) =>
-                  ListenerFailures.report(remote.toString, failure, logged, fatalSink)
-                ) { (bearer, remote) =>
-                  governor.serve(bearer, remote).void
-                }
-                .evalMap(bound => logged(NodeEvent.Listening(bound.toString)))
-            )
-            byronGenesis = setup.byronParams
-            queryEnv = eraStarts.get.map(observed =>
-              QueryEnv(
-                byronGenesis
-                  .flatMap(_.startTime)
-                  .fold(genesis.geometry.systemStart)(java.time.Instant.ofEpochSecond),
-                genesis.geometry,
-                setup.praos.forks,
-                byronGenesis.fold(
-                  EraHistory.ByronParams(
-                    genesis.geometry.k * 10,
-                    BigInt(20000),
-                    genesis.geometry.k
-                  )
-                )(b =>
-                  EraHistory
-                    .ByronParams(b.epochSlots, BigInt(b.slotLengthMillis), BigInt(b.securityParam))
-                ),
-                setup.globals.maxSupply,
-                genesis.raw,
-                setup.mirrorEnv(observed).ledger,
-                observed,
-                genesis.networkMagic.toLong
               )
-            )
-            // the node-to-client server; a failure to set it up, or an accept loop that stops,
-            // stops the node as the reference's `DiffusionErrored` does
-            local = (raise: Raise[IO, DiffusionFailure]) =>
-              given Raise[IO, DiffusionFailure] = raise
-              options.localSocket.fold(Resource.pure[IO, IO[DiffusionFailure]](IO.never))(path =>
-                LocalServer
-                  .resource[IO, NetworkError](
-                    LocalSockets.jdk[IO],
-                    LocalAddress(path),
-                    trace => logged(NodeEvent.LocalServer(trace))
-                  )((_, failure) => ListenerFailures.reportLocal(path, failure, logged)) {
-                    (bearer, _) =>
-                      // what would stop the node on a node-to-node connection ends this client
-                      // only (the reference's local rethrow policy): the backends report it here
-                      Deferred[IO, Fatal].flatMap { failed =>
-                        val ends = (fault: Fatal) => failed.complete(fault).void
-                        val served = landLocalBackend(
-                          NodeToClientServer.acceptBackend[IO, StorageError](
-                            bearer,
-                            genesis.networkMagic,
-                            LocalSubmission.handler(mempool)(ends),
-                            Some(
-                              StateQuerySource[IO, MirrorState](ref, queryEnv, store, chainGate)
-                            ),
-                            chainSync = Some(server.blockSource(ends)),
-                            txMonitor = Some(LocalMonitor.source(mempool))
-                          )
-                        )
-                        logged(NodeEvent.Inbound(path, InboundEvent.Accepted)) *>
-                          IO.race(failed.get.map(InboundEnd.Fault(_)), served)
-                            .map(_.merge)
-                            .flatMap(reason =>
-                              logged(NodeEvent.Inbound(path, InboundEvent.Closed(reason)))
-                            )
-                      }
-                  }
-                  .evalTap(_ => logged(NodeEvent.Listening(path)))
-              )
-            // the credentials were read at start-up, before the sockets ([[follow]])
-            forging <- (options.forge, credentials).tupled.traverse { (files, pool) =>
-              for
-                source <- HotKeySource.files[IO](files.kesSkey, files.opCert)
-                forger <- {
-                  given TxClock[MirrorState] = txClock
-                  Forger.create[IO, MirrorState](
-                    setup.praos.copy(geometry = geometry),
-                    globals,
-                    pool,
-                    follower,
-                    mempool,
-                    Log.sink[ForgeEvents, ForgeEvent, IO].alongside(measured.forge),
-                    utxoStore = Some(store),
-                    source = Some(source)
-                  )
-                }
-              yield forger
+              logged(NodeEvent.Inbound(path, InboundEvent.Accepted)) *>
+                IO.race(failed.get.map(InboundEnd.Fault(_)), served)
+                  .map(_.merge)
+                  .flatMap(reason => logged(NodeEvent.Inbound(path, InboundEvent.Closed(reason))))
             }
-            _ <- forging.traverse_(f => collectors.add(Collectors.forging(f.stats)))
-            // The process owns the forger loop; SIGHUP is installed with the live network below.
-            production = forging.fold(Resource.unit[IO])(f =>
-              f.run.flatMap(_.fold(fatalSink, _ => IO.unit)).background.void
+          }
+          .evalTap(_ => logged(NodeEvent.Listening(path)))
+      )
+    for
+      // the credentials were read at start-up, before the sockets ([[follow]])
+      forging <- (options.forge, credentials).tupled.traverse { (files, pool) =>
+        for
+          source <- HotKeySource.files[IO](files.kesSkey, files.opCert)
+          forger <- {
+            given TxClock[MirrorState] = chain.txClock
+            Forger.create[IO, MirrorState](
+              setup.praos.copy(geometry = geometry),
+              globals,
+              pool,
+              follower,
+              mempool,
+              Log.sink[ForgeEvents, ForgeEvent, IO].alongside(measured.forge),
+              utxoStore = Some(store),
+              source = Some(source)
             )
-            // the chain we start from is progress made: the watchdog counts from here
-            _ <- ref.get.flatMap(c => c.tipRef.traverse_(t => watchdog.extended(t.blockNo)))
-            watching =
-              if options.stallMinutes <= 0 then Resource.unit[IO]
-              else
-                val period = (options.stallMinutes.minutes / 10).max(1.second).min(30.seconds)
-                watchdog.run(period).background.void
-            reporting =
-              if options.memoryReportSeconds <= 0 then Resource.unit[IO]
-              else
-                val stores = Handle
-                  .allow[NodeError](store.memory)
-                  .rescue(_ => IO.pure(Map.empty[String, Long]))
-                (IO.sleep(options.memoryReportSeconds.seconds) *>
-                  MemoryReport
-                    .sample(stores)
-                    .flatMap(sample => logged(NodeEvent.Memory(sample)))).foreverM.background.void
-            run = (raise: Raise[IO, DiffusionFailure]) =>
-              decisionMaintenance
-                .flatMap(_ => blockPool.maintenance)
-                .flatMap(_ =>
-                  selectionWorker(
-                    follower,
-                    blockPool,
-                    genesisRuntime.map(_.work),
-                    receivedBlocks,
-                    warm,
-                    fatalSink,
-                    setup.origin
+          }
+        yield forger
+      }
+      _ <- forging.traverse_(f => collectors.add(Collectors.forging(f.stats)))
+      // the chain we start from is progress made: the watchdog counts from here
+      _ <- ref.get.flatMap(c => c.tipRef.traverse_(t => watchdog.extended(t.blockNo)))
+    yield
+      // The process owns the forger loop; SIGHUP is installed with the live network below.
+      val production = forging.fold(Resource.unit[IO])(f =>
+        f.run.flatMap(_.fold(fatalSink, _ => IO.unit)).background.void
+      )
+      val watching =
+        if options.stallMinutes <= 0 then Resource.unit[IO]
+        else
+          val period = (options.stallMinutes.minutes / 10).max(1.second).min(30.seconds)
+          watchdog.run(period).background.void
+      val reporting =
+        if options.memoryReportSeconds <= 0 then Resource.unit[IO]
+        else
+          val stores = Handle
+            .allow[NodeError](store.memory)
+            .rescue(_ => IO.pure(Map.empty[String, Long]))
+          (IO.sleep(options.memoryReportSeconds.seconds) *>
+            MemoryReport
+              .sample(stores)
+              .flatMap(sample => logged(NodeEvent.Memory(sample)))).foreverM.background.void
+      Services(local, forging, production, watching, reporting)
+
+  /** The run itself: the decision loops, the selection worker and the peer network with the
+    * services beside it, until a signal, a fault, a stall exit, `--seconds` or a failure of the
+    * node-to-client side ends it.
+    */
+  private def ran(
+      run: Startup,
+      instruments: Instruments,
+      rules: Rules,
+      chain: Chain,
+      supply: Supply,
+      connections: Connections,
+      services: Services,
+      receivedBlocks: Option[ReceivedBlocks[IO]]
+  )(using
+      Handle[IO, NodeError],
+      Log[IO],
+      Metrics[IO],
+      Stateful[IO, VolatileChain[MirrorState]]
+  ): IO[RunEnd] =
+    import run.{cliPeers, genesis, loaded, options, scheduling, setup, store, topology}
+    import instruments.{collectors, fatalSink, metrics, stall}
+    import chain.{follower, ref}
+    import supply.{blockPool, genesisRuntime}
+    import connections.{governor, manager, network, relay}
+    import services.{forging, local, production, reporting, watching}
+    def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
+    def logged(event: NodeEvent): IO[Unit] = Log[IO].emit(event)
+    val decisionMaintenance = maintainDecisions(blockPool, genesisRuntime, fatalSink)
+    val running = (raise: Raise[IO, DiffusionFailure]) =>
+      decisionMaintenance
+        .flatMap(_ => blockPool.maintenance)
+        .flatMap(_ =>
+          selectionWorker(
+            follower,
+            blockPool,
+            genesisRuntime.map(_.work),
+            receivedBlocks,
+            rules.warm,
+            fatalSink,
+            setup.origin
+          )
+        )
+        .surround(network.use { net =>
+          val reloadTopology: IO[Unit] = options.topologyFile.traverse_ { _ =>
+            // `options.peers` includes the topology loaded at startup. Keep reload roots tied
+            // to the original CLI peers so a removed topology peer cannot become permanent.
+            IO.blocking(topologyRoots(options.copy(peers = cliPeers), loaded)).flatMap {
+              case Left(error) =>
+                logged(
+                  NodeEvent.Library(
+                    "scarab.topology",
+                    Severity.Warning,
+                    s"topology reload refused: ${error.message}",
+                    None
                   )
                 )
-                .surround(network.use { net =>
-                  val reloadTopology: IO[Unit] = options.topologyFile.traverse_ { _ =>
-                    // `options.peers` includes the topology loaded at startup. Keep reload roots tied
-                    // to the original CLI peers so a removed topology peer cannot become permanent.
-                    IO.blocking(topologyRoots(options.copy(peers = cliPeers), loaded)).flatMap {
-                      case Left(error) =>
-                        logged(
-                          NodeEvent.Library(
-                            "scarab.topology",
-                            Severity.Warning,
-                            s"topology reload refused: ${error.message}",
-                            None
-                          )
-                        )
-                      case Right((_, nextRoots)) => net.reloadRoots(nextRoots)
-                    }
-                  }
-                  val reload =
-                    forging.traverse_(f => f.reload.flatMap(_.fold(fatalSink, _ => IO.unit))) *>
-                      reloadTopology
-                  val signals =
-                    if options.topologyFile.isDefined || forging.isDefined then
-                      Signals.hangup[IO](reload)
-                    else Resource.unit[IO]
-                  // the governor ends the node only by a fault (an invariant, the bootstrap timeout)
-                  val sync: IO[Unit] =
-                    collectors.add(Collectors.peerMetrics(net.metrics)) *>
-                      IO.race(net.run, net.fatal.get).flatMap {
-                        case Left(done) => done
-                        case Right(fault) =>
-                          PeerNetwork.fatalForGovernor(fault) match
-                            case Some(nodeFault) => fatalSink(nodeFault) *> IO.never
-                            case None            => fail[Unit](fault)
-                      }
-                  QueryServer
-                    .resource[IO, MirrorState](
-                      ChainView.fromRef(ref),
-                      options.query,
-                      Some(store),
-                      Some(scheduling.stats.total.map(Reports.schedulingTotal)),
-                      Some(
-                        (manager.snapshot, governor.sessions, net.state.get, IO.monotonic).mapN {
-                          (connections, sessions, selection, now) =>
-                            InboundGovernor
-                              .json(connections, sessions)
-                              .deepMerge(
-                                io.circe.Json.obj(
-                                  "peerSelection" -> PeerNetwork.json(selection, now)
-                                )
-                              )
-                        }
-                      ),
-                      forging.map(_.stats.byEpoch.map(Reports.forgeReport)),
-                      Some(scrape)
-                    )(fatalSink)
-                    .flatMap(_ => relay)
-                    .flatMap(_ => local(raise))
-                    .flatTap(_ => signals)
-                    .flatTap(_ => production)
-                    .flatTap(_ => reporting)
-                    .flatTap(_ => watching)
-                    .use(localStopped =>
-                      IO.race(sync, localStopped.flatMap(raise.raise[DiffusionFailure, Unit])).void
-                    )
-                })
-            _ <- metrics.set(
-              Catalogue.buildInfo,
-              (BuildInfo.version, BuildInfo.scalaVersion, BuildInfo.gitCommit),
-              1.0
-            )
-            _ <- logged(NodeEvent.started(options.peers, genesis, setup.config, topology))
-            // Praos mode with far to sync and no trusted roots says so once (ADR 0022)
-            advisory <- (IO.realTimeInstant, ref.get).mapN((now, chain) =>
-              SyncAdvisory.assess(
-                setup.config.settings.consensusMode,
-                topology,
-                SyncAdvisory.position(chain.tipRef.map(_.slot), now, genesis.geometry)
-              )
-            )
-            _ <- advisory.traverse_(logged)
-            // a stall that lasts --stall-exit-after ends the run like a signal does: the stores
-            // close and the shutdown snapshot is taken, then the process exits with its own code
-            // SIGINT while the node runs ends the run as the reference's `UserInterrupt` does: traced
-            // as `DiffusionErrored` (`Diffusion.hs` 905-911), the process then exits as interrupted
-            interrupted <- Deferred[IO, Unit]
-            ended <- Signals
-              .interrupt[IO](interrupted.complete(()).void)
-              .surround(
-                IO.race(
-                  Handle
-                    .allow[DiffusionFailure] {
-                      val running = run(summon[Raise[IO, DiffusionFailure]])
-                      options.seconds
-                        .fold(running)(s => running.timeoutTo(s.seconds, IO.unit))
-                        .as(Option.empty[DiffusionFailure])
-                    }
-                    .rescue(failure => IO.pure(Some(failure))),
-                  IO.race(IO.race(stall.exit.get, faulted.get), interrupted.get)
-                )
-              )
-              .map {
-                case Left(None)                  => RunEnd.Finished
-                case Left(Some(failure))         => RunEnd.Errored(failure)
-                case Right(Left(Left(_)))        => RunEnd.Stalled
-                case Right(Left(Right(failure))) => RunEnd.Faulted(failure)
-                case Right(Right(_))             => RunEnd.Interrupted
+              case Right((_, nextRoots)) => net.reloadRoots(nextRoots)
+            }
+          }
+          val reload =
+            forging.traverse_(f => f.reload.flatMap(_.fold(fatalSink, _ => IO.unit))) *>
+              reloadTopology
+          val signals =
+            if options.topologyFile.isDefined || forging.isDefined then Signals.hangup[IO](reload)
+            else Resource.unit[IO]
+          // the governor ends the node only by a fault (an invariant, the bootstrap timeout)
+          val sync: IO[Unit] =
+            collectors.add(Collectors.peerMetrics(net.metrics)) *>
+              IO.race(net.run, net.fatal.get).flatMap {
+                case Left(done) => done
+                case Right(fault) =>
+                  PeerNetwork.fatalForGovernor(fault) match
+                    case Some(nodeFault) => fatalSink(nodeFault) *> IO.never
+                    case None            => fail[Unit](fault)
               }
-            _ <- ended match
-              case RunEnd.Interrupted =>
-                logged(NodeEvent.DiffusionErrored(DiffusionFailure.UserInterrupt))
-              case RunEnd.Errored(failure) =>
-                logged(NodeEvent.DiffusionErrored(failure)) *>
-                  failedStart(s"DiffusionError ${failure.shown}")
-              case _ => IO.unit
-            last <- ref.get
-            _ <- finishedLine(ended, logged(NodeEvent.finished(last)))
-          yield ended
-      })
-    yield exitCode(ended)
+          QueryServer
+            .resource[IO, MirrorState](
+              ChainView.fromRef(ref),
+              options.query,
+              Some(store),
+              Some(scheduling.stats.total.map(Reports.schedulingTotal)),
+              Some(
+                (manager.snapshot, governor.sessions, net.state.get, IO.monotonic).mapN {
+                  (connections, sessions, selection, now) =>
+                    InboundGovernor
+                      .json(connections, sessions)
+                      .deepMerge(
+                        io.circe.Json.obj(
+                          "peerSelection" -> PeerNetwork.json(selection, now)
+                        )
+                      )
+                }
+              ),
+              forging.map(_.stats.byEpoch.map(Reports.forgeReport)),
+              Some(collectors.scrape)
+            )(fatalSink)
+            .flatMap(_ => relay)
+            .flatMap(_ => local(raise))
+            .flatTap(_ => signals)
+            .flatTap(_ => production)
+            .flatTap(_ => reporting)
+            .flatTap(_ => watching)
+            .use(localStopped =>
+              IO.race(sync, localStopped.flatMap(raise.raise[DiffusionFailure, Unit])).void
+            )
+        })
+    for
+      _ <- metrics.set(
+        Catalogue.buildInfo,
+        (BuildInfo.version, BuildInfo.scalaVersion, BuildInfo.gitCommit),
+        1.0
+      )
+      _ <- logged(NodeEvent.started(options.peers, genesis, setup.config, topology))
+      // Praos mode with far to sync and no trusted roots says so once (ADR 0022)
+      advisory <- (IO.realTimeInstant, ref.get).mapN((now, chain) =>
+        SyncAdvisory.assess(
+          setup.config.settings.consensusMode,
+          topology,
+          SyncAdvisory.position(chain.tipRef.map(_.slot), now, genesis.geometry)
+        )
+      )
+      _ <- advisory.traverse_(logged)
+      // a stall that lasts --stall-exit-after ends the run like a signal does: the stores
+      // close and the shutdown snapshot is taken, then the process exits with its own code
+      // SIGINT while the node runs ends the run as the reference's `UserInterrupt` does: traced
+      // as `DiffusionErrored` (`Diffusion.hs` 905-911), the process then exits as interrupted
+      interrupted <- Deferred[IO, Unit]
+      ended <- Signals
+        .interrupt[IO](interrupted.complete(()).void)
+        .surround(
+          IO.race(
+            Handle
+              .allow[DiffusionFailure] {
+                val raised = running(summon[Raise[IO, DiffusionFailure]])
+                options.seconds
+                  .fold(raised)(s => raised.timeoutTo(s.seconds, IO.unit))
+                  .as(Option.empty[DiffusionFailure])
+              }
+              .rescue(failure => IO.pure(Some(failure))),
+            IO.race(IO.race(stall.exit.get, instruments.faulted.get), interrupted.get)
+          )
+        )
+        .map {
+          case Left(None)                  => RunEnd.Finished
+          case Left(Some(failure))         => RunEnd.Errored(failure)
+          case Right(Left(Left(_)))        => RunEnd.Stalled
+          case Right(Left(Right(failure))) => RunEnd.Faulted(failure)
+          case Right(Right(_))             => RunEnd.Interrupted
+        }
+      _ <- ended match
+        case RunEnd.Interrupted =>
+          logged(NodeEvent.DiffusionErrored(DiffusionFailure.UserInterrupt))
+        case RunEnd.Errored(failure) =>
+          logged(NodeEvent.DiffusionErrored(failure)) *>
+            failedStart(s"DiffusionError ${failure.shown}")
+        case _ => IO.unit
+      last <- ref.get
+      _ <- finishedLine(ended, logged(NodeEvent.finished(last)))
+    yield ended
 
   /** The `finished` line. After a stall exit the log may be the very thing that is stuck, and the
     * exit code must not wait for its last line.
