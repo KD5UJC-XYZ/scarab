@@ -42,6 +42,7 @@ import re
 import subprocess
 import threading
 import time
+import traceback
 
 from . import eratx, util
 from .eratx import Key
@@ -231,6 +232,22 @@ class EraLoad:
         self.last_verdict = None  # `Verdict` of the last `expect_rejected`
         self.must_reject_matches = []  # `ListMatch` (or None) of each `expect_reject` submission
         self.negative_matches = []  # `ListMatch` (or None) of each `expect_rejected` verdict
+        self.ended = {}  # {thread: why} of the load threads that ended before `stop` was set (`guarded`)
+
+    def guarded(self, thread, body):
+        """Run a load thread's `body`. A thread that ends before `stop` was set, however it ends, is recorded in
+        `ended` and logged: the run reports it as the cause of what it then misses. SystemExit (the devnet
+        helpers raise it for a failed command) would otherwise end the thread without a trace, since threading
+        ignores it, and the worker would stop comparing unseen (#591)."""
+        try:
+            body()
+        except BaseException as e:  # the thread's boundary: every ending is recorded
+            self.ended[thread] = {"error": repr(e)[:400], "traceback": traceback.format_exc()[-1500:], "tip": self.tip}
+            self.log({"loadThreadEnded": thread, "error": repr(e)[:400], "tip": self.tip})
+            return
+        if not self.stop.is_set():
+            self.ended[thread] = {"error": "returned before the run asked it to stop", "tip": self.tip}
+            self.log({"loadThreadEnded": thread, "error": self.ended[thread]["error"], "tip": self.tip})
 
     # ------------------------------------------------------------ reference plumbing
     def sh(self, script, stdin=None, timeout=60):
@@ -267,6 +284,14 @@ class EraLoad:
     def epoch_info(self):
         r = self.sh(f"cardano-cli query tip --testnet-magic {MAGIC} --socket-path {SOCKET}")
         return json.loads(r.stdout)
+
+    def reading(self):
+        """`epoch_info`, or {} when the tip could not be read (a timeout, a failed or malformed answer): the
+        worker's checks within an epoch then wait for the next reading instead of ending the worker."""
+        try:
+            return self.epoch_info()
+        except (Exception, SystemExit):
+            return {}
 
     def submit(self, era, tx, label, expect=None):
         env = eratx.envelope(era, tx)
@@ -1138,10 +1163,10 @@ class EraLoad:
                 while not self.stop.is_set():
                     try:
                         self.ext.step()
-                    except Exception as e:  # a scenario problem must not stop the run
+                    except (Exception, SystemExit) as e:  # a scenario problem must not stop the run
                         self.log({"extendedFailed": repr(e)})
                     time.sleep(1.5)
-            self.ext_thread = threading.Thread(target=body, daemon=True)
+            self.ext_thread = threading.Thread(target=self.guarded, args=("extended", body), daemon=True)
             self.ext_thread.start()
 
     def start_governance(self):
@@ -1164,10 +1189,10 @@ class EraLoad:
                     if tip.get("era", "").lower() == "conway" and tip.get("slotInEpoch", 0) >= 3 and epoch not in seen:
                         seen.add(epoch)
                         self.conway_features(epoch)
-                except Exception as e:  # a scenario problem must not stop the run
+                except (Exception, SystemExit) as e:  # a scenario problem must not stop the run
                     self.log({"governanceFailed": repr(e)})
                 time.sleep(0.7)
-        self.governance_thread = threading.Thread(target=body, daemon=True)
+        self.governance_thread = threading.Thread(target=self.guarded, args=("governance", body), daemon=True)
         self.governance_thread.start()
 
     # (era, epoch of the era, first slot of the epoch, last slot, action): actions that depend on the slot
@@ -1217,7 +1242,7 @@ class EraLoad:
             from .erarefusal import exercise
             try:
                 exercise(self, era)
-            except Exception as e:  # evidence only: a failed capture must not stop the cluster walk
+            except (Exception, SystemExit) as e:  # evidence only: a failed capture must not stop the cluster walk
                 self.log({"refusalsFailed": era, "error": repr(e)})
         self.transfers(era, 2)
         if era != "conway":  # the ledger-state layout the withdrawals read is the pre-Conway one
@@ -1229,7 +1254,10 @@ class EraLoad:
     def run(self, compare, conway_hook=None):
         """Worker-thread body. Per epoch: compare right after the epoch boundary, run that epoch's
         transaction batch, compare, compare again mid-epoch and shortly before the next boundary.
-        `compare(era, label)` records one comparison and never raises."""
+        `compare(era, label)` records one comparison and never raises. An ending before `stop` is in `ended`."""
+        self.guarded("worker", lambda: self.walk(compare, conway_hook))
+
+    def walk(self, compare, conway_hook):
         seen = set()
         while not self.stop.is_set():
             try:
@@ -1249,7 +1277,7 @@ class EraLoad:
                     if True:
                         try:
                             self.epoch_batch(era, epoch)
-                        except Exception as e:
+                        except (Exception, SystemExit) as e:
                             self.log({"batchFailed": era, "error": repr(e)})
                         compare(era, "after-batch")
                 self.era_first.setdefault(era, epoch)
@@ -1257,17 +1285,17 @@ class EraLoad:
                     if era == first and epoch - self.era_first[era] == ordinal and (key, "batch") in seen \
                             and (key, action) not in seen and in_epoch >= lo:
                         seen.add((key, action))
-                        now = self.epoch_info()
+                        now = self.reading()
                         if now.get("epoch") == epoch and now.get("slotInEpoch", 0) <= hi:
                             try:
                                 getattr(self, action)(era)
-                            except Exception as e:
+                            except (Exception, SystemExit) as e:
                                 self.log({"actionFailed": action, "error": repr(e)})
                         else:
                             self.log({"skipped": action, "reason": "window missed", "at": now.get("slotInEpoch")})
                 for label, at in self.POINTS:
                     if (key, "batch") in seen and (key, label) not in seen:
-                        now = self.epoch_info()
+                        now = self.reading()
                         if now.get("epoch") == epoch and now.get("slotInEpoch", 0) >= at:
                             seen.add((key, label))
                             compare(era, label)

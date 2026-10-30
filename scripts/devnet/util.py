@@ -101,8 +101,8 @@ def ref(name):
     return f"{name}-ref"
 
 
-def in_ref(name, script, timeout=60):
-    return docker("exec", ref(name), "/bin/sh", "-c", script, timeout=timeout)
+def in_ref(name, script, timeout=60, check=True):
+    return docker("exec", ref(name), "/bin/sh", "-c", script, check=check, timeout=timeout)
 
 
 def query(name, kind, node=1):

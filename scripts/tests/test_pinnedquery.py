@@ -118,8 +118,9 @@ class QueryBundleVerdictTest(unittest.TestCase):
     """`query_bundle` accepts a query only on a recorded exit status of 0 (#355)."""
     KEYS = [k for k, _ in compare.BUNDLE]
 
-    def run_bundle(self, rc, acquires=None, json_body="{}", foreign=None):
-        """The bundle verdict when every query prints `json_body`; `rc(key)` is its recorded status (None records none)."""
+    def run_bundle(self, rc, acquires=None, json_body="{}", foreign=None, tip_read=None, bundle_exit=0):
+        """The bundle verdict when every query prints `json_body`; `rc(key)` is its recorded status (None records none).
+        `tip_read` replaces the tip read's result, `bundle_exit` is the exit status of the bundle's script."""
         out = ""
         for key in self.KEYS:
             status = rc(key)
@@ -134,10 +135,34 @@ class QueryBundleVerdictTest(unittest.TestCase):
         pin.acquires.return_value = acquires if acquires is not None else {k: 1 for k in self.KEYS}
         tip = json.dumps({"slot": 5, "hash": bytes(32).hex(), "block": 1, "epoch": 0})
         with patch.object(compare.pinnedquery, "Pin", return_value=pin), \
-                patch.object(compare, "in_ref", side_effect=[Mock(stdout=tip), Mock(stdout=out)]), \
+                patch.object(compare, "in_ref", side_effect=[tip_read or Mock(stdout=tip, returncode=0),
+                                                             Mock(stdout=out, stderr="gone", returncode=bundle_exit)]), \
                 patch.object(compare, "ref", return_value="ref"), \
                 patch.object(compare, "reference_socket", return_value="/s"):
             return compare.query_bundle("n")
+
+    def test_a_failed_tip_read_is_a_failed_attempt_not_an_exit(self):
+        # A raised SystemExit ended the era-load worker without a trace and its comparisons stopped (#591).
+        bundle, why = self.run_bundle(lambda k: "0", tip_read=Mock(stdout="", stderr="socket gone\n", returncode=1))
+        self.assertIsNone(bundle)
+        self.assertEqual(why, {"query": "tip", "exit": "1", "stderr": "socket gone"})
+
+    def test_a_malformed_tip_is_a_failed_attempt(self):
+        bundle, why = self.run_bundle(lambda k: "0", tip_read=Mock(stdout="not json", stderr="", returncode=0))
+        self.assertIsNone(bundle)
+        self.assertEqual(why, {"query": "tip", "unparsable": "JSONDecodeError"})
+
+    def test_a_failed_bundle_script_is_a_failed_attempt(self):
+        bundle, why = self.run_bundle(lambda k: "0", bundle_exit=125)
+        self.assertIsNone(bundle)
+        self.assertEqual(why, {"query": "bundle", "exit": "125", "stderr": "gone", "slot": 5})
+
+    def test_a_failed_tip_read_is_retried_by_the_comparison(self):
+        calls = iter([(None, {"query": "tip", "exit": "1", "stderr": ""})] * 2)
+        with patch.object(compare, "query_bundle", side_effect=lambda name: next(calls)):
+            result, failures = compare.compare_once_detailed("n", attempts=2, scala_wait=1)
+        self.assertIsNone(result)
+        self.assertEqual([f["query"] for f in failures], ["tip", "tip"])
 
     def test_zero_exit_with_json_is_accepted(self):
         bundle, why = self.run_bundle(lambda k: "0")
