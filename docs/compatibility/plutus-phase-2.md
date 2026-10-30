@@ -16,7 +16,7 @@ strict UTF-8 decoder, `conText` parser and byte-length measure. The dependency r
 scalar values and their UTF-8 length; the textual conformance ingress preserves supplementary and
 separate-surrogate escapes. [Corpus and scope](../../fixtures/reference/plutus-text/README.md). This
 bounded representation/parser evidence does not establish native CEK settlement or lazy costing;
-[#485](https://github.com/KD5UJC-XYZ/scarab/issues/485) remains separate.
+the budget arithmetic is covered separately ([IN-84](../implementer-notes.md#in-84-scalus-the-budget-arithmetic-under-negative-or-extreme-cost-model-parameters)).
 
 ## Explicitly unchecked or unconfirmed
 

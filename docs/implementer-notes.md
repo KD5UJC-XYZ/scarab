@@ -854,7 +854,7 @@ are the ones most in need of a second reading.
 - **Evidence:** 5,661 observations of unchanged Plutus 1.70.0.0 (111 programs under 51 lists, among them all `Int64` minimum, negated defaults and lists of mixed signs up to the bounds; `fixtures/reference/genesis-cost-models`): Scalus alone differs on 506 (173 under the all-minimum lists, 333 under the mixed ones).
 - **Scarab does:** `ScalusEvaluator.CorrectedVm` costs every builtin with `ReferenceCosting` and spends through `ReferenceBudget` (`Steps`, `Restricting`); the 5,661 observations agree in stage and exact budget, with none excluded. Not filed upstream yet.
 - **Pinned by:** [`ReferenceBudgetSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/ReferenceBudgetSuite.scala) (reproducers of each Scalus difference and the corrections), [`CostModelLengthSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/CostModelLengthSuite.scala), `BuiltinCostingOracleSuite`, `PlutusConformanceSuite`.
-- **Suggested upstream action:** Scalus: saturate the restricting spender and the costing arithmetic as the reference does (not filed yet).
+- **Suggested upstream action:** Scalus: saturate the restricting spender and the costing arithmetic as the reference does (not filed yet; tracked with the other upstream Scalus items in [#473](https://github.com/KD5UJC-XYZ/scarab/issues/473)).
 - **Status:** confirmed in source
 
 ## Part C: index
