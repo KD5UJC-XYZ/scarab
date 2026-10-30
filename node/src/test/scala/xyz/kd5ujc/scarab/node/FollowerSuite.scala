@@ -2,7 +2,13 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.ledger.TestGeometry
-import xyz.kd5ujc.scarab.consensus.{BlockRules, FollowerEvents, VolatileChain}
+import xyz.kd5ujc.scarab.consensus.{
+  BlockRules,
+  Compute,
+  FollowerEvents,
+  SchedulingStats,
+  VolatileChain
+}
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, Fixtures, Header, NodeError, PeerError}
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.std.Queue
@@ -70,7 +76,9 @@ class FollowerSuite extends FailsOnUncaught:
     */
   private def runPeers(
       peers: List[List[List[Either[PeerError, SyncEvent]]]],
-      retries: Int = 3
+      retries: Int = 3,
+      compute: Option[Compute[IO]] = None,
+      applied: Option[Ref[IO, List[String]]] = None
   ): IO[(Either[NodeError, Unit], VolatileChain[BigInt], List[Vector[ChainSync.Point]])] =
     for
       ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.k.toInt, -1))
@@ -79,7 +87,17 @@ class FollowerSuite extends FailsOnUncaught:
       outcome <- Handle
         .allow[NodeError] {
           for
-            follower <- Follower.create[IO, BigInt](rules, noEvents, geometry)
+            follower <- Follower.create[IO, BigInt](
+              applied.fold(rules)(log =>
+                BlockRules.from { (state, header, block) =>
+                  IO(Thread.currentThread.getName).flatMap(n => log.update(_ :+ n)) *>
+                    rules(state, header, block)
+                }
+              ),
+              noEvents,
+              geometry,
+              compute = compute
+            )
             pool <- WorkerTesting.pool(follower)
             result <- (WorkerTesting.selection(follower, pool) >> pool.session).use { claims =>
               Handle
@@ -108,6 +126,30 @@ class FollowerSuite extends FailsOnUncaught:
     yield (outcome, chain, offers)
 
   private def run(sessions: List[List[Either[PeerError, SyncEvent]]]) = runPeers(List(sessions))
+
+  test("with a CPU pool the selection worker applies the blocks on it, and the chain is the same") {
+    val main = forged.headers.take(8)
+    SchedulingStats.create[IO].flatMap { stats =>
+      Compute.pool[IO](2, stats).use { pool =>
+        for
+          log <- Ref.of[IO, List[String]](Nil)
+          result <- runPeers(
+            List(List(main.map(forward).toList)),
+            compute = Some(pool),
+            applied = Some(log)
+          )
+          names <- log.get
+          _ <- IO {
+            val (outcome, chain, _) = result
+            assertEquals(outcome, Right(()))
+            assertEquals(chain.tip, main.last.point)
+            assertEquals(names.size, main.size)
+            assert(names.forall(_.startsWith("scarab-cpu")), names.toString)
+          }
+        yield ()
+      }
+    }
+  }
 
   private def forward(h: Header) = Right(SyncEvent.RollForward(h, tip))
 

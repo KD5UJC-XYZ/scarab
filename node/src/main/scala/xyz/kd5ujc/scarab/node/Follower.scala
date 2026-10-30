@@ -72,7 +72,8 @@ object SelectViews:
   *   Called with the chain after every change of the tip and the raw blocks that were added
   *   (mempool revalidation, for one).
   * @param cpu
-  *   Where a block forged by this node is applied (the CPU pool, see [[Compute]]).
+  *   Where the block rules run (the CPU pool, see [[Compute]]): for a peer's block on the selection
+  *   worker, and for a block forged by this node.
   * @param window
   *   The window chain selection reads, kept in step with the chain by [[commit]].
   */
@@ -447,7 +448,8 @@ final class Follower[F[_]: Async, S] private (
                     }
                   )
                   .unlessA(previous.addedPoint.contains(header.point))
-                checked = judge(rules(before.state, header, block))
+                // the block rules run on the CPU pool, as a forged block's do (D8, #596)
+                checked = judge(cpu.within(rules(before.state, header, block)))
                 verdict <- peer.selectionWork.fold(checked)(work =>
                   work.processing(header.hash).surround(checked)
                 )
