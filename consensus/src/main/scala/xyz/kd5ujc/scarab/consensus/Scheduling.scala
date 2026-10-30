@@ -169,12 +169,18 @@ object Compute:
     * never run, so the program never ends (issue 89). Here the caller is cancelled where it is; it
     * cancels the pool fiber and waits for its finalizers, which run on the pool, and carries on its
     * own on the thread it came from.
+    *
+    * The pool fiber ends with a value, its failure included, and the caller raises that failure
+    * again in its own fiber (ADR 0017). A typed raise of the caller's `Handle` scope travels as an
+    * exception (`cats.mtl.Handle$Submarine`): had the pool fiber ended with it before the caller
+    * joined, the runtime would have reported it as a failure nobody observed, a bare line on the
+    * console, although the caller then handled it (issue 553).
     */
   private def onPool[F[_]: Async, A](fa: F[A], pool: scala.concurrent.ExecutionContext): F[A] =
     Async[F].uncancelable { poll =>
-      Async[F].evalOn(fa, pool).start.flatMap { fiber =>
+      Async[F].evalOn(fa, pool).attempt.start.flatMap { fiber =>
         poll(fiber.join).onCancel(fiber.cancel).flatMap {
-          case Outcome.Succeeded(result) => result
+          case Outcome.Succeeded(result) => result.flatMap(Async[F].fromEither)
           case Outcome.Errored(error)    => Async[F].raiseError[A](error)
           case Outcome.Canceled()        => poll(Async[F].canceled) *> Async[F].never[A]
         }
