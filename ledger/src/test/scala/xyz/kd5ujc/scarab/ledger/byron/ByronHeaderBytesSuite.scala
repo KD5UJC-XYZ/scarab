@@ -33,14 +33,16 @@ class ByronHeaderBytesSuite extends FunSuite:
   /** `raw` with the `occurrence` -th copy of the byte string `field` written as one indefinite
     * chunk (the leader's key is also the delegation certificate's issuer, so it occurs twice).
     */
-  private def chunked(raw: Bytes, field: Node, occurrence: Int = 0): Bytes =
+  private def chunked(raw: Bytes, field: Node, occurrence: Option[Int] = None): Bytes =
     val all = Iterator
       .iterate(raw.value.indexOfSlice(field.original.value))(i =>
         raw.value.indexOfSlice(field.original.value, i + 1)
       )
       .takeWhile(_ >= 0)
       .toVector
-    val at = all.lift(occurrence).getOrElse(fail(s"no occurrence $occurrence of the field"))
+    // a field found more than once must name which copy it is
+    assert(occurrence.isDefined || all.size == 1, s"the field occurs ${all.size} times")
+    val at = all.lift(occurrence.getOrElse(0)).getOrElse(fail(s"no occurrence $occurrence"))
     Bytes(
       raw.value.take(at) ++ (0x5f.toByte +: field.original.value :+ 0xff.toByte) ++
         raw.value.drop(at + field.original.size)
@@ -69,8 +71,8 @@ class ByronHeaderBytesSuite extends FunSuite:
     val psk = items(proxy(0))
     // the leader's key is the certificate's issuer: its first copy is the leader, its second psk(1)
     assertEquals(consensus(1).original, psk(1).original)
-    refused(chunked(main, consensus(1)), boundary = false)
-    refused(chunked(main, psk(1), occurrence = 1), boundary = false)
+    refused(chunked(main, consensus(1), occurrence = Some(0)), boundary = false)
+    refused(chunked(main, psk(1), occurrence = Some(1)), boundary = false)
     for field <- Vector(h(1), psk(2), psk(3), proxy(1)) do
       refused(chunked(main, field), boundary = false)
   }
@@ -93,12 +95,23 @@ class ByronHeaderBytesSuite extends FunSuite:
       cause(chunked(main, tx(1))),
       Left(Header.fail(LedgerDecodeError.IndefiniteLength(DecodeField.ByronBytes)))
     )
+    // the fixture's delegation hash equals its witnesses hash: its first copy is the witnesses hash
+    assertEquals(proof(2).original, tx(2).original)
     assertEquals(
-      cause(chunked(main, proof(2))),
+      cause(chunked(main, tx(2), occurrence = Some(0))),
+      Left(Header.fail(LedgerDecodeError.IndefiniteLength(DecodeField.ByronBytes)))
+    )
+    assertEquals(
+      cause(chunked(main, proof(2), occurrence = Some(1))),
       Left(Header.fail(LedgerDecodeError.IndefiniteLength(DecodeField.ByronBytes)))
     )
     assertEquals(
       cause(chunked(main, proof(3))),
+      Left(Header.fail(LedgerDecodeError.IndefiniteLength(DecodeField.ByronBytes)))
+    )
+    // a byte string of the SSC proof (`dropBytes`, any length, definite)
+    assertEquals(
+      cause(chunked(main, items(proof(1))(1))),
       Left(Header.fail(LedgerDecodeError.IndefiniteLength(DecodeField.ByronBytes)))
     )
     // the SSC proof's tag is 0 to 3 (`dropSscProof`, `Ssc.hs:169-188`)

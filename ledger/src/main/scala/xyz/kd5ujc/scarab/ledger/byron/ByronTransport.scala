@@ -165,8 +165,9 @@ object ByronTransport:
     * dropped with `dropBytes` (`Block/Header.hs:620-621`): a definite byte string. A main header's
     * is a `Proof` (`Block/Proof.hs:82-85`): the `TxProof` (`UTxO/TxProof.hs:82-85`: a `Word32`
     * count, the Merkle root and the witnesses hash), the SSC proof (`dropSscProof`,
-    * `Ssc.hs:169-188`), and the delegation and update payload hashes; each hash is a 32-byte
-    * definite byte string (cardano-ledger f649f975).
+    * `Ssc.hs:169-188`, whose byte strings are dropped whatever their length), and the delegation
+    * and update payload hashes; the Merkle root and the three hashes are 32-byte definite byte
+    * strings, the SSC proof's byte strings definite (cardano-ledger f649f975).
     */
   private[ledger] def bodyProof(node: Node, boundary: Boolean): Result[Unit] =
     if boundary then bytes(node)
