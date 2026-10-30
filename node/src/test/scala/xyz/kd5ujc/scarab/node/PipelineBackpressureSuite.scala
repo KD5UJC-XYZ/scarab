@@ -370,22 +370,30 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
 
   test("a failed prefetch is landed while draining rather than waiting for unpublished batches") {
     val defect = new IllegalStateException("injected prefetch defect")
+    val expected = Fault.Failed(PeerError.ConnectionDefect(defect))
     for
       entered <- Deferred[IO, Unit]
       release <- Deferred[IO, Unit]
+      published <- Deferred[IO, Fault]
       _ <- connected(
         finish = false,
-        prepare = _ => entered.complete(()).void *> release.get *> IO.raiseError[Unit](defect)
+        prepare = _ => entered.complete(()).void *> release.get *> IO.raiseError[Unit](defect),
+        pipelineFailed = Some(problem => published.complete(problem).void)
       ) { (peer, intersections) =>
         for
           _ <- peer.intersect(Vector(ChainSync.Point.Origin))
           _ <- Fault.fiber(peer.next).background.use(_ => entered.get)
           _ <- release.complete(())
+          // Release makes the prefetch runnable; the fetch client fails it in its own fiber. The
+          // session records the failure before this callback, so the drain below meets it.
+          pending <- published.get
           result <- Fault.fiber(peer.intersect(Vector(ChainSync.Point.Origin)))
           count <- intersections.get
         yield
           // the connection's own exception, with its cause: that connection ends (issue 567)
-          assertEquals(result, Left(Fault.Failed(PeerError.ConnectionDefect(defect))))
+          assertEquals(pending, expected)
+          assertEquals(result, Left(expected))
+          // no FindIntersect is sent on the connection the failure has aborted
           assertEquals(count, 1)
       }
     yield ()
