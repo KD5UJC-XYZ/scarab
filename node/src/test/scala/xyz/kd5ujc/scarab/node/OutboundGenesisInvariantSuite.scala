@@ -149,7 +149,6 @@ class OutboundGenesisInvariantSuite extends FailsOnUncaught:
                 byronEpochSlots = 21600
               ),
               follow = follow,
-              prepare = _ => IO.unit,
               heightSnapshot = ChainSyncHeights.origin,
               headers = None,
               transactions = None,

@@ -192,7 +192,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         queue <- Queue.unbounded[IO, Either[PeerError, SyncEvent]]
         _ <- script.traverse_(queue.offer)
         done <- Deferred[IO, Unit]
-        peer = new Peer[IO]:
+        peer = new WorkerTesting.Scripted[IO]:
           def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
             IO.pure(candidates.headOption)
           def next(using raise: Raise[IO, PeerError]) = queue.tryTake.flatMap {
@@ -656,7 +656,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           _ => IO.unit,
           geometry
         )
-        peer = new Peer[IO]:
+        peer = new WorkerTesting.Scripted[IO]:
           def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
             intersected.set(true).as(candidates.headOption)
           def next(using Raise[IO, PeerError]) = IO.never[SyncEvent]

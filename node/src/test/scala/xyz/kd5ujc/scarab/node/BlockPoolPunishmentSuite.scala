@@ -25,10 +25,11 @@ class BlockPoolPunishmentSuite extends FailsOnUncaught:
   private def refusal(header: Header): ValidationError =
     ValidationError(header.point, BlockFailure.EpochPrecedesLedger(0))
 
+  /** The delivered body of `header` as the session `claims` sees it (whether it delivered it). */
   private def context(claims: BlockPool.Claims[IO], header: Header): IO[BlockPool.Taken] =
-    claims.takeAddition(header).flatMap {
-      case Right(Some(value)) => IO.pure(value)
-      case other              => IO(fail(s"expected a first body-admission context, got $other"))
+    claims.take(header.hash).flatMap {
+      case Some(value) => IO.pure(value)
+      case None        => IO(fail(s"expected a delivered body for ${header.point}"))
     }
 
   test(
@@ -51,11 +52,9 @@ class BlockPoolPunishmentSuite extends FailsOnUncaught:
             duplicate <- validator.claim(Vector(block._1.hash))
             _ <- IO(assertEquals(duplicate, Vector(false)))
             _ <- validator.fillDelivered(Vector(checked))
-            repeated <- sender.takeAddition(block._1)
             cached <- pool.take(block._1.hash)
             reports <- punished.get
             _ <- IO {
-              assertEquals(repeated, Right(None))
               assertEquals(cached, Some(block._2))
               assertEquals(reports, Vector.empty)
             }
@@ -191,7 +190,7 @@ class BlockPoolPunishmentSuite extends FailsOnUncaught:
         for
           _ <- sender.claim(Vector(block._1.hash)) *> sender.fillDelivered(Vector(checked))
           taken <- context(sender, block._1)
-          result <- sender.invalidated(taken, block._1, refusal(block._1))
+          result <- pool.invalidated(taken, block._1, refusal(block._1))
           _ <- IO(assertEquals(result, Right(())))
         yield ()
       }
@@ -210,26 +209,6 @@ class BlockPoolPunishmentSuite extends FailsOnUncaught:
         assertEquals(before.entries, Map(block._1.hash -> refusal(block._1)))
         assertEquals(after.entries, Map.empty)
         assertEquals(after.revision, before.revision)
-      }
-    yield ()
-  }
-
-  test("a missing body has no context to consume; its later actual admission remains causal") {
-    for
-      forged <- ForgedChain.forge(5000 until 5060)
-      block <- first(forged)
-      checked <- delivered(block)
-      pool <- BlockPool.create[IO]
-      _ <- pool.session.use { claims =>
-        for
-          absent <- claims.takeAddition(block._1)
-          _ <- claims.claim(Vector(block._1.hash)) *> claims.fillDelivered(Vector(checked))
-          present <- context(claims, block._1)
-          consumed <- claims.takeAddition(block._1)
-        yield
-          assertEquals(absent, Right(None))
-          assertEquals(present.metadata.map(_.header.point), Some(block._1.point))
-          assertEquals(consumed, Right(None))
       }
     yield ()
   }

@@ -198,7 +198,6 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
                     readAhead = 16,
                     byronEpochSlots = ForgedChain.geometry.byron.epochSlots
                   ),
-                  _ => IO.unit,
                   pool = Some(pool),
                   patience = Option.when(streaming)(patience),
                   chain = Peer.Chain.Praos(

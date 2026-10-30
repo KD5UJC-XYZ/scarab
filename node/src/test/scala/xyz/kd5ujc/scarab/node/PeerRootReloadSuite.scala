@@ -80,7 +80,6 @@ class PeerRootReloadSuite extends FailsOnUncaught:
           network = NodeToNode.Settings(),
           peer = Peer.Settings(fixed, 42L, byronEpochSlots = ForgedChain.geometry.byron.epochSlots),
           follow = (_, _) => IO.never,
-          prepare = _ => IO.unit,
           heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin,
           headers = None,
           transactions = None,

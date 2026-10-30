@@ -138,7 +138,6 @@ class PeerForkPrefixSuite extends FailsOnUncaught:
                       readAhead = 16,
                       byronEpochSlots = ForgedChain.geometry.byron.epochSlots
                     ),
-                    _ => IO(fail("the add-block runner owns preparation")),
                     ChainSyncHeights
                       .selected(left.headers.take(common) ++ ours, Vector(base.point)),
                     pool = Some(pool),

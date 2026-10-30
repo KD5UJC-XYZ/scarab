@@ -135,7 +135,6 @@ class PraosHeaderValidationSuite extends FailsOnUncaught:
                         42,
                         byronEpochSlots = c.setup.geometry.byron.epochSlots
                       ),
-                      _ => IO.unit,
                       ChainSyncHeights
                         .selected(c.blocks.take(index).map(_.header), applied.candidates),
                       chain = Peer.Chain.Praos(Some(HeaderClock.clocked(clock, inner)))

@@ -79,7 +79,6 @@ class OutboundMonitorFailureSuite extends FailsOnUncaught:
                 byronEpochSlots = 21600
               ),
               follow = (_, _) => IO.never,
-              prepare = _ => IO.unit,
               heightSnapshot = ChainSyncHeights.origin,
               headers = None,
               transactions = None,

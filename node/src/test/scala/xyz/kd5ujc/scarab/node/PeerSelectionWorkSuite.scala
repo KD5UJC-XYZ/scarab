@@ -103,7 +103,6 @@ class PeerSelectionWorkSuite extends FailsOnUncaught:
                     42,
                     byronEpochSlots = ForgedChain.geometry.byron.epochSlots
                   ),
-                  _ => IO(fail("active worker owns preparation")),
                   pool = Some(pool),
                   selectionWork = Some(bodyWork),
                   heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin

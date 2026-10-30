@@ -251,7 +251,7 @@ class PeerDefectPolicySuite extends FailsOnUncaught:
                       NtNHeader.codec
                     )
                     .flatMap(
-                      Peer.over(_, settings, _ => IO.unit, ChainSyncHeights.origin)
+                      Peer.over(_, settings, ChainSyncHeights.origin)
                     )
                     .use(peer => Fault.fiber(peer.intersect(Vector(ChainSync.Point.Origin)).void))
                 }

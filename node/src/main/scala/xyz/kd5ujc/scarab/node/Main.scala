@@ -780,7 +780,6 @@ object Main extends IOApp:
       mempool: Mempool[IO],
       chainGate: Mutex[IO],
       follower: Follower[IO, MirrorState],
-      receivedBody: Option[Peer.BodySink[IO]],
       stateful: Stateful[IO, VolatileChain[MirrorState]]
   )
 
@@ -1071,7 +1070,7 @@ object Main extends IOApp:
       val headers = headerChecks(run, instruments, rules, chain)
       for
         supply <- supplied(run, instruments, chain, headers, opened.received)
-        connections <- connected(run, instruments, rules, chain, headers, supply, opened.immutable)
+        connections <- connected(run, instruments, chain, headers, supply, opened.immutable)
         services <- served(
           run,
           instruments,
@@ -1105,22 +1104,6 @@ object Main extends IOApp:
       _ <- opened.received.traverse_(received =>
         resumed.traverse_(block => received.restoreSelected(block.ref, block.raw))
       )
-      receivedBody: Option[Peer.BodySink[IO]] = opened.received.map { received => (header, raw) =>
-        Handle
-          .allow[StorageError] {
-            received
-              .put(
-                BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary),
-                raw
-              )
-              .as(Option.empty[StorageError])
-          }
-          .rescue(error => IO.pure(Some(error)))
-          .flatMap {
-            case None        => IO.unit
-            case Some(error) => fatalSink(Fatal.Storage(error)) *> IO.never[Unit]
-          }
-      }
       // the stores are open and the stored blocks applied
       _ <- measured.phase(PhaseLabel.Following)
       _ <- rules.praosConfig.update(c => c.copy(geometry = state.geometry(c.geometry)))
@@ -1220,7 +1203,6 @@ object Main extends IOApp:
       mempool,
       chainGate,
       follower,
-      receivedBody,
       summon[Stateful[IO, VolatileChain[MirrorState]]]
     )
 
@@ -1382,7 +1364,6 @@ object Main extends IOApp:
   private def connected(
       run: Startup,
       instruments: Instruments,
-      rules: Rules,
       chain: Chain,
       headers: Headers,
       supply: Supply,
@@ -1401,7 +1382,6 @@ object Main extends IOApp:
     import supply.{blockPool, genesisRuntime}
     def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
     def logged(event: NodeEvent): IO[Unit] = Log[IO].emit(event)
-    val warm = rules.warm
     val genesisGovernor = genesisRuntime.map(_.governor)
     val peerSharing = setup.config.settings.peerSharingEnabled(options.forge.isDefined)
     // the connection manager (G2): one connection per peer address, limits, accounting
@@ -1459,7 +1439,6 @@ object Main extends IOApp:
         ),
         handlers,
         follow = peer => scheduling.compute.within(follower.session(peer)),
-        prepare = warm,
         fatal = fatalSink,
         heightSnapshot = chainSyncHeights,
         headers = headers.check,
@@ -1469,7 +1448,6 @@ object Main extends IOApp:
         sharing = Some(sharing),
         pool = blockPool,
         genesis = genesisRuntime,
-        receivedBody = chain.receivedBody,
         peerMetrics = Some(peerMetrics)
       )
       // The outbound peer network (G1): the governor chooses the peers, moves them between
@@ -1506,7 +1484,6 @@ object Main extends IOApp:
           pipelineWindow = options.chainSyncWindow
         ),
         follow = (peer, track) => scheduling.compute.within(follower.session(peer, track)),
-        prepare = warm,
         heightSnapshot = chainSyncHeights,
         headers = headers.check,
         transactions = Some(mempool.source),
@@ -1516,8 +1493,7 @@ object Main extends IOApp:
         lost = lost,
         fatal = fatalSink,
         serve = Some(handlers),
-        genesis = genesisRuntime,
-        receivedBody = chain.receivedBody
+        genesis = genesisRuntime
       )
       val emitOutput = (out: Output[PeerNetwork.Addr]) =>
         measured.peerSelection(out) *> (out match

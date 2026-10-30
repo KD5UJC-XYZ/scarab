@@ -94,7 +94,6 @@ class OutboundLossReportSuite extends FailsOnUncaught:
                 Raise[IO, NodeError].raise[NodeError, Unit](
                   PeerError.Unavailable(PeerError.Unavailability.SessionEnded)
                 ),
-              prepare = _ => IO.unit,
               heightSnapshot = ChainSyncHeights.origin,
               headers = None,
               transactions = None,

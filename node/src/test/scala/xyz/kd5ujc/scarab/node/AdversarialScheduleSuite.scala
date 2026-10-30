@@ -221,7 +221,6 @@ class AdversarialScheduleSuite extends FailsOnUncaught:
           byronEpochSlots = ForgedChain.geometry.byron.epochSlots
         ),
         follow = (peer, track) => follower.session(peer, track),
-        prepare = _ => IO.unit,
         heightSnapshot = heights,
         headers = Some(headerCheck),
         transactions = None,

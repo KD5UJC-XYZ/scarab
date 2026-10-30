@@ -101,7 +101,6 @@ class FortyBearersSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           byronEpochSlots = ForgedChain.geometry.byron.epochSlots
         ),
         follow = (peer, track) => follower.session(peer, track),
-        prepare = _ => IO.unit,
         heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin,
         headers = None,
         transactions = None,
@@ -212,7 +211,6 @@ class FortyBearersSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           byronEpochSlots = ForgedChain.geometry.byron.epochSlots
         ),
         follow = (peer, track) => follower.session(peer, track),
-        prepare = _ => IO.unit,
         heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin,
         headers = None,
         transactions = None,

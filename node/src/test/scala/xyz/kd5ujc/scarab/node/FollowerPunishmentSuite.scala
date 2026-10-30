@@ -48,7 +48,7 @@ class FollowerPunishmentSuite extends FailsOnUncaught:
       )
       pool <- WorkerTesting.pool(follower)
       bodies = actions.collect { case Action.Add(header, raw) => header.hash -> raw }.toMap
-      script = new Peer[IO]:
+      script = new WorkerTesting.Scripted[IO]:
         def intersect(@scala.annotation.unused points: Vector[ChainSync.Point])(using
             Raise[IO, PeerError]
         ) =

@@ -154,7 +154,6 @@ class PeerReintersectSuite extends FailsOnUncaught:
               pipelineWindow =
                 ChainSyncPipelineDecision.Window.checked(2, 4).fold(e => fail(e.toString), identity)
             ),
-            _ => IO.unit,
             heightSnapshot = ChainSyncHeights.origin,
             chain = Peer.Chain.Praos(Some(check))
           )

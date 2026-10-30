@@ -271,7 +271,6 @@ class InboundGovernorSuite extends FailsOnUncaught:
                 ) = IO.unit
             ),
             follow = peer => followSession.fold(follower.session(peer, track))(_(peer)),
-            prepare = _ => IO.unit,
             fatal = fatal,
             headers = headerCheck,
             transactions = transactions,
@@ -938,7 +937,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
                               IO(assertEquals(point, Point.Origin)).as(Left(()))
                           }
                         }
-                        raw <- peer.fetch(announced)
+                        raw <- WorkerTesting.deliveredBody(pool, announced)
                         _ <- IO(assertEquals(raw, forged.raws.head))
                         _ <- delivered.complete(()) *> finishFirst.get
                         missing <- peer.intersect(Vector(forged.headers.last.point))

@@ -50,14 +50,14 @@ class FollowerSuite extends FailsOnUncaught:
   private def scriptedPeers(
       sessions: List[List[Either[PeerError, SyncEvent]]],
       offered: Ref[IO, List[Vector[ChainSync.Point]]]
-  ): IO[Resource[IO, Peer[IO]]] =
+  ): IO[Resource[IO, WorkerTesting.Scripted[IO]]] =
     Queue
       .unbounded[IO, List[Either[PeerError, SyncEvent]]]
       .flatTap(q => sessions.traverse_(q.offer))
       .map { scripts =>
         Resource.eval(scripts.tryTake.map(_.getOrElse(Nil))).evalMap { script =>
           Ref.of[IO, List[Either[PeerError, SyncEvent]]](script).map { remaining =>
-            new Peer[IO]:
+            new WorkerTesting.Scripted[IO]:
               def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
                 offered.update(_ :+ candidates).as(candidates.headOption)
               def next(using Raise[IO, PeerError]) = remaining.modify {
@@ -173,9 +173,9 @@ class FollowerSuite extends FailsOnUncaught:
       pause: FiniteDuration = Duration.Zero
   )
 
-  private def serving(s: Serving): Resource[IO, Peer[IO]] =
+  private def serving(s: Serving): Resource[IO, WorkerTesting.Scripted[IO]] =
     Resource.eval(IO.sleep(s.startDelay) *> Ref.of[IO, List[SyncEvent]](Nil)).map { pending =>
-      new Peer[IO]:
+      new WorkerTesting.Scripted[IO]:
         def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
           val at =
             candidates.find(p => p == ChainSync.Point.Origin || s.chain.exists(_.point == p))
@@ -300,10 +300,12 @@ class FollowerSuite extends FailsOnUncaught:
   }
 
   test("a peer that shares no point with our chain is a peer error, retried and then given up") {
-    val strangers: Resource[IO, Peer[IO]] = Resource.pure(new Peer[IO]:
-      def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) = IO.pure(None)
-      def next(using Raise[IO, PeerError]) = IO.never
-      def fetch(header: Header)(using Raise[IO, PeerError]) = IO.pure(Bytes.empty))
+    val strangers: Resource[IO, WorkerTesting.Scripted[IO]] =
+      Resource.pure(new WorkerTesting.Scripted[IO]:
+        def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
+          IO.pure(None)
+        def next(using Raise[IO, PeerError]) = IO.never
+        def fetch(header: Header)(using Raise[IO, PeerError]) = IO.pure(Bytes.empty))
     for
       ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.k.toInt, -1))
       given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
@@ -335,7 +337,7 @@ class FollowerSuite extends FailsOnUncaught:
         incoming <- Queue.unbounded[IO, SyncEvent]
         fetched <- Ref.of[IO, Vector[Bytes]](Vector.empty)
         cancelledReads <- Ref.of[IO, Int](0)
-        peer = new Peer[IO]:
+        peer = new WorkerTesting.Scripted[IO]:
           def intersect(points: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
             IO.pure(points.lastOption)
           def next(using Raise[IO, PeerError]) =

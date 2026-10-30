@@ -80,7 +80,21 @@ private[scarab] object WorkerTesting extends munit.Assertions:
     * the tip (`invalidBlockRejector`, consensus 82ecba329 ChainSync/Client.hs:2082–2156) or as the
     * predecessor of a header it announces (`checkKnownInvalid`, Client.hs:1642–1694).
     */
-  def delivering(peer: Peer[IO], claims: BlockPool.Claims[IO]): Resource[IO, Fed] =
+  /** A scripted peer of a test that also serves the bodies of the headers it announces: what a
+    * session's fetch client delivers to the pool in the node (issue 599).
+    */
+  trait Scripted[F[_]] extends Peer[F]:
+    def fetch(header: Header)(using Raise[F, PeerError]): F[xyz.kd5ujc.scarab.codec.Bytes]
+
+  /** The body of `header` once some session has delivered it to `pool`: what a test session read
+    * through the session's own fetch before issue 599.
+    */
+  def deliveredBody(pool: BlockPool[IO], header: Header): IO[xyz.kd5ujc.scarab.codec.Bytes] =
+    pool
+      .take(header.hash)
+      .flatMap(_.fold(IO.sleep(1.milli) *> deliveredBody(pool, header))(IO.pure))
+
+  def delivering(peer: Scripted[IO], claims: BlockPool.Claims[IO]): Resource[IO, Fed] =
     Resource.eval(Ref.of[IO, Vector[Header]](Vector.empty)).map { candidate =>
       def invalid(refusal: Option[ValidationError])(using Raise[IO, PeerError]): IO[Unit] =
         refusal.traverse_(PeerError.InvalidBlock(_).raise[IO, Unit])
@@ -107,7 +121,6 @@ private[scarab] object WorkerTesting extends munit.Assertions:
 
       val fed = new Peer[IO]:
         override def invalidBlocks = Some(claims.invalidBlocks)
-        override def noVerdictBlocks = Some(claims.noVerdictBlocks)
         def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
           candidate.set(Vector.empty) *> peer.intersect(candidates)
         def next(using Raise[IO, PeerError]) =
@@ -122,7 +135,6 @@ private[scarab] object WorkerTesting extends munit.Assertions:
                 .update(headers => headers.take(headers.indexWhere(_.point == point) + 1))
                 .as(event)
           }
-        def fetch(header: Header)(using Raise[IO, PeerError]) = peer.fetch(header)
       new Fed(fed, candidate, claims)
     }
 
@@ -132,7 +144,8 @@ private[scarab] object WorkerTesting extends munit.Assertions:
     * is raised as it is, once the worker, which outlives every session, has decided what the
     * session delivered before it ended; an end the worker's decisions make due is waited for.
     */
-  def run[S](follower: Follower[IO, S], blocks: BlockPool[IO], peer: Peer[IO], done: IO[Unit])(using
+  def run[S](follower: Follower[IO, S], blocks: BlockPool[IO], peer: Scripted[IO], done: IO[Unit])(
+      using
       Stateful[IO, VolatileChain[S]],
       Raise[IO, NodeError]
   ): IO[Option[Fatal]] =
@@ -160,8 +173,12 @@ private[scarab] object WorkerTesting extends munit.Assertions:
     }
 
   /** As [[run]], for a node that must not be told to stop. */
-  def follow[S](follower: Follower[IO, S], blocks: BlockPool[IO], peer: Peer[IO], done: IO[Unit])(
-      using
+  def follow[S](
+      follower: Follower[IO, S],
+      blocks: BlockPool[IO],
+      peer: Scripted[IO],
+      done: IO[Unit]
+  )(using
       Stateful[IO, VolatileChain[S]],
       Raise[IO, NodeError]
   ): IO[Unit] =
