@@ -130,7 +130,9 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
                     )
                     .void
               }
-          def tryCollect(onAwait: IO[Unit])(using Raise[IO, NetworkError]) =
+          def tryCollect(onAwait: Raise[IO, NetworkError] ?=> IO[Unit])(using
+              Raise[IO, NetworkError]
+          ) =
             submitted.get.flatMap { count =>
               if count < 3 then IO.pure(None)
               else
@@ -152,14 +154,20 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
                     }
                   )
             }
-          def collect(onAwait: IO[Unit])(using Raise[IO, NetworkError]) =
+          def collect(onAwait: Raise[IO, NetworkError] ?=> IO[Unit])(using
+              Raise[IO, NetworkError]
+          ) =
             tryCollect(onAwait).flatMap(
               _.fold(IO.never[ChainSyncClient.Update[NtNHeader]])(IO.pure)
             )
-          def serviceAwait(onAwait: IO[Unit])(using Raise[IO, NetworkError]) = IO.unit
+          def serviceAwait(onAwait: Raise[IO, NetworkError] ?=> IO[Unit])(using
+              Raise[IO, NetworkError]
+          ) = IO.unit
           def outstanding = inFlight.get
-          def drain(onAwait: IO[Unit])(onUpdate: ChainSyncClient.Update[NtNHeader] => IO[Unit])(
-              using Raise[IO, NetworkError]
+          def drain(
+              onAwait: Raise[IO, NetworkError] ?=> IO[Unit]
+          )(onUpdate: ChainSyncClient.Update[NtNHeader] => IO[Unit])(using
+              Raise[IO, NetworkError]
           ) =
             if unknownRollback then
               inFlight.getAndSet(0).flatMap { remaining =>

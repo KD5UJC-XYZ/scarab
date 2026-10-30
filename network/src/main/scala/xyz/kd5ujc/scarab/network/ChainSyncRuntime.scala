@@ -59,16 +59,22 @@ object ChainSyncRuntime:
   trait Pipeline[F[_], Q, T, P] extends Client[F, Q, T, P]:
     def submit(using Raise[F, NetworkError]): F[Unit]
     def submitObserved(hook: ChainSyncClient.ReceiverHook[F])(using Raise[F, NetworkError]): F[Unit]
-    def tryCollect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Option[Update[Q, T, P]]]
-    def collect(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Update[Q, T, P]]
-    def serviceAwait(onAwait: F[Unit])(using Raise[F, NetworkError]): F[Unit]
+    def tryCollect(onAwait: Raise[F, NetworkError] ?=> F[Unit])(using
+        Raise[F, NetworkError]
+    ): F[Option[Update[Q, T, P]]]
+    def collect(onAwait: Raise[F, NetworkError] ?=> F[Unit])(using
+        Raise[F, NetworkError]
+    ): F[Update[Q, T, P]]
+    def serviceAwait(onAwait: Raise[F, NetworkError] ?=> F[Unit])(using
+        Raise[F, NetworkError]
+    ): F[Unit]
     def outstanding: F[Int]
 
     /** Collect outstanding replies without legacy reply observers; the callback accounts for each
       * discarded final reply (for example, retiring its captured request context).
       */
-    def drain(onAwait: F[Unit])(onUpdate: Update[Q, T, P] => F[Unit])(using
-        Raise[F, NetworkError]
+    def drain(onAwait: Raise[F, NetworkError] ?=> F[Unit])(onUpdate: Update[Q, T, P] => F[Unit])(
+        using Raise[F, NetworkError]
     ): F[Unit]
 
   /** @param abort
