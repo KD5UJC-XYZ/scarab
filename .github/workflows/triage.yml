@@ -4,7 +4,12 @@ name: Triage report
 # The triage check of docs/process.md ("Labels and milestones") over the open issues, read-only through
 # scripts/status.py --check. Its report replaces the body of the one issue titled "Triage report", created
 # with its own labels and milestone on the first run, so the report never lists itself and never adds comments.
-# A closed "Triage report" issue is reopened: closing it does not stop the report.
+# A closed "Triage report" issue is reopened: closing it does not stop the report. The same run refreshes the roadmap's
+# issue-state snapshot (scripts/render_roadmap.py --refresh-states --all); a change is proposed as one standing pull
+# request from bot/roadmap-sync by the sync App (vars.SCARAB_SYNC_APP_CLIENT_ID, secrets.SCARAB_SYNC_APP_PRIVATE_KEY),
+# whose pull requests run CI, and the next run merges it once green if it changes only the snapshot and the render
+# (scripts/roadmap_sync.py; owner decision 2026-10-29: this pull request only, no repository auto-merge). Without the
+# App the report lists the change only.
 on:
   workflow_dispatch:
   schedule:
@@ -41,6 +46,63 @@ jobs:
           cat "$RUNNER_TEMP/triage.txt"
           # 1 is a report with violations, which is this workflow's output; anything else is a failed check.
           if [ "$code" -gt 1 ]; then exit "$code"; fi
+      # The sync App's private key is used only by this run's own code from main, on the schedule or a manual dispatch:
+      # never on a pull_request or pull_request_target event, and never on another trigger this workflow may gain.
+      - name: Mint the sync App token
+        id: app
+        if: vars.SCARAB_SYNC_APP_CLIENT_ID != '' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.SCARAB_SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.SCARAB_SYNC_APP_PRIVATE_KEY }}
+          owner: KD5UJC-XYZ
+          repositories: scarab
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Merge the last sync pull request if it is green
+        if: steps.app.outputs.token != ''
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+        run: |
+          python3 scripts/roadmap_sync.py merge --app-slug "$APP_SLUG" | tee "$RUNNER_TEMP/roadmap.txt" \
+            || echo "roadmap sync: the merge step failed; the pull request stays open" >> "$RUNNER_TEMP/roadmap.txt"
+          # Refresh from main as it is now, so tonight's pull request starts from the merged snapshot.
+          git fetch --quiet origin main
+          git checkout --quiet --detach origin/main
+      - name: Refresh the roadmap's issue-state snapshot
+        id: roadmap
+        run: |
+          set +e
+          python3 scripts/render_roadmap.py --refresh-states --all >> "$RUNNER_TEMP/roadmap.txt" 2>&1
+          set -e
+          git diff --stat -- docs/data/issue-states.json docs/roadmap.md >> "$RUNNER_TEMP/roadmap.txt"
+          cat "$RUNNER_TEMP/roadmap.txt"
+          if git diff --quiet -- docs/data/issue-states.json docs/roadmap.md; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Propose the refreshed snapshot
+        if: steps.app.outputs.token != '' && steps.roadmap.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+        run: |
+          branch=bot/roadmap-sync
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git add docs/data/issue-states.json docs/roadmap.md
+          git commit -m "docs(roadmap): refresh the issue-state snapshot (#400)"
+          git push --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$branch"
+          number=$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty')
+          if [ -z "$number" ]; then
+            gh pr create --head "$branch" --base main --title "docs(roadmap): refresh the issue-state snapshot" \
+              --body "The nightly [triage workflow]($RUN_URL) refreshed \`docs/data/issue-states.json\` from the issues and rendered \`docs/roadmap.md\` again (\`python3 scripts/render_roadmap.py --refresh-states --all\`). Generated files only. The next run merges it once every check has passed (\`scripts/roadmap_sync.py\`), or replaces it with a newer refresh."
+            number=$(gh pr list --head "$branch" --state open --json number --jq '.[0].number')
+          fi
+          echo "Proposed in #$number." >> "$RUNNER_TEMP/roadmap.txt"
       - name: Write the report into the triage issue
         run: |
           body="$RUNNER_TEMP/body.md"
@@ -49,6 +111,12 @@ jobs:
             echo
             echo '~~~text'
             head -n 800 "$RUNNER_TEMP/triage.txt"
+            echo '~~~'
+            echo
+            echo "Roadmap issue-state snapshot, from \`python3 scripts/render_roadmap.py --refresh-states --all\` (empty when up to date):"
+            echo
+            echo '~~~text'
+            head -n 200 "$RUNNER_TEMP/roadmap.txt"
             echo '~~~'
           } > "$body"
           number=$(gh api --paginate 'repos/{owner}/{repo}/issues?state=all&per_page=100' \

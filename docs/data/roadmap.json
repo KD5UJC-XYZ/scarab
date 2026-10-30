@@ -1,0 +1,1919 @@
+{
+  "schemaVersion": 1,
+  "intro": "The work of Scarab after the v0.1.0 research preview, done and open. Item IDs (A1, B3, ...) are stable: issues and pull\nrequests reference them, and they are not renumbered when items are done (done items are marked, not\ndeleted). Priorities:\n\n- **P0** is needed for the research preview or blocks collaborators.\n- **P1** is needed for a full reference-compatible node.\n- **P2** is hardening or nice-to-have.\n\nEach item with an issue links to it; the issue carries its state (`status:` labels) and milestone; how items move from idea to done is in [process.md](process.md). Large items have a [design document](design/README.md), and the decisions behind them are [ADRs](adr/README.md). How each area stands today is in [compatibility.md](compatibility.md).",
+  "sections": [
+    {
+      "id": "A",
+      "heading": "A. Publication and project hygiene"
+    },
+    {
+      "id": "B",
+      "heading": "B. Unconfirmed rules: implemented but not yet checked against the reference (P1)"
+    },
+    {
+      "id": "C",
+      "heading": "C. Byron (P1, needed for preprod and mainnet)"
+    },
+    {
+      "id": "D",
+      "heading": "D. Scale (P1)"
+    },
+    {
+      "id": "E",
+      "heading": "E. Fast start (P1)"
+    },
+    {
+      "id": "F",
+      "heading": "F. Node-to-client (P1)"
+    },
+    {
+      "id": "G",
+      "heading": "G. Networking (P1/P2)"
+    },
+    {
+      "id": "H",
+      "heading": "H. Block production (P1/P2)"
+    },
+    {
+      "id": "I",
+      "heading": "I. Plutus (P2)"
+    },
+    {
+      "id": "J",
+      "heading": "J. Operational parity (P2)"
+    },
+    {
+      "id": "K",
+      "heading": "K. Verification at scale (P1)"
+    },
+    {
+      "id": "L",
+      "heading": "L. Future eras (P2)"
+    },
+    {
+      "id": "M",
+      "heading": "M. Code hygiene (from the pre-publication audit)"
+    },
+    {
+      "id": "N",
+      "heading": "N. Ouroboros Leios",
+      "intro": "Linear Leios (CIP-164) is planned for the Dijkstra hard fork (L1). The design note, sources and\nthe observed divergences between the CIP text and the prototype are in [leios.md](leios.md).\nN2 does not depend on L1 or G4; N3 needs L1 (Dijkstra decoding) and, if the testnet requires it,\nG4; N4 needs N3 and a buildable reference Leios node."
+    },
+    {
+      "id": "O",
+      "heading": "O. Review readiness and operations",
+      "outro": "The O1/O5 evidence review must distinguish historical masked runs from the strict comparison\ncontract integrated by [#285](https://github.com/KD5UJC-XYZ/scarab/pull/285). The former\n`NonMyopic`, `SnapshotNumDelegators`, `VrfKeyHashes` and `RewardUpdate` masks were removed;\ncomplete debug-ledger answers now require wire-byte equality and valid framing, and projection\ncomparisons no longer round numeric values. The [compatibility evidence](compatibility.md)\nrecords 330/330 private same-point query answers, including 20 debug-state pairs, on runtime\n`d9d089039`; later rebased CI is separate evidence. This finite observation does not establish\nuniversal state equality or the twelve-case external candidate campaign. Operational provenance\ninventory, backups and copy rehearsals remain under M11/J3.1\n([#129](https://github.com/KD5UJC-XYZ/scarab/issues/129))."
+    },
+    {
+      "id": "order",
+      "heading": "Order of work",
+      "text": "Set 2026-10-29. The order of the open work, with the reason for it. IDs are the roadmap IDs; the issues carry the\nstate and the milestone. This section is rewritten when the order changes.\n\n**v0.2, reference-grade evidence (complete)**\n\nThe v0.2 exit gate, a Scala-forged block adopted on preprod (H1/H1a,\n[#37](https://github.com/KD5UJC-XYZ/scarab/issues/37)/[#115](https://github.com/KD5UJC-XYZ/scarab/issues/115)),\nwas met on 2026-10-25, and `v0.2.0-alpha.1` was tagged the same day as a pre-release. The other v0.2 steps\nwere complete before it: executable reference coverage K2 (#49), throughput acceptance D2 (#21, PR #209),\nreward pulsing D15 (#135), the sync/replay investigation D11 (#124), strict Ed25519 D7 (#26) and pool\nmonitoring J3c (#117); D8 (#65) closed with its one-CPU timing target accepted as a limitation. Retained\nevidence includes the Preview epoch comparisons (K1), preprod sync (C4), the memory investigation (K6),\nMithril bootstrap (E1) and snapshot interoperability (E2). The dedicated campaigns D6, K4, K5, K7 and D9\nleft v0.2 with their acceptance criteria unchanged (owner decision, 2026-10-18, PR #184); that decision\nauthorizes no new public synchronization or operational change.\n\nRelease management stays open under AUD-09\n([#161](https://github.com/KD5UJC-XYZ/scarab/issues/161)): the planned protected PR promotion `feat/*` ->\n`dev` -> `main` (only same-repository `dev` may target `main`) and the planned protected `release/alpha`,\n`release/beta`, `release/preprod` and `release/prod` branches, whose tag suffixes are `-alpha.N`,\n`-beta.N`, `-rc.N` and no suffix. Work targets `main` until the cutover. Plain Scarab SemVer and\nprotected Git tags govern releases; the compatibility matrix states reference support separately. The\n[release design](design/releases.md), [release PR preparation](release-pr-preparation.md) and the\n[promotion cutover guide](promotion-cutover.md) record the tooling; activation, settings and platform\nacceptance are owner work under #161.\n\n**Next, in this order**\n\n1. *Review readiness:* the threat model O1 (#74), reproducible signed releases and the SBOM O2 (#75),\n   the reviewer evidence bundle O5 (#349), packaging O3 (#76), and the open audit tickets. The audit\n   candidate is cut after the required readiness evidence exists.\n2. *Dedicated public-chain evidence:* mainnet genesis-to-tip throughput and memory D6 (#25),\n   multi-day stability K4 (#51), exact tagged-build genesis sync K5 (#52), at least 30 consecutive live\n   Preview epochs K7 (#68), and a mainnet Mithril start followed by at least a week at tip D9 (#69).\n   These issues stay open with their existing acceptance criteria; ordering them does not claim their\n   evidence exists.\n3. *Leios, built against the testnet and the reference node and refactored as the design moves*\n   (owner decision, 2026-10-18): the plan is [leios.md](leios.md) 11.8 for N4\n   ([#73](https://github.com/KD5UJC-XYZ/scarab/issues/73)), whose checklist holds the former X1 to X13:\n   get the Leios team's reference node (pinned), settle the mini-protocol gating on a loopback network\n   with its trace, follow the Dijkstra chain (X1, X2), the committee and certificates (X5),\n   mini-protocols 18 and 19 (X8, X7), then the devnet scenario against the reference. The rules for a\n   moving target: Leios integrates through `dev` and promotes to `main`, behind the era selector and the\n   configuration (`ExperimentalHardForksEnabled` is the switch; a short-lived branch is for one\n   disruptive change at a time, such as the eighth era in the telescope); every revision (testnet, CDDL,\n   reference build) is pinned and recorded in leios.md; Leios code sits behind its own era and\n   protocol-version gates so Conway and mainnet paths are untouched; codecs and Dijkstra types are\n   versioned so a design change is a new version; the testnet chain from genesis is the regression. The\n   protocol prerequisites are done: handshake versions G4 (#34), Ouroboros Genesis G3 (#33), the\n   header intake AUD-01 (#153) and the fiber boundary G7 (#132). The LeiosFetch CDDL module (X12) has bounded generation. The Dijkstra era L1 ([#54](https://github.com/KD5UJC-XYZ/scarab/issues/54))\n   and the Leios mempool N5 ([#79](https://github.com/KD5UJC-XYZ/scarab/issues/79)) follow the follower.\n\n**Later (no milestone yet):** mainnet-pool readiness (#120, the offline cold key and a KES agent)\nand an external audit, both after the audit candidate."
+    },
+    {
+      "id": "milestones",
+      "heading": "Milestones",
+      "text": "Milestones are scope buckets named for what they hold. The version milestones v0.2 and v0.3 were\nclosed on 2026-10-29 with no open issue left in them. Open issues are grouped into these; an\nissue without a milestone (parked work and ideas among them) belongs to none:\n\n- **reference-parity**: behaviour and evidence parity with the reference cardano-node: rules,\n  protocols, queries, forging eras, decoder strictness, verification tooling and the hygiene that\n  protects them.\n- **mainnet-evidence**: public-chain evidence at scale: mainnet sync and Mithril start, continuous\n  epoch comparisons, long-run stability, memory and throughput.\n- **leios-dijkstra**: the next era and Leios/Peras: Dijkstra, Leios protocols, the Leios-grade mempool\n  and research scaffolding."
+    }
+  ],
+  "items": [
+    {
+      "id": "A1",
+      "section": "A",
+      "title": "Compatibility matrix",
+      "status": "done",
+      "detail": " in v0.1.0",
+      "priority": "P0",
+      "issues": [],
+      "notes": "Compatibility matrix: [compatibility.md](compatibility.md)."
+    },
+    {
+      "id": "A2",
+      "section": "A",
+      "title": "Docs restructure",
+      "status": "done",
+      "detail": " in v0.1.0",
+      "priority": "P0",
+      "issues": [],
+      "notes": "Docs restructure: README, architecture, running, compatibility, performance, findings, roadmap, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, CHANGELOG, issue and PR templates."
+    },
+    {
+      "id": "A3",
+      "section": "A",
+      "title": "CI",
+      "status": "done",
+      "detail": " in v0.1.0",
+      "priority": "P0",
+      "issues": [],
+      "notes": "CI: `ci.yml` (check with dependency caching, script tests, actionlint) on every pull request; `e2e.yml` (soak, e2e, relay, pool, reference image downloaded by URL and sha256) nightly, on demand and on tags. The first `e2e.yml` run on GitHub (tag v0.1.0) passed all four scenarios. The secret scan and dependency review were added afterwards (A8)."
+    },
+    {
+      "id": "A8",
+      "section": "A",
+      "title": "Secret scanning and dependency review in CI",
+      "priority": "P1",
+      "issues": [
+        2
+      ],
+      "notes": "Secret scanning and dependency review in CI. `ci.yml` job `secrets` runs gitleaks 8.24.3 (image pinned by digest) over the full history with `.gitleaks.toml`: default rules, and an allowlist for the 182 known `generic-api-key` false positives (key hashes, verification keys, SHA-256 digests) scoped to that one rule, to nine named fixture files and named test files by path, and to two historical commits (`3c0e74c`, `58172e5`); a local scan of all 496 commits reports 0 findings. Custom rules flag cardano-cli TextEnvelope signing keys and `*.skey` paths (#398). Job `dependency-review` (pull requests, `actions/dependency-review-action`, fails on high severity) needs the repository's dependency graph to be enabled; because GitHub does not detect sbt builds, job `dependency-graph` submits the sbt graph on every push to main (`scalacenter/sbt-dependency-submission`, needs `contents: write`). All actions pinned by SHA."
+    },
+    {
+      "id": "A4",
+      "section": "A",
+      "title": "Split `scripts/devnet.py` into a package and add Python unit tests for the pure helpers (CBOR, bech32, projections).",
+      "status": "done",
+      "detail": " in v0.1.0",
+      "priority": "P1",
+      "issues": [],
+      "notes": "Split `scripts/devnet.py` into a package and add Python unit tests for the pure helpers (CBOR, bech32, projections)."
+    },
+    {
+      "id": "A5",
+      "section": "A",
+      "title": "Legal and provenance review",
+      "detail": ": secret scan for v0.1.0; licence, fixture and wording review 2026-10-11",
+      "priority": "P0",
+      "issues": [
+        1
+      ],
+      "notes": "Legal and provenance review: dependency licences ([licenses.md](licenses.md), reconciled with `NOTICE`; none incompatible, borer is MPL-2.0, RocksDB is used under Apache-2.0), fixture provenance (every fixture directory with a README now states source and licence; `network`, `praos`, `sum6` and `vrf` followed under M9), trademark wording (checked against the Cardano Foundation Trademark Policy of 06.03.24: nominative and section 3.1 use; attribution line added; see [licenses.md](licenses.md#name-and-trademark-wording)). Open follow-up: licence texts for any binary distribution. Naming: the project is now Scarab (M7); the disclaimers separate it from the official organisations."
+    },
+    {
+      "id": "A6",
+      "section": "A",
+      "title": "GitHub repository description and topics (the old description says \"not a complete validating node or block producer\").",
+      "status": "done",
+      "detail": " in v0.1.0",
+      "priority": "P0",
+      "issues": [],
+      "notes": "GitHub repository description and topics (the old description says \"not a complete validating node or block producer\")."
+    },
+    {
+      "id": "A7",
+      "section": "A",
+      "title": "Release",
+      "status": "done",
+      "detail": ": tag `v0.1.0` on 244d1c14, 2026-10-11",
+      "priority": "P0",
+      "issues": [],
+      "notes": "Release: tag `v0.1.0` as a research preview. The uninterrupted Preview genesis-to-tip sync is recorded (commit d66b216, see [performance.md](performance.md)); the tag went on a later hygiene/docs/CI commit with all gates re-run."
+    },
+    {
+      "id": "B1",
+      "section": "B",
+      "title": "Conway VRF tie-break restriction in chain selection, confirmed against ouroboros-consensus 4.2.0.0 `comparePraos`",
+      "priority": null,
+      "issues": [
+        3
+      ],
+      "notes": "Conway VRF tie-break restriction in chain selection, confirmed against ouroboros-consensus 4.2.0.0 `comparePraos`. One deviation fixed: the opcert issue number is compared only for the same issuer **and slot**. See [findings.md](findings.md)."
+    },
+    {
+      "id": "B2",
+      "section": "B",
+      "title": "SPO default votes after the bootstrap phase",
+      "priority": "P1",
+      "issues": [
+        4
+      ],
+      "notes": "SPO default votes after the bootstrap phase. Driven on the devnet by `soak --governance-extended` (pool reward accounts delegated to always-abstain, always-no-confidence and a DRep key; competing hard forks, a no-confidence action and committee updates decided by the defaults) and matched against the reference. The hops to 10 and 11 of that run stay scripted; the plain `e2e` has no competing forks and drives every Conway hop itself (B5). Remaining: an unregistered pool reward account (unit tests only)."
+    },
+    {
+      "id": "B3",
+      "section": "B",
+      "title": "Committee rules",
+      "priority": "P1",
+      "issues": [
+        5
+      ],
+      "notes": "Committee rules: `committeeMinSize`, member expiry and the term limit, driven on the devnet and matched (term-limit update never enacted, `committeeMinSize` raised inside a ratification run, withdrawal stuck after a member expired). Remaining: thresholds other than 1/2 and several members expiring at once."
+    },
+    {
+      "id": "B4",
+      "section": "B",
+      "title": "Treasury withdrawals and script DReps",
+      "priority": "P1",
+      "issues": [
+        6
+      ],
+      "notes": "Treasury withdrawals and script DReps: a treasury withdrawal into a script reward account and the withdrawal from it, a Plutus V3 script as stake credential and DRep (registration, delegation, vote), on the devnet and matched. Remaining: the `Proposing` purpose (guardrails script)."
+    },
+    {
+      "id": "B5",
+      "section": "B",
+      "title": "Protocol-11 rules",
+      "priority": "P1",
+      "issues": [
+        7
+      ],
+      "notes": "Protocol-11 rules: VRF key-hash uniqueness implemented (it was not enforced); disjoint reference inputs and unelected committee voters exercised with refusals checked against the reference's predicate failures and replayed through the Scala rules; the mempool refuses unelected voters before 11 as the reference does. `devnet.py e2e` now reaches protocol 11 itself: it reads the reference's highest version (`GetMaxMajorProtocolVersion`), walks the chain there with chained HardFork actions, and runs the version-specific checks (reference-input overlap before and from 11, VRF uniqueness from 11) from a registry (`scripts/devnet/protocolversions.py`), reporting the version each ran at; a guard fails the run when the reference supports a Conway version no registered check covers, so a newer cardano-node forces a registry review (a new era needs new builders first). Remaining: key hashes that are already shared when protocol 11 begins (the ledger counts references, we derive the set); the unelected-voter case is still in the full set only."
+    },
+    {
+      "id": "B6",
+      "section": "B",
+      "title": "Empty-redeemers integrity hash",
+      "priority": null,
+      "issues": [
+        8
+      ],
+      "notes": "Empty-redeemers integrity hash: `0x80` before Conway and `0xa0` from Conway, confirmed on real Preview transactions (`PreviewEmptyRedeemersSuite`); the code was already right. No Alonzo-era transaction of that shape exists on Preview."
+    },
+    {
+      "id": "B7",
+      "section": "B",
+      "title": "Pre-Allegra and Shelley-era details",
+      "detail": " after v0.1.0",
+      "priority": null,
+      "issues": [
+        9
+      ],
+      "notes": "Pre-Allegra and Shelley-era details: pre-Allegra reward aggregation, MIR timing, and the Shelley–Mary min-UTxO formulas. Checked against the ledger source line by line; three divergences fixed (leader reward wins before Allegra, Mary min-UTxO divisor 27 and distinct asset names, MIR gating and deregistration); e2e now runs three Shelley epochs with the boundary load."
+    },
+    {
+      "id": "B8",
+      "section": "B",
+      "title": "Pre-Babbage reward prefilter timing (registered at epoch start + 4k/f)",
+      "detail": " after v0.1.0",
+      "priority": null,
+      "issues": [
+        10
+      ],
+      "notes": "Pre-Babbage reward prefilter timing (registered at epoch start + 4k/f). Confirmed against the Haskell source; no code change; boundary unit tests and an e2e deregistration before and after the start slot."
+    },
+    {
+      "id": "B9",
+      "section": "B",
+      "title": "Plutus builtin availability per language and protocol version (`PlutusAvailability`)",
+      "detail": "; Preview regression from genesis to epoch 168: 975,398 Plutus transactions evaluated successfully and 86 to failure, every verdict equal to `is_valid`, 0 errors",
+      "priority": null,
+      "issues": [
+        11
+      ],
+      "notes": "Plutus builtin availability per language and protocol version (`PlutusAvailability`): a disallowed builtin is a decode failure in evaluation and, from Babbage, a phase-1 failure for witness and output scripts. Protocol-11 constant-type/`constr` limits and V3 trailing bytes are covered by #175 and the signed boundary corpus. Auxiliary-data validation is tracked in [#286](https://github.com/KD5UJC-XYZ/scarab/issues/286)."
+    },
+    {
+      "id": "REF-02/03",
+      "section": "B",
+      "title": "Era-specific V1 context translation and preparation of every context before script evaluation",
+      "priority": null,
+      "issues": [
+        164,
+        165
+      ],
+      "notes": "Era-specific V1 context translation and preparation of every context before script evaluation. Reference-submitted cases retained across Alonzo PV5/6, Babbage PV7/8 and Conway PV9/10, including transaction/block verdicts and both validity flags. Typed error payloads, collection order and diagnostic CBOR are reference-checked under #176. Optional spending datums are reference-checked under REF-12 (#177); further evaluator boundaries were completed under #175."
+    },
+    {
+      "id": "REF-11",
+      "section": "B",
+      "title": "Reference-shaped context error payloads, required-script collection and exact Conway failure CBOR",
+      "priority": null,
+      "issues": [
+        176
+      ],
+      "notes": "Reference-shaped context error payloads, required-script collection and exact Conway failure CBOR. Twenty-four actual signed submissions and 145 API cases retain original bytes, error/request ordering, cost-model precedence and diagnostic normalization; derived probes explicitly make no admission claim. Persisted votes/snapshot format unchanged."
+    },
+    {
+      "id": "REF-12",
+      "section": "B",
+      "title": "Optional spending datum lookup and arguments match the reference",
+      "priority": null,
+      "issues": [
+        177
+      ],
+      "notes": "Optional spending datum lookup and arguments match the reference. Eighteen complete private reference V1/V2/V3 cases cover missing/supplied/no datum and both flags; phase1 still refuses all missing required hashes, and direct context/LEDGER/BBODY checks retain original bytes and input effects."
+    },
+    {
+      "id": "B10",
+      "section": "B",
+      "title": "Plutus semantics-variant C costing for `modInteger` and `remainderInteger`",
+      "priority": null,
+      "issues": [
+        12
+      ],
+      "notes": "Plutus semantics-variant C costing for `modInteger` and `remainderInteger`: differential test against the plutus cost model for variants A to E (`BuiltinCostingSuite`); Scalus 1.2.0 matches, no deviation."
+    },
+    {
+      "id": "B11",
+      "section": "B",
+      "title": "Scalus deviations",
+      "detail": ": reported as [scalus3/scalus#387](https://github.com/scalus3/scalus/issues/387) and [#388](https://github.com/scalus3/scalus/issues/388)",
+      "priority": null,
+      "issues": [
+        13
+      ],
+      "notes": "Scalus deviations: the `verifyEd25519Signature` variant-A costing (patched in our wrapper) and the V3 `NewConstitution` context. Both were still present in Scalus 1.3.0 and are fixed in Scalus 1.4.0, which Scarab adopts ([ADR 0020](adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md)); the costing correction is removed and `ScalusReproducersSuite` now pins both fixes as regressions."
+    },
+    {
+      "id": "B12",
+      "section": "B",
+      "title": "Mary output-size and value-size checks",
+      "detail": " after v0.1.0",
+      "priority": null,
+      "issues": [
+        14
+      ],
+      "notes": "Mary output-size and value-size checks. Exact canonical serialised-size rule: 4000 bytes in Allegra and Mary, `maxValueSize` from Alonzo; e2e at the 4000/4001 and 5000/5001 byte boundaries."
+    },
+    {
+      "id": "B13",
+      "section": "B",
+      "title": "Hard-fork rules",
+      "priority": null,
+      "issues": [
+        15
+      ],
+      "notes": "Hard-fork rules: envelope checks (`ObsoleteNode`, header and body size, Conway mainnet `HeaderProtVerTooHigh`) and the era of every block derived from the ledger's protocol version (`TriggerHardForkAtVersion`) unless a `Test<Era>HardForkAtEpoch` key gives an epoch (`consensus/HardFork.scala`). Byron to Shelley is derived from the Byron update state (C1); in bootstrap (ledger-lite) mode the Babbage to Conway version cannot be seen, so the check is relaxed there."
+    },
+    {
+      "id": "B14",
+      "section": "B",
+      "title": "Byron-address inputs witnessed by a verification key",
+      "status": "done",
+      "priority": "P1",
+      "issues": [],
+      "notes": "Byron-address inputs witnessed by a verification key: the address root is a needed key hash, satisfied by a vkey or a bootstrap witness (preprod transaction 0c22edee, block 3,158,876; `PreprodByronKeyWitnessSuite`; evidence log in [compatibility.md](compatibility.md))."
+    },
+    {
+      "id": "B15",
+      "section": "B",
+      "title": "`verifyEcdsaSecp256k1Signature` returns `False` for a signature with `r = 0` or `s = 0` where Scalus raises",
+      "status": "done",
+      "priority": "P1",
+      "issues": [],
+      "notes": "`verifyEcdsaSecp256k1Signature` returns `False` for a signature with `r = 0` or `s = 0` where Scalus raises (preprod transaction 97b31e35, block 3,498,869); the builtin is replaced in the evaluator (`Secp256k1.verifyEcdsa`, `PreprodSecp256k1RulesSuite`)."
+    },
+    {
+      "id": "B16",
+      "section": "B",
+      "title": "A Plutus V1 or V2 reference script with bytes after its CBOR item is valid",
+      "status": "done",
+      "priority": "P1",
+      "issues": [],
+      "notes": "A Plutus V1 or V2 reference script with bytes after its CBOR item is valid, as in the reference (preprod transaction aee75c1c, block 4,045,972; `PlutusScriptBytes`, `PreprodMalformedRefScriptSuite`)."
+    },
+    {
+      "id": "B17",
+      "section": "B",
+      "title": "No nesting limit below the size of the block",
+      "status": "done",
+      "priority": "P1",
+      "issues": [],
+      "notes": "No nesting limit below the size of the block: transaction bodies and scripts are decoded, encoded and walked iteratively (preprod transaction f90dce57, block 5,183,974; `TreeFold`, `DeepNestingSuite`)."
+    },
+    {
+      "id": "B18",
+      "section": "B",
+      "title": "The mempool",
+      "priority": "P1",
+      "issues": [
+        84
+      ],
+      "notes": "The mempool, block-builder, local-query and Byron decoders limit nesting below the reference too (the remaining paths after B17)."
+    },
+    {
+      "id": "B19",
+      "section": "B",
+      "title": "The `n` of a native `script_n_of_k` and a slot are decoded as the reference does",
+      "status": "done",
+      "priority": "P1",
+      "issues": [],
+      "notes": "The `n` of a native `script_n_of_k` and a slot are decoded as the reference does (`Int`, `Word64`), not as unsigned integers (preprod transaction b1db2a41, block 5,184,855; `PreprodNOfKSuite`)."
+    },
+    {
+      "id": "B20",
+      "section": "B",
+      "title": "A Byron address has no size limit of its own",
+      "status": "done",
+      "priority": "P1",
+      "issues": [],
+      "notes": "A Byron address has no size limit of its own: the Byron decoders (address, transaction, body) are bounded by the body (8 MiB), not 4096 bytes (mainnet block at slot 1,769,882, transaction bc61865d, an address of 7,689 bytes; `ByronLargeAddressSuite`). B30/#178 completes Alonzo/Babbage bootstrap-output checks; F7/#141 adds Shelley/Allegra/Mary, with the native network-predicate order."
+    },
+    {
+      "id": "B21",
+      "section": "B",
+      "title": "Phase 2 evaluates the redeemers with `tailRecM`",
+      "status": "done",
+      "priority": "P1",
+      "issues": [],
+      "notes": "Phase 2 evaluates the redeemers with `tailRecM`, not by a recursion inside a for-comprehension; a transaction with 158 redeemers overflowed a follower's stack after a restart (preprod transaction c70243bb, block 2,216,025; `PreprodManyRedeemersSuite`, `WideTxStackSuite`). The rule and an audit of every recursion over outside data: [ADR 0011](adr/0011-stack-safety.md), [findings.md](findings.md#stack-safety-b21)."
+    },
+    {
+      "id": "B22",
+      "section": "B",
+      "title": "The network of a pool registration's reward account is checked only from protocol version 5",
+      "status": "done",
+      "priority": "P1",
+      "issues": [],
+      "notes": "The network of a pool registration's reward account is checked only from protocol version 5, as the reference does (`hardforkAlonzoValidatePoolAccountAddressNetID`); mainnet block at slot 4,495,760, transaction 49be5965 (`MainnetPoolNetworkSuite`). The other protocol-version gates of POOL, DELEG and UTXO were checked ([findings.md](findings.md)). `restrictPoolMetadataHash` now enforces the 32-byte metadata-hash limit from protocol 4.1, with the typed `PoolMedataHashTooBig` failure and native wire bytes (F7/#141)."
+    },
+    {
+      "id": "B23",
+      "section": "B",
+      "title": "Shelley's time to live is inclusive",
+      "status": "done",
+      "priority": "P1",
+      "issues": [],
+      "notes": "Shelley's time to live is inclusive (`ttl >= slot`, `ExpiredUTxO`); the exclusive upper bound starts with Allegra's validity interval (mainnet block at slot 4,498,780, transaction c7e8a043; `PreConwayRulesSuite`)."
+    },
+    {
+      "id": "B24",
+      "section": "B",
+      "title": "The Byron to Shelley handover writes the whole Byron UTxO to the UTxO store",
+      "status": "done",
+      "priority": "P1",
+      "issues": [],
+      "notes": "The Byron to Shelley handover writes the whole Byron UTxO to the UTxO store: the genesis placeholder is not written while the Byron ledger is current, and the block that enters Shelley empties the store first; before, no Byron entry reached the store and the first trim after the immutable tip passed the handover lost them (mainnet block at slot 4,536,140, transaction ce1c09a1 spending c1092b9c#0; `ByronHandoverUtxoSuite`)."
+    },
+    {
+      "id": "B25",
+      "section": "B",
+      "title": "The BLS12-381 library is blst v0.3.15 built with `-D__BLST_PORTABLE__`",
+      "status": "done",
+      "detail": "; one part open",
+      "priority": "P1",
+      "issues": [],
+      "notes": "The BLS12-381 library is blst v0.3.15 built with `-D__BLST_PORTABLE__`, shipped by the `blst-native` module where blst-java loads its own, and checked at start-up. Before, the library inside blst-java used `mulx`/`adcx` unconditionally and a CPU without ADX/BMI2 (worker-a, older 2-core x86-64 CPU) killed the JVM with SIGILL at the first BLS12-381 builtin of a preprod script, with no event ([#93](https://github.com/KD5UJC-XYZ/scarab/issues/93)). `follow` now refuses a library that is not the portable one on a processor not shown to have ADX and BMI2 (typed `NativeLibraryError`) and computes known answers. [ADR 0012](adr/0012-portable-blst.md), `docker/blst.Dockerfile`, `BlstSuite`, `BlstCheckMain`; verified on worker-a. Open: Linux/aarch64 and macOS keep the libraries of blst-java."
+    },
+    {
+      "id": "B26",
+      "section": "B",
+      "title": "The boundary that enters Allegra returns the outputs to Byron redeem",
+      "status": "done",
+      "detail": "; one part open",
+      "priority": "P1",
+      "issues": [],
+      "notes": "The boundary that enters Allegra returns the outputs to Byron redeem (AVVM) addresses to the reserves (`returnRedeemAddrsToReserves`, run by the Shelley to Allegra translation before the boundary's tick); the node's boundary did not, so its reserves from epoch 236 were 318,200,635 ada below the reference's and every reward calculated from then on was short (mainnet block at slot 17,020,941, transaction 48f567e5 withdrawing the leader reward 351,635,274 of pool ffdf1b8f for epoch 235, where the node had 351,050,635; `MainnetAllegraReservesSuite` reproduces both amounts from the real inputs, `AllegraRedeemStoreSuite`). The node partitions its own set, as the function does: the block that enters Allegra fetches the stored redeem outputs into the read set (`UtxoStore.select`), and the UTxO changes of a boundary carry the block's stamp, so the deletions reach the store ([findings.md](findings.md)). Open: the era-indexed translation (`rules/Translate.shelleyToAllegra`) reads the stashed AVVM outputs, which the mirror of a node state leaves empty (`LedgerMirror.to`), so the differential harness would disagree on a chain with AVVM balances."
+    },
+    {
+      "id": "B27",
+      "section": "B",
+      "title": "A snapshot of a mainnet state in Shelley was refused by the ledger-state mirror",
+      "status": "done",
+      "priority": "P1",
+      "issues": [],
+      "notes": "A snapshot of a mainnet state in Shelley was refused by the ledger-state mirror (`NetworkMismatch(expected = 1, actual = 0)`): the pool ff5181ba, registered at protocol version 2 with a reward account on network 0 (B22), stays registered past epoch 237, and no snapshot was written from the Byron to Shelley handover on, so every restart of a mainnet follower replayed from the last Byron snapshot. The reference keeps a registered pool's account as its credential only (`StakePoolState.spsAccountId`, `mkStakePoolState`; the same in `StakePoolSnapShot`) and reads it back on the node's network (`stakePoolStateToStakePoolParams`, which the pool queries use); the future parameters of a re-registration keep the network byte. The mirror now takes the credential, `normalised` of the removed `LedgerMirror` puts registered pools' accounts on the node's network (`PoolParams.registeredOn`), and `GetStakePoolParams`/`GetPoolState` answer as the reference does. No format change (`MainnetPoolNetworkSnapshotSuite` on the real registration, `PoolNetworkQuerySuite`, the mirror laws over accounts on either network; [findings.md](findings.md)). Open: the node's own state still holds the registration's network for a registered pool (nothing reads it but the mirror and the two queries, which normalise it); storing it as the reference does, at registration and adoption, is a later cleanup."
+    },
+    {
+      "id": "B28",
+      "section": "B",
+      "title": "Before Babbage an address in a transaction output may be followed by bytes that belong to no address",
+      "status": "done",
+      "priority": "P1",
+      "issues": [],
+      "notes": "Before Babbage an address in a transaction output may be followed by bytes that belong to no address, and the ledger drops them: the decoder of a Shelley to Alonzo era does not check that the address used every byte (`fromCborBackwardsBothAddr`, cardano-ledger-core 1.21.0.0), the one of Babbage and Conway does. Mainnet block at slot 39,249,764 (epoch 288, Mary), transaction 369826b2: output 0 is a base address of 57 bytes with 21 bytes after it, and the node refused the block with `base address length` (`MainnetGarbageAddressSuite`, `MainnetGarbageAddressStoreSuite`). `Address.Mode` (`Backwards` below Babbage, `Rigorous` from it, by `Address.Mode.of(era)`) is threaded from `Tx.fromBlock` through `TxBody.decode` and `TxOut.decode`; the address in the set is the cropped one, as in the reference, the output keeps its own bytes, the transaction id is over the body as it came ([findings.md](findings.md)). The pointer normalisation of the same decoder is B29."
+    },
+    {
+      "id": "B29",
+      "section": "B",
+      "title": "A pointer address in an output is read as the reference reads it",
+      "status": "done",
+      "priority": "P1",
+      "issues": [],
+      "notes": "A pointer address in an output is read as the reference reads it: the decoder of a protocol version below 9 normalises a pointer whose slot does not fit a Word32, or whose transaction or certificate index does not fit a Word16, to `Ptr 0 0 0` (`mkPtrNormalized`, `Credential.hs:270-285`, through `decodePtrLenient`, `Address.hs:780-788`; the natural is a Word64 that wraps) and keeps the address written again (`cAddrNormalized`, `Address.hs:470-476`, `putPtr`), and from version 9 (Conway) it refuses the address (`decodePtr`, `Address.hs:769-777`, the naturals read with at most 5 and 3 groups). The node kept the exact pointer, which the Haskell ledger state cannot hold (a Word32 and two Word16s), so the mainnet follower refused every snapshot from block 5,581,257 on (`snapshotRefused`, `ConstraintViolation(Ptr, ... (16292793057, 1011302, 20) ... ptrStake)`): transaction 9a47e091 (block 5,567,164, slot 26,366,727, epoch 258, Mary) pays 50 ada to such an address. `Address.Mode` has a third case (`Backwards` below Babbage, `Rigorous` for Babbage, `Strict` from Conway, by `Mode.of(era)`); `Ptr.read` folds the groups into a `Word64`, normalises or refuses by the mode's `Ptr.Policy`, and every pointer address is kept as the normalised pointer written again, so the UTxO, the instant stake (`ptrStake` keys `Ptr 0 0 0`), the node-to-client answers, the Plutus context and the Haskell state codec agree with the reference; `TxOut.raw` stays as received and `TxOut.ledgerSize` is its length, the `Sized` span of the reference (`decodeSized`). A refused snapshot is an Error (`snapshotRefused`) and the dashboard has a panel for it. No persisted format changes: the immutable and volatile databases are kept and the follower restarts from its snapshot at block 5,560,095 and replays ([findings.md](findings.md)). `MainnetPointerSuite`, `MainnetPointerStoreSuite`, `MainnetPointerSnapshotSuite`."
+    },
+    {
+      "id": "B30",
+      "section": "B",
+      "title": "Alonzo/Babbage phase-1 collateral-count and bootstrap-output predicates",
+      "priority": "P2",
+      "issues": [
+        178
+      ],
+      "notes": "Alonzo/Babbage phase-1 collateral-count and bootstrap-output predicates: no-redeemer collateral count using decoded set semantics, single collateral fee/stake accounting, 64-byte attribute limit and mainnet/testnet network checks, including Babbage collateral returns. Thirty-two original bodies measured against the unchanged released Haskell predicates, exact typed failures and signed LEDGER boundary controls; the output predicates retain the reference order. Shelley/Allegra/Mary bootstrap checks are completed by F7/#141; protocol-9 set, map and ordered-set uniqueness at decoding and the Conway body and witness-set guards are done under AUD3-01/[#327](https://github.com/KD5UJC-XYZ/scarab/issues/327)."
+    },
+    {
+      "id": "C1",
+      "section": "C",
+      "title": "Byron ledger",
+      "priority": null,
+      "issues": [
+        16
+      ],
+      "notes": "Byron ledger: UTxO and transactions (witnesses under the Byron signing tags, address roots, value conservation, linear fee), AVVM and non-AVVM genesis UTxO, delegation certificates, the update system (proposal, votes, endorsements, candidates, adoption at the epoch boundary) and the Byron to Shelley hand-over of the UTxO (`ledger/byron`). The Shelley epoch is derived from the update state when the configuration has no `TestShelleyHardForkAtEpoch` (B13's Byron to Shelley gap). Pinned by real mainnet transactions (`ByronMainnetSuite`), the whole preprod Byron era (`ByronPreprodSuite`) and synthetic signed cases. Not done: format checks of software-update proposals (system tags, application names), mainnet-scale UTxO memory."
+    },
+    {
+      "id": "C2",
+      "section": "C",
+      "title": "Byron consensus (PBFT)",
+      "priority": null,
+      "issues": [
+        17
+      ],
+      "notes": "Byron consensus (PBFT): delegate signature, on-chain delegation certificates (effective `2k` slots later), signer is the current delegate of a genesis key, last-signed-slot rule, the `k`-block signature window and threshold (`PBftSignatureThreshold`), block body proofs; `unchecked` removed. Upstream does not validate the round-robin schedule, so it is reported per block (`offSchedule`), not enforced; light delegation does not decode upstream and is rejected."
+    },
+    {
+      "id": "REF-07",
+      "section": "C",
+      "title": "Byron protocol versions use bounded Word16/Word16/Word8 components in headers",
+      "priority": null,
+      "issues": [
+        171
+      ],
+      "notes": "Byron protocol versions use bounded Word16/Word16/Word8 components in headers, proposals and update rules, without narrowing overflow. Historical snapshot bytes remain unchanged; signed regression blocks and executed raw reference proposal fixtures pin the bounds. Actual full-block reference header decoding and unchanged typed Haskell succession-predicate execution are retained with signed Scala regressions; 22 retained unchanged-reference cases now execute full registration, proposal/ordinary transaction admission and complete-block ledger rules composed with authentic header/certificate crypto; six signed boundary transitions accept, typed refusals and raw overflows agree. This is controlled synthetic state, not PBFT/adoption history."
+    },
+    {
+      "id": "C3",
+      "section": "C",
+      "title": "Byron epoch length is `10 * k` of `byron-genesis.json` everywhere; no decoder has a default.",
+      "priority": null,
+      "issues": [
+        18
+      ],
+      "notes": "Byron epoch length is `10 * k` of `byron-genesis.json` everywhere; no decoder has a default."
+    },
+    {
+      "id": "C4",
+      "section": "C",
+      "title": "Verification on preprod",
+      "detail": " 2026-10-15",
+      "priority": null,
+      "issues": [
+        19
+      ],
+      "notes": "Verification on preprod: genesis to the tip on one build (main 9ff0ca7d), uninterrupted, 5,295,553 blocks with 0 errors in 4 h 52 min, the tip (block 5,295,552, slot 136,392,901, epoch 319) equal to Koios; Byron, the derived transition at epoch 4 and every Shelley-based era (see the evidence log in [compatibility.md](compatibility.md) and [performance.md](performance.md)). Ledger-state identity with the Haskell node on preprod is K7."
+    },
+    {
+      "id": "D1",
+      "section": "D",
+      "title": "More state on disk",
+      "priority": null,
+      "issues": [
+        20
+      ],
+      "notes": "More state on disk: accounts, pools, DReps and stake snapshots behind stores. Built and kept on branch `wip/d1-ledger-tables` (passed every gate, reached the Preview tip), but no heap saving at the tip (live set 329 MB with it, 272 MB without), and the Haskell node keeps this state in memory too (about 41 MB on Preview), so the node follows the reference ([ADR 0001](adr/0001-haskell-node-as-reference.md)). Reopen if mainnet memory (D6) shows this state dominating the heap; the snapshot read-back (#94) is the memory issue that matters."
+    },
+    {
+      "id": "D2",
+      "section": "D",
+      "title": "Parallel or optimised apply",
+      "detail": "; acceptance merged in PR #209",
+      "priority": null,
+      "issues": [
+        21
+      ],
+      "notes": "Parallel or optimised apply. Bounded dependency-batched Plutus workers after ordered preparation ([design](design/parallel-plutus.md)); pure serial reference retained. Current-rule continuous Preview replay passes 4,758,521 blocks, all 1,451 reference projections and the exact ordered 242 invalid transactions; all 68 failure windows agree in serial/four-worker modes. The captured epoch-135 window reduces summed validation time by 15.1%, with setup and scope in performance section 33."
+    },
+    {
+      "id": "D3",
+      "section": "D",
+      "title": "ChainSync pipelining depth",
+      "priority": "P1",
+      "issues": [
+        22
+      ],
+      "notes": "ChainSync pipelining depth. The 256 timeout was not reproduced: 16 runs of 12 to 15 minutes against the public Preview relay at depths 64, 128, 200 and 256 (base build, this build, header-first on and off, and the pre-D8 scheduling on 2 CPUs) had no timeout; the upstream limits do not forbid 256 (reference client high mark 300, ChainSync ingress queue 462,000 bytes against 2 bytes per request, `shortWait` 10 s, the same as ours) and the relay answers a 256-header round in 0.26 s on average, 0.8 s at most. What was found and fixed: the receive path was quadratic (every byte read through a `Vector` of the whole buffer), 0.7 MB/s on 100 blocks of 90 KB, which on the connection shared with BlockFetch can hold ChainSync replies past the 10 s wait; 48 MB/s now. The historical batch default `--read-ahead` was **128** (64 is 6 to 10% slower, 128 to 256 are equal); the batch facade logs the round times (`chainSyncRounds`) and slow single-block fetches (`slowFetch`). Details and numbers: [performance.md](performance.md) section 7. Historical remaining work: large mainnet block regions were not reached; rolling native request/collect decisions instead of complete rounds are implemented with independent 200/300 low/high marks under [#310](https://github.com/KD5UJC-XYZ/scarab/issues/310), with the [pipeline contract](design/chainsync-pipeline.md)."
+    },
+    {
+      "id": "D4",
+      "section": "D",
+      "title": "Volatile blocks",
+      "priority": null,
+      "issues": [
+        23
+      ],
+      "notes": "Volatile blocks. The last k blocks are logged (`VolatileStore`) and applied again on start, and a graceful stop snapshots the immutable tip. Tested: restart equivalence with and without the log, a stop followed by a start that replays 0 blocks, copies of a running database at 12 points, the log torn at every record boundary; Preview restarts in [performance.md](performance.md). Remaining: no fault injection at the filesystem level (only truncated and flipped bytes), and a SIGKILL during the shutdown snapshot is the ordinary `kill -9` case."
+    },
+    {
+      "id": "D5",
+      "section": "D",
+      "title": "DB network identity",
+      "priority": null,
+      "issues": [
+        24,
+        159
+      ],
+      "notes": "DB network identity: global format V6 binds protocol magic, Byron/Shelley genesis hashes and BLAKE2b-256 of the exact loaded Alonzo/Conway genesis bytes. V1/V2 identities are incomplete and require explicit operator-confirmed adoption with the original bytes preserved. Missing identities also require confirmation after read-only compatibility checks. A first-block predecessor is not historical proof for Shelley-start networks."
+    },
+    {
+      "id": "D6",
+      "section": "D",
+      "title": "Mainnet sync",
+      "priority": null,
+      "issues": [
+        25
+      ],
+      "notes": "Mainnet sync. About 12M blocks: measure throughput and memory, then optimise."
+    },
+    {
+      "id": "D7",
+      "section": "D",
+      "title": "Ed25519 throughput",
+      "priority": null,
+      "issues": [
+        26
+      ],
+      "notes": "Ed25519 throughput: the strict canonical-y check under [#147](https://github.com/KD5UJC-XYZ/scarab/issues/147) reduced mean verification time by 8.7% (134.0 to 122.3 microseconds; [performance.md](performance.md) section 19). Differential tests retain the prior strict verifier's edge-case verdicts; the archived pinned sodium source-profile corpus and historical Preview acceptance are linked in [compatibility.md](compatibility.md). Native or batch verification is optional future profiling work, not a prerequisite for D7."
+    },
+    {
+      "id": "D8",
+      "section": "D",
+      "title": "Scheduling fairness",
+      "detail": ": remaining target not planned for v0.2; owner-accepted limitation, 2026-10-19",
+      "priority": null,
+      "issues": [
+        65
+      ],
+      "notes": "Scheduling fairness: dedicated CPU boundaries, bounded verification and timer/longest-step instrumentation remain implemented. Historical Preview and private one-CPU results are retained in [performance.md](performance/sync-and-scheduling.md#scheduling-d8). The approximately 50 ms step bound and zero missed leader slots under one-CPU load are not established. Further scheduling changes were parked after rejected or unproved prototypes; the measured admission candidate lost 38.4% throughput. Later characterization of throughput, tail latency, GC/CPU-quota effects and missed slots is retained with D6 [#25](https://github.com/KD5UJC-XYZ/scarab/issues/25), without changing its existing sync acceptance. No hard real-time scheduling guarantee is claimed."
+    },
+    {
+      "id": "D9",
+      "section": "D",
+      "title": "Mainnet",
+      "priority": "P1",
+      "issues": [
+        69
+      ],
+      "notes": "Mainnet: start from a Mithril snapshot (E1), follow to the tip and stay there for a week, comparing the ledger at every epoch boundary (K7)."
+    },
+    {
+      "id": "D10",
+      "section": "D",
+      "title": "Versioned persisted formats and reader retirement ([ADR 0006](adr/0006-versioned-formats-migrate-on-open.md))",
+      "priority": "P1",
+      "issues": [
+        83
+      ],
+      "notes": "Versioned persisted formats and reader retirement ([ADR 0006](adr/0006-versioned-formats-migrate-on-open.md)): native V5 stays unchanged; registry, fixed current goldens with historical conversion provenance, typed retired/unknown preflight before mutable stores, checkpoint/restart regressions and [future migration guide](storage-migrations.md). Local inputs and repository fixtures have verified V5 replacements; the separate pinned preprod producer upgrade remains #37/#115 and is not performed by source landing. Genesis conversion remains #134. Live gap provenance is implemented under #129 without changing V5; preprod/mainnet operational acceptance remains open. Historical migration measurements remain evidence, without keeping unused binary readers on the runtime classpath (J3.9 of the [step 2 design](design/ledger-mirror-step2.md))."
+    },
+    {
+      "id": "D11",
+      "section": "D",
+      "title": "Historical live-sync/replay gap investigated and fixes measured over the same 12,000 blocks",
+      "priority": "P2",
+      "issues": [
+        124
+      ],
+      "notes": "Historical live-sync/replay gap investigated and fixes measured over the same 12,000 blocks: 70,500 to 255,200 blocks/hour ([performance.md](performance.md) sections 13 and 31). The original 4× comparison used different block windows. Captured parallel-apply acceptance is complete under D2 (#21). Residual work stays mapped to D6 (#25, including later characterization of the accepted D8 limits), D17 and I2 (#43); no current hardware-matched Haskell throughput claim."
+    },
+    {
+      "id": "D12",
+      "section": "D",
+      "title": "Signature verification is about half the CPU of live sync after D11",
+      "detail": ": parallel witness checks (4e0fce00) and the faster strict verifier (672ef090, #147); a point cache and batch verification were measured and rejected in #147",
+      "priority": "P2",
+      "issues": [
+        125
+      ],
+      "notes": "Signature verification is about half the CPU of live sync after D11: cache checked public-key points, a native or batched strict Ed25519 that keeps the speccheck behaviour, and the same for VRF (see D7, [performance.md](performance.md) section 14)."
+    },
+    {
+      "id": "D13",
+      "section": "D",
+      "title": "The new rules' epoch boundary is 1.4 to 1.7x the old rules' on the largest Preview state",
+      "detail": ": a34dfa27 brought the p99 ratio to 1.12 (gate 1.25); the reward calculation moved to D15 (#135)",
+      "priority": "P2",
+      "issues": [
+        131
+      ],
+      "notes": "The new rules' epoch boundary is 1.4 to 1.7x the old rules' on the largest Preview state; sorted-map builds, `Bytes.compareTo` and rational arithmetic ([performance.md](performance.md) sections 10 and 15)."
+    },
+    {
+      "id": "D14",
+      "section": "D",
+      "title": "Per-block ledger application in late Alonzo takes 38 ms a block against the reference's 13 ms",
+      "detail": ": 47a16387 and follow-ups (main 14160fbf); what is left is in the D11 (#124) checklist",
+      "priority": "P2",
+      "issues": [
+        133
+      ],
+      "notes": "Per-block ledger application in late Alonzo takes 38 ms a block against the reference's 13 ms; the time is in the pre-Conway block rules, one thread busy."
+    },
+    {
+      "id": "D15",
+      "section": "D",
+      "title": "Reward-update pulsing landed in PR #197 (`235cd12a`)",
+      "priority": "P2",
+      "issues": [
+        135
+      ],
+      "notes": "Reward-update pulsing landed in PR #197 (`235cd12a`): [reference contract and implementation](design/reward-pulser.md), common typed resumable state and pending V5 continuation. RUPD and NEWEPOCH advance the same immutable machine; sparse chains force remaining work at the reference deadline. The owner accepted the measured 15.99 ms normal-completion median; controlled and whole-block evidence is in [performance.md](performance.md) sections 29–30 and the compatibility log."
+    },
+    {
+      "id": "D16",
+      "section": "D",
+      "title": "Era-indexed MemPack TxOut codec and stored-value measurement (Step D S1)",
+      "priority": null,
+      "issues": [
+        143
+      ],
+      "notes": "Era-indexed MemPack TxOut codec and stored-value measurement (Step D S1). All 4,526,058 outputs of a preprod table and 1,731,810 joined stored outputs checked; MemPack is 231.6 versus 230.6 bytes/output and full decode 2.66 versus 2.55 microseconds. Accepted D3 retains stored CBOR and converts at import/export; no persisted format changes. [Design](design/haskell-snapshots.md) section 8, [performance](performance.md) section 21. Revisit adoption only with demonstrated benefit; a mainnet comparison remains a possible follow-up, not a prerequisite for the codec."
+    },
+    {
+      "id": "D17",
+      "section": "D",
+      "title": "Profile-driven follow-ups",
+      "detail": ": #146 closed as not planned on 2026-10-17 and folded into the D11 (#124) checklist",
+      "priority": "P2",
+      "issues": [
+        146
+      ],
+      "notes": "Profile-driven follow-ups: evaluator environment copying stays with I2 (#43); header-only relay reads, lagging-candidate retention, snapshot account sorting and the commit critical section remain candidates for fresh attribution before implementation. The unexplained historical restart window belongs to the next D6 (#25) measurement; do not treat cold-cache/JIT/scheduling hypotheses as established causes. [Evidence and scope](performance/mainnet-follower.md#31-live-sync-investigation-closeout-124)."
+    },
+    {
+      "id": "E1",
+      "section": "E",
+      "title": "Certified Mithril bootstrap",
+      "priority": "P1",
+      "issues": [
+        27
+      ],
+      "notes": "Certified Mithril bootstrap: pinned official certificate-chain and complete immutable verification, separate ancillary authentication, isolated download/cache input and atomic fresh-directory publication ([design](design/mithril-bootstrap.md)). Genuine Preview epoch 1454 bootstrap restores 3,192,290 outputs, matches the Haskell-supported projection and independent genesis replay, then continues through 345 recorded blocks to slot 125,669,042. Fixed recorded endpoint; ongoing public/mainnet following remains D9. V5 and stored CBOR remain unchanged."
+    },
+    {
+      "id": "E2",
+      "section": "E",
+      "title": "Step D",
+      "priority": "P1",
+      "issues": [
+        140
+      ],
+      "notes": "Step D: Haskell-layout ledger snapshot import/export. [Design](design/haskell-snapshots.md) D1–D9 accepted; S1 codec/measurement done (D16). S2 streaming tables/CRC, S3 authenticated offline import and S4 offline export are implemented ([design](design/haskell-snapshots.md) sections 9–11), with a verified 4,526,058-output preprod import and byte-identical canonical export. S5 reference loading/replay, six private epoch boundaries, preprod epoch 320 and fixed-capture catch-up to a reported 100%-synced point match (section 12). Continuous later-epoch comparison remains K7. V5 and stored CBOR stay; initial interoperability targets the Mem backend, with ancillary verification by default and Byron deferred. Serves E1 and M11."
+    },
+    {
+      "id": "E3",
+      "section": "E",
+      "title": "Replaying a Preview database with format-1 snapshots fails with `BadInputsUTxO` right after the restore.",
+      "detail": ": fixed in 5551376e",
+      "priority": "P2",
+      "issues": [
+        145
+      ],
+      "notes": "Replaying a Preview database with format-1 snapshots fails with `BadInputsUTxO` right after the restore."
+    },
+    {
+      "id": "F1",
+      "section": "F",
+      "title": "LocalStateQuery across the full query surface",
+      "detail": " for the `cardano-cli` surface of the Conway era",
+      "priority": null,
+      "issues": [
+        28
+      ],
+      "notes": "LocalStateQuery across the full query surface. `cardano-cli`, db-sync, wallets and Ogmios depend on it. Protocol, server, the HFC envelope and 40 Conway queries answer byte-equal to the reference (`devnet.py ntc`). Acquired Conway UTxO queries pin a read-only backing view at the selected point, with the retained ledger diff overlaid for whole, address and input queries; #158's final 23-round private NTC verified 1,242/1,242 implemented query answers, including all three UTxO forms in every round (see the evidence table and [performance.md](performance/memory-and-snapshots.md#28-acquired-localstatequery-utxo-view-158)). That historical run excluded three query forms and CLI ledger-state. The current implementation adds `GetLedgerPeerSnapshot` (legacy and modern all/big forms), `GetNonMyopicMemberRewards`, and `GetRewardInfoPools`, and the strict scenario counts all queries and bracketed CLI ledger-state without masks. #268 supplies likelihoods; #129 preserves per-state historical gaps and observed eras in the existing V5 layout. Operational database upgrades remain separate. Also remaining are `GetRewardProvenance`, `DebugLedgerConfig`, answers for eras before Conway, and the era history of a version-triggered hard fork that preceded the run."
+    },
+    {
+      "id": "REF-04",
+      "section": "F",
+      "title": "Retain the negotiated node-to-client version through query sessions",
+      "priority": null,
+      "issues": [
+        168
+      ],
+      "notes": "Retain the negotiated node-to-client version through query sessions, support the legacy pool queries and genesis encoding before V21, and enforce the reference client codec's constructor-version table. `QueryVersionSuite` and the `ntc` version matrix cover every advertised V16–V23, including the V20/V21 boundary and latest internal `GetCBOR` encoding."
+    },
+    {
+      "id": "F2",
+      "section": "F",
+      "title": "LocalTxMonitor and local ChainSync",
+      "priority": null,
+      "issues": [
+        29
+      ],
+      "notes": "LocalTxMonitor and local ChainSync. Both mini-protocols (9 and 5) are served on `--local-socket` with the reference's CBOR: the mempool snapshot (acquire, await, next transaction, membership, sizes, measures) and whole blocks from the immutable store and the volatile chain. `devnet.py ntc` compares both with the reference node byte for byte (361 comparable snapshots, `cardano-cli conway query tx-mempool`, 76 local ChainSync blocks). Remaining: exercising the execution-unit and reference-script measures with Plutus and reference-script transactions on a network, a db-sync/Ogmios client, Byron blocks and Dijkstra over the local socket."
+    },
+    {
+      "id": "F3",
+      "section": "F",
+      "title": "ApplyTxErr encoding",
+      "detail": " for the Conway rules",
+      "priority": null,
+      "issues": [
+        30
+      ],
+      "notes": "ApplyTxErr encoding: the ledger's predicate-failure CBOR, so `cardano-cli transaction submit` prints the reference's error. The Conway rules raise a typed `PredicateFailure` tree and `devnet.py ntc` compares 18 refusals with the reference as raw bytes and as text. Remaining: the ledger reports every failure of a transaction and the Scala rules the first (equal for a transaction that breaks one rule); Plutus phase-2 failures (`ValidationTagMismatch` carries our message; a `CollectErrors` with an implementation-specific translation fault is sent as free text), bootstrap witnesses. The failures of the eras before Conway are typed and encoded per era (#121; the Shelley to Alonzo ones are checked against recorded refusals, the others read from the pinned instances; what is not written is [#123](https://github.com/KD5UJC-XYZ/scarab/issues/123))."
+    },
+    {
+      "id": "F4",
+      "section": "F",
+      "title": "The `ntc` gate runs the real `cardano-cli` against a chain older than 213 days and one that starts in Byron",
+      "priority": "P2",
+      "issues": [
+        118
+      ],
+      "notes": "The `ntc` gate runs the real `cardano-cli` against a chain older than 213 days and one that starts in Byron; a young devnet starting in Conway would still pass the bug that broke `query tip` on preprod."
+    },
+    {
+      "id": "F5",
+      "section": "F",
+      "title": "The era history of a node restarted past a version-triggered hard fork",
+      "priority": "P2",
+      "issues": [
+        119
+      ],
+      "notes": "The era history of a node restarted past a version-triggered hard fork (preprod, mainnet) puts all Shelley-based eras at the first Shelley epoch; `query era-history` differs from the reference (`query tip` is unaffected)."
+    },
+    {
+      "id": "F6",
+      "section": "F",
+      "title": "Failure encodings not yet written",
+      "priority": "P2",
+      "issues": [
+        123
+      ],
+      "notes": "Failure encodings not yet written: the pre-Conway certifying purposes other than a script credential's unregistration and delegation (pool, genesis, MIR and key-credential certificates, which no collect error names) and the translation faults with no reference constructor (`NoEraHistory`, `NoClockSample`). Confirmed against the reference node 11.1.3 (the `e2e` load records the raw refusals, `fixtures/devnet/refused-raw-plutus.jsonl`, byte-equal in `PlutusFailureReferenceSuite`): the certifying missing redeemers in Alonzo (protocol 5), Babbage (7) and Conway (9), the `NoRedeemer` collect errors, the Babbage translation faults (inline datum, reference script, reference input, unresolved input) and Alonzo's integrity hash mismatch (`PPViewHashesDontMatch`, tag 4; the `ScriptIntegrityHashMismatch` tag 8 once noted as missing is not what 11.1.3 sends). Still hand-derived because the devnet cannot provoke them: `NoWitness`, `NoCostModel`, Alonzo's unresolved input; not provoked: the Byron-output and redeemer-pointer faults, Babbage at protocol 8. The Conway missing-redeemer certificates and the Alonzo and Babbage collect errors are written; follow-up of F3."
+    },
+    {
+      "id": "F7",
+      "section": "F",
+      "title": "`PoolMedataHashTooBig` from protocol 4.1 and bootstrap-output attributes/network in Shelley",
+      "priority": "P2",
+      "issues": [
+        141
+      ],
+      "notes": "`PoolMedataHashTooBig` from protocol 4.1 and bootstrap-output attributes/network in Shelley, Allegra and Mary, including native failure order and per-era refusal bytes. Original released-library POOL transitions and early-era output bodies are retained in [the reference corpus](../fixtures/reference/remaining-predicates/README.md); Scala tests cover signed production LEDGER admission and unchanged original bytes."
+    },
+    {
+      "id": "REF-05",
+      "section": "F",
+      "title": "Nested local queries are stack safe through semantic decoding",
+      "priority": "P2",
+      "issues": [
+        169
+      ],
+      "notes": "Nested local queries are stack safe through semantic decoding, UTxO planning, era gating, diagnostic rendering and acquired-session answering; `DeepQuerySuite` exercises 20,000 `GetCBOR` wrappers on a 256 KiB worker, and the `ntc` scenario compares the deep Scala answer with the shallow reference answer at the same acquired point."
+    },
+    {
+      "id": "REF-06",
+      "section": "F",
+      "title": "Explicit HTTP state points require exactly one unsigned 64-bit slot and one 32-byte hexadecimal hash",
+      "priority": null,
+      "issues": [
+        170
+      ],
+      "notes": "Explicit HTTP state points require exactly one unsigned 64-bit slot and one 32-byte hexadecimal hash; malformed or partial requests return 400 before state access, unavailable points return 404, and a bare request selects the tip."
+    },
+    {
+      "id": "REF-08",
+      "section": "F",
+      "title": "Decode exact hard-fork query constructor tags and arities",
+      "priority": "P2",
+      "issues": [
+        172
+      ],
+      "notes": "Decode exact hard-fork query constructor tags and arities: `QueryAnytime GetEraStart` is `[0]`, interpreter/current-era are `[0]`/`[1]`; `NtcQuerySuite` and the `ntc` scenario's valid-answer and malformed-close comparisons cover the pinned reference forms."
+    },
+    {
+      "id": "G1",
+      "section": "G",
+      "title": "P2P governor",
+      "priority": "P1",
+      "issues": [
+        31
+      ],
+      "notes": "P2P governor: root, ledger, big-ledger and bootstrap peers; churn; PeerSharing. [Design](design/peer-selection.md): G1.1–G1.4 meet the original parent criteria: target sets/churn/PeerSharing and deterministic state-machine properties; section 7b records reaching and following Preview tip from the sole official bootstrap root (5f3b6174), and G1.3b repeats root-led discovery. G1.4b completes sharing with deterministic hour-long simulations and actual nonempty two-way private reference discovery. Historical public evidence applies to unchanged root/bootstrap paths; new sharing has private reference evidence, with no new public run. Genesis hooks and the follow-ups below remain separately tracked."
+    },
+    {
+      "id": "G1.2",
+      "section": "G",
+      "parent": "G1",
+      "title": "Peer metrics and churn",
+      "detail": ", \"G1.2 as built\" in the design",
+      "priority": "P2",
+      "issues": [
+        136
+      ],
+      "notes": "Peer metrics and churn: first-header and first-block counts per peer, the hot-demotion pick, `Churn`, the `peerSelection_*` metrics and a `governor` devnet scenario."
+    },
+    {
+      "id": "G1.3",
+      "section": "G",
+      "parent": "G1",
+      "title": "Ledger peers and big ledger peers",
+      "detail": "; \"G1.3a/b as built\" in the design",
+      "priority": "P2",
+      "issues": [
+        137
+      ],
+      "notes": "Ledger peers and big ledger peers: pool relays from the ledger (the IPv6 byte order pinned by real registrations), the 90% stake quota, `useLedgerAfterSlot`, the peer snapshot file, the big-ledger families of the governor, the Preview run past the slot."
+    },
+    {
+      "id": "G1.4",
+      "section": "G",
+      "parent": "G1",
+      "title": "PeerSharing mini-protocol",
+      "priority": "P2",
+      "issues": [
+        138
+      ],
+      "notes": "PeerSharing mini-protocol (10), client, server and governor policy, including advertised-peer publication and relay/producer defaults. G1.4a/b as built in the design; actual private reference discovery grows beyond one local root and a Haskell relay decodes a nonempty eligible reply. Required gate results are in [compatibility.md](compatibility.md)."
+    },
+    {
+      "id": "G1.5",
+      "section": "G",
+      "parent": "G1",
+      "title": "Genesis hooks for the governor",
+      "priority": "P2",
+      "issues": [
+        139
+      ],
+      "notes": "Genesis hooks for the governor: `ConsensusMode` as an input, sync targets while too old, the trusted-state output; hooks only, the rest is G3."
+    },
+    {
+      "id": "G1.6",
+      "section": "G",
+      "parent": "G1",
+      "title": "Governor follow-ups",
+      "priority": "P2",
+      "issues": [
+        142
+      ],
+      "notes": "Governor follow-ups: topology reload on SIGHUP, SRV access points, duplex outbound connections. [#240](https://github.com/KD5UJC-XYZ/scarab/issues/240) fixes atomic root/origin reconciliation on DNS refresh; direct regressions and the private relay gate are recorded in [compatibility.md](compatibility.md)."
+    },
+    {
+      "id": "G1.1-f",
+      "section": "G",
+      "parent": "G1",
+      "title": "BlockFetch reads the fetch mode",
+      "detail": ", built with G1.2",
+      "priority": "P2",
+      "issues": [
+        144
+      ],
+      "notes": "BlockFetch reads the fetch mode. Follow-ups: [#148](https://github.com/KD5UJC-XYZ/scarab/issues/148) (done: peer priorities, global targets, request/byte windows and pipelining merged in PR #289; [contract](design/block-fetch-coordination.md)), [#149](https://github.com/KD5UJC-XYZ/scarab/issues/149) (done: current-pin weighted warm promotion, complete demotion-score traces and 912 native comparisons; governor acceptance passes), [#150](https://github.com/KD5UJC-XYZ/scarab/issues/150) (done: shared inbound/outbound metrics), [#311](https://github.com/KD5UJC-XYZ/scarab/issues/311) (done: native Genesis/Praos churn decisions, target lifecycle and root fallback classification)."
+    },
+    {
+      "id": "G2",
+      "section": "G",
+      "title": "Connection management",
+      "priority": "P1",
+      "issues": [
+        32
+      ],
+      "notes": "Connection management: `ConnectionState` (pure life cycle), `ConnectionManager` (one connection per peer address, inbound and outbound limits, typed refusals, release on failure and cancellation) and `InboundGovernor`, which runs our ChainSync, BlockFetch and KeepAlive clients (the pipelined, header-validating peer, with the follower session) on every inbound duplex connection, so a peer that connected to us is a block source. Outbound connections go through the manager and wait for a peer's inbound duplex connection instead of dialling a second one. Evidence: `ConnectionManagerSuite`, `ConnectionStateSuite`, `InboundGovernorSuite` (in-memory), and the devnet `relay` scenario (the Haskell relay connects to the Scala node and the Scala node follows the relay over that connection; `GET /connections`). Remaining: the manager refuses excess inbound connections at its hard limit rather than selecting established inbound connections to prune (governor churn is implemented in G1); a peer that dials from an ephemeral port is not recognised as the peer we also dial; resource bounds and their explicit local profiles are in [G5](design/network-limits.md). Follow-up [#152](https://github.com/KD5UJC-XYZ/scarab/issues/152) is implemented: a candidate overtaken by the retained window drains pending work and re-intersects on the same connection; typed failures/cancellation, fresh header gates and bounded reuse have deterministic controls, and the unchanged relay300 gate passes. See the [recovery contract](design/network-limits.md#same-connection-chainsync-recovery-152) and compatibility evidence."
+    },
+    {
+      "id": "G3",
+      "section": "G",
+      "title": "Ouroboros Genesis",
+      "detail": ": PR #309, merged 2026-10-22",
+      "priority": "P2",
+      "issues": [
+        33
+      ],
+      "notes": "Ouroboros Genesis: pinned production GSM, GDD, LoE/LoP, ChainSync jumping, historicity and devoted fetching; complete received-fork recovery, full-era canonical headers and node-owned selection. Merged in [PR #309](https://github.com/KD5UJC-XYZ/scarab/pull/309) (9ab67afb7). Separate network-policy follow-ups, both done: rolling ChainSync [#310](https://github.com/KD5UJC-XYZ/scarab/issues/310) and Genesis churn [#311](https://github.com/KD5UJC-XYZ/scarab/issues/311). [As-built design and acceptance](design/genesis.md)."
+    },
+    {
+      "id": "G4",
+      "section": "G",
+      "title": "Protocol versions",
+      "priority": "P2",
+      "issues": [
+        34
+      ],
+      "notes": "Protocol versions: typed `NtnVersion` and `NtcVersion`; node-to-node 14 and 15 offered by default as cardano-node 11.1.3 does, 16 (the Peras flag) with `ExperimentalProtocolsEnabled`; negotiation tested over every pair of offered sets and flags; node-to-client 16 to 23 is the reference's whole range. Negotiated NtC query availability and answer encoding are implemented by REF-04 ([#168](https://github.com/KD5UJC-XYZ/scarab/issues/168)). Follow-ups: X8 (the Leios mini-protocols 18 and 19 in the multiplexer), [#174](https://github.com/KD5UJC-XYZ/scarab/issues/174) (LeiosFetch wire change upstream)."
+    },
+    {
+      "id": "G5",
+      "section": "G",
+      "title": "Adversarial robustness",
+      "priority": "P1",
+      "issues": [
+        35
+      ],
+      "notes": "Adversarial robustness: per-state message/deadline bounds, byte-counted ingress, finite outbound queue and transaction inventory, absolute partial-SDU and write deadlines, completed-message oversize rejection and hostile-state properties. [Reference matrix](design/network-limits.md) records existing protections and intentional stricter profiles; gate evidence is in [compatibility.md](compatibility.md)."
+    },
+    {
+      "id": "G5-F1",
+      "section": "G",
+      "parent": "G5",
+      "title": "Per-client mempool admission fairness",
+      "status": "planned",
+      "detail": ", later",
+      "priority": "P2",
+      "issues": [],
+      "notes": "Per-client mempool admission fairness. Network state, queue and inventory bounds are implemented above; they do not establish fairness between clients submitting work. Shape the admission policy against the Haskell reference separately."
+    },
+    {
+      "id": "G5-F2",
+      "section": "G",
+      "parent": "G5",
+      "title": "Fair Mux egress",
+      "priority": "P1",
+      "issues": [
+        258
+      ],
+      "notes": "Fair Mux egress: rotate complete SDUs across admitted channels, preserve duplex FIFO, global flush fences, bounded staged work and cancellation; require timely control traffic alongside full bulk delivery. [As-built contract](design/network-limits.md#fair-egress-as-built-258); Docker check and private relay300 pass; evidence in [compatibility](compatibility.md)."
+    },
+    {
+      "id": "G6",
+      "section": "G",
+      "title": "Header-first validation",
+      "priority": "P1",
+      "issues": [
+        36
+      ],
+      "notes": "Header-first validation: each ChainSync batch is validated before any of its blocks is fetched (`HeaderGate`, `NodeHeaderRules`): envelope, VRF, leader threshold, KES, opcert and counter, nonces along the candidate header chain, against a ledger view forecast from the newest ledger state of ours on the peer's chain within the stability window; an invalid header ends the session with `PeerError.InvalidHeader` and no block of the batch is fetched. Signature verdicts are shared with the block's own validation. Tests with tampered headers (`HeaderRulesSuite`, `InboundGovernorSuite`: the block fetch server is never asked). [#318](https://github.com/KD5UJC-XYZ/scarab/issues/318) replaces the legacy Praos deferrals with the shared canonical all-era header path: Byron, first Shelley and epoch-boundary envelopes are checked before body fetching, against exclusive native forecasts. Praos retains its consensus policies and `--header-first off`; G3 density checks remain Genesis-specific. `PraosHeaderValidationSuite` exercises original headers from every era and zero-fetch signature/envelope refusals; the throughput effect on Preview is in [performance.md](performance.md)."
+    },
+    {
+      "id": "G7",
+      "section": "G",
+      "title": "Remove `PeerFailure`",
+      "priority": "P2",
+      "issues": [
+        132
+      ],
+      "notes": "Remove `PeerFailure`: the connection's fibers return `Either` at their boundary instead of raising typed peer errors in an exception ([ADR 0017](adr/0017-fibers-end-with-values.md)), the multiplexer's ingress queues are counted in bytes with the reference's limits, and a session ends with a closed set of outcomes with a node-level policy for storage, internal failures and defects (#154, AUD-02), with exit 8 for implementation unavailability and no fatal-to-peer-policy projection. Follow-ups [#180](https://github.com/KD5UJC-XYZ/scarab/issues/180): G7-F2 retains typed storage failures and defects through periodic/shutdown snapshot scopes, with caller-scoped capabilities along their call path. G7-F4 gives TCP/Unix handlers their own scopes and required typed failure reporters; handler defects reach the node fatal sink. G7-F1/F3/F5 are done ([#180](https://github.com/KD5UJC-XYZ/scarab/issues/180) closed 2026-10-19), validated with full check and all five area scenarios: caller-scoped rule/store/migration operations, terminal forging service failures and defects with a signing barrier, and bounded cached-block source attribution after disconnect. See [the as-built contracts](design/domain-errors.md#snapshot-and-listener-scopes-g7-f2g7-f4) and [compatibility evidence](compatibility.md)."
+    },
+    {
+      "id": "H1",
+      "section": "H",
+      "title": "Public pool",
+      "detail": " 2026-10-25; retargeted from Preview to preprod",
+      "priority": "P1",
+      "issues": [
+        37
+      ],
+      "notes": "Public pool: a Scala-run pool on preprod. Registered with faucet stake, it led slots in epoch 321 and six of its blocks are on the canonical chain (`pool1n022s787u…`, heights 5,326,589 to 5,330,338). Procedure in [running.md](running.md); hashes in the [compatibility evidence row](compatibility.md#evidence-log)."
+    },
+    {
+      "id": "H1a",
+      "section": "H",
+      "title": "Test-network pool",
+      "detail": " 2026-10-25",
+      "priority": "P1",
+      "issues": [
+        115
+      ],
+      "notes": "Test-network pool: forging from a database at the tip on preprod, the dry run and the first block (part of H1). Seven leader slots in the first epoch with active stake: one lost to a same-height battle, six adopted, 41 hours without a forge or KES error."
+    },
+    {
+      "id": "H2",
+      "section": "H",
+      "title": "Integrate the upstream KES agent as a separate process",
+      "priority": null,
+      "issues": [
+        38
+      ],
+      "notes": "Integrate the upstream KES agent as a separate process. A typed Unix-socket client receives the current key/certificate and keeps node-local signing; agent-held state survives node restarts without signing-key files. Pin the negotiated upstream service protocol, cover reconnect/rotation and agent-loss recovery, and review the Scala secret-memory boundary before making equivalent security claims. The existing evolved-key file mode remains supported under ADR 0015."
+    },
+    {
+      "id": "H2a",
+      "section": "H",
+      "title": "Unattended KES rotation for the test-network pool",
+      "detail": ", landed 5293c6ab",
+      "priority": "P1",
+      "issues": [
+        116
+      ],
+      "notes": "Unattended KES rotation for the test-network pool: the evolved key is written back and its predecessor erased, SIGHUP reloads key and certificate after checking them, `scripts/pool/rotate_kes.py` rotates on a timer, devnet `kes-rotate`. Open: the scenario's kill-during-rotation and refused-rotation variants ([#122](https://github.com/KD5UJC-XYZ/scarab/issues/122)); the KES agent and offline-cold-key tooling of H2 remain."
+    },
+    {
+      "id": "H2a durability",
+      "section": "H",
+      "title": "Complete short key-file writes",
+      "priority": "P2",
+      "issues": [
+        157
+      ],
+      "notes": "Complete short key-file writes, staged readback and directory-sync ordering, typed persistence failures and recovery at every durability boundary. The `kes-rotate` gate passes; #122's driver-level crash/refusal scenarios remain separate."
+    },
+    {
+      "id": "H2b",
+      "section": "H",
+      "title": "Mainnet pool",
+      "priority": "P2",
+      "issues": [
+        120
+      ],
+      "notes": "Mainnet pool: the cold key stays offline, so rotation prepares the new KES key and an unsigned request, notifies the operator before expiry and installs the certificate once signed (follow-up of H2a)."
+    },
+    {
+      "id": "H3",
+      "section": "H",
+      "title": "TPraos forging, for historical or test eras only (low priority).",
+      "priority": null,
+      "issues": [
+        39
+      ],
+      "notes": "TPraos forging, for historical or test eras only (low priority)."
+    },
+    {
+      "id": "H4",
+      "section": "H",
+      "title": "Mempool",
+      "priority": null,
+      "issues": [
+        40
+      ],
+      "notes": "Mempool: full next-slot ledger ticking and rollback/re-offer handling. Native ordered revalidation retains current entries without automatically resurrecting rolled-back block transactions; re-offered transactions are eligible again."
+    },
+    {
+      "id": "H5",
+      "section": "H",
+      "title": "Forging-loop hardening",
+      "priority": null,
+      "issues": [
+        41
+      ],
+      "notes": "Forging-loop hardening: per-epoch counters (`ForgeStats`: the forging loop's traces counted by kind, as the reference counts them since #399, refusals of Scarab's own, blocks replaced later, forge latency from slot start to adoption), logged as `forgeEpoch` lines, served at `GET /forging` and checked by the `pool` scenario against the log, with a budget of five slots from a slot's start to adoption. Not done: a slot the loop overran is still not forged late. The counters are exported at `/metrics` under the Haskell node's names (`cardano_node_metrics_Forge_*`, J3)."
+    },
+    {
+      "id": "H6",
+      "section": "H",
+      "title": "The Scala node's slot clock was sometimes exactly 1.0 s behind the network's",
+      "priority": null,
+      "issues": [
+        67
+      ],
+      "notes": "The Scala node's slot clock was sometimes exactly 1.0 s behind the network's: the reference starts its clock at the Byron genesis' `startTime` and the node used the Shelley `systemStart`, which the pool scenario wrote a second apart in some runs. The node follows the Byron start, the scenario writes both (`--byron-start-offset` skews them on purpose), tests pin the conversions. Slots lost to a host stall (\"the forger was busy\") are a different failure; the scenario records the host load and reports such a run as inconclusive when the host is oversubscribed."
+    },
+    {
+      "id": "H7",
+      "section": "H",
+      "title": "Byron (PBFT, delegate-key) block production",
+      "status": "decision",
+      "detail": ": not planned; recorded by PR #357",
+      "priority": null,
+      "issues": [
+        223
+      ],
+      "notes": "Byron (PBFT, delegate-key) block production. Scarab validates Byron history fully (C1, C2) and will not forge Byron blocks. Byron production ended on mainnet in 2020; mainnet, preprod and Preview forge with Praos only; the devnets' Byron blocks are forged by the reference nodes (`devnet.py up-eras` starts the reference cluster in Byron and Scarab follows) and the pool scenarios start in a Shelley-based era. A Byron forger would add delegate-key signing and PBFT forging code with no network to use it on. Reopen only if a live network again requires Byron production. [compatibility.md](compatibility.md) records the same."
+    },
+    {
+      "id": "I1",
+      "section": "I",
+      "title": "Conformance",
+      "priority": null,
+      "issues": [
+        42
+      ],
+      "notes": "Conformance: `PlutusConformanceSuite` passes all 1,009 pinned plutus 1.70.0.0 cases with exact original results and budgets, without exclusions, under the upstream term/counting/Data-case profile using `ScalusEvaluator`'s corrected builtin runtimes. Ledger Flat admission, protocol gates and restricting budgets are tested separately. Original Flat sidecars preserve malformed Value constants; Scalus 1.4.0 passes the domain separation tag to blst as bytes, which fixes the three reachable crypto exceptions without the earlier raw-DST JNI backport ([ADR 0020](adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md)). AUD-03b [#175](https://github.com/KD5UJC-XYZ/scarab/issues/175) adds477 real-crypto Haskell API boundary verdicts across V1/V2/V3 and protocols9/10/11, retained with original bytes and provenance in [plutus-conformance.md](plutus-conformance.md). Linux/aarch64 and macOS now load the pinned libscalus_crypto of their platform, checked at start-up but not run in CI; whole-transaction context coverage remains explicitly separate."
+    },
+    {
+      "id": "I2",
+      "section": "I",
+      "title": "Own evaluator",
+      "priority": null,
+      "issues": [
+        43
+      ],
+      "notes": "Own evaluator. Decide on our own CEK machine versus staying on Scalus, then differential-test it against Scalus and the conformance suite."
+    },
+    {
+      "id": "I3",
+      "section": "I",
+      "title": "Routine era-load V1/V2 spending/minting",
+      "detail": ": PR #291, merged 2026-10-21",
+      "priority": null,
+      "issues": [
+        44
+      ],
+      "notes": "Routine era-load V1/V2 spending/minting, invalid-tag collateral and both opposite-validity rejections across Alonzo, Babbage and Conway; independent signed historical fixtures remain separate. All twenty required signed cases and the 66-point combined ledger scenario pass; [receipts](../fixtures/reference/plutus-admission/README.md)."
+    },
+    {
+      "id": "I3a",
+      "section": "I",
+      "title": "Independent A–E builtin costing and era/language/purpose/protocol context verification",
+      "detail": ": PR #291, merged 2026-10-21",
+      "priority": null,
+      "issues": [
+        287,
+        288
+      ],
+      "notes": "Independent A–E builtin costing and era/language/purpose/protocol context verification. All 55,740 primary costing observations, 111,552 budget boundaries and 309 context cases pass; finite scope, manifests and whole-admission exclusions are in [plutus-conformance.md](plutus-conformance.md). Docker check, extended fuzz and the combined signed-reference scenario pass; merged in PR #291 (00d7c5d9a)."
+    },
+    {
+      "id": "I3b",
+      "section": "I",
+      "title": "Independently verify and align Shelley/Allegra/Mary auxiliary metadata/native structural admission",
+      "detail": ": PR #303, merged 2026-10-21",
+      "priority": "P2",
+      "issues": [
+        290
+      ],
+      "notes": "Independently verify and align Shelley/Allegra/Mary auxiliary metadata/native structural admission; separate from the Alonzo-and-later Plutus boundary in #286. Source-inspected follow-up, not a newly reproduced signed historical divergence."
+    },
+    {
+      "id": "I4",
+      "section": "I",
+      "title": "Unchanged-reference three-script oracle covers all pass/fail patterns in V1/V2/V3",
+      "priority": "P2",
+      "issues": [
+        195
+      ],
+      "notes": "Unchanged-reference three-script oracle covers all pass/fail patterns in V1/V2/V3; serial/prepared paths now retain all typed results, logs and budgets, and reconstruct exact failure-context bytes. Exact diagnostic wording is optional future work in I4a (#208); see [the as-built result contract](design/script-results.md). Closed REF-11 #176 covers context collection."
+    },
+    {
+      "id": "I4a",
+      "section": "I",
+      "title": "Consider exact Haskell diagnostic wording if a concrete consumer needs it; no v0.2 requirement",
+      "detail": ", later",
+      "priority": null,
+      "issues": [
+        208
+      ],
+      "notes": "Consider exact Haskell diagnostic wording if a concrete consumer needs it; no v0.2 requirement. Retain the existing typed causes and exact reconstruction payloads."
+    },
+    {
+      "id": "J1",
+      "section": "J",
+      "title": "Config and topology",
+      "priority": null,
+      "issues": [
+        45
+      ],
+      "notes": "Config and topology: `follow --config <config.json> --topology <topology.json>` read the Haskell node's `config.json` and P2P `topology.json`, and every genesis hash a configuration lists (Byron, Shelley, Alonzo, Conway, and Dijkstra and checkpoints when the file is there) is verified; a mismatch is a typed `ConfigError`. Tested with the public Preview, preprod and mainnet files. The Alonzo and Conway inputs are part of database identity (D5/#159). `MaxKnownMajorProtocolVersion` is the Byron-era setting (2 on mainnet), not the Shelley-based maximum; the reference's maximum protocol version is read with `GetMaxMajorProtocolVersion` by the devnet e2e, and the node's own `HardForkConfig.MaxMajorProtVer` is a constant that a unit test keeps equal to the registry's highest verified version. `ConsensusMode` ([#394](https://github.com/KD5UJC-XYZ/scarab/issues/394)), peer sharing, ledger peers, the peer snapshot, DNS SRV access points and the valencies are acted on; what each key does is in [running.md](running/configuration.md#configuration-and-topology-files). Remaining: full YAML syntax in configuration files, and `LastKnownBlockVersion-*`, which is read, validated and logged only."
+    },
+    {
+      "id": "J2",
+      "section": "J",
+      "title": "CLI parity",
+      "priority": null,
+      "issues": [
+        46
+      ],
+      "notes": "CLI parity: flags compatible with `cardano-node run`."
+    },
+    {
+      "id": "J3",
+      "section": "J",
+      "title": "Observability",
+      "detail": ": original Prometheus acceptance",
+      "priority": null,
+      "issues": [
+        47
+      ],
+      "notes": "Observability: Prometheus metrics, structured tracing, and EKG-equivalent counters. **Prometheus slice done**: `Metrics[F]` (a typed registry over a `Ref`; metric and label names checked when the literal compiles; labels are members of closed enums), `GET /metrics` on the query server and `--metrics-listen host:port` for a scraper outside loopback, 148 metric definitions, named after cardano-node 11.1.3's `cardano_node_metrics_*` where the meaning is the same (names scraped from a running reference node) and `scarab_*`, `jvm_*`, `process_*` otherwise, the events of every part of the node turned into measurements in one place (`EventMetrics`), documented in running.md \"Metrics\" and checked against the log by `soak` and `pool`. Peer-selection metrics are implemented by G1; dashboards and alert rules are complete under J3c. Remaining metric-coverage extensions are tracked by J3e below; full Haskell metric or tracing equivalence is not claimed. Logging slice **J3a** [#92](https://github.com/KD5UJC-XYZ/scarab/issues/92) (done): every line a typed event (`Traced[E]`, a closed `EventKind` giving the namespace `Area.Kind` and the severity, `NodeEvent` for the node's own lines), `Log[F]` = cats-mtl `Tell` of lines, sinks on the command line (stdout and stderr, JSON or human; a size-rotated file), per-namespace thresholds and 1-in-N sampling looked up as trace-dispatcher does, the libraries' SLF4J lines through the node's own SLF4J 2 provider as `Library.Slf4j`; the JSON lines byte for byte as before (golden), the catalogue in running.md \"Logging\" checked against the code ([ADR 0014](adr/0014-typed-log.md)). Not mirrored: deeper namespaces, detail levels, the forwarder, the Haskell node's JSON shape and `TraceOptions`. Slice **J3b** [#95](https://github.com/KD5UJC-XYZ/scarab/issues/95) (done): `--metrics-listen` is up from the start of `follow`, before the stores are opened, with the start's phase (`scarab_node_phase`: Restoring, Replaying, Following) and the replay's target and progress; collectors join as their sources exist, so a gauge whose source is not ready is absent. The cats-effect starvation warning is a typed `Node.CpuStarvation` line."
+    },
+    {
+      "id": "J3c",
+      "section": "J",
+      "parent": "J3",
+      "title": "Pool dashboard panels and 17 Prometheus alert rules, with the KES rotation driver's textfile metrics",
+      "priority": "P2",
+      "issues": [
+        117
+      ],
+      "notes": "Pool dashboard panels and 17 Prometheus alert rules, with the KES rotation driver's textfile metrics. Deployed and verified end to end; rotation timestamps retain full precision. Notification routing is operator configuration."
+    },
+    {
+      "id": "J3d",
+      "section": "J",
+      "parent": "J3",
+      "title": "Library",
+      "detail": ": PR #454, merged 2026-10-25",
+      "priority": "P2",
+      "issues": [
+        112
+      ],
+      "notes": "Library (SLF4J) lines default to Info, as the reference sets its library tracers, so a native loader's Debug burst stays out of the sinks (follow-up of J3a)."
+    },
+    {
+      "id": "J3e",
+      "section": "J",
+      "parent": "J3",
+      "title": "Further metric and tracing coverage",
+      "status": "planned",
+      "priority": null,
+      "issues": [],
+      "notes": "Further metric and tracing coverage: the unexported `served_*` counters and per-block `utxoSize`/`delegMapSize`, other useful series listed in running.md \"Metrics\", and deeper tracing-schema alignment. These are explicit coverage gaps beyond #47's original endpoint/algebra/names acceptance; preserve the documented differences in meaning from the reference."
+    },
+    {
+      "id": "K1",
+      "section": "K",
+      "title": "db-analyser comparison",
+      "detail": " for Preview, 2026-10-15",
+      "priority": null,
+      "issues": [
+        48
+      ],
+      "notes": "db-analyser comparison. Built (`scripts/oracle/`, `scripts/oracle_compare.py`, `follow --dump-state`, running.md): the Scala state at the first block of every epoch against the state `db-analyser` stores for the Haskell node. Shown so far: devnet Byron to Conway, every epoch boundary equal (e2e 16/16, soak 10/10); Preview, every epoch boundary to the tip equal: 1,451/1,451 epochs (Alonzo, Babbage and Conway, including Conway governance in the 806 epochs from 646), 0 differences, against cardano-node 11.1.3 (2026-10-15; Scala build d31f0b31). It found four differences, all fixed: zero-lovelace Byron outputs, zero-stake credentials in the stake snapshots, a pool whose only delegator has no stake in the pool distribution, and the genesis delegations at the Conway translation. Done for Preview; preprod and mainnet comparisons continue under K7 ([#68](https://github.com/KD5UJC-XYZ/scarab/issues/68))."
+    },
+    {
+      "id": "K2",
+      "section": "K",
+      "title": "Upstream conformance suites",
+      "detail": " for the bounded v0.2 scope, 2026-10-20",
+      "priority": null,
+      "issues": [
+        49
+      ],
+      "notes": "Upstream conformance suites: bounded ledger, network and Plutus evidence is retained. Generic Handshake/ordinary codecs, nonempty GOV and successful RATIFY, native dependent LEDGERS batches, reward accounting/boundaries/V5 continuation and Mux closure/trailing bytes have bounded reference adapters; local queued-wire regressions, fair SDU scheduling with original upstream-generator replay and same-connection ChainSync recovery complete the risk-based scope. Broader protocol/runtime, mux transport/timer and ledger campaigns remain optional follow-ups in the [source-backed inventory](design/upstream-conformance.md); the source-backed limits remain explicit."
+    },
+    {
+      "id": "K2 follow-ups",
+      "section": "K",
+      "parent": "K2",
+      "title": "classify and retain invalid original EPOCH/NEWEPOCH inputs",
+      "detail": ": PR #273, merged 2026-10-20",
+      "priority": null,
+      "issues": [
+        267,
+        268,
+        269,
+        270,
+        272
+      ],
+      "notes": ": classify and retain invalid original EPOCH/NEWEPOCH inputs, compare separate lawful generators, implement native reward likelihoods, repair the formal LEDGERS input boundary, and report upstream source freshness. Historical missing state and operational preprod/mainnet provenance transitions remain [#129](https://github.com/KD5UJC-XYZ/scarab/issues/129), following [storage-migrations.md](storage-migrations.md)."
+    },
+    {
+      "id": "K2 source refresh",
+      "section": "K",
+      "parent": "K2",
+      "title": "validate every actual source-watch root",
+      "priority": null,
+      "issues": [
+        273
+      ],
+      "notes": ": validate every actual source-watch root; publish literal/cached roots before blocked startup/reload DNS; enforce standalone UTXO input existence with an exact native refusal regression; replay published Conway pool goldens and Plutus admission/failure boundaries; add 39 distinct lawful PV11 native/formal rule inputs and preserve original failures. Independent reviews, full check and private ledger/network gates pass; [as built](design/upstream-conformance.md#source-refresh-implementation). The [dated source review](conformance-source-review.md) covers the original 291 events, with [50 additional API/network events](data/expanded-source-watch-review-20261020.json). Released reference semantics and future Dijkstra/PV12 behavior stay distinct."
+    },
+    {
+      "id": "K3",
+      "section": "K",
+      "title": "Fuzzing",
+      "priority": null,
+      "issues": [
+        50
+      ],
+      "notes": "Fuzzing: the CBOR decoders, tx and block decoding, and the mini-protocol codecs. The `fuzz` project (running.md, \"Fuzzing\"): ScalaCheck generators mutate the committed fixtures and valid items sampled from the pinned CDDL (models-gen sampler) against the [registered decoder targets](../fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/Targets.scala) (raw CBOR, the handshakes, mux, ChainSync, BlockFetch, TxSubmission2, KeepAlive, LocalStateQuery, LocalTxSubmission, LocalTxMonitor, headers and blocks per era, transaction bodies, witnesses and submitted transactions per era, addresses, scripts, Plutus data, node-to-client queries, protocol-parameter updates); properties: no exception, time and allocation bounds, decode-encode round trips; `check` runs a bounded default budget, `fuzz <cases> <seed> <seeds>` and the nightly `fuzz.yml` run more. Findings and fixes in [findings.md](findings.md#decoders-under-hostile-input-k3). Storage coverage now includes native snapshots (V7), MemPack outputs, snapshot metadata/tables, SCLS, ancillary manifests and network identities. Coverage of unregistered file layouts and node configuration JSON is not established by that inventory."
+    },
+    {
+      "id": "K3a",
+      "section": "K",
+      "parent": "K3",
+      "title": "Native-serialized whole-transaction seeds for Shelley",
+      "detail": ": PR #279, merged 2026-10-20, with more seeds in #300",
+      "priority": null,
+      "issues": [
+        179
+      ],
+      "notes": "Native-serialized whole-transaction seeds for Shelley, Allegra and Mary, era-correct envelopes, and positive-seed guards without exemptions. The current baseline had no valid Mary seed; Shelley and Allegra already accepted inputs. [Provenance](../fixtures/fuzz/early-era-transactions/README.md); accepted mutation counts are recorded in [the fuzz evidence](running/fuzzing.md#early-era-positive-seeds-179)."
+    },
+    {
+      "id": "K4",
+      "section": "K",
+      "title": "Long-run stability",
+      "priority": null,
+      "issues": [
+        51
+      ],
+      "notes": "Long-run stability: days at the tip, checking for memory growth, file handles and reconnect behaviour."
+    },
+    {
+      "id": "K5",
+      "section": "K",
+      "title": "Single-build evidence",
+      "priority": null,
+      "issues": [
+        52
+      ],
+      "notes": "Single-build evidence. Keep running uninterrupted genesis-to-tip syncs on tagged builds."
+    },
+    {
+      "id": "K6",
+      "section": "K",
+      "title": "Memory profile of the RSS growth to 5.66 GB",
+      "priority": null,
+      "issues": [
+        53
+      ],
+      "notes": "Memory profile of the RSS growth to 5.66 GB: it was glibc's per-thread malloc arenas (0.9 GB of growth in 30 minutes with the heap and the RocksDB cache at their caps), not the heap, RocksDB or direct buffers; `MALLOC_ARENA_MAX=2` (image, devnet, docs) stops it. `--memory-report-seconds` logs where the memory is; RocksDB has one block cache that the memtables are charged to (`--utxo-cache-mb`); the UTxO key is the Haskell node's `txid ++ be16 ix`; `RssAnon` is the heap limit plus about 0.8 GB, the recommended container limit is `-Xmx` plus 2 GiB ([performance.md](performance.md) section 8). Remaining: the cost of a small block cache at the tip's database size, the value in the Haskell MemPack `TxOut` form, mainnet."
+    },
+    {
+      "id": "K7",
+      "section": "K",
+      "title": "Continuous ledger-state verification on a live network",
+      "priority": "P1",
+      "issues": [
+        68
+      ],
+      "notes": "Continuous ledger-state verification on a live network: the K1 oracle at every epoch boundary, side by side with a Haskell node, with an append-only evidence log and an alert on the first divergence."
+    },
+    {
+      "id": "K8",
+      "section": "K",
+      "title": "SCLS binary import/export alongside Haskell snapshots; V5 restart state retained",
+      "priority": "P1",
+      "issues": [
+        77
+      ],
+      "notes": "SCLS binary import/export alongside Haskell snapshots; V5 restart state retained. [Design and complete-base contract](design/scls-interchange.md); offline services and CLI pass the full check, extended decoder fuzz and private restart gates."
+    },
+    {
+      "id": "K8a",
+      "section": "K",
+      "title": "Broader SCLS profiles and large-state acceptance",
+      "status": "planned",
+      "detail": ", later",
+      "priority": null,
+      "issues": [],
+      "notes": "Broader SCLS profiles and large-state acceptance: align additional/finalized namespace revisions, define complete-base contracts for other eras, and measure whole-base memory/reference interoperability on larger externally stored captures. The pinned Conway profile and explicit base contract are [K8](design/scls-interchange.md); native snapshots and Haskell interchange remain supported."
+    },
+    {
+      "id": "K9",
+      "section": "K",
+      "title": "Deterministic three-runtime adversarial schedules",
+      "detail": ", 2026-10-18",
+      "priority": null,
+      "issues": [
+        78
+      ],
+      "notes": "Deterministic three-runtime adversarial schedules: 16 fixed TestControl seeds exercise fork convergence within the fixture's k-window, bounded withholding/release, endpoint recovery, clock offsets and resource cleanup through real node protocols. The finite schedules are regression evidence, not a security proof; Antithesis setup is publicly inspectable, but no tenant/run access was available or tested. See [design](design/adversarial-schedules.md)."
+    },
+    {
+      "id": "K9a",
+      "section": "K",
+      "title": "Nightly seeded network-fault run of the Docker devnet (`devnet.py faults`, `.github/workflows/faults.yml`)",
+      "priority": null,
+      "issues": [
+        224
+      ],
+      "notes": "Nightly seeded network-fault run of the Docker devnet (`devnet.py faults`, `.github/workflows/faults.yml`): `tc netem` latency and loss, partitions and heals, node crashes and restarts against the Haskell reference pools, checked for convergence, growth and no fatal outcome. It samples schedules at random and replays by seed; it is not a deterministic-hypervisor exploration, and the hosted Antithesis service was deferred by owner decision. See [design](design/adversarial-schedules.md#nightly-randomized-fault-run)."
+    },
+    {
+      "id": "K10",
+      "section": "K",
+      "title": "Cross-check generated CDDL codecs against pinned Cuddle 1.8.1.0 in CI, in both directions",
+      "detail": " for the bounded corpus",
+      "priority": "P1",
+      "issues": [
+        81
+      ],
+      "notes": "Cross-check generated CDDL codecs against pinned Cuddle 1.8.1.0 in CI, in both directions. `cuddle-crosscheck.yml` runs `scripts/cddl_crosscheck.py`: 60 targets, every produced term admitted and stable, byte-exact preserved roots in both ordinary/twiddled modes, original-schema validation of generated and normalized output, sampler validation, and matching rule names/arities across 31 files. No Scarab divergence is exempted. Generation-only equivalent control/enum profiles and bounded native duplicate-map abort resampling are disclosed and recorded; they never waive a returned term or a validator/decoder failure ([models.md](models.md), section 13). Broader constructor laws remain M13/M14."
+    },
+    {
+      "id": "K11",
+      "section": "K",
+      "title": "`Credential` ordering renders a hex string per comparison; order by tag and raw bytes (follow-up of #94, see K6).",
+      "priority": "P2",
+      "issues": [
+        96
+      ],
+      "notes": "`Credential` ordering renders a hex string per comparison; order by tag and raw bytes (follow-up of #94, see K6)."
+    },
+    {
+      "id": "K12",
+      "section": "K",
+      "title": "Finish credential sharing on decode",
+      "priority": "P2",
+      "issues": [
+        97
+      ],
+      "notes": "Finish credential sharing on decode: `.interned` per role for the typed credentials, the DRep pulser's proposals, the initial table size (follow-up of #94)."
+    },
+    {
+      "id": "K13",
+      "section": "K",
+      "title": "`devnet.py e2e --oracle`",
+      "priority": "P2",
+      "issues": [
+        91
+      ],
+      "notes": "`devnet.py e2e --oracle`: an epoch-boundary dump taken just before a one-block fork is compared with the wrong state (3 of 16 boundaries in two runs; no real difference found). The oracle now compares only digests on both final chains and reports the others with a reason; the follower does not digest the replacement of a rolled-back boundary block ([#442](https://github.com/KD5UJC-XYZ/scarab/issues/442))."
+    },
+    {
+      "id": "L1",
+      "section": "L",
+      "title": "Dijkstra, the next era, is already in the 11.x configs",
+      "priority": null,
+      "issues": [
+        54
+      ],
+      "notes": "Dijkstra, the next era, is already in the 11.x configs. Track its spec."
+    },
+    {
+      "id": "M1",
+      "section": "M",
+      "title": "Reject unknown `follow` flags (the parser accepts any `--name value` pair); consider a declarative parser.",
+      "detail": " in v0.1.0",
+      "priority": "P1",
+      "issues": [
+        55
+      ],
+      "notes": "Reject unknown `follow` flags (the parser accepts any `--name value` pair); consider a declarative parser."
+    },
+    {
+      "id": "M2",
+      "section": "M",
+      "title": "Remove unsafe partial calls in main code",
+      "detail": " in v0.1.0",
+      "priority": "P1",
+      "issues": [
+        56
+      ],
+      "notes": "Remove unsafe partial calls in main code (`.toOption.get` on provably total conversions behind one helper; `Utxo.apply` and `RocksUtxoStore` should raise `StorageError.Corrupt` instead of throwing); review `Peer.scala` `raiseError` use."
+    },
+    {
+      "id": "M3",
+      "section": "M",
+      "title": "The deliberate global caches are instance-scoped",
+      "priority": "P1",
+      "issues": [
+        57
+      ],
+      "notes": "The deliberate global caches are instance-scoped. `Verdicts` is the pure read interface the rules use (`Verdicts.Direct` computes in place); `VerificationCache` (verdict maps, prepared blocks, background pool) is created in a `Resource` in `Main` and reaches the rules through `PraosConfig.verdicts` and `TxRules.Env.verdicts`; `VerificationCacheSuite` checks that results are identical with and without a warmed cache and that two caches share nothing. The `PlutusCases` recorder is an instance passed explicitly as the phase-2 observer. The RocksDB handle reference was already private to its store and bound to a `Resource`; the code comment says so. Performance checked on a 20 minute Preview follow (see CHANGELOG)."
+    },
+    {
+      "id": "M4",
+      "section": "M",
+      "title": "Test-only code is out of main",
+      "priority": "P1",
+      "issues": [
+        58
+      ],
+      "notes": "Test-only code is out of main (`FixtureChainModel`, `ChainSyncFixtures` live in `network/src/test`) and the tools are under `xyz.kd5ujc.scarab.node.tools` (`CaptureMain`, `PlutusCases`); every `scripts/` invocation still names a class that exists."
+    },
+    {
+      "id": "M5",
+      "section": "M",
+      "title": "Reformat the cryptographic Java sources",
+      "detail": " in v0.1.0",
+      "priority": "P1",
+      "issues": [
+        59
+      ],
+      "notes": "Reformat the cryptographic Java sources (`Draft03Math`, `Ed25519Point`) for review and add SPDX headers to them, `build.sbt`, `project/plugins.sbt` and the archived fixture evidence scripts."
+    },
+    {
+      "id": "M6",
+      "section": "M",
+      "title": "Split the largest files",
+      "priority": "P2",
+      "issues": [
+        60
+      ],
+      "notes": "Split the largest files (`ScriptContexts`, `Tx`, `Main`; `PreConwayRules` and `ConwayRules` were removed with the old rules in J2.9); fix the `NodeRules`/`LedgerRules.scala` name mismatch (`NodeRules` now holds only what the block rules share, the rules are `MirrorRules`)."
+    },
+    {
+      "id": "M7",
+      "section": "M",
+      "title": "Naming",
+      "detail": " in the #82 reorg: package root `xyz.kd5ujc.scarab`, organisation `xyz.kd5ujc`, artifacts `scarab-<module>`",
+      "priority": "P2",
+      "issues": [
+        61
+      ],
+      "notes": "Naming: the Scala package root `lab` and sbt organisation `dev.cardano.research` implied namespaces the project does not own."
+    },
+    {
+      "id": "M8",
+      "section": "M",
+      "title": "Serial test execution (`Tags.limit(Test, 1)`)",
+      "priority": "P2",
+      "issues": [
+        62
+      ],
+      "notes": "Serial test execution (`Tags.limit(Test, 1)`): find which suites share global state and run modules in parallel in CI."
+    },
+    {
+      "id": "M9",
+      "section": "M",
+      "title": "READMEs for `fixtures/{network,praos,sum6,vrf}`; Koios attribution for the data in `fixtures/preview`.",
+      "priority": "P2",
+      "issues": [
+        63
+      ],
+      "notes": "READMEs for `fixtures/{network,praos,sum6,vrf}`; Koios attribution for the data in `fixtures/preview`."
+    },
+    {
+      "id": "M10",
+      "section": "M",
+      "title": "Flaky `FollowerSuite` two-peer chain-selection test",
+      "priority": "P1",
+      "issues": [
+        66
+      ],
+      "notes": "Flaky `FollowerSuite` two-peer chain-selection test: the scripted peers ignored the intersection and replayed their chains from the start, so a peer that joined after the other had applied the common blocks hit \"does not extend\" and had nothing left after its reconnect (a test artefact; chain selection showed no ordering bug). The test now serves chains the way a node does and runs on `TestControl` over 64 join/pause orders and 4 seeds."
+    },
+    {
+      "id": "M11",
+      "section": "M",
+      "title": "Reorg",
+      "detail": "; the module split and rename are done; step 1 of the ledger-state mirror is complete with S9: the state converts both ways, the Haskell codec reads and writes it, `DebugEpochState`/`DebugNewEpochState` are answered with a documented gap mask, `follow --mirror-check` verified it live until J2.9 removed it; step 2 ([design](design/ledger-mirror-step2.md)) is done: the rule suites over the flat state ran on both rule sets (J2.6), the default rules became the era-indexed ones (J2.8), **and the old rules, the flat state and the differential harness are removed (J2.9): the chain's state is the mirror, the snapshot is format 5, `--rules`, `--mirror-check`, `--on-divergence` and `--repro-dir` are refused; the epoch boundary of the new rules is slower than the old by 46% at p99 on the largest Preview state ([#131](https://github.com/KD5UJC-XYZ/scarab/issues/131)); the gaps J2.8 leaves are [#128](https://github.com/KD5UJC-XYZ/scarab/issues/128) (an old-rules snapshot of the Shelley era of a Byron-start chain has no redeem stash) and [#129](https://github.com/KD5UJC-XYZ/scarab/issues/129) (the gaps of the sidecar, J3.1)**",
+      "priority": "P1",
+      "issues": [
+        82
+      ],
+      "notes": "Reorg: the Scarab rename (`xyz.kd5ujc.scarab`), the module split and CDDL-generated models (the generator is a done spike, [models.md](models.md); using the generated models in the node is M14). In M11 jump 3, strict debug comparisons, native genesis initialization and live V5 provenance are implemented; operational preprod/mainnet rollout remains [#129](https://github.com/KD5UJC-XYZ/scarab/issues/129). The direct mirror start ([#134](https://github.com/KD5UJC-XYZ/scarab/issues/134)) remains open; step 3 is M12."
+    },
+    {
+      "id": "M11-E",
+      "section": "M",
+      "title": "The original reorganisation #82 is closed",
+      "detail": ": runtime migration #188 and semantic follow-up #190 merged; level-3 gates passed",
+      "priority": "P1",
+      "issues": [
+        189
+      ],
+      "notes": "The original reorganisation #82 is closed. Closed domain/service error cases and typed causes cover codec/hex and associated encoder errors, crypto/Plutus, protocol/network, ledger, consensus, storage/legacy and node callers, with test/fuzz adapters. The follow-up retains typed script failures until rejection encoding, closes Byron failure selectors and forge skip classifications, preserves connection/session end causes, and replaces generator message cases/domain exceptions with functional typed results while preserving generated output. See [the as-built scope and review guidance](design/domain-errors.md) and [compatibility evidence](compatibility.md). The lexical CI guard checks declared String-valued `Either` channels; it does not prove semantic completeness. Remaining M11-E work: compiler/AST enforcement beyond the source guard and a value-capable integration for the retained Scalus foreign callback signal. Preserve bytes, arithmetic, acceptance rules and persisted formats. Functional code remains the default; existing measured critical CBOR/framing loops retain local imperative implementations and typed failures. Generated-model adoption stays M14/#87, era-indexed consensus stays M12/#85, and effect/fiber ownership stays G7/#180."
+    },
+    {
+      "id": "M12",
+      "section": "M",
+      "title": "Era-indexed consensus, as the Hard Fork Combinator does it",
+      "detail": ", after the ledger-state mirror and its step 2 under M11",
+      "priority": "P2",
+      "issues": [
+        85
+      ],
+      "notes": "Era-indexed consensus, as the Hard Fork Combinator does it: headers typed by protocol (PBFT, TPraos, Praos), one typed translation per era boundary, an era-tagged header from the decoders, typed node-to-client query results per era. Closed `HeaderRules.Outcome` reasons are already supplied by M11-E; the era-indexed work remains open. Chain selection and the network runtime stay era-agnostic."
+    },
+    {
+      "id": "M13",
+      "section": "M",
+      "title": "Named unsigned comparison controls and greedy optional-before-required groups now generate",
+      "detail": ", remaining generator features",
+      "priority": "P2",
+      "issues": [
+        86
+      ],
+      "notes": "Named unsigned comparison controls and greedy optional-before-required groups now generate, including all original Byron and Dijkstra cases. All 1,030 configured non-generic rules generate, and the strict Cuddle cross-check has no Scarab exemptions ([models.md](models.md), sections 8 and 13). Remaining capabilities include additional controls (`.eq .regexp .and .within .cborseq .bits`), explicit float models, unwrap and non-literal enum extraction, `preserve` on a choice, per-rule indefinite output, deterministic map-key order and era dedup. Construction laws also remain open: for `g = (? before: uint, after: uint); r = [g, tail: uint]`, greedy matching requires all three values, yet an unrestricted generated `Option.None` can be manually constructed and written as an invalid short array. The sampler conservatively includes optionals before required suffixes, including through groups; that is not a proof of the public constructor/encoder API. Restrict or validate those representations and prove the relevant laws before adoption; do not close M13 because the bounded pinned corpus passes."
+    },
+    {
+      "id": "M14",
+      "section": "M",
+      "title": "Adopt the generated models in the node",
+      "detail": "; coordinate with M12",
+      "priority": "P2",
+      "issues": [
+        87
+      ],
+      "notes": "Adopt the generated models in the node, the proposal in [models.md](models.md) sections 11 and 12, not started and not scheduled: node-to-node handshake and ChainSync payloads first, then headers, blocks and transactions, then the other mini-protocols, node-to-client and disk formats. Typed `Cbor.Error` is already supplied by M11-E and does not imply model adoption. Step 1 (module split) is done under M11; #82's current work is the ledger-state mirror. M12's per-era `Tx[E]`, `TxOut[E]`, `TxCert[E]` and `Block[E]` may be generated from the per-era models; that choice belongs to M12 and M14 together. Acceptance for each step as in models.md section 12: the existing tests unchanged and green, the generated model proved equal to the hand-written one first. Generated case-class construction is a separate obligation from successful decoding: adoption must validate or make unrepresentable the greedy optional-field states tracked by M13, rather than infer arbitrary-value encoding soundness from the bounded conformance sample."
+    },
+    {
+      "id": "N1",
+      "section": "N",
+      "title": "Study CIP-164",
+      "detail": ": design note",
+      "priority": "P1",
+      "issues": [
+        70
+      ],
+      "notes": "Study CIP-164, the Leios formal specification and the reference prototypes; `docs/leios.md` records the revision of every source, the protocol and ledger changes, the mapping onto this codebase, risks, and the plan below. One handshake against the public testnet relay is recorded (versions 14 to 16, magic 164)."
+    },
+    {
+      "id": "N2",
+      "section": "N",
+      "title": "BLS12-381 MinSig keys",
+      "detail": " 2026-10-14, `docs/leios.md` section 9",
+      "priority": "P2",
+      "issues": [
+        71
+      ],
+      "notes": "BLS12-381 MinSig keys, proof of possession, votes, aggregation and certificate verification, with the committee order rule, in `core`, pure. Acceptance: strict decoding (subgroup, infinity, canonical); `cardano-base` BLS vectors and the golden `LeiosVote` file with provenance; the 96 versus 48 byte proof-of-possession discrepancy resolved against `dijkstra.cddl`; properties (aggregate of valid votes verifies, any tampering, duplicate or reordered signer, replay on another announcing hash, rogue key all fail); a 900-seat verification benchmark; `blst-java` declared directly and its licence recorded; `check` green; no node change."
+    },
+    {
+      "id": "N3",
+      "section": "N",
+      "title": "Follow the public Leios testnet read-only (original scope)",
+      "detail": " 2026-10-16, `docs/leios.md` section 11: the published configuration pinned with hashes; `HfcHeader`, `LeiosHeader`, `LeiosBlock` decoders, `LeiosHeaderChain` header rules, tools `LeiosCaptureMain` and `LeiosCheckMain`; all 154,698 headers of the testnet validated from its genesis, six blocks decoded and matched to their headers, the generated `dijkstra.Header` codec checked on them; open then, folded into [#73](https://github.com/KD5UJC-XYZ/scarab/issues/73) on 2026-10-17: the gaps X1 to X13 of section 11.6, above all that the node itself cannot follow the chain (X1, X2), the relay never answering protocols 18 and 19 (X8) and the committee (X5); the LeiosFetch codec and its pinned CDDL follow Blueprint `0460c5a6` since [#174](https://github.com/KD5UJC-XYZ/scarab/issues/174), reading the `fe4cceb9` form of `MsgLeiosBlockTxs` until a capture or a testnet release settles which form a relay speaks",
+      "priority": "P2",
+      "issues": [
+        72
+      ],
+      "notes": "Follow the public Leios testnet read-only (original scope): LeiosNotify (protocol 18) and LeiosFetch (19) codecs against the Blueprint CDDL with captured fixtures; Dijkstra headers and bodies decoded; certificates verified with N2; EB announcement, body and closure fetched and hash-checked; an evidence row in `compatibility.md` and a precise list of what is skipped. The first mini-protocol exchange with the public relay was approved by the owner on 2026-10-14 and tried: the relay closes the connection on a LeiosNotify request from an initiator-only follower that has not run the Praos protocols (`docs/leios.md` section 10); the codecs 18/19 and clients exist, the gating is the first thing N3 must settle (drive ChainSync and BlockFetch first, or ask the Leios team); real votes can only be checked once the committee is read from the ledger (pool registrations carry the BLS keys; the testnet genesis pool has none)."
+    },
+    {
+      "id": "N4",
+      "section": "N",
+      "title": "A devnet scenario with Haskell Leios nodes and the Scala node",
+      "detail": ", needs N3",
+      "priority": "P2",
+      "issues": [
+        73
+      ],
+      "notes": "A devnet scenario with Haskell Leios nodes and the Scala node: announcements, EBs, votes, certificates and the committee equal to the reference's, ledger state equal at epoch boundaries, the Scala node forging, voting and certifying; throughput and mempool numbers recorded; do-not-fetch and do-not-vote switches. If the reference is not stable enough, stop at a defined scenario plus the divergence list."
+    },
+    {
+      "id": "N4-X1",
+      "section": "N",
+      "parent": "N4",
+      "title": "Follow a Dijkstra/Leios chain",
+      "status": "folded",
+      "priority": "P2",
+      "issues": [
+        98
+      ],
+      "folded_into": 73,
+      "notes": "Follow a Dijkstra/Leios chain: `HfcHeader`, `LeiosHeader` and `LeiosBlock` in the follower."
+    },
+    {
+      "id": "N4-X2",
+      "section": "N",
+      "parent": "N4",
+      "title": "`Era.Dijkstra`",
+      "status": "folded",
+      "priority": "P2",
+      "issues": [
+        99
+      ],
+      "folded_into": 73,
+      "notes": "`Era.Dijkstra`: era history, hard fork at protocol version 12, state mirror and telescope."
+    },
+    {
+      "id": "N4-X3",
+      "section": "N",
+      "parent": "N4",
+      "title": "Dijkstra ledger rules",
+      "status": "folded",
+      "priority": "P2",
+      "issues": [
+        100
+      ],
+      "folded_into": 73,
+      "notes": "Dijkstra ledger rules: LEDGER, BBODY with the Leios signal, the new transaction body, Plutus V4, parameters 40 to 54."
+    },
+    {
+      "id": "N4-X4",
+      "section": "N",
+      "parent": "N4",
+      "title": "Leader-threshold checks beyond genesis stake for header-only validation.",
+      "status": "folded",
+      "priority": "P2",
+      "issues": [
+        101
+      ],
+      "folded_into": 73,
+      "notes": "Leader-threshold checks beyond genesis stake for header-only validation."
+    },
+    {
+      "id": "N4-X5",
+      "section": "N",
+      "parent": "N4",
+      "title": "Verify Leios certificates",
+      "status": "folded",
+      "priority": "P2",
+      "issues": [
+        102
+      ],
+      "folded_into": 73,
+      "notes": "Verify Leios certificates: the committee from pool BLS keys, the quorum from stake."
+    },
+    {
+      "id": "N4-X6",
+      "section": "N",
+      "parent": "N4",
+      "title": "Peras certificate handling (upstream `validatePerasCert` is a placeholder).",
+      "status": "folded",
+      "priority": "P2",
+      "issues": [
+        103
+      ],
+      "folded_into": 73,
+      "notes": "Peras certificate handling (upstream `validatePerasCert` is a placeholder)."
+    },
+    {
+      "id": "N4-X7",
+      "section": "N",
+      "parent": "N4",
+      "title": "Endorser blocks",
+      "status": "folded",
+      "priority": "P2",
+      "issues": [
+        104
+      ],
+      "folded_into": 73,
+      "notes": "Endorser blocks: fetch, store, hash-check, closure, node-to-client inlining, chain selection."
+    },
+    {
+      "id": "N4-X8",
+      "section": "N",
+      "parent": "N4",
+      "title": "Mini-protocols 18 and 19 in the mux and servers; why the relay does not answer.",
+      "status": "folded",
+      "priority": "P2",
+      "issues": [
+        105
+      ],
+      "folded_into": 73,
+      "notes": "Mini-protocols 18 and 19 in the mux and servers; why the relay does not answer."
+    },
+    {
+      "id": "N4-X9",
+      "section": "N",
+      "parent": "N4",
+      "title": "Handshake",
+      "status": "folded",
+      "priority": "P2",
+      "issues": [
+        106
+      ],
+      "folded_into": 73,
+      "notes": "Handshake: offer node-to-node versions 15 and 16."
+    },
+    {
+      "id": "N4-X10",
+      "section": "N",
+      "parent": "N4",
+      "title": "`TxSubmissionLogicV2` and the Leios mempool.",
+      "status": "folded",
+      "priority": "P2",
+      "issues": [
+        107
+      ],
+      "folded_into": 73,
+      "notes": "`TxSubmissionLogicV2` and the Leios mempool."
+    },
+    {
+      "id": "N4-X11",
+      "section": "N",
+      "parent": "N4",
+      "title": "Ledger peers and the peer snapshot (`PraosMode`, `useLedgerAfterSlot`).",
+      "status": "folded",
+      "priority": "P2",
+      "issues": [
+        108
+      ],
+      "folded_into": 73,
+      "notes": "Ledger peers and the peer snapshot (`PraosMode`, `useLedgerAfterSlot`)."
+    },
+    {
+      "id": "N4-X12",
+      "section": "N",
+      "parent": "N4",
+      "title": "CDDL generates `dijkstra:block` and the spliced `pool_params`",
+      "status": "folded",
+      "detail": "; bounded generation implemented",
+      "priority": "P2",
+      "issues": [
+        109
+      ],
+      "folded_into": 73,
+      "notes": "CDDL generates `dijkstra:block` and the spliced `pool_params`, and the LeiosFetch module participates in the strict cross-check. These are pinned test models, not node-path adoption (M14); selecting and adopting later Leios wire versions remains separate."
+    },
+    {
+      "id": "N4-X13",
+      "section": "N",
+      "parent": "N4",
+      "title": "Interpret `header_version_info` against the chain and node versions.",
+      "status": "folded",
+      "priority": "P2",
+      "issues": [
+        110
+      ],
+      "folded_into": 73,
+      "notes": "Interpret `header_version_info` against the chain and node versions."
+    },
+    {
+      "id": "N5",
+      "section": "N",
+      "title": "A Leios-grade mempool",
+      "priority": "P1",
+      "issues": [
+        79
+      ],
+      "notes": "A Leios-grade mempool: 12 MB capacity and per-transaction validation latency against the 1–100 µs target."
+    },
+    {
+      "id": "O1",
+      "section": "O",
+      "title": "Threat model and security-review scope",
+      "priority": "P1",
+      "issues": [
+        74
+      ],
+      "notes": "Threat model and security-review scope. The [boundary register](security/threat-model.md) maps assets, trusted assumptions, intended invariants and existing source/tests; the [external review brief](security/external-review.md) proposes priorities, staged deliverables and quote/budget questions. Independent crypto review remains [#230](https://github.com/KD5UJC-XYZ/scarab/issues/230): document constant-time posture, review hand-ported Java/JNI and decide whether independently reviewed library replacements can retain the required acceptance profile and differential suites. Review planning does not establish completed assurance. Scarab-side conformance ignores/exclusions must be removed unless a specific evidenced JVM constraint justifies a narrow documented exception; this policy is not yet discharged. [NIST SSDF](https://csrc.nist.gov/pubs/sp/800/218/final) provides a review framework, not evidence of compliance."
+    },
+    {
+      "id": "O2",
+      "section": "O",
+      "title": "Reproducible, signed releases with an SBOM and published images",
+      "priority": "P1",
+      "issues": [
+        75
+      ],
+      "notes": "Reproducible, signed releases with an SBOM and published images. Bind the audit candidate's source, build inputs, native artifacts, dependency/licence inventory and test receipts to immutable identities; independently rebuild and verify the published artifact. Include the JNI libraries and their rebuild recipes. Use verifiable [build provenance](https://slsa.dev/spec/v1.2/provenance) rather than treating an image tag or build log as proof. GitHub binary/GHCR publication and staged #75 acceptance follow the [release design](design/releases.md); preparation proceeds while the preprod gate stays open. Inactive [candidate/SBOM tooling](release-candidates.md) and [publication/verification workflows](release-publication.md) are implemented; credentials, protected resources and actual delivery remain open."
+    },
+    {
+      "id": "O3",
+      "section": "O",
+      "title": "Operator packaging",
+      "priority": "P2",
+      "issues": [
+        76
+      ],
+      "notes": "Operator packaging: container image, compose and Kubernetes manifests."
+    },
+    {
+      "id": "O4",
+      "section": "O",
+      "title": "Node-diversity participation",
+      "detail": ": owner-managed, closed outside development",
+      "priority": null,
+      "issues": [
+        80
+      ],
+      "notes": "Node-diversity participation, leaderboard submission and Cardano Blueprint contribution are handled by the owner outside the repository development queue. Existing reusable fixtures/scenarios remain available; upstream conformance implementation is K2 (#49)."
+    },
+    {
+      "id": "O5",
+      "section": "O",
+      "title": "Reproducible reviewer evidence bundle",
+      "detail": "; deferred until audit candidate selection",
+      "priority": "P1",
+      "issues": [
+        349
+      ],
+      "notes": "Reproducible reviewer evidence bundle. The generator is [`scripts/evidence_packet.py`](security/external-review.md#generating-the-packet-for-a-revision). The [review brief](security/external-review.md#inputs-requested-when-an-audit-candidate-exists) lists requested inputs; no bundle is assembled by the threat-model/scoping work. Once the candidate is selected, provide an immutable candidate revision, module/source map, exact test commands and image identities, fixture/provenance manifests, optional-data requirements and a secure way for reviewers to obtain large/private captures. Retain historical mask qualifications, current skips and measured-source identities from [compatibility.md](compatibility.md); do not relabel historical runs as tests of the candidate. The bundle must reproduce at least one representative check from each evidence family without a maintainer's local paths. Keep security-sensitive reproductions private under [SECURITY.md](../SECURITY.md)."
+    },
+    {
+      "id": "O6",
+      "section": "O",
+      "title": "Documentation drift checks",
+      "status": "planned",
+      "detail": ", audit preparation",
+      "priority": "P2",
+      "issues": [],
+      "notes": "Documentation drift checks. Automate relative-link/anchor validation, declaration/call argument comment placement and checks that documented commands, module names and public symbols exist. Keep historical records and generated/vendor sources explicitly scoped. Parser-aware checks should distinguish comments inside anonymous-function bodies from comments between arguments, and preserve rationale in declaration docs or before calls. The module audit corrected these classes of drift manually; continuous enforcement remains open."
+    }
+  ]
+}

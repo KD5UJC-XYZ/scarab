@@ -10,8 +10,8 @@ work can be parked and resumed, and nothing goes stale silently.
 | Question | Source of truth | Kept current by |
 |---|---|---|
 | What work exists, and what state is it in? | [GitHub issues](https://github.com/KD5UJC-XYZ/scarab/issues), one per roadmap ID, with a `status:` label | whoever moves the work, when it moves |
-| What is planned, grouped by area? | [roadmap.md](roadmap.md): one line per item, ID and issue link, done items marked | the change that finishes or adds an item |
-| Which body of work does an item belong to? | [Milestones](https://github.com/KD5UJC-XYZ/scarab/milestones), scope buckets ([labels and milestones](#labels-and-milestones)) | triage |
+| What is planned, grouped by area? | [roadmap.md](roadmap.md), generated from the register [roadmap.json](data/roadmap.json) by `scripts/render_roadmap.py`: one entry per item, ID, issue link and status; each status derived from its issues through a snapshot that a nightly pull request refreshes | the change that finishes or adds an item |
+| What scope does an open issue belong to? | [Milestones](https://github.com/KD5UJC-XYZ/scarab/milestones), scope buckets ([labels and milestones](#labels-and-milestones); each described in [the roadmap](roadmap.md#milestones)) | triage |
 | Why is it built this way? | [Architecture decision records](adr/README.md) | a new ADR when a decision is made or reversed |
 | What has the owner decided, and what would reopen it? | [decisions.md](decisions.md): one row per decision, linking its record (the ADR or the issue comment) | the change that first relies on the decision |
 | How will a large piece of work be built? | [Design documents](design/README.md): approved plans, with their stages | the plan's owner, as stages land |
@@ -70,7 +70,8 @@ in its closing comment and, when it shapes the design, in an ADR: *adopt* (follo
 
 - **Now**: issues labelled `status:in-progress`. Keep this short (about three parallel tracks); more
   than that means something should be parked.
-- **Next**: the `status:backlog` issues of each milestone, by priority.
+- **Next**: the `status:backlog` issues of each milestone, in the [order of work](roadmap.md#order-of-work),
+  then by priority.
 - **Later**: ideas and parked issues, which carry no milestone.
 
 ### Changing course
@@ -129,8 +130,8 @@ An item is closed as done when all of these hold:
 2. Evidence is recorded where its level asks: a test or fixture always; the compatibility matrix for
    consensus-critical work (level 3); the evidence log for stage-boundary runs (level 4);
    performance numbers in performance.md.
-3. A changelog fragment in `changes/` if a user could notice; the roadmap line is marked done (never
-   renumbered or deleted).
+3. A changelog fragment in `changes/` if a user could notice. The roadmap item follows its issue: closing the
+   issue marks it done at the next nightly refresh (items are never renumbered or deleted).
 4. Every gap the work leaves is tracked: a new issue or roadmap item, linked from the closing comment.
    "Not yet" in a document always points at an item.
 5. The closing comment states what was done, the commit, and the evidence.
