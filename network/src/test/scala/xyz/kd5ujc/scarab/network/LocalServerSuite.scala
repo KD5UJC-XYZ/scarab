@@ -229,18 +229,27 @@ class LocalServerSuite extends FailsOnUncaught:
           )
           .map((scheduler, _) => (pool, scheduler))
       )
-      .use { (pool, scheduler) =>
+      .flatMap { (pool, scheduler) =>
         val reported = java.util.concurrent.ConcurrentLinkedQueue[Throwable]()
         val worker = new scala.concurrent.ExecutionContext:
           def execute(task: Runnable): Unit = pool.execute(task)
           def reportFailure(cause: Throwable): Unit = reported.add(cause): Unit
-        val runtime = cats.effect.unsafe.IORuntime(
-          worker,
-          worker,
-          scheduler,
-          () => (),
-          cats.effect.unsafe.IORuntimeConfig()
-        )
+        // the runtime's own shutdown unregisters what `IORuntime.apply` registers
+        Resource
+          .make(
+            IO(
+              cats.effect.unsafe.IORuntime(
+                worker,
+                worker,
+                scheduler,
+                () => (),
+                cats.effect.unsafe.IORuntimeConfig()
+              )
+            )
+          )(runtime => IO(runtime.shutdown()))
+          .map(runtime => (runtime, reported))
+      }
+      .use { (runtime, reported) =>
         IO.fromFuture(IO(program.unsafeToFuture()(using runtime))).map { outcome =>
           assert(outcome.isCanceled, outcome.toString)
           assertEquals(reported.toArray.toList, Nil)
