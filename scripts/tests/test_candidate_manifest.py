@@ -67,10 +67,22 @@ class CandidateManifestTest(unittest.TestCase):
             contract.validate(self.root)
 
     def test_native_identity_must_bind_the_pinned_packaged_library(self):
-        self.replace_evidence('native-identity', lambda value: value['resources']['Linux/amd64/libblst.so'].update(pinned='b' * 64))
+        # a self-consistent receipt that names other bytes is refused: the validator recomputes it
+        def forged(value):
+            value['resources']['Linux/amd64/libblst.so'].update(pinned='b' * 64, packaged='b' * 64)
+        self.replace_evidence('native-identity', forged)
         with self.assertRaisesRegex(ValueError, 'native identity'):
             contract.validate(self.root)
-        self.replace_evidence('native-identity', lambda value: value.update(jarSha256='c' * 64))
+
+    def test_native_identity_cannot_omit_or_add_a_platform(self):
+        def omitted(value):
+            value['resources'].pop('Linux/amd64/libblst.so')
+        self.replace_evidence('native-identity', omitted)
+        with self.assertRaisesRegex(ValueError, 'native identity'):
+            contract.validate(self.root)
+
+    def test_native_identity_cannot_claim_a_gated_library_that_is_not(self):
+        self.replace_evidence('native-identity', lambda value: value['isa'].update(ungatedEntries=0, gatedRegion=99))
         with self.assertRaisesRegex(ValueError, 'native identity'):
             contract.validate(self.root)
 

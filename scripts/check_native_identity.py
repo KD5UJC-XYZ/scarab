@@ -33,20 +33,25 @@ LIBRARY = 'tech.pegasys:jblst'
 BLST_COMMIT = '54e6e55674722fc2797ebb4bbb71b26d881eb4b8'
 
 
-def pins(root=ROOT):
-    """The pinned sha-256 of each library resource, by its name under `supranational/blst/`."""
-    found = dict(re.findall(r'"([A-Za-z]+/[A-Za-z0-9_]+/[A-Za-z0-9_.]+)" -> "([a-f0-9]{64})"',
-                            (root / PINS).read_text()))
+def pins_from(text):
+    """The pinned sha-256 of each library resource, by its name under `supranational/blst/`, from the
+    text of `Blst.scala`."""
+    found = dict(re.findall(r'"([A-Za-z]+/[A-Za-z0-9_]+/[A-Za-z0-9_.]+)" -> "([a-f0-9]{64})"', text))
     if LINUX_AMD64 not in found:
         raise ValueError(f'{PINS} pins no {LINUX_AMD64}')
     return found
 
 
-def jblst_version(root=ROOT):
-    found = re.findall(r'val jblst = "([^"]+)"', (root / DEPENDENCIES).read_text())
+def version_from(text):
+    """The jblst version, from the text of `project/Dependencies.scala`."""
+    found = re.findall(r'val jblst = "([^"]+)"', text)
     if len(found) != 1:
         raise ValueError(f'{DEPENDENCIES} must declare one jblst version')
     return found[0]
+
+
+def pins(root=ROOT):
+    return pins_from((root / PINS).read_text())
 
 
 def packaged(jar):
@@ -57,16 +62,21 @@ def packaged(jar):
                 if name.startswith(PREFIX) and name.count('/') == 4 and not name.endswith('/')}
 
 
-def verify(jar, root=ROOT):
-    """The receipt; `status` is `passed` only when every pinned library is packaged with its pinned
-    bytes, nothing unpinned is, and the Linux/amd64 library has no ungated ADX/BMI2 entry."""
-    expected, found = pins(root), packaged(jar)
-    receipt = {'schemaVersion': 1, 'status': 'failed', 'library': LIBRARY, 'version': jblst_version(root),
+# The ADX/BMI2 analysis of a library inside a JAR (a seam for tests, whose JARs hold no real library).
+analyse_library = check_native_isa.check
+
+
+def verify_texts(jar, pins_text, dependencies_text):
+    """The receipt, from the texts of the two pinned source files; `status` is `passed` only when
+    every pinned library is packaged with its pinned bytes, nothing unpinned is, and the Linux/amd64
+    library has no ungated ADX/BMI2 entry."""
+    expected, found = pins_from(pins_text), packaged(jar)
+    receipt = {'schemaVersion': 1, 'status': 'failed', 'library': LIBRARY, 'version': version_from(dependencies_text),
                'blstCommit': BLST_COMMIT, 'jarSha256': hashlib.sha256(Path(jar).read_bytes()).hexdigest(),
                'resources': {name: {'pinned': expected.get(name), 'packaged': found.get(name)}
                              for name in sorted(set(expected) | set(found))}}
     problems = [name for name, pair in receipt['resources'].items() if pair['pinned'] != pair['packaged']]
-    isa = check_native_isa.check(Path(jar), member=PREFIX + LINUX_AMD64) if LINUX_AMD64 in found else None
+    isa = analyse_library(Path(jar), member=PREFIX + LINUX_AMD64) if LINUX_AMD64 in found else None
     receipt['isa'] = isa and {k: isa[k] for k in ('instructions', 'extensionFunctions', 'gatedRegion')} | {
         'ungatedEntries': len(isa['ungatedEntries'])}
     if problems:
@@ -76,6 +86,11 @@ def verify(jar, root=ROOT):
     else:
         receipt['status'] = 'passed'
     return receipt
+
+
+def verify(jar, root=ROOT):
+    """The receipt for the pins of the source tree at `root`."""
+    return verify_texts(jar, (root / PINS).read_text(), (root / DEPENDENCIES).read_text())
 
 
 def main():

@@ -11,6 +11,10 @@ import candidate_manifest as contract
 import candidate_oci
 import candidate_sbom
 import check_native_identity
+
+# The fixture JAR holds synthetic bytes, not a library objdump can read: its ISA analysis is a gated one.
+SYNTHETIC_ISA = dict(instructions={'mulx': 1}, extensionFunctions=1, gatedRegion=1, ungatedEntries=[])
+check_native_identity.analyse_library = lambda path, member=None: SYNTHETIC_ISA
 import release_identity
 
 
@@ -65,10 +69,10 @@ def make_candidate(root: Path, release=True) -> dict:
     write('evidence/repro/artifact-builds.json', reports)
     repro = dict(gitCommit=identity['gitCommit'], buildIdentity=identity, jdkImage='sha256:' + 'e' * 64, artifacts=reports)
     write('evidence/repro/verified-artifacts.json', repro)
-    native_library = dict(library=check_native_identity.LIBRARY, version='0.3.18', blstCommit=check_native_identity.BLST_COMMIT)
-    write('evidence/native/receipt.json', dict(schemaVersion=1, status='passed', jarSha256=contract.sha256(jar), **native_library,
-                                            resources={'Linux/amd64/libblst.so': dict(pinned=portable_sha, packaged=portable_sha)},
-                                            isa=dict(instructions={}, extensionFunctions=0, gatedRegion=0, ungatedEntries=0)))
+    receipt = check_native_identity.verify_texts(jar, source_files[check_native_identity.PINS].decode(),
+                                                 source_files['project/Dependencies.scala'].decode())
+    native_library = {k: receipt[k] for k in ('library', 'version', 'blstCommit')}
+    write('evidence/native/receipt.json', receipt)
     layer = tar_bytes({'opt/scarab/scarab.jar': jar.read_bytes()})
     config = dict(architecture='amd64', os='linux', rootfs=dict(type='layers', diff_ids=['sha256:' + hashlib.sha256(layer).hexdigest()]),
                   config=dict(User='10001:10001', Entrypoint=['java', '--sun-misc-unsafe-memory-access=allow', '-jar', '/opt/scarab/scarab.jar'],

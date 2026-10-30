@@ -8,6 +8,7 @@ import re
 import tarfile
 import zipfile
 
+import check_native_identity
 import release_identity
 
 EVIDENCE = {'source-export', 'reproducibility', 'native-identity', 'assembly-coverage',
@@ -132,6 +133,9 @@ def validate(directory: Path, require_release: bool = False) -> dict:
             with archive.extractfile(member) as stream:
                 if hashlib.file_digest(stream, 'sha256').hexdigest() != expected_files[member.name]:
                     raise ValueError('source archive differs from frozen input hashes')
+        # the native pins and the jblst version, as frozen in the verified source
+        native_sources = {name: archive.extractfile(name).read().decode()
+                          for name in (check_native_identity.PINS, check_native_identity.DEPENDENCIES)}
     from reproducible_build import verify_output_identity
     verified = verify_output_identity(records['reproducibility'].parent, identity)
     jar_subject = next(s for s in subjects if s['kind'] == 'jar')
@@ -142,15 +146,12 @@ def validate(directory: Path, require_release: bool = False) -> dict:
         raise ValueError('reproducibility receipt source differs from candidate')
     native = read_json(records['native-identity'])
     jar = checked_file(root, jar_subject['file'])
-    import check_native_identity
-    with zipfile.ZipFile(jar) as archive:
-        portable_hash = hashlib.sha256(archive.read('supranational/blst/Linux/amd64/libblst.so')).hexdigest()
-    resources = native.get('resources', {})
-    if (native.get('status') != 'passed' or native.get('jarSha256') != jar_subject['file']['sha256']
-            or not resources or any(pair.get('pinned') != pair.get('packaged') for pair in resources.values())
-            or resources.get(check_native_identity.LINUX_AMD64, {}).get('packaged') != portable_hash
-            or (native.get('isa') or {}).get('ungatedEntries') != 0):
-        raise ValueError('native identity receipt does not bind the packaged, pinned and portable JNI')
+    # recomputed here, never taken from the receipt: every packaged blst library against the frozen
+    # pins, nothing unpinned, and the ADX/BMI2 check of the Linux/amd64 one (ADR 0025)
+    recomputed = check_native_identity.verify_texts(jar, native_sources[check_native_identity.PINS],
+                                                    native_sources[check_native_identity.DEPENDENCIES])
+    if recomputed['status'] != 'passed' or native != recomputed:
+        raise ValueError('native identity receipt differs from a check of the candidate JAR against its frozen pins')
     coverage = read_json(records['assembly-coverage'])
     if coverage.get('artifactSha256') != jar_subject['file']['sha256'] or not coverage.get('entries'):
         raise ValueError('assembly coverage binds different or empty contents')
