@@ -58,8 +58,8 @@ enum LibraryBuild:
     */
   case Portable
 
-  /** Any other library found as the resource `blstJNI` loads (a system property pointing
-    * elsewhere, or another jar first on the class path), by the sha-256 of its bytes.
+  /** Any other library found as the resource `blstJNI` loads (a system property pointing elsewhere,
+    * or another jar first on the class path), by the sha-256 of its bytes.
     */
   case Other(sha256: String)
 
@@ -105,8 +105,8 @@ enum BlstProblem:
       s"the BLS12-381 library fails its known answer $answer: $failure"
 
 /** The check that the JVM is going to use the libblst jblst ships (ADR 0025). jblst's `blstJNI`
-  * looks up `<os>/<arch>/libblst.so` as a resource of its own package, copies it to a temporary file
-  * and loads it.
+  * looks up `<os>/<arch>/libblst.so` as a resource of its own package, copies it to a temporary
+  * file and loads it.
   */
 object Blst:
   /** sha-256 of each library in `tech.pegasys:jblst` 0.3.18 (blst v0.3.17), by resource name. */
