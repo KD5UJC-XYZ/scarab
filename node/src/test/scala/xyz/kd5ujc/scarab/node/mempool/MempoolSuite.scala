@@ -414,6 +414,24 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
         )
       )
     )
+    // applied again (`reapplyTx`, by revalidation and block production), the refusal holds every
+    // failure as well, in the same order (`applySTSNonStatic`; issue 412)
+    val l = ledger(1).withProtocol(11)
+    val parsed = MempoolState.parse(raw).fold(r => fail(r.toString), _._2)
+    assertEquals(
+      l.reapply(parsed, env.txEnv(0, l, 0), env.rules).map(_ => ()),
+      Left(
+        LedgerFailure.Rejected(
+          id,
+          NonEmptyChain(
+            PredicateFailure.gov(
+              GovFailure.VotersDoNotExist(Vector(Voter.CommitteeHot(hot.credential)))
+            ),
+            PredicateFailure.gov(GovFailure.UnelectedCommitteeVoters(Vector(hot.credential)))
+          )
+        )
+      )
+    )
   }
 
   test("capacity is counted in the measure of a transaction and refuses what does not fit") {

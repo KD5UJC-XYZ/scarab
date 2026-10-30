@@ -187,15 +187,16 @@ final case class MempoolLedger(ls: LedgerState[Conway], treasury: Coin, epoch: B
   def withUtxo(u: Utxo): MempoolLedger =
     copy(ls = ls.copy[Conway](utxo = ls.utxo.copy(utxo = UtxoTables(u))))
 
-  /** A transaction validated before, applied again to its first failure, where only the verdict
-    * counts: MEMPOOL and LEDGER without their static checks (`reapplyTx`, ouroboros-consensus
-    * 82ecba32 `Shelley/Ledger/Mempool.hs` 325–338; cardano-ledger f649f975 `Shelley/API/Mempool.hs`
-    * 472–473, whose Conway rule is MEMPOOL, `Conway.hs` 57). The pool revalidates its transactions
-    * so, and so does block production (`revalidateTxsFor`, `Mempool/Impl/Common.hs` 403–422): no
-    * signature is verified and no script is evaluated again ([[TxEnv.Validation]]).
+  /** A transaction validated before, applied again: MEMPOOL and LEDGER without their static checks
+    * (`reapplyTx`, ouroboros-consensus 82ecba32 `Shelley/Ledger/Mempool.hs` 325–338; cardano-ledger
+    * f649f975 `Shelley/API/Mempool.hs` 472–473, whose Conway rule is MEMPOOL, `Conway.hs` 57). The
+    * pool revalidates its transactions so, and so does block production (`revalidateTxsFor`,
+    * `Mempool/Impl/Common.hs` 403–422): no signature is verified and no script is evaluated again
+    * ([[TxEnv.Validation]]). Its refusal holds every predicate failure, in the reference's order, as
+    * `applySTSNonStatic` returns them (`Shelley/API/Mempool.hs`; issue 412).
     */
   def reapply(tx: Tx, env: TxEnv, rules: Globals): Either[LedgerFailure, MempoolLedger] =
-    judged(Mempool, Judgment.Policy.FirstFailure)(
+    judged(Mempool, Judgment.Policy.Accumulate)(
       tx,
       env.copy(validation = TxEnv.Validation.NonStatic),
       rules
