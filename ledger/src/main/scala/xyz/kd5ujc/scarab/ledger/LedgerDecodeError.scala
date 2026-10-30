@@ -33,6 +33,9 @@ enum LedgerDecodeError extends DomainError:
   case DuplicateElement(site: DecodeSite)
   case Zero(site: DecodeSite)
   case IndefiniteLength(site: DecodeSite)
+
+  /** The relays of a pool registration, read with the body (`PoolRelays.fromBody`). */
+  case PoolRelay(cause: PoolRelayError)
   case ZeroDenominator(site: DecodeSite)
   case RationalOutOfBounds(site: DecodeSite, numerator: BigInt, denominator: BigInt)
   case UnknownTag(site: DecodeSite, tag: BigInt)

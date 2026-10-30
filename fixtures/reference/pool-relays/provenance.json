@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-10-30",
+  "scope": "Unchanged released decoders (decodeFullAnnotator) of a transaction body of each era from Shelley to Conway at the era's decoder version (2, 3, 4, 5, 7, 9) holding one pool registration: relays the reference accepts, and the same registration with one relay changed (an IPv4 address of five bytes, an IPv4 and an IPv6 address as one indefinite chunk, a port of 65536, a DNS name as one chunk, DNS and SRV names at and over the era's textSizeN bound); no ledger rule, signature or script is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "compiler": "GHC 9.10.3",
+  "referenceNode": "11.1.3 (matching embedded ledger package versions, not a bit-identical node release build)",
+  "packages": {
+    "cardano-ledger-binary": "1.9.1.0",
+    "cardano-ledger-core": "1.21.0.0",
+    "cardano-ledger-shelley": "1.19.0.1",
+    "cardano-ledger-allegra": "1.10.1.0",
+    "cardano-ledger-mary": "1.11.0.0",
+    "cardano-ledger-alonzo": "1.16.0.0",
+    "cardano-ledger-babbage": "1.14.0.0",
+    "cardano-ledger-conway": "1.23.0.0",
+    "cborg": "0.2.10.0"
+  },
+  "sourceFiles": {
+    "stakePool": {
+      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+      "note": "instance DecCBOR StakePoolRelay (406-421), decodeStakePoolParamsFlat (578-589)"
+    },
+    "baseTypes": {
+      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+      "sourceSha256": "0b86d1ecdd5abb0cf89194e7324fe1f62e58214cbd7386a1c50aeaf1c605866e",
+      "matchesPin": true,
+      "note": "textSizeN, textDecCBOR (644-668); instance DecCBOR DnsName: textDecCBOR 128 from decoder version 9, 64 below it (678-697)"
+    }
+  },
+  "sourceArchive": {
+    "url": "https://codeload.github.com/IntersectMBO/cardano-ledger/tar.gz/f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "sha256": "b545b1eda2067c756add6d98701aacc217a380fe177f984daa1da655607a0b68",
+    "kind": "repository tarball at the pinned commit"
+  },
+  "harness": {
+    "file": "scripts/oracle/conway-decoding/Main.hs",
+    "sha256": "56e41ca86274a36f8e433b6f49ddb55b0f17720c75298c7b56e56e63f52170ce",
+    "image": "scarab-conway-decoding:local (built as scarab-t3-conway-decoding:local), from scripts/oracle/conway-decoding/Dockerfile on scarab-plutus176-context-reference:local",
+    "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-conway-decoding:local /fixtures/pool-relays-inputs.json",
+    "unchanged": true
+  },
+  "generatorSha256": "3a5cca8b266fdb525c0627d7a47f7926b3b467f05614b380d535f9813a5021b9",
+  "harnessInputSha256": "0c61d9a10f3666555c799c9dbc7aea0339d1786233db989f3ad44f876074de12",
+  "harnessOutputSha256": "f3b171aa45e5b4a04817f335d51915552ab835477ee368dd45e66f53a763173b",
+  "casesSha256": "ae5534b96c8db23191f108db7479d691c3b5acdf911fe93532b95418b84739bb",
+  "cases": 65,
+  "accepted": 18,
+  "refused": 47,
+  "originalBytesRetained": true
+}
