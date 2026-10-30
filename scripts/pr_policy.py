@@ -1,6 +1,17 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Validate pull-request metadata without loading pull-request code."""
+"""Validate pull-request metadata without loading pull-request code.
+
+Besides the title and the promotion source, the body states the level of the change (CONTRIBUTING.md, "Levels"), and a
+pull request of level 2 or higher carries the two sections CONTRIBUTING.md asks for ("Commits and pull requests"):
+"Deviations from the reference" (`None`, or a table of behaviour, the pinned reference, what Scarab does and the
+approval link) and "Gaps" (`None`, or bullets that each start with an issue link). A section that opens with
+`None` may go on in prose. The stated level has floors from the changed files (`--files`, the pull request's file
+list): a file that is not documentation makes it at least 1, and the persisted-format register at least 3, as the
+levels table of CONTRIBUTING.md defines them. A bot's pull request (a release
+proposal, a dependency update) and a promotion of `dev` to `main` are not checked for these. The promotion controller
+(`promote_main.py`) calls `evaluate` only, never the body checks.
+"""
 import argparse
 import hashlib
 import json
@@ -13,6 +24,17 @@ MODES = ("transition", "dev-only-main")
 TITLE = re.compile(r"(?:build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(?:\([^\s():!]+\))?!?: \S[^\r\n]*")
 COMMIT = re.compile(r"[0-9a-f]{40}")
 REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
+LEVEL = re.compile(r"^\s*(?:[-*]\s+)?\**Level\**:?\**\s*([0-4])\b", re.IGNORECASE | re.MULTILINE)
+UNFILLED_LEVEL = re.compile(r"0\s+docs\s*/\s*1\s+small", re.IGNORECASE)
+COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+HEADING = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
+DEVIATIONS = "deviations from the reference"
+GAPS = "gaps"
+ISSUE_LINK = re.compile(r"(?:\[#\d+\]\([^)]*\)|#\d+\b|https://github\.com/[^/\s]+/[^/\s]+/issues/\d+)")
+APPROVAL = re.compile(r"(?:https?://|#\d+|\]\()")
+SECTION_LEVEL = 2
+DOCUMENTATION = re.compile(r"(?:.*\.md|docs/.*|changes/.*|LICENSE|NOTICE)")
+PERSISTED_FORMAT = "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala"
 
 
 class PolicyError(ValueError):
@@ -22,6 +44,86 @@ class PolicyError(ValueError):
 def require(condition, message):
     if not condition:
         raise PolicyError(message)
+
+
+def level_of(body):
+    """The level the body states, or None when it states none (the template's unfilled line counts as none)."""
+    for match in LEVEL.finditer(body):
+        end = body.find("\n", match.start())
+        line = body[match.start():end if end >= 0 else len(body)]
+        if not UNFILLED_LEVEL.search(line):
+            return int(match.group(1))
+    return None
+
+
+def sections(body):
+    """The text under each level-2 heading, keyed by the heading in lower case, without HTML comments."""
+    text = COMMENT.sub("", body)
+    heads = list(HEADING.finditer(text))
+    return {h.group(1).strip().lower(): text[h.end():(heads[i + 1].start() if i + 1 < len(heads) else len(text))].strip()
+            for i, h in enumerate(heads)}
+
+
+NONE = re.compile(r"none\b(?![-\w])", re.IGNORECASE)
+
+
+def is_none(text):
+    """The section opens with the word None; prose may follow it ("None. This removes one deviation ...")."""
+    return NONE.match(text.strip()) is not None
+
+
+def check_deviations(text):
+    require(text is not None, 'a level 2 or higher pull request needs a "## Deviations from the reference" section')
+    if is_none(text):
+        return
+    rows = [line.strip() for line in text.splitlines() if line.strip()]
+    require(len(rows) >= 3 and all(r.startswith("|") for r in rows) and set(rows[1]) <= set("|-: "),
+            "Deviations from the reference: None, or a table with a header, a separator and one row per deviation")
+    for row in rows[2:]:
+        cells = [c.strip() for c in row.strip("|").split("|")]
+        require(len(cells) == 4 and all(cells), "Deviations from the reference: each row has four nonempty cells "
+                "(behaviour, reference at its pin, Scarab, approval)")
+        require(APPROVAL.search(cells[3]) is not None, "Deviations from the reference: each approval cell links its record")
+
+
+def check_gaps(text):
+    require(text is not None, 'a level 2 or higher pull request needs a "## Gaps" section')
+    if is_none(text):
+        return
+    bullets = [line for line in text.splitlines() if line.strip() and not line[:1].isspace()]
+    require(bool(bullets), "Gaps: None, or one bullet per gap")
+    for bullet in bullets:
+        item = bullet.lstrip("-* ").strip()
+        require(bullet.lstrip().startswith(("-", "*")) and ISSUE_LINK.match(item) is not None,
+                "Gaps: each bullet starts with the issue that tracks the gap")
+
+
+def level_floor(files):
+    """The lowest level the changed files allow, from the levels table of CONTRIBUTING.md."""
+    if PERSISTED_FORMAT in files:
+        return 3
+    return 1 if any(not DOCUMENTATION.fullmatch(f) for f in files) else 0
+
+
+def check_body(pr, files=()):
+    """The level the body states; None for a bot's pull request and for a promotion of `dev`, whose changes each
+    passed this check as their own pull request."""
+    if (pr.get("user") or {}).get("type") == "Bot":
+        return None
+    if pr.get("head", {}).get("ref") == "dev" and pr.get("base", {}).get("ref") == "main":
+        return None
+    body = pr.get("body") or ""
+    level = level_of(body)
+    require(level is not None, "state the level of the change in the body (pull request template)")
+    floor = level_floor(files)
+    require(level >= floor, f"level {level} is below {floor}: " + (
+        "the persisted-format register changed (CONTRIBUTING.md, Levels)" if floor == 3
+        else "a file other than documentation changed (CONTRIBUTING.md, Levels)"))
+    if level >= SECTION_LEVEL:
+        found = sections(body)
+        check_deviations(found.get(DEVIATIONS))
+        check_gaps(found.get(GAPS))
+    return level
 
 
 def evaluate(pr, repository, repository_id, mode):
@@ -54,13 +156,16 @@ def main():
     parser.add_argument("--repository", default=os.environ.get("GITHUB_REPOSITORY"), required=False)
     parser.add_argument("--repository-id", type=int, default=os.environ.get("GITHUB_REPOSITORY_ID"))
     parser.add_argument("--mode", default=os.environ.get("SCARAB_PROMOTION_POLICY") or "transition")
+    parser.add_argument("--files", type=Path, help="the pull request's changed paths, one per line")
     args = parser.parse_args()
     require(args.event is not None and args.repository is not None, "require event and repository identity")
     event = json.loads(args.event.read_text())
     require(event.get("repository", {}).get("id") == args.repository_id,
             "event repository identity differs from the trusted runner")
-    print(json.dumps(evaluate(event.get("pull_request", {}), args.repository,
-                              args.repository_id, args.mode), sort_keys=True))
+    pr = event.get("pull_request", {})
+    result = evaluate(pr, args.repository, args.repository_id, args.mode)
+    files = args.files.read_text(encoding="utf-8").split() if args.files else []
+    print(json.dumps(dict(result, level=check_body(pr, files)), sort_keys=True))
 
 
 if __name__ == "__main__":
