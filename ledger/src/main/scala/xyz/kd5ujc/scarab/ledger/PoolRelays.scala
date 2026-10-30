@@ -185,10 +185,15 @@ enum PoolRelayError:
     */
   case IndefiniteDnsName(index: Int)
 
-  /** The DNS name of relay `index` is longer than 128 bytes (`textSizeN 128`,
-    * `BaseTypes.hs:691-697`).
+  /** The DNS name of relay `index` is longer than the bound of its decoder version: 64 bytes below
+    * version 9, 128 from it (`textSizeN`, `BaseTypes.hs:691-697`).
     */
   case DnsNameTooLong(index: Int, bytes: Int)
+
+  /** The IPv4 or IPv6 address of relay `index` is an indefinite (chunked) byte string, which the
+    * reference's `decodeBytes` refuses below decoder version 12 (`Decoder.hs:350-373`).
+    */
+  case IndefiniteAddress(index: Int)
 
 /** The relays of a pool registration (`PoolParams.relays`, kept as the registration came).
   *
@@ -201,8 +206,13 @@ enum PoolRelayError:
   *   - `[2, dns_name]` (`MultiHostName`),
   *
   * the pool's relays are a `StrictSeq` of them, an array of any of the definite and indefinite
-  * forms. `port` is a `Word16`; `dns_name` is text of at most 128 bytes (64 before protocol version
-  * 9, a registration is checked when it is made, so the larger bound reads both).
+  * forms. `port` is a `Word16`; `dns_name` is text of at most 64 bytes below decoder version 9 and
+  * 128 from it; an address is a byte string, definite below version 12.
+  *
+  * A transaction body's relays are read at the body's version ([[fromBody]]). A registration the
+  * node holds was read so when it was made, and the ledger states the node keeps are Conway's, at
+  * version 9 or later: [[decode]] reads a held registration at the larger bound, and takes a
+  * chunked address as the builds before #436 stored it (ADR 0006).
   *
   * An address is `bytes .size 4` or `bytes .size 16` (`shelley.cddl:187-188`). An IPv4 address is
   * in network order, the first octet first; an IPv6 address is not (below). cardano-ledger-binary
@@ -221,21 +231,45 @@ enum PoolRelayError:
   * No relays at all is the empty `Bytes` (as `NodeTypeCodecs.relays` keeps it) or an empty array.
   */
 object PoolRelays:
-  /** Longest DNS name in a registration, in bytes of UTF-8 (`textDecCBOR 128`). */
+  /** Longest DNS name in a registration, in bytes of UTF-8, from decoder version 9 (`textDecCBOR
+    * 128`).
+    */
   val MaxDnsNameBytes: Int = 128
 
-  /** The relays of a registration, in order. */
+  /** How the relays are read: the form of an address and the bound of a DNS name. */
+  private final case class Reading(addresses: ByteStrings, dnsBytes: Int)
+
+  /** A registration the node holds: the larger bound, and a chunked address as stored before #436.
+    */
+  private val held = Reading(ByteStrings.Chunked, MaxDnsNameBytes)
+
+  /** The relays of a registration the node holds, in order. */
   def decode(relays: Bytes): Either[PoolRelayError, Vector[PoolRelay]] =
     decode(relays, Cbor.Limits())
 
   def decode(relays: Bytes, limits: Cbor.Limits): Either[PoolRelayError, Vector[PoolRelay]] =
     if relays.isEmpty then Right(Vector.empty)
     else
-      CborRead.decode(relays, limits).leftMap(PoolRelayError.NotCbor(_)).flatMap { node =>
-        node.value match
-          case Value.Arr(items) => items.zipWithIndex.traverse((n, i) => relay(n, i))
-          case _                => Left(PoolRelayError.NotASequence)
-      }
+      CborRead
+        .decode(relays, limits)
+        .leftMap(PoolRelayError.NotCbor(_))
+        .flatMap(sequence(_, held))
+
+  /** The relays of a registration in a transaction body read at `version`, as the reference reads
+    * them with the body (`decodeStakePoolParamsFlat`, `State/StakePool.hs:578-589`, cardano-ledger
+    * f649f975): an address in the form `version` reads, a DNS name of at most 64 bytes below 9 and
+    * 128 from it.
+    */
+  def fromBody(relays: Node, version: DecoderVersion): Either[PoolRelayError, Vector[PoolRelay]] =
+    sequence(
+      relays,
+      Reading(ByteStrings.of(version), if version.atLeast(9) then MaxDnsNameBytes else 64)
+    )
+
+  private def sequence(node: Node, reading: Reading): Either[PoolRelayError, Vector[PoolRelay]] =
+    node.value match
+      case Value.Arr(items) => items.zipWithIndex.traverse((n, i) => relay(n, i, reading))
+      case _                => Left(PoolRelayError.NotASequence)
 
   /** The usable relays as the ledger peers see them, in order (see [[PoolRelay.ledgerRelay]]). */
   def ledgerRelays(relays: Vector[PoolRelay]): Vector[LedgerRelay] = relays.flatMap(_.ledgerRelay)
@@ -250,16 +284,16 @@ object PoolRelays:
   def peerRelays(relays: Vector[PoolRelay]): Option[NonEmptyVector[LedgerRelay]] =
     NonEmptyVector.fromVector(ledgerRelays(relays))
 
-  private def relay(node: Node, index: Int): Either[PoolRelayError, PoolRelay] =
+  private def relay(node: Node, index: Int, reading: Reading): Either[PoolRelayError, PoolRelay] =
     node.value match
       case Value.Arr(fields) =>
         fields.headOption.map(_.value) match
           case Some(Value.UInt(tag)) if tag == 0 =>
-            sized(fields, index, 0, 4).flatMap(addr(_, index))
+            sized(fields, index, 0, 4).flatMap(addr(_, index, reading))
           case Some(Value.UInt(tag)) if tag == 1 =>
-            sized(fields, index, 1, 3).flatMap(named(_, index))
+            sized(fields, index, 1, 3).flatMap(named(_, index, reading))
           case Some(Value.UInt(tag)) if tag == 2 =>
-            sized(fields, index, 2, 2).flatMap(multi(_, index))
+            sized(fields, index, 2, 2).flatMap(multi(_, index, reading))
           case Some(Value.UInt(tag)) => Left(PoolRelayError.UnknownTag(index, tag))
           case _                     => Left(PoolRelayError.NotARelay(index))
       case _ => Left(PoolRelayError.NotARelay(index))
@@ -276,15 +310,27 @@ object PoolRelays:
       PoolRelayError.WrongLength(index, tag, fields.size)
     )
 
-  private def addr(f: Vector[Node], index: Int): Either[PoolRelayError, PoolRelay] =
-    (port(f(1), index), ipv4(f(2), index), ipv6(f(3), index))
+  private def addr(
+      f: Vector[Node],
+      index: Int,
+      reading: Reading
+  ): Either[PoolRelayError, PoolRelay] =
+    (port(f(1), index), ipv4(f(2), index, reading), ipv6(f(3), index, reading))
       .mapN(PoolRelay.SingleHostAddr(_, _, _))
 
-  private def named(f: Vector[Node], index: Int): Either[PoolRelayError, PoolRelay] =
-    (port(f(1), index), dns(f(2), index)).mapN(PoolRelay.SingleHostName(_, _))
+  private def named(
+      f: Vector[Node],
+      index: Int,
+      reading: Reading
+  ): Either[PoolRelayError, PoolRelay] =
+    (port(f(1), index), dns(f(2), index, reading)).mapN(PoolRelay.SingleHostName(_, _))
 
-  private def multi(f: Vector[Node], index: Int): Either[PoolRelayError, PoolRelay] =
-    dns(f(1), index).map(PoolRelay.MultiHostName(_))
+  private def multi(
+      f: Vector[Node],
+      index: Int,
+      reading: Reading
+  ): Either[PoolRelayError, PoolRelay] =
+    dns(f(1), index, reading).map(PoolRelay.MultiHostName(_))
 
   private def port(n: Node, index: Int): Either[PoolRelayError, Option[RelayPort]] =
     n.value match
@@ -298,31 +344,35 @@ object PoolRelays:
           .map(Some(_))
       case _ => Left(PoolRelayError.BadPort(index))
 
-  private def ipv4(n: Node, index: Int): Either[PoolRelayError, Option[Ipv4]] =
+  private def ipv4(n: Node, index: Int, reading: Reading): Either[PoolRelayError, Option[Ipv4]] =
     n.value match
       case Value.Null => Right(None)
+      case Value.ByteString(_) if !reading.addresses.reads(n) =>
+        Left(PoolRelayError.IndefiniteAddress(index))
       case Value.ByteString(b) =>
         RelayIp.fromOctets(b) match
           case Some(v4: Ipv4) => Right(Some(v4))
           case _              => Left(PoolRelayError.BadIpv4(index))
       case _ => Left(PoolRelayError.BadIpv4(index))
 
-  private def ipv6(n: Node, index: Int): Either[PoolRelayError, Option[Ipv6]] =
+  private def ipv6(n: Node, index: Int, reading: Reading): Either[PoolRelayError, Option[Ipv6]] =
     n.value match
       case Value.Null => Right(None)
+      case Value.ByteString(_) if !reading.addresses.reads(n) =>
+        Left(PoolRelayError.IndefiniteAddress(index))
       case Value.ByteString(b) =>
         Ipv6.fromWire(b) match
           case Some(v6) => Right(Some(v6))
           case None     => Left(PoolRelayError.BadIpv6(index))
       case _ => Left(PoolRelayError.BadIpv6(index))
 
-  private def dns(n: Node, index: Int): Either[PoolRelayError, String] =
+  private def dns(n: Node, index: Int, reading: Reading): Either[PoolRelayError, String] =
     n.value match
       case Value.Text(s) =>
         if n.isIndefinite then Left(PoolRelayError.IndefiniteDnsName(index))
         else
           val size = s.getBytes(StandardCharsets.UTF_8).length
-          Either.cond(size <= MaxDnsNameBytes, s, PoolRelayError.DnsNameTooLong(index, size))
+          Either.cond(size <= reading.dnsBytes, s, PoolRelayError.DnsNameTooLong(index, size))
       case _ => Left(PoolRelayError.BadDnsName(index))
 
   // ---------------------------------------------------------------------------------- encoding

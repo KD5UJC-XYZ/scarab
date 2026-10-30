@@ -259,6 +259,7 @@ object Certificate:
       owners <- CborRead.set(xs(6), DecodeField.PoolOwners, version)(
         CborRead.bytesN(_, 28, DecodeField.PoolOwner)
       )
+      _ <- PoolRelays.fromBody(xs(7), version).leftMap(LedgerDecodeError.PoolRelay(_))
       metadata <- xs(8).value match
         case xyz.kd5ujc.scarab.codec.Value.Null => Right(None)
         case _ => PoolParams.metadataHash(xs(8).original).map(_ => Some(xs(8).original))

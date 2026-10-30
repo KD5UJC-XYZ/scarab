@@ -25,6 +25,7 @@ private[ledger] object ReferenceCorpus:
     case DefiniteBytes extends Corpus("definite-bytes", Layout.Lines)
     case DefiniteText extends Corpus("definite-text", Layout.Lines)
     case EraForms extends Corpus("era-forms", Layout.Lines)
+    case PoolRelays extends Corpus("pool-relays", Layout.Lines)
 
   /** How a corpus is stored: `cases.json` beside `reference.json`, or one `cases.jsonl` with a case
     * and its verdict (`accepted`, `failure`) on each line.
@@ -62,6 +63,7 @@ private[ledger] object ReferenceCorpus:
     case UnknownTag extends Refusal("UnknownTag")
     case TaggedArity extends Refusal("TaggedArity")
     case Zero extends Refusal("Zero")
+    case PoolRelay extends Refusal("PoolRelay")
 
   object Refusal:
     /** The tag of the case of an error, if the corpus names it; a voting-procedure structure error
@@ -89,6 +91,7 @@ private[ledger] object ReferenceCorpus:
       case LedgerDecodeError.UnknownTag(_, _)             => Some(UnknownTag)
       case LedgerDecodeError.TaggedArity(_, _, _)         => Some(TaggedArity)
       case LedgerDecodeError.Zero(_)                      => Some(Zero)
+      case LedgerDecodeError.PoolRelay(_)                 => Some(PoolRelay)
       case LedgerDecodeError.Voting(VotingProcedures.DecodeError.InvalidStructure(cause)) =>
         of(cause)
       case LedgerDecodeError.NativeScript(NativeScript.DecodeError.Malformed(cause)) => of(cause)
@@ -143,6 +146,10 @@ private[ledger] object ReferenceCorpus:
     case WrongTermsBabbage extends Rule("Wrong number of terms in TxOut")
     case ExpectedNull extends Rule("expected null")
     case FieldNotDecoded extends Rule("not decoded.")
+    case Ipv4Leftover extends Rule("while decoding decodeIPv4")
+    case ExpectedWord16 extends Rule("expected word16")
+    case TextBound64 extends Rule("Text exceeds 64 bytes")
+    case TextBound128 extends Rule("Text exceeds 128 bytes")
 
     /** The reference's failure is for this rule. */
     def explains(failure: Failure): Boolean = failure.text.contains(fragment)
