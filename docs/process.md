@@ -100,20 +100,23 @@ status is `status:idea` or `status:parked` (owner decision, 2026-10-29):
   (owner decision, 2026-10-29).
 
 `status:in-progress` means an open PR or an active worktree exists for the issue. One not updated for 7 days is
-reported as stale (the nightly fix below moves it to the backlog unless a pull request names it), and so is a
+reported as stale (the nightly triage below flags it), and so is a
 `status:needs-owner` issue not updated for 14 (triage rule of [#400](https://github.com/KD5UJC-XYZ/scarab/issues/400)).
 File an issue through a form or through `python3 scripts/file_issue.py` (`--help` shows its options), which refuses
 one without the three labels and a milestone.
 
 The nightly [triage workflow](../.github/workflows/triage.yml), which also runs when an issue is opened, fixes the
 mechanical drift itself with `python3 scripts/triage_fix.py --apply` (owner decision, 2026-10-29; the script's
-`--help` and docstring list the rules): a form's area and priority answers become labels and a missing status
-becomes `status:backlog`; a `status:in-progress` issue that no open pull request names and that has had no activity
-for 7 days moves to `status:backlog`, with a comment that says how to undo it; a shaped issue without a milestone
-gets the bucket its title names, or `reference-parity`, with a comment; a closed issue loses the statuses that
-claim work; an open pull request whose merge into `main` changes nothing gets one comment. Run the script without
-`--apply` to see what it would do. What needs a person, `python3 scripts/status.py --check` lists, and the workflow
-writes that list into the one issue titled "Triage report".
+docstring lists the rules): a closed issue loses the statuses that claim work; a form's area and priority answers
+become labels; an open pull request whose merge into `main` changes nothing gets a comment; a shaped issue without a
+milestone gets the bucket its title names, or `reference-parity`; a `status:in-progress` issue quiet for 7 days,
+with no open pull request or branch naming it and no recent comment, is flagged with a comment and keeps its labels.
+A person always wins: `triage:hold` on an issue stops every fix, a fix a person undid is not made again, and each
+issue gets at most one comment a run, listing every fix and how to undo it. The fixes are switched on one at a time
+through the repository variable `SCARAB_TRIAGE_FIXES` (the mechanical ones first); until then each is only
+reported. Run the script without `--apply` to see what it would do. What needs a person,
+`python3 scripts/status.py --check` lists, and the workflow writes that list into the one issue titled "Triage
+report".
 
 ### Triage and health check
 

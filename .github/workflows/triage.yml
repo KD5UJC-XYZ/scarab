@@ -5,14 +5,14 @@ name: Triage report
 # scripts/status.py --check. Its report replaces the body of the one issue titled "Triage report", created
 # with its own labels and milestone on the first run, so the report never lists itself and never adds comments.
 # A closed "Triage report" issue is reopened: closing it does not stop the report. Before the check, the run fixes
-# the mechanical drift itself (scripts/triage_fix.py --apply: form answers as labels, stale in-progress work, default
-# milestones, statuses left on closed issues, a comment on an empty pull request), so the report lists only what
-# needs a person. It also runs when an issue is opened, so a form's answers become labels at once. The same run
+# the mechanical drift itself (scripts/triage_fix.py --apply): the fixes the repository variable SCARAB_TRIAGE_FIXES
+# names are applied, the others only reported, so each fix starts in report-only mode and is enabled on its own. It
+# also runs when an issue is opened, so an enabled form-labels fix takes a form's answers at once. The same run
 # refreshes the roadmap's issue-state snapshot (scripts/render_roadmap.py --refresh-states --all); a change is
-# proposed as one standing pull request from bot/roadmap-sync by the sync App (vars.SCARAB_SYNC_APP_CLIENT_ID, secrets.SCARAB_SYNC_APP_PRIVATE_KEY),
-# whose pull requests run CI, and the next run merges it once green if it changes only the snapshot and the render
-# (scripts/roadmap_sync.py; owner decision 2026-10-29: this pull request only, no repository auto-merge). Without the
-# App the report lists the change only.
+# proposed as one standing pull request from bot/roadmap-sync by the sync App (vars.SCARAB_SYNC_APP_CLIENT_ID,
+# secrets.SCARAB_SYNC_APP_PRIVATE_KEY), whose pull requests run CI, and the next run merges it once green if it
+# changes only the snapshot and the render (scripts/roadmap_sync.py; owner decision 2026-10-29: this pull request
+# only, no repository auto-merge). Without the App the report lists the change only.
 on:
   workflow_dispatch:
   schedule:
@@ -46,7 +46,8 @@ jobs:
       - name: Fix the mechanical drift
         run: |
           set -o pipefail
-          python3 scripts/triage_fix.py --apply | tee "$RUNNER_TEMP/fixes.txt"
+          # Only the fixes named in the repository variable SCARAB_TRIAGE_FIXES are applied; the rest are reported.
+          python3 scripts/triage_fix.py --apply --enable "${{ vars.SCARAB_TRIAGE_FIXES }}" | tee "$RUNNER_TEMP/fixes.txt"
       - name: Run the triage check
         run: |
           set +e
