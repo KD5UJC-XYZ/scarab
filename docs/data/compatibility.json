@@ -959,6 +959,28 @@
       "page": "docs/compatibility/ledger-pool-relays.md"
     },
     {
+      "id": "ledger-url-length",
+      "component": "Ledger: url length, decoder versions 2 to 9 (#550)",
+      "status": "implemented",
+      "summary": "A pool metadata url and a governance anchor url longer than 64 bytes of UTF-8 below decoder version 9, or 128 from it, are refused at body decode, as textDecCBOR refuses them",
+      "evidence": {
+        "suites": [
+          "UrlLengthReferenceSuite"
+        ],
+        "paths": [
+          "fixtures/reference/url-length/cases.jsonl",
+          "scripts/oracle/conway-decoding/url_length_cases.py"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          436,
+          550
+        ]
+      },
+      "page": "docs/compatibility/ledger-url-length.md"
+    },
+    {
       "id": "ledger-repeated-withdrawals",
       "component": "Ledger: repeated withdrawal accounts, decoder versions 2 to 9 (#494)",
       "status": "implemented",
