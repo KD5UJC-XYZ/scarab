@@ -192,8 +192,8 @@ final case class MempoolLedger(ls: LedgerState[Conway], treasury: Coin, epoch: B
     * f649f975 `Shelley/API/Mempool.hs` 472–473, whose Conway rule is MEMPOOL, `Conway.hs` 57). The
     * pool revalidates its transactions so, and so does block production (`revalidateTxsFor`,
     * `Mempool/Impl/Common.hs` 403–422): no signature is verified and no script is evaluated again
-    * ([[TxEnv.Validation]]). Its refusal holds every predicate failure, in the reference's order, as
-    * `applySTSNonStatic` returns them (`Shelley/API/Mempool.hs`; issue 412).
+    * ([[TxEnv.Validation]]). Its refusal holds every predicate failure, in the reference's order,
+    * as `applySTSNonStatic` returns them (`Shelley/API/Mempool.hs`; issue 412).
     */
   def reapply(tx: Tx, env: TxEnv, rules: Globals): Either[LedgerFailure, MempoolLedger] =
     judged(Mempool, Judgment.Policy.Accumulate)(
