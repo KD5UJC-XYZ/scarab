@@ -97,6 +97,22 @@ class BbodySuite extends FunSuite:
     assertEquals(Bbody.exUnitsExceeded(pp, txs.take(1)), None)
   }
 
+  test("a block whose transactions LEDGERS accepts is refused for the units of the whole block") {
+    // A transaction without scripts uses no units, so the limit is set below zero for valid
+    // transactions to exceed it: the check runs on the transition, after LEDGERS.
+    val alice = key()
+    val inputs = Vector(txIn(1), txIn(2))
+    val utxo = Utxo.empty ++ inputs.map(_ -> out(alice.address(), 10000000))
+    val txs = inputs.zipWithIndex.map { (in, i) =>
+      tx(body(s"u$i", Vector(in), Vector(out(alice.address(), 9999800)), 200), Vector(alice))
+    }
+    val limit = ExUnits(-1, 0)
+    assertEquals(
+      run(pp.copy(maxBlockExUnits = limit), txs, state(pp, utxo)),
+      Left(BlockFailure.BlockExUnitsTooBig(ExUnits.zero, limit))
+    )
+  }
+
   test("LEDGERS is judged before the execution units of the block, as the reference does") {
     val half = ExUnits(pp.maxBlockExUnits.mem / 2 + 1, 1)
     // the transactions spend an input the set does not hold, and together exceed the units
