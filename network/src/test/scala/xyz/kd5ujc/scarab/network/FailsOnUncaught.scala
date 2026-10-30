@@ -55,7 +55,11 @@ trait FailsOnUncaught extends CatsEffectSuite:
                   s"the runtime reported ${uncaught.size} uncaught fiber failure(s): " +
                     uncaught
                       .map(t => t.getClass.getName + Option(t.getMessage).fold("")(": " + _))
-                      .mkString("; ")
+                      .mkString("; ") +
+                    // where each one was thrown, so that a failure seen once in CI can be traced
+                    uncaught
+                      .map(t => t.getStackTrace.take(25).mkString("\n  at ", "\n  at ", ""))
+                      .mkString("\n")
                 )(using test.location)
               value
             }(using munitExecutionContext)

@@ -171,6 +171,33 @@ object LocalSockets:
       F: Async[F]
   ): F[A] = call.attempt.cancelable(closing).rethrow
 
+  /** A connected local socket as a bearer: reads and writes block on the channel and are cancelled
+    * by closing it ([[interruptible]]); writes are serialised by `writes`.
+    */
+  private[network] def stream[F[_]](client: SocketChannel, writes: Mutex[F])(using
+      F: Async[F]
+  ): Bearer[F] = new Bearer[F]:
+    private val closing = F.blocking(client.close())
+
+    private def interruptible[A](call: F[A]): F[A] = LocalSockets.interruptible(call, closing)
+
+    private val chunk: F[Option[Chunk[Byte]]] =
+      interruptible(F.blocking {
+        val buffer = ByteBuffer.allocate(ReadSize)
+        val read = client.read(buffer)
+        Option.when(read >= 0)(Chunk.array(buffer.array, 0, read))
+      })
+
+    def reads: Stream[F, Byte] = Stream.repeatEval(chunk).unNoneTerminate.unchunks
+
+    def write(bytes: Chunk[Byte]): F[Unit] =
+      def rest(buffer: ByteBuffer): F[Unit] =
+        interruptible(F.blocking(client.write(buffer))) *>
+          F.delay(buffer.hasRemaining).ifM(rest(buffer), F.unit)
+      writes.lock.surround(F.delay(bytes.toByteBuffer).flatMap(rest))
+
+    def close: F[Unit] = F.blocking(client.shutdownOutput()).void
+
   def jdk[F[_]](using F: Async[F]): LocalSockets[F] = new LocalSockets[F]:
     def removeFile(path: String): F[Either[SystemCallError, Unit]] =
       F.blocking(Unlink(path)).map(_.leftMap(SystemCallError(SystemCall.RemoveLink, _, Some(path))))
@@ -251,28 +278,6 @@ object LocalSockets:
               Mutex[F].map(lock => LocalStream(stream(client, lock), F.blocking(client.close())))
             )
           )
-
-    private def stream(client: SocketChannel, writes: Mutex[F]): Bearer[F] = new Bearer[F]:
-      private val closing = F.blocking(client.close())
-
-      private def interruptible[A](call: F[A]): F[A] = LocalSockets.interruptible(call, closing)
-
-      private val chunk: F[Option[Chunk[Byte]]] =
-        interruptible(F.blocking {
-          val buffer = ByteBuffer.allocate(ReadSize)
-          val read = client.read(buffer)
-          Option.when(read >= 0)(Chunk.array(buffer.array, 0, read))
-        })
-
-      def reads: Stream[F, Byte] = Stream.repeatEval(chunk).unNoneTerminate.unchunks
-
-      def write(bytes: Chunk[Byte]): F[Unit] =
-        def rest(buffer: ByteBuffer): F[Unit] =
-          interruptible(F.blocking(client.write(buffer))) *>
-            F.delay(buffer.hasRemaining).ifM(rest(buffer), F.unit)
-        writes.lock.surround(F.delay(bytes.toByteBuffer).flatMap(rest))
-
-      def close: F[Unit] = F.blocking(client.shutdownOutput()).void
 
   /** `unlink(2)` of the path as written, one call, as the reference's `removeFile`: it needs write
     * and search permission on the directory only, refuses a directory (`EISDIR`), and takes a path

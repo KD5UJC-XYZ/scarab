@@ -6,8 +6,6 @@ import cats.Functor
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
-import com.comcast.ip4s.UnixSocketAddress
-import fs2.io.net.Network
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.TestLedger.txIn
 import xyz.kd5ujc.scarab.protocol.{Handshake, LocalTxSubmission}
@@ -94,10 +92,9 @@ class LocalSubmissionSuite extends FailsOnUncaught:
         }
       }
       .use { (mempool, path) =>
-        Network
-          .forAsync[IO]
-          .connect(UnixSocketAddress(path.toString))
-          .flatMap(socket => Resource.pure[IO, Bearer[IO]](Bearer.fromSocket(socket)))
+        // the client end reads and writes as the node's own local sockets do (issue 644)
+        LocalClient
+          .connect[IO](path)
           .use { bearer =>
             Handle
               .allow[NetworkError] {
@@ -251,10 +248,10 @@ class LocalSubmissionSuite extends FailsOnUncaught:
       }
       .use { (mempool, context, ended, path) =>
         def client: IO[Either[NetworkError, LocalTxSubmission.Message]] =
-          Network.forAsync[IO].connect(UnixSocketAddress(path.toString)).use { socket =>
+          LocalClient.connect[IO](path).use { bearer =>
             Handle
               .allow[NetworkError] {
-                Mux.resource(Bearer.fromSocket(socket), Set(0, 6)).use { mux =>
+                Mux.resource(bearer, Set(0, 6)).use { mux =>
                   for
                     hs <- mux.channel(0)
                     _ <- HandshakeClient.run(
