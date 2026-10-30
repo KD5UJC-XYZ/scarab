@@ -45,8 +45,6 @@ python3 scripts/oracle/conway-decoding/url_length_cases.py --inputs /tmp/url-len
 
 ## Not covered here
 
-- **A relay DNS name** (`DnsName`) has the same bound, but a registration's relays are kept as their
-  original bytes and are decoded with the body only under
-  [#436](https://github.com/KD5UJC-XYZ/scarab/issues/436). `PoolRelays.decode` takes 128 bytes at
-  every version (a decision recorded in its documentation; the reference's 64 below version 9 is put
-  to the owner on #550).
+- **A relay DNS name** (`DnsName`) has the same bound. A registration's relays are decoded with the
+  body, at the body's version, by [#436](https://github.com/KD5UJC-XYZ/scarab/issues/436), with
+  its own corpus.

@@ -13,4 +13,4 @@ implemented: a `Url` is read with `textDecCBOR`, which bounds it by `textSizeN` 
 
 ## Explicitly unchecked or unconfirmed
 
-A relay DNS name (`DnsName`, the same bound) at body decode: a registration's relays are kept as their original bytes and are decoded with the body only under #436. `PoolRelays.decode` bounds a name at 128 bytes in every version, a decision recorded in its documentation; the reference's 64 bytes below version 9 is put to the owner on #550. The anchors of a stored ledger state are read by the state codecs, not by this reader.
+A relay DNS name (`DnsName`, the same bound): a registration's relays are decoded with the body, at the body's version, by #436, which has its own corpus. The anchors of a stored ledger state are read by the state codecs, not by this reader.
