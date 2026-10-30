@@ -66,15 +66,13 @@ class CandidateManifestTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'resolved/packaged'):
             contract.validate(self.root)
 
-    def test_wrong_rebuild_source_and_missing_native_files_fail(self):
-        self.replace_evidence('native-reproducibility', lambda value: value.update(repositoryCommit='b' * 40))
-        with self.assertRaisesRegex(ValueError, 'native proof'):
+    def test_native_identity_must_bind_the_pinned_packaged_library(self):
+        self.replace_evidence('native-identity', lambda value: value['resources']['Linux/amd64/libblst.so'].update(pinned='b' * 64))
+        with self.assertRaisesRegex(ValueError, 'native identity'):
             contract.validate(self.root)
-        make_candidate_root = self.root / 'second'
-        make_candidate(make_candidate_root)
-        (make_candidate_root / 'evidence/native/build-2/blst-source.tar').unlink()
-        with self.assertRaisesRegex(ValueError, 'build evidence'):
-            contract.validate(make_candidate_root)
+        self.replace_evidence('native-identity', lambda value: value.update(jarSha256='c' * 64))
+        with self.assertRaisesRegex(ValueError, 'native identity'):
+            contract.validate(self.root)
 
     def test_os_omission_cannot_be_hidden_by_refreshing_all_descriptor_hashes(self):
         record = next(e for e in self.manifest['evidence'] if e['kind'] == 'image-inventory')

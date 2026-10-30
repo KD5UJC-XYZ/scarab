@@ -14,7 +14,6 @@ body:
       multiple: true
       description: The sbt module the work is in (docs/codemap.md), or build, scripts or docs; choose more than one when it spans modules.
       options:
-        - area:blst-native
         - area:codec
         - area:crypto
         - area:protocol

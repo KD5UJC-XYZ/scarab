@@ -10,9 +10,9 @@ import render_codemap as rc
 
 SBT = '''
 lazy val codec = scarab("codec")
-lazy val blstNative = scarab("blstNative", "blst-native")
+lazy val nativeLib = scarab("nativeLib", "native-lib")
 lazy val crypto = scarab("crypto")
-  .dependsOn(codec % "compile->compile;test->test", blstNative)
+  .dependsOn(codec % "compile->compile;test->test", nativeLib)
 lazy val models = scarab("models")
   .dependsOn(
     codec,
@@ -41,7 +41,7 @@ def fixture(entries=None, modules=None) -> tempfile.TemporaryDirectory:
     write(root, "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Cbor.scala", "object Cbor\n")
     write(root, "codec/src/test/scala/xyz/kd5ujc/scarab/codec/CborSuite.scala", "class CborSuite\n")
     write(root, "docs/adr/0005-x.md", "# x\n")
-    data = {"modules": modules or {m: "M" for m in ("codec", "blst-native", "crypto", "models", "models-gen")},
+    data = {"modules": modules or {m: "M" for m in ("codec", "native-lib", "crypto", "models", "models-gen")},
             "packages": [ENTRY] if entries is None else entries}
     write(root, rc.DATA, json.dumps(data))
     return tmp
@@ -50,14 +50,14 @@ def fixture(entries=None, modules=None) -> tempfile.TemporaryDirectory:
 class GraphCase(unittest.TestCase):
     def test_edges_by_directory_and_test_only(self):
         graph = rc.parse_build(SBT)
-        self.assertEqual(list(graph), ["codec", "blst-native", "crypto", "models", "models-gen"])
-        self.assertEqual(graph["crypto"], [rc.Edge("codec", True), rc.Edge("blst-native", True)])
+        self.assertEqual(list(graph), ["codec", "native-lib", "crypto", "models", "models-gen"])
+        self.assertEqual(graph["crypto"], [rc.Edge("codec", True), rc.Edge("native-lib", True)])
         self.assertEqual(graph["models"], [rc.Edge("codec", True), rc.Edge("models-gen", False)])
         self.assertEqual(graph["codec"], [])
 
     def test_graph_lines(self):
         lines = rc.graph_lines(rc.parse_build(SBT))
-        self.assertIn("models      -> codec; test only: models-gen", lines)
+        self.assertIn("models     -> codec; test only: models-gen", lines)
 
     def test_real_build_matches_documented_direction(self):
         root = Path(__file__).resolve().parents[2]

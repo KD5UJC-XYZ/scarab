@@ -30,10 +30,10 @@ def jvm(artifact, coverage, source_identity, native_receipt):
     portable = [n for n in coverage['nativeResources'] if n['path'] == 'supranational/blst/Linux/amd64/libblst.so']
     if len([n for n in coverage['nativeResources'] if n['path'] == PLUTUS_CRYPTO]) != 1:
         raise ValueError('packaged Linux/amd64 Plutus crypto library missing or duplicated')
+    pinned = native_receipt.get('resources', {}).get('Linux/amd64/libblst.so', {})
     if (len(portable) != 1 or native_receipt.get('status') != 'passed'
-            or len(native_receipt.get('builds', [])) != 2
-            or any(b.get('sha256') != portable[0]['sha256'] for b in native_receipt['builds'])):
-        raise ValueError('native source rebuild receipt does not bind packaged portable JNI bytes')
+            or pinned.get('pinned') != portable[0]['sha256'] or pinned.get('packaged') != portable[0]['sha256']):
+        raise ValueError('native identity receipt does not bind the packaged portable JNI bytes')
     bom = base(artifact.name, sha256(artifact))
     bom['metadata']['component']['version'] = source_identity['version']
     bom['metadata']['component']['licenses'] = [{'license': {'id': 'Apache-2.0'}}]
@@ -86,9 +86,11 @@ def jvm(artifact, coverage, source_identity, native_receipt):
             component['licenses'] = [{'license': {'id': i}} for i in ('Apache-2.0', 'ISC', 'MIT')]
             component['properties'] += properties(sourceRebuilt='false', startupPinned='true')
         if path == portable[0]['path']:
+            # jblst's library, pinned at start-up and checked for gated ADX/BMI2 code (ADR 0025)
             component['licenses'] = [{'license': {'id': 'Apache-2.0'}}]
-            component['version'] = native_receipt['recipe']['sourceCommit']
-            component['properties'] += properties(sourceArchiveSha256=native_receipt['recipe']['sourceArchiveSha256'])
+            component['version'] = native_receipt['blstCommit']
+            component['properties'] += properties(sourceRebuilt='false', startupPinned='true',
+                                                  supplier=f"{native_receipt['library']}:{native_receipt['version']}")
         bom['components'].append(component)
         for owner in owners:
             links.setdefault('subject' if owner.startswith('project:') else owner, set()).add(ref)

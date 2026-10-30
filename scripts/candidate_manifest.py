@@ -10,7 +10,7 @@ import zipfile
 
 import release_identity
 
-EVIDENCE = {'source-export', 'reproducibility', 'native-reproducibility', 'assembly-coverage',
+EVIDENCE = {'source-export', 'reproducibility', 'native-identity', 'assembly-coverage',
             'jvm-resolution', 'image-inventory', 'toolchain', 'licence-review'}
 SHA256 = re.compile(r'[0-9a-f]{64}')
 MEDIA_TYPE = 'application/vnd.oci.image.manifest.v1+json'
@@ -132,7 +132,6 @@ def validate(directory: Path, require_release: bool = False) -> dict:
             with archive.extractfile(member) as stream:
                 if hashlib.file_digest(stream, 'sha256').hexdigest() != expected_files[member.name]:
                     raise ValueError('source archive differs from frozen input hashes')
-        native_recipe_text = archive.extractfile('docker/blst.Dockerfile').read().decode()
     from reproducible_build import verify_output_identity
     verified = verify_output_identity(records['reproducibility'].parent, identity)
     jar_subject = next(s for s in subjects if s['kind'] == 'jar')
@@ -141,28 +140,17 @@ def validate(directory: Path, require_release: bool = False) -> dict:
     repro = read_json(records['reproducibility'])
     if repro.get('gitCommit') != identity['gitCommit'] or repro.get('buildIdentity') != identity:
         raise ValueError('reproducibility receipt source differs from candidate')
-    native = read_json(records['native-reproducibility'])
-    if (native.get('status') != 'passed' or native.get('repositoryCommit') != identity['gitCommit']
-            or native.get('worktreeDirty') is not False or len(native.get('builds', [])) != 2
-            or not native.get('inputs') or any(source_export['files'].get(k) != v for k, v in native['inputs'].items())):
-        raise ValueError('native proof is incomplete or binds different source inputs')
-    import check_native_reproducibility
-    recipe = native['recipe']
-    for line in [f'FROM {recipe["baseImage"]} AS build', f'ARG BLST_COMMIT={recipe["sourceCommit"]}',
-                 f'ARG BLST_SOURCE_ARCHIVE_SHA256={recipe["sourceArchiveSha256"]}', f'ARG BLST_FLAGS="{recipe["flags"]}"']:
-        if line not in native_recipe_text.splitlines():
-            raise ValueError('native recipe receipt differs from actual frozen Dockerfile')
-    for index, reported in enumerate(native['builds'], 1):
-        observed = check_native_reproducibility.validate_artifact(
-            records['native-reproducibility'].parent / f'build-{index}', recipe,
-            source_export['files']['blst-native/native/raw-dst.c'])
-        if observed != reported:
-            raise ValueError('retained native source/build evidence differs from its receipt')
+    native = read_json(records['native-identity'])
     jar = checked_file(root, jar_subject['file'])
+    import check_native_identity
     with zipfile.ZipFile(jar) as archive:
         portable_hash = hashlib.sha256(archive.read('supranational/blst/Linux/amd64/libblst.so')).hexdigest()
-    if any(build.get('sha256') != portable_hash for build in native['builds']):
-        raise ValueError('native proof does not bind actual packaged JNI')
+    resources = native.get('resources', {})
+    if (native.get('status') != 'passed' or native.get('jarSha256') != jar_subject['file']['sha256']
+            or not resources or any(pair.get('pinned') != pair.get('packaged') for pair in resources.values())
+            or resources.get(check_native_identity.LINUX_AMD64, {}).get('packaged') != portable_hash
+            or (native.get('isa') or {}).get('ungatedEntries') != 0):
+        raise ValueError('native identity receipt does not bind the packaged, pinned and portable JNI')
     coverage = read_json(records['assembly-coverage'])
     if coverage.get('artifactSha256') != jar_subject['file']['sha256'] or not coverage.get('entries'):
         raise ValueError('assembly coverage binds different or empty contents')
@@ -207,7 +195,7 @@ def validate(directory: Path, require_release: bool = False) -> dict:
     if (toolchain.get('jdk', {}).get('buildIdentity') != identity
             or toolchain.get('jdk', {}).get('jdkImage') != repro.get('jdkImage')
             or toolchain.get('baseImage') != image['baseImage']
-            or toolchain.get('nativeRecipe') != native.get('recipe')):
+            or toolchain.get('nativeLibrary') != {k: native.get(k) for k in ('library', 'version', 'blstCommit')}):
         raise ValueError('toolchain receipts bind different source/runtime/native inputs')
     verifier = toolchain.get('imageVerifier', [])
     if len(verifier) != 2 or {Path(r['path']).name for r in verifier} != {'ArtifactResourcesCheck.java', 'ArtifactResourcesCheck.class'}:

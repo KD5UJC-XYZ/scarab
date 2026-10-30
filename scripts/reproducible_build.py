@@ -13,6 +13,7 @@ import tempfile
 import uuid
 import zipfile
 
+from check_native_identity import pins as native_pins
 import release_identity
 
 
@@ -134,9 +135,11 @@ def verify_resources(artifact, source, classpath, commit, build_identity=None):
             target = "META-INF/scarab/" + name
             if target not in members or jar.read(target) != (source / name).read_bytes():
                 raise ValueError(f"fat JAR changed project legal metadata: {name}")
-        portable = "supranational/blst/Linux/amd64/libblst.so"
-        if jar.read(portable) != (source / "blst-native/src/main/resources" / portable).read_bytes():
-            raise ValueError("fat JAR did not preserve the committed portable blst overlay")
+        # the BLS12-381 libraries are jblst's, as Blst pins them (ADR 0025)
+        packaged = {name: hashlib.sha256(jar.read(name)).hexdigest() for name in names
+                    if name.startswith("supranational/blst/") and name.count("/") == 4}
+        if packaged != {"supranational/blst/" + name: sha for name, sha in native_pins(source).items()}:
+            raise ValueError("fat JAR carries BLS12-381 libraries other than the pinned jblst ones")
         if any(name.endswith("module-info.class") for name in names):
             raise ValueError("fat JAR retains a dependency module descriptor")
         if any(name.startswith("META-INF/") and name.count("/") == 1
@@ -153,7 +156,7 @@ def verify_resources(artifact, source, classpath, commit, build_identity=None):
             elif legal_metadata(name):
                 if hashlib.sha256(raw).digest() not in retained_legal:
                     raise ValueError(f"fat JAR lost dependency legal metadata: {name}")
-            elif (name != portable and name.endswith((".so", ".dll", ".dylib", ".jnilib"))
+            elif (name.endswith((".so", ".dll", ".dylib", ".jnilib"))
                   or name.startswith("META-INF/versions/") and not name.endswith("module-info.class")):
                 if name not in members or jar.read(name) != raw:
                     raise ValueError(f"fat JAR changed native or multi-release resource: {name}")
