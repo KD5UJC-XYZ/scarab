@@ -80,7 +80,7 @@ private[plutus] object ReferenceBudget:
         case ExBudgetCategory.BuiltinApp(_) =>
           budget match
             case stream: ReferenceCosting.BudgetStream =>
-              stream.elements.foreach((cpu, memory) =>
+              stream.elements.toVector.foreach((cpu, memory) =>
                 mode.spendBudget(category, ScalusExUnits(memory.toLong, cpu.toLong), env)
               )
             case single => mode.spendBudget(category, single, env)
