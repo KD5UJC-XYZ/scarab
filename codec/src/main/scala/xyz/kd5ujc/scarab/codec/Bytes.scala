@@ -164,9 +164,13 @@ object Bytes:
   def wrap(bytes: Array[Byte]): Bytes =
     if bytes.length == 0 then empty else new Bytes(bytes, 0, bytes.length)
 
-  /** Shares `bytes[from, from + length)`; the caller must not write to it afterwards. */
+  /** Shares `bytes[from, from + length)`, cut to the array as [[Bytes.slice]] cuts, so that every
+    * `Bytes` is a window inside its array; the caller must not write to it afterwards.
+    */
   def wrap(bytes: Array[Byte], from: Int, length: Int): Bytes =
-    if length == 0 then empty else new Bytes(bytes, from, length)
+    val lo = math.min(math.max(0, from), bytes.length)
+    val hi = math.max(lo.toLong, math.min(bytes.length.toLong, from.toLong + length)).toInt
+    if hi == lo then empty else new Bytes(bytes, lo, hi - lo)
 
   enum HexError:
     case OddLength(length: Int)
