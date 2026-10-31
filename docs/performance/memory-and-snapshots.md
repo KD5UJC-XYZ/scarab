@@ -442,3 +442,46 @@ reader 0.97 to 1.00 of its old time on each workload (176.9 against 178.1 µs a 
 same allocation per operation. The readers outside these paths (handshake, peer sharing, the JSON reader, the CBOR head
 checks of the ledger) keep the `Option` form. The owner accepted the remaining cost of the MemPack decode and encode for
 total reads (2026-10-31, #650).
+
+## 51. The ledger's loops: functional against imperative (#650)
+
+**2026-10-31.** WartRemover's rules are applied to the ledger module. Most of its loops become `@tailrec` loops or folds
+off any measured path. Four are on one: the walk of the UTxO diff the store makes when it follows the immutable tip
+(`Utxo.changesSince`), the multi-asset writer of a MemPack output (`MultiAssetRep.build`), and the epoch boundary's
+merge of the accounts with an amount for each (`EraLedger.mergeStates`) and sum of the DRep distribution
+(`ConwayPulser`). Each was measured against its imperative form. MemPack's read and write cursors and `Sorted.Cursor`
+keep their imperative forms, and their measurement is #674.
+
+**Input and harness.** One JVM for each run, pinned to four CPUs as in section 50; the ledger's classes are swapped,
+the rest is the same; ABBA order.
+
+- `UtxoChangesBench` (ledger tests): a diff of 400,000 changes stamped 0 to 999, walked for those after 499; eight JVMs
+  of 30 timed walks each.
+- `SnapshotTablesBench` (section 50): the MemPack encode of the 1,191,176 outputs of the first 256 MB of the preprod
+  `tables` file; eight JVMs.
+- `BoundaryTickMain` (section 16): the epoch-boundary tick of each of the K1 snapshots 1400 to 1449 (the V5 corpus,
+  with the recorded immutable chain), four times each; four JVMs a round. The digest of every ticked state was the same
+  with the old classes and the new, for all 50 snapshots in every round, and the snapshot 1449 digest is
+  `BoundaryDigestSuite`'s golden.
+
+The table gives the medians of the JVMs of each side and their range (for the boundary, the means of each JVM's 200
+ticks).
+
+<!-- register:table perf-57.t1 -->
+| Form measured | Against | Against (range) | Form (range) | Form / against, time | MB allocated, against / form |
+|---|---|---:|---:|---:|---:|
+| `Utxo.changesSince` as a fold | its loop | 16.3 ms (15.8 to 17.1) | 37.9 ms (37.2 to 38.4) | 2.32 | 12.5 / 49.5 |
+| `MultiAssetRep.build` as a `flatMap` of the policies: the encode | its buffers | 1,132 ms (1,113 to 1,171) | 1,329 ms (1,285 to 1,354) | 1.17 | 6,107 / 7,400 |
+| `MultiAssetRep.build` as one fold: the encode | its buffers | 1,084 ms (1,077 to 1,117) | 1,150 ms (1,141 to 1,162) | 1.06 | 6,107 / 6,437 |
+| Buffers kept, the packer's loops `@tailrec`: the encode | the module before | 1,240 ms (1,190 to 1,497) | 1,218 ms (1,128 to 1,240) | 0.98 | 6,125 / 6,106 |
+| `mergeStates` as a `scanLeft`, DRep sums folded: a boundary tick | the module before | 227 ms (225 to 238) | 241 ms (238 to 274) | 1.06 | not counted |
+| `mergeStates` as a `@tailrec` loop, DRep sums folded (kept): a boundary tick | the module before | 229 ms (229 to 230) | 235 ms (235 to 235) | 1.03 | not counted |
+<!-- /register -->
+
+**Result.** The diff walk as a fold of the pair (taken, newest) took 2.3 times as long with 4 times the allocation; it
+keeps its loop and builder. The multi-asset writer took 1.17 times as long as a `flatMap` of the policies and 1.06 times
+(5 percent more allocation) as one fold; it keeps its two buffers, and with them the encode is as fast as before (the
+`@tailrec` loops of the packer and the address writer cost nothing measurable). At the epoch boundary the merge as a
+`scanLeft` of an `Option` per account took 1.06 times as long; as a `@tailrec` loop appending to a vector, with the DRep
+sums folded into an immutable map, 1.03, within the 225 to 238 ms the old classes ranged over across the rounds; that
+form is kept. Each kept imperative form has a `@SuppressWarnings` that cites this section.
