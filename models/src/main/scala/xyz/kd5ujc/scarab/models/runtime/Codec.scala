@@ -221,6 +221,22 @@ object Codec:
     def decode(n: Node) = Right(n)
     def encode(a: Node, out: Writer) = out.raw(a.original)
 
+  /** `decode` of each of `items` with its index, in order; the first failure ends it. The results
+    * are put in front of a list and turned around once: appending each to a vector copies the
+    * vector's last block every time (`docs/performance.md` section 47).
+    */
+  private[runtime] def each[A, B](items: Vector[A])(
+      decode: (A, Int) => Decoded[B]
+  ): Decoded[Vector[B]] =
+    @scala.annotation.tailrec
+    def go(i: Int, out: List[B]): Decoded[Vector[B]] =
+      if i == items.size then Right(out.reverseIterator.toVector)
+      else
+        decode(items(i), i) match
+          case Right(b) => go(i + 1, b :: out)
+          case Left(e)  => Left(e)
+    go(0, Nil)
+
   // Combinators -----------------------------------------------------------------------------
 
   /** `[* x]`, `[+ x]`, `[n*m x]`. */
@@ -236,16 +252,7 @@ object Codec:
                 Kind.BadArity(Arity.Range(min, Option.when(max != Int.MaxValue)(max)), items.size)
               )
             )
-          else
-            val out = Vector.newBuilder[A]
-            var i = 0
-            var failure: DecodeError = null
-            while failure == null && i < items.size do
-              c.decode(items(i)) match
-                case Right(a) => out += a
-                case Left(e)  => failure = e.at(s"[$i]")
-              i += 1
-            if failure == null then Right(out.result()) else Left(failure)
+          else Codec.each(items)((item, i) => c.decode(item).left.map(_.at(s"[$i]")))
         case _ => Left(mismatch("array", n))
       def encode(a: Vector[A], out: Writer) =
         out.arrayHead(a.size)
@@ -415,24 +422,26 @@ object MapKey:
   */
 final class MapSpec(val literals: Array[MapKey], val typed: Array[Node => Boolean])
 
+/** A map split by a [[MapSpec]]: the value of each literal key (none when the map does not have
+  * it), and the entries of each typed key class in wire order.
+  */
 final class MapParts(
     val owner: Node,
-    val slots: Array[Node],
-    val typed: Array[Vector[(Node, Node)]],
+    val slots: Vector[Option[Node]],
+    val typed: Vector[Vector[(Node, Node)]],
     spec: MapSpec
 ):
   private def name(i: Int): String = spec.literals(i) match
     case MapKey.IntKey(v)  => v.toString
     case MapKey.TextKey(s) => s"\"$s\""
 
-  def required[A](i: Int, codec: Codec[A]): Decoded[A] =
-    val n = slots(i)
-    if n == null then Left(DecodeError.at(owner, Kind.MissingKey(name(i))))
-    else codec.decode(n).at(name(i))
+  def required[A](i: Int, codec: Codec[A]): Decoded[A] = slots(i) match
+    case None    => Left(DecodeError.at(owner, Kind.MissingKey(name(i))))
+    case Some(n) => codec.decode(n).at(name(i))
 
-  def optional[A](i: Int, codec: Codec[A]): Decoded[Option[A]] =
-    val n = slots(i)
-    if n == null then Right(None) else codec.decode(n).map(Some(_)).at(name(i))
+  def optional[A](i: Int, codec: Codec[A]): Decoded[Option[A]] = slots(i) match
+    case None    => Right(None)
+    case Some(n) => codec.decode(n).map(Some(_)).at(name(i))
 
   def entries[K, V](i: Int, key: Codec[K], value: Codec[V]): Decoded[Vector[(K, V)]] =
     Maps.decodePairs(typed(i), key, value)
@@ -447,19 +456,14 @@ object Maps:
       kc: Codec[K],
       vc: Codec[V]
   ): Decoded[Vector[(K, V)]] =
-    val out = Vector.newBuilder[(K, V)]
-    var i = 0
-    var failure: DecodeError = null
-    while failure == null && i < ps.size do
-      val (k, v) = ps(i)
+    Codec.each(ps) { case ((k, v), i) =>
       kc.decode(k) match
-        case Left(e) => failure = e.at(s"key[$i]")
+        case Left(e) => Left(e.at(s"key[$i]"))
         case Right(kk) =>
           vc.decode(v) match
-            case Left(e)   => failure = e.at(s"value[$i]")
-            case Right(vv) => out += ((kk, vv))
-      i += 1
-    if failure == null then Right(out.result()) else Left(failure)
+            case Left(e)   => Left(e.at(s"value[$i]"))
+            case Right(vv) => Right((kk, vv))
+    }
 
   private def matches(key: MapKey, n: Node): Boolean = (key, n.value) match
     case (MapKey.IntKey(k), Value.UInt(v))  => v == k
@@ -470,45 +474,41 @@ object Maps:
     * order.
     */
   def split(n: Node, spec: MapSpec): Decoded[MapParts] = pairs(n).flatMap { ps =>
-    val slots = new Array[Node](spec.literals.length)
-    val typed = Array.fill(spec.typed.length)(Vector.newBuilder[(Node, Node)])
-    var i = 0
-    var failure: DecodeError = null
-    while failure == null && i < ps.size do
-      val (k, v) = ps(i)
-      var j = 0
-      var placed = false
-      while !placed && j < spec.literals.length do
-        if matches(spec.literals(j), k) then
-          if slots(j) != null then
-            failure = DecodeError.at(k, Kind.DuplicateKey(k.original.toString))
-          else slots(j) = v
-          placed = true
-        j += 1
-      j = 0
-      while !placed && j < spec.typed.length do
-        if spec.typed(j)(k) then { typed(j) += ((k, v)); placed = true }
-        j += 1
-      if !placed && failure == null then
-        failure = DecodeError.at(k, Kind.UnexpectedKey(Codec.describe(k)))
-      i += 1
-    if failure == null then Right(new MapParts(n, slots, typed.map(_.result()), spec))
-    else Left(failure)
+    // each pair goes to the first literal key it matches, else to the first typed class that takes
+    // it; the typed entries are put in front of their lists and turned around at the end
+    @scala.annotation.tailrec
+    def go(
+        i: Int,
+        slots: Vector[Option[Node]],
+        typed: Vector[List[(Node, Node)]]
+    ): Decoded[MapParts] =
+      if i == ps.size then Right(new MapParts(n, slots, typed.map(_.reverse.toVector), spec))
+      else
+        val (k, v) = ps(i)
+        val literal = spec.literals.indexWhere(matches(_, k))
+        if literal >= 0 then
+          if slots(literal).isDefined then
+            Left(DecodeError.at(k, Kind.DuplicateKey(k.original.toString)))
+          else go(i + 1, slots.updated(literal, Some(v)), typed)
+        else
+          val kind = spec.typed.indexWhere(_(k))
+          if kind >= 0 then go(i + 1, slots, typed.updated(kind, (k, v) :: typed(kind)))
+          else Left(DecodeError.at(k, Kind.UnexpectedKey(Codec.describe(k))))
+    go(0, Vector.fill(spec.literals.length)(None), Vector.fill(spec.typed.length)(Nil))
   }
 
 /** Ordered choice: the first alternative that decodes wins; if none does, all causes are reported.
   */
 final class Alternatives[A](alts: Array[Node => Decoded[A]]):
   def apply(n: Node): Decoded[A] =
-    var i = 0
-    var causes: Vector[DecodeError] = Vector.empty
-    var result: Decoded[A] = null
-    while result == null && i < alts.length do
-      alts(i)(n) match
-        case r @ Right(_) => result = r
-        case Left(e) =>
-          e.terminal match
-            case Some(terminal) => result = Left(terminal.error)
-            case None           => causes = causes :+ e
-      i += 1
-    if result != null then result else Left(DecodeError.at(n, Kind.NoAlternative(causes)))
+    @scala.annotation.tailrec
+    def go(i: Int, causes: Vector[DecodeError]): Decoded[A] =
+      if i == alts.length then Left(DecodeError.at(n, Kind.NoAlternative(causes)))
+      else
+        alts(i)(n) match
+          case r @ Right(_) => r
+          case Left(e) =>
+            e.terminal match
+              case Some(terminal) => Left(terminal.error)
+              case None           => go(i + 1, causes :+ e)
+    go(0, Vector.empty)
