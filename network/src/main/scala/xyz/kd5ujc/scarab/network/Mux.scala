@@ -7,7 +7,7 @@ import cats.effect.std.{Mutex, Queue}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
-import fs2.{Chunk, Pull}
+import fs2.{Chunk, Pull, Stream}
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
@@ -563,17 +563,26 @@ object Mux:
               readPayload(header, parts, remaining, Bytes.wrap(chunk.toArray), rest)
           }
 
+      // The bearer's failure ends its stream and is kept aside, then taken as the reader's result
+      // ahead of what the pull saw of the end: inside `timed`, fs2's `merge` would raise it in a
+      // fiber that may end before the merge joins it, and the runtime reports such a fiber's
+      // failure besides (issue 647).
       val reader: F[NetworkError] =
-        bearer.reads
-          .chunkLimit(config.readChunkBytes)
-          .unchunks
-          .pull
-          .timed(readHeader(Bytes.empty, Bytes.empty, _))
-          .stream
-          .compile
-          .last
-          .map(_.getOrElse(closedByPeer))
-          .handleError(NetworkError.ofReader)
+        Deferred[F, Throwable].flatMap { failed =>
+          bearer.reads
+            .handleErrorWith(cause => Stream.exec(failed.complete(cause).void))
+            .chunkLimit(config.readChunkBytes)
+            .unchunks
+            .pull
+            .timed(readHeader(Bytes.empty, Bytes.empty, _))
+            .stream
+            .compile
+            .last
+            .flatMap(seen =>
+              failed.tryGet.map(_.fold(seen.getOrElse(closedByPeer))(NetworkError.ofReader))
+            )
+            .handleError(NetworkError.ofReader)
+        }
 
       val writer: F[NetworkError] =
         outbound
