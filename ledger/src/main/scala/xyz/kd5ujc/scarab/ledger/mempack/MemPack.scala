@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger.mempack
 
 import cats.syntax.show.*
 import cats.Show
+import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -124,6 +125,10 @@ object MemPack:
   /** A fixed-size output buffer: the sizes are computed first (as `packedByteCount` does), then
     * every write lands in place.
     */
+  // The write position is a mutable field, as in the storage codec's cursors (#662): a functional
+  // byte cursor took 2.4 to 3.2 times as long on real blocks (`docs/performance.md` section 45);
+  // the measurement of this one is #674.
+  @SuppressWarnings(Array("org.wartremover.warts.Var"))
   final class Packer(size: Int):
     private val array = new Array[Byte](size)
     private var pos = 0
@@ -138,21 +143,22 @@ object MemPack:
       pos += 2
 
     def word64le(v: Long): Unit =
-      var i = 0
-      while i < 8 do
-        array(pos + i) = (v >>> (8 * i)).toByte
-        i += 1
+      @tailrec def put(i: Int): Unit =
+        if i < 8 then
+          array(pos + i) = (v >>> (8 * i)).toByte
+          put(i + 1)
+      put(0)
       pos += 8
 
     /** `VarLen` of an unsigned 64-bit value: groups of seven bits, the most significant first. */
     def varLen(v: Long): Unit =
-      val groups = varLenSize(v)
-      var g = groups - 1
-      while g >= 0 do
-        val group = ((v >>> (7 * g)) & 0x7f).toInt
-        array(pos) = (if g == 0 then group else group | 0x80).toByte
-        pos += 1
-        g -= 1
+      @tailrec def put(g: Int): Unit =
+        if g >= 0 then
+          val group = ((v >>> (7 * g)) & 0x7f).toInt
+          array(pos) = (if g == 0 then group else group | 0x80).toByte
+          pos += 1
+          put(g - 1)
+      put(varLenSize(v) - 1)
 
     /** The bytes as they are (a hash, or a part of a larger structure). */
     def raw(b: Bytes): Unit =
@@ -170,6 +176,8 @@ object MemPack:
   /** A cursor over the bytes of one packed value. Reads fail with a typed [[Failure]]; nothing
     * throws.
     */
+  // The read position is a mutable field, as the packer's write position is (section 45, #674).
+  @SuppressWarnings(Array("org.wartremover.warts.Var"))
   final class Unpacker(data: Array[Byte], from: Int, until: Int):
     private var pos = from
 
@@ -187,35 +195,28 @@ object MemPack:
 
     def word64le: Result[Long] =
       need(8).map { _ =>
-        var v = 0L
-        var i = 7
-        while i >= 0 do
-          v = (v << 8) | (data(pos + i) & 0xffL)
-          i -= 1
+        @tailrec def read(i: Int, v: Long): Long =
+          if i < 0 then v else read(i - 1, (v << 8) | (data(pos + i) & 0xffL))
+        val v = read(7, 0L)
         pos += 8
         v
       }
 
     /** An unsigned 64-bit `VarLen`; more than ten groups, or bits beyond the 64th, are refused. */
     def varLen: Result[Long] =
-      var acc = 0L
-      var groups = 0
-      var done = false
-      var failure: Option[Failure] = None
-      while !done && failure.isEmpty do
-        if pos >= until then failure = Some(Failure.Truncated(1, 0))
+      @tailrec def read(acc: Long, groups: Int): Result[Long] =
+        if pos >= until then Left(Failure.Truncated(1, 0))
         else
           val b = data(pos) & 0xff
           pos += 1
-          groups += 1
+          val count = groups + 1
           // After nine groups the value has at most 63 bits; a tenth may carry only the 64th
           // (the library's `unpack7BitVarLenLast`), and an eleventh does not exist.
-          if groups > 10 || (groups == 10 && (acc >>> 57) != 0L) then
-            failure = Some(Failure.VarLenTooLong)
+          if count > 10 || (count == 10 && (acc >>> 57) != 0L) then Left(Failure.VarLenTooLong)
           else
-            acc = (acc << 7) | (b & 0x7f).toLong
-            if (b & 0x80) == 0 then done = true
-      failure.toLeft(acc)
+            val next = (acc << 7) | (b & 0x7f).toLong
+            if (b & 0x80) == 0 then Right(next) else read(next, count)
+      read(0L, 0)
 
     /** A `Length`, as an `Int` the buffer can hold. */
     def length: Result[Int] =

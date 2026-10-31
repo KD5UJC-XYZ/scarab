@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.mempack
 
+import scala.annotation.tailrec
 import java.io.ByteArrayOutputStream
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Datum, ScriptKind, Value}
@@ -41,10 +42,11 @@ private[mempack] object CanonicalCbor:
         be(n, 8)
 
     private def be(n: Long, bytes: Int): Unit =
-      var k = bytes - 1
-      while k >= 0 do
-        byte(((n >>> (8 * k)) & 0xff).toInt)
-        k -= 1
+      @tailrec def go(k: Int): Unit =
+        if k >= 0 then
+          byte(((n >>> (8 * k)) & 0xff).toInt)
+          go(k - 1)
+      go(bytes - 1)
 
     def uint(v: BigInt): Unit = head(0, v.toLong)
 
