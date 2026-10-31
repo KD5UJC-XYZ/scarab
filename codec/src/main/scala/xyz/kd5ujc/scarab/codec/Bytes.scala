@@ -42,6 +42,40 @@ final class Bytes private (
     if i < 0 || i >= size then throw new IndexOutOfBoundsException(i.toString)
     array(offset + i)
 
+  /** Byte `i`, if `i` is inside the bytes. */
+  def lift(i: Int): Option[Byte] =
+    if i < 0 || i >= length then None else Some(array(offset + i))
+
+  /** The first byte, if there is one. */
+  def headOption: Option[Byte] = lift(0)
+
+  /** The `width` bytes from `from` as an unsigned big-endian number, if they are all inside the
+    * bytes and `width` is at most 8 (eight bytes fill the `Long`, its sign bit included).
+    */
+  def bigEndian(from: Int, width: Int): Option[Long] =
+    if width < 0 || width > 8 || from < 0 || from > length - width then None
+    else
+      @tailrec def go(i: Int, n: Long): Long =
+        if i == width then n else go(i + 1, (n << 8) | (array(offset + from + i) & 0xffL))
+      Some(go(0, 0L))
+
+  /** As [[bigEndian]], the first byte the least significant. */
+  def littleEndian(from: Int, width: Int): Option[Long] =
+    if width < 0 || width > 8 || from < 0 || from > length - width then None
+    else
+      @tailrec def go(i: Int, n: Long): Long =
+        if i == width then n
+        else go(i + 1, n | ((array(offset + from + i) & 0xffL) << (8 * i)))
+      Some(go(0, 0L))
+
+  /** The bytes, first to last, folded into `z`. */
+  inline def foldLeft[A](z: A)(inline f: (A, Byte) => A): A =
+    withRange { (bytes, from, n) =>
+      @tailrec def go(i: Int, acc: A): A =
+        if i == n then acc else go(i + 1, f(acc, bytes(from + i)))
+      go(0, z)
+    }
+
   def isEmpty: Boolean = size == 0
   def nonEmpty: Boolean = size != 0
 
