@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.ledger.*
 import munit.ScalaCheckSuite
 import org.scalacheck.{Gen, Prop}
 import org.scalacheck.Prop.*
+import scala.jdk.CollectionConverters.*
 
 /** The UTxO set behind a store: the in-memory and the RocksDB interpreters against a plain `Map`
   * model under random sequences of blocks, rollbacks and flushes, with the incrementally kept
@@ -459,6 +460,88 @@ class UtxoStoreSuite extends ScalaCheckSuite:
           assert(again)
           assertEquals(second.keySet, Set(a))
       }.guarantee(IO.blocking(RocksUtxoStore.deleteTree(dir)))
+    }
+  }
+
+  test("a rebuild that fails after the database is closed leaves a closed store until a reset") {
+    val dir = tempDir()
+    val a = TxIn(Bytes.wrap(be(1, 32)), 0)
+    val b = TxIn(Bytes.wrap(be(2, 32)), 0)
+    // a directory that is no checkpoint: opening it fails after the live database is closed
+    val notCheckpoint = Path.fromNioPath(dir) / "empty"
+    val closed =
+      StorageError.UtxoStoreClosed(
+        (Path.fromNioPath(dir) / "live").toString,
+        UtxoStoreClosure.NoDatabase
+      )
+    orFail {
+      RocksUtxoStore
+        .resource[IO](Path.fromNioPath(dir) / "live", 8L * 1024 * 1024)
+        .use { store =>
+          for
+            _ <- IO.blocking(java.nio.file.Files.createDirectories(notCheckpoint.toNioPath))
+            _ <- store.write(Vector(a -> Some(output(0, 1, 1, 10))), 1)
+            failed <- StorageTestKit.attempt(store.restore(notCheckpoint))
+            size <- StorageTestKit.attempt(store.size)
+            read <- StorageTestKit.attempt(store.read(Vector(a)))
+            written <- StorageTestKit.attempt(
+              store.write(Vector(b -> Some(output(0, 2, 1, 20))), 2)
+            )
+            entries <- StorageTestKit.attempt(store.entries.compile.toVector)
+            view <- store.readView.use(v => IO.pure(v.map(_.stamp)))
+            _ <- store.reset
+            empty <- (store.size, store.flushed).tupled
+            _ <- store.write(Vector(b -> Some(output(0, 2, 1, 20))), 3)
+            after <- store.all
+            // closed again, so that the store is released without a database
+            again <- StorageTestKit.attempt(store.restore(notCheckpoint))
+          yield
+            assert(failed.isLeft, failed)
+            assertEquals(size, Left(closed))
+            assertEquals(read, Left(closed))
+            assertEquals(written, Left(closed))
+            assertEquals(entries, Left(closed))
+            assertEquals(view, Left(closed))
+            assertEquals(empty, (0L, -1L))
+            assertEquals(after.keySet, Set(b))
+            assert(again.isLeft, again)
+        }
+        .guarantee(IO.blocking(RocksUtxoStore.deleteTree(dir)))
+    }
+  }
+
+  test("a released store refuses every operation, and a rebuild leaves its directory as it was") {
+    val dir = tempDir()
+    val live = Path.fromNioPath(dir) / "live"
+    val checkpoint = Path.fromNioPath(dir) / "cp"
+    val a = TxIn(Bytes.wrap(be(1, 32)), 0)
+    val released = StorageError.UtxoStoreClosed(live.toString, UtxoStoreClosure.Released)
+    def files: IO[Set[String]] = IO.blocking(
+      scala.util.Using.resource(java.nio.file.Files.list(live.toNioPath))(
+        _.iterator.asScala.map(_.getFileName.toString).toSet
+      )
+    )
+    orFail {
+      (for
+        allocated <- RocksUtxoStore.resource[IO](live, 8L * 1024 * 1024).allocated
+        (store, release) = allocated
+        _ <- store.write(Vector(a -> Some(output(0, 1, 1, 10))), 1)
+        _ <- StorageTestKit.ok(store.checkpoint(checkpoint))
+        _ <- release
+        before <- files
+        reset <- StorageTestKit.attempt(store.reset)
+        restored <- StorageTestKit.attempt(store.restore(checkpoint))
+        size <- StorageTestKit.attempt(store.size)
+        view <- store.readView.use(v => IO.pure(v.map(_.stamp)))
+        after <- files
+      yield
+        assertEquals(reset, Left(released))
+        assertEquals(restored, Left(released))
+        assertEquals(size, Left(released))
+        assertEquals(view, Left(released))
+        assert(before.nonEmpty)
+        assertEquals(after, before)
+      ).guarantee(IO.blocking(RocksUtxoStore.deleteTree(dir)))
     }
   }
 

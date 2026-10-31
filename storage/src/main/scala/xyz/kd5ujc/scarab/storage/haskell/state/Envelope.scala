@@ -151,8 +151,8 @@ object Envelope:
   def telescope[A](stateOf: Era => Codec[A])(using EraIndexed[A]): Codec[Telescope[A]] =
     new Codec[Telescope[A]]:
       def decode(n: Node): Decoded[Telescope[A]] =
-        Arr.between(n, 1, Era.values.length).flatMap { xs =>
-          val era = Era.values(xs.size - 1)
+        Arr.nonEmpty(n, Era.values.length).flatMap { xs =>
+          val era = Era.values(xs.length - 1)
           for
             pasts <- Elements.decodeAll(xs.init, past).at("past")
             cur <- current(stateOf(era)).decode(xs.last).at("current")

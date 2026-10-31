@@ -3675,6 +3675,128 @@
     }
    ],
    "listings": []
+  },
+  {
+   "id": "perf-52",
+   "section": "46",
+   "heading": "46. The UTxO store's scans: a fold against the loops (#650)",
+   "subject": "The UTxO store's scans: a fold against the loops (#650)",
+   "date": "2026-10-31",
+   "dateSource": "text",
+   "issues": [
+    "#650"
+   ],
+   "commits": [],
+   "links": [],
+   "page": "memory-and-snapshots",
+   "results": [
+    {
+     "header": [
+      "Operation (4,500,000 outputs)",
+      "Loops, ms (range)",
+      "Fold, ms (range)",
+      "Fold / loops"
+     ],
+     "separator": "|---|---:|---:|---:|",
+     "rows": [
+      [
+       "`size`: count every entry",
+       "555 (543 to 558)",
+       "556 (553 to 568)",
+       "1.00"
+      ],
+      [
+       "`all`: every output",
+       "6,859 (6,698 to 7,020)",
+       "7,417 (7,314 to 7,439)",
+       "1.08"
+      ],
+      [
+       "`scan`: visit every output",
+       "1,995 (1,976 to 2,076)",
+       "1,919 (1,878 to 1,940)",
+       "0.96"
+      ],
+      [
+       "`select`: decode every output",
+       "1,942 (1,854 to 1,949)",
+       "1,910 (1,910 to 1,940)",
+       "0.98"
+      ],
+      [
+       "`selectAddresses`: decode candidates only",
+       "1,079 (1,072 to 1,112)",
+       "1,090 (1,085 to 1,092)",
+       "1.01"
+      ]
+     ],
+     "id": "perf-52.t1"
+    }
+   ],
+   "listings": []
+  },
+  {
+   "id": "perf-53",
+   "section": "47",
+   "heading": "47. The collections of the Haskell state: builders against immutable forms (#650)",
+   "subject": "The collections of the Haskell state: builders against immutable forms (#650)",
+   "date": "2026-10-31",
+   "dateSource": "text",
+   "issues": [
+    "#650"
+   ],
+   "commits": [],
+   "links": [],
+   "page": "memory-and-snapshots",
+   "results": [
+    {
+     "header": [
+      "Form against the builders",
+      "JVMs",
+      "Builders, ms (range)",
+      "Form, ms (range)",
+      "Form / builders",
+      "MB allocated per decode, builders / form"
+     ],
+     "separator": "|---|---:|---:|---:|---:|---:|",
+     "rows": [
+      [
+       "Immutable fold (sets, maps, sequences)",
+       "6 + 6",
+       "361 (323 to 415)",
+       "465 (433 to 523)",
+       "1.29",
+       "645 / 1,295"
+      ],
+      [
+       "Collect, then build (sets and maps)",
+       "6 + 6",
+       "377 (311 to 408)",
+       "470 (444 to 484)",
+       "1.25",
+       "638 / 1,389"
+      ],
+      [
+       "`Vector` append (sequences only)",
+       "12 + 12",
+       "341 (310 to 382)",
+       "371 (313 to 420)",
+       "1.09",
+       "635 / 651"
+      ],
+      [
+       "List (sequences only), kept",
+       "6 + 6",
+       "352 (312 to 377)",
+       "327 (307 to 367)",
+       "0.93",
+       "635 / 642"
+      ]
+     ],
+     "id": "perf-53.t1"
+    }
+   ],
+   "listings": []
   }
  ]
 }

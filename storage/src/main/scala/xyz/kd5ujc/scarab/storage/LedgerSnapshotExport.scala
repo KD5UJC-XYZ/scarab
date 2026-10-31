@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.storage
 
 import cats.Functor
+import scala.util.Using
 import cats.effect.{Async, Resource}
 import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
@@ -264,9 +265,7 @@ object LedgerSnapshotExport:
     def native[F[_]: Async](using Raise[F, StorageError]): DirectorySync[F] =
       new DirectorySync[F]:
         def apply(path: Path): F[Unit] = AtomicFile.guard[F, Unit](path.toString) {
-          val channel = FileChannel.open(path.toNioPath, StandardOpenOption.READ)
-          try channel.force(true)
-          finally channel.close()
+          Using.resource(FileChannel.open(path.toNioPath, StandardOpenOption.READ))(_.force(true))
         }
 
   /** All resources and diagnostic cleanup finish before this transition. The owned stage itself is

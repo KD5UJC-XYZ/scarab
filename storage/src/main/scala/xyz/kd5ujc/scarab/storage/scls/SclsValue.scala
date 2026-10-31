@@ -69,7 +69,6 @@ object SclsValue:
     case Cbor(cause: CborCodec.Error)
     case Runtime(cause: DecodeError)
     case Vocabulary(cause: S.VocabError)
-    case UnsupportedNamespace(namespace: Namespace)
     case WrongShape(namespace: Namespace, expected: String)
     case WrongFieldOrder(namespace: Namespace, expected: Vector[String], found: Vector[String])
     case InvalidTag(namespace: Namespace, found: BigInt)
@@ -839,7 +838,6 @@ object SclsValue:
           Entry.GovernanceConstitution(Constitution(a, script))
         }
       }
-    case null => Left(Error.UnsupportedNamespace(null))
 
   /** Decode and verify original-byte canonicality using one consistent caller resource profile. */
   def decode(

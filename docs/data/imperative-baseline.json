@@ -74,59 +74,6 @@
   "node/src/main/scala/xyz/kd5ujc/scarab/node/tools/LeiosCheckMain.scala": {
    "finally": 1,
    "try": 1
-  },
-  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ChainStorage.scala": {
-   "finally": 1,
-   "try": 1
-  },
-  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/CheckpointBinding.scala": {
-   "finally": 2,
-   "try": 2
-  },
-  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/DatabaseOwnership.scala": {
-   "catch": 2,
-   "try": 2
-  },
-  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala": {
-   "finally": 6,
-   "try": 6
-  },
-  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshotExport.scala": {
-   "finally": 1,
-   "try": 1
-  },
-  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshotImport.scala": {
-   "finally": 1,
-   "try": 1
-  },
-  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/RocksUtxoStore.scala": {
-   "catch": 1,
-   "finally": 14,
-   "try": 15
-  },
-  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotMigration.scala": {
-   "finally": 2,
-   "try": 2
-  },
-  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotPoint.scala": {
-   "finally": 1,
-   "try": 1
-  },
-  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala": {
-   "finally": 1,
-   "try": 1
-  },
-  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala": {
-   "finally": 5,
-   "try": 5
-  },
-  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/mithril/MithrilBootstrap.scala": {
-   "finally": 2,
-   "try": 2
-  },
-  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/scls/SclsInterchange.scala": {
-   "finally": 1,
-   "try": 1
   }
  }
 }

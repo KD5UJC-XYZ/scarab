@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.storage
 
 import cats.Applicative
+import scala.util.Using
 import cats.effect.Sync
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -144,11 +145,10 @@ final class UtxoBacking[F[_]: Sync, S](store: UtxoStore[F], root: Path)(using
   def retain(stems: Set[String])(using Raise[F, StorageError]): F[Unit] = guard(root.toString) {
     val nio = root.toNioPath
     if java.nio.file.Files.isDirectory(nio) then
-      val dirs = java.nio.file.Files.list(nio)
-      try
+      Using.resource(java.nio.file.Files.list(nio)) { dirs =>
         dirs.forEach { d =>
           val name = d.getFileName.toString
           if StateBacking.isStem(name) && !stems.contains(name) then RocksUtxoStore.deleteTree(d)
         }
-      finally dirs.close()
+      }
   }

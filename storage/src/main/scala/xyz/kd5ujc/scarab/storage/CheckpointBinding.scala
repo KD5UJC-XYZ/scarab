@@ -2,6 +2,8 @@
 package xyz.kd5ujc.scarab.storage
 
 import cats.syntax.all.*
+import scala.annotation.tailrec
+import scala.util.Using
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path as JPath}
@@ -66,16 +68,14 @@ object CheckpointDigest:
   /** The digest of `dir` (blocking; throws what the file system throws). */
   def of(dir: JPath): Bytes =
     val digest = MessageDigest.getInstance("SHA-256")
-    val listing = Files.list(dir)
-    val files =
-      try
-        listing.iterator.asScala
-          .filter(Files.isRegularFile(_))
-          .map(_.getFileName.toString)
-          .filterNot(diagnostic)
-          .toVector
-          .sorted
-      finally listing.close()
+    val files = Using.resource(Files.list(dir)) { listing =>
+      listing.iterator.asScala
+        .filter(Files.isRegularFile(_))
+        .map(_.getFileName.toString)
+        .filterNot(diagnostic)
+        .toVector
+        .sorted
+    }
     files.foreach { name =>
       val file = dir.resolve(name)
       val label = name.getBytes(StandardCharsets.UTF_8)
@@ -83,14 +83,15 @@ object CheckpointDigest:
       digest.update(label)
       digest.update(ByteBuffer.allocate(8).putLong(Files.size(file)).array())
       if !table(name) then
-        val in = Files.newInputStream(file)
-        try
+        Using.resource(Files.newInputStream(file)) { in =>
           val buffer = new Array[Byte](64 * 1024)
-          var read = in.read(buffer)
-          while read >= 0 do
-            digest.update(buffer, 0, read)
-            read = in.read(buffer)
-        finally in.close()
+          @tailrec def rest(): Unit =
+            val read = in.read(buffer)
+            if read >= 0 then
+              digest.update(buffer, 0, read)
+              rest()
+          rest()
+        }
     }
     Bytes.fromArray(digest.digest())
 

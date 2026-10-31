@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import scala.util.Using
 import cats.Functor
 import cats.effect.{Async, Ref, Resource}
 import cats.mtl.{Ask, Handle, Raise}
@@ -317,10 +318,10 @@ object LedgerSnapshotImport:
       def raise[E <: StorageError, A](error: E): F[A] = errors.raise(Error.Storage(error))
     def guard[A](what: String)(action: => A): F[A] = AtomicFile.guard[F, A](what)(action)
     def sync(directory: Path): F[Unit] = guard(directory.toString) {
-      val channel = java.nio.channels.FileChannel
-        .open(directory.toNioPath, java.nio.file.StandardOpenOption.READ)
-      try channel.force(true)
-      finally channel.close()
+      Using.resource(
+        java.nio.channels.FileChannel
+          .open(directory.toNioPath, java.nio.file.StandardOpenOption.READ)
+      )(_.force(true))
     }
     def remove(artifact: Path): F[Unit] =
       guard(artifact.toString)(RocksUtxoStore.deleteTree(artifact.toNioPath))

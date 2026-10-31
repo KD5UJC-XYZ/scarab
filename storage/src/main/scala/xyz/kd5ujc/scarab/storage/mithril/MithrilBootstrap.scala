@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.storage.mithril
 
 import cats.Functor
+import scala.util.Using
 import cats.effect.{Async, Resource}
 import cats.mtl.{Ask, Handle, Raise}
 import cats.mtl.syntax.all.*
@@ -177,9 +178,7 @@ object MithrilBootstrap:
             evidence.noSpaces + "\n",
             StandardOpenOption.CREATE_NEW
           )
-          val channel = FileChannel.open(file.toNioPath, StandardOpenOption.WRITE)
-          try channel.force(true)
-          finally channel.close()
+          Using.resource(FileChannel.open(file.toNioPath, StandardOpenOption.WRITE))(_.force(true))
         }
         // Required deletion runs in the normal effect before the final directory transaction.
         _ <- guard(work.toString)(RocksUtxoStore.deleteTree(work.toNioPath))
@@ -272,9 +271,7 @@ object MithrilBootstrap:
     def native[F[_]: Async](using Raise[F, StorageError]): DirectorySync[F] =
       new DirectorySync[F]:
         def apply(path: Path): F[Unit] = AtomicFile.guard[F, Unit](path.toString) {
-          val channel = FileChannel.open(path.toNioPath, StandardOpenOption.READ)
-          try channel.force(true)
-          finally channel.close()
+          Using.resource(FileChannel.open(path.toNioPath, StandardOpenOption.READ))(_.force(true))
         }
 
   /** Publication is the last transition; no required work is deferred to a Resource release. */

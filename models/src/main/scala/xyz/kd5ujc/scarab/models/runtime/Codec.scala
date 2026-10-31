@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.models.runtime
 
+import cats.data.NonEmptyVector
 import xyz.kd5ujc.scarab.codec.{Cbor, Value}
 import scala.util.control.NonFatal
 
@@ -392,6 +393,16 @@ object Arr:
     case Value.Arr(xs) if xs.size >= min && xs.size <= max => Right(xs)
     case Value.Arr(xs) =>
       Left(DecodeError.at(n, Kind.BadArity(Arity.Range(min, Some(max)), xs.size)))
+    case _ => Left(Codec.mismatch("array", n))
+
+  /** [[between]] from one item to `max`, as the non-empty vector that carries the minimum. */
+  def nonEmpty(n: Node, max: Int): Decoded[NonEmptyVector[Node]] = n.value match
+    case Value.Arr(xs) if xs.size <= max =>
+      NonEmptyVector
+        .fromVector(xs)
+        .toRight(DecodeError.at(n, Kind.BadArity(Arity.Range(1, Some(max)), xs.size)))
+    case Value.Arr(xs) =>
+      Left(DecodeError.at(n, Kind.BadArity(Arity.Range(1, Some(max)), xs.size)))
     case _ => Left(Codec.mismatch("array", n))
 
 sealed trait MapKey

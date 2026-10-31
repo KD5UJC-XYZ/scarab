@@ -273,3 +273,82 @@ measured acquisition and retention behavior for these datasets only; no query la
 million entries, heap/RSS, or actual mainnet state fidelity was measured. Runs used bounded 10,000
 entry writes and the approved owned copy under `/tmp/scarab/luna-158`; cost logs and exit records
 are under `/tmp/scarab/luna-158/gates/cost-*`.
+
+## 46. The UTxO store's scans: a fold against the loops (#650)
+
+**2026-10-31.** `RocksUtxoStore` walks its RocksDB iterator for `size`, `all`, `select`, `selectAddresses` and `scan`.
+Each walk was a `while` loop that put the entries into a mutable map builder (`scan` hands them to the caller instead).
+#650 replaced them with one `@tailrec` fold whose result is an immutable `Map` grown with `+`. The fold is `inline`, so
+each caller's per-entry code is compiled into its own loop: a shared fold that called a function per entry made `select`
+about 5 percent slower and was not kept.
+
+**Store and harness.** `UtxoScanBench` (storage tests) on a synthetic store of 4,500,000 outputs made by its `generate`
+mode: plain addresses (about 100,000 distinct), lovelace only, with 45 addresses wanted by `select` and
+`selectAddresses`. One JVM per run does six rounds of the five operations in turn; the first round is dropped, and a JVM
+reports the median of the other five. Three JVMs per form, in the order loops, fold, fold, loops, loops, fold; the table
+gives the median of the three and their range. Every round prints the count and an order-free hash of `all` and of
+`select`, and checks that `select` and `selectAddresses` agree; the counts and hashes are the same in every JVM of both
+forms. The loops are those of `5db649a9f`, the fold this section's commit. Euler (Intel Core Ultra 9 285K, WSL2), shared
+with other containers (load average 1.3 to 3.0); Docker image `scarab-jdk:local`
+`sha256:8f00ab6b6e1eed196c2b835bfd558507dfc29fac3153936fa38596248d7ebc76`, JVM 25.0.4.1+1-LTS,
+`--cpuset-cpus=8-11 --memory=16g --network none`, `-Xms10g -Xmx10g -XX:+UseG1GC -XX:ActiveProcessorCount=4`.
+
+<!-- register:table perf-52.t1 -->
+| Operation (4,500,000 outputs) | Loops, ms (range) | Fold, ms (range) | Fold / loops |
+|---|---:|---:|---:|
+| `size`: count every entry | 555 (543 to 558) | 556 (553 to 568) | 1.00 |
+| `all`: every output | 6,859 (6,698 to 7,020) | 7,417 (7,314 to 7,439) | 1.08 |
+| `scan`: visit every output | 1,995 (1,976 to 2,076) | 1,919 (1,878 to 1,940) | 0.96 |
+| `select`: decode every output | 1,942 (1,854 to 1,949) | 1,910 (1,910 to 1,940) | 0.98 |
+| `selectAddresses`: decode candidates only | 1,079 (1,072 to 1,112) | 1,090 (1,085 to 1,092) | 1.01 |
+<!-- /register -->
+
+**Result.** The fold is within 2 percent of the loops for `size`, `select` and `selectAddresses`, and 4 percent faster
+for `scan`. `all`, which builds the whole set, is 8 percent slower: a map that grows by `+` allocates where the builder
+filled one in place. Collecting `all` into a `List` and building the map once was tried in a separate set of six JVMs
+against the same loops and took 15 percent longer (7,619 against 6,645 ms), so it was not kept. `all` serves only
+whole-set reads (the HTTP query endpoint's projection, LocalStateQuery's whole-UTxO query, `StateDump` and the snapshot
+import); the block path reads by key. Every scan keeps the fold.
+
+## 47. The collections of the Haskell state: builders against immutable forms (#650)
+
+**2026-10-31.** Reading a Haskell node's ledger state (`HaskellLedgerFile.decode`: the state of a Mithril or Haskell
+snapshot import) decodes its sets and maps with `Wire.setOf` and `Wire.mapOf`, and its sequences with `Wire.seqOf`. Each
+puts the elements into a builder of its collection as they are read, with no vector of the nodes (section 12). The builders
+are mutable, so AGENTS.md keeps them only with a measured benefit; the immutable forms were timed against them.
+
+**The forms.** Each differs from the builders (`Wire.scala` of `5db649a9f`) only in `Wire.scala`:
+
+- immutable fold: each element inserted into the immutable `SortedSet` or `SortedMap` (`+`, `updated`), and each element of
+  a sequence appended to a `Vector` (`:+`);
+- collect, then build: the elements of a set or map appended to a `Vector`, then `SortedSet.from` or `SortedMap.from`, which
+  insert them into the immutable tree one by one; sequences as in the fold;
+- `Vector` append for sequences only, sets and maps keeping their builders;
+- list for sequences only: each element put in front of a `List`, which is turned into a `Vector` once at the end; sets and
+  maps keep their builders.
+
+**Input and harness.** `HaskellStateDecodeBench` (storage tests) on the `state` file of the node 11.1.3 preprod snapshot at
+slot 136,511,997 (32,511,416 bytes, SHA-256 `7ecbc47624c3e6f6059520dc31f230971e77da8bd9ac29e894cdeaefb2002e96`, byte-identical
+to the pinned original, section 25). One JVM per run decodes the file five times to warm up, then nine times timed, with a
+collection before each; it reports the median time and the median allocation of its thread (`ThreadMXBean`). Every decode is
+checked by writing the state again and comparing the bytes with the file, outside the timing. Each form was run against the
+builders in its own set of six JVMs in ABBA order (two sets for the `Vector` append); the table gives the median of the JVMs
+and their range. Euler (Intel Core Ultra 9 285K, WSL2), shared with other containers (load average 1.3 to 3.2); Docker image
+`scarab-jdk:local` `sha256:8f00ab6b6e1eed196c2b835bfd558507dfc29fac3153936fa38596248d7ebc76`, JVM 25.0.4.1+1-LTS,
+`--cpuset-cpus=8-11 --memory=10g`, `-Xms6g -Xmx6g -XX:+UseG1GC -XX:ActiveProcessorCount=4`.
+
+<!-- register:table perf-53.t1 -->
+| Form against the builders | JVMs | Builders, ms (range) | Form, ms (range) | Form / builders | MB allocated per decode, builders / form |
+|---|---:|---:|---:|---:|---:|
+| Immutable fold (sets, maps, sequences) | 6 + 6 | 361 (323 to 415) | 465 (433 to 523) | 1.29 | 645 / 1,295 |
+| Collect, then build (sets and maps) | 6 + 6 | 377 (311 to 408) | 470 (444 to 484) | 1.25 | 638 / 1,389 |
+| `Vector` append (sequences only) | 12 + 12 | 341 (310 to 382) | 371 (313 to 420) | 1.09 | 635 / 651 |
+| List (sequences only), kept | 6 + 6 | 352 (312 to 377) | 327 (307 to 367) | 0.93 | 635 / 642 |
+<!-- /register -->
+
+**Result.** Both immutable forms of the sets and maps take 25 to 29 percent longer and allocate twice as much: an insertion
+into the immutable tree copies the path to the new node, where the builder links it in place. `SortedSet.from` and
+`SortedMap.from` insert in the same way unless they are given a sorted collection, so collecting first only adds the vector.
+`setOf` and `mapOf` keep their builders, under a `@SuppressWarnings` that cites this section. For sequences, appending to a
+`Vector` copies its last block on every append and measured 9 percent slower over twelve JVMs each, but the list measured no
+slower than the builder, so `seqOf` uses the list.
