@@ -75,9 +75,7 @@ object Phase2:
 
   /** Only values cross the worker boundary. Raw defects are landed in order by the owner. */
   private[ledger] def execute(job: Job, evaluator: ScriptEvaluator[Id]): Completed =
-    val outcome =
-      try Right(job.requests.map(run(_, evaluator)))
-      catch case scala.util.control.NonFatal(cause) => Left(Defect(cause))
+    val outcome = Either.catchNonFatal(job.requests.map(run(_, evaluator))).leftMap(Defect(_))
     new Completed(job, outcome)
 
   /** Only the ledger's preparation factory can install this capability. */
