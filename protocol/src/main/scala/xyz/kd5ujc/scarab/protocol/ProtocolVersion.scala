@@ -31,6 +31,9 @@ object NtnVersion:
     */
   val LatestReleased: NtnVersion = V15
 
+  /** The newest version this node implements, the last of [[All]]. */
+  val Latest: NtnVersion = V16
+
   /** Every version this node implements, in increasing order. */
   val All: Vector[NtnVersion] = values.toVector
 
@@ -43,7 +46,7 @@ object NtnVersion:
     * protocols are enabled.
     */
   def maximum(experimentalProtocols: Boolean): NtnVersion =
-    if experimentalProtocols then All.last else LatestReleased
+    if experimentalProtocols then Latest else LatestReleased
 
 /** The node-to-client protocol versions, as the reference's `NodeToClientVersion` as consensus
   * 4.2.1.0 supports them (`supportedNodeToClientVersions`, `Cardano/Node.hs` 444 to 454): 16 to 23,

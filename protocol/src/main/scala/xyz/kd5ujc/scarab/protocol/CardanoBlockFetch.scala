@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
+import cats.data.NonEmptyVector
 import xyz.kd5ujc.scarab.codec.Bytes
 
 import ChainSync.{Point, UInt64}
@@ -130,23 +131,31 @@ object CardanoBlockFetch:
     * monotonicity is necessary but does not establish parent linkage.
     */
   final class FetchPlan private (
-      val expected: Vector[SpecificPoint],
+      points: NonEmptyVector[SpecificPoint],
       val limits: BlockFetch.RequestLimits
   ):
-    def range: InclusiveRange = InclusiveRange(expected.head, expected.last)
+    val expected: Vector[SpecificPoint] = points.toVector
+    def range: InclusiveRange = InclusiveRange(points.head, points.last)
   object FetchPlan:
     def from(
         expected: Vector[SpecificPoint],
         limits: BlockFetch.RequestLimits = BlockFetch.RequestLimits()
     ): Either[ProtocolError, FetchPlan] =
       if !limits.valid then Left(ProtocolError.InvalidRequestLimits)
-      else if expected.isEmpty || expected.size > limits.maxBlocks then
-        Left(ProtocolError.ExpectedPointCountOutsideRequestLimits(expected.size, limits.maxBlocks))
-      else if expected.distinct.size != expected.size then
-        Left(ProtocolError.DuplicateExpectedPoints)
-      else if expected.zip(expected.drop(1)).exists((a, b) => a.slot.value > b.slot.value) then
-        Left(ProtocolError.ReversedExpectedSlotOrder)
-      else Right(new FetchPlan(expected, limits))
+      else
+        NonEmptyVector
+          .fromVector(expected)
+          .filter(_ => expected.size <= limits.maxBlocks)
+          .toRight(
+            ProtocolError.ExpectedPointCountOutsideRequestLimits(expected.size, limits.maxBlocks)
+          )
+          .flatMap { points =>
+            if expected.distinct.size != expected.size then
+              Left(ProtocolError.DuplicateExpectedPoints)
+            else if expected.zip(expected.drop(1)).exists((a, b) => a.slot.value > b.slot.value)
+            then Left(ProtocolError.ReversedExpectedSlotOrder)
+            else Right(new FetchPlan(points, limits))
+          }
 
   enum BatchResult:
     case Pending
