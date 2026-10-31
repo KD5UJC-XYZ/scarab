@@ -133,6 +133,7 @@ class HandshakeNegotiationSuite extends munit.FunSuite:
     assertEquals(NtnVersion.fromNumber(17), None)
     assertEquals(NtnVersion.maximum(experimentalProtocols = false), NtnVersion.V15)
     assertEquals(NtnVersion.maximum(experimentalProtocols = true), NtnVersion.V16)
+    assertEquals(NtnVersion.Latest, NtnVersion.values.last)
     assertEquals(NtnVersion.upTo(NtnVersion.V14), Vector(NtnVersion.V14))
     assertEquals(NtcVersion.All.map(_.number), (16 to 23).toVector)
     assertEquals(NtcVersion.LatestReleased.number, 23)
