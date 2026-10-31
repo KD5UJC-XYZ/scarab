@@ -40,6 +40,11 @@ class ImperativeTest(unittest.TestCase):
         self.assertEqual(imperative.counts('try f() catch { case _ => () } finally g()'),
                          {'try': 1, 'catch': 1, 'finally': 1})
 
+    def test_code_inside_interpolation_and_around_comments_counts(self):
+        self.assertEqual(imperative.counts('val s = s"${try work() finally cleanup()}"'), {'try': 1, 'finally': 1})
+        self.assertEqual(imperative.counts('try/* x */work() finally/* y */cleanup()'), {'try': 1, 'finally': 1})
+        self.assertEqual(imperative.counts('val s = "try ${x}"; val t = s"plain $x"'), {})
+
     def test_a_new_try_fails_and_only_main_sources_count(self):
         self.write(MAIN, 'object A\n')
         self.write('mod/src/test/scala/T.scala', 'try f() finally g()\n')
@@ -53,9 +58,10 @@ class ImperativeTest(unittest.TestCase):
         self.write(MAIN, 'object A { try f() finally g(); try h() finally i() }\n')
         self.assertEqual(self.run_check('--write-baseline')[0], 0)
         self.write(MAIN, 'object A { try f() finally g() }\n')
+        # removing code without shrinking the baseline fails, so the old allowance cannot be reused
         code, out = self.run_check()
-        self.assertEqual(code, 0)
-        self.assertIn('went down', out)
+        self.assertEqual(code, 1)
+        self.assertIn('--write-baseline', out)
         self.assertEqual(self.run_check('--write-baseline')[0], 0)
         self.write(MAIN, 'object A { try f() finally g(); try h() finally i() }\n')
         code, out = self.run_check('--write-baseline')

@@ -5,9 +5,10 @@
 WartRemover refuses the other disallowed patterns at compile time (`build.sbt`, `disallowedWarts`), but it has
 no wart for `try`, `catch` or `finally`. Effects use `Resource`, `bracket` and `attempt` instead; a performance
 path keeps imperative code only with measured evidence (AGENTS.md). This guard counts the three keywords per
-main Scala source, with comments and string literals removed, and compares the counts with the committed
-baseline `docs/data/imperative-baseline.json`: a file may only go down, and a file not in the baseline must
-have none. The baseline only shrinks.
+main Scala source, with comments and the text of string literals removed (the `${...}` expressions of an
+interpolated string count), and compares the counts with the committed baseline
+`docs/data/imperative-baseline.json`: a file may not go up, a file not in the baseline must have none, and a
+count that went down fails until the change also commits the smaller baseline. The baseline only shrinks.
 
     python3 scripts/check_imperative.py                    check (the default)
     python3 scripts/check_imperative.py --write-baseline   record lower counts (or the first baseline); refuses any increase
@@ -30,30 +31,26 @@ KEYWORD = re.compile(r'\b(try|catch|finally)\b')
 
 
 def code(source: str) -> str:
-    """`source` with comments and string and character literals removed, line breaks kept."""
+    """`source` with comments and the text of string and character literals removed, line breaks kept.
+    A comment becomes a space, so the tokens on either side stay apart; the `${...}` expressions of an
+    interpolated string are code and are kept."""
     out: list[str] = []
     i, n = 0, len(source)
     while i < n:
         if source.startswith('/*', i):
             end = source.find('*/', i + 2)
             end = n if end < 0 else end + 2
-            out.append('\n' * source.count('\n', i, end))
+            out.append(' ' + '\n' * source.count('\n', i, end))
             i = end
         elif source.startswith('//', i):
             end = source.find('\n', i)
+            out.append(' ')
             i = n if end < 0 else end
-        elif source.startswith('"""', i):
-            end = source.find('"""', i + 3)
-            end = n if end < 0 else end + 3
-            while end < n and source[end] == '"':
-                end += 1
-            out.append('\n' * source.count('\n', i, end))
-            i = end
         elif source[i] == '"':
-            j = i + 1
-            while j < n and source[j] not in '"\n':
-                j += 2 if source[j] == '\\' else 1
-            i = j + 1
+            interpolated = i > 0 and (source[i - 1].isalnum() or source[i - 1] == '_')
+            triple = source.startswith('"""', i)
+            i, kept = string_literal(source, i + (3 if triple else 1), triple, interpolated)
+            out.append(' ' + kept + ' ')
         elif source[i] == "'" and i + 2 < n and (source[i + 2] == "'" or source[i + 1] == '\\'):
             end = source.find("'", i + 2)
             i = n if end < 0 else end + 1
@@ -61,6 +58,37 @@ def code(source: str) -> str:
             out.append(source[i])
             i += 1
     return ''.join(out)
+
+
+def string_literal(source: str, i: int, triple: bool, interpolated: bool) -> tuple[int, str]:
+    """From just after the opening quote: the index after the closing quote, and the code of the
+    literal's `${...}` expressions (with the line breaks of the literal)."""
+    kept: list[str] = []
+    n = len(source)
+    while i < n:
+        if triple and source.startswith('"""', i):
+            i += 3
+            while i < n and source[i] == '"':
+                i += 1
+            return i, ''.join(kept)
+        if not triple and source[i] in '"\n':
+            return i + 1, ''.join(kept)
+        if interpolated and source.startswith('${', i):
+            depth, j = 1, i + 2
+            while j < n and depth:
+                depth += {'{': 1, '}': -1}.get(source[j], 0)
+                j += 1
+            kept.append(' ' + code(source[i + 2:j - 1]) + ' ')
+            i = j
+        elif interpolated and source.startswith('$$', i):
+            i += 2
+        elif source[i] == '\\' and not triple:
+            i += 2
+        else:
+            if source[i] == '\n':
+                kept.append('\n')
+            i += 1
+    return i, ''.join(kept)
 
 
 def counts(text: str) -> dict[str, int]:
@@ -126,8 +154,10 @@ def main(argv: list[str] | None = None, root: Path = ROOT) -> int:
         print(f'wrote {BASELINE}: {sum(sum(c.values()) for c in now.values())} in {len(now)} files')
         return 0
     if decreases:
-        print('baseline entries that went down (run with --write-baseline and commit the smaller baseline):')
+        # the baseline shrinks with the change that removes the code, so no allowance is left to reuse
+        print('fewer try/catch/finally than the baseline allows: run with --write-baseline and commit it:')
         print('\n'.join('  ' + line for line in decreases))
+        return 1
     total = sum(sum(c.values()) for c in now.values())
     print(f'imperative check passes: {total} try/catch/finally in {len(now)} main sources, none new')
     return 0
