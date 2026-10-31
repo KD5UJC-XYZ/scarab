@@ -70,4 +70,6 @@ One row per measurement section, in the order the sections were written; the sec
 | 43 | 2026-10-26 | Incremental injection numeric coefficients (#499) | #499 | [Incremental injection numeric coefficients](performance/injection-coefficients.md#43-incremental-injection-numeric-coefficients-499) |
 | 44 | 2026-10-25 | The reference's budget arithmetic in the evaluator (#485) | #485 | [The reference's budget arithmetic in the evaluator](performance/plutus-budget-arithmetic.md#44-the-references-budget-arithmetic-in-the-evaluator-485) |
 | 45 | 2026-10-31 | The CBOR walk of the mini-protocol reader: functional against imperative (#657) | #657 | [Peers, connections and the network path](performance/peers-and-network.md#45-the-cbor-walk-of-the-mini-protocol-reader-functional-against-imperative-657) |
+| 46 | 2026-10-31 | The UTxO store's scans: a fold against the loops (#650) | #650 | [Memory, snapshots and bootstrap](performance/memory-and-snapshots.md#46-the-utxo-stores-scans-a-fold-against-the-loops-650) |
+| 47 | 2026-10-31 | The collections of the Haskell state: builders against immutable forms (#650) | #650 | [Memory, snapshots and bootstrap](performance/memory-and-snapshots.md#47-the-collections-of-the-haskell-state-builders-against-immutable-forms-650) |
 <!-- /register -->
