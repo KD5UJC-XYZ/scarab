@@ -4,7 +4,8 @@ package xyz.kd5ujc.scarab.codec
 import java.nio.ByteBuffer
 import java.nio.CharBuffer
 import java.nio.charset.{CodingErrorAction, StandardCharsets}
-import scala.util.control.NonFatal
+import scala.annotation.tailrec
+import scala.util.Try
 import scala.util.boundary
 import scala.util.boundary.{Label, break}
 
@@ -105,7 +106,12 @@ object Cbor:
   /** Reads the input once, with the checks of a decoder, and writes the [[Index]] of its items;
     * nothing is built per item. What it accepts and what it refuses (and says) is what the tree
     * builder of the first version did, which the tests keep as the oracle.
+    *
+    * Its position, item count and stack of open containers are mutable: the same decode without
+    * mutation took 11 to 14 times as long and allocated 23 to 70 times as much on real blocks
+    * (`docs/performance.md` section 48; `CborDecodeFunctional` in the tests).
     */
+  @SuppressWarnings(Array("org.wartremover.warts.Var", "org.wartremover.warts.While"))
   private final class Decoder(input: Bytes, limits: Limits, prefix: Boolean)(using
       Label[Either[Error, Node]]
   ):
@@ -164,8 +170,13 @@ object Cbor:
       pos += size
       from
 
-    private var decoder: java.nio.charset.CharsetDecoder = null
-    private var scratch: CharBuffer = null
+    // made for the first text that is not ASCII, as most inputs have none
+    private lazy val decoder: java.nio.charset.CharsetDecoder =
+      StandardCharsets.UTF_8
+        .newDecoder()
+        .onMalformedInput(CodingErrorAction.REPORT)
+        .onUnmappableCharacter(CodingErrorAction.REPORT)
+    private lazy val scratch: CharBuffer = CharBuffer.allocate(1024)
 
     /** Check that `[from, from + size)` is UTF-8, strictly. ASCII, the usual case, is checked
       * without a decoder; the others are decoded into a scratch buffer and dropped.
@@ -175,12 +186,6 @@ object Cbor:
       val until = from + size
       while i < until && data(i) >= 0 do i += 1
       if i < until then
-        if decoder == null then
-          decoder = StandardCharsets.UTF_8
-            .newDecoder()
-            .onMalformedInput(CodingErrorAction.REPORT)
-            .onUnmappableCharacter(CodingErrorAction.REPORT)
-          scratch = CharBuffer.allocate(1024)
         decoder.reset()
         val in = ByteBuffer.wrap(data, from, size)
         var open = true
@@ -317,101 +322,98 @@ object Cbor:
     if limits.maxInputBytes < 0 || limits.maxDepth < 0 || limits.maxItems < 0 || limits.maxStringBytes < 0
     then Left(Error.InvalidLimits)
     else
-      try
-        val out = new java.io.ByteArrayOutputStream()
-        var items = 0
-        def write(b: Int): Unit =
-          if out.size() >= limits.maxInputBytes then fail(Error.OutputLimitExceeded)
-          out.write(b)
-        def head(major: Int, n: BigInt): Unit =
-          if n < 0 || n > MaxUInt then fail(Error.ArgumentOutOfRange(n))
-          if n < 24 then write((major << 5) | n.toInt)
-          else
-            val (ai, width) =
-              if n <= 255 then (24, 1)
-              else if n <= 65535 then (25, 2)
-              else if n <= BigInt("ffffffff", 16) then (26, 4)
-              else (27, 8)
-            write((major << 5) | ai)
-            var shift = (width - 1) * 8
-            while shift >= 0 do
-              write(((n >> shift) & 255).toInt)
-              shift -= 8
-        def raw(major: Int, bytes: Array[Byte]): Unit =
-          if bytes.length > limits.maxStringBytes then fail(Error.StringLimitExceeded)
-          head(major, BigInt(bytes.length))
-          bytes.foreach(b => write(b & 255))
-        // An open container: the values still to write, by index (a map's keys and values
-        // alternate), without an iterator per level.
-        final class Open(val nodes: Vector[Node], val pairs: Vector[(Node, Node)], val node: Node):
-          var next = 0
-          val size: Int =
-            if nodes != null then nodes.size else if pairs != null then 2 * pairs.size else 1
-          def hasNext: Boolean = next < size
-          def take(): Value =
-            val i = next
-            next += 1
-            if nodes != null then nodes(i).value
-            else if pairs != null then
-              (if i % 2 == 0 then pairs(i / 2)._1 else pairs(i / 2)._2).value
-            else node.value
-        val stack = new java.util.ArrayDeque[Open]
-        def emit(v: Value, depth: Int): Unit =
-          if depth > limits.maxDepth then fail(Error.DepthLimitExceeded)
-          if items >= limits.maxItems then fail(Error.ItemLimitExceeded)
-          items += 1
-          v match
-            case Value.UInt(n) => head(0, n)
-            case Value.NInt(n) =>
-              if n >= 0 then fail(Error.NonNegativeNInt(n))
-              head(1, -1 - n)
-            case Value.ByteString(b) => raw(2, b.toArray)
-            case Value.Text(s) =>
-              val bytes =
-                try
-                  val buffer = StandardCharsets.UTF_8
-                    .newEncoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .encode(CharBuffer.wrap(s))
-                  val a = new Array[Byte](buffer.remaining())
-                  buffer.get(a)
-                  a
-                catch case NonFatal(_) => fail(Error.InvalidUnicode)
-              raw(3, bytes)
-            case Value.Arr(nodes) =>
-              head(4, BigInt(nodes.size))
-              stack.push(new Open(nodes, null, null))
-            case Value.Map(pairs) =>
-              head(5, BigInt(pairs.size))
-              stack.push(new Open(null, pairs, null))
-            case Value.Tag(tag, node) =>
-              head(6, tag)
-              stack.push(new Open(null, null, node))
-            case Value.Bool(b) => write(if b then 245 else 244)
-            case Value.Null    => write(246)
-            case Value.Simple(n) =>
-              if n < 0 || n > 255 || (n >= 20 && n != 23 && n < 32) then
-                fail(Error.InvalidSimpleValue(n))
-              else if n < 24 then write(0xe0 | n)
-              else { write(0xf8); write(n) }
-            case Value.Float(x, FloatWidth.Half) =>
-              val bits = Float16.fromFloat(x.toFloat)
-              write(0xf9); write(bits >> 8); write(bits & 0xff)
-            case Value.Float(x, FloatWidth.Single) =>
-              val bits = java.lang.Float.floatToRawIntBits(x.toFloat)
-              write(0xfa)
-              var shift = 24
-              while shift >= 0 do { write((bits >>> shift) & 0xff); shift -= 8 }
-            case Value.Float(x, FloatWidth.Double) =>
-              val bits = java.lang.Double.doubleToRawLongBits(x)
-              write(0xfb)
-              var shift = 56
-              while shift >= 0 do { write(((bits >>> shift) & 0xff).toInt); shift -= 8 }
-        emit(value, 0)
-        while !stack.isEmpty do
-          val top = stack.peek()
-          if top.hasNext then emit(top.take(), stack.size)
-          else stack.pop()
-        Right(Bytes.fromArray(out.toByteArray))
-      catch case _: StackOverflowError => Left(TooDeep)
+      val out = new java.io.ByteArrayOutputStream()
+      def write(b: Int): Unit =
+        if out.size() >= limits.maxInputBytes then fail(Error.OutputLimitExceeded)
+        out.write(b)
+      // the low byte of `n >> shift`, then of each shift 8 bits smaller down to 0: big-endian
+      @tailrec def bigEndian(n: Long, shift: Int): Unit =
+        if shift >= 0 then
+          write(((n >> shift) & 255).toInt)
+          bigEndian(n, shift - 8)
+      def head(major: Int, n: BigInt): Unit =
+        if n < 0 || n > MaxUInt then fail(Error.ArgumentOutOfRange(n))
+        if n < 24 then write((major << 5) | n.toInt)
+        else
+          val (ai, width) =
+            if n <= 255 then (24, 1)
+            else if n <= 65535 then (25, 2)
+            else if n <= BigInt("ffffffff", 16) then (26, 4)
+            else (27, 8)
+          write((major << 5) | ai)
+          // the low 64 bits of n, which is at most 2^64 - 1
+          bigEndian(n.toLong, (width - 1) * 8)
+      def raw(major: Int, bytes: Array[Byte]): Unit =
+        if bytes.length > limits.maxStringBytes then fail(Error.StringLimitExceeded)
+        head(major, BigInt(bytes.length))
+        bytes.foreach(b => write(b & 255))
+      // the head of `v` (the whole of a leaf), then its children to write next, in order
+      def emit(v: Value): List[Node] = v match
+        case Value.UInt(n) =>
+          head(0, n)
+          Nil
+        case Value.NInt(n) =>
+          if n >= 0 then fail(Error.NonNegativeNInt(n))
+          head(1, -1 - n)
+          Nil
+        case Value.ByteString(b) =>
+          raw(2, b.toArray)
+          Nil
+        case Value.Text(s) =>
+          val bytes = Try {
+            val buffer = StandardCharsets.UTF_8
+              .newEncoder()
+              .onMalformedInput(CodingErrorAction.REPORT)
+              .onUnmappableCharacter(CodingErrorAction.REPORT)
+              .encode(CharBuffer.wrap(s))
+            val a = new Array[Byte](buffer.remaining())
+            buffer.get(a)
+            a
+          }.getOrElse(fail(Error.InvalidUnicode))
+          raw(3, bytes)
+          Nil
+        case Value.Arr(nodes) =>
+          head(4, BigInt(nodes.size))
+          nodes.toList
+        case Value.Map(pairs) =>
+          head(5, BigInt(pairs.size))
+          pairs.iterator.flatMap((k, x) => Iterator(k, x)).toList
+        case Value.Tag(tag, node) =>
+          head(6, tag)
+          List(node)
+        case Value.Bool(b) =>
+          write(if b then 245 else 244)
+          Nil
+        case Value.Null =>
+          write(246)
+          Nil
+        case Value.Simple(n) =>
+          if n < 0 || n > 255 || (n >= 20 && n != 23 && n < 32) then
+            fail(Error.InvalidSimpleValue(n))
+          else if n < 24 then write(0xe0 | n)
+          else { write(0xf8); write(n) }
+          Nil
+        case Value.Float(x, FloatWidth.Half) =>
+          val bits = Float16.fromFloat(x.toFloat)
+          write(0xf9); write(bits >> 8); write(bits & 0xff)
+          Nil
+        case Value.Float(x, FloatWidth.Single) =>
+          write(0xfa)
+          bigEndian(java.lang.Float.floatToRawIntBits(x.toFloat).toLong, 24)
+          Nil
+        case Value.Float(x, FloatWidth.Double) =>
+          write(0xfb)
+          bigEndian(java.lang.Double.doubleToRawLongBits(x), 56)
+          Nil
+      // `v` written at `depth` as the item numbered `items`; its children, a level deeper
+      def visit(v: Value, depth: Int, items: Int): List[(Node, Int)] =
+        if depth > limits.maxDepth then fail(Error.DepthLimitExceeded)
+        if items >= limits.maxItems then fail(Error.ItemLimitExceeded)
+        emit(v).map(_ -> (depth + 1))
+      // the nodes still to write, in pre-order, each read (one level) when its turn comes; the
+      // walk is a loop over a list on the heap, so a deep value needs no thread stack
+      @tailrec def walk(pending: List[(Node, Int)], items: Int): Unit = pending match
+        case Nil                   => ()
+        case (node, depth) :: rest => walk(visit(node.value, depth, items) ::: rest, items + 1)
+      walk(visit(value, 0, 0), 1)
+      Right(Bytes.fromArray(out.toByteArray))

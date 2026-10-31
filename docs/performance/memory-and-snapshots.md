@@ -352,3 +352,45 @@ into the immutable tree copies the path to the new node, where the builder links
 `setOf` and `mapOf` keep their builders, under a `@SuppressWarnings` that cites this section. For sequences, appending to a
 `Vector` copies its last block on every append and measured 9 percent slower over twelve JVMs each, but the list measured no
 slower than the builder, so `seqOf` uses the list.
+
+## 49. Reading a decoded document: functional against imperative navigation, sharing and caching (#650)
+
+**2026-10-31.** A decoded CBOR document (section 48) is read through views: `Document.valueAt` builds a container's
+children, and `entriesAt` and `itemsAt` iterate over a map's entries and an array's items, each found in the index as
+it is asked for. The children are collected into an array, and the iterators keep their place in mutable fields
+(`Iterator.next` advances state). A decode shares the equal values it reads (credentials, hashes) through a table of its
+own (`Interns`, section 12), found through a one-entry cache; and every `Bytes` keeps its hash and the first four of its
+bytes once computed (sections 2 and 16). Each was measured against its functional form on the decode that uses them
+most: the Haskell ledger state of a snapshot import.
+
+**Input and harness.** `HaskellStateDecodeBench` and the preprod `state` file of section 47 (slot 136,511,997, 32.5 MB),
+with the JVMs, limits and environment of that section (load average 2.1 to 3.0). The codec's classes are swapped, the
+rest is the same. Each row is one set of twelve JVMs in ABBA order, against the codec before #650's rewrite or against
+the kept form; the table gives the median of the six of each and their range.
+
+<!-- register:table perf-55.t1 -->
+| Form measured | Against | Against, ms (range) | Form, ms (range) | Form / against, time | MB allocated, against / form |
+|---|---|---:|---:|---:|---:|
+| Children and iterators with `Iterator.unfold` | the codec before #650's rewrite | 353 (327 to 376) | 445 (384 to 467) | 1.26 | 642 / 1,182 |
+| Children with `Iterator.unfold`, iterators kept | the codec before #650's rewrite | 363 (326 to 407) | 446 (418 to 493) | 1.23 | 641 / 1,094 |
+| Children as a `List`, iterators kept | the codec before #650's rewrite | 363 (330 to 433) | 404 (351 to 417) | 1.11 | 645 / 875 |
+| Iterators with `Iterator.unfold`, children kept | the codec before #650's rewrite | 358 (322 to 414) | 393 (338 to 425) | 1.10 | 642 / 734 |
+| Children and iterators kept, the helpers functional | the codec before #650's rewrite | 343 (326 to 412) | 391 (345 to 401) | 1.14 | 641 / 642 |
+| The same, a second run | the codec before #650's rewrite | 375 (350 to 406) | 353 (326 to 404) | 0.94 | 642 / 644 |
+| Sharing table as an immutable `HashMap` | the kept form | 369 (320 to 381) | 617 (580 to 647) | 1.67 | 644 / 995 |
+| `Bytes` without its cached hash and prefix | the kept form | 366 (340 to 385) | 403 (391 to 413) | 1.10 | 678 / 673 |
+| Last-table cache of the sharing as an `AtomicReference` of an `Option` | the codec before #650's rewrite | 320 (311 to 333) | 372 (350 to 379) | 1.16 | 644 / 689 |
+| The kept form | the codec before #650's rewrite | 362 (332 to 400) | 384 (360 to 398) | 1.06 | 643 / 653 |
+| The kept form, a second run | the codec before #650's rewrite | 390 (366 to 400) | 373 (354 to 400) | 0.96 | 647 / 642 |
+<!-- /register -->
+
+**Result.** Where the two forms allocate the same, their medians differ by -6 to +14 percent in either direction from
+run to run: each JVM settles at about 330 or about 400 ms. Time differences within that spread are not results; the
+allocation is, and so is a time difference whose ranges do not meet. Building the children as a `List` or with
+`Iterator.unfold` allocates 36 to 71 percent more, and `Iterator.unfold` for the two iterators 14 percent more, for no
+gain in time. An immutable `HashMap` as the sharing table takes 1.67 times as long with 1.54 times the allocation;
+`Bytes` without its cached hash and prefix takes 10 percent longer (the ranges do not meet); the last-table cache as an
+`AtomicReference` of an `Option` allocates on every lookup and took 16 percent longer. Each of these keeps its imperative
+form, under a `@SuppressWarnings` that cites this section. The helpers of the walk (`Index.firstAt`, the argument reader,
+the payloads of a chunked string), the pairing of a map's children and the loops of `Bytes` are functional, and the
+codec as kept reads the state as the old one did.

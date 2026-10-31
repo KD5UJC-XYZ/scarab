@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.codec
 
 import java.nio.charset.StandardCharsets
+import scala.annotation.tailrec
 
 /** Where the items of one decoded CBOR input lie: two ints an item, numbered in the order the items
   * begin (pre-order, so a container is followed by its first child and the starts increase), in
@@ -11,7 +12,11 @@ import java.nio.charset.StandardCharsets
   *
   * This is Haskell's `ByteSpan` of an item (`Cardano.Ledger.Binary.Decoding.Annotated`) for all of
   * the items of a document at once, 8 bytes each in place of the 104 of an object tree.
+  *
+  * The decoder writes it as it reads: its blocks and count are mutable, as the decoder's state is
+  * (`docs/performance.md` section 48).
   */
+@SuppressWarnings(Array("org.wartremover.warts.Var"))
 private[codec] final class Index(sizeBound: Int):
   import Index.*
 
@@ -57,20 +62,16 @@ private[codec] final class Index(sizeBound: Int):
     * large one in a logarithmic number of steps.
     */
   def firstAt(from: Int, target: Int): Int =
-    if start(from) == target then from
-    else
-      // start(lo) < target <= start(hi)
-      var lo = from
-      var step = 1
-      var hi = math.min(count - 1, from + step)
-      while start(hi) < target do
-        lo = hi
-        step <<= 1
-        hi = math.min(count - 1, hi + step)
-      while hi - lo > 1 do
+    // start(lo) < target <= start(hi): gallop until hi is past it, then halve the interval
+    @tailrec def gallop(lo: Int, hi: Int, step: Int): Int =
+      if start(hi) < target then gallop(hi, math.min(count - 1, hi + step * 2), step * 2)
+      else halve(lo, hi)
+    @tailrec def halve(lo: Int, hi: Int): Int =
+      if hi - lo <= 1 then hi
+      else
         val mid = (lo + hi) >>> 1
-        if start(mid) < target then lo = mid else hi = mid
-      hi
+        if start(mid) < target then halve(mid, hi) else halve(lo, mid)
+    if start(from) == target then from else gallop(from, math.min(count - 1, from + 1), 1)
 
 private[codec] object Index:
   private val Shift = 12
@@ -111,15 +112,9 @@ private[codec] final class Document(val data: Array[Byte], val index: Index):
     * above `2^63`).
     */
   private def argBits(s: Int, ai: Int): Long =
-    if ai < 24 then ai.toLong
-    else
-      val count = headSize(ai) - 1
-      var n = 0L
-      var i = 1
-      while i <= count do
-        n = (n << 8) | (data(s + i) & 0xffL)
-        i += 1
-      n
+    @tailrec def bigEndian(i: Int, last: Int, n: Long): Long =
+      if i > last then n else bigEndian(i + 1, last, (n << 8) | (data(s + i) & 0xffL))
+    if ai < 24 then ai.toLong else bigEndian(1, headSize(ai) - 1, 0L)
 
   private def unsigned(bits: Long): BigInt =
     if bits >= 0 then BigInt(bits) else (BigInt(bits >>> 1) << 1) | BigInt(bits & 1L)
@@ -131,7 +126,11 @@ private[codec] final class Document(val data: Array[Byte], val index: Index):
     val n = argBits(s, ai).toInt
     if major == 5 then 2 * n else n
 
-  /** The children of the container item `i`, in order. */
+  /** The children of the container item `i`, in order, into an array: built as a list or with
+    * `Iterator.unfold`, they made the decode of a real preprod state allocate 36 to 71 percent more
+    * and take 11 to 23 percent longer (`docs/performance.md` section 49).
+    */
+  @SuppressWarnings(Array("org.wartremover.warts.Var", "org.wartremover.warts.While"))
   private def children(i: Int, s: Int, major: Int, ai: Int): Array[Node] =
     if ai != 31 then
       val n = childCount(s, major, ai)
@@ -161,26 +160,18 @@ private[codec] final class Document(val data: Array[Byte], val index: Index):
     else Vector.from(scala.collection.immutable.ArraySeq.unsafeWrapArray(nodes))
 
   private def pairs(nodes: Array[Node]): Vector[(Node, Node)] =
-    val out = new Array[(Node, Node)](nodes.length / 2)
-    var i = 0
-    while i < out.length do
-      out(i) = (nodes(2 * i), nodes(2 * i + 1))
-      i += 1
-    Vector.from(scala.collection.immutable.ArraySeq.unsafeWrapArray(out))
+    Vector.tabulate(nodes.length / 2)(i => (nodes(2 * i), nodes(2 * i + 1)))
 
   /** The value of the string items (definite or in chunks): the byte ranges of its payloads. */
   private def payloads(s: Int, ai: Int)(each: (Int, Int) => Unit): Unit =
-    if ai != 31 then
-      val from = s + headSize(ai)
-      each(from, argBits(s, ai).toInt)
-    else
-      var at = s + 1
-      while (data(at) & 0xff) != 0xff do
+    @tailrec def chunks(at: Int): Unit =
+      if (data(at) & 0xff) != 0xff then
         val chunk = data(at) & 31
         val length = argBits(at, chunk).toInt
-        at += headSize(chunk)
-        each(at, length)
-        at += length
+        val from = at + headSize(chunk)
+        each(from, length)
+        chunks(from + length)
+    if ai != 31 then each(s + headSize(ai), argBits(s, ai).toInt) else chunks(s + 1)
 
   private def text(s: Int, ai: Int): String =
     if ai != 31 then
@@ -202,7 +193,12 @@ private[codec] final class Document(val data: Array[Byte], val index: Index):
       payloads(s, ai)((from, length) => out.write(data, from, length))
       Bytes.wrap(out.toByteArray)
 
-  /** The entries of item `i` if it is a map, found in the index as they are asked for. */
+  /** The entries of item `i` if it is a map, found in the index as they are asked for. An
+    * `Iterator` keeps its position by mutation; built with `Iterator.unfold` instead, the iterators
+    * of this and [[itemsAt]] made the decode of a real preprod state allocate 14 percent more
+    * (`docs/performance.md` section 49).
+    */
+  @SuppressWarnings(Array("org.wartremover.warts.Var"))
   def entriesAt(i: Int): Option[Iterator[(Node, Node)]] =
     val s = index.start(i)
     val h = data(s) & 0xff
@@ -224,7 +220,10 @@ private[codec] final class Document(val data: Array[Byte], val index: Index):
           if hasNext then key = index.firstAt(value + 1, at)
           entry)
 
-  /** The items of item `i` if it is an array, found in the index as they are asked for. */
+  /** The items of item `i` if it is an array, found in the index as they are asked for, as
+    * [[entriesAt]] finds a map's.
+    */
+  @SuppressWarnings(Array("org.wartremover.warts.Var"))
   def itemsAt(i: Int): Option[Iterator[Node]] =
     val s = index.start(i)
     val h = data(s) & 0xff
