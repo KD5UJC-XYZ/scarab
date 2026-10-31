@@ -394,3 +394,11 @@ gain in time. An immutable `HashMap` as the sharing table takes 1.67 times as lo
 form, under a `@SuppressWarnings` that cites this section. The helpers of the walk (`Index.firstAt`, the argument reader,
 the payloads of a chunked string), the pairing of a map's children and the loops of `Bytes` are functional, and the
 codec as kept reads the state as the old one did.
+
+**Equality and hashing of a decoded value.** `Tree.equal` and `Tree.hash`, which a `Node`'s `equals` and `hashCode` and
+Plutus `equalsData` use, walk the value with a `List` of what is still to visit instead of an `ArrayDeque` and loops.
+`TreeBench` (codec tests) decodes each of the 730 blocks of `CborCorpus` twice and compares and hashes the two roots,
+which are equal and share nothing; eight JVMs in ABBA order, the codec's classes swapped as above, 30 timed passes each
+after 5 of warm-up. The codec before #650's rewrite took a median of 7.5 to 7.9 ms a pass in its four JVMs, the
+functional walk 4.7 to 8.5 ms (5.8 ms the median of its four); the fastest passes were 3.0 to 3.8 ms and 3.6 to 3.8 ms.
+Every pass found all 730 pairs equal and the same hash. The functional walk is not slower and is kept.
