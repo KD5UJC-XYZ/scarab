@@ -15,12 +15,12 @@ private[byron] object ByronInteger:
     case Value.Tag(tag, inner) if tag == 2 || tag == 3 =>
       for
         _ <- Either.cond(
-          node.original.size > 0 && (node.original(0) & 0xff) == 0xc0 + tag.toInt,
+          node.original.headOption.forall(_ == (0xc0 + tag.toInt).toByte),
           (),
           LedgerDecodeError.Expected(context, LedgerDecodeError.Shape.Integer, node.value)
         )
         _ <- Either.cond(
-          inner.original.size > 0 && (inner.original(0) & 31) != 31,
+          !inner.isIndefinite,
           (),
           LedgerDecodeError.IndefiniteLength(context)
         )

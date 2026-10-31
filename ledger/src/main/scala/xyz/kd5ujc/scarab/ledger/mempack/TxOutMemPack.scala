@@ -136,6 +136,28 @@ object TxOutMemPack:
 
   private final case class Addr28Extra(a: Long, b: Long, c: Long, d: Long)
 
+  /** `DataHash32`: a 32-byte hash as four big-endian words. */
+  private final case class DataHash32(a: Long, b: Long, c: Long, d: Long):
+    def bytes: Bytes =
+      def word(k: Int): Long = k match
+        case 0 => a
+        case 1 => b
+        case 2 => c
+        case _ => d
+      Bytes.wrap(Array.tabulate(32)(i => (word(i / 8) >>> (56 - 8 * (i % 8))).toByte))
+
+  private object DataHash32:
+    /** The words of a hash of exactly 32 bytes; none for any other length. */
+    def of(h: Bytes): Option[DataHash32] =
+      if h.size != 32 then None
+      else
+        for
+          a <- h.bigEndian(0, 8)
+          b <- h.bigEndian(8, 8)
+          c <- h.bigEndian(16, 8)
+          d <- h.bigEndian(24, 8)
+        yield DataHash32(a, b, c, d)
+
   private enum PackedValue:
     case AdaOnly(coin: Long)
     case Assets(coin: Long, count: Int, rep: Bytes)
@@ -147,7 +169,7 @@ object TxOutMemPack:
     case Compact(address: Bytes, value: PackedValue)
     case CompactDH(address: Bytes, value: PackedValue, dataHash: Bytes)
     case Addr28(stake: Credential, extra: Addr28Extra, coin: Long)
-    case Addr28DH(stake: Credential, extra: Addr28Extra, coin: Long, dataHash: Bytes)
+    case Addr28DH(stake: Credential, extra: Addr28Extra, coin: Long, dataHash: DataHash32)
     case CompactDatum(address: Bytes, value: PackedValue, inline: Bytes)
     case CompactRefScript(address: Bytes, value: PackedValue, datum: Datum, script: RefScript)
 
@@ -218,25 +240,21 @@ object TxOutMemPack:
         case _ => None
     }
 
-  private def be64(b: Bytes, at: Int): Long =
-    var v = 0L
-    var i = 0
-    while i < 8 do
-      v = (v << 8) | (b(at + i) & 0xffL)
-      i += 1
-    v
-
-  private def addr28Extra(net: Int, payment: Credential): Addr28Extra =
+  /** The payment hash of a base address as the reference packs it: its first 24 bytes as three
+    * big-endian words, the last 4 in the high half of the fourth, with the network and the kind of
+    * credential in its low bits. None if the hash is shorter than 28 bytes.
+    */
+  private def addr28Extra(net: Int, payment: Credential): Option[Addr28Extra] =
     val h = payment.hash
-    val last = ((b4(h, 24)) & 0xffffffffL) << 32
     val key = payment match
       case Credential.Key(_)    => 1L
       case Credential.Script(_) => 0L
-    Addr28Extra(be64(h, 0), be64(h, 8), be64(h, 16), last | (net.toLong << 1) | key)
-
-  private def b4(b: Bytes, at: Int): Long =
-    ((b(at) & 0xffL) << 24) | ((b(at + 1) & 0xffL) << 16) | ((b(at + 2) & 0xffL) << 8) |
-      (b(at + 3) & 0xffL)
+    for
+      a <- h.bigEndian(0, 8)
+      b <- h.bigEndian(8, 8)
+      c <- h.bigEndian(16, 8)
+      last <- h.bigEndian(24, 4)
+    yield Addr28Extra(a, b, c, (last << 32) | (net.toLong << 1) | key)
 
   private def choose[E <: EraTag](p: TxOutParts)(using ShelleyBasedEra[E]): Result[Rep] =
     for
@@ -276,13 +294,15 @@ object TxOutMemPack:
       case Some(h) => Rep.CompactDH(address, value, h)
     (value, maxTag[E] >= 2) match
       case (PackedValue.AdaOnly(coin), true) =>
-        baseAddress(address) match
-          case Some((net, pay, stake)) =>
-            val extra = addr28Extra(net, pay)
-            dataHash match
-              case None    => Rep.Addr28(stake, extra, coin)
-              case Some(h) => Rep.Addr28DH(stake, extra, coin, h)
-          case None => compact
+        val addr28 =
+          for
+            (net, pay, stake) <- baseAddress(address)
+            extra <- addr28Extra(net, pay)
+            rep <- dataHash match
+              case None    => Some(Rep.Addr28(stake, extra, coin))
+              case Some(h) => DataHash32.of(h).map(Rep.Addr28DH(stake, extra, coin, _))
+          yield rep
+        addr28.getOrElse(compact)
       case _ => compact
 
   // ---- sizes and packing
@@ -331,11 +351,11 @@ object TxOutMemPack:
         out.tag(1)
         out.raw(h)
 
-  private def packWords(h: Bytes, out: Packer): Unit =
-    out.word64le(be64(h, 0))
-    out.word64le(be64(h, 8))
-    out.word64le(be64(h, 16))
-    out.word64le(be64(h, 24))
+  private def packWords(h: DataHash32, out: Packer): Unit =
+    out.word64le(h.a)
+    out.word64le(h.b)
+    out.word64le(h.c)
+    out.word64le(h.d)
 
   private def packDatum(d: Datum, out: Packer): Unit = d match
     case Datum.NoDatum => out.tag(0)
@@ -438,21 +458,13 @@ object TxOutMemPack:
     yield Addr28Extra(a, b, c, d)
 
   /** `DataHash32`: four words, each the little-endian write of a big-endian word of the hash. */
-  private def unpackHash32(in: Unpacker): Result[Bytes] =
+  private def unpackHash32(in: Unpacker): Result[DataHash32] =
     for
       a <- in.word64le
       b <- in.word64le
       c <- in.word64le
       d <- in.word64le
-    yield
-      val out = new Array[Byte](32)
-      List(a, b, c, d).zipWithIndex.foreach { (w, i) =>
-        var k = 0
-        while k < 8 do
-          out(8 * i + k) = (w >>> (56 - 8 * k)).toByte
-          k += 1
-      }
-      Bytes.wrap(out)
+    yield DataHash32(a, b, c, d)
 
   private def unpackDatum(in: Unpacker): Result[Datum] =
     in.tag.flatMap {
@@ -579,6 +591,8 @@ object TxOutMemPack:
     case Rep.Addr28(stake, e, coin) =>
       Right(TxOutParts(address28(stake, e), Value(unsigned(coin), Map.empty), Datum.NoDatum, None))
     case Rep.Addr28DH(stake, e, coin, h) =>
-      Right(TxOutParts(address28(stake, e), Value(unsigned(coin), Map.empty), Datum.Hash(h), None))
+      Right(
+        TxOutParts(address28(stake, e), Value(unsigned(coin), Map.empty), Datum.Hash(h.bytes), None)
+      )
     case Rep.CompactDatum(a, v, d)        => value(v).map(TxOutParts(a, _, Datum.Inline(d), None))
     case Rep.CompactRefScript(a, v, d, s) => value(v).map(TxOutParts(a, _, d, Some(s)))

@@ -95,34 +95,34 @@ object SnapshotTables:
           at: Int,
           seen: Long,
           emitted: List[Entry]
-      ): Either[Error, (Decoder, Vector[Entry])] = state match
-        case Phase.Head(Site.Key(Some(0))) => go(Phase.Done, at, seen, emitted)
-        case Phase.Body(site, 0, parts) =>
+      ): Either[Error, (Decoder, Vector[Entry])] = (state, bytes.lift(at)) match
+        case (Phase.Head(Site.Key(Some(0))), _) => go(Phase.Done, at, seen, emitted)
+        case (Phase.Body(site, 0, parts), _) =>
           val body = Bytes.wrap(Chunk.concat(parts.reverse).toArray)
           site match
             case Site.Key(left) => go(Phase.Head(Site.Value(body, left)), at, seen, emitted)
             case Site.Value(key, left) =>
               go(Phase.Head(Site.Key(left.map(_ - 1))), at, seen + 1, Entry(key, body) :: emitted)
             case _ => Left(Error.WrongType(site.field, -1, offset + at))
-        case _ if at == bytes.size =>
+        case (_, None) =>
           Right(
             (new Decoder(state, offset + at, seen, crc.update(bytes)), emitted.reverse.toVector)
           )
-        case Phase.Done => Left(Error.TrailingBytes(offset + at))
-        case Phase.Body(site, left, parts) =>
+        case (Phase.Done, Some(_)) => Left(Error.TrailingBytes(offset + at))
+        case (Phase.Body(site, left, parts), Some(_)) =>
           val taken = math.min(left, bytes.size - at)
           val part = bytes.slice(at, at + taken).compact
           val chunk = Chunk.array(part.unsafeArray, part.unsafeOffset, part.size)
           go(Phase.Body(site, left - taken, chunk :: parts), at + taken, seen, emitted)
-        case Phase.Length(site, left, value) =>
-          val next = (value << 8) | (bytes(at) & 0xff)
+        case (Phase.Length(site, left, value), Some(b)) =>
+          val next = (value << 8) | (b & 0xff)
           if left > 1 then go(Phase.Length(site, left - 1, next), at + 1, seen, emitted)
           else
             sized(site, next) match
               case Left(e)      => Left(e)
               case Right(state) => go(state, at + 1, seen, emitted)
-        case Phase.Head(site) =>
-          val head = bytes(at) & 0xff
+        case (Phase.Head(site), Some(b)) =>
+          val head = b & 0xff
           val additional = head & 31
           if head == 0xff && site == Site.Key(None) then go(Phase.Done, at + 1, seen, emitted)
           else if head == 0xbf && site == Site.Map then

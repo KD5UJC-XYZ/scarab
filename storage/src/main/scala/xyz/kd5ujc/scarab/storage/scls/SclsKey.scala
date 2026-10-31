@@ -71,15 +71,16 @@ object SclsKey:
       bytes: Bytes
   ): Either[Error, S.Credential[R]] =
     val hash = bytes.drop(1).compact
-    (bytes(0) & 255) match
-      case 0 =>
+    bytes.headOption.map(_ & 255) match
+      case Some(0) =>
         S.ScriptHash
           .fromBytes(hash)
           .leftMap(Error.Vocabulary(_))
           .map(S.Credential.ScriptHashObj[R](_))
-      case 1 =>
+      case Some(1) =>
         S.KeyHash.fromBytes[R](hash).leftMap(Error.Vocabulary(_)).map(S.Credential.KeyHashObj[R](_))
-      case n => Left(Error.CredentialTag(namespace, n))
+      case Some(n) => Left(Error.CredentialTag(namespace, n))
+      case None    => Left(Error.Length(namespace, bytes.size))
 
   private def input(
       namespace: Namespace,
@@ -131,18 +132,23 @@ object SclsKey:
             .map(Key.PParams(_))
             .toRight(Error.ParameterSelector(bytes.compact))
         case Namespace.ProposalRoots =>
-          Purpose.values
-            .lift(bytes(0) & 255)
-            .map(Key.ProposalRoots(_))
-            .toRight(Error.PurposeSelector(bytes(0) & 255))
+          bytes.headOption.map(_ & 255) match
+            case None => Left(Error.Length(namespace, bytes.size))
+            case Some(selector) =>
+              Purpose.values
+                .lift(selector)
+                .map(Key.ProposalRoots(_))
+                .toRight(Error.PurposeSelector(selector))
         case Namespace.Proposals =>
           Right(Key.Proposals(GovActionId(bytes.take(32).compact, number(bytes.drop(32)))))
         case Namespace.Utxo =>
           Right(Key.Utxo(TxIn(bytes.take(32).compact, number(bytes.drop(32), little = true))))
         case Namespace.CommitteeEntities | Namespace.Committee | Namespace.Constitution =>
-          if bytes(0) != 0 then Left(Error.Singleton(namespace, bytes(0) & 255))
-          else
-            Right(namespace match
-              case Namespace.CommitteeEntities => Key.CommitteeEntities
-              case Namespace.Committee         => Key.Committee
-              case _                           => Key.Constitution)
+          bytes.headOption.map(_ & 255) match
+            case None                            => Left(Error.Length(namespace, bytes.size))
+            case Some(selector) if selector != 0 => Left(Error.Singleton(namespace, selector))
+            case Some(_) =>
+              Right(namespace match
+                case Namespace.CommitteeEntities => Key.CommitteeEntities
+                case Namespace.Committee         => Key.Committee
+                case _                           => Key.Constitution)

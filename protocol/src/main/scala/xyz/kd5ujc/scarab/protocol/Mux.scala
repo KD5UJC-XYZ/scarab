@@ -119,18 +119,18 @@ object Mux:
       bytes: Bytes,
       maxPayloadBytes: Int = WireMaxPayloadBytes
   ): Either[Error, Header] =
-    if bytes.size != HeaderBytes then Left(Error.HeaderLength(bytes.size))
-    else
-      def u(index: Int): Int = bytes(index) & 0xff
-      val timestamp = (u(0).toLong << 24) | (u(1).toLong << 16) | (u(2).toLong << 8) | u(3).toLong
-      val protocol = (u(4) << 8) | u(5)
-      val header = Header(
-        timestamp,
-        protocol & 0x7fff,
-        if (protocol & 0x8000) == 0 then Direction.Initiator else Direction.Responder,
-        (u(6) << 8) | u(7)
-      )
-      validate(header, maxPayloadBytes).map(_ => header)
+    // the eight bytes as one number: timestamp (4), direction and protocol (2), length (2)
+    bytes.bigEndian(0, HeaderBytes).filter(_ => bytes.size == HeaderBytes) match
+      case None => Left(Error.HeaderLength(bytes.size))
+      case Some(word) =>
+        val protocol = ((word >>> 16) & 0xffff).toInt
+        val header = Header(
+          word >>> 32,
+          protocol & 0x7fff,
+          if (protocol & 0x8000) == 0 then Direction.Initiator else Direction.Responder,
+          (word & 0xffff).toInt
+        )
+        validate(header, maxPayloadBytes).map(_ => header)
 
   def encode(sdu: Sdu): Either[Error, Bytes] =
     encodeHeader(sdu.header).map(header => header ++ sdu.payload)

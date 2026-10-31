@@ -25,8 +25,10 @@ private[protocol] object LeiosFetchDecoder:
   private def check(condition: Boolean, error: => LeiosWireError): Decoder[Unit] =
     if condition then pure(()) else fail(error)
   private val peek: Decoder[Int] = StateT { cursor =>
-    if cursor.position == cursor.input.size then Left(LeiosWireError.Incomplete)
-    else Right(cursor -> (cursor.input(cursor.position) & 255))
+    cursor.input
+      .lift(cursor.position)
+      .toRight(LeiosWireError.Incomplete)
+      .map(b => cursor -> (b & 255))
   }
   private def take(length: BigInt): Decoder[Bytes] = StateT { cursor =>
     if length > cursor.input.size - cursor.position then Left(LeiosWireError.Incomplete)
@@ -34,7 +36,7 @@ private[protocol] object LeiosFetchDecoder:
       val end = cursor.position + length.toInt
       Right(cursor.copy(position = end) -> cursor.input.slice(cursor.position, end))
   }
-  private val byte: Decoder[Int] = take(1).map(_(0) & 255)
+  private val byte: Decoder[Int] = peek.flatMap(b => take(1).map(_ => b))
   private val head: Decoder[Head] = byte.flatMap { first =>
     val ai = first & 31
     val argument: Decoder[Option[BigInt]] =

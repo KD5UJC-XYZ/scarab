@@ -41,7 +41,9 @@ object WireSkipFunctional:
 
   private def peek(input: Bytes, limits: Limits, pos: Int): Read[Int] =
     // `map`, not `as`: the byte is read only once `need` has admitted it
-    need(input, limits, pos, 1).map(_ => input(pos) & 255)
+    need(input, limits, pos, 1).flatMap(_ =>
+      input.lift(pos).toRight(ProtocolError.TruncatedCbor).map(_ & 255)
+    )
 
   /** The argument of a head whose additional information is `ai`, read from `pos`, and the position
     * after it.
@@ -56,8 +58,11 @@ object WireSkipFunctional:
         case 27 => Right(8)
         case _  => Left(ProtocolError.ReservedOrIndefiniteArgument)
       width.flatMap { n =>
-        need(input, limits, pos, n).map(_ =>
-          ((0 until n).foldLeft(BigInt(0))((v, i) => (v << 8) | (input(pos + i) & 255)), pos + n)
+        need(input, limits, pos, n).flatMap(_ =>
+          input
+            .bigEndian(pos, n)
+            .toRight(ProtocolError.TruncatedCbor)
+            .map(v => (BigInt(v) + (if v < 0 then BigInt(1) << 64 else 0), pos + n))
         )
       }
 
@@ -100,10 +105,9 @@ object WireSkipFunctional:
     peek(input, limits, at.pos) match
       case Left(error) => Left(error)
       case Right(255)  => Right(At(at.pos + 1, at.items))
-      case Right(_) =>
+      case Right(head) =>
         val chunk = for
           items <- count(limits, at.items)
-          head = input(at.pos) & 255
           _ <-
             if head / 32 != major || (head & 31) == 31 then Left(ProtocolError.InvalidStringChunk)
             else Right(())

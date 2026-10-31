@@ -1359,15 +1359,15 @@ object Targets:
           fixture ++ widths ++ Corpus.tricky
         ,
         probe("scls-keys") { bytes =>
-          if bytes.nonEmpty then
-            SclsRecord.Namespace.values.lift(bytes(0) & 255).foreach { namespace =>
+          bytes.headOption.flatMap(b => SclsRecord.Namespace.values.lift(b & 255)).foreach {
+            namespace =>
               val original = bytes.drop(1)
               keys.decode(namespace, original).foreach { key =>
                 hit("scls-keys")
                 req(key.namespace == namespace, "SCLS key changes its namespace")
                 req(keys.encode(key) == Right(original), "SCLS key changes original bytes")
               }
-            }
+          }
         }
       ),
       Target(

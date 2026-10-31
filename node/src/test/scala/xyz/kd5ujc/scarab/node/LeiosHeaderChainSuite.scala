@@ -71,7 +71,7 @@ class LeiosHeaderChainSuite extends munit.FunSuite:
     go(0, from)
 
   private def corrupt(raw: Bytes, at: Int): LeiosHeader =
-    val bit = Bytes(Vector((raw(at) ^ 1).toByte))
+    val bit = Bytes(Vector((raw.toArray(at) ^ 1).toByte))
     LeiosHeader
       .decode(raw.take(at) ++ bit ++ raw.drop(at + 1))
       .fold(e => fail(e.message), identity)

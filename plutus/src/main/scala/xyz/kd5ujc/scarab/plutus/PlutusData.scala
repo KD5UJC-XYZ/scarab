@@ -134,7 +134,8 @@ object PlutusData:
           ds => Right(Map(TreeFold.pairs(ds)))
         )
       )
-    case Value.Tag(t, _) if (t == 2 || t == 3) && (n.original(0) & 0xff) != 0xc0 + t.toInt =>
+    case Value.Tag(t, _)
+        if (t == 2 || t == 3) && n.original.headOption.exists(_ != (0xc0 + t.toInt).toByte) =>
       Left(DecodeError.BigNumberWideHead(t))
     case Value.Tag(t, inner) if t == 2 || t == 3 =>
       inner.value match
