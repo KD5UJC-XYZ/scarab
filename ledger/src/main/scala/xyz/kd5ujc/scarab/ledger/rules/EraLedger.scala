@@ -5,7 +5,6 @@ import cats.Order
 import monocle.Lens
 import scala.annotation.tailrec
 import scala.collection.immutable.SortedMap
-import scala.collection.mutable
 import xyz.kd5ujc.scarab.ledger.{GenDelegPair, Ptr, ProtocolParams}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.state.given
@@ -215,21 +214,24 @@ object EraLedger:
       amounts: scala.collection.IndexedSeq[(Credential[Staking], CompactCoin)]
   ): SortedMap[Credential[Staking], A] =
     val order = summon[Order[Credential[Staking]]]
-    val out = mutable.ArrayBuffer.empty[(Credential[Staking], A)]
-    out.sizeHint(states.size)
-    @tailrec def go(accounts: Iterator[(Credential[Staking], A)], i: Int): Unit =
-      if accounts.hasNext then
+    // the first amount at `j` or after that is not below `credential`
+    @tailrec def skip(j: Int, credential: Credential[Staking]): Int =
+      if j < amounts.size && order.lt(amounts(j)._1, credential) then skip(j + 1, credential) else j
+    // each account in order, credited with the amount of its credential if there is one
+    @tailrec def go(
+        accounts: Iterator[(Credential[Staking], A)],
+        i: Int,
+        out: Vector[(Credential[Staking], A)]
+    ): Vector[(Credential[Staking], A)] =
+      if !accounts.hasNext then out
+      else
         val (credential, account) = accounts.next()
-        var j = i
-        while j < amounts.size && order.lt(amounts(j)._1, credential) do j += 1
+        val j = skip(i, credential)
         if j < amounts.size && order.eqv(amounts(j)._1, credential) then
-          out += credential -> balance.replace(balance.get(account).add(amounts(j)._2))(account)
-          go(accounts, j + 1)
-        else
-          out += credential -> account
-          go(accounts, j)
-    go(states.iterator, 0)
-    Sorted.fromAscending(out)
+          val credited = balance.replace(balance.get(account).add(amounts(j)._2))(account)
+          go(accounts, j + 1, out :+ (credential -> credited))
+        else go(accounts, j, out :+ (credential -> account))
+    Sorted.fromAscending(go(states.iterator, 0, Vector.empty))
 
   /** `removeStakePoolDelegations` (`State/Account.hs`): the accounts of `delegators` delegate to no
     * pool.
