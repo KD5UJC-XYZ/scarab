@@ -8,11 +8,17 @@ import java.nio.charset.StandardCharsets
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.NativeScript
 import xyz.kd5ujc.scarab.codec.Rational
+import scala.annotation.tailrec
 import scala.compiletime.{constValue, erasedValue, summonInline}
 import scala.deriving.Mirror
 import scala.reflect.TypeTest
 
-/** Byte sink with the primitives of the snapshot format. Integers are LEB128 varints. */
+/** Byte sink with the primitives of the snapshot format. Integers are LEB128 varints.
+  *
+  * The fill count of its buffer is mutable: every byte of a snapshot is written through it, and a
+  * functional form would thread the position through every codec; #662 tracks measuring that.
+  */
+@SuppressWarnings(Array("org.wartremover.warts.Var"))
 final class Out(stream: OutputStream):
   private val buffer = new Array[Byte](1 << 16)
   private var used = 0
@@ -38,12 +44,11 @@ final class Out(stream: OutputStream):
       System.arraycopy(a, from, buffer, used, len)
       used += len
 
-  def varint(value: Long): Unit =
-    var v = value
-    while (v & ~0x7fL) != 0 do
-      byte(((v & 0x7f) | 0x80).toInt)
-      v >>>= 7
-    byte(v.toInt)
+  @tailrec def varint(value: Long): Unit =
+    if (value & ~0x7fL) == 0 then byte(value.toInt)
+    else
+      byte(((value & 0x7f) | 0x80).toInt)
+      varint(value >>> 7)
 
   def fixed32(v: Int): Unit = (0 until 4).foreach(i => byte((v >>> (24 - 8 * i)) & 0xff))
   def fixed64(v: Long): Unit = (0 until 8).foreach(i => byte(((v >>> (56 - 8 * i)) & 0xff).toInt))
@@ -54,7 +59,10 @@ final class Out(stream: OutputStream):
 
 /** Buffered input interpreter. Malformed fields return values; stream I/O failures are handled by
   * the storage boundary. Collection sizes are bounded by the bytes that remain.
+  *
+  * The counts of the bytes consumed and left are mutable, as [[Out]]'s fill count is (#662).
   */
+@SuppressWarnings(Array("org.wartremover.warts.Var"))
 final class In(source: InputStream, limit: Long):
   private val stream = new java.io.BufferedInputStream(
     new InputStream:
@@ -268,23 +276,25 @@ object Codec extends LowPriorityCodec:
     private val bigInt = summon[Codec[BigInt]]
     private val bytes = summon[Codec[Bytes]]
     def write(out: Out, a: NativeScript): Unit =
-      val stack = new java.util.ArrayDeque[Iterator[NativeScript]]
-      def head(s: NativeScript): Unit =
+      // a script's tag and own fields, then the count of its children, which are written next
+      def head(s: NativeScript): List[NativeScript] =
         out.byte(s.ordinal)
         s match
-          case NativeScript.Sig(h)              => bytes.write(out, h)
+          case NativeScript.Sig(h)              => bytes.write(out, h); Nil
           case NativeScript.AllOf(ss)           => list(ss)
           case NativeScript.AnyOf(ss)           => list(ss)
           case NativeScript.NOfK(n, ss)         => bigInt.write(out, n); list(ss)
-          case NativeScript.InvalidBefore(s)    => bigInt.write(out, s)
-          case NativeScript.InvalidHereafter(s) => bigInt.write(out, s)
-      def list(ss: Vector[NativeScript]): Unit =
+          case NativeScript.InvalidBefore(s)    => bigInt.write(out, s); Nil
+          case NativeScript.InvalidHereafter(s) => bigInt.write(out, s); Nil
+      def list(ss: Vector[NativeScript]): List[NativeScript] =
         out.varint(ss.size.toLong)
-        stack.push(ss.iterator)
-      head(a)
-      while !stack.isEmpty do
-        val top = stack.peek()
-        if top.hasNext then head(top.next()) else stack.pop()
+        ss.toList
+      // the scripts still to write at each open level, the innermost first
+      @tailrec def go(pending: List[List[NativeScript]]): Unit = pending match
+        case Nil               => ()
+        case Nil :: up         => go(up)
+        case (s :: rest) :: up => go(head(s) :: rest :: up)
+      go(List(List(a)))
     private final case class Open(
         tag: Int,
         required: BigInt,
@@ -388,19 +398,24 @@ object LowPriorityCodec:
     */
   private[scarab] sealed trait Variants[A, Ts <: Tuple]:
     def write(out: Out, a: A, index: Int): Unit
-    def read(in: In, index: Int): Either[BinaryError, A]
+
+    /** The value of the variant at `index`, none when the sum has no variant there. */
+    def read(in: In, index: Long): Option[Either[BinaryError, A]]
     def shapes: List[String]
 
   private[scarab] final class NoVariants[A] extends Variants[A, EmptyTuple.type]:
     def write(out: Out, a: A, index: Int): Unit = ()
-    def read(in: In, index: Int): Either[BinaryError, A] =
-      throw new IllegalStateException(s"no variant at ordinal $index")
+    def read(in: In, index: Long): Option[Either[BinaryError, A]] = None
     def shapes: List[String] = Nil
 
   private[scarab] final class OneVariant[A, T <: A, Ts <: Tuple](tail: Variants[A, Ts])(using
       codec: Codec[T],
       test: TypeTest[A, T]
   ) extends Variants[A, T *: Ts]:
+    // `index` is the value's `Mirror.SumOf.ordinal`, which the compiler gives as the position of
+    // the variant whose type the value has; no type says so, and a value that failed the test
+    // would be a defect of the derivation, which cannot be written as anything
+    @SuppressWarnings(Array("org.wartremover.warts.Throw"))
     def write(out: Out, a: A, index: Int): Unit =
       if index == 0 then
         a match
@@ -409,8 +424,8 @@ object LowPriorityCodec:
             throw new IllegalStateException(s"the value at ordinal 0 is not of its variant's type")
       else tail.write(out, a, index - 1)
 
-    def read(in: In, index: Int): Either[BinaryError, A] =
-      if index == 0 then codec.read(in).map(value => value: A)
+    def read(in: In, index: Long): Option[Either[BinaryError, A]] =
+      if index == 0 then Some(codec.read(in).map(value => value: A))
       else tail.read(in, index - 1)
 
     def shapes: List[String] = codec.shape :: tail.shapes
@@ -458,8 +473,7 @@ object LowPriorityCodec:
       out.varint(index.toLong)
       variants.write(out, a, index)
     def read(in: In): Either[BinaryError, A] = in.varint().flatMap { index =>
-      if index < 0 || index >= arity then Left(BinaryError.InvalidVariant(name, index, arity))
-      else variants.read(in, index.toInt)
+      variants.read(in, index).getOrElse(Left(BinaryError.InvalidVariant(name, index, arity)))
     }
     def shape: String = s"$name{${variants.shapes.mkString("|")}}"
 

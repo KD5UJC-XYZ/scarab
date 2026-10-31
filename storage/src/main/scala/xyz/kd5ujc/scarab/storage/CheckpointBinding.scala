@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.storage
 
 import cats.syntax.all.*
+import scala.annotation.tailrec
 import scala.util.Using
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
@@ -84,10 +85,12 @@ object CheckpointDigest:
       if !table(name) then
         Using.resource(Files.newInputStream(file)) { in =>
           val buffer = new Array[Byte](64 * 1024)
-          var read = in.read(buffer)
-          while read >= 0 do
-            digest.update(buffer, 0, read)
-            read = in.read(buffer)
+          @tailrec def rest(): Unit =
+            val read = in.read(buffer)
+            if read >= 0 then
+              digest.update(buffer, 0, read)
+              rest()
+          rest()
         }
     }
     Bytes.fromArray(digest.digest())

@@ -98,7 +98,8 @@ object SclsEntrySorter:
             FileVisitResult.CONTINUE
 
           override def postVisitDirectory(dir: NioPath, error: IOException): FileVisitResult =
-            if error != null then throw error
+            // the default throws the error that ended the walk of the directory, if there was one
+            super.postVisitDirectory(dir, error)
             Files.delete(dir)
             FileVisitResult.CONTINUE
       )

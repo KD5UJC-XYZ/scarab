@@ -139,7 +139,9 @@ trait NodeTypeCodecs extends VocabularyCodecs:
             Left(DecodeError.at(n, Kind.OutOfRange("a reward account header 0xe_ or 0xf_", header)))
       }
     def encode(a: RewardAccount, out: Writer): Unit =
-      val base = if a.credential.isInstanceOf[Credential.Script] then 0xf0 else 0xe0
+      val base = a.credential match
+        case Credential.Key(_)    => 0xe0
+        case Credential.Script(_) => 0xf0
       out.bytes(Bytes(Vector((base | a.network).toByte) ++ a.credential.hash.value))
     override def check(a: RewardAccount): Option[ConstraintViolation] =
       Codec.refuse(

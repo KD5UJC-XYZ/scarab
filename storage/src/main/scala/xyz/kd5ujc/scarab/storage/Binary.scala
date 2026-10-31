@@ -81,13 +81,10 @@ object Binary:
       count: Int
   ): Either[(Int, Err), Vector[A]] =
     val view = ByteVector.view(bytes)
-    val out = Vector.newBuilder[A]
-    @tailrec def go(i: Int): Either[(Int, Err), Vector[A]] =
-      if i == count then Right(out.result())
+    @tailrec def go(i: Int, out: Vector[A]): Either[(Int, Err), Vector[A]] =
+      if i == count then Right(out)
       else
         codec.decode(view.slice(from + i.toLong * size, from + (i + 1L) * size).bits) match
-          case Attempt.Successful(DecodeResult(a, _)) =>
-            out += a
-            go(i + 1)
-          case Attempt.Failure(err) => Left(i -> err)
-    go(0)
+          case Attempt.Successful(DecodeResult(a, _)) => go(i + 1, out :+ a)
+          case Attempt.Failure(err)                   => Left(i -> err)
+    go(0, Vector.empty)

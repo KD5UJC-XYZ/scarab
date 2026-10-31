@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import scala.util.Using
 import xyz.kd5ujc.scarab.codec.DomainError
 import cats.effect.Sync
 import cats.mtl.Raise
@@ -72,42 +73,45 @@ private[storage] object SnapshotPoint:
                       .size(data)
                   then Left(corrupt(SnapshotReadError.PointOutsideData))
                   else
-                    val channel = java.nio.channels.FileChannel.open(data, StandardOpenOption.READ)
                     val buffer = ByteBuffer.allocate(entry.length)
-                    try
-                      @annotation.tailrec
-                      def read(at: Long): Boolean =
-                        if !buffer.hasRemaining then true
-                        else
-                          val n = channel.read(buffer, at)
-                          n > 0 && read(at + n)
-                      if !read(entry.offset) then Left(corrupt(SnapshotReadError.TruncatedBlock))
-                      else
-                        val raw = buffer.array()
-                        val crc = new CRC32()
-                        crc.update(raw)
-                        for
-                          _ <- Either.cond(
-                            crc.getValue.toInt == entry.crc,
-                            (),
-                            corrupt(SnapshotReadError.BlockChecksum)
-                          )
-                          block <- Block
-                            .decode(Bytes.wrap(raw), byronEpochSlots)
-                            .leftMap(e => corrupt(e))
-                          h = block.header
-                          _ <- Either.cond(
-                            BlockRef(
-                              h.slot,
-                              h.hash,
-                              h.blockNo,
-                              h.isBoundary
-                            ) == anchor && block.era == era,
-                            (),
-                            corrupt(SnapshotReadError.BlockAnchorMismatch)
-                          )
-                        yield ()
-                    finally channel.close()
+                    val complete =
+                      Using.resource(
+                        java.nio.channels.FileChannel.open(data, StandardOpenOption.READ)
+                      ) { channel =>
+                        @annotation.tailrec
+                        def read(at: Long): Boolean =
+                          if !buffer.hasRemaining then true
+                          else
+                            val n = channel.read(buffer, at)
+                            n > 0 && read(at + n)
+                        read(entry.offset)
+                      }
+                    if !complete then Left(corrupt(SnapshotReadError.TruncatedBlock))
+                    else
+                      val raw = buffer.array()
+                      val crc = new CRC32()
+                      crc.update(raw)
+                      for
+                        _ <- Either.cond(
+                          crc.getValue.toInt == entry.crc,
+                          (),
+                          corrupt(SnapshotReadError.BlockChecksum)
+                        )
+                        block <- Block
+                          .decode(Bytes.wrap(raw), byronEpochSlots)
+                          .leftMap(e => corrupt(e))
+                        h = block.header
+                        _ <- Either.cond(
+                          BlockRef(
+                            h.slot,
+                            h.hash,
+                            h.blockNo,
+                            h.isBoundary
+                          ) == anchor && block.era == era,
+                          (),
+                          corrupt(SnapshotReadError.BlockAnchorMismatch)
+                        )
+                      yield ()
                 }
       }
       _ <- checked.fold(_.raise[F, Unit], F.pure)

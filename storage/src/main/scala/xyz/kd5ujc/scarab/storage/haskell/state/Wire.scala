@@ -224,7 +224,12 @@ object Wire:
     * `Encoder.hs:479-491`). The decoder takes elements in any order and either length form
     * (`decodeSet`, `Decoder.hs:952-962`): from version 9 the tag is optional and a repeated element
     * is an error; before it the tag is not permitted and repeats are ignored.
+    *
+    * The elements go into a builder of the set: inserting them one by one into the immutable set,
+    * or collecting them first and building the set from them, decoded a real preprod state 20 to 30
+    * percent slower and allocated twice as much (`docs/performance.md` section 47).
     */
+  @SuppressWarnings(Array("org.wartremover.warts.MutableDataStructures"))
   def setOf[A](elem: Codec[A])(using Order[A], ProtVer): Codec[SortedSet[A]] =
     val v = summon[ProtVer]
     new Codec[SortedSet[A]]:
@@ -260,7 +265,10 @@ object Wire:
   /** A map, in key order, with the variable-length framing (`encodeMap`, `Encoder.hs:397-408`). The
     * decoder takes entries in any order and either length form (`decodeMapByKey`,
     * `Decoder.hs:815-830`); from version 9 a repeated key is an error, before it the last wins.
+    *
+    * The entries go into a builder of the map, as [[setOf]]'s elements do (section 47).
     */
+  @SuppressWarnings(Array("org.wartremover.warts.MutableDataStructures"))
   def mapOf[K, V](key: Codec[K], value: Codec[V])(using Order[K], ProtVer): Codec[SortedMap[K, V]] =
     val v = summon[ProtVer]
     new Codec[SortedMap[K, V]]:
@@ -333,13 +341,17 @@ object Wire:
 
   /** A sequence (`StrictSeq`, `encodeStrictSeq`, `Encoder.hs:516`): the variable-length framing in
     * order; the decoder reads either length form.
+    *
+    * The elements are put in front of a list and turned around once: appending each to a vector
+    * copies the vector's last block every time, and decoded a real preprod state about 9 percent
+    * slower (`docs/performance.md` section 47).
     */
   def seqOf[A](elem: Codec[A]): Codec[Vector[A]] = new Codec[Vector[A]]:
     def decode(n: Node): Decoded[Vector[A]] = n.items match
       case Some(items) =>
-        // the builder is local to this call and does not escape it
-        val builder = Vector.newBuilder[A]
-        Elements.decodeInto(items, elem)(builder += _).map(_ => builder.result())
+        Elements
+          .foldInto(items, elem)(List.empty[A])((xs, x) => x :: xs)
+          .map(_._1.reverseIterator.toVector)
       case None => Left(Codec.mismatch("array", n))
     def encode(a: Vector[A], out: Writer): Unit =
       out.variableArray(a.size)(a.foreach(elem.encode(_, out)))
@@ -352,10 +364,10 @@ object Wire:
 
   /** A tagged alternative `[tag, field ...]`: the tag and the fields after it. */
   def variant(n: Node): Decoded[(BigInt, Vector[Node])] = n.value match
-    case Value.Arr(xs) if xs.nonEmpty =>
-      xs.head.value match
-        case Value.UInt(tag) => Right((tag, xs.tail))
-        case _               => Left(Codec.mismatch("unsigned integer", xs.head))
+    case Value.Arr(first +: fields) =>
+      first.value match
+        case Value.UInt(tag) => Right((tag, fields))
+        case _               => Left(Codec.mismatch("unsigned integer", first))
     case Value.Arr(_) => Left(DecodeError.at(n, Kind.BadArity(Arity.AtLeast(1), 0)))
     case _            => Left(Codec.mismatch("array", n))
 
@@ -368,17 +380,23 @@ object Wire:
   /** Decode a list of items with one codec, reporting the index of the first failure. */
   private[state] object Elements:
     def decodeAll[A](items: Vector[Node], elem: Codec[A]): Decoded[Vector[A]] =
-      val out = Vector.newBuilder[A]
+      foldInto(items.iterator, elem)(Vector.empty[A])(_ :+ _).map(_._1)
+
+    /** The elements of an array decoded as they are read and folded into `zero` with `step`: a
+      * sequence of a million is never held as a vector of its nodes as well. Answers the result and
+      * the number of elements, or the first failure and the index it is at.
+      */
+    def foldInto[A, B](items: Iterator[Node], elem: Codec[A])(zero: B)(
+        step: (B, A) => B
+    ): Decoded[(B, Int)] =
       @scala.annotation.tailrec
-      def go(i: Int): Decoded[Vector[A]] =
-        if i == items.size then Right(out.result())
+      def go(result: B, i: Int): Decoded[(B, Int)] =
+        if !items.hasNext then Right((result, i))
         else
-          elem.decode(items(i)) match
-            case Right(a) =>
-              out += a
-              go(i + 1)
-            case Left(e) => Left(e.at(s"[$i]"))
-      go(0)
+          elem.decode(items.next()) match
+            case Right(a) => go(step(result, a), i + 1)
+            case Left(e)  => Left(e.at(s"[$i]"))
+      go(zero, 0)
 
     /** The elements of an array decoded as they are read, each handed to `out` and none kept here:
       * a set of a million is never held as a vector of its nodes or of its decoded elements.
