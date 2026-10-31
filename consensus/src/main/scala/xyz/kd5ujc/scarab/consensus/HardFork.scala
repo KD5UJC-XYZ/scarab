@@ -38,7 +38,11 @@ final case class HardForkConfig(triggers: Map[Era, ForkTrigger], maxMajorProtVer
     * eras are entered in order, so the first one whose trigger has not fired ends the walk.
     */
   def eraAt(epoch: BigInt, major: BigInt): Era =
-    HardForkConfig.Sequence.drop(1).takeWhile(fired(_, epoch, major)).lastOption.getOrElse(Era.Shelley)
+    HardForkConfig.Sequence
+      .drop(1)
+      .takeWhile(fired(_, epoch, major))
+      .lastOption
+      .getOrElse(Era.Shelley)
 
   private def fired(era: Era, epoch: BigInt, major: BigInt): Boolean =
     triggers(era) match
@@ -116,13 +120,16 @@ object HardForkConfig:
     */
   def fromEpochs(epochs: Map[Era, BigInt], maxMajorProtVer: Int = MaxMajorProtVer): HardForkConfig =
     HardForkConfig(
-      Sequence.drop(1).map { era =>
-        era -> epochs
-          .get(era)
-          .fold[ForkTrigger](ForkTrigger.AtVersion(eraProtVerLow(era)))(
-            ForkTrigger.AtEpoch(_)
-          )
-      }.toMap,
+      Sequence
+        .drop(1)
+        .map { era =>
+          era -> epochs
+            .get(era)
+            .fold[ForkTrigger](ForkTrigger.AtVersion(eraProtVerLow(era)))(
+              ForkTrigger.AtEpoch(_)
+            )
+        }
+        .toMap,
       maxMajorProtVer
     )
 

@@ -99,7 +99,8 @@ def scarab(id: String, dir: String = null): Project =
       Test / scalacOptions -= "-Wsafe-init",
       Compile / compile / wartremoverErrors ++= (if (wartFree(id)) disallowedWarts else Nil),
       Compile / compile / wartremoverWarnings ++= (if (wartFree(id)) Nil else disallowedWarts),
-      Compile / scalacOptions ++= (if (wartFree(id)) Nil else Seq("-Wconf:msg=\\[wartremover.*:info")),
+      Compile / scalacOptions ++= (if (wartFree(id)) Nil
+                                   else Seq("-Wconf:msg=\\[wartremover.*:info")),
       wartremoverExcluded += sourceManaged.value,
       libraryDependencies ++= testDependencies
     )
