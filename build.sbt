@@ -324,7 +324,7 @@ lazy val node = scarab("node")
       (metadata +: notices) ++ texts
     }.taskValue,
     Compile / run / fork := true,
-    // Scala 3.3's lazy vals use sun.misc.Unsafe, on which Java 25 warns (docker/candidate.Dockerfile);
+    // Scala 3's lazy vals (still in 3.9) use sun.misc.Unsafe, on which Java 25 warns (docker/candidate.Dockerfile);
     // from a classpath the JAR's Enable-Native-Access attribute does not apply
     Compile / run / javaOptions ++= Seq(
       "--sun-misc-unsafe-memory-access=allow",

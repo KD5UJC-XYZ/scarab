@@ -71,7 +71,7 @@ were not regenerated here.
 
 | Artifact | Version | Licence | Kind | Note |
 |---|---|---|---|---|
-| org.scala-lang:scala3-library_3 | 3.3.8 | Apache-2.0 | direct |  |
+| org.scala-lang:scala3-library_3 | 3.9.0 | Apache-2.0 | direct |  |
 | org.typelevel:cats-core_3 | 2.13.0 | MIT | direct |  |
 | org.typelevel:cats-effect_3 | 3.7.1 | Apache-2.0 | direct |  |
 | org.typelevel:cats-mtl_3 | 1.7.0 | Apache-2.0 | direct |  |
@@ -93,7 +93,7 @@ were not regenerated here.
 | org.typelevel:cats-kernel_3 | 2.13.0 | MIT | direct |  |
 | co.fs2:fs2-core_3 | 3.14.0 | MIT | direct |  |
 | co.fs2:fs2-io_3 | 3.14.0 | MIT | direct |  |
-| org.scala-lang:scala-library | 2.13.18 | Apache-2.0 | transitive |  |
+| org.scala-lang:scala-library | 3.9.0 | Apache-2.0 | transitive | The Scala 3 standard library from Scala 3.8; the Scala 2.13 library is no longer on the class path. |
 | org.typelevel:cats-effect-kernel_3 | 3.7.1 | Apache-2.0 | transitive |  |
 | org.typelevel:cats-effect-std_3 | 3.7.1 | Apache-2.0 | transitive |  |
 | org.typelevel:paiges-core_3 | 0.4.4 | Apache-2.0 | transitive |  |
@@ -189,7 +189,7 @@ each of the 63 resolved runtime artifacts (`group:artifact:version`) and each of
 in the JAR, the texts its licence asks a binary to carry, and where each text comes from:
 
 - a file of an upstream Git revision (repository, tag and the commit the tag named when it was fetched);
-- the component's own jar, where the jar ships its text (slf4j-api, dnsjava, scala-library, ip4s-core,
+- the component's own jar, where the jar ships its text (slf4j-api, dnsjava, ip4s-core,
   bcprov, borer);
 - or a text kept elsewhere in this repository with its own provenance (`plutus/licenses/`, `crypto/licenses/`),
   packaged under the module's name.
@@ -204,7 +204,7 @@ What each licence asks of a binary, as its text says:
 |---|---|---|
 | MIT (and the Bouncy Castle licence, an MIT licence) | "The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software." | cats, fs2, monocle, cats-parse, vault, idna4s, upickle, geny, jsoniter-scala, jawn, slf4j-api, bcprov, curve25519-elisabeth, libsecp256k1 |
 | BSD-2-Clause, BSD-3-Clause | "Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution." | dnsjava, scodec, scodec-bits, the third-party sections of the COPYING files of cats, cats-mtl and cats-collections, the argonaut and ephox notices of circe, native-lib-loader, curve25519-dalek (in elisabeth's LICENSE), LevelDB (`LICENSE.leveldb` of RocksDB), snappy, lz4, zstd |
-| Apache-2.0 | §4(a) "give any other recipients of the Work or Derivative Works a copy of this License"; §4(d) "include a readable copy of the attribution notices contained within such NOTICE file" | Scala 3 and the Scala 2 standard library, cats-effect, circe, http4s, http4s-crypto, log4cats, kittens, ip4s, case-insensitive, literally, jawn-fs2, shapeless-3, paiges, hpack, RocksDB (Apache-2.0 elected), jblst (with its MIT text as well), blst, Scalus and scalus-crypto-jni; each NOTICE file upstream has is packaged |
+| Apache-2.0 | §4(a) "give any other recipients of the Work or Derivative Works a copy of this License"; §4(d) "include a readable copy of the attribution notices contained within such NOTICE file" | Scala 3 and its standard library, cats-effect, circe, http4s, http4s-crypto, log4cats, kittens, ip4s, case-insensitive, literally, jawn-fs2, shapeless-3, paiges, hpack, RocksDB (Apache-2.0 elected), jblst (with its MIT text as well), blst, Scalus and scalus-crypto-jni; each NOTICE file upstream has is packaged |
 | ISC | "provided that the above copyright notice and this permission notice appear in all copies" | libsodium |
 | MPL-2.0 | §3.2(a): the recipients of the Executable Form must be told "how they can obtain a copy of such Source Code Form" | borer; `NOTICE` names the source (github.com/sirthias/borer, tag v1.18.0) |
 | zlib, bzip2 | conditions on source distributions and misrepresentation only; the texts are included anyway | zlib, bzip2 |

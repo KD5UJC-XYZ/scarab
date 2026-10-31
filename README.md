@@ -15,7 +15,7 @@ tagless-final cats-effect · cats-mtl · checked against the Haskell node, block
   <br>
   <a href="https://github.com/KD5UJC-XYZ/scarab/releases"><img alt="Release" src="https://img.shields.io/github/v/release/KD5UJC-XYZ/scarab?include_prereleases&label=release"></a>
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
-  <img alt="Scala 3.3 LTS" src="https://img.shields.io/badge/scala-3.3%20LTS-de3423">
+  <img alt="Scala 3.9" src="https://img.shields.io/badge/scala-3.9-de3423">
   <img alt="Reference: cardano-node 11.1.3" src="https://img.shields.io/badge/reference-cardano--node%2011.1.3-0033ad">
   <img alt="Status: research preview" src="https://img.shields.io/badge/status-research%20preview-orange">
 </p>

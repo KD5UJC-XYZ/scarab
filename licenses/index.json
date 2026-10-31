@@ -363,34 +363,20 @@
       },
       "sha256": "b568f1f37a5a1d37a3e981e7c8b7fc4856ca33b2ca0a45bc8e847aaaf7afe485"
     },
-    "scala-library-2.13.18/LICENSE": {
-      "source": {
-        "jar": "org.scala-lang:scala-library:2.13.18",
-        "entry": "LICENSE"
-      },
-      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
-    },
-    "scala-library-2.13.18/NOTICE": {
-      "source": {
-        "jar": "org.scala-lang:scala-library:2.13.18",
-        "entry": "NOTICE"
-      },
-      "sha256": "50ce10d50898ba07e632c8913b34098521416d6eed480d44edca93bd92344a45"
-    },
-    "scala3-3.3.8/LICENSE": {
+    "scala3-3.9.0/LICENSE": {
       "source": {
         "git": "https://github.com/scala/scala3",
-        "ref": "3.3.8",
-        "commit": "35579ef3127faef3db621cc4958df7a5849da7b7",
+        "ref": "3.9.0",
+        "commit": "777528f19a58e794c9954a42f433373472ec57f8",
         "path": "LICENSE"
       },
       "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
     },
-    "scala3-3.3.8/NOTICE.md": {
+    "scala3-3.9.0/NOTICE.md": {
       "source": {
         "git": "https://github.com/scala/scala3",
-        "ref": "3.3.8",
-        "commit": "35579ef3127faef3db621cc4958df7a5849da7b7",
+        "ref": "3.9.0",
+        "commit": "777528f19a58e794c9954a42f433373472ec57f8",
         "path": "NOTICE.md"
       },
       "sha256": "9c8404faff38eaedeeab5839fd98ac4d883eb0117a8dd53b878336f4cfa06d70"
@@ -748,18 +734,18 @@
       ],
       "note": "Apache-2.0 OR GPL-2.0-only; Apache-2.0 elected. LICENSE.leveldb covers the LevelDB-derived code."
     },
-    "org.scala-lang:scala-library:2.13.18": {
+    "org.scala-lang:scala-library:3.9.0": {
       "licence": "Apache-2.0",
       "texts": [
-        "scala-library-2.13.18/LICENSE",
-        "scala-library-2.13.18/NOTICE"
+        "scala3-3.9.0/LICENSE",
+        "scala3-3.9.0/NOTICE.md"
       ]
     },
-    "org.scala-lang:scala3-library_3:3.3.8": {
+    "org.scala-lang:scala3-library_3:3.9.0": {
       "licence": "Apache-2.0",
       "texts": [
-        "scala3-3.3.8/LICENSE",
-        "scala3-3.3.8/NOTICE.md"
+        "scala3-3.9.0/LICENSE",
+        "scala3-3.9.0/NOTICE.md"
       ]
     },
     "org.scalus:scalus-crypto-jni:0.1.0": {

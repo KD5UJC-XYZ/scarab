@@ -1,6 +1,6 @@
 # Instructions for agent sessions
 
-Scarab is a Cardano-compatible node in Scala 3.3 (LTS), written as tagless-final cats-effect code
+Scarab is a Cardano-compatible node in Scala 3.9, written as tagless-final cats-effect code
 with cats-mtl, and checked against the Haskell `cardano-node` as the reference. These instructions
 apply to every automated session working in this repository; human contributors follow the same
 rules through [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -15,7 +15,7 @@ one says so. New records copy [the template](template.md) and take the next numb
 | [0007](0007-era-indexed-state.md) | Era-indexed state: phantom eras, a closed witness and match types | Accepted | 2026-10-15 |
 | [0008](0008-networking-mirrors-ouroboros-network.md) | Networking mirrors ouroboros-network | Accepted | 2026-10-25 |
 | [0009](0009-ledger-mirror-step-2.md) | Ledger mirror step 2: three jumps behind a differential harness | Accepted (jumps 1 and 2 done; the harness is removed); D8's eager reward calculation is superseded by [0019](0019-incremental-reward-calculation.md) | 2026-10-15 |
-| [0010](0010-scala-3-3-lts.md) | Scala 3.3 LTS | Accepted | 2026-10-14 |
+| [0010](0010-scala-3-3-lts.md) | Scala 3.3 LTS | Superseded by 0026 | 2026-10-14 |
 | [0011](0011-stack-safety.md) | Recursion over data from outside is stack safe | Accepted | 2026-10-16 |
 | [0012](0012-portable-blst.md) | One portable libblst for every x86-64 CPU, shipped where blst-java loads it | Superseded by 0025 (Plutus part earlier by 0020) | 2026-10-16 |
 | [0013](0013-cbor-documents-are-an-index-over-the-input.md) | CBOR documents are an index over the input | Accepted | 2026-10-16 |
@@ -31,3 +31,4 @@ one says so. New records copy [the template](template.md) and take the next numb
 | [0023](0023-two-kes-credential-sources.md) | Two KES credential sources: the file path keeps ADR 0015's write-back, the agent path is the forward-secure one | Accepted | 2026-10-25 |
 | [0024](0024-adopt-the-upstream-kes-agent.md) | H2 adopts the upstream KES agent as it is: the client only, and no remote signing | Accepted | 2026-10-25 |
 | [0025](0025-jblst.md) | BLS12-381 through jblst, the maintained Java binding of blst | Accepted | 2026-10-30 |
+| [0026](0026-scala-3-9.md) | Scala 3.9 | Accepted | 2026-10-30 |

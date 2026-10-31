@@ -11,7 +11,7 @@ Inside the [JDK build container](../CONTRIBUTING.md#build-docker-only), run:
 
 ```sh
 bash scripts/sbtw node/assembly
-java --enable-native-access=ALL-UNNAMED -jar node/target/scala-3.3.8/scarab-node-<resolved-version>-assembly.jar <node arguments>
+java --enable-native-access=ALL-UNNAMED -jar node/target/scala-3.9.0/scarab-node-<resolved-version>-assembly.jar <node arguments>
 ```
 
 The versioned filename follows the build's project and Scala versions. The fat JAR contains the
