@@ -349,7 +349,7 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                         .find(_.session == session)
                                         .flatMap(entry =>
                                           scenario.schedules.find(s =>
-                                            entry.orderKey == GenesisGovernor.OrderKey
+                                            entry.orderKey == PeerOrder
                                               .Model(densityKey(s.peer))
                                           )
                                         )
@@ -564,8 +564,7 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                                     ) *> refused
                                                       .complete(Problem.Invariant(p))
                                                       .void,
-                                                  densityOrder =
-                                                    GenesisGovernor.OrderKey.Model(densityKey(id))
+                                                  densityOrder = PeerOrder.Model(densityKey(id))
                                                 )
                                                 (fetchSession, controls) = bound
                                                 connection = NodeToNodeConnection(

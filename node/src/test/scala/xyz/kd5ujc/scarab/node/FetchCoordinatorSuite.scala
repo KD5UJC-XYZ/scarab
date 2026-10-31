@@ -690,3 +690,41 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
       }
     }
   }
+
+  /** The key of a TCP connection from `local` to `remote` on 127.0.0.1. */
+  private def tcp(local: Int, remote: Int): PeerOrder =
+    import com.comcast.ip4s.*
+    val address = (port: Int) =>
+      SocketAddress(ip"127.0.0.1", Port.fromInt(port).getOrElse(fail(s"port $port")))
+    xyz.kd5ujc.scarab.network.ConnectionId
+      .fromSocketAddresses(address(local), address(remote))
+      .fold(e => fail(e.message), PeerOrder.Tcp(_))
+
+  /** Which of two sessions, registered `first` then `second` with the same chain, the same
+    * performance and the same tie breaker, the decisions ask for the block. `comparePeerGSV` finds
+    * the two equal, so the reference's stable `sortBy` keeps them in the order of its input.
+    */
+  private def chosen(first: Option[PeerOrder], second: Option[PeerOrder]): IO[Vector[Boolean]] =
+    FetchCoordinator.create[IO]().flatMap { coordinator =>
+      (coordinator.session(0, first), coordinator.session(0, second)).tupled.use { (a, b) =>
+        for
+          _ <- a.follows(Vector(header(1)))
+          _ <- b.follows(Vector(header(1)))
+          _ <- coordinator.step
+          asked <- (a.requestedHeaders, b.requestedHeaders).tupled
+        yield Vector(asked._1.nonEmpty, asked._2.nonEmpty)
+      }
+    }
+
+  test("peers of equal standing are ranked by the reference's peer key, not their registration") {
+    for
+      registered <- chosen(None, None)
+      byRemote <- chosen(Some(tcp(3001, 4002)), Some(tcp(3001, 4001)))
+      byLocal <- chosen(Some(tcp(3002, 4001)), Some(tcp(3001, 4001)))
+      remoteFirst <- chosen(Some(tcp(3001, 4002)), Some(tcp(3002, 4001)))
+    yield
+      assertEquals(registered, Vector(true, false), "without keys, the first to register")
+      assertEquals(byRemote, Vector(false, true), "the lower remote address first")
+      assertEquals(byLocal, Vector(false, true), "for one remote address, the lower local one")
+      assertEquals(remoteFirst, Vector(false, true), "the remote address before the local one")
+  }

@@ -47,10 +47,10 @@ final class GenesisRuntime[F[_]: Async] private (
       identity: Long,
       disconnect: PeerError => F[Unit],
       fatal: GenesisInternalProblem => F[Unit],
-      densityOrder: GenesisGovernor.OrderKey
+      densityOrder: PeerOrder
   ): Resource[F, (FetchCoordinator.Session[F], GenesisRuntime.Bound[F])] =
     for
-      fetching <- pool.fetchCoordinator.session(identity)
+      fetching <- pool.fetchCoordinator.session(identity, Some(densityOrder))
       current <- Resource.eval(selection)
       bound <- session(fetching.identity, current.anchor, disconnect, fatal, Some(densityOrder))
     yield fetching -> bound
@@ -60,7 +60,7 @@ final class GenesisRuntime[F[_]: Async] private (
       anchor: Point,
       disconnect: PeerError => F[Unit],
       fatal: GenesisInternalProblem => F[Unit],
-      densityOrder: Option[GenesisGovernor.OrderKey] = None
+      densityOrder: Option[PeerOrder] = None
   ): Resource[F, GenesisRuntime.Bound[F]] =
     def refused[A](problem: PeerError.GenesisProblem): F[A] =
       disconnect(PeerError.Genesis(problem)) *> F.never[A]
@@ -90,7 +90,7 @@ final class GenesisRuntime[F[_]: Async] private (
             else LeakyBucket.Config.disabled
           ),
         disconnect(PeerError.Genesis(PeerError.GenesisProblem.DensityTooLow)),
-        densityOrder.orElse(Some(GenesisGovernor.OrderKey(identity)))
+        densityOrder.orElse(Some(PeerOrder(identity)))
       )
       phase <- Resource.eval(governor.phase)
       jumper <- jumping.session(
@@ -356,18 +356,18 @@ object GenesisRuntime:
       case Some(genesis) =>
         val key = connectionId match
           case Some(Right(connection)) =>
-            Resource.pure[F, GenesisGovernor.OrderKey](GenesisGovernor.OrderKey.Tcp(connection))
+            Resource.pure[F, PeerOrder](PeerOrder.Tcp(connection))
           case Some(Left(cause)) =>
             Resource.eval(
               PeerError
                 .GenesisInvariant(GenesisInternalProblem.InvalidConnectionIdentity(cause))
-                .raise[F, GenesisGovernor.OrderKey]
+                .raise[F, PeerOrder]
             )
           case None =>
             Resource.eval(
               PeerError
                 .GenesisInvariant(GenesisInternalProblem.MissingConnectionIdentity)
-                .raise[F, GenesisGovernor.OrderKey]
+                .raise[F, PeerOrder]
             )
         key
           .flatMap(order => genesis.bind(pool, identity, disconnect, fatal, order))

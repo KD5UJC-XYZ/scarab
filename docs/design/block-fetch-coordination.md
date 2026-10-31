@@ -27,6 +27,10 @@ are insufficient to define this behavior. The GSV comparator's 5% tie band is no
 transitive, so both GSV orderings (ranking and preferred-peer admission) use
 `HaskellSort.sortBy`, the reference's GHC `Data.List.sortBy` algorithm, which
 reproduces the native order for such a relation; a `java.util` sort may reject it.
+Because the result of such a sort depends on the order of its input, the candidates go in
+as the reference's `Map.toList` gives them (`BlockFetch/State.hs:274–281`): by the key of its
+peer maps, the connection's `ConnectionId`, remote address first (`PeerOrder`), not by the
+order the sessions registered in.
 
 One `FetchCoordinator` belongs to the shared `BlockPool`, and its decision loop mirrors
 `fetchLogicIterations` (`BlockFetch/State.hs`): an iteration registers the grace delay,

@@ -97,7 +97,7 @@ final class GenesisGovernor[F[_]: Async] private (
   def session(
       configure: Gsm.Phase => F[Unit],
       disconnect: F[Unit],
-      orderKey: Option[OrderKey] = None
+      orderKey: Option[PeerOrder] = None
   ): Resource[F, Session[F]] =
     Resource
       .make(
@@ -111,7 +111,7 @@ final class GenesisGovernor[F[_]: Async] private (
                 false,
                 configure,
                 disconnect,
-                orderKey.getOrElse(OrderKey(id))
+                orderKey.getOrElse(PeerOrder(id))
               )
               (s.copy(next = id + 1, peers = s.peers.updated(id, peer)), id)
             }
@@ -270,23 +270,9 @@ final class GenesisGovernor[F[_]: Async] private (
     }
 
 object GenesisGovernor:
-  /** Reference Map peer ordering is independent of CSJ's registration sequence. */
-  enum OrderKey:
-    case Model(value: Long)
-    case Tcp(connection: xyz.kd5ujc.scarab.network.ConnectionId)
-
-  object OrderKey:
-    def apply(value: Long): OrderKey = Model(value)
-    given Ordering[OrderKey] with
-      def compare(a: OrderKey, b: OrderKey): Int = (a, b) match
-        case (Model(x), Model(y)) => x.compare(y)
-        case (Tcp(x), Tcp(y)) =>
-          summon[Ordering[xyz.kd5ujc.scarab.network.ConnectionId]].compare(x, y)
-        case (_: Model, _: Tcp) => -1
-        case (_: Tcp, _: Model) => 1
   private[node] type InputFingerprint =
-    (Gsm.Phase, Option[SortedMap[OrderKey, Vector[(LatestSlot, Boolean)]]])
-  final case class Entry(session: Long, orderKey: OrderKey, state: PeerState)
+    (Gsm.Phase, Option[SortedMap[PeerOrder, Vector[(LatestSlot, Boolean)]]])
+  final case class Entry(session: Long, orderKey: PeerOrder, state: PeerState)
   final case class Observation(
       current: Fragment,
       k: Int,
@@ -308,7 +294,7 @@ object GenesisGovernor:
       idling: Boolean,
       configure: Gsm.Phase => F[Unit],
       disconnect: F[Unit],
-      orderKey: OrderKey
+      orderKey: PeerOrder
   )
 
   private final case class State[F[_]](
