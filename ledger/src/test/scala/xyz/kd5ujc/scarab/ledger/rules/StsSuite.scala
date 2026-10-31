@@ -62,7 +62,7 @@ class StsSuite extends DisciplineSuite:
   checkAll("RuleT Stateful", StatefulTests[R, Int].stateful)
   checkAll(
     "RuleT Stateful, focused through a lens",
-    StatefulTests(Stateful[R, Int].focus(Lens[Int, Int](_ + 1)(i => _ => i - 1))).stateful
+    StatefulTests(using Stateful[R, Int].focus(Lens[Int, Int](_ + 1)(i => _ => i - 1))).stateful
   )
   checkAll("RuleT Local", LocalTests[R, Globals].local[Int, Int])
   checkAll("RuleT Handle", HandleTests[R, Fail].handle[Int])

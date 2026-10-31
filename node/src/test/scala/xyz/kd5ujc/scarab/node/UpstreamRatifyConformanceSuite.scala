@@ -126,7 +126,7 @@ class UpstreamRatifyConformanceSuite extends FunSuite:
         (first to first + 1).map(seed => s"$role-$seed")
       }
     assertEquals(rows.size, expectedIds.size)
-    assertEquals(rows.map(_.hcursor.get[String]("id").toOption).toSet, expectedIds.map(Some(_)))
+    assertEquals(rows.map(_.hcursor.get[String]("id").toOption).toSet, expectedIds.map(Option(_)))
     rows.foreach { row =>
       val cursor = row.hcursor
       val id = cursor.get[String]("id").fold(e => fail(e.message), identity)

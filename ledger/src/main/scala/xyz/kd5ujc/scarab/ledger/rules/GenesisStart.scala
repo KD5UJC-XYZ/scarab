@@ -407,13 +407,12 @@ object GenesisStart:
       next = utxo ++ funds
       reserves = Coin(nes.es.chainAccount.reserves.value - total.value)
       outputs = next.valuesIterator.toVector
-      stake <- ((era match
-        case ShelleyBasedEra.SConway =>
-          InstantStakeOps.update(Empty.instantStake[Conway], outputs, Nil)
-        case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-            ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-          ShelleyInstantStakeOps.update(Empty.instantStake[E], outputs, Nil)
-      ): Either[VocabError, InstantStake[E]]).leftMap(GenesisStartError.Vocab(_))
+      stake <- era.instantStake
+        .fold(
+          ev => ShelleyInstantStakeOps.update(ev(Empty.instantStake[E]), outputs, Nil).map(ev.flip),
+          ev => InstantStakeOps.update(ev(Empty.instantStake[E]), outputs, Nil).map(ev.flip)
+        )
+        .leftMap(GenesisStartError.Vocab(_))
     yield
       val utxoState = ls.utxo.copy[E](utxo = UtxoTables(next), instantStake = stake)
       val updated = withLedger(nes, ls.copy[E](utxo = utxoState))
@@ -485,11 +484,11 @@ object GenesisStart:
           }
       }
     keyDeposit(nes).flatMap(deposit =>
-      era match
-        case ShelleyBasedEra.SConway => Right(nes)
-        case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-            ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-          register(ls.cert, deposit).map(c => withLedger(nes, ls.copy[E](cert = c)))
+      era.cert.fold(
+        ev =>
+          register(ev(ls.cert), deposit).map(c => withLedger(nes, ls.copy[E](cert = ev.flip(c)))),
+        _ => Right(nes)
+      )
     )
 
   /** `injectStakeCredentials` of Conway (`Conway/Transition.hs:200-223`): each staking key is

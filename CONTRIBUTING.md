@@ -94,7 +94,7 @@ with a pattern that matches your own shell command line.
 - **scalafix** (`.scalafix.conf`, OrganizeImports; semanticdb is on): `scalafixAll --check` reports
   what would change, `scalafixAll` applies it; run `scalafmtAll` afterwards. `check` ends with it, so CI runs it too.
 - **Coverage** is off by default: `coverage; test; coverageReport` (reports under
-  `target/scala-3.3.8/scoverage-report`), then `coverageOff`.
+  `target/scala-3.9.0/scoverage-report`), then `coverageOff`.
 - **`dependencyUpdates`** lists newer versions of the dependencies and plugins (it only reads; the
   Scalus artifacts move together). **`dependencyTree`** (also `node/dependencyTree`) prints the
   resolved graph, to see where a transitive version comes from.

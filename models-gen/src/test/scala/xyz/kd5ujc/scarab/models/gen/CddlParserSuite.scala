@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.models.gen
 
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{Files, Paths}
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.models.gen.Ast.*
 

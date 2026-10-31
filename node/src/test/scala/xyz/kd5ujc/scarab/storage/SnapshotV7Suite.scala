@@ -11,7 +11,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraLedgerState, MirrorState}
 import xyz.kd5ujc.scarab.ledger.{Block, ParamUpdate, StorageError}
-import xyz.kd5ujc.scarab.ledger.state.{ShelleyBasedEra, ShelleyGovState}
+import xyz.kd5ujc.scarab.ledger.state.{ShelleyBasedEra, update}
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.read.InEra
@@ -121,14 +121,18 @@ class SnapshotV7Suite extends CatsEffectSuite:
       case i: EraLedgerState.InShelleyEra[e] =>
         i.era match
           case ShelleyBasedEra.SAlonzo =>
+            // the era's proof, not a refinement of `e`: a type bound by a type pattern is not refined
             val ls = i.state.nes.es.ls
-            val gov: ShelleyGovState = ls.utxo.gov
-            val next = gov.copy(curProposals =
-              xyz.kd5ujc.scarab.ledger.state.Sorted
-                .map(gov.curProposals.toList.map((k, _) => k -> update))
+            val next = i.era.gov.update(ls.utxo.gov)(
+              gov =>
+                gov.copy(curProposals =
+                  xyz.kd5ujc.scarab.ledger.state.Sorted
+                    .map(gov.curProposals.toList.map((k, _) => k -> update))
+                ),
+              identity
             )
             val nes = i.state.nes
-              .copy(es = i.state.nes.es.copy(ls = ls.copy(utxo = ls.utxo.copy(gov = next))))
+              .copy(es = i.state.nes.es.copy(ls = ls.copy[e](utxo = ls.utxo.copy[e](gov = next))))
             m.copy(ext =
               m.ext.copy(ledgerState =
                 m.ext.ledgerState.withState(

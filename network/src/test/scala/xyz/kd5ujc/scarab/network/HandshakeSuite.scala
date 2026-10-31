@@ -6,7 +6,6 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Handshake
 import munit.CatsEffectSuite
-import java.io.InputStream
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import scala.io.Source

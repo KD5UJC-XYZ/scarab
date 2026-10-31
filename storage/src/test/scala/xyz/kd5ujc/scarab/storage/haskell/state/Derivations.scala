@@ -84,25 +84,13 @@ object Derivations:
     */
   private def poolsOf[E <: EraTag](cert: CertState[E])(using
       era: ShelleyBasedEra[E]
-  ): (PState, Vector[(Credential[Staking], KeyHash[StakePool])]) = era match
-    case ShelleyBasedEra.SConway =>
-      (
-        cert.pState,
-        cert.dState.accounts.states.toVector.flatMap((c, a) => a.pool.map(c -> _))
-      )
-    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-      (
-        cert.pState,
-        cert.dState.accounts.states.toVector.flatMap((c, a) => a.pool.map(c -> _))
-      )
+  ): (PState, Vector[(Credential[Staking], KeyHash[StakePool])]) = era.cert.on(cert)(
+    c => (c.pState, c.dState.accounts.states.toVector.flatMap((k, a) => a.pool.map(k -> _))),
+    c => (c.pState, c.dState.accounts.states.toVector.flatMap((k, a) => a.pool.map(k -> _)))
+  )
 
   private def futureOf[E <: EraTag](g: GovState[E])(using era: ShelleyBasedEra[E]): String =
-    era match
-      case ShelleyBasedEra.SConway => g.futurePParams.productPrefix
-      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-        g.futurePParams.productPrefix
+    era.gov.on(g)(_.futurePParams.productPrefix, _.futurePParams.productPrefix)
 
   /** The derivations of the current era of a file, if it is a Shelley-based one. */
   def ofFile(file: HaskellLedgerFile): Option[Derivations] = file.ledger.state match

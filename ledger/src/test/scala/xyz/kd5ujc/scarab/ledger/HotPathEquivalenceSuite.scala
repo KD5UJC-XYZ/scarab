@@ -110,7 +110,7 @@ class HotPathEquivalenceSuite extends ScalaCheckSuite:
 
   property("byte strings sort unsigned, a prefix first, as the order on their vectors did") {
     forAll(Gen.listOf(genBytes)) { bs =>
-      bs.sorted == bs.sorted((a, b) => vectorOrder(a, b)) &&
+      bs.sorted == bs.sorted(using (a, b) => vectorOrder(a, b)) &&
       bs.forall(a =>
         bs.forall(b => Integer.signum(a.compareTo(b)) == Integer.signum(vectorOrder(a, b)))
       )

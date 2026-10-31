@@ -85,7 +85,7 @@ object Picks:
       ordR: Ordering[R]
   ): List[A] =
     drawn
-      .sortBy((peer, r) => (rank(peer, r), peer))(using Ordering.Tuple2(ordR, ordA))
+      .sortBy((peer, r) => (rank(peer, r), peer))(using Ordering.Tuple2(using ordR, ordA))
       .take(n.max(0))
       .map(_._1)
 

@@ -45,7 +45,7 @@ object Ratify:
           case DRepGroup.Technical => t.ppTechnicalGroup
           case DRepGroup.Gov       => t.ppGovGroup
         }
-        Required(ratios.foldLeft(Rational.zero)(_ max _))
+        Required(ratios.foldLeft(Rational.zero)(_.max(_)))
       case _: GovAction.TreasuryWithdrawals => Required(t.treasuryWithdrawal)
       case GovAction.Info                   => Unavailable
 

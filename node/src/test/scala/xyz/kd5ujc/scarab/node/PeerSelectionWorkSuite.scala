@@ -5,7 +5,6 @@ import cats.effect.{Deferred, IO, Ref}
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
 import com.comcast.ip4s.*
-import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{BlockRules, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.NodeError
 import xyz.kd5ujc.scarab.network.*

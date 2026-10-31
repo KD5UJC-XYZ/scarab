@@ -11,7 +11,6 @@ import xyz.kd5ujc.scarab.ledger.TestLedger.txIn
 import xyz.kd5ujc.scarab.protocol.{Handshake, LocalTxSubmission}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 import xyz.kd5ujc.scarab.network.*
-import scala.concurrent.duration.*
 
 import TxKit.*
 

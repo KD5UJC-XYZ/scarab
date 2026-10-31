@@ -223,7 +223,7 @@ class HeaderClockSuite extends CatsEffectSuite with ScalaCheckSuite:
         gate <- session(clock, rec)
         waiting <- typed(gate.accept(Vector(forward(header(0, 10))))).start
         _ <- IO.sleep(500.millis)
-        _ <- clock.offset.set(-1.second)
+        _ <- clock.offset.set((-1).second)
         _ <- waiting.join
         seen <- rec.reached.get
       yield seen.map(_._1)

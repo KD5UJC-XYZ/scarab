@@ -31,16 +31,20 @@ object Build:
       era: ShelleyBasedEra[E]
   ): NewEpochState[E] =
     val ls = nes.es.ls
-    val stake: InstantStake[E] = era match
-      case ShelleyBasedEra.SConway =>
-        InstantStakeOps
-          .update(Empty.instantStake[Conway], funds.values, Nil)
-          .fold(e => fail(s"$e"), identity)
-      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-        ShelleyInstantStakeOps
-          .update(Empty.instantStake[E], funds.values, Nil)
-          .fold(e => fail(s"$e"), identity)
+    val stake: InstantStake[E] = era.instantStake.fold(
+      ev =>
+        ev.flip(
+          ShelleyInstantStakeOps
+            .update(ev(Empty.instantStake[E]), funds.values, Nil)
+            .fold(e => fail(s"$e"), identity)
+        ),
+      ev =>
+        ev.flip(
+          InstantStakeOps
+            .update(ev(Empty.instantStake[E]), funds.values, Nil)
+            .fold(e => fail(s"$e"), identity)
+        )
+    )
     nes.copy(es =
       nes.es.copy(ls =
         ls.copy[E](utxo =

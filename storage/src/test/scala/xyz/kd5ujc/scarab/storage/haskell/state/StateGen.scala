@@ -406,11 +406,8 @@ object StateGen:
       .zip(updates, updates, paramsOf[E], paramsOf[E], futurePParams[E])
       .map(ShelleyGovState(_, _, _, _, _))
 
-  def govState[E <: EraTag](using era: ShelleyBasedEra[E]): Gen[GovState[E]] = era match
-    case ShelleyBasedEra.SConway => conwayGov
-    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-      shelleyGov[E]
+  def govState[E <: EraTag](using era: ShelleyBasedEra[E]): Gen[GovState[E]] =
+    era.gov.instance(shelleyGov[E], conwayGov)
 
   // ---- certificate state
 
@@ -453,20 +450,16 @@ object StateGen:
       )
       .map(PState(_, _, _, _))
 
-  def certState[E <: EraTag](using era: ShelleyBasedEra[E]): Gen[CertState[E]] = era match
-    case ShelleyBasedEra.SConway =>
+  def certState[E <: EraTag](using era: ShelleyBasedEra[E]): Gen[CertState[E]] =
+    era.cert.instance(
+      Gen.zip(pState, dState(arb[ShelleyAccounts])).map(ShelleyCertState(_, _)),
       Gen
         .zip(arb[VState], pState, dState(arb[ConwayAccounts]))
         .map(ConwayCertState(_, _, _))
-    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-      Gen.zip(pState, dState(arb[ShelleyAccounts])).map(ShelleyCertState(_, _))
+    )
 
-  def instantStake[E <: EraTag](using era: ShelleyBasedEra[E]): Gen[InstantStake[E]] = era match
-    case ShelleyBasedEra.SConway => arb[ConwayInstantStake]
-    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-      arb[ShelleyInstantStake]
+  def instantStake[E <: EraTag](using era: ShelleyBasedEra[E]): Gen[InstantStake[E]] =
+    era.instantStake.instance(arb[ShelleyInstantStake], arb[ConwayInstantStake])
 
   // ---- the states of an era
 

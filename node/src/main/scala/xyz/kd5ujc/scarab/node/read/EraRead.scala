@@ -190,20 +190,18 @@ final class MirrorEraRead[E <: EraTag](val state: NewEpochState[E])(using
     })
 
   def ppup: Read[(Map[Bytes, flat.ParamUpdate], Map[Bytes, flat.ParamUpdate])] =
-    Right(era match
-      case ShelleyBasedEra.SConway => (Map.empty, Map.empty)
-      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-        val g = ls.utxo.gov
-        (
-          g.curProposals.iterator.map((k, u) => k.bytes -> u).toMap,
-          g.futureProposals.iterator.map((k, u) => k.bytes -> u).toMap
-        ))
+    Right(
+      era.gov.on(ls.utxo.gov)(
+        g =>
+          (
+            g.curProposals.iterator.map((k, u) => k.bytes -> u).toMap,
+            g.futureProposals.iterator.map((k, u) => k.bytes -> u).toMap
+          ),
+        _ => (Map.empty, Map.empty)
+      )
+    )
 
-  def pulsed: Read[Option[DRComplete]] = Right(era match
-    case ShelleyBasedEra.SConway => Some(ls.utxo.gov.drepPulsing)
-    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-      None)
+  def pulsed: Read[Option[DRComplete]] =
+    Right(era.gov.on(ls.utxo.gov)(_ => None, conway => Some(conway.drepPulsing)))
 
   def nes: Read[NewEpochState[E]] = Right(state)

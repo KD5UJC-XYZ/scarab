@@ -182,7 +182,7 @@ private[selection] object Events:
 
       case Outcome.ConnectFailed(peer, failure, generation)
           if generation == st0.rootsGeneration && status(peer).contains(Status.Connecting) =>
-        val (extra, st) = fuzz(st0, -2.seconds, 2.seconds)
+        val (extra, st) = fuzz(st0, (-2).seconds, 2.seconds)
         val backoff = (count: Int) =>
           extra + policy.baseColdRetry * (1L << (count - 1).min(policy.maxColdRetryBackoff).toLong)
         val result = report(st, peer, now, failure, policy, backoff)
@@ -212,7 +212,7 @@ private[selection] object Events:
 
       case Outcome.ActivateFailed(peer, failure) if status(peer).contains(Status.Activating) =>
         // the peer leaves the established set: cold, after the repromote delay
-        val (extra, st) = fuzz(st0, -2.seconds, 2.seconds)
+        val (extra, st) = fuzz(st0, (-2).seconds, 2.seconds)
         val result =
           report(st, peer, now, failure, policy, _ => policy.repromoteErrorDelay + extra)
         Decision(

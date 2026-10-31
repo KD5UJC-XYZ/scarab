@@ -400,10 +400,10 @@ object LedgerSnapshotImport:
   ): Either[Error, Unit] =
     def credentials(m: scala.collection.immutable.SortedMap[Credential[Staking], CompactCoin]) =
       m.iterator.map((key, coin) => Convert.back(key) -> coin.toBigInt).toMap
-    val same = era match
-      case ShelleyBasedEra.SConway => credentials(expected.credentialStake) == utxo.stake
-      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-        credentials(expected.credentialStake) == utxo.stake &&
-        expected.ptrStake.iterator.map((key, coin) => key -> coin.toBigInt).toMap == utxo.ptrStake
+    val same = era.instantStake.on(expected)(
+      shelley =>
+        credentials(shelley.credentialStake) == utxo.stake &&
+          shelley.ptrStake.iterator.map((key, coin) => key -> coin.toBigInt).toMap == utxo.ptrStake,
+      conway => credentials(conway.credentialStake) == utxo.stake
+    )
     Either.cond(same, (), Error.InstantStakeMismatch)

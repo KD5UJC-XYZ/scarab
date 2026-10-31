@@ -20,4 +20,4 @@ class RefStatefulLawsSuite extends DisciplineSuite with TestInstances:
   given eqUnit: Eq[IO[Unit]] = eqIOA[Unit]
   given eqInt: Eq[IO[Int]] = eqIOA[Int]
 
-  checkAll("RefStateful", StatefulTests(RefStateful[IO, Int](ref)).stateful)
+  checkAll("RefStateful", StatefulTests(using RefStateful[IO, Int](ref)).stateful)
