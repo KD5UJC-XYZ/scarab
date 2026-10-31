@@ -44,8 +44,7 @@ def scan(source: str, i: int, expression: bool) -> tuple[int, str]:
     depth, n = 0, len(source)
     while i < n:
         if source.startswith('/*', i):
-            end = source.find('*/', i + 2)
-            end = n if end < 0 else end + 2
+            end = comment_end(source, i)
             out.append(' ' + '\n' * source.count('\n', i, end))
             i = end
         elif source.startswith('//', i):
@@ -67,6 +66,21 @@ def scan(source: str, i: int, expression: bool) -> tuple[int, str]:
             out.append(source[i])
             i += 1
     return i, ''.join(out)
+
+
+def comment_end(source: str, i: int) -> int:
+    """The index after the block comment that opens at `i`; Scala block comments nest."""
+    depth, n = 0, len(source)
+    while i < n:
+        if source.startswith('/*', i):
+            depth, i = depth + 1, i + 2
+        elif source.startswith('*/', i):
+            depth, i = depth - 1, i + 2
+            if depth == 0:
+                return i
+        else:
+            i += 1
+    return n
 
 
 def string_literal(source: str, i: int, triple: bool, interpolated: bool) -> tuple[int, str]:

@@ -53,6 +53,12 @@ class ImperativeTest(unittest.TestCase):
         self.assertEqual(imperative.counts('s"${ s"${ "}" }" ; try work() finally cleanup() }"'), both)
         self.assertEqual(imperative.counts('s"${ Map(1 -> {2}) } try"'), {})
 
+    def test_block_comments_nest(self):
+        self.assertEqual(imperative.counts('s"${ /* outer /* inner */ } */ try 1 finally () }"'),
+                         {'try': 1, 'finally': 1})
+        self.assertEqual(imperative.counts('s"${ /* outer /* inner */ try finally */ 1 }"'), {})
+        self.assertEqual(imperative.counts('/* a /* b */ try */ try f() finally g()'), {'try': 1, 'finally': 1})
+
     def test_a_new_try_fails_and_only_main_sources_count(self):
         self.write(MAIN, 'object A\n')
         self.write('mod/src/test/scala/T.scala', 'try f() finally g()\n')
