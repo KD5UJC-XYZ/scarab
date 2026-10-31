@@ -16,28 +16,6 @@
   "models/src/main/scala/xyz/kd5ujc/scarab/models/runtime/Codec.scala": {
    "catch": 1,
    "try": 1
-  },
-  "node/src/main/scala/xyz/kd5ujc/scarab/node/MemoryReport.scala": {
-   "catch": 1,
-   "try": 1
-  },
-  "node/src/main/scala/xyz/kd5ujc/scarab/node/VerificationCache.scala": {
-   "catch": 4,
-   "finally": 2,
-   "try": 5
-  },
-  "node/src/main/scala/xyz/kd5ujc/scarab/node/forge/KesFiles.scala": {
-   "catch": 1,
-   "finally": 2,
-   "try": 3
-  },
-  "node/src/main/scala/xyz/kd5ujc/scarab/node/forge/KeyGuard.scala": {
-   "catch": 1,
-   "try": 1
-  },
-  "node/src/main/scala/xyz/kd5ujc/scarab/node/tools/LeiosCheckMain.scala": {
-   "finally": 1,
-   "try": 1
   }
  }
 }

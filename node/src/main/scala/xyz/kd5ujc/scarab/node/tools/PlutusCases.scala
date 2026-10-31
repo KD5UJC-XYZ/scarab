@@ -13,12 +13,13 @@ import xyz.kd5ujc.scarab.ledger.*
   * and `max` overall, and is only used by tooling (`follow --plutus-cases <dir>`).
   */
 final class PlutusCases(dir: Path, perKind: Int, max: Int):
-  // Deliberate instance-local mutable state, not global: the phase-2 observer is a synchronous
-  // callback (`Observation => Unit`) invoked from the pure evaluator, outside any effect, so the
-  // counters cannot live in a Ref. Every access goes through `observe`, which is synchronized, and
-  // the instance exists only when `--plutus-cases` is given (tooling, off by default).
-  private val seen = collection.mutable.Map.empty[String, Int]
-  private var written = 0
+  // Instance-local state, not global: the phase-2 observer is a synchronous callback
+  // (`Observation => Unit`) invoked from the pure evaluator, outside any effect, so the counts
+  // cannot live in a Ref. They are an immutable value in an atomic reference; every access goes
+  // through `observe`, which is synchronized, and the instance exists only when `--plutus-cases`
+  // is given (tooling, off by default).
+  private final case class Written(seen: Map[String, Int], total: Int)
+  private val written = new java.util.concurrent.atomic.AtomicReference(Written(Map.empty, 0))
 
   def observe(o: Phase2.Observation): Unit = synchronized {
     val body = o.tx.body
@@ -46,10 +47,10 @@ final class PlutusCases(dir: Path, perKind: Int, max: Int):
       case Left(es) => s"translation ${es.toVector.map(_.message).mkString("; ")}"
     val kind =
       s"v${languages.mkString("")}-${if o.tx.isValid then "valid" else "invalid"}-${features.mkString(",")}-${outcome.take(40)}"
-    val count = seen.getOrElse(kind, 0)
-    if count < perKind && written < max then
-      seen.update(kind, count + 1)
-      written += 1
+    val now = written.get
+    val count = now.seen.getOrElse(kind, 0)
+    if count < perKind && now.total < max then
+      written.set(Written(now.seen.updated(kind, count + 1), now.total + 1))
       val name = s"slot${o.slot}-${body.id.hex.take(8)}"
       val slots = (body.validityStart ++ body.ttl).toVector.distinct
       val clock =

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.tools
 
+import scala.annotation.tailrec
 import cats.effect.{ExitCode, IO, IOApp}
 import cats.syntax.all.*
 import io.circe.Json
@@ -140,11 +141,12 @@ object BlstCheckMain extends IOApp:
     def rate(name: String)(op: () => Unit): (String, Long) =
       def loop(budgetNanos: Long): Long =
         val start = System.nanoTime()
-        var n = 0L
-        while System.nanoTime() - start < budgetNanos do
-          op()
-          n += 1
-        (n * 1000000000L) / (System.nanoTime() - start)
+        @tailrec def run(n: Long): Long =
+          if System.nanoTime() - start < budgetNanos then
+            op()
+            run(n + 1)
+          else n
+        (run(0L) * 1000000000L) / (System.nanoTime() - start)
       loop(1000000000L)
       name -> loop(2000000000L)
     val g1 = hex(g1Hex)
