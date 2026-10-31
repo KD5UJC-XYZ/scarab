@@ -21,7 +21,10 @@ trait Bearer[F[_]]:
   /** Socket metadata is acquired once by Mux, outside every mini-protocol error scope. */
   def connectionId: Option[F[Either[ConnectionIdentityError, ConnectionId]]] = None
 
-  /** Bytes from the peer; the stream ends when the peer closes its side. Consume it once. */
+  /** Bytes from the peer; the stream ends when the peer closes its side. Consume it once. It fails
+    * by raising, never in a finalizer: the multiplexer reads it inside fs2's `merge`, which would
+    * report a finalizer's failure on interruption to the runtime as well (issue 647).
+    */
   def reads: Stream[F, Byte]
 
   def write(bytes: Chunk[Byte]): F[Unit]
