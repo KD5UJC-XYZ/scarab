@@ -65,8 +65,9 @@ import xyz.kd5ujc.scarab.storage.UtxoStore
   * @param utxoStore
   *   The backing store of the UTxO set. Without one the state's set holds all of it.
   * @param afterBlock
-  *   Called with each block's header and the state it produces (the node uses it to tell the
-  *   verification pipeline which epoch nonce is current, and to write state digests).
+  *   Called with each block's header, the state it was applied to and the state it produces (the
+  *   node uses it to tell the verification pipeline which epoch nonce is current, and to write
+  *   state digests).
   * @param compute
   *   Measures the pure rules; without one they are not timed.
   */
@@ -79,7 +80,9 @@ final class MirrorRules[F[_]: Monad](
     phase2Observer: Option[Phase2.Observation => Unit] = None,
     utxoStore: Option[UtxoStore[F]] = None,
     afterBlock: Option[
-      (Header, MirrorState) => Raise[F, xyz.kd5ujc.scarab.ledger.StorageError] ?=> F[Unit]
+      (Header, MirrorState, MirrorState) => Raise[F, xyz.kd5ujc.scarab.ledger.StorageError] ?=> F[
+        Unit
+      ]
     ] = None,
     compute: Option[Compute[F]] = None,
     parallelPlutus: Option[ParallelPlutus[F]] = None
@@ -131,7 +134,7 @@ final class MirrorRules[F[_]: Monad](
               MirrorRules.stateOutOfRange(header, failure) match
                 case Some(fault) => fault.raise[F, MirrorState]
                 case None        => ValidationError(header.point, failure).raise[F, MirrorState],
-            next => afterBlock.fold(next.pure[F])(f => f(header, next).as(next))
+            next => afterBlock.fold(next.pure[F])(f => f(header, s, next).as(next))
           )
         )
     (utxoStore, header) match
