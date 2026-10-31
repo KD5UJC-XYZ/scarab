@@ -10,7 +10,7 @@ import com.weavechain.curve25519.{
 }
 import java.security.MessageDigest
 import java.util.Arrays
-import scala.util.control.NonFatal
+import cats.syntax.either.*
 
 /** Ed25519 verification as the Byron era of the reference performs it. For Byron signatures only:
   * every later era verifies with [[StrictEd25519]].
@@ -56,15 +56,17 @@ object ByronEd25519:
       message: Bytes
   ): Either[VerificationError, VerificationResult] =
     // Only the decoding of A classifies invalid input; any other failure is a typed defect.
-    try Right(evaluate(publicKey, signature, message))
-    catch case NonFatal(e) => Left(VerificationError.ImplementationFailure(e))
+    Either
+      .catchNonFatal(evaluate(publicKey, signature, message))
+      .leftMap(VerificationError.ImplementationFailure(_))
 
   /** The point of an encoding, read as `ge25519_unpack_negative_vartime` reads it (y modulo p, any
     * order), or nothing when y is not on the curve.
     */
   private def point(bytes: Array[Byte]): Option[EdwardsPoint] =
-    try Some(new CompressedEdwardsY(bytes.clone()).decompress())
-    catch case _: InvalidEncodingException => None
+    Either
+      .catchOnly[InvalidEncodingException](new CompressedEdwardsY(bytes.clone()).decompress())
+      .toOption
 
   private def evaluate(
       publicKey: PublicKey32,

@@ -40,6 +40,7 @@ object TimingProbeMain:
   /** An operation over the i-th pre-generated input of its class. */
   private type Op = Int => OpOutcome
 
+  // inside the timed region: a plain try allocates nothing beyond the outcome itself
   private def outcome(body: => Byte): OpOutcome =
     try OpOutcome.Produced(body)
     catch case NonFatal(e) => OpOutcome.Failed(e.getClass.getSimpleName)
@@ -62,35 +63,19 @@ object TimingProbeMain:
   private def maxT(fix: Array[Double], rnd: Array[Double], buckets: Int): Double =
     val samples = fix.length
     val width = samples / buckets
-    var max = 0.0
-    var i = 0
-    while i < buckets do
+    (0 until buckets).foldLeft(0.0) { (max, i) =>
       val lo = i * width
       val hi = if i == buckets - 1 then samples else (i + 1) * width
       val count = hi - lo
-      var meanFix = 0.0
-      var meanRnd = 0.0
-      var k = lo
-      while k < hi do
-        meanFix += fix(k)
-        meanRnd += rnd(k)
-        k += 1
-      meanFix /= count
-      meanRnd /= count
-      var varFix = 0.0
-      var varRnd = 0.0
-      k = lo
-      while k < hi do
-        varFix += (fix(k) - meanFix) * (fix(k) - meanFix)
-        varRnd += (rnd(k) - meanRnd) * (rnd(k) - meanRnd)
-        k += 1
-      varFix /= count
-      varRnd /= count
+      def sum(term: Int => Double): Double = (lo until hi).foldLeft(0.0)((acc, k) => acc + term(k))
+      val meanFix = sum(fix(_)) / count
+      val meanRnd = sum(rnd(_)) / count
+      val varFix = sum(k => (fix(k) - meanFix) * (fix(k) - meanFix)) / count
+      val varRnd = sum(k => (rnd(k) - meanRnd) * (rnd(k) - meanRnd)) / count
       val se = math.sqrt(varFix / count + varRnd / count)
       val t = math.abs(meanFix - meanRnd) / math.max(se, 1e-12)
-      if t > max then max = t
-      i += 1
-    max
+      if t > max then t else max
+    }
 
   /** Warm both classes, then measure `samples` of each. Every sample uses its own pre-generated
     * random-class input; failed operations are counted and excluded, and reported at the end. The
@@ -98,6 +83,12 @@ object TimingProbeMain:
     * observable checksum printed after measurement so the produced bytes remain live.
     */
   private final class Measurement(val failures: Int, val t: Double)
+
+  /** A repetition's noise floor: clean, contaminated on both attempts, or aborted by a failure. */
+  private enum Floor:
+    case Clean(t: Double)
+    case Contaminated
+    case Aborted
 
   private def run(
       fixOp: Op,
@@ -107,42 +98,38 @@ object TimingProbeMain:
       buckets: Int
   ): Measurement =
     val warmup = math.min(inputs.length, 1000)
-    var i = 0
-    while i < warmup do
+    (0 until warmup).foreach { i =>
       fixOp(i)
       rndOp(i)
-      i += 1
+    }
     val fix = new Array[Double](samples)
     val rnd = new Array[Double](samples)
-    var checksum = 0
-    var measured = 0
-    var failures = 0
-    var attempts = 0
     val maxAttempts = samples * 2
-    while measured < samples && attempts < maxAttempts do
-      attempts += 1
-      val idx = measured % inputs.length
-      val startFix = System.nanoTime()
-      fixOp(idx) match
+    // one timed operation into `into(at)`, then the checksum with its byte, or none when it failed
+    def timed(op: Op, idx: Int, into: Array[Double], at: Int, label: String, checksum: Int) =
+      val start = System.nanoTime()
+      op(idx) match
         case OpOutcome.Produced(b) =>
-          fix(measured) = (System.nanoTime() - startFix).toDouble
-          checksum = Integer.rotateLeft(checksum, 1) ^ (b & 0xff)
+          into(at) = (System.nanoTime() - start).toDouble
+          Some(Integer.rotateLeft(checksum, 1) ^ (b & 0xff))
         case OpOutcome.Failed(reason) =>
-          failures += 1
-          println(s"fix-class failure at sample $measured: $reason")
-          fix(measured) = Double.NaN
-      val startRnd = System.nanoTime()
-      rndOp(idx) match
-        case OpOutcome.Produced(b) =>
-          rnd(measured) = (System.nanoTime() - startRnd).toDouble
-          checksum = Integer.rotateLeft(checksum, 1) ^ (b & 0xff)
-        case OpOutcome.Failed(reason) =>
-          failures += 1
-          println(s"random-class failure at sample $measured: $reason")
-          rnd(measured) = Double.NaN
-      if !java.lang.Double.isNaN(fix(measured)) && !java.lang.Double.isNaN(rnd(measured)) then
-        measured += 1
-      // else: the sample slot is overwritten by the next attempt
+          println(s"$label failure at sample $at: $reason")
+          into(at) = Double.NaN
+          None
+    // the failures and the checksum once `samples` pairs are measured or the attempts run out; a
+    // pair with a failed operation is overwritten by the next attempt
+    @scala.annotation.tailrec
+    def sample(measured: Int, attempts: Int, failures: Int, checksum: Int): (Int, Int) =
+      if measured >= samples || attempts >= maxAttempts then (failures, checksum)
+      else
+        val idx = measured % inputs.length
+        val fixed = timed(fixOp, idx, fix, measured, "fix-class", checksum)
+        val afterFix = fixed.getOrElse(checksum)
+        val random = timed(rndOp, idx, rnd, measured, "random-class", afterFix)
+        val failed = (if fixed.isEmpty then 1 else 0) + (if random.isEmpty then 1 else 0)
+        val next = if !fix(measured).isNaN && !rnd(measured).isNaN then measured + 1 else measured
+        sample(next, attempts + 1, failures + failed, random.getOrElse(afterFix))
+    val (failures, checksum) = sample(0, 0, 0, 0)
     // Publish after timing: an unobserved local accumulator is not a dead-code-elimination guard.
     println(f"  output checksum: 0x$checksum%08x")
     if failures > 0 then Measurement(failures, Double.NaN)
@@ -212,52 +199,69 @@ object TimingProbeMain:
       outcome(Draft03Math.uniform(Array.fill(32)(0x42.toByte)).encode().apply(0))
     val uniformRnd: Op = i => outcome(Draft03Math.uniform(inputs(i).bytes).encode().apply(0))
 
-    var aborted = false
-    var discarded = 0
-    var rep = 1
-    while rep <= repetitions && !aborted do
-      println(s"--- repetition $rep (samples=$samples, buckets=$buckets) ---")
-      var floor = Double.NaN
-      var attempts = 0
-      while floor.isNaN && attempts < 2 && !aborted do
-        attempts += 1
-        if attempts > 1 then println("  retrying the noise control after a contaminated floor")
-        System.gc()
-        val noise = run(noiseFix, noiseRnd, inputs, samples, buckets)
-        if noise.failures > 0 then
-          println(s"aborting: ${noise.failures} failed operations in the noise control")
-          aborted = true
-        else if noise.t <= ContaminationBound then floor = noise.t
-        else
-          println(
-            f"  contaminated noise floor: max|t| = ${noise.t}%.0f exceeds the contamination bound ($ContaminationBound%.0f); discarding this attempt"
-          )
-      if !aborted && floor.isNaN then
-        discarded += 1
-        println("  repetition discarded: the environment is too noisy for a meaningful verdict")
-      if !aborted && !floor.isNaN then
-        row("noise: basepoint table multiply", floor, None)
-        System.gc()
-        val point = run(pointMulFix, pointMulRnd, inputs, samples, buckets)
-        if point.failures > 0 then
-          println(s"aborting: ${point.failures} failed operations in point.multiply")
-          aborted = true
-        else
-          row("curve25519 point.multiply (secret scalar)", point.t, Some(floor))
-          System.gc()
-          val java = run(javaMulFix, javaMulRnd, inputs, samples, buckets)
-          if java.failures > 0 then
-            println(s"aborting: ${java.failures} failed operations in scalarMultiply")
-            aborted = true
-          else
-            row("Ed25519Point.scalarMultiply (secret scalar)", java.t, Some(floor))
-            System.gc()
-            val uni = run(uniformFix, uniformRnd, inputs, samples, buckets)
-            if uni.failures > 0 then
-              println(s"aborting: ${uni.failures} failed operations in uniform")
-              aborted = true
-            else row("Draft03Math.uniform (public input)", uni.t, Some(floor))
-      rep += 1
+    // the noise floor, retried once when the environment contaminated it
+    @scala.annotation.tailrec
+    def floor(attempt: Int): Floor =
+      if attempt > 1 then println("  retrying the noise control after a contaminated floor")
+      System.gc()
+      val noise = run(noiseFix, noiseRnd, inputs, samples, buckets)
+      if noise.failures > 0 then
+        println(s"aborting: ${noise.failures} failed operations in the noise control")
+        Floor.Aborted
+      else if noise.t <= ContaminationBound then Floor.Clean(noise.t)
+      else
+        println(
+          f"  contaminated noise floor: max|t| = ${noise.t}%.0f exceeds the contamination bound ($ContaminationBound%.0f); discarding this attempt"
+        )
+        if attempt < 2 then floor(attempt + 1) else Floor.Contaminated
+
+    // one target against the floor; false when one of its operations failed
+    def target(name: String, operation: String, fixOp: Op, rndOp: Op, noise: Double): Boolean =
+      System.gc()
+      val measured = run(fixOp, rndOp, inputs, samples, buckets)
+      if measured.failures > 0 then
+        println(s"aborting: ${measured.failures} failed operations in $operation")
+        false
+      else
+        row(name, measured.t, Some(noise))
+        true
+
+    // whether a failed operation aborted the run, and how many repetitions were discarded
+    @scala.annotation.tailrec
+    def repeat(rep: Int, discarded: Int): (Boolean, Int) =
+      if rep > repetitions then (false, discarded)
+      else
+        println(s"--- repetition $rep (samples=$samples, buckets=$buckets) ---")
+        floor(1) match
+          case Floor.Aborted => (true, discarded)
+          case Floor.Contaminated =>
+            println("  repetition discarded: the environment is too noisy for a meaningful verdict")
+            repeat(rep + 1, discarded + 1)
+          case Floor.Clean(noise) =>
+            row("noise: basepoint table multiply", noise, None)
+            val completed =
+              target(
+                "curve25519 point.multiply (secret scalar)",
+                "point.multiply",
+                pointMulFix,
+                pointMulRnd,
+                noise
+              ) && target(
+                "Ed25519Point.scalarMultiply (secret scalar)",
+                "scalarMultiply",
+                javaMulFix,
+                javaMulRnd,
+                noise
+              ) && target(
+                "Draft03Math.uniform (public input)",
+                "uniform",
+                uniformFix,
+                uniformRnd,
+                noise
+              )
+            if completed then repeat(rep + 1, discarded) else (true, discarded)
+
+    val (aborted, discarded) = repeat(1, 0)
     if discarded > 0 then
       println(
         s"$discarded of $repetitions repetition(s) contaminated and discarded — re-run on a quieter machine"

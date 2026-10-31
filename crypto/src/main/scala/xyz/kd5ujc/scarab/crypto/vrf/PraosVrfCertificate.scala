@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.crypto.vrf
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import org.bouncycastle.crypto.digests.Blake2bDigest
-import scala.util.control.NonFatal
+import cats.syntax.either.*
 
 /** Experimental Praos certificate predicate only. No TPraos, header validity, stake/key binding,
   * leader threshold, KES, operational certificates or epoch nonce evolution.
@@ -52,10 +52,7 @@ object PraosVrfCertificate:
     case VerifiedCertificate(output: Bytes)
 
   private def protect[A](body: => Either[Failure, A]): Either[Failure, A] =
-    try body
-    catch
-      case NonFatal(e) =>
-        Left(Failure.InternalFailure(e))
+    Either.catchNonFatal(body).fold(e => Left(Failure.InternalFailure(e)), identity)
 
   /** Raw Blake2b-256(BE8(slot) || nonce bytes); neutral contributes zero bytes, not 32 zeros. */
   def alpha(input: Input): Either[Failure, Bytes] = protect {
@@ -84,15 +81,17 @@ object PraosVrfCertificate:
       claimedOutput: Bytes,
       primitive: (Bytes, Bytes, Bytes) => StrictDraft03.Result
   ): Result =
-    try
-      validateEnvelope(publicKey, proof, claimedOutput) match
-        case Left(error) => Result.Malformed(error)
-        case Right(_) =>
-          alpha(input) match
-            case Left(Failure.InternalFailure(cause)) => Result.InternalFailure(cause)
-            case Left(error)                          => Result.Malformed(error)
-            case Right(message) => classify(primitive(publicKey, proof, message), claimedOutput)
-    catch case NonFatal(e) => Result.InternalFailure(e)
+    Either
+      .catchNonFatal {
+        validateEnvelope(publicKey, proof, claimedOutput) match
+          case Left(error) => Result.Malformed(error)
+          case Right(_) =>
+            alpha(input) match
+              case Left(Failure.InternalFailure(cause)) => Result.InternalFailure(cause)
+              case Left(error)                          => Result.Malformed(error)
+              case Right(message) => classify(primitive(publicKey, proof, message), claimedOutput)
+      }
+      .fold(Result.InternalFailure(_), identity)
 
   private def validateEnvelope(
       publicKey: Bytes,

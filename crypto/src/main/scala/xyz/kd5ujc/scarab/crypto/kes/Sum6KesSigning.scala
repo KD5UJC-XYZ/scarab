@@ -59,6 +59,11 @@ object Sum6KesSigning:
   /** Bytes of a key of the given depth. */
   private def size(depth: Int): Int = if depth == 0 then 32 else size(depth - 1) + 96
 
+  /** A signing key evolves in place: `update` zeroes the material of the periods it leaves behind,
+    * so that no copy of an earlier period's key survives (forward security). The key is therefore a
+    * mutable object, and its current period is part of that state.
+    */
+  @SuppressWarnings(Array("org.wartremover.warts.Var"))
   final class SigningKey private[Sum6KesSigning] (
       private val material: Array[Byte],
       private var current: Int
@@ -78,12 +83,14 @@ object Sum6KesSigning:
     /** Advance to `target` (not before the current period), erasing what cannot be used any more.
       */
     def evolveTo(target: Int): Either[Failure, Unit] =
-      if target < current || target >= Periods then Left(Failure.PeriodOutOfRange(target))
-      else
-        while current < target do
+      @scala.annotation.tailrec
+      def step(): Unit =
+        if current < target then
           update(material, 0, Depth, current)
           current += 1
-        Right(())
+          step()
+      if target < current || target >= Periods then Left(Failure.PeriodOutOfRange(target))
+      else Right(step())
 
     def evolve(): Either[Failure, Unit] = evolveTo(current + 1)
 
