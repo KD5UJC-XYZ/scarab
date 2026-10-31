@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.storage
 
 import cats.effect.Sync
+import scala.util.Using
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -60,9 +61,7 @@ object SnapshotMigration:
     )(using Raise[F, StorageError]): F[Either[StorageError, FormatVersion]] =
       AtomicFile
         .guard[F, Array[Byte]](file.toString) {
-          val in = JFiles.newInputStream(file.toNioPath)
-          try in.readNBytes(12)
-          finally in.close()
+          Using.resource(JFiles.newInputStream(file.toNioPath))(_.readNBytes(12))
         }
         .map(versionOf(file.toString, _))
 
@@ -71,15 +70,14 @@ object SnapshotMigration:
         case false => F.pure(Nil)
         case true =>
           AtomicFile.guard[F, List[String]](dir.toString) {
-            val listing = JFiles.list(dir.toNioPath)
-            try
+            Using.resource(JFiles.list(dir.toNioPath)) { listing =>
               import scala.jdk.CollectionConverters.*
               listing.iterator.asScala
                 .map(_.getFileName.toString)
                 .filter(FileLedgerSnapshots.isSnapshot)
                 .toList
                 .sorted
-            finally listing.close()
+            }
           }
       }
 

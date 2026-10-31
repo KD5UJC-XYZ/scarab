@@ -2,7 +2,9 @@
 package xyz.kd5ujc.scarab.storage
 
 import xyz.kd5ujc.scarab.codec.DomainError
+import scala.util.Using
 import xyz.kd5ujc.scarab.ledger.StorageStructureError
+import cats.data.NonEmptyVector
 import cats.effect.{Async, Ref, Resource, Sync}
 import cats.effect.std.Mutex
 import cats.mtl.Raise
@@ -17,6 +19,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files as JFiles
 import java.nio.file.StandardOpenOption
 import java.util.zip.CRC32
+import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.BlockRef
@@ -115,9 +118,7 @@ object FileImmutableStore:
       def detect(file: Path)(using cats.mtl.Raise[F, StorageError]): F[FormatVersion] =
         AtomicFile
           .guard[F, Array[Byte]](file.toString) {
-            val in = JFiles.newInputStream(file.toNioPath)
-            try in.readNBytes(HeaderSize)
-            finally in.close()
+            Using.resource(JFiles.newInputStream(file.toNioPath))(_.readNBytes(HeaderSize))
           }
           .flatMap { header =>
             // A file shorter than a header is a crash during chunk creation: recovery owns it.
@@ -196,8 +197,7 @@ object FileImmutableStore:
       .guard[F, List[Int]](dir.toString) {
         if !JFiles.isDirectory(dir.toNioPath) then Nil
         else
-          val stream = JFiles.list(dir.toNioPath)
-          try
+          Using.resource(JFiles.list(dir.toNioPath)) { stream =>
             import scala.jdk.CollectionConverters.*
             stream
               .iterator()
@@ -208,7 +208,7 @@ object FileImmutableStore:
                 Option.when(name.endsWith(".index"))(name.stripSuffix(".index").toIntOption).flatten
               }
               .sorted
-          finally stream.close()
+          }
       }
       .flatMap(_.traverse_ { chunk =>
         val index = dir / f"$chunk%05d.index"
@@ -272,8 +272,7 @@ object FileImmutableStore:
     ): Either[StorageError, Option[Bytes]] =
       val indexPath = root.resolve(f"$chunk%05d.index")
       val invalid = StorageError.FirstImmutable(FirstImmutableProblem.InvalidIndexEntry)
-      val index = FileChannel.open(indexPath, StandardOpenOption.READ)
-      try
+      Using.resource(FileChannel.open(indexPath, StandardOpenOption.READ)) { index =>
         val indexSize = index.size()
         if indexSize < HeaderSize || (indexSize - HeaderSize) % EntrySize != 0 then Left(invalid)
         else
@@ -297,8 +296,7 @@ object FileImmutableStore:
                     if !JFiles.isRegularFile(dataPath) then
                       Left(StorageError.FirstImmutable(FirstImmutableProblem.MissingChunk))
                     else
-                      val data = FileChannel.open(dataPath, StandardOpenOption.READ)
-                      try
+                      Using.resource(FileChannel.open(dataPath, StandardOpenOption.READ)) { data =>
                         val end = entry.offset + entry.length.toLong
                         if end > data.size() then Left(invalid)
                         else
@@ -311,20 +309,19 @@ object FileImmutableStore:
                                 StorageError.FirstImmutable(FirstImmutableProblem.ChecksumMismatch)
                               )
                             else Right(Some(Bytes.fromArray(bytes)))
-                      finally data.close()
+                      }
             }
-      finally index.close()
+      }
 
     def scan: Either[StorageError, Option[Bytes]] =
       val root = dir.toNioPath
       if !JFiles.isDirectory(root) then Right(None)
       else
         val names =
-          val stream = JFiles.list(root)
-          try
+          Using.resource(JFiles.list(root)) { stream =>
             import scala.jdk.CollectionConverters.*
             stream.iterator().asScala.map(_.getFileName.toString).toList
-          finally stream.close()
+          }
         val chunks = names
           .collect {
             case name if name.endsWith(".index") => name.stripSuffix(".index").toIntOption
@@ -352,13 +349,14 @@ object FileImmutableStore:
       .guard[F, Either[StorageError, Option[Bytes]]](dir.toString)(scan)
       .flatMap(_.fold(_.raise[F, Option[Bytes]], Sync[F].pure))
 
-  private final class Current[F[_]](
-      val chunk: Int,
-      val data: FileHandle[F],
-      val index: FileHandle[F],
-      val release: F[Unit],
-      var dataSize: Long,
-      var count: Int
+  /** The chunk appended to: its handles, its data size and its number of entries. */
+  private final case class Current[F[_]](
+      chunk: Int,
+      data: FileHandle[F],
+      index: FileHandle[F],
+      release: F[Unit],
+      dataSize: Long,
+      count: Int
   )
 
   /** Slots per chunk file. A storage granularity, independent of any era's epoch length (it is the
@@ -384,9 +382,7 @@ object FileImmutableStore:
       guard(path.toString)(files.readAll(path).compile.to(Chunk).map(_.toArray))
 
     def syncDir(using cats.mtl.Raise[F, StorageError]): F[Unit] = guard(dir.toString)(F.blocking {
-      val ch = FileChannel.open(dir.toNioPath, StandardOpenOption.READ)
-      try ch.force(true)
-      finally ch.close()
+      Using.resource(FileChannel.open(dir.toNioPath, StandardOpenOption.READ))(_.force(true))
     })
 
     def writeFully(h: FileHandle[F], bytes: Array[Byte], offset: Long)(using
@@ -444,23 +440,23 @@ object FileImmutableStore:
       )
 
     def validPrefix(c: Int, all: Vector[Entry], data: Array[Byte]): Vector[Entry] =
-      val b = Vector.newBuilder[Entry]
-      var expected = 0L
-      var previous: Option[BlockRef] = None
-      val it = all.iterator
-      var ok = true
-      while ok && it.hasNext do
-        val e = it.next()
-        val inChunk = e.ref.slot / chunkSlots == BigInt(c)
-        val ordered =
-          previous.forall(p => e.ref.slot > p.slot || (e.ref.slot == p.slot && p.boundary))
-        ok = e.offset == expected && e.length >= 0 && e.end <= data.length && inChunk && ordered &&
-          crcOf(data, e.offset.toInt, e.length) == e.crc
-        if ok then
-          b += e
-          expected = e.end
-          previous = Some(e.ref)
-      b.result()
+      // the entries up to the first that is out of place, out of order or fails its checksum
+      @tailrec def go(
+          rest: List[Entry],
+          expected: Long,
+          previous: Option[BlockRef],
+          good: Vector[Entry]
+      ): Vector[Entry] =
+        rest match
+          case Nil => good
+          case e :: more =>
+            val inChunk = e.ref.slot / chunkSlots == BigInt(c)
+            val ordered =
+              previous.forall(p => e.ref.slot > p.slot || (e.ref.slot == p.slot && p.boundary))
+            val ok = e.offset == expected && e.length >= 0 && e.end <= data.length && inChunk &&
+              ordered && crcOf(data, e.offset.toInt, e.length) == e.crc
+            if ok then go(more, e.end, Some(e.ref), good :+ e) else good
+      go(all.toList, 0L, None, Vector.empty)
 
     /** Drop newest chunks that hold no valid block; returns the surviving chunk numbers. */
     def recoverNewest(
@@ -468,14 +464,13 @@ object FileImmutableStore:
         entries: Int,
         bytes: Long
     ): F[(Vector[Int], Option[Entry], Int, Long)] =
-      chunks.lastOption match
-        case None => F.pure((Vector.empty, None, entries, bytes))
-        case Some(c) =>
+      chunks match
+        case older :+ c =>
           recoverChunk(c).flatMap { case (last, goodCount, badBytes, badEntries) =>
-            if goodCount == 0 then
-              recoverNewest(chunks.init, entries + badEntries, bytes + badBytes)
+            if goodCount == 0 then recoverNewest(older, entries + badEntries, bytes + badBytes)
             else F.pure((chunks, last, entries + badEntries, bytes + badBytes))
           }
+        case _ => F.pure((Vector.empty, None, entries, bytes))
 
     val setup: F[(Vector[Int], Option[BlockRef], ImmutableStore.OpenReport, Option[Current[F]])] =
       for
@@ -592,10 +587,11 @@ object FileImmutableStore:
                     HeaderSize.toLong + target.count.toLong * EntrySize
                   )
                 )
-                _ = {
-                  target.dataSize += bytes.length
-                  target.count += 1
-                }
+                _ <- current.set(
+                  Some(
+                    target.copy(dataSize = target.dataSize + bytes.length, count = target.count + 1)
+                  )
+                )
                 _ <- tipRef.set(Some(ref))
               yield ()
             }
@@ -697,10 +693,13 @@ object FileImmutableStore:
                 else
                   val mid = (lo + hi) / 2
                   indexOf(cs(mid)).flatMap { es =>
-                    if es.isEmpty then search(lo, mid)
-                    else if es.last.ref.blockNo < n then search(mid + 1, hi)
-                    else if lo == mid || es.head.ref.blockNo <= n then F.pure(Some((cs(mid), es)))
-                    else search(lo, mid)
+                    NonEmptyVector.fromVector(es) match
+                      case None => search(lo, mid)
+                      case Some(held) =>
+                        if held.last.ref.blockNo < n then search(mid + 1, hi)
+                        else if lo == mid || held.head.ref.blockNo <= n then
+                          F.pure(Some((cs(mid), es)))
+                        else search(lo, mid)
                   }
               search(0, cs.size).flatMap {
                 case None => F.pure(None)
@@ -738,32 +737,36 @@ object FileImmutableStore:
               cats.mtl.Raise[F, StorageError]
           ): F[Vector[ImmutableStore.Stored]] =
             indexOf(c).flatMap { es =>
-              if es.isEmpty then F.pure(Vector.empty)
-              else
-                guard(dataPath(c).toString)(
-                  files
-                    .readRange(dataPath(c), 1 << 16, 0L, es.last.end)
-                    .compile
-                    .to(Chunk)
-                    .map(_.toArray)
-                ).flatMap { data =>
-                  es.traverse { e =>
-                    if e.end <= data.length && crcOf(data, e.offset.toInt, e.length) == e.crc then
-                      F.pure(
-                        ImmutableStore.Stored(
-                          e.ref,
-                          Bytes.fromArray(
-                            java.util.Arrays.copyOfRange(data, e.offset.toInt, e.end.toInt)
+              es.lastOption match
+                case None => F.pure(Vector.empty)
+                case Some(newest) =>
+                  guard(dataPath(c).toString)(
+                    files
+                      .readRange(dataPath(c), 1 << 16, 0L, newest.end)
+                      .compile
+                      .to(Chunk)
+                      .map(_.toArray)
+                  ).flatMap { data =>
+                    es.traverse { e =>
+                      if e.end <= data.length && crcOf(data, e.offset.toInt, e.length) == e.crc then
+                        F.pure(
+                          ImmutableStore.Stored(
+                            e.ref,
+                            Bytes.fromArray(
+                              java.util.Arrays.copyOfRange(data, e.offset.toInt, e.end.toInt)
+                            )
                           )
                         )
-                      )
-                    else
-                      fail[ImmutableStore.Stored](
-                        StorageError
-                          .Corrupt(dataPath(c).toString, ImmutableReadError.BlockChecksum(e.offset))
-                      )
+                      else
+                        fail[ImmutableStore.Stored](
+                          StorageError
+                            .Corrupt(
+                              dataPath(c).toString,
+                              ImmutableReadError.BlockChecksum(e.offset)
+                            )
+                        )
+                    }
                   }
-                }
             }
 
           def close: F[Unit] =
