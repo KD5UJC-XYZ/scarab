@@ -338,3 +338,52 @@ JDK 21.0.11, October 25 2026; the fuzz budget is 24 MiB plus 2,000 bytes per inp
 The nightly failure on seed 20751332 was the target's own oracle, not the decoder: it joined the re-encoded frames
 with a fold over `Bytes.++`, quadratic in the frame count (1.09 GB of the 1.12 GB measured for 3,980 frames). The
 oracle now compares each frame with the input slice at its offset.
+
+## 45. The CBOR walk of the mini-protocol reader: functional against imperative (#657)
+
+**2026-10-31.** `ProtocolWire.Reader` reads every node-to-node and node-to-client message. Its `skip` walks one CBOR
+item without building it: it is how a BlockFetch `MsgBlock` and a ChainSync header are taken off the wire as
+opaque items, so most of the bytes a node receives pass through it. It is imperative: a mutable position and item
+count, `while` loops, a mutable stack of open containers and `boundary`/`break` for the typed failures. AGENTS.md keeps
+that form only on a hot path with a measured benefit, so the same walk was written without mutation and the two timed,
+in the manner of section 40.
+
+**The functional form.** `WireSkipFunctional` (in the protocol tests): each read is a pure function of the position
+that returns its value and the next position, or the failure, as an `Either`; the walk is a `@tailrec` loop whose
+parameters are its whole state (the position and item count, what the innermost container still waits for, the
+parents on a `List` and their count); the checks are the reader's, in the reader's order.
+
+**Equivalence.** `WireSkipEquivalenceSuite` compares the item and where it ends, or the error, for: the 730 real
+blocks of `WireCorpus` (the Haskell node's 648 Preview immutable blocks, the first 70 preprod blocks, the 12 mainnet
+fixture blocks); every prefix of each up to 512 bytes and 512 evenly spaced longer ones; sixteen seeded single-bit
+changes of each; each block at its own smallest accepted depth, item count, string length and message size and one
+below; every short prefix under small limits, where a limit and the end of input meet; and hand-made indefinite
+strings, simple values and reserved heads. All are equal. Three deliberate changes to the functional form (the depth
+bound off by one, the container bound taken before the item is counted, the item counted after its head is read) are
+each caught.
+
+**Harness and environment.** `WireSkipBench`, the method of section 40: eight warm-up passes of each variant of about
+50 ms, then ten rounds of about 250 ms in ABBA order; a JVM reports the median of its rounds, and the table gives
+the median of four JVMs (two starting with each variant) and their range. Every input is read by both outside the
+timed region and the results compared. Limits: a BlockFetch `MsgBlock` while streaming
+(`Limits(2500000, 2499991, 64, 24, 8192)`), with 65,535 items for the one large message. Euler (Intel Core Ultra 9
+285K, WSL2), shared with other containers (load average 2.5 to 5.3); Docker image `scarab-jdk:local`
+`sha256:8f00ab6b6e1eed196c2b835bfd558507dfc29fac3153936fa38596248d7ebc76`, JVM 25.0.4.1+1-LTS,
+`--cpuset-cpus=8-11 --memory=4g --network none`, `-Xms2g -Xmx2g -XX:+UseG1GC -XX:ActiveProcessorCount=4`; classes
+built from `3d661a37b`.
+
+<!-- register:table perf-51.t1 -->
+| Workload | Imperative µs/op | Functional µs/op | MB/s imp. / func. | MB allocated/op imp. / func. | Time, median (per-JVM range) | Allocation, median (per-JVM range) |
+|---|---:|---:|---:|---:|---:|---:|
+| Preview blocks (648, 653,017 B) | 172.2 | 553.3 | 3,792 / 1,180 | 0.474 / 3.794 | 3.22× (3.11× to 3.25×) | 8.0× (8.0× to 8.0×) |
+| Preprod blocks (70, 58,673 B) | 32.1 | 88.3 | 1,831 / 664 | 0.095 / 0.627 | 2.79× (2.71× to 2.96×) | 6.6× (6.6× to 7.3×) |
+| Mainnet fixture blocks (12, 28,728 B) | 17.9 | 42.7 | 1,608 / 672 | 0.071 / 0.294 | 2.42× (2.36× to 2.57×) | 4.1× (4.1× to 4.5×) |
+| All 730 in one message (740,420 B) | 207.1 | 614.9 | 3,576 / 1,204 | 0.448 / 4.483 | 3.00× (2.92× to 3.14×) | 10.0× (10.0× to 10.9×) |
+<!-- /register -->
+
+**Result.** The functional walk takes 2.4 to 3.2 times as long and allocates 4 to 11 times as much, on every
+workload and in every JVM: a `Right`, a tuple and a position object per read, where the imperative walk allocates only
+the stack and the item it returns. The reader keeps its imperative form, under a class-level `@SuppressWarnings` that
+cites this section. The codecs' cursor over the reader (the typed reads a codec makes in its `readFrom`) was not
+measured separately; it is built from the same reads as the walk.
+
