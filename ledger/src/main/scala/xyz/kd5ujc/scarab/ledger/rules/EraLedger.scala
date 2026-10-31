@@ -275,7 +275,8 @@ object EraLedger:
         accounts(ls),
         shelley.cert(ls.cert).dState.accounts.ptrs,
         stake.ptrStake
-      ),
+      )
+    ,
     conway =>
       StakeDistribution.resolve(
         conway.instantStake(ls.utxo.instantStake).credentialStake,

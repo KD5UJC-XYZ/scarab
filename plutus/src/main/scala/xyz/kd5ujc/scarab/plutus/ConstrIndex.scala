@@ -41,12 +41,12 @@ private[plutus] object ConstrIndex:
     *
     * Two compiler diagnostics are silenced here, both about overriding the parameter val `constr`:
     * Scala 3 warns on it (3.3 as a deprecation, 3.9 as "cannot override"), and the initialisation
-    * checker reads the assertion in the body of
-    * `Data.Constr` as a use of the overridden, not yet initialised, val. The compiled Scalus 1.4.0
-    * constructor tests its parameter, not the accessor (`javap` of `Data$Constr.<init>`: `aload_1`
-    * before `BigInt.$greater$eq`), so the assertion sees zero. `ConstrIndexReferenceSuite` builds
-    * these values and fails if a Scalus release reads the accessor there (the assertion would then
-    * see `null`) or if a compiler refuses the override.
+    * checker reads the assertion in the body of `Data.Constr` as a use of the overridden, not yet
+    * initialised, val. The compiled Scalus 1.4.0 constructor tests its parameter, not the accessor
+    * (`javap` of `Data$Constr.<init>`: `aload_1` before `BigInt.$greater$eq`), so the assertion
+    * sees zero. `ConstrIndexReferenceSuite` builds these values and fails if a Scalus release reads
+    * the accessor there (the assertion would then see `null`) or if a compiler refuses the
+    * override.
     */
   @nowarn(
     "msg=overriding val parameter|cannot override val parameter|Access non-initialized value constr"

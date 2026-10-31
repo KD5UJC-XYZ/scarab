@@ -485,7 +485,8 @@ object GenesisStart:
       }
     keyDeposit(nes).flatMap(deposit =>
       era.cert.fold(
-        ev => register(ev(ls.cert), deposit).map(c => withLedger(nes, ls.copy[E](cert = ev.flip(c)))),
+        ev =>
+          register(ev(ls.cert), deposit).map(c => withLedger(nes, ls.copy[E](cert = ev.flip(c)))),
         _ => Right(nes)
       )
     )
