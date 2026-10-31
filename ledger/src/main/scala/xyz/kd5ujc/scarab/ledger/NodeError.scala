@@ -371,6 +371,20 @@ object VerificationDefect:
       case Header      => "header"
       case Witness(tx) => s"witness of tx ${tx.hex.take(16)}"
 
+/** Why a UTxO store has no open database ([[StorageError.UtxoStoreClosed]]). */
+enum UtxoStoreClosure derives CanEqual:
+  /** A restore or a reset closed the database and has not opened a new one: it failed after the
+    * close. A later restore or reset that succeeds opens one.
+    */
+  case NoDatabase
+
+  /** The store was released: it is never opened again. */
+  case Released
+
+  def message: String = this match
+    case NoDatabase => "a restore or reset closed it and failed before opening a new one"
+    case Released   => "the store was released"
+
 /** Why a UTxO checkpoint of the RocksDB store cannot be restored by this build. */
 enum CheckpointProblem:
   /** The keys are in two layouts (an older build, then this one, wrote to the same store): the
@@ -492,6 +506,9 @@ enum StorageError extends NodeError:
     */
   case UtxoCheckpoint(dir: String, problem: CheckpointProblem)
 
+  /** The UTxO store in `dir` has no open database, for the reason `why`. */
+  case UtxoStoreClosed(dir: String, why: UtxoStoreClosure)
+
   def message: String = this match
     case Reconstruction(what, cause) => s"$what reconstruction failed: $cause"
     case DecoderDefect(what, cause)  => s"$what decoder defect: $cause"
@@ -520,6 +537,7 @@ enum StorageError extends NodeError:
       s"the database holds a chain whose first block names $f as its predecessor, the configured genesis requires $e; use the matching --genesis-dir or another --db"
     case UtxoCheckpoint(d, p) =>
       s"the UTxO checkpoint $d cannot be restored: ${p.render}; replay from the immutable chunks (stop the node, remove <db>/snapshots and <db>/utxo, start it again)"
+    case UtxoStoreClosed(d, why) => s"the UTxO store $d has no open database: ${why.message}"
 
 /** Why this node cannot (or did not) forge a block. [[NotLeader]] is the ordinary answer of most
   * slots; the others are real problems with the keys, the ledger view or the assembled block.

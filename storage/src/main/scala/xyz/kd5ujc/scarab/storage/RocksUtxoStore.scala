@@ -15,7 +15,8 @@ import xyz.kd5ujc.scarab.ledger.{
   StorageError,
   StorageStructureError,
   TxIn,
-  TxOut
+  TxOut,
+  UtxoStoreClosure
 }
 import org.rocksdb.{
   BlockBasedTableConfig,
@@ -56,14 +57,21 @@ import scala.util.Using
   * itself is not touched.
   *
   * @param db
-  *   The handle is swapped when the database is reopened (see `open`); the holder is private to
-  *   this store and its lifetime is the enclosing Resource. A Ref would only add a suspension
-  *   around every JNI call on the hot read path.
+  *   The open database, swapped when [[restore]] or [[reset]] rebuilds it, or why there is none:
+  *   [[UtxoStoreClosure.NoDatabase]] while a rebuild runs and after one that failed once the old
+  *   database was closed (a later rebuild opens one), [[UtxoStoreClosure.Released]] once the store
+  *   is released (for good: a rebuild is refused before it touches the directory or the native
+  *   resources). Every operation without a database fails with [[StorageError.UtxoStoreClosed]]
+  *   instead of reaching a closed native handle. The rebuilds and the release run while no other
+  *   operation does: [[restore]] when the node opens its storage, [[reset]] at the block that
+  *   enters Shelley, where no pinned view is open (those pin Conway states only), and the release
+  *   when the enclosing Resource ends. The holder is private to this store. A Ref would only add a
+  *   suspension around every JNI call on the hot read path.
   */
 final class RocksUtxoStore[F[_]: Sync] private (
     dir: java.nio.file.Path,
     shared: RocksUtxoStore.Shared,
-    db: AtomicReference[RocksDB]
+    db: AtomicReference[Either[UtxoStoreClosure, RocksDB]]
 ) extends UtxoStore[F]:
   import UtxoStore.Coding
   private val F = Sync[F]
@@ -71,116 +79,120 @@ final class RocksUtxoStore[F[_]: Sync] private (
   private val writeOptions = new WriteOptions().setDisableWAL(true)
 
   def readView: Resource[F, Either[StorageError, UtxoPinnedReadView[F]]] =
-    Resource.eval(F.delay(db.get)).flatMap { d =>
-      Resource
-        .make(
-          F.blocking(d.getSnapshot).attempt.map(_.leftMap(failure("utxo snapshot", _)))
-        )(snapshot => snapshot.traverse_(value => F.blocking(d.releaseSnapshot(value))))
-        .flatMap {
-          case Left(error) => Resource.pure(Left(error))
-          case Right(snapshot) =>
-            Resource
-              .make(
-                F.blocking(new ReadOptions())
-                  .attempt
-                  .map(
-                    _.leftMap(failure("utxo snapshot options", _))
-                  )
-              )(options => options.traverse_(value => F.blocking(value.close())))
-              .flatMap {
-                case Left(error) => Resource.pure(Left(error))
-                case Right(options) =>
-                  Resource.eval(F.blocking(options.setSnapshot(snapshot)).attempt).flatMap {
-                    case Left(error) =>
-                      Resource.pure(Left(failure("utxo snapshot options", error)))
-                    case Right(_) =>
-                      Resource.eval(
-                        F.blocking(d.get(options, StampKey))
-                          .attempt
-                          .map {
-                            case Left(error) => Left(failure("utxo snapshot stamp", error))
-                            case Right(raw) if raw == null => Right(-1L)
-                            case Right(raw) if raw.length == 8 =>
-                              Right(java.nio.ByteBuffer.wrap(raw).getLong)
-                            case Right(raw) =>
-                              Left(
-                                StorageError
-                                  .Corrupt(
-                                    "utxo stamp",
-                                    StorageStructureError.StampLength(raw.length)
-                                  )
-                              )
-                          }
-                          .map(_.map { at =>
-                            new UtxoPinnedReadView[F]:
-                              val stamp: Long = at
+    Resource.eval(F.delay(db.get)).flatMap {
+      case Left(why) => Resource.pure(Left(StorageError.UtxoStoreClosed(dir.toString, why)))
+      case Right(d) =>
+        Resource
+          .make(
+            F.blocking(d.getSnapshot).attempt.map(_.leftMap(failure("utxo snapshot", _)))
+          )(snapshot => snapshot.traverse_(value => F.blocking(d.releaseSnapshot(value))))
+          .flatMap {
+            case Left(error) => Resource.pure(Left(error))
+            case Right(snapshot) =>
+              Resource
+                .make(
+                  F.blocking(new ReadOptions())
+                    .attempt
+                    .map(
+                      _.leftMap(failure("utxo snapshot options", _))
+                    )
+                )(options => options.traverse_(value => F.blocking(value.close())))
+                .flatMap {
+                  case Left(error) => Resource.pure(Left(error))
+                  case Right(options) =>
+                    Resource.eval(F.blocking(options.setSnapshot(snapshot)).attempt).flatMap {
+                      case Left(error) =>
+                        Resource.pure(Left(failure("utxo snapshot options", error)))
+                      case Right(_) =>
+                        Resource.eval(
+                          F.blocking(d.get(options, StampKey))
+                            .attempt
+                            .map {
+                              case Left(error) => Left(failure("utxo snapshot stamp", error))
+                              case Right(raw) if raw == null => Right(-1L)
+                              case Right(raw) if raw.length == 8 =>
+                                Right(java.nio.ByteBuffer.wrap(raw).getLong)
+                              case Right(raw) =>
+                                Left(
+                                  StorageError
+                                    .Corrupt(
+                                      "utxo stamp",
+                                      StorageStructureError.StampLength(raw.length)
+                                    )
+                                )
+                            }
+                            .map(_.map { at =>
+                              new UtxoPinnedReadView[F]:
+                                val stamp: Long = at
 
-                              def read(keys: Iterable[TxIn])
-                                  : F[Either[StorageError, Map[TxIn, TxOut]]] =
-                                val wanted = keys.iterator
-                                  .flatMap(k => Coding.encodeKey(k).map(k -> _))
-                                  .toVector
-                                if wanted.isEmpty then F.pure(Right(Map.empty))
-                                else
-                                  guardResult("utxo snapshot read") {
-                                    wanted.iterator
-                                      .zip(
-                                        d.multiGetAsList(options, wanted.map(_._2).asJava)
-                                          .asScala
-                                          .iterator
-                                      )
-                                      .collect {
-                                        case ((in, _), bytes) if bytes != null =>
-                                          Coding.decodeValue(bytes).map(in -> _)
-                                      }
-                                      .toVector
-                                      .sequence
-                                      .leftMap(reason => StorageError.Corrupt("utxo entry", reason))
-                                      .map(_.toMap)
-                                  }
-
-                              def all: F[Either[StorageError, Map[TxIn, TxOut]]] =
-                                select(_ => true)
-
-                              def select(keep: TxOut => Boolean) =
-                                guardResult("utxo snapshot scan") {
-                                  Using.resource(d.newIterator(options)) { it =>
-                                    fold(it, Map.empty[TxIn, TxOut]) { (found, k, positioned) =>
-                                      Coding.decodeValue(positioned.value()) match
-                                        case Right(out) =>
-                                          Right(
-                                            if keep(out) then found + (Coding.decodeKey(k) -> out)
-                                            else found
-                                          )
-                                        case Left(reason) => Left(corruptEntry(k, reason))
+                                def read(keys: Iterable[TxIn])
+                                    : F[Either[StorageError, Map[TxIn, TxOut]]] =
+                                  val wanted = keys.iterator
+                                    .flatMap(k => Coding.encodeKey(k).map(k -> _))
+                                    .toVector
+                                  if wanted.isEmpty then F.pure(Right(Map.empty))
+                                  else
+                                    guardResult("utxo snapshot read") {
+                                      wanted.iterator
+                                        .zip(
+                                          d.multiGetAsList(options, wanted.map(_._2).asJava)
+                                            .asScala
+                                            .iterator
+                                        )
+                                        .collect {
+                                          case ((in, _), bytes) if bytes != null =>
+                                            Coding.decodeValue(bytes).map(in -> _)
+                                        }
+                                        .toVector
+                                        .sequence
+                                        .leftMap(reason =>
+                                          StorageError.Corrupt("utxo entry", reason)
+                                        )
+                                        .map(_.toMap)
                                     }
-                                  }
-                                }
 
-                              def selectAddresses(addresses: Set[Bytes]) =
-                                guardResult("utxo snapshot scan") {
-                                  val wanted = addresses.iterator.map(_.toArray).toArray
-                                  Using.resource(d.newIterator(options)) { it =>
-                                    fold(it, Map.empty[TxIn, TxOut]) { (found, k, positioned) =>
-                                      val value = positioned.value()
-                                      if !Coding.mayPayTo(value, wanted) then Right(found)
-                                      else
-                                        Coding.decodeValue(value) match
+                                def all: F[Either[StorageError, Map[TxIn, TxOut]]] =
+                                  select(_ => true)
+
+                                def select(keep: TxOut => Boolean) =
+                                  guardResult("utxo snapshot scan") {
+                                    Using.resource(d.newIterator(options)) { it =>
+                                      fold(it, Map.empty[TxIn, TxOut]) { (found, k, positioned) =>
+                                        Coding.decodeValue(positioned.value()) match
                                           case Right(out) =>
                                             Right(
-                                              if addresses(out.address.raw) then
-                                                found + (Coding.decodeKey(k) -> out)
+                                              if keep(out) then found + (Coding.decodeKey(k) -> out)
                                               else found
                                             )
                                           case Left(reason) => Left(corruptEntry(k, reason))
+                                      }
                                     }
                                   }
-                                }
-                          })
-                      )
-                  }
-              }
-        }
+
+                                def selectAddresses(addresses: Set[Bytes]) =
+                                  guardResult("utxo snapshot scan") {
+                                    val wanted = addresses.iterator.map(_.toArray).toArray
+                                    Using.resource(d.newIterator(options)) { it =>
+                                      fold(it, Map.empty[TxIn, TxOut]) { (found, k, positioned) =>
+                                        val value = positioned.value()
+                                        if !Coding.mayPayTo(value, wanted) then Right(found)
+                                        else
+                                          Coding.decodeValue(value) match
+                                            case Right(out) =>
+                                              Right(
+                                                if addresses(out.address.raw) then
+                                                  found + (Coding.decodeKey(k) -> out)
+                                                else found
+                                              )
+                                            case Left(reason) => Left(corruptEntry(k, reason))
+                                      }
+                                    }
+                                  }
+                            })
+                        )
+                    }
+                }
+          }
     }
 
   private def guardResult[A](what: String)(
@@ -220,6 +232,16 @@ final class RocksUtxoStore[F[_]: Sync] private (
   private def corruptEntry(key: Array[Byte], reason: Coding.ValueError): StorageError =
     StorageError.Corrupt("utxo entry", Coding.EntryError(Coding.decodeKey(key), reason))
 
+  /** `use` with the open database, or the store's [[StorageError.UtxoStoreClosed]] when it has none
+    * (see `db`). It reads the holder when it is called, so it belongs inside the suspended body.
+    */
+  private inline def opened[A](
+      inline use: RocksDB => Either[StorageError, A]
+  ): Either[StorageError, A] =
+    db.get match
+      case Right(d)  => use(d)
+      case Left(why) => Left(StorageError.UtxoStoreClosed(dir.toString, why))
+
   /** One pass over every entry of the store, which either visits all of them or fails.
     *
     * `step` sees the result so far and each data key (34 bytes) with the iterator positioned on it,
@@ -254,48 +276,51 @@ final class RocksUtxoStore[F[_]: Sync] private (
     val wanted = keys.iterator.flatMap(k => Coding.encodeKey(k).map(k -> _)).toVector
     if wanted.isEmpty then F.pure(Map.empty)
     else
-      guard("utxo read") {
-        val values = db.get.multiGetAsList(wanted.map(_._2).asJava).asScala
-        wanted.iterator
-          .zip(values.iterator)
-          // The batch read gives `null` for a key it could not read as well as for an absent one
-          // (a failed block checksum is not an exception there), so a miss is read again singly,
-          // which throws on an error and returns `null` only for an absent key.
-          .map { case ((in, key), v) => in -> (if v != null then v else db.get.get(key)) }
-          .collect { case (in, v) if v != null => in -> v }
-          .map { case (in, bytes) =>
-            Coding.decodeValue(bytes).bimap(e => Coding.EntryError(in, e), out => in -> out)
-          }
-          .toVector
-          .sequence
-          .map(_.toMap)
-      }.flatMap {
-        case Right(found) => F.pure(found)
-        case Left(reason) => StorageError.Corrupt("utxo entry", reason).raise[F, Map[TxIn, TxOut]]
+      guardE("utxo read") {
+        opened { d =>
+          val values = d.multiGetAsList(wanted.map(_._2).asJava).iterator().asScala
+          wanted.iterator
+            .zip(values)
+            // The batch read gives `null` for a key it could not read as well as for an absent one
+            // (a failed block checksum is not an exception there), so a miss is read again singly,
+            // which throws on an error and returns `null` only for an absent key.
+            .map { case ((in, key), v) => in -> (if v != null then v else d.get(key)) }
+            .collect { case (in, v) if v != null => in -> v }
+            .map { case (in, bytes) =>
+              Coding.decodeValue(bytes).bimap(e => Coding.EntryError(in, e), out => in -> out)
+            }
+            .toVector
+            .sequence
+            .bimap(StorageError.Corrupt("utxo entry", _), _.toMap)
+        }
       }
 
   def write(changes: Iterable[(TxIn, Option[TxOut])], stamp: Long)(using
       Raise[F, StorageError]
   ): F[Unit] =
-    guard("utxo write") {
-      Using.resource(new WriteBatch()) { batch =>
-        changes.foreach { case (in, out) =>
-          Coding.encodeKey(in).foreach { key =>
-            out match
-              case Some(o) => batch.put(key, Coding.encodeValue(o))
-              case None    => batch.delete(key)
+    guardE("utxo write") {
+      opened { d =>
+        Using.resource(new WriteBatch()) { batch =>
+          changes.foreach { case (in, out) =>
+            Coding.encodeKey(in).foreach { key =>
+              out match
+                case Some(o) => batch.put(key, Coding.encodeValue(o))
+                case None    => batch.delete(key)
+            }
           }
+          batch.put(StampKey, java.nio.ByteBuffer.allocate(8).putLong(stamp).array())
+          Right(d.write(writeOptions, batch))
         }
-        batch.put(StampKey, java.nio.ByteBuffer.allocate(8).putLong(stamp).array())
-        db.get.write(writeOptions, batch)
       }
     }
 
   def flushed(using Raise[F, StorageError]): F[Long] = guardE("utxo stamp") {
-    val v = db.get.get(StampKey)
-    if v == null then Right(-1L)
-    else if v.length == 8 then Right(java.nio.ByteBuffer.wrap(v).getLong)
-    else Left(StorageError.Corrupt("utxo stamp", StorageStructureError.StampLength(v.length)))
+    opened { d =>
+      val v = d.get(StampKey)
+      if v == null then Right(-1L)
+      else if v.length == 8 then Right(java.nio.ByteBuffer.wrap(v).getLong)
+      else Left(StorageError.Corrupt("utxo stamp", StorageStructureError.StampLength(v.length)))
+    }
   }
   def stamp(using Raise[F, StorageError]): F[Long] = flushed
 
@@ -303,12 +328,14 @@ final class RocksUtxoStore[F[_]: Sync] private (
 
   def select(keep: TxOut => Boolean)(using cats.mtl.Raise[F, StorageError]): F[Map[TxIn, TxOut]] =
     guardE("utxo scan") {
-      Using.resource(db.get.newIterator()) { it =>
-        fold(it, Map.empty[TxIn, TxOut]) { (found, k, at) =>
-          Coding.decodeValue(at.value()) match
-            case Right(out) =>
-              Right(if keep(out) then found + (Coding.decodeKey(k) -> out) else found)
-            case Left(reason) => Left(corruptEntry(k, reason))
+      opened { d =>
+        Using.resource(d.newIterator()) { it =>
+          fold(it, Map.empty[TxIn, TxOut]) { (found, k, at) =>
+            Coding.decodeValue(at.value()) match
+              case Right(out) =>
+                Right(if keep(out) then found + (Coding.decodeKey(k) -> out) else found)
+              case Left(reason) => Left(corruptEntry(k, reason))
+          }
         }
       }
     }
@@ -323,33 +350,37 @@ final class RocksUtxoStore[F[_]: Sync] private (
       addresses: Set[Bytes]
   )(using cats.mtl.Raise[F, StorageError]): F[Map[TxIn, TxOut]] = guardE("utxo scan") {
     val wanted = addresses.iterator.map(_.toArray).toArray
-    // the iterator is closed before the options it was made with
-    Using.resource(new ReadOptions().setFillCache(false).setReadaheadSize(2L * 1024 * 1024)) {
-      options =>
-        Using.resource(db.get.newIterator(options)) { it =>
-          fold(it, Map.empty[TxIn, TxOut]) { (found, k, at) =>
-            val v = at.value()
-            if !Coding.mayPayTo(v, wanted) then Right(found)
-            else
-              Coding.decodeValue(v) match
-                case Right(out) =>
-                  Right(
-                    if addresses(out.address.raw) then found + (Coding.decodeKey(k) -> out)
-                    else found
-                  )
-                case Left(reason) => Left(corruptEntry(k, reason))
+    opened { d =>
+      // the iterator is closed before the options it was made with
+      Using.resource(new ReadOptions().setFillCache(false).setReadaheadSize(2L * 1024 * 1024)) {
+        options =>
+          Using.resource(d.newIterator(options)) { it =>
+            fold(it, Map.empty[TxIn, TxOut]) { (found, k, at) =>
+              val v = at.value()
+              if !Coding.mayPayTo(v, wanted) then Right(found)
+              else
+                Coding.decodeValue(v) match
+                  case Right(out) =>
+                    Right(
+                      if addresses(out.address.raw) then found + (Coding.decodeKey(k) -> out)
+                      else found
+                    )
+                  case Left(reason) => Left(corruptEntry(k, reason))
+            }
           }
-        }
+      }
     }
   }
 
   def scan(visit: (TxIn, TxOut) => Unit)(using cats.mtl.Raise[F, StorageError]): F[Unit] =
     guardE("utxo scan") {
-      Using.resource(db.get.newIterator()) { it =>
-        fold(it, ()) { (_, k, at) =>
-          Coding.decodeValue(at.value()) match
-            case Right(out)   => Right(visit(Coding.decodeKey(k), out))
-            case Left(reason) => Left(corruptEntry(k, reason))
+      opened { d =>
+        Using.resource(d.newIterator()) { it =>
+          fold(it, ()) { (_, k, at) =>
+            Coding.decodeValue(at.value()) match
+              case Right(out)   => Right(visit(Coding.decodeKey(k), out))
+              case Left(reason) => Left(corruptEntry(k, reason))
+          }
         }
       }
     }
@@ -360,7 +391,7 @@ final class RocksUtxoStore[F[_]: Sync] private (
   def entries(using cats.mtl.Raise[F, StorageError]): Stream[F, (TxIn, TxOut)] =
     Stream
       .resource(
-        Resource.make(guard("utxo iterator")(db.get.newIterator()))(it =>
+        Resource.make(guardE("utxo iterator")(opened(d => Right(d.newIterator()))))(it =>
           guard("utxo iterator close")(it.close())
         )
       )
@@ -395,66 +426,80 @@ final class RocksUtxoStore[F[_]: Sync] private (
     * as for them.
     */
   def size(using cats.mtl.Raise[F, StorageError]): F[Long] = guardE("utxo count") {
-    Using.resource(db.get.newIterator())(it => fold(it, 0L)((n, _, _) => Right(n + 1)))
+    opened(d => Using.resource(d.newIterator())(it => fold(it, 0L)((n, _, _) => Right(n + 1))))
   }
 
-  def memory(using cats.mtl.Raise[F, StorageError]): F[Map[String, Long]] = guard("utxo memory") {
-    val d = db.get
-    def prop(name: String): Option[(String, Long)] =
-      Option(d.getProperty(s"rocksdb.$name")).flatMap(_.toLongOption).map(name -> _)
-    List(
-      "estimate-table-readers-mem",
-      "cur-size-all-mem-tables",
-      "size-all-mem-tables",
-      "estimate-live-data-size",
-      "total-sst-files-size",
-      "num-snapshots"
-    ).flatMap(prop).toMap ++ Map(
-      "block-cache-usage" -> shared.cache.getUsage,
-      "block-cache-pinned-usage" -> shared.cache.getPinnedUsage,
-      "block-cache-capacity" -> shared.capacity
+  def memory(using cats.mtl.Raise[F, StorageError]): F[Map[String, Long]] = guardE("utxo memory") {
+    opened { d =>
+      def prop(name: String): Option[(String, Long)] =
+        Option(d.getProperty(s"rocksdb.$name")).flatMap(_.toLongOption).map(name -> _)
+      Right(
+        List(
+          "estimate-table-readers-mem",
+          "cur-size-all-mem-tables",
+          "size-all-mem-tables",
+          "estimate-live-data-size",
+          "total-sst-files-size",
+          "num-snapshots"
+        ).flatMap(prop).toMap ++ Map(
+          "block-cache-usage" -> shared.cache.getUsage,
+          "block-cache-pinned-usage" -> shared.cache.getPinnedUsage,
+          "block-cache-capacity" -> shared.capacity
+        )
+      )
+    }
+  }
+
+  def checkpoint(target: Path)(using Raise[F, StorageError]): F[Unit] = guardE(target.toString) {
+    opened(d =>
+      Using.resource(Checkpoint.create(d))(c => Right(c.createCheckpoint(target.toString)))
     )
   }
 
-  def checkpoint(target: Path)(using Raise[F, StorageError]): F[Unit] = guard(target.toString) {
-    Using.resource(Checkpoint.create(db.get))(_.createCheckpoint(target.toString))
-  }
-
   def restore(source: Path)(using cats.mtl.Raise[F, StorageError]): F[Boolean] =
-    guard(source.toString) {
-      val from = source.toNioPath
-      if !Files.isDirectory(from) then Right(false)
-      else
-        db.getAndSet(null).close()
-        RocksUtxoStore.deleteTree(dir)
-        Files.createDirectories(dir)
-        val rebuilt: Either[CheckpointProblem, Boolean] =
-          if RocksUtxoStore.hasCurrentKeys(from) then
-            RocksUtxoStore.cloneInto(from, dir)
-            Right(true)
-          else RocksUtxoStore.rekeyInto(from, dir, shared).map(_ => true)
-        // A refused checkpoint leaves the store empty, not half written.
-        if rebuilt.isLeft then
-          RocksUtxoStore.deleteTree(dir)
-          Files.createDirectories(dir)
-        db.set(RocksUtxoStore.open(dir, shared))
-        rebuilt
-    }.flatMap {
-      case Right(found) => F.pure(found)
-      case Left(problem) =>
-        StorageError.UtxoCheckpoint(source.toString, problem).raise[F, Boolean]
+    val from = source.toNioPath
+    guard(source.toString)(Files.isDirectory(from)).flatMap {
+      case false => F.pure(false)
+      case true =>
+        rebuild(source.toString) {
+          val rebuilt =
+            if RocksUtxoStore.hasCurrentKeys(from) then Right(RocksUtxoStore.cloneInto(from, dir))
+            else RocksUtxoStore.rekeyInto(from, dir, shared)
+          // A refused checkpoint leaves the store empty, not half written.
+          if rebuilt.isLeft then
+            RocksUtxoStore.deleteTree(dir)
+            Files.createDirectories(dir)
+          rebuilt
+        }.flatMap {
+          case Right(_) => F.pure(true)
+          case Left(problem) =>
+            StorageError.UtxoCheckpoint(source.toString, problem).raise[F, Boolean]
+        }
     }
 
-  def reset(using cats.mtl.Raise[F, StorageError]): F[Unit] = guard(dir.toString) {
-    db.getAndSet(null).close()
-    RocksUtxoStore.deleteTree(dir)
-    Files.createDirectories(dir)
-    db.set(RocksUtxoStore.open(dir, shared))
-  }
+  def reset(using cats.mtl.Raise[F, StorageError]): F[Unit] = rebuild(dir.toString)(())
+
+  /** The database replaced by one that `fill` writes into the emptied directory: the old one is
+    * closed first, and the new one opened on the directory after `fill` returns. A released store
+    * is refused before the directory or the native resources are touched.
+    */
+  private def rebuild[A](what: String)(fill: => A)(using Raise[F, StorageError]): F[A] =
+    guardE(what) {
+      db.get match
+        case Left(UtxoStoreClosure.Released) =>
+          Left(StorageError.UtxoStoreClosed(dir.toString, UtxoStoreClosure.Released))
+        case current =>
+          db.set(Left(UtxoStoreClosure.NoDatabase))
+          current.foreach(_.close())
+          RocksUtxoStore.deleteTree(dir)
+          Files.createDirectories(dir)
+          val filled = fill
+          db.set(Right(RocksUtxoStore.open(dir, shared)))
+          Right(filled)
+    }
 
   private def close(): Unit =
-    val d = db.getAndSet(null)
-    if d != null then d.close()
+    db.getAndSet(Left(UtxoStoreClosure.Released)).foreach(_.close())
     writeOptions.close()
     shared.close()
 
@@ -624,7 +669,9 @@ object RocksUtxoStore:
         .blocking {
           Files.createDirectories(dir.toNioPath)
           val shared = new Shared(cacheBytes)
-          shared -> new AtomicReference(open(dir.toNioPath, shared))
+          shared -> new AtomicReference[Either[UtxoStoreClosure, RocksDB]](
+            Right(open(dir.toNioPath, shared))
+          )
         }
         .attempt
         .flatMap {
