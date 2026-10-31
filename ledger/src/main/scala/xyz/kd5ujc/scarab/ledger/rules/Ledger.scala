@@ -99,8 +99,7 @@ object Ledger extends JudgedSts[LedgerEnv, ConwayLedger, Tx, PredicateFailure, L
     val notDelegated = Purpose
       .sortedWithdrawals(tx.body)
       .collect {
-        case (account, _)
-            if account.credential.isInstanceOf[xyz.kd5ujc.scarab.ledger.Credential.Key] =>
+        case (account, _) if account.credential.isKey =>
           account.credential.hash
       }
       .filterNot(h =>
