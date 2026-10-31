@@ -4,15 +4,14 @@ package xyz.kd5ujc.scarab.models.gen
 import cats.syntax.all.*
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
-import scala.util.control.NonFatal
 
 /** The generator entry points: load the configuration and the CDDL it names, resolve, emit. */
 object Generator:
   private[gen] def io[A](path: Path)(action: => A): Either[GenError, A] =
-    try Right(action)
-    catch
-      case e: java.io.IOException => Left(GenError.Io(path.toString, e))
-      case NonFatal(e)            => Left(GenError.Defect(path.toString, e))
+    Either.catchNonFatal(action).leftMap {
+      case e: java.io.IOException => GenError.Io(path.toString, e)
+      case e                      => GenError.Defect(path.toString, e)
+    }
 
   def load(cddlDir: Path, config: Config): Either[GenError, Schema] =
     config.modules

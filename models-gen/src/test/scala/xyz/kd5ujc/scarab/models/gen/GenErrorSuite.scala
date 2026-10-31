@@ -87,6 +87,16 @@ class GenErrorSuite extends munit.FunSuite:
     )
   }
 
+  test("a choice of nil alone is refused, not expanded without end") {
+    val nil = Ast.Ty.Name("nil", Vector.empty)
+    for alternatives <- Vector(Vector(nil, nil), Vector(nil, Ast.Ty.Name("null", Vector.empty)))
+    do
+      assertEquals(
+        new Emitter(schema(Ast.Ty.Choice(alternatives)), config()).generate(),
+        Left(GenError.Unsupported("t:r", UnsupportedFeature.NilOnlyChoice))
+      )
+  }
+
   test("unreachable configured rules and unsupported occurrences have closed cases") {
     val s = Schema.build(
       Vector(

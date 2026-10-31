@@ -125,7 +125,10 @@ final class CddlSampler(schema: Schema, maxDepth: Int = 7):
         case RT.Ref(q) => rule(q, rnd, depth, cutoffPath)
         case RT.Choice(alts) =>
           ty(
-            if depth > maxDepth then alts.head else alts(rnd.nextInt(alts.size)),
+            alts match
+              case first +: _ if depth > maxDepth => first
+              case _                              => alts(rnd.nextInt(alts.size))
+            ,
             rnd,
             depth,
             cutoffPath
