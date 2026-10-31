@@ -61,6 +61,9 @@ private[plutus] object ReferenceBudget:
     * charged, as in the reference. The startup cost and each element of a builtin's budget
     * ([[ReferenceCosting.BudgetStream]]) are charged at once.
     */
+  // Scalus's `BudgetSpender` is a mutable callback of the machine (as the reference's spender is a
+  // counter array), measured in `docs/performance.md` section 44
+  @SuppressWarnings(Array("org.wartremover.warts.Var"))
   final class Steps(mode: BudgetSpender) extends BudgetSpender:
     private val counts = new Array[Int](kinds.size)
     private val costs = new Array[ScalusExUnits](kinds.size)
@@ -77,7 +80,7 @@ private[plutus] object ReferenceBudget:
         case ExBudgetCategory.BuiltinApp(_) =>
           budget match
             case stream: ReferenceCosting.BudgetStream =>
-              stream.elements.foreach((cpu, memory) =>
+              stream.elements.toVector.foreach((cpu, memory) =>
                 mode.spendBudget(category, ScalusExUnits(memory.toLong, cpu.toLong), env)
               )
             case single => mode.spendBudget(category, single, env)
@@ -110,6 +113,9 @@ private[plutus] object ReferenceBudget:
     * limit minus what remains (`evaluateScriptRestricting`, `PlutusLedgerApi/Common/Eval.hs` of
     * plutus-ledger-api 1.70.0.0, lines 269-274), which is negative when the costs were.
     */
+  // Scalus's `BudgetSpender` signals an exhausted budget only by throwing `OutOfExBudgetError`,
+  // which its machine stops on (as the reference's machine throws its error)
+  @SuppressWarnings(Array("org.wartremover.warts.Var", "org.wartremover.warts.Throw"))
   final class Restricting(limit: ScalusExUnits) extends BudgetSpender:
     private var cpuLeft = SatInt(limit.steps)
     private var memoryLeft = SatInt(limit.memory)

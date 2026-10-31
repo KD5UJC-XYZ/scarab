@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.plutus
 
+import cats.syntax.all.*
 import java.nio.ByteBuffer
 import java.nio.charset.{CharacterCodingException, CodingErrorAction, StandardCharsets}
 import scala.annotation.tailrec
@@ -276,8 +277,9 @@ object FlatScan:
       .newDecoder()
       .onMalformedInput(CodingErrorAction.REPORT)
       .onUnmappableCharacter(CodingErrorAction.REPORT)
-    try Right(decoder.decode(ByteBuffer.wrap(raw)).toString)
-    catch case _: CharacterCodingException => Left(Failure.InvalidUtf8)
+    Either
+      .catchOnly[CharacterCodingException](decoder.decode(ByteBuffer.wrap(raw)).toString)
+      .leftMap(_ => Failure.InvalidUtf8)
 
   private def data(raw: Array[Byte]): Result[scalus.uplc.builtin.Data] =
     PlutusData

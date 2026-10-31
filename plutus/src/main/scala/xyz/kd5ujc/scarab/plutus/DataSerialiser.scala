@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.plutus
 
 import java.io.ByteArrayOutputStream
+import scala.annotation.tailrec
 import scalus.cardano.onchain.plutus.prelude.List as PList
 import scalus.uplc.builtin.Data
 
@@ -30,20 +31,22 @@ object DataSerialiser:
     out.toByteArray
 
   /** An open list or map: what is still to write, and the byte that closes it (-1 for none). */
-  private final class Open(val rest: Iterator[Data], val close: Int)
+  private final case class Open(rest: List[Data], close: Int)
 
   /** The nesting is walked on the heap: the reference has no depth limit, and a datum can be as
     * deep as the block that carries it is long.
     */
   private def write(out: ByteArrayOutputStream, root: Data): Unit =
-    val stack = new java.util.ArrayDeque[Open]
-    def list(items: PList[Data]): Unit =
-      val xs = PList.asScala(items)
-      if xs.isEmpty then out.write(0x80)
+    def list(items: PList[Data], below: List[Open]): List[Open] =
+      val xs = PList.asScala(items).toList
+      if xs.isEmpty then
+        out.write(0x80)
+        below
       else
         out.write(0x9f)
-        stack.push(Open(xs.iterator, 0xff))
-    def emit(data: Data): Unit = data match
+        Open(xs, 0xff) :: below
+    // writes what `data` begins with; the stack it returns has what `data` opened on top
+    def emit(data: Data, below: List[Open]): List[Open] = data match
       case Data.Constr(i, fields) =>
         if i >= 0 && i < 7 then head(out, 6, BigInt(121) + i)
         else if i >= 7 && i < 128 then head(out, 6, BigInt(1280) + i - 7)
@@ -51,21 +54,25 @@ object DataSerialiser:
           head(out, 6, 102)
           head(out, 4, 2)
           index(out, i)
-        list(fields)
+        list(fields, below)
       case Data.Map(entries) =>
-        val es = PList.asScala(entries)
+        val es = PList.asScala(entries).toList
         head(out, 5, BigInt(es.size))
-        stack.push(Open(es.iterator.flatMap { case (k, v) => Iterator(k, v) }, -1))
-      case Data.List(items) => list(items)
-      case Data.I(v)        => integer(out, v)
-      case Data.B(b)        => bytes(out, b.bytes)
-    emit(root)
-    while !stack.isEmpty do
-      val top = stack.peek()
-      if top.rest.hasNext then emit(top.rest.next())
-      else
-        stack.pop()
-        if top.close >= 0 then out.write(top.close)
+        Open(es.flatMap((k, v) => List(k, v)), -1) :: below
+      case Data.List(items) => list(items, below)
+      case Data.I(v) =>
+        integer(out, v)
+        below
+      case Data.B(b) =>
+        bytes(out, b.bytes)
+        below
+    @tailrec def walk(stack: List[Open]): Unit = stack match
+      case Open(next :: rest, close) :: below => walk(emit(next, Open(rest, close) :: below))
+      case Open(Nil, close) :: below =>
+        if close >= 0 then out.write(close)
+        walk(below)
+      case Nil => ()
+    walk(emit(root, Nil))
 
   /** The index of a constructor in tag 102 is written by cborg's `encodeInteger`: a plain head
     * within 64 bits, otherwise tag 2 or 3 over one definite byte string of the minimal magnitude,
