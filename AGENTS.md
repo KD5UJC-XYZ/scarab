@@ -78,7 +78,7 @@ scala code … I love the use of type parameters when I can use them"*.
   or an effect interpreter. These exceptions change implementation style only: typed errors,
   capability scope and original-byte guarantees still apply. WartRemover refuses `var`, `while`,
   `throw`, `return`, `null`, casts, mutable collections and partial accessors in the main sources of
-  every module in `wartFree` (`build.sbt`); a kept site carries
+  every module (`build.sbt`); a kept site carries
   `@SuppressWarnings(Array("org.wartremover.warts.<Wart>"))` on its smallest definition, with a
   comment naming its measurement, the library contract, or why it is erased in place or timed.
   `scripts/check_imperative.py` refuses new `try`/`catch`/`finally` (#650).
