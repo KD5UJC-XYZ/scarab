@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.plutus
 
+import cats.data.NonEmptyVector
+import cats.syntax.all.*
 import java.nio.charset.StandardCharsets
 import scala.annotation.tailrec
 import scalus.cardano.ledger.ExUnits as ScalusExUnits
@@ -62,16 +64,16 @@ private[plutus] object ReferenceCosting:
     */
   enum CostStream:
     case Last(cost: SatInt)
-    case Many(elements: Vector[SatInt])
+    case Many(elements: NonEmptyVector[SatInt])
 
-    def costs: Vector[SatInt] = this match
-      case Last(cost)     => Vector(cost)
+    def costs: NonEmptyVector[SatInt] = this match
+      case Last(cost)     => NonEmptyVector.one(cost)
       case Many(elements) => elements
 
     /** `sumCostStream` (lines 71-79): a left fold. */
     def sum: SatInt = this match
       case Last(cost)     => cost
-      case Many(elements) => elements.tail.foldLeft(elements.head)(_ + _)
+      case Many(elements) => elements.reduceLeft(_ + _)
 
     /** `mapCostStream` (lines 83-91). */
     def map(f: SatInt => SatInt): CostStream = this match
@@ -81,8 +83,14 @@ private[plutus] object ReferenceCosting:
     /** `addCostStream` (lines 94-106): two single costs add, otherwise the elements interleave. */
     def add(other: CostStream): CostStream =
       @tailrec
-      def interleave(a: Vector[SatInt], b: Vector[SatInt], out: Vector[SatInt]): Vector[SatInt] =
-        if a.sizeIs == 1 then (out :+ a.head) ++ b else interleave(b, a.tail, out :+ a.head)
+      def interleave(
+          a: NonEmptyVector[SatInt],
+          b: NonEmptyVector[SatInt],
+          out: Vector[SatInt]
+      ): NonEmptyVector[SatInt] =
+        NonEmptyVector.fromVector(a.tail) match
+          case Some(rest) => interleave(b, rest, out :+ a.head)
+          case None       => b.prependVector(out :+ a.head)
       (this, other) match
         case (Last(l), Last(r)) => Last(l + r)
         case _                  => CostStream.of(interleave(costs, other.costs, Vector.empty))
@@ -92,15 +100,20 @@ private[plutus] object ReferenceCosting:
       */
     def min(other: CostStream): CostStream =
       @tailrec
-      def go(l: Vector[SatInt], r: Vector[SatInt], out: Vector[SatInt]): Vector[SatInt] =
+      def go(
+          l: NonEmptyVector[SatInt],
+          r: NonEmptyVector[SatInt],
+          out: Vector[SatInt]
+      ): NonEmptyVector[SatInt] =
         val (costL, restL) = (l.head, l.tail)
         val (costR, restR) = (r.head, r.tail)
         val (smaller, nextL, nextR) =
           if costL < costR then (costL, restL, (costR - costL) +: restR)
           else if costL > costR then (costR, (costL - costR) +: restL, restR)
           else (costL, restL, restR)
-        if nextL.isEmpty || nextR.isEmpty then out :+ smaller
-        else go(nextL, nextR, out :+ smaller)
+        (NonEmptyVector.fromVector(nextL), NonEmptyVector.fromVector(nextR)) match
+          case (Some(left), Some(right)) => go(left, right, out :+ smaller)
+          case _                         => NonEmptyVector.one(smaller).prependVector(out)
       (this, other) match
         case (Last(l), Last(r)) => Last(l.min(r))
         case _                  => CostStream.of(go(costs, other.costs, Vector.empty))
@@ -109,9 +122,9 @@ private[plutus] object ReferenceCosting:
     /** `CostLast`. */
     def last(cost: SatInt): CostStream = Last(cost)
 
-    /** The stream of non-empty `costs`: a single cost is `CostLast`, as the reference builds it. */
-    private[ReferenceCosting] def of(costs: Vector[SatInt]): CostStream =
-      if costs.sizeIs == 1 then Last(costs.head) else Many(costs)
+    /** The stream of `costs`: a single cost is `CostLast`, as the reference builds it. */
+    private[ReferenceCosting] def of(costs: NonEmptyVector[SatInt]): CostStream =
+      if costs.tail.isEmpty then Last(costs.head) else Many(costs)
 
   /** `scaleLinearly` (`Core.hs` lines 318-321). */
   private def scaleLinearly(intercept: SatInt, slope: SatInt, xs: CostStream): CostStream =
@@ -122,11 +135,13 @@ private[plutus] object ReferenceCosting:
     */
   private def scaleQuadratically(c: SatInt, b: SatInt, a: SatInt, xs: CostStream): CostStream =
     val two = SatInt(2)
-    val scaled = xs.costs
-      .foldLeft((Vector.empty[SatInt], SatInt.Zero)) { case ((out, r), x) =>
-        (out :+ (two * a * x * r + a * x * x + b * x), r + x)
+    def term(x: SatInt, r: SatInt): SatInt = two * a * x * r + a * x * x + b * x
+    val costs = xs.costs
+    // the running sum before the first element is zero, and zero added to a cost is that cost
+    val (scaled, _) =
+      costs.tail.foldLeft((NonEmptyVector.one(term(costs.head, SatInt.Zero)), costs.head)) {
+        case ((out, r), x) => (out :+ term(x, r), r + x)
       }
-      ._1
     CostStream.last(c).add(CostStream.of(scaled))
 
   /** A costing function of the reference (`ModelOneArgument` to `ModelSixArguments`, `Core.hs`
@@ -278,8 +293,11 @@ private[plutus] object ReferenceCosting:
       case CekValue.VCon(list: C.List) => list.tpe == uni
       case _                           => false
     arg match
-      case Arg.Opaque      => true
-      case Arg.AnyConstant => value.isInstanceOf[CekValue.VCon]
+      case Arg.Opaque => true
+      case Arg.AnyConstant =>
+        value match
+          case _: CekValue.VCon => true
+          case _                => false
       case Arg.ListOf =>
         value match
           case CekValue.VCon(_: C.List) | _: CekValue.VList => true
@@ -327,7 +345,9 @@ private[plutus] object ReferenceCosting:
     * empty list); a text's last chunk is the final 1 to 100 characters.
     */
   private def batches(full: Long, rest: Long): CostStream =
-    CostStream.of(Vector.fill(full.toInt)(SatInt(100)) :+ SatInt(rest))
+    CostStream.of(
+      NonEmptyVector.one(SatInt(rest)).prependVector(Vector.fill(full.toInt)(SatInt(100)))
+    )
 
   private def listUsage(length: scala.Int): CostStream = batches(length / 100, length % 100)
 
@@ -347,10 +367,10 @@ private[plutus] object ReferenceCosting:
       case UplcData.List(items)          => items.toScalaList
       case UplcData.I(_) | UplcData.B(_) => Nil
     @tailrec
-    def go(todo: List[UplcData], out: Vector[SatInt]): Vector[SatInt] = todo match
+    def go(todo: List[UplcData], out: NonEmptyVector[SatInt]): NonEmptyVector[SatInt] = todo match
       case Nil       => out
       case d :: rest => go(children(d) ++ rest, out :+ node(d))
-    CostStream.of(go(List(root), Vector.empty))
+    CostStream.of(go(children(root), NonEmptyVector.one(node(root))))
 
   /** `ExMemoryUsage Data` (lines 382-397): four per node plus the size of an integer or a byte
     * string.
@@ -397,10 +417,10 @@ private[plutus] object ReferenceCosting:
   /** A budget of more than one element: the machine spends `elements` in order
     * ([[ReferenceBudget.Steps]]); the fields hold their saturated sums for any other spender.
     */
-  final class BudgetStream(val elements: Vector[(SatInt, SatInt)])
+  final class BudgetStream(val elements: NonEmptyVector[(SatInt, SatInt)])
       extends ScalusExUnits(
-        elements.tail.foldLeft(elements.head._2)(_ + _._2).toLong,
-        elements.tail.foldLeft(elements.head._1)(_ + _._1).toLong
+        elements.reduceLeftTo(_._2)(_ + _._2).toLong,
+        elements.reduceLeftTo(_._1)(_ + _._1).toLong
       )
 
   /** `zipCostStream` (`ExBudgetStream.hs` lines 58-77): CPU and memory element by element, the
@@ -409,10 +429,12 @@ private[plutus] object ReferenceCosting:
   private def zip(cpu: CostStream, memory: CostStream): ScalusExUnits =
     (cpu, memory) match
       case (CostStream.Last(c), CostStream.Last(m)) => ScalusExUnits(m.toLong, c.toLong)
-      case _ =>
-        val length = cpu.costs.size.max(memory.costs.size)
+      case _                                        =>
+        // the shorter stream is continued with zeros
         BudgetStream(
-          cpu.costs.padTo(length, SatInt.Zero).zip(memory.costs.padTo(length, SatInt.Zero))
+          cpu.costs.alignWith(memory.costs)(
+            _.fold(c => (c, SatInt.Zero), m => (SatInt.Zero, m), (c, m) => (c, m))
+          )
         )
 
   /** The reference's costing of one builtin: its arguments and its CPU and memory models. */

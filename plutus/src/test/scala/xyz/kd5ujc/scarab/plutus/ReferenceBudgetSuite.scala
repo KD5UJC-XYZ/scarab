@@ -131,7 +131,7 @@ class ReferenceBudgetSuite extends FunSuite:
     budget match
       case stream: ReferenceCosting.BudgetStream =>
         assertEquals(
-          stream.elements.map((cpu, memory) => (cpu.toLong, memory.toLong)),
+          stream.elements.toVector.map((cpu, memory) => (cpu.toLong, memory.toLong)),
           Vector((1000L, 1L), (-28L, 0L), (-7L, 0L))
         )
       case other => fail(s"one budget: $other")
@@ -163,7 +163,7 @@ class ReferenceBudgetSuite extends FunSuite:
       ReferenceCosting.Model.ConstantCost(SatInt.Zero)
     )
     def cpu(value: CekValue) = linear.calculateCost(value) match
-      case stream: ReferenceCosting.BudgetStream => stream.elements.map(_._1.toLong)
+      case stream: ReferenceCosting.BudgetStream => stream.elements.toVector.map(_._1.toLong)
       case one                                   => Vector(one.steps)
     assertEquals(cpu(list(0)), Vector(0L))
     assertEquals(cpu(list(99)), Vector(99L))
@@ -171,7 +171,7 @@ class ReferenceBudgetSuite extends FunSuite:
     assertEquals(cpu(list(250)), Vector(0L, 100L, 100L, 50L))
     val texts = linear.copy(args = Vector(ReferenceCosting.Arg.Text))
     def textCpu(value: CekValue) = texts.calculateCost(value) match
-      case stream: ReferenceCosting.BudgetStream => stream.elements.map(_._1.toLong)
+      case stream: ReferenceCosting.BudgetStream => stream.elements.toVector.map(_._1.toLong)
       case one                                   => Vector(one.steps)
     assertEquals(textCpu(text("")), Vector(0L))
     assertEquals(textCpu(text("a" * 100)), Vector(100L))

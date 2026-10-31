@@ -79,19 +79,6 @@
    "finally": 1,
    "try": 1
   },
-  "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/FlatScan.scala": {
-   "catch": 1,
-   "try": 1
-  },
-  "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/NativeCrypto.scala": {
-   "catch": 2,
-   "finally": 1,
-   "try": 3
-  },
-  "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ScalusEvaluator.scala": {
-   "catch": 4,
-   "try": 4
-  },
   "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/Handshake.scala": {
    "catch": 2,
    "try": 2
