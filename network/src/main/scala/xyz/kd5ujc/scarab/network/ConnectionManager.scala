@@ -302,27 +302,37 @@ object ConnectionManager:
             // the reference keys its connections by the peer's address alone
             val inTimeWait = provenance == Provenance.Outbound &&
               Vector(key, other).exists(k => m.get(k).exists(_.waiting(now, limits.timeWait)))
-            if taken.isDefined then
-              (m, Left(ConnectionError.AlreadyConnected(remote.toString, taken.get.state)))
-            else if inTimeWait then (m, Left(ConnectionError.TimeWait(remote.toString)))
-            else if provenance == Provenance.Inbound && c.inbound + 1L > hardLimit then
-              (m, Left(ConnectionError.InboundLimit(remote.toString, hardLimit)))
-            else if provenance == Provenance.Inbound &&
-              m.iterator.count { (k, e) =>
-                k._2 == Provenance.Inbound && k._1.host == remote.host && e.state.isLive
-              } >= limits.maxInboundPerAddress
-            then
-              (m, Left(ConnectionError.AddressLimit(remote.toString, limits.maxInboundPerAddress)))
-            else if provenance == Provenance.Outbound && c.outbound >= limits.maxOutbound then
-              (m, Left(ConnectionError.OutboundLimit(remote.toString, limits.maxOutbound)))
-            else
+            // the first refusal that applies, in the reference's order
+            val refusal = taken
+              .map(entry => ConnectionError.AlreadyConnected(remote.toString, entry.state))
+              .orElse(Option.when(inTimeWait)(ConnectionError.TimeWait(remote.toString)))
+              .orElse(
+                Option.when(provenance == Provenance.Inbound && c.inbound + 1L > hardLimit)(
+                  ConnectionError.InboundLimit(remote.toString, hardLimit)
+                )
+              )
+              .orElse(
+                Option.when(
+                  provenance == Provenance.Inbound &&
+                    m.iterator.count { (k, e) =>
+                      k._2 == Provenance.Inbound && k._1.host == remote.host && e.state.isLive
+                    } >= limits.maxInboundPerAddress
+                )(ConnectionError.AddressLimit(remote.toString, limits.maxInboundPerAddress))
+              )
+              .orElse(
+                Option.when(provenance == Provenance.Outbound && c.outbound >= limits.maxOutbound)(
+                  ConnectionError.OutboundLimit(remote.toString, limits.maxOutbound)
+                )
+              )
+            refusal.fold(
               (
                 m.updated(
                   key,
                   Entry(id, provenance, ConnectionState.initial(provenance), closed, None)
                 ),
-                Right(())
+                Right(()): Either[ConnectionError, Unit]
               )
+            )(reason => (m, Left(reason)))
           }
           connection <- admitted.fold(
             refuse[Connection[F]](_),

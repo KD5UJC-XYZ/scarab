@@ -16,6 +16,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
   * again, and the array is dropped (not reused) when the buffer empties or grows, so a decoded
   * value may keep a slice of it.
   */
+@SuppressWarnings(Array("org.wartremover.warts.Var"))
 private[network] final class ReceiveBuffer(limit: Long = ReceiveBuffer.MaxArray):
   private var array: Array[Byte] = ReceiveBuffer.NoBytes
   private var start = 0
