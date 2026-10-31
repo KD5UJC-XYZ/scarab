@@ -3,13 +3,17 @@
 
 These comparisons are projections, not whole-state equality: `PROJECTION_SCOPE` lists what they compare and
 what they leave out, and every result names the Scala fields the reference side has no counterpart for
-(`scalaOnlyKeys`). #433 tracks replacing them with complete-state comparisons.
+(`scalaOnlyKeys`). In `e2e` each one is also a complete same-point comparison of `DebugNewEpochState`
+(`whole_state`), every byte but the UTxO, which only the projection compares until the node answers the
+UTxO queries before Conway (#677). #433 tracks replacing the projections with complete-state comparisons.
 """
 import json
 import subprocess
 import threading
 import time
+from . import cborspan
 from . import eraview
+from . import ledgercompare
 from . import ntcquery
 from . import govview
 from . import pinnedquery
@@ -325,6 +329,78 @@ def compare(args):
 
 # ---------------------------------------------------------------- per-era ledger comparison
 
+# The era index of the hard-fork combinator, as `QueryIfCurrent` names it.
+ERA_INDEX = {"shelley": 1, "allegra": 2, "mary": 3, "alonzo": 4, "babbage": 5, "conway": 6}
+WHOLE_STATE_LABEL = "DebugNewEpochState"
+WHOLE_STATE_QUERY = 12
+
+
+def first_difference(a, b):
+    """Where two CBOR items first differ: the byte offset, and the path of child indexes to the deepest
+    item that holds the difference (a map's keys and values count alternately); None when they are equal."""
+    if a == b:
+        return None
+    path, pos_a, pos_b = [], 0, 0
+    while True:
+        try:
+            kids_a, kids_b = cborspan.children(a, pos_a), cborspan.children(b, pos_b)
+        except cborspan.Malformed:
+            break
+        if not kids_a or not kids_b or a[pos_a:kids_a[0][0]] != b[pos_b:kids_b[0][0]]:
+            break  # a leaf, or the heads differ
+        step = next((i for i, (x, y) in enumerate(zip(kids_a, kids_b)) if a[x[0]:x[1]] != b[y[0]:y[1]]), None)
+        if step is None:
+            break  # the children agree as far as both go; the lengths differ
+        path.append(step)
+        pos_a, pos_b = kids_a[step][0], kids_b[step][0]
+    offset = next((i for i, (x, y) in enumerate(zip(a, b)) if x != y), min(len(a), len(b)))
+    return {"offset": offset, "path": path}
+
+
+def ask_raw(session, query):
+    """The complete raw bytes of the answer to `query` on an acquired session."""
+    session._send(7, ntcquery.enc([3, query]))
+    reply = session._recv(7)
+    if reply[0] != 4:
+        raise RuntimeError(f"query failed: {str(reply)[:200]}")
+    return session.last_raw
+
+
+def whole_state(name, era):
+    """The complete same-point ledger state of both nodes: `DebugNewEpochState`, asked over node-to-client
+    at the point of the Scala node's volatile tip and judged on every byte (`ledgercompare`). Both answers
+    carry the UTxO as an empty map, so this compares everything but the UTxO, which the projection
+    compares. A difference keeps both answers in the run dir. Never raises."""
+    root = util.data_root(name)
+    scala_socket = root / "scala-sock" / "node.socket"
+    if not scala_socket.exists():
+        return {"skipped": "the follower has no node-to-client socket"}
+    query = [0, [0, [ERA_INDEX[era], [WHOLE_STATE_QUERY]]]]
+    try:
+        with ntcquery.LocalStateQuery(None, str(scala_socket), MAGIC, host=True, deadline=60) as scala:
+            scala.acquire()
+            point = scala.query_raw([3])
+            got = ask_raw(scala, query)
+        with ntcquery.LocalStateQuery(ref(name), f"{ENV}/socket/node1/sock", MAGIC, deadline=60) as reference:
+            reference.acquire(point)
+            expected = ask_raw(reference, query)
+    except (RuntimeError, EOFError, OSError, ntcquery.Deadline, ntcquery.Incomplete) as e:
+        return {"error": repr(e)[:300]}
+    slot = point[0] if isinstance(point, list) and point else None
+    verdict = ledgercompare.compare(WHOLE_STATE_LABEL, expected, got)
+    result = {"slot": slot, "matched": verdict.equal, "byteEqual": verdict.raw_equal, "problems": verdict.problems,
+              "referenceBytes": len(expected), "scalaBytes": len(got)}
+    if not verdict.equal:
+        result["firstDifference"] = first_difference(expected, got)
+        dump = root / "whole-state"
+        dump.mkdir(exist_ok=True)
+        stem = dump / f"{era}-{slot}"
+        stem.with_suffix(".reference").write_bytes(expected)
+        stem.with_suffix(".scala").write_bytes(got)
+        result["kept"] = str(stem)
+    return result
+
+
 def lsq(name):
     return ntcquery.LocalStateQuery(ref(name), f"{ENV}/socket/node1/sock", MAGIC)
 
@@ -392,6 +468,22 @@ class Comparisons:
         self.per_era["byron"]["note"] = ("not compared: cardano-cli 11.2.3 cannot query a Byron ledger; the "
                                          "Byron UTxO is compared through the first Shelley epoch")
         self.mismatches = []
+        # same-point complete ledger states but the UTxO (`whole_state`) per era, judged with the projection
+        self.whole = {e: {"matched": 0, "mismatched": 0, "errors": 0, "skipped": 0} for e in ERAS if e != "byron"}
+
+    def record_whole(self, era, label, result):
+        with self.lock:
+            row = self.whole[era]
+            outcome = ("skipped" if result.get("skipped") else "errors" if "matched" not in result
+                       else "matched" if result["matched"] else "mismatched")
+            row[outcome] += 1
+            if outcome == "mismatched" and len(row.setdefault("differences", [])) < 5:
+                row["differences"].append({"label": label, **{k: result.get(k) for k in
+                                           ("slot", "firstDifference", "referenceBytes", "scalaBytes", "kept")}})
+            with self.file.open("a") as f:
+                f.write(json.dumps({"era": era, "label": label, "wholeState": result}) + "\n")
+        print(json.dumps({"wholeState": era, "label": label, "matched": result.get("matched"),
+                          "note": result.get("skipped") or result.get("error")}), flush=True)
 
     def record(self, era, label, result):
         with self.lock:
@@ -430,6 +522,11 @@ def compare_era(name, era, label, comparisons):
         import traceback
         result = {"error": repr(e), "traceback": traceback.format_exc()[-1500:]}
     comparisons.record(era, label, result)
+    try:
+        whole = whole_state(name, era)
+    except (Exception, SystemExit) as e:  # nor may the whole-state comparison stop it
+        whole = {"error": repr(e)[:300]}
+    comparisons.record_whole(era, label, whole)
 
 
 def judge_comparisons(comparisons, minimum, loaded):
@@ -443,6 +540,15 @@ def judge_comparisons(comparisons, minimum, loaded):
             failures.append(f"{era}: {row['errors']} ledger comparison errors")
         if row["matched"] < minimum:
             failures.append(f"{era}: only {row['matched']} matched ledger comparisons (need {minimum})")
+        whole = comparisons.whole[era]
+        if whole["mismatched"]:
+            failures.append(f"{era}: {whole['mismatched']} same-point DebugNewEpochState answers differ: "
+                            f"{whole.get('differences', [])[:2]}")
+        if whole["errors"]:
+            failures.append(f"{era}: {whole['errors']} same-point DebugNewEpochState comparison errors")
+        if whole["matched"] < minimum:
+            failures.append(f"{era}: only {whole['matched']} matched same-point DebugNewEpochState answers "
+                            f"(need {minimum})")
     return failures
 
 
@@ -456,4 +562,8 @@ def comparison_table(comparisons):
             lines.append(f"{era:<9} not compared ({r['note']})")
         else:
             lines.append(f"{era:<9} {r['matched']:>7}  {r['mismatched']:>10}  {r['errors']:>6}  {r['skipped']:>7}")
+    lines += ["same-point DebugNewEpochState, every byte but the UTxO (#433; the UTxO: #677)",
+              "era       matched  mismatched  errors  skipped"]
+    for era, r in comparisons.whole.items():
+        lines.append(f"{era:<9} {r['matched']:>7}  {r['mismatched']:>10}  {r['errors']:>6}  {r['skipped']:>7}")
     return "\n".join(lines)

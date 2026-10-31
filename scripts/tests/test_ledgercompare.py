@@ -117,3 +117,60 @@ class LedgerComparisonTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WholeStateComparisonTest(unittest.TestCase):
+    """The per-era whole-state comparison of `e2e` (`compare.whole_state`): where two answers first differ,
+    and the tally each era reports."""
+
+    def setUp(self):
+        from devnet import compare
+        self.compare = compare
+
+    def test_equal_answers_have_no_difference(self):
+        a = answer(nes())
+        self.assertIsNone(self.compare.first_difference(a, a))
+
+    def test_the_path_leads_to_the_deepest_differing_item(self):
+        a, b = answer(nes(pot=0)), answer(nes(pot=1))
+        found = self.compare.first_difference(a, b)
+        # MsgResult [4, [state]]: the result, the singleton, then the epoch state (3), its fourth part (3),
+        # and in it the pot (1)
+        self.assertEqual(found["path"], [1, 0, 3, 3, 1])
+        self.assertEqual(a[:found["offset"]], b[:found["offset"]])
+        self.assertNotEqual(a[found["offset"]], b[found["offset"]])
+
+    def test_a_difference_in_length_stops_at_the_container(self):
+        a, b = cbor.enc([1, [2, 3]]), cbor.enc([1, [2, 3, 4]])
+        self.assertEqual(self.compare.first_difference(a, b)["path"], [1])
+
+    def test_the_tally_counts_each_outcome_and_keeps_the_place_of_a_difference(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            tally = self.compare.Comparisons(pathlib.Path(d))
+            tally.record_whole("babbage", "epoch 7", {"slot": 1, "matched": True})
+            tally.record_whole("babbage", "epoch 8", {"slot": 2, "matched": False,
+                                                     "firstDifference": {"offset": 9, "path": [1]},
+                                                     "referenceBytes": 10, "scalaBytes": 10, "kept": "x"})
+            tally.record_whole("babbage", "epoch 9", {"error": "socket"})
+            tally.record_whole("babbage", "epoch 9", {"skipped": "no socket"})
+            row = tally.whole["babbage"]
+            self.assertEqual((row["matched"], row["mismatched"], row["errors"], row["skipped"]), (1, 1, 1, 1))
+            self.assertEqual(row["differences"][0]["firstDifference"], {"offset": 9, "path": [1]})
+            self.assertNotIn("byron", tally.whole)
+
+    def test_a_whole_state_difference_error_or_shortfall_fails_the_run(self):
+        from types import SimpleNamespace
+        eras = self.compare.ERAS
+        rows = {era: {"matched": 5, "mismatched": 0, "errors": 0, "skipped": 0} for era in eras}
+        whole = {era: {"matched": 5, "mismatched": 0, "errors": 0, "skipped": 0} for era in eras[1:]}
+        tally = SimpleNamespace(per_era=rows, whole=whole)
+        self.assertEqual(self.compare.judge_comparisons(tally, 3, True), [])
+        whole["mary"]["mismatched"] = 1
+        whole["alonzo"]["errors"] = 1
+        whole["babbage"]["matched"] = 2
+        failures = self.compare.judge_comparisons(tally, 3, True)
+        self.assertEqual(len(failures), 3, failures)
+        self.assertTrue(failures[0].startswith("mary: 1 same-point DebugNewEpochState answers differ"))
+        self.assertEqual(failures[1], "alonzo: 1 same-point DebugNewEpochState comparison errors")
+        self.assertEqual(failures[2], "babbage: only 2 matched same-point DebugNewEpochState answers (need 3)")
