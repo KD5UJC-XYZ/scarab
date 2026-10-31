@@ -14,6 +14,10 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.storage.mithril.MithrilClient
 
 class MithrilClientSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
+  // Exercise the window between the cancellable read worker starting and its owner joining it.
+  override protected def runtimeConfig: cats.effect.unsafe.IORuntimeConfig =
+    cats.effect.unsafe.IORuntimeConfig(1, 2)
+
   override def munitIOTimeout: Duration = 2.minutes
 
   import MithrilClient.{Error, ReceiptKind}
@@ -230,6 +234,45 @@ class MithrilClientSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             assert(!alive, s"verifier child $pid survived cancellation")
         }
     }
+  }
+
+  test("cancelling a pipe read contains the exception caused by stopping its process") {
+    val entered = new java.util.concurrent.CountDownLatch(1)
+    val stopped = new java.util.concurrent.CountDownLatch(1)
+    val failure = new java.io.IOException("test pipe closed by stop")
+    val input = new java.io.InputStream:
+      override def read(): Int =
+        entered.countDown()
+        stopped.await()
+        throw failure
+    val stop = IO.blocking(stopped.countDown())
+    Resource
+      .make(MithrilClient.output[IO](input, stop).compile.drain.start)(fiber =>
+        stop *> fiber.cancel
+      )
+      .use { fiber =>
+        for
+          ready <- IO.blocking(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+          _ <- IO(assert(ready, "pipe read did not start"))
+          _ <- fiber.cancel
+          outcome <- fiber.join
+        yield assert(outcome.isCanceled)
+      }
+  }
+
+  test("a live pipe reader receives its I/O failure without an uncaught worker failure") {
+    val failure = new java.io.IOException("test read failure")
+    val input = new java.io.InputStream:
+      override def read(): Int = throw failure
+    MithrilClient
+      .output[IO](input, IO.unit)
+      .compile
+      .drain
+      .attempt
+      .map { result =>
+        assertEquals(result, Left(failure))
+      }
+      .replicateA_(20000)
   }
 
   test("cancelling the owner releases the actual child process") {
