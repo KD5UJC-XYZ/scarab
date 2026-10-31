@@ -3984,6 +3984,85 @@
     }
    ],
    "listings": []
+  },
+  {
+   "id": "perf-56",
+   "section": "50",
+   "heading": "50. Total reads of a `Bytes`: the bounds check and the read as one (#650)",
+   "subject": "Total reads of a `Bytes`: the bounds check and the read as one (#650)",
+   "date": "2026-10-31",
+   "dateSource": "text",
+   "issues": [
+    "#650"
+   ],
+   "commits": [],
+   "links": [],
+   "page": "memory-and-snapshots",
+   "results": [
+    {
+     "header": [
+      "Form measured",
+      "Against",
+      "Against, ms (range)",
+      "Form, ms (range)",
+      "Form / against, time",
+      "MB allocated, against / form"
+     ],
+     "separator": "|---|---|---:|---:|---:|---:|",
+     "rows": [
+      [
+       "Every read an `Option`: the table read",
+       "the throwing `apply`",
+       "1,639 (1,621 to 1,653)",
+       "1,603 (1,567 to 1,714)",
+       "0.98",
+       "1,888 / 2,226"
+      ],
+      [
+       "Every read an `Option`: the MemPack decode",
+       "the throwing `apply`",
+       "1,557 (1,526 to 1,575)",
+       "1,764 (1,739 to 1,964)",
+       "1.13",
+       "6,490 / 7,435"
+      ],
+      [
+       "Every read an `Option`: the MemPack encode",
+       "the throwing `apply`",
+       "1,049 (1,020 to 1,095)",
+       "1,118 (1,049 to 1,250)",
+       "1.07",
+       "6,197 / 6,162"
+      ],
+      [
+       "Hot reads through `byteOr` (kept): the table read",
+       "the throwing `apply`",
+       "1,633 (1,607 to 1,663)",
+       "1,598 (1,571 to 1,633)",
+       "0.98",
+       "1,888 / 1,841"
+      ],
+      [
+       "Hot reads through `byteOr` (kept): the MemPack decode",
+       "the throwing `apply`",
+       "1,567 (1,528 to 1,638)",
+       "1,632 (1,592 to 1,693)",
+       "1.04",
+       "6,541 / 6,532"
+      ],
+      [
+       "Hot reads through `byteOr` (kept): the MemPack encode",
+       "the throwing `apply`",
+       "1,096 (1,007 to 1,116)",
+       "1,143 (1,021 to 1,184)",
+       "1.04",
+       "6,227 / 6,099"
+      ]
+     ],
+     "id": "perf-56.t1"
+    }
+   ],
+   "listings": []
   }
  ]
 }

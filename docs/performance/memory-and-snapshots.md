@@ -402,3 +402,42 @@ which are equal and share nothing; eight JVMs in ABBA order, the codec's classes
 after 5 of warm-up. The codec before #650's rewrite took a median of 7.5 to 7.9 ms a pass in its four JVMs, the
 functional walk 4.7 to 8.5 ms (5.8 ms the median of its four); the fastest passes were 3.0 to 3.8 ms and 3.6 to 3.8 ms.
 Every pass found all 730 pairs equal and the same hash. The functional walk is not slower and is kept.
+
+## 50. Total reads of a `Bytes`: the bounds check and the read as one (#650)
+
+**2026-10-31.** `Bytes.apply(i)` threw for an index outside the bytes; its callers each checked the length first. It is
+replaced by reads that check and read in one: `lift` and `headOption` (an `Option` of the byte), `bigEndian` and
+`littleEndian` (an `Option` of a number of up to eight bytes), an inline `foldLeft`, and `byteOr(i)(missing)(present)`,
+an inline read that takes both outcomes and allocates nothing. The hot readers were measured in their `Option` form
+first, then with `byteOr` where that form allocated.
+
+**Input and harness.** `SnapshotTablesBench` (storage tests) reads the first 256 MB of the preprod `tables` file of the
+snapshot of section 47 (slot 136,511,997; 1,191,176 entries): the table decoder with its CRC (`SnapshotTables`), then
+`TxOutMemPack.decode` of every output read, then `TxOutMemPack.encode` of each again. Each JVM is pinned to four CPUs
+(`--cpuset-cpus`, `-XX:ActiveProcessorCount=4`, G1, a 6 GB heap; JDK 25.0.4; load average 3.5 to 4.4) and takes 3
+warm-up and 7 timed passes of each workload; the codec, ledger and storage classes are swapped, the rest is the same.
+Each row is one set of eight JVMs in ABBA order against the code before the change (the throwing `apply`); the table
+gives the median of the four of each and their range. Every JVM read the same entries and bytes, decoded every output
+and encoded the same number of bytes again.
+
+<!-- register:table perf-56.t1 -->
+| Form measured | Against | Against, ms (range) | Form, ms (range) | Form / against, time | MB allocated, against / form |
+|---|---|---:|---:|---:|---:|
+| Every read an `Option`: the table read | the throwing `apply` | 1,639 (1,621 to 1,653) | 1,603 (1,567 to 1,714) | 0.98 | 1,888 / 2,226 |
+| Every read an `Option`: the MemPack decode | the throwing `apply` | 1,557 (1,526 to 1,575) | 1,764 (1,739 to 1,964) | 1.13 | 6,490 / 7,435 |
+| Every read an `Option`: the MemPack encode | the throwing `apply` | 1,049 (1,020 to 1,095) | 1,118 (1,049 to 1,250) | 1.07 | 6,197 / 6,162 |
+| Hot reads through `byteOr` (kept): the table read | the throwing `apply` | 1,633 (1,607 to 1,663) | 1,598 (1,571 to 1,633) | 0.98 | 1,888 / 1,841 |
+| Hot reads through `byteOr` (kept): the MemPack decode | the throwing `apply` | 1,567 (1,528 to 1,638) | 1,632 (1,592 to 1,693) | 1.04 | 6,541 / 6,532 |
+| Hot reads through `byteOr` (kept): the MemPack encode | the throwing `apply` | 1,096 (1,007 to 1,116) | 1,143 (1,021 to 1,184) | 1.04 | 6,227 / 6,099 |
+<!-- /register -->
+
+**Result.** In the `Option` form the MemPack decode took 13 percent longer with 15 percent more allocation, and the
+table read allocated 18 percent more: a `Some` for each byte-string head (`Node.isIndefinite`), a cats `traverse` for
+the words of a multi-asset value, and a tuple for each step of the table decoder. With `isIndefinite`, the table
+decoder, the SCLS framing and `ProtocolWire.Reader.peek` reading through `byteOr`, and the multi-asset words a
+`@tailrec` loop, every workload allocates what it did with `apply`. The table read is as fast. The MemPack decode and
+encode medians are 4 percent higher; their ranges overlap those of the old code, but in each ABBA pair the decode took 3
+to 6 percent longer with the new classes. `WireSkipBench` (section 45), eight JVMs in ABBA order, gives the protocol
+reader 0.97 to 1.00 of its old time on each workload (176.9 against 178.1 µs a pass on the 648 preview blocks) and the
+same allocation per operation. The readers outside these paths (handshake, peer sharing, the JSON reader, the CBOR head
+checks of the ledger) keep the `Option` form.
