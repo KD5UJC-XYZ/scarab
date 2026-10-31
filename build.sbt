@@ -62,6 +62,33 @@ val testDependencies = Seq(
 // Initialisation safety applies to main sources (-Wsafe-init).
 // Test sources exclude it because munit registers tests in constructors; the initial sweep found
 // 19 warnings for that idiom and none in main sources.
+// WartRemover (issue 650): the imperative and partial patterns the code rules disallow (AGENTS.md:
+// functional code by default; mutation only on measured performance paths, kept local; no throw for
+// domain errors; no partial accessor on a value not provably present). Main sources only; generated
+// code is excluded. try/catch/finally has no wart and is checked by scripts/check_imperative.py.
+lazy val disallowedWarts: Seq[wartremover.Wart] = Seq(
+  Wart.Var,
+  Wart.While,
+  Wart.Throw,
+  Wart.Return,
+  Wart.Null,
+  Wart.AsInstanceOf,
+  Wart.IsInstanceOf,
+  Wart.MutableDataStructures,
+  Wart.OptionPartial,
+  Wart.TryPartial,
+  Wart.EitherProjectionPartial,
+  Wart.IterableOps,
+  Wart.TripleQuestionMark,
+  Wart.ThreadSleep,
+  Wart.GlobalExecutionContext
+)
+
+// The modules whose main sources are free of the disallowed warts: there they are errors. Elsewhere they
+// are reported as information, so the build shows them without failing, until the module is clean and
+// joins this set (issue 650).
+lazy val wartFree: Set[String] = Set("consensus")
+
 def scarab(id: String, dir: String = null): Project =
   Project(id, file(Option(dir).getOrElse(id)))
     // sbt-tpolecat would add its own option set; the options above are the whole set here.
@@ -70,6 +97,11 @@ def scarab(id: String, dir: String = null): Project =
       name := s"scarab-$id",
       Compile / scalacOptions += "-Wsafe-init",
       Test / scalacOptions -= "-Wsafe-init",
+      Compile / compile / wartremoverErrors ++= (if (wartFree(id)) disallowedWarts else Nil),
+      Compile / compile / wartremoverWarnings ++= (if (wartFree(id)) Nil else disallowedWarts),
+      Compile / scalacOptions ++= (if (wartFree(id)) Nil
+                                   else Seq("-Wconf:msg=\\[wartremover.*:info")),
+      wartremoverExcluded += sourceManaged.value,
       libraryDependencies ++= testDependencies
     )
 

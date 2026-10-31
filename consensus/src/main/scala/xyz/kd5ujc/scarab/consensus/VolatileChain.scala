@@ -55,14 +55,13 @@ final case class VolatileChain[S](
     if !connected then Left(ChainError.NotConnected(header.point, tip))
     else
       val grown = blocks :+ (ref -> next)
-      val overflow = (grown.size - k).max(0)
-      if overflow == 0 then Right(copy(blocks = grown) -> Vector.empty)
-      else
-        val (immutable, kept) = grown.splitAt(overflow)
-        val (newest, newestState) = immutable.last
-        Right(
+      // the blocks past `k` become immutable, the newest of them the anchor
+      val (immutable, kept) = grown.splitAt(grown.size - k)
+      Right(
+        immutable.lastOption.fold(copy(blocks = kept) -> Vector.empty) { (newest, newestState) =>
           copy(anchor = Anchor(Some(newest), newestState), blocks = kept) -> immutable.map(_._1)
-        )
+        }
+      )
 
   /** Roll back to `target`, which must be the anchor or a retained block. */
   def rollback(target: ChainSync.Point): Either[ChainError, VolatileChain[S]] =
