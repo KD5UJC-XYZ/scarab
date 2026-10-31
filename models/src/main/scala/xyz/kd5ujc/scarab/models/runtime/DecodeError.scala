@@ -36,9 +36,10 @@ final case class DecodeError(
 
   /** The most specific failure: for a choice, the cause that got furthest into the input. */
   def deepest: DecodeError = kind match
-    case DecodeError.Kind.NoAlternative(causes) if causes.nonEmpty =>
-      val best = causes.map(_.deepest).maxBy(e => (e.offset, e.path.size))
-      best.copy(path = path ++ best.path)
+    case DecodeError.Kind.NoAlternative(causes) =>
+      causes.map(_.deepest).maxByOption(e => (e.offset, e.path.size)) match
+        case Some(best) => best.copy(path = path ++ best.path)
+        case None       => this
     case _ => this
 
   /** An implementation failure cannot be recovered by another CDDL alternative. */
