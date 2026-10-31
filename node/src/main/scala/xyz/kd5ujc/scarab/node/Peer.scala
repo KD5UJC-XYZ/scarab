@@ -575,7 +575,8 @@ object Peer:
       claims <- shared.session(invalidCachedBlock, diffusion)
       fetcher <- fetchSession.fold(
         shared.fetchCoordinator.session(
-          fetchIdentity.getOrElse(settings.address.hashCode.toLong)
+          fetchIdentity.getOrElse(settings.address.hashCode.toLong),
+          PeerOrder.of(connection.mux.connectionId)
         )
       )(Resource.pure[F, FetchCoordinator.Session[F]])
       supervisor <- OrderedSupervisor[F]

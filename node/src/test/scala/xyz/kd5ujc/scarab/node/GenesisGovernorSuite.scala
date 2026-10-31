@@ -60,14 +60,14 @@ class GenesisGovernorSuite extends FailsOnUncaught:
           governor.session(
             _ => IO.unit,
             killed.update(_ :+ 20),
-            Some(GenesisGovernor.OrderKey(20))
+            Some(PeerOrder(20))
           ),
           governor.session(
             _ => IO.unit,
             killed.update(_ :+ 10),
-            Some(GenesisGovernor.OrderKey(10))
+            Some(PeerOrder(10))
           ),
-          governor.session(_ => IO.unit, IO.unit, Some(GenesisGovernor.OrderKey(0)))
+          governor.session(_ => IO.unit, IO.unit, Some(PeerOrder(0)))
         ).tupled.use { (first, second, honest) =>
           for
             _ <- first.publish(
@@ -94,7 +94,7 @@ class GenesisGovernorSuite extends FailsOnUncaught:
               assertEquals(decision.k, 2)
               assertEquals(
                 decision.peers.map(_.orderKey),
-                Vector(0L, 10L, 20L).map(GenesisGovernor.OrderKey(_))
+                Vector(0L, 10L, 20L).map(PeerOrder(_))
               )
               assertEquals(decision.result.map(_.losingPeers), Some(Vector(second.id, first.id)))
               assertEquals(decision.result.toVector.flatMap(_.bounds).size, 3)
@@ -402,8 +402,8 @@ class GenesisGovernorSuite extends FailsOnUncaught:
   test("GDD uses concrete remote TCP endpoints rather than connection registration order") {
     import com.comcast.ip4s.*
     import xyz.kd5ujc.scarab.network.ConnectionId
-    def tcp(remote: Port): GenesisGovernor.OrderKey =
-      GenesisGovernor.OrderKey.Tcp(
+    def tcp(remote: Port): PeerOrder =
+      PeerOrder.Tcp(
         ConnectionId
           .fromSocketAddresses(
             SocketAddress(ip"127.0.0.1", port"4000"),
@@ -459,13 +459,11 @@ class GenesisGovernorSuite extends FailsOnUncaught:
           IO.pure(GenesisGovernor.View(empty, 2, _ => Some(8)))
         )
         _ <- governor.setPhase(Gsm.Phase.Syncing)
-        before <- governor.session(_ => IO.unit, IO.unit, Some(GenesisGovernor.OrderKey(20))).use {
-          peer =>
-            peer.publish(Some(dense), LatestSlot.At(3), false) *> governor.inputFingerprint
+        before <- governor.session(_ => IO.unit, IO.unit, Some(PeerOrder(20))).use { peer =>
+          peer.publish(Some(dense), LatestSlot.At(3), false) *> governor.inputFingerprint
         }
-        after <- governor.session(_ => IO.unit, IO.unit, Some(GenesisGovernor.OrderKey(20))).use {
-          peer =>
-            peer.publish(Some(dense), LatestSlot.At(3), false) *> governor.inputFingerprint
+        after <- governor.session(_ => IO.unit, IO.unit, Some(PeerOrder(20))).use { peer =>
+          peer.publish(Some(dense), LatestSlot.At(3), false) *> governor.inputFingerprint
         }
       yield assertEquals(after, before)
     }

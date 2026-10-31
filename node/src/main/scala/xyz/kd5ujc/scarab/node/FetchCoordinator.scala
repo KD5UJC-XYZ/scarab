@@ -151,15 +151,17 @@ final class FetchCoordinator[F[_]: Async] private (
     }
   }
 
-  def session(identity: Long): Resource[F, Session[F]] =
+  /** A session of the peer `identity` (the seed of its tiebreaker), ranked among the others by
+    * `order`, the key of the reference's peer map; without one, by the order the sessions
+    * registered in.
+    */
+  def session(identity: Long, order: Option[PeerOrder] = None): Resource[F, Session[F]] =
     Resource
       .make(
         state.modify { s =>
           val id = s.next
-          (
-            s.copy(next = id + 1, peers = s.peers.updated(id, PeerState(identity ^ salt))),
-            id
-          )
+          val peer = PeerState[F](identity ^ salt, order.getOrElse(PeerOrder(id)))
+          (s.copy(next = id + 1, peers = s.peers.updated(id, peer)), id)
         }
       )(id => change(s => s.copy(peers = s.peers - id)))
       .map(id => new Session(this, id))
@@ -421,11 +423,15 @@ final class FetchCoordinator[F[_]: Async] private (
     * decisions for every peer, each requested fragment added to that peer's request slot. A finite,
     * pure transaction: it never waits or performs wire effects. Also the sessions whose slot it
     * added to, and whether it decided in the Genesis fetch mode.
+    *
+    * The peers are taken in the order of the reference's `Map.toList` over its maps keyed by peer
+    * (`peerChainsAndPeerInfo`, State.hs:274–281), [[PeerOrder]]; the comparator of `comparePeerGSV`
+    * is not transitive, so the order of its input decides the order of its output.
     */
   private def act(s: State[F]): (State[F], Vector[Long], Boolean) =
     def tipOf(peer: PeerState[F]): Option[Header] =
       peer.candidate.flatMap(_.headers.lastOption).orElse(peer.tip)
-    val peers = s.peers.toVector.sortBy(_._1)
+    val peers = s.peers.toVector.sortBy((id, peer) => (peer.order, id))
     val tips = peers.flatMap((_, peer) => tipOf(peer))
     val ordered = HaskellSort.sortBy(tips)(compareTips)
     def preference(tip: Option[Header]): Int = tip.fold(0) { h =>
@@ -629,6 +635,7 @@ object FetchCoordinator:
   private final case class Active(remaining: Vector[Header], requests: Int, claimed: Set[Bytes])
   private final case class PeerState[F[_]](
       identity: Long,
+      order: PeerOrder,
       tip: Option[Header] = None,
       candidate: Option[ChainSelection.Candidate] = None,
       performance: FetchGsv.PeerGsv = FetchGsv.default,
