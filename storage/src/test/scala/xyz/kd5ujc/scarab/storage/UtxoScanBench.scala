@@ -77,14 +77,12 @@ object UtxoScanBench:
   private def sampled(store: UtxoStore[IO])(using
       cats.mtl.Raise[cats.effect.IO, xyz.kd5ujc.scarab.ledger.StorageError]
   ): IO[Set[Bytes]] =
-    val picked = Set.newBuilder[Bytes]
-    var i = 0L
+    // the address of every 100000th output
     store
-      .scan { (_, out) =>
-        if i % 100000 == 0 then picked += out.address.raw
-        i += 1
+      .scan((0L, Set.empty[Bytes])) { case ((i, picked), _, out) =>
+        (i + 1, if i % 100000 == 0 then picked + out.address.raw else picked)
       }
-      .map(_ => picked.result())
+      .map(_._2)
 
   /** An order-free fingerprint of a result, to compare builds: its size and the sum of its hashes.
     */
@@ -98,9 +96,8 @@ object UtxoScanBench:
       n <- timed(s"round $round count every entry (size)")(store.size)
       every <- timed(s"round $round every output (all)")(store.all)
       _ <- IO.println(s"BENCH round $round: count $n, all ${fingerprint(every)}")
-      visited <- IO(new java.util.concurrent.atomic.AtomicLong)
-      _ <- timed(s"round $round visit every output (scan)")(
-        store.scan((_, _) => visited.incrementAndGet(): Unit)
+      visited <- timed(s"round $round visit every output (scan)")(
+        store.scan(0L)((visited, _, _) => visited + 1)
       )
       old <- timed(s"round $round decode every output (select)")(
         store.select(out => wanted(out.address.raw))
@@ -109,6 +106,6 @@ object UtxoScanBench:
         store.selectAddresses(wanted)
       )
       _ <- IO.println(
-        s"BENCH round $round: scan ${visited.get}, select ${fingerprint(old)}, equal: ${old == now}"
+        s"BENCH round $round: scan $visited, select ${fingerprint(old)}, equal: ${old == now}"
       )
     yield ()

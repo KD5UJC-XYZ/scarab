@@ -67,8 +67,9 @@ trait UtxoStore[F[_]] extends UtxoReadView[F]:
   /** A stable, resource-scoped view of the current backing generation. */
   def readView: Resource[F, Either[StorageError, UtxoPinnedReadView[F]]]
 
-  /** Visit every entry without collecting them (the state digests of `--dump-state`). */
-  def scan(visit: (TxIn, TxOut) => Unit)(using cats.mtl.Raise[F, StorageError]): F[Unit]
+  /** Every entry folded into `zero`, without collecting them (the state digests of `--dump-state`).
+    */
+  def scan[A](zero: A)(step: (A, TxIn, TxOut) => A)(using cats.mtl.Raise[F, StorageError]): F[A]
 
   /** Every entry in ascending Haskell table-key order, without collecting a disk-backed set. The
     * caller holds the store offline for a consistent snapshot export.
@@ -320,8 +321,8 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
       cats.mtl.Raise[F, StorageError]
   ): F[Map[TxIn, TxOut]] =
     select(out => addresses(out.address.raw))
-  def scan(visit: (TxIn, TxOut) => Unit)(using cats.mtl.Raise[F, StorageError]): F[Unit] =
-    state.get.map(_.entries.foreach((k, v) => visit(k, v)))
+  def scan[A](zero: A)(step: (A, TxIn, TxOut) => A)(using cats.mtl.Raise[F, StorageError]): F[A] =
+    state.get.map(_.entries.foldLeft(zero) { case (acc, (k, v)) => step(acc, k, v) })
   def entries(using cats.mtl.Raise[F, StorageError]): Stream[F, (TxIn, TxOut)] =
     Stream
       .eval(state.get)
