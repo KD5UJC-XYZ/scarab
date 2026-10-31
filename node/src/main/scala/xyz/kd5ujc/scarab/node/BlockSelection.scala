@@ -28,21 +28,29 @@ private[node] final class BlockSelection[F[_]: Async] private (
   /** The bodies of `candidate` as the pool admitted them, and where a refusal of one is recorded
     * against its original.
     */
-  private def reader(bodies: Map[Bytes, BlockPool.Admission]): BlockSelection.Bodies[F] =
+  private def reader(bodies: Map[Bytes, BlockPool.Processed]): BlockSelection.Bodies[F] =
+    def original(header: Header): F[Option[(BlockPool.Processed, Bytes)]] =
+      bodies.get(header.hash).flatTraverse(p => pool.body(header.hash, p).map(_.map(p -> _)))
     new BlockSelection.Bodies[F]:
-      def fetch(header: Header)(using Raise[F, NodeError]) = bodies
-        .get(header.hash)
-        .fold(BlockPoolProblem.MissingDeliveredHeader(header.point).raise[F, Bytes])(a =>
-          F.pure(a.taken.block)
+      def fetch(header: Header)(using Raise[F, NodeError]) = original(header).flatMap(
+        _.fold(BlockPoolProblem.MissingDeliveredHeader(header.point).raise[F, Bytes])((_, raw) =>
+          F.pure(raw)
         )
+      )
       def invalidated(header: Header, error: ValidationError) =
-        bodies
-          .get(header.hash)
-          .fold(
+        original(header).flatMap(
+          _.fold(
             F.pure[Either[BlockPoolProblem, Unit]](
               Left(BlockPoolProblem.MissingDeliveredHeader(header.point))
             )
-          )(a => pool.invalidated(a.taken, header, error))
+          )((p, raw) =>
+            pool.invalidated(
+              BlockPool.Taken(raw, false, p.origin, Some(p.delivered)),
+              header,
+              error
+            )
+          )
+        )
 
   private def selectLocked(
       adding: Option[BlockPool.Admission],

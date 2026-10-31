@@ -47,6 +47,14 @@ trait ReceivedBlocks[F[_]]:
     */
   def get(hash: Bytes)(using Raise[F, StorageError]): F[Option[(BlockRef, Bytes)]]
 
+  /** The block as [[get]] reads it, also after a validation refusal ([[invalidate]]): the original
+    * the node's processed forest refers to. The reference reads a block back from the VolatileDB's
+    * file without consulting the ChainDB's invalid-block set, which is kept beside it
+    * (`getBlockComponentImpl`, `GetRawBlock`, `Storage/VolatileDB/Impl.hs:259-300`; `cdbInvalid`,
+    * `Storage/ChainDB/Impl/Types.hs:354`, ouroboros-consensus 82ecba32).
+    */
+  def original(hash: Bytes)(using Raise[F, StorageError]): F[Option[(BlockRef, Bytes)]]
+
   /** The blocks held, oldest slot first. */
   def refs: F[Vector[BlockRef]]
   def hashes: F[Set[Bytes]]
@@ -235,6 +243,9 @@ object ReceivedBlocks:
         invalid.get.flatMap(refused =>
           if refused(hash) then F.pure(None) else lock.lock.surround(body(hash))
         )
+
+      def original(hash: Bytes)(using Raise[F, StorageError]): F[Option[(BlockRef, Bytes)]] =
+        lock.lock.surround(body(hash))
 
       def refs: F[Vector[BlockRef]] =
         (index.get, invalid.get).mapN { (known, refused) =>

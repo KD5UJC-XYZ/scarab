@@ -319,6 +319,7 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                 BlockPool.Recovered(
                                   opened.received.hashes,
                                   hash => opened.received.get(hash).map(_.map(_._2)),
+                                  hash => opened.received.original(hash).map(_.map(_._2)),
                                   opened.received.invalidate
                                 )
                               )
