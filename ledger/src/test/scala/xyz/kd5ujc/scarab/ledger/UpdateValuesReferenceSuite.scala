@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import munit.FunSuite
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -33,30 +33,49 @@ class UpdateValuesReferenceSuite extends FunSuite:
     )
     assertEquals(rows.map(_.name).distinct.size, rows.size)
     assert(rows.exists(_.accepted) && rows.exists(!_.accepted))
-    test("a Conway update in a stored state may hold an indefinite ExUnits; a body may not") {
-      // {20: [_ 1, 2]}: the maximum transaction execution units as an indefinite list
-      val raw = hex("a1149f0102ff")
-      val node = CborRead.decode(raw).fold(e => fail(e.toString), identity)
-      assertEquals(
-        ConwayParamUpdate.decode(node),
-        Left(LedgerDecodeError.IndefiniteLength(DecodeField.MaxTxExUnits))
-      )
-      val stored = ConwayParamUpdate.decodeStored(node).fold(e => fail(e.toString), identity)
-      val encoded = ConwayParamUpdate
-        .fromEncoded(Vector(BigInt(20) -> hex("9f0102ff")))
-        .fold(e => fail(e.toString), identity)
-      assertEquals(stored, encoded)
-      assertEquals(
-        stored.params,
-        Vector(ConwayParam.MaxTxExUnits(xyz.kd5ujc.scarab.plutus.ExUnits(1, 2)))
-      )
-      assertEquals(stored.encodings, Vector(20 -> hex("9f0102ff")), "the original bytes are kept")
-    }
-
     for row <- rows do
       assertEquals(row.accepted, row.expect.isEmpty, row.name)
       assertEquals(row.accepted, row.rule.isEmpty, row.name)
       row.rule.foreach(r => assert(row.failure.exists(r.explains), s"${row.name}: ${row.failure}"))
+  }
+
+  // Each Conway `RecD` record of an update, as an indefinite list: the key, its value, the field
+  // its refusal names and the value read from a stored state.
+  private val indefiniteRecords: Vector[(Int, String, DecodeSite, ConwayParam)] = Vector(
+    (
+      19,
+      "9fd81e820102d81e820103ff",
+      DecodeField.Prices,
+      ConwayParam.Prices(Rational(1, 2), Rational(1, 3))
+    ),
+    (
+      20,
+      "9f0102ff",
+      DecodeField.MaxTxExUnits,
+      ConwayParam.MaxTxExUnits(xyz.kd5ujc.scarab.plutus.ExUnits(1, 2))
+    ),
+    (
+      21,
+      "9f0304ff",
+      DecodeField.MaxBlockExUnits,
+      ConwayParam.MaxBlockExUnits(xyz.kd5ujc.scarab.plutus.ExUnits(3, 4))
+    )
+  )
+
+  test(
+    "a Conway update in a stored state may hold an indefinite Prices or ExUnits; a body may not"
+  ) {
+    for (key, value, site, param) <- indefiniteRecords do
+      val raw = hex(f"a1$key%02x$value")
+      val node = CborRead.decode(raw).fold(e => fail(e.toString), identity)
+      assertEquals(ConwayParamUpdate.decode(node), Left(LedgerDecodeError.IndefiniteLength(site)))
+      val stored = ConwayParamUpdate.decodeStored(node).fold(e => fail(e.toString), identity)
+      val encoded = ConwayParamUpdate
+        .fromEncoded(Vector(BigInt(key) -> hex(value)))
+        .fold(e => fail(e.toString), identity)
+      assertEquals(stored, encoded, s"key $key")
+      assertEquals(stored.params, Vector(param), s"key $key")
+      assertEquals(stored.encodings, Vector(key -> hex(value)), s"key $key keeps its bytes")
   }
 
   test("an update applied from a stored state is read as before, whatever the body would refuse") {
