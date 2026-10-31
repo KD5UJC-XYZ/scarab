@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.protocol
 import xyz.kd5ujc.scarab.codec.Bytes
 import java.nio.ByteBuffer
 import java.nio.charset.{CodingErrorAction, StandardCharsets}
-import scala.util.control.NonFatal
+import cats.syntax.all.*
 import scala.util.boundary
 
 import ChainSync.{Point, Tip, UInt64}
@@ -67,6 +67,18 @@ private[protocol] object ProtocolWire:
     if reader.position != bytes.size then bad(ProtocolError.TrailingPayloadBytes)
   }
 
+  /** The CBOR reader of every mini-protocol codec: a cursor over the input, failing through the
+    * [[Scope]]. It keeps its imperative form on measurement: a functional walk of the same checks
+    * took 2.4 to 3.2 times as long and allocated 4 to 11 times as much on real blocks
+    * (`docs/performance.md` section 45, issue 657; `WireSkipFunctional` in the tests).
+    */
+  @SuppressWarnings(
+    Array(
+      "org.wartremover.warts.Var",
+      "org.wartremover.warts.While",
+      "org.wartremover.warts.MutableDataStructures"
+    )
+  )
   class Reader(input: Bytes, limits: Limits)(using Scope):
     if !limits.valid then bad(ProtocolError.InvalidLocalLimits)
     private var pos = 0
@@ -143,15 +155,16 @@ private[protocol] object ProtocolWire:
         ProtocolError.StringLimitExceeded
       )
       need(n)
-      val decoded =
-        try
+      val decoded = Either
+        .catchNonFatal(
           StandardCharsets.UTF_8
             .newDecoder()
             .onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT)
-            .decode(ByteBuffer.wrap(input.value.slice(pos, pos + n).toArray))
+            .decode(ByteBuffer.wrap(input.slice(pos, pos + n).toArray))
             .toString
-        catch case NonFatal(_) => bad(ProtocolError.InvalidUTF8)
+        )
+        .fold(_ => bad(ProtocolError.InvalidUTF8), identity)
       pos += n
       decoded
     def point(): Point = arrayLength() match
@@ -194,13 +207,15 @@ private[protocol] object ProtocolWire:
       val n = bounded(argument(ai), remaining, ProtocolError.StringLimitExceeded)
       need(n)
       if major == 3 then
-        try
-          StandardCharsets.UTF_8
-            .newDecoder()
-            .onMalformedInput(CodingErrorAction.REPORT)
-            .onUnmappableCharacter(CodingErrorAction.REPORT)
-            .decode(ByteBuffer.wrap(input.slice(pos, pos + n).toArray))
-        catch case NonFatal(_) => bad(ProtocolError.InvalidUTF8)
+        Either
+          .catchNonFatal(
+            StandardCharsets.UTF_8
+              .newDecoder()
+              .onMalformedInput(CodingErrorAction.REPORT)
+              .onUnmappableCharacter(CodingErrorAction.REPORT)
+              .decode(ByteBuffer.wrap(input.slice(pos, pos + n).toArray))
+          )
+          .fold(_ => bad(ProtocolError.InvalidUTF8), _ => ())
       pos += n
       n
 

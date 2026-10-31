@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
+import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** Pure SDU framing derived from Network.Mux.Codec at ouroboros-network
@@ -281,53 +282,51 @@ object Mux:
         Left(Error.FeedInputLimit(bytes.size, limits.maxInputBytes))
       else if bytes.size == 0 then Right((this, Vector.empty))
       else
-        var headerBytes = partialHeader
-        var header = activeHeader
-        var parts = partialParts
-        var received = partialSize
-        var offset = 0
-        var emitted = 0
-        var error: Option[Error] = None
-        val output = Vector.newBuilder[Sdu]
-        while offset < bytes.size && error.isEmpty do
-          header match
-            case None =>
-              val count = math.min(HeaderBytes - headerBytes.size, bytes.size - offset)
-              headerBytes = headerBytes ++ bytes.slice(offset, offset + count)
-              offset += count
-              if headerBytes.size == HeaderBytes then
-                decodeHeader(headerBytes, limits.maxPayloadBytes) match
-                  case Left(reason) => error = Some(reason)
-                  case Right(decoded) =>
-                    header = Some(decoded)
-                    headerBytes = Bytes.empty
-            case Some(current) =>
-              val count = math.min(current.payloadLength - received, bytes.size - offset)
-              parts = bytes.slice(offset, offset + count) :: parts
-              received += count
-              offset += count
-              if received == current.payloadLength then
-                if emitted >= limits.maxFramesPerFeed then
-                  error = Some(Error.FeedFrameLimit(emitted + 1, limits.maxFramesPerFeed))
-                else
-                  output += Sdu(
-                    current.timestamp,
-                    current.protocol,
-                    current.direction,
-                    Decoder.joined(parts, received)
-                  )
-                  emitted += 1
-                  parts = Nil
-                  received = 0
-                  header = None
-        error match
-          case Some(reason) => Left(reason)
-          case None         =>
+        // the decoder's state as it reads `bytes` from `offset`, with the frames completed so far
+        @tailrec def go(
+            headerBytes: Bytes,
+            header: Option[Header],
+            parts: List[Bytes],
+            received: Int,
+            offset: Int,
+            output: Vector[Sdu]
+        ): Either[Error, (Decoder, Vector[Sdu])] =
+          if offset >= bytes.size then
             // only the newest part can come from this feed; the older ones are compact already
             val carried = parts match
               case newest :: older => newest.compact :: older
               case Nil             => Nil
-            Right((new Decoder(limits, headerBytes, header, carried, received), output.result()))
+            Right((new Decoder(limits, headerBytes, header, carried, received), output))
+          else
+            header match
+              case None =>
+                val count = math.min(HeaderBytes - headerBytes.size, bytes.size - offset)
+                val read = headerBytes ++ bytes.slice(offset, offset + count)
+                if read.size < HeaderBytes then
+                  go(read, None, parts, received, offset + count, output)
+                else
+                  decodeHeader(read, limits.maxPayloadBytes) match
+                    case Left(reason) => Left(reason)
+                    case Right(decoded) =>
+                      go(Bytes.empty, Some(decoded), parts, received, offset + count, output)
+              case Some(current) =>
+                val count = math.min(current.payloadLength - received, bytes.size - offset)
+                val more = bytes.slice(offset, offset + count) :: parts
+                val total = received + count
+                if total < current.payloadLength then
+                  go(headerBytes, header, more, total, offset + count, output)
+                else if output.size >= limits.maxFramesPerFeed then
+                  Left(Error.FeedFrameLimit(output.size + 1, limits.maxFramesPerFeed))
+                else
+                  val sdu =
+                    Sdu(
+                      current.timestamp,
+                      current.protocol,
+                      current.direction,
+                      Decoder.joined(more, total)
+                    )
+                  go(headerBytes, None, Nil, 0, offset + count, output :+ sdu)
+        go(partialHeader, activeHeader, partialParts, partialSize, 0, Vector.empty)
 
     def finish: Either[Error, Unit] =
       activeHeader match
@@ -357,9 +356,9 @@ object Mux:
       case only :: Nil => only
       case _ =>
         val out = new Array[Byte](size)
-        var end = size
-        parts.foreach { part =>
-          end -= part.size
-          part.copyTo(out, end)
+        // newest first: each part ends where the one after it starts
+        val _ = parts.foldLeft(size) { (end, part) =>
+          part.copyTo(out, end - part.size)
+          end - part.size
         }
         Bytes.wrap(out)

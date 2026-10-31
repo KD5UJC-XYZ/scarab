@@ -79,14 +79,6 @@
    "finally": 1,
    "try": 1
   },
-  "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/Handshake.scala": {
-   "catch": 2,
-   "try": 2
-  },
-  "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ProtocolWire.scala": {
-   "catch": 2,
-   "try": 2
-  },
   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ChainStorage.scala": {
    "finally": 1,
    "try": 1
