@@ -37,7 +37,13 @@ They do not show whole-state equality. Cost models, Conway protocol parameters o
 credentials, pool relays, metadata and delegators, account pointers, DRep anchors and delegators,
 `nonMyopic`, individual reward entries and AVVM/Byron state are among the fields not compared. `scripts/devnet/compare.py` (`PROJECTION_SCOPE`)
 lists the scope, each `e2e-summary.json` records it, and the register entry `devnet-ledger-projection`
-tracks it under [#433](https://github.com/KD5UJC-XYZ/scarab/issues/433). Runs before 2026-10-25 also
+tracks it under [#433](https://github.com/KD5UJC-XYZ/scarab/issues/433). From 2026-10-31 `e2e` also
+compares the complete same-point `DebugNewEpochState` answers of both nodes, every byte, at each of
+those comparisons in every Shelley-based era (`compare.whole_state`, under `ledgerComparison.wholeState`
+of `e2e-summary.json`), and a difference fails the run. That answer holds the UTxO as an empty map on
+both nodes, so the UTxO is still compared only by the projection
+([#677](https://github.com/KD5UJC-XYZ/scarab/issues/677)); `pool`, `relay`, `soak` and `restart` still
+compare the projection only. Runs before 2026-10-25 also
 left datums and reference-script hashes out of the Conway UTxO comparison, and hashed reference scripts
 over a re-encoding rather than their original bytes. In the `ntc` refusal
 comparison, every case is compared exactly (raw bytes and text), `withdrawal-network-flag-true` included:

@@ -522,12 +522,16 @@ class LoadThreadEndingTest(unittest.TestCase):
             self.assertEqual(loader.reading(), {})
 
     def test_a_system_exit_in_a_comparison_is_recorded_as_its_error(self):
-        recorded = []
-        comparisons = types.SimpleNamespace(record=lambda era, label, result: recorded.append((era, label, result)))
-        with patch.object(compare, "compare_once_detailed", side_effect=SystemExit("docker exec failed")):
+        recorded, whole = [], []
+        comparisons = types.SimpleNamespace(record=lambda era, label, result: recorded.append((era, label, result)),
+                                            record_whole=lambda era, label, result: whole.append((era, label, result)))
+        with patch.object(compare, "compare_once_detailed", side_effect=SystemExit("docker exec failed")), \
+                patch.object(compare, "whole_state", side_effect=SystemExit("docker exec failed")):
             compare.compare_era("n", "conway", "mid", comparisons)
         self.assertEqual([(e, lbl) for e, lbl, _ in recorded], [("conway", "mid")])
         self.assertIn("SystemExit", recorded[0][2]["error"])
+        self.assertEqual([(e, lbl) for e, lbl, _ in whole], [("conway", "mid")])
+        self.assertIn("SystemExit", whole[0][2]["error"])
 
     def test_the_run_names_the_ended_thread_first(self):
         from devnet.scenarios import e2e
