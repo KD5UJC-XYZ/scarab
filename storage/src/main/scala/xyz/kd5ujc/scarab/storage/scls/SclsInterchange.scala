@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.storage.scls
 
 import cats.{Applicative, Functor}
+import scala.util.Using
 import cats.effect.{Async, Resource}
 import cats.mtl.{Ask, Handle, Raise}
 import cats.syntax.all.*
@@ -82,9 +83,7 @@ object SclsInterchange:
     def lift[A](result: Either[Error, A]): F[A] = result.fold(outer.raise(_), F.pure)
     def guard[A](path: Path)(body: => A): F[A] = AtomicFile.guard[F, A](path.toString)(body)
     def sync(path: Path): F[Unit] = guard(path) {
-      val channel = FileChannel.open(path.toNioPath, StandardOpenOption.READ)
-      try channel.force(true)
-      finally channel.close()
+      Using.resource(FileChannel.open(path.toNioPath, StandardOpenOption.READ))(_.force(true))
     }
     def fresh(path: Path): F[Unit] =
       guard(path)(Files.exists(path.toNioPath, LinkOption.NOFOLLOW_LINKS))

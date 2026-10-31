@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.storage.haskell
 
 import java.util.zip.CRC32
+import scala.annotation.tailrec
 import scodec.{Attempt, Codec}
 import scodec.bits.BitVector
 import scodec.codecs.{int32, uint16, uint32, vector}
@@ -207,16 +208,17 @@ object PrimaryIndex:
   /** The offsets of a file are an index only if they start at 0 and step by an entry or not at all.
     */
   private def check(offsets: Vector[Long]): Either[ChunkFault, PrimaryIndex] =
-    if offsets.headOption.exists(_ != 0L) then Left(ChunkFault.PrimaryFirstOffset(offsets.head))
-    else
-      offsets
-        .zip(offsets.drop(1))
-        .zipWithIndex
-        .collectFirst {
-          case ((f, t), r) if t - f != 0L && t - f != EntrySize.toLong =>
-            ChunkFault.PrimaryStep(r, f, t)
-        }
-        .toLeft(PrimaryIndex(offsets))
+    offsets.headOption match
+      case Some(first) if first != 0L => Left(ChunkFault.PrimaryFirstOffset(first))
+      case _ =>
+        offsets
+          .zip(offsets.drop(1))
+          .zipWithIndex
+          .collectFirst {
+            case ((f, t), r) if t - f != 0L && t - f != EntrySize.toLong =>
+              ChunkFault.PrimaryStep(r, f, t)
+          }
+          .toLeft(PrimaryIndex(offsets))
 
 object SecondaryIndex:
   val EntrySize = 56
@@ -249,55 +251,58 @@ object CborItem:
   private val MaxDepth = 4096
 
   def length(a: Array[Byte], from: Int): Option[Int] =
-    val stack = scala.collection.mutable.ArrayDeque.empty[Long]
-    var cur = 1L // items left in the current container; -1: indefinite
-    var pos = from
-    var failed = false
-    var done = false
-    def need(n: Long): Boolean = n >= 0 && n <= (a.length - pos).toLong
-    def enter(items: Long): Unit =
-      if stack.size >= MaxDepth then failed = true
-      else
-        stack.append(cur)
-        cur = items
-    while !failed && !done do
-      if cur == 0L then if stack.isEmpty then done = true else cur = stack.removeLast()
-      else if pos >= a.length then failed = true
+    // `left`: the items left in the current container (-1: indefinite); `parents`: those of the
+    // containers around it, innermost first, `depth` of them
+    @tailrec def go(pos: Int, left: Long, parents: List[Long], depth: Int): Option[Int] =
+      if left == 0L then
+        parents match
+          case Nil        => Some(pos - from)
+          case up :: rest => go(pos, up, rest, depth - 1)
+      else if pos >= a.length then None
       else
         val ib = a(pos) & 0xff
-        pos += 1
-        if cur == -1L && ib == 0xff then cur = 0L
+        val at = pos + 1
+        if left == -1L && ib == 0xff then go(at, 0L, parents, depth)
         else
-          if cur > 0L then cur -= 1
+          val remaining = if left > 0L then left - 1 else left
           val major = ib >> 5
           val ai = ib & 31
-          var arg = 0L
           val indefinite = ai == 31
-          if ai < 24 then arg = ai.toLong
-          else if ai > 27 && !indefinite then failed = true
-          else if !indefinite then
-            val width = 1 << (ai - 24)
-            if !need(width.toLong) then failed = true
+          // the head's argument and the position after it
+          val argument: Option[(Long, Int)] =
+            if ai < 24 then Some((ai.toLong, at))
+            else if ai > 27 && !indefinite then None
+            else if indefinite then Some((0L, at))
             else
-              var i = 0
-              while i < width do
-                arg = (arg << 8) | (a(pos + i) & 0xffL)
-                i += 1
-              pos += width
-          if !failed then
-            major match
-              case 0 | 1 | 7 => if indefinite then failed = true
-              case 2 | 3 =>
-                if indefinite then enter(-1L)
-                else if need(arg) then pos += arg.toInt
-                else failed = true
-              case 4 | 5 =>
-                if indefinite then enter(-1L)
-                else if arg < 0 || arg > (a.length - pos).toLong then failed = true
-                else if arg > 0 then enter(if major == 5 then arg * 2 else arg)
-              case _ => // 6: a tag wraps one more item
-                if indefinite then failed = true else enter(1L)
-    if failed then None else Some(pos - from)
+              val width = 1 << (ai - 24)
+              Option.when(width <= a.length - at)(
+                ((0 until width).foldLeft(0L)((v, i) => (v << 8) | (a(at + i) & 0xffL)), at + width)
+              )
+          argument match
+            case None => None
+            case Some((arg, next)) =>
+              major match
+                case 0 | 1 | 7 => if indefinite then None else go(next, remaining, parents, depth)
+                case 2 | 3 =>
+                  if indefinite then
+                    if depth >= MaxDepth then None
+                    else go(next, -1L, remaining :: parents, depth + 1)
+                  else if arg >= 0 && arg <= (a.length - next).toLong then
+                    go(next + arg.toInt, remaining, parents, depth)
+                  else None
+                case 4 | 5 =>
+                  if indefinite then
+                    if depth >= MaxDepth then None
+                    else go(next, -1L, remaining :: parents, depth + 1)
+                  else if arg < 0 || arg > (a.length - next).toLong then None
+                  else if arg == 0 then go(next, remaining, parents, depth)
+                  else if depth >= MaxDepth then None
+                  else
+                    go(next, if major == 5 then arg * 2 else arg, remaining :: parents, depth + 1)
+                case _ => // 6: a tag wraps one more item
+                  if indefinite || depth >= MaxDepth then None
+                  else go(next, 1L, remaining :: parents, depth + 1)
+    go(from, 1L, Nil, 0)
 
 /** A block that passed validation, located in the chunk file. */
 final case class IndexedBlock(
@@ -386,18 +391,18 @@ object ChunkValidator:
           )
         yield IndexedBlock(e, pos, start.toInt, size)
 
-      val good = Vector.newBuilder[IndexedBlock]
-      var next = 0L
-      var fault: Option[ChunkFault] = None
-      var i = 0
-      while fault.isEmpty && i < listed do
-        check(i, next) match
-          case Right(b) =>
-            good += b
-            next = b.start.toLong + b.length
-            i += 1
-          case Left(f) => fault = Some(f)
-      val blocks = good.result()
+      // the entries in order, each where the one before it ends, until the first that fails
+      @tailrec def walk(
+          i: Int,
+          next: Long,
+          good: Vector[IndexedBlock]
+      ): (Vector[IndexedBlock], Option[ChunkFault]) =
+        if i >= listed then (good, None)
+        else
+          check(i, next) match
+            case Right(b) => walk(i + 1, b.start.toLong + b.length, good :+ b)
+            case Left(f)  => (good, Some(f))
+      val (blocks, fault) = walk(0, 0L, Vector.empty)
       val goodEnd = blocks.lastOption.fold(0L)(b => b.start.toLong + b.length)
       val leftoverEntries = math.max(filled.size, secondary.size) - blocks.size
       val leftoverBytes = data.length - goodEnd

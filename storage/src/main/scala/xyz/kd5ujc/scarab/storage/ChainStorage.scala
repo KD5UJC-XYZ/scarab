@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.storage
 
 import cats.effect.{Async, Clock, Ref, Resource}
+import scala.util.Using
 import cats.effect.std.{Mutex, Supervisor}
 import cats.effect.syntax.all.*
 import cats.mtl.{Handle, Raise}
@@ -201,10 +202,7 @@ object ChainStorage:
       AtomicFile.guard[F, Boolean](dir.toString) {
         val root = dir.toNioPath
         if !Files.exists(root) then false
-        else
-          val stream = Files.walk(root)
-          try stream.skip(1).findAny().isPresent
-          finally stream.close()
+        else Using.resource(Files.walk(root))(_.skip(1).findAny().isPresent)
       }
     def validateFirstPredecessor(expected: NetworkIdentity): F[Unit] =
       FileImmutableStore.firstBlockReadOnly[F](dir / "immutable").flatMap {

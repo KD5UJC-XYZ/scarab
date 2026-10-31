@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import cats.data.NonEmptyVector
 import cats.effect.{Async, Ref, Resource}
+import scala.util.Using
 import cats.effect.std.Mutex
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -11,6 +13,7 @@ import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.{Files, StandardOpenOption}
 import java.util.zip.CRC32
+import scala.annotation.tailrec
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
@@ -134,10 +137,8 @@ object VolatileStore:
     * at the first record that is incomplete, fails its checksum or is not understood.
     */
   def decodeAll(bytes: Array[Byte]): Vector[(VolatileRecord, Int)] =
-    val out = Vector.newBuilder[(VolatileRecord, Int)]
-    var at = 0
-    var ok = true
-    while ok && bytes.length - at >= HeaderSize do
+    // the record that starts at `at`, and where it ends, if it is complete, checks and is understood
+    def recordAt(at: Int): Option[(VolatileRecord, Int)] =
       val b = ByteBuffer.wrap(bytes, at, bytes.length - at)
       val crc = b.getInt
       val kind = b.get() & 0xff
@@ -147,13 +148,12 @@ object VolatileStore:
       val blockNo = b.getLong
       val hash = new Array[Byte](32)
       b.get(hash)
-      if length < 0 || length > bytes.length - at - HeaderSize || slot < 0 || blockNo < 0 then
-        ok = false
+      if length < 0 || length > bytes.length - at - HeaderSize || slot < 0 || blockNo < 0 then None
       else
         val end = at + HeaderSize + length
         val check = new CRC32()
         check.update(bytes, at + 4, end - at - 4)
-        if check.getValue.toInt != crc then ok = false
+        if check.getValue.toInt != crc then None
         else
           val record = kind match
             case KindBlock =>
@@ -174,12 +174,14 @@ object VolatileStore:
                 )
               )
             case _ => None
-          record match
-            case Some(r) =>
-              out += (r -> end)
-              at = end
-            case None => ok = false
-    out.result()
+          record.map(_ -> end)
+    @tailrec def go(at: Int, out: Vector[(VolatileRecord, Int)]): Vector[(VolatileRecord, Int)] =
+      if bytes.length - at < HeaderSize then out
+      else
+        recordAt(at) match
+          case Some(found @ (_, end)) => go(end, out :+ found)
+          case None                   => out
+    go(0, Vector.empty)
 
   /** What [[open]] hands back besides the store: the chain the log describes, and where every block
     * record of the log is, in log order (a block logged twice appears twice).
@@ -191,6 +193,18 @@ object VolatileStore:
   )
 
   private final case class FileInfo(seq: Int, blocks: Int, maxSlot: BigInt)
+
+  /** What the scan at open has found so far. */
+  private final case class Scanned(
+      infos: Vector[FileInfo],
+      records: Vector[VolatileRecord],
+      located: Vector[(BlockRef, Location)],
+      cut: Long,
+      removed: Int,
+      damaged: Boolean
+  )
+  private object Scanned:
+    val empty: Scanned = Scanned(Vector.empty, Vector.empty, Vector.empty, 0L, 0, false)
 
   private val Suffix = ".log"
   private def nameOf(seq: Int) = f"$seq%08d$Suffix"
@@ -212,9 +226,7 @@ object VolatileStore:
       }
 
     def syncDir(): Unit =
-      val ch = FileChannel.open(root, StandardOpenOption.READ)
-      try ch.force(true)
-      finally ch.close()
+      Using.resource(FileChannel.open(root, StandardOpenOption.READ))(_.force(true))
 
     final class Current(val seq: Int, val channel: FileChannel)
 
@@ -224,54 +236,50 @@ object VolatileStore:
       guard(root.toString) {
         Files.createDirectories(root)
         val names = {
-          val s = Files.list(root)
-          try
+          Using.resource(Files.list(root)) { s =>
             s.iterator.asScala
               .map(_.getFileName.toString)
               .filter(_.endsWith(Suffix))
               .flatMap(n => n.stripSuffix(Suffix).toIntOption.map(_ -> n))
               .toVector
               .sortBy(_._1)
-          finally s.close()
+          }
         }
-        var infos = Vector.empty[FileInfo]
-        var records = Vector.empty[VolatileRecord]
-        var located = Vector.empty[(BlockRef, Location)]
-        var cut = 0L
-        var removed = 0
-        var damaged = false
-        names.foreach { (seq, name) =>
+        val scanned = names.foldLeft(Scanned.empty) { case (acc, (seq, name)) =>
           val path = root.resolve(name)
-          if damaged then
+          if acc.damaged then
             Files.delete(path)
-            removed += 1
+            acc.copy(removed = acc.removed + 1)
           else
             val bytes = Files.readAllBytes(path)
             val parsed = decodeAll(bytes)
             val good = parsed.lastOption.fold(0)(_._2)
-            if good < bytes.length then
-              val ch = FileChannel.open(path, StandardOpenOption.WRITE)
-              try
+            val torn = good < bytes.length
+            if torn then
+              Using.resource(FileChannel.open(path, StandardOpenOption.WRITE)) { ch =>
                 ch.truncate(good.toLong)
                 ch.force(true)
-              finally ch.close()
-              cut += bytes.length - good
-              damaged = true
+              }
             val rs = parsed.map(_._1)
-            records = records ++ rs
-            parsed.zip(0 +: parsed.map(_._2)).foreach {
+            val blocks = parsed.zip(0 +: parsed.map(_._2)).collect {
               case ((VolatileRecord.Block(ref, _), end), start) =>
-                located = located :+ (ref -> Location(seq, start.toLong, end - start))
-              case ((VolatileRecord.Rollback(_), _), _) => ()
+                ref -> Location(seq, start.toLong, end - start)
             }
-            infos = infos :+ FileInfo(
-              seq,
-              rs.count(_.isInstanceOf[VolatileRecord.Block]),
-              rs.collect { case VolatileRecord.Block(r, _) => r.slot }
-                .maxOption
-                .getOrElse(BigInt(-1))
+            acc.copy(
+              infos = acc.infos :+ FileInfo(
+                seq,
+                blocks.size,
+                rs.collect { case VolatileRecord.Block(r, _) => r.slot }
+                  .maxOption
+                  .getOrElse(BigInt(-1))
+              ),
+              records = acc.records ++ rs,
+              located = acc.located ++ blocks,
+              cut = acc.cut + (if torn then (bytes.length - good).toLong else 0L),
+              damaged = torn
             )
         }
+        val Scanned(infos, records, located, cut, removed, _) = scanned
         if cut > 0 || removed > 0 then syncDir()
         (infos, records, cut, removed, located)
       }
@@ -283,8 +291,13 @@ object VolatileStore:
           (infos, records, cut, removed, located) = scanned
           mutex <- Mutex[F]
           chain = chainOf(records)
-          startNew = infos.lastOption.forall(_.blocks >= blocksPerFile)
-          seq = if startNew then infos.lastOption.fold(0)(_.seq + 1) else infos.last.seq
+          // the newest file, unless it is full or there is none: then a new one after it
+          (seq, startNew, opening) = infos.lastOption match
+            case Some(last) if last.blocks < blocksPerFile =>
+              (last.seq, false, NonEmptyVector.one(last).prependVector(infos.dropRight(1)))
+            case newest =>
+              val next = newest.fold(0)(_.seq + 1)
+              (next, true, NonEmptyVector.one(FileInfo(next, 0, BigInt(-1))).prependVector(infos))
           channel <- guard(root.toString) {
             val ch = FileChannel.open(
               root.resolve(nameOf(seq)),
@@ -296,9 +309,7 @@ object VolatileStore:
             if startNew then syncDir()
             ch
           }
-          files <- Ref.of[F, Vector[FileInfo]](
-            if startNew then infos :+ FileInfo(seq, 0, BigInt(-1)) else infos
-          )
+          files <- Ref.of[F, NonEmptyVector[FileInfo]](opening)
           current <- Ref.of[F, Current](new Current(seq, channel))
         yield (
           mutex,
@@ -307,18 +318,16 @@ object VolatileStore:
           Opened(chain, OpenReport(chain.size, infos.size, cut, removed), located)
         )
       ) { (_, _, current, _) =>
-        current.get.flatMap(c =>
-          guard(root.toString)(
-            try c.channel.force(true)
-            finally c.channel.close()
-          )
-        )
+        current.get.flatMap(c => guard(root.toString)(Using.resource(c.channel)(_.force(true))))
       }
       .map { (mutex, files, current, opened) =>
         val store = new VolatileStore[F]:
           private def write(channel: FileChannel, bytes: Array[Byte]): Unit =
-            val buf = ByteBuffer.wrap(bytes)
-            while buf.hasRemaining do channel.write(buf)
+            @tailrec def rest(buf: ByteBuffer): Unit =
+              if buf.hasRemaining then
+                channel.write(buf)
+                rest(buf)
+            rest(ByteBuffer.wrap(bytes))
 
           /** Start a new file when the current one holds `blocksPerFile` blocks. */
           private def roll(using cats.mtl.Raise[F, StorageError]): F[Unit] =
@@ -361,10 +370,14 @@ object VolatileStore:
                 _ <- record match
                   case VolatileRecord.Block(ref, _) =>
                     files.update(fs =>
-                      fs.init :+ fs.last.copy(
-                        blocks = fs.last.blocks + 1,
-                        maxSlot = fs.last.maxSlot.max(ref.slot)
-                      )
+                      NonEmptyVector
+                        .one(
+                          fs.last.copy(
+                            blocks = fs.last.blocks + 1,
+                            maxSlot = fs.last.maxSlot.max(ref.slot)
+                          )
+                        )
+                        .prependVector(fs.init)
                     )
                   case _ => F.unit
               yield at
@@ -381,12 +394,14 @@ object VolatileStore:
             mutex.lock.surround {
               val path = root.resolve(nameOf(at.seq))
               guard(path.toString) {
-                val ch = FileChannel.open(path, StandardOpenOption.READ)
-                try
-                  val buf = ByteBuffer.allocate(at.length)
-                  while buf.hasRemaining && ch.read(buf, at.offset + buf.position()) >= 0 do ()
-                  buf.array()
-                finally ch.close()
+                Using.resource(FileChannel.open(path, StandardOpenOption.READ)) { ch =>
+                  // until the buffer is full or the file ends
+                  @tailrec def fill(buf: ByteBuffer): Array[Byte] =
+                    if buf.hasRemaining && ch.read(buf, at.offset + buf.position()) >= 0 then
+                      fill(buf)
+                    else buf.array()
+                  fill(ByteBuffer.allocate(at.length))
+                }
               }.map { bytes =>
                 decodeAll(bytes) match
                   case Vector((VolatileRecord.Block(ref, raw), end)) if end == bytes.length =>
@@ -412,7 +427,9 @@ object VolatileStore:
                   guard(root.toString) {
                     doomed.foreach(f => Files.deleteIfExists(root.resolve(nameOf(f.seq))))
                     syncDir()
-                  } *> files.update(_.drop(doomed.size))
+                  } *> files.update(fs =>
+                    NonEmptyVector.one(fs.last).prependVector(fs.init.drop(doomed.size))
+                  )
               }
             }
         (store: VolatileStore[F], opened)

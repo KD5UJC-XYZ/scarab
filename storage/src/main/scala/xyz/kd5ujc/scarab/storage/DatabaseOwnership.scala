@@ -26,19 +26,23 @@ object DatabaseOwnership:
         val parent = absolute.getParent.toRealPath()
         val lock = parent.resolve(s".${absolute.getFileName}.scarab-lock")
         val channel = FileChannel.open(lock, StandardOpenOption.CREATE, StandardOpenOption.WRITE)
-        try
-          val owned =
-            try Option(channel.tryLock())
-            catch case _: OverlappingFileLockException => None
-          owned match
+        // The channel stays open with its lock; without one it is closed. A lock held in this JVM
+        // is another owner, as one held by another process is.
+        def leased: Either[StorageError, (FileChannel, FileLock)] =
+          Either
+            .catchOnly[OverlappingFileLockException](channel.tryLock())
+            .fold(_ => None, Option(_)) match
             case Some(lease) => Right((channel, lease))
             case None =>
               channel.close()
               Left(StorageError.DatabaseInUse(db.toString))
-        catch
-          case scala.util.control.NonFatal(e) =>
+        Either
+          .catchNonFatal(leased)
+          .leftMap { e =>
             channel.close()
-            Left(StorageError.Io(lock.toString, e))
+            StorageError.Io(lock.toString, e)
+          }
+          .flatten
       }
       .attempt
       .flatMap {

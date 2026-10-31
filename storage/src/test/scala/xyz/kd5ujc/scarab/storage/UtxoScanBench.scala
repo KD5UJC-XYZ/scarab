@@ -86,15 +86,29 @@ object UtxoScanBench:
       }
       .map(_ => picked.result())
 
+  /** An order-free fingerprint of a result, to compare builds: its size and the sum of its hashes.
+    */
+  private def fingerprint(m: Map[TxIn, TxOut]): String =
+    s"${m.size}/${m.iterator.map(_.##.toLong).sum}"
+
   private def compare(store: UtxoStore[IO], wanted: Set[Bytes], round: Int)(using
       cats.mtl.Raise[cats.effect.IO, xyz.kd5ujc.scarab.ledger.StorageError]
   ): IO[Unit] =
     for
+      n <- timed(s"round $round count every entry (size)")(store.size)
+      every <- timed(s"round $round every output (all)")(store.all)
+      _ <- IO.println(s"BENCH round $round: count $n, all ${fingerprint(every)}")
+      visited <- IO(new java.util.concurrent.atomic.AtomicLong)
+      _ <- timed(s"round $round visit every output (scan)")(
+        store.scan((_, _) => visited.incrementAndGet(): Unit)
+      )
       old <- timed(s"round $round decode every output (select)")(
         store.select(out => wanted(out.address.raw))
       )
       now <- timed(s"round $round decode candidates only (selectAddresses)")(
         store.selectAddresses(wanted)
       )
-      _ <- IO.println(s"BENCH round $round: ${old.size} entries, equal: ${old == now}")
+      _ <- IO.println(
+        s"BENCH round $round: scan ${visited.get}, select ${fingerprint(old)}, equal: ${old == now}"
+      )
     yield ()
