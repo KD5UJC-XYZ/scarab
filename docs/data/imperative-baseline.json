@@ -49,10 +49,6 @@
    "catch": 2,
    "try": 2
   },
-  "models-gen/src/main/scala/xyz/kd5ujc/scarab/models/gen/Main.scala": {
-   "catch": 1,
-   "try": 1
-  },
   "models/src/main/scala/xyz/kd5ujc/scarab/models/runtime/Codec.scala": {
    "catch": 1,
    "try": 1
