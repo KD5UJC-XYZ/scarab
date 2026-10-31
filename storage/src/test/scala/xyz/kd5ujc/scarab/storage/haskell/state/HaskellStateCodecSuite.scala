@@ -563,6 +563,21 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     assertEquals(codec.encodeUnchecked(action), stored)
   }
 
+  test(
+    "a stored Conway parameter change with indefinite Prices and ExUnits loads and writes back"
+  ) {
+    // A body decoder that refuses them (`RecD`, below decoder version 12) came after states that
+    // hold them; such a state still loads (ADR 0006): {19: [_ 1/2, 1/3], 20: [_ 1, 2], 21: [_ 3, 4]}.
+    val stored = hex("8400 f6 a3 13 9fd81e820102d81e820103ff 14 9f0102ff 15 9f0304ff f6")
+    val codec = govAction(using version(10))
+    val action = readOk(codec, stored)
+    action match
+      case xyz.kd5ujc.scarab.ledger.GovAction.ParameterChange(None, update, None) =>
+        assertEquals(update.keys, Set(19, 20, 21))
+      case other => fail(s"not a parameter change: $other")
+    assertEquals(codec.encodeUnchecked(action), stored)
+  }
+
   test("a stored Conway parameter change with a key that is not a Conway field is refused") {
     // A state written before the update was typed could hold key 12 (d); the reference cannot
     // represent it, so reading such a state fails with the ledger's typed error.

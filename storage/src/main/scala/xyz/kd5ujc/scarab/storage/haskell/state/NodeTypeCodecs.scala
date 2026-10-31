@@ -202,13 +202,13 @@ trait NodeTypeCodecs extends VocabularyCodecs:
       })
 
   /** The Conway `PParamsUpdate` of a parameter-change proposal: written as [[paramUpdate]] writes
-    * an update, each value in its original encoding, and read by the ledger's Conway decoder
-    * ([[ConwayParamUpdate.decode]]), so a state holding a key that is not a Conway field or a value
-    * not of its field's type is refused with the ledger's typed error.
+    * an update, each value in its original encoding, and read by the ledger's Conway decoder of a
+    * stored update ([[ConwayParamUpdate.decodeStored]]), so a state holding a key that is not a
+    * Conway field or a value not of its field's type is refused with the ledger's typed error.
     */
   given conwayParamUpdate: Codec[ConwayParamUpdate] = new Codec[ConwayParamUpdate]:
     def decode(n: Node): Decoded[ConwayParamUpdate] =
-      ConwayParamUpdate.decode(n).left.map(why => DecodeError.at(n, Kind.Domain(why)))
+      ConwayParamUpdate.decodeStored(n).left.map(why => DecodeError.at(n, Kind.Domain(why)))
     def encode(a: ConwayParamUpdate, out: Writer): Unit =
       out.variableMap(a.encodings.size)(a.encodings.foreach { (k, v) =>
         out.uint(k.toLong)

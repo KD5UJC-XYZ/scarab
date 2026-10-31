@@ -27,6 +27,7 @@ private[ledger] object ReferenceCorpus:
     case EraForms extends Corpus("era-forms", Layout.Lines)
     case PoolRelays extends Corpus("pool-relays", Layout.Lines)
     case UrlLength extends Corpus("url-length", Layout.Lines)
+    case UpdateValues extends Corpus("update-values", Layout.Lines)
 
   /** How a corpus is stored: `cases.json` beside `reference.json`, or one `cases.jsonl` with a case
     * and its verdict (`accepted`, `failure`) on each line.
@@ -134,7 +135,7 @@ private[ledger] object ReferenceCorpus:
     case AddressPathLeftover
         extends Rule("Found unexpected leftover bytes while decoding HDAddressPayload")
     case AddressWord32Canonical extends Rule("non-canonical word32")
-    case AddressWord32 extends Rule("expected word32")
+    case ExpectedWord32 extends Rule("expected word32")
     case AddressRootLength extends Rule("Bytes not expected length")
     case DuplicateKey extends Rule("Duplicate key:")
     case ExpectedWord extends Rule("expected word")
@@ -153,6 +154,11 @@ private[ledger] object ReferenceCorpus:
     case ExpectedWord16 extends Rule("expected word16")
     case TextBound64 extends Rule("Text exceeds 64 bytes")
     case TextBound128 extends Rule("Text exceeds 128 bytes")
+    case RationalSize extends Rule("Size mismatch when decoding Rational")
+    case VersionBound extends Rule("Unsupported version value")
+    case MajorBound extends Rule("exceeds the maximum expected version")
+    case NonceSize extends Rule("Size mismatch when decoding Sum Nonce")
+    case HashSize extends Rule("Number of bytes mismatch")
 
     /** The reference's failure is for this rule. */
     def explains(failure: Failure): Boolean = failure.text.contains(fragment)

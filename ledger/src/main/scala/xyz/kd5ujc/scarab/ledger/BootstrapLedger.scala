@@ -16,7 +16,6 @@ final case class ParamUpdate(fields: Map[Int, Bytes])
 
 object ParamUpdate:
   private val CostModelsField = 18
-  private val ExtraEntropyField = 13
 
   /** The update keys of the `PParamsUpdate` of a pre-Conway era: the `ppUpdate` tags of its
     * `eraPParams` (cardano-ledger f649f975). Shelley, Allegra and Mary have 0 to 16
@@ -29,27 +28,36 @@ object ParamUpdate:
     case Alonzo extends Keys(((0 to 14) ++ (16 to 24)).toSet)
     case Babbage extends Keys(((0 to 11) ++ Seq(14) ++ (16 to 24)).toSet)
 
-  object Keys:
-    /** The keys of the update of `era`; none for Byron and Conway, which have no PPUP. */
-    def of(era: Era): Option[Keys] = era match
-      case Era.Shelley | Era.Allegra | Era.Mary => Some(ShelleyToMary)
-      case Era.Alonzo                           => Some(Alonzo)
-      case Era.Babbage                          => Some(Babbage)
-      case Era.Byron | Era.Conway               => None
+  /** What the update of an era is read against: its update keys, and the largest protocol major its
+    * key 14 may propose. That is `succVersion (ProtVerHigh era)` in `decodeProtVer`
+    * (`BaseTypes.hs:253-262`), the decoder of `ppProtocolVersion` (`Shelley/PParams.hs:472-479`),
+    * where `ProtVerHigh` is the era's `ProtVerLow` unless the era names it
+    * (`Internal/Definition/Era.hs:64, 92-125`): Shelley 2, Allegra 3, Mary 4, Alonzo 6, Babbage 8.
+    */
+  final case class Rules(keys: Keys, maxMajor: BigInt)
+
+  object Rules:
+    /** The rules of the update of `era`; none for Byron and Conway, which have no PPUP. */
+    def of(era: Era): Option[Rules] = era match
+      case Era.Shelley            => Some(Rules(Keys.ShelleyToMary, 3))
+      case Era.Allegra            => Some(Rules(Keys.ShelleyToMary, 4))
+      case Era.Mary               => Some(Rules(Keys.ShelleyToMary, 5))
+      case Era.Alonzo             => Some(Rules(Keys.Alonzo, 7))
+      case Era.Babbage            => Some(Rules(Keys.Babbage, 9))
+      case Era.Byron | Era.Conway => None
 
   /** The update of a transaction or proposal from its map of field index to value, as the shared
     * sparse decoder of `PParamsUpdate` reads it below decoder version 12 (`SparseKeyed`,
     * `Core/PParams.hs:257-293`; `applyField`, `Coders.hs:562-570`): entries in order, the key a
     * `Word`, a key read before refused (`duplicateKey`), a key that is not one of the era's update
-    * keys refused (`invalidKey`). The cost models of field 18 are checked by the rule of the
-    * decoder version of the era ([[CostModelDecode]]), and the extra entropy of field 13 (Shelley
-    * to Alonzo, `ppExtraEntropy`, `Shelley/PParams.hs:463-469`) is read as a [[Nonce]], its hash in
-    * the form `ByteStrings` gives; the other fields are kept as they are and read when the update
-    * is applied.
+    * keys refused (`invalidKey`), and each value read at the type of its field, the first bad one
+    * failing the update. The original bytes of each value are kept: they are what a proposal is
+    * compared and stored by, and [[ProtocolParams.update]] reads them again when the update is
+    * applied.
     */
   def read(
       fields: Vector[(Node, Node)],
-      keys: Keys,
+      rules: Rules,
       costModels: CostModelDecode.Format
   )(using ByteStrings): Either[LedgerDecodeError, ParamUpdate] =
     fields
@@ -62,28 +70,67 @@ object ParamUpdate:
             LedgerDecodeError.DuplicateKey(DecodeField.ParameterUpdate)
           )
           key <- Option
-            .when(index.isValidInt && keys.keys.contains(index.toInt))(index.toInt)
+            .when(index.isValidInt && rules.keys.keys.contains(index.toInt))(index.toInt)
             .toRight(LedgerDecodeError.UnknownKey(DecodeField.ParameterUpdate, index))
-          _ <-
-            if key == CostModelsField then CostModelDecode.decode(v, costModels).void
-            else if key == ExtraEntropyField then Nonce.decode(v, Nonce.NeutralFields.Exact).void
-            else Right(())
+          _ <- value(key, v, rules, costModels)
         yield acc.updated(key, v.original)
       }
       .map(ParamUpdate(_))
 
-  /** [[read]] at the update keys of `era`; an era without PPUP has no update (key 6 is not a field
-    * of its body).
+  /** [[read]] at the rules of `era`; an era without PPUP has no update (key 6 is not a field of its
+    * body).
     */
   def read(
       fields: Vector[(Node, Node)],
       era: Era,
       costModels: CostModelDecode.Format
   )(using ByteStrings): Either[LedgerDecodeError, ParamUpdate] =
-    Keys
+    Rules
       .of(era)
       .toRight(LedgerDecodeError.UnknownFields(DecodeField.TransactionBody, Set(6)))
       .flatMap(read(fields, _, costModels))
+
+  /** The value of `key`, one of the era's update keys, read at its field's type. The keys every
+    * Shelley-based era shares are read as Conway reads them ([[ConwayParam.everyEra]]). The others
+    * are the fields of `ShelleyPParams` that Conway does not have (`Shelley/PParams.hs`, f649f975):
+    * `d` (12, `ppD`, 454-461), a `UnitInterval`; the extra entropy (13, `ppExtraEntropy`, 463-469),
+    * a `Nonce` with its hash in the form `ByteStrings` gives; the protocol version (14,
+    * `ppProtocolVersion`, 472-479), read by `decodeProtVer`; and the minimum UTxO value (15,
+    * `ppMinUTxOValue`, 481-488), a `CompactForm Coin`, one `Word64`. The cost models of 18 are
+    * checked by the rule of the decoder version of the era ([[CostModelDecode]]).
+    */
+  private def value(key: Int, v: Node, rules: Rules, costModels: CostModelDecode.Format)(using
+      ByteStrings
+  ): Either[LedgerDecodeError, Unit] = key match
+    case 12              => CborRead.rational(v, DecodeField.D, CborRead.Bound.Unit).void
+    case 13              => Nonce.decode(v, Nonce.NeutralFields.Exact).void
+    case 14              => protocolVersion(v, rules.maxMajor)
+    case 15              => Unsigned.read[Unsigned.Width.W64](v, DecodeField.MinUTxOValue).void
+    case CostModelsField => CostModelDecode.decode(v, costModels).void
+    case _ =>
+      ConwayParam.everyEra
+        .get(BigInt(key))
+        .toRight(LedgerDecodeError.UnknownKey(DecodeField.ParameterUpdate, BigInt(key)))
+        .flatMap(_(v))
+        .void
+
+  /** `decodeProtVer` (`BaseTypes.hs:253-262`): the `ProtVer` record, `CBORGroup` over a list of two
+    * (`BaseTypes.hs:211-214, 243-244`; `groupRecord`, `Binary/Group.hs:27-35`), of a major read by
+    * `decodeVersion` (a `Word32` within `MaxVersion`, `Decoder.hs:462-463`) and a `Word32` minor; a
+    * major above the era's `maxMajor` is refused. The era's bound is below `MaxVersion`, so it is
+    * the only bound of the major.
+    */
+  private def protocolVersion(v: Node, maxMajor: BigInt): Either[LedgerDecodeError, Unit] =
+    for
+      xs <- CborRead.arrayN(v, 2, DecodeField.ProtocolVersion)
+      major <- Unsigned.read[Unsigned.Width.W32](xs(0), DecodeField.Major)
+      _ <- Either.cond(
+        major.value <= maxMajor,
+        (),
+        LedgerDecodeError.NumberOutOfRange(DecodeField.Major, major.value, 0, maxMajor)
+      )
+      _ <- Unsigned.read[Unsigned.Width.W32](xs(1), DecodeField.Minor)
+    yield ()
 
 /** The protocol parameters the bootstrap ledger tracks: those that header validation reads. */
 final case class LiteParams(
