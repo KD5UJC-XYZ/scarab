@@ -130,9 +130,10 @@ object JsonValue:
     def applied(d: Int, name: Predef.String, argument: List[Piece]): List[Piece] =
       if d > 10 then Piece.Text("(" + name) :: argument ::: List(Piece.Text(")"))
       else Piece.Text(name) :: argument
-    @tailrec def loop(todo: List[Piece], out: StringBuilder): Predef.String = todo match
-      case Nil                      => out.result()
-      case Piece.Text(text) :: rest => loop(rest, out.append(text))
+    // the text written so far, newest first
+    @tailrec def loop(todo: List[Piece], out: List[Predef.String]): Predef.String = todo match
+      case Nil                      => out.reverse.mkString
+      case Piece.Text(text) :: rest => loop(rest, text :: out)
       case Piece.Value(v, d) :: rest =>
         v match
           case Object(fields) =>
@@ -162,8 +163,8 @@ object JsonValue:
             loop(applied(d, "Number ", List(Piece.Text(shown))) ::: rest, out)
           case Bool(b) =>
             loop(applied(d, "Bool ", List(Piece.Text(if b then "True" else "False"))) ::: rest, out)
-          case Null => loop(rest, out.append("Null"))
-    loop(List(Piece.Value(value, 0)), new StringBuilder)
+          case Null => loop(rest, "Null" :: out)
+    loop(List(Piece.Value(value, 0)), Nil)
 
 /** text 2.1.3 `Text`: Unicode scalar values only, ordered by code point. */
 opaque type JsonText = String

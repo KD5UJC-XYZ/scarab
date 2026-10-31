@@ -103,13 +103,12 @@ object Phase2:
   /** Instance-local builder behind a pure, block-local interface. It avoids a second ledger pass on
     * the measured hot path; neither the capability nor the tentative state escapes the plan.
     */
+  @SuppressWarnings(Array("org.wartremover.warts.MutableDataStructures"))
   private[ledger] def capture[A](body: Preparation => A): (Either[Defect, A], Vector[Job]) =
     val jobs = Vector.newBuilder[Job]
     val recorder = new Preparation:
       def append(job: Job): Unit = { val _ = jobs.addOne(job); () }
-    val result =
-      try Right(body(recorder))
-      catch case scala.util.control.NonFatal(cause) => Left(Defect(cause))
+    val result = Either.catchNonFatal(body(recorder)).leftMap(Defect(_))
     (result, jobs.result())
 
   /** Every required, provided Plutus script in the reference's collection order, reversed on

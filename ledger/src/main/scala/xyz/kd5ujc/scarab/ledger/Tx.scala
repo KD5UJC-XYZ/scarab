@@ -717,24 +717,26 @@ object Tx:
   def fromEnvelope(bytes: Bytes, era: Era): Either[LedgerDecodeError, Tx] =
     CborRead.decode(bytes).flatMap { node =>
       val withFlag = era.ordinal >= Era.Alonzo.ordinal
-      CborRead.arrayN(node, if withFlag then 4 else 3, DecodeField.Transaction).flatMap { xs =>
-        val valid =
-          if withFlag then
-            xs(2).value match
-              case xyz.kd5ujc.scarab.codec.Value.Bool(flag) => Right(flag)
-              case other =>
-                Left(
-                  LedgerDecodeError
-                    .Expected(DecodeField.IsValid, LedgerDecodeError.Shape.Boolean, other)
-                )
-          else Right(true)
-        val aux = xs.last
+      def whole(body: Node, witnesses: Node, aux: Node, flag: Boolean) =
         val auxBytes = aux.value match
           case xyz.kd5ujc.scarab.codec.Value.Null => None
           case _                                  => Some(aux.original)
-        valid.flatMap(flag =>
-          fromBlock(Block.Transaction(xs(0).original, xs(1).original, auxBytes, flag), era)
-        )
+        fromBlock(Block.Transaction(body.original, witnesses.original, auxBytes, flag), era)
+      CborRead.array(node, DecodeField.Transaction).flatMap {
+        case Vector(body, witnesses, flag, aux) if withFlag =>
+          flag.value match
+            case xyz.kd5ujc.scarab.codec.Value.Bool(valid) => whole(body, witnesses, aux, valid)
+            case other =>
+              Left(
+                LedgerDecodeError
+                  .Expected(DecodeField.IsValid, LedgerDecodeError.Shape.Boolean, other)
+              )
+        case Vector(body, witnesses, aux) if !withFlag => whole(body, witnesses, aux, true)
+        case xs =>
+          Left(
+            LedgerDecodeError
+              .ArrayLength(DecodeField.Transaction, if withFlag then 4 else 3, xs.size)
+          )
       }
     }
 

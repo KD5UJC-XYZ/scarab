@@ -136,8 +136,12 @@ object ScriptContexts:
   ): Result[Option[PlutusData]] =
     if out.scriptRef.isDefined && !env.conway then
       fail(TranslationError.ReferenceScriptsNotSupported(source))
-    else if out.datum.isInstanceOf[Datum.Inline] then
-      fail(TranslationError.InlineDatumsNotSupported(source))
+    else if (
+        out.datum match
+          case _: Datum.Inline => true
+          case _               => false
+      )
+    then fail(TranslationError.InlineDatumsNotSupported(source))
     else
       address(out.address) match
         case None =>
@@ -364,15 +368,14 @@ object ScriptContexts:
         Right(constr(1, previous(prev), constr(0, I(major), I(minor))))
       case GovAction.TreasuryWithdrawals(withdrawals, script) =>
         val entries = withdrawals
-          .sortBy(w => (w._1.credential.isInstanceOf[Credential.Key], w._1.credential.hash.hex))
+          .sortBy(w => (w._1.credential.isKey, w._1.credential.hash.hex))
           .map { case (a, amount) =>
             (credential(a.credential): PlutusData) -> (I(amount): PlutusData)
           }
         Right(constr(2, PlutusData.Map(entries), policy(script)))
       case GovAction.NoConfidence(prev) => Right(constr(3, previous(prev)))
       case GovAction.UpdateCommittee(prev, removed, added, quorum) =>
-        val ordered = (c: Vector[Credential]) =>
-          c.sortBy(c => (c.isInstanceOf[Credential.Key], c.hash.hex))
+        val ordered = (c: Vector[Credential]) => c.sortBy(c => (c.isKey, c.hash.hex))
         Right(
           constr(
             4,
@@ -553,7 +556,7 @@ object ScriptContexts:
       .map { case (a, amount) => (a.credential, amount) }
       .toMap
       .toVector
-      .sortBy { case (c, _) => (c.isInstanceOf[Credential.Script], c.hash.hex) }
+      .sortBy { case (c, _) => (!c.isKey, c.hash.hex) }
       .map { case (c, amount) => (stakingHash(c), I(amount.value): PlutusData) }
     if asMap then PlutusData.Map(entries)
     else PlutusData.List(entries.map { case (k, v) => constr(0, k, v) })
