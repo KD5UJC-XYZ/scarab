@@ -8,7 +8,7 @@ import cats.mtl.Raise
 import cats.syntax.all.*
 import org.scijava.nativelib.NativeLibraryUtil
 import org.scijava.nativelib.NativeLibraryUtil.Architecture
-import scala.util.control.NonFatal
+import scala.util.Using
 import scalus.crypto.jni.{Blst as JniBlst, CryptoJni, Secp256k1 as JniSecp256k1, Sodium}
 
 /** The platforms `org.scalus:scalus-crypto-jni:0.1.0` ships `libscalus_crypto` for, the resource of
@@ -150,12 +150,12 @@ object NativeCrypto:
   def available: Boolean = loaded.isRight
 
   private def loaded: Either[Option[Throwable], Unit] =
-    try Either.cond(CryptoJni.isEnabled, (), None)
-    catch
-      // ExceptionInInitializerError and NoClassDefFoundError are LinkageErrors, which NonFatal
-      // does not match
-      case e: LinkageError => Left(Some(e))
-      case NonFatal(e)     => Left(Some(e))
+    // ExceptionInInitializerError and NoClassDefFoundError are LinkageErrors, which NonFatal does
+    // not match
+    Thrown
+      .orAlso[LinkageError, Boolean](CryptoJni.isEnabled)
+      .leftMap(Some(_))
+      .flatMap(Either.cond(_, (), None))
 
   def sha256Hex(bytes: Array[Byte]): String =
     MessageDigest.getInstance("SHA-256").digest(bytes).map(b => f"${b & 0xff}%02x").mkString
@@ -189,9 +189,7 @@ object NativeCrypto:
         )
         .flatMap(name =>
           Option(loader.getResourceAsStream(name)).map { in =>
-            val bytes =
-              try in.readAllBytes()
-              finally in.close()
+            val bytes = Using.resource(in)(_.readAllBytes())
             CryptoLibrary.Resource(name, sha256Hex(bytes))
           }
         )
@@ -219,10 +217,12 @@ object NativeCrypto:
   def knownAnswers[F[_]: Sync](platform: CryptoPlatform): F[Option[NativeCryptoProblem]] =
     Sync[F].blocking {
       def attempt(answer: CryptoKnownAnswer)(check: => Boolean): Option[NativeCryptoProblem] =
-        try Option.unless(check)(NativeCryptoProblem.WrongAnswer(answer))
-        catch
-          case e: LinkageError => Some(NativeCryptoProblem.AnswerDefect(answer, e))
-          case NonFatal(e)     => Some(NativeCryptoProblem.AnswerDefect(answer, e))
+        Thrown
+          .orAlso[LinkageError, Boolean](check)
+          .fold(
+            e => Some(NativeCryptoProblem.AnswerDefect(answer, e)),
+            Option.unless(_)(NativeCryptoProblem.WrongAnswer(answer))
+          )
       import KnownAnswers.*
       import CryptoKnownAnswer.*
       loaded.left

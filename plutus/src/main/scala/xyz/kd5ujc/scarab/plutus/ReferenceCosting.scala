@@ -71,7 +71,7 @@ private[plutus] object ReferenceCosting:
     /** `sumCostStream` (lines 71-79): a left fold. */
     def sum: SatInt = this match
       case Last(cost)     => cost
-      case Many(elements) => elements.tail.foldLeft(elements.head)(_ + _)
+      case Many(elements) => elements.reduceLeftOption(_ + _).getOrElse(SatInt.Zero)
 
     /** `mapCostStream` (lines 83-91). */
     def map(f: SatInt => SatInt): CostStream = this match
@@ -82,7 +82,9 @@ private[plutus] object ReferenceCosting:
     def add(other: CostStream): CostStream =
       @tailrec
       def interleave(a: Vector[SatInt], b: Vector[SatInt], out: Vector[SatInt]): Vector[SatInt] =
-        if a.sizeIs == 1 then (out :+ a.head) ++ b else interleave(b, a.tail, out :+ a.head)
+        a match
+          case first +: rest if rest.nonEmpty => interleave(b, rest, out :+ first)
+          case _                              => (out ++ a) ++ b
       (this, other) match
         case (Last(l), Last(r)) => Last(l + r)
         case _                  => CostStream.of(interleave(costs, other.costs, Vector.empty))
@@ -111,7 +113,9 @@ private[plutus] object ReferenceCosting:
 
     /** The stream of non-empty `costs`: a single cost is `CostLast`, as the reference builds it. */
     private[ReferenceCosting] def of(costs: Vector[SatInt]): CostStream =
-      if costs.sizeIs == 1 then Last(costs.head) else Many(costs)
+      costs match
+        case Vector(only) => Last(only)
+        case _            => Many(costs)
 
   /** `scaleLinearly` (`Core.hs` lines 318-321). */
   private def scaleLinearly(intercept: SatInt, slope: SatInt, xs: CostStream): CostStream =
@@ -278,8 +282,11 @@ private[plutus] object ReferenceCosting:
       case CekValue.VCon(list: C.List) => list.tpe == uni
       case _                           => false
     arg match
-      case Arg.Opaque      => true
-      case Arg.AnyConstant => value.isInstanceOf[CekValue.VCon]
+      case Arg.Opaque => true
+      case Arg.AnyConstant =>
+        value match
+          case _: CekValue.VCon => true
+          case _                => false
       case Arg.ListOf =>
         value match
           case CekValue.VCon(_: C.List) | _: CekValue.VList => true
@@ -399,8 +406,8 @@ private[plutus] object ReferenceCosting:
     */
   final class BudgetStream(val elements: Vector[(SatInt, SatInt)])
       extends ScalusExUnits(
-        elements.tail.foldLeft(elements.head._2)(_ + _._2).toLong,
-        elements.tail.foldLeft(elements.head._1)(_ + _._1).toLong
+        elements.iterator.map(_._2).reduceLeftOption(_ + _).getOrElse(SatInt.Zero).toLong,
+        elements.iterator.map(_._1).reduceLeftOption(_ + _).getOrElse(SatInt.Zero).toLong
       )
 
   /** `zipCostStream` (`ExBudgetStream.hs` lines 58-77): CPU and memory element by element, the

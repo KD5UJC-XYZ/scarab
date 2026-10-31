@@ -3,6 +3,8 @@ package xyz.kd5ujc.scarab.plutus
 
 import cats.Id
 import cats.effect.kernel.Sync
+import cats.syntax.all.*
+import scala.annotation.tailrec
 import java.util.concurrent.{
   ExecutionException,
   SynchronousQueue,
@@ -12,7 +14,6 @@ import java.util.concurrent.{
 }
 import xyz.kd5ujc.scarab.codec.{Bytes, TreeFold}
 import xyz.kd5ujc.scarab.plutus.ExUnits
-import scala.util.control.NonFatal
 import scalus.cardano.ledger.{CostModels, ExUnits as ScalusExUnits, Language, MajorProtocolVersion}
 import scalus.cardano.onchain.plutus.prelude.List as PList
 import scalus.uplc.builtin.{ByteString, Data, platform}
@@ -66,9 +67,7 @@ object ScalusEvaluator:
   private val KeepAlive = 30L
   private lazy val bigStacks: ThreadPoolExecutor =
     val factory: ThreadFactory = task =>
-      val thread = Thread(null, task, "plutus-evaluator", StackSize)
-      thread.setDaemon(true)
-      thread
+      Thread.ofPlatform().name("plutus-evaluator").stackSize(StackSize).daemon(true).unstarted(task)
     ThreadPoolExecutor(0, Int.MaxValue, KeepAlive, TimeUnit.SECONDS, SynchronousQueue(), factory)
 
   /** A fresh interpreter with its own caches. */
@@ -157,8 +156,9 @@ object ScalusEvaluator:
 
     /** The machine recurses on the term; run on a thread with a large stack. */
     private def onBigStack[A](failed: Throwable => A)(body: => A): A =
-      try bigStacks.submit(() => body).get()
-      catch case error: ExecutionException => failed(Option(error.getCause).getOrElse(error))
+      Either
+        .catchOnly[ExecutionException](bigStacks.submit(() => body).get())
+        .fold(error => failed(Option(error.getCause).getOrElse(error)), identity)
 
     /** The checks of the ledger's deserialisation and of `mkTermToEvaluate`, in that order. */
     private def admitted(
@@ -196,12 +196,11 @@ object ScalusEvaluator:
       vms.getOrElseUpdate(key)(buildVm(key))
 
     private def buildVm(key: VmKey): Either[EvalFailure.Unsupported, PlutusVM] =
-      try
-        corrected(key.language, key.protocolMajor, key.costModel).left
-          .map(EvalFailure.Unsupported(_))
-      catch
-        case NonFatal(e) =>
-          Left(EvalFailure.Unsupported(BackendFailure.Defect(e)))
+      Either
+        .catchNonFatal(corrected(key.language, key.protocolMajor, key.costModel))
+        .leftMap(BackendFailure.Defect(_))
+        .flatten
+        .leftMap(EvalFailure.Unsupported(_))
 
     private def cached(script: Bytes): Option[Either[ScriptDecodeFailure, Decoded]] =
       programs.get(script)
@@ -212,47 +211,50 @@ object ScalusEvaluator:
     private def program(script: Bytes): Either[ScriptDecodeFailure, Decoded] =
       programs.getOrElseUpdate(
         script,
-        try
-          val bytes = script.toArray
-          // Scalus rejects bytes after the CBOR item, the reference keeps them as a remainder
-          val used = PlutusScriptBytes.cborItemLength(bytes)
-          PlutusScriptBytes
-            .flatOf(bytes)
-            .toRight(ScriptDecodeFailure.Malformed(ScriptProblem.CborByteStringExpected))
-            .flatMap { flat =>
-              decode(flat).left
-                .map(failure => ScriptDecodeFailure.Malformed(ScriptProblem.Flat(failure)))
-                .map { decoded =>
-                  Decoded(
-                    decoded.program,
-                    builtinsOf(decoded.program.term),
-                    bytes.length - used,
-                    decoded.scan
-                  )
-                }
-            }
-        catch
-          case _: StackOverflowError =>
-            Left(ScriptDecodeFailure.Unavailable(BackendFailure.StackExhausted))
-          case NonFatal(error) =>
-            Left(ScriptDecodeFailure.Unavailable(BackendFailure.Defect(error)))
+        Thrown
+          .orAlso[StackOverflowError, Either[ScriptDecodeFailure, Decoded]] {
+            val bytes = script.toArray
+            // Scalus rejects bytes after the CBOR item, the reference keeps them as a remainder
+            val used = PlutusScriptBytes.cborItemLength(bytes)
+            PlutusScriptBytes
+              .flatOf(bytes)
+              .toRight(ScriptDecodeFailure.Malformed(ScriptProblem.CborByteStringExpected))
+              .flatMap { flat =>
+                decode(flat).left
+                  .map(failure => ScriptDecodeFailure.Malformed(ScriptProblem.Flat(failure)))
+                  .map { decoded =>
+                    Decoded(
+                      decoded.program,
+                      builtinsOf(decoded.program.term),
+                      bytes.length - used,
+                      decoded.scan
+                    )
+                  }
+              }
+          }
+          .leftMap {
+            case _: StackOverflowError =>
+              ScriptDecodeFailure.Unavailable(BackendFailure.StackExhausted)
+            case error => ScriptDecodeFailure.Unavailable(BackendFailure.Defect(error))
+          }
+          .flatten
       )(ScriptDecodeFailure.cacheable)
 
-    /** The builtins a term mentions (iterative: terms can be deeply nested). */
+    /** The builtins a term mentions (on the heap: terms can be deeply nested). */
     private def builtinsOf(term: Term): Set[DefaultFun] =
-      val found = collection.mutable.Set.empty[DefaultFun]
-      val todo = collection.mutable.Stack(term)
-      while todo.nonEmpty do
-        todo.pop() match
-          case Term.Builtin(f, _)                          => found += f
-          case Term.LamAbs(_, t, _)                        => todo.push(t)
-          case Term.Apply(f, a, _)                         => todo.push(f); todo.push(a)
-          case Term.Force(t, _)                            => todo.push(t)
-          case Term.Delay(t, _)                            => todo.push(t)
-          case Term.Constr(_, as, _)                       => as.foreach(todo.push)
-          case Term.Case(a, cs, _)                         => todo.push(a); cs.foreach(todo.push)
-          case _: Term.Var | _: Term.Const | _: Term.Error => ()
-      found.toSet
+      @tailrec def walk(todo: List[Term], found: Set[DefaultFun]): Set[DefaultFun] = todo match
+        case Nil => found
+        case next :: rest =>
+          next match
+            case Term.Builtin(f, _)                          => walk(rest, found + f)
+            case Term.LamAbs(_, t, _)                        => walk(t :: rest, found)
+            case Term.Apply(f, a, _)                         => walk(a :: f :: rest, found)
+            case Term.Force(t, _)                            => walk(t :: rest, found)
+            case Term.Delay(t, _)                            => walk(t :: rest, found)
+            case Term.Constr(_, as, _)                       => walk(as.toList ++ rest, found)
+            case Term.Case(a, cs, _)                         => walk(a :: cs.toList ++ rest, found)
+            case _: Term.Var | _: Term.Const | _: Term.Error => walk(rest, found)
+      walk(List(term), Set.empty)
 
     private def run(request: EvalRequest): EvalResult =
       def failure(
@@ -279,26 +281,31 @@ object ScalusEvaluator:
             )
             val log = EvaluationLog()
             def spent = ExUnits(spender.getSpentBudget.memory, spender.getSpentBudget.steps)
-            try
-              val applied = request.args.foldLeft(script)((p, a) => p.applyArg(toData(a)))
-              runMachine(machine, applied, spender, log)
-              EvalResult.Success(spent, log.getLogs.toVector)
-            catch
-              case _: OutOfExBudgetError =>
-                failure(EvalFailure.OutOfBudget, spent, log.getLogs.toVector)
-              case NonFatal(error) =>
-                val logs = log.getLogs.toVector
-                val reason = log.refused.getOrElse(
-                  if referenceFailure(error) then EvalFailure.Script(ScriptFailure(error, logs))
-                  else EvalFailure.Unsupported(BackendFailure.Defect(error))
-                )
-                failure(reason, spent, logs)
-              case _: StackOverflowError =>
-                failure(
-                  EvalFailure.Unsupported(BackendFailure.StackExhausted),
-                  spent,
-                  log.getLogs.toVector
-                )
+            Thrown
+              .orAlso[StackOverflowError, Unit] {
+                val applied = request.args.foldLeft(script)((p, a) => p.applyArg(toData(a)))
+                runMachine(machine, applied, spender, log)
+              }
+              .fold(
+                {
+                  case _: OutOfExBudgetError =>
+                    failure(EvalFailure.OutOfBudget, spent, log.getLogs.toVector)
+                  case _: StackOverflowError =>
+                    failure(
+                      EvalFailure.Unsupported(BackendFailure.StackExhausted),
+                      spent,
+                      log.getLogs.toVector
+                    )
+                  case error =>
+                    val logs = log.getLogs.toVector
+                    val reason = log.refused.getOrElse(
+                      if referenceFailure(error) then EvalFailure.Script(ScriptFailure(error, logs))
+                      else EvalFailure.Unsupported(BackendFailure.Defect(error))
+                    )
+                    failure(reason, spent, logs)
+                },
+                _ => EvalResult.Success(spent, log.getLogs.toVector)
+              )
 
   /** The builtins Scalus 1.4.0 evaluates through scalus-crypto-jni (libsodium, libsecp256k1, blst).
     */
@@ -369,9 +376,11 @@ object ScalusEvaluator:
     * evaluation-local log and signal only with its documented BuiltinException. The interpreter
     * translates it to EvalResult before leaving its worker; no custom domain exception is used.
     */
+  @SuppressWarnings(Array("org.wartremover.warts.Var"))
   private final class EvaluationLog extends Log:
     var refused: Option[EvalFailure] = None
 
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   private def unavailable(logger: Logger, reason: EvalFailure): Nothing =
     logger match
       case log: EvaluationLog => log.refused = Some(reason)
@@ -420,7 +429,7 @@ object ScalusEvaluator:
       cardano.SerialiseData.copy(f =
         (_, args) =>
           CekValue.VCon(
-            Constant.ByteString(ByteString.fromArray(DataSerialiser.serialise(args.head.asData)))
+            Constant.ByteString(ByteString.fromArray(DataSerialiser.serialise(args(0).asData)))
           )
       )
     private val equalsData: BuiltinRuntime =
@@ -447,6 +456,8 @@ object ScalusEvaluator:
       ScalusEvaluator.nativeCrypto.iterator.map(fun => fun -> nativeGuarded(fun)).toMap
     private val ensurable =
       variant == BuiltinSemanticsVariant.D || variant == BuiltinSemanticsVariant.E
+    // a builtin's `f` fails the script only by throwing (see `EvaluationLog`)
+    @SuppressWarnings(Array("org.wartremover.warts.Throw"))
     private val constrData: BuiltinRuntime =
       cardano.ConstrData.copy(f = (logger, args) =>
         val index = args(0).asInteger
@@ -475,6 +486,7 @@ object ScalusEvaluator:
       * outside them costs the application nothing and fails the script, as a failed unlifting does
       * in the reference (`toMonoF`, `mempty`), checked before the builtin's cost.
       */
+    @SuppressWarnings(Array("org.wartremover.warts.Throw"))
     private def bounded(fun: DefaultFun, runtime: BuiltinRuntime): BuiltinRuntime =
       val positions = UnliftingBounds.of(fun, variant)
       if !ensurable || positions.isEmpty then runtime
