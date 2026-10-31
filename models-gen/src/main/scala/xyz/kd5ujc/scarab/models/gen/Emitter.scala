@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.models.gen
 
-import cats.data.{Chain, StateT}
+import cats.data.{Chain, NonEmptyVector, StateT}
 import cats.syntax.all.*
 
 /** Resolves reachability before emitting source, with typed, stack-safe failures. */
@@ -180,32 +180,27 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
       case RT.Tagged(n, inner) =>
         wrapped(inner)(i => (i.tpe, s"rt.Codec.tagged(BigInt($n), ${i.codec})"))
       case RT.CborOf(inner) => wrapped(inner)(i => (i.tpe, s"rt.Codec.embedded(${i.codec})"))
-      case RT.Choice(alts) if maybeTagged(alts).isDefined =>
-        val (n, inner) = maybeTagged(alts).get
+      case RT.Choice(MaybeTagged(n, inner)) =>
         wrapped(inner)(i => (i.tpe, s"rt.Codec.maybeTagged(BigInt($n), ${i.codec})"))
-      case RT.Choice(alts) if alts.size == 2 && alts.contains(nil) =>
-        wrapped(alts.find(_ != nil).get)(i =>
-          (s"Option[${i.tpe}]", s"rt.Codec.nullable(${i.codec})")
-        )
-      case RT.Choice(alts) if intLits(alts).isDefined =>
-        inlineCodec("Int", s"rt.Codec.intIn(${intLits(alts).get.mkString(", ")})", o)
-      case RT.Choice(alts) if mergeableVectors(alts) =>
-        val vs = alts.collect { case RT.Arr(es) => es.head }
-        val min = vs.map(_.occ.min).min
-        val max =
-          if vs.exists(_.occ.max.isEmpty) then "Int.MaxValue"
-          else vs.flatMap(_.occ.max).max.toString
+      // `nil / nil` is neither nullable nor a plain choice: refused, where a choice would recurse
+      case RT.Choice(alts) if alts.nonEmpty && alts.forall(_ == nil) =>
+        unsupported(ctx, UnsupportedFeature.NilOnlyChoice)
+      case RT.Choice(Nullable(inner)) =>
+        wrapped(inner)(i => (s"Option[${i.tpe}]", s"rt.Codec.nullable(${i.codec})"))
+      case RT.Choice(IntLits(xs)) =>
+        inlineCodec("Int", s"rt.Codec.intIn(${xs.mkString(", ")})", o)
+      case RT.Choice(MergeableVectors(vs)) =>
+        val min = vs.map(_.occ.min).minimum
+        val max = vs.traverse(_.occ.max).fold("Int.MaxValue")(_.maximum.toString)
         wrapped(vs.head.value)(i => (s"Vector[${i.tpe}]", s"rt.Codec.vec(${i.codec}, $min, $max)"))
-      case RT.Arr(es) if isVector(es) =>
-        val e = es.head
+      case RT.Arr(VectorOf(e)) =>
         wrapped(e.value)(i =>
           (
             s"Vector[${i.tpe}]",
             s"rt.Codec.vec(${i.codec}, ${e.occ.min}, ${e.occ.max.fold("Int.MaxValue")(_.toString)})"
           )
         )
-      case RT.MapT(es) if isPairs(es) =>
-        val e = es.head
+      case RT.MapT(PairsOf(e)) =>
         // `{ + k => v }` and `{ n*m k => v }` bound the entry count as `[+ x]` bounds the items, except in a module
         // declared `lenient-maps`, whose reference decoder accepts any count (docs/models.md section 2)
         val bounds =
@@ -246,13 +241,12 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
         Some(if plural && !camel(q.name).endsWith("s") then camel(q.name) + "s" else camel(q.name))
       case RT.GroupRef(q) =>
         Some(if plural && !camel(q.name).endsWith("s") then camel(q.name) + "s" else camel(q.name))
-      case RT.Tagged(_, i)                                => loop(i, plural)
-      case RT.CborOf(i)                                   => loop(i, plural)
-      case RT.Choice(alts) if maybeTagged(alts).isDefined => loop(maybeTagged(alts).get._2, plural)
-      case RT.Choice(alts) if alts.size == 2 && alts.contains(nil) =>
-        loop(alts.find(_ != nil).get, plural)
-      case RT.Arr(es) if isVector(es) => loop(es.head.value, true)
-      case _                          => None
+      case RT.Tagged(_, i)                  => loop(i, plural)
+      case RT.CborOf(i)                     => loop(i, plural)
+      case RT.Choice(MaybeTagged(_, inner)) => loop(inner, plural)
+      case RT.Choice(Nullable(inner))       => loop(inner, plural)
+      case RT.Arr(VectorOf(e))              => loop(e.value, true)
+      case _                                => None
     loop(t, false)
 
   private def uniq(base: String, used: Set[String]): (String, Set[String]) =
@@ -260,6 +254,9 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
     val n =
       if !used(b0) then b0 else Iterator.from(2).map(i => b0 + i).find(n => !used(n)).getOrElse(b0)
     (esc(n), used + n)
+
+  private object Literal:
+    def unapply(t: RT): Option[(String, String)] = literalCode(t)
 
   private def literalCode(t: RT): Option[(String, String)] = t match
     case RT.LitInt(n) if n.signum >= 0 && n.isValidLong =>
@@ -279,8 +276,7 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
     es.zipWithIndex
       .foldLeftM((Set.empty[String], Vector.empty[ArrItem])) { case ((used, items), (e, idx)) =>
         e.value match
-          case v if literalCode(v).isDefined && e.occ.isOnce =>
-            val (check, write) = literalCode(v).get
+          case Literal(check, write) if e.occ.isOnce =>
             pure((used, items :+ ArrItem.Literal(check, write)))
           case RT.GroupRef(g) =>
             if !e.occ.isOnce then unsupported(ctx, UnsupportedFeature.RepeatedGroupReference)
@@ -400,8 +396,8 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
         )
       case RT.Choice(alts) if isPlainChoice(alts) =>
         enumCases(q, name, alts, o).map(Decl.Enum(q, name, _, o))
-      case RT.Choice(alts) if intLits(alts).isDefined =>
-        opaque("Int", s"rt.Codec.intIn(${intLits(alts).get.mkString(", ")})")
+      case RT.Choice(IntLits(xs)) =>
+        opaque("Int", s"rt.Codec.intIn(${xs.mkString(", ")})")
       case RT.Prim(PrimKind.Uint)                         => opaque("BigInt", "rt.Codec.uint")
       case RT.Prim(PrimKind.Int) | RT.Prim(PrimKind.Nint) => opaque("BigInt", "rt.Codec.int")
       case RT.Prim(PrimKind.Bytes) =>
@@ -422,8 +418,10 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
           owner <- data(o)
         yield Decl.Alias(q, name, i.tpe, unhoist(i.codec, owner), o)
     decl.flatMap { d =>
-      if cfg.preserve(q) && !d.isInstanceOf[Decl.Struct] then
-        unsupported(ctx, UnsupportedFeature.PreserveNonStruct)
+      val struct = d match
+        case _: Decl.Struct => true
+        case _              => false
+      if cfg.preserve(q) && !struct then unsupported(ctx, UnsupportedFeature.PreserveNonStruct)
       else pure(d)
     }
   }
@@ -471,7 +469,7 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
         val picked = alt match
           case RT.MapT(es) if !isPairs(es) => pick(None)
           case RT.Arr(es) if !isVector(es) =>
-            pick(derived.filter(_ => es.size == 1 && es.head.value.isInstanceOf[RT.GroupRef]))
+            pick(derived.filter(_ => es.sizeIs == 1 && es.exists(e => isGroupRef(e.value))))
           case _ => pick(derived)
         val (cn, next) = picked
         val result: Build[CaseD] = alt match
@@ -886,14 +884,49 @@ object Emitter:
     }
     substituteHoists(codec, expanded).iterator.mkString
 
-  private[gen] def isVector(es: Vector[REntry]): Boolean =
-    es.size == 1 && es.head.key.isEmpty && !es.head.value.isInstanceOf[RT.GroupRef] &&
-      (es.head.occ.max.forall(_ > 1) || es.head.occ.min > 1)
+  private[gen] def isGroupRef(t: RT): Boolean = t match
+    case _: RT.GroupRef => true
+    case _              => false
 
-  private[gen] def isPairs(es: Vector[REntry]): Boolean =
-    es.size == 1 && es.head.occ.max.isEmpty && (es.head.key match
-      case Some(RKey.OfType(_, _)) => true
-      case _                       => false)
+  /** The one entry of an array of repeated items, `[* x]` (more than one allowed). */
+  private[gen] object VectorOf:
+    def unapply(es: Vector[REntry]): Option[REntry] = es match
+      case Vector(e)
+          if e.key.isEmpty && !isGroupRef(e.value) && (e.occ.max.forall(_ > 1) || e.occ.min > 1) =>
+        Some(e)
+      case _ => None
+
+  private[gen] def isVector(es: Vector[REntry]): Boolean = VectorOf.unapply(es).isDefined
+
+  /** The one entry of a map of any number of pairs, `{* k => v}`. */
+  private[gen] object PairsOf:
+    def unapply(es: Vector[REntry]): Option[REntry] = es match
+      case Vector(e @ REntry(occ, _, Some(RKey.OfType(_, _)), _)) if occ.max.isEmpty => Some(e)
+      case _                                                                         => None
+
+  private[gen] def isPairs(es: Vector[REntry]): Boolean = PairsOf.unapply(es).isDefined
+
+  /** The other alternative of `x / nil`. */
+  private[gen] object Nullable:
+    def unapply(alts: Vector[RT]): Option[RT] =
+      if alts.size == 2 && alts.contains(nil) then alts.find(_ != nil) else None
+
+  private[gen] object IntLits:
+    def unapply(alts: Vector[RT]): Option[Vector[BigInt]] = intLits(alts)
+
+  private[gen] object MaybeTagged:
+    def unapply(alts: Vector[RT]): Option[(BigInt, RT)] = maybeTagged(alts)
+
+  /** The entries of alternatives that are all arrays of the same repeated item. */
+  private[gen] object MergeableVectors:
+    def unapply(alts: Vector[RT]): Option[NonEmptyVector[REntry]] =
+      alts
+        .traverse {
+          case RT.Arr(VectorOf(e)) => Some(e)
+          case _                   => None
+        }
+        .filter(vs => vs.size > 1 && vs.map(_.value).distinct.size == 1)
+        .flatMap(NonEmptyVector.fromVector)
 
   private[gen] val nil: RT = RT.Prim(PrimKind.Nil)
 
@@ -908,10 +941,7 @@ object Emitter:
     case _                                    => None
 
   private[gen] def mergeableVectors(alts: Vector[RT]): Boolean =
-    alts.size > 1 && alts.forall {
-      case RT.Arr(es) => isVector(es)
-      case _          => false
-    } && alts.collect { case RT.Arr(es) => es.head.value }.distinct.size == 1
+    MergeableVectors.unapply(alts).isDefined
 
   /** A choice that needs an enum: it has alternatives that are not just a single wrapper type. */
   private[gen] def isPlainChoice(alts: Vector[RT]): Boolean =
