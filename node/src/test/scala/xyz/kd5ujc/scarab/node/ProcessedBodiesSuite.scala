@@ -108,3 +108,26 @@ class ProcessedBodiesSuite extends FailsOnUncaught:
       assert(processed.values.forall(p => p.held.isEmpty && p.origin == BlockPool.Source.Recovered))
       assertEquals(bodies, delivered.map(d => Some(d.block)))
   }
+
+  test("a processed block the log can no longer read leaves the forest and can be fetched again") {
+    // a block seeded from the log at start: the pool's own cache never held its body
+    for
+      delivered <- blocks(2)
+      stored <- Ref.of[IO, Map[Bytes, Bytes]](delivered.map(d => d.header.hash -> d.block).toMap)
+      refused <- Ref.of[IO, Set[Bytes]](Set.empty)
+      pool <- BlockPool
+        .create[IO](BlockPool.FetchPolicy(), IO.pure(local), journal(stored, refused))
+      _ <- pool.seedRecoveredMetadata(delivered.map(_.metadata))
+      lost = delivered.head.header.hash
+      before <- pool.processedSnapshot
+      // the log dropped the record (a failed checksum): it no longer returns it
+      _ <- stored.update(_ - lost)
+      read <- pool.body(lost, before(lost))
+      after <- pool.processedSnapshot
+      claimed <- pool.session.use(_.claim(Vector(lost)))
+    yield
+      assertEquals(read, None)
+      assert(!after.contains(lost), "the block left the forest")
+      assert(after.contains(delivered(1).header.hash), "the others stay")
+      assertEquals(claimed, Vector(true), "the block can be claimed and fetched again")
+  }

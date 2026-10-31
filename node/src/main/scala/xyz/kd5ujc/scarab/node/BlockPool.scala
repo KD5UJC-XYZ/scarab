@@ -30,11 +30,12 @@ import scala.concurrent.duration.*
   * oldest ordinary bodies past [[BlockPool.Retained]] entries. Queued admissions and the processed
   * VolatileDB forest are separate: all processed originals, including invalid ones, remain readable
   * until immutable-slot GC. With a received log the forest keeps each block's metadata only and
-  * reads the body back from the log ([[BlockPool.body]]), as the native VolatileDB keeps an index in
-  * memory and reads a block from its file; a node without a log keeps the bodies in memory. Pruning
-  * at the native strict slot cutoff releases that forest and invalid pins. Retention follows durable
-  * immutable progress, rather than receipt/adoption count: an LoE stall can grow the forest, by its
-  * metadata. This preserves later fork selection.
+  * reads the body back from the log ([[BlockPool.body]]), as the native VolatileDB keeps an index
+  * in memory and reads a block from its file; a node without a log keeps the bodies in memory.
+  * Pruning at the native strict slot cutoff releases that forest and invalid pins. Retention
+  * follows durable immutable progress, rather than receipt/adoption count: an LoE stall can grow
+  * the forest, by its metadata. This preserves later fork selection. The received cache in front of
+  * it still holds recent bodies, bounded by count ([[BlockPool.Retained]]).
   *
   * Claims are made through a [[BlockPool.Claims]] that belongs to one session ([[session]]). It is
   * a resource: when the session ends, however it ends (a failure, a cancellation), every claim it
@@ -482,11 +483,20 @@ final class BlockPool[F[_]: Async] private (
   private[node] def processedSnapshot: F[Map[Bytes, Processed]] = slots.get.map(_.processed)
 
   /** The original body of a processed block: kept in memory without a received log, else read back
-    * from it as the reference reads a VolatileDB block from its file. None once the log has
-    * collected it, which happens only below the immutable tip, where selection no longer reads.
+    * from it as the reference reads a VolatileDB block from its file. None when the log no longer
+    * has it: collected below the immutable tip, or a record that failed its checksum, which the log
+    * drops so that the block is fetched again. The block then leaves the forest too, so that it is
+    * no longer counted as fetched and can be fetched again.
     */
   private[node] def body(hash: Bytes, processed: Processed): F[Option[Bytes]] =
-    processed.held.fold(recovered.flatTraverse(_.original(hash)))(raw => F.pure(Some(raw)))
+    processed.held.fold(
+      recovered.flatTraverse(_.original(hash)).flatTap {
+        case Some(_) => F.unit
+        case None =>
+          slots.update(s => s.copy(processed = s.processed - hash)) *>
+            fetchCoordinator.refreshGenesis
+      }
+    )(raw => F.pure(Some(raw)))
 
   private[node] def processAdmission(admission: Admission): F[Boolean] = slots.modify { current =>
     val hash = admission.delivered.header.hash

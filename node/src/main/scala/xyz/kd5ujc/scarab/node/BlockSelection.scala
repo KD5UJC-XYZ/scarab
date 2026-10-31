@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.{Async, Deferred, Resource}
+import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.syntax.all.*
 import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
@@ -28,29 +28,37 @@ private[node] final class BlockSelection[F[_]: Async] private (
   /** The bodies of `candidate` as the pool admitted them, and where a refusal of one is recorded
     * against its original.
     */
-  private def reader(bodies: Map[Bytes, BlockPool.Processed]): BlockSelection.Bodies[F] =
-    def original(header: Header): F[Option[(BlockPool.Processed, Bytes)]] =
-      bodies.get(header.hash).flatTraverse(p => pool.body(header.hash, p).map(_.map(p -> _)))
+  /** `last` keeps the block fetched most recently: a refusal is reported for the block whose rules
+    * just ran on it ([[Follower]]'s `switchTo`), inside an uncancelable section, so the refused
+    * original is taken from there and never read again where a wait could not be cancelled.
+    */
+  private def reader(
+      bodies: Map[Bytes, BlockPool.Processed],
+      last: Ref[F, Option[(BlockPool.Processed, Bytes)]]
+  ): BlockSelection.Bodies[F] =
     new BlockSelection.Bodies[F]:
-      def fetch(header: Header)(using Raise[F, NodeError]) = original(header).flatMap(
-        _.fold(BlockPoolProblem.MissingDeliveredHeader(header.point).raise[F, Bytes])((_, raw) =>
-          F.pure(raw)
-        )
-      )
+      def fetch(header: Header)(using Raise[F, NodeError]) =
+        bodies
+          .get(header.hash)
+          .flatTraverse(p => pool.body(header.hash, p).map(_.map(p -> _)))
+          .flatMap(
+            _.fold(BlockPoolProblem.MissingDeliveredHeader(header.point).raise[F, Bytes]) {
+              (p, raw) => last.set(Some(p -> raw)).as(raw)
+            }
+          )
       def invalidated(header: Header, error: ValidationError) =
-        original(header).flatMap(
-          _.fold(
-            F.pure[Either[BlockPoolProblem, Unit]](
-              Left(BlockPoolProblem.MissingDeliveredHeader(header.point))
-            )
-          )((p, raw) =>
+        last.get.flatMap {
+          case Some((p, raw)) if p.delivered.header.hash == header.hash =>
             pool.invalidated(
               BlockPool.Taken(raw, false, p.origin, Some(p.delivered)),
               header,
               error
             )
-          )
-        )
+          case _ =>
+            F.pure[Either[BlockPoolProblem, Unit]](
+              Left(BlockPoolProblem.MissingDeliveredHeader(header.point))
+            )
+        }
 
   private def selectLocked(
       adding: Option[BlockPool.Admission],
@@ -90,9 +98,10 @@ private[node] final class BlockSelection[F[_]: Async] private (
             )
           )
           ordered <- application.project(truncated, phase)
+          last <- Ref.of[F, Option[(BlockPool.Processed, Bytes)]](None)
           _ <- ordered.headOption.traverse_(candidate =>
             application.apply(
-              reader(bodies),
+              reader(bodies, last),
               candidate,
               adding.fold(Peer.Validation.none[F])(Peer.Validation.admission(pool, _)),
               phase
