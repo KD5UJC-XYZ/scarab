@@ -26,7 +26,7 @@ object GenesisHistory:
   final case class Parameters(epochSlots: BigInt, safeZone: BigInt, genesisWindow: BigInt)
   final case class Current(era: Era, start: Bound, transitionEpoch: Option[BigInt])
 
-  private val eras = Era.Byron +: HardForkConfig.Sequence
+  private val eras = Era.Byron +: HardForkConfig.Sequence.toVector
 
   /** `immutableTipSlot = -1` denotes Origin, whose successor is slot zero. */
   def window(

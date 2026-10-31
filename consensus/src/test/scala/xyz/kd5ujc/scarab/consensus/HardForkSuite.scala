@@ -14,7 +14,7 @@ import org.scalacheck.Prop.*
 class HardForkSuite extends ScalaCheckSuite:
   private val byVersion = HardForkConfig.default
 
-  private val eras = HardForkConfig.Sequence
+  private val eras = HardForkConfig.Sequence.toVector
 
   test("by version, the era follows the protocol major version (eraProtVerLow)") {
     val table = Vector(

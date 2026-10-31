@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus
 
+import cats.data.NonEmptyVector
 import xyz.kd5ujc.scarab.ledger.EnvelopeError
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -38,11 +39,11 @@ final case class HardForkConfig(triggers: Map[Era, ForkTrigger], maxMajorProtVer
     * eras are entered in order, so the first one whose trigger has not fired ends the walk.
     */
   def eraAt(epoch: BigInt, major: BigInt): Era =
-    HardForkConfig.Sequence
-      .drop(1)
+    // the first era, unless a later one's trigger has fired
+    HardForkConfig.Sequence.tail
       .takeWhile(fired(_, epoch, major))
       .lastOption
-      .getOrElse(Era.Shelley)
+      .getOrElse(HardForkConfig.Sequence.head)
 
   private def fired(era: Era, epoch: BigInt, major: BigInt): Boolean =
     triggers(era) match
@@ -102,8 +103,8 @@ object HardForkConfig:
   val MaxMajorProtVer: Int = 11
 
   /** The Shelley-based eras in the order they are entered. */
-  val Sequence: Vector[Era] =
-    Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway)
+  val Sequence: NonEmptyVector[Era] =
+    NonEmptyVector.of(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway)
 
   /** The first protocol major version of each era (`eraProtVerLow`). */
   def eraProtVerLow(era: Era): Int = era match
@@ -120,16 +121,13 @@ object HardForkConfig:
     */
   def fromEpochs(epochs: Map[Era, BigInt], maxMajorProtVer: Int = MaxMajorProtVer): HardForkConfig =
     HardForkConfig(
-      Sequence
-        .drop(1)
-        .map { era =>
-          era -> epochs
-            .get(era)
-            .fold[ForkTrigger](ForkTrigger.AtVersion(eraProtVerLow(era)))(
-              ForkTrigger.AtEpoch(_)
-            )
-        }
-        .toMap,
+      Sequence.tail.map { era =>
+        era -> epochs
+          .get(era)
+          .fold[ForkTrigger](ForkTrigger.AtVersion(eraProtVerLow(era)))(
+            ForkTrigger.AtEpoch(_)
+          )
+      }.toMap,
       maxMajorProtVer
     )
 

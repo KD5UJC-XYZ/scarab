@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus
 
+import cats.data.NonEmptyVector
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
@@ -222,16 +223,20 @@ object ChainSelection:
     // block grow with the length of such a candidate (issue 133).
     def pointAt(i: Int): Point = if i == 0 then candidate.base else headers(i - 1).point
     Iterator.range(headers.size, -1, -1).find(i => local.contains(pointAt(i))) match
-      case None                                   => Decision.Detached
-      case Some(common) if common == headers.size => Decision.Keep
+      case None         => Decision.Detached
       case Some(common) =>
-        val take = headers.drop(common)
-        take.lastOption.fold(Decision.Keep) { tip =>
-          val view = SelectView.of(tip)
-          // AnchoredFragment.hs:195–201 compares an empty selected fragment by point, not
-          // its anchor's selection view. In particular a boundary block may repeat blockNo.
-          if local.blocks.isEmpty || prefersCandidate(tiebreaker, local.tipView, view) then
-            val at = pointAt(common)
-            Decision.Switch(at, local.depthTo(at), take)
-          else Decision.Keep
-        }
+        // no headers after the common point: the whole candidate is on our chain
+        NonEmptyVector.fromVector(headers.drop(common)) match
+          case None       => Decision.Keep
+          case Some(take) =>
+            // AnchoredFragment.hs:195–201 compares an empty selected fragment by point, not
+            // its anchor's selection view. In particular a boundary block may repeat blockNo.
+            if local.blocks.isEmpty || prefersCandidate(
+                tiebreaker,
+                local.tipView,
+                SelectView.of(take.last)
+              )
+            then
+              val at = pointAt(common)
+              Decision.Switch(at, local.depthTo(at), take.toVector)
+            else Decision.Keep
