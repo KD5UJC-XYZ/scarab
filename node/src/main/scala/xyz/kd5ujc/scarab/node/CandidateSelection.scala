@@ -42,13 +42,14 @@ private[node] object CandidateSelection:
         val era = projected.headers.lastOption.map(_.era)
         era.toVector.flatMap { value =>
           ChainSelection.decide(tiebreaker(value), local, projected) match
+            // each candidate with its tip, which the ranking compares
             case ChainSelection.Decision.Switch(at, _, take) =>
-              Vector(ChainSelection.Candidate(at, take))
+              take.lastOption.map(tip => (ChainSelection.Candidate(at, take), tip)).toVector
             case ChainSelection.Decision.Keep | ChainSelection.Decision.Detached => Vector.empty
         }
       }
     }
-    HaskellSort.sortBy(eligible)((a, b) => compareTips(a.headers.last, b.headers.last))
+    HaskellSort.sortBy(eligible)((a, b) => compareTips(a._2, b._2)).map(_._1)
 
   private[node] def compareTips(left: Header, right: Header): Int =
     compareViews(SelectView.of(left), SelectView.of(right))

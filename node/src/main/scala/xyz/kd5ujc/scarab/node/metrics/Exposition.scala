@@ -45,7 +45,7 @@ object Exposition:
   ): Unit =
     val name = h.name.value
     val bounds = h.buckets.bounds.map(number) :+ "+Inf"
-    val cumulative = seen.counts.scanLeft(0L)(_ + _).tail
+    val cumulative = seen.counts.scanLeft(0L)(_ + _).drop(1)
     bounds
       .zip(cumulative)
       .foreach((le, n) =>
