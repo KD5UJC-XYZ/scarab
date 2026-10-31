@@ -26,7 +26,7 @@ sealed abstract class Node:
     * `decodeBytes` below decoder version 12 (`Decoder.hs:350-373`, cardano-ledger f649f975). Byte
     * strings and text ask the same question of the item, not of the reader.
     */
-  final def isIndefinite: Boolean = original.headOption.exists(b => (b & 31) == 31)
+  final def isIndefinite: Boolean = original.byteOr(0)(false)(b => (b & 31) == 31)
 
   /** Where the item's head is in the array that `original` is a window of (the start of `original`,
     * without making it), for locating an error.
