@@ -53,6 +53,11 @@ class ImperativeTest(unittest.TestCase):
         self.assertEqual(imperative.counts('s"${ s"${ "}" }" ; try work() finally cleanup() }"'), both)
         self.assertEqual(imperative.counts('s"${ Map(1 -> {2}) } try"'), {})
 
+    def test_a_backslash_does_not_hide_an_interpolation(self):
+        self.assertEqual(imperative.counts('raw"C:\\${try 1 catch { case _: Exception => 0 } finally ()}"'),
+                         {'try': 1, 'catch': 1, 'finally': 1})
+        self.assertEqual(imperative.counts('s"a\\"try" ; val b = "\\${try}"'), {})
+
     def test_block_comments_nest(self):
         self.assertEqual(imperative.counts('s"${ /* outer /* inner */ } */ try 1 finally () }"'),
                          {'try': 1, 'finally': 1})

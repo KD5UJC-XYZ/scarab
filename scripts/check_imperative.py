@@ -102,7 +102,9 @@ def string_literal(source: str, i: int, triple: bool, interpolated: bool) -> tup
         elif interpolated and source.startswith('$$', i):
             i += 2
         elif source[i] == '\\' and not triple:
-            i += 2
+            # in an interpolated string a backslash keeps only a quote or a backslash from ending or
+            # escaping (dotty `Scanners.getStringPart`): a following `$` still starts an expression
+            i += 2 if not interpolated or source[i + 1:i + 2] in ('"', '\\') else 1
         else:
             if source[i] == '\n':
                 kept.append('\n')
