@@ -621,6 +621,9 @@ object Mux:
               for
                 buffer <- Async[F].delay(new ReceiveBuffer(config.receiveBufferLimit))
                 lock <- Mutex[F]
+                // an SDU that did not fit beside the buffered bytes while batching: held for the
+                // next round, after the buffered message has been decoded and consumed
+                pending <- Ref[F].of(Option.empty[Bytes])
               yield key -> (
                 channel(
                   protocol,
@@ -630,6 +633,7 @@ object Mux:
                   done,
                   buffer,
                   lock,
+                  pending,
                   config,
                   dispatch,
                   handshakeInput.filter(_ => (protocol, role) == (Protocols.Handshake, config.role))
@@ -734,6 +738,7 @@ object Mux:
       closed: Deferred[F, NetworkError],
       buffer: ReceiveBuffer,
       lock: Mutex[F],
+      pending: Ref[F, Option[Bytes]],
       config: Config,
       dispatch: Dispatch[F],
       handshakeInput: Option[HandshakeInput[F]]
@@ -780,10 +785,6 @@ object Mux:
           F.race(closed.get, queued) *> F.cede *> nextPayload
       }
 
-    // An SDU that did not fit beside the buffered bytes while batching: held for the next round,
-    // after the buffered message has been decoded and consumed. Used only under `lock`.
-    private var pending: Option[Bytes] = None
-
     def recv[A](maxBytes: Int)(decode: Bytes => DecodeResult[A])(using
         Raise[F, NetworkError]
     ): F[A] =
@@ -814,7 +815,7 @@ object Mux:
         // the queue runs dry after every SDU the decoder runs after each, so one that rescans its
         // prefix is quadratic: the batching bounds only SDUs that are already queued).
         def await(attempted: Int): F[A] =
-          F.delay { val held = pending; pending = None; held }.flatMap {
+          pending.getAndSet(None).flatMap {
             case Some(payload) => append(payload) *> more(attempted)
             case None          => nextPayload.flatMap(append(_) *> more(attempted))
           }
@@ -832,7 +833,7 @@ object Mux:
                   // the complete message already held has been decoded.
                   F.delay(buffer.append(next)).flatMap { fits =>
                     if fits then more(attempted)
-                    else F.delay { pending = Some(next) } *> decodeNow
+                    else pending.set(Some(next)) *> decodeNow
                   }
               }
           }

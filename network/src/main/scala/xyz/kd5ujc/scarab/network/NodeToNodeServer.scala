@@ -98,9 +98,12 @@ object NodeToNodeServer:
     def episode(trigger: F[Unit])(run: F[Unit]): F[Unit] =
       responders.fold(run)(counted => trigger *> counted.running(run))
     def onDemand(protocol: Int): F[Unit] = mux.awaitResponderInput(protocol)
-    // `StartOnDemandAny`: the first byte of any responder starts it
+    // `StartOnDemandAny`: the first byte of any responder starts it (with none installed, nothing does)
     val onDemandAny: F[Unit] =
-      installed.toList.map(onDemand).reduceLeft((a, b) => Async[F].race(a, b).void)
+      installed.toList
+        .map(onDemand)
+        .reduceLeftOption((a, b) => Async[F].race(a, b).void)
+        .getOrElse(Async[F].never)
     for
       _ <- Resource.eval(
         mux.installApplication(if initiators then installed else Set.empty, installed)

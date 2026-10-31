@@ -106,11 +106,12 @@ object BlockFetchPolicy:
           else a.chainPreference > b.chainPreference
         }
         val groups = ordered.foldLeft(Vector.empty[Vector[Candidate[P]]]) { (acc, c) =>
-          acc.lastOption match
-            case Some(last)
-                if band(last.head) == band(c) &&
-                  last.head.chainPreference == c.chainPreference =>
-              acc.init :+ (last :+ c)
+          acc match
+            case init :+ last
+                if last.headOption.exists(first =>
+                  band(first) == band(c) && first.chainPreference == c.chainPreference
+                ) =>
+              init :+ (last :+ c)
             case _ => acc :+ Vector(c)
         }
         groups.flatMap { group =>
