@@ -507,7 +507,8 @@ final class BlockPool[F[_]: Async] private (
     seed(blocks.map(b => Processed(b.metadata, Source.Recovered, held(b.block))))
 
   /** As [[seedRecoveredHeaders]], from the metadata of blocks the received log holds: their bodies
-    * are not kept and are read back from the log.
+    * are not kept and are read back from the log. Only for a pool created with that log
+    * ([[Recovered]]); without one the seeded bodies could not be read.
     */
   private[node] def seedRecoveredMetadata(blocks: Vector[DeliveredHeader]): F[Unit] =
     seed(blocks.map(Processed(_, Source.Recovered, None)))
