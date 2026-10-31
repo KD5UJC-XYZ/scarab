@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.models.gen
 
+import cats.data.NonEmptyVector
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.models.gen.Ast.{Assign, Occ}
 
@@ -52,7 +53,7 @@ enum RuleBody:
 final case class RuleDef(name: QName, body: RuleBody)
 
 /** The rules of one module: the files configured for it, later files overriding earlier ones. */
-final case class Module(name: String, rules: Map[String, (Vector[Ast.Rule], Scope)])
+final case class Module(name: String, rules: Map[String, (NonEmptyVector[Ast.Rule], Scope)])
 
 /** Name resolution scope: the module of the defining file and its `;# import … as alias` table. */
 final case class Scope(module: String, aliases: Map[String, String])
@@ -62,7 +63,7 @@ final class Schema(val modules: Map[String, Module]):
 
   def modulesNamed: Set[String] = modules.keySet
 
-  def lookup(q: QName): Option[(Vector[Ast.Rule], Scope)] =
+  def lookup(q: QName): Option[(NonEmptyVector[Ast.Rule], Scope)] =
     modules.get(q.module).flatMap(_.rules.get(q.name))
 
   def rule(q: QName): Either[GenError, RuleDef] = resolveRule(q).value.value
@@ -70,13 +71,13 @@ final class Schema(val modules: Map[String, Module]):
   private def resolveRule(q: QName): GenResult[RuleDef] = deferred {
     lookup(q) match
       case None => failure(GenError.UnresolvedName(q.module, q.name))
-      case Some((defs, _)) if defs.headOption.exists(_.params.nonEmpty) =>
+      case Some((defs, _)) if defs.head.params.nonEmpty =>
         failure(GenError.Unsupported(q.toString, UnsupportedFeature.UnappliedGeneric))
       case Some((defs, scope)) =>
         val isGroup =
           defs.exists(r => r.assign == Assign.GroupChoice || Schema.isGroup(r.body))
         if isGroup then
-          val alts = defs.flatMap { r =>
+          val alts = defs.toVector.flatMap { r =>
             r.body match
               case Ast.Ty.GroupT(g) => g.choices
               case other            => Vector(Vector(Ast.Entry(Occ.Once, None, other)))
@@ -90,7 +91,12 @@ final class Schema(val modules: Map[String, Module]):
         else
           defs
             .traverse(r => ty(r.body, scope, Map.empty, q.toString))
-            .map(tys => RuleDef(q, RuleBody.Type(Schema.single(tys).getOrElse(flattenChoice(tys)))))
+            .map(tys =>
+              RuleDef(
+                q,
+                RuleBody.Type(if tys.tail.isEmpty then tys.head else flattenChoice(tys.toVector))
+              )
+            )
   }
 
   private def flattenChoice(alts: Vector[RT]): RT =
@@ -180,8 +186,9 @@ final class Schema(val modules: Map[String, Module]):
           case Some(q) if seen(q) => failure(GenError.CyclicExpansion(q))
           case Some(q) =>
             lookup(q) match
-              case Some((Vector(r), defScope)) if r.params.isEmpty =>
-                intOf(r.body, defScope, Map.empty, ctx, seen + q)
+              // a bound names one definition without parameters
+              case Some((defs, defScope)) if defs.tail.isEmpty && defs.head.params.isEmpty =>
+                intOf(defs.head.body, defScope, Map.empty, ctx, seen + q)
               case _ => failure(GenError.Unsupported(ctx, UnsupportedFeature.NonLiteralBound(t)))
           case None => failure(GenError.Unsupported(ctx, UnsupportedFeature.NonLiteralBound(t)))
         }
@@ -212,7 +219,7 @@ final class Schema(val modules: Map[String, Module]):
                 lookup(q) match
                   case None => failure(GenError.UnresolvedName(q.module, q.name))
                   case Some((defs, defScope)) =>
-                    val params = defs.headOption.fold(Vector.empty[String])(_.params)
+                    val params = defs.head.params
                     if params.size != args.size then
                       failure(GenError.ArityMismatch(q.toString, params.size, args.size))
                     else if params.isEmpty then success(RT.Ref(q))
@@ -221,7 +228,7 @@ final class Schema(val modules: Map[String, Module]):
                       for
                         resolved <- args.traverse(resolve)
                         bound = params.zip(resolved).toMap
-                        tys <- defs.traverse(r =>
+                        tys <- defs.toVector.traverse(r =>
                           ty(r.body, defScope, bound, q.toString, expanding + q)
                         )
                       yield flattenChoice(tys)
@@ -396,19 +403,23 @@ object Schema:
 
   def build(modules: Vector[(String, Vector[Ast.File])]): Schema =
     val built = modules.map { (name, files) =>
-      val rules = files.foldLeft(Map.empty[String, (Vector[Ast.Rule], Scope)]) { (rules, f) =>
-        val scope = Scope(name, f.pragmas.map(p => p.alias -> p.module).toMap)
-        val perFile = f.rules.foldLeft(Map.empty[String, Vector[Ast.Rule]]) { (acc, r) =>
-          val prior = acc.getOrElse(r.name, Vector.empty)
-          acc.updated(r.name, if r.assign == Assign.Eq then Vector(r) else prior :+ r)
-        }
-        perFile.foldLeft(rules) { case (acc, (n, rs)) =>
-          val merged =
-            if rs.forall(_.assign != Assign.Eq) then
-              acc.get(n).fold(Vector.empty[Ast.Rule])(_._1) ++ rs
-            else rs
-          acc.updated(n, (merged, scope))
-        }
+      val rules = files.foldLeft(Map.empty[String, (NonEmptyVector[Ast.Rule], Scope)]) {
+        (rules, f) =>
+          val scope = Scope(name, f.pragmas.map(p => p.alias -> p.module).toMap)
+          val perFile = f.rules.foldLeft(Map.empty[String, NonEmptyVector[Ast.Rule]]) { (acc, r) =>
+            val prior = acc.get(r.name)
+            acc.updated(
+              r.name,
+              if r.assign == Assign.Eq then NonEmptyVector.one(r)
+              else prior.fold(NonEmptyVector.one(r))(_ :+ r)
+            )
+          }
+          perFile.foldLeft(rules) { case (acc, (n, rs)) =>
+            val merged =
+              if rs.forall(_.assign != Assign.Eq) then acc.get(n).fold(rs)(_._1 ++ rs.toVector)
+              else rs
+            acc.updated(n, (merged, scope))
+          }
       }
       name -> Module(name, rules)
     }
