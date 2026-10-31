@@ -70,28 +70,27 @@ final class Schema(val modules: Map[String, Module]):
   private def resolveRule(q: QName): GenResult[RuleDef] = deferred {
     lookup(q) match
       case None => failure(GenError.UnresolvedName(q.module, q.name))
-      case Some((defs, _)) if defs.head.params.nonEmpty =>
+      case Some((defs, _)) if defs.headOption.exists(_.params.nonEmpty) =>
         failure(GenError.Unsupported(q.toString, UnsupportedFeature.UnappliedGeneric))
       case Some((defs, scope)) =>
         val isGroup =
-          defs.exists(r => r.assign == Assign.GroupChoice || r.body.isInstanceOf[Ast.Ty.GroupT])
+          defs.exists(r => r.assign == Assign.GroupChoice || Schema.isGroup(r.body))
         if isGroup then
           val alts = defs.flatMap { r =>
             r.body match
               case Ast.Ty.GroupT(g) => g.choices
               case other            => Vector(Vector(Ast.Entry(Occ.Once, None, other)))
           }
-          if alts.size != 1 then
-            failure(GenError.Unsupported(q.toString, UnsupportedFeature.GroupAlternatives))
-          else
-            entries(alts.head, scope, Map.empty, q.toString, inMap = false)
-              .map(es => RuleDef(q, RuleBody.GroupBody(es)))
+          alts match
+            case Vector(only) =>
+              entries(only, scope, Map.empty, q.toString, inMap = false)
+                .map(es => RuleDef(q, RuleBody.GroupBody(es)))
+            case _ =>
+              failure(GenError.Unsupported(q.toString, UnsupportedFeature.GroupAlternatives))
         else
           defs
             .traverse(r => ty(r.body, scope, Map.empty, q.toString))
-            .map(tys =>
-              RuleDef(q, RuleBody.Type(if tys.size == 1 then tys.head else flattenChoice(tys)))
-            )
+            .map(tys => RuleDef(q, RuleBody.Type(Schema.single(tys).getOrElse(flattenChoice(tys)))))
   }
 
   private def flattenChoice(alts: Vector[RT]): RT =
@@ -99,7 +98,7 @@ final class Schema(val modules: Map[String, Module]):
       case RT.Choice(xs) => xs
       case other         => Vector(other)
     }
-    if flat.size == 1 then flat.head else RT.Choice(flat)
+    Schema.single(flat).getOrElse(RT.Choice(flat))
 
   // The standard prelude of RFC 8610 appendix D (what cuddle's postlude also defines). `time`, `number`, `decfrac`
   // and `bigfloat` are left out: they need floats or tag content this generator does not model.
@@ -213,7 +212,7 @@ final class Schema(val modules: Map[String, Module]):
                 lookup(q) match
                   case None => failure(GenError.UnresolvedName(q.module, q.name))
                   case Some((defs, defScope)) =>
-                    val params = defs.head.params
+                    val params = defs.headOption.fold(Vector.empty[String])(_.params)
                     if params.size != args.size then
                       failure(GenError.ArityMismatch(q.toString, params.size, args.size))
                     else if params.isEmpty then success(RT.Ref(q))
@@ -245,8 +244,8 @@ final class Schema(val modules: Map[String, Module]):
       case Ast.Ty.GroupT(_) => success(RT.Unsupported(UnsupportedFeature.GroupInTypePosition))
       case Ast.Ty.Enumeration(of) =>
         of match
-          case Ast.Ty.GroupT(g) if g.choices.size == 1 =>
-            g.choices.head.traverse(e => resolve(e.value)).map(RT.Choice(_))
+          case Ast.Ty.GroupT(Ast.Group(Vector(only))) =>
+            only.traverse(e => resolve(e.value)).map(RT.Choice(_))
           case other => success(RT.Unsupported(UnsupportedFeature.Enumeration(other)))
       case Ast.Ty.Unwrap(_) => success(RT.Unsupported(UnsupportedFeature.Unwrap))
   }
@@ -330,7 +329,7 @@ final class Schema(val modules: Map[String, Module]):
         entries(es, scope, env, ctx, inMap, expanding)
           .map(xs => if inMap then RT.MapT(xs) else RT.Arr(xs))
       )
-      .map(alts => if alts.size == 1 then alts.head else RT.Choice(alts))
+      .map(alts => Schema.single(alts).getOrElse(RT.Choice(alts)))
 
   private def entries(
       es: Vector[Ast.Entry],
@@ -342,15 +341,13 @@ final class Schema(val modules: Map[String, Module]):
   ): GenResult[Vector[REntry]] = deferred {
     es.flatTraverse { e =>
       e.value match
-        case Ast.Ty.GroupT(g) if g.choices.size == 1 && e.key.isEmpty =>
-          entries(g.choices.head, scope, env, ctx, inMap, expanding)
+        case Ast.Ty.GroupT(Ast.Group(Vector(only))) if e.key.isEmpty =>
+          entries(only, scope, env, ctx, inMap, expanding)
         case Ast.Ty.Name(id, Vector()) if e.key.isEmpty && !env.contains(id) =>
           locate(id, scope).flatMap { located =>
             val group = located.filter(q =>
               lookup(q).exists { (defs, _) =>
-                defs.exists(r =>
-                  r.assign == Assign.GroupChoice || r.body.isInstanceOf[Ast.Ty.GroupT]
-                )
+                defs.exists(r => r.assign == Assign.GroupChoice || Schema.isGroup(r.body))
               }
             )
             group match
@@ -388,6 +385,15 @@ final class Schema(val modules: Map[String, Module]):
     yield REntry(e.occ, k._1, k._2, v)
 
 object Schema:
+  private def isGroup(t: Ast.Ty): Boolean = t match
+    case _: Ast.Ty.GroupT => true
+    case _                => false
+
+  /** The element of a one-element vector. */
+  private def single[A](xs: Vector[A]): Option[A] = xs match
+    case Vector(only) => Some(only)
+    case _            => None
+
   def build(modules: Vector[(String, Vector[Ast.File])]): Schema =
     val built = modules.map { (name, files) =>
       val rules = files.foldLeft(Map.empty[String, (Vector[Ast.Rule], Scope)]) { (rules, f) =>
