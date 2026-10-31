@@ -18,9 +18,9 @@ class ErasSuite extends FunSuite:
     case SShelley =>
       val c: ShelleyCertState = cert
       s"shelley ${c.pState.stakePools.size}"
+    // a group of eras gets no refinement from an alternative pattern; the witness's proof does it
     case SAllegra | SMary | SAlonzo | SBabbage =>
-      val c: ShelleyCertState = cert
-      s"shelley-based ${c.dState.genDelegs.size}"
+      era.cert.on(cert)(c => s"shelley-based ${c.dState.genDelegs.size}", c => s"conway $c")
 
   private def isConway[E <: EraTag](using era: ShelleyBasedEra[E]): Boolean = era match
     case SConway => true

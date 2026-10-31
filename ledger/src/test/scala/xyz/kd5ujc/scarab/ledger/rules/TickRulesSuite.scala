@@ -5,7 +5,6 @@ import cats.Monad
 import cats.data.{Kleisli, StateT}
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import munit.FunSuite
-import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.TestLedger
 import xyz.kd5ujc.scarab.ledger.state.*

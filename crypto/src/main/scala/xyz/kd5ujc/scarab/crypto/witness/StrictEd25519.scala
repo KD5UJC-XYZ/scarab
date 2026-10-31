@@ -106,7 +106,7 @@ object StrictEd25519:
     // bytes 1 to 30 are 0xff and byte 0 is at least 0xed
     !((bytes(31) & 0x7f) == 0x7f && (bytes(0) & 0xff) >= 0xed && {
       var i = 1
-      while i < 31 && bytes(i) == -1.toByte do i += 1
+      while i < 31 && bytes(i) == (-1).toByte do i += 1
       i == 31
     })
 

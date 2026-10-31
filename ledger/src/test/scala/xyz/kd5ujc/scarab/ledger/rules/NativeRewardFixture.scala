@@ -75,15 +75,8 @@ object NativeRewardFixture extends Assertions:
       nes: NewEpochState[E],
       entries: Iterable[(Credential[Staking], EraLedger.AccountView)]
   )(using era: ShelleyBasedEra[E]): NewEpochState[E] =
-    val cert: CertState[E] = era match
-      case ShelleyBasedEra.SConway =>
-        val c = nes.es.ls.cert
-        c.copy(dState = c.dState.copy(accounts = ConwayAccounts(Sorted.map(entries.map { (k, a) =>
-          k -> ConwayAccountState(a.balance, a.deposit, a.pool, None)
-        }))))
-      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-        val c = nes.es.ls.cert
+    val cert: CertState[E] = era.cert.update(nes.es.ls.cert)(
+      c =>
         c.copy(dState =
           c.dState.copy(accounts =
             ShelleyAccounts(
@@ -93,7 +86,12 @@ object NativeRewardFixture extends Assertions:
               Sorted.empty
             )
           )
-        )
+        ),
+      c =>
+        c.copy(dState = c.dState.copy(accounts = ConwayAccounts(Sorted.map(entries.map { (k, a) =>
+          k -> ConwayAccountState(a.balance, a.deposit, a.pool, None)
+        }))))
+    )
     nes.copy(es = nes.es.copy(ls = nes.es.ls.copy[E](cert = cert)))
 
   def registered[E <: EraTag](nes: NewEpochState[E], cs: Iterable[Credential[Staking]])(using

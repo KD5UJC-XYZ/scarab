@@ -29,32 +29,30 @@ object Empty:
   private val vState: VState =
     VState(Sorted.empty, CommitteeState(Sorted.empty), EpochNo.fromUnsigned(0L))
 
-  def certState[E <: EraTag](using era: ShelleyBasedEra[E]): CertState[E] = era match
-    case ShelleyBasedEra.SConway =>
-      ConwayCertState(
-        vState,
-        pState,
-        DState(ConwayAccounts(Sorted.empty), Sorted.empty, Sorted.empty, noRewards)
-      )
-    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-      ShelleyCertState(
-        pState,
-        DState(ShelleyAccounts(Sorted.empty, Sorted.empty), Sorted.empty, Sorted.empty, noRewards)
-      )
+  def certState[E <: EraTag](using era: ShelleyBasedEra[E]): CertState[E] = era.cert.make(
+    ShelleyCertState(
+      pState,
+      DState(ShelleyAccounts(Sorted.empty, Sorted.empty), Sorted.empty, Sorted.empty, noRewards)
+    ),
+    ConwayCertState(
+      vState,
+      pState,
+      DState(ConwayAccounts(Sorted.empty), Sorted.empty, Sorted.empty, noRewards)
+    )
+  )
 
-  def instantStake[E <: EraTag](using era: ShelleyBasedEra[E]): InstantStake[E] = era match
-    case ShelleyBasedEra.SConway => ConwayInstantStake(Sorted.empty)
-    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-      ShelleyInstantStake(Sorted.empty, Sorted.empty)
+  def instantStake[E <: EraTag](using era: ShelleyBasedEra[E]): InstantStake[E] =
+    era.instantStake.make(
+      ShelleyInstantStake(Sorted.empty, Sorted.empty),
+      ConwayInstantStake(Sorted.empty)
+    )
 
   /** The governance state with `params` as the current and the previous parameters, no update
     * pending, and (Conway) no committee, an anchorless constitution and a completed empty pulser.
     */
   def govState[E <: EraTag](params: ProtocolParams)(using era: ShelleyBasedEra[E]): GovState[E] =
-    era match
-      case ShelleyBasedEra.SConway =>
+    era.gov.make(
+      ShelleyGovState(Sorted.empty, Sorted.empty, params, params, FuturePParams.NoPParamsUpdate), {
         val constitution = Constitution(ConwayGenesis.noAnchor, None)
         val enact = EnactState(
           Some(Committee(Map.empty, Rational.zero)),
@@ -77,16 +75,12 @@ object Empty:
             RatifyState(enact, Vector.empty, Set.empty, delayed = false)
           )
         )
-      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-        ShelleyGovState(Sorted.empty, Sorted.empty, params, params, FuturePParams.NoPParamsUpdate)
+      }
+    )
 
   /** `StashedAVVMAddresses`: the UTxO (empty) in Shelley, `()` after. */
-  def stashedAvvm[E <: EraTag](using era: ShelleyBasedEra[E]): StashedAVVM[E] = era match
-    case ShelleyBasedEra.SShelley => UtxoTables(Utxo.empty)
-    case ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary | ShelleyBasedEra.SAlonzo |
-        ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
-      ()
+  def stashedAvvm[E <: EraTag](using era: ShelleyBasedEra[E]): StashedAVVM[E] =
+    era.stashedAvvm.make(UtxoTables(Utxo.empty), ())
 
   def ledgerState[E <: EraTag](params: ProtocolParams)(using ShelleyBasedEra[E]): LedgerState[E] =
     LedgerState[E](

@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus
 import xyz.kd5ujc.scarab.consensus.{
-  BlockRules,
   Anchor,
   BlockRef,
   FollowerEvent,

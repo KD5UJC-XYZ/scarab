@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import Dependencies.*
-ThisBuild / scalaVersion := "3.3.8"
+ThisBuild / scalaVersion := "3.9.0"
 lazy val scarabBuildIdentity =
   settingKey[BuildIdentity.Identity]("Verified export or unreleased workspace identity")
 ThisBuild / dynverVTagPrefix := true
@@ -59,7 +59,7 @@ val testDependencies = Seq(
 //   protocol, plutus <- ledger <- consensus <- storage
 //   models <- storage (the Haskell ledger-state codec reuses the models runtime)
 //   storage, network <- node
-// Initialisation safety applies to main sources (-Ysafe-init on Scala 3.3, -Wsafe-init later).
+// Initialisation safety applies to main sources (-Wsafe-init).
 // Test sources exclude it because munit registers tests in constructors; the initial sweep found
 // 19 warnings for that idiom and none in main sources.
 def scarab(id: String, dir: String = null): Project =
@@ -68,8 +68,8 @@ def scarab(id: String, dir: String = null): Project =
     .disablePlugins(TpolecatPlugin)
     .settings(
       name := s"scarab-$id",
-      Compile / scalacOptions += "-Ysafe-init",
-      Test / scalacOptions -= "-Ysafe-init",
+      Compile / scalacOptions += "-Wsafe-init",
+      Test / scalacOptions -= "-Wsafe-init",
       libraryDependencies ++= testDependencies
     )
 

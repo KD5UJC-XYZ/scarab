@@ -14,7 +14,7 @@ import cats.data.NonEmptyChain
 import munit.{CatsEffectSuite, ScalaCheckSuite}
 import xyz.kd5ujc.scarab.ledger.rules.NativeRules
 import xyz.kd5ujc.scarab.ledger.state.{Conway, NewEpochState}
-import org.scalacheck.{Gen, Prop}
+import org.scalacheck.Gen
 import org.scalacheck.Prop.*
 
 import TestLedger.*

@@ -32,33 +32,18 @@ trait EpochStateCodecs extends RewardCodecs:
     * before it.
     */
   def certState[E <: EraTag](using era: ShelleyBasedEra[E], v: ProtVer): Codec[CertState[E]] =
-    era match
-      case ShelleyBasedEra.SConway => conwayCertState
-      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-        shelleyCertState
+    era.cert.instance(shelleyCertState, conwayCertState)
 
   /** The governance state of the era, the parameters those of the era. */
   def govState[E <: EraTag](using era: ShelleyBasedEra[E], v: ProtVer): Codec[GovState[E]] =
-    era match
-      case ShelleyBasedEra.SConway => conwayGovState
-      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-        shelleyGovState(Params.codec(era))
+    era.gov.instance(shelleyGovState(Params.codec(era)), conwayGovState)
 
   def instantStake[E <: EraTag](using era: ShelleyBasedEra[E], v: ProtVer): Codec[InstantStake[E]] =
-    era match
-      case ShelleyBasedEra.SConway => conwayInstantStake
-      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-        shelleyInstantStake
+    era.instantStake.instance(shelleyInstantStake, conwayInstantStake)
 
   /** `StashedAVVMAddresses` (`Types.hs:357-359`): the UTxO in Shelley, `()` (a `null`) after. */
-  def stashedAvvm[E <: EraTag](using era: ShelleyBasedEra[E]): Codec[StashedAVVM[E]] = era match
-    case ShelleyBasedEra.SShelley => utxoTables
-    case ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary | ShelleyBasedEra.SAlonzo |
-        ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
-      unit
+  def stashedAvvm[E <: EraTag](using era: ShelleyBasedEra[E]): Codec[StashedAVVM[E]] =
+    era.stashedAvvm.instance(utxoTables, unit)
 
   private val unit: Codec[Unit] = new Codec[Unit]:
     def decode(n: Node): Decoded[Unit] = n.value match

@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.ledger
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
-import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.byron.ByronCbor

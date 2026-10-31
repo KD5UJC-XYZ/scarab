@@ -35,38 +35,22 @@ object EraLedger:
   private def foldCert[E <: EraTag, A](c: CertState[E])(
       shelley: ShelleyCertState => A,
       conway: ConwayCertState => A
-  )(using era: ShelleyBasedEra[E]): A = era match
-    case ShelleyBasedEra.SConway => conway(c)
-    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-      shelley(c)
+  )(using era: ShelleyBasedEra[E]): A = era.cert.on(c)(shelley, conway)
 
   private def mapCert[E <: EraTag](c: CertState[E])(
       shelley: ShelleyCertState => ShelleyCertState,
       conway: ConwayCertState => ConwayCertState
-  )(using era: ShelleyBasedEra[E]): CertState[E] = era match
-    case ShelleyBasedEra.SConway => conway(c)
-    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-      shelley(c)
+  )(using era: ShelleyBasedEra[E]): CertState[E] = era.cert.update(c)(shelley, conway)
 
   private def foldGov[E <: EraTag, A](g: GovState[E])(
       shelley: ShelleyGovState => A,
       conway: ConwayGovState => A
-  )(using era: ShelleyBasedEra[E]): A = era match
-    case ShelleyBasedEra.SConway => conway(g)
-    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-      shelley(g)
+  )(using era: ShelleyBasedEra[E]): A = era.gov.on(g)(shelley, conway)
 
   private def mapGov[E <: EraTag](g: GovState[E])(
       shelley: ShelleyGovState => ShelleyGovState,
       conway: ConwayGovState => ConwayGovState
-  )(using era: ShelleyBasedEra[E]): GovState[E] = era match
-    case ShelleyBasedEra.SConway => conway(g)
-    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-      shelley(g)
+  )(using era: ShelleyBasedEra[E]): GovState[E] = era.gov.update(g)(shelley, conway)
 
   private def onCert[E <: EraTag](ls: LedgerState[E])(
       shelley: ShelleyCertState => ShelleyCertState,
@@ -283,22 +267,23 @@ object EraLedger:
     */
   def activeStake[E <: EraTag](ls: LedgerState[E])(using
       era: ShelleyBasedEra[E]
-  ): ActiveStake = era match
-    case ShelleyBasedEra.SConway =>
+  ): ActiveStake = era.shapes.fold(
+    shelley =>
+      val stake = shelley.instantStake(ls.utxo.instantStake)
       StakeDistribution.resolve(
-        ls.utxo.instantStake.credentialStake,
+        stake.credentialStake,
+        accounts(ls),
+        shelley.cert(ls.cert).dState.accounts.ptrs,
+        stake.ptrStake
+      ),
+    conway =>
+      StakeDistribution.resolve(
+        conway.instantStake(ls.utxo.instantStake).credentialStake,
         accounts(ls),
         Sorted.empty[Ptr, Credential[Staking]],
         Sorted.empty[Ptr, CompactCoin]
       )
-    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-      StakeDistribution.resolve(
-        ls.utxo.instantStake.credentialStake,
-        accounts(ls),
-        ls.cert.dState.accounts.ptrs,
-        ls.utxo.instantStake.ptrStake
-      )
+  )
 
   // ---- the governance state (`EraGov`, `State/Governance.hs`)
 

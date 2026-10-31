@@ -37,7 +37,7 @@ private[node] object AvailableBlocks:
       containing: Option[Bytes] = None,
       originPredecessor: Option[Bytes] = None
   ): Either[Error, Vector[ChainSelection.Candidate]] =
-    val ordered = available.toVector.sortBy(_._1)(hashOrder)
+    val ordered = available.toVector.sortBy(_._1)(using hashOrder)
     val checked = ordered.traverse_ { (key, header) =>
       Either.cond(key == header.hash, (), Error.HashMismatch(key, header.hash))
     }
@@ -57,7 +57,7 @@ private[node] object AvailableBlocks:
       val successors = visible.valuesIterator.toVector
         .groupBy(_.prevHash)
         .view
-        .mapValues(_.sortBy(_.hash)(hashOrder))
+        .mapValues(_.sortBy(_.hash)(using hashOrder))
         .toMap
       val initial = selected.toList.flatMap { point =>
         val parent = point match
@@ -66,7 +66,7 @@ private[node] object AvailableBlocks:
         val children =
           if point == Point.Origin && originPredecessor.nonEmpty then
             (successors.getOrElse(None, Vector.empty) ++ successors.getOrElse(parent, Vector.empty))
-              .sortBy(_.hash)(hashOrder)
+              .sortBy(_.hash)(using hashOrder)
           else successors.getOrElse(parent, Vector.empty)
         children.filterNot(h => selectedHashes(h.hash)).map(h => Walk(point, h, Nil)).toList
       }
@@ -118,7 +118,7 @@ private[node] object AvailableBlocks:
           predecessors(available.get(hash).flatMap(_.prevHash), path + hash, done)
         case _ => Right(done ++ path)
     available.keys.toVector
-      .sorted(hashOrder)
+      .sorted(using hashOrder)
       .foldLeft[Either[Error, Set[Bytes]]](Right(Set.empty)) { (state, hash) =>
         state.flatMap(done => predecessors(Some(hash), Set.empty, done))
       }

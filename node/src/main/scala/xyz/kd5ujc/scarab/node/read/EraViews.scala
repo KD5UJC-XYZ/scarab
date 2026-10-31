@@ -23,63 +23,40 @@ object EraViews:
       drep: Option[DRep]
   )
 
-  def pState[E <: EraTag](c: CertState[E])(using era: ShelleyBasedEra[E]): PState = era match
-    case ShelleyBasedEra.SConway => c.pState
-    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-      c.pState
+  def pState[E <: EraTag](c: CertState[E])(using era: ShelleyBasedEra[E]): PState =
+    era.cert.on(c)(_.pState, _.pState)
 
   def genDelegs[E <: EraTag](c: CertState[E])(using
       era: ShelleyBasedEra[E]
-  ): SortedMap[KeyHash[Genesis], flat.GenDelegPair] = era match
-    case ShelleyBasedEra.SConway => c.dState.genDelegs
-    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-      c.dState.genDelegs
+  ): SortedMap[KeyHash[Genesis], flat.GenDelegPair] =
+    era.cert.on(c)(_.dState.genDelegs, _.dState.genDelegs)
 
   def futureGenDelegs[E <: EraTag](c: CertState[E])(using
       era: ShelleyBasedEra[E]
-  ): SortedMap[FutureGenDeleg, flat.GenDelegPair] = era match
-    case ShelleyBasedEra.SConway => c.dState.futureGenDelegs
-    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-      c.dState.futureGenDelegs
+  ): SortedMap[FutureGenDeleg, flat.GenDelegPair] =
+    era.cert.on(c)(_.dState.futureGenDelegs, _.dState.futureGenDelegs)
 
   def iRewards[E <: EraTag](c: CertState[E])(using era: ShelleyBasedEra[E]): InstantaneousRewards =
-    era match
-      case ShelleyBasedEra.SConway => c.dState.iRewards
-      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-        c.dState.iRewards
+    era.cert.on(c)(_.dState.iRewards, _.dState.iRewards)
 
   def accounts[E <: EraTag](c: CertState[E])(using
       era: ShelleyBasedEra[E]
-  ): Iterator[(Credential[Staking], Account)] = era match
-    case ShelleyBasedEra.SConway =>
-      c.dState.accounts.states.iterator
-        .map((k, a) => k -> Account(a.balance, a.deposit, a.pool, a.drep))
-    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-      c.dState.accounts.states.iterator
-        .map((k, a) => k -> Account(a.balance, a.deposit, a.pool, None))
+  ): Iterator[(Credential[Staking], Account)] = era.cert.on(c)(
+    _.dState.accounts.states.iterator
+      .map((k, a) => k -> Account(a.balance, a.deposit, a.pool, None)),
+    _.dState.accounts.states.iterator
+      .map((k, a) => k -> Account(a.balance, a.deposit, a.pool, a.drep))
+  )
 
   /** The voting state, from Conway. */
   def vState[E <: EraTag](c: CertState[E])(using era: ShelleyBasedEra[E]): Option[VState] =
-    era match
-      case ShelleyBasedEra.SConway => Some(c.vState)
-      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-        None
+    era.cert.on(c)(_ => None, conway => Some(conway.vState))
 
   /** The governance state of Conway, from Conway. */
   def conwayGov[E <: EraTag](g: GovState[E])(using
       era: ShelleyBasedEra[E]
   ): Option[ConwayGovState] =
-    era match
-      case ShelleyBasedEra.SConway => Some(g)
-      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-        None
+    era.gov.on(g)(_ => None, Some(_))
 
   /** The DRep as the node writes it. */
   def drep(d: DRep): flat.DRep = d match

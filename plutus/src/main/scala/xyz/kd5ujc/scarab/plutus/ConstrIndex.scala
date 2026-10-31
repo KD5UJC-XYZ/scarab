@@ -40,13 +40,16 @@ private[plutus] object ConstrIndex:
   /** A constructor with a negative index; the field the Scalus constructor checks holds zero.
     *
     * Two compiler diagnostics are silenced here, both about overriding the parameter val `constr`:
-    * Scala 3.3 deprecates it, and the initialisation checker reads the assertion in the body of
+    * Scala 3 warns on it (3.3 as a deprecation, 3.9 as "cannot override"), and the initialisation
+    * checker reads the assertion in the body of
     * `Data.Constr` as a use of the overridden, not yet initialised, val. The compiled Scalus 1.4.0
     * constructor tests its parameter, not the accessor (`javap` of `Data$Constr.<init>`: `aload_1`
     * before `BigInt.$greater$eq`), so the assertion sees zero. `ConstrIndexReferenceSuite` builds
     * these values and fails if a Scalus release reads the accessor there (the assertion would then
     * see `null`) or if a compiler refuses the override.
     */
-  @nowarn("msg=overriding val parameter|Access non-initialized value constr")
+  @nowarn(
+    "msg=overriding val parameter|cannot override val parameter|Access non-initialized value constr"
+  )
   final class Negative(index: BigInt, fields: PList[Data]) extends Data.Constr(BigInt(0), fields):
     override val constr: BigInt = index

@@ -12,13 +12,13 @@ import xyz.kd5ujc.scarab.ledger.{Credential, DRep, GovActionId, RewardAccount, T
   */
 object NodeOrders:
   /** `Hash.Hash`: unsigned, lexicographic. */
-  given Order[Bytes] = Order.from(_ compareTo _)
+  given Order[Bytes] = Order.from(_.compareTo(_))
 
   /** `Credential` (`Credential.hs:98-101`): `ScriptHashObj` before `KeyHashObj`, then by hash. */
   given Order[Credential] = Order.from { (a, b) =>
     (a, b) match
-      case (Credential.Script(x), Credential.Script(y)) => x compareTo y
-      case (Credential.Key(x), Credential.Key(y))       => x compareTo y
+      case (Credential.Script(x), Credential.Script(y)) => x.compareTo(y)
+      case (Credential.Key(x), Credential.Key(y))       => x.compareTo(y)
       case (Credential.Script(_), Credential.Key(_))    => -1
       case (Credential.Key(_), Credential.Script(_))    => 1
   }
@@ -32,13 +32,13 @@ object NodeOrders:
       case DRep.AlwaysNoConfidence               => 3
     (a, b) match
       case (DRep.Registered(x), DRep.Registered(y)) if rank(a) == rank(b) =>
-        x.hash compareTo y.hash
+        x.hash.compareTo(y.hash)
       case _ => Integer.compare(rank(a), rank(b))
   }
 
   /** `GovActionId` (`Procedures.hs:170`, derived `Ord`): the transaction id, then the index. */
   given Order[GovActionId] = Order.from { (a, b) =>
-    val byTx = a.txId compareTo b.txId
+    val byTx = a.txId.compareTo(b.txId)
     if byTx != 0 then byTx else a.index compare b.index
   }
 
@@ -51,6 +51,6 @@ object NodeOrders:
 
   /** `TxIn` (`TxIn.hs`, derived `Ord`): the transaction id, then the index. */
   given Order[TxIn] = Order.from { (a, b) =>
-    val byTx = a.id compareTo b.id
+    val byTx = a.id.compareTo(b.id)
     if byTx != 0 then byTx else a.index compare b.index
   }

@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.node.mempool
 
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{IO, Resource}
-import cats.mtl.Handle
 import cats.syntax.all.*
 import java.time.Instant
 import munit.CatsEffectSuite

@@ -183,7 +183,7 @@ class GenesisHeaderClockSuite extends FailsOnUncaught:
                 )
               )
               .start
-            _ <- IO.sleep(200.millis) *> offset.set(-1.second)
+            _ <- IO.sleep(200.millis) *> offset.set((-1).second)
             outcome <- fiber.joinWithNever
             reached <- accepted.get
             _ = assertEquals(outcome, Right(()))

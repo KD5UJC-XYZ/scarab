@@ -103,6 +103,18 @@ object UpstreamGenesisCases:
       expected: Expected
   )
 
+  private given Decoder[Point] = Decoder.instance { cursor =>
+    if cursor.value.isNull then Right(Point.Origin)
+    else
+      for
+        slot <- cursor.get[BigInt]("slot")
+        number <- UInt64
+          .from(slot)
+          .leftMap(error => DecodingFailure(error.toString, cursor.history))
+        hex <- cursor.get[String]("hash")
+        hash <- Bytes.fromHex(hex).leftMap(error => DecodingFailure(error.toString, cursor.history))
+      yield Point.Block(number, hash)
+  }
   given Decoder[NodeState] = Decoder.instance { c =>
     for
       tip <- c.get[Point]("tip")
@@ -171,18 +183,6 @@ object UpstreamGenesisCases:
       )
     )
   )
-  private given Decoder[Point] = Decoder.instance { cursor =>
-    if cursor.value.isNull then Right(Point.Origin)
-    else
-      for
-        slot <- cursor.get[BigInt]("slot")
-        number <- UInt64
-          .from(slot)
-          .leftMap(error => DecodingFailure(error.toString, cursor.history))
-        hex <- cursor.get[String]("hash")
-        hash <- Bytes.fromHex(hex).leftMap(error => DecodingFailure(error.toString, cursor.history))
-      yield Point.Block(number, hash)
-  }
   private given Decoder[Fragment] = Decoder.instance { cursor =>
     for
       anchor <- cursor.get[Point]("anchor")

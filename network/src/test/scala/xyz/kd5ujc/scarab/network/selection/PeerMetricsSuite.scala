@@ -56,7 +56,7 @@ class PeerMetricsSuite extends ScalaCheckSuite:
         def fine(scores: Map[Int, Long]): Boolean =
           val ranked = scores.toList
             .map((p, v) => (p, (v, after.joinedAt.get(p))))
-            .sortBy(_._2)(using Ordering.Tuple2(Ordering.Long, Ordering.Option(Ordering.Long)))
+            .sortBy(_._2)(using Ordering.Tuple2(using Ordering.Long, Ordering.Option(using Ordering.Long)))
           val worst = ranked.take(scores.size / 5).map(_._1).toSet
           worst.size < 5 || !worst.contains(peer)
         known || List(

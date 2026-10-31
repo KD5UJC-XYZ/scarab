@@ -93,17 +93,8 @@ object LedgerState:
     * witness: the one path that does not depend on the era being known.
     */
   def pState[E <: EraTag](using era: ShelleyBasedEra[E]): Lens[LedgerState[E], PState] =
-    import ShelleyBasedEra.*
-    Lens[LedgerState[E], PState](l =>
-      era match
-        case SConway                                          => l.cert.pState
-        case SShelley | SAllegra | SMary | SAlonzo | SBabbage => l.cert.pState
-    )(p =>
-      l =>
-        era match
-          case SConway => l.copy[E](cert = l.cert.copy(pState = p))
-          case SShelley | SAllegra | SMary | SAlonzo | SBabbage =>
-            l.copy[E](cert = l.cert.copy(pState = p))
+    Lens[LedgerState[E], PState](l => era.cert.on(l.cert)(_.pState, _.pState))(p =>
+      l => l.copy[E](cert = era.cert.update(l.cert)(_.copy(pState = p), _.copy(pState = p)))
     )
 
 /** Paths into a Conway ledger state, composed from the one lens of each record (`andThen`): a path
