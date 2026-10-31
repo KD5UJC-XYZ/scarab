@@ -65,6 +65,7 @@ enum UnsupportedFeature:
   case GroupAsType(rule: QName)
   case NotGroup(rule: QName)
   case FloatSampling
+  case NilOnlyChoice
 
   def message: String = this match
     case UnappliedGeneric          => "generic rule used without type arguments"
@@ -92,6 +93,7 @@ enum UnsupportedFeature:
     case GroupAsType(q)            => s"group $q as a type"
     case NotGroup(q)               => s"$q is not a group"
     case FloatSampling             => "float"
+    case NilOnlyChoice             => "a choice of `nil` alone"
 
 /** Eval trampolines schema depth; EitherT propagates domain failures as values. */
 private[gen] type GenResult[A] = EitherT[Eval, GenError, A]

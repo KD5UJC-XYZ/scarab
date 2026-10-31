@@ -182,6 +182,9 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
       case RT.CborOf(inner) => wrapped(inner)(i => (i.tpe, s"rt.Codec.embedded(${i.codec})"))
       case RT.Choice(MaybeTagged(n, inner)) =>
         wrapped(inner)(i => (i.tpe, s"rt.Codec.maybeTagged(BigInt($n), ${i.codec})"))
+      // `nil / nil` is neither nullable nor a plain choice: refused, where a choice would recurse
+      case RT.Choice(alts) if alts.nonEmpty && alts.forall(_ == nil) =>
+        unsupported(ctx, UnsupportedFeature.NilOnlyChoice)
       case RT.Choice(Nullable(inner)) =>
         wrapped(inner)(i => (s"Option[${i.tpe}]", s"rt.Codec.nullable(${i.codec})"))
       case RT.Choice(IntLits(xs)) =>
