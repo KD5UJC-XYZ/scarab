@@ -73,11 +73,10 @@ object GenesisBlockFetch:
             val (unavailable, available) = valid.span(c => !contains(c.fragments, oldest.hash))
             val prior =
               rejected ++ unavailable.map(c => Decision.Declined(c.peer, Refusal.AlreadyFetched))
-            available.headOption match
-              case None => Result(before, prior, demoted)
-              case Some(peer) =>
+            available match
+              case peer +: rest =>
                 val others =
-                  available.tail.map(c => Decision.Declined(c.peer, Refusal.GenesisConcurrency(1)))
+                  rest.map(c => Decision.Declined(c.peer, Refusal.GenesisConcurrency(1)))
                 val ownRemoved =
                   BlockFetchPolicy.filterFragments(missing, h => !peer.inFlight.blocks(h.hash))
                 val trimmed = trim(ownRemoved, peer.fragments)
@@ -108,6 +107,7 @@ object GenesisBlockFetch:
                       else before
                     Result(state, Vector(request) ++ prior ++ others, demoted)
                   case declined => Result(before, prior ++ others :+ declined, demoted)
+              case _ => Result(before, prior, demoted)
 
   private def contains(fragments: Vector[Fragment], hash: Bytes): Boolean =
     fragments.exists(f => f.anchor.contains(hash) || f.headers.exists(_.hash == hash))

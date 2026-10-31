@@ -5,7 +5,7 @@ import cats.effect.{Async, Resource}
 import cats.effect.syntax.all.*
 import cats.mtl.Handle
 import cats.syntax.all.*
-import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
+import com.comcast.ip4s.{Host, IpAddress, Ipv4Address, Port, SocketAddress}
 import fs2.Stream
 import fs2.io.net.Network
 import xyz.kd5ujc.scarab.codec.DomainError
@@ -33,12 +33,13 @@ object BearerServer:
       handle: Handle[F, E] ?=> (Bearer[F], SocketAddress[IpAddress]) => F[Unit]
   ): Resource[F, SocketAddress[IpAddress]] =
     val network = Network.forAsync[F]
-    val wildcard = IpAddress.fromString("0.0.0.0").get
     Resource
       .eval(
         host
           .traverse(_.resolve[F](using network.dns, Async[F]))
-          .map(ip => SocketAddress(ip.getOrElse(wildcard), port.getOrElse(Port.fromInt(0).get)))
+          .map(ip =>
+            SocketAddress(ip.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard))
+          )
       )
       .flatMap(requested => network.bind(requested))
       .flatMap { server =>

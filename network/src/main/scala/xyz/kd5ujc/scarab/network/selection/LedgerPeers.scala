@@ -312,10 +312,10 @@ object LedgerPeerStake:
         acc: Rational,
         out: Vector[(AccPoolStake, LedgerPool[R])]
     ): Vector[(AccPoolStake, LedgerPool[R])] =
-      rest.headOption match
-        case Some(p) if acc <= BigQuota.share =>
+      rest match
+        case p +: tail if acc <= BigQuota.share =>
           val next = acc + p.stake.share
-          go(rest.tail, next, out :+ (AccPoolStake(next) -> p))
+          go(tail, next, out :+ (AccPoolStake(next) -> p))
         case _ => out
     go(sorted, Rational.zero, Vector.empty)
 
