@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import cats.data.NonEmptySet
 import cats.effect.{Async, Resource}
 import fs2.concurrent.SignallingRef
 import cats.effect.syntax.all.*
@@ -67,9 +68,19 @@ object NodeToNodeServer:
     Protocols.PeerSharing
   )
 
+  /** The mini-protocols after the handshake: PeerSharing only when the connection agreed to it. */
+  private def application(peerSharing: Boolean): NonEmptySet[Int] =
+    val always =
+      NonEmptySet.of(
+        Protocols.ChainSync,
+        Protocols.BlockFetch,
+        Protocols.TxSubmission2,
+        Protocols.KeepAlive
+      )
+    if peerSharing then always.add(Protocols.PeerSharing) else always
+
   private[network] def applicationProtocols(peerSharing: Boolean): Set[Int] =
-    Protocol - Protocols.Handshake -- (if peerSharing then Set.empty
-                                       else Set(Protocols.PeerSharing))
+    application(peerSharing).toSortedSet
 
   /** Run the servers for the life of the resource. A failed server aborts the multiplexer, which
     * ends the connection; a client that finishes its protocol (`Done`) just ends that conversation,
@@ -100,7 +111,7 @@ object NodeToNodeServer:
     def onDemand(protocol: Int): F[Unit] = mux.awaitResponderInput(protocol)
     // `StartOnDemandAny`: the first byte of any responder starts it
     val onDemandAny: F[Unit] =
-      installed.toList.map(onDemand).reduceLeft((a, b) => Async[F].race(a, b).void)
+      application(peerSharing).reduceLeftTo(onDemand)((a, b) => Async[F].race(a, onDemand(b)).void)
     for
       _ <- Resource.eval(
         mux.installApplication(if initiators then installed else Set.empty, installed)

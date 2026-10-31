@@ -203,12 +203,14 @@ object LocalSockets:
       F.blocking(Unlink(path)).map(_.leftMap(SystemCallError(SystemCall.RemoveLink, _, Some(path))))
 
     def fileMode(path: String): F[Either[SystemCallError, Int]] =
-      F.blocking(
-        Either
-          .catchOnly[IOException](Files.getAttribute(Path.of(path), "unix:mode"))
-          .map(_.asInstanceOf[Integer].toInt)
-          .leftMap(SystemCallError.of(SystemCall.GetFileStatus, Some(path)))
-      )
+      F.blocking(Either.catchOnly[IOException](Files.getAttribute(Path.of(path), "unix:mode")))
+        .flatMap(_.leftMap(SystemCallError.of(SystemCall.GetFileStatus, Some(path))).traverse {
+          // the JDK's `unix:mode` is an Integer behind an attribute API typed Object; anything
+          // else is a defect, as the cast it replaces was
+          case mode: Integer => F.pure(mode.toInt)
+          case other =>
+            F.raiseError(new ClassCastException(s"unix:mode is a ${other.getClass.getName}"))
+        })
 
     def open(address: LocalAddress): Resource[F, Either[SystemCallError, LocalListener[F]]] =
       Resource
@@ -218,7 +220,7 @@ object LocalSockets:
               val before = Proc.socketDescriptors
               val channel = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
               val opened = Proc.socketDescriptors.keySet -- before.keySet
-              (channel, Option.when(opened.sizeIs == 1)(opened.head))
+              (channel, opened.headOption.filter(_ => opened.sizeIs == 1))
             }
           )
         )(_.traverse_((channel, _) => F.blocking(channel.close())))
@@ -311,7 +313,8 @@ object LocalSockets:
           MemorySegment.copy(bytes, 0, name, ValueLayout.JAVA_BYTE, 0L, bytes.length)
           name.set(ValueLayout.JAVA_BYTE, bytes.length.toLong, 0.toByte)
           val captured = arena.allocate(state)
-          val result = unlink.invokeWithArguments(captured, name).asInstanceOf[Integer].intValue
+          // signature-polymorphic: the ascribed Int is the handle's `(MemorySegment, MemorySegment)int`
+          val result: Int = unlink.invokeExact(captured, name)
           Either.cond(
             result == 0,
             (),
