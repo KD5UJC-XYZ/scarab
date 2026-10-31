@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network.selection
 
+import cats.data.NonEmptyVector
 import xyz.kd5ujc.scarab.codec.{Bytes, HaskellSort}
 
 import FetchGsv.PeerGsv
@@ -105,16 +106,14 @@ object BlockFetchPolicy:
           if band(a) != band(b) then band(a) > band(b)
           else a.chainPreference > b.chainPreference
         }
-        val groups = ordered.foldLeft(Vector.empty[Vector[Candidate[P]]]) { (acc, c) =>
+        val groups = ordered.foldLeft(Vector.empty[NonEmptyVector[Candidate[P]]]) { (acc, c) =>
           acc match
             case init :+ last
-                if last.headOption.exists(first =>
-                  band(first) == band(c) && first.chainPreference == c.chainPreference
-                ) =>
+                if band(last.head) == band(c) && last.head.chainPreference == c.chainPreference =>
               init :+ (last :+ c)
-            case _ => acc :+ Vector(c)
+            case _ => acc :+ NonEmptyVector.one(c)
         }
-        groups.flatMap { group =>
+        groups.map(_.toVector).flatMap { group =>
           val heads = group.groupBy(c => (c.chainHeadSlot, c.chainHead)).toVector.sortBy(_._1)
           val depth = heads.map(_._2.size).maxOption.getOrElse(0)
           (0 until depth).toVector.flatMap(i => heads.flatMap(_._2.lift(i)))
