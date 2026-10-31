@@ -239,7 +239,7 @@ object PeerSharing:
       Vector(w, x, y, z).foreach(q => writer.head(0, q.value))
       writer.head(0, p.value.toLong)
 
-  private def readAddress(c: PeerSharingEngine.Cursor): PeerSharingEngine.Read[Address] =
+  private def readAddress(c: PeerSharingEngine.Cursor): PeerSharingEngine.Parse[Address] =
     def word() = c.ranged(Field.Word32, BigInt(Word32.Max)).map(Word32.trusted)
     def port() = c.ranged(Field.Port, BigInt(Port.Max)).map(Port.trusted)
     for
@@ -273,7 +273,7 @@ object PeerSharing:
         PeerSharingEngine.decodePeer(item, this).left.map(ProtocolError.PeerSharing.apply)
       override private[protocol] def readFrom(
           cursor: PeerSharingEngine.Cursor
-      ): PeerSharingEngine.Read[Address] =
+      ): PeerSharingEngine.Parse[Address] =
         readAddress(cursor)
       override private[protocol] def writeTo(
           writer: PeerSharingEngine.Writer,

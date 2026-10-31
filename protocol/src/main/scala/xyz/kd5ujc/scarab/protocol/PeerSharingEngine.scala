@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
-import scala.annotation.tailrec
+import cats.data.StateT
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 
 import ChainSync.DecodeResult
@@ -22,8 +23,8 @@ object PeerSharingEngine:
   trait PeerCodec[P]:
     def encode(peer: P): Either[ProtocolError, Bytes]
     def decode(item: Bytes): Either[ProtocolError, P]
-    private[protocol] def readFrom(cursor: Cursor): Read[P] =
-      cursor.item().flatMap(item => decode(item).left.map(e => Stop.Fail(Error.PeerItem(e))))
+    private[protocol] def readFrom(cursor: Cursor): Parse[P] =
+      cursor.item().flatMapF(item => decode(item).left.map(e => Stop.Fail(Error.PeerItem(e))))
     private[protocol] def writeTo(writer: Writer, peer: P, limits: Limits): Either[Error, Unit] =
       for
         item <- encode(peer).left.map(Error.PeerItem.apply)
@@ -131,87 +132,85 @@ object PeerSharingEngine:
     case Fail(error: Error)
   private[protocol] type Read[A] = Either[Stop, A]
 
+  /** A read from a position of the input: the position after it, and its value, or why it stopped.
+    */
+  private[protocol] type Parse[A] = StateT[Read, Int, A]
+
   private[protocol] def fail[A](error: Error): Read[A] = Left(Stop.Fail(error))
+  private def stopped[A](read: Read[A]): Parse[A] = StateT.liftF(read)
 
   /** The head of a CBOR item: its initial byte, major type, and the argument (absent when
     * indefinite).
     */
   private[protocol] final case class Head(initial: Int, major: Int, argument: Option[BigInt])
 
-  /** A cursor over a prefix; the bytes read so far never pass `limit`. */
+  /** The reads of a prefix of `input`; the bytes read never pass `limit`. */
   private[protocol] final class Cursor(input: Bytes, limit: Int):
-    private var at = 0
-    def position: Int = at
+    private def need(n: Int): Parse[Unit] =
+      StateT.inspectF(at =>
+        if n > limit - at then fail(Error.TooLarge(limit))
+        else if n > input.size - at then Left(Stop.Short)
+        else Right(())
+      )
 
-    private def need(n: Int): Read[Unit] =
-      if n > limit - at then fail(Error.TooLarge(limit))
-      else if n > input.size - at then Left(Stop.Short)
-      else Right(())
+    private def byte(): Parse[Int] =
+      need(1) *> StateT(at => Right((at + 1, input(at) & 255)))
 
-    private def byte(): Read[Int] =
-      need(1).map { _ =>
-        val b = input(at) & 255
-        at += 1
-        b
-      }
-
-    def head(): Read[Head] =
+    def head(): Parse[Head] =
       byte().flatMap { initial =>
         val major = initial >> 5
         val info = initial & 31
-        if info < 24 then Right(Head(initial, major, Some(BigInt(info))))
-        else if info == 31 then Right(Head(initial, major, None))
-        else if info > 27 then fail(Error.ReservedHead(initial))
+        if info < 24 then stopped(Right(Head(initial, major, Some(BigInt(info)))))
+        else if info == 31 then stopped(Right(Head(initial, major, None)))
+        else if info > 27 then stopped(fail(Error.ReservedHead(initial)))
         else
           val width = 1 << (info - 24)
-          need(width).map { _ =>
+          need(width) *> StateT { at =>
             val value = (0 until width).foldLeft(BigInt(0))((acc, i) =>
               (acc << 8) | BigInt(input(at + i) & 255)
             )
-            at += width
-            Head(initial, major, Some(value))
+            Right((at + width, Head(initial, major, Some(value))))
           }
       }
 
     /** An unsigned integer in any definite width. */
-    def uint(): Read[BigInt] =
-      head().flatMap {
+    def uint(): Parse[BigInt] =
+      head().flatMapF {
         case Head(_, 0, Some(value)) => Right(value)
         case Head(initial, 0, None)  => fail(Error.ReservedHead(initial))
         case Head(initial, _, _)     => fail(Error.Unexpected(Expectation.UnsignedInteger, initial))
       }
 
-    def ranged(field: Field, max: BigInt): Read[Long] =
-      uint().flatMap(v => if v > max then fail(Error.OutOfRange(field, v)) else Right(v.toLong))
+    def ranged(field: Field, max: BigInt): Parse[Long] =
+      uint().flatMapF(v => if v > max then fail(Error.OutOfRange(field, v)) else Right(v.toLong))
 
-    def definiteArray(): Read[BigInt] =
-      head().flatMap {
+    def definiteArray(): Parse[BigInt] =
+      head().flatMapF {
         case Head(_, 4, Some(n)) => Right(n)
         case Head(initial, _, _) => fail(Error.Unexpected(Expectation.DefiniteArray, initial))
       }
 
     /** The length of an array, or `None` for an indefinite one. */
-    def arrayOrIndefinite(): Read[Option[BigInt]] =
-      head().flatMap {
+    def arrayOrIndefinite(): Parse[Option[BigInt]] =
+      head().flatMapF {
         case Head(_, 4, length) => Right(length)
         case Head(initial, _, _) =>
           fail(Error.Unexpected(Expectation.ArrayOrIndefiniteArray, initial))
       }
 
-    def peekBreak(): Read[Boolean] =
-      need(1).map(_ => (input(at) & 255) == 0xff)
+    def peekBreak(): Parse[Boolean] =
+      need(1) *> StateT.inspect(at => (input(at) & 255) == 0xff)
 
-    def break(): Read[Unit] =
-      head().flatMap {
+    def break(): Parse[Unit] =
+      head().flatMapF {
         case Head(_, 7, None)    => Right(())
         case Head(initial, _, _) => fail(Error.Unexpected(Expectation.Break, initial))
       }
 
     /** One complete opaque peer item, bounded by this message's remaining byte budget. */
-    def item(): Read[Bytes] =
-      need(1).flatMap { _ =>
-        val remaining = limit - at
-        val bounds = itemLimits(remaining)
+    def item(): Parse[Bytes] =
+      need(1) *> StateT { at =>
+        val bounds = itemLimits(limit - at)
         ProtocolWire.prefix {
           val reader = new ProtocolWire.Reader(input.drop(at), bounds)
           val item = reader.item()
@@ -220,34 +219,28 @@ object PeerSharingEngine:
           case DecodeResult.NeedMore => Left(Stop.Short)
           case DecodeResult.Failed(ProtocolError.MessageByteLimitExceeded) =>
             fail(Error.TooLarge(limit))
-          case DecodeResult.Failed(error) => fail(Error.PeerItem(error))
-          case DecodeResult.Decoded(value, consumed) =>
-            at += consumed
-            Right(value)
+          case DecodeResult.Failed(error)            => fail(Error.PeerItem(error))
+          case DecodeResult.Decoded(value, consumed) => Right((at + consumed, value))
       }
 
-  private[protocol] def arity(found: BigInt, expected: Int): Read[Unit] =
-    if found == BigInt(expected) then Right(()) else fail(Error.Arity(expected, found))
+  private[protocol] def arity(found: BigInt, expected: Int): Parse[Unit] =
+    stopped(if found == BigInt(expected) then Right(()) else fail(Error.Arity(expected, found)))
 
   /** The peers of a `MsgSharePeers`: a definite or an indefinite list (`Codec.hs:89-93`). */
-  private def peers[P](c: Cursor, peer: PeerCodec[P]): Read[Vector[P]] =
-    @tailrec def definite(left: BigInt, acc: Vector[P]): Read[Vector[P]] =
-      if left == 0 then Right(acc)
-      else
-        peer.readFrom(c) match
-          case Right(a) => definite(left - 1, acc :+ a)
-          case Left(s)  => Left(s)
-    @tailrec def indefinite(acc: Vector[P]): Read[Vector[P]] =
-      c.peekBreak() match
-        case Left(s)     => Left(s)
-        case Right(true) => c.break().map(_ => acc)
-        case Right(false) =>
-          peer.readFrom(c) match
-            case Right(a) => indefinite(acc :+ a)
-            case Left(s)  => Left(s)
+  private def peers[P](c: Cursor, peer: PeerCodec[P]): Parse[Vector[P]] =
     c.arrayOrIndefinite().flatMap {
-      case Some(n) => definite(n, Vector.empty)
-      case None    => indefinite(Vector.empty)
+      case Some(n) =>
+        (n, Vector.empty[P]).tailRecM { (left, acc) =>
+          if left == 0 then stopped(Right(Right(acc)))
+          else peer.readFrom(c).map(a => Left((left - 1, acc :+ a)))
+        }
+      case None =>
+        Vector.empty[P].tailRecM { acc =>
+          c.peekBreak().flatMap {
+            case true  => c.break().as(Right(acc))
+            case false => peer.readFrom(c).map(a => Left(acc :+ a))
+          }
+        }
     }
 
   /** One message from the front of `bytes`; surplus bytes are left to the caller. The ceiling is
@@ -265,7 +258,7 @@ object PeerSharingEngine:
       case State.Done => Left(Error.Terminal)
       case State.Idle => Either.cond(sender == Role.Client, (), Error.WrongAgency(state, sender))
       case State.Busy => Either.cond(sender == Role.Server, (), Error.WrongAgency(state, sender))
-    val decoded: Read[Message[P]] = agency.left.map(Stop.Fail(_)).flatMap { _ =>
+    val message: Parse[Message[P]] =
       for
         n <- cursor.definiteArray()
         key <- cursor.uint()
@@ -280,12 +273,11 @@ object PeerSharingEngine:
               _ <- arity(n, 2)
               found <- peers(cursor, peer)
             yield Message.SharePeers(found)
-          case (State.Idle, k) if k == 2 => arity(n, 1).map(_ => Message.Done)
-          case _                         => fail(Error.UnexpectedKey(state, key))
+          case (State.Idle, k) if k == 2 => arity(n, 1).as(Message.Done)
+          case _                         => stopped(fail(Error.UnexpectedKey(state, key)))
       yield message
-    }
-    decoded match
-      case Right(message)         => Decoding.Decoded(message, cursor.position)
+    agency.left.map(Stop.Fail(_)).flatMap(_ => message.run(0)) match
+      case Right((used, message)) => Decoding.Decoded(message, used)
       case Left(Stop.Short)       => Decoding.NeedMore
       case Left(Stop.Fail(error)) => Decoding.Failed(error)
 
@@ -302,13 +294,8 @@ object PeerSharingEngine:
       case Decoding.Decoded(value, used) => DecodeResult.Decoded(value, used)
 
   private[protocol] def decodePeer[P](bytes: Bytes, peer: PeerCodec[P]): Either[Error, P] =
-    val cursor = new Cursor(bytes, PeerSharing.UpstreamMessageBytes)
-    peer.readFrom(cursor) match
+    peer.readFrom(new Cursor(bytes, PeerSharing.UpstreamMessageBytes)).run(0) match
       case Left(Stop.Short)       => Left(Error.Truncated)
       case Left(Stop.Fail(error)) => Left(error)
-      case Right(value) =>
-        Either.cond(
-          cursor.position == bytes.size,
-          value,
-          Error.Trailing(bytes.size - cursor.position)
-        )
+      case Right((used, value)) =>
+        Either.cond(used == bytes.size, value, Error.Trailing(bytes.size - used))

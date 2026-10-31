@@ -107,12 +107,14 @@ private[protocol] object LeiosWire:
       parts <- node.value match
         case Value.Arr(xs) => Right(xs)
         case _             => Left(LeiosWireError.NotAnArray)
-      head <- parts.headOption.toRight(LeiosWireError.EmptyMessage)
+      (head, rest) <- parts match
+        case first +: others => Right((first, others))
+        case _               => Left(LeiosWireError.EmptyMessage)
       tag <- head.value match
         case Value.UInt(t) if t <= 1000 => Right(t.toInt)
         case Value.UInt(t)              => Left(LeiosWireError.UnknownTag(t))
         case _                          => Left(LeiosWireError.BadField(-1, LeiosField.Word16))
-    yield (tag, parts.tail, n)
+    yield (tag, rest, n)
 
   def arity(tag: Int, fields: Vector[Node], expected: Int): Either[LeiosWireError, Unit] =
     Either.cond(

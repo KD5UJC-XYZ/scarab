@@ -69,4 +69,5 @@ One row per measurement section, in the order the sections were written; the sec
 | 42 | 2026-10-24 | The judgment in the rule interpreter (#412, foundation) | #412, #420 | [The typed rule interpreter and the cast-erasure batch](performance/cast-erasure-interpreter.md#42-the-judgment-in-the-rule-interpreter-412-foundation) |
 | 43 | 2026-10-26 | Incremental injection numeric coefficients (#499) | #499 | [Incremental injection numeric coefficients](performance/injection-coefficients.md#43-incremental-injection-numeric-coefficients-499) |
 | 44 | 2026-10-25 | The reference's budget arithmetic in the evaluator (#485) | #485 | [The reference's budget arithmetic in the evaluator](performance/plutus-budget-arithmetic.md#44-the-references-budget-arithmetic-in-the-evaluator-485) |
+| 45 | 2026-10-31 | The CBOR walk of the mini-protocol reader: functional against imperative (#657) | #657 | [Peers, connections and the network path](performance/peers-and-network.md#45-the-cbor-walk-of-the-mini-protocol-reader-functional-against-imperative-657) |
 <!-- /register -->

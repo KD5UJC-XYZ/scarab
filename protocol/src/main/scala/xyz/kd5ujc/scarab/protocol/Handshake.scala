@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import java.nio.ByteBuffer
-import java.nio.charset.{CodingErrorAction, StandardCharsets}
+import java.nio.charset.{CharacterCodingException, CodingErrorAction, StandardCharsets}
 import scala.concurrent.duration.*
 import cats.syntax.all.*
 
@@ -498,8 +498,8 @@ object Handshake:
       if n < 0 || n > bound then failed(ProtocolError.CBORResourceLimitExceeded)
       else pure(n.toInt)
     private def utf8(bytes: Vector[Byte]): Either[ProtocolError, String] =
-      try
-        Right(
+      Either
+        .catchOnly[CharacterCodingException](
           StandardCharsets.UTF_8
             .newDecoder()
             .onMalformedInput(CodingErrorAction.REPORT)
@@ -507,7 +507,7 @@ object Handshake:
             .decode(ByteBuffer.wrap(bytes.toArray))
             .toString
         )
-      catch case _: java.nio.charset.CharacterCodingException => Left(ProtocolError.InvalidUTF8)
+        .leftMap(_ => ProtocolError.InvalidUTF8)
     private def chunk(major: Int, ai: Int, remaining: Int): Read[Vector[Byte]] =
       for
         length <- argument(ai).flatMap(size(_, remaining))
@@ -628,15 +628,18 @@ object Handshake:
       else Right((state.copy(items = state.items + 1), ()))
     }
     def unicode(value: String): Either[ProtocolError, Vector[Byte]] =
-      try
-        val encoded = StandardCharsets.UTF_8
-          .newEncoder()
-          .onMalformedInput(CodingErrorAction.REPORT)
-          .onUnmappableCharacter(CodingErrorAction.REPORT)
-          .encode(java.nio.CharBuffer.wrap(value))
-        Right(Vector.tabulate(encoded.remaining())(i => encoded.get(i)))
-      catch
-        case _: java.nio.charset.CharacterCodingException => Left(ProtocolError.InvalidUnicodeText)
+      Either
+        .catchOnly[CharacterCodingException](
+          StandardCharsets.UTF_8
+            .newEncoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .encode(java.nio.CharBuffer.wrap(value))
+        )
+        .bimap(
+          _ => ProtocolError.InvalidUnicodeText,
+          encoded => Vector.tabulate(encoded.remaining())(i => encoded.get(i))
+        )
     def go(value: Term, depth: Int): Write[Unit] = count(depth).flatMap { _ =>
       value match
         case Term.Integer(n) => if n >= 0 then head(0, n) else head(1, -1 - n)
