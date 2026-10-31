@@ -105,6 +105,10 @@ object Sorted:
     * for each entry, and a sparse one a seek for each key, where a lookup of each key costs about
     * seventeen comparisons for 100,000 entries. A key below one asked before reads as absent.
     */
+  // The position is a mutable field: the epoch boundary's walks are built on this cursor
+  // (`docs/performance.md` section 16, where it is 41 percent of the tick); a functional cursor
+  // threads its position through every walk, and its measurement is #674.
+  @SuppressWarnings(Array("org.wartremover.warts.Var"))
   final class Cursor[K, V](map: SortedMap[K, V])(using order: Order[K]):
     private var rest: scala.collection.BufferedIterator[(K, V)] = map.iterator.buffered
 
