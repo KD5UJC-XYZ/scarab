@@ -184,13 +184,21 @@ object ConwayParam:
 
   private val Int64Max = BigInt(Long.MaxValue)
 
-  /** `ExUnits` below decoder version 12 (`ExUnits.hs:195-215`, f649f975): a record of two `Word64`
-    * s, each at most `maxBound :: Int64`.
+  /** A record the reference reads with `RecD` below decoder version 12: `decodeCount` reads its
+    * length with `decodeRecordNamed` around a decoder that reads nothing
+    * (`Decoding/Coders.hs:482`), so an indefinite list meets the check for its break before its
+    * first field and fails with "Excess terms in array" (`decodeListLikeT`,
+    * `Decoding/Decoder.hs:690-708`, f649f975). Only a definite list of `size` items is the record.
+    */
+  private def record(n: Node, size: Int, site: DecodeSite): Result[Vector[Node]] =
+    CborRead.definite(n, site) *> CborRead.arrayN(n, size, site)
+
+  /** `ExUnits` below decoder version 12 (`ExUnits.hs:195-215`, f649f975): a `RecD` record of two
+    * `Word64` s, each at most `maxBound :: Int64`.
     */
   private def exUnits(site: DecodeSite)(make: ExUnits => ConwayParam): Read =
     n =>
-      CborRead
-        .arrayN(n, 2, site)
+      record(n, 2, site)
         .flatMap(
           _.traverse(x =>
             Unsigned
@@ -216,10 +224,18 @@ object ConwayParam:
         .flatMap(build)
         .map(make)
 
-  /** The decoder of each update key: `decCBOR` of the field's type at the decoder version of Conway
-    * (`mkField Nothing`, `Core/PParams.hs:284-293`).
+  /** The decoder of each update key that names the same parameter in every Shelley-based era: the
+    * `PParam` of `ppTxFeePerByte` to `ppTau` and of `ppMinPoolCost` (`Shelley/PParams.hs:338-451,
+    * 490-496`), and of `ppPrices` to `ppMaxCollateralInputs` (`Alonzo/PParams.hs:676-727`), each
+    * listed by the `eraPParams` of Alonzo, Babbage and Conway (f649f975). Key 17 is
+    * `ppCoinsPerUTxOWord` in Alonzo (`Alonzo/PParams.hs:658-665`, a `CoinPerWord` over `Coin`, read
+    * with `decodeWord64`, `Coin.hs:108-113`) and `ppCoinsPerUTxOByte` from Babbage
+    * (`Babbage/PParams.hs:405-412`, a `CoinPerByte` over `CompactForm Coin`, `Coin.hs:193-194,
+    * 220-222`): one `Word64` in each. Each is `decCBOR` of the field's type below decoder version
+    * 12, where every era up to Conway reads it (`mkField Nothing`, `Core/PParams.hs:284-293`), so a
+    * pre-Conway update reads its value here too.
     */
-  private[ledger] val decoders: Map[BigInt, Read] = Map[Int, Read](
+  private[ledger] val everyEra: Map[BigInt, Read] = Map[Int, Read](
     0 -> word[W64](DecodeField.MinFeeA)(TxFeePerByte(_)),
     1 -> word[W64](DecodeField.MinFeeB)(TxFeeFixed(_)),
     2 -> word[W32](DecodeField.MaxBlockBodySize)(MaxBBSize(_)),
@@ -234,10 +250,10 @@ object ConwayParam:
     11 -> ratio(DecodeField.Tau, CborRead.Bound.Unit)(Tau(_)),
     16 -> word[W64](DecodeField.MinPoolCost)(MinPoolCost(_)),
     17 -> word[W64](DecodeField.CoinsPerUTxO)(CoinsPerUTxOByte(_)),
-    18 -> (n => CostModelDecode.decode(n, CostModelDecode.Format.Open).map(CostModels(_))),
+    // `Prices` below decoder version 12 (`ExUnits.hs:222-231`): a `RecD` record of two
+    // `NonNegativeInterval` s.
     19 -> (n =>
-      CborRead
-        .arrayN(n, 2, DecodeField.Prices)
+      record(n, 2, DecodeField.Prices)
         .flatMap(xs =>
           (
             CborRead.rational(xs(0), DecodeField.PriceMem, CborRead.Bound.NonNegative),
@@ -249,7 +265,15 @@ object ConwayParam:
     21 -> exUnits(DecodeField.MaxBlockExUnits)(MaxBlockExUnits(_)),
     22 -> word[W32](DecodeField.MaxValueSize)(MaxValSize(_)),
     23 -> word[W16](DecodeField.CollateralPercentage)(CollateralPercentage(_)),
-    24 -> word[W16](DecodeField.MaxCollateralInputs)(MaxCollateralInputs(_)),
+    24 -> word[W16](DecodeField.MaxCollateralInputs)(MaxCollateralInputs(_))
+  ).map((k, read) => BigInt(k) -> read)
+
+  /** The decoder of each Conway update key: `decCBOR` of the field's type at the decoder version of
+    * Conway (`mkField Nothing`, `Core/PParams.hs:284-293`), [[everyEra]] and the keys Conway alone
+    * has. The cost models of key 18 are read by the rule of Conway's decoder version.
+    */
+  private[ledger] val decoders: Map[BigInt, Read] = everyEra ++ Map[Int, Read](
+    18 -> (n => CostModelDecode.decode(n, CostModelDecode.Format.Open).map(CostModels(_))),
     25 -> thresholds(DecodeField.PoolVotingThresholds, 5)(PoolVotingThresholds.fromVector)(
       PoolThresholds(_)
     ),
