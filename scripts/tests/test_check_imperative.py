@@ -58,6 +58,11 @@ class ImperativeTest(unittest.TestCase):
                          {'try': 1, 'catch': 1, 'finally': 1})
         self.assertEqual(imperative.counts('s"a\\"try" ; val b = "\\${try}"'), {})
 
+    def test_a_dollar_quote_is_text(self):
+        self.assertEqual(imperative.counts('val s = s"$"try$""'), {})
+        self.assertEqual(imperative.counts('val s = s"$"ok$" ${try 1 catch { case _: Exception => 0 } finally ()}"'),
+                         {'try': 1, 'catch': 1, 'finally': 1})
+
     def test_block_comments_nest(self):
         self.assertEqual(imperative.counts('s"${ /* outer /* inner */ } */ try 1 finally () }"'),
                          {'try': 1, 'finally': 1})

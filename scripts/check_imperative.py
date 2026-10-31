@@ -99,7 +99,8 @@ def string_literal(source: str, i: int, triple: bool, interpolated: bool) -> tup
         if interpolated and source.startswith('${', i):
             i, expression = scan(source, i + 2, True)
             kept.append(' ' + expression + ' ')
-        elif interpolated and source.startswith('$$', i):
+        elif interpolated and (source.startswith('$$', i) or source.startswith('$"', i)):
+            # `$$` and `$"` are a literal dollar and quote (SIP-37)
             i += 2
         elif source[i] == '\\' and not triple:
             # in an interpolated string a backslash keeps only a quote or a backslash from ending or
