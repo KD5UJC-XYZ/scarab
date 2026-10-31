@@ -32,6 +32,10 @@ private[mempack] object MultiAssetRep:
   /** The number of assets and the representation of non-empty `assets` (zero quantities and empty
     * policies are dropped first, as the ledger's value never holds them).
     */
+  // The assets are collected in two buffers: collected as one fold, the encode of a preprod
+  // tables file took 1.06 times as long with 5 percent more allocation, and as a flatMap of the
+  // policies 1.17 times (`docs/performance.md` section 51).
+  @SuppressWarnings(Array("org.wartremover.warts.MutableDataStructures"))
   def build(assets: Map[Bytes, Map[Bytes, BigInt]]): Result[(Int, Bytes)] =
     val policies = assets.toVector.sortBy(_._1)(using Ordering[Bytes])
     val triples = ArrayBuffer.empty[(Int, Bytes, BigInt)]
@@ -59,7 +63,8 @@ private[mempack] object MultiAssetRep:
           val abc = 12 * n
           val nameBase = abc + PolicySize * p
           val offsets = names.scanLeft(nameBase)((at, name) => at + name.size)
-          val total = offsets.last
+          // the last offset is where the names end (the first, `nameBase`, when there are none)
+          val total = offsets.lastOption.getOrElse(nameBase)
           val offsetOf = names.zip(offsets).toMap
           if total > MaxOffset then Left(Failure.MultiAssetTooLarge(n, p))
           else
@@ -68,10 +73,11 @@ private[mempack] object MultiAssetRep:
               out(at) = v.toByte
               out(at + 1) = (v >>> 8).toByte
             def put64(at: Int, v: Long): Unit =
-              var i = 0
-              while i < 8 do
-                out(at + i) = (v >>> (8 * i)).toByte
-                i += 1
+              @tailrec def put(i: Int): Unit =
+                if i < 8 then
+                  out(at + i) = (v >>> (8 * i)).toByte
+                  put(i + 1)
+              put(0)
             // Stable by name offset: the triples are already in policy order.
             val ordered = triples.zip(quantities.collect { case Right(q) => q }).sortBy { t =>
               offsetOf(t._1._2)
