@@ -93,7 +93,7 @@ private[protocol] object ProtocolWire:
       b
     private def peek: Int =
       need(1)
-      input.lift(pos).fold(bad(ProtocolError.TruncatedCbor))(_ & 255)
+      input.byteOr(pos)(bad(ProtocolError.TruncatedCbor))(_ & 255)
     private def argument(ai: Int): BigInt =
       if ai < 24 then BigInt(ai)
       else

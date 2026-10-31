@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.mempack
 
 import cats.syntax.all.*
+import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
 import xyz.kd5ujc.scarab.codec.Bytes
 
@@ -91,7 +92,13 @@ private[mempack] object MultiAssetRep:
     val size = rep.size
     // the `n` little-endian words of `width` bytes from `at`: none where the regions run short
     def words(at: Int, width: Int): Option[Vector[Long]] =
-      Vector.range(0, n).traverse(i => rep.littleEndian(at + width * i, width))
+      @tailrec def go(i: Int, read: Vector[Long]): Option[Vector[Long]] =
+        if i == n then Some(read)
+        else
+          rep.littleEndian(at + width * i, width) match
+            case None       => None
+            case Some(word) => go(i + 1, read :+ word)
+      go(0, Vector.empty)
     val regions =
       if n < 0 || n.toLong * 12 > size then None
       else (words(0, 8), words(8 * n, 2), words(10 * n, 2)).tupled

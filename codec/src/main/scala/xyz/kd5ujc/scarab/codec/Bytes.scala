@@ -47,6 +47,12 @@ final class Bytes private (
   /** The first byte, if there is one. */
   def headOption: Option[Byte] = lift(0)
 
+  /** `present` of byte `i`, or `missing` if `i` is outside the bytes: [[lift]] for a hot path,
+    * where the caller still says what an index outside means and nothing is allocated.
+    */
+  inline def byteOr[A](i: Int)(inline missing: => A)(inline present: Byte => A): A =
+    if i < 0 || i >= length then missing else present(array(offset + i))
+
   /** The `width` bytes from `from` as an unsigned big-endian number, if they are all inside the
     * bytes and `width` is at most 8 (eight bytes fill the `Long`, its sign bit included).
     */
