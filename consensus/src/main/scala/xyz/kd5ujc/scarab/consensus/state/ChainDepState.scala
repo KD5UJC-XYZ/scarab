@@ -63,15 +63,15 @@ object PBftState:
         signer.genesisKey,
         Word64.fromUnsigned(p.countSignedBy(signer.genesisKey).bits + 1)
       )
-      if p.inWindow.size == windowSize then
-        val oldest = p.inWindow.head
-        val left = Word64.fromUnsigned(joined.getOrElse(oldest.genesisKey, Word64.zero).bits - 1)
-        PBftState(
-          p.inWindow.tail :+ signer,
-          if left.isZero then joined.removed(oldest.genesisKey)
-          else joined.updated(oldest.genesisKey, left)
-        )
-      else PBftState(p.inWindow :+ signer, joined)
+      p.inWindow match
+        case oldest +: rest if p.inWindow.size == windowSize =>
+          val left = Word64.fromUnsigned(joined.getOrElse(oldest.genesisKey, Word64.zero).bits - 1)
+          PBftState(
+            rest :+ signer,
+            if left.isZero then joined.removed(oldest.genesisKey)
+            else joined.updated(oldest.genesisKey, left)
+          )
+        case _ => PBftState(p.inWindow :+ signer, joined)
 
   /** The state of a window of signers, with the counts it implies. */
   def ofWindow(window: Vector[PBftSigner]): PBftState =

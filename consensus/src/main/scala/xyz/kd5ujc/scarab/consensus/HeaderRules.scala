@@ -208,21 +208,22 @@ final case class HeaderChain[H](
 
   /** At most `max` of the newest headers: the oldest are folded into the base. */
   def pruned(max: Int): HeaderChain[H] =
-    if entries.size <= max then this
-    else
-      val (dropped, kept) = entries.splitAt(entries.size - max)
+    val (dropped, kept) = entries.splitAt(entries.size - max)
+    // the newest dropped header, if any, becomes the base
+    dropped.lastOption.fold(this) { last =>
       copy(
-        base = dropped.last.header.point,
-        baseState = dropped.last.state,
+        base = last.header.point,
+        baseState = last.state,
         entries = kept,
         prefix = Vector.empty,
         baseView = Some(
           HeaderChain.TipView(
-            SelectView.of(dropped.last.header),
-            ChainSelection.tiebreakerFor(dropped.last.header.era)
+            SelectView.of(last.header),
+            ChainSelection.tiebreakerFor(last.header.era)
           )
         )
       )
+    }
 
 object HeaderChain:
   enum Error:

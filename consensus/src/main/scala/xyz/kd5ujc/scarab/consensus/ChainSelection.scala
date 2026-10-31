@@ -151,11 +151,9 @@ object ChainSelection:
       * [[Local.of]] builds from the chain that `VolatileChain.extend` returns.
       */
     def extended(block: LocalBlock, immutable: Int): Local =
-      val grown = blocks :+ block
-      if immutable <= 0 then copy(blocks = grown)
-      else
-        val (gone, kept) = grown.splitAt(immutable)
-        Local(gone.last.point, gone.last.view, kept)
+      // nothing leaves the window unless `immutable` is positive (then `gone` holds the new anchor)
+      val (gone, kept) = (blocks :+ block).splitAt(immutable)
+      gone.lastOption.fold(copy(blocks = kept))(anchor => Local(anchor.point, anchor.view, kept))
 
   object Local:
     /** Build the window from the whole chain: one pass over its `k` blocks. This is the reference
@@ -228,10 +226,12 @@ object ChainSelection:
       case Some(common) if common == headers.size => Decision.Keep
       case Some(common) =>
         val take = headers.drop(common)
-        val view = SelectView.of(take.last)
-        // AnchoredFragment.hs:195–201 compares an empty selected fragment by point, not
-        // its anchor's selection view. In particular a boundary block may repeat blockNo.
-        if local.blocks.isEmpty || prefersCandidate(tiebreaker, local.tipView, view) then
-          val at = pointAt(common)
-          Decision.Switch(at, local.depthTo(at), take)
-        else Decision.Keep
+        take.lastOption.fold(Decision.Keep) { tip =>
+          val view = SelectView.of(tip)
+          // AnchoredFragment.hs:195–201 compares an empty selected fragment by point, not
+          // its anchor's selection view. In particular a boundary block may repeat blockNo.
+          if local.blocks.isEmpty || prefersCandidate(tiebreaker, local.tipView, view) then
+            val at = pointAt(common)
+            Decision.Switch(at, local.depthTo(at), take)
+          else Decision.Keep
+        }

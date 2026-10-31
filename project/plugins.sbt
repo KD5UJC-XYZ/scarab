@@ -15,3 +15,4 @@ addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "2.5.0")
 
 // Tag-derived version data; frozen exports use the pre-verified identity instead of date fallback.
 addSbtPlugin("com.github.sbt" % "sbt-dynver" % "5.1.0")
+addSbtPlugin("org.wartremover" % "sbt-wartremover" % "3.6.3")
