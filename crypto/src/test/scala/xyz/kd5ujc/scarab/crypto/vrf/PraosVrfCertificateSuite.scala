@@ -62,10 +62,9 @@ class PraosVrfCertificateSuite extends munit.FunSuite:
     assert(Input.create(Slot.fromBigInt(0).toOption.get, null).isLeft)
     assert(alpha(null).isLeft)
   }
-  test("checked nonce lengths and malformed Bytes programming misuse") {
+  test("checked nonce lengths and a missing nonce") {
     Vector(0, 31, 33).foreach(n => assert(Hash32.fromBytes(Bytes(Vector.fill(n)(0.toByte))).isLeft))
     assert(Hash32.fromBytes(null).isLeft)
-    assert(Hash32.fromBytes(Bytes(null)).swap.toOption.get.isInstanceOf[Failure.InternalFailure])
   }
   test("envelopes and nulls rejected before primitive invocation") {
     val r = row; val in = input(r(1), r(2)); val k = bytes(r(3)); val p = bytes(r(4));
@@ -89,7 +88,6 @@ class PraosVrfCertificateSuite extends munit.FunSuite:
     }
     assert(verifyWith(null, k, p, c, stub).isInstanceOf[Result.Malformed])
     assertEquals(calls, 0)
-    assert(verifyWith(in, Bytes(null), p, c, stub).isInstanceOf[Result.InternalFailure])
   }
   test("strict primitive called once; valid proof with changed claim yields only mismatch") {
     val r = row; val in = input(r(1), r(2)); val c = bytes(r(5)); var calls = 0
@@ -129,7 +127,6 @@ class PraosVrfCertificateSuite extends munit.FunSuite:
           Result.PrimitiveContractViolation(Option(o).map(_.size))
         )
       )
-    assert(run(StrictDraft03.Result.Verified(Bytes(null))).isInstanceOf[Result.InternalFailure])
     assert(run(null).isInstanceOf[Result.InternalFailure])
   }
   test("unexpected nonfatal failure maps internally and fatal JVM errors propagate") {

@@ -33,15 +33,10 @@ final class Bytes private (
   @SuppressWarnings(Array("org.wartremover.warts.Var"))
   private var cachedPrefix = 0
 
-  /** A `Bytes` built from a null vector (programming misuse) fails on first use, as it always did.
-    */
-  def size: Int =
-    if array eq null then throw new NullPointerException("malformed Bytes")
-    length
+  def size: Int = length
 
   /** The bytes as a vector (allocates; kept for code that wants collection operations). */
-  def value: Vector[Byte] =
-    if array eq null then null else Vector.tabulate(length)(i => array(offset + i))
+  def value: Vector[Byte] = Vector.tabulate(length)(i => array(offset + i))
 
   def apply(i: Int): Byte =
     if i < 0 || i >= size then throw new IndexOutOfBoundsException(i.toString)
@@ -156,8 +151,7 @@ object Bytes:
 
   /** Compatibility constructor from a vector. */
   def apply(bytes: Vector[Byte]): Bytes =
-    if bytes eq null then new Bytes(null, 0, 0)
-    else if bytes.isEmpty then empty
+    if bytes.isEmpty then empty
     else
       val a = bytes.toArray
       new Bytes(a, 0, a.length)
