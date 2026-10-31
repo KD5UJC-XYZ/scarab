@@ -17,7 +17,7 @@ one says so. New records copy [the template](template.md) and take the next numb
 | [0009](0009-ledger-mirror-step-2.md) | Ledger mirror step 2: three jumps behind a differential harness | Accepted (jumps 1 and 2 done; the harness is removed); D8's eager reward calculation is superseded by [0019](0019-incremental-reward-calculation.md) | 2026-10-15 |
 | [0010](0010-scala-3-3-lts.md) | Scala 3.3 LTS | Accepted | 2026-10-14 |
 | [0011](0011-stack-safety.md) | Recursion over data from outside is stack safe | Accepted | 2026-10-16 |
-| [0012](0012-portable-blst.md) | One portable libblst for every x86-64 CPU, shipped where blst-java loads it | Accepted; Plutus part superseded by 0020 | 2026-10-16 |
+| [0012](0012-portable-blst.md) | One portable libblst for every x86-64 CPU, shipped where blst-java loads it | Superseded by 0025 (Plutus part earlier by 0020) | 2026-10-16 |
 | [0013](0013-cbor-documents-are-an-index-over-the-input.md) | CBOR documents are an index over the input | Accepted | 2026-10-16 |
 | [0014](0014-typed-log.md) | A typed log: `Tell` of lines built from typed events, routed by namespace and severity | Accepted | 2026-10-16 |
 | [0015](0015-kes-key-written-back-and-checked-reload.md) | The evolved KES key is written back, and credentials are reloaded on SIGHUP only after a check | Accepted | 2026-10-17 |
@@ -30,3 +30,4 @@ one says so. New records copy [the template](template.md) and take the next numb
 | [0022](0022-defaults-follow-the-reference-binary.md) | Defaults follow the reference binary | Accepted | 2026-10-23 |
 | [0023](0023-two-kes-credential-sources.md) | Two KES credential sources: the file path keeps ADR 0015's write-back, the agent path is the forward-secure one | Accepted | 2026-10-25 |
 | [0024](0024-adopt-the-upstream-kes-agent.md) | H2 adopts the upstream KES agent as it is: the client only, and no remote signing | Accepted | 2026-10-25 |
+| [0025](0025-jblst.md) | BLS12-381 through jblst, the maintained Java binding of blst | Accepted | 2026-10-30 |

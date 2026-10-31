@@ -52,11 +52,11 @@ def tree():
     """The smallest tree every packet section can read, with the conformance pins it names."""
     manifest = lambda **v: json.dumps(v) + "\n"
     files = {
-        "build.sbt": 'lazy val codec = scarab("codec")\n\nlazy val blstNative = scarab("blstNative", "blst-native")\n'
-                     '\nlazy val crypto = scarab("crypto")\n  .dependsOn(codec % "compile->compile;test->test", blstNative)\n',
+        "build.sbt": 'lazy val codec = scarab("codec")\n\nlazy val nativeLib = scarab("nativeLib", "native-lib")\n'
+                     '\nlazy val crypto = scarab("crypto")\n  .dependsOn(codec % "compile->compile;test->test", nativeLib)\n',
         "codec/src/main/scala/Codec.scala": "object Codec\n",
         "codec/src/test/scala/CodecSuite.scala": 'val db = sys.env.get("SCARAB_K1_DB")\n',
-        "blst-native/src/main/resources/lib.txt": "native\n",
+        "native-lib/src/main/resources/lib.txt": "native\n",
         "crypto/src/main/scala/Crypto.scala": "object Crypto\n",
         "CONTRIBUTING.md": "Run `bash scripts/sbtw check` and `python3 scripts/devnet.py --name <yours> e2e`.\n",
         ".github/workflows/ci.yml": f"steps:\n  - uses: actions/checkout@{'d' * 40} # v7\n"
@@ -182,8 +182,8 @@ class PacketTest(unittest.TestCase):
         sources = json.loads(contents["packet/source-map.json"])
         self.assertEqual([(m["id"], m["directory"], m["dependsOn"], m["mainFiles"], m["testFiles"])
                           for m in sources["modules"]],
-                         [("blstNative", "blst-native", [], 1, 0), ("codec", "codec", [], 1, 1),
-                          ("crypto", "crypto", ["blstNative", "codec"], 1, 0)])
+                         [("codec", "codec", [], 1, 1), ("crypto", "crypto", ["codec", "nativeLib"], 1, 0),
+                          ("nativeLib", "native-lib", [], 1, 0)])
         commands = json.loads(contents["packet/commands.json"])
         check = next(c for c in commands["commands"] if c["command"] == "bash scripts/sbtw check")
         self.assertEqual(check["definedIn"], [".github/workflows/ci.yml", "CONTRIBUTING.md"])

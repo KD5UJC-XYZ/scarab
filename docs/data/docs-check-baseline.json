@@ -38,18 +38,6 @@
   {
    "kind": "missing-path",
    "path": "docs/adr/0012-portable-blst.md",
-   "key": "blst-native/out/exports.txt",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/adr/0012-portable-blst.md",
-   "key": "blst-native/out/libblst.so",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/adr/0012-portable-blst.md",
    "key": "node/tools",
    "count": 1
   },

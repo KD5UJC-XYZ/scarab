@@ -152,7 +152,6 @@ the dependencies.
 
 | Module | Contents |
 |---|---|
-| `blst-native` | Portable libblst resource and start-up verification (`blstNative` in sbt) |
 | `codec` | CBOR with original-bytes preservation, `Bytes`, exact `Rational` |
 | `crypto` | Blake2b, strict Ed25519, VRF (verify and prove), Sum6 KES, BLS12-381, operational certificates |
 | `protocol` | Pure Ouroboros mini-protocol codecs and state machines |

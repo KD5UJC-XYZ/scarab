@@ -47,7 +47,9 @@ jobs:
         run: bash scripts/sbtw check node/runtimeClasspathFile
       - name: ADX/BMI2 code of the Linux/amd64 native libraries is behind the CPU switch
         run: |
-          python3 scripts/check_native_isa.py blst-native/src/main/resources/supranational/blst/Linux/amd64/libblst.so
+          mapfile -t jblst < <(find .cache/scarab/coursier -name 'jblst-*.jar' ! -name '*-sources.jar')
+          test "${#jblst[@]}" -eq 1
+          python3 scripts/check_native_identity.py "${jblst[0]}"
           mapfile -t jars < <(find .cache/scarab/coursier -name scalus-crypto-jni-0.1.0.jar)
           test "${#jars[@]}" -eq 1
           python3 scripts/check_native_isa.py "${jars[0]}" --member natives/linux_64/libscalus_crypto.so

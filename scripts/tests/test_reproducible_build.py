@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import hashlib
 import importlib.util
 from pathlib import Path
 import tempfile
@@ -122,14 +123,15 @@ class ReproducibleBuildTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "metadata or entry ordering"):
                 repro.compare(first, second)
 
-    def test_fat_jar_resource_contract_rejects_lost_providers_and_overlay(self):
+    def test_fat_jar_resource_contract_rejects_lost_providers_and_unpinned_blst(self):
         with tempfile.TemporaryDirectory() as scratch:
             root = Path(scratch)
             source = root / "source"
             portable = "supranational/blst/Linux/amd64/libblst.so"
-            native = source / "blst-native/src/main/resources" / portable
-            native.parent.mkdir(parents=True)
-            native.write_bytes(b"committed portable")
+            pins = source / "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/bls/Blst.scala"
+            pins.parent.mkdir(parents=True)
+            jblst_library = b"jblst portable library"
+            pins.write_text('    "Linux/amd64/libblst.so" -> "%s",\n' % hashlib.sha256(jblst_library).hexdigest())
             (source / "LICENSE").write_bytes(b"project license")
             (source / "NOTICE").write_bytes(b"project notice")
             dependency = root / "dependency.jar"
@@ -137,7 +139,7 @@ class ReproducibleBuildTests(unittest.TestCase):
             with zipfile.ZipFile(dependency, "w") as jar:
                 jar.writestr(services, b"example.One\nexample.Two\n")
                 jar.writestr("LICENSE", b"dependency terms")
-                jar.writestr(portable, b"alternate native build")
+                jar.writestr(portable, jblst_library)
             entries = {
                 "META-INF/MANIFEST.MF": (
                     b"Manifest-Version: 1.0\r\nMain-Class: xyz.kd5ujc.scarab.node.Main\r\n"
@@ -145,7 +147,7 @@ class ReproducibleBuildTests(unittest.TestCase):
                 "META-INF/scarab/build-info.properties": b"gitCommit=" + b"a" * 40 + b"\n",
                 "META-INF/scarab/LICENSE": b"project license",
                 "META-INF/scarab/NOTICE": b"project notice",
-                portable: native.read_bytes(),
+                portable: jblst_library,
                 services: b"example.One\nexample.Two\n",
                 "LICENSE_dependency": b"dependency terms"
             }
@@ -161,7 +163,7 @@ class ReproducibleBuildTests(unittest.TestCase):
             for changed, expected in [
                     ({services: b"example.One\n"}, "service providers"),
                     ({"META-INF/scarab/NOTICE": b"changed notice"}, "project legal metadata"),
-                    ({portable: b"alternate native build"}, "portable blst overlay"),
+                    ({portable: b"alternate native build"}, "other than the pinned jblst ones"),
                     ({"LICENSE_dependency": b"changed legal terms"}, "legal metadata"),
                     ({"META-INF/STALE.SF": b"old signature"}, "invalid dependency signatures")]:
                 with self.subTest(expected=expected):

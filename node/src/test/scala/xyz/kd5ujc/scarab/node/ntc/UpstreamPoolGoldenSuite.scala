@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node.ntc
 
 import java.nio.file.{Files, Path}
 import munit.FunSuite
-import xyz.kd5ujc.scarab.blst.Blst
+import xyz.kd5ujc.scarab.crypto.bls.Blst
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
 import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorState}
 import xyz.kd5ujc.scarab.ledger.{

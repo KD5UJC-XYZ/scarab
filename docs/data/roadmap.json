@@ -431,7 +431,7 @@
       "detail": "; one part open",
       "priority": "P1",
       "issues": [],
-      "notes": "The BLS12-381 library is blst v0.3.15 built with `-D__BLST_PORTABLE__`, shipped by the `blst-native` module where blst-java loads its own, and checked at start-up. Before, the library inside blst-java used `mulx`/`adcx` unconditionally and a CPU without ADX/BMI2 (worker-a, older 2-core x86-64 CPU) killed the JVM with SIGILL at the first BLS12-381 builtin of a preprod script, with no event ([#93](https://github.com/KD5UJC-XYZ/scarab/issues/93)). `follow` now refuses a library that is not the portable one on a processor not shown to have ADX and BMI2 (typed `NativeLibraryError`) and computes known answers. [ADR 0012](adr/0012-portable-blst.md), `docker/blst.Dockerfile`, `BlstSuite`, `BlstCheckMain`; verified on worker-a. Open: Linux/aarch64 and macOS keep the libraries of blst-java."
+      "notes": "The BLS12-381 library is a portable build of blst, checked at start-up: from 2026-10-16 blst v0.3.15 built here with `-D__BLST_PORTABLE__` (ADR 0012), since 2026-10-30 jblst's build of v0.3.17 ([ADR 0025](adr/0025-jblst.md), [#651](https://github.com/KD5UJC-XYZ/scarab/issues/651)). Before, the library inside blst-java used `mulx`/`adcx` unconditionally and a CPU without ADX/BMI2 (worker-a, older 2-core x86-64 CPU) killed the JVM with SIGILL at the first BLS12-381 builtin of a preprod script, with no event ([#93](https://github.com/KD5UJC-XYZ/scarab/issues/93)). `follow` now refuses a library that is not the portable one on a processor not shown to have ADX and BMI2 (typed `NativeLibraryError`) and computes known answers. [ADR 0012](adr/0012-portable-blst.md), [ADR 0025](adr/0025-jblst.md), `BlstSuite`, `BlstCheckMain`; verified on worker-a. Open: Linux/aarch64 and macOS keep the libraries of blst-java."
     },
     {
       "id": "B26",
@@ -1657,7 +1657,7 @@
       "issues": [
         71
       ],
-      "notes": "BLS12-381 MinSig keys, proof of possession, votes, aggregation and certificate verification, with the committee order rule, in `core`, pure. Acceptance: strict decoding (subgroup, infinity, canonical); `cardano-base` BLS vectors and the golden `LeiosVote` file with provenance; the 96 versus 48 byte proof-of-possession discrepancy resolved against `dijkstra.cddl`; properties (aggregate of valid votes verifies, any tampering, duplicate or reordered signer, replay on another announcing hash, rogue key all fail); a 900-seat verification benchmark; `blst-java` declared directly and its licence recorded; `check` green; no node change."
+      "notes": "BLS12-381 MinSig keys, proof of possession, votes, aggregation and certificate verification, with the committee order rule, in `core`, pure. Acceptance: strict decoding (subgroup, infinity, canonical); `cardano-base` BLS vectors and the golden `LeiosVote` file with provenance; the 96 versus 48 byte proof-of-possession discrepancy resolved against `dijkstra.cddl`; properties (aggregate of valid votes verifies, any tampering, duplicate or reordered signer, replay on another announcing hash, rogue key all fail); a 900-seat verification benchmark; the blst binding declared directly and its licence recorded (blst-java then, jblst since ADR 0025); `check` green; no node change."
     },
     {
       "id": "N3",

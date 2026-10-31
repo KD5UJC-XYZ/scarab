@@ -9,5 +9,6 @@ licence file. These texts are copied unchanged from the pinned upstream sources:
 | `LICENSE-libsecp256k1` | `COPYING` of bitcoin-core/secp256k1 at tag `v0.3.2` (MIT) |
 | `LICENSE-native-lib-loader` | `LICENSE.txt` of scijava/native-lib-loader at tag `native-lib-loader-2.5.0` (BSD-2-Clause) |
 
-blst v0.3.15, the third library linked into `libscalus_crypto`, is under `blst-native/LICENSE-blst`.
+blst v0.3.15, the third library linked into `libscalus_crypto`, is under `crypto/licenses/LICENSE-blst`
+(the same Apache-2.0 text as at v0.3.17).
 See [ADR 0020](../../docs/adr/0020-plutus-native-crypto-through-scalus-crypto-jni.md).

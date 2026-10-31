@@ -165,14 +165,14 @@
    ]
   },
   {
-   "name": "blst-java",
-   "repository": "icon-project/blst-java",
-   "version": "0.3.2",
-   "urlPattern": "https://central.sonatype.com/artifact/foundation.icon/blst-java/{version}",
-   "role": "JNI BLS12-381 bindings (MinSig voting keys).",
+   "name": "jblst",
+   "repository": "Consensys-Incorporated/jblst",
+   "version": "0.3.18",
+   "urlPattern": "https://central.sonatype.com/artifact/tech.pegasys/jblst/{version}",
+   "role": "JNI BLS12-381 bindings and their portable libblst (MinSig voting keys).",
    "dependents": [
     "project/Dependencies.scala",
-    "docs/adr/0012-portable-blst.md"
+    "docs/adr/0025-jblst.md"
    ]
   },
   {
@@ -180,10 +180,22 @@
    "repository": "supranational/blst",
    "version": "0.3.15",
    "urlPattern": "https://github.com/supranational/blst/releases/tag/v{version}",
-   "role": "Portable libblst built into blst-native.",
+   "role": "The blst inside libscalus_crypto (Plutus, ADR 0020); the reference node's version, and the library ADR 0012 built until 2026-10-30.",
    "dependents": [
-    "docker/blst.Dockerfile",
+    "plutus/licenses/README.md",
     "docs/adr/0012-portable-blst.md"
+   ]
+  },
+  {
+   "name": "blst",
+   "repository": "supranational/blst",
+   "version": "0.3.17",
+   "revision": "54e6e55674722fc2797ebb4bbb71b26d881eb4b8",
+   "urlPattern": "https://github.com/supranational/blst/releases/tag/v{version}",
+   "role": "The libblst inside jblst 0.3.18 (Leios BLS keys), pinned by sha-256 in Blst.",
+   "dependents": [
+    "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/bls/Blst.scala",
+    "docs/adr/0025-jblst.md"
    ]
   },
   {

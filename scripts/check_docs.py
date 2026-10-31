@@ -106,7 +106,7 @@ class BranchName(str, Enum):
 
 BRANCH_NAMES = frozenset(b.value for b in BranchName)
 # Names whose cited versions must be registered. A registry entry adds its own name and aliases.
-WATCHED_VERSION_NAMES = ("cardano-node", "Scalus", "Mithril", "cuddle", "blst-java", "blst", "plutus-core")
+WATCHED_VERSION_NAMES = ("cardano-node", "Scalus", "Mithril", "cuddle", "jblst", "blst", "plutus-core")
 # Repository names that make a nearby bare commit id a citation of an upstream revision.
 UPSTREAM_REPOS = (
     "cardano-node", "cardano-ledger", "ouroboros-network", "ouroboros-consensus", "plutus", "formal-ledger-specifications",

@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.consensus.{
   VolatileChain
 }
 import xyz.kd5ujc.scarab.ledger.Header
-import xyz.kd5ujc.scarab.blst.{Blst, BlstProblem, BlstReport}
+import xyz.kd5ujc.scarab.crypto.bls.{Blst, BlstProblem, BlstReport}
 import xyz.kd5ujc.scarab.plutus.{NativeCrypto, NativeCryptoProblem, NativeCryptoReport}
 import xyz.kd5ujc.scarab.ledger.{
   Block,

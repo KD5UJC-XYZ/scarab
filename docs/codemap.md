@@ -9,28 +9,19 @@ A generated map of the code: which module depends on which, then each Scala pack
 Derived from `dependsOn` in `build.sbt`; an arrow points at what the module builds on.
 
 ```
-blst-native -> (none)
-codec       -> (none)
-crypto      -> codec, blst-native
-protocol    -> crypto
-network     -> protocol
-plutus      -> codec
-ledger      -> protocol, plutus
-consensus   -> ledger
-storage     -> consensus, models
-node        -> storage, network
-models-gen  -> (none)
-models      -> codec, crypto; test only: models-gen, protocol, ledger
-fuzz        -> codec, protocol, node, models-gen
+codec      -> (none)
+crypto     -> codec
+protocol   -> crypto
+network    -> protocol
+plutus     -> codec
+ledger     -> protocol, plutus
+consensus  -> ledger
+storage    -> consensus, models
+node       -> storage, network
+models-gen -> (none)
+models     -> codec, crypto; test only: models-gen, protocol, ledger
+fuzz       -> codec, protocol, node, models-gen
 ```
-
-## blst-native
-
-Portable libblst and its start-up check.
-
-| Package | Responsibility | Entry points | Suites | Decisions |
-|---|---|---|---|---|
-| blst | Loads the portable libblst and checks library and CPU at start-up | `Blst`, `BlstReport`, `BlstProblem`, `CpuSupport` | `BlstSuite` | [ADR 0012](adr/0012-portable-blst.md) |
 
 ## codec
 
@@ -42,12 +33,12 @@ CBOR with original bytes, exact rationals.
 
 ## crypto
 
-Hashes, signatures, VRF, KES, BLS, operational certificates.
+Hashes, signatures, VRF, KES, BLS (jblst, with its start-up check), operational certificates.
 
 | Package | Responsibility | Entry points | Suites | Decisions |
 |---|---|---|---|---|
 | crypto | Blake2b hashing and transaction ids | `Hasher`, `Blake2b`, `TransactionId` | `HashingSuite` | [ADR 0001](adr/0001-haskell-node-as-reference.md) |
-| crypto/bls | BLS12-381 min-sig keys, signatures and the Leios committee certificate | `MinSig`, `Committee`, `Certificate`, `Vote`, `Seat`, `BlsError` | `MinSigVectorSuite`, `LeiosCertificateSuite` | [leios](leios.md) |
+| crypto/bls | BLS12-381 min-sig keys, signatures and the Leios committee certificate; the start-up check of the jblst native library | `MinSig`, `Committee`, `Certificate`, `Vote`, `Seat`, `BlsError`, `Blst`, `BlstReport`, `BlstProblem`, `CpuSupport` | `MinSigVectorSuite`, `LeiosCertificateSuite`, `BlstSuite` | [leios](leios.md), [ADR 0025](adr/0025-jblst.md) |
 | crypto/kes | Sum6 KES verify, sign and evolve | `Sum6Kes`, `Sum6KesSigning` | `Sum6KesSuite`, `Sum6KesSigningSuite` | [ADR 0015](adr/0015-kes-key-written-back-and-checked-reload.md) |
 | crypto/opcert | Operational certificate decoding and checks | `OperationalCertificate` | `OperationalCertificateSuite` | [ADR 0015](adr/0015-kes-key-written-back-and-checked-reload.md) |
 | crypto/vrf | VRF draft-03 verify and prove, Praos leader threshold | `Draft03Prover`, `StrictDraft03`, `PraosVrfCertificate`, `PraosLeaderThreshold` | `Draft03ProverSuite`, `StrictDraft03Suite`, `PraosVrfCertificateSuite`, `PraosLeaderThresholdSuite` | [ADR 0001](adr/0001-haskell-node-as-reference.md) |

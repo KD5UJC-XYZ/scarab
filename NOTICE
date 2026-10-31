@@ -103,7 +103,7 @@ library statically links libsodium (ISC; the IOG fork, commit dbb48cce), libsecp
 (bitcoin-core, MIT) and blst v0.3.15 (supranational, Apache-2.0). Their licence texts, taken from
 the pinned upstream sources because the jars carry none, are plutus/licenses/LICENSE-libsodium,
 plutus/licenses/LICENSE-libsecp256k1, plutus/licenses/LICENSE-native-lib-loader and
-blst-native/LICENSE-blst. The jars are retrieved from Maven Central at build time and never
+crypto/licenses/LICENSE-blst. The jars are retrieved from Maven Central at build time and never
 redistributed in this repository. Scalus's own ledger-to-script-context translation is consulted
 only as a test oracle.
 
@@ -115,7 +115,8 @@ listed with their sources in META-INF/scarab/licenses/index.json (licenses/ in t
 borer is MPL-2.0: its Source Code Form is https://github.com/sirthias/borer at tag v1.18.0.
 
   Scalus (org.scalus:scalus_3 1.4.0-scarab-8f34d0a964eaab8f565e40642bc37f35a44c234536e6ab870a3365d47a8196db)                       Apache-2.0   UPLC machine and builtins
-  blst-java (foundation.icon:blst-java 0.3.2)              Apache-2.0   bundles supranational/blst (Leios BLS)
+  jblst (tech.pegasys:jblst 0.3.18)                        Apache-2.0   bundles supranational/blst v0.3.17
+                                                           AND MIT      (Leios BLS); repository LICENSE is MIT
   scalus-crypto-jni (org.scalus 0.1.0)                     Apache-2.0   bundles libsodium (ISC), libsecp256k1
                                                            (MIT) and blst (Apache-2.0)
   native-lib-loader (org.scijava 2.5.0)                    BSD-2-Clause
@@ -164,10 +165,10 @@ The Scarab name, logo and icon (docs/assets/scarab-logo.png, scarab-icon.png, fa
 not licensed under Apache-2.0: © KD5UJC.XYZ, all rights reserved; they may be used to refer to this
 project.
 
-Portable libblst (blst-native): blst-native/src/main/resources/supranational/blst/Linux/amd64/libblst.so
-is a binary built from supranational/blst v0.3.15 (commit 6d960cd05d6fe2b5bc9ba161edf0c1a131b87c4c,
-Apache-2.0) with `-D__BLST_PORTABLE__` and its SWIG-generated JNI glue, by
-docker/blst.Dockerfile; the licence text is blst-native/LICENSE-blst. See docs/adr/0012-portable-blst.md.
+libblst (jblst): the BLS12-381 native libraries come from tech.pegasys:jblst 0.3.18, built from
+supranational/blst v0.3.17 (commit 54e6e55674722fc2797ebb4bbb71b26d881eb4b8, Apache-2.0); the
+jblst repository's licence is MIT. The texts are crypto/licenses/LICENSE-blst and
+licenses/jblst-0.3.18/LICENSE. See docs/adr/0025-jblst.md.
 
 The unchanged Haskell protocol-version declaration and pvCanFollow predicate excerpts in
 scripts/oracle/byron/Main.hs originate in cardano-ledger (Intersect), revision

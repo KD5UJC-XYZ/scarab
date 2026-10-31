@@ -1,6 +1,6 @@
 # 0012. One portable libblst for every x86-64 CPU, shipped where blst-java loads it
 
-- **Status**: Accepted; the Plutus part is superseded by [0020](0020-plutus-native-crypto-through-scalus-crypto-jni.md)
+- **Status**: Superseded by [0025](0025-jblst.md) ([amended 2026-10-30](#amendment-2026-10-30-superseded-by-jblst-adr-0025)); the Plutus part was superseded earlier by [0020](0020-plutus-native-crypto-through-scalus-crypto-jni.md)
 - **Date**: 2026-10-16
 - **Issue**: #93 (roadmap B25)
 
@@ -39,10 +39,10 @@ run-time detected, and as such blst built on newer hardware should still work on
 
 ## Decision
 
-**Ship our own build of blst, portable, as the resource blst-java loads, from a module that comes
-before blst-java on the class path.**
+~~**Ship our own build of blst, portable, as the resource blst-java loads, from a module that comes
+before blst-java on the class path.**~~ ([amended 2026-10-30](#amendment-2026-10-30-superseded-by-jblst-adr-0025))
 
-- `docker/blst.Dockerfile` builds `libblst.so` for Linux/amd64 from supranational/blst **v0.3.15**
+- docker/blst.Dockerfile (removed) builds `libblst.so` for Linux/amd64 from supranational/blst **v0.3.15**
   (commit `6d960cd05d6fe2b5bc9ba161edf0c1a131b87c4c`, the version iohk-nix builds for the reference
   node) with `bindings/java/build.sh -D__BLST_PORTABLE__`, the recipe of blst-java's workflow: on
   `ubuntu:22.04` (digest pinned; gcc 11.4.0, SWIG 4.0.2, binutils 2.38, JDK headers of
@@ -50,7 +50,7 @@ before blst-java on the class path.**
   2.14 is needed, as for the upstream library). The source is fetched by commit and the build stops if `git rev-parse HEAD` or the pinned source-archive SHA-256 differs. Toolchain packages now come from the signed, timestamp-pinned Ubuntu snapshot described below.
   Original output sha-256 of `libblst.so` (superseded by the raw-DST build recorded below):
   `8d158308ec8179a2e33eb1b26c3e09621307031715877867b46af11ebf884235` (a rebuild with `--no-cache`
-  gave the same bytes). The maintained artifact's identity is `Blst.portableSha256`, also
+  gave the same bytes). The maintained artifact's identity is Blst.portableSha256 (now `Blst.pinned`), also
   recorded in this ADR's provenance table; the original hash is historical build evidence.
 - The sbt project `blstNative` (`blst-native/`) holds it at
   `supranational/blst/Linux/amd64/libblst.so`, the licence text of blst (`LICENSE-blst`, Apache-2.0)
@@ -78,7 +78,7 @@ what the reference node runs.
 caught):
 
 1. `Blst.build` resolves the resource exactly as `blstJNI` will (the property included), without
-   initialising `blstJNI`, and compares the sha-256 of its bytes with `Blst.portableSha256`:
+   initialising `blstJNI`, and compares the sha-256 of its bytes with Blst.portableSha256 (now `Blst.pinned`):
    `Portable`, `Other(sha)`, or `OnLibraryPath` (no resource).
 2. `Blst.cpu` reads `/proc/cpuinfo` (the features every processor in the file has: `adx`, `bmi2`).
 3. `Blst.admissible`: on Linux/amd64 a library that is not the portable one is refused unless the
@@ -104,7 +104,7 @@ without ADX.
 | The library it replaces | `foundation.icon:blst-java:0.3.2` (jar sha-256 `f668af639696199e8b9f47e17a9ede4426c888fbc300aec84689f56f39ed6238`), `Linux/amd64/libblst.so` sha-256 `bd250731c0805cab213c1db860dbcd3bb8848955aa1da7a6fc81a11235b92817`, blst v0.3.10 from the workflow, gcc 11.4.0, built with `-D__ADX__` and no portable switch |
 | JNI exports | every `Java_supranational_blst_blstJNI_*` symbol of the jar's library is in ours (`blst-native/src/test/resources/blst-exports.txt` is the export list of the shipped library) |
 
-The [native rebuild controller](../../blst-native/native/README.md#rebuild-and-byte-verification-229)
+The native rebuild controller (blst-native/native/README.md, section "Rebuild and byte verification (#229)"; removed with the module, see the amendment below)
 implements #229's build-and-compare gate. It uses the signed Ubuntu `20261020T000000Z` snapshot,
 explicit direct package versions and the digest-pinned base above, freezes source/adapter inputs,
 and requires two uncached Linux/amd64 builds to equal the unchanged committed resource. The current
@@ -117,10 +117,10 @@ a different binary. The two builds share the trusted Docker engine/toolchain. Th
 byte-reproducibility evidence, not upstream source signing, native cross-platform verification or
 a signed/published Scarab release. The ordinary startup/JNI known-answer tests remain required.
 
-To update blst: review the commit and source-archive SHA-256 pins in `docker/blst.Dockerfile`, run
+To update blst: review the commit and source-archive SHA-256 pins in docker/blst.Dockerfile (removed), run
 `docker build -f docker/blst.Dockerfile --target artifact -o blst-native/out .`, copy
 `blst-native/out/libblst.so` over the resource, `blst-native/out/exports.txt` over
-`blst-native/src/test/resources/blst-exports.txt`, put the new sha-256 into `Blst.portableSha256`
+`blst-native/src/test/resources/blst-exports.txt`, put the new sha-256 into Blst.portableSha256 (now `Blst.pinned`)
 (`BlstSuite` and the start-up check fail until it matches), refresh the table above and the
 licence, and run `check`, ~~the Plutus conformance suite (it contains the BLS12-381 cases)~~ ([amended 2026-10-23](#amendment-2026-10-23-plutus-moves-to-scalus-crypto-jni)) and
 `BlstCheckMain` on a CPU without ADX. When blst-java changes its `blstJNI` ~~(a new release of
@@ -128,7 +128,7 @@ Scalus)~~ ([amended 2026-10-23](#amendment-2026-10-23-plutus-moves-to-scalus-cry
 
 The 2026-10-18 raw-DST adapter update (#175) preserves the blst source, portable flags, existing JNI
 exports and curve arithmetic. It adds two byte-array hash/compress entry points, pinned to the
-upstream Scalus fix; [adapter provenance](../../blst-native/native/README.md) and
+upstream Scalus fix; the adapter provenance (the same README, removed) and
 [executed Haskell vectors](../../fixtures/reference/plutus-boundaries/README.md) record the ABI and
 new known answers. The earlier three-answer no-ADX performance measurements below concern the prior
 artifact. The new artifact passed a separate offline no-ADX/BMI2 smoke on2026-10-18: CPU feature
@@ -171,3 +171,19 @@ portable `libblst.so` of `blst-native`, its reproducible rebuild and its start-u
 now serve the Leios BLS keys (`MinSig`) only. The `RawDst` JNI class and its two known answers are
 removed; the raw-DST entry points remain in the committed binary until its next rebuild. Where the
 decision says Scalus or Plutus loads this library (struck through above), it describes Scalus 1.3.0.
+
+## Amendment (2026-10-30): superseded by jblst (ADR 0025)
+
+[ADR 0025](0025-jblst.md) replaces both blst-java and this record's own build with
+`tech.pegasys:jblst` 0.3.18 (blst v0.3.17), whose Linux/amd64 library is itself a portable build:
+`scripts/check_native_isa.py` finds no ungated ADX/BMI2 entry in it. It is the case this record named
+under "Revisit when" (a portable build shipped upstream: drop the module, keep the check).
+
+- **Removed:** the `blstNative` module and its directory, docker/blst.Dockerfile (removed), the raw-DST
+  adapter, the native rebuild gate (#229) and the class-path override.
+- **Kept, moved to `crypto`:** the start-up check, now pinning jblst's libraries by sha-256
+  (`xyz.kd5ujc.scarab.crypto.bls.Blst`).
+- **Historical:** the provenance table, the rebuild procedure and the measurements above describe
+  the library this record shipped until 2026-10-30.
+- **Decided again:** the blst version (v0.3.17 against the reference's 0.3.15) is an owner-approved
+  deviation, recorded in ADR 0025.

@@ -8,7 +8,7 @@ import io.circe.syntax.*
 import com.comcast.ip4s.{Host, Port, SocketAddress, host, port}
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.selection.*
-import xyz.kd5ujc.scarab.blst.{BlstReport, CpuFeature, CpuSupport, LibraryBuild, Platform}
+import xyz.kd5ujc.scarab.crypto.bls.{BlstReport, CpuFeature, CpuSupport, LibraryBuild, Platform}
 import xyz.kd5ujc.scarab.plutus.{CryptoLibrary, CryptoPlatform, NativeCryptoReport}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, SchedulingReport}

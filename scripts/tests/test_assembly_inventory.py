@@ -20,14 +20,12 @@ class AssemblyInventoryTest(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.project = self.root / 'classes'
         self.project.mkdir()
-        native = self.project / inventory.PORTABLE
-        native.parent.mkdir(parents=True)
-        native.write_bytes(b'portable')
         self.library = self.root / 'library.jar'
         self.source = {'x/Library.class': b'class-bytes', 'META-INF/services/test.Service': b'Library\n',
                        'META-INF/maven/g/a/pom.xml': b'<project/>', 'LICENSE': b'library license',
                        'META-INF/versions/11/x/Library.class': b'versioned',
                        'native/Linux/a.so': b'other-native', inventory.PLUTUS_CRYPTO: b'plutus-crypto',
+                       inventory.PORTABLE: b'portable',
                        'module-info.class': b'module'}
         self.write_zip(self.library, self.source)
         self.artifact = self.root / 'application.jar'
@@ -51,7 +49,8 @@ class AssemblyInventoryTest(unittest.TestCase):
         policies = {row['input']: row['policy'] for row in result['entries']}
         self.assertEqual(policies['module-info.class'], 'discard-module-descriptor')
         self.assertEqual(policies['LICENSE'], 'rename-legal-or-readme')
-        self.assertEqual(policies[inventory.PORTABLE], 'project-native-overlay')
+        # jblst's library is a dependency resource like any other: preserved byte for byte (ADR 0025)
+        self.assertEqual(policies[inventory.PORTABLE], 'deduplicate')
         self.assertEqual(len(result['components']), 1)
         self.assertEqual(len(result['nativeResources']), 3)
 
@@ -121,8 +120,8 @@ class AssemblyInventoryTest(unittest.TestCase):
 
     def test_native_receipt_must_match_actual_packaged_bytes(self):
         coverage = inventory.reconcile(self.artifact, self.graph)
-        native = dict(status='passed', builds=[dict(sha256='0' * 64)] * 2)
-        with self.assertRaisesRegex(ValueError, 'native source rebuild'):
+        native = dict(status='passed', resources={'Linux/amd64/libblst.so': dict(pinned='0' * 64, packaged='0' * 64)})
+        with self.assertRaisesRegex(ValueError, 'native identity receipt'):
             candidate_sbom.jvm(self.artifact, coverage, dict(version='1', gitCommit='a' * 40), native)
 
     def test_missing_os_package_cannot_be_hidden_by_nonempty_scanner(self):

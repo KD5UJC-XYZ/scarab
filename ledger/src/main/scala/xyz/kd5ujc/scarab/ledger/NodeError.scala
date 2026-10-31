@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import cats.syntax.show.*
-import xyz.kd5ujc.scarab.blst.BlstProblem
+import xyz.kd5ujc.scarab.crypto.bls.BlstProblem
 import xyz.kd5ujc.scarab.plutus.NativeCryptoProblem
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.codec.DomainError

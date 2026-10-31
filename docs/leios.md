@@ -235,7 +235,7 @@ them is 11.7.
 A proposal, mostly not built: of the rows below only the BLS keys (N2) and the pure codecs and clients of protocols 18 and
 19 exist. The file names are those of the codebase before the module split (#82; see
 [architecture.md](architecture/modules.md#modules)): `Handshake.scala` is now in `protocol/`, `Header.scala` and `Block.scala` in
-`ledger/`. `blst-java` is declared directly by `crypto` (N2); Scalus no longer depends on it from 1.4.0.
+`ledger/`. `jblst` is declared directly by `crypto` ([ADR 0025](adr/0025-jblst.md); blst-java until 2026-10-30, N2); Scalus no longer depends on either from 1.4.0.
 
 | Leios change | Where it lands | Notes and reuse |
 |---|---|---|
@@ -244,7 +244,7 @@ A proposal, mostly not built: of the rows below only the BLS keys (N2) and the p
 | Dijkstra headers (announcement, cert flag, version info) | `node/Header.scala`, `Block.scala` | New era variant next to Conway; header hash and KES body-signature validation reuse `Praos`; body hash must cover the new body fields (L1 to confirm) |
 | Certificate verification in block validation | `LedgerRules.scala` (`NodeRules`), `consensus/` | A new pure `LeiosCertificate` rule: committee lookup in the ledger view, signer-stake sum against `tau`, aggregate-signature check. The committee is a pure function of the mark snapshot, so it belongs in the ledger state with `ledger/Stake.scala` and `consensus/LedgerView.scala` |
 | Committee and pool BLS keys | `ledger/Stake.scala`, certificate decoding in `ledger/Tx.scala`, `ledger/ProtocolParams.scala` (keys 40 to 48; Peras adds 49 and 50) | Pool-registration CDDL has `bls_key`; SNAP-time seating with the stable sort (stake descending, pool id ascending) |
-| BLS keys, vote signing, aggregation, verification | new `crypto/.../bls/` next to `vrf/`, `kes/` | `foundation.icon:blst-java:0.3.2` (Apache-2.0) is already on the classpath through Scalus 1.2.0 and exposes `supranational.blst.{SecretKey,P1,P2,P1_Affine,P2_Affine,Pairing}`: `keygen`, `sign_with`, `hash_to` (with DST), `aggregate`/`add`, `in_group`, `compress`, `serialize`, `core_verify` taking a G2 key (MinSig works: G1 signatures, G2 keys), and `Pairing` aggregate/commit/finalverify. Covers key generation, signing, proof of possession, aggregation, subgroup checks and verification. Checked in N2 (section 9): the `P1_Affine(byte[])`/`P2_Affine(byte[])` constructors decode (and accept uncompressed forms and do not check the subgroup, so we check length, flag and `in_group` ourselves), the DST strings, and handle use as local accumulators; `aggregate` repeats the subgroup check on every call, so sums use `add`. Not checked: constant-time behaviour. blst-java is now a direct dependency of `core` |
+| BLS keys, vote signing, aggregation, verification | new `crypto/.../bls/` next to `vrf/`, `kes/` | The SWIG binding of blst (then `foundation.icon:blst-java:0.3.2` through Scalus 1.2.0; since [ADR 0025](adr/0025-jblst.md) `tech.pegasys:jblst:0.3.18`) exposes `supranational.blst.{SecretKey,P1,P2,P1_Affine,P2_Affine,Pairing}`: `keygen`, `sign_with`, `hash_to` (with DST), `aggregate`/`add`, `in_group`, `compress`, `serialize`, `core_verify` taking a G2 key (MinSig works: G1 signatures, G2 keys), and `Pairing` aggregate/commit/finalverify. Covers key generation, signing, proof of possession, aggregation, subgroup checks and verification. Checked in N2 (section 9): the `P1_Affine(byte[])`/`P2_Affine(byte[])` constructors decode (and accept uncompressed forms and do not check the subgroup, so we check length, flag and `in_group` ourselves), the DST strings, and handle use as local accumulators; `aggregate` repeats the subgroup check on every call, so sums use `add`. Not checked: constant-time behaviour. The binding is a direct dependency of `crypto` (jblst, ADR 0025) |
 | Forging: announce an EB, vote, build certificates | `forge/` (`Forger`, `BlockBuilder`, `Leadership`) | New pure `EbBuilder` from mempool snapshots, a vote-casting step with the node-local timers `L_hdr`/`L_vote`, a vote store with tally per announcing RB, certificate aggregation at forge time, key-file reading for the BLS key (`KeyFiles`) |
 | Mempool | `mempool/Mempool.scala`, `MempoolState.scala` | Capacity and validation-latency requirements change (section 4.4); the "validated once, flagged" transaction set `S` of the CIP maps to a validation-verdict cache beside `VerificationCache`. The existing `--mempool-bytes` flag is the knob |
 | EB store, transaction cache, closures | `storage/` | New `EbStore[F]` algebra: EBs and their transaction closures by hash for volatile forks, durable for certified EBs on the immutable chain (served to syncing peers, inlined for N2C). The prototype uses SQLite (`LeiosDB`); we would key it in RocksDB or files like `ImmutableStore`. Open question in the design: whether the committee is materialised in ledger state or recomputed |
@@ -301,8 +301,8 @@ testnet accepted version 16 from us. N2 depends on neither.
 1. `crypto` has `LeiosBls` (MinSig): secret-key generation from a seed, public key (G2, 96 bytes),
    `sign`, `verify`, proof of possession (`create`, `verify`), `aggregate` signatures and public
    keys, and strict decoding that rejects off-curve, wrong-subgroup, infinity (where the scheme
-   forbids it) and non-canonical encodings. Dependency: `blst-java` declared directly, licence
-   recorded.
+   forbids it) and non-canonical encodings. Dependency: the blst binding declared directly (jblst
+   since ADR 0025), licence recorded.
 2. Pure `Committee.select(stakeDistribution, N_c)` with the CIP's order (stake descending, pool id
    ascending, truncated) and `Certificate.verify(committee, signers, signature, announcingRbHash,
    tau)` including the keyless-signer and quorum rules; `Vote` encode/decode per CDDL.
@@ -460,7 +460,7 @@ with other jobs (indicative only):
 | sign a vote | 0.19 ms |
 | build the committee (900 decoded keys, 900 proof checks), once per epoch | 0.7 s |
 
-The first version used blst-java's `aggregate`, which re-runs the subgroup check on every call, and
+The first version used the binding's `aggregate`, which re-runs the subgroup check on every call, and
 took 45 ms; keys are validated once when decoded, so the sum uses `add`. A certificate is cheap
 enough for the RB critical path; the committee build belongs to the epoch boundary.
 

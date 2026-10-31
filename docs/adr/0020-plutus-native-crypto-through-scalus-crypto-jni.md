@@ -142,9 +142,9 @@ condition, as ADR 0012 did for libblst.**
 - **Bouncy Castle** is pinned at 1.86, the version Scalus 1.4.0 depends on, so the declared and
   resolved versions agree.
 
-What [0012](0012-portable-blst.md) still governs: the portable `libblst.so` of `blst-native`, its
+~~What [0012](0012-portable-blst.md) still governs: the portable `libblst.so` of `blst-native`, its
 reproducible rebuild and its start-up check. blst-java now serves only the Leios BLS keys
-(`MinSig`), because Scalus's `Blst` has no key generation.
+(`MinSig`), because Scalus's `Blst` has no key generation.~~ ([amended 2026-10-30](#amendment-2026-10-30-the-leios-keys-move-to-jblst))
 
 Rejected:
 - (a) Keeping blst-java and scalus-secp256k1-jni beside Scalus 1.4.0. Scalus no longer calls
@@ -171,3 +171,11 @@ Rejected:
   - Scarab rebuilds the library from source;
   - a platform other than Linux/amd64 is deployed;
   - Scalus gains BLS key generation (then [0012](0012-portable-blst.md)'s module could go).
+
+## Amendment (2026-10-30): the Leios keys move to jblst
+
+[ADR 0025](0025-jblst.md) replaces blst-java and the library of ADR 0012 with `tech.pegasys:jblst`
+0.3.18 (blst v0.3.17) for the Leios BLS keys (`MinSig`). The start-up check of ADR 0012 stays, in
+`crypto`, and now pins jblst's libraries. The raw-DST entry points above went with that library, so
+#408 is moot. The Plutus builtins are unaffected: they still run on `libscalus_crypto`, under this
+record.

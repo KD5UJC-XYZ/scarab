@@ -10,7 +10,11 @@ import zipfile
 import candidate_manifest as contract
 import candidate_oci
 import candidate_sbom
-import check_native_reproducibility as native
+import check_native_identity
+
+# The fixture JAR holds synthetic bytes, not a library objdump can read: its ISA analysis is a gated one.
+SYNTHETIC_ISA = dict(instructions={'mulx': 1}, extensionFunctions=1, gatedRegion=1, ungatedEntries=[])
+check_native_identity.analyse_library = lambda path, member=None: SYNTHETIC_ISA
 import release_identity
 
 
@@ -42,14 +46,10 @@ def make_candidate(root: Path, release=True) -> dict:
     if release:
         identity.update(gitTag='v1.2.3-beta.1', gitTagObject='b' * 40,
                         sourceRef='refs/heads/release/beta', sourceRefCommit='a' * 40)
-    source = dict(source=b'SYNTHETIC SOURCE ARCHIVE', raw=b'synthetic adapter', portable=b'synthetic JNI')
-    recipe = dict(baseImage='ubuntu@sha256:' + 'c' * 64, sourceCommit='d' * 40,
-                  sourceArchiveSha256=hashlib.sha256(source['source']).hexdigest(), flags='-D__ADX__ -D__BLST_PORTABLE__', snapshot=[])
-    recipe_text = f'FROM {recipe["baseImage"]} AS build\nARG BLST_COMMIT={recipe["sourceCommit"]}\nARG BLST_SOURCE_ARCHIVE_SHA256={recipe["sourceArchiveSha256"]}\nARG BLST_FLAGS="{recipe["flags"]}"\n'
-    source_files = {'docker/blst.Dockerfile': recipe_text.encode(), 'blst-native/native/raw-dst.c': source['raw']}
-    source_files['blst-native/src/main/resources/supranational/blst/Linux/amd64/libblst.so'] = source['portable']
-    for name in native.INPUTS:
-        source_files.setdefault(name, b'SYNTHETIC SOURCE INPUT')
+    source = dict(portable=b'synthetic JNI')
+    portable_sha = hashlib.sha256(source['portable']).hexdigest()
+    pins = f'    "Linux/amd64/libblst.so" -> "{portable_sha}",\n'
+    source_files = {check_native_identity.PINS: pins.encode(), 'project/Dependencies.scala': b'    val jblst = "0.3.18"\n'}
     put('source.tar', tar_bytes(source_files))
     source_hashes = {k: hashlib.sha256(v).hexdigest() for k, v in source_files.items()}
     write('evidence/repro/source-manifest.json', dict(gitCommit=identity['gitCommit'], buildIdentity=identity, files=source_hashes))
@@ -69,22 +69,10 @@ def make_candidate(root: Path, release=True) -> dict:
     write('evidence/repro/artifact-builds.json', reports)
     repro = dict(gitCommit=identity['gitCommit'], buildIdentity=identity, jdkImage='sha256:' + 'e' * 64, artifacts=reports)
     write('evidence/repro/verified-artifacts.json', repro)
-    builds = []
-    for index in [1, 2]:
-        directory = f'evidence/native/build-{index}/'
-        files = {'libblst.so': source['portable'], 'blst-source.tar': source['source'],
-                 'packages.tsv': b'fixture-package\t1\tamd64\n', 'downloaded-debs.sha256': ('f' * 64 + '  /var/cache/apt/archives/fixture.deb\n').encode(),
-                 'blst-commit.txt': recipe['sourceCommit'].encode(), 'blst-tree.txt': b'1' * 40,
-                 'raw-dst.sha256': (source_hashes['blst-native/native/raw-dst.c'] + ' /src/raw-dst.c\n').encode()}
-        for name in ['exports.txt', 'symbols.txt', 'elf.txt', 'disassembly.txt']:
-            files[name] = b'SYNTHETIC DIAGNOSTIC'
-        for pocket in ['jammy', 'jammy-updates', 'jammy-security']:
-            files[f'apt/{pocket}_InRelease'] = f'Suite: {pocket}\nSYNTHETIC NOT SIGNED\n'.encode()
-        for name, raw in files.items():
-            put(directory + name, raw)
-        builds.append(native.validate_artifact(root / directory, recipe, source_hashes['blst-native/native/raw-dst.c']))
-    write('evidence/native/receipt.json', dict(status='passed', repositoryCommit=identity['gitCommit'], worktreeDirty=False,
-                                            recipe=recipe, inputs=source_hashes, builds=builds))
+    receipt = check_native_identity.verify_texts(jar, source_files[check_native_identity.PINS].decode(),
+                                                 source_files['project/Dependencies.scala'].decode())
+    native_library = {k: receipt[k] for k in ('library', 'version', 'blstCommit')}
+    write('evidence/native/receipt.json', receipt)
     layer = tar_bytes({'opt/scarab/scarab.jar': jar.read_bytes()})
     config = dict(architecture='amd64', os='linux', rootfs=dict(type='layers', diff_ids=['sha256:' + hashlib.sha256(layer).hexdigest()]),
                   config=dict(User='10001:10001', Entrypoint=['java', '--sun-misc-unsafe-memory-access=allow', '-jar', '/opt/scarab/scarab.jar'],
@@ -130,7 +118,7 @@ def make_candidate(root: Path, release=True) -> dict:
     verifier_files = ['evidence/image-verifier/ArtifactResourcesCheck.' + extension for extension in ['java', 'class']]
     for name in verifier_files:
         put(name, b'SYNTHETIC VERIFIER, NOT EXECUTED')
-    write('evidence/toolchain.json', dict(jdk=dict(buildIdentity=identity, jdkImage=repro['jdkImage']), baseImage=image['baseImage'], nativeRecipe=recipe,
+    write('evidence/toolchain.json', dict(jdk=dict(buildIdentity=identity, jdkImage=repro['jdkImage']), baseImage=image['baseImage'], nativeLibrary=native_library,
                                          imageVerifier=[record(name) for name in verifier_files]))
     write('evidence/licence-review.json', dict(status='review-required', unresolved=[]))
     manifest = dict(schemaVersion=1, status='verified', assurance=dict(scope='inventory-hash-coverage-subject-binding',
@@ -145,7 +133,7 @@ def make_candidate(root: Path, release=True) -> dict:
         manifest['subjects'].append(dict(name=path.name, kind=kind, file=record(path.relative_to(root)),
                                         bom=dict(file=record(bom_path), subject=dict(kind=subject_kind, digest=digest))))
     paths = {'source-export': 'evidence/repro/source-manifest.json', 'reproducibility': 'evidence/repro/verified-artifacts.json',
-             'native-reproducibility': 'evidence/native/receipt.json', 'assembly-coverage': 'evidence/assembly-coverage.json',
+             'native-identity': 'evidence/native/receipt.json', 'assembly-coverage': 'evidence/assembly-coverage.json',
              'jvm-resolution': 'evidence/jvm-resolution.json', 'image-inventory': 'evidence/image-inventory.json',
              'toolchain': 'evidence/toolchain.json', 'licence-review': 'evidence/licence-review.json'}
     manifest['evidence'] = [dict(kind=kind, file=record(path)) for kind, path in paths.items()]

@@ -53,10 +53,10 @@ incomplete name, never as a verified candidate.
    precedence. Each discarded or shadowed input remains in the coverage report with its rule and
    original hash. Unexplained additions, losses and transformations fail. No shading is configured;
    introducing it requires a new explicit mapping contract, not a blanket exception.
-4. Two uncached source-built portable JNI libraries must match the committed and packaged bytes,
-   using the [native rebuild contract](../blst-native/native/README.md). Source archive, raw-DST,
-   complete package inventories and authenticated Ubuntu indexes are retained. Candidate input
-   hashes must match those native build inputs. Only Linux/amd64 runtime behavior is evidenced;
+4. The packaged BLS12-381 libraries must be jblst's, with the hashes `Blst` pins, and the
+   Linux/amd64 one must keep its ADX/BMI2 code behind blst's CPU switch
+   (`scripts/check_native_identity.py`, [ADR 0025](adr/0025-jblst.md)); its receipt is the
+   candidate's `native-identity` evidence. Only Linux/amd64 runtime behavior is evidenced;
    every other bundled JNI resource is inventoried with its actual owner and hash, not advertised
    as another tested platform.
 5. The image is built once from the verified JAR and the digest-pinned Temurin 25.0.4.1+1 JRE.

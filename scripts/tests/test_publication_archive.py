@@ -77,8 +77,7 @@ class PublicationArchiveTest(unittest.TestCase):
         self.assertGreater(descriptor['size'], 0)
         nested = [p.relative_to(self.candidate) for p in self.candidate.rglob('*') if p.is_file()]
         # Select dependencies outside the manifest's top-level descriptors.
-        choices = [next(p for p in nested if 'native' in p.parts and 'build-1' in p.parts),
-                   next(p for p in nested if 'legal' in p.parts),
+        choices = [next(p for p in nested if 'legal' in p.parts),
                    next(p for p in nested if 'repro' in p.parts and p.name == 'build-1.jar')]
         for index, missing in enumerate(choices):
             with self.subTest(missing=missing):

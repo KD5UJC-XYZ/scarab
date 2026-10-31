@@ -137,7 +137,7 @@ class Family(enum.Enum):
     SECRETS = "secret-scan"
     DEVNET = "devnet-scenarios"
     CDDL = "cddl-crosscheck"
-    NATIVE = "native-reproducibility"
+    NATIVE = "native-identity"
     CANDIDATE = "release-candidate"
     PACKET = "evidence-packet"
 
@@ -181,8 +181,8 @@ def commands(commit: str) -> list[Command]:
                   "scripts/devnet.py --name") for scenario in scenarios],
         Command(Family.CDDL, "python3 scripts/cddl_crosscheck.py run --count 40", Environment.DOCKER,
                 "scripts/cddl_crosscheck.py run --count 40"),
-        Command(Family.NATIVE, "python3 scripts/check_native_reproducibility.py --output <fresh-dir>",
-                Environment.DOCKER, "scripts/check_native_reproducibility.py --output"),
+        Command(Family.NATIVE, "python3 scripts/check_native_identity.py <jblst-or-assembly-jar>",
+                Environment.HOST_PYTHON, "scripts/check_native_identity.py"),
         Command(Family.CANDIDATE, "python3 scripts/build_release_candidate.py --check --image <jdk-image> "
                 f"--cache .cache --output <fresh-dir> --expected-commit {commit}", Environment.DOCKER,
                 "scripts/build_release_candidate.py"),

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package xyz.kd5ujc.scarab.blst
+package xyz.kd5ujc.scarab.crypto.bls
 
 import java.lang.reflect.Modifier
 import java.nio.charset.StandardCharsets
@@ -8,8 +8,8 @@ import cats.mtl.Handle
 import munit.CatsEffectSuite
 import supranational.blst.blstJNI
 
-/** The portable libblst is the library blst-java loads, it exports what `blstJNI` calls, and the
-  * start-up check decides as ADR 0012 says.
+/** The library jblst ships is the one `blstJNI` loads, it exports what `blstJNI` calls, and the
+  * start-up check decides as ADR 0025 says.
   */
 class BlstSuite extends CatsEffectSuite:
   private val all = CpuFeature.values.toSet
@@ -19,7 +19,7 @@ class BlstSuite extends CatsEffectSuite:
       .allow[BlstProblem](Blst.verify[IO].map(Right(_)))
       .rescue(problem => IO.pure(Left(problem)))
 
-  test("blst-java loads the portable library of this repository") {
+  test("blstJNI loads the pinned library of jblst") {
     Blst.build[IO].map { build =>
       if Platform.current == Platform.LinuxAmd64 then assertEquals(build, LibraryBuild.Portable)
       else assert(build != LibraryBuild.Portable)
@@ -45,7 +45,7 @@ class BlstSuite extends CatsEffectSuite:
 
   test("every native method of blstJNI is exported by the library (SWIG glue and class match)") {
     val exported = scala.io.Source
-      .fromResource("blst-exports.txt", getClass.getClassLoader)(using
+      .fromResource("blst/jblst-exports.txt", getClass.getClassLoader)(using
         scala.io.Codec(StandardCharsets.UTF_8)
       )
       .getLines()

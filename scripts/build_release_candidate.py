@@ -15,7 +15,7 @@ import candidate_image_inventory
 import candidate_manifest
 import candidate_oci
 import candidate_sbom
-import check_native_reproducibility
+import check_native_identity
 import release_identity
 import reproducible_build
 
@@ -71,18 +71,15 @@ def build(args):
     second = candidate_manifest.read_json(repro / 'inventory-2/assembly-coverage.json')
     if first != second:
         raise ValueError('independent builds resolved different dependency/assembly inventories')
-    native = evidence / 'native'
-    run(['python3', str(repo / 'scripts/check_native_reproducibility.py'), '--output', str(native)],
-        evidence / 'native.log', cwd=repo)
-    native_receipt = candidate_manifest.read_json(native / 'receipt.json')
-    source_manifest = candidate_manifest.read_json(repro / 'source-manifest.json')
-    if native_receipt.get('repositoryCommit') != identity['gitCommit'] or native_receipt.get('worktreeDirty'):
-        raise ValueError('native proof source is not the clean approved candidate source')
-    for name in check_native_reproducibility.INPUTS:
-        if native_receipt['inputs'].get(name) != source_manifest['files'].get(name):
-            raise ValueError(f'native proof input differs from candidate source: {name}')
     artifact = artifacts / f'scarab-node-{identity["version"]}-assembly.jar'
     shutil.copyfile(repro / 'build-1.jar', artifact)
+    # the BLS12-381 libraries the JAR carries are jblst's as pinned, the Linux/amd64 one portable (ADR 0025)
+    native = evidence / 'native'
+    run(['python3', str(repo / 'scripts/check_native_identity.py'), str(artifact), '--output', str(native)],
+        evidence / 'native.log', cwd=repo)
+    native_receipt = candidate_manifest.read_json(native / 'receipt.json')
+    if native_receipt != check_native_identity.verify(artifact, repo):
+        raise ValueError('native identity receipt differs from a check of the candidate JAR')
     jvm_bom, reviews = candidate_sbom.jvm(artifact, first, identity, native_receipt)
     candidate_sbom.write(sboms / 'jvm.cdx.json', jvm_bom)
     schema_validate(root, sboms / 'jvm.cdx.json', evidence / 'jvm-schema.log')
@@ -159,7 +156,7 @@ def build(args):
                             baseImageId=base_inspect['Id'], baseDiffIds=base_layers,
                             scannerBom=candidate_manifest.file_record(root, evidence / 'image-scan.cdx.json')))
         candidate_sbom.write(evidence / 'toolchain.json', dict(jdk=candidate_manifest.read_json(repro / 'build-environment.json'),
-                            nativeRecipe=native_receipt['recipe'], syftImage=SYFT, cycloneDxImage=CYCLONEDX,
+                            nativeLibrary={k: native_receipt[k] for k in ('library', 'version', 'blstCommit')}, syftImage=SYFT, cycloneDxImage=CYCLONEDX,
                             imageRecipeSha256=candidate_manifest.sha256(repo / 'docker/candidate.Dockerfile'),
                             imageVerifier=[candidate_manifest.file_record(root, verifier / name) for name in
                                            ['ArtifactResourcesCheck.java', 'ArtifactResourcesCheck.class']],
@@ -179,7 +176,7 @@ def build(args):
                                              bom=dict(file=record(bom), subject=dict(kind=subject_kind, digest=digest))))
         for kind, path in [
             ('source-export', repro / 'source-manifest.json'), ('reproducibility', repro / 'verified-artifacts.json'),
-            ('native-reproducibility', native / 'receipt.json'), ('assembly-coverage', repro / 'inventory-1/assembly-coverage.json'),
+            ('native-identity', native / 'receipt.json'), ('assembly-coverage', repro / 'inventory-1/assembly-coverage.json'),
             ('jvm-resolution', repro / 'inventory-1/jvm-resolution.json'), ('image-inventory', evidence / 'image-inventory.json'),
             ('toolchain', evidence / 'toolchain.json'), ('licence-review', evidence / 'licence-review.json')]:
             manifest['evidence'].append(dict(kind=kind, file=record(path)))
