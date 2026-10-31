@@ -87,6 +87,8 @@ jobs:
         run: python3 scripts/check_test_coverage.py
       - name: Closed error channel guard
         run: python3 scripts/check_error_channels.py
+      - name: No new try/catch/finally in main sources
+        run: python3 scripts/check_imperative.py
       - name: No absolute home paths in tracked files
         run: python3 scripts/check_local_paths.py
       - name: Licence records (NOTICE, docs/licenses.md) cover every declared library

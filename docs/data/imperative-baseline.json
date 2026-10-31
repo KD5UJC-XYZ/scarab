@@ -1,0 +1,157 @@
+{
+ "_comment": "try/catch/finally per main Scala source; written by scripts/check_imperative.py --write-baseline, which refuses an increase. It only shrinks (issue 650).",
+ "files": {
+  "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Cbor.scala": {
+   "catch": 4,
+   "try": 4
+  },
+  "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/bls/Blst.scala": {
+   "catch": 1,
+   "try": 1
+  },
+  "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/bls/MinSig.scala": {
+   "catch": 1,
+   "try": 1
+  },
+  "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/kes/Sum6Kes.scala": {
+   "catch": 1,
+   "try": 1
+  },
+  "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/opcert/OperationalCertificate.scala": {
+   "catch": 1,
+   "try": 1
+  },
+  "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/vrf/Draft03Prover.scala": {
+   "catch": 2,
+   "try": 2
+  },
+  "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/vrf/PraosVrfCertificate.scala": {
+   "catch": 2,
+   "try": 2
+  },
+  "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/vrf/StrictDraft03.scala": {
+   "catch": 1,
+   "try": 1
+  },
+  "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/vrf/TimingProbeMain.scala": {
+   "catch": 1,
+   "try": 1
+  },
+  "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/witness/ByronEd25519.scala": {
+   "catch": 2,
+   "try": 2
+  },
+  "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/witness/StrictEd25519.scala": {
+   "catch": 3,
+   "try": 3
+  },
+  "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Phase2.scala": {
+   "catch": 2,
+   "try": 2
+  },
+  "models-gen/src/main/scala/xyz/kd5ujc/scarab/models/gen/Main.scala": {
+   "catch": 1,
+   "try": 1
+  },
+  "models/src/main/scala/xyz/kd5ujc/scarab/models/runtime/Codec.scala": {
+   "catch": 1,
+   "try": 1
+  },
+  "node/src/main/scala/xyz/kd5ujc/scarab/node/MemoryReport.scala": {
+   "catch": 1,
+   "try": 1
+  },
+  "node/src/main/scala/xyz/kd5ujc/scarab/node/VerificationCache.scala": {
+   "catch": 4,
+   "finally": 2,
+   "try": 5
+  },
+  "node/src/main/scala/xyz/kd5ujc/scarab/node/forge/KesFiles.scala": {
+   "catch": 1,
+   "finally": 2,
+   "try": 3
+  },
+  "node/src/main/scala/xyz/kd5ujc/scarab/node/forge/KeyGuard.scala": {
+   "catch": 1,
+   "try": 1
+  },
+  "node/src/main/scala/xyz/kd5ujc/scarab/node/tools/LeiosCheckMain.scala": {
+   "finally": 1,
+   "try": 1
+  },
+  "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/FlatScan.scala": {
+   "catch": 1,
+   "try": 1
+  },
+  "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/NativeCrypto.scala": {
+   "catch": 2,
+   "finally": 1,
+   "try": 3
+  },
+  "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ScalusEvaluator.scala": {
+   "catch": 4,
+   "try": 4
+  },
+  "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/Handshake.scala": {
+   "catch": 2,
+   "try": 2
+  },
+  "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ProtocolWire.scala": {
+   "catch": 2,
+   "try": 2
+  },
+  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ChainStorage.scala": {
+   "finally": 1,
+   "try": 1
+  },
+  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/CheckpointBinding.scala": {
+   "finally": 2,
+   "try": 2
+  },
+  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/DatabaseOwnership.scala": {
+   "catch": 2,
+   "try": 2
+  },
+  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala": {
+   "finally": 6,
+   "try": 6
+  },
+  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshotExport.scala": {
+   "finally": 1,
+   "try": 1
+  },
+  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshotImport.scala": {
+   "finally": 1,
+   "try": 1
+  },
+  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/RocksUtxoStore.scala": {
+   "catch": 1,
+   "finally": 14,
+   "try": 15
+  },
+  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotMigration.scala": {
+   "finally": 2,
+   "try": 2
+  },
+  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotPoint.scala": {
+   "finally": 1,
+   "try": 1
+  },
+  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala": {
+   "finally": 1,
+   "try": 1
+  },
+  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala": {
+   "finally": 5,
+   "try": 5
+  },
+  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/mithril/MithrilBootstrap.scala": {
+   "finally": 2,
+   "try": 2
+  },
+  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/scls/SclsInterchange.scala": {
+   "finally": 1,
+   "try": 1
+  }
+ }
+}
