@@ -75,14 +75,15 @@ object RelayIp:
   private[ledger] def be(value: Long, n: Int): Array[Byte] =
     Array.tabulate(n)(i => ((value >>> (8 * (n - 1 - i))) & 0xff).toByte)
 
-  private def long(b: Bytes, from: Int, n: Int): Long =
-    (from until from + n).foldLeft(0L)((acc, i) => (acc << 8) | (b(i) & 0xffL))
-
   /** The address of 4 or 16 bytes in network order; none for any other length. */
   def fromOctets(b: Bytes): Option[RelayIp] = b.size match
-    case 4  => Some(Ipv4(long(b, 0, 4).toInt))
-    case 16 => Some(Ipv6(long(b, 0, 8), long(b, 8, 8)))
-    case _  => None
+    case 4 => b.bigEndian(0, 4).map(v => Ipv4(v.toInt))
+    case 16 =>
+      for
+        high <- b.bigEndian(0, 8)
+        low <- b.bigEndian(8, 8)
+      yield Ipv6(high, low)
+    case _ => None
 
   private[ledger] def compress(groups: Vector[Int]): String =
     // the longest run of zero groups, the first one on a tie, if it has two or more

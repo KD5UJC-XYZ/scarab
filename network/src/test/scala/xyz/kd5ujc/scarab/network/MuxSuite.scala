@@ -70,10 +70,10 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
             bytes <- raw.reads.take(30000 + 3 * WireMux.HeaderBytes).compile.to(Chunk)
           yield
             def frames(rest: Bytes, sizes: Vector[Int]): Vector[Int] =
-              if rest.size == 0 then sizes
-              else
-                val length = ((rest(6) & 0xff) << 8) | (rest(7) & 0xff)
-                frames(Bytes(rest.value.drop(WireMux.HeaderBytes + length)), sizes :+ length)
+              rest.bigEndian(6, 2).map(_.toInt) match
+                case None => sizes
+                case Some(length) =>
+                  frames(Bytes(rest.value.drop(WireMux.HeaderBytes + length)), sizes :+ length)
             frames(Bytes(bytes.toVector), Vector.empty)
         }
       }

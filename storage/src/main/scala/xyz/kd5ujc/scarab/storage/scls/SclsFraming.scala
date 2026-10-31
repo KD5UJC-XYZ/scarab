@@ -101,8 +101,8 @@ object SclsFraming:
           position: Int,
           at: Long,
           emitted: Vector[Frame]
-      ): Either[Error, (Decoder, Vector[Frame])] = current match
-        case Phase.Body(recordKind, size, buffered, pending, reversed) if buffered == size =>
+      ): Either[Error, (Decoder, Vector[Frame])] = (current, input.lift(position)) match
+        case (Phase.Body(recordKind, size, buffered, pending, reversed), _) if buffered == size =>
           val segments = if pending.isEmpty then reversed else pending :: reversed
           loop(
             Phase.Length(Bytes.empty),
@@ -110,9 +110,9 @@ object SclsFraming:
             at,
             emitted :+ Frame(recordKind, assemble(size, segments))
           )
-        case _ if position == input.size =>
+        case (_, None) =>
           Right(new Decoder(current, at, limit) -> emitted)
-        case Phase.Length(prefix) =>
+        case (Phase.Length(prefix), Some(_)) =>
           val count = math.min(4 - prefix.size, input.size - position)
           val next = prefix ++ input.slice(position, position + count)
           if next.size < 4 then loop(Phase.Length(next), position + count, at + count, emitted)
@@ -120,8 +120,8 @@ object SclsFraming:
             length(next, at + count - 4, limit) match
               case Left(error) => Left(error)
               case Right(size) => loop(Phase.Tag(size), position + count, at + count, emitted)
-        case Phase.Tag(size) =>
-          kind(input(position) & 0xff, at) match
+        case (Phase.Tag(size), Some(tag)) =>
+          kind(tag & 0xff, at) match
             case Left(error) => Left(error)
             case Right(recordKind) =>
               loop(
@@ -130,7 +130,7 @@ object SclsFraming:
                 at + 1,
                 emitted
               )
-        case Phase.Body(recordKind, size, buffered, pending, reversed) =>
+        case (Phase.Body(recordKind, size, buffered, pending, reversed), Some(_)) =>
           val count = math.min(size - buffered, input.size - position)
           val fragment = input.slice(position, position + count).compact
           val (nextPending, nextReversed) = appendBody(pending, reversed, fragment)

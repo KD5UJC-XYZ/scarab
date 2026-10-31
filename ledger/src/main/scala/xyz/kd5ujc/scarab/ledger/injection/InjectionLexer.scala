@@ -76,14 +76,15 @@ private[injection] object InjectionLexer:
     (c >= '0' && c <= '9') || c == '-' || c == '+' || c == '.' || c == 'e' || c == 'E'
 
   @tailrec private def numberEnd(input: Bytes, at: Int): Int =
-    if at < input.size && numberChar(input(at) & 255) then numberEnd(input, at + 1) else at
+    if input.lift(at).exists(b => numberChar(b & 255)) then numberEnd(input, at + 1) else at
 
   @tailrec private def stringEnd(input: Bytes, at: Int, escaped: Boolean): (Int, Boolean) =
-    if at == input.size then (at, escaped)
-    else if escaped then stringEnd(input, at + 1, false)
-    else if input(at) == '\\' then stringEnd(input, at + 1, true)
-    else if input(at) == '"' then (at, false)
-    else stringEnd(input, at + 1, false)
+    input.lift(at) match
+      case None                 => (at, escaped)
+      case Some(_) if escaped   => stringEnd(input, at + 1, false)
+      case Some(b) if b == '\\' => stringEnd(input, at + 1, true)
+      case Some(b) if b == '"'  => (at, false)
+      case Some(_)              => stringEnd(input, at + 1, false)
 
   // The C fast path accepts a lone minus/dot and permits zero digits. It is used only for a
   // number ending in its first chunk; continuations take parseNumber's different grammar. With
@@ -167,55 +168,54 @@ private[injection] object InjectionLexer:
   @tailrec def pull(s: State): Step =
     import Step.*
     import Token.*
-    if s.at == s.input.size then NeedData(s)
-    else
-      s.mode match
-        case Mode.Base =>
-          val c = s.input(s.at) & 255
-          def token(t: Token): Step = Emit(t, s.copy(at = s.at + 1))
-          def word(text: String, value: Scalar): State =
-            s.copy(at = s.at + 1, mode = Mode.Identifier(text, 1, value))
-          if space(c) then pull(s.copy(at = s.at + 1))
-          else
-            c match
-              case 123                => token(ObjectStart)
-              case 125                => token(ObjectEnd)
-              case 91                 => token(ArrayStart)
-              case 93                 => token(ArrayEnd)
-              case 34                 => pull(s.copy(at = s.at + 1, mode = Mode.Quoted))
-              case 116                => pull(word("true", Scalar.Bool(true)))
-              case 102                => pull(word("false", Scalar.Bool(false)))
-              case 110                => pull(word("null", Scalar.Null))
-              case _ if numberChar(c) => pull(s.copy(mode = Mode.Number(Nil, 0)))
-              case _                  => Failed
-        case Mode.Quoted =>
-          val (end, escaped) = stringEnd(s.input, s.at, false)
-          val bytes = s.input.slice(s.at, end)
-          if end == s.input.size then Content(bytes, Text(s.input, end, escaped, false))
-          else Emit(StringRaw(bytes), s.copy(at = end + 1, mode = Mode.Base))
-        case Mode.Number(parts, size) =>
-          val end = numberEnd(s.input, s.at)
-          val bytes = s.input.slice(s.at, end)
-          if end == s.input.size then
-            if parts.nonEmpty && size > 200000 then Failed
-            else pull(s.copy(at = end, mode = Mode.Number(bytes :: parts, size + bytes.size)))
-          else
-            val text = (bytes :: parts).reverseIterator.map(ascii).mkString
-            val number =
-              if parts.isEmpty then
-                fastNumber(text).orElse(generalNumber(text).map(n => Value(Scalar.Number(n))))
-              else generalNumber(text).map(n => Value(Scalar.Number(n)))
-            number match
-              case None        => Failed
-              case Some(token) => Emit(token, s.copy(at = end, mode = Mode.Base))
-        case Mode.Identifier(word, offset, value) =>
-          val c = s.input(s.at) & 255
-          if offset == word.length then
-            if space(c) || c == ']' || c == '}' then Emit(Value(value), s.copy(mode = Mode.Base))
+    s.input.lift(s.at).map(_ & 255) match
+      case None => NeedData(s)
+      case Some(c) =>
+        s.mode match
+          case Mode.Base =>
+            def token(t: Token): Step = Emit(t, s.copy(at = s.at + 1))
+            def word(text: String, value: Scalar): State =
+              s.copy(at = s.at + 1, mode = Mode.Identifier(text, 1, value))
+            if space(c) then pull(s.copy(at = s.at + 1))
+            else
+              c match
+                case 123                => token(ObjectStart)
+                case 125                => token(ObjectEnd)
+                case 91                 => token(ArrayStart)
+                case 93                 => token(ArrayEnd)
+                case 34                 => pull(s.copy(at = s.at + 1, mode = Mode.Quoted))
+                case 116                => pull(word("true", Scalar.Bool(true)))
+                case 102                => pull(word("false", Scalar.Bool(false)))
+                case 110                => pull(word("null", Scalar.Null))
+                case _ if numberChar(c) => pull(s.copy(mode = Mode.Number(Nil, 0)))
+                case _                  => Failed
+          case Mode.Quoted =>
+            val (end, escaped) = stringEnd(s.input, s.at, false)
+            val bytes = s.input.slice(s.at, end)
+            if end == s.input.size then Content(bytes, Text(s.input, end, escaped, false))
+            else Emit(StringRaw(bytes), s.copy(at = end + 1, mode = Mode.Base))
+          case Mode.Number(parts, size) =>
+            val end = numberEnd(s.input, s.at)
+            val bytes = s.input.slice(s.at, end)
+            if end == s.input.size then
+              if parts.nonEmpty && size > 200000 then Failed
+              else pull(s.copy(at = end, mode = Mode.Number(bytes :: parts, size + bytes.size)))
+            else
+              val text = (bytes :: parts).reverseIterator.map(ascii).mkString
+              val number =
+                if parts.isEmpty then
+                  fastNumber(text).orElse(generalNumber(text).map(n => Value(Scalar.Number(n))))
+                else generalNumber(text).map(n => Value(Scalar.Number(n)))
+              number match
+                case None        => Failed
+                case Some(token) => Emit(token, s.copy(at = end, mode = Mode.Base))
+          case Mode.Identifier(word, offset, value) =>
+            if offset == word.length then
+              if space(c) || c == ']' || c == '}' then Emit(Value(value), s.copy(mode = Mode.Base))
+              else Failed
+            else if c == word.charAt(offset) then
+              pull(s.copy(at = s.at + 1, mode = Mode.Identifier(word, offset + 1, value)))
             else Failed
-          else if c == word.charAt(offset) then
-            pull(s.copy(at = s.at + 1, mode = Mode.Identifier(word, offset + 1, value)))
-          else Failed
 
   private def pullText(t: Text): TextStep =
     if t.closed then TextStep.End(State(t.input, t.at, Mode.Base))

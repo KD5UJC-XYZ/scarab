@@ -112,11 +112,12 @@ object TxSubmission2:
   def bodyId(original: Bytes): Either[ProtocolError, Bytes] = attempt {
     get(advertisedSize(original.size))
     val r = new ProtocolWire.Reader(original, wire.copy(maxMessageBytes = MaxOriginalBytes))
-    val indefinite = (original(0) & 255) == 0x9f
+    val indefinite = original.headOption.contains(0x9f.toByte)
     if indefinite then r.read()
     else if r.arrayLength() != 4 then bad(ProtocolError.ExpectedFourMemberConwayTransaction)
     val body = r.item()
-    if body.size == 0 || (body(0) & 0xe0) != 0xa0 then bad(ProtocolError.TransactionBodyIsNotAMap)
+    if !body.headOption.exists(b => (b & 0xe0) == 0xa0) then
+      bad(ProtocolError.TransactionBodyIsNotAMap)
     r.item()
     val validity = r.read()
     if validity != 0xf4 && validity != 0xf5 then bad(ProtocolError.TransactionValidityIsNotABoolean)

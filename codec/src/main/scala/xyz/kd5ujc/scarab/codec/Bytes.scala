@@ -38,11 +38,9 @@ final class Bytes private (
   /** The bytes as a vector (allocates; kept for code that wants collection operations). */
   def value: Vector[Byte] = Vector.tabulate(length)(i => array(offset + i))
 
-  def apply(i: Int): Byte =
-    if i < 0 || i >= size then throw new IndexOutOfBoundsException(i.toString)
-    array(offset + i)
-
-  /** Byte `i`, if `i` is inside the bytes. */
+  /** Byte `i`, if `i` is inside the bytes. There is no partial `apply(i)`: a read and the check
+    * that it is in range are one operation, so no reader can do the one without the other.
+    */
   def lift(i: Int): Option[Byte] =
     if i < 0 || i >= length then None else Some(array(offset + i))
 

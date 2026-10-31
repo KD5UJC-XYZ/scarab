@@ -26,7 +26,7 @@ sealed abstract class Node:
     * `decodeBytes` below decoder version 12 (`Decoder.hs:350-373`, cardano-ledger f649f975). Byte
     * strings and text ask the same question of the item, not of the reader.
     */
-  final def isIndefinite: Boolean = original.size > 0 && (original(0) & 31) == 31
+  final def isIndefinite: Boolean = original.headOption.exists(b => (b & 31) == 31)
 
   /** Where the item's head is in the array that `original` is a window of (the start of `original`,
     * without making it), for locating an error.
@@ -59,7 +59,10 @@ sealed abstract class Node:
   override def toString: String = this.treeString
 
 object Node:
-  /** A node built by hand, from a value and the bytes it is to stand for. */
+  /** A node built by hand, from a value and the bytes it is to stand for. Built without them
+    * (`Bytes.empty`), it reads to every check of an item's head as written in the canonical form:
+    * definite, with the shortest head ([[Node.isIndefinite]] is false).
+    */
   def apply(value: Value, original: Bytes): Node = new Strict(value, original)
 
   private final class Strict(val value: Value, val original: Bytes) extends Node:
