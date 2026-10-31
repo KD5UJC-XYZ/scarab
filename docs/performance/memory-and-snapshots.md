@@ -440,4 +440,5 @@ encode medians are 4 percent higher; their ranges overlap those of the old code,
 to 6 percent longer with the new classes. `WireSkipBench` (section 45), eight JVMs in ABBA order, gives the protocol
 reader 0.97 to 1.00 of its old time on each workload (176.9 against 178.1 µs a pass on the 648 preview blocks) and the
 same allocation per operation. The readers outside these paths (handshake, peer sharing, the JSON reader, the CBOR head
-checks of the ledger) keep the `Option` form.
+checks of the ledger) keep the `Option` form. The owner accepted the remaining cost of the MemPack decode and encode for
+total reads (2026-10-31, #650).
