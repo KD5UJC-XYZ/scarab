@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.state
 
 import cats.{Eq, Show}
+import scala.annotation.tailrec
 import scala.collection.immutable.SortedMap
 import scala.compiletime.{constValue, erasedValue, summonFrom, summonInline}
 import scala.deriving.Mirror
@@ -28,14 +29,13 @@ final case class Path(steps: Vector[Step]):
   def /(step: Step): Path = Path(steps :+ step)
 
   def render: String =
-    steps
-      .foldLeft(new StringBuilder) {
-        case (b, Step.Field(n))  => (if b.isEmpty then b else b.append('.')).append(n)
-        case (b, Step.Key(k))    => b.append('[').append(k).append(']')
-        case (b, Step.Index(i))  => b.append('[').append(i).append(']')
-        case (b, Step.Member(m)) => b.append('{').append(m).append('}')
-      }
-      .toString
+    steps.zipWithIndex.map {
+      case (Step.Field(n), 0)  => n
+      case (Step.Field(n), _)  => s".$n"
+      case (Step.Key(k), _)    => s"[$k]"
+      case (Step.Index(i), _)  => s"[$i]"
+      case (Step.Member(m), _) => s"{$m}"
+    }.mkString
 
 object Path:
   val root: Path = Path(Vector.empty)
@@ -127,12 +127,13 @@ object Diff extends LowPriorityDiff:
       if a eq b then None
       else
         val common = math.min(a.size, b.size)
-        var i = 0
-        var found: Option[Difference] = None
-        while found.isEmpty && i < common do
-          found = d.diff(a(i), b(i)).map(_.under(Step.Index(i)))
-          i += 1
-        found.orElse {
+        @tailrec def first(i: Int): Option[Difference] =
+          if i == common then None
+          else
+            d.diff(a(i), b(i)) match
+              case None        => first(i + 1)
+              case Some(found) => Some(found.under(Step.Index(i)))
+        first(0).orElse {
           if a.size == b.size then None
           else
             val shown = (v: Vector[A]) => if v.size > common then d.show(v(common)) else "<absent>"
@@ -153,8 +154,7 @@ object Diff extends LowPriorityDiff:
         // the first member (by rendering) that is on one side only
         val onlyA = a.diff(b)
         val onlyB = b.diff(a)
-        val first = (onlyA.toList.map(shownA.show) ++ onlyB.toList.map(shownA.show)).min
-        Some(
+        (onlyA.toList.map(shownA.show) ++ onlyB.toList.map(shownA.show)).minOption.map(first =>
           Difference(
             Path(Vector(Step.Member(Difference.clipped(first)))),
             s"only here: {${few(onlyA)}}",
@@ -187,18 +187,18 @@ object Diff extends LowPriorityDiff:
       d: Diff[V]
   ): Option[Difference] =
     def key(k: K) = Step.Key(Difference.clipped(shownK.show(k)))
-    val it = a.iterator
-    var found: Option[Difference] = None
-    while found.isEmpty && it.hasNext do
-      val (k, v) = it.next()
-      found = b.get(k) match
-        case Some(w) => d.diff(v, w).map(_.under(key(k)))
-        case None    => Some(Difference(Path(Vector(key(k))), d.show(v), "<absent>"))
-    found.orElse {
-      b.keysIterator.find(k => !a.contains(k)).map { k =>
-        Difference(Path(Vector(key(k))), "<absent>", d.show(b(k)))
+    a.iterator
+      .map((k, v) =>
+        b.get(k) match
+          case Some(w) => d.diff(v, w).map(_.under(key(k)))
+          case None    => Some(Difference(Path(Vector(key(k))), d.show(v), "<absent>"))
+      )
+      .collectFirst { case Some(found) => found }
+      .orElse {
+        b.iterator.find((k, _) => !a.contains(k)).map { (k, w) =>
+          Difference(Path(Vector(key(k))), "<absent>", d.show(w))
+        }
       }
-    }
 
   given tuple2[A, B](using da: Diff[A], db: Diff[B]): Diff[(A, B)] = new Diff[(A, B)]:
     def diff(a: (A, B), b: (A, B)): Option[Difference] =
@@ -235,18 +235,18 @@ object Diff extends LowPriorityDiff:
     * per concrete field type at inline expansion, and compared by the instance of that same type —
     * no cast, no `Diff[Any]`, no `@unchecked` projection.
     */
-  private inline def productSteps[Ts <: Tuple](
-      names: List[String],
+  private inline def productSteps[Ts <: Tuple, Ls <: Tuple](
       i: Int
   ): List[(Product, Product) => Option[Difference]] =
-    inline erasedValue[Ts] match
-      case _: EmptyTuple => Nil
-      case _: (t *: ts)  =>
+    // the field types and their labels, walked together: a mirror has one label per field
+    inline erasedValue[(Ts, Ls)] match
+      case _: (EmptyTuple, EmptyTuple) => Nil
+      case _: (t *: ts, l *: ls)       =>
         // the ClassTag extractor narrows each field value to its declared type; the check and
         // the cast live in the stdlib's unapply, not in this source
         val ct = summonInline[ClassTag[t]]
         val held = new Memo(() => summonInline[Diff[t]])
-        val name = names.head
+        val name = constValue[l].toString
         val step: (Product, Product) => Option[Difference] = (p, q) =>
           (p.productElement(i), q.productElement(i)) match
             case (ct(x), ct(y)) => held.value.diff(x, y).map(_.under(Step.Field(name)))
@@ -259,7 +259,7 @@ object Diff extends LowPriorityDiff:
                   "field value is not of the declared field type"
                 )
               )
-        step :: productSteps[ts](names.tail, i + 1)
+        step :: productSteps[ts, ls](i + 1)
 
   /** A [[Diff]] from a difference function: the function is built at the derivation site (inline,
     * where the field and case types are concrete); the instance itself is a plain class, so
@@ -270,8 +270,7 @@ object Diff extends LowPriorityDiff:
     def show(a: A): String = Difference.clipped(a.toString)
 
   private inline def product[A](using m: Mirror.ProductOf[A]): Diff[A] =
-    val names = labels[m.MirroredElemLabels]
-    val fields = productSteps[m.MirroredElemTypes](names, 0).toArray
+    val fields = productSteps[m.MirroredElemTypes, m.MirroredElemLabels](0).toArray
     from[A]((a, b) =>
       if same(a, b) then None
       else
@@ -279,12 +278,13 @@ object Diff extends LowPriorityDiff:
         // test, and each field value is re-checked against its declared type in its field step
         (a: Any, b: Any) match
           case (p: Product, q: Product) =>
-            var found: Option[Difference] = None
-            var i = 0
-            while found.isEmpty && i < fields.length do
-              found = fields(i)(p, q)
-              i += 1
-            found
+            @tailrec def first(i: Int): Option[Difference] =
+              if i == fields.length then None
+              else
+                fields(i)(p, q) match
+                  case None  => first(i + 1)
+                  case found => found
+            first(0)
           case _ => None // unreachable: the mirror proves the shape
     )
 
