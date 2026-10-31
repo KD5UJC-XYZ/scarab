@@ -45,6 +45,14 @@ class ImperativeTest(unittest.TestCase):
         self.assertEqual(imperative.counts('try/* x */work() finally/* y */cleanup()'), {'try': 1, 'finally': 1})
         self.assertEqual(imperative.counts('val s = "try ${x}"; val t = s"plain $x"'), {})
 
+    def test_braces_in_comments_and_literals_do_not_end_an_interpolation(self):
+        both = {'try': 1, 'finally': 1}
+        self.assertEqual(imperative.counts('s"${ /* } */ try work() finally cleanup() }"'), both)
+        self.assertEqual(imperative.counts("s\"${ f('}') ; try work() finally cleanup() }\""), both)
+        self.assertEqual(imperative.counts('s"${ g("}") ; try work() finally cleanup() }"'), both)
+        self.assertEqual(imperative.counts('s"${ s"${ "}" }" ; try work() finally cleanup() }"'), both)
+        self.assertEqual(imperative.counts('s"${ Map(1 -> {2}) } try"'), {})
+
     def test_a_new_try_fails_and_only_main_sources_count(self):
         self.write(MAIN, 'object A\n')
         self.write('mod/src/test/scala/T.scala', 'try f() finally g()\n')

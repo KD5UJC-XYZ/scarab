@@ -34,8 +34,14 @@ def code(source: str) -> str:
     """`source` with comments and the text of string and character literals removed, line breaks kept.
     A comment becomes a space, so the tokens on either side stay apart; the `${...}` expressions of an
     interpolated string are code and are kept."""
+    return scan(source, 0, False)[1]
+
+
+def scan(source: str, i: int, expression: bool) -> tuple[int, str]:
+    """Code from `i`: to the end of `source`, or, in an interpolation's `${...}` (`expression`), to just after
+    its closing brace. Braces in comments and literals do not count, and literals nest."""
     out: list[str] = []
-    i, n = 0, len(source)
+    depth, n = 0, len(source)
     while i < n:
         if source.startswith('/*', i):
             end = source.find('*/', i + 2)
@@ -54,10 +60,13 @@ def code(source: str) -> str:
         elif source[i] == "'" and i + 2 < n and (source[i + 2] == "'" or source[i + 1] == '\\'):
             end = source.find("'", i + 2)
             i = n if end < 0 else end + 1
+        elif expression and source[i] == '}' and depth == 0:
+            return i + 1, ''.join(out)
         else:
+            depth += {'{': 1, '}': -1}.get(source[i], 0)
             out.append(source[i])
             i += 1
-    return ''.join(out)
+    return i, ''.join(out)
 
 
 def string_literal(source: str, i: int, triple: bool, interpolated: bool) -> tuple[int, str]:
@@ -74,12 +83,8 @@ def string_literal(source: str, i: int, triple: bool, interpolated: bool) -> tup
         if not triple and source[i] in '"\n':
             return i + 1, ''.join(kept)
         if interpolated and source.startswith('${', i):
-            depth, j = 1, i + 2
-            while j < n and depth:
-                depth += {'{': 1, '}': -1}.get(source[j], 0)
-                j += 1
-            kept.append(' ' + code(source[i + 2:j - 1]) + ' ')
-            i = j
+            i, expression = scan(source, i + 2, True)
+            kept.append(' ' + expression + ' ')
         elif interpolated and source.startswith('$$', i):
             i += 2
         elif source[i] == '\\' and not triple:
