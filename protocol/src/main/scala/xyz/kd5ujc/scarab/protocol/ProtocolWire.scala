@@ -68,9 +68,9 @@ private[protocol] object ProtocolWire:
   }
 
   /** The CBOR reader of every mini-protocol codec: a cursor over the input, failing through the
-    * [[Scope]]. It keeps the imperative form of the measured receive path (bytes read by index and
-    * windows sliced, `docs/performance/sync-and-scheduling.md`, "What was found: the receive
-    * path"); a functional form measured against it is issue 657.
+    * [[Scope]]. It keeps its imperative form on measurement: a functional walk of the same checks
+    * took 2.4 to 3.2 times as long and allocated 4 to 11 times as much on real blocks
+    * (`docs/performance.md` section 45, issue 657; `WireSkipFunctional` in the tests).
     */
   @SuppressWarnings(
     Array(
