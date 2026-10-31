@@ -739,9 +739,12 @@ object HeaderCheck:
         ): F[Unit] =
           // The signatures of the leading headers are verified in parallel first; the rules below
           // then find the verdicts ready.
-          val leading = batch.takeWhile(_.isInstanceOf[SyncEvent.RollForward]).collect {
-            case SyncEvent.RollForward(h, _) => h
-          }
+          val leading = batch
+            .takeWhile {
+              case _: SyncEvent.RollForward => true
+              case _                        => false
+            }
+            .collect { case SyncEvent.RollForward(h, _) => h }
           tally.get.flatMap(before =>
             compute.within(
               state.get.flatMap(hc => released.set(hc.entries.size)) *>

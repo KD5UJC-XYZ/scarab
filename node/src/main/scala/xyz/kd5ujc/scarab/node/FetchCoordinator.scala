@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import cats.data.NonEmptyVector
 import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.std.Mutex
 import cats.syntax.all.*
@@ -508,7 +509,11 @@ final class FetchCoordinator[F[_]: Async] private (
     val dispatched = genesisResult.fold(s)(r =>
       s.copy(
         genesisState =
-          if r.decisions.exists(_.isInstanceOf[BlockFetchPolicy.Decision.Request[?]]) then r.state
+          if r.decisions.exists {
+              case _: BlockFetchPolicy.Decision.Request[?] => true
+              case _                                       => false
+            }
+          then r.state
           else s.genesisState,
         demotions = r.demoteDynamo.toVector
       )
@@ -710,16 +715,17 @@ object FetchCoordinator:
       headers: Vector[Header],
       size: Header => Long
   ): Vector[BlockFetchPolicy.Fragment] =
-    val runs = headers.foldLeft(Vector.empty[Vector[Header]]) { (groups, header) =>
-      groups.lastOption match
-        case Some(previous) if header.prevHash.contains(previous.last.hash) =>
-          groups.init :+ (previous :+ header)
-        case _ => groups :+ Vector(header)
+    // the runs of headers that each extend the one before, the newest run first
+    val runs = headers.foldLeft(List.empty[NonEmptyVector[Header]]) { (groups, header) =>
+      groups match
+        case previous :: older if header.prevHash.contains(previous.last.hash) =>
+          previous.append(header) :: older
+        case _ => NonEmptyVector.one(header) :: groups
     }
-    runs.map(run =>
+    runs.reverse.toVector.map(run =>
       BlockFetchPolicy.Fragment(
         run.head.prevHash,
-        run.map(h => BlockFetchPolicy.Header(h.hash, h.slot, size(h)))
+        run.toVector.map(h => BlockFetchPolicy.Header(h.hash, h.slot, size(h)))
       )
     )
 

@@ -23,6 +23,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ValidationError
 }
 import cats.Monad
+import cats.data.NonEmptyVector
 import cats.effect.{Async, Ref, Resource}
 import cats.effect.std.Mutex
 import cats.mtl.{Handle, Raise, Stateful}
@@ -165,7 +166,10 @@ final class Follower[F[_]: Async, S] private (
         local.flatMap { selected =>
           val decision =
             if phase != BlockSelection.Phase.Startup then
-              ChainSelection.decide(tiebreaker(candidate.headers.last.era), selected, candidate)
+              // a candidate that announced nothing yet is not preferred
+              candidate.headers.lastOption.fold(ChainSelection.Decision.Keep)(tip =>
+                ChainSelection.decide(tiebreaker(tip.era), selected, candidate)
+              )
             else if candidate.tip == selected.blocks.lastOption.fold(selected.anchor)(_.point) then
               ChainSelection.Decision.Keep
             else
@@ -249,14 +253,15 @@ final class Follower[F[_]: Async, S] private (
     * that announced nothing yet is not preferred.
     */
   def versus(candidate: ChainSelection.Candidate): F[Gsm.Candidate] =
-    if candidate.headers.isEmpty then F.pure(Gsm.Candidate.Better(false))
-    else
-      lock.lock.surround(local).map { l =>
-        ChainSelection.decide(tiebreaker(candidate.headers.last.era), l, candidate) match
-          case ChainSelection.Decision.Keep            => Gsm.Candidate.Better(false)
-          case ChainSelection.Decision.Detached        => Gsm.Candidate.DoesNotIntersect
-          case ChainSelection.Decision.Switch(_, _, _) => Gsm.Candidate.Better(true)
-      }
+    candidate.headers.lastOption match
+      case None => F.pure(Gsm.Candidate.Better(false))
+      case Some(tip) =>
+        lock.lock.surround(local).map { l =>
+          ChainSelection.decide(tiebreaker(tip.era), l, candidate) match
+            case ChainSelection.Decision.Keep            => Gsm.Candidate.Better(false)
+            case ChainSelection.Decision.Detached        => Gsm.Candidate.DoesNotIntersect
+            case ChainSelection.Decision.Switch(_, _, _) => Gsm.Candidate.Better(true)
+        }
 
   /** GSM compares the full captured candidate, including the validated local prefix before its
     * original intersection. It must not apply LoE to this preference comparison.
@@ -467,7 +472,9 @@ final class Follower[F[_]: Async, S] private (
               yield result
         }
       _ <- outcome match
-        case Right(steps) => commit(original, to, depth, steps, peerTip)
+        // nothing applied is nothing to commit
+        case Right(steps) =>
+          NonEmptyVector.fromVector(steps).traverse_(commit(original, to, depth, _, peerTip))
         // No verdict on a block: it is recorded so that selection does not judge it again, and
         // reported; nothing is recorded as invalid and nobody is punished (issue 567). The worker
         // reconsiders the valid prefix before it, as for a refusal.
@@ -510,7 +517,7 @@ final class Follower[F[_]: Async, S] private (
       original: VolatileChain[S],
       to: ChainSync.Point,
       depth: Int,
-      steps: Vector[Applied],
+      steps: NonEmptyVector[Applied],
       peerTip: ChainSync.Tip
   )(using Raise[F, NodeError]): F[Unit] =
     // An exception here is the commit's, whichever fiber asked for it, and stops the node; a hot
@@ -534,7 +541,7 @@ final class Follower[F[_]: Async, S] private (
       original: VolatileChain[S],
       to: ChainSync.Point,
       depth: Int,
-      steps: Vector[Applied],
+      steps: NonEmptyVector[Applied],
       peerTip: ChainSync.Tip
   )(using Raise[F, NodeError]): F[Unit] =
     for
@@ -551,7 +558,8 @@ final class Follower[F[_]: Async, S] private (
       )
       selected <- updated.fold(
         views.get.map(known =>
-          ChainSelection.Local.of(finalChain, viewOf(known ++ steps.map(a => a.ref.hash -> a.view)))
+          ChainSelection.Local
+            .of(finalChain, viewOf(known ++ steps.toVector.map(a => a.ref.hash -> a.view)))
         )
       )(F.pure)
       _ <- F.uncancelable(_ => chain.set(finalChain) *> publishWindow(finalChain, selected))
@@ -578,7 +586,7 @@ final class Follower[F[_]: Async, S] private (
       _ <- views.retain(
         steps.last.after.blocks.map(_._1.hash).toSet ++ steps.last.after.anchor.block.map(_.hash)
       )
-      _ <- onTip.traverse_(_(steps.last.after, steps.map(_.raw)))
+      _ <- onTip.traverse_(_(steps.last.after, steps.map(_.raw).toVector))
     yield ()
 
   /** Adopt a block this node has just forged. It goes through the node's block rules like any other
@@ -655,7 +663,7 @@ final class Follower[F[_]: Async, S] private (
                       header.point,
                       ChainSync.UInt64.saturating(header.blockNo)
                     )
-                    _ <- commit(before, at, depth, Vector(applied), tip)
+                    _ <- commit(before, at, depth, NonEmptyVector.one(applied), tip)
                   yield Follower.Adoption.Adopted(ref)
             yield adopted
       yield result

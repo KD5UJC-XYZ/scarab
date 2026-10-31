@@ -136,7 +136,7 @@ object LocalRootDnsCache:
               val interval = ttls.map(clipPositiveTtl).maxOption.getOrElse(MinInterval)
               entry.copy(values = values, interval = interval, refreshAt = now + interval)
             case LookupResult.Failure(errors) =>
-              val interval = errors.toList.map(retryInterval(entry.interval, _)).min
+              val interval = errors.map(retryInterval(entry.interval, _)).reduceLeft(_ min _)
               entry.copy(interval = interval, refreshAt = now + interval)
           Right(new State(state.entries.updated(index, updated), state.nextToken))
 

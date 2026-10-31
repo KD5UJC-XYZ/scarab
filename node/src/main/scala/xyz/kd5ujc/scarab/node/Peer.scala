@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import cats.data.NonEmptyVector
 import xyz.kd5ujc.scarab.codec.DomainError
 import xyz.kd5ujc.scarab.ledger.{
   BlockPoolProblem,
@@ -367,22 +368,21 @@ object Peer:
         }
         .take(MaxCandidates - 1)
         .toVector
-      (picked.map(candidates(_)) :+ candidates.last).distinct
+      (picked.map(candidates(_)) ++ candidates.lastOption).distinct
 
   /** The maximal runs of consecutive headers the caller owns (the others were claimed by another
     * session, which fetches them).
     */
-  private[node] def ownedRuns(flagged: Vector[(Header, Boolean)]): Vector[Vector[Header]] =
-    val (completed, current) =
-      flagged.foldLeft((Vector.empty[Vector[Header]], Vector.empty[Header])) {
-        case ((completed, current), (header, true)) =>
-          if current.nonEmpty && !header.prevHash.contains(current.last.hash) then
-            (completed :+ current, Vector(header))
-          else (completed, current :+ header)
-        case ((completed, current), (_, false)) =>
-          if current.nonEmpty then (completed :+ current, Vector.empty) else (completed, current)
-      }
-    if current.nonEmpty then completed :+ current else completed
+  private[node] def ownedRuns(flagged: Vector[(Header, Boolean)]): Vector[NonEmptyVector[Header]] =
+    // the runs newest first, and whether the newest may still grow (no header not owned since)
+    val (runs, _) = flagged.foldLeft((List.empty[NonEmptyVector[Header]], false)) {
+      case ((current :: older, true), (header, true))
+          if header.prevHash.contains(current.last.hash) =>
+        (current.append(header) :: older, true)
+      case ((runs, _), (header, true)) => (NonEmptyVector.one(header) :: runs, true)
+      case ((runs, _), (_, false))     => (runs, false)
+    }
+    runs.reverse.toVector
 
   private[node] def requestDepth(ahead: BigInt, configured: Int): Int =
     (ahead - 1).min(configured).min(BlockPool.Retained / (Depth + 1)).max(1).toInt
@@ -772,7 +772,9 @@ object Peer:
                             observe.traverse_(
                               _(
                                 Peer.Observation.BlocksArrived(
-                                  run.zip(raw).map((h, b) => h.slot.toLong -> b.size.toLong),
+                                  run.toVector
+                                    .zip(raw)
+                                    .map((h, b) => h.slot.toLong -> b.size.toLong),
                                   arrivedAt
                                 )
                               )
@@ -780,7 +782,8 @@ object Peer:
                           )
                         }
                         .guarantee(
-                          claims.release(run.map(_.hash)) *> sent.complete(()).void *> ended
+                          claims
+                            .release(run.toVector.map(_.hash)) *> sent.complete(()).void *> ended
                         )
                     ) *> sent.get
                   }
@@ -788,11 +791,14 @@ object Peer:
               }
 
           def requestRun(
-              run: Vector[Header],
+              run: NonEmptyVector[Header],
               allocation: FetchCoordinator.Allocation,
               sent: F[Unit]
           )(using Raise[F, PeerError]): F[(Option[Vector[Bytes]], Time)] =
-            (Ref.of[F, Vector[Header]](run), Ref.of[F, Option[FiniteDuration]](None)).tupled
+            (
+              Ref.of[F, Vector[Header]](run.toVector),
+              Ref.of[F, Option[FiniteDuration]](None)
+            ).tupled
               .flatMap { (remaining, sentAt) =>
                 val observeEvent: BlockFetchRuntime.Event => F[Unit] = {
                   case BlockFetchRuntime.Event.Sent(_) =>
@@ -805,7 +811,7 @@ object Peer:
                       remaining.modify(hs => (hs.drop(1), hs.headOption)).flatMap {
                         case None =>
                           protocol[Unit](
-                            PeerError.ProtocolProblem.BlockCount(run.size, run.size + 1)
+                            PeerError.ProtocolProblem.BlockCount(run.length, run.length + 1)
                           )
                         case Some(header) =>
                           for
@@ -831,14 +837,15 @@ object Peer:
                       case Fault.Defect(problem) => NetworkError.Defect(problem)
                     })
                 val request =
-                  connection.blockFetch.requestBlocks(run.head.point, run.last.point, run.size)(
+                  connection.blockFetch.requestBlocks(run.head.point, run.last.point, run.length)(
                     receive,
                     observeEvent
                   )
                 request.flatMap {
-                  case Some(raw) if raw.size != run.size =>
-                    protocol(PeerError.ProtocolProblem.BlockCount(run.size, raw.size))
-                  case None   => fetcher.rejected(allocation, run) *> F.monotonic.map(None -> _)
+                  case Some(raw) if raw.size != run.length =>
+                    protocol(PeerError.ProtocolProblem.BlockCount(run.length, raw.size))
+                  case None =>
+                    fetcher.rejected(allocation, run.toVector) *> F.monotonic.map(None -> _)
                   case result => fetcher.completed(allocation) *> F.monotonic.map(result -> _)
                 }
               }

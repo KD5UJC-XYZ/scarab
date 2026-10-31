@@ -84,13 +84,12 @@ private[ntc] object RewardQueries:
       if r.numerator.signum < 0 then -magnitude else magnitude
 
   private def normalise(values: Vector[Float]): Vector[Float] =
-    if values.isEmpty then values
-    else
-      val largest = values.max
+    values.maxOption.fold(values) { largest =>
       val shifted = values.map(_ - largest)
       val area = shifted.foldLeft(0.0)((sum, x) => sum + 0.01 * math.exp(x.toDouble))
       val logArea = math.log(area).toFloat
       shifted.map(_ - logArea)
+    }
 
   private val prior = normalise(positions.map(x => (39.0 * math.log(x)).toFloat))
 

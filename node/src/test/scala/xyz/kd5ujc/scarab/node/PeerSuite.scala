@@ -53,7 +53,7 @@ class PeerSuite extends ScalaCheckSuite:
   property("owned runs are the maximal stretches of owned headers, in order") {
     forAll(Gen.listOf(Gen.oneOf(true, false)).map(_.take(300))) { flags =>
       val headers = flags.indices.map(i => header(i, 1000L)).toVector
-      val runs = Peer.ownedRuns(headers.zip(flags))
+      val runs = Peer.ownedRuns(headers.zip(flags)).map(_.toVector)
       assertEquals(runs.flatten, headers.zip(flags).collect { case (h, true) => h })
       runs.foreach { run =>
         val ix = run.map(h => h.blockNo.toInt)
@@ -68,7 +68,7 @@ class PeerSuite extends ScalaCheckSuite:
     val first = header(1, 1000L)
     val third = header(3, 1000L)
     assertEquals(
-      Peer.ownedRuns(Vector(first -> true, third -> true)),
+      Peer.ownedRuns(Vector(first -> true, third -> true)).map(_.toVector),
       Vector(Vector(first), Vector(third))
     )
   }
