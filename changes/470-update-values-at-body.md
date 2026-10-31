@@ -8,4 +8,5 @@
   values were accepted before and read only when the update was applied.
 - `Prices` and `ExUnits` in a parameter update are definite lists only, in Conway as before it: the
   reference reads both as `RecD` records, which refuse an indefinite list below decoder version 12.
-- An update held in a stored ledger state is applied as before.
+- An update held in a stored ledger state is read as before: a pre-Conway update when it is applied,
+  and a Conway proposal's `Prices` and `ExUnits` in either list form.

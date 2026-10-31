@@ -184,21 +184,32 @@ object ConwayParam:
 
   private val Int64Max = BigInt(Long.MaxValue)
 
+  /** Where the `RecD` records of an update's values ([[record]]) are read from: a transaction body,
+    * which the reference's decoder reads, or a stored ledger state, which holds the update as an
+    * earlier build of this node accepted it from a body (ADR 0006).
+    */
+  enum Records:
+    case Body, Stored
+
   /** A record the reference reads with `RecD` below decoder version 12: `decodeCount` reads its
     * length with `decodeRecordNamed` around a decoder that reads nothing
     * (`Decoding/Coders.hs:482`), so an indefinite list meets the check for its break before its
     * first field and fails with "Excess terms in array" (`decodeListLikeT`,
-    * `Decoding/Decoder.hs:690-708`, f649f975). Only a definite list of `size` items is the record.
+    * `Decoding/Decoder.hs:690-708`, f649f975). In a body only a definite list of `size` items is
+    * the record. A stored state may also hold one as an indefinite list, which the builds before
+    * this rule took from a body, and it is read in either form.
     */
-  private def record(n: Node, size: Int, site: DecodeSite): Result[Vector[Node]] =
-    CborRead.definite(n, site) *> CborRead.arrayN(n, size, site)
+  private def record(n: Node, size: Int, site: DecodeSite, records: Records): Result[Vector[Node]] =
+    records match
+      case Records.Body   => CborRead.definite(n, site) *> CborRead.arrayN(n, size, site)
+      case Records.Stored => CborRead.arrayN(n, size, site)
 
   /** `ExUnits` below decoder version 12 (`ExUnits.hs:195-215`, f649f975): a `RecD` record of two
     * `Word64` s, each at most `maxBound :: Int64`.
     */
-  private def exUnits(site: DecodeSite)(make: ExUnits => ConwayParam): Read =
+  private def exUnits(site: DecodeSite, records: Records)(make: ExUnits => ConwayParam): Read =
     n =>
-      record(n, 2, site)
+      record(n, 2, site, records)
         .flatMap(
           _.traverse(x =>
             Unsigned
@@ -235,7 +246,7 @@ object ConwayParam:
     * 12, where every era up to Conway reads it (`mkField Nothing`, `Core/PParams.hs:284-293`), so a
     * pre-Conway update reads its value here too.
     */
-  private[ledger] val everyEra: Map[BigInt, Read] = Map[Int, Read](
+  private def shared(records: Records): Map[BigInt, Read] = Map[Int, Read](
     0 -> word[W64](DecodeField.MinFeeA)(TxFeePerByte(_)),
     1 -> word[W64](DecodeField.MinFeeB)(TxFeeFixed(_)),
     2 -> word[W32](DecodeField.MaxBlockBodySize)(MaxBBSize(_)),
@@ -253,7 +264,7 @@ object ConwayParam:
     // `Prices` below decoder version 12 (`ExUnits.hs:222-231`): a `RecD` record of two
     // `NonNegativeInterval` s.
     19 -> (n =>
-      record(n, 2, DecodeField.Prices)
+      record(n, 2, DecodeField.Prices, records)
         .flatMap(xs =>
           (
             CborRead.rational(xs(0), DecodeField.PriceMem, CborRead.Bound.NonNegative),
@@ -261,18 +272,21 @@ object ConwayParam:
           ).mapN(Prices(_, _))
         )
     ),
-    20 -> exUnits(DecodeField.MaxTxExUnits)(MaxTxExUnits(_)),
-    21 -> exUnits(DecodeField.MaxBlockExUnits)(MaxBlockExUnits(_)),
+    20 -> exUnits(DecodeField.MaxTxExUnits, records)(MaxTxExUnits(_)),
+    21 -> exUnits(DecodeField.MaxBlockExUnits, records)(MaxBlockExUnits(_)),
     22 -> word[W32](DecodeField.MaxValueSize)(MaxValSize(_)),
     23 -> word[W16](DecodeField.CollateralPercentage)(CollateralPercentage(_)),
     24 -> word[W16](DecodeField.MaxCollateralInputs)(MaxCollateralInputs(_))
   ).map((k, read) => BigInt(k) -> read)
 
+  /** The decoders of the keys every Shelley-based era shares, as a body is read. */
+  private[ledger] val everyEra: Map[BigInt, Read] = shared(Records.Body)
+
   /** The decoder of each Conway update key: `decCBOR` of the field's type at the decoder version of
-    * Conway (`mkField Nothing`, `Core/PParams.hs:284-293`), [[everyEra]] and the keys Conway alone
-    * has. The cost models of key 18 are read by the rule of Conway's decoder version.
+    * Conway (`mkField Nothing`, `Core/PParams.hs:284-293`), the keys every era shares and the keys
+    * Conway alone has. The cost models of key 18 are read by the rule of Conway's decoder version.
     */
-  private[ledger] val decoders: Map[BigInt, Read] = everyEra ++ Map[Int, Read](
+  private def conway(records: Records): Map[BigInt, Read] = shared(records) ++ Map[Int, Read](
     18 -> (n => CostModelDecode.decode(n, CostModelDecode.Format.Open).map(CostModels(_))),
     25 -> thresholds(DecodeField.PoolVotingThresholds, 5)(PoolVotingThresholds.fromVector)(
       PoolThresholds(_)
@@ -291,12 +305,19 @@ object ConwayParam:
     )
   ).map((k, read) => BigInt(k) -> read)
 
+  /** The decoders of a Conway update in a body. */
+  private[ledger] val decoders: Map[BigInt, Read] = conway(Records.Body)
+
+  /** The decoders of a Conway update in a stored ledger state. */
+  private[ledger] val stored: Map[BigInt, Read] = conway(Records.Stored)
+
 /** A Conway `PParamsUpdate` (`Core/PParams.hs:224`, the `ConwayPParams StrictMaybe` of
   * `Conway/PParams.hs:643-709`, f649f975): the fields it sets, by update key, each with its typed
-  * value and the original encoding of that value. Only [[ConwayParamUpdate.decode]] and
-  * [[ConwayParamUpdate.fromEncoded]] build one, so every field is a Conway field read at its type
-  * and applying the update cannot fail. The original encodings are what the ledger-state snapshot
-  * writes back; the meaning of the update (the comparison of proposals, the rules) is [[params]].
+  * value and the original encoding of that value. Only [[ConwayParamUpdate.decode]],
+  * [[ConwayParamUpdate.decodeStored]] and [[ConwayParamUpdate.fromEncoded]] build one, so every
+  * field is a Conway field read at its type and applying the update cannot fail. The original
+  * encodings are what the ledger-state snapshot writes back; the meaning of the update (the
+  * comparison of proposals, the rules) is [[params]].
   */
 final case class ConwayParamUpdate private (entries: SortedMap[Int, ConwayParamUpdate.Entry]):
   /** The fields set, in key order. */
@@ -333,31 +354,48 @@ object ConwayParamUpdate:
     * field. An empty update decodes; GOV refuses it (`ppuWellFormed`).
     */
   def decode(n: Node): Either[LedgerDecodeError, ConwayParamUpdate] =
+    read(n, ConwayParam.decoders)
+
+  /** The update of a parameter-change proposal held in a stored ledger state: read as [[decode]]
+    * reads it, except that its `Prices` and `ExUnits` may be indefinite lists
+    * ([[ConwayParam.Records.Stored]]).
+    */
+  def decodeStored(n: Node): Either[LedgerDecodeError, ConwayParamUpdate] =
+    read(n, ConwayParam.stored)
+
+  private def read(
+      n: Node,
+      decoders: Map[BigInt, Node => Either[LedgerDecodeError, ConwayParam]]
+  ): Either[LedgerDecodeError, ConwayParamUpdate] =
     CborRead
       .map(n, DecodeField.ParameterUpdate)
       .flatMap(_.foldLeftM(empty) { case (acc, (k, v)) =>
         Unsigned
           .read[W64](k, DecodeField.ParameterIndex)
-          .flatMap(key => acc.add(key.value, v))
+          .flatMap(key => acc.add(key.value, v, decoders))
       })
 
   /** The update of fields given by key and the original encoding of their values, read as
-    * [[decode]] reads them: what a snapshot or another encoding of the same map holds.
+    * [[decodeStored]] reads them: what a snapshot or another encoding of the same map holds.
     */
   def fromEncoded(fields: Vector[(BigInt, Bytes)]): Either[LedgerDecodeError, ConwayParamUpdate] =
     fields.foldLeftM(empty) { case (acc, (key, raw)) =>
-      CborRead.decode(raw).flatMap(acc.add(key, _))
+      CborRead.decode(raw).flatMap(acc.add(key, _, ConwayParam.stored))
     }
 
   extension (u: ConwayParamUpdate)
-    private def add(key: BigInt, value: Node): Either[LedgerDecodeError, ConwayParamUpdate] =
+    private def add(
+        key: BigInt,
+        value: Node,
+        decoders: Map[BigInt, Node => Either[LedgerDecodeError, ConwayParam]]
+    ): Either[LedgerDecodeError, ConwayParamUpdate] =
       for
         _ <- Either.cond(
           !(key.isValidInt && u.entries.contains(key.toInt)),
           (),
           LedgerDecodeError.DuplicateKey(DecodeField.ParameterUpdate)
         )
-        read <- ConwayParam.decoders
+        read <- decoders
           .get(key)
           .toRight(LedgerDecodeError.UnknownKey(DecodeField.ParameterUpdate, key))
         param <- read(value)

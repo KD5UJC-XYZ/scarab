@@ -50,7 +50,8 @@ python3 scripts/oracle/conway-decoding/update_value_cases.py --inputs /tmp/updat
 ## Not covered here
 
 - The cost models (key 18) are covered by the cost-model corpora.
-- An update held in a stored ledger state is read when it is applied, by `ProtocolParams.update`,
-  as the builds before #470 stored it (ADR 0006).
+- An update held in a stored ledger state is read as the builds before #470 stored it (ADR 0006):
+  a pre-Conway update when it is applied, by `ProtocolParams.update`, and a Conway proposal by
+  `ConwayParamUpdate.decodeStored`, which takes `Prices` and `ExUnits` as indefinite lists too.
 - Other `RecD` records reachable from a block are
   [#668](https://github.com/KD5UJC-XYZ/scarab/issues/668).

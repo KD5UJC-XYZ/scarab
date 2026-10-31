@@ -13,4 +13,4 @@ implemented: below decoder version 12 the reference reads each value of a `PPara
 
 ## Explicitly unchecked or unconfirmed
 
-An update held in a stored ledger state is read by `ProtocolParams.update` when it is applied, as the builds before #470 stored it (ADR 0006). Proposals are still counted for the quorum by their bytes, not their decoded values ([#669](https://github.com/KD5UJC-XYZ/scarab/issues/669)). Other `RecD` records reachable from a block are [#668](https://github.com/KD5UJC-XYZ/scarab/issues/668).
+An update held in a stored ledger state is read as the builds before #470 stored it (ADR 0006): a pre-Conway update by `ProtocolParams.update` when it is applied, and a Conway proposal by `ConwayParamUpdate.decodeStored`, which takes `Prices` and `ExUnits` as indefinite lists too. Proposals are still counted for the quorum by their bytes, not their decoded values ([#669](https://github.com/KD5UJC-XYZ/scarab/issues/669)). Other `RecD` records reachable from a block are [#668](https://github.com/KD5UJC-XYZ/scarab/issues/668).
