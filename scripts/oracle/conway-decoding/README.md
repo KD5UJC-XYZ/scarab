@@ -49,3 +49,9 @@ The [era-forms corpus](../../../fixtures/reference/era-forms/README.md) (#379) r
 harness too, its cases from `era_forms_cases.py`: the forms of an output and the keys of a body in
 every era from Shelley to Conway. Its recipe is the one above with `era_forms_cases.py`,
 `/tmp/era-forms-inputs.json` and `fixtures/reference/era-forms/cases.jsonl`.
+
+The [update-values corpus](../../../fixtures/reference/update-values/README.md) (#470) runs on the
+same harness, its cases from `update_value_cases.py`: each value of a Shelley-to-Babbage parameter
+update at and over the bound of its type, and Conway's `Prices` and `ExUnits` records. Its recipe is
+the one above with `update_value_cases.py`, `/tmp/update-values-inputs.json` and
+`fixtures/reference/update-values/cases.jsonl`.

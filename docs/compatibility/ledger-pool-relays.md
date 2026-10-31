@@ -13,4 +13,4 @@ implemented: the reference decodes a registration's relays with the transaction 
 
 ## Explicitly unchecked or unconfirmed
 
-The relays of a registration the node holds (a stored ledger state, the ledger peers) are read by `PoolRelays.decode`, at the version-9 bound of the Conway states the node keeps; it still takes a chunked address as the builds before #436 stored it (ADR 0006). The pre-Conway parameter-update values read with the body are #470.
+The relays of a registration the node holds (a stored ledger state, the ledger peers) are read by `PoolRelays.decode`, at the version-9 bound of the Conway states the node keeps; it still takes a chunked address as the builds before #436 stored it (ADR 0006). The pre-Conway parameter-update values are read with the body as well ([update values](ledger-update-values.md), #470).
