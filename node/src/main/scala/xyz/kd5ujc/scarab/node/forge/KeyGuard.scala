@@ -118,22 +118,27 @@ object KeyGuard:
     val path = lockFile(kes)
     val acquire = F
       .blocking {
-        Either.catchNonFatal {
-          val channel =
+        Either
+          .catchNonFatal(
             FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.WRITE)
-          val owned =
-            try Option(channel.tryLock())
-            catch
-              case _: OverlappingFileLockException => None
-              case scala.util.control.NonFatal(e) =>
-                channel.close()
-                throw e
-          owned match
-            case Some(lease) => Right((channel, lease))
-            case None =>
-              channel.close()
-              Left(ForgeError.KeyFile(kes.toString, ForgeKeyProblem.InstanceLocked(path.toString)))
-        }
+          )
+          .flatMap { channel =>
+            // the channel is kept with its lease; without one it is closed. A lock held in this
+            // JVM (an overlapping lock) is another instance's, as one held elsewhere is
+            Either.catchNonFatal(Option(channel.tryLock())) match
+              case Right(Some(lease)) =>
+                Right(Right((channel, lease)): Either[ForgeError, (FileChannel, FileLock)])
+              case Right(None) | Left(_: OverlappingFileLockException) =>
+                Either
+                  .catchNonFatal(channel.close())
+                  .map(_ =>
+                    Left(
+                      ForgeError
+                        .KeyFile(kes.toString, ForgeKeyProblem.InstanceLocked(path.toString))
+                    )
+                  )
+              case Left(e) => Either.catchNonFatal(channel.close()).flatMap(_ => Left(e))
+          }
       }
       .flatMap {
         case Right(Right(held)) => F.pure(held)
