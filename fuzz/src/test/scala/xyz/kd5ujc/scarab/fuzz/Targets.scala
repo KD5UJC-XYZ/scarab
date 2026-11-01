@@ -842,18 +842,34 @@ object Targets:
         probe("leios-header-envelope") { b =>
           seen("leios-header-envelope", HfcHeader.decode(b).isRight)
           // The reference reads longer-than-shortest heads, so an input need not be its own
-          // encoding; what decodes writes a canonical envelope that reads as the same header and
-          // is its own encoding (HfcHeader.definite).
+          // encoding. Known headers retain their raw bytes; unknown-era payloads are canonicalized
+          // by HfcHeader.encode. Both forms must be stable after that first encoding.
           HfcHeader.decode(b).foreach { h =>
             HfcHeader.encode(h) match
               case Right(e) =>
                 val again = HfcHeader.decode(e)
-                req(again == Right(h), "the canonical envelope does not decode to its header")
+                (h, again) match
+                  case (
+                        HfcHeader.Unrecognised(index, payload),
+                        Right(HfcHeader.Unrecognised(nextIndex, nextPayload))
+                      ) =>
+                    req(nextIndex == index, "the canonical envelope changes the era index")
+                    val originalValue = Cbor.decode(payload).map(_.value)
+                    val nextValue = Cbor.decode(nextPayload).map(_.value)
+                    req(
+                      originalValue.isRight && nextValue == originalValue,
+                      "the canonical envelope changes the payload value"
+                    )
+                  case _ =>
+                    req(again == Right(h), "the canonical envelope does not decode to its header")
+                    // Known headers only canonicalize definite heads: equal size means equal bytes.
+                    // Unknown payloads may instead replace indefinite containers without shrinking.
+                    if b.size == e.size then
+                      req(e == b, "a same-size envelope differs from its input")
                 req(
                   again.toOption.map(HfcHeader.encode) == Some(Right(e)),
                   "the canonical envelope is not stable"
                 )
-                if b.size == e.size then req(e == b, "a same-size envelope differs from its input")
               case Left(_) => req(false, "a decoded envelope does not encode")
           }
         }
