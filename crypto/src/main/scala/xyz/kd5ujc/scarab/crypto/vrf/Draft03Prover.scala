@@ -5,7 +5,7 @@ import com.weavechain.curve25519.{CompressedEdwardsY, Constants, EdwardsPoint, S
 import java.security.MessageDigest
 import java.util.Arrays
 import xyz.kd5ujc.scarab.codec.Bytes
-import scala.util.control.NonFatal
+import cats.syntax.either.*
 
 /** ECVRF-ED25519-SHA512-Elligator2 (draft-03) proving, as libsodium's
   * `crypto_vrf_ietfdraft03_prove` and the Cardano `PraosVRF` signing key: a 64-byte key
@@ -40,43 +40,43 @@ object Draft03Prover:
       Arrays.fill(nonceKey, 0.toByte)
 
     def prove(alpha: Bytes): Either[Failure, Proved] =
-      try
-        val pk = publicKey.toArray
-        val h = Draft03Math.h2c(pk, alpha.toArray)
-        val hString = h.encode()
-        val hPoint = Draft03Prover.toEdwards(hString)
-        val gammaString = hPoint.multiply(x).compress().toByteArray
-        val k = Scalar.fromBytesModOrderWide(Draft03Prover.sha512(nonceKey, hString))
-        val kB = Constants.ED25519_BASEPOINT_TABLE.multiply(k).compress().toByteArray
-        val kH = hPoint.multiply(k).compress().toByteArray
-        val c = Draft03Math.challenge(
-          h,
-          gammaString,
-          Ed25519Point.decode(kB),
-          Ed25519Point.decode(kH)
-        )
-        val cScalar = Scalar.fromBits(Arrays.copyOf(c, 32))
-        val s = cScalar.multiplyAndAdd(x, k).toByteArray
-        val proof = gammaString ++ c ++ s
-        val gamma = Ed25519Point.decode(gammaString)
-        Right(Proved(Bytes.fromArray(proof), Bytes.fromArray(Draft03Math.output(gamma))))
-      catch
-        case NonFatal(e) =>
-          Left(Failure.InternalFailure(e))
+      Either
+        .catchNonFatal {
+          val pk = publicKey.toArray
+          val h = Draft03Math.h2c(pk, alpha.toArray)
+          val hString = h.encode()
+          val hPoint = Draft03Prover.toEdwards(hString)
+          val gammaString = hPoint.multiply(x).compress().toByteArray
+          val k = Scalar.fromBytesModOrderWide(Draft03Prover.sha512(nonceKey, hString))
+          val kB = Constants.ED25519_BASEPOINT_TABLE.multiply(k).compress().toByteArray
+          val kH = hPoint.multiply(k).compress().toByteArray
+          val c = Draft03Math.challenge(
+            h,
+            gammaString,
+            Ed25519Point.decode(kB),
+            Ed25519Point.decode(kH)
+          )
+          val cScalar = Scalar.fromBits(Arrays.copyOf(c, 32))
+          val s = cScalar.multiplyAndAdd(x, k).toByteArray
+          val proof = gammaString ++ c ++ s
+          val gamma = Ed25519Point.decode(gammaString)
+          Proved(Bytes.fromArray(proof), Bytes.fromArray(Draft03Math.output(gamma)))
+        }
+        .leftMap(Failure.InternalFailure(_))
 
   object SigningKey:
     def fromSeed(seed: Bytes): Either[Failure, SigningKey] =
       if seed == null then Left(Failure.MissingSeed)
       else if seed.size != 32 then Left(Failure.SeedLength(seed.size))
       else
-        try
-          val s = seed.toArray
-          val x = Scalar.fromBytesModOrder(clamp(sha512(s).take(32)))
-          val pk = Constants.ED25519_BASEPOINT_TABLE.multiply(x).compress().toByteArray
-          Right(new SigningKey(s, Bytes.fromArray(pk)))
-        catch
-          case NonFatal(e) =>
-            Left(Failure.InternalFailure(e))
+        Either
+          .catchNonFatal {
+            val s = seed.toArray
+            val x = Scalar.fromBytesModOrder(clamp(sha512(s).take(32)))
+            val pk = Constants.ED25519_BASEPOINT_TABLE.multiply(x).compress().toByteArray
+            new SigningKey(s, Bytes.fromArray(pk))
+          }
+          .leftMap(Failure.InternalFailure(_))
 
     /** The 64-byte `vrf.skey` payload; the stored public key must be the seed's. */
     def fromBytes(bytes: Bytes): Either[Failure, SigningKey] =

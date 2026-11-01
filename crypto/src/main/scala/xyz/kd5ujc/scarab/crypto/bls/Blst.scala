@@ -8,7 +8,6 @@ import cats.effect.kernel.Sync
 import cats.mtl.Raise
 import cats.syntax.all.*
 import scala.util.Using
-import scala.util.control.NonFatal
 import supranational.blst.{blstJNI, P1, P2, PT}
 
 /** CPU features of x86-64 that the upstream libblst assumes without asking. */
@@ -46,8 +45,8 @@ object CpuSupport:
     }.toList
     flagLines match
       case Nil => Unknown
-      case _ =>
-        val common = flagLines.reduce(_ intersect _)
+      case first :: rest =>
+        val common = rest.foldLeft(first)(_ intersect _)
         Known(CpuFeature.values.toSet.filter(f => common.contains(f.flag)))
 
 /** Which libblst the JVM is going to load. */
@@ -168,12 +167,14 @@ object Blst:
     */
   def knownAnswers[F[_]: Sync]: F[Option[(KnownAnswer, String)]] = Sync[F].blocking {
     def attempt(answer: KnownAnswer)(check: => Boolean): Option[(KnownAnswer, String)] =
-      try if check then None else Some(answer -> "wrong result")
-      catch
-        // an UnsatisfiedLinkError (a native method the library lacks) is a LinkageError, which
-        // NonFatal does not match
-        case NonFatal(e)     => Some(answer -> e.getClass.getSimpleName)
-        case e: LinkageError => Some(answer -> e.getClass.getSimpleName)
+      // an UnsatisfiedLinkError (a native method the library lacks) is a LinkageError, which
+      // NonFatal does not match
+      val checked: Either[Throwable, Boolean] =
+        Either.catchOnly[LinkageError](Either.catchNonFatal(check)).fold(Left(_), identity)
+      checked.fold(
+        e => Some(answer -> e.getClass.getSimpleName),
+        ok => Option.unless(ok)(answer -> "wrong result")
+      )
     val g1 = hex(KnownAnswers.g1)
     val g2 = hex(KnownAnswers.g2)
     attempt(KnownAnswer.G1Uncompress)(new P1(g1).compress().sameElements(g1))

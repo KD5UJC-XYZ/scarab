@@ -11,7 +11,7 @@ import xyz.kd5ujc.scarab.crypto.witness.{
   VerificationResult,
   WitnessInputError
 }
-import scala.util.control.NonFatal
+import cats.syntax.either.*
 
 /** Experimental public-only predicate for a supplied message. Not a header serializer, lifetime
   * check, issuer authorization or chain validation. Six SumKES levels over the existing strict
@@ -115,45 +115,51 @@ object Sum6Kes:
     else if message == null then Left(Failure.MissingComponent(Component.Message))
     else if signature == null then Left(Failure.MissingComponent(Component.Signature))
     else
-      try
-        final case class Level(current: Bytes, residual: Int, rejected: Boolean)
-        val descended = (6 to 1 by -1).foldLeft[Either[Failure, Level]](
-          Right(Level(root.bytes, period.value, false))
-        ) { (acc, depth) =>
-          acc.flatMap { state =>
-            if state.rejected then Right(state)
-            else
-              val offset = 64 + 64 * (depth - 1)
-              val pair = signature.bytes.slice(offset, offset + 64)
-              val digest = hash(pair)
-              if digest == null || digest.value == null then
-                Left(Failure.HashContractViolation(None))
-              else if digest.size != 32 then Left(Failure.HashContractViolation(Some(digest.size)))
-              else if digest != state.current then Right(state.copy(rejected = true))
+      Either
+        .catchNonFatal {
+          final case class Level(current: Bytes, residual: Int, rejected: Boolean)
+          val descended = (6 to 1 by -1).foldLeft[Either[Failure, Level]](
+            Right(Level(root.bytes, period.value, false))
+          ) { (acc, depth) =>
+            acc.flatMap { state =>
+              if state.rejected then Right(state)
               else
-                val half = 1 << (depth - 1)
-                val selected = if state.residual < half then 0 else 32
-                val residual = if selected == 32 then state.residual - half else state.residual
-                Right(Level(pair.slice(selected, selected + 32), residual, false))
+                val offset = 64 + 64 * (depth - 1)
+                val pair = signature.bytes.slice(offset, offset + 64)
+                val digest = hash(pair)
+                if digest == null || digest.value == null then
+                  Left(Failure.HashContractViolation(None))
+                else if digest.size != 32 then
+                  Left(Failure.HashContractViolation(Some(digest.size)))
+                else if digest != state.current then Right(state.copy(rejected = true))
+                else
+                  val half = 1 << (depth - 1)
+                  val selected = if state.residual < half then 0 else 32
+                  val residual = if selected == 32 then state.residual - half else state.residual
+                  Right(Level(pair.slice(selected, selected + 32), residual, false))
+            }
+          }
+          descended.flatMap { state =>
+            if state.rejected then Right(Result.SignatureRejected)
+            else if state.residual != 0 then Left(Failure.PeriodInvariant(state.residual))
+            else
+              for
+                key <- PublicKey32.create(state.current).left.map(Failure.LeafInput.apply)
+                sig <- Signature64
+                  .create(signature.bytes.take(64))
+                  .left
+                  .map(Failure.LeafInput.apply)
+                result <- Option(leaf(key, sig, message.bytes))
+                  .toRight(Failure.LeafContractViolation)
+                  .flatMap {
+                    case Right(VerificationResult.SignatureVerified) =>
+                      Right(Result.SuppliedMessageSignatureVerified)
+                    case Right(VerificationResult.SignatureRejected) =>
+                      Right(Result.SignatureRejected)
+                    case Left(error) if error != null => Left(Failure.LeafFailure(error))
+                    case _                            => Left(Failure.LeafContractViolation)
+                  }
+              yield result
           }
         }
-        descended.flatMap { state =>
-          if state.rejected then Right(Result.SignatureRejected)
-          else if state.residual != 0 then Left(Failure.PeriodInvariant(state.residual))
-          else
-            for
-              key <- PublicKey32.create(state.current).left.map(Failure.LeafInput.apply)
-              sig <- Signature64.create(signature.bytes.take(64)).left.map(Failure.LeafInput.apply)
-              result <- Option(leaf(key, sig, message.bytes))
-                .toRight(Failure.LeafContractViolation)
-                .flatMap {
-                  case Right(VerificationResult.SignatureVerified) =>
-                    Right(Result.SuppliedMessageSignatureVerified)
-                  case Right(VerificationResult.SignatureRejected) =>
-                    Right(Result.SignatureRejected)
-                  case Left(error) if error != null => Left(Failure.LeafFailure(error))
-                  case _                            => Left(Failure.LeafContractViolation)
-                }
-            yield result
-        }
-      catch case NonFatal(e) => Left(Failure.Defect(e))
+        .fold(e => Left(Failure.Defect(e)), identity)

@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.crypto.bls
 
 import java.math.BigInteger
 import xyz.kd5ujc.scarab.codec.Bytes
-import scala.util.control.NonFatal
+import cats.syntax.either.*
 import supranational.blst.{BLST_ERROR, P1, P1_Affine, P2, P2_Affine, SecretKey as BlstSecretKey}
 
 /** A voting secret key: a non-zero scalar below the group order. The value never appears in
@@ -131,8 +131,7 @@ object MinSig:
 
   /** The only place that turns a native failure (an exception) into a value. */
   private[bls] def guard[A](body: => A): Either[BlsError, A] =
-    try Right(body)
-    catch case NonFatal(e) => Left(BlsError.Backend(e))
+    Either.catchNonFatal(body).leftMap(BlsError.Backend(_))
 
   private def compressed(operand: Operand, bytes: Bytes, size: Int): Either[BlsError, Unit] =
     if bytes.size != size then Left(BlsError.WrongLength(operand, size, bytes.size))
@@ -203,31 +202,31 @@ object MinSig:
   /** Sum of signatures (all over the same message for same-message aggregation). Rejects an empty
     * list and an identity sum, like cardano-base's `aggregateSigsDSIGN`.
     */
-  def aggregateSignatures(sigs: Vector[Signature]): Either[BlsError, Signature] =
-    if sigs.isEmpty then Left(BlsError.EmptyAggregate)
-    else
+  def aggregateSignatures(sigs: Vector[Signature]): Either[BlsError, Signature] = sigs match
+    case first +: rest =>
       guard {
         // `add` does not repeat the subgroup check that `aggregate` runs on every call: the
         // operands were validated when decoded.
-        sigs.tail.foldLeft(sigs.head.point.to_jacobian())((acc, s) => acc.add(s.point)).to_affine()
+        rest.foldLeft(first.point.to_jacobian())((acc, s) => acc.add(s.point)).to_affine()
       }.flatMap { p =>
         if p.is_inf() then Left(BlsError.AggregateIsInfinity(Operand.Signature))
         else Signature.fromPoint(p)
       }
+    case _ => Left(BlsError.EmptyAggregate)
 
   /** Sum of verification keys. Only sound after each key's proof of possession was checked
     * (rogue-key defence); [[Committee]] does that once.
     */
-  def aggregateKeys(keys: Vector[VerificationKey]): Either[BlsError, VerificationKey] =
-    if keys.isEmpty then Left(BlsError.EmptyAggregate)
-    else
+  def aggregateKeys(keys: Vector[VerificationKey]): Either[BlsError, VerificationKey] = keys match
+    case first +: rest =>
       guard {
-        keys.tail.foldLeft(keys.head.point.to_jacobian())((acc, k) => acc.add(k.point)).to_affine()
+        rest.foldLeft(first.point.to_jacobian())((acc, k) => acc.add(k.point)).to_affine()
       }.flatMap { p =>
         // a sum of subgroup points is in the subgroup; only the identity needs rejecting
         if p.is_inf() then Left(BlsError.AggregateIsInfinity(Operand.VerificationKey))
         else guard(VerificationKey.unchecked(Bytes.wrap(p.compress()), p))
       }
+    case _ => Left(BlsError.EmptyAggregate)
 
   /** Same-message aggregate verification: one pairing check against the summed key. */
   def verifyAggregate(

@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.crypto.vrf
 
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
+import scala.annotation.tailrec
 
 /** Source-derived E34 Fixed arithmetic and bounded reference Taylor comparison. No Double/Float, no
   * claim of an independently checked runtime oracle. Active coefficient >1/2 except 1 is outside
@@ -56,20 +57,12 @@ object PraosLeaderThreshold:
 
   // exp' 1: source taylorExp 1000 1 1 1 1 1; term and iteration stop precede addition.
   private lazy val expOne: BigInt =
-    var n = 1
-    var last = Scale
-    var acc = Scale
-    var divisor = Scale
-    var stop = false
-    while n < 1000 && !stop do
-      val next = div(last, divisor)
-      if next.abs < Epsilon then stop = true
+    @tailrec def go(n: Int, last: BigInt, acc: BigInt, divisor: BigInt): BigInt =
+      if n >= 1000 then acc
       else
-        acc += next
-        last = next
-        divisor += Scale
-        n += 1
-    acc
+        val next = div(last, divisor)
+        if next.abs < Epsilon then acc else go(n + 1, next, acc + next, divisor + Scale)
+    go(1, Scale, Scale, Scale)
 
   // For 0 < f <= 1/2, ln'(1-f)'s splitLn exponent is exactly -1.
   // This bounded specialization follows the source continued fraction without real arithmetic.
@@ -82,23 +75,25 @@ object PraosLeaderThreshold:
 
   private def computeActiveLog(f: Fraction): BigInt =
     val x = div(Scale - fixed(f), div(Scale, expOne)) - Scale
-    var a2 = Scale; var b2 = BigInt(0); var a1 = BigInt(0); var b1 = Scale
-    var last: Option[BigInt] = None
-    var i = 0
-    var result = BigInt(0)
-    var stop = false
-    while i <= 1000 && !stop do
+    // the convergents A_i / B_i from the two before them; it stops at the thousandth or when two in
+    // a row are within Epsilon
+    @tailrec def go(
+        i: Int,
+        a2: BigInt,
+        b2: BigInt,
+        a1: BigInt,
+        b1: BigInt,
+        last: Option[BigInt]
+    ): BigInt =
       val k = if i == 0 then 1 else (i + 1) / 2
       val an = x * k * k
       val bn = Scale * (i + 1)
       val a = mul(bn, a1) + mul(an, a2)
       val b = mul(bn, b1) + mul(an, b2)
-      result = div(a, b)
-      stop = i == 1000 || last.exists(v => (v - result).abs < Epsilon)
-      last = Some(result)
-      a2 = a1; b2 = b1; a1 = a; b1 = b
-      i += 1
-    result - Scale
+      val result = div(a, b)
+      if i == 1000 || last.exists(v => (v - result).abs < Epsilon) then result
+      else go(i + 1, a1, b1, a, b, Some(result))
+    go(0, Scale, BigInt(0), BigInt(0), Scale, None) - Scale
 
   def leaderValue(verifiedOutput: Bytes): Either[Error, BigInt] =
     if verifiedOutput == null || verifiedOutput.value == null then Left(Error.MissingVrfOutput)
@@ -144,15 +139,14 @@ object PraosLeaderThreshold:
       val cmp = range * Scale / (range - value)
       // Haskell2010 prefix negation has precedence 6; multiplication (7) happens first.
       val x = -mul(fixed(stake), activeLog(active))
-      var err = x; var acc = Scale; var divisor = Scale
-      var n = 0
-      var result: Option[Decision] = None
-      while n < 1000 && result.isEmpty do
-        val nextDivisor = divisor + Scale
-        val nextErr = div(mul(err, x), nextDivisor)
-        val nextAcc = acc + err
-        val error = mul(nextErr, 3 * Scale).abs
-        if cmp >= nextAcc + error then result = Some(Decision.Ineligible)
-        else if cmp < nextAcc - error then result = Some(Decision.Eligible)
-        err = nextErr; acc = nextAcc; divisor = nextDivisor; n += 1
-      Right(result.getOrElse(Decision.IterationLimit))
+      @tailrec def go(n: Int, err: BigInt, acc: BigInt, divisor: BigInt): Decision =
+        if n >= 1000 then Decision.IterationLimit
+        else
+          val nextDivisor = divisor + Scale
+          val nextErr = div(mul(err, x), nextDivisor)
+          val nextAcc = acc + err
+          val error = mul(nextErr, 3 * Scale).abs
+          if cmp >= nextAcc + error then Decision.Ineligible
+          else if cmp < nextAcc - error then Decision.Eligible
+          else go(n + 1, nextErr, nextAcc, nextDivisor)
+      Right(go(0, x, Scale, Scale))

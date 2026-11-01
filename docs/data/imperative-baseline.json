@@ -5,45 +5,9 @@
    "catch": 4,
    "try": 4
   },
-  "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/bls/Blst.scala": {
-   "catch": 1,
-   "try": 1
-  },
-  "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/bls/MinSig.scala": {
-   "catch": 1,
-   "try": 1
-  },
-  "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/kes/Sum6Kes.scala": {
-   "catch": 1,
-   "try": 1
-  },
-  "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/opcert/OperationalCertificate.scala": {
-   "catch": 1,
-   "try": 1
-  },
-  "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/vrf/Draft03Prover.scala": {
-   "catch": 2,
-   "try": 2
-  },
-  "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/vrf/PraosVrfCertificate.scala": {
-   "catch": 2,
-   "try": 2
-  },
-  "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/vrf/StrictDraft03.scala": {
-   "catch": 1,
-   "try": 1
-  },
   "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/vrf/TimingProbeMain.scala": {
    "catch": 1,
    "try": 1
-  },
-  "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/witness/ByronEd25519.scala": {
-   "catch": 2,
-   "try": 2
-  },
-  "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/witness/StrictEd25519.scala": {
-   "catch": 3,
-   "try": 3
   },
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Phase2.scala": {
    "catch": 2,

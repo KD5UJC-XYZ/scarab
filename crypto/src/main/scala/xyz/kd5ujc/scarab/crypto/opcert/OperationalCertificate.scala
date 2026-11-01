@@ -10,7 +10,7 @@ import xyz.kd5ujc.scarab.crypto.witness.{
   WitnessInputError,
   VerificationResult
 }
-import scala.util.control.NonFatal
+import cats.syntax.either.*
 
 /** Public operational-certificate signature predicate only. No pool registration, counter-state,
   * KES, header validity or chain-authenticity claim. Uses the existing experimental strict profile.
@@ -109,8 +109,7 @@ object OperationalCertificate:
     case OperationalCertificateSignatureVerified
 
   private def protect[A](body: => Either[Failure, A]): Either[Failure, A] =
-    try body
-    catch case NonFatal(e) => Left(Failure.Defect(e))
+    Either.catchNonFatal(body).fold(e => Left(Failure.Defect(e)), identity)
 
   /** Exactly rawHotKey32 || counterBE8 || startPeriodBE8. No CBOR, hash, prefix or prehash. */
   def signableBytes(cert: Certificate): Either[Failure, Bytes] = protect {
@@ -152,14 +151,20 @@ object OperationalCertificate:
     if coldKey == null then Left(Failure.MissingColdKey)
     else
       signableBytes(cert).flatMap { message =>
-        primitive(coldKey, cert.signature, message) match
-          case Right(VerificationResult.SignatureVerified) =>
-            Right(Result.OperationalCertificateSignatureVerified)
-          case Right(VerificationResult.SignatureRejected) => Right(Result.SignatureRejected)
-          case null => Left(Failure.PrimitiveContractViolation(PrimitiveReply.MissingResult))
-          case Right(null) =>
-            Left(Failure.PrimitiveContractViolation(PrimitiveReply.MissingVerdict))
-          case Left(null)  => Left(Failure.PrimitiveContractViolation(PrimitiveReply.MissingError))
-          case Left(error) => Left(Failure.PrimitiveFailure(error))
+        // the primitive is a function value: a reply, a verdict or an error it leaves out (a null
+        // from a Java implementation) is its contract broken, not a verdict
+        Option(primitive(coldKey, cert.signature, message)) match
+          case None => Left(Failure.PrimitiveContractViolation(PrimitiveReply.MissingResult))
+          case Some(Right(verdict)) =>
+            Option(verdict) match
+              case Some(VerificationResult.SignatureVerified) =>
+                Right(Result.OperationalCertificateSignatureVerified)
+              case Some(VerificationResult.SignatureRejected) => Right(Result.SignatureRejected)
+              case None =>
+                Left(Failure.PrimitiveContractViolation(PrimitiveReply.MissingVerdict))
+          case Some(Left(error)) =>
+            Option(error) match
+              case Some(e) => Left(Failure.PrimitiveFailure(e))
+              case None    => Left(Failure.PrimitiveContractViolation(PrimitiveReply.MissingError))
       }
   }

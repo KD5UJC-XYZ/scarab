@@ -38,11 +38,6 @@ object Signers:
       if seats > SeatId.maxIndex + 1 then Left(BlsError.CommitteeTooLarge(seats))
       else if s.size != expected then Left(BlsError.SignersWrongLength(expected, s.size))
       else
-        val out = Vector.newBuilder[SeatId]
-        var padding = false
-        var i = 0
-        while i < expected * 8 do
-          if (s(i >> 3) & (1 << (7 - (i & 7)))) != 0 then
-            if i >= seats then padding = true else out += SeatId.unsafe(i)
-          i += 1
-        if padding then Left(BlsError.SignersPaddingSet) else Right(out.result())
+        val set = (0 until expected * 8).filter(i => (s(i >> 3) & (1 << (7 - (i & 7)))) != 0)
+        if set.exists(_ >= seats) then Left(BlsError.SignersPaddingSet)
+        else Right(set.iterator.map(SeatId.unsafe).toVector)

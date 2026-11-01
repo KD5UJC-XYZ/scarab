@@ -68,17 +68,20 @@ scala code … I love the use of type parameters when I can use them"*.
   [the roadmap](docs/roadmap.md) under [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82).
 - Functional code is the default. Imperative, side-effecting implementations are allowed only in
   performance-critical code, with profiling or benchmark evidence and a written reason for the
-  specific path (record measurements in [performance.md](docs/performance.md)). The one other
-  exception is a third-party interface that requires it: a callback whose contract signals failure
-  by exception or keeps its state by mutation (Scalus's `BudgetSpender` and builtin functions), in
-  the smallest definition that implements it. Keep mutation local behind a pure interface or an
-  effect interpreter. These exceptions change implementation style only: typed errors, capability
-  scope and original-byte guarantees still apply. WartRemover refuses `var`, `while`, `throw`,
-  `return`, `null`, casts, mutable collections and partial accessors in the main sources of every
-  module in `wartFree` (`build.sbt`); a kept site carries
-  `@SuppressWarnings(Array("org.wartremover.warts.<Wart>"))` on its smallest definition, with a comment
-  naming its measurement or the library contract. `scripts/check_imperative.py` refuses new
-  `try`/`catch`/`finally` (#650).
+  specific path (record measurements in [performance.md](docs/performance.md)). The other exceptions
+  are narrow: a third-party interface that requires it, a callback whose contract signals failure by
+  exception or keeps its state by mutation (Scalus's `BudgetSpender` and builtin functions), in the
+  smallest definition that implements it; secret key material that must be erased in place so that
+  no copy outlives its use (a KES signing key evolves by zeroing the periods it leaves,
+  `Sum6KesSigning.SigningKey`); and the timed region of a measurement tool, where a wrapper would
+  add allocation to what is timed (`TimingProbeMain`). Keep mutation local behind a pure interface
+  or an effect interpreter. These exceptions change implementation style only: typed errors,
+  capability scope and original-byte guarantees still apply. WartRemover refuses `var`, `while`,
+  `throw`, `return`, `null`, casts, mutable collections and partial accessors in the main sources of
+  every module in `wartFree` (`build.sbt`); a kept site carries
+  `@SuppressWarnings(Array("org.wartremover.warts.<Wart>"))` on its smallest definition, with a
+  comment naming its measurement, the library contract, or why it is erased in place or timed.
+  `scripts/check_imperative.py` refuses new `try`/`catch`/`finally` (#650).
 - A fiber never raises through a capability it did not create ([ADR 0017](docs/adr/0017-fibers-end-with-values.md)).
   A `Raise` from `Handle.allow` is valid in the fibers of its scope only; raised in any other fiber it
   is an exception that nobody catches. A fiber that outlives the call (`background`, `supervise`, a kept

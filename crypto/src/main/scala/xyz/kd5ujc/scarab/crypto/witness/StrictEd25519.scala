@@ -10,7 +10,7 @@ import com.weavechain.curve25519.{
 }
 import java.security.MessageDigest
 import java.util.Arrays
-import scala.util.control.NonFatal
+import cats.syntax.either.*
 
 enum WitnessInputError:
   case MalformedPublicKeyLength(actual: Int)
@@ -95,8 +95,9 @@ object StrictEd25519:
   ): Either[VerificationError, VerificationResult] =
     // Only the two narrowly scoped decoding sites below classify invalid input.
     // Any unexpected failure elsewhere remains a typed implementation failure.
-    try Right(evaluate(publicKey, signature, message))
-    catch case NonFatal(e) => Left(VerificationError.ImplementationFailure(e))
+    Either
+      .catchNonFatal(evaluate(publicKey, signature, message))
+      .leftMap(VerificationError.ImplementationFailure(_))
 
   /** Whether the 255-bit little-endian `y` of a point encoding is below p = 2^255 - 19, the
     * encoding being canonical (bit 255, the sign of x, is ignored).
@@ -104,11 +105,8 @@ object StrictEd25519:
   private[witness] def canonicalY(bytes: Array[Byte]): Boolean =
     // y >= p only for the 19 values 2^255 - 19 .. 2^255 - 1: byte 31 is 0x7f (bit 255 aside),
     // bytes 1 to 30 are 0xff and byte 0 is at least 0xed
-    !((bytes(31) & 0x7f) == 0x7f && (bytes(0) & 0xff) >= 0xed && {
-      var i = 1
-      while i < 31 && bytes(i) == (-1).toByte do i += 1
-      i == 31
-    })
+    !((bytes(31) & 0x7f) == 0x7f && (bytes(0) & 0xff) >= 0xed &&
+      (1 until 31).forall(i => bytes(i) == (-1).toByte))
 
   /** The point of a canonical encoding that is on the curve and not of small order.
     *
@@ -123,15 +121,14 @@ object StrictEd25519:
   private[witness] def point(bytes: Array[Byte]): Option[EdwardsPoint] =
     if !canonicalY(bytes) then None
     else
-      val decoded =
-        try Some(new CompressedEdwardsY(bytes.clone()).decompress())
-        catch case _: InvalidEncodingException => None
-      decoded.filter(p => !p.isSmallOrder)
+      Either
+        .catchOnly[InvalidEncodingException](new CompressedEdwardsY(bytes.clone()).decompress())
+        .toOption
+        .filter(p => !p.isSmallOrder)
 
   private def scalar(bytes: Array[Byte]): Option[Scalar] =
     // The caller always supplies exactly 32 bytes. This constructor rejects S >= L.
-    try Some(Scalar.fromCanonicalBytes(bytes))
-    catch case _: IllegalArgumentException => None
+    Either.catchOnly[IllegalArgumentException](Scalar.fromCanonicalBytes(bytes)).toOption
 
   private def evaluate(
       publicKey: PublicKey32,
