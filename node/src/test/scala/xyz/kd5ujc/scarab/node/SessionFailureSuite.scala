@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{Deferred, IO, Ref}
-import cats.effect.std.Queue
+import cats.effect.std.{Queue, Random}
 import cats.effect.testkit.TestControl
 import cats.mtl.{Raise, Stateful}
 import cats.syntax.all.*
@@ -348,12 +348,20 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     committedAfterException
   }
 
-  test("a worker fatal releases the session when closed admissions cancel its settlement") {
-    // This schedule made the settlement barrier self-cancel before the fatal waiter ran (#617).
-    TestControl.executeEmbed(
-      committedAfterException,
-      seed = Some("NDg0NzEwOTQ1MjI3OTE4MDMxNQ==")
-    )
+  // This checks scheduling; the plain-runtime test above also observes uncaught failures.
+  test("generated worker schedules retain the fatal report while settlement ends") {
+    Random.scalaUtilRandom[IO].flatMap { random =>
+      random.nextLong
+        .flatMap { number =>
+          val seed = java.util.Base64.getEncoder.encodeToString(
+            number.toString.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+          )
+          TestControl
+            .executeEmbed(committedAfterException, seed = Some(seed))
+            .adaptError { case failure => new AssertionError(s"schedule seed $seed", failure) }
+        }
+        .replicateA_(256)
+    }
   }
 
   test("a peer that breaks the protocol is forgotten, one that is unreachable is tried again") {
