@@ -3797,6 +3797,193 @@
     }
    ],
    "listings": []
+  },
+  {
+   "id": "perf-54",
+   "section": "48",
+   "heading": "48. The CBOR decoder: functional against imperative (#650)",
+   "subject": "The CBOR decoder: functional against imperative (#650)",
+   "date": "2026-10-31",
+   "dateSource": "text",
+   "issues": [
+    "#650"
+   ],
+   "commits": [],
+   "links": [],
+   "page": "peers-and-network",
+   "results": [
+    {
+     "header": [
+      "Workload",
+      "Imperative µs/op",
+      "Functional µs/op",
+      "MB/s imp. / func.",
+      "MB allocated/op imp. / func.",
+      "Time, median (per-JVM range)",
+      "Allocation, median (per-JVM range)"
+     ],
+     "separator": "|---|---:|---:|---:|---:|---:|---:|",
+     "rows": [
+      [
+       "Preview blocks (648, 653,017 B)",
+       "137.6",
+       "1,500.0",
+       "4,745 / 435",
+       "0.481 / 11.113",
+       "10.86× (10.83× to 10.99×)",
+       "23.1× (23.1× to 23.1×)"
+      ],
+      [
+       "Preprod blocks (70, 58,673 B)",
+       "25.8",
+       "287.7",
+       "2,275 / 204",
+       "0.084 / 2.066",
+       "11.16× (11.13× to 11.21×)",
+       "24.6× (24.6× to 24.6×)"
+      ],
+      [
+       "Mainnet fixture blocks (12, 28,728 B)",
+       "10.7",
+       "120.6",
+       "2,681 / 238",
+       "0.032 / 0.865",
+       "11.29× (11.08× to 11.35×)",
+       "26.8× (26.8× to 26.8×)"
+      ],
+      [
+       "All 730 in one message (740,420 B)",
+       "161.3",
+       "2,337.5",
+       "4,590 / 317",
+       "0.231 / 16.219",
+       "14.41× (14.06× to 14.63×)",
+       "70.3× (70.3× to 70.3×)"
+      ]
+     ],
+     "id": "perf-54.t1"
+    }
+   ],
+   "listings": []
+  },
+  {
+   "id": "perf-55",
+   "section": "49",
+   "heading": "49. Reading a decoded document: functional against imperative navigation, sharing and caching (#650)",
+   "subject": "Reading a decoded document: functional against imperative navigation, sharing and caching (#650)",
+   "date": "2026-10-31",
+   "dateSource": "text",
+   "issues": [
+    "#650"
+   ],
+   "commits": [],
+   "links": [],
+   "page": "memory-and-snapshots",
+   "results": [
+    {
+     "header": [
+      "Form measured",
+      "Against",
+      "Against, ms (range)",
+      "Form, ms (range)",
+      "Form / against, time",
+      "MB allocated, against / form"
+     ],
+     "separator": "|---|---|---:|---:|---:|---:|",
+     "rows": [
+      [
+       "Children and iterators with `Iterator.unfold`",
+       "the codec before #650's rewrite",
+       "353 (327 to 376)",
+       "445 (384 to 467)",
+       "1.26",
+       "642 / 1,182"
+      ],
+      [
+       "Children with `Iterator.unfold`, iterators kept",
+       "the codec before #650's rewrite",
+       "363 (326 to 407)",
+       "446 (418 to 493)",
+       "1.23",
+       "641 / 1,094"
+      ],
+      [
+       "Children as a `List`, iterators kept",
+       "the codec before #650's rewrite",
+       "363 (330 to 433)",
+       "404 (351 to 417)",
+       "1.11",
+       "645 / 875"
+      ],
+      [
+       "Iterators with `Iterator.unfold`, children kept",
+       "the codec before #650's rewrite",
+       "358 (322 to 414)",
+       "393 (338 to 425)",
+       "1.10",
+       "642 / 734"
+      ],
+      [
+       "Children and iterators kept, the helpers functional",
+       "the codec before #650's rewrite",
+       "343 (326 to 412)",
+       "391 (345 to 401)",
+       "1.14",
+       "641 / 642"
+      ],
+      [
+       "The same, a second run",
+       "the codec before #650's rewrite",
+       "375 (350 to 406)",
+       "353 (326 to 404)",
+       "0.94",
+       "642 / 644"
+      ],
+      [
+       "Sharing table as an immutable `HashMap`",
+       "the kept form",
+       "369 (320 to 381)",
+       "617 (580 to 647)",
+       "1.67",
+       "644 / 995"
+      ],
+      [
+       "`Bytes` without its cached hash and prefix",
+       "the kept form",
+       "366 (340 to 385)",
+       "403 (391 to 413)",
+       "1.10",
+       "678 / 673"
+      ],
+      [
+       "Last-table cache of the sharing as an `AtomicReference` of an `Option`",
+       "the codec before #650's rewrite",
+       "320 (311 to 333)",
+       "372 (350 to 379)",
+       "1.16",
+       "644 / 689"
+      ],
+      [
+       "The kept form",
+       "the codec before #650's rewrite",
+       "362 (332 to 400)",
+       "384 (360 to 398)",
+       "1.06",
+       "643 / 653"
+      ],
+      [
+       "The kept form, a second run",
+       "the codec before #650's rewrite",
+       "390 (366 to 400)",
+       "373 (354 to 400)",
+       "0.96",
+       "647 / 642"
+      ]
+     ],
+     "id": "perf-55.t1"
+    }
+   ],
+   "listings": []
   }
  ]
 }

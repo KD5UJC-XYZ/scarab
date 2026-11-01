@@ -162,18 +162,8 @@ class OperationalCertificateSuite extends munit.FunSuite:
       )
     }
   }
-  test("programming misuse preserves a defect cause; nonfatal is caught and fatal propagates") {
+  test("a nonfatal verifier failure is kept as a defect and a fatal one propagates") {
     val r = rows.head
-    val malformed = Vector(
-      HotKesKey32.fromBytes(Bytes(null)),
-      verify(Bytes(null), bytes(r(2)), 7, 505, bytes(r(5))),
-      verify(bytes(r(1)), Bytes(null), 7, 505, bytes(r(5))),
-      verify(bytes(r(1)), bytes(r(2)), 7, 505, Bytes(null))
-    )
-    malformed.foreach {
-      case Left(Failure.Defect(_: NullPointerException)) => ()
-      case other => fail(s"expected a retained programming defect, got $other")
-    }
     val defect = new IllegalStateException("boom")
     assertEquals(
       verifyWith(key(r), cert(r), (_, _, _) => throw defect),

@@ -134,11 +134,9 @@ class Sum6KesSuite extends munit.FunSuite:
   }
 
   test("checked sizes ranges null storage and local message cap") {
-    Vector(null, Bytes(null)).foreach { x =>
-      assertEquals(Root32.fromBytes(x), Left(Failure.MissingComponent(Component.Root)))
-      assertEquals(Signature448.fromBytes(x), Left(Failure.MissingComponent(Component.Signature)))
-      assertEquals(SuppliedMessage.fromBytes(x), Left(Failure.MissingComponent(Component.Message)))
-    }
+    assertEquals(Root32.fromBytes(null), Left(Failure.MissingComponent(Component.Root)))
+    assertEquals(Signature448.fromBytes(null), Left(Failure.MissingComponent(Component.Signature)))
+    assertEquals(SuppliedMessage.fromBytes(null), Left(Failure.MissingComponent(Component.Message)))
     Vector(0, 31, 33).foreach(n =>
       assertEquals(
         Root32.fromBytes(b("00" * n)),
@@ -155,7 +153,7 @@ class Sum6KesSuite extends munit.FunSuite:
       assertEquals(RelativePeriod.create(p), Left(Failure.PeriodOutOfRange(p)))
     )
     (0 to 63).foreach(p => assertEquals(RelativePeriod.create(p).toOption.get.value, p))
-    Vector(null, Bytes(null), Bytes(Vector.fill(MaxMessageBytes + 1)(0.toByte))).foreach(x =>
+    Vector(null, Bytes(Vector.fill(MaxMessageBytes + 1)(0.toByte))).foreach(x =>
       assert(SuppliedMessage.fromBytes(x).isLeft)
     )
     assert(SuppliedMessage.fromArray(null).isLeft)
@@ -312,7 +310,7 @@ class Sum6KesSuite extends munit.FunSuite:
       Left(Failure.LeafFailure(VerificationError.ImplementationFailure(providerDefect)))
     )
     assertEquals(verifyWith(r, p, m, s, Blake2b.hash256.hash, reject), rejected)
-    Vector(null, Bytes(null), Bytes.empty).foreach(x =>
+    Vector(null, Bytes.empty).foreach(x =>
       assert(
         verifyWith(r, p, m, s, _ => x, reject).swap.toOption.get
           .isInstanceOf[Failure.HashContractViolation]

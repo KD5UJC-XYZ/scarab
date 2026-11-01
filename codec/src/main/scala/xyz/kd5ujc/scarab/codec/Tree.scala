@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.codec
 
+import scala.annotation.tailrec
+
 /** A recursive value seen as a tree: what the node itself says (its label) and its children, in
   * order. Structural equality, hashing and rendering over a `Tree` walk it with a stack on the
   * heap, so a value nested as deep as a block can hold (a level takes a byte) can be compared,
@@ -32,59 +34,49 @@ object Tree:
   val NameLimit = 32
 
   def equal[A <: AnyRef](x: A, y: A)(using t: Tree[A]): Boolean =
-    val stack = new java.util.ArrayDeque[(A, A)]
-    stack.push((x, y))
-    var same = true
-    while same && !stack.isEmpty do
-      val (a, b) = stack.pop()
-      if a ne b then
+    // the pairs still to compare, in pre-order: a pair's children come before its later siblings
+    @tailrec def go(pending: List[(A, A)]): Boolean = pending match
+      case Nil                      => true
+      case (a, b) :: rest if a eq b => go(rest)
+      case (a, b) :: rest =>
         val (as, bs) = (t.children(a), t.children(b))
-        if as.size != bs.size || !t.sameLabel(a, b) then same = false
-        else
-          var i = as.size - 1
-          while i >= 0 do
-            stack.push((as(i), bs(i)))
-            i -= 1
-    same
+        if as.size != bs.size || !t.sameLabel(a, b) then false
+        else go(as.iterator.zip(bs.iterator).toList ::: rest)
+    go(List((x, y)))
 
   /** The hash of the labels and child counts in pre-order. */
   def hash[A <: AnyRef](x: A)(using t: Tree[A]): Int =
-    val stack = new java.util.ArrayDeque[A]
-    stack.push(x)
-    var h = 17
-    while !stack.isEmpty do
-      val a = stack.pop()
-      val kids = t.children(a)
-      h = 31 * (31 * h + t.labelHash(a)) + kids.size
-      var i = kids.size - 1
-      while i >= 0 do
-        stack.push(kids(i))
-        i -= 1
-    h
+    @tailrec def go(pending: List[A], h: Int): Int = pending match
+      case Nil => h
+      case a :: rest =>
+        val kids = t.children(a)
+        go(kids.toList ::: rest, 31 * (31 * h + t.labelHash(a)) + kids.size)
+    go(List(x), 17)
 
   /** `name[child, child, ...]` for the first `limit` characters, then `...`. */
   def render[A <: AnyRef](x: A, limit: Int = DefaultRenderLimit)(using t: Tree[A]): String =
-    final class Open(val children: Iterator[A]):
-      var first = true
+    // an open level: the children still to render (an iterator, so that a value of a million
+    // children is not listed to show its first few) and whether the next is the level's first
+    final case class Open(children: Iterator[A], first: Boolean)
     val out = new java.lang.StringBuilder
-    val stack = new java.util.ArrayDeque[Open]
-    def enter(a: A): Unit =
+    def enter(a: A, stack: List[Open]): List[Open] =
       out.append(t.name(a))
       val kids = t.children(a)
       if kids.nonEmpty then
         out.append('[')
-        stack.push(Open(kids.iterator))
-    enter(x)
-    while !stack.isEmpty && out.length <= limit do
-      val top = stack.peek()
-      if top.children.hasNext then
-        if !top.first then out.append(", ")
-        top.first = false
-        enter(top.children.next())
-      else
-        out.append(']')
-        stack.pop()
-    if stack.isEmpty && out.length <= limit then out.toString
+        Open(kids.iterator, true) :: stack
+      else stack
+    // the levels still open when the limit is passed, none when the whole value was written
+    @tailrec def go(stack: List[Open]): List[Open] = stack match
+      case Open(children, first) :: below if out.length <= limit =>
+        if children.hasNext then
+          if !first then out.append(", ")
+          go(enter(children.next(), Open(children, false) :: below))
+        else
+          out.append(']')
+          go(below)
+      case _ => stack
+    if go(enter(x, Nil)).isEmpty && out.length <= limit then out.toString
     else out.substring(0, limit) + "..."
 
   extension [A <: AnyRef](a: A)(using Tree[A])

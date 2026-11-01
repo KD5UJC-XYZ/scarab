@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.codec
 
 import java.util.Arrays
+import scala.annotation.tailrec
 
 /** Immutable bytes: a window onto an array nobody mutates. Arrays crossing the public boundary
   * (`fromArray`, `toArray`) are copied; `wrap`, `slice` and `unsafeArray` share storage and are for
@@ -15,6 +16,10 @@ final class Bytes private (
     private val offset: Int,
     private val length: Int
 ) extends Serializable:
+  // The hash and the prefix below are computed on first use and kept (racy but idempotent, as
+  // `String`'s hash): without them the decode of a real preprod state took 10 percent longer
+  // (`docs/performance.md` section 49).
+  @SuppressWarnings(Array("org.wartremover.warts.Var"))
   private var cachedHash = 0
 
   /** The first four bytes, big-endian, with the sign bit flipped so that the signed order of the
@@ -25,17 +30,13 @@ final class Bytes private (
     * and a comparison that the prefixes settle, which for hashes is nearly every one, reads two
     * objects and no arrays.
     */
+  @SuppressWarnings(Array("org.wartremover.warts.Var"))
   private var cachedPrefix = 0
 
-  /** A `Bytes` built from a null vector (programming misuse) fails on first use, as it always did.
-    */
-  def size: Int =
-    if array eq null then throw new NullPointerException("malformed Bytes")
-    length
+  def size: Int = length
 
   /** The bytes as a vector (allocates; kept for code that wants collection operations). */
-  def value: Vector[Byte] =
-    if array eq null then null else Vector.tabulate(length)(i => array(offset + i))
+  def value: Vector[Byte] = Vector.tabulate(length)(i => array(offset + i))
 
   def apply(i: Int): Byte =
     if i < 0 || i >= size then throw new IndexOutOfBoundsException(i.toString)
@@ -84,24 +85,23 @@ final class Bytes private (
   def hex: String =
     val digits = "0123456789abcdef"
     val sb = new java.lang.StringBuilder(size * 2)
-    var i = 0
-    while i < size do
+    (0 until size).foreach { i =>
       val b = array(offset + i) & 0xff
       sb.append(digits.charAt(b >>> 4)).append(digits.charAt(b & 0xf))
-      i += 1
+    }
     sb.toString
 
   private def prefix: Int =
-    var p = cachedPrefix
-    if p == 0 then
-      var acc = 0
-      var i = 0
-      while i < 4 do
-        acc = (acc << 8) | (if i < size then array(offset + i) & 0xff else 0)
-        i += 1
-      p = acc ^ Int.MinValue
+    val cached = cachedPrefix
+    if cached != 0 then cached
+    else
+      // a loop of ints, not a fold, which would box the accumulator
+      @tailrec def first4(i: Int, acc: Int): Int =
+        if i == 4 then acc
+        else first4(i + 1, (acc << 8) | (if i < size then array(offset + i) & 0xff else 0))
+      val p = first4(0, 0) ^ Int.MinValue
       cachedPrefix = p
-    p
+      p
 
   /** Lexicographic unsigned comparison: negative, zero or positive. The prefixes settle most
     * comparisons; the rest is `Arrays.compareUnsigned`, a vectorised intrinsic. It matters to the
@@ -128,16 +128,16 @@ final class Bytes private (
     case _ => false
 
   override def hashCode(): Int =
-    var h = cachedHash
-    if h == 0 then
-      h = 1
-      var i = 0
-      while i < size do
-        h = 31 * h + array(offset + i)
-        i += 1
-      if h == 0 then h = 1
+    val cached = cachedHash
+    if cached != 0 then cached
+    else
+      @tailrec def polynomial(i: Int, h: Int): Int =
+        if i == size then h else polynomial(i + 1, 31 * h + array(offset + i))
+      val computed = polynomial(0, 1)
+      // 0 is "not yet": a hash that comes out as 0 is kept as 1
+      val h = if computed == 0 then 1 else computed
       cachedHash = h
-    h
+      h
 
   override def toString: String = s"Bytes($hex)"
 
@@ -151,14 +151,9 @@ object Bytes:
 
   /** Compatibility constructor from a vector. */
   def apply(bytes: Vector[Byte]): Bytes =
-    if bytes eq null then new Bytes(null, 0, 0)
-    else if bytes.isEmpty then empty
+    if bytes.isEmpty then empty
     else
-      val a = new Array[Byte](bytes.size)
-      var i = 0
-      bytes.foreach { b =>
-        a(i) = b; i += 1
-      }
+      val a = bytes.toArray
       new Bytes(a, 0, a.length)
 
   /** Copies. */
@@ -169,9 +164,13 @@ object Bytes:
   def wrap(bytes: Array[Byte]): Bytes =
     if bytes.length == 0 then empty else new Bytes(bytes, 0, bytes.length)
 
-  /** Shares `bytes[from, from + length)`; the caller must not write to it afterwards. */
+  /** Shares `bytes[from, from + length)`, cut to the array as [[Bytes.slice]] cuts, so that every
+    * `Bytes` is a window inside its array; the caller must not write to it afterwards.
+    */
   def wrap(bytes: Array[Byte], from: Int, length: Int): Bytes =
-    if length == 0 then empty else new Bytes(bytes, from, length)
+    val lo = math.min(math.max(0, from), bytes.length)
+    val hi = math.max(lo.toLong, math.min(bytes.length.toLong, from.toLong + length)).toInt
+    if hi == lo then empty else new Bytes(bytes, lo, hi - lo)
 
   enum HexError:
     case OddLength(length: Int)
@@ -186,12 +185,11 @@ object Bytes:
       val index = hex.indexWhere(c => Character.digit(c, 16) < 0 || c > 127)
       Left(HexError.InvalidCharacter(index, hex.charAt(index)))
     else
-      val out = new Array[Byte](hex.length / 2)
-      var i = 0
-      while i < out.length do
-        out(i) = ((Character.digit(hex.charAt(2 * i), 16) << 4) | Character.digit(
-          hex.charAt(2 * i + 1),
-          16
-        )).toByte
-        i += 1
-      Right(wrap(out))
+      Right(
+        wrap(
+          Array.tabulate(hex.length / 2)(i =>
+            ((Character.digit(hex.charAt(2 * i), 16) << 4) |
+              Character.digit(hex.charAt(2 * i + 1), 16)).toByte
+          )
+        )
+      )
