@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
-import scala.collection.mutable
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.state.*
@@ -49,19 +48,20 @@ object ConwayPulser:
     // the accounts in the order of the credential, and the instant stake walked beside them; the
     // sum for each DRep is built as `groupMapReduce` builds it
     val stakes = Sorted.Cursor(instant)
-    val sums = mutable.Map.empty[node.DRep, CompactCoin]
-    accounts.iterator.foreach { (c, a) =>
-      a.drep.foreach { drep =>
-        val d = Convert.drepBack(drep)
-        val known = d match
-          case node.DRep.Registered(r) => flatDReps.contains(r)
-          case _                       => true
-        if known then
-          val proposals =
-            deposits.getOrElse(Convert.back(c), CompactCoin.zero)
-          val stake = stakes.at(c).getOrElse(CompactCoin.zero).add(proposals).add(a.balance)
-          sums.put(d, sums.get(d).fold(stake)(_.add(stake)))
-      }
+    val sums = accounts.iterator.foldLeft(Map.empty[node.DRep, CompactCoin]) {
+      case (sums, (c, a)) =>
+        a.drep.fold(sums) { drep =>
+          val d = Convert.drepBack(drep)
+          val known = d match
+            case node.DRep.Registered(r) => flatDReps.contains(r)
+            case _                       => true
+          if known then
+            val proposals =
+              deposits.getOrElse(Convert.back(c), CompactCoin.zero)
+            val stake = stakes.at(c).getOrElse(CompactCoin.zero).add(proposals).add(a.balance)
+            sums.updated(d, sums.get(d).fold(stake)(_.add(stake)))
+          else sums
+        }
     }
     val drepDistr: Map[node.DRep, BigInt] =
       sums.iterator.map((d, amount) => d -> amount.toBigInt).toMap

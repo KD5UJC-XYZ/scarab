@@ -70,10 +70,7 @@ object Purpose:
     val networks = Integer.compare(x.network, y.network)
     if networks != 0 then networks
     else
-      val kinds = java.lang.Boolean.compare(
-        x.credential.isInstanceOf[Credential.Key],
-        y.credential.isInstanceOf[Credential.Key]
-      )
+      val kinds = java.lang.Boolean.compare(x.credential.isKey, y.credential.isKey)
       if kinds != 0 then kinds else x.credential.hash.compareTo(y.credential.hash)
 
   def sortedVoters(body: TxBody): Vector[Voter] = body.votes.map(_._1).sorted(using Voter.ordering)

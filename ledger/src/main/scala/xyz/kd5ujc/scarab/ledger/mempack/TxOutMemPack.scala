@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.mempack
 
+import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.ledger.{ByteStrings, DecodeField, FieldKeys}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Value as CborValue}
@@ -574,10 +575,11 @@ object TxOutMemPack:
       case Credential.Script(_) => false
     out(0) = ((if keyPayment then 0 else 0x10) | (if keyStake then 0 else 0x20) | network).toByte
     def put(at: Int, w: Long, bytes: Int): Unit =
-      var k = 0
-      while k < bytes do
-        out(at + k) = (w >>> (8 * (bytes - 1 - k))).toByte
-        k += 1
+      @tailrec def go(k: Int): Unit =
+        if k < bytes then
+          out(at + k) = (w >>> (8 * (bytes - 1 - k))).toByte
+          go(k + 1)
+      go(0)
     put(1, e.a, 8)
     put(9, e.b, 8)
     put(17, e.c, 8)

@@ -125,9 +125,10 @@ object ByronTx:
   def merkleRoot(txs: Vector[Bytes]): Bytes =
     def leaf(b: Bytes) = Blake2b.hash256.hash(ByronCbor.of(0) ++ b)
     def go(xs: Vector[Bytes]): Bytes =
-      if xs.size == 1 then leaf(xs.head)
-      else
-        val i = Integer.highestOneBit(xs.size - 1)
-        val (l, r) = xs.splitAt(i)
-        Blake2b.hash256.hash(ByronCbor.concat(ByronCbor.of(1), go(l), go(r)))
+      xs match
+        case Vector(only) => leaf(only)
+        case _ =>
+          val i = Integer.highestOneBit(xs.size - 1)
+          val (l, r) = xs.splitAt(i)
+          Blake2b.hash256.hash(ByronCbor.concat(ByronCbor.of(1), go(l), go(r)))
     if txs.isEmpty then Blake2b.hash256.hash(Bytes.empty) else go(txs)

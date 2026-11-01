@@ -88,7 +88,7 @@ lazy val disallowedWarts: Seq[wartremover.Wart] = Seq(
 // are reported as information, so the build shows them without failing, until the module is clean and
 // joins this set (issue 650).
 lazy val wartFree: Set[String] =
-  Set("codec", "consensus", "crypto", "models", "modelsGen", "network", "plutus", "protocol", "storage")
+  Set("codec", "consensus", "crypto", "ledger", "models", "modelsGen", "network", "plutus", "protocol", "storage")
 
 def scarab(id: String, dir: String = null): Project =
   Project(id, file(Option(dir).getOrElse(id)))
