@@ -21,10 +21,7 @@ object SnapshotCrc:
     def value: Long = (crc ^ -1).toLong & 0xffffffffL
 
     def update(bytes: Bytes): SnapshotCrc =
-      @tailrec def go(i: Int, acc: Int): Int =
-        if i == bytes.size then acc
-        else go(i + 1, (acc >>> 8) ^ table((acc ^ bytes(i)) & 0xff))
-      go(0, crc)
+      bytes.foldLeft[Int](crc)((acc, b) => (acc >>> 8) ^ table((acc ^ b) & 0xff))
 
     def update(chunk: Chunk[Byte]): SnapshotCrc =
       @tailrec def go(i: Int, acc: Int): Int =

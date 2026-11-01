@@ -78,14 +78,13 @@ private[json] object NativeJsonString:
 
   def read(input: Bytes, start: Int): Either[Error, (JsonText, Int)] =
     @tailrec def end(at: Int, escaped: Boolean): Either[Error, Int] =
-      if at == input.size then Left(Error.StringEnd)
-      else if escaped then end(at + 1, false)
-      else
-        byte(input, at) match
-          case 34          => Right(at)
-          case 92          => end(at + 1, true)
-          case c if c < 32 => Left(Error.StringControl)
-          case _           => end(at + 1, false)
+      byte(input, at) match
+        case None               => Left(Error.StringEnd)
+        case Some(_) if escaped => end(at + 1, false)
+        case Some(34)           => Right(at)
+        case Some(92)           => end(at + 1, true)
+        case Some(c) if c < 32  => Left(Error.StringControl)
+        case Some(_)            => end(at + 1, false)
     for
       close <- end(start + 1, false)
       text <- utf8(input.slice(start + 1, close))

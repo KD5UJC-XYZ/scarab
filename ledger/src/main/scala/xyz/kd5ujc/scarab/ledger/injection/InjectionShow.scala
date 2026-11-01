@@ -96,7 +96,7 @@ private[injection] object InjectionShow:
   // `showList` of the bytes as Latin-1 characters: `showLitString`, `showLitChar` and
   // `protectEsc` (ghc-internal 9.1003.0 `GHC/Internal/Show.hs:375-437`).
   private def bytes(value: Bytes): String =
-    def at(i: Int): Int = if i < value.size then value(i) & 255 else '"'
+    def at(i: Int): Int = value.lift(i).fold('"'.toInt)(_ & 255)
     def char(i: Int): String = at(i) match
       case 34  => "\\\""
       case 92  => "\\\\"

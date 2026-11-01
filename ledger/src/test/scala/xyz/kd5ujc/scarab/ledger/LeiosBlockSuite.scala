@@ -176,14 +176,14 @@ class LeiosBlockSuite extends munit.FunSuite:
     val bodyStart = raw.size - decoded.bodySize.toInt
     // inside the body, in the middle of a transaction
     val i = bodyStart + decoded.bodySize.toInt / 2
-    val flipped = raw.take(i) ++ Bytes(Vector((raw(i) ^ 1).toByte)) ++ raw.drop(i + 1)
+    val flipped = raw.take(i) ++ Bytes(Vector((raw.toArray(i) ^ 1).toByte)) ++ raw.drop(i + 1)
     LeiosBlock.decode(flipped) match
       case Left(_) => ()
       case Right(b) =>
         assert(b.faults.contains(LeiosBlock.Fault.BodyHashDiffers), b.faults.toString)
     // inside the header: another header hash, the same body
     val j = 40
-    val other = raw.take(j) ++ Bytes(Vector((raw(j) ^ 1).toByte)) ++ raw.drop(j + 1)
+    val other = raw.take(j) ++ Bytes(Vector((raw.toArray(j) ^ 1).toByte)) ++ raw.drop(j + 1)
     LeiosBlock.decode(other).foreach(b => assertNotEquals(b.header.hash, decoded.header.hash))
   }
 

@@ -50,7 +50,7 @@ private[json] object HaskellShow:
   def text(value: String): String = litString(value.codePoints.toArray.toIndexedSeq)
 
   /** `show` of a `ByteString`: each byte as the `Char` of that code. */
-  def bytes(value: Bytes): String = litString((0 until value.size).map(value(_) & 0xff))
+  def bytes(value: Bytes): String = litString(value.value.map(_ & 0xff))
 
   /** `show` of a `Char`. */
   def char(c: Int): String = if c == '\'' then "'\\''" else s"'${litChar(c, -1)}'"

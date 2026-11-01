@@ -74,4 +74,5 @@ One row per measurement section, in the order the sections were written; the sec
 | 47 | 2026-10-31 | The collections of the Haskell state: builders against immutable forms (#650) | #650 | [Memory, snapshots and bootstrap](performance/memory-and-snapshots.md#47-the-collections-of-the-haskell-state-builders-against-immutable-forms-650) |
 | 48 | 2026-10-31 | The CBOR decoder: functional against imperative (#650) | #650 | [Peers, connections and the network path](performance/peers-and-network.md#48-the-cbor-decoder-functional-against-imperative-650) |
 | 49 | 2026-10-31 | Reading a decoded document: functional against imperative navigation, sharing and caching (#650) | #650 | [Memory, snapshots and bootstrap](performance/memory-and-snapshots.md#49-reading-a-decoded-document-functional-against-imperative-navigation-sharing-and-caching-650) |
+| 50 | 2026-10-31 | Total reads of a `Bytes`: the bounds check and the read as one (#650) | #650 | [Memory, snapshots and bootstrap](performance/memory-and-snapshots.md#50-total-reads-of-a-bytes-the-bounds-check-and-the-read-as-one-650) |
 <!-- /register -->

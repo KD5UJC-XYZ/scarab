@@ -38,9 +38,47 @@ final class Bytes private (
   /** The bytes as a vector (allocates; kept for code that wants collection operations). */
   def value: Vector[Byte] = Vector.tabulate(length)(i => array(offset + i))
 
-  def apply(i: Int): Byte =
-    if i < 0 || i >= size then throw new IndexOutOfBoundsException(i.toString)
-    array(offset + i)
+  /** Byte `i`, if `i` is inside the bytes. There is no partial `apply(i)`: a read and the check
+    * that it is in range are one operation, so no reader can do the one without the other.
+    */
+  def lift(i: Int): Option[Byte] =
+    if i < 0 || i >= length then None else Some(array(offset + i))
+
+  /** The first byte, if there is one. */
+  def headOption: Option[Byte] = lift(0)
+
+  /** `present` of byte `i`, or `missing` if `i` is outside the bytes: [[lift]] for a hot path,
+    * where the caller still says what an index outside means and nothing is allocated.
+    */
+  inline def byteOr[A](i: Int)(inline missing: => A)(inline present: Byte => A): A =
+    if i < 0 || i >= length then missing else present(array(offset + i))
+
+  /** The `width` bytes from `from` as an unsigned big-endian number, if they are all inside the
+    * bytes and `width` is at most 8 (eight bytes fill the `Long`, its sign bit included).
+    */
+  def bigEndian(from: Int, width: Int): Option[Long] =
+    if width < 0 || width > 8 || from < 0 || from > length - width then None
+    else
+      @tailrec def go(i: Int, n: Long): Long =
+        if i == width then n else go(i + 1, (n << 8) | (array(offset + from + i) & 0xffL))
+      Some(go(0, 0L))
+
+  /** As [[bigEndian]], the first byte the least significant. */
+  def littleEndian(from: Int, width: Int): Option[Long] =
+    if width < 0 || width > 8 || from < 0 || from > length - width then None
+    else
+      @tailrec def go(i: Int, n: Long): Long =
+        if i == width then n
+        else go(i + 1, n | ((array(offset + from + i) & 0xffL) << (8 * i)))
+      Some(go(0, 0L))
+
+  /** The bytes, first to last, folded into `z`. */
+  inline def foldLeft[A](z: A)(inline f: (A, Byte) => A): A =
+    withRange { (bytes, from, n) =>
+      @tailrec def go(i: Int, acc: A): A =
+        if i == n then acc else go(i + 1, f(acc, bytes(from + i)))
+      go(0, z)
+    }
 
   def isEmpty: Boolean = size == 0
   def nonEmpty: Boolean = size != 0

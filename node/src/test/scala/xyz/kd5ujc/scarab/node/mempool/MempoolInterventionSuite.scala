@@ -69,7 +69,7 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       .add(c.raw(flag), mempoolEnv, source)
       .fold(r => fail(s"refused: ${r.message}"), _._2)
 
-  private def flagByte(raw: Bytes): Byte = raw(raw.size - 2)
+  private def flagByte(raw: Bytes): Option[Byte] = raw.lift(raw.size - 2)
 
   private def tagMismatch(flag: Boolean): PartialFunction[Any, Boolean] =
     case Left(
@@ -93,10 +93,10 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
     val received = failing.raw(true)
     val entry = admitted(failing, true, Source.Remote)
     assert(!entry.tx.isValid, "the held transaction must carry is_valid = false")
-    assertEquals(flagByte(entry.raw), 0xf4.toByte)
+    assertEquals(flagByte(entry.raw), Some(0xf4.toByte))
     assertEquals(entry.raw, failing.raw(false))
     assertEquals(entry.raw.size, received.size)
-    val differing = (0 until received.size).filter(i => received(i) != entry.raw(i))
+    val differing = (0 until received.size).filter(i => received.lift(i) != entry.raw.lift(i))
     assertEquals(differing, Vector(received.size - 2))
     assertEquals(entry.id, Blake2b.hash256.hash(failing.parts.body))
     assertEquals(entry.size, received.size)

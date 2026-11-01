@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.mempack
 
+import cats.syntax.all.*
+import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
 import xyz.kd5ujc.scarab.codec.Bytes
 
@@ -88,42 +90,46 @@ private[mempack] object MultiAssetRep:
     */
   def read(n: Int, rep: Bytes): Result[Map[Bytes, Map[Bytes, BigInt]]] =
     val size = rep.size
-    if n < 0 || n.toLong * 12 > size then
-      Left(Failure.BadMultiAsset(MultiAssetFault.ShorterThanRegions))
-    else
-      def u16(at: Int): Int = (rep(at) & 0xff) | ((rep(at + 1) & 0xff) << 8)
-      def u64(at: Int): BigInt =
-        var v = 0L
-        var i = 7
-        while i >= 0 do
-          v = (v << 8) | (rep(at + i) & 0xffL)
-          i -= 1
-        if v >= 0 then BigInt(v) else BigInt(v) + TwoTo64
-      val nameOffsets = Vector.tabulate(n)(i => u16(10 * n + 2 * i))
-      val policyOffsets = Vector.tabulate(n)(i => u16(8 * n + 2 * i))
-      if policyOffsets.exists(_ + PolicySize > size) then
-        Left(Failure.BadMultiAsset(MultiAssetFault.PolicyOutOfRange))
-      else if nameOffsets.exists(_ > size) then
-        Left(Failure.BadMultiAsset(MultiAssetFault.NameOutOfRange))
-      else if nameOffsets.zip(nameOffsets.drop(1)).exists((a, b) => b < a) then
-        Left(Failure.BadMultiAsset(MultiAssetFault.NameOffsetsDescend))
-      else
-        // The name at offset o ends where the next greater offset begins, or at the end.
-        val distinct = nameOffsets.distinct
-        val end = distinct.zip(distinct.drop(1) :+ size).toMap
-        val triples = (0 until n).map { i =>
-          val o = nameOffsets(i)
-          (
-            rep.slice(policyOffsets(i), policyOffsets(i) + PolicySize),
-            rep.slice(o, end(o)),
-            u64(8 * i)
-          )
-        }
-        Right(
-          triples.foldLeft(Map.empty[Bytes, Map[Bytes, BigInt]]) {
-            case (acc, (_, _, q)) if q.signum == 0 => acc
-            case (acc, (policy, name, q)) =>
-              val held = acc.getOrElse(policy, Map.empty)
-              acc.updated(policy, held.updated(name, held.getOrElse(name, BigInt(0)) + q))
+    // the `n` little-endian words of `width` bytes from `at`: none where the regions run short
+    def words(at: Int, width: Int): Option[Vector[Long]] =
+      @tailrec def go(i: Int, read: Vector[Long]): Option[Vector[Long]] =
+        if i == n then Some(read)
+        else
+          rep.littleEndian(at + width * i, width) match
+            case None       => None
+            case Some(word) => go(i + 1, read :+ word)
+      go(0, Vector.empty)
+    val regions =
+      if n < 0 || n.toLong * 12 > size then None
+      else (words(0, 8), words(8 * n, 2), words(10 * n, 2)).tupled
+    regions match
+      case None => Left(Failure.BadMultiAsset(MultiAssetFault.ShorterThanRegions))
+      case Some((quantities, policies, names)) =>
+        val policyOffsets = policies.map(_.toInt)
+        val nameOffsets = names.map(_.toInt)
+        if policyOffsets.exists(_ + PolicySize > size) then
+          Left(Failure.BadMultiAsset(MultiAssetFault.PolicyOutOfRange))
+        else if nameOffsets.exists(_ > size) then
+          Left(Failure.BadMultiAsset(MultiAssetFault.NameOutOfRange))
+        else if nameOffsets.zip(nameOffsets.drop(1)).exists((a, b) => b < a) then
+          Left(Failure.BadMultiAsset(MultiAssetFault.NameOffsetsDescend))
+        else
+          // The name at offset o ends where the next greater offset begins, or at the end.
+          val distinct = nameOffsets.distinct
+          val end = distinct.zip(distinct.drop(1) :+ size).toMap
+          // a quantity is a Word64: above 2^63 it reads as a negative Long
+          val triples = policyOffsets.lazyZip(nameOffsets).lazyZip(quantities).map { (p, o, q) =>
+            (
+              rep.slice(p, p + PolicySize),
+              rep.slice(o, end(o)),
+              if q >= 0 then BigInt(q) else BigInt(q) + TwoTo64
+            )
           }
-        )
+          Right(
+            triples.foldLeft(Map.empty[Bytes, Map[Bytes, BigInt]]) {
+              case (acc, (_, _, q)) if q.signum == 0 => acc
+              case (acc, (policy, name, q)) =>
+                val held = acc.getOrElse(policy, Map.empty)
+                acc.updated(policy, held.updated(name, held.getOrElse(name, BigInt(0)) + q))
+            }
+          )

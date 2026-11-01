@@ -116,8 +116,10 @@ object MemPackJoin extends IOApp:
       back <- TxOutMemPack.encode[Conway](out).leftMap(Error.Decode(entry.key, _))
       changed = back != entry.value
       historical =
-        encoding == Encoding.HistoricalConstructors && entry.value.size > 0 && back.size > 0 &&
-          ((entry.value(0) == 0 && back(0) == 2) || (entry.value(0) == 1 && back(0) == 3))
+        encoding == Encoding.HistoricalConstructors &&
+          ((entry.value.headOption.map(_.toInt), back.headOption.map(_.toInt)) match
+            case (Some(0), Some(2)) | (Some(1), Some(3)) => true
+            case _                                       => false)
       _ <- Either.cond(!changed || historical, (), Error.PackedBytes(entry.key))
       decoded <- TxOutMemPack.decode[Conway](back).leftMap(Error.Decode(entry.key, _))
       originalParts <- TxOutMemPack.parts(out).leftMap(Error.Decode(entry.key, _))

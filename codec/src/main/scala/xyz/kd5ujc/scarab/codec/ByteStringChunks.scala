@@ -14,20 +14,21 @@ object ByteStringChunks:
 
   private def chunksFit(raw: Bytes, limit: Int, expected: Int): Boolean =
     @scala.annotation.tailrec
-    def loop(at: Int, total: Int): Boolean =
-      if at >= raw.size then false
-      else
-        val head = raw(at) & 0xff
+    def loop(at: Int, total: Int): Boolean = raw.lift(at) match
+      case None => false
+      case Some(b) =>
+        val head = b & 0xff
         val info = head & 31
         if head == 0xff then at + 1 == raw.size && total == expected
         else if head >> 5 != 2 || info > 27 then false
         else
           val width = if info < 24 then 0 else 1 << (info - 24)
-          if width > raw.size - at - 1 then false
-          else
-            val size = (0 until width).foldLeft(BigInt(if width == 0 then info else 0))((n, i) =>
-              (n << 8) | (raw(at + 1 + i) & 0xff)
-            )
-            size <= limit && size <= expected - total && size <= raw.size - at - 1 - width &&
-            loop(at + 1 + width + size.toInt, total + size.toInt)
-    raw.nonEmpty && (raw(0) & 0xff) == 0x5f && loop(1, 0)
+          // none when the argument runs past the end; eight bytes above 2^63 read as negative
+          raw.bigEndian(at + 1, width) match
+            case None => false
+            case Some(argument) =>
+              val size = if width == 0 then info.toLong else argument
+              size >= 0 && size <= limit && size <= expected - total &&
+              size <= raw.size - at - 1 - width &&
+              loop(at + 1 + width + size.toInt, total + size.toInt)
+    raw.headOption.contains(0x5f.toByte) && loop(1, 0)

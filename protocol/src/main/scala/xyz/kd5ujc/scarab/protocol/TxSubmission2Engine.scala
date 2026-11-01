@@ -204,12 +204,13 @@ private[scarab] object TxSubmission2Engine:
       if r.read() != 0x9f then bad(ProtocolError.ExpectedIndefiniteProtocolList)
       @scala.annotation.tailrec
       def loop(collected: Vector[A]): Vector[A] =
-        if r.position >= bytes.size then bad(ProtocolError.TruncatedList)
-        else if (bytes(r.position) & 255) == 0xff then
-          r.read(); collected
-        else if collected.size >= profile.maxBatch then
-          bad(ProtocolError.BatchLimitExceeded(collected.size, profile.maxBatch))
-        else loop(collected :+ f())
+        bytes.lift(r.position) match
+          case None => bad(ProtocolError.TruncatedList)
+          case Some(b) if b == 0xff.toByte =>
+            r.read(); collected
+          case Some(_) if collected.size >= profile.maxBatch =>
+            bad(ProtocolError.BatchLimitExceeded(collected.size, profile.maxBatch))
+          case Some(_) => loop(collected :+ f())
       loop(Vector.empty)
     def uint16(): Int =
       val n = r.uint().value

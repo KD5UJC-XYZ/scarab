@@ -121,15 +121,17 @@ object SclsFraming:
               case Left(error) => Left(error)
               case Right(size) => loop(Phase.Tag(size), position + count, at + count, emitted)
         case Phase.Tag(size) =>
-          kind(input(position) & 0xff, at) match
-            case Left(error) => Left(error)
-            case Right(recordKind) =>
-              loop(
-                Phase.Body(recordKind, size - 1, 0, Bytes.empty, Nil),
-                position + 1,
-                at + 1,
-                emitted
-              )
+          input.byteOr(position)(Right(new Decoder(current, at, limit) -> emitted)) { tag =>
+            kind(tag & 0xff, at) match
+              case Left(error) => Left(error)
+              case Right(recordKind) =>
+                loop(
+                  Phase.Body(recordKind, size - 1, 0, Bytes.empty, Nil),
+                  position + 1,
+                  at + 1,
+                  emitted
+                )
+          }
         case Phase.Body(recordKind, size, buffered, pending, reversed) =>
           val count = math.min(size - buffered, input.size - position)
           val fragment = input.slice(position, position + count).compact

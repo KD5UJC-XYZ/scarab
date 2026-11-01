@@ -53,11 +53,7 @@ private[ledger] object CborRead:
     * map read by a decoder that takes the definite form only (the Byron decoders).
     */
   def definite(n: Node, what: DecodeSite): Result[Unit] =
-    Either.cond(
-      n.original.size > 0 && (n.original(0) & 31) != 31,
-      (),
-      LedgerDecodeError.IndefiniteLength(what)
-    )
+    Either.cond(!n.isIndefinite, (), LedgerDecodeError.IndefiniteLength(what))
 
   /** A text value the reference reads as a text field: a definite-length string only.
     *
@@ -265,6 +261,7 @@ private[ledger] object CborRead:
 
   /** The tag is the one-byte head `0xc2` / `0xc3` and its content a definite-length byte string. */
   private def bignumHead(tag: Node, content: Node): Boolean =
-    val head = tag.original(0) & 0xff
-    val first = content.original(0) & 0xff
-    (head == 0xc2 || head == 0xc3) && (first >> 5) == 2 && (first & 0x1f) != 31
+    tag.original.headOption.forall(head => head == 0xc2.toByte || head == 0xc3.toByte) &&
+      content.original.headOption.forall(first =>
+        ((first & 0xff) >> 5) == 2
+      ) && !content.isIndefinite
