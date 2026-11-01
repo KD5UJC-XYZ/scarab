@@ -372,13 +372,13 @@ final class RocksUtxoStore[F[_]: Sync] private (
     }
   }
 
-  def scan(visit: (TxIn, TxOut) => Unit)(using cats.mtl.Raise[F, StorageError]): F[Unit] =
+  def scan[A](zero: A)(step: (A, TxIn, TxOut) => A)(using cats.mtl.Raise[F, StorageError]): F[A] =
     guardE("utxo scan") {
       opened { d =>
         Using.resource(d.newIterator()) { it =>
-          fold(it, ()) { (_, k, at) =>
+          fold(it, zero) { (acc, k, at) =>
             Coding.decodeValue(at.value()) match
-              case Right(out)   => Right(visit(Coding.decodeKey(k), out))
+              case Right(out)   => Right(step(acc, Coding.decodeKey(k), out))
               case Left(reason) => Left(corruptEntry(k, reason))
           }
         }

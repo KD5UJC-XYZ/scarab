@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.tools
 
+import scala.util.Using
 import cats.effect.{ExitCode, IO, IOApp}
 import java.io.{BufferedReader, InputStreamReader}
 import java.nio.charset.StandardCharsets
@@ -66,16 +67,16 @@ object LeiosCheckMain extends IOApp:
             case InEra.Of(_, l) =>
               l.leaderPools(nextEpoch = false)
           }
-        try
+        Using.resource(reader)(r =>
           loop(
-            reader,
+            r,
             setup.praos,
             LeiosHeaderChain.StakePolicy(pools, LeiosHeaderChain.GenesisEpochs),
             LeiosHeaderChain.initial(setup.mirrorStart.protocol),
             Map.empty,
             stop
           )
-        finally reader.close()
+        )
 
   @tailrec
   private def loop(

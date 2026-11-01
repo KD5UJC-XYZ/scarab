@@ -22,9 +22,8 @@ class StateDumpSuite extends munit.FunSuite:
   }
 
   test("the digest of a map equals the one the Python side computes") {
-    val d = new StateDump.Digest
-    entries.foreach((k, v) => d.add(k, StateDump.canon(v)))
-    val j = d.json
+    val j =
+      entries.foldLeft(StateDump.Digest.empty)((d, e) => d.add(e._1, StateDump.canon(e._2))).json
     assertEquals(j.hcursor.get[Long]("count"), Right(3L))
     assertEquals(
       j.hcursor.get[String]("digest"),
@@ -43,9 +42,7 @@ class StateDumpSuite extends munit.FunSuite:
 
   test("the digest does not depend on the order of the entries") {
     def digestOf(es: List[(String, Json)]) =
-      val d = new StateDump.Digest
-      es.foreach((k, v) => d.add(k, StateDump.canon(v)))
-      d.json
+      es.foldLeft(StateDump.Digest.empty)((d, e) => d.add(e._1, StateDump.canon(e._2))).json
     assertEquals(digestOf(entries), digestOf(entries.reverse))
   }
 

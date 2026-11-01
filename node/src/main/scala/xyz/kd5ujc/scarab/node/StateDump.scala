@@ -12,6 +12,7 @@ import java.math.BigInteger
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, StandardCopyOption}
 import java.security.MessageDigest
+import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.ledger.{Utxo, TxIn, TxOut}
 import xyz.kd5ujc.scarab.storage.UtxoStore
 
@@ -35,65 +36,68 @@ object StateDump:
   // before the rename say `csl-state-digest-1` and are the same format).
   val Format = "scarab-state-digest-1"
 
-  /** Canonical text of a JSON value (numbers are integers here: ledger quantities). */
+  /** Canonical text of a JSON value (numbers are integers here: ledger quantities). The walk keeps
+    * what is still to write on a list, so a deeply nested value does not use the thread's stack.
+    */
   def canon(j: Json): String =
-    val sb = new StringBuilder
-    def go(x: Json): Unit = x.fold(
-      sb.append("null"),
-      b => sb.append(b.toString),
-      n => sb.append(n.toString),
-      s => sb.append(Json.fromString(s).noSpaces),
+    enum Piece:
+      case Text(text: String)
+      case Value(value: Json)
+    // the items of a container, a comma between each two
+    def separated(items: List[List[Piece]]): List[Piece] =
+      items.zipWithIndex.flatMap((pieces, i) =>
+        if i == 0 then pieces else Piece.Text(",") :: pieces
+      )
+    def opened(x: Json): List[Piece] = x.fold(
+      List(Piece.Text("null")),
+      b => List(Piece.Text(b.toString)),
+      n => List(Piece.Text(n.toString)),
+      s => List(Piece.Text(Json.fromString(s).noSpaces)),
       a =>
-        sb.append('[')
-        var first = true
-        a.foreach { e =>
-          if !first then sb.append(',')
-          first = false
-          go(e)
-        }
-        sb.append(']')
-      ,
+        (Piece.Text("[") :: separated(a.toList.map(e => List(Piece.Value(e))))) :+ Piece.Text("]"),
       o =>
-        sb.append('{')
-        var first = true
-        o.toList.sortBy(_._1).foreach { (k, v) =>
-          if !first then sb.append(',')
-          first = false
-          sb.append(Json.fromString(k).noSpaces).append(':')
-          go(v)
-        }
-        sb.append('}')
+        val fields = o.toList
+          .sortBy(_._1)
+          .map((k, v) => List(Piece.Text(Json.fromString(k).noSpaces + ":"), Piece.Value(v)))
+        (Piece.Text("{") :: separated(fields)) :+ Piece.Text("}")
     )
-    go(j)
-    sb.toString
+    // the text written so far, newest first
+    @tailrec def go(todo: List[Piece], out: List[String]): String = todo match
+      case Nil                      => out.reverse.mkString
+      case Piece.Text(text) :: rest => go(rest, text :: out)
+      case Piece.Value(x) :: rest   => go(opened(x) ::: rest, out)
+    go(List(Piece.Value(j)), Nil)
 
-  /** Accumulates the digest of a map entry by entry. */
-  final class Digest:
-    private val mod = BigInteger.ONE.shiftLeft(256)
-    private val sha = MessageDigest.getInstance("SHA-256")
-    private var n = 0L
-    private var sum = BigInteger.ZERO
-    private val bucketCount = new Array[Long](16)
-    private val bucketSum = Array.fill(16)(BigInteger.ZERO)
-
-    def add(key: String, canonValue: String): Unit =
+  /** The digest of a map, accumulated entry by entry: how many entries and the sum of their hashes
+    * modulo 2^256, in all and in 16 buckets by the first byte of the hash of the key.
+    */
+  final case class Digest(count: Long, sum: BigInteger, buckets: Vector[(Long, BigInteger)]):
+    def add(key: String, canonValue: String): Digest =
+      val sha = Digest.sha.get()
       val k = key.getBytes(StandardCharsets.UTF_8)
       val bucket = sha.digest(k)(0) & 0x0f
       sha.update(k)
       sha.update(0.toByte)
       val h = new BigInteger(1, sha.digest(canonValue.getBytes(StandardCharsets.UTF_8)))
-      n += 1
-      sum = sum.add(h).mod(mod)
-      bucketCount(bucket) += 1
-      bucketSum(bucket) = bucketSum(bucket).add(h).mod(mod)
-
-    private def hex(b: BigInteger): String = String.format("%064x", b)
+      val (n, total) = buckets.lift(bucket).getOrElse((0L, BigInteger.ZERO))
+      Digest(
+        count + 1,
+        sum.add(h).mod(Digest.Modulus),
+        buckets.updated(bucket, (n + 1, total.add(h).mod(Digest.Modulus)))
+      )
 
     def json: Json = Json.obj(
-      "count" -> n.asJson,
-      "digest" -> hex(sum).asJson,
-      "buckets" -> (0 until 16).map(i => s"${bucketCount(i)}:${hex(bucketSum(i))}").asJson
+      "count" -> count.asJson,
+      "digest" -> Digest.hex(sum).asJson,
+      "buckets" -> buckets.map((n, total) => s"$n:${Digest.hex(total)}").asJson
     )
+
+  object Digest:
+    val empty: Digest = Digest(0L, BigInteger.ZERO, Vector.fill(16)((0L, BigInteger.ZERO)))
+    private val Modulus = BigInteger.ONE.shiftLeft(256)
+    // one SHA-256 instance a thread: a dump adds millions of entries
+    private val sha = ThreadLocal.withInitial(() => MessageDigest.getInstance("SHA-256"))
+    private def hex(b: BigInteger): String = String.format("%064x", b)
 
   /** Every object with more than [[Threshold]] fields replaced by its digest. */
   def reduce(j: Json): Json =
@@ -105,9 +109,7 @@ object StateDump:
       a => Json.fromValues(a.map(reduce)),
       o =>
         if o.size > Threshold then
-          val d = new Digest
-          o.toIterable.foreach((k, v) => d.add(k, canon(v)))
-          d.json
+          o.toIterable.foldLeft(Digest.empty)((d, entry) => d.add(entry._1, canon(entry._2))).json
         else Json.fromFields(o.toIterable.map((k, v) => k -> reduce(v)))
     )
 
@@ -117,15 +119,14 @@ object StateDump:
   def utxoDigest[F[_]: Sync](store: Option[UtxoStore[F]], utxo: Utxo)(using
       cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]
   ): F[Json] =
-    val d = new Digest
-    def add(in: TxIn, out: TxOut): Unit = d.add(in.render, canon(Projection.txOut(out)))
-    val stored = store.fold(Sync[F].unit)(
-      _.scan((in, out) => if !utxo.diff.contains(in) then add(in, out))
+    def add(d: Digest, in: TxIn, out: TxOut): Digest =
+      d.add(in.render, canon(Projection.txOut(out)))
+    val stored = store.fold(Sync[F].pure(Digest.empty))(
+      _.scan(Digest.empty)((d, in, out) => if utxo.diff.contains(in) then d else add(d, in, out))
     )
-    stored *> Sync[F].delay {
-      utxo.diff.foreach { case (in, c) => c.out.foreach(add(in, _)) }
-      d.json
-    }
+    stored.map(d =>
+      utxo.diff.foldLeft(d) { case (acc, (in, c)) => c.out.fold(acc)(add(acc, in, _)) }.json
+    )
 
   /** When to write a digest. */
   enum Targets:

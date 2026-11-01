@@ -26,7 +26,7 @@ object Buckets:
   /** `count` bounds from `start`, each `factor` times the one before (`factor` above 1). */
   def exponential(start: Double, factor: Double, count: Int): Buckets =
     val bounds = Vector.iterate(start, count.max(1))(_ * factor.max(1.000001))
-    of(bounds.head, bounds.tail*)
+    of(start, bounds.drop(1)*)
 
 /** What a metric is called, what it means, and which labels it carries. The three kinds are three
   * types, so `set` on a counter or `observe` on a gauge does not compile; the label type `L` is the

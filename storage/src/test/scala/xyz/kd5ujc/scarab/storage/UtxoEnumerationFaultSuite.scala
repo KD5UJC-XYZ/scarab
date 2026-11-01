@@ -87,7 +87,7 @@ class UtxoEnumerationFaultSuite extends CatsEffectSuite:
       run("all", _.all),
       run("select", _.select(_ => true)),
       run("selectAddresses", _.selectAddresses(wanted)),
-      run("scan", _.scan((_, _) => ())),
+      run("scan", _.scan(())((_, _, _) => ())),
       run("entries", _.entries.compile.toVector),
       run("size", _.size),
       run("materialize", UtxoStore.materialize(_, ledger)),

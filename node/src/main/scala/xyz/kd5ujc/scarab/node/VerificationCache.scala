@@ -80,15 +80,16 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
   private def rewarm(epoch: BigInt): Unit =
     val config = lastConfig.get
     if config != null then
+      // warming is a guess at what will be asked: a failure here is the real check's to report
       pool.execute { () =>
-        try
+        val _ = Either.catchNonFatal {
           val pending = prepared.values.asScala.toVector
             .filter(p => config.geometry.epochOf(p.block.header.slot) == epoch)
             .sortBy(_.block.header.slot)
           pending.asJava
             .parallelStream()
             .forEach(p => warmVrf(p.block.header, config, epochNonce.get))
-        catch case scala.util.control.NonFatal(_) => ()
+        }
       }
 
   /** Praos (Babbage and later) VRF verdict, see
@@ -191,23 +192,25 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
       config: PraosConfig
   ): F[Unit] =
     val shelley = batch.collect { case h: Header.Shelley => h }
-    if shelley.isEmpty then Async[F].unit
-    else
-      val epoch = config.geometry.epochOf(shelley.head.slot)
-      val nonce = xyz.kd5ujc.scarab.consensus.Praos.tick(state, shelley.head.era, epoch).epochNonce
-      shelley
-        .parTraverseN(parallelism)(h =>
-          Async[F].blocking(
-            try
-              keepHeader(
-                HeaderKey(h.hash, config.slotsPerKesPeriod, config.maxKesEvolutions),
-                direct.opCert(h, config.slotsPerKesPeriod, config.maxKesEvolutions)
-              )
-              warmVrf(h, config, (epoch, nonce))
-            catch case scala.util.control.NonFatal(_) => ()
+    shelley.headOption match
+      case None => Async[F].unit
+      case Some(first) =>
+        val epoch = config.geometry.epochOf(first.slot)
+        val nonce = xyz.kd5ujc.scarab.consensus.Praos.tick(state, first.era, epoch).epochNonce
+        // warming is a guess at what will be asked: a failure here is the real check's to report
+        shelley
+          .parTraverseN(parallelism)(h =>
+            Async[F].blocking {
+              val _ = Either.catchNonFatal {
+                keepHeader(
+                  HeaderKey(h.hash, config.slotsPerKesPeriod, config.maxKesEvolutions),
+                  direct.opCert(h, config.slotsPerKesPeriod, config.maxKesEvolutions)
+                )
+                warmVrf(h, config, (epoch, nonce))
+              }
+            }
           )
-        )
-        .void
+          .void
 
   /** The block decoded while warming, if any (taken once). */
   override def takePrepared(hash: Bytes): Option[Prepared] = Option(prepared.remove(hash))
@@ -356,10 +359,11 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
           ): Job
         }
       val pending = new Pending(p, checks.size)
+      // a job's defect is discarded (the validation asks the provider itself); the last job to
+      // finish stores the block's prepared checks
       checks.map { job => () =>
-        try job()
-        catch case scala.util.control.NonFatal(_) => pending.failure()
-        finally if pending.finished() then prepared.put(b.header.hash, p): Unit
+        Either.catchNonFatal(job()).left.foreach(_ => pending.failure())
+        if pending.finished() then prepared.put(b.header.hash, p): Unit
       }
     }
 
@@ -386,19 +390,16 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
     if blocks.isEmpty then Async[F].unit
     else
       val guarded: (=> Vector[Job]) => Vector[Job] = body =>
-        try body
-        catch case scala.util.control.NonFatal(_) => Vector.empty
+        Either.catchNonFatal(body).getOrElse(Vector.empty)
       for
         jobs <- blocks
           .parTraverseN(parallelism)(b => Async[F].blocking(guarded(jobsOf(b, config))))
           .map(_.flatten)
         _ <- chunked(jobs, parallelism)
           .parTraverseN(parallelism)(chunk =>
-            Async[F].blocking {
-              running.acquire()
-              try chunk.foreach(_())
-              finally running.release()
-            }
+            Resource
+              .make(Async[F].blocking(running.acquire()))(_ => Async[F].delay(running.release()))
+              .surround(Async[F].blocking(chunk.foreach(_())))
           )
       yield ()
 

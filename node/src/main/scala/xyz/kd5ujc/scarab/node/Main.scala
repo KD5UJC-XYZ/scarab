@@ -450,20 +450,16 @@ object Main extends IOApp:
       )
     )
 
-  def run(args: List[String]): IO[ExitCode] =
-    if args.headOption.contains("export-scls") then
-      xyz.kd5ujc.scarab.node.tools.SclsCommand.runExport(args.tail)
-    else if args.headOption.contains("import-scls") then
-      xyz.kd5ujc.scarab.node.tools.SclsCommand.runImport(args.tail)
-    else if args.headOption.contains("import-haskell-db") then
-      xyz.kd5ujc.scarab.node.tools.HaskellImportCommand.run(args.tail)
-    else if args.headOption.contains("import-mithril") then
-      xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.run(args.tail)
-    else if args.headOption.contains("import-ledger-snapshot") then
-      xyz.kd5ujc.scarab.node.tools.LedgerSnapshotImportCommand.run(args.tail)
-    else if args.headOption.contains("export-ledger-snapshot") then
-      xyz.kd5ujc.scarab.node.tools.LedgerSnapshotExportCommand.run(args.tail)
-    else runFollow(args)
+  def run(args: List[String]): IO[ExitCode] = args match
+    case "export-scls" :: rest       => xyz.kd5ujc.scarab.node.tools.SclsCommand.runExport(rest)
+    case "import-scls" :: rest       => xyz.kd5ujc.scarab.node.tools.SclsCommand.runImport(rest)
+    case "import-haskell-db" :: rest => xyz.kd5ujc.scarab.node.tools.HaskellImportCommand.run(rest)
+    case "import-mithril" :: rest => xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.run(rest)
+    case "import-ledger-snapshot" :: rest =>
+      xyz.kd5ujc.scarab.node.tools.LedgerSnapshotImportCommand.run(rest)
+    case "export-ledger-snapshot" :: rest =>
+      xyz.kd5ujc.scarab.node.tools.LedgerSnapshotExportCommand.run(rest)
+    case _ => runFollow(args)
 
   private def runFollow(args: List[String]): IO[ExitCode] =
     parse(args) match
@@ -1427,7 +1423,7 @@ object Main extends IOApp:
             maxVersion = setup.config.settings.maxNtnVersion
           ),
           Peer.Settings(
-            SocketAddress(Host.fromString("0.0.0.0").get, Port.fromInt(0).get),
+            SocketAddress.Wildcard,
             genesis.networkMagic,
             readAhead = options.readAhead,
             network = NodeToNode.Settings().pipelining(options.chainSyncWindow.high),
@@ -1475,7 +1471,7 @@ object Main extends IOApp:
           )
           .pipelining(options.chainSyncWindow.high),
         peer = Peer.Settings(
-          SocketAddress(Host.fromString("0.0.0.0").get, Port.fromInt(0).get),
+          SocketAddress.Wildcard,
           genesis.networkMagic,
           readAhead = options.readAhead,
           network = NodeToNode.Settings().pipelining(options.chainSyncWindow.high),
@@ -2019,7 +2015,8 @@ object Main extends IOApp:
       case "follow" :: rest =>
         for
           multi <- go(rest, Map.empty)
-          flags = multi.view.mapValues(_.last).toMap
+          // a flag given more than once (a repeated flag) reads its last value here
+          flags = multi.flatMap((name, values) => values.lastOption.map(name -> _))
           invalid = (flag: String) =>
             ConfigError(
               ConfigProblem.WithUsage(

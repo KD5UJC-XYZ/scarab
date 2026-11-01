@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import cats.syntax.all.*
 import cats.effect.IO
 import io.circe.Json
 import io.circe.syntax.*
@@ -30,8 +31,9 @@ object MemoryReport:
     }.toMap
 
   private def read(path: String): Option[String] =
-    try Some(java.nio.file.Files.readString(java.nio.file.Path.of(path)))
-    catch case _: Exception => None
+    Either
+      .catchOnly[Exception](java.nio.file.Files.readString(java.nio.file.Path.of(path)))
+      .toOption
 
   /** cgroup v2 `memory.stat` and `memory.current`: what the container is charged, page cache too.
     */
@@ -54,14 +56,19 @@ object MemoryReport:
         val non = mem.getNonHeapMemoryUsage
         val buffers = ManagementFactory
           .getPlatformMXBeans(classOf[java.lang.management.BufferPoolMXBean])
+          .iterator()
           .asScala
           .map(p =>
             p.getName -> Json.obj("count" -> p.getCount.asJson, "usedMiB" -> mib(p.getMemoryUsed))
           )
-        val pools = ManagementFactory.getMemoryPoolMXBeans.asScala
+        val pools = ManagementFactory.getMemoryPoolMXBeans
+          .iterator()
+          .asScala
           .filter(p => p.getName.contains("Metaspace") || p.getName.contains("Class"))
           .map(p => p.getName -> mib(p.getUsage.getUsed))
-        val gcs = ManagementFactory.getGarbageCollectorMXBeans.asScala
+        val gcs = ManagementFactory.getGarbageCollectorMXBeans
+          .iterator()
+          .asScala
           .map(g =>
             g.getName -> Json.obj(
               "count" -> g.getCollectionCount.asJson,

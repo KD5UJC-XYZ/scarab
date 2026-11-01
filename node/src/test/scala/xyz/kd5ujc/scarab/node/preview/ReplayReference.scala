@@ -114,9 +114,9 @@ object ReplayReference:
   private def digest(value: JsonObject): Json =
     if isDigest(value) then Json.fromJsonObject(value)
     else
-      val result = new StateDump.Digest
-      value.toVector.foreach((key, entry) => result.add(key, StateDump.canon(entry)))
-      result.json
+      value.toVector
+        .foldLeft(StateDump.Digest.empty)((d, e) => d.add(e._1, StateDump.canon(e._2)))
+        .json
 
   /** Same required-field/digest relation as scripts/oracle/compare.py, with exact numbers. Native
     * `era` is validated separately; the Scala dump's format and other extra fields are not
