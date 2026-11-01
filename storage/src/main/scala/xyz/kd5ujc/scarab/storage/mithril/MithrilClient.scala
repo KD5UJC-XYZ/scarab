@@ -1,18 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage.mithril
 
-import cats.effect.Async
+import cats.effect.{Async, Resource}
 import cats.effect.implicits.*
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
-import fs2.Stream
+import fs2.{Chunk, Stream}
 import fs2.io.file.{Files, Path}
-import fs2.io.process.{ProcessBuilder, Processes}
 import java.net.URI
 import java.nio.file.{Files as JFiles, LinkOption}
 import java.nio.file.attribute.PosixFilePermissions
-import java.io.IOException
+import java.io.{IOException, InputStream}
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.storage.haskell.state.AncillaryManifest
@@ -173,6 +172,26 @@ object MithrilClient:
             case _        => Left(Error.AmbiguousReceipt)
       }
 
+  /** A cancelled blocking read must finish with a value in its worker fiber. FS2 3.14.0's
+    * readInputStreamCancelable instead lets a pipe closed by process destruction throw there, after
+    * its owner has stopped joining it. Keep the exception inside the cancellable boundary; a live
+    * caller still receives it and classifies it at the verifier boundary.
+    */
+  private[storage] def output[F[_]: Async](input: InputStream, stop: F[Unit]): Stream[F, Byte] =
+    val F = Async[F]
+    val read = F
+      .blocking {
+        val buffer = new Array[Byte](8192)
+        val size = input.read(buffer)
+        Option.when(size >= 0)(Chunk.array(buffer, 0, size))
+      }
+      .attempt
+      .cancelable(stop)
+      .flatMap(F.fromEither)
+    Stream.bracket(F.pure(input))(in => F.blocking(in.close())).flatMap { _ =>
+      Stream.repeatEval(read).unNoneTerminate.flatMap(Stream.chunk)
+    }
+
   def official[F[_]: Async]: MithrilClient[F] = new MithrilClient[F]:
     private val F = Async[F]
     private val files = Files.forAsync[F]
@@ -250,13 +269,28 @@ object MithrilClient:
           JFiles.createDirectories(isolated.toNioPath)
           ()
         })
-        builder = ProcessBuilder(program.toString, args)
-          .withInheritEnv(false)
-          .withExtraEnv(Map("HOME" -> work.toString, "LANG" -> "C.UTF-8"))
-          .withWorkingDirectory(work)
-        result <- boundary(Processes.forAsync[F].spawn(builder).use { process =>
-          (collect(process.stdout), collect(process.stderr), process.exitValue).parTupled
-        }).timeoutTo(request.timeout, Error.TimedOut.raise[F, (Vector[Byte], Vector[Byte], Int)])
+        result <- boundary {
+          val launch = F.blocking {
+            val builder = new java.lang.ProcessBuilder((program.toString :: args)*)
+            builder.environment().clear()
+            builder.environment().put("HOME", work.toString)
+            builder.environment().put("LANG", "C.UTF-8")
+            builder.directory(work.toNioPath.toFile)
+            builder.start()
+          }
+          def stop(process: java.lang.Process): F[Unit] = F.blocking {
+            process.destroy()
+            process.waitFor()
+            ()
+          }
+          Resource.make(launch)(stop).use { process =>
+            (
+              collect(output(process.getInputStream, stop(process))),
+              collect(output(process.getErrorStream, stop(process))),
+              F.interruptible(process.waitFor())
+            ).parTupled
+          }
+        }.timeoutTo(request.timeout, Error.TimedOut.raise[F, (Vector[Byte], Vector[Byte], Int)])
         (stdout, _, code) = result
         _ <- F.unlessA(stdout.size <= MaxOutput)(
           Error.OutputLimit.raise[F, Unit]
