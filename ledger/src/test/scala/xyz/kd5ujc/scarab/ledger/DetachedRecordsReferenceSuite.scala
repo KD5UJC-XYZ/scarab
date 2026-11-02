@@ -26,32 +26,34 @@ class DetachedRecordsReferenceSuite extends FunSuite:
   private val rows: Vector[Row] = load
 
   /** What a row is read as: the reference's decoder of its `kind`. */
-  private def scarab(row: Row): Either[String, Verdict] = row.kind match
+  private def scarab(row: Row): Either[Refused, Verdict] = row.kind match
     case Kind.Body =>
       TxBody
         .decode(row.raw, row.era)
-        .bimap(_.toString, b => Verdict(Some(b.id), None, Vector.empty))
+        .bimap(Refused.Decode(_), b => Verdict(Some(b.id), None, Vector.empty))
     case Kind.Witnesses =>
-      Witnesses.decode(row.raw, row.era).bimap(_.toString, _ => Verdict(None, None, Vector.empty))
+      Witnesses
+        .decode(row.raw, row.era)
+        .bimap(Refused.Decode(_), _ => Verdict(None, None, Vector.empty))
     case Kind.Auxiliary =>
       AuxiliaryScripts
         .read(row.raw, DecoderVersion.of(row.era).value)(using
           ByteStrings.of(DecoderVersion.of(row.era))
         )
-        .bimap(_.toString, _ => Verdict(None, None, Vector.empty))
+        .bimap(Refused.Decode(_), _ => Verdict(None, None, Vector.empty))
     case Kind.Transaction =>
       Tx.fromEnvelope(row.raw, row.era)
-        .bimap(_.toString, tx => Verdict(Some(tx.body.id), None, Vector.empty))
+        .bimap(Refused.Decode(_), tx => Verdict(Some(tx.body.id), None, Vector.empty))
     case Kind.BlockBody =>
       Block
         .decodeShelley(block(row.era, row.raw))
-        .leftMap(_.toString)
+        .leftMap(Refused.Chain(_))
         .flatMap {
           case b: Block.Shelley =>
             b.transactions
-              .traverse(t => Tx.fromBlock(t, row.era).leftMap(_.toString))
+              .traverse(t => Tx.fromBlock(t, row.era).leftMap(Refused.Decode(_)))
               .as(Verdict(None, Some(b.bodyHash), b.transactions.map(_.id)))
-          case other => Left(s"not a Shelley-based block: $other")
+          case _ => Left(Refused.NotShelleyBased)
         }
 
   test("the corpus covers every era and kind, refused and accepted") {
@@ -123,6 +125,12 @@ object DetachedRecordsReferenceSuite:
       bodyHash: Option[String],
       txids: Option[Vector[String]]
   )
+
+  /** Why Scarab refused a row. */
+  enum Refused:
+    case Decode(cause: LedgerDecodeError)
+    case Chain(cause: ChainError)
+    case NotShelleyBased
 
   /** What Scarab read: a transaction id, a block body's hash and its transactions' ids. */
   final case class Verdict(id: Option[Bytes], bodyHash: Option[Bytes], ids: Vector[Bytes])
