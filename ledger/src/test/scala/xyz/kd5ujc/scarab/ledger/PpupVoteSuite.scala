@@ -147,3 +147,29 @@ class PpupVoteSuite extends FunSuite:
       Some(BigInt(1000))
     )
   }
+
+  test("a coin, an epoch interval, a nonce, a protocol version: each compares by its value") {
+    val hash = "5820" + "5b" * 32
+    val shortest = proposed(
+      Era.Shelley,
+      "a5" + "051a000f4240" + "0712" + "0d8201" + hash + "0e820200" + "0f1a000f4240"
+    )
+    val widest = proposed(
+      Era.Shelley,
+      "a5" + "051b00000000000f4240" + "071812" + "0d98021801" + hash + "0e8218021800" +
+        "0f1b00000000000f4240"
+    )
+    val otherNonce = proposed(
+      Era.Shelley,
+      "a5" + "051a000f4240" + "0712" + "0d8201" + "5820" + "5c" * 32 + "0e820200" + "0f1a000f4240"
+    )
+    assertNotEquals(shortest, widest)
+    assertEquals(ParamUpdate.typed(shortest), ParamUpdate.typed(widest))
+    assertEquals(ParamUpdate.winners(Vector(shortest, widest, otherNonce), 2), Vector(shortest))
+  }
+
+  test("a stored update in a form only an earlier build took compares by the value it applies") {
+    val definite = ParamUpdate(Map(19 -> hex("82d81e820102d81e820103"), 13 -> hex("8100")))
+    val stored = ParamUpdate(Map(19 -> hex("9fd81e820204d81e820103ff"), 13 -> hex("820000")))
+    assertEquals(ParamUpdate.winners(Vector(definite, stored), 2), Vector(definite))
+  }
