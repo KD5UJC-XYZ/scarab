@@ -34,8 +34,17 @@ import scala.concurrent.duration.*
   * in memory and reads a block from its file; a node without a log keeps the bodies in memory.
   * Pruning at the native strict slot cutoff releases that forest and invalid pins. Retention
   * follows durable immutable progress, rather than receipt/adoption count: an LoE stall can grow
-  * the forest, by its metadata. This preserves later fork selection. The received cache in front of
-  * it still holds recent bodies, bounded by count ([[BlockPool.Retained]]).
+  * the forest, by its metadata. This preserves later fork selection.
+  *
+  * With a received log, the cache in front of the forest holds a body only from its delivery until
+  * its admission is processed, when the body is in the log ([[completeAdmission]]): the bodies held
+  * are those of the admission queue ([[BlockAdmissions.Capacity]] waiting and the one being added),
+  * as the reference keeps a received block in memory only while it waits in the ChainDB's queue of
+  * blocks to add (`cdbsBlocksToAddSize = 10`, `Storage/ChainDB/Impl/Args.hs:71-75,122`) and while
+  * its own selection runs, after it has been written to the VolatileDB (`chainSelSync`,
+  * `Storage/ChainDB/Impl/ChainSel.hs:413-452`, ouroboros-consensus 82ecba32). What the pool holds
+  * is reported ([[residency]]). Without a log the processed bodies stay in the cache, bounded by
+  * count ([[BlockPool.Retained]]).
   *
   * Claims are made through a [[BlockPool.Claims]] that belongs to one session ([[session]]). It is
   * a resource: when the session ends, however it ends (a failure, a cancellation), every claim it
@@ -340,14 +349,18 @@ final class BlockPool[F[_]: Async] private (
               case Some(Slot.Pending(done, seq, _)) => seq -> Some(done)
               case Some(Slot.Done(_, seq, _))       => seq -> None
               case None                             => before.next -> None
-            before.copy(
-              entries =
-                before.entries.updated(hash, Slot.Done(taken.block, sequence, taken.origin)),
-              headers = before.headers.updated(hash, metadata),
-              pinned = before.pinned + hash,
-              fresh = before.fresh - hash,
-              next = before.next.max(sequence + 1)
-            ) -> waiting
+            // a processed block the received log holds stays readable through the forest until the
+            // same cutoff, so its body is not pinned in memory
+            if logged(before, hash) then before.copy(fresh = before.fresh - hash) -> waiting
+            else
+              before.copy(
+                entries =
+                  before.entries.updated(hash, Slot.Done(taken.block, sequence, taken.origin)),
+                headers = before.headers.updated(hash, metadata),
+                pinned = before.pinned + hash,
+                fresh = before.fresh - hash,
+                next = before.next.max(sequence + 1)
+              ) -> waiting
           }
           .flatMap(
             _.traverse_(_.complete(Some(Filled(taken.block, taken.origin, Some(metadata)))))
@@ -468,6 +481,15 @@ final class BlockPool[F[_]: Async] private (
   /** Entries held (tests). */
   def size: F[Int] = slots.get.map(_.entries.size)
 
+  /** The bodies the pool holds in memory: those of the received cache and, without a received log,
+    * those of the processed forest, each counted once.
+    */
+  def residency: F[Residency] = slots.get.map { current =>
+    val held = current.entries.collect { case (hash, Slot.Done(raw, _, _)) => hash -> raw } ++
+      current.processed.flatMap((hash, p) => p.held.map(hash -> _))
+    Residency(held.size, held.valuesIterator.map(_.size.toLong).sum)
+  }
+
   /** The blocks selection may choose from: the processed forest and the admitted blocks whose
     * bodies are still retained.
     */
@@ -510,6 +532,12 @@ final class BlockPool[F[_]: Async] private (
   /** The body a processed block keeps in memory: none when the received log holds it. */
   private def held(raw: Bytes): Option[Bytes] = Option.when(recovered.isEmpty)(raw)
 
+  /** Whether `hash` is a processed block whose body the received log holds (it was put there before
+    * processing, `BlockSelection.Before.prepare`), so that the pool need not hold it.
+    */
+  private def logged(current: Slots[F], hash: Bytes): Boolean =
+    recovered.isDefined && current.processed.contains(hash)
+
   /** Read every checked recovered original as one startup forest. The ordinary cache limit must not
     * discard branches before native initialChainSelection has compared them.
     */
@@ -529,10 +557,15 @@ final class BlockPool[F[_]: Async] private (
       current.copy(processed = recovered ++ current.processed)
     } *> fetchCoordinator.refreshGenesis
 
+  /** The admission of `hash` is done: its body leaves the cache unless the processed forest needs
+    * it there, which is only without a received log. A processed block is read back from the log
+    * ([[body]]), as the reference reads a block from the VolatileDB once it has left the queue of
+    * blocks to add.
+    */
   private[node] def completeAdmission(hash: Bytes): F[Unit] =
     slots.update { current =>
       val completed = current.copy(fresh = current.fresh - hash)
-      if current.processed.contains(hash) then completed
+      if current.processed.contains(hash) && !logged(current, hash) then completed
       else completed.copy(entries = completed.entries - hash).coherent
     } *> fetchCoordinator.refreshGenesis
 
@@ -705,6 +738,15 @@ object BlockPool:
       case NotImplicated(value) => value
 
   final case class Filled(block: Bytes, origin: Source, metadata: Option[DeliveredHeader] = None)
+
+  /** The bodies a pool holds in memory ([[BlockPool.residency]]).
+    *
+    * @param bodies
+    *   bodies held
+    * @param bytes
+    *   their bytes
+    */
+  final case class Residency(bodies: Int, bytes: Long)
 
   /** A block taken from the pool: `own` when the session that takes it fetched it, else `origin`
     * delivered it.

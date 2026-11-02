@@ -490,6 +490,14 @@ object Catalogue:
     MetricName("scarab_received_unreadable_total"),
     "Received-block records that failed their checksum when read back, and were dropped."
   )
+  val poolBodies = GaugeDef(
+    MetricName("scarab_block_pool_bodies"),
+    "Received bodies the block pool holds in memory (with a received log, only until their admission is processed)."
+  )
+  val poolBodyBytes = GaugeDef(
+    MetricName("scarab_block_pool_body_bytes"),
+    "Bytes of the received bodies the block pool holds in memory."
+  )
   val replayedBlocks = GaugeDef(
     MetricName("scarab_replay_blocks"),
     "Stored blocks applied again at the start (so far, then in total)."
@@ -1080,6 +1088,8 @@ object Catalogue:
     receivedEvictions,
     receivedReads,
     receivedUnreadable,
+    poolBodies,
+    poolBodyBytes,
     replayedBlocks,
     replaySeconds,
     nodePhase,
