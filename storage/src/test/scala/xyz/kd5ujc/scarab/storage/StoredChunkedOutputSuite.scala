@@ -7,9 +7,10 @@ import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** A block refuses a chunked byte string where the reference reads a definite one
-  * ([[ByteStrings]]), but a build before that accepted such an output and stored its original bytes
-  * (value tag 1). The store keeps reading what it wrote (ADR 0006), with the original bytes, while
-  * a body that carries the same output is refused.
+  * ([[ByteStrings]]), and a value written as an indefinite list where the reference reads the
+  * `RecD` record `MaryValue` (#668), but a build before that accepted such an output and stored its
+  * original bytes (value tag 1). The store keeps reading what it wrote (ADR 0006), with the
+  * original bytes, while a body that carries the same output is refused.
   */
 class StoredChunkedOutputSuite extends FunSuite:
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
@@ -23,17 +24,37 @@ class StoredChunkedOutputSuite extends FunSuite:
   private val chunkedDatumHash =
     hex("a3" + "00581d" + address + "011a001e8480" + "02" + "82005f5820" + "58" * 32 + "ff")
 
+  /** `[address, [coin, {policy: {"a": 1}}]]` with the value as an indefinite list. */
+  private val indefiniteValue =
+    hex("82" + "581d" + address + "9f" + "1a001e8480" + "a1581c" + "88" * 28 + "a1416101" + "ff")
+
   private def stored(raw: Bytes): Array[Byte] = (1.toByte +: raw.toArray.toVector).toArray
 
   private def body(output: Bytes): Bytes =
     hex("a3" + "008182" + "5820" + "11" * 32 + "00" + "0181" + output.hex + "021a00030d40")
 
-  for (name, raw, site) <- Vector(
-      ("address", chunkedAddress, DecodeField.OutputAddress),
-      ("datum hash", chunkedDatumHash, DecodeField.DatumHash)
+  for (name, raw, site, eras) <- Vector(
+      (
+        "a chunked address",
+        chunkedAddress,
+        DecodeField.OutputAddress,
+        Vector(Era.Babbage, Era.Conway)
+      ),
+      (
+        "a chunked datum hash",
+        chunkedDatumHash,
+        DecodeField.DatumHash,
+        Vector(Era.Babbage, Era.Conway)
+      ),
+      (
+        "an indefinite value",
+        indefiniteValue,
+        DecodeField.OutputValue,
+        Vector(Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway)
+      )
     )
   do
-    test(s"an output stored with a chunked $name reads back with its original bytes") {
+    test(s"an output stored with $name reads back with its original bytes") {
       val back = UtxoStore.Coding.decodeValue(stored(raw))
       assert(back.isRight, back.toString)
       assertEquals(back.map(_.raw), Right(raw))
@@ -41,8 +62,8 @@ class StoredChunkedOutputSuite extends FunSuite:
       assertEquals(again, Right(stored(raw).toVector), "it is written again as the same bytes")
     }
 
-    test(s"a Babbage or Conway body with the same chunked $name is refused") {
-      for era <- Vector(Era.Babbage, Era.Conway) do
+    test(s"a body of ${eras.mkString(", ")} with $name in the same output is refused") {
+      for era <- eras do
         assertEquals(
           TxBody.decode(body(raw), era).left.toOption,
           Some(LedgerDecodeError.IndefiniteLength(site)),

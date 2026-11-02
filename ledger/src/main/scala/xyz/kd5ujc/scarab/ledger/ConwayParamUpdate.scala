@@ -184,28 +184,29 @@ object ConwayParam:
 
   private val Int64Max = BigInt(Long.MaxValue)
 
-  /** Where `RecD` records ([[record]]) are read from: a transaction, which the reference's decoder
-    * reads, or a stored ledger state, which holds an update as an earlier build of this node
-    * accepted it from a body (ADR 0006).
+  /** Where `RecD` records ([[Records.record]]) are read from: a transaction, which the reference's
+    * decoder reads, or a stored ledger state or output, which holds a record as an earlier build of
+    * this node accepted it from a body (ADR 0006).
     */
   enum Records:
     case Body, Stored
 
-  /** A record the reference reads with `RecD` ([[CborRead.record]]): in a transaction only a
-    * definite list of `size` items. A stored state may also hold one as an indefinite list, which
-    * the builds before this rule took from a body, and it is read in either form.
-    */
-  private def record(n: Node, size: Int, site: DecodeSite, records: Records): Result[Vector[Node]] =
-    records match
-      case Records.Body   => CborRead.record(n, size, site)
-      case Records.Stored => CborRead.arrayN(n, size, site)
+    /** A record the reference reads with `RecD` ([[CborRead.record]]): in a transaction only a
+      * definite list of `size` items. A stored state may also hold one as an indefinite list, which
+      * the builds before this rule took from a body, and it is read in either form.
+      */
+    def record(n: Node, size: Int, site: DecodeSite): Either[LedgerDecodeError, Vector[Node]] =
+      this match
+        case Body   => CborRead.record(n, size, site)
+        case Stored => CborRead.arrayN(n, size, site)
 
   /** `ExUnits` below decoder version 12 (`ExUnits.hs:195-215`, f649f975): a `RecD` record of two
     * `Word64` s, each at most `maxBound :: Int64`. The largest units of a transaction and of a
     * block are of this type, and so are the units of a redeemer.
     */
   private[ledger] def exUnits(n: Node, site: DecodeSite, records: Records): Result[ExUnits] =
-    record(n, 2, site, records)
+    records
+      .record(n, 2, site)
       .flatMap(
         _.traverse(x =>
           Unsigned
@@ -263,7 +264,8 @@ object ConwayParam:
     // `Prices` below decoder version 12 (`ExUnits.hs:222-231`): a `RecD` record of two
     // `NonNegativeInterval` s.
     19 -> (n =>
-      record(n, 2, DecodeField.Prices, records)
+      records
+        .record(n, 2, DecodeField.Prices)
         .flatMap(xs =>
           (
             CborRead.rational(xs(0), DecodeField.PriceMem, CborRead.Bound.NonNegative),

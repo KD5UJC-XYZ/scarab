@@ -418,18 +418,24 @@ object Value:
     )
 
   /** `coin / [coin, multiasset<uint>]`. Coin and quantities are `Word64` (`decodeWord64`): an
-    * unsigned integer item holds no more, and a bignum is not one.
+    * unsigned integer item holds no more, and a bignum is not one. The pair is `MaryValue`, a
+    * `RecD` record below decoder version 12 (`decodeMaryValue` and `decodeValuePair`,
+    * `eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs:287-311`, cardano-ledger f649f975): an
+    * indefinite list passes the peek of its token type and is then refused before its coin is read
+    * ([[CborRead.record]]). A stored output may hold one, which the builds before this rule took
+    * from a body, and `records` reads it ([[ConwayParam.Records]]).
     */
   def decode(
       n: Node,
       what: DecodeSite,
-      decoding: Decoding
+      decoding: Decoding,
+      records: ConwayParam.Records
   )(using ByteStrings): Either[LedgerDecodeError, Value] = n.value match
     case xyz.kd5ujc.scarab.codec.Value.UInt(c) => Right(coin(c))
     case _ if decoding == Decoding.CoinOnly    => Left(LedgerDecodeError.MultiAssetNotAllowed(what))
     case _ =>
       for
-        xs <- CborRead.arrayN(n, 2, what)
+        xs <- records.record(n, 2, what)
         c <- CborRead.uint(xs(0), what)
         assets <- multiasset(xs(1), what, signed = false, decoding)
       yield Value(c, assets)
@@ -591,18 +597,27 @@ object TxOut:
     * array with a datum hash (`DecCBOR (AlonzoTxOut era)`,
     * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs`); `BabbageTxOut` (Babbage and Conway)
     * adds the map (`decodeBabbageTxOut`, `eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs`),
-    * all of cardano-ledger f649f975. An indefinite array is read as a definite one in every era.
+    * all of cardano-ledger f649f975. An indefinite array of the output itself is read as a definite
+    * one in every era; its value is a definite list only ([[Value.decode]]).
     */
-  enum Forms(val arities: Set[Int], val admitsMap: Boolean, val keys: FieldKeys):
-    case Pair extends Forms(Set(2), false, FieldKeys.FullWidth)
-    case PairOrDatumHash extends Forms(Set(2, 3), false, FieldKeys.FullWidth)
-    case PairDatumHashOrMap extends Forms(Set(2, 3), true, FieldKeys.FullWidth)
+  enum Forms(
+      val arities: Set[Int],
+      val admitsMap: Boolean,
+      val keys: FieldKeys,
+      val records: ConwayParam.Records
+  ):
+    case Pair extends Forms(Set(2), false, FieldKeys.FullWidth, ConwayParam.Records.Body)
+    case PairOrDatumHash
+        extends Forms(Set(2, 3), false, FieldKeys.FullWidth, ConwayParam.Records.Body)
+    case PairDatumHashOrMap
+        extends Forms(Set(2, 3), true, FieldKeys.FullWidth, ConwayParam.Records.Body)
 
     /** A stored output is read in any form and with the map keys an earlier build accepted and
       * stored, so the stores keep reading what they wrote (ADR 0006): every form of the latest era,
-      * the keys as their low 32 bits ([[FieldKeys.Stored]]).
+      * the keys as their low 32 bits ([[FieldKeys.Stored]]), and its value as a definite or an
+      * indefinite list ([[ConwayParam.Records.Stored]]).
       */
-    case Stored extends Forms(Set(2, 3), true, FieldKeys.Stored)
+    case Stored extends Forms(Set(2, 3), true, FieldKeys.Stored, ConwayParam.Records.Stored)
 
   object Forms:
     def of(era: Era): Forms =
@@ -619,7 +634,7 @@ object TxOut:
       case xyz.kd5ujc.scarab.codec.Value.Arr(xs) if forms.arities.contains(xs.size) =>
         for
           a <- CborRead.bytes(xs(0), DecodeField.OutputAddress).flatMap(Address.decode(_, mode))
-          v <- Value.decode(xs(1), DecodeField.OutputValue, mode.values)
+          v <- Value.decode(xs(1), DecodeField.OutputValue, mode.values, forms.records)
           d <-
             if xs.size == 3 then
               CborRead.bytesN(xs(2), 32, DecodeField.DatumHash).map(Datum.Hash(_))
@@ -636,7 +651,7 @@ object TxOut:
           vn <- f
             .get(1)
             .toRight(LedgerDecodeError.MissingField(DecodeField.Output, DecodeField.Value))
-          v <- Value.decode(vn, DecodeField.OutputValue, mode.values)
+          v <- Value.decode(vn, DecodeField.OutputValue, mode.values, forms.records)
           _ <- Either.cond(
             f.keySet.subsetOf(Set(0, 1, 2, 3)),
             (),

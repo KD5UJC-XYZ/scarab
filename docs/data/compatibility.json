@@ -970,7 +970,7 @@
       },
       "limitations": {
         "issues": [
-          668
+          687
         ]
       },
       "page": "docs/compatibility/ledger-update-values.md"
@@ -979,10 +979,11 @@
       "id": "ledger-recd-records",
       "component": "Ledger: RecD records are definite lists, decoder versions 2 to 9 (#668)",
       "status": "partial",
-      "summary": "The update proposal, a redeemer's execution units (with their Word64 and Int64 bounds), and Conway's GovActionId (with its Word16 index), VotingProcedure, ProposalProcedure, Constitution and Anchor are read as definite lists only, as the reference's RecD decoders read them; an output's value and the array form of auxiliary data still take an indefinite list",
+      "summary": "The update proposal, a redeemer's execution units (with their Word64 and Int64 bounds), Conway's GovActionId (with its Word16 index), VotingProcedure, ProposalProcedure, Constitution and Anchor, an output's value and the list form of auxiliary data are read from a block as definite lists only, as the reference's RecD decoders read them; a stored output keeps reading its value in either form (ADR 0006); an empty indefinite list is still refused",
       "evidence": {
         "suites": [
-          "RecdRecordsReferenceSuite"
+          "RecdRecordsReferenceSuite",
+          "StoredChunkedOutputSuite"
         ],
         "paths": [
           "fixtures/reference/recd-records/cases.jsonl",
@@ -991,7 +992,6 @@
       },
       "limitations": {
         "issues": [
-          668,
           687,
           688
         ]

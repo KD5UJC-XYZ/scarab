@@ -130,13 +130,22 @@ private[ledger] object AuxiliaryScripts:
         if protocol < 5 then historical(node, protocol) else alonzoOn(node, protocol)
       )
 
+  /** From Alonzo (decoder version 5) the token type picks the form (`decodeTxAuxDataByTokenType`,
+    * Alonzo/TxAuxData.hs:302-312 at f649f975): a map is metadata; a list, definite or not, is the
+    * `[metadata, native scripts]` record that `decodeAllegra` reads with `RecD` below decoder
+    * version 12 (245-251), so only a definite list of two is one ([[CborRead.record]]); tag 259 is
+    * the keyed form.
+    */
   private def alonzoOn(
       node: Node,
       protocol: BigInt
   )(using ByteStrings): Either[LedgerDecodeError, Vector[Plutus]] =
     node.value match
-      case _: Value.Map                     => metadata(node, protocol).as(Vector.empty)
-      case Value.Arr(Vector(data, scripts)) => metadata(data, protocol) *> native(scripts)
+      case _: Value.Map => metadata(node, protocol).as(Vector.empty)
+      case _: Value.Arr =>
+        CborRead
+          .record(node, 2, DecodeField.AuxiliaryData)
+          .flatMap(xs => metadata(xs(0), protocol) *> native(xs(1)))
       case Value.Tag(tag, contents) if tag == 259 =>
         CborRead.map(contents, DecodeField.AuxiliaryData).flatMap { fields =>
           fields
