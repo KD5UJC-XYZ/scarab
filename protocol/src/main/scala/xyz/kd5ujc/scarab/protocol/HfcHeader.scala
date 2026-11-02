@@ -85,8 +85,7 @@ object HfcHeader:
     * bytes are what an envelope means, the encoder writes the canonical form as `encodeNS` does.
     */
   private def definite(item: Node): Boolean =
-    val head = item.original(0) & 0xff
-    head != 0x9f && head != 0x5f
+    !item.original.headOption.exists(head => head == 0x9f.toByte || head == 0x5f.toByte)
 
   /** The bytes of `tag24(bytes)`. */
   private def embedded(payload: Node): Either[HfcHeaderError, Bytes] = payload.value match

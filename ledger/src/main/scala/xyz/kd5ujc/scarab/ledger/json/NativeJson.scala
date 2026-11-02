@@ -110,11 +110,12 @@ object NativeJson:
     case Continue(state: State)
     case Done(parsed: Parsed)
 
-  private[json] def byte(input: Bytes, at: Int): Int = input(at) & 255
+  /** Byte `at` of the input, unsigned, if the input has it. */
+  private[json] def byte(input: Bytes, at: Int): Option[Int] = input.lift(at).map(_ & 255)
 
   // `skipSpace` (`Decoding/ByteString.hs:114-115`).
   @tailrec private def space(input: Bytes, at: Int): Int =
-    if at < input.size && isSpace(byte(input, at)) then space(input, at + 1) else at
+    if byte(input, at).exists(isSpace) then space(input, at + 1) else at
 
   private def isSpace(c: Int): Boolean = c == 0x20 || c == 0x0a || c == 0x0d || c == 0x09
 
@@ -140,27 +141,26 @@ object NativeJson:
       value: JsonValue,
       frames: List[Frame]
   ): Either[Error, Step] =
-    if input.size - at >= text.length && text.indices.forall(i =>
-        byte(input, at + i) == text.charAt(i)
-      )
-    then finish(at + text.length, value, frames)
+    if text.indices.forall(i => byte(input, at + i).contains(text.charAt(i).toInt)) then
+      finish(at + text.length, value, frames)
     else Left(unexpected(input, at, Expected.Value))
 
-  // `tokenCase` (`Decoding/ByteString.hs:39-57`) at a byte that is present.
+  // `tokenCase` (`Decoding/ByteString.hs:39-57`); its callers have refused the end of the input.
   private def token(input: Bytes, at: Int, frames: List[Frame]): Either[Error, Step] =
     byte(input, at) match
-      case 123 => Right(Step.Continue(State(at + 1, Mode.ObjectFirst, frames)))
-      case 91  => Right(Step.Continue(State(at + 1, Mode.ArrayFirst, frames)))
-      case 34 =>
+      case None      => refuse(input, at, Expected.Value)
+      case Some(123) => Right(Step.Continue(State(at + 1, Mode.ObjectFirst, frames)))
+      case Some(91)  => Right(Step.Continue(State(at + 1, Mode.ArrayFirst, frames)))
+      case Some(34) =>
         NativeJsonString
           .read(input, at)
           .flatMap((text, end) => finish(end, JsonValue.String(text), frames))
-      case 110 => literal(input, at, "null", JsonValue.Null, frames)
-      case 116 => literal(input, at, "true", JsonValue.Bool(true), frames)
-      case 102 => literal(input, at, "false", JsonValue.Bool(false), frames)
-      case c if c == 45 || c >= 48 && c <= 57 =>
+      case Some(110) => literal(input, at, "null", JsonValue.Null, frames)
+      case Some(116) => literal(input, at, "true", JsonValue.Bool(true), frames)
+      case Some(102) => literal(input, at, "false", JsonValue.Bool(false), frames)
+      case Some(c) if c == 45 || c >= 48 && c <= 57 =>
         NativeJsonNumber.read(input, at).flatMap((number, end) => finish(end, number, frames))
-      case _ => Left(unexpected(input, at, Expected.Value))
+      case Some(_) => Left(unexpected(input, at, Expected.Value))
 
   // `goRK`: a key from its opening quote. The reader refuses a lone surrogate (as an invalid UTF-8
   // stream), so `pack` keeps every accepted string as it is.
@@ -169,7 +169,7 @@ object NativeJson:
 
   private def advance(input: Bytes, original: State): Either[Error, Step] =
     val s = original.copy(at = space(input, original.at))
-    def is(c: Int): Boolean = s.at < input.size && byte(input, s.at) == c
+    def is(c: Int): Boolean = byte(input, s.at).contains(c)
     s.mode match
       case Mode.Value =>
         if s.at == input.size then Left(Error.EndOfInput(Expected.Value))
@@ -192,7 +192,7 @@ object NativeJson:
         if is(44) then
           val next = space(input, s.at + 1)
           if next == input.size then Left(Error.EndOfInput(Expected.KeyLiteral))
-          else if byte(input, next) == 34 then
+          else if byte(input, next).contains(34) then
             key(input, next).map((k, end) =>
               Step.Continue(State(end, Mode.Colon(fields, k), s.frames))
             )

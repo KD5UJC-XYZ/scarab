@@ -48,8 +48,9 @@ class MemPackComparisonSuite extends CatsEffectSuite:
 
   test("original nonminimal CBOR is compared through canonical semantics and counted separately") {
     val (key, out) = outputs.head
-    assert((out.raw(0) & 0xe0) == 0x80 && (out.raw(0) & 0x1f) < 24)
-    val nonminimal = Bytes.wrap(Array(0x98.toByte, (out.raw(0) & 0x1f).toByte)) ++ out.raw.drop(1)
+    val head = out.raw.toArray(0)
+    assert((head & 0xe0) == 0x80 && (head & 0x1f) < 24)
+    val nonminimal = Bytes.wrap(Array(0x98.toByte, (head & 0x1f).toByte)) ++ out.raw.drop(1)
     val stored = right(xyz.kd5ujc.scarab.ledger.TxOut.fromBytes(nonminimal))
     compareStreams(
       input(raw),

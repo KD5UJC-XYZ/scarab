@@ -137,6 +137,7 @@ object PeerSharingEngine:
   private[protocol] type Parse[A] = StateT[Read, Int, A]
 
   private[protocol] def fail[A](error: Error): Read[A] = Left(Stop.Fail(error))
+  private val TwoTo64 = BigInt(1) << 64
   private def stopped[A](read: Read[A]): Parse[A] = StateT.liftF(read)
 
   /** The head of a CBOR item: its initial byte, major type, and the argument (absent when
@@ -154,7 +155,7 @@ object PeerSharingEngine:
       )
 
     private def byte(): Parse[Int] =
-      need(1) *> StateT(at => Right((at + 1, input(at) & 255)))
+      need(1) *> StateT(at => input.lift(at).toRight(Stop.Short).map(b => (at + 1, b & 255)))
 
     def head(): Parse[Head] =
       byte().flatMap { initial =>
@@ -166,10 +167,13 @@ object PeerSharingEngine:
         else
           val width = 1 << (info - 24)
           need(width) *> StateT { at =>
-            val value = (0 until width).foldLeft(BigInt(0))((acc, i) =>
-              (acc << 8) | BigInt(input(at + i) & 255)
-            )
-            Right((at + width, Head(initial, major, Some(value))))
+            // eight bytes above 2^63 read as a negative Long: the argument is unsigned
+            input
+              .bigEndian(at, width)
+              .toRight(Stop.Short)
+              .map(v =>
+                (at + width, Head(initial, major, Some(BigInt(v) + (if v < 0 then TwoTo64 else 0))))
+              )
           }
       }
 
@@ -199,7 +203,9 @@ object PeerSharingEngine:
       }
 
     def peekBreak(): Parse[Boolean] =
-      need(1) *> StateT.inspect(at => (input(at) & 255) == 0xff)
+      need(1) *> StateT.inspectF[Read, Int, Boolean](at =>
+        input.lift(at).map(_ == 0xff.toByte).toRight(Stop.Short)
+      )
 
     def break(): Parse[Unit] =
       head().flatMapF {

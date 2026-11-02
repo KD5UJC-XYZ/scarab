@@ -98,7 +98,7 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
       }
 
   test("the sample covers every constructor, address kind, script language and value shape") {
-    val tags = samples.map(_.value(0) & 0xff).toSet
+    val tags = samples.map(_.value.toArray(0) & 0xff).toSet
     assertEquals(tags, Set(0, 1, 2, 3, 4, 5))
     List(
       "script-native",
@@ -154,7 +154,7 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
   }
 
   test("the sample is refused by an era that lacks its constructor, with the reason") {
-    val byTag = samples.groupBy(_.value(0) & 0xff)
+    val byTag = samples.groupBy(_.value.toArray(0) & 0xff)
     val two = byTag(2).head.value
     val inline = byTag(4).head.value
     val ref = samples.find(_.cls.contains("script-v3")).get.value
@@ -209,7 +209,8 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
       // the only difference allowed: the compact form of a base address (tag 2 and 3) against the
       // general one (0 and 1), the same output
       assert(
-        (value(0) == 0 && again(0) == 2) || (value(0) == 1 && again(0) == 3),
+        (value.toArray(0) == 0 && again.toArray(0) == 2) ||
+          (value.toArray(0) == 1 && again.toArray(0) == 3),
         s"$label: ${value.hex} against ${again.hex}"
       )
     same
@@ -253,7 +254,7 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
   ) = TxOutParts(address, value, datum, script)
 
   private def tagOf[E <: EraTag](p: TxOutParts)(using ShelleyBasedEra[E]): Int =
-    right(TxOutMemPack.encodeParts[E](p))(0) & 0xff
+    right(TxOutMemPack.encodeParts[E](p)).toArray(0) & 0xff
 
   test("the constructor follows mkTxOut: ada-only to a base address is the compact tags 2 and 3") {
     val base = baseAddress(1, false, false)
@@ -284,7 +285,7 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
     assertEquals(out.value.coin, BigInt(100))
     assertEquals(out.address.raw, base)
     val again = right(TxOutMemPack.encode[Conway](out))
-    assertEquals(again(0).toInt, 2)
+    assertEquals(again.toArray(0).toInt, 2)
     assertEquals(right(TxOutMemPack.decode[Conway](again)), out)
   }
 
@@ -304,7 +305,7 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
     // A: Snark 1, Boojum 1, "" 42; B: p2, p2, p1 offsets; C: ascending name offsets
     val expectedLength = 12 * 3 + 28 * 2 + "SnarkBoojum".length
     assertEquals(rep.size, expectedLength)
-    val q = (0 until 3).map(i => rep(8 * i).toInt)
+    val q = (0 until 3).map(i => rep.toArray(8 * i).toInt)
     assertEquals(q.toList, List(1, 1, 42))
     assertEquals(MultiAssetRep.read(3, rep), Right(assets))
   }
@@ -368,7 +369,7 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
       TxOutMemPack.decodeParts[Conway](hex("09")),
       Left(Failure.UnknownTag(TagSite.TxOutConstructor, 9))
     )
-    val good = samples.find(_.value(0) == 0.toByte).get.value
+    val good = samples.find(_.value.toArray(0) == 0.toByte).get.value
     assertEquals(
       TxOutMemPack.decodeParts[Conway](good ++ hex("00")),
       Left(Failure.TrailingBytes(1))
@@ -553,7 +554,7 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
       forAll(gen) { p =>
         val ada = p.value.assets.isEmpty
         // A Byron CBOR address can also have 57 bytes. Shelley base address kinds are 0–3.
-        val base = p.address.size == 57 && ((p.address(0) & 0xff) >>> 4) <= 3
+        val base = p.address.size == 57 && ((p.address.toArray(0) & 0xff) >>> 4) <= 3
         val expected =
           if p.script.nonEmpty then 5
           else

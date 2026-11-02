@@ -41,8 +41,9 @@ class EpochBoundarySuite extends ScalaCheckSuite:
 
   private def reference(a: Bytes, b: Bytes): Int =
     val n = math.min(a.size, b.size)
+    val (x, y) = (a.toArray, b.toArray)
     (0 until n).iterator
-      .map(i => java.lang.Byte.toUnsignedInt(a(i)) - java.lang.Byte.toUnsignedInt(b(i)))
+      .map(i => java.lang.Byte.toUnsignedInt(x(i)) - java.lang.Byte.toUnsignedInt(y(i)))
       .find(_ != 0)
       .getOrElse(a.size - b.size)
 

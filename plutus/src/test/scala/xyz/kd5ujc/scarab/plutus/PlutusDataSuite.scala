@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.plutus
 
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import munit.FunSuite
 
 import PlutusData.*
@@ -59,6 +59,17 @@ class PlutusDataSuite extends FunSuite:
     assertEquals(decode("c34101"), Right(I(-2)))
     assertEquals(decode("da0000007980"), Right(Constr(0, Vector.empty)))
     assertEquals(decode("db0000000000000066820080"), Right(Constr(0, Vector.empty)))
+  }
+
+  test("a big number built by hand, without its bytes, reads as written with the short head") {
+    // `Node.apply`: no bytes stand for the canonical form; reading the head once threw instead
+    def built(t: Long) =
+      Node(
+        Value.Tag(t, Node(Value.ByteString(Bytes.fromArray(Array[Byte](1))), Bytes.empty)),
+        Bytes.empty
+      )
+    assertEquals(PlutusData.fromNode(built(2)), Right(I(1)))
+    assertEquals(PlutusData.fromNode(built(3)), Right(I(-2)))
   }
 
   test("the unit, Maybe and Bool shapes") {

@@ -24,7 +24,8 @@ class UpstreamMuxStarvationSuite extends FailsOnUncaught:
     case Oversized extends Domain("unsupported-message-limit")
   private final case class Recipe(size: Int, chunk: Bytes, digest: String):
     def bytes: Bytes =
-      val result = Bytes(Vector.tabulate(size)(i => chunk(i % chunk.size)))
+      val pattern = chunk.toArray
+      val result = Bytes(Vector.tabulate(size)(i => pattern(i % pattern.length)))
       assertEquals(sha(result.toArray), digest)
       result
   private final case class Sample(

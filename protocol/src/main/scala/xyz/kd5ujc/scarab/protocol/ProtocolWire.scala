@@ -88,13 +88,12 @@ private[protocol] object ProtocolWire:
       if n < 0 || n > limits.maxMessageBytes - pos then bad(ProtocolError.MessageByteLimitExceeded)
       if n > input.size - pos then bad(ProtocolError.TruncatedCbor)
     def read(): Int =
-      need(1)
-      val b = input(pos) & 255
+      val b = peek
       pos += 1
       b
     private def peek: Int =
       need(1)
-      input(pos) & 255
+      input.byteOr(pos)(bad(ProtocolError.TruncatedCbor))(_ & 255)
     private def argument(ai: Int): BigInt =
       if ai < 24 then BigInt(ai)
       else

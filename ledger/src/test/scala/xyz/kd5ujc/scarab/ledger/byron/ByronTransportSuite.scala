@@ -198,7 +198,7 @@ class ByronTransportSuite extends FunSuite:
     if value >= 0 && value < (BigInt(1) << 64) then ByronCbor.uint(value)
     else if value < 0 && value >= -(BigInt(1) << 64) then
       val raw = ByronCbor.uint(-value - 1)
-      ByronCbor.of((raw(0) & 255) + 32) ++ raw.drop(1)
+      ByronCbor.of((raw.toArray(0) & 255) + 32) ++ raw.drop(1)
     else
       val magnitude = if value >= 0 then value else -value - 1
       val raw = magnitude.toByteArray.dropWhile(_ == 0)

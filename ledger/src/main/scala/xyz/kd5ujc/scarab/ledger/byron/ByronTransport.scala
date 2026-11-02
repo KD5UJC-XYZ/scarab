@@ -350,7 +350,7 @@ object ByronTransport:
       val expected =
         if size < 24 then size else if size <= 255 then 24 else if size <= 65535 then 25 else 26
       Either.cond(
-        (node.original(0) & 31) == expected,
+        node.original.headOption.forall(head => (head & 31) == expected),
         (),
         LedgerDecodeError
           .Expected(context / Qualifier.Canonical, LedgerDecodeError.Shape.Bytes, node.value)
@@ -442,7 +442,7 @@ object ByronTransport:
   private def list(node: Node, context: DecodeSite)(element: Node => Result[Unit]): Result[Unit] =
     CborRead.array(node, context).flatMap { values =>
       Either.cond(
-        node.original.size > 0 && node.original(0) == 0x9f.toByte,
+        node.isIndefinite,
         (),
         LedgerDecodeError
           .Expected(context / Qualifier.Indefinite, LedgerDecodeError.Shape.Array, node.value)

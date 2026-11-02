@@ -95,46 +95,53 @@ object SnapshotTables:
           at: Int,
           seen: Long,
           emitted: List[Entry]
-      ): Either[Error, (Decoder, Vector[Entry])] = state match
-        case Phase.Head(Site.Key(Some(0))) => go(Phase.Done, at, seen, emitted)
-        case Phase.Body(site, 0, parts) =>
-          val body = Bytes.wrap(Chunk.concat(parts.reverse).toArray)
-          site match
-            case Site.Key(left) => go(Phase.Head(Site.Value(body, left)), at, seen, emitted)
-            case Site.Value(key, left) =>
-              go(Phase.Head(Site.Key(left.map(_ - 1))), at, seen + 1, Entry(key, body) :: emitted)
-            case _ => Left(Error.WrongType(site.field, -1, offset + at))
-        case _ if at == bytes.size =>
+      ): Either[Error, (Decoder, Vector[Entry])] =
+        // the decoder as the end of this input leaves it
+        def suspended: Either[Error, (Decoder, Vector[Entry])] =
           Right(
             (new Decoder(state, offset + at, seen, crc.update(bytes)), emitted.reverse.toVector)
           )
-        case Phase.Done => Left(Error.TrailingBytes(offset + at))
-        case Phase.Body(site, left, parts) =>
-          val taken = math.min(left, bytes.size - at)
-          val part = bytes.slice(at, at + taken).compact
-          val chunk = Chunk.array(part.unsafeArray, part.unsafeOffset, part.size)
-          go(Phase.Body(site, left - taken, chunk :: parts), at + taken, seen, emitted)
-        case Phase.Length(site, left, value) =>
-          val next = (value << 8) | (bytes(at) & 0xff)
-          if left > 1 then go(Phase.Length(site, left - 1, next), at + 1, seen, emitted)
-          else
-            sized(site, next) match
-              case Left(e)      => Left(e)
-              case Right(state) => go(state, at + 1, seen, emitted)
-        case Phase.Head(site) =>
-          val head = bytes(at) & 0xff
-          val additional = head & 31
-          if head == 0xff && site == Site.Key(None) then go(Phase.Done, at + 1, seen, emitted)
-          else if head == 0xbf && site == Site.Map then
-            go(Phase.Head(Site.Key(None)), at + 1, seen, emitted)
-          else if head >>> 5 != site.major || additional > 27 then
-            Left(Error.WrongType(site.field, head, offset + at))
-          else if additional >= 24 then
-            go(Phase.Length(site, 1 << (additional - 24), BigInt(0)), at + 1, seen, emitted)
-          else
-            sized(site, BigInt(additional)) match
-              case Left(e)      => Left(e)
-              case Right(state) => go(state, at + 1, seen, emitted)
+        state match
+          case Phase.Head(Site.Key(Some(0))) => go(Phase.Done, at, seen, emitted)
+          case Phase.Body(site, 0, parts) =>
+            val body = Bytes.wrap(Chunk.concat(parts.reverse).toArray)
+            site match
+              case Site.Key(left) => go(Phase.Head(Site.Value(body, left)), at, seen, emitted)
+              case Site.Value(key, left) =>
+                go(Phase.Head(Site.Key(left.map(_ - 1))), at, seen + 1, Entry(key, body) :: emitted)
+              case _ => Left(Error.WrongType(site.field, -1, offset + at))
+          case _ if at == bytes.size => suspended
+          case Phase.Done            => Left(Error.TrailingBytes(offset + at))
+          case Phase.Body(site, left, parts) =>
+            val taken = math.min(left, bytes.size - at)
+            val part = bytes.slice(at, at + taken).compact
+            val chunk = Chunk.array(part.unsafeArray, part.unsafeOffset, part.size)
+            go(Phase.Body(site, left - taken, chunk :: parts), at + taken, seen, emitted)
+          case Phase.Length(site, left, value) =>
+            bytes.byteOr(at)(suspended) { b =>
+              val next = (value << 8) | (b & 0xff)
+              if left > 1 then go(Phase.Length(site, left - 1, next), at + 1, seen, emitted)
+              else
+                sized(site, next) match
+                  case Left(e)      => Left(e)
+                  case Right(state) => go(state, at + 1, seen, emitted)
+            }
+          case Phase.Head(site) =>
+            bytes.byteOr(at)(suspended) { b =>
+              val head = b & 0xff
+              val additional = head & 31
+              if head == 0xff && site == Site.Key(None) then go(Phase.Done, at + 1, seen, emitted)
+              else if head == 0xbf && site == Site.Map then
+                go(Phase.Head(Site.Key(None)), at + 1, seen, emitted)
+              else if head >>> 5 != site.major || additional > 27 then
+                Left(Error.WrongType(site.field, head, offset + at))
+              else if additional >= 24 then
+                go(Phase.Length(site, 1 << (additional - 24), BigInt(0)), at + 1, seen, emitted)
+              else
+                sized(site, BigInt(additional)) match
+                  case Left(e)      => Left(e)
+                  case Right(state) => go(state, at + 1, seen, emitted)
+            }
       go(phase, 0, count, Nil)
 
     def finish: Either[Error, Summary] = phase match

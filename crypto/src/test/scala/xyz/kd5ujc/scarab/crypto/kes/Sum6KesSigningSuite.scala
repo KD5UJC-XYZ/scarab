@@ -120,7 +120,8 @@ class Sum6KesSigningSuite extends munit.FunSuite:
   test("key consistency errors retain the failing tree depth and kind") {
     val bytes = fresh.toBytes
     def flipped(at: Int): Bytes =
-      Bytes.fromArray(bytes.toArray.updated(at, (bytes(at) ^ 1).toByte))
+      val array = bytes.toArray
+      Bytes.wrap(array.updated(at, (array(at) ^ 1).toByte))
 
     // Layout: leaf seed; level 1's r1/vk0/vk1; ...; level 6's r1/vk0/vk1.
     assertEquals(fromBytes(flipped(0)), Left(Failure.VerificationKeyMismatch(1)))

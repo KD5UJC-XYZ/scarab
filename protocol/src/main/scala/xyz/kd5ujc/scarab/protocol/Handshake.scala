@@ -472,11 +472,14 @@ object Handshake:
     private def cursor: Read[Cursor] = cats.data.StateT.get
     private def read(): Read[Int] = cats.data.StateT { state =>
       if state.position >= MaxMessageBytes then Left(ProtocolError.HandshakeByteLimitExceeded)
-      else if state.position >= input.size then Left(ProtocolError.IncompleteCbor)
-      else Right((state.copy(position = state.position + 1), input(state.position) & 255))
+      else
+        input
+          .lift(state.position)
+          .toRight(ProtocolError.IncompleteCbor)
+          .map(b => (state.copy(position = state.position + 1), b & 255))
     }
     private def peekBreak: Read[Boolean] = cursor.map { state =>
-      state.position < input.size && (input(state.position) & 255) == 255
+      input.lift(state.position).contains(0xff.toByte)
     }
     private def count: Read[Unit] = cats.data.StateT { state =>
       if state.items >= MaxItems then Left(ProtocolError.CBORItemLimitExceeded)

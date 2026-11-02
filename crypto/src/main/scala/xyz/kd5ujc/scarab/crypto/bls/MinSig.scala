@@ -135,7 +135,8 @@ object MinSig:
 
   private def compressed(operand: Operand, bytes: Bytes, size: Int): Either[BlsError, Unit] =
     if bytes.size != size then Left(BlsError.WrongLength(operand, size, bytes.size))
-    else if (bytes(0) & 0x80) == 0 then Left(BlsError.NotCompressed(operand))
+    else if !bytes.headOption.exists(b => (b & 0x80) != 0) then
+      Left(BlsError.NotCompressed(operand))
     else Right(())
 
   private[bls] def decodeG1(operand: Operand, bytes: Bytes): Either[BlsError, P1_Affine] =
