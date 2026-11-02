@@ -46,12 +46,12 @@
       "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs",
       "sourceSha256": "64733f20f44ed96e5a7e100ed6cf3ba8a78c75f63e59bb7dc6fb6203f06bf42a",
       "matchesPin": true,
-      "note": "EncCBOR (BabbageTxOut era): Alonzo's arrays, or the keyed form with an inline datum or a reference script (501-506)"
+      "note": "EncCBOR (BabbageTxOut era): Alonzo's arrays, or the keyed form with an inline datum or a reference script (501-506), written by encodeTxOut (581-595)"
     }
   },
   "results": {
-    "cases": 100,
-    "answered": 76,
+    "cases": 110,
+    "answered": 86,
     "refused": 24
   }
 }

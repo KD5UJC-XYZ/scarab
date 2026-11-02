@@ -97,6 +97,41 @@ def inline_option(data):
     return arr(uint(1), tag(24, bstr(data)))
 
 
+def indefinite(*xs):
+    return b"\x9f" + b"".join(xs) + b"\xff"
+
+
+def wrapped(script_bytes):
+    return tag(24, script_bytes)
+
+
+def keyed_raw(addr, value, datum=None, script_item=None):
+    """The keyed form with the datum and script items as given, already encoded."""
+    pairs = [(uint(0), bstr(addr)), (uint(1), value)]
+    if datum is not None:
+        pairs.append((uint(2), datum))
+    if script_item is not None:
+        pairs.append((uint(3), script_item))
+    return cmap(pairs)
+
+
+# a reference script and a datum option in forms the decoders take but the encoders do not write:
+# the reference writes the datum option and the script pair anew, and keeps the data's and a native
+# script's own bytes (a chunked byte string in these places is refused by the decoder)
+NONCANONICAL = [
+    ("inline-indefinite-option", lambda: keyed_raw(BASE, COIN, indefinite(uint(1), tag(24, bstr(PLUTUS_DATA))))),
+    ("hash-indefinite-option", lambda: keyed_raw(BASE, COIN, indefinite(uint(0), bstr(DATUM_HASH)),
+                                                 wrapped(bstr(NATIVE_SCRIPT)))),
+    ("script-indefinite-pair", lambda: keyed_raw(
+        BASE, COIN, script_item=wrapped(bstr(indefinite(uint(0), arr(uint(0), bstr(h(28, 0x5C)))))))),
+    ("script-indefinite-native", lambda: keyed_raw(
+        BASE, COIN, script_item=wrapped(bstr(arr(uint(0), indefinite(uint(0), bstr(h(28, 0x5C)))))))),
+    ("script-plutus", lambda: keyed_raw(BASE, COIN, script_item=wrapped(bstr(arr(uint(2), bstr(PLUTUS_V2)))))),
+]
+# a well-formed Plutus V2 script: the flat encoding of `(program 1.0.0 (con unit ()))`
+PLUTUS_V2 = bytes.fromhex("4c01000022222222222222222222")
+
+
 def case(name, era, entries):
     return {"name": name, "era": era, "entries": [[i.hex(), o.hex()] for i, o in entries]}
 
@@ -138,6 +173,9 @@ def cases():
                         [(txin(0x05, 4), keyed(BYRON, COIN, inline_option(PLUTUS_DATA), NATIVE_SCRIPT))]))
         out.append(case(f"{era}-keyed-hash-script", era,
                         [(txin(0x05, 5), keyed(POINTER, MULTI, hash_option(DATUM_HASH), NATIVE_SCRIPT))]))
+        if era in ("babbage", "conway"):
+            for n, (label, output) in enumerate(NONCANONICAL):
+                out.append(case(f"{era}-{label}", era, [(txin(0x06, n), output())]))
     return out
 
 

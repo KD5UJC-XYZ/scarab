@@ -60,7 +60,7 @@ class UtxoAnswersReferenceSuite extends FunSuite:
     eras.getOrElse(row.era, fail(s"${row.name}: unknown era ${row.era}"))
 
   test("the corpus has answers and refusals in every Shelley-based era") {
-    assertEquals(rows.size, 100)
+    assertEquals(rows.size, 110)
     assertEquals(rows.map(_.era).distinct.toSet, eras.keySet)
     eras.keys.foreach { e =>
       assert(rows.exists(r => r.era == e && r.answer.isDefined), e)

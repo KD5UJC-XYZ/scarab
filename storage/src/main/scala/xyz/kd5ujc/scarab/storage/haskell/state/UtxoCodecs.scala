@@ -51,8 +51,14 @@ object UtxoCodecs:
         assets.encode(a.assets, out)
 
   /** `BabbageTxOut`: `[address, value]`, `[address, value, datum hash]`, or the keyed form with an
-    * inline datum or a reference script. The datum and script items are the ones the output was
-    * created with.
+    * inline datum or a reference script (`encodeTxOut`, `Babbage/TxOut.hs:581-595`). The keyed
+    * form's items are written as the reference writes them, not copied as they came:
+    *   - the datum as `[1, #6.24(bytes)]` around the bytes of the data (`EncCBOR (Datum era)`,
+    *     `BinaryData`, `Plutus/Data.hs:217-218,297-301`);
+    *   - the reference script as `#6.24` around the bytes of `[kind, script]` (`encodeNestedCbor`,
+    *     `Binary/Encoding.hs:82-85`; `encodeScript`, `Alonzo/Scripts.hs:686-689`): a native script
+    *     in the encoding it came with (its `MemoBytes`), a Plutus script's bytes as one byte
+    *     string.
     */
   given txOut: Codec[TxOut] = new Codec[TxOut]:
     // A stored output: it reads in any form of byte string it was stored with.
@@ -62,23 +68,13 @@ object UtxoCodecs:
         .left
         .map(why => DecodeError.at(n, Kind.Domain(why)))
 
-    /** The items of the output as it came, by key: the inline datum and the reference script. */
-    private def items(o: TxOut): Map[Int, Bytes] =
-      Cbor
-        .decode(o.raw, limits)
-        .toOption
-        .map(_.value)
-        .collect {
-          case CborValue.Map(kvs) =>
-            kvs.flatMap { (k, v) =>
-              k.value match
-                case CborValue.UInt(i) => Some(i.toInt -> v.original)
-                case _                 => None
-            }.toMap
-          case CborValue.Arr(xs) =>
-            xs.zipWithIndex.drop(2).map((n, i) => i -> n.original).toMap
-        }
-        .getOrElse(Map.empty)
+    override def check(o: TxOut): Option[ConstraintViolation] =
+      Codec.refuse(
+        o.scriptRef.isDefined && scriptRef(o).isEmpty,
+        "TxOut",
+        "a reference script its encoding holds",
+        o.raw.hex
+      )
 
     def encode(o: TxOut, out: Writer): Unit = o.datum match
       case Datum.NoDatum if o.scriptRef.isEmpty =>
@@ -91,7 +87,6 @@ object UtxoCodecs:
         value.encode(o.value, out)
         out.bytes(h)
       case _ =>
-        val fields = items(o)
         val datumItem: Option[Writer => Unit] = o.datum match
           case Datum.NoDatum => None
           case Datum.Hash(h) =>
@@ -100,8 +95,14 @@ object UtxoCodecs:
               w.uint(0L)
               w.bytes(h)
             }
-          case Datum.Inline(_) => fields.get(2).map(d => (w: Writer) => w.raw(d))
-        val scriptItem = o.scriptRef.flatMap(_ => fields.get(3))
+          case Datum.Inline(data) =>
+            Some { w =>
+              w.arrayHead(2)
+              w.uint(1L)
+              w.tag(24)
+              w.bytes(data)
+            }
+        val scriptItem = scriptRef(o)
         out.mapHead(2 + datumItem.size + scriptItem.size)
         out.uint(0L)
         out.bytes(o.address.raw)
@@ -115,6 +116,54 @@ object UtxoCodecs:
           out.uint(3L)
           out.raw(s)
         }
+
+  /** The reference script of `o`, written as the reference writes it (see [[txOut]]); none when `o`
+    * has none, or when its encoding holds no script it can be written from.
+    */
+  private def scriptRef(o: TxOut): Option[Bytes] =
+    // a byte string in either form: a chunked one is its chunks joined
+    def bytes(n: Node): Option[Bytes] = n.value match
+      case CborValue.ByteString(b) => Some(b)
+      case _                       => None
+    def nested(script: Writer => Unit): Bytes =
+      val inner = new Writer
+      script(inner)
+      val outer = new Writer
+      outer.tag(24)
+      outer.bytes(inner.result)
+      outer.result
+    for
+      _ <- o.scriptRef
+      root <- Cbor.decode(o.raw, limits).toOption
+      field <- root.value match
+        case CborValue.Map(kvs) =>
+          kvs.collectFirst { case (k, v) if k.value == CborValue.UInt(BigInt(3)) => v }
+        case _ => None
+      wrapped <- field.value match
+        case CborValue.Tag(t, inner) if t == 24 => bytes(inner)
+        case _                                  => None
+      script <- Cbor.decode(wrapped, limits).toOption
+      written <- script.value match
+        case CborValue.Arr(Vector(kind, body)) =>
+          kind.value match
+            case CborValue.UInt(k) if k == 0 =>
+              Some(nested { w =>
+                w.arrayHead(2)
+                w.uint(0L)
+                w.raw(body.original)
+              })
+            case CborValue.UInt(k) if k >= 1 && k <= 3 =>
+              bytes(body)
+                .map(plutus =>
+                  nested { w =>
+                    w.arrayHead(2)
+                    w.uint(k)
+                    w.bytes(plutus)
+                  }
+                )
+            case _ => None
+        case _ => None
+    yield written
 
   /** `UTxO` (`UTxO.hs`): the outputs by input, in input order. */
   given utxo: Codec[Map[TxIn, TxOut]] = Wire.sortedMapOf(txIn, txOut)
@@ -171,7 +220,9 @@ object UtxoCodecs:
       def decode(n: Node): Decoded[TxOut] = txOut.decode(n)
       def encode(o: TxOut, out: Writer): Unit = txOut.encode(o, out)
       override def check(o: TxOut): Option[ConstraintViolation] =
-        Codec.refuse(!form.holds(o), "TxOut", s"an output of $era ($form)", o.datum)
+        txOut
+          .check(o)
+          .orElse(Codec.refuse(!form.holds(o), "TxOut", s"an output of $era ($form)", o.datum))
 
   /** `UTxO` of `era`, written at the era's lowest protocol version as the reference's queries write
     * it.

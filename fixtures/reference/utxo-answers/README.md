@@ -1,6 +1,6 @@
 # UTxO query answers in every Shelley-based era
 
-One hundred synthetic UTxO maps, measured on 2026-11-02 against the unchanged released Haskell
+One hundred and ten synthetic UTxO maps, measured on 2026-11-02 against the unchanged released Haskell
 ledger libraries used by node 11.1.3. `answers.jsonl` holds one case per line: its era, its
 entries as the original input and output bytes, and either the reference's answer, as hex, or why
 the era's decoder refused an output. The [oracle source and recipe](../../../scripts/oracle/utxo-answers/README.md)
@@ -18,7 +18,11 @@ Coverage in each era from Shelley to Conway:
 - entries out of order across transactions, the empty map, and 30 entries, past the length one
   head byte holds (the map is then written with indefinite length);
 - multi-asset values, datum hashes and, from Babbage, the keyed form: without a datum (written as
-  an array), with a datum hash, an inline datum, a reference script, and both.
+  an array), with a datum hash, an inline datum, a reference script, and both;
+- from Babbage, a datum option and a reference script in forms the decoders take and the encoders
+  do not write (an indefinite datum option, an indefinite script pair or native script, a Plutus
+  script): the reference writes the option and the pair anew and keeps the bytes of the data and
+  of a native script.
 
 Before Babbage, an output with a part only a later era's `TxOut` holds is refused by the era's
 decoder: 24 such cases in Shelley, Allegra, Mary and Alonzo.
