@@ -187,6 +187,93 @@ class WholeStateComparisonTest(unittest.TestCase):
         self.assertEqual(failures[3], "babbage: only 2 matched same-point GetUTxOWhole answers (need 3)")
 
 
+class WholeStateAnchorTest(unittest.TestCase):
+    """`compare.whole_state` asks the anchor's tip first and the other node at that point, taken again while the
+    other has not reached it; the reference's answers are always the expected ones."""
+
+    def setUp(self):
+        import tempfile
+        from unittest import mock
+        from devnet import compare
+        self.compare, self.mock = compare, mock
+        self.dir = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.dir.name)
+        (self.root / "scala-sock").mkdir()
+        (self.root / "scala-sock" / "node.socket").write_text("")
+        self.calls = []
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def sessions(self, refuse_scala_acquires=0, scala_answer=None):
+        """Fake node-to-client sessions: the reference answers `ref`, the Scala node `scala_answer` (default the
+        same), and the Scala node refuses its first `refuse_scala_acquires` acquires of a point."""
+        test, refusals = self, [refuse_scala_acquires]
+        utxo = cbor.enc([4, [{}]])
+
+        class Session:
+            def __init__(self, container, socket, magic, host=False, deadline=None):
+                self.side = "scala" if host else "reference"
+                self.last_raw = None
+                self.asked = 0
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def acquire(self, point=None):
+                test.calls.append((self.side, "acquire", point))
+                if self.side == "scala" and point is not None and refusals[0] > 0:
+                    refusals[0] -= 1
+                    raise RuntimeError("acquire failed: [2, 1]")
+
+            def query_raw(self, query):
+                return [7, b"\x07" * 32]
+
+            def _send(self, protocol, payload):
+                pass
+
+            def _recv(self, protocol):
+                # each session asks the new-epoch state first, then the UTxO (`WHOLE_QUERIES` order)
+                state = scala_answer if self.side == "scala" and scala_answer is not None else answer(nes())
+                self.last_raw = utxo if self.asked else state
+                self.asked += 1
+                return [4]
+        return Session
+
+    def run_whole(self, **kwargs):
+        with self.mock.patch.object(self.compare.ntcquery, "LocalStateQuery", self.sessions(**kwargs.pop("fake", {}))), \
+                self.mock.patch.object(self.compare.util, "data_root", lambda name: self.root), \
+                self.mock.patch.object(self.compare, "ref", lambda name: "ref-container"), \
+                self.mock.patch.object(self.compare.time, "sleep", lambda s: None):
+            return self.compare.whole_state("x", "conway", **kwargs)
+
+    def test_the_reference_anchor_asks_the_reference_first_and_the_scala_node_at_its_point(self):
+        result = self.run_whole(anchor="reference")
+        self.assertEqual(self.calls, [("reference", "acquire", None), ("scala", "acquire", [7, b"\x07" * 32])])
+        self.assertEqual(result["slot"], 7)
+        self.assertTrue(all(a["matched"] for a in result["answers"].values()), result)
+
+    def test_a_point_the_scala_node_has_not_reached_is_taken_again(self):
+        result = self.run_whole(anchor="reference", attempts=3, fake={"refuse_scala_acquires": 2})
+        self.assertEqual([c[0] for c in self.calls], ["reference", "scala"] * 3)
+        self.assertIn("answers", result)
+
+    def test_after_the_last_attempt_the_refusal_is_an_error(self):
+        result = self.run_whole(anchor="reference", attempts=2, fake={"refuse_scala_acquires": 5})
+        self.assertIn("acquire failed", result["error"])
+
+    def test_the_scala_anchor_is_one_attempt_and_the_reference_is_expected(self):
+        different = answer(nes(pot=9))
+        result = self.run_whole(fake={"scala_answer": different})
+        self.assertEqual(self.calls[0], ("scala", "acquire", None))
+        nes_result = result["answers"]["DebugNewEpochState"]
+        self.assertFalse(nes_result["matched"])
+        self.assertEqual(nes_result["scalaBytes"], len(different))
+
+
 class UtxoComparisonTest(unittest.TestCase):
     """`GetUTxOWhole` answers are compared on every byte, and must be a UTxO answer."""
 

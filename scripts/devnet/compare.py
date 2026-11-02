@@ -3,11 +3,12 @@
 
 These comparisons are projections, not whole-state equality: `PROJECTION_SCOPE` lists what they compare and
 what they leave out, and every result names the Scala fields the reference side has no counterpart for
-(`scalaOnlyKeys`). In `e2e` each one is also a complete same-point comparison of the ledger state
-(`whole_state`): `DebugNewEpochState`, whose UTxO is an empty map on both nodes, and `GetUTxOWhole`, every byte
-of each. #433 tracks replacing the projections of `pool` and `soak` with complete-state comparisons.
+(`scalaOnlyKeys`). In `e2e`, `pool` and `soak` each one is also a complete same-point comparison of the ledger
+state (`whole_state`): `DebugNewEpochState`, whose UTxO is an empty map on both nodes, and `GetUTxOWhole`, every
+byte of each, and the complete comparison is what covers the fields the projection leaves out (#433).
 """
 import json
+import pathlib
 import subprocess
 import threading
 import time
@@ -371,26 +372,46 @@ def ask_raw(session, query):
     return session.last_raw
 
 
-def whole_state(name, era):
+def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1):
     """The complete same-point ledger state of both nodes: each of `WHOLE_QUERIES`, asked over node-to-client on
-    one session per node acquired at the point of the Scala node's volatile tip, and judged on every byte
-    (`ledgercompare`). Returns {"slot", "answers": {label: result}}, or {"skipped"} or {"error"} for all of them.
-    A difference keeps both answers in the run dir. Never raises."""
+    one session per node acquired at one point, and judged on every byte (`ledgercompare`). The point is the volatile
+    tip of `anchor`: the Scala node's when it follows, as every block it holds is the reference's; the reference's
+    when the Scala node forges too, as a block it has just forged may not have reached the reference yet. The other
+    node is asked at that point; while it has not reached it, the comparison is taken again after a pause, up to
+    `attempts` times. `scala_socket` is the Scala node's node-to-client socket (`scala-sock/node.socket` of the run
+    dir by default). Returns {"slot", "answers": {label: result}}, or {"skipped"} or {"error"} for all of them. A
+    difference keeps both answers in the run dir. Never raises."""
     root = util.data_root(name)
-    scala_socket = root / "scala-sock" / "node.socket"
+    scala_socket = pathlib.Path(scala_socket) if scala_socket else root / "scala-sock" / "node.socket"
     if not scala_socket.exists():
-        return {"skipped": "the follower has no node-to-client socket"}
+        return {"skipped": "the Scala node has no node-to-client socket"}
     queries = {label: [0, [0, [ERA_INDEX[era], [q]]]] for label, (q, _) in WHOLE_QUERIES.items()}
+
+    def scala():
+        return ntcquery.LocalStateQuery(None, str(scala_socket), MAGIC, host=True, deadline=60)
+
+    def reference():
+        return ntcquery.LocalStateQuery(ref(name), reference_socket(), MAGIC, deadline=60)
+
+    first, second = (scala, reference) if anchor == "scala" else (reference, scala)
     try:
-        with ntcquery.LocalStateQuery(None, str(scala_socket), MAGIC, host=True, deadline=60) as scala:
-            scala.acquire()
-            point = scala.query_raw([3])
-            got = {label: ask_raw(scala, q) for label, q in queries.items()}
-        with ntcquery.LocalStateQuery(ref(name), f"{ENV}/socket/node1/sock", MAGIC, deadline=60) as reference:
-            reference.acquire(point)
-            expected = {label: ask_raw(reference, q) for label, q in queries.items()}
+        for attempt in range(attempts):
+            with first() as session:
+                session.acquire()
+                point = session.query_raw([3])
+                anchored = {label: ask_raw(session, q) for label, q in queries.items()}
+            try:
+                with second() as session:
+                    session.acquire(point)
+                    other = {label: ask_raw(session, q) for label, q in queries.items()}
+                break
+            except RuntimeError as e:
+                if not str(e).startswith("acquire failed") or attempt + 1 == attempts:
+                    raise
+                time.sleep(2)
     except (RuntimeError, EOFError, OSError, ntcquery.Deadline, ntcquery.Incomplete) as e:
         return {"error": repr(e)[:300]}
+    got, expected = (anchored, other) if anchor == "scala" else (other, anchored)
     slot = point[0] if isinstance(point, list) and point else None
     answers = {}
     for label, (_, judge) in WHOLE_QUERIES.items():
@@ -553,15 +574,23 @@ def judge_comparisons(comparisons, minimum, loaded):
             failures.append(f"{era}: {row['errors']} ledger comparison errors")
         if row["matched"] < minimum:
             failures.append(f"{era}: only {row['matched']} matched ledger comparisons (need {minimum})")
-        for query in WHOLE_QUERIES:
-            whole = comparisons.whole[query][era]
-            if whole["mismatched"]:
-                failures.append(f"{era}: {whole['mismatched']} same-point {query} answers differ: "
-                                f"{whole.get('differences', [])[:2]}")
-            if whole["errors"]:
-                failures.append(f"{era}: {whole['errors']} same-point {query} comparison errors")
-            if whole["matched"] < minimum:
-                failures.append(f"{era}: only {whole['matched']} matched same-point {query} answers (need {minimum})")
+        failures += whole_failures(comparisons, era, minimum)
+    return failures
+
+
+def whole_failures(comparisons, era, minimum):
+    """Failures from the same-point complete comparisons of `era` (`whole_state`): a difference, an error or fewer
+    than `minimum` matches of any of `WHOLE_QUERIES`."""
+    failures = []
+    for query in WHOLE_QUERIES:
+        whole = comparisons.whole[query][era]
+        if whole["mismatched"]:
+            failures.append(f"{era}: {whole['mismatched']} same-point {query} answers differ: "
+                            f"{whole.get('differences', [])[:2]}")
+        if whole["errors"]:
+            failures.append(f"{era}: {whole['errors']} same-point {query} comparison errors")
+        if whole["matched"] < minimum:
+            failures.append(f"{era}: only {whole['matched']} matched same-point {query} answers (need {minimum})")
     return failures
 
 

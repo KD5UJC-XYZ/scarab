@@ -11,7 +11,7 @@ import time
 from .. import metrics as node_metrics
 from . import kes_rotate
 from ..cluster import database_mounts, freeze_classes, scala_container, start_nodes, start_reference
-from ..compare import compare_or_error
+from ..compare import Comparisons, compare_or_error, whole_failures, whole_state
 from ..scenarios.relay import SCALA_PORT, log_counts, tip_at
 from .. import util
 from ..util import CLI, ENTRY, ENV, MAGIC, QUERY_PORT, data_root, docker, in_ref, put_file, read_json, read_log, ref, scheduling_summary
@@ -281,9 +281,19 @@ def pool(args):
     util.SOCKET = f"--testnet-magic {MAGIC} --socket-path {ENV}/socket/node{observer}/sock"
     failures, summary, scala, loader = [], {}, None, None
     rotate = getattr(args, "rotate", False)  # the kes-rotate scenario: this run with the rotation driver
+    sockets_dir = "ipc" if rotate else "scala-sock"  # the Scala node's node-to-client socket, in the run dir
     driver = kes_rotate.Driver(args, root) if rotate else None
     load_at_start = host_load()
     comparisons, samples = [], []
+    whole = Comparisons(root)
+
+    def compare_whole(label):
+        # the Scala node forges: a block it has just made may not be the reference's yet, so the point is the
+        # reference's tip, and the Scala node is asked again while it has not reached it
+        socket = root / sockets_dir / "node.socket"
+        whole.record_whole("conway", label,
+                           whole_state(args.name, "conway", scala_socket=socket, anchor="reference", attempts=10))
+
     schedules = {}  # epoch -> the slots the oracle says the Scala pool leads
     completed = False  # the run reached its verdict; an exception other than SystemExit leaves this False
     try:
@@ -314,14 +324,18 @@ def pool(args):
                    "--forge", "--vrf-skey", "/keys/vrf.skey",
                    "--kes-skey", "/keys/current/kes.skey" if rotate else "/keys/kes.skey",
                    "--opcert", "/keys/current/node.cert" if rotate else "/keys/opcert.cert"]
-        if rotate:
-            program += ["--local-socket", "/ipc/node.socket"]
+        # node-to-client for the same-point complete comparison (`whole_state`); the rotation driver uses it too
+        sockets = root / sockets_dir
+        if not rotate:
+            sockets.mkdir(mode=0o777)
+            sockets.chmod(0o777)
+        program += ["--local-socket", "/ipc/node.socket"]
         for n in others:
             program += ["--peer", f"127.0.0.1:{ports[n]}"]
         program += args.scala_flags.split()
         command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,
                                   mounts=[f"{root / 'genesis'}:/genesis:ro", *database_mounts(db), f"{root / 'keys'}:/keys",
-                                          *([f"{root / 'ipc'}:/ipc"] if rotate else [])], name=f"{args.name}-scala")
+                                          f"{sockets}:/ipc"], name=f"{args.name}-scala")
         log = root / "follower.jsonl"
         scala = subprocess.Popen(["docker", *command], stdout=log.open("a"), stderr=subprocess.STDOUT, text=True)
         deadline = time.monotonic() + 180
@@ -369,6 +383,7 @@ def pool(args):
                 r = compare_or_error(args.name)
                 comparisons.append(r)
                 print(json.dumps({k: r.get(k) for k in ("tip", "matched", "differenceCount", "error")}), flush=True)
+                compare_whole(f"sample {len(comparisons)}")
         loader.terminate()
         loader.wait()
         loader = None
@@ -389,6 +404,7 @@ def pool(args):
         for r in final_comparisons(lambda: compare_or_error(args.name)):
             comparisons.append(r)
             print(json.dumps({k: r.get(k) for k in ("tip", "matched", "differenceCount", "error")}), flush=True)
+        compare_whole("final")
         final = settled_tips()
         time.sleep(3)
         # the forger's own per-epoch counters (H5), from the query server (the Scala container's loopback)
@@ -526,6 +542,8 @@ def pool(args):
         if len(matched) < args.min_comparisons or any(c.get("matched") is False or "error" in c for c in comparisons):
             failures.append(f"ledger comparisons: {len(matched)} matched of {len(comparisons)} "
                             f"(need {args.min_comparisons}, none may differ)")
+        summary["wholeState"] = {query: per_era["conway"] for query, per_era in whole.whole.items()}
+        failures += whole_failures(whole, "conway", args.min_comparisons)
         if rotate:
             rotation_failures, summary["kesRotation"] = kes_rotate.check(args, root, events, forged, on_chain, counts,
                                                                        driver, observer)
