@@ -69,7 +69,6 @@ class PraosLeaderThresholdSuite extends munit.FunSuite:
   test("both leader value domains reject missing or wrong-sized output with typed causes") {
     for extract <- Vector(leaderValue, rawLeaderValue) do
       assertEquals(extract(null), Left(Error.MissingVrfOutput))
-      assertEquals(extract(Bytes(null)), Left(Error.MissingVrfOutput))
       for size <- Vector(0, 63, 65) do
         assertEquals(
           extract(Bytes(Vector.fill(size)(0.toByte))),

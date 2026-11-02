@@ -178,9 +178,6 @@ class StrictDraft03Suite extends munit.FunSuite:
     } catch case _: LinkageError => propagated = true
     assert(propagated)
   }
-  test("malformed Bytes construction is an internal programming failure") {
-    assert(StrictDraft03.verify(Bytes(null), vector(1), vector(2)).isInstanceOf[InternalFailure])
-  }
   test("104 separately implemented affine arithmetic and decoder checks") {
     val rows = lines("affine-inputs.tsv")
     val expected = lines("affine-results.tsv")

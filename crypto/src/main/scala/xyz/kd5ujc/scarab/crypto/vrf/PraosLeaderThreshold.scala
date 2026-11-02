@@ -96,7 +96,7 @@ object PraosLeaderThreshold:
     go(0, Scale, BigInt(0), BigInt(0), Scale, None) - Scale
 
   def leaderValue(verifiedOutput: Bytes): Either[Error, BigInt] =
-    if verifiedOutput == null || verifiedOutput.value == null then Left(Error.MissingVrfOutput)
+    if verifiedOutput == null then Left(Error.MissingVrfOutput)
     else if verifiedOutput.size != 64 then Left(Error.InvalidVrfOutputLength(verifiedOutput.size))
     else
       Right(
@@ -105,7 +105,7 @@ object PraosLeaderThreshold:
 
   /** Leader value as a natural over 2^512: the raw 64-byte certified output (TPraos, Shelley). */
   def rawLeaderValue(verifiedOutput: Bytes): Either[Error, BigInt] =
-    if verifiedOutput == null || verifiedOutput.value == null then Left(Error.MissingVrfOutput)
+    if verifiedOutput == null then Left(Error.MissingVrfOutput)
     else if verifiedOutput.size != 64 then Left(Error.InvalidVrfOutputLength(verifiedOutput.size))
     else Right(BigInt(1, verifiedOutput.toArray))
 

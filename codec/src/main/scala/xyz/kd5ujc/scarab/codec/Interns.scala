@@ -3,12 +3,18 @@ package xyz.kd5ujc.scarab.codec
 
 import java.lang.ref.WeakReference
 import java.util.WeakHashMap
+import java.util.concurrent.atomic.AtomicReference
 
 /** A kind of value that one decode shares: the credentials, say, or the hashes. A kind is a value
   * declared once (a `val` of the codec that decodes it) and is the key of one table in the
   * [[Interns]] of each decode, so the tables of two kinds never meet and the type `A` is the type
   * the table holds.
   */
+// The last table found is kept in a volatile field and the weak references are read with null
+// tests: read through an `AtomicReference` of an `Option`, the cache made the decode of a real
+// preprod state 16 percent slower (`docs/performance.md` section 49); `WeakReference.get` and
+// `WeakHashMap.get` answer null for nothing.
+@SuppressWarnings(Array("org.wartremover.warts.Var", "org.wartremover.warts.Null"))
 final class Interned[A <: AnyRef]:
   // Both links are weak: this kind keeps no decode, table or decoded value alive. The decode
   // itself retains its tables. Each index is homogeneous at this kind's A, so lookup never has
@@ -19,6 +25,7 @@ final class Interned[A <: AnyRef]:
       val scope: WeakReference[Interns],
       val table: WeakReference[Interns.Table[A]]
   )
+  // the table found last, so that the decode asking again takes no lock and allocates nothing
   @volatile private var recent: Recent = null
 
   private[codec] def table(scope: Interns): Interns.Table[A] =
@@ -56,10 +63,11 @@ final class Interned[A <: AnyRef]:
   * not thread-safe, as a decode is not.
   */
 private[codec] final class Interns:
-  private var kept: List[Interns.Kept] = Nil
+  // the tables of this decode, held so that they live as long as it does
+  private val kept = new AtomicReference[List[Interns.Kept]](Nil)
 
   private[codec] def retain[A <: AnyRef](table: Interns.Table[A]): Unit =
-    kept = new Interns.Keep(table) :: kept
+    val _ = kept.updateAndGet(new Interns.Keep(table) :: _)
 
   /** The first value equal to a in this decode's table for kind. */
   def share[A <: AnyRef](kind: Interned[A])(a: A): A = kind.table(this).share(a)
@@ -77,8 +85,14 @@ private[codec] object Interns:
   private final class Entry[A <: AnyRef](val value: A, val hash: Int)
 
   /** Typed open-addressed storage. Entry[A] keeps each value and its hash together without runtime
-    * narrowing; cached hashes avoid repeated hashing on growth and unequal collision checks.
+    * narrowing; cached hashes avoid repeated hashing on growth and unequal collision checks. Its
+    * slots and counts are mutable: an immutable `HashMap` in their place made the decode of a real
+    * preprod state 1.67 times as long with 1.54 times the allocation (`docs/performance.md` section
+    * 49).
     */
+  @SuppressWarnings(
+    Array("org.wartremover.warts.Var", "org.wartremover.warts.While", "org.wartremover.warts.Null")
+  )
   private[codec] final class Table[A <: AnyRef]:
     private var bits = 10
     private var slots = new Array[Entry[A]](1 << bits)

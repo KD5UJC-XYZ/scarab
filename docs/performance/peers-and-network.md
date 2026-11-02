@@ -387,3 +387,49 @@ the stack and the item it returns. The reader keeps its imperative form, under a
 cites this section. The codecs' cursor over the reader (the typed reads a codec makes in its `readFrom`) was not
 measured separately; it is built from the same reads as the walk.
 
+
+## 48. The CBOR decoder: functional against imperative (#650)
+
+**2026-10-31.** `Cbor.decode` reads every block, header, transaction and message a node receives into an index of its
+items: two ints per item, where it starts and where it ends, from which the views of a decoded document are read
+(`Index` and `Document` in `Cbor.scala`'s package). It is imperative: a mutable position and item count, a stack of open
+containers in growable arrays, an index in growable blocks, and `boundary`/`break` for the typed failures. AGENTS.md
+keeps that form only on a hot path with a measured benefit, so the same decode was written without mutation and the two
+timed, in the manner of sections 40 and 45.
+
+**The functional form.** `CborDecodeFunctional` (in the codec tests): each read is a pure function of the position that
+returns its value and the next position, or the failure, as an `Either`; the open containers are immutable frames on a
+`List`; the index is two persistent vectors, the start and end of each item appended as it begins, a container's end set
+with `updated` when it closes; the walk is a `@tailrec` loop over its whole state. The checks are the decoder's, in the
+decoder's order.
+
+**Equivalence.** `CborDecodeEquivalenceSuite` compares the index (each item's start and end, in item order) or the error,
+for: the 730 real blocks of `CborCorpus` (the corpus of section 45), also inside a larger buffer; every prefix of every
+tenth block up to 256 bytes and 64 evenly spaced longer ones, decoded whole and as a prefix; sixteen seeded single-bit
+changes of every fifth block; every twentieth block at its smallest accepted item, depth, string and input limits and one
+below; hand-made strings, chunks, simple values, floats, tags, breaks and reserved heads under nine sets of limits; and a
+nesting of 100,000 levels. All are equal. Four deliberate changes to the functional form (the depth bound off by one, the
+map pair bound, the unmatched-key test of an indefinite map, the remaining bound of a chunked string) are each caught.
+
+**Harness and environment.** `CborDecodeBench`, the harness of section 45 (`WireSkipBench`) with the decoder in place of
+the walk: eight warm-up passes of each variant of about 50 ms, then ten rounds of about 250 ms in ABBA order; a JVM reports
+the median of its rounds, and the table gives the median of four JVMs (two starting with each variant) and their range.
+Every input is decoded by both outside the timed region and the extents of their items compared. Limits: those of a
+block (`CborCorpus.Blocks`, 2,500,000 bytes and items). Euler (Intel Core Ultra 9 285K, WSL2), shared with other
+containers (load average 1.7 to 2.5); Docker image `scarab-jdk:local`
+`sha256:8f00ab6b6e1eed196c2b835bfd558507dfc29fac3153936fa38596248d7ebc76`, JVM 25.0.4.1+1-LTS,
+`--cpuset-cpus=8-11 --memory=4g --network none`, `-Xms2g -Xmx2g -XX:+UseG1GC -XX:ActiveProcessorCount=4`.
+
+<!-- register:table perf-54.t1 -->
+| Workload | Imperative µs/op | Functional µs/op | MB/s imp. / func. | MB allocated/op imp. / func. | Time, median (per-JVM range) | Allocation, median (per-JVM range) |
+|---|---:|---:|---:|---:|---:|---:|
+| Preview blocks (648, 653,017 B) | 137.6 | 1,500.0 | 4,745 / 435 | 0.481 / 11.113 | 10.86× (10.83× to 10.99×) | 23.1× (23.1× to 23.1×) |
+| Preprod blocks (70, 58,673 B) | 25.8 | 287.7 | 2,275 / 204 | 0.084 / 2.066 | 11.16× (11.13× to 11.21×) | 24.6× (24.6× to 24.6×) |
+| Mainnet fixture blocks (12, 28,728 B) | 10.7 | 120.6 | 2,681 / 238 | 0.032 / 0.865 | 11.29× (11.08× to 11.35×) | 26.8× (26.8× to 26.8×) |
+| All 730 in one message (740,420 B) | 161.3 | 2,337.5 | 4,590 / 317 | 0.231 / 16.219 | 14.41× (14.06× to 14.63×) | 70.3× (70.3× to 70.3×) |
+<!-- /register -->
+
+**Result.** The functional decode takes 10.8 to 14.6 times as long and allocates 23 to 70 times as much, on every
+workload and in every JVM: a `Right`, a tuple and a position per read as in section 45, and on top of that an immutable
+frame per child of a container and a persistent vector update per item. The decoder and its index keep their imperative
+form, under a `@SuppressWarnings` that cites this section.

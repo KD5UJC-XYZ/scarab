@@ -72,4 +72,6 @@ One row per measurement section, in the order the sections were written; the sec
 | 45 | 2026-10-31 | The CBOR walk of the mini-protocol reader: functional against imperative (#657) | #657 | [Peers, connections and the network path](performance/peers-and-network.md#45-the-cbor-walk-of-the-mini-protocol-reader-functional-against-imperative-657) |
 | 46 | 2026-10-31 | The UTxO store's scans: a fold against the loops (#650) | #650 | [Memory, snapshots and bootstrap](performance/memory-and-snapshots.md#46-the-utxo-stores-scans-a-fold-against-the-loops-650) |
 | 47 | 2026-10-31 | The collections of the Haskell state: builders against immutable forms (#650) | #650 | [Memory, snapshots and bootstrap](performance/memory-and-snapshots.md#47-the-collections-of-the-haskell-state-builders-against-immutable-forms-650) |
+| 48 | 2026-10-31 | The CBOR decoder: functional against imperative (#650) | #650 | [Peers, connections and the network path](performance/peers-and-network.md#48-the-cbor-decoder-functional-against-imperative-650) |
+| 49 | 2026-10-31 | Reading a decoded document: functional against imperative navigation, sharing and caching (#650) | #650 | [Memory, snapshots and bootstrap](performance/memory-and-snapshots.md#49-reading-a-decoded-document-functional-against-imperative-navigation-sharing-and-caching-650) |
 <!-- /register -->

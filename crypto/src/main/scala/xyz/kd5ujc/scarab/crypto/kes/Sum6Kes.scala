@@ -62,7 +62,7 @@ object Sum6Kes:
     def toArray: Array[Byte] = bytes.toArray
   object SuppliedMessage:
     def fromBytes(bytes: Bytes): Either[Failure, SuppliedMessage] =
-      if bytes == null || bytes.value == null then Left(Failure.MissingComponent(Component.Message))
+      if bytes == null then Left(Failure.MissingComponent(Component.Message))
       else if bytes.size > MaxMessageBytes then Left(Failure.MessageTooLarge(bytes.size))
       else Right(new SuppliedMessage(bytes))
     def fromArray(bytes: Array[Byte]): Either[Failure, SuppliedMessage] =
@@ -71,7 +71,7 @@ object Sum6Kes:
       else fromBytes(Bytes.fromArray(bytes))
 
   private def checked(bytes: Bytes, size: Int, component: Component): Either[Failure, Bytes] =
-    if bytes == null || bytes.value == null then Left(Failure.MissingComponent(component))
+    if bytes == null then Left(Failure.MissingComponent(component))
     else if bytes.size != size then Left(Failure.InvalidLength(component, bytes.size, size))
     else Right(bytes)
   private def array(bytes: Array[Byte], size: Int, component: Component): Either[Failure, Bytes] =
@@ -127,8 +127,7 @@ object Sum6Kes:
                 val offset = 64 + 64 * (depth - 1)
                 val pair = signature.bytes.slice(offset, offset + 64)
                 val digest = hash(pair)
-                if digest == null || digest.value == null then
-                  Left(Failure.HashContractViolation(None))
+                if digest == null then Left(Failure.HashContractViolation(None))
                 else if digest.size != 32 then
                   Left(Failure.HashContractViolation(Some(digest.size)))
                 else if digest != state.current then Right(state.copy(rejected = true))

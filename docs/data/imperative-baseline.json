@@ -2,8 +2,8 @@
  "_comment": "try/catch/finally per main Scala source; written by scripts/check_imperative.py --write-baseline, which refuses an increase. It only shrinks (issue 650).",
  "files": {
   "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Cbor.scala": {
-   "catch": 4,
-   "try": 4
+   "catch": 2,
+   "try": 2
   },
   "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/vrf/TimingProbeMain.scala": {
    "catch": 1,

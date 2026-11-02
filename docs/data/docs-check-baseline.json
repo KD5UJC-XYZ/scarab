@@ -1904,12 +1904,6 @@
   {
    "kind": "missing-symbol",
    "path": "docs/performance/rewards-and-evaluation.md",
-   "key": "HashMap.get",
-   "count": 1
-  },
-  {
-   "kind": "missing-symbol",
-   "path": "docs/performance/rewards-and-evaluation.md",
    "key": "LegacySnapshots.read",
    "count": 1
   },
