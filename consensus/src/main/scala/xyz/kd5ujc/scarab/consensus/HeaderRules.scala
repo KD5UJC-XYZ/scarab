@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus
 
+import cats.data.NonEmptyVector
 import xyz.kd5ujc.scarab.ledger.{HeaderError, ProviderDefect}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
@@ -142,6 +143,10 @@ final case class HeaderChain[H](
     * synthesized headers. Accepted CSJ searches may rewind into this captured local prefix.
     */
   def points: Vector[ChainSync.Point] = prefix.map(_.point) ++ (base +: entries.map(_.header.point))
+
+  /** [[points]], which are never empty: the base is always there. */
+  def nonEmptyPoints: NonEmptyVector[ChainSync.Point] =
+    NonEmptyVector(base, entries.map(_.header.point)).prependVector(prefix.map(_.point))
 
   def tipHash: Option[Bytes] = entries.lastOption.map(_.header.hash).orElse(baseHash)
 

@@ -84,12 +84,6 @@ lazy val disallowedWarts: Seq[wartremover.Wart] = Seq(
   Wart.GlobalExecutionContext
 )
 
-// The modules whose main sources are free of the disallowed warts: there they are errors. Elsewhere they
-// are reported as information, so the build shows them without failing, until the module is clean and
-// joins this set (issue 650).
-lazy val wartFree: Set[String] =
-  Set("codec", "consensus", "crypto", "ledger", "models", "modelsGen", "network", "plutus", "protocol", "storage")
-
 def scarab(id: String, dir: String = null): Project =
   Project(id, file(Option(dir).getOrElse(id)))
     // sbt-tpolecat would add its own option set; the options above are the whole set here.
@@ -98,10 +92,7 @@ def scarab(id: String, dir: String = null): Project =
       name := s"scarab-$id",
       Compile / scalacOptions += "-Wsafe-init",
       Test / scalacOptions -= "-Wsafe-init",
-      Compile / compile / wartremoverErrors ++= (if (wartFree(id)) disallowedWarts else Nil),
-      Compile / compile / wartremoverWarnings ++= (if (wartFree(id)) Nil else disallowedWarts),
-      Compile / scalacOptions ++= (if (wartFree(id)) Nil
-                                   else Seq("-Wconf:msg=\\[wartremover.*:info")),
+      Compile / compile / wartremoverErrors ++= disallowedWarts,
       wartremoverExcluded += sourceManaged.value,
       libraryDependencies ++= testDependencies
     )

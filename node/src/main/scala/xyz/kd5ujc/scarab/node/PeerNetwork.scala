@@ -830,7 +830,9 @@ object PeerNetwork:
         peer
     }.toSet
     retained ++ (next.public ++ next.bootstrap.toVector.flatten)
-      .filter(_.host.isInstanceOf[IpAddress])
+      .filter(_.host match
+        case _: IpAddress => true
+        case _            => false)
 
   private[node] def installRuntimeGeneration[F[_]: Async](
       runtime: Ref[F, Runtime[F]],

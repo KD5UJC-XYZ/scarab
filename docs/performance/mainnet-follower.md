@@ -472,3 +472,25 @@ therefore discards any repetition whose noise floor exceeds the contamination bo
 and retries it once; a discarded repetition emits no verdicts and is counted in the final
 summary. Expect a shared box to contaminate most repetitions — re-run until the wanted
 number of clean repetitions pass, or use a quiet machine.
+
+## 52. The verification cache's warming without try/finally (#650)
+
+**2026-10-31.** `VerificationCache.warm` guarded each job with `try`/`catch`/`finally` and held its semaphore with
+`try`/`finally`. In #650 each job's defect is caught with `Either.catchNonFatal`, and the semaphore is a bracketed
+resource. The last job of a block still stores the block's prepared checks. After a fatal error or an interrupt it no
+longer does, which costs a cache miss and nothing else.
+
+**Measured.** `WarmBenchMain` (section 14) on the first 400 mainnet Alonzo blocks of the #125 capture `alonzo335.hex`,
+in batches of 16 with one range in flight, against a fresh cache. Eight JVMs in ABBA order, each pinned to four CPUs
+(`-XX:ActiveProcessorCount=4`); the node's classes are swapped, the rest is the same. Every run computed all 32,242
+witness verdicts that the rules then looked up.
+
+<!-- register:table perf-58.t1 -->
+| Build | Blocks a second, four JVMs | Median |
+|---|---|---:|
+| `try`/`catch`/`finally` (before) | 194.8, 207.2, 212.8, 219.6 | 210.0 |
+| `Either.catchNonFatal` and a bracketed semaphore | 159.8, 216.4, 227.0, 228.8 | 221.7 |
+<!-- /register -->
+
+**Result.** The warming with the functional guards is not slower: 222 blocks a second at the median against 210. One
+JVM of the new side (160) ran while the node's tests ran on other CPUs.

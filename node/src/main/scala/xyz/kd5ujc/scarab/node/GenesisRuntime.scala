@@ -105,8 +105,8 @@ final class GenesisRuntime[F[_]: Async] private (
         gate.snapshot.flatTap(published.set)
       def fragment(history: HeaderChain[NodeHeaderState]): Fragment =
         Fragment(
-          history.points.head,
-          history.points.tail.collect { case point: Point.Block =>
+          history.nonEmptyPoints.head,
+          history.nonEmptyPoints.tail.collect { case point: Point.Block =>
             point
           }
         )
@@ -197,8 +197,8 @@ final class GenesisRuntime[F[_]: Async] private (
                       )(intersection =>
                         jumper.update(
                           JumpInfo(
-                            h.points.head,
-                            h.points.tail,
+                            h.nonEmptyPoints.head,
+                            h.nonEmptyPoints.tail,
                             GenesisPeer.Checkpoint(h, selected, intersection)
                           )
                         )
@@ -230,8 +230,8 @@ final class GenesisRuntime[F[_]: Async] private (
                     if selected.contains(point) && h.points.contains(point) then
                       jumper.update(
                         JumpInfo(
-                          h.points.head,
-                          h.points.tail,
+                          h.nonEmptyPoints.head,
+                          h.nonEmptyPoints.tail,
                           GenesisPeer.Checkpoint(h, selected, point)
                         )
                       )

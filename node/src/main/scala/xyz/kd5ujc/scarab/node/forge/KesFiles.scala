@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import scala.util.Using.Releasable
+import scala.util.Using
 import xyz.kd5ujc.scarab.ledger.ForgeKeyProblem
 import cats.syntax.all.*
 import java.nio.ByteBuffer
@@ -100,11 +102,11 @@ object KesFiles:
   private def snapshot(key: Sum6KesSigning.SigningKey): KeySnapshot =
     KeySnapshot(key.period, key.verificationKey, key.toBytes)
 
+  // A key read only to be looked at is forgotten (its material zeroed) however the look ends.
+  private given Releasable[Sum6KesSigning.SigningKey] = _.forget()
+
   private def inspect(file: Path): Either[ForgeError, KeyStatus] =
-    parse(file).map { key =>
-      try KeyStatus(key.period, key.verificationKey)
-      finally key.forget()
-    }
+    parse(file).map(key => Using.resource(key)(k => KeyStatus(k.period, k.verificationKey)))
 
   private def writeAll(
       channel: FileChannel,
@@ -209,17 +211,16 @@ object KesFiles:
     KeyFiles.kesEnvelope(file.toString, key).flatMap { text =>
       val raw = text.getBytes(StandardCharsets.UTF_8)
       at(file, KesFileOperation.StageWrite) {
-        val channel =
-          try
+        // owner-only where the file system has POSIX permissions
+        Either
+          .catchOnly[UnsupportedOperationException](
             FileChannel.open(
               next,
               java.util.Set.of[java.nio.file.OpenOption](Open.CREATE_NEW, Open.WRITE),
               PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------"))
             )
-          catch
-            case _: UnsupportedOperationException =>
-              FileChannel.open(next, Open.CREATE_NEW, Open.WRITE)
-        channel
+          )
+          .getOrElse(FileChannel.open(next, Open.CREATE_NEW, Open.WRITE))
       }.flatMap { channel =>
         val written = writeAll(
           channel,
@@ -262,9 +263,7 @@ object KesFiles:
           )
         }
         .flatMap { found =>
-          val actual =
-            try snapshot(found)
-            finally found.forget()
+          val actual = Using.resource(found)(snapshot)
           if actual.period != expected.period then
             Left(
               ForgeError.KesFileFailure(

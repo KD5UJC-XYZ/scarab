@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.models.runtime
 
 import cats.data.NonEmptyVector
 import xyz.kd5ujc.scarab.codec.{Cbor, Value}
-import scala.util.control.NonFatal
+import cats.syntax.all.*
 
 import DecodeError.{Arity, Kind}
 
@@ -28,8 +28,10 @@ trait Codec[A]:
     Cbor.decode(bytes, limits) match
       case Left(message) => Left(DecodeError(Kind.Syntax(message), Nil, 0, rooted = true))
       case Right(root) =>
-        try decode(root).left.map(_.rebased(root.offset))
-        catch case NonFatal(e) => Left(DecodeError(Kind.Internal(e), Nil, 0, rooted = true))
+        Either
+          .catchNonFatal(decode(root).left.map(_.rebased(root.offset)))
+          .leftMap(e => DecodeError(Kind.Internal(e), Nil, 0, rooted = true))
+          .flatten
 
   /** The bytes of `a`, or the constraint it violates: a value that [[check]] refuses is never
     * written. This is the way to write a value of unknown origin.

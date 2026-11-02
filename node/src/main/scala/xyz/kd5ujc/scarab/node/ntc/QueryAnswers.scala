@@ -465,7 +465,7 @@ object QueryAnswers:
           delegationsAndRewards.answerRead(f.accounts.map { all =>
             val accounts = restrictAlways(all, credentials)
             (
-              accounts.collect { case (c, a) if a.pool.isDefined => c -> a.pool.get.bytes },
+              accounts.flatMap((c, a) => a.pool.map(pool => c -> pool.bytes)),
               accounts.map { case (c, a) => c -> a.balance.toBigInt }
             )
           })
@@ -543,9 +543,7 @@ object QueryAnswers:
             .sortedMapOf(nodeCredential, nodeDRep)
             .answerRead(
               f.accounts.map(all =>
-                restrict(all, credentials).collect {
-                  case (c, a) if a.drep.isDefined => c -> EraViews.drep(a.drep.get)
-                }
+                restrict(all, credentials).flatMap((c, a) => a.drep.map(d => c -> EraViews.drep(d)))
               )
             )
         }
@@ -725,7 +723,7 @@ object QueryAnswers:
       }.toMap
     else
       accounts.toVector
-        .collect { case (cred, a) if a.drep.isDefined => EraViews.drep(a.drep.get) -> cred }
+        .flatMap((cred, a) => a.drep.map(d => EraViews.drep(d) -> cred))
         .filter((d, _) => dreps.isEmpty || dreps(d))
         .groupMap(_._1)(_._2)
         .view

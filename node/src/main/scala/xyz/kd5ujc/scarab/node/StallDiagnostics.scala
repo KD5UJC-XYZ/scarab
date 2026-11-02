@@ -95,16 +95,18 @@ object StallDiagnostics:
     fiberDump(dir, number, () => liveSnapshot)
 
   /** The lines of the runtime's live-fiber snapshot, or none when no trigger is registered. */
+  // JMX's `queryNames` takes null for "no query" (`MBeanServer.queryNames`).
+  @SuppressWarnings(Array("org.wartremover.warts.Null"))
   private def liveSnapshot: Option[Array[String]] =
     val server = ManagementFactory.getPlatformMBeanServer
     server
       .queryNames(TriggerPattern, null)
       .asScala
       .headOption
-      .map(trigger =>
-        server
-          .invoke(trigger, "liveFiberSnapshot", Array.empty[AnyRef], Array.empty[String])
-          .asInstanceOf[Array[String]]
+      .flatMap(trigger =>
+        server.invoke(trigger, "liveFiberSnapshot", Array.empty[AnyRef], Array.empty[String]) match
+          case lines: Array[String] => Some(lines)
+          case _                    => None
       )
 
   /** [[fiberDump]] over `snapshot`, which runs on the blocking pool: none stands for a runtime that

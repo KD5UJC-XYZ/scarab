@@ -4142,6 +4142,44 @@
     }
    ],
    "listings": []
+  },
+  {
+   "id": "perf-58",
+   "section": "52",
+   "heading": "52. The verification cache's warming without try/finally (#650)",
+   "subject": "The verification cache's warming without try/finally (#650)",
+   "date": "2026-10-31",
+   "dateSource": "text",
+   "issues": [
+    "#650"
+   ],
+   "commits": [],
+   "links": [],
+   "page": "mainnet-follower",
+   "results": [
+    {
+     "header": [
+      "Build",
+      "Blocks a second, four JVMs",
+      "Median"
+     ],
+     "separator": "|---|---|---:|",
+     "rows": [
+      [
+       "`try`/`catch`/`finally` (before)",
+       "194.8, 207.2, 212.8, 219.6",
+       "210.0"
+      ],
+      [
+       "`Either.catchNonFatal` and a bracketed semaphore",
+       "159.8, 216.4, 227.0, 228.8",
+       "221.7"
+      ]
+     ],
+     "id": "perf-58.t1"
+    }
+   ],
+   "listings": []
   }
  ]
 }
