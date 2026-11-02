@@ -3,8 +3,15 @@ package xyz.kd5ujc.scarab.storage.haskell.state
 
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.{Address, ByteStrings, Datum, TxIn, TxOut, Value}
-import xyz.kd5ujc.scarab.ledger.state.{ProtVer, ShelleyBasedEra}
-import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Decoded, Node, Writer}
+import xyz.kd5ujc.scarab.ledger.state.{EraTag, ProtVer, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.models.runtime.{
+  Codec,
+  ConstraintViolation,
+  DecodeError,
+  Decoded,
+  Node,
+  Writer
+}
 
 import DecodeError.Kind
 import NodeOrders.given
@@ -14,8 +21,10 @@ import NodeOrders.given
   * UTxO is `map(0)` (the entries are in the ledger's `tables`), and the node holds its entries as
   * [[TxIn]] and [[TxOut]], so the codecs are over those.
   *
-  * Written at the lowest protocol version of the Conway era, which is how the reference writes the
-  * ledger state of the era (`Versions.eraLow`).
+  * The reference writes a query's UTxO with `toCBOR`, which is `toEraCBOR @era`
+  * (`Ouroboros/Consensus/Shelley/Ledger/Query.hs:1015`, ouroboros-consensus 82ecba32;
+  * `Cardano/Ledger/State/UTxO.hs:95`, cardano-ledger f649f975): at the lowest protocol version of
+  * the era ([[Versions.eraLow]]). [[utxo]] is Conway's; [[utxoIn]] is any Shelley-based era's.
   */
 object UtxoCodecs:
   private given ProtVer = Versions.eraLow(ShelleyBasedEra.SConway)
@@ -109,3 +118,64 @@ object UtxoCodecs:
 
   /** `UTxO` (`UTxO.hs`): the outputs by input, in input order. */
   given utxo: Codec[Map[TxIn, TxOut]] = Wire.sortedMapOf(txIn, txOut)
+
+  /** The form of an output in an era: its era's `TxOut` and the parts the type holds. Every era
+    * writes the parts it holds as [[txOut]] does, so an output that fits its era's form is written
+    * the same in each.
+    */
+  enum OutputForm:
+    /** `ShelleyTxOut` over `Coin`: `[address, coin]` (`Shelley/TxOut.hs:150-154`). */
+    case CoinOnly
+
+    /** `ShelleyTxOut` over `MaryValue`: `[address, value]`, the value a bare coin or
+      * `[coin, assets]` (`Shelley/TxOut.hs:150-154`, `Mary/Value.hs:342-350`).
+      */
+    case WithAssets
+
+    /** `AlonzoTxOut`: `[address, value]` or `[address, value, datum hash]`
+      * (`Alonzo/TxOut.hs:376-386`).
+      */
+    case WithDatumHash
+
+    /** `BabbageTxOut`: the arrays of Alonzo, or the keyed form with an inline datum or a reference
+      * script (`Babbage/TxOut.hs:501-506`).
+      */
+    case Babbage
+
+    /** Whether `o` has only parts this form holds. */
+    def holds(o: TxOut): Boolean = this match
+      case CoinOnly   => o.value.assets.isEmpty && withoutDatum(o)
+      case WithAssets => withoutDatum(o)
+      case WithDatumHash =>
+        o.scriptRef.isEmpty && (o.datum match
+          case Datum.Inline(_)               => false
+          case Datum.NoDatum | Datum.Hash(_) => true)
+      case Babbage => true
+
+    private def withoutDatum(o: TxOut): Boolean = o.datum == Datum.NoDatum && o.scriptRef.isEmpty
+
+  object OutputForm:
+    /** The form of `era`'s outputs: the `TxOut` of its `EraTxOut` instance. */
+    def of[E <: EraTag](era: ShelleyBasedEra[E]): OutputForm = era match
+      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra => CoinOnly
+      case ShelleyBasedEra.SMary                               => WithAssets
+      case ShelleyBasedEra.SAlonzo                             => WithDatumHash
+      case ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway  => Babbage
+
+  /** An output of `era`: [[txOut]], refusing to write an output with a part the era's `TxOut` does
+    * not hold.
+    */
+  def txOutIn[E <: EraTag](era: ShelleyBasedEra[E]): Codec[TxOut] =
+    val form = OutputForm.of(era)
+    new Codec[TxOut]:
+      def decode(n: Node): Decoded[TxOut] = txOut.decode(n)
+      def encode(o: TxOut, out: Writer): Unit = txOut.encode(o, out)
+      override def check(o: TxOut): Option[ConstraintViolation] =
+        Codec.refuse(!form.holds(o), "TxOut", s"an output of $era ($form)", o.datum)
+
+  /** `UTxO` of `era`, written at the era's lowest protocol version as the reference's queries write
+    * it.
+    */
+  def utxoIn[E <: EraTag](era: ShelleyBasedEra[E]): Codec[Map[TxIn, TxOut]] =
+    given ProtVer = Versions.eraLow(era)
+    Wire.sortedMapOf(txIn, txOutIn(era))

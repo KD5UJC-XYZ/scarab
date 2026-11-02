@@ -6,13 +6,18 @@ import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorState}
-import xyz.kd5ujc.scarab.ledger.Block
+import xyz.kd5ujc.scarab.ledger.{Block, TxIn, TxOut}
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, LedgerState, NewEpochState, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, HaskellStateCodecs, Versions}
+import xyz.kd5ujc.scarab.storage.haskell.state.{
+  HaskellState,
+  HaskellStateCodecs,
+  UtxoCodecs,
+  Versions
+}
 
 /** `DebugEpochState` and `DebugNewEpochState`, answered from the mirror, on the state of the chain
   * after every block of the eras capture (Byron to Conway):
@@ -20,7 +25,8 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, HaskellStateCodecs
   *   - the answer is what the Haskell codec decodes, to a state that holds what the mirror holds
   *     and that writes the answer again byte for byte;
   *   - a Shelley-based era answers both queries (and their `GetCBOR` forms), in the era's own
-  *     encoding version, and only these (the other queries stay Conway's);
+  *     encoding version, the chain-dependent state and the UTxO queries, and only these (the other
+  *     queries stay Conway's);
   *   - a query for another era is the era mismatch, and Byron is refused.
   */
 class MirrorAnswersSuite extends FunSuite:
@@ -63,6 +69,13 @@ class MirrorAnswersSuite extends FunSuite:
 
   private def view(block: Block, state: MirrorState): QueryView[MirrorState] =
     QueryView(Point.Origin, Some(block.header.blockNo), state)
+
+  private def output(hex: String): TxOut =
+    UtxoCodecs.txOut
+      .decodeBytes(
+        Bytes.fromHex(hex.filterNot(_.isWhitespace)).fold(e => fail(e.message), identity)
+      )
+      .fold(e => fail(e.toString), identity)
 
   private def ask(era: Era, block: Block, state: MirrorState, query: LedgerQuery): Option[Bytes] =
     QueryAnswers.answer(
@@ -192,6 +205,60 @@ class MirrorAnswersSuite extends FunSuite:
     assertEquals(shapes(Era.Alonzo), "81820182")
     assertEquals(shapes(Era.Babbage), "81820088")
     assertEquals(shapes(Era.Conway), "81820088")
+  }
+
+  test("the UTxO queries are answered in every Shelley-based era, each output in its era's form") {
+    // an output every era holds, and one with a datum hash, which only Alonzo's `TxOut` and later
+    // hold (the reference's bytes for each era: `UtxoAnswersReferenceSuite`)
+    val plain =
+      TxIn(Bytes(Vector.fill(32)(1.toByte)), 0) -> output(s"82 581d60${"33" * 28} 1a0016e360")
+    val withHash = TxIn(Bytes(Vector.fill(32)(2.toByte)), 1) ->
+      output(s"83 581d60${"44" * 28} 1a0016e360 5820${"da" * 32}")
+    val utxo = Map(plain, withHash)
+    val firsts = shelleyBased.groupBy(_._1.era).view.mapValues(_.head).toMap
+    assertEquals(firsts.size, 6)
+    firsts.foreach { case (era, (block, state)) =>
+      val witness = Versions.shelleyBased(era).getOrElse(fail(s"$era is not Shelley-based"))
+      val holdsHash = era.index >= Era.Alonzo.index
+      def written(entries: Map[TxIn, TxOut]): String =
+        "81" + UtxoCodecs.utxoIn(witness).write(entries).fold(e => fail(e.toString), _.hex)
+      def asked(q: LedgerQuery): Either[Unanswered, Bytes] =
+        QueryAnswers.answerOrWhy(
+          queryEnv,
+          view(block, state),
+          utxo,
+          NtcQuery.IfCurrent(era.index, q)
+        )
+      val whole = asked(LedgerQuery.GetUTxOWhole)
+      if holdsHash then assertEquals(whole.map(_.hex), Right(written(utxo)), s"$era")
+      else assertEquals(whole.left.toOption, Some(Unanswered.Unwritable), s"$era")
+      assertEquals(
+        asked(LedgerQuery.GetUTxOByTxIn(Set(plain._1))).map(_.hex),
+        Right(written(Map(plain))),
+        s"$era"
+      )
+      assertEquals(
+        asked(LedgerQuery.GetUTxOByAddress(Set(plain._2.address.raw))).map(_.hex),
+        Right(written(Map(plain))),
+        s"$era"
+      )
+    }
+  }
+
+  test("a Byron state answers no UTxO query") {
+    val (block, state) = states.find(_._1.era == Era.Byron).getOrElse(fail("no Byron block"))
+    assertEquals(
+      QueryAnswers
+        .answerOrWhy(
+          queryEnv,
+          view(block, state),
+          Map.empty,
+          NtcQuery.IfCurrent(Era.Byron.index, LedgerQuery.GetUTxOWhole)
+        )
+        .left
+        .toOption,
+      Some(Unanswered.Unsupported)
+    )
   }
 
   test("a Byron state has no new-epoch state to answer") {

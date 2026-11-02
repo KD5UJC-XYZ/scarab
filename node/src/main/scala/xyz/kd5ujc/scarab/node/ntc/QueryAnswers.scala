@@ -178,9 +178,10 @@ final class ConwayFacts(val l: EraRead[Conway]):
   * ends it on the reference). The UTxO queries take the entries they need as `utxo` (the caller
   * resolves them against the backing store first, see [[UtxoNeeds]]).
   *
-  * Only the Conway era is answered: its `IfCurrent` queries get `[result]`, queries naming another
-  * era get the era-mismatch reply, as the reference sends. The ledger state is read through
-  * [[ChainRead]]: from the mirror's records, whichever form the state is in.
+  * The Conway era is answered, and in every Shelley-based era the ledger state, the chain-dependent
+  * state and the UTxO: their `IfCurrent` queries get `[result]`, queries naming another era get the
+  * era-mismatch reply, as the reference sends. The ledger state is read through [[ChainRead]]: from
+  * the mirror's records, whichever form the state is in.
   */
 object QueryAnswers:
   @unused private val ConwayIndex = Era.Conway.index
@@ -291,11 +292,15 @@ object QueryAnswers:
       else ledgerAnswer(env, view, utxo, inner, version).map(r => CborOut.build(_.array(1).raw(r)))
 
   /** The queries answered in every Shelley-based era: the ledger state as the Haskell node writes
-    * it, and the chain-dependent state (the others are Conway's).
+    * it, the chain-dependent state and the UTxO (the others are Conway's). The reference answers
+    * each of them in every Shelley-based era, at every node-to-client version
+    * (`blockQueryIsSupportedOnVersion`, `Ouroboros/Consensus/Shelley/Ledger/Query.hs:541-557`,
+    * ouroboros-consensus 82ecba32).
     */
   private def inEveryEra(q: LedgerQuery): Boolean = LedgerQuery.cborLayers(q)._2 match
     case LedgerQuery.DebugEpochState | LedgerQuery.DebugNewEpochState |
-        LedgerQuery.DebugChainDepState =>
+        LedgerQuery.DebugChainDepState | LedgerQuery.GetUTxOWhole |
+        LedgerQuery.GetUTxOByAddress(_) | LedgerQuery.GetUTxOByTxIn(_) =>
       true
     case _ => false
 
@@ -438,6 +443,11 @@ object QueryAnswers:
       version: NtcVersion
   ): Either[Unanswered, Bytes] =
     import LedgerQuery.*
+    // the outputs as the era's `TxOut` writes them (`UtxoCodecs.utxoIn`)
+    def utxoAnswer(entries: Map[TxIn, TxOut]): Either[Unanswered, Bytes] =
+      Versions.shelleyBased(view.era) match
+        case Some(era) => UtxoCodecs.utxoIn(era).answer(entries)
+        case None      => Left(Unanswered.Unsupported)
     def conway[A](f: ConwayFacts => Either[Unanswered, A]): Either[Unanswered, A] =
       view.conway.leftMap(Unanswered.Refused(_)).flatMap {
         case Some(facts) => f(facts)
@@ -455,11 +465,11 @@ object QueryAnswers:
       case DebugChainDepState => chainDepState(view)
       case DebugEpochState    => MirrorAnswers.epochState(view)
       case DebugNewEpochState => MirrorAnswers.newEpochState(view)
-      case GetUTxOWhole       => UtxoCodecs.utxo.answer(utxo)
+      case GetUTxOWhole       => utxoAnswer(utxo)
       case GetUTxOByAddress(addresses) =>
-        UtxoCodecs.utxo.answer(utxo.filter { case (_, o) => addresses(o.address.raw) })
+        utxoAnswer(utxo.filter { case (_, o) => addresses(o.address.raw) })
       case GetUTxOByTxIn(inputs) =>
-        UtxoCodecs.utxo.answer(utxo.filter { case (i, _) => inputs(i) })
+        utxoAnswer(utxo.filter { case (i, _) => inputs(i) })
       case GetFilteredDelegationsAndRewardAccounts(credentials) =>
         conway { f =>
           delegationsAndRewards.answerRead(f.accounts.map { all =>

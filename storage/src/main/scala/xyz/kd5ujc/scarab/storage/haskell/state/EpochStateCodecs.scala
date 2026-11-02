@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.storage.haskell.state
 import xyz.kd5ujc.scarab.codec.Value
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.{Codec, Decoded, Node, Writer}
+import xyz.kd5ujc.scarab.protocol.Era
 
 import Wire.*
 
@@ -21,6 +22,16 @@ object Versions:
       case ShelleyBasedEra.SBabbage => 7L
       case ShelleyBasedEra.SConway  => 9L
     ProtVer(Word64.fromUnsigned(major), Word64.zero)
+
+  /** The witness of a Shelley-based era; none for Byron. */
+  def shelleyBased(era: Era): Option[ShelleyBasedEra[?]] = era match
+    case Era.Byron   => None
+    case Era.Shelley => Some(ShelleyBasedEra.SShelley)
+    case Era.Allegra => Some(ShelleyBasedEra.SAllegra)
+    case Era.Mary    => Some(ShelleyBasedEra.SMary)
+    case Era.Alonzo  => Some(ShelleyBasedEra.SAlonzo)
+    case Era.Babbage => Some(ShelleyBasedEra.SBabbage)
+    case Era.Conway  => Some(ShelleyBasedEra.SConway)
 
 /** The era-dependent parts of the state and the records that hold them, up to `NewEpochState`
   * (`LedgerState/Types.hs`). The parts that depend on the era are chosen by the [[ShelleyBasedEra]]

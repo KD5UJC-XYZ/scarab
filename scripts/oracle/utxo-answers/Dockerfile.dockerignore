@@ -1,0 +1,7 @@
+*
+!scripts/
+scripts/*
+!scripts/oracle/
+scripts/oracle/*
+!scripts/oracle/utxo-answers/
+!scripts/oracle/utxo-answers/Main.hs
