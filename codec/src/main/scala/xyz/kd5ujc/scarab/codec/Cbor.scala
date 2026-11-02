@@ -54,6 +54,10 @@ object Cbor:
     case NonNegativeNInt(value: BigInt)
     case InvalidUnicode
     case StackExhausted
+
+    /** A [[Detached]] record is not an empty indefinite list at an item's head, or is not reached.
+      */
+    case DetachedRecord(offset: Int)
     def message: String = this match
       case InvalidLimits      => "limits must be nonnegative"
       case InputLimitExceeded => "input byte limit exceeded"
@@ -76,6 +80,7 @@ object Cbor:
       case NonNegativeNInt(_)        => "NInt must be negative"
       case InvalidUnicode            => "invalid Unicode text"
       case StackExhausted            => "nesting exceeds the stack"
+      case DetachedRecord(_)         => "a detached record is not an empty indefinite list"
 
   val TooDeep: Error = Error.StackExhausted
 
@@ -83,8 +88,37 @@ object Cbor:
     try body
     catch case _: StackOverflowError => Left(TooDeep)
 
+  /** The records of an input that are written as an empty indefinite list `9f ff` followed by their
+    * fields, as the reference reads a `RecD` record below decoder version 12: `decodeCount (RecD
+    * cn) n` reads the list's head with `decodeRecordNamed` around a decoder that reads nothing
+    * (`Decoding/Coders.hs:482`, cardano-ledger f649f975), so the check for the break of an
+    * indefinite list (`decodeListLikeT`, `Decoding/Decoder.hs:690-708`) passes at once and the
+    * record's `fields` fields are then read from the items after the break. Every enclosing decoder
+    * counts the record as one item. Which empty indefinite lists are such records only a reader of
+    * the input's structure knows; a decode given them reads each as a list of the `fields` items
+    * after its break (see [[Node.isDetached]]), so that the items enclosing it are framed and span
+    * the bytes as the reference's decoders read them.
+    *
+    * @param offsets
+    *   where each record's `9f` is, from the start of the input, in increasing order
+    * @param fields
+    *   the number of fields of each record
+    */
+  final case class Detached(offsets: Vector[Int], fields: Vector[Int]):
+    def isEmpty: Boolean = offsets.isEmpty
+
+  object Detached:
+    val none: Detached = Detached(Vector.empty, Vector.empty)
+
   def decode(bytes: Bytes, limits: Limits = Limits()): Either[Error, Node] =
-    decoded(bytes, limits, prefix = false)
+    decoded(bytes, limits, prefix = false, Detached.none)
+
+  /** [[decode]], reading the records `detached` lists as lists of the items after their break. A
+    * record that is not an empty indefinite list at an item's head, or that the decode does not
+    * reach, is [[Error.DetachedRecord]].
+    */
+  def decode(bytes: Bytes, limits: Limits, detached: Detached): Either[Error, Node] =
+    decoded(bytes, limits, prefix = false, detached)
 
   /** The first item of `bytes`, with the checks of [[decode]]; whatever follows it is not read.
     * This is what cborg's `deserialiseFromBytes` returns before its caller looks at the leftover,
@@ -92,15 +126,20 @@ object Cbor:
     * 134-143, serialise 0.2.6.1).
     */
   def decodePrefix(bytes: Bytes, limits: Limits = Limits()): Either[Error, Node] =
-    decoded(bytes, limits, prefix = true)
+    decoded(bytes, limits, prefix = true, Detached.none)
 
-  private def decoded(bytes: Bytes, limits: Limits, prefix: Boolean): Either[Error, Node] =
+  private def decoded(
+      bytes: Bytes,
+      limits: Limits,
+      prefix: Boolean,
+      detached: Detached
+  ): Either[Error, Node] =
     boundary:
       if limits.maxInputBytes < 0 || limits.maxDepth < 0 || limits.maxItems < 0 || limits.maxStringBytes < 0
       then Left(Error.InvalidLimits)
       else if bytes.size > limits.maxInputBytes then Left(Error.InputLimitExceeded)
       else
-        try Right(new Decoder(bytes, limits, prefix).run())
+        try Right(new Decoder(bytes, limits, prefix, detached).run())
         catch case _: StackOverflowError => Left(TooDeep)
 
   /** Reads the input once, with the checks of a decoder, and writes the [[Index]] of its items;
@@ -112,8 +151,8 @@ object Cbor:
     * (`docs/performance.md` section 48; `CborDecodeFunctional` in the tests).
     */
   @SuppressWarnings(Array("org.wartremover.warts.Var", "org.wartremover.warts.While"))
-  private final class Decoder(input: Bytes, limits: Limits, prefix: Boolean)(using
-      Label[Either[Error, Node]]
+  private final class Decoder(input: Bytes, limits: Limits, prefix: Boolean, detached: Detached)(
+      using Label[Either[Error, Node]]
   ):
     private def fail(error: Error): Nothing = break(Left(error))
     // Read-only view of the input: the document shares it, its nodes are windows onto it.
@@ -123,6 +162,12 @@ object Cbor:
     private val index = new Index(input.size)
     private var pos = base
     private var items = 0
+    // the detached records, as offsets in `data`, and the next one to come
+    private val records = detached.offsets.iterator.map(base + _).toArray
+    private val recordFields = detached.fields.toArray
+    private var record = 0
+    // whether an item is an empty indefinite list `9f ff`
+    private var emptyLists = false
     private def read(): Int =
       if pos >= end then fail(Error.UnexpectedEnd)
       val result = data(pos) & 0xff
@@ -255,6 +300,7 @@ object Cbor:
           produced = true
         else if top >= 0 && openLeft(top) < 0 && isBreak then
           if openMajor(top) == 5 && openCount(top) % 2 == 1 then fail(Error.UnmatchedMapKey)
+          if openMajor(top) == 4 && openCount(top) == 0 then emptyLists = true
           read()
           depth -= 1
           index.finish(openItem(top), pos)
@@ -277,8 +323,15 @@ object Cbor:
               produced = true
             case 4 =>
               val remaining =
-                if ai == 31 then -1L
-                else bounded(argument(ai), limits.maxItems - items, Error.ItemLimitExceeded).toLong
+                if ai != 31 then
+                  bounded(argument(ai), limits.maxItems - items, Error.ItemLimitExceeded).toLong
+                else if record < records.length && records(record) == start then
+                  // a detached record: its break, then its fields as its items
+                  if !isBreak then fail(Error.DetachedRecord(start - base))
+                  read()
+                  record += 1
+                  recordFields(record - 1).toLong
+                else -1L
               push(item, 4, remaining)
             case 5 =>
               val remaining =
@@ -309,7 +362,8 @@ object Cbor:
           if produced && major != 4 && major != 5 && major != 6 then index.finish(item, pos)
         if produced then if depth == 0 then finished = true else openCount(depth - 1) += 1
       if !prefix && pos != end then fail(Error.TrailingBytes)
-      new Document(data, index).node(0)
+      if record < records.length then fail(Error.DetachedRecord(records(record) - base))
+      new Document(data, index, emptyLists).node(0)
 
   /** Uses shortest integer/length widths and definite containers, recursively re-encoding values
     * (not their original bytes). Map order is retained, so this is NOT RFC 8949 deterministic map

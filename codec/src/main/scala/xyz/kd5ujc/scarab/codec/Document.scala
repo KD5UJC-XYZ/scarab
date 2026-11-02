@@ -79,15 +79,20 @@ private[codec] object Index:
   private val FirstBlock = 32
   private val Mask = BlockSize - 1
 
-/** The input of a decode and the [[Index]] of its items: what an indexed [[Node]] is a view of.
-  * Nothing in it is a value: [[valueAt]] reads the item from the bytes each time it is asked, so
-  * that a document costs its index and not an object per item, and that a decoder which walks a
-  * large collection holds the items it is looking at and no others.
+/** The input of a decode and the [[Index]] of its items: what an indexed [[Node]] is a view of, and
+  * whether an item of it is an empty indefinite list (`hasEmptyIndefiniteList`). Nothing in it is a
+  * value: [[valueAt]] reads the item from the bytes each time it is asked, so that a document costs
+  * its index and not an object per item, and that a decoder which walks a large collection holds
+  * the items it is looking at and no others.
   *
   * The decoder that built the index has checked what a value needs (the heads, the lengths, the
   * UTF-8 of text), so reading it cannot fail.
   */
-private[codec] final class Document(val data: Array[Byte], val index: Index):
+private[codec] final class Document(
+    val data: Array[Byte],
+    val index: Index,
+    val hasEmptyIndefiniteList: Boolean
+):
   import Value.*
 
   def node(i: Int): Node = new Node.Indexed(this, i)
@@ -142,6 +147,7 @@ private[codec] final class Document(val data: Array[Byte], val index: Index):
         k += 1
         if k < n then c = index.firstAt(c + 1, index.end(c))
       out
+    else if isDetachedAt(i) then following(i, s)
     else
       var out = new Array[Node](4)
       var n = 0
@@ -154,6 +160,32 @@ private[codec] final class Document(val data: Array[Byte], val index: Index):
         at = index.end(c)
         if (data(at) & 0xff) != 0xff then c = index.firstAt(c + 1, at)
       java.util.Arrays.copyOf(out, n)
+
+  /** Whether item `i` is a detached record ([[Cbor.Detached]]): an empty indefinite list `9f ff`
+    * that spans more than its own two bytes, the fields read after its break. Read otherwise, an
+    * empty indefinite list ends after its break.
+    */
+  def isDetachedAt(i: Int): Boolean =
+    val s = index.start(i)
+    (data(s) & 0xff) == 0x9f && (data(s + 1) & 0xff) == 0xff && index.end(i) > s + 2
+
+  /** The items of the detached record `i` whose head is at `s`: those after its break, up to its
+    * end.
+    */
+  @SuppressWarnings(Array("org.wartremover.warts.Var", "org.wartremover.warts.While"))
+  private def following(i: Int, s: Int): Array[Node] =
+    val until = index.end(i)
+    var out = new Array[Node](4)
+    var n = 0
+    var c = i + 1
+    var at = s + 2
+    while at < until do
+      if n == out.length then out = java.util.Arrays.copyOf(out, n * 2)
+      out(n) = node(c)
+      n += 1
+      at = index.end(c)
+      if at < until then c = index.firstAt(c + 1, at)
+    java.util.Arrays.copyOf(out, n)
 
   private def vector(nodes: Array[Node]): Vector[Node] =
     if nodes.length == 0 then Vector.empty
@@ -228,6 +260,7 @@ private[codec] final class Document(val data: Array[Byte], val index: Index):
     val s = index.start(i)
     val h = data(s) & 0xff
     if (h >>> 5) != 4 then None
+    else if isDetachedAt(i) then Some(following(i, s).iterator)
     else
       val ai = h & 31
       Some(new Iterator[Node]:

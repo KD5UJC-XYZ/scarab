@@ -28,6 +28,18 @@ sealed abstract class Node:
     */
   final def isIndefinite: Boolean = original.byteOr(0)(false)(b => (b & 31) == 31)
 
+  /** Whether the item is a record read with its fields after an empty indefinite list `9f ff`, by a
+    * decode given it as [[Cbor.Detached]]: its value is the list of those fields, its original
+    * bytes run from the `9f` to the end of its last field, and [[isIndefinite]] holds. A node built
+    * by hand is not one.
+    */
+  def isDetached: Boolean
+
+  /** Whether an item of the decode this node is of, not only of this node, is an empty indefinite
+    * list `9f ff` read as such (not [[isDetached]]). A node built by hand belongs to no decode.
+    */
+  def decodeHasEmptyIndefiniteList: Boolean
+
   /** Where the item's head is in the array that `original` is a window of (the start of `original`,
     * without making it), for locating an error.
     */
@@ -67,6 +79,8 @@ object Node:
 
   private final class Strict(val value: Value, val original: Bytes) extends Node:
     def offset: Int = original.unsafeOffset
+    def isDetached: Boolean = false
+    def decodeHasEmptyIndefiniteList: Boolean = false
     def share[A <: AnyRef](kind: Interned[A])(a: A): A = a
     def entries: Option[Iterator[(Node, Node)]] = value match
       case Value.Map(pairs) => Some(pairs.iterator)
@@ -80,6 +94,8 @@ object Node:
     def value: Value = doc.valueAt(index)
     def original: Bytes = doc.originalAt(index)
     def offset: Int = doc.index.start(index)
+    def isDetached: Boolean = doc.isDetachedAt(index)
+    def decodeHasEmptyIndefiniteList: Boolean = doc.hasEmptyIndefiniteList
     def entries: Option[Iterator[(Node, Node)]] = doc.entriesAt(index)
     def items: Option[Iterator[Node]] = doc.itemsAt(index)
     def share[A <: AnyRef](kind: Interned[A])(a: A): A = doc.interns.share(kind)(a)
