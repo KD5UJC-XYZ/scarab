@@ -4180,6 +4180,78 @@
     }
    ],
    "listings": []
+  },
+  {
+   "id": "perf-59",
+   "section": "53",
+   "heading": "53. Detached RecD records: what reading them costs an ordinary decode (#687)",
+   "subject": "Detached RecD records: what reading them costs an ordinary decode (#687)",
+   "date": "2026-11-02",
+   "dateSource": "text",
+   "issues": [
+    "#687"
+   ],
+   "commits": [],
+   "links": [],
+   "page": "peers-and-network",
+   "results": [
+    {
+     "header": [
+      "Workload",
+      "main µs/op (two JVMs)",
+      "#687 µs/op (two JVMs)",
+      "main B/op",
+      "#687 B/op"
+     ],
+     "separator": "|---|---:|---:|---:|---:|",
+     "rows": [
+      [
+       "`Cbor.decode`, Preview blocks (648, 653,017 B)",
+       "142.5 / 147.6",
+       "154.4 / 157.3",
+       "481,152",
+       "496,704"
+      ],
+      [
+       "`Cbor.decode`, preprod blocks (70, 58,673 B)",
+       "27.2 / 27.3",
+       "29.4 / 28.8",
+       "83,936",
+       "85,616"
+      ],
+      [
+       "`Cbor.decode`, mainnet fixture blocks (12, 28,728 B)",
+       "11.8 / 11.3",
+       "11.8 / 11.6",
+       "32,256",
+       "32,544"
+      ],
+      [
+       "`Cbor.decode`, all 730 in one message (740,420 B)",
+       "187.2 / 172.4",
+       "170.0 / 172.9",
+       "230,576",
+       "230,600"
+      ],
+      [
+       "`Block.decodeShelley`, 674 Shelley-based blocks (691,882 B)",
+       "2,924 / 3,001",
+       "3,341 / 2,978",
+       "7,582,797 / 7,701,419",
+       "7,722,155 / 7,705,982"
+      ],
+      [
+       "The walk alone, the same 674 blocks",
+       "",
+       "1,036 / 933",
+       "",
+       "6,692,192"
+      ]
+     ],
+     "id": "perf-59.t1"
+    }
+   ],
+   "listings": []
   }
  ]
 }
