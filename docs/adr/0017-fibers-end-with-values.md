@@ -369,7 +369,7 @@ recorded as invalid and its sender punished.
   refused, or no verdict (`BlockNoVerdict`). With no verdict the block is withheld: not adopted, not recorded in
   `InvalidBlocks`, nobody punished (a ChainSync client does not punish a peer that announces it). It goes into
   `NoVerdictBlocks`, a bounded, in-memory, non-persisted set shared through the block pool. Chain selection
-  excludes it, so it is not judged again; a restart (a fixed build) judges it again. The valid prefix before it is
+  excludes it, ~~so it is not judged again;~~ ([amended](#amendment-2026-11-02-a-block-without-a-verdict-for-a-cause-that-can-pass-is-judged-again)) a restart (a fixed build) judges it again. The valid prefix before it is
   reconsidered as after a refusal (`ChainSel.hs` 1147-1186), and a competing chain that avoids it is adopted. It
   is reported at error severity (`Chain.BlockNoVerdict`) and counted (`scarab_block_no_verdict_total`). Its sender
   stays connected and is not charged. Storage, and anything after the commit point, still stop the node: the node
@@ -504,3 +504,44 @@ loop, once it holds its `KnownIntersectionState`, and applies an accepted jump t
   candidate; the session publishes its gate as it stands before the observer's request, wait and reply.
 - A jump is applied to the gate the session hands over, so the invariant of a jump without a gate is gone.
   `HeaderStateUnavailable` remains for a graft that finds no state.
+
+## Amendment (2026-11-02): a block without a verdict for a cause that can pass is judged again
+
+Owner decision (2026-11-02, issue 693), an amendment of the approved deviation R1 of
+[no verdict on a block, a held transaction or our own block does not stop the node](#amendment-2026-10-28-no-verdict-on-a-block-a-held-transaction-or-our-own-block-does-not-stop-the-node).
+The reference has no state of no verdict: any exception in chain selection escapes `addBlockRunner`
+(ouroboros-consensus `82ecba32` `Storage/ChainDB/Impl/Background.hs` 671-709), whose thread is linked to the node,
+so the node stops. The block is already in the VolatileDB (`ChainSel.hs` 446-452) and `cdbInvalid` is in memory
+only, so after a restart `initialChainSelection` validates it again (`ChainSel.hs` 115-166): a cause that passes
+recovers after a restart, a deterministic one stops the node again. Withheld until a restart, a valid block hit by
+a passing cause kept the node off the chain the reference nodes follow. Judging it again is the closest equivalent of
+the reference's recovery; the reference has no retry to compare its timing with.
+
+- **Which causes.** `BlockNoVerdict.recovery` is a total match on the cause with no default. Judged again
+  (`Recovery.Passing`): an exception of the rules (`BlockNoVerdict.Defect`), a crypto provider's failure
+  (`Verification`), and the evaluator's `BackendFailure.Defect` (a `Throwable` on its worker, an out-of-memory error
+  or a rejected task) and `NoResult`. Judged once, as before (`Recovery.Deterministic`): `BuiltinUnavailable`,
+  `CostingUnmirrored`, `BudgetOutOfRange`, `StackExhausted` (the evaluator's stack has a fixed size) and
+  `StateOutOfRange`.
+- **Schedule.** `NoVerdictBlocks` keeps per block its slot, cause, attempts and next attempt. The wait is 1 s,
+  doubled after each attempt to at most 30 s, measured from the end of an attempt, with no limit on attempts. A
+  verdict ends it (the block is adopted, or recorded in `InvalidBlocks` with no peer charged), as do pruning at the
+  immutable cutoff and a restart. A further attempt counts on from the earlier ones, and its cause decides whether
+  there is another. A delivery, a reconnect or an admission neither resets the schedule nor brings it forward: only
+  a reselection of the selection worker (`BlockAdmissions.Work.Reprocess`) judges a withheld block again.
+- **Trigger and bounds.** A fiber of the selection worker (`BlockSelection.run`, joined by its owner) waits for the
+  first due block and queues a reselection, which runs under the same lock as admissions, behind those already
+  queued; it queues the next only when that one is done. Each reselection releases at most one due block, the one
+  due first, so at most one retry is in flight in the node whatever the number of blocks. `selectLocked` reads the
+  time once, so its end does not depend on the clock. A released block that no preferred candidate reaches is not
+  attempted: it waits its current delay again, uncounted. A retry also validates again the valid prefix before the
+  block (#467).
+- **Observability.** `Chain.BlockNoVerdict` carries the attempt and the wait before the next one;
+  `Chain.BlockNoVerdictRetry` and `scarab_block_no_verdict_retries_total` count the attempts after the first;
+  `scarab_block_no_verdict_total` counts each block once. The stall report (`Chain.StallState`) names the withheld
+  blocks again, with their attempts and next attempt.
+
+Tests: `BlockSelectionWorkerSuite` under a simulated clock (a passing cause that clears is adopted within the cap,
+a deterministic cause is judged once, re-delivery and a reconnect move nothing, a competing chain is adopted at
+once, many withheld blocks each keep their schedule, a refusal on a retry blames nobody, pruning ends a schedule,
+the stall report names the block) and `NoVerdictBlocksSuite`.
