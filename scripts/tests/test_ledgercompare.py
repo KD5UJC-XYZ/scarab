@@ -144,33 +144,73 @@ class WholeStateComparisonTest(unittest.TestCase):
         a, b = cbor.enc([1, [2, 3]]), cbor.enc([1, [2, 3, 4]])
         self.assertEqual(self.compare.first_difference(a, b)["path"], [1])
 
-    def test_the_tally_counts_each_outcome_and_keeps_the_place_of_a_difference(self):
+    def test_the_tally_counts_each_outcome_of_each_query_and_keeps_the_place_of_a_difference(self):
         import tempfile
+        nes_label, utxo_label = "DebugNewEpochState", ledgercompare.UTXO_LABEL
+        self.assertEqual(set(self.compare.WHOLE_QUERIES), {nes_label, utxo_label})
         with tempfile.TemporaryDirectory() as d:
             tally = self.compare.Comparisons(pathlib.Path(d))
-            tally.record_whole("babbage", "epoch 7", {"slot": 1, "matched": True})
-            tally.record_whole("babbage", "epoch 8", {"slot": 2, "matched": False,
-                                                     "firstDifference": {"offset": 9, "path": [1]},
-                                                     "referenceBytes": 10, "scalaBytes": 10, "kept": "x"})
+            tally.record_whole("babbage", "epoch 7", {"slot": 1, "answers": {
+                nes_label: {"matched": True}, utxo_label: {"matched": True}}})
+            tally.record_whole("babbage", "epoch 8", {"slot": 2, "answers": {
+                nes_label: {"matched": True},
+                utxo_label: {"matched": False, "firstDifference": {"offset": 9, "path": [1]},
+                             "referenceBytes": 10, "scalaBytes": 10, "kept": "x"}}})
             tally.record_whole("babbage", "epoch 9", {"error": "socket"})
             tally.record_whole("babbage", "epoch 9", {"skipped": "no socket"})
-            row = tally.whole["babbage"]
-            self.assertEqual((row["matched"], row["mismatched"], row["errors"], row["skipped"]), (1, 1, 1, 1))
-            self.assertEqual(row["differences"][0]["firstDifference"], {"offset": 9, "path": [1]})
-            self.assertNotIn("byron", tally.whole)
+            nes_row, utxo_row = tally.whole[nes_label]["babbage"], tally.whole[utxo_label]["babbage"]
+            self.assertEqual((nes_row["matched"], nes_row["mismatched"], nes_row["errors"], nes_row["skipped"]),
+                             (2, 0, 1, 1))
+            self.assertEqual((utxo_row["matched"], utxo_row["mismatched"], utxo_row["errors"], utxo_row["skipped"]),
+                             (1, 1, 1, 1))
+            self.assertEqual(utxo_row["differences"][0]["firstDifference"], {"offset": 9, "path": [1]})
+            self.assertEqual(utxo_row["differences"][0]["slot"], 2)
+            self.assertNotIn("byron", tally.whole[nes_label])
 
-    def test_a_whole_state_difference_error_or_shortfall_fails_the_run(self):
+    def test_a_whole_state_difference_error_or_shortfall_of_either_query_fails_the_run(self):
         from types import SimpleNamespace
         eras = self.compare.ERAS
         rows = {era: {"matched": 5, "mismatched": 0, "errors": 0, "skipped": 0} for era in eras}
-        whole = {era: {"matched": 5, "mismatched": 0, "errors": 0, "skipped": 0} for era in eras[1:]}
+        whole = {q: {era: {"matched": 5, "mismatched": 0, "errors": 0, "skipped": 0} for era in eras[1:]}
+                 for q in self.compare.WHOLE_QUERIES}
         tally = SimpleNamespace(per_era=rows, whole=whole)
         self.assertEqual(self.compare.judge_comparisons(tally, 3, True), [])
-        whole["mary"]["mismatched"] = 1
-        whole["alonzo"]["errors"] = 1
-        whole["babbage"]["matched"] = 2
+        whole["DebugNewEpochState"]["mary"]["mismatched"] = 1
+        whole["DebugNewEpochState"]["alonzo"]["errors"] = 1
+        whole[ledgercompare.UTXO_LABEL]["babbage"]["matched"] = 2
+        whole[ledgercompare.UTXO_LABEL]["shelley"]["mismatched"] = 1
         failures = self.compare.judge_comparisons(tally, 3, True)
-        self.assertEqual(len(failures), 3, failures)
-        self.assertTrue(failures[0].startswith("mary: 1 same-point DebugNewEpochState answers differ"))
-        self.assertEqual(failures[1], "alonzo: 1 same-point DebugNewEpochState comparison errors")
-        self.assertEqual(failures[2], "babbage: only 2 matched same-point DebugNewEpochState answers (need 3)")
+        self.assertEqual(len(failures), 4, failures)
+        self.assertTrue(failures[0].startswith("shelley: 1 same-point GetUTxOWhole answers differ"))
+        self.assertTrue(failures[1].startswith("mary: 1 same-point DebugNewEpochState answers differ"))
+        self.assertEqual(failures[2], "alonzo: 1 same-point DebugNewEpochState comparison errors")
+        self.assertEqual(failures[3], "babbage: only 2 matched same-point GetUTxOWhole answers (need 3)")
+
+
+class UtxoComparisonTest(unittest.TestCase):
+    """`GetUTxOWhole` answers are compared on every byte, and must be a UTxO answer."""
+
+    UTXO = {cbor.Raw(cbor.enc([b"\x01" * 32, 0])): [b"\x60" + b"\x02" * 28, 5]}
+
+    def utxo_answer(self, utxo):
+        return cbor.enc([4, [utxo]])
+
+    def test_equal_answers_match(self):
+        a = self.utxo_answer(self.UTXO)
+        self.assertTrue(ledgercompare.compare_utxo(a, a).equal)
+
+    def test_one_byte_differs(self):
+        a = self.utxo_answer(self.UTXO)
+        b = self.utxo_answer({cbor.Raw(cbor.enc([b"\x01" * 32, 0])): [b"\x60" + b"\x02" * 28, 6]})
+        v = ledgercompare.compare_utxo(a, b)
+        self.assertFalse(v.equal)
+        self.assertIn("the complete UTxO answer bytes differ", v.problems)
+
+    def test_an_era_mismatch_or_a_non_map_is_not_a_utxo_answer(self):
+        mismatch = cbor.enc([4, [[5, "Babbage"], [6, "Conway"]]])
+        v = ledgercompare.compare_utxo(mismatch, mismatch)
+        self.assertFalse(v.equal)
+        self.assertTrue(v.raw_equal)
+        self.assertTrue(any("not a UTxO answer" in p for p in v.problems), v.problems)
+        listed = cbor.enc([4, [[1, 2]]])
+        self.assertFalse(ledgercompare.compare_utxo(listed, listed).equal)
