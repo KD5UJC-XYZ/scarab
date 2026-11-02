@@ -198,9 +198,9 @@ object ConwayParam:
       */
     def record(n: Node, size: Int, site: DecodeSite): Either[LedgerDecodeError, Vector[Node]] =
       this match
-        case Body                    => CborRead.record(n, size, site)
+        case Body                   => CborRead.record(n, size, site)
         case Stored if n.isDetached => CborRead.record(n, size, site)
-        case Stored                  => CborRead.arrayN(n, size, site)
+        case Stored                 => CborRead.arrayN(n, size, site)
 
   /** `ExUnits` below decoder version 12 (`ExUnits.hs:195-215`, f649f975): a `RecD` record of two
     * `Word64` s, each at most `maxBound :: Int64`. The largest units of a transaction and of a
