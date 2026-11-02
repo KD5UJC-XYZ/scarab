@@ -1,15 +1,76 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.fuzz
 
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{Certificate, Tx, TxBody}
-import xyz.kd5ujc.scarab.protocol.Era
-import munit.FunSuite
+import xyz.kd5ujc.scarab.protocol.{Era, HfcHeader}
+import munit.ScalaCheckSuite
+import org.scalacheck.Gen
+import org.scalacheck.Prop.forAll
 
-/** Deterministic guards check seed acceptance and allocation bounds for representative malformed
-  * length heads, independently of the random mutation seed.
+/** Corpus guards check seed acceptance and allocation bounds. Generated properties exercise
+  * alternate wire forms independently of the mutation corpus.
   */
-class GuardSuite extends FunSuite:
+class GuardSuite extends ScalaCheckSuite:
+  private val unknownEra = Gen.choose(HfcHeader.DijkstraIndex + 1, 23)
+
+  private def checkUnknownEnvelope(era: Int, payload: Bytes, value: Value): Bytes =
+    val envelope = Bytes.wrap(Array(((4 << 5) | 2).toByte, era.toByte)) ++ payload
+    val header = HfcHeader.decode(envelope).fold(e => fail(e.toString), identity)
+    assertEquals(header, HfcHeader.Unrecognised(BigInt(era), payload))
+    assertEquals(Cbor.decode(payload).map(_.value), Right(value))
+    val target =
+      Targets.all.find(_.name == "leios-header-envelope").getOrElse(fail("missing target"))
+    val input = new Input(envelope.toArray)
+    Probe.run(target.name, input)(target.check(input))
+    HfcHeader.encode(header).fold(e => fail(e.toString), identity)
+
+  property("generated padded tags and integers preserve their values through envelope encoding") {
+    forAll(unknownEra, Gen.chooseNum(0, Int.MaxValue), Gen.chooseNum(0, Int.MaxValue)) {
+      (era, tag, number) =>
+        val payload = Bytes.wrap(Mutate.head8(6, tag.toLong) ++ Mutate.head8(0, number.toLong))
+        val value = Value.Tag(BigInt(tag), Node(Value.UInt(BigInt(number)), Bytes.empty))
+        val encoded = checkUnknownEnvelope(era, payload, value)
+        assert(encoded.size < payload.size + 2)
+    }
+  }
+
+  // Lengths from the first extended CBOR head through the envelope's item budget: both
+  // indefinite and definite container heads occupy two bytes, so canonicalization cannot shrink.
+  private def containerEntries(map: Boolean): Gen[List[Int]] =
+    Gen
+      .choose(24, 30)
+      .flatMap(size => Gen.listOfN(size * (if map then 2 else 1), Gen.choose(0, 23)))
+
+  property("generated indefinite arrays retain values when canonicalization keeps the size") {
+    forAll(unknownEra, containerEntries(map = false)) { (era, entries) =>
+      val payload = Bytes.wrap(((((4 << 5) | 31) :: entries) :+ 255).map(_.toByte).toArray)
+      val value = Value.Arr(entries.map(n => Node(Value.UInt(BigInt(n)), Bytes.empty)).toVector)
+      val encoded = checkUnknownEnvelope(era, payload, value)
+      assertEquals(encoded.size, payload.size + 2)
+      assertNotEquals(encoded.drop(2), payload)
+    }
+  }
+
+  property("generated indefinite maps retain entries when canonicalization keeps the size") {
+    forAll(unknownEra, containerEntries(map = true)) { (era, entries) =>
+      val payload = Bytes.wrap(((((5 << 5) | 31) :: entries) :+ 255).map(_.toByte).toArray)
+      val nodes = entries.map(n => Node(Value.UInt(BigInt(n)), Bytes.empty))
+      val value = Value.Map(
+        nodes
+          .zip(nodes.drop(1))
+          .zipWithIndex
+          .collect {
+            case (pair, index) if index % 2 == 0 => pair
+          }
+          .toVector
+      )
+      val encoded = checkUnknownEnvelope(era, payload, value)
+      assertEquals(encoded.size, payload.size + 2)
+      assertNotEquals(encoded.drop(2), payload)
+    }
+  }
+
   test("early-era whole transactions have nonempty inputs and outputs decoded in their era") {
     for era <- Vector(Era.Shelley, Era.Allegra, Era.Mary) do
       val seeds = Corpus.transactionsOf(era)
