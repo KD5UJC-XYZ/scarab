@@ -525,8 +525,9 @@ the reference's recovery; the reference has no retry to compare its timing with.
   `StateOutOfRange`.
 - **Schedule.** `NoVerdictBlocks` keeps per block its slot, cause, attempts and next attempt. The wait is 1 s,
   doubled after each attempt to at most 30 s, measured from the end of an attempt, with no limit on attempts. A
-  verdict ends it (the block is adopted, or recorded in `InvalidBlocks` with no peer charged), as do pruning at the
-  immutable cutoff and a restart. A further attempt counts on from the earlier ones, and its cause decides whether
+  verdict ends it, as do pruning at the immutable cutoff and a restart: the block is judged valid (it is then a
+  block like any other, whether or not its candidate is adopted, so that a later block withheld on the same fork
+  cannot leave both unreachable), or it is recorded in `InvalidBlocks` with no peer charged. A further attempt counts on from the earlier ones, and its cause decides whether
   there is another. A delivery, a reconnect or an admission neither resets the schedule nor brings it forward: only
   a reselection of the selection worker (`BlockAdmissions.Work.Reprocess`) judges a withheld block again.
 - **Trigger and bounds.** A fiber of the selection worker (`BlockSelection.run`, joined by its owner) waits for the
@@ -543,5 +544,6 @@ the reference's recovery; the reference has no retry to compare its timing with.
 
 Tests: `BlockSelectionWorkerSuite` under a simulated clock (a passing cause that clears is adopted within the cap,
 a deterministic cause is judged once, re-delivery and a reconnect move nothing, a competing chain is adopted at
-once, many withheld blocks each keep their schedule, a refusal on a retry blames nobody, pruning ends a schedule,
+once and behind no more than the retry in flight, a slow attempt's successor is timed from its end, two blocks
+withheld in turn on one fork both clear, many withheld blocks each keep their schedule, a refusal on a retry blames nobody, pruning ends a schedule,
 the stall report names the block) and `NoVerdictBlocksSuite`.

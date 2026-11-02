@@ -20,9 +20,10 @@ import xyz.kd5ujc.scarab.ledger.Header
   * equivalent of the reference, which stops on the exception and validates the block again after a
   * restart (`initialChainSelection`, ouroboros-consensus 82ecba32
   * `Storage/ChainDB/Impl/ChainSel.hs:115-166`). The schedule is measured from the end of an attempt
-  * and has no limit on attempts; only a verdict ([[verdict]]), pruning or a restart ends it. A
-  * delivery, a reconnect or an admission never touches it: only the selection worker's reselection
-  * releases a due block ([[release]]), one at a time.
+  * and has no limit on attempts; only a verdict ([[verdict]]: judged valid, whether or not its
+  * candidate is then adopted, or refused), pruning or a restart ends it. A delivery, a reconnect or
+  * an admission never touches it: only the selection worker's reselection releases a due block
+  * ([[release]]), one at a time.
   */
 final class NoVerdictBlocks[F[_]: Async] private (
     state: SignallingRef[F, NoVerdictBlocks.Entries]
@@ -37,12 +38,9 @@ final class NoVerdictBlocks[F[_]: Async] private (
   def record(header: Header, cause: BlockNoVerdict): F[(Int, NoVerdictRetry)] =
     F.monotonic.flatMap(end => state.modify(_.recorded(header.hash, header.slot, cause, end)))
 
-  /** A verdict on these blocks (adopted, or refused by the rules): their schedules end. */
+  /** A verdict on these blocks (judged valid, or refused by the rules): their schedules end. */
   def verdict(hashes: Iterable[Bytes]): F[Unit] =
-    // every adoption comes here: the common case, none of them withheld, writes nothing
-    state.get.flatMap(entries =>
-      state.update(_.removed(hashes)).whenA(hashes.exists(entries.byHash.contains))
-    )
+    state.update(_.removed(hashes))
 
   def hashes: F[Set[Bytes]] = state.get.map(_.byHash.keySet)
 

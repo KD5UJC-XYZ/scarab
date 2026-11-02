@@ -970,3 +970,94 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
       )
     yield ()
   }
+
+  // a block judged again and valid has its verdict even when its candidate is not adopted: two
+  // blocks withheld one after the other on one fork would otherwise each cut the other's chain
+  test("two blocks of one fork withheld in turn: both clear and the fork is adopted") {
+    for
+      forks <- ForgedChain.sameIssuerForks(5000 until 5060, 5060 until 5120)
+      left <- checked(forks._1, 4)
+      right <- checked(forks._2, 6)
+      first = right(1).header
+      second = right(3).header
+      _ <- TestControl.executeEmbed(judgements.flatMap { judged =>
+        node(
+          Set.empty,
+          beforeRule = judged.record,
+          verdict = h =>
+            IO.monotonic.map(at =>
+              if h.hash == first.hash && at < 5.seconds then Verdict.Unavailable(outOfMemory)
+              else if h.hash == second.hash && at < 8.seconds then Verdict.Unavailable(outOfMemory)
+              else Verdict.Valid
+            ),
+          backstop = 10.minutes
+        ) { n =>
+          n.pool.session.use { sender =>
+            for
+              _ <- add(sender, left) *> n.pool.admissions.reprocess
+              // the fork is preferred only beyond the fourth block, so the prefix before the
+              // second withheld block (three blocks) is not
+              _ <- add(sender, right) *> n.pool.admissions.reprocess
+              _ <- IO.sleep(2.minutes)
+              firstAttempts <- judged.of(first)
+              secondAttempts <- judged.of(second)
+              tip <- n.state.get.map(_.tip)
+              withheld <- n.pool.noVerdictBlocks.hashes
+              known <- n.pool.invalidBlocks.snapshot
+              _ <- IO {
+                assertEquals(firstAttempts.take(4), Vector(0, 1, 3, 7).map(_.seconds))
+                assertEquals(secondAttempts, Vector(7, 8).map(_.seconds))
+                assertEquals(tip, right.last.header.point)
+                assertEquals(withheld, Set.empty[Bytes])
+                assertEquals(known.entries, Map.empty)
+              }
+            yield ()
+          }
+        }
+      })
+    yield ()
+  }
+
+  test("a slow attempt: the next is measured from its end, and an admission waits for it only") {
+    for
+      forks <- ForgedChain.sameIssuerForks(5000 until 5060, 5060 until 5120)
+      left <- checked(forks._1, 3)
+      right <- checked(forks._2, 3)
+      target = left(1).header
+      _ <- TestControl.executeEmbed(
+        node(
+          Set.empty,
+          // every attempt after the first takes 5 s of the simulated clock
+          beforeRule = h =>
+            IO.monotonic.flatMap(at =>
+              IO.sleep(5.seconds).whenA(h.hash == target.hash && at > Duration.Zero)
+            ),
+          unavailable = Map(target.hash -> outOfMemory),
+          backstop = 10.minutes
+        ) { n =>
+          n.pool.session.use { sender =>
+            for
+              _ <- add(sender, left) *> n.pool.admissions.reprocess
+              // the second attempt runs from 1 s to 6 s; the competing chain arrives meanwhile
+              _ <- IO.sleep(2.seconds)
+              _ <- add(sender, right) *> n.pool.admissions.reprocess
+              adoptedAt <- IO.monotonic
+              tip <- n.state.get.map(_.tip)
+              entry <- n.pool.noVerdictBlocks.lookup(target.hash)
+              noVerdicts <- reported(n, target)
+              _ <- IO {
+                assertEquals(adoptedAt, 6.seconds)
+                assertEquals(tip, right.last.header.point)
+                assertEquals(entry.map(_.attempts), Some(2))
+                assertEquals(entry.map(_.schedule), Some(NoVerdictBlocks.Schedule.At(8.seconds)))
+                assertEquals(
+                  noVerdicts,
+                  Vector(1 -> NoVerdictRetry.After(1.second), 2 -> NoVerdictRetry.After(2.seconds))
+                )
+              }
+            yield ()
+          }
+        }
+      )
+    yield ()
+  }
