@@ -957,10 +957,11 @@
       "id": "ledger-update-values",
       "component": "Ledger: pre-Conway parameter-update values decoded with the body, decoder versions 2 to 9 (#470)",
       "status": "implemented",
-      "summary": "Each value of a Shelley-to-Babbage parameter update is read at its field's type when the body is decoded: Word16/32/64 widths, tagged bounded rationals, definite Prices and ExUnits records, a Nonce, and a protocol version whose major is at most the era's bound",
+      "summary": "Each value of a Shelley-to-Babbage parameter update is read at its field's type when the body is decoded: Word16/32/64 widths, tagged bounded rationals, definite Prices and ExUnits records, a Nonce, and a protocol version whose major is at most the era's bound; proposals are counted for the PPUP quorum by those values (#669)",
       "evidence": {
         "suites": [
-          "UpdateValuesReferenceSuite"
+          "UpdateValuesReferenceSuite",
+          "PpupVoteSuite"
         ],
         "paths": [
           "fixtures/reference/update-values/cases.jsonl",
@@ -969,8 +970,7 @@
       },
       "limitations": {
         "issues": [
-          668,
-          669
+          668
         ]
       },
       "page": "docs/compatibility/ledger-update-values.md"

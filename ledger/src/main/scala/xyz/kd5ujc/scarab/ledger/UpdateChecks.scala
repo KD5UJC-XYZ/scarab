@@ -41,19 +41,15 @@ object UpdateChecks:
         yield ()
 
   /** The parameters the proposals of the epoch vote for: the one update that at least `quorum`
-    * genesis delegates proposed identically, applied to `params` (`votedFuturePParams`,
-    * `Rules/Ppup.hs:205-225`).
+    * genesis delegates proposed with equal values ([[ParamUpdate.winners]]), applied to `params`
+    * (`votedFuturePParams`, `Rules/Ppup.hs:205-225`).
     */
   def voted(
       params: ProtocolParams,
       current: Map[Bytes, ParamUpdate],
       quorum: Int
   ): Option[ProtocolParams] =
-    val winners = current.values.toVector
-      .groupBy(identity)
-      .collect { case (u, vs) if vs.size >= quorum => u }
-      .toVector
-    winners match
+    ParamUpdate.winners(current.values.toVector, quorum) match
       case Vector(u) =>
         ProtocolParams
           .update(params, u)

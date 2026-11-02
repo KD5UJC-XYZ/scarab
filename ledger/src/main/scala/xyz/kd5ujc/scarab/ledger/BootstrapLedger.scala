@@ -8,9 +8,11 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{Block, ConfigError, EpochGeometry}
 import xyz.kd5ujc.scarab.ledger.{GenDelegPair, LedgerView, Nonce, StakeView}
+import xyz.kd5ujc.scarab.plutus.ExUnits
 
-/** One protocol-parameter update: field index -> original CBOR bytes. Two proposals are "the same
-  * update" when their fields are byte-identical (what the quorum vote counts).
+/** One protocol-parameter update: field index -> original CBOR bytes, which are what is stored and
+  * hashed. Two proposals are "the same update" for the quorum vote when their fields have equal
+  * values ([[ParamUpdate.winners]]), however each value is written.
   */
 final case class ParamUpdate(fields: Map[Int, Bytes])
 
@@ -131,6 +133,114 @@ object ParamUpdate:
       )
       _ <- Unsigned.read[Unsigned.Width.W32](xs(1), DecodeField.Minor)
     yield ()
+
+  /** The value of a field of a pre-Conway update at the type of its field, as the derived
+    * `Ord (PParamsUpdate era)` compares it (`Shelley/PParams.hs:156`, `Alonzo/PParams.hs:306`,
+    * `Babbage/PParams.hs:159`, f649f975): a word, coin or `EpochInterval` by its number; a
+    * `UnitInterval` or `NonNegativeInterval` by its reduced rational (`Ord (BoundedRatio b a)`
+    * through `promoteRatio`, `BaseTypes.hs:299-300`, of the `n % d` that `decodeRationalWithTag`
+    * builds, `Plain.hs:159-167`); a `Nonce` (`BaseTypes.hs:566-570`) and a `ProtVer`
+    * (`BaseTypes.hs:211-212`) by their fields; `Prices` by its two intervals (`ExUnits.hs:159-163`)
+    * and an `OrdExUnits` by its memory and steps (`Alonzo/PParams.hs:413-418`); and `CostModels` by
+    * the parameters of each language (`CostModels.hs:121-131, 378-382`), the known and the unknown
+    * languages being one map here, as the language decides which of the two holds it.
+    */
+  enum Typed:
+    case Count(value: BigInt)
+    case Interval(value: Rational)
+    case Entropy(value: Nonce)
+    case Version(major: BigInt, minor: BigInt)
+    case Models(models: Map[Int, Vector[BigInt]])
+    case Prices(memory: Rational, steps: Rational)
+    case Units(units: ExUnits)
+
+    /** A value this build cannot read at its type. A body never gives one, as its values are read
+      * when it is decoded ([[read]]); a state stored by an earlier build that kept the values of an
+      * update unread may hold one (ADR 0006), and it is compared by its bytes, as that build
+      * compared it.
+      */
+    case Unread(original: Bytes)
+
+  /** The values of the update at their types, read as [[ProtocolParams.update]] reads them when the
+    * update is applied: in any form that a body or a stored state gave them.
+    */
+  def typed(u: ParamUpdate): Map[Int, Typed] =
+    given ByteStrings = ByteStrings.Chunked
+    def count(site: DecodeSite)(n: Node) = CborRead.uint(n, site).map(Typed.Count(_))
+    def interval(site: DecodeSite, bound: CborRead.Bound)(n: Node) =
+      CborRead.rational(n, site, bound).map(Typed.Interval(_))
+    def units(site: DecodeSite)(n: Node) =
+      CborRead
+        .arrayN(n, 2, site)
+        .flatMap(xs => (CborRead.uint(xs(0), site), CborRead.uint(xs(1), site)).tupled)
+        .map((mem, steps) => Typed.Units(ExUnits(mem, steps)))
+    val readers: Map[Int, Node => Either[LedgerDecodeError, Typed]] = Map(
+      0 -> count(DecodeField.MinFeeA),
+      1 -> count(DecodeField.MinFeeB),
+      2 -> count(DecodeField.MaxBlockBodySize),
+      3 -> count(DecodeField.MaxTxSize),
+      4 -> count(DecodeField.MaxBlockHeaderSize),
+      5 -> count(DecodeField.KeyDeposit),
+      6 -> count(DecodeField.PoolDeposit),
+      7 -> count(DecodeField.EMax),
+      8 -> count(DecodeField.NOpt),
+      9 -> interval(DecodeField.A0, CborRead.Bound.NonNegative),
+      10 -> interval(DecodeField.Rho, CborRead.Bound.Unit),
+      11 -> interval(DecodeField.Tau, CborRead.Bound.Unit),
+      12 -> interval(DecodeField.D, CborRead.Bound.Unit),
+      13 -> (n => Nonce.decode(n, Nonce.NeutralFields.Stored).map(Typed.Entropy(_))),
+      14 -> (n =>
+        CborRead
+          .arrayN(n, 2, DecodeField.ProtocolVersion)
+          .flatMap(xs =>
+            (CborRead.uint(xs(0), DecodeField.Major), CborRead.uint(xs(1), DecodeField.Minor))
+              .mapN(Typed.Version(_, _))
+          )
+      ),
+      15 -> count(DecodeField.MinUTxOValue),
+      16 -> count(DecodeField.MinPoolCost),
+      17 -> count(DecodeField.CoinsPerUTxO),
+      CostModelsField -> (n => ProtocolParams.costModels(n).map(Typed.Models(_))),
+      19 -> (n =>
+        CborRead
+          .arrayN(n, 2, DecodeField.Prices)
+          .flatMap(xs =>
+            (
+              CborRead.rational(xs(0), DecodeField.PriceMem, CborRead.Bound.NonNegative),
+              CborRead.rational(xs(1), DecodeField.PriceSteps, CborRead.Bound.NonNegative)
+            ).mapN(Typed.Prices(_, _))
+          )
+      ),
+      20 -> units(DecodeField.MaxTxExUnits),
+      21 -> units(DecodeField.MaxBlockExUnits),
+      22 -> count(DecodeField.MaxValueSize),
+      23 -> count(DecodeField.CollateralPercentage),
+      24 -> count(DecodeField.MaxCollateralInputs)
+    )
+    u.fields.map { (key, raw) =>
+      val value = for
+        read <- readers
+          .get(key)
+          .toRight(LedgerDecodeError.UnknownKey(DecodeField.ParameterUpdate, key))
+        n <- CborRead.decode(raw)
+        v <- read(n)
+      yield v
+      key -> value.getOrElse(Typed.Unread(raw))
+    }
+
+  /** The updates that at least `quorum` of `proposals` vote for: `votedFuturePParams`
+    * (`Rules/Ppup.hs:214-220`, f649f975) counts the proposals in a
+    * `Map (PParamsUpdate era) Word64`, so proposals whose fields have equal values ([[typed]]) are
+    * one update, however each value is written. Of each such update the first proposal in
+    * `proposals` is returned; the proposals of one update apply alike, as they set the same fields
+    * to the same values.
+    */
+  def winners(proposals: Vector[ParamUpdate], quorum: Int): Vector[ParamUpdate] =
+    proposals
+      .groupBy(typed)
+      .valuesIterator
+      .collect { case vs @ (first +: _) if vs.size >= quorum => first }
+      .toVector
 
 /** The protocol parameters the bootstrap ledger tracks: those that header validation reads. */
 final case class LiteParams(
@@ -294,21 +404,16 @@ object LiteLedger:
       }
     )
 
-  /** `votedFuturePParams`: exactly one update proposed identically by at least `quorum` genesis
-    * delegates, applied to `params` (and rejected if it breaks the size relation).
+  /** `votedFuturePParams`: exactly one update proposed with equal values by at least `quorum`
+    * genesis delegates ([[ParamUpdate.winners]]), applied to `params` (and rejected if it breaks
+    * the size relation).
     */
   def voted(
       proposals: Map[Bytes, ParamUpdate],
       params: LiteParams,
       quorum: Int
   ): Either[LedgerDecodeError, Option[LiteParams]] =
-    val winners = proposals.values.toVector
-      .groupBy(identity)
-      .collect {
-        case (u, vs) if vs.size >= quorum => u
-      }
-      .toVector
-    winners match
+    ParamUpdate.winners(proposals.values.toVector, quorum) match
       case Vector(u) =>
         applyUpdate(params, u).map(p =>
           Option.when(p.maxTxSize + p.maxBlockHeaderSize < p.maxBlockBodySize)(p)

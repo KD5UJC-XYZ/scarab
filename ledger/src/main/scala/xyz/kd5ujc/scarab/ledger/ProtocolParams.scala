@@ -470,7 +470,7 @@ object ProtocolParams:
   private def rationals(n: Node, what: DecodeSite): Either[LedgerDecodeError, Vector[Rational]] =
     CborRead.array(n, what).flatMap(_.traverse(CborRead.rational(_, what, CborRead.Bound.Unit)))
 
-  private def costModels(n: Node): Either[LedgerDecodeError, Map[Int, Vector[BigInt]]] =
+  private[ledger] def costModels(n: Node): Either[LedgerDecodeError, Map[Int, Vector[BigInt]]] =
     CborRead
       .map(n, DecodeField.CostModels)
       .flatMap(_.traverse { case (k, v) =>
