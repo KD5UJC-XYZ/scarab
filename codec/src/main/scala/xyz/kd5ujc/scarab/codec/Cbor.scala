@@ -110,6 +110,8 @@ object Cbor:
   object Detached:
     val none: Detached = Detached(Vector.empty, Vector.empty)
 
+  private val NoRecords = new Array[Int](0)
+
   def decode(bytes: Bytes, limits: Limits = Limits()): Either[Error, Node] =
     decoded(bytes, limits, prefix = false, Detached.none)
 
@@ -162,9 +164,11 @@ object Cbor:
     private val index = new Index(input.size)
     private var pos = base
     private var items = 0
-    // the detached records, as offsets in `data`, and the next one to come
-    private val records = detached.offsets.iterator.map(base + _).toArray
-    private val recordFields = detached.fields.toArray
+    // the detached records, as offsets in `data`, and the next one to come; none for most decodes,
+    // which then allocate nothing for them
+    private val records =
+      if detached.isEmpty then NoRecords else detached.offsets.iterator.map(base + _).toArray
+    private val recordFields = if detached.isEmpty then NoRecords else detached.fields.toArray
     private var record = 0
     // whether an item is an empty indefinite list `9f ff`
     private var emptyLists = false
