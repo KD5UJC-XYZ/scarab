@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import time
+from cleanup import container_labels
 from ..cluster import freeze_classes, scala_container, up
 from ..util import ENV, QUERY_PORT, REPO, data_root, docker, jdk_image, read_log, ref
 from .relay import tip_at
@@ -27,7 +28,7 @@ def start_proxy(args, root, upstream):
     control = root / "proxy"
     control.mkdir(exist_ok=True)
     control.chmod(0o777)
-    docker("run", "-d", "--rm", "--pull=never", "--name", f"{args.name}-proxy",
+    docker("run", "-d", "--rm", "--pull=never", "--name", f"{args.name}-proxy", *container_labels("devnet", args.name),
            "--network", f"container:{ref(args.name)}", "--user", f"{os.getuid()}:{os.getgid()}",
            "-v", f"{REPO / 'scripts' / 'devnet'}:/proxy:ro", "-v", f"{control}:/ctl",
            "--entrypoint", "python3", jdk_image(), "/proxy/lagproxy.py", "--listen", str(PROXY_PORT),

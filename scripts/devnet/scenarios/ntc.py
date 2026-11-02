@@ -35,6 +35,7 @@ import subprocess
 import sys
 import time
 
+from cleanup import container_labels
 from .. import cborspan, ledgercompare, ntccli, ntcquery, ntcsafety
 from ..ntclocal import Session, backlog_follow, compare_follow, live_follow, monitor_rounds, await_wakes, tx_id
 from ..eraload import names_constructor
@@ -121,7 +122,7 @@ def start_scala(args, root):
 
 def start_cli_container(args, root):
     """A long-lived reference-image container with the Scala socket mounted, to run `cardano-cli` in."""
-    docker("run", "-d", "--name", f"{args.name}-cli", "--pull=never", "--user", USER,
+    docker("run", "-d", "--name", f"{args.name}-cli", "--pull=never", *container_labels("devnet", args.name), "--user", USER,
            "-v", f"{root / 'scala-sock'}:/sock", "--entrypoint", "/bin/sh", REFERENCE_IMAGE, "-c", "sleep infinity")
 
 

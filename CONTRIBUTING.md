@@ -55,14 +55,16 @@ Starting sbt costs 40 to 60 seconds of JVM start and compile. For many small edi
 container alive and talk to its sbt server:
 
 1. Start a long-lived container from `scarab-jdk:local` with the checkout, cache, read-only Git
-   metadata and `HOME` mounts/settings above (for example `docker run -d --name scarab-sbt ... tail -f /dev/null`).
+   metadata and `HOME` mounts/settings above, labelled with its kind and owner so `scripts/cleanup.py` can
+   find it (for example `docker run -d --name scarab-sbt --label xyz.kd5ujc.scarab.kind=sbt
+   --label xyz.kd5ujc.scarab.owner=<issue> ... tail -f /dev/null`).
 2. Run sbt once inside it with the server enabled (a copy of `scripts/sbtw` without
    `-Dsbt.server.autostart=false`, kept outside the repository).
 3. Send commands with `docker exec scarab-sbt <that launcher> --client "ledger/testOnly xyz.kd5ujc.scarab.ledger.*"`.
 4. Give the server a socket of its own: start the container with `-e SBT_GLOBAL_BASE=/tmp/sbt-global`
    (`scripts/sbtw` passes it as `sbt.global.base`). Containers that share the dependency cache share one
    socket path otherwise, and a client reaches whichever server started first, possibly another session's.
-   Remove your container when you are done.
+   Remove your container when you are done; `scripts/cleanup.py --owner <issue> --apply` removes it once stopped.
 
 Two traps: a running JVM loads classes lazily from `target/`, so never recompile under a live
 devnet run (`devnet.py` copies the classes it runs from for this reason), and do not `pkill -f`

@@ -45,10 +45,16 @@ Then:
   otherwise share one socket path, and a client can reach another session's server.
 - Use your own devnet name: `python3 scripts/devnet.py --name <yours> <scenario>`, then
   `python3 scripts/devnet.py --name <yours> down`. Run data goes to `${SCARAB_DATA_DIR:-/tmp/scarab}`,
-  never into the checkout or a home directory.
+  never into the checkout or a home directory. `/tmp` is commonly emptied at boot and aged out after 30
+  days, so data that must outlive a run goes in a dated `.workspace/data/` directory, and drafts awaiting
+  the owner go in `.workspace/notes/`, never only in `/tmp` or a session scratchpad. A document records
+  what a reader needs (results, hashes, commands, pinned versions) and says that raw run artifacts are not
+  published; it never names a directory on your machine as where evidence lives
+  (`scripts/check_local_paths.py` refuses that).
 - Never kill processes by pattern (`pkill -f`): it can match your own shell. Kill by PID, or remove
   your own container.
-- Remove the containers you started when you finish.
+- Remove the containers you started when you finish. Label every container that outlives one command
+  with `container_labels` from `scripts/cleanup.py` (kind and owner), so its owner is a query.
 
 ## How code is written here
 
@@ -168,6 +174,9 @@ scala code … I love the use of type parameters when I can use them"*.
   it builds.
 - A change to an ADR, or to agent-facing documents that state facts about the code, gets an
   independent review against the code before it is reported ready.
+- Run `python3 scripts/cleanup.py --owner <each devnet, container owner and run name you made> --apply`.
+  It removes unused worktrees whose pull request was merged into `main` and your stopped labelled containers
+  and run directories, keeps anything in use, cited by a tracked file or not provably finished, and says why.
 - Report: branch and commits, what changed, gate results, deviations from the plan and why, and what
   the next stage needs to know.
 

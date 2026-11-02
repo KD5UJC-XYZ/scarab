@@ -7,11 +7,12 @@ import shutil
 import subprocess
 import time
 from . import util
+from cleanup import container_labels
 from .util import ENV, cache_dir, jdk_image, MAGIC, REFERENCE_IMAGE, REPO, TX, USER, data_root, docker, in_ref, put_file, query, read_json, ref
 
 
 def start_reference(name):
-    docker("run", "-d", "--name", ref(name), "--pull=never",
+    docker("run", "-d", "--name", ref(name), "--pull=never", *container_labels("devnet", name),
            "--cpus=3", "--memory=6g", "--user", USER,
            "--tmpfs", f"/work:rw,exec,size=2g,uid={os.getuid()},gid={os.getgid()}",
            "-e", "PATH=/opt/reference/bin:/usr/local/bin:/usr/bin:/bin",
