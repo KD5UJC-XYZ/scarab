@@ -100,8 +100,9 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
                     // The consumer stops pulling; the virtual clock advances once every runnable
                     // publication has used its credit, as in the bounded-publication test above.
                     _ <- IO.sleep(10.minutes)
+                    withheld <- NoVerdictBlocks.create[IO]
                     report <- StallDiagnostics.capture(
-                      StallDiagnostics.Sources(coordinator, admissions)
+                      StallDiagnostics.Sources(coordinator, admissions, withheld)
                     )
                   yield report
                 }

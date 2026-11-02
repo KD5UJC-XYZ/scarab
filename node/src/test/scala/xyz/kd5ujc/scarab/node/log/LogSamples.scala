@@ -574,8 +574,11 @@ object LogSamples:
     FollowerEvent.NoVerdict(
       point,
       xyz.kd5ujc.scarab.consensus.BlockNoVerdict
-        .Defect(new IllegalStateException("injected rules defect"))
+        .Defect(new IllegalStateException("injected rules defect")),
+      2,
+      xyz.kd5ujc.scarab.consensus.NoVerdictRetry.After(2.seconds)
     ),
+    FollowerEvent.NoVerdictRetried(point, 3),
     FollowerEvent.EraEntered(None, Era.Byron, block, BigInt(0)),
     FollowerEvent.EraEntered(Some(Era.Babbage), Era.Conway, block, BigInt(5)),
     FollowerEvent.EpochValidated(BigInt(2), Era.Shelley, 10L, 20L, 3L),

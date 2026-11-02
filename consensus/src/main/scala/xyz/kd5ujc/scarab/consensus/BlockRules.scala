@@ -36,8 +36,12 @@ object BlockRules:
   * is a refusal of the block by the protocol's rules, so nobody is blamed for it.
   */
 enum BlockNoVerdict:
-  /** The evaluator cannot evaluate a script of the block (`LedgerFailure.Unavailable`). */
-  case Evaluation(error: xyz.kd5ujc.scarab.ledger.ValidationError)
+  /** The evaluator cannot evaluate a script of the block at `point` (`LedgerFailure.Unavailable`).
+    */
+  case Evaluation(
+      point: ChainSync.Point,
+      unavailable: xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable
+  )
 
   /** A crypto provider failed on the block (`VerificationDefect`). */
   case Verification(defect: xyz.kd5ujc.scarab.ledger.VerificationDefect)
@@ -50,11 +54,56 @@ enum BlockNoVerdict:
   /** The rules threw while they judged the block. */
   case Defect(cause: Throwable)
 
+  /** The evaluator's failure as a refusal would carry it. */
   def message: String = this match
-    case Evaluation(error)      => s"evaluation unavailable: ${error.message}"
+    case Evaluation(point, unavailable) =>
+      val error = xyz.kd5ujc.scarab.ledger
+        .ValidationError(point, xyz.kd5ujc.scarab.ledger.BlockFailure.Tx(unavailable))
+      s"evaluation unavailable: ${error.message}"
     case Verification(defect)   => s"verification failed: ${defect.message}"
     case StateOutOfRange(error) => error.message
     case Defect(cause)          => s"the rules threw: $cause"
+
+  /** Whether the cause can pass on its own, so that the block is judged again (issue 693). A total
+    * match with no default, so a new cause must be placed here.
+    */
+  def recovery: BlockNoVerdict.Recovery =
+    import BlockNoVerdict.Recovery.{Deterministic, Passing}
+    import xyz.kd5ujc.scarab.plutus.BackendFailure
+    this match
+      case Evaluation(_, unavailable) =>
+        unavailable.reason.reason match
+          // a Throwable on the evaluator's worker (an OutOfMemoryError, a rejected task) or no
+          // result from it: the environment, which may change
+          case BackendFailure.Defect(_) | BackendFailure.NoResult => Passing
+          // the same script exhausts the evaluator's stack of fixed size again, and a budget, a
+          // builtin or a costing function this build lacks stays lacking until a restart
+          case BackendFailure.StackExhausted | BackendFailure.BudgetOutOfRange(_) |
+              BackendFailure.BuiltinUnavailable(_) | BackendFailure.CostingUnmirrored(_) =>
+            Deterministic
+      case Verification(_) => Passing
+      // a quantity of the state stays out of range for the same state
+      case StateOutOfRange(_) => Deterministic
+      case Defect(_)          => Passing
+
+object BlockNoVerdict:
+  /** Whether a cause of no verdict can pass on its own. */
+  enum Recovery:
+    /** It may pass (memory pressure, a rejected task, a provider's failure): the block is judged
+      * again on a capped schedule.
+      */
+    case Passing
+
+    /** The same build and state answer the same: the block is judged once, until a restart. */
+    case Deterministic
+
+/** When a block without a verdict is judged again (issue 693). */
+enum NoVerdictRetry:
+  /** Not in this run: the cause does not pass on its own, or the block is our own. */
+  case Never
+
+  /** After `delay` from the end of the attempt. */
+  case After(delay: scala.concurrent.duration.FiniteDuration)
 
 /** Observable follower milestones. */
 enum FollowerEvent:
@@ -65,10 +114,14 @@ enum FollowerEvent:
   case Immutable(block: BlockRef)
   case Reconnecting(reason: PeerError, attempt: Int)
 
-  /** The node has no verdict on `block`: its own implementation could not judge it. The block is
-    * neither adopted nor recorded as invalid, nobody is blamed, and the node goes on (issue 567).
+  /** Attempt `attempt` on `block` ended without a verdict: the node's own implementation could not
+    * judge it. The block is neither adopted nor recorded as invalid, nobody is blamed, and the node
+    * goes on (issue 567); `retry` says when it is judged again (issue 693).
     */
-  case NoVerdict(block: ChainSync.Point, cause: BlockNoVerdict)
+  case NoVerdict(block: ChainSync.Point, cause: BlockNoVerdict, attempt: Int, retry: NoVerdictRetry)
+
+  /** The node judges again `block`, which it had no verdict on: attempt `attempt` (issue 693). */
+  case NoVerdictRetried(block: ChainSync.Point, attempt: Int)
 
   /** The first block of a new era was applied (`from` is empty for the chain's first era). */
   case EraEntered(from: Option[Era], to: Era, first: BlockRef, epoch: BigInt)

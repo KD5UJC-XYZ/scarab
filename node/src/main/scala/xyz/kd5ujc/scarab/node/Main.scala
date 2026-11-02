@@ -1349,7 +1349,11 @@ object Main extends IOApp:
         )
       )
       _ <- stall.reporter.install(
-        StallDiagnostics.Sources(blockPool.fetchCoordinator, blockPool.admissions)
+        StallDiagnostics.Sources(
+          blockPool.fetchCoordinator,
+          blockPool.admissions,
+          blockPool.noVerdictBlocks
+        )
       ) *> seedReceived(blockPool, receivedBlocks, genesis.geometry.byron.epochSlots) *>
         follower.installFetchCoordinator(blockPool.fetchCoordinator) *>
         follower.installInvalidBlocks(blockPool.invalidBlocks) *>

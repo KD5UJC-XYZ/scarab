@@ -133,7 +133,32 @@ class LogGoldenSuite extends CatsEffectSuite:
                   580.seconds
                 )
               ),
-              3L
+              3L,
+              Vector(
+                xyz.kd5ujc.scarab.node.NoVerdictBlocks.Report(
+                  Bytes.wrap(Array.fill(32)(0xab.toByte)),
+                  BigInt(4200),
+                  xyz.kd5ujc.scarab.consensus.BlockNoVerdict
+                    .Defect(new IllegalStateException("injected rules defect")),
+                  3,
+                  Some(2500.millis)
+                ),
+                xyz.kd5ujc.scarab.node.NoVerdictBlocks.Report(
+                  Bytes.wrap(Array.fill(32)(0xcd.toByte)),
+                  BigInt(4300),
+                  xyz.kd5ujc.scarab.consensus.BlockNoVerdict.StateOutOfRange(
+                    ChainError.StateOutOfRange(
+                      BigInt(4300),
+                      xyz.kd5ujc.scarab.ledger.state.VocabError.OutOfRange(
+                        xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.CompactCoin,
+                        BigInt(-1)
+                      )
+                    )
+                  ),
+                  1,
+                  None
+                )
+              )
             ),
             xyz.kd5ujc.scarab.node.StallDiagnostics.Dump.Written(
               Path.of("/stall/fiber-dump-1.txt")

@@ -25,20 +25,23 @@ import log.{NodeEvent, Render, Traced}
   * holder marks, an admission three marks (its publication wait, its work and its stage).
   */
 object StallDiagnostics:
-  /** Every session's pipeline as the coordinator and the session see it, and the shared block
-    * admissions.
+  /** Every session's pipeline as the coordinator and the session see it, the shared block
+    * admissions, and the blocks withheld for want of a verdict (issue 693), which a node can stall
+    * behind.
     */
   private[node] final case class Report(
       sessions: Vector[SessionDiagnostic],
       admissions: BlockAdmissions.Occupancy,
       decisionLock: Option[FetchCoordinator.LockHolder] = None,
-      droppedReports: Long = 0L
+      droppedReports: Long = 0L,
+      withheld: Vector[NoVerdictBlocks.Report] = Vector.empty
   )
 
   /** Where the report reads from. */
   private[node] final case class Sources[F[_]](
       coordinator: FetchCoordinator[F],
-      admissions: BlockAdmissions[F]
+      admissions: BlockAdmissions[F],
+      withheld: NoVerdictBlocks[F]
   )
 
   /** The report of `sources` now. */
@@ -46,8 +49,11 @@ object StallDiagnostics:
     (
       sources.coordinator.diagnostics,
       sources.admissions.occupancy,
-      sources.coordinator.lockHolder
-    ).mapN(Report(_, _, _))
+      sources.coordinator.lockHolder,
+      sources.withheld.report
+    ).mapN((sessions, admissions, lock, withheld) =>
+      Report(sessions, admissions, lock, withheld = withheld)
+    )
 
   /** What became of the fiber dump a stall asked for. */
   enum Dump:

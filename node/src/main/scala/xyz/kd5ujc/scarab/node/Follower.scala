@@ -31,7 +31,7 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
-import xyz.kd5ujc.scarab.consensus.{BlockNoVerdict, ChainSelection, SelectView}
+import xyz.kd5ujc.scarab.consensus.{BlockNoVerdict, ChainSelection, NoVerdictRetry, SelectView}
 import xyz.kd5ujc.scarab.storage.ChainPersistence
 import xyz.kd5ujc.scarab.network.selection.Gsm
 import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity
@@ -387,13 +387,13 @@ final class Follower[F[_]: Async, S] private (
         // issue 567.
         case Right(
               Left(
-                unavailable @ ValidationError(
-                  _,
-                  BlockFailure.Tx(_: LedgerFailure.Unavailable)
+                ValidationError(
+                  point,
+                  BlockFailure.Tx(unavailable: LedgerFailure.Unavailable)
                 )
               )
             ) =>
-          F.pure(Left(Judged.NoVerdict(BlockNoVerdict.Evaluation(unavailable))))
+          F.pure(Left(Judged.NoVerdict(BlockNoVerdict.Evaluation(point, unavailable))))
         case Right(Left(refused: ValidationError)) =>
           F.pure(
             Left(
@@ -432,8 +432,19 @@ final class Follower[F[_]: Async, S] private (
             case Some(header) =>
               for
                 block <- bodies.fetch(header)
+                // a withheld block selection reaches is one a reselection released (issue 693)
+                retried <- withheldBlocks.lookup(header.hash)
+                _ <- retried.traverse_(withheld =>
+                  events.emit(FollowerEvent.NoVerdictRetried(header.point, withheld.attempts + 1))
+                )
                 // the block rules run on the CPU pool, as a forged block's do (D8, #596)
                 verdict <- judge(cpu.within(rules(before.state, header, block)))
+                // A block judged again and valid has its verdict, whether or not this candidate is
+                // then adopted: withheld still, it would cut its chain, and a later block withheld
+                // on the same fork could leave neither of them reachable (issue 693).
+                _ <- withheldBlocks
+                  .verdict(List(header.hash))
+                  .whenA(retried.isDefined && verdict.isRight)
                 result <- verdict match
                   case Left(Judged.Refusal(refused)) =>
                     F.pure(Right(Left(Refused(header, refused, before))))
@@ -475,13 +486,17 @@ final class Follower[F[_]: Async, S] private (
         // nothing applied is nothing to commit
         case Right(steps) =>
           NonEmptyVector.fromVector(steps).traverse_(commit(original, to, depth, _, peerTip))
-        // No verdict on a block: it is recorded so that selection does not judge it again, and
-        // reported; nothing is recorded as invalid and nobody is punished (issue 567). The worker
-        // reconsiders the valid prefix before it, as for a refusal.
+        // No verdict on a block: it is recorded so that selection does not judge it again before
+        // its schedule says (issue 693), and reported; nothing is recorded as invalid and nobody
+        // is punished (issue 567). The worker reconsiders the valid prefix before it, as for a
+        // refusal.
         case Left(withheld: Withheld) =>
           F.uncancelable { _ =>
-            withheldBlocks.record(withheld.header, withheld.cause) *>
-              events.emit(FollowerEvent.NoVerdict(withheld.header.point, withheld.cause))
+            withheldBlocks.record(withheld.header, withheld.cause).flatMap { (attempt, retry) =>
+              events.emit(
+                FollowerEvent.NoVerdict(withheld.header.point, withheld.cause, attempt, retry)
+              )
+            }
           }
         case Left(refused: Refused) =>
           // Native validation records invalidity and punishes first (ChainSel.hs:1315–1344); the
@@ -497,6 +512,8 @@ final class Follower[F[_]: Async, S] private (
               _ <- validation
                 .rejected(refused.error, refused.before.tip)
                 .flatMap(_.fold(_.raise[F, Peer.Rejection], F.pure))
+              // a withheld block judged again and refused has its verdict (issue 693)
+              _ <- withheldBlocks.verdict(List(refused.header.hash))
             yield ()
           }
     yield ()
@@ -637,7 +654,7 @@ final class Follower[F[_]: Async, S] private (
                 // the forger handles it as a refusal (R3, issue 567, #584)
                 case Left(Judged.NoVerdict(cause)) =>
                   events
-                    .emit(FollowerEvent.NoVerdict(header.point, cause))
+                    .emit(FollowerEvent.NoVerdict(header.point, cause, 1, NoVerdictRetry.Never))
                     .as(Follower.Adoption.NoVerdict(cause).asLeft[S])
                 case Right(next) => F.pure(next.asRight[Follower.Adoption])
               }

@@ -143,7 +143,11 @@ class ProviderDefectBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncau
     assertEquals(invalid, Set.empty[Bytes])
     assertEquals(tip, forged.headers(index - 1).point)
     assert(
-      events.contains(FollowerEvent.NoVerdict(target.point, BlockNoVerdict.Verification(held))),
+      events.exists {
+        case FollowerEvent.NoVerdict(point, BlockNoVerdict.Verification(defect), _, _) =>
+          point == target.point && defect == held
+        case _ => false
+      },
       events.toString
     )
 

@@ -65,11 +65,21 @@ private[node] final class BlockSelection[F[_]: Async] private (
       phase: Phase = Phase.Admission
   )(using Raise[F, NodeError]): F[Unit] =
     for
+      // The time is read once, for the release: a released block an attempt has changed is
+      // excluded for the rest of this selection, so its end does not depend on the clock (#693).
+      now <- F.monotonic
       current <- application.local
       bodies <- pool.processedSnapshot
+      // only a reselection judges a withheld block again, the one due first with those of its
+      // chain, never an admission: a delivery cannot bring an attempt forward, and a refusal on it
+      // blames no session
+      released <- adding.fold(
+        pool.noVerdictBlocks
+          .release(now, hash => bodies.get(hash).flatMap(_.delivered.header.prevHash))
+      )(_ => F.pure(None))
       known <- pool.invalidBlocks.snapshot
-      // a block the node has no verdict on is not judged again (issue 567)
-      withheld <- pool.noVerdictBlocks.hashes
+      // a block the node has no verdict on is not judged again before its time (issues 567, 693)
+      withheld <- pool.noVerdictBlocks.excluded(released)
       original <- AvailableBlocks
         .candidates(
           if phase == Phase.Startup then current.copy(blocks = Vector.empty) else current,
@@ -89,7 +99,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
           before <- pool.invalidBlocks.snapshot
           // ChainSel.hs:1145–1186 truncates and reinserts the original candidate pool. An unrelated
           // branch cannot become attributed to this adding client during an invalid-prefix retry.
-          excluded <- pool.noVerdictBlocks.hashes
+          excluded <- pool.noVerdictBlocks.excluded(released)
           truncated = original.map(candidate =>
             candidate.copy(headers =
               candidate.headers.takeWhile(h =>
@@ -108,12 +118,14 @@ private[node] final class BlockSelection[F[_]: Async] private (
             )
           )
           after <- pool.invalidBlocks.snapshot
-          withheldAfter <- pool.noVerdictBlocks.hashes
+          withheldAfter <- pool.noVerdictBlocks.excluded(released)
         // select again when a block was refused, or withheld for want of a verdict
         yield
           if after.revision != before.revision || withheldAfter != excluded then Left(())
           else Right(())
       }
+      // a released block no preferred candidate reached waits its delay again, uncounted
+      _ <- released.traverse_(pool.noVerdictBlocks.unreached)
     yield ()
 
   private def consume(using Raise[F, NodeError]): F[Unit] =
@@ -145,6 +157,13 @@ private[node] final class BlockSelection[F[_]: Async] private (
         )
     })
 
+  /** Judge again the withheld blocks whose cause can pass (issue 693): when one is due, a
+    * reselection is queued behind the admissions already waiting, and the next only once it is
+    * done, so at most one is in flight in the node and admissions are not starved.
+    */
+  private def retries: F[Unit] =
+    F.foreverM(pool.noVerdictBlocks.awaitDue *> pool.admissions.reprocess)
+
   private def reselect: F[Unit] = application.governor.flatMap(_.fold(F.never[Unit]) { governor =>
     F.tailRecM[Long, Unit](-1L)(previous =>
       governor
@@ -170,7 +189,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
         )
         application
           .locked(selectLocked(None, Phase.Startup)) *> ready.complete(Right(())).void *>
-          F.both(consume, reselect).void
+          F.both(consume, F.both(reselect, retries)).void
       }
       .guarantee(pool.admissions.close)
       .flatMap {
