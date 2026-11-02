@@ -80,7 +80,9 @@ all-era captures and the unchanged Genesis replay corpus remain separate control
   Selected-journal validation keeps its valid-prefix recovery policy; storage IO failures
   still propagate. Recovered bodies have their
   own source case, rather than borrowing a live session identity. Collection follows a durable
-  immutable boundary; an LoE stall can retain a growing forest, including raw bodies in memory.
+  immutable boundary; an LoE stall can retain a growing forest. With a received log the forest
+  holds each block's metadata and reads its body back from the log (#416); without one the raw
+  bodies stay in memory.
   [Measured scan and idle-decision costs](../performance/peers-and-network.md#39-received-forest-selection-and-idle-decisions-309-review)
   state the scope of this retention policy.
 - **Source attribution:** an original body's punishment belongs to its adding BlockFetch run,

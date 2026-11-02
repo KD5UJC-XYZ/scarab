@@ -251,7 +251,9 @@ paths at `k` with LoE enabled, and sorts eligible differences at line 1143. Rece
 caps would discard still-selectable postponed forks, so this review introduces none.
 The received index and processed forest retain raw originals in memory until durable
 immutable progress permits collection; this does not promise a disk-only body index's
-memory footprint or bounded memory during a long LoE stall.
+memory footprint or bounded memory during a long LoE stall. (Later: #395 moved the received
+index's bodies to its log, and #416 the processed forest's; with a received log both now keep
+metadata in memory and read bodies back from the log.)
 
 A separate real-storage control opens and resumes a selected suffix, acquires the
 production selector, then reopens it again. The selected suffix stays unchanged and

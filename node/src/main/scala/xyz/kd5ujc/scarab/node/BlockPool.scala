@@ -29,11 +29,13 @@ import scala.concurrent.duration.*
   * validation or LoE postpones selection, like upstream VolatileDB. The bounded cache drops the
   * oldest ordinary bodies past [[BlockPool.Retained]] entries. Queued admissions and the processed
   * VolatileDB forest are separate: all processed originals, including invalid ones, remain readable
-  * until immutable-slot GC. Their raw bytes and metadata remain in memory even with a durable
-  * received journal; pruning at the native strict slot cutoff releases that forest and invalid
-  * pins. Retention follows durable immutable progress, rather than receipt/adoption count: an LoE
-  * stall can grow the forest. This preserves later fork selection; it does not promise the native
-  * disk-backed VolatileDB's memory footprint.
+  * until immutable-slot GC. With a received log the forest keeps each block's metadata only and
+  * reads the body back from the log ([[BlockPool.body]]), as the native VolatileDB keeps an index
+  * in memory and reads a block from its file; a node without a log keeps the bodies in memory.
+  * Pruning at the native strict slot cutoff releases that forest and invalid pins. Retention
+  * follows durable immutable progress, rather than receipt/adoption count: an LoE stall can grow
+  * the forest, by its metadata. This preserves later fork selection. The received cache in front of
+  * it still holds recent bodies, bounded by count ([[BlockPool.Retained]]).
   *
   * Claims are made through a [[BlockPool.Claims]] that belongs to one session ([[session]]). It is
   * a resource: when the session ends, however it ends (a failure, a cancellation), every claim it
@@ -263,13 +265,13 @@ final class BlockPool[F[_]: Async] private (
         case Some(Slot.Pending(done, _, _)) =>
           (s, done.get)
         case None =>
-          val processed =
-            s.processed.get(hash).map(a => Filled(a.taken.block, a.taken.origin, Some(a.delivered)))
           (
             s,
-            processed.fold(
-              recovered.traverse(_.get(hash)).map(_.flatten.map(Filled(_, Source.Recovered)))
-            )(value => F.pure(Some(value)))
+            s.processed
+              .get(hash)
+              .fold(
+                recovered.traverse(_.get(hash)).map(_.flatten.map(Filled(_, Source.Recovered)))
+              )(p => body(hash, p).map(_.map(Filled(_, p.origin, Some(p.delivered)))))
           )
     }.flatten
 
@@ -466,34 +468,64 @@ final class BlockPool[F[_]: Async] private (
   /** Entries held (tests). */
   def size: F[Int] = slots.get.map(_.entries.size)
 
-  private[node] def selectionSnapshot: F[Map[Bytes, Admission]] = slots.get.map { current =>
-    current.processed ++ current.headers.flatMap { (hash, delivered) =>
-      current.entries.get(hash) match
-        case Some(Slot.Done(raw, _, source)) =>
-          Some(hash -> Admission(Taken(raw, false, source, Some(delivered)), delivered))
-        case _ => None
+  /** The blocks selection may choose from: the processed forest and the admitted blocks whose
+    * bodies are still retained.
+    */
+  private[node] def selectionSnapshot: F[Map[Bytes, DeliveredHeader]] = slots.get.map { current =>
+    current.processed.view.mapValues(_.delivered).toMap ++ current.headers.filter { (hash, _) =>
+      current.entries.get(hash).exists {
+        case Slot.Done(_, _, _) => true
+        case _                  => false
+      }
     }
   }
 
-  private[node] def processedSnapshot: F[Map[Bytes, Admission]] = slots.get.map(_.processed)
+  private[node] def processedSnapshot: F[Map[Bytes, Processed]] = slots.get.map(_.processed)
+
+  /** The original body of a processed block: kept in memory without a received log, else read back
+    * from it as the reference reads a VolatileDB block from its file. None when the log no longer
+    * has it: collected below the immutable tip, or a record that failed its checksum, which the log
+    * drops so that the block is fetched again. The block then leaves the forest too, so that it is
+    * no longer counted as fetched and can be fetched again.
+    */
+  private[node] def body(hash: Bytes, processed: Processed): F[Option[Bytes]] =
+    processed.held.fold(
+      recovered.flatTraverse(_.original(hash)).flatTap {
+        case Some(_) => F.unit
+        case None =>
+          slots.update(s => s.copy(processed = s.processed - hash)) *>
+            fetchCoordinator.refreshGenesis
+      }
+    )(raw => F.pure(Some(raw)))
 
   private[node] def processAdmission(admission: Admission): F[Boolean] = slots.modify { current =>
     val hash = admission.delivered.header.hash
     if current.processed.contains(hash) then current -> false
-    else current.copy(processed = current.processed.updated(hash, admission)) -> true
+    else
+      val processed =
+        Processed(admission.delivered, admission.taken.origin, held(admission.taken.block))
+      current.copy(processed = current.processed.updated(hash, processed)) -> true
   }
+
+  /** The body a processed block keeps in memory: none when the received log holds it. */
+  private def held(raw: Bytes): Option[Bytes] = Option.when(recovered.isEmpty)(raw)
 
   /** Read every checked recovered original as one startup forest. The ordinary cache limit must not
     * discard branches before native initialChainSelection has compared them.
     */
   private[node] def seedRecoveredHeaders(blocks: Vector[Delivered]): F[Unit] =
+    seed(blocks.map(b => Processed(b.metadata, Source.Recovered, held(b.block))))
+
+  /** As [[seedRecoveredHeaders]], from the metadata of blocks the received log holds: their bodies
+    * are not kept and are read back from the log. Only for a pool created with that log
+    * ([[Recovered]]); without one the seeded bodies could not be read.
+    */
+  private[node] def seedRecoveredMetadata(blocks: Vector[DeliveredHeader]): F[Unit] =
+    seed(blocks.map(Processed(_, Source.Recovered, None)))
+
+  private def seed(blocks: Vector[Processed]): F[Unit] =
     slots.update { current =>
-      val recovered = blocks.map { b =>
-        b.header.hash -> Admission(
-          Taken(b.block, false, Source.Recovered, Some(b.metadata)),
-          b.metadata
-        )
-      }.toMap
+      val recovered = blocks.map(p => p.delivered.header.hash -> p).toMap
       current.copy(processed = recovered ++ current.processed)
     } *> fetchCoordinator.refreshGenesis
 
@@ -611,10 +643,18 @@ object BlockPool:
     case Session(owner: Long)
     case Recovered
 
-  /** Durable callbacks return readable original bytes and own their infrastructure error scope. */
+  /** The received log, through callbacks that return readable original bytes and own their
+    * infrastructure error scope.
+    *
+    * @param get
+    *   a block the log may still offer: none once a validation refusal suppressed it
+    * @param original
+    *   a block the log holds, refused or not: what a processed block's body is read back from
+    */
   final case class Recovered[F[_]](
       hashes: F[Set[Bytes]],
       get: Bytes => F[Option[Bytes]],
+      original: Bytes => F[Option[Bytes]],
       invalidate: Bytes => F[Unit]
   )
 
@@ -629,6 +669,17 @@ object BlockPool:
   private[node] final case class Admission private[BlockPool] (
       taken: Taken,
       delivered: DeliveredHeader
+  )
+
+  /** A block of the processed forest: what the reference's VolatileDB keeps in memory of a block it
+    * holds, its index entry (`OpenState`, `Storage/VolatileDB/Impl/State.hs:92-108`,
+    * ouroboros-consensus 82ecba32), and not its body. The body is read back from the received log
+    * ([[BlockPool.body]]); `held` keeps it only for a node without one.
+    */
+  private[node] final case class Processed private[BlockPool] (
+      delivered: DeliveredHeader,
+      origin: Source,
+      held: Option[Bytes]
   )
   final class Delivered private (
       val header: Header,
@@ -787,7 +838,7 @@ object BlockPool:
       fresh: Set[Bytes] = Set.empty,
       pinned: Set[Bytes] = Set.empty,
       admissions: BigInt = 0,
-      processed: Map[Bytes, Admission] = Map.empty
+      processed: Map[Bytes, Processed] = Map.empty
   ):
     def pruned(now: FiniteDuration, policy: AttributionPolicy): Slots[F] =
       if released <= policy.retained && reapAt.forall(_ > now) then this

@@ -292,6 +292,7 @@ class BlockPoolSuite extends CatsEffectSuite:
         BlockPool.Recovered(
           persisted.get.map(_.keySet),
           h => persisted.get.map(_.get(h)),
+          h => persisted.get.map(_.get(h)),
           h => persisted.update(_ - h)
         )
       )
@@ -358,6 +359,7 @@ class BlockPoolSuite extends CatsEffectSuite:
         IO.pure(local),
         BlockPool.Recovered(
           durable.get.map(_.keySet),
+          h => durable.get.map(_.get(h)),
           h => durable.get.map(_.get(h)),
           h => durable.update(_ - h)
         )

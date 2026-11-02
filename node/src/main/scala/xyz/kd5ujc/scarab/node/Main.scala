@@ -187,17 +187,19 @@ object Main extends IOApp:
       cache.refs.flatMap { refs =>
         refs
           .traverse { ref =>
+            // each body is checked and dropped at once: the forest keeps the metadata and reads
+            // the body back from the log, so the start does not hold every recovered body
             cache.get(ref.hash).flatMap {
               case None => IO.pure(None)
               case Some((_, raw)) =>
                 ReceivedBlockRecovery.checked(ref, raw, epochSlots) match
-                  case Right(delivered) => IO.pure(Some(delivered))
+                  case Right(delivered) => IO.pure(Some(delivered.metadata))
                   case Left(error) =>
                     Log[IO].emit(NodeEvent.ReceivedBlockDiscarded(ref.hash, error)) *>
                       cache.discardRecovered(ref.hash).as(None)
             }
           }
-          .flatMap(items => pool.seedRecoveredHeaders(items.flatten))
+          .flatMap(items => pool.seedRecoveredMetadata(items.flatten))
       }
     )
 
@@ -1320,6 +1322,21 @@ object Main extends IOApp:
         bulkConcurrency = setup.config.settings.maxConcurrencyBulkSync.getOrElse(1),
         peerSalt = fetchSalt
       )
+      // a block read back from the received log in the calling session's fiber, under a scope of
+      // its own: a failure of the file system stops the node, as one of `put` does
+      readBack = (
+        read: xyz.kd5ujc.scarab.codec.Bytes => cats.mtl.Raise[IO, StorageError] ?=> IO[
+          Option[(BlockRef, xyz.kd5ujc.scarab.codec.Bytes)]
+        ]
+      ) =>
+        (hash: xyz.kd5ujc.scarab.codec.Bytes) =>
+          Handle
+            .allow[StorageError](read(hash).map(found => Right(found.map(_._2))))
+            .rescue(error => IO.pure(Left(error)))
+            .flatMap {
+              case Right(found) => IO.pure(found)
+              case Left(error)  => fatalSink(Fatal.Storage(error)) *> IO.never
+            }
       blockPool <- receivedBlocks.fold(
         BlockPool.create[IO](fetchPolicy, follower.fetchSelection)
       )(received =>
@@ -1328,17 +1345,8 @@ object Main extends IOApp:
           follower.fetchSelection,
           BlockPool.Recovered[IO](
             received.hashes,
-            // read back from the received log in the calling session's fiber, under a
-            // scope of its own: a failure of the file system stops the node, as one of
-            // `put` does
-            hash =>
-              Handle
-                .allow[StorageError](received.get(hash).map(found => Right(found.map(_._2))))
-                .rescue(error => IO.pure(Left(error)))
-                .flatMap {
-                  case Right(found) => IO.pure(found)
-                  case Left(error)  => fatalSink(Fatal.Storage(error)) *> IO.never
-                },
+            readBack(received.get),
+            readBack(received.original),
             received.invalidate
           )
         )
