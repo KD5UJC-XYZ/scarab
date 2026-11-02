@@ -107,6 +107,13 @@ object Cbor:
   final case class Detached(offsets: Vector[Int], fields: Vector[Int]):
     def isEmpty: Boolean = offsets.isEmpty
 
+    /** A field count for each offset, each at least one, the offsets increasing; a decode given
+      * other records refuses them with [[Error.DetachedRecord]].
+      */
+    def wellFormed: Boolean =
+      offsets.size == fields.size && fields.forall(_ > 0) &&
+        offsets.lazyZip(offsets.drop(1)).forall(_ < _) && offsets.forall(_ >= 0)
+
   object Detached:
     val none: Detached = Detached(Vector.empty, Vector.empty)
 
@@ -140,6 +147,8 @@ object Cbor:
       if limits.maxInputBytes < 0 || limits.maxDepth < 0 || limits.maxItems < 0 || limits.maxStringBytes < 0
       then Left(Error.InvalidLimits)
       else if bytes.size > limits.maxInputBytes then Left(Error.InputLimitExceeded)
+      else if !detached.wellFormed then
+        Left(Error.DetachedRecord(detached.offsets.headOption.getOrElse(0)))
       else
         try Right(new Decoder(bytes, limits, prefix, detached).run())
         catch case _: StackOverflowError => Left(TooDeep)

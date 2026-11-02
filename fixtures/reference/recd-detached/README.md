@@ -71,4 +71,6 @@ python3 scripts/oracle/conway-decoding/detached_cases.py --inputs /tmp/detached-
   ([#699](https://github.com/KD5UJC-XYZ/scarab/issues/699)).
 - Node-to-client queries that carry a record, and failure answers that write an output
   ([#700](https://github.com/KD5UJC-XYZ/scarab/issues/700)).
+- The node-to-node transaction submission protocol's own check of a transaction
+  ([#702](https://github.com/KD5UJC-XYZ/scarab/issues/702)).
 - A ledger state the reference writes holds no detached record: its encoders write definite lists.

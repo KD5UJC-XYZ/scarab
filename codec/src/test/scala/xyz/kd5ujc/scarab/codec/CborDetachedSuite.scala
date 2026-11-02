@@ -80,6 +80,23 @@ class CborDetachedSuite extends munit.FunSuite:
     )
   }
 
+  test("records that are not one count of one or more fields an offset, in order, are refused") {
+    val raw = bytes("82019fff0203")
+    for records <- Vector(
+        Cbor.Detached(Vector(2), Vector.empty),
+        Cbor.Detached(Vector(2), Vector(0)),
+        Cbor.Detached(Vector(2), Vector(-1)),
+        Cbor.Detached(Vector(2, 2), Vector(2, 2))
+      )
+    do
+      assert(
+        Cbor
+          .decode(raw, Cbor.Limits(), records)
+          .left
+          .exists(_.isInstanceOf[Cbor.Error.DetachedRecord])
+      )
+  }
+
   test("the decode without records is unchanged") {
     val raw = bytes("a2019f01ff029fff")
     assertEquals(

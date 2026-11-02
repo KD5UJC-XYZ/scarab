@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
-import xyz.kd5ujc.scarab.ledger.ForgeAssemblyProblem
+import xyz.kd5ujc.scarab.ledger.{DetachedRecords, ForgeAssemblyProblem}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, ForgeError, Header, LedgerFailure, VrfCert}
 import xyz.kd5ujc.scarab.ledger.{LedgerGlobals, PosixClock, ProtocolParams, RefScripts, TxEnv}
 import xyz.kd5ujc.scarab.ledger.rules.Globals
 import xyz.kd5ujc.scarab.plutus.{ExUnits, ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
 import cats.Id
+import xyz.kd5ujc.scarab.protocol.Era
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.mempool.{Capacity, Entry, MempoolLedger}
@@ -56,11 +57,16 @@ object BlockBuilder:
   private val limits =
     Cbor.Limits(maxInputBytes = 1048576, maxItems = 100000, maxStringBytes = 1048576)
 
+  /** The parts of a held transaction, read as the mempool read it: one holding a `RecD` record
+    * written as an empty indefinite list spans the fields after it (`DetachedRecords`).
+    */
   def piece(entry: Entry): Either[ForgeError, Piece] =
+    DetachedRecords.read(entry.raw, limits, DetachedRecords.Shapes.transaction(Era.Conway))(e =>
+      ForgeError.Assembly(ForgeAssemblyProblem.Cbor(e))
+    )(parts(entry, _))
+
+  private def parts(entry: Entry, root: Node): Either[ForgeError, Piece] =
     for
-      root <- Cbor
-        .decode(entry.raw, limits)
-        .leftMap(e => ForgeError.Assembly(ForgeAssemblyProblem.Cbor(e)))
       parts <- root.value match
         case Value.Arr(xs) if xs.size == 4 => Right(xs)
         case _ =>

@@ -469,4 +469,3 @@ The two builds differ by less than one JVM differs from the next on these runs, 
 bytes more (the decoder's two fields), 3% of the smallest blocks' allocation. The walk is about a third of a block
 read; it runs only on a block that holds an empty indefinite list, and the second decode and read only on one in which
 it finds a detached record.
-

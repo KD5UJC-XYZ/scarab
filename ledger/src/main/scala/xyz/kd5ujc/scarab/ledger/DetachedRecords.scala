@@ -91,11 +91,22 @@ object DetachedRecords:
       Cbor.decode(raw, limits).leftMap(syntax).flatMap(root => reader(root).tupleRight(root))
     first match
       case Right((accepted, root)) if !root.decodeHasEmptyIndefiniteList => Right(accepted)
+      case _ if !holdsEmptyIndefiniteList(raw)                           => first.map(_._1)
       case _ =>
         detached(raw, shape) match
           case Some(records) if !records.isEmpty =>
             Cbor.decode(raw, limits, records).leftMap(syntax).flatMap(reader)
           case _ => first.map(_._1)
+
+  /** Whether the bytes `9f ff` occur anywhere in `raw`: a detached record's head is those bytes, so
+    * an input without them has none and is not walked.
+    */
+  private def holdsEmptyIndefiniteList(raw: Bytes): Boolean =
+    @tailrec def from(i: Int): Boolean =
+      if i + 1 >= raw.size then false
+      else if raw.byteOr(i)(0)(_ & 0xff) == 0x9f && raw.byteOr(i + 1)(0)(_ & 0xff) == 0xff then true
+      else from(i + 1)
+    from(0)
 
   /** The detached records of `raw` read as one item of `shape`, as the reference's decoders read
     * them; none when they would fail to read it (a record of the wrong length, a non-empty
@@ -200,6 +211,62 @@ object DetachedRecords:
           }
       }
 
+    /** The end of the item at `from`, read as one item with no record in it, or -1 where the input
+      * holds no whole item there. Every item a walk reads goes through here but the few on the path
+      * of a record, so this is its cost on any input: a loop over a stack of the items still to
+      * come at each open level (-1 until a break), which allocates eight bytes a level and nothing
+      * an item. Walked with a frame an item, a deeply nested refused input made the decoder fuzz
+      * gate's blocks and outputs allocate over their bound of 1000 bytes an input byte (`fuzz
+      * 100000 1 4`, 2026-11-02, #687).
+      */
+    @SuppressWarnings(Array("org.wartremover.warts.Var", "org.wartremover.warts.While"))
+    private def skip(from: Int): Int =
+      var counts = new Array[Long](8)
+      var depth = 1
+      counts(0) = 1L
+      var at = from
+      var whole = true
+      def open(items: Long): Unit =
+        if depth == counts.length then counts = java.util.Arrays.copyOf(counts, depth * 2)
+        counts(depth) = items
+        depth += 1
+      while whole && depth > 0 do
+        val top = depth - 1
+        if counts(top) == 0 then depth -= 1
+        else if at >= end then whole = false
+        else
+          val b = byte(at)
+          if b == 0xff then
+            if counts(top) < 0 then
+              at += 1
+              depth -= 1
+            else whole = false
+          else
+            if counts(top) > 0 then counts(top) -= 1
+            val major = b >>> 5
+            val ai = b & 31
+            if ai == 31 then
+              if major >= 2 && major <= 5 then
+                at += 1
+                open(-1L)
+              else whole = false
+            else if ai > 27 then whole = false
+            else
+              val size = if ai < 24 then 1 else 1 + (1 << (ai - 24))
+              val n = if ai < 24 then ai.toLong else raw.bigEndian(at + 1, size - 1).getOrElse(-1L)
+              val room = (end - at - size).toLong
+              if size > end - at || (n < 0 && major >= 2 && major <= 5) then whole = false
+              else
+                at += size
+                major match
+                  case 2 | 3 =>
+                    if n > room then whole = false else at += n.toInt
+                  case 4 => if n > room then whole = false else open(n)
+                  case 5 => if n > room / 2 then whole = false else open(2 * n)
+                  case 6 => open(1L)
+                  case _ => ()
+      if whole then at else -1
+
     @tailrec private def resolve(shape: Shape, token: Token): Shape = shape match
       case ByToken(pick) => resolve(pick(token), token)
       case other         => other
@@ -210,13 +277,8 @@ object DetachedRecords:
         Some(Entered(at + h.length, Some(Frame(h.items, children)), None))
       (resolve(shape, h.token), h.token) match
         case (Item, _) =>
-          Some(
-            Entered(
-              at + h.length,
-              Option.when(h.items != 0)(Frame(h.items, Children.Each(Item))),
-              None
-            )
-          )
+          val after = skip(at)
+          Option.when(after >= 0)(Entered(after, None, None))
         case (Record(fields), Token.List) if h.items == fields.size.toLong =>
           open(Children.InOrder(fields, Item))
         case (Record(fields), Token.List) if h.items < 0 && byte(at + 1) == 0xff =>

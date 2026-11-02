@@ -489,18 +489,24 @@ object LiteLedger:
 
   private val bodyLimits = Cbor.Limits(2500000, 64, 1000000, 2500000)
 
-  /** The effects of a transaction body. Update proposals (key 6) exist up to Babbage only. */
+  /** The effects of a transaction body. Update proposals (key 6) exist up to Babbage only. A body
+    * holding a `RecD` record written as an empty indefinite list is read as the reference reads it
+    * ([[DetachedRecords]]).
+    */
   def effects(body: Bytes, era: Era): Either[LedgerDecodeError, Vector[Effect]] =
     given ByteStrings = ByteStrings.of(DecoderVersion.of(era))
-    for
-      root <- CborRead.decode(body, bodyLimits)
-      fields <- CborRead.fields(root, DecodeField.TransactionBody)
-      proposal <- fields
-        .get(6)
-        .filter(_ => era.ordinal <= Era.Babbage.ordinal)
-        .traverse(proposal(_, era))
-      certs <- fields.get(4).traverse(n => certificates(n).flatMap(_.flatTraverse(cert)))
-    yield proposal.toVector ++ certs.getOrElse(Vector.empty)
+    DetachedRecords.read(body, bodyLimits, DetachedRecords.Shapes.body(era))(
+      LedgerDecodeError.Syntax(_)
+    ) { root =>
+      for
+        fields <- CborRead.fields(root, DecodeField.TransactionBody)
+        proposal <- fields
+          .get(6)
+          .filter(_ => era.ordinal <= Era.Babbage.ordinal)
+          .traverse(proposal(_, era))
+        certs <- fields.get(4).traverse(n => certificates(n).flatMap(_.flatTraverse(cert)))
+      yield proposal.toVector ++ certs.getOrElse(Vector.empty)
+    }
 
   private def certificates(n: Node): Either[LedgerDecodeError, Vector[Node]] = n.value match
     case Value.Tag(t, inner) if t == 258 => CborRead.array(inner, DecodeField.Certificates)
