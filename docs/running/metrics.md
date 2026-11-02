@@ -318,6 +318,8 @@ section and the catalogue differ.
 | `scarab_received_cache_evictions_total` | counter |  | Received bodies that left the cache for its bound (they stay readable from the log). | none |
 | `scarab_received_reads_total` | counter |  | Received bodies read back from the received-block log. | none |
 | `scarab_received_unreadable_total` | counter |  | Received-block records that failed their checksum when read back, and were dropped. | none |
+| `scarab_block_pool_bodies` | gauge |  | Received bodies the block pool holds in memory (with a received log, only until their admission is processed). | none |
+| `scarab_block_pool_body_bytes` | gauge |  | Bytes of the received bodies the block pool holds in memory. | none |
 | `scarab_replay_blocks` | gauge |  | Stored blocks applied again at the start (so far, then in total). | none |
 | `scarab_replay_seconds` | gauge |  | Time spent applying the stored blocks again at the start. | none |
 | `scarab_node_phase` | gauge | `phase` | 1 for the phase the start has reached (Restoring, Replaying, Following), 0 for the others. | none |

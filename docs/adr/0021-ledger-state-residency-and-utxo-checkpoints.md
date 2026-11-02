@@ -85,7 +85,17 @@ system failure is a storage error. The residency is exported as `scarab_received
   replay, never a restore of the wrong entries.
 - A future UTxO key or value layout, or a move to column families, is a new `UtxoKeyLayout` case,
   a new snapshot version and a conversion or refusal of the checkpoints (ADR 0006).
-- Only the received index's own bodies are bounded. `BlockPool` keeps references to the bodies of
+- ~~Only the received index's own bodies are bounded. `BlockPool` keeps references to the bodies of
   the blocks it has processed until immutable-slot pruning; reading those through the index is
-  [#416](https://github.com/KD5UJC-XYZ/scarab/issues/416).
-- Opening the received log still reads its files whole once to validate them, as before.
+  [#416](https://github.com/KD5UJC-XYZ/scarab/issues/416).~~ ([amended 2026-11-02](#amendment-2026-11-02-the-block-pool-and-the-received-logs-open-hold-no-bodies))
+- ~~Opening the received log still reads its files whole once to validate them, as before.~~ ([amended 2026-11-02](#amendment-2026-11-02-the-block-pool-and-the-received-logs-open-hold-no-bodies))
+
+## Amendment (2026-11-02): the block pool and the received log's open hold no bodies
+
+With a received log, `BlockPool` no longer keeps the bodies of the blocks it has processed: its
+processed forest keeps each block's metadata and reads the body back through the index
+([#416](https://github.com/KD5UJC-XYZ/scarab/issues/416)), and its cache of received bodies holds a
+body only until the block's admission is processed, the bodies of the admission queue
+([#684](https://github.com/KD5UJC-XYZ/scarab/issues/684)). Opening the received log reads its files
+one record at a time to rebuild the index and keeps no body; the cache starts empty
+([#683](https://github.com/KD5UJC-XYZ/scarab/issues/683)). The format of the log is unchanged.

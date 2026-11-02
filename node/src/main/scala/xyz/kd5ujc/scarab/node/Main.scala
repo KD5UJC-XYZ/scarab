@@ -1305,11 +1305,12 @@ object Main extends IOApp:
   )(using
       Handle[IO, NodeError],
       Log[IO],
+      Metrics[IO],
       Ask[IO, consensus.ChainSelection.Local],
       Tell[IO, xyz.kd5ujc.scarab.ledger.GenesisInternalProblem]
   ): IO[Supply] =
     import run.{genesis, setup}
-    import instruments.{fatalSink, stall}
+    import instruments.{collectors, fatalSink, stall}
     import chain.follower
     for
       fetchSalt <- cats.effect.std.Random.scalaUtilRandom[IO].flatMap(_.nextLong)
@@ -1351,7 +1352,8 @@ object Main extends IOApp:
         StallDiagnostics.Sources(blockPool.fetchCoordinator, blockPool.admissions)
       ) *> seedReceived(blockPool, receivedBlocks, genesis.geometry.byron.epochSlots) *>
         follower.installFetchCoordinator(blockPool.fetchCoordinator) *>
-        follower.installInvalidBlocks(blockPool.invalidBlocks)
+        follower.installInvalidBlocks(blockPool.invalidBlocks) *>
+        collectors.add(Collectors.pool(blockPool))
       genesisRuntime <- createGenesisRuntime(
         setup,
         follower,

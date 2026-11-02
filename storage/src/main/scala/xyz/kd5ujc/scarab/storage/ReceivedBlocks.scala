@@ -22,10 +22,11 @@ import xyz.kd5ujc.scarab.ledger.StorageError
   *
   * In memory, as in the reference's VolatileDB, there is an index of every block (its reference and
   * where its record is, [[VolatileStore.Location]]) and a body is read back from its log file when
-  * asked for. In front of the log is a cache of the most recently received bodies, bounded in bytes
-  * ([[ReceivedBlocks.DefaultCacheBytes]]): the oldest bodies leave it first, and its residency is
-  * reported ([[residency]]). The bound covers this index's own bodies; the block pool keeps its own
-  * references to bodies it has processed.
+  * asked for. Opening rebuilds the index from the files a record at a time and keeps no body
+  * ([[VolatileStore.openIndex]]). In front of the log is a cache of the bodies received since,
+  * bounded in bytes ([[ReceivedBlocks.DefaultCacheBytes]]): the oldest bodies leave it first, and
+  * its residency is reported ([[residency]]). The bound covers this index's own bodies; the block
+  * pool holds a body only until its admission is processed, when it is in this log.
   */
 trait ReceivedBlocks[F[_]]:
   def put(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit]
@@ -161,20 +162,16 @@ object ReceivedBlocks:
       cacheBytes: Long = DefaultCacheBytes
   )(using Raise[F, StorageError]): Resource[F, ReceivedBlocks[F]] =
     for
-      opened <- VolatileStore.open[F](dir, blocksPerFile)
+      // the open rebuilds the index and keeps no body; the cache fills with the bodies received
+      // after it
+      opened <- VolatileStore.openIndex[F](dir, blocksPerFile)
       (log, recovered) = opened
       index <- Resource.eval(
         Ref.of[F, Map[Bytes, (BlockRef, VolatileStore.Location)]](
           recovered.located.map(block => block._1.hash -> block).toMap
         )
       )
-      cache <- Resource.eval(
-        Ref.of[F, Cache](
-          recovered.chain.foldLeft(Cache.empty)((c, block) =>
-            c.added(block._1.hash, block._2, cacheBytes)
-          )
-        )
-      )
+      cache <- Resource.eval(Ref.of[F, Cache](Cache.empty))
       counters <- Resource.eval(Ref.of[F, Counters](Counters(0L, 0L)))
       lock <- Resource.eval(Mutex[F])
       invalid <- Resource.eval(Ref.of[F, Set[Bytes]](Set.empty))

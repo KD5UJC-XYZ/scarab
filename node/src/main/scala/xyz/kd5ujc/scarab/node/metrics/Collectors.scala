@@ -12,6 +12,7 @@ import xyz.kd5ujc.scarab.consensus.{SchedulingStats, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.network.ConnectionManager
 import xyz.kd5ujc.scarab.network.selection.PeerMetrics
+import xyz.kd5ujc.scarab.node.BlockPool
 import xyz.kd5ujc.scarab.node.forge.ForgeStats
 import xyz.kd5ujc.scarab.node.mempool.Mempool
 import xyz.kd5ujc.scarab.storage.ReceivedBlocks
@@ -86,6 +87,13 @@ object Collectors:
         metrics.advance(receivedEvictions, r.evictions.toDouble) *>
         metrics.advance(receivedReads, r.reads.toDouble) *>
         metrics.advance(receivedUnreadable, r.unreadable.toDouble)
+    )
+
+  /** The bodies the block pool holds in memory. */
+  def pool[F[_]: Monad](pool: BlockPool[F])(using metrics: Metrics[F]): F[Unit] =
+    import Catalogue.*
+    pool.residency.flatMap(r =>
+      metrics.set(poolBodies, r.bodies.toDouble) *> metrics.set(poolBodyBytes, r.bytes.toDouble)
     )
 
   /** The peer metrics boards: how many slots each holds. */

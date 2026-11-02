@@ -147,6 +147,32 @@ class VolatileStoreSuite extends CatsEffectSuite:
     }
   }
 
+  test("the index open keeps no body: its locations read back what the full open returns") {
+    tempDir.use { dir =>
+      ok {
+        for
+          _ <- open(dir).use { (store, _) =>
+            val bs = (0 until 12).map(block(_))
+            bs.toList.traverse_((r, raw) => store.append(r, raw)) *>
+              store.rollback(bs(7)._1.point) *>
+              store.append(forked(8, 1)._1, forked(8, 1)._2)
+          }
+          full <- open(dir).use((_, opened) => IO.pure(opened))
+          read <- VolatileStore.openIndex[IO](dir, perFile).use { (store, opened) =>
+            opened.chain.traverse((ref, at) => store.read(at).map(ref -> _)).map(opened -> _)
+          }
+          (index, bodies) = read
+          _ <- IO {
+            assertEquals(index.chain.map(_._1), full.chain.map(_._1))
+            assertEquals(bodies, full.chain.map((ref, raw) => ref -> Some(ref -> raw)))
+            assertEquals(index.located, full.located)
+            assertEquals(index.report, full.report)
+          }
+        yield ()
+      }
+    }
+  }
+
   test("collection removes only whole files below the slot and keeps the newest file") {
     tempDir.use { dir =>
       ok {
