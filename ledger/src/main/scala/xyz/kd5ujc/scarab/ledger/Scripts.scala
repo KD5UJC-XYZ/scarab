@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import scala.annotation.tailrec
 import cats.syntax.show.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Tree, TreeFold, Value}
@@ -30,53 +31,46 @@ enum NativeScript:
     */
   def eval(signers: Set[Bytes], start: Option[BigInt], end: Option[BigInt]): Boolean =
     // The scripts nest as deep as the transaction is long (a preprod transaction has 5,388
-    // levels), so the walk keeps its stack on the heap.
-    final class Open(val script: NativeScript, val children: Vector[NativeScript]):
-      var next = 0
-      var count = 0
-    val stack = new java.util.ArrayDeque[Open]
-    var cur: NativeScript = this
-    var value: Option[Boolean] = None
-    while true do
-      if value.isEmpty then
-        cur match
-          case Sig(h)                 => value = Some(signers.contains(h))
-          case InvalidBefore(lock)    => value = Some(start.exists(lock <= _))
-          case InvalidHereafter(lock) => value = Some(end.exists(_ <= lock))
-          case AllOf(ss)              => stack.push(Open(cur, ss))
-          case AnyOf(ss)              => stack.push(Open(cur, ss))
-          case NOfK(_, ss)            => stack.push(Open(cur, ss))
-      // A finished child is folded into its parent; a finished parent is a finished child.
-      var settled = false
-      while !settled do
-        val top = stack.peek()
-        if top == null then
-          if value.isDefined then return value.get
-          settled = true
-        else
-          value.foreach { v =>
-            top.script match
-              case AllOf(_) => value = if v then None else Some(false)
-              case AnyOf(_) => value = if v then Some(true) else None
-              case NOfK(_, _) =>
-                if v then top.count += 1
-                value = None
-              case _ => ()
-          }
-          val decided = value.isDefined
-          if decided then stack.pop()
-          else if top.next < top.children.size then
-            cur = top.children(top.next)
-            top.next += 1
-            settled = true
-          else
-            stack.pop()
-            value = Some(top.script match
-              case AllOf(_)   => true
-              case AnyOf(_)   => false
-              case NOfK(n, _) => BigInt(top.count) >= n
-              case _          => false)
-    false
+    // levels), so the walk keeps its stack on the heap: the open combinators, innermost first.
+    enum Kind:
+      case All
+      case Any
+      case AtLeast(required: BigInt)
+    // an open combinator: the children still to evaluate and how many of the evaluated were true
+    final case class Open(kind: Kind, rest: List[NativeScript], count: Int)
+    enum State:
+      case Visit(script: NativeScript, stack: List[Open])
+      // a finished script's value, for the combinator that opened it
+      case Deliver(value: Boolean, stack: List[Open])
+      case Advance(top: Open, below: List[Open])
+    @tailrec def go(state: State): Boolean = state match
+      case State.Visit(script, stack) =>
+        script match
+          case Sig(h)                 => go(State.Deliver(signers.contains(h), stack))
+          case InvalidBefore(lock)    => go(State.Deliver(start.exists(lock <= _), stack))
+          case InvalidHereafter(lock) => go(State.Deliver(end.exists(_ <= lock), stack))
+          case AllOf(ss)              => go(State.Advance(Open(Kind.All, ss.toList, 0), stack))
+          case AnyOf(ss)              => go(State.Advance(Open(Kind.Any, ss.toList, 0), stack))
+          case NOfK(n, ss) => go(State.Advance(Open(Kind.AtLeast(n), ss.toList, 0), stack))
+      case State.Deliver(value, Nil)          => value
+      case State.Deliver(value, top :: below) =>
+        // a false child settles `AllOf` and a true one `AnyOf`; `NOfK` counts every child
+        top.kind match
+          case Kind.All if !value => go(State.Deliver(false, below))
+          case Kind.Any if value  => go(State.Deliver(true, below))
+          case Kind.AtLeast(_) =>
+            go(State.Advance(top.copy(count = top.count + (if value then 1 else 0)), below))
+          case Kind.All | Kind.Any => go(State.Advance(top, below))
+      case State.Advance(top, below) =>
+        top.rest match
+          case child :: rest => go(State.Visit(child, top.copy(rest = rest) :: below))
+          case Nil =>
+            val value = top.kind match
+              case Kind.All        => true
+              case Kind.Any        => false
+              case Kind.AtLeast(n) => BigInt(top.count) >= n
+            go(State.Deliver(value, below))
+    go(State.Visit(this, Nil))
 
 object NativeScript:
   given Tree[NativeScript] with

@@ -19,6 +19,10 @@ enum Credential:
     case Key(h)    => h
     case Script(h) => h
 
+  def isKey: Boolean = this match
+    case Key(_)    => true
+    case Script(_) => false
+
   /** The ledger's JSON rendering, e.g. `keyHash-ab12…`. */
   def render: String = this match
     case Key(h)    => s"keyHash-${h.hex}"

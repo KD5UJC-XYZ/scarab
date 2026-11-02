@@ -147,6 +147,15 @@ final case class Utxo(
     * in one walk of the diff. The diff of a state in the volatile window holds the changes of up to
     * `k` blocks, so each walk of it is a cost per block that becomes immutable.
     */
+  // A loop over the diff with a builder: as a fold of the pair (taken, newest) it took 2.3 times as
+  // long with 4 times the allocation (`docs/performance.md` section 51).
+  @SuppressWarnings(
+    Array(
+      "org.wartremover.warts.Var",
+      "org.wartremover.warts.While",
+      "org.wartremover.warts.MutableDataStructures"
+    )
+  )
   def changesSince(after: Long): (Vector[(TxIn, Option[TxOut])], Long) =
     val out = Vector.newBuilder[(TxIn, Option[TxOut])]
     var newest = after

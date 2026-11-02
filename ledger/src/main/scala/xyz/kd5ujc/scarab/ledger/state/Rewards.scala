@@ -30,10 +30,7 @@ object LogWeight:
     * (Haskell's `minimum` is partial there).
     */
   def normalise(ws: Vector[LogWeight]): Vector[LogWeight] =
-    if ws.isEmpty then ws
-    else
-      val least = ws.min(using Ordering.Float.IeeeOrdering)
-      ws.map(_ - least)
+    ws.minOption(using Ordering.Float.IeeeOrdering).fold(ws)(least => ws.map(_ - least))
 
   given Eq[LogWeight] = Eq.instance((a, b) => a == b)
   given Show[LogWeight] = Show.show(_.toString)
@@ -245,7 +242,9 @@ object SingletonReward:
   def apply(reward: Reward): SingletonReward = RewardSet(List(reward))
 
   extension (single: SingletonReward)
-    // Only apply constructs this opaque value, so the set has exactly one element.
+    // Only apply constructs this opaque value, so the set has exactly one element: the first is
+    // always there.
+    @SuppressWarnings(Array("org.wartremover.warts.IterableOps"))
     def reward: Reward = RewardSet.rewards(single).head
     def asSet: RewardSet = single
 

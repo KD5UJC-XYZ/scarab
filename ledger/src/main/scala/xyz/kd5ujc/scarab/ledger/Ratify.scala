@@ -148,8 +148,12 @@ object Ratify:
     spoThreshold(st.params, st.committee.isDefined, gas.action) match
       case Required(r) =>
         r.isZero || {
-          val isHardFork = gas.action.isInstanceOf[GovAction.HardFork]
-          val isNoConfidence = gas.action.isInstanceOf[GovAction.NoConfidence]
+          val isHardFork = gas.action match
+            case _: GovAction.HardFork => true
+            case _                     => false
+          val isNoConfidence = gas.action match
+            case _: GovAction.NoConfidence => true
+            case _                         => false
           val (yes, abstain) = env.poolDistr.foldLeft((BigInt(0), BigInt(0))) {
             case ((y, ab), (pool, stake)) =>
               gas.poolVotes.get(pool) match

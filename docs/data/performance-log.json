@@ -4063,6 +4063,85 @@
     }
    ],
    "listings": []
+  },
+  {
+   "id": "perf-57",
+   "section": "51",
+   "heading": "51. The ledger's loops: functional against imperative (#650)",
+   "subject": "The ledger's loops: functional against imperative (#650)",
+   "date": "2026-10-31",
+   "dateSource": "text",
+   "issues": [
+    "#650"
+   ],
+   "commits": [],
+   "links": [],
+   "page": "memory-and-snapshots",
+   "results": [
+    {
+     "header": [
+      "Form measured",
+      "Against",
+      "Against (range)",
+      "Form (range)",
+      "Form / against, time",
+      "MB allocated, against / form"
+     ],
+     "separator": "|---|---|---:|---:|---:|---:|",
+     "rows": [
+      [
+       "`Utxo.changesSince` as a fold",
+       "its loop",
+       "16.3 ms (15.8 to 17.1)",
+       "37.9 ms (37.2 to 38.4)",
+       "2.32",
+       "12.5 / 49.5"
+      ],
+      [
+       "`MultiAssetRep.build` as a `flatMap` of the policies: the encode",
+       "its buffers",
+       "1,132 ms (1,113 to 1,171)",
+       "1,329 ms (1,285 to 1,354)",
+       "1.17",
+       "6,107 / 7,400"
+      ],
+      [
+       "`MultiAssetRep.build` as one fold: the encode",
+       "its buffers",
+       "1,084 ms (1,077 to 1,117)",
+       "1,150 ms (1,141 to 1,162)",
+       "1.06",
+       "6,107 / 6,437"
+      ],
+      [
+       "Buffers kept, the packer's loops `@tailrec`: the encode",
+       "the module before",
+       "1,240 ms (1,190 to 1,497)",
+       "1,218 ms (1,128 to 1,240)",
+       "0.98",
+       "6,125 / 6,106"
+      ],
+      [
+       "`mergeStates` as a `scanLeft`, DRep sums folded: a boundary tick",
+       "the module before",
+       "227 ms (225 to 238)",
+       "241 ms (238 to 274)",
+       "1.06",
+       "not counted"
+      ],
+      [
+       "`mergeStates` as a `@tailrec` loop, DRep sums folded (kept): a boundary tick",
+       "the module before",
+       "229 ms (229 to 230)",
+       "235 ms (235 to 235)",
+       "1.03",
+       "not counted"
+      ]
+     ],
+     "id": "perf-57.t1"
+    }
+   ],
+   "listings": []
   }
  ]
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import cats.data.NonEmptyVector
 import cats.syntax.all.*
 import io.circe.{ACursor, Json, JsonObject}
 import xyz.kd5ujc.scarab.codec.Rational
@@ -105,18 +106,20 @@ object GenesisSchema:
 
   /** A field under one of `names` read by `check`; `after` reads the value that was taken. */
   private final case class Field(
-      names: Vector[String],
+      names: NonEmptyVector[String],
       presence: Presence,
       check: Check,
       after: Check = _ => Right(())
   )
 
-  private def req(name: String, check: Check): Field = Field(Vector(name), Presence.Required, check)
-  private def opt(name: String, check: Check): Field = Field(Vector(name), Presence.Optional, check)
+  private def req(name: String, check: Check): Field =
+    Field(NonEmptyVector.one(name), Presence.Required, check)
+  private def opt(name: String, check: Check): Field =
+    Field(NonEmptyVector.one(name), Presence.Optional, check)
 
   /** `o .: first <|> o .: second`: the first name that is present and reads. */
   private def either(first: String, second: String, check: Check, after: Check = _ => Right(())) =
-    Field(Vector(first, second), Presence.Required, check, after)
+    Field(NonEmptyVector.of(first, second), Presence.Required, check, after)
 
   private def run(file: GenesisFile, check: Check)(json: Json): Either[ConfigError, Unit] =
     check(json).leftMap(f => fieldError(file, f.path, f.cause))
