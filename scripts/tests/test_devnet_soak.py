@@ -16,7 +16,9 @@ from devnet.scenarios import soak
 
 
 class SoakTranscriptTests(unittest.TestCase):
-    def run_gate(self, diagnostics, comparison=None, comparisons=None):
+    MATCHED = {"slot": 1, "answers": {"DebugNewEpochState": {"matched": True}, "GetUTxOWhole": {"matched": True}}}
+
+    def run_gate(self, diagnostics, comparison=None, comparisons=None, whole=None):
         with tempfile.TemporaryDirectory(prefix="scarab-soak-transcript-") as temporary:
             root = pathlib.Path(temporary)
             transcript = root / "follower.jsonl"
@@ -44,6 +46,7 @@ class SoakTranscriptTests(unittest.TestCase):
                         patch.object(soak.time, "monotonic", side_effect=[0] * (1 + len(comparisons or [0])) + [2]), \
                         patch.object(soak.time, "sleep"), \
                         patch.object(soak, "compare_or_error", side_effect=comparisons or None, return_value=comparison or {"matched": True}), \
+                        patch.object(soak, "whole_state", return_value=whole or self.MATCHED), \
                         redirect_stdout(output):
                     with self.assertRaises(SystemExit) as exit_:
                         soak.soak(SimpleNamespace(name="test", seconds=1, every=1, seed=0))
@@ -79,6 +82,20 @@ class SoakTranscriptTests(unittest.TestCase):
         self.assertEqual((summary["comparisons"], summary["matched"], summary["comparisonErrors"]), (1, 1, 1))
         self.assertEqual(code, 1)
         self.assertIn("1 ledger comparison errors", output)
+
+
+    def test_a_whole_state_difference_beside_a_matched_projection_fails_the_gate(self):
+        differs = {"slot": 1, "answers": {"DebugNewEpochState": {"matched": True},
+                                          "GetUTxOWhole": {"matched": False, "firstDifference": {"offset": 3}}}}
+        code, summary, output = self.run_gate([], whole=differs)
+        self.assertEqual(code, 1)
+        self.assertEqual(summary["wholeState"]["GetUTxOWhole"]["mismatched"], 1)
+        self.assertIn("conway: 1 same-point GetUTxOWhole answers differ", output)
+
+    def test_no_complete_comparison_fails_the_gate(self):
+        code, summary, output = self.run_gate([], whole={"skipped": "the Scala node has no node-to-client socket"})
+        self.assertEqual(code, 1)
+        self.assertIn("conway: only 0 matched same-point DebugNewEpochState answers (need 1)", output)
 
 
 if __name__ == "__main__":

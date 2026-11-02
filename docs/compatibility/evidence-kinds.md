@@ -29,21 +29,23 @@ failures and limits. This closes the external-data gate, not every audit or equi
 Its 66 additional controls are test cases of that campaign. They are not the 66 devnet ledger
 comparisons the evidence log reports for `e2e`.
 
-Devnet ledger comparison counts in this file are projected comparisons. That covers the
-`e2e` counts such as "66/66" and the per-era Shelley 12 … Conway 30, plus the `pool` and `soak` counts.
+Devnet ledger comparison counts in this file recorded before the dates below are projected comparisons. That
+covers the `e2e` counts such as "66/66" and the per-era Shelley 12 … Conway 30, plus the `pool` and `soak` counts.
 They compare the reference ledger projected onto the Scala node's `/state` shape at one block.
 They do not show whole-state equality. Cost models, Conway protocol parameters other than the version,
 `ParameterChange` values, reward-account networks, the key-or-script kind of pool reward
 credentials, pool relays, metadata and delegators, account pointers, DRep anchors and delegators,
 `nonMyopic`, individual reward entries and AVVM/Byron state are among the fields not compared. `scripts/devnet/compare.py` (`PROJECTION_SCOPE`)
-lists the scope, each `e2e-summary.json` records it, and the register entry `devnet-ledger-projection`
-tracks it under [#433](https://github.com/KD5UJC-XYZ/scarab/issues/433). From 2026-10-31 `e2e` also
+lists the scope, and each `e2e-summary.json` records it. From 2026-10-31 `e2e` also
 compares the complete same-point `DebugNewEpochState` answers of both nodes, every byte, at each of
 those comparisons in every Shelley-based era (`compare.whole_state`, under `ledgerComparison.wholeState`
 of `e2e-summary.json`), and a difference fails the run. That answer holds the UTxO as an empty map on
 both nodes; from 2026-11-02 the same sessions also ask `GetUTxOWhole`, and its complete answers are
-compared the same way ([#677](https://github.com/KD5UJC-XYZ/scarab/issues/677)). `pool` and `soak` still
-compare the projection only. Runs before 2026-10-25 also
+compared the same way ([#677](https://github.com/KD5UJC-XYZ/scarab/issues/677)). From 2026-11-02 `pool` and
+`soak` take the same complete comparison at each of theirs, in Conway (`wholeState` in their summaries), and a
+difference fails the run; the register entry `devnet-ledger-whole-state` records it
+([#433](https://github.com/KD5UJC-XYZ/scarab/issues/433)). The projection still runs beside it as a field-level
+diagnostic. Runs before 2026-10-25 also
 left datums and reference-script hashes out of the Conway UTxO comparison, and hashed reference scripts
 over a re-encoding rather than their original bytes. In the `ntc` refusal
 comparison, every case is compared exactly (raw bytes and text), `withdrawal-network-flag-true` included:

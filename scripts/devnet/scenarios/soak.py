@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The `soak` scenario: follow, load and periodically compare for a fixed time."""
+"""The `soak` scenario: follow, load and periodically compare for a fixed time: the projection, and the complete
+same-point ledger state (`compare.whole_state`)."""
 import json
 import os
 import subprocess
@@ -7,7 +8,7 @@ import sys
 import time
 from .. import metrics as node_metrics
 from ..cluster import up
-from ..compare import compare_or_error
+from ..compare import Comparisons, compare_or_error, whole_failures, whole_state
 from ..consensus import arguments
 from ..follower import own_build
 from ..util import ENTRY, QUERY_PORT, data_root, docker, read_log
@@ -62,7 +63,7 @@ def soak(args):
     root = data_root(args.name)
     up(args)
     follower = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "follow",
-                                 *arguments(args),
+                                 *arguments(args), "--local-socket",
                                  *(["--dump-state"] if getattr(args, "oracle", False) else [])],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     loader = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "load", "--seed", str(args.seed)],
@@ -71,6 +72,7 @@ def soak(args):
                                    *(["--extended"] if getattr(args, "governance_extended", False) else [])],
                                   stdout=(root / "govload.log").open("w"), stderr=subprocess.STDOUT)
     results = []
+    whole = Comparisons(root)
     scraped = {}
     deadline = time.monotonic() + args.seconds
     try:
@@ -84,6 +86,8 @@ def soak(args):
             print(json.dumps({k: r.get(k) for k in ("tip", "matched", "differenceCount", "error")}), flush=True)
             with (root / "compare.jsonl").open("a") as f:
                 f.write(json.dumps(r) + "\n")
+            # the follower holds only blocks the reference has, so its tip is the point
+            whole.record_whole("conway", f"sample {len(results)}", whole_state(args.name, "conway"))
     finally:
         loader.terminate()
         loader.wait()
@@ -104,6 +108,7 @@ def soak(args):
         "matched": len([r for r in results if r.get("matched")]),
         "comparisonErrors": len([r for r in results if "error" in r]),
         "firstMismatch": next((r for r in results if r.get("matched") is False or "error" in r), None),
+        "wholeState": {query: per_era["conway"] for query, per_era in whole.whole.items()},
         "followerAliveAtEnd": follower_alive,
         "epochsEntered": [e["epoch"] for e in log if e.get("event") == "epoch"],
         "blocksApplied": sum(1 for e in log if e.get("event") == "extended"),
@@ -133,6 +138,7 @@ def soak(args):
         failures.append(f"{summary['comparisonErrors']} ledger comparison errors")
     if summary["matched"] != summary["comparisons"]:
         failures.append("ledger mismatch or comparison error")
+    failures += whole_failures(whole, "conway", 1)
     if summary["errors"]:
         failures.append("follower logged errors")
     if other:

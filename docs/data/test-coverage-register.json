@@ -546,19 +546,19 @@
       "candidateRequired": true
     },
     {
-      "id": "devnet-ledger-projection",
+      "id": "devnet-ledger-whole-state",
       "classification": "native-parity",
-      "status": "bounded",
-      "scope": "Devnet ledger comparisons of the e2e scenario (every Shelley-based era) and of pool and soak (Conway): the reference ledger projected onto the Scala /state shape at one block.",
-      "assertion": "In e2e, at each comparison in every Shelley-based era, the complete same-point DebugNewEpochState and GetUTxOWhole answers of both nodes are byte-equal (compare.whole_state, judged with the projection; the new-epoch state holds the UTxO as an empty map on both nodes, and GetUTxOWhole holds it). Every projected field is equal, with no masks or tolerances; compare.PROJECTION_SCOPE lists the compared fields and names each omission found by auditing the eraview and govview projections, nested ones included, and e2e-summary.json carries it under ledgerComparison.scope; each result lists the top-level Scala fields without a reference counterpart (scalaOnlyKeys). Reference-script hashes are taken over the original script bytes, the Conway UTxO and proposal roots (prevGovActionIds) come from LocalStateQuery under an overall session deadline, cross-checked against the CLI UTxO, and each nested omission has a control test showing two states that differ only there project identically.",
-      "rationale": "A projection is not whole-state equality. In e2e the same-point DebugNewEpochState and GetUTxOWhole comparisons cover every field below and the UTxO; pool and soak compare the projection only. Not compared by the projection: cost models, Conway protocol parameters other than the version, previous and future parameters before Conway, ParameterChange values, reward-account networks (future pool parameters, return accounts, treasury withdrawals), whether a pool's reward credential is a key or a script, pool relays, metadata and delegators (all Conway pool parameters), account pointers, snapshot pool parameters, stake-distribution fractions and VRF keys, DRep anchors and delegators, committee member status, enact withdrawals, the treasury donation, nonMyopic, individual reward entries, the pulsing reward state, instantaneous stake and AVVM/Byron state. Counts such as 66/66 describe projected comparisons only.",
+      "status": "covered",
+      "scope": "Devnet ledger comparisons of e2e (every Shelley-based era), pool and soak (Conway): the complete ledger state of both nodes at one point.",
+      "assertion": "At every ledger comparison of e2e, pool and soak the complete same-point DebugNewEpochState and GetUTxOWhole answers of both nodes are byte-equal (compare.whole_state, ledgercompare): the new-epoch state holds the UTxO as an empty map on both nodes, and GetUTxOWhole holds it. A difference, a comparison error or fewer matches than the scenario's minimum fails the run (judge_comparisons, whole_failures). e2e and soak take the point at the Scala follower's tip; pool, whose Scala node forges, at the reference's tip, asking the Scala node again while it has not reached it. The projection onto the Scala /state shape (compare.PROJECTION_SCOPE) still runs beside it as a field-level diagnostic and must match too.",
+      "rationale": "A projection is not whole-state equality: PROJECTION_SCOPE lists the fields it leaves out (cost models, Conway protocol parameters, pool relays and more). The complete same-point answers cover every field of the ledger state and the UTxO in the reference's own encoding, so no field is left out. Devnet comparison counts recorded for pool and soak before 2026-11-02, and for e2e before 2026-10-31, are projected only; e2e counts from 2026-10-31 to 2026-11-02 are complete but for the UTxO.",
       "owner": "verification maintainer",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/433",
-      "resolution": "Covered once every era's comparison checks the complete ledger state: same-point DebugNewEpochState and whole-UTxO bytes (done in e2e); pool and soak still compare the projection only.",
+      "resolution": "Covered: every devnet ledger comparison checks the complete ledger state (#433, #677).",
       "evidence": [
         "scripts/devnet/compare.py",
-        "scripts/devnet/eraview.py",
-        "scripts/devnet/govview.py"
+        "scripts/devnet/ledgercompare.py",
+        "scripts/tests/test_ledgercompare.py"
       ],
       "candidateRequired": false
     },
