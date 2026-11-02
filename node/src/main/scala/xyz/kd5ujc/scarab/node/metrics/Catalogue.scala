@@ -396,6 +396,10 @@ object Catalogue:
     MetricName("scarab_block_no_verdict_total"),
     "Blocks the node has no verdict on: its own implementation could not judge them (issue 567)."
   )
+  val blockNoVerdictRetries = CounterDef(
+    MetricName("scarab_block_no_verdict_retries_total"),
+    "Attempts to judge again a block the node had no verdict on, for a cause that can pass (issue 693)."
+  )
   val followerStalls = CounterDef(
     MetricName("scarab_follower_stalls_total"),
     "Times the follower went the stall-minutes without extending its chain while a peer announced a longer one."
@@ -1066,6 +1070,7 @@ object Catalogue:
     peerTipBlock,
     peerReconnects,
     blockNoVerdict,
+    blockNoVerdictRetries,
     followerStalls,
     followerStalled,
     rollbacks,

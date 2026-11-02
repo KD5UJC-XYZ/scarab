@@ -50,7 +50,7 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
 
   test("a stall reports each session's pipeline, the coordinator's entries and the admissions") {
     FetchCoordinator.create[IO]().flatMap { coordinator =>
-      BlockAdmissions.create[IO].flatMap { admissions =>
+      (BlockAdmissions.create[IO], NoVerdictBlocks.create[IO]).flatMapN { (admissions, withheld) =>
         coordinator.session(7L).use { session =>
           TestControl.executeEmbed(
             for
@@ -58,7 +58,7 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
               logged <- Ref.of[IO, Vector[NodeEvent]](Vector.empty)
               reporter <- StallDiagnostics.Reporter
                 .create[IO](None, e => logged.update(_ :+ e), identity)
-              _ <- reporter.install(StallDiagnostics.Sources(coordinator, admissions))
+              _ <- reporter.install(StallDiagnostics.Sources(coordinator, admissions, withheld))
               dog <- StallWatchdog.create[IO](
                 BigInt(100),
                 10.minutes,
@@ -217,7 +217,8 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
   }
 
   private val oneSession = FetchCoordinator.create[IO]().flatMap { coordinator =>
-    BlockAdmissions.create[IO].map(StallDiagnostics.Sources(coordinator, _))
+    (BlockAdmissions.create[IO], NoVerdictBlocks.create[IO])
+      .mapN(StallDiagnostics.Sources(coordinator, _, _))
   }
 
   test("the report is read and the state emitted while the log is wedged") {

@@ -2,12 +2,13 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Deferred, IO, Ref, Resource, Outcome}
+import cats.effect.testkit.TestControl
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
 import scala.concurrent.duration.*
 import scala.math.Ordering.Implicits.seqOrdering
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.{BlockRules, VolatileChain}
+import xyz.kd5ujc.scarab.consensus.{BlockRules, FollowerEvent, NoVerdictRetry, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{BlockFailure, Header, ValidationError, NodeError, StorageError}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.network.selection.Gsm
@@ -20,8 +21,14 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
       state: Ref[IO, VolatileChain[BigInt]],
       reports: Ref[IO, Vector[ValidationError]],
       fatals: Ref[IO, Vector[Fatal]],
-      governor: Option[GenesisGovernor[IO]]
+      governor: Option[GenesisGovernor[IO]],
+      events: Ref[IO, Vector[FollowerEvent]]
   )
+
+  /** What the rules say of a block, when neither `invalid` nor `unavailable` names it. */
+  private enum Verdict:
+    case Valid, Refused
+    case Unavailable(why: xyz.kd5ujc.scarab.plutus.BackendFailure)
   private def error(header: Header) =
     ValidationError(header.point, BlockFailure.EpochPrecedesLedger(0))
 
@@ -52,6 +59,7 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
       initial: Option[VolatileChain[BigInt]] = None,
       recovered: Vector[BlockPool.Delivered] = Vector.empty,
       unavailable: Map[Bytes, xyz.kd5ujc.scarab.plutus.BackendFailure] = Map.empty,
+      verdict: Header => IO[Verdict] = _ => IO.pure(Verdict.Valid),
       backstop: FiniteDuration = 5.seconds
   )(use: Node => IO[Unit]): IO[Unit] =
     for
@@ -61,6 +69,7 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
       _ <- pool.seedRecoveredHeaders(recovered)
       reports <- Ref.of[IO, Vector[ValidationError]](Vector.empty)
       fatals <- Ref.of[IO, Vector[Fatal]](Vector.empty)
+      events <- Ref.of[IO, Vector[FollowerEvent]](Vector.empty)
       follower <- Follower.create[IO, BigInt](
         BlockRules.from((_, h, _) =>
           beforeRule(h) *>
@@ -68,11 +77,14 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
              else
                unavailable
                  .get(h.hash)
-                 .fold(IO.pure(h.blockNo))(why =>
-                   Raise[IO, ValidationError].raise(noVerdict(h, why))
-                 ))
+                 .fold(verdict(h).flatMap {
+                   case Verdict.Valid   => IO.pure(h.blockNo)
+                   case Verdict.Refused => Raise[IO, ValidationError].raise(error(h))
+                   case Verdict.Unavailable(why) =>
+                     Raise[IO, ValidationError].raise(noVerdict(h, why))
+                 })(why => Raise[IO, ValidationError].raise(noVerdict(h, why))))
         ),
-        _ => IO.unit,
+        event => events.update(_ :+ event),
         ForgedChain.geometry,
         onTip = onTip
       )
@@ -90,7 +102,7 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
         .allow[NodeError] {
           follower
             .blockSelection(pool, work, e => fatals.update(_ :+ e) *> fatalAction(e))
-            .use(_ => use(Node(pool, follower, state, reports, fatals, governor)))
+            .use(_ => use(Node(pool, follower, state, reports, fatals, governor, events)))
             .timeoutTo(
               backstop,
               IO(fail(s"block selection startup and use did not finish within $backstop"))
@@ -605,5 +617,356 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
         assert(!entered)
         assertEquals(invalid.entries, Map.empty)
       }
+    yield ()
+  }
+
+  // issue 693: a block without a verdict for a cause that can pass is judged again, 1 s doubled
+  // after each attempt up to 30 s, measured from the end of an attempt, under a simulated clock
+
+  /** A cause that can pass: the evaluator's worker ran out of memory. */
+  private val outOfMemory =
+    xyz.kd5ujc.scarab.plutus.BackendFailure.Defect(new OutOfMemoryError("Java heap space"))
+
+  /** The attempts on a block whose cause does not clear, the first at 0. */
+  private val schedule = Vector(0, 1, 3, 7, 15, 31, 61, 91, 121).map(_.seconds)
+
+  /** The simulated times at which the rules judged each block, and the rule hook that keeps them.
+    */
+  private final class Judgements(times: Ref[IO, Map[Bytes, Vector[FiniteDuration]]]):
+    def record(header: Header): IO[Unit] =
+      IO.monotonic.flatMap(at =>
+        times.update(m => m.updated(header.hash, m.getOrElse(header.hash, Vector.empty) :+ at))
+      )
+    def of(header: Header): IO[Vector[FiniteDuration]] =
+      times.get.map(_.getOrElse(header.hash, Vector.empty))
+
+  private def judgements: IO[Judgements] =
+    Ref.of[IO, Map[Bytes, Vector[FiniteDuration]]](Map.empty).map(Judgements(_))
+
+  /** The no-verdict attempts reported on `header`, with when each said it is judged again. */
+  private def reported(n: Node, header: Header): IO[Vector[(Int, NoVerdictRetry)]] =
+    n.events.get.map(_.collect {
+      case FollowerEvent.NoVerdict(point, _, attempt, retry) if point == header.point =>
+        attempt -> retry
+    })
+
+  private def retried(n: Node, header: Header): IO[Vector[Int]] =
+    n.events.get.map(_.collect {
+      case FollowerEvent.NoVerdictRetried(point, attempt) if point == header.point => attempt
+    })
+
+  test("a passing cause that clears: judged again on the capped schedule, adopted within the cap") {
+    val clears = 100.seconds
+    for
+      chain <- ForgedChain.forge(5000 until 5060)
+      bodies <- checked(chain, 2)
+      target = bodies(1).header
+      _ <- TestControl.executeEmbed(judgements.flatMap { judged =>
+        node(
+          Set.empty,
+          beforeRule = judged.record,
+          verdict = h =>
+            if h.hash != target.hash then IO.pure(Verdict.Valid)
+            else
+              IO.monotonic.map(at =>
+                if at < clears then Verdict.Unavailable(outOfMemory) else Verdict.Valid
+              )
+          ,
+          backstop = 10.minutes
+        ) { n =>
+          n.pool.session(Some(e => n.reports.update(_ :+ e))).use { sender =>
+            for
+              _ <- add(sender, bodies) *> n.pool.admissions.reprocess
+              _ <- IO.sleep(200.seconds)
+              attempts <- judged.of(target)
+              noVerdicts <- reported(n, target)
+              retries <- retried(n, target)
+              tip <- n.state.get.map(_.tip)
+              withheld <- n.pool.noVerdictBlocks.hashes
+              known <- n.pool.invalidBlocks.snapshot
+              reports <- n.reports.get
+              fatals <- n.fatals.get
+              _ <- IO {
+                assertEquals(attempts, schedule)
+                assert(attempts.last - clears <= NoVerdictBlocks.MaxDelay, attempts)
+                assertEquals(
+                  noVerdicts,
+                  Vector(1, 2, 4, 8, 16, 30, 30, 30).zipWithIndex
+                    .map((wait, i) => (i + 1) -> NoVerdictRetry.After(wait.seconds))
+                )
+                assertEquals(retries, (2 to 9).toVector)
+                assertEquals(tip, target.point)
+                assertEquals(withheld, Set.empty[Bytes])
+                assertEquals(known.entries, Map.empty)
+                assertEquals(reports, Vector.empty)
+                assertEquals(fatals, Vector.empty)
+              }
+            yield ()
+          }
+        }
+      })
+    yield ()
+  }
+
+  List(
+    xyz.kd5ujc.scarab.plutus.BackendFailure
+      .BuiltinUnavailable(scalus.uplc.DefaultFun.Bls12_381_G1_hashToGroup),
+    xyz.kd5ujc.scarab.plutus.BackendFailure
+      .CostingUnmirrored(scalus.uplc.DefaultFun.Bls12_381_G1_hashToGroup),
+    xyz.kd5ujc.scarab.plutus.BackendFailure
+      .BudgetOutOfRange(xyz.kd5ujc.scarab.plutus.ExUnits(BigInt(2).pow(64), BigInt(0))),
+    xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted
+  ).foreach { why =>
+    test(s"a deterministic cause is judged once: ${why.productPrefix}") {
+      for
+        chain <- ForgedChain.forge(5000 until 5060)
+        bodies <- checked(chain, 2)
+        target = bodies(1).header
+        _ <- TestControl.executeEmbed(judgements.flatMap { judged =>
+          node(
+            Set.empty,
+            beforeRule = judged.record,
+            unavailable = Map(target.hash -> why),
+            backstop = 30.minutes
+          ) { n =>
+            n.pool.session.use { sender =>
+              for
+                _ <- add(sender, bodies) *> n.pool.admissions.reprocess
+                _ <- IO.sleep(10.minutes) *> n.pool.admissions.reprocess
+                attempts <- judged.of(target)
+                noVerdicts <- reported(n, target)
+                entry <- n.pool.noVerdictBlocks.lookup(target.hash)
+                _ <- IO {
+                  assertEquals(attempts, Vector(Duration.Zero))
+                  assertEquals(noVerdicts, Vector(1 -> NoVerdictRetry.Never))
+                  assertEquals(entry.map(_.schedule), Some(NoVerdictBlocks.Schedule.Once))
+                }
+              yield ()
+            }
+          }
+        })
+      yield ()
+    }
+  }
+
+  test("re-delivery and a reconnect neither judge the block again nor move its next attempt") {
+    for
+      chain <- ForgedChain.forge(5000 until 5060)
+      bodies <- checked(chain, 2)
+      target = bodies(1).header
+      _ <- TestControl.executeEmbed(judgements.flatMap { judged =>
+        node(
+          Set.empty,
+          beforeRule = judged.record,
+          unavailable = Map(target.hash -> outOfMemory),
+          backstop = 10.minutes
+        ) { n =>
+          n.pool.session.use { sender =>
+            for
+              _ <- add(sender, bodies) *> n.pool.admissions.reprocess
+              // the first attempt at 0, the second at 1 s, the third due at 3 s
+              _ <- IO.sleep(1500.millis)
+              before <- n.pool.noVerdictBlocks.lookup(target.hash)
+              // the same session delivers the block again, then another one does
+              _ <- add(sender, bodies) *> n.pool.admissions.reprocess
+              _ <- n.pool.session.use(other => add(other, bodies)) *> n.pool.admissions.reprocess
+              after <- n.pool.noVerdictBlocks.lookup(target.hash)
+              _ <- IO.sleep(1400.millis)
+              early <- judged.of(target)
+              _ <- IO.sleep(200.millis)
+              due <- judged.of(target)
+              _ <- IO {
+                assertEquals(before.map(_.attempts), Some(2))
+                assertEquals(before.map(_.schedule), Some(NoVerdictBlocks.Schedule.At(3.seconds)))
+                assertEquals(after, before)
+                assertEquals(early, Vector(0, 1).map(_.seconds))
+                assertEquals(due, Vector(0, 1, 3).map(_.seconds))
+              }
+            yield ()
+          }
+        }
+      })
+    yield ()
+  }
+
+  test("a repeating failure does not starve admissions: a competing chain is adopted at once") {
+    for
+      forks <- ForgedChain.sameIssuerForks(5000 until 5060, 5060 until 5120)
+      left <- checked(forks._1, 3)
+      right <- checked(forks._2, 3)
+      _ <- TestControl.executeEmbed(judgements.flatMap { judged =>
+        node(
+          Set.empty,
+          beforeRule = judged.record,
+          unavailable = Map(left(1).header.hash -> outOfMemory),
+          backstop = 10.minutes
+        ) { n =>
+          n.pool.session.use { sender =>
+            for
+              _ <- add(sender, left) *> n.pool.admissions.reprocess
+              _ <- IO.sleep(10.seconds)
+              before <- judged.of(left(1).header)
+              // no simulated time passes from here to the check: the admission is not delayed
+              _ <- add(sender, right) *> n.pool.admissions.reprocess
+              adopted <- n.state.get.map(_.tip)
+              _ <- IO.sleep(2.minutes)
+              tip <- n.state.get.map(_.tip)
+              fatals <- n.fatals.get
+              known <- n.pool.invalidBlocks.snapshot
+              _ <- IO {
+                assertEquals(before, Vector(0, 1, 3, 7).map(_.seconds))
+                assertEquals(adopted, right.last.header.point)
+                assertEquals(tip, right.last.header.point)
+                assertEquals(fatals, Vector.empty)
+                assertEquals(known.entries, Map.empty)
+              }
+            yield ()
+          }
+        }
+      })
+    yield ()
+  }
+
+  test("many blocks without a verdict: each keeps its own schedule, none is judged more often") {
+    for
+      chains <- (1 to 4).toList.traverse(seed => ForgedChain.forge(5000 until 5060, seed = seed))
+      firsts <- chains.traverse(checked(_, 1))
+      blocks = firsts.flatten
+      _ <- TestControl.executeEmbed(judgements.flatMap { judged =>
+        node(
+          Set.empty,
+          beforeRule = judged.record,
+          unavailable = blocks.map(_.header.hash -> outOfMemory).toMap,
+          backstop = 10.minutes
+        ) { n =>
+          n.pool.session.use { sender =>
+            for
+              _ <- add(sender, blocks.toVector) *> n.pool.admissions.reprocess
+              _ <- IO.sleep(70.seconds)
+              attempts <- blocks.traverse(b => judged.of(b.header))
+              withheld <- n.pool.noVerdictBlocks.hashes
+              tip <- n.state.get.map(_.tip)
+              _ <- IO {
+                assertEquals(blocks.map(_.header.hash).distinct.size, 4)
+                attempts.foreach(a => assertEquals(a, schedule.take(7)))
+                assertEquals(withheld, blocks.map(_.header.hash).toSet)
+                assertEquals(tip, xyz.kd5ujc.scarab.protocol.ChainSync.Point.Origin)
+              }
+            yield ()
+          }
+        }
+      })
+    yield ()
+  }
+
+  test("a verdict on a retry: a refusal records the block invalid and blames no peer") {
+    for
+      chain <- ForgedChain.forge(5000 until 5060)
+      bodies <- checked(chain, 2)
+      target = bodies(1).header
+      _ <- TestControl.executeEmbed(judgements.flatMap { judged =>
+        node(
+          Set.empty,
+          beforeRule = judged.record,
+          verdict = h =>
+            if h.hash != target.hash then IO.pure(Verdict.Valid)
+            else
+              IO.monotonic.map(at =>
+                if at < 5.seconds then Verdict.Unavailable(outOfMemory) else Verdict.Refused
+              )
+          ,
+          backstop = 10.minutes
+        ) { n =>
+          n.pool.session(Some(e => n.reports.update(_ :+ e))).use { sender =>
+            for
+              _ <- add(sender, bodies) *> n.pool.admissions.reprocess
+              _ <- IO.sleep(2.minutes)
+              attempts <- judged.of(target)
+              known <- n.pool.invalidBlocks.snapshot
+              withheld <- n.pool.noVerdictBlocks.hashes
+              reports <- n.reports.get
+              tip <- n.state.get.map(_.tip)
+              noVerdicts <- reported(n, target)
+              _ <- IO {
+                assertEquals(attempts, Vector(0, 1, 3, 7).map(_.seconds))
+                assertEquals(known.entries.keySet, Set(target.hash))
+                assertEquals(withheld, Set.empty[Bytes])
+                assertEquals(reports, Vector.empty)
+                assertEquals(tip, bodies(0).header.point)
+                assertEquals(noVerdicts.map(_._1), Vector(1, 2, 3))
+              }
+            yield ()
+          }
+        }
+      })
+    yield ()
+  }
+
+  test("pruning at the immutable cutoff ends a block's schedule") {
+    for
+      chain <- ForgedChain.forge(5000 until 5060)
+      bodies <- checked(chain, 2)
+      target = bodies(1).header
+      _ <- TestControl.executeEmbed(judgements.flatMap { judged =>
+        node(
+          Set.empty,
+          beforeRule = judged.record,
+          unavailable = Map(target.hash -> outOfMemory),
+          backstop = 10.minutes
+        ) { n =>
+          n.pool.session.use { sender =>
+            for
+              _ <- add(sender, bodies) *> n.pool.admissions.reprocess
+              _ <- IO.sleep(500.millis)
+              _ <- n.pool.invalidBlocks.pruneBefore(target.slot + 1)
+              withheld <- n.pool.noVerdictBlocks.hashes
+              _ <- IO.sleep(2.minutes)
+              attempts <- judged.of(target)
+              _ <- IO {
+                assertEquals(withheld, Set.empty[Bytes])
+                assertEquals(attempts, Vector(Duration.Zero))
+              }
+            yield ()
+          }
+        }
+      })
+    yield ()
+  }
+
+  test("the stall report names a withheld block, its attempts and its next attempt") {
+    for
+      chain <- ForgedChain.forge(5000 until 5060)
+      bodies <- checked(chain, 2)
+      target = bodies(1).header
+      _ <- TestControl.executeEmbed(
+        node(Set.empty, unavailable = Map(target.hash -> outOfMemory), backstop = 10.minutes) { n =>
+          n.pool.session.use { sender =>
+            for
+              _ <- add(sender, bodies) *> n.pool.admissions.reprocess
+              _ <- IO.sleep(1500.millis)
+              report <- StallDiagnostics.capture(
+                StallDiagnostics.Sources(
+                  n.pool.fetchCoordinator,
+                  n.pool.admissions,
+                  n.pool.noVerdictBlocks
+                )
+              )
+              _ <- IO {
+                assertEquals(
+                  report.withheld.map(w => (w.hash, w.slot, w.attempts, w.retryIn)),
+                  Vector((target.hash, target.slot, 2, Some(1500.millis)))
+                )
+                val line = summon[log.Traced[log.NodeEvent]]
+                  .line(log.NodeEvent.StallState(report, StallDiagnostics.Dump.Off))
+                  .fields
+                  .toMap
+                val named =
+                  line.get("withheld").flatMap(_.hcursor.downN(0).get[String]("hash").toOption)
+                assertEquals(named, Some(target.hash.hex))
+              }
+            yield ()
+          }
+        }
+      )
     yield ()
   }

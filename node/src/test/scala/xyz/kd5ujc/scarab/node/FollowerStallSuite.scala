@@ -636,8 +636,8 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 net.run.background.use { _ =>
                   if unavailable then
                     eventually("the block is withheld")(seen.get)(_.exists {
-                      case FollowerEvent.NoVerdict(_, _) => true
-                      case _                             => false
+                      case FollowerEvent.NoVerdict(_, _, _, _) => true
+                      case _                                   => false
                     }).void
                   else eventually("the node is told to stop")(fatals.get)(_.nonEmpty).void
                 }
@@ -663,8 +663,13 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             case Vector()
                 if injected == FatalCase.Unavailable || injected == FatalCase.UnavailablePhase1 =>
               val withheld = lostEvents.collect {
-                case FollowerEvent.NoVerdict(point, BlockNoVerdict.Evaluation(error)) =>
-                  point -> error.failure
+                case FollowerEvent.NoVerdict(
+                      point,
+                      BlockNoVerdict.Evaluation(_, unavailable),
+                      _,
+                      _
+                    ) =>
+                  point -> BlockFailure.Tx(unavailable)
               }
               withheld.headOption match
                 case Some((point, BlockFailure.Tx(failure: LedgerFailure.Unavailable))) =>

@@ -104,6 +104,9 @@ enum EventKind(val area: Area, val severity: Severity):
 
   /** The node has no verdict on a block (issue 567): an error of its own implementation. */
   case BlockNoVerdict extends EventKind(Area.Chain, Severity.Error)
+
+  /** The node judges again a block it had no verdict on (issue 693). */
+  case BlockNoVerdictRetry extends EventKind(Area.Chain, Severity.Notice)
   case Stalled extends EventKind(Area.Chain, Severity.Warning)
   case StallState extends EventKind(Area.Chain, Severity.Warning)
   case StallDump extends EventKind(Area.Chain, Severity.Warning)

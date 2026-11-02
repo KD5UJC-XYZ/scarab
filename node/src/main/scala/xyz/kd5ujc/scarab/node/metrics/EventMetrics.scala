@@ -72,7 +72,10 @@ final class EventMetrics[F[_]: Sync] private (
           metrics.set(ledgerAccounts, accounts.toDouble) *>
           metrics.set(ledgerPools, pools.toDouble)
       case FollowerEvent.Reconnecting(_, _) => metrics.inc(peerReconnects)
-      case FollowerEvent.NoVerdict(_, _)    => metrics.inc(blockNoVerdict)
+      // a block is counted once, at its first attempt; its retries have a counter of their own
+      case FollowerEvent.NoVerdict(_, _, attempt, _) =>
+        metrics.inc(blockNoVerdict).whenA(attempt == 1)
+      case FollowerEvent.NoVerdictRetried(_, _) => metrics.inc(blockNoVerdictRetries)
       case FollowerEvent.Connected(_) | FollowerEvent.EpochEntered(_, _) |
           FollowerEvent.EraEntered(_, _, _, _) | FollowerEvent.EpochValidated(_, _, _, _, _) |
           FollowerEvent.ByronEpochValidated(_, _, _, _, _) =>

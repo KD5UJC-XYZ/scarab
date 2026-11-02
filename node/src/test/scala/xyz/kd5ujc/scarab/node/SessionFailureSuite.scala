@@ -247,7 +247,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     assertEquals(left.chain.tip, headers(at - 1).point)
     assertEquals(blockNos(left.stored), (0 until at).toVector)
     val reported = left.events.collect {
-      case FollowerEvent.NoVerdict(point, c) if point == headers(at).point => c
+      case FollowerEvent.NoVerdict(point, c, _, _) if point == headers(at).point => c
     }
     assert(reported.nonEmpty, s"no NoVerdict for block $at in ${left.events}")
     reported.foreach(c => assert(cause.isDefinedAt(c), s"unexpected cause $c"))
@@ -519,9 +519,9 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   test("a defect a block triggers withholds it: no invalid record, no blame, no stop") {
     session(held = Some(2)).map { left =>
-      withheld(left, 2) { case BlockNoVerdict.Evaluation(ValidationError(point, failure)) =>
+      withheld(left, 2) { case BlockNoVerdict.Evaluation(point, failure) =>
         assertEquals(point, headers(2).point)
-        assertEquals(failure, BlockFailure.Tx(heldFailure))
+        assertEquals(failure, heldFailure)
       }
     }
   }
@@ -645,7 +645,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   test("an implementation limit withholds the block: no ledger verdict, no peer failure, no stop") {
     session(unavailable = Some(2)).map { left =>
-      withheld(left, 2) { case BlockNoVerdict.Evaluation(ValidationError(point, _)) =>
+      withheld(left, 2) { case BlockNoVerdict.Evaluation(point, _) =>
         assertEquals(point, headers(2).point)
       }
     }

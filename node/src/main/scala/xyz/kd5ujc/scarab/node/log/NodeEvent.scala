@@ -426,6 +426,17 @@ object NodeEvent:
           "oldestPublishWaitMs" -> report.admissions.oldestPublishWait.map(_.toMillis).asJson
         ),
         "droppedReports" -> report.droppedReports.asJson,
+        "withheld" -> report.withheld
+          .map(w =>
+            Json.obj(
+              "hash" -> w.hash.hex.asJson,
+              "slot" -> w.slot.asJson,
+              "kind" -> Traced.noVerdictKind(w.cause).asJson,
+              "attempts" -> w.attempts.asJson,
+              "retryInMs" -> w.retryIn.map(_.toMillis).asJson
+            )
+          )
+          .asJson,
         "decisionLock" -> report.decisionLock.fold(Json.Null)(h =>
           Json.obj("heldBy" -> h.by.asJson, "runningMs" -> h.running.toMillis.asJson)
         ),
