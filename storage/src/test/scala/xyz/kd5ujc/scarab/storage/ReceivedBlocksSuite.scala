@@ -203,6 +203,35 @@ class ReceivedBlocksSuite extends CatsEffectSuite:
     }
   }
 
+  test("opening a log larger than the cache's budget keeps no body and reads every block back") {
+    tempDir.use { dir =>
+      ok {
+        val original = (1 to 40).toVector.map(block(_))
+        val limit = 1000L
+        for
+          _ <- ReceivedBlocks
+            .open[IO](dir, 4, limit)
+            .use(store => original.traverse_((ref, raw) => store.put(ref, raw)))
+          _ <- IO(
+            assert(original.map(_._2.size.toLong).sum > 4 * limit, "the log exceeds the bound")
+          )
+          _ <- ReceivedBlocks.open[IO](dir, 4, limit).use { store =>
+            for
+              opened <- store.residency
+              _ <- IO(assertEquals(opened.blocks, original.size))
+              _ <- IO(assertEquals((opened.cachedBlocks, opened.cachedBytes), (0, 0L)))
+              found <- original.traverse((ref, _) => store.get(ref.hash))
+              _ <- IO(assertEquals(found, original.map(Some(_))))
+              after <- store.residency
+            yield
+              assertEquals(after.reads, original.size.toLong)
+              assertEquals(after.cachedBytes, 0L, "a body read back is not cached")
+          }
+        yield ()
+      }
+    }
+  }
+
   test("after collection every indexed block still reads back from a kept log file") {
     tempDir.use { dir =>
       ok {
