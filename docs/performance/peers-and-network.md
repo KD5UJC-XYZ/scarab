@@ -253,7 +253,9 @@ The received index and processed forest retain raw originals in memory until dur
 immutable progress permits collection; this does not promise a disk-only body index's
 memory footprint or bounded memory during a long LoE stall. (Later: #395 moved the received
 index's bodies to its log, and #416 the processed forest's; with a received log both now keep
-metadata in memory and read bodies back from the log.)
+metadata in memory and read bodies back from the log. Since #684 the pool's cache of received
+bodies holds a body only until its admission is processed, and since #683 opening the log keeps no
+body.)
 
 A separate real-storage control opens and resumes a selected suffix, acquires the
 production selector, then reopens it again. The selected suffix stays unchanged and
