@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import cats.syntax.all.*
 import munit.FunSuite
-import xyz.kd5ujc.scarab.codec.{Bytes, Node}
+import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value as CborValue}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -71,6 +71,15 @@ class RecdRecordsReferenceSuite extends FunSuite:
       .traverse(CborRead.array(_, DecodeField.Outputs))
       .fold(e => fail(e.toString), _.getOrElse(Vector.empty)) ++ f.get(16).toVector
 
+  /** The auxiliary data of a transaction envelope as it came: its last item, unless it is null. */
+  private def auxiliary(raw: Bytes): Option[Bytes] =
+    CborRead
+      .decode(raw)
+      .flatMap(CborRead.array(_, DecodeField.Transaction))
+      .fold(e => fail(e.toString), _.lastOption)
+      .filter(_.value != CborValue.Null)
+      .map(_.original)
+
   test("an output whose value a body refuses as an indefinite list still loads as stored") {
     // A build before this rule took such an output from a body, and the stores read it back with
     // `TxOut.fromBytes` in every form they wrote (ADR 0006).
@@ -113,6 +122,12 @@ class RecdRecordsReferenceSuite extends FunSuite:
               TxBody.decode(row.raw, row.era).map(_.id),
               Right(Blake2b.hash256.hash(row.raw)),
               "the id hashes the original bytes"
+            )
+          if row.kind == Kind.Transaction then
+            assertEquals(
+              Tx.fromEnvelope(row.raw, row.era).map(_.auxiliary),
+              Right(auxiliary(row.raw)),
+              "the auxiliary data keeps its original bytes"
             )
         case (None, Left(e))     => fail(s"the reference accepts this encoding: $e")
         case (Some(_), Right(_)) => fail(s"the reference refuses this encoding: ${row.failure}")

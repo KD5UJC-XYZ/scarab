@@ -11,7 +11,7 @@ array" (`decodeListLikeT`, `Decoding/Decoder.hs:690-708`). Each
 instance below reads `RecD` under `ifDecoderVersionAtLeast (natVersion @12)`, or with no guard, so
 one decoder version per era is every version that reads these records from a block.
 
-`cases.jsonl` holds 100 lines, one case each, written by
+`cases.jsonl` holds 118 lines, one case each, written by
 `scripts/oracle/conway-decoding/recd_cases.py`, each record as a definite and an indefinite list:
 - the update proposal of a body, `Update` (`Shelley/PParams.hs:267`), Shelley to Babbage;
 - the execution units of a redeemer, `ExUnits` (`Plutus/ExUnits.hs:195-215`), Alonzo to Conway, in
@@ -27,10 +27,13 @@ one decoder version per era is every version that reads these records from a blo
   return (Babbage on);
 - the `[metadata, native scripts]` list of auxiliary data, `AllegraTxAuxDataRaw`
   (`Allegra/TxAuxData.hs:185-210`) and from Alonzo the `decodeAllegra` of `AlonzoTxAuxDataRaw`
-  (`Alonzo/TxAuxData.hs:245-251, 302-312`), Allegra to Conway, in a whole transaction.
+  (`Alonzo/TxAuxData.hs:245-251, 302-312`), Allegra to Conway, in a whole transaction;
+- for the value and the auxiliary data list, the order of the checks: an indefinite list whose first
+  field has the wrong type fails at the break, and a definite list of three at its size, before any
+  field is read.
 
 The verdict (`accepted` and the complete `failure`) is what the unchanged released decoders did with
-each: `decodeFullAnnotator` at the era's decoder version. In all, 46 accepted and 54 refused. Every
+each: `decodeFullAnnotator` at the era's decoder version. In all, 46 accepted and 72 refused. Every
 refusal names `rule`, a fragment of the reference failure, and `expect`, the Scarab error case.
 `RecdRecordsReferenceSuite` requires the same verdict from `TxBody.decode`, `Witnesses.decode` or
 `Tx.fromEnvelope`, and from the bootstrap ledger's `LiteLedger.effects` for a body of an era with

@@ -52,6 +52,7 @@ EXCESS = "Excess terms in array"
 INT64 = "values must not exceed maxBound :: Int64"
 WORD = "expected word"
 WORD16 = "expected word16"
+SIZE = "Size mismatch when decoding Record"
 
 
 def case(era, kind, name, raw, refused=None):
@@ -221,6 +222,14 @@ for era in VALUE_ERAS:
             era, {1: c.array([c.cmap([(c.uint(0), c.ADDRESS), (c.uint(1), value(rec))])])}))
         forms(era, "body", "collateral return value", lambda rec, era=era: d.body(
             era, {16: c.array([c.ADDRESS, value(rec)])}))
+    # The record is checked before its fields: an indefinite list whose coin is not one fails at the
+    # break, and a definite list of three at its size ("Size mismatch when decoding Record").
+    case(era, "body", "output value indefinite with a text coin",
+         d.body(era, {1: c.array([c.array([c.ADDRESS, c.array([c.text("x"), ASSETS], indef=True)])])}),
+         (EXCESS, "IndefiniteLength"))
+    case(era, "body", "output value definite of three items",
+         d.body(era, {1: c.array([c.array([c.ADDRESS, c.array([COIN, ASSETS, COIN])])])}),
+         (SIZE, "ArrayLength"))
 
 
 # --- the list form of auxiliary data, Allegra to Conway -----------------------------------------
@@ -240,6 +249,10 @@ def transaction(era, aux):
 for era in AUX_ERAS:
     forms(era, "transaction", "auxiliary data list",
           lambda rec, era=era: transaction(era, rec([METADATA, c.array([c.NATIVE])])))
+    case(era, "transaction", "auxiliary data list indefinite with text metadata",
+         transaction(era, c.array([c.text("x"), c.array([c.NATIVE])], indef=True)), (EXCESS, "IndefiniteLength"))
+    case(era, "transaction", "auxiliary data list definite of three items",
+         transaction(era, c.array([METADATA, c.array([c.NATIVE]), c.uint(0)])), (SIZE, "ArrayLength"))
 
 def main():
     parser = argparse.ArgumentParser()

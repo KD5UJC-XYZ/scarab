@@ -97,9 +97,9 @@ private[ledger] object AuxiliaryScripts:
 
   /** Shelley (decoder version 2) reads only a metadata map; Allegra and Mary (3, 4) also read the
     * definite two-element `[metadata, native scripts]` list. Tag 259 and the Plutus fields are
-    * Alonzo's: Shelley/TxAuxData.hs, Allegra/TxAuxData.hs:185-210 at f649f975 (`RecD` needs a
-    * definite list). The era's decoder version is `eraProtVerLow` (Core/Internal/Definition/Era.hs
-    * 95-109).
+    * Alonzo's: Shelley/TxAuxData.hs, Allegra/TxAuxData.hs:185-210 at f649f975 (`RecD`: a definite
+    * list of two, checked before its fields, [[CborRead.record]]). The era's decoder version is
+    * `eraProtVerLow` (Core/Internal/Definition/Era.hs 95-109).
     */
   private def historical(
       node: Node,
@@ -107,11 +107,8 @@ private[ledger] object AuxiliaryScripts:
   )(using ByteStrings): Either[LedgerDecodeError, Vector[Plutus]] =
     val lists = protocol >= 3
     node.value match
-      case _: Value.Map => metadata(node, protocol).as(Vector.empty)
-      case Value.Arr(Vector(data, scripts)) if lists =>
-        if node.original.value.headOption.contains(0x9f.toByte) then
-          Left(LedgerDecodeError.IndefiniteLength(DecodeField.AuxiliaryData))
-        else metadata(data, protocol) *> native(scripts)
+      case _: Value.Map          => metadata(node, protocol).as(Vector.empty)
+      case _: Value.Arr if lists => record(node, protocol)
       case other =>
         Left(
           LedgerDecodeError.Expected(
@@ -120,6 +117,15 @@ private[ledger] object AuxiliaryScripts:
             other
           )
         )
+
+  /** The `[metadata, native scripts]` list, a `RecD` record. */
+  private def record(
+      node: Node,
+      protocol: BigInt
+  )(using ByteStrings): Either[LedgerDecodeError, Vector[Plutus]] =
+    CborRead
+      .record(node, 2, DecodeField.AuxiliaryData)
+      .flatMap(xs => metadata(xs(0), protocol) *> native(xs(1)))
 
   def read(bytes: Bytes, protocol: BigInt)(using
       ByteStrings
@@ -142,10 +148,7 @@ private[ledger] object AuxiliaryScripts:
   )(using ByteStrings): Either[LedgerDecodeError, Vector[Plutus]] =
     node.value match
       case _: Value.Map => metadata(node, protocol).as(Vector.empty)
-      case _: Value.Arr =>
-        CborRead
-          .record(node, 2, DecodeField.AuxiliaryData)
-          .flatMap(xs => metadata(xs(0), protocol) *> native(xs(1)))
+      case _: Value.Arr => record(node, protocol)
       case Value.Tag(tag, contents) if tag == 259 =>
         CborRead.map(contents, DecodeField.AuxiliaryData).flatMap { fields =>
           fields
