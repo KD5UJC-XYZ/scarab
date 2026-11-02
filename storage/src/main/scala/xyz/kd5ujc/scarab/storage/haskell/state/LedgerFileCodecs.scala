@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.storage.haskell.state
 
 import xyz.kd5ujc.scarab.consensus.state.*
-import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
 import xyz.kd5ujc.scarab.models.runtime.{
   Arr,
   Codec,
@@ -24,16 +23,6 @@ import Wire.*
   * chain-dependent states, around the codecs of [[ConsensusCodecs]].
   */
 trait LedgerFileCodecs extends ConsensusCodecs:
-  /** The witness of a Shelley-based era, from its index in the telescope. */
-  private def shelleyBasedAt(era: Era): Option[ShelleyBasedEra[?]] = era match
-    case Era.Byron   => None
-    case Era.Shelley => Some(ShelleyBasedEra.SShelley)
-    case Era.Allegra => Some(ShelleyBasedEra.SAllegra)
-    case Era.Mary    => Some(ShelleyBasedEra.SMary)
-    case Era.Alonzo  => Some(ShelleyBasedEra.SAlonzo)
-    case Era.Babbage => Some(ShelleyBasedEra.SBabbage)
-    case Era.Conway  => Some(ShelleyBasedEra.SConway)
-
   private val eraIndex: Codec[Era] =
     Codec
       .uintBig(BigInt(Era.values.length - 1))
@@ -55,9 +44,11 @@ trait LedgerFileCodecs extends ConsensusCodecs:
         slot <- slotNo.decode(ys(0)).at("slot")
         hash <- hash32.decode(ys(1)).at("hash")
         block <- blockNo.decode(ys(2)).at("blockNo")
-        witness <- shelleyBasedAt(era).toRight(
-          DecodeError.at(at, Kind.OutOfRange("a Shelley-based era", BigInt(era.index)))
-        )
+        witness <- Versions
+          .shelleyBased(era)
+          .toRight(
+            DecodeError.at(at, Kind.OutOfRange("a Shelley-based era", BigInt(era.index)))
+          )
       yield AnnTip(slot, block, TipInfo.ShelleyBasedTip(witness, hash))
     }
 

@@ -3,9 +3,9 @@
 
 These comparisons are projections, not whole-state equality: `PROJECTION_SCOPE` lists what they compare and
 what they leave out, and every result names the Scala fields the reference side has no counterpart for
-(`scalaOnlyKeys`). In `e2e` each one is also a complete same-point comparison of `DebugNewEpochState`
-(`whole_state`), every byte but the UTxO, which only the projection compares until the node answers the
-UTxO queries before Conway (#677). #433 tracks replacing the projections with complete-state comparisons.
+(`scalaOnlyKeys`). In `e2e` each one is also a complete same-point comparison of the ledger state
+(`whole_state`): `DebugNewEpochState`, whose UTxO is an empty map on both nodes, and `GetUTxOWhole`, every byte
+of each. #433 tracks replacing the projections of `pool` and `soak` with complete-state comparisons.
 """
 import json
 import subprocess
@@ -331,8 +331,13 @@ def compare(args):
 
 # The era index of the hard-fork combinator, as `QueryIfCurrent` names it.
 ERA_INDEX = {"shelley": 1, "allegra": 2, "mary": 3, "alonzo": 4, "babbage": 5, "conway": 6}
-WHOLE_STATE_LABEL = "DebugNewEpochState"
-WHOLE_STATE_QUERY = 12
+# The complete same-point answers `whole_state` compares, by label: the ledger query (`QueryIfCurrent` of the
+# era) and its judge. The new-epoch state holds the UTxO as an empty map on both nodes (UTxO-HD keeps it in the
+# ledger's tables), so the whole UTxO is asked beside it.
+WHOLE_QUERIES = {
+    "DebugNewEpochState": (12, lambda reference, scala: ledgercompare.compare("DebugNewEpochState", reference, scala)),
+    ledgercompare.UTXO_LABEL: (7, ledgercompare.compare_utxo),
+}
 
 
 def first_difference(a, b):
@@ -367,38 +372,41 @@ def ask_raw(session, query):
 
 
 def whole_state(name, era):
-    """The complete same-point ledger state of both nodes: `DebugNewEpochState`, asked over node-to-client
-    at the point of the Scala node's volatile tip and judged on every byte (`ledgercompare`). Both answers
-    carry the UTxO as an empty map, so this compares everything but the UTxO, which the projection
-    compares. A difference keeps both answers in the run dir. Never raises."""
+    """The complete same-point ledger state of both nodes: each of `WHOLE_QUERIES`, asked over node-to-client on
+    one session per node acquired at the point of the Scala node's volatile tip, and judged on every byte
+    (`ledgercompare`). Returns {"slot", "answers": {label: result}}, or {"skipped"} or {"error"} for all of them.
+    A difference keeps both answers in the run dir. Never raises."""
     root = util.data_root(name)
     scala_socket = root / "scala-sock" / "node.socket"
     if not scala_socket.exists():
         return {"skipped": "the follower has no node-to-client socket"}
-    query = [0, [0, [ERA_INDEX[era], [WHOLE_STATE_QUERY]]]]
+    queries = {label: [0, [0, [ERA_INDEX[era], [q]]]] for label, (q, _) in WHOLE_QUERIES.items()}
     try:
         with ntcquery.LocalStateQuery(None, str(scala_socket), MAGIC, host=True, deadline=60) as scala:
             scala.acquire()
             point = scala.query_raw([3])
-            got = ask_raw(scala, query)
+            got = {label: ask_raw(scala, q) for label, q in queries.items()}
         with ntcquery.LocalStateQuery(ref(name), f"{ENV}/socket/node1/sock", MAGIC, deadline=60) as reference:
             reference.acquire(point)
-            expected = ask_raw(reference, query)
+            expected = {label: ask_raw(reference, q) for label, q in queries.items()}
     except (RuntimeError, EOFError, OSError, ntcquery.Deadline, ntcquery.Incomplete) as e:
         return {"error": repr(e)[:300]}
     slot = point[0] if isinstance(point, list) and point else None
-    verdict = ledgercompare.compare(WHOLE_STATE_LABEL, expected, got)
-    result = {"slot": slot, "matched": verdict.equal, "byteEqual": verdict.raw_equal, "problems": verdict.problems,
-              "referenceBytes": len(expected), "scalaBytes": len(got)}
-    if not verdict.equal:
-        result["firstDifference"] = first_difference(expected, got)
-        dump = root / "whole-state"
-        dump.mkdir(exist_ok=True)
-        stem = dump / f"{era}-{slot}"
-        stem.with_suffix(".reference").write_bytes(expected)
-        stem.with_suffix(".scala").write_bytes(got)
-        result["kept"] = str(stem)
-    return result
+    answers = {}
+    for label, (_, judge) in WHOLE_QUERIES.items():
+        verdict = judge(expected[label], got[label])
+        result = {"matched": verdict.equal, "byteEqual": verdict.raw_equal, "problems": verdict.problems,
+                  "referenceBytes": len(expected[label]), "scalaBytes": len(got[label])}
+        if not verdict.equal:
+            result["firstDifference"] = first_difference(expected[label], got[label])
+            dump = root / "whole-state"
+            dump.mkdir(exist_ok=True)
+            stem = dump / f"{era}-{slot}-{label}"
+            stem.with_suffix(".reference").write_bytes(expected[label])
+            stem.with_suffix(".scala").write_bytes(got[label])
+            result["kept"] = str(stem)
+        answers[label] = result
+    return {"slot": slot, "answers": answers}
 
 
 def lsq(name):
@@ -468,21 +476,26 @@ class Comparisons:
         self.per_era["byron"]["note"] = ("not compared: cardano-cli 11.2.3 cannot query a Byron ledger; the "
                                          "Byron UTxO is compared through the first Shelley epoch")
         self.mismatches = []
-        # same-point complete ledger states but the UTxO (`whole_state`) per era, judged with the projection
-        self.whole = {e: {"matched": 0, "mismatched": 0, "errors": 0, "skipped": 0} for e in ERAS if e != "byron"}
+        # same-point complete answers (`whole_state`) per query and era, judged with the projection
+        self.whole = {q: {e: {"matched": 0, "mismatched": 0, "errors": 0, "skipped": 0} for e in ERAS if e != "byron"}
+                      for q in WHOLE_QUERIES}
 
     def record_whole(self, era, label, result):
+        """Tally one `whole_state` result: each query's answer, or its skip or error for every query."""
+        answers = result.get("answers") or {q: result for q in WHOLE_QUERIES}
         with self.lock:
-            row = self.whole[era]
-            outcome = ("skipped" if result.get("skipped") else "errors" if "matched" not in result
-                       else "matched" if result["matched"] else "mismatched")
-            row[outcome] += 1
-            if outcome == "mismatched" and len(row.setdefault("differences", [])) < 5:
-                row["differences"].append({"label": label, **{k: result.get(k) for k in
-                                           ("slot", "firstDifference", "referenceBytes", "scalaBytes", "kept")}})
+            for query, answer in answers.items():
+                row = self.whole[query][era]
+                outcome = ("skipped" if answer.get("skipped") else "errors" if "matched" not in answer
+                           else "matched" if answer["matched"] else "mismatched")
+                row[outcome] += 1
+                if outcome == "mismatched" and len(row.setdefault("differences", [])) < 5:
+                    row["differences"].append({"label": label, "slot": result.get("slot"), **{
+                        k: answer.get(k) for k in ("firstDifference", "referenceBytes", "scalaBytes", "kept")}})
             with self.file.open("a") as f:
                 f.write(json.dumps({"era": era, "label": label, "wholeState": result}) + "\n")
-        print(json.dumps({"wholeState": era, "label": label, "matched": result.get("matched"),
+        print(json.dumps({"wholeState": era, "label": label,
+                          "matched": {q: a.get("matched") for q, a in answers.items()},
                           "note": result.get("skipped") or result.get("error")}), flush=True)
 
     def record(self, era, label, result):
@@ -540,15 +553,15 @@ def judge_comparisons(comparisons, minimum, loaded):
             failures.append(f"{era}: {row['errors']} ledger comparison errors")
         if row["matched"] < minimum:
             failures.append(f"{era}: only {row['matched']} matched ledger comparisons (need {minimum})")
-        whole = comparisons.whole[era]
-        if whole["mismatched"]:
-            failures.append(f"{era}: {whole['mismatched']} same-point DebugNewEpochState answers differ: "
-                            f"{whole.get('differences', [])[:2]}")
-        if whole["errors"]:
-            failures.append(f"{era}: {whole['errors']} same-point DebugNewEpochState comparison errors")
-        if whole["matched"] < minimum:
-            failures.append(f"{era}: only {whole['matched']} matched same-point DebugNewEpochState answers "
-                            f"(need {minimum})")
+        for query in WHOLE_QUERIES:
+            whole = comparisons.whole[query][era]
+            if whole["mismatched"]:
+                failures.append(f"{era}: {whole['mismatched']} same-point {query} answers differ: "
+                                f"{whole.get('differences', [])[:2]}")
+            if whole["errors"]:
+                failures.append(f"{era}: {whole['errors']} same-point {query} comparison errors")
+            if whole["matched"] < minimum:
+                failures.append(f"{era}: only {whole['matched']} matched same-point {query} answers (need {minimum})")
     return failures
 
 
@@ -562,8 +575,8 @@ def comparison_table(comparisons):
             lines.append(f"{era:<9} not compared ({r['note']})")
         else:
             lines.append(f"{era:<9} {r['matched']:>7}  {r['mismatched']:>10}  {r['errors']:>6}  {r['skipped']:>7}")
-    lines += ["same-point DebugNewEpochState, every byte but the UTxO (#433; the UTxO: #677)",
-              "era       matched  mismatched  errors  skipped"]
-    for era, r in comparisons.whole.items():
-        lines.append(f"{era:<9} {r['matched']:>7}  {r['mismatched']:>10}  {r['errors']:>6}  {r['skipped']:>7}")
+    for query, per_era in comparisons.whole.items():
+        lines += [f"same-point {query}, every byte", "era       matched  mismatched  errors  skipped"]
+        for era, r in per_era.items():
+            lines.append(f"{era:<9} {r['matched']:>7}  {r['mismatched']:>10}  {r['errors']:>6}  {r['skipped']:>7}")
     return "\n".join(lines)

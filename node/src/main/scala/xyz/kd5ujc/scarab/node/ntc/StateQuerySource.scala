@@ -19,9 +19,10 @@ import xyz.kd5ujc.scarab.ledger.StorageError
 
 /** The LocalStateQuery interpreter over the node's volatile chain: acquiring takes the ledger state
   * retained for a point (the tip, the immutable tip or one of the last `k` blocks) and each query
-  * is answered against that state alone. Conway UTxO queries combine the retained ledger overlay
-  * with a resource-scoped read view of the backing generation captured under the chain publication
-  * gate, so later advances and rollbacks cannot change an acquired answer.
+  * is answered against that state alone. The UTxO queries (in every Shelley-based era) combine the
+  * retained ledger overlay with a resource-scoped read view of the backing generation captured
+  * under the chain publication gate, so later advances and rollbacks cannot change an acquired
+  * answer.
   */
 object StateQuerySource:
   def apply[F[_]: Sync, S: ChainRead](
@@ -84,7 +85,9 @@ object StateQuerySource:
                   .empty[F[Unit]]
               )
             case Right(view) =>
-              if view.era != xyz.kd5ujc.scarab.protocol.Era.Conway then
+              // the UTxO queries read the backing store, pinned at the acquired point, in every
+              // Shelley-based era; a Byron state answers none of them
+              if view.era == xyz.kd5ujc.scarab.protocol.Era.Byron then
                 Sync[F].pure(Right(session(view, None, version, env)) -> Option.empty[F[Unit]])
               else
                 val oldest = view.utxo.flushed

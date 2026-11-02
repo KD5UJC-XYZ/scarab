@@ -63,6 +63,39 @@ def compare(label, reference, scala):
     return verdict
 
 
+UTXO_LABEL = "GetUTxOWhole"
+
+
+def _utxo(raw):
+    if C.item_end(raw, 0) != len(raw):
+        raise C.Malformed("bytes after the answer")
+    if C.head(raw, 0)[:2] != (4, 2):
+        raise C.Malformed("answer is not a two-element array")
+    fields = C.children(raw, 0)
+    if raw[fields[0][0]:fields[0][1]] != b"\x04":
+        raise C.Malformed("answer is not MsgResult")
+    result = fields[1][0]
+    if C.head(raw, result)[:2] != (4, 1):
+        raise C.Malformed("hard-fork result is not a singleton array")
+    if C.head(raw, C.children(raw, result)[0][0])[0] != 5:
+        raise C.Malformed("the UTxO is not a map")
+
+
+def compare_utxo(reference, scala):
+    """`GetUTxOWhole` answers: validate framing (`[4, [utxo]]`, the UTxO a map) and require complete wire-byte
+    equality at the acquired point."""
+    verdict = Verdict(False, reference == scala)
+    for name, raw in (("reference", reference), ("scala", scala)):
+        try:
+            _utxo(raw)
+        except (C.Malformed, IndexError) as error:
+            verdict.problems.append(f"{name}: not a UTxO answer: {error}")
+    if not verdict.raw_equal:
+        verdict.problems.append("the complete UTxO answer bytes differ")
+    verdict.equal = verdict.raw_equal and not verdict.problems
+    return verdict
+
+
 def add_to(total, verdict):
     """Accumulate exact comparisons without a second, weaker success measure."""
     total["answers"] = total.get("answers", 0) + 1

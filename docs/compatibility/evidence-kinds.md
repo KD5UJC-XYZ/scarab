@@ -41,9 +41,9 @@ tracks it under [#433](https://github.com/KD5UJC-XYZ/scarab/issues/433). From 20
 compares the complete same-point `DebugNewEpochState` answers of both nodes, every byte, at each of
 those comparisons in every Shelley-based era (`compare.whole_state`, under `ledgerComparison.wholeState`
 of `e2e-summary.json`), and a difference fails the run. That answer holds the UTxO as an empty map on
-both nodes, so the UTxO is still compared only by the projection
-([#677](https://github.com/KD5UJC-XYZ/scarab/issues/677)); `pool` and `soak` still compare the projection
-only. Runs before 2026-10-25 also
+both nodes; from 2026-11-02 the same sessions also ask `GetUTxOWhole`, and its complete answers are
+compared the same way ([#677](https://github.com/KD5UJC-XYZ/scarab/issues/677)). `pool` and `soak` still
+compare the projection only. Runs before 2026-10-25 also
 left datums and reference-script hashes out of the Conway UTxO comparison, and hashed reference scripts
 over a re-encoding rather than their original bytes. In the `ntc` refusal
 comparison, every case is compared exactly (raw bytes and text), `withdrawal-network-flag-true` included:
