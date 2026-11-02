@@ -1,17 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import cats.effect.{IO, Ref}
+import cats.effect.std.Mutex
+import cats.effect.unsafe.implicits.global
+import cats.mtl.Raise
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, VolatileChain}
 import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorState}
-import xyz.kd5ujc.scarab.ledger.{Block, TxIn, TxOut}
+import xyz.kd5ujc.scarab.ledger.{Block, StorageError, TxIn, TxOut}
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, LedgerState, NewEpochState, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, LocalStateQuery}
+import xyz.kd5ujc.scarab.storage.MemoryUtxoStore
 import xyz.kd5ujc.scarab.storage.haskell.state.{
   HaskellState,
   HaskellStateCodecs,
@@ -242,6 +248,46 @@ class MirrorAnswersSuite extends FunSuite:
         Right(written(Map(plain))),
         s"$era"
       )
+    }
+  }
+
+  test("a session acquired on a state of any Shelley-based era reads the UTxO from the store too") {
+    given Raise[IO, StorageError] with
+      def functor = cats.Functor[IO]
+      def raise[E <: StorageError, A](error: E): IO[A] =
+        IO.raiseError(new RuntimeException(error.message))
+    // an entry only the backing store holds: the answer is the store's entries and the state's
+    val stored =
+      TxIn(Bytes(Vector.fill(32)(9.toByte)), 4) -> output(s"82 581d60${"55" * 28} 1a000f4240")
+    val whole = (era: Era) =>
+      CborOut.build(_.array(2).uint(0).array(2).uint(0).array(2).uint(era.index).array(1).uint(7))
+    shelleyBased.groupBy(_._1.era).view.mapValues(_.head).toMap.foreach { case (era, (_, state)) =>
+      val witness = Versions.shelleyBased(era).getOrElse(fail(s"$era is not Shelley-based"))
+      val held = QueryView(Point.Origin, None, state).utxo
+      val program = for
+        store <- MemoryUtxoStore[IO]
+        _ <- store.write(Vector(stored._1 -> Some(stored._2)), held.flushed)
+        chain <- Ref.of[IO, VolatileChain[MirrorState]](
+          VolatileChain(
+            5,
+            Anchor(None, state),
+            Vector(BlockRef(1, Bytes(Vector.fill(32)(1.toByte)), 1) -> state)
+          )
+        )
+        gate <- Mutex[IO]
+        answer <- StateQuerySource(chain, IO.pure(queryEnv), store, gate)
+          .acquire(LocalStateQuery.Target.VolatileTip)
+          .use {
+            case Right(session) => session.answer(whole(era))
+            case Left(error)    => IO.raiseError(new RuntimeException(error.toString))
+          }
+      yield answer
+      val expected = UtxoCodecs
+        .utxoIn(witness)
+        .write(held.toMap + stored)
+        .fold(e => fail(e.toString), b => "81" + b.hex)
+      assert(!held.isEmpty, s"$era: the state holds no UTxO")
+      assertEquals(program.unsafeRunSync().map(_.map(_.hex)), Right(Right(expected)), s"$era")
     }
   }
 
