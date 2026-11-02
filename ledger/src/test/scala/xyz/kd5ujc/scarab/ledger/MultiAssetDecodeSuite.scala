@@ -49,7 +49,8 @@ class MultiAssetDecodeSuite extends FunSuite:
   private def read(
       hex: String,
       decoding: Value.Decoding
-  ): Either[LedgerDecodeError, Value] = Value.decode(node(hex), DecodeField.Value, decoding)
+  ): Either[LedgerDecodeError, Value] =
+    Value.decode(node(hex), DecodeField.Value, decoding, ConwayParam.Records.Body)
 
   private def mint(
       hex: String,

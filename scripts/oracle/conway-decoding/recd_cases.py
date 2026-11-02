@@ -52,6 +52,7 @@ EXCESS = "Excess terms in array"
 INT64 = "values must not exceed maxBound :: Int64"
 WORD = "expected word"
 WORD16 = "expected word16"
+SIZE = "Size mismatch when decoding Record"
 
 
 def case(era, kind, name, raw, refused=None):
@@ -193,6 +194,65 @@ conway_forms("drep registration anchor",
              lambda rec: certs(c.array([c.uint(16), CRED, c.uint(500_000_000), anchor(rec)])))
 conway_forms("drep update anchor", lambda rec: certs(c.array([c.uint(18), CRED, anchor(rec)])))
 
+
+# --- the value of an output, Mary to Conway -----------------------------------------------------
+# `MaryValue` (`Mary/Value.hs:287-311`): `decodeMaryValue` peeks the token type and takes an
+# indefinite list into `decodeValuePair`, whose `RecD` refuses it. An output reads it in each of its
+# forms (`ShelleyTxOut`, `AlonzoTxOut`, `BabbageTxOut`), and a collateral return is an output.
+VALUE_ERAS = ["mary", "alonzo", "babbage", "conway"]
+COIN = c.uint(2_000_000)
+ASSETS = c.cmap([(c.bstr(c.h(0x88, 28)), c.cmap([(c.bstr(b"a"), c.uint(1))]))])
+DATUM_HASH = c.bstr(c.h(0x58, 32))
+
+
+def value(rec):
+    return rec([COIN, ASSETS])
+
+
+for era in VALUE_ERAS:
+    after_alonzo = era != "mary"
+    after_babbage = era in ("babbage", "conway")
+    forms(era, "body", "output value", lambda rec, era=era: d.body(
+        era, {1: c.array([c.array([c.ADDRESS, value(rec)])])}))
+    if after_alonzo:
+        forms(era, "body", "output with a datum hash value", lambda rec, era=era: d.body(
+            era, {1: c.array([c.array([c.ADDRESS, value(rec), DATUM_HASH])])}))
+    if after_babbage:
+        forms(era, "body", "map output value", lambda rec, era=era: d.body(
+            era, {1: c.array([c.cmap([(c.uint(0), c.ADDRESS), (c.uint(1), value(rec))])])}))
+        forms(era, "body", "collateral return value", lambda rec, era=era: d.body(
+            era, {16: c.array([c.ADDRESS, value(rec)])}))
+    # The record is checked before its fields: an indefinite list whose coin is not one fails at the
+    # break, and a definite list of three at its size ("Size mismatch when decoding Record").
+    case(era, "body", "output value indefinite with a text coin",
+         d.body(era, {1: c.array([c.array([c.ADDRESS, c.array([c.text("x"), ASSETS], indef=True)])])}),
+         (EXCESS, "IndefiniteLength"))
+    case(era, "body", "output value definite of three items",
+         d.body(era, {1: c.array([c.array([c.ADDRESS, c.array([COIN, ASSETS, COIN])])])}),
+         (SIZE, "ArrayLength"))
+
+
+# --- the list form of auxiliary data, Allegra to Conway -----------------------------------------
+# `AllegraTxAuxDataRaw` (`Allegra/TxAuxData.hs:185-210`) and, from Alonzo, `decodeAllegra` of
+# `AlonzoTxAuxDataRaw` (`Alonzo/TxAuxData.hs:245-251`), which `decodeTxAuxDataByTokenType` (302-312)
+# picks for a list of either kind: `[metadata, native scripts]`, a `RecD` record. Each is read in a
+# whole transaction, whose decoder reads its auxiliary data with the decoder a block's uses.
+AUX_ERAS = ["allegra", "mary", "alonzo", "babbage", "conway"]
+METADATA = c.cmap([(c.uint(674), c.uint(1))])
+
+
+def transaction(era, aux):
+    flag = [c.TRUE] if era in PLUTUS else []
+    return c.array([d.body(era), c.cmap([])] + flag + [aux])
+
+
+for era in AUX_ERAS:
+    forms(era, "transaction", "auxiliary data list",
+          lambda rec, era=era: transaction(era, rec([METADATA, c.array([c.NATIVE])])))
+    case(era, "transaction", "auxiliary data list indefinite with text metadata",
+         transaction(era, c.array([c.text("x"), c.array([c.NATIVE])], indef=True)), (EXCESS, "IndefiniteLength"))
+    case(era, "transaction", "auxiliary data list definite of three items",
+         transaction(era, c.array([METADATA, c.array([c.NATIVE]), c.uint(0)])), (SIZE, "ArrayLength"))
 
 def main():
     parser = argparse.ArgumentParser()

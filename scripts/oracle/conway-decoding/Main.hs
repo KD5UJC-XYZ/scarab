@@ -28,9 +28,9 @@ import Lens.Micro ((^.))
 import System.Environment (getArgs)
 import System.Exit (die)
 
--- | One original encoding: `kind` is "body", "witnesses" or "transaction" (Conway only); `era` is
--- an era name, decoded at its `eraProtVerLow` (Shelley 2, Allegra 3, Mary 4, Alonzo 5, Babbage 7,
--- Conway 9). With `withdrawals` set, an accepted body also reports the decoded withdrawals.
+-- | One original encoding: `kind` is "body", "witnesses" or "transaction" (Allegra to Conway);
+-- `era` is an era name, decoded at its `eraProtVerLow` (Shelley 2, Allegra 3, Mary 4, Alonzo 5,
+-- Babbage 7, Conway 9). With `withdrawals` set, an accepted body also reports the decoded withdrawals.
 data Case = Case
   { name :: String
   , era :: String
@@ -76,6 +76,10 @@ runCase c = do
     ("allegra", _) | wdrl -> pure (bodyWithdrawals @AllegraEra (Binary.natVersion @3) "Allegra TxBody" raw)
     ("shelley", _) | wdrl -> pure (bodyWithdrawals @ShelleyEra (Binary.natVersion @2) "Shelley TxBody" raw)
     ("conway", "transaction") -> pure (decodeAs @(Tx TopTx ConwayEra) (Binary.natVersion @9) "Conway Tx" raw)
+    ("babbage", "transaction") -> pure (decodeAs @(Tx TopTx BabbageEra) (Binary.natVersion @7) "Babbage Tx" raw)
+    ("alonzo", "transaction") -> pure (decodeAs @(Tx TopTx AlonzoEra) (Binary.natVersion @5) "Alonzo Tx" raw)
+    ("mary", "transaction") -> pure (decodeAs @(Tx TopTx MaryEra) (Binary.natVersion @4) "Mary Tx" raw)
+    ("allegra", "transaction") -> pure (decodeAs @(Tx TopTx AllegraEra) (Binary.natVersion @3) "Allegra Tx" raw)
     ("conway", _) | body_ -> pure (decodeAs @(TxBody TopTx ConwayEra) (Binary.natVersion @9) "Conway TxBody" raw)
     ("conway", _) | wits_ -> pure (decodeAs @(TxWits ConwayEra) (Binary.natVersion @9) "Conway TxWits" raw)
     ("babbage", _) | body_ -> pure (decodeAs @(TxBody TopTx BabbageEra) (Binary.natVersion @7) "Babbage TxBody" raw)

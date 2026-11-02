@@ -58,6 +58,9 @@ the one above with `update_value_cases.py`, `/tmp/update-values-inputs.json` and
 
 The [`RecD` records corpus](../../../fixtures/reference/recd-records/README.md) (#668) runs on the
 same harness, its cases from `recd_cases.py`: each `RecD` record a block can hold (the update
-proposal, a redeemer's execution units and Conway's governance records), definite and indefinite.
+proposal, a redeemer's execution units, Conway's governance records, an output's value and the list
+form of auxiliary data), definite and indefinite. For the auxiliary data the harness decodes a whole
+transaction of each era from Allegra to Conway (`kind` "transaction"), which it did for Conway
+alone before #668.
 Its recipe is the one above with `recd_cases.py`, `/tmp/recd-inputs.json` and
 `fixtures/reference/recd-records/cases.jsonl`.
