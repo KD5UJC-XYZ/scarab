@@ -91,7 +91,7 @@
   },
   "harness": {
     "file": "scripts/oracle/conway-decoding/Main.hs",
-    "sha256": "771e0d91c93147619565d3ed4ff3f5a84f8774551977867dce92569a1a8b6ff4",
+    "sha256": "5e906c106ccc3fc11fea0de771e3a4283e85a6756f7e761f219c4928f7bf9752",
     "image": "scarab-conway-decoding:local (run as scarab-687-conway-decoding:local, whose /oracle/conway-decoding/Main.hs has this sha256), from scripts/oracle/conway-decoding/Dockerfile on scarab-plutus176-context-reference:local",
     "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-conway-decoding:local /fixtures/detached-inputs.json",
     "unchanged": true
