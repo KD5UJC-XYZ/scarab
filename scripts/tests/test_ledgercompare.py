@@ -186,6 +186,19 @@ class WholeStateComparisonTest(unittest.TestCase):
         self.assertEqual(failures[2], "alonzo: 1 same-point DebugNewEpochState comparison errors")
         self.assertEqual(failures[3], "babbage: only 2 matched same-point GetUTxOWhole answers (need 3)")
 
+    def test_a_skipped_complete_comparison_or_none_at_all_fails_even_with_no_minimum(self):
+        from types import SimpleNamespace
+        whole = {q: {"conway": {"matched": 3, "mismatched": 0, "errors": 0, "skipped": 0}}
+                 for q in self.compare.WHOLE_QUERIES}
+        tally = SimpleNamespace(whole=whole)
+        self.assertEqual(self.compare.whole_failures(tally, "conway", 0), [])
+        whole["GetUTxOWhole"]["conway"]["skipped"] = 1
+        self.assertEqual(self.compare.whole_failures(tally, "conway", 0),
+                         ["conway: 1 same-point GetUTxOWhole comparisons skipped"])
+        none = {q: {"conway": {"matched": 0, "mismatched": 0, "errors": 0, "skipped": 0}}
+                for q in self.compare.WHOLE_QUERIES}
+        self.assertEqual(len(self.compare.whole_failures(SimpleNamespace(whole=none), "conway", 0)), 2)
+
 
 class WholeStateAnchorTest(unittest.TestCase):
     """`compare.whole_state` asks the anchor's tip first and the other node at that point, taken again while the
@@ -201,6 +214,7 @@ class WholeStateAnchorTest(unittest.TestCase):
         (self.root / "scala-sock").mkdir()
         (self.root / "scala-sock" / "node.socket").write_text("")
         self.calls = []
+        self.tip = 6
 
     def tearDown(self):
         self.dir.cleanup()
@@ -225,12 +239,14 @@ class WholeStateAnchorTest(unittest.TestCase):
 
             def acquire(self, point=None):
                 test.calls.append((self.side, "acquire", point))
+                if point is None:
+                    test.tip += 1  # each acquire of a tip finds it a block further on
                 if self.side == "scala" and point is not None and refusals[0] > 0:
                     refusals[0] -= 1
                     raise RuntimeError("acquire failed: [2, 1]")
 
             def query_raw(self, query):
-                return [7, b"\x07" * 32]
+                return [test.tip, b"\x07" * 32]
 
             def _send(self, protocol, payload):
                 pass
@@ -256,19 +272,27 @@ class WholeStateAnchorTest(unittest.TestCase):
         self.assertEqual(result["slot"], 7)
         self.assertTrue(all(a["matched"] for a in result["answers"].values()), result)
 
-    def test_a_point_the_scala_node_has_not_reached_is_taken_again(self):
+    def test_the_scala_node_is_asked_again_at_the_same_point_while_the_reference_moves_on(self):
         result = self.run_whole(anchor="reference", attempts=3, fake={"refuse_scala_acquires": 2})
-        self.assertEqual([c[0] for c in self.calls], ["reference", "scala"] * 3)
-        self.assertIn("answers", result)
+        self.assertEqual(self.calls, [("reference", "acquire", None)] + [("scala", "acquire", [7, b"\x07" * 32])] * 3)
+        self.assertEqual(result["slot"], 7)
+        self.assertTrue(all(a["matched"] for a in result["answers"].values()), result)
 
-    def test_after_the_last_attempt_the_refusal_is_an_error(self):
+    def test_a_point_never_reached_is_given_up_once_for_a_new_one(self):
+        result = self.run_whole(anchor="reference", attempts=2, fake={"refuse_scala_acquires": 2})
+        self.assertEqual([(side, point and point[0]) for side, _, point in self.calls],
+                         [("reference", None), ("scala", 7), ("scala", 7), ("reference", None), ("scala", 8)])
+        self.assertEqual(result["slot"], 8)
+
+    def test_after_the_last_attempt_at_the_new_point_the_refusal_is_an_error(self):
         result = self.run_whole(anchor="reference", attempts=2, fake={"refuse_scala_acquires": 5})
         self.assertIn("acquire failed", result["error"])
+        self.assertEqual(sum(1 for side, _, point in self.calls if side == "scala"), 4)
 
     def test_the_scala_anchor_is_one_attempt_and_the_reference_is_expected(self):
         different = answer(nes(pot=9))
         result = self.run_whole(fake={"scala_answer": different})
-        self.assertEqual(self.calls[0], ("scala", "acquire", None))
+        self.assertEqual(self.calls, [("scala", "acquire", None), ("reference", "acquire", [7, b"\x07" * 32])])
         nes_result = result["answers"]["DebugNewEpochState"]
         self.assertFalse(nes_result["matched"])
         self.assertEqual(nes_result["scalaBytes"], len(different))

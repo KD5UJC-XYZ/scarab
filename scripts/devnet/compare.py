@@ -379,8 +379,9 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1):
     when the Scala node forges too, as a block it has just forged may not have reached the reference yet. The other
     node is asked at that point; while it has not reached it, the comparison is taken again after a pause, up to
     `attempts` times. `scala_socket` is the Scala node's node-to-client socket (`scala-sock/node.socket` of the run
-    dir by default). Returns {"slot", "answers": {label: result}}, or {"skipped"} or {"error"} for all of them. A
-    difference keeps both answers in the run dir. Never raises."""
+    dir by default). With more than one attempt, a point the other node never reaches is given up once for a new
+    one. Returns {"slot", "answers": {label: result}}, or {"skipped"} or {"error"} for all of them. A difference
+    keeps both answers in the run dir. Never raises."""
     root = util.data_root(name)
     scala_socket = pathlib.Path(scala_socket) if scala_socket else root / "scala-sock" / "node.socket"
     if not scala_socket.exists():
@@ -394,21 +395,39 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1):
         return ntcquery.LocalStateQuery(ref(name), reference_socket(), MAGIC, deadline=60)
 
     first, second = (scala, reference) if anchor == "scala" else (reference, scala)
+
+    def at_anchor():
+        with first() as session:
+            session.acquire()
+            point = session.query_raw([3])
+            return point, {label: ask_raw(session, q) for label, q in queries.items()}
+
+    def at(point):
+        with second() as session:
+            session.acquire(point)
+            return {label: ask_raw(session, q) for label, q in queries.items()}
+
+    def not_reached(error):
+        return isinstance(error, RuntimeError) and str(error).startswith("acquire failed")
+
+    # the other node is asked again at the same point while it has not reached it; a point it never reaches
+    # (a block of the anchor's that lost a slot battle) is given up once for a new one
+    picks = 2 if attempts > 1 else 1
     try:
-        for attempt in range(attempts):
-            with first() as session:
-                session.acquire()
-                point = session.query_raw([3])
-                anchored = {label: ask_raw(session, q) for label, q in queries.items()}
-            try:
-                with second() as session:
-                    session.acquire(point)
-                    other = {label: ask_raw(session, q) for label, q in queries.items()}
-                break
-            except RuntimeError as e:
-                if not str(e).startswith("acquire failed") or attempt + 1 == attempts:
-                    raise
-                time.sleep(2)
+        for pick in range(picks):
+            point, anchored = at_anchor()
+            for attempt in range(attempts):
+                try:
+                    other = at(point)
+                    break
+                except RuntimeError as e:
+                    if not not_reached(e) or (pick + 1 == picks and attempt + 1 == attempts):
+                        raise
+                    if attempt + 1 < attempts:
+                        time.sleep(2)
+            else:
+                continue  # every attempt at this point was refused: a new point
+            break
     except (RuntimeError, EOFError, OSError, ntcquery.Deadline, ntcquery.Incomplete) as e:
         return {"error": repr(e)[:300]}
     got, expected = (anchored, other) if anchor == "scala" else (other, anchored)
@@ -579,9 +598,11 @@ def judge_comparisons(comparisons, minimum, loaded):
 
 
 def whole_failures(comparisons, era, minimum):
-    """Failures from the same-point complete comparisons of `era` (`whole_state`): a difference, an error or fewer
-    than `minimum` matches of any of `WHOLE_QUERIES`."""
+    """Failures from the same-point complete comparisons of `era` (`whole_state`): a difference, an error, a
+    skipped comparison (the Scala node had no node-to-client socket) or fewer than `minimum` matches, and never
+    fewer than one, of any of `WHOLE_QUERIES`."""
     failures = []
+    minimum = max(minimum, 1)
     for query in WHOLE_QUERIES:
         whole = comparisons.whole[query][era]
         if whole["mismatched"]:
@@ -589,6 +610,8 @@ def whole_failures(comparisons, era, minimum):
                             f"{whole.get('differences', [])[:2]}")
         if whole["errors"]:
             failures.append(f"{era}: {whole['errors']} same-point {query} comparison errors")
+        if whole["skipped"]:
+            failures.append(f"{era}: {whole['skipped']} same-point {query} comparisons skipped")
         if whole["matched"] < minimum:
             failures.append(f"{era}: only {whole['matched']} matched same-point {query} answers (need {minimum})")
     return failures
