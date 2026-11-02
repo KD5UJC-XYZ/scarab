@@ -12,14 +12,15 @@ import xyz.kd5ujc.scarab.ledger.state.CompactCoin
 final case class Anchor(url: String, hash: Bytes)
 
 object Anchor:
-  /** `Anchor` (`Cardano/Ledger/BaseTypes.hs`, cardano-ledger f649f975): a `Url` ([[CborRead.url]])
-    * and the hash of the data.
+  /** `Anchor` below decoder version 12 (`Cardano/Ledger/BaseTypes.hs:996-1004`, cardano-ledger
+    * f649f975): a `RecD` record ([[CborRead.record]]) of a `Url` ([[CborRead.url]]) and the hash of
+    * the data.
     */
   def decode(n: Node, version: DecoderVersion)(using
       ByteStrings
   ): Either[LedgerDecodeError, Anchor] =
     CborRead
-      .arrayN(n, 2, DecodeField.Anchor)
+      .record(n, 2, DecodeField.Anchor)
       .flatMap(xs =>
         (
           CborRead.url(xs(0), DecodeField.AnchorUrl, version),

@@ -10,13 +10,17 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value as CborValue}
 final case class GovActionId(txId: Bytes, index: BigInt)
 
 object GovActionId:
+  /** `GovActionId` below decoder version 12 (`Conway/Governance/Procedures.hs:182-190`, f649f975):
+    * a `RecD` record ([[CborRead.record]]) of a transaction id and a `GovActionIx`, a `Word16`
+    * (`Procedures.hs:162`).
+    */
   def decode(n: Node)(using ByteStrings): Either[LedgerDecodeError, GovActionId] =
     CborRead
-      .arrayN(n, 2, DecodeField.GovernanceActionId)
+      .record(n, 2, DecodeField.GovernanceActionId)
       .flatMap(xs =>
         (
           CborRead.bytesN(xs(0), 32, DecodeField.GovernanceActionTxId),
-          CborRead.uint(xs(1), DecodeField.ActionIndex)
+          Unsigned.read[Unsigned.Width.W16](xs(1), DecodeField.ActionIndex).map(_.value)
         )
           .mapN(GovActionId(_, _))
       )
@@ -175,10 +179,13 @@ object Proposal:
       case CborValue.Null => Right(None)
       case _              => CborRead.bytesN(n, 28, DecodeField.PolicyHash).map(Some(_))
 
+  /** `ProposalProcedure` below decoder version 12 (`Conway/Governance/Procedures.hs:522-533`,
+    * f649f975): a `RecD` record ([[CborRead.record]]).
+    */
   def decode(n: Node, version: DecoderVersion): Either[LedgerDecodeError, Proposal] =
     given ByteStrings = ByteStrings.of(version)
     for
-      xs <- CborRead.arrayN(n, 4, DecodeField.ProposalProcedure)
+      xs <- CborRead.record(n, 4, DecodeField.ProposalProcedure)
       deposit <- CborRead.uint(xs(0), DecodeField.ProposalDeposit)
       account <- CborRead
         .bytes(xs(1), DecodeField.ProposalRewardAccount)
@@ -257,8 +264,9 @@ object Proposal:
           case (Some(5), 3) =>
             (
               GovActionId.optional(xs(1)),
+              // `Constitution`, a `RecD` record (`Procedures.hs:985-995`)
               CborRead
-                .arrayN(xs(2), 2, DecodeField.Constitution)
+                .record(xs(2), 2, DecodeField.Constitution)
                 .flatMap(c => (optionalHash(c(1)), Anchor.decode(c(0), version)).tupled)
             ).mapN((p, c) => GovAction.NewConstitution(p, c._1, c._2))
           case (Some(6), 1) => Right(GovAction.Info)
@@ -296,8 +304,9 @@ object VotingProcedures:
             .flatMap(_.traverse { case (id, procedure) =>
               for
                 actionId <- GovActionId.decode(id).leftMap(DecodeError.InvalidStructure(_))
+                // `VotingProcedure`, a `RecD` record (`Procedures.hs:456-466`)
                 p <- CborRead
-                  .arrayN(procedure, 2, DecodeField.VotingProcedure)
+                  .record(procedure, 2, DecodeField.VotingProcedure)
                   .leftMap(DecodeError.InvalidStructure(_))
                 vote <- CborRead
                   .uint(p(0), DecodeField.Vote)

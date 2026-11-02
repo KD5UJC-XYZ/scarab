@@ -508,7 +508,8 @@ object LiteLedger:
 
   private def proposal(n: Node, era: Era)(using ByteStrings): Either[LedgerDecodeError, Effect] =
     for
-      xs <- CborRead.arrayN(n, 2, DecodeField.Update)
+      // `Update`, a `RecD` record (`Shelley/PParams.hs:267`, f649f975)
+      xs <- CborRead.record(n, 2, DecodeField.Update)
       kvs <- CborRead.map(xs(0), DecodeField.ProposedUpdates)
       updates <- kvs.traverse { case (k, v) =>
         for

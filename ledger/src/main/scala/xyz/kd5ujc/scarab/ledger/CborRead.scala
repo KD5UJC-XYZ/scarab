@@ -100,6 +100,21 @@ private[ledger] object CborRead:
       Either.cond(xs.size == size, xs, LedgerDecodeError.ArrayLength(what, size, xs.size))
     )
 
+  /** A record the reference reads with `RecD` below decoder version 12, where every era this node
+    * decodes is: `decodeCount (RecD cn) n` reads the length with `decodeRecordNamed` around a
+    * decoder that reads nothing (`Decoding/Coders.hs:482`, cardano-ledger f649f975), so a non-empty
+    * indefinite list meets the check for its break before its first field and fails with "Excess
+    * terms in array" (`decodeListLikeT`, `Decoding/Decoder.hs:690-708`). Only a definite list of
+    * `size` items is the record; any other item is not a list. An empty indefinite list passes that
+    * check, and the reference then reads the fields from the items after its break; this tree of
+    * items cannot, and refuses it too (#687).
+    */
+  def record(n: Node, size: Int, what: DecodeSite): Result[Vector[Node]] =
+    array(n, what).flatMap(xs =>
+      definite(n, what) *>
+        Either.cond(xs.size == size, xs, LedgerDecodeError.ArrayLength(what, size, xs.size))
+    )
+
   def map(n: Node, what: DecodeSite): Result[Vector[(Node, Node)]] = n.value match
     case Value.Map(kvs) => Right(kvs)
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Map, n.value))
