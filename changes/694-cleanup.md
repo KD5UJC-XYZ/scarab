@@ -1,0 +1,5 @@
+### Added (scripts, #694)
+
+- `scripts/cleanup.py` lists what finished work left on a machine and, with `--apply`, removes unused worktrees whose pull request was merged into `main`, with their branches, and the run directories and stopped labelled containers of the owners named with `--owner` (or, with `--stale-days`, anyone's untouched for that long). It keeps anything in use, mounted, cited by a tracked file, holding another user's files or not provably merged into `main`, says why, and checks each removal again just before it runs.
+- Containers that outlive a command (the devnet's reference, CLI and proxy containers, the generic-handshake oracle export and the documented sbt server) carry `xyz.kd5ujc.scarab.kind` and `xyz.kd5ujc.scarab.owner` labels.
+- `scripts/check_local_paths.py` refuses a document or manifest that names a directory on the author's machine (`/tmp`, `.workspace`) as where evidence is kept; documents record results and hashes and say raw run artifacts are not published.

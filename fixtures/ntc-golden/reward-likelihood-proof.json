@@ -155,6 +155,5 @@
     "The three captured Conway states have no pending reward update; no ru fields are rewritten by the inverse proof.",
     "Rich states use the existing historical enrichment adapter and remain unchanged.",
     "Only the feature-owned focused suite was rerun here; the coordinated branch owns a fresh full check and scenario gates."
-  ],
-  "privateArtifactDirectory": "/tmp/scarab/268-likelihood/golden"
+  ]
 }

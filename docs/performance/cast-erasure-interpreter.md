@@ -142,7 +142,7 @@ claim that startup latency is equal. No production optimization was made to obta
 A separate attempted launch failed before measurement because the standalone assertion classpath
 omitted JUnit; adding its pinned runtime dependency resolved that harness error.
 
-**Reproduction and binding.** Artifacts live outside Git in `/tmp/scarab-248-bench`: immutable
+**Reproduction and binding.** The private run artifacts, not published, are: immutable
 runtime class inventories, old-only overlay, compiler classpath, standalone sources, exact Docker
 argument vectors (`r0-old.json` through `r5-typed.json`), raw samples, all result digests,
 `analyze.py`, `summary.json`, and the earlier protocol in `diagnostic/`.

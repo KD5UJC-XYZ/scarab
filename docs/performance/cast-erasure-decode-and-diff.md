@@ -95,8 +95,8 @@ records ownership, synchronization and the measured mutable-table exception. `No
 The first homogeneous-array prototype (`7e4e87f0`) preserved all measured outputs and retention;
 its legacy-derived decode aggregate was +7.69%, with a +22.17% extreme cross-JVM comparison.
 A typed weak recent-association fast path (`c46d0214`) still measured **+10.45%** on that primary
-input, failing the acceptance bar. Those complete experiments remain under
-`/tmp/scarab-204-bench-diagnostic` and `/tmp/scarab-204-bench-weak-fast`; they are not relabelled as
+input, failing the acceptance bar. Those complete experiments are private run artifacts, not
+published; they are not relabelled as
 passing or discarded. The final design `9ac7ea5e` uses typed entries carrying cached hashes.
 Unequal hashes skip deep equality, and growth reuses each entry's hash. It adds entry allocation;
 the full decode and memory measurements below include it. These experiments do not isolate a
@@ -126,9 +126,8 @@ The second input is the authenticated V5 conversion at source
 `648aed117f826d06117f616b5c0a3716a50485a7`, manifest SHA-256
 `d81e326f85eb47d7a92d041a3309007599bcdaa8e70de0eaf4b38bb293ce0168`, of the archived V4
 51,584,590-byte capture `0b7c061b8e47560c665d3d22c7898ca53884c361002c2975bd5d925a433f94a8`.
-Original archives are unchanged; no retired V4 decoder is restored. The inputs remain outside Git
-under `/tmp/scarab/mithril27/download-bootstrap/snapshots` and
-`.workspace/data/2026-10-18-snapshot-v5-corpus/preprod-v4/snapshots`. They contain complete native
+Original archives are unchanged; no retired V4 decoder is restored. The inputs are private copies, not
+published. They contain complete native
 snapshot payloads and UTxO handles/statistics, not the separately backed RocksDB UTxO entries.
 
 **Protocol.** Euler Linux x86-64/WSL2 shared host; Docker Temurin 21.0.11/Scala 3.3.8 image
@@ -150,8 +149,8 @@ refusals. The later documentation/check commits do not change the measured runti
 
 Both primary inputs pass the 10% limit, including the adverse cross-JVM comparison. The shared
 host and the old current-input spread prevent a firm general speed-up claim. Per-sample rows,
-allocation ranges, full command vectors, source/class/config inventories and output hashes remain
-in `/tmp/scarab-204-bench`; all samples, not only fastest runs, contribute to these medians.
+allocation ranges, full command vectors, source/class/config inventories and output hashes are private
+run artifacts, not published; all samples, not only fastest runs, contribute to these medians.
 
 **Memory.** Separate fresh JVMs use the same old/typed/input order. After input/config setup,
 `jcmd 1 GC.class_histogram` forces a full collection at BASE, LIVE (exactly one typed state held),
@@ -202,8 +201,8 @@ applications, two 0.7 s graceful stops, two native V5 shutdown snapshots, one re
 errors/refusals. Reference node 11.1.3/CLI 11.2.3.0, image
 `sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b`.
 Owned containers are removed; restart manifest SHA-256
-`bc0a6bdc0ba5098852d2dd1e77c23b49099113d96de35b3c4a8e2d56badcec53` is retained under
-`/tmp/scarab-204-evidence`. Docker `check` at this runtime source passes 5,144 tests with 16 optional-data skips, zero
+`bc0a6bdc0ba5098852d2dd1e77c23b49099113d96de35b3c4a8e2d56badcec53` is recorded here; the manifest itself
+is a private run artifact, not published. Docker `check` at this runtime source passes 5,144 tests with 16 optional-data skips, zero
 failures/errors across 14 modules, formatting/-Werror/standard fuzz/scalafix. The
 extended `fuzz 100000 1 4` gate passes 77 targets × 400,000 cases = 30.8 million, zero failures.
 Combined check/fuzz log SHA-256 `645fe3088804e9502742369e1ab6052e41eba03071062560efd4c08f0a259252`.
@@ -258,9 +257,9 @@ had been removed were incorrect. Output SHA-256 and structural comparisons are o
 | legacy-derived preprod V5 | `snapshot-00000000000136444301-5297790.bin`, `b77a119082acbda5d6c2fb43131b5cad856056790b13a0164a02f48299a2ebcf`; authenticated conversion of the archived V4 input `0b7c061b8e47560c665d3d22c7898ca53884c361002c2975bd5d925a433f94a8`, source51,584,590 B | 51,777,723 |
 <!-- /register -->
 
-The first input is retained under `/tmp/scarab/mithril27/download-bootstrap/snapshots`; its
-chain/projection provenance is section27. The second is the maintained `preprod-v4` corpus
-under `.workspace/data/2026-10-18-snapshot-v5-corpus`, not a newly rewritten original. Its bridge
+The first input is a private copy, not published; its
+chain/projection provenance is section27. The second is the maintained private `preprod-v4` corpus (not published), not a newly rewritten
+original. Its bridge
 source is `648aed117f826d06117f616b5c0a3716a50485a7`, conversion manifest SHA-256
 `d81e326f85eb47d7a92d041a3309007599bcdaa8e70de0eaf4b38bb293ce0168`; the record pins slot,
 block/hash,4,522,393-output handle/count, original/target hashes and successful verification.
@@ -367,12 +366,12 @@ At `ab85c6a7`, `python3 scripts/devnet.py --name scarab-247-root-restart restart
 JDK image above; reference image
 `74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b`, node11.1.3/CLI11.2.3.0.
 Restart manifest SHA-256 `b63d8b3d93276c5ab491c9bd98222fa56af97b05ec7c8367994923af493a52e3`;
-artifacts outside Git in `/tmp/scarab-247-evidence`; own containers removed. Focused format,
+artifacts are private, not published; own containers removed. Focused format,
 migration, Haskell-format, snapshot and generic/phantom tests pass46/46. The corrected compile
 controls/nested paths pass4/4. Extended `fuzz 100000 1 4` passes77 targets ×400,000 cases
 (30.8 million). Final-head full check/CI is reported on PR #247.
 
-The complete reproduction package is `/tmp/scarab-247-bench`: sources, exact per-run Docker
+The complete reproduction package, a private run artifact not published, holds sources, exact per-run Docker
 argument vectors, classpaths, both frozen runtime inventories, raw samples and full summaries.
 `python3 /tmp/scarab-247-bench/run.py` compiles the same standalone helpers against both runtimes
 and runs the fixed sequence. It mounts the input/config/cache read-only, calls

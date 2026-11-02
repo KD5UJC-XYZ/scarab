@@ -102,8 +102,8 @@ does not reproduce that absolute duration, but confirms that eager reward calcul
 substantial work into one tick. The proposed incremental implementation and acceptance gates are
 in [reward-pulser.md](../design/reward-pulser.md); #135 remains open.
 
-**Inputs and method.** Read-only original Preview K1 snapshot files from
-`.workspace/data/2026-10-14-k1-scala-preview/db`, sorted by filename; indices 1400, 1420 and 1449.
+**Inputs and method.** Read-only original Preview K1 snapshot files (the private K1
+Preview sync's database, not published), sorted by filename; indices 1400, 1420 and 1449.
 `LegacySnapshots.read` and `legacy.Mirroring.toMirror` load/convert each legacy snapshot, as the
 boundary harness of section 16 does. Use the resulting `nes.es`, `nes.bprev`, epoch and Preview
 globals to call the unchanged `Rewards.update`. Load, conversion, result hashing and Haskell
@@ -161,8 +161,8 @@ the frame used by the filter, and loading, conversion and hashing appear elsewhe
 
 **Reproduction and binding.** The private standalone test-side entry point is
 `xyz.kd5ujc.scarab.node.differential.RewardProfile`; its source, exact Docker argument vector,
-runner, class inventory, input/output log, analysis script and JFR are retained outside Git under
-`/tmp/scarab/issue-135`. Compile the standalone source against `node/Test/fullClasspath` from
+runner, class inventory, input/output log, analysis script and JFR are private run
+artifacts, not published. Compile the standalone source against `node/Test/fullClasspath` from
 the baseline, in the JDK image; invoke it with `<K1 db> <Preview genesis directory> 1400 1420 1449`.
 Its algorithm is the load/convert and four timed calls described above, using `System.nanoTime`
 and `ThreadMXBean.getCurrentThreadCpuTime`, then SHA-256 of
@@ -228,7 +228,7 @@ than node-wide peak memory. A separate untimed prefix probe samples retained hea
 one current immutable state. Neither measures a full node's retained volatile rollback history.
 
 Sources, exact Docker argument vectors, class/source inventories, hashes, stage samples and
-analysis stay outside Git under `/tmp/scarab/issue-135`. The controlled-profile runtime binding is
+analysis are private run artifacts, not published. The controlled-profile runtime binding is
 `candidate-binding-singleton.json` (SHA-256
 `c362e39ea9e4f2903b2830655902e6ad82e2b4c88506fe650863b4f8063ef55e`):
 eight runtime source files and 10,783 compiled production files. The final edits were compiled
@@ -336,13 +336,13 @@ including the measured start, normal completion and sparse-chain forced completi
 latency follow-up is required for this stage.
 
 Exact commands, full block rows, input/checkpoint hashes, native conversion proof, dependency
-jar/genesis hashes, copied runtime inventories and analysis are retained under
-`/tmp/scarab/issue-135-replay-native`. `accepted-evidence.json` binds 163 artifacts (SHA-256
+jar/genesis hashes, copied runtime inventories and analysis are private run
+artifacts, not published. `accepted-evidence.json` binds 163 artifacts (SHA-256
 `06ed671670fd978ca25f9ada7d6b280ece133b81466ab3ecd5dfd81b287c5738`);
 `benchmark-binding.json` SHA-256 is
 `c5eef7c34fed4823a9e05bbea3fe3aadd3b9fa667076a991e4373e5b012bbcf1`.
 The feature author's independent manifest of 8 reward sources, 452 main sources and 11,379 production files
-is `candidate-binding-rebased.json` in `/tmp/scarab/issue-135`, SHA-256
+is `candidate-binding-rebased.json` (a private run artifact, not published), SHA-256
 `9e8b987d17d35b1e1a4b9df5677bca8c59ccbce874e9d2cf4d4ae49b4a6808d3`.
 Final verification confirms all original inputs, copied classes and bound sources unchanged.
 

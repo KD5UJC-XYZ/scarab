@@ -215,7 +215,7 @@ re-runs on tagged builds are not done yet (K5).
 
 - **Run:** Typed Handshake private relay gate (#49 / #245): `devnet.py --name scarab-pr245-typed-relay relay --seconds 300 --every 10 --seed 245019 --keep-data`
   - **Result:** PASS: 30 samples, epochs 1–7, all four final tips equal at block180/hash68f1ab0ae6fa; 29/30 samples at tip, maximum lag4. Local submission accepted/adopted; 90 load submissions plus the local transaction yield 91 Scala mempool arrivals and 81 inclusions, zero Scala mempool refusals/drops, node errors or unparsed output. One handled rollback, twelve reconnects and six load-build refusals retained. Inbound duplex headers advance1→146; reference negotiates actual node-to-node version15
-  - **Commit:** Same frozen `1692f63d`; all 11,633 scenario runtime files and 64 dependency jars independently matched the manifest while the scenario was running. Actual process exit 0; relay log SHA-256 `4a85c427048c1766bcc99e6a8b4cd2b0067dfbf2ba1be6f6448cbb21e8e2ba56`. Summary/logs retained under `/tmp/scarab/scarab-pr245-typed-relay` and `/tmp/scarab/pr245-typed-review`; owned scenario containers removed
+  - **Commit:** Same frozen `1692f63d`; all 11,633 scenario runtime files and 64 dependency jars independently matched the manifest while the scenario was running. Actual process exit 0; relay log SHA-256 `4a85c427048c1766bcc99e6a8b4cd2b0067dfbf2ba1be6f6448cbb21e8e2ba56`. Summary/logs are private run artifacts, not published; owned scenario containers removed
   - **Environment:** 2026-10-19; reference image11.1.3 (`74e849e1b68e`), JDK image `c90140def52d`; private network only
 
 - **Run:** Generic Handshake and ordinary network codecs (#49), level 2: Docker `check`, `node/runtimeClasspathFile`; exporter controls

@@ -36,7 +36,7 @@ what was in use before the stage began (the 222 MiB file content). "Min `-Xmx`" 
 **The input is not the file the task named.** `snapshot-00000000000079577924-3026442.bin` had been
 rotated out of the live node's `db/snapshots` by the time the runs began. The measured file is
 `snapshot-00000000000080873966-3073752.bin` (222 MiB, Haskell section 217 MiB, 27,315,775 CBOR items),
-a copy of which was read from a read-only mount; nothing under `.workspace/data` was changed. It
+a copy of which was read from a read-only mount; the original was not changed. It
 is comparable: the five 648,752-entry votes maps stay in the proposals until epochs 191 and 193, so
 a snapshot from a later point of the same epoch range holds the same data, and the issue's own file
 was 233 MB (the Haskell section 227 MB) against 222 MiB here.

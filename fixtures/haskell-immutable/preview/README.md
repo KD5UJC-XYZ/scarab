@@ -9,7 +9,7 @@ no Byron blocks, no epoch-boundary blocks. About 0.7 MB.
 
 `expected-blocks.tsv` lists, for every block, `slot`, header hash, block number, SHA-256 of the block
 bytes and its length. It was produced by reading the blocks our own ImmutableStore holds for the same
-slots (the K1 Preview sync, `.workspace/data/2026-10-14-k1-scala-preview`) and checking, with an
+slots (the private K1 Preview sync, not published) and checking, with an
 independent script, that their bytes concatenate to exactly the three Haskell chunk files. The
 reader and importer tests (`HaskellImportSuite`) compare against it, so they show that the Haskell
 database and our store hold identical blocks.

@@ -271,8 +271,8 @@ The archived copy's checkpoint was 492,274,628 bytes and its paired V5 snapshot 
 55,298,361 bytes. The synthetic initial database was 235,447,729 bytes. These figures show
 measured acquisition and retention behavior for these datasets only; no query latency at eight
 million entries, heap/RSS, or actual mainnet state fidelity was measured. Runs used bounded 10,000
-entry writes and the approved owned copy under `/tmp/scarab/luna-158`; cost logs and exit records
-are under `/tmp/scarab/luna-158/gates/cost-*`.
+entry writes and an approved owned copy; cost logs and exit records are private run artifacts, not
+published.
 
 ## 46. The UTxO store's scans: a fold against the loops (#650)
 

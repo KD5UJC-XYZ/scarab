@@ -12,6 +12,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from cleanup import container_labels  # noqa: E402
 from repo_paths import relative_argv  # noqa: E402
 
 PIN = "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776"
@@ -126,7 +127,7 @@ def main() -> None:
         shutil.copytree(args.build_cache, args.work / "narrow-builddir")
     run(["patch", "--batch", "-p1", "-i", str(HERE / "observer.patch")], args.work / "source")
     image_id = run(["docker", "image", "inspect", args.image, "--format", "{{.Id}}"])
-    run(["docker", "run", "-d", "--name", args.container, "-v", f"{args.work.resolve() / 'source'}:/source",
+    run(["docker", "run", "-d", "--name", args.container, *container_labels("oracle", args.container), "-v", f"{args.work.resolve() / 'source'}:/source",
          "-v", f"{args.work.resolve()}:/probe", "--entrypoint", "tail", args.image, "-f", "/dev/null"])
     try:
         base = ["docker", "exec", "-w", "/source", args.container]

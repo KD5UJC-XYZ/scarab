@@ -67,7 +67,7 @@ Other parts: [part 1](evidence-log-1.md), [part 2](evidence-log-2.md), [part 3](
   - **Environment:** same, `soak.log`
 
 - **Run:** Ledger oracle, Preview from genesis against a Haskell cardano-node 11.1.3 (PraosMode) that synced the same relay
-  - **Result:** epochs 0 to 124: 125/125 equal, 0 differences (includes the epochs where the stake-snapshot and pool-distribution fixes showed, 18 and 120); both syncs continued past that, results in `.workspace/data/2026-10-14-k1-haskell-preview/diff.json`
+  - **Result:** epochs 0 to 124: 125/125 equal, 0 differences (includes the epochs where the stake-snapshot and pool-distribution fixes showed, 18 and 120); both syncs continued past that; the comparison output (`diff.json`) is a private run artifact, not published
   - **Commit:** this branch
   - **Environment:** Scala 6 CPUs `-Xms3g -Xmx3g`, db-analyser 2 CPUs each
 

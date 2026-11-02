@@ -32,12 +32,12 @@ Other parts: [part 1](evidence-log-1.md), [part 2](evidence-log-2.md), [part 3](
 
 - **Run:** G1.5/#142 relay revalidation (`devnet.py relay --seconds 300`, 2026-10-19)
   - **Result:** Two attempts exited 1. Both passed chain-following and duplex assertions: 30 samples, 7 epochs, final tips equal, inbound duplex session advanced 1→148 and 6→162 headers, and no Scala errors or reference decoder failures. The load path submitted 3 transactions and all 3 reached the Scala mempool, but 0 were adopted; the local node-to-client submission was accepted but not included. One duplicate-spend refusal was `AllInputsSpent`. This is an acceptance failure; transaction propagation/inclusion still needs diagnosis
-  - **Commit:** Frozen source `0be9982a`; run summaries and logs: `/tmp/scarab/scarab-v02-139-142/relay-summary.json`, `/tmp/scarab/scarab-v02-139-142-repeat/relay-summary.json`
+  - **Commit:** Frozen source `0be9982a`; run summaries and logs are private run artifacts, not published
   - **Environment:** Docker JDK21, private reference11.1.3; no other devnet group during retry; all owned scenario containers removed
 
 - **Run:** G1.5/#142 relay after TxSubmission2 Init parity (`devnet.py relay --seconds 300`, 2026-10-19)
   - **Result:** PASS: 30 samples, epochs 1–7, all four tips equal at block 201; lag max 7 and 27/30 samples at the tip. The local NTC transaction was accepted/adopted; 73 load transactions were submitted, 74 arrived in Scala mempool, 64 were included/adopted, with 0 Scala mempool rejects/drops or node errors. The prior repeated `timed out in Init` events were absent. This materially supports the idle-duplex timeout mismatch as a cause of prior inclusion failures, without proving strict single-variable causality
-  - **Commit:** Frozen source `df51e614`; full `check` 5,097 passed + 16 optional skips, 0 failures/errors; explicit `scalafixAll` exit 0; runtime binding and relay summary archived under `/tmp/scarab/scarab-v02-139-142-initwait`
+  - **Commit:** Frozen source `df51e614`; full `check` 5,097 passed + 16 optional skips, 0 failures/errors; explicit `scalafixAll` exit 0; runtime binding and relay summary are private run artifacts, not published
   - **Environment:** Docker JDK21, private `cardano-reference-11.1.3:local`; run data retained outside Git and owned containers removed
 
 - **Run:** G5 decoder and adversarial controls (#35): `fuzz 100000 1 4`

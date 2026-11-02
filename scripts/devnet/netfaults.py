@@ -11,6 +11,7 @@ untouched. The commands run in a short-lived helper container that has `NET_ADMI
 (the reference image ships `tc`); the namespace is the only thing that changes, nothing on the host.
 """
 import os
+from cleanup import container_labels
 from .faultplan import LINKS
 from .util import REFERENCE_IMAGE, REPO, docker, jdk_image, ref
 
@@ -121,7 +122,8 @@ class Shaper:
 
 def start_proxies(name, root, node_ports):
     """One container in the reference namespace that serves every link's proxy ports."""
-    command = ["run", "-d", "--rm", "--pull=never", "--name", f"{name}-proxy", "--network", f"container:{ref(name)}",
+    command = ["run", "-d", "--rm", "--pull=never", "--name", f"{name}-proxy", *container_labels("devnet", name),
+               "--network", f"container:{ref(name)}",
                "--user", f"{os.getuid()}:{os.getgid()}", "-v", f"{PROXY_DIR}:/proxy:ro", "-v", f"{root / 'proxy'}:/ctl",
                "--entrypoint", "python3", jdk_image(), "/proxy/lagproxy.py", "--delay", "0", "--control", "/ctl/freeze"]
     for listen, upstream in routes(node_ports):
