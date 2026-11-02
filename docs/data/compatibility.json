@@ -976,6 +976,27 @@
       "page": "docs/compatibility/ledger-update-values.md"
     },
     {
+      "id": "ledger-recd-records",
+      "component": "Ledger: RecD records are definite lists, decoder versions 2 to 9 (#668)",
+      "status": "partial",
+      "summary": "The update proposal, a redeemer's execution units (with their Word64 and Int64 bounds), and Conway's GovActionId (with its Word16 index), VotingProcedure, ProposalProcedure, Constitution and Anchor are read as definite lists only, as the reference's RecD decoders read them; an output's value and the array form of auxiliary data still take an indefinite list",
+      "evidence": {
+        "suites": [
+          "RecdRecordsReferenceSuite"
+        ],
+        "paths": [
+          "fixtures/reference/recd-records/cases.jsonl",
+          "scripts/oracle/conway-decoding/recd_cases.py"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          668
+        ]
+      },
+      "page": "docs/compatibility/ledger-recd-records.md"
+    },
+    {
       "id": "ledger-url-length",
       "component": "Ledger: url length, decoder versions 2 to 9 (#550)",
       "status": "implemented",

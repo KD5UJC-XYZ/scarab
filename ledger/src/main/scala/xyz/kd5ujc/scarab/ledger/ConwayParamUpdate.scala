@@ -184,46 +184,45 @@ object ConwayParam:
 
   private val Int64Max = BigInt(Long.MaxValue)
 
-  /** Where the `RecD` records of an update's values ([[record]]) are read from: a transaction body,
-    * which the reference's decoder reads, or a stored ledger state, which holds the update as an
-    * earlier build of this node accepted it from a body (ADR 0006).
+  /** Where `RecD` records ([[record]]) are read from: a transaction, which the reference's decoder
+    * reads, or a stored ledger state, which holds an update as an earlier build of this node
+    * accepted it from a body (ADR 0006).
     */
   enum Records:
     case Body, Stored
 
-  /** A record the reference reads with `RecD` below decoder version 12: `decodeCount` reads its
-    * length with `decodeRecordNamed` around a decoder that reads nothing
-    * (`Decoding/Coders.hs:482`), so an indefinite list meets the check for its break before its
-    * first field and fails with "Excess terms in array" (`decodeListLikeT`,
-    * `Decoding/Decoder.hs:690-708`, f649f975). In a body only a definite list of `size` items is
-    * the record. A stored state may also hold one as an indefinite list, which the builds before
-    * this rule took from a body, and it is read in either form.
+  /** A record the reference reads with `RecD` ([[CborRead.record]]): in a transaction only a
+    * definite list of `size` items. A stored state may also hold one as an indefinite list, which
+    * the builds before this rule took from a body, and it is read in either form.
     */
   private def record(n: Node, size: Int, site: DecodeSite, records: Records): Result[Vector[Node]] =
     records match
-      case Records.Body   => CborRead.definite(n, site) *> CborRead.arrayN(n, size, site)
+      case Records.Body   => CborRead.record(n, size, site)
       case Records.Stored => CborRead.arrayN(n, size, site)
 
   /** `ExUnits` below decoder version 12 (`ExUnits.hs:195-215`, f649f975): a `RecD` record of two
-    * `Word64` s, each at most `maxBound :: Int64`.
+    * `Word64` s, each at most `maxBound :: Int64`. The largest units of a transaction and of a
+    * block are of this type, and so are the units of a redeemer.
     */
-  private def exUnits(site: DecodeSite, records: Records)(make: ExUnits => ConwayParam): Read =
-    n =>
-      record(n, 2, site, records)
-        .flatMap(
-          _.traverse(x =>
-            Unsigned
-              .read[W64](x, site)
-              .flatMap(w =>
-                Either.cond(
-                  w.value <= Int64Max,
-                  w.value,
-                  LedgerDecodeError.NumberOutOfRange(site, w.value, 0, Int64Max)
-                )
+  private[ledger] def exUnits(n: Node, site: DecodeSite, records: Records): Result[ExUnits] =
+    record(n, 2, site, records)
+      .flatMap(
+        _.traverse(x =>
+          Unsigned
+            .read[W64](x, site)
+            .flatMap(w =>
+              Either.cond(
+                w.value <= Int64Max,
+                w.value,
+                LedgerDecodeError.NumberOutOfRange(site, w.value, 0, Int64Max)
               )
-          )
+            )
         )
-        .map(xs => make(ExUnits(xs(0), xs(1))))
+      )
+      .map(xs => ExUnits(xs(0), xs(1)))
+
+  private def units(site: DecodeSite, records: Records)(make: ExUnits => ConwayParam): Read =
+    n => exUnits(n, site, records).map(make)
 
   private def thresholds[A](site: DecodeSite, size: Int)(
       build: Vector[Rational] => Result[A]
@@ -272,8 +271,8 @@ object ConwayParam:
           ).mapN(Prices(_, _))
         )
     ),
-    20 -> exUnits(DecodeField.MaxTxExUnits, records)(MaxTxExUnits(_)),
-    21 -> exUnits(DecodeField.MaxBlockExUnits, records)(MaxBlockExUnits(_)),
+    20 -> units(DecodeField.MaxTxExUnits, records)(MaxTxExUnits(_)),
+    21 -> units(DecodeField.MaxBlockExUnits, records)(MaxBlockExUnits(_)),
     22 -> word[W32](DecodeField.MaxValueSize)(MaxValSize(_)),
     23 -> word[W16](DecodeField.CollateralPercentage)(CollateralPercentage(_)),
     24 -> word[W16](DecodeField.MaxCollateralInputs)(MaxCollateralInputs(_))

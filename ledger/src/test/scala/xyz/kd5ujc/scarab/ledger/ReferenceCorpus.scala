@@ -28,6 +28,7 @@ private[ledger] object ReferenceCorpus:
     case PoolRelays extends Corpus("pool-relays", Layout.Lines)
     case UrlLength extends Corpus("url-length", Layout.Lines)
     case UpdateValues extends Corpus("update-values", Layout.Lines)
+    case RecdRecords extends Corpus("recd-records", Layout.Lines)
 
   /** How a corpus is stored: `cases.json` beside `reference.json`, or one `cases.jsonl` with a case
     * and its verdict (`accepted`, `failure`) on each line.

@@ -353,7 +353,8 @@ object TxBody:
   private def update(n: Node, era: Era): Either[LedgerDecodeError, Update] =
     given ByteStrings = ByteStrings.of(DecoderVersion.of(era))
     for
-      xs <- CborRead.arrayN(n, 2, DecodeField.Update)
+      // `Update`, a `RecD` record (`Shelley/PParams.hs:267`, f649f975)
+      xs <- CborRead.record(n, 2, DecodeField.Update)
       kvs <- CborRead.map(xs(0), DecodeField.ProposedUpdates)
       proposals <- kvs.traverse { case (k, v) =>
         for
@@ -653,13 +654,12 @@ object Witnesses:
       Some(raw)
     )
 
+  /** A redeemer's units: `decCBOR` of `ExUnits` in `decodeElement` and `decodeMapRedeemers`
+    * (`Alonzo/TxWits.hs:550-597`, f649f975), the same reader as a parameter's
+    * ([[ConwayParam.exUnits]]).
+    */
   private def exUnits(n: Node): Either[LedgerDecodeError, ExUnits] =
-    CborRead
-      .arrayN(n, 2, DecodeField.ExUnits)
-      .flatMap(xs =>
-        (CborRead.uint(xs(0), DecodeField.Mem), CborRead.uint(xs(1), DecodeField.Steps))
-          .mapN(ExUnits(_, _))
-      )
+    ConwayParam.exUnits(n, DecodeField.ExUnits, ConwayParam.Records.Body)
 
   /** `[* [tag, index, data, ex_units]]`, or (Conway) `{[tag, index] => [data, ex_units]}`. The
     * ledger keeps redeemers in a map keyed by purpose, so of several entries for the same
