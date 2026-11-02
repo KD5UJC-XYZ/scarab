@@ -4241,11 +4241,11 @@
        "7,722,155 / 7,705,982"
       ],
       [
-       "The walk alone, the same 674 blocks",
+       "The walk alone, the same 674 blocks (after its items were skipped without a frame)",
        "",
-       "1,036 / 933",
+       "472",
        "",
-       "6,692,192"
+       "2,352,200"
       ]
      ],
      "id": "perf-59.t1"

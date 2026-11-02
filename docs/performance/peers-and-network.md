@@ -462,10 +462,13 @@ could make a block pay at most by putting an empty indefinite list in it.
 | `Cbor.decode`, mainnet fixture blocks (12, 28,728 B) | 11.8 / 11.3 | 11.8 / 11.6 | 32,256 | 32,544 |
 | `Cbor.decode`, all 730 in one message (740,420 B) | 187.2 / 172.4 | 170.0 / 172.9 | 230,576 | 230,600 |
 | `Block.decodeShelley`, 674 Shelley-based blocks (691,882 B) | 2,924 / 3,001 | 3,341 / 2,978 | 7,582,797 / 7,701,419 | 7,722,155 / 7,705,982 |
-| The walk alone, the same 674 blocks |  | 1,036 / 933 |  | 6,692,192 |
+| The walk alone, the same 674 blocks (after its items were skipped without a frame) |  | 472 |  | 2,352,200 |
 <!-- /register -->
 
 The two builds differ by less than one JVM differs from the next on these runs, except that a decode allocates 24
-bytes more (the decoder's two fields), 3% of the smallest blocks' allocation. The walk is about a third of a block
-read; it runs only on a block that holds an empty indefinite list, and the second decode and read only on one in which
-it finds a detached record.
+bytes more (the decoder's two fields), 3% of the smallest blocks' allocation. The walk first stepped through every item
+with an immutable frame (1,036 and 933 µs, 6.7 MB, about a third of a block read); it now reads an item with no record
+in it with a loop over a stack of counts, since deeply nested refused inputs took the decoder fuzz gate over its
+allocation bound, and costs about a sixth of a block read (one JVM). It runs only on an input that holds the bytes
+`9f ff` and that the first read refuses or whose decode holds an empty indefinite list, and the second decode and read
+only on one in which it finds a detached record.
