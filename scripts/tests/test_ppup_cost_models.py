@@ -99,7 +99,8 @@ class ProposalCostModelTest(unittest.TestCase):
 
     def test_comparison_error_fails_even_with_enough_other_matches_while_intentional_skips_do_not(self):
         rows = {era: {'matched': 5, 'mismatched': 0, 'errors': 0, 'skipped': 2} for era in compare.ERAS}
-        comparison = SimpleNamespace(per_era=rows)
+        whole = {era: {'matched': 5, 'mismatched': 0, 'errors': 0, 'skipped': 0} for era in compare.ERAS[1:]}
+        comparison = SimpleNamespace(per_era=rows, whole=whole)
         self.assertEqual(compare.judge_comparisons(comparison, 3, True), [])
         rows['alonzo']['errors'] = 1
         self.assertEqual(compare.judge_comparisons(comparison, 3, True), ['alonzo: 1 ledger comparison errors'])

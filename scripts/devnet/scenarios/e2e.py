@@ -206,7 +206,7 @@ def e2e(args):
         def nodes_up(_root):
             nonlocal follower
             follower = start_follower(args.name, root, oracle=args.oracle, scala_cpus=args.scala_cpus,
-                                      consensus_mode=getattr(args, "consensus_mode", None))
+                                      consensus_mode=getattr(args, "consensus_mode", None), local_socket=True)
 
         def pools_ready(driver):
             nonlocal loader, worker
@@ -343,7 +343,9 @@ def e2e(args):
             follower.wait()
         if comparisons is not None:
             summary["ledgerComparison"] = {"scope": PROJECTION_SCOPE, "perEra": comparisons.per_era,
-                                           "mismatches": comparisons.mismatches}
+                                           "mismatches": comparisons.mismatches,
+                                           # complete same-point states but the UTxO (#433, #677)
+                                           "wholeState": comparisons.whole}
         if loader is not None:
             summary["load"] = loader.stats
             summary["loadEvidence"] = loader.evidence

@@ -147,6 +147,9 @@ def main():
     f.add_argument("--node", type=int, default=1, help="reference node the follower connects to")
     f.add_argument("--dump-state", action="store_true",
                    help="write a ledger-state digest at every epoch boundary to <run dir>/dump (for `oracle`)")
+    f.add_argument("--local-socket", action="store_true",
+                   help="open a node-to-client socket in the run dir (`scala-sock/node.socket`), for same-point "
+                        "ledger-state comparisons")
     f.add_argument("--db", action="store_true",
                    help="keep the follower's chain database in the run directory (<run dir>/db), snapshots at each "
                         "epoch boundary, so that a second `follow --db` restarts from the snapshot")

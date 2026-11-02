@@ -43,6 +43,13 @@ def follow(args):
         (root / "db").mkdir(exist_ok=True)
         program += ["--db", "/db", "--snapshot-every", getattr(args, "snapshot_every", None) or "1epochs"]
         mounts.extend(database_mounts(root / "db"))
+    if getattr(args, "local_socket", False):
+        # node-to-client, for the same-point whole-state comparison (`compare.whole_state`)
+        sock = root / "scala-sock"
+        sock.mkdir(exist_ok=True)
+        sock.chmod(0o777)
+        program += ["--local-socket", "/sock/node.socket"]
+        mounts.append(f"{sock}:/sock")
     if getattr(args, "dump_state", False):
         # state digests at every epoch boundary for the db-analyser comparison (`devnet.py oracle`)
         (root / "dump").mkdir(exist_ok=True)
@@ -59,10 +66,11 @@ def follow(args):
         sys.exit(proc.wait())
 
 
-def start_follower(name, root, oracle=False, scala_cpus=None, consensus_mode=None):
+def start_follower(name, root, oracle=False, scala_cpus=None, consensus_mode=None, local_socket=False):
     return subprocess.Popen([sys.executable, str(ENTRY), "--name", name, "follow",
                              *(["--consensus-mode", consensus_mode] if consensus_mode is not None else []),
                              *(["--dump-state"] if oracle else []),
+                             *(["--local-socket"] if local_socket else []),
                              *(["--scala-cpus", str(scala_cpus)] if scala_cpus is not None else [])],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
