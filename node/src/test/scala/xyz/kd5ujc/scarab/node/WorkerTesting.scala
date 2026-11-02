@@ -158,16 +158,21 @@ private[scarab] object WorkerTesting extends munit.Assertions:
               done *> settled(blocks) *> fed.due.flatMap(_.fold(IO.unit)(_ => IO.never))
             )
           )
-          // Closed admissions self-cancel the barrier. A masked finalizer must observe that
-          // outcome: race would cancel the fatal waiter too, then wait forever on cancellation.
+          // Closed admissions cancel reprocessing; settled's timeout waits on that cancellation.
+          // Preserve the fatal waiter, including if the barrier ever exposes cancellation directly.
           .guarantee(
-            stopped.get.void.raceOutcome(settled(blocks)).flatMap(_.merge.embed(IO.unit))
+            stopped.get.void.raceOutcome(settled(blocks)).flatMap {
+              case Left(outcome)             => outcome.embedNever
+              case Right(Outcome.Canceled()) => stopped.get.void
+              case Right(outcome)            => outcome.embedNever
+            }
           )
         stopped.get.raceOutcome(following).flatMap {
           case Left(outcome) => outcome.embedNever.map(Some(_))
           // Closing admissions can cancel delivery before the worker reports its fatal value.
           case Right(Outcome.Canceled()) => stopped.get.map(Some(_))
-          case Right(outcome)            => outcome.embedNever.as(None)
+          // The finalizer can observe the fatal first while this side wins the outer race.
+          case Right(outcome) => outcome.embedNever *> stopped.tryGet
         }
       }
     }
