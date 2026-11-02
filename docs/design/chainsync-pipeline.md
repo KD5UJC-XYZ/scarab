@@ -114,7 +114,7 @@ The 13,497 frozen runtime files matched the compiled source exactly; their tree 
 `763a62c032a435cf0c3c5aa4b46067ff9cd847201471749e211209f3648c91d6`. The actual images were
 JDK `c90140def52d` and reference 11.1.3 `74e849e1b68e`. Build metadata reports the exact workspace
 commit and development version. Compact receipts, public generated genesis inputs and compressed
-logs are retained under `/tmp/scarab/310-rolling-integration-evidence`; disposable databases,
+logs are private run artifacts, not published; disposable databases,
 containers and build outputs are removed after acceptance.
 
 One initial invocation omitted the documented private Genesis `--no-peer-sharing` flag. It remained

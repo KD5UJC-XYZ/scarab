@@ -87,7 +87,7 @@ from synthetic chain state; no signing keys. Apache-2.0.
   `daa6a1eb9c4f21770d73dd23009cf7ca9c8d951b6973bcda22447680c5edf22c`.
   The same private proof source/log and runtime binding as the
   [projection proof](../projection-golden/README.md) retain exact command/classpath/class hashes
-  and old/new fixtures under `/tmp/scarab/issue-135/golden-proof-manifest.json`.
+  and old/new fixtures in its private manifest (`golden-proof-manifest.json`, not published).
 
 - #268 (reference likelihood generation): six lines changed, again only
   `DebugEpochState` and `DebugNewEpochState` on `conway-0` .. `conway-2`. Reward start
@@ -118,8 +118,8 @@ from synthetic chain state; no signing keys. Apache-2.0.
   new fixture SHA-256: `8378752a18995e0a13029cacbe8e2458689a2a81664ca41fc87a508f610a19f5`.
   [The proof manifest](reward-likelihood-proof.json) binds all six old/new answer
   hashes, source, compiled classes, commands, classpath and capture/log hashes.
-  Raw captures and the private proof driver remain outside the checkout at
-  `/tmp/scarab/268-likelihood/golden`.
+  Raw captures and the private proof driver are private run artifacts, not
+  published.
 
   The initial coordinated full `check` failed these three state tests; that failed
   run remains recorded in the manifest. This field-level proof and the focused

@@ -30,8 +30,8 @@ exact snapshot slot-and-hash comparison, stale link completion, duplex protocol 
 At source `0be9982a`, Docker `check` passed 4,270 tests with 16 optional skips and no failures; explicit Scalafix
 also passed. Two private `relay --seconds 300` attempts passed sync, duplex, header-following and final-tip agreement,
 but failed the transaction-inclusion assertions: three transactions reached the Scala mempool, none were adopted, and
-the local submission was not included. Exact summaries are preserved under `/tmp/scarab/scarab-v02-139-142` and
-`/tmp/scarab/scarab-v02-139-142-repeat`. No public sync or DNSSEC claim is made.
+the local submission was not included. The exact summaries are private run artifacts and are not
+published. No public sync or DNSSEC claim is made.
 
 ### Atomic local-root refresh (#240)
 

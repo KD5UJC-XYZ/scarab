@@ -66,5 +66,5 @@ Completed reward accounting is independently checked by the
 - Proof log SHA-256: `6c97aacfcd5ccd2a92593f77bdb096ce91c974d51b34d17bd74719d7852b13eb`.
 
 The source, exact Docker command, classpath, source/class inventories, original/new fixtures and
-manifest remain outside Git at `/tmp/scarab/issue-135/RewardGoldenProof.scala` and
-`golden-proof-manifest.json`. The proof used frozen runtime `c8265de3` on main `0b5dde8f`.
+manifest (`RewardGoldenProof.scala`, `golden-proof-manifest.json`) are private run artifacts, not
+published. The proof used frozen runtime `c8265de3` on main `0b5dde8f`.

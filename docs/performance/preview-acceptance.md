@@ -82,8 +82,8 @@ failures. **Six** runtime responsiveness warnings were retained; the run makes n
 claim. An independent integration audit rehashed all 1,467 accepted artifacts. The accepted manifest
 has SHA-256 `489094c44e9e97793aba1371c65eb3643bb18c7bb8d3416d7ce5391fb5b9dcde`;
 the summary has SHA-256 `15a3a2f937198caa10cf8191bae74a445d4b597995b9f241f94b5a90855a8a76`.
-Private evidence, exact command, resource observations and comparison conditions are retained under
-`/tmp/scarab/issue-21`, including `k1-performance-record.json`. The owned container was removed.
+Private evidence, exact command, resource observations and comparison conditions, including
+`k1-performance-record.json`, are private run artifacts, not published. The owned container was removed.
 
 **Comparison status.** No relative speed claim against another implementation follows from this
 run. The historical Haskell Preview oracle used `--minimum-block-validation --in-mem`, three
@@ -237,4 +237,4 @@ Private profile summary SHA-256:
 `a4f061e5227835cdcd4b11842ffabe5246bb25f9ae68de8783ec43fe2dfc5c0e`;
 probe source `b93ed1804e9432c0e79b398f2409f14237fb27e344f11607b5677e422489d49d`;
 baseline source `b2d7bf0edf4898bc8ab0deeb71fbb25648c7e8963c2d321f7ec9cf6a1f53b3c1`.
-Full states and run logs remain outside Git under `/tmp/scarab/268-likelihood`.
+Full states and run logs are private run artifacts, not published.

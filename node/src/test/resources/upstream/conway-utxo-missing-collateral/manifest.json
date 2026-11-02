@@ -57,12 +57,10 @@
     "sha256": "09340f86af30522bf38d339914398e7a7c9e8a3a496302880c620ae65ff7996f"
   },
   "binary": {
-    "sha256": "614027675b08286cc6abeaf7e9098b6666cec4c58141053b19afeac6fa34ae47",
-    "privatePath": "/tmp/scarab/conformance-closeout-ledger/standalone-utxo-missing-collateral/runner"
+    "sha256": "614027675b08286cc6abeaf7e9098b6666cec4c58141053b19afeac6fa34ae47"
   },
   "observationLog": {
-    "sha256": "9d4f89aec52eb44854a2e068ea444a089e9f5d27d6831bbe0a889fde6d1d2ad0",
-    "privatePath": "/tmp/scarab/conformance-closeout-ledger/standalone-utxo-missing-collateral/native-run.log"
+    "sha256": "9d4f89aec52eb44854a2e068ea444a089e9f5d27d6831bbe0a889fde6d1d2ad0"
   },
   "nativeResult": "True\nMkRedeemers fromList [] (blake2b_256: SafeHash \"d36a2619a672494604e11bb447cbcf5231e9f2ba25c2169177edc941bd50ad6c\")\nBadInputsUTxO (NonEmptySet (fromList [TxIn (TxId {unTxId = SafeHash \"f43dcdc866c22724adad361003e17e18d6be94545b3ccd28f21d10ef2f6e9cc1\"}) (TxIx {unTxIx = 65535})])) :| []\n",
   "runtime": {
@@ -80,7 +78,6 @@
     "commit": "bce857d92",
     "command": "bash scripts/sbtw scalafmtAll \"node/testOnly *UpstreamFreshLedgerConformanceSuite -- --tests *missing*\"",
     "result": "3 executed,2 passed,1 failed: direct production UTXO accepted the native-rejected no-redeemer missing-collateral transaction. Actual.swap.toOption=None instead of the exact singleton BadInputs rejection.",
-    "privateLog": "/tmp/scarab/conformance-closeout-ledger/standalone-utxo-missing-collateral/scala-before-fix.log",
     "logSHA256": "29959b52e535b847723a95b8c22c651f0ab88bcf0746b46a5bb57dd488a7bf1c"
   },
   "nativeRuleSourceBindings": {
@@ -98,7 +95,6 @@
     "verificationCherryPick": "b77fea675",
     "command": "bash scripts/sbtw scalafmtAll \"node/testOnly *UpstreamFreshLedgerConformanceSuite\" \"node/Test/scalafix --check\"",
     "result": "53/53 production replay tests pass, including exact native-only missing-collateral predicate; formatting and node/Test/scalafix --check pass.",
-    "privateLog": "/tmp/scarab/conformance-closeout-ledger/standalone-utxo-missing-collateral/scala-after-fix.log",
     "logSHA256": "95f91c0c6b73bde7e48f0bd0080a884b05d636d69cc56c5da88c27e942dfdcc4"
   }
 }
