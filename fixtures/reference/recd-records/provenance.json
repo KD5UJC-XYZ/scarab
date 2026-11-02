@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-02",
+  "scope": "Unchanged released decoders (decodeFullAnnotator) of a transaction body or witness set of each era from Shelley to Conway at the era's decoder version (2, 3, 4, 5, 7, 9), each holding a RecD record a block can hold written as a definite and an indefinite list: the update proposal (Shelley to Babbage), the execution units of a redeemer (Alonzo to Conway, list and map forms, at and over their bounds), and Conway's GovActionId (at and over the bound of its index), VotingProcedure, ProposalProcedure, Constitution and Anchor; no ledger rule, signature or script is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "compiler": "GHC 9.10.3",
+  "referenceNode": "11.1.3 (matching embedded ledger package versions, not a bit-identical node release build)",
+  "packages": {
+    "cardano-ledger-binary": "1.9.1.0",
+    "cardano-ledger-core": "1.21.0.0",
+    "cardano-ledger-shelley": "1.19.0.1",
+    "cardano-ledger-allegra": "1.10.1.0",
+    "cardano-ledger-mary": "1.11.0.0",
+    "cardano-ledger-alonzo": "1.16.0.0",
+    "cardano-ledger-babbage": "1.14.0.0",
+    "cardano-ledger-conway": "1.23.0.0",
+    "cborg": "0.2.10.0"
+  },
+  "sourceFiles": {
+    "coders": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Coders.hs",
+      "sourceSha256": "c48ae8e39adddd6b68190f6a3ba57078508cb0cce80dab6ad0b6781e9d6a622d",
+      "matchesPin": true,
+      "note": "decodeCount (RecD cn) n reads the length around a decoder that reads nothing (482)"
+    },
+    "decoder": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+      "sourceSha256": "3ff3541b2900ceaab9bda26f633d7ea5118a49f5faab3936d036cfe9b49f94cc",
+      "matchesPin": true,
+      "note": "decodeListLikeT: Excess terms in array (690-708)"
+    },
+    "shelleyPParams": {
+      "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+      "sourceSha256": "555f282788003859fc74dd3fcc75bdd740455676986f983b10d214a45babbb4f",
+      "matchesPin": true,
+      "note": "DecCBOR (Update era): RecD with no version guard (267)"
+    },
+    "exUnits": {
+      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ExUnits.hs",
+      "sourceSha256": "618964660c3e7445367563440c4c1994b8c50f6e129d7185cd05fb87a2a9be4c",
+      "matchesPin": true,
+      "note": "DecCBOR ExUnits: RecD below decoder version 12, each unit a Word64 at most maxBound :: Int64 (195-215)"
+    },
+    "alonzoTxWits": {
+      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+      "sourceSha256": "d905a1b5f7fbc11686b1efab5dbb76f9dc8462567959340a21d2611ad72ea2dc",
+      "matchesPin": true,
+      "note": "RedeemersRaw: decodeElement and decodeMapRedeemers read the units with decCBOR (550-597)"
+    },
+    "procedures": {
+      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+      "sourceSha256": "63f843282e99a159044a8f439124f92698e0b7090884f336f783c930c9cc9c71",
+      "matchesPin": true,
+      "note": "GovActionIx a Word16 (162); GovActionId (182-190), VotingProcedure (456-466), ProposalProcedure (522-533), Constitution (985-995): RecD below decoder version 12; decodeGovAction (880-895)"
+    },
+    "baseTypes": {
+      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+      "sourceSha256": "0b86d1ecdd5abb0cf89194e7324fe1f62e58214cbd7386a1c50aeaf1c605866e",
+      "matchesPin": true,
+      "note": "DecCBOR Anchor: RecD below decoder version 12 (996-1004)"
+    }
+  },
+  "sourceArchive": {
+    "url": "https://codeload.github.com/IntersectMBO/cardano-ledger/tar.gz/f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "sha256": "b545b1eda2067c756add6d98701aacc217a380fe177f984daa1da655607a0b68",
+    "kind": "repository tarball at the pinned commit"
+  },
+  "harness": {
+    "file": "scripts/oracle/conway-decoding/Main.hs",
+    "sha256": "56e41ca86274a36f8e433b6f49ddb55b0f17720c75298c7b56e56e63f52170ce",
+    "image": "scarab-conway-decoding:local (run as scarab-t3-conway-decoding:local, whose /oracle/conway-decoding/Main.hs has this sha256), from scripts/oracle/conway-decoding/Dockerfile on scarab-plutus176-context-reference:local",
+    "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-conway-decoding:local /fixtures/recd-inputs.json",
+    "unchanged": true
+  },
+  "generatorSha256": "442ada10484ed0a5414349d76fa2d8ee9508eaa9c0daa801aa7f14ca6383a198",
+  "harnessInputSha256": "d3ed73982a392cc09d72dcc1b6661fc94a7c0ca6974c4b2567bff30e193314a6",
+  "harnessOutputSha256": "d9e89ad8e4aa26872ac43b10a6f4cbc700d493dde3e4daf40184b2a8e11e642c",
+  "casesSha256": "4ff2b114ee33c86541980579d76ed16c022c75c003de22ebcf635e272da83c0f",
+  "cases": 68,
+  "accepted": 30,
+  "refused": 38,
+  "originalBytesRetained": true
+}

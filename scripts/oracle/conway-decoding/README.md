@@ -55,3 +55,9 @@ same harness, its cases from `update_value_cases.py`: each value of a Shelley-to
 update at and over the bound of its type, and Conway's `Prices` and `ExUnits` records. Its recipe is
 the one above with `update_value_cases.py`, `/tmp/update-values-inputs.json` and
 `fixtures/reference/update-values/cases.jsonl`.
+
+The [`RecD` records corpus](../../../fixtures/reference/recd-records/README.md) (#668) runs on the
+same harness, its cases from `recd_cases.py`: each `RecD` record a block can hold (the update
+proposal, a redeemer's execution units and Conway's governance records), definite and indefinite.
+Its recipe is the one above with `recd_cases.py`, `/tmp/recd-inputs.json` and
+`fixtures/reference/recd-records/cases.jsonl`.
