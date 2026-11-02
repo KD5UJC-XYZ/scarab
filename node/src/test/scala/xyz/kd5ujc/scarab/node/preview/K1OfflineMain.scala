@@ -140,7 +140,7 @@ object K1OfflineMain extends IOApp:
             store,
             FsPath.fromNioPath(c.db.resolve("utxo/checkpoints"))
           )
-          val after = (header: Header, state: MirrorState) =>
+          val after = (header: Header, _: MirrorState, state: MirrorState) =>
             (storage: Raise[IO, StorageError]) ?=>
               for
                 _ <- IO.delay(cache.noteEpochNonce(state.ledgerEpoch, state.protocol.epochNonce))

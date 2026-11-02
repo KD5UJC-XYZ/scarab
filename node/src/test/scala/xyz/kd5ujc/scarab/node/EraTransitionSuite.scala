@@ -782,8 +782,9 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               setup.handOver,
               setup.byronHistory,
               utxoStore = Some(store),
-              afterBlock =
-                Some((_, s) => IO.delay(cache.noteEpochNonce(s.ledgerEpoch, s.protocol.epochNonce)))
+              afterBlock = Some((_, _, s) =>
+                IO.delay(cache.noteEpochNonce(s.ledgerEpoch, s.protocol.epochNonce))
+              )
             )
             last <- blocks.indices.grouped(8).toVector.foldLeftM(setup.mirrorStart) {
               (state, batch) =>

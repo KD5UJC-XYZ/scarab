@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node
 import xyz.kd5ujc.scarab.node.log.NodeEvent
 import xyz.kd5ujc.scarab.node.read.ChainRead
 import xyz.kd5ujc.scarab.ledger.Header
+import xyz.kd5ujc.scarab.protocol.Era
 import cats.effect.{Ref, Sync}
 import cats.syntax.all.*
 import io.circe.Json
@@ -129,7 +130,10 @@ object StateDump:
 
   /** When to write a digest. */
   enum Targets:
-    /** At the first block of every `every`-th epoch (counted by epoch number). */
+    /** At the first block of every `every` -th epoch (counted by epoch number): a block that takes
+      * a Shelley-based state into a later epoch. The block that ends Byron is not one; the state it
+      * is applied to is Byron's.
+      */
     case EpochBoundaries(every: Long)
 
     /** At the first block with a slot at or after each listed slot (what `db-analyser
@@ -152,21 +156,24 @@ object StateDump:
       dir: Path,
       targets: Targets,
       store: Option[UtxoStore[F]],
-      lastEpoch: Ref[F, Option[BigInt]],
       pending: Ref[F, List[BigInt]],
       emit: NodeEvent => F[Unit],
       full: Boolean
   )(using read: ChainRead[S]):
-    def afterBlock(header: Header, s: S)(using
+    /** After the block of `header` took `before` to `s`. An epoch boundary is decided from the two
+      * states, so a block that replaces a rolled-back boundary block is a boundary as well, and the
+      * first block after a restart is one when it crosses into a new epoch.
+      */
+    def afterBlock(header: Header, before: S, s: S)(using
         cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]
     ): F[Unit] = header match
       case h: Header.Shelley =>
         val epoch = s.ledgerEpoch
         val due: F[Boolean] = targets match
           case Targets.EpochBoundaries(every) =>
-            lastEpoch
-              .getAndSet(Some(epoch))
-              .map(_.exists(_ < epoch) && epoch % every == 0)
+            Sync[F].pure(
+              before.era != Era.Byron && before.ledgerEpoch < epoch && epoch % every == 0
+            )
           case Targets.Slots(_) =>
             pending.modify { ps =>
               val (hit, rest) = ps.span(_ <= h.slot)
@@ -230,9 +237,8 @@ object StateDump:
         emit: NodeEvent => F[Unit],
         full: Boolean = false
     ): F[Dumper[F, S]] =
-      for
-        last <- Ref.of[F, Option[BigInt]](None)
-        pending <- Ref.of[F, List[BigInt]](targets match
+      Ref
+        .of[F, List[BigInt]](targets match
           case Targets.Slots(ss) => ss
           case _                 => Nil)
-      yield new Dumper[F, S](dir, targets, store, last, pending, emit, full)
+        .map(pending => new Dumper[F, S](dir, targets, store, pending, emit, full))

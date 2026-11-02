@@ -933,10 +933,10 @@ object Main extends IOApp:
           options.dumpStateFull
         )
       }
-      afterBlock = (header: Header, s: MirrorState) =>
+      afterBlock = (header: Header, before: MirrorState, s: MirrorState) =>
         (storageError: cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError]) ?=>
           IO.delay(cache.noteEpochNonce(s.ledgerEpoch, s.protocol.epochNonce)) *>
-            dumper.traverse_(_.afterBlock(header, s)) *>
+            dumper.traverse_(_.afterBlock(header, before, s)) *>
             praosConfig
               .update(c => c.copy(geometry = s.geometry(c.geometry)))
               .whenA(s.consensus.byron.firstShelleyEpoch.isDefined) *>
