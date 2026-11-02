@@ -5,9 +5,9 @@ Status: Current. Evidence for [#668](https://github.com/KD5UJC-XYZ/scarab/issues
 Below decoder version 12 the reference decodes a record built with `RecD` through
 `decodeCount (RecD cn) n = decodeRecordNamed "RecD" (const n) (pure (n, cn))`
 (`libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Coders.hs:482`, cardano-ledger
-`f649f9751074d2ab3de033fc3912f29c9862c1f5`). The inner decoder reads nothing, so an indefinite list
-meets the check for its break before its first field and fails with "Excess terms in array"
-(`decodeListLikeT`, `Decoding/Decoder.hs:690-708`): such a record is a definite list only. Each
+`f649f9751074d2ab3de033fc3912f29c9862c1f5`). The inner decoder reads nothing, so a non-empty
+indefinite list meets the check for its break before its first field and fails with "Excess terms in
+array" (`decodeListLikeT`, `Decoding/Decoder.hs:690-708`). Each
 instance below reads `RecD` under `ifDecoderVersionAtLeast (natVersion @12)`, or with no guard, so
 one decoder version per era is every version that reads these records from a block.
 
@@ -52,5 +52,11 @@ python3 scripts/oracle/conway-decoding/recd_cases.py --inputs /tmp/recd-inputs.j
   still reads them in either form ([#668](https://github.com/KD5UJC-XYZ/scarab/issues/668)).
 - The protocol-parameter `Prices` and `ExUnits` are in the
   [update-values corpus](../update-values/README.md).
+- An empty indefinite list `9f ff` passes the reference's check for the break, and the record's
+  fields are then read from the items after it, so the reference accepts such a record when they
+  follow ([#687](https://github.com/KD5UJC-XYZ/scarab/issues/687)); every indefinite list here holds
+  the fields.
+- A Shelley-to-Mary transaction envelope (`RecD ShelleyTx`) is not in a block; it is
+  [#688](https://github.com/KD5UJC-XYZ/scarab/issues/688).
 - A record held in a stored ledger state is not read by these decoders: the governance state has
   its own codec.

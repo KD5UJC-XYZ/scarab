@@ -35,6 +35,9 @@ class RecdRecordsReferenceSuite extends FunSuite:
       Set(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway)
     )
     assertEquals(rows.map(_.name).distinct.size, rows.size)
+    for era <- rows.map(_.era).distinct do
+      assert(rows.exists(r => r.era == era && r.accepted), s"no accepted $era case")
+      assert(rows.exists(r => r.era == era && !r.accepted), s"no refused $era case")
     for row <- rows do
       assertEquals(row.accepted, row.expect.isEmpty, row.name)
       assertEquals(row.accepted, row.rule.isEmpty, row.name)

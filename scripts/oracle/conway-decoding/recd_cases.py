@@ -5,9 +5,10 @@
 Below decoder version 12 the reference decodes a record built with `RecD` through
 `decodeCount (RecD cn) n = decodeRecordNamed "RecD" (const n) (pure (n, cn))`
 (`libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Coders.hs:482`, cardano-ledger
-f649f975). The inner decoder reads nothing, so an indefinite list meets the check for its break
-before its first field and fails with "Excess terms in array" (`decodeListLikeT`,
-`Decoding/Decoder.hs:690-708`): such a record is a definite list only. `RecD` has no version guard
+f649f975). The inner decoder reads nothing, so a non-empty indefinite list meets the check for its
+break before its first field and fails with "Excess terms in array" (`decodeListLikeT`,
+`Decoding/Decoder.hs:690-708`). An empty indefinite list passes that check and the fields are read
+from the items after its break (#687); every indefinite list here holds the record's fields. `RecD` has no version guard
 of its own; each instance below takes it under `ifDecoderVersionAtLeast (natVersion @12)`, or with
 no guard at all, so one decoder version per era (Shelley 2 to Conway 9) is every version that reads
 these records from a block.
@@ -151,7 +152,7 @@ def certs(*items):
     return {4: c.array(list(items))}
 
 
-# The previous action of each action that names one (`decodeGovAction`, `Procedures.hs:880-895`).
+# The previous action of each action that names one (`Summands "GovAction"`, `Procedures.hs:880-895`).
 def previous(prev):
     return {
         "parameter change": c.array([c.uint(0), prev, c.cmap([(c.uint(0), c.uint(44))]), c.NULL]),

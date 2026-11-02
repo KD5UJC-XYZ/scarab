@@ -72,7 +72,7 @@
     "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-conway-decoding:local /fixtures/recd-inputs.json",
     "unchanged": true
   },
-  "generatorSha256": "442ada10484ed0a5414349d76fa2d8ee9508eaa9c0daa801aa7f14ca6383a198",
+  "generatorSha256": "fe95c4b1e3ec21b36455e66527178abd5c90d647b90d05cc2181cd0b2d344f96",
   "harnessInputSha256": "d3ed73982a392cc09d72dcc1b6661fc94a7c0ca6974c4b2567bff30e193314a6",
   "harnessOutputSha256": "d9e89ad8e4aa26872ac43b10a6f4cbc700d493dde3e4daf40184b2a8e11e642c",
   "casesSha256": "4ff2b114ee33c86541980579d76ed16c022c75c003de22ebcf635e272da83c0f",

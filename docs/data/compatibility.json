@@ -991,7 +991,9 @@
       },
       "limitations": {
         "issues": [
-          668
+          668,
+          687,
+          688
         ]
       },
       "page": "docs/compatibility/ledger-recd-records.md"
