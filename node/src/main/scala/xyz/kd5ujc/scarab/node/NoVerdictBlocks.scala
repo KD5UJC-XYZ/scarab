@@ -49,18 +49,23 @@ final class NoVerdictBlocks[F[_]: Async] private (
   def pruneBefore(immutableSlot: BigInt): F[Unit] =
     state.update(_.pruned(immutableSlot))
 
-  /** The block a reselection at `now` may judge again: the one due first, if any. */
-  def release(now: FiniteDuration): F[Option[Bytes]] = state.get.map(_.due(now))
-
-  /** The blocks selection excludes at `now`: all of them but `released` while it is still due. */
-  def excluded(now: FiniteDuration, released: Option[Bytes]): F[Set[Bytes]] =
-    state.get.map(_.excluded(now, released))
-
-  /** A released block that the reselection did not reach (no preferred candidate goes through it):
-    * not an attempt, so its count stays; it is due again after its current delay from now.
+  /** What a reselection at `now` may judge again: the block due first, with the withheld blocks of
+    * its chain in the processed forest (`parent` of a block, when the forest holds it).
     */
-  def unreached(hash: Bytes, released: FiniteDuration): F[Unit] =
-    F.monotonic.flatMap(end => state.update(_.deferred(hash, released, end)))
+  def release(now: FiniteDuration, parent: Bytes => Option[Bytes]): F[Option[Released]] =
+    state.get.map(_.released(now, parent))
+
+  /** The blocks selection excludes: all of them but those `released` that no attempt changed since.
+    */
+  def excluded(released: Option[Released]): F[Set[Bytes]] =
+    state.get.map(_.excluded(released))
+
+  /** The block due first of `released`, if the reselection did not reach it (no preferred candidate
+    * goes through it): not an attempt, so its count stays; it is due again after its current delay
+    * from now.
+    */
+  def unreached(released: Released): F[Unit] =
+    F.monotonic.flatMap(end => state.update(_.deferred(released, end)))
 
   /** Return once a block is due, waking when the set changes. */
   def awaitDue: F[Unit] =
@@ -104,6 +109,13 @@ object NoVerdictBlocks:
     case At(next: FiniteDuration)
 
   final case class Withheld(slot: BigInt, cause: BlockNoVerdict, attempts: Int, schedule: Schedule)
+
+  /** The blocks one reselection may judge again, as they were when released: `due`, the one due
+    * first, and the withheld blocks of its chain. Without these, `due` alone may not be reachable
+    * (a withheld block before it) or may lie only on a candidate that is not preferred (a withheld
+    * block after it). An entry an attempt has changed since is excluded again.
+    */
+  final case class Released(due: Bytes, entries: Map[Bytes, Withheld])
 
   /** One withheld block as a stall report names it. */
   final case class Report(
@@ -156,14 +168,6 @@ object NoVerdictBlocks:
       val kept = byHash.filter((_, withheld) => withheld.slot >= immutableSlot)
       if kept.size == byHash.size then this else changed(kept)
 
-    /** Whether `hash` is due at `now`. */
-    private def dueAt(hash: Bytes, now: FiniteDuration): Boolean =
-      byHash
-        .get(hash)
-        .exists(_.schedule match
-          case Schedule.At(next) => next <= now
-          case Schedule.Once     => false)
-
     /** The earliest next attempt of any block judged again. */
     def nextAt: Option[FiniteDuration] =
       byHash.valuesIterator.collect { case Withheld(_, _, _, Schedule.At(next)) => next }.minOption
@@ -177,22 +181,49 @@ object NoVerdictBlocks:
         .minOption
         .map(_._3)
 
-    def excluded(now: FiniteDuration, released: Option[Bytes]): Set[Bytes] =
-      released.filter(dueAt(_, now)).fold(byHash.keySet)(byHash.keySet - _)
+    /** The block due first at `now`, with the withheld blocks before and after it on its chain. */
+    def released(now: FiniteDuration, parent: Bytes => Option[Bytes]): Option[Released] =
+      due(now).map { first =>
+        val before = ancestors(first, parent)
+        Released(
+          first,
+          byHash.filter((hash, _) =>
+            hash == first || before.contains(hash) || ancestors(hash, parent).contains(first)
+          )
+        )
+      }
 
-    /** `hash`, released at `released`, was not reached: when its schedule is still the one it was
-      * released on (no attempt recorded since), it is due again after its current delay from `end`.
+    def excluded(released: Option[Released]): Set[Bytes] =
+      released.fold(byHash.keySet)(r =>
+        byHash.keySet.filterNot(hash => r.entries.get(hash).exists(byHash.get(hash).contains))
+      )
+
+    /** The due block of `released` was not reached: when no attempt changed it since, it is due
+      * again after its current delay from `end`.
       */
-    def deferred(hash: Bytes, released: FiniteDuration, end: FiniteDuration): Entries =
-      byHash.get(hash) match
-        case Some(withheld @ Withheld(_, _, attempts, Schedule.At(next))) if next <= released =>
+    def deferred(released: Released, end: FiniteDuration): Entries =
+      (byHash.get(released.due), released.entries.get(released.due)) match
+        case (Some(current @ Withheld(_, _, attempts, Schedule.At(_))), Some(snapshot))
+            if current == snapshot =>
           changed(
-            byHash.updated(hash, withheld.copy(schedule = Schedule.At(end + delay(attempts))))
+            byHash.updated(
+              released.due,
+              current.copy(schedule = Schedule.At(end + delay(attempts)))
+            )
           )
         case _ => this
 
   object Entries:
     val empty: Entries = Entries(Map.empty, 0L)
+
+  /** The blocks before `hash` in the forest `parent` describes; a cycle ends the walk. */
+  private def ancestors(hash: Bytes, parent: Bytes => Option[Bytes]): Set[Bytes] =
+    @scala.annotation.tailrec
+    def walk(at: Bytes, seen: Set[Bytes]): Set[Bytes] =
+      parent(at) match
+        case Some(up) if !seen.contains(up) => walk(up, seen + up)
+        case _                              => seen
+    walk(hash, Set.empty)
 
   def create[F[_]: Async]: F[NoVerdictBlocks[F]] =
     SignallingRef.of[F, Entries](Entries.empty).map(new NoVerdictBlocks(_))

@@ -91,33 +91,58 @@ class NoVerdictBlocksSuite extends FunSuite:
     assertEquals(third.nextAt, None)
   }
 
+  /** No forest: every block stands alone. */
+  private val alone: Bytes => Option[Bytes] = _ => None
+
   test("one due block is released at a time, the one due first; the rest stay excluded") {
     val entries = (1 to 5).foldLeft(Entries.empty)((e, n) =>
       e.recorded(hash(n), BigInt(100 - n), passing, (10 - n).seconds)._1
     )
     // all due at 20 s; hash(5) is due first (at 6 s)
-    assertEquals(entries.due(20.seconds), Some(hash(5)))
-    assertEquals(entries.excluded(20.seconds, Some(hash(5))), (1 to 4).map(hash).toSet)
+    val released = entries.released(20.seconds, alone)
+    assertEquals(released.map(_.due), Some(hash(5)))
+    assertEquals(released.map(_.entries.keySet), Some(Set(hash(5))))
+    assertEquals(entries.excluded(released), (1 to 4).map(hash).toSet)
     // nothing is due before the first next attempt, and nothing is released then
-    assertEquals(entries.due(5.seconds), None)
-    assertEquals(entries.excluded(5.seconds, Some(hash(5))), (1 to 5).map(hash).toSet)
-    // once judged again without a verdict, the released block is excluded at the same time
+    assertEquals(entries.released(5.seconds, alone), None)
+    assertEquals(entries.excluded(None), (1 to 5).map(hash).toSet)
+    // once judged again without a verdict, the released block is excluded again
     val (after, _) = entries.recorded(hash(5), BigInt(95), passing, 20.seconds)
-    assertEquals(after.excluded(20.seconds, Some(hash(5))), (1 to 5).map(hash).toSet)
-    assertEquals(after.due(20.seconds), Some(hash(4)))
+    assertEquals(after.excluded(released), (1 to 5).map(hash).toSet)
+    assertEquals(after.released(20.seconds, alone).map(_.due), Some(hash(4)))
+  }
+
+  test("a released block brings the withheld blocks of its chain, before and after it") {
+    // a chain 1 <- 2 <- 3 <- 4 and a branch 2 <- 5; 2 and 4 are withheld, 6 on another chain
+    val parents =
+      Map(hash(2) -> hash(1), hash(3) -> hash(2), hash(4) -> hash(3), hash(5) -> hash(2))
+    val entries = List(4 -> 0, 2 -> 5, 6 -> 7).foldLeft(Entries.empty) { case (e, (n, at)) =>
+      e.recorded(hash(n), BigInt(n), passing, at.seconds)._1
+    }
+    // 4 is due first, and needs 2 before it
+    val fromAfter = entries.released(2.seconds, parents.get)
+    assertEquals(fromAfter.map(_.due), Some(hash(4)))
+    assertEquals(fromAfter.map(_.entries.keySet), Some(Set(hash(4), hash(2))))
+    assertEquals(entries.excluded(fromAfter), Set(hash(6)))
+    // 2 is due first, and its candidate is preferred only with 4 after it
+    val early = entries.recorded(hash(4), BigInt(4), passing, 10.seconds)._1
+    val fromBefore = early.released(7.seconds, parents.get)
+    assertEquals(fromBefore.map(_.due), Some(hash(2)))
+    assertEquals(fromBefore.map(_.entries.keySet), Some(Set(hash(2), hash(4))))
   }
 
   test("a released block not reached waits its delay again, uncounted; an attempted one is kept") {
     val (entries, _) = Entries.empty.recorded(hash(1), BigInt(5), passing, 0.seconds)
-    val deferred = entries.deferred(hash(1), 2.seconds, 3.seconds)
-    assertEquals(deferred.byHash.get(hash(1)).map(_.attempts), Some(1))
-    assertEquals(deferred.byHash.get(hash(1)).map(_.schedule), Some(Schedule.At(4.seconds)))
-    val (attempted, _) = entries.recorded(hash(1), BigInt(5), passing, 2.seconds)
-    assertEquals(attempted.deferred(hash(1), 2.seconds, 3.seconds), attempted)
-    assertEquals(
-      entries.removed(List(hash(1))).deferred(hash(1), 2.seconds, 3.seconds).byHash,
-      Map.empty
-    )
+    val released = entries.released(2.seconds, alone)
+    assertEquals(released.map(_.due), Some(hash(1)))
+    released.foreach { r =>
+      val deferred = entries.deferred(r, 3.seconds)
+      assertEquals(deferred.byHash.get(hash(1)).map(_.attempts), Some(1))
+      assertEquals(deferred.byHash.get(hash(1)).map(_.schedule), Some(Schedule.At(4.seconds)))
+      val (attempted, _) = entries.recorded(hash(1), BigInt(5), passing, 2.seconds)
+      assertEquals(attempted.deferred(r, 3.seconds), attempted)
+      assertEquals(entries.removed(List(hash(1))).deferred(r, 3.seconds).byHash, Map.empty)
+    }
   }
 
   test("a verdict and pruning at the immutable cutoff end a schedule") {

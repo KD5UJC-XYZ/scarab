@@ -973,7 +973,9 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
 
   // a block judged again and valid has its verdict even when its candidate is not adopted: two
   // blocks withheld one after the other on one fork would otherwise each cut the other's chain
-  test("two blocks of one fork withheld in turn: both clear and the fork is adopted") {
+  test(
+    "two blocks of one fork withheld in turn, the first again: both clear, the fork is adopted"
+  ) {
     for
       forks <- ForgedChain.sameIssuerForks(5000 until 5060, 5060 until 5120)
       left <- checked(forks._1, 4)
@@ -986,7 +988,9 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
           beforeRule = judged.record,
           verdict = h =>
             IO.monotonic.map(at =>
-              if h.hash == first.hash && at < 5.seconds then Verdict.Unavailable(outOfMemory)
+              // the first fails until 5 s, and again from 8 s to 9 s, when the second is retried
+              if h.hash == first.hash && (at < 5.seconds || (at >= 8.seconds && at < 9.seconds))
+              then Verdict.Unavailable(outOfMemory)
               else if h.hash == second.hash && at < 8.seconds then Verdict.Unavailable(outOfMemory)
               else Verdict.Valid
             ),
@@ -1005,8 +1009,10 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
               withheld <- n.pool.noVerdictBlocks.hashes
               known <- n.pool.invalidBlocks.snapshot
               _ <- IO {
-                assertEquals(firstAttempts.take(4), Vector(0, 1, 3, 7).map(_.seconds))
-                assertEquals(secondAttempts, Vector(7, 8).map(_.seconds))
+                // at 8 s the second is released and its chain fails at the first; at 9 s the first
+                // is due again and brings the second, after it, so the whole fork is judged
+                assertEquals(firstAttempts, Vector(0, 1, 3, 7, 8, 9).map(_.seconds))
+                assertEquals(secondAttempts, Vector(7, 9).map(_.seconds))
                 assertEquals(tip, right.last.header.point)
                 assertEquals(withheld, Set.empty[Bytes])
                 assertEquals(known.entries, Map.empty)

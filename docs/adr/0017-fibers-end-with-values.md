@@ -533,8 +533,11 @@ the reference's recovery; the reference has no retry to compare its timing with.
 - **Trigger and bounds.** A fiber of the selection worker (`BlockSelection.run`, joined by its owner) waits for the
   first due block and queues a reselection, which runs under the same lock as admissions, behind those already
   queued; it queues the next only when that one is done. Each reselection releases at most one due block, the one
-  due first, so at most one retry is in flight in the node whatever the number of blocks. `selectLocked` reads the
-  time once, so its end does not depend on the clock. A released block that no preferred candidate reaches is not
+  due first, with the withheld blocks before and after it on its chain in the processed forest (without them the
+  due block may be unreachable, or lie only on a candidate that is not preferred, and two such blocks would hold
+  each other withheld), so at most one retry is in flight in the node whatever the number of blocks. A released
+  block an attempt changes is excluded again for the rest of that selection, and `selectLocked` reads the time
+  once, so its end does not depend on the clock. A released block that no preferred candidate reaches is not
   attempted: it waits its current delay again, uncounted. A retry also validates again the valid prefix before the
   block (#467).
 - **Observability.** `Chain.BlockNoVerdict` carries the attempt and the wait before the next one;
@@ -545,5 +548,5 @@ the reference's recovery; the reference has no retry to compare its timing with.
 Tests: `BlockSelectionWorkerSuite` under a simulated clock (a passing cause that clears is adopted within the cap,
 a deterministic cause is judged once, re-delivery and a reconnect move nothing, a competing chain is adopted at
 once and behind no more than the retry in flight, a slow attempt's successor is timed from its end, two blocks
-withheld in turn on one fork both clear, many withheld blocks each keep their schedule, a refusal on a retry blames nobody, pruning ends a schedule,
+withheld in turn on one fork, the first twice, both clear, many withheld blocks each keep their schedule, a refusal on a retry blames nobody, pruning ends a schedule,
 the stall report names the block) and `NoVerdictBlocksSuite`.

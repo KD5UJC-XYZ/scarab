@@ -65,18 +65,21 @@ private[node] final class BlockSelection[F[_]: Async] private (
       phase: Phase = Phase.Admission
   )(using Raise[F, NodeError]): F[Unit] =
     for
-      // The time is read once: a block judged again and still without a verdict is due no sooner
-      // than a second after it, so it is excluded for the rest of this selection, whose end does
-      // not depend on the clock (issue 693).
+      // The time is read once, for the release: a released block an attempt has changed is
+      // excluded for the rest of this selection, so its end does not depend on the clock (#693).
       now <- F.monotonic
-      // only a reselection judges a withheld block again, one at a time, never an admission: a
-      // delivery cannot bring an attempt forward, and a refusal on it blames no session
-      released <- adding.fold(pool.noVerdictBlocks.release(now))(_ => F.pure(None))
       current <- application.local
       bodies <- pool.processedSnapshot
+      // only a reselection judges a withheld block again, the one due first with those of its
+      // chain, never an admission: a delivery cannot bring an attempt forward, and a refusal on it
+      // blames no session
+      released <- adding.fold(
+        pool.noVerdictBlocks
+          .release(now, hash => bodies.get(hash).flatMap(_.delivered.header.prevHash))
+      )(_ => F.pure(None))
       known <- pool.invalidBlocks.snapshot
       // a block the node has no verdict on is not judged again before its time (issues 567, 693)
-      withheld <- pool.noVerdictBlocks.excluded(now, released)
+      withheld <- pool.noVerdictBlocks.excluded(released)
       original <- AvailableBlocks
         .candidates(
           if phase == Phase.Startup then current.copy(blocks = Vector.empty) else current,
@@ -96,7 +99,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
           before <- pool.invalidBlocks.snapshot
           // ChainSel.hs:1145–1186 truncates and reinserts the original candidate pool. An unrelated
           // branch cannot become attributed to this adding client during an invalid-prefix retry.
-          excluded <- pool.noVerdictBlocks.excluded(now, released)
+          excluded <- pool.noVerdictBlocks.excluded(released)
           truncated = original.map(candidate =>
             candidate.copy(headers =
               candidate.headers.takeWhile(h =>
@@ -115,14 +118,14 @@ private[node] final class BlockSelection[F[_]: Async] private (
             )
           )
           after <- pool.invalidBlocks.snapshot
-          withheldAfter <- pool.noVerdictBlocks.excluded(now, released)
+          withheldAfter <- pool.noVerdictBlocks.excluded(released)
         // select again when a block was refused, or withheld for want of a verdict
         yield
           if after.revision != before.revision || withheldAfter != excluded then Left(())
           else Right(())
       }
       // a released block no preferred candidate reached waits its delay again, uncounted
-      _ <- released.traverse_(pool.noVerdictBlocks.unreached(_, now))
+      _ <- released.traverse_(pool.noVerdictBlocks.unreached)
     yield ()
 
   private def consume(using Raise[F, NodeError]): F[Unit] =
