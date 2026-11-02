@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Node, TreeFold, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, TreeFold, Value}
 import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 
 /** An original-byte view of auxiliary scripts, never added to the transaction's script witnesses.
@@ -130,11 +130,13 @@ private[ledger] object AuxiliaryScripts:
   def read(bytes: Bytes, protocol: BigInt)(using
       ByteStrings
   ): Either[LedgerDecodeError, Vector[Plutus]] =
-    CborRead
-      .decode(bytes)
-      .flatMap(node =>
-        if protocol < 5 then historical(node, protocol) else alonzoOn(node, protocol)
-      )
+    DetachedRecords.read(
+      bytes,
+      Cbor.Limits(),
+      DetachedRecords.Shapes.auxiliaryDataAt(protocol)
+    )(LedgerDecodeError.Syntax(_))(node =>
+      if protocol < 5 then historical(node, protocol) else alonzoOn(node, protocol)
+    )
 
   /** From Alonzo (decoder version 5) the token type picks the form (`decodeTxAuxDataByTokenType`,
     * Alonzo/TxAuxData.hs:302-312 at f649f975): a map is metadata; a list, definite or not, is the

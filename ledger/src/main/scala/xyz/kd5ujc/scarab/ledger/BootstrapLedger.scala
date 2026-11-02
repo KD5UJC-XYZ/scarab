@@ -53,9 +53,9 @@ object ParamUpdate:
     * `Core/PParams.hs:257-293`; `applyField`, `Coders.hs:562-570`): entries in order, the key a
     * `Word`, a key read before refused (`duplicateKey`), a key that is not one of the era's update
     * keys refused (`invalidKey`), and each value read at the type of its field, the first bad one
-    * failing the update. The original bytes of each value are kept: they are what a proposal is
-    * stored by, and [[ProtocolParams.update]] reads them again when the update is applied. The
-    * quorum vote compares the values ([[winners]]).
+    * failing the update. The original bytes of each value are kept ([[CborRead.kept]]): they are
+    * what a proposal is stored by, and [[ProtocolParams.update]] reads them again when the update
+    * is applied. The quorum vote compares the values ([[winners]]).
     */
   def read(
       fields: Vector[(Node, Node)],
@@ -75,7 +75,7 @@ object ParamUpdate:
             .when(index.isValidInt && rules.keys.keys.contains(index.toInt))(index.toInt)
             .toRight(LedgerDecodeError.UnknownKey(DecodeField.ParameterUpdate, index))
           _ <- value(key, v, rules, costModels)
-        yield acc.updated(key, v.original)
+        yield acc.updated(key, CborRead.kept(v))
       }
       .map(ParamUpdate(_))
 

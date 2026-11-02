@@ -8,11 +8,11 @@ import cats.Id
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.plutus.{ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView}
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.ledger.{Block, EpochGeometry, PosixClock}
+import xyz.kd5ujc.scarab.ledger.{Block, DetachedRecords, EpochGeometry, PosixClock}
 import xyz.kd5ujc.scarab.ledger.{
   Credential,
   LedgerFailure,
@@ -542,13 +542,18 @@ object MempoolState:
 
   /** [[parseParts]] with the decoders' own exceptions not yet caught. */
   private def decodeParts(raw: Bytes): Either[Rejection, Parsed] =
+    // a transaction holding a `RecD` record written as an empty indefinite list is read as the
+    // reference reads it, its parts spanning the fields after the list (`DetachedRecords`)
+    DetachedRecords.read(raw, limits, DetachedRecords.Shapes.transaction(Era.Conway))(e =>
+      Rejection.Malformed(TransactionDecodeProblem.Syntax(e))
+    )(envelope)
+
+  /** The parts of the transaction `root`, and the transaction they make. */
+  private def envelope(root: Node): Either[Rejection, Parsed] =
     def malformed[A](detail: TransactionDecodeProblem): Either[Rejection, A] = Left(
       Rejection.Malformed(detail)
     )
     for
-      root <- Cbor
-        .decode(raw, limits)
-        .leftMap(e => Rejection.Malformed(TransactionDecodeProblem.Syntax(e)))
       parts <- root.value match
         case Value.Arr(xs) if xs.size == 4 => Right(xs)
         case _ => malformed(TransactionDecodeProblem.Envelope(root.value))

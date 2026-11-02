@@ -34,6 +34,11 @@ enum LedgerDecodeError extends DomainError:
   case Zero(site: DecodeSite)
   case IndefiniteLength(site: DecodeSite)
 
+  /** A detached record ([[xyz.kd5ujc.scarab.codec.Node.isDetached]]) where a list that is not a
+    * `RecD` record is read ([[CborRead.array]]).
+    */
+  case DetachedList(site: DecodeSite)
+
   /** The relays of a pool registration, read with the body (`PoolRelays.fromBody`). */
   case PoolRelay(cause: PoolRelayError)
 

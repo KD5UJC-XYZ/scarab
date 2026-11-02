@@ -134,7 +134,7 @@ object UtxoCodecs:
       outer.result
     for
       _ <- o.scriptRef
-      root <- Cbor.decode(o.raw, limits).toOption
+      root <- TxOut.node(o.raw).toOption
       field <- root.value match
         case CborValue.Map(kvs) =>
           kvs.collectFirst { case (k, v) if k.value == CborValue.UInt(BigInt(3)) => v }
