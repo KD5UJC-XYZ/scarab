@@ -5,7 +5,7 @@ import io.circe.{Decoder, parser}
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{TxIn, TxOut}
+import xyz.kd5ujc.scarab.ledger.{ByteStrings, TxIn, TxOut}
 import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
 
 /** The UTxO answer of the node-to-client queries in every Shelley-based era, against the reference
@@ -51,8 +51,11 @@ class UtxoAnswersReferenceSuite extends FunSuite:
     row.entries.map { (i, o) =>
       val input =
         UtxoCodecs.txIn.decodeBytes(bytes(i)).fold(e => fail(s"${row.name}: $e"), identity)
+      // the reader of the stores, which reads a value written as a detached record (#700)
       val output =
-        UtxoCodecs.txOut.decodeBytes(bytes(o)).fold(e => fail(s"${row.name}: $e"), identity)
+        TxOut
+          .fromBytes(bytes(o))(using ByteStrings.Chunked)
+          .fold(e => fail(s"${row.name}: $e"), identity)
       input -> output
     }.toMap
 
@@ -60,7 +63,7 @@ class UtxoAnswersReferenceSuite extends FunSuite:
     eras.getOrElse(row.era, fail(s"${row.name}: unknown era ${row.era}"))
 
   test("the corpus has answers and refusals in every Shelley-based era") {
-    assertEquals(rows.size, 110)
+    assertEquals(rows.size, 127)
     assertEquals(rows.map(_.era).distinct.toSet, eras.keySet)
     eras.keys.foreach { e =>
       assert(rows.exists(r => r.era == e && r.answer.isDefined), e)
@@ -83,9 +86,25 @@ class UtxoAnswersReferenceSuite extends FunSuite:
   }
 
   test("an output the era's reference decoder refuses is not written in that era") {
-    rows.filter(_.refused.isDefined).foreach { row =>
+    rows.filter(r => r.refused.isDefined && !r.name.contains("detached")).foreach { row =>
       assert(UtxoCodecs.utxoIn(era(row)).write(entries(row)).isLeft, row.name)
     }
+  }
+
+  test("a value written as a detached record is written as decoded, never as it came") {
+    val detached = rows.filter(r => r.name.contains("detached") && r.answer.isDefined)
+    assertEquals(detached.size, 13)
+    detached.foreach { row =>
+      val written = UtxoCodecs.utxoIn(era(row)).write(entries(row)).map(_.hex)
+      assertEquals(written, Right(row.answer.getOrElse("")), row.name)
+      row.entries.foreach((_, o) => assert(!written.exists(_.contains(o)), row.name))
+    }
+    // before Mary a value is a coin, and the reference refuses the list (the stored reader takes
+    // the forms of every era, so these are the eras' own refusals)
+    assertEquals(
+      rows.filter(r => r.name.contains("detached") && r.refused.isDefined).map(_.era).toSet,
+      Set("shelley", "allegra")
+    )
   }
 
   test("the Conway codec is the Conway era's") {
