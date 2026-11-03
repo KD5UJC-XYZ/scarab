@@ -21,11 +21,27 @@ class MapHeadsReferenceSuite extends FunSuite:
   private val rows: Vector[Case] =
     ReferenceCorpus.load(Corpus.MapHeads).fold(e => fail(e.toString), identity)
 
-  /** Scarab's verdict and, for an accepted encoding, the original bytes it kept. */
+  /** Scarab's verdict and, for an accepted encoding, the original bytes it kept: of a whole
+    * transaction, its body's and its auxiliary data's.
+    */
   private def scarab(row: Case): Either[LedgerDecodeError, Bytes] = row.kind match
-    case Kind.Body        => TxBody.decode(row.raw, row.era).map(_.raw)
-    case Kind.Witnesses   => Witnesses.decode(row.raw, row.era).map(_.raw.getOrElse(Bytes.empty))
-    case Kind.Transaction => Tx.fromEnvelope(row.raw, row.era).map(_ => row.raw)
+    case Kind.Body      => TxBody.decode(row.raw, row.era).map(_.raw)
+    case Kind.Witnesses => Witnesses.decode(row.raw, row.era).map(_.raw.getOrElse(Bytes.empty))
+    case Kind.Transaction =>
+      Tx.fromEnvelope(row.raw, row.era)
+        .map(tx => tx.body.raw ++ tx.auxiliary.getOrElse(Bytes.empty))
+
+  /** What an accepted encoding keeps as it came: the whole item, or of a whole transaction the
+    * original bytes of its first and last items.
+    */
+  private def kept(row: Case): Bytes = row.kind match
+    case Kind.Transaction =>
+      CborRead
+        .decode(row.raw)
+        .flatMap(CborRead.array(_, DecodeField.Transaction))
+        .map(xs => xs.head.original ++ xs.last.original)
+        .fold(e => fail(e.toString), identity)
+    case _ => row.raw
 
   test("the corpus holds every width of head in each place, refused and accepted") {
     assertEquals(rows.map(_.name).distinct.size, rows.size)
@@ -50,7 +66,7 @@ class MapHeadsReferenceSuite extends FunSuite:
   for row <- rows do
     test(s"${row.era}: ${row.name}") {
       (row.expect, scarab(row)) match
-        case (None, Right(raw))  => assertEquals(raw, row.raw, "the original bytes are retained")
+        case (None, Right(raw))  => assertEquals(raw, kept(row), "the original bytes are retained")
         case (None, Left(e))     => fail(s"the reference accepts this encoding: $e")
         case (Some(_), Right(_)) => fail(s"the reference refuses this encoding: ${row.failure}")
         case (Some(refusal), Left(e)) =>
