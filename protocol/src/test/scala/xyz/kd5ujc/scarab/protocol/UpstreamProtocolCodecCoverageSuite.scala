@@ -8,6 +8,7 @@ import java.security.MessageDigest
 import scala.io.Source
 import xyz.kd5ujc.scarab.codec.Bytes
 
+import TxSubmission2Fixtures.given
 import ChainSync.DecodeResult
 
 private enum ChainSyncSplitCoverage:

@@ -28,7 +28,6 @@ enum ProtocolError extends DomainError:
   case EarlyBatchDoneIncompleteRequestedRange
   case ExpectedBlockingBoolean
   case ExpectedBoolean
-  case ExpectedBreakAfterTransactionMembers
   case ExpectedByronSubtagSize
   case ExpectedByronSubtagSizeHeader
   case ExpectedCandidateArray
@@ -116,7 +115,6 @@ enum ProtocolError extends DomainError:
   case TrailingBytes
   case TrailingHeaderBytes
   case TrailingKeepAliveBytes
-  case TrailingOriginalTransactionBytes
   case TrailingPayloadBytes
   case TrailingSerializedBlockBytes
   case TrailingTxSubmission2Bytes
@@ -196,19 +194,17 @@ enum ProtocolError extends DomainError:
     case EarlyBatchDoneIncompleteRequestedRange => "early BatchDone: incomplete requested range"
     case ExpectedBlockingBoolean                => "expected blocking Boolean"
     case ExpectedBoolean                        => "expected boolean"
-    case ExpectedBreakAfterTransactionMembers =>
-      "expected break after the transaction's members"
-    case ExpectedByronSubtagSize       => "expected Byron [subtag, size]"
-    case ExpectedByronSubtagSizeHeader => "expected Byron [[subtag, size], header]"
-    case ExpectedCandidateArray        => "expected candidate array"
-    case ExpectedConwayGenTx           => "expected Conway GenTx"
-    case ExpectedConwayTransactionID   => "expected Conway transaction ID"
-    case ExpectedDefiniteArray         => "expected definite array"
-    case ExpectedDefiniteByteString    => "expected definite byte string"
-    case ExpectedDefiniteMap           => "expected definite map"
-    case ExpectedDefiniteTextString    => "expected definite text string"
-    case ExpectedDefiniteVersionMap    => "expected definite version map"
-    case ExpectedEraHeader             => "expected [era, header]"
+    case ExpectedByronSubtagSize                => "expected Byron [subtag, size]"
+    case ExpectedByronSubtagSizeHeader          => "expected Byron [[subtag, size], header]"
+    case ExpectedCandidateArray                 => "expected candidate array"
+    case ExpectedConwayGenTx                    => "expected Conway GenTx"
+    case ExpectedConwayTransactionID            => "expected Conway transaction ID"
+    case ExpectedDefiniteArray                  => "expected definite array"
+    case ExpectedDefiniteByteString             => "expected definite byte string"
+    case ExpectedDefiniteMap                    => "expected definite map"
+    case ExpectedDefiniteTextString             => "expected definite text string"
+    case ExpectedDefiniteVersionMap             => "expected definite version map"
+    case ExpectedEraHeader                      => "expected [era, header]"
     case ExpectedConwayTransactionMembers =>
       "expected a Conway transaction of three members, or four with its validity flag"
     case ExpectedIndefiniteProtocolList => "expected indefinite protocol list"
@@ -288,7 +284,6 @@ enum ProtocolError extends DomainError:
     case TrailingBytes                    => "trailing bytes"
     case TrailingHeaderBytes              => "trailing header bytes"
     case TrailingKeepAliveBytes           => "trailing KeepAlive bytes"
-    case TrailingOriginalTransactionBytes => "trailing original transaction bytes"
     case TrailingPayloadBytes             => "trailing payload bytes"
     case TrailingSerializedBlockBytes     => "trailing serialized block bytes"
     case TrailingTxSubmission2Bytes       => "trailing TxSubmission2 bytes"

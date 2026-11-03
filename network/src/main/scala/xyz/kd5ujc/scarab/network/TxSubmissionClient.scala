@@ -30,6 +30,9 @@ object TxSubmissionClient:
     /** The original bytes of a transaction, if it is still held. */
     def body(id: Bytes): F[Option[Bytes]]
 
+    /** How the transactions it holds are read, which the codec checks each one it sends with. */
+    def reader: TxSubmission2.TransactionReader
+
   /** `run` ends when the peer closes the protocol or, with `finish`, once that completes and the
     * peer next asks for transactions and waits: a blocking request is the only moment this side may
     * end the protocol, with `MsgDone`. A new conversation may then start with a fresh `MsgInit`.
@@ -55,7 +58,7 @@ object TxSubmissionClient:
     TxSubmission2Runtime.client(
       channel,
       typedSource,
-      TxSubmission2.conwayCodec,
+      TxSubmission2.codec(source.reader),
       rules,
       finish,
       message => RuntimeViolation.TxSubmissionUnexpected(TxSubmission2.fromEngine(message))

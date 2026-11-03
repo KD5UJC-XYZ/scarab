@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.mempool.RelayedTransactions
 import cats.effect.{IO, Ref, Resource}
 import cats.mtl.{Ask, Handle, Stateful, Tell}
 import com.comcast.ip4s.*
@@ -108,6 +109,7 @@ class PraosHeaderValidationSuite extends FailsOnUncaught:
         def range(from: ChainSync.Point, to: ChainSync.Point) =
           fetched.update(_ + 1).as(Some(fs2.Stream.emit(c.raws(index)).covary[IO]))
       sink = new TxSubmissionServer.Sink[IO]:
+        def reader = RelayedTransactions
         def known(id: Bytes) = IO.pure(false)
         def submit(originals: Vector[Bytes])(using
             cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]

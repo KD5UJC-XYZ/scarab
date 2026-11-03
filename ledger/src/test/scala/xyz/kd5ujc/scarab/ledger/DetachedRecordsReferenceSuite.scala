@@ -161,7 +161,8 @@ object DetachedRecordsReferenceSuite:
   private def failure(c: io.circe.HCursor, what: String) =
     io.circe.DecodingFailure(s"unknown $what", c.history)
 
-  private def load: Vector[Row] =
+  /** The lines of the corpus. */
+  def load: Vector[Row] =
     val path = Path.of("fixtures/reference/recd-detached/cases.jsonl")
     Files
       .readAllLines(path)

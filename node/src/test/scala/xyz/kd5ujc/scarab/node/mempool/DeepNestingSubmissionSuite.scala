@@ -25,6 +25,7 @@ import Peers.typed
   * spends.
   */
 class DeepNestingSubmissionSuite extends CatsEffectSuite:
+  private given TxSubmission2.TransactionReader = RelayedTransactions
   private val magic = 42L
 
   private val globals = LedgerGlobals(TestLedger.Supply, 432000, Rational(1, 20), network = 0)
@@ -128,6 +129,7 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
     val id = TxSubmission2.bodyId(tx).fold(e => fail(e.message), identity)
     assertEquals(id.hex, PreprodDeepTx.Id)
     val offered = new TxSubmissionClient.Source[IO]:
+      def reader = RelayedTransactions
       private val one = TxSubmissionClient.Held(id, tx.size, 1L)
       def after(ticket: Long, max: Int) = IO.pure(Vector(one).filter(_.ticket > ticket))
       def awaitAfter(ticket: Long) = if ticket < 1 then IO.unit else IO.never

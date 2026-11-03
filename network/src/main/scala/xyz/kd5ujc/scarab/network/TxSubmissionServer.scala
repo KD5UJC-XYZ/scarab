@@ -28,6 +28,11 @@ object TxSubmissionServer:
       */
     def submit(originals: Vector[Bytes])(using Raise[F, NetworkError]): F[Unit]
 
+    /** How the transactions it takes are read: the codec refuses a reply whose transaction it
+      * cannot read, and the transaction id is the hash of the body it reads.
+      */
+    def reader: TxSubmission2.TransactionReader
+
   /** @param idsPerRequest
     *   Ids asked for per request.
     */
@@ -51,7 +56,7 @@ object TxSubmissionServer:
     TxSubmission2Runtime.server(
       channel,
       typedSink,
-      TxSubmission2.conwayCodec,
+      TxSubmission2.codec(sink.reader),
       rules,
       TxSubmission2Runtime
         .ServerSettings(

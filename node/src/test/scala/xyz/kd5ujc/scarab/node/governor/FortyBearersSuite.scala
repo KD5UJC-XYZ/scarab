@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.governor
 
+import xyz.kd5ujc.scarab.node.mempool.RelayedTransactions
 import cats.effect.{IO, Ref}
 import cats.mtl.{Handle, Stateful}
 import cats.syntax.all.*
@@ -54,6 +55,7 @@ class FortyBearersSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         }
         .rescue(e => IO.raiseError(new RuntimeException(e.message)))
       sink = new TxSubmissionServer.Sink[IO]:
+        def reader = RelayedTransactions
         def known(id: Bytes) = IO.pure(false)
         def submit(
             originals: Vector[Bytes]
