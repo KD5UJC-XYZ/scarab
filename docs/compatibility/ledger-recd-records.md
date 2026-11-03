@@ -27,4 +27,4 @@ A Babbage or Conway block header is a Praos header, whose `HeaderRaw` and `Heade
 
 ## Explicitly unchecked or unconfirmed
 
-A Leios block is read as a tree, so a detached header or record in it is refused ([#711](https://github.com/KD5UJC-XYZ/scarab/issues/711)). A node-to-client query reads its lists other than records as definite or indefinite alike, where the reference reads definite ones ([#709](https://github.com/KD5UJC-XYZ/scarab/issues/709)).
+A Leios block is read as a tree, so a detached header or record in it is refused ([#711](https://github.com/KD5UJC-XYZ/scarab/issues/711)).

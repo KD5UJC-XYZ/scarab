@@ -58,7 +58,9 @@ class NtcQuerySuite extends FunSuite:
     }
   }
 
-  test("sets are tag 258 arrays; a plain array is accepted too") {
+  test("a plain set is a tag 258 array; a ledger set may be a plain array (#709)") {
+    // GetStakeDelegDeposits reads its set with `fromCBOR`, GetFilteredDelegationsAndRewardAccounts
+    // with the ledger's decoder (`fixtures/reference/ntc-query-arguments`)
     val expected = Right(NtcQuery.IfCurrent(6, LedgerQuery.GetStakeDelegDeposits(Set(key))))
     assertEquals(
       decode(conway { w =>
@@ -70,7 +72,13 @@ class NtcQuerySuite extends FunSuite:
       decode(conway { w =>
         w.array(2).uint(22).array(1); credential(w)
       }),
-      expected
+      Left(NtcQuery.Error.ExpectedSetTag("credentials"))
+    )
+    assertEquals(
+      decode(conway { w =>
+        w.array(2).uint(10).array(1); credential(w)
+      }),
+      Right(NtcQuery.IfCurrent(6, LedgerQuery.GetFilteredDelegationsAndRewardAccounts(Set(key))))
     )
     assertEquals(
       decode(conway { w => w.array(2).uint(22).set(0) }),

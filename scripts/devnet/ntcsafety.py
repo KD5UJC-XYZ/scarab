@@ -32,6 +32,32 @@ VALID = {
     "current-era": [0, [2, [1]]],
 }
 
+# Lists a query reads definite only, and its arguments' sets (#709): `queryDecodeNodeToClient`,
+# the hard-fork combinator's block query, `decodeNS` and `decodeShelleyQuery` read `decodeListLen`
+# (ouroboros-consensus 82ecba32 `Ouroboros/Consensus/Ledger/Query.hs:483`,
+# `HardFork/Combinator/Serialisation/SerialiseNodeToClient.hs:462`, `Common.hs:422`,
+# `Shelley/Ledger/Query.hs:921`); a set of `fromCBOR` is tag 258 around a definite, strictly
+# ascending list, a set of the ledger's decoder holds no element twice. Raw bytes, so that the
+# indefinite forms are sent as written. Each must close the connection on both nodes.
+POOL_A = b"\x58\x1c" + b"\x11" * 28
+POOL_B = b"\x58\x1c" + b"\x22" * 28
+KEY_CRED = b"\x82\x00" + POOL_A
+INVALID_RAW = {
+    "indefinite-query": b"\x9f\x00\x82\x00\x82\x06\x81\x01\xff",
+    "indefinite-block-query": b"\x82\x00\x9f\x00\x82\x06\x81\x01\xff",
+    "indefinite-query-in-era": b"\x82\x00\x82\x00\x9f\x06\x81\x01\xff",
+    "indefinite-ledger-query": b"\x82\x00\x82\x00\x82\x06\x9f\x01\xff",
+    "untagged-plain-set": b"\x82\x00\x82\x00\x82\x06\x82\x11\x81" + POOL_A,
+    "descending-plain-set": b"\x82\x00\x82\x00\x82\x06\x82\x11\xd9\x01\x02\x82" + POOL_B + POOL_A,
+    "indefinite-plain-maybe": b"\x82\x00\x82\x00\x82\x06\x82\x13\x9f\xff",
+    "duplicate-ledger-set": b"\x82\x00\x82\x00\x82\x06\x82\x0a\x82" + KEY_CRED + KEY_CRED,
+}
+# Accepted by the reference with lists written indefinite where its decoders take them: a ledger
+# set and the credentials in it. Both nodes must answer alike.
+VALID_RAW = {
+    "indefinite-ledger-set": b"\x82\x00\x82\x00\x82\x06\x82\x0a\x9f\x9f\x00" + POOL_A + b"\xff\xff",
+}
+
 
 def encoded_query(era, tag, depth):
     """BlockQuery(QueryIfCurrent(era, GetCBOR^depth(query tag)))."""
@@ -107,14 +133,20 @@ def run(open_reference, open_scala):
             report["valid"][label] = same
             if not same:
                 failures.append(f"query safety: valid {label} differs from reference")
+        for label, raw in VALID_RAW.items():
+            same = query_encoded(scala, raw) == query_encoded(reference, raw)
+            report["valid"][label] = same
+            if not same:
+                failures.append(f"query safety: valid {label} differs from reference")
         plain = _single(query_encoded(reference, encoded_query(era, 0, 0)))
         deep = _single(query_encoded(scala, encoded_query(era, 0, DEPTH)))
         report["deepAnswerEqual"] = unwrap(deep, DEPTH) == plain
         if not report["deepAnswerEqual"]:
             failures.append("query safety: deep GetCBOR differs from shallow reference answer")
 
-    for label, query in INVALID.items():
-        row = {"reference": _closed(open_reference, enc(query)), "scala": _closed(open_scala, enc(query))}
+    invalid = {**{label: enc(query) for label, query in INVALID.items()}, **INVALID_RAW}
+    for label, raw in invalid.items():
+        row = {"reference": _closed(open_reference, raw), "scala": _closed(open_scala, raw)}
         report["invalid"][label] = row
         if not all(result["closed"] for result in row.values()):
             failures.append(f"query safety: invalid {label} not refused by both nodes: {row}")
