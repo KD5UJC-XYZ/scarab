@@ -361,7 +361,31 @@ class CborSuite extends munit.FunSuite:
     assertEquals(decode("7a7fffffff" + "00"), Left(Cbor.Error.StringLimitExceeded))
     assertEquals(decode("5a000fffff00"), Left(Cbor.Error.TruncatedString))
     // nested claims: each level asks for the whole remaining budget
-    assertEquals(decode("9a0001869f" * 2), Left(Cbor.Error.ItemLimitExceeded))
+    assertEquals(decode("9a000fffff" * 2), Left(Cbor.Error.ItemLimitExceeded))
+  }
+
+  test("unbounded limits bound items, chunks and strings by the input's size alone (#749)") {
+    // more items than the default's 1 MiB of input, and a byte string after 300,000 empty chunks
+    val items = 1200000
+    val list = bytes("9f" + repeat("00", items) + "ff")
+    assertEquals(
+      Cbor.decode(list, Cbor.Limits.Unbounded).map(_.value).map {
+        case Value.Arr(xs) => xs.size
+        case _             => -1
+      },
+      Right(items)
+    )
+    assertEquals(Cbor.decode(list), Left(Cbor.Error.InputLimitExceeded))
+    val chunked = bytes("5f" + repeat("40", 300000) + "4101" + "ff")
+    assertEquals(
+      Cbor.decode(chunked, Cbor.Limits.Unbounded).map(_.value),
+      Right(Value.ByteString(bytes("01")))
+    )
+    // a list that claims more items than the input holds is refused because the input ends
+    assertEquals(
+      Cbor.decode(bytes("9a7ffffffe"), Cbor.Limits.Unbounded),
+      Left(Cbor.Error.UnexpectedEnd)
+    )
   }
 
   test("regression (fuzz K3): the guard that turns a stack overflow into an error value") {

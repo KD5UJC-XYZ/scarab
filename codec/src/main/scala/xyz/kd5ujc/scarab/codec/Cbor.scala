@@ -19,7 +19,10 @@ import scala.util.boundary.{Label, break}
   * `maxInputBytes` and `maxItems` (every level is an item) bound the depth and the memory.
   */
 object Cbor:
-  /** @param allowFloats
+  /** The default bounds the input at 1 MiB and, as an item and a chunk take at least a byte,
+    * nothing else; a reader of what the reference reads takes [[Limits.Unbounded]].
+    *
+    * @param allowFloats
     *   Accept half, single and double floats (as [[Value.Float]]). Off: they are refused.
     * @param allowSimpleValues
     *   Accept undefined and unassigned simple values (as [[Value.Simple]]). Off: they are refused.
@@ -27,11 +30,24 @@ object Cbor:
   final case class Limits(
       maxInputBytes: Int = 1048576,
       maxDepth: Int = Int.MaxValue,
-      maxItems: Int = 100000,
+      maxItems: Int = 1048576,
       maxStringBytes: Int = 1048576,
       allowFloats: Boolean = false,
       allowSimpleValues: Boolean = false
   )
+
+  object Limits:
+    /** No bound but the input's own size, which is all the reference's decoders have: cborg and
+      * `cardano-ledger-binary` count no items, no string bytes and no nesting, and join the chunks
+      * of a chunked string without counting them. What bounds the input is the channel that
+      * delivered it, a mini-protocol codec's byte limit (`ProtocolSizeLimits`,
+      * `Ouroboros/Network/Protocol/Limits.hs:105-109`, ouroboros-network 2fb69829) or the
+      * multiplexer's ingress queue, and after decoding the rules (`maxBHSize`, `maxBBSize`,
+      * `maxTxSize`). An item, and a chunk of a chunked string, takes at least a byte, so the size
+      * of the input bounds the items, the string bytes and the nesting; the nesting is kept on the
+      * heap (ADR 0011). Floats and simple values stay refused (#749).
+      */
+    val Unbounded: Limits = Limits(Int.MaxValue, Int.MaxValue, Int.MaxValue, Int.MaxValue)
   private val MaxUInt = (BigInt(1) << 64) - 1
   enum Error extends DomainError:
     case InvalidLimits
