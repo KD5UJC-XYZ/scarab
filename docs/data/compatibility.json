@@ -1027,7 +1027,6 @@
       },
       "limitations": {
         "issues": [
-          709,
           711
         ]
       },
@@ -1401,7 +1400,13 @@
       "summary": "LocalTxSubmission, LocalStateQuery, LocalTxMonitor and whole-block ChainSync over a Unix socket; query coverage partial",
       "evidence": {
         "suites": [
-          "DeepQuerySuite"
+          "DeepQuerySuite",
+          "NtcQueryArgumentsSuite",
+          "NtcQueryRecordsSuite"
+        ],
+        "paths": [
+          "fixtures/reference/ntc-query-arguments/cases.jsonl",
+          "scripts/oracle/ntc-query-arguments/cases.py"
         ]
       },
       "limitations": {
