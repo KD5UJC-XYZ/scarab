@@ -31,15 +31,18 @@ class DijkstraTxDepthSuite extends FunSuite:
     )
 
   test("a native script nested deeper than the stack in the witness set") {
-    assert(decodes(tx("80", s"a10181$native", "f6")))
+    val decoded = decodes(tx("80", s"a10181$native", "f6"))
+    assert(decoded)
   }
 
   test("a native script nested deeper than the stack in a reference script") {
     val script = s"8200$native"
     val wrapped = s"d8185a${f"${script.length / 2}%08x"}$script"
-    assert(decodes(tx(s"81a300581d61${"22" * 28}010503$wrapped", "a0", "f6")))
+    val decoded = decodes(tx(s"81a300581d61${"22" * 28}010503$wrapped", "a0", "f6"))
+    assert(decoded)
   }
 
   test("metadata nested deeper than the stack") {
-    assert(decodes(tx("80", "a0", s"a101${nested("01", "81", "")}")))
+    val decoded = decodes(tx("80", "a0", s"a101${nested("01", "81", "")}"))
+    assert(decoded)
   }

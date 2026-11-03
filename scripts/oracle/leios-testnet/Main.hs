@@ -13,7 +13,7 @@ import Cardano.Binary (DecoderError (..), enforceSize)
 import qualified Cardano.Crypto.Hash as Hash
 import Cardano.Crypto.Util (SignableRepresentation (getSignableRepresentation))
 import Cardano.Ledger.Alonzo.Tx (AlonzoEraTx (isPhase2ValidTxL), IsPhase2Valid (..))
-import Cardano.Ledger.Alonzo.TxWits (AlonzoEraTxWits (datsTxWitsL), unTxDats)
+import Cardano.Ledger.Alonzo.TxWits (AlonzoEraTxWits (datsTxWitsL, rdmrsTxWitsL), unRedeemers, unTxDats)
 import Cardano.Ledger.BaseTypes (ProtVer (..), StrictMaybe (..), natVersion)
 import qualified Cardano.Ledger.Binary as Binary
 import qualified Cardano.Ledger.Binary.Plain as Plain
@@ -25,6 +25,7 @@ import Cardano.Ledger.Dijkstra.BlockBody (DijkstraEraBlockBody (..))
 import Cardano.Ledger.Dijkstra.Tx (Tx (MkDijkstraTx), decodeDijkstraTopTxInBlock)
 import Cardano.Ledger.Dijkstra.TxBody (DijkstraEraTxBody (subTransactionsTxBodyL))
 import Cardano.Ledger.Hashes (ScriptHash (..), extractHash)
+import Cardano.Ledger.Plutus.ExUnits (exUnitsMem, exUnitsSteps)
 import Cardano.Ledger.TxIn (TxId (..))
 import Cardano.Protocol.Crypto (StandardCrypto)
 import qualified Cardano.Protocol.Leios.BlockHeader as Leios
@@ -159,6 +160,15 @@ txFields t =
   [ "id" .= hexHash (extractHash (unTxId (txIdTx t)))
   , "scripts" .= map (\(ScriptHash h) -> hexHash h) (Map.keys (t ^. witsTxL . scriptTxWitsL))
   , "datums" .= map (hexHash . extractHash) (Map.keys (unTxDats (t ^. witsTxL . datsTxWitsL)))
+  , "redeemers" .=
+      [ object
+          [ "key" .= hexBytes (Binary.serialize' (natVersion @12) purpose)
+          , "data" .= hexBytes (Binary.serialize' (natVersion @12) datum)
+          , "memory" .= exUnitsMem units
+          , "steps" .= exUnitsSteps units
+          ]
+      | (purpose, (datum, units)) <- Map.toList (unRedeemers (t ^. witsTxL . rdmrsTxWitsL))
+      ]
   ]
 
 -- | A transaction of a block: its fields, its validity flag, and each of its sub-transactions'

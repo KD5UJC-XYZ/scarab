@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "measuredAt": "2026-11-03",
-  "scope": "The block and Leios header decoders of the build the public Leios testnet runs (release rc-2026w44): a block as BlockFetch carries it, [tag, block], read with the envelope of decodeDiskHfcBlock (tag 8 a ledger Block of the Leios header at Dijkstra's decoder version 12, tag 7 a Conway Block of the Praos header at 9), and a Leios header alone with decodeFullAnnotator at 12; the testnet's blocks, those blocks with each list definite, indefinite, detached (an empty indefinite list with the fields after it) or of the wrong length, the certificates in several forms, the certificate's signature of the wrong length, off the curve, outside the subgroup, not compressed and the identity, a tag-7 Conway block with a Praos header and with a Leios header, synthetic transactions with an output value in each form, and Leios headers in the forms of the header decoding oracle; for each accepted case the header hash, size, signed bytes and fields, the block body hash and size, each transaction's id and validity flag and which certificates the body holds; no rule, signature or certificate is checked; and each transaction alone as decodeDijkstraTopTxInBlock reads it at version 12 (#750): the transactions of the captured blocks of both networks, and synthetic transactions with one field changed at each decoder's boundary (each required body field missing, unknown and repeated keys, wrong types, empty collections, duplicates by value or hash, definite, indefinite, detached, tagged and chunked forms, outputs, values, datums and reference scripts, certificates with the pool voting key, votes, proposals and every Dijkstra parameter update key, sub-transactions, guards, deposits and balance intervals, witness sets with Plutus V4, redeemers and datums, auxiliary data); for each accepted transaction its id, validity flag, the keys of its witness set's script and datum maps and its sub-transactions",
+  "scope": "The block and Leios header decoders of the build the public Leios testnet runs (release rc-2026w44): a block as BlockFetch carries it, [tag, block], read with the envelope of decodeDiskHfcBlock (tag 8 a ledger Block of the Leios header at Dijkstra's decoder version 12, tag 7 a Conway Block of the Praos header at 9), and a Leios header alone with decodeFullAnnotator at 12; the testnet's blocks, those blocks with each list definite, indefinite, detached (an empty indefinite list with the fields after it) or of the wrong length, the certificates in several forms, the certificate's signature of the wrong length, off the curve, outside the subgroup, not compressed and the identity, a tag-7 Conway block with a Praos header and with a Leios header, synthetic transactions with an output value in each form, and Leios headers in the forms of the header decoding oracle; for each accepted case the header hash, size, signed bytes and fields, the block body hash and size, each transaction's id and validity flag and which certificates the body holds; no rule, signature or certificate is checked; and each transaction alone as decodeDijkstraTopTxInBlock reads it at version 12 (#750): the transactions of the captured blocks of both networks, and synthetic transactions with one field changed at each decoder's boundary (each required body field missing, unknown and repeated keys, wrong types, empty collections, duplicates by value or hash, definite, indefinite, detached, tagged and chunked forms, outputs, values, datums and reference scripts, certificates with the pool voting key, votes, proposals and every Dijkstra parameter update key, sub-transactions, guards, deposits and balance intervals, witness sets with Plutus V4, redeemers and datums, auxiliary data); for each accepted transaction its id, validity flag, the keys of its witness set's script and datum maps and its sub-transactions; decoded redeemer map entries, including duplicate purposes retaining the last value and map key ordering",
   "ledgerSourceCommit": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
   "consensusSourceCommit": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
   "reference": {
@@ -164,19 +164,19 @@
   },
   "harness": {
     "file": "scripts/oracle/leios-testnet/Main.hs",
-    "sha256": "5f771bffcb1efb61155fcb51f6d2f3b50d233504f1e63d0e283f688c09a17cec",
+    "sha256": "b4363d351231c73d27220c26a99685686443c45260e54cb90a8781e9e55dbe9f",
     "cabalProjectSha256": "1c72a46f8750acb95c9d1a2b92c45556b9b18dc3c3869d385631a0b36a104850",
-    "image": "built from scripts/oracle/leios-testnet/Dockerfile on scarab-plutus176-context-reference:local (sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef); image sha256:51057b9d6f1e806b316fb4fc68488ef51c5e1236728647d711aad772bacf733d",
-    "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-leios-testnet:local /fixtures/leios-inputs.json",
+    "image": "built from scripts/oracle/leios-testnet/Dockerfile; scarab-leios-codex750:local image sha256:69ea3a285a611fad4e0c884eef1fa330d4ff20ab629527a498ffc87ace943242",
+    "invocation": "docker run --rm --network none --read-only -v \"$ORACLE_FIXTURES\":/fixtures:ro scarab-leios-codex750:local /fixtures/inputs.json",
     "cabalFileSha256": "01abcb329759fb03ebd6f7dff237acfc8899495bf3d2001dc729a3694fa76372"
   },
-  "generatorSha256": "72418c33102271837c298a8458125077eea8f17e39fd35a89c71fe04d99129b5",
-  "harnessInputSha256": "ebb69c6fc54b6c185ed633e10a1bd6e693232e292a39577f288413d792912441",
-  "harnessOutputSha256": "cbc5c394f816780f9ca4b98494acb100f1da6eea65a62e4b3931187fd16cf3f3",
-  "casesSha256": "4e9fe72055761e49f2f45d3e70d72cb677000763c09d7e3ac77e468add499134",
-  "cases": 628,
-  "accepted": 319,
+  "generatorSha256": "b874785adb699d5de2e3349a221e0b1a2aeb31872b1abecbb97cf6bf10971708",
+  "harnessInputSha256": "328ab4e66fa3b32e933d3c4e63f3a2ad077e6de0254d2ae400604c0ef486a443",
+  "harnessOutputSha256": "5c7f200654526250186323601ec2c223462e68ca7e4066024e3c3142959015c8",
+  "casesSha256": "d6aab8d314c7d5af076da696b56fd6bdd0977d259177634399704b258e74ac4c",
+  "cases": 630,
+  "accepted": 321,
   "refused": 309,
   "originalBytesRetained": true,
-  "txGeneratorSha256": "becc0575afa5da96d76052bdf9625a36077cf405fe1b99e22e658ec7abc45e65"
+  "txGeneratorSha256": "74929bd5da928791cf7d5e71ff962ec9a0261546039cf874683aa5c1c910a52b"
 }

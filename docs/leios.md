@@ -846,4 +846,5 @@ mirror, at that revision:
 The corpus `fixtures/reference/leios-testnet-blocks` holds the build's verdict on each transaction
 of the captured blocks and on synthetic ones at each of these boundaries, and
 `LeiosTestnetBlockReferenceSuite` requires the same verdict, transaction id, validity flag, script
-and datum hashes and sub-transactions of Scarab.
+and datum hashes, redeemer map (last value for a repeated key, in key order) and sub-transactions
+of Scarab.

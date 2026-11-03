@@ -6,7 +6,7 @@ import io.circe.{Decoder, Json, parser}
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraTx, DijkstraWitnesses, V12}
 
 /** The Leios reference is the build the public Leios testnet runs (cardano-node b004fe0c, release
@@ -84,7 +84,25 @@ class LeiosTestnetBlockReferenceSuite extends FunSuite:
     Vector(
       "id" -> Json.fromString(id.hex),
       "scripts" -> keys(w.scriptHashes),
-      "datums" -> keys(w.datumHashes)
+      "datums" -> keys(w.datumHashes),
+      "redeemers" -> Json.arr(w.redeemers.map { r =>
+        val key = Cbor
+          .encode(
+            Value.Arr(
+              Vector(
+                Node(Value.UInt(BigInt(r.tag)), Bytes.empty),
+                Node(Value.UInt(BigInt(r.index)), Bytes.empty)
+              )
+            )
+          )
+          .fold(e => fail(e.toString), identity)
+        Json.obj(
+          "key" -> Json.fromString(key.hex),
+          "data" -> Json.fromString(r.data.hex),
+          "memory" -> Json.fromBigInt(r.memory),
+          "steps" -> Json.fromBigInt(r.steps)
+        )
+      }*)
     )
 
   private def transaction(row: Row): Unit =
@@ -95,6 +113,7 @@ class LeiosTestnetBlockReferenceSuite extends FunSuite:
         same(row, "txid", fields("id"))
         same(row, "scripts", fields("scripts"))
         same(row, "datums", fields("datums"))
+        same(row, "redeemers", fields("redeemers"))
         same(row, "valid", Json.fromBoolean(t.isValid))
         same(
           row,

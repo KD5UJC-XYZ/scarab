@@ -131,6 +131,7 @@ object DijkstraWitnesses:
         .entries(n, DecodeField.Redeemers)
         .flatMap(_.traverse(redeemer))
         .flatMap(V12.nonEmpty(_, DecodeField.Redeemers))
+        .map(_.map(r => (r.tag, r.index) -> r).toMap.toVector.sortBy(_._1).map(_._2))
     case other => Left(LedgerDecodeError.Expected(DecodeField.Redeemers, Shape.Map, other))
 
   private def redeemer(key: Node, value: Node): Result[DijkstraRedeemer] =

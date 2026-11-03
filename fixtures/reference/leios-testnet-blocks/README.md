@@ -17,7 +17,7 @@ detached, an empty indefinite list with its fields after it, is refused. The env
 is read by `enforceSize`, a definite list. The KES signature of a Leios header is over its body's
 original bytes.
 
-`cases.jsonl` holds 628 lines, one case each, written by
+The 2026-11-03 corpus in `cases.jsonl` holds 630 lines, one case each, written by
 `scripts/oracle/leios-testnet/leios_cases.py` and, for the transactions, `leios_tx_cases.py`:
 - the testnet's blocks as BlockFetch carries them (`kind` "block"): blocks 0, 1 and 8,562 of the
   current network (`fixtures/leios/testnet/blocks-rc-2026w44.tsv`, all empty) and the six blocks of
@@ -46,7 +46,7 @@ original bytes.
 - transactions alone (`kind` "tx", #750), read by `decodeDijkstraTopTxInBlock` at decoder version 12
   as the block body reads each: the 45 transactions of the captured blocks with transactions (the
   40 of block 64,853 of the current network, `announcing-with-txs`, captured on #743 and passed with
-  `--blocks` until that capture is in the repository, and the 5 of the previous network), and 494
+  `--blocks` until that capture is in the repository, and the 5 of the previous network), and 496
   synthetic ones with one field changed at each decoder's boundary: each required body field
   missing, unknown, repeated and negative keys, every body key of a top-level transaction and of a
   sub-transaction, empty collections where the build refuses them, duplicates by value (inputs,
@@ -56,7 +56,8 @@ original bytes.
   every certificate tag with a pool's voting key (valid, null, malformed, off the curve, outside the
   subgroup, the identity), relays, votes, every governance action and every Dijkstra parameter
   update key with values at their bounds, witness sets (vkey, bootstrap, native and Plutus V1 to V4
-  scripts, datums, redeemers as a map and as a list), and auxiliary data in each form;
+  scripts, datums, redeemers as a map and as a list, repeated redeemer keys and reversed key order),
+  and auxiliary data in each form;
 - Leios headers alone (`kind` "header"), as ChainSync carries them inside their era envelope: the
   header of block 0 of the current network, and the forms of the
   [header decoding oracle](../header-decoding/README.md) (definite, indefinite, detached, body,
@@ -65,13 +66,15 @@ original bytes.
   size over a `Word32`, a VRF output of no bytes, a body of eleven fields).
 
 The verdict (`accepted` and the complete `failure`) is what the build's decoders did with each:
-319 accepted and 309 refused (276 and 263 of the transactions). Every detached form is refused, every indefinite one accepted. For an
+321 accepted and 309 refused (278 and 263 of the transactions). Every detached form is refused, every indefinite one accepted. For an
 accepted case the line records the header hash (`hash`), its size, the signed bytes (`signable`),
 the header fields, and for a block its tag, body hash and size as the ledger computes them, each
 transaction's id and validity flag (`txs`) and whether it carries a Leios or a Peras certificate.
 For an accepted transaction alone the line records its id (`txid`), its validity flag, the keys of
 its witness set's script and datum maps (`scripts`, `datums`: hashes of each one's original bytes)
-and each sub-transaction's id and keys (`subtxs`). `LeiosTestnetBlockReferenceSuite` requires the
+and its redeemers in key order (`redeemers`: purpose and index, original data bytes and execution
+units, with the last value kept for repeated keys), and each sub-transaction's corresponding
+fields (`subtxs`). `LeiosTestnetBlockReferenceSuite` requires the
 same verdict from `LeiosBlock.decode` (a block of another tag from `Block.decode`),
 `LeiosHeader.decode` or `DijkstraTx.inBlock`, and the same values.
 `provenance.json` records the revisions, the hashes of the sources read, of the harness, the
@@ -100,5 +103,5 @@ python3 scripts/oracle/leios-testnet/leios_cases.py --inputs /tmp/leios-inputs.j
   build does not deserialise it when it decodes a block.
 - No KES signature, VRF proof or Leios certificate is checked; the synthetic headers' keys and
   signatures are filler bytes.
-- No block of the current network with transactions, an announcement or a certificate: the three
-  fetched are empty, and fetching later ones would mean following the chain from a known point.
+- The standalone transaction cases include block 64,853 of the restarted network. Full block
+  coverage in this corpus still uses the earlier capture; #743 supplies the later block fixtures.

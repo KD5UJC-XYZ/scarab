@@ -42,7 +42,8 @@ For an accepted block it records the header's hash, size, signed bytes (the head
 bytes, `getSignableRepresentation = originalBytes`, `Leios/BlockHeader.hs:164-165`) and fields, the
 block body's hash and size as the ledger computes them, each transaction's id and validity flag, and
 which certificates the body carries; for an accepted transaction its id, validity flag, the keys of
-its witness set's script and datum maps and its sub-transactions; for a refused one the complete
+its witness set's script and datum maps, its redeemers in key order with original data and execution
+units, and the corresponding fields of its sub-transactions; for a refused one the complete
 failure. No rule, signature or
 certificate is checked. The [fixtures](../../../fixtures/reference/leios-testnet-blocks/README.md)
 retain the encodings, verdicts and pins.

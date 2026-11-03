@@ -366,7 +366,7 @@ def merge(reference):
     lines = []
     keys = ["hash", "headersize", "signable", "blockno", "slot", "declaredbodysize", "declaredbodyhash",
             "versioninfo", "containscert", "announcement", "tag", "bodyhash", "bodysize", "txs", "leioscert",
-            "perascert", "valid", "scripts", "datums", "subtxs"]
+            "perascert", "valid", "scripts", "datums", "redeemers", "subtxs"]
     for case_, verdict in zip(CASES, reference):
         assert (verdict["name"], verdict["kind"]) == (case_["name"], case_["kind"])
         result = verdict["result"]

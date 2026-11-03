@@ -691,6 +691,13 @@ def build(case, blocks):
     w("redeemers a list", (5, array([array([uint(0), uint(0), DATA, array([uint(1), uint(2)])])])))
     w("redeemers empty", (5, cmap([])))
     w("redeemers with a purpose twice", (5, cmap([(array([uint(0), uint(0)]), rd), (array([uint(0), uint(0)]), rd)])))
+    replacement = array([uint(42), array([uint(3), uint(4)])])
+    w("redeemers with a purpose twice keep the last value", (5, cmap([
+        (array([uint(0), uint(0)]), rd),
+        (array([uint(0), uint(0)]), replacement)])))
+    w("redeemers in reverse purpose order", (5, cmap([
+        (array([uint(1), uint(0)]), rd),
+        (array([uint(0), uint(0)]), replacement)])))
     for purpose in range(8):
         w(f"redeemers of purpose {purpose}", (5, cmap([(array([uint(purpose), uint(0)]), rd)])))
     w("redeemers with an index of 2^32", (5, cmap([(array([uint(0), uint(2**32)]), rd)])))
