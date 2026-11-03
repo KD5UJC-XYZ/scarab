@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Value}
 
 import LeiosWire.*
 import LeiosWord.Word32
@@ -65,8 +65,12 @@ object LeiosFetch:
   enum State:
     case Idle, Block, BlockTxs, Done
 
-  /** byteLimitsLeiosFetch at consensus `7b239a16`: smallByteLimit in Idle, then a ten-percent
-    * margin on the 600 kB endorser block and 500 kB transaction reply. Done has no receiver.
+  /** `byteLimitsLeiosFetch` (ouroboros-consensus `2416493b`, `LeiosDemoOnlyTestFetch.hs:231-245`):
+    * `smallByteLimit` (65,535, ouroboros-network `2f1c154f` `Protocol/Limits.hs:131-132`) in Idle,
+    * then `addSafetyMargin` (a tenth more,
+    * `cardano-diffusion/lib/Cardano/Network/NodeToNode.hs:327-328`) of the 600 kB endorser block
+    * and the 500 kB transaction reply. Done has no receiver. The receiving driver applies it; the
+    * decoder has no other bound.
     */
   val BlockByteLimit: Int = 660000
   val BlockTxsByteLimit: Int = 550000
@@ -95,14 +99,6 @@ object LeiosFetch:
     case (State.Block, _: Message.Block)          => Some(State.Idle)
     case (State.BlockTxs, _: Message.BlockTxs)    => Some(State.Idle)
     case _                                        => None
-
-  // The native pure encoder has no driver byte limit. Keep the existing CBOR implementation's
-  // JVM-indexable representation bound; the receiving driver applies byteLimit separately.
-  private val EncodingLimits = Cbor.Limits(
-    maxInputBytes = Int.MaxValue,
-    maxItems = Int.MaxValue,
-    maxStringBytes = Int.MaxValue
-  )
 
   def encode(message: Message): Either[LeiosWireError, Bytes] = message match
     case Message.Done            => LeiosWire.encode(tagged(0), EncodingLimits)

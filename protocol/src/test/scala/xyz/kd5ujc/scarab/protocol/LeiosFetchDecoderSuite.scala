@@ -141,6 +141,43 @@ class LeiosFetchDecoderSuite extends FunSuite:
     )
   }
 
+  test("an announcement is framed with no depth or item budget, on a 256 KiB stack") {
+    // the build frames a message by its state's byte limit only (`byteLimitsLeiosNotify`,
+    // `LeiosDemoOnlyTestNotify.hs:241-247`): an item 30,000 lists deep and one of 70,000 items are
+    // framed in full and then refused as no header envelope, never as a budget or a stack overflow
+    val deep = Bytes.wrap(Array.fill[Byte](30000)(0x81.toByte) :+ 0.toByte)
+    val wide = bs(0x9f) ++ Bytes.wrap(Array.fill[Byte](70000)(0)) ++ bs(0xff)
+    val result = new CompletableFuture[Either[Throwable, Vector[Either[LeiosWireError, Int]]]]()
+    val thread = new Thread(
+      null,
+      () => {
+        try
+          result.complete(
+            Right(
+              Vector(deep, wide).map(item =>
+                LeiosNotify
+                  .decodePrefix(LeiosNotify.State.Busy, bs(0x82, 0x04) ++ item)
+                  .map(_._2)
+              )
+            )
+          )
+        catch case error: Throwable => result.complete(Left(error))
+        ()
+      },
+      "leios-notify-small-stack",
+      256 * 1024
+    )
+    thread.start()
+    try
+      assertEquals(
+        result.get(30, TimeUnit.SECONDS),
+        Right(Vector.fill(2)(Left(LeiosWireError.BadField(4, LeiosField.Header))))
+      )
+    finally thread.join()
+    assertEquals(LeiosNotify.byteLimit(LeiosNotify.State.Busy), Some(65535))
+    assertEquals(LeiosNotify.byteLimit(LeiosNotify.State.Done), None)
+  }
+
   test("maximum-width list decoding uses a 256 KiB stack") {
     val message = Message.BlockTxs(Vector.fill(LeiosFetch.MaxTxsPerEb)(bs(0)))
     val raw = ok(LeiosFetch.encode(message))

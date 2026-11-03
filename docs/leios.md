@@ -811,6 +811,9 @@ endorser block is a definite map (`decodeMapLen`) of 32-byte hashes (`decodeLeio
 `:1379-1390`); an announcement is a header in the hard-fork envelope of one of the eras. What the codec
 still does not do is decode the announced header inside that envelope as the build's node-to-node header
 decoder does: the codec is in the `protocol` module, which cannot reach the ledger's header decoders.
+The framing bounds are the build's too: each state's byte limit (`byteLimitsLeiosNotify`, 65,535 bytes in
+every state with a receiver; `byteLimitsLeiosFetch`, 65,535, 660,000 and 550,000), applied by the
+receiving driver, and no depth or item budget of the decoder's own.
 
 ### 12.4 What still stops this node following the testnet
 

@@ -129,11 +129,50 @@ private[protocol] object LeiosStream:
   /** The position of the cursor. */
   private[protocol] val position: Decoder[Int] = StateT.inspect(_.position)
 
-  /** One complete CBOR item, as its original bytes. */
-  private[protocol] val item: Decoder[Bytes] = StateT { cursor =>
-    val rest = cursor.input.drop(cursor.position)
-    LeiosWire.extent(rest).map(n => cursor.copy(position = cursor.position + n) -> rest.take(n))
-  }
+  /** One complete CBOR item, as its original bytes, with no bound on its depth or its number of
+    * items but the input's size, as cborg's decoders have none: an explicit stack of the items
+    * still to read in each open item (`None` for an indefinite one), so a nesting depth from
+    * outside data costs no recursion.
+    */
+  private[protocol] val item: Decoder[Bytes] =
+    def open(h: Head): Decoder[Option[Option[BigInt]]] = h match
+      case Head(2 | 3, Some(size))     => take(size).as(None)
+      case Head(major @ (2 | 3), None) =>
+        // the chunks of an indefinite string: definite strings of its major type, then a break
+        Monad[Decoder]
+          .tailRecM(()) { _ =>
+            peek.flatMap(b =>
+              if b == 255 then byte.as(Right(()))
+              else
+                head.flatMap {
+                  case Head(`major`, Some(size)) => take(size).as(Left(()))
+                  case _ => fail(LeiosWireError.Syntax(ProtocolError.ReservedCBORArgument))
+                }
+            )
+          }
+          .as(None)
+      case Head(4, size)            => pure(Some(size))
+      case Head(5, size)            => pure(Some(size.map(_ * 2)))
+      case Head(6, Some(_))         => pure(Some(Some(BigInt(1))))
+      case Head(0 | 1 | 7, Some(_)) => pure(None)
+      case Head(7, None)            => fail(LeiosWireError.Syntax(ProtocolError.UnexpectedBreak))
+      case _ => fail(LeiosWireError.Syntax(ProtocolError.ReservedCBORArgument))
+    for
+      start <- position
+      _ <- Monad[Decoder].tailRecM(List(Option(BigInt(1)))) {
+        case Nil                       => pure(Right(()))
+        case Some(n) :: rest if n == 0 => pure(Left(rest))
+        case None :: rest =>
+          peek.flatMap(b =>
+            if b == 255 then byte.as(Left(rest))
+            else head.flatMap(open).map(child => Left(child.toList ++ (None :: rest)))
+          )
+        case Some(n) :: rest =>
+          head.flatMap(open).map(child => Left(child.toList ++ (Some(n - 1) :: rest)))
+      }
+      end <- position
+      raw <- StateT.inspect[Result, Cursor, Bytes](_.input.slice(start, end))
+    yield raw
 
   /** Run `decoder` over `input` from its start: the value and the bytes consumed. */
   private[protocol] def run[A](decoder: Decoder[A], input: Bytes): Result[(A, Int)] =

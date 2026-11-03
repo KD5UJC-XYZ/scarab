@@ -35,10 +35,7 @@ trait LeiosNotifyClient[F[_]]:
 
 object LeiosNotifyClient:
   /** The server may hold a request for as long as it has nothing to announce. */
-  final case class Settings(
-      busyTimeout: FiniteDuration = 10.minutes,
-      maxMessageBytes: Int = 2500000
-  )
+  final case class Settings(busyTimeout: FiniteDuration = 10.minutes)
 
   def apply[F[_]: Temporal](channel: MuxChannel[F], settings: Settings = Settings())(using
       Raise[F, NetworkError]
@@ -50,7 +47,8 @@ object LeiosNotifyClient:
       LeiosNotify.encode(m).fold(e => illegal(ProtocolError.Leios(e)), channel.send)
     def receive(state: LeiosNotify.State): F[Observed[LeiosNotify.Message]] =
       Timed.within(settings.busyTimeout, id, state.toString)(
-        channel.recv(settings.maxMessageBytes)(bytes =>
+        // `byteLimitsLeiosNotify`: the limit of Busy and Quit, the states received in
+        channel.recv(LeiosNotify.SmallByteLimit)(bytes =>
           LeiosDecode.result(LeiosNotify.decodePrefix(state, bytes), bytes)
         )
       )
