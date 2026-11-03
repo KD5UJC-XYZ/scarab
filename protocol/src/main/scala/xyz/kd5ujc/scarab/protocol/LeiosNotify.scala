@@ -7,20 +7,19 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Value}
 import LeiosWire.*
 import LeiosWord.Word32
 
-/** Pure codec of the LeiosNotify mini-protocol (number 18), after the Blueprint's
-  * `network/node-to-node/leios-notify/messages.cddl` (cardano-blueprint `fe4cceb9`). The Blueprint
-  * marks parts of this as under discussion; nothing here is more settled than that.
+/** Pure codec of the LeiosNotify mini-protocol (number 18) as the build the public Leios testnet
+  * runs it, the Leios reference (#711): `codecLeiosNotify` of ouroboros-consensus `2416493b`
+  * (`LeiosDemoOnlyTestNotify.hs:259-396`). The Blueprint's
+  * `network/node-to-node/leios-notify/messages.cddl` (cardano-blueprint `fe4cceb9`) draws the same
+  * messages. A message is a definite list whose length, key and state are matched before any field;
+  * a point is `enforceSize 2` of a `Word64` slot and a 32-byte hash; `MsgLeiosVotes` is a definite
+  * list of any number of votes, each `enforceSize 3` of a 32-byte hash, a `Word16` seat and a
+  * 48-byte signature.
   *
   * Agency: the client in `Idle`, the server in `Busy` and `Quit`.
   */
 object LeiosNotify:
   val MiniProtocolId: Int = 18
-
-  /** At most this many votes in one `MsgLeiosVotes`: `[1*16 vote]` in the consensus prototype's
-    * `ouroboros-consensus-cardano/cddl/node-to-node/leiosnotify/leiosNotify.cddl`, which says the
-    * Blueprint does not bound them ("TODO Bound the votes in the blueprint too").
-    */
-  val MaxVotes: Int = 16
 
   enum State:
     case Idle, Busy, Quit, Done
@@ -39,7 +38,9 @@ object LeiosNotify:
     case BlockOffer(point: EbPoint, ebSize: Word32)
     case BlockTxsOffer(point: EbPoint)
 
-    /** `[1* vote]`, each strictly decoded; `raw` keeps the original bytes of every vote. */
+    /** `[* vote]`, each decoded as the build decodes it; `raw` keeps the original bytes of every
+      * vote.
+      */
     case Votes(votes: Vector[Vote], raw: Vector[Bytes])
 
   /** The state after `message` was sent in `state`, or `None` if the message is not admitted. */
@@ -67,42 +68,9 @@ object LeiosNotify:
     case Message.Votes(votes, _) =>
       all(votes)(v => embed(v.encode)).flatMap(ns => LeiosWire.encode(tagged(7, Value.Arr(ns))))
 
-  /** Decode the first message of `bytes` admitted in `state`; returns the message and the number of
-    * bytes consumed. `Left(Incomplete)` means more bytes are needed.
+  /** Decode the first message of `bytes` admitted in `state`, as the Leios testnet's build does
+    * ([[LeiosNotifyDecoder]]); returns the message and the number of bytes consumed.
+    * `Left(Incomplete)` means more bytes are needed.
     */
   def decodePrefix(state: State, bytes: Bytes): Either[LeiosWireError, (Message, Int)] =
-    for
-      parts <- split(bytes)
-      (tag, fields, consumed) = parts
-      message <- (state, tag) match
-        case (State.Idle, 1) => arity(tag, fields, 0).map(_ => Message.Quit)
-        case (State.Idle, 3) => arity(tag, fields, 0).map(_ => Message.RequestNext)
-        case (State.Busy, 2) => arity(tag, fields, 0).map(_ => Message.Canceled)
-        case (State.Busy, 4) =>
-          arity(tag, fields, 1).map(_ => Message.BlockAnnouncement(fields(0).original))
-        case (State.Busy, 5) =>
-          for
-            _ <- arity(tag, fields, 2)
-            p <- point(tag, fields(0))
-            size <- uint(tag, fields(1), Word32.Max, LeiosField.Word32).flatMap(Word32.from)
-          yield Message.BlockOffer(p, size)
-        case (State.Busy, 6) =>
-          arity(tag, fields, 1).flatMap(_ => point(tag, fields(0))).map(Message.BlockTxsOffer(_))
-        case (State.Busy, 7) =>
-          for
-            _ <- arity(tag, fields, 1)
-            items <- fields(0).value match
-              case Value.Arr(xs) if xs.nonEmpty && xs.size <= MaxVotes => Right(xs)
-              case _ => Left(LeiosWireError.BadField(tag, LeiosField.Votes))
-            decoded <- items.zipWithIndex.foldLeft[Either[LeiosWireError, Vector[Vote]]](
-              Right(Vector.empty)
-            ) { case (acc, (item, i)) =>
-              acc.flatMap(vs =>
-                Vote.decode(item.original).left.map(LeiosWireError.BadVote(i, _)).map(vs :+ _)
-              )
-            }
-          yield Message.Votes(decoded, items.map(_.original))
-        case (State.Quit, 0)            => arity(tag, fields, 0).map(_ => Message.Done)
-        case (_, t) if t >= 0 && t <= 7 => Left(LeiosWireError.NotAdmitted(t))
-        case (_, t)                     => Left(LeiosWireError.UnknownTag(BigInt(t)))
-    yield (message, consumed)
+    LeiosNotifyDecoder.decode(state, bytes)

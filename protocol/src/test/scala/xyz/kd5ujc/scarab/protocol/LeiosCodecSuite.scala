@@ -72,8 +72,8 @@ class LeiosCodecSuite extends ScalaCheckSuite:
     val vs = Vector(vote(1, 1), vote(2, 1), vote(900, 2))
     val raw = vs.map(_.encode)
     notifyRoundTrip(State.Busy, Message.Votes(vs, raw))
-    // an announcement carries a header item verbatim
-    val header = bs(0x82, 0x01, 0x42, 0xab, 0xcd)
+    // an announcement carries a header envelope verbatim
+    val header = bs(0x82, 0x07, 0xd8, 0x18, 0x42, 0xab, 0xcd)
     notifyRoundTrip(State.Busy, Message.BlockAnnouncement(header))
   }
 
@@ -115,7 +115,12 @@ class LeiosCodecSuite extends ScalaCheckSuite:
 
   test("LeiosNotify: malformed shapes are typed errors") {
     import LeiosNotify.*
-    assertEquals(decodePrefix(State.Busy, bs(0x80)), Left(LeiosWireError.EmptyMessage))
+    // `decodeListLen` then `decodeWord`: a list of no items still has its key read next
+    assertEquals(decodePrefix(State.Busy, bs(0x80)), Left(LeiosWireError.Incomplete))
+    assertEquals(
+      decodePrefix(State.Idle, bs(0x80, 0x03)),
+      Left(LeiosWireError.WrongArity(3, 0, -1))
+    )
     assertEquals(decodePrefix(State.Busy, bs(0x01)), Left(LeiosWireError.NotAnArray))
     assertEquals(
       decodePrefix(State.Idle, bs(0x82, 0x03, 0x00)),
@@ -129,11 +134,7 @@ class LeiosCodecSuite extends ScalaCheckSuite:
       decodePrefix(State.Busy, bigSize),
       Left(LeiosWireError.BadField(5, LeiosField.Word32))
     )
-    // an empty vote list, a non-array vote list
-    assertEquals(
-      decodePrefix(State.Busy, bs(0x82, 0x07, 0x80)),
-      Left(LeiosWireError.BadField(7, LeiosField.Votes))
-    )
+    // a vote list that is not a list
     assertEquals(
       decodePrefix(State.Busy, bs(0x82, 0x07, 0x01)),
       Left(LeiosWireError.BadField(7, LeiosField.Votes))
@@ -150,15 +151,101 @@ class LeiosCodecSuite extends ScalaCheckSuite:
       case other                                        => fail(other.toString)
   }
 
-  test("LeiosNotify: at most sixteen votes in one message (the consensus prototype's bound)") {
+  test("LeiosNotify: votes are a definite list of any length, as the build reads them") {
     import LeiosNotify.*
-    def votes(n: Int): Bytes =
-      bs(0x82, 0x07, 0x80 + n) ++ (1 to n).map(i => vote(i, i).encode).reduce(_ ++ _)
-    assert(decodePrefix(State.Busy, votes(MaxVotes)).isRight)
+    // `decodeVotes`: `decodeListLen` and `replicateM` (`LeiosDemoOnlyTestNotify.hs:384-388`,
+    // ouroboros-consensus 2416493b): no bound on the count, an indefinite list refused
+    def votes(n: Int): Vector[Bytes] = (1 to n).map(i => vote(i, i).encode).toVector
+    val seventeen = votes(17)
+    val definite = bs(0x82, 0x07, 0x91) ++ seventeen.reduce(_ ++ _)
+    decodePrefix(State.Busy, definite) match
+      case Right((Message.Votes(_, raw), _)) => assertEquals(raw, seventeen)
+      case other                             => fail(other.toString)
     assertEquals(
-      decodePrefix(State.Busy, votes(MaxVotes + 1)),
+      decodePrefix(State.Busy, bs(0x82, 0x07, 0x80)).map(_._1),
+      Right(Message.Votes(Vector.empty, Vector.empty))
+    )
+    assertEquals(
+      decodePrefix(State.Busy, bs(0x82, 0x07, 0x9f) ++ seventeen.head ++ bs(0xff)),
       Left(LeiosWireError.BadField(7, LeiosField.Votes))
     )
+  }
+
+  test(
+    "LeiosNotify: a vote as `decodeLeiosVote` reads it: any head width, the identity signature"
+  ) {
+    import LeiosNotify.*
+    val v = vote(1, 1)
+    // the seat written in two bytes: `decodeWord16` takes any width (`LeiosDemoTypes.hs:1379-1390`)
+    val wide =
+      bs(0x83, 0x58, 0x20) ++ v.announcingRbHash.bytes ++ bs(0x19, 0x00, 0x01, 0x58, 0x30) ++
+        v.signature.bytes
+    decodePrefix(State.Busy, bs(0x82, 0x07, 0x81) ++ wide) match
+      case Right((Message.Votes(Vector(decoded), Vector(raw)), _)) =>
+        assertEquals(decoded, v)
+        assertEquals(raw, wide)
+      case other => fail(other.toString)
+    // the identity signature decodes, as `rawDecodeFixedSized` decodes it
+    val identity = bs(0xc0) ++ Bytes.wrap(new Array[Byte](47))
+    val withIdentity =
+      bs(0x83, 0x58, 0x20) ++ v.announcingRbHash.bytes ++ bs(0x01, 0x58, 0x30) ++ identity
+    assert(decodePrefix(State.Busy, bs(0x82, 0x07, 0x81) ++ withIdentity).isRight)
+    // an indefinite vote, a hash of 31 bytes, a seat over 16 bits are refused
+    val indefinite = bs(0x9f) ++ wide.drop(1) ++ bs(0xff)
+    val shortHash =
+      bs(0x83, 0x58, 0x1f) ++ v.announcingRbHash.bytes.drop(1) ++ bs(0x01, 0x58, 0x30) ++
+        v.signature.bytes
+    val wideSeat =
+      bs(0x83, 0x58, 0x20) ++ v.announcingRbHash.bytes ++ bs(0x1a, 0, 1, 0, 0, 0x58, 0x30) ++
+        v.signature.bytes
+    Vector(indefinite, shortHash, wideSeat).foreach { bad =>
+      decodePrefix(State.Busy, bs(0x82, 0x07, 0x81) ++ bad) match
+        case Left(LeiosWireError.BadVote(0, _)) => ()
+        case other                              => fail(s"${bad.hex}: $other")
+    }
+  }
+
+  test("LeiosNotify: an announcement is a header envelope of one of the eras") {
+    import LeiosNotify.*
+    // `[7, #6.24(h'00')]`: the Dijkstra envelope is read; its header is kept as it came
+    val dijkstra = bs(0x82, 0x07, 0xd8, 0x18, 0x41, 0x00)
+    assertEquals(
+      decodePrefix(State.Busy, bs(0x82, 0x04) ++ dijkstra).map(_._1),
+      Right(Message.BlockAnnouncement(dijkstra))
+    )
+    // no envelope, or an era index past Dijkstra
+    Vector(bs(0x41, 0x00), bs(0x82, 0x09, 0x41, 0x00)).foreach { bad =>
+      assertEquals(
+        decodePrefix(State.Busy, bs(0x82, 0x04) ++ bad),
+        Left(LeiosWireError.BadField(4, LeiosField.Header)),
+        bad.hex
+      )
+    }
+  }
+
+  test("LeiosNotify: a point as `decodeLeiosPoint` reads it, in both messages that carry one") {
+    import LeiosNotify.*
+    val h = Bytes.wrap(Array.fill[Byte](32)(3))
+    // `enforceSize 2`, a `Word64` slot of any width, a 32-byte hash (`LeiosDemoTypes.hs:208-211`)
+    val wideSlot = bs(0x82, 0x1b, 0, 0, 0, 0, 0, 0, 0, 5, 0x58, 0x20) ++ h
+    assertEquals(
+      decodePrefix(State.Busy, bs(0x82, 0x06) ++ wideSlot).map(_._1),
+      Right(Message.BlockTxsOffer(EbPoint(word64(5), EbHash.fromBytes(h))))
+    )
+    val indefinite = bs(0x9f, 0x05, 0x58, 0x20) ++ h ++ bs(0xff)
+    val shortHash = bs(0x82, 0x05, 0x58, 0x1f) ++ h.drop(1)
+    val chunkedHash = bs(0x82, 0x05, 0x5f, 0x50) ++ h.take(16) ++ bs(0x50) ++ h.drop(16) ++ bs(0xff)
+    assertEquals(
+      decodePrefix(State.Busy, bs(0x82, 0x06) ++ indefinite),
+      Left(LeiosWireError.BadField(6, LeiosField.Point))
+    )
+    Vector(shortHash, chunkedHash).foreach { bad =>
+      assertEquals(
+        decodePrefix(State.Busy, bs(0x83, 0x05) ++ bad ++ bs(0x01)),
+        Left(LeiosWireError.BadField(5, LeiosField.Hash)),
+        bad.hex
+      )
+    }
   }
 
   test("LeiosFetch: every message round-trips in the state that admits it") {
@@ -313,13 +400,17 @@ class LeiosCodecSuite extends ScalaCheckSuite:
       decodePrefix(State.Block, bs(0x82, 0x02, 0xa0)),
       Left(LeiosWireError.EmptyEndorserBlock)
     )
-    assertEquals(
-      decodePrefix(State.Block, bs(0x82, 0x02, 0xbf, 0xff)),
-      Left(LeiosWireError.EmptyEndorserBlock)
-    )
     assertEquals(encode(Message.Block(Vector.empty)), Right(bs(0x82, 2, 0xa0)))
-    // an indefinite map of one entry is read; the keys here repeat, which the codec does not judge
-    assert(decodePrefix(State.Block, bs(0x82, 0x02, 0xbf) ++ entry ++ bs(0xff)).isRight)
+    // `decodeLeiosEb` reads `decodeMapLen`, a definite map (`LeiosDemoTypes.hs:1301-1310`,
+    // ouroboros-consensus 2416493b): an indefinite one is refused, empty or not
+    Vector(bs(0xbf, 0xff), bs(0xbf) ++ entry ++ bs(0xff)).foreach { indefinite =>
+      assertEquals(
+        decodePrefix(State.Block, bs(0x82, 0x02) ++ indefinite),
+        Left(LeiosWireError.BadField(2, LeiosField.EndorserBlock))
+      )
+    }
+    // a definite map of one entry is read; the keys here repeat, which the codec does not judge
+    assert(decodePrefix(State.Block, bs(0x82, 0x02, 0xa2) ++ entry ++ entry).isRight)
     def eb(n: Int) =
       bs(0x82, 0x02, 0xb9, n >> 8, n & 0xff) ++ Bytes.wrap(Array.fill(n)(entry.toArray).flatten)
     assert(decodePrefix(State.Block, eb(MaxTxsPerEb)).isRight)
@@ -485,7 +576,8 @@ class LeiosCodecSuite extends ScalaCheckSuite:
 
   test("LeiosNotify: an announced header is written as the bytes it came with") {
     import LeiosNotify.*
-    val header = bs(0x83, 0x18, 0x02, 0x01, 0x9f, 0xff) // a non-shortest integer inside
+    // a Dijkstra envelope whose era index is written in two bytes (`decodeWord8` takes it)
+    val header = bs(0x82, 0x18, 0x07, 0xd8, 0x18, 0x43, 0x18, 0x02, 0x01)
     val bytes = ok(encode(Message.BlockAnnouncement(header)))
     assertEquals(bytes, bs(0x82, 0x04) ++ header)
     assertEquals(

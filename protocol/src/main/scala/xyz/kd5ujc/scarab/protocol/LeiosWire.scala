@@ -95,52 +95,6 @@ private[protocol] object LeiosWire:
         case cause                     => LeiosWireError.Syntax(cause)
       }
 
-  /** The tag and the remaining fields (with their original bytes) of the first message in `bytes`.
-    */
-  def split(bytes: Bytes): Either[LeiosWireError, (Int, Vector[Node], Int)] =
-    for
-      n <- extent(bytes)
-      node <- Cbor
-        .decode(bytes.take(n))
-        .left
-        .map(e => LeiosWireError.Syntax(ProtocolError.Codec(e)))
-      parts <- node.value match
-        case Value.Arr(xs) => Right(xs)
-        case _             => Left(LeiosWireError.NotAnArray)
-      (head, rest) <- parts match
-        case first +: others => Right((first, others))
-        case _               => Left(LeiosWireError.EmptyMessage)
-      tag <- head.value match
-        case Value.UInt(t) if t <= 1000 => Right(t.toInt)
-        case Value.UInt(t)              => Left(LeiosWireError.UnknownTag(t))
-        case _                          => Left(LeiosWireError.BadField(-1, LeiosField.Word16))
-    yield (tag, rest, n)
-
-  def arity(tag: Int, fields: Vector[Node], expected: Int): Either[LeiosWireError, Unit] =
-    Either.cond(
-      fields.size == expected,
-      (),
-      LeiosWireError.WrongArity(tag, expected, fields.size)
-    )
-
-  def hash(tag: Int, n: Node): Either[LeiosWireError, EbHash] = n.value match
-    case Value.ByteString(b) =>
-      Right(EbHash.fromBytes(b))
-    case _ => Left(LeiosWireError.BadField(tag, LeiosField.Hash))
-
-  def uint(tag: Int, n: Node, max: BigInt, field: LeiosField): Either[LeiosWireError, BigInt] =
-    n.value match
-      case Value.UInt(v) if v <= max => Right(v)
-      case _                         => Left(LeiosWireError.BadField(tag, field))
-
-  def point(tag: Int, n: Node): Either[LeiosWireError, EbPoint] = n.value match
-    case Value.Arr(Vector(s, h)) =>
-      for
-        slot <- uint(tag, s, Word64.Max, LeiosField.Slot).flatMap(Word64.from)
-        hash <- hash(tag, h)
-      yield EbPoint(slot, hash)
-    case _ => Left(LeiosWireError.BadField(tag, LeiosField.Point))
-
   // --- encoding ---
   def nodeOf(v: Value): Node = Node(v, Bytes.empty)
 
