@@ -918,6 +918,31 @@
       "page": "docs/compatibility/ledger-definite-byte-strings-headers-queries.md"
     },
     {
+      "id": "ledger-decode-bounds",
+      "component": "Decoding bounds: headers, blocks, transactions and node-to-client inputs read with the reference's bounds only (#749)",
+      "status": "implemented",
+      "summary": "No budget of CBOR items, string bytes or nesting on any header, block, transaction or local query decode: the mini-protocol codecs and the mux bound the bytes, the rules bound header, body and transaction sizes after decoding",
+      "evidence": {
+        "paths": [
+          "fixtures/reference/header-decoding/cases.jsonl",
+          "scripts/oracle/header-decoding/header_cases.py"
+        ],
+        "suites": [
+          "HeaderDecodingReferenceSuite",
+          "DecodeBoundsSuite",
+          "LocalDecodeBoundsSuite",
+          "CborSuite"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          338,
+          574
+        ]
+      },
+      "page": "docs/compatibility/ledger-decode-bounds.md"
+    },
+    {
       "id": "ledger-definite-text",
       "component": "Ledger: definite text, decoder versions 2 to 9 (#435)",
       "status": "implemented",
