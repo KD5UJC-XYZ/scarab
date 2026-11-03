@@ -646,7 +646,9 @@ object Witnesses:
         .get(4)
         .traverse(
           CborRead
-            .tolerantSet(_, DecodeField.Datums, version)(n => Right(n.original))
+            .tolerantSet(_, DecodeField.Datums, version)(n =>
+              Data.read(n, DecodeField.Datums).as(n.original)
+            )
             .map(_.distinct)
         )
       redeemers <- f.get(5).traverse(redeemerList(_, version))
@@ -691,6 +693,7 @@ object Witnesses:
             tag <- CborRead.uint(key(0), DecodeField.RedeemerTag)
             index <- CborRead.uint(key(1), DecodeField.RedeemerIndex)
             value <- CborRead.arrayN(v, 2, DecodeField.RedeemerValue)
+            _ <- Data.read(value(0), DecodeField.Redeemer)
             units <- exUnits(value(1))
           yield Redeemer(tag.toInt, index, value(0).original, units)
         }
@@ -702,6 +705,7 @@ object Witnesses:
               xs <- CborRead.arrayN(r, 4, DecodeField.Redeemer)
               tag <- CborRead.uint(xs(0), DecodeField.RedeemerTag)
               index <- CborRead.uint(xs(1), DecodeField.RedeemerIndex)
+              _ <- Data.read(xs(2), DecodeField.Redeemer)
               units <- exUnits(xs(3))
             yield Redeemer(tag.toInt, index, xs(2).original, units)
           })

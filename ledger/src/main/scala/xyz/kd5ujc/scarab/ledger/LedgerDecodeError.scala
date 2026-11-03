@@ -75,6 +75,11 @@ enum LedgerDecodeError extends DomainError:
   case TransactionIndex(actual: Value, bound: Int)
   case LeiosCertificate(cause: xyz.kd5ujc.scarab.crypto.bls.BlsError)
 
+  /** A datum, a redeemer's data or an inline datum that is not Plutus `Data` as Plutus's
+    * `decodeData` reads it (#721).
+    */
+  case PlutusData(site: DecodeSite, cause: xyz.kd5ujc.scarab.plutus.PlutusData.DecodeError)
+
   def message: String = this match
     case Syntax(cause)               => cause.message
     case Protocol(cause)             => cause.message
@@ -82,6 +87,7 @@ enum LedgerDecodeError extends DomainError:
     case Expected(site, expected, _) => s"${site.show}: expected $expected"
     case ExpectedTag(site, tag, _)   => s"${site.show}: expected tag $tag"
     case NativeScript(cause)         => cause.message
+    case PlutusData(site, cause)     => s"${site.show}: not Plutus Data ($cause)"
     case Voting(cause)               => cause.message
     case Version(cause)              => cause.message
     case Delegation(cause)           => cause.message

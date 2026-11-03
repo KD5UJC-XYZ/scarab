@@ -1035,6 +1035,27 @@
       "page": "docs/compatibility/ledger-url-length.md"
     },
     {
+      "id": "ledger-plutus-data-decoding",
+      "component": "Ledger: Plutus Data read at decode (#721)",
+      "status": "implemented",
+      "summary": "A witness-set datum, a redeemer's data and an inline datum are read as Plutus Data (decodeData) when a body, a witness set or a block is decoded, and data that is not Data fails the decode, as in the reference",
+      "evidence": {
+        "suites": [
+          "PlutusDataPlacesReferenceSuite"
+        ],
+        "paths": [
+          "fixtures/reference/plutus-data-places/cases.jsonl",
+          "scripts/oracle/conway-decoding/data_cases.py"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          721
+        ]
+      },
+      "page": "docs/compatibility/ledger-plutus-data-decoding.md"
+    },
+    {
       "id": "ledger-repeated-withdrawals",
       "component": "Ledger: repeated withdrawal accounts, decoder versions 2 to 9 (#494)",
       "status": "implemented",

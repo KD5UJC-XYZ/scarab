@@ -665,20 +665,32 @@ object TxOut:
             (),
             LedgerDecodeError.UnknownFields(DecodeField.Output, f.keySet -- Set(0, 1, 2, 3))
           )
-          d <- f.get(2).traverse(datumOption)
+          d <- f.get(2).traverse(datumOption(_, forms != Forms.Stored))
           s <- f.get(3).traverse(Script.decodeWrapped)
         yield TxOut(n.original, a, v, d.getOrElse(Datum.NoDatum), s, vn.original.size)
       case _ => Left(LedgerDecodeError.OutputForm(forms, n.value))
 
-  /** `datum_option = [0, hash] / [1, #6.24(bytes .cbor plutus_data)]` */
-  private def datumOption(n: Node)(using ByteStrings): Either[LedgerDecodeError, Datum] =
+  /** `datum_option = [0, hash] / [1, #6.24(bytes .cbor plutus_data)]`. The inline datum is read as
+    * Plutus `Data` where the output is read from a block or a transaction (`read`): the reference's
+    * `BinaryData` is made by `makeBinaryData`, which decodes the bytes as `Data` at the era's
+    * lowest protocol version and refuses them otherwise (`Plutus/Data.hs:217-239`, cardano-ledger
+    * f649f975). A stored output was read so when it was taken, and is not read again (#721).
+    */
+  private def datumOption(n: Node, read: Boolean)(using
+      ByteStrings
+  ): Either[LedgerDecodeError, Datum] =
     CborRead.arrayN(n, 2, DecodeField.DatumOption).flatMap { xs =>
       CborRead.uint(xs(0), DecodeField.DatumOptionTag).flatMap {
         case t if t == 0 => CborRead.bytesN(xs(1), 32, DecodeField.DatumHash).map(Datum.Hash(_))
         case t if t == 1 =>
           xs(1).value match
             case xyz.kd5ujc.scarab.codec.Value.Tag(g, inner) if g == 24 =>
-              CborRead.bytes(inner, DecodeField.InlineDatum).map(Datum.Inline(_))
+              CborRead
+                .bytes(inner, DecodeField.InlineDatum)
+                .flatMap(b =>
+                  if read then Data.readBytes(b, DecodeField.InlineDatum).as(Datum.Inline(b))
+                  else Right(Datum.Inline(b))
+                )
             case _ => Left(LedgerDecodeError.ExpectedTag(DecodeField.InlineDatum, 24, xs(1).value))
         case t => Left(LedgerDecodeError.UnknownTag(DecodeField.DatumOption, t))
       }
