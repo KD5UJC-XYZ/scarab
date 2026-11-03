@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "measuredAt": "2026-11-03",
-  "scope": "The block and Leios header decoders of the build the public Leios testnet runs (release rc-2026w44): a block as BlockFetch carries it, [tag, block], read with the envelope of decodeDiskHfcBlock (tag 8 a ledger Block of the Leios header at Dijkstra's decoder version 12, tag 7 a Conway Block of the Praos header at 9), and a Leios header alone with decodeFullAnnotator at 12; the testnet's blocks, those blocks with each list definite, indefinite, detached (an empty indefinite list with the fields after it) or of the wrong length, the certificates in several forms, the certificate's signature of the wrong length, off the curve, outside the subgroup, not compressed and the identity, a tag-7 Conway block with a Praos header and with a Leios header, synthetic transactions with an output value in each form, and Leios headers in the forms of the header decoding oracle; for each accepted case the header hash, size, signed bytes and fields, the block body hash and size, each transaction's id and validity flag and which certificates the body holds; no rule, signature or certificate is checked",
+  "scope": "The block and Leios header decoders of the build the public Leios testnet runs (release rc-2026w44): a block as BlockFetch carries it, [tag, block], read with the envelope of decodeDiskHfcBlock (tag 8 a ledger Block of the Leios header at Dijkstra's decoder version 12, tag 7 a Conway Block of the Praos header at 9), and a Leios header alone with decodeFullAnnotator at 12; the testnet's blocks, those blocks with each list definite, indefinite, detached (an empty indefinite list with the fields after it) or of the wrong length, the certificates in several forms, the certificate's signature of the wrong length, off the curve, outside the subgroup, not compressed and the identity, a tag-7 Conway block with a Praos header and with a Leios header, synthetic transactions with an output value in each form, and Leios headers in the forms of the header decoding oracle; for each accepted case the header hash, size, signed bytes and fields, the block body hash and size, each transaction's id and validity flag and which certificates the body holds; no rule, signature or certificate is checked; and each transaction alone as decodeDijkstraTopTxInBlock reads it at version 12 (#750): the transactions of the captured blocks of both networks, and synthetic transactions with one field changed at each decoder's boundary (each required body field missing, unknown and repeated keys, wrong types, empty collections, duplicates by value or hash, definite, indefinite, detached, tagged and chunked forms, outputs, values, datums and reference scripts, certificates with the pool voting key, votes, proposals and every Dijkstra parameter update key, sub-transactions, guards, deposits and balance intervals, witness sets with Plutus V4, redeemers and datums, auxiliary data); for each accepted transaction its id, validity flag, the keys of its witness set's script and datum maps and its sub-transactions",
   "ledgerSourceCommit": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
   "consensusSourceCommit": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
   "reference": {
@@ -22,7 +22,10 @@
     "cardano-ledger-dijkstra": "0.5.0.0",
     "cardano-crypto-class": "2.6.0.0",
     "cardano-crypto-leios": "0.3.0.0",
-    "cborg": "0.2.10.0"
+    "cborg": "0.2.10.0",
+    "cardano-data": "1.4.1",
+    "plutus-core": "1.71.0.0",
+    "plutus-ledger-api": "1.71.0.0"
   },
   "packageSources": "cardano-ledger and cardano-base packages built from the pinned revisions (source-repository-package, as the node's cabal.project); cborg and plutus from Hackage and CHaP at the node's index-state",
   "sourceFiles": {
@@ -95,26 +98,85 @@
       "file": "cardano-base cardano-crypto-class/src/Cardano/Crypto/DSIGN/BLS12381/Internal.hs",
       "sourceSha256": "9ac5419c5febe57d72c5673cb1b12802ce3787058dbfebcd83103e5105986025",
       "note": "rawDecodeFixedSized of a signature: decompression and the subgroup check, the identity not excluded (476-491)"
+    },
+    "dijkstraTxBody": {
+      "file": "cardano-ledger eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+      "sourceSha256": "926751caf4d53d18defb467c2a8a00c96e98c3464c6a68c3a6b882c2df34a612",
+      "note": "decodeSparseKeyed of the top and sub-transaction bodies, required fields, failOnNull, sub-transactions and required guards (340-479); decodeGuards (1662-1678)"
+    },
+    "dijkstraTxCert": {
+      "file": "cardano-ledger eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxCert.hs",
+      "sourceSha256": "c520f9e62a22eb57cc6396e00498526fbb72e67d03ee5336a5c96f193ece5050",
+      "note": "DijkstraTxCert decodeRecordSum, tags 0, 1, 5 and 6 refused (233-250)"
+    },
+    "dijkstraScripts": {
+      "file": "cardano-ledger eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
+      "sourceSha256": "50c37164804f795343c7505446eb6f43117b93e24b7717a6940921d8f9c995a7",
+      "note": "plutus purposes 0 to 6 (146-182), native scripts with the guard (295-325), account balance intervals (684-696)"
+    },
+    "dijkstraPParams": {
+      "file": "cardano-ledger eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+      "sourceSha256": "2342bd7fcc497dd9aa312ce13994205a6acb5eec278c9001df035d99d8dbc8cf",
+      "note": "DijkstraPParams and eraPParams: update keys 0 to 56"
+    },
+    "alonzoTxWits": {
+      "file": "cardano-ledger eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+      "sourceSha256": "5727e2219a6fcd524902a7f82043d9a96073644fe8bc1a6d3bee7f83cfa741e5",
+      "note": "the witness set, datums and redeemers at version 12 (344-357, 566-700, 759-769)"
+    },
+    "alonzoTxAuxData": {
+      "file": "cardano-ledger eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+      "sourceSha256": "012fe28b75907c3312dcf0647f8b93511b8437206eb316d43cb7c3858be40018",
+      "note": "auxiliary data at version 12 (214-313)"
+    },
+    "babbageTxOut": {
+      "file": "cardano-ledger eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs",
+      "sourceSha256": "8062da7b84f001fd7e4a390b1c1a11bff6082affa3a15cde3b43613b50eae114",
+      "note": "decodeBabbageTxOut and decodeCIC (555-676, 778-784)"
+    },
+    "conwayProcedures": {
+      "file": "cardano-ledger eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+      "sourceSha256": "c87b8e38de36aeb638bf883895fa8cab458a1ee170f3d87e33b4dda461121934",
+      "note": "voters, votes, proposals and governance actions at version 12"
+    },
+    "stakePool": {
+      "file": "cardano-ledger libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+      "sourceSha256": "459d7de8a2c1bb070476cb0bebb0cd758efeea61ea7e450306af3654f1592e70",
+      "note": "BlsKey (538-542), relays (458-472), decodeStakePoolParamsFlat with the voting key slot (744-770)"
+    },
+    "annotated": {
+      "file": "cardano-ledger libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Annotated.hs",
+      "sourceSha256": "aad46b40d15abded08701bd7100a0ea6ee48e9c97e245495fa21106ed8347ffe",
+      "note": "decodeNonEmptySetLikeEnforceNoDuplicatesAnn and decodeNonEmptyMapNoDuplicatesAnn (251-293)"
+    },
+    "baseTypes": {
+      "file": "cardano-ledger libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+      "sourceSha256": "e3e2b684efb295c6096b5f98a8b1181c4449a5d3a89493f47a27a4055490c910",
+      "note": "BoundedRatio from version 12 (407-428), Url and DnsName (679-698), Anchor (1003-1011)"
     }
   },
   "inputs": {
     "fixtures/leios/testnet/blocks-rc-2026w44.tsv": "4a7369eb0bbae69c052852fa2d0cf9a01dbddd88589f174bc7a1783478a88d73",
     "fixtures/leios/testnet/blocks.tsv": "56ff9901f0fed8909eadc8a85583bbd38b4f70b0d8ed854b715fb15371b6094b",
-    "fixtures/leios/bls/cardano-base-serde-test-vectors": "4a083d3fe6d2a73f47206a92ab2c08930fb11aa2cbdebeeb34563b9ea36ad267"
+    "fixtures/leios/bls/cardano-base-serde-test-vectors": "4a083d3fe6d2a73f47206a92ab2c08930fb11aa2cbdebeeb34563b9ea36ad267",
+    "fixtures/leios/bls/devnet-pools.tsv": "b60bf7ced6af6e8b4ac841a4eb0ef7863b25eef3b221bea3c081fc5a6aa477b7",
+    "fixtures/leios/testnet/blocks-rc-2026w44.tsv (as #743 captured it, block 64,853 announcing-with-txs, passed with --blocks)": "d95b2739ab6bda22c8a106c8a2e5f067421b406ae33f95cbc0731e64625cdfcf"
   },
   "harness": {
     "file": "scripts/oracle/leios-testnet/Main.hs",
-    "sha256": "f46697752d1e911cce6abfe417d12eb43adb809ec64bd54cf7950e51de2ee809",
+    "sha256": "5f771bffcb1efb61155fcb51f6d2f3b50d233504f1e63d0e283f688c09a17cec",
     "cabalProjectSha256": "1c72a46f8750acb95c9d1a2b92c45556b9b18dc3c3869d385631a0b36a104850",
-    "image": "built from scripts/oracle/leios-testnet/Dockerfile on scarab-plutus176-context-reference:local (sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef)",
-    "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-leios-testnet:local /fixtures/leios-inputs.json"
+    "image": "built from scripts/oracle/leios-testnet/Dockerfile on scarab-plutus176-context-reference:local (sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef); image sha256:51057b9d6f1e806b316fb4fc68488ef51c5e1236728647d711aad772bacf733d",
+    "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-leios-testnet:local /fixtures/leios-inputs.json",
+    "cabalFileSha256": "01abcb329759fb03ebd6f7dff237acfc8899495bf3d2001dc729a3694fa76372"
   },
-  "generatorSha256": "11d1dff7671567b5d30bbbab3069d77bcc6fcbe9038412412408b19abbdd8773",
-  "harnessInputSha256": "720b343091c9ee03546eea23ea7f11cb2f4adf660a52a65e38bda04367e1cc3d",
-  "harnessOutputSha256": "54355113e93e2724070aa7f74b613f1f561ab03252a980cc07b1b04d1c3fb11d",
-  "casesSha256": "e7ba1553b55a65f90248c7b0b2e44f166d95e8d95059d18a628eaf9304a11310",
-  "cases": 88,
-  "accepted": 43,
-  "refused": 45,
-  "originalBytesRetained": true
+  "generatorSha256": "72418c33102271837c298a8458125077eea8f17e39fd35a89c71fe04d99129b5",
+  "harnessInputSha256": "ebb69c6fc54b6c185ed633e10a1bd6e693232e292a39577f288413d792912441",
+  "harnessOutputSha256": "cbc5c394f816780f9ca4b98494acb100f1da6eea65a62e4b3931187fd16cf3f3",
+  "casesSha256": "4e9fe72055761e49f2f45d3e70d72cb677000763c09d7e3ac77e468add499134",
+  "cases": 628,
+  "accepted": 319,
+  "refused": 309,
+  "originalBytesRetained": true,
+  "txGeneratorSha256": "becc0575afa5da96d76052bdf9625a36077cf405fe1b99e22e658ec7abc45e65"
 }
