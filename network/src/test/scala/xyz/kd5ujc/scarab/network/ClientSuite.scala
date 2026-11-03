@@ -12,6 +12,9 @@ import scala.concurrent.duration.*
 import Peers.*
 
 class ClientSuite extends FailsOnUncaught:
+  // These deadline tests exchange Canceled and Done, without an announced header.
+  private given LeiosNotify.AnnouncementReader = _ => Right(())
+
   private val Origin = ChainSync.Point.Origin
 
   test("LeiosNotify: Busy waits beyond ten minutes for the server notification"):

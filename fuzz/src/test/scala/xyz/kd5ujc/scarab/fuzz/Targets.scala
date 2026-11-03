@@ -88,7 +88,8 @@ object Targets:
       roles: Seq[R],
       corpus: () => Vector[Array[Byte]],
       decode: (S, R, Bytes) => DecodeResult[M],
-      encode: (S, R, M) => Either[E, Bytes]
+      encode: (S, R, M) => Either[E, Bytes],
+      equivalent: (M, M) => Boolean = (left: M, right: M) => left == right
   ): Target =
     Target(
       name,
@@ -112,7 +113,10 @@ object Targets:
                 case Left(e) => throw new Violation(s"$s/$r: decoded $message does not encode: $e")
                 case Right(enc) =>
                   req(
-                    decode(s, r, enc) == DecodeResult.Decoded(message, enc.size),
+                    decode(s, r, enc) match
+                      case DecodeResult.Decoded(again, consumed) =>
+                        consumed == enc.size && equivalent(message, again)
+                      case _ => false,
                     s"$s/$r: $message re-decodes differently"
                   )
             case _ => ()
@@ -744,7 +748,18 @@ object Targets:
       Seq(()),
       leiosNotifySeeds,
       (s, _, b) => leiosResult(LeiosNotify.decodePrefix(s, b)(using announcedHeaders)),
-      (_, _, m) => LeiosNotify.encode(m)
+      (_, _, m) => LeiosNotify.encode(m),
+      (left, right) =>
+        (left, right) match
+          // The hard-fork wrapper is canonicalised; the era and original inner header stay exact.
+          case (
+                LeiosNotify.Message.BlockAnnouncement(a),
+                LeiosNotify.Message.BlockAnnouncement(b)
+              ) =>
+            (HfcHeader.decode(a), HfcHeader.decode(b)) match
+              case (Right(x), Right(y)) => x == y
+              case _                    => false
+          case _ => left == right
     ),
     roundTrip(
       "local-state-query",
