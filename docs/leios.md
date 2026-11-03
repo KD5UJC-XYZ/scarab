@@ -761,7 +761,7 @@ revisions are in section 1 and `docs/data/reference-pins.json`.
 
 The oracle of `scripts/oracle/leios-testnet` is built from these revisions (the ledger and
 cardano-base packages from source; consensus's two-line block envelope copied), and
-`fixtures/reference/leios-testnet-blocks` holds its 80 verdicts.
+`fixtures/reference/leios-testnet-blocks` holds its 88 verdicts.
 
 ### 12.2 What the build reads, and what changed in this node
 
@@ -776,7 +776,7 @@ Read at the pinned revisions; each is a case of the corpus.
 | Version info | `BlockHeaderVersionInfo`: two `Word32`, neither validated (`Block.hs:147-166`) | a `ProtVer`, the major at most 13 |
 | VRF certificate | `decodeRecordNamed`, definite or indefinite; the output exactly 64 bytes (`Decoding/DecCBOR.hs:627-652`) | a definite list, an output of any length |
 | KES signature | over the header body's original bytes (`getSignableRepresentation = originalBytes`, `Leios/BlockHeader.hs:164-165`) | over the body encoded again |
-| Leios certificate | `decodeRecordNamed` of the signers (at most 8,192 bytes) and the signature, byte strings definite or chunked (`Decoding/DecCBOR.hs:721-736`) | canonical CBOR only |
+| Leios certificate | `decodeRecordNamed` of the signers (at most 8,192 bytes) and the signature, byte strings definite or chunked (`Decoding/DecCBOR.hs:721-736`); the signature a compressed G1 point of the subgroup, the identity included (cardano-base `BLS12381/Internal.hs:476-491`), which verification refuses | canonical CBOR only, and the identity refused at decode |
 | Records in a transaction | every `RecD` record is read by `decodeRecordNamed` from decoder version 12 (e.g. `Mary/Value.hs:308-321`) | not decoded (and not now: X3) |
 
 `LeiosBlock.decode` and `LeiosHeader.decode` now read as the first column says, and the header

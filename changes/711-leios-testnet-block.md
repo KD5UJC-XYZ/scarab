@@ -9,7 +9,8 @@
   tag 7 is a Conway block with a Praos header in that build.
 - A Leios header's KES signature is checked over its body's original bytes, its version info is two
   unvalidated `Word32`, and its VRF output must be 64 bytes, as in that build. A Leios certificate in
-  a block body is read with chunked byte strings and any head width.
-- A new oracle built from that build's revisions (`scripts/oracle/leios-testnet`) and its corpus of 80
+  a block body is read with chunked byte strings and any head width, and its signature may be the
+  identity point there, as that build decodes it; verification still refuses it.
+- A new oracle built from that build's revisions (`scripts/oracle/leios-testnet`) and its corpus of 88
   cases (`fixtures/reference/leios-testnet-blocks`) record its verdicts; the 25 Leios cases of the
   header decoding corpus moved there.

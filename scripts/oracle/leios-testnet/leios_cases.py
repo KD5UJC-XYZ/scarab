@@ -45,39 +45,44 @@ CASES = []
 def case(kind, name, raw, source):
     CASES.append({"id": c.case_id(name), "name": name, "kind": kind, "source": source, "bytes": raw.hex()})
 
-
 def end_of(b, i):
-    """The index after the CBOR item that starts at `i`."""
-    ib = b[i]
-    major, ai = ib >> 5, ib & 31
-    i += 1
-    if ai < 24:
-        arg = ai
-    elif ai in (24, 25, 26, 27):
-        width = 1 << (ai - 24)
-        arg = int.from_bytes(b[i:i + width], "big")
-        i += width
-    elif ai == 31:
-        arg = None
-    else:
-        raise ValueError(f"reserved head {ib:#x}")
-    if major in (0, 1, 7):
-        return i
-    if major in (2, 3):
-        if arg is None:
-            while b[i] != 0xFF:
-                i = end_of(b, i)
-            return i + 1
-        return i + arg
-    if major == 6:
-        return end_of(b, i)
-    count = arg * 2 if (arg is not None and major == 5) else arg
-    if count is None:
-        while b[i] != 0xFF:
-            i = end_of(b, i)
-        return i + 1
-    for _ in range(count):
-        i = end_of(b, i)
+    """The index after the CBOR item that starts at `i`. An explicit stack of the items still to
+    read in each open collection (None for an indefinite one), so nesting depth costs no recursion."""
+    pending = [1]
+    while pending:
+        if pending[-1] == 0:
+            pending.pop()
+            continue
+        if pending[-1] is None and b[i] == 0xFF:
+            pending.pop()
+            i += 1
+            continue
+        if pending[-1] is not None:
+            pending[-1] -= 1
+        ib = b[i]
+        major, ai = ib >> 5, ib & 31
+        i += 1
+        if ai < 24:
+            arg = ai
+        elif ai in (24, 25, 26, 27):
+            width = 1 << (ai - 24)
+            arg = int.from_bytes(b[i:i + width], "big")
+            i += width
+        elif ai == 31:
+            arg = None
+        else:
+            raise ValueError(f"reserved head {ib:#x}")
+        if major in (2, 3):
+            if arg is None:
+                pending.append(None)
+            else:
+                i += arg
+        elif major == 4:
+            pending.append(arg)
+        elif major == 5:
+            pending.append(None if arg is None else 2 * arg)
+        elif major == 6:
+            pending.append(1)
     return i
 
 
@@ -119,6 +124,7 @@ CURRENT = "fixtures/leios/testnet/blocks-rc-2026w44.tsv"
 PREVIOUS = "fixtures/leios/testnet/blocks.tsv"
 current = load(CURRENT)
 previous = load(PREVIOUS)
+FORMS_BLOCK = "scripts/oracle/header-decoding/header_cases.py"
 
 
 class Block:
@@ -197,6 +203,7 @@ block_case("peras certificate an integer", base.build(body=base.with_body(peras=
 # The forms of the Leios certificate, on the certifying block of the previous network.
 SOURCE = f"{PREVIOUS} dijkstra-certificate"
 cert_block = Block(previous["dijkstra-certificate"])
+empty_header = Block(current["block-0"]).header
 signers, signature = parts(cert_block.leios)
 for form in ["indefinite", "detached"]:
     block_case(f"leios certificate {form}",
@@ -213,6 +220,25 @@ block_case("leios certificate of 8193 signer bytes",
            cert_block.build(body=cert_block.with_body(leios=c.array([c.bstr(bytes(8193)), signature]))), SOURCE)
 block_case("leios certificate of 8192 signer bytes",
            cert_block.build(body=cert_block.with_body(leios=c.array([c.bstr(bytes(8192)), signature]))), SOURCE)
+
+# The certificate's signature: the reference reads it with the BLS12-381 MinSig signature decoder
+# of cardano-base c1e1ed8d. Off the curve and outside the subgroup are the compressed G1 vectors of
+# `fixtures/leios/bls/cardano-base-serde-test-vectors` (lines 2 and 3); the identity is the
+# compressed point at infinity.
+SERDE = [bytes.fromhex(line.strip()) for line in open(os.path.join(ROOT, "fixtures/leios/bls/cardano-base-serde-test-vectors"))]
+for label, sig in [("47 bytes", content(signature)[:47]), ("49 bytes", content(signature) + b"\x00"),
+                   ("off the curve", SERDE[1]), ("outside the subgroup", SERDE[2]),
+                   ("the identity", b"\xc0" + bytes(47)), ("not compressed", b"\x00" + content(signature)[1:])]:
+    block_case(f"leios certificate signature {label}",
+               cert_block.build(body=cert_block.with_body(leios=c.array([signers, c.bstr(sig)]))), SOURCE)
+
+# A block of tag 7: in this build a Conway block, `ShelleyBlock (Praos c) ConwayEra`, read at decoder
+# version 9 with the Praos header (`Cardano/Block.hs:269-278`): a definite header and an empty body.
+CONWAY = "conway"
+block_case("tag 7 Conway block with a Praos header",
+           c.array([c.uint(7), hc.block(CONWAY, hc.header(CONWAY))]), FORMS_BLOCK)
+block_case("tag 7 Conway block with a Leios header",
+           c.array([c.uint(7), hc.block(CONWAY, empty_header)]), f"{CURRENT} block-0")
 
 # Synthetic transactions in the empty block 0 of the current network: an output whose value is the
 # `MaryValue` record, in each form and in each output form.

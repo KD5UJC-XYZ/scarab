@@ -1,7 +1,9 @@
 {
   "schemaVersion": 1,
   "measuredAt": "2026-11-03",
-  "scope": "The block and Leios header decoders of the build the public Leios testnet runs (release rc-2026w44): a block as BlockFetch carries it, [tag, block], read with the envelope of decodeDiskHfcBlock (tag 8 a ledger Block of the Leios header at Dijkstra's decoder version 12, tag 7 a Conway Block of the Praos header at 9), and a Leios header alone with decodeFullAnnotator at 12; the testnet's blocks, those blocks with each list definite, indefinite, detached (an empty indefinite list with the fields after it) or of the wrong length, the certificates in several forms, synthetic transactions with an output value in each form, and Leios headers in the forms of the header decoding oracle; for each accepted case the header hash, size, signed bytes and fields, the block body hash and size, each transaction's id and validity flag and which certificates the body holds; no rule, signature or certificate is checked",
+  "scope": "The block and Leios header decoders of the build the public Leios testnet runs (release rc-2026w44): a block as BlockFetch carries it, [tag, block], read with the envelope of decodeDiskHfcBlock (tag 8 a ledger Block of the Leios header at Dijkstra's decoder version 12, tag 7 a Conway Block of the Praos header at 9), and a Leios header alone with decodeFullAnnotator at 12; the testnet's blocks, those blocks with each list definite, indefinite, detached (an empty indefinite list with the fields after it) or of the wrong length, the certificates in several forms, the certificate's signature of the wrong length, off the curve, outside the subgroup, not compressed and the identity, a tag-7 Conway block with a Praos header and with a Leios header, synthetic transactions with an output value in each form, and Leios headers in the forms of the header decoding oracle; for each accepted case the header hash, size, signed bytes and fields, the block body hash and size, each transaction's id and validity flag and which certificates the body holds; no rule, signature or certificate is checked",
+  "ledgerSourceCommit": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+  "consensusSourceCommit": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
   "reference": {
     "release": "input-output-hk/ouroboros-leios rc-2026w44 (tag commit 12998e99018c93a7b4db0a029dc6f4f14cd47624, published 2026-11-01); the testnet's live config.json named MinNodeVersion 11.2.0.164-rc-2026w44 on 2026-11-03",
     "cardanoNode": "b004fe0c50913dcdaa827a98e68a43d0ccce152a (branch leios-prototype): the release's flake.lock input cardano-node-leios, and the git rev that cardano-node --version reports in ghcr.io/input-output-hk/ouroboros-leios/cardano-node-testnet:rc-2026w44 (sha256:70439665b4b93c58ecaa8f73c8919ac7b358f938dd262b6644cd515270773fca)",
@@ -72,7 +74,7 @@
     "cardanoNode": {
       "file": "ouroboros-consensus ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/Node.hs",
       "sourceSha256": "5526d59d6f57a572d93ecbc5720313f5d79cf8789aa588f1b91036cd3ed8d189",
-      "note": "decodeDiskHfcBlock: enforceSize 2, the tag, tag 7 Conway and 8 Dijkstra (174-199), copied in the harness"
+      "note": "decodeDiskHfcBlock: enforceSize 2, decodeWord, tag 7 Conway and 8 Dijkstra (185-198); the harness's cardanoBlock writes those lines out for tags 7 and 8"
     },
     "shelleyBlock": {
       "file": "ouroboros-consensus ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Block.hs",
@@ -88,25 +90,31 @@
       "file": "ouroboros-consensus ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/Block.hs",
       "sourceSha256": "7dbcbd55dfaf4cd6fedcba15a9ddbb8db438d42132f1ab7d2fc5191248163efa",
       "note": "Conway is ShelleyBlock (Praos c), Dijkstra ShelleyBlock (Praos2 c) (269-278)"
+    },
+    "blsSignature": {
+      "file": "cardano-base cardano-crypto-class/src/Cardano/Crypto/DSIGN/BLS12381/Internal.hs",
+      "sourceSha256": "9ac5419c5febe57d72c5673cb1b12802ce3787058dbfebcd83103e5105986025",
+      "note": "rawDecodeFixedSized of a signature: decompression and the subgroup check, the identity not excluded (476-491)"
     }
   },
   "inputs": {
     "fixtures/leios/testnet/blocks-rc-2026w44.tsv": "4a7369eb0bbae69c052852fa2d0cf9a01dbddd88589f174bc7a1783478a88d73",
-    "fixtures/leios/testnet/blocks.tsv": "56ff9901f0fed8909eadc8a85583bbd38b4f70b0d8ed854b715fb15371b6094b"
+    "fixtures/leios/testnet/blocks.tsv": "56ff9901f0fed8909eadc8a85583bbd38b4f70b0d8ed854b715fb15371b6094b",
+    "fixtures/leios/bls/cardano-base-serde-test-vectors": "4a083d3fe6d2a73f47206a92ab2c08930fb11aa2cbdebeeb34563b9ea36ad267"
   },
   "harness": {
     "file": "scripts/oracle/leios-testnet/Main.hs",
-    "sha256": "7d08aaf706713e5bf6053c267ba1a210c3b1aa5f647aa99c6174100a722bc94e",
+    "sha256": "f46697752d1e911cce6abfe417d12eb43adb809ec64bd54cf7950e51de2ee809",
     "cabalProjectSha256": "1c72a46f8750acb95c9d1a2b92c45556b9b18dc3c3869d385631a0b36a104850",
     "image": "built from scripts/oracle/leios-testnet/Dockerfile on scarab-plutus176-context-reference:local (sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef)",
     "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-leios-testnet:local /fixtures/leios-inputs.json"
   },
-  "generatorSha256": "dab08717f2d32df2dd331b22b4b5ba189c1135059650a6825d397876599b7598",
-  "harnessInputSha256": "8dfe3437a92d1dea6a681c7332b97577b67cea648c37fe18c58507274621c278",
-  "harnessOutputSha256": "176462d0f613e63e652ff18acb6d248392eafda447f88f7e9fdf470aaaf4c762",
-  "casesSha256": "648932fd7a7195ebddae19d3a604ddf26b390f3fa478c283c0e6dc2c76c732df",
-  "cases": 80,
-  "accepted": 41,
-  "refused": 39,
+  "generatorSha256": "11d1dff7671567b5d30bbbab3069d77bcc6fcbe9038412412408b19abbdd8773",
+  "harnessInputSha256": "720b343091c9ee03546eea23ea7f11cb2f4adf660a52a65e38bda04367e1cc3d",
+  "harnessOutputSha256": "54355113e93e2724070aa7f74b613f1f561ab03252a980cc07b1b04d1c3fb11d",
+  "casesSha256": "e7ba1553b55a65f90248c7b0b2e44f166d95e8d95059d18a628eaf9304a11310",
+  "cases": 88,
+  "accepted": 43,
+  "refused": 45,
   "originalBytesRetained": true
 }

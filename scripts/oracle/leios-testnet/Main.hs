@@ -42,7 +42,7 @@ import System.Exit (die)
 
 -- | One original encoding. `kind` "block" is a block as BlockFetch carries it, `[tag, block]` inside
 -- the CBOR-in-CBOR wrapper, read with the envelope of `decodeDiskHfcBlock` (ouroboros-consensus
--- 2416493b, `Ouroboros/Consensus/Cardano/Node.hs:174-199`, copied in `cardanoBlock`): tag 8 is
+-- 2416493b, `Ouroboros/Consensus/Cardano/Node.hs:185-198`, copied in `cardanoBlock`): tag 8 is
 -- `ShelleyBlock (Praos2 c) DijkstraEra`, a ledger `Block` of the Leios header read at Dijkstra's
 -- version 12, and tag 7 `ShelleyBlock (Praos c) ConwayEra` at Conway's 9 (`decodeShelleyBlock`,
 -- `Shelley/Ledger/Block.hs:332-339`); the harness reads no other tag. `kind` "header" is a Leios

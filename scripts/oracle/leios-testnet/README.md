@@ -19,13 +19,19 @@ The harness builds the ledger and cardano-base packages from those revisions (`c
 copies the node's repository, index state and `source-repository-package` stanzas) and reads:
 
 - a block as BlockFetch carries it, `[tag, block]`, with the envelope of `decodeDiskHfcBlock`
-  (ouroboros-consensus 2416493b, `Ouroboros/Consensus/Cardano/Node.hs:174-199`, copied in
-  `Main.hs`): `enforceSize "CardanoBlock" 2`, the tag, and for tag 8 the ledger's
+  (ouroboros-consensus 2416493b,
+  `ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/Node.hs:185-198`):
+  `enforceSize "CardanoBlock" 2`, `CBOR.decodeWord`, and for tag 8 the ledger's
   `Block (Leios.Header StandardCrypto) DijkstraEra` at Dijkstra's decoder version 12 (`Praos2`'s
   header, `Protocol/Praos2.hs:57`), for tag 7 `Block (Praos.Header StandardCrypto) ConwayEra` at
-  Conway's 9, each with the annotated decoder over the whole input as `decodeShelleyBlock` runs it
-  (`Shelley/Ledger/Block.hs:332-339`). The envelope is copied rather than built: ouroboros-consensus
-  itself is not compiled, as the decoders it calls are the ledger's;
+  Conway's 9, each with the annotated decoder run over the whole input, as `decodeShelleyBlock` does
+  (`ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Block.hs:332-339`:
+  `eraDecoder @era`, `(. Full) . runAnnotator <$> decCBOR`). `cardanoBlock` in `Main.hs` writes
+  those lines out for tags 7 and 8 and refuses any other tag with the same `DecoderErrorUnknownTag`
+  (the harness has no Byron to Babbage cases): for those two tags it is the consensus decoder line
+  for line, which a review against the pinned source confirmed. Consensus itself is not compiled:
+  the decoders those lines call are all the ledger's, and building the whole consensus tree needs
+  native libraries (`liburing` for its `blockio` dependency) the base image does not have;
 - a Leios header alone, `decodeFullAnnotator` at version 12, as `decodeShelleyHeader` reads the
   header inside ChainSync's era envelope.
 

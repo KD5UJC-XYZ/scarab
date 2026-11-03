@@ -17,7 +17,7 @@ detached, an empty indefinite list with its fields after it, is refused. The env
 is read by `enforceSize`, a definite list. The KES signature of a Leios header is over its body's
 original bytes.
 
-`cases.jsonl` holds 80 lines, one case each, written by
+`cases.jsonl` holds 88 lines, one case each, written by
 `scripts/oracle/leios-testnet/leios_cases.py`:
 - the testnet's blocks as BlockFetch carries them (`kind` "block"): blocks 0, 1 and 8,562 of the
   current network (`fixtures/leios/testnet/blocks-rc-2026w44.tsv`, all empty) and the six blocks of
@@ -31,7 +31,14 @@ original bytes.
   items, marked invalid, a validity that is not a boolean), the Peras certificate (bytes, chunked
   bytes, an integer);
 - its certifying block with the Leios certificate indefinite, detached, its signature chunked, its
-  signers with a wide length head, and signers of 8,192 and 8,193 bytes;
+  signers with a wide length head, and signers of 8,192 and 8,193 bytes; and with a signature of 47
+  and 49 bytes, off the curve and outside the subgroup (the compressed G1 vectors of
+  `fixtures/leios/bls/cardano-base-serde-test-vectors`), not compressed, and the identity, which
+  the build decodes (cardano-base `BLS12381/Internal.hs:476-491`: decompression and the subgroup
+  check, no exclusion of the identity);
+- a block of tag 7, a Conway block in this build: with the Praos header of the header oracle
+  (accepted, read at Conway's decoder version 9) and with the current network's Leios header
+  (refused);
 - the empty block 0 of the current network with synthetic transactions whose output value
   `[coin, multiasset]` is definite, indefinite or detached, in an output list and an output map, a
   coin value, and two transactions of which the second holds a detached value;
@@ -43,7 +50,7 @@ original bytes.
   size over a `Word32`, a VRF output of no bytes, a body of eleven fields).
 
 The verdict (`accepted` and the complete `failure`) is what the build's decoders did with each:
-41 accepted and 39 refused. Every detached form is refused, every indefinite one accepted. For an
+43 accepted and 45 refused. Every detached form is refused, every indefinite one accepted. For an
 accepted case the line records the header hash (`hash`), its size, the signed bytes (`signable`),
 the header fields, and for a block its tag, body hash and size as the ledger computes them, each
 transaction's id and validity flag (`txs`) and whether it carries a Leios or a Peras certificate.

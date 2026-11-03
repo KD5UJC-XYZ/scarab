@@ -75,6 +75,19 @@ class LeiosCertificateSuite extends ScalaCheckSuite:
     }
   }
 
+  property(
+    "a certificate whose signature is the identity decodes, as in the build, and never verifies"
+  ) {
+    // `rawDecodeFixedSized` decodes the identity (cardano-base c1e1ed8d, `BLS12381/Internal.hs:476-491`)
+    val identity = Bytes.wrap(Array(0xc0.toByte) ++ Array.fill[Byte](47)(0))
+    assert(Signature.fromBytes(identity).isLeft)
+    forAll(genSigners, genHash) { (seats, h) =>
+      val signers = right(Certificate.aggregate(committee, votes(h, seats))).signers
+      val cert = right(Certificate.fromFields(signers.bytes, identity))
+      assert(Certificate.verify(committee, Weight.zero, h, cert).isLeft)
+    }
+  }
+
   property("aggregation does not depend on the order of the votes") {
     forAll(genSigners, genHash) { (seats, h) =>
       val vs = votes(h, seats).toVector
