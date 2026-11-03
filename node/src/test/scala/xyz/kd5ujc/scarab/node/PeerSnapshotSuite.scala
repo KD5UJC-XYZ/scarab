@@ -39,17 +39,17 @@ class PeerSnapshotSuite extends FunSuite:
         assertEquals(magic, 164L)
         point match
           case SnapshotPoint.Block(slot, hash) =>
-            assertEquals(slot, BigInt(280825))
+            assertEquals(slot, BigInt(174225))
             assertEquals(
               hash.hex,
-              "85f25eb3a3a6eed5ca6e18aa47701992febc6a277cc7481f20a32c8bc1f91d69"
+              "c08965d32722e7f3f6bb385c7ade534561ab085dfa48581d83b46b5663e59628"
             )
           case other => fail(s"$other")
         assertEquals(pools.size, 3)
         // the stakes are the exact decimals of the file, not doubles
         assertEquals(
           pools.head.accumulated.share,
-          Rational.fromDecimal(BigDecimal("0.35901138711667363"))
+          Rational.fromDecimal(BigDecimal("0.3548468014605265"))
         )
         assertEquals(pools.head.stake.share, pools.head.accumulated.share)
         assertEquals(pools.last.accumulated.share, Rational.one)
@@ -59,7 +59,7 @@ class PeerSnapshotSuite extends FunSuite:
           Vector(LedgerRelay.Domain("leios-node.play.dev.cardano.org.", port(3001)))
         )
       case other => fail(s"$other")
-    assertEquals(snapshot.slot, WithOrigin.At(BigInt(280825)))
+    assertEquals(snapshot.slot, WithOrigin.At(BigInt(174225)))
   }
 
   test("the snapshot of that file beats a ledger behind it and gives the big peers of the file") {
@@ -67,11 +67,11 @@ class PeerSnapshotSuite extends FunSuite:
       .read(Path.of("fixtures/leios/testnet/config/peer-snapshot.json"))
       .fold(e => fail(s"$e"), identity)
     val chosen = LedgerPeerStake.stakeMapWithSlotOverSource[LedgerRelay](
-      WithOrigin.At(280000),
+      WithOrigin.At(170000),
       LedgerSupply.BeforeSlot(),
       Some(snapshot),
       LedgerPeersCache.empty,
-      AfterSlot.After(151200)
+      AfterSlot.After(1000)
     )
     assertEquals(chosen.source, StakeSource.Snapshot)
     assertEquals(chosen.maps.big.size, 3)

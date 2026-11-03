@@ -190,7 +190,7 @@ object Targets:
 
   private val leiosFetchSeeds: () => Vector[Array[Byte]] = () =>
     val point = EbPoint(
-      leiosSeed(LeiosWord.Word64.from(371614L)),
+      leiosSeed(LeiosWord.Word64.from(1455818L)),
       EbHash.fromBytes(Bytes.fromArray(Array.fill(32)(7.toByte)))
     )
     val bitmaps = TxBitmaps(
@@ -234,7 +234,7 @@ object Targets:
 
   private val leiosNotifySeeds: () => Vector[Array[Byte]] = () =>
     val point = EbPoint(
-      leiosSeed(LeiosWord.Word64.from(371614L)),
+      leiosSeed(LeiosWord.Word64.from(1455818L)),
       EbHash.fromBytes(Bytes.fromArray(Array.fill(32)(7.toByte)))
     )
     val seeds = Vector(

@@ -11,6 +11,6 @@
   unvalidated `Word32`, and its VRF output must be 64 bytes, as in that build. A Leios certificate in
   a block body is read with chunked byte strings and any head width, and its signature may be the
   identity point there, as that build decodes it; verification still refuses it.
-- A new oracle built from that build's revisions (`scripts/oracle/leios-testnet`) and its corpus of 88
+- A new oracle built from that build's revisions (`scripts/oracle/leios-testnet`) and its corpus
   cases (`fixtures/reference/leios-testnet-blocks`) record its verdicts; the 25 Leios cases of the
   header decoding corpus moved there.
