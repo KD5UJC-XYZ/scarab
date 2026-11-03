@@ -51,7 +51,10 @@ import System.Exit (die)
 -- A case with `ids` set is read by the kinds of `identified` instead: "body", "witnesses",
 -- "transaction" and "auxiliary" of every era, and "blockbody" (the parts of a block after its
 -- header, one after the other); an accepted one also reports the ids it hashes from the bytes it
--- read (#687).
+-- read (#687). With `wire` set as well, an accepted transaction also reports the bytes the node
+-- relays for it: its `encCBOR` at the era's version, which consensus wraps in CBOR for transaction
+-- submission (`toCBOR (ShelleyTx _ tx) = wrapCBORinCBOR toCBOR tx`) and measures (`wireSizeTxF`)
+-- (#699).
 data Case = Case
   { name :: String
   , era :: String
@@ -59,6 +62,7 @@ data Case = Case
   , bytes :: Text.Text
   , withdrawals :: Maybe Bool
   , ids :: Maybe Bool
+  , wire :: Maybe Bool
   }
   deriving (Generic)
 
@@ -92,18 +96,24 @@ txIdHex (TxId h) = hex (extractHash h)
 
 -- | The verdict and, when accepted, the transaction id of a body (the hash of the bytes the decoder
 -- read), of a whole transaction (its body's), or the block body hash and the id of each
--- transaction of a block body.
+-- transaction of a block body. With `relayed` set, an accepted transaction also reports its `encCBOR`.
 idsOf ::
   forall era.
   ( EraBlockBody era
+  , Binary.EncCBOR (Tx TopTx era)
   , Binary.DecCBOR (Binary.Annotator (TxBody TopTx era))
   , Binary.DecCBOR (Binary.Annotator (TxWits era))
   , Binary.DecCBOR (Binary.Annotator (TxAuxData era))
   ) =>
-  Binary.Version -> String -> String -> LBS.ByteString -> Value
-idsOf version label k raw = case k of
+  Binary.Version -> Bool -> String -> String -> LBS.ByteString -> Value
+idsOf version relayed label k raw = case k of
   "body" -> withIds (\b -> ["id" .= txIdHex (txIdTxBody (b :: TxBody TopTx era))])
-  "transaction" -> withIds (\t -> ["id" .= txIdHex (txIdTxBody ((t :: Tx TopTx era) ^. bodyTxL))])
+  "transaction" ->
+    withIds
+      ( \t ->
+          ("id" .= txIdHex (txIdTxBody ((t :: Tx TopTx era) ^. bodyTxL)))
+            : ["wire" .= Text.decodeUtf8 (Hex.encode (LBS.toStrict (Binary.serialize version t))) | relayed]
+      )
   "witnesses" -> withIds (\(_ :: TxWits era) -> [])
   "auxiliary" -> withIds (\(_ :: TxAuxData era) -> [])
   "blockbody" ->
@@ -123,13 +133,15 @@ idsOf version label k raw = case k of
 
 identified :: Case -> LBS.ByteString -> Maybe Value
 identified c raw = case era c of
-  "shelley" -> Just (idsOf @ShelleyEra (Binary.natVersion @2) "Shelley" (kind c) raw)
-  "allegra" -> Just (idsOf @AllegraEra (Binary.natVersion @3) "Allegra" (kind c) raw)
-  "mary" -> Just (idsOf @MaryEra (Binary.natVersion @4) "Mary" (kind c) raw)
-  "alonzo" -> Just (idsOf @AlonzoEra (Binary.natVersion @5) "Alonzo" (kind c) raw)
-  "babbage" -> Just (idsOf @BabbageEra (Binary.natVersion @7) "Babbage" (kind c) raw)
-  "conway" -> Just (idsOf @ConwayEra (Binary.natVersion @9) "Conway" (kind c) raw)
+  "shelley" -> Just (idsOf @ShelleyEra (Binary.natVersion @2) relayed "Shelley" (kind c) raw)
+  "allegra" -> Just (idsOf @AllegraEra (Binary.natVersion @3) relayed "Allegra" (kind c) raw)
+  "mary" -> Just (idsOf @MaryEra (Binary.natVersion @4) relayed "Mary" (kind c) raw)
+  "alonzo" -> Just (idsOf @AlonzoEra (Binary.natVersion @5) relayed "Alonzo" (kind c) raw)
+  "babbage" -> Just (idsOf @BabbageEra (Binary.natVersion @7) relayed "Babbage" (kind c) raw)
+  "conway" -> Just (idsOf @ConwayEra (Binary.natVersion @9) relayed "Conway" (kind c) raw)
   _ -> Nothing
+  where
+    relayed = wire c == Just True
 
 runCase :: Case -> IO Value
 runCase c = do

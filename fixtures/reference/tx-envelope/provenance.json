@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-02",
+  "scope": "Unchanged released decoders (decodeFullAnnotator) of a whole transaction of each era from Shelley to Conway at the era's decoder version (2, 3, 4, 5, 7, 9): before Alonzo the RecD record ShelleyTx definite, non-empty indefinite and detached, with a flag and with the wrong number of items; from Alonzo decodeRecordNamed AlonzoTx with and without its validity flag, definite and indefinite, a boolean third item without auxiliary data after it, a non-boolean third item of four, the wrong number of items, heads that disagree with the items and a detached envelope; for each accepted transaction the transaction id the decoders hash and its encCBOR at the era's version (the bytes a node relays for it); no ledger rule, signature or script is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "consensusSourceCommit": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+  "compiler": "GHC 9.10.3",
+  "referenceNode": "11.1.3 (matching embedded ledger package versions, not a bit-identical node release build)",
+  "packages": {
+    "cardano-ledger-binary": "1.9.1.0",
+    "cardano-ledger-core": "1.21.0.0",
+    "cardano-ledger-shelley": "1.19.0.1",
+    "cardano-ledger-allegra": "1.10.1.0",
+    "cardano-ledger-mary": "1.11.0.0",
+    "cardano-ledger-alonzo": "1.16.0.0",
+    "cardano-ledger-babbage": "1.14.0.0",
+    "cardano-ledger-conway": "1.23.0.0",
+    "cborg": "0.2.10.0"
+  },
+  "sourceFiles": {
+    "shelleyTx": {
+      "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Tx.hs",
+      "sourceSha256": "8cc7205b51bfc2822ba294ee7a22b23fb4dbd71e886b9f6f7328ac789411373f",
+      "matchesPin": true,
+      "note": "ShelleyTx is a RecD record (184-192)"
+    },
+    "alonzoTx": {
+      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+      "sourceSha256": "d4ebeaa8cb9269a4a3b88420b8f66474c0370b6a440a4b44e9ddff884fed0ed7",
+      "matchesPin": true,
+      "note": "decodeRecordNamed AlonzoTx over the body, witnesses, a flag read when the third item is a boolean and the auxiliary data (532-553); toCBORForMempoolSubmission writes Rec AlonzoTx of four items (489-513)"
+    },
+    "coders": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Coders.hs",
+      "sourceSha256": "c48ae8e39adddd6b68190f6a3ba57078508cb0cce80dab6ad0b6781e9d6a622d",
+      "matchesPin": true,
+      "note": "decodeCount (RecD cn) n reads the list head around a decoder that reads nothing; the fields are read after it by ApplyD (482, 499-502)"
+    },
+    "decoder": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+      "sourceSha256": "3ff3541b2900ceaab9bda26f633d7ea5118a49f5faab3936d036cfe9b49f94cc",
+      "matchesPin": true,
+      "note": "decodeRecordNamed checks a definite list's count after its fields and an indefinite list's break (654-708)"
+    },
+    "core": {
+      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+      "sourceSha256": "b788b5adabad50b4aacd87456e8c7605ab3f8bad5eb9eb9e6b1dab6f879bd4c2",
+      "note": "wireSizeTxF: the size of the encCBOR of a transaction at the era's version (667-679); read at the pin"
+    },
+    "consensusMempool": {
+      "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Mempool.hs",
+      "sourceSha256": "cb9d5c540ac313a0f96f41d40b4c586c8ceeeb4b30e2c2c6e6eac65d1576ef91",
+      "note": "a held transaction is sent as wrapCBORinCBOR toCBOR tx (256-259); read at the consensus pin, not run by the harness"
+    }
+  },
+  "sourceArchive": {
+    "url": "https://codeload.github.com/IntersectMBO/cardano-ledger/tar.gz/f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "sha256": "b545b1eda2067c756add6d98701aacc217a380fe177f984daa1da655607a0b68",
+    "kind": "repository tarball at the pinned commit"
+  },
+  "harness": {
+    "file": "scripts/oracle/conway-decoding/Main.hs",
+    "sha256": "deddd09825e7ba4c72f52c0cb683c798edc3da98ccf43df0735d4f59136190a4",
+    "image": "scarab-conway-decoding:local (run as scarab-cc688-conway-decoding:local, whose /oracle/conway-decoding/Main.hs has this sha256), from scripts/oracle/conway-decoding/Dockerfile on scarab-plutus176-context-reference:local",
+    "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-conway-decoding:local /fixtures/tx-envelope-inputs.json",
+    "unchanged": true
+  },
+  "generatorSha256": "6b28930426f5178db58f54ea48645acfd0a5747910230dd95fd43bd68563d7f6",
+  "harnessInputSha256": "8f5a71da8f4e923abfd93db2ca8dbc8da520b60eecdb905fa714e392b83ace36",
+  "harnessOutputSha256": "bb83fff6bff001b38941bbfec4270a32e749969009c6543088f786f2c4aeb31e",
+  "casesSha256": "4c054e24a7bbc74c78c4e1f0f3213e0ea25f8441306ad60402d76582bbbdf569",
+  "cases": 91,
+  "accepted": 43,
+  "refused": 48,
+  "originalBytesRetained": true
+}
