@@ -141,11 +141,30 @@ def require_free_disk(path, margin=None, free=None):
 
 def directory_size(root):
     """Bytes of every file under `root`, recursively; a missing directory is 0. Symbolic links are not
-    followed, so a run directory linking another does not count the same bytes twice."""
-    root = pathlib.Path(root)
-    if not root.is_dir():
+    followed, so a run directory linking another does not count the same bytes twice. An entry that vanishes
+    or cannot be read while it is walked (a container still writing into the directory) is skipped: the
+    report is a courtesy at the end of a run, never the thing that decides whether the run succeeded."""
+    total = 0
+    if not _is_dir(root):
         return 0
-    return sum(p.stat().st_size for p in root.rglob("*") if p.is_file() and not p.is_symlink())
+    try:
+        entries = pathlib.Path(root).rglob("*")
+        for entry in entries:
+            try:
+                if entry.is_file() and not entry.is_symlink():
+                    total += entry.stat().st_size
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return total
+
+
+def _is_dir(path):
+    try:
+        return pathlib.Path(path).is_dir()
+    except OSError:
+        return False
 
 
 def report_run_size(root, emit=None):
@@ -155,9 +174,12 @@ def report_run_size(root, emit=None):
     The line goes to stderr: a scenario's last stdout line is its JSON summary, which callers parse.
     """
     root = pathlib.Path(root)
-    if not root.is_dir():
+    if not _is_dir(root):
         return None
-    size = directory_size(root)
+    try:
+        size = directory_size(root)
+    except OSError:  # measured only to be printed; a failure here must not replace the run's own outcome
+        return None
     report = {"runDir": str(root), "bytes": size, "human": human_size(size)}
     line = (f"run directory {root}: {report['human']} ({size} bytes); "
             f"`devnet.py --name {root.name} down` removes it")

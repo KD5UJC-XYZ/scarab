@@ -19,7 +19,8 @@ from fractions import Fraction
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from devnet import cbor, cluster, compare, encoding, eraload, eratx, eraview, follower, govextra, govview, ntccases, ntccli, ntclocal, ntcqueries, ntcquery, refused_fixture, util  # noqa: E402
+from devnet import cbor, cli, cluster, compare, encoding, eraload, eratx, eraview, follower, govextra, govview, ntccases, ntccli, ntclocal, ntcqueries, ntcquery, refused_fixture, util  # noqa: E402
+from devnet.scenarios import faults
 from devnet.scenarios import peercut
 from devnet.scenarios import ntc  # noqa: E402
 from devnet.scenarios import pool  # noqa: E402
@@ -1508,3 +1509,29 @@ class RunDirectoryDiskTest(unittest.TestCase):
             self.assertEqual(refused.stdout, "")  # nothing ran, nothing was printed as a result
         finally:
             shutil.rmtree(env["SCARAB_DATA_DIR"], ignore_errors=True)
+
+    def test_every_path_that_creates_a_run_directory_checks_the_margin_first(self):
+        # the refusal comes before any mkdir or container, so this needs no Docker and leaves nothing behind
+        args = types.SimpleNamespace(name="run", min_free_disk=100 * 1024**4)
+        for entry in (cluster.up, cluster.up_eras, faults.faults, pool.pool):
+            with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"SCARAB_DATA_DIR": tmp}):
+                with self.assertRaises(util.InsufficientDisk, msg=entry.__module__):
+                    entry(args)
+                self.assertEqual(list(pathlib.Path(tmp).iterdir()), [], entry.__module__)
+
+    def test_the_size_is_reported_when_the_run_fails(self):
+        def failing(_args):
+            root = util.data_root("scarab-610-report")
+            root.mkdir(parents=True)
+            (root / "follower.jsonl").write_text("e" * 1024)
+            raise SystemExit("scenario failed")
+
+        stderr = io.StringIO()
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"SCARAB_DATA_DIR": tmp}), \
+                patch.object(cli, "up", failing), contextlib.redirect_stderr(stderr), \
+                patch.object(sys, "argv", ["devnet.py", "--name", "scarab-610-report", "up"]):
+            with self.assertRaises(SystemExit) as caught:
+                cli.main()
+        self.assertEqual(str(caught.exception), "scenario failed")  # the run's own error survives the report
+        self.assertIn("run directory", stderr.getvalue())
+        self.assertIn("1.0 KiB", stderr.getvalue())
