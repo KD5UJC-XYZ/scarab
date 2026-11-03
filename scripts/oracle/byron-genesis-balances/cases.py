@@ -14,6 +14,7 @@ canonical ones; the amounts cover the forms `readEither` takes as a `Word64` and
 import argparse
 import base64
 import json
+import re
 import zlib
 from pathlib import Path
 
@@ -180,7 +181,29 @@ def main():
     verdicts = {r["name"]: r["reference"] for r in json.loads(a.reference.read_text())}
     with a.out.open("w") as f:
         for c in cs:
-            f.write(json.dumps(dict(c, **verdicts[c["name"]]), sort_keys=True, ensure_ascii=False) + "\n")
+            v = verdicts[c["name"]]
+            row = dict(c, **v)
+            if not v["accepted"]:
+                row["refusal"] = refusal(v["failure"])
+            f.write(json.dumps(row, sort_keys=True, ensure_ascii=False) + "\n")
+
+
+def refusal(failure):
+    """The field a refusal names, from the reader's `SchemaError` (its `seExpected`), in the shape
+    circe derives for the suite's `Refusal`; a redeem key's wrong length keeps the length."""
+    expected = re.search(r'seExpected = "([A-Za-z0-9]+)"', failure)
+    assert expected, failure
+    kind = expected.group(1)
+    if kind == "Address":
+        return {"Address": {}}
+    if kind == "Word64":
+        return {"Amount": {}}
+    assert kind == "RedeemVerificationKey", failure
+    length = re.search(r"Address length is (\d+)", failure)
+    if length:
+        return {"AvvmKeyLength": {"length": int(length.group(1))}}
+    assert "is not base64(url) format" in failure, failure
+    return {"AvvmKeyFormat": {}}
 
 
 if __name__ == "__main__":

@@ -24,12 +24,19 @@ class ByronGenesisBalancesReferenceSuite extends FunSuite:
   private final case class Output(txid: String, index: Int, address: String, lovelace: String)
       derives Decoder
   private final case class Utxo(nonAvvm: Vector[Output], avvm: Vector[Output]) derives Decoder
+
+  /** The field a refusal names: the reader's `seExpected`, with a redeem key's wrong length. */
+  private enum Refusal derives Decoder:
+    case Address, Amount, AvvmKeyFormat
+    case AvvmKeyLength(length: Int)
+
   private final case class Row(
       name: String,
       text: String,
       accepted: Boolean,
       result: Option[Utxo],
-      failure: Option[String]
+      failure: Option[String],
+      refusal: Option[Refusal]
   ) derives Decoder
 
   private val rows: Vector[Row] =
@@ -50,25 +57,24 @@ class ByronGenesisBalancesReferenceSuite extends FunSuite:
       .map((in, out) => Output(in.id.hex, in.index.toInt, out.address.hex, out.value.toString))
       .toSet
 
-  /** The kind of field the reference's schema error names, which Scarab's problem must match. */
-  private def matches(failure: String, problem: ConfigProblem): Boolean =
-    val length = """Address length is (\d+)""".r.findFirstMatchIn(failure).map(_.group(1).toInt)
-    problem match
-      case ConfigProblem.Base58Address(_) | ConfigProblem.ByronGenesisAddress(_, _) =>
-        failure.contains("seExpected = \"Address\"")
-      case ConfigProblem.IntegerText(_, _) | ConfigProblem.JsonField(_, _, _) =>
-        failure.contains("seExpected = \"Word64\"")
-      case ConfigProblem.AvvmKey(_, AvvmKeyError.Length(n)) => length.contains(n)
-      case ConfigProblem.AvvmKey(_, AvvmKeyError.Format) =>
-        failure.contains("is not base64(url) format")
-      case _ => false
+  /** Scarab's problem for the field the reference's refusal names. */
+  private def matches(refusal: Refusal, problem: ConfigProblem): Boolean = (refusal, problem) match
+    case (Refusal.Address, ConfigProblem.Base58Address(_))                            => true
+    case (Refusal.Address, ConfigProblem.ByronGenesisAddress(_, _))                   => true
+    case (Refusal.Amount, ConfigProblem.IntegerText(_, _))                            => true
+    case (Refusal.Amount, ConfigProblem.JsonField(_, _, _))                           => true
+    case (Refusal.AvvmKeyFormat, ConfigProblem.AvvmKey(_, AvvmKeyError.Format))       => true
+    case (Refusal.AvvmKeyLength(n), ConfigProblem.AvvmKey(_, AvvmKeyError.Length(m))) => n == m
+    case _                                                                            => false
 
   test("the corpus covers addresses, AVVM keys and amounts, taken and refused") {
     assertEquals(rows.map(_.name).distinct.size, rows.size)
     for prefix <- List("address: ", "AVVM key: ", "non-AVVM amount ", "AVVM amount ") do
       val group = rows.filter(_.name.startsWith(prefix))
       assert(group.exists(_.accepted) && group.exists(!_.accepted), prefix)
-    for row <- rows do assertEquals(row.accepted, row.result.isDefined, row.name)
+    for row <- rows do
+      assertEquals(row.accepted, row.result.isDefined, row.name)
+      assertEquals(row.accepted, row.refusal.isEmpty, row.name)
   }
 
   for row <- rows do
@@ -84,5 +90,25 @@ class ByronGenesisBalancesReferenceSuite extends FunSuite:
         case (Some(_), Left(e)) => fail(s"the reference takes this genesis: ${e.problem}")
         case (None, Right(_))   => fail(s"the reference refuses this genesis: ${row.failure}")
         case (None, Left(e)) =>
-          assert(matches(row.failure.getOrElse(""), e.problem), s"${e.problem} for ${row.failure}")
+          assert(row.refusal.exists(matches(_, e.problem)), s"${e.problem} for ${row.failure}")
     }
+
+  test(
+    "a genesis address longer than a block's limits is read, as the reference bounds it by nothing"
+  ) {
+    val attribute = ByronCbor.bytes(Bytes.fromArray(Array.fill(1 << 23)(0.toByte)))
+    val attributes = ByronCbor.concat(ByronCbor.mapHead(1), ByronCbor.uint(5), attribute)
+    val body = ByronCbor.concat(
+      ByronCbor.of(0x83),
+      ByronCbor.bytes(Bytes.fromArray(Array.tabulate(28)(_.toByte))),
+      attributes,
+      ByronCbor.uint(0)
+    )
+    val raw = ByronCbor.concat(
+      ByronCbor.of(0x82, 0xd8, 0x18),
+      ByronCbor.bytes(body),
+      ByronCbor.uint(ByronCbor.crc32(body))
+    )
+    assert(raw.size > ByronCbor.BodyLimits.maxInputBytes)
+    assertEquals(ByronAddress.reencoded(raw), Right(raw))
+  }

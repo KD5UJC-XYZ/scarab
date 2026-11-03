@@ -72,11 +72,11 @@
     "main": "scripts/oracle/byron-genesis-balances/Main.hs",
     "mainSha256": "51dd48a1740e1aaa43b1dda1903d894461360a61a95277a3a319472da6b3b91a",
     "cases": "scripts/oracle/byron-genesis-balances/cases.py",
-    "casesSha256": "3a6ec282a916e962c6bca279100f6933e0570e06fd0e2a54a340095f2f451e6d"
+    "casesSha256": "a9f273d8465c5714e2b02a3ff6774a16295a22e3287c924ae381f236fcc5de01"
   },
   "cases": {
     "file": "cases.jsonl",
-    "sha256": "a3413a33de17300610242f7a6e66c7faa2f3d43c62c0bc4475497734e812a04d",
+    "sha256": "d71b31586babd142e7a6178b1cde94070747b13abb47acc64b358d6a1ef7704b",
     "count": 114,
     "accepted": 62,
     "refused": 52

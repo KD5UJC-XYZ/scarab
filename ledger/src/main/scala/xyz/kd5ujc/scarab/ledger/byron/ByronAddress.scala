@@ -103,8 +103,6 @@ object ByronAddress:
   val VerKey = 0
   val Redeem = 2
 
-  private val limits = ByronCbor.BodyLimits
-
   def rootOf(addrType: Int, key: Bytes, attributes: Bytes): Bytes =
     val spending = ByronCbor.concat(ByronCbor.of(0x82, addrType), ByronCbor.bytes(key))
     ByronCbor.addressHash(ByronCbor.concat(ByronCbor.of(0x83, addrType), spending, attributes))
@@ -137,9 +135,13 @@ object ByronAddress:
     * derivation path (attribute 1), a canonical `Word32` network magic (attribute 2), a canonical
     * `Word8` type that is 0 or 2, and no byte after the address. The reference keeps any width of
     * the integers and lengths of the envelope (the tag, the payload length, the checksum, the list,
-    * map and key heads), and so does this reader.
+    * map and key heads), and so does this reader. `limits` bound the decoding: a block's, by
+    * default.
     */
-  def decode(raw: Bytes): Either[LedgerDecodeError, ByronAddress] =
+  def decode(
+      raw: Bytes,
+      limits: Cbor.Limits = ByronCbor.BodyLimits
+  ): Either[LedgerDecodeError, ByronAddress] =
     for
       root <- CborRead.decode(raw, limits)
       outer <- ByronTransport.tuple(root, 2, DecodeField.ByronAddress)
@@ -197,11 +199,14 @@ object ByronAddress:
     * `Cardano.Chain.Common.Address` and `Cardano.Chain.Common.Attributes`, cardano-ledger
     * f649f975): every head and length minimal, the attributes in ascending key order with the
     * values they carried. A genesis balance's address is keyed and stored so (`UTxO.fromBalances`,
-    * `Cardano/Chain/UTxO/UTxO.hs:121-131`), whatever widths its text used (#728).
+    * `Cardano/Chain/UTxO/UTxO.hs:121-131`), whatever widths its text used (#728). A genesis address
+    * is in no block, and the reference's reader bounds it by nothing but its own length.
     */
   def reencoded(raw: Bytes): Either[LedgerDecodeError, Bytes] =
+    val size = raw.size.max(1)
+    val limits = Cbor.Limits(size, Int.MaxValue, size, size)
     for
-      address <- decode(raw)
+      address <- decode(raw, limits)
       fields <- CborRead
         .decode(address.attributes, limits)
         .flatMap(attributeFields(_, DecodeField.ByronAddressAttributes))

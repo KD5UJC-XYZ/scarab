@@ -22,7 +22,7 @@ address and amount); a refusal keeps the reader's error (`failure`).
 | one address twice | two encodings of one address, in each order of the text | the first in the text holds |
 | AVVM keys | padded base64url, the standard alphabet, two spellings of one key in each order | accepted, the first in the text holds |
 | | unpadded, nonzero padding bits, padding in the middle, two padding characters, 31 or 33 bytes, not base64, empty | refused |
-| amounts, in each field | 33 texts: zero, `45e15` and one over, `2^64-1`, `2^64` and over (taken modulo 2^64), `-1`, `-0`, `- 5`, `(-5)` (negative, taken modulo 2^64), surrounding spaces and parentheses, `0x`, `0X`, `0o`, `0O`, leading zeros, a 31-digit number; `+5`, `-(5)`, `0b101`, `5.0`, `5e3`, `5E0`, empty, `five`, `5_000` and a no-break or em space before the digit; a JSON number | as listed |
+| amounts | 32 texts in each field: zero, `45e15` and one over, `2^64-1`, `2^64` and over (taken modulo 2^64), `-1`, `-0`, `- 5`, `(-5)` (negative, taken modulo 2^64), surrounding spaces and parentheses, `0x`, `0X`, `0o`, `0O`, leading zeros, a 31-digit number; `+5`, `-(5)`, `0b101`, `5.0`, `5e3`, `5E0`, empty, `five`, `5_000` and a no-break or em space before the digit; and a non-AVVM amount written as a JSON number | as listed |
 
 Scope: the two balance fields and the genesis UTxO made of them. How the whole file is parsed
 (canonical JSON's strings, escapes and numbers, a key repeated in the text, a field left out) is
