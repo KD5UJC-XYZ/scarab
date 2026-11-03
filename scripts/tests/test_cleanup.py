@@ -44,7 +44,7 @@ class WorktreeTest(unittest.TestCase):
         self.assertTrue(verdict(TREE, state=in_main, scope=Scope(frozenset({"42-x"}), None))[0])
         self.assertTrue(verdict(TREE, state=in_main, scope=Scope(frozenset({"claude/42-x"}), None))[0])
         self.assertEqual(verdict(TREE, state=in_main, scope=Scope(frozenset(), 14)),
-                         (True, "head is in origin/main, no git activity for 20 days"))
+                         (True, "head is in origin/main, no checkout, commit or reset for 20 days"))
         self.assertFalse(verdict(TREE, state=in_main, scope=Scope(frozenset(), 21))[0])
 
     def test_each_doubt_keeps_it_and_says_why(self):
@@ -191,6 +191,35 @@ class StatusConfigurationTest(unittest.TestCase):
             with mock.patch.object(cleanup, "ROOT", repo):
                 trees = cleanup.worktrees()
         self.assertEqual([entry.ignored for entry in trees], [(".workspace/",)])
+
+    def test_activity_is_the_last_checkout_or_commit_not_the_index_that_listing_rewrites(self):
+        import os
+        import subprocess
+        import tempfile
+        import time
+        with tempfile.TemporaryDirectory() as scratch:
+            repo, tree = Path(scratch) / "repo", Path(scratch) / "tree"
+            run = lambda *args, cwd=repo: subprocess.run(["git", "-C", str(cwd), *args], check=True,
+                                                         capture_output=True, text=True)
+            repo.mkdir()
+            run("init", "-q", "-b", "main")
+            run("config", "user.email", "t@example.org")
+            run("config", "user.name", "t")
+            (repo / "file").write_text("one")
+            run("add", "file")
+            run("commit", "-q", "-m", "init")
+            run("worktree", "add", "-q", str(tree))
+            admin = Path(run("rev-parse", "--absolute-git-dir", cwd=tree).stdout.strip())
+            month_ago = time.time() - 30 * 86400
+            for stamp in (admin / "HEAD", admin / "logs" / "HEAD", admin / "index"):
+                os.utime(stamp, (month_ago, month_ago))
+            # A touched file with unchanged content makes `git status` refresh and rewrite the index.
+            os.utime(tree / "file")
+            with mock.patch.object(cleanup, "ROOT", repo):
+                trees = cleanup.worktrees()
+            self.assertGreater((admin / "index").stat().st_mtime, month_ago + 86400)
+        self.assertEqual([entry.dirty for entry in trees], [False])
+        self.assertAlmostEqual(trees[0].activity, month_ago, delta=1)
 
 
 class ApplyTest(unittest.TestCase):
