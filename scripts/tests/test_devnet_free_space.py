@@ -78,18 +78,41 @@ class TreeSizeTest(unittest.TestCase):
 
 
 class RunWrapperTest(unittest.TestCase):
+    def setUp(self):
+        self.env = {}
+
     def args(self, command, min_free_gib=5.0):
         calls = []
         args = types.SimpleNamespace(command=command, name="free-space-test", min_free_gib=min_free_gib,
                                      run=lambda a: calls.append(a.command))
         return args, calls
 
+    def run_cli(self, args, **kwargs):
+        return cli.run(args, env=self.env, **kwargs)
+
+    def test_a_devnet_started_by_a_run_is_neither_checked_nor_measured(self):
+        args, calls = self.args("soak")
+        seen = []
+
+        def soak(_):
+            # the soak's follower child: same process environment, `follow` is itself a run command
+            child, child_calls = self.args("follow")
+            self.run_cli(child, out=out, shortfall=lambda p, r: self.fail("the child must not be checked"),
+                         size=lambda p: self.fail("the child must not be measured"))
+            seen.extend(child_calls)
+        args.run = soak
+        out = io.StringIO()
+        self.run_cli(args, out=out, shortfall=lambda p, r: None, size=lambda p: 0)
+        self.assertEqual(seen, ["follow"])
+        self.assertEqual(self.env, {cli.RUN_MARKER: "free-space-test"})
+        self.assertEqual(out.getvalue().count("run directory"), 1, out.getvalue())
+
     def test_a_run_below_the_margin_is_refused_before_it_starts(self):
         args, calls = self.args("soak")
         out = io.StringIO()
         refuse = lambda path, required: util.LowDiskSpace(path, 1, required)  # noqa: E731
         with self.assertRaises(SystemExit) as raised:
-            cli.run(args, out=out, shortfall=refuse, size=lambda p: 0)
+            self.run_cli(args, out=out, shortfall=refuse, size=lambda p: 0)
         self.assertEqual(calls, [], "the scenario must not start")
         self.assertIn("not enough free space", str(raised.exception.code))
         self.assertEqual(out.getvalue(), "", "no size line for a run that never started")
@@ -97,14 +120,14 @@ class RunWrapperTest(unittest.TestCase):
     def test_the_margin_is_passed_in_bytes_and_zero_skips_the_check(self):
         asked = []
         record = lambda path, required: asked.append(required)  # noqa: E731
-        cli.run(self.args("pool", 2.5)[0], out=io.StringIO(), shortfall=record, size=lambda p: None)
-        cli.run(self.args("pool", 0)[0], out=io.StringIO(), shortfall=record, size=lambda p: None)
+        self.run_cli(self.args("pool", 2.5)[0], out=io.StringIO(), shortfall=record, size=lambda p: None)
+        self.run_cli(self.args("pool", 0)[0], out=io.StringIO(), shortfall=record, size=lambda p: None)
         self.assertEqual(asked, [int(2.5 * util.GIB)])
 
     def test_the_size_is_printed_when_the_run_ends_and_when_it_fails(self):
         args, calls = self.args("relay")
         out = io.StringIO()
-        cli.run(args, out=out, shortfall=lambda p, r: None, size=lambda p: 3 * util.GIB)
+        self.run_cli(args, out=out, shortfall=lambda p, r: None, size=lambda p: 3 * util.GIB)
         self.assertEqual(calls, ["relay"])
         self.assertRegex(out.getvalue(), r"^run directory .*free-space-test: 3\.0 GiB\n$")
 
@@ -112,15 +135,16 @@ class RunWrapperTest(unittest.TestCase):
             raise SystemExit("scenario failed")
         args.run = failing
         out = io.StringIO()
+        self.env.clear()
         with self.assertRaises(SystemExit):
-            cli.run(args, out=out, shortfall=lambda p, r: None, size=lambda p: None)
+            self.run_cli(args, out=out, shortfall=lambda p, r: None, size=lambda p: None)
         self.assertRegex(out.getvalue(), r"free-space-test: removed\n$")
 
     def test_commands_that_start_no_run_are_neither_checked_nor_measured(self):
         for command in ("down", "tip", "compare", "load", "oracle"):
             args, calls = self.args(command)
             out = io.StringIO()
-            cli.run(args, out=out, shortfall=lambda p, r: self.fail(f"{command} must not be checked"),
+            self.run_cli(args, out=out, shortfall=lambda p, r: self.fail(f"{command} must not be checked"),
                     size=lambda p: self.fail(f"{command} must not be measured"))
             self.assertEqual((calls, out.getvalue()), ([command], ""))
 

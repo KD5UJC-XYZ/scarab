@@ -79,6 +79,7 @@ from .util import GIB, REPO, data_root, free_space_shortfall, human_bytes, tree_
 RUNS = frozenset({"up", "up-eras", "capture-eras", "e2e", "follow", "soak", "relay", "peer-sharing", "peercut",
                   "inbound-flood", "governor", "ntc", "pool", "kes-rotate", "faults", "restart", "v1-context"})
 DEFAULT_MIN_FREE_GIB = 5.0
+RUN_MARKER = "SCARAB_DEVNET_RUN"
 
 
 def run_size_line(root, size=tree_size):
@@ -88,15 +89,17 @@ def run_size_line(root, size=tree_size):
             else f"run directory {root}: {human_bytes(measured)}")
 
 
-def run(args, out=sys.stdout, shortfall=free_space_shortfall, size=tree_size):
+def run(args, out=sys.stderr, shortfall=free_space_shortfall, size=tree_size, env=os.environ):
     """`args.run(args)`, preceded for a run by the free-space check and followed (also on failure) by the
-    size of its run directory."""
-    if args.command not in RUNS:
+    size of its run directory on stderr. A `devnet.py` a run starts (its follower, its load) inherits
+    `RUN_MARKER` and is neither checked nor measured again."""
+    if args.command not in RUNS or env.get(RUN_MARKER):
         return args.run(args)
     root = data_root(args.name)
     low = shortfall(root, int(args.min_free_gib * GIB)) if args.min_free_gib > 0 else None
     if low is not None:
         raise SystemExit(low.message())
+    env[RUN_MARKER] = args.name
     try:
         return args.run(args)
     finally:
