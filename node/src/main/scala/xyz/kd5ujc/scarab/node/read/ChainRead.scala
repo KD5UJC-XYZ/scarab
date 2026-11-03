@@ -44,6 +44,11 @@ trait ChainRead[S]:
       */
     def protocol: ProtocolState
 
+    /** The blocks of the ledger state's epoch at or after its voting deadline
+      * (`shelleyAfterVoting`); none while the chain is in Byron.
+      */
+    def afterVoting: Long
+
     /** What the node keeps of the consensus side beside the header state. */
     def consensus: ConsensusExtras
 
@@ -92,6 +97,7 @@ object ChainRead:
         case WithOrigin.Origin  => WithOrigin.Origin
         case WithOrigin.At(tip) => WithOrigin.At(tip.slot)
       def protocol: ProtocolState = ProtocolState(depState(m), consensus.protocol)
+      def afterVoting: Long = MirrorStep.afterVotingOf(m)
       def consensus: ConsensusExtras = m.extras match
         case MirrorExtras.InShelley(_, c) => c
         case MirrorExtras.InByron(_, boot, protocol) =>

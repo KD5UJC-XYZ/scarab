@@ -5,6 +5,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.*
 import xyz.kd5ujc.scarab.consensus.state.ProtocolState
 import xyz.kd5ujc.scarab.ledger.*
+import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Hfc}
 import xyz.kd5ujc.scarab.ledger.state.EraTag
 import xyz.kd5ujc.scarab.node.read.{ChainRead, EraRead}
 import xyz.kd5ujc.scarab.protocol.Era
@@ -17,9 +18,14 @@ import xyz.kd5ujc.scarab.protocol.Era
 private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals: LedgerGlobals)(
     using read: ChainRead[S]
 ):
+  /** @param afterVoting
+    *   the blocks of the ledger's epoch after its voting deadline, which decide with its definite
+    *   update whether the next epoch is of the next era ([[HardForkConfig.eraOf]])
+    */
   private[node] def prepareShelley[E <: EraTag](
       anchor: S,
       ledger: EraRead[E],
+      afterVoting: Long,
       tip: Option[BlockRef],
       prev: ProtocolState,
       h: Header.Shelley,
@@ -59,10 +65,20 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
         if nextEpoch then ledger.paramsNextEpoch(glob)
         else ledgerParams
       val pools = ledger.leaderPools(nextEpoch = nextEpoch)
+      val expected = cfg.forks.eraOf(geometry.k)(
+        Hfc.Pending(
+          EraNes.eraOf(ledger.era),
+          ledgerEpoch,
+          ledger.definiteUpdateMajor,
+          afterVoting
+        ),
+        epoch
+      )
       val envelope =
         cfg.forks
           .check(
             h.era,
+            expected,
             epoch,
             h.protocolVersion._1,
             params.protocolMajor,

@@ -42,6 +42,7 @@ class WalletPeerReferenceSuite extends FunSuite:
       def ledgerEpoch: BigInt = native.nes.epoch.toBigInt
       def tipSlot: WithOrigin[SlotNo] = WithOrigin.Origin
       def protocol: ProtocolState = native.setup.mirrorStart.protocol
+      def afterVoting: Long = 0L
       def consensus: ConsensusExtras = native.setup.mirrorStart.consensus
       def plutus: PlutusStats = PlutusStats.zero
       def utxo: Utxo = native.nes.es.ls.utxo.utxo.utxo

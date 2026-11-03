@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.consensus.{ByronRules, ForkTrigger, HardForkConfig, PraosConfig}
+import xyz.kd5ujc.scarab.consensus.{ByronRules, HardForkConfig, PraosConfig}
 import xyz.kd5ujc.scarab.consensus.state.{
   Bound,
   EraHistory,
@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
 }
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.ledger.byron.ByronLedger
-import xyz.kd5ujc.scarab.ledger.rules.EraLedger
+import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, Hfc}
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -80,23 +80,16 @@ object GenesisHistory:
       current: Era,
       config: PraosConfig
   )(using ShelleyBasedEra[E]): Option[BigInt] =
-    eras.lift(eras.indexOf(current) + 1).flatMap { next =>
-      config.forks.triggers.get(next).flatMap {
-        case ForkTrigger.AtEpoch(epoch)   => Some(epoch)
-        case ForkTrigger.AtVersion(major) =>
-          // ShelleyHFC.hs:194-227 and State/Governance.hs:131: potential parameters do not
-          // establish a transition, even if evaluating them could predict the same version.
-          EraLedger
-            .futurePParams(ledger.nes.es.ls.utxo.gov)
-            .definite
-            .filter(p =>
-              p.protocolMajor == major && BigInt(
-                ledger.transition.afterVoting.toLong
-              ) >= config.geometry.k
-            )
-            .map(_ => ledger.nes.epoch.toBigInt + 1)
-      }
-    }
+    // State/Governance.hs:131: potential parameters do not establish a transition, even if
+    // evaluating them could predict the same version.
+    config.forks.transition(config.geometry.k)(
+      Hfc.Pending(
+        current,
+        ledger.nes.epoch.toBigInt,
+        EraLedger.futurePParams(ledger.nes.es.ls.utxo.gov).definite.map(_.protocolMajor),
+        ledger.transition.afterVoting.toLong
+      )
+    )
 
   /** Pure reconstruction inputs, also consumed by the native history boundary corpus. */
   def query(

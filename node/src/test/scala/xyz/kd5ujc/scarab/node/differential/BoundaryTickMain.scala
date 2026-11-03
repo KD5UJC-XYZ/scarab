@@ -81,7 +81,14 @@ object BoundaryTickMain:
       .getOrElse(fail("no block in the next epoch"))
     val globals = Globals(setup.globals, env.ledger.geometry)
     val slot = SlotNo.fromBigInt(firstSlot).fold(fail, identity)
-    val runs = List.fill(repeats)(timed(Hfc.tick(globals, setup.praos.forks.eraAt)(nes, slot)))
+    val runs = List.fill(repeats)(
+      timed(
+        Hfc.tick(
+          globals,
+          setup.praos.forks.transition(setup.praos.geometry.k)
+        )(nes, MirrorStep.afterVotingOf(snap.state), slot)
+      )
+    )
     val digest = runs.head._1.fold(
       e => s"REFUSED $e",
       { case got: EraNes.InEra[r] =>

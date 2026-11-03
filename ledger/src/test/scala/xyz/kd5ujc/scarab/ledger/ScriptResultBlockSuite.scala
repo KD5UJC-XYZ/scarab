@@ -77,7 +77,8 @@ class ScriptResultBlockSuite extends FunSuite:
     EraBlock.program(
       EraBlock.Context(
         TestLedger.globals,
-        (_, _) => Era.Conway,
+        _ => None,
+        0L,
         evaluator = evaluator,
         observer = Some(seen)
       )

@@ -182,6 +182,14 @@ object MirrorStep:
     if slot >= deadline && before == -1 then Left(StateMirrorError.TransitionCounterOverflow)
     else Right(Word32.fromUnsigned(if slot >= deadline then before + 1 else before))
 
+  /** The blocks of the tip's epoch at or after its voting deadline (`shelleyAfterVoting`), what the
+    * hard-fork combinator reads of the state before ticking it; none before Shelley.
+    */
+  def afterVotingOf(m: MirrorState): Long =
+    m.ext.ledgerState.state match
+      case EraLedgerState.ByronCurrent(_)    => 0L
+      case i: EraLedgerState.InShelleyEra[e] => i.state.transition.afterVoting.toLong
+
   private def transition(
       m: MirrorState,
       geometry: EpochGeometry,

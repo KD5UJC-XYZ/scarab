@@ -26,11 +26,15 @@ class TickRulesSuite extends FunSuite:
   private def first(epoch: Int): Long = epoch.toLong * 10000
   private def late(epoch: Int): Long = first(epoch) + 5000
 
-  private val noEra: Hfc.EraAt = (_, _) => Era.Conway
+  private val noEra: Hfc.Transition = _ => None
 
   private def tick(nes: NewEpochState[Conway], slot: Long): NewEpochState[Conway] =
     Hfc
-      .tick(globals, noEra)(EraNes.InEra(ShelleyBasedEra.SConway, nes), ok(SlotNo.fromBigInt(slot)))
+      .tick(globals, noEra)(
+        EraNes.InEra(ShelleyBasedEra.SConway, nes),
+        0L,
+        ok(SlotNo.fromBigInt(slot))
+      )
       .fold(e => fail(s"tick refused: $e"), identity) match
       case i: EraNes.InEra[e] =>
         NewEpochState
@@ -202,14 +206,15 @@ class TickRulesSuite extends FunSuite:
     }
   }
 
-  /** Conway enters at epoch 6 when the parameters adopted there are of major version 9. */
-  private val schedule: Hfc.EraAt = (epoch, major) =>
-    if epoch >= 6 && major >= 9 then Era.Conway else Era.Babbage
+  /** Babbage is left at the next epoch once the definite update is to major version 9. */
+  private val schedule: Hfc.Transition = p =>
+    Option.when(p.era == Era.Babbage && p.update.contains(BigInt(9)))(p.epoch + 1)
 
   private def enterConway(from: NewEpochState[Babbage]): NewEpochState[Conway] =
     Hfc
       .tick(globals, schedule)(
         EraNes.InEra(ShelleyBasedEra.SBabbage, from),
+        0L,
         ok(SlotNo.fromBigInt(first(6) + 10))
       )
       .fold(e => fail(s"refused: $e"), identity) match
@@ -234,14 +239,28 @@ class TickRulesSuite extends FunSuite:
   // `extendToSlot` (ouroboros-consensus 82ecba32 `HardFork/Combinator/State.hs`) translates while
   // the slot is at or past the end of the state's era, whatever the state's own epoch
   test("a tick across an epoch with no block still translates into an era that began in it") {
-    val laterConway: Hfc.EraAt =
-      (epoch, major) => if epoch >= 7 && major >= 9 then Era.Conway else Era.Babbage
+    val laterConway: Hfc.Transition =
+      p => Option.when(p.era == Era.Babbage && p.update.contains(BigInt(9)))(BigInt(7))
     val from = EraNes.InEra(ShelleyBasedEra.SBabbage, babbage(conway(5, 10, 2)))
     val after = Hfc
-      .tick(globals, laterConway)(from, ok(SlotNo.fromBigInt(first(8) + 10)))
+      .tick(globals, laterConway)(from, 0L, ok(SlotNo.fromBigInt(first(8) + 10)))
       .fold(e => fail(s"refused: $e"), identity)
     assertEquals(after.toEra, Era.Conway)
     assertEquals(after.epoch, ok(EpochNo.fromBigInt(5)))
+  }
+
+  test("the tick asks the transition of the state before it, with the counter it is given") {
+    val enough: Hfc.Transition =
+      p => Option.when(p.update.contains(BigInt(9)) && p.afterVoting >= 3)(p.epoch + 1)
+    val from = EraNes.InEra(ShelleyBasedEra.SBabbage, babbage(conway(5, 10, 2)))
+    // the definite update only, of the state before the tick
+    assertEquals(Hfc.pending(from, 2L), Hfc.Pending(Era.Babbage, 5, Some(9), 2L))
+    val slot = ok(SlotNo.fromBigInt(first(6) + 10))
+    val short = Hfc.tick(globals, enough)(from, 2L, slot).fold(e => fail(s"refused: $e"), identity)
+    assertEquals(short.toEra, Era.Babbage)
+    val enteredAt =
+      Hfc.tick(globals, enough)(from, 3L, slot).fold(e => fail(s"refused: $e"), identity)
+    assertEquals(enteredAt.toEra, Era.Conway)
   }
 
   test("the translation into Conway of 150,000 accounts runs on a 256 KiB stack") {

@@ -327,7 +327,8 @@ object MirrorRules:
     val epoch = geometry.epochOf(announced.slot)
     val context = EraBlock.Context(
       Globals(globals, geometry),
-      config.forks.eraAt,
+      config.forks.transition(geometry.k),
+      MirrorStep.afterVotingOf(state),
       verdicts = config.verdicts,
       observer = phase2Observer,
       clock = Some(
@@ -364,6 +365,7 @@ object MirrorRules:
       validated <- NodeRules.headerChecks(
         pre.protocol,
         announced,
+        ticked.toEra,
         block.bodySize,
         config,
         globals,
