@@ -6,13 +6,28 @@
 # `--check` also runs the sbt `check` (formatting, -Werror, every module's tests, scalafix) in the JDK image.
 # Works from the main checkout and from a linked worktree (the shared Git directory is mounted read-only).
 # Every step runs; the exit status is non-zero if any failed, and the failed steps are listed at the end.
+# Without a reachable Docker no step runs: one INCOMPLETE line and exit status 3, never a step result (#560).
+# `--doctor` reports the JDK pin against the JDK image, the prepared dependency repository, Docker and the
+# cache on the terminal, writes nothing and exits 0. SCARAB_PREFLIGHT_DOCKER replaces the `docker` command.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 root=$PWD
 common=$(git rev-parse --path-format=absolute --git-common-dir)
 gitleaks=zricethezav/gitleaks:v8.24.3@sha256:e1b35e12a8c6fa8901f060459cfb6b2fc4c484d3afbe3b029733a3bbfab07055
 actionlint=rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+docker=${SCARAB_PREFLIGHT_DOCKER:-docker}
+incomplete=3
 failed=()
+
+if [ "${1:-}" = "--doctor" ]; then
+  PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/preflight_doctor.py --docker "$docker"
+  exit 0
+fi
+
+if ! command -v "$docker" > /dev/null 2>&1 || ! "$docker" info > /dev/null 2>&1; then
+  printf 'INCOMPLETE: Docker unavailable, gates not run\n'
+  exit "$incomplete"
+fi
 
 step() {
   local name=$1; shift
@@ -21,12 +36,12 @@ step() {
 }
 
 step "secret scan (gitleaks, full history)" \
-  docker run --rm --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
+  "$docker" run --rm --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
     -v "$common":"$common":ro -v "$root":/repo:ro -w /repo "$gitleaks" \
     git /repo --log-opts="--full-history HEAD" --config /repo/.gitleaks.toml --no-banner --redact --exit-code 1
 step "secret scan controls" python3 scripts/check_secret_scan.py
 step "secret scan history controls" python3 scripts/check_secret_scan_history.py
-step "workflow lint" docker run --rm --network none -v "$root":/repo -w /repo "$actionlint" -color
+step "workflow lint" "$docker" run --rm --network none -v "$root":/repo -w /repo "$actionlint" -color
 step "fixture identities and comparison contracts" python3 scripts/check_test_coverage.py
 step "closed error channel guard" python3 scripts/check_error_channels.py
 step "no new try/catch/finally in main sources" python3 scripts/check_imperative.py
@@ -51,7 +66,7 @@ fi
 if [ "${1:-}" = "--check" ]; then
   cache=$(python3 -c 'import sys; sys.path.insert(0, "scripts"); from devnet.util import cache_dir; print(cache_dir())')
   step "sbt check (JDK image)" \
-    docker run --rm -v "$root":/work -v "$common":"$common":ro -v "$cache":/work/.cache -w /work \
+    "$docker" run --rm -v "$root":/work -v "$common":"$common":ro -v "$cache":/work/.cache -w /work \
       --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home -e SBT_GLOBAL_BASE=/tmp/sbt-global \
       scarab-jdk:local bash scripts/sbtw check
 fi
