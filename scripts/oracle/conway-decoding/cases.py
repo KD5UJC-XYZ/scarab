@@ -43,11 +43,11 @@ def array(items, indef=False, width=None):
     return head(4, len(items), width) + b"".join(items)
 
 
-def cmap(pairs, indef=False):
+def cmap(pairs, indef=False, width=None):
     body = b"".join(k + v for k, v in pairs)
     if indef:
         return b"\xbf" + body + b"\xff"
-    return head(5, len(pairs)) + body
+    return head(5, len(pairs), width) + body
 
 
 def tag(n, inner):
