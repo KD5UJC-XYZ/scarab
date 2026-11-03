@@ -44,7 +44,7 @@ class WorktreeTest(unittest.TestCase):
         self.assertTrue(verdict(TREE, state=in_main, scope=Scope(frozenset({"42-x"}), None))[0])
         self.assertTrue(verdict(TREE, state=in_main, scope=Scope(frozenset({"claude/42-x"}), None))[0])
         self.assertEqual(verdict(TREE, state=in_main, scope=Scope(frozenset(), 14)),
-                         (True, "head is in origin/main, no checkout, commit or reset for 20 days"))
+                         (True, "head is in origin/main, no git activity for 20 days"))
         self.assertFalse(verdict(TREE, state=in_main, scope=Scope(frozenset(), 21))[0])
 
     def test_each_doubt_keeps_it_and_says_why(self):
@@ -192,34 +192,72 @@ class StatusConfigurationTest(unittest.TestCase):
                 trees = cleanup.worktrees()
         self.assertEqual([entry.ignored for entry in trees], [(".workspace/",)])
 
-    def test_activity_is_the_last_checkout_or_commit_not_the_index_that_listing_rewrites(self):
-        import os
+
+class ActivityTest(unittest.TestCase):
+    MONTH = 30 * 86400
+
+    def setUp(self):
         import subprocess
         import tempfile
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.repo, self.tree = Path(scratch.name) / "repo", Path(scratch.name) / "tree"
+        self.run_git = lambda *args, cwd=self.repo: subprocess.run(["git", "-C", str(cwd), *args], check=True,
+                                                                  capture_output=True, text=True)
+        self.repo.mkdir()
+        self.run_git("init", "-q", "-b", "main")
+        self.run_git("config", "user.email", "t@example.org")
+        self.run_git("config", "user.name", "t")
+        (self.repo / "file").write_text("one")
+        self.run_git("add", "file")
+        self.run_git("commit", "-q", "-m", "init")
+        self.run_git("worktree", "add", "-q", str(self.tree))
+        self.admin = Path(self.run_git("rev-parse", "--absolute-git-dir", cwd=self.tree).stdout.strip())
+
+    def age(self, *stamps):
+        import os
         import time
-        with tempfile.TemporaryDirectory() as scratch:
-            repo, tree = Path(scratch) / "repo", Path(scratch) / "tree"
-            run = lambda *args, cwd=repo: subprocess.run(["git", "-C", str(cwd), *args], check=True,
-                                                         capture_output=True, text=True)
-            repo.mkdir()
-            run("init", "-q", "-b", "main")
-            run("config", "user.email", "t@example.org")
-            run("config", "user.name", "t")
-            (repo / "file").write_text("one")
-            run("add", "file")
-            run("commit", "-q", "-m", "init")
-            run("worktree", "add", "-q", str(tree))
-            admin = Path(run("rev-parse", "--absolute-git-dir", cwd=tree).stdout.strip())
-            month_ago = time.time() - 30 * 86400
-            for stamp in (admin / "HEAD", admin / "logs" / "HEAD", admin / "index"):
-                os.utime(stamp, (month_ago, month_ago))
-            # A touched file with unchanged content makes `git status` refresh and rewrite the index.
-            os.utime(tree / "file")
-            with mock.patch.object(cleanup, "ROOT", repo):
-                trees = cleanup.worktrees()
-            self.assertGreater((admin / "index").stat().st_mtime, month_ago + 86400)
+        then = time.time() - self.MONTH
+        for stamp in stamps:
+            os.utime(self.admin / stamp, (then, then))
+        return then
+
+    def listed(self):
+        with mock.patch.object(cleanup, "ROOT", self.repo):
+            trees = cleanup.worktrees()
         self.assertEqual([entry.dirty for entry in trees], [False])
-        self.assertAlmostEqual(trees[0].activity, month_ago, delta=1)
+        return trees[0]
+
+    def test_listing_does_not_refresh_the_index_and_make_an_old_worktree_look_used(self):
+        import os
+        then = self.age("HEAD", "logs/HEAD", "index")
+        # A touched file with unchanged content is what makes a plain `git status` rewrite the index.
+        os.utime(self.tree / "file")
+        self.assertAlmostEqual(self.listed().activity, then, delta=1)
+        self.assertAlmostEqual(self.listed().activity, then, delta=1)
+
+    def test_an_edit_staged_and_restored_counts_as_activity_though_it_leaves_the_worktree_clean(self):
+        import time
+        self.age("HEAD", "logs/HEAD", "index")
+        (self.tree / "file").write_text("two")
+        self.run_git("add", "file", cwd=self.tree)
+        self.run_git("restore", "--staged", "file", cwd=self.tree)
+        self.run_git("restore", "file", cwd=self.tree)
+        self.assertGreater(self.listed().activity, time.time() - 3600)
+
+    def test_without_a_head_reflog_the_activity_is_unknown_and_a_stale_sweep_keeps_it(self):
+        import time
+        self.run_git("config", "core.logAllRefUpdates", "false")
+        (self.admin / "logs" / "HEAD").unlink()
+        self.age("HEAD", "index")
+        # A reset on the attached branch moves the branch, not HEAD, and leaves no reflog to show it.
+        self.run_git("reset", "-q", "--hard", "HEAD", cwd=self.tree)
+        self.age("index")
+        tree = self.listed()
+        self.assertIsNone(tree.activity)
+        verdict = worktree_verdict(tree, IDLE, lambda head, branch: IN_MAIN, Scope(frozenset(), 14), time.time())
+        self.assertEqual(verdict, (False, "head is in origin/main and it has no HEAD reflog, so its last activity is "
+                                          "unknown"))
 
 
 class ApplyTest(unittest.TestCase):

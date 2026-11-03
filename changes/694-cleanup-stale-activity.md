@@ -1,3 +1,3 @@
 ### Fixed (scripts, #694)
 
-- `scripts/cleanup.py --stale-days` measures a worktree's age from its last checkout, commit or reset (HEAD and its reflog). It read the index too, which every `git status` rewrites, including the one the command itself runs, so no worktree ever looked stale.
+- `scripts/cleanup.py --stale-days` could never find a worktree stale: its own `git status` rewrote the index whose time it then read as the worktree's last activity. Listing no longer refreshes the index, and a worktree without a HEAD reflog, whose commits and resets leave no trace of their time, counts as of unknown activity and is kept.

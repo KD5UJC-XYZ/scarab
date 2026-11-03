@@ -15,7 +15,8 @@ container mounts it, nothing is mounted inside it, it holds no ignored files oth
 head commit is exactly the head of a pull request from its branch merged into `main` of this repository (a
 squash merge leaves the branch's own commits outside `main`). A head that is merely in `origin/main` proves nothing (a worktree just
 created from main has one), so such a worktree is removed only for `--owner <its directory or branch>` or, with
-`--stale-days`, that long after its last checkout, commit or reset.
+`--stale-days`, when its HEAD, HEAD reflog and index are untouched for that long (without a HEAD reflog its
+activity is unknown and it is kept). Listing does not refresh the index, so it does not make a worktree look used.
 
 Run directories (entries of `SCARAB_DATA_DIR`, default `/tmp/scarab`) and stopped containers labelled
 `xyz.kd5ujc.scarab.kind` (see `container_labels`) carry no record of being finished, so age alone never removes
@@ -67,7 +68,7 @@ class Worktree:
     locked: bool
     dirty: bool
     ignored: tuple[str, ...]
-    activity: float  # last checkout, commit or reset, seconds since the epoch
+    activity: float | None  # last checkout, commit, reset or index write, seconds since the epoch; None if unknown
 
 
 @dataclass(frozen=True)
@@ -161,9 +162,11 @@ def worktree_verdict(tree: Worktree, facts: Facts, merged: Callable[[str, str | 
     name = Path(tree.path).name
     if name in scope.owners or (tree.branch or "") in scope.owners:
         return True, f"head is in origin/main, owner {name}"
-    age = (now - tree.activity) / DAY
-    if scope.stale_days is not None and age >= scope.stale_days:
-        return True, f"head is in origin/main, no checkout, commit or reset for {age:.0f} days"
+    if scope.stale_days is not None and tree.activity is None:
+        return False, "head is in origin/main and it has no HEAD reflog, so its last activity is unknown"
+    age = None if tree.activity is None else (now - tree.activity) / DAY
+    if scope.stale_days is not None and age is not None and age >= scope.stale_days:
+        return True, f"head is in origin/main, no git activity for {age:.0f} days"
     return False, f"head is in origin/main without a merged pull request; not removed without --owner {name} or --stale-days"
 
 
@@ -285,19 +288,21 @@ def worktrees(only: Iterable[str] | None = None) -> list[Worktree]:
         if under(str(ROOT), [path]) or not Path(path).is_dir() or (wanted is not None and path not in wanted):
             continue
         # Untracked and ignored files are listed whatever the user's status configuration says; a failed status
-        # counts as uncommitted work, so the worktree is kept.
-        listed = subprocess.run(["git", "-C", path, "status", "--porcelain", "--untracked-files=normal",
-                                 "--ignored=traditional"], capture_output=True, text=True)
+        # counts as uncommitted work, so the worktree is kept. `--no-optional-locks` stops status from refreshing
+        # the index, whose time is part of the worktree's activity.
+        listed = subprocess.run(["git", "--no-optional-locks", "-C", path, "status", "--porcelain",
+                                 "--untracked-files=normal", "--ignored=traditional"], capture_output=True, text=True)
         status = listed.stdout.splitlines() if listed.returncode == 0 else ["?? (git status failed)"]
-        # Activity is read from HEAD and its reflog only. Any `git status`, this one included, rewrites the index, and
-        # a worktree with staged changes is not clean, so the index's time says nothing about a removable worktree.
+        # A commit or reset on an attached branch leaves HEAD itself untouched and is seen only in the HEAD reflog,
+        # which git does not recreate when `core.logAllRefUpdates` is off; without it the activity is unknown.
         admin = Path(git("rev-parse", "--absolute-git-dir", cwd=Path(path), check=False).strip() or path)
-        stamps = [stamp.stat().st_mtime for stamp in (admin / "HEAD", admin / "logs" / "HEAD") if stamp.exists()]
+        stamps = [stamp.stat().st_mtime for stamp in (admin / "HEAD", admin / "index", admin / "logs" / "HEAD")
+                  if stamp.exists()]
         trees.append(Worktree(
             path=path, head=entry.get("HEAD", ""), branch=entry.get("branch", "").removeprefix("refs/heads/") or None,
             locked="locked" in entry, dirty=any(not line.startswith("!!") for line in status),
             ignored=tuple(line[3:] for line in status if line.startswith("!!")),
-            activity=max(stamps, default=0.0)))
+            activity=max(stamps) if (admin / "logs" / "HEAD").exists() else None))
     return trees
 
 
