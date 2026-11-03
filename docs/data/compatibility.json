@@ -1072,14 +1072,18 @@
           "CompactCoinRulesSuite",
           "CompactStakeSuite",
           "HaskellStateCodecSuite",
-          "TickRulesSuite"
+          "TickRulesSuite",
+          "MirAmountsReferenceSuite"
         ],
         "paths": [
           "fixtures/reference/coin-arithmetic",
-          "scripts/oracle/coin-arithmetic"
+          "scripts/oracle/coin-arithmetic",
+          "fixtures/reference/mir-amounts",
+          "scripts/oracle/conway-decoding/mir_amount_cases.py"
         ],
         "issues": [
-          492
+          492,
+          707
         ]
       },
       "limitations": {
