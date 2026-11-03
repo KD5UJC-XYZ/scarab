@@ -7,6 +7,7 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraTx, DijkstraWitnesses, V12}
 
 /** The Leios reference is the build the public Leios testnet runs (cardano-node b004fe0c, release
   * rc-2026w44: cardano-ledger 9df9f98c, ouroboros-consensus 2416493b; decided 2026-11-03 on #711).
@@ -19,6 +20,11 @@ import xyz.kd5ujc.scarab.codec.Bytes
   * whose output value is in each form, and Leios headers alone, with the verdict of that build's
   * decoders and what they read from each accepted case. Scarab must give the same verdict and read
   * the same: hashes, sizes, header fields, transaction ids and validity flags, certificates.
+  *
+  * Its transactions (`kind` "tx", #750) are read alone by `decodeDijkstraTopTxInBlock` at decoder
+  * version 12: the testnet's own and synthetic ones with one field changed. For an accepted one
+  * Scarab must read the same id (the hash of the body's original bytes), validity flag, keys of the
+  * witness set's script and datum maps (hashes of their original bytes) and sub-transactions.
   */
 class LeiosTestnetBlockReferenceSuite extends FunSuite:
   import LeiosTestnetBlockReferenceSuite.*
@@ -70,9 +76,37 @@ class LeiosTestnetBlockReferenceSuite extends FunSuite:
       )
     )
 
+  /** The fields of a transaction or sub-transaction as the harness writes them: the id and the
+    * sorted keys of the script and datum maps (`Map.keys`, in the order of the hashes' bytes).
+    */
+  private def txFields(id: Bytes, w: DijkstraWitnesses): Vector[(String, Json)] =
+    def keys(hs: Vector[Bytes]) = Json.arr(hs.map(_.hex).distinct.sorted.map(Json.fromString)*)
+    Vector(
+      "id" -> Json.fromString(id.hex),
+      "scripts" -> keys(w.scriptHashes),
+      "datums" -> keys(w.datumHashes)
+    )
+
+  private def transaction(row: Row): Unit =
+    CborRead.decode(row.raw, V12.nestedLimits).flatMap(DijkstraTx.inBlock) match
+      case Right(t) =>
+        assert(row.accepted, s"the reference refuses this encoding: ${row.failure}")
+        val fields = txFields(t.id, t.witnesses).toMap
+        same(row, "txid", fields("id"))
+        same(row, "scripts", fields("scripts"))
+        same(row, "datums", fields("datums"))
+        same(row, "valid", Json.fromBoolean(t.isValid))
+        same(
+          row,
+          "subtxs",
+          Json.arr(t.body.subTransactions.map(s => Json.fromFields(txFields(s.id, s.witnesses)))*)
+        )
+      case Left(e) => assert(!row.accepted, s"the reference accepts this encoding: $e")
+
   for row <- rows do
     test(row.name) {
       row.kind match
+        case Kind.Tx => transaction(row)
         case Kind.Header =>
           LeiosHeader.decode(row.raw) match
             case Right(h) =>
@@ -110,6 +144,15 @@ class LeiosTestnetBlockReferenceSuite extends FunSuite:
     }
 
   test("the corpus covers the testnet's blocks, each list's forms and the header, both verdicts") {
+    // transactions of the testnet, and the example of #750, which the build refuses
+    assert(
+      rows.exists(r =>
+        r.kind == Kind.Tx && r.accepted && r.source.startsWith("fixtures/leios/testnet/")
+      )
+    )
+    assert(
+      rows.exists(r => r.name == "tx transaction of a zero body and zero witnesses" && !r.accepted)
+    )
     assertEquals(rows.map(_.name).distinct.size, rows.size)
     for kind <- Kind.values do
       assert(rows.exists(r => r.kind == kind && r.accepted), s"no accepted $kind case")
@@ -140,6 +183,7 @@ object LeiosTestnetBlockReferenceSuite:
   enum Kind(val wire: String):
     case Block extends Kind("block")
     case Header extends Kind("header")
+    case Tx extends Kind("tx")
 
   /** What Scarab read: a Dijkstra block, or a block of another tag. */
   enum Read:

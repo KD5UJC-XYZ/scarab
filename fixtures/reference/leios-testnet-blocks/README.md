@@ -17,8 +17,8 @@ detached, an empty indefinite list with its fields after it, is refused. The env
 is read by `enforceSize`, a definite list. The KES signature of a Leios header is over its body's
 original bytes.
 
-`cases.jsonl` holds 88 lines, one case each, written by
-`scripts/oracle/leios-testnet/leios_cases.py`:
+`cases.jsonl` holds 628 lines, one case each, written by
+`scripts/oracle/leios-testnet/leios_cases.py` and, for the transactions, `leios_tx_cases.py`:
 - the testnet's blocks as BlockFetch carries them (`kind` "block"): blocks 0, 1 and 8,562 of the
   current network (`fixtures/leios/testnet/blocks-rc-2026w44.tsv`, all empty) and the six blocks of
   the network before its restart of 2026-10-18 (`blocks.tsv`): its two blocks of tag 7, which hold a
@@ -42,6 +42,21 @@ original bytes.
 - the empty block 0 of the current network with synthetic transactions whose output value
   `[coin, multiasset]` is definite, indefinite or detached, in an output list and an output map, a
   coin value, and two transactions of which the second holds a detached value;
+- the empty block 0 with the transaction `[0, 0, null, true]` of #750, refused;
+- transactions alone (`kind` "tx", #750), read by `decodeDijkstraTopTxInBlock` at decoder version 12
+  as the block body reads each: the 45 transactions of the captured blocks with transactions (the
+  40 of block 64,853 of the current network, `announcing-with-txs`, captured on #743 and passed with
+  `--blocks` until that capture is in the repository, and the 5 of the previous network), and 494
+  synthetic ones with one field changed at each decoder's boundary: each required body field
+  missing, unknown, repeated and negative keys, every body key of a top-level transaction and of a
+  sub-transaction, empty collections where the build refuses them, duplicates by value (inputs,
+  certificates, proposals, owners, guards, map keys) and by hash (scripts, datums, sub-transaction
+  ids), definite, indefinite, detached, tagged and chunked forms, outputs in each form with values,
+  datums and reference scripts of each language, the multi-asset size bound (1,488 and 1,489 assets),
+  every certificate tag with a pool's voting key (valid, null, malformed, off the curve, outside the
+  subgroup, the identity), relays, votes, every governance action and every Dijkstra parameter
+  update key with values at their bounds, witness sets (vkey, bootstrap, native and Plutus V1 to V4
+  scripts, datums, redeemers as a map and as a list), and auxiliary data in each form;
 - Leios headers alone (`kind` "header"), as ChainSync carries them inside their era envelope: the
   header of block 0 of the current network, and the forms of the
   [header decoding oracle](../header-decoding/README.md) (definite, indefinite, detached, body,
@@ -50,33 +65,39 @@ original bytes.
   size over a `Word32`, a VRF output of no bytes, a body of eleven fields).
 
 The verdict (`accepted` and the complete `failure`) is what the build's decoders did with each:
-43 accepted and 45 refused. Every detached form is refused, every indefinite one accepted. For an
+319 accepted and 309 refused (276 and 263 of the transactions). Every detached form is refused, every indefinite one accepted. For an
 accepted case the line records the header hash (`hash`), its size, the signed bytes (`signable`),
 the header fields, and for a block its tag, body hash and size as the ledger computes them, each
 transaction's id and validity flag (`txs`) and whether it carries a Leios or a Peras certificate.
-`LeiosTestnetBlockReferenceSuite` requires the same verdict from `LeiosBlock.decode` (a block of
-another tag from `Block.decode`) or `LeiosHeader.decode`, and the same values.
+For an accepted transaction alone the line records its id (`txid`), its validity flag, the keys of
+its witness set's script and datum maps (`scripts`, `datums`: hashes of each one's original bytes)
+and each sub-transaction's id and keys (`subtxs`). `LeiosTestnetBlockReferenceSuite` requires the
+same verdict from `LeiosBlock.decode` (a block of another tag from `Block.decode`),
+`LeiosHeader.decode` or `DijkstraTx.inBlock`, and the same values.
 `provenance.json` records the revisions, the hashes of the sources read, of the harness, the
 generator, its input and output, and of the corpus.
 
 ## Regenerating
 
-Build the image as [the oracle README](../../../scripts/oracle/leios-testnet/README.md) describes,
-then:
+Build the image as [the oracle README](../../../scripts/oracle/leios-testnet/README.md) describes.
+`/tmp/blocks-rc-2026w44.tsv` is the block capture of #743, which adds block 64,853 to
+`fixtures/leios/testnet/blocks-rc-2026w44.tsv` (`provenance.json` records its hash); once it is in
+the repository the option is not needed. Then:
 
 ```sh
-python3 scripts/oracle/leios-testnet/leios_cases.py --inputs /tmp/leios-inputs.json
+python3 scripts/oracle/leios-testnet/leios_cases.py --inputs /tmp/leios-inputs.json \
+  --blocks /tmp/blocks-rc-2026w44.tsv
 docker run --rm --network none --read-only -v /tmp:/fixtures:ro \
   scarab-leios-testnet:local /fixtures/leios-inputs.json > /tmp/leios-reference.json
 python3 scripts/oracle/leios-testnet/leios_cases.py --inputs /tmp/leios-inputs.json \
-  --reference /tmp/leios-reference.json --out fixtures/reference/leios-testnet-blocks/cases.jsonl
+  --blocks /tmp/blocks-rc-2026w44.tsv --reference /tmp/leios-reference.json --out fixtures/reference/leios-testnet-blocks/cases.jsonl
 ```
 
 ## Not covered here
 
-- A transaction's parts are not decoded by Scarab beyond the four items of a transaction: the
-  Dijkstra transaction rules are not implemented (the `dijkstra` component, roadmap L1). The
-  verdicts on the synthetic transactions turn on their framing only.
+- No Dijkstra ledger rule is applied to a transaction (the `dijkstra` component, roadmap L1); the
+  transaction cases compare decoding only. A Plutus script's program is not deserialised, as the
+  build does not deserialise it when it decodes a block.
 - No KES signature, VRF proof or Leios certificate is checked; the synthetic headers' keys and
   signatures are filler bytes.
 - No block of the current network with transactions, an announcement or a certificate: the three
