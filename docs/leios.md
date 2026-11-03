@@ -761,7 +761,8 @@ revisions are in section 1 and `docs/data/reference-pins.json`.
 
 The oracle of `scripts/oracle/leios-testnet` is built from these revisions (the ledger and
 cardano-base packages from source; consensus's two-line block envelope copied), and
-`fixtures/reference/leios-testnet-blocks` holds its 88 verdicts.
+`fixtures/reference/leios-testnet-blocks` holds its verdicts (on blocks and headers since #711, on
+transactions alone since #750; its README and `provenance.json` have the counts).
 
 ### 12.2 What the build reads, and what changed in this node
 
@@ -777,7 +778,7 @@ Read at the pinned revisions; each is a case of the corpus.
 | VRF certificate | `decodeRecordNamed`, definite or indefinite; the output exactly 64 bytes (`Decoding/DecCBOR.hs:627-652`) | a definite list, an output of any length |
 | KES signature | over the header body's original bytes (`getSignableRepresentation = originalBytes`, `Leios/BlockHeader.hs:164-165`) | over the body encoded again |
 | Leios certificate | `decodeRecordNamed` of the signers (at most 8,192 bytes) and the signature, byte strings definite or chunked (`Decoding/DecCBOR.hs:721-736`); the signature a compressed G1 point of the subgroup, the identity included (cardano-base `BLS12381/Internal.hs:476-491`), which verification refuses | canonical CBOR only, and the identity refused at decode |
-| Records in a transaction | every `RecD` record is read by `decodeRecordNamed` from decoder version 12 (e.g. `Mary/Value.hs:308-321`) | not decoded (and not now: X3) |
+| Records in a transaction | every `RecD` record is read by `decodeRecordNamed` from decoder version 12 (e.g. `Mary/Value.hs:308-321`) | not decoded (until #750, section 12.5) |
 
 `LeiosBlock.decode` and `LeiosHeader.decode` now read as the first column says, and the header
 decoding corpus of #716 no longer holds Leios cases (they are in the new corpus).
@@ -812,10 +813,37 @@ Not resolved by #711; listed for the integrator (no issue filed here):
    `LeiosHeaderChainSuite`, `LeiosCheckMain`) are of the network before the restart; `LeiosHeaderChain`
    and `LeiosCheckMain` read a header of era index 6 as a Leios header, which the build reads as a
    Praos header.
-4. No Dijkstra ledger (X3): a transaction is kept as its four parts and not decoded; no stake
+4. No Dijkstra ledger (X3): a transaction is decoded (section 12.5) but no rule applies to it; no stake
    distribution (X4), certificate verification (X5), endorser blocks (X7), mini-protocols 18 and 19
    (X8), `TxSubmissionLogicV2` (X10), ledger peers or the peer snapshot (X11).
 5. `Praos2`'s rules beyond the header (its envelope checks and ledger view) were not compared with
    `consensus.Praos`.
 6. The build's Praos header (Babbage, Conway) is also read by `decodeRecordNamed` at these revisions,
    where this node follows cardano-ledger f649f975 for those eras; no such block occurs on the testnet.
+
+### 12.5 A block's transactions (#750)
+
+Each transaction of a Dijkstra block is decoded as the build decodes it, by
+`decodeDijkstraTopTxInBlock` at decoder version 12 (cardano-ledger 9df9f98c,
+`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:175-182`); `ledger/.../dijkstra/` holds the
+readers, `DijkstraTx.inBlock` the entry, and `LeiosBlock.decode` refuses a block whose transaction
+the build refuses. Decoding only: no rule of the Dijkstra ledger is applied (X3). What the readers
+mirror, at that revision:
+
+| Part | The build |
+|---|---|
+| Body | `decodeSparseKeyed` (`Decoding/Decoder.hs:1228-1287`): keys 0 to 27 as `TxBody.hs:347-479` lists them; inputs, outputs and fee required; fee, collateral (13, 16, 17), sub-transactions (23) and starting balance intervals (27) a top-level transaction's only; a present collection empty is refused (`failOnNull`, `failOnMempty`) except the guards (14); the donation positive |
+| Sub-transactions | key 23: a non-empty set (tag 258 allowed) of `[body, witnesses, auxiliary data / null]` whose bodies are of the sub-transaction level, no transaction id (the hash of the body's original bytes) twice; they do not nest |
+| Guards, required guards | key 14 `decodeGuards`: the first element decides whether all are credentials or key hashes; key 24 a non-empty map of credentials to Plutus `Data` or null |
+| Deposits, balance intervals | keys 25 to 27: non-empty maps of account addresses; an interval an unsigned coin or `[lower / null, upper / null]`, not both null |
+| Outputs, values | `decodeBabbageTxOut`: a map (not one of an eight-byte length head) or `[address, value (, datum hash)]`; a multi-asset map non-empty at version 12 (`Mary/Value.hs:325-350`); a reference script `AlonzoScript` with Plutus V1 to V4 |
+| Certificates | `DijkstraTxCert` (`TxCert.hs:233-250`): tags 0, 1, 5 and 6 refused; a pool registration's voting key slot (`StakePool.hs:744-770`): a list or null after the VRF key hash, its key a G2 and its proof a G1 point of the subgroup, neither the identity |
+| Governance | votes, and proposals whose parameter update is Dijkstra's `PParamsUpdate` of update keys 0 to 56 (`Dijkstra/PParams.hs`); a hard fork's major at most 13 |
+| Witnesses | `AlonzoTxWits` at version 12: every set non-empty and without duplicates, by key and signature, by key, chain code and attributes (bootstrap), or by the hash of the original bytes (scripts, datums); Plutus V4 at key 8; redeemers a map only, of purposes 0 to 6 |
+| Auxiliary data | a metadata map; `[metadata, native scripts]` read by `decodeRecordNamed`; or the tag 259 over keys 0 to 5 (Plutus V4 at 5) |
+| Forms | every record definite or indefinite, never detached; byte strings and text chunked or not; bounded rationals the tag 30 over two `Word64` (`decodeIntegralRational`) |
+
+The corpus `fixtures/reference/leios-testnet-blocks` holds the build's verdict on each transaction
+of the captured blocks and on synthetic ones at each of these boundaries, and
+`LeiosTestnetBlockReferenceSuite` requires the same verdict, transaction id, validity flag, script
+and datum hashes and sub-transactions of Scarab.

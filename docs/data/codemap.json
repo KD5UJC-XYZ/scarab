@@ -376,6 +376,22 @@
     },
     {
       "module": "ledger",
+      "path": "ledger/dijkstra",
+      "responsibility": "Decoding of a Leios block's Dijkstra transactions at decoder version 12, as the Leios testnet's build reads them; no ledger rule",
+      "entryPoints": [
+        "DijkstraTx",
+        "V12"
+      ],
+      "suites": [
+        "LeiosTestnetBlockReferenceSuite",
+        "DijkstraTxDepthSuite"
+      ],
+      "docs": [
+        "docs/leios.md"
+      ]
+    },
+    {
+      "module": "ledger",
       "path": "ledger/injection",
       "responsibility": "Pure native streaming JSON mechanism for genesis injection files; file/hash wiring remains separate",
       "entryPoints": [
