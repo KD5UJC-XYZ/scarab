@@ -958,6 +958,22 @@
       "page": "docs/compatibility/ledger-pool-relays.md"
     },
     {
+      "id": "ledger-address-headers",
+      "component": "Ledger: address and reward account headers, decoder versions 2 to 9 (#723)",
+      "status": "implemented",
+      "summary": "An address or a reward account read from a block is refused where the reference refuses its header: a Shelley address may set only bit 0 of its low nibble (headerNonShelleyBits), a reward account's header is 0b111x000y, in every era and every place a body reads one; a stored output keeps reading any nibble (ADR 0006)",
+      "evidence": {
+        "suites": [
+          "AddressHeadersReferenceSuite"
+        ],
+        "paths": [
+          "fixtures/reference/address-headers/cases.jsonl",
+          "scripts/oracle/conway-decoding/address_cases.py"
+        ]
+      },
+      "page": "docs/compatibility/ledger-address-headers.md"
+    },
+    {
       "id": "ledger-update-values",
       "component": "Ledger: pre-Conway parameter-update values decoded with the body, decoder versions 2 to 9 (#470)",
       "status": "implemented",

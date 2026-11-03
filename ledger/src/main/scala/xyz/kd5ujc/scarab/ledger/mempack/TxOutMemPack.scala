@@ -112,7 +112,7 @@ object TxOutMemPack:
     */
   def toTxOut(p: TxOutParts): Result[TxOut] =
     for
-      address <- Address.decode(p.address).left.map(Failure.AddressRefused(_))
+      address <- Address.decode(p.address, Address.Mode.Stored).left.map(Failure.AddressRefused(_))
       scriptRef <- p.script.traverse(refScript)
     yield
       val valueCbor = CanonicalCbor.value(p.value)
@@ -233,7 +233,7 @@ object TxOutMemPack:
     * form rebuilds.
     */
   private def baseAddress(a: Bytes): Option[(Int, Credential, Credential)] =
-    Address.decode(a).toOption.flatMap { address =>
+    Address.decode(a, Address.Mode.Stored).toOption.flatMap { address =>
       address.kind match
         case Address.Kind.Shelley(net, pay, Some(stake), None)
             if (net == 0 || net == 1) && address.raw.size == 57 =>
