@@ -119,8 +119,9 @@ signatures.
 About 60 uses in main sources, in three kinds. Only the first is the hard requirement.
 
 1. **Hashed or signed, which must be the wire bytes** (anything hashed or signed is hashed over its
-   original bytes): `crypto/Hashing.scala:36,44`; the header's signed body and VRF/KES inputs
-   (`ledger/Header.scala:144,222,244`); block parts and the transaction body and witness bytes the
+   original bytes): `crypto/Hashing.scala:36,44`; the header's bytes, which its hash is over
+   (`ledger/Header.scala:144,222,244`; its KES message is the body encoded again, as the reference
+   signs it, since #698); block parts and the transaction body and witness bytes the
    block carries (`ledger/Block.scala:81-110`, `node/forge/BlockBuilder.scala:66-67`,
    `node/mempool/MempoolState.scala:222-225`, `LocalSubmission.scala:31`); the script data hash inputs
    (datums, redeemers, `Tx.scala:192-201,437-484`); native and Plutus script hashes
