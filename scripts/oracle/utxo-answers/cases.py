@@ -67,6 +67,8 @@ ASSETS = cmap([
     (bstr(h(28, 0xA0)), cmap([(bstr(b"z"), uint(7)), (bstr(b"a"), uint(9))])),
 ])
 MULTI = arr(uint(2_000_000), ASSETS)
+DETACHED = b"\x9f\xff" + uint(2_000_000) + ASSETS
+DETACHED_COIN = b"\x9f\xff" + uint(1_500_000) + cmap([])
 DATUM_HASH = h(32, 0xDA)
 PLUTUS_DATA = arr(uint(42), bstr(b"datum"))
 NATIVE_SCRIPT = arr(uint(0), arr(uint(0), bstr(h(28, 0x5C))))
@@ -176,6 +178,17 @@ def cases():
         if era in ("babbage", "conway"):
             for n, (label, output) in enumerate(NONCANONICAL):
                 out.append(case(f"{era}-{label}", era, [(txin(0x06, n), output())]))
+        # a value written as an empty indefinite list with its fields after it, as the decoders read
+        # a `RecD` record below version 12 (#700): the answer writes the value as decoded, a definite
+        # list, or the bare coin when it holds no asset; before Mary no value is a record
+        out.append(case(f"{era}-detached-value", era, [(txin(0x07, 0), legacy(BASE, DETACHED))]))
+        out.append(case(f"{era}-detached-coin", era, [(txin(0x07, 1), legacy(ENTERPRISE, DETACHED_COIN))]))
+        if era in ("alonzo", "babbage", "conway"):
+            out.append(case(f"{era}-detached-value-datum-hash", era,
+                            [(txin(0x07, 2), legacy(SCRIPT_BASE, DETACHED, DATUM_HASH))]))
+        if era in ("babbage", "conway"):
+            out.append(case(f"{era}-keyed-detached-value", era,
+                            [(txin(0x07, 3), keyed(BASE, DETACHED, script=NATIVE_SCRIPT))]))
     return out
 
 

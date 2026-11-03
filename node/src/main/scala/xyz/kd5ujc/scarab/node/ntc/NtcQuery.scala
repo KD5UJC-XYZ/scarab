@@ -7,7 +7,8 @@ import cats.syntax.all.*
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{ByteStrings, Credential, DRep, DecoderVersion, GovActionId, TxIn}
-import xyz.kd5ujc.scarab.protocol.{Era, NtcVersion}
+import xyz.kd5ujc.scarab.ledger.DetachedRecords
+import xyz.kd5ujc.scarab.protocol.{Era, LocalStateQuery, NtcVersion}
 
 /** The two native `LedgerPeersKind` cases of a peer snapshot query. */
 enum LedgerPeerKind:
@@ -116,6 +117,13 @@ object NtcQuery:
     case ExpectedCoin
     case Empty(field: String)
     case Arity(field: String, expected: Int, actual: Int)
+
+    /** A `RecD` record written as a non-empty indefinite list, which the reference refuses below
+      * decoder version 12.
+      */
+    case IndefiniteRecord(field: String)
+    case Word16Range(field: String)
+    case InvalidTxId
     case UnknownTag(field: String, tag: Int)
     case Constructor(field: String, tag: Int, arity: Int)
 
@@ -135,6 +143,10 @@ object NtcQuery:
       case ExpectedCoin                   => "non-myopic coin: expected unsigned integer"
       case Empty(field)                   => s"$field: empty"
       case Arity(field, expected, actual) => s"$field: expected $expected elements, got $actual"
+      case IndefiniteRecord(field) =>
+        s"$field: expected a definite list, or an empty indefinite list before its fields"
+      case Word16Range(field)             => s"$field: expected an unsigned integer of 16 bits"
+      case InvalidTxId                    => "gov action tx id: expected 32 bytes"
       case UnknownTag(field, tag)         => s"$field: unknown tag $tag"
       case Constructor(field, tag, arity) => s"$field: unknown tag $tag or arity $arity"
 
@@ -158,7 +170,48 @@ object NtcQuery:
     Era.fromIndex(BigInt(era)).fold(ByteStrings.Definite)(e => ByteStrings.of(DecoderVersion.of(e)))
 
   def decode(raw: Bytes): R[NtcQuery] =
-    Cbor.decode(raw, limits).leftMap(Error.MalformedCbor(_)).flatMap(top)
+    DetachedRecords.read(raw, limits, shape)(Error.MalformedCbor(_))(top)
+
+  /** Where a query of `MsgQuery` ends, as the reference's decoder of queries reads it from the
+    * stream: one holding a detached record spans the record's fields after it, and one whose
+    * record's fields have not all arrived is short ([[DetachedRecords.prefix]]); one the walk
+    * refuses is refused, as the reference's stream decoder fails on it whatever follows. A query
+    * without an empty indefinite list `9f ff` is one item of a tree, as before (#700).
+    */
+  val reader: LocalStateQuery.QueryReader = input =>
+    if !DetachedRecords.mayHold(input) then LocalStateQuery.QuerySpan.Item
+    else
+      DetachedRecords.prefix(input, shape) match
+        case DetachedRecords.Prefix.Item(end, records) if !records.isEmpty =>
+          LocalStateQuery.QuerySpan.Prefix(end)
+        case DetachedRecords.Prefix.Short      => LocalStateQuery.QuerySpan.Short
+        case DetachedRecords.Prefix.Refused    => LocalStateQuery.QuerySpan.Refused
+        case DetachedRecords.Prefix.Item(_, _) => LocalStateQuery.QuerySpan.Item
+
+  /** The query as the reference's decoders read it, as far as it holds a `RecD` record
+    * ([[DetachedRecords]]): the set of `GovActionId` of `GetProposals` (`(2, 31)`,
+    * `Shelley/Ledger/Query.hs:981`, ouroboros-consensus 82ecba32), in the hard-fork combinator's
+    * `QueryIfCurrent` and in any `GetCBOR` (`(2, 9)`). Every era a query reads is below decoder
+    * version 12, where a record written as an empty indefinite list has its fields after it (#700).
+    * No other argument of a query is a `RecD` record: a `TxIn` is `decodeRecordNamed` over its
+    * fields (`TxIn.hs:103-108`), a credential and a DRep `Summands` (`Credential.hs:327-334`,
+    * `DRep.hs:90-99`), cardano-ledger f649f975.
+    */
+  private[ntc] val shape: DetachedRecords.Shape =
+    import DetachedRecords.Shape.*
+    lazy val ledger: DetachedRecords.Shape = Sum {
+      case 9  => List(ledger)
+      case 31 => List(ListOf(DetachedRecords.Shapes.actionId))
+      case _  => Nil
+    }
+    val inEra = Sum {
+      case 0 => List(Fields(List(Item, ledger), Item))
+      case _ => Nil
+    }
+    Sum {
+      case 0 => List(inEra)
+      case _ => Nil
+    }
 
   /** Apply the reference client codec's supported-version contract to an incoming query. */
   def decode(raw: Bytes, version: NtcVersion): R[NtcQuery] =
@@ -228,13 +281,25 @@ object NtcQuery:
       }
     }
 
+  /** `GovActionId`, the `RecD` record of a transaction id and a `Word16` index
+    * (`Conway/Governance/Procedures.hs:162,182-190`, cardano-ledger f649f975): a definite list of
+    * the two, or the two after an empty indefinite list ([[Node.isDetached]]); a non-empty
+    * indefinite list fails the reference's check for its break before its first field (`decodeCount
+    * (RecD cn) n`, `Decoding/Coders.hs:482`; `decodeListLikeT`, `Decoding/Decoder.hs:690-708`).
+    */
   private def govActionId(n: Node)(using ByteStrings): R[GovActionId] =
-    arr(n, "gov action id").flatMap {
+    val what = "gov action id"
+    arr(n, what).flatMap {
+      case _ if n.isIndefinite && !n.isDetached => Left(Error.IndefiniteRecord(what))
       case Vector(i, ix) =>
-        (bytes(i, "gov action tx id"), uint(ix, "gov action index")).mapN((t, k) =>
-          GovActionId(t, BigInt(k))
-        )
-      case xs => Left(Error.Arity("gov action id", 2, xs.size))
+        (
+          bytes(i, "gov action tx id").filterOrElse(_.size == 32, Error.InvalidTxId),
+          uint(ix, "gov action index").filterOrElse(
+            _ <= 0xffff,
+            Error.Word16Range("gov action index")
+          )
+        ).mapN((t, k) => GovActionId(t, BigInt(k)))
+      case xs => Left(Error.Arity(what, 2, xs.size))
     }
 
   /** `Maybe (Set a)`: `[]` for nothing, `[set]` for just. */

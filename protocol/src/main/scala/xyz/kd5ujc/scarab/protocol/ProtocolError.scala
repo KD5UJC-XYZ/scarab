@@ -76,6 +76,7 @@ enum ProtocolError extends DomainError:
   case InvalidUTF8
   case InvalidUnicodeText
   case ItemLimitExceeded
+  case ItemRunsPastSpan
   case KeepAliveCookieMismatch(expected: KeepAlive.Cookie, actual: KeepAlive.Cookie)
   case KeepAliveCookieOutsideUint16(value: BigInt)
   case KeepAliveIsTerminal
@@ -134,6 +135,7 @@ enum ProtocolError extends DomainError:
   case UnknownByronSubtag
   case UnknownEraIndex
   case UnknownKeepAliveTagStateOrExactArity
+  case UndecodableQuery
   case UnknownLocalStateQueryFailure
   case UnknownLocalStateQueryTagOrArity
   case UnknownLocalTxMonitorTagOrArity
@@ -244,6 +246,7 @@ enum ProtocolError extends DomainError:
     case InvalidUTF8                             => "invalid UTF-8"
     case InvalidUnicodeText                      => "invalid Unicode text"
     case ItemLimitExceeded                       => "item limit exceeded"
+    case ItemRunsPastSpan                        => "an item runs past the span of its query"
     case KeepAliveCookieMismatch(_, _)           => "KeepAlive cookie mismatch"
     case KeepAliveCookieOutsideUint16(_)         => "KeepAlive cookie outside uint16"
     case KeepAliveIsTerminal                     => "KeepAlive is terminal"
@@ -304,6 +307,7 @@ enum ProtocolError extends DomainError:
     case UnknownByronSubtag                   => "unknown Byron subtag"
     case UnknownEraIndex                      => "unknown era index"
     case UnknownKeepAliveTagStateOrExactArity => "unknown KeepAlive tag, state or exact arity"
+    case UndecodableQuery                     => "the query's decoder refuses it"
     case UnknownLocalStateQueryFailure        => "unknown LocalStateQuery failure"
     case UnknownLocalStateQueryTagOrArity     => "unknown LocalStateQuery tag or arity"
     case UnknownLocalTxMonitorTagOrArity      => "unknown LocalTxMonitor tag or arity"

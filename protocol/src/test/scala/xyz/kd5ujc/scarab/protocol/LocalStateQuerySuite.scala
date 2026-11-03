@@ -198,3 +198,41 @@ class LocalStateQuerySuite extends ScalaCheckSuite:
       Left(ProtocolError.CBORDepthLimitExceeded)
     )
   }
+
+  test("a query's span is the reader's: whole items up to it, more to wait for, or a refusal") {
+    def hex(s: String) = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
+    def reader(span: QuerySpan): QueryReader = _ => span
+    // [3, 81 9fff] then 01 02: one query of five bytes to a reader of the ledger, three items as a
+    // tree reads them
+    val wire = hex("8203819fff0102")
+    assertEquals(
+      decodePrefix(State.Acquired, Role.Client, wire, reader(QuerySpan.Prefix(5))),
+      DecodeResult.Decoded(Message.Query(hex("819fff0102")), wire.size)
+    )
+    assertEquals(
+      decodePrefix(State.Acquired, Role.Client, wire, QueryReader.items),
+      DecodeResult.Decoded(Message.Query(hex("819fff")), 5)
+    )
+    assertEquals(
+      decodePrefix(State.Acquired, Role.Client, wire, reader(QuerySpan.Short)),
+      DecodeResult.NeedMore
+    )
+    // a query the reader's decoder refuses is refused, read and written
+    assertEquals(
+      decodePrefix(State.Acquired, Role.Client, wire, reader(QuerySpan.Refused)),
+      DecodeResult.Failed(ProtocolError.UndecodableQuery)
+    )
+    assertEquals(
+      encode(State.Acquired, Role.Client, Message.Query(hex("819fff")), reader(QuerySpan.Refused)),
+      Left(ProtocolError.UndecodableQuery)
+    )
+    // a span that ends inside an item, or past the input
+    assertEquals(
+      decodePrefix(State.Acquired, Role.Client, hex("8203819fff1801"), reader(QuerySpan.Prefix(4))),
+      DecodeResult.Failed(ProtocolError.ItemRunsPastSpan)
+    )
+    assertEquals(
+      decodePrefix(State.Acquired, Role.Client, wire, reader(QuerySpan.Prefix(6))),
+      DecodeResult.NeedMore
+    )
+  }

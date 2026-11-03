@@ -44,6 +44,40 @@ class DetachedRecordsSuite extends FunSuite:
     assertEquals(found("a1200a", Keyed(_ => Item)), None)
   }
 
+  test("a prefix: where the item ends, whether the input ends too soon, or a refusal (#700)") {
+    import DetachedRecords.Prefix
+    val shape = Fields(List(Item, pair), Item)
+    // the record's fields are the item's, and what follows is not read
+    assertEquals(
+      DetachedRecords.prefix(bytes("82019fff0203" + "8105"), shape),
+      Prefix.Item(6, Cbor.Detached(Vector(2), Vector(2)))
+    )
+    // each part of it is short: in a head, in a string, before a field, at the record's break
+    for n <- 0 until 6 do
+      assertEquals(DetachedRecords.prefix(bytes("82019fff0203").slice(0, n), shape), Prefix.Short)
+    assertEquals(
+      DetachedRecords.prefix(bytes("8201445a5a"), Fields(List(Item, Item), Item)),
+      Prefix.Short
+    )
+    assertEquals(
+      DetachedRecords.prefix(bytes("82011a0000"), Fields(List(Item, Item), Item)),
+      Prefix.Short
+    )
+    // where the reference fails whatever follows
+    assertEquals(DetachedRecords.prefix(bytes("82019f0102ff"), shape), Prefix.Refused)
+    assertEquals(DetachedRecords.prefix(bytes("8201830102"), shape), Prefix.Refused)
+    assertEquals(DetachedRecords.prefix(bytes("ff"), shape), Prefix.Refused)
+    assertEquals(DetachedRecords.prefix(bytes("1c"), Item), Prefix.Refused)
+    // a break among the items of a definite list, whatever its count says is still to come
+    assertEquals(DetachedRecords.prefix(bytes("82ff"), Item), Prefix.Refused)
+    assertEquals(DetachedRecords.prefix(bytes("82018201ff"), shape), Prefix.Refused)
+    // a whole input read as a prefix ends where it does
+    assertEquals(
+      DetachedRecords.prefix(bytes("82019fff0203"), shape),
+      Prefix.Item(6, Cbor.Detached(Vector(2), Vector(2)))
+    )
+  }
+
   test("the walk keeps its stack on the heap") {
     // a list nested 200,000 deep, read as one item on a small stack
     val depth = 200000
