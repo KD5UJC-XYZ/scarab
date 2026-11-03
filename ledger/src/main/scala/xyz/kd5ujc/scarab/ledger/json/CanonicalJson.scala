@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.json
 
-import io.circe.Json
 import java.nio.charset.StandardCharsets
 import scala.annotation.tailrec
-import xyz.kd5ujc.scarab.codec.{Bytes, TreeFold}
+import xyz.kd5ujc.scarab.codec.Bytes
 
 /** A value of canonical JSON as canonical-json 0.6.0.1 holds it (`JSValue`,
   * `Text/JSON/Canonical/Types.hs`): a number is an `Int54`, a string the bytes between its quotes
@@ -213,32 +212,3 @@ object CanonicalJson:
   private enum Work:
     case Emit(bytes: Bytes)
     case Visit(value: CanonicalJson)
-
-  /** The value as circe holds it, for the readers that look fields up: a string as `fromJSString`
-    * gives it, and of a repeated key the first value, as `fromJSField` finds it.
-    */
-  def toCirce(value: CanonicalJson): Json =
-    TreeFold.fold[CanonicalJson, Json](value) {
-      case Null       => TreeFold.Step.Leaf(Json.Null)
-      case Bool(b)    => TreeFold.Step.Leaf(Json.fromBoolean(b))
-      case Num(n)     => TreeFold.Step.Leaf(Json.fromLong(n))
-      case Str(b)     => TreeFold.Step.Leaf(Json.fromString(string(b)))
-      case Arr(items) => TreeFold.Step.Branch(items, vs => Right(Json.fromValues(vs)))
-      case Obj(fields) =>
-        val keys = fields.map((k, _) => string(k))
-        TreeFold.Step.Branch(
-          fields.map(_._2),
-          vs =>
-            Right(
-              Json.fromFields(
-                keys
-                  .zip(vs)
-                  .foldLeft((Set.empty[String], Vector.empty[(String, Json)])) {
-                    case ((seen, kept), (k, v)) =>
-                      if seen.contains(k) then (seen, kept) else (seen + k, kept :+ (k -> v))
-                  }
-                  ._2
-              )
-            )
-        )
-    }

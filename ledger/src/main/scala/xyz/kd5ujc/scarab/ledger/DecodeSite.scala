@@ -51,9 +51,8 @@ object DecodeSite:
 /** The named places a ledger decoder reads. A label keeps the wording the decoders reported while
   * places were free text, so an error renders as it always did. Some labels are the reference's own
   * names: the protocol parameters (`minFeeA`, `maxTxSize`) and the Byron `blockVersionData` keys
-  * (`softforkRule`, `txFeePolicy`). `ByronParams.fromGenesis` reads the label of those as the key
-  * of the genesis JSON, so rewording one changes what a genesis file must say. The others follow
-  * the rule names of `conway.cddl` (`eras/conway/impl/cddl/data/conway.cddl`) and `byron.cddl`
+  * (`softforkRule`, `txFeePolicy`). The others follow the rule names of `conway.cddl`
+  * (`eras/conway/impl/cddl/data/conway.cddl`) and `byron.cddl`
   * (`eras/byron/ledger/impl/cddl-spec/byron.cddl`) of cardano-ledger `f649f975` in plain words,
   * `transaction_body` as "transaction body". A new decoder adds its place here.
   */

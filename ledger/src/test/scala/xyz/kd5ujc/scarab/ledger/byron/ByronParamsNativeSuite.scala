@@ -2,10 +2,8 @@
 package xyz.kd5ujc.scarab.ledger.byron
 
 import java.nio.file.{Files, Path}
-import io.circe.Json
 import io.circe.parser.parse
 import munit.FunSuite
-import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
 
 class ByronParamsNativeSuite extends FunSuite:
   test("native signed ceiling and Word64 conversion precede checked fee addition") {
@@ -26,91 +24,10 @@ class ByronParamsNativeSuite extends FunSuite:
     )
   }
 
-  test("CBOR Nano uses ties-even rounding while genesis JSON uses Word64 division") {
+  test("CBOR Nano uses ties-even rounding") {
     assertEquals(TxFeePolicy.fromNano(2500000000L, 0), Right(TxFeePolicy(2000000000L, 0)))
     assertEquals(TxFeePolicy.fromNano(3500000000L, 0), Right(TxFeePolicy(4000000000L, 0)))
     assertEquals(TxFeePolicy.fromNano(-500000000, 0), Right(TxFeePolicy(0, 0)))
-    val json = parse(Files.readString(Path.of("fixtures/eras/genesis/byron-genesis.json")))
-      .fold(e => fail(e.message), identity)
-    val cursor = json.hcursor.downField("blockVersionData")
-    def genesis(a: BigInt) =
-      val changed = cursor.withFocus(
-        _.mapObject(
-          _.add(
-            "txFeePolicy",
-            io.circe.Json.obj(
-              "summand" -> io.circe.Json.fromString(a.toString),
-              "multiplier" -> io.circe.Json.fromString("-1")
-            )
-          )
-        )
-      )
-      ByronParams.fromGenesis(changed).map(_.txFeePolicy)
-    assertEquals(genesis(3500000000L), Right(TxFeePolicy(3000000000L, -1)))
-    assert(genesis(BigInt(1) << 64).isLeft)
-    assert(genesis(-1).isLeft)
-  }
-
-  private def mainnetParameters: Json =
-    parse(Files.readString(Path.of("fixtures/mainnet/genesis/byron-genesis.json")))
-      .fold(e => fail(e.message), identity)
-      .hcursor
-      .downField("blockVersionData")
-      .focus
-      .getOrElse(fail("no blockVersionData"))
-
-  test("the mainnet genesis file is read under the reference's keys") {
-    assertEquals(
-      ByronParams.fromGenesis(mainnetParameters.hcursor),
-      Right(
-        ByronParams(
-          scriptVersion = 0,
-          slotDurationMs = 20000,
-          maxBlockSize = 2000000,
-          maxHeaderSize = 2000000,
-          maxTxSize = 4096,
-          maxProposalSize = 700,
-          mpcThd = BigInt("20000000000000"),
-          heavyDelThd = BigInt("300000000000"),
-          updateVoteThd = BigInt("1000000000000"),
-          updateProposalThd = BigInt("100000000000000"),
-          updateProposalTtl = 10000,
-          softforkRule = SoftforkRule(
-            BigInt("900000000000000"),
-            BigInt("600000000000000"),
-            BigInt("50000000000000")
-          ),
-          txFeePolicy = TxFeePolicy(BigInt("155381000000000"), BigInt("43946000000")),
-          unlockStakeEpoch = BigInt("18446744073709551615")
-        )
-      )
-    )
-  }
-
-  test("a genesis file without a key is refused with the key it lacks") {
-    val parent = Map(
-      ByronGenesisKey.InitThd -> ByronGenesisKey.SoftforkRule,
-      ByronGenesisKey.MinThd -> ByronGenesisKey.SoftforkRule,
-      ByronGenesisKey.ThdDecrement -> ByronGenesisKey.SoftforkRule,
-      ByronGenesisKey.Summand -> ByronGenesisKey.TxFeePolicy,
-      ByronGenesisKey.Multiplier -> ByronGenesisKey.TxFeePolicy
-    )
-    // An absent object is reported by the first key read inside it.
-    val firstInside = Map(
-      ByronGenesisKey.SoftforkRule -> ByronGenesisKey.InitThd,
-      ByronGenesisKey.TxFeePolicy -> ByronGenesisKey.Summand
-    )
-    for key <- ByronGenesisKey.values do
-      val cursor = mainnetParameters.hcursor
-      val without = parent.get(key) match
-        case Some(inside) =>
-          cursor.downField(inside.json).withFocus(_.mapObject(_.remove(key.json))).top
-        case None => cursor.withFocus(_.mapObject(_.remove(key.json))).top
-      assertEquals(
-        ByronParams.fromGenesis(without.getOrElse(fail(key.json)).hcursor),
-        Left(LedgerDecodeError.GenesisMissingField(firstInside.getOrElse(key, key))),
-        key.json
-      )
   }
 
   test("all pinned native parameter decoder rows and every fee outcome agree") {

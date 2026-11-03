@@ -3,19 +3,23 @@ package xyz.kd5ujc.scarab.ledger.json
 
 import scala.annotation.tailrec
 
-/** `readEither :: String -> Either String Word64`, through which cardano-prelude 0.2.2.0 reads a
-  * `Word64` of canonical JSON (`FromJSON Word64 = parseJSString (readEither . Text.unpack)`,
-  * `Cardano/Prelude/Json/Canonical.hs:114-115`), and so a Byron genesis balance
-  * (`Cardano/Chain/Common/Lovelace.hs:117-118`, cardano-ledger f649f975).
+/** `readEither` of a `Word64`, a `Natural` and an `Integer`, through which cardano-prelude 0.2.2.0
+  * reads them from a string of canonical JSON (`FromJSON Word64`, `FromJSON Integer` and
+  * `FromJSON Natural` are `parseJSString (readEither . Text.unpack)`,
+  * `Cardano/Prelude/Json/Canonical.hs:114-121`), and so a Byron genesis balance
+  * (`Cardano/Chain/Common/Lovelace.hs:117-118`, cardano-ledger f649f975) and most of the Byron
+  * genesis parameters (#734).
   *
-  * `Read Word64` reads an `Integer` and takes it modulo 2^64 (`fromInteger`). The `Integer` is
-  * `readNumber convertInt` (ghc-internal 9.1003.0 `GHC/Internal/Read.hs`): any number of
-  * parentheses around an optional `-` lexeme and a number lexeme, whitespace (`isSpace`) before
-  * each lexeme and at the end. A number lexeme (`Text/Read/Lex.hs`, `lexNumber`) is `0x` /`0X` and
-  * hex digits, `0o` /`0O` and octal digits, or decimal digits; a decimal with a fraction or an
-  * exponent is lexed but is not an integer (`numberToInteger`), and so is refused, as is anything
-  * after the lexemes. `+`, a binary literal, an underscore and a second `-` are refused. Measured
-  * against the reference with `scripts/oracle/byron-genesis-balances` (#729).
+  * `Read Word64` reads an `Integer` and takes it modulo 2^64 (`fromInteger`); `Read Natural` reads
+  * an `Integer` and keeps it only if it is not negative (ghc-internal 9.1003.0
+  * `GHC/Internal/Read.hs`, so `-0` is 0). The `Integer` is `readNumber convertInt` (ghc-internal
+  * 9.1003.0 `GHC/Internal/Read.hs`): any number of parentheses around an optional `-` lexeme and a
+  * number lexeme, whitespace (`isSpace`) before each lexeme and at the end. A number lexeme
+  * (`Text/Read/Lex.hs`, `lexNumber`) is `0x` /`0X` and hex digits, `0o` /`0O` and octal digits, or
+  * decimal digits; a decimal with a fraction or an exponent is lexed but is not an integer
+  * (`numberToInteger`), and so is refused, as is anything after the lexemes. `+`, a binary literal,
+  * an underscore and a second `-` are refused. Measured against the reference with
+  * `scripts/oracle/byron-genesis-balances` (#729) and `scripts/oracle/byron-genesis-data` (#734).
   */
 object HaskellRead:
   private val Modulus = BigInt(1) << 64
@@ -86,7 +90,13 @@ object HaskellRead:
       if j < s.size && s(j) == ')' then closing(s, j + 1, depth - 1) else None
 
   /** The `Word64` that `readEither` reads from `text`, or `None` where it refuses it. */
-  def word64(text: String): Option[BigInt] =
+  def word64(text: String): Option[BigInt] = integer(text).map(_.mod(Modulus))
+
+  /** The `Natural` that `readEither` reads from `text`, or `None` where it refuses it. */
+  def natural(text: String): Option[BigInt] = integer(text).filter(_ >= 0)
+
+  /** The `Integer` that `readEither` reads from `text`, or `None` where it refuses it. */
+  def integer(text: String): Option[BigInt] =
     val s = text.codePoints.toArray.toIndexedSeq
     val (start, depth) = opening(s, 0, 0)
     val negative =
@@ -96,4 +106,4 @@ object HaskellRead:
       (value, end) <- number(s, numberAt)
       after <- closing(s, end, depth)
       if spaces(s, after) == s.size
-    yield (if negative then -value else value).mod(Modulus)
+    yield if negative then -value else value

@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.ledger.state.{NonZero, PositiveUnitInterval, Word64}
 final case class ByronSpan(
     epochs: BigInt,
     epochSlots: BigInt,
-    slotLengthMillis: Long,
+    slotLengthMillis: BigInt,
     derived: Boolean = false
 ):
   def slots: BigInt = epochs * epochSlots
@@ -25,7 +25,7 @@ object ByronSpan:
   /** Placeholder epoch count of a span whose end is not yet known. */
   private val Open: BigInt = 1000000
 
-  def derived(epochSlots: BigInt, slotLengthMillis: Long): ByronSpan =
+  def derived(epochSlots: BigInt, slotLengthMillis: BigInt): ByronSpan =
     ByronSpan(Open, epochSlots, slotLengthMillis, derived = true)
 
 /** The era history: slot/epoch arithmetic across the Byron prefix and the Shelley-based eras

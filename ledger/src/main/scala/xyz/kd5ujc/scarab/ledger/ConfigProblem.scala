@@ -20,14 +20,6 @@ enum ConfigProblem:
   /** A file the reference reads with `parseCanonicalJSON` that it refuses (#730). */
   case CanonicalJsonSyntax(context: String, cause: json.CanonicalJson.ParseError)
 
-  /** A value of canonical JSON of another kind than the reader takes (`expectedButGotValue`); the
-    * value itself is not kept, so a deep one costs nothing to report.
-    */
-  case CanonicalJsonKind(
-      context: String,
-      expected: json.CanonicalJson.Kind,
-      actual: json.CanonicalJson.Kind
-  )
   case JsonField(context: String, field: String, cause: DecodingFailure)
   case MissingField(context: String, field: String)
   case InvalidTimestamp(value: String, cause: Throwable)
@@ -41,6 +33,9 @@ enum ConfigProblem:
     * `decodeAddressBase58` reads it (#728).
     */
   case ByronGenesisAddress(value: String, cause: LedgerDecodeError)
+
+  /** A field of the Byron genesis that `FromJSON GenesisData` refuses (#734). */
+  case ByronGenesisValue(field: ByronGenesisField, cause: ByronFieldError)
 
   /** A Byron genesis AVVM balance whose key `fromAvvmVK` refuses (#729). */
   case AvvmKey(value: String, cause: AvvmKeyError)
@@ -121,8 +116,6 @@ enum ConfigProblem:
     case SecurityParamBeyondStorage(k) =>
       s"genesis securityParam $k: the chain store counts at most ${Int.MaxValue} blocks"
     case JsonSyntax(context, cause) => s"$context is not JSON: ${cause.message}"
-    case CanonicalJsonKind(context, expected, actual) =>
-      s"$context: expected ${expected.toString.toLowerCase} but got ${actual.toString.toLowerCase}"
     case CanonicalJsonSyntax(context, cause) =>
       s"$context is not canonical JSON: unexpected input at byte ${cause.offset}"
     case JsonField(context, field, cause) => s"$context $field: ${cause.message}"
@@ -149,6 +142,8 @@ enum ConfigProblem:
     case GenesisCostModel(cause)    => s"genesis cost models: ${cause.message}"
     case ByronGenesisAddress(value, cause) =>
       s"byron genesis nonAvvmBalances: $value is not a Byron address: ${cause.message}"
+    case ByronGenesisValue(ByronGenesisField.Top, cause) => s"byron genesis: ${cause.message}"
+    case ByronGenesisValue(field, cause) => s"byron genesis ${field.key}: ${cause.message}"
     case AvvmKey(value, AvvmKeyError.Format) =>
       s"byron genesis avvmDistr: $value is not base64(url)"
     case AvvmKey(value, AvvmKeyError.Length(n)) =>

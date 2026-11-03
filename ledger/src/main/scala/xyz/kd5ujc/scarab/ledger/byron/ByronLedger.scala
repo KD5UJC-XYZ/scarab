@@ -134,7 +134,7 @@ object ByronLedger:
   ):
     def magicId: BigInt = BigInt(genesis.protocolMagic)
     def magic: Bytes = ByronCbor.uint(magicId)
-    def k: BigInt = BigInt(genesis.securityParam)
+    def k: BigInt = genesis.securityParam
     def epochSlots: BigInt = genesis.epochSlots
 
     /** The network magic carried by addresses: none on a `RequiresNoMagic` network (mainnet). */

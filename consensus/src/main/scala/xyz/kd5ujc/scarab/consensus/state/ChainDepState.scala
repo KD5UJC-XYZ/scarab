@@ -56,15 +56,16 @@ object PBftState:
 
     /** `PBftState.append` (`State.hs:125-139`): the newest signer joins, and the oldest leaves once
       * the window holds `windowSize`. The counts are kept up to date, not recomputed; they stay
-      * those of [[ofWindow]] (a key with no signer in the window has no entry).
+      * those of [[ofWindow]] (a key with no signer in the window has no entry). `windowSize` is the
+      * Byron `k`, a `Word64` (`pbftSecurityParam`).
       */
-    def append(signer: PBftSigner, windowSize: Int): PBftState =
+    def append(signer: PBftSigner, windowSize: BigInt): PBftState =
       val joined = p.counts.updated(
         signer.genesisKey,
         Word64.fromUnsigned(p.countSignedBy(signer.genesisKey).bits + 1)
       )
       p.inWindow match
-        case oldest +: rest if p.inWindow.size == windowSize =>
+        case oldest +: rest if BigInt(p.inWindow.size) == windowSize =>
           val left = Word64.fromUnsigned(joined.getOrElse(oldest.genesisKey, Word64.zero).bits - 1)
           PBftState(
             rest :+ signer,

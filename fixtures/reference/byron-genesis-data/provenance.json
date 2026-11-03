@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-03",
+  "scope": "The unchanged released Byron genesis reader as readGenesisData applies it: parseCanonicalJSON of the bytes, the genesis hash (hashRaw of renderCanonicalJSON), then fromJSON @GenesisData, every field; the balances are reported by their count (the byron-genesis-balances corpus covers them entry by entry); no ledger rule, signature check or genesis UTxO is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "compiler": "GHC 9.10.3",
+  "packages": {
+    "cardano-ledger-byron": "1.3.0.0",
+    "cardano-crypto-wrapper": "1.7.0.0",
+    "cardano-crypto": "1.3.0",
+    "cardano-prelude": "0.2.2.0",
+    "canonical-json": "0.6.0.1",
+    "base16-bytestring": "1.0.2.0",
+    "base64-bytestring": "1.2.1.0"
+  },
+  "sourceFiles": {
+    "genesisData": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Genesis/Data.hs",
+      "sourceSha256": "31789533260a90b30d814525acd7dd801d6dfac4d2b3e1e2279ff8dbb29bca9d",
+      "matchesPin": true,
+      "note": "FromJSON GenesisData looks up protocolConsts first, then reads the eight fields in order (85-102); readGenesisData parses with parseCanonicalJSON and hashes renderCanonicalJSON (169-181)"
+    },
+    "keyHashes": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Genesis/KeyHashes.hs",
+      "sourceSha256": "313e6c8d6581ee207b609c987881bdd879aa5d7217e9cec144988853076f4ad3",
+      "matchesPin": true,
+      "note": "FromJSON GenesisKeyHashes is the key set of a Map KeyHash Word16 (40-42)"
+    },
+    "delegation": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Genesis/Delegation.hs",
+      "sourceSha256": "7f7250d45338eb4234034fcfee6fce37f8ab03d4018303b7b1e2477d673e5f28",
+      "matchesPin": true,
+      "note": "FromJSON GenesisDelegation is a Map KeyHash Certificate and recreateGenesisDelegation (50-58, 114-127)"
+    },
+    "certificate": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Delegation/Certificate.hs",
+      "sourceSha256": "9c22e8925ff18aff411916865cc730e78d1fabba2a7befee8dae80d5c8088c0c",
+      "matchesPin": true,
+      "note": "FromJSON Certificate: omega an Int54 into an EpochNumber, the two keys and the signature, unchecked (257-263)"
+    },
+    "keyHash": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Common/KeyHash.hs",
+      "sourceSha256": "e394c0d33d34316eeaee75e85b0662cecca9c84597a9377966e46903e294399f",
+      "matchesPin": true,
+      "note": "FromObjectKey KeyHash is decodeAbstractHash (49-53)"
+    },
+    "protocolParameters": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/ProtocolParameters.hs",
+      "sourceSha256": "5907f17641aefc36a9131ee429258852d5d78c027229365006715b2234fdaeec",
+      "matchesPin": true,
+      "note": "FromJSON ProtocolParameters reads its fourteen fields in order (144-160)"
+    },
+    "softforkRule": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/SoftforkRule.hs",
+      "sourceSha256": "064f67ac4a4a18b548d958a9cb881427f72085e3ead306fbc6543be4126ac0ff",
+      "matchesPin": true,
+      "note": "FromJSON SoftforkRule: three LovelacePortion (90-95)"
+    },
+    "lovelacePortion": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Common/LovelacePortion.hs",
+      "sourceSha256": "e1ccc494c17eef47c5d429a89d6feda31736b068447f191b1a941c8da8bc2d24",
+      "matchesPin": true,
+      "note": "FromJSON LovelacePortion: a Word64 of at most 1e15 (91-100)"
+    },
+    "txFeePolicy": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Common/TxFeePolicy.hs",
+      "sourceSha256": "92d9a7dfc085d3df1f99bd630549dcfd2cea728b36910208f86a98e2edac286b",
+      "matchesPin": true,
+      "note": "FromJSON TxFeePolicy: summand a Word64 div 1e9, multiplier an Integer % 1e9 (109-128)"
+    },
+    "protocolConstants": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/ProtocolConstants.hs",
+      "sourceSha256": "bdc3fa4c594a2ec9ba4cfbaa9038138a59b24f1a239930a982d6a3c0f40402f4",
+      "matchesPin": true,
+      "note": "kEpochSlots is 10k as a Word64 (44-45)"
+    },
+    "verificationKey": {
+      "file": "eras/byron/crypto/src/Cardano/Crypto/Signing/VerificationKey.hs",
+      "sourceSha256": "0620df321cc49c0adcadfcab5a486676cf218a1272e5ef748d90a3beace81b0b",
+      "matchesPin": true,
+      "note": "FromJSON VerificationKey is parseFullVerificationKey: base64, then CC.xpub (75-76, 137-140)"
+    },
+    "signature": {
+      "file": "eras/byron/crypto/src/Cardano/Crypto/Signing/Signature.hs",
+      "sourceSha256": "52e820c0c0a055cb15e4e4827b20cb6808b64f015970a4def5fe6c33cd267b37",
+      "matchesPin": true,
+      "note": "FromJSON Signature is parseFullSignature: base16, then CC.xsignature (93-94, 120-124)"
+    },
+    "hashing": {
+      "file": "eras/byron/crypto/src/Cardano/Crypto/Hashing.hs",
+      "sourceSha256": "44950a76807cd6dc0b4c3a37733e71df6f040aaaf5923e91dd78947deb476572",
+      "matchesPin": true,
+      "note": "decodeAbstractHash: base16 of exactly the digest's length (196-208)"
+    },
+    "protocolMagic": {
+      "file": "eras/byron/crypto/src/Cardano/Crypto/ProtocolMagic.hs",
+      "sourceSha256": "a97f486b994e4e04d788c91ffd1eee561354ac7c508fe089991ba61f6738a457",
+      "matchesPin": true,
+      "note": "FromJSON ProtocolMagicId is a Word32 (95-96)"
+    },
+    "preludeCanonical": {
+      "file": "cardano-prelude-0.2.2.0 src/Cardano/Prelude/Json/Canonical.hs",
+      "sourceSha256": "f8c61a39df2eed1267024e996889e3c815b8a65f2d2c82e6a2aafcbc403acad4",
+      "note": "Word16 and Word32 from a number by fromIntegral; Word64, Integer and Natural by readEither of a string; UTCTime from an Int54 of seconds (106-124)"
+    },
+    "preludeParse": {
+      "file": "cardano-prelude-0.2.2.0 src/Cardano/Prelude/Json/Parse.hs",
+      "sourceSha256": "20dcd5b78ee7a9fd6d3594360376cc130252d7d4a1cab3a0a16c460d4a18f6c1",
+      "note": "parseJSString: a string, its characters one per byte, given to the parser"
+    },
+    "canonicalClass": {
+      "file": "canonical-json-0.6.0.1 Text/JSON/Canonical/Class.hs",
+      "sourceSha256": "5d29f3abc832f08ba972c5abcceb6426f8e1b1b0c375a3b1de5f4ca2efaeb1de",
+      "note": "FromJSON Int54 a number; FromJSON (Map k a) each entry in text order, key then value, the first of equal keys kept (162-175, 212-217); fromJSField (186-192)"
+    }
+  },
+  "harness": {
+    "main": "scripts/oracle/byron-genesis-data/Main.hs",
+    "mainSha256": "a6b71b1dc945b7daf7e81dd139ac688df92768eb8d9929682adeefa0d6e76333",
+    "cases": "scripts/oracle/byron-genesis-data/cases.py",
+    "casesSha256": "42b138ce4c19c62f1d91fba671f2dbbf7e38e5cebd15731b857118aaf053bdf8"
+  },
+  "cases": {
+    "file": "cases.jsonl",
+    "sha256": "ca77850c53bba5244eb769d0af1a2b52e7e2205319f914e5e4ff8a0c757753b5",
+    "count": 198,
+    "accepted": 86,
+    "refused": 112
+  }
+}

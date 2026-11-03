@@ -28,12 +28,12 @@ class QueryGoldenSuite extends FunSuite:
 
   private val env = QueryEnv(
     setup.byronParams
-      .flatMap(_.startTime)
+      .map(_.startTime)
       .fold(setup.geometry.systemStart)(java.time.Instant.ofEpochSecond),
     setup.geometry,
     setup.praos.forks,
     setup.byronParams.fold(EraHistory.ByronParams(50, 1000, 5))(b =>
-      EraHistory.ByronParams(b.epochSlots, BigInt(b.slotLengthMillis), BigInt(b.securityParam))
+      EraHistory.ByronParams(b.epochSlots, b.slotLengthMillis, b.securityParam)
     ),
     setup.globals.maxSupply,
     setup.genesis.raw,

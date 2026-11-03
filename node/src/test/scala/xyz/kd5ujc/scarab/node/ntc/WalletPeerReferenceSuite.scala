@@ -77,7 +77,7 @@ class WalletPeerReferenceSuite extends FunSuite:
       setup.geometry,
       setup.praos.forks,
       setup.byronParams.fold(EraHistory.ByronParams(50, 1000, 5))(p =>
-        EraHistory.ByronParams(p.epochSlots, BigInt(p.slotLengthMillis), BigInt(p.securityParam))
+        EraHistory.ByronParams(p.epochSlots, p.slotLengthMillis, p.securityParam)
       ),
       setup.globals.maxSupply,
       setup.genesis.raw,

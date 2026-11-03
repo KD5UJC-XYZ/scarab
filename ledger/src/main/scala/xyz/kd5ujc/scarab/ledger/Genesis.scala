@@ -8,7 +8,13 @@ import java.time.Instant
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.byron.{ByronAddress, ByronParams}
-import xyz.kd5ujc.scarab.ledger.json.{CanonicalJson, FromJson, HaskellRead, NumberError}
+import xyz.kd5ujc.scarab.ledger.json.{
+  CanonicalJson,
+  FromJson,
+  HaskellRead,
+  NumberError,
+  StrictBase64
+}
 import xyz.kd5ujc.scarab.ledger.state.PositiveUnitInterval
 
 /** Network configuration read from the Shelley genesis file. */
@@ -93,7 +99,7 @@ object Genesis:
     */
   def withSystemStart(genesis: ShelleyGenesis, byron: Option[ByronGenesis]): ShelleyGenesis =
     byron
-      .flatMap(_.startTime)
+      .map(_.startTime)
       .fold(genesis)(seconds =>
         genesis.copy(geometry = genesis.geometry.copy(systemStart = Instant.ofEpochSecond(seconds)))
       )
@@ -106,30 +112,40 @@ object Genesis:
   */
 final case class ByronDelegation(epoch: BigInt, issuer: Bytes, delegate: Bytes, cert: Bytes)
 
-/** What the node needs from `byron-genesis.json`. `hash` is the hash the first epoch-boundary block
-  * names as its predecessor. `genesisKeys` are the hashes of the genesis keys (the
-  * `bootStakeholders`) in ascending order, which is also the PBFT round-robin order. `avvm` are the
-  * redeemable balances (32-byte redeem keys), `nonAvvm` the balances at ordinary addresses (the
-  * address encoding).
+/** `byron-genesis.json` as `readGenesisData` reads it into `GenesisData`
+  * (`Cardano/Chain/Genesis/Data.hs:52-62, 85-102, 169-181`, cardano-ledger f649f975), with `hash`,
+  * the hash the first epoch-boundary block names as its predecessor. `genesisKeys` are the hashes
+  * of the genesis keys (the `bootStakeholders`) in ascending order, which is also the PBFT
+  * round-robin order; `delegations` are in the order of their keys. `avvm` are the redeemable
+  * balances (32-byte redeem keys), `nonAvvm` the balances at ordinary addresses (the address
+  * encoding).
   * @param startTime
-  *   `startTime` of the Byron genesis in whole seconds: the reference reports it as the system
-  *   start of the hard-fork combinator (it may differ from the Shelley genesis `systemStart` by the
-  *   sub-second part).
+  *   `startTime` in whole seconds (an `Int54`): the reference reports it as the system start of the
+  *   hard-fork combinator (it may differ from the Shelley genesis `systemStart` by the sub-second
+  *   part).
+  * @param securityParam
+  *   `k`, a `BlockCount` (`Word64`) taken from an `Int54` by `fromIntegral`.
+  * @param protocolMagic
+  *   a `Word32` taken from an `Int54` by `fromIntegral`.
   */
 final case class ByronGenesis(
     hash: Bytes,
-    protocolMagic: Long,
-    securityParam: Int,
-    slotLengthMillis: Long,
-    delegations: Vector[ByronDelegation],
     genesisKeys: Vector[Bytes],
-    params: ByronParams,
-    avvm: Vector[(Bytes, BigInt)],
+    delegations: Vector[ByronDelegation],
+    startTime: Long,
     nonAvvm: Vector[(Bytes, BigInt)],
-    startTime: Option[Long] = None
+    params: ByronParams,
+    securityParam: BigInt,
+    protocolMagic: Long,
+    avvm: Vector[(Bytes, BigInt)]
 ):
-  /** A Byron epoch has 10k slots. */
-  def epochSlots: BigInt = BigInt(securityParam) * 10
+  /** `kEpochSlots` (`Cardano/Chain/ProtocolConstants.hs:44-45`): 10k slots, a `Word64`. */
+  def epochSlots: BigInt = (securityParam * 10).mod(BigInt(1) << 64)
+
+  /** `ppSlotDuration`, in milliseconds (`fromByronSlotLength`, ouroboros-consensus 82ecba32
+    * `Ouroboros/Consensus/Byron/Ledger/Conversions.hs:50-52`).
+    */
+  def slotLengthMillis: BigInt = params.slotDurationMs
 
 object ByronGenesisFile:
   /** The Byron genesis file as `readGenesisData` reads it (`Cardano/Chain/Genesis/Data.hs:169-181`,
@@ -142,20 +158,22 @@ object ByronGenesisFile:
       .leftMap(e => ConfigError(ConfigProblem.CanonicalJsonSyntax("byron genesis", e)))
       .map(v => (v, Blake2b.hash256.hash(CanonicalJson.render(v))))
 
+  /** The genesis of `bytes`, every field read as `FromJSON GenesisData` reads it (#734), and its
+    * hash checked against the configured one.
+    */
   def parse(bytes: Bytes, configuredHash: Option[Bytes]): Either[ConfigError, ByronGenesis] =
     read(bytes).flatMap((value, computed) => fromJson(value, computed, configuredHash))
 
-  /** The genesis `value` whose hash is `computed`. The fields other than the balances are read from
-    * it as circe holds it ([[CanonicalJson.toCirce]]); reading each as `FromJSON GenesisData` does
-    * is #734.
+  /** The genesis `value` whose hash is `computed`: `readGenesisData` reads the fields before the
+    * node compares the hash with the configured one.
     */
   def fromJson(
       value: CanonicalJson,
       computed: Bytes,
       configuredHash: Option[Bytes]
   ): Either[ConfigError, ByronGenesis] =
-    val c = CanonicalJson.toCirce(value).hcursor
     for
+      f <- ByronGenesisRead.fields(value)
       hash <- configuredHash.fold(Right(computed))(h =>
         Either.cond(
           h == computed,
@@ -165,118 +183,74 @@ object ByronGenesisFile:
           )
         )
       )
-      magic <- Genesis.field[Long](c.downField("protocolConsts"), "protocolMagic")
-      k <- Genesis.field[Int](c.downField("protocolConsts"), "k")
-      slot <- Genesis
-        .field[String](c.downField("blockVersionData"), "slotDuration")
-        .flatMap(s =>
-          s.toLongOption.toRight(ConfigError(ConfigProblem.IntegerText("slotDuration", s)))
-        )
-      params <- ByronParams
-        .fromGenesis(c.downField("blockVersionData"))
-        .leftMap(e => ConfigError(ConfigProblem.LedgerValue(e)))
-      delegations <- c
-        .downField("heavyDelegation")
-        .as[Option[Map[String, Json]]]
-        .leftMap(e => ConfigError(ConfigProblem.JsonField("byron genesis", "heavyDelegation", e)))
-        .flatMap(_.getOrElse(Map.empty).toVector.sortBy(_._1).traverse((_, j) => delegation(j)))
-      stakeholders <- c
-        .downField("bootStakeholders")
-        .as[Map[String, Json]]
-        .leftMap(e => ConfigError(ConfigProblem.JsonField("byron genesis", "bootStakeholders", e)))
-        .flatMap(
-          _.keys.toVector.sorted
-            .traverse(h => Bytes.fromHex(h).leftMap(e => ConfigError(ConfigProblem.Hex(e))))
-        )
-      balances <- genesisBalances(value)
-      start <- c
-        .downField("startTime")
-        .as[Option[Long]]
-        .leftMap(e => ConfigError(ConfigProblem.JsonField("byron genesis", "startTime", e)))
     yield ByronGenesis(
       hash,
-      magic,
-      k,
-      slot,
-      delegations,
-      stakeholders,
-      params,
-      balances._1,
-      balances._2,
-      start
+      f.genesisKeys,
+      f.delegations,
+      f.startTime,
+      f.nonAvvm,
+      f.params,
+      f.securityParam,
+      f.protocolMagic,
+      f.avvm
     )
 
   /** The balances of the genesis file: AVVM (redeem key, lovelace) and non-AVVM (address,
-    * lovelace), as `readGenesisData` reads them (`Cardano/Chain/Genesis/Data.hs:96, 102`,
-    * cardano-ledger f649f975). Each field is canonical JSON's `FromJSON (Map k a)` (canonical-json
-    * 0.6.0.1 `Text/JSON/Canonical/Class.hs:162-175`): of two keys that read as the same address or
-    * redeem key, the first in the text holds. A non-AVVM key is `decodeAddressBase58`
-    * (`Cardano/Chain/Common/Address.hs:188-189, 233-243`), a whole Byron address, kept as the
-    * reference encodes it again ([[ByronAddress.reencoded]], #728); an AVVM key is `fromAvvmVK`
-    * ([[avvmKey]], #729); an amount is a `Word64` read by `readEither` ([[HaskellRead.word64]],
-    * #729). Measured with `scripts/oracle/byron-genesis-balances`.
+    * lovelace), read as `FromJSON GenesisData` reads them, the non-AVVM balances first
+    * (`Cardano/Chain/Genesis/Data.hs:96, 102`, cardano-ledger f649f975).
     */
   def genesisBalances(
       value: CanonicalJson
   ): Either[ConfigError, (Vector[(Bytes, BigInt)], Vector[(Bytes, BigInt)])] =
-    // `fromJSField`: the field is required, and is an object whose every entry is read
-    def balances(name: String)(key: String => Either[ConfigError, Bytes]) =
-      value.field(name) match
-        case None =>
-          // `FromJSON GenesisData` takes an object only (`Data.hs:85-87`)
-          value match
-            case CanonicalJson.Obj(_) =>
-              Left(ConfigError(ConfigProblem.MissingField("byron genesis", name)))
-            case other =>
-              Left(
-                ConfigError(
-                  ConfigProblem.CanonicalJsonKind(
-                    "byron genesis",
-                    CanonicalJson.Kind.Object,
-                    other.kind
-                  )
-                )
-              )
-        case Some(CanonicalJson.Obj(entries)) =>
-          entries
-            .traverse((k, v) => (key(CanonicalJson.string(k)), amount(v)).tupled)
-            .map(firstOfEach)
-        case Some(other) =>
-          Left(
-            ConfigError(
-              ConfigProblem.CanonicalJsonKind(
-                s"byron genesis $name",
-                CanonicalJson.Kind.Object,
-                other.kind
-              )
-            )
-          )
-    // `FromJSON Word64`: a string, read by `readEither` as `fromJSString` gives it
+    for
+      nonAvvm <- nonAvvmBalances(value)
+      avvm <- avvmBalances(value)
+    yield (avvm, nonAvvm)
+
+  /** `nonAvvmBalances`: canonical JSON's `FromJSON (Map k a)` (canonical-json 0.6.0.1
+    * `Text/JSON/Canonical/Class.hs:162-175`), so of two keys that read as the same address the
+    * first in the text holds. A key is `decodeAddressBase58`
+    * (`Cardano/Chain/Common/Address.hs:188-189, 233-243`), a whole Byron address, kept as the
+    * reference encodes it again ([[ByronAddress.reencoded]], #728); an amount is a `Word64` read by
+    * `readEither` ([[HaskellRead.word64]], #729). Measured with
+    * `scripts/oracle/byron-genesis-balances`.
+    */
+  def nonAvvmBalances(value: CanonicalJson): Either[ConfigError, Vector[(Bytes, BigInt)]] =
+    balances(value, ByronGenesisField.NonAvvmBalances)(k =>
+      xyz.kd5ujc.scarab.ledger.Base58
+        .decode(k)
+        .toRight(ConfigError(ConfigProblem.Base58Address(k)))
+        .flatMap(raw =>
+          ByronAddress
+            .reencoded(raw)
+            .leftMap(e => ConfigError(ConfigProblem.ByronGenesisAddress(k, e)))
+        )
+    )
+
+  /** `avvmDistr`, as [[nonAvvmBalances]] but each key `fromAvvmVK` ([[avvmKey]], #729). */
+  def avvmBalances(value: CanonicalJson): Either[ConfigError, Vector[(Bytes, BigInt)]] =
+    balances(value, ByronGenesisField.AvvmDistr)(k =>
+      avvmKey(k).leftMap(e => ConfigError(ConfigProblem.AvvmKey(k, e)))
+    )
+
+  // `fromJSField`: the field is required, and is an object whose every entry is read, its key and
+  // then its amount (`FromJSON Word64`: a string, read by `readEither` as `fromJSString` gives it)
+  private def balances(value: CanonicalJson, field: ByronGenesisField)(
+      key: String => Either[ConfigError, Bytes]
+  ): Either[ConfigError, Vector[(Bytes, BigInt)]] =
+    def refuse[A](error: ByronFieldError): Either[ConfigError, A] =
+      Left(ConfigError(ConfigProblem.ByronGenesisValue(field, error)))
     def amount(v: CanonicalJson): Either[ConfigError, BigInt] = v match
       case CanonicalJson.Str(b) =>
         val text = CanonicalJson.string(b)
-        HaskellRead
-          .word64(text)
-          .toRight(ConfigError(ConfigProblem.IntegerText("byron balance", text)))
-      case other =>
-        Left(
-          ConfigError(
-            ConfigProblem.CanonicalJsonKind("byron balance", CanonicalJson.Kind.String, other.kind)
-          )
-        )
-    (
-      balances("avvmDistr")(k => avvmKey(k).leftMap(e => ConfigError(ConfigProblem.AvvmKey(k, e)))),
-      balances("nonAvvmBalances")(k =>
-        xyz.kd5ujc.scarab.ledger.Base58
-          .decode(k)
-          .toRight(ConfigError(ConfigProblem.Base58Address(k)))
-          .flatMap(raw =>
-            ByronAddress
-              .reencoded(raw)
-              .leftMap(e => ConfigError(ConfigProblem.ByronGenesisAddress(k, e)))
-          )
-      )
-    ).tupled
+        HaskellRead.word64(text).fold(refuse(ByronFieldError.NumberText(text)))(Right(_))
+      case other => refuse(ByronFieldError.Kind(CanonicalJson.Kind.String, other.kind))
+    for
+      _ <- ByronGenesisRead.entries(ByronGenesisField.Top, value)
+      entry <- value.field(field.key).fold(refuse(ByronFieldError.Missing))(Right(_))
+      entries <- ByronGenesisRead.entries(field, entry)
+      read <- entries.traverse((k, v) => (key(CanonicalJson.string(k)), amount(v)).tupled)
+    yield firstOfEach(read)
 
   /** The first balance of each key, in the order of the text (`Map.fromList` of the reversed
     * entries).
@@ -288,46 +262,14 @@ object ByronGenesisFile:
       }
       ._2
 
-  private val Base64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-
   /** `fromAvvmVK` (`Cardano/Crypto/Signing/Redeem/VerificationKey.hs:120-129`,
     * cardano-crypto-wrapper 1.7.0.0): `-` and `_` become `+` and `/`, the text is
-    * base64-bytestring's `decode`, which takes padded, canonical base64 only (its length a multiple
-    * of four, at most two `=` at the end and the bits they leave zero), and the key is 32 bytes.
+    * base64-bytestring's `decode` ([[StrictBase64]]), and the key is 32 bytes.
     */
   private[ledger] def avvmKey(text: String): Either[AvvmKeyError, Bytes] =
-    val b64 = text.replace('-', '+').replace('_', '/')
-    val body = b64.reverse.dropWhile(_ == '=').reverse
-    val pads = b64.length - body.length
-    val leftover = if pads == 1 then 0x03 else if pads == 2 then 0x0f else 0
-    val canonical =
-      b64.length % 4 == 0 && pads <= 2 && body.forall(Base64Alphabet.contains(_)) &&
-        body.lastOption.forall(last => (Base64Alphabet.indexOf(last.toInt) & leftover) == 0)
     for
-      raw <- Either
-        .catchNonFatal(java.util.Base64.getDecoder.decode(b64))
-        .toOption
-        .filter(_ => canonical)
+      raw <- StrictBase64
+        .decode(text.replace('-', '+').replace('_', '/'))
         .toRight(AvvmKeyError.Format)
-      key <- Either.cond(raw.length == 32, Bytes.fromArray(raw), AvvmKeyError.Length(raw.length))
+      key <- Either.cond(raw.size == 32, raw, AvvmKeyError.Length(raw.size))
     yield key
-
-  private def delegation(j: Json): Either[ConfigError, ByronDelegation] =
-    val c = j.hcursor
-    def key(name: String) =
-      Genesis
-        .field[String](c, name)
-        .flatMap(b64 =>
-          Either
-            .catchNonFatal(java.util.Base64.getDecoder.decode(b64))
-            .leftMap(e => ConfigError(ConfigProblem.Base64(name, b64, e)))
-        )
-        .map(Bytes.fromArray)
-    for
-      omega <- Genesis.field[BigInt](c, "omega")
-      issuer <- key("issuerPk")
-      delegate <- key("delegatePk")
-      cert <- Genesis
-        .field[String](c, "cert")
-        .flatMap(h => Bytes.fromHex(h).leftMap(e => ConfigError(ConfigProblem.Hex(e))))
-    yield ByronDelegation(omega, issuer, delegate, cert)

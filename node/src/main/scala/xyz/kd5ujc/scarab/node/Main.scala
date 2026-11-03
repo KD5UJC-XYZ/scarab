@@ -1594,7 +1594,7 @@ object Main extends IOApp:
     val queryEnv = instruments.eraStarts.get.map(observed =>
       QueryEnv(
         byronGenesis
-          .flatMap(_.startTime)
+          .map(_.startTime)
           .fold(genesis.geometry.systemStart)(java.time.Instant.ofEpochSecond),
         genesis.geometry,
         setup.praos.forks,
@@ -1606,7 +1606,7 @@ object Main extends IOApp:
           )
         )(b =>
           EraHistory
-            .ByronParams(b.epochSlots, BigInt(b.slotLengthMillis), BigInt(b.securityParam))
+            .ByronParams(b.epochSlots, b.slotLengthMillis, b.securityParam)
         ),
         setup.globals.maxSupply,
         genesis.raw,
