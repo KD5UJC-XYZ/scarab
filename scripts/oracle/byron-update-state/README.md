@@ -29,3 +29,20 @@ files as `FromJSON ProtocolParameters` reads them (`Update/ProtocolParameters.hs
 builds states with keys out of order and values at the bounds of their types; the
 [fixture](../../../fixtures/reference/byron-update-state/README.md) lists the cases and the scope.
 No public-network connection, node or key is needed.
+
+The same harness has a `register` mode for
+[#748](https://github.com/KD5UJC-XYZ/scarab/issues/748). It signs each case's software update proposal
+with a throwaway delegate key derived from a fixed seed in `Main.hs` and runs the released
+`Registration.registerProposal` against the case's state; a case with `vote` is a block's update
+payload instead (the proposal, a vote for it and the endorsement, through `registerUpdate`). It
+writes the proposal's (and vote's) bytes and the verdict, which `registration_cases.py` merges into
+[`fixtures/reference/byron-software-registration`](../../../fixtures/reference/byron-software-registration/README.md):
+
+```sh
+python3 scripts/oracle/byron-update-state/registration_cases.py --inputs /tmp/byron-registration-inputs.json
+docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-byron-update-state:local \
+  register /fixtures/byron-registration-inputs.json > /tmp/byron-registration-reference.json
+python3 scripts/oracle/byron-update-state/registration_cases.py --inputs /tmp/byron-registration-inputs.json \
+  --reference /tmp/byron-registration-reference.json --out /tmp/byron-registration-cases.jsonl
+cmp /tmp/byron-registration-cases.jsonl fixtures/reference/byron-software-registration/cases.jsonl
+```

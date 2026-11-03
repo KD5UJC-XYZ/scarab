@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-03",
+  "scope": "Registration.registerProposal of software update proposals signed by a throwaway delegate key (deterministicKeyGen of a fixed seed in Main.hs), against a state of application versions and registered software proposals, and for two cases Interface.registerUpdate of a block's update payload (the proposal, a vote of its proposer for it, the block's endorsement): the verdict, the refusal's constructor and fields, and after an acceptance the registered software proposals (and, for a payload, the application versions and the number of confirmed proposals); no block, header or epoch rule is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "compiler": "GHC 9.10.3",
+  "packages": {
+    "cardano-ledger-byron": "1.3.0.0",
+    "cardano-crypto-wrapper": "1.7.0.0",
+    "cardano-ledger-binary": "1.9.1.0",
+    "text": "2.1.3"
+  },
+  "sourceFiles": {
+    "registration": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/Validation/Registration.hs",
+      "sourceSha256": "71684878cb304ef7ef292c82a64fd1ed8871d2b111f4a63338d7851f886dda88",
+      "matchesPin": true,
+      "note": "registerProposal: proposer, signature, then the components, the protocol update before the software update (331-391); TooLarge built positionally as (maximum, size) (511-513); registerSoftwareUpdate: checkSystemTag of each key of the metadata in Map order, the duplicate, checkSoftwareVersion, svCanFollow (553-597)"
+    },
+    "systemTag": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/SystemTag.hs",
+      "sourceSha256": "20bb78a21bf6d1b5b26e2ed1b18dd80478bc10fe6714a42f925ece181d5e729c",
+      "matchesPin": true,
+      "note": "systemTagMaxLength 10 (67-68); checkSystemTag: T.length over it is SystemTagTooLong, then any non-isAscii character SystemTagNotAscii (113-117)"
+    },
+    "applicationName": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/ApplicationName.hs",
+      "sourceSha256": "6ce1abbe9f93bfba05665b283d8afabb69f2ce781b84c90b1720a4dd649ac535",
+      "matchesPin": true,
+      "note": "checkApplicationName: T.length over 12 is ApplicationNameTooLong, then ApplicationNameNotAscii (113-123)"
+    },
+    "softwareVersion": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/SoftwareVersion.hs",
+      "sourceSha256": "c37be4f6d9769e1772fb30878413ca4cfd8b0681ab157e5396cacd711dae658b",
+      "matchesPin": true,
+      "note": "checkSoftwareVersion wraps checkApplicationName in SoftwareVersionApplicationNameError (78-80, 112-116)"
+    },
+    "interface": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/Validation/Interface.hs",
+      "sourceSha256": "2d801d8aececbd0eee975483a140554cd3ae9948154e4204980a27b9b901328e",
+      "matchesPin": true,
+      "note": "registerUpdate: the proposal, the votes, the endorsement (244-258); registerVotes confirms and records the application version with its metadata (316-355)"
+    }
+  },
+  "harness": {
+    "main": "scripts/oracle/byron-update-state/Main.hs",
+    "mainSha256": "9ab85dcbe1beb67c42f130184d104c936c42b127e615912b165804734e71277a",
+    "cases": "scripts/oracle/byron-update-state/registration_cases.py",
+    "casesSha256": "db692a1dadb71ad1c978440519bb56573f87925203f024a1607194d8046bc14b"
+  },
+  "cases": {
+    "file": "cases.jsonl",
+    "sha256": "292989d48906e0974a318076879f735f4948bb804f9687a839bf057114bef1fb",
+    "count": 42,
+    "accepted": 14,
+    "refused": 28
+  }
+}

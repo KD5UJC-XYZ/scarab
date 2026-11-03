@@ -539,7 +539,15 @@
           "ByronLedgerSuite",
           "ByronUpdateSuite",
           "ByronMainnetSuite",
-          "ByronPreprodSuite"
+          "ByronPreprodSuite",
+          "ByronSoftwareRegistrationReferenceSuite"
+        ],
+        "paths": [
+          "fixtures/reference/byron-software-registration/cases.jsonl",
+          "scripts/oracle/byron-update-state/registration_cases.py"
+        ],
+        "issues": [
+          748
         ]
       },
       "page": "docs/compatibility/ledger-byron.md"

@@ -104,6 +104,12 @@ enum UpdateError:
   case InvalidScriptVersion(adopted: BigInt, proposed: BigInt)
   case DuplicateSoftwareVersion(name: String)
   case InvalidSoftwareVersion(name: String, number: BigInt)
+
+  /** A system tag of the installer metadata is refused (`SystemTagError`). */
+  case SystemTagError(cause: xyz.kd5ujc.scarab.ledger.byron.SystemTagError)
+
+  /** The software version's application name is refused (`SoftwareVersionError`). */
+  case SoftwareVersionError(cause: xyz.kd5ujc.scarab.ledger.byron.SoftwareVersionError)
   case VotingProposalNotRegistered(id: Bytes)
   case VoterNotDelegate(voter: Bytes)
   case VoteAlreadyCast(delegator: Bytes)
@@ -116,12 +122,26 @@ enum UpdateError:
     case DuplicateProtocolVersion(v) => s"protocol version ${v.render} is already proposed"
     case InvalidProtocolVersion(v, a) =>
       s"protocol version ${v.render} cannot follow the adopted ${a.render}"
-    case ProposalTooLarge(m, a)         => s"proposal of $a bytes exceeds $m"
-    case MaxBlockSizeTooLarge(m, a)     => s"proposed block size $a exceeds twice $m"
-    case MaxTxSizeTooLarge(m, a)        => s"proposed tx size $a is not below the block size $m"
-    case InvalidScriptVersion(a, p)     => s"script version $p cannot follow $a"
-    case DuplicateSoftwareVersion(n)    => s"software $n is already proposed"
-    case InvalidSoftwareVersion(n, v)   => s"software $n version $v is not the next"
+    case ProposalTooLarge(m, a)       => s"proposal of $a bytes exceeds $m"
+    case MaxBlockSizeTooLarge(m, a)   => s"proposed block size $a exceeds twice $m"
+    case MaxTxSizeTooLarge(m, a)      => s"proposed tx size $a is not below the block size $m"
+    case InvalidScriptVersion(a, p)   => s"script version $p cannot follow $a"
+    case DuplicateSoftwareVersion(n)  => s"software $n is already proposed"
+    case InvalidSoftwareVersion(n, v) => s"software $n version $v is not the next"
+    case SystemTagError(c) =>
+      c match
+        case xyz.kd5ujc.scarab.ledger.byron.SystemTagError.NotAscii(t) =>
+          s"system tag \"$t\" contains non-ascii characters"
+        case xyz.kd5ujc.scarab.ledger.byron.SystemTagError.TooLong(t) =>
+          s"system tag \"$t\" exceeds ${xyz.kd5ujc.scarab.ledger.byron.SystemTagError.MaxLength} characters"
+    case SoftwareVersionError(
+          xyz.kd5ujc.scarab.ledger.byron.SoftwareVersionError.ApplicationName(c)
+        ) =>
+      c match
+        case ApplicationNameError.TooLong(n) =>
+          s"application name \"$n\" exceeds ${ApplicationNameError.MaxLength} characters"
+        case ApplicationNameError.NotAscii(n) =>
+          s"application name \"$n\" contains non-ascii characters"
     case VotingProposalNotRegistered(i) => s"vote for unregistered proposal ${i.hex.take(16)}"
     case VoterNotDelegate(v)            => s"voter ${v.hex.take(16)} is not a delegate"
     case VoteAlreadyCast(d)             => s"genesis key ${d.hex.take(16)} already voted"
@@ -291,12 +311,22 @@ object ByronUpdate:
     val follows = st.appVersions.get(p.softwareName) match
       case None    => p.softwareNumber == 0 || p.softwareNumber == 1
       case Some(a) => p.softwareNumber == a.number + 1
+    // `registerSoftwareUpdate` (`Validation/Registration.hs:553-585`, cardano-ledger f649f975), in
+    // its order: each system tag of the metadata in key order (`M.keys`, ascending `Text`, so by
+    // UTF-8 bytes), no registered proposal of the application, the application name, the version
     for
+      _ <- p.metadata.keys.toVector
+        .sortBy(t => Bytes.fromArray(t.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+        .traverse_(t => xyz.kd5ujc.scarab.ledger.byron.SystemTagError.check(t))
+        .leftMap(UpdateError.SystemTagError(_))
       _ <- Either.cond(
         !st.registeredSoftware.valuesIterator.exists(_.name == p.softwareName),
         (),
         UpdateError.DuplicateSoftwareVersion(p.softwareName)
       )
+      _ <- xyz.kd5ujc.scarab.ledger.byron.SoftwareVersionError
+        .check(p.softwareName)
+        .leftMap(UpdateError.SoftwareVersionError(_))
       _ <- Either.cond(
         follows,
         (),
