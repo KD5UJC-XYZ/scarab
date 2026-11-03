@@ -20,8 +20,8 @@ import xyz.kd5ujc.scarab.ledger.byron.{
   * (`Ouroboros/Consensus/Byron/Ledger/Ledger.hs:563-565`, ouroboros-consensus 82ecba32) of
   * `UPI.State` (`Cardano/Chain/Update/Validation/Interface.hs:157-169`, cardano-ledger f649f975).
   * `toByronCBOR` encodes at `byronProtVer`, version 1 (`Cardano/Ledger/Binary/Version.hs:163`),
-  * where the containers of `cardano-ledger-binary` (`Binary/Encoding/Encoder.hs:397-408, 479-491,
-  * 499-508`) are:
+  * where the containers of `cardano-ledger-binary` 1.9.1.0, the release the reference node builds
+  * (`Binary/Encoding/Encoder.hs:397-408, 479-491, 499-508`), are:
   *   - a `Map`, a definite map in ascending key order;
   *   - a `Set`, tag 258 around a definite list in ascending order;
   *   - a list, an indefinite list.
@@ -52,8 +52,9 @@ object ByronUpdateInterface:
       map(state.registrationSlot.toVector)(upId, slot)(identity)
     )
 
+  /** The parts written one after the other, in one buffer. */
   private def concat(parts: Out*): Out =
-    parts.toVector.sequence.map(_.foldLeft(Bytes.empty)(_ ++ _))
+    parts.toVector.sequence.map(written => CborOut.build(w => written.foreach(w.raw)))
 
   /** An unsigned integer of a `bits`-wide `Word`. */
   private def word(n: BigInt, bits: Int): Out =
@@ -156,7 +157,7 @@ object ByronUpdateInterface:
         Right(CborOut.build(_.break))*
     )
 
-  /** `CandidateProtocolUpdate` (`Update/Validation/Endorsement.hs:84-89`): `[slot, version,
+  /** `CandidateProtocolUpdate` (`Update/Validation/Endorsement.hs:87-92`): `[slot, version,
     * parameters]`.
     */
   private def candidate(c: CandidateUpdate): Out =
@@ -173,7 +174,7 @@ object ByronUpdateInterface:
   private def appVersion(a: AppVersion): Out =
     concat(Right(CborOut.build(_.array(3))), word(a.number, 32), slot(a.slot), metadata(a.metadata))
 
-  /** `ProtocolUpdateProposal` (`Update/Validation/Registration.hs:149-153`): `[version,
+  /** `ProtocolUpdateProposal` (`Update/Validation/Registration.hs:154-158`): `[version,
     * parameters]`.
     */
   private def protocolProposal(p: ProtocolProposal): Out =
@@ -208,7 +209,7 @@ object ByronUpdateInterface:
   private def keyHashes(voters: Set[Bytes]): Out =
     set(voters.toVector.sorted)(keyHash)
 
-  /** The endorsements (`Endorsement`, `Update/Validation/Endorsement.hs:94-125`): `[version, key
+  /** The endorsements (`Endorsement`, `Update/Validation/Endorsement.hs:94-118`): `[version, key
     * hash]`, in the order of their derived `Ord`.
     */
   private def endorsements(es: Set[(ByronVersion, Bytes)]): Out =
