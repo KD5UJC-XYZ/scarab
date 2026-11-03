@@ -7,18 +7,18 @@ import xyz.kd5ujc.scarab.codec.Bytes
   * the forger signs. The reference checks the signature over `getSignableRepresentation hb =
   * serialize' (pvMajor (hbProtVer hb)) hb`, the decoded header body encoded again
   * (`libs/cardano-protocol/src/Cardano/Protocol/Praos/BlockHeader.hs:113-117`,
-  * `TPraos/BlockHeader.hs:170-171`, `Leios/BlockHeader.hs:139-142`, cardano-ledger f649f975;
-  * `KES.verifySignedKES` in `Ouroboros/Consensus/Protocol/Praos.hs:639` and
-  * `TPraos/Rules/OCert.hs`), not over the bytes a header was read from: a body with a non-minimal
-  * head, an indefinite list its decoders take, or a detached `RecD` record is signed as its
-  * canonical form. The header hash stays over the original bytes ([[Header.Shelley.raw]]).
+  * `TPraos/BlockHeader.hs:170-171`, cardano-ledger f649f975; `KES.verifySignedKES` in
+  * `Ouroboros/Consensus/Protocol/Praos.hs:639` and `TPraos/Rules/OCert.hs`), not over the bytes a
+  * header was read from: a body with a non-minimal head, an indefinite list its decoders take, or a
+  * detached `RecD` record is signed as its canonical form. The header hash stays over the original
+  * bytes ([[Header.Shelley.raw]]). A Leios header is signed over its body's original bytes instead
+  * ([[LeiosHeader.signable]]).
   *
   * The encoders write definite lists and the shortest heads (`encodeListLen`, `encodeWord64`,
-  * `encodeWord32`, `encodeBytes`, `encodeNull`, `encodeBool`), none of which depends on the version
-  * `serialize'` is given, so the header's major protocol version changes no byte here. The header
-  * decoding oracle confirms it: every accepted case of
-  * `fixtures/reference/header-decoding/cases.jsonl`, majors 2 to 13, signs exactly this encoding
-  * (#698).
+  * `encodeWord32`, `encodeBytes`, `encodeNull`), none of which depends on the version `serialize'`
+  * is given, so the header's major protocol version changes no byte here. The header decoding
+  * oracle confirms it: every accepted case of `fixtures/reference/header-decoding/cases.jsonl`,
+  * majors 2 to 13, signs exactly this encoding (#698).
   */
 object HeaderBodyEncoding:
 
@@ -42,25 +42,9 @@ object HeaderBodyEncoding:
   )
 
   /** The header body of `fields` in its layout. */
-  def encode(fields: Fields): Bytes = join(body(fields, extra = 0))
+  def encode(fields: Fields): Bytes = join(body(fields))
 
-  /** A Leios header body: the Praos body with the certificate flag and the endorser block
-    * announcement, null or the `RecD` record of its hash and size, after it, 12 items
-    * (`Leios/BlockHeader.hs:198-227`; `EbAnnouncement`, `:92-97`).
-    */
-  def leios(
-      fields: Fields,
-      containsCertificate: Boolean,
-      announcement: Option[(Bytes, Long)]
-  ): Bytes =
-    join(
-      body(fields, extra = 2) ++ Vector(bool(containsCertificate)) ++
-        announcement.fold(Vector(Null))((hash, size) =>
-          Vector(list(2), bytes(hash), uint(BigInt(size)))
-        )
-    )
-
-  private def body(f: Fields, extra: Int): Vector[Array[Byte]] =
+  private def body(f: Fields): Vector[Array[Byte]] =
     def cert(c: VrfCert) = Vector(list(2), bytes(c.output), bytes(c.proof))
     val opCert =
       Vector(
@@ -71,7 +55,7 @@ object HeaderBodyEncoding:
       )
     val version = Vector(uint(f.protocolVersion._1), uint(f.protocolVersion._2))
     def start(size: Int) = Vector(
-      list(size + extra),
+      list(size),
       uint(f.blockNo),
       uint(f.slot),
       f.prevHash.fold(Null)(bytes),
@@ -107,6 +91,5 @@ object HeaderBodyEncoding:
   private def uint(n: BigInt): Array[Byte] = head(0, n)
   private def bytes(b: Bytes): Array[Byte] = head(2, BigInt(b.size)) ++ b.toArray
   private def list(n: Int): Array[Byte] = head(4, BigInt(n))
-  private def bool(b: Boolean): Array[Byte] = Array((if b then 0xf5 else 0xf4).toByte)
   private val Null: Array[Byte] = Array(0xf6.toByte)
   private def join(parts: Vector[Array[Byte]]): Bytes = Bytes.wrap(parts.flatten.toArray)

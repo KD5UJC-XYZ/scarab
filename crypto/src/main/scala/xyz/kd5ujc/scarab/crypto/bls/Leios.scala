@@ -167,17 +167,28 @@ object Certificate:
       _ <- MinSig.verifyAggregate(keys, message.bytes, cert.signature)
     yield weight
 
-  /** Strict decode: canonical CBOR, two fields, bitfield at most 8192 bytes, valid signature point.
+  /** Strict decode: canonical CBOR, two fields, bitfield at most 8192 bytes, a signature point of
+    * the subgroup ([[fromFields]]).
     */
   def decode(bytes: Bytes): Either[BlsError, Certificate] =
     for
       fields <- Wire.array(bytes, 2)
       signerBytes <- Wire.bytes(fields, 0)
       sigBytes <- Wire.bytes(fields, 1)
+      cert <- fromFields(signerBytes, sigBytes)
+    yield cert
+
+  /** The certificate of a bitfield of at most 8192 bytes and a signature point of the subgroup,
+    * whatever CBOR framing the two byte strings came in: the checks `DecCBOR LeiosCert` makes on
+    * the decoded fields (cardano-ledger-binary `Decoding/DecCBOR.hs:721-736`, cardano-ledger
+    * 9df9f98c), the signature as [[Signature.decoded]] reads it, so the identity decodes, as there.
+    */
+  def fromFields(signerBytes: Bytes, sigBytes: Bytes): Either[BlsError, Certificate] =
+    for
       signers <- Signers
         .fromBytes(signerBytes)
         .toRight(BlsError.MalformedCbor(CborFault.SignersTooLong(signerBytes.size)))
-      sig <- Signature.fromBytes(sigBytes)
+      sig <- Signature.decoded(sigBytes)
     yield Certificate(signers, sig)
 
 /** Strict, canonical CBOR plumbing for the two wire shapes. */

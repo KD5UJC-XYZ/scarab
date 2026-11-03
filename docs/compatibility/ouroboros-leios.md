@@ -5,7 +5,7 @@ Part of the [compatibility matrix](../compatibility.md); the register entry is `
 
 ## Status as recorded
 
-not implemented in the node; read-only decoders and header rules for the public testnet's chain (`HfcHeader`, `LeiosHeader`, `LeiosBlock`, `LeiosHeaderChain`, tools `LeiosCaptureMain` and `LeiosCheckMain`), design and results in [leios.md](../leios.md)
+not implemented in the node; read-only decoders and header rules for the public testnet's chain (`HfcHeader`, `LeiosHeader`, `LeiosBlock`, `LeiosHeaderChain`, tools `LeiosCaptureMain` and `LeiosCheckMain`); `LeiosHeader` and `LeiosBlock` read as the build the testnet runs (the Leios reference, #711), design and results in [leios.md](../leios.md)
 
 ## Evidence
 
@@ -13,7 +13,7 @@ N3 against the public Leios testnet `musashi` (2026-10-16, read-only, owner-appr
 
 ## Explicitly unchecked or unconfirmed
 
-the node itself cannot follow the chain (it stops at block 0: 12-element header in a Conway block); no stake-dependent leader check after epoch 1 (152,586 headers unchecked); no Leios certificate verified (no committee); no real vote, announcement message, endorser block or LeiosNotify/LeiosFetch message seen; protocols 18 and 19 never served; no Dijkstra era, ledger, transaction or Plutus V4 rule; EB storage, mempool sizing, forging
+the node itself cannot follow the chain: on the network before its restart of 2026-10-18 it stopped at block 0 (a 12-element header in a Conway block), and on the restarted one every header is of era index 7, which it does not follow (leios.md 12.4); no stake-dependent leader check after epoch 1 (152,586 headers unchecked); no Leios certificate verified (no committee); no real vote, announcement message, endorser block or LeiosNotify/LeiosFetch message seen; protocols 18 and 19 never served; no Dijkstra era, ledger, transaction or Plutus V4 rule; EB storage, mempool sizing, forging
 
 ## Open items
 

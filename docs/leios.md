@@ -5,7 +5,9 @@ Status: design note, the pure N2 crypto (section 9) and the N3 follow of the pub
 codecs and read-only decoders and header rules for the testnet's chain** (section 11; the node itself
 cannot follow it, 11.4). Against a Leios node, headers and blocks were checked on the public chain
 (154,698 headers, every Praos check but the stake-dependent leader threshold); protocols 18 and 19
-were never answered (sections 8, 10 and 11.7). The protocol is
+were never answered (sections 8, 10 and 11.7). The Leios reference is the build the testnet runs
+(section 12, #711); the testnet was restarted on 2026-10-18, so section 11 describes the network
+before it. The protocol is
 still moving: every statement below carries the source and revision it was read from, and where
 the sources disagree the disagreement is recorded rather than resolved. Unofficial research
 software, not audited. Read together with [architecture.md](architecture.md),
@@ -31,7 +33,8 @@ are private working details; reproduce the review from these upstream identities
 | Consensus prototype: [`ouroboros-consensus` branch `leios-prototype`](https://github.com/IntersectMBO/ouroboros-consensus/tree/leios-prototype) | `cef41f6b` (2026-10-14) | Modules `LeiosDemoLogic`, `LeiosDemoTypes`, `LeiosTxCache`, `LeiosVoteState`, the SQLite `LeiosDB` (explanation in `docs/website/contents/explanations/leiosdb.md`), `Test/Consensus/Leios`, golden file `ouroboros-consensus-cardano/golden/cardano/leios/LeiosVote`. Many contributor branches (`ch1bo/leios-*`, `bladyjoker/leios-*`) |
 | Network and node prototype branches | `ouroboros-network` `leios-prototype` `f0243fe6` (2026-10-11, mux demo only); `cardano-node` `leios-prototype` `715b8d2a` (2026-10-11) | The released reference node (11.1.3, 2026-09-29) has no Leios |
 | [Cardano Blueprint](https://github.com/cardano-scaling/cardano-blueprint) | `main` `fe4cceb9` (2026-10-13); `leios-fetch/messages.cddl` pinned at `0460c5a6` (2026-10-16) | `src/network/node-to-node/leios-notify` and `leios-fetch`: state machines and `messages.cddl`. **The most current wire description; it differs from the CIP text** (section 4) |
-| Public Leios testnet "musashi" (closed alpha) | network magic 164; config served at <https://book.play.dev.cardano.org/environments-pre/leios/>; pinned copy at `ouroboros-leios/testnet/config` (`MinNodeVersion` 11.1.0.164-prototype-2026w36); the live `config.json` read on 2026-10-14 says `11.1.0.164-prototype-2026w38a` | Bootstrap relay `leios-node.play.dev.cardano.org:3001`; `systemStart` 2026-09-07T00:00:00Z; Dijkstra genesis hash `aa1238f5...41085`; also a faucet, dashboards, Docker images (`ghcr.io/input-output-hk/ouroboros-leios/cardano-node-testnet`) and relays that publish a `leios.db` other implementations can side-load (Porto workshop report, June 2026; owner's copy) |
+| Public Leios testnet "musashi" (closed alpha) | network magic 164; config served at <https://book.play.dev.cardano.org/environments-pre/leios/>; pinned copy at `ouroboros-leios/testnet/config` (`MinNodeVersion` 11.1.0.164-prototype-2026w36); the live `config.json` read on 2026-10-14 says `11.1.0.164-prototype-2026w38a`, and on 2026-11-03 `11.2.0.164-rc-2026w44` | Bootstrap relay `leios-node.play.dev.cardano.org:3001`. Restarted on 2026-10-18 (section 12): `systemStart` 2026-10-18T00:00:00Z, every genesis hash new, `TestDijkstraHardForkAtEpoch` 0. Before it: `systemStart` 2026-09-07T00:00:00Z, Dijkstra genesis hash `aa1238f5...41085` (section 11). Also a faucet, dashboards, Docker images (`ghcr.io/input-output-hk/ouroboros-leios/cardano-node-testnet`) and relays that publish a `leios.db` other implementations can side-load (Porto workshop report, June 2026; owner's copy) |
+| **The Leios reference** (#711, decided 2026-11-03): the build the testnet runs, release `rc-2026w44` of `ouroboros-leios` (tag commit `12998e99`) | `cardano-node` `b004fe0c50913dcdaa827a98e68a43d0ccce152a` (branch `leios-prototype`); its `cabal.project` pins cardano-ledger `9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c`, ouroboros-consensus `2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b`, ouroboros-network `2f1c154f248659b89523d5679ca532f442e7ed2a`, cardano-base `c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c` | How each was established, and what the build reads: section 12. Registered in `docs/data/reference-pins.json` |
 | Independent implementations (existence only, not read in depth) | `txpipe/pallas` `pallas-network2/src/protocol/leiosnotify.rs`; `input-output-hk/leios-tools` (`net-rs` Rust node-side tooling with adversarial behaviours) | Useful cross-checks for codecs |
 | Leios paper | <https://eprint.iacr.org/2025/1115.pdf> | Background only |
 
@@ -731,3 +734,88 @@ request 1,000, then 100 more per 100 received). Settling it needs the relay's tr
 7. **Regression**: the header capture of this section stays a test (`LeiosHeaderChainSuite` runs the first
    1,100 headers from the genesis; `LeiosCheckMain` runs all 154,698), and a new capture should be taken when
    the testnet respins.
+
+## 12. The Leios reference: the build the testnet runs (2026-11-03, #711)
+
+Status: current. Decided on 2026-11-03 on [#711](https://github.com/KD5UJC-XYZ/scarab/issues/711):
+the Leios reference is the build the public Leios testnet runs, not the released node (whose
+consensus gives the Dijkstra block a Praos header) and not unreleased consensus `main`. Its
+revisions are in section 1 and `docs/data/reference-pins.json`.
+
+### 12.1 How the build was identified
+
+- The testnet's live `config.json` (read 2026-11-03) names `MinNodeVersion` `11.2.0.164-rc-2026w44`.
+- Release `rc-2026w44` of `input-output-hk/ouroboros-leios` (published 2026-11-01, tag commit
+  `12998e99`): its `flake.lock` locks the input `cardano-node-leios` (branch `leios-prototype`) at
+  `b004fe0c50913dcdaa827a98e68a43d0ccce152a`, and the release's image
+  `ghcr.io/input-output-hk/ouroboros-leios/cardano-node-testnet:rc-2026w44` (digest
+  `sha256:70439665b4b93c58ecaa8f73c8919ac7b358f938dd262b6644cd515270773fca`) reports, with
+  `--version`, node version 11.2.0.164 and that git revision.
+- That commit's `cabal.project` pins, by `source-repository-package`, the cardano-ledger,
+  ouroboros-consensus, ouroboros-network and cardano-base revisions of section 1 (and cardano-api,
+  cardano-cli, cardano-keys, cardano-config and typed-protocols revisions this note does not use).
+- The release notes say that nodes of `rc-2026w44` and of the previous release, `rc-2026w43`, talk to
+  each other with unchanged wire formats; the node of `rc-2026w43` pins the same cardano-ledger and
+  cardano-base revisions, and so does that of `rc-2026w42`, so the decoders this section relies on are
+  those of every node the testnet has accepted since its restart.
+
+The oracle of `scripts/oracle/leios-testnet` is built from these revisions (the ledger and
+cardano-base packages from source; consensus's two-line block envelope copied), and
+`fixtures/reference/leios-testnet-blocks` holds its 88 verdicts.
+
+### 12.2 What the build reads, and what changed in this node
+
+Read at the pinned revisions; each is a case of the corpus.
+
+| What | The build | Before #711 this node read |
+|---|---|---|
+| Eras | `CardanoShelleyEras`: Babbage and Conway `ShelleyBlock (Praos c)`, Dijkstra `ShelleyBlock (Praos2 c)` whose header is the Leios header (`Cardano/Block.hs:269-278`, `Protocol/Praos2.hs:57`) | a Leios header in blocks of tag 7 too (the release of section 11.5 item 2) |
+| Block envelope | `[tag, block]`, `enforceSize`: a definite list; tag 7 Conway, 8 Dijkstra (`Cardano/Node.hs:174-199`) | tag 7 and 8 as Leios blocks; an indefinite envelope |
+| Block, body, transaction | `decodeRecordNamed` of 2, 3 and 4 items, definite or indefinite; the transactions `decodeSeq` (`Dijkstra/Block.hs:34-42`, `BlockBody/Internal.hs:191-208`, `Tx.hs:175-182`) | the same; unchanged |
+| Header, header body, version info, announcement | `decodeRecordNamed`, definite or indefinite (`Leios/BlockHeader.hs:308-344`, `Block.hs:163-166, 184-189`); no `RecD` record, so a detached one is refused | `RecD` records, a detached form read and an indefinite one refused (cardano-ledger f649f975, #716) |
+| Version info | `BlockHeaderVersionInfo`: two `Word32`, neither validated (`Block.hs:147-166`) | a `ProtVer`, the major at most 13 |
+| VRF certificate | `decodeRecordNamed`, definite or indefinite; the output exactly 64 bytes (`Decoding/DecCBOR.hs:627-652`) | a definite list, an output of any length |
+| KES signature | over the header body's original bytes (`getSignableRepresentation = originalBytes`, `Leios/BlockHeader.hs:164-165`) | over the body encoded again |
+| Leios certificate | `decodeRecordNamed` of the signers (at most 8,192 bytes) and the signature, byte strings definite or chunked (`Decoding/DecCBOR.hs:721-736`); the signature a compressed G1 point of the subgroup, the identity included (cardano-base `BLS12381/Internal.hs:476-491`), which verification refuses | canonical CBOR only, and the identity refused at decode |
+| Records in a transaction | every `RecD` record is read by `decodeRecordNamed` from decoder version 12 (e.g. `Mary/Value.hs:308-321`) | not decoded (and not now: X3) |
+
+`LeiosBlock.decode` and `LeiosHeader.decode` now read as the first column says, and the header
+decoding corpus of #716 no longer holds Leios cases (they are in the new corpus).
+
+### 12.3 The network after its restart (read-only, 2026-11-03)
+
+The testnet was restarted on 2026-10-18 (`systemStart` 2026-10-18T00:00:00Z, every genesis file and
+hash new, `TestDijkstraHardForkAtEpoch` 0), so sections 11.1 to 11.4 describe a chain that no longer
+exists. Four short connections to `leios-node.play.dev.cardano.org:3001`, submitting nothing:
+
+- a handshake version query: versions 14, 15 and 16 offered, magic 164, duplex, peer sharing on,
+  Peras off (as in section 11.2);
+- ChainSync from Origin, 30 headers: era index 7 from block 0, 12-element Leios headers, tip block
+  64,646; and 300 headers from the peer snapshot's point (slot 174,225): none announces an endorser
+  block or carries the certificate flag, and every body is 4 bytes (`[[], null, null]`);
+- BlockFetch of blocks 0, 1 and 8,562: tag 8, empty; kept in `fixtures/leios/testnet/blocks-rc-2026w44.tsv`.
+
+The build's LeiosFetch codec writes `MsgLeiosBlockTxs` as `[4, [* tx]]` (ouroboros-consensus
+2416493b, `Test/LeiosDemoTypes.hs`), the form of ouroboros-consensus#2416: the removal condition of
+`LeiosFetch.Message.LegacyBlockTxs` (X12) is met.
+
+### 12.4 What still stops this node following the testnet
+
+Not resolved by #711; listed for the integrator (no issue filed here):
+
+1. The node has no `Era.Dijkstra` and its follower does not use `HfcHeader`, `LeiosHeader` or
+   `LeiosBlock` (X1, X2): on this chain it stops at block 0, as every header is of era index 7.
+2. Configuration: `TestDijkstraHardForkAtEpoch`, the Dijkstra genesis and the new keys
+   (`LeiosAdaptiveEndorsements`, `EgressBudgetMbps`, `LeiosMinOfferLead`, `LedgerDB` `V2InMemory`)
+   are not read; `useLedgerAfterSlot` is now 1,000.
+3. The configuration fixtures, the header captures and the suites over them (`LeiosTestnetConfigSuite`,
+   `LeiosHeaderChainSuite`, `LeiosCheckMain`) are of the network before the restart; `LeiosHeaderChain`
+   and `LeiosCheckMain` read a header of era index 6 as a Leios header, which the build reads as a
+   Praos header.
+4. No Dijkstra ledger (X3): a transaction is kept as its four parts and not decoded; no stake
+   distribution (X4), certificate verification (X5), endorser blocks (X7), mini-protocols 18 and 19
+   (X8), `TxSubmissionLogicV2` (X10), ledger peers or the peer snapshot (X11).
+5. `Praos2`'s rules beyond the header (its envelope checks and ledger view) were not compared with
+   `consensus.Praos`.
+6. The build's Praos header (Babbage, Conway) is also read by `decodeRecordNamed` at these revisions,
+   where this node follows cardano-ledger f649f975 for those eras; no such block occurs on the testnet.

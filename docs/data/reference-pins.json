@@ -14,6 +14,18 @@
    ]
   },
   {
+   "name": "cardano-node",
+   "repository": "IntersectMBO/cardano-node",
+   "revision": "b004fe0c50913dcdaa827a98e68a43d0ccce152a",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-node/commit/{revision}",
+   "role": "Leios testnet reference: the build of the public Leios testnet (release rc-2026w44, #711): the node (branch leios-prototype) the release's flake.lock and Docker image name.",
+   "dependents": [
+    "docs/leios.md",
+    "scripts/oracle/leios-testnet/cabal.project",
+    "scripts/oracle/leios-testnet/README.md"
+   ]
+  },
+  {
    "name": "cardano-ledger",
    "repository": "IntersectMBO/cardano-ledger",
    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
@@ -42,6 +54,18 @@
    "role": "Vendored per-era CDDL files read by the models generator.",
    "dependents": [
     "models/src/main/cddl/upstream/SOURCES"
+   ]
+  },
+  {
+   "name": "cardano-ledger",
+   "repository": "IntersectMBO/cardano-ledger",
+   "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-ledger/commit/{revision}",
+   "role": "Leios testnet reference: the build of the public Leios testnet (release rc-2026w44, #711): the ledger whose Leios header, Dijkstra block and transaction decoders LeiosBlock mirrors.",
+   "dependents": [
+    "docs/leios.md",
+    "scripts/oracle/leios-testnet/cabal.project",
+    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/LeiosBlock.scala"
    ]
   },
   {
@@ -96,6 +120,17 @@
    ]
   },
   {
+   "name": "ouroboros-network",
+   "repository": "IntersectMBO/ouroboros-network",
+   "revision": "2f1c154f248659b89523d5679ca532f442e7ed2a",
+   "urlPattern": "https://github.com/IntersectMBO/ouroboros-network/commit/{revision}",
+   "role": "Leios testnet reference: the build of the public Leios testnet (release rc-2026w44, #711): the network layer of that node, recorded with the others; nothing is mirrored from it yet.",
+   "dependents": [
+    "docs/leios.md",
+    "scripts/oracle/leios-testnet/README.md"
+   ]
+  },
+  {
    "name": "ouroboros-consensus",
    "repository": "IntersectMBO/ouroboros-consensus",
    "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
@@ -128,6 +163,18 @@
    ]
   },
   {
+   "name": "ouroboros-consensus",
+   "repository": "IntersectMBO/ouroboros-consensus",
+   "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+   "urlPattern": "https://github.com/IntersectMBO/ouroboros-consensus/commit/{revision}",
+   "role": "Leios testnet reference: the build of the public Leios testnet (release rc-2026w44, #711): the block envelope (decodeDiskHfcBlock) and Praos2's header.",
+   "dependents": [
+    "docs/leios.md",
+    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/LeiosBlock.scala",
+    "scripts/oracle/leios-testnet/README.md"
+   ]
+  },
+  {
    "name": "cardano-blueprint",
    "repository": "cardano-scaling/cardano-blueprint",
    "revision": "fe4cceb94622d4205b23eb11ccf9e8b43a3af5d5",
@@ -135,6 +182,17 @@
    "role": "Vendored LeiosFetch CDDL.",
    "dependents": [
     "models/src/main/cddl/upstream/SOURCES"
+   ]
+  },
+  {
+   "name": "cardano-base",
+   "repository": "IntersectMBO/cardano-base",
+   "revision": "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-base/commit/{revision}",
+   "role": "Leios testnet reference: the build of the public Leios testnet (release rc-2026w44, #711): cardano-crypto-leios and the BLS12-381 signature its certificate holds.",
+   "dependents": [
+    "docs/leios.md",
+    "scripts/oracle/leios-testnet/cabal.project"
    ]
   },
   {

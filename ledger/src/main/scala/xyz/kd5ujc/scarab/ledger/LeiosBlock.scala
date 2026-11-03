@@ -7,13 +7,12 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.crypto.bls.Certificate
 import xyz.kd5ujc.scarab.protocol.{ChainSync, EbHash, Era, HfcHeader}
 
-import Header.{array, bytes, fail, headerLimits, optHash, record, uint, vrfCert}
+import Header.{array, bytes, fail, headerLimits, optHash, uint}
 
 /** `header_version_info = [highest_supported_major_version, self_reported_software_tag]`: what the
-  * Leios header carries where the earlier eras have `protocol_version`. Same wire shape, decoded as
-  * the reference's `ProtVer` (a major up to `MaxVersion` and a `Word32`,
-  * `Leios/BlockHeader.hs:229-243`), but neither field is validated by the ledger
-  * (cardano-ledger-core `Block.hs` 147-156, issue 5763).
+  * Leios header carries where the earlier eras have `protocol_version`. The wire shape of a
+  * `ProtVer`, read as `BlockHeaderVersionInfo`: two `Word32`, neither validated
+  * (cardano-ledger-core `Block.hs:147-166`, cardano-ledger 9df9f98c; issue 5763 there).
   */
 final case class HeaderVersionInfo(highestSupportedMajor: BigInt, softwareTag: BigInt)
 
@@ -33,11 +32,13 @@ final case class LeiosHeaderFields(
 
 /** A Leios block header: the Praos header body with `protocol_version` replaced by
   * `header_version_info` and the two Leios fields appended, 12 elements (`dijkstra.cddl` 56-71).
-  * The public Leios testnet sends this shape in blocks tagged Conway as well as Dijkstra (see
-  * `docs/leios.md` section 11), so it is not tied to an era here. `raw` is the exact encoding; the
-  * block hash is its Blake2b-256 digest. The KES signature is over `signable`, the header body as
-  * the reference encodes it again (`Leios/BlockHeader.hs:139-142`, [[HeaderBodyEncoding.leios]]),
-  * not over the body's original bytes (#698).
+  * The reference is the build of the public Leios testnet (cardano-node b004fe0c, cardano-ledger
+  * 9df9f98c, `docs/leios.md` section 1), whose Dijkstra block holds it (`ShelleyProtocolHeader
+  * (Praos2 c) = Leios.Header c`, ouroboros-consensus 2416493b
+  * `Ouroboros/Consensus/Protocol/Praos2.hs:57`). `raw` is the exact encoding; the block hash is its
+  * Blake2b-256 digest. The KES signature is over `signable`, the header body's original bytes: the
+  * body is memoized and `getSignableRepresentation = originalBytes`
+  * (`libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs:164-165`).
   */
 final case class LeiosHeader(
     raw: Bytes,
@@ -84,22 +85,24 @@ final case class LeiosHeader(
     ChainSync.Point.Block(ChainSync.UInt64.saturating(slot), hash)
 
 object LeiosHeader:
-  /** Decode `[header_body, body_signature]` with the 12-element body, as the reference's Leios
-    * header (`libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs:229-257`,
-    * cardano-ledger f649f975) reads it: the header, its body and the endorser block announcement
-    * are `RecD` records, definite or detached ([[DetachedRecords.Shapes.leiosHeader]]); the rest as
-    * in a Praos header ([[Header.fromRaw]]), the version info a `ProtVer`.
+  /** Decode `[header_body, body_signature]` with the 12-element body, as the Leios header of the
+    * testnet's build reads it at decoder version 12 (`libs/cardano-protocol/src/Cardano/Protocol/
+    * Leios/BlockHeader.hs:308-344`, cardano-ledger 9df9f98c): the header and its body are read by
+    * `decodeRecordNamed`, and so are the version info and the endorser block announcement
+    * (`libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs:163-166, 184-189`), each a definite
+    * list of its fields or an indefinite one with its fields before the break, as is the VRF
+    * certificate at that version ([[vrfCert]]). None is a `RecD` record, so an empty indefinite
+    * list with the fields after it is refused. The other fields are read as in a Praos header
+    * ([[Header.fromRaw]]) at version 12, where a byte string may be chunked.
     */
   def decode(raw: Bytes): Either[ChainError, LeiosHeader] =
-    DetachedRecords.read(raw, headerLimits, DetachedRecords.Shapes.leiosHeader)(e =>
-      fail(LedgerDecodeError.Syntax(e))
-    )(read(raw, _))
+    CborRead.decode(raw, headerLimits).leftMap(fail).flatMap(read(raw, _))
 
   private def read(raw: Bytes, root: Node): Either[ChainError, LeiosHeader] =
     for
-      outer <- record(root, 2)
+      outer <- array(root, 2)
       kes <- bytes(outer(1), 448)
-      body <- record(outer(0), 12)
+      body <- array(outer(0), 12)
       blockNo <- uint(body(0))
       slot <- uint(body(1))
       prev <- optHash(body(2))
@@ -116,22 +119,9 @@ object LeiosHeader:
       info <- versionInfo(body(9))
       cert <- bool(body(10))
       announcement <- announcement(body(11))
-      opCert = Header.OpCert(hot, seq, period, sigma)
-      fields = HeaderBodyEncoding.Fields(
-        blockNo,
-        slot,
-        prev,
-        issuer,
-        vrfVkey,
-        HeaderVrf.Praos(vrf),
-        size,
-        bodyHash,
-        opCert,
-        (info.highestSupportedMajor, info.softwareTag)
-      )
     yield LeiosHeader(
       raw,
-      HeaderBodyEncoding.leios(fields, cert, announcement.map(a => (a.hash.bytes, a.size))),
+      outer(0).original,
       Blake2b.hash256.hash(raw),
       blockNo,
       slot,
@@ -141,7 +131,7 @@ object LeiosHeader:
       vrf,
       size,
       bodyHash,
-      opCert,
+      Header.OpCert(hot, seq, period, sigma),
       LeiosHeaderFields(info, cert, announcement),
       kes
     )
@@ -170,41 +160,48 @@ object LeiosHeader:
         )
       )
 
-  /** The `ProtVer` of the reference's header body (`hbProtVer`, read as in a Praos header,
-    * [[Header.protocolVersion]]): a major up to `MaxVersion` and a `Word32`.
+  /** `DecCBOR (CertifiedVRF v a)` at decoder version 12 (cardano-ledger-binary
+    * `Decoding/DecCBOR.hs:627-652`): `decodeRecordNamed` of the output and the proof, a definite or
+    * an indefinite list; the output must be the 64 bytes of a Praos VRF output (`:630-636`), the
+    * proof is the 80 bytes of `decodeFixedSized`.
     */
+  private def vrfCert(n: Node): Either[ChainError, VrfCert] =
+    for
+      xs <- array(n, 2)
+      output <- bytes(xs(0), 64)
+      proof <- bytes(xs(1), 80)
+    yield VrfCert(output, proof)
+
+  /** `BlockHeaderVersionInfo` (`Block.hs:163-166`): two `Word32`, neither validated. */
   private def versionInfo(n: Node): Either[ChainError, HeaderVersionInfo] =
     for
       xs <- array(n, 2)
-      pv <- Header.protocolVersion(xs(0), xs(1))
-    yield HeaderVersionInfo(pv._1, pv._2)
+      major <- Header.word32(xs(0), DecodeField.Major)
+      tag <- Header.word32(xs(1), DecodeField.Minor)
+    yield HeaderVersionInfo(major, tag)
 
+  /** Null, or `EbReferencesAnnouncement` (`Block.hs:184-189`): the hash and a `Word32` size. */
   private def announcement(n: Node): Either[ChainError, Option[EbAnnouncement]] = n.value match
     case Value.Null => Right(None)
     case _ =>
       for
-        xs <- record(n, 2)
+        xs <- array(n, 2)
         hash <- bytes(xs(0), 32)
         eb = EbHash.fromBytes(hash)
         size <- uint32(xs(1))
       yield Some(EbAnnouncement(eb, size.toLong))
 end LeiosHeader
 
-/** A block of the Leios testnet. Two body layouts occur, told apart by the block tag:
-  *
-  *   - `Segregated` (tag 7, Conway): `[header, bodies, witnesses, auxiliary data, invalid]` as in
-  *     Conway, with the Leios header; the body hash is the merkle digest of the component hashes;
-  *   - `Whole` (tag 8, Dijkstra): `[header, block_body]` with `block_body = [transactions,
-  *     leios_certificate / nil, peras_certificate / nil]`. Each transaction is whole, `[body,
-  *     witnesses, auxiliary_data / nil, is_valid]`, and the block body hash is the Blake2b-256
-  *     digest of the whole encoded body (cardano-ledger `Dijkstra/BlockBody/Internal.hs`:
-  *     `hashBlockBody = extractHash . getMemoBytesHash`), not a merkle of component hashes (the
-  *     CDDL comment "merkle triple root" is stale).
+/** A Dijkstra block of the Leios testnet, block tag 8: `[header, block_body]` with `block_body =
+  * [transactions, leios_certificate / nil, peras_certificate / nil]`. Each transaction is whole,
+  * `[body, witnesses, auxiliary_data / nil, is_valid]`, and the block body hash is the Blake2b-256
+  * digest of the whole encoded body (cardano-ledger `Dijkstra/BlockBody/Internal.hs:120`:
+  * `hashBlockBody = extractHash . getMemoBytesHash`), not a merkle of component hashes (the CDDL
+  * comment "merkle triple root" is stale).
   *
   * Every part keeps its original bytes.
   */
 final case class LeiosBlock(
-    layout: LeiosBlock.Layout,
     header: LeiosHeader,
     transactions: Vector[Block.Transaction],
     leiosCertificate: Option[LeiosBlock.CertificateBytes],
@@ -234,10 +231,7 @@ final case class LeiosBlock(
     ).flatten
 
 object LeiosBlock:
-  enum Layout:
-    case Segregated, Whole
-
-  /** The certificate of a block body, strictly decoded, with the bytes it arrived as. */
+  /** The certificate of a block body, decoded, with the bytes it arrived as. */
   final case class CertificateBytes(certificate: Certificate, raw: Bytes)
 
   /** Why a block does not match its header or is not a valid ranking block. A closed set. */
@@ -260,68 +254,43 @@ object LeiosBlock:
     maxStringBytes = 2500000
   )
 
-  private val ConwayTag = Era.Conway.blockTag
-
-  /** Decode a BlockFetch block `[tag, block]` of tag 7 or 8. A certificate that is not a strict
-    * `leios_certificate` fails the decode; its typed `BlsError` is the reason in the message.
+  /** Decode a BlockFetch block `[tag, block]` as the testnet's build does (ouroboros-consensus
+    * 2416493b, cardano-ledger 9df9f98c). The envelope is read by `enforceSize "CardanoBlock" 2`, a
+    * definite list, and its tag must be 8, Dijkstra's (`decodeDiskHfcBlock`,
+    * `Ouroboros/Consensus/Cardano/Node.hs:174-199`; tag 7 is a Conway block with a Praos header,
+    * which [[Block.decode]] reads). The block is read at Dijkstra's decoder version 12 by
+    * `decodeRecordNamed "Block" (const 2)` (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/
+    * Block.hs:34-42`), its body by `decodeRecordNamed "DijkstraBlockBodyRaw" (const 3)` over
+    * `decodeSeq` of the transactions and the two nullable certificates (`BlockBody/Internal.hs:
+    * 191-208`), and each transaction by `decodeRecordNamed "DijkstraTx" (const 4)`
+    * (`Tx.hs:175-182`): each a definite list or an indefinite one with its items before the break.
+    * No list of the block is a `RecD` record at version 12 ([[LeiosHeader.decode]]; the records of
+    * a transaction are read by `decodeRecordNamed` from version 12, e.g. `Mary/Value.hs:308-321`),
+    * so the block is read as a tree of items, and an empty indefinite list with fields after it is
+    * refused where the reference refuses it. A transaction's parts are kept as their bytes; they
+    * are not decoded.
     */
   def decode(raw: Bytes): Either[ChainError, LeiosBlock] =
     for
       root <- CborRead.decode(raw, limits).leftMap(fail)
+      _ <- CborRead.definite(root, DecodeField.LeiosBlock).leftMap(fail)
       outer <- array(root, 2)
       tag <- uint(outer(0))
-      block <-
-        if tag == ConwayTag then segregated(outer(1))
-        else if tag == HfcHeader.DijkstraBlockTag then whole(outer(1))
-        else Left(fail(LedgerDecodeError.UnknownTag(DecodeField.LeiosBlockTag, tag)))
-    yield block
-
-  private def segregated(n: Node): Either[ChainError, LeiosBlock] =
-    for
-      parts <- array(n, 5)
-      header <- LeiosHeader.decode(parts(0).original)
-      body <- Block.segregated(parts, hasInvalid = true)
-    yield LeiosBlock(
-      Layout.Segregated,
-      header,
-      body.transactions,
-      None,
-      None,
-      body.size,
-      body.hash
-    )
-
-  private def whole(n: Node): Either[ChainError, LeiosBlock] =
-    for
-      parts <- array(n, 2)
+      _ <- Either.cond(
+        tag == HfcHeader.DijkstraBlockTag,
+        (),
+        fail(LedgerDecodeError.UnknownTag(DecodeField.LeiosBlockTag, tag))
+      )
+      parts <- array(outer(1), 2)
       header <- LeiosHeader.decode(parts(0).original)
       xs <- array(parts(1), 3)
       txs <- list(xs(0)).flatMap(_.traverse(transaction))
       cert <- nullable(xs(1))(certificate)
       peras <- nullable(xs(2))(c =>
-        c.value match
-          case Value.ByteString(b) => Right(b)
-          case _ =>
-            Left(
-              fail(
-                LedgerDecodeError.Expected(
-                  DecodeField.PerasCertificate,
-                  LedgerDecodeError.Shape.Bytes,
-                  c.value
-                )
-              )
-            )
+        CborRead.bytes(c, DecodeField.PerasCertificate)(using ByteStrings.Chunked).leftMap(fail)
       )
       body = parts(1).original
-    yield LeiosBlock(
-      Layout.Whole,
-      header,
-      txs,
-      cert,
-      peras,
-      body.size.toLong,
-      Blake2b.hash256.hash(body)
-    )
+    yield LeiosBlock(header, txs, cert, peras, body.size.toLong, Blake2b.hash256.hash(body))
 
   /** `[transaction_body, transaction_witness_set, auxiliary_data / nil, is_valid]`. */
   private def transaction(n: Node): Either[ChainError, Block.Transaction] =
@@ -344,10 +313,22 @@ object LeiosBlock:
         case _          => Some(xs(2).original)
     yield Block.Transaction(xs(0).original, xs(1).original, aux, valid)
 
+  /** `DecCBOR LeiosCert` (cardano-ledger-binary `Decoding/DecCBOR.hs:721-736`, 9df9f98c):
+    * `decodeRecordNamed` of the signers, a byte string of at most 8192 bytes, and the signature, a
+    * byte string that is a BLS12-381 MinSig signature; at decoder version 12 a byte string is
+    * definite or chunked (`decodeByteArray`, `decodeBytes`,
+    * `Decoding/Decoder.hs:359-364, 1388-1394`).
+    */
   private def certificate(n: Node): Either[ChainError, CertificateBytes] =
-    Certificate
-      .decode(n.original)
-      .bimap(e => fail(LedgerDecodeError.LeiosCertificate(e)), CertificateBytes(_, n.original))
+    given ByteStrings = ByteStrings.Chunked
+    for
+      xs <- array(n, 2)
+      signers <- CborRead.bytes(xs(0), DecodeField.LeiosCertificate).leftMap(fail)
+      signature <- CborRead.bytes(xs(1), DecodeField.LeiosCertificate).leftMap(fail)
+      cert <- Certificate
+        .fromFields(signers, signature)
+        .leftMap(e => fail(LedgerDecodeError.LeiosCertificate(e)))
+    yield CertificateBytes(cert, n.original)
 
   private def nullable[A](n: Node)(
       f: Node => Either[ChainError, A]

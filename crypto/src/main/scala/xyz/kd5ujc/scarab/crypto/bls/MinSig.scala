@@ -92,6 +92,15 @@ object Signature:
       else Right(new Signature(bytes.compact, p))
     }
 
+  /** A signature as the Leios testnet's build decodes one inside a Leios certificate:
+    * `rawDecodeFixedSized` of `SigDSIGN BLS12381MinSigDSIGN` (cardano-base `c1e1ed8d`,
+    * `cardano-crypto-class/src/Cardano/Crypto/DSIGN/BLS12381/Internal.hs:476-491`) decompresses the
+    * point and checks the subgroup, and does not exclude the identity. Verification refuses a
+    * certificate whose signature does not verify, the identity's included.
+    */
+  def decoded(bytes: Bytes): Either[BlsError, Signature] =
+    MinSig.decodeG1(Operand.Signature, bytes).map(p => new Signature(bytes.compact, p))
+
   private[bls] def fromPoint(p: P1_Affine): Either[BlsError, Signature] =
     MinSig.guard(p.compress()).flatMap(raw => fromBytes(Bytes.wrap(raw)))
 

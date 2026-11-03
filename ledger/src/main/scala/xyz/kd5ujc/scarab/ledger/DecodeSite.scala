@@ -281,6 +281,7 @@ enum DecodeField(val label: String) extends DecodeSite:
   case Header extends DecodeField("header")
   case LeiosBlock extends DecodeField("Leios block")
   case LeiosBlockTag extends DecodeField("Leios block tag")
+  case LeiosCertificate extends DecodeField("Leios certificate")
   case LeiosFlag extends DecodeField("Leios flag")
   case LeiosUint32 extends DecodeField("Leios uint32")
   case PerasCertificate extends DecodeField("Peras certificate")

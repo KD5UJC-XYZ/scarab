@@ -998,8 +998,8 @@
     {
       "id": "ledger-recd-records",
       "component": "Ledger: RecD records are definite lists, decoder versions 2 to 9 (#668)",
-      "status": "partial",
-      "summary": "The update proposal, a redeemer's execution units (Word64 at most Int64's bound), Conway's GovActionId (its index a Word16), VotingProcedure, ProposalProcedure, Constitution and Anchor, an output's value and the list form of auxiliary data are read from a block as definite lists only, as the reference's RecD decoders read them; a stored output's value reads in either form (ADR 0006); one written as an empty indefinite list with its fields after it is read as the reference reads it (#687), as are a whole transaction (#699) and a header (#698)",
+      "status": "implemented",
+      "summary": "The update proposal, a redeemer's execution units (Word64 at most Int64's bound), Conway's GovActionId (its index a Word16), VotingProcedure, ProposalProcedure, Constitution and Anchor, an output's value and the list form of auxiliary data are read from a block as definite lists only, as the reference's RecD decoders read them; a stored output's value reads in either form (ADR 0006); the detached form is read as the reference reads it (#687, #699, #698); a Leios block, which holds no RecD record, as the Leios testnet's build reads it (#711)",
       "evidence": {
         "suites": [
           "RecdRecordsReferenceSuite",
@@ -1012,7 +1012,8 @@
           "RelayedTransactionsSuite",
           "HeaderDecodingReferenceSuite",
           "NtcQueryRecordsSuite",
-          "DetachedOutputFailureSuite"
+          "DetachedOutputFailureSuite",
+          "LeiosTestnetBlockReferenceSuite"
         ],
         "paths": [
           "fixtures/reference/recd-records/cases.jsonl",
@@ -1022,14 +1023,12 @@
           "fixtures/reference/tx-envelope/cases.jsonl",
           "scripts/oracle/conway-decoding/tx_envelope_cases.py",
           "fixtures/reference/header-decoding/cases.jsonl",
-          "scripts/oracle/header-decoding/header_cases.py"
+          "scripts/oracle/header-decoding/header_cases.py",
+          "fixtures/reference/leios-testnet-blocks/cases.jsonl",
+          "scripts/oracle/leios-testnet/leios_cases.py"
         ]
       },
-      "limitations": {
-        "issues": [
-          711
-        ]
-      },
+      "limitations": {},
       "page": "docs/compatibility/ledger-recd-records.md"
     },
     {

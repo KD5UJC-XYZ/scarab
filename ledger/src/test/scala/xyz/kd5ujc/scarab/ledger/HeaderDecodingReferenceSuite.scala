@@ -14,12 +14,12 @@ import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** Babbage and Conway headers are Praos headers, whose `HeaderRaw` and `HeaderBody` are `RecD`
-  * records, and the Leios header's are too (`libs/cardano-protocol/src/Cardano/Protocol/Praos/
-  * BlockHeader.hs:203-229`, `Leios/BlockHeader.hs:229-257`, cardano-ledger f649f975); Shelley to
-  * Alonzo headers are TPraos headers read by `decodeRecordNamed` (`TPraos/BlockHeader.hs:193-241`).
-  * The KES signature is over the header body encoded again (`getSignableRepresentation`,
-  * `Praos/BlockHeader.hs:113-117`, `TPraos/BlockHeader.hs:170-171`,
-  * `Leios/BlockHeader.hs:139-142`).
+  * records (`libs/cardano-protocol/src/Cardano/Protocol/Praos/BlockHeader.hs:203-229`,
+  * cardano-ledger f649f975); Shelley to Alonzo headers are TPraos headers read by
+  * `decodeRecordNamed` (`TPraos/BlockHeader.hs:193-241`). The KES signature is over the header body
+  * encoded again (`getSignableRepresentation`, `Praos/BlockHeader.hs:113-117`,
+  * `TPraos/BlockHeader.hs:170-171`). The Leios header follows the build of the Leios testnet
+  * instead, and its cases are `LeiosTestnetBlockReferenceSuite` 's (#711).
   *
   * `fixtures/reference/header-decoding/cases.jsonl` holds headers, header bodies and blocks of each
   * form, definite, indefinite, detached and with non-minimal heads, with the verdict of the
@@ -35,17 +35,13 @@ class HeaderDecodingReferenceSuite extends FunSuite:
   /** A header body alone is read as the body of a definite header with a signature: the reference
     * reads `HeaderRaw` 's body with the same decoder (`From`), and the signature is read after it.
     */
-  private def scarab(row: Row): Either[ChainError, Verdict] = (row.target, row.kind) match
+  private def scarab(row: Row): Either[ChainError, Verdict] = (row.era, row.kind) match
     case (_, Kind.VrfCheck) => fail(s"${row.name} is a VRF check, read by vrfCheck")
-    case (Target.Leios, Kind.Header) =>
-      LeiosHeader.decode(row.raw).map(h => Verdict(h.hash, h.signable, None))
-    case (Target.Leios, _) =>
-      LeiosHeader.decode(signed(row.raw)).map(h => Verdict(h.hash, h.signable, None))
-    case (Target.Shelley(era), Kind.Header) =>
+    case (era, Kind.Header) =>
       Header.fromRaw(era, row.raw).map(h => Verdict(h.hash, h.signable, None))
-    case (Target.Shelley(era), Kind.HeaderBody) =>
+    case (era, Kind.HeaderBody) =>
       Header.fromRaw(era, signed(row.raw)).map(h => Verdict(h.hash, h.signable, None))
-    case (Target.Shelley(era), Kind.Block) =>
+    case (era, Kind.Block) =>
       Block.decodeShelley(hex("82" + f"${era.blockTag}%02x") ++ row.raw).flatMap {
         case b: Block.Shelley => Right(Verdict(b.header.hash, b.header.signable, Some(b.bodyHash)))
         case _                => Left(Header.fail(LedgerDecodeError.ByronLayout))
@@ -53,24 +49,22 @@ class HeaderDecodingReferenceSuite extends FunSuite:
 
   test("the corpus covers every protocol and form, refused and accepted") {
     assertEquals(
-      rows.map(_.target).toSet,
-      Set(Era.Shelley, Era.Alonzo, Era.Babbage, Era.Conway).map(Target.Shelley(_)) + Target.Leios
+      rows.map(_.era).toSet,
+      Set(Era.Shelley, Era.Alonzo, Era.Babbage, Era.Conway)
     )
     assertEquals(rows.map(_.kind).toSet, Kind.values.toSet)
     assertEquals(rows.map(_.name).distinct.size, rows.size)
-    for target <- rows.map(_.target).distinct do
-      assert(rows.exists(r => r.target == target && r.accepted), s"no accepted $target case")
-      assert(rows.exists(r => r.target == target && !r.accepted), s"no refused $target case")
+    for era <- rows.map(_.era).distinct do
+      assert(rows.exists(r => r.era == era && r.accepted), s"no accepted $era case")
+      assert(rows.exists(r => r.era == era && !r.accepted), s"no refused $era case")
     // the signed bytes differ from the body's original bytes in some accepted case of each
     // protocol: the cases where reading the original bytes would check another signature
-    for target <- rows.map(_.target).distinct do
+    for era <- rows.map(_.era).distinct do
       assert(
         rows.exists(r =>
-          r.target == target && r.kind == Kind.Header && r.signable.exists(s =>
-            !r.raw.hex.contains(s)
-          )
+          r.era == era && r.kind == Kind.Header && r.signable.exists(s => !r.raw.hex.contains(s))
         ),
-        s"no $target case whose signed bytes are not in the input"
+        s"no $era case whose signed bytes are not in the input"
       )
   }
 
@@ -110,9 +104,9 @@ class HeaderDecodingReferenceSuite extends FunSuite:
 
   for row <- rows if row.kind == Kind.VrfCheck do
     test(row.name) {
-      (row.target, row.vrf) match
-        case (Target.Shelley(era), Some(vrf)) => vrfCheck(row, era, vrf)
-        case other => fail(s"a VRF check needs an era and its result: $other")
+      row.vrf match
+        case Some(vrf) => vrfCheck(row, row.era, vrf)
+        case None      => fail(s"a VRF check needs its result: ${row.name}")
     }
 
   for row <- rows if row.kind != Kind.VrfCheck do
@@ -191,15 +185,10 @@ object HeaderDecodingReferenceSuite:
     case Block extends Kind("block")
     case VrfCheck extends Kind("vrfcheck")
 
-  /** The decoder a row is read with: a Shelley-based era's header, or the Leios header. */
-  enum Target:
-    case Shelley(era: Era)
-    case Leios
-
   /** A line of the corpus. */
   final case class Row(
       name: String,
-      target: Target,
+      era: Era,
       kind: Kind,
       raw: Bytes,
       accepted: Boolean,
@@ -226,15 +215,13 @@ object HeaderDecodingReferenceSuite:
     */
   final case class Verdict(hash: Bytes, signable: Bytes, bodyHash: Option[Bytes])
 
-  private val targets: Map[String, Target] =
-    Era.values
-      .map(e => e.toString.toLowerCase -> Target.Shelley(e))
-      .toMap + ("leios" -> Target.Leios)
+  private val eras: Map[String, Era] =
+    Era.values.map(e => e.toString.toLowerCase -> e).toMap
 
   private given Decoder[Row] = Decoder.instance { c =>
     for
       name <- c.get[String]("name")
-      target <- c.get[String]("era").flatMap(e => targets.get(e).toRight(failure(c, s"era $e")))
+      era <- c.get[String]("era").flatMap(e => eras.get(e).toRight(failure(c, s"era $e")))
       kind <- c
         .get[String]("kind")
         .flatMap(k => Kind.values.find(_.wire == k).toRight(failure(c, s"kind $k")))
@@ -247,7 +234,7 @@ object HeaderDecodingReferenceSuite:
       bodyHash <- c.get[Option[String]]("bodyHash")
       signable <- c.get[Option[String]]("signable")
       vrf <- c.get[Option[VrfRow]]("vrf")
-    yield Row(name, target, kind, raw, accepted, fail, hash, bodyHash, signable, vrf)
+    yield Row(name, era, kind, raw, accepted, fail, hash, bodyHash, signable, vrf)
   }
 
   private def failure(c: io.circe.HCursor, what: String) =
