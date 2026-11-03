@@ -34,11 +34,16 @@ copies the node's repository, index state and `source-repository-package` stanza
   native libraries (`liburing` for its `blockio` dependency) the base image does not have;
 - a Leios header alone, `decodeFullAnnotator` at version 12, as `decodeShelleyHeader` reads the
   header inside ChainSync's era envelope.
+- a transaction alone (#750), `decodeFullAnnotator` at version 12 of `decodeDijkstraTopTxInBlock`
+  (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:175-182`), as the block body's `decodeSeq`
+  reads each of its transactions: body, witness set, auxiliary data and sub-transactions.
 
 For an accepted block it records the header's hash, size, signed bytes (the header body's original
 bytes, `getSignableRepresentation = originalBytes`, `Leios/BlockHeader.hs:164-165`) and fields, the
 block body's hash and size as the ledger computes them, each transaction's id and validity flag, and
-which certificates the body carries; for a refused one the complete failure. No rule, signature or
+which certificates the body carries; for an accepted transaction its id, validity flag, the keys of
+its witness set's script and datum maps and its sub-transactions; for a refused one the complete
+failure. No rule, signature or
 certificate is checked. The [fixtures](../../../fixtures/reference/leios-testnet-blocks/README.md)
 retain the encodings, verdicts and pins.
 

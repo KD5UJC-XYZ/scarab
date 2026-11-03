@@ -13,15 +13,18 @@ import Cardano.Binary (DecoderError (..), enforceSize)
 import qualified Cardano.Crypto.Hash as Hash
 import Cardano.Crypto.Util (SignableRepresentation (getSignableRepresentation))
 import Cardano.Ledger.Alonzo.Tx (AlonzoEraTx (isPhase2ValidTxL), IsPhase2Valid (..))
+import Cardano.Ledger.Alonzo.TxWits (AlonzoEraTxWits (datsTxWitsL), unTxDats)
 import Cardano.Ledger.BaseTypes (ProtVer (..), StrictMaybe (..), natVersion)
 import qualified Cardano.Ledger.Binary as Binary
 import qualified Cardano.Ledger.Binary.Plain as Plain
 import Cardano.Ledger.Block (Block (..), BlockHeaderVersionInfo (..), EbReferencesAnnouncement (..))
 import Cardano.Ledger.Conway (ConwayEra)
-import Cardano.Ledger.Core (EraBlockBody (..), eraDecoder, txIdTx)
+import Cardano.Ledger.Core (EraBlockBody (..), EraTx (..), EraTxWits (..), Tx, TxLevel (..), eraDecoder, txIdTx)
 import Cardano.Ledger.Dijkstra (DijkstraEra)
 import Cardano.Ledger.Dijkstra.BlockBody (DijkstraEraBlockBody (..))
-import Cardano.Ledger.Hashes (extractHash)
+import Cardano.Ledger.Dijkstra.Tx (Tx (MkDijkstraTx), decodeDijkstraTopTxInBlock)
+import Cardano.Ledger.Dijkstra.TxBody (DijkstraEraTxBody (subTransactionsTxBodyL))
+import Cardano.Ledger.Hashes (ScriptHash (..), extractHash)
 import Cardano.Ledger.TxIn (TxId (..))
 import Cardano.Protocol.Crypto (StandardCrypto)
 import qualified Cardano.Protocol.Leios.BlockHeader as Leios
@@ -33,6 +36,8 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as Hex
 import qualified Data.ByteString.Lazy as LBS
 import Data.Foldable (toList)
+import qualified Data.Map.Strict as Map
+import qualified Data.OMap.Strict as OMap
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
 import GHC.Generics (Generic)
@@ -47,7 +52,10 @@ import System.Exit (die)
 -- version 12, and tag 7 `ShelleyBlock (Praos c) ConwayEra` at Conway's 9 (`decodeShelleyBlock`,
 -- `Shelley/Ledger/Block.hs:332-339`); the harness reads no other tag. `kind` "header" is a Leios
 -- header alone (`decodeShelleyHeader`, `:359-369`), as ChainSync carries it inside its era
--- envelope.
+-- envelope. `kind` "tx" is one transaction as a Dijkstra block body holds it, read by
+-- `decodeDijkstraTopTxInBlock` (cardano-ledger 9df9f98c, `eras/dijkstra/impl/src/Cardano/Ledger/
+-- Dijkstra/Tx.hs:175-182`) at Dijkstra's version 12 over the whole input, as the block body's
+-- `decodeSeq` reads each of its transactions.
 data Case = Case
   { name :: String
   , kind :: String
@@ -143,6 +151,27 @@ dijkstraBlock (Block h b) =
       SNothing -> False
       SJust _ -> True
 
+-- | What the ledger made of a transaction or sub-transaction: its id (the hash of its body's
+-- original bytes) and the keys of its witness set's script and datum maps (the hashes of each
+-- script's and datum's original bytes).
+txFields :: Tx l DijkstraEra -> [Pair]
+txFields t =
+  [ "id" .= hexHash (extractHash (unTxId (txIdTx t)))
+  , "scripts" .= map (\(ScriptHash h) -> hexHash h) (Map.keys (t ^. witsTxL . scriptTxWitsL))
+  , "datums" .= map (hexHash . extractHash) (Map.keys (unTxDats (t ^. witsTxL . datsTxWitsL)))
+  ]
+
+-- | A transaction of a block: its fields, its validity flag, and each of its sub-transactions'
+-- fields in the order of the body.
+dijkstraTx :: Tx TopTx DijkstraEra -> Value
+dijkstraTx t =
+  accepted
+    ( txFields t
+        <> [ "valid" .= (t ^. isPhase2ValidTxL == Phase2Valid)
+           , "subtxs" .= map (object . txFields) (OMap.elems (t ^. bodyTxL . subTransactionsTxBodyL))
+           ]
+    )
+
 conwayBlock :: Block PraosHeader ConwayEra -> Value
 conwayBlock (Block h b) =
   accepted ["tag" .= (7 :: Int), "hash" .= hexHash (Praos.headerHash h), "bodyhash" .= hexHash (hashBlockBody b)]
@@ -159,6 +188,10 @@ runCase c = do
       pure $
         either refused (accepted . leiosHeader) $
           (Binary.decodeFullAnnotator (natVersion @12) "Leios header" Binary.decCBOR raw :: Either DecoderError LeiosHeader)
+    "tx" ->
+      pure $
+        either refused (dijkstraTx . MkDijkstraTx) $
+          Binary.decodeFullAnnotator (natVersion @12) "DijkstraTx" decodeDijkstraTopTxInBlock raw
     other -> die (show (UnsupportedKind other))
   pure (object ["name" .= name c, "kind" .= kind c, "result" .= result])
 
