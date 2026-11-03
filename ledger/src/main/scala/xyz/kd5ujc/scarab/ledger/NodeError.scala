@@ -475,6 +475,13 @@ enum StorageError extends NodeError:
       readableFrom: FormatVersion
   )
 
+  /** A file of a supported previous version holds state that the current format keeps and that
+    * version did not (`loss`): no migration recovers it, and filling it in would invent it, so the
+    * file is refused before any store opens and the chain has to be synced again from genesis (ADR
+    * 0006, amendment of 2026-11-03).
+    */
+  case ResyncRequired(what: String, kind: FileKind, found: FormatVersion, loss: FormatLoss)
+
   /** A requested block or point is not stored. */
   case Missing(what: String)
 
@@ -521,6 +528,8 @@ enum StorageError extends NodeError:
       s"$w: unknown ${k.label} format '$f' (this build reads from '${k.identifier(k.readableFrom)}' through '${k.identifier(k.current)}'); it was probably written by a newer build"
     case RetiredVersion(w, k, f, oldest) =>
       s"$w: retired ${k.label} format '${k.identifier(f)}'; use the archived migration build to convert a copy to '${k.identifier(oldest)}' before opening it"
+    case ResyncRequired(w, k, f, loss) =>
+      s"$w: the ${k.label} format '${k.identifier(f)}' did not keep ${loss.message}, which '${k.identifier(k.current)}' keeps and no migration can recover; sync the chain again from genesis: replay it from the immutable chunks (stop the node, remove <db>/snapshots and <db>/utxo, start it again) or sync a new database"
     case Missing(w)    => s"missing $w"
     case OutOfOrder(r) => s"out of order: $r"
     case NetworkMismatch(f, e) =>

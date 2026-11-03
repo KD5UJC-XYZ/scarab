@@ -11,12 +11,14 @@ import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import munit.Assertions
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.ledger.{FileKind, FormatVersion, StorageError}
 
-/** Brings the maintained V5 snapshot fixtures to V7 with the registered migration
-  * ([[SnapshotMigration.toCurrent]] through [[Migrate]]), into a fresh directory, and writes the
-  * conversion manifest. Arguments: the V5 fixture directory and a directory that does not exist.
-  * `SnapshotGoldenSuite` checks every output against [[SnapshotV7.fromV5]] of its source.
+/** Brings the V5 snapshot fixtures to V7 with the registered migration's V5 → V7 step
+  * ([[SnapshotMigration.toCurrent]], its `step`), into a fresh directory, and writes the conversion
+  * manifest. Arguments: the V5 fixture directory and a directory that does not exist.
+  * `SnapshotGoldenSuite` checks every output against [[SnapshotV7.fromV5]] of its source. (Before
+  * V8 this ran the whole migration, whose current version was V7; [[SnapshotV8FixtureMain]] takes
+  * these files on to V8.)
   */
 object SnapshotV7FixtureMain extends Assertions:
   private def sha256(bytes: Array[Byte]): String =
@@ -38,12 +40,19 @@ object SnapshotV7FixtureMain extends Assertions:
       Files.createDirectories(target.resolve(name).getParent)
       Files.copy(source.resolve(name), target.resolve(name))
     }
+    val migration = SnapshotMigration.toCurrent[IO]
     val migrated = Handle
       .allow[StorageError](
-        Migrate(
-          SnapshotMigration.toCurrent[IO],
-          names.toList.map(n => fs2.io.file.Path.fromNioPath(target.resolve(n)))
-        ).map(_.asRight[StorageError])
+        names.toList
+          .traverse(n =>
+            migration.step(
+              fs2.io.file.Path.fromNioPath(target.resolve(n)),
+              FormatVersion.V5,
+              FormatVersion.V7
+            )
+          )
+          .as(List(Migrated(FileKind.SnapshotFile, FormatVersion.V5, FormatVersion.V7, names.size)))
+          .map(_.asRight[StorageError])
       )
       .rescue(e => IO.pure(Left(e)))
       .unsafeRunSync()

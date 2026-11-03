@@ -24,7 +24,7 @@ class SnapshotPreflightSuite extends CatsEffectSuite:
     .fromDirectory(java.nio.file.Path.of("fixtures/eras/genesis"))
     .fold(e => fail(e.message), identity)
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-  private given SnapshotFormat[IO, MirrorState] = SnapshotV7.format[IO](SnapshotCheck.Full)
+  private given SnapshotFormat[IO, MirrorState] = SnapshotV8.format[IO](SnapshotCheck.Full)
   private val snapshotName = "snapshot-99999999999999999999-1.bin"
 
   private val versions =
@@ -72,53 +72,61 @@ class SnapshotPreflightSuite extends CatsEffectSuite:
       .allow[NodeError](body.map(_.asRight[NodeError]))
       .rescue(e => IO.pure(e.asLeft[A]))
 
+  /** Open the database in `dir` for the network `expected`, migrating its snapshots: the result and
+    * how many times the backing was reset.
+    */
+  private def open(dir: Path, expected: xyz.kd5ujc.scarab.ledger.NetworkIdentity) =
+    for
+      resets <- Ref.of[IO, Int](0)
+      backing = new StateBacking[IO, MirrorState]:
+        def advance(state: MirrorState)(using Raise[IO, StorageError]) = IO.unit
+        def settled(state: MirrorState)(using Raise[IO, StorageError]) = IO.pure(state)
+        def checkpoint(anchor: BlockRef)(using Raise[IO, StorageError]) =
+          IO.pure(CheckpointBinding.Unbacked)
+        def admit(anchor: Option[BlockRef], binding: CheckpointBinding)(using
+            Raise[IO, StorageError]
+        ) = IO.pure(Right(()))
+        def restore(anchor: Option[BlockRef])(using Raise[IO, StorageError]) = IO.pure(true)
+        def reset(using Raise[IO, StorageError]) = resets.update(_ + 1)
+        def retain(stems: Set[String])(using Raise[IO, StorageError]) = IO.unit
+      result <- attemptNode {
+        ChainStorage
+          .open[IO, MirrorState](
+            dir,
+            ChainStorage.Config(
+              SnapshotPolicy.EverySlots(100),
+              byronEpochSlots = setup.geometry.byron.epochSlots,
+              chunkSlots = 100,
+              identity = Some(expected)
+            ),
+            MirrorRules[IO](
+              setup.praos,
+              setup.globals,
+              setup.byronRules,
+              setup.handOver,
+              setup.byronHistory
+            ),
+            setup.mirrorStart,
+            _ => IO.unit,
+            backing,
+            _ => IO.unit,
+            snapshotMigration = Some(SnapshotMigration.toCurrent[IO])
+          )
+          .use(_ => IO.unit)
+      }
+      resetCount <- resets.get
+    yield (result, resetCount)
+
   for (version, identifier) <- versions; mismatch <- Vector(false, true) do
     test(s"$identifier, network mismatch=$mismatch: refuse before any recovery or backing reset") {
       tempDir.use { dir =>
+        val expected =
+          if mismatch then setup.identity.copy(magic = setup.identity.magic + 1)
+          else setup.identity
         for
           original <- seed(dir, header(version, identifier))
-          resets <- Ref.of[IO, Int](0)
-          backing = new StateBacking[IO, MirrorState]:
-            def advance(state: MirrorState)(using Raise[IO, StorageError]) = IO.unit
-            def settled(state: MirrorState)(using Raise[IO, StorageError]) = IO.pure(state)
-            def checkpoint(anchor: BlockRef)(using Raise[IO, StorageError]) =
-              IO.pure(CheckpointBinding.Unbacked)
-            def admit(anchor: Option[BlockRef], binding: CheckpointBinding)(using
-                Raise[IO, StorageError]
-            ) = IO.pure(Right(()))
-            def restore(anchor: Option[BlockRef])(using Raise[IO, StorageError]) = IO.pure(true)
-            def reset(using Raise[IO, StorageError]) = resets.update(_ + 1)
-            def retain(stems: Set[String])(using Raise[IO, StorageError]) = IO.unit
-          expected =
-            if mismatch then setup.identity.copy(magic = setup.identity.magic + 1)
-            else setup.identity
-          result <- attemptNode {
-            ChainStorage
-              .open[IO, MirrorState](
-                dir,
-                ChainStorage.Config(
-                  SnapshotPolicy.EverySlots(100),
-                  byronEpochSlots = setup.geometry.byron.epochSlots,
-                  chunkSlots = 100,
-                  identity = Some(expected)
-                ),
-                MirrorRules[IO](
-                  setup.praos,
-                  setup.globals,
-                  setup.byronRules,
-                  setup.handOver,
-                  setup.byronHistory
-                ),
-                setup.mirrorStart,
-                _ => IO.unit,
-                backing,
-                _ => IO.unit,
-                snapshotMigration = Some(SnapshotMigration.toCurrent[IO])
-              )
-              .use(_ => IO.unit)
-          }
+          (result, resetCount) <- open(dir, expected)
           _ <- retained(original)
-          resetCount <- resets.get
         yield
           val error =
             if mismatch then StorageError.NetworkMismatch(setup.identity, expected)
@@ -165,6 +173,52 @@ class SnapshotPreflightSuite extends CatsEffectSuite:
           assert(!JFiles.exists((dir / "utxo").toNioPath))
       }
     }
+
+  test(
+    "a V7 snapshot whose Byron update state lost installer metadata is refused before recovery"
+  ) {
+    tempDir.use { dir =>
+      for
+        original <- seed(dir, SnapshotV8MigrationSuite.refusedV7)
+        (result, resetCount) <- open(dir, setup.identity)
+        _ <- retained(original)
+      yield
+        assertEquals(
+          result,
+          Left(
+            StorageError.ResyncRequired(
+              (dir / "snapshots" / snapshotName).toString,
+              FileKind.SnapshotFile,
+              FormatVersion.V7,
+              xyz.kd5ujc.scarab.ledger.FormatLoss.ByronSoftwareMetadata(1, 0)
+            )
+          )
+        )
+        assertEquals(resetCount, 0)
+    }
+  }
+
+  test("Main refuses a V7 snapshot that lost Byron installer metadata before its Rocks backing") {
+    tempDir.use { dir =>
+      for
+        original <- seed(dir, SnapshotV8MigrationSuite.refusedV7)
+        code <- Main.run(
+          List(
+            "follow",
+            "--genesis-dir",
+            "fixtures/eras/genesis",
+            "--db",
+            dir.toString,
+            "--peer",
+            "127.0.0.1:1"
+          )
+        )
+        _ <- retained(original)
+      yield
+        assertEquals(code, cats.effect.ExitCode(1))
+        assert(!JFiles.exists((dir / "utxo").toNioPath))
+    }
+  }
 
   private enum EntryPoint:
     case Detect, Step, Run, Generic

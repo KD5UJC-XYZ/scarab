@@ -143,7 +143,7 @@ object LedgerSnapshotExport:
       for
         fileBytes <- files.readAll(snapshot).compile.to(Chunk).map(_.toArray)
         content <- lift(FileLedgerSnapshots.verified(fileBytes).leftMap(Error.Storage(_)))
-        sections <- lift(SnapshotV7.sections(content).leftMap(Error.Storage(_)))
+        sections <- lift(SnapshotV8.sections(content).leftMap(Error.Storage(_)))
         (binding, sidecar, raw) = sections
         _ <- lift(Either.cond(sidecar.gaps.isEmpty, (), Error.Gaps(sidecar.gaps)))
         utxo <- sidecar.chain match

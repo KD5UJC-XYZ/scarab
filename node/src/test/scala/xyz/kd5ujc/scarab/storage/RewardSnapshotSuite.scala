@@ -20,7 +20,7 @@ class RewardSnapshotSuite extends CatsEffectSuite:
   private val setup =
     NodeSetup.fromDirectory(Path.of("fixtures/eras/genesis")).fold(e => fail(e.toString), identity)
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-  private val format = SnapshotV7.format[IO](SnapshotCheck.Full)
+  private val format = SnapshotV8.format[IO](SnapshotCheck.Full)
   private given ProtVer = Versions.eraLow(ShelleyBasedEra.SConway)
 
   private def pending(state: MirrorState): PulsingRewUpdate =
@@ -41,13 +41,15 @@ class RewardSnapshotSuite extends CatsEffectSuite:
   private def encoded(update: PulsingRewUpdate) =
     HaskellStateCodecs.pulsingRewUpdate.write(update).fold(e => fail(e.toString), identity)
 
-  test("pre-change opaque V5 bytes load through the V7 conversion and retain pending rewards") {
+  test(
+    "pre-change opaque V5 bytes load through the V7 and V8 conversions and retain pending rewards"
+  ) {
     val stream = Option(getClass.getClassLoader.getResourceAsStream("rewards-pending-v5.bin"))
       .getOrElse(fail("missing old V5 fixture"))
     val v5 =
       try stream.readAllBytes()
       finally stream.close()
-    val old = SnapshotV7.fromV5(v5).fold(e => fail(e.toString), identity)
+    val old = SnapshotV7.fromV5(v5).flatMap(SnapshotV8.fromV7).fold(e => fail(e.toString), identity)
     for
       restored <- format.decode(old).map(_.fold(e => fail(e.toString), identity))
       initial = pending(restored.state)
@@ -75,7 +77,11 @@ class RewardSnapshotSuite extends CatsEffectSuite:
     val stream = Option(getClass.getClassLoader.getResourceAsStream("rewards-pending-v5.bin"))
       .getOrElse(fail("missing V5 fixture"))
     val bytes =
-      try SnapshotV7.fromV5(stream.readAllBytes()).fold(e => fail(e.toString), identity)
+      try
+        SnapshotV7
+          .fromV5(stream.readAllBytes())
+          .flatMap(SnapshotV8.fromV7)
+          .fold(e => fail(e.toString), identity)
       finally stream.close()
     val rows = load("results.json").filter { row =>
       field[String](row, "name") == "conway-v10/dense"

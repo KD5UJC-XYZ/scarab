@@ -1426,7 +1426,8 @@ object Targets:
       FileLedgerSnapshots,
       SnapshotCheck,
       SnapshotSidecar,
-      SnapshotV7
+      SnapshotV7,
+      SnapshotV8
     }
     import scala.jdk.CollectionConverters.*
     lazy val env = NodeSetup
@@ -1434,10 +1435,10 @@ object Targets:
       .fold(e => throw new Violation(e.message), _.mirrorEnv())
     lazy val format =
       given Ask[SyncIO, ConsensusMirrorEnv] = Ask.const(env)
-      SnapshotV7.format[SyncIO](SnapshotCheck.Full)
+      SnapshotV8.format[SyncIO](SnapshotCheck.Full)
     Vector(
       Target(
-        "native-snapshot-v7",
+        "native-snapshot-v8",
         () =>
           // Keep decoder allocations visible to Probe's caller-thread counter.
           val caller = Thread.currentThread()
@@ -1445,7 +1446,7 @@ object Targets:
             Sync[SyncIO].blocking(Thread.currentThread()).unsafeRunSync() eq caller,
             "snapshot fuzz interpreter moved off the allocation-guard thread"
           )
-          val listing = java.nio.file.Files.list(java.nio.file.Path.of("fixtures/snapshot-v7/eras"))
+          val listing = java.nio.file.Files.list(java.nio.file.Path.of("fixtures/snapshot-v8/eras"))
           val eraSeeds =
             try
               listing.iterator.asScala.toVector.sorted.map { file =>
@@ -1460,6 +1461,7 @@ object Targets:
                 java.nio.file.Path.of("node/src/test/resources/rewards-pending-v5.bin")
               )
             )
+            .flatMap(SnapshotV8.fromV7)
             .fold(e => throw new Violation(e.message), identity)
           req(
             seeds.forall(b => format.decode(b).unsafeRunSync().isRight),
@@ -1467,10 +1469,10 @@ object Targets:
           )
           seeds
         ,
-        probe("native-snapshot-v7") { bytes =>
+        probe("native-snapshot-v8") { bytes =>
           format.decode(bytes.toArray).unsafeRunSync().foreach { snapshot =>
-            hit("native-snapshot-v7")
-            val sidecar = SnapshotV7
+            hit("native-snapshot-v8")
+            val sidecar = SnapshotV8
               .sidecarOf(bytes.toArray)
               .fold(e => throw new Violation(e.message), identity)
             req(

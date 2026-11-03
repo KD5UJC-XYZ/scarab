@@ -17,10 +17,12 @@ import cats.data.NonEmptyList
   * of the era-indexed rules, which keep none of the old rules' bookkeeping (J2.9); `V6` adds the
   * complete network identity including Alonzo and Conway genesis bindings; `V7` is the ledger
   * snapshot with a checkpoint binding in front of the V5 body (the UTxO key layout and the digest
-  * of the RocksDB checkpoint the snapshot was written with, issue #395). New versions are appended.
+  * of the RocksDB checkpoint the snapshot was written with, issue #395); `V8` is the same layout
+  * with the Byron update state's installer metadata in the sidecar (issue #726). New versions are
+  * appended.
   */
 enum FormatVersion derives CanEqual:
-  case V1, V2, V3, V4, V5, V6, V7
+  case V1, V2, V3, V4, V5, V6, V7, V8
 
   /** The version a migration step from this one produces; none for the newest. */
   def next: Option[FormatVersion] = FormatVersion.values.drop(ordinal + 1).headOption
@@ -79,7 +81,8 @@ enum FileKind(
   /** `<db>/snapshots/snapshot-<slot>-<blockNo>.bin`. The identifier is the 8-byte magic, and for
     * the two versions that share one (`CSLSNAP1`, which holds its format number as a 32-bit integer
     * next) the text `CSLSNAP1 v<n>`: `SCRBSNP3`, `SCRBSNP4` and `SCRBSNP5` are the Haskell ledger
-    * state with a sidecar, and `SCRBSNP7` is the V5 body behind a checkpoint binding.
+    * state with a sidecar, `SCRBSNP7` is the V5 body behind a checkpoint binding, and `SCRBSNP8` is
+    * the V7 layout whose sidecar keeps the Byron update state's installer metadata.
     */
   case SnapshotFile
       extends FileKind(
@@ -91,7 +94,8 @@ enum FileKind(
           FormatVersion.V3 -> "SCRBSNP3",
           FormatVersion.V4 -> "SCRBSNP4",
           FormatVersion.V5 -> "SCRBSNP5",
-          FormatVersion.V7 -> "SCRBSNP7"
+          FormatVersion.V7 -> "SCRBSNP7",
+          FormatVersion.V8 -> "SCRBSNP8"
         )
       )
 
@@ -136,6 +140,20 @@ enum FileKind(
         if families.exists(found.startsWith) then StorageError.UnknownVersion(what, this, found)
         else StorageError.Corrupt(what, StorageStructureError.WrongFileKind(this))
       )
+
+/** What a file of a previous version did not keep and the current version does: the reason a
+  * migration refuses the file ([[StorageError.ResyncRequired]]) rather than invent it.
+  */
+enum FormatLoss extends xyz.kd5ujc.scarab.codec.DomainError:
+  /** The Byron update state of a snapshot before [[FormatVersion.V8]] holds `proposals` registered
+    * software proposals and `applications` application versions, whose installer metadata it
+    * discarded (issue #726).
+    */
+  case ByronSoftwareMetadata(proposals: Int, applications: Int)
+
+  def message: String = this match
+    case ByronSoftwareMetadata(p, a) =>
+      s"the installer metadata of its Byron update state's $p software proposals and $a application versions"
 
 /** The layout of the keys and values of a UTxO store and its checkpoints. RocksDB has no format
   * version of its own, so a checkpoint is admitted through the snapshot that records its layout

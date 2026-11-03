@@ -163,8 +163,12 @@ class CodecSuite extends ScalaCheckSuite:
       .fromDirectory(java.nio.file.Path.of("fixtures/eras/genesis"))
       .fold(e => fail(e.message), _.mirrorStart)
 
-  test("golden: the schema fingerprint of the sidecar of the V5 body (V5 and V7)") {
+  test("golden: the schema fingerprint of the sidecar of the V5 body (V8)") {
     assertEquals(hex(SnapshotSidecar.fingerprint), GoldenSidecarFingerprint)
+  }
+
+  test("golden: the frozen sidecar schema of V5 and V7 files keeps its fingerprint") {
+    assertEquals(hex(SnapshotSidecarV7.fingerprint), GoldenPreviousSidecarFingerprint)
   }
 
   test("golden: the schema fingerprint and encodings of the V7 checkpoint binding") {
@@ -207,7 +211,11 @@ class CodecSuite extends ScalaCheckSuite:
   // Alonzo genesis carries in `extraConfig` (part of the fixture's initial protocol parameters) and
   // the Byron ledger state (UTxO, delegation, update system) carried in NodeState, and the idle
   // pools of a stake snapshot (K1: the pool distribution lists a pool whose delegators have no stake).
-  private val GoldenSidecarFingerprint = "7c483457b06802d6"
+  // and the installer metadata of the Byron update state's software proposals and application
+  // versions (V8, #726).
+  private val GoldenSidecarFingerprint = "31718eaf81232a77"
+  // The sidecar schema of V5 and V7 files (`SnapshotSidecarV7`), frozen at V8: never regenerated.
+  private val GoldenPreviousSidecarFingerprint = "7c483457b06802d6"
   // The V7 binding in front of the V5 body (#395): a change to it is a new version too.
   private val GoldenBindingFingerprint = "bd43aa08b4fae886"
   private val GoldenSidecar =

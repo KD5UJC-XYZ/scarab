@@ -45,9 +45,12 @@ object SnapshotMigration:
     val empty: Report = Report(Nil, Nil)
 
   /** The native snapshot migration registration: V5 files are brought to V7 ([[SnapshotV7.fromV5]]:
-    * the V5 body unchanged behind a [[CheckpointBinding.Legacy]] binding), each atomically. A
-    * future format adds its frozen previous reader and atomic conversion here; retired V1–V4
-    * identifiers remain recognized and refuse admission before any mutable store opens.
+    * the V5 body unchanged behind a [[CheckpointBinding.Legacy]] binding), and V7 files to V8
+    * ([[SnapshotV8.fromV7]]: the sidecar read in the frozen V7 schema and written in the current
+    * one), each step atomically. A future format adds its frozen previous reader and atomic
+    * conversion here; retired V1–V4 identifiers remain recognized and refuse admission before any
+    * mutable store opens, and so does a V5 or V7 file that no migration can convert without
+    * inventing state ([[StorageError.ResyncRequired]]).
     */
   def toCurrent[F[_]: Sync]: NodeSnapshotMigration[F] =
     new NodeSnapshotMigration[F]
@@ -86,6 +89,48 @@ object SnapshotMigration:
     ): F[Either[StorageError, FormatVersion]] =
       probe(file).map(_.flatMap(v => kind.readable(file.toString, v).as(v)))
 
+    /** A supported file that its migration can also convert: a V5 or V7 file whose Byron update
+      * state lost installer metadata is [[StorageError.ResyncRequired]]. Only the sidecar is read
+      * for it; any other problem of the file is its migration step's to report, as before.
+      */
+    private def admissible(file: Path)(using
+        Raise[F, StorageError]
+    ): F[Either[StorageError, FormatVersion]] =
+      supported(file).flatMap {
+        case Right(v @ (FormatVersion.V5 | FormatVersion.V7)) =>
+          AtomicFile
+            .guard[F, Array[Byte]](file.toString)(sidecarPrefix(file, v))
+            .map { prefix =>
+              val sidecar =
+                if v == FormatVersion.V5 then SnapshotV5.sidecarOf(prefix)
+                else SnapshotV7.sidecarOf(prefix)
+              sidecar.left.toOption
+                .collect { case refusal: StorageError.ResyncRequired => named(file, refusal) }
+                .toLeft(v)
+            }
+        case other => F.pure(other)
+      }
+
+    /** A refusal of a file's state, naming the file. */
+    private def named(file: Path, error: StorageError): StorageError = error match
+      case refusal: StorageError.ResyncRequired => refusal.copy(what = file.toString)
+      case other                                => other
+
+    /** The start of a V5 or V7 file up to the end of its sidecar: the magic, the binding (V7) and
+      * the sidecar with their lengths. A length out of range reads what there is; the sidecar
+      * reader then finds the file corrupt.
+      */
+    private def sidecarPrefix(file: Path, version: FormatVersion): Array[Byte] =
+      Using.resource(JFiles.newInputStream(file.toNioPath)) { in =>
+        def counted(): Array[Byte] =
+          val length = in.readNBytes(4)
+          val count = if length.length == 4 then ByteBuffer.wrap(length).getInt else 0
+          length ++ in.readNBytes(math.max(0, count))
+        val magic = in.readNBytes(8)
+        val binding = if version == FormatVersion.V7 then counted() else Array.emptyByteArray
+        magic ++ binding ++ counted()
+      }
+
     private def refusals(
         found: List[(String, Either[StorageError, FormatVersion])]
     )(using Raise[F, StorageError]): F[Unit] =
@@ -95,7 +140,7 @@ object SnapshotMigration:
 
     def preflight(dir: Path)(using Raise[F, StorageError]): F[Unit] =
       files(dir)
-        .flatMap(_.traverse(name => supported(dir / name).map(name -> _)))
+        .flatMap(_.traverse(name => admissible(dir / name).map(name -> _)))
         .flatMap(refusals)
 
     def detect(file: Path)(using Raise[F, StorageError]): F[FormatVersion] =
@@ -116,7 +161,21 @@ object SnapshotMigration:
                 .verified(raw)
                 .flatMap(SnapshotV7.fromV5)
                 .fold(
-                  _.raise[F, Unit],
+                  e => named(file, e).raise[F, Unit],
+                  content =>
+                    AtomicFile
+                      .replaceAll[F](file, Seq(content, FileLedgerSnapshots.digest(content)))
+                )
+            )
+        case (FormatVersion.V7, FormatVersion.V8) =>
+          AtomicFile
+            .guard[F, Array[Byte]](file.toString)(JFiles.readAllBytes(file.toNioPath))
+            .flatMap(raw =>
+              FileLedgerSnapshots
+                .verified(raw)
+                .flatMap(SnapshotV8.fromV7)
+                .fold(
+                  e => named(file, e).raise[F, Unit],
                   content =>
                     AtomicFile
                       .replaceAll[F](file, Seq(content, FileLedgerSnapshots.digest(content)))
@@ -134,7 +193,7 @@ object SnapshotMigration:
     def run(dir: Path)(using Raise[F, StorageError]): F[Report] =
       for
         names <- files(dir)
-        found <- names.traverse(name => supported(dir / name).map(name -> _))
+        found <- names.traverse(name => admissible(dir / name).map(name -> _))
         _ <- refusals(found)
         migrated <- Migrate(this, found.collect { case (name, Right(_)) => dir / name })
       yield Report(

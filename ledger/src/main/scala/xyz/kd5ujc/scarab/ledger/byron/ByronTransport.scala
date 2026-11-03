@@ -154,24 +154,29 @@ object ByronTransport:
     * (`SystemTag`, a `newtype` over `Text`, `Update/SystemTag.hs:41-65`) are definite text,
     * strictly ascending (`decodeMapSkel`, `Decoder.hs:736-766`), and whose values are an
     * `InstallerHash`: four byte strings, the second a 32-byte hash
-    * (`Update/InstallerHash.hs:58-65`).
+    * (`Update/InstallerHash.hs:58-65`). The result is what the reference keeps: each tag's hash,
+    * the second byte string, the other three being dropped.
     */
-  private[byron] def installerMetadata(node: Node): Result[Unit] =
+  private[byron] def installerMetadata(node: Node): Result[Map[String, Bytes]] =
     for
       metadata <- map(node, DecodeField.InstallerMetadata)
-      names <- metadata.traverse { (key, value) =>
+      entries <- metadata.traverse { (key, value) =>
         for
           name <- text(key, DecodeField.SystemTag)
           hashes <- tuple(value, 4, DecodeField.InstallerHashes)
-          _ <- bytes(hashes(0)) *> fixedBytes(hashes(1), 32, DecodeField.InstallerHash) *> bytes(
-            hashes(2)
-          ) *> bytes(hashes(3))
-        yield name.codePoints().toArray.toVector
+          _ <- bytes(hashes(0))
+          hash <- bytes(hashes(1)) *> CborRead.bytesN(hashes(1), 32, DecodeField.InstallerHash)
+          _ <- bytes(hashes(2)) *> bytes(hashes(3))
+        yield name -> hash
       }
-      _ <- ascending(names, node, DecodeField.InstallerMetadata)((a, b) =>
+      _ <- ascending(
+        entries.map(_._1.codePoints().toArray.toVector),
+        node,
+        DecodeField.InstallerMetadata
+      )((a, b) =>
         a.zip(b).collectFirst { case (x, y) if x != y => x < y }.getOrElse(a.size < b.size)
       )
-    yield ()
+    yield entries.toMap
 
   /** A header's body proof as the reference reads it at decoder version 1. A boundary header's is
     * dropped with `dropBytes` (`Block/Header.hs:620-621`): a definite byte string. A main header's
