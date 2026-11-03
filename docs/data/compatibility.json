@@ -811,14 +811,18 @@
       "evidence": {
         "suites": [
           "EraFormsReferenceSuite",
-          "StoredWideKeyOutputSuite"
+          "StoredWideKeyOutputSuite",
+          "MapHeadsReferenceSuite"
         ],
         "paths": [
           "fixtures/reference/era-forms",
-          "scripts/oracle/conway-decoding/era_forms_cases.py"
+          "scripts/oracle/conway-decoding/era_forms_cases.py",
+          "fixtures/reference/map-heads",
+          "scripts/oracle/conway-decoding/map_head_cases.py"
         ],
         "issues": [
-          379
+          379,
+          701
         ]
       },
       "limitations": {

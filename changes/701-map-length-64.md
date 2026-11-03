@@ -1,0 +1,3 @@
+### Fixed (ledger decoding, #701)
+
+- An output from Babbage, a collateral return, and Conway's redeemers written as a map whose length takes eight bytes (head `0xbb`) are refused, as the reference refuses them: its decoders take the map form for cborg's `TypeMapLen` and `TypeMapLenIndef` alone and read this map as a list (`Babbage/TxOut.hs:549-553`, `Alonzo/TxWits.hs:548-559`, cardano-ledger f649f975). A block holding one was accepted by Scarab and refused by the reference. A map with a narrower length head is read as before, and an output the stores hold still reads in every width (ADR 0006).

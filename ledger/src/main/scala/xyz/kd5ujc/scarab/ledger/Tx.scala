@@ -674,14 +674,17 @@ object Witnesses:
     * `(tag, index)`, in either form, the last one counts (seen on Preview: slot 12924758, six
     * entries for one mint with different data; slot 62567517, one entry twice). From decoder
     * version 9 either form must not be empty; below it only the list is read (`RedeemersRaw`,
-    * TxWits.hs).
+    * TxWits.hs). From version 9 the map form is chosen by `peekTokenType`, for `TypeMapLenIndef`
+    * and `TypeMapLen` alone (`Alonzo/TxWits.hs:548-559`, f649f975): a map whose length is written
+    * in eight bytes ([[CborRead.mapLength64]]) is read as the list and refused (#701).
     */
   private def redeemerList(
       n: Node,
       version: DecoderVersion
   ): Either[LedgerDecodeError, Vector[Redeemer]] =
     val all: Either[LedgerDecodeError, Vector[Redeemer]] = n.value match
-      case xyz.kd5ujc.scarab.codec.Value.Map(kvs) if version.atLeast(9) =>
+      case xyz.kd5ujc.scarab.codec.Value.Map(kvs)
+          if version.atLeast(9) && !CborRead.mapLength64(n) =>
         kvs.traverse { case (k, v) =>
           for
             key <- CborRead.arrayN(k, 2, DecodeField.RedeemerKey)

@@ -599,25 +599,32 @@ object TxOut:
     * adds the map (`decodeBabbageTxOut`, `eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs`),
     * all of cardano-ledger f649f975. An indefinite array of the output itself is read as a definite
     * one in every era; its value is a definite list only ([[Value.decode]]).
+    *
+    * `decodeBabbageTxOut` chooses the map form by `peekTokenType`, for `TypeMapLenIndef` and
+    * `TypeMapLen` alone (`Babbage/TxOut.hs:549-553`): a map whose length is written in eight bytes
+    * (`TypeMapLen64`, [[CborRead.mapLength64]]) is read as a list and refused (#701). `wideMaps` is
+    * whether such a map is the map form.
     */
   enum Forms(
       val arities: Set[Int],
       val admitsMap: Boolean,
+      val wideMaps: Boolean,
       val keys: FieldKeys,
       val records: ConwayParam.Records
   ):
-    case Pair extends Forms(Set(2), false, FieldKeys.FullWidth, ConwayParam.Records.Body)
+    case Pair extends Forms(Set(2), false, false, FieldKeys.FullWidth, ConwayParam.Records.Body)
     case PairOrDatumHash
-        extends Forms(Set(2, 3), false, FieldKeys.FullWidth, ConwayParam.Records.Body)
+        extends Forms(Set(2, 3), false, false, FieldKeys.FullWidth, ConwayParam.Records.Body)
     case PairDatumHashOrMap
-        extends Forms(Set(2, 3), true, FieldKeys.FullWidth, ConwayParam.Records.Body)
+        extends Forms(Set(2, 3), true, false, FieldKeys.FullWidth, ConwayParam.Records.Body)
 
     /** A stored output is read in any form and with the map keys an earlier build accepted and
       * stored, so the stores keep reading what they wrote (ADR 0006): every form of the latest era,
-      * the keys as their low 32 bits ([[FieldKeys.Stored]]), and its value as a definite or an
-      * indefinite list ([[ConwayParam.Records.Stored]]).
+      * a map with any width of length ([[wideMaps]], #701), the keys as their low 32 bits
+      * ([[FieldKeys.Stored]]), and its value as a definite or an indefinite list
+      * ([[ConwayParam.Records.Stored]]).
       */
-    case Stored extends Forms(Set(2, 3), true, FieldKeys.Stored, ConwayParam.Records.Stored)
+    case Stored extends Forms(Set(2, 3), true, true, FieldKeys.Stored, ConwayParam.Records.Stored)
 
   object Forms:
     def of(era: Era): Forms =
@@ -640,7 +647,8 @@ object TxOut:
               CborRead.bytesN(xs(2), 32, DecodeField.DatumHash).map(Datum.Hash(_))
             else Right(Datum.NoDatum)
         yield TxOut(n.original, a, v, d, None, xs(1).original.size)
-      case xyz.kd5ujc.scarab.codec.Value.Map(_) if forms.admitsMap =>
+      case xyz.kd5ujc.scarab.codec.Value.Map(_)
+          if forms.admitsMap && (forms.wideMaps || !CborRead.mapLength64(n)) =>
         for
           f <- CborRead.fields(n, DecodeField.Output, forms.keys)
           a <- f

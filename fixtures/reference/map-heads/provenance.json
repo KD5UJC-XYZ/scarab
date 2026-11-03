@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-02",
+  "scope": "Unchanged released decoders (decodeFullAnnotator) of a transaction body, witness set or whole transaction at the era's decoder version (Allegra 3, Mary 4, Alonzo 5, Babbage 7, Conway 9): the map form of an output and of a collateral return (Babbage, Conway; Alonzo has none) and Conway's map form of redeemers, each with its length in the head and in one, two, four and eight bytes; as controls the eight-byte head of an output's and of redeemers' list form, of a multi-asset map, of metadata and of a metadatum map, which the reference reads; no ledger rule, signature or script is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "compiler": "GHC 9.10.3",
+  "referenceNode": "11.1.3 (matching embedded ledger package versions, not a bit-identical node release build)",
+  "packages": {
+    "cardano-ledger-binary": "1.9.1.0",
+    "cardano-ledger-core": "1.21.0.0",
+    "cardano-ledger-shelley": "1.19.0.1",
+    "cardano-ledger-allegra": "1.10.1.0",
+    "cardano-ledger-mary": "1.11.0.0",
+    "cardano-ledger-alonzo": "1.16.0.0",
+    "cardano-ledger-babbage": "1.14.0.0",
+    "cardano-ledger-conway": "1.23.0.0",
+    "cborg": "0.2.10.0"
+  },
+  "sourceFiles": {
+    "babbageTxOut": {
+      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs",
+      "sourceSha256": "64733f20f44ed96e5a7e100ed6cf3ba8a78c75f63e59bb7dc6fb6203f06bf42a",
+      "matchesPin": true,
+      "note": "decodeBabbageTxOut: the map form for TypeMapLenIndef and TypeMapLen, the list form otherwise (549-553)"
+    },
+    "alonzoTxWits": {
+      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+      "sourceSha256": "d905a1b5f7fbc11686b1efab5dbb76f9dc8462567959340a21d2611ad72ea2dc",
+      "matchesPin": true,
+      "note": "RedeemersRaw from decoder version 9: decodeMapRedeemers for TypeMapLenIndef and TypeMapLen, decodeListRedeemers otherwise (548-559)"
+    }
+  },
+  "harness": {
+    "file": "scripts/oracle/conway-decoding/Main.hs",
+    "sha256": "5e906c106ccc3fc11fea0de771e3a4283e85a6756f7e761f219c4928f7bf9752",
+    "image": "scarab-conway-decoding:local (run as scarab-cc701-conway-decoding:local), from scripts/oracle/conway-decoding/Dockerfile on scarab-plutus176-context-reference:local",
+    "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-conway-decoding:local /fixtures/map-heads-inputs.json",
+    "unchanged": true
+  },
+  "generatorSha256": "d8e2e5f427a7566ebf7feab155c3faac5c7ea59a490165bc870e963c4313e14e",
+  "harnessInputSha256": "4d7990e42fb60ddb47d64bece288a4e7d97ad4c8d17a84f53204f89306391c5b",
+  "harnessOutputSha256": "ec45778f7dc198f7d6b25998555bf49be7702c2d32fcdcab551dd751a9dd4285",
+  "casesSha256": "6106d7a7a45700e108eb855354588554deb0899e3b3b07f0fb3a78bc30cac88e",
+  "cases": 51,
+  "accepted": 40,
+  "refused": 11,
+  "originalBytesRetained": true,
+  "network": "none",
+  "keysRetained": false
+}

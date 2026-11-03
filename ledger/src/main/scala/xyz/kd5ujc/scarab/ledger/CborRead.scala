@@ -49,6 +49,14 @@ private[ledger] object CborRead:
       Either.cond(b.size == size, b, LedgerDecodeError.ByteLength(what, size, b.size))
     )
 
+  /** Whether the item is a map whose length is written in eight bytes (head `0xbb`): cborg's
+    * `TypeMapLen64` (`Codec/CBOR/Decoding.hs`, cborg 0.2.10.0), where `0xa0` to `0xba` are
+    * `TypeMapLen` on a 64-bit machine. A decoder that chooses between a map and a list by
+    * `peekTokenType` and names `TypeMapLen` alone reads such a map as a list (#701). A node built
+    * by hand is not one.
+    */
+  def mapLength64(n: Node): Boolean = n.original.byteOr(0)(false)(b => (b & 0xff) == 0xbb)
+
   /** The item's head is not of indefinite length (additional information 31): a string, array or
     * map read by a decoder that takes the definite form only (the Byron decoders).
     */
