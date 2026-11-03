@@ -268,6 +268,14 @@ class ActivityTest(unittest.TestCase):
         self.assertGreater(self.listed().activity, activity)
         self.assertEqual(self.times("HEAD", "logs/HEAD", "index"), untouched)
 
+    def test_moving_the_worktree_counts(self):
+        activity, untouched = self.before(), self.times("HEAD", "logs/HEAD", "index")
+        moved = self.tree.parent / "moved"
+        self.run_git("worktree", "move", str(self.tree), str(moved))
+        self.tree = moved
+        self.assertGreater(self.listed().activity, activity)
+        self.assertEqual(self.times("HEAD", "logs/HEAD", "index"), untouched)
+
     def test_without_a_head_reflog_the_activity_is_unknown_and_a_stale_sweep_keeps_it(self):
         import time
         self.run_git("config", "core.logAllRefUpdates", "false")
