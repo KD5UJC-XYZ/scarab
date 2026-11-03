@@ -64,6 +64,16 @@ object TxSubmission2:
       */
     def body(original: Bytes): Either[ProtocolError, Bytes]
 
+    /** [[body]], once the era's decoders have read the whole transaction `original`: a refusal
+      * where they refuse it. The reference's codec reads every transaction of a reply so, and a
+      * transaction they refuse fails the codec (`DecoderFailure`, network
+      * `Ouroboros/Network/Driver/Simple.hs:171`, 2fb69829), which ends the connection
+      * (`ShutdownPeer`, the unit of `RethrowPolicy`, `Ouroboros/Network/RethrowPolicy.hs:99-103`).
+      * A transaction this side sends is written by the reference's encoder, not read; so only a
+      * reply this side takes is read whole here (#708).
+      */
+    def read(original: Bytes): Either[ProtocolError, Bytes]
+
   private def profile(reader: TransactionReader) = new TxSubmission2Engine.Profile[Bytes, Bytes]:
     def maxBatch: Int = MaxBatch
     def maxOriginalBytes: Int = MaxOriginalBytes
@@ -84,13 +94,13 @@ object TxSubmission2:
     def writeBody(value: Bytes, state: State, writer: ProtocolWire.Writer)(using
         ProtocolWire.Scope
     ): Unit =
-      original(value, reader)
+      original(value, reader.body)
       writer.head(4, 2); writer.head(0, 6); writer.head(6, 24)
       writer.head(2, value.size); writer.raw(value)
     def readBody(in: ProtocolWire.Reader)(using ProtocolWire.Scope): Bytes =
       if in.arrayLength() != 2 || in.uint().value != 6 || in.tag() != 24 then
         bad(ProtocolError.ExpectedConwayGenTx)
-      val value = in.bytes(MaxOriginalBytes); original(value, reader); value
+      val value = in.bytes(MaxOriginalBytes); original(value, reader.read); value
 
   /** The codec of Conway's `GenTx`, its transactions read by `reader`. */
   private[scarab] def codec(reader: TransactionReader): TxSubmission2Engine.Codec[Bytes, Bytes] =
@@ -135,9 +145,11 @@ object TxSubmission2:
     if n < 0 || n > 65535 then bad(ProtocolError.CountOutsideUint16(BigInt(n)))
   private def batch(n: Int)(using ProtocolWire.Scope): Unit =
     if n > MaxBatch then bad(ProtocolError.BatchLimitExceeded(n, MaxBatch))
-  private def original(bytes: Bytes, reader: TransactionReader)(using ProtocolWire.Scope): Unit =
+  private def original(bytes: Bytes, check: Bytes => Either[ProtocolError, Bytes])(using
+      ProtocolWire.Scope
+  ): Unit =
     get(advertisedSize(bytes.size))
-    get(reader.body(bytes))
+    get(check(bytes))
 
   def encode(state: State, sender: Role, message: Message)(using
       TransactionReader

@@ -41,3 +41,6 @@ object TxSubmission2Fixtures:
       if r.position != original.size then bad(ProtocolError.TrailingPayloadBytes)
       body
     }
+
+    // no ledger here: a reply's transaction is read as its envelope
+    def read(original: Bytes): Either[ProtocolError, Bytes] = body(original)

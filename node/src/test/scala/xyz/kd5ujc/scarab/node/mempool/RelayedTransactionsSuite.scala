@@ -7,7 +7,7 @@ import cats.mtl.Raise
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.ledger.{DetachedRecordsReferenceSuite, TxEnvelopeReferenceSuite}
+import xyz.kd5ujc.scarab.ledger.{ConwayTransactionCases, DetachedRecordsReferenceSuite}
 import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.protocol.{Era, ProtocolError, TxSubmission2, TxSubmission2Fixtures}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
@@ -72,17 +72,36 @@ class RelayedTransactionsSuite extends FailsOnUncaught:
       assert(tree.forall(_.hex != row.txid.getOrElse("")), tree.toString)
     }
 
-  // The refused transaction whose parts the codec frames: it reaches the mempool, whose decoders
-  // refuse it, where the reference's codec refuses it and ends the session (#708).
-  private val framed = Set("conway transaction value in an output that counts its fields")
-
   for row <- rows if !row.accepted do
-    test(s"${row.name}: refused, by the codec or by the mempool's decoders") {
+    test(s"${row.name}: refused by the codec, as the reference's decoder refuses it") {
       val codec = TxSubmission2.decode(State.Txs, Role.Client, wire(row.raw))
+      assert(codec.isLeft, codec.toString)
+      // and by the mempool, which reads it alike
       val mempool = MempoolState.parseParts(row.raw)
       assert(mempool.left.exists(_.isInstanceOf[Rejection.Malformed]), mempool.toString)
-      assertEquals(codec.isRight, framed(row.name), codec.toString)
     }
+
+  test("every whole Conway transaction of the reference corpora: the codec's verdict is theirs") {
+    // a reply's transaction is read whole by the ledger's decoders, as the reference's codec reads
+    // it (#708): taken where the reference takes it, under its id, refused where it refuses it
+    val cases = ConwayTransactionCases.all
+    assert(cases.count(_.accepted) >= 10 && cases.count(!_.accepted) >= 10, cases.size.toString)
+    cases.foreach { c =>
+      val codec = TxSubmission2.decode(State.Txs, Role.Client, wire(c.raw))
+      val label = s"${c.corpus}: ${c.name}"
+      if c.accepted then
+        assertEquals(codec, Right(Message.ReplyTxs(Vector(c.raw))), label)
+        c.txid.foreach(id => assertEquals(TxSubmission2.bodyId(c.raw).map(_.hex), Right(id), label))
+      else
+        assert(
+          codec.left.exists {
+            case ProtocolError.UndecodableTransaction(_) | ProtocolError.Codec(_) => true
+            case _                                                                => false
+          },
+          s"$label: $codec"
+        )
+    }
+  }
 
   test(
     "a peer offers the transactions with detached records, and the node fetches each by its id"
@@ -132,14 +151,72 @@ class RelayedTransactionsSuite extends FailsOnUncaught:
     }
   }
 
+  /** The node's client offers `tx` and the node's server, reading with `reading`, collects it: how
+    * the server ends, and what reached its sink.
+    */
+  private def offerOne(
+      tx: Bytes,
+      reading: TxSubmission2.TransactionReader
+  ): IO[(Either[NetworkError, Unit], Vector[Bytes])] =
+    val id = TxSubmission2.bodyId(tx).fold(e => fail(e.message), identity)
+    val one = TxSubmissionClient.Held(id, tx.size, 1L)
+    val source = new TxSubmissionClient.Source[IO]:
+      def reader = RelayedTransactions
+      def after(ticket: Long, max: Int) = IO.pure(Vector(one).filter(_.ticket > ticket))
+      def awaitAfter(ticket: Long) = if ticket < 1 then IO.unit else IO.never
+      def body(wanted: Bytes) = IO.pure(Option.when(wanted == id)(tx))
+    Ref.of[IO, Vector[Bytes]](Vector.empty).flatMap { taken =>
+      val sink = new TxSubmissionServer.Sink[IO]:
+        def reader = reading
+        def known(id: Bytes) = IO.pure(false)
+        def submit(originals: Vector[Bytes])(using Raise[IO, NetworkError]) =
+          taken.update(_ ++ originals)
+      typed {
+        Peers.linked(protocols = Set(4)).use { (client, server) =>
+          for
+            c <- client.channel(4)
+            s <- server.channel(4, Mux.Role.Responder)
+            ended <- typed(TxSubmissionClient.run(c, source)).background
+              .use(_ => typed(TxSubmissionServer.run(s, sink)).timeout(10.seconds))
+          yield ended
+        }
+      }.flatMap(ended => taken.get.map(t => (ended.flatten, t)))
+    }
+
+  test("a peer's reply whose transaction the ledger's decoders refuse ends the session (#708)") {
+    // framed as a transaction (its id is its body's), refused by the decoders of its outputs
+    val refused = rows
+      .find(_.name == "conway transaction value in an output that counts its fields")
+      .getOrElse(fail("the case is not in the corpus"))
+    assert(RelayedTransactions.body(refused.raw).isRight)
+    offerOne(refused.raw, RelayedTransactions).map { (ended, taken) =>
+      assertEquals(taken, Vector.empty)
+      ended match
+        case Left(NetworkError.Decode(4, ProtocolError.UndecodableTransaction(_))) => ()
+        case other => fail(s"expected the codec's refusal, got $other")
+    }
+  }
+
+  test("a decoder that throws on a reply is a defect of the input, not the peer's refusal") {
+    val throwing = new TxSubmission2.TransactionReader:
+      def body(original: Bytes) = RelayedTransactions.body(original)
+      def read(original: Bytes) = throw new IllegalStateException("injected decoder defect")
+    offerOne(accepted.headOption.getOrElse(fail("no case")).raw, throwing).map { (ended, taken) =>
+      assertEquals(taken, Vector.empty)
+      ended match
+        case Left(NetworkError.DecoderDefect(4, _: IllegalStateException)) => ()
+        case other => fail(s"expected a decoder defect, got $other")
+    }
+  }
+
   test("definite and indefinite envelopes keep the body's own bytes as its identity") {
     Vector("a0", "a1001800", "bf001800ff").foreach { body =>
       val definite = hex("84" + body + "a0f5f6")
       val indefinite = hex("9f" + body + "a0f5f6ff")
       assertEquals(TxSubmission2.bodyId(indefinite), TxSubmission2.bodyId(definite))
       assertEquals(TxSubmission2.bodyId(indefinite), Right(Blake2b.hash256.hash(hex(body))))
-      val message = Message.ReplyTxs(Vector(indefinite))
-      assertEquals(TxSubmission2.decode(State.Txs, Role.Client, reply(indefinite)), Right(message))
+      // a body without its required fields: framed and identified, but refused when read whole
+      assert(TxSubmission2.decode(State.Txs, Role.Client, wire(indefinite)).isLeft)
     }
     assertEquals(TxSubmission2.bodyId(hex("84a0a10080f5f6")), Right(emptyId))
     assertNotEquals(
@@ -204,20 +281,6 @@ class RelayedTransactionsSuite extends FailsOnUncaught:
     )
       .foreach(t => assert(TxSubmission2.bodyId(hex(t)).isLeft, t))
   }
-  test("the reference's whole Conway transactions, with and without the flag, through the codec") {
-    // `fixtures/reference/tx-envelope/cases.jsonl` (#699): the codec takes each the reference reads,
-    // under its id, and the mempool refuses each the codec takes and the reference refuses
-    val envelopes = TxEnvelopeReferenceSuite.load.filter(_.era == Era.Conway)
-    assert(envelopes.exists(_.accepted) && envelopes.exists(!_.accepted))
-    envelopes.foreach { row =>
-      val codec = TxSubmission2.decode(State.Txs, Role.Client, wire(row.raw))
-      if row.accepted then
-        assertEquals(codec, Right(Message.ReplyTxs(Vector(row.raw))), row.name)
-        row.txid.foreach(id => assertEquals(TxSubmission2.bodyId(row.raw).map(_.hex), Right(id)))
-      else if codec.isRight then assert(MempoolState.parseParts(row.raw).isLeft, row.name)
-    }
-  }
-
   test("nesting is bounded by the transaction's size, as in the reference, which has no bound") {
     val exact = hex("9fa0a10059fff6" + "00" * 65526 + "f5f6ff")
     assertEquals(exact.size, TxSubmission2.MaxOriginalBytes)

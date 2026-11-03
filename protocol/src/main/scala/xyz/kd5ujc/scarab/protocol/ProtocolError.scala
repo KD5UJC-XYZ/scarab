@@ -168,6 +168,12 @@ enum ProtocolError extends DomainError:
   case PeerSharing(cause: xyz.kd5ujc.scarab.protocol.PeerSharing.Error)
   case Leios(cause: LeiosWireError)
 
+  /** A transaction of a TxSubmission2 reply that the era's ledger decoders refuse, with their typed
+    * reason (the ledger's errors are not visible to the protocols, so it is kept as the
+    * `DomainError` it is).
+    */
+  case UndecodableTransaction(cause: DomainError)
+
   def incomplete: Boolean = this match
     case TruncatedCbor | IncompleteCbor | TruncatedList => true
     case _                                              => false
@@ -343,10 +349,11 @@ enum ProtocolError extends DomainError:
       s"illegal TxSubmission2 message/agency in $state from $sender"
     case Word32Range(field, _) =>
       s"${field.toString.head.toLower}${field.toString.tail} does not fit a Word32"
-    case Codec(cause)       => cause.message
-    case HfcHeader(cause)   => cause.toString
-    case PeerSharing(cause) => cause.message
-    case Leios(cause)       => cause.toString
+    case Codec(cause)                  => cause.message
+    case HfcHeader(cause)              => cause.toString
+    case PeerSharing(cause)            => cause.message
+    case Leios(cause)                  => cause.toString
+    case UndecodableTransaction(cause) => s"undecodable transaction: $cause"
 
 object ProtocolError:
   enum MonitorField:
