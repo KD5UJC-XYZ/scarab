@@ -758,7 +758,7 @@
     "fixtures/reference/pre-conway-utxo/predicates.json": "030dccb8bd47b33bdba4e981959461395084d6a25346639b7aecd3da724c26b2",
     "fixtures/reference/pre-conway-utxo/provenance.json": "531797e51c9b5519dd9a85cf7eed8492c5b90435a1ced3afe89ce06d313e0aff",
     "fixtures/reference/recd-detached/cases.jsonl": "f79d4d31b320b166b212cd977cc34e7d0dffe6b004e49f6f31d177b090baf317",
-    "fixtures/reference/recd-detached/provenance.json": "8a85f60e852a39b098ca86b68549664abcdda175727691118fdd9a4ae0434eed",
+    "fixtures/reference/recd-detached/provenance.json": "1867611658fcd71f9f624b0fc477f7e292e9f4e64c48926e6642f72f6da201d0",
     "fixtures/reference/recd-records/cases.jsonl": "66a0a2e2b730a748287911cbb4e3d826679cb955806ad71c3e4a7ec4249a0ed9",
     "fixtures/reference/recd-records/provenance.json": "e3f0f3afbf4939d9867d71747a3f1ca36470a39a9db2caec9a50bf3d02028fa4",
     "fixtures/reference/refusals/allegra-families/cases/cases.jsonl": "e20ec55af0effdbe6183c5091b328145a4474c00b78a4ec8fdf1b37eb2f3e487",
