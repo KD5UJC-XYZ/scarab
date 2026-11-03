@@ -52,6 +52,30 @@ class ScriptIntegritySuite extends FunSuite:
     assertEquals(ScriptIntegrity.languageViews(pp, Set(ScriptKind.Native)), bytes("a0"))
   }
 
+  // `getLanguageView` encodes a missing cost model as `null` (cardano-ledger f649f975,
+  // `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs:584`); V1 wraps it as bytes (575-576).
+  private val noModels = pp.copy(costModels = Map.empty)
+  private val onlyV1 = pp.copy(costModels = Map(0 -> Vector(1, 2, 3)))
+
+  test("a language without a cost model has a null view: V1 bytes-wrapped, V2 and V3 bare") {
+    assertEquals(
+      ScriptIntegrity.languageViews(noModels, Set(ScriptKind.PlutusV1)),
+      bytes("a1" + "4100" + "41f6")
+    )
+    assertEquals(
+      ScriptIntegrity.languageViews(noModels, Set(ScriptKind.PlutusV2)),
+      bytes("a1" + "01" + "f6")
+    )
+    assertEquals(
+      ScriptIntegrity.languageViews(noModels, Set(ScriptKind.PlutusV3)),
+      bytes("a1" + "02" + "f6")
+    )
+    assertEquals(
+      ScriptIntegrity.languageViews(onlyV1, Set(ScriptKind.PlutusV1, ScriptKind.PlutusV3)),
+      bytes("a2" + "02" + "f6" + "4100" + "45" + "9f010203ff")
+    )
+  }
+
   test("a cost model above 255 parameters uses the two-byte array header") {
     val big = pp.copy(costModels = Map(1 -> Vector.fill(300)(BigInt(1))))
     val views = ScriptIntegrity.languageViews(big, Set(ScriptKind.PlutusV2))
@@ -88,6 +112,23 @@ class ScriptIntegritySuite extends FunSuite:
     assertEquals(
       ScriptIntegrity.hash(tx(Some(redeemers), None), pp, Set(ScriptKind.PlutusV1)),
       Some(expected)
+    )
+  }
+
+  test("the hash counts a null language view, as the reference's encoding gives it") {
+    // blake2b-256 of the redeemers ‖ a1 4100 41f6, and of the redeemers ‖ a2 02f6 4100 45 9f010203ff,
+    // computed outside Scarab from the bytes `getLanguageView` and `encodeLangViews` write.
+    assertEquals(
+      ScriptIntegrity.hash(tx(Some(redeemers), None), noModels, Set(ScriptKind.PlutusV1)),
+      Some(Bytes(bytes("2d3edd84d1932280ccbc5aeba56e65f145f49276a0b5e4c3be8a5e97e5065697")))
+    )
+    assertEquals(
+      ScriptIntegrity.hash(
+        tx(Some(redeemers), None),
+        onlyV1,
+        Set(ScriptKind.PlutusV1, ScriptKind.PlutusV3)
+      ),
+      Some(Bytes(bytes("c47c02a6428d13235bce8dc7b0a5c13b699ce2dd400b49ffed0303f10f3da79e")))
     )
   }
 
