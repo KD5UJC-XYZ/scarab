@@ -10,9 +10,9 @@
 -- query decoder uses for them (`decodeShelleyQuery`,
 -- `ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Query.hs:916-995`,
 -- ouroboros-consensus 82ecba32): `fromCBOR` of cardano-binary for some, `LC.fromEraCBOR @era`
--- (the ledger's `decCBOR` at the era's lowest protocol version, 9 for Conway) for the others.
--- Each case is one argument's bytes and the decoder it is read with; the verdict, and the value
--- read rendered as sorted text, are written one JSON line per case (#709).
+-- (the ledger's `decCBOR` at the era's lowest protocol version, 9 for Conway, 12 for Dijkstra) for
+-- the others. Each case is one argument's bytes and the decoder it is read with; the verdict, and
+-- the value read rendered as sorted text, are written one JSON line per case (#709, #720).
 module Main (main) where
 
 import qualified Cardano.Binary as Plain
@@ -20,6 +20,7 @@ import qualified Cardano.Crypto.Hash as Hash
 import Cardano.Ledger.Address (Addr, serialiseAddr)
 import qualified Cardano.Ledger.Binary as Binary
 import Cardano.Ledger.Coin (Coin (..))
+import Cardano.Ledger.Conway.Governance (GovActionId (..), GovActionIx (..))
 import Cardano.Ledger.Credential (Credential (..))
 import Cardano.Ledger.DRep (DRep (..))
 import Cardano.Ledger.Hashes (ScriptHash (..), extractHash)
@@ -86,6 +87,10 @@ instance Shown MemberStatus where
 instance Shown Addr where
   shown = hexOf . serialiseAddr
 
+instance Shown GovActionId where
+  shown (GovActionId (TxId h) (GovActionIx ix)) =
+    hexOf (Hash.hashToBytes (extractHash h)) <> "#" <> Text.pack (show ix)
+
 -- | The verdict and the elements read, sorted.
 verdict :: Shown a => Either String [a] -> Value
 verdict (Left failure) = object ["accepted" .= False, "failure" .= failure]
@@ -102,6 +107,11 @@ conway raw = either (Left . show) Right (Binary.decodeFull' (Binary.natVersion @
 -- | `LC.fromEraCBOR @BabbageEra`: the ledger's decoder at Babbage's lowest protocol version, 7.
 babbage :: forall a. Binary.DecCBOR a => BS.ByteString -> Either String a
 babbage raw = either (Left . show) Right (Binary.decodeFull' (Binary.natVersion @7) raw)
+
+-- | `LC.fromEraCBOR @DijkstraEra`: the ledger's decoder at Dijkstra's lowest protocol version, 12
+-- (`type ProtVerLow DijkstraEra = 12`, `Cardano/Ledger/Internal/Definition/Era.hs:140`).
+dijkstra :: forall a. Binary.DecCBOR a => BS.ByteString -> Either String a
+dijkstra raw = either (Left . show) Right (Binary.decodeFull' (Binary.natVersion @12) raw)
 
 
 
@@ -128,6 +138,17 @@ run d raw = case d of
   "era-pool" -> Right $ verdict (pure <$> conway @(KeyHash StakePool) raw)
   "babbage-txins" -> Right $ verdict (Set.toList <$> babbage @(Set.Set TxIn) raw)
   "babbage-staking" -> Right $ verdict (Set.toList <$> babbage @(Set.Set (Credential Staking)) raw)
+  "era-proposals" -> Right $ verdict (Set.toList <$> conway @(Set.Set GovActionId) raw)
+  "dijkstra-proposals" -> Right $ verdict (Set.toList <$> dijkstra @(Set.Set GovActionId) raw)
+  "dijkstra-addresses" -> Right $ verdict (Set.toList <$> dijkstra @(Set.Set Addr) raw)
+  "dijkstra-staking" -> Right $ verdict (Set.toList <$> dijkstra @(Set.Set (Credential Staking)) raw)
+  "dijkstra-txins" -> Right $ verdict (Set.toList <$> dijkstra @(Set.Set TxIn) raw)
+  "dijkstra-dreps" -> Right $ verdict (Set.toList <$> dijkstra @(Set.Set DRep) raw)
+  "dijkstra-pools" -> Right $ verdict (Set.toList <$> dijkstra @(Set.Set (KeyHash StakePool)) raw)
+  "dijkstra-statuses" -> Right $ verdict (Set.toList <$> dijkstra @(Set.Set MemberStatus) raw)
+  "dijkstra-pool" -> Right $ verdict (pure <$> dijkstra @(KeyHash StakePool) raw)
+  -- a plain argument of a Dijkstra query: `fromCBOR`, which no era changes
+  "dijkstra-plain-pools" -> Right $ verdict (Set.toList <$> plain @(Set.Set (KeyHash StakePool)) raw)
   _ -> Left ("unknown decoder " <> d)
 
 main :: IO ()

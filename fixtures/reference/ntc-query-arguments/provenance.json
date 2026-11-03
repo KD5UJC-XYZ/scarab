@@ -1,16 +1,17 @@
 {
   "schemaVersion": 1,
   "measuredAt": "2026-11-03",
-  "scope": "The arguments of the node-to-client ledger queries read with the decoders decodeShelleyQuery uses for them: fromCBOR of cardano-binary (sets tag 258 around a definite ascending list, Maybe and Either definite lists) and LC.fromEraCBOR at Conway's lowest protocol version 9 (sets definite or indefinite, tagged or not, without duplicates) and at Babbage's 7 (sets untagged, duplicates one); the verdict and the values read; no query server or node is run",
+  "scope": "The arguments of the node-to-client ledger queries read with the decoders decodeShelleyQuery uses for them: fromCBOR of cardano-binary (sets tag 258 around a definite ascending list, Maybe and Either definite lists) and LC.fromEraCBOR at Conway's lowest protocol version 9 (sets definite or indefinite, tagged or not, without duplicates; a GovActionId a RecD record), at Babbage's 7 (sets untagged, duplicates one) and at Dijkstra's 12 (chunked byte strings; a GovActionId a record of its own); the verdict and the values read; no query server or node is run",
   "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
   "consensusSourceCommit": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
   "compiler": "GHC 9.10.3",
   "referenceNode": "11.1.3 (matching embedded package versions, not a bit-identical node release build)",
-  "image": "scripts/oracle/ntc-query-arguments/Dockerfile, FROM scarab-plutus176-context-reference:local (run as scarab-cc709-ntc-query-arguments:local)",
+  "image": "scripts/oracle/ntc-query-arguments/Dockerfile, FROM scarab-plutus176-context-reference:local (run as scarab-cc720-ntc-query-arguments:local)",
   "packages": {
     "cardano-binary": "1.9.1.0 (cardano-base 9c964be source read)",
     "cardano-ledger-binary": "1.9.1.0",
-    "cardano-ledger-core": "1.21.0.0"
+    "cardano-ledger-core": "1.21.0.0",
+    "cardano-ledger-conway": "1.23.0.0"
   },
   "sourceFiles": {
     "shelleyQuery": {
@@ -29,18 +30,24 @@
       "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
       "sourceSha256": "3ff3541b2900ceaab9bda26f633d7ea5118a49f5faab3936d036cfe9b49f94cc",
       "matchesPin": true,
-      "note": "decodeSet at version 9: decodeSetEnforceNoDuplicates, definite or indefinite, tag optional (952-976, 1043-1077)"
+      "note": "decodeSet at version 9: decodeSetEnforceNoDuplicates, definite or indefinite, tag optional (952-976, 1043-1077); decodeBytes and decodeByteArray take a chunked string from version 12 (350-373, 1426-1448)"
+    },
+    "govActionId": {
+      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+      "sourceSha256": "63f843282e99a159044a8f439124f92698e0b7090884f336f783c930c9cc9c71",
+      "matchesPin": true,
+      "note": "GovActionId: RecD below version 12, decodeRecordNamed over its two fields from 12 (182-190)"
     }
   },
   "harness": {
     "file": "scripts/oracle/ntc-query-arguments/Main.hs",
-    "sha256": "d92577d4f6a87b1f882e9225a8a2d619b325cae72bfd0979c4e2bb4928b54cfb"
+    "sha256": "4d486fb1b389e1becf4239e58e83ab04eefb20d472250a4f5642f8f246a58b6f"
   },
-  "generatorSha256": "96e8bc6adba8085f041f1ee0ca0283aa3f5b39cb4a0d59b9c187701b9febb33f",
-  "casesSha256": "5fa36f5ea810fced1eccaf5fca0a0d2eb616349e525d9ecb7bdbc518391d6d58",
+  "generatorSha256": "12db7aa7d372ad7795e4e312ccbad4596d0e30bf9be4217d78d9a5c95aaceacb",
+  "casesSha256": "93614741b5797b80bcff4b0dca580dc42681edb5d316cbe7d580816a572ab12a",
   "results": {
-    "cases": 61,
-    "accepted": 29,
-    "refused": 32
+    "cases": 96,
+    "accepted": 49,
+    "refused": 47
   }
 }

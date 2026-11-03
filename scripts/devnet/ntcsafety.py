@@ -53,11 +53,23 @@ INVALID_RAW = {
     "duplicate-ledger-set": b"\x82\x00\x82\x00\x82\x06\x82\x0a\x82" + KEY_CRED + KEY_CRED,
     # a query `requireCG` guards (GetConstitution), of Babbage (#724)
     "conway-only-query-of-babbage": b"\x82\x00\x82\x00\x82\x05\x81\x17",
+    # an era index past the last of `CardanoEras`, or not a `Word8`, and Byron's query other than
+    # its bare tag 0 (#720)
+    "query-of-era-8": b"\x82\x00\x82\x00\x82\x08\x81\x01",
+    "query-of-era-256": b"\x82\x00\x82\x00\x82\x19\x01\x00\x81\x01",
+    "byron-query-tag-1": b"\x82\x00\x82\x00\x82\x00\x01",
+    "byron-query-as-a-list": b"\x82\x00\x82\x00\x82\x00\x81\x00",
+    "era-start-of-era-8": b"\x82\x00\x83\x01\x81\x00\x08",
 }
 # Accepted by the reference with lists written indefinite where its decoders take them: a ledger
 # set and the credentials in it. Both nodes must answer alike.
 VALID_RAW = {
     "indefinite-ledger-set": b"\x82\x00\x82\x00\x82\x06\x82\x0a\x9f\x9f\x00" + POOL_A + b"\xff\xff",
+    # Byron's GetUpdateInterfaceState and Dijkstra's GetEpochNo, both answered with the era
+    # mismatch, and the start of Dijkstra, which the chain has not reached (#720)
+    "byron-update-interface-state": b"\x82\x00\x82\x00\x82\x00\x00",
+    "dijkstra-epoch": b"\x82\x00\x82\x00\x82\x07\x81\x01",
+    "era-start-of-dijkstra": b"\x82\x00\x83\x01\x81\x00\x07",
 }
 
 

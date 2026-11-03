@@ -475,7 +475,7 @@ object NtcGolden:
             queryEnv,
             QueryView(point, blockNo, state),
             utxo,
-            NtcQuery.IfCurrent(Era.Conway.index, query)
+            NtcQuery.IfCurrent(QueryEra.Conway, query)
           )
           .map(unwrap)
       )

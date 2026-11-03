@@ -43,7 +43,7 @@ class WalletQuerySuite extends FunSuite:
       )
       def asked(q: LedgerQuery): xyz.kd5ujc.scarab.codec.Bytes =
         QueryAnswers
-          .answerOrWhy(NtcGolden.queryEnv, view, Map.empty, NtcQuery.IfCurrent(6, q))
+          .answerOrWhy(NtcGolden.queryEnv, view, Map.empty, NtcQuery.IfCurrent(QueryEra.Conway, q))
           .fold(e => fail(e.toString), identity)
       assertEquals(asked(LedgerQuery.GetRewardInfoPools), CborOut.build(_.array(1).raw(info)))
       assertEquals(
@@ -129,7 +129,7 @@ class WalletQuerySuite extends FunSuite:
           WalletQueryCases.mirror(nes)
         ),
         Map.empty,
-        NtcQuery.IfCurrent(6, query)
+        NtcQuery.IfCurrent(QueryEra.Conway, query)
       )
     val invalid = Vector(
       changed(_.copy(nOpt = -1)),

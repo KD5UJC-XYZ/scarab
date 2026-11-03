@@ -16,6 +16,11 @@ decoder reads it with (`decodeShelleyQuery`, ouroboros-consensus 82ecba32,
   definite or indefinite, tagged or not, without duplicates (`decodeSetEnforceNoDuplicates`).
 - `babbage-*`: the same at Babbage's version 7, where a set takes no tag and two elements alike are
   one (`decodeSet` below version 9).
+- `era-proposals` and `dijkstra-proposals`: the set of `GovActionId` of `GetProposals` (31), a
+  `RecD` record below version 12, which an empty indefinite list before its fields writes, and
+  `decodeRecordNamed` over its fields from 12 (`Conway/Governance/Procedures.hs:182-190`).
+- `dijkstra-*`: the ledger's decoders at Dijkstra's version 12, where a byte string may be chunked;
+  `dijkstra-plain-pools` is `fromCBOR`, which no era changes (#720).
 
 The committed corpus is `fixtures/reference/ntc-query-arguments/cases.jsonl`:
 
@@ -145,6 +150,52 @@ case("babbage-staking", "duplicate", arr(KEY_A, KEY_A, SCRIPT_A))
 case("babbage-staking", "tagged", tagged(arr(KEY_A)))
 # not an address: an enterprise header with a hash one byte short
 case("era-addresses", "short address", arr(bstr(b"\x61" + h(0x33, 27))))
+
+
+# --- GovActionId, a `RecD` record below version 12 and `decodeRecordNamed` from it (#720) --------
+def chunked(b):
+    """`b` as an indefinite byte string of one chunk."""
+    return b"\x5f" + bstr(b) + b"\xff"
+
+
+def one(item):
+    """A definite list of one element, which may be written as several items (a detached record)."""
+    return head(4, 1) + item
+
+
+ACTION = arr(TX, uint(0))
+for d in ("era-proposals", "dijkstra-proposals"):
+    case(d, "definite", arr(ACTION))
+    case(d, "tagged", tagged(arr(ACTION, arr(TX, uint(1)))))
+    case(d, "indefinite record", arr(indef(TX, uint(0))))
+    case(d, "detached record", one(b"\x9f\xff" + TX + uint(0)))
+    case(d, "index of 16 bits", arr(arr(TX, uint(0xFFFF))))
+    case(d, "index past 16 bits", arr(arr(TX, uint(0x10000))))
+    case(d, "chunked transaction id", arr(arr(chunked(h(0x66, 32)), uint(0))))
+    case(d, "duplicate", arr(ACTION, ACTION))
+
+# --- the ledger's decoders at Dijkstra's version 12: a chunked byte string is read ---------------
+CHUNK_A, CHUNK_B = chunked(h(0x11)), chunked(h(0x22))
+case("era-pool", "chunked key hash", CHUNK_A)
+case("dijkstra-pool", "key hash", A)
+case("dijkstra-pool", "chunked key hash", CHUNK_A)
+case("dijkstra-pools", "chunked", arr(CHUNK_B, CHUNK_A))
+case("dijkstra-pools", "duplicate", arr(A, CHUNK_A))
+case("dijkstra-staking", "untagged", arr(KEY_B, SCRIPT_A))
+case("dijkstra-staking", "chunked credential", arr(arr(uint(0), CHUNK_A)))
+case("dijkstra-staking", "indefinite credential", arr(indef(uint(1), A)))
+case("dijkstra-staking", "credential of three", arr(arr(uint(0), A, uint(0))))
+case("dijkstra-txins", "chunked input id", arr(arr(chunked(h(0x66, 32)), uint(1))))
+case("dijkstra-txins", "duplicate", arr(TXIN0, TXIN0))
+case("dijkstra-dreps", "every kind, chunked", arr(arr(uint(3)), arr(uint(2)), arr(uint(1), CHUNK_A)))
+case("dijkstra-dreps", "abstain of two", arr(arr(uint(2), A)))
+case("dijkstra-statuses", "every status", arr(uint(2), uint(0), uint(1)))
+case("dijkstra-statuses", "status 3", arr(uint(3)))
+case("dijkstra-addresses", "chunked", arr(chunked(b"\x61" + h(0x33))))
+case("dijkstra-addresses", "duplicate", arr(ADDRESS, ADDRESS))
+# a plain argument reads a definite string in every era
+case("dijkstra-plain-pools", "tagged ascending", tagged(arr(A, B)))
+case("dijkstra-plain-pools", "tagged chunked", tagged(arr(CHUNK_A)))
 
 
 def merge(lines):

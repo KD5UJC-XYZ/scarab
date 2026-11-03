@@ -26,6 +26,13 @@ object DecoderVersion:
     case Era.Babbage             => 7
     case Era.Conway              => 9
 
+  /** Dijkstra's `eraProtVerLow`, 12 (`type ProtVerLow DijkstraEra = 12`,
+    * `libs/cardano-ledger-core/internal/Cardano/Ledger/Internal/Definition/Era.hs:140`,
+    * cardano-ledger f649f975). The node has no Dijkstra ledger: only the arguments of a
+    * node-to-client query of that era are read at it, as the reference reads them (#720).
+    */
+  val Dijkstra: DecoderVersion = 12
+
   extension (v: DecoderVersion)
     /** `ifDecoderVersionAtLeast (natVersion @n)`. */
     def atLeast(n: Int): Boolean = v >= n

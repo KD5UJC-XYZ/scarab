@@ -129,7 +129,7 @@ class ChainDepGoldenSuite extends FunSuite:
           queryEnv,
           view,
           Map.empty,
-          NtcQuery.IfCurrent(g.era.index, LedgerQuery.DebugChainDepState)
+          NtcQuery.IfCurrent(QueryEra.of(g.era), LedgerQuery.DebugChainDepState)
         )
         .getOrElse(fail(s"${label(g)}: no answer"))
       assertEquals(answered.hex, g.answer, label(g))
