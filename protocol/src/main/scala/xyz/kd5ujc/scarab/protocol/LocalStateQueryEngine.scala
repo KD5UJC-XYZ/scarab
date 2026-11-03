@@ -110,7 +110,8 @@ object LocalStateQueryEngine:
       state: State,
       sender: Role,
       bytes: Bytes,
-      point: ChainSyncEngine.PointCodec[P]
+      point: ChainSyncEngine.PointCodec[P],
+      queries: LocalStateQuery.QueryReader
   ): DecodeResult[Message[P]] =
     ProtocolWire.prefix {
       val clientTurn = state == State.Idle || state == State.Acquired
@@ -130,7 +131,11 @@ object LocalStateQueryEngine:
             case 0 => Message.Failed(Failure.PointTooOld)
             case 1 => Message.Failed(Failure.PointNotOnChain)
             case _ => bad(ProtocolError.UnknownLocalStateQueryFailure)
-        case (2, 3) if tag == 3   => Message.Query(r.item())
+        case (2, 3) if tag == 3 =>
+          Message.Query(queries.span(bytes.drop(r.position)) match
+            case LocalStateQuery.QuerySpan.Item         => r.item()
+            case LocalStateQuery.QuerySpan.Prefix(size) => r.spanning(size)
+            case LocalStateQuery.QuerySpan.Short        => bad(ProtocolError.TruncatedCbor))
         case (2, 4) if tag == 4   => Message.Result(r.item())
         case (1, 5) if tag == 5   => Message.Release
         case (2, 6) if tag == 6   => Message.ReAcquire(Target.Specific(point.readFrom(r)))

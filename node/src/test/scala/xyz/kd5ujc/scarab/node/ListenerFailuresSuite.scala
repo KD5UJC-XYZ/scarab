@@ -86,6 +86,7 @@ class ListenerFailuresSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       siblingReleased <- Ref.of[IO, Boolean](false)
       stopped <- Deferred[IO, Fatal]
       source = new LocalStateQueryServer.Source[IO, StorageError]:
+        def queries = xyz.kd5ujc.scarab.node.ntc.NtcQuery.reader
         def acquire(target: LocalStateQuery.Target) =
           Resource.make(
             siblingStarted.get.as(

@@ -1010,7 +1010,9 @@
           "TxEnvelopeReferenceSuite",
           "TxEnvelopeSubmissionSuite",
           "RelayedTransactionsSuite",
-          "HeaderDecodingReferenceSuite"
+          "HeaderDecodingReferenceSuite",
+          "NtcQueryRecordsSuite",
+          "DetachedOutputFailureSuite"
         ],
         "paths": [
           "fixtures/reference/recd-records/cases.jsonl",
@@ -1025,8 +1027,8 @@
       },
       "limitations": {
         "issues": [
-          700,
           708,
+          709,
           711
         ]
       },

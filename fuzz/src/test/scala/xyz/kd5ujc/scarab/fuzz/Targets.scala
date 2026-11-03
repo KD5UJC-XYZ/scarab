@@ -751,7 +751,7 @@ object Targets:
       LocalStateQuery.State.values.toSeq,
       ChainSync.Role.values.toSeq,
       netCorpus("local-state-query:localStateQueryMessage"),
-      LocalStateQuery.decodePrefix,
+      (s, r, b) => LocalStateQuery.decodePrefix(s, r, b, NtcQuery.reader),
       LocalStateQuery.encode
     ),
     roundTrip(
@@ -777,7 +777,8 @@ object Targets:
           )
         original ++ netCorpus("local-state-query:localStateQueryMessage")()
       ,
-      (s, r, b) => LocalStateQueryEngine.decodePrefix(s, r, b, opaquePoint),
+      (s, r, b) =>
+        LocalStateQueryEngine.decodePrefix(s, r, b, opaquePoint, LocalStateQuery.QueryReader.items),
       (s, r, m) => LocalStateQueryEngine.encode(s, r, m, opaquePoint)
     ),
     roundTrip(

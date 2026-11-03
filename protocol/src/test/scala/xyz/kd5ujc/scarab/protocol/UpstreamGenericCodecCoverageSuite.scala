@@ -299,7 +299,8 @@ class UpstreamGenericCodecCoverageSuite extends munit.FunSuite:
         verify[LocalStateQueryEngine.Message[Bytes]](
           sample,
           name.endsWith("-splits"),
-          LocalStateQueryEngine.decodePrefix(state, role, _, point),
+          LocalStateQueryEngine
+            .decodePrefix(state, role, _, point, LocalStateQuery.QueryReader.items),
           LocalStateQueryEngine.encode(state, role, _, point),
           expectedLocalStateQuery(sample),
           {

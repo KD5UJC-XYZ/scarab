@@ -43,6 +43,33 @@ object LocalStateQuery:
   enum State:
     case Idle, Acquiring, Acquired, Querying, Done
 
+  /** Where a query of `MsgQuery` ends. The reference's codec reads the query with the block type's
+    * query decoder from the stream (`codecLocalStateQuery` takes `decodeQuery`,
+    * `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/LocalStateQuery/Codec.hs`), so a
+    * query holding a `RecD` record written as an empty indefinite list `9f ff` spans the record's
+    * fields after it, which a tree of items does not (#700). The ledger that knows the queries'
+    * structure says where; the codec still reads the bytes as whole items.
+    */
+  trait QueryReader:
+    /** How the query at the start of `input` reads; `input` may hold less than it or more. */
+    def span(input: Bytes): QuerySpan
+
+  object QueryReader:
+    /** Each query one item of a tree: the queries of a profile that holds no `RecD` record. */
+    val items: QueryReader = _ => QuerySpan.Item
+
+  enum QuerySpan:
+    /** One item, as a tree of items reads it. */
+    case Item
+
+    /** The first `size` bytes: one item as the query's decoder reads it, items one after another as
+      * a tree reads them.
+      */
+    case Prefix(size: Int)
+
+    /** The input ends before the query does. */
+    case Short
+
   type Target = LocalStateQueryEngine.Target[Point]
   val Target: LocalStateQueryEngine.Target.type = LocalStateQueryEngine.Target
 
@@ -63,5 +90,10 @@ object LocalStateQuery:
     LocalStateQueryEngine.encode(state, sender, message, ChainSync.enginePointCodec)
 
   /** Strict Cardano point validation retains the original bounded reader and error ordering. */
-  def decodePrefix(state: State, sender: Role, bytes: Bytes): DecodeResult[Message] =
-    LocalStateQueryEngine.decodePrefix(state, sender, bytes, ChainSync.enginePointCodec)
+  def decodePrefix(
+      state: State,
+      sender: Role,
+      bytes: Bytes,
+      queries: QueryReader = QueryReader.items
+  ): DecodeResult[Message] =
+    LocalStateQueryEngine.decodePrefix(state, sender, bytes, ChainSync.enginePointCodec, queries)

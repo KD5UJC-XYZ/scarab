@@ -290,6 +290,17 @@ private[protocol] object ProtocolWire:
       skip(0)
       input.slice(start, pos).compact
 
+    /** The next `size` bytes, read as whole items one after another with the checks of [[item]]:
+      * one item as a decoder of the ledger reads it, which a tree of items reads as several
+      * ([[LocalStateQuery.QuerySpan.Prefix]]). Refused where an item runs past them.
+      */
+    def spanning(size: Int): Bytes =
+      val start = pos
+      need(size)
+      while pos - start < size do skip(0)
+      if pos - start != size then bad(ProtocolError.ItemRunsPastSpan)
+      input.slice(start, pos).compact
+
   class Writer(limits: Limits)(using Scope):
     if !limits.valid then bad(ProtocolError.InvalidLocalLimits)
     private val out = new java.io.ByteArrayOutputStream()

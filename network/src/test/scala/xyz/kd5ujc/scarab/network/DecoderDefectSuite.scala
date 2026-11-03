@@ -263,6 +263,7 @@ class DecoderDefectSuite extends FailsOnUncaught:
         )
       )
     val stateQuery = new LocalStateQueryServer.Source[IO, Nothing]:
+      def queries = xyz.kd5ujc.scarab.protocol.LocalStateQuery.QueryReader.items
       def acquire(target: xyz.kd5ujc.scarab.protocol.LocalStateQuery.Target) =
         Resource.eval(IO.never)
     val mempool = new LocalTxMonitorServer.Source[IO]:

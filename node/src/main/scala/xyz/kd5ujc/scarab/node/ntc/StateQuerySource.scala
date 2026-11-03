@@ -36,6 +36,8 @@ object StateQuerySource:
       override def forVersion(agreed: NtcVersion): LocalStateQueryServer.Source[F, StorageError] =
         StateQuerySource(chain, env, store, chainGate, agreed)
 
+      def queries = NtcQuery.reader
+
       def acquire(
           target: Target
       ): Resource[
