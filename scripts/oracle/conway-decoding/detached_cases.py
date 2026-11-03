@@ -278,6 +278,34 @@ for era in ERAS:
         case(era, "transaction", "detached records in an indefinite transaction",
              c.array([rich, c.cmap([]), c.TRUE, c.NULL], indef=True))
 
+# Conway transactions as the node-to-node transaction submission carries them (#702): records in
+# each part, and refusals, each a whole transaction, for the protocol's reading of the transaction
+# and its id
+REDEEMER_UNITS = witness_set(5, c.array([c.array([c.uint(0), c.uint(0), c.uint(0), UNITS])]))
+GOVERNANCE = {**votes(ACTION_ID, detached([c.uint(1), ANCHOR])), **proposals(proposal(INFO))}
+case("conway", "transaction", "detached records in the witness set",
+     c.array([with_records("conway"), REDEEMER_UNITS, c.TRUE, c.NULL]))
+case("conway", "transaction", "detached governance records",
+     c.array([body("conway", GOVERNANCE), c.cmap([]), c.TRUE, AUX]))
+case("conway", "transaction", "detached records in every part of an indefinite transaction",
+     c.array([body("conway", {**outputs(c.array([ADDRESS, VALUE])), **GOVERNANCE}), REDEEMER_UNITS,
+              b"\xf4", AUX], indef=True))
+# refused: the output counts the value's fields as its own items
+case("conway", "transaction", "value in an output that counts its fields",
+     c.array([body("conway", {1: c.array([b"\x84" + ADDRESS + VALUE])}), c.cmap([]), c.TRUE, c.NULL]))
+# refused: the multi-asset is missing, so the next key of the body is read as it
+case("conway", "transaction", "value without its multi-asset",
+     c.array([body("conway", outputs(c.array([ADDRESS, detached([c.uint(2_000_000)])]))), c.cmap([]),
+              c.TRUE, c.NULL]))
+# refused: the units' steps are missing, so the validity flag is read as them
+case("conway", "transaction", "redeemer units without their steps",
+     c.array([with_records("conway"),
+              witness_set(5, c.array([c.array([c.uint(0), c.uint(0), c.uint(0), detached([c.uint(1)])])])),
+              c.TRUE, c.NULL]))
+# refused: the certificates are not a record, and the items after them are read by the body
+case("conway", "transaction", "empty indefinite certificates and items after them",
+     c.array([body("conway", {4: detached([c.array([c.uint(0), CRED])])}), c.cmap([]), c.TRUE, c.NULL]))
+
 
 # --- the parts of a block after its header ------------------------------------------------------
 def block_body(era, bodies, witnesses, aux=None, indef=False):
