@@ -94,7 +94,7 @@ class HandshakeSuite extends FailsOnUncaught:
         for
           c <- client.channel(0)
           s <- server.channel(0)
-          _ <- serveHandshake(s, serverOffers).start
+          _ <- typed(serveHandshake(s, serverOffers)).start
           agreed <- HandshakeClient.run(c, Handshake.defaultNodeToNode(clientMagic))
         yield agreed
       }
@@ -133,10 +133,11 @@ class HandshakeSuite extends FailsOnUncaught:
         for
           c <- client.channel(0)
           s <- server.channel(0)
-          _ <- (s.recv(5760)(b =>
-            xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult.Decoded((), b.size)
-          ) *>
-            s.send(Bytes(Vector(-1)))).start
+          _ <- typed(
+            s.recv(5760)(b =>
+              xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult.Decoded((), b.size)
+            ) *> s.send(Bytes(Vector(-1)))
+          ).start
           agreed <- HandshakeClient.run(c, Handshake.defaultNodeToNode(42L))
         yield agreed
       }

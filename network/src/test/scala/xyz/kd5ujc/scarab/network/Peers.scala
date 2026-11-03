@@ -180,8 +180,9 @@ object Peers:
       pings: Ref[IO, Int],
       pingAnswer: Int => Option[Int] = Some(_)
   )(using Net): Resource[IO, Unit] =
-    def run(protocol: Int)(f: MuxChannel[IO] => IO[Unit]): Resource[IO, Unit] =
-      Resource.eval(mux.channel(protocol)).flatMap(c => f(c).attempt.void.background.void)
+    // each responder runs in a fiber with an error scope of its own (ADR 0017)
+    def run(protocol: Int)(f: MuxChannel[IO] => Net ?=> IO[Unit]): Resource[IO, Unit] =
+      Resource.eval(mux.channel(protocol)).flatMap(c => typed(f(c)).attempt.void.background.void)
     for
       _ <- run(0)(serveHandshake(_, Handshake.defaultNodeToNode(magic)).void)
       _ <- run(2)(serveChainSync(_, intersect, script))
