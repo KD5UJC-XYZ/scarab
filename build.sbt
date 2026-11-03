@@ -38,6 +38,14 @@ ThisBuild / packageTimestamp := Some(315532800000L)
 ThisBuild / publish / skip := true
 ThisBuild / Test / parallelExecution := false
 Global / concurrentRestrictions += Tags.limit(Tags.Test, 1)
+// JDK 25 warns where a restricted method is called and where `sun.misc.Unsafe`'s memory methods are used
+// (issue 589). blst loads its JNI library through `java.lang.System::load`, and Scala 3's lazy vals and the
+// build's hashing call `Unsafe`. Allowing both keeps the test logs free of the warning today, and stops a
+// later JDK from blocking the call the first time a test makes it. The build JVM gets the same two flags from
+// `scripts/sbtw`, because the default test group runs there; a forked group that sets its own
+// `runJVMOptions` replaces the options `Test / javaOptions` supplies, so it names them again.
+val jdk25Flags = Seq("--enable-native-access=ALL-UNNAMED", "--sun-misc-unsafe-memory-access=allow")
+ThisBuild / Test / javaOptions ++= jdk25Flags
 
 // The tests of every module: munit, ScalaCheck, and the cats law and effect test kits.
 val testDependencies = Seq(
@@ -154,8 +162,8 @@ lazy val plutus = scarab("plutus")
       // java.io.tmpdir does not exist, so native-lib-loader cannot extract the library.
       val (absent, others) =
         (Test / definedTests).value.partition(_.name.endsWith(".NativeCryptoAbsentSuite"))
-      val fork = (Test / forkOptions).value
-        .withRunJVMOptions(Vector("-Djava.io.tmpdir=/nonexistent/scarab-no-tmpdir"))
+      val options = Vector("-Djava.io.tmpdir=/nonexistent/scarab-no-tmpdir") ++ jdk25Flags
+      val fork = (Test / forkOptions).value.withRunJVMOptions(options)
       Seq(
         Tests.Group("plutus", others, Tests.InProcess),
         Tests.Group("native-crypto-absent", absent, Tests.SubProcess(fork))
@@ -222,7 +230,8 @@ lazy val storage = scarab("storage")
       // Other suites run in the build JVM.
       val (bounded, others) =
         (Test / definedTests).value.partition(_.name.endsWith(".MemoryBoundSuite"))
-      val fork = (Test / forkOptions).value.withRunJVMOptions(Vector("-Xmx256m"))
+      val options = Vector("-Xmx256m") ++ jdk25Flags
+      val fork = (Test / forkOptions).value.withRunJVMOptions(options)
       Seq(
         Tests.Group("storage", others, Tests.InProcess),
         Tests.Group("heap-bound", bounded, Tests.SubProcess(fork))
@@ -348,12 +357,9 @@ lazy val node = scarab("node")
       (metadata +: notices) ++ texts
     }.taskValue,
     Compile / run / fork := true,
-    // Scala 3's lazy vals (still in 3.9) use sun.misc.Unsafe, on which Java 25 warns (docker/candidate.Dockerfile);
-    // from a classpath the JAR's Enable-Native-Access attribute does not apply
-    Compile / run / javaOptions ++= Seq(
-      "--sun-misc-unsafe-memory-access=allow",
-      "--enable-native-access=ALL-UNNAMED"
-    )
+    // From a classpath the JAR's Enable-Native-Access attribute does not apply, so the node run this way needs
+    // the flags itself (docker/candidate.Dockerfile; issue 589)
+    Compile / run / javaOptions ++= jdk25Flags
   )
 
 // Schema-first models, step 1: CDDL parser and Scala generator (build-time tool; see docs/models.md).
