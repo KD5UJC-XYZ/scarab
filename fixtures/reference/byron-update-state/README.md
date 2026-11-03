@@ -25,7 +25,7 @@ again to the state it was built from.
 | `endorsements-by-version-then-key` | endorsements of six versions by two keys each |
 | `word-bounds` | each `Word16`, `Word32`, `Word64` and `Word8` at its maximum; portions 0 and 10^15 |
 | `naturals-and-nano` | `Natural` sizes 0, 23, 2^64 − 1, 2^64 and 10^30; summands 0 to the lovelace maximum; multipliers 0, −1, −2^64 − 1, 2^64 − 1 and 2^70 |
-| `twenty-four-entries` | 24 entries in each map and set, 24 metadata entries |
+| `twenty-four-entries` | 24 entries in each map (application versions, protocol and software proposals, confirmations, votes, registration slots), in the set of endorsements, in one proposal's set of voters and in one application version's metadata; no candidate (the list is indefinite at any length) |
 
 Scope: the encoding only. Which state the ledger rules reach is the rules' evidence (`ByronUpdateSuite`,
 `ByronRegistrationFixtureSuite`). `ByronUpdateInterfaceSuite` builds every case's state in Scarab's

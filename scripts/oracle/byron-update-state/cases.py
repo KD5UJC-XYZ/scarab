@@ -182,7 +182,13 @@ def cases():
         appVersions=[{"name": f"app{i:02d}", "number": i, "slot": i,
                       "metadata": meta(*[f"t{j:02d}" for j in range(24)]) if i == 0 else []}
                      for i in range(24)],
-        votes=[{"id": h32(1), "voters": [h28(i) for i in range(24)]}],
+        protocolProposals=[{"id": h32(i), "version": [1, i, 0], "parameters": params(maxTxSize=4096 + i)}
+                           for i in range(24)],
+        softwareProposals=[{"id": h32(i), "name": f"sw{i:02d}", "number": i, "metadata": []}
+                           for i in range(24)],
+        confirmed=[{"id": h32(i), "slot": 2000 + i} for i in range(24)],
+        votes=[{"id": h32(i), "voters": [h28(j) for j in range(24)] if i == 1 else [h28(i)]}
+               for i in range(24)],
         endorsements=[{"version": [1, 0, 0], "key": h28(i)} for i in range(24)],
         registrationSlots=[{"id": h32(i), "slot": 1000 + i} for i in range(24)],
     )})

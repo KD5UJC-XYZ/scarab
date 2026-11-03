@@ -110,11 +110,11 @@
     "main": "scripts/oracle/byron-update-state/Main.hs",
     "mainSha256": "6383d7c58daa6f9417110b5b46acf5aa590e6d92e30411b10a9234c03a87bdb7",
     "cases": "scripts/oracle/byron-update-state/cases.py",
-    "casesSha256": "79499d03bba9d687807cec0a681dc4936ac0cde1c8e10f0ef6c597c149908b04"
+    "casesSha256": "d0ed8eb0ace401672ed137409341d10b861eff36f0676494e23a13343e5e7af8"
   },
   "cases": {
     "file": "cases.jsonl",
-    "sha256": "223a445a425c108da8ed14f48c5810b7a23f3ccdd7835e17252c0f50be6a8d8d",
+    "sha256": "7657b9a97ef8f18522bee2be4b2ff582d2063a950386781bfeb9f4e1381d8886",
     "count": 12
   }
 }

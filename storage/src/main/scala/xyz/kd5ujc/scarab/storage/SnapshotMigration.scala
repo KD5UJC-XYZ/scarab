@@ -143,8 +143,12 @@ object SnapshotMigration:
         .flatMap(_.traverse(name => admissible(dir / name).map(name -> _)))
         .flatMap(refusals)
 
+    /** The version of a supported file that its migration can convert: [[Migrate]] detects every
+      * file before it converts any, so a file that would lose state is refused before another is
+      * rewritten ([[admissible]]).
+      */
     def detect(file: Path)(using Raise[F, StorageError]): F[FormatVersion] =
-      supported(file).flatMap(_.fold(_.raise[F, FormatVersion], F.pure))
+      admissible(file).flatMap(_.fold(_.raise[F, FormatVersion], F.pure))
 
     /** Verify the actual source header and the exact registered version transition. Retired or
       * unknown source files refuse before a caller-provided version can bypass admission.

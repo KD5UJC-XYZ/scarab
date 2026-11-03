@@ -83,8 +83,9 @@ the old checksum, checks the V5 sidecar against its fingerprint, copies the V5 b
 a `Legacy` binding (no checkpoint digest is invented for a file that recorded none) and atomically
 writes V7. Global V8 changes only the snapshot's sidecar schema (#726): `step(file, V7, V8)` verifies
 the old checksum, reads the sidecar in the frozen V7 schema, keeps the binding and the Haskell bytes,
-and atomically writes V8; `SnapshotMigration.preflight` and `run` first read the sidecar of every V5
-and V7 file and refuse one whose conversion would invent state. `Migrate` then has no work for V8.
+and atomically writes V8; `SnapshotMigration.preflight`, `run` and `detect` (which the generic
+`Migrate` calls for every file before it converts any) read the sidecar of every V5 and V7 file and
+refuse one whose conversion would invent state, and each step refuses it too. `Migrate` then has no work for V8.
 The identity kind remains at V6 and unchanged kinds retain their own current versions. A future
 snapshot change appends global `V9`. Retire the V5
 reader only after the inventory and conversion conditions below hold, then advance the snapshot
@@ -131,8 +132,9 @@ one: `FormatVersion.V8` and `V8 -> "SCRBSNP8"` registered; the previous sidecar 
 the V7 one); `SnapshotV8.fromV7` reads the sidecar in it, refuses a lost metadata with
 `ResyncRequired` and writes the rest unchanged; `fixtures/snapshot-v8` is the registered conversion
 of `fixtures/snapshot-v7` (`SnapshotV8FixtureMain`), re-derived by `SnapshotGoldenSuite`; the
-migrate and refuse cases at every entry point are `SnapshotV8MigrationSuite`, on the startup path
-`SnapshotPreflightSuite`.
+migrate and refuse cases at every entry point (`preflight`, `run`, `detect`, `step` and the generic
+`Migrate`, a refused file beside a convertible one left unchanged) are `SnapshotV8MigrationSuite`,
+on the startup path `SnapshotPreflightSuite`.
 
 A RocksDB layout change goes through the same steps plus the checkpoint rules of the next section.
 The change is level 3 ([CONTRIBUTING](../CONTRIBUTING.md#gates-and-ceremony-by-level-of-change));

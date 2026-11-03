@@ -161,6 +161,10 @@ class SnapshotV8MigrationSuite extends CatsEffectSuite:
           run <- attempt(migration.run(dir))
           next = FileKind.SnapshotFile.nextChangedVersion(version).getOrElse(fail("no next"))
           step <- attempt(migration.step(refused, version, next))
+          detect <- attempt(migration.detect(refused))
+          // the generic path, the convertible file first: every file is detected before any is
+          // converted
+          generic <- attempt(Migrate(migration, List(other, refused)))
           after <- (bytesOf(refused), bytesOf(other)).tupled
         yield
           val error =
@@ -168,6 +172,8 @@ class SnapshotV8MigrationSuite extends CatsEffectSuite:
           assertEquals(preflight, Left(error))
           assertEquals(run, Left(error))
           assertEquals(step, Left(error))
+          assertEquals(detect, Left(error))
+          assertEquals(generic, Left(error))
           assertEquals(after, before)
       }
     }
