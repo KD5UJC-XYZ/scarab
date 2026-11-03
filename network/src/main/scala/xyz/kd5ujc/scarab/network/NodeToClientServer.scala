@@ -50,8 +50,11 @@ object NodeToClientServer:
       Fibers.scoped[F, NetworkError, Unit](t => NetworkError.fromThrowable("node-to-client", t))(
         program
       )
+    // The handshake runs on a bearer phase of its own, as the reference's local server does
+    // (ouroboros-network 2fb69829 `ConnectionHandler.hs:98-102,412`): a partial handshake SDU has
+    // `sduHandshakeTimeout`, 10 s, and the application SDUs after it `sduTimeout`, 30 s.
     Mux
-      .resource(
+      .handshakeResource(
         bearer,
         protocols,
         Mux.Config.nodeToClient
@@ -78,6 +81,7 @@ object NodeToClientServer:
                 )
                 .raise[F, NtcVersion]
             )(Async[F].pure)
+          _ <- mux.installApplication(Set.empty, protocols - Protocols.Handshake)
           unavailable <- Deferred[F, LocalTxSubmissionServer.Unavailable]
           backendFailure <- Deferred[F, E]
           submission <- mux.channel(Protocols.LocalTxSubmission)

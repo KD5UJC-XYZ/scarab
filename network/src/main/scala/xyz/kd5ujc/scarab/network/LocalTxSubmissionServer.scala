@@ -72,8 +72,9 @@ object LocalTxSubmissionServer:
       magic: Long,
       submit: Bytes => F[Response]
   )(using Raise[F, NetworkError]): F[End] =
+    // The handshake has a bearer phase of its own, as in `NodeToClientServer.acceptBackend`.
     Mux
-      .resource(
+      .handshakeResource(
         bearer,
         Set(Protocols.Handshake, Protocols.LocalTxSubmission),
         Mux.Config.nodeToClient
@@ -90,6 +91,7 @@ object LocalTxSubmissionServer:
                 suite = xyz.kd5ujc.scarab.protocol.Handshake.Suite.NodeToClient
               )
             )
+          _ <- mux.installApplication(Set.empty, Set(Protocols.LocalTxSubmission))
           channel <- mux.channel(Protocols.LocalTxSubmission)
           // the connection ends when the client finishes the protocol or closes the socket; the
           // protocol runs in a fiber of its own and its failure comes back as a value
