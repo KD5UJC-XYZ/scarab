@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "measuredAt": "2026-11-03",
-  "scope": "Unchanged released decoders of block headers: the TPraos BHeader of Shelley and Alonzo (decoder versions 2 and 5), the Praos Header of Babbage and Conway (7 and 9) and the Leios Header (Dijkstra's 12), each read with decodeFullAnnotator, and a Byron epoch boundary header read with decCBORABoundaryHeader at byronProtVer, a header body alone with decodeFull, and a ledger Block holding a Shelley-to-Conway header; definite, indefinite, detached (an empty indefinite list with the fields after it) and non-minimal forms of the header, its body, a VRF certificate, the operational certificate, the protocol version and a Leios announcement, with the refusals around them and the bounds of the body size and protocol version; a Leios issuer key after hundreds and thousands of empty chunks, the same chunked keys refused below version 12, and a Byron boundary header with 200 attributes, which no decoder counts (#749); for each accepted case the header hash over the bytes read, the block body hash of a block, and getSignableRepresentation of the header body, the bytes the KES signature is checked over; and, for a Praos VRF key made of a seed, whether a certificate with its output replaced decodes and passes verifyCertified; no ledger rule or KES signature is checked",
+  "scope": "Unchanged released decoders of block headers: the TPraos BHeader of Shelley and Alonzo (decoder versions 2 and 5), the Praos Header of Babbage and Conway (7 and 9) and the Leios Header (Dijkstra's 12), each read with decodeFullAnnotator, and a Byron epoch boundary header read with decCBORABoundaryHeader at byronProtVer, a header body alone with decodeFull, and a ledger Block holding a Shelley-to-Conway header; definite, indefinite, detached (an empty indefinite list with the fields after it) and non-minimal forms of the header, its body, a VRF certificate, the operational certificate, the protocol version and a Leios announcement, with the refusals around them and the bounds of the body size and protocol version; a Leios issuer key after hundreds and thousands of empty chunks, the same chunked keys refused below version 12, and a Byron boundary header with 200 attributes, which no decoder counts (#749); the forms of a Byron boundary header's extra data, accepted and refused, and its \"Genesis\" tag (#754); for each accepted case the header hash over the bytes read, the block body hash of a block, and getSignableRepresentation of the header body, the bytes the KES signature is checked over; and, for a Praos VRF key made of a seed, whether a certificate with its output replaced decodes and passes verifyCertified; no ledger rule or KES signature is checked",
   "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
   "compiler": "GHC 9.10.3",
   "packages": {
@@ -117,12 +117,12 @@
     "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-header-decoding:local /fixtures/header-inputs.json",
     "unchanged": true
   },
-  "generatorSha256": "ab61ad0af4b8d77021454c81b36b1019b3cd63f038e45abefb5c6e8445fe0a0d",
-  "harnessInputSha256": "85802311a03a2529f699987f7d68531842e6ef2311dced668955547792dde63d",
-  "harnessOutputSha256": "d1526bc0a6d893fb716714be85d3ee2c6599c91155891d45dfb415ddfefbff2b",
-  "casesSha256": "70fbee2c483d8b2ef4d79c2aa1414520a396b850f54f7d7ae909601d4fbba4fa",
-  "cases": 156,
-  "accepted": 91,
-  "refused": 65,
+  "generatorSha256": "8f23889131b90889981dd0eedd9df7d858d8e9eaf95ff8cef2eae799352fe66c",
+  "harnessInputSha256": "119f0c676221f28c3cbcdd3e6dcad2606f132695a5c2bf79679200f1e24ed6ca",
+  "harnessOutputSha256": "07ca1636242919498fc165bd297ee443c4f7beb987967d531e7ff9df22b6b963",
+  "casesSha256": "bdab84933027f43896a1494006ea36f7c25e4b7a95e048d757e798727b1efed4",
+  "cases": 180,
+  "accepted": 101,
+  "refused": 79,
   "originalBytesRetained": true
 }

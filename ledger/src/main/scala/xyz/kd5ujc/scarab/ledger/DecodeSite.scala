@@ -296,6 +296,8 @@ enum DecodeField(val label: String) extends DecodeSite:
   case Body extends DecodeField("body")
   case BodyProof extends DecodeField("body proof")
   case BoundaryBody extends DecodeField("boundary body")
+  case BoundaryExtraData extends DecodeField("boundary extra header data")
+  case BoundaryAttributes extends DecodeField("boundary attributes")
   case ByronAddress extends DecodeField("Byron address")
   case ByronAddressAttributes extends DecodeField("Byron address attributes")
   case ByronAddressBody extends DecodeField("Byron address body")

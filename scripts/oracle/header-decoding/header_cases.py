@@ -241,6 +241,51 @@ case(BYRON, "boundaryheader", "200 attributes", boundary_header([(c.uint(k), c.b
 case(BYRON, "boundaryheader", "four fields", boundary_header([], fields=4))
 
 
+def boundary_extra(extra):
+    """A Byron boundary header of epoch 5 with `extra` as its extra data (#754)."""
+    return c.array([c.uint(764824073), c.bstr(c.h(0x11, 32)), c.bstr(c.h(0x22, 32)),
+                    c.array([c.uint(5), c.array([c.uint(108000)])]), extra])
+
+
+# #754: the extra data is a definite list of one item, `enforceSize`; the attributes a definite map
+# of strictly ascending `Word8` keys to definite byte strings (`decodeMapSkel` below version 2,
+# `Decoder.hs:736-765,810-823`); attribute 255 "Genesis" makes the header name the genesis.
+EMPTY = c.bstr(b"")
+
+
+def attrs(*pairs):
+    return c.array([c.cmap(list(pairs))])
+
+
+for name, extra in [
+    ("extra data with a non-minimal list head", b"\x98\x01" + c.cmap([])),
+    ("attributes with a non-minimal map head", c.array([b"\xb8\x01" + c.uint(1) + EMPTY])),
+    ("a key with a non-minimal head", attrs((b"\x18\x05", EMPTY))),
+    ("a key in nine bytes", attrs((b"\x1b" + (5).to_bytes(8, "big"), EMPTY))),
+    ("keys 24 and 255", attrs((c.uint(24), EMPTY), (c.uint(255), EMPTY))),
+    ("a value with a non-minimal length head", attrs((c.uint(1), b"\x58\x01\x00"))),
+    ("a value of 1000 bytes", attrs((c.uint(1), c.bstr(b"\x00" * 1000)))),
+    ("ascending keys with a gap", attrs((c.uint(1), EMPTY), (c.uint(7), EMPTY))),
+    ("a non-minimal key below the next", attrs((b"\x18\x05", EMPTY), (c.uint(6), EMPTY))),
+    ("the genesis tag", attrs((c.uint(255), c.bstr(b"Genesis")))),
+    ("extra data indefinite", b"\x9f" + c.cmap([]) + b"\xff"),
+    ("extra data not a list", c.cmap([])),
+    ("extra data of no fields", c.array([])),
+    ("extra data of two fields", c.array([c.cmap([]), c.cmap([])])),
+    ("attributes not a map", c.array([c.uint(0)])),
+    ("attributes an indefinite map", c.array([c.cmap([(c.uint(1), EMPTY)], indef=True)])),
+    ("a key of 256", attrs((c.uint(256), EMPTY))),
+    ("a negative key", attrs((b"\x20", EMPTY))),
+    ("a chunked value", attrs((c.uint(1), b"\x5f\x41\x00\xff"))),
+    ("a text value", attrs((c.uint(1), c.text("a")))),
+    ("a tagged value", attrs((c.uint(1), b"\xc2\x40"))),
+    ("duplicate keys", attrs((c.uint(1), EMPTY), (c.uint(1), c.bstr(b"a")))),
+    ("descending keys", attrs((c.uint(2), EMPTY), (c.uint(1), EMPTY))),
+    ("a non-minimal key above the next", attrs((c.uint(6), EMPTY), (b"\x18\x05", EMPTY))),
+]:
+    case(BYRON, "boundaryheader", name, boundary_extra(extra))
+
+
 def merge(reference):
     """The corpus lines: each case with the verdict, the signable bytes and the hashes."""
     assert len(reference) == len(CASES), "the harness answered a different number of cases"

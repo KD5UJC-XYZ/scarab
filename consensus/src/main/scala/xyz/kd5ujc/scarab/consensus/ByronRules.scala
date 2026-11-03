@@ -198,9 +198,12 @@ object ByronRules:
 
   private def orderOk(tip: Option[ByronTip], h: Header.Byron): Either[ByronChainError, Unit] =
     tip match
+      // the first block is a boundary block that names the genesis (epoch 0, or the "Genesis" tag),
+      // and a later boundary block names its predecessor: `updateChainBoundary`
+      // (`Chain/Block/Validation.hs:276-287`, cardano-ledger f649f975, #754)
       case None =>
         Either.cond(
-          h.boundary && h.epoch == 0,
+          h.namesGenesis,
           (),
           ByronChainError.InitialBoundaryRequired
         )
@@ -209,7 +212,7 @@ object ByronRules:
           h.epoch > t.epoch && !t.boundary,
           (),
           ByronChainError.BoundaryOrder(h.epoch, t.epoch, t.boundary)
-        )
+        ) *> Either.cond(!h.namesGenesis, (), ByronChainError.GenesisPredecessor(t.hash))
       case Some(t) =>
         Either.cond(
           h.epoch >= t.epoch && (h.slot > t.slot || (t.boundary && h.slot == t.slot)),

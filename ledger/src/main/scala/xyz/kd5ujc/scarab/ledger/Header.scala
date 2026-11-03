@@ -77,7 +77,8 @@ object Header:
       protocolMagic: BigInt = 0,
       bodyProof: Bytes = Bytes(Vector.empty),
       main: Option[ByronMain] = None,
-      blockVersion: ByronVersion = ByronVersion.zero
+      blockVersion: ByronVersion = ByronVersion.zero,
+      genesisTag: Boolean = false
   ):
     def slot: BigInt = epoch * epochSlots + slotInEpoch
     def withSizeHint(blockSizeHint: Unsigned[Unsigned.Width.W32]): Byron = Byron(
@@ -93,12 +94,14 @@ object Header:
       protocolMagic,
       bodyProof,
       main,
-      blockVersion
+      blockVersion,
+      genesisTag
     )
 
   /** Byron main or epoch-boundary header. For a boundary block `slotInEpoch` is 0; `blockNo` is the
     * header's chain difficulty (a boundary block repeats its predecessor's). `main` holds what a
-    * main header adds: issuer key, signature and the bytes the signature covers.
+    * main header adds: issuer key, signature and the bytes the signature covers. `genesisTag`: a
+    * boundary header's attributes hold the "Genesis" tag ([[byron.ByronTransport.boundaryExtra]]).
     */
   final case class Byron(
       raw: Bytes,
@@ -113,11 +116,21 @@ object Header:
       protocolMagic: BigInt = 0,
       bodyProof: Bytes = Bytes(Vector.empty),
       main: Option[ByronMain] = None,
-      blockVersion: ByronVersion = ByronVersion.zero
+      blockVersion: ByronVersion = ByronVersion.zero,
+      genesisTag: Boolean = false
   ) extends Header:
     def era: Era = Era.Byron
     def slot: BigInt = epoch * epochSlots + slotInEpoch
     override def isBoundary: Boolean = boundary
+
+    /** The header names the genesis as its predecessor, not a block: a boundary header of epoch 0
+      * or with the "Genesis" tag, whose previous hash is then the genesis hash
+      * (`decCBORABoundaryHeader`, `Block/Header.hs:623-624`, cardano-ledger f649f975; consensus's
+      * `headerPrevHash` is then `GenesisHash`, `abobHdrPrevHash`, `Block/Block.hs:620-624`, and
+      * `Byron/Ledger/Block.hs:241-246`, ouroboros-consensus 82ecba32). A main header always names a
+      * block.
+      */
+    def namesGenesis: Boolean = boundary && (epoch == 0 || genesisTag)
     def withoutSizeHint: UnsizedByron = UnsizedByron(
       raw,
       hash,
@@ -130,7 +143,8 @@ object Header:
       protocolMagic,
       bodyProof,
       main,
-      blockVersion
+      blockVersion,
+      genesisTag
     )
 
   /** How a Byron main block header is signed: only heavyweight delegation exists (the signature
@@ -362,7 +376,8 @@ object Header:
     * previous hash, the leader's key and the delegation certificate and signature
     * (`Block/Header.hs:351-374`), a verification key also with its length in the shortest form
     * ([[verificationKey]]), and the body proof ([[byron.ByronTransport.bodyProof]]), whose original
-    * bytes are kept.
+    * bytes are kept. A boundary header's extra data is its attributes, read as
+    * `decCBORABoundaryHeader` reads them ([[byron.ByronTransport.boundaryExtra]], #754).
     */
   def byronFromRaw(
       raw: Bytes,
@@ -385,7 +400,8 @@ object Header:
             epoch <- uint(consensus(0))
             diff <- array(consensus(1), 1)
             no <- uint(diff(0))
-          yield (epoch, BigInt(0), no, None, ByronVersion.zero)
+            tagged <- ByronTransport.boundaryExtra(h(4)).leftMap(fail)
+          yield (epoch, BigInt(0), no, None, ByronVersion.zero, tagged)
         else
           for
             slotId <- array(consensus(0), 2)
@@ -403,8 +419,8 @@ object Header:
               Vector(0x85.toByte) ++ Vector(h(1), h(2), consensus(0), consensus(2), h(4))
                 .flatMap(_.original.value)
             )
-          yield (epoch, inEpoch, no, Some(ByronMain(leader, signature, signed)), version)
-      (epoch, inEpoch, no, main, version) = parsed
+          yield (epoch, inEpoch, no, Some(ByronMain(leader, signature, signed)), version, false)
+      (epoch, inEpoch, no, main, version, tagged) = parsed
     yield Header.UnsizedByron(
       raw,
       Blake2b.hash256.hash(
@@ -419,7 +435,8 @@ object Header:
       magic,
       proof,
       main,
-      version
+      version,
+      tagged
     )
 
   /** A Byron `VerificationKey`: 64 bytes read with `decodeBytesCanonical` (`decCBORXPub`,
