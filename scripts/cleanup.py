@@ -300,21 +300,34 @@ def worktrees(only: Iterable[str] | None = None) -> list[Worktree]:
         admin = Path(git("rev-parse", "--absolute-git-dir", cwd=Path(path), check=False).strip() or path)
         # The linking files (`.git` and the administrative `gitdir`) are rewritten when the worktree is moved.
         links = (admin / "HEAD", admin / "index", admin / "logs" / "HEAD", admin / "gitdir", Path(path) / ".git")
-        stamps = [max(info.st_mtime, info.st_ctime)
-                  for info in (os.lstat(link) for link in links if os.path.lexists(link))]
+        stamps = change_times(links)
         # An edit undone in the working tree alone (`git restore --worktree`) touches none of those, only the file, and
         # a restore that keeps the old modification time (`cp -p`) shows only in the file's change time.
         tracked = subprocess.run(["git", "-C", path, "ls-files", "-z"], capture_output=True, text=True)
-        files = [Path(path) / name for name in tracked.stdout.split("\0") if name]
-        stamps += [max(info.st_mtime, info.st_ctime)
-                   for info in (os.lstat(file) for file in files if os.path.lexists(file))]
-        known = tracked.returncode == 0 and (admin / "logs" / "HEAD").exists()
+        files = change_times(Path(path) / name for name in tracked.stdout.split("\0") if name)
+        known = (tracked.returncode == 0 and (admin / "logs" / "HEAD").exists() and stamps is not None
+                 and files is not None)
         trees.append(Worktree(
             path=path, head=entry.get("HEAD", ""), branch=entry.get("branch", "").removeprefix("refs/heads/") or None,
             locked="locked" in entry, dirty=any(not line.startswith("!!") for line in status),
             ignored=tuple(line[3:] for line in status if line.startswith("!!")),
-            activity=max(stamps) if known else None))
+            activity=max([*(stamps or []), *(files or [])]) if known else None))
     return trees
+
+
+def change_times(paths: Iterable[Path]) -> list[float] | None:
+    """The later of each path's modification and change time, skipping paths that do not exist (a tracked file gone
+    from a worktree leaves it dirty, so it is kept anyway); None if any other path cannot be read."""
+    times = []
+    for path in paths:
+        try:
+            info = os.lstat(path)
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return None
+        times.append(max(info.st_mtime, info.st_ctime))
+    return times
 
 
 def used_paths() -> frozenset[str]:

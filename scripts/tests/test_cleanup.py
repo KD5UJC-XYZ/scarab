@@ -276,6 +276,20 @@ class ActivityTest(unittest.TestCase):
         self.assertGreater(self.listed().activity, activity)
         self.assertEqual(self.times("HEAD", "logs/HEAD", "index"), untouched)
 
+    def test_a_file_that_vanishes_during_the_scan_is_skipped_and_one_that_cannot_be_read_makes_it_unknown(self):
+        import os
+        lstat = os.lstat
+        def failing(error):
+            def fake(path, *args, **kwargs):
+                if Path(path).name == "file":
+                    raise error
+                return lstat(path, *args, **kwargs)
+            return fake
+        with mock.patch.object(cleanup.os, "lstat", failing(FileNotFoundError("file"))):
+            self.assertIsNotNone(self.listed().activity)
+        with mock.patch.object(cleanup.os, "lstat", failing(PermissionError("file"))):
+            self.assertIsNone(self.listed().activity)
+
     def test_without_a_head_reflog_the_activity_is_unknown_and_a_stale_sweep_keeps_it(self):
         import time
         self.run_git("config", "core.logAllRefUpdates", "false")
