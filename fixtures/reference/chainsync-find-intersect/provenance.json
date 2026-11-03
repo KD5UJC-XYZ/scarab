@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-03",
+  "scope": "Node-to-node ChainSync client messages read in the server's StIdle by the released codecChainSync of ouroboros-network 1.2.0.0 with decodePoint (decodeRawHash p) at the 32-byte Cardano hash size: MsgFindIntersect with no points up to the most the 65535-byte bound holds, definite and indefinite lists, origins beyond 8192 items, slot and hash bounds and malformed points; the verdict, the complete failure, the number of points and the first",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "consensusSourceCommit": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+  "compiler": "GHC 9.10.3",
+  "packages": {
+    "ouroboros-network": "1.2.0.0",
+    "typed-protocols": "1.2.1.0",
+    "cborg": "0.2.10.0",
+    "serialise": "0.2.6.1"
+  },
+  "packageArchives": {
+    "ouroboros-network-1.2.0.0.tar.gz": "f94167122d6d7956206626afff2d90ce2637d4c82af8dff8784fae227ddbad70"
+  },
+  "packageIds": [
+    "ouroboros-network-1.2.0.0-l-api-75505d9cab9a701aa9ede07640fa53619dfce10ddedeb2a821868f540f9775ce",
+    "ouroboros-network-1.2.0.0-l-protocols-1a3cef254fbf3f0ef603ee6eae9beba74ab2dadd5865f5321a88dd15f154bbcd",
+    "typed-protocols-1.2.1.0-8c60d8132922c119353bb07538d5c224377175972c7feec3e38631ba7a87d8d5"
+  ],
+  "sourceFiles": {
+    "chainSyncCodec": {
+      "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Codec.hs",
+      "sourceSha256": "ba2c582fa0e4ae02f26c0e9f412da8a6ce3384599a76f55c671f7a916a8c3fb1",
+      "matchesPin": true,
+      "note": "the released 1.2.0.0 file is the same; MsgFindIntersect is decodeList decodePoint (165-166, 209-214)"
+    },
+    "block": {
+      "file": "ouroboros-network/api/lib/Ouroboros/Network/Block.hs",
+      "sourceSha256": "83e93f9be5a5bf30600c4d5257f8527bd06adc22d5f92bcc83165a479982a822",
+      "matchesPin": true,
+      "note": "decodePoint; the released 1.2.0.0 file is the same"
+    },
+    "rawHash": {
+      "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Block/Abstract.hs",
+      "sourceSha256": "4c68c5b365de87ae56fe51df85de00436a2380def4bf009dfb2983810d3b0cac",
+      "matchesPin": true,
+      "note": "decodeRawHash (307-314) and fromShortRawHash (276-279), excerpted unchanged in the observer at HashSize 32"
+    }
+  },
+  "observer": {
+    "file": "scripts/oracle/chainsync-find-intersect/Main.hs",
+    "sha256": "23e39ec01a6bf7e201daf8a6d7dad93526be27031ccc52c907a084776df9cf5a",
+    "build": "scripts/oracle/chainsync-find-intersect/build.sh",
+    "buildSha256": "725e54e9eca7ba6c446312f7f5cf73bd4e75a576b462ba5fbfc7dd6d14509d4c",
+    "executableSha256": "81808f8e88f055d5ba086845e61411843e99407588b4e79128ce5504fec476ce",
+    "image": "scarab-33-genesis-reference-cache:local (sha256:10d59164dce6b49fbeafdc520c1a29d3e4024a5859a3c41bb6181b2e627bebc7)"
+  },
+  "generatorSha256": "41e6c7a575d426c1e05eb4427e289dccd2bc755d4f7473d6f744dc602a96fbb2",
+  "harnessInputSha256": "26b50d7731593434d721a95c1b5bf5f9c3fe1a8a2dc17a6b0d23e575334a080a",
+  "harnessOutputSha256": "57c17fc3caa8613a3bf1f6b9a809bb47d669d3e776f65e50cc0ce3cf900166c2",
+  "casesSha256": "2a56d51b74e83452ab3c5766a43e7704364d87585782236f3e2cfb9a80f9673f",
+  "cases": 22,
+  "accepted": 11,
+  "refused": 11,
+  "originalBytesRetained": true
+}

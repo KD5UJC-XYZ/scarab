@@ -143,16 +143,21 @@ class ChainSyncSuite extends munit.FunSuite:
     )
   }
   test("malformed and overlong arguments fail; bounded truncated fields need more") {
+    // a list of 255 points with none written needs more, as the reference's decoder does: the
+    // number of points is bounded by the message's bytes alone (#755)
+    assertEquals(
+      decodePrefix(State.Idle, Role.Client, b("820498ff"), payload),
+      DecodeResult.NeedMore
+    )
     Vector(
       "82045bffffffffffffffff",
       "82049bffffffffffffffff",
-      "820498ff",
       "83025bffffffffffffffff",
       "83021c",
       "8302ff",
       "8302f818",
       "83029fff82800000"
-    ).take(7).foreach { h =>
+    ).take(6).foreach { h =>
       val state = if h.startsWith("8204") then State.Idle else State.NextCanAwait
       val role = if state == State.Idle then Role.Client else Role.Server
       failed(decodePrefix(state, role, b(h), payload))
@@ -182,8 +187,16 @@ class ChainSyncSuite extends munit.FunSuite:
   }
   test("declared lengths, candidates, nesting and item counts are bounded") {
     val small = Limits(maxMessageBytes = 20, maxStringBytes = 8, maxCandidates = 1)
-    failed(decodePrefix(State.Idle, Role.Client, b("820482"), payload, small))
-    failed(decodePrefix(State.Idle, Role.Client, b("82049f8080ff"), payload, small))
+    // the candidate bound is the node's own requests'; a received list is bounded by its bytes
+    assertEquals(
+      decodePrefix(State.Idle, Role.Client, b("820482"), payload, small),
+      DecodeResult.NeedMore
+    )
+    assertEquals(
+      decoded(decodePrefix(State.Idle, Role.Client, b("82049f8080ff"), payload, small)),
+      Message.FindIntersect(Vector(Point.Origin, Point.Origin))
+    )
+    failed(decodePrefix(State.Idle, Role.Client, b("8204" + "99001a" + "80" * 26), payload, small))
     failed(decodePrefix(State.NextCanAwait, Role.Server, b("83025809"), payload, small))
     assert(
       encode(
