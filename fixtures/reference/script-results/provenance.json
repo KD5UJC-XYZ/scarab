@@ -1,4 +1,5 @@
 {
+  "schemaVersion": 1,
   "ledgerSourceRevision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
   "referenceNode": "11.1.3",
   "referenceNodeCompiler": "GHC9.6",

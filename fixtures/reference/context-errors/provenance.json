@@ -1,4 +1,6 @@
 {
+  "schemaVersion": 1,
+  "scope": "Complete original signed Conway transactions submitted to the reference node at protocol 10, and the released ledger API's Plutus context collection and diagnostic CBOR over the same and derived inputs; submissions, API rows and certificate-constructor encodings each labelled; not whole-ledger conformance",
   "ledgerSourceRevision": "f649f975",
   "referenceNode": "11.1.3",
   "referenceCli": "11.2.3.0",
@@ -2210,5 +2212,6 @@
     "signatureValidityClaim": false,
     "bodyMatchesOriginal": 3,
     "bodyDiffersFromOriginal": 76
-  }
+  },
+  "observations": 145
 }

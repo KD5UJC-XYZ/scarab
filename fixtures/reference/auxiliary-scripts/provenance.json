@@ -1,4 +1,6 @@
 {
+  "schemaVersion": 1,
+  "scope": "Unchanged released Haskell TxAuxData decoder and validateTxAuxData at Alonzo/PV5-6, Babbage/PV7-8 and Conway/PV9-11: decoder admission and script validity over 490 auxiliary cases; API observations, not signed transaction admissions, and auxiliary scripts are not executed",
   "ledgerSourceRevision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
   "referenceNode": "11.1.3",
   "referenceGitRevision": "938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
@@ -98,5 +100,6 @@
     "scripts/oracle/plutus/auxiliary/prepare.py": "b9fb66b858f38722398eda7ecf9e240855a5a8da116031782ce4ebbd9ca8333b",
     "scripts/oracle/plutus/auxiliary/run.py": "282e68060e8c2edde9d5da30ae0004ea7e505ef06221cd937161378c75ebde62",
     "scripts/oracle/plutus/auxiliary/scarab-auxiliary-oracle.cabal": "b99bf2500653218764f495cea6218c73059bb8938346a9c8e1aad8dab3a000bc"
-  }
+  },
+  "observations": 490
 }

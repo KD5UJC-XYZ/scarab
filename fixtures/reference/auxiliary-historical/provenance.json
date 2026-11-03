@@ -1,4 +1,6 @@
 {
+  "schemaVersion": 1,
+  "scope": "Unchanged released Haskell TxAuxData decoder and validateTxAuxData predicate at Shelley/PV2, Allegra/PV3 and Mary/PV4 over 504 API observations of auxiliary-only data and whole transactions; API observations, not signed transaction admissions",
   "date": "2026-10-21",
   "apiOnly": true,
   "wholeLedgerAdmissionClaim": false,
