@@ -19,8 +19,11 @@ import xyz.kd5ujc.scarab.ledger.CborRead
   * `fixtures/reference/byron-software-registration/cases.jsonl` holds each proposal's bytes, signed
   * by a throwaway key, with the verdict of the released `Registration.registerProposal` (oracle
   * `scripts/oracle/byron-update-state`, `register`): tags and names at and past each bound,
-  * non-ASCII ones, and several failures at once. The node decodes each proposal and must reach the
-  * same verdict, the same error and, for an accepted one, the same registered proposal.
+  * non-ASCII and control characters, several failures at once, the protocol update refused before
+  * the software update (`Registration.hs:376-390`), and block update payloads with a vote
+  * (`registerUpdate`). The node decodes each proposal and must reach the same verdict, the same
+  * error and, for an accepted one, the same registered proposals, the proposal under its own id
+  * when its software version changes and no new one when it does not.
   */
 class ByronSoftwareRegistrationReferenceSuite extends FunSuite:
   private final case class Row(
@@ -81,16 +84,19 @@ class ByronSoftwareRegistrationReferenceSuite extends FunSuite:
       n("unlockStakeEpoch")
     )
 
-  /** The proposal of a row, decoded as a block's update payload carries it. */
-  private def proposal(row: Row): ByronProposal =
-    val raw = hex(row.proposal)
-    val payload = Bytes.fromArray(Array(0x82.toByte, 0x81.toByte)) ++ raw ++
-      Bytes.fromArray(Array(0x80.toByte))
+  /** The update payload of a row as a block carries it: `[[proposal], votes]`, the votes being the
+    * row's vote, if it has one.
+    */
+  private def payload(row: Row): UpdatePayload =
+    val vote = row.json.hcursor.get[Option[String]]("vote").fold(e => fail(e.getMessage), identity)
+    val raw = Bytes.fromArray(Array(0x82.toByte, 0x81.toByte)) ++ hex(row.proposal) ++
+      vote.fold(Bytes.fromArray(Array(0x80.toByte)))(v =>
+        Bytes.fromArray(Array(0x81.toByte)) ++ hex(v)
+      )
     CborRead
-      .decode(payload)
+      .decode(raw)
       .flatMap(UpdatePayload.decode)
-      .fold(e => fail(s"${row.name}: ${e.toString}"), _.proposal)
-      .getOrElse(fail(s"${row.name}: no proposal"))
+      .fold(e => fail(s"${row.name}: ${e.toString}"), identity)
 
   /** The state of a row: its application versions and registered software proposals, the latter
     * under the ids the harness gave them (32 bytes of 1, 2, ...).
@@ -135,7 +141,23 @@ class ByronSoftwareRegistrationReferenceSuite extends FunSuite:
       case Some("InvalidSoftwareVersion") =>
         Left(UpdateError.InvalidSoftwareVersion(row.app, row.number))
       case Some("NullUpdateProposal") => Left(UpdateError.NullUpdateProposal)
-      case Some(other)                => fail(s"${row.name}: unexpected reference rule $other")
+      case Some("InvalidProtocolVersion") =>
+        val v = field[Vector[BigInt]](row.json.hcursor, "version")
+        Left(
+          UpdateError.InvalidProtocolVersion(
+            ByronVersion.from(v(0), v(1), v(2)).fold(e => fail(e.message), identity),
+            ByronVersion.zero
+          )
+        )
+      // `TooLarge` built positionally as (maximum, size) (`Validation/Registration.hs:511-513`)
+      case Some("ProposalTooLarge") =>
+        Left(
+          UpdateError.ProposalTooLarge(
+            field[BigInt](row.json.hcursor, "max"),
+            field[BigInt](row.json.hcursor, "actual")
+          )
+        )
+      case Some(other) => fail(s"${row.name}: unexpected reference rule $other")
 
   test("the corpus covers each check, its bounds and their order") {
     assertEquals(rows.map(_.name).distinct.size, rows.size)
@@ -149,39 +171,84 @@ class ByronSoftwareRegistrationReferenceSuite extends FunSuite:
         "ApplicationNameNotAscii",
         "DuplicateSoftwareVersion",
         "InvalidSoftwareVersion",
-        "NullUpdateProposal"
+        "NullUpdateProposal",
+        "InvalidProtocolVersion",
+        "ProposalTooLarge"
       )
     )
     assert(rows.exists(_.accepted))
     rows.foreach(r => assertEquals(r.accepted, r.rule.isEmpty, r.name))
   }
 
+  /** The software proposals or application versions a reference result lists under `key`: name,
+    * number and system tags.
+    */
+  private def listed(row: Row, key: String): Set[(String, BigInt, Set[String])] =
+    field[Vector[Json]](row.json.hcursor, key)
+      .map(_.hcursor)
+      .map(r =>
+        (field[String](r, "name"), field[BigInt](r, "number"), field[Set[String]](r, "tags"))
+      )
+      .toSet
+
+  /** The installer metadata the harness gives a proposal: each tag's `hashRaw` of its UTF-8 bytes.
+    */
+  private def metadata(row: Row): Map[String, Bytes] =
+    row.tags.map { t =>
+      t -> Blake2b.hash256.hash(Bytes.fromArray(t.getBytes(StandardCharsets.UTF_8)))
+    }.toMap
+
   rows.foreach { row =>
     test(s"${row.name}: the reference's verdict") {
-      val p = proposal(row)
+      val load = payload(row)
+      val p = load.proposal.getOrElse(fail(s"${row.name}: no proposal"))
       assertEquals(p.softwareName, row.app)
       assertEquals(p.metadata.keySet, row.tags.toSet)
-      val result = ByronUpdate.registerProposal(env(p), state(row), p)
-      assertEquals(result.map(_ => ()), expected(row))
-      result.foreach { after =>
-        // the registered software proposals after it, as the reference lists them
-        val reference = field[Vector[Json]](row.json.hcursor, "registeredAfter")
-          .map(_.hcursor)
-          .map(r =>
-            (field[String](r, "name"), field[BigInt](r, "number"), field[Set[String]](r, "tags"))
+      val before = state(row)
+      if load.votes.isEmpty then
+        val result = ByronUpdate.registerProposal(env(p), before, p)
+        assertEquals(result.map(_ => ()), expected(row))
+        result.foreach { after =>
+          assertEquals(
+            after.registeredSoftware.values.map(s => (s.name, s.number, s.metadata.keySet)).toSet,
+            listed(row, "registeredAfter")
           )
-          .toSet
-        assertEquals(
-          after.registeredSoftware.values.map(s => (s.name, s.number, s.metadata.keySet)).toSet,
-          reference
+          // the software version changes when the application has another number (or none):
+          // only then is the proposal registered, under its id, with its metadata
+          val changed = before.appVersions.get(row.app).forall(_.number != row.number)
+          assertEquals(
+            listed(row, "registeredAfter").contains((row.app, row.number, row.tags.toSet)),
+            changed
+          )
+          if changed then
+            assertEquals(
+              after.registeredSoftware.get(p.id),
+              Some(SoftwareProposal(row.app, row.number, metadata(row)))
+            )
+          else assertEquals(after.registeredSoftware, before.registeredSoftware)
+        }
+      else
+        // the payload of a block: the proposal, its vote, then the block's endorsement
+        val result = ByronUpdate.register(
+          env(p),
+          before,
+          load,
+          ByronVersion.zero,
+          ByronCbor.keyHash(p.issuer)
         )
-        // the harness's installer hash of a tag is `hashRaw` of the tag's UTF-8 bytes
-        val metadata = row.tags.map { t =>
-          t -> Blake2b.hash256.hash(Bytes.fromArray(t.getBytes(StandardCharsets.UTF_8)))
-        }.toMap
-        after.registeredSoftware
-          .get(p.id)
-          .foreach(s => assertEquals(s, SoftwareProposal(row.app, row.number, metadata)))
-      }
+        assertEquals(result.map(_ => ()), expected(row))
+        result.foreach { after =>
+          assertEquals(
+            after.registeredSoftware.values.map(s => (s.name, s.number, s.metadata.keySet)).toSet,
+            listed(row, "registeredAfter")
+          )
+          assertEquals(
+            after.appVersions.map((n, a) => (n, a.number, a.metadata.keySet)).toSet,
+            listed(row, "appVersionsAfter")
+          )
+          assertEquals(after.confirmed.size, field[Int](row.json.hcursor, "confirmed"))
+          // the confirmed proposal's application version carries its metadata
+          assertEquals(after.appVersions.get(row.app).map(_.metadata), Some(metadata(row)))
+        }
     }
   }

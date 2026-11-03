@@ -9,7 +9,7 @@ implemented: UTxO with witnesses (Byron Ed25519 profile, #392 row below; Byron s
 
 ## Evidence
 
-real mainnet blocks (AVVM redemption, verification-key transactions with one and two inputs: Merkle proofs, signatures, roots, fees), the preprod Byron era (proposals, votes, derived transition at epoch 4 equal to the network's), synthetic signed cases; devnet e2e Byron to Shelley UTxO comparison; software update registration (#748): the system tags of the installer metadata and the application name are checked as `registerSoftwareUpdate` checks them, in its order, and `ByronSoftwareRegistrationReferenceSuite` requires the verdict of the released `registerProposal` for the 31 proposals of `fixtures/reference/byron-software-registration` (oracle `scripts/oracle/byron-update-state`, `register`): bounds in code points, non-ASCII text, several failures at once
+real mainnet blocks (AVVM redemption, verification-key transactions with one and two inputs: Merkle proofs, signatures, roots, fees), the preprod Byron era (proposals, votes, derived transition at epoch 4 equal to the network's), synthetic signed cases; devnet e2e Byron to Shelley UTxO comparison; software update registration (#748): the system tags of the installer metadata and the application name are checked as `registerSoftwareUpdate` checks them, in its order, and `ByronSoftwareRegistrationReferenceSuite` requires the verdict of the released `registerProposal` for the 42 cases of `fixtures/reference/byron-software-registration` (oracle `scripts/oracle/byron-update-state`, `register`): bounds in code points, ASCII and control characters, several failures at once, the protocol update refused first, and two block update payloads with a vote
 
 ## Explicitly unchecked or unconfirmed
 

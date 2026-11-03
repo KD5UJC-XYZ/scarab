@@ -43,7 +43,9 @@ import Cardano.Chain.Update (
 import Cardano.Chain.Update.Validation.Endorsement (CandidateProtocolUpdate (..), Endorsement (..))
 import qualified Cardano.Chain.Update.Validation.Interface as UPI
 import qualified Cardano.Chain.Update.Validation.Registration as Registration
-import Cardano.Chain.Update.Proposal (signProposal)
+import Cardano.Chain.Common (BlockCount (..))
+import Cardano.Chain.Update.Proposal (recoverUpId, signProposal)
+import Cardano.Chain.Update.Vote (signVote)
 import Cardano.Crypto.Hashing (AbstractHash, HashAlgorithm, abstractHashFromBytes, hashRaw)
 import Cardano.Crypto.ProtocolMagic (ProtocolMagicId (..))
 import Cardano.Crypto.Signing (deterministicKeyGen, noPassSafeSigner)
@@ -199,26 +201,54 @@ magicId = ProtocolMagicId 4242
 register :: Value -> Value
 register = \v -> case parseEither describe v of
   Left err -> object ["failure" .= err]
-  Right (name, body, env, st) ->
+  Right (name, body, adopted, st, withVote) ->
     let proposal = signProposal magicId body (noPassSafeSigner signer)
         bytes = serialize' byronProtVer proposal
-        verdict =
-          decodeFullAnnotatedBytes byronProtVer "Proposal" decCBOR (LBS.fromStrict bytes)
-            >>= \annotated -> Right (Registration.registerProposal env st annotated)
-     in object $
-          ["name" .= name, "proposal" .= TE.decodeUtf8 (Base16.encode bytes)] ++ case verdict of
-            Left err -> ["accepted" .= False, "rule" .= ("DecodeFailure" :: T.Text), "failure" .= show err]
-            Right (Left err) -> ["accepted" .= False, "failure" .= show err] ++ refusal err
-            Right (Right (Registration.State _ sups)) ->
-              [ "accepted" .= True
-              , "registered"
-                  .= [ object ["name" .= unApplicationName n, "number" .= k, "tags" .= map getSystemTag (Map.keys m)]
-                     | Registration.SoftwareUpdateProposal (SoftwareVersion n k) m <- Map.elems sups
-                     ]
-              ]
+        decoded = decodeFullAnnotatedBytes byronProtVer "Proposal" decCBOR (LBS.fromStrict bytes)
+        voteBytes = case decoded of
+          Right annotated -> Just (serialize' byronProtVer (signVote magicId (recoverUpId annotated) True (noPassSafeSigner signer)))
+          Left _ -> Nothing
+        encoded = ["name" .= name, "proposal" .= TE.decodeUtf8 (Base16.encode bytes)]
+          ++ ["vote" .= TE.decodeUtf8 (Base16.encode vb) | withVote, Just vb <- [voteBytes]]
+     in object $ encoded ++ case decoded of
+          Left err -> ["accepted" .= False, "rule" .= ("DecodeFailure" :: T.Text), "failure" .= show err]
+          Right annotated
+            | withVote -> payload adopted st annotated voteBytes
+            | otherwise -> case Registration.registerProposal (registrationEnv adopted st) (registrationState st) annotated of
+                Left err -> ["accepted" .= False, "failure" .= show err] ++ refusal err
+                Right (Registration.State _ sups) -> ["accepted" .= True, "registered" .= software sups]
   where
     (verification, signer) = deterministicKeyGen (BS.replicate 32 0x2a)
     (genesis, _) = deterministicKeyGen (BS.replicate 32 0x2b)
+    delegation = Delegation.fromList [(hashKey genesis, hashKey verification)]
+    annotatedMagic = Annotated magicId (serialize' byronProtVer magicId)
+    software sups =
+      [ object ["name" .= unApplicationName n, "number" .= k, "tags" .= map getSystemTag (Map.keys m)]
+      | Registration.SoftwareUpdateProposal (SoftwareVersion n k) m <- Map.elems sups
+      ]
+    applications avs =
+      [ object ["name" .= unApplicationName n, "number" .= k, "tags" .= map getSystemTag (Map.keys m)]
+      | (n, Registration.ApplicationVersion k _ m) <- Map.toList avs
+      ]
+    registrationEnv adopted st =
+      Registration.Environment annotatedMagic (SlotNumber 1) (ProtocolVersion 0 0 0) adopted (UPI.appVersions st) delegation
+    registrationState st = Registration.State Map.empty (UPI.registeredSoftwareUpdateProposals st)
+    -- `registerUpdate` (`Interface.hs:244-258`): the proposal, its votes, the block's endorsement
+    payload adopted st annotated voteBytes =
+      case voteBytes >>= either (const Nothing) Just . decodeFullAnnotatedBytes byronProtVer "Vote" decCBOR . LBS.fromStrict of
+        Nothing -> ["accepted" .= False, "rule" .= ("DecodeFailure" :: T.Text)]
+        Just vote ->
+          let interfaceEnv = UPI.Environment annotatedMagic (BlockCount 10) (SlotNumber 1) 1 delegation
+              signal = UPI.Signal (Just annotated) [vote] (Endorsement (ProtocolVersion 0 0 0) (hashKey verification))
+           in case UPI.registerUpdate interfaceEnv st {UPI.adoptedProtocolParameters = adopted} signal of
+                Left (UPI.Registration err) -> ["accepted" .= False, "failure" .= show err] ++ refusal err
+                Left err -> ["accepted" .= False, "rule" .= ("Other" :: T.Text), "failure" .= show err]
+                Right after ->
+                  [ "accepted" .= True
+                  , "registered" .= software (UPI.registeredSoftwareUpdateProposals after)
+                  , "appVersionsAfter" .= applications (UPI.appVersions after)
+                  , "confirmed" .= Map.size (UPI.confirmedProposals after)
+                  ]
     refusal err = case err of
       Registration.SystemTagError (SystemTagTooLong t) -> ["rule" .= ("SystemTagTooLong" :: T.Text), "text" .= t]
       Registration.SystemTagError (SystemTagNotAscii t) -> ["rule" .= ("SystemTagNotAscii" :: T.Text), "text" .= t]
@@ -229,28 +259,27 @@ register = \v -> case parseEither describe v of
       Registration.DuplicateSoftwareVersion _ -> ["rule" .= ("DuplicateSoftwareVersion" :: T.Text)]
       Registration.InvalidSoftwareVersion _ _ -> ["rule" .= ("InvalidSoftwareVersion" :: T.Text)]
       Registration.NullUpdateProposal -> ["rule" .= ("NullUpdateProposal" :: T.Text)]
+      Registration.InvalidProtocolVersion (ProtocolVersion a b c) _ ->
+        ["rule" .= ("InvalidProtocolVersion" :: T.Text), "version" .= [toInteger a, toInteger b, toInteger c]]
+      Registration.ProposalTooLarge (Registration.TooLarge maxBound' actual) ->
+        ["rule" .= ("ProposalTooLarge" :: T.Text), "max" .= maxBound', "actual" .= actual]
       _ -> ["rule" .= ("Other" :: T.Text)]
     describe = withObject "registration" $ \o -> do
       name <- o .: "name" :: Parser T.Text
       tags <- o .: "tags" :: Parser [T.Text]
-      software <- SoftwareVersion <$> (ApplicationName <$> o .: "app") <*> (o .: "number" >>= word)
+      sv <- SoftwareVersion <$> (ApplicationName <$> o .: "app") <*> (o .: "number" >>= word)
       adopted <- o .: "adoptedParameters" >>= parameters
       proposed <- o .: "version" >>= version
       apps <- o .: "appVersions" >>= traverse app
       sups <- o .: "registered" >>= traverse sup
+      withVote <- o .:? "vote" .!= False
       let nothing = ProtocolParametersUpdate Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
           meta = Map.fromList [(SystemTag t, InstallerHash (hashRaw (LBS.fromStrict (TE.encodeUtf8 t)))) | t <- tags]
-          body = ProposalBody proposed nothing software meta
-          delegation = Delegation.fromList [(hashKey genesis, hashKey verification)]
-          env =
-            Registration.Environment
-              (Annotated magicId (serialize' byronProtVer magicId))
-              (SlotNumber 1)
-              (ProtocolVersion 0 0 0)
-              adopted
-              (Map.fromList apps)
-              delegation
-      pure (name, body, env, Registration.State Map.empty (Map.fromList (zipWith upId [1 :: Int ..] sups)))
+          body = ProposalBody proposed nothing sv meta
+          st =
+            UPI.State 0 (ProtocolVersion 0 0 0) adopted [] (Map.fromList apps) Map.empty
+              (Map.fromList (zipWith upId [1 :: Int ..] sups)) Map.empty Map.empty Set.empty Map.empty
+      pure (name, body, adopted, st, withVote)
     app = withObject "appVersion" $ \a -> do
       n <- ApplicationName <$> a .: "name"
       v <- Registration.ApplicationVersion <$> (a .: "number" >>= word) <*> pure (SlotNumber 0) <*> pure Map.empty

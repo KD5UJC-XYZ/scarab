@@ -12,6 +12,10 @@ code points), make them non-ASCII, and make several checks fail at once, to pin 
 `registerSoftwareUpdate`: the system tags in key order, the duplicate, the application name, the
 version.
 
+A case with `vote` is a block's update payload: the proposal, a vote of its proposer for it and
+the block's endorsement, run through `registerUpdate`; the result also has the application versions
+after it (`appVersionsAfter`) and the number of confirmed proposals.
+
 `--inputs` writes the harness input; `--reference` with `--out` merges the harness output into
 `cases.jsonl`: a line per case with its description, the proposal's bytes and the verdict, and for
 an accepted one the registered software proposals after it (`registeredAfter`: name, number and
@@ -29,17 +33,21 @@ PARAMETERS = dict(genesis_parameters(GENESIS["mainnet"]), maxProposalSize=100000
 EMOJI = "\U0001f600"
 
 
-def case(name, tags=(), app="cardano-sl", number=1, version=(0, 0, 0), apps=(), registered=()):
-    return {
+def case(name, tags=(), app="cardano-sl", number=1, version=(0, 0, 0), apps=(), registered=(),
+         parameters=None, vote=False):
+    out = {
         "name": name,
         "tags": list(tags),
         "app": app,
         "number": number,
         "version": list(version),
-        "adoptedParameters": PARAMETERS,
+        "adoptedParameters": parameters or PARAMETERS,
         "appVersions": [{"name": n, "number": k} for n, k in apps],
         "registered": [{"name": n, "number": k} for n, k in registered],
     }
+    if vote:
+        out["vote"] = True
+    return out
 
 
 def cases():
@@ -80,6 +88,23 @@ def cases():
         case("unchanged-software-not-checked", tags=["a" * 11], app="a" * 13, number=2,
              version=(0, 1, 0), apps=[("a" * 13, 2)]),
         case("unchanged-software-null", app="a" * 13, number=2, apps=[("a" * 13, 2)]),
+        # ASCII is below U+0080, control characters included
+        case("name-del-is-ascii", app="a\x7f"),
+        case("name-u0080", app="a\x80"),
+        case("name-ascii-controls", app="a\x00\t\n\x1f"),
+        case("tag-ascii-controls", tags=["\x00\x1f"]),
+        # the protocol update is registered before the software update
+        # (`registerProposalComponents`, `Validation/Registration.hs:376-390`)
+        case("protocol-refused-before-a-bad-tag", tags=["a" * 11], version=(2, 0, 0)),
+        case("protocol-refused-before-a-bad-name", app="a" * 13, version=(2, 0, 0)),
+        case("protocol-too-large-before-a-bad-name", app="a" * 13, version=(0, 1, 0),
+             parameters=dict(PARAMETERS, maxProposalSize=100)),
+        case("protocol-accepted-then-a-bad-tag", tags=["a" * 11], version=(0, 1, 0)),
+        case("protocol-and-software-accepted", tags=["linux"], version=(0, 1, 0)),
+        # a block's update payload: the proposal, then a vote for it, then the endorsement
+        # (`registerUpdate`, `Validation/Interface.hs:244-258`)
+        case("payload-refused-proposal-with-a-vote", app="a" * 13, vote=True),
+        case("payload-proposal-confirmed-by-its-vote", tags=["linux", "win64"], vote=True),
     ]
 
 
@@ -105,7 +130,8 @@ def main():
         if r.get("name") != c["name"] or "proposal" not in r:
             raise SystemExit(f"{c['name']}: unexpected result {r}")
         row = dict(c)
-        row.update({k: r[k] for k in ("proposal", "accepted", "rule", "text", "failure") if k in r})
+        row.update({k: r[k] for k in ("proposal", "vote", "accepted", "rule", "text", "failure",
+                                       "version", "max", "actual", "appVersionsAfter", "confirmed") if k in r})
         if "registered" in r:
             row["registeredAfter"] = r["registered"]
         lines.append(json.dumps(row, ensure_ascii=False, sort_keys=True))

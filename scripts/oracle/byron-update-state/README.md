@@ -33,8 +33,9 @@ No public-network connection, node or key is needed.
 The same harness has a `register` mode for
 [#748](https://github.com/KD5UJC-XYZ/scarab/issues/748). It signs each case's software update proposal
 with a throwaway delegate key derived from a fixed seed in `Main.hs` and runs the released
-`Registration.registerProposal` against the case's state. It writes the proposal's bytes and the
-verdict, which `registration_cases.py` merges into
+`Registration.registerProposal` against the case's state; a case with `vote` is a block's update
+payload instead (the proposal, a vote for it and the endorsement, through `registerUpdate`). It
+writes the proposal's (and vote's) bytes and the verdict, which `registration_cases.py` merges into
 [`fixtures/reference/byron-software-registration`](../../../fixtures/reference/byron-software-registration/README.md):
 
 ```sh

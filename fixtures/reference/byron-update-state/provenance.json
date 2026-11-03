@@ -108,7 +108,7 @@
   },
   "harness": {
     "main": "scripts/oracle/byron-update-state/Main.hs",
-    "mainSha256": "5133213527d9227b1c43c083299c1b6d4fcbc255989800f61389bb84fab3ef1c",
+    "mainSha256": "9ab85dcbe1beb67c42f130184d104c936c42b127e615912b165804734e71277a",
     "cases": "scripts/oracle/byron-update-state/cases.py",
     "casesSha256": "d0ed8eb0ace401672ed137409341d10b861eff36f0676494e23a13343e5e7af8"
   },
