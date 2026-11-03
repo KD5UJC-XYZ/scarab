@@ -103,6 +103,25 @@ class TxSubmission2Suite extends munit.FunSuite:
     assert(TxSubmission2.bodyId(hex("84a0a0f5f600")).isLeft)
     assert(TxSubmission2.bodyId(hex("83a0a0f5")).isLeft)
   }
+  test("a transaction without its validity flag has its body's id, as `AlonzoTx` reads it (#699)") {
+    // `decodeRecordNamed "AlonzoTx"` (`Alonzo/Tx.hs:532-553`, cardano-ledger f649f975): a third
+    // member that is not a boolean is the auxiliary data, and the list holds three members
+    val bodyId = xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(hex("a0"))
+    Vector("83a0a0f6", "83a0a0a0", "83a0a0d90103a0", "9fa0a0f6ff", "9fa0a0a0ff", "84a0a0f4f6")
+      .foreach(t => assertEquals(TxSubmission2.bodyId(hex(t)), Right(bodyId), t))
+    // a boolean third member is the flag, and the auxiliary data must follow it; a member that is
+    // not a boolean is not a flag, and the list then holds one member too many
+    Vector(
+      "83a0a0f5",
+      "9fa0a0f5ff",
+      "84a0a0f6f6",
+      "9fa0a0f6f6ff",
+      "84a0a0f6",
+      "82a0a0",
+      "85a0a0f5f6f6"
+    )
+      .foreach(t => assert(TxSubmission2.bodyId(hex(t)).isLeft, t))
+  }
   test("blocking request window can exceed available lease; FIFO acknowledgement drains it") {
     val i = TxSubmission2.Inventory.create(Vector(offer)).toOption.get
     val (a, reply, ack) = i.requestIds(true, 0, 65535).toOption.get

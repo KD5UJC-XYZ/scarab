@@ -69,8 +69,10 @@ transactions, so a transaction may spend the output of one before it. Rejections
 `Source` of the transaction, as the reference's `WhetherToIntervene`: a transaction from a local client
 (`Local`) is validated as received, one from a peer (`Remote`, TxSubmission2) is validated with
 `is_valid` forced to true and, when only that flag is wrong because a script fails, held with
-`is_valid` false (the submitter loses the collateral); its relayed bytes are then the received ones with
-the flag byte changed ([IN-80](../implementer-notes.md)). `sync(ledger, slot)`
+`is_valid` false (the submitter loses the collateral) ([IN-80](../implementer-notes.md)). A transaction
+may come without its flag, and is then valid, as the reference reads it (`Tx.envelopeParts`, #699);
+whatever its form, it is held and relayed as the reference relays it (`Tx.envelope`): a definite list
+of four with the flag of the verdict and the other parts' original bytes. `sync(ledger, slot)`
 runs on every new tip, rollback or fork switch, keeps what still applies and reports the rest;
 transactions that a block contains leave as adopted. Before the transaction rules, `add` applies the
 ledger's MEMPOOL rule: a transaction none of whose inputs is unspent is refused with that alone

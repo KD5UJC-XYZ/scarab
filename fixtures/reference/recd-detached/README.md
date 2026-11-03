@@ -67,7 +67,8 @@ python3 scripts/oracle/conway-decoding/detached_cases.py --inputs /tmp/detached-
 - Block headers: Babbage's and Conway's are `RecD` records, and their KES signature is over the
   re-encoded header body; the harness has no decoder of them
   ([#698](https://github.com/KD5UJC-XYZ/scarab/issues/698)).
-- A transaction of Alonzo or later without its validity flag, which the reference reads as valid
+- A transaction of Alonzo or later without its validity flag, which the reference reads as valid,
+  and the other forms of a whole transaction: [the envelope corpus](../tx-envelope/README.md)
   ([#699](https://github.com/KD5UJC-XYZ/scarab/issues/699)).
 - Node-to-client queries that carry a record, and failure answers that write an output
   ([#700](https://github.com/KD5UJC-XYZ/scarab/issues/700)).

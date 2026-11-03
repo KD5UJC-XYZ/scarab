@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node.mempool
 
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
-import xyz.kd5ujc.scarab.ledger.TransactionDecodeProblem
+import xyz.kd5ujc.scarab.ledger.{DecodeField, LedgerDecodeError, TransactionDecodeProblem}
 
 class DecodeCauseSuite extends FunSuite:
   private def encoded(value: Value): Bytes = Cbor.encode(value).fold(e => fail(e.message), identity)
@@ -27,7 +27,17 @@ class DecodeCauseSuite extends FunSuite:
     val value = Value.Arr(Vector(nil, nil, nil, nil))
     assertEquals(
       MempoolState.parse(encoded(value)),
-      Left(Rejection.Malformed(TransactionDecodeProblem.ValidityFlag(Value.Null)))
+      Left(
+        Rejection.Malformed(
+          TransactionDecodeProblem.Ledger(
+            LedgerDecodeError.Expected(
+              DecodeField.IsValid,
+              LedgerDecodeError.Shape.Boolean,
+              Value.Null
+            )
+          )
+        )
+      )
     )
   }
 

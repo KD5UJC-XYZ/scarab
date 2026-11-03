@@ -8,13 +8,14 @@ import cats.Id
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.plutus.{ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{Block, DetachedRecords, EpochGeometry, PosixClock}
 import xyz.kd5ujc.scarab.ledger.{
   Credential,
+  LedgerDecodeError,
   LedgerFailure,
   LedgerGlobals,
   PlutusStats,
@@ -336,8 +337,10 @@ final case class MempoolState(
   def contains(id: Bytes): Boolean = entries.exists(_.id == id)
 
   /** Validate and append a transaction (original bytes) submitted from `source`. A remote
-    * transaction may be held with the `is_valid` flag it did not carry ([[MempoolLedger.admit]]);
-    * its relayed bytes are then the received ones with only that flag byte changed.
+    * transaction may be held with the `is_valid` flag it did not carry ([[MempoolLedger.admit]]).
+    * What is held and relayed is the transaction the reference relays ([[Tx.envelope]]): the
+    * received parts and the flag of the verdict, in a definite list of four whether or not it came
+    * with its flag or in an indefinite list.
     *
     * The order is that of `Mempool/Update.hs` `doAddTx` and `pureTryAddTx`: the first measure (size
     * and execution units against the parameters), the capacity in those components, the second
@@ -376,9 +379,7 @@ final case class MempoolState(
           // The flag is neither hashed nor signed (the id is the hash of the body alone), so the
           // transaction is relayed with its other three parts as received and the flag of the
           // verdict, as the reference relays `[body, witnesses, flag, auxiliary_data]` it rebuilt.
-          kept =
-            if held.isValid == tx.isValid then raw
-            else MempoolState.encode(parts.copy(isValid = held.isValid))
+          kept = Tx.envelope(parts.copy(isValid = held.isValid))
         yield (refScriptBytes, admitted, kept)
       )
       (refScriptBytes, admitted, kept) = judged
@@ -514,15 +515,7 @@ object MempoolState:
     */
   final case class Parsed(id: Bytes, tx: Tx, parts: Block.Transaction)
 
-  /** The transaction `[body, witnesses, is_valid, aux]` of its parts, each as its original bytes
-    * and the flag as the boolean that is encoded.
-    */
-  def encode(t: Block.Transaction): Bytes =
-    Bytes.fromArray(Array(0x84.toByte)) ++ t.body ++ t.witnesses ++
-      Bytes.fromArray(Array((if t.isValid then 0xf5 else 0xf4).toByte)) ++
-      t.auxiliaryData.getOrElse(Bytes.fromArray(Array(0xf6.toByte)))
-
-  /** Split `[body, witnesses, is_valid, aux]` keeping each component's original bytes. */
+  /** Split a whole transaction ([[Tx.envelopeParts]]) keeping each component's original bytes. */
   def parse(raw: Bytes): Either[Rejection, (Bytes, Tx)] =
     parseParts(raw).map(p => (p.id, p.tx))
 
@@ -550,21 +543,10 @@ object MempoolState:
 
   /** The parts of the transaction `root`, and the transaction they make. */
   private def envelope(root: Node): Either[Rejection, Parsed] =
-    def malformed[A](detail: TransactionDecodeProblem): Either[Rejection, A] = Left(
-      Rejection.Malformed(detail)
-    )
+    def malformed(cause: LedgerDecodeError) =
+      Rejection.Malformed(TransactionDecodeProblem.Ledger(cause))
+    // with or without its validity flag, as the reference reads it
     for
-      parts <- root.value match
-        case Value.Arr(xs) if xs.size == 4 => Right(xs)
-        case _ => malformed(TransactionDecodeProblem.Envelope(root.value))
-      valid <- parts(2).value match
-        case Value.Bool(b) => Right(b)
-        case _             => malformed(TransactionDecodeProblem.ValidityFlag(parts(2).value))
-      aux = parts(3).value match
-        case Value.Null => None
-        case _          => Some(parts(3).original)
-      transaction = Block.Transaction(parts(0).original, parts(1).original, aux, valid)
-      tx <- Tx
-        .fromBlock(transaction, Era.Conway)
-        .leftMap(e => Rejection.Malformed(TransactionDecodeProblem.Ledger(e)))
-    yield Parsed(Blake2b.hash256.hash(parts(0).original), tx, transaction)
+      transaction <- Tx.envelopeParts(root, Era.Conway).leftMap(malformed)
+      tx <- Tx.fromBlock(transaction, Era.Conway).leftMap(malformed)
+    yield Parsed(Blake2b.hash256.hash(transaction.body), tx, transaction)

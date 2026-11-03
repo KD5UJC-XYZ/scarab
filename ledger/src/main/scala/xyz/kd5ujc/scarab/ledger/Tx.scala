@@ -721,42 +721,68 @@ final case class Tx(
   def hasAuxiliaryData: Boolean = auxiliary.isDefined
 
 object Tx:
-  /** A whole transaction as a client sends it: `[body, witnesses, auxiliary_data / nil]` before
-    * Alonzo and `[body, witnesses, is_valid, auxiliary_data / nil]` from it, decoded exactly as a
+  /** A whole transaction as a client or a peer sends it ([[envelopeParts]]), decoded exactly as a
     * block's parts are ([[fromBlock]]).
     */
   def fromEnvelope(bytes: Bytes, era: Era): Either[LedgerDecodeError, Tx] =
     DetachedRecords.read(bytes, Cbor.Limits(), DetachedRecords.Shapes.transaction(era))(
       LedgerDecodeError.Syntax(_)
-    ) { node =>
-      val withFlag = era.ordinal >= Era.Alonzo.ordinal
-      def whole(body: Node, witnesses: Node, aux: Node, flag: Boolean) =
-        val auxBytes = aux.value match
-          case xyz.kd5ujc.scarab.codec.Value.Null => None
-          case _                                  => Some(aux.original)
-        fromBlock(Block.Transaction(body.original, witnesses.original, auxBytes, flag), era)
-      // before Alonzo a transaction is the `RecD` record `ShelleyTx` (`Shelley/Tx.hs:184-192`),
-      // which may be detached
-      val parts =
-        if node.isDetached then CborRead.record(node, 3, DecodeField.Transaction)
-        else CborRead.array(node, DecodeField.Transaction)
-      parts.flatMap {
-        case Vector(body, witnesses, flag, aux) if withFlag =>
-          flag.value match
-            case xyz.kd5ujc.scarab.codec.Value.Bool(valid) => whole(body, witnesses, aux, valid)
-            case other =>
-              Left(
-                LedgerDecodeError
-                  .Expected(DecodeField.IsValid, LedgerDecodeError.Shape.Boolean, other)
-              )
-        case Vector(body, witnesses, aux) if !withFlag => whole(body, witnesses, aux, true)
-        case xs =>
-          Left(
-            LedgerDecodeError
-              .ArrayLength(DecodeField.Transaction, if withFlag then 4 else 3, xs.size)
-          )
+    )(node => envelopeParts(node, era).flatMap(fromBlock(_, era)))
+
+  /** The parts of a whole transaction `node` of `era`, each as its original bytes, with the
+    * validity flag it is read with. A whole transaction is reached through submission only: a block
+    * holds its transactions' parts apart.
+    *
+    * Before Alonzo it is the `RecD` record `ShelleyTx` of the body, the witness set and the
+    * auxiliary data or null (`eras/shelley/impl/src/Cardano/Ledger/Shelley/Tx.hs:184-192`,
+    * cardano-ledger f649f975): a definite list of three items, or the detached record of them
+    * ([[CborRead.record]]); a non-empty indefinite list is refused (#688). From Alonzo it is
+    * `decodeRecordNamed "AlonzoTx"` (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs:532-553`),
+    * definite or indefinite: the third item is the validity flag when it is a boolean, the list
+    * then holding four items, and otherwise the auxiliary data or null of a valid transaction of
+    * three (#699).
+    */
+  def envelopeParts(node: Node, era: Era): Either[LedgerDecodeError, Block.Transaction] =
+    def transaction(body: Node, witnesses: Node, aux: Node, valid: Boolean) =
+      val auxBytes = aux.value match
+        case xyz.kd5ujc.scarab.codec.Value.Null => None
+        case _                                  => Some(aux.original)
+      Block.Transaction(body.original, witnesses.original, auxBytes, valid)
+    def length(expected: Int, actual: Int): Either[LedgerDecodeError, Block.Transaction] =
+      Left(LedgerDecodeError.ArrayLength(DecodeField.Transaction, expected, actual))
+    if era.ordinal < Era.Alonzo.ordinal then
+      CborRead.record(node, 3, DecodeField.Transaction).flatMap {
+        case Vector(body, witnesses, aux) => Right(transaction(body, witnesses, aux, true))
+        case xs                           => length(3, xs.size)
       }
-    }
+    else
+      CborRead.array(node, DecodeField.Transaction).flatMap {
+        case Vector(body, witnesses, flag, aux) =>
+          // a third item that is not a boolean is the auxiliary data, and the record is then of
+          // three items, not four
+          CborRead.bool(flag, DecodeField.IsValid).map(transaction(body, witnesses, aux, _))
+        case Vector(body, witnesses, aux) =>
+          aux.value match
+            // read as the flag, the auxiliary data after it missing
+            case xyz.kd5ujc.scarab.codec.Value.Bool(_) => length(4, 3)
+            case _ => Right(transaction(body, witnesses, aux, true))
+        case xs => length(if xs.size < 3 then 3 else 4, xs.size)
+      }
+
+  /** The whole transaction `[body, witnesses, is_valid, auxiliary_data / nil]` of Alonzo onward of
+    * its parts, each as its original bytes, and the flag: what the reference relays and lists for a
+    * transaction it holds. That is `wrapCBORinCBOR toCBOR tx`
+    * (`ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Mempool.hs:256-259`,
+    * ouroboros-consensus 82ecba32) of `toCBORForMempoolSubmission`
+    * (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs:489-513`, cardano-ledger f649f975): a
+    * definite list of four whose parts keep the bytes they were read from, however the transaction
+    * was submitted ([[envelopeParts]]). Its size is the one the reference measures (`wireSizeTxF`,
+    * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:667-679`).
+    */
+  def envelope(t: Block.Transaction): Bytes =
+    Bytes.fromArray(Array(0x84.toByte)) ++ t.body ++ t.witnesses ++
+      Bytes.fromArray(Array((if t.isValid then 0xf5 else 0xf4).toByte)) ++
+      t.auxiliaryData.getOrElse(Bytes.fromArray(Array(0xf6.toByte)))
 
   /** Ledger size is the size of the serialized transaction: `[body, witnesses, isValid, aux]` from
     * Alonzo, `[body, witnesses, aux]` before.

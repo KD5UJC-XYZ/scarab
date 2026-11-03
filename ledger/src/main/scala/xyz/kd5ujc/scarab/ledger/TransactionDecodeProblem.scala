@@ -7,8 +7,6 @@ import xyz.kd5ujc.scarab.codec.{Cbor, Value}
 enum TransactionDecodeProblem:
   case Syntax(cause: Cbor.Error)
   case Ledger(cause: LedgerDecodeError)
-  case Envelope(actual: Value)
-  case ValidityFlag(actual: Value)
   case TaggedPayload(actual: Value)
   case EraOutOfRange(value: BigInt)
   case EraExpected(actual: Value)
@@ -17,8 +15,6 @@ enum TransactionDecodeProblem:
   def message: String = this match
     case Syntax(cause)        => cause.message
     case Ledger(cause)        => cause.message
-    case Envelope(_)          => "expected [body, witnesses, is_valid, auxiliary_data]"
-    case ValidityFlag(_)      => "is_valid is not a boolean"
     case TaggedPayload(_)     => "tag 24 does not hold a byte string"
     case EraOutOfRange(value) => s"era $value is not Conway (6)"
     case EraExpected(_)       => "era is not an integer"

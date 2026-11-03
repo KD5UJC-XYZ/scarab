@@ -411,8 +411,10 @@ object LogSamples:
     MempoolEvent.Rejected(
       None,
       Rejection.Malformed(
-        xyz.kd5ujc.scarab.ledger.TransactionDecodeProblem
-          .Envelope(xyz.kd5ujc.scarab.codec.Value.Null)
+        xyz.kd5ujc.scarab.ledger.TransactionDecodeProblem.Ledger(
+          xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+            .ArrayLength(xyz.kd5ujc.scarab.ledger.DecodeField.Transaction, 3, 2)
+        )
       )
     ),
     MempoolEvent

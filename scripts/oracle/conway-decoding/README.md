@@ -78,3 +78,11 @@ the harness read a body, witness set, auxiliary data, whole transaction or block
 block after its header) of any era and report, for an accepted one, the transaction ids and block
 body hash it hashes from the bytes it read. Its recipe is the one above with `detached_cases.py`,
 `/tmp/detached-inputs.json` and `fixtures/reference/recd-detached/cases.jsonl`.
+
+The [transaction envelope corpus](../../../fixtures/reference/tx-envelope/README.md) (#688, #699)
+runs on the same harness, its cases from `tx_envelope_cases.py`: the forms of a whole transaction in
+every era from Shelley to Conway, before Alonzo the `RecD` record `ShelleyTx` definite, indefinite
+and detached, from Alonzo `AlonzoTx` with and without its validity flag. Its cases set `wire` as well
+as `ids`, which has the harness also report, for an accepted transaction, its `encCBOR` at the era's
+version: the bytes a node relays for a transaction it holds. Its recipe is the one above with
+`tx_envelope_cases.py`, `/tmp/tx-envelope-inputs.json` and `fixtures/reference/tx-envelope/cases.jsonl`.
