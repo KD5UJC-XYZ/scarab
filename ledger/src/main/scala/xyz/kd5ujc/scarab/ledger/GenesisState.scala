@@ -19,7 +19,7 @@ object GenesisState:
       shelley: Json,
       alonzo: Json,
       conway: Json,
-      byron: Json,
+      byron: json.CanonicalJson,
       byronNetworkMagic: Option[Long] = None
   )
 

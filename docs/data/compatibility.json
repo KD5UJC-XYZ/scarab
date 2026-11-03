@@ -1209,9 +1209,9 @@
     },
     {
       "id": "ledger-byron-genesis-balances",
-      "component": "Ledger: Byron genesis balances (#728, #729)",
+      "component": "Ledger: Byron genesis file and balances (#728, #729, #730)",
       "status": "implemented",
-      "summary": "The Byron genesis balances read as readGenesisData reads them: each non-AVVM address decoded whole and held encoded again minimally, each AVVM key read by fromAvvmVK, each amount by Read Word64, the first of two equal keys kept",
+      "summary": "The Byron genesis read as readGenesisData reads it: parsed as canonical JSON and hashed as rendered; each non-AVVM address decoded whole and held encoded again minimally, each AVVM key read by fromAvvmVK, each amount by Read Word64, the first of two equal keys kept",
       "evidence": {
         "suites": [
           "ByronGenesisBalancesReferenceSuite"
@@ -1222,12 +1222,13 @@
         ],
         "issues": [
           728,
-          729
+          729,
+          730
         ]
       },
       "limitations": {
         "issues": [
-          730
+          734
         ]
       },
       "page": "docs/compatibility/ledger-byron-genesis-balances.md"

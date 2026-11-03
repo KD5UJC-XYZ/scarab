@@ -16,6 +16,18 @@ enum ConfigProblem:
   case UnsupportedTopology
   case RemovedFlag(flag: String)
   case JsonSyntax(context: String, cause: ParsingFailure)
+
+  /** A file the reference reads with `parseCanonicalJSON` that it refuses (#730). */
+  case CanonicalJsonSyntax(context: String, cause: json.CanonicalJson.ParseError)
+
+  /** A value of canonical JSON of another kind than the reader takes (`expectedButGotValue`); the
+    * value itself is not kept, so a deep one costs nothing to report.
+    */
+  case CanonicalJsonKind(
+      context: String,
+      expected: json.CanonicalJson.Kind,
+      actual: json.CanonicalJson.Kind
+  )
   case JsonField(context: String, field: String, cause: DecodingFailure)
   case MissingField(context: String, field: String)
   case InvalidTimestamp(value: String, cause: Throwable)
@@ -108,7 +120,11 @@ enum ConfigProblem:
       s"${file.label} genesis ${path.mkString(".")}: ${cause.message}"
     case SecurityParamBeyondStorage(k) =>
       s"genesis securityParam $k: the chain store counts at most ${Int.MaxValue} blocks"
-    case JsonSyntax(context, cause)       => s"$context is not JSON: ${cause.message}"
+    case JsonSyntax(context, cause) => s"$context is not JSON: ${cause.message}"
+    case CanonicalJsonKind(context, expected, actual) =>
+      s"$context: expected ${expected.toString.toLowerCase} but got ${actual.toString.toLowerCase}"
+    case CanonicalJsonSyntax(context, cause) =>
+      s"$context is not canonical JSON: unexpected input at byte ${cause.offset}"
     case JsonField(context, field, cause) => s"$context $field: ${cause.message}"
     case MissingField(context, field)     => s"$context: missing required field $field"
     case FileMissing(role, file)          => s"missing $role file $file"

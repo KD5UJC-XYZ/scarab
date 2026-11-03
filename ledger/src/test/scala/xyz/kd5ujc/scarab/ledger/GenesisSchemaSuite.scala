@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger
 import io.circe.{Decoder, Json, parser}
 import java.nio.file.{Files, Path}
 import munit.FunSuite
-import xyz.kd5ujc.scarab.codec.Rational
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.rules.GenesisInjections
 
 /** The Shelley, Alonzo and Conway genesis files against the unchanged reference parsers (#497).
@@ -94,7 +94,13 @@ class GenesisSchemaSuite extends FunSuite:
         shelley,
         alonzo,
         conway,
-        preview("byron"),
+        ByronGenesisFile
+          .read(
+            Bytes.fromArray(
+              Files.readAllBytes(Path.of("fixtures/preview/genesis/byron-genesis.json"))
+            )
+          )
+          .fold(e => fail(e.toString), _._1),
         Some(genesis.networkMagic)
       )
       _ <- GenesisInjections.read(files)

@@ -101,7 +101,7 @@ class GenesisStartSuite extends FunSuite:
           ),
           json("alonzo-genesis.json"),
           Json.obj(),
-          Json.obj()
+          xyz.kd5ujc.scarab.ledger.json.CanonicalJson.Obj(Vector.empty)
         )
         val coin = GenesisInjections
           .read(files)
@@ -128,7 +128,12 @@ class GenesisStartSuite extends FunSuite:
     value.mapObject(_.add("extraConfig", Json.fromJsonObject(extra.add(name, source))))
 
   private def sourceFiles(shelley: Json): GenesisState.Files =
-    GenesisState.Files(shelley, json("alonzo-genesis.json"), Json.obj(), Json.obj())
+    GenesisState.Files(
+      shelley,
+      json("alonzo-genesis.json"),
+      Json.obj(),
+      xyz.kd5ujc.scarab.ledger.json.CanonicalJson.Obj(Vector.empty)
+    )
 
   private def fundSources(extra: Json): Json = Json.obj(
     "networkId" -> Json.fromString("Testnet"),

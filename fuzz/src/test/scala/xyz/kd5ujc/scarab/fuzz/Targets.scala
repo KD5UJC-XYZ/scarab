@@ -1748,7 +1748,12 @@ object Targets:
           shelley <- json.hcursor.get[Json]("shelley").toOption
           alonzo <- json.hcursor.get[Json]("alonzo").toOption
           conway <- json.hcursor.get[Json]("conway").toOption
-        yield GenesisState.Files(shelley, alonzo, conway, Json.obj())
+        yield GenesisState.Files(
+          shelley,
+          alonzo,
+          conway,
+          xyz.kd5ujc.scarab.ledger.json.CanonicalJson.Obj(Vector.empty)
+        )
         files.flatMap(GenesisInjections.read(_).toOption).foreach { parsed =>
           hit("genesis-injections")
           val embedded = parsed.initialFunds.extra match
