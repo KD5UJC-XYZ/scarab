@@ -233,6 +233,21 @@ class ProvenanceTest(unittest.TestCase):
         self.write(dict(self.record, accepted=2, refused=2))
         with self.assertRaisesRegex(ValueError, "cases: records 2 cases, accepted 2 plus refused 2 is 4"):
             self.check()
+        # the same rule binds the documented `cases` object form, and a per-batch record inside the file
+        self.write(dict(self.record, cases={"file": "cases.jsonl", "count": 2, "sha256": self.digest},
+                        accepted=2, refused=2))
+        with self.assertRaisesRegex(ValueError, "cases.count: records 2 cases, accepted 2 plus refused 2 is 4"):
+            self.check()
+        self.write(dict(self.record, batches=[{"cases": 4, "accepted": 1, "refused": 1}]))
+        with self.assertRaisesRegex(ValueError, "batches.0.cases: records 4 cases, accepted 1 plus refused 1 "
+                                                "is 2"):
+            self.check()
+
+    def test_a_nested_digest_is_checked_wherever_it_sits(self):
+        self.write(dict(self.record, batches=[{"configurationSha256": {"configuration.yaml": "not-a-digest"}}]))
+        with self.assertRaisesRegex(ValueError, "batches.0.configurationSha256.configuration.yaml: must be a "
+                                                "lowercase hexadecimal SHA-256"):
+            self.check()
 
     def test_a_nested_cases_block_is_verified_against_the_file_it_names(self):
         self.write(dict(self.record, cases={"file": "cases.jsonl", "count": 2, "sha256": self.digest}))

@@ -41,14 +41,21 @@ A record is one JSON object:
   real ISO 8601 date.
 - The case count: `cases` as an integer, or a `cases` object naming `file`, `count` and `sha256`, or
   `caseCount`, or `lines` for a JSONL corpus. When the corpus holds a `cases.jsonl` or `cases.json` file, the
-  recorded count must equal the records in that file and `casesSha256` must be its digest; a recorded
-  `accepted` plus `refused` must add up to the count.
-- Every `*Sha256` string is a lowercase hexadecimal digest.
+  recorded count must equal the records in that file and `casesSha256` must be its digest. A corpus whose
+  cases live elsewhere (a submission directory, a batch of transactions) records its own count, and the gate
+  can only check its shape: it has nothing to compare it with, and says so here rather than implying a
+  comparison it does not make.
+- Wherever a count and an `accepted` plus `refused` split are recorded together, at any depth of the record,
+  the split must add up to the count.
+- Every `*Sha256` string, at any depth of the record, is a lowercase hexadecimal digest. It is compared with
+  a file only where the field names a corpus file — `casesSha256`, or the `file` of a `cases` object; a digest
+  of an upstream source, image or harness names nothing in this repository and is checked for shape alone.
 - `notCovered`, when present, maps each uncovered topic to a sentence naming the issue that owns the gap, and
   that issue must also appear in `limitations.issues` of the one entry in
   [the compatibility register](../docs/data/compatibility.json) that cites the corpus. A gap with no owning
   entry fails: a gap nobody tracks is how a limit quietly becomes permanent.
 
 The record describes a measurement; it never certifies one. Its hashes detect a corpus that moved under an
-unchanged expectation, and the counts detect a case added or dropped without the record saying so. A corpus
-that records no provenance at all is not checked, and this schema is not a claim that it has one.
+unchanged expectation, and for a corpus that keeps its cases in a case file the counts detect a case added or
+dropped without the record saying so. A corpus that records no provenance at all is not checked, and this
+schema is not a claim that it has one.

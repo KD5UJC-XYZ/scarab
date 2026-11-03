@@ -141,6 +141,57 @@ def integer(value):
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
+def nested_objects(node, prefix=""):
+    """Every object of the record with its field path, so a nested count is checked where it sits."""
+    if isinstance(node, dict):
+        yield prefix, node
+        for key, value in node.items():
+            yield from nested_objects(value, f"{prefix}{key}.")
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            yield from nested_objects(value, f"{prefix}{index}.")
+
+
+def digest_fields(node, prefix=""):
+    """Every digest the record claims, with its field path: a *Sha256 field and the entries it names."""
+    if isinstance(node, list):
+        for index, entry in enumerate(node):
+            yield from digest_fields(entry, f"{prefix}{index}.")
+        return
+    if not isinstance(node, dict):
+        return
+    for key, value in node.items():
+        field = f"{prefix}{key}"
+        if key.lower().endswith("sha256"):
+            yield from leaves(value, f"{field}.")
+        else:
+            yield from digest_fields(value, f"{field}.")
+
+
+def leaves(node, prefix=""):
+    if isinstance(node, str):
+        yield prefix.rstrip("."), node
+    elif isinstance(node, list):
+        for index, entry in enumerate(node):
+            yield from leaves(entry, f"{prefix}{index}.")
+    elif isinstance(node, dict):
+        for key, entry in node.items():
+            yield from leaves(entry, f"{prefix}{key}.")
+
+
+def recorded_count(node):
+    """The count a record (or a batch object inside one) states, with the field that states it."""
+    cases = node.get("cases")
+    if integer(cases):
+        return "cases", cases
+    if isinstance(cases, dict) and integer(cases.get("count")):
+        return "cases.count", cases["count"]
+    for field in ("caseCount", "lines"):
+        if integer(node.get(field)):
+            return field, node[field]
+    return None, None
+
+
 def gap_owners(components, corpus):
     """The register entries that cite this corpus as evidence."""
     return [row for row in components
@@ -188,8 +239,8 @@ def validate_provenance(root, corpus, components):
             datetime.date.fromisoformat(value)
         except ValueError:
             fail(field, "must be a real calendar date")
-    for field, value in record.items():
-        if isinstance(value, str) and field.lower().endswith("sha256") and not SHA256.fullmatch(value):
+    for field, value in digest_fields(record):
+        if not SHA256.fullmatch(value):
             fail(field, "must be a lowercase hexadecimal SHA-256")
 
     name, count = case_file(root / corpus)
@@ -199,7 +250,6 @@ def validate_provenance(root, corpus, components):
             fail("casesSha256", f"does not match {name}: recorded {record['casesSha256']}, file {actual}")
 
     cases = record.get("cases")
-    field, recorded = ("cases", cases) if integer(cases) else (None, None)
     if isinstance(cases, dict):
         named = cases.get("file")
         if named not in CASE_FILES or not (root / corpus / named).is_file():
@@ -212,23 +262,18 @@ def validate_provenance(root, corpus, components):
         actual = hashlib.sha256((root / corpus / named).read_bytes()).hexdigest()
         if digest != actual:
             fail("cases.sha256", f"does not match {named}: recorded {digest}, file {actual}")
-        field, recorded = "cases.count", cases["count"]
-    if field is None:
-        # A JSONL corpus may record its record count under the file it names; `lines` is the usual name.
-        for candidate in ("caseCount", "lines"):
-            if integer(record.get(candidate)):
-                field, recorded = candidate, record[candidate]
-                break
+    field, recorded = recorded_count(record)
     if count is not None and field is None:
         fail("cases", f"must record how many cases {name} holds ({count})")
     if count is not None and recorded != count:
         fail(field, f"records {recorded} cases, {name} holds {count}")
 
-    if integer(cases) and integer(record.get("accepted")) and integer(record.get("refused")):
-        admitted, refused = record["accepted"], record["refused"]
-        if admitted + refused != cases:
-            fail("cases", f"records {cases} cases, accepted {admitted} plus refused {refused} is "
-                          f"{admitted + refused}")
+    for prefix, node in nested_objects(record):
+        total_field, total = recorded_count(node)
+        admitted, refused = node.get("accepted"), node.get("refused")
+        if integer(total) and integer(admitted) and integer(refused) and admitted + refused != total:
+            fail(f"{prefix}{total_field}", f"records {total} cases, accepted {admitted} plus refused "
+                                          f"{refused} is {admitted + refused}")
 
     gaps = record.get("notCovered")
     if gaps is not None:
