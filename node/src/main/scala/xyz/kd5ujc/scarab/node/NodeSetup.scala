@@ -269,11 +269,7 @@ object NodeSetup:
               )
             }
           }
-    val byron = (bytes: Array[Byte]) =>
-      parser
-        .parse(new String(bytes, "UTF-8"))
-        .leftMap(e => ConfigError(ConfigProblem.JsonSyntax("byron genesis", e)))
-        .map(j => hashOf(ByronGenesisFile.canonical(j).getBytes("UTF-8")))
+    val byron = (bytes: Array[Byte]) => ByronGenesisFile.read(Bytes.fromArray(bytes)).map(_._2)
     val plain = (bytes: Array[Byte]) => Right(hashOf(bytes))
     val files = config.files
     val hashes = config.hashes
@@ -321,14 +317,19 @@ object NodeSetup:
       byronBytes <- required("Byron", names.byron)
       byron <-
         if firstShelley.contains(BigInt(0)) then Right(None)
-        else ByronGenesisFile.parse(text(byronBytes), config.byronGenesisHash).map(Some(_))
+        else
+          ByronGenesisFile
+            .parse(Bytes.fromArray(byronBytes), config.byronGenesisHash)
+            .map(Some(_))
       alonzoBytes <- required("Alonzo", names.alonzo)
       conwayBytes <- required("Conway", names.conway)
       prefixed <- Genesis.withByronPrefix(shelleyBase, byron, firstShelley)
       // the Byron genesis of a chain that starts in Shelley is read only for its parameters
-      byronParams = byron.orElse(ByronGenesisFile.parse(text(byronBytes), None).toOption)
+      byronParams = byron.orElse(
+        ByronGenesisFile.parse(Bytes.fromArray(byronBytes), None).toOption
+      )
       genesis = Genesis.withSystemStart(prefixed, byronParams)
-      byronJson <- json(names.byron, byronBytes)
+      byronJson <- ByronGenesisFile.read(Bytes.fromArray(byronBytes)).map(_._1)
       // The network magic Byron addresses carry: the configuration says whether the network
       // requires one; without it, mainnet does not and the test networks do.
       requiresMagic = config.requiresNetworkMagic.getOrElse(

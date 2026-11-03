@@ -1,19 +1,22 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Byron genesis balances
 
-114 cases measured on 2026-11-03 against the unchanged released Byron genesis reader
+175 cases measured on 2026-11-03 against the unchanged released Byron genesis reader
 (cardano-ledger-byron 1.3.0.0 at cardano-ledger `f649f975`, cardano-crypto-wrapper 1.7.0.0,
 cardano-prelude 0.2.2.0, canonical-json 0.6.0.1), for
 [#728](https://github.com/KD5UJC-XYZ/scarab/issues/728) and
-[#729](https://github.com/KD5UJC-XYZ/scarab/issues/729). The oracle source and
+[#729](https://github.com/KD5UJC-XYZ/scarab/issues/729) and
+[#730](https://github.com/KD5UJC-XYZ/scarab/issues/730). The oracle source and
 [recipe](../../../scripts/oracle/byron-genesis-balances/README.md) are committed; `provenance.json`
 records the pins, the hash of each reference source the reader runs through, of the harness and of
 `cases.jsonl`.
 
-`cases.jsonl` holds one case per line: its `name`, the `text` of a genesis object with only
-`nonAvvmBalances` and `avvmDistr`, and the reference's verdict. An acceptance keeps the genesis
-UTxO `fromBalances` makes of each field (`result.nonAvvm`, `result.avvm`: each output's id, index,
-address and amount); a refusal keeps the reader's error (`failure`).
+`cases.jsonl` holds one case per line: its `name`, the bytes of a genesis object with
+`nonAvvmBalances` and `avvmDistr` (as `text`, or as `hex` where they are not UTF-8), and the
+reference's verdict. Where the bytes parse, `hash` is the genesis hash the reference takes of them.
+An acceptance keeps the genesis UTxO `fromBalances` makes of each field (`result.nonAvvm`,
+`result.avvm`: each output's id, index, address and amount); a refusal keeps the reader's error
+(`failure`) and the field it names (`refusal`).
 
 | group | cases | reference verdict |
 |---|---|---|
@@ -24,7 +27,11 @@ address and amount); a refusal keeps the reader's error (`failure`).
 | | unpadded, nonzero padding bits, padding in the middle, two padding characters, 31 or 33 bytes, not base64, empty | refused |
 | amounts | 32 texts in each field: zero, `45e15` and one over, `2^64-1`, `2^64` and over (taken modulo 2^64), `-1`, `-0`, `- 5`, `(-5)` (negative, taken modulo 2^64), surrounding spaces and parentheses, `0x`, `0X`, `0o`, `0O`, leading zeros, a 31-digit number; `+5`, `-(5)`, `0b101`, `5.0`, `5e3`, `5E0`, empty, `five`, `5_000` and a no-break or em space before the digit; and a non-AVVM amount written as a JSON number | as listed |
 
-Scope: the two balance fields and the genesis UTxO made of them. How the whole file is parsed
-(canonical JSON's strings, escapes and numbers, a key repeated in the text, a field left out) is
-[#730](https://github.com/KD5UJC-XYZ/scarab/issues/730). `ByronGenesisBalancesReferenceSuite` runs
-every case through Scarab's reader and `ByronLedger.genesisUtxo`.
+| canonical JSON (#730), 61 cases | whitespace of each kind between tokens, the byte `0xa0`, text or a second value after the value; strings with `\"` and `\\`, raw control bytes, raw newlines and tabs, the byte `0xff`, UTF-8; numbers of up to 15 digits, negative; `true`, `false`, `null`; arrays and objects, empty and nested, 20,000 levels deep; keys above ASCII (the hash sorts them by byte); a key twice | accepted, each with its hash |
+| | a no-break space in UTF-8 or the byte `0x85` between tokens; nothing; only spaces; the escapes `\n`, `\t`, `\/`, `\u`; an unterminated string; 16 digits, `-0`, `01`, `1.5`, `1e3`, `+1`; `nul`, `True`; a trailing or leading comma; a key not a string; elements without commas | refused at parsing |
+| fields | `nonAvvmBalances` twice, the first valid (accepted) or not an object (refused); a balance twice, both valid (the first holds) or the second's amount not a number (refused); either field left out; `nonAvvmBalances` an array; the whole value an array | as listed |
+
+Scope: the parse of the whole file, its hash, and the two balance fields with the genesis UTxO made
+of them. Reading the other fields as `FromJSON GenesisData` reads them is
+[#734](https://github.com/KD5UJC-XYZ/scarab/issues/734). `ByronGenesisBalancesReferenceSuite` runs
+every case through Scarab's reader (`ByronGenesisFile.read`) and `ByronLedger.genesisUtxo`.

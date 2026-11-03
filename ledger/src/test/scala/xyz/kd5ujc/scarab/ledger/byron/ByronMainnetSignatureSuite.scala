@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
-import io.circe.parser
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
@@ -19,10 +18,9 @@ class ByronMainnetSignatureSuite extends FunSuite:
   private val EpochSlots = BigInt(21600)
 
   private val genesis = ByronGenesisFile
-    .fromJson(
-      parser
-        .parse(Files.readString(Path.of("fixtures/mainnet/genesis/byron-genesis.json")))
-        .fold(e => fail(e.message), identity),
+    .parse(
+      xyz.kd5ujc.scarab.codec.Bytes
+        .fromArray(Files.readAllBytes(Path.of("fixtures/mainnet/genesis/byron-genesis.json"))),
       None
     )
     .fold(e => fail(e.message), identity)

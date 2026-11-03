@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.storage
 import cats.effect.IO
 import cats.mtl.Handle
 import cats.syntax.all.*
-import io.circe.parser
 import java.nio.file.{Files as JFiles, Path as JPath}
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -45,9 +44,13 @@ class AllegraRedeemMirrorSuite extends CatsEffectSuite:
 
   /** The mainnet genesis AVVM balance, at its redeem address. */
   private val avvm: (TxIn, ByronOut) =
-    val json = parser
-      .parse(JFiles.readString(JPath.of("fixtures/mainnet/byron-genesis-trimmed.json")))
-      .fold(e => fail(e.getMessage), identity)
+    val json = ByronGenesisFile
+      .read(
+        Bytes.fromArray(
+          JFiles.readAllBytes(JPath.of("fixtures/mainnet/byron-genesis-trimmed.json"))
+        )
+      )
+      .fold(e => fail(e.message), _._1)
     val (redeem, nonAvvm) =
       ByronGenesisFile.genesisBalances(json).fold(e => fail(e.message), identity)
     ByronLedger

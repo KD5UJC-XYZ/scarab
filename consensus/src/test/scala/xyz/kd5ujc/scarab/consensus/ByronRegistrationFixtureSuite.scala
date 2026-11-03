@@ -46,7 +46,11 @@ class ByronRegistrationFixtureSuite extends FunSuite:
   private val byName =
     outcomes.map(row => field[String](row.hcursor, "caseName") -> row.hcursor).toMap
   private val genesis = ByronGenesisFile
-    .parse(Files.readString(directory.resolve("genesis.json")), None)
+    .parse(
+      xyz.kd5ujc.scarab.codec.Bytes
+        .fromArray(Files.readAllBytes(directory.resolve("genesis.json"))),
+      None
+    )
     .fold(e => fail(e.toString), identity)
   private val config = ByronLedger.Config(genesis, requiresNetworkMagic = true)
   private val initial = ByronLedger.initial(config).fold(e => fail(e.toString), identity)

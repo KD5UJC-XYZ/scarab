@@ -166,34 +166,104 @@ def cases():
     return out
 
 
+def syntax_cases():
+    """Canonical JSON as `parseCanonicalJSON` reads it, around a genesis object that is valid
+    otherwise (#730): `extra` is a field no reader looks up, so only the parse and the hash see it."""
+    a = b58(address())
+    ok = '"nonAvvmBalances":{"%s":"1000"}' % a
+
+    def doc(extra=None, avvm='"avvmDistr":{}', balances=ok, before=b"", after=b""):
+        body = ",".join(x for x in (extra, avvm, balances) if x is not None)
+        return before + ("{" + body + "}").encode() + after
+
+    out = []
+
+    def add(name, raw):
+        try:
+            out.append({"name": f"canonical: {name}", "text": raw.decode("utf-8")})
+        except UnicodeDecodeError:
+            out.append({"name": f"canonical: {name}", "hex": raw.hex()})
+
+    add("compact", doc())
+    for label, ws in (("spaces", b" "), ("tab", b"\t"), ("newline", b"\n"), ("carriage return", b"\r"),
+                      ("vertical tab", b"\x0b"), ("form feed", b"\x0c"), ("byte a0", b"\xa0"),
+                      ("no-break space in UTF-8", "\u00a0".encode()), ("byte 85", b"\x85")):
+        spaced = ws.join([b"{", b'"avvmDistr"', b":", b"{", b"}", b",", b'"nonAvvmBalances"', b":", b"{",
+                          ('"%s"' % a).encode(), b":", b'"1000"', b"}", b"}"])
+        add(f"{label} between tokens", ws + spaced + ws)
+    add("text after the value", doc(after=b" trailing text"))
+    add("a second value after the value", doc(after=b"{}"))
+    add("nothing", b"")
+    add("only spaces", b"   ")
+    for label, value in (("escaped quote", b'"a\\"b"'), ("escaped backslash", b'"a\\\\b"'),
+                         ("escaped newline", b'"a\\nb"'), ("escaped tab", b'"a\\tb"'),
+                         ("escaped slash", b'"a\\/b"'), ("escaped code point", b'"a\\u0041b"'),
+                         ("raw newline", b'"a\nb"'), ("raw tab", b'"a\tb"'), ("raw control byte", b'"a\x01b"'),
+                         ("raw byte ff", b'"a\xffb"'), ("UTF-8", '"é漢"'.encode()), ("empty", b'""'),
+                         ("unterminated", b'"abc')):
+        add(f"string, {label}", doc(extra=(b'"extra":' + value).decode("latin-1")))
+    for label, value in (("zero", "0"), ("negative", "-1"), ("fifteen digits", "123456789012345"),
+                         ("sixteen digits", "1234567890123456"), ("negative fifteen digits", "-999999999999999"),
+                         ("minus zero", "-0"), ("leading zero", "01"), ("fraction", "1.5"), ("exponent", "1e3"),
+                         ("plus", "+1"), ("true", "true"), ("false", "false"), ("null", "null"), ("nul", "nul"),
+                         ("True", "True"), ("empty array", "[]"), ("array", "[1, [2], {\"a\": null}]"),
+                         ("array with a trailing comma", "[1,]"), ("array with a leading comma", "[,1]"),
+                         ("empty object", "{}"), ("object with a trailing comma", '{"a":1,}'),
+                         ("object key not a string", "{1:2}"), ("array without commas", "[1 2]"),
+                         ("deep nesting", "[" * 20000 + "]" * 20000)):
+        add(f"value, {label}", doc(extra='"extra":' + value))
+    add("key order, bytes above ASCII", doc(extra='"é":1,"z":2,"a":3'))
+    add("a key twice, both kept in the hash", doc(extra='"extra":1,"extra":2'))
+    add("nonAvvmBalances twice, the first a valid one", doc(extra=None, balances=ok + ',"nonAvvmBalances":5'))
+    add("nonAvvmBalances twice, the first not an object", doc(extra=None, balances='"nonAvvmBalances":5,' + ok))
+    add("a balance twice, the second amount not a number",
+        doc(balances='"nonAvvmBalances":{"%s":"1000","%s":"x"}' % (a, a)))
+    add("a balance twice, both valid", doc(balances='"nonAvvmBalances":{"%s":"1000","%s":"2000"}' % (a, a)))
+    add("without nonAvvmBalances", doc(balances=None))
+    add("without avvmDistr", doc(avvm=None))
+    add("nonAvvmBalances an array", doc(balances='"nonAvvmBalances":[]'))
+    add("not an object", b'[]')
+    return out
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--inputs", type=Path, required=True)
     p.add_argument("--reference", type=Path)
     p.add_argument("--out", type=Path)
     a = p.parse_args()
-    cs = cases()
+    cs = cases() + syntax_cases()
     names = [c["name"] for c in cs]
     assert len(set(names)) == len(names), "case names are unique"
     if a.reference is None:
         a.inputs.write_text(json.dumps(cs, indent=1) + "\n")
         return
-    verdicts = {r["name"]: r["reference"] for r in json.loads(a.reference.read_text())}
+    reference = json.loads(a.reference.read_text())
+    verdicts = {r["name"]: r["reference"] for r in reference}
+    hashes = {r["name"]: {"hash": r["hash"]} for r in reference}
     with a.out.open("w") as f:
         for c in cs:
             v = verdicts[c["name"]]
             row = dict(c, **v)
             if not v["accepted"]:
                 row["refusal"] = refusal(v["failure"])
+            if "hash" in hashes.get(c["name"], {}):
+                row["hash"] = hashes[c["name"]]["hash"]
             f.write(json.dumps(row, sort_keys=True, ensure_ascii=False) + "\n")
 
 
 def refusal(failure):
     """The field a refusal names, from the reader's `SchemaError` (its `seExpected`), in the shape
     circe derives for the suite's `Refusal`; a redeem key's wrong length keeps the length."""
-    expected = re.search(r'seExpected = "([A-Za-z0-9]+)"', failure)
-    assert expected, failure
+    expected = re.search(r'seExpected = "([^"]+)"', failure)
+    if expected is None:
+        assert "(line " in failure, failure
+        return {"Syntax": {}}
     kind = expected.group(1)
+    if kind.startswith("field "):
+        return {"MissingField": {}}
+    if kind == "object":
+        return {"NotAnObject": {}}
     if kind == "Address":
         return {"Address": {}}
     if kind == "Word64":

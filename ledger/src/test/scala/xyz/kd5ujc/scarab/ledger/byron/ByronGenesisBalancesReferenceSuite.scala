@@ -2,11 +2,10 @@
 package xyz.kd5ujc.scarab.ledger.byron
 
 import cats.syntax.all.*
-import io.circe.{Decoder, Json}
+import io.circe.Decoder
 import io.circe.parser
 import java.nio.file.{Files, Path}
 import munit.FunSuite
-import scala.util.chaining.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{AvvmKeyError, ByronGenesisFile, ConfigProblem}
 
@@ -27,12 +26,14 @@ class ByronGenesisBalancesReferenceSuite extends FunSuite:
 
   /** The field a refusal names: the reader's `seExpected`, with a redeem key's wrong length. */
   private enum Refusal derives Decoder:
-    case Address, Amount, AvvmKeyFormat
+    case Address, Amount, AvvmKeyFormat, Syntax, MissingField, NotAnObject
     case AvvmKeyLength(length: Int)
 
   private final case class Row(
       name: String,
-      text: String,
+      text: Option[String],
+      hex: Option[String],
+      hash: Option[String],
       accepted: Boolean,
       result: Option[Utxo],
       failure: Option[String],
@@ -65,6 +66,9 @@ class ByronGenesisBalancesReferenceSuite extends FunSuite:
     case (Refusal.Amount, ConfigProblem.JsonField(_, _, _))                           => true
     case (Refusal.AvvmKeyFormat, ConfigProblem.AvvmKey(_, AvvmKeyError.Format))       => true
     case (Refusal.AvvmKeyLength(n), ConfigProblem.AvvmKey(_, AvvmKeyError.Length(m))) => n == m
+    case (Refusal.Syntax, ConfigProblem.CanonicalJsonSyntax(_, _))                    => true
+    case (Refusal.MissingField, ConfigProblem.MissingField(_, _))                     => true
+    case (Refusal.NotAnObject, ConfigProblem.ExpectedObject(_, _))                    => true
     case _                                                                            => false
 
   test("the corpus covers addresses, AVVM keys and amounts, taken and refused") {
@@ -79,10 +83,15 @@ class ByronGenesisBalancesReferenceSuite extends FunSuite:
 
   for row <- rows do
     test(row.name) {
-      val read = parser
-        .parse(row.text)
-        .fold(e => fail(e.toString), identity[Json])
-        .pipe(ByronGenesisFile.genesisBalances)
+      val bytes = row.hex
+        .map(h => Bytes.fromHex(h).fold(e => fail(e.message), identity))
+        .orElse(
+          row.text.map(t => Bytes.fromArray(t.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+        )
+        .getOrElse(fail("a case has its text or its bytes"))
+      val file = ByronGenesisFile.read(bytes)
+      assertEquals(file.toOption.map(_._2.hex), row.hash, "the genesis hash, or no parse")
+      val read = file.flatMap((value, _) => ByronGenesisFile.genesisBalances(value))
       (row.result, read) match
         case (Some(utxo), Right((avvm, nonAvvm))) =>
           assertEquals(outputs(nonAvvm, avvm = false), utxo.nonAvvm.toSet, "non-AVVM outputs")

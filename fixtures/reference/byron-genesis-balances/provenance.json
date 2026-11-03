@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "measuredAt": "2026-11-03",
-  "scope": "The unchanged released Byron genesis reader as readGenesisData applies it: parseCanonicalJSON, then fromJSField of nonAvvmBalances (GenesisNonAvvmBalances) and avvmDistr (GenesisAvvmBalances), and UTxO.fromBalances of each, the AVVM balances at redeem addresses without a network magic; a genesis object with only the two balance fields; no other genesis field, ledger rule or signature is run",
+  "scope": "The unchanged released Byron genesis reader as readGenesisData applies it: parseCanonicalJSON of the bytes, the genesis hash (hashRaw of renderCanonicalJSON), then fromJSField of nonAvvmBalances (GenesisNonAvvmBalances) and avvmDistr (GenesisAvvmBalances), and UTxO.fromBalances of each, the AVVM balances at redeem addresses without a network magic; a genesis object with the two balance fields and, for the parser's cases, one field no reader looks up; no other genesis field, ledger rule or signature is run",
   "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
   "compiler": "GHC 9.10.3",
   "packages": {
@@ -66,19 +66,28 @@
       "file": "cardano-crypto-wrapper-1.7.0.0/src/Cardano/Crypto/Signing/Redeem/Compact.hs",
       "sourceSha256": "dae55241f566e964f18dcba31d765c60d4a7d4b0e1086992af37566e0bf4a4ea",
       "note": "FromObjectKey CompactRedeemVerificationKey is fromAvvmVK (141-145)"
+    },
+    "canonicalParse": {
+      "file": "canonical-json-0.6.0.1/Text/JSON/Canonical/Parse.hs",
+      "sourceSha256": "19590734cc1aeae58d270676eee485fa76d9d90a2af790438e4278f8357b986a",
+      "note": "parseCanonicalJSON (117-118): Parsec over the bytes, spaces, strings with the escapes \\\" and \\\\ only (178-), Int54 numbers of at most 15 digits (219-), nothing read after the value; renderCanonicalJSON (70-71): keys sorted, no whitespace"
+    },
+    "hashing": {
+      "file": "cardano-crypto-wrapper-1.7.0.0/src/Cardano/Crypto/Hashing.hs",
+      "note": "hashRaw: blake2b-256 of the bytes (272-273)"
     }
   },
   "harness": {
     "main": "scripts/oracle/byron-genesis-balances/Main.hs",
-    "mainSha256": "51dd48a1740e1aaa43b1dda1903d894461360a61a95277a3a319472da6b3b91a",
+    "mainSha256": "d638791d35a511d92bdf29a9aedbe80311e2a05eb4e21340f2959bf17522e4b1",
     "cases": "scripts/oracle/byron-genesis-balances/cases.py",
-    "casesSha256": "a9f273d8465c5714e2b02a3ff6774a16295a22e3287c924ae381f236fcc5de01"
+    "casesSha256": "6e3bfb4a56658ca18911293a5ae517af9852d2c42b2257e0342b30b15dce7b66"
   },
   "cases": {
     "file": "cases.jsonl",
-    "sha256": "d71b31586babd142e7a6178b1cde94070747b13abb47acc64b358d6a1ef7704b",
-    "count": 114,
-    "accepted": 62,
-    "refused": 52
+    "sha256": "2d3c6018c8f320e273de6636c4948097c5b3d55d4dd19c812a753dd7c644786d",
+    "count": 175,
+    "accepted": 95,
+    "refused": 80
   }
 }

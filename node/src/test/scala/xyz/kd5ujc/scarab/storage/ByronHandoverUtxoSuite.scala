@@ -42,10 +42,9 @@ class ByronHandoverUtxoSuite extends CatsEffectSuite:
 
   private val mainnetGenesis =
     ByronGenesisFile
-      .fromJson(
-        parser
-          .parse(JFiles.readString(JPath.of("fixtures/mainnet/byron-genesis-trimmed.json")))
-          .fold(e => fail(e.getMessage), identity),
+      .parse(
+        xyz.kd5ujc.scarab.codec.Bytes
+          .fromArray(JFiles.readAllBytes(JPath.of("fixtures/mainnet/byron-genesis-trimmed.json"))),
         None
       )
       .fold(e => fail(e.message), identity)

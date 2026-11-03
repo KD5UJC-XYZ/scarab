@@ -2,13 +2,13 @@
 package xyz.kd5ujc.scarab.ledger
 
 import cats.syntax.all.*
-import io.circe.{ACursor, Decoder, Json, JsonObject}
+import io.circe.{ACursor, Decoder, Json}
 import io.circe.parser
 import java.time.Instant
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.byron.{ByronAddress, ByronParams}
-import xyz.kd5ujc.scarab.ledger.json.{FromJson, HaskellRead, NumberError}
+import xyz.kd5ujc.scarab.ledger.json.{CanonicalJson, FromJson, HaskellRead, NumberError}
 import xyz.kd5ujc.scarab.ledger.state.PositiveUnitInterval
 
 /** Network configuration read from the Shelley genesis file. */
@@ -132,30 +132,29 @@ final case class ByronGenesis(
   def epochSlots: BigInt = BigInt(securityParam) * 10
 
 object ByronGenesisFile:
-  /** Canonical JSON as the Byron genesis hash defines it: object keys sorted, no whitespace. */
-  def canonical(json: Json): String =
-    json.fold(
-      "null",
-      b => b.toString,
-      n => n.toString,
-      s => Json.fromString(s).noSpaces,
-      xs => xs.map(canonical).mkString("[", ",", "]"),
-      o =>
-        o.toVector
-          .sortBy(_._1)
-          .map((k, v) => Json.fromString(k).noSpaces + ":" + canonical(v))
-          .mkString("{", ",", "}")
-    )
+  /** The Byron genesis file as `readGenesisData` reads it (`Cardano/Chain/Genesis/Data.hs:169-181`,
+    * cardano-ledger f649f975): its bytes parsed by `parseCanonicalJSON` ([[CanonicalJson.parse]]),
+    * and its hash, `blake2b-256` of `renderCanonicalJSON` of what was parsed (`:179`), #730.
+    */
+  def read(bytes: Bytes): Either[ConfigError, (CanonicalJson, Bytes)] =
+    CanonicalJson
+      .parse(bytes)
+      .leftMap(e => ConfigError(ConfigProblem.CanonicalJsonSyntax("byron genesis", e)))
+      .map(v => (v, Blake2b.hash256.hash(CanonicalJson.render(v))))
 
-  def parse(text: String, configuredHash: Option[Bytes]): Either[ConfigError, ByronGenesis] =
-    parser
-      .parse(text)
-      .leftMap(e => ConfigError(ConfigProblem.JsonSyntax("byron genesis", e)))
-      .flatMap(fromJson(_, configuredHash))
+  def parse(bytes: Bytes, configuredHash: Option[Bytes]): Either[ConfigError, ByronGenesis] =
+    read(bytes).flatMap((value, computed) => fromJson(value, computed, configuredHash))
 
-  def fromJson(json: Json, configuredHash: Option[Bytes]): Either[ConfigError, ByronGenesis] =
-    val c = json.hcursor
-    val computed = Blake2b.hash256.hash(Bytes.fromArray(canonical(json).getBytes("UTF-8")))
+  /** The genesis `value` whose hash is `computed`. The fields other than the balances are read from
+    * it as circe holds it ([[CanonicalJson.toCirce]]); reading each as `FromJSON GenesisData` does
+    * is #734.
+    */
+  def fromJson(
+      value: CanonicalJson,
+      computed: Bytes,
+      configuredHash: Option[Bytes]
+  ): Either[ConfigError, ByronGenesis] =
+    val c = CanonicalJson.toCirce(value).hcursor
     for
       hash <- configuredHash.fold(Right(computed))(h =>
         Either.cond(
@@ -189,7 +188,7 @@ object ByronGenesisFile:
           _.keys.toVector.sorted
             .traverse(h => Bytes.fromHex(h).leftMap(e => ConfigError(ConfigProblem.Hex(e))))
         )
-      balances <- genesisBalances(json)
+      balances <- genesisBalances(value)
       start <- c
         .downField("startTime")
         .as[Option[Long]]
@@ -218,31 +217,48 @@ object ByronGenesisFile:
     * #729). Measured with `scripts/oracle/byron-genesis-balances`.
     */
   def genesisBalances(
-      json: Json
+      value: CanonicalJson
   ): Either[ConfigError, (Vector[(Bytes, BigInt)], Vector[(Bytes, BigInt)])] =
-    val c = json.hcursor
+    // `fromJSField`: the field is required, and is an object whose every entry is read
     def balances(name: String)(key: String => Either[ConfigError, Bytes]) =
-      def field(e: io.circe.DecodingFailure) =
-        ConfigError(ConfigProblem.JsonField("byron genesis", name, e))
-      c.downField(name)
-        .as[Option[JsonObject]]
-        .leftMap(field)
-        .flatMap(
-          _.fold(Vector.empty)(_.toVector)
-            .traverse { (k, v) =>
-              (
-                key(k),
-                v.as[String]
-                  .leftMap(field)
-                  .flatMap(text =>
-                    HaskellRead
-                      .word64(canonicalString(text))
-                      .toRight(ConfigError(ConfigProblem.IntegerText("byron balance", text)))
-                  )
-              ).tupled
-            }
+      value.field(name) match
+        case None =>
+          // `FromJSON GenesisData` takes an object only (`Data.hs:85-87`)
+          value match
+            case CanonicalJson.Obj(_) =>
+              Left(ConfigError(ConfigProblem.MissingField("byron genesis", name)))
+            case other =>
+              Left(
+                ConfigError(
+                  ConfigProblem.ExpectedObject("byron genesis", CanonicalJson.toCirce(other))
+                )
+              )
+        case Some(CanonicalJson.Obj(entries)) =>
+          entries
+            .traverse((k, v) => (key(CanonicalJson.string(k)), amount(v)).tupled)
+            .map(firstOfEach)
+        case Some(other) =>
+          Left(
+            ConfigError(
+              ConfigProblem.ExpectedObject(s"byron genesis $name", CanonicalJson.toCirce(other))
+            )
+          )
+    // `FromJSON Word64`: a string, read by `readEither` as `fromJSString` gives it
+    def amount(v: CanonicalJson): Either[ConfigError, BigInt] = v match
+      case CanonicalJson.Str(b) =>
+        val text = CanonicalJson.string(b)
+        HaskellRead
+          .word64(text)
+          .toRight(ConfigError(ConfigProblem.IntegerText("byron balance", text)))
+      case other =>
+        Left(
+          ConfigError(
+            ConfigProblem.IntegerText(
+              "byron balance",
+              CanonicalJson.string(CanonicalJson.render(other))
+            )
+          )
         )
-        .map(firstOfEach)
     (
       balances("avvmDistr")(k => avvmKey(k).leftMap(e => ConfigError(ConfigProblem.AvvmKey(k, e)))),
       balances("nonAvvmBalances")(k =>
@@ -256,16 +272,6 @@ object ByronGenesisFile:
           )
       )
     ).tupled
-
-  /** The `String` canonical-json gives for a JSON string: its UTF-8 bytes, a `Char` each
-    * (`fromJSString`, canonical-json 0.6.0.1 `Text/JSON/Canonical/Types.hs:64, 90-91`).
-    * `readEither` reads that, so a character outside ASCII is the bytes of its encoding to it.
-    */
-  private def canonicalString(text: String): String =
-    String(
-      text.getBytes(java.nio.charset.StandardCharsets.UTF_8),
-      java.nio.charset.StandardCharsets.ISO_8859_1
-    )
 
   /** The first balance of each key, in the order of the text (`Map.fromList` of the reversed
     * entries).

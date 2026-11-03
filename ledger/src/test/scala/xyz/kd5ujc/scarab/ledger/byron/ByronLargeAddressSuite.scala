@@ -21,11 +21,9 @@ class ByronLargeAddressSuite extends FunSuite:
 
   private val genesis =
     ByronGenesisFile
-      .fromJson(
-        parser
-          .parse(Files.readString(Path.of("fixtures/mainnet/byron-genesis-trimmed.json")))
-          .toOption
-          .get,
+      .parse(
+        xyz.kd5ujc.scarab.codec.Bytes
+          .fromArray(Files.readAllBytes(Path.of("fixtures/mainnet/byron-genesis-trimmed.json"))),
         None
       )
       .fold(e => fail(e.message), identity)
