@@ -71,3 +71,21 @@ class DecodeBoundsSuite extends FunSuite:
     assert(read.isLeft, s"read: $read")
     assert(onSmallStack(LeiosHeader.decode(deep)).isLeft)
   }
+
+  /** 200,000 nested single-item lists around a zero. */
+  private val nested: Bytes = Bytes(Vector.fill(200000)(0x81.toByte)) ++ head(0, 0)
+
+  test("a body read for its bootstrap effects, a proposal nested 200,000 deep, is refused typed") {
+    // a Babbage body {0: [], 1: [], 2: 0, 6: [[[...]]]}: the update proposal is read for its effects
+    val body = head(5, 4) ++ head(0, 0) ++ head(4, 0) ++ head(0, 1) ++ head(4, 0) ++ head(0, 2) ++
+      head(0, 0) ++ head(0, 6) ++ nested
+    val read = onSmallStack(LiteLedger.effects(body, Era.Babbage))
+    assert(read.isLeft, s"read: $read")
+  }
+
+  test("a Byron body whose transaction payload is nested 200,000 deep is refused typed") {
+    // [txPayload, sscPayload, dlgPayload, updPayload], the first nested
+    val body = head(4, 4) ++ head(4, 1) ++ nested ++ head(4, 0) ++ head(4, 0) ++ head(4, 0)
+    val read = onSmallStack(byron.ByronTransport.check(body, hex("81a0"), boundary = false))
+    assert(read.isLeft, s"read: $read")
+  }
