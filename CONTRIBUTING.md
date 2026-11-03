@@ -143,7 +143,12 @@ with a pattern that matches your own shell command line.
   properties (round trips, model equivalence, rollback), not only examples.
 - **Original-bytes rule.** Anything that is hashed or signed (block bodies, transaction bodies,
   witness sets, scripts, datums, auxiliary data) is hashed over the bytes as received, never over a
-  re-encoding. Keep the original bytes next to the decoded value.
+  re-encoding. Keep the original bytes next to the decoded value. The exception is where the
+  reference itself signs a re-encoding: a block header's KES signature is checked over the header
+  body encoded again (`getSignableRepresentation`, cardano-ledger f649f975
+  `libs/cardano-protocol/src/Cardano/Protocol/Praos/BlockHeader.hs:113-117`,
+  `TPraos/BlockHeader.hs:170-171`; `HeaderBodyEncoding`), while the header hash is over the bytes as
+  received.
 - Exact arithmetic (`Rational`) in ledger calculations; no floating point.
 - Format with scalafmt (`scalafmtAll`); SPDX header (`// SPDX-License-Identifier: Apache-2.0`) on new source files.
 - Keep comments outside parameter and argument lists. Document parameter contracts in the
