@@ -91,3 +91,14 @@ and detached, from Alonzo `AlonzoTx` with and without its validity flag. Its cas
 as `ids`, which has the harness also report, for an accepted transaction, its `encCBOR` at the era's
 version: the bytes a node relays for a transaction it holds. Its recipe is the one above with
 `tx_envelope_cases.py`, `/tmp/tx-envelope-inputs.json` and `fixtures/reference/tx-envelope/cases.jsonl`.
+
+The [Plutus Data places corpus](../../../fixtures/reference/plutus-data-places/README.md) (#721) runs on
+the same harness, its cases from `data_cases.py`: each place a transaction carries Plutus `Data` with
+data the reference reads and data it refuses. Its recipe is the one above with `data_cases.py`.
+
+The [address headers corpus](../../../fixtures/reference/address-headers/README.md) (#723) runs on
+the same harness. Its cases come from `address_cases.py`: every header of an address and of a reward
+account, read alone in each era with the kinds "address" and "account" (`DecCBOR Addr` and
+`DecCBOR AccountAddress` of the CBOR byte string), and bodies that hold one of network 1 and 2 in
+each place a body reads one. Its recipe is the one above with `address_cases.py`,
+`/tmp/address-inputs.json` and `fixtures/reference/address-headers/cases.jsonl`.

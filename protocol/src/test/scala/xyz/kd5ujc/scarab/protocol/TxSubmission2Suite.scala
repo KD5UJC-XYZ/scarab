@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.codec.Bytes
 
+import TxSubmission2Fixtures.given
 import ChainSync.{DecodeResult, Role}
 import TxSubmission2.{State, Message}
 
@@ -92,35 +93,52 @@ class TxSubmission2Suite extends munit.FunSuite:
         .isLeft
     )
   }
-  test("advertised GenTx size crosses byte-string header widths; original body identity retained") {
+  test("the codec reads each transaction with the era's reader: its refusal, and the id's body") {
+    val refusing = new TxSubmission2.TransactionReader:
+      def body(original: Bytes) = Left(ProtocolError.TransactionBodyIsNotAMap)
+      def read(original: Bytes) = body(original)
+    val whole = new TxSubmission2.TransactionReader:
+      def body(original: Bytes) = Right(original)
+      def read(original: Bytes) = body(original)
+    // a transaction framed as one, which the era's decoders refuse
+    val undecodable = new TxSubmission2.TransactionReader:
+      def body(original: Bytes) = Right(original)
+      def read(original: Bytes) = Left(ProtocolError.ExpectedConwayGenTx)
+    val wire = hex("82039f8206d8184584a0a0f5f6ff")
+    val message = Message.ReplyTxs(Vector(tx))
+    assertEquals(
+      TxSubmission2.decode(State.Txs, Role.Client, wire)(using refusing),
+      Left(ProtocolError.TransactionBodyIsNotAMap)
+    )
+    assertEquals(
+      TxSubmission2.encode(State.Txs, Role.Client, message)(using refusing),
+      Left(ProtocolError.TransactionBodyIsNotAMap)
+    )
+    assertEquals(
+      TxSubmission2.bodyId(tx)(using whole),
+      Right(xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(tx))
+    )
+    assertEquals(TxSubmission2.decode(State.Txs, Role.Client, wire)(using whole), Right(message))
+    // a reply's transaction is read whole, and one the decoders refuse fails the codec; one this
+    // side sends is written as it is held, and its id is its body's
+    assertEquals(
+      TxSubmission2.decode(State.Txs, Role.Client, wire)(using undecodable),
+      Left(ProtocolError.ExpectedConwayGenTx)
+    )
+    assertEquals(
+      TxSubmission2.encode(State.Txs, Role.Client, message)(using undecodable),
+      Right(wire)
+    )
+    assertEquals(TxSubmission2.bodyId(tx)(using undecodable), TxSubmission2.bodyId(tx)(using whole))
+    // the size this codec carries is checked before the reader is asked
+    assert(TxSubmission2.bodyId(Bytes(Vector.fill(65537)(0.toByte)))(using whole).isLeft)
+  }
+  test("advertised GenTx size crosses byte-string header widths") {
     Vector(23 -> 28L, 24 -> 30L, 255 -> 261L, 256 -> 263L, 65535 -> 65542L, 65536 -> 65545L)
       .foreach { case (n, expected) =>
         assertEquals(TxSubmission2.advertisedSize(n), Right(expected))
       }
     assert(TxSubmission2.advertisedSize(65537).isLeft)
-    assertEquals(TxSubmission2.bodyId(tx), Right(id))
-    assertEquals(TxSubmission2.bodyId(hex("84a0a10080f5f6")), Right(id))
-    assert(TxSubmission2.bodyId(hex("84a0a0f5f600")).isLeft)
-    assert(TxSubmission2.bodyId(hex("83a0a0f5")).isLeft)
-  }
-  test("a transaction without its validity flag has its body's id, as `AlonzoTx` reads it (#699)") {
-    // `decodeRecordNamed "AlonzoTx"` (`Alonzo/Tx.hs:532-553`, cardano-ledger f649f975): a third
-    // member that is not a boolean is the auxiliary data, and the list holds three members
-    val bodyId = xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(hex("a0"))
-    Vector("83a0a0f6", "83a0a0a0", "83a0a0d90103a0", "9fa0a0f6ff", "9fa0a0a0ff", "84a0a0f4f6")
-      .foreach(t => assertEquals(TxSubmission2.bodyId(hex(t)), Right(bodyId), t))
-    // a boolean third member is the flag, and the auxiliary data must follow it; a member that is
-    // not a boolean is not a flag, and the list then holds one member too many
-    Vector(
-      "83a0a0f5",
-      "9fa0a0f5ff",
-      "84a0a0f6f6",
-      "9fa0a0f6f6ff",
-      "84a0a0f6",
-      "82a0a0",
-      "85a0a0f5f6f6"
-    )
-      .foreach(t => assert(TxSubmission2.bodyId(hex(t)).isLeft, t))
   }
   test("blocking request window can exceed available lease; FIFO acknowledgement drains it") {
     val i = TxSubmission2.Inventory.create(Vector(offer)).toOption.get
@@ -200,60 +218,4 @@ class TxSubmission2Suite extends munit.FunSuite:
       .fold(e => fail(e.toString), identity)
     assertEquals(frames.map(_.payload.size), Vector.fill(38)(65535) :+ 9671)
     assertEquals(Bytes(frames.flatMap(_.payload.value)), bytes)
-  }
-
-  test("indefinite transaction envelopes retain exact noncanonical and indefinite body identity") {
-    Vector("a0", "a1001800", "bf001800ff").foreach { body =>
-      val definite = hex("84" + body + "a0f5f6")
-      val indefinite = hex("9f" + body + "a0f5f6ff")
-      assertEquals(TxSubmission2.bodyId(indefinite), TxSubmission2.bodyId(definite))
-      assertEquals(
-        TxSubmission2.bodyId(indefinite),
-        Right(xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(hex(body)))
-      )
-      val message = Message.ReplyTxs(Vector(indefinite))
-      val encoded = TxSubmission2.encode(State.Txs, Role.Client, message).toOption.get
-      assertEquals(TxSubmission2.decode(State.Txs, Role.Client, encoded), Right(message))
-      assertEquals(
-        TxSubmission2.advertisedSize(indefinite.size),
-        TxSubmission2.advertisedSize(definite.size).map(_ + 1)
-      )
-    }
-    assertNotEquals(
-      TxSubmission2.bodyId(hex("9fa1001800a0f5f6ff")),
-      TxSubmission2.bodyId(hex("9fa10000a0f5f6ff"))
-    )
-  }
-  test(
-    "indefinite envelope requires exactly four complete members and exactly one terminal break"
-  ) {
-    Vector(
-      "9f",
-      "9fff",
-      "9fa0ff",
-      "9fa0a0ff",
-      "9fa0a0f5ff",
-      "9fa0a0f5f6",
-      "9fa0a0f5f600ff",
-      "9fa0a0f5f6ffff",
-      "9fa0a0f5f6ff00",
-      "9fa0a0f5f6fe",
-      "9fa0a0f5f6f8ff",
-      "9f80a0f5f6ff",
-      "9fa0a000f6ff",
-      "9fbf00ffa0f5f6ff",
-      "9fa0a0f5c0ff",
-      "9fa0a0f5a100ff",
-      "9fa0a0f59f00ff"
-    ).foreach(raw => assert(TxSubmission2.bodyId(hex(raw)).isLeft, raw))
-    val exact = hex("9fa0a10059fff6" + "00" * 65526 + "f5f6ff")
-    assertEquals(exact.size, 65536)
-    assertEquals(TxSubmission2.bodyId(exact), Right(id))
-    assert(TxSubmission2.bodyId(Bytes(exact.value :+ 0.toByte)).isLeft)
-    // nesting is bounded by the transaction's size, not by a depth of its own (the reference has
-    // none): 30,000 levels fit the 64 KiB, while the item limit refuses more than it counts
-    val deep = hex("9fa0a0f5" + "81" * 30000 + "00ff")
-    assertEquals(TxSubmission2.bodyId(deep), TxSubmission2.bodyId(hex("9fa0a0f5f6ff")))
-    val tooMany = hex("9fa0a0f5" + "81" * 65535 + "00ff")
-    assert(tooMany.size > TxSubmission2.MaxOriginalBytes && TxSubmission2.bodyId(tooMany).isLeft)
   }

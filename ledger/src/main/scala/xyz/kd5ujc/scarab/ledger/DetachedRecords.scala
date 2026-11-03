@@ -101,6 +101,8 @@ object DetachedRecords:
   /** Whether the bytes `9f ff` occur anywhere in `raw`: a detached record's head is those bytes, so
     * an input without them has none and is not walked.
     */
+  def mayHold(raw: Bytes): Boolean = holdsEmptyIndefiniteList(raw)
+
   private def holdsEmptyIndefiniteList(raw: Bytes): Boolean =
     @tailrec def from(i: Int): Boolean =
       if i + 1 >= raw.size then false
@@ -114,10 +116,43 @@ object DetachedRecords:
     * item).
     */
   def detached(raw: Bytes, shape: Shape): Option[Cbor.Detached] =
-    new Walk(raw).run(shape).map { found =>
-      val inOrder = found.reverse.toVector
-      Cbor.Detached(inOrder.map(_._1), inOrder.map(_._2))
-    }
+    new Walk(raw).run(shape) match
+      case Walked.Item(end, found) if end == raw.size => Some(records(found))
+      case _                                          => None
+
+  /** How the first item of an input reads as a [[Shape]], as the reference's decoders read it from
+    * a stream that may hold more after it.
+    */
+  enum Prefix:
+    /** The item ends at `end`, holding the detached `records`. */
+    case Item(end: Int, records: Cbor.Detached)
+
+    /** The input ends before the item does: a stream decoder waits for more. */
+    case Short
+
+    /** The reference's decoders fail on it. */
+    case Refused
+
+  /** The first item of `raw` read as `shape`, as [[detached]] reads a whole input, where the item
+    * ends and its detached records; for a protocol whose messages carry such an item unwrapped and
+    * must find its end as the reference's decoder does (#700).
+    */
+  def prefix(raw: Bytes, shape: Shape): Prefix =
+    new Walk(raw).run(shape) match
+      case Walked.Item(end, found) => Prefix.Item(end, records(found))
+      case Walked.Short            => Prefix.Short
+      case Walked.Refused          => Prefix.Refused
+
+  private def records(found: List[(Int, Int)]): Cbor.Detached =
+    val inOrder = found.reverse.toVector
+    Cbor.Detached(inOrder.map(_._1), inOrder.map(_._2))
+
+  /** Where a walk stops: after the item, with the records found (the last first), or where the
+    * input ends too soon or the reference's decoders fail.
+    */
+  private enum Walked:
+    case Item(end: Int, found: List[(Int, Int)])
+    case Short, Refused
 
   /** What the items of a list or map being walked are read as. */
   private enum Children:
@@ -161,63 +196,84 @@ object DetachedRecords:
     */
   private final case class Entered(at: Int, frame: Option[Frame], record: Option[(Int, Int)])
 
+  /** Why the walk cannot go on: [[Walked.Short]] or [[Walked.Refused]]. */
+  private type Stop = Walked.Short.type | Walked.Refused.type
+
   private final class Walk(raw: Bytes):
     private val end = raw.size
 
     private def byte(at: Int): Int = raw.byteOr(at)(-1)(_ & 0xff)
 
-    /** The argument of the head at `at` with additional information `ai`, and the head's size. */
-    private def argument(at: Int, ai: Int): Option[(Long, Int)] =
+    /** The argument of the head at `at` with additional information `ai`, and the head's size;
+      * short where the input ends inside the head.
+      */
+    private def argument(at: Int, ai: Int): Either[Stop, (Long, Int)] =
+      def wide(width: Int) =
+        raw.bigEndian(at + 1, width).map((_, width + 1)).toRight[Stop](Walked.Short)
       ai match
-        case n if n < 24 => Some((n.toLong, 1))
-        case 24          => raw.bigEndian(at + 1, 1).map((_, 2))
-        case 25          => raw.bigEndian(at + 1, 2).map((_, 3))
-        case 26          => raw.bigEndian(at + 1, 4).map((_, 5))
-        case 27          => raw.bigEndian(at + 1, 8).map((_, 9))
-        case _           => None
+        case n if n < 24 => Right((n.toLong, 1))
+        case 24          => wide(1)
+        case 25          => wide(2)
+        case 26          => wide(4)
+        case 27          => wide(8)
+        case _           => Left(Walked.Refused)
 
-    /** `n` items of at least one byte each fit after `at`. */
-    private def fits(n: Long, at: Int): Option[Long] = Option.when(n >= 0 && n <= end - at)(n)
+    /** A string's `n` bytes fit after `at`; short where they do not, which in a whole input is a
+      * refusal.
+      */
+    private def fits(n: Long, at: Int): Either[Stop, Long] =
+      if n < 0 then Left(Walked.Refused) else if n <= end - at then Right(n) else Left(Walked.Short)
 
-    private def head(at: Int): Option[Head] =
-      Option.when(at < end)(byte(at)).flatMap { b =>
+    /** The count of a list's or a map's items: one that no input of a `Long` 's length holds is
+      * short.
+      */
+    private def count(n: Long): Either[Stop, Long] =
+      if n < 0 then Left(Walked.Refused)
+      else if n > Long.MaxValue / 4 then Left(Walked.Short)
+      else Right(n)
+
+    private def head(at: Int): Either[Stop, Head] =
+      if at >= end then Left(Walked.Short)
+      else
+        val b = byte(at)
         val major = b >>> 5
         val ai = b & 31
         if ai == 31 then
           major match
-            case 2 => Some(Head(Token.ByteString, 1, -1))
-            case 3 => Some(Head(Token.Text, 1, -1))
-            case 4 => Some(Head(Token.List, 1, -1))
-            case 5 => Some(Head(Token.Map, 1, -1))
-            case 7 => Some(Head(Token.Break, 1, 0))
-            case _ => None
+            case 2 => Right(Head(Token.ByteString, 1, -1))
+            case 3 => Right(Head(Token.Text, 1, -1))
+            case 4 => Right(Head(Token.List, 1, -1))
+            case 5 => Right(Head(Token.Map, 1, -1))
+            case 7 => Right(Head(Token.Break, 1, 0))
+            case _ => Left(Walked.Refused)
         else
           argument(at, ai).flatMap { (n, size) =>
             major match
-              case 0 => Some(Head(Token.Unsigned(n), size, 0))
-              case 1 => Some(Head(Token.Negative, size, 0))
+              case 0 => Right(Head(Token.Unsigned(n), size, 0))
+              case 1 => Right(Head(Token.Negative, size, 0))
               case 2 | 3 =>
                 fits(n, at + size).map(payload =>
                   Head(if major == 2 then Token.ByteString else Token.Text, size + payload.toInt, 0)
                 )
-              case 4 => fits(n, at + size).map(Head(Token.List, size, _))
-              case 5 => fits(n, (at + size + end) / 2).map(m => Head(Token.Map, size, 2 * m))
-              case 6 => Some(Head(Token.Tag(n), size, 1))
+              // a count is read before the items, so that a shape refuses a record's wrong count
+              // whatever follows, as `matchSize` does; the items, when they are read, run out
+              case 4 => count(n).map(Head(Token.List, size, _))
+              case 5 => count(n).map(m => Head(Token.Map, size, 2 * m))
+              case 6 => Right(Head(Token.Tag(n), size, 1))
               case _ =>
                 ai match
-                  case 20 | 21 => Some(Head(Token.Bool, 1, 0))
-                  case 22      => Some(Head(Token.Null, 1, 0))
-                  case _       => Some(Head(Token.Other, size, 0))
+                  case 20 | 21 => Right(Head(Token.Bool, 1, 0))
+                  case 22      => Right(Head(Token.Null, 1, 0))
+                  case _       => Right(Head(Token.Other, size, 0))
           }
-      }
 
-    /** The end of the item at `from`, read as one item with no record in it, or -1 where the input
-      * holds no whole item there. Every item a walk reads goes through here but the few on the path
-      * of a record, so this is its cost on any input: a loop over a stack of the items still to
-      * come at each open level (-1 until a break), which allocates eight bytes a level and nothing
-      * an item. Walked with a frame an item, a deeply nested refused input made the decoder fuzz
-      * gate's blocks and outputs allocate over their bound of 1000 bytes an input byte (`fuzz
-      * 100000 1 4`, 2026-11-02, #687).
+    /** The end of the item at `from`, read as one item with no record in it, -2 where the input
+      * ends inside it, or -1 where the item is not one the reference reads. Every item a walk reads
+      * goes through here but the few on the path of a record, so this is its cost on any input: a
+      * loop over a stack of the items still to come at each open level (-1 until a break), which
+      * allocates eight bytes a level and nothing an item. Walked with a frame an item, a deeply
+      * nested refused input made the decoder fuzz gate's blocks and outputs allocate over their
+      * bound of 1000 bytes an input byte (`fuzz 100000 1 4`, 2026-11-02, #687).
       */
     @SuppressWarnings(Array("org.wartremover.warts.Var", "org.wartremover.warts.While"))
     private def skip(from: Int): Int =
@@ -226,6 +282,10 @@ object DetachedRecords:
       counts(0) = 1L
       var at = from
       var whole = true
+      var short = false
+      def ends(): Unit =
+        whole = false
+        short = true
       def open(items: Long): Unit =
         if depth == counts.length then counts = java.util.Arrays.copyOf(counts, depth * 2)
         counts(depth) = items
@@ -233,7 +293,7 @@ object DetachedRecords:
       while whole && depth > 0 do
         val top = depth - 1
         if counts(top) == 0 then depth -= 1
-        else if at >= end then whole = false
+        else if at >= end then ends()
         else
           val b = byte(at)
           if b == 0xff then
@@ -255,72 +315,78 @@ object DetachedRecords:
               val size = if ai < 24 then 1 else 1 + (1 << (ai - 24))
               val n = if ai < 24 then ai.toLong else raw.bigEndian(at + 1, size - 1).getOrElse(-1L)
               val room = (end - at - size).toLong
-              if size > end - at || (n < 0 && major >= 2 && major <= 5) then whole = false
+              if size > end - at then ends()
+              else if n < 0 && major >= 2 && major <= 5 then whole = false
               else
                 at += size
                 major match
                   case 2 | 3 =>
-                    if n > room then whole = false else at += n.toInt
-                  case 4 => if n > room then whole = false else open(n)
-                  case 5 => if n > room / 2 then whole = false else open(2 * n)
+                    if n > room then ends() else at += n.toInt
+                  // a list's or a map's items are read until the input ends: a break or a
+                  // reserved head among the ones that have arrived refuses it, whatever follows
+                  case 4 => if n > Long.MaxValue / 4 then ends() else open(n)
+                  case 5 => if n > Long.MaxValue / 4 then ends() else open(2 * n)
                   case 6 => open(1L)
                   case _ => ()
-      if whole then at else -1
+      if whole then at else if short then -2 else -1
 
     @tailrec private def resolve(shape: Shape, token: Token): Shape = shape match
       case ByToken(pick) => resolve(pick(token), token)
       case other         => other
 
-    /** Enter the item at `at`, with head `h`, read as `shape`; none where the reference fails. */
-    private def enter(shape: Shape, h: Head, at: Int): Option[Entered] =
-      def open(children: Children): Option[Entered] =
-        Some(Entered(at + h.length, Some(Frame(h.items, children)), None))
+    /** Enter the item at `at`, with head `h`, read as `shape`; the stop where the reference fails
+      * or the input ends.
+      */
+    private def enter(shape: Shape, h: Head, at: Int): Either[Stop, Entered] =
+      def open(children: Children): Either[Stop, Entered] =
+        Right(Entered(at + h.length, Some(Frame(h.items, children)), None))
       (resolve(shape, h.token), h.token) match
         case (Item, _) =>
-          val after = skip(at)
-          Option.when(after >= 0)(Entered(after, None, None))
+          skip(at) match
+            case -2    => Left(Walked.Short)
+            case -1    => Left(Walked.Refused)
+            case after => Right(Entered(after, None, None))
         case (Record(fields), Token.List) if h.items == fields.size.toLong =>
           open(Children.InOrder(fields, Item))
+        case (Record(_), Token.List) if h.items < 0 && at + 1 >= end => Left(Walked.Short)
         case (Record(fields), Token.List) if h.items < 0 && byte(at + 1) == 0xff =>
           val record = Some((at, fields.size))
-          Some(
+          Right(
             Entered(at + 2, Some(Frame(fields.size.toLong, Children.InOrder(fields, Item))), record)
           )
         case (Fields(fields, rest), Token.List) => open(Children.InOrder(fields, rest))
         case (ListOf(element), Token.Tag(258)) =>
-          Some(Entered(at + h.length, Some(Frame(1, Children.Each(ListOf(element)))), None))
+          Right(Entered(at + h.length, Some(Frame(1, Children.Each(ListOf(element)))), None))
         case (ListOf(element), Token.List)  => open(Children.Each(element))
         case (MapOf(key, value), Token.Map) => open(Children.Pairs(key, value, true))
         case (Keyed(value), Token.Map)      => open(Children.Keys(value, None))
         case (Sum(fields), Token.List)      => open(Children.Constructor(fields))
-        case _                              => None
+        case _                              => Left(Walked.Refused)
 
-    def run(shape: Shape): Option[List[(Int, Int)]] =
+    /** The first item of the input read as `shape`. */
+    def run(shape: Shape): Walked =
       walk(0, List(Frame(1, Children.Each(shape))), Nil)
 
     // One step a head or a finished item: the input bounds the steps, and the stack is a list.
-    @tailrec private def walk(
-        at: Int,
-        stack: List[Frame],
-        found: List[(Int, Int)]
-    ): Option[List[(Int, Int)]] =
+    @tailrec private def walk(at: Int, stack: List[Frame], found: List[(Int, Int)]): Walked =
       stack match
-        case Nil                       => Option.when(at == end)(found)
+        case Nil                       => Walked.Item(at, found)
         case Frame(0L, _) :: enclosing => walk(at, enclosing, found)
         case Frame(left, children) :: enclosing =>
           head(at) match
-            case None => None
-            case Some(Head(Token.Break, _, _)) =>
-              if left < 0 then walk(at + 1, enclosing, found) else None
-            case Some(h) =>
+            case Left(stop) => stop
+            case Right(Head(Token.Break, _, _)) =>
+              if left < 0 then walk(at + 1, enclosing, found) else Walked.Refused
+            case Right(h) =>
               val step = children
                 .next(h.token)
+                .toRight(Walked.Refused)
                 .flatMap((shape, after) =>
                   enter(shape, h, at).map((_, Frame(if left > 0 then left - 1 else left, after)))
                 )
               step match
-                case None => None
-                case Some((entered, parent)) =>
+                case Left(stop) => stop
+                case Right((entered, parent)) =>
                   walk(
                     entered.at,
                     entered.frame.toList ++ (parent :: enclosing),
@@ -345,6 +411,11 @@ object DetachedRecords:
       * (`BaseTypes.hs:996-1004`), `GovActionId` (`Conway/Governance/Procedures.hs:182-190`).
       */
     private val pair: Shape = Record(List(Item, Item))
+
+    /** `GovActionId`, a `RecD` record of a transaction id and an index
+      * (`Conway/Governance/Procedures.hs:182-190`), as a node-to-client query reads it too (#700).
+      */
+    val actionId: Shape = pair
 
     /** `decodeMaryValue` (`eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs:286-306`): a coin, or
       * from Mary a `RecD` record of a coin and a multi-asset.
@@ -466,8 +537,23 @@ object DetachedRecords:
         )
       else Record(List(body(era), witnesses(era), nullable(auxiliaryData(era))))
 
+    /** A header of a Shelley-based era: from Babbage the Praos `HeaderRaw` and its `HeaderBody` are
+      * `RecD` records (`libs/cardano-protocol/src/Cardano/Protocol/Praos/BlockHeader.hs:203-229`),
+      * the body's operational certificate and protocol version lists read by `decodeRecordNamed`
+      * and so not records; a TPraos header to Alonzo holds none (`TPraos/BlockHeader.hs:193-241`).
+      */
+    def header(era: Era): Shape =
+      if since(era, Era.Babbage) then Record(List(Record(List.fill(10)(Item)), Item)) else Item
+
+    /** A Leios header (`libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs`): the
+      * header, its body and a present endorser block announcement are `RecD` records (`:92-104,
+      * 229-257`).
+      */
+    val leiosHeader: Shape =
+      Record(List(Record(List.fill(11)(Item) :+ nullable(pair)), Item))
+
     /** A block as BlockFetch carries it, `[era tag, block]`: a block of a Shelley-based era is its
-      * header, then the bodies, the witness sets, the auxiliary data by index and the invalid
+      * [[header]], then the bodies, the witness sets, the auxiliary data by index and the invalid
       * transactions (`Block.hs:104-115`, `Alonzo/BlockBody/Internal.hs:215-240`).
       */
     val block: Shape = Sum(tag =>
@@ -476,7 +562,7 @@ object DetachedRecords:
           List(
             Fields(
               List(
-                Item,
+                header(era),
                 ListOf(body(era)),
                 ListOf(witnesses(era)),
                 MapOf(Item, auxiliaryData(era))

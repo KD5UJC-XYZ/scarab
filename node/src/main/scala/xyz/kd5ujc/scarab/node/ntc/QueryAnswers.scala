@@ -195,7 +195,7 @@ object QueryAnswers:
 
   def utxoNeeds[S](view: QueryView[S], q: NtcQuery): UtxoNeeds = q match
     case NtcQuery.IfCurrent(index, inner)
-        if index == view.era.index &&
+        if index == QueryEra.of(view.era) &&
           (view.era == Era.Conway || inEveryEra(inner)) =>
       ledgerNeeds(inner)
     case _ => UtxoNeeds.Nothing
@@ -280,14 +280,19 @@ object QueryAnswers:
         BigInt(0)
       )
       Right(CborOut.build { w =>
-        eras.lift(index).filter(_ => index <= era.index) match
+        eras.lift(index.index).filter(_ => index.index <= era.index) match
           case Some(e) =>
             w.array(1).array(3).integer(e.start.timePs).uint(e.start.slot).uint(e.start.epoch)
           case None => w.array(0)
       })
+    case NtcQuery.ByronUpdateInterfaceState =>
+      // Byron's update interface state is not answered (#726): in any later era the query gets the
+      // era mismatch, as the reference sends.
+      if view.era != Era.Byron then Right(CborOut.build(mismatch(_, QueryEra.Byron, view.era)))
+      else Left(Unanswered.Unsupported)
     case NtcQuery.IfCurrent(index, inner) =>
       val era = view.era
-      if index != era.index then Right(CborOut.build(mismatch(_, index, era)))
+      if index != QueryEra.of(era) then Right(CborOut.build(mismatch(_, index, era)))
       else if era != Era.Conway && !inEveryEra(inner) then Left(Unanswered.Unsupported)
       else ledgerAnswer(env, view, utxo, inner, version).map(r => CborOut.build(_.array(1).raw(r)))
 
@@ -304,12 +309,11 @@ object QueryAnswers:
       true
     case _ => false
 
-  private def mismatch(w: CborOut, queried: Int, ledger: Era): CborOut =
-    def name(i: Int): String = Era.values.find(_.index == i).fold("Unknown")(_.toString)
+  private def mismatch(w: CborOut, queried: QueryEra, ledger: Era): CborOut =
     w.array(2)
       .array(2)
-      .uint(queried)
-      .text(name(queried))
+      .uint(queried.index)
+      .text(queried.name)
       .array(2)
       .uint(ledger.index)
       .text(ledger.toString)

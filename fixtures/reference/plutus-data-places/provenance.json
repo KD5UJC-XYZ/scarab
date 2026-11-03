@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-03",
+  "scope": "Unchanged released decoders (decodeFullAnnotator) of a witness set and a transaction body of Alonzo, Babbage and Conway at the era's decoder version (5, 7, 9), each carrying Plutus Data in one place (a witness-set datum, a redeemer's data in the list and the Conway map form, an inline datum of an output and of a collateral return), with data decodeData reads and data it refuses; no ledger rule or script is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "plutusSourceCommit": "507cab8c",
+  "compiler": "GHC 9.10.3",
+  "referenceNode": "11.1.3 (matching embedded ledger package versions, not a bit-identical node release build)",
+  "sourceFiles": {
+    "plutusData": {
+      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+      "sourceSha256": "6cb38292ff6db086ba97b771df7b3480383ff986720c7dce1059d4f3864e7301",
+      "matchesPin": true,
+      "note": "PlutusData decCBOR = fromPlainDecoder Cborg.decode (97-102); BinaryData via makeBinaryData, decodeFull' at eraProtVerLow (217-239)"
+    }
+  },
+  "harness": {
+    "file": "scripts/oracle/conway-decoding/Main.hs",
+    "sha256": "deddd09825e7ba4c72f52c0cb683c798edc3da98ccf43df0735d4f59136190a4",
+    "image": "scarab-conway-decoding:local (run as scarab-cc721-conway-decoding:local, whose /oracle/conway-decoding/Main.hs has this sha256), from scripts/oracle/conway-decoding/Dockerfile on scarab-plutus176-context-reference:local",
+    "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-conway-decoding:local /fixtures/data-inputs.json",
+    "unchanged": true
+  },
+  "generatorSha256": "c5ba10ca756b908261181083fbf3c5190dc0a0ef3894da7b95f48664dfac8697",
+  "harnessInputSha256": "6e554a4c12f509fa95fd6faebd4aca23f7d90faaebdc5db9e822eb0509558e5d",
+  "harnessOutputSha256": "9baae82131f9ee75809d138d416d29a8301c457f6585e3b79103cb859ca8154f",
+  "casesSha256": "c12f192d05f3f35c3b8bfd0cf8698cce076b68ed0db572755d5c5b4beb4ca70c",
+  "cases": 137,
+  "accepted": 65,
+  "refused": 72,
+  "originalBytesRetained": true
+}

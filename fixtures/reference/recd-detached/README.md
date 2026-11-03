@@ -12,7 +12,7 @@ but an empty one `9f ff` passes, and the fields are then read from the items aft
 enclosing decoder counts the record as one item, and every span the decoders hash (a body for its
 transaction id, the parts of a block body) runs over the fields.
 
-`cases.jsonl` holds 183 lines, one case each, written by
+`cases.jsonl` holds 202 lines, one case each, written by
 `scripts/oracle/conway-decoding/detached_cases.py`, each record written as `9f ff` followed by its
 fields:
 - the update proposal `Update` (`Shelley/PParams.hs:267`), Shelley to Babbage, and the prices and
@@ -29,7 +29,15 @@ fields:
 - the list form of auxiliary data (`Allegra/TxAuxData.hs:185-210`, `Alonzo/TxAuxData.hs:215-262`),
   Allegra to Conway; Shelley reads only a map;
 - whole transactions (`Alonzo/Tx.hs:532-553`), and a Shelley-to-Mary transaction that is itself a
-  detached `ShelleyTx` (`Shelley/Tx.hs:184-192`);
+  detached `ShelleyTx` (`Shelley/Tx.hs:184-192`); Conway transactions with records in the body, the
+  witness set and the auxiliary data, in definite and indefinite envelopes, and four refused ones, as
+  the node-to-node transaction submission carries them ([#702](https://github.com/KD5UJC-XYZ/scarab/issues/702));
+- the set of `GovActionId` that the node-to-client query `GetProposals` carries, read as the query's
+  decoder reads it (`LC.fromEraCBOR @era` at Conway's lowest protocol version,
+  `Shelley/Ledger/Query.hs:981`, ouroboros-consensus 82ecba32): ids detached in definite, tagged and
+  indefinite sets, beside definite ones, and refused ones written as a non-empty indefinite list,
+  without their index, counted as the set's elements, with an index over a `Word16` or a transaction
+  id of 31 bytes ([#700](https://github.com/KD5UJC-XYZ/scarab/issues/700));
 - block bodies, the parts of a block after its header (`Alonzo/BlockBody/Internal.hs:215-240`),
   with the records in definite and indefinite lists of bodies and witness sets and in the
   auxiliary data.
@@ -43,10 +51,14 @@ The verdict (`accepted` and the complete `failure`) is what the unchanged releas
 with each: `decodeFullAnnotator` at the era's decoder version. Every case is read with `ids` set, so
 for an accepted body or transaction the harness also records the transaction id (`txid`), and for an
 accepted block body its hash (`bodyHash`) and its transactions' ids (`txids`), each hashed from the
-bytes the decoders read. In all, 137 accepted and 46 refused. `DetachedRecordsReferenceSuite`
+bytes the decoders read. In all, 146 accepted and 56 refused. For a set of ids the harness records the ids it read (`actions`). `DetachedRecordsReferenceSuite`
 requires the same verdict from `TxBody.decode`, `Witnesses.decode`, `AuxiliaryScripts.read`,
 `Tx.fromEnvelope`, or `Block.decodeShelley` and `Tx.fromBlock` of a block built around the block
-body, and the same ids and hash. `provenance.json` records the package versions and the hashes of
+body, and the same ids and hash; `RelayedTransactionsSuite` (node) requires of each Conway transaction that
+the TxSubmission2 codec and the mempool read it, and that its id is the reference's, or that it be
+refused; `NtcQueryRecordsSuite` (node) requires of each set of ids, put in `GetProposals` bare and
+under `GetCBOR` and in `MsgQuery`, that the codec find where the query ends and the query read the
+same ids, or that it be refused. `provenance.json` records the package versions and the hashes of
 the harness, the generator, its input and output, and the corpus.
 
 ## Regenerating
@@ -64,14 +76,14 @@ python3 scripts/oracle/conway-decoding/detached_cases.py --inputs /tmp/detached-
 
 ## Not covered here
 
-- Block headers: Babbage's and Conway's are `RecD` records, and their KES signature is over the
-  re-encoded header body; the harness has no decoder of them
-  ([#698](https://github.com/KD5UJC-XYZ/scarab/issues/698)).
+- Block headers: Babbage's and Conway's are `RecD` records too; a block's header is in
+  [the header decoding corpus](../header-decoding/README.md) (#698), whose harness has their
+  decoders.
 - A transaction of Alonzo or later without its validity flag, which the reference reads as valid,
   and the other forms of a whole transaction: [the envelope corpus](../tx-envelope/README.md)
   ([#699](https://github.com/KD5UJC-XYZ/scarab/issues/699)).
-- Node-to-client queries that carry a record, and failure answers that write an output
-  ([#700](https://github.com/KD5UJC-XYZ/scarab/issues/700)).
-- The node-to-node transaction submission protocol's own check of a transaction
-  ([#702](https://github.com/KD5UJC-XYZ/scarab/issues/702)).
+- The lists of a query other than its records, which the reference reads as definite lists where
+  the node reads indefinite ones too ([#709](https://github.com/KD5UJC-XYZ/scarab/issues/709)).
+- An answer that holds an output with a detached value: the
+  [UTxO answers corpus](../utxo-answers/README.md) has those.
 - A ledger state the reference writes holds no detached record: its encoders write definite lists.

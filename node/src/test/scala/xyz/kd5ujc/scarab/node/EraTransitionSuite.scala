@@ -269,12 +269,12 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     val wrong = Some(Bytes(Vector.fill(32)(7)))
     assert(
       ByronGenesisFile
-        .parse(text, wrong)
+        .parse(Bytes.fromArray(text.getBytes("UTF-8")), wrong)
         .left
         .exists(_.problem.isInstanceOf[xyz.kd5ujc.scarab.ledger.ConfigProblem.GenesisHashMismatch])
     )
     assertEquals(
-      ByronGenesisFile.parse(text, setup.origin).map(_.hash),
+      ByronGenesisFile.parse(Bytes.fromArray(text.getBytes("UTF-8")), setup.origin).map(_.hash),
       Right(setup.origin.get)
     )
     assert(NodeConfig.parse("{\"TestShelleyHardForkAtEpoch\": \"x\"}").isLeft)

@@ -39,6 +39,9 @@ object LocalStateQueryRuntime:
   trait Source[F[_], E, P]:
     def acquire(target: Target[P]): Resource[F, Either[AcquireFailure[E], Session[F, E]]]
 
+    /** Where each query the source answers ends, as its decoder reads it. */
+    def queries: LocalStateQuery.QueryReader
+
   def run[F[_]: Temporal: Defer, E, P](
       channel: MuxChannel[F],
       source: Source[F, E, P],
@@ -48,10 +51,12 @@ object LocalStateQueryRuntime:
     def illegal[A](detail: NetworkError.Violation)(using Raise[F, NetworkError]): F[A] =
       NetworkError.IllegalTransition(id, detail).raise[F, A]
     def send(state: State, message: Message[P])(using Raise[F, NetworkError]): F[Unit] =
-      LocalStateQueryEngine.encode(state, Role.Server, message, point).fold(illegal, channel.send)
+      LocalStateQueryEngine
+        .encode(state, Role.Server, message, point, source.queries)
+        .fold(illegal, channel.send)
     def receive(state: State)(using Raise[F, NetworkError]): F[Message[P]] =
       channel.recv(LocalStateQuery.MaxQueryBytes)(
-        LocalStateQueryEngine.decodePrefix(state, Role.Client, _, point)
+        LocalStateQueryEngine.decodePrefix(state, Role.Client, _, point, source.queries)
       )
 
     enum Loop:

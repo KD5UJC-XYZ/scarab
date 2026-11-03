@@ -42,7 +42,7 @@ class MirrorAnswersSuite extends FunSuite:
 
   private val queryEnv = QueryEnv(
     setup.byronParams
-      .flatMap(_.startTime)
+      .map(_.startTime)
       .fold(setup.geometry.systemStart)(java.time.Instant.ofEpochSecond),
     setup.geometry,
     setup.praos.forks,
@@ -88,7 +88,7 @@ class MirrorAnswersSuite extends FunSuite:
       queryEnv,
       view(block, state),
       Map.empty,
-      NtcQuery.IfCurrent(era.index, query)
+      NtcQuery.IfCurrent(QueryEra.of(era), query)
     )
 
   /** An `IfCurrent` answer is `[result]`: the result's bytes. */
@@ -185,7 +185,7 @@ class MirrorAnswersSuite extends FunSuite:
         queryEnv,
         view(block, state),
         Map.empty,
-        NtcQuery.IfCurrent(Era.Babbage.index, LedgerQuery.DebugNewEpochState)
+        NtcQuery.IfCurrent(QueryEra.Babbage, LedgerQuery.DebugNewEpochState)
       )
       .getOrElse(fail("no answer"))
     // [[5, "Babbage"], [6, "Conway"]]: two eras named
@@ -233,7 +233,7 @@ class MirrorAnswersSuite extends FunSuite:
           queryEnv,
           view(block, state),
           utxo,
-          NtcQuery.IfCurrent(era.index, q)
+          NtcQuery.IfCurrent(QueryEra.of(era), q)
         )
       val whole = asked(LedgerQuery.GetUTxOWhole)
       if holdsHash then assertEquals(whole.map(_.hex), Right(written(utxo)), s"$era")
@@ -299,7 +299,7 @@ class MirrorAnswersSuite extends FunSuite:
           queryEnv,
           view(block, state),
           Map.empty,
-          NtcQuery.IfCurrent(Era.Byron.index, LedgerQuery.GetUTxOWhole)
+          NtcQuery.IfCurrent(QueryEra.Byron, LedgerQuery.GetUTxOWhole)
         )
         .left
         .toOption,

@@ -35,14 +35,16 @@ object ByronCbor:
       else Array(0x1b.toByte) ++ (0 until 8).map(i => (v >> (56 - 8 * i)).toByte)
     Bytes.fromArray(raw)
 
-  /** A definite CBOR byte string around `content`. */
-  def bytes(content: Bytes): Bytes =
-    val n = content.size
-    val head: Array[Byte] =
-      if n < 24 then Array((0x40 + n).toByte)
-      else if n < 256 then Array(0x58.toByte, n.toByte)
-      else Array(0x59.toByte, (n >> 8).toByte, n.toByte)
-    Bytes.fromArray(head) ++ content
+  /** The minimal head of major type `major` (0 to 7) with argument `n`. */
+  private def head(major: Int, n: BigInt): Bytes =
+    val encoded = uint(n)
+    Bytes.fromArray(encoded.toArray.updated(0, ((major << 5) | (encoded.toArray(0) & 0x1f)).toByte))
+
+  /** A definite CBOR byte string around `content`, its length written minimally. */
+  def bytes(content: Bytes): Bytes = head(2, content.size) ++ content
+
+  /** The minimal head of a definite map of `n` entries. */
+  def mapHead(n: Int): Bytes = head(5, n)
 
   def concat(parts: Bytes*): Bytes = parts.foldLeft(Bytes.empty)(_ ++ _)
 
@@ -101,8 +103,6 @@ object ByronAddress:
   val VerKey = 0
   val Redeem = 2
 
-  private val limits = ByronCbor.BodyLimits
-
   def rootOf(addrType: Int, key: Bytes, attributes: Bytes): Bytes =
     val spending = ByronCbor.concat(ByronCbor.of(0x82, addrType), ByronCbor.bytes(key))
     ByronCbor.addressHash(ByronCbor.concat(ByronCbor.of(0x83, addrType), spending, attributes))
@@ -135,9 +135,13 @@ object ByronAddress:
     * derivation path (attribute 1), a canonical `Word32` network magic (attribute 2), a canonical
     * `Word8` type that is 0 or 2, and no byte after the address. The reference keeps any width of
     * the integers and lengths of the envelope (the tag, the payload length, the checksum, the list,
-    * map and key heads), and so does this reader.
+    * map and key heads), and so does this reader. `limits` bound the decoding: a block's, by
+    * default.
     */
-  def decode(raw: Bytes): Either[LedgerDecodeError, ByronAddress] =
+  def decode(
+      raw: Bytes,
+      limits: Cbor.Limits = ByronCbor.BodyLimits
+  ): Either[LedgerDecodeError, ByronAddress] =
     for
       root <- CborRead.decode(raw, limits)
       outer <- ByronTransport.tuple(root, 2, DecodeField.ByronAddress)
@@ -189,6 +193,39 @@ object ByronAddress:
       unknownLength(fields, Set(1, 2)),
       derivationPath.getOrElse(0)
     )
+
+  /** The address `raw` decodes to, encoded again as the reference encodes an `Address` (`encCBOR`
+    * of `Address`, `encodeCrcProtected`, and of its `Attributes AddrAttributes`,
+    * `Cardano.Chain.Common.Address` and `Cardano.Chain.Common.Attributes`, cardano-ledger
+    * f649f975): every head and length minimal, the attributes in ascending key order with the
+    * values they carried. A genesis balance's address is keyed and stored so (`UTxO.fromBalances`,
+    * `Cardano/Chain/UTxO/UTxO.hs:121-131`), whatever widths its text used (#728). A genesis address
+    * is in no block, and the reference's reader bounds it by nothing but its own length.
+    */
+  def reencoded(raw: Bytes): Either[LedgerDecodeError, Bytes] =
+    val size = raw.size.max(1)
+    val limits = Cbor.Limits(size, Int.MaxValue, size, size)
+    for
+      address <- decode(raw, limits)
+      fields <- CborRead
+        .decode(address.attributes, limits)
+        .flatMap(attributeFields(_, DecodeField.ByronAddressAttributes))
+    yield
+      val attributes = ByronCbor.concat(
+        ByronCbor.mapHead(fields.size) +:
+          fields.flatMap((k, v) => Vector(ByronCbor.uint(k), ByronCbor.bytes(v)))*
+      )
+      val body = ByronCbor.concat(
+        ByronCbor.of(0x83),
+        ByronCbor.bytes(address.root),
+        attributes,
+        ByronCbor.uint(address.addrType)
+      )
+      ByronCbor.concat(
+        ByronCbor.of(0x82, 0xd8, 0x18),
+        ByronCbor.bytes(body),
+        ByronCbor.uint(ByronCbor.crc32(body))
+      )
 
   /** The address that `key` spends (a 64-byte extended key for `VerKey`, 32 bytes for `Redeem`) on
     * a network: `networkMagic` is carried as attribute 2 on networks that require one. This is the

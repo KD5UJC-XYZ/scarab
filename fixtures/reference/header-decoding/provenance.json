@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-03",
+  "scope": "Unchanged released decoders of block headers: the TPraos BHeader of Shelley and Alonzo (decoder versions 2 and 5), the Praos Header of Babbage and Conway (7 and 9) and the Leios Header (Dijkstra's 12), each read with decodeFullAnnotator, a header body alone with decodeFull, and a ledger Block holding a Shelley-to-Conway header; definite, indefinite, detached (an empty indefinite list with the fields after it) and non-minimal forms of the header, its body, a VRF certificate, the operational certificate, the protocol version and a Leios announcement, with the refusals around them and the bounds of the body size and protocol version; for each accepted case the header hash over the bytes read, the block body hash of a block, and getSignableRepresentation of the header body, the bytes the KES signature is checked over; and, for a Praos VRF key made of a seed, whether a certificate with its output replaced decodes and passes verifyCertified; no ledger rule or KES signature is checked",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "compiler": "GHC 9.10.3",
+  "packages": {
+    "cardano-protocol": "0.1.0.0",
+    "cardano-protocol-tpraos": "1.6.0.0",
+    "cardano-ledger-binary": "1.9.1.0",
+    "cardano-ledger-core": "1.21.0.0",
+    "cardano-ledger-shelley": "1.19.0.1",
+    "cardano-ledger-alonzo": "1.16.0.0",
+    "cardano-ledger-babbage": "1.14.0.0",
+    "cardano-ledger-conway": "1.23.0.0",
+    "cardano-ledger-dijkstra": "0.3.0.0",
+    "cborg": "0.2.10.0",
+    "cardano-crypto-class": "2.5.1.0",
+    "cardano-crypto-praos": "2.2.4.0"
+  },
+  "packageArchives": {
+    "cardano-protocol-0.1.0.0.tar.gz": "01caad21469cd3bcf888a03d994d02f47055d66a62f008cb2d7cbf8eedd0a4e8",
+    "cardano-protocol-tpraos-1.6.0.0.tar.gz": "6ba539653e5b149ff9e07364c20bb3e815526d9af4c6989aa4b0ff7e51eb9e24",
+    "cardano-crypto-class-2.5.1.0.tar.gz": "b071c3112545e0633ac81d67e9bc52b3e03c1054073181f724647dc52d166074"
+  },
+  "sourceFiles": {
+    "praosHeader": {
+      "file": "libs/cardano-protocol/src/Cardano/Protocol/Praos/BlockHeader.hs",
+      "sourceSha256": "0a08f975179dd1e8919052d14014b359e3653d625faa8ad7c4d8f84f88e983d8",
+      "matchesPin": true,
+      "note": "HeaderBody and HeaderRaw are RecD records (203-229); getSignableRepresentation re-encodes the body at its major version (113-117)"
+    },
+    "tpraosHeader": {
+      "file": "libs/cardano-protocol/src/Cardano/Protocol/TPraos/BlockHeader.hs",
+      "sourceSha256": "16f4eb6ebf6b8218fda3f5d7b877d44eae441d8e64fb81adcee75bdf8f83059f",
+      "matchesPin": true,
+      "note": "BHBody and BHeaderRaw read their fields inside decodeRecordNamed (193-241); getSignableRepresentation (170-171)"
+    },
+    "leiosHeader": {
+      "file": "libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs",
+      "sourceSha256": "ab6d1ca77f87385930f1bd339d8e8ff9b2e738ab4bd5b05690c1c945df7bfee4",
+      "matchesPin": true,
+      "note": "HeaderBody, HeaderRaw and EbAnnouncement are RecD records (92-104, 229-257); getSignableRepresentation (139-142)"
+    },
+    "ocert": {
+      "file": "libs/cardano-protocol/src/Cardano/Protocol/TPraos/OCert.hs",
+      "sourceSha256": "4aabd7fff56b33f74d648088eda1e87b4a9570914d4075a0c698d270ab56925c",
+      "matchesPin": true,
+      "note": "the operational certificate's fields (112-128)"
+    },
+    "ocertRule": {
+      "file": "libs/cardano-protocol-tpraos/src/Cardano/Protocol/TPraos/Rules/OCert.hs",
+      "sourceSha256": "fdb218576a056ec13ef630e5756736be77810155f866144e5d92ccfa3dbf3f43",
+      "matchesPin": true,
+      "note": "the TPraos KES check, verifySignedKES over the header body"
+    },
+    "group": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Group.hs",
+      "sourceSha256": "fa17eb23a554b55a3a70ceed70759cb49a462272002541a4432bd9370203e0b4",
+      "matchesPin": true,
+      "note": "CBORGroup reads a list with decodeRecordNamed (27-35)"
+    },
+    "decCBOR": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs",
+      "sourceSha256": "fc3976b22364883b70f785be75c63dd586e3b3c68ee67178fc3b5be128f19e6d",
+      "matchesPin": true,
+      "note": "CertifiedVRF reads its list with enforceSize (568-573)"
+    },
+    "version": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Version.hs",
+      "sourceSha256": "4726e87beca4af3b765984725b4a49797bd08bb61d45b4c3b0923a4bd3e8e58d",
+      "matchesPin": true,
+      "note": "MaxVersion is 13 (63); mkVersion32 (111-124)"
+    },
+    "decoder": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+      "sourceSha256": "3ff3541b2900ceaab9bda26f633d7ea5118a49f5faab3936d036cfe9b49f94cc",
+      "matchesPin": false,
+      "note": "the released 1.9.1.0 file (sha256 cf8c16d44c36d7e3fb288028a9742d406c6042bec0f6fc75be566be2d319019a) differs from the pin only in decodeIPv4's byte order; decodeListLikeT (690-708), decodeVersion (462-463) and enforceSize (1403-1404) are the same"
+    },
+    "vrfClass": {
+      "file": "cardano-crypto-class-2.5.1.0/src/Cardano/Crypto/VRF/Class.hs (released package, not in the ledger checkout)",
+      "sourceSha256": "db84f5d93614d3b30f06f42afcb074b81db597806876efe81662b27f93b0f99f",
+      "matchesPin": null,
+      "note": "OutputVRF derives Ord from a ByteArray (253-254); verifyCertified compares the proof's output with the certificate's (359-369)"
+    }
+  },
+  "sourceArchive": {
+    "url": "https://codeload.github.com/IntersectMBO/cardano-ledger/tar.gz/f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "sha256": "b545b1eda2067c756add6d98701aacc217a380fe177f984daa1da655607a0b68",
+    "kind": "repository tarball at the pinned commit"
+  },
+  "harness": {
+    "file": "scripts/oracle/header-decoding/Main.hs",
+    "sha256": "1f5d2fd104c8aab75a1a1a31e5496bf2b5547f9e24a19e0989d589ad06abaa23",
+    "image": "scarab-header-decoding:local (sha256:8b559814e721609e3799ffadc5d4806f8e20c50b9875761e2f7e069b05c003a1), from scripts/oracle/header-decoding/Dockerfile on scarab-plutus176-context-reference:local (sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef)",
+    "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-header-decoding:local /fixtures/header-inputs.json",
+    "unchanged": true
+  },
+  "generatorSha256": "965b7957c85c1aa30db2c0510db2afb666db8c5f284fa002331506cff62556c8",
+  "harnessInputSha256": "b0a6055d78f665b88dca46659ddd214c0fdebbc0c7a06434bde1500e61435901",
+  "harnessOutputSha256": "e349b380def6d28cb4245436e751093f5b21cc19adea1cc409f702f5d7c066ae",
+  "casesSha256": "a8f4788b39ad0255185811f38b9bc710e470ade16655a28510ce5743c3a8f2d9",
+  "cases": 147,
+  "accepted": 87,
+  "refused": 60,
+  "originalBytesRetained": true
+}

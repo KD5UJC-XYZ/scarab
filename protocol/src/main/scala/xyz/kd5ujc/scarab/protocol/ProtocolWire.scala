@@ -67,6 +67,14 @@ private[protocol] object ProtocolWire:
     if reader.position != bytes.size then bad(ProtocolError.TrailingPayloadBytes)
   }
 
+  /** `bytes` as whole items one after another, with the checks of [[validateItem]]: one item as a
+    * decoder of the ledger reads it, which a tree of items reads as several ([[Reader.spanning]]).
+    */
+  def validateItems(bytes: Bytes, limits: Limits): Either[ProtocolError, Unit] = attempt {
+    new Reader(bytes, limits).spanning(bytes.size)
+    ()
+  }
+
   /** The CBOR reader of every mini-protocol codec: a cursor over the input, failing through the
     * [[Scope]]. It keeps its imperative form on measurement: a functional walk of the same checks
     * took 2.4 to 3.2 times as long and allocated 4 to 11 times as much on real blocks
@@ -288,6 +296,17 @@ private[protocol] object ProtocolWire:
     def item(): Bytes =
       val start = pos
       skip(0)
+      input.slice(start, pos).compact
+
+    /** The next `size` bytes, read as whole items one after another with the checks of [[item]]:
+      * one item as a decoder of the ledger reads it, which a tree of items reads as several
+      * ([[LocalStateQuery.QuerySpan.Prefix]]). Refused where an item runs past them.
+      */
+    def spanning(size: Int): Bytes =
+      val start = pos
+      need(size)
+      while pos - start < size do skip(0)
+      if pos - start != size then bad(ProtocolError.ItemRunsPastSpan)
       input.slice(start, pos).compact
 
   class Writer(limits: Limits)(using Scope):

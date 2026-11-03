@@ -179,26 +179,52 @@ object Address:
     * version a pointer address is kept as the pointer is written again (`cAddrNormalized`, 470-476,
     * `putPtr`): the bytes that were read are not kept.
     */
-  enum Mode(val pointers: Ptr.Policy, val values: Value.Decoding, val dropsTrailing: Boolean):
+  enum Mode(
+      val pointers: Ptr.Policy,
+      val values: Value.Decoding,
+      val dropsTrailing: Boolean,
+      val headers: Headers
+  ):
     /** Shelley and Allegra: bytes after a Shelley address are ignored and not kept, and an output
       * value is a coin: the era's `Value` is `Coin` (`type instance Value ShelleyEra = Coin`,
       * `eras/shelley/impl/src/Cardano/Ledger/Shelley/Era.hs`, and the same for `AllegraEra` in
       * `eras/allegra/impl/src/Cardano/Ledger/Allegra/Era.hs`, cardano-ledger f649f975).
       */
-    case CoinOnly extends Mode(Ptr.Policy.Normalise, Value.Decoding.CoinOnly, true)
+    case CoinOnly
+        extends Mode(Ptr.Policy.Normalise, Value.Decoding.CoinOnly, true, Headers.Reference)
 
     /** Mary and Alonzo: bytes after a Shelley address are ignored and not kept. */
-    case Backwards extends Mode(Ptr.Policy.Normalise, Value.Decoding.Pruning, true)
+    case Backwards
+        extends Mode(Ptr.Policy.Normalise, Value.Decoding.Pruning, true, Headers.Reference)
 
-    /** Babbage: the address is the whole byte string; a pointer that does not fit is normalised. It
-      * is also the mode for what the node itself wrote (the stores, the state codecs, the genesis):
-      * those addresses are already normalised, and an output an earlier build stored with the
-      * pointer as it came is read as the reference reads it.
-      */
-    case Rigorous extends Mode(Ptr.Policy.Normalise, Value.Decoding.Pruning, false)
+    /** Babbage: the address is the whole byte string; a pointer that does not fit is normalised. */
+    case Rigorous
+        extends Mode(Ptr.Policy.Normalise, Value.Decoding.Pruning, false, Headers.Reference)
 
     /** Conway: the address is the whole byte string and a pointer that does not fit is refused. */
-    case Strict extends Mode(Ptr.Policy.Refuse, Value.Decoding.Rejecting, false)
+    case Strict extends Mode(Ptr.Policy.Refuse, Value.Decoding.Rejecting, false, Headers.Reference)
+
+    /** What the node itself wrote (the stores, the state codecs): read as [[Rigorous]] reads a
+      * Babbage address, but a Shelley header of any low nibble is taken. Those addresses are
+      * already normalised, an output an earlier build stored with the pointer as it came is read as
+      * the reference reads it, and an output whose header an earlier build took and stored before
+      * #723 keeps reading (ADR 0006); a block never reaches this mode.
+      */
+    case Stored extends Mode(Ptr.Policy.Normalise, Value.Decoding.Pruning, false, Headers.Stored)
+
+  /** Which headers of a Shelley address a [[Mode]] takes. */
+  enum Headers:
+    /** The reference's: a Shelley header may set no bit of `headerNonShelleyBits = 0b10001110`
+      * (`decodeAddrStateLenientT`,
+      * `libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs:655-666`, cardano-ledger f649f975),
+      * so only the low bit names the network (`headerNetworkId`, `:557-561`) and a header with bits
+      * 1 to 3 set is refused. Every era's reader of an output's address goes through it
+      * (`fromCborBothAddr`, `:459-477`) (#723).
+      */
+    case Reference
+
+    /** Any low nibble, for what an earlier build stored ([[Mode.Stored]]). */
+    case Stored
 
   object Mode:
     def of(era: Era): Mode =
@@ -214,6 +240,13 @@ object Address:
     */
   private val ByronHeader = 0x82
 
+  /** Bits 1 to 3 of a header, which neither a Shelley address nor a reward account may set
+    * (`headerNonShelleyBits`, `headerIsAccountAddress`,
+    * `Cardano/Ledger/Address.hs:554-555, 930-932`, cardano-ledger f649f975): only bit 0 names the
+    * network.
+    */
+  private[ledger] val UnusedHeaderBits = 0x0e
+
   /** The address in `raw`. A Byron-kind address (header byte 0x82) is decoded as the reference
     * decodes a bootstrap address, over the whole byte string in every era
     * (`decodeBootstrapAddress`, `Cardano/Ledger/Address.hs`, which runs `decodeFull'` of the Byron
@@ -226,9 +259,12 @@ object Address:
     * address is kept as the normalised pointer, written again.
     */
   def decode(raw: Bytes, mode: Mode = Mode.Rigorous): Either[LedgerDecodeError, Address] =
-    if raw.size == 0 then Left(LedgerDecodeError.Empty(DecodeField.Address))
+    val header = raw.byteOr(0)(-1)(_ & 0xff)
+    if header < 0 then Left(LedgerDecodeError.Empty(DecodeField.Address))
+    // the reference checks the header before it reads anything after it (`:660-666`)
+    else if header < 0x80 && (header & UnusedHeaderBits) != 0 && mode.headers == Headers.Reference
+    then Left(LedgerDecodeError.AddressHeader(header))
     else
-      val header = raw.value(0) & 0xff
       val kind = header >> 4
       val network = header & 0x0f
       def hash(offset: Int) =
@@ -290,16 +326,25 @@ object Address:
 final case class RewardAccount(network: Int, credential: Credential)
 
 object RewardAccount:
+  /** `decodeAccountAddress` (`libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs:906-955`,
+    * cardano-ledger f649f975), what every era reads a reward account with
+    * (`fromCborAccountAddress`, `:913-916`): the header is `0b111x000y` (`headerIsAccountAddress`,
+    * `:930-932`), so bits 1 to 3 are clear and bit 0 names the network (#723); then a 28-byte hash
+    * and nothing after it.
+    */
   def decode(raw: Bytes): Either[LedgerDecodeError, RewardAccount] =
-    if raw.size != 29 then
+    val header = raw.byteOr(0)(-1)(_ & 0xff)
+    // in the reference's order (`decodeAccountAddressT`, `:942-953`): a header, then a valid one,
+    // then the hash and nothing after it
+    if header < 0 then Left(LedgerDecodeError.AddressLength(DecodeField.RewardAccount, 29, 0))
+    else if (header & Address.UnusedHeaderBits) != 0 || header >> 5 != 7 then
+      Left(LedgerDecodeError.RewardAccountHeader(header))
+    else if raw.size != 29 then
       Left(LedgerDecodeError.AddressLength(DecodeField.RewardAccount, 29, raw.size))
     else
-      val header = raw.value(0) & 0xff
-      val h = Bytes(raw.value.drop(1))
-      header >> 4 match
-        case 14 => Right(RewardAccount(header & 0x0f, Credential.Key(h)))
-        case 15 => Right(RewardAccount(header & 0x0f, Credential.Script(h)))
-        case _  => Left(LedgerDecodeError.RewardAccountHeader(header))
+      val h = raw.drop(1).compact
+      if (header & 0x10) == 0 then Right(RewardAccount(header & 0x0f, Credential.Key(h)))
+      else Right(RewardAccount(header & 0x0f, Credential.Script(h)))
 
 /** Lovelace plus native assets. Mint values may be negative; UTxO values never are. */
 final case class Value(coin: BigInt, assets: Map[Bytes, Map[Bytes, BigInt]]):
@@ -665,20 +710,32 @@ object TxOut:
             (),
             LedgerDecodeError.UnknownFields(DecodeField.Output, f.keySet -- Set(0, 1, 2, 3))
           )
-          d <- f.get(2).traverse(datumOption)
+          d <- f.get(2).traverse(datumOption(_, forms != Forms.Stored))
           s <- f.get(3).traverse(Script.decodeWrapped)
         yield TxOut(n.original, a, v, d.getOrElse(Datum.NoDatum), s, vn.original.size)
       case _ => Left(LedgerDecodeError.OutputForm(forms, n.value))
 
-  /** `datum_option = [0, hash] / [1, #6.24(bytes .cbor plutus_data)]` */
-  private def datumOption(n: Node)(using ByteStrings): Either[LedgerDecodeError, Datum] =
+  /** `datum_option = [0, hash] / [1, #6.24(bytes .cbor plutus_data)]`. The inline datum is read as
+    * Plutus `Data` where the output is read from a block or a transaction (`read`): the reference's
+    * `BinaryData` is made by `makeBinaryData`, which decodes the bytes as `Data` at the era's
+    * lowest protocol version and refuses them otherwise (`Plutus/Data.hs:217-239`, cardano-ledger
+    * f649f975). A stored output was read so when it was taken, and is not read again (#721).
+    */
+  private def datumOption(n: Node, read: Boolean)(using
+      ByteStrings
+  ): Either[LedgerDecodeError, Datum] =
     CborRead.arrayN(n, 2, DecodeField.DatumOption).flatMap { xs =>
       CborRead.uint(xs(0), DecodeField.DatumOptionTag).flatMap {
         case t if t == 0 => CborRead.bytesN(xs(1), 32, DecodeField.DatumHash).map(Datum.Hash(_))
         case t if t == 1 =>
           xs(1).value match
             case xyz.kd5ujc.scarab.codec.Value.Tag(g, inner) if g == 24 =>
-              CborRead.bytes(inner, DecodeField.InlineDatum).map(Datum.Inline(_))
+              CborRead
+                .bytes(inner, DecodeField.InlineDatum)
+                .flatMap(b =>
+                  if read then Data.readBytes(b, DecodeField.InlineDatum).as(Datum.Inline(b))
+                  else Right(Datum.Inline(b))
+                )
             case _ => Left(LedgerDecodeError.ExpectedTag(DecodeField.InlineDatum, 24, xs(1).value))
         case t => Left(LedgerDecodeError.UnknownTag(DecodeField.DatumOption, t))
       }
@@ -689,7 +746,7 @@ object TxOut:
     */
   def fromBytes(
       raw: Bytes,
-      mode: Address.Mode = Address.Mode.Rigorous
+      mode: Address.Mode = Address.Mode.Stored
   )(using ByteStrings): Either[LedgerDecodeError, TxOut] =
     DetachedRecords.read(raw, Cbor.Limits(), DetachedRecords.Shapes.storedOutput)(
       LedgerDecodeError.Syntax(_)
@@ -730,13 +787,28 @@ object TxIn:
   given Ordering[TxIn] = (a, b) =>
     val ids = a.id.compareTo(b.id)
     if ids != 0 then ids else a.index.compare(b.index)
+
+  /** `decodeRecordNamed` of a transaction id and a `TxIx`, a `Word16` (`newtype TxIx = TxIx {unTxIx
+    * :: Word16}`, `libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs:917-921`,
+    * cardano-ledger f649f975): an index past 65535 is refused, as `decodeWord16` refuses it (#720).
+    */
   def decode(n: Node)(using ByteStrings): Either[LedgerDecodeError, TxIn] =
     CborRead
       .arrayN(n, 2, DecodeField.Input)
       .flatMap(xs =>
         (
           CborRead.bytesN(xs(0), 32, DecodeField.InputId),
-          CborRead.uint(xs(1), DecodeField.InputIndex)
+          CborRead
+            .uint(xs(1), DecodeField.InputIndex)
+            .flatMap(i =>
+              Either.cond(
+                i <= MaxIndex,
+                i,
+                LedgerDecodeError.NumberOutOfRange(DecodeField.InputIndex, i, 0, MaxIndex)
+              )
+            )
         )
           .mapN(TxIn.apply)
       )
+
+  private val MaxIndex = BigInt(0xffff)

@@ -15,7 +15,7 @@ object Fixtures:
     Header.Shelley(
       era = Era.Conway,
       raw = raw,
-      bodyRaw = raw,
+      signable = raw,
       hash = Blake2b.hash256.hash(raw),
       blockNo = blockNo,
       slot = slot,

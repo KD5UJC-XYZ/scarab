@@ -309,7 +309,11 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
           .use(_ => IO.raiseError[Unit](new RuntimeException("boom")))
           .attempt
         afterFailure <- cm.snapshot
-        fiber <- cm.outbound(peer(2)).use(_ => IO.never).start
+        // the holder runs in an error scope of its own (ADR 0017); it is cancelled, never joined
+        fiber <- Handle
+          .allow[ConnectionError](cm.outbound(peer(2)).use(_ => IO.never[Unit]).map(_.asRight))
+          .rescue(e => IO.pure(e.asLeft[Unit]))
+          .start
         // wait for the fiber to hold the slot, rather than betting 50 ms on it
         during <- Wait.until(cm.snapshot)(_.counters == Counters(0, 1, 0, 0))
         _ <- fiber.cancel

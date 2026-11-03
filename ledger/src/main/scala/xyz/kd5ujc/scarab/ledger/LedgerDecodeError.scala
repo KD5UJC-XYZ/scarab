@@ -5,7 +5,7 @@ import cats.Show
 import cats.syntax.show.*
 import xyz.kd5ujc.scarab.codec.DomainError
 import xyz.kd5ujc.scarab.codec.{Cbor, Value}
-import xyz.kd5ujc.scarab.ledger.byron.{ByronGenesisKey, ByronVersion, DelegationError}
+import xyz.kd5ujc.scarab.ledger.byron.{ByronVersion, DelegationError}
 
 /** Failures while reading ledger values. A [[DecodeSite]] identifies the place; cases identify
   * failures.
@@ -65,8 +65,6 @@ enum LedgerDecodeError extends DomainError:
   case CrcMismatch(expected: BigInt, actual: BigInt)
   case EmptyInputsOrOutputs
   case DuplicateGenesisAddress
-  case GenesisMissingField(key: ByronGenesisKey)
-  case GenesisExpectedNumber(key: ByronGenesisKey)
   case ProposalEpochMismatch(target: BigInt, epoch: BigInt, beforePointOfNoReturn: Boolean)
 
   case ByronLayout
@@ -75,6 +73,11 @@ enum LedgerDecodeError extends DomainError:
   case TransactionIndex(actual: Value, bound: Int)
   case LeiosCertificate(cause: xyz.kd5ujc.scarab.crypto.bls.BlsError)
 
+  /** A datum, a redeemer's data or an inline datum that is not Plutus `Data` as Plutus's
+    * `decodeData` reads it (#721).
+    */
+  case PlutusData(site: DecodeSite, cause: xyz.kd5ujc.scarab.plutus.PlutusData.DecodeError)
+
   def message: String = this match
     case Syntax(cause)               => cause.message
     case Protocol(cause)             => cause.message
@@ -82,6 +85,7 @@ enum LedgerDecodeError extends DomainError:
     case Expected(site, expected, _) => s"${site.show}: expected $expected"
     case ExpectedTag(site, tag, _)   => s"${site.show}: expected tag $tag"
     case NativeScript(cause)         => cause.message
+    case PlutusData(site, cause)     => s"${site.show}: not Plutus Data ($cause)"
     case Voting(cause)               => cause.message
     case Version(cause)              => cause.message
     case Delegation(cause)           => cause.message
@@ -101,8 +105,7 @@ object LedgerDecodeError:
   given Show[LedgerDecodeError] = Show.show(repr)
 
   private def repr(x: Any): String = x match
-    case site: DecodeSite     => site.show
-    case key: ByronGenesisKey => key.show
+    case site: DecodeSite => site.show
     case e: (LedgerDecodeError | xyz.kd5ujc.scarab.ledger.NativeScript.DecodeError |
           VotingProcedures.DecodeError) =>
       fields(e)

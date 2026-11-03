@@ -23,7 +23,7 @@ class ClientSuite extends FailsOnUncaught:
       for
         c <- client.channel(2)
         s <- server.channel(2)
-        _ <- serveChainSync(s, intersect, script).start
+        _ <- typed(serveChainSync(s, intersect, script)).start
         api <- ChainSyncClient(c, ChainSyncFixtures.rawItem, settings)
         result <- program(api)
       yield result
@@ -82,8 +82,10 @@ class ClientSuite extends FailsOnUncaught:
         for
           c <- client.channel(2)
           s <- server.channel(2)
-          _ <- (s.recv(100)(b => ChainSync.DecodeResult.Decoded((), b.size)) *>
-            sendChainSync(s, ChainSync.State.NextCanAwait, List(Message.AwaitReply))).start
+          _ <- typed(
+            s.recv(100)(b => ChainSync.DecodeResult.Decoded((), b.size)) *>
+              sendChainSync(s, ChainSync.State.NextCanAwait, List(Message.AwaitReply))
+          ).start
           api <- ChainSyncClient(c, ChainSyncFixtures.rawItem)
           result <- api.findIntersect(Vector(Origin))
         yield result
@@ -109,7 +111,7 @@ class ClientSuite extends FailsOnUncaught:
       for
         c <- client.channel(3)
         s <- server.channel(3)
-        _ <- serveBlockFetch(s, ranges).start
+        _ <- typed(serveBlockFetch(s, ranges)).start
         api <- BlockFetchClient(c, BlockFetchClient.Settings())
         result <- program(api)
       yield result
@@ -167,9 +169,8 @@ class ClientSuite extends FailsOnUncaught:
         for
           c <- client.channel(3)
           s <- server.channel(3)
-          _ <- serveBlockFetch(
-            s,
-            Map((point(1), point(3)) -> Vector(block(1), block(2), block(3)))
+          _ <- typed(
+            serveBlockFetch(s, Map((point(1), point(3)) -> Vector(block(1), block(2), block(3))))
           ).start
           api <- BlockFetchClient(c, settings)
           result <- api.requestRange(point(1), point(3))
@@ -186,7 +187,7 @@ class ClientSuite extends FailsOnUncaught:
         c <- client.channel(8)
         s <- server.channel(8)
         pings <- Ref.of[IO, Int](0)
-        _ <- serveKeepAlive(s, pings, answer).start
+        _ <- typed(serveKeepAlive(s, pings, answer)).start
         api <- KeepAliveClient(c, settings)
         result <- program(api, client, pings)
       yield result
@@ -213,7 +214,7 @@ class ClientSuite extends FailsOnUncaught:
             c <- client.channel(8)
             s <- server.channel(8)
             pings <- Ref.of[IO, Int](0)
-            _ <- serveKeepAlive(s, pings).start
+            _ <- typed(serveKeepAlive(s, pings)).start
             count <- KeepAliveClient
               .background(c, client)
               .surround(IO.sleep(100.seconds) *> pings.get)

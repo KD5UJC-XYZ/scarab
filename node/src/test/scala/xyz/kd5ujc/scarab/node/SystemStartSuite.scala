@@ -25,7 +25,7 @@ class SystemStartSuite extends FunSuite:
   private val byronStart: Instant =
     val unchanged = NodeSetup.fromDirectory(dir).fold(e => fail(e.message), identity)
     Instant.ofEpochSecond(
-      unchanged.byronParams.flatMap(_.startTime).getOrElse(fail("no startTime"))
+      unchanged.byronParams.map(_.startTime).getOrElse(fail("no startTime"))
     )
 
   test(

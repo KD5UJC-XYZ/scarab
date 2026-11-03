@@ -15,7 +15,12 @@ import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.TestLedger
 import xyz.kd5ujc.scarab.ledger.testByteStrings
 import xyz.kd5ujc.scarab.ledger.byron.{ByronAddress, ByronBody}
-import xyz.kd5ujc.scarab.node.mempool.{LocalMonitor, LocalSubmission, MempoolState}
+import xyz.kd5ujc.scarab.node.mempool.{
+  LocalMonitor,
+  LocalSubmission,
+  MempoolState,
+  RelayedTransactions
+}
 import xyz.kd5ujc.scarab.node.ntc.NtcQuery
 import xyz.kd5ujc.scarab.plutus.PlutusData
 
@@ -27,6 +32,8 @@ final case class Target(name: String, corpus: () => Vector[Array[Byte]], check: 
   * round-trip values or canonical encoding, according to their wire contract.
   */
 object Targets:
+  // the node's transactions, as its TxSubmission2 reads them
+  private given TxSubmission2.TransactionReader = RelayedTransactions
   private def raw(i: Input): Bytes = Bytes.fromArray(i.bytes)
   private def req(ok: Boolean, what: => String): Unit = if !ok then throw new Violation(what)
 
@@ -744,8 +751,8 @@ object Targets:
       LocalStateQuery.State.values.toSeq,
       ChainSync.Role.values.toSeq,
       netCorpus("local-state-query:localStateQueryMessage"),
-      LocalStateQuery.decodePrefix,
-      LocalStateQuery.encode
+      (s, r, b) => LocalStateQuery.decodePrefix(s, r, b, NtcQuery.reader),
+      (s, r, m) => LocalStateQuery.encode(s, r, m, NtcQuery.reader)
     ),
     roundTrip(
       "local-state-query-engine",
@@ -770,7 +777,8 @@ object Targets:
           )
         original ++ netCorpus("local-state-query:localStateQueryMessage")()
       ,
-      (s, r, b) => LocalStateQueryEngine.decodePrefix(s, r, b, opaquePoint),
+      (s, r, b) =>
+        LocalStateQueryEngine.decodePrefix(s, r, b, opaquePoint, LocalStateQuery.QueryReader.items),
       (s, r, m) => LocalStateQueryEngine.encode(s, r, m, opaquePoint)
     ),
     roundTrip(
@@ -1741,7 +1749,12 @@ object Targets:
           shelley <- json.hcursor.get[Json]("shelley").toOption
           alonzo <- json.hcursor.get[Json]("alonzo").toOption
           conway <- json.hcursor.get[Json]("conway").toOption
-        yield GenesisState.Files(shelley, alonzo, conway, Json.obj())
+        yield GenesisState.Files(
+          shelley,
+          alonzo,
+          conway,
+          xyz.kd5ujc.scarab.ledger.json.CanonicalJson.Obj(Vector.empty)
+        )
         files.flatMap(GenesisInjections.read(_).toOption).foreach { parsed =>
           hit("genesis-injections")
           val embedded = parsed.initialFunds.extra match

@@ -370,9 +370,11 @@ object Mempool:
             }
           }
         def body(id: Bytes) = state.get.map(_.entries.find(_.id == id).map(_.raw))
+        def reader = RelayedTransactions
 
       def sink(fatal: Fatal => F[Unit]): TxSubmissionServer.Sink[F] =
         new TxSubmissionServer.Sink[F]:
+          def reader = RelayedTransactions
           def known(id: Bytes) =
             // NodeKernel's mempoolHasTx checks the current snapshot only. TxSubmission2 owns
             // its in-flight IDs; a previous rejection or adoption must not suppress a re-offer.

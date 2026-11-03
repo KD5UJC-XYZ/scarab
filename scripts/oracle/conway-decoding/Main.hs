@@ -7,13 +7,14 @@
 {-# LANGUAGE TypeApplications #-}
 module Main (main) where
 
-import Cardano.Ledger.Address (Withdrawals (..), serialiseAccountAddress)
+import Cardano.Ledger.Address (AccountAddress, Addr, Withdrawals (..), serialiseAccountAddress)
 import Cardano.Ledger.Allegra (AllegraEra)
 import Cardano.Ledger.Alonzo (AlonzoEra)
 import Cardano.Ledger.Babbage (BabbageEra)
 import qualified Cardano.Ledger.Binary as Binary
 import Cardano.Ledger.Coin (Coin (..))
 import Cardano.Ledger.Conway (ConwayEra)
+import Cardano.Ledger.Conway.Governance (GovActionId (..), GovActionIx (..))
 import Cardano.Ledger.Core
   ( BlockBody
   , EraBlockBody (hashBlockBody, txSeqBlockBodyL)
@@ -38,6 +39,7 @@ import Data.Aeson.Types (Pair)
 import qualified Data.ByteString.Base16 as Hex
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
 import GHC.Generics (Generic)
@@ -54,7 +56,11 @@ import System.Exit (die)
 -- read (#687). With `wire` set as well, an accepted transaction also reports the bytes the node
 -- relays for it: its `encCBOR` at the era's version, which consensus wraps in CBOR for transaction
 -- submission (`toCBOR (ShelleyTx _ tx) = wrapCBORinCBOR toCBOR tx`) and measures (`wireSizeTxF`)
--- (#699).
+-- (#699). A case of `kind` "address" or "account" is the CBOR byte string of an address, read alone
+-- with `DecCBOR Addr` (`fromCborAddr`) or `DecCBOR AccountAddress` (`fromCborAccountAddress`) at the
+-- era's version, the readers of an output's address and of a reward account (#723).
+-- Kind "govactionids" is the set of governance action ids that the node-to-client
+-- query `GetProposals` reads (#700).
 data Case = Case
   { name :: String
   , era :: String
@@ -131,6 +137,38 @@ idsOf version relayed label k raw = case k of
         Left failure -> verdict (Left failure :: Either Binary.DecoderError ())
         Right a -> object (("accepted" .= True) : report a)
 
+-- | The era's decoder version, for the cases read without an era's types.
+versionOf :: String -> Maybe Binary.Version
+versionOf e = case e of
+  "shelley" -> Just (Binary.natVersion @2)
+  "allegra" -> Just (Binary.natVersion @3)
+  "mary" -> Just (Binary.natVersion @4)
+  "alonzo" -> Just (Binary.natVersion @5)
+  "babbage" -> Just (Binary.natVersion @7)
+  "conway" -> Just (Binary.natVersion @9)
+  _ -> Nothing
+
+-- | The verdict on an address or a reward account read alone; `Nothing` for another kind.
+addressed :: String -> Binary.Version -> LBS.ByteString -> Maybe Value
+addressed k version raw = case k of
+  "address" -> Just (verdict (Binary.decodeFull version raw :: Either Binary.DecoderError Addr))
+  "account" -> Just (verdict (Binary.decodeFull version raw :: Either Binary.DecoderError AccountAddress))
+  _ -> Nothing
+
+-- | The verdict on a set of governance action ids as `GetProposals` reads it, with
+-- `LC.fromEraCBOR @era` at Conway's lowest protocol version, 9 (`Shelley/Ledger/Query.hs:981`,
+-- ouroboros-consensus 82ecba32) and, when accepted, each id as decoded, `txid#index` (#700).
+govActionIds :: LBS.ByteString -> Value
+govActionIds raw =
+  case Binary.decodeFull (Binary.natVersion @9) raw :: Either Binary.DecoderError (Set.Set GovActionId) of
+    Left failure -> verdict (Left failure :: Either Binary.DecoderError ())
+    Right set ->
+      object
+        [ "accepted" .= True
+        , "actions" .= [ txIdHex t <> "#" <> Text.pack (show (unGovActionIx i))
+                       | GovActionId t i <- Set.toList set ]
+        ]
+
 identified :: Case -> LBS.ByteString -> Maybe Value
 identified c raw = case era c of
   "shelley" -> Just (idsOf @ShelleyEra (Binary.natVersion @2) relayed "Shelley" (kind c) raw)
@@ -149,8 +187,10 @@ runCase c = do
   let body_ = kind c == "body"
       wits_ = kind c == "witnesses"
       wdrl = body_ && withdrawals c == Just True
-  result <- case (ids c, identified c raw) of
-   (Just True, Just v) -> pure v
+  result <- case (ids c, identified c raw, versionOf (era c) >>= \v -> addressed (kind c) v raw) of
+   _ | kind c == "govactionids" -> pure (govActionIds raw)
+   (Just True, Just v, _) -> pure v
+   (_, _, Just v) -> pure v
    _ -> case (era c, kind c) of
        ("conway", _) | wdrl -> pure (bodyWithdrawals @ConwayEra (Binary.natVersion @9) "Conway TxBody" raw)
        ("babbage", _) | wdrl -> pure (bodyWithdrawals @BabbageEra (Binary.natVersion @7) "Babbage TxBody" raw)

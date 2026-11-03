@@ -30,7 +30,7 @@ class ChainDepGoldenSuite extends FunSuite:
 
   private val queryEnv = QueryEnv(
     setup.byronParams
-      .flatMap(_.startTime)
+      .map(_.startTime)
       .fold(setup.geometry.systemStart)(java.time.Instant.ofEpochSecond),
     setup.geometry,
     setup.praos.forks,
@@ -129,7 +129,7 @@ class ChainDepGoldenSuite extends FunSuite:
           queryEnv,
           view,
           Map.empty,
-          NtcQuery.IfCurrent(g.era.index, LedgerQuery.DebugChainDepState)
+          NtcQuery.IfCurrent(QueryEra.of(g.era), LedgerQuery.DebugChainDepState)
         )
         .getOrElse(fail(s"${label(g)}: no answer"))
       assertEquals(answered.hex, g.answer, label(g))

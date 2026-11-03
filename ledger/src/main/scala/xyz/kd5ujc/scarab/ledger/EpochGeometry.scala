@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.ledger.state.{NonZero, PositiveUnitInterval, Word64}
 final case class ByronSpan(
     epochs: BigInt,
     epochSlots: BigInt,
-    slotLengthMillis: Long,
+    slotLengthMillis: BigInt,
     derived: Boolean = false
 ):
   def slots: BigInt = epochs * epochSlots
@@ -25,7 +25,7 @@ object ByronSpan:
   /** Placeholder epoch count of a span whose end is not yet known. */
   private val Open: BigInt = 1000000
 
-  def derived(epochSlots: BigInt, slotLengthMillis: Long): ByronSpan =
+  def derived(epochSlots: BigInt, slotLengthMillis: BigInt): ByronSpan =
     ByronSpan(Open, epochSlots, slotLengthMillis, derived = true)
 
 /** The era history: slot/epoch arithmetic across the Byron prefix and the Shelley-based eras
@@ -78,8 +78,17 @@ final case class EpochGeometry(
     if slot < byron.slots then slot * byron.slotLengthMillis
     else byron.slots * byron.slotLengthMillis + (slot - byron.slots) * slotLengthMillis
 
+  /** The onset of `slot` on the node's clock. A slot later than the last millisecond an `Instant`
+    * counts from the epoch (`Long.MaxValue`, some 292 million years on) is placed there: no clock
+    * reaches it, as no clock reaches it in the reference, whose `UTCTime` is unbounded
+    * (`fromByronSlotLength`, a `Natural` slot duration, #734).
+    */
   def slotStart(slot: BigInt): Instant =
-    systemStart.plusMillis(slotOffsetMillis(slot).toLong)
+    val offset = slotOffsetMillis(slot)
+    // within that range the offset's seconds fit a `Long`, though its milliseconds may not
+    if (BigInt(systemStart.toEpochMilli) + offset).isValidLong then
+      systemStart.plusSeconds((offset / 1000).toLong).plusMillis((offset % 1000).toLong)
+    else Instant.ofEpochMilli(Long.MaxValue)
 
   def slotAt(instant: Instant): BigInt =
     val elapsed = instant.toEpochMilli - systemStart.toEpochMilli

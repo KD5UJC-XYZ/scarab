@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.TxSubmission2Fixtures
 import cats.effect.{IO, Resource}
 import cats.syntax.all.*
 import munit.CatsEffectSuite
@@ -24,6 +25,7 @@ class NodeToNodeVersionSuite extends CatsEffectSuite:
       def await = IO.never),
     (_, _) => IO.pure(None),
     new TxSubmissionServer.Sink[IO]:
+      def reader = TxSubmission2Fixtures.structural
       def known(id: Bytes) = IO.pure(false)
       def submit(originals: Vector[Bytes])(using
           cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]

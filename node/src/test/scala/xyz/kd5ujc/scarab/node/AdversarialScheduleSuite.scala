@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.mempool.RelayedTransactions
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
 import cats.Monad
@@ -167,6 +168,7 @@ class AdversarialScheduleSuite extends FailsOnUncaught:
         )
       )
       sink = new TxSubmissionServer.Sink[IO]:
+        def reader = RelayedTransactions
         def known(id: Bytes) = IO.pure(false)
         def submit(originals: Vector[Bytes])(using
             cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]

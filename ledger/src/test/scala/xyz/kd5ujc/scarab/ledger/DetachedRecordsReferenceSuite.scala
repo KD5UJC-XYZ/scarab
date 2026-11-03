@@ -23,7 +23,8 @@ import xyz.kd5ujc.scarab.protocol.Era
 class DetachedRecordsReferenceSuite extends FunSuite:
   import DetachedRecordsReferenceSuite.*
 
-  private val rows: Vector[Row] = load
+  // the governance action ids of a node-to-client query are read by the node (`NtcQueryRecordsSuite`)
+  private val rows: Vector[Row] = load.filter(_.kind != Kind.GovActionIds)
 
   /** What a row is read as: the reference's decoder of its `kind`. */
   private def scarab(row: Row): Either[Refused, Verdict] = row.kind match
@@ -44,6 +45,7 @@ class DetachedRecordsReferenceSuite extends FunSuite:
     case Kind.Transaction =>
       Tx.fromEnvelope(row.raw, row.era)
         .bimap(Refused.Decode(_), tx => Verdict(Some(tx.body.id), None, Vector.empty))
+    case Kind.GovActionIds => Left(Refused.NotLedger)
     case Kind.BlockBody =>
       Block
         .decodeShelley(block(row.era, row.raw))
@@ -58,7 +60,7 @@ class DetachedRecordsReferenceSuite extends FunSuite:
 
   test("the corpus covers every era and kind, refused and accepted") {
     assertEquals(rows.map(_.era).toSet, Era.values.toSet - Era.Byron)
-    assertEquals(rows.map(_.kind).toSet, Kind.values.toSet)
+    assertEquals(rows.map(_.kind).toSet, Kind.values.toSet - Kind.GovActionIds)
     assertEquals(rows.map(_.name).distinct.size, rows.size)
     for era <- rows.map(_.era).distinct do
       assert(rows.exists(r => r.era == era && r.accepted), s"no accepted $era case")
@@ -72,11 +74,12 @@ class DetachedRecordsReferenceSuite extends FunSuite:
     // indefinite list in the tree of items, or the tree is refused.
     for row <- rows if row.accepted && !row.name.endsWith(" blockbody plain") do
       val shape = row.kind match
-        case Kind.Body        => DetachedRecords.Shapes.body(row.era)
-        case Kind.Witnesses   => DetachedRecords.Shapes.witnesses(row.era)
-        case Kind.Auxiliary   => DetachedRecords.Shapes.auxiliaryData(row.era)
-        case Kind.Transaction => DetachedRecords.Shapes.transaction(row.era)
-        case Kind.BlockBody   => DetachedRecords.Shapes.block
+        case Kind.Body         => DetachedRecords.Shapes.body(row.era)
+        case Kind.Witnesses    => DetachedRecords.Shapes.witnesses(row.era)
+        case Kind.Auxiliary    => DetachedRecords.Shapes.auxiliaryData(row.era)
+        case Kind.Transaction  => DetachedRecords.Shapes.transaction(row.era)
+        case Kind.BlockBody    => DetachedRecords.Shapes.block
+        case Kind.GovActionIds => DetachedRecords.Shape.ListOf(DetachedRecords.Shapes.actionId)
       val raw = if row.kind == Kind.BlockBody then block(row.era, row.raw) else row.raw
       assert(
         DetachedRecords.detached(raw, shape).exists(!_.isEmpty),
@@ -116,6 +119,9 @@ object DetachedRecordsReferenceSuite:
     case Transaction extends Kind("transaction")
     case BlockBody extends Kind("blockbody")
 
+    /** The set of `GovActionId` of the node-to-client query `GetProposals`. */
+    case GovActionIds extends Kind("govactionids")
+
   /** A line of the corpus. */
   final case class Row(
       name: String,
@@ -126,7 +132,8 @@ object DetachedRecordsReferenceSuite:
       failure: Option[String],
       txid: Option[String],
       bodyHash: Option[String],
-      txids: Option[Vector[String]]
+      txids: Option[Vector[String]],
+      actions: Option[Vector[String]]
   )
 
   /** Why Scarab refused a row. */
@@ -134,6 +141,9 @@ object DetachedRecordsReferenceSuite:
     case Decode(cause: LedgerDecodeError)
     case Chain(cause: ChainError)
     case NotShelleyBased
+
+    /** A kind that the node reads, not the ledger. */
+    case NotLedger
 
   /** What Scarab read: a transaction id, a block body's hash and its transactions' ids. */
   final case class Verdict(id: Option[Bytes], bodyHash: Option[Bytes], ids: Vector[Bytes])
@@ -155,13 +165,15 @@ object DetachedRecordsReferenceSuite:
       txid <- c.get[Option[String]]("txid")
       bodyHash <- c.get[Option[String]]("bodyHash")
       txids <- c.get[Option[Vector[String]]]("txids")
-    yield Row(name, era, kind, raw, accepted, fail, txid, bodyHash, txids)
+      actions <- c.get[Option[Vector[String]]]("actions")
+    yield Row(name, era, kind, raw, accepted, fail, txid, bodyHash, txids, actions)
   }
 
   private def failure(c: io.circe.HCursor, what: String) =
     io.circe.DecodingFailure(s"unknown $what", c.history)
 
-  private def load: Vector[Row] =
+  /** The lines of the corpus. */
+  def load: Vector[Row] =
     val path = Path.of("fixtures/reference/recd-detached/cases.jsonl")
     Files
       .readAllLines(path)

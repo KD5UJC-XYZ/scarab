@@ -929,11 +929,18 @@ object PeerNetwork:
       limit = onset.plusSeconds(MaxCaughtUpAge.toSeconds)
       age =
         if !limit.isAfter(now) then Gsm.DurationFromNow.Already
+        // a tip whose slot no clock reaches (#734) is reported a century young, compared before
+        // it is converted, leaving the GSM room to add its own durations to it
+        else if java.time.Duration.between(now, limit).toDays >= LongestAge.toDays then
+          Gsm.DurationFromNow.After(LongestAge)
         else Gsm.DurationFromNow.After((limit.toEpochMilli - now.toEpochMilli).millis)
     yield Gsm.Reading(assumption, peers, tip.fold(-1L)(_._2), Some(age))
 
   /** The oldest tip a caught up node tolerates (`llrnMaxCaughtUpAge`, `Node.hs` 1106). */
   val MaxCaughtUpAge: FiniteDuration = 20.minutes
+
+  /** The longest a tip is reported young: a century, far inside what a `FiniteDuration` holds. */
+  private val LongestAge: FiniteDuration = 36500.days
 
   /** A failed DNS resolution, retaining its operating-system cause. */
   def unresolved(host: Host, t: java.io.IOException): PeerError =

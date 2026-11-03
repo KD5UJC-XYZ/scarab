@@ -7,11 +7,13 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.crypto.bls.Certificate
 import xyz.kd5ujc.scarab.protocol.{ChainSync, EbHash, Era, HfcHeader}
 
-import Header.{array, bytes, fail, headerLimits, optHash, uint, vrfCert}
+import Header.{array, bytes, fail, headerLimits, optHash, record, uint, vrfCert}
 
 /** `header_version_info = [highest_supported_major_version, self_reported_software_tag]`: what the
-  * Leios header carries where the earlier eras have `protocol_version`. Same wire shape, but
-  * neither field is validated by the ledger (cardano-ledger-core `Block.hs` 147-156, issue 5763).
+  * Leios header carries where the earlier eras have `protocol_version`. Same wire shape, decoded as
+  * the reference's `ProtVer` (a major up to `MaxVersion` and a `Word32`,
+  * `Leios/BlockHeader.hs:229-243`), but neither field is validated by the ledger
+  * (cardano-ledger-core `Block.hs` 147-156, issue 5763).
   */
 final case class HeaderVersionInfo(highestSupportedMajor: BigInt, softwareTag: BigInt)
 
@@ -33,11 +35,13 @@ final case class LeiosHeaderFields(
   * `header_version_info` and the two Leios fields appended, 12 elements (`dijkstra.cddl` 56-71).
   * The public Leios testnet sends this shape in blocks tagged Conway as well as Dijkstra (see
   * `docs/leios.md` section 11), so it is not tied to an era here. `raw` is the exact encoding; the
-  * block hash is its Blake2b-256 digest, the KES signature is over `bodyRaw`.
+  * block hash is its Blake2b-256 digest. The KES signature is over `signable`, the header body as
+  * the reference encodes it again (`Leios/BlockHeader.hs:139-142`, [[HeaderBodyEncoding.leios]]),
+  * not over the body's original bytes (#698).
   */
 final case class LeiosHeader(
     raw: Bytes,
-    bodyRaw: Bytes,
+    signable: Bytes,
     hash: Bytes,
     blockNo: BigInt,
     slot: BigInt,
@@ -52,7 +56,7 @@ final case class LeiosHeader(
     kesSignature: Bytes
 ):
   /** The header as the Praos rules read it: the first ten fields mean what they mean in Babbage and
-    * Conway (VRF input, leader value, operational certificate, KES signature over `bodyRaw`), so
+    * Conway (VRF input, leader value, operational certificate, KES signature over `signable`), so
     * `consensus.Praos` validates it unchanged. Tagged `Era.Conway` because the node has no Dijkstra
     * era (docs/leios.md section 11); the "protocol version" is the version info, which the Praos
     * rules do not read. Not a claim that the block is a Conway block.
@@ -61,7 +65,7 @@ final case class LeiosHeader(
     Header.Shelley(
       Era.Conway,
       raw,
-      bodyRaw,
+      signable,
       hash,
       blockNo,
       slot,
@@ -80,13 +84,22 @@ final case class LeiosHeader(
     ChainSync.Point.Block(ChainSync.UInt64.saturating(slot), hash)
 
 object LeiosHeader:
-  /** Decode `[header_body, body_signature]` with the 12-element body. */
+  /** Decode `[header_body, body_signature]` with the 12-element body, as the reference's Leios
+    * header (`libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs:229-257`,
+    * cardano-ledger f649f975) reads it: the header, its body and the endorser block announcement
+    * are `RecD` records, definite or detached ([[DetachedRecords.Shapes.leiosHeader]]); the rest as
+    * in a Praos header ([[Header.fromRaw]]), the version info a `ProtVer`.
+    */
   def decode(raw: Bytes): Either[ChainError, LeiosHeader] =
+    DetachedRecords.read(raw, headerLimits, DetachedRecords.Shapes.leiosHeader)(e =>
+      fail(LedgerDecodeError.Syntax(e))
+    )(read(raw, _))
+
+  private def read(raw: Bytes, root: Node): Either[ChainError, LeiosHeader] =
     for
-      root <- CborRead.decode(raw, headerLimits).leftMap(fail)
-      outer <- array(root, 2)
+      outer <- record(root, 2)
       kes <- bytes(outer(1), 448)
-      body <- array(outer(0), 12)
+      body <- record(outer(0), 12)
       blockNo <- uint(body(0))
       slot <- uint(body(1))
       prev <- optHash(body(2))
@@ -103,9 +116,22 @@ object LeiosHeader:
       info <- versionInfo(body(9))
       cert <- bool(body(10))
       announcement <- announcement(body(11))
+      opCert = Header.OpCert(hot, seq, period, sigma)
+      fields = HeaderBodyEncoding.Fields(
+        blockNo,
+        slot,
+        prev,
+        issuer,
+        vrfVkey,
+        HeaderVrf.Praos(vrf),
+        size,
+        bodyHash,
+        opCert,
+        (info.highestSupportedMajor, info.softwareTag)
+      )
     yield LeiosHeader(
       raw,
-      outer(0).original,
+      HeaderBodyEncoding.leios(fields, cert, announcement.map(a => (a.hash.bytes, a.size))),
       Blake2b.hash256.hash(raw),
       blockNo,
       slot,
@@ -115,7 +141,7 @@ object LeiosHeader:
       vrf,
       size,
       bodyHash,
-      Header.OpCert(hot, seq, period, sigma),
+      opCert,
       LeiosHeaderFields(info, cert, announcement),
       kes
     )
@@ -144,18 +170,20 @@ object LeiosHeader:
         )
       )
 
+  /** The `ProtVer` of the reference's header body (`hbProtVer`, read as in a Praos header,
+    * [[Header.protocolVersion]]): a major up to `MaxVersion` and a `Word32`.
+    */
   private def versionInfo(n: Node): Either[ChainError, HeaderVersionInfo] =
     for
       xs <- array(n, 2)
-      major <- uint32(xs(0))
-      tag <- uint32(xs(1))
-    yield HeaderVersionInfo(major, tag)
+      pv <- Header.protocolVersion(xs(0), xs(1))
+    yield HeaderVersionInfo(pv._1, pv._2)
 
   private def announcement(n: Node): Either[ChainError, Option[EbAnnouncement]] = n.value match
     case Value.Null => Right(None)
     case _ =>
       for
-        xs <- array(n, 2)
+        xs <- record(n, 2)
         hash <- bytes(xs(0), 32)
         eb = EbHash.fromBytes(hash)
         size <- uint32(xs(1))

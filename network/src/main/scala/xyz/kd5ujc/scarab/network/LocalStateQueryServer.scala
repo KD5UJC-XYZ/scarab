@@ -42,12 +42,18 @@ object LocalStateQueryServer:
 
     def acquire(target: Target): Resource[F, Either[AcquireFailure[E], Session[F, E]]]
 
+    /** Where each query ends as the node's decoder of queries reads it: one holding a `RecD` record
+      * written as an empty indefinite list spans the record's fields after it (#700).
+      */
+    def queries: xyz.kd5ujc.scarab.protocol.LocalStateQuery.QueryReader
+
   def run[F[_]: Temporal: Defer, E](
       channel: MuxChannel[F],
       source: Source[F, E]
   )(using Raise[F, NetworkError]): F[Either[E, Unit]] =
     val adapted =
       new LocalStateQueryRuntime.Source[F, E, xyz.kd5ujc.scarab.protocol.ChainSync.Point]:
+        def queries = source.queries
         def acquire(target: Target) = source
           .acquire(target)
           .map(_.leftMap {

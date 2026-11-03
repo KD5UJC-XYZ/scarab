@@ -28,12 +28,12 @@ class QueryGoldenSuite extends FunSuite:
 
   private val env = QueryEnv(
     setup.byronParams
-      .flatMap(_.startTime)
+      .map(_.startTime)
       .fold(setup.geometry.systemStart)(java.time.Instant.ofEpochSecond),
     setup.geometry,
     setup.praos.forks,
     setup.byronParams.fold(EraHistory.ByronParams(50, 1000, 5))(b =>
-      EraHistory.ByronParams(b.epochSlots, BigInt(b.slotLengthMillis), BigInt(b.securityParam))
+      EraHistory.ByronParams(b.epochSlots, b.slotLengthMillis, b.securityParam)
     ),
     setup.globals.maxSupply,
     setup.genesis.raw,
@@ -61,4 +61,22 @@ class QueryGoldenSuite extends FunSuite:
         case Some(got) => assertEquals(got.hex, expected)
         case None      => fail(s"$label is not answered")
     }
+  }
+
+  test("a query of Byron or of Dijkstra in Conway is answered with the era mismatch (#720)") {
+    def text(t: String): String =
+      f"${0x60 | t.length}%02x" + t.getBytes("UTF-8").map(b => f"$b%02x").mkString
+    val conway = "06" + text("Conway")
+    def answered(q: NtcQuery): String =
+      QueryAnswers.answer(env, view, Map.empty, q).fold(fail(s"$q is not answered"))(_.hex)
+    assertEquals(
+      answered(NtcQuery.ByronUpdateInterfaceState),
+      "8282" + "00" + text("Byron") + "82" + conway
+    )
+    assertEquals(
+      answered(NtcQuery.IfCurrent(QueryEra.Dijkstra, LedgerQuery.GetEpochNo)),
+      "8282" + "07" + text("Dijkstra") + "82" + conway
+    )
+    // GetEraStart of an era the chain has not reached: nothing
+    assertEquals(answered(NtcQuery.EraStart(QueryEra.Dijkstra)), "80")
   }

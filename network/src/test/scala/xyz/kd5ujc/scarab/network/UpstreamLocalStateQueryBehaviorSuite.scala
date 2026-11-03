@@ -169,7 +169,13 @@ class UpstreamLocalStateQueryBehaviorSuite extends FailsOnUncaught:
   private val point = ChainSyncEngine.pointCodec[Bytes](Right(_), Right(_))
 
   private def mockTarget(action: ActionRow): Target[Bytes] =
-    LocalStateQueryEngine.decodePrefix(State.Idle, Role.Client, action.targetWire, point) match
+    LocalStateQueryEngine.decodePrefix(
+      State.Idle,
+      Role.Client,
+      action.targetWire,
+      point,
+      LocalStateQuery.QueryReader.items
+    ) match
       case DecodeResult.Decoded(Message.Acquire(target), consumed) =>
         assertEquals(consumed, action.targetWire.size)
         assertEquals(
@@ -189,7 +195,13 @@ class UpstreamLocalStateQueryBehaviorSuite extends FailsOnUncaught:
 
   private def receive(channel: MuxChannel[IO], state: State)(using Handle[IO, NetworkError]) =
     channel.recv(LocalStateQuery.MaxResultBytes)(
-      LocalStateQueryEngine.decodePrefix(state, Role.Server, _, point)
+      LocalStateQueryEngine.decodePrefix(
+        state,
+        Role.Server,
+        _,
+        point,
+        LocalStateQuery.QueryReader.items
+      )
     )
 
   test("replay all unchanged LocalStateQuery maps through the shared production runtime"):
@@ -236,6 +248,7 @@ class UpstreamLocalStateQueryBehaviorSuite extends FailsOnUncaught:
           entries.map(action => mockTarget(action) -> (action.result, action.query)).toMap
         assertEquals(sources.size, entries.size)
         val source = new LocalStateQueryRuntime.Source[IO, Nothing, Bytes]:
+          def queries = LocalStateQuery.QueryReader.items
           def acquire(target: Target[Bytes]): Resource[IO, Either[
             LocalStateQueryRuntime.AcquireFailure[Nothing],
             LocalStateQueryRuntime.Session[IO, Nothing]

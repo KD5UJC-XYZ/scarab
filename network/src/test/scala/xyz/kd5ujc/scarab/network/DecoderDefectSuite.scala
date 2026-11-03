@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.TxSubmission2Fixtures
 import cats.effect.{IO, Resource}
 import cats.syntax.all.*
 import scala.concurrent.duration.*
@@ -37,12 +38,14 @@ class DecoderDefectSuite extends FailsOnUncaught:
     Resource.pure(source),
     (_, _) => IO.pure(None),
     new TxSubmissionServer.Sink[IO]:
+      def reader = TxSubmission2Fixtures.structural
       def known(id: Bytes) = IO.pure(false)
       def submit(originals: Vector[Bytes])(using
           cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
       ) = IO.unit
   )
   private val transactions: TxSubmissionClient.Source[IO] = new TxSubmissionClient.Source[IO]:
+    def reader = TxSubmission2Fixtures.structural
     def after(ticket: Long, max: Int) = IO.pure(Vector.empty)
     def awaitAfter(ticket: Long) = IO.never
     def body(txId: Bytes) = IO.pure(None)
@@ -260,6 +263,7 @@ class DecoderDefectSuite extends FailsOnUncaught:
         )
       )
     val stateQuery = new LocalStateQueryServer.Source[IO, Nothing]:
+      def queries = xyz.kd5ujc.scarab.protocol.LocalStateQuery.QueryReader.items
       def acquire(target: xyz.kd5ujc.scarab.protocol.LocalStateQuery.Target) =
         Resource.eval(IO.never)
     val mempool = new LocalTxMonitorServer.Source[IO]:

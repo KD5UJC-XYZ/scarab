@@ -128,7 +128,8 @@ class ChainSyncBatchSuite extends FailsOnUncaught:
                   def awaitReply = events.update(_ :+ "await") *> waiting.complete(()).void
                   def reply = events.update(_ :+ "reply"))
                 .use { _ =>
-                  val server = for
+                  // the server's operations take the `Raise` of the scope it is started in
+                  def server(using Peers.Net): IO[Unit] = for
                     requests <- Vector.fill(2)(()).traverse(_ => receive(serverChannel))
                     _ <- IO(assertEquals(requests, Vector.fill(2)(Message.RequestNext)))
                     _ <- send(

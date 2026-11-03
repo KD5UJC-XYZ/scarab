@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.TxSubmission2Fixtures
 import cats.effect.{IO, Ref, Resource}
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
@@ -261,6 +262,7 @@ class PeerSharingSuite extends FailsOnUncaught:
       def await = IO.never),
     (_, _) => IO.pure(None),
     new TxSubmissionServer.Sink[IO]:
+      def reader = TxSubmission2Fixtures.structural
       def known(id: Bytes) = IO.pure(false)
       def submit(originals: Vector[Bytes])(using
           cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]

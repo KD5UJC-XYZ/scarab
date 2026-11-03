@@ -958,6 +958,22 @@
       "page": "docs/compatibility/ledger-pool-relays.md"
     },
     {
+      "id": "ledger-address-headers",
+      "component": "Ledger: address and reward account headers, decoder versions 2 to 9 (#723)",
+      "status": "implemented",
+      "summary": "An address or a reward account read from a block is refused where the reference refuses its header: a Shelley address may set only bit 0 of its low nibble (headerNonShelleyBits), a reward account's header is 0b111x000y, in every era and every place a body reads one; a stored output keeps reading any nibble (ADR 0006)",
+      "evidence": {
+        "suites": [
+          "AddressHeadersReferenceSuite"
+        ],
+        "paths": [
+          "fixtures/reference/address-headers/cases.jsonl",
+          "scripts/oracle/conway-decoding/address_cases.py"
+        ]
+      },
+      "page": "docs/compatibility/ledger-address-headers.md"
+    },
+    {
       "id": "ledger-update-values",
       "component": "Ledger: pre-Conway parameter-update values decoded with the body, decoder versions 2 to 9 (#470)",
       "status": "implemented",
@@ -983,7 +999,7 @@
       "id": "ledger-recd-records",
       "component": "Ledger: RecD records are definite lists, decoder versions 2 to 9 (#668)",
       "status": "partial",
-      "summary": "The update proposal, a redeemer's execution units (with their Word64 and Int64 bounds), Conway's GovActionId (with its Word16 index), VotingProcedure, ProposalProcedure, Constitution and Anchor, an output's value and the list form of auxiliary data are read from a block as definite lists only, as the reference's RecD decoders read them; a stored output keeps reading its value in either form (ADR 0006); one written as an empty indefinite list with its fields after it is read as the reference reads it (#687), as is a whole transaction (#699)",
+      "summary": "The update proposal, a redeemer's execution units (Word64 at most Int64's bound), Conway's GovActionId (its index a Word16), VotingProcedure, ProposalProcedure, Constitution and Anchor, an output's value and the list form of auxiliary data are read from a block as definite lists only, as the reference's RecD decoders read them; a stored output's value reads in either form (ADR 0006); one written as an empty indefinite list with its fields after it is read as the reference reads it (#687), as are a whole transaction (#699) and a header (#698)",
       "evidence": {
         "suites": [
           "RecdRecordsReferenceSuite",
@@ -992,7 +1008,11 @@
           "DetachedRecordsSuite",
           "CborDetachedSuite",
           "TxEnvelopeReferenceSuite",
-          "TxEnvelopeSubmissionSuite"
+          "TxEnvelopeSubmissionSuite",
+          "RelayedTransactionsSuite",
+          "HeaderDecodingReferenceSuite",
+          "NtcQueryRecordsSuite",
+          "DetachedOutputFailureSuite"
         ],
         "paths": [
           "fixtures/reference/recd-records/cases.jsonl",
@@ -1000,14 +1020,14 @@
           "fixtures/reference/recd-detached/cases.jsonl",
           "scripts/oracle/conway-decoding/detached_cases.py",
           "fixtures/reference/tx-envelope/cases.jsonl",
-          "scripts/oracle/conway-decoding/tx_envelope_cases.py"
+          "scripts/oracle/conway-decoding/tx_envelope_cases.py",
+          "fixtures/reference/header-decoding/cases.jsonl",
+          "scripts/oracle/header-decoding/header_cases.py"
         ]
       },
       "limitations": {
         "issues": [
-          698,
-          700,
-          702
+          711
         ]
       },
       "page": "docs/compatibility/ledger-recd-records.md"
@@ -1033,6 +1053,27 @@
         ]
       },
       "page": "docs/compatibility/ledger-url-length.md"
+    },
+    {
+      "id": "ledger-plutus-data-decoding",
+      "component": "Ledger: Plutus Data read at decode (#721)",
+      "status": "implemented",
+      "summary": "A witness-set datum, a redeemer's data and an inline datum are read as Plutus Data (decodeData) when a body, a witness set or a block is decoded, and data that is not Data fails the decode, as in the reference",
+      "evidence": {
+        "suites": [
+          "PlutusDataPlacesReferenceSuite"
+        ],
+        "paths": [
+          "fixtures/reference/plutus-data-places/cases.jsonl",
+          "scripts/oracle/conway-decoding/data_cases.py"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          721
+        ]
+      },
+      "page": "docs/compatibility/ledger-plutus-data-decoding.md"
     },
     {
       "id": "ledger-repeated-withdrawals",
@@ -1165,6 +1206,31 @@
         ]
       },
       "page": "docs/compatibility/ledger-genesis-fields.md"
+    },
+    {
+      "id": "ledger-byron-genesis-balances",
+      "component": "Ledger: Byron genesis file (#728, #729, #730, #734)",
+      "status": "implemented",
+      "summary": "The Byron genesis read as readGenesisData reads it, whichever era the chain starts in: parsed as canonical JSON and hashed as rendered; every field read by its FromJSON GenesisData instance, in its order; each non-AVVM address decoded whole and held encoded again minimally, each AVVM key read by fromAvvmVK, each amount by Read Word64, the first of two equal keys kept",
+      "evidence": {
+        "suites": [
+          "ByronGenesisBalancesReferenceSuite",
+          "ByronGenesisDataReferenceSuite"
+        ],
+        "paths": [
+          "fixtures/reference/byron-genesis-balances/README.md",
+          "scripts/oracle/byron-genesis-balances/README.md",
+          "fixtures/reference/byron-genesis-data/README.md",
+          "scripts/oracle/byron-genesis-data/README.md"
+        ],
+        "issues": [
+          728,
+          729,
+          730,
+          734
+        ]
+      },
+      "page": "docs/compatibility/ledger-byron-genesis-balances.md"
     },
     {
       "id": "plutus-phase-2",
@@ -1334,7 +1400,14 @@
       "summary": "LocalTxSubmission, LocalStateQuery, LocalTxMonitor and whole-block ChainSync over a Unix socket; query coverage partial",
       "evidence": {
         "suites": [
-          "DeepQuerySuite"
+          "DeepQuerySuite",
+          "NtcQueryArgumentsSuite",
+          "NtcQueryRecordsSuite",
+          "QueryGoldenSuite"
+        ],
+        "paths": [
+          "fixtures/reference/ntc-query-arguments/cases.jsonl",
+          "scripts/oracle/ntc-query-arguments/cases.py"
         ]
       },
       "limitations": {
@@ -1344,7 +1417,8 @@
           123,
           330,
           353,
-          356
+          356,
+          726
         ]
       },
       "page": "docs/compatibility/node-to-client.md"

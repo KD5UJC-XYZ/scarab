@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "measuredAt": "2026-11-02",
-  "scope": "Unchanged released decoders (decodeFullAnnotator) of a transaction body, witness set, auxiliary data, whole transaction or block body (the parts after the header) of each era from Shelley to Conway at the era's decoder version (2, 3, 4, 5, 7, 9), each holding RecD records written as an empty indefinite list with their fields after it: the update proposal and the prices and execution units of a parameter update, an output's value in every output form and a collateral return, a redeemer's execution units (list and map forms), Conway's GovActionId, VotingProcedure, ProposalProcedure, Constitution and Anchor, the list form of auxiliary data and a Shelley-to-Mary transaction; with the refusals around them; the transaction ids and block body hashes the decoders hash for each accepted case; no ledger rule, signature or script is run",
+  "measuredAt": "2026-11-03",
+  "scope": "Unchanged released decoders (decodeFullAnnotator) of a transaction body, witness set, auxiliary data, whole transaction or block body (the parts after the header) of each era from Shelley to Conway at the era's decoder version (2, 3, 4, 5, 7, 9), each holding RecD records written as an empty indefinite list with their fields after it: the update proposal and the prices and execution units of a parameter update, an output's value in every output form and a collateral return, a redeemer's execution units (list and map forms), Conway's GovActionId, VotingProcedure, ProposalProcedure, Constitution and Anchor, the list form of auxiliary data and a Shelley-to-Mary transaction, and Conway transactions with records in each part as the node-to-node transaction submission carries them (#702), and the set of GovActionId of the node-to-client query GetProposals, read as LC.fromEraCBOR reads it at Conway's lowest protocol version (#700); with the refusals around them; the transaction ids and block body hashes the decoders hash for each accepted case; no ledger rule, signature or script is run",
   "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
   "compiler": "GHC 9.10.3",
   "referenceNode": "11.1.3 (matching embedded ledger package versions, not a bit-identical node release build)",
@@ -82,6 +82,12 @@
       "sourceSha256": "6f032ae2538c3f6ca7b9370defcfd42763c097da6698663c2d4a86544ec9bdf0",
       "matchesPin": true,
       "note": "the certificates with an anchor: 15, 16, 18 (702-718)"
+    },
+    "governanceProcedures": {
+      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+      "sourceSha256": "63f843282e99a159044a8f439124f92698e0b7090884f336f783c930c9cc9c71",
+      "matchesPin": true,
+      "note": "GovActionId is a RecD record of a TxId and a Word16 index below decoder version 12 (162, 182-190)"
     }
   },
   "sourceArchive": {
@@ -91,17 +97,17 @@
   },
   "harness": {
     "file": "scripts/oracle/conway-decoding/Main.hs",
-    "sha256": "5e906c106ccc3fc11fea0de771e3a4283e85a6756f7e761f219c4928f7bf9752",
-    "image": "scarab-conway-decoding:local (run as scarab-687-conway-decoding:local, whose /oracle/conway-decoding/Main.hs has this sha256), from scripts/oracle/conway-decoding/Dockerfile on scarab-plutus176-context-reference:local",
+    "sha256": "b86a9d8a3ad9f03264d8735ad729bbab9ba80bb181792f0db1fcc84f5c82099c",
+    "image": "scarab-conway-decoding:local (run as scarab-cc700-conway-decoding:local, whose /oracle/conway-decoding/Main.hs has this sha256), from scripts/oracle/conway-decoding/Dockerfile on scarab-plutus176-context-reference:local",
     "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-conway-decoding:local /fixtures/detached-inputs.json",
     "unchanged": true
   },
-  "generatorSha256": "4d4431bcaa90d44c8d80fad39246eb99b60c7390ac11541242cfc7f5c03b247e",
-  "harnessInputSha256": "4e4be16810df638828f06802941010b03f5f95ae3eaf794fda9d64b7f6b4bfc2",
-  "harnessOutputSha256": "5264a4d15c4fa13a52c6249fc6871bd6b9650d67ea5c8a652d841bb5e6a3d68a",
-  "casesSha256": "3f8cadc98ffda65857dad0b2619355d5570d637eace0c6510b4d86c7a3ee750a",
-  "cases": 183,
-  "accepted": 137,
-  "refused": 46,
+  "generatorSha256": "d1f145e8ff9e759f5c804bcee6ff7fec1e06cae45f45570b8cd82dca7316c0b6",
+  "harnessInputSha256": "14f18a3756a31c3fae96377879df764885e39d204c801914577b4e9c2857e36a",
+  "harnessOutputSha256": "48feda62f1d6a3cdf755c7506c07280c16540a6185d9ebd214d7908187c507f1",
+  "casesSha256": "f79d4d31b320b166b212cd977cc34e7d0dffe6b004e49f6f31d177b090baf317",
+  "cases": 202,
+  "accepted": 146,
+  "refused": 56,
   "originalBytesRetained": true
 }

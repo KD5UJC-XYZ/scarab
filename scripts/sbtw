@@ -34,4 +34,9 @@ fi
 # -Xss is the compiler's thread stack: an incremental recompile of node's Main.scala overflows the
 # 1 MiB default in PostTyper. Forked test JVMs take their own javaOptions, and the stack-safety
 # suites pin explicit small-stack threads, so this does not reach them.
-exec java -Dsbt.server.autostart=false -Dsbt.server.forcestart=true -Dsbt.boot.directory="$cache/boot" -Dsbt.global.base="${SBT_GLOBAL_BASE:-$cache/global}" -Dsbt.ivy.home="$cache/ivy" -XX:ActiveProcessorCount="$processors" -Xms256m -Xmx2g -Xss8m -Dsbt.override.build.repos=true -Dsbt.repository.config="$repositories" -Dsbt.supershell=false -jar "$jar" "$@"
+# JDK 25 warns where a restricted method is called and where `sun.misc.Unsafe`'s memory methods are used (issue
+# 589): the in-process tests load blst's JNI library, and Scala's lazy vals and Zinc's hashing call `Unsafe`.
+# Allowing both keeps `check` and the build's own log free of the warning, and stops a later JDK from blocking
+# the call. A forked test group takes its options from build.sbt instead.
+jvm_options=(--enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow)
+exec java "${jvm_options[@]}" -Dsbt.server.autostart=false -Dsbt.server.forcestart=true -Dsbt.boot.directory="$cache/boot" -Dsbt.global.base="${SBT_GLOBAL_BASE:-$cache/global}" -Dsbt.ivy.home="$cache/ivy" -XX:ActiveProcessorCount="$processors" -Xms256m -Xmx2g -Xss8m -Dsbt.override.build.repos=true -Dsbt.repository.config="$repositories" -Dsbt.supershell=false -jar "$jar" "$@"

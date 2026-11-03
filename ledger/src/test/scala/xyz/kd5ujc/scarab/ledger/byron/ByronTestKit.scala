@@ -159,14 +159,14 @@ object ByronTestKit:
     }
     ByronGenesis(
       Bytes.fromArray(Array.fill(32)(7.toByte)),
-      magic,
-      k,
-      1000,
-      certs.toVector.sortBy(_.issuer.hex),
       genesisKeys.map(_.keyHash).sortBy(_.hex).toVector,
+      certs.toVector.sortBy(_.issuer.hex),
+      0,
+      nonAvvm.toVector,
       params,
-      avvm.toVector,
-      nonAvvm.toVector
+      k,
+      magic,
+      avvm.toVector
     )
 
   /** A protocol version as the update payload and the header extra data encode it. */

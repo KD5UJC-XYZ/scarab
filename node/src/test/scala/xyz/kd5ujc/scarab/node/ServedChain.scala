@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.mempool.RelayedTransactions
 import cats.effect.IO
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -39,6 +40,7 @@ object ServedChain:
         }
         .rescue(e => IO.raiseError(new RuntimeException(e.message)))
       sink = new TxSubmissionServer.Sink[IO]:
+        def reader = RelayedTransactions
         def known(id: Bytes) = IO.pure(false)
         def submit(
             originals: Vector[Bytes]

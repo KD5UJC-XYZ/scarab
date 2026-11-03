@@ -11,6 +11,12 @@ import xyz.kd5ujc.scarab.protocol.Era
 opaque type DecoderVersion = Int
 
 object DecoderVersion:
+  /** `MaxVersion` (`libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Version.hs:63`): the
+    * largest `Version` the reference constructs, and so the largest major protocol version it
+    * decodes (`mkVersion32`, `:111-124`).
+    */
+  val MaxVersion: Int = 13
+
   /** `eraProtVerLow`. Byron has no transactions of this shape and reads as Shelley. */
   def of(era: Era): DecoderVersion = era match
     case Era.Byron | Era.Shelley => 2
@@ -19,6 +25,13 @@ object DecoderVersion:
     case Era.Alonzo              => 5
     case Era.Babbage             => 7
     case Era.Conway              => 9
+
+  /** Dijkstra's `eraProtVerLow`, 12 (`type ProtVerLow DijkstraEra = 12`,
+    * `libs/cardano-ledger-core/internal/Cardano/Ledger/Internal/Definition/Era.hs:140`,
+    * cardano-ledger f649f975). The node has no Dijkstra ledger: only the arguments of a
+    * node-to-client query of that era are read at it, as the reference reads them (#720).
+    */
+  val Dijkstra: DecoderVersion = 12
 
   extension (v: DecoderVersion)
     /** `ifDecoderVersionAtLeast (natVersion @n)`. */

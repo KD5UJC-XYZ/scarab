@@ -69,8 +69,9 @@ class LeiosTestnetHeaderSuite extends munit.FunSuite:
         ours.leios.announcement.map(a => (a.hash.bytes, a.size))
       )
       assertEquals(generated.bodySignature.value, ours.kesSignature)
-      assertEquals(b.raw, ours.bodyRaw)
-      // preserved bytes: what is hashed and signed is written back as received
+      // the KES message, the body encoded again, equals these canonical bodies' bytes
+      assertEquals(b.raw, ours.signable)
+      // preserved bytes: what is hashed is written back as received
       assertEquals(dijkstra.Header.encodeUnchecked(generated), raw)
     }
   }

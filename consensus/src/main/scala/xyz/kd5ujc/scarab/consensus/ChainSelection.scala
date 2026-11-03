@@ -68,14 +68,14 @@ object ChainSelection:
     if era.ordinal >= Era.Conway.ordinal then Tiebreaker.Restricted(ConwayRestriction)
     else Tiebreaker.Unrestricted
 
-  /** Unsigned lexicographic order of two byte strings of the same length. */
+  /** The `Ord` that `OutputVRF` derives from its `ByteArray` (cardano-crypto-class 2.5.1.0
+    * `Cardano/Crypto/VRF/Class.hs:253-254`): `Ord ByteArray` of GHC 9.10's base (`Data.Array.Byte`)
+    * compares the lengths first and only arrays of one length unsigned lexicographically (checked
+    * with GHC 9.10.3: `[1,2,3]` is above `[2]`). A validated output is 64 bytes, but a header
+    * decodes with one of any length (#712).
+    */
   private def lower(a: Bytes, b: Bytes): Boolean =
-    a.value
-      .zip(b.value)
-      .collectFirst {
-        case (x, y) if (x & 0xff) != (y & 0xff) => (x & 0xff) < (y & 0xff)
-      }
-      .getOrElse(false)
+    if a.size != b.size then a.size < b.size else a.compareTo(b) < 0
 
   /** Is `candidate` strictly preferred to `ours`? Tips of equal length are compared as upstream
     * `comparePraos` does (ouroboros-consensus 4.2.0.x, as in cardano-node 11.1.3:

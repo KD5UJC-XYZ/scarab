@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-03",
+  "scope": "Unchanged released decoders at each era's decoder version (2, 3, 4, 5, 7, 9) from Shelley to Conway: DecCBOR Addr (fromCborAddr) and DecCBOR AccountAddress (fromCborAccountAddress) of the CBOR byte string of an address or a reward account alone, every header (sixteen types, sixteen low nibbles) over the payload of its type; and decodeFullAnnotator of a transaction body holding an address or a reward account of network 1 and 2 in each place a body reads one (an enterprise, a base and a pointer output, a withdrawal, a pool registration's reward account, from Babbage a collateral return, in Conway a proposal's return account and a treasury withdrawal); no ledger rule, signature or script is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "compiler": "GHC 9.10.3",
+  "referenceNode": "11.1.3 (matching embedded ledger package versions, not a bit-identical node release build)",
+  "packages": {
+    "cardano-ledger-binary": "1.9.1.0",
+    "cardano-ledger-core": "1.21.0.0",
+    "cardano-ledger-shelley": "1.19.0.1",
+    "cardano-ledger-allegra": "1.10.1.0",
+    "cardano-ledger-mary": "1.11.0.0",
+    "cardano-ledger-alonzo": "1.16.0.0",
+    "cardano-ledger-babbage": "1.14.0.0",
+    "cardano-ledger-conway": "1.23.0.0",
+    "cborg": "0.2.10.0"
+  },
+  "sourceFiles": {
+    "address": {
+      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+      "sourceSha256": "f2ef8e3cebbe7475676e7466d6fa57a6dfc8495f3bdb0b516d3ae4420b04ec2d",
+      "matchesPin": true,
+      "note": "fromCborBothAddr by decoder version (459-477); headerByron, isByronAddress, headerNonShelleyBits = 0b10001110, headerNetworkId (548-561); decodeAddrStateLenientT refuses a Shelley header with a bit of headerNonShelleyBits set (655-666); fromCborAccountAddress, headerIsAccountAddress = header .&. 0b11101110 == 0b11100000, decodeAccountAddressT (913-955)"
+    }
+  },
+  "sourceArchive": {
+    "url": "https://codeload.github.com/IntersectMBO/cardano-ledger/tar.gz/f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "sha256": "b545b1eda2067c756add6d98701aacc217a380fe177f984daa1da655607a0b68",
+    "kind": "repository tarball at the pinned commit"
+  },
+  "harness": {
+    "file": "scripts/oracle/conway-decoding/Main.hs",
+    "sha256": "b41f4dddc14e7e97a45ef67804696b8cbd1f8c8f7fdeddd940b01c3c6517373b",
+    "image": "scarab-conway-decoding:local (run as scarab-conway-decoding-723:local, sha256:0f11b949fe2021f14f7a9368f0f4f4419a3e2a365feda039e4a2691af179ea17, whose /oracle/conway-decoding/Main.hs has this sha256), from scripts/oracle/conway-decoding/Dockerfile on scarab-plutus176-context-reference:local",
+    "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-conway-decoding:local /fixtures/address-inputs.json",
+    "unchanged": false,
+    "change": "#723 adds the kinds \"address\" and \"account\", which read the CBOR byte string of an address or a reward account alone with DecCBOR Addr or DecCBOR AccountAddress at the era version; every other kind is read as before"
+  },
+  "generatorSha256": "832d970c871361c325751991851a893641e34d76b5827621d94c9bbeecc31846",
+  "harnessInputSha256": "4c67f2ed127493e881cd3a0e6ecf24ab9f8352b39a3d6120558525c97b29ce22",
+  "harnessOutputSha256": "718268294a2c411bc3567334f18bcb0b6fc9c15855ee22f653b147418bb45b30",
+  "casesSha256": "b392d430c3d80c3649bee2d9dfeaf14519005df30ce9d1a6ca86b0d8d91d3e7c",
+  "lines": 260,
+  "aloneCases": 3072,
+  "aloneAccepted": 126,
+  "bodyCases": 68,
+  "bodyAccepted": 34,
+  "originalBytesRetained": true
+}

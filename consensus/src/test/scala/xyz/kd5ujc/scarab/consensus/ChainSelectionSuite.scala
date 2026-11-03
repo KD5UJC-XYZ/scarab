@@ -189,6 +189,17 @@ class ChainSelectionSuite extends ScalaCheckSuite:
     )
   }
 
+  test("VRF outputs of different lengths compare by length first, as OutputVRF's Ord does") {
+    // `Ord ByteArray` of GHC 9.10's base compares lengths first (#712): a shorter output is lower,
+    // whatever its bytes, and so wins the tie-break.
+    val ours = view(3, issuer = 1).copy(tieBreak = Some(bytes(0)))
+    val shorter = view(3, issuer = 2).copy(tieBreak = Some(bytes(255, 63)))
+    val longer = view(3, issuer = 2).copy(tieBreak = Some(bytes(0, 65)))
+    assert(prefers(Tiebreaker.Unrestricted, ours, shorter))
+    assert(!prefers(Tiebreaker.Unrestricted, ours, longer))
+    assert(prefers(Tiebreaker.Unrestricted, longer, ours))
+  }
+
   test("cross-era eligibility uses the later era configuration in either direction") {
     import xyz.kd5ujc.scarab.protocol.Era
     val older = view(3, slot = 100, issuer = 1, vrf = 200).copy(era = Some(Era.Babbage))

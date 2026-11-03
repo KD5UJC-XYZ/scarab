@@ -18,7 +18,7 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.state.{Credential as NativeCredential, *}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
-import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
+import xyz.kd5ujc.scarab.protocol.ChainSync
 
 /** Published queryPoolParameters examples are built independently from their JSON fields in native
   * state, then answered by the node. The opaque relay payload is encoded from typed addresses, not
@@ -130,7 +130,7 @@ class UpstreamPoolGoldenSuite extends FunSuite:
         QueryView(ChainSync.Point.Origin, None, state(parameters)),
         Map.empty,
         NtcQuery.IfCurrent(
-          Era.Conway.index,
+          QueryEra.Conway,
           LedgerQuery.GetStakePoolParams(parameters.map(_.operator).toSet)
         )
       )

@@ -134,9 +134,7 @@ object NodeSetup:
           BigInt(20000),
           geometry.k
         )
-      )(b =>
-        EraHistory.ByronParams(b.epochSlots, BigInt(b.slotLengthMillis), BigInt(b.securityParam))
-      ),
+      )(b => EraHistory.ByronParams(b.epochSlots, b.slotLengthMillis, b.securityParam)),
       observed
     )
 
@@ -269,11 +267,10 @@ object NodeSetup:
               )
             }
           }
+    // `readGenesis` reads the Byron genesis whole before it compares its hash (cardano-node 11.1.3
+    // `Cardano/Node/Protocol/Byron.hs:91-95`), so a genesis the schema refuses is refused for that
     val byron = (bytes: Array[Byte]) =>
-      parser
-        .parse(new String(bytes, "UTF-8"))
-        .leftMap(e => ConfigError(ConfigProblem.JsonSyntax("byron genesis", e)))
-        .map(j => hashOf(ByronGenesisFile.canonical(j).getBytes("UTF-8")))
+      ByronGenesisFile.parse(Bytes.fromArray(bytes), None).map(_.hash)
     val plain = (bytes: Array[Byte]) => Right(hashOf(bytes))
     val files = config.files
     val hashes = config.hashes
@@ -319,16 +316,16 @@ object NodeSetup:
       chainStoreK <- ChainStoreK.from(shelleyBase.geometry.k)
       firstShelley = config.firstShelleyEpoch
       byronBytes <- required("Byron", names.byron)
-      byron <-
-        if firstShelley.contains(BigInt(0)) then Right(None)
-        else ByronGenesisFile.parse(text(byronBytes), config.byronGenesisHash).map(Some(_))
+      // The reference reads the whole Byron genesis whichever era the chain starts in
+      // (`readGenesisData`, #734); a chain that starts in Shelley takes only its start time from it.
+      byronFile <- ByronGenesisFile.read(Bytes.fromArray(byronBytes))
+      byronGenesis <- ByronGenesisFile.fromJson(byronFile._1, byronFile._2, config.byronGenesisHash)
+      byron = Option.unless(firstShelley.contains(BigInt(0)))(byronGenesis)
       alonzoBytes <- required("Alonzo", names.alonzo)
       conwayBytes <- required("Conway", names.conway)
       prefixed <- Genesis.withByronPrefix(shelleyBase, byron, firstShelley)
-      // the Byron genesis of a chain that starts in Shelley is read only for its parameters
-      byronParams = byron.orElse(ByronGenesisFile.parse(text(byronBytes), None).toOption)
-      genesis = Genesis.withSystemStart(prefixed, byronParams)
-      byronJson <- json(names.byron, byronBytes)
+      genesis = Genesis.withSystemStart(prefixed, Some(byronGenesis))
+      byronJson = byronFile._1
       // The network magic Byron addresses carry: the configuration says whether the network
       // requires one; without it, mainnet does not and the test networks do.
       requiresMagic = config.requiresNetworkMagic.getOrElse(
@@ -394,7 +391,7 @@ object NodeSetup:
       }
       genDelegs <- LiteLedger.fromGenesis(files.shelley).map(_.genDelegs)
       fromByron = FromByron(genDelegs, params, globals.maxSupply)
-      env = mirrorEnvOf(genesis, globals, praos, byronParams)
+      env = mirrorEnvOf(genesis, globals, praos, Some(byronGenesis))
       shelleyHash = Blake2b.hash256.hash(Bytes.fromArray(shelleyBytes))
       start <- byronRules match
         case Some((ledger, _)) => byronStart(env, shelleyHash, lite, ByronState.starting(ledger))
@@ -429,6 +426,6 @@ object NodeSetup:
         )
       ),
       chainStoreK = chainStoreK,
-      byronParams = byronParams,
+      byronParams = Some(byronGenesis),
       byronConfig = byronRules.map(_._2)
     )

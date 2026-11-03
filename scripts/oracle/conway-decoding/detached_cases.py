@@ -20,6 +20,7 @@ a transaction holds one, era by era:
 - the list form of auxiliary data (`Allegra/TxAuxData.hs:185-210`, `Alonzo/TxAuxData.hs:215-262`);
 - a whole transaction, and the parts of a block after its header with the records spilling inside
   indefinite lists of bodies and witness sets;
+- the set of `GovActionId` that the node-to-client query `GetProposals` reads (#700);
 and the refusals next to them: fields that run past the end of the input, lists and maps whose
 counts do not fit the records, a record of the wrong length, and empty indefinite lists in places
 that are not records.
@@ -278,6 +279,61 @@ for era in ERAS:
         case(era, "transaction", "detached records in an indefinite transaction",
              c.array([rich, c.cmap([]), c.TRUE, c.NULL], indef=True))
 
+# Conway transactions as the node-to-node transaction submission carries them (#702): records in
+# each part, and refusals, each a whole transaction, for the protocol's reading of the transaction
+# and its id
+REDEEMER_UNITS = witness_set(5, c.array([c.array([c.uint(0), c.uint(0), c.uint(0), UNITS])]))
+GOVERNANCE = {**votes(ACTION_ID, detached([c.uint(1), ANCHOR])), **proposals(proposal(INFO))}
+case("conway", "transaction", "detached records in the witness set",
+     c.array([with_records("conway"), REDEEMER_UNITS, c.TRUE, c.NULL]))
+case("conway", "transaction", "detached governance records",
+     c.array([body("conway", GOVERNANCE), c.cmap([]), c.TRUE, AUX]))
+case("conway", "transaction", "detached records in every part of an indefinite transaction",
+     c.array([body("conway", {**outputs(c.array([ADDRESS, VALUE])), **GOVERNANCE}), REDEEMER_UNITS,
+              b"\xf4", AUX], indef=True))
+# refused: the output counts the value's fields as its own items
+case("conway", "transaction", "value in an output that counts its fields",
+     c.array([body("conway", {1: c.array([b"\x84" + ADDRESS + VALUE])}), c.cmap([]), c.TRUE, c.NULL]))
+# refused: the multi-asset is missing, so the next key of the body is read as it
+case("conway", "transaction", "value without its multi-asset",
+     c.array([body("conway", outputs(c.array([ADDRESS, detached([c.uint(2_000_000)])]))), c.cmap([]),
+              c.TRUE, c.NULL]))
+# refused: the units' steps are missing, so the validity flag is read as them
+case("conway", "transaction", "redeemer units without their steps",
+     c.array([with_records("conway"),
+              witness_set(5, c.array([c.array([c.uint(0), c.uint(0), c.uint(0), detached([c.uint(1)])])])),
+              c.TRUE, c.NULL]))
+# refused: the certificates are not a record, and the items after them are read by the body
+case("conway", "transaction", "empty indefinite certificates and items after them",
+     c.array([body("conway", {4: detached([c.array([c.uint(0), CRED])])}), c.cmap([]), c.TRUE, c.NULL]))
+
+
+# --- the governance action ids of a node-to-client query ----------------------------------------
+# `GetProposals` reads its set of `GovActionId` with the era's decoder at Conway's lowest version
+# (#700); each id is a `RecD` record, the set a list of them, optionally under tag 258.
+OTHER_TX_ID = c.bstr(c.h(0x67, 32))
+DEFINITE_ID = c.array([TX_ID, c.uint(0)])
+for name, raw in [
+    ("an id", c.array([DEFINITE_ID])),
+    ("a detached id", c.array([ACTION_ID])),
+    ("a detached id in a tagged set", c.tag(258, c.array([ACTION_ID]))),
+    ("a detached id in an indefinite set", c.array([ACTION_ID], indef=True)),
+    ("two detached ids", c.array([ACTION_ID, detached([OTHER_TX_ID, c.uint(1)])])),
+    ("an id and a detached id", c.array([detached([OTHER_TX_ID, c.uint(1)]), DEFINITE_ID])),
+    # refused: a non-empty indefinite list meets the break check before its first field
+    ("an indefinite id", c.array([c.array([TX_ID, c.uint(0)], indef=True)])),
+    # refused: the index is missing, so the input ends
+    ("a detached id without its index", c.array([detached([TX_ID])])),
+    # refused: the set counts the id's fields as its own elements
+    ("a set that counts a detached id's fields", b"\x83" + ACTION_ID),
+    # refused: the index is not a Word16, the transaction id not 32 bytes
+    ("a detached id whose index is over a Word16", c.array([detached([TX_ID, c.uint(65536)])])),
+    ("an id whose index is over a Word16", c.array([c.array([TX_ID, c.uint(65536)])])),
+    ("a detached id whose transaction id is 31 bytes",
+     c.array([detached([c.bstr(c.h(0x66, 31)), c.uint(0)])])),
+]:
+    case("conway", "govactionids", name, raw)
+
 
 # --- the parts of a block after its header ------------------------------------------------------
 def block_body(era, bodies, witnesses, aux=None, indef=False):
@@ -323,6 +379,7 @@ def merge(reference):
             "txid": result.get("id"),
             "bodyHash": result.get("hash"),
             "txids": result.get("ids"),
+            "actions": result.get("actions"),
             "bytes": case_["bytes"],
         }
         lines.append(json.dumps({k: v for k, v in line.items() if v is not None}, separators=(",", ":")))
