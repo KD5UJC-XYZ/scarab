@@ -93,6 +93,25 @@ class AddressHeadersReferenceSuite extends FunSuite:
         )
   }
 
+  /** The reference reads the header before what follows it (`decodeAddrStateLenientT`, `:655-666`;
+    * `decodeAccountAddressT`, `:942-953`), so a header it refuses is the refusal however short the
+    * rest is.
+    */
+  test("a refused header is the refusal before the length of what follows it") {
+    assertEquals(
+      Address.decode(Bytes(Vector(0x62.toByte)), Address.Mode.Strict),
+      Left(LedgerDecodeError.AddressHeader(0x62))
+    )
+    assertEquals(
+      RewardAccount.decode(Bytes(Vector(0xe2.toByte))),
+      Left(LedgerDecodeError.RewardAccountHeader(0xe2))
+    )
+    assertEquals(
+      RewardAccount.decode(Bytes(Vector(0xe1.toByte))),
+      Left(LedgerDecodeError.AddressLength(DecodeField.RewardAccount, 29, 1))
+    )
+  }
+
 object AddressHeadersReferenceSuite:
   /** Where a header is read: an address (`DecCBOR Addr`) or a reward account (`DecCBOR
     * AccountAddress`).

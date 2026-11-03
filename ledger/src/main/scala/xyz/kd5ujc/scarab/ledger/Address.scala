@@ -333,18 +333,18 @@ object RewardAccount:
     * and nothing after it.
     */
   def decode(raw: Bytes): Either[LedgerDecodeError, RewardAccount] =
-    if raw.size != 29 then
+    val header = raw.byteOr(0)(-1)(_ & 0xff)
+    // in the reference's order (`decodeAccountAddressT`, `:942-953`): a header, then a valid one,
+    // then the hash and nothing after it
+    if header < 0 then Left(LedgerDecodeError.AddressLength(DecodeField.RewardAccount, 29, 0))
+    else if (header & Address.UnusedHeaderBits) != 0 || header >> 5 != 7 then
+      Left(LedgerDecodeError.RewardAccountHeader(header))
+    else if raw.size != 29 then
       Left(LedgerDecodeError.AddressLength(DecodeField.RewardAccount, 29, raw.size))
     else
-      val header = raw.value(0) & 0xff
-      val h = Bytes(raw.value.drop(1))
-      if (header & Address.UnusedHeaderBits) != 0 then
-        Left(LedgerDecodeError.RewardAccountHeader(header))
-      else
-        header >> 4 match
-          case 14 => Right(RewardAccount(header & 0x0f, Credential.Key(h)))
-          case 15 => Right(RewardAccount(header & 0x0f, Credential.Script(h)))
-          case _  => Left(LedgerDecodeError.RewardAccountHeader(header))
+      val h = raw.drop(1).compact
+      if (header & 0x10) == 0 then Right(RewardAccount(header & 0x0f, Credential.Key(h)))
+      else Right(RewardAccount(header & 0x0f, Credential.Script(h)))
 
 /** Lovelace plus native assets. Mint values may be negative; UTxO values never are. */
 final case class Value(coin: BigInt, assets: Map[Bytes, Map[Bytes, BigInt]]):
