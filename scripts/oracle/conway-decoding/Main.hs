@@ -14,10 +14,27 @@ import Cardano.Ledger.Babbage (BabbageEra)
 import qualified Cardano.Ledger.Binary as Binary
 import Cardano.Ledger.Coin (Coin (..))
 import Cardano.Ledger.Conway (ConwayEra)
-import Cardano.Ledger.Core (EraTxBody, Tx, TopTx, TxBody, TxWits, withdrawalsTxBodyL)
+import Cardano.Ledger.Core
+  ( BlockBody
+  , EraBlockBody (hashBlockBody, txSeqBlockBodyL)
+  , EraTx (bodyTxL)
+  , EraTxBody
+  , Tx
+  , TopTx
+  , TxAuxData
+  , TxBody
+  , TxWits
+  , txIdTxBody
+  , withdrawalsTxBodyL
+  )
+import qualified Cardano.Crypto.Hash as Hash
+import Cardano.Ledger.Hashes (extractHash)
+import Cardano.Ledger.TxIn (TxId (..))
+import Data.Foldable (toList)
 import Cardano.Ledger.Mary (MaryEra)
 import Cardano.Ledger.Shelley (ShelleyEra)
 import Data.Aeson (FromJSON, Value, eitherDecode, encode, object, (.=))
+import Data.Aeson.Types (Pair)
 import qualified Data.ByteString.Base16 as Hex
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Map.Strict as Map
@@ -31,12 +48,17 @@ import System.Exit (die)
 -- | One original encoding: `kind` is "body", "witnesses" or "transaction" (Allegra to Conway);
 -- `era` is an era name, decoded at its `eraProtVerLow` (Shelley 2, Allegra 3, Mary 4, Alonzo 5,
 -- Babbage 7, Conway 9). With `withdrawals` set, an accepted body also reports the decoded withdrawals.
+-- A case with `ids` set is read by the kinds of `identified` instead: "body", "witnesses",
+-- "transaction" and "auxiliary" of every era, and "blockbody" (the parts of a block after its
+-- header, one after the other); an accepted one also reports the ids it hashes from the bytes it
+-- read (#687).
 data Case = Case
   { name :: String
   , era :: String
   , kind :: String
   , bytes :: Text.Text
   , withdrawals :: Maybe Bool
+  , ids :: Maybe Bool
   }
   deriving (Generic)
 
@@ -62,37 +84,86 @@ bodyWithdrawals version label raw =
                            | (k, v) <- Map.toList (unWithdrawals (body ^. withdrawalsTxBodyL)) ]
         ]
 
+hex :: Hash.Hash h a -> Text.Text
+hex = Hash.hashToTextAsHex
+
+txIdHex :: TxId -> Text.Text
+txIdHex (TxId h) = hex (extractHash h)
+
+-- | The verdict and, when accepted, the transaction id of a body (the hash of the bytes the decoder
+-- read), of a whole transaction (its body's), or the block body hash and the id of each
+-- transaction of a block body.
+idsOf ::
+  forall era.
+  ( EraBlockBody era
+  , Binary.DecCBOR (Binary.Annotator (TxBody TopTx era))
+  , Binary.DecCBOR (Binary.Annotator (TxWits era))
+  , Binary.DecCBOR (Binary.Annotator (TxAuxData era))
+  ) =>
+  Binary.Version -> String -> String -> LBS.ByteString -> Value
+idsOf version label k raw = case k of
+  "body" -> withIds (\b -> ["id" .= txIdHex (txIdTxBody (b :: TxBody TopTx era))])
+  "transaction" -> withIds (\t -> ["id" .= txIdHex (txIdTxBody ((t :: Tx TopTx era) ^. bodyTxL))])
+  "witnesses" -> withIds (\(_ :: TxWits era) -> [])
+  "auxiliary" -> withIds (\(_ :: TxAuxData era) -> [])
+  "blockbody" ->
+    withIds
+      ( \b ->
+          [ "hash" .= hex (hashBlockBody (b :: BlockBody era))
+          , "ids" .= [txIdHex (txIdTxBody (t ^. bodyTxL)) | t <- toList (b ^. txSeqBlockBodyL)]
+          ]
+      )
+  _ -> object ["unsupported" .= k]
+  where
+    withIds :: forall a. Binary.DecCBOR (Binary.Annotator a) => (a -> [Pair]) -> Value
+    withIds report =
+      case Binary.decodeFullAnnotator version (Text.pack label) Binary.decCBOR raw :: Either Binary.DecoderError a of
+        Left failure -> verdict (Left failure :: Either Binary.DecoderError ())
+        Right a -> object (("accepted" .= True) : report a)
+
+identified :: Case -> LBS.ByteString -> Maybe Value
+identified c raw = case era c of
+  "shelley" -> Just (idsOf @ShelleyEra (Binary.natVersion @2) "Shelley" (kind c) raw)
+  "allegra" -> Just (idsOf @AllegraEra (Binary.natVersion @3) "Allegra" (kind c) raw)
+  "mary" -> Just (idsOf @MaryEra (Binary.natVersion @4) "Mary" (kind c) raw)
+  "alonzo" -> Just (idsOf @AlonzoEra (Binary.natVersion @5) "Alonzo" (kind c) raw)
+  "babbage" -> Just (idsOf @BabbageEra (Binary.natVersion @7) "Babbage" (kind c) raw)
+  "conway" -> Just (idsOf @ConwayEra (Binary.natVersion @9) "Conway" (kind c) raw)
+  _ -> Nothing
+
 runCase :: Case -> IO Value
 runCase c = do
   raw <- either die (pure . LBS.fromStrict) (Hex.decode (Text.encodeUtf8 (bytes c)))
   let body_ = kind c == "body"
       wits_ = kind c == "witnesses"
       wdrl = body_ && withdrawals c == Just True
-  result <- case (era c, kind c) of
-    ("conway", _) | wdrl -> pure (bodyWithdrawals @ConwayEra (Binary.natVersion @9) "Conway TxBody" raw)
-    ("babbage", _) | wdrl -> pure (bodyWithdrawals @BabbageEra (Binary.natVersion @7) "Babbage TxBody" raw)
-    ("alonzo", _) | wdrl -> pure (bodyWithdrawals @AlonzoEra (Binary.natVersion @5) "Alonzo TxBody" raw)
-    ("mary", _) | wdrl -> pure (bodyWithdrawals @MaryEra (Binary.natVersion @4) "Mary TxBody" raw)
-    ("allegra", _) | wdrl -> pure (bodyWithdrawals @AllegraEra (Binary.natVersion @3) "Allegra TxBody" raw)
-    ("shelley", _) | wdrl -> pure (bodyWithdrawals @ShelleyEra (Binary.natVersion @2) "Shelley TxBody" raw)
-    ("conway", "transaction") -> pure (decodeAs @(Tx TopTx ConwayEra) (Binary.natVersion @9) "Conway Tx" raw)
-    ("babbage", "transaction") -> pure (decodeAs @(Tx TopTx BabbageEra) (Binary.natVersion @7) "Babbage Tx" raw)
-    ("alonzo", "transaction") -> pure (decodeAs @(Tx TopTx AlonzoEra) (Binary.natVersion @5) "Alonzo Tx" raw)
-    ("mary", "transaction") -> pure (decodeAs @(Tx TopTx MaryEra) (Binary.natVersion @4) "Mary Tx" raw)
-    ("allegra", "transaction") -> pure (decodeAs @(Tx TopTx AllegraEra) (Binary.natVersion @3) "Allegra Tx" raw)
-    ("conway", _) | body_ -> pure (decodeAs @(TxBody TopTx ConwayEra) (Binary.natVersion @9) "Conway TxBody" raw)
-    ("conway", _) | wits_ -> pure (decodeAs @(TxWits ConwayEra) (Binary.natVersion @9) "Conway TxWits" raw)
-    ("babbage", _) | body_ -> pure (decodeAs @(TxBody TopTx BabbageEra) (Binary.natVersion @7) "Babbage TxBody" raw)
-    ("babbage", _) | wits_ -> pure (decodeAs @(TxWits BabbageEra) (Binary.natVersion @7) "Babbage TxWits" raw)
-    ("alonzo", _) | body_ -> pure (decodeAs @(TxBody TopTx AlonzoEra) (Binary.natVersion @5) "Alonzo TxBody" raw)
-    ("alonzo", _) | wits_ -> pure (decodeAs @(TxWits AlonzoEra) (Binary.natVersion @5) "Alonzo TxWits" raw)
-    ("mary", _) | body_ -> pure (decodeAs @(TxBody TopTx MaryEra) (Binary.natVersion @4) "Mary TxBody" raw)
-    ("mary", _) | wits_ -> pure (decodeAs @(TxWits MaryEra) (Binary.natVersion @4) "Mary TxWits" raw)
-    ("allegra", _) | body_ -> pure (decodeAs @(TxBody TopTx AllegraEra) (Binary.natVersion @3) "Allegra TxBody" raw)
-    ("allegra", _) | wits_ -> pure (decodeAs @(TxWits AllegraEra) (Binary.natVersion @3) "Allegra TxWits" raw)
-    ("shelley", _) | body_ -> pure (decodeAs @(TxBody TopTx ShelleyEra) (Binary.natVersion @2) "Shelley TxBody" raw)
-    ("shelley", _) | wits_ -> pure (decodeAs @(TxWits ShelleyEra) (Binary.natVersion @2) "Shelley TxWits" raw)
-    other -> die ("unsupported case " <> show other)
+  result <- case (ids c, identified c raw) of
+   (Just True, Just v) -> pure v
+   _ -> case (era c, kind c) of
+       ("conway", _) | wdrl -> pure (bodyWithdrawals @ConwayEra (Binary.natVersion @9) "Conway TxBody" raw)
+       ("babbage", _) | wdrl -> pure (bodyWithdrawals @BabbageEra (Binary.natVersion @7) "Babbage TxBody" raw)
+       ("alonzo", _) | wdrl -> pure (bodyWithdrawals @AlonzoEra (Binary.natVersion @5) "Alonzo TxBody" raw)
+       ("mary", _) | wdrl -> pure (bodyWithdrawals @MaryEra (Binary.natVersion @4) "Mary TxBody" raw)
+       ("allegra", _) | wdrl -> pure (bodyWithdrawals @AllegraEra (Binary.natVersion @3) "Allegra TxBody" raw)
+       ("shelley", _) | wdrl -> pure (bodyWithdrawals @ShelleyEra (Binary.natVersion @2) "Shelley TxBody" raw)
+       ("conway", "transaction") -> pure (decodeAs @(Tx TopTx ConwayEra) (Binary.natVersion @9) "Conway Tx" raw)
+       ("babbage", "transaction") -> pure (decodeAs @(Tx TopTx BabbageEra) (Binary.natVersion @7) "Babbage Tx" raw)
+       ("alonzo", "transaction") -> pure (decodeAs @(Tx TopTx AlonzoEra) (Binary.natVersion @5) "Alonzo Tx" raw)
+       ("mary", "transaction") -> pure (decodeAs @(Tx TopTx MaryEra) (Binary.natVersion @4) "Mary Tx" raw)
+       ("allegra", "transaction") -> pure (decodeAs @(Tx TopTx AllegraEra) (Binary.natVersion @3) "Allegra Tx" raw)
+       ("conway", _) | body_ -> pure (decodeAs @(TxBody TopTx ConwayEra) (Binary.natVersion @9) "Conway TxBody" raw)
+       ("conway", _) | wits_ -> pure (decodeAs @(TxWits ConwayEra) (Binary.natVersion @9) "Conway TxWits" raw)
+       ("babbage", _) | body_ -> pure (decodeAs @(TxBody TopTx BabbageEra) (Binary.natVersion @7) "Babbage TxBody" raw)
+       ("babbage", _) | wits_ -> pure (decodeAs @(TxWits BabbageEra) (Binary.natVersion @7) "Babbage TxWits" raw)
+       ("alonzo", _) | body_ -> pure (decodeAs @(TxBody TopTx AlonzoEra) (Binary.natVersion @5) "Alonzo TxBody" raw)
+       ("alonzo", _) | wits_ -> pure (decodeAs @(TxWits AlonzoEra) (Binary.natVersion @5) "Alonzo TxWits" raw)
+       ("mary", _) | body_ -> pure (decodeAs @(TxBody TopTx MaryEra) (Binary.natVersion @4) "Mary TxBody" raw)
+       ("mary", _) | wits_ -> pure (decodeAs @(TxWits MaryEra) (Binary.natVersion @4) "Mary TxWits" raw)
+       ("allegra", _) | body_ -> pure (decodeAs @(TxBody TopTx AllegraEra) (Binary.natVersion @3) "Allegra TxBody" raw)
+       ("allegra", _) | wits_ -> pure (decodeAs @(TxWits AllegraEra) (Binary.natVersion @3) "Allegra TxWits" raw)
+       ("shelley", _) | body_ -> pure (decodeAs @(TxBody TopTx ShelleyEra) (Binary.natVersion @2) "Shelley TxBody" raw)
+       ("shelley", _) | wits_ -> pure (decodeAs @(TxWits ShelleyEra) (Binary.natVersion @2) "Shelley TxWits" raw)
+       other -> die ("unsupported case " <> show other)
   pure (object ["name" .= name c, "era" .= era c, "kind" .= kind c, "result" .= result])
 
 main :: IO ()

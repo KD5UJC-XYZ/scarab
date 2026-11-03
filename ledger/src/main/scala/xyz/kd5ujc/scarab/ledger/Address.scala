@@ -5,7 +5,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import cats.syntax.order.*
 import scala.annotation.tailrec
-import xyz.kd5ujc.scarab.codec.{Bytes, Node}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
 import xyz.kd5ujc.scarab.ledger.DecodeSite.Qualifier
 import xyz.kd5ujc.scarab.ledger.state.Word64
 import xyz.kd5ujc.scarab.protocol.Era
@@ -541,7 +541,7 @@ final case class TxOut(
   def referenceScript: Option[Script] =
     scriptRef.flatMap { kept =>
       val reread = for
-        node <- CborRead.decode(raw)
+        node <- TxOut.node(raw)
         f <- CborRead.fields(node, DecodeField.Output, FieldKeys.Stored)
         field <- f
           .get(3)
@@ -558,7 +558,7 @@ final case class TxOut(
     if scriptRef.isEmpty then 0
     else
       val size = for
-        node <- CborRead.decode(raw)
+        node <- TxOut.node(raw)
         f <- CborRead.fields(node, DecodeField.Output, FieldKeys.Stored)
         field <- f
           .get(3)
@@ -683,7 +683,32 @@ object TxOut:
       raw: Bytes,
       mode: Address.Mode = Address.Mode.Rigorous
   )(using ByteStrings): Either[LedgerDecodeError, TxOut] =
-    CborRead.decode(raw).flatMap(decode(_, mode, Forms.Stored))
+    DetachedRecords.read(raw, Cbor.Limits(), DetachedRecords.Shapes.storedOutput)(
+      LedgerDecodeError.Syntax(_)
+    )(decode(_, mode, Forms.Stored))
+
+  /** The encoding of an output read again, as an item: framed as it was read when its value is a
+    * detached record ([[DetachedRecords]]). Read without the records, such an output is refused or
+    * holds its value as an empty indefinite list, which no output read before holds (a value is a
+    * coin or a list of two).
+    */
+  def node(raw: Bytes): Either[LedgerDecodeError, Node] =
+    DetachedRecords.read(raw, Cbor.Limits(), DetachedRecords.Shapes.storedOutput)(
+      LedgerDecodeError.Syntax(_)
+    )(n => valueAt(n).as(n))
+
+  /** The value of an output's list or map form is not an empty indefinite list. */
+  private def valueAt(n: Node): Either[LedgerDecodeError, Unit] =
+    val value = n.value match
+      case xyz.kd5ujc.scarab.codec.Value.Arr(xs) => xs.lift(1)
+      case xyz.kd5ujc.scarab.codec.Value.Map(kvs) =>
+        kvs.collectFirst { case (k, v) if k.value == xyz.kd5ujc.scarab.codec.Value.UInt(1) => v }
+      case _ => None
+    value match
+      case Some(v)
+          if v.isIndefinite && v.value == xyz.kd5ujc.scarab.codec.Value.Arr(Vector.empty) =>
+        Left(LedgerDecodeError.ArrayLength(DecodeField.OutputValue, 2, 0))
+      case _ => Right(())
 
 /** `[transaction_id, index]` */
 final case class TxIn(id: Bytes, index: BigInt):

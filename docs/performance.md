@@ -77,4 +77,5 @@ One row per measurement section, in the order the sections were written; the sec
 | 50 | 2026-10-31 | Total reads of a `Bytes`: the bounds check and the read as one (#650) | #650 | [Memory, snapshots and bootstrap](performance/memory-and-snapshots.md#50-total-reads-of-a-bytes-the-bounds-check-and-the-read-as-one-650) |
 | 51 | 2026-10-31 | The ledger's loops: functional against imperative (#650) | #650 | [Memory, snapshots and bootstrap](performance/memory-and-snapshots.md#51-the-ledgers-loops-functional-against-imperative-650) |
 | 52 | 2026-10-31 | The verification cache's warming without try/finally (#650) | #650 | [The mainnet follower and signature checks](performance/mainnet-follower.md#52-the-verification-caches-warming-without-tryfinally-650) |
+| 53 | 2026-11-02 | Detached RecD records: what reading them costs an ordinary decode (#687) | #687 | [Peers, connections and the network path](performance/peers-and-network.md#53-detached-recd-records-what-reading-them-costs-an-ordinary-decode-687) |
 <!-- /register -->

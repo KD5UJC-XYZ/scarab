@@ -437,3 +437,38 @@ containers (load average 1.7 to 2.5); Docker image `scarab-jdk:local`
 workload and in every JVM: a `Right`, a tuple and a position per read as in section 45, and on top of that an immutable
 frame per child of a container and a persistent vector update per item. The decoder and its index keep their imperative
 form, under a `@SuppressWarnings` that cites this section.
+
+## 53. Detached RecD records: what reading them costs an ordinary decode (#687)
+
+**2026-11-02.** #687 reads a `RecD` record written as an empty indefinite list with its fields after the break, as
+the reference does: `Cbor.decode` takes the offsets of such records (`Cbor.Detached`) and says whether a decode held an
+empty indefinite list; `DetachedRecords.read` decodes and reads as before, and only when that refuses or the input holds
+an empty indefinite list walks the input as the reference's decoders would and reads it again. An ordinary decode pays
+for two more fields of its decoder (the records, none) and a test at each indefinite list; an ordinary block read pays
+that and one test of the flag.
+
+**Harness and environment.** `CborDecodeBench` (section 48), imperative variant, and `DetachedRecordsBench` (ledger
+tests, the same method: eight warm-up passes, then ten rounds of about 250 ms, the median of the rounds), each run in
+two JVMs on the sources of `main` (`1b78a6d71`) and two on #687's, alternately, in one container on Euler shared with
+other work (`--cpus 6`, JVM 25.0.4.1+1-LTS). `Block.decodeShelley` reads the Shelley-based blocks of `WireCorpus`; none
+of them holds an empty indefinite list, so none is walked. The walk alone is timed on every block, the cost a peer
+could make a block pay at most by putting an empty indefinite list in it.
+
+<!-- register:table perf-59.t1 -->
+| Workload | main µs/op (two JVMs) | #687 µs/op (two JVMs) | main B/op | #687 B/op |
+|---|---:|---:|---:|---:|
+| `Cbor.decode`, Preview blocks (648, 653,017 B) | 142.5 / 147.6 | 154.4 / 157.3 | 481,152 | 496,704 |
+| `Cbor.decode`, preprod blocks (70, 58,673 B) | 27.2 / 27.3 | 29.4 / 28.8 | 83,936 | 85,616 |
+| `Cbor.decode`, mainnet fixture blocks (12, 28,728 B) | 11.8 / 11.3 | 11.8 / 11.6 | 32,256 | 32,544 |
+| `Cbor.decode`, all 730 in one message (740,420 B) | 187.2 / 172.4 | 170.0 / 172.9 | 230,576 | 230,600 |
+| `Block.decodeShelley`, 674 Shelley-based blocks (691,882 B) | 2,924 / 3,001 | 3,341 / 2,978 | 7,582,797 / 7,701,419 | 7,722,155 / 7,705,982 |
+| The walk alone, the same 674 blocks (after its items were skipped without a frame) |  | 472 |  | 2,352,200 |
+<!-- /register -->
+
+The two builds differ by less than one JVM differs from the next on these runs, except that a decode allocates 24
+bytes more (the decoder's two fields), 3% of the smallest blocks' allocation. The walk first stepped through every item
+with an immutable frame (1,036 and 933 µs, 6.7 MB, about a third of a block read); it now reads an item with no record
+in it with a loop over a stack of counts, since deeply nested refused inputs took the decoder fuzz gate over its
+allocation bound, and costs about a sixth of a block read (one JVM). It runs only on an input that holds the bytes
+`9f ff` and that the first read refuses or whose decode holds an empty indefinite list, and the second decode and read
+only on one in which it finds a detached record.

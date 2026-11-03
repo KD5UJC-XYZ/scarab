@@ -57,9 +57,16 @@ object Block:
   /** Decode a block of a Shelley-based era; a Byron block is an error. */
   def decodeShelley(raw: Bytes): Either[ChainError, Block] = decodeWith(raw, None)
 
+  /** A block whose transactions hold a `RecD` record written as an empty indefinite list is read as
+    * the reference reads it, its parts spanning the fields after the list ([[DetachedRecords]]).
+    */
   private def decodeWith(raw: Bytes, byronEpochSlots: Option[BigInt]): Either[ChainError, Block] =
+    DetachedRecords.read(raw, limits, DetachedRecords.Shapes.block)(e =>
+      fail(LedgerDecodeError.Syntax(e))
+    )(read(_, byronEpochSlots))
+
+  private def read(root: Node, byronEpochSlots: Option[BigInt]): Either[ChainError, Block] =
     for
-      root <- CborRead.decode(raw, limits).leftMap(fail)
       outer <- array(root, 2)
       tag <- outer(0).value match
         case Value.UInt(t) => Right(t)

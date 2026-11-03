@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.{Bytes, Node}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.ledger.state.Coin
@@ -374,6 +374,11 @@ object TxBody:
     * `decodeOSet`).
     */
   def decode(raw: Bytes, era: Era): Either[LedgerDecodeError, TxBody] =
+    DetachedRecords.read(raw, Cbor.Limits(), DetachedRecords.Shapes.body(era))(
+      LedgerDecodeError.Syntax(_)
+    )(read(raw, era, _))
+
+  private def read(raw: Bytes, era: Era, root: Node): Either[LedgerDecodeError, TxBody] =
     val mode = Address.Mode.of(era)
     val version = DecoderVersion.of(era)
     given ByteStrings = ByteStrings.of(version)
@@ -385,7 +390,6 @@ object TxBody:
     ): Either[LedgerDecodeError, Option[Vector[A]]] =
       r.flatMap(_.traverse(CborRead.nonEmpty(_, what, conway)))
     for
-      root <- CborRead.decode(raw)
       f <- CborRead.fields(root, DecodeField.TransactionBody)
       _ <- Either.cond(
         f.keySet.subsetOf(known(era)),
@@ -572,11 +576,15 @@ object Witnesses:
     * `addrWitsSetDecoder`, `nativeScriptsDecoder`, `scriptDecoderV9`, `TxDatsRaw`, `RedeemersRaw`).
     */
   def decode(raw: Bytes, era: Era): Either[LedgerDecodeError, Witnesses] =
+    DetachedRecords.read(raw, Cbor.Limits(), DetachedRecords.Shapes.witnesses(era))(
+      LedgerDecodeError.Syntax(_)
+    )(read(raw, era, _))
+
+  private def read(raw: Bytes, era: Era, root: Node): Either[LedgerDecodeError, Witnesses] =
     val version = DecoderVersion.of(era)
     given ByteStrings = ByteStrings.of(version)
     val strict = version.atLeast(9)
     for
-      root <- CborRead.decode(raw)
       f <- CborRead.fields(root, DecodeField.WitnessSet)
       _ <- Either.cond(
         f.keySet.subsetOf(Set(0, 1, 2, 3, 4, 5, 6, 7)),
@@ -715,14 +723,21 @@ object Tx:
     * block's parts are ([[fromBlock]]).
     */
   def fromEnvelope(bytes: Bytes, era: Era): Either[LedgerDecodeError, Tx] =
-    CborRead.decode(bytes).flatMap { node =>
+    DetachedRecords.read(bytes, Cbor.Limits(), DetachedRecords.Shapes.transaction(era))(
+      LedgerDecodeError.Syntax(_)
+    ) { node =>
       val withFlag = era.ordinal >= Era.Alonzo.ordinal
       def whole(body: Node, witnesses: Node, aux: Node, flag: Boolean) =
         val auxBytes = aux.value match
           case xyz.kd5ujc.scarab.codec.Value.Null => None
           case _                                  => Some(aux.original)
         fromBlock(Block.Transaction(body.original, witnesses.original, auxBytes, flag), era)
-      CborRead.array(node, DecodeField.Transaction).flatMap {
+      // before Alonzo a transaction is the `RecD` record `ShelleyTx` (`Shelley/Tx.hs:184-192`),
+      // which may be detached
+      val parts =
+        if node.isDetached then CborRead.record(node, 3, DecodeField.Transaction)
+        else CborRead.array(node, DecodeField.Transaction)
+      parts.flatMap {
         case Vector(body, witnesses, flag, aux) if withFlag =>
           flag.value match
             case xyz.kd5ujc.scarab.codec.Value.Bool(valid) => whole(body, witnesses, aux, valid)

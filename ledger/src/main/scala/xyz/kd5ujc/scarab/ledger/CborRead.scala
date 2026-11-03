@@ -91,8 +91,14 @@ private[ledger] object CborRead:
     case Value.Bool(v) => Right(v)
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Boolean, n.value))
 
+  /** The items of a list. A detached record ([[Node.isDetached]]) is not one: the reference reads
+    * an empty indefinite list as a record's head only where it reads a `RecD` record ([[record]]),
+    * and anywhere else as the empty list it is, the items after it being read by the enclosing
+    * decoder.
+    */
   def array(n: Node, what: DecodeSite): Result[Vector[Node]] = n.value match
-    case Value.Arr(xs) => Right(xs)
+    case Value.Arr(xs) =>
+      Either.cond(!n.isDetached, xs, LedgerDecodeError.DetachedList(what))
     case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Array, n.value))
 
   def arrayN(n: Node, size: Int, what: DecodeSite): Result[Vector[Node]] =
@@ -104,16 +110,49 @@ private[ledger] object CborRead:
     * decodes is: `decodeCount (RecD cn) n` reads the length with `decodeRecordNamed` around a
     * decoder that reads nothing (`Decoding/Coders.hs:482`, cardano-ledger f649f975), so a non-empty
     * indefinite list meets the check for its break before its first field and fails with "Excess
-    * terms in array" (`decodeListLikeT`, `Decoding/Decoder.hs:690-708`). Only a definite list of
-    * `size` items is the record; any other item is not a list. An empty indefinite list passes that
-    * check, and the reference then reads the fields from the items after its break; this tree of
-    * items cannot, and refuses it too (#687).
+    * terms in array" (`decodeListLikeT`, `Decoding/Decoder.hs:690-708`). A definite list of `size`
+    * items is the record. An empty indefinite list passes that check, and the reference then reads
+    * the fields from the items after its break: read with them ([[DetachedRecords]]), it is the
+    * detached record of those `size` fields ([[Node.isDetached]]) and is the record too (#687). Any
+    * other item is not one.
     */
   def record(n: Node, size: Int, what: DecodeSite): Result[Vector[Node]] =
-    array(n, what).flatMap(xs =>
-      definite(n, what) *>
+    n.value match
+      case Value.Arr(xs) if n.isDetached =>
         Either.cond(xs.size == size, xs, LedgerDecodeError.ArrayLength(what, size, xs.size))
-    )
+      case _ =>
+        array(n, what).flatMap(xs =>
+          definite(n, what) *>
+            Either.cond(xs.size == size, xs, LedgerDecodeError.ArrayLength(what, size, xs.size))
+        )
+
+  /** The encoding a value read as `n` is kept by when it is written into another document: its
+    * original bytes, except that a detached record ([[Node.isDetached]]) is kept with the head of a
+    * definite list of its fields before their original bytes (`9f ff f1 f2` is kept as `82 f1 f2`),
+    * so that the document holds it as one item, as the reference's own state holds the record. The
+    * reference keeps the decoded value and writes it again; nothing hashes these bytes.
+    */
+  def kept(n: Node): Bytes =
+    n.value match
+      // the fields follow the `9f ff` and end where the record does
+      case Value.Arr(xs) if n.isDetached => listHead(xs.size) ++ n.original.drop(2)
+      case _                             => n.original
+
+  /** The head of a definite list of `size` items, in its shortest form. */
+  private def listHead(size: Int): Bytes =
+    if size < 24 then Bytes.wrap(Array((0x80 | size).toByte))
+    else if size < 256 then Bytes.wrap(Array(0x98.toByte, size.toByte))
+    else if size < 65536 then Bytes.wrap(Array(0x99.toByte, (size >> 8).toByte, size.toByte))
+    else
+      Bytes.wrap(
+        Array(
+          0x9a.toByte,
+          (size >> 24).toByte,
+          (size >> 16).toByte,
+          (size >> 8).toByte,
+          size.toByte
+        )
+      )
 
   def map(n: Node, what: DecodeSite): Result[Vector[(Node, Node)]] = n.value match
     case Value.Map(kvs) => Right(kvs)

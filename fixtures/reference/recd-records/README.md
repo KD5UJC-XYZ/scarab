@@ -62,8 +62,8 @@ python3 scripts/oracle/conway-decoding/recd_cases.py --inputs /tmp/recd-inputs.j
   [update-values corpus](../update-values/README.md).
 - An empty indefinite list `9f ff` passes the reference's check for the break, and the record's
   fields are then read from the items after it, so the reference accepts such a record when they
-  follow ([#687](https://github.com/KD5UJC-XYZ/scarab/issues/687)); every indefinite list here holds
-  the fields.
+  follow; every indefinite list here holds the fields, and the empty one is the
+  [detached records corpus](../recd-detached/README.md) ([#687](https://github.com/KD5UJC-XYZ/scarab/issues/687)).
 - A Shelley-to-Mary transaction envelope (`RecD ShelleyTx`) is not in a block; it is
   [#688](https://github.com/KD5UJC-XYZ/scarab/issues/688).
 - A record held in a stored ledger state is not read by these decoders: the governance state has

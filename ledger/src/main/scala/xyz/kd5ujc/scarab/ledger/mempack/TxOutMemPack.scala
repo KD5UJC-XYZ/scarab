@@ -89,7 +89,7 @@ object TxOutMemPack:
     if raw.size == 0 then Left(Failure.ScriptBytesMissing)
     else
       for
-        node <- CborRead.decode(raw).leftMap(Failure.ScriptRefused(_))
+        node <- TxOut.node(raw).leftMap(Failure.ScriptRefused(_))
         fields <- CborRead
           .fields(node, DecodeField.Output, FieldKeys.Stored)
           .leftMap(Failure.ScriptRefused(_))

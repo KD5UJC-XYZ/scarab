@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-02",
+  "scope": "Unchanged released decoders (decodeFullAnnotator) of a transaction body, witness set, auxiliary data, whole transaction or block body (the parts after the header) of each era from Shelley to Conway at the era's decoder version (2, 3, 4, 5, 7, 9), each holding RecD records written as an empty indefinite list with their fields after it: the update proposal and the prices and execution units of a parameter update, an output's value in every output form and a collateral return, a redeemer's execution units (list and map forms), Conway's GovActionId, VotingProcedure, ProposalProcedure, Constitution and Anchor, the list form of auxiliary data and a Shelley-to-Mary transaction; with the refusals around them; the transaction ids and block body hashes the decoders hash for each accepted case; no ledger rule, signature or script is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "compiler": "GHC 9.10.3",
+  "referenceNode": "11.1.3 (matching embedded ledger package versions, not a bit-identical node release build)",
+  "packages": {
+    "cardano-ledger-binary": "1.9.1.0",
+    "cardano-ledger-core": "1.21.0.0",
+    "cardano-ledger-shelley": "1.19.0.1",
+    "cardano-ledger-allegra": "1.10.1.0",
+    "cardano-ledger-mary": "1.11.0.0",
+    "cardano-ledger-alonzo": "1.16.0.0",
+    "cardano-ledger-babbage": "1.14.0.0",
+    "cardano-ledger-conway": "1.23.0.0",
+    "cborg": "0.2.10.0"
+  },
+  "sourceFiles": {
+    "coders": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Coders.hs",
+      "sourceSha256": "c48ae8e39adddd6b68190f6a3ba57078508cb0cce80dab6ad0b6781e9d6a622d",
+      "matchesPin": true,
+      "note": "decodeCount (RecD cn) n reads the list head around a decoder that reads nothing; the fields are read after it by ApplyD (482, 499-502)"
+    },
+    "decoder": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+      "sourceSha256": "3ff3541b2900ceaab9bda26f633d7ea5118a49f5faab3936d036cfe9b49f94cc",
+      "matchesPin": true,
+      "note": "decodeListLikeT checks an indefinite list's break right after its head (690-708)"
+    },
+    "maryValue": {
+      "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+      "sourceSha256": "38ccd686911337f6deb98fa71b7a4c31f8b4967f45a8990dbb984b653311a398",
+      "matchesPin": true,
+      "note": "decodeMaryValue: a coin, or the RecD record of a coin and a multi-asset (286-306)"
+    },
+    "alonzoTxOut": {
+      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs",
+      "sourceSha256": "635feb617bec63114a1504afe82c6535fe1b5c4bf66e0f4ec7c0aea5f4581fae",
+      "matchesPin": true,
+      "note": "decodeListLenOrIndef over the address, the value and the datum hash (388-411)"
+    },
+    "babbageTxOut": {
+      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs",
+      "sourceSha256": "64733f20f44ed96e5a7e100ed6cf3ba8a78c75f63e59bb7dc6fb6203f06bf42a",
+      "matchesPin": true,
+      "note": "decodeBabbageTxOut: the map form (SparseKeyed) or the list form (549-640)"
+    },
+    "allegraTxAuxData": {
+      "file": "eras/allegra/impl/src/Cardano/Ledger/Allegra/TxAuxData.hs",
+      "sourceSha256": "d145a4a4b4082cd0d42cf4f2bb426c0b1e9648d5cac84230f18a1258db8cb272",
+      "matchesPin": true,
+      "note": "the list form is the RecD record AllegraTxAuxDataRaw (185-210)"
+    },
+    "alonzoTxAuxData": {
+      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+      "sourceSha256": "012fe28b75907c3312dcf0647f8b93511b8437206eb316d43cb7c3858be40018",
+      "matchesPin": true,
+      "note": "the list form is the RecD record AlonzoTxAuxDataRaw below decoder version 12 (215-262)"
+    },
+    "alonzoTx": {
+      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+      "sourceSha256": "d4ebeaa8cb9269a4a3b88420b8f66474c0370b6a440a4b44e9ddff884fed0ed7",
+      "matchesPin": true,
+      "note": "decodeRecordNamed AlonzoTx over the body, witnesses, optional flag and auxiliary data (532-553)"
+    },
+    "shelleyTx": {
+      "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Tx.hs",
+      "sourceSha256": "8cc7205b51bfc2822ba294ee7a22b23fb4dbd71e886b9f6f7328ac789411373f",
+      "matchesPin": true,
+      "note": "ShelleyTx is a RecD record (184-192)"
+    },
+    "blockBody": {
+      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/BlockBody/Internal.hs",
+      "sourceSha256": "20768455801aeeabda3fb80642ef0a4815a563625b0041a62ac8f88497e6a8df",
+      "matchesPin": true,
+      "note": "the parts of a block body read with withSlice, their bytes the spans read (215-240)"
+    },
+    "conwayTxCert": {
+      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs",
+      "sourceSha256": "6f032ae2538c3f6ca7b9370defcfd42763c097da6698663c2d4a86544ec9bdf0",
+      "matchesPin": true,
+      "note": "the certificates with an anchor: 15, 16, 18 (702-718)"
+    }
+  },
+  "sourceArchive": {
+    "url": "https://codeload.github.com/IntersectMBO/cardano-ledger/tar.gz/f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "sha256": "b545b1eda2067c756add6d98701aacc217a380fe177f984daa1da655607a0b68",
+    "kind": "repository tarball at the pinned commit"
+  },
+  "harness": {
+    "file": "scripts/oracle/conway-decoding/Main.hs",
+    "sha256": "5e906c106ccc3fc11fea0de771e3a4283e85a6756f7e761f219c4928f7bf9752",
+    "image": "scarab-conway-decoding:local (run as scarab-687-conway-decoding:local, whose /oracle/conway-decoding/Main.hs has this sha256), from scripts/oracle/conway-decoding/Dockerfile on scarab-plutus176-context-reference:local",
+    "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-conway-decoding:local /fixtures/detached-inputs.json",
+    "unchanged": true
+  },
+  "generatorSha256": "4d4431bcaa90d44c8d80fad39246eb99b60c7390ac11541242cfc7f5c03b247e",
+  "harnessInputSha256": "4e4be16810df638828f06802941010b03f5f95ae3eaf794fda9d64b7f6b4bfc2",
+  "harnessOutputSha256": "5264a4d15c4fa13a52c6249fc6871bd6b9650d67ea5c8a652d841bb5e6a3d68a",
+  "casesSha256": "3f8cadc98ffda65857dad0b2619355d5570d637eace0c6510b4d86c7a3ee750a",
+  "cases": 183,
+  "accepted": 137,
+  "refused": 46,
+  "originalBytesRetained": true
+}

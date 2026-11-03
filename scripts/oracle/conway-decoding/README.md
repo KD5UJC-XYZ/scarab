@@ -64,3 +64,11 @@ transaction of each era from Allegra to Conway (`kind` "transaction"), which it 
 alone before #668.
 Its recipe is the one above with `recd_cases.py`, `/tmp/recd-inputs.json` and
 `fixtures/reference/recd-records/cases.jsonl`.
+
+The [detached `RecD` records corpus](../../../fixtures/reference/recd-detached/README.md) (#687) runs
+on the same harness, its cases from `detached_cases.py`: each `RecD` record a block or a transaction
+holds, written as an empty indefinite list with its fields after it. Its cases set `ids`, which has
+the harness read a body, witness set, auxiliary data, whole transaction or block body (the parts of a
+block after its header) of any era and report, for an accepted one, the transaction ids and block
+body hash it hashes from the bytes it read. Its recipe is the one above with `detached_cases.py`,
+`/tmp/detached-inputs.json` and `fixtures/reference/recd-detached/cases.jsonl`.

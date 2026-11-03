@@ -191,14 +191,16 @@ object ConwayParam:
   enum Records:
     case Body, Stored
 
-    /** A record the reference reads with `RecD` ([[CborRead.record]]): in a transaction only a
-      * definite list of `size` items. A stored state may also hold one as an indefinite list, which
-      * the builds before this rule took from a body, and it is read in either form.
+    /** A record the reference reads with `RecD` ([[CborRead.record]]): in a transaction a definite
+      * list of `size` items, or a detached one ([[DetachedRecords]]). A stored state or output may
+      * also hold one as an indefinite list, which the builds before this rule took from a body, and
+      * it is read in any of the three forms.
       */
     def record(n: Node, size: Int, site: DecodeSite): Either[LedgerDecodeError, Vector[Node]] =
       this match
-        case Body   => CborRead.record(n, size, site)
-        case Stored => CborRead.arrayN(n, size, site)
+        case Body                   => CborRead.record(n, size, site)
+        case Stored if n.isDetached => CborRead.record(n, size, site)
+        case Stored                 => CborRead.arrayN(n, size, site)
 
   /** `ExUnits` below decoder version 12 (`ExUnits.hs:195-215`, f649f975): a `RecD` record of two
     * `Word64` s, each at most `maxBound :: Int64`. The largest units of a transaction and of a
@@ -342,7 +344,7 @@ final case class ConwayParamUpdate private (entries: SortedMap[Int, ConwayParamU
   def applyTo(p: ProtocolParams): ProtocolParams = params.foldLeft(p)((acc, f) => f.applyTo(acc))
 
 object ConwayParamUpdate:
-  /** A field and the original encoding of its value. */
+  /** A field and the original encoding of its value ([[CborRead.kept]]). */
   final case class Entry(param: ConwayParam, original: Bytes)
 
   val empty: ConwayParamUpdate = ConwayParamUpdate(SortedMap.empty)
@@ -400,4 +402,4 @@ object ConwayParamUpdate:
           .get(key)
           .toRight(LedgerDecodeError.UnknownKey(DecodeField.ParameterUpdate, key))
         param <- read(value)
-      yield ConwayParamUpdate(u.entries.updated(param.key, Entry(param, value.original)))
+      yield ConwayParamUpdate(u.entries.updated(param.key, Entry(param, CborRead.kept(value))))
