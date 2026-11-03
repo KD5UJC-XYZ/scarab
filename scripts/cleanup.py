@@ -69,7 +69,7 @@ class Worktree:
     locked: bool
     dirty: bool
     ignored: tuple[str, ...]
-    activity: float | None  # newest of HEAD, its reflog, the index and tracked files (epoch seconds); None if unknown
+    activity: float | None  # newest change to HEAD, its reflog, the index or a tracked file (epoch s); None if unknown
 
 
 @dataclass(frozen=True)
@@ -300,10 +300,11 @@ def worktrees(only: Iterable[str] | None = None) -> list[Worktree]:
         admin = Path(git("rev-parse", "--absolute-git-dir", cwd=Path(path), check=False).strip() or path)
         stamps = [stamp.stat().st_mtime for stamp in (admin / "HEAD", admin / "index", admin / "logs" / "HEAD")
                   if stamp.exists()]
-        # An edit undone in the working tree alone (`git restore --worktree`) touches none of those, only the file.
+        # An edit undone in the working tree alone (`git restore --worktree`) touches none of those, only the file, and
+        # a restore that keeps the old modification time (`cp -p`) shows only in the file's change time.
         tracked = subprocess.run(["git", "-C", path, "ls-files", "-z"], capture_output=True, text=True)
-        stamps += [os.lstat(file).st_mtime for file in (Path(path) / name for name in tracked.stdout.split("\0") if name)
-                   if os.path.lexists(file)]
+        files = [Path(path) / name for name in tracked.stdout.split("\0") if name]
+        stamps += [max(info.st_mtime, info.st_ctime) for info in (os.lstat(file) for file in files if os.path.lexists(file))]
         known = tracked.returncode == 0 and (admin / "logs" / "HEAD").exists()
         trees.append(Worktree(
             path=path, head=entry.get("HEAD", ""), branch=entry.get("branch", "").removeprefix("refs/heads/") or None,
