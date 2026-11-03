@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import scala.annotation.unused
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
@@ -154,8 +153,15 @@ object Header:
 
   final case class OpCert(hotVkey: Bytes, sequence: BigInt, kesPeriod: BigInt, sigma: Bytes)
 
-  @unused private val envelopeLimits = Cbor.Limits(65535, 24, 8192, 65535)
-  private[ledger] val headerLimits = Cbor.Limits(4096, 16, 256, 4096)
+  /** A header is read as the reference reads it, with no budget of items, string bytes or nesting
+    * (`decodeFullAnnotator`): what bounds it is the ChainSync codec's 65535 bytes a message
+    * (`smallByteLimit`, `Ouroboros/Network/Protocol/ChainSync/Codec.hs:47-51`, ouroboros-network
+    * 2fb69829), which the codec here enforces, and after decoding `maxBHSize`
+    * (`Shelley/Protocol/EnvelopeChecks.hs:86-88`, ouroboros-consensus 82ecba32). From decoder
+    * version 12 a byte string may be chunked and every chunk is an item, so a header within
+    * `maxBHSize` can hold any number of items (#749).
+    */
+  private[ledger] val headerLimits = Cbor.Limits.Unbounded
 
   extension (h: Shelley)
     /** The single VRF result for Praos headers; `None` for TPraos. */

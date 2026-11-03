@@ -54,8 +54,8 @@ object BlockBuilder:
       valid: Boolean
   )
 
-  private val limits =
-    Cbor.Limits(maxInputBytes = 1048576, maxItems = 100000, maxStringBytes = 1048576)
+  // a held transaction is read again as the mempool read it, with no budget but its size (#749)
+  private val limits = Cbor.Limits.Unbounded
 
   /** The parts of a held transaction, read as the mempool read it: one holding a `RecD` record
     * written as an empty indefinite list spans the fields after it (`DetachedRecords`).

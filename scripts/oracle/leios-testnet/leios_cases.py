@@ -292,6 +292,10 @@ header("both detached", hc.header(L, body_form="detached", header_form="detached
 header("non-minimal heads", hc.header(L, nonmin=True, announcement=("definite", 5000)))
 header("vrf certificate indefinite", hc.header(L, vrf="indefinite"))
 header("issuer key chunked", hc.header(L, chunked=True))
+# #749: no decoder counts a chunk: after 244 empty chunks the header is 1100 bytes, mainnet's
+# `maxBHSize`, and holds more than 256 items; after 4000 it is over 4096 bytes
+header("issuer key after 244 empty chunks, 1100 bytes", hc.header(L, empty_chunks=244))
+header("issuer key after 4000 empty chunks", hc.header(L, empty_chunks=4000))
 header("version info major at the last protocol version", hc.header(L, major=13))
 header("version info major above the last protocol version", hc.header(L, major=14))
 header("version info major over a word32", hc.header(L, major=2**32))

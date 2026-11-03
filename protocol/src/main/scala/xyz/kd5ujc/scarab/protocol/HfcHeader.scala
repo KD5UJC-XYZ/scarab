@@ -51,10 +51,12 @@ object HfcHeader:
   val DijkstraBlockTag: Int = 8
 
   /** Local envelope payload ceiling, shared with [[NtNHeader]]. Consensus header-size validation
-    * belongs to the ledger/header layer; this codec only bounds decoding work.
+    * belongs to the ledger/header layer; the ChainSync codec bounds the message's bytes, and the
+    * envelope is read with no budget of items or nesting, as the reference's hard-fork decoder
+    * reads it (#749).
     */
   private val MaxHeader = 65535
-  private val limits = Cbor.Limits(MaxHeader + 16, 8, 64, MaxHeader)
+  private val limits = Cbor.Limits.Unbounded
 
   def decode(bytes: Bytes): Either[HfcHeaderError, HfcHeader] =
     for

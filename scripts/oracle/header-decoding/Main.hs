@@ -13,6 +13,7 @@
 {-# LANGUAGE TypeFamilies #-}
 module Main (main) where
 
+import qualified Cardano.Chain.Block as Byron
 import qualified Cardano.Crypto.Hash as Hash
 import Cardano.Crypto.Seed (mkSeedFromBytes)
 import Cardano.Crypto.VRF.Class (CertifiedVRF, VRFAlgorithm (..), getOutputVRFBytes, verifyCertified)
@@ -54,7 +55,11 @@ import System.Exit (die)
 -- its block body hash. `kind` "vrfcheck" takes a 32-byte seed and a message instead (#712): it makes
 -- a Praos VRF key of the seed and its certificate of the message, and reports, for the output as
 -- evaluated, empty, one byte longer and one byte shorter, whether the era's decoder reads the
--- certificate `[output, proof]` and whether `verifyCertified` accepts it.
+-- certificate `[output, proof]` and whether `verifyCertified` accepts it. Era "byron" with `kind`
+-- "boundaryheader" is a Byron epoch boundary header read as consensus reads it from ChainSync
+-- (`decCBORABoundaryHeader` at `byronProtVer`, `decodeByronBoundaryHeader`,
+-- `Byron/Ledger/Serialisation.hs:267-270`, ouroboros-consensus 82ecba32); only its verdict is
+-- reported (#749).
 data Case = Case
   { name :: String
   , era :: String
@@ -172,6 +177,12 @@ vrfCheck version raw =
             Right certified ->
               object ["length" .= BS.length o, "decoded" .= True, "verified" .= verifyCertified () vk message certified]
 
+-- | A Byron epoch boundary header's verdict: see `Case`.
+boundaryHeader :: String -> LBS.ByteString -> Either CaseError Value
+boundaryHeader "boundaryheader" raw =
+  Right (either refused (const (accepted [])) (Binary.decodeFullDecoder Binary.byronProtVer "Byron boundary header" Byron.decCBORABoundaryHeader raw))
+boundaryHeader other _ = Left (UnsupportedKind other)
+
 versionOf :: String -> Either CaseError Binary.Version
 versionOf e = case e of
   "shelley" -> Right (Binary.natVersion @2)
@@ -185,6 +196,7 @@ runCase c = do
   raw <- either (die . show . NotHex) (pure . LBS.fromStrict) (Hex.decode (Text.encodeUtf8 (bytes c)))
   let k = kind c
   result <- either (die . show) pure $ if k == "vrfcheck" then (`vrfCheck` raw) <$> versionOf (era c) else case era c of
+    "byron" -> boundaryHeader k raw
     "shelley" -> readCase @TPraosHeader @ShelleyEra (Binary.natVersion @2) "Shelley" k raw
     "allegra" -> readCase @TPraosHeader @AllegraEra (Binary.natVersion @3) "Allegra" k raw
     "mary" -> readCase @TPraosHeader @MaryEra (Binary.natVersion @4) "Mary" k raw

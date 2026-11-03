@@ -132,7 +132,7 @@ private[ledger] object AuxiliaryScripts:
   ): Either[LedgerDecodeError, Vector[Plutus]] =
     DetachedRecords.read(
       bytes,
-      Cbor.Limits(),
+      Cbor.Limits.Unbounded,
       DetachedRecords.Shapes.auxiliaryDataAt(protocol)
     )(LedgerDecodeError.Syntax(_))(node =>
       if protocol < 5 then historical(node, protocol) else alonzoOn(node, protocol)

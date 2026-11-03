@@ -380,7 +380,7 @@ object TxBody:
     * `decodeOSet`).
     */
   def decode(raw: Bytes, era: Era): Either[LedgerDecodeError, TxBody] =
-    DetachedRecords.read(raw, Cbor.Limits(), DetachedRecords.Shapes.body(era))(
+    DetachedRecords.read(raw, Cbor.Limits.Unbounded, DetachedRecords.Shapes.body(era))(
       LedgerDecodeError.Syntax(_)
     )(read(raw, era, _))
 
@@ -582,7 +582,7 @@ object Witnesses:
     * `addrWitsSetDecoder`, `nativeScriptsDecoder`, `scriptDecoderV9`, `TxDatsRaw`, `RedeemersRaw`).
     */
   def decode(raw: Bytes, era: Era): Either[LedgerDecodeError, Witnesses] =
-    DetachedRecords.read(raw, Cbor.Limits(), DetachedRecords.Shapes.witnesses(era))(
+    DetachedRecords.read(raw, Cbor.Limits.Unbounded, DetachedRecords.Shapes.witnesses(era))(
       LedgerDecodeError.Syntax(_)
     )(read(raw, era, _))
 
@@ -735,7 +735,7 @@ object Tx:
     * block's parts are ([[fromBlock]]).
     */
   def fromEnvelope(bytes: Bytes, era: Era): Either[LedgerDecodeError, Tx] =
-    DetachedRecords.read(bytes, Cbor.Limits(), DetachedRecords.Shapes.transaction(era))(
+    DetachedRecords.read(bytes, Cbor.Limits.Unbounded, DetachedRecords.Shapes.transaction(era))(
       LedgerDecodeError.Syntax(_)
     )(node => envelopeParts(node, era).flatMap(fromBlock(_, era)))
 

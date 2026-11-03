@@ -17,11 +17,11 @@ object ByronCbor:
     * `Cardano.Chain.Common.AddrAttributes`, `instance DecCBOR HDAddressPayload`), and the ledger
     * rule counts only the attributes it does not interpret (`Cardano.Chain.UTxO.Validation`,
     * `validateTxOutNM`: `unknownAttributesLength < 128`). Only the block size and `maxTxSize`
-    * (protocol parameters, checked by the ledger rules) bound them. A nested item is part of the
-    * body, so the body's limits bound it and none is refused that the reference accepts. Mainnet
-    * has an address of 7,689 bytes (a derivation path of 7,641; slot 1,769,882).
+    * (protocol parameters, checked by the ledger rules) bound them, and no decoder counts items or
+    * nesting, so these limits have no bound but the input's size ([[Cbor.Limits.Unbounded]], #749).
+    * Mainnet has an address of 7,689 bytes (a derivation path of 7,641; slot 1,769,882).
     */
-  val BodyLimits: Cbor.Limits = Cbor.Limits(1 << 23, 128, 1 << 21, 1 << 23)
+  val BodyLimits: Cbor.Limits = Cbor.Limits.Unbounded
 
   /** The minimal CBOR encoding of an unsigned integer (what `encCBOR` of a `Word` produces). */
   def uint(n: BigInt): Bytes =

@@ -42,13 +42,16 @@ object Block:
   ):
     lazy val id: Bytes = Blake2b.hash256.hash(body)
 
+  /** The most bytes a block takes: BlockFetch's 2500000 bytes a message (`largeByteLimit`,
+    * `Ouroboros/Network/Protocol/BlockFetch/Codec.hs:42-45`, ouroboros-network 2fb69829).
+    */
   val MaxInputBytes: Int = 2500000
 
-  private val limits = Cbor.Limits(
-    maxInputBytes = MaxInputBytes,
-    maxItems = 1000000,
-    maxStringBytes = 2500000
-  )
+  /** A block is read with no budget of items, string bytes or nesting, as the reference reads it:
+    * BlockFetch's codec bounds its bytes ([[MaxInputBytes]]), and the rules its body (`maxBBSize`)
+    * and transactions (`maxTxSize`) after decoding (#749).
+    */
+  private val limits = Cbor.Limits.Unbounded
 
   /** Decode a block; `byronEpochSlots` (10k of the Byron genesis) only matters for Byron blocks. */
   def decode(raw: Bytes, byronEpochSlots: BigInt): Either[ChainError, Block] =

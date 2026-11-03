@@ -14,7 +14,10 @@ complete failure, and for an accepted case the header hash, a block's body hash 
 body's `getSignableRepresentation`, the bytes the KES signature is checked over. No signature or
 ledger rule is checked on a header. A "vrfcheck" case (#712) instead makes a Praos VRF key of a
 seed, evaluates its certificate of a message with `cardano-crypto-praos` 2.2.4.0, and reports for
-outputs of other lengths whether the certificate decodes and whether `verifyCertified` accepts it. The
+outputs of other lengths whether the certificate decodes and whether `verifyCertified` accepts it. A
+"boundaryheader" case of era "byron" reads a Byron epoch boundary header with `decCBORABoundaryHeader`
+of `cardano-ledger-byron` 1.3.0.0 at `byronProtVer`, as consensus reads it from ChainSync, and reports
+its verdict only (#749). The
 [fixtures](../../../fixtures/reference/header-decoding/README.md) retain the original encodings, the
 verdicts, and the source and package pins.
 
@@ -26,5 +29,6 @@ docker build -f scripts/oracle/header-decoding/Dockerfile -t scarab-header-decod
 ```
 
 `cabal.project.freeze` is the context image's plan with the two protocol packages and
-`cardano-ledger-dijkstra` added (`cabal freeze` in the built image). The cases come from
+`cardano-ledger-dijkstra` added (`cabal freeze` in the built image); `cardano-ledger-byron` is in it
+already. The cases come from
 `header_cases.py`, run as the fixture README shows.
