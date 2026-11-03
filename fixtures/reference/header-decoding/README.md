@@ -31,8 +31,8 @@ Conway (Praos) and Leios:
   indefinite list; a major protocol version of 13 and 14, a minor and a body size over a `Word32`;
   a block number, slot, certificate counter and KES period at and above 2^63;
   a detached header without its signature and a detached body one field short; for Praos and
-  Leios the operational certificate and protocol version indefinite and detached, and every list
-  indefinite but the VRF certificate's; for Leios an announcement definite, indefinite, detached
+  Leios the operational certificate and protocol version indefinite and detached; for Praos every
+  list indefinite but the VRF certificate's; for Leios an announcement definite, indefinite, detached
   and with a size over a `Word32`, and an issuer key written as a chunked byte string, which
   Dijkstra's decoder version 12 reads;
 - a header body alone (`kind` "headerbody"), definite, indefinite and detached;
