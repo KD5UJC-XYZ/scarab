@@ -15,8 +15,9 @@ container mounts it, nothing is mounted inside it, it holds no ignored files oth
 head commit is exactly the head of a pull request from its branch merged into `main` of this repository (a
 squash merge leaves the branch's own commits outside `main`). A head that is merely in `origin/main` proves nothing (a worktree just
 created from main has one), so such a worktree is removed only for `--owner <its directory or branch>` or, with
-`--stale-days`, when its HEAD, HEAD reflog and index are untouched for that long (without a HEAD reflog its
-activity is unknown and it is kept). Listing does not refresh the index, so it does not make a worktree look used.
+`--stale-days`, when its HEAD, HEAD reflog, index and tracked files are untouched for that long (without a HEAD
+reflog its activity is unknown and it is kept). Listing does not refresh the index, so it does not make a worktree
+look used.
 
 Run directories (entries of `SCARAB_DATA_DIR`, default `/tmp/scarab`) and stopped containers labelled
 `xyz.kd5ujc.scarab.kind` (see `container_labels`) carry no record of being finished, so age alone never removes
@@ -68,7 +69,7 @@ class Worktree:
     locked: bool
     dirty: bool
     ignored: tuple[str, ...]
-    activity: float | None  # last checkout, commit, reset or index write, seconds since the epoch; None if unknown
+    activity: float | None  # newest of HEAD, its reflog, the index and tracked files (epoch seconds); None if unknown
 
 
 @dataclass(frozen=True)
@@ -294,15 +295,21 @@ def worktrees(only: Iterable[str] | None = None) -> list[Worktree]:
                                  "--untracked-files=normal", "--ignored=traditional"], capture_output=True, text=True)
         status = listed.stdout.splitlines() if listed.returncode == 0 else ["?? (git status failed)"]
         # A commit or reset on an attached branch leaves HEAD itself untouched and is seen only in the HEAD reflog,
-        # which git does not recreate when `core.logAllRefUpdates` is off; without it the activity is unknown.
+        # which git does not recreate when `core.logAllRefUpdates` is off; without it, or without the list of tracked
+        # files, the activity is unknown.
         admin = Path(git("rev-parse", "--absolute-git-dir", cwd=Path(path), check=False).strip() or path)
         stamps = [stamp.stat().st_mtime for stamp in (admin / "HEAD", admin / "index", admin / "logs" / "HEAD")
                   if stamp.exists()]
+        # An edit undone in the working tree alone (`git restore --worktree`) touches none of those, only the file.
+        tracked = subprocess.run(["git", "-C", path, "ls-files", "-z"], capture_output=True, text=True)
+        stamps += [os.lstat(file).st_mtime for file in (Path(path) / name for name in tracked.stdout.split("\0") if name)
+                   if os.path.lexists(file)]
+        known = tracked.returncode == 0 and (admin / "logs" / "HEAD").exists()
         trees.append(Worktree(
             path=path, head=entry.get("HEAD", ""), branch=entry.get("branch", "").removeprefix("refs/heads/") or None,
             locked="locked" in entry, dirty=any(not line.startswith("!!") for line in status),
             ignored=tuple(line[3:] for line in status if line.startswith("!!")),
-            activity=max(stamps) if (admin / "logs" / "HEAD").exists() else None))
+            activity=max(stamps) if known else None))
     return trees
 
 

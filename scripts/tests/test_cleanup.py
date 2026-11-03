@@ -231,8 +231,9 @@ class ActivityTest(unittest.TestCase):
     def test_listing_does_not_refresh_the_index_and_make_an_old_worktree_look_used(self):
         import os
         then = self.age("HEAD", "logs/HEAD", "index")
-        # A touched file with unchanged content is what makes a plain `git status` rewrite the index.
-        os.utime(self.tree / "file")
+        # A file whose time no longer matches the index's record, though its content does, is what makes a plain
+        # `git status` rewrite the index.
+        os.utime(self.tree / "file", (then - 60, then - 60))
         self.assertAlmostEqual(self.listed().activity, then, delta=1)
         self.assertAlmostEqual(self.listed().activity, then, delta=1)
 
@@ -243,6 +244,13 @@ class ActivityTest(unittest.TestCase):
         self.run_git("add", "file", cwd=self.tree)
         self.run_git("restore", "--staged", "file", cwd=self.tree)
         self.run_git("restore", "file", cwd=self.tree)
+        self.assertGreater(self.listed().activity, time.time() - 3600)
+
+    def test_an_edit_undone_in_the_working_tree_alone_counts_as_activity(self):
+        import time
+        self.age("HEAD", "logs/HEAD", "index")
+        (self.tree / "file").write_text("two")
+        self.run_git("restore", "--source=HEAD", "--worktree", "file", cwd=self.tree)
         self.assertGreater(self.listed().activity, time.time() - 3600)
 
     def test_without_a_head_reflog_the_activity_is_unknown_and_a_stale_sweep_keeps_it(self):
