@@ -30,8 +30,8 @@ def restore_problem(events):
     return None
 
 
-# the magic of the snapshot files this build writes (FileKind.SnapshotFile current, SnapshotV7)
-SNAPSHOT_MAGIC = b"SCRBSNP7"
+# the magic of the snapshot files this build writes (FileKind.SnapshotFile current, SnapshotV8)
+SNAPSHOT_MAGIC = b"SCRBSNP8"
 
 
 def format_problem(magics):
@@ -68,7 +68,7 @@ def _stop(name, process):
 
 
 def restart(args):
-    """Follow with current V7 snapshots, SIGTERM, then restore the snapshot on restart."""
+    """Follow with current V8 snapshots, SIGTERM, then restore the snapshot on restart."""
     root = data_root(args.name)
     up(args)
     failures, stops = [], []
