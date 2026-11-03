@@ -35,7 +35,8 @@ ouroboros-consensus `82ecba32`) reads each argument with one of two decoders:
   bits and one past them, a chunked transaction id, a duplicate.
 - the ledger's decoders at Dijkstra's lowest protocol version, 12 (`dijkstra-*`), where a byte string
   may be chunked (`decodeBytes`): a key hash and pools, credentials, inputs, DReps and an address
-  chunked, member statuses, records of the wrong length, duplicates; and a plain argument of a
+  chunked, an input index of 16 bits and one past them (`TxIx` is a `Word16`, at version 9 too),
+  member statuses, records of the wrong length, duplicates; and a plain argument of a
   Dijkstra query (`dijkstra-plain-pools`), which `fromCBOR` reads as in every era, a chunked hash
   refused.
 

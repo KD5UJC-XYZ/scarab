@@ -9,3 +9,5 @@
 - A query of Dijkstra (era index 7) reads its arguments at Dijkstra's version 12, as the reference
   does (a chunked byte string, a `GovActionId` as a record of its own), and is answered with the era
   mismatch naming Dijkstra.
+- A transaction input's index is a `Word16`, as the reference's `TxIx` is: an index past 65535 is
+  refused where an input is read, in a block, a transaction and a query alike; it used to be read.

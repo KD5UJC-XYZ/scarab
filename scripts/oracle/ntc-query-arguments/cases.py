@@ -187,6 +187,11 @@ case("dijkstra-staking", "indefinite credential", arr(indef(uint(1), A)))
 case("dijkstra-staking", "credential of three", arr(arr(uint(0), A, uint(0))))
 case("dijkstra-txins", "chunked input id", arr(arr(chunked(h(0x66, 32)), uint(1))))
 case("dijkstra-txins", "duplicate", arr(TXIN0, TXIN0))
+# `TxIx` is a `Word16`
+for d in ("era-txins", "dijkstra-txins"):
+    case(d, "index of 16 bits", arr(arr(TX, uint(0xFFFF))))
+    case(d, "index past 16 bits", arr(arr(TX, uint(0x10000))))
+case("dijkstra-txins", "chunked input id, index past 16 bits", arr(arr(chunked(h(0x66, 32)), uint(0x10000))))
 case("dijkstra-dreps", "every kind, chunked", arr(arr(uint(3)), arr(uint(2)), arr(uint(1), CHUNK_A)))
 case("dijkstra-dreps", "abstain of two", arr(arr(uint(2), A)))
 case("dijkstra-statuses", "every status", arr(uint(2), uint(0), uint(1)))

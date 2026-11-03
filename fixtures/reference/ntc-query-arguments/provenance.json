@@ -43,11 +43,11 @@
     "file": "scripts/oracle/ntc-query-arguments/Main.hs",
     "sha256": "4d486fb1b389e1becf4239e58e83ab04eefb20d472250a4f5642f8f246a58b6f"
   },
-  "generatorSha256": "12db7aa7d372ad7795e4e312ccbad4596d0e30bf9be4217d78d9a5c95aaceacb",
-  "casesSha256": "93614741b5797b80bcff4b0dca580dc42681edb5d316cbe7d580816a572ab12a",
+  "generatorSha256": "aa1f1dcc78957b98e96ce70f4d93a9712bc49ec5c600661f00015d15b3f2f79b",
+  "casesSha256": "f5288bb51fdcc97d2a6136e542d999a38b43a0b1123fdd754308cf36c8d59db2",
   "results": {
-    "cases": 96,
-    "accepted": 49,
-    "refused": 47
+    "cases": 101,
+    "accepted": 51,
+    "refused": 50
   }
 }
