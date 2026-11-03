@@ -193,6 +193,116 @@ class StatusConfigurationTest(unittest.TestCase):
         self.assertEqual([entry.ignored for entry in trees], [(".workspace/",)])
 
 
+class ActivityTest(unittest.TestCase):
+    """Each case takes the activity before one operation and shows that operation alone moves it: a file's change time
+    cannot be set back, so no worktree here can be made to look a month old."""
+
+    def setUp(self):
+        import subprocess
+        import tempfile
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.repo, self.tree = Path(scratch.name) / "repo", Path(scratch.name) / "tree"
+        self.run_git = lambda *args, cwd=self.repo: subprocess.run(["git", "-C", str(cwd), *args], check=True,
+                                                                  capture_output=True, text=True)
+        self.repo.mkdir()
+        self.run_git("init", "-q", "-b", "main")
+        self.run_git("config", "user.email", "t@example.org")
+        self.run_git("config", "user.name", "t")
+        (self.repo / "file").write_text("one")
+        self.run_git("add", "file")
+        self.run_git("commit", "-q", "-m", "init")
+        self.run_git("worktree", "add", "-q", str(self.tree))
+        self.admin = Path(self.run_git("rev-parse", "--absolute-git-dir", cwd=self.tree).stdout.strip())
+
+    def listed(self):
+        with mock.patch.object(cleanup, "ROOT", self.repo):
+            trees = cleanup.worktrees()
+        self.assertEqual([entry.dirty for entry in trees], [False])
+        return trees[0]
+
+    def times(self, *names):
+        import os
+        return [os.lstat(self.admin / name if name != "file" else self.tree / name).st_ctime_ns for name in names]
+
+    def before(self):
+        import time
+        activity = self.listed().activity
+        time.sleep(0.05)
+        return activity
+
+    def test_listing_does_not_refresh_the_index(self):
+        import os
+        # A file whose time no longer matches the index's record, though its content does, is what makes a plain
+        # `git status` rewrite the index.
+        os.utime(self.tree / "file", (1_000_000_000, 1_000_000_000))
+        index = self.times("index")
+        activity = self.before()
+        self.assertEqual(self.listed().activity, activity)
+        self.assertEqual(self.times("index"), index)
+
+    def test_a_change_to_the_index_alone_counts(self):
+        activity, untouched = self.before(), self.times("HEAD", "logs/HEAD", "file")
+        self.run_git("update-index", "--chmod=+x", "file", cwd=self.tree)
+        self.run_git("update-index", "--chmod=-x", "file", cwd=self.tree)
+        self.assertGreater(self.listed().activity, activity)
+        self.assertEqual(self.times("HEAD", "logs/HEAD", "file"), untouched)
+
+    def test_an_edit_undone_in_the_working_tree_alone_counts(self):
+        activity, untouched = self.before(), self.times("HEAD", "logs/HEAD", "index")
+        (self.tree / "file").write_text("two")
+        self.run_git("restore", "--source=HEAD", "--worktree", "file", cwd=self.tree)
+        self.assertGreater(self.listed().activity, activity)
+        self.assertEqual(self.times("HEAD", "logs/HEAD", "index"), untouched)
+
+    def test_a_restore_that_keeps_the_old_modification_time_counts(self):
+        import os
+        import shutil
+        backup = self.tree.parent / "backup"
+        shutil.copy2(self.tree / "file", backup)
+        modified = os.lstat(self.tree / "file").st_mtime_ns
+        activity, untouched = self.before(), self.times("HEAD", "logs/HEAD", "index")
+        (self.tree / "file").write_text("two")
+        shutil.copy2(backup, self.tree / "file")
+        self.assertEqual(os.lstat(self.tree / "file").st_mtime_ns, modified)
+        self.assertGreater(self.listed().activity, activity)
+        self.assertEqual(self.times("HEAD", "logs/HEAD", "index"), untouched)
+
+    def test_moving_the_worktree_counts(self):
+        activity, untouched = self.before(), self.times("HEAD", "logs/HEAD", "index")
+        moved = self.tree.parent / "moved"
+        self.run_git("worktree", "move", str(self.tree), str(moved))
+        self.tree = moved
+        self.assertGreater(self.listed().activity, activity)
+        self.assertEqual(self.times("HEAD", "logs/HEAD", "index"), untouched)
+
+    def test_a_file_that_vanishes_during_the_scan_is_skipped_and_one_that_cannot_be_read_makes_it_unknown(self):
+        import os
+        lstat = os.lstat
+        def failing(error):
+            def fake(path, *args, **kwargs):
+                if Path(path).name == "file":
+                    raise error
+                return lstat(path, *args, **kwargs)
+            return fake
+        with mock.patch.object(cleanup.os, "lstat", failing(FileNotFoundError("file"))):
+            self.assertIsNotNone(self.listed().activity)
+        with mock.patch.object(cleanup.os, "lstat", failing(PermissionError("file"))):
+            self.assertIsNone(self.listed().activity)
+
+    def test_without_a_head_reflog_the_activity_is_unknown_and_a_stale_sweep_keeps_it(self):
+        import time
+        self.run_git("config", "core.logAllRefUpdates", "false")
+        (self.admin / "logs" / "HEAD").unlink()
+        # A reset on the attached branch moves the branch, not HEAD, and leaves no reflog to show it.
+        self.run_git("reset", "-q", "--hard", "HEAD", cwd=self.tree)
+        tree = self.listed()
+        self.assertIsNone(tree.activity)
+        verdict = worktree_verdict(tree, IDLE, lambda head, branch: IN_MAIN, Scope(frozenset(), 14), time.time())
+        self.assertEqual(verdict, (False, "head is in origin/main and it has no HEAD reflog, so its last activity is "
+                                          "unknown"))
+
+
 class ApplyTest(unittest.TestCase):
     def test_each_removal_is_rechecked_alone_just_before_it_runs(self):
         first = Worktree(**{**TREE.__dict__, "path": "/r/wt/a"})
