@@ -146,7 +146,7 @@ class DeepQuerySuite extends FunSuite:
           env,
           view,
           Map.empty,
-          NtcQuery.IfCurrent(view.era.index, LedgerQuery.GetUTxOWhole)
+          NtcQuery.IfCurrent(QueryEra.of(view.era), LedgerQuery.GetUTxOWhole)
         )
         .fold(e => fail(e.toString), identity)
       assertEquals(leaf, result(plain))
@@ -191,7 +191,7 @@ class DeepQuerySuite extends FunSuite:
     assertEquals(early.era, Era.Shelley)
     onSmallStack {
       def wrapped(leaf: LedgerQuery): NtcQuery = NtcQuery.IfCurrent(
-        early.era.index,
+        QueryEra.of(early.era),
         (0 until depth).foldLeft(leaf)((q, _) => LedgerQuery.GetCBOR(q))
       )
       assertEquals(
@@ -206,7 +206,7 @@ class DeepQuerySuite extends FunSuite:
           env,
           early,
           Map.empty,
-          NtcQuery.IfCurrent(early.era.index, LedgerQuery.DebugChainDepState)
+          NtcQuery.IfCurrent(QueryEra.of(early.era), LedgerQuery.DebugChainDepState)
         )
         .fold(e => fail(e.toString), identity)
       assertEquals(unwrap(result(answer), depth), result(plain))

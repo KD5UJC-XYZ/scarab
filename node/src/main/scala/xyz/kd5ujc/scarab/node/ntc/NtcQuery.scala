@@ -83,15 +83,51 @@ enum HardForkQuery:
   case GetInterpreter
   case GetCurrentEra
 
+/** An era of the reference's `CardanoEras`, in its order: the index a query names an era by is the
+  * case's ordinal (`type CardanoEras c = ByronBlock ': CardanoShelleyEras c`,
+  * `ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/Block.hs:245-257`,
+  * ouroboros-consensus 82ecba32). Every node-to-client version this node speaks enables all eight
+  * for queries, Dijkstra too, though the node has no Dijkstra ledger: a query of it is read and
+  * answered with the era mismatch, as the reference answers it before that era (#720).
+  */
+enum QueryEra:
+  case Byron, Shelley, Allegra, Mary, Alonzo, Babbage, Conway, Dijkstra
+
+  def index: Int = ordinal
+
+  /** `singleEraName`, the name an era mismatch gives the era: the ledger's `eraName`
+    * (`Shelley/ShelleyHFC.hs:256`; `type EraName DijkstraEra = "Dijkstra"`,
+    * `Cardano/Ledger/Internal/Definition/Era.hs:138`, cardano-ledger f649f975) and "Byron"
+    * (`Byron/ByronHFC.hs:252`).
+    */
+  def name: String = toString
+
+object QueryEra:
+  def of(era: Era): QueryEra = era match
+    case Era.Byron   => Byron
+    case Era.Shelley => Shelley
+    case Era.Allegra => Allegra
+    case Era.Mary    => Mary
+    case Era.Alonzo  => Alonzo
+    case Era.Babbage => Babbage
+    case Era.Conway  => Conway
+
+  /** The era of an index, as `nsFromIndex` finds it; none past the last. */
+  def fromIndex(index: Int): Option[QueryEra] = values.lift(index)
+
 /** A top-level node-to-client query: `Ouroboros.Consensus.Ledger.Query` (tags 0 to 4) with the
   * hard-fork-combinator block-query envelope (`QueryIfCurrent` 0, `QueryAnytime` 1, `QueryHardFork`
   * 2).
   */
 enum NtcQuery:
-  case IfCurrent(era: Int, query: LedgerQuery)
+  /** `QueryIfCurrent` of a Shelley-based era: the decoder never gives it [[QueryEra.Byron]]. */
+  case IfCurrent(era: QueryEra, query: LedgerQuery)
 
-  /** `QueryAnytime GetEraStart` for an era index. */
-  case EraStart(era: Int)
+  /** `QueryIfCurrent` of Byron's one query, `GetUpdateInterfaceState`. */
+  case ByronUpdateInterfaceState
+
+  /** `QueryAnytime GetEraStart` for an era. */
+  case EraStart(era: QueryEra)
   case HardFork(query: HardForkQuery)
   case SystemStart
   case ChainBlockNo
@@ -104,7 +140,7 @@ object NtcQuery:
     case NtcQuery.IfCurrent(era, inner) =>
       val (depth, leaf) = LedgerQuery.cborLayers(inner)
       val shown = if depth == 0 then leaf.toString else s"GetCBOR[$depth]($leaf)"
-      s"IfCurrent($era,$shown)".take(120)
+      s"IfCurrent(${era.index},$shown)".take(120)
     case other => other.toString.take(120)
 
   enum Error extends DomainError:
@@ -156,6 +192,12 @@ object NtcQuery:
     case UnknownTag(field: String, tag: Int)
     case Constructor(field: String, tag: Int, arity: Int)
 
+    /** An era index past the last era of `CardanoEras`, which `nsFromIndex` does not find. */
+    case UnknownEra(index: Int)
+
+    /** An unsigned integer the reference reads with `decodeWord8`, past 255. */
+    case Word8Range(field: String)
+
     def message: String = this match
       case UnsupportedVersion(version) =>
         s"query is not supported at node-to-client version ${version.number}"
@@ -186,6 +228,8 @@ object NtcQuery:
       case ConwayOnly(tag)         => s"ledger query $tag: not supported before Conway"
       case UnknownTag(field, tag)  => s"$field: unknown tag $tag"
       case Constructor(field, tag, arity) => s"$field: unknown tag $tag or arity $arity"
+      case UnknownEra(index)              => s"era index: invalid index $index"
+      case Word8Range(field)              => s"$field: expected an unsigned integer of 8 bits"
 
   private type R[A] = Either[Error, A]
   private val limits = Cbor.Limits(
@@ -202,17 +246,38 @@ object NtcQuery:
     * query that `requireCG` guards is refused (`Shelley/Ledger/Query.hs:936-942`,
     * ouroboros-consensus 82ecba32; #724).
     *
-    * An era index this node does not know reads as Conway's, the answer of the latest era it knows:
-    * the reference decodes an argument only for an era it knows, so there is no reference verdict
-    * here, and this is stated as our choice rather than measured (#720).
+    * Dijkstra, which the node has no ledger of, reads at its own lowest version, 12
+    * ([[DecoderVersion.Dijkstra]]): a chunked byte string, and a `GovActionId` as a record of its
+    * own (`decodeGovActionId`, `Conway/Governance/Procedures.hs:182-190`); a credential and a DRep
+    * as below 12, where `Summands` is `decodeRecordSum` too (`Decoding/Coders.hs:514`,
+    * `Credential.hs:327-344`, `DRep.hs:90-110`); an address as Conway's (`fromCborBothAddr` takes
+    * the version-9 branch, `Address.hs:459-467`); with Conway's governance (`getConwayEraGovDict _ =
+    * Just ConwayEraGovDict`, `Shelley/Eras.hs:215`, ouroboros-consensus 82ecba32; #720).
     */
-  private[ntc] final case class Reading(era: Era):
-    def version: DecoderVersion = DecoderVersion.of(era)
+  private[ntc] final case class Reading(
+      version: DecoderVersion,
+      addresses: Address.Mode,
+      governance: Boolean
+  ):
     def strings: ByteStrings = ByteStrings.of(version)
-    def addresses: Address.Mode = Address.Mode.of(era)
-    def governance: Boolean = era.ordinal >= Era.Conway.ordinal
 
-  private def reading(era: Int): Reading = Reading(Era.fromIndex(BigInt(era)).getOrElse(Era.Conway))
+  private[ntc] object Reading:
+    def of(era: Era): Reading =
+      Reading(DecoderVersion.of(era), Address.Mode.of(era), era.ordinal >= Era.Conway.ordinal)
+
+    val dijkstra: Reading = Reading(DecoderVersion.Dijkstra, Address.Mode.Strict, true)
+
+  /** The reading of a Shelley-based era's query; none for Byron, whose query is not a ledger one.
+    */
+  private def reading(era: QueryEra): Option[Reading] = era match
+    case QueryEra.Byron    => None
+    case QueryEra.Shelley  => Some(Reading.of(Era.Shelley))
+    case QueryEra.Allegra  => Some(Reading.of(Era.Allegra))
+    case QueryEra.Mary     => Some(Reading.of(Era.Mary))
+    case QueryEra.Alonzo   => Some(Reading.of(Era.Alonzo))
+    case QueryEra.Babbage  => Some(Reading.of(Era.Babbage))
+    case QueryEra.Conway   => Some(Reading.of(Era.Conway))
+    case QueryEra.Dijkstra => Some(Reading.dijkstra)
 
   def decode(raw: Bytes): R[NtcQuery] =
     DetachedRecords.read(raw, limits, shape)(Error.MalformedCbor(_))(top)
@@ -236,11 +301,13 @@ object NtcQuery:
   /** The query as the reference's decoders read it, as far as it holds a `RecD` record
     * ([[DetachedRecords]]): the set of `GovActionId` of `GetProposals` (`(2, 31)`,
     * `Shelley/Ledger/Query.hs:981`, ouroboros-consensus 82ecba32), in the hard-fork combinator's
-    * `QueryIfCurrent` and in any `GetCBOR` (`(2, 9)`). Every era a query reads is below decoder
-    * version 12, where a record written as an empty indefinite list has its fields after it (#700).
-    * No other argument of a query is a `RecD` record: a `TxIn` is `decodeRecordNamed` over its
-    * fields (`TxIn.hs:103-108`), a credential and a DRep `Summands` (`Credential.hs:327-334`,
-    * `DRep.hs:90-99`), cardano-ledger f649f975.
+    * `QueryIfCurrent` of an era below decoder version 12, where a record written as an empty
+    * indefinite list has its fields after it (#700), and in any `GetCBOR` (`(2, 9)`). The era index
+    * says which: Byron's query is a bare tag (`decodeByronQuery`) and Dijkstra's reads at version
+    * 12 ([[Reading.dijkstra]]), so neither holds such a record (#720). No other argument of a query
+    * is a `RecD` record: a `TxIn` is `decodeRecordNamed` over its fields (`TxIn.hs:103-108`), a
+    * credential and a DRep `Summands` (`Credential.hs:327-334`, `DRep.hs:90-99`), cardano-ledger
+    * f649f975.
     */
   private[ntc] val shape: DetachedRecords.Shape =
     import DetachedRecords.Shape.*
@@ -249,8 +316,12 @@ object NtcQuery:
       case 31 => List(ListOf(DetachedRecords.Shapes.actionId))
       case _  => Nil
     }
+    val below12 = Sum {
+      case era if era >= QueryEra.Shelley.index && era <= QueryEra.Conway.index => List(ledger)
+      case _                                                                    => Nil
+    }
     val inEra = Sum {
-      case 0 => List(Fields(List(Item, ledger), Item))
+      case 0 => List(below12)
       case _ => Nil
     }
     Sum {
@@ -318,14 +389,17 @@ object NtcQuery:
   /** A set an argument reads with `fromCBOR` of cardano-binary (`decodeSetSkel`,
     * `cardano-binary/src/Cardano/Binary/FromCBOR.hs:550-576`, cardano-base 1.9.1.0): tag 258 around
     * a definite list whose elements are in strictly ascending order, as the type's `Ord` orders
-    * them.
+    * them. Its elements read a definite byte string in every era: a hash's `fromCBOR` is cborg's
+    * `decodeBytes`, and a credential's reads at `shelleyProtVer` (`toPlainDecoder Nothing
+    * shelleyProtVer decCBOR`, `Cardano/Ledger/Credential.hs:349-350`, cardano-ledger f649f975), so
+    * a Dijkstra query reads them as Conway's does (#720).
     */
-  private def plainSet[A](n: Node, what: String)(each: Node => R[A])(using
+  private def plainSet[A](n: Node, what: String)(each: ByteStrings ?=> Node => R[A])(using
       order: Ordering[A]
   ): R[Vector[A]] = n.value match
     case Value.Tag(t, inner) if t == 258 =>
       definite(inner, what)
-        .flatMap(_.traverse(each))
+        .flatMap(_.traverse(each(using ByteStrings.Definite)))
         .flatMap(xs =>
           Either.cond(xs.lazyZip(xs.drop(1)).forall(order.lt), xs, Error.NotAscending(what))
         )
@@ -375,8 +449,8 @@ object NtcQuery:
   // decodes them with `fromEraCBOR @era` (the `(2, 15)` GetUTxOByTxIn case,
   // `Ouroboros/Consensus/Shelley/Ledger/Query.hs:960` at ouroboros-consensus 82ecba32), which is
   // `eraDecoder @era decCBOR` at the era's *lowest* protocol version (`Era.hs:236-243`, cardano-ledger
-  // f649f975) — 2..9, below the version 12 where `decodeBytes` starts taking a chunked string.
-  // Evidence: #437.
+  // f649f975) — 2..9 for Shelley to Conway, below the version 12 where `decodeBytes` starts taking a
+  // chunked string, and 12 for Dijkstra, which takes it ([[Reading.dijkstra]]). Evidence: #437, #720.
   private def txIn(n: Node)(using strings: ByteStrings): R[TxIn] =
     TxIn.decode(n)(using strings).leftMap(Error.InvalidTxIn(_))
 
@@ -396,11 +470,15 @@ object NtcQuery:
     * the two, or the two after an empty indefinite list ([[Node.isDetached]]); a non-empty
     * indefinite list fails the reference's check for its break before its first field (`decodeCount
     * (RecD cn) n`, `Decoding/Coders.hs:482`; `decodeListLikeT`, `Decoding/Decoder.hs:690-708`).
+    * From version 12 it is `decodeRecordNamed` over the two fields (`decodeGovActionId`,
+    * `Procedures.hs:184-190`): a definite or an indefinite list of the two, and no detached record,
+    * which the walk of a Dijkstra query does not make ([[shape]]; #720).
     */
-  private def govActionId(n: Node)(using ByteStrings): R[GovActionId] =
+  private def govActionId(n: Node)(using read: Reading)(using ByteStrings): R[GovActionId] =
     val what = "gov action id"
     arr(n, what).flatMap {
-      case _ if n.isIndefinite && !n.isDetached => Left(Error.IndefiniteRecord(what))
+      case _ if n.isIndefinite && !n.isDetached && !read.version.atLeast(12) =>
+        Left(Error.IndefiniteRecord(what))
       case Vector(i, ix) =>
         (
           bytes(i, "gov action tx id").filterOrElse(_.size == 32, Error.InvalidTxId),
@@ -415,7 +493,9 @@ object NtcQuery:
   /** `Maybe (Set a)` read with `fromCBOR`: `[]` for nothing, `[set]` for just, a definite list
     * (`decodeMaybe`, `cardano-binary/src/Cardano/Binary/FromCBOR.hs:445-453`), of a plain set.
     */
-  private def maybeSet[A: Ordering](n: Node, what: String)(each: Node => R[A]): R[Option[Set[A]]] =
+  private def maybeSet[A: Ordering](n: Node, what: String)(
+      each: ByteStrings ?=> Node => R[A]
+  ): R[Option[Set[A]]] =
     definite(n, what).flatMap {
       case Vector()  => Right(None)
       case Vector(s) => plainSet(s, what)(each).map(xs => Some(xs.toSet))
@@ -441,15 +521,17 @@ object NtcQuery:
         .flatMap(uint(_, "block query tag"))
         .flatMap {
           case 0 if xs.size == 2 =>
+            // `decodeNS`: two items, the era index and the era's own query
             definite(xs(1), "query in era").flatMap {
-              case Vector(era, q) =>
-                uint(era, "era index")
-                  .flatMap(e => shelley(q, reading(e)).map(NtcQuery.IfCurrent(e, _)))
+              case Vector(e, q) =>
+                eraIndex(e).flatMap { era =>
+                  reading(era).fold(byron(q))(r => shelley(q, r).map(NtcQuery.IfCurrent(era, _)))
+                }
               case qs => Left(Error.Arity("query in era", 2, qs.size))
             }
           case 1 if xs.size == 3 =>
             // [1, <Some GetEraStart>, era index]: the query is `[0]` (GetEraStart)
-            (definite(xs(1), "anytime query"), uint(xs(2), "era index")).tupled.flatMap {
+            (definite(xs(1), "anytime query"), eraIndex(xs(2))).tupled.flatMap {
               // QueryAnytime's Serialise instance: Ledger/Query.hs:536-551 at 82ecba3.
               case (Vector(tag), era) =>
                 uint(tag, "anytime query tag").flatMap {
@@ -471,6 +553,27 @@ object NtcQuery:
             }
           case t => Left(Error.Constructor("block query", t, xs.size))
         }
+    }
+
+  /** An era index as `decodeNS` and the `Serialise` of `EraIndex` read it: `decodeWord8`, then
+    * `nsFromIndex`, which fails past the last era ("decodeNS: invalid index", "EraIndex: invalid
+    * index"; `HardFork/Combinator/Serialisation/Common.hs:420-433`,
+    * `HardFork/Combinator/Abstract/SingleEraBlock.hs:169-175`, ouroboros-consensus 82ecba32; #720).
+    */
+  private def eraIndex(n: Node): R[QueryEra] =
+    uint(n, "era index")
+      .filterOrElse(_ <= 0xff, Error.Word8Range("era index"))
+      .flatMap(i => QueryEra.fromIndex(i).toRight(Error.UnknownEra(i)))
+
+  /** Byron's block query, `decodeByronQuery`: a bare `decodeWord8` tag, 0 for
+    * `GetUpdateInterfaceState` and nothing else
+    * (`ouroboros-consensus-cardano/src/byron/Ouroboros/Consensus/Byron/Ledger/Ledger.hs:556-561`,
+    * ouroboros-consensus 82ecba32; #720).
+    */
+  private def byron(n: Node): R[NtcQuery] =
+    uint(n, "byron query tag").flatMap {
+      case 0 => Right(NtcQuery.ByronUpdateInterfaceState)
+      case t => Left(Error.UnknownTag("byron query", t))
     }
 
   /** The Shelley block query, reading its byte strings under `policy`. Package-scoped: the caller

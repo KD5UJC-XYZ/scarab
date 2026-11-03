@@ -46,9 +46,9 @@ class NtcQueryRecordsSuite extends FailsOnUncaught:
   private def message(query: Bytes): Bytes = hex("8203") ++ query
 
   private def ids(query: NtcQuery): Option[Set[String]] = query match
-    case NtcQuery.IfCurrent(6, LedgerQuery.GetProposals(set)) =>
+    case NtcQuery.IfCurrent(_, LedgerQuery.GetProposals(set)) =>
       Some(set.map(id => s"${id.txId.hex}#${id.index}"))
-    case NtcQuery.IfCurrent(6, LedgerQuery.GetCBOR(LedgerQuery.GetProposals(set))) =>
+    case NtcQuery.IfCurrent(_, LedgerQuery.GetCBOR(LedgerQuery.GetProposals(set))) =>
       Some(set.map(id => s"${id.txId.hex}#${id.index}"))
     case _ => None
 
@@ -138,6 +138,23 @@ class NtcQueryRecordsSuite extends FailsOnUncaught:
       LocalStateQuery.decodePrefix(State.Acquired, Role.Client, wire, QueryReader.items) match
         case DecodeResult.Decoded(_, consumed) => assert(consumed < wire.size, row.name)
         case other                             => fail(s"${row.name}: $other")
+  }
+
+  test("Dijkstra's ids are records of their own: no detached one, an indefinite one read (#720)") {
+    val txId = "5820" + "66" * 32
+    def inDijkstra(ids: String): Bytes = hex("820082008207" + "82181f" + ids)
+    // a detached id is not walked: the query is one item, and its id is refused
+    val detached = inDijkstra("819fff" + txId + "00")
+    assertEquals(NtcQuery.reader.span(detached), LocalStateQuery.QuerySpan.Item)
+    assert(NtcQuery.decode(detached).isLeft)
+    decodeQuery(message(detached)) match
+      case DecodeResult.Decoded(Message.Query(framed), _) => assert(NtcQuery.decode(framed).isLeft)
+      case other                                          => fail(s"not a query: $other")
+    // `decodeRecordNamed` takes an indefinite list of the two fields
+    assertEquals(
+      NtcQuery.decode(inDijkstra("819f" + txId + "00ff")).map(ids),
+      Right(Some(Set("66" * 32 + "#0")))
+    )
   }
 
   test("an id written as a non-empty indefinite list, or with an index over 16 bits, is refused") {

@@ -117,7 +117,7 @@ class PeerSnapshotQuerySuite extends FunSuite:
     val env = NtcGolden.queryEnv.copy(networkMagic = 42L)
     def ask(q: LedgerQuery, version: NtcVersion): Bytes =
       QueryAnswers
-        .answerOrWhy(env, view, Map.empty, NtcQuery.IfCurrent(6, q), version)
+        .answerOrWhy(env, view, Map.empty, NtcQuery.IfCurrent(QueryEra.Conway, q), version)
         .fold(e => fail(e.toString), identity)
     def result(index: Int): Bytes = CborOut.build(
       _.array(1).raw(Bytes.fromHex(expected(index)).fold(e => fail(e.message), identity))
@@ -151,7 +151,7 @@ class PeerSnapshotQuerySuite extends FunSuite:
             NtcGolden.queryEnv.copy(networkMagic = magic),
             view,
             Map.empty,
-            NtcQuery.IfCurrent(6, LedgerQuery.GetLedgerPeerSnapshot(kind))
+            NtcQuery.IfCurrent(QueryEra.Conway, LedgerQuery.GetLedgerPeerSnapshot(kind))
           ),
           Left(Unanswered.Unwritable)
         )
@@ -187,7 +187,12 @@ class PeerSnapshotQuerySuite extends FunSuite:
       LedgerQuery.GetLedgerPeerSnapshot(LedgerPeerKind.Big)
     ).foreach { query =>
       assertEquals(
-        QueryAnswers.answerOrWhy(NtcGolden.queryEnv, view, Map.empty, NtcQuery.IfCurrent(6, query)),
+        QueryAnswers.answerOrWhy(
+          NtcGolden.queryEnv,
+          view,
+          Map.empty,
+          NtcQuery.IfCurrent(QueryEra.Conway, query)
+        ),
         Left(expected)
       )
     }

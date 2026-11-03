@@ -16,7 +16,8 @@ import xyz.kd5ujc.scarab.ledger.{Credential, DRep}
   *
   * `fixtures/reference/ntc-query-arguments/cases.jsonl` holds each argument's bytes with the
   * reference's verdict and the values it read. Each is put in its query, in Conway's
-  * `QueryIfCurrent`, and the node must read the same values or refuse it.
+  * `QueryIfCurrent` (Babbage's for `babbage-*`, Dijkstra's at its version 12 for `dijkstra-*`), and
+  * the node must read the same values or refuse it (#720).
   */
 class NtcQueryArgumentsSuite extends FunSuite:
   private final case class Row(
@@ -64,23 +65,33 @@ class NtcQueryArgumentsSuite extends FunSuite:
 
   /** The query a row's argument is read in. */
   private def queryOf(row: Row): Bytes = row.decoder match
-    case "plain-pools"       => query(17, row.bytes)
-    case "plain-maybe-pools" => query(19, row.bytes)
-    case "plain-staking"     => query(22, row.bytes)
-    case "plain-dreps"       => query(25, row.bytes)
-    case "plain-cold"        => query(27, row.bytes, emptySet, "80")
-    case "plain-hot"         => query(27, emptySet, row.bytes, "80")
-    case "plain-nonmyopic"   => query(2, row.bytes)
-    case "era-staking"       => query(10, row.bytes)
-    case "era-txins"         => query(15, row.bytes)
-    case "era-dreps"         => query(26, row.bytes)
-    case "era-pools"         => query(30, row.bytes)
-    case "era-statuses"      => query(27, emptySet, emptySet, row.bytes)
-    case "era-pool"          => query(35, row.bytes)
-    case "era-addresses"     => query(6, row.bytes)
-    case "babbage-txins"     => queryIn(5, 15, row.bytes)
-    case "babbage-staking"   => queryIn(5, 10, row.bytes)
-    case other               => fail(s"unknown decoder $other")
+    case "plain-pools"          => query(17, row.bytes)
+    case "plain-maybe-pools"    => query(19, row.bytes)
+    case "plain-staking"        => query(22, row.bytes)
+    case "plain-dreps"          => query(25, row.bytes)
+    case "plain-cold"           => query(27, row.bytes, emptySet, "80")
+    case "plain-hot"            => query(27, emptySet, row.bytes, "80")
+    case "plain-nonmyopic"      => query(2, row.bytes)
+    case "era-staking"          => query(10, row.bytes)
+    case "era-txins"            => query(15, row.bytes)
+    case "era-dreps"            => query(26, row.bytes)
+    case "era-pools"            => query(30, row.bytes)
+    case "era-statuses"         => query(27, emptySet, emptySet, row.bytes)
+    case "era-pool"             => query(35, row.bytes)
+    case "era-addresses"        => query(6, row.bytes)
+    case "babbage-txins"        => queryIn(5, 15, row.bytes)
+    case "babbage-staking"      => queryIn(5, 10, row.bytes)
+    case "era-proposals"        => query(31, row.bytes)
+    case "dijkstra-proposals"   => queryIn(7, 31, row.bytes)
+    case "dijkstra-addresses"   => queryIn(7, 6, row.bytes)
+    case "dijkstra-staking"     => queryIn(7, 10, row.bytes)
+    case "dijkstra-txins"       => queryIn(7, 15, row.bytes)
+    case "dijkstra-dreps"       => queryIn(7, 26, row.bytes)
+    case "dijkstra-pools"       => queryIn(7, 30, row.bytes)
+    case "dijkstra-statuses"    => queryIn(7, 27, emptySet, emptySet, row.bytes)
+    case "dijkstra-pool"        => queryIn(7, 35, row.bytes)
+    case "dijkstra-plain-pools" => queryIn(7, 17, row.bytes)
+    case other                  => fail(s"unknown decoder $other")
 
   /** The values the node read for a row's argument, as the corpus writes them; `None` for a `Maybe`
     * that is nothing.
@@ -107,7 +118,19 @@ class NtcQueryArgumentsSuite extends FunSuite:
       case ("babbage-txins", GetUTxOByTxIn(s))                 => Some(s.toVector.map(_.render))
       case ("babbage-staking", GetFilteredDelegationsAndRewardAccounts(s)) =>
         Some(s.toVector.map(credential))
-      case _ => fail(s"${row.name}: read as $q")
+      case ("era-proposals" | "dijkstra-proposals", GetProposals(s)) =>
+        Some(s.toVector.map(g => s"${g.txId.hex}#${g.index}"))
+      case ("dijkstra-addresses", GetUTxOByAddress(s)) => Some(s.toVector.map(_.hex))
+      case ("dijkstra-staking", GetFilteredDelegationsAndRewardAccounts(s)) =>
+        Some(s.toVector.map(credential))
+      case ("dijkstra-txins", GetUTxOByTxIn(s))     => Some(s.toVector.map(_.render))
+      case ("dijkstra-dreps", GetDRepStakeDistr(s)) => Some(s.toVector.map(drep))
+      case ("dijkstra-pools", GetSPOStakeDistr(s))  => Some(s.toVector.map(_.hex))
+      case ("dijkstra-statuses", GetCommitteeMembersState(_, _, s)) =>
+        Some(s.toVector.map(statuses))
+      case ("dijkstra-pool", QueryStakePoolDefaultVote(p)) => Some(Vector(p.hex))
+      case ("dijkstra-plain-pools", GetStakePoolParams(s)) => Some(s.toVector.map(_.hex))
+      case _                                               => fail(s"${row.name}: read as $q")
 
   private def read(row: Row): Either[NtcQuery.Error, Option[Vector[String]]] =
     NtcQuery.decode(queryOf(row)).map {
@@ -116,7 +139,7 @@ class NtcQueryArgumentsSuite extends FunSuite:
     }
 
   test("the corpus has each decoder, accepted and refused") {
-    assert(rows.map(_.decoder).distinct.size >= 13)
+    assert(rows.map(_.decoder).distinct.size >= 26)
     assert(rows.exists(_.accepted) && rows.exists(!_.accepted))
   }
 
@@ -147,7 +170,7 @@ class NtcQueryArgumentsSuite extends FunSuite:
     }
     assertEquals(
       NtcQuery.decode(hex("8200820082068101")),
-      Right(NtcQuery.IfCurrent(6, LedgerQuery.GetEpochNo))
+      Right(NtcQuery.IfCurrent(QueryEra.Conway, LedgerQuery.GetEpochNo))
     )
   }
 
@@ -157,7 +180,7 @@ class NtcQueryArgumentsSuite extends FunSuite:
     assertEquals(NtcQuery.decode(queryIn(5, 23)), Left(NtcQuery.Error.ConwayOnly(23)))
     assertEquals(
       NtcQuery.decode(queryIn(6, 23)),
-      Right(NtcQuery.IfCurrent(6, LedgerQuery.GetConstitution))
+      Right(NtcQuery.IfCurrent(QueryEra.Conway, LedgerQuery.GetConstitution))
     )
     // GetGovState [24] is not guarded
     assert(NtcQuery.decode(queryIn(5, 24)).isRight)

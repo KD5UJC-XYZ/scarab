@@ -76,7 +76,7 @@ class ProvenanceQuerySuite extends CatsEffectSuite:
       assertEquals(answer(empty, restored, interpreter), expected)
       assertEquals(answer(stale, restored, interpreter), expected)
       val bound = telescope.current.start
-      val eraStart = NtcQuery.EraStart(Era.Conway.index)
+      val eraStart = NtcQuery.EraStart(QueryEra.Conway)
       val expectedStart = CborOut.build(
         _.array(1).array(3).integer(bound.timePs).uint(bound.slot).uint(bound.epoch)
       )

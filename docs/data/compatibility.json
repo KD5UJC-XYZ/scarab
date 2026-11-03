@@ -1402,7 +1402,8 @@
         "suites": [
           "DeepQuerySuite",
           "NtcQueryArgumentsSuite",
-          "NtcQueryRecordsSuite"
+          "NtcQueryRecordsSuite",
+          "QueryGoldenSuite"
         ],
         "paths": [
           "fixtures/reference/ntc-query-arguments/cases.jsonl",
@@ -1416,7 +1417,8 @@
           123,
           330,
           353,
-          356
+          356,
+          726
         ]
       },
       "page": "docs/compatibility/node-to-client.md"
