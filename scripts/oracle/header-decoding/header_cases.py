@@ -67,10 +67,12 @@ def vrf_cert(byte, form="definite", width=None, output=64):
 
 
 def fields(era, prev=True, nonmin=False, ocert="definite", pv="definite", vrf="definite", major=None,
-           minor=0, size=1024, announcement=None, chunked=False, large=False, output=64):
+           minor=0, size=1024, announcement=None, chunked=False, empty_chunks=0, large=False, output=64):
     """The fields of a header body; `nonmin` writes every head that has a shorter form wider. A Leios
     body adds the certificate flag and the announcement, null or `announcement` (a list form and a
-    size); `chunked` writes the issuer key as an indefinite byte string; `large` writes the block
+    size); `chunked` writes the issuer key as an indefinite byte string, and `empty_chunks` as one
+    whose key follows that many empty chunks (each an item of its own to a reader that counts the
+    chunks, #749); `large` writes the block
     number, slot, certificate counter and KES period at and above 2^63, the top of a `Word64`;
     `output` is the length of the VRF outputs."""
     w8 = 8 if nonmin else None
@@ -81,7 +83,7 @@ def fields(era, prev=True, nonmin=False, ocert="definite", pv="definite", vrf="d
         c.uint(2**64 - 1 if large else 42, w8),
         c.uint(2**63 if large else 1000, w8),
         nbstr(c.h(0x11, 32), w2) if prev else c.NULL,
-        (b"\x5f" + c.bstr(c.h(0x22, 16)) + c.bstr(c.h(0x22, 16)) + b"\xff") if chunked else nbstr(c.h(0x22, 32), w2),
+        issuer_key(chunked, empty_chunks, w2),
         nbstr(c.h(0x33, 32), w2),
     ]
     cert = [nbstr(c.h(0x66, 32), w2), c.uint(2**63 + 3 if large else 3, w8), c.uint(2**63 + 7 if large else 7, w8),
@@ -98,6 +100,16 @@ def fields(era, prev=True, nonmin=False, ocert="definite", pv="definite", vrf="d
         return praos + [b"\xf4", c.NULL]
     form, eb_size = announcement
     return praos + [b"\xf5", items([nbstr(c.h(0x99, 32), w2), c.uint(eb_size, w4)], form, 1 if nonmin else None)]
+
+
+def issuer_key(chunked, empty_chunks, width):
+    """The issuer key: definite, two chunks of 16 bytes, or the key after `empty_chunks` empty ones."""
+    key = c.h(0x22, 32)
+    if empty_chunks:
+        return b"\x5f" + b"\x40" * empty_chunks + c.bstr(key) + b"\xff"
+    if chunked:
+        return b"\x5f" + c.bstr(key[:16]) + c.bstr(key[16:]) + b"\xff"
+    return nbstr(key, width)
 
 
 SIGNATURE = c.bstr(c.h(0x88, 448))
@@ -196,6 +208,37 @@ case(LEIOS, "headerbody", "detached", items(fields(LEIOS), "detached"))
 for era in ["alonzo", "conway"]:
     CASES.append({"id": c.case_id(f"{era} vrfcheck"), "name": f"{era} vrfcheck", "era": era, "kind": "vrfcheck",
                   "bytes": (c.h(0x5e, 32) + f"slot 1000 of {era}".encode()).hex()})
+
+
+# #749: the reference joins a chunked string's chunks without counting them, and bounds a header by
+# the ChainSync codec's bytes and, after decoding, `maxBHSize`, nothing else. Leios (decoder version
+# 12) reads a chunked issuer key: after 244 empty chunks the header is 1100 bytes, mainnet's
+# `maxBHSize`, and holds more than 256 items; after 4000 it is over 4096 bytes. Below version 12 a
+# chunked string is refused, so a Shelley-to-Conway header has no such form.
+LEIOS_AT_MAX_BH_SIZE = header(LEIOS, empty_chunks=244)
+assert len(LEIOS_AT_MAX_BH_SIZE) == 1100
+case(LEIOS, "header", "issuer key after 244 empty chunks, 1100 bytes", LEIOS_AT_MAX_BH_SIZE)
+case(LEIOS, "header", "issuer key after 4000 empty chunks", header(LEIOS, empty_chunks=4000))
+for era in ["alonzo", "conway"]:
+    case(era, "header", "issuer key chunked", header(era, chunked=True))
+    case(era, "header", "issuer key after 244 empty chunks", header(era, empty_chunks=244))
+
+
+def boundary_header(attributes, fields=5):
+    """A Byron epoch boundary header: protocol magic, previous hash, body proof, `[epoch,
+    [difficulty]]` and `[attributes]`, a map of `Word8` to byte strings whose entries the reference
+    keeps unparsed (`decCBORABoundaryHeader`, `eras/byron/ledger/impl/src/Cardano/Chain/Block/
+    Header.hs:613-626`; `Boundary.hs:33-38,61-67`; `Common/Attributes.hs:213-232`); the first
+    `fields` of them."""
+    parts = [c.uint(764824073), c.bstr(c.h(0x11, 32)), c.bstr(c.h(0x22, 32)),
+             c.array([c.uint(5), c.array([c.uint(108000)])]), c.array([c.cmap(attributes)])]
+    return c.array(parts[:fields])
+
+
+BYRON = "byron"
+case(BYRON, "boundaryheader", "no attributes", boundary_header([]))
+case(BYRON, "boundaryheader", "200 attributes", boundary_header([(c.uint(k), c.bstr(b"")) for k in range(200)]))
+case(BYRON, "boundaryheader", "four fields", boundary_header([], fields=4))
 
 
 def merge(reference):

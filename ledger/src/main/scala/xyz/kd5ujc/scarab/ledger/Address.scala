@@ -748,7 +748,7 @@ object TxOut:
       raw: Bytes,
       mode: Address.Mode = Address.Mode.Stored
   )(using ByteStrings): Either[LedgerDecodeError, TxOut] =
-    DetachedRecords.read(raw, Cbor.Limits(), DetachedRecords.Shapes.storedOutput)(
+    DetachedRecords.read(raw, Cbor.Limits.Unbounded, DetachedRecords.Shapes.storedOutput)(
       LedgerDecodeError.Syntax(_)
     )(decode(_, mode, Forms.Stored))
 
@@ -758,7 +758,7 @@ object TxOut:
     * coin or a list of two).
     */
   def node(raw: Bytes): Either[LedgerDecodeError, Node] =
-    DetachedRecords.read(raw, Cbor.Limits(), DetachedRecords.Shapes.storedOutput)(
+    DetachedRecords.read(raw, Cbor.Limits.Unbounded, DetachedRecords.Shapes.storedOutput)(
       LedgerDecodeError.Syntax(_)
     )(n => valueAt(n).as(n))
 

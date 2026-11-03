@@ -29,8 +29,8 @@ import NodeOrders.given
 object UtxoCodecs:
   private given ProtVer = Versions.eraLow(ShelleyBasedEra.SConway)
 
-  private val limits =
-    Cbor.Limits(maxInputBytes = 1048576, maxItems = 100000, maxStringBytes = 1048576)
+  // no budget but the input's size, as the reference's decoders (#749)
+  private val limits = Cbor.Limits.Unbounded
 
   /** `TxIn` (`TxIn.hs`): `[transaction id, index]`. */
   given txIn: Codec[TxIn] = Record.of[TxIn]((Wire.hash(32), Wire.word16))

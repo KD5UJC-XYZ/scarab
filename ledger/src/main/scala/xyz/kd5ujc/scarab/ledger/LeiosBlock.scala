@@ -254,11 +254,8 @@ object LeiosBlock:
     /** A block that certifies an endorser block carries it instead of transactions, never both. */
     case CertificateWithTransactions(transactions: Int)
 
-  private val limits = Cbor.Limits(
-    maxInputBytes = 2500000,
-    maxItems = 1000000,
-    maxStringBytes = 2500000
-  )
+  // no budget of items, string bytes or nesting, as for a block of another era (`Block`, #749)
+  private val limits = Cbor.Limits.Unbounded
 
   private val ConwayTag = Era.Conway.blockTag
 

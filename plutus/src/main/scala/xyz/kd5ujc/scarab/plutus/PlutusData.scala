@@ -79,16 +79,11 @@ object PlutusData:
   /** Haskell `Bool`: `False = Constr 0 []`, `True = Constr 1 []`. */
   def bool(b: Boolean): PlutusData = constr(if b then 1 else 0)
 
-  /** Decoding limits are generous: datums are user-controlled, but a transaction is at most a few
-    * tens of kilobytes. There is no depth limit of its own: a level takes a byte, so the input size
-    * and the item count bound it.
+  /** No budget but the input's size, as the reference's `decodeData` has none (it bounds only a
+    * chunk to 64 bytes, `PlutusCore/Data.hs:209-269`, Plutus 507cab8c; #749): the transaction or
+    * the script that holds the item bounds it, and a level of nesting takes a byte.
     */
-  private val limits =
-    Cbor.Limits(
-      maxInputBytes = 1 << 24,
-      maxItems = 1 << 22,
-      maxStringBytes = 1 << 24
-    )
+  private val limits = Cbor.Limits.Unbounded
 
   def decode(bytes: Bytes): Either[DecodeError, PlutusData] =
     Cbor.decode(bytes, limits).left.map(DecodeError.Syntax.apply).flatMap(fromNode)
