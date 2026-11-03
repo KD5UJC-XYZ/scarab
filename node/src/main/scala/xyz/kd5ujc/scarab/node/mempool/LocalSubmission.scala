@@ -35,7 +35,7 @@ object LocalSubmission:
   /** The original transaction bytes inside a wrapped one. */
   def unwrap(item: Bytes): Either[Rejection, Bytes] =
     Cbor
-      .decode(item)
+      .decode(item, Cbor.Limits.Unbounded)
       .left
       .map(e => Rejection.Malformed(TransactionDecodeProblem.Syntax(e)))
       .flatMap { root =>

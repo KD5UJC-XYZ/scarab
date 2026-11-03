@@ -42,6 +42,13 @@ trait MuxChannel[F[_]]:
       Raise[F, NetworkError]
   ): F[A]
 
+  /** [[recv]] with progress retained between prefixes. The default uses the equivalent stateless
+    * decoder; the live mux retains its cursor while waiting for more SDUs.
+    */
+  def recvIncremental[A](maxBytes: Int)(decode: xyz.kd5ujc.scarab.protocol.IncrementalDecoder[A])(
+      using Raise[F, NetworkError]
+  ): F[A] = recv(maxBytes)(decode.decodePrefix)
+
 /** Multiplexer over one [[Bearer]]: a reader fiber routes SDUs into the ingress queue of their
   * mini-protocol and a writer fiber rotates complete SDUs between admitted outbound channels.
   *
@@ -797,24 +804,37 @@ object Mux:
     def recv[A](maxBytes: Int)(decode: Bytes => DecodeResult[A])(using
         Raise[F, NetworkError]
     ): F[A] =
+      receive(maxBytes, ())((_, bytes) => ((), decode(bytes)))
+
+    override def recvIncremental[A](maxBytes: Int)(
+        decode: xyz.kd5ujc.scarab.protocol.IncrementalDecoder[A]
+    )(using Raise[F, NetworkError]): F[A] =
+      receive(maxBytes, decode.initial)(decode.resume)
+
+    private def receive[S, A](maxBytes: Int, initial: S)(
+        decode: (S, Bytes) => (S, DecodeResult[A])
+    )(using
+        Raise[F, NetworkError]
+    ): F[A] =
       lock.lock.surround {
-        def decodeNow: F[A] = permitted *>
+        def decodeNow(cursor: S): F[A] = permitted *>
           F.delay(buffer.view).flatMap { held =>
             // A decoder that throws on the peer's bytes is a defect of this connection's input
             // (network RethrowPolicy.hs: ShutdownPeer), never one of the node.
-            Either.catchNonFatal(decode(held)) match
+            Either.catchNonFatal(decode(cursor, held)) match
               case Left(cause) => NetworkError.DecoderDefect(id, cause).raise[F, A]
-              case Right(DecodeResult.Decoded(value, consumed)) =>
+              case Right((_, DecodeResult.Decoded(value, consumed))) =>
                 if consumed > maxBytes then NetworkError.IngressLimit(id, consumed).raise[F, A]
                 else
                   F.delay(buffer.consume(consumed)) *>
                     handshakeInput
                       .traverse_(input => F.delay(buffer.clear()) *> input.complete)
                       .as(value)
-              case Right(DecodeResult.Failed(reason)) => NetworkError.Decode(id, reason).raise[F, A]
-              case Right(DecodeResult.NeedMore) =>
+              case Right((_, DecodeResult.Failed(reason))) =>
+                NetworkError.Decode(id, reason).raise[F, A]
+              case Right((next, DecodeResult.NeedMore)) =>
                 if held.size > maxBytes then NetworkError.IngressLimit(id, held.size).raise[F, A]
-                else handshakeInput.traverse_(_.continue) *> await(held.size)
+                else handshakeInput.traverse_(_.continue) *> await(next, held.size)
           }
 
         // Wait for an SDU, then take all that are already queued before decoding again, unless
@@ -823,26 +843,27 @@ object Mux:
         // message that arrives in many SDUs, and in time proportional to its size overall (when
         // the queue runs dry after every SDU the decoder runs after each, so one that rescans its
         // prefix is quadratic: the batching bounds only SDUs that are already queued).
-        def await(attempted: Int): F[A] =
+        def await(cursor: S, attempted: Int): F[A] =
           pending.getAndSet(None).flatMap {
-            case Some(payload) => append(payload) *> more(attempted)
-            case None          => nextPayload.flatMap(append(_) *> more(attempted))
+            case Some(payload) => append(payload) *> more(cursor, attempted)
+            case None          => nextPayload.flatMap(append(_) *> more(cursor, attempted))
           }
 
-        def more(attempted: Int): F[A] =
+        def more(cursor: S, attempted: Int): F[A] =
           F.delay(buffer.size).flatMap { held =>
             // The handshake mux decodes after every SDU: it must not read ahead into SDUs that
             // belong to the application protocols.
-            if handshakeInput.isDefined || held > maxBytes || held >= 2L * attempted then decodeNow
+            if handshakeInput.isDefined || held > maxBytes || held >= 2L * attempted then
+              decodeNow(cursor)
             else
               permitted *> ingress.tryTake.flatMap {
-                case None       => decodeNow
+                case None       => decodeNow(cursor)
                 case Some(next) =>
                   // Batching is an optimisation: an SDU that would overflow the buffer waits until
                   // the complete message already held has been decoded.
                   F.delay(buffer.append(next)).flatMap { fits =>
-                    if fits then more(attempted)
-                    else pending.set(Some(next)) *> decodeNow
+                    if fits then more(cursor, attempted)
+                    else pending.set(Some(next)) *> decodeNow(cursor)
                   }
               }
           }
@@ -853,5 +874,5 @@ object Mux:
             else NetworkError.IngressLimit(id, Int.MaxValue).raise[F, Unit]
           }
 
-        decodeNow
+        decodeNow(initial)
       }

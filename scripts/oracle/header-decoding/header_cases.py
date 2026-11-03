@@ -31,9 +31,14 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "conway-decoding"))
 import cases as c  # noqa: E402  (the CBOR helpers)
+
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "scripts"))
+from devnet import cborspan  # noqa: E402
 
 CASES = []
 TPRAOS = ["shelley", "alonzo"]
@@ -206,6 +211,16 @@ def boundary_header(attributes, fields=5):
 
 
 BYRON = "byron"
+original_block = bytes.fromhex((ROOT / "fixtures/byron-version/headers/original.hex").read_text())
+start, end = cborspan.resolve(original_block, [1, 0])[0]
+original_header = original_block[start:end]
+start, end = cborspan.resolve(original_header, [2, 1])[0]
+# SscProof's CertificatesProof reads and drops a byte string without a hash-size check
+# (Cardano/Chain/Ssc.hs:169-188). The body-proof rules do not compare this obsolete SSC field.
+large_ssc = c.array([c.uint(3), c.bstr(b"\x00" * 5000)])
+case(BYRON, "mainheader", "original mainnet header", original_header)
+case(BYRON, "mainheader", "SSC proof of 5000 bytes",
+     original_header[:start] + large_ssc + original_header[end:])
 case(BYRON, "boundaryheader", "no attributes", boundary_header([]))
 case(BYRON, "boundaryheader", "200 attributes", boundary_header([(c.uint(k), c.bstr(b"")) for k in range(200)]))
 case(BYRON, "boundaryheader", "four fields", boundary_header([], fields=4))

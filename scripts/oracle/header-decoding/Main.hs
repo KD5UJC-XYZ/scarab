@@ -14,6 +14,7 @@
 module Main (main) where
 
 import qualified Cardano.Chain.Block as Byron
+import Cardano.Chain.Slotting (EpochSlots (..))
 import qualified Cardano.Crypto.Hash as Hash
 import Cardano.Crypto.Seed (mkSeedFromBytes)
 import Cardano.Crypto.VRF.Class (CertifiedVRF, VRFAlgorithm (..), getOutputVRFBytes, verifyCertified)
@@ -181,6 +182,8 @@ vrfCheck version raw =
 boundaryHeader :: String -> LBS.ByteString -> Either CaseError Value
 boundaryHeader "boundaryheader" raw =
   Right (either refused (const (accepted [])) (Binary.decodeFullDecoder Binary.byronProtVer "Byron boundary header" Byron.decCBORABoundaryHeader raw))
+boundaryHeader "mainheader" raw =
+  Right (either refused (const (accepted [])) (Binary.decodeFullDecoder Binary.byronProtVer "Byron main header" (Byron.decCBORAHeader (EpochSlots 21600)) raw))
 boundaryHeader other _ = Left (UnsupportedKind other)
 
 versionOf :: String -> Either CaseError Binary.Version

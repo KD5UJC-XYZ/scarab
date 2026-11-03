@@ -24,8 +24,8 @@ object LocalTxSubmission:
     MaxMessageBytes,
     MaxMessageBytes,
     32,
-    ProtocolWire.MaxItems,
-    ProtocolWire.MaxItems,
+    Int.MaxValue,
+    Int.MaxValue,
     bound = ProtocolWire.Bound.Local
   )
 
@@ -36,6 +36,23 @@ object LocalTxSubmission:
     case AcceptTx
     case RejectTx(reason: Bytes)
     case Done
+
+  private enum Tag:
+    case Submit, Accept, Reject, Done
+
+  private def readTag(state: State, sender: Role, r: ProtocolWire.Reader)(using
+      ProtocolWire.Scope
+  ): Tag =
+    if state == State.Done || (state == State.Idle) != (sender == Role.Client) then
+      bad(ProtocolError.WrongLocalTxSubmissionAgency)
+    val arity = r.arrayLength()
+    val tag = r.uint().value
+    (arity, tag.toInt) match
+      case (2, 0) if tag == 0 => Tag.Submit
+      case (1, 1) if tag == 1 => Tag.Accept
+      case (2, 2) if tag == 2 => Tag.Reject
+      case (1, 3) if tag == 3 => Tag.Done
+      case _                  => bad(ProtocolError.UnknownLocalTxSubmissionTagOrArity)
 
   def transition(state: State, sender: Role, message: Message): Either[ProtocolError, State] =
     (state, sender, message) match
@@ -61,17 +78,23 @@ object LocalTxSubmission:
 
   def decodePrefix(state: State, sender: Role, bytes: Bytes): DecodeResult[Message] =
     ProtocolWire.prefix {
-      if state == State.Done || (state == State.Idle) != (sender == Role.Client) then
-        bad(ProtocolError.WrongLocalTxSubmissionAgency)
       val r = new ProtocolWire.Reader(bytes, wire)
-      val arity = r.arrayLength()
-      val tag = r.uint().value
-      val message = (arity, tag.toInt) match
-        case (2, 0) if tag == 0 => Message.SubmitTx(r.item())
-        case (1, 1) if tag == 1 => Message.AcceptTx
-        case (2, 2) if tag == 2 => Message.RejectTx(r.item())
-        case (1, 3) if tag == 3 => Message.Done
-        case _                  => bad(ProtocolError.UnknownLocalTxSubmissionTagOrArity)
+      val message = readTag(state, sender, r) match
+        case Tag.Submit => Message.SubmitTx(r.item())
+        case Tag.Accept => Message.AcceptTx
+        case Tag.Reject => Message.RejectTx(r.item())
+        case Tag.Done   => Message.Done
       get(transition(state, sender, message))
       DecodeResult.Decoded(message, r.position)
     }
+
+  /** The same codec with framing progress retained across incomplete prefixes. */
+  def incremental(state: State, sender: Role): IncrementalDecoder[Message] =
+    def prefix(bytes: Bytes): DecodeResult[Option[Int]] = ProtocolWire.prefix {
+      val r = new ProtocolWire.Reader(bytes, wire)
+      val payload = readTag(state, sender, r) match
+        case Tag.Submit | Tag.Reject => Some(r.position)
+        case _                       => None
+      DecodeResult.Decoded(payload, r.position)
+    }
+    CborMessageDecoder(prefix, decodePrefix(state, sender, _))

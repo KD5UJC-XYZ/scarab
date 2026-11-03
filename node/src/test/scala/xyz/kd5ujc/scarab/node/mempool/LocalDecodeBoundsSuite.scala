@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
-import munit.FunSuite
+import cats.effect.IO
+import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.PreprodDeepTx.onSmallStack
 import xyz.kd5ujc.scarab.node.ntc.{CborOut, LedgerQuery, NtcQuery}
@@ -17,7 +18,7 @@ import TxKit.head
   * transaction or a query over the former 1 MiB, 2,000,000 byte and 100,000 or 200,000 item budgets
   * is read, so that the ledger, not the decoder, answers it (#749).
   */
-class LocalDecodeBoundsSuite extends FunSuite:
+class LocalDecodeBoundsSuite extends CatsEffectSuite:
   /** The 1,100,000 items of a metadatum list, more than a mebibyte in all. */
   private val Items = 1100000
 
@@ -29,8 +30,9 @@ class LocalDecodeBoundsSuite extends FunSuite:
 
   test("a transaction of more than a mebibyte and 100,000 items is read whole") {
     assert(large.size > 1048576)
+    val parsed = onSmallStack(MempoolState.parse(large)).map(_._1)
     assertEquals(
-      onSmallStack(MempoolState.parse(large)).map(_._1),
+      parsed,
       MempoolState.parse(TxKit.pay(1)._1).map(_._1)
     )
   }
@@ -54,6 +56,23 @@ class LocalDecodeBoundsSuite extends FunSuite:
         assertEquals(item, Bytes(tx))
         assertEquals(consumed, message.size)
       case other => fail(s"not read: $other")
+  }
+
+  test("the live submission handler returns the ledger rejection for the large transaction") {
+    val wrapped = Bytes(head(4, 2) ++ head(0, 6) ++ head(6, 24) ++ TxKit.bstr(large))
+    val expected = MempoolState
+      .empty(Right(TxKit.ledger(1)), 1000, None)
+      .add(large, TxKit.env, Source.Local)
+      .swap
+      .toOption
+      .getOrElse(fail("the oversized transaction must be refused"))
+    assert(!expected.isInstanceOf[Rejection.Malformed])
+    Mempool
+      .create[IO](Right(TxKit.ledger(1)), 1000, TxKit.env, None, MempoolEvents.none[IO])
+      .flatMap(pool =>
+        LocalSubmission.handler(pool)(fatal => IO(fail(s"unexpected fatal: $fatal")))(wrapped)
+      )
+      .map(result => assertEquals(result, LocalSubmission.response(expected)))
   }
 
   test("a query of more than 2,000,000 bytes and 200,000 items is read") {

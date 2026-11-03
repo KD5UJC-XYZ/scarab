@@ -64,8 +64,8 @@ object LocalTxSubmissionServer:
       LocalTxSubmission.encode(state, Role.Server, message).fold(illegal, channel.send)
     val step: F[Either[Unit, Option[Unavailable]]] =
       channel
-        .recv(LocalTxSubmission.MaxMessageBytes)(
-          LocalTxSubmission.decodePrefix(LocalTxSubmission.State.Idle, Role.Client, _)
+        .recvIncremental(LocalTxSubmission.MaxMessageBytes)(
+          LocalTxSubmission.incremental(LocalTxSubmission.State.Idle, Role.Client)
         )
         .flatMap {
           case LocalTxSubmission.Message.SubmitTx(tx) =>

@@ -17,7 +17,9 @@ seed, evaluates its certificate of a message with `cardano-crypto-praos` 2.2.4.0
 outputs of other lengths whether the certificate decodes and whether `verifyCertified` accepts it. A
 "boundaryheader" case of era "byron" reads a Byron epoch boundary header with `decCBORABoundaryHeader`
 of `cardano-ledger-byron` 1.3.0.0 at `byronProtVer`, as consensus reads it from ChainSync, and reports
-its verdict only (#749). The
+its verdict only (#749). A "mainheader" case instead calls `decCBORAHeader` with 21,600 epoch
+slots at the same version; it also records the decode verdict only, including a header with an
+SSC proof larger than Scarab's former 4096-byte limit. The
 [fixtures](../../../fixtures/reference/header-decoding/README.md) retain the original encodings, the
 verdicts, and the source and package pins.
 

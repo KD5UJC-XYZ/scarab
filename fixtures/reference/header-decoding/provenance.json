@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "measuredAt": "2026-11-03",
-  "scope": "Unchanged released decoders of block headers: the TPraos BHeader of Shelley and Alonzo (decoder versions 2 and 5), the Praos Header of Babbage and Conway (7 and 9), each read with decodeFullAnnotator, a Byron epoch boundary header read with decCBORABoundaryHeader at byronProtVer, a header body alone with decodeFull, and a ledger Block holding a Shelley-to-Conway header; definite, indefinite, detached (an empty indefinite list with the fields after it) and non-minimal forms of the header, its body, a VRF certificate, the operational certificate and the protocol version, with the refusals around them and the bounds of the body size and protocol version; chunked issuer keys, refused below version 12, and a Byron boundary header with 200 attributes, which no decoder counts (#749); for each accepted case the header hash over the bytes read, the block body hash of a block, and getSignableRepresentation of the header body, the bytes the KES signature is checked over; and, for a Praos VRF key made of a seed, whether a certificate with its output replaced decodes and passes verifyCertified; no ledger rule or KES signature is checked; the forms of a Byron boundary header's extra data, accepted and refused, and its Genesis tag (#754)",
+  "scope": "Unchanged released decoders of block headers: the TPraos BHeader of Shelley and Alonzo (decoder versions 2 and 5), the Praos Header of Babbage and Conway (7 and 9), each read with decodeFullAnnotator, a Byron epoch boundary header read with decCBORABoundaryHeader at byronProtVer, a header body alone with decodeFull, and a ledger Block holding a Shelley-to-Conway header; definite, indefinite, detached (an empty indefinite list with the fields after it) and non-minimal forms of the header, its body, a VRF certificate, the operational certificate and the protocol version, with the refusals around them and the bounds of the body size and protocol version; chunked issuer keys, refused below version 12, and a Byron boundary header with 200 attributes, which no decoder counts (#749); for each accepted case the header hash over the bytes read, the block body hash of a block, and getSignableRepresentation of the header body, the bytes the KES signature is checked over; and, for a Praos VRF key made of a seed, whether a certificate with its output replaced decodes and passes verifyCertified; no ledger rule or KES signature is checked; the forms of a Byron boundary header's extra data, accepted and refused, and its Genesis tag (#754); Byron main headers read by decCBORAHeader, including an SSC proof of 5000 bytes beyond the former 4096-byte decode budget (#749)",
   "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
   "compiler": "GHC 9.10.3",
   "packages": {
@@ -106,18 +106,22 @@
   },
   "harness": {
     "file": "scripts/oracle/header-decoding/Main.hs",
-    "sha256": "288958e2c2f23fbc561ea11d32048783101364603271542f61c8051b9ab450d0",
-    "image": "scarab-header-codex749:local sha256:b9be893d2fe6db6b85973fa33529b19ab4e6224e00c08bc8eb765ef835981d74",
+    "sha256": "17145bf3ec9dcbfe50f95da06bf8538166dcd424091f3af0bf5a3279995273d4",
+    "image": "scarab-header-codex749:local (sha256:6963f7c24542f05dc6d3af41a07ab5e8643f1cce8fb0a8d0cd1ee3074aacfe61)",
     "invocation": "docker run --rm --network none --read-only -v \"$ORACLE_FIXTURES:/fixtures:ro\" scarab-header-codex749:local /fixtures/inputs.json",
     "unchanged": true
   },
-  "generatorSha256": "6a58ff7388ec77750cd9a0484c9f1b3424eb95c41d9a8381b43939ab5ae9d115",
-  "harnessInputSha256": "9132e992ad71ce3df621d4b2e474aeebbbb961bf3efe972da6a5db6f5ffa8ae8",
-  "harnessOutputSha256": "e993e207273948f4c06971f9de2e2948459f208a88ee65eab80f1659d7650b09",
-  "casesSha256": "00f16785af0bc061e69ae97ad0233d280fe3bf7e24562279d754f94dbeb25255",
-  "cases": 154,
-  "accepted": 84,
+  "generatorSha256": "787563b004bf668e5bc11688bd10670cdb7cd1863b317baf04c2284e8d7d6c1a",
+  "harnessInputSha256": "2d71762c31bdbed2e167decb0ee85d7523d49dc70a69a0d45ef9b5dc1841ef5c",
+  "harnessOutputSha256": "ccf22edce4bc577b54c13fed66c0b94670176d7f5c5f446b02dcf9d2cf025168",
+  "casesSha256": "e5a773c38710d5972e0c37af893ad9277fa698cb7d87591bf45ac207e09dc9ce",
+  "cases": 156,
+  "accepted": 86,
   "refused": 70,
   "originalBytesRetained": true,
-  "leiosCasesMoved": "The 25 Leios header cases left this corpus on 2026-11-03 (#711): the Leios reference is the build of the public Leios testnet, whose cases are fixtures/reference/leios-testnet-blocks; the other cases were regenerated unchanged"
+  "leiosCasesMoved": "The 25 Leios header cases left this corpus on 2026-11-03 (#711): the Leios reference is the build of the public Leios testnet, whose cases are fixtures/reference/leios-testnet-blocks; the other cases were regenerated unchanged",
+  "mainHeaderInput": {
+    "file": "fixtures/byron-version/headers/original.hex",
+    "sha256": "a69a17dc809f5406314d5107e2b6e2cd23215dc7290f3a254ae98912c79e495f"
+  }
 }

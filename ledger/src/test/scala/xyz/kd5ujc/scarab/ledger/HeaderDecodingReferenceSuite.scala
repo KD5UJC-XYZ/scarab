@@ -26,8 +26,8 @@ import xyz.kd5ujc.scarab.protocol.Era
   * unchanged released decoders and, for an accepted one, the header hash and the bytes the KES
   * signature is checked over. Scarab must give the same verdict, hash the same bytes and sign the
   * same bytes. Evidence for #698. The reference reads a header with no budget of items, string
-  * bytes or nesting: a Byron epoch boundary header with 200 attributes is read whole (#749), as is a
-  * Leios header written in hundreds of chunks (`LeiosTestnetBlockReferenceSuite`).
+  * bytes or nesting: a Byron epoch boundary header with 200 attributes is read whole (#749), as is
+  * a Leios header written in hundreds of chunks (`LeiosTestnetBlockReferenceSuite`).
   */
 class HeaderDecodingReferenceSuite extends FunSuite:
   import HeaderDecodingReferenceSuite.*
@@ -49,9 +49,15 @@ class HeaderDecodingReferenceSuite extends FunSuite:
       Header
         .byronFromRaw(row.raw, boundary = true, ByronEpochSlots)
         .map(h => Verdict(h.hash, Bytes.empty, None))
+    case (Era.Byron, Kind.MainHeader) =>
+      Header
+        .byronFromRaw(row.raw, boundary = false, ByronEpochSlots)
+        .map(h => Verdict(h.hash, Bytes.empty, None))
     case (Era.Byron, kind) => fail(s"${row.name}: a Byron $kind is not in the corpus")
     case (era, Kind.BoundaryHeader) =>
       fail(s"${row.name}: a boundary header of $era is not in the corpus")
+    case (era, Kind.MainHeader) =>
+      fail(s"${row.name}: a Byron main header of $era is not in the corpus")
     case (era, Kind.Block) =>
       Block.decodeShelley(hex("82" + f"${era.blockTag}%02x") ++ row.raw).flatMap {
         case b: Block.Shelley => Right(Verdict(b.header.hash, b.header.signable, Some(b.bodyHash)))
@@ -196,6 +202,7 @@ object HeaderDecodingReferenceSuite:
     case Block extends Kind("block")
     case VrfCheck extends Kind("vrfcheck")
     case BoundaryHeader extends Kind("boundaryheader")
+    case MainHeader extends Kind("mainheader")
 
   /** Mainnet's slots an epoch, which a boundary header's slot is computed with. */
   val ByronEpochSlots: BigInt = 21600

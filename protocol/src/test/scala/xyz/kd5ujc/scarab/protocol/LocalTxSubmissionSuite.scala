@@ -77,8 +77,8 @@ class LocalTxSubmissionSuite extends FunSuite:
   }
 
   test("a transaction nested as deep as the message holds is carried, on a small stack") {
-    // the reference limits nesting by the size of the message only; here 100,000 levels of a
-    // 1 MiB message are refused by the item limit, 60,000 are not
+    // The reference limits nesting by the size of the message only, including beyond the former
+    // 65,535-item budget. The framing cursor must also keep its stack on the heap.
     def nested(levels: Int) =
       Bytes.fromArray(Array.fill(levels)(0x81.toByte) :+ 0x00.toByte)
     def roundTrip(item: Bytes) =
@@ -88,7 +88,9 @@ class LocalTxSubmissionSuite extends FunSuite:
         () =>
           result = Some(
             encode(State.Idle, Role.Client, Message.SubmitTx(item)).map(b =>
-              decodePrefix(State.Idle, Role.Client, b) match
+              val decoder = incremental(State.Idle, Role.Client)
+              val (cursor, _) = decoder.resume(decoder.initial, b.take(b.size - 1))
+              decoder.resume(cursor, b)._2 match
                 case DecodeResult.Decoded(Message.SubmitTx(got), _) => got == item
                 case _                                              => false
             )
@@ -99,9 +101,11 @@ class LocalTxSubmissionSuite extends FunSuite:
       thread.start()
       thread.join()
       result.get
-    assertEquals(roundTrip(nested(60000)), Right(true))
-    assert(roundTrip(nested(100000)).isLeft)
+    val deep = roundTrip(nested(100000))
+    assertEquals(deep, Right(true))
     // an indefinite map still holds whole pairs
-    assert(roundTrip(Bytes(Vector(0xbf, 0x00, 0xff).map(_.toByte))).isLeft)
-    assertEquals(roundTrip(Bytes(Vector(0xbf, 0x00, 0x01, 0xff).map(_.toByte))), Right(true))
+    val missingValue = roundTrip(Bytes(Vector(0xbf, 0x00, 0xff).map(_.toByte)))
+    val completePair = roundTrip(Bytes(Vector(0xbf, 0x00, 0x01, 0xff).map(_.toByte)))
+    assert(missingValue.isLeft)
+    assertEquals(completePair, Right(true))
   }

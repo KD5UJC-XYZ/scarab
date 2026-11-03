@@ -30,11 +30,15 @@ of its own to a reader that counts them, and a header is bounded only by the Cha
 bytes a message and, after decoding, by `maxBHSize` (#749). Below decoder version 12 a chunked
 string is refused ("expected bytes"), so only a Leios header can be written so.
 
-The 2026-11-03 corpus in `cases.jsonl` holds 154 lines, one case each, written by
+The 2026-11-03 corpus in `cases.jsonl` holds 156 lines, one case each, written by
 `scripts/oracle/header-decoding/header_cases.py`, for Shelley and Alonzo (TPraos), Babbage and
 Conway (Praos), and Byron. The boundary cases include a refused 200-attribute header
 whose final value is chunked; it exceeds the old item budget and still fails semantic decoding:
 
+- a Byron main header (`kind` "mainheader", `decCBORAHeader` with 21,600 epoch slots): the
+  retained mainnet control and a copy whose obsolete SSC proof holds 5000 bytes. The 5578-byte
+  header decodes despite exceeding the former 4096-byte budget. Signatures and chain rules are
+  not checked by these cases;
 - a header (`kind` "header"): definite, with a genesis predecessor, indefinite, detached, its body
   indefinite or detached, both, with non-minimal heads everywhere; a VRF certificate written as an
   indefinite list; a major protocol version of 13 and 14, a minor and a body size over a `Word32`;
@@ -69,7 +73,7 @@ The verdict (`accepted` and the complete `failure`) is what the unchanged releas
 each, at the era's decoder version (2, 5, 7, 9): `decodeFullAnnotator` for a header
 and a block, `decodeFull` for a body. An accepted header or block also records the header hash
 (`hash`), and a block its block body hash (`bodyHash`); a Byron boundary header records its verdict
-only. In all, 84 accepted and 70 refused.
+only. In all, 86 accepted and 70 refused.
 `HeaderDecodingReferenceSuite` requires the same verdict from `Header.fromRaw`,
 `Block.decodeShelley` (a body alone inside a definite header with a signature) or
 `Header.byronFromRaw`, the same hashes
