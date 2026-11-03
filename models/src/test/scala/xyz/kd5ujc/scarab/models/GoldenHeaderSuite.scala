@@ -236,7 +236,8 @@ class GoldenHeaderSuite extends munit.FunSuite:
         assertEquals(raw, hand.header.raw)
         val generated = viewOf(hand.era, raw)
         assertEquals(generated, HeaderView.ofHand(hand.header), s"block ${hand.header.blockNo}")
-        // The header hash is the Blake2b-256 of the preserved bytes, the KES message is the preserved body.
+        // The header hash is the Blake2b-256 of the preserved bytes. The KES message is the body
+        // encoded again (HeaderBodyEncoding), which these canonical headers' preserved bodies equal.
         assertEquals(Blake2b.hash256.hash(generated.raw), hand.header.hash)
         assertEquals(generated.signable, hand.header.signable)
       }

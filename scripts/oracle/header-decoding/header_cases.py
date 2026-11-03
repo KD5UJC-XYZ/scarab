@@ -64,22 +64,24 @@ def vrf_cert(byte, form="definite", width=None):
 
 
 def fields(era, prev=True, nonmin=False, ocert="definite", pv="definite", vrf="definite", major=None,
-           minor=0, size=1024, announcement=None, chunked=False):
+           minor=0, size=1024, announcement=None, chunked=False, large=False):
     """The fields of a header body; `nonmin` writes every head that has a shorter form wider. A Leios
     body adds the certificate flag and the announcement, null or `announcement` (a list form and a
-    size); `chunked` writes the issuer key as an indefinite byte string."""
+    size); `chunked` writes the issuer key as an indefinite byte string; `large` writes the block
+    number, slot, certificate counter and KES period at and above 2^63, the top of a `Word64`."""
     w8 = 8 if nonmin else None
     w4 = 4 if nonmin else None
     w2 = 2 if nonmin else None
     major = MAJOR[era] if major is None else major
     head = [
-        c.uint(42, w8),
-        c.uint(1000, w8),
+        c.uint(2**64 - 1 if large else 42, w8),
+        c.uint(2**63 if large else 1000, w8),
         nbstr(c.h(0x11, 32), w2) if prev else c.NULL,
         (b"\x5f" + c.bstr(c.h(0x22, 16)) + c.bstr(c.h(0x22, 16)) + b"\xff") if chunked else nbstr(c.h(0x22, 32), w2),
         nbstr(c.h(0x33, 32), w2),
     ]
-    cert = [nbstr(c.h(0x66, 32), w2), c.uint(3, w8), c.uint(7, w8), nbstr(c.h(0x77, 64), w2)]
+    cert = [nbstr(c.h(0x66, 32), w2), c.uint(2**63 + 3 if large else 3, w8), c.uint(2**63 + 7 if large else 7, w8),
+            nbstr(c.h(0x77, 64), w2)]
     version = [c.uint(major, w4), c.uint(minor, w4)]
     if era in TPRAOS:
         return head + [vrf_cert(0x40, vrf, w2), vrf_cert(0x50, vrf, w2), c.uint(size, w4),
@@ -128,6 +130,7 @@ for era in TPRAOS + PRAOS:
     case(era, "header", "major at the last version", header(era, major=13))
     case(era, "header", "minor over a word32", header(era, minor=2**32))
     case(era, "header", "body size over a word32", header(era, size=2**32))
+    case(era, "header", "word64 values at and above 2^63", header(era, large=True))
     case(era, "header", "detached without its signature",
          b"\x9f\xff" + items(fields(era)))
     case(era, "header", "body detached one field short",
@@ -170,8 +173,14 @@ case(LEIOS, "header", "announcement indefinite", header(LEIOS, announcement=("in
 case(LEIOS, "header", "announcement detached", header(LEIOS, announcement=("detached", 5000)))
 case(LEIOS, "header", "announcement size over a word32", header(LEIOS, announcement=("definite", 2**32)))
 case(LEIOS, "header", "protocol version indefinite", header(LEIOS, pv="indefinite"))
+case(LEIOS, "header", "protocol version detached", header(LEIOS, pv="detached"))
+case(LEIOS, "header", "operational certificate indefinite", header(LEIOS, ocert="indefinite"))
+case(LEIOS, "header", "operational certificate detached", header(LEIOS, ocert="detached"))
+case(LEIOS, "header", "word64 values at and above 2^63", header(LEIOS, large=True))
 case(LEIOS, "header", "detached with a detached announcement and non-minimal heads",
      header(LEIOS, body_form="detached", header_form="detached", nonmin=True, announcement=("detached", 7)))
+case(LEIOS, "headerbody", "definite", items(fields(LEIOS)))
+case(LEIOS, "headerbody", "indefinite", items(fields(LEIOS), "indefinite"))
 case(LEIOS, "headerbody", "detached", items(fields(LEIOS), "detached"))
 
 

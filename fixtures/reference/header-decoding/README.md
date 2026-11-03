@@ -23,12 +23,13 @@ records those signed bytes (`signable`): in each of them they are the body's can
 definite lists and the shortest heads, and in the cases with an indefinite or detached body or a
 non-minimal head they differ from the body's original bytes.
 
-`cases.jsonl` holds 122 lines, one case each, written by
+`cases.jsonl` holds 132 lines, one case each, written by
 `scripts/oracle/header-decoding/header_cases.py`, for Shelley and Alonzo (TPraos), Babbage and
 Conway (Praos) and Leios:
 - a header (`kind` "header"): definite, with a genesis predecessor, indefinite, detached, its body
   indefinite or detached, both, with non-minimal heads everywhere; a VRF certificate written as an
   indefinite list; a major protocol version of 13 and 14, a minor and a body size over a `Word32`;
+  a block number, slot, certificate counter and KES period at and above 2^63;
   a detached header without its signature and a detached body one field short; for Praos and
   Leios the operational certificate and protocol version indefinite and detached, and every list
   indefinite but the VRF certificate's; for Leios an announcement definite, indefinite, detached
@@ -42,7 +43,7 @@ Conway (Praos) and Leios:
 The verdict (`accepted` and the complete `failure`) is what the unchanged released decoders did with
 each, at the era's decoder version (2, 5, 7, 9; 12 for Leios): `decodeFullAnnotator` for a header
 and a block, `decodeFull` for a body. An accepted header or block also records the header hash
-(`hash`), and a block its block body hash (`bodyHash`). In all, 65 accepted and 57 refused.
+(`hash`), and a block its block body hash (`bodyHash`). In all, 72 accepted and 60 refused.
 `HeaderDecodingReferenceSuite` requires the same verdict from `Header.fromRaw`, `LeiosHeader.decode`
 or `Block.decodeShelley` (a body alone inside a definite header with a signature), the same hashes
 and the same signed bytes, and signs a body in three non-canonical forms with a KES key of its own
@@ -67,6 +68,9 @@ python3 scripts/oracle/header-decoding/header_cases.py --inputs /tmp/header-inpu
 
 - No signature or VRF proof is checked: the signatures and keys are filler bytes, and the KES check
   over the signed bytes is `HeaderDecodingReferenceSuite`'s own key.
+- A VRF output of another length than 64 bytes, which the reference decodes (`OutputVRF`,
+  `Decoding/DecCBOR.hs:564-565`) and Scarab refuses at decoding
+  ([#712](https://github.com/KD5UJC-XYZ/scarab/issues/712)).
 - Byron headers ([#574](https://github.com/KD5UJC-XYZ/scarab/issues/574)).
 - A Leios block holding a detached header: Scarab reads the testnet's Leios blocks as trees
   ([#711](https://github.com/KD5UJC-XYZ/scarab/issues/711)).

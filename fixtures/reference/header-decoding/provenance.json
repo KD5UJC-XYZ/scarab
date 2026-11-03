@@ -83,17 +83,17 @@
   },
   "harness": {
     "file": "scripts/oracle/header-decoding/Main.hs",
-    "sha256": "c576b8c1f4e2a5bc255dfa9318d415565b232e5d8bfbe1ea9a570063b8105b66",
-    "image": "scarab-header-decoding:local (sha256:fc00e2f26fe27e2ff28eef1773df532b4ee5b65af4dc0ccc8212ecf8154b2b78), from scripts/oracle/header-decoding/Dockerfile on scarab-plutus176-context-reference:local (sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef)",
+    "sha256": "5dd6e8b078e7d2a77027f9ca28ba3943263c6c259022c48b8acd88d913fd5c7b",
+    "image": "scarab-header-decoding:local (sha256:1a284f92f7fff7b873ea918c79805cf08269eda40eb2985193a6a52ebf625af3), from scripts/oracle/header-decoding/Dockerfile on scarab-plutus176-context-reference:local (sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef)",
     "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-header-decoding:local /fixtures/header-inputs.json",
     "unchanged": true
   },
-  "generatorSha256": "3bc7f9ac0615386384390a8eae789e494fb5bc80510ebbf6887cb8533dd5b61f",
-  "harnessInputSha256": "7c1041d1137b80d71338177ca5db629c73ae14bc98c490963bd84ce9ed50f9ee",
-  "harnessOutputSha256": "b0d7479f78a4d51803b0ae675b20378b74b7ae1da88ccb950cb5ad0175c57535",
-  "casesSha256": "4760b608ac650594b417e99ff34847143a0cbee039d6be760c5e29546e10306b",
-  "cases": 122,
-  "accepted": 65,
-  "refused": 57,
+  "generatorSha256": "acb9255fd6f0c673bd9201a1758b717b6e838126f856d2c0ac10413751a29032",
+  "harnessInputSha256": "8e52a579b0aa68ef13d725c6ddb05acfdf4961b6c30833bac646c0fa558d00ba",
+  "harnessOutputSha256": "f7b4076f537ea46864ed5d2a41050201d7c2a189302c7e44a786b64f6e7c35db",
+  "casesSha256": "2c160f333b48662e60925c5676c17a0434262cf51c900f4414795a4c9ef64e7f",
+  "cases": 132,
+  "accepted": 72,
+  "refused": 60,
   "originalBytesRetained": true
 }

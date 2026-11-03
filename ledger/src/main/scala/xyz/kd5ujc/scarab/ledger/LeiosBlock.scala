@@ -10,8 +10,8 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, EbHash, Era, HfcHeader}
 import Header.{array, bytes, fail, headerLimits, optHash, record, uint, vrfCert}
 
 /** `header_version_info = [highest_supported_major_version, self_reported_software_tag]`: what the
-  * Leios header carries where the earlier eras have `protocol_version`. Same wire shape, decoded
-  * as the reference's `ProtVer` (a major up to `MaxVersion` and a `Word32`,
+  * Leios header carries where the earlier eras have `protocol_version`. Same wire shape, decoded as
+  * the reference's `ProtVer` (a major up to `MaxVersion` and a `Word32`,
   * `Leios/BlockHeader.hs:229-243`), but neither field is validated by the ledger
   * (cardano-ledger-core `Block.hs` 147-156, issue 5763).
   */

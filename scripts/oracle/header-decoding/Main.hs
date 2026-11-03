@@ -56,6 +56,13 @@ data Case = Case
 
 instance FromJSON Case
 
+-- | An input the harness has no decoder for, rendered only when it stops.
+data CaseError
+  = UnsupportedKind String
+  | UnsupportedEra String
+  | NotHex String
+  deriving (Show)
+
 refused :: Binary.DecoderError -> Value
 refused failure = object ["accepted" .= False, "failure" .= show failure]
 
@@ -99,7 +106,7 @@ readCase ::
   , SignableRepresentation (Body h)
   , EraBlockBody era
   ) =>
-  Binary.Version -> String -> String -> LBS.ByteString -> Either String Value
+  Binary.Version -> String -> String -> LBS.ByteString -> Either CaseError Value
 readCase version label k raw = case k of
   "header" ->
     Right (either refused (accepted . headerReport) (Binary.decodeFullAnnotator version (Text.pack (label <> " header")) Binary.decCBOR raw :: Either Binary.DecoderError h))
@@ -112,7 +119,7 @@ readCase version label k raw = case k of
           (\(Block h b) -> accepted (headerReport h <> ["bodyhash" .= hexHash (hashBlockBody b)]))
           (Binary.decodeFullAnnotator version (Text.pack (label <> " block")) Binary.decCBOR raw :: Either Binary.DecoderError (Block h era))
       )
-  other -> Left ("unsupported kind " <> other)
+  other -> Left (UnsupportedKind other)
 
 type TPraosHeader = TPraos.BHeader StandardCrypto
 
@@ -122,9 +129,9 @@ type LeiosHeader = Leios.Header StandardCrypto
 
 runCase :: Case -> IO Value
 runCase c = do
-  raw <- either die (pure . LBS.fromStrict) (Hex.decode (Text.encodeUtf8 (bytes c)))
+  raw <- either (die . show . NotHex) (pure . LBS.fromStrict) (Hex.decode (Text.encodeUtf8 (bytes c)))
   let k = kind c
-  result <- either die pure $ case era c of
+  result <- either (die . show) pure $ case era c of
     "shelley" -> readCase @TPraosHeader @ShelleyEra (Binary.natVersion @2) "Shelley" k raw
     "allegra" -> readCase @TPraosHeader @AllegraEra (Binary.natVersion @3) "Allegra" k raw
     "mary" -> readCase @TPraosHeader @MaryEra (Binary.natVersion @4) "Mary" k raw
@@ -132,7 +139,7 @@ runCase c = do
     "babbage" -> readCase @PraosHeader @BabbageEra (Binary.natVersion @7) "Babbage" k raw
     "conway" -> readCase @PraosHeader @ConwayEra (Binary.natVersion @9) "Conway" k raw
     "leios" -> readCase @LeiosHeader @DijkstraEra (Binary.natVersion @12) "Leios" k raw
-    other -> Left ("unsupported era " <> other)
+    other -> Left (UnsupportedEra other)
   pure (object ["name" .= name c, "era" .= era c, "kind" .= k, "result" .= result])
 
 main :: IO ()
