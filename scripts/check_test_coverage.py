@@ -169,14 +169,14 @@ def digest_fields(node, prefix=""):
 
 
 def leaves(node, prefix=""):
-    if isinstance(node, str):
-        yield prefix.rstrip("."), node
-    elif isinstance(node, list):
+    if isinstance(node, list) and node:
         for index, entry in enumerate(node):
             yield from leaves(entry, f"{prefix}{index}.")
-    elif isinstance(node, dict):
+    elif isinstance(node, dict) and node:
         for key, entry in node.items():
             yield from leaves(entry, f"{prefix}{key}.")
+    else:
+        yield prefix.rstrip("."), node
 
 
 def recorded_count(node):
@@ -190,6 +190,13 @@ def recorded_count(node):
         if integer(node.get(field)):
             return field, node[field]
     return None, None
+
+
+def measurement_objects(record):
+    for prefix, node in nested_objects(record):
+        # The Byron genesis corpora bind their generator source as harness.cases; it is a path,
+        # whereas cases in a measurement object is a count or a case-file descriptor.
+        yield prefix, {key: value for key, value in node.items() if f"{prefix}{key}" != "harness.cases"}
 
 
 def gap_owners(components, corpus):
@@ -240,7 +247,7 @@ def validate_provenance(root, corpus, components):
         except ValueError:
             fail(field, "must be a real calendar date")
     for field, value in digest_fields(record):
-        if not SHA256.fullmatch(value):
+        if not isinstance(value, str) or not SHA256.fullmatch(value):
             fail(field, "must be a lowercase hexadecimal SHA-256")
 
     name, count = case_file(root / corpus)
@@ -263,17 +270,50 @@ def validate_provenance(root, corpus, components):
         if digest != actual:
             fail("cases.sha256", f"does not match {named}: recorded {digest}, file {actual}")
     field, recorded = recorded_count(record)
+    if field is None and isinstance(record.get("results"), dict):
+        field, recorded = recorded_count(record["results"])
+        if field is not None:
+            field = f"results.{field}"
     if count is not None and field is None:
         fail("cases", f"must record how many cases {name} holds ({count})")
     if count is not None and recorded != count:
         fail(field, f"records {recorded} cases, {name} holds {count}")
 
-    for prefix, node in nested_objects(record):
+    for prefix, node in measurement_objects(record):
+        counts = {key: value for key, value in node.items()
+                  if key in {"cases", "caseCount", "lines", "accepted", "refused",
+                             "observations", "requests", "poolTransitions"}}
+        if isinstance(counts.get("cases"), dict):
+            counts["cases.count"] = counts.pop("cases").get("count")
+        if prefix.endswith("cases.") and "count" in node:
+            counts["count"] = node["count"]
+        for key, value in counts.items():
+            if not integer(value):
+                fail(f"{prefix}{key}", "must be a non-negative integer")
         total_field, total = recorded_count(node)
+        if prefix.endswith("cases."):
+            total_field, total = "count", node.get("count")
         admitted, refused = node.get("accepted"), node.get("refused")
         if integer(total) and integer(admitted) and integer(refused) and admitted + refused != total:
             fail(f"{prefix}{total_field}", f"records {total} cases, accepted {admitted} plus refused "
                                           f"{refused} is {admitted + refused}")
+        if "batches" in node:
+            batches = node["batches"]
+            if not isinstance(batches, list) or not batches:
+                fail(f"{prefix}batches", "must be a non-empty list of measured batches")
+            for index, batch in enumerate(batches):
+                if not isinstance(batch, dict) or recorded_count(batch)[0] is None:
+                    fail(f"{prefix}batches.{index}.cases", "must record the batch's case count")
+
+    if name is None:
+        # Older API corpora describe observations or requests instead of case files. These are measured
+        # counts too; do not invent a case-file comparison or permit a record with no measurement count.
+        measured = [value for _, node in measurement_objects(record)
+                    for key, value in node.items()
+                    if key in {"cases", "caseCount", "lines", "observations", "requests", "poolTransitions"}
+                    and not isinstance(value, dict)]
+        if not measured:
+            fail("cases", "must record a measurement count, directly or in the batch/results/scope object")
 
     gaps = record.get("notCovered")
     if gaps is not None:

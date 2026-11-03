@@ -44,10 +44,14 @@ A record is one JSON object:
   recorded count must equal the records in that file and `casesSha256` must be its digest. A corpus whose
   cases live elsewhere (a submission directory, a batch of transactions) records its own count, and the gate
   can only check its shape: it has nothing to compare it with, and says so here rather than implying a
-  comparison it does not make.
+  comparison it does not make. A measurement count is still required: the existing API records may keep
+  `observations`, `requests` or `poolTransitions`, or nest counts in `results`, `scope` or `batches`.
+  Every batch must state its case count. Counts and any recorded `accepted`/`refused` values must be
+  non-negative integers; JSON booleans are not counts.
 - Wherever a count and an `accepted` plus `refused` split are recorded together, at any depth of the record,
   the split must add up to the count.
-- Every `*Sha256` string, at any depth of the record, is a lowercase hexadecimal digest. It is compared with
+- Every `*Sha256` field, at any depth of the record, contains a lowercase hexadecimal digest or a non-empty
+  map/list of such digests. Nulls, numbers, booleans and empty digest containers fail. It is compared with
   a file only where the field names a corpus file — `casesSha256`, or the `file` of a `cases` object; a digest
   of an upstream source, image or harness names nothing in this repository and is checked for shape alone.
 - `notCovered`, when present, maps each uncovered topic to a sentence naming the issue that owns the gap, and

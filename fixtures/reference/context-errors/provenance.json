@@ -2212,5 +2212,6 @@
     "signatureValidityClaim": false,
     "bodyMatchesOriginal": 3,
     "bodyDiffersFromOriginal": 76
-  }
+  },
+  "observations": 145
 }

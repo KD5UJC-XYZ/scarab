@@ -86,5 +86,6 @@
     "scripts/oracle/plutus/context-matrix/prepare.py": "9144b529d2085ddd636bd7813a0b8b33914ed062ee1be6ae6404096d50a8dcc6",
     "scripts/oracle/plutus/context-matrix/run.py": "d2d419ad9642eab2c213f575ecb7c298ddf042995426af088f71c149c4b40e1a",
     "scripts/oracle/plutus/context-matrix/scarab-context-oracle.cabal": "82890af53432e16b7690e7f3cf1845aa3562d6b6f2d6b1140d1c7ae7908b8e4f"
-  }
+  },
+  "observations": 309
 }

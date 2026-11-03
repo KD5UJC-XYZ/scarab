@@ -168,7 +168,7 @@ class ProvenanceTest(unittest.TestCase):
         self.write()
 
     def write(self, record=None):
-        (self.corpus / "provenance.json").write_text(json.dumps(record or self.record))
+        (self.corpus / "provenance.json").write_text(json.dumps(self.record if record is None else record))
 
     def check(self, components=None):
         return validate_provenance(self.root, "fixtures/reference/sample",
@@ -247,6 +247,74 @@ class ProvenanceTest(unittest.TestCase):
         self.write(dict(self.record, batches=[{"configurationSha256": {"configuration.yaml": "not-a-digest"}}]))
         with self.assertRaisesRegex(ValueError, "batches.0.configurationSha256.configuration.yaml: must be a "
                                                 "lowercase hexadecimal SHA-256"):
+            self.check()
+
+    def test_digest_values_cannot_disappear_through_type_filtering(self):
+        for value in (None, 123, True, {}, [], {"source.hs": None}, [self.digest, 123],
+                      {"source.hs": []}):
+            with self.subTest(value=value):
+                self.write(dict(self.record, batches=[{"harnessSha256": value}]))
+                with self.assertRaisesRegex(ValueError, "provenance.json: batches.0.harnessSha256"):
+                    self.check()
+        self.write(dict(self.record, harnessSha256={"source.hs": self.digest},
+                        inputSha256=[self.digest]))
+        self.assertIsNotNone(self.check())
+
+    def test_a_harness_case_generator_path_is_not_a_measurement_count(self):
+        self.write(dict(self.record, harness={"cases": "scripts/oracle/sample/cases.py"}))
+        self.assertIsNotNone(self.check())
+
+    def test_a_results_count_is_compared_with_the_case_file(self):
+        record = {key: value for key, value in self.record.items()
+                  if key not in ("cases", "accepted", "refused")}
+        self.write(dict(record, results={"cases": 2, "accepted": 1, "refused": 1}))
+        self.assertIsNotNone(self.check())
+        self.write(dict(record, results={"cases": 3}))
+        with self.assertRaisesRegex(ValueError, "results.cases: records 3 cases, cases.jsonl holds 2"):
+            self.check()
+
+    def test_counts_are_required_without_a_standard_case_file(self):
+        (self.corpus / "cases.jsonl").unlink()
+        for value in (None, -1, "unknown", True, 2.5, []):
+            with self.subTest(value=value):
+                self.write(dict(self.record, cases=value))
+                with self.assertRaisesRegex(ValueError, "provenance.json: cases:"):
+                    self.check()
+        self.write({key: value for key, value in self.record.items() if key != "cases"})
+        with self.assertRaisesRegex(ValueError, "provenance.json: cases: must record"):
+            self.check()
+        self.write()
+        self.assertIsNotNone(self.check())
+
+    def test_legacy_measurements_and_batches_keep_their_own_count_units(self):
+        (self.corpus / "cases.jsonl").unlink()
+        record = {key: value for key, value in self.record.items()
+                  if key not in ("cases", "accepted", "refused")}
+        for measurement in ({"observations": 2}, {"scope": {"requests": 2}},
+                            {"poolTransitions": 2}, {"results": {"cases": 2}},
+                            {"batches": [{"cases": 2, "accepted": 1, "refused": 1}]}):
+            with self.subTest(measurement=measurement):
+                self.write(dict(record, **measurement))
+                self.assertIsNotNone(self.check())
+        for batches in ([], None, [None], [{"accepted": 1, "refused": 1}]):
+            with self.subTest(batches=batches):
+                self.write(dict(record, batches=batches))
+                with self.assertRaisesRegex(ValueError, "provenance.json: batches"):
+                    self.check()
+
+    def test_nested_counts_and_splits_reject_invalid_types(self):
+        for field in ("cases", "caseCount", "lines", "accepted", "refused"):
+            for value in (None, -1, "2", True, 2.5, []):
+                with self.subTest(field=field, value=value):
+                    batch = {"cases": 2, "accepted": 1, "refused": 1, field: value}
+                    self.write(dict(self.record, batches=[batch]))
+                    with self.assertRaisesRegex(ValueError, f"provenance.json: batches.0.{field}:"):
+                        self.check()
+
+    def test_a_cases_object_checks_the_split_it_contains(self):
+        self.write(dict(self.record, cases={"file": "cases.jsonl", "count": 2, "sha256": self.digest,
+                                           "accepted": 2, "refused": 2}))
+        with self.assertRaisesRegex(ValueError, "cases.count: records 2 cases, accepted 2 plus refused 2 is 4"):
             self.check()
 
     def test_a_nested_cases_block_is_verified_against_the_file_it_names(self):
