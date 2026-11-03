@@ -28,7 +28,7 @@ enum ProtocolError extends DomainError:
   case EarlyBatchDoneIncompleteRequestedRange
   case ExpectedBlockingBoolean
   case ExpectedBoolean
-  case ExpectedBreakAfterFourthTransactionMember
+  case ExpectedBreakAfterTransactionMembers
   case ExpectedByronSubtagSize
   case ExpectedByronSubtagSizeHeader
   case ExpectedCandidateArray
@@ -40,7 +40,7 @@ enum ProtocolError extends DomainError:
   case ExpectedDefiniteTextString
   case ExpectedDefiniteVersionMap
   case ExpectedEraHeader
-  case ExpectedFourMemberConwayTransaction
+  case ExpectedConwayTransactionMembers
   case ExpectedIndefiniteProtocolList
   case ExpectedKeepAliveResponse
   case ExpectedPointCountOutsideRequestLimits(actual: Int, maximum: Int)
@@ -122,7 +122,6 @@ enum ProtocolError extends DomainError:
   case TrailingTxSubmission2Bytes
   case TransactionBodyIsNotAMap
   case TransactionIDMustBe32Bytes(actual: Int)
-  case TransactionValidityIsNotABoolean
   case TruncatedBlockFetchMessage
   case TruncatedCbor
   case TruncatedKeepAliveMessage
@@ -197,22 +196,23 @@ enum ProtocolError extends DomainError:
     case EarlyBatchDoneIncompleteRequestedRange => "early BatchDone: incomplete requested range"
     case ExpectedBlockingBoolean                => "expected blocking Boolean"
     case ExpectedBoolean                        => "expected boolean"
-    case ExpectedBreakAfterFourthTransactionMember =>
-      "expected break after fourth transaction member"
-    case ExpectedByronSubtagSize             => "expected Byron [subtag, size]"
-    case ExpectedByronSubtagSizeHeader       => "expected Byron [[subtag, size], header]"
-    case ExpectedCandidateArray              => "expected candidate array"
-    case ExpectedConwayGenTx                 => "expected Conway GenTx"
-    case ExpectedConwayTransactionID         => "expected Conway transaction ID"
-    case ExpectedDefiniteArray               => "expected definite array"
-    case ExpectedDefiniteByteString          => "expected definite byte string"
-    case ExpectedDefiniteMap                 => "expected definite map"
-    case ExpectedDefiniteTextString          => "expected definite text string"
-    case ExpectedDefiniteVersionMap          => "expected definite version map"
-    case ExpectedEraHeader                   => "expected [era, header]"
-    case ExpectedFourMemberConwayTransaction => "expected four-member Conway transaction"
-    case ExpectedIndefiniteProtocolList      => "expected indefinite protocol list"
-    case ExpectedKeepAliveResponse           => "expected KeepAlive response"
+    case ExpectedBreakAfterTransactionMembers =>
+      "expected break after the transaction's members"
+    case ExpectedByronSubtagSize       => "expected Byron [subtag, size]"
+    case ExpectedByronSubtagSizeHeader => "expected Byron [[subtag, size], header]"
+    case ExpectedCandidateArray        => "expected candidate array"
+    case ExpectedConwayGenTx           => "expected Conway GenTx"
+    case ExpectedConwayTransactionID   => "expected Conway transaction ID"
+    case ExpectedDefiniteArray         => "expected definite array"
+    case ExpectedDefiniteByteString    => "expected definite byte string"
+    case ExpectedDefiniteMap           => "expected definite map"
+    case ExpectedDefiniteTextString    => "expected definite text string"
+    case ExpectedDefiniteVersionMap    => "expected definite version map"
+    case ExpectedEraHeader             => "expected [era, header]"
+    case ExpectedConwayTransactionMembers =>
+      "expected a Conway transaction of three members, or four with its validity flag"
+    case ExpectedIndefiniteProtocolList => "expected indefinite protocol list"
+    case ExpectedKeepAliveResponse      => "expected KeepAlive response"
     case ExpectedPointCountOutsideRequestLimits(_, _) =>
       "expected point count outside request limits"
     case ExpectedRequestRange                    => "expected RequestRange"
@@ -294,7 +294,6 @@ enum ProtocolError extends DomainError:
     case TrailingTxSubmission2Bytes       => "trailing TxSubmission2 bytes"
     case TransactionBodyIsNotAMap         => "transaction body is not a map"
     case TransactionIDMustBe32Bytes(_)    => "transaction ID must be 32 bytes"
-    case TransactionValidityIsNotABoolean => "transaction validity is not a Boolean"
     case TruncatedBlockFetchMessage       => "truncated BlockFetch message"
     case TruncatedCbor                    => "truncated CBOR"
     case TruncatedKeepAliveMessage        => "truncated KeepAlive message"

@@ -108,22 +108,32 @@ object TxSubmission2:
                                     else 5)
       )
 
-  /** Structural identity only; admission remains the caller's responsibility. */
+  /** Structural identity only; admission remains the caller's responsibility. The members are read
+    * as `decodeRecordNamed "AlonzoTx"` reads them
+    * (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs:532-553`, cardano-ledger f649f975): the
+    * body, the witness set, the validity flag when the third member is a boolean, and the auxiliary
+    * data or null; three members without the flag, four with it, in a definite or an indefinite
+    * list (#699).
+    */
   def bodyId(original: Bytes): Either[ProtocolError, Bytes] = attempt {
     get(advertisedSize(original.size))
     val r = new ProtocolWire.Reader(original, wire.copy(maxMessageBytes = MaxOriginalBytes))
     val indefinite = original.headOption.contains(0x9f.toByte)
-    if indefinite then r.read()
-    else if r.arrayLength() != 4 then bad(ProtocolError.ExpectedFourMemberConwayTransaction)
+    val declared = if indefinite then { r.read(); None }
+    else Some(r.arrayLength())
+    if declared.exists(n => n != 3 && n != 4) then
+      bad(ProtocolError.ExpectedConwayTransactionMembers)
     val body = r.item()
     if !body.headOption.exists(b => (b & 0xe0) == 0xa0) then
       bad(ProtocolError.TransactionBodyIsNotAMap)
     r.item()
-    val validity = r.read()
-    if validity != 0xf4 && validity != 0xf5 then bad(ProtocolError.TransactionValidityIsNotABoolean)
+    val third = original.byteOr(r.position)(bad(ProtocolError.TruncatedCbor))(_ & 255)
+    val flagged = third == 0xf4 || third == 0xf5
+    if flagged then r.read()
     r.item()
-    if indefinite && r.read() != 0xff then
-      bad(ProtocolError.ExpectedBreakAfterFourthTransactionMember)
+    if declared.exists(_ != (if flagged then 4 else 3)) then
+      bad(ProtocolError.ExpectedConwayTransactionMembers)
+    if indefinite && r.read() != 0xff then bad(ProtocolError.ExpectedBreakAfterTransactionMembers)
     if r.position != original.size then bad(ProtocolError.TrailingOriginalTransactionBytes)
     Blake2b.hash256.hash(body)
   }

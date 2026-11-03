@@ -2243,7 +2243,7 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
         case DecodeResult.Failed(error @ ProtocolError.ExpectedDefiniteArray)
             if Set("reply-ids", "request-txs", "reply-txs").contains(fields(6)) =>
           (fields(6), Some(error), Option.empty[(Int, Int)])
-        case DecodeResult.Failed(error @ ProtocolError.ExpectedFourMemberConwayTransaction)
+        case DecodeResult.Failed(error @ ProtocolError.ExpectedConwayTransactionMembers)
             if fields(6) == "reply-txs" =>
           (fields(6), Some(error), Option.empty[(Int, Int)])
         case DecodeResult.Failed(error @ ProtocolError.ExpectedConwayGenTx)
@@ -2268,7 +2268,7 @@ class UpstreamProtocolCodecCoverageSuite extends munit.FunSuite:
         .subsetOf(
           Set(
             ProtocolError.ExpectedDefiniteArray,
-            ProtocolError.ExpectedFourMemberConwayTransaction,
+            ProtocolError.ExpectedConwayTransactionMembers,
             ProtocolError.ExpectedConwayGenTx,
             ProtocolError.ExpectedConwayTransactionID
           )
