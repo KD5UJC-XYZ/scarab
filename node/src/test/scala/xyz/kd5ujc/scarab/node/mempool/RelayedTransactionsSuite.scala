@@ -2,8 +2,8 @@
 package xyz.kd5ujc.scarab.node.mempool
 
 import cats.effect.{IO, Ref}
+import cats.syntax.all.*
 import cats.mtl.Raise
-import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -26,7 +26,7 @@ import TxSubmission2.{Message, State}
   * The Conway transactions of `fixtures/reference/recd-detached/cases.jsonl` carry the verdict of
   * the reference's decoder and, for an accepted one, its id.
   */
-class RelayedTransactionsSuite extends CatsEffectSuite:
+class RelayedTransactionsSuite extends FailsOnUncaught:
   private given TxSubmission2.TransactionReader = RelayedTransactions
 
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
@@ -108,17 +108,27 @@ class RelayedTransactionsSuite extends CatsEffectSuite:
         def known(id: Bytes) = IO.pure(false)
         def submit(originals: Vector[Bytes])(using Raise[IO, NetworkError]) =
           taken.update(_ ++ originals)
+      val delivered = (IO.sleep(5.millis) *> taken.get).iterateUntil(_.size == distinct.size)
       typed {
         Peers.linked(protocols = Set(4)).use { (client, server) =>
           for
             c <- client.channel(4)
             s <- server.channel(4, Mux.Role.Responder)
-            _ <- typed(TxSubmissionClient.run(c, source)).start
-            _ <- typed(TxSubmissionServer.run(s, sink)).start
-            all <- taken.get.iterateUntil(_.size == distinct.size).timeout(10.seconds)
-          yield all
+            // both drivers end with the test; one that ends before every transaction is taken
+            // ends the wait with its result
+            drivers = (
+              typed(TxSubmissionClient.run(c, source)).background,
+              typed(TxSubmissionServer.run(s, sink)).background
+            ).tupled
+            first <- drivers.use((offering, taking) =>
+              IO.race(delivered, IO.race(offering, taking)).timeout(10.seconds)
+            )
+          yield first
         }
-      }.map(result => assertEquals(result, Right(distinct.map(_.raw))))
+      }.map {
+        case Right(Left(all)) => assertEquals(all, distinct.map(_.raw))
+        case other            => fail(s"a driver ended first: $other")
+      }
     }
   }
 
