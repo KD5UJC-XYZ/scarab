@@ -19,18 +19,25 @@ NOW = datetime(2026, 10, 29, 12, 0, tzinfo=timezone.utc)
 TRIAGED = ("area:network", "priority:P2", "status:backlog")
 
 
-def issue(number, *labels, milestone="reference-parity", updated="2026-10-28T09:00:00Z", title=None):
+# One row of docs/decisions.md, as the register writes them: date, the issues it came from, the decision.
+ROW = ("| 2026-10-25 | [#{number}](https://github.com/KD5UJC-XYZ/scarab/issues/{number}) | A decision. "
+       "| An invariant. | none recorded | [ADR 0001 amendment](adr/0001-haskell-node-as-reference.md) |")
+
+
+def issue(number, *labels, milestone="reference-parity", updated="2026-10-28T09:00:00Z", title=None,
+          state="open"):
     return {
         "number": number,
         "title": title or f"Issue {number}",
         "labels": [{"name": name} for name in labels],
         "milestone": None if milestone is None else {"title": milestone},
         "updated_at": updated,
+        "state": state,
     }
 
 
-def kinds(raw):
-    return [(v.kind, v.number) for v in status.check(raw, NOW)]
+def kinds(raw, decisions=""):
+    return [(v.kind, v.number) for v in status.check(raw, NOW, decisions)]
 
 
 class CheckCase(unittest.TestCase):
@@ -77,6 +84,26 @@ class CheckCase(unittest.TestCase):
     def test_other_statuses_never_go_stale(self):
         self.assertEqual(status.check([issue(13, *TRIAGED, updated="2025-01-01T00:00:00Z")], NOW), [])
 
+    def test_a_labelled_issue_that_no_row_cites_is_reported(self):
+        raw = [issue(40, *TRIAGED, "owner-decision"), issue(41, *TRIAGED)]
+        self.assertEqual(status.check(raw, NOW, ROW.format(number=474)),
+                         [Violation(Kind.OWNER_DECISION_NO_ROW, 40, "Issue 40", "open issue, and no row cites it")])
+
+    def test_a_labelled_issue_that_a_row_cites_is_clean(self):
+        self.assertEqual(status.check([issue(42, *TRIAGED, "owner-decision")], NOW, ROW.format(number=42)), [])
+
+    def test_a_closed_issue_is_read_for_the_register_rule_and_no_other(self):
+        raw = [issue(43, "owner-decision", state="closed"), issue(44, state="closed", milestone=None)]
+        self.assertEqual(kinds(raw), [(Kind.OWNER_DECISION_NO_ROW, 43)])
+
+    def test_only_the_issue_column_of_a_row_cites_an_issue(self):
+        register = ("| 2026-10-25 | none yet | A decision. | An invariant. | none recorded "
+                    "| [comment](https://github.com/KD5UJC-XYZ/scarab/issues/46#issuecomment-1) |")
+        self.assertEqual(kinds([issue(46, *TRIAGED, "owner-decision")], register), [(Kind.OWNER_DECISION_NO_ROW, 46)])
+
+    def test_with_no_register_text_every_labelled_issue_is_reported(self):
+        self.assertEqual(kinds([issue(45, *TRIAGED, "owner-decision")]), [(Kind.OWNER_DECISION_NO_ROW, 45)])
+
     def test_violations_are_grouped_in_kind_order(self):
         raw = [issue(20, "status:needs-owner", updated="2026-09-01T00:00:00Z"), issue(14, milestone=None)]
         self.assertEqual(kinds(raw), [
@@ -86,24 +113,33 @@ class CheckCase(unittest.TestCase):
 
 class RenderCase(unittest.TestCase):
     def test_clean(self):
-        self.assertEqual(status.render_check([], 3), "triage check: clean (3 open issues)")
+        self.assertEqual(status.render_check([], 3), "triage check: clean (3 issues)")
 
     def test_grouped_one_line_per_issue(self):
         raw = [issue(2, "area:scripts", title="  A title "), issue(3, *TRIAGED, milestone=None)]
         self.assertEqual(status.render_check(status.check(raw, NOW), 2).splitlines(), [
-            "triage check: 2 violations over 2 open issues",
+            "triage check: 2 violations over 2 issues",
             f"{Kind.MISSING_LABEL.value} (1)",
             "  #2     A title [missing priority, status]",
             f"{Kind.NO_MILESTONE.value} (1)",
             "  #3     Issue 3 [status backlog]",
         ])
 
+    def test_the_register_rule_has_its_own_group(self):
+        raw = [issue(47, *TRIAGED, "owner-decision"), issue(48, *TRIAGED, "owner-decision")]
+        self.assertEqual(status.render_check(status.check(raw, NOW), 2).splitlines(), [
+            "triage check: 2 violations over 2 issues",
+            f"{Kind.OWNER_DECISION_NO_ROW.value} (2)",
+            "  #47    Issue 47 [open issue, and no row cites it]",
+            "  #48    Issue 48 [open issue, and no row cites it]",
+        ])
+
 
 class SourceCase(unittest.TestCase):
     def test_pages_are_flattened_and_pull_requests_dropped(self):
         pages = [[issue(1, *TRIAGED), {**issue(2), "pull_request": {"url": "x"}}], [issue(3, *TRIAGED)]]
-        self.assertEqual([i["number"] for i in status.open_issues(pages)], [1, 3])
-        self.assertEqual([i["number"] for i in status.open_issues([issue(4)])], [4])
+        self.assertEqual([i["number"] for i in status.without_pull_requests(pages)], [1, 3])
+        self.assertEqual([i["number"] for i in status.without_pull_requests([issue(4)])], [4])
 
     def test_the_command_is_a_paginated_read(self):
         calls = []
@@ -116,6 +152,7 @@ class SourceCase(unittest.TestCase):
         self.assertEqual(calls, [status.CHECK_COMMAND])
         self.assertEqual(calls[0][:4], ["gh", "api", "--paginate", "--slurp"])
         self.assertNotIn("--method", calls[0])
+        self.assertIn("state=all", calls[0][-1])
 
     def test_exit_codes(self):
         def run_with(raw, code=0):
@@ -126,7 +163,7 @@ class SourceCase(unittest.TestCase):
             self.assertEqual(status.run_check(None, False, NOW, run_with([[issue(1, *TRIAGED)]])), 0)
             self.assertEqual(status.run_check(None, False, NOW, run_with([[issue(1)]])), 1)
             self.assertEqual(status.run_check(None, False, NOW, run_with([], 1)), 2)
-        self.assertIn("triage check: clean (1 open issues)", out.getvalue())
+        self.assertIn("triage check: clean (1 issues)", out.getvalue())
         self.assertIn("gh api failed: denied", err.getvalue())
 
     def test_main_reads_a_file_and_prints_json(self):
@@ -154,6 +191,13 @@ class VocabularyCase(unittest.TestCase):
         self.assertEqual(set(re.findall(r"`priority:(P\d)`", text)), set(status.PRIORITIES))
         for milestone in status.MILESTONES:
             self.assertIn(f"`{milestone}`", text)
+
+    def test_the_register_cites_the_issues_of_its_rows(self):
+        cited = status.decisions_cited((ROOT / "docs/decisions.md").read_text(encoding="utf-8"))
+        self.assertLessEqual({474, 567, 693}, cited)
+
+    def test_process_names_the_owner_decision_label(self):
+        self.assertIn("`owner-decision`", (ROOT / "docs/process.md").read_text(encoding="utf-8"))
 
     def test_issue_forms_offer_the_vocabulary_and_default_to_backlog(self):
         for name in ("audit", "bug", "feature"):

@@ -16,9 +16,8 @@ the roadmap's recorded decisions; a decision recorded only elsewhere is added wh
   none, and changing the decision then needs the owner again.
 - **A superseded decision** keeps its row, struck through (`~~…~~`), with the row or amendment that
   replaced it.
-- **Labels.** An issue that carries a decision gets the `owner-decision` label;
-  [#612](https://github.com/KD5UJC-XYZ/scarab/issues/612) creates the label and has the triage check report a
-  labelled issue that no row here cites.
+- **Labels.** An issue that carries a decision gets the `owner-decision` label, and `python3 scripts/status.py --check`
+  reports a labelled issue that no row here cites, open or closed ([#612](https://github.com/KD5UJC-XYZ/scarab/issues/612)).
 - Wording is neutral: a row states the decision, never a quotation of the owner.
 
 ## Reference fidelity
