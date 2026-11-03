@@ -59,4 +59,4 @@ object PosixClock:
 
   /** The geometry alone, without a horizon. */
   def total(geometry: EpochGeometry): PosixClock =
-    Total(slot => BigInt(geometry.slotStart(slot).toEpochMilli))
+    Total(slot => BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(slot))

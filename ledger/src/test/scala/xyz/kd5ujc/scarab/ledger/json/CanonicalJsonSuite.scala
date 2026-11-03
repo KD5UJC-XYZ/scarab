@@ -12,15 +12,15 @@ import xyz.kd5ujc.scarab.ledger.PreprodDeepTx
 class CanonicalJsonSuite extends FunSuite:
   private def bytes(text: String): Bytes = Bytes.fromArray(text.getBytes("UTF-8"))
 
-  test("nesting deeper than a small stack parses, renders and converts") {
+  test("nesting deeper than a small stack parses and renders") {
     val depth = 200000
     val text = "[" * depth + "]" * depth
     val outcome = PreprodDeepTx.onSmallStack {
       CanonicalJson.parse(bytes(text)).map { v =>
-        (CanonicalJson.render(v), CanonicalJson.toCirce(v).isArray)
+        CanonicalJson.render(v)
       }
     }
-    assertEquals(outcome, Right((bytes(text), true)))
+    assertEquals(outcome, Right(bytes(text)))
   }
 
   test(

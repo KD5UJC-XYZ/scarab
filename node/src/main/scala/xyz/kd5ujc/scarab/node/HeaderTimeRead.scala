@@ -40,8 +40,8 @@ object HeaderTimeRead:
         val history = byronHistory.getOrElse(
           EraHistory.ByronParams(
             byron.fold(geometry.byron.epochSlots)(_.ledger.epochSlots),
-            BigInt(geometry.byron.slotLengthMillis),
-            byron.fold(geometry.k)(r => BigInt(r.ledger.genesis.securityParam))
+            geometry.byron.slotLengthMillis,
+            byron.fold(geometry.k)(r => r.ledger.genesis.securityParam)
           )
         )
         val available = GenesisHistory.query(

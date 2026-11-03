@@ -5,7 +5,7 @@ import cats.Show
 import cats.syntax.show.*
 import xyz.kd5ujc.scarab.codec.DomainError
 import xyz.kd5ujc.scarab.codec.{Cbor, Value}
-import xyz.kd5ujc.scarab.ledger.byron.{ByronGenesisKey, ByronVersion, DelegationError}
+import xyz.kd5ujc.scarab.ledger.byron.{ByronVersion, DelegationError}
 
 /** Failures while reading ledger values. A [[DecodeSite]] identifies the place; cases identify
   * failures.
@@ -65,8 +65,6 @@ enum LedgerDecodeError extends DomainError:
   case CrcMismatch(expected: BigInt, actual: BigInt)
   case EmptyInputsOrOutputs
   case DuplicateGenesisAddress
-  case GenesisMissingField(key: ByronGenesisKey)
-  case GenesisExpectedNumber(key: ByronGenesisKey)
   case ProposalEpochMismatch(target: BigInt, epoch: BigInt, beforePointOfNoReturn: Boolean)
 
   case ByronLayout
@@ -107,8 +105,7 @@ object LedgerDecodeError:
   given Show[LedgerDecodeError] = Show.show(repr)
 
   private def repr(x: Any): String = x match
-    case site: DecodeSite     => site.show
-    case key: ByronGenesisKey => key.show
+    case site: DecodeSite => site.show
     case e: (LedgerDecodeError | xyz.kd5ujc.scarab.ledger.NativeScript.DecodeError |
           VotingProcedures.DecodeError) =>
       fields(e)

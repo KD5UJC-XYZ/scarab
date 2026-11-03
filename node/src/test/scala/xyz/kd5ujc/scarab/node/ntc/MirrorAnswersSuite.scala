@@ -42,7 +42,7 @@ class MirrorAnswersSuite extends FunSuite:
 
   private val queryEnv = QueryEnv(
     setup.byronParams
-      .flatMap(_.startTime)
+      .map(_.startTime)
       .fold(setup.geometry.systemStart)(java.time.Instant.ofEpochSecond),
     setup.geometry,
     setup.praos.forks,

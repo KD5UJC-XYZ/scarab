@@ -30,8 +30,8 @@ opaque type ChunkSlots = Long
 
 object ChunkSlots:
   def of(n: Long): Option[ChunkSlots] = Option.when(n > 0 && n < Int.MaxValue)(n)
-  def fromSecurityParam(k: Long): Option[ChunkSlots] =
-    if k > 0 && k < Int.MaxValue / 10 then of(k * 10) else None
+  def fromSecurityParam(k: BigInt): Option[ChunkSlots] =
+    if k > 0 && k < Int.MaxValue / 10 then of((k * 10).toLong) else None
 
   extension (s: ChunkSlots)
     def value: Long = s
