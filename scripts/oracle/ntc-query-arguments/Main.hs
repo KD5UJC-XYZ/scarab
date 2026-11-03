@@ -99,6 +99,10 @@ plain raw = either (Left . show) Right (Plain.decodeFull' raw)
 conway :: forall a. Binary.DecCBOR a => BS.ByteString -> Either String a
 conway raw = either (Left . show) Right (Binary.decodeFull' (Binary.natVersion @9) raw)
 
+-- | `LC.fromEraCBOR @BabbageEra`: the ledger's decoder at Babbage's lowest protocol version, 7.
+babbage :: forall a. Binary.DecCBOR a => BS.ByteString -> Either String a
+babbage raw = either (Left . show) Right (Binary.decodeFull' (Binary.natVersion @7) raw)
+
 
 
 
@@ -122,6 +126,8 @@ run d raw = case d of
   "era-pools" -> Right $ verdict (Set.toList <$> conway @(Set.Set (KeyHash StakePool)) raw)
   "era-statuses" -> Right $ verdict (Set.toList <$> conway @(Set.Set MemberStatus) raw)
   "era-pool" -> Right $ verdict (pure <$> conway @(KeyHash StakePool) raw)
+  "babbage-txins" -> Right $ verdict (Set.toList <$> babbage @(Set.Set TxIn) raw)
+  "babbage-staking" -> Right $ verdict (Set.toList <$> babbage @(Set.Set (Credential Staking)) raw)
   _ -> Left ("unknown decoder " <> d)
 
 main :: IO ()

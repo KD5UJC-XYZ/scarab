@@ -24,6 +24,9 @@ ouroboros-consensus `82ecba32`) reads each argument with one of two decoders:
   alike (`decodeSetEnforceNoDuplicates`). The cases: credentials, inputs, DReps, pools, member
   statuses (and a status of 3), a single key hash, addresses (and one a byte short), each with a
   duplicate.
+- the same at Babbage's version 7 (`babbage-*`), where a set takes no tag 258 and two elements alike
+  are one (`decodeSet` below version 9): inputs and credentials, untagged, indefinite, tagged and
+  with a duplicate.
 
 `NtcQueryArgumentsSuite` puts each argument in its query, in Conway's `QueryIfCurrent`, and requires
 the node to read the same values or refuse it.

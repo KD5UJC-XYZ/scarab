@@ -146,6 +146,13 @@ object NtcQuery:
     /** A set read with the ledger's decoder that holds two elements alike. */
     case Duplicate(field: String)
     case MemberStatusRange
+
+    /** A set read with the ledger's decoder below version 9 under tag 258, which it does not take.
+      */
+    case UnexpectedSetTag(field: String)
+
+    /** A query that `requireCG` guards, of an era before Conway. */
+    case ConwayOnly(tag: Int)
     case UnknownTag(field: String, tag: Int)
     case Constructor(field: String, tag: Int, arity: Int)
 
@@ -168,14 +175,16 @@ object NtcQuery:
       case Arity(field, expected, actual) => s"$field: expected $expected elements, got $actual"
       case IndefiniteRecord(field) =>
         s"$field: expected a definite list, or an empty indefinite list before its fields"
-      case Word16Range(field)     => s"$field: expected an unsigned integer of 16 bits"
-      case InvalidTxId            => "gov action tx id: expected 32 bytes"
-      case IndefiniteList(field)  => s"$field: expected a definite list"
-      case ExpectedSetTag(field)  => s"$field: expected a set under tag 258"
-      case NotAscending(field)    => s"$field: expected elements in strictly ascending order"
-      case Duplicate(field)       => s"$field: an element twice"
-      case MemberStatusRange      => "member status: expected 0, 1 or 2"
-      case UnknownTag(field, tag) => s"$field: unknown tag $tag"
+      case Word16Range(field)      => s"$field: expected an unsigned integer of 16 bits"
+      case InvalidTxId             => "gov action tx id: expected 32 bytes"
+      case IndefiniteList(field)   => s"$field: expected a definite list"
+      case ExpectedSetTag(field)   => s"$field: expected a set under tag 258"
+      case NotAscending(field)     => s"$field: expected elements in strictly ascending order"
+      case Duplicate(field)        => s"$field: an element twice"
+      case MemberStatusRange       => "member status: expected 0, 1 or 2"
+      case UnexpectedSetTag(field) => s"$field: a set under tag 258 before version 9"
+      case ConwayOnly(tag)         => s"ledger query $tag: not supported before Conway"
+      case UnknownTag(field, tag)  => s"$field: unknown tag $tag"
       case Constructor(field, tag, arity) => s"$field: unknown tag $tag or arity $arity"
 
   private type R[A] = Either[Error, A]
@@ -185,25 +194,25 @@ object NtcQuery:
     maxStringBytes = 1000000
   )
 
-  /** The byte-string policy of a query argument. The reference decodes the argument at the era's
-    * lowest protocol version (`fromEraCBOR @era`, `Era.hs:236-243`, cardano-ledger f649f975), so
-    * the form follows the era's own version rather than a hard-coded answer; every era from Shelley
-    * to Conway is below version 12 and therefore reads a definite string.
+  /** How a query of an era reads its arguments: at the era's lowest protocol version, as the
+    * reference reads them (`fromEraCBOR @era`, `Era.hs:236-243`, cardano-ledger f649f975): its byte
+    * strings (every era from Shelley to Conway is below version 12 and reads a definite string;
+    * evidence #437), its addresses as the era reads an output's ([[Address.Mode.of]]), its sets by
+    * the version's rules ([[set]]); and whether the era has Conway's governance, without which a
+    * query that `requireCG` guards is refused (`Shelley/Ledger/Query.hs:936-942`,
+    * ouroboros-consensus 82ecba32; #724).
     *
-    * An era index this node does not know falls back to `Definite`, the answer every era this node
-    * knows gives: the reference decodes an argument only for an era it knows, so there is no
-    * reference verdict here, and this is stated as our choice rather than measured. Evidence: #437.
+    * An era index this node does not know reads as Conway's, the answer of the latest era it knows:
+    * the reference decodes an argument only for an era it knows, so there is no reference verdict
+    * here, and this is stated as our choice rather than measured (#720).
     */
-  private def strings(era: Int): ByteStrings =
-    Era.fromIndex(BigInt(era)).fold(ByteStrings.Definite)(e => ByteStrings.of(DecoderVersion.of(e)))
+  private[ntc] final case class Reading(era: Era):
+    def version: DecoderVersion = DecoderVersion.of(era)
+    def strings: ByteStrings = ByteStrings.of(version)
+    def addresses: Address.Mode = Address.Mode.of(era)
+    def governance: Boolean = era.ordinal >= Era.Conway.ordinal
 
-  /** How an address argument is read: `decCBOR` of `Addr` at the era's lowest protocol version, as
-    * an output's address is read in the era ([[Address.Mode.of]]). An era index this node does not
-    * know falls back to Conway's, as [[strings]] does, by our choice: the reference reads no
-    * argument of an era it does not know.
-    */
-  private def addresses(era: Int): Address.Mode =
-    Era.fromIndex(BigInt(era)).fold(Address.Mode.Strict)(Address.Mode.of)
+  private def reading(era: Int): Reading = Reading(Era.fromIndex(BigInt(era)).getOrElse(Era.Conway))
 
   def decode(raw: Bytes): R[NtcQuery] =
     DetachedRecords.read(raw, limits, shape)(Error.MalformedCbor(_))(top)
@@ -288,18 +297,23 @@ object NtcQuery:
     arr(n, what).filterOrElse(_ => !n.isIndefinite, Error.IndefiniteList(what))
 
   /** A set an argument reads with the ledger's decoder at the era's lowest protocol version
-    * (`LC.fromEraCBOR @era`): a list, definite or indefinite, optionally under tag 258, without two
-    * elements alike (`decodeSet` at version 9, `decodeSetEnforceNoDuplicates`,
+    * (`LC.fromEraCBOR @era`, `decodeSet`,
     * `libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs:952-976,1043-1077`,
-    * cardano-ledger f649f975).
+    * cardano-ledger f649f975): a list, definite or indefinite; from version 9, optionally under tag
+    * 258 and without two elements alike (`decodeSetEnforceNoDuplicates`); below it, untagged, two
+    * elements alike being one (`Set.fromList` over `decodeCollection`).
     */
-  private def set[A](n: Node, what: String)(each: Node => R[A]): R[Set[A]] =
+  private def set[A](n: Node, what: String)(each: Node => R[A])(using read: Reading): R[Set[A]] =
+    val conway = read.version.atLeast(9)
     val items = n.value match
-      case Value.Tag(t, inner) if t == 258 => arr(inner, what)
-      case _                               => arr(n, what)
+      case Value.Tag(t, inner) if t == 258 =>
+        if conway then arr(inner, what) else Left(Error.UnexpectedSetTag(what))
+      case _ => arr(n, what)
     items
       .flatMap(_.traverse(each))
-      .flatMap(xs => Either.cond(xs.distinct.size == xs.size, xs.toSet, Error.Duplicate(what)))
+      .flatMap(xs =>
+        Either.cond(!conway || xs.distinct.size == xs.size, xs.toSet, Error.Duplicate(what))
+      )
 
   /** A set an argument reads with `fromCBOR` of cardano-binary (`decodeSetSkel`,
     * `cardano-binary/src/Cardano/Binary/FromCBOR.hs:550-576`, cardano-base 1.9.1.0): tag 258 around
@@ -430,7 +444,7 @@ object NtcQuery:
             definite(xs(1), "query in era").flatMap {
               case Vector(era, q) =>
                 uint(era, "era index")
-                  .flatMap(e => shelley(q, strings(e), addresses(e)).map(NtcQuery.IfCurrent(e, _)))
+                  .flatMap(e => shelley(q, reading(e)).map(NtcQuery.IfCurrent(e, _)))
               case qs => Left(Error.Arity("query in era", 2, qs.size))
             }
           case 1 if xs.size == 3 =>
@@ -462,9 +476,10 @@ object NtcQuery:
   /** The Shelley block query, reading its byte strings under `policy`. Package-scoped: the caller
     * has already decoded the era, so this is not a query entry point of its own.
     */
-  private[ntc] def shelley(n: Node, policy: ByteStrings, mode: Address.Mode): R[LedgerQuery] =
-    given ByteStrings = policy
-    given Address.Mode = mode
+  private[ntc] def shelley(n: Node, read: Reading): R[LedgerQuery] =
+    given Reading = read
+    given ByteStrings = read.strings
+    given Address.Mode = read.addresses
     final case class Pending(node: Node, depth: Int)
     Monad[R].tailRecM(Pending(n, 0)) { pending =>
       definite(pending.node, "ledger query").flatMap {
@@ -477,7 +492,12 @@ object NtcQuery:
       }
     }
 
-  private def shelleyLeaf(n: Node)(using ByteStrings, Address.Mode): R[LedgerQuery] =
+  private def shelleyLeaf(n: Node)(using
+      read: Reading
+  )(using
+      ByteStrings,
+      Address.Mode
+  ): R[LedgerQuery] =
     definite(n, "ledger query").flatMap { xs =>
       xs.headOption
         .toRight(Error.Empty("ledger query"))
@@ -488,85 +508,89 @@ object NtcQuery:
             if xs.size == 2 then f(xs(1)) else Left(Error.Arity(s"ledger query $tag", 2, xs.size))
           def none(q: LedgerQuery): R[LedgerQuery] =
             if xs.size == 1 then Right(q) else Left(Error.Arity(s"ledger query $tag", 1, xs.size))
-          tag match
-            case 0 => none(GetLedgerTip)
-            case 1 => none(GetEpochNo)
-            case 2 =>
-              arg1(
-                plainSet(_, "non-myopic credentials")(c =>
-                  definite(c, "non-myopic credential").flatMap {
-                    case Vector(k, v) =>
-                      uint(k, "non-myopic tag").flatMap {
-                        case 0 =>
-                          v.value match
-                            case Value.UInt(coin) => Right(Left(coin))
-                            case _                => Left(Error.ExpectedCoin)
-                        case 1 => credential(v).map(Right(_))
-                        case _ => Left(Error.InvalidNonMyopicCredential)
-                      }
-                    case _ => Left(Error.InvalidNonMyopicCredential)
-                  }
-                )
-              ).map(GetNonMyopicMemberRewards(_))
-            case 3 => none(GetCurrentPParams)
-            case 4 => none(GetProposedPParamsUpdates)
-            case 5 => none(GetStakeDistribution)
-            case 6 => arg1(set(_, "addresses")(address)).map(GetUTxOByAddress(_))
-            case 7 => none(GetUTxOWhole)
-            case 8 => none(DebugEpochState)
-            case 9 => Left(Error.Arity("ledger query 9", 2, xs.size))
-            case 10 =>
-              arg1(set(_, "credentials")(credential))
-                .map(GetFilteredDelegationsAndRewardAccounts(_))
-            case 11 => none(GetGenesisConfig)
-            case 12 => none(DebugNewEpochState)
-            case 13 => none(DebugChainDepState)
-            case 14 => none(GetRewardProvenance)
-            case 15 => arg1(set(_, "inputs")(txIn)).map(GetUTxOByTxIn(_))
-            case 16 => none(GetStakePools)
-            case 17 => arg1(plainSet(_, "pools")(keyHash)).map(xs => GetStakePoolParams(xs.toSet))
-            case 18 => none(GetRewardInfoPools)
-            case 19 => arg1(maybeSet(_, "pools")(keyHash)).map(GetPoolState(_))
-            case 20 => arg1(maybeSet(_, "pools")(keyHash)).map(GetStakeSnapshots(_))
-            case 21 => arg1(maybeSet(_, "pools")(keyHash)).map(GetPoolDistr(_))
-            case 22 =>
-              arg1(plainSet(_, "credentials")(credential))
-                .map(xs => GetStakeDelegDeposits(xs.toSet))
-            case 23 => none(GetConstitution)
-            case 24 => none(GetGovState)
-            case 25 =>
-              arg1(plainSet(_, "credentials")(credential)).map(xs => GetDRepState(xs.toSet))
-            case 26 => arg1(set(_, "dreps")(drep)).map(GetDRepStakeDistr(_))
-            case 27 =>
-              if xs.size != 4 then Left(Error.Arity("committee members state", 4, xs.size))
-              else
-                (
-                  plainSet(xs(1), "cold credentials")(credential).map(_.toSet),
-                  plainSet(xs(2), "hot credentials")(credential).map(_.toSet),
-                  // `MemberStatus` is `decodeEnumBounded` of its three constructors
-                  set(xs(3), "statuses")(
-                    uint(_, "member status").filterOrElse(_ <= 2, Error.MemberStatusRange)
+          // the queries `requireCG` guards, refused before Conway whatever their arguments
+          val governance = Set(23, 25, 26, 27, 28, 30, 31, 32, 33, 35, 39)
+          if governance(tag) && !read.governance then Left(Error.ConwayOnly(tag))
+          else
+            tag match
+              case 0 => none(GetLedgerTip)
+              case 1 => none(GetEpochNo)
+              case 2 =>
+                arg1(
+                  plainSet(_, "non-myopic credentials")(c =>
+                    definite(c, "non-myopic credential").flatMap {
+                      case Vector(k, v) =>
+                        uint(k, "non-myopic tag").flatMap {
+                          case 0 =>
+                            v.value match
+                              case Value.UInt(coin) => Right(Left(coin))
+                              case _                => Left(Error.ExpectedCoin)
+                          case 1 => credential(v).map(Right(_))
+                          case _ => Left(Error.InvalidNonMyopicCredential)
+                        }
+                      case _ => Left(Error.InvalidNonMyopicCredential)
+                    }
                   )
-                ).mapN(GetCommitteeMembersState(_, _, _))
-            case 28 => arg1(set(_, "credentials")(credential)).map(GetFilteredVoteDelegatees(_))
-            case 29 => none(GetAccountState)
-            case 30 => arg1(set(_, "pools")(keyHash)).map(GetSPOStakeDistr(_))
-            case 31 => arg1(set(_, "ids")(govActionId)).map(GetProposals(_))
-            case 32 => none(GetRatifyState)
-            case 33 => none(GetFuturePParams)
-            case 34 =>
-              if xs.size == 1 then Right(GetLedgerPeerSnapshotLegacy)
-              else
-                arg1(uint(_, "peer kind")).flatMap {
-                  case n if n == 0 => Right(GetLedgerPeerSnapshot(LedgerPeerKind.All))
-                  case n if n == 1 => Right(GetLedgerPeerSnapshot(LedgerPeerKind.Big))
-                  case kind        => Left(Error.UnknownTag("ledger peer kind", kind))
-                }
-            case 35    => arg1(keyHash).map(QueryStakePoolDefaultVote(_))
-            case 36    => arg1(maybeSet(_, "pools")(keyHash)).map(GetPoolDistr2(_))
-            case 37    => none(GetStakeDistribution2)
-            case 38    => none(GetMaxMajorProtocolVersion)
-            case 39    => arg1(set(_, "dreps")(drep)).map(GetDRepDelegations(_))
-            case other => Left(Error.UnknownTag("ledger query", other))
+                ).map(GetNonMyopicMemberRewards(_))
+              case 3 => none(GetCurrentPParams)
+              case 4 => none(GetProposedPParamsUpdates)
+              case 5 => none(GetStakeDistribution)
+              case 6 => arg1(set(_, "addresses")(address)).map(GetUTxOByAddress(_))
+              case 7 => none(GetUTxOWhole)
+              case 8 => none(DebugEpochState)
+              case 9 => Left(Error.Arity("ledger query 9", 2, xs.size))
+              case 10 =>
+                arg1(set(_, "credentials")(credential))
+                  .map(GetFilteredDelegationsAndRewardAccounts(_))
+              case 11 => none(GetGenesisConfig)
+              case 12 => none(DebugNewEpochState)
+              case 13 => none(DebugChainDepState)
+              case 14 => none(GetRewardProvenance)
+              case 15 => arg1(set(_, "inputs")(txIn)).map(GetUTxOByTxIn(_))
+              case 16 => none(GetStakePools)
+              case 17 => arg1(plainSet(_, "pools")(keyHash)).map(xs => GetStakePoolParams(xs.toSet))
+              case 18 => none(GetRewardInfoPools)
+              case 19 => arg1(maybeSet(_, "pools")(keyHash)).map(GetPoolState(_))
+              case 20 => arg1(maybeSet(_, "pools")(keyHash)).map(GetStakeSnapshots(_))
+              case 21 => arg1(maybeSet(_, "pools")(keyHash)).map(GetPoolDistr(_))
+              case 22 =>
+                arg1(plainSet(_, "credentials")(credential))
+                  .map(xs => GetStakeDelegDeposits(xs.toSet))
+              case 23 => none(GetConstitution)
+              case 24 => none(GetGovState)
+              case 25 =>
+                arg1(plainSet(_, "credentials")(credential)).map(xs => GetDRepState(xs.toSet))
+              case 26 => arg1(set(_, "dreps")(drep)).map(GetDRepStakeDistr(_))
+              case 27 =>
+                if xs.size != 4 then Left(Error.Arity("committee members state", 4, xs.size))
+                else
+                  (
+                    plainSet(xs(1), "cold credentials")(credential).map(_.toSet),
+                    plainSet(xs(2), "hot credentials")(credential).map(_.toSet),
+                    // `MemberStatus` is `decodeEnumBounded` of its three constructors
+                    set(xs(3), "statuses")(
+                      uint(_, "member status").filterOrElse(_ <= 2, Error.MemberStatusRange)
+                    )
+                  ).mapN(GetCommitteeMembersState(_, _, _))
+              case 28 => arg1(set(_, "credentials")(credential)).map(GetFilteredVoteDelegatees(_))
+              case 29 => none(GetAccountState)
+              case 30 => arg1(set(_, "pools")(keyHash)).map(GetSPOStakeDistr(_))
+              case 31 => arg1(set(_, "ids")(govActionId)).map(GetProposals(_))
+              case 32 => none(GetRatifyState)
+              case 33 => none(GetFuturePParams)
+              case 34 =>
+                if xs.size == 1 then Right(GetLedgerPeerSnapshotLegacy)
+                else
+                  arg1(uint(_, "peer kind")).flatMap {
+                    case n if n == 0 => Right(GetLedgerPeerSnapshot(LedgerPeerKind.All))
+                    case n if n == 1 => Right(GetLedgerPeerSnapshot(LedgerPeerKind.Big))
+                    case kind        => Left(Error.UnknownTag("ledger peer kind", kind))
+                  }
+              case 35    => arg1(keyHash).map(QueryStakePoolDefaultVote(_))
+              case 36    => arg1(maybeSet(_, "pools")(keyHash)).map(GetPoolDistr2(_))
+              case 37    => none(GetStakeDistribution2)
+              case 38    => none(GetMaxMajorProtocolVersion)
+              case 39    => arg1(set(_, "dreps")(drep)).map(GetDRepDelegations(_))
+              case other => Left(Error.UnknownTag("ledger query", other))
         }
     }

@@ -51,6 +51,8 @@ INVALID_RAW = {
     "descending-plain-set": b"\x82\x00\x82\x00\x82\x06\x82\x11\xd9\x01\x02\x82" + POOL_B + POOL_A,
     "indefinite-plain-maybe": b"\x82\x00\x82\x00\x82\x06\x82\x13\x9f\xff",
     "duplicate-ledger-set": b"\x82\x00\x82\x00\x82\x06\x82\x0a\x82" + KEY_CRED + KEY_CRED,
+    # a query `requireCG` guards (GetConstitution), of Babbage (#724)
+    "conway-only-query-of-babbage": b"\x82\x00\x82\x00\x82\x05\x81\x17",
 }
 # Accepted by the reference with lists written indefinite where its decoders take them: a ledger
 # set and the credentials in it. Both nodes must answer alike.

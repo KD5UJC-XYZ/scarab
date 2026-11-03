@@ -42,10 +42,14 @@ class NtcQueryArgumentsSuite extends FunSuite:
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
   private val emptySet = "d9010280"
 
-  /** `[0, [0, [6, q]]]`: `q` of Conway, in the hard-fork combinator's `QueryIfCurrent`. */
-  private def query(tag: Int, args: String*): Bytes =
+  /** `[0, [0, [era, q]]]`: `q` of `era` (Conway unless given), in the hard-fork combinator's
+    * `QueryIfCurrent`.
+    */
+  private def query(tag: Int, args: String*): Bytes = queryIn(6, tag, args*)
+
+  private def queryIn(era: Int, tag: Int, args: String*): Bytes =
     val head = if tag < 24 then f"$tag%02x" else f"18$tag%02x"
-    hex("820082008206" + f"${0x80 | (1 + args.size)}%02x" + head + args.mkString)
+    hex(f"8200820082$era%02x" + f"${0x80 | (1 + args.size)}%02x" + head + args.mkString)
 
   private def credential(c: Credential): String = c match
     case Credential.Key(h)    => s"key:${h.hex}"
@@ -74,6 +78,8 @@ class NtcQueryArgumentsSuite extends FunSuite:
     case "era-statuses"      => query(27, emptySet, emptySet, row.bytes)
     case "era-pool"          => query(35, row.bytes)
     case "era-addresses"     => query(6, row.bytes)
+    case "babbage-txins"     => queryIn(5, 15, row.bytes)
+    case "babbage-staking"   => queryIn(5, 10, row.bytes)
     case other               => fail(s"unknown decoder $other")
 
   /** The values the node read for a row's argument, as the corpus writes them; `None` for a `Maybe`
@@ -98,11 +104,14 @@ class NtcQueryArgumentsSuite extends FunSuite:
       case ("era-statuses", GetCommitteeMembersState(_, _, s)) => Some(s.toVector.map(statuses))
       case ("era-pool", QueryStakePoolDefaultVote(p))          => Some(Vector(p.hex))
       case ("era-addresses", GetUTxOByAddress(s))              => Some(s.toVector.map(_.hex))
-      case _                                                   => fail(s"${row.name}: read as $q")
+      case ("babbage-txins", GetUTxOByTxIn(s))                 => Some(s.toVector.map(_.render))
+      case ("babbage-staking", GetFilteredDelegationsAndRewardAccounts(s)) =>
+        Some(s.toVector.map(credential))
+      case _ => fail(s"${row.name}: read as $q")
 
   private def read(row: Row): Either[NtcQuery.Error, Option[Vector[String]]] =
     NtcQuery.decode(queryOf(row)).map {
-      case NtcQuery.IfCurrent(6, q) => valuesOf(row, q).map(_.sorted)
+      case NtcQuery.IfCurrent(_, q) => valuesOf(row, q).map(_.sorted)
       case other                    => fail(s"${row.name}: read as $other")
     }
 
@@ -140,4 +149,16 @@ class NtcQueryArgumentsSuite extends FunSuite:
       NtcQuery.decode(hex("8200820082068101")),
       Right(NtcQuery.IfCurrent(6, LedgerQuery.GetEpochNo))
     )
+  }
+
+  test("a query Conway's governance guards is refused in an earlier era (#724)") {
+    // GetConstitution [23]: Shelley's and Babbage's are refused, Conway's read
+    assertEquals(NtcQuery.decode(queryIn(1, 23)), Left(NtcQuery.Error.ConwayOnly(23)))
+    assertEquals(NtcQuery.decode(queryIn(5, 23)), Left(NtcQuery.Error.ConwayOnly(23)))
+    assertEquals(
+      NtcQuery.decode(queryIn(6, 23)),
+      Right(NtcQuery.IfCurrent(6, LedgerQuery.GetConstitution))
+    )
+    // GetGovState [24] is not guarded
+    assert(NtcQuery.decode(queryIn(5, 24)).isRight)
   }

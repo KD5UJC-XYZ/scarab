@@ -14,6 +14,8 @@ decoder reads it with (`decodeShelleyQuery`, ouroboros-consensus 82ecba32,
   `Either` a definite list of two (`decodeListLenOf 2`).
 - `era-*`: `LC.fromEraCBOR @era`, the ledger's `decCBOR` at Conway's version 9, for the others: a set
   definite or indefinite, tagged or not, without duplicates (`decodeSetEnforceNoDuplicates`).
+- `babbage-*`: the same at Babbage's version 7, where a set takes no tag and two elements alike are
+  one (`decodeSet` below version 9).
 
 The committed corpus is `fixtures/reference/ntc-query-arguments/cases.jsonl`:
 
@@ -134,6 +136,13 @@ case("era-pool", "short key hash", bstr(h(0x11, 27)))
 ADDRESS = bstr(b"\x61" + h(0x33))
 case("era-addresses", "indefinite", indef(ADDRESS))
 case("era-addresses", "duplicate", arr(ADDRESS, ADDRESS))
+# below version 9 (Babbage's 7) a ledger set takes no tag, and two elements alike are one
+case("babbage-txins", "untagged", arr(TXIN1, TXIN0))
+case("babbage-txins", "duplicate", arr(TXIN0, TXIN0))
+case("babbage-txins", "tagged", tagged(arr(TXIN0)))
+case("babbage-txins", "indefinite", indef(TXIN0))
+case("babbage-staking", "duplicate", arr(KEY_A, KEY_A, SCRIPT_A))
+case("babbage-staking", "tagged", tagged(arr(KEY_A)))
 # not an address: an enterprise header with a hash one byte short
 case("era-addresses", "short address", arr(bstr(b"\x61" + h(0x33, 27))))
 

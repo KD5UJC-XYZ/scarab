@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "measuredAt": "2026-11-03",
-  "scope": "The arguments of the node-to-client ledger queries read with the decoders decodeShelleyQuery uses for them: fromCBOR of cardano-binary (sets tag 258 around a definite ascending list, Maybe and Either definite lists) and LC.fromEraCBOR at Conway's lowest protocol version 9 (sets definite or indefinite, tagged or not, without duplicates); the verdict and the values read; no query server or node is run",
+  "scope": "The arguments of the node-to-client ledger queries read with the decoders decodeShelleyQuery uses for them: fromCBOR of cardano-binary (sets tag 258 around a definite ascending list, Maybe and Either definite lists) and LC.fromEraCBOR at Conway's lowest protocol version 9 (sets definite or indefinite, tagged or not, without duplicates) and at Babbage's 7 (sets untagged, duplicates one); the verdict and the values read; no query server or node is run",
   "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
   "consensusSourceCommit": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
   "compiler": "GHC 9.10.3",
@@ -34,13 +34,13 @@
   },
   "harness": {
     "file": "scripts/oracle/ntc-query-arguments/Main.hs",
-    "sha256": "a76ea9191b44225fbcac3287bbc0f9f8c8668bc6072e2bb68152189a4066bd9e"
+    "sha256": "d92577d4f6a87b1f882e9225a8a2d619b325cae72bfd0979c4e2bb4928b54cfb"
   },
-  "generatorSha256": "fb810e1de25104c6e8dc38a1c9cbfa872e349484355a406272d6e649c99db8b3",
-  "casesSha256": "7e81ceb422cf9d57d65871bef28e3ffee2de908c23704722f15c8e5e7c6216aa",
+  "generatorSha256": "96e8bc6adba8085f041f1ee0ca0283aa3f5b39cb4a0d59b9c187701b9febb33f",
+  "casesSha256": "5fa36f5ea810fced1eccaf5fca0a0d2eb616349e525d9ecb7bdbc518391d6d58",
   "results": {
-    "cases": 55,
-    "accepted": 25,
-    "refused": 30
+    "cases": 61,
+    "accepted": 29,
+    "refused": 32
   }
 }
