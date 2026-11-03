@@ -1,12 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 import copy
+import hashlib
+import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from check_test_coverage import fixture_inventory, read_json, validate_inventory, validate_register
+from check_test_coverage import (fixture_inventory, read_json, validate_inventory, validate_provenance,
+                                 validate_register)
 
 
 class FixtureCoverageTest(unittest.TestCase):
@@ -139,6 +142,131 @@ class FixtureCoverageTest(unittest.TestCase):
         row["classification"] = "ignore-a-failure"
         with self.assertRaisesRegex(ValueError, "unknown classification"):
             validate_register(self.root, register)
+
+
+class ProvenanceTest(unittest.TestCase):
+    """A corpus's own provenance record is schema-checked, not prose: every field a reader trusts."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.corpus = self.root / "fixtures" / "reference" / "sample"
+        self.corpus.mkdir(parents=True)
+        (self.corpus / "README.md").write_text("Original native capture; no regeneration from Scala.\n")
+        (self.corpus / "cases.jsonl").write_text('{"case": 1}\n{"case": 2}\n')
+        self.digest = hashlib.sha256((self.corpus / "cases.jsonl").read_bytes()).hexdigest()
+        self.record = {
+            "schemaVersion": 1, "measuredAt": "2026-11-03",
+            "scope": "one decoder at version 9", "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+            "casesSha256": self.digest, "cases": 2, "accepted": 1, "refused": 1,
+            "notCovered": {"relayName": "the relay name reader belongs to #42"},
+        }
+        self.components = [{"id": "sample-row",
+                            "evidence": {"paths": ["fixtures/reference/sample/cases.jsonl"]},
+                            "limitations": {"issues": [42]}}]
+        self.write()
+
+    def write(self, record=None):
+        (self.corpus / "provenance.json").write_text(json.dumps(record or self.record))
+
+    def check(self, components=None):
+        return validate_provenance(self.root, "fixtures/reference/sample",
+                                   self.components if components is None else components)
+
+    def test_a_complete_record_passes_and_the_file_is_named(self):
+        self.assertEqual(self.check(), "fixtures/reference/sample/provenance.json")
+
+    def test_the_envelope_is_versioned_an_object_and_scoped(self):
+        record = dict(self.record)
+        del record["schemaVersion"]
+        self.write(record)
+        with self.assertRaisesRegex(ValueError, "provenance.json: schemaVersion: must be 1"):
+            self.check()
+        record = dict(self.record, schemaVersion=2)
+        self.write(record)
+        with self.assertRaisesRegex(ValueError, "schemaVersion: must be 1"):
+            self.check()
+        record = dict(self.record, scope="  ")
+        self.write(record)
+        with self.assertRaisesRegex(ValueError, "provenance.json: scope: must be a non-empty string"):
+            self.check()
+        self.write()
+        (self.corpus / "provenance.json").write_text(json.dumps([self.record]))
+        with self.assertRaisesRegex(ValueError, "root.: must be one JSON object per corpus"):
+            self.check()
+
+    def test_a_record_must_name_the_source_revision_and_a_real_date(self):
+        record = {key: value for key, value in self.record.items() if key != "ledgerSourceCommit"}
+        self.write(record)
+        with self.assertRaisesRegex(ValueError, "source revision: must record the source under one of"):
+            self.check()
+        self.write(dict(self.record, ledgerSourceCommit="f649f9"))
+        with self.assertRaisesRegex(ValueError, "ledgerSourceCommit: must be a hexadecimal source revision"):
+            self.check()
+        self.write(dict(self.record, measuredAt="3 November 2026"))
+        with self.assertRaisesRegex(ValueError, "measuredAt: must be an ISO 8601 date"):
+            self.check()
+        self.write(dict(self.record, measuredAt="2026-02-30"))
+        with self.assertRaisesRegex(ValueError, "measuredAt: must be a real calendar date"):
+            self.check()
+
+    def test_a_missing_count_is_reported_with_the_file_and_field(self):
+        record = {key: value for key, value in self.record.items() if key != "cases"}
+        self.write(record)
+        with self.assertRaisesRegex(ValueError, "sample/provenance.json: cases: must record how many cases "
+                                                "cases.jsonl holds .2."):
+            self.check()
+
+    def test_a_count_or_hash_that_disagrees_with_the_corpus_fails(self):
+        self.write(dict(self.record, cases=3))
+        with self.assertRaisesRegex(ValueError, "cases: records 3 cases, cases.jsonl holds 2"):
+            self.check()
+        self.write(dict(self.record, casesSha256="0" * 64))
+        with self.assertRaisesRegex(ValueError, "casesSha256: does not match cases.jsonl"):
+            self.check()
+        self.write(dict(self.record, casesSha256="ABC"))
+        with self.assertRaisesRegex(ValueError, "casesSha256: must be a lowercase hexadecimal SHA-256"):
+            self.check()
+
+    def test_admitted_and_refused_cannot_contradict_the_case_count(self):
+        self.write(dict(self.record, accepted=2, refused=2))
+        with self.assertRaisesRegex(ValueError, "cases: records 2 cases, accepted 2 plus refused 2 is 4"):
+            self.check()
+
+    def test_a_nested_cases_block_is_verified_against_the_file_it_names(self):
+        self.write(dict(self.record, cases={"file": "cases.jsonl", "count": 2, "sha256": self.digest}))
+        self.assertEqual(self.check(), "fixtures/reference/sample/provenance.json")
+        self.write(dict(self.record, cases={"file": "cases.jsonl", "count": 2, "sha256": "0" * 64}))
+        with self.assertRaisesRegex(ValueError, "cases.sha256: does not match cases.jsonl"):
+            self.check()
+        self.write(dict(self.record, cases={"file": "elsewhere.jsonl", "count": 2, "sha256": self.digest}))
+        with self.assertRaisesRegex(ValueError, "cases.file: must name the corpus's case file"):
+            self.check()
+
+    def test_a_gap_must_name_an_issue_the_owning_register_entry_lists(self):
+        self.write(dict(self.record, notCovered={"relayName": "the relay reader is a separate change"}))
+        with self.assertRaisesRegex(ValueError, "notCovered.relayName: must name the issue that owns the gap"):
+            self.check()
+        self.write(dict(self.record, notCovered={"relayName": "the relay reader belongs to #77"}))
+        with self.assertRaisesRegex(ValueError, "names issue #77, which the register entry 'sample-row' does "
+                                                "not list in limitations.issues"):
+            self.check()
+        self.write(dict(self.record, notCovered={"relayName": "  "}))
+        with self.assertRaisesRegex(ValueError, "notCovered.relayName: must say what the corpus does not cover"):
+            self.check()
+
+    def test_a_gap_without_a_register_entry_or_with_two_is_unowned(self):
+        with self.assertRaisesRegex(ValueError, "cited by exactly one register entry"):
+            self.check(components=[])
+        second = copy.deepcopy(self.components[0])
+        second["id"] = "other-row"
+        with self.assertRaisesRegex(ValueError, "cited by exactly one register entry"):
+            self.check(components=self.components + [second])
+
+    def test_a_corpus_without_a_provenance_record_is_not_silently_checked(self):
+        (self.corpus / "provenance.json").unlink()
+        self.assertIsNone(self.check())
 
 
 if __name__ == "__main__":

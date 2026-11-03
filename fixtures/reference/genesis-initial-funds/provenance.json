@@ -1,6 +1,7 @@
 {
+  "schemaVersion": 1,
   "imageId": "sha256:0d7d3971a5ff78c8a6786459d191f39b166d69a4d71a6eb310c9d8338d6e035e",
-  "reference": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
   "sources": [
     {
       "package": "cardano-ledger-core",

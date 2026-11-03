@@ -1,0 +1,5 @@
+### Changed (reference corpus provenance, #559)
+
+- **`scripts/check_test_coverage.py` now validates `provenance.json` of every reference corpus.** Required fields, source revision, case counts, corpus hashes and `notCovered` gaps are checked, so a record missing the count of its own cases, carrying a stale digest or naming a gap no register entry tracks fails in preflight and CI with the record and field named, instead of reading as evidence. The rules are stated in `fixtures/README.md`.
+- **Eight reference corpora are corrected to the schema, without touching any measured value.** Seven records gain the `schemaVersion` they predate and five also gain the `scope` sentence their README already states; `genesis-initial-funds` records the ledger commit under `ledgerSourceCommit` instead of an ambiguous `reference`; `plutus-boundary-transactions` wraps its four per-batch objects in one record with a scope and the reference revision. No case, verdict, count or hash changed.
+- **`docs/data/fixture-inventory.json` is refreshed** for the corrected records.

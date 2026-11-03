@@ -24,3 +24,31 @@ is not yet enforced. `--candidate` additionally rejects unresolved
 entries designated as candidate requirements. External datasets still require their own executed
 acceptance receipts; their absence is not evidence of compatibility. The maintained overview and
 run evidence remain in [compatibility.md](../docs/compatibility.md).
+
+## Provenance records
+
+A reference corpus that records its own provenance does so in a `provenance.json` beside its cases. Schema 1
+of that record is enforced rather than decorative: `python3 scripts/check_test_coverage.py` validates every
+record it finds under `fixtures/reference` in preflight and CI, and a defect names the record and the field.
+A record is one JSON object:
+
+- `schemaVersion`: `1`.
+- `scope`: a non-empty string, or a non-empty object, saying which behaviour the corpus measures.
+- The source revision, as a hexadecimal string under one of `ledgerSourceCommit`, `ledgerSourceRevision`,
+  `ledgerPin`, `consensusSourceCommit`, `plutusSourceCommit`, `sourceCommit` or `referenceGitRevision`; a
+  record that keeps it nested as `ledger.revision` also passes. `measuredAt`, or `capturedAt` or `date`, is
+  optional, because a corpus that never recorded one cannot be given one honestly; when present it must be a
+  real ISO 8601 date.
+- The case count: `cases` as an integer, or a `cases` object naming `file`, `count` and `sha256`, or
+  `caseCount`, or `lines` for a JSONL corpus. When the corpus holds a `cases.jsonl` or `cases.json` file, the
+  recorded count must equal the records in that file and `casesSha256` must be its digest; a recorded
+  `accepted` plus `refused` must add up to the count.
+- Every `*Sha256` string is a lowercase hexadecimal digest.
+- `notCovered`, when present, maps each uncovered topic to a sentence naming the issue that owns the gap, and
+  that issue must also appear in `limitations.issues` of the one entry in
+  [the compatibility register](../docs/data/compatibility.json) that cites the corpus. A gap with no owning
+  entry fails: a gap nobody tracks is how a limit quietly becomes permanent.
+
+The record describes a measurement; it never certifies one. Its hashes detect a corpus that moved under an
+unchanged expectation, and the counts detect a case added or dropped without the record saying so. A corpus
+that records no provenance at all is not checked, and this schema is not a claim that it has one.
