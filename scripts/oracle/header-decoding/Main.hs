@@ -1,4 +1,7 @@
 -- SPDX-License-Identifier: Apache-2.0
+-- rawSerialiseVerKeyVRF and rawSerialiseCertVRF are deprecated in cardano-crypto-class 2.5.1.0 in
+-- favour of rawEncodeFixedSized; they still give the raw bytes of the key and the proof.
+{-# OPTIONS_GHC -Wno-deprecations #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -11,6 +14,9 @@
 module Main (main) where
 
 import qualified Cardano.Crypto.Hash as Hash
+import Cardano.Crypto.Seed (mkSeedFromBytes)
+import Cardano.Crypto.VRF.Class (CertifiedVRF, VRFAlgorithm (..), getOutputVRFBytes, verifyCertified)
+import Cardano.Crypto.VRF.Praos (PraosVRF)
 import Cardano.Crypto.Util (SignableRepresentation (getSignableRepresentation))
 import Cardano.Ledger.Allegra (AllegraEra)
 import Cardano.Ledger.Alonzo (AlonzoEra)
@@ -45,7 +51,10 @@ import System.Exit (die)
 -- or `HeaderBody`) or "block" (a ledger `Block` holding that header). An accepted case reports the
 -- header body's `getSignableRepresentation`, the bytes the KES signature is checked over (#698),
 -- and for a header or a block the header hash, which is over the bytes read; a block also reports
--- its block body hash.
+-- its block body hash. `kind` "vrfcheck" takes a 32-byte seed and a message instead (#712): it makes
+-- a Praos VRF key of the seed and its certificate of the message, and reports, for the output as
+-- evaluated, empty, one byte longer and one byte shorter, whether the era's decoder reads the
+-- certificate `[output, proof]` and whether `verifyCertified` accepts it.
 data Case = Case
   { name :: String
   , era :: String
@@ -127,11 +136,55 @@ type PraosHeader = Praos.Header StandardCrypto
 
 type LeiosHeader = Leios.Header StandardCrypto
 
+-- | A definite byte string's CBOR (shorter than 65536 bytes).
+cborBytes :: BS.ByteString -> BS.ByteString
+cborBytes b
+  | n < 24 = BS.singleton (0x40 + fromIntegral n) <> b
+  | n < 256 = BS.pack [0x58, fromIntegral n] <> b
+  | otherwise = BS.pack [0x59, fromIntegral (n `div` 256), fromIntegral (n `mod` 256)] <> b
+  where
+    n = BS.length b
+
+-- | The VRF check of a certificate whose output is replaced: see `Case`.
+vrfCheck :: Binary.Version -> LBS.ByteString -> Value
+vrfCheck version raw =
+  object
+    [ "accepted" .= True
+    , "vrf"
+        .= object
+          [ "vk" .= hexBytes (rawSerialiseVerKeyVRF vk)
+          , "proof" .= hexBytes proof
+          , "output" .= hexBytes out
+          , "checks" .= map check [out, BS.empty, out <> BS.singleton 0, BS.take (BS.length out - 1) out]
+          ]
+    ]
+  where
+    (seed, message) = BS.splitAt 32 (LBS.toStrict raw)
+    sk = genKeyVRF (mkSeedFromBytes seed) :: SignKeyVRF PraosVRF
+    vk = deriveVerKeyVRF sk
+    (output, cert) = evalVRF () message sk
+    out = getOutputVRFBytes output
+    proof = rawSerialiseCertVRF cert
+    check o =
+      let encoded = LBS.fromStrict (BS.singleton 0x82 <> cborBytes o <> cborBytes proof)
+       in case Binary.decodeFull version encoded :: Either Binary.DecoderError (CertifiedVRF PraosVRF BS.ByteString) of
+            Left failure -> object ["length" .= BS.length o, "decoded" .= False, "failure" .= show failure]
+            Right certified ->
+              object ["length" .= BS.length o, "decoded" .= True, "verified" .= verifyCertified () vk message certified]
+
+versionOf :: String -> Either CaseError Binary.Version
+versionOf e = case e of
+  "shelley" -> Right (Binary.natVersion @2)
+  "alonzo" -> Right (Binary.natVersion @5)
+  "babbage" -> Right (Binary.natVersion @7)
+  "conway" -> Right (Binary.natVersion @9)
+  other -> Left (UnsupportedEra other)
+
 runCase :: Case -> IO Value
 runCase c = do
   raw <- either (die . show . NotHex) (pure . LBS.fromStrict) (Hex.decode (Text.encodeUtf8 (bytes c)))
   let k = kind c
-  result <- either (die . show) pure $ case era c of
+  result <- either (die . show) pure $ if k == "vrfcheck" then (`vrfCheck` raw) <$> versionOf (era c) else case era c of
     "shelley" -> readCase @TPraosHeader @ShelleyEra (Binary.natVersion @2) "Shelley" k raw
     "allegra" -> readCase @TPraosHeader @AllegraEra (Binary.natVersion @3) "Allegra" k raw
     "mary" -> readCase @TPraosHeader @MaryEra (Binary.natVersion @4) "Mary" k raw

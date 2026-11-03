@@ -1027,8 +1027,7 @@
         "issues": [
           700,
           708,
-          711,
-          712
+          711
         ]
       },
       "page": "docs/compatibility/ledger-recd-records.md"

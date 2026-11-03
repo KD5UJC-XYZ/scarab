@@ -95,6 +95,23 @@ class TPraosSuite extends FunSuite:
     assertEquals(firstError(bad), Some(TPraosError.BadNonceVrf(Vrf.Result.OutputMismatch)))
   }
 
+  // A header decodes with a VRF output of any length (`OutputVRF`, #712); the reference refuses it in
+  // `vrfChecks` (`TPraos/Rules/Overlay.hs:168-184`), the nonce certificate before the leader one.
+  test("a VRF output of another length is refused by the VRF checks, nonce first") {
+    val h = headers.head
+    val vrf = h.vrf.asInstanceOf[HeaderVrf.TPraos]
+    val empty = vrf.nonce.copy(output = Bytes.empty)
+    val longer = vrf.leader.copy(output = vrf.leader.output ++ Bytes(Vector(0.toByte)))
+    assertEquals(
+      firstError(h.copy(vrf = vrf.copy(nonce = empty, leader = longer))),
+      Some(TPraosError.BadNonceVrf(Vrf.Result.Malformed(Vrf.Failure.ClaimedOutputLength(0))))
+    )
+    assertEquals(
+      firstError(h.copy(vrf = vrf.copy(leader = longer))),
+      Some(TPraosError.BadLeaderVrf(Vrf.Result.Malformed(Vrf.Failure.ClaimedOutputLength(65))))
+    )
+  }
+
   test("a block from the wrong genesis delegate in an active overlay slot is rejected") {
     val h = headers.head
     val rotated = lite.genDelegs.keys.toVector.sortBy(_.hex)

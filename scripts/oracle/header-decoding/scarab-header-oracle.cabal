@@ -5,6 +5,6 @@ version: 0.1.0.0
 build-type: Simple
 executable scarab-header-oracle
   main-is: Main.hs
-  build-depends: base, cardano-protocol, cardano-protocol-tpraos, cardano-ledger-dijkstra, cardano-ledger-conway, cardano-ledger-babbage, cardano-ledger-alonzo, cardano-ledger-mary, cardano-ledger-allegra, cardano-ledger-shelley, cardano-ledger-core, cardano-ledger-binary, cardano-crypto-class, bytestring, aeson, base16-bytestring, text
+  build-depends: base, cardano-protocol, cardano-protocol-tpraos, cardano-ledger-dijkstra, cardano-ledger-conway, cardano-ledger-babbage, cardano-ledger-alonzo, cardano-ledger-mary, cardano-ledger-allegra, cardano-ledger-shelley, cardano-ledger-core, cardano-ledger-binary, cardano-crypto-class, cardano-crypto-praos, bytestring, aeson, base16-bytestring, text
   default-language: Haskell2010
   ghc-options: -Wall -Werror
