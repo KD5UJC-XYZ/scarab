@@ -12,6 +12,7 @@ authoritative recipe; this page adds the order of work and the check before a co
 | Pre-Conway sets (Shelley to Babbage) | `pre_conway_cases.py` | `fixtures/reference/pre-conway-sets` | `PreConwaySetsReferenceSuite` |
 | Definite and indefinite byte strings | `definite_bytes_cases.py` | `fixtures/reference/definite-bytes` | `DefiniteBytesReferenceSuite` |
 | Block headers and the bytes their KES signature covers ([its own harness](../../scripts/oracle/header-decoding/README.md)) | `scripts/oracle/header-decoding/header_cases.py` | `fixtures/reference/header-decoding` | `HeaderDecodingReferenceSuite` |
+| Leios blocks and headers as the Leios testnet's build reads them ([its own harness](../../scripts/oracle/leios-testnet/README.md), built from that build's revisions) | `scripts/oracle/leios-testnet/leios_cases.py` | `fixtures/reference/leios-testnet-blocks` | `LeiosTestnetBlockReferenceSuite` |
 
 1. Add the case to the corpus's generator in `scripts/oracle/conway-decoding/`: one encoding that
    breaks the rule and a twin that keeps it, written by hand, not produced by Scarab.
