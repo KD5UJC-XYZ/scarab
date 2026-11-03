@@ -15,3 +15,6 @@
   state (LeiosNotify 65,535 bytes in every state, as `byteLimitsLeiosNotify`; LeiosFetch's limits
   were already the build's), with no depth or item budget of the decoder's own, and no encoder
   budget.
+- LeiosNotify checks each vote's hash before reading its seat or signature. Announcement encoding
+  rebuilds the hard-fork wrapper while keeping the embedded header bytes. The client waits without
+  a deadline in Busy and allows 60 seconds for Done in Quit, as the testnet build does.

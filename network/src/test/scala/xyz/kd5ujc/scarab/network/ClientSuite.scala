@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.network
 import cats.effect.{IO, Ref}
 import cats.effect.testkit.TestControl
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncFixtures}
+import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncFixtures, LeiosNotify}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Message
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
@@ -13,6 +13,34 @@ import Peers.*
 
 class ClientSuite extends FailsOnUncaught:
   private val Origin = ChainSync.Point.Origin
+
+  test("LeiosNotify: Busy waits beyond ten minutes for the server notification"):
+    TestControl
+      .executeEmbed(typed {
+        linked(protocols = Set(Protocols.LeiosNotify)).use { (client, server) =>
+          for
+            c <- client.channel(Protocols.LeiosNotify)
+            s <- server.channel(Protocols.LeiosNotify)
+            result <- typed(
+              s.recv(LeiosNotify.SmallByteLimit)(b => ChainSync.DecodeResult.Decoded((), b.size)) *>
+                IO.sleep(11.minutes) *> s.send(Bytes(Vector(0x81.toByte, 0x02.toByte)))
+            ).background.use(_ => LeiosNotifyClient[IO](c).requestNext)
+          yield result.message
+        }
+      })
+      .map(r => assertEquals(r, Right(LeiosNotify.Message.Canceled)))
+
+  test("LeiosNotify: Quit waits sixty seconds for Done"):
+    TestControl
+      .executeEmbed(typed {
+        linked(protocols = Set(Protocols.LeiosNotify)).use { (client, _) =>
+          client.channel(Protocols.LeiosNotify).flatMap(c => LeiosNotifyClient[IO](c).quit)
+        }
+      }.timed)
+      .map { (elapsed, result) =>
+        assertEquals(result, Left(NetworkError.Timeout(Protocols.LeiosNotify, "Quit")))
+        assertEquals(elapsed, 60.seconds)
+      }
 
   private def chainSync(
       intersect: Vector[ChainSync.Point] => Message[Bytes],

@@ -131,7 +131,12 @@ object LeiosChainProbe extends IOApp:
     for
       notify <- mux
         .channel(Protocols.LeiosNotify)
-        .map(LeiosNotifyClient[IO](_, LeiosNotifyClient.Settings(busyTimeout = 30.seconds)))
+        .map(
+          LeiosNotifyClient[IO](
+            _,
+            LeiosNotifyClient.Settings(busyTimeout = ProtocolDeadline.After(30.seconds))
+          )
+        )
       r <- Handle[IO, NetworkError].attempt(notify.requestNext)
       _ <- r match
         case Right(o) => IO.println(s"notify: ${o.message.toString.take(120)}")

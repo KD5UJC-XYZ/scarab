@@ -31,19 +31,18 @@ private[protocol] object LeiosNotifyDecoder:
       start <- position
       _ <- enforceSize(3, malformed(index, CborFault.NotAnArray))
       hash <- bytes(malformed(index, CborFault.FieldNotBytes(0)))
+      rbHash <- StateT.liftF[Result, Cursor, RbHash](
+        RbHash.fromBytes(hash).toRight(malformed(index, CborFault.HashNotThirtyTwoBytes(hash.size)))
+      )
       seat <- unsigned(0, Word16.Max, malformed(index, CborFault.SeatAbove16Bits))
       signature <- bytes(malformed(index, CborFault.FieldNotBytes(2)))
       end <- position
       raw <- StateT.inspect[Result, Cursor, Bytes](_.input.slice(start, end))
       decoded <- StateT.liftF[Result, Cursor, Vote](
         (
-          RbHash
-            .fromBytes(hash)
-            .toRight(CborFault.HashNotThirtyTwoBytes(hash.size))
-            .leftMap(f => BlsError.MalformedCbor(f)),
           SeatId.fromInt(seat.toInt),
           Signature.decoded(signature)
-        ).mapN(Vote(_, _, _)).leftMap(LeiosWireError.BadVote(index, _))
+        ).mapN(Vote(rbHash, _, _)).leftMap(LeiosWireError.BadVote(index, _))
       )
     yield decoded -> raw
 

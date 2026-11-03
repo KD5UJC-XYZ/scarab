@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.bls.Vote
 import xyz.kd5ujc.scarab.codec.{Bytes, Value}
 
@@ -44,7 +45,7 @@ object LeiosNotify:
     case Canceled
     case RequestNext
 
-    /** The announcing ranking-block header, exactly as ChainSync diffuses it (original bytes). */
+    /** The received header envelope. Encoding rebuilds its wrapper and retains the header bytes. */
     case BlockAnnouncement(header: Bytes)
     case BlockOffer(point: EbPoint, ebSize: Word32)
     case BlockTxsOffer(point: EbPoint)
@@ -72,7 +73,13 @@ object LeiosNotify:
     case Message.Canceled    => LeiosWire.encode(tagged(2))
     case Message.RequestNext => LeiosWire.encode(tagged(3))
     case Message.BlockAnnouncement(h) =>
-      arrayWithVerbatim(Vector(Value.UInt(BigInt(4))), Vector(h))
+      for
+        header <- HfcHeader
+          .decode(h)
+          .leftMap(e => LeiosWireError.Syntax(ProtocolError.HfcHeader(e)))
+        encoded <- HfcHeader.encode(header).leftMap(LeiosWireError.Syntax(_))
+        message <- arrayWithVerbatim(Vector(Value.UInt(BigInt(4))), Vector(encoded))
+      yield message
     case Message.BlockOffer(p, size) =>
       LeiosWire.encode(tagged(5, pointValue(p), Value.UInt(BigInt(size.toLong))))
     case Message.BlockTxsOffer(p) => LeiosWire.encode(tagged(6, pointValue(p)))

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
-import xyz.kd5ujc.scarab.crypto.bls.{BlsError, SeatId, Seed, SecretKey, Vote}
+import xyz.kd5ujc.scarab.crypto.bls.{BlsError, CborFault, SeatId, Seed, SecretKey, Vote}
 import xyz.kd5ujc.scarab.codec.Bytes
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
@@ -169,6 +169,31 @@ class LeiosCodecSuite extends ScalaCheckSuite:
       decodePrefix(State.Busy, bs(0x82, 0x07, 0x9f) ++ seventeen.head ++ bs(0xff)),
       Left(LeiosWireError.BadField(7, LeiosField.Votes))
     )
+  }
+
+  test("LeiosNotify: a vote's hash is checked before reading its seat or signature") {
+    import LeiosNotify.*
+    Vector(31, 33).foreach { size =>
+      val prefix = bs(0x82, 0x07, 0x81, 0x83, 0x58, size) ++
+        Bytes.wrap(Array.fill[Byte](size)(0))
+      val expected = Left(
+        LeiosWireError.BadVote(0, BlsError.MalformedCbor(CborFault.HashNotThirtyTwoBytes(size)))
+      )
+      assertEquals(decodePrefix(State.Busy, prefix), expected)
+      assertEquals(decodePrefix(State.Busy, prefix ++ bs(0xf6)), expected)
+    }
+  }
+
+  test("LeiosNotify: encoding rebuilds the announcement wrapper and keeps the header bytes") {
+    import LeiosNotify.*
+    // Nonminimal array, era, tag and byte-string heads are accepted by the reference.
+    // Its encoder rebuilds those heads but keeps the signed header's original bytes.
+    val rawHeader = bs(0x18, 0x00)
+    val wide = bs(0x98, 0x02, 0x18, 0x07, 0xd9, 0x00, 0x18, 0x58, 0x02) ++ rawHeader
+    val canonical = bs(0x82, 0x07, 0xd8, 0x18, 0x42) ++ rawHeader
+    val message = ok(decodePrefix(State.Busy, bs(0x82, 0x04) ++ wide))._1
+    assertEquals(message, Message.BlockAnnouncement(wide))
+    assertEquals(encode(message), Right(bs(0x82, 0x04) ++ canonical))
   }
 
   test(
@@ -574,15 +599,16 @@ class LeiosCodecSuite extends ScalaCheckSuite:
     )
   }
 
-  test("LeiosNotify: an announced header is written as the bytes it came with") {
+  test("LeiosNotify: a nonminimal era index is rewritten without changing the embedded header") {
     import LeiosNotify.*
     // a Dijkstra envelope whose era index is written in two bytes (`decodeWord8` takes it)
     val header = bs(0x82, 0x18, 0x07, 0xd8, 0x18, 0x43, 0x18, 0x02, 0x01)
+    val canonical = bs(0x82, 0x07, 0xd8, 0x18, 0x43, 0x18, 0x02, 0x01)
     val bytes = ok(encode(Message.BlockAnnouncement(header)))
-    assertEquals(bytes, bs(0x82, 0x04) ++ header)
+    assertEquals(bytes, bs(0x82, 0x04) ++ canonical)
     assertEquals(
       decodePrefix(State.Busy, bytes),
-      Right((Message.BlockAnnouncement(header), bytes.size))
+      Right((Message.BlockAnnouncement(canonical), bytes.size))
     )
   }
 end LeiosCodecSuite
