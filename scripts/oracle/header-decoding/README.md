@@ -7,7 +7,9 @@ The harness calls the released header decoders of `cardano-protocol` 0.1.0.0 and
 `cardano-protocol-tpraos` 1.6.0.0 (the versions of the pinned ledger checkout, whose header sources
 they match) on original encodings: a TPraos `BHeader` (Shelley to Alonzo), a Praos `Header`
 (Babbage, Conway) or a Leios `Header`, its header body alone, or a ledger `Block` holding the
-header, each at its era's decoder version (Leios at Dijkstra's 12). It records the verdict and the
+header, each at its era's decoder version (Leios at Dijkstra's 12). The generator no longer writes
+Leios cases: the Leios reference is the build of the Leios testnet, and
+[its oracle](../leios-testnet/README.md) has them (#711). It records the verdict and the
 complete failure, and for an accepted case the header hash, a block's body hash and the header
 body's `getSignableRepresentation`, the bytes the KES signature is checked over. No signature or
 ledger rule is checked on a header. A "vrfcheck" case (#712) instead makes a Praos VRF key of a

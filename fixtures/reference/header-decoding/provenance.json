@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "measuredAt": "2026-11-03",
-  "scope": "Unchanged released decoders of block headers: the TPraos BHeader of Shelley and Alonzo (decoder versions 2 and 5), the Praos Header of Babbage and Conway (7 and 9) and the Leios Header (Dijkstra's 12), each read with decodeFullAnnotator, a header body alone with decodeFull, and a ledger Block holding a Shelley-to-Conway header; definite, indefinite, detached (an empty indefinite list with the fields after it) and non-minimal forms of the header, its body, a VRF certificate, the operational certificate, the protocol version and a Leios announcement, with the refusals around them and the bounds of the body size and protocol version; for each accepted case the header hash over the bytes read, the block body hash of a block, and getSignableRepresentation of the header body, the bytes the KES signature is checked over; and, for a Praos VRF key made of a seed, whether a certificate with its output replaced decodes and passes verifyCertified; no ledger rule or KES signature is checked",
+  "scope": "Unchanged released decoders of block headers: the TPraos BHeader of Shelley and Alonzo (decoder versions 2 and 5), the Praos Header of Babbage and Conway (7 and 9), each read with decodeFullAnnotator, a header body alone with decodeFull, and a ledger Block holding a Shelley-to-Conway header; definite, indefinite, detached (an empty indefinite list with the fields after it) and non-minimal forms of the header, its body, a VRF certificate, the operational certificate and the protocol version, with the refusals around them and the bounds of the body size and protocol version; for each accepted case the header hash over the bytes read, the block body hash of a block, and getSignableRepresentation of the header body, the bytes the KES signature is checked over; and, for a Praos VRF key made of a seed, whether a certificate with its output replaced decodes and passes verifyCertified; no ledger rule or KES signature is checked",
   "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
   "compiler": "GHC 9.10.3",
   "packages": {
@@ -35,12 +35,6 @@
       "sourceSha256": "16f4eb6ebf6b8218fda3f5d7b877d44eae441d8e64fb81adcee75bdf8f83059f",
       "matchesPin": true,
       "note": "BHBody and BHeaderRaw read their fields inside decodeRecordNamed (193-241); getSignableRepresentation (170-171)"
-    },
-    "leiosHeader": {
-      "file": "libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs",
-      "sourceSha256": "ab6d1ca77f87385930f1bd339d8e8ff9b2e738ab4bd5b05690c1c945df7bfee4",
-      "matchesPin": true,
-      "note": "HeaderBody, HeaderRaw and EbAnnouncement are RecD records (92-104, 229-257); getSignableRepresentation (139-142)"
     },
     "ocert": {
       "file": "libs/cardano-protocol/src/Cardano/Protocol/TPraos/OCert.hs",
@@ -97,12 +91,13 @@
     "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-header-decoding:local /fixtures/header-inputs.json",
     "unchanged": true
   },
-  "generatorSha256": "965b7957c85c1aa30db2c0510db2afb666db8c5f284fa002331506cff62556c8",
-  "harnessInputSha256": "b0a6055d78f665b88dca46659ddd214c0fdebbc0c7a06434bde1500e61435901",
-  "harnessOutputSha256": "e349b380def6d28cb4245436e751093f5b21cc19adea1cc409f702f5d7c066ae",
-  "casesSha256": "a8f4788b39ad0255185811f38b9bc710e470ade16655a28510ce5743c3a8f2d9",
-  "cases": 147,
-  "accepted": 87,
-  "refused": 60,
-  "originalBytesRetained": true
+  "generatorSha256": "b5161ffe13add4521311d779646a615df7b83d76faed9acbf3f8cf6889db7587",
+  "harnessInputSha256": "441b91338124c6eb538bd9c4fb21dfbcf60c03e0d55801f23a845b373b4d1ab0",
+  "harnessOutputSha256": "ca66ac98b12bf893fb5bb4f5d5496c522514f03faaef2bbc1770149bb2c1b739",
+  "casesSha256": "08521788b68978346b96c9cf1e8eae66e80dd965c4e985b4d6f6c5b393662cdc",
+  "cases": 122,
+  "accepted": 72,
+  "refused": 50,
+  "originalBytesRetained": true,
+  "leiosCasesMoved": "The 25 Leios header cases left this corpus on 2026-11-03 (#711): the Leios reference is the build of the public Leios testnet, whose cases are fixtures/reference/leios-testnet-blocks; the other cases were regenerated unchanged"
 }

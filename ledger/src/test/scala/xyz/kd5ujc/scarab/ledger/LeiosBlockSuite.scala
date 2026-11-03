@@ -8,8 +8,9 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.protocol.{Era, HfcHeader}
 
 /** Headers and blocks captured from the public Leios testnet (`fixtures/leios/testnet`, provenance
-  * in `fixtures/leios/README.md`): the 12-element header in blocks tagged Conway and Dijkstra, the
-  * two body layouts, the certificate, and the genesis `extraConfig`.
+  * in `fixtures/leios/README.md`): the 12-element header, the Dijkstra block and its certificate.
+  * The blocks of `blocks.tsv` are of the network before its restart of 2026-10-18; its blocks of
+  * the Conway tag are not read by the current reference.
   */
 class LeiosBlockSuite extends munit.FunSuite:
   private val dir = Path.of("fixtures", "leios", "testnet")
@@ -102,23 +103,22 @@ class LeiosBlockSuite extends munit.FunSuite:
     val Value.Arr(parts) = body.value: @unchecked
     parts.head.original
 
-  test("a block of the Conway tag keeps the segregated body and the merkle body hash") {
-    val empty = block("conway-tag-empty")
-    assertEquals(empty.layout, LeiosBlock.Layout.Segregated)
-    assertEquals(empty.transactions, Vector.empty)
-    assertEquals(empty.bodySize, 4L)
-    assertEquals(empty.faults, Vector.empty)
-    val withTxs = block("conway-tag-with-txs")
-    assertEquals(withTxs.layout, LeiosBlock.Layout.Segregated)
-    assert(withTxs.transactions.nonEmpty)
-    assertEquals(withTxs.faults, Vector.empty)
-    assertEquals(withTxs.bodyHash, withTxs.header.bodyHash)
-    assertEquals(withTxs.leiosCertificate, None)
+  test("a block of the Conway tag is not a Leios block, nor a Conway one with this header") {
+    // tag 7 is `ShelleyBlock (Praos c) ConwayEra` in the testnet's build (ouroboros-consensus
+    // 2416493b, `Cardano/Block.hs:269-278`): a Praos header of 10 fields, not the Leios header the
+    // previous network's Conway-tagged blocks carried
+    for label <- Vector("conway-tag-empty", "conway-tag-with-txs") do
+      val raw = blocks(label)._2
+      assert(LeiosBlock.decode(raw).left.exists {
+        case ChainError.Decode(_, LedgerDecodeError.UnknownTag(DecodeField.LeiosBlockTag, t)) =>
+          t == 7
+        case _ => false
+      })
+      assert(Block.decode(raw, BigInt(21600)).isLeft, label)
   }
 
   test("a Dijkstra block hashes its whole body, transactions are whole, and the header matches") {
     val txs = block("dijkstra-with-txs")
-    assertEquals(txs.layout, LeiosBlock.Layout.Whole)
     assert(txs.transactions.nonEmpty)
     assertEquals(txs.faults, Vector.empty)
     assertEquals(txs.bodyHash, txs.header.bodyHash)
@@ -130,7 +130,6 @@ class LeiosBlockSuite extends munit.FunSuite:
 
   test("a block that announces an endorser block carries transactions and no certificate") {
     val b = block("dijkstra-announcing-with-txs")
-    assertEquals(b.layout, LeiosBlock.Layout.Whole)
     assert(b.header.leios.announcement.isDefined)
     assert(b.transactions.nonEmpty)
     assertEquals(b.leiosCertificate, None)

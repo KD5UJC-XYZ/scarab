@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-03",
+  "scope": "The block and Leios header decoders of the build the public Leios testnet runs (release rc-2026w44): a block as BlockFetch carries it, [tag, block], read with the envelope of decodeDiskHfcBlock (tag 8 a ledger Block of the Leios header at Dijkstra's decoder version 12, tag 7 a Conway Block of the Praos header at 9), and a Leios header alone with decodeFullAnnotator at 12; the testnet's blocks, those blocks with each list definite, indefinite, detached (an empty indefinite list with the fields after it) or of the wrong length, the certificates in several forms, synthetic transactions with an output value in each form, and Leios headers in the forms of the header decoding oracle; for each accepted case the header hash, size, signed bytes and fields, the block body hash and size, each transaction's id and validity flag and which certificates the body holds; no rule, signature or certificate is checked",
+  "reference": {
+    "release": "input-output-hk/ouroboros-leios rc-2026w44 (tag commit 12998e99018c93a7b4db0a029dc6f4f14cd47624, published 2026-11-01); the testnet's live config.json named MinNodeVersion 11.2.0.164-rc-2026w44 on 2026-11-03",
+    "cardanoNode": "b004fe0c50913dcdaa827a98e68a43d0ccce152a (branch leios-prototype): the release's flake.lock input cardano-node-leios, and the git rev that cardano-node --version reports in ghcr.io/input-output-hk/ouroboros-leios/cardano-node-testnet:rc-2026w44 (sha256:70439665b4b93c58ecaa8f73c8919ac7b358f938dd262b6644cd515270773fca)",
+    "cardanoLedger": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+    "cardanoBase": "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c",
+    "ouroborosConsensus": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+    "ouroborosNetwork": "2f1c154f248659b89523d5679ca532f442e7ed2a",
+    "previousRelease": "rc-2026w43 (cardano-node 65dd69d103e41a749d428ffd05de153ef7c2ab45) pins the same cardano-ledger and cardano-base; its release notes say the wire formats are unchanged"
+  },
+  "compiler": "GHC 9.10.3 (the release builds with 9.6)",
+  "packages": {
+    "cardano-protocol": "0.3.0.0",
+    "cardano-ledger-binary": "1.10.2.0",
+    "cardano-ledger-core": "1.23.0.0",
+    "cardano-ledger-conway": "1.25.0.0",
+    "cardano-ledger-dijkstra": "0.5.0.0",
+    "cardano-crypto-class": "2.6.0.0",
+    "cardano-crypto-leios": "0.3.0.0",
+    "cborg": "0.2.10.0"
+  },
+  "packageSources": "cardano-ledger and cardano-base packages built from the pinned revisions (source-repository-package, as the node's cabal.project); cborg and plutus from Hackage and CHaP at the node's index-state",
+  "sourceFiles": {
+    "leiosHeader": {
+      "file": "cardano-ledger libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs",
+      "sourceSha256": "9d0ec8f02a4ddaab9c549b4d3785ca080ab0d5353e1d53258e590946e42c5a74",
+      "note": "the header body is memoized and signed over its original bytes (164-165); HeaderBody and HeaderRaw are read by decodeRecordNamed (308-344)"
+    },
+    "ledgerBlock": {
+      "file": "cardano-ledger libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+      "sourceSha256": "8b779f5697514e52cd2c5b83ae4e8f9ea1e0b2145e77f3a8f83ec1ffe777228f",
+      "note": "BlockHeaderVersionInfo, two Word32 not validated, and EbReferencesAnnouncement, both decodeRecordNamed (147-166, 184-189)"
+    },
+    "dijkstraBlock": {
+      "file": "cardano-ledger eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Block.hs",
+      "sourceSha256": "48f66aa2f1b7197d97457a820d922231259a335e289225c30505cd907bf32ea4",
+      "note": "decodeRecordNamed \"Block\" (const 2) (34-42)"
+    },
+    "dijkstraBlockBody": {
+      "file": "cardano-ledger eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+      "sourceSha256": "a9beabe40ed67d619335fa2c21963843d0200638a1d5bea192ca70d5f75a7c1e",
+      "note": "the body of three, decodeSeq of the transactions and the nullable certificates (191-208); its hash over its original bytes (120)"
+    },
+    "dijkstraTx": {
+      "file": "cardano-ledger eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
+      "sourceSha256": "cd4956e6a80900e620280758fe2773d5761dc69d54123eef9d3531f6ed9d84b0",
+      "note": "decodeDijkstraTopTxInBlock, decodeRecordNamed of four (175-182)"
+    },
+    "maryValue": {
+      "file": "cardano-ledger eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+      "sourceSha256": "e982f4e74ba5bcd252701f2e8ff17f3d15424da68326aade5055325352c4953b",
+      "note": "decodeValuePair: decodeRecordNamed from decoder version 12, the RecD record below it (308-321)"
+    },
+    "decCBOR": {
+      "file": "cardano-ledger libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs",
+      "sourceSha256": "327ade61b308c1820c9478021ad8589686e03d01c036fbd83df0cea380e8138e",
+      "note": "OutputVRF of the VRF's size and CertifiedVRF by decodeRecordNamed from version 12 (627-652); LeiosCert (721-736)"
+    },
+    "decoder": {
+      "file": "cardano-ledger libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+      "sourceSha256": "2547110ebe97695f6fb9d6765e2ae41058f854ccb419c626f4f2ef7170e6e9b0",
+      "note": "decodeRecordNamed and decodeListLikeT (645-700); decodeBytes and decodeByteArray take chunked strings from version 12 (359-364, 1388-1394)"
+    },
+    "coders": {
+      "file": "cardano-ledger libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Coders.hs",
+      "sourceSha256": "42134eed3d3a87cbfa2972fd5a3340be67e1cb2f3fc120caf8cac0f30f605bf6",
+      "note": "decodeCount (RecD cn) n is unchanged (482); the decoders of a Leios block do not reach it at version 12"
+    },
+    "cardanoNode": {
+      "file": "ouroboros-consensus ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/Node.hs",
+      "sourceSha256": "5526d59d6f57a572d93ecbc5720313f5d79cf8789aa588f1b91036cd3ed8d189",
+      "note": "decodeDiskHfcBlock: enforceSize 2, the tag, tag 7 Conway and 8 Dijkstra (174-199), copied in the harness"
+    },
+    "shelleyBlock": {
+      "file": "ouroboros-consensus ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Block.hs",
+      "sourceSha256": "8b48908643c79dff3f5eb7ccaf76da4a1f2bd64a6390b79db7ddcfaa7650480c",
+      "note": "decodeShelleyBlock and decodeShelleyHeader (332-369)"
+    },
+    "praos2": {
+      "file": "ouroboros-consensus ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/Praos2.hs",
+      "sourceSha256": "c93197f20b4512e9940fefb912d3cd5c749ce88928d31902782fd0cb5f996794",
+      "note": "ShelleyProtocolHeader (Praos2 c) = Leios.Header c (57)"
+    },
+    "cardanoEras": {
+      "file": "ouroboros-consensus ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/Block.hs",
+      "sourceSha256": "7dbcbd55dfaf4cd6fedcba15a9ddbb8db438d42132f1ab7d2fc5191248163efa",
+      "note": "Conway is ShelleyBlock (Praos c), Dijkstra ShelleyBlock (Praos2 c) (269-278)"
+    }
+  },
+  "inputs": {
+    "fixtures/leios/testnet/blocks-rc-2026w44.tsv": "4a7369eb0bbae69c052852fa2d0cf9a01dbddd88589f174bc7a1783478a88d73",
+    "fixtures/leios/testnet/blocks.tsv": "56ff9901f0fed8909eadc8a85583bbd38b4f70b0d8ed854b715fb15371b6094b"
+  },
+  "harness": {
+    "file": "scripts/oracle/leios-testnet/Main.hs",
+    "sha256": "7d08aaf706713e5bf6053c267ba1a210c3b1aa5f647aa99c6174100a722bc94e",
+    "cabalProjectSha256": "1c72a46f8750acb95c9d1a2b92c45556b9b18dc3c3869d385631a0b36a104850",
+    "image": "built from scripts/oracle/leios-testnet/Dockerfile on scarab-plutus176-context-reference:local (sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef)",
+    "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-leios-testnet:local /fixtures/leios-inputs.json"
+  },
+  "generatorSha256": "dab08717f2d32df2dd331b22b4b5ba189c1135059650a6825d397876599b7598",
+  "harnessInputSha256": "8dfe3437a92d1dea6a681c7332b97577b67cea648c37fe18c58507274621c278",
+  "harnessOutputSha256": "176462d0f613e63e652ff18acb6d248392eafda447f88f7e9fdf470aaaf4c762",
+  "casesSha256": "648932fd7a7195ebddae19d3a604ddf26b390f3fa478c283c0e6dc2c76c732df",
+  "cases": 80,
+  "accepted": 41,
+  "refused": 39,
+  "originalBytesRetained": true
+}

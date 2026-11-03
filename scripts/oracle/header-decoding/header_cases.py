@@ -163,33 +163,8 @@ for era in TPRAOS + PRAOS:
                     nonmin=True))
 
 
-LEIOS = "leios"
-case(LEIOS, "header", "definite", header(LEIOS))
-case(LEIOS, "header", "indefinite", header(LEIOS, header_form="indefinite"))
-case(LEIOS, "header", "detached", header(LEIOS, header_form="detached"))
-case(LEIOS, "header", "body indefinite", header(LEIOS, body_form="indefinite"))
-case(LEIOS, "header", "body detached", header(LEIOS, body_form="detached"))
-case(LEIOS, "header", "both detached", header(LEIOS, body_form="detached", header_form="detached"))
-case(LEIOS, "header", "non-minimal heads", header(LEIOS, nonmin=True, announcement=("definite", 5000)))
-case(LEIOS, "header", "vrf certificate indefinite", header(LEIOS, vrf="indefinite"))
-case(LEIOS, "header", "issuer key chunked", header(LEIOS, chunked=True))
-case(LEIOS, "header", "major above the last version", header(LEIOS, major=14))
-case(LEIOS, "header", "minor over a word32", header(LEIOS, minor=2**32))
-case(LEIOS, "header", "announcement", header(LEIOS, announcement=("definite", 5000)))
-case(LEIOS, "header", "announcement indefinite", header(LEIOS, announcement=("indefinite", 5000)))
-case(LEIOS, "header", "announcement detached", header(LEIOS, announcement=("detached", 5000)))
-case(LEIOS, "header", "announcement size over a word32", header(LEIOS, announcement=("definite", 2**32)))
-case(LEIOS, "header", "protocol version indefinite", header(LEIOS, pv="indefinite"))
-case(LEIOS, "header", "protocol version detached", header(LEIOS, pv="detached"))
-case(LEIOS, "header", "operational certificate indefinite", header(LEIOS, ocert="indefinite"))
-case(LEIOS, "header", "operational certificate detached", header(LEIOS, ocert="detached"))
-case(LEIOS, "header", "word64 values at and above 2^63", header(LEIOS, large=True))
-case(LEIOS, "header", "vrf output empty", header(LEIOS, output=0))
-case(LEIOS, "header", "detached with a detached announcement and non-minimal heads",
-     header(LEIOS, body_form="detached", header_form="detached", nonmin=True, announcement=("detached", 7)))
-case(LEIOS, "headerbody", "definite", items(fields(LEIOS)))
-case(LEIOS, "headerbody", "indefinite", items(fields(LEIOS), "indefinite"))
-case(LEIOS, "headerbody", "detached", items(fields(LEIOS), "detached"))
+# The Leios header's cases are the Leios testnet oracle's (scripts/oracle/leios-testnet/leios_cases.py),
+# whose reference is the build that testnet runs (#711); it writes them with `fields` and `header`.
 
 
 # The VRF check of #712: a key of a seed and its certificate of a message, with the output replaced.
