@@ -128,7 +128,7 @@ final class GenesisRuntime[F[_]: Async] private (
             }
             val offset = state.flatMap {
               case _: NodeHeaderState.Byron =>
-                Some(BigInt(history.byron.slotLengthMillis) * slot.value)
+                Some(history.byron.slotLengthMillis * slot.value)
               case NodeHeaderState.Shelley(_, _, firstEpoch, _) =>
                 if !history.byron.derived then Some(history.slotOffsetMillis(slot.value))
                 else firstEpoch.map(epoch => history.resolved(epoch).slotOffsetMillis(slot.value))

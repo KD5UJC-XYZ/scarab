@@ -787,13 +787,28 @@ object TxIn:
   given Ordering[TxIn] = (a, b) =>
     val ids = a.id.compareTo(b.id)
     if ids != 0 then ids else a.index.compare(b.index)
+
+  /** `decodeRecordNamed` of a transaction id and a `TxIx`, a `Word16` (`newtype TxIx = TxIx {unTxIx
+    * :: Word16}`, `libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs:917-921`,
+    * cardano-ledger f649f975): an index past 65535 is refused, as `decodeWord16` refuses it (#720).
+    */
   def decode(n: Node)(using ByteStrings): Either[LedgerDecodeError, TxIn] =
     CborRead
       .arrayN(n, 2, DecodeField.Input)
       .flatMap(xs =>
         (
           CborRead.bytesN(xs(0), 32, DecodeField.InputId),
-          CborRead.uint(xs(1), DecodeField.InputIndex)
+          CborRead
+            .uint(xs(1), DecodeField.InputIndex)
+            .flatMap(i =>
+              Either.cond(
+                i <= MaxIndex,
+                i,
+                LedgerDecodeError.NumberOutOfRange(DecodeField.InputIndex, i, 0, MaxIndex)
+              )
+            )
         )
           .mapN(TxIn.apply)
       )
+
+  private val MaxIndex = BigInt(0xffff)

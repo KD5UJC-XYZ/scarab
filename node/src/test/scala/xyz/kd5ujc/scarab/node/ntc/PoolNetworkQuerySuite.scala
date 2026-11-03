@@ -7,7 +7,6 @@ import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorState}
 import xyz.kd5ujc.scarab.ledger.Credential
 import xyz.kd5ujc.scarab.ledger.state.{KeyHash, LedgerState, ShelleyBasedEra, StakePool}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
-import xyz.kd5ujc.scarab.protocol.Era
 
 /** B27: a registered pool whose reward account is on another network than the node's (a
   * registration before protocol version 5, B22) is reported on the node's network, as the reference
@@ -53,7 +52,7 @@ class PoolNetworkQuerySuite extends FunSuite:
         NtcGolden.queryEnv,
         QueryView(point, blockNo, state),
         Map.empty,
-        NtcQuery.IfCurrent(Era.Conway.index, query)
+        NtcQuery.IfCurrent(QueryEra.Conway, query)
       )
       .getOrElse(fail(s"$query is not answered"))
 

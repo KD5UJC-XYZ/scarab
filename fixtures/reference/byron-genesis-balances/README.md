@@ -32,6 +32,7 @@ An acceptance keeps the genesis UTxO `fromBalances` makes of each field (`result
 | fields | `nonAvvmBalances` twice, the first valid (accepted) or not an object (refused); a balance twice, both valid (the first holds) or the second's amount not a number (refused); either field left out; `nonAvvmBalances` an array; the whole value an array | as listed |
 
 Scope: the parse of the whole file, its hash, and the two balance fields with the genesis UTxO made
-of them. Reading the other fields as `FromJSON GenesisData` reads them is
-[#734](https://github.com/KD5UJC-XYZ/scarab/issues/734). `ByronGenesisBalancesReferenceSuite` runs
-every case through Scarab's reader (`ByronGenesisFile.read`) and `ByronLedger.genesisUtxo`.
+of them. The other fields, as `FromJSON GenesisData` reads them, are the
+[data corpus](../byron-genesis-data/README.md) (#734). `ByronGenesisBalancesReferenceSuite` runs
+every case through Scarab's reader (`ByronGenesisFile.read` and `genesisBalances`) and
+`ByronLedger.genesisUtxo`.

@@ -75,7 +75,7 @@ class HaskellStateOverlapSuite extends FunSuite:
         NtcGolden.queryEnv,
         QueryView(point, blockNo, state),
         Map.empty,
-        NtcQuery.IfCurrent(xyz.kd5ujc.scarab.protocol.Era.Conway.index, query)
+        NtcQuery.IfCurrent(QueryEra.Conway, query)
       )
       .map(result)
       .getOrElse(fail(s"$query is not answered"))

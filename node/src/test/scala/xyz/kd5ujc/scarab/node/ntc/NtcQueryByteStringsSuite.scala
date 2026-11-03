@@ -10,7 +10,8 @@ import xyz.kd5ujc.scarab.ledger.{DecodeField, LedgerDecodeError}
   * `Ouroboros/Consensus/Shelley/Ledger/Query.hs:960` at ouroboros-consensus 82ecba32), which is
   * `eraDecoder @era decCBOR` at the era's *lowest* protocol version (`Era.hs:236-243`,
   * cardano-ledger f649f975) — 2..9, below the version 12 where `decodeBytes` starts accepting a
-  * chunked string. Evidence: #437.
+  * chunked string. Evidence: #437. Dijkstra's lowest version is 12, and its queries take one
+  * (#720).
   */
 class NtcQueryByteStringsSuite extends FunSuite:
   private val hash28 = Bytes(Vector.fill(28)(0xab.toByte))
@@ -71,11 +72,23 @@ class NtcQueryByteStringsSuite extends FunSuite:
     )
   }
 
-  test("an era index this node does not know reads the definite policy too") {
-    // #437 records this as our choice, not a reference verdict: the reference decodes an argument only
-    // for an era it knows. The answer is the one every era this node knows gives, and this pins it.
+  test("an era index past the last era is refused, before any argument is read (#720)") {
+    assertEquals(NtcQuery.decode(chunkedDRepKeyHash(8)), Left(NtcQuery.Error.UnknownEra(8)))
+    assertEquals(NtcQuery.decode(chunkedDRepKeyHash(99)), Left(NtcQuery.Error.UnknownEra(99)))
     assertEquals(
-      NtcQuery.decode(chunkedDRepKeyHash(99)),
-      Left(NtcQuery.Error.IndefiniteBytes("key hash"))
+      NtcQuery.decode(chunkedDRepKeyHash(256)),
+      Left(NtcQuery.Error.Word8Range("era index"))
+    )
+  }
+
+  test("a Dijkstra query reads a chunked key hash: its arguments read at version 12 (#720)") {
+    assert(
+      NtcQuery
+        .decode(chunkedDRepKeyHash(QueryEra.Dijkstra.index))
+        .exists {
+          case NtcQuery.IfCurrent(QueryEra.Dijkstra, LedgerQuery.GetDRepDelegations(dreps)) =>
+            dreps.size == 3
+          case _ => false
+        }
     )
   }

@@ -52,14 +52,17 @@ class NtcQuerySuite extends FunSuite:
     cases.foreach { (tag, query) =>
       assertEquals(
         decode(conway(_.array(1).uint(tag))),
-        Right(NtcQuery.IfCurrent(6, query)),
+        Right(NtcQuery.IfCurrent(QueryEra.Conway, query)),
         tag.toString
       )
     }
   }
 
-  test("sets are tag 258 arrays; a plain array is accepted too") {
-    val expected = Right(NtcQuery.IfCurrent(6, LedgerQuery.GetStakeDelegDeposits(Set(key))))
+  test("a plain set is a tag 258 array; a ledger set may be a plain array (#709)") {
+    // GetStakeDelegDeposits reads its set with `fromCBOR`, GetFilteredDelegationsAndRewardAccounts
+    // with the ledger's decoder (`fixtures/reference/ntc-query-arguments`)
+    val expected =
+      Right(NtcQuery.IfCurrent(QueryEra.Conway, LedgerQuery.GetStakeDelegDeposits(Set(key))))
     assertEquals(
       decode(conway { w =>
         w.array(2).uint(22).set(1); credential(w)
@@ -70,11 +73,22 @@ class NtcQuerySuite extends FunSuite:
       decode(conway { w =>
         w.array(2).uint(22).array(1); credential(w)
       }),
-      expected
+      Left(NtcQuery.Error.ExpectedSetTag("credentials"))
+    )
+    assertEquals(
+      decode(conway { w =>
+        w.array(2).uint(10).array(1); credential(w)
+      }),
+      Right(
+        NtcQuery.IfCurrent(
+          QueryEra.Conway,
+          LedgerQuery.GetFilteredDelegationsAndRewardAccounts(Set(key))
+        )
+      )
     )
     assertEquals(
       decode(conway { w => w.array(2).uint(22).set(0) }),
-      Right(NtcQuery.IfCurrent(6, LedgerQuery.GetStakeDelegDeposits(Set.empty)))
+      Right(NtcQuery.IfCurrent(QueryEra.Conway, LedgerQuery.GetStakeDelegDeposits(Set.empty)))
     )
   }
 
@@ -82,7 +96,7 @@ class NtcQuerySuite extends FunSuite:
     val txid = Bytes(Vector.fill(32)(0x11.toByte))
     assertEquals(
       decode(conway { w => w.array(2).uint(15).set(1).array(2).bytes(txid).uint(2) }),
-      Right(NtcQuery.IfCurrent(6, LedgerQuery.GetUTxOByTxIn(Set(TxIn(txid, 2)))))
+      Right(NtcQuery.IfCurrent(QueryEra.Conway, LedgerQuery.GetUTxOByTxIn(Set(TxIn(txid, 2)))))
     )
     assertEquals(
       decode(conway { w =>
@@ -91,7 +105,7 @@ class NtcQuerySuite extends FunSuite:
       }),
       Right(
         NtcQuery.IfCurrent(
-          6,
+          QueryEra.Conway,
           LedgerQuery.GetDRepDelegations(
             Set(DRep.AlwaysAbstain, DRep.AlwaysNoConfidence, DRep.Registered(key))
           )
@@ -100,18 +114,21 @@ class NtcQuerySuite extends FunSuite:
     )
     assertEquals(
       decode(conway(_.array(2).uint(19).array(0))),
-      Right(NtcQuery.IfCurrent(6, LedgerQuery.GetPoolState(None)))
+      Right(NtcQuery.IfCurrent(QueryEra.Conway, LedgerQuery.GetPoolState(None)))
     )
     assertEquals(
       decode(conway { w => w.array(2).uint(19).array(1).set(1).bytes(hash28) }),
-      Right(NtcQuery.IfCurrent(6, LedgerQuery.GetPoolState(Some(Set(hash28)))))
+      Right(NtcQuery.IfCurrent(QueryEra.Conway, LedgerQuery.GetPoolState(Some(Set(hash28)))))
     )
     assertEquals(
       decode(conway { w =>
         w.array(4).uint(27).set(0); w.set(0); w.set(1).uint(0)
       }),
       Right(
-        NtcQuery.IfCurrent(6, LedgerQuery.GetCommitteeMembersState(Set.empty, Set.empty, Set(0)))
+        NtcQuery.IfCurrent(
+          QueryEra.Conway,
+          LedgerQuery.GetCommitteeMembersState(Set.empty, Set.empty, Set(0))
+        )
       )
     )
   }
@@ -119,7 +136,9 @@ class NtcQuerySuite extends FunSuite:
   test("GetCBOR wraps another query; unknown tags and bad arguments are errors") {
     assertEquals(
       decode(conway(_.array(2).uint(9).array(1).uint(37))),
-      Right(NtcQuery.IfCurrent(6, LedgerQuery.GetCBOR(LedgerQuery.GetStakeDistribution2)))
+      Right(
+        NtcQuery.IfCurrent(QueryEra.Conway, LedgerQuery.GetCBOR(LedgerQuery.GetStakeDistribution2))
+      )
     )
     assert(decode(CborOut.build(_.array(1).uint(9))).isLeft)
     assert(decode(conway(_.array(1).uint(99))).isLeft)
@@ -136,13 +155,43 @@ class NtcQuerySuite extends FunSuite:
       inner(w)
       w.uint(6)
     }
-    assertEquals(decode(anytime(_.array(1).uint(0))), Right(NtcQuery.EraStart(6)))
+    assertEquals(decode(anytime(_.array(1).uint(0))), Right(NtcQuery.EraStart(QueryEra.Conway)))
     Vector[CborOut => Unit](
       _.array(0),
       _.array(1).uint(1),
       _.array(2).uint(0).uint(0),
       _.uint(0)
     ).foreach(inner => assert(decode(anytime(inner)).isLeft))
+  }
+
+  // `decodeNS` and `EraIndex`: a `decodeWord8` index of one of the eight eras of `CardanoEras`;
+  // index 0 is Byron's query, `decodeByronQuery`, a bare tag (#720).
+  test("an era index is one of the eight eras; Byron's query is its bare tag 0 (#720)") {
+    def inEra(era: Int)(q: CborOut => Unit): Bytes = CborOut.build { w =>
+      w.array(2).uint(0).array(2).uint(0).array(2).uint(era)
+      q(w)
+    }
+    def anytime(era: Int): Bytes = CborOut.build { w =>
+      w.array(2).uint(0).array(3).uint(1).array(1).uint(0).uint(era)
+    }
+    assertEquals(decode(inEra(0)(_.uint(0))), Right(NtcQuery.ByronUpdateInterfaceState))
+    assertEquals(decode(inEra(0)(_.uint(1))), Left(NtcQuery.Error.UnknownTag("byron query", 1)))
+    assertEquals(
+      decode(inEra(0)(_.array(1).uint(0))),
+      Left(NtcQuery.Error.ExpectedUnsigned("byron query tag"))
+    )
+    assertEquals(
+      decode(inEra(7)(_.array(1).uint(1))),
+      Right(NtcQuery.IfCurrent(QueryEra.Dijkstra, LedgerQuery.GetEpochNo))
+    )
+    assertEquals(decode(inEra(8)(_.array(1).uint(1))), Left(NtcQuery.Error.UnknownEra(8)))
+    assertEquals(
+      decode(inEra(256)(_.array(1).uint(1))),
+      Left(NtcQuery.Error.Word8Range("era index"))
+    )
+    assertEquals(decode(anytime(7)), Right(NtcQuery.EraStart(QueryEra.Dijkstra)))
+    assertEquals(decode(anytime(8)), Left(NtcQuery.Error.UnknownEra(8)))
+    assertEquals(decode(anytime(0)), Right(NtcQuery.EraStart(QueryEra.Byron)))
   }
 
   test("hard-fork queries reject empty, unknown, extra and missing constructor fields") {

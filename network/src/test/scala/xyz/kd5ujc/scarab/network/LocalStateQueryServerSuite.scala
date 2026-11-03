@@ -64,8 +64,10 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
   ):
     val source: LocalStateQueryServer.Source[IO, Nothing] =
       new LocalStateQueryServer.Source[IO, Nothing]:
+        def queries = xyz.kd5ujc.scarab.protocol.LocalStateQuery.QueryReader.items
         override def forVersion(version: NtcVersion): LocalStateQueryServer.Source[IO, Nothing] =
           new LocalStateQueryServer.Source[IO, Nothing]:
+            def queries = xyz.kd5ujc.scarab.protocol.LocalStateQuery.QueryReader.items
             def acquire(target: Target) =
               Resource.eval(versions.update(_ :+ version)) *> source.acquire(target)
 

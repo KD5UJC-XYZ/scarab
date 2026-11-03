@@ -96,8 +96,14 @@ class TxSubmission2Suite extends munit.FunSuite:
   test("the codec reads each transaction with the era's reader: its refusal, and the id's body") {
     val refusing = new TxSubmission2.TransactionReader:
       def body(original: Bytes) = Left(ProtocolError.TransactionBodyIsNotAMap)
+      def read(original: Bytes) = body(original)
     val whole = new TxSubmission2.TransactionReader:
       def body(original: Bytes) = Right(original)
+      def read(original: Bytes) = body(original)
+    // a transaction framed as one, which the era's decoders refuse
+    val undecodable = new TxSubmission2.TransactionReader:
+      def body(original: Bytes) = Right(original)
+      def read(original: Bytes) = Left(ProtocolError.ExpectedConwayGenTx)
     val wire = hex("82039f8206d8184584a0a0f5f6ff")
     val message = Message.ReplyTxs(Vector(tx))
     assertEquals(
@@ -113,6 +119,17 @@ class TxSubmission2Suite extends munit.FunSuite:
       Right(xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(tx))
     )
     assertEquals(TxSubmission2.decode(State.Txs, Role.Client, wire)(using whole), Right(message))
+    // a reply's transaction is read whole, and one the decoders refuse fails the codec; one this
+    // side sends is written as it is held, and its id is its body's
+    assertEquals(
+      TxSubmission2.decode(State.Txs, Role.Client, wire)(using undecodable),
+      Left(ProtocolError.ExpectedConwayGenTx)
+    )
+    assertEquals(
+      TxSubmission2.encode(State.Txs, Role.Client, message)(using undecodable),
+      Right(wire)
+    )
+    assertEquals(TxSubmission2.bodyId(tx)(using undecodable), TxSubmission2.bodyId(tx)(using whole))
     // the size this codec carries is checked before the reader is asked
     assert(TxSubmission2.bodyId(Bytes(Vector.fill(65537)(0.toByte)))(using whole).isLeft)
   }

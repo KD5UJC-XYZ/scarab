@@ -77,7 +77,7 @@ class WalletPeerReferenceSuite extends FunSuite:
       setup.geometry,
       setup.praos.forks,
       setup.byronParams.fold(EraHistory.ByronParams(50, 1000, 5))(p =>
-        EraHistory.ByronParams(p.epochSlots, BigInt(p.slotLengthMillis), BigInt(p.securityParam))
+        EraHistory.ByronParams(p.epochSlots, p.slotLengthMillis, p.securityParam)
       ),
       setup.globals.maxSupply,
       setup.genesis.raw,
@@ -186,7 +186,7 @@ class WalletPeerReferenceSuite extends FunSuite:
     val nes = fixture.state.nes.copy(es = fixture.state.nes.es.copy(ls = changed))
     val view = fixture.view.copy(state = fixture.state.copy(nes = nes))
     val query =
-      NtcQuery.IfCurrent(Era.Conway.index, LedgerQuery.GetLedgerPeerSnapshot(LedgerPeerKind.All))
+      NtcQuery.IfCurrent(QueryEra.Conway, LedgerQuery.GetLedgerPeerSnapshot(LedgerPeerKind.All))
     assertEquals(
       QueryAnswers.answerOrWhy(fixture.env, view, Map.empty, query),
       Left(
@@ -207,7 +207,7 @@ class WalletPeerReferenceSuite extends FunSuite:
   private def result(nes: NewEpochState[Conway], query: LedgerQuery): Either[Unanswered, Bytes] =
     val view = rich.view.copy(state = rich.state.copy(nes = nes))
     QueryAnswers
-      .answerOrWhy(rich.env, view, Map.empty, NtcQuery.IfCurrent(Era.Conway.index, query))
+      .answerOrWhy(rich.env, view, Map.empty, NtcQuery.IfCurrent(QueryEra.Conway, query))
       .map { encoded =>
         Cbor
           .decode(encoded, Cbor.Limits(allowFloats = true))

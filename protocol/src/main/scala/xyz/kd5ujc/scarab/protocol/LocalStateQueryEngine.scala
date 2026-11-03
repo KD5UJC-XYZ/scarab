@@ -74,7 +74,8 @@ object LocalStateQueryEngine:
       state: State,
       sender: Role,
       message: Message[P],
-      point: ChainSyncEngine.PointCodec[P]
+      point: ChainSyncEngine.PointCodec[P],
+      queries: LocalStateQuery.QueryReader = LocalStateQuery.QueryReader.items
   ): Either[ProtocolError, Bytes] = attempt {
     get(transition(state, sender, message))
     val wire = limits(sender)
@@ -96,7 +97,13 @@ object LocalStateQueryEngine:
             case Failure.PointNotOnChain => 1
         )
       case Message.Query(q) =>
-        get(ProtocolWire.validateItem(q, wire)); outer(2, 3); w.raw(q)
+        // a query that `queries` reads as one item spanning several of a tree is written whole
+        queries.span(q) match
+          case LocalStateQuery.QuerySpan.Prefix(size) if size == q.size =>
+            get(ProtocolWire.validateItems(q, wire))
+          case LocalStateQuery.QuerySpan.Refused => bad(ProtocolError.UndecodableQuery)
+          case _                                 => get(ProtocolWire.validateItem(q, wire))
+        outer(2, 3); w.raw(q)
       case Message.Result(r) =>
         get(ProtocolWire.validateItem(r, wire)); outer(2, 4); w.raw(r)
       case Message.Release      => outer(1, 5)
@@ -110,7 +117,8 @@ object LocalStateQueryEngine:
       state: State,
       sender: Role,
       bytes: Bytes,
-      point: ChainSyncEngine.PointCodec[P]
+      point: ChainSyncEngine.PointCodec[P],
+      queries: LocalStateQuery.QueryReader
   ): DecodeResult[Message[P]] =
     ProtocolWire.prefix {
       val clientTurn = state == State.Idle || state == State.Acquired
@@ -130,7 +138,15 @@ object LocalStateQueryEngine:
             case 0 => Message.Failed(Failure.PointTooOld)
             case 1 => Message.Failed(Failure.PointNotOnChain)
             case _ => bad(ProtocolError.UnknownLocalStateQueryFailure)
-        case (2, 3) if tag == 3   => Message.Query(r.item())
+        case (2, 3) if tag == 3 =>
+          Message.Query(queries.span(bytes.drop(r.position)) match
+            case LocalStateQuery.QuerySpan.Item         => r.item()
+            case LocalStateQuery.QuerySpan.Prefix(size) => r.spanning(size)
+            case LocalStateQuery.QuerySpan.Short        =>
+              // what has arrived still meets the reader's checks, its depth among them
+              r.spanning(bytes.size - r.position)
+              bad(ProtocolError.TruncatedCbor)
+            case LocalStateQuery.QuerySpan.Refused => bad(ProtocolError.UndecodableQuery))
         case (2, 4) if tag == 4   => Message.Result(r.item())
         case (1, 5) if tag == 5   => Message.Release
         case (2, 6) if tag == 6   => Message.ReAcquire(Target.Specific(point.readFrom(r)))

@@ -14,6 +14,7 @@ import Cardano.Ledger.Babbage (BabbageEra)
 import qualified Cardano.Ledger.Binary as Binary
 import Cardano.Ledger.Coin (Coin (..))
 import Cardano.Ledger.Conway (ConwayEra)
+import Cardano.Ledger.Conway.Governance (GovActionId (..), GovActionIx (..))
 import Cardano.Ledger.Core
   ( BlockBody
   , EraBlockBody (hashBlockBody, txSeqBlockBodyL)
@@ -38,6 +39,7 @@ import Data.Aeson.Types (Pair)
 import qualified Data.ByteString.Base16 as Hex
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
 import GHC.Generics (Generic)
@@ -57,6 +59,8 @@ import System.Exit (die)
 -- (#699). A case of `kind` "address" or "account" is the CBOR byte string of an address, read alone
 -- with `DecCBOR Addr` (`fromCborAddr`) or `DecCBOR AccountAddress` (`fromCborAccountAddress`) at the
 -- era's version, the readers of an output's address and of a reward account (#723).
+-- Kind "govactionids" is the set of governance action ids that the node-to-client
+-- query `GetProposals` reads (#700).
 data Case = Case
   { name :: String
   , era :: String
@@ -151,6 +155,20 @@ addressed k version raw = case k of
   "account" -> Just (verdict (Binary.decodeFull version raw :: Either Binary.DecoderError AccountAddress))
   _ -> Nothing
 
+-- | The verdict on a set of governance action ids as `GetProposals` reads it, with
+-- `LC.fromEraCBOR @era` at Conway's lowest protocol version, 9 (`Shelley/Ledger/Query.hs:981`,
+-- ouroboros-consensus 82ecba32) and, when accepted, each id as decoded, `txid#index` (#700).
+govActionIds :: LBS.ByteString -> Value
+govActionIds raw =
+  case Binary.decodeFull (Binary.natVersion @9) raw :: Either Binary.DecoderError (Set.Set GovActionId) of
+    Left failure -> verdict (Left failure :: Either Binary.DecoderError ())
+    Right set ->
+      object
+        [ "accepted" .= True
+        , "actions" .= [ txIdHex t <> "#" <> Text.pack (show (unGovActionIx i))
+                       | GovActionId t i <- Set.toList set ]
+        ]
+
 identified :: Case -> LBS.ByteString -> Maybe Value
 identified c raw = case era c of
   "shelley" -> Just (idsOf @ShelleyEra (Binary.natVersion @2) relayed "Shelley" (kind c) raw)
@@ -170,6 +188,7 @@ runCase c = do
       wits_ = kind c == "witnesses"
       wdrl = body_ && withdrawals c == Just True
   result <- case (ids c, identified c raw, versionOf (era c) >>= \v -> addressed (kind c) v raw) of
+   _ | kind c == "govactionids" -> pure (govActionIds raw)
    (Just True, Just v, _) -> pure v
    (_, _, Just v) -> pure v
    _ -> case (era c, kind c) of

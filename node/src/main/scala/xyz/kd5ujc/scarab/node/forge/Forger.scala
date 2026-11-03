@@ -233,7 +233,14 @@ final class Forger[F[_]: Async, S](
     * wall clock moved meanwhile does not lengthen it.
     */
   private def untilNext(slot: BigInt, instant: Instant, elapsed: FiniteDuration): F[Unit] =
-    val left = Duration.between(instant, geometry.slotStart(slot + 1)).toMillis.millis - elapsed
+    // A wait of a century or more is cut to a century, compared before it is converted: its slot
+    // is one no clock reaches (a Byron slot duration of a `Natural` beyond it, #734), whose
+    // `timeLeft` the reference holds as an unbounded `NominalDiffTime`
+    val until = Duration.between(instant, geometry.slotStart(slot + 1))
+    val bounded =
+      if until.toDays >= Forger.LongestWait.toDays then Forger.LongestWait
+      else until.toMillis.millis
+    val left = bounded - elapsed
     sleep(left.max(1.millis))
 
   /** The slots, as the reference's blockchain time and `knownSlotWatcher` hand them to
@@ -716,6 +723,10 @@ final class Forger[F[_]: Async, S](
     }
 
 object Forger:
+
+  /** The most [[Forger]] sleeps at once: a century, far inside what a `FiniteDuration` holds. */
+  val LongestWait: FiniteDuration = 36500.days
+
   /** What the blockchain time reads: the wait for the system start, an unknown slot, or the slot.
     */
   private[forge] enum Reading:

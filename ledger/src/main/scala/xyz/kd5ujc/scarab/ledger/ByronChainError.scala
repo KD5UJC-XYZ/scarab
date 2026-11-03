@@ -15,7 +15,7 @@ enum ByronChainError:
   case UnknownDelegate(delegate: Bytes)
   case Vocabulary(cause: VocabError)
   case SlotBeforeLastSigned(slot: BigInt, last: BigInt)
-  case SignatureThreshold(key: Bytes, signed: BigInt, window: BigInt, threshold: Long)
+  case SignatureThreshold(key: Bytes, signed: BigInt, window: BigInt, threshold: BigInt)
   case Body(cause: LedgerDecodeError)
   case Ledger(cause: ByronError)
   case InitialBoundaryRequired

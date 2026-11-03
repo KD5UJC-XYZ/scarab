@@ -1010,7 +1010,9 @@
           "TxEnvelopeReferenceSuite",
           "TxEnvelopeSubmissionSuite",
           "RelayedTransactionsSuite",
-          "HeaderDecodingReferenceSuite"
+          "HeaderDecodingReferenceSuite",
+          "NtcQueryRecordsSuite",
+          "DetachedOutputFailureSuite"
         ],
         "paths": [
           "fixtures/reference/recd-records/cases.jsonl",
@@ -1025,8 +1027,6 @@
       },
       "limitations": {
         "issues": [
-          700,
-          708,
           711
         ]
       },
@@ -1209,25 +1209,24 @@
     },
     {
       "id": "ledger-byron-genesis-balances",
-      "component": "Ledger: Byron genesis file and balances (#728, #729, #730)",
+      "component": "Ledger: Byron genesis file (#728, #729, #730, #734)",
       "status": "implemented",
-      "summary": "The Byron genesis read as readGenesisData reads it: parsed as canonical JSON and hashed as rendered; each non-AVVM address decoded whole and held encoded again minimally, each AVVM key read by fromAvvmVK, each amount by Read Word64, the first of two equal keys kept",
+      "summary": "The Byron genesis read as readGenesisData reads it, whichever era the chain starts in: parsed as canonical JSON and hashed as rendered; every field read by its FromJSON GenesisData instance, in its order; each non-AVVM address decoded whole and held encoded again minimally, each AVVM key read by fromAvvmVK, each amount by Read Word64, the first of two equal keys kept",
       "evidence": {
         "suites": [
-          "ByronGenesisBalancesReferenceSuite"
+          "ByronGenesisBalancesReferenceSuite",
+          "ByronGenesisDataReferenceSuite"
         ],
         "paths": [
           "fixtures/reference/byron-genesis-balances/README.md",
-          "scripts/oracle/byron-genesis-balances/README.md"
+          "scripts/oracle/byron-genesis-balances/README.md",
+          "fixtures/reference/byron-genesis-data/README.md",
+          "scripts/oracle/byron-genesis-data/README.md"
         ],
         "issues": [
           728,
           729,
-          730
-        ]
-      },
-      "limitations": {
-        "issues": [
+          730,
           734
         ]
       },
@@ -1401,7 +1400,14 @@
       "summary": "LocalTxSubmission, LocalStateQuery, LocalTxMonitor and whole-block ChainSync over a Unix socket; query coverage partial",
       "evidence": {
         "suites": [
-          "DeepQuerySuite"
+          "DeepQuerySuite",
+          "NtcQueryArgumentsSuite",
+          "NtcQueryRecordsSuite",
+          "QueryGoldenSuite"
+        ],
+        "paths": [
+          "fixtures/reference/ntc-query-arguments/cases.jsonl",
+          "scripts/oracle/ntc-query-arguments/cases.py"
         ]
       },
       "limitations": {
@@ -1411,7 +1417,8 @@
           123,
           330,
           353,
-          356
+          356,
+          726
         ]
       },
       "page": "docs/compatibility/node-to-client.md"

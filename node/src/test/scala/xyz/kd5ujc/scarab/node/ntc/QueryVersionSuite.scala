@@ -14,7 +14,7 @@ class QueryVersionSuite extends FunSuite:
   import LedgerQuery.*
   import NtcVersion.*
 
-  private def query(q: LedgerQuery): NtcQuery = NtcQuery.IfCurrent(6, q)
+  private def query(q: LedgerQuery): NtcQuery = NtcQuery.IfCurrent(QueryEra.Conway, q)
 
   test("all constructor introduction and retirement boundaries follow the reference table") {
     val cases = Vector(

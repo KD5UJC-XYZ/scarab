@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "measuredAt": "2026-11-02",
+  "measuredAt": "2026-11-03",
   "scope": "Unchanged released decoders (decodeFull' at eraProtVerLow) of a transaction input and output of each Shelley-based era, and the era's UTxO written with toCBOR (UTxO era), as encodeShelleyResult writes the GetUTxOWhole, GetUTxOByAddress and GetUTxOByTxIn results; no ledger rule, query server or node is run",
   "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
   "consensusSourceCommit": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
@@ -50,8 +50,8 @@
     }
   },
   "results": {
-    "cases": 110,
-    "answered": 86,
-    "refused": 24
+    "cases": 127,
+    "answered": 99,
+    "refused": 28
   }
 }

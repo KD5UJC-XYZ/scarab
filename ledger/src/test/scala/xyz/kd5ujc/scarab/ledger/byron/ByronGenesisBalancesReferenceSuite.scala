@@ -7,8 +7,8 @@ import io.circe.parser
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{AvvmKeyError, ByronGenesisFile, ConfigProblem}
-import xyz.kd5ujc.scarab.ledger.json.CanonicalJson
+import xyz.kd5ujc.scarab.ledger.{AvvmKeyError, ByronFieldError, ByronGenesisFile, ConfigProblem}
+import xyz.kd5ujc.scarab.ledger.json.CanonicalJson.Kind
 
 /** The balances of a Byron genesis as `readGenesisData` reads them
   * (`Cardano/Chain/Genesis/Data.hs`, cardano-ledger f649f975):
@@ -61,15 +61,22 @@ class ByronGenesisBalancesReferenceSuite extends FunSuite:
 
   /** Scarab's problem for the field the reference's refusal names. */
   private def matches(refusal: Refusal, problem: ConfigProblem): Boolean = (refusal, problem) match
-    case (Refusal.Address, ConfigProblem.Base58Address(_))                                  => true
-    case (Refusal.Address, ConfigProblem.ByronGenesisAddress(_, _))                         => true
-    case (Refusal.Amount, ConfigProblem.IntegerText(_, _))                                  => true
-    case (Refusal.Amount, ConfigProblem.CanonicalJsonKind(_, CanonicalJson.Kind.String, _)) => true
-    case (Refusal.AvvmKeyFormat, ConfigProblem.AvvmKey(_, AvvmKeyError.Format))             => true
+    case (Refusal.Address, ConfigProblem.Base58Address(_))                                   => true
+    case (Refusal.Address, ConfigProblem.ByronGenesisAddress(_, _))                          => true
+    case (Refusal.Amount, ConfigProblem.ByronGenesisValue(_, ByronFieldError.NumberText(_))) => true
+    case (
+          Refusal.Amount,
+          ConfigProblem.ByronGenesisValue(_, ByronFieldError.Kind(Kind.String, _))
+        ) =>
+      true
+    case (Refusal.AvvmKeyFormat, ConfigProblem.AvvmKey(_, AvvmKeyError.Format))       => true
     case (Refusal.AvvmKeyLength(n), ConfigProblem.AvvmKey(_, AvvmKeyError.Length(m))) => n == m
     case (Refusal.Syntax, ConfigProblem.CanonicalJsonSyntax(_, _))                    => true
-    case (Refusal.MissingField, ConfigProblem.MissingField(_, _))                     => true
-    case (Refusal.NotAnObject, ConfigProblem.CanonicalJsonKind(_, CanonicalJson.Kind.Object, _)) =>
+    case (Refusal.MissingField, ConfigProblem.ByronGenesisValue(_, ByronFieldError.Missing)) => true
+    case (
+          Refusal.NotAnObject,
+          ConfigProblem.ByronGenesisValue(_, ByronFieldError.Kind(Kind.Object, _))
+        ) =>
       true
     case _ => false
 

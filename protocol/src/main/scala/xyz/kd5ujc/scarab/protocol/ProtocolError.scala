@@ -76,6 +76,7 @@ enum ProtocolError extends DomainError:
   case InvalidUTF8
   case InvalidUnicodeText
   case ItemLimitExceeded
+  case ItemRunsPastSpan
   case KeepAliveCookieMismatch(expected: KeepAlive.Cookie, actual: KeepAlive.Cookie)
   case KeepAliveCookieOutsideUint16(value: BigInt)
   case KeepAliveIsTerminal
@@ -134,6 +135,7 @@ enum ProtocolError extends DomainError:
   case UnknownByronSubtag
   case UnknownEraIndex
   case UnknownKeepAliveTagStateOrExactArity
+  case UndecodableQuery
   case UnknownLocalStateQueryFailure
   case UnknownLocalStateQueryTagOrArity
   case UnknownLocalTxMonitorTagOrArity
@@ -165,6 +167,12 @@ enum ProtocolError extends DomainError:
   case HfcHeader(cause: HfcHeaderError)
   case PeerSharing(cause: xyz.kd5ujc.scarab.protocol.PeerSharing.Error)
   case Leios(cause: LeiosWireError)
+
+  /** A transaction of a TxSubmission2 reply that the era's ledger decoders refuse, with their typed
+    * reason (the ledger's errors are not visible to the protocols, so it is kept as the
+    * `DomainError` it is).
+    */
+  case UndecodableTransaction(cause: DomainError)
 
   def incomplete: Boolean = this match
     case TruncatedCbor | IncompleteCbor | TruncatedList => true
@@ -244,6 +252,7 @@ enum ProtocolError extends DomainError:
     case InvalidUTF8                             => "invalid UTF-8"
     case InvalidUnicodeText                      => "invalid Unicode text"
     case ItemLimitExceeded                       => "item limit exceeded"
+    case ItemRunsPastSpan                        => "an item runs past the span of its query"
     case KeepAliveCookieMismatch(_, _)           => "KeepAlive cookie mismatch"
     case KeepAliveCookieOutsideUint16(_)         => "KeepAlive cookie outside uint16"
     case KeepAliveIsTerminal                     => "KeepAlive is terminal"
@@ -304,6 +313,7 @@ enum ProtocolError extends DomainError:
     case UnknownByronSubtag                   => "unknown Byron subtag"
     case UnknownEraIndex                      => "unknown era index"
     case UnknownKeepAliveTagStateOrExactArity => "unknown KeepAlive tag, state or exact arity"
+    case UndecodableQuery                     => "the query's decoder refuses it"
     case UnknownLocalStateQueryFailure        => "unknown LocalStateQuery failure"
     case UnknownLocalStateQueryTagOrArity     => "unknown LocalStateQuery tag or arity"
     case UnknownLocalTxMonitorTagOrArity      => "unknown LocalTxMonitor tag or arity"
@@ -339,10 +349,11 @@ enum ProtocolError extends DomainError:
       s"illegal TxSubmission2 message/agency in $state from $sender"
     case Word32Range(field, _) =>
       s"${field.toString.head.toLower}${field.toString.tail} does not fit a Word32"
-    case Codec(cause)       => cause.message
-    case HfcHeader(cause)   => cause.toString
-    case PeerSharing(cause) => cause.message
-    case Leios(cause)       => cause.toString
+    case Codec(cause)                  => cause.message
+    case HfcHeader(cause)              => cause.toString
+    case PeerSharing(cause)            => cause.message
+    case Leios(cause)                  => cause.toString
+    case UndecodableTransaction(cause) => s"undecodable transaction: $cause"
 
 object ProtocolError:
   enum MonitorField:
