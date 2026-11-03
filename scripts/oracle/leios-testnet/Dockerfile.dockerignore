@@ -1,0 +1,7 @@
+**
+!scripts/
+!scripts/oracle/
+!scripts/oracle/leios-testnet/
+!scripts/oracle/leios-testnet/cabal.project
+!scripts/oracle/leios-testnet/Main.hs
+!scripts/oracle/leios-testnet/scarab-leios-testnet-oracle.cabal
