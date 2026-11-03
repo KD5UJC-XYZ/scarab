@@ -1,0 +1,7 @@
+*
+!scripts/
+scripts/*
+!scripts/oracle/
+scripts/oracle/*
+!scripts/oracle/byron-update-state/
+!scripts/oracle/byron-update-state/Main.hs
