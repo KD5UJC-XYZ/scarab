@@ -7,7 +7,13 @@ import io.circe.parser
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{AvvmKeyError, ByronFieldError, ByronGenesisFile, ConfigProblem}
+import xyz.kd5ujc.scarab.ledger.{
+  AvvmKeyError,
+  Block,
+  ByronFieldError,
+  ByronGenesisFile,
+  ConfigProblem
+}
 import xyz.kd5ujc.scarab.ledger.json.CanonicalJson.Kind
 
 /** The balances of a Byron genesis as `readGenesisData` reads them
@@ -127,6 +133,6 @@ class ByronGenesisBalancesReferenceSuite extends FunSuite:
       ByronCbor.bytes(body),
       ByronCbor.uint(ByronCbor.crc32(body))
     )
-    assert(raw.size > ByronCbor.BodyLimits.maxInputBytes)
+    assert(raw.size > Block.MaxInputBytes)
     assertEquals(ByronAddress.reencoded(raw), Right(raw))
   }
