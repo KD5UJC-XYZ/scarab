@@ -20,6 +20,15 @@ enum CanonicalJson:
   case Arr(items: Vector[CanonicalJson])
   case Obj(fields: Vector[(Bytes, CanonicalJson)])
 
+  /** Which kind of value this is, as a schema error names it (`expectedButGotValue`). */
+  def kind: CanonicalJson.Kind = this match
+    case Null    => CanonicalJson.Kind.Null
+    case Bool(_) => CanonicalJson.Kind.Bool
+    case Num(_)  => CanonicalJson.Kind.Number
+    case Str(_)  => CanonicalJson.Kind.String
+    case Arr(_)  => CanonicalJson.Kind.Array
+    case Obj(_)  => CanonicalJson.Kind.Object
+
   /** The first value of `key`, as `fromJSField` finds it (`lookup`,
     * `Text/JSON/Canonical/Class.hs`).
     */
@@ -30,6 +39,10 @@ enum CanonicalJson:
     case _ => None
 
 object CanonicalJson:
+  /** The kinds of value (`JSValue`'s constructors). */
+  enum Kind:
+    case Null, Bool, Number, String, Array, Object
+
   /** Where `parseCanonicalJSON` stops: the offset of the byte it could not take, or the input's
     * length where the input ended too soon.
     */

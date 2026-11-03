@@ -33,3 +33,16 @@ class CanonicalJsonSuite extends FunSuite:
     )
     assertEquals(parsed.toOption.flatMap(_.field("z")), Some(CanonicalJson.Num(1)))
   }
+
+  test("a deep value of the wrong kind is refused, and the refusal prints on a small stack") {
+    val deep = "[" * 200000 + "]" * 200000
+    val text = s"""{"avvmDistr":$deep,"nonAvvmBalances":{}}"""
+    val message = PreprodDeepTx.onSmallStack {
+      CanonicalJson
+        .parse(bytes(text))
+        .left
+        .map(_.toString)
+        .flatMap(xyz.kd5ujc.scarab.ledger.ByronGenesisFile.genesisBalances(_).left.map(_.message))
+    }
+    assertEquals(message, Left("config: byron genesis avvmDistr: expected object but got array"))
+  }

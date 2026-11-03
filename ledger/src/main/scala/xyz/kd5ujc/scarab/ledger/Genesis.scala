@@ -230,7 +230,11 @@ object ByronGenesisFile:
             case other =>
               Left(
                 ConfigError(
-                  ConfigProblem.ExpectedObject("byron genesis", CanonicalJson.toCirce(other))
+                  ConfigProblem.CanonicalJsonKind(
+                    "byron genesis",
+                    CanonicalJson.Kind.Object,
+                    other.kind
+                  )
                 )
               )
         case Some(CanonicalJson.Obj(entries)) =>
@@ -240,7 +244,11 @@ object ByronGenesisFile:
         case Some(other) =>
           Left(
             ConfigError(
-              ConfigProblem.ExpectedObject(s"byron genesis $name", CanonicalJson.toCirce(other))
+              ConfigProblem.CanonicalJsonKind(
+                s"byron genesis $name",
+                CanonicalJson.Kind.Object,
+                other.kind
+              )
             )
           )
     // `FromJSON Word64`: a string, read by `readEither` as `fromJSString` gives it
@@ -253,10 +261,7 @@ object ByronGenesisFile:
       case other =>
         Left(
           ConfigError(
-            ConfigProblem.IntegerText(
-              "byron balance",
-              CanonicalJson.string(CanonicalJson.render(other))
-            )
+            ConfigProblem.CanonicalJsonKind("byron balance", CanonicalJson.Kind.String, other.kind)
           )
         )
     (
