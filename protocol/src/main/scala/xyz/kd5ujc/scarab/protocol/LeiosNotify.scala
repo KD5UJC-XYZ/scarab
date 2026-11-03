@@ -24,6 +24,17 @@ object LeiosNotify:
   enum State:
     case Idle, Busy, Quit, Done
 
+  /** `byteLimitsLeiosNotify` (`LeiosDemoOnlyTestNotify.hs:241-247`): `smallByteLimit`, 65,535 bytes
+    * (ouroboros-network `2f1c154f` `Protocol/Limits.hs:131-132`), in Idle, Busy and Quit; Done has
+    * no receiver. The receiving driver applies it; the decoder has no other bound.
+    */
+  def byteLimit(state: State): Option[Int] = state match
+    case State.Done => None
+    case _          => Some(SmallByteLimit)
+
+  /** `smallByteLimit`: the limit of every state that has a receiver. */
+  val SmallByteLimit: Int = 65535
+
   enum Message:
     /** `[0]`, the server's closing reply to `Quit`. */
     case Done

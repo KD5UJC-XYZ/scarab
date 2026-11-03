@@ -69,31 +69,14 @@ final case class TxBitmaps(windows: Vector[(Word16, Word64)]):
   def count: Long = windows.foldLeft(0L)((n, w) => n + w._2.toBigInt.bitCount)
 
 private[protocol] object LeiosWire:
-  /** Local policy: the CIP bounds an endorser block by 600 kB, a transaction list by the same
-    * order.
+  /** The encoders' bounds: none but the JVM's array size. The build's encoders have none, and the
+    * receiving driver applies the byte limit of the state.
     */
-  val limits: ProtocolWire.Limits =
-    ProtocolWire.Limits(
-      maxMessageBytes = 2500000,
-      maxStringBytes = 2500000,
-      maxHashBytes = 64,
-      maxDepth = 12,
-      maxItems = 65535
-    )
-
-  /** The extent of the first complete CBOR item of `bytes`, if any. */
-  def extent(bytes: Bytes): Either[LeiosWireError, Int] =
-    ProtocolWire
-      .attempt {
-        val reader = new ProtocolWire.Reader(bytes, limits)
-        reader.skip(0)
-        reader.position
-      }
-      .left
-      .map {
-        case error if error.incomplete => LeiosWireError.Incomplete
-        case cause                     => LeiosWireError.Syntax(cause)
-      }
+  val EncodingLimits: Cbor.Limits = Cbor.Limits(
+    maxInputBytes = Int.MaxValue,
+    maxItems = Int.MaxValue,
+    maxStringBytes = Int.MaxValue
+  )
 
   // --- encoding ---
   def nodeOf(v: Value): Node = Node(v, Bytes.empty)
@@ -106,7 +89,7 @@ private[protocol] object LeiosWire:
     )
 
   /** A complete CBOR item, as a node to embed in a message. */
-  def embed(item: Bytes, limits: Cbor.Limits = Cbor.Limits()): Either[LeiosWireError, Node] =
+  def embed(item: Bytes, limits: Cbor.Limits = EncodingLimits): Either[LeiosWireError, Node] =
     Cbor.decode(item, limits).left.map(e => LeiosWireError.Syntax(ProtocolError.Codec(e)))
 
   /** The head of a definite-length array of `n` items. */
@@ -126,7 +109,7 @@ private[protocol] object LeiosWire:
   def arrayWithVerbatim(
       head: Vector[Value],
       verbatim: Vector[Bytes],
-      limits: Cbor.Limits = Cbor.Limits()
+      limits: Cbor.Limits = EncodingLimits
   ): Either[LeiosWireError, Bytes] =
     for
       heads <- all(head)(v => encode(v, limits))
@@ -156,5 +139,5 @@ private[protocol] object LeiosWire:
       )
     )
 
-  def encode(v: Value, limits: Cbor.Limits = Cbor.Limits()): Either[LeiosWireError, Bytes] =
+  def encode(v: Value, limits: Cbor.Limits = EncodingLimits): Either[LeiosWireError, Bytes] =
     Cbor.encode(v, limits).left.map(LeiosWireError.Unencodable(_))

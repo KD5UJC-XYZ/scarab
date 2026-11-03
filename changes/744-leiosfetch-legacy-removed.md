@@ -11,3 +11,7 @@
   `MsgLeiosVotes` a definite list of any number of votes (the bound of sixteen is gone), each a
   definite list of three with a seat of any head width and a signature that may be the identity, and
   an announcement a header in the hard-fork envelope of one of the eras.
+- The Leios mini-protocols are framed with the build's bounds only: the byte limit of the receiving
+  state (LeiosNotify 65,535 bytes in every state, as `byteLimitsLeiosNotify`; LeiosFetch's limits
+  were already the build's), with no depth or item budget of the decoder's own, and no encoder
+  budget.
