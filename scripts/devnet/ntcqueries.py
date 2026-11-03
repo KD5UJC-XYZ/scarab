@@ -19,10 +19,10 @@ def hfc(query):
 
 
 def _order(x):
-    """The `Ord` of an element as the reference's set decoders compare it (#709): a credential
-    `[kind, hash]` puts a script (1) before a key (0) (`data Credential = ScriptHashObj |
-    KeyHashObj`), an `Either` `[side, x]` its `Left` first, a hash its bytes unsigned; anything
-    else its encoding."""
+    """The `Ord` of an element of a plain set, as the reference's set decoder compares it (#709):
+    a credential `[kind, hash]` puts a script (1) before a key (0) (`data Credential =
+    ScriptHashObj | KeyHashObj`), an `Either` `[side, x]` its `Left` first, a hash its bytes
+    unsigned; anything else its encoding."""
     if isinstance(x, list) and len(x) == 2 and x[0] in (0, 1) and isinstance(x[1], (bytes, bytearray)):
         return (0, 1 - x[0], bytes(x[1]))
     if isinstance(x, list) and len(x) == 2 and x[0] in (0, 1) and isinstance(x[1], (int, list)):
@@ -33,8 +33,10 @@ def _order(x):
 
 
 def sset(items):
-    """A set under tag 258 in the order of its elements' `Ord`, which a set read with cardano-binary's
-    `fromCBOR` requires and a set read with the ledger's decoder takes in any order."""
+    """A set under tag 258, in the order a set read with cardano-binary's `fromCBOR` requires for
+    the elements those queries take (credentials, `Either`s, key hashes; `_order`). A set read with
+    the ledger's decoder takes its elements in any order, so its other elements (DReps, addresses,
+    inputs) are ordered by encoding, not by their `Ord`."""
     return Tag(258, sorted(items, key=_order))
 
 

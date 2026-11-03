@@ -1141,9 +1141,11 @@ class NtcQueriesTest(unittest.TestCase):
         self.assertEqual(by_label["hfc:GetInterpreter"], [0, [2, [0]]])
 
     def test_sets_are_tagged_and_sorted(self):
-        encoded = cbor.enc(ntcqueries.sset([[1, b"b"], [0, b"a"]]))
+        # a credential set in the reference's `Ord`: a script (kind 1) before a key (kind 0), then
+        # the hash, as a set read with cardano-binary's `fromCBOR` requires (#709)
+        encoded = cbor.enc(ntcqueries.sset([[0, b"a"], [1, b"b"], [1, b"a"]]))
         self.assertEqual(encoded[:3], bytes.fromhex("d90102"))
-        self.assertLess(encoded.index(b"a"), encoded.index(b"b"))
+        self.assertEqual(encoded[3:], cbor.enc([[1, b"a"], [1, b"b"], [0, b"a"]]))
 
     def test_every_battery_query_is_required(self):
         marked = {label for label, _, implemented in ntcqueries.battery(self.universe()) if not implemented}
