@@ -9,8 +9,10 @@ they match) on original encodings: a TPraos `BHeader` (Shelley to Alonzo), a Pra
 (Babbage, Conway) or a Leios `Header`, its header body alone, or a ledger `Block` holding the
 header, each at its era's decoder version (Leios at Dijkstra's 12). It records the verdict and the
 complete failure, and for an accepted case the header hash, a block's body hash and the header
-body's `getSignableRepresentation`, the bytes the KES signature is checked over. No signature, VRF
-proof or ledger rule is checked, so no key is involved. The
+body's `getSignableRepresentation`, the bytes the KES signature is checked over. No signature or
+ledger rule is checked on a header. A "vrfcheck" case (#712) instead makes a Praos VRF key of a
+seed, evaluates its certificate of a message with `cardano-crypto-praos` 2.2.4.0, and reports for
+outputs of other lengths whether the certificate decodes and whether `verifyCertified` accepts it. The
 [fixtures](../../../fixtures/reference/header-decoding/README.md) retain the original encodings, the
 verdicts, and the source and package pins.
 

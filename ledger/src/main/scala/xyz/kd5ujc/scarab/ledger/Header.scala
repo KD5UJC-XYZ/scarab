@@ -8,7 +8,8 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era, NtNHeader, ProtocolError}
 import xyz.kd5ujc.scarab.ledger.byron.{ByronTransport, ByronVersion}
 
-/** VRF certificate: 64-byte output and 80-byte proof. */
+/** VRF certificate: the output, 64 bytes in any certificate that verifies, and the 80-byte proof.
+  */
 final case class VrfCert(output: Bytes, proof: Bytes)
 
 /** The VRF evidence of a header: TPraos (Shelley-Alonzo) has separate nonce and leader
@@ -330,13 +331,17 @@ object Header:
     vrfCert(n, ByteStrings.Chunked)
 
   /** `DecCBOR (CertifiedVRF v a)` (`Decoding/DecCBOR.hs:568-573`): `enforceSize`, a definite list
-    * of two (`decodeListLen`, `Decoding/Decoder.hs:1403-1404`).
+    * of two (`decodeListLen`, `Decoding/Decoder.hs:1403-1404`), of the output and the proof. The
+    * output is `OutputVRF <$> decCBOR` (`:564-565`), a byte string of any length; the proof is
+    * `decodeFixedSized`, 80 bytes. An output of another length than the proof's hash is refused by
+    * the VRF check (`verifyCertified` compares the two, cardano-crypto-class 2.5.1.0
+    * `Cardano/Crypto/VRF/Class.hs:359-369`), as a proof that does not verify is (#712).
     */
   private[ledger] def vrfCert(n: Node, strings: ByteStrings): Either[ChainError, VrfCert] =
     for
       _ <- CborRead.definite(n, DecodeField.Header).leftMap(fail)
       xs <- array(n, 2)
-      out <- bytes(xs(0), 64, strings)
+      out <- CborRead.bytes(xs(0), DecodeField.Header)(using strings).leftMap(fail)
       proof <- bytes(xs(1), 80, strings)
     yield VrfCert(out, proof)
 

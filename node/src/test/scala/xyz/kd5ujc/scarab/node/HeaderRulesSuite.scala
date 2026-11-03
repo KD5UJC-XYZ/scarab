@@ -434,6 +434,15 @@ class HeaderRulesSuite extends ScalaCheckSuite:
       validate(header = tampered(h, 2, 0)),
       Left(PraosError.OCert(OCertError.KesSignatureRejected))
     )
+    // A header decodes with a VRF output of any length (#712), and the VRF check refuses it, as
+    // `verifyCertified` does with `VRFKeyBadProof` (`Protocol/Praos.hs:587-592`).
+    val short = h.vrf match
+      case HeaderVrf.Praos(c) => h.copy(vrf = HeaderVrf.Praos(c.copy(output = c.output.take(63))))
+      case other              => fail(s"unexpected $other")
+    assertEquals(
+      validate(header = short),
+      Left(PraosError.VrfRejected(Vrf.Result.Malformed(Vrf.Failure.ClaimedOutputLength(63))))
+    )
   }
 
   test("certificate and KES failures retain their crypto causes through header validation") {

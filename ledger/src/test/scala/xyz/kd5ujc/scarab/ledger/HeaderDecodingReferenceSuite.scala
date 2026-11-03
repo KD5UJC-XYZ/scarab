@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.crypto.kes.{Sum6Kes, Sum6KesSigning}
 import xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate
+import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** Babbage and Conway headers are Praos headers, whose `HeaderRaw` and `HeaderBody` are `RecD`
@@ -35,6 +36,7 @@ class HeaderDecodingReferenceSuite extends FunSuite:
     * reads `HeaderRaw` 's body with the same decoder (`From`), and the signature is read after it.
     */
   private def scarab(row: Row): Either[ChainError, Verdict] = (row.target, row.kind) match
+    case (_, Kind.VrfCheck) => fail(s"${row.name} is a VRF check, read by vrfCheck")
     case (Target.Leios, Kind.Header) =>
       LeiosHeader.decode(row.raw).map(h => Verdict(h.hash, h.signable, None))
     case (Target.Leios, _) =>
@@ -72,7 +74,48 @@ class HeaderDecodingReferenceSuite extends FunSuite:
       )
   }
 
-  for row <- rows do
+  /** A certificate of the row's key with each output the reference tried: it decodes as the
+    * reference decodes it, and Scarab's VRF check verifies it exactly when `verifyCertified` does,
+    * refusing (never as a provider defect) every other output (#712).
+    */
+  private def vrfCheck(row: Row, era: Era, vrf: VrfRow): Unit =
+    val message = row.raw.drop(32)
+    val proof = hex(vrf.proof)
+    for check <- vrf.checks do
+      val output = check.length match
+        case 64 => hex(vrf.output)
+        case 0  => Bytes.empty
+        case 65 => hex(vrf.output) ++ hex("00")
+        case _  => hex(vrf.output).take(check.length)
+      assertEquals(output.size, check.length)
+      val encoded = hex("82") ++ bstr(output) ++ bstr(proof)
+      val cert = CborRead
+        .decode(encoded)
+        .leftMap(Header.fail)
+        .flatMap(Header.vrfCert(_, ByteStrings.of(DecoderVersion.of(era))))
+      assertEquals(
+        cert.isRight,
+        check.decoded,
+        s"${row.name}: decoding an output of ${check.length}"
+      )
+      cert.foreach { c =>
+        val result = Verdicts.Direct.tpraosVrf(message, hex(vrf.vk), c.proof, c.output)
+        assertEquals(ProviderDefect.ofVrf(result), None, s"${row.name}: ${check.length}")
+        assertEquals(
+          result == Vrf.Result.VerifiedCertificate(output),
+          check.verified.contains(true),
+          s"${row.name}: the VRF check of an output of ${check.length}: $result"
+        )
+      }
+
+  for row <- rows if row.kind == Kind.VrfCheck do
+    test(row.name) {
+      (row.target, row.vrf) match
+        case (Target.Shelley(era), Some(vrf)) => vrfCheck(row, era, vrf)
+        case other => fail(s"a VRF check needs an era and its result: $other")
+    }
+
+  for row <- rows if row.kind != Kind.VrfCheck do
     test(row.name) {
       scarab(row) match
         case Right(verdict) =>
@@ -146,6 +189,7 @@ object HeaderDecodingReferenceSuite:
     case Header extends Kind("header")
     case HeaderBody extends Kind("headerbody")
     case Block extends Kind("block")
+    case VrfCheck extends Kind("vrfcheck")
 
   /** The decoder a row is read with: a Shelley-based era's header, or the Leios header. */
   enum Target:
@@ -162,8 +206,20 @@ object HeaderDecodingReferenceSuite:
       failure: Option[String],
       hash: Option[String],
       bodyHash: Option[String],
-      signable: Option[String]
+      signable: Option[String],
+      vrf: Option[VrfRow]
   )
+
+  /** What the reference's VRF check made of one output: decoded, and if so verified. */
+  final case class VrfCheckRow(length: Int, decoded: Boolean, verified: Option[Boolean])
+
+  /** A key of the row's seed, its proof and output of the row's message, and each output tried. */
+  final case class VrfRow(vk: String, proof: String, output: String, checks: Vector[VrfCheckRow])
+
+  private given Decoder[VrfCheckRow] =
+    Decoder.forProduct3("length", "decoded", "verified")(VrfCheckRow.apply)
+  private given Decoder[VrfRow] =
+    Decoder.forProduct4("vk", "proof", "output", "checks")(VrfRow.apply)
 
   /** What Scarab read: the header hash, the bytes it checks the KES signature over, and for a block
     * its body hash.
@@ -190,7 +246,8 @@ object HeaderDecodingReferenceSuite:
       hash <- c.get[Option[String]]("hash")
       bodyHash <- c.get[Option[String]]("bodyHash")
       signable <- c.get[Option[String]]("signable")
-    yield Row(name, target, kind, raw, accepted, fail, hash, bodyHash, signable)
+      vrf <- c.get[Option[VrfRow]]("vrf")
+    yield Row(name, target, kind, raw, accepted, fail, hash, bodyHash, signable, vrf)
   }
 
   private def failure(c: io.circe.HCursor, what: String) =
@@ -206,6 +263,13 @@ object HeaderDecodingReferenceSuite:
       .map(line => parser.decode[Row](line).fold(e => sys.error(s"$path: $e"), identity))
 
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => sys.error(e.toString), identity)
+
+  /** A definite byte string, its length head in the shortest form below 65536. */
+  private def bstr(b: Bytes): Bytes =
+    val n = b.size
+    val head =
+      if n < 24 then f"${0x40 + n}%02x" else if n < 256 then f"58$n%02x" else f"59$n%04x"
+    hex(head) ++ b
 
   /** `[body, signature]` with a signature of 448 bytes. */
   private def signed(body: Bytes): Bytes = hex("82") ++ body ++ hex("5901c0" + "88" * 448)

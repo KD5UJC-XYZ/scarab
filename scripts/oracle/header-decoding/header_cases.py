@@ -17,7 +17,9 @@ own major protocol version (`Praos/BlockHeader.hs:113-117`, `TPraos/BlockHeader.
 accepted case reports those bytes, so a reader compares its own encoding with no key involved; the
 cases with non-minimal heads, indefinite lists and detached records are the ones whose original
 bytes differ from them. Each case is a header, a header body alone, or a ledger block holding the
-header, of an era, read at that era's decoder version.
+header, of an era, read at that era's decoder version. A VRF output of any length decodes
+(`OutputVRF`, `Decoding/DecCBOR.hs:564-565`); the "vrfcheck" cases show the released
+`verifyCertified` refusing a certificate whose output is not the proof's (#712).
 
     python3 scripts/oracle/header-decoding/header_cases.py --inputs /tmp/header-inputs.json
     docker run --rm --network none --read-only -v /tmp:/fixtures:ro \\
@@ -59,16 +61,18 @@ def nbstr(b, width=None):
     return c.head(2, len(b), width) + b
 
 
-def vrf_cert(byte, form="definite", width=None):
-    return items([nbstr(c.h(byte, 64), width), nbstr(c.h(byte + 1, 80), width)], form)
+def vrf_cert(byte, form="definite", width=None, output=64):
+    """A VRF certificate whose output has `output` bytes (64 in one that verifies, #712)."""
+    return items([nbstr(c.h(byte, output), width), nbstr(c.h(byte + 1, 80), width)], form)
 
 
 def fields(era, prev=True, nonmin=False, ocert="definite", pv="definite", vrf="definite", major=None,
-           minor=0, size=1024, announcement=None, chunked=False, large=False):
+           minor=0, size=1024, announcement=None, chunked=False, large=False, output=64):
     """The fields of a header body; `nonmin` writes every head that has a shorter form wider. A Leios
     body adds the certificate flag and the announcement, null or `announcement` (a list form and a
     size); `chunked` writes the issuer key as an indefinite byte string; `large` writes the block
-    number, slot, certificate counter and KES period at and above 2^63, the top of a `Word64`."""
+    number, slot, certificate counter and KES period at and above 2^63, the top of a `Word64`;
+    `output` is the length of the VRF outputs."""
     w8 = 8 if nonmin else None
     w4 = 4 if nonmin else None
     w2 = 2 if nonmin else None
@@ -84,9 +88,9 @@ def fields(era, prev=True, nonmin=False, ocert="definite", pv="definite", vrf="d
             nbstr(c.h(0x77, 64), w2)]
     version = [c.uint(major, w4), c.uint(minor, w4)]
     if era in TPRAOS:
-        return head + [vrf_cert(0x40, vrf, w2), vrf_cert(0x50, vrf, w2), c.uint(size, w4),
+        return head + [vrf_cert(0x40, vrf, w2, output), vrf_cert(0x50, vrf, w2, output), c.uint(size, w4),
                        nbstr(c.h(0x55, 32), w2)] + cert + version
-    praos = head + [vrf_cert(0x40, vrf, w2), c.uint(size, w4), nbstr(c.h(0x55, 32), w2),
+    praos = head + [vrf_cert(0x40, vrf, w2, output), c.uint(size, w4), nbstr(c.h(0x55, 32), w2),
                     items(cert, ocert, 1 if nonmin else None), items(version, pv, 1 if nonmin else None)]
     if era != "leios":
         return praos
@@ -131,6 +135,9 @@ for era in TPRAOS + PRAOS:
     case(era, "header", "minor over a word32", header(era, minor=2**32))
     case(era, "header", "body size over a word32", header(era, size=2**32))
     case(era, "header", "word64 values at and above 2^63", header(era, large=True))
+    case(era, "header", "vrf output empty", header(era, output=0))
+    case(era, "header", "vrf output of 65 bytes", header(era, output=65))
+    case(era, "block", "vrf output empty", block(era, header(era, output=0)))
     case(era, "header", "detached without its signature",
          b"\x9f\xff" + items(fields(era)))
     case(era, "header", "body detached one field short",
@@ -177,11 +184,18 @@ case(LEIOS, "header", "protocol version detached", header(LEIOS, pv="detached"))
 case(LEIOS, "header", "operational certificate indefinite", header(LEIOS, ocert="indefinite"))
 case(LEIOS, "header", "operational certificate detached", header(LEIOS, ocert="detached"))
 case(LEIOS, "header", "word64 values at and above 2^63", header(LEIOS, large=True))
+case(LEIOS, "header", "vrf output empty", header(LEIOS, output=0))
 case(LEIOS, "header", "detached with a detached announcement and non-minimal heads",
      header(LEIOS, body_form="detached", header_form="detached", nonmin=True, announcement=("detached", 7)))
 case(LEIOS, "headerbody", "definite", items(fields(LEIOS)))
 case(LEIOS, "headerbody", "indefinite", items(fields(LEIOS), "indefinite"))
 case(LEIOS, "headerbody", "detached", items(fields(LEIOS), "detached"))
+
+
+# The VRF check of #712: a key of a seed and its certificate of a message, with the output replaced.
+for era in ["alonzo", "conway"]:
+    CASES.append({"id": c.case_id(f"{era} vrfcheck"), "name": f"{era} vrfcheck", "era": era, "kind": "vrfcheck",
+                  "bytes": (c.h(0x5e, 32) + f"slot 1000 of {era}".encode()).hex()})
 
 
 def merge(reference):
@@ -201,6 +215,7 @@ def merge(reference):
             "hash": result.get("hash"),
             "bodyHash": result.get("bodyhash"),
             "signable": result.get("signable"),
+            "vrf": result.get("vrf"),
             "bytes": case_["bytes"],
         }
         lines.append(json.dumps({k: v for k, v in line.items() if v is not None}, separators=(",", ":")))
