@@ -275,6 +275,7 @@ enum DecodeField(val label: String) extends DecodeSite:
 
   // Blocks and headers
   case Block extends DecodeField("block")
+  case BlockBodySize extends DecodeField("block body size")
   case BlockEra extends DecodeField("block era")
   case ByronBlockSignature extends DecodeField("Byron block signature")
   case EndorserBlockHash extends DecodeField("endorser block hash")

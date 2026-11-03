@@ -95,7 +95,7 @@ object OCertRules:
         kesVerifier(
           header.opCert.hotVkey,
           (kesPeriod - start).toInt,
-          header.bodyRaw,
+          header.signable,
           header.kesSignature
         )
       )(OCertError.KesFailure(_))

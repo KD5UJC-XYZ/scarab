@@ -39,7 +39,7 @@ final case class HeaderView(
     protocolVersion: (BigInt, BigInt),
     kesSignature: Bytes,
     raw: Bytes,
-    bodyRaw: Bytes
+    signable: Bytes
 )
 
 object HeaderView:
@@ -132,7 +132,7 @@ object HeaderView:
       h.protocolVersion,
       h.kesSignature,
       h.raw,
-      h.bodyRaw
+      h.signable
     )
 
 /** The generated header codecs decode the real Preview chain exactly as the hand-written decoder
@@ -238,7 +238,7 @@ class GoldenHeaderSuite extends munit.FunSuite:
         assertEquals(generated, HeaderView.ofHand(hand.header), s"block ${hand.header.blockNo}")
         // The header hash is the Blake2b-256 of the preserved bytes, the KES message is the preserved body.
         assertEquals(Blake2b.hash256.hash(generated.raw), hand.header.hash)
-        assertEquals(generated.bodyRaw, hand.header.bodyRaw)
+        assertEquals(generated.signable, hand.header.signable)
       }
     }
 

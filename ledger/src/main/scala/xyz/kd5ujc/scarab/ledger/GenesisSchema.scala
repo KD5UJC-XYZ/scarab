@@ -214,7 +214,11 @@ object GenesisSchema:
     FromJson
       .word(32)(json)
       .flatMap(v =>
-        Either.cond(v <= 13, v, NumberError.OutsideOfBounds(xyz.kd5ujc.scarab.codec.Rational(v)))
+        Either.cond(
+          v <= DecoderVersion.MaxVersion,
+          v,
+          NumberError.OutsideOfBounds(xyz.kd5ujc.scarab.codec.Rational(v))
+        )
       )
   )
 

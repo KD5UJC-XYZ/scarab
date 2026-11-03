@@ -1070,7 +1070,7 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     assertEquals(decoded.header.blockNo, BigInt(7))
     assertEquals(decoded.header.slot, BigInt(123456))
     assertEquals(decoded.header.protocolVersion, (BigInt(10), BigInt(3)))
-    assertEquals(decoded.header.bodyRaw, hb)
+    assertEquals(decoded.header.signable, hb)
     assertEquals(decoded.transactions.map(_.id), body.ids)
     assertEquals(decoded.era, xyz.kd5ujc.scarab.protocol.Era.Conway)
   }
