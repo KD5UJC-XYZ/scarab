@@ -30,12 +30,12 @@ class LeiosNotifyCddlSuite extends munit.FunSuite:
       .asScala
       .filterNot(l => l.startsWith("#") || l.isEmpty)
       .map(_.split('\t'))
-      .find(_(0) == "first-announcement")
+      .find(_(0) == "announcing")
       .map(p => hex(p(5)))
       .getOrElse(fail("fixture"))
 
   private val point = EbPoint(
-    LeiosWord.Word64.from(371614L).fold(e => fail(e.toString), identity),
+    LeiosWord.Word64.from(1455818L).fold(e => fail(e.toString), identity),
     EbHash.fromBytes(hex("00" * 31 + "07"))
   )
 

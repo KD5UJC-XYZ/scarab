@@ -28,7 +28,7 @@ class LeiosTestnetConfigSuite extends FunSuite:
     val dijkstra = Blake2b.hash256.hash(Bytes.fromArray(read("dijkstra-genesis.json").get))
     assertEquals(
       dijkstra.hex,
-      "aa1238f505479a9b104d2cc001b4bf951062cd527200bea9a1857bdd0dc41085"
+      "868a465b7115ae653ec532f46eca1a31a89211a96e810d78f82d6e60e3cdca87"
     )
     assertEquals(config.hashes.dijkstra.map(_.hex), Some(dijkstra.hex))
   }

@@ -41,7 +41,7 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
   private def txHash(n: Int): LeiosTxHash = LeiosTxHash.fromBytes(hash(n).bytes)
   private def bitmap(windows: Vector[(Int, BigInt)]): TxBitmaps =
     TxBitmaps(windows.map((window, bits) => word16(window) -> word64(bits)))
-  private val point = EbPoint(word64(371614L), hash(7))
+  private val point = EbPoint(word64(1455818L), hash(7))
   private val bitmaps = bitmap(Vector(0 -> BigInt(1), 3 -> BigInt("ffffffffffffffff", 16)))
   // two Dijkstra block transactions [body, witness set, auxiliary data, is_valid], with the inputs as the
   // generated writer writes a set (tag 258): the least one, and one with a time to live

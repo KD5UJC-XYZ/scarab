@@ -520,8 +520,9 @@ published, with the other Cardano environments, at
 deployment of `input-output-hk/cardano-playground` `docs/environments-pre/leios/`. The Leios team's
 relay recipe, `input-output-hk/ouroboros-leios` `testnet/` (`README.md`, `pin-config.sh`,
 `run-node.sh`; main `614b10d2`), pins an older snapshot of the same files and names the bootstrap
-relay `leios-node.play.dev.cardano.org:3001`. The files of 2026-10-16 are in
-`fixtures/leios/testnet/config/`, byte for byte as downloaded. Seven of the eight equal the pinned
+relay `leios-node.play.dev.cardano.org:3001`. The files of 2026-10-16 were kept in
+`fixtures/leios/testnet/config/`, byte for byte as downloaded, until #743 replaced them with those of
+the restarted network (section 12). Seven of the eight equal the pinned
 snapshot of the relay recipe; `config.json` differs (the recipe's is older: `MinNodeVersion`
 `11.1.0.164-prototype-2026w36`, `MempoolCapacityBytesOverride` 2,000,000 and a `Filepath` for the
 LeiosDb, none of which the live file has; the live one adds snapshot delays and different trace
@@ -602,7 +603,7 @@ uses `Peer.nodeToNode`) ends with `protocol: decode header: expected 10-element 
 | VRF proof under the epoch nonce (evolved from the hash of the Shelley genesis file through 160 epochs: evolving nonce per block, candidate nonce frozen 4k/f slots before the end of the epoch, last-block nonce of the previous epoch) | all. The VRF input contains the nonce, so one wrong nonce anywhere would fail every later header: the nonce rules of Praos hold unchanged for these headers over 160 epochs |
 | Leader threshold against the genesis stake | 2,112 headers (epochs 0 and 1, led by the one genesis pool, relative stake 1) |
 | Leader threshold, epochs 2 on | **152,586 headers `Unchecked`**: the stake comes from the chain's transactions (pool registrations, delegations), which this follower does not apply; an issuer's VRF key is taken on trust at first sight |
-| Block bodies | the six blocks kept as fixtures (two of tag 7, four of tag 8: empty, with transactions, announcing, certifying) decode, and in every one the body hash and the body size equal the header's, the certificate flag equals the presence of the certificate, and a certificate does not come with transactions (`LeiosBlock.faults`; consensus `Shelley/Ledger/Block.hs` 224 to 231); the body hash of two 88 kB tip blocks was checked by hand as well |
+| Block bodies | the six blocks then kept as fixtures (replaced by #743; two of tag 7, four of tag 8: empty, with transactions, announcing, certifying) decode, and in every one the body hash and the body size equal the header's, the certificate flag equals the presence of the certificate, and a certificate does not come with transactions (`LeiosBlock.faults`; consensus `Shelley/Ledger/Block.hs` 224 to 231); the body hash of two 88 kB tip blocks was checked by hand as well |
 | Leios certificate | decoded strictly (`Certificate.decode`: bitfield up to 8,192 bytes, a signature that is a valid G1 point); **not verified**: no committee |
 
 Nothing was applied to a ledger: 0 blocks are ledger-validated, because the Dijkstra era has no
@@ -731,9 +732,10 @@ request 1,000, then 100 more per 100 received). Settling it needs the relay's tr
    the ledger at epoch boundaries (the K1 comparator extended to Dijkstra). Throughput with the conventions of
    [performance.md](performance.md). Stop at the defined scenario and the divergence list if the reference is
    not stable enough.
-7. **Regression**: the header capture of this section stays a test (`LeiosHeaderChainSuite` runs the first
-   1,100 headers from the genesis; `LeiosCheckMain` runs all 154,698), and a new capture should be taken when
-   the testnet respins.
+7. **Regression**: the header rules stay a test (`LeiosHeaderChainSuite` runs the first 1,100 headers from
+   the genesis; `LeiosCheckMain` runs any capture), and a new capture is taken when the testnet respins: the
+   restart of 2026-10-18 was one, and #743 replaced the captures of this section with the restarted
+   network's.
 
 ## 12. The Leios reference: the build the testnet runs (2026-11-03, #711)
 
@@ -761,7 +763,7 @@ revisions are in section 1 and `docs/data/reference-pins.json`.
 
 The oracle of `scripts/oracle/leios-testnet` is built from these revisions (the ledger and
 cardano-base packages from source; consensus's two-line block envelope copied), and
-`fixtures/reference/leios-testnet-blocks` holds its 88 verdicts.
+`fixtures/reference/leios-testnet-blocks` holds its verdicts.
 
 ### 12.2 What the build reads, and what changed in this node
 
@@ -811,10 +813,11 @@ Not resolved by #711; listed for the integrator (no issue filed here):
 2. Configuration: `TestDijkstraHardForkAtEpoch`, the Dijkstra genesis and the new keys
    (`LeiosAdaptiveEndorsements`, `EgressBudgetMbps`, `LeiosMinOfferLead`, `LedgerDB` `V2InMemory`)
    are not read; `useLedgerAfterSlot` is now 1,000.
-3. The configuration fixtures, the header captures and the suites over them (`LeiosTestnetConfigSuite`,
-   `LeiosHeaderChainSuite`, `LeiosCheckMain`) are of the network before the restart; `LeiosHeaderChain`
-   and `LeiosCheckMain` read a header of era index 6 as a Leios header, which the build reads as a
-   Praos header.
+3. ~~The configuration fixtures, the header captures and the suites over them are of the network
+   before the restart, and `LeiosHeaderChain` and `LeiosCheckMain` read a header of era index 6 as a
+   Leios header.~~ Resolved by #743: the fixtures are the restarted network's, and a header is read by
+   its era as the build reads it (`LeiosHeader.byEra`: index 7 the Leios header, an earlier index that
+   era's Praos or TPraos header).
 4. No Dijkstra ledger (X3): a transaction is kept as its four parts and not decoded; no stake
    distribution (X4), certificate verification (X5), endorser blocks (X7), mini-protocols 18 and 19
    (X8), `TxSubmissionLogicV2` (X10), ledger peers or the peer snapshot (X11).
