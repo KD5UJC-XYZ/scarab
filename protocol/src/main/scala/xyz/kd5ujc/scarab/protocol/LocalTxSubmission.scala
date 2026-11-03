@@ -12,13 +12,21 @@ import ProtocolWire.{attempt, bad, get}
   */
 object LocalTxSubmission:
   val MiniProtocolId = 6
-  val MaxMessageBytes = 1048576
+
+  /** The most a message may take: the reference runs LocalTxSubmission with no byte limit
+    * (`runPeer` over `codecLocalTxSubmission`,
+    * `Ouroboros/Consensus/Network/NodeToClient.hs:455-465`, ouroboros-consensus 82ecba32), so only
+    * its mux ingress queue bounds a transaction ([[ProtocolWire.Bound.Local]]), which the ledger
+    * then judges by `maxTxSize` (#749).
+    */
+  val MaxMessageBytes: Int = Int.MaxValue
   private val wire = ProtocolWire.Limits(
     MaxMessageBytes,
     MaxMessageBytes,
     32,
     ProtocolWire.MaxItems,
-    ProtocolWire.MaxItems
+    ProtocolWire.MaxItems,
+    bound = ProtocolWire.Bound.Local
   )
 
   enum State:
