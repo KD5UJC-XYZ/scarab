@@ -752,7 +752,7 @@ object Targets:
       ChainSync.Role.values.toSeq,
       netCorpus("local-state-query:localStateQueryMessage"),
       (s, r, b) => LocalStateQuery.decodePrefix(s, r, b, NtcQuery.reader),
-      LocalStateQuery.encode
+      (s, r, m) => LocalStateQuery.encode(s, r, m, NtcQuery.reader)
     ),
     roundTrip(
       "local-state-query-engine",

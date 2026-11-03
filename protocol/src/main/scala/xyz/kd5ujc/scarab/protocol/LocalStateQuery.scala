@@ -86,8 +86,13 @@ object LocalStateQuery:
   def transition(state: State, sender: Role, message: Message): Either[ProtocolError, State] =
     LocalStateQueryEngine.transition(state, sender, message)
 
-  def encode(state: State, sender: Role, message: Message): Either[ProtocolError, Bytes] =
-    LocalStateQueryEngine.encode(state, sender, message, ChainSync.enginePointCodec)
+  def encode(
+      state: State,
+      sender: Role,
+      message: Message,
+      queries: QueryReader = QueryReader.items
+  ): Either[ProtocolError, Bytes] =
+    LocalStateQueryEngine.encode(state, sender, message, ChainSync.enginePointCodec, queries)
 
   /** Strict Cardano point validation retains the original bounded reader and error ordering. */
   def decodePrefix(

@@ -68,6 +68,9 @@ class DetachedRecordsSuite extends FunSuite:
     assertEquals(DetachedRecords.prefix(bytes("8201830102"), shape), Prefix.Refused)
     assertEquals(DetachedRecords.prefix(bytes("ff"), shape), Prefix.Refused)
     assertEquals(DetachedRecords.prefix(bytes("1c"), Item), Prefix.Refused)
+    // a break among the items of a definite list, whatever its count says is still to come
+    assertEquals(DetachedRecords.prefix(bytes("82ff"), Item), Prefix.Refused)
+    assertEquals(DetachedRecords.prefix(bytes("82018201ff"), shape), Prefix.Refused)
     // a whole input read as a prefix ends where it does
     assertEquals(
       DetachedRecords.prefix(bytes("82019fff0203"), shape),

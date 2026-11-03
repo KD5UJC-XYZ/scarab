@@ -51,7 +51,9 @@ object LocalStateQueryRuntime:
     def illegal[A](detail: NetworkError.Violation)(using Raise[F, NetworkError]): F[A] =
       NetworkError.IllegalTransition(id, detail).raise[F, A]
     def send(state: State, message: Message[P])(using Raise[F, NetworkError]): F[Unit] =
-      LocalStateQueryEngine.encode(state, Role.Server, message, point).fold(illegal, channel.send)
+      LocalStateQueryEngine
+        .encode(state, Role.Server, message, point, source.queries)
+        .fold(illegal, channel.send)
     def receive(state: State)(using Raise[F, NetworkError]): F[Message[P]] =
       channel.recv(LocalStateQuery.MaxQueryBytes)(
         LocalStateQueryEngine.decodePrefix(state, Role.Client, _, point, source.queries)

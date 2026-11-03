@@ -95,6 +95,38 @@ class NtcQueryRecordsSuite extends FailsOnUncaught:
           case DecodeResult.NeedMore          => ()
     }
 
+  test("an accepted query is written again as it was read") {
+    for row <- rows if row.accepted do
+      val query = proposals(row.raw)
+      assertEquals(
+        LocalStateQuery.encode(State.Acquired, Role.Client, Message.Query(query), NtcQuery.reader),
+        Right(message(query)),
+        row.name
+      )
+  }
+
+  test("a query whose record has not all arrived meets the reader's bounds while it waits") {
+    // 40,000 GetCBOR layers, past the depth bound, around a detached id without its index
+    val layers = 40000
+    val deep = hex("820082008206") ++
+      Bytes.fromArray(Array.fill(layers)(Array(0x82.toByte, 0x09.toByte)).flatten) ++
+      hex("82181f819fff5820" + "66" * 32)
+    assertEquals(
+      decodeQuery(message(deep)),
+      DecodeResult.Failed(xyz.kd5ujc.scarab.protocol.ProtocolError.CBORDepthLimitExceeded)
+    )
+    // shallow, it waits
+    assertEquals(
+      decodeQuery(message(proposals(hex("819fff5820" + "66" * 32)))),
+      DecodeResult.NeedMore
+    )
+    // a break inside a definite list does not wait: the query is refused as it is read
+    decodeQuery(message(proposals(hex("829fff5820" + "66" * 32 + "00ff")))) match
+      case DecodeResult.Decoded(Message.Query(framed), _) => assert(NtcQuery.decode(framed).isLeft)
+      case DecodeResult.Failed(_)                         => ()
+      case other                                          => fail(s"not refused: $other")
+  }
+
   test("read as a tree, as before, a detached id ends the query early and the message after it") {
     // in a definite set; an indefinite one closes at its own break either way
     val detached = rows.filter(r =>

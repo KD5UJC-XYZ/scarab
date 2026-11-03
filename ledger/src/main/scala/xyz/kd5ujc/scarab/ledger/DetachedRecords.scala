@@ -322,8 +322,10 @@ object DetachedRecords:
                 major match
                   case 2 | 3 =>
                     if n > room then ends() else at += n.toInt
-                  case 4 => if n > room then ends() else open(n)
-                  case 5 => if n > room / 2 then ends() else open(2 * n)
+                  // a list's or a map's items are read until the input ends: a break or a
+                  // reserved head among the ones that have arrived refuses it, whatever follows
+                  case 4 => if n > Long.MaxValue / 4 then ends() else open(n)
+                  case 5 => if n > Long.MaxValue / 4 then ends() else open(2 * n)
                   case 6 => open(1L)
                   case _ => ()
       if whole then at else if short then -2 else -1
