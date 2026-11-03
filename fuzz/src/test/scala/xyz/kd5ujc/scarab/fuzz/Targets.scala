@@ -21,6 +21,7 @@ import xyz.kd5ujc.scarab.node.mempool.{
   MempoolState,
   RelayedTransactions
 }
+import xyz.kd5ujc.scarab.node.AnnouncedHeaders
 import xyz.kd5ujc.scarab.node.ntc.NtcQuery
 import xyz.kd5ujc.scarab.plutus.PlutusData
 
@@ -187,6 +188,11 @@ object Targets:
   /** Fixed seed values must satisfy the same constructors as runtime values. */
   private def leiosSeed[A](value: Either[LeiosWireError, A]): A =
     value.fold(error => throw new AssertionError(error.toString), identity)
+
+  /** The node's reader of announced headers; no fuzzed announcement is of the Byron era, so its
+    * epoch length is not read.
+    */
+  private val announcedHeaders = AnnouncedHeaders(BigInt(21600))
 
   private val leiosFetchSeeds: () => Vector[Array[Byte]] = () =>
     val point = EbPoint(
@@ -737,7 +743,7 @@ object Targets:
       LeiosNotify.State.values.toSeq,
       Seq(()),
       leiosNotifySeeds,
-      (s, _, b) => leiosResult(LeiosNotify.decodePrefix(s, b)),
+      (s, _, b) => leiosResult(LeiosNotify.decodePrefix(s, b)(using announcedHeaders)),
       (_, _, m) => LeiosNotify.encode(m)
     ),
     roundTrip(

@@ -7,7 +7,15 @@ import cats.mtl.Handle
 import cats.syntax.all.*
 import com.comcast.ip4s.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
-import xyz.kd5ujc.scarab.protocol.{ChainSync, EbHash, EbPoint, Handshake, LeiosFetch, LeiosWord}
+import xyz.kd5ujc.scarab.protocol.{
+  ChainSync,
+  EbHash,
+  EbPoint,
+  Handshake,
+  LeiosFetch,
+  LeiosNotify,
+  LeiosWord
+}
 import scala.concurrent.duration.*
 
 /** Read-only probe of a public Leios relay, over one connection, one request in flight: the
@@ -22,6 +30,10 @@ import scala.concurrent.duration.*
   * <slot>.<hash> notify|fetch|none`. Throwaway tool: not part of the node, not run by `check`.
   */
 object LeiosChainProbe extends IOApp:
+  // a throwaway probe records what it receives: it checks an announcement's envelope only, as the
+  // network module cannot reach the ledger's era decoders (the node's reader is `AnnouncedHeaders`)
+  private given LeiosNotify.AnnouncementReader = _ => Right(())
+
   /** The payload as it arrives: a single bounded CBOR item the codec layer already checked. */
   private val raw: ChainSync.PayloadCodec[Bytes] = new ChainSync.PayloadCodec[Bytes]:
     def encode(value: Bytes): Either[ProtocolError, Bytes] = Right(value)

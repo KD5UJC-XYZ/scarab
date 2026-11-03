@@ -10,6 +10,9 @@ import LeiosWord.{Word16, Word32, Word64}
   * Blueprint's narrower hash description.
   */
 class LeiosWordSuite extends FunSuite:
+  // the era decoders are the ledger's; here every envelope of a known era holds a header
+  private given LeiosNotify.AnnouncementReader = _ => Right(())
+
   private def ok[A](value: Either[LeiosWireError, A]): A =
     value.fold(e => fail(e.toString), identity)
 

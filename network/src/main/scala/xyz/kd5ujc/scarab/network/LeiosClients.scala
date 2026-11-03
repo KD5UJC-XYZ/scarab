@@ -42,8 +42,10 @@ object LeiosNotifyClient:
       quitTimeout: FiniteDuration = 60.seconds
   )
 
+  /** `reader` reads an announced header as the build does ([[LeiosNotify.AnnouncementReader]]). */
   def apply[F[_]: Temporal](channel: MuxChannel[F], settings: Settings = Settings())(using
-      Raise[F, NetworkError]
+      Raise[F, NetworkError],
+      LeiosNotify.AnnouncementReader
   ): LeiosNotifyClient[F] =
     val id = Protocols.LeiosNotify
     def illegal[A](detail: NetworkError.Violation): F[A] =
