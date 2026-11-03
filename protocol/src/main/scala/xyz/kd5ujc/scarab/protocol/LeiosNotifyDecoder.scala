@@ -58,7 +58,7 @@ private[protocol] object LeiosNotifyDecoder:
     * original bytes are kept.
     */
   private def announcement(using reader: LeiosNotify.AnnouncementReader): Decoder[Message] =
-    item.flatMap(raw =>
+    announcementBytes.flatMap(raw =>
       StateT.liftF[Result, Cursor, Message](
         HfcHeader.decode(raw) match
           case Right(_: HfcHeader.Unrecognised) | Left(_) =>
@@ -69,6 +69,28 @@ private[protocol] object LeiosNotifyDecoder:
               .bimap(LeiosWireError.UndecodableAnnouncement(_), _ => Message.BlockAnnouncement(raw))
       )
     )
+
+  /** The hard-fork wrapper has a fixed grammar ([[NtNHeader]]). Read it before the opaque header
+    * bytes, as the reference's node-to-node decoder does; an invalid wrapper must not cause an
+    * arbitrary CBOR tree to be scanned while waiting for a header that cannot be admitted.
+    */
+  private val announcementBytes: Decoder[Bytes] =
+    val bad = LeiosWireError.BadField(4, LeiosField.Header)
+    for
+      start <- position
+      _ <- enforceSize(2, bad)
+      era <- unsigned(0, BigInt(7), bad)
+      _ <-
+        if era == 0 then
+          enforceSize(2, bad) *> enforceSize(2, bad) *>
+            unsigned(0, BigInt(1), bad) *> unsigned(0, Word32.Max, bad).void
+        else pure(())
+      tag <- unsigned(6, BigInt(24), bad)
+      _ <- check(tag == 24, bad)
+      _ <- bytes(bad)
+      end <- position
+      raw <- StateT.inspect[Result, Cursor, Bytes](_.input.slice(start, end))
+    yield raw
 
   /** `decode` of `codecLeiosNotify` (`:279-283, 353-396`): `decodeListLen`, a definite list only,
     * and `decodeWord`, then the length, the key and the state are matched together before any field

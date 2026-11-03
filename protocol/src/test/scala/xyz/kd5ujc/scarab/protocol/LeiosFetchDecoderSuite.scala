@@ -144,10 +144,11 @@ class LeiosFetchDecoderSuite extends FunSuite:
     )
   }
 
-  test("an announcement is framed with no depth or item budget, on a 256 KiB stack") {
-    // the build frames a message by its state's byte limit only (`byteLimitsLeiosNotify`,
-    // `LeiosDemoOnlyTestNotify.hs:241-247`): an item 30,000 lists deep and one of 70,000 items are
-    // framed in full and then refused as no header envelope, never as a budget or a stack overflow
+  test(
+    "an invalid announcement wrapper is refused before scanning its contents, on a small stack"
+  ) {
+    // The reference reads the hard-fork wrapper before the opaque header bytes. A malformed
+    // wrapper is refused immediately, including when its contents are incomplete or deeply nested.
     val deep = Bytes.wrap(Array.fill[Byte](30000)(0x81.toByte) :+ 0.toByte)
     val wide = bs(0x9f) ++ Bytes.wrap(Array.fill[Byte](70000)(0)) ++ bs(0xff)
     val result = new CompletableFuture[Either[Throwable, Vector[Either[LeiosWireError, Int]]]]()
@@ -157,7 +158,7 @@ class LeiosFetchDecoderSuite extends FunSuite:
         try
           result.complete(
             Right(
-              Vector(deep, wide).map(item =>
+              Vector(deep, wide, bs(0x9f), bs(0x82, 0x08), bs(0x82, 0x07, 0xd7)).map(item =>
                 LeiosNotify
                   .decodePrefix(LeiosNotify.State.Busy, bs(0x82, 0x04) ++ item)
                   .map(_._2)
@@ -172,9 +173,10 @@ class LeiosFetchDecoderSuite extends FunSuite:
     )
     thread.start()
     try
+      val decoded = result.get(30, TimeUnit.SECONDS)
       assertEquals(
-        result.get(30, TimeUnit.SECONDS),
-        Right(Vector.fill(2)(Left(LeiosWireError.BadField(4, LeiosField.Header))))
+        decoded,
+        Right(Vector.fill(5)(Left(LeiosWireError.BadField(4, LeiosField.Header))))
       )
     finally thread.join()
     assertEquals(LeiosNotify.byteLimit(LeiosNotify.State.Busy), Some(65535))
