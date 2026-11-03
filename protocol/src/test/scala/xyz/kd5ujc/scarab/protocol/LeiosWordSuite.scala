@@ -29,7 +29,8 @@ class LeiosWordSuite extends FunSuite:
 
   test("slots above signed Long retain all 64 bits on both protocols") {
     Vector(BigInt(Long.MaxValue) + 1, Word64.Max).foreach { slot =>
-      val point = EbPoint(ok(Word64.from(slot)), EbHash.fromBytes(Bytes.empty))
+      val point =
+        EbPoint(ok(Word64.from(slot)), EbHash.fromBytes(Bytes.wrap(Array.fill[Byte](32)(9))))
       val request = LeiosFetch.Message.BlockRequest(point)
       val fetched = ok(LeiosFetch.encode(request))
       assertEquals(
@@ -45,7 +46,9 @@ class LeiosWordSuite extends FunSuite:
     }
   }
 
-  test("native EB and transaction hash wrappers retain arbitrary bytes") {
+  test("the hash wrappers keep any bytes; the decoders read a hash of exactly 32") {
+    // `decodeFixedSized` of a `PackedBytes 32` (ouroboros-consensus 2416493b,
+    // `Leios/Types.hs:105-106`, `LeiosDemoTypes.hs:1301-1310`): any other length is refused
     Vector(0, 1, 16, 31, 32, 33).foreach { size =>
       val bytes = Bytes.wrap(Array.fill[Byte](size)(7))
       val hash = EbHash.fromBytes(bytes)
@@ -55,21 +58,31 @@ class LeiosWordSuite extends FunSuite:
       val point = EbPoint(ok(Word64.from(1)), hash)
       val offer = LeiosNotify.Message.BlockOffer(point, ok(Word32.from(0)))
       val notified = ok(LeiosNotify.encode(offer))
-      assertEquals(
-        LeiosNotify.decodePrefix(LeiosNotify.State.Busy, notified),
-        Right((offer, notified.size))
-      )
       val block = LeiosFetch.Message.Block(Vector(txHash -> ok(Word32.from(Word32.Max))))
       val fetched = ok(LeiosFetch.encode(block))
-      assertEquals(
-        LeiosFetch.decodePrefix(LeiosFetch.State.Block, fetched),
-        Right((block, fetched.size))
-      )
+      if size == 32 then
+        assertEquals(
+          LeiosNotify.decodePrefix(LeiosNotify.State.Busy, notified),
+          Right((offer, notified.size))
+        )
+        assertEquals(
+          LeiosFetch.decodePrefix(LeiosFetch.State.Block, fetched),
+          Right((block, fetched.size))
+        )
+      else
+        assertEquals(
+          LeiosNotify.decodePrefix(LeiosNotify.State.Busy, notified),
+          Left(LeiosWireError.BadField(5, LeiosField.Hash))
+        )
+        assertEquals(
+          LeiosFetch.decodePrefix(LeiosFetch.State.Block, fetched),
+          Left(LeiosWireError.BadField(2, LeiosField.Hash))
+        )
     }
   }
 
   test("the bitmap keeps its high bit and Word64 maximum") {
-    val point = EbPoint(ok(Word64.from(0)), EbHash.fromBytes(Bytes.empty))
+    val point = EbPoint(ok(Word64.from(0)), EbHash.fromBytes(Bytes.wrap(Array.fill[Byte](32)(9))))
     val bitmaps = TxBitmaps(Vector(ok(Word16.from(0)) -> ok(Word64.from(Word64.Max))))
     assertEquals(bitmaps.count, 64L)
     val message = LeiosFetch.Message.BlockTxsRequest(point, bitmaps)

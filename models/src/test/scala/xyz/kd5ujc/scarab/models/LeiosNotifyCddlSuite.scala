@@ -6,7 +6,7 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.bls.Vote
 import xyz.kd5ujc.scarab.models.leios.notify.LeiosNotifyMessage
-import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, LeiosNotify, LeiosWireError, LeiosWord}
+import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, LeiosNotify, LeiosWord}
 
 /** The generated reader of the LeiosNotify messages (`models.conf`: consensus' `leiosNotify.cddl`,
   * which imports the ChainSync header, so `header.cddl` is a module of that name too) against the
@@ -87,21 +87,21 @@ class LeiosNotifyCddlSuite extends munit.FunSuite:
     })
   }
 
-  test("more than sixteen votes are refused by both, sixteen accepted by both") {
+  test(
+    "the CDDL bounds the votes to one to sixteen; the build's codec, and so this one, does not"
+  ) {
+    // `leiosNotify.cddl` has `[1*16 vote]`; `decodeVotes` of ouroboros-consensus 2416493b reads a
+    // definite list of any count (`LeiosDemoOnlyTestNotify.hs:384-388`), which this codec follows
     def votes(n: Int): Bytes =
-      hex("8207" + (0x80 + n).toHexString) ++ (1 to n).map(_ => vote.encode).reduce(_ ++ _)
+      hex("8207" + (0x80 + n).toHexString) ++ (1 to n)
+        .map(_ => vote.encode)
+        .foldLeft(Bytes.empty)(_ ++ _)
     assert(generated(votes(16)).isRight)
     assert(LeiosNotify.decodePrefix(LeiosNotify.State.Busy, votes(16)).isRight)
     assert(generated(votes(17)).isLeft)
-    assertEquals(
-      LeiosNotify
-        .decodePrefix(LeiosNotify.State.Busy, votes(17))
-        .left
-        .map(_ == LeiosWireError.BadField(7, xyz.kd5ujc.scarab.protocol.LeiosField.Votes)),
-      Left(true)
-    )
-    // an empty list is refused too (`1*16`)
-    assert(generated(hex("820780")).isLeft)
+    assert(LeiosNotify.decodePrefix(LeiosNotify.State.Busy, votes(17)).isRight)
+    assert(generated(votes(0)).isLeft)
+    assert(LeiosNotify.decodePrefix(LeiosNotify.State.Busy, votes(0)).isRight)
   }
 
   test("an unknown tag, a wrong arity and trailing bytes are refused by the generated reader") {
