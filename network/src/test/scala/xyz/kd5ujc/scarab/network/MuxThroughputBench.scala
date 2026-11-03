@@ -40,12 +40,15 @@ object MuxThroughputBench extends IOApp.Simple:
               credit <- Semaphore[IO](window.toLong)
               message = payload(size)
               began <- IO.monotonic
-              producer <- (1 to messages).toList
-                .traverse_(_ => credit.acquire *> c.send(message))
+              // the producer runs in an error scope of its own, landed at its join (ADR 0017)
+              producer <- Fibers
+                .scoped[IO, NetworkError, Unit](NetworkError.Defect(_))(
+                  (1 to messages).toList.traverse_(_ => credit.acquire *> c.send(message))
+                )
                 .start
               _ <- (1 to messages).toList
                 .traverse_(_ => s.recv(size + 16)(exactly(size)) *> credit.release)
-              _ <- producer.joinWithNever
+              _ <- producer.joinWithNever.flatMap(Fibers.land(_))
               took <- IO.monotonic.map(_ - began)
             yield took.toNanos.toDouble / messages / 1000.0
           }
@@ -70,9 +73,11 @@ object MuxThroughputBench extends IOApp.Simple:
               s <- server.channel(2)
               message = payload(size)
               began <- IO.monotonic
-              producer <- c.send(message).start
+              producer <- Fibers
+                .scoped[IO, NetworkError, Unit](NetworkError.Defect(_))(c.send(message))
+                .start
               _ <- s.recv(size + 16)(whole(size))
-              _ <- producer.joinWithNever
+              _ <- producer.joinWithNever.flatMap(Fibers.land(_))
               took <- IO.monotonic.map(_ - began)
             yield took.toNanos.toDouble / 1000000.0
           }

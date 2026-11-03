@@ -217,7 +217,7 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
           a2 <- monitorReceive(ch, State.Acquiring)
           // the pool equals the snapshot just acquired: AwaitAcquire waits
           _ <- monitorSend(ch, State.Acquired, Message.AwaitAcquire)
-          waiting <- monitorReceive(ch, State.Acquiring).start
+          waiting <- Peers.typed(monitorReceive(ch, State.Acquiring)).start
           // the assertion is that the waiter is still blocked: there is no positive state to poll
           // for, so this stays a bounded wait (residual of TEST-AUD-04 in issue #251)
           _ <- IO.sleep(60.millis)
@@ -225,7 +225,7 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
             .map(_.isInstanceOf[cats.effect.kernel.Outcome.Succeeded[?, ?, ?]])
             .timeoutTo(10.millis, IO.pure(false))
           _ <- t.current.set(snapshot(9, Vector(1, 2)))
-          a3 <- waiting.joinWithNever
+          a3 <- waiting.joinWithNever.flatMap(Fibers.land(_))
           _ <- monitorSend(ch, State.Acquired, Message.GetSizes)
           sizes <- monitorReceive(ch, State.Busy(Kind.GetSizes))
           _ <- monitorSend(ch, State.Acquired, Message.Release)

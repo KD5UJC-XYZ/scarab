@@ -146,15 +146,17 @@ class ServerSuite extends FailsOnUncaught:
         for
           c <- client.channel(2)
           s <- server.channel(2, Mux.Role.Responder)
-          _ <- chain.source.use(src => ChainSyncServer.run(s, ChainSyncFixtures.rawItem, src)).start
+          _ <- typed(
+            chain.source.use(src => ChainSyncServer.run(s, ChainSyncFixtures.rawItem, src))
+          ).start
           api <- ChainSyncClient(c, ChainSyncFixtures.rawItem)
           missing <- api.findIntersect(Vector(Peers.point(9)))
           found <- api.findIntersect(Vector(Peers.point(9), Peers.point(2), Point.Origin))
           first <- api.requestNext
-          waiting <- api.requestNext.start
+          waiting <- typed(api.requestNext).start
           _ <- IO.sleep(30.millis)
           _ <- chain.blocks.update(_ :+ 4)
-          later <- waiting.joinWithNever
+          later <- waiting.joinWithNever.flatMap(Fibers.land(_))
           _ <- IO.pure(()) // no pipelining at the tip
         yield (missing, found, first, later)
       }
@@ -179,7 +181,9 @@ class ServerSuite extends FailsOnUncaught:
         for
           c <- client.channel(2)
           s <- server.channel(2, Mux.Role.Responder)
-          _ <- chain.source.use(src => ChainSyncServer.run(s, ChainSyncFixtures.rawItem, src)).start
+          _ <- typed(
+            chain.source.use(src => ChainSyncServer.run(s, ChainSyncFixtures.rawItem, src))
+          ).start
           api <- ChainSyncClient(c, ChainSyncFixtures.rawItem)
           _ <- api.findIntersect(Vector(Point.Origin))
           batch <- api.requestNextBatch(4)
@@ -207,9 +211,7 @@ class ServerSuite extends FailsOnUncaught:
         for
           c <- client.channel(3)
           s <- server.channel(3, Mux.Role.Responder)
-          _ <- BlockFetchServer
-            .run(s, chain.blockSource)
-            .start
+          _ <- typed(BlockFetchServer.run(s, chain.blockSource)).start
           api <- BlockFetchClient(c)
           some <- api.requestRange(Peers.point(2), Peers.point(4))
           unknown <- api.requestRange(Peers.point(2), Peers.point(9))
@@ -374,8 +376,12 @@ class ServerSuite extends FailsOnUncaught:
             lClient <- left.channel(2, Mux.Role.Initiator)
             rServer <- right.channel(2, Mux.Role.Responder)
             rClient <- right.channel(2, Mux.Role.Initiator)
-            _ <- mine.source.use(ChainSyncServer.run(lServer, ChainSyncFixtures.rawItem, _)).start
-            _ <- theirs.source.use(ChainSyncServer.run(rServer, ChainSyncFixtures.rawItem, _)).start
+            _ <- typed(
+              mine.source.use(ChainSyncServer.run(lServer, ChainSyncFixtures.rawItem, _))
+            ).start
+            _ <- typed(
+              theirs.source.use(ChainSyncServer.run(rServer, ChainSyncFixtures.rawItem, _))
+            ).start
             leftApi <- ChainSyncClient(lClient, ChainSyncFixtures.rawItem)
             rightApi <- ChainSyncClient(rClient, ChainSyncFixtures.rawItem)
             _ <- leftApi.findIntersect(Vector(Point.Origin))

@@ -212,13 +212,13 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
           s <- server.channel(2)
           credit <- cats.effect.std.Semaphore[IO](5)
           began <- IO.monotonic
-          producer <- (1 to messages).toList
-            .traverse_(_ => credit.acquire *> c.send(payload(10)))
-            .start
+          producer <- typed(
+            (1 to messages).toList.traverse_(_ => credit.acquire *> c.send(payload(10)))
+          ).start
           got <- (1 to messages).toList.traverse { _ =>
             s.recv(100)(exactly(10)) <* IO.sleep(perMessage) <* credit.release
           }
-          _ <- producer.joinWithNever
+          _ <- producer.joinWithNever.flatMap(Fibers.land(_))
           took <- IO.monotonic.map(_ - began)
         yield (got.size, took)
       }
@@ -241,9 +241,9 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
             for
               c <- mux.channel(2)
               written <- cats.effect.Ref.of[IO, Int](0)
-              sender <- (1 to 200).toList
-                .traverse_(_ => c.send(payload(10)) *> written.update(_ + 1))
-                .start
+              sender <- typed(
+                (1 to 200).toList.traverse_(_ => c.send(payload(10)) *> written.update(_ + 1))
+              ).start
               _ <- IO.sleep(300.millis)
               sent <- written.get
               _ <- sender.cancel
@@ -309,10 +309,17 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
         Mux.resource(ours, Set(2)).use { mux =>
           for
             c <- mux.channel(2)
-            pending <- c.recv(100)(exactly(1)).start
+            // the receive runs in a fiber of its own scope, and its result is raised again here
+            // (ADR 0017). Raised through this test's `Handle` from the started fiber, it was a
+            // failure the runtime reported whenever the fiber ended before its join (#735). The
+            // join waits for the fiber's finalizer, which makes that order the usual one, though
+            // not a certain one: the fiber still ends after its finalizer has run.
+            ended <- cats.effect.Deferred[IO, Unit]
+            pending <- typed(c.recv(100)(exactly(1))).guarantee(ended.complete(()).void).start
             _ <- IO.sleep(20.millis)
             _ <- raw.close
-            _ <- pending.joinWithNever
+            _ <- ended.get *> IO.cede
+            _ <- pending.joinWithNever.flatMap(Fibers.land(_))
           yield ()
         }
       }
