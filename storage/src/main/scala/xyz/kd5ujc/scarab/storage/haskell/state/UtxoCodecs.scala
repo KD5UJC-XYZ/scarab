@@ -64,7 +64,7 @@ object UtxoCodecs:
     // A stored output: it reads in any form of byte string it was stored with.
     def decode(n: Node): Decoded[TxOut] =
       TxOut
-        .decode(n, Address.Mode.Rigorous, TxOut.Forms.Stored)(using ByteStrings.Chunked)
+        .decode(n, Address.Mode.Stored, TxOut.Forms.Stored)(using ByteStrings.Chunked)
         .left
         .map(why => DecodeError.at(n, Kind.Domain(why)))
 
