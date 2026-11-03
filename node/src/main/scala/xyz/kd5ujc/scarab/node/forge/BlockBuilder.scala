@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
-import xyz.kd5ujc.scarab.ledger.{DetachedRecords, ForgeAssemblyProblem}
+import xyz.kd5ujc.scarab.ledger.{DetachedRecords, ForgeAssemblyProblem, Tx}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, ForgeError, Header, LedgerFailure, VrfCert}
 import xyz.kd5ujc.scarab.ledger.{LedgerGlobals, PosixClock, ProtocolParams, RefScripts, TxEnv}
 import xyz.kd5ujc.scarab.ledger.rules.Globals
@@ -66,18 +66,11 @@ object BlockBuilder:
     )(parts(entry, _))
 
   private def parts(entry: Entry, root: Node): Either[ForgeError, Piece] =
-    for
-      parts <- root.value match
-        case Value.Arr(xs) if xs.size == 4 => Right(xs)
-        case _ =>
-          Left(ForgeError.Assembly(ForgeAssemblyProblem.TransactionArity(entry.id)))
-      valid <- parts(2).value match
-        case Value.Bool(b) => Right(b)
-        case _             => Left(ForgeError.Assembly(ForgeAssemblyProblem.ValidityFlag))
-      aux = parts(3).value match
-        case Value.Null => None
-        case _          => Some(parts(3).original)
-    yield Piece(entry.id, parts(0).original, parts(1).original, aux, valid)
+    Tx.envelopeParts(root, Era.Conway)
+      .bimap(
+        e => ForgeError.Assembly(ForgeAssemblyProblem.Envelope(entry.id, e)),
+        t => Piece(entry.id, t.body, t.witnesses, t.auxiliaryData, t.isValid)
+      )
 
   /** The four encoded body components and what the header commits to. */
   final case class Body(

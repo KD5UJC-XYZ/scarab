@@ -44,8 +44,9 @@ object ForgeKeyProblem:
 
 enum ForgeAssemblyProblem:
   case Cbor(cause: BinaryCbor.Error)
-  case TransactionArity(id: Bytes)
-  case ValidityFlag
+
+  /** A held transaction whose parts are not read again ([[Tx.envelopeParts]]). */
+  case Envelope(id: Bytes, cause: LedgerDecodeError)
   case BodySize(actual: Long, maximum: BigInt)
   case BlockDecode(cause: ChainError)
 

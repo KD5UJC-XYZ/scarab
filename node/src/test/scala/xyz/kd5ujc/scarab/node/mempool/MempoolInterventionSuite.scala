@@ -33,7 +33,15 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       val funds = plutus.spent ++ plutus.references ++ plutus.collateral
       MempoolLedger.of(Build.funded(Build.nes[Conway](5, plutus.params), funds))
     val tipSlot: BigInt = plutus.slot - 1
-    def raw(flag: Boolean): Bytes = MempoolState.encode(parts.copy(isValid = flag))
+    def raw(flag: Boolean): Bytes = Tx.envelope(parts.copy(isValid = flag))
+
+    /** `[body, witnesses, auxiliary_data / nil]`, without the flag (#699), definite or not. */
+    def unflagged(indefinite: Boolean): Bytes =
+      val aux = parts.auxiliaryData.getOrElse(Bytes.fromArray(Array(0xf6.toByte)))
+      val items = parts.body ++ parts.witnesses ++ aux
+      if indefinite then
+        Bytes.fromArray(Array(0x9f.toByte)) ++ items ++ Bytes.fromArray(Array(0xff.toByte))
+      else Bytes.fromArray(Array(0x83.toByte)) ++ items
     def pool: MempoolState = MempoolState.empty(Right(ledger), tipSlot, None)
 
   private def hex(j: io.circe.Json, field: String): Option[Bytes] =
@@ -68,6 +76,9 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
     c.pool
       .add(c.raw(flag), mempoolEnv, source)
       .fold(r => fail(s"refused: ${r.message}"), _._2)
+
+  private def admittedAs(c: Case, raw: Bytes, source: Source): Entry =
+    c.pool.add(raw, mempoolEnv, source).fold(r => fail(s"refused: ${r.message}"), _._2)
 
   private def flagByte(raw: Bytes): Option[Byte] = raw.lift(raw.size - 2)
 
@@ -122,6 +133,48 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
     val wrongFalse = passing.pool.add(passing.raw(false), mempoolEnv, Source.Local)
     assert(tagMismatch(true).applyOrElse(wrongTrue, _ => false), wrongTrue.toString)
     assert(tagMismatch(false).applyOrElse(wrongFalse, _ => false), wrongFalse.toString)
+  }
+
+  test(
+    "a transaction without its flag is held as valid and relayed with it, as the reference does"
+  ) {
+    // `decodeRecordNamed "AlonzoTx"` reads a third item that is not a boolean as the auxiliary
+    // data of a valid transaction (`Alonzo/Tx.hs:532-553`); the node relays the transaction it
+    // holds, `toCBORForMempoolSubmission`: four items, the flag written (#699)
+    val ok = scenario("raw-dst-pass-valid-true")
+    for indefinite <- List(false, true) do
+      val received = ok.unflagged(indefinite)
+      val entry = ok.pool
+        .add(received, mempoolEnv, Source.Local)
+        .fold(r => fail(s"refused: ${r.message}"), _._2)
+      assert(entry.tx.isValid)
+      assertEquals(entry.id, Blake2b.hash256.hash(ok.parts.body))
+      assertEquals(entry.raw, ok.raw(true))
+      assertEquals(entry.size, received.size + (if indefinite then 0 else 1))
+      val piece = BlockBuilder.piece(entry).fold(e => fail(e.message), identity)
+      assertEquals(
+        (piece.body, piece.witnesses, piece.aux, piece.valid),
+        (ok.parts.body, ok.parts.witnesses, ok.parts.auxiliaryData, true)
+      )
+  }
+
+  test(
+    "a transaction without its flag whose script fails: a peer's is held invalid, a client's refused"
+  ) {
+    val entry = admittedAs(failing, failing.unflagged(false), Source.Remote)
+    assert(!entry.tx.isValid)
+    assertEquals(entry.raw, failing.raw(false))
+    val local = failing.pool.add(failing.unflagged(false), mempoolEnv, Source.Local)
+    assert(tagMismatch(true).applyOrElse(local, _ => false), local.toString)
+  }
+
+  test("a transaction in an indefinite list is relayed in the definite list of four") {
+    val ok = scenario("raw-dst-pass-valid-true")
+    val definite = ok.raw(true)
+    // `9f` + the four items + `ff`
+    val received = Bytes.fromArray(Array(0x9f.toByte)) ++ definite.drop(1) ++
+      Bytes.fromArray(Array(0xff.toByte))
+    assertEquals(admittedAs(ok, received, Source.Remote).raw, definite)
   }
 
   test("a flipped transaction survives a tip change and is listed as invalid by the forger") {

@@ -119,7 +119,7 @@
 {"event":"connection","at":"2026-10-16T12:00:00Z","what":"acceptHardLimit","limit":512}
 {"event":"connection","at":"2026-10-16T12:00:00Z","what":"acceptResumed","connections":511}
 {"event":"mempoolAdded","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","size":300,"count":2,"bytes":600}
-{"event":"mempoolRejected","at":"2026-10-16T12:00:00Z","tx":null,"reason":"malformed transaction: expected [body, witnesses, is_valid, auxiliary_data]"}
+{"event":"mempoolRejected","at":"2026-10-16T12:00:00Z","tx":null,"reason":"malformed transaction: ArrayLength(transaction,3,2)"}
 {"event":"mempoolRejected","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","reason":"mempool full: 300 bytes needed, 100 free"}
 {"event":"mempoolDropped","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","reason":"tx abababababababab is already in the mempool"}
 {"event":"mempoolWaiting","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","reason":"mempool full: 300 bytes needed, 100 free"}
