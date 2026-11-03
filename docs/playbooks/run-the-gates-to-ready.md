@@ -22,6 +22,10 @@
 
    Do not edit the worktree while it runs: the secret scan, the guards and `check` read its files. A pull
    request is not ready while it fails ([AGENTS.md](../../AGENTS.md#before-you-hand-back)).
+   Without a reachable Docker it runs no step: it prints one `INCOMPLETE: Docker unavailable, gates not run`
+   line and exits 3, which is neither a pass nor a failure of the change. `scripts/preflight --doctor` prints
+   the JDK pin against the JDK image, whether the prepared dependency repository exists, whether Docker is
+   reachable and where the cache lives; its output names local paths, so it stays on the terminal.
 4. Fill in the [pull request template](../../.github/pull_request_template.md): the level, each gate
    with its result on the head it ran on, and the deviations from the plan. Every gap the body names is
    tracked by an issue or a roadmap item ([definition of done](../process.md#definition-of-done)); file a

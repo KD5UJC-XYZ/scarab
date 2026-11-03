@@ -47,9 +47,12 @@
 
 Run data lives in ${SCARAB_DATA_DIR:-/tmp/scarab}/<name>. The Scala node shares the
 reference container's network namespace because the reference nodes bind to loopback.
+A command that starts a run first refuses when the data directory's file system has less than
+--min-free-gib free, and prints the size of the run directory when it ends.
 """
 import argparse
 import os
+import sys
 from .chaindep import assemble, sample
 from .cluster import down, tip, up, up_eras
 from .compare import compare
@@ -70,12 +73,45 @@ from .scenarios.peer_sharing import peer_sharing
 from .scenarios.restart import restart
 from .scenarios.v1context import v1_context
 from .scenarios.soak import soak
-from .util import REPO
+from .util import GIB, REPO, data_root, free_space_shortfall, human_bytes, tree_size
+
+# the subcommands that start containers and fill a run directory: the free-space check and the size report apply
+RUNS = frozenset({"up", "up-eras", "capture-eras", "e2e", "follow", "soak", "relay", "peer-sharing", "peercut",
+                  "inbound-flood", "governor", "ntc", "pool", "kes-rotate", "faults", "restart", "v1-context"})
+DEFAULT_MIN_FREE_GIB = 5.0
+RUN_MARKER = "SCARAB_DEVNET_RUN"
+
+
+def run_size_line(root, size=tree_size):
+    """The line printed when a run ends: the size of its run directory, or that it is gone."""
+    measured = size(root)
+    return (f"run directory {root}: removed" if measured is None
+            else f"run directory {root}: {human_bytes(measured)}")
+
+
+def run(args, out=sys.stderr, shortfall=free_space_shortfall, size=tree_size, env=os.environ):
+    """`args.run(args)`, preceded for a run by the free-space check and followed (also on failure) by the
+    size of its run directory on stderr. A `devnet.py` a run starts (its follower, its load) inherits
+    `RUN_MARKER` and is neither checked nor measured again."""
+    if args.command not in RUNS or env.get(RUN_MARKER):
+        return args.run(args)
+    root = data_root(args.name)
+    low = shortfall(root, int(args.min_free_gib * GIB)) if args.min_free_gib > 0 else None
+    if low is not None:
+        raise SystemExit(low.message())
+    env[RUN_MARKER] = args.name
+    try:
+        return args.run(args)
+    finally:
+        print(run_size_line(root, size), file=out, flush=True)
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--name", help="container and run-directory name (default scarab-devnet; scarab-eras for up-eras, capture-eras, e2e; scarab-pool for pool)")
+    p.add_argument("--min-free-gib", type=float, default=DEFAULT_MIN_FREE_GIB,
+                   help=f"refuse to start a run when the file system of the run directory has less than this many "
+                        f"GiB free (default {DEFAULT_MIN_FREE_GIB:g}; 0 skips the check)")
     scala_options = argparse.ArgumentParser(add_help=False)
     scala_options.add_argument("--scala-cpus", type=float, default=2,
                                help="CPUs of the Scala node's container (default 2; 1 shows how it behaves when the host is short of CPU)")
@@ -344,4 +380,4 @@ def main():
                               help="Scala consensus mode; reference pools retain their original configuration")
     args = p.parse_args()
     args.name = args.name or ("scarab-eras" if args.command in ("up-eras", "capture-eras", "e2e", "sample-chain-dep", "assemble-chain-dep") else "scarab-pool" if args.command == "pool" else "scarab-kes-rotate" if args.command == "kes-rotate" else "scarab-devnet")
-    args.run(args)
+    run(args)
