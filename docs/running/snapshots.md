@@ -94,8 +94,11 @@ Caveats:
   both. Details and numbers: [performance.md](../performance.md) section 13.
 
 **Checking a database before a node is moved to this build.** First inventory its snapshot versions.
-This procedure requires V5 or V7 snapshots and their associated checkpoints (V5 files migrate to V7
-on open, #395). V1–V4 inputs
+This procedure requires V5, V7 or V8 snapshots and their associated checkpoints (V5 and V7 files
+migrate to V8 on open, #395, #726). A V5 or V7 snapshot taken while the chain was in Byron whose
+Byron update state holds a software proposal or an application version is refused with
+`ResyncRequired`: its installer metadata was not kept and cannot be recovered, so that chain has to
+be synced again from genesis (ADR 0006, amendment of 2026-11-03). V1–V4 inputs
 need separate verified current-format replacements using pinned historical source, as described in
 [Storage migrations](../storage-migrations.md); this build refuses retired formats before mutable stores
 open. Work on a copy; the original is never opened by the new build. With the node stopped (a running
@@ -133,7 +136,7 @@ What shows the current-format database opens: `snapshotRestored` with the `ancho
 snapshot; `replayStarted` from that anchor; `replayProgress` lines whose `tip` moves past it, with
 `replayed` growing by the progress interval each time and no `"event":"error"` (a `ValidationError ... BadInputsUTxO` right after the restore is this
 bug); no `snapshotRefused`, no `snapshotSkipped`, no `UtxoCheckpoint` error; for a V5 database, one
-`formatMigrated` from `V5` to `V7` and a `snapshotUnbound` for the restored file (it was written
+`formatMigrated` from `V5` to `V8` and a `snapshotUnbound` for the restored file (it was written
 before checkpoint binding); and, after the stop, a
 `snapshotWritten`/`shutdownSnapshot` at a block past the restored anchor. A replay from the newest
 snapshot of a mainnet follower that is a day behind covers some thousands of blocks, so
@@ -235,7 +238,7 @@ immutable chunk trio, must be extracted and match their digests. `--no-verify-an
 accepts an unauthenticated ledger instead; the result records `ancillaryVerified: false`.
 
 The command checks metadata, era, exact immutable block and recomputed instant stake, builds a fresh
-RocksDB checkpoint and a V7 snapshot bound to it in staging, and publishes only after validation. It never changes
+RocksDB checkpoint and a V8 snapshot bound to it in staging, and publishes only after validation. It never changes
 existing immutable files or overwrites ledger artifacts. JSON `importLedgerSnapshot` events report
 `done` with slot/hash, era, output count, lovelace and trust, or a typed `error`. A following `follow`
 restores that checkpoint and replays local blocks after the snapshot. Byron and non-Mem snapshots
@@ -255,7 +258,7 @@ java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main 
 ```
 
 The default is the newest snapshot; `--slot` selects an exact stored snapshot slot, an unsigned
-64-bit number. The command checks the existing V7 file's checksum and schema, preserves its
+64-bit number. The command checks the existing V8 file's checksum and schema, preserves its
 Haskell state bytes, admits its checkpoint against the snapshot's binding and reads it without
 recovery or migration. A state
 with recorded gaps, a Byron state, an unsettled checkpoint or a missing selection is refused.
@@ -300,5 +303,5 @@ SCLS omits restart and consensus information. Import therefore compares every na
 with the explicit same-point complete base, preserves unrepresented fields, validates the new native
 files, and publishes only after the target's full identity and immutable block match. The target
 must have no existing UTxO, snapshots, volatile or ledger artifacts. This is interchange against an
-explicit base, not standalone bootstrap. Both commands retain native (V7) restart snapshots, stored CBOR,
+explicit base, not standalone bootstrap. Both commands retain native (V8) restart snapshots, stored CBOR,
 and the existing Haskell import/export tools. JSON events report the point/count/path or typed error.

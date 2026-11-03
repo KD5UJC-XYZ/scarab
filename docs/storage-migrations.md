@@ -23,9 +23,10 @@ checkout with a hashed manifest and reproducible provenance.
 
 The snapshot fingerprint golden in `CodecSuite` must change together with the version, migration and
 previous-version regression. Regenerating a fingerprint to make a test pass is not a migration.
-Native snapshots are V7: the V5 body (Haskell ledger CBOR plus a typed binary sidecar) behind a
-checkpoint binding, with framing and checksum; stored values remain CBOR. The binding has its own
-fingerprint golden in `CodecSuite`, next to the sidecar's. MemPack is an import/export format, not a replacement stored value.
+Native snapshots are V8: the V5 body (Haskell ledger CBOR plus a typed binary sidecar) behind a
+checkpoint binding, with framing and checksum, as V7 has it, with a sidecar schema that keeps the
+Byron update state's installer metadata (#726); stored values remain CBOR. The binding has its own
+fingerprint golden in `CodecSuite`, next to the sidecar's and the frozen V5/V7 sidecar's. MemPack is an import/export format, not a replacement stored value.
 
 ## Convert typed values without inventing state
 
@@ -37,14 +38,22 @@ and all semantic state the old file actually held. Hashes and signatures continu
 transaction/block bytes; re-encoding diagnostics or a container format does not replace those bytes.
 
 For ledger snapshots, `FileLedgerSnapshots.verified` checks the file checksum before a payload is
-used. `SnapshotV7.format[F](SnapshotCheck.Full).decode(content)` reads current content, and
-`SnapshotV7.sidecarOf` and `SnapshotV7.bindingOf` expose carried metadata. `SnapshotV5` is the
-frozen previous reader: its body parser is shared, and `SnapshotV7.fromV5` is the migration step. The `Full` choice controls encode-time read-back
+used. `SnapshotV8.format[F](SnapshotCheck.Full).decode(content)` reads current content, and
+`SnapshotV8.sidecarOf` and `SnapshotV8.bindingOf` expose carried metadata. `SnapshotV5` and
+`SnapshotV7` are the previous readers: the body parser is shared and takes the sidecar schema
+(`SnapshotV5.Schema`), V5 and V7 sidecars being read in the frozen `SnapshotSidecarV7` schema;
+`SnapshotV7.fromV5` and `SnapshotV8.fromV7` are the migration steps. The `Full` choice controls encode-time read-back
 checking; decoding itself validates the current file in either mode.
 A converter must carry the source `observed` eras and `gaps` exactly. Missing non-myopic data must
 remain missing; the caller's newer environment is not evidence that the old file observed an era.
 A derivation is allowed only when the old state supplies every input and a test proves the derivation.
 Record any unavoidable loss explicitly rather than filling it with an apparently complete default.
+Where the node answers from the lost state with the reference's bytes, a recorded gap is not enough:
+the file is refused with `StorageError.ResyncRequired` and its `FormatLoss`, before any store opens
+and before any file is rewritten, and a file without such state migrates
+([ADR 0006, amendment of 2026-11-03](adr/0006-versioned-formats-migrate-on-open.md#amendment-2026-11-03-a-state-that-cannot-be-converted-is-refused-726)).
+The V5/V7 → V8 conversion is the first case: a Byron update state that holds a software proposal or
+an application version lost their installer metadata.
 
 Test semantic invariants as well as fixed bytes. Include a control that fails when a carried gap is
 dropped or missing state is invented. For snapshots backed by RocksDB, verify the checkpoint at the
@@ -72,10 +81,14 @@ Global V6 is the complete network identity and global V7 the snapshot's checkpoi
 identifies either registered header; `step(file, V5, V7)` validates that exact transition, verifies
 the old checksum, checks the V5 sidecar against its fingerprint, copies the V5 body unchanged behind
 a `Legacy` binding (no checkpoint digest is invented for a file that recorded none) and atomically
-writes V7. `Migrate` then has no work for V7. The identity kind remains at V6 and unchanged kinds
-retain their own current versions. A future snapshot change appends global `V8`. Retire the V5
+writes V7. Global V8 changes only the snapshot's sidecar schema (#726): `step(file, V7, V8)` verifies
+the old checksum, reads the sidecar in the frozen V7 schema, keeps the binding and the Haskell bytes,
+and atomically writes V8; `SnapshotMigration.preflight` and `run` first read the sidecar of every V5
+and V7 file and refuse one whose conversion would invent state. `Migrate` then has no work for V8.
+The identity kind remains at V6 and unchanged kinds retain their own current versions. A future
+snapshot change appends global `V9`. Retire the V5
 reader only after the inventory and conversion conditions below hold, then advance the snapshot
-kind's `readableFrom` to V7. Use caller-scoped `Raise[F, StorageError]` for every migration operation;
+kind's `readableFrom` to V7 (and retire the V7 reader the same way, to V8). Use caller-scoped `Raise[F, StorageError]` for every migration operation;
 do not capture an earlier caller's error interpreter in a long-lived migration object.
 
 Acquire `DatabaseOwnership` before inspecting a database that could have another writer. Its lock
@@ -111,6 +124,15 @@ went through every step above. Read its code and tests before a new snapshot ver
 | Goldens | the binding fingerprint and encodings next to the sidecar's in `CodecSuite` |
 | Previous-version evidence | `fixtures/snapshot-v5` kept as the source; `fixtures/snapshot-v7` is its registered conversion, re-derived byte for byte by `SnapshotGoldenSuite` |
 | Refusal and transition tests | `SnapshotPreflightSuite` (retired and unknown versions refused before recovery, backing reset or a direct migration step), `FormatMigrationSuite` (version transitions, interruption, unknown versions) |
+
+The V7 → V8 change (#726) went through the same steps with a schema change instead of a framing
+one: `FormatVersion.V8` and `V8 -> "SCRBSNP8"` registered; the previous sidecar schema frozen as
+`SnapshotSidecarV7` (the V7 types it changed kept with their V7 names, so its fingerprint golden is
+the V7 one); `SnapshotV8.fromV7` reads the sidecar in it, refuses a lost metadata with
+`ResyncRequired` and writes the rest unchanged; `fixtures/snapshot-v8` is the registered conversion
+of `fixtures/snapshot-v7` (`SnapshotV8FixtureMain`), re-derived by `SnapshotGoldenSuite`; the
+migrate and refuse cases at every entry point are `SnapshotV8MigrationSuite`, on the startup path
+`SnapshotPreflightSuite`.
 
 A RocksDB layout change goes through the same steps plus the checkpoint rules of the next section.
 The change is level 3 ([CONTRIBUTING](../CONTRIBUTING.md#gates-and-ceremony-by-level-of-change));

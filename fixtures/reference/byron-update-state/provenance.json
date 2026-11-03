@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-03",
+  "scope": "The encoding of UPI.State as the reference answers GetUpdateInterfaceState with it (encodeByronResult, toByronCBOR): each case's state built with the released types, written with toCBOR and read back with decodeFull' at byronProtVer; no ledger rule is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "consensusSourceCommit": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+  "compiler": "GHC 9.10.3",
+  "packages": {
+    "cardano-ledger-byron": "1.3.0.0",
+    "cardano-crypto-wrapper": "1.7.0.0",
+    "cardano-ledger-binary": "1.9.1.0",
+    "cborg": "0.2.10.0",
+    "containers": "0.7",
+    "text": "2.1.3",
+    "aeson": "2.2.5.0",
+    "base16-bytestring": "1.0.2.0"
+  },
+  "sourceFiles": {
+    "interface": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/Validation/Interface.hs",
+      "sourceSha256": "2d801d8aececbd0eee975483a140554cd3ae9948154e4204980a27b9b901328e",
+      "matchesPin": true,
+      "note": "State: eleven fields (109-133); ToCBOR is toByronCBOR (135-136); EncCBOR an 11-element list (157-169); initialState writes currentEpoch 0 (225-238)"
+    },
+    "registration": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/Validation/Registration.hs",
+      "sourceSha256": "71684878cb304ef7ef292c82a64fd1ed8871d2b111f4a63338d7851f886dda88",
+      "matchesPin": true,
+      "note": "ApplicationVersion [number, slot, metadata] (99-123); Metadata a Map SystemTag InstallerHash (127); ProtocolUpdateProposal [version, parameters] (136-158); SoftwareUpdateProposal [software version, metadata] (162-184)"
+    },
+    "endorsement": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/Validation/Endorsement.hs",
+      "sourceSha256": "55c5e57b38804af260fcddd6eabc8f847f30f519ddb1252bba9c7c56044ad819",
+      "matchesPin": true,
+      "note": "CandidateProtocolUpdate [slot, version, parameters] (59-92); Endorsement [version, key hash], Ord derived (94-118)"
+    },
+    "installerHash": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/InstallerHash.hs",
+      "sourceSha256": "1f3aa4cdf78d1b22c76d0dc1bb418b0a8a5a51c93ecd7963a04e00ed32cd441f",
+      "matchesPin": true,
+      "note": "EncCBOR [hashRaw \\NUL, hash, hashRaw \\NUL, hashRaw \\NUL]; DecCBOR keeps the second (48-65)"
+    },
+    "protocolParameters": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/ProtocolParameters.hs",
+      "sourceSha256": "5907f17641aefc36a9131ee429258852d5d78c027229365006715b2234fdaeec",
+      "matchesPin": true,
+      "note": "EncCBOR fourteen fields; the sizes Natural (168-184)"
+    },
+    "softforkRule": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/SoftforkRule.hs",
+      "sourceSha256": "064f67ac4a4a18b548d958a9cb881427f72085e3ead306fbc6543be4126ac0ff",
+      "matchesPin": true,
+      "note": "EncCBOR three LovelacePortion (69-75)"
+    },
+    "protocolVersion": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/ProtocolVersion.hs",
+      "sourceSha256": "a6e73d7006de1339012c37ac6bb1bdbd92ad2f83b3d445d486d71333573d4a29",
+      "matchesPin": true,
+      "note": "Word16, Word16, Word8, Ord derived"
+    },
+    "softwareVersion": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/SoftwareVersion.hs",
+      "sourceSha256": "c37be4f6d9769e1772fb30878413ca4cfd8b0681ab157e5396cacd711dae658b",
+      "matchesPin": true,
+      "note": "[ApplicationName, Word32]"
+    },
+    "txFeePolicy": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Common/TxFeePolicy.hs",
+      "sourceSha256": "92d9a7dfc085d3df1f99bd630549dcfd2cea728b36910208f86a98e2edac286b",
+      "matchesPin": true,
+      "note": "EncCBOR [0, encodeKnownCborDataItem TxSizeLinear] (86-91)"
+    },
+    "txSizeLinear": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Common/TxSizeLinear.hs",
+      "sourceSha256": "7a7eb317f832ec3575d90c8ef690f430cc27c92e101a5fa04d66391c013edd7c",
+      "matchesPin": true,
+      "note": "EncCBOR two Nano: the summand's lovelace, fromRational of the multiplier (63-68)"
+    },
+    "lovelacePortion": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Common/LovelacePortion.hs",
+      "sourceSha256": "e1ccc494c17eef47c5d429a89d6feda31736b068447f191b1a941c8da8bc2d24",
+      "matchesPin": true,
+      "note": "EncCBOR its Word64 (75-76)"
+    },
+    "encoder": {
+      "file": "cardano-ledger-binary-1.9.1.0 src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
+      "sourceSha256": "3c6f222efddd43995afa425a18a748d35ca8f629799d5d2a362629db4bd50b47",
+      "note": "below version 2: encodeMap a definite map in Map order (397-408), encodeSet tag 258 and a definite list (479-491), encodeList an indefinite list (499-508); the released 1.9.1.0 archive, which differs from the file at f649f975"
+    },
+    "encCBOR": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/EncCBOR.hs",
+      "sourceSha256": "4d71b5a323d88f766e6e7d4f33202c9371e1b426b77e68fd5760ef50191f70ba",
+      "matchesPin": true,
+      "note": "Natural as an Integer (186-187); Fixed newtype-derived (184); Text encodeString (277-278); Map, Set and list through the encoder (299-319)"
+    },
+    "version": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Version.hs",
+      "sourceSha256": "4726e87beca4af3b765984725b4a49797bd08bb61d45b4c3b0923a4bd3e8e58d",
+      "matchesPin": true,
+      "note": "byronProtVer is version 1 (163)"
+    },
+    "consensusByronLedger": {
+      "file": "ouroboros-consensus-cardano/src/byron/Ouroboros/Consensus/Byron/Ledger/Ledger.hs",
+      "sourceSha256": "77019b5551b5b7685c96d392987e1bbda549e42dd8a86c5044dbc5cab6d7af14",
+      "matchesPin": true,
+      "note": "GetUpdateInterfaceState answered with cvsUpdateState (243-246), encodeByronResult toByronCBOR (563-565), at ouroboros-consensus 82ecba32"
+    }
+  },
+  "harness": {
+    "main": "scripts/oracle/byron-update-state/Main.hs",
+    "mainSha256": "6383d7c58daa6f9417110b5b46acf5aa590e6d92e30411b10a9234c03a87bdb7",
+    "cases": "scripts/oracle/byron-update-state/cases.py",
+    "casesSha256": "79499d03bba9d687807cec0a681dc4936ac0cde1c8e10f0ef6c597c149908b04"
+  },
+  "cases": {
+    "file": "cases.jsonl",
+    "sha256": "223a445a425c108da8ed14f48c5810b7a23f3ccdd7835e17252c0f50be6a8d8d",
+    "count": 12
+  }
+}
