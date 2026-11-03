@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 """Shared constants and Docker/CLI helpers for the devnet scripts."""
+import contextlib
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
@@ -80,6 +83,61 @@ def data_dir(env=None, exists=pathlib.Path.exists, notice=lambda text: print(tex
 
 def data_root(name):
     return data_dir() / name
+
+
+GIB = 1 << 30
+
+
+@dataclass(frozen=True)
+class LowDiskSpace:
+    """The file system that holds `path` has `free` bytes, fewer than the `required` margin."""
+    path: pathlib.Path
+    free: int
+    required: int
+
+    def message(self):
+        return (f"not enough free space for a devnet run: {human_bytes(self.free)} free on the file system of "
+                f"{self.path}, the margin is {human_bytes(self.required)} (lower it with --min-free-gib, 0 skips "
+                f"the check, or set SCARAB_DATA_DIR to a larger file system)")
+
+
+def existing_ancestor(path):
+    """`path` or its nearest ancestor that exists: a run directory may not have been created yet."""
+    return next(p for p in (path, *path.parents) if p.exists())
+
+
+def free_space_shortfall(path, required, usage=shutil.disk_usage):
+    """A `LowDiskSpace` when the file system of `path` has less than `required` bytes free, else None."""
+    where = existing_ancestor(path)
+    free = usage(where).free
+    return LowDiskSpace(where, free, required) if free < required else None
+
+
+def tree_size(path):
+    """Bytes the tree under `path` occupies on disk (as `du`), symbolic links not followed, entries that
+    cannot be read skipped; None when `path` does not exist."""
+    if not path.exists():
+        return None
+    total = 0
+    stack = [path]
+    while stack:
+        current = stack.pop()
+        with contextlib.suppress(OSError):
+            stat = current.lstat()
+            total += stat.st_blocks * 512
+            if current.is_dir() and not current.is_symlink():
+                stack.extend(current.iterdir())
+    return total
+
+
+def human_bytes(count):
+    """`count` bytes in the largest binary unit that keeps it at least 1, one decimal."""
+    value, unit = float(count), "B"
+    for larger in ("KiB", "MiB", "GiB", "TiB"):
+        if value < 1024:
+            break
+        value, unit = value / 1024, larger
+    return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
 
 
 def jdk_image(present=None):

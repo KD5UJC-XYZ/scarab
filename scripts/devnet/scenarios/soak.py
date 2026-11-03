@@ -62,7 +62,8 @@ def soak(args):
     """Fresh cluster, Scala follower, transaction load and periodic comparison."""
     root = data_root(args.name)
     up(args)
-    follower = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "follow",
+    # the soak itself checked the free space before it started
+    follower = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "--min-free-gib", "0", "follow",
                                  *arguments(args), "--local-socket",
                                  *(["--dump-state"] if getattr(args, "oracle", False) else [])],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

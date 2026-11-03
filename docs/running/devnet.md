@@ -29,6 +29,9 @@ Run data lives in `${SCARAB_DATA_DIR:-/tmp/scarab}/<name>` (never in the checkou
 directory). `--name` selects the cluster name (default `scarab-devnet`, `scarab-eras` for `up-eras`), so a
 second cluster can run beside another. Directories and sockets that containers of other uids must
 write are made world-writable (mode 0777) on a local devnet; the key files are 0400.
+A command that starts a run (`up`, a scenario, `follow`) refuses before it starts when the file system of
+the run directory has less than `--min-free-gib` GiB free (a top-level flag, default 5; 0 skips the check),
+and prints the run directory's size on disk when it ends, also when it fails.
 
 ```sh
 python3 scripts/devnet.py <subcommand> [options]     # python3 scripts/devnet.py --help
