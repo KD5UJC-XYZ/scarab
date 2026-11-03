@@ -42,11 +42,10 @@ class LeiosFetchDecoderSuite extends FunSuite:
 
   test("every valid framing prefix asks for more; complete message leaves trailing bytes") {
     val messages = Vector(
-      State.Idle -> bs(0x9f, 1, 0x9f, 0, 0x40, 0xff, 0xff),
+      State.Idle -> bs(0x82, 1, 0x9f, 0, 0x40, 0xff),
       State.Idle -> (bs(0x83, 3) ++ point ++ bs(0xbf, 0, 1, 0xff)),
-      State.Block -> bs(0x9f, 2, 0xbf, 0x41, 0, 0x1a, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff),
-      State.BlockTxs -> (bs(0x9f, 4, 0x9f) ++ transaction ++ bs(0xff, 0xff)),
-      State.BlockTxs -> (bs(0x9f, 4) ++ point ++ bs(0xa0, 0x9f, 0xa0, 0xff, 0xff))
+      State.Block -> bs(0x82, 2, 0xbf, 0x41, 0, 0x1a, 0xff, 0xff, 0xff, 0xff, 0xff),
+      State.BlockTxs -> (bs(0x82, 4, 0x9f) ++ transaction ++ bs(0xff))
     )
     messages.foreach { (state, raw) =>
       (0 until raw.size).foreach { n =>
@@ -76,17 +75,13 @@ class LeiosFetchDecoderSuite extends FunSuite:
       Left(LeiosWireError.TooMany(3, LeiosField.Bitmaps, 268, 269))
     )
     assertEquals(
-      decodePrefix(State.BlockTxs, bs(0x9f, 4, 0x99, 0x42, 0xf7)),
-      Left(LeiosWireError.TooMany(4, LeiosField.Transactions, 17142, 17143))
-    )
-    assertEquals(
       decodePrefix(State.Block, bs(0x82, 2, 0xbb, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)),
       Left(LeiosWireError.TooMany(2, LeiosField.EndorserBlock, 17142, BigInt(Long.MaxValue)))
     )
   }
 
-  test("bitmap entry errors precede later truncated fields and outer record arity") {
-    val prefix = bs(0x82, 3) ++ point
+  test("bitmap entry errors precede later truncated fields") {
+    val prefix = bs(0x83, 3) ++ point
     assertEquals(
       decodePrefix(State.Idle, prefix ++ bs(0xa2, 0, 0)),
       Left(LeiosWireError.ZeroBitmap(3, 0))
@@ -106,14 +101,16 @@ class LeiosFetchDecoderSuite extends FunSuite:
     )
   }
 
-  test("record arity follows fields and agency precedes the message body") {
-    assertEquals(decodePrefix(State.Idle, bs(0x81, 1)), Left(LeiosWireError.Incomplete))
+  test("a definite record's arity precedes its fields, and agency the message body") {
+    // `decodeListLen`, then the length, key and state matched together before any field
+    // (`LeiosDemoOnlyTestFetch.hs:279-282, 350-388`, ouroboros-consensus 2416493b)
+    assertEquals(decodePrefix(State.Idle, bs(0x81, 1)), Left(LeiosWireError.WrongArity(1, 1, 0)))
     assertEquals(
       decodePrefix(State.Idle, bs(0x81, 1) ++ point),
       Left(LeiosWireError.WrongArity(1, 1, 0))
     )
     assertEquals(decodePrefix(State.Idle, bs(0x82, 0)), Left(LeiosWireError.WrongArity(0, 0, 1)))
-    assertEquals(decodePrefix(State.Idle, bs(0x9f, 0, 0)), Left(LeiosWireError.ExcessTerms(0)))
+    assertEquals(decodePrefix(State.Idle, bs(0x9f, 0, 0xff)), Left(LeiosWireError.NotAnArray))
     assertEquals(decodePrefix(State.Idle, bs(0x82, 2)), Left(LeiosWireError.NotAdmitted(2)))
     assertEquals(
       decodePrefix(State.Block, bs(0x82, 0x1a, 0, 1, 0, 0)),

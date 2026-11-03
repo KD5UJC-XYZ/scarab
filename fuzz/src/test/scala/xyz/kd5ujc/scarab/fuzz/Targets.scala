@@ -207,13 +207,7 @@ object Targets:
         )
       ),
       LeiosFetch.Message.BlockTxsRequest(point, bitmaps),
-      LeiosFetch.Message.BlockTxs(Corpus.transactions.take(3).map(Bytes.fromArray)),
-      // the older form of Blueprint fe4cceb9, which the decoder still reads (docs/leios.md 11.6, X12)
-      LeiosFetch.Message.LegacyBlockTxs(
-        point,
-        bitmaps,
-        Corpus.transactions.take(3).map(Bytes.fromArray)
-      )
+      LeiosFetch.Message.BlockTxs(Corpus.transactions.take(3).map(Bytes.fromArray))
     )
     // requests at and past each bitmap rule of the reference decoder (zero bitmap, window 268, windows
     // that do not ascend, 269 entries, definite and indefinite), which the decoder refuses

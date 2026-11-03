@@ -25,7 +25,7 @@ import xyz.kd5ujc.scarab.protocol.{
   * Blueprint's `.cbor dijkstra.block_transaction` makes the generated reader decode them. The CDDL
   * has no bound on the number of entries where the codec has `maxTxsPerEb`; its hash size
   * constraint is absent from the native byte wrappers. The older form of `MsgLeiosBlockTxs`
-  * (`fe4cceb9`) is read by the codec only (`LeiosFetch.Message.LegacyBlockTxs`).
+  * (`fe4cceb9`) is read by neither (#744).
   */
 class LeiosFetchCddlSuite extends munit.FunSuite:
   private def big(x: Any): BigInt = BigInt(x.toString)
@@ -199,22 +199,14 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
     assert(generated(over).isRight)
   }
 
-  test(
-    "the form of fe4cceb9 is read by the codec as LegacyBlockTxs and not by the generated reader"
-  ) {
+  test("the form of fe4cceb9 is read by neither the codec nor the generated reader") {
     val p = written(LeiosFetch.Message.BlockRequest(point)).drop(2).hex
     // [4, point, {0: 1}, [h'a0']]: the point, the bitmaps and a plain transaction
     val old = hex("84" + "04" + p + "a1" + "0001" + "81" + "a0")
     assert(generated(old).isLeft)
     assertEquals(
-      LeiosFetch.decodePrefix(LeiosFetch.State.BlockTxs, old).map(_._1),
-      Right(
-        LeiosFetch.Message.LegacyBlockTxs(
-          point,
-          bitmap(Vector(0 -> BigInt(1))),
-          Vector(hex("a0"))
-        )
-      )
+      LeiosFetch.decodePrefix(LeiosFetch.State.BlockTxs, old),
+      Left(LeiosWireError.WrongArity(4, 1, 3))
     )
   }
 
