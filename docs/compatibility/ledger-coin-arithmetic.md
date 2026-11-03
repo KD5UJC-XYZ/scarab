@@ -11,6 +11,12 @@ Construction and native pot arithmetic do not add sign checks. Existing Coin CBO
 still require Word64; compact conversion still checks the Word64 range. Writers and persisted
 format versions are unchanged. Withdrawals carry Coin amounts at the decoded/native API
 boundary, retaining the unique-key map, explicit consumer ordering and original body bytes.
+The amount a MIR certificate pays a stake credential is a `DeltaCoin`, an `Integer` read by
+`decodeInteger` (`Shelley/TxCert.hs:341-353`, `Coin.hs:115-119`): an integer item of any head width
+or a bignum (tags 2 and 3 with the one-byte heads `0xc2`/`0xc3` over a definite byte string), read
+by `CborRead.integer` (#707). `MirAmountsReferenceSuite` holds each form in a body of each era from
+Shelley to Babbage against the reference's verdict ([fixtures](../../fixtures/reference/mir-amounts/README.md));
+before #707 the bignum forms were refused.
 
 Compact account additions and subtotals wrap modulo 2^64. MIR combines Coin amounts before
 compaction; reward delivery compacts each reward before grouping. POOLREAP combines compact

@@ -310,7 +310,7 @@ private[ledger] object CborRead:
     * is in the decoded tree, so they are read from the original bytes of the tag and its content; a
     * definite byte string of any length head or with leading zeros is still a bignum.
     */
-  private def integer(n: Node, what: DecodeSite): Result[BigInt] = n.value match
+  def integer(n: Node, what: DecodeSite): Result[BigInt] = n.value match
     case Value.UInt(v)                                                     => Right(v)
     case Value.NInt(v)                                                     => Right(v)
     case Value.Tag(t, inner) if (t == 2 || t == 3) && bignumHead(n, inner) =>

@@ -234,6 +234,12 @@ object Certificate:
       yield cert
     }
 
+  /** `[pot, target]`: the target is a map from credential to `DeltaCoin` for `TypeMapLen`,
+    * `TypeMapLen64` and `TypeMapLenIndef`, and a `Coin` otherwise (`DecCBOR MIRTarget`,
+    * `Shelley/TxCert.hs:341-353`, cardano-ledger f649f975). `DeltaCoin` derives its decoder from
+    * `Integer` (`Coin.hs:115-119`), so an amount is read by `decodeInteger`, bignums included
+    * ([[CborRead.integer]], #707).
+    */
   private def moveRewards(n: Node)(using ByteStrings): Either[LedgerDecodeError, Certificate] =
     CborRead.arrayN(n, 2, DecodeField.MoveInstantaneousRewards).flatMap { xs =>
       for
@@ -249,7 +255,7 @@ object Certificate:
               .flatMap(_.traverse { case (k, v) =>
                 (
                   Credential.decode(k, DecodeField.MIRCredential),
-                  CborRead.int(v, DecodeField.MIRAmount)
+                  CborRead.integer(v, DecodeField.MIRAmount)
                 ).tupled
               })
               .map(kvs => Right(kvs.toMap))

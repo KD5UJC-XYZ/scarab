@@ -30,6 +30,7 @@ private[ledger] object ReferenceCorpus:
     case UpdateValues extends Corpus("update-values", Layout.Lines)
     case RecdRecords extends Corpus("recd-records", Layout.Lines)
     case MapHeads extends Corpus("map-heads", Layout.Lines)
+    case MirAmounts extends Corpus("mir-amounts", Layout.Lines)
 
   /** How a corpus is stored: `cases.json` beside `reference.json`, or one `cases.jsonl` with a case
     * and its verdict (`accepted`, `failure`) on each line.

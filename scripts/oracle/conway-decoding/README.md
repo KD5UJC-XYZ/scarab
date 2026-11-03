@@ -62,6 +62,11 @@ written as a map with each width of length head, and the eight-byte heads the re
 recipe is the one above with `map_head_cases.py`, `/tmp/map-heads-inputs.json` and
 `fixtures/reference/map-heads/cases.jsonl`.
 
+The [MIR amounts corpus](../../../fixtures/reference/mir-amounts/README.md) (#707) runs on the same
+harness, its cases from `mir_amount_cases.py`: the amount of a MIR certificate to stake credentials
+in each integer form, Shelley to Babbage. Its recipe is the one above with `mir_amount_cases.py`,
+`/tmp/mir-amounts-inputs.json` and `fixtures/reference/mir-amounts/cases.jsonl`.
+
 The [`RecD` records corpus](../../../fixtures/reference/recd-records/README.md) (#668) runs on the
 same harness, its cases from `recd_cases.py`: each `RecD` record a block can hold (the update
 proposal, a redeemer's execution units, Conway's governance records, an output's value and the list
