@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-03",
+  "scope": "The arguments of the node-to-client ledger queries read with the decoders decodeShelleyQuery uses for them: fromCBOR of cardano-binary (sets tag 258 around a definite ascending list, Maybe and Either definite lists) and LC.fromEraCBOR at Conway's lowest protocol version 9 (sets definite or indefinite, tagged or not, without duplicates); the verdict and the values read; no query server or node is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "consensusSourceCommit": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+  "compiler": "GHC 9.10.3",
+  "referenceNode": "11.1.3 (matching embedded package versions, not a bit-identical node release build)",
+  "image": "scripts/oracle/ntc-query-arguments/Dockerfile, FROM scarab-plutus176-context-reference:local (run as scarab-cc709-ntc-query-arguments:local)",
+  "packages": {
+    "cardano-binary": "1.9.1.0 (cardano-base 9c964be source read)",
+    "cardano-ledger-binary": "1.9.1.0",
+    "cardano-ledger-core": "1.21.0.0"
+  },
+  "sourceFiles": {
+    "shelleyQuery": {
+      "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Query.hs",
+      "sourceSha256": "1cd06da384691ba7c90750930da4f18b1a66742b087fed4bb29ace653be1d68f",
+      "matchesPin": true,
+      "note": "decodeShelleyQuery: decodeListLen, then fromCBOR or LC.fromEraCBOR per argument (916-995)"
+    },
+    "plainFromCBOR": {
+      "file": "cardano-binary/src/Cardano/Binary/FromCBOR.hs",
+      "sourceSha256": "1cc173c9e87b8f3404f063f674aabae74c00de5e31af690063c170b44b86a8cc",
+      "matchesPin": true,
+      "note": "Either decodeListLenOf 2 (418-430), decodeMaybe decodeListLen (445-453), decodeSetSkel tag 258, decodeListLen, strictly ascending (550-576)"
+    },
+    "ledgerDecoder": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+      "sourceSha256": "3ff3541b2900ceaab9bda26f633d7ea5118a49f5faab3936d036cfe9b49f94cc",
+      "matchesPin": true,
+      "note": "decodeSet at version 9: decodeSetEnforceNoDuplicates, definite or indefinite, tag optional (952-976, 1043-1077)"
+    }
+  },
+  "harness": {
+    "file": "scripts/oracle/ntc-query-arguments/Main.hs",
+    "sha256": "a76ea9191b44225fbcac3287bbc0f9f8c8668bc6072e2bb68152189a4066bd9e"
+  },
+  "generatorSha256": "fb810e1de25104c6e8dc38a1c9cbfa872e349484355a406272d6e649c99db8b3",
+  "casesSha256": "7e81ceb422cf9d57d65871bef28e3ffee2de908c23704722f15c8e5e7c6216aa",
+  "results": {
+    "cases": 55,
+    "accepted": 25,
+    "refused": 30
+  }
+}
