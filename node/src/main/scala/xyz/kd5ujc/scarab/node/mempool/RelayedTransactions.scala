@@ -17,8 +17,8 @@ import xyz.kd5ujc.scarab.protocol.{Era, ProtocolError, TxSubmission2}
   * f649f975), and its id is the hash of that span (`txIdTx`, `Shelley/Ledger/Mempool.hs:204-206`,
   * ouroboros-consensus 82ecba32). This reads the transaction as the mempool does
   * ([[DetachedRecords]] and `Tx.envelopeParts`: three parts, or four with the validity flag, #699)
-  * and checks them as far as the protocol must to know its id, a body that is a map. The ledger's
-  * decoders of the parts run in the mempool.
+  * and, for an id ([[body]]), checks them as far as it must, a body that is a map; a reply's
+  * transaction is read whole ([[read]]).
   */
 object RelayedTransactions extends TxSubmission2.TransactionReader:
   // every item is at least a byte, so the size of the transaction bounds the items and the
@@ -42,4 +42,19 @@ object RelayedTransactions extends TxSubmission2.TransactionReader:
             ProtocolError.TransactionBodyIsNotAMap
           )
         )
+    }
+
+  /** The transaction read whole, as the mempool reads it (`MempoolState.parseParts`: the parts by
+    * `Tx.envelopeParts`, each by the ledger's decoders through `Tx.fromBlock`), so that the codec
+    * and the mempool give one verdict. A refusal is the codec's, as in the reference (#708); a
+    * decoder that throws is not caught here, and the channel that runs the codec ends the
+    * connection with a decoder defect, not as the peer's fault.
+    */
+  def read(original: Bytes): Either[ProtocolError, Bytes] =
+    DetachedRecords.read(original, limits, DetachedRecords.Shapes.transaction(Era.Conway))(
+      ProtocolError.Codec(_)
+    ) { root =>
+      Tx.envelopeParts(root, Era.Conway)
+        .flatMap(parts => Tx.fromBlock(parts, Era.Conway).as(parts.body))
+        .leftMap(ProtocolError.UndecodableTransaction(_))
     }
