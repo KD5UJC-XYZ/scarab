@@ -61,13 +61,14 @@ class TxEnvelopeReferenceSuite extends FunSuite:
 
   test("a transaction without its flag is valid, and the flag it carries is kept") {
     val by = rows.map(r => r.name -> r).toMap
-    def read(name: String) =
-      by.get(name).toRight(name).flatMap(r => Tx.fromEnvelope(r.raw, r.era).leftMap(_.message))
+    def read(name: String): Either[LedgerDecodeError, Tx] =
+      val row = by.getOrElse(name, fail(s"no case $name"))
+      Tx.fromEnvelope(row.raw, row.era)
     assertEquals(read("conway transaction without its flag").map(_.isValid), Right(true))
     assertEquals(read("conway transaction with its flag false").map(_.isValid), Right(false))
     assertEquals(
       read("shelley transaction indefinite"),
-      Left(LedgerDecodeError.IndefiniteLength(DecodeField.Transaction).message)
+      Left(LedgerDecodeError.IndefiniteLength(DecodeField.Transaction))
     )
   }
 
