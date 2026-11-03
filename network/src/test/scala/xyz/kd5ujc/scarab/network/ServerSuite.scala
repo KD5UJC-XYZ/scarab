@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.TxSubmission2Fixtures
+import xyz.kd5ujc.scarab.protocol.TxSubmission2Fixtures.given
 import cats.effect.{IO, Ref, Resource}
 import cats.syntax.all.*
 import com.comcast.ip4s.*
@@ -85,6 +87,7 @@ class ServerSuite extends FailsOnUncaught:
       }
 
   private val noTxs: TxSubmissionServer.Sink[IO] = new TxSubmissionServer.Sink[IO]:
+    def reader = TxSubmission2Fixtures.structural
     def known(id: Bytes) = IO.pure(false)
     def submit(originals: Vector[Bytes])(using
         cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
@@ -271,6 +274,7 @@ class ServerSuite extends FailsOnUncaught:
       held <- Ref.of[IO, Vector[TxSubmissionClient.Held]](Vector.empty)
       bodies = txs.map(t => TxSubmission2.bodyId(t).toOption.get -> t).toMap
       source = new TxSubmissionClient.Source[IO]:
+        def reader = TxSubmission2Fixtures.structural
         def after(ticket: Long, max: Int) =
           held.get.map(_.filter(_.ticket > ticket).take(max))
         def awaitAfter(ticket: Long) =
@@ -280,6 +284,7 @@ class ServerSuite extends FailsOnUncaught:
           )
         def body(id: Bytes) = IO.pure(bodies.get(id))
       sink = new TxSubmissionServer.Sink[IO]:
+        def reader = TxSubmission2Fixtures.structural
         def known(id: Bytes) = IO.pure(id == ids(1))
         def submit(originals: Vector[Bytes])(using
             cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]

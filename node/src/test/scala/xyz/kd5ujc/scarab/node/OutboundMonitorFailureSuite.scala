@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.mempool.RelayedTransactions
 import cats.effect.{IO, Ref, Resource}
 import cats.effect.std.Supervisor
 import cats.mtl.{Handle, Stateful}
@@ -31,6 +32,7 @@ class OutboundMonitorFailureSuite extends FailsOnUncaught:
     val blocks = new BlockFetchServer.Blocks[IO]:
       def range(from: ChainSync.Point, to: ChainSync.Point) = IO.pure(None)
     val transactions = new TxSubmissionServer.Sink[IO]:
+      def reader = RelayedTransactions
       def known(id: xyz.kd5ujc.scarab.codec.Bytes) = IO.pure(false)
       def submit(originals: Vector[xyz.kd5ujc.scarab.codec.Bytes])(using
           cats.mtl.Raise[IO, NetworkError]

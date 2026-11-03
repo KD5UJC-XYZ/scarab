@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.TxSubmission2Fixtures
+import xyz.kd5ujc.scarab.protocol.TxSubmission2Fixtures.given
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -18,6 +20,7 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
   private def id(n: Int): Bytes = Bytes(Vector.fill(31)(0.toByte) :+ n.toByte)
   private val all = Vector.tabulate(64)(n => TxSubmissionClient.Held(id(n), 5, n + 1L))
   private val source: TxSubmissionClient.Source[IO] = new TxSubmissionClient.Source[IO]:
+    def reader = TxSubmission2Fixtures.structural
     def after(ticket: Long, max: Int) = IO.pure(all.filter(_.ticket > ticket).take(max))
     def awaitAfter(ticket: Long) = IO.unit
     def body(txId: Bytes) = IO.pure(None)
@@ -164,6 +167,7 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
         if unexpected then new IllegalStateException("injected backend defect")
         else new java.io.IOException("injected closure")
       val broken = new TxSubmissionClient.Source[IO]:
+        def reader = TxSubmission2Fixtures.structural
         def after(ticket: Long, max: Int) = IO.pure(Vector.empty)
         def awaitAfter(ticket: Long) = IO.raiseError[Unit](cause)
         def body(txId: Bytes) = IO.pure(None)
@@ -219,6 +223,7 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
         .executeEmbed(for
           called <- Ref.of[IO, Boolean](false)
           sink = new TxSubmissionServer.Sink[IO]:
+            def reader = TxSubmission2Fixtures.structural
             def known(txId: Bytes) = called.set(true).as(false)
             def submit(originals: Vector[Bytes])(using
                 cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
@@ -250,6 +255,7 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
         }
 
   private val sink: TxSubmissionServer.Sink[IO] = new TxSubmissionServer.Sink[IO]:
+    def reader = TxSubmission2Fixtures.structural
     def known(txId: Bytes) = IO.pure(false)
     def submit(originals: Vector[Bytes])(using
         cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]

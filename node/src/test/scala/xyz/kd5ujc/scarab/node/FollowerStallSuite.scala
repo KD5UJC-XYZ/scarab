@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.mempool.RelayedTransactions
 import xyz.kd5ujc.scarab.consensus.{
   Anchor,
   BlockNoVerdict,
@@ -92,6 +93,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         }
         .rescue(e => IO.raiseError(new RuntimeException(e.message)))
       sink = new TxSubmissionServer.Sink[IO]:
+        def reader = RelayedTransactions
         def known(id: Bytes) = IO.pure(false)
         def submit(
             originals: Vector[Bytes]

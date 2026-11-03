@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.TxSubmission2Fixtures
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
@@ -44,6 +45,7 @@ class WarmHotSuite extends FailsOnUncaught:
         )
       )
     val sink = new TxSubmissionServer.Sink[IO]:
+      def reader = TxSubmission2Fixtures.structural
       def known(id: Bytes) = IO.pure(false)
       def submit(originals: Vector[Bytes])(using
           cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
@@ -52,6 +54,7 @@ class WarmHotSuite extends FailsOnUncaught:
 
   /** A source that never has a transaction: the client's offer stays a blocking request. */
   private val emptySource: TxSubmissionClient.Source[IO] = new TxSubmissionClient.Source[IO]:
+    def reader = TxSubmission2Fixtures.structural
     def after(ticket: Long, max: Int) = IO.pure(Vector.empty)
     def awaitAfter(ticket: Long) = IO.never
     def body(id: Bytes) = IO.pure(None)

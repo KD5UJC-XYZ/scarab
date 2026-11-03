@@ -28,7 +28,6 @@ enum ProtocolError extends DomainError:
   case EarlyBatchDoneIncompleteRequestedRange
   case ExpectedBlockingBoolean
   case ExpectedBoolean
-  case ExpectedBreakAfterTransactionMembers
   case ExpectedByronSubtagSize
   case ExpectedByronSubtagSizeHeader
   case ExpectedCandidateArray
@@ -116,7 +115,6 @@ enum ProtocolError extends DomainError:
   case TrailingBytes
   case TrailingHeaderBytes
   case TrailingKeepAliveBytes
-  case TrailingOriginalTransactionBytes
   case TrailingPayloadBytes
   case TrailingSerializedBlockBytes
   case TrailingTxSubmission2Bytes
@@ -196,8 +194,6 @@ enum ProtocolError extends DomainError:
     case EarlyBatchDoneIncompleteRequestedRange => "early BatchDone: incomplete requested range"
     case ExpectedBlockingBoolean                => "expected blocking Boolean"
     case ExpectedBoolean                        => "expected boolean"
-    case ExpectedBreakAfterTransactionMembers =>
-      "expected break after the transaction's members"
     case ExpectedByronSubtagSize       => "expected Byron [subtag, size]"
     case ExpectedByronSubtagSizeHeader => "expected Byron [[subtag, size], header]"
     case ExpectedCandidateArray        => "expected candidate array"
@@ -288,7 +284,6 @@ enum ProtocolError extends DomainError:
     case TrailingBytes                    => "trailing bytes"
     case TrailingHeaderBytes              => "trailing header bytes"
     case TrailingKeepAliveBytes           => "trailing KeepAlive bytes"
-    case TrailingOriginalTransactionBytes => "trailing original transaction bytes"
     case TrailingPayloadBytes             => "trailing payload bytes"
     case TrailingSerializedBlockBytes     => "trailing serialized block bytes"
     case TrailingTxSubmission2Bytes       => "trailing TxSubmission2 bytes"

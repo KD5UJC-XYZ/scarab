@@ -992,7 +992,8 @@
           "DetachedRecordsSuite",
           "CborDetachedSuite",
           "TxEnvelopeReferenceSuite",
-          "TxEnvelopeSubmissionSuite"
+          "TxEnvelopeSubmissionSuite",
+          "RelayedTransactionsSuite"
         ],
         "paths": [
           "fixtures/reference/recd-records/cases.jsonl",
@@ -1007,7 +1008,7 @@
         "issues": [
           698,
           700,
-          702
+          708
         ]
       },
       "page": "docs/compatibility/ledger-recd-records.md"

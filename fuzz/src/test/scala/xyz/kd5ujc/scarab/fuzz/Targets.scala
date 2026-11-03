@@ -15,7 +15,12 @@ import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.TestLedger
 import xyz.kd5ujc.scarab.ledger.testByteStrings
 import xyz.kd5ujc.scarab.ledger.byron.{ByronAddress, ByronBody}
-import xyz.kd5ujc.scarab.node.mempool.{LocalMonitor, LocalSubmission, MempoolState}
+import xyz.kd5ujc.scarab.node.mempool.{
+  LocalMonitor,
+  LocalSubmission,
+  MempoolState,
+  RelayedTransactions
+}
 import xyz.kd5ujc.scarab.node.ntc.NtcQuery
 import xyz.kd5ujc.scarab.plutus.PlutusData
 
@@ -27,6 +32,8 @@ final case class Target(name: String, corpus: () => Vector[Array[Byte]], check: 
   * round-trip values or canonical encoding, according to their wire contract.
   */
 object Targets:
+  // the node's transactions, as its TxSubmission2 reads them
+  private given TxSubmission2.TransactionReader = RelayedTransactions
   private def raw(i: Input): Bytes = Bytes.fromArray(i.bytes)
   private def req(ok: Boolean, what: => String): Unit = if !ok then throw new Violation(what)
 

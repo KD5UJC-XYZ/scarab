@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.TxSubmission2Fixtures
 import cats.effect.{IO, Resource}
 import cats.effect.testkit.TestControl
 import scala.concurrent.duration.*
@@ -26,6 +27,7 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
     Resource.pure(source),
     (_, _) => IO.pure(None),
     new TxSubmissionServer.Sink[IO]:
+      def reader = TxSubmission2Fixtures.structural
       def known(id: Bytes) = IO.pure(false)
       def submit(originals: Vector[Bytes])(using
           cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.mempool.RelayedTransactions
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, ChainSelection, Compute, VolatileChain}
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.{
@@ -89,6 +90,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
         def range(from: Point, to: Point) =
           ranges.update(_ :+ (from -> to)) *> server.blocks.range(from, to)
       sink = new TxSubmissionServer.Sink[IO]:
+        def reader = RelayedTransactions
         def known(id: Bytes) = IO.pure(false)
         def submit(
             originals: Vector[Bytes]
@@ -265,6 +267,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
               ),
               (_, _) => IO.pure(None),
               new TxSubmissionServer.Sink[IO]:
+                def reader = RelayedTransactions
                 def known(id: Bytes) = IO.pure(false)
                 def submit(originals: Vector[Bytes])(using
                     cats.mtl.Raise[IO, xyz.kd5ujc.scarab.network.NetworkError]
@@ -681,6 +684,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
 
   /** A mempool that never holds a transaction: a blocking request for ids waits forever. */
   private val nothingToOffer: TxSubmissionClient.Source[IO] = new TxSubmissionClient.Source[IO]:
+    def reader = RelayedTransactions
     def after(ticket: Long, max: Int) = IO.pure(Vector.empty)
     def awaitAfter(ticket: Long) = IO.never
     def body(id: Bytes) = IO.pure(None)

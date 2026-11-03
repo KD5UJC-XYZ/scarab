@@ -46,22 +46,29 @@ object TxSubmission2:
       case TxSubmission2Engine.Message.RequestTxs(ids)     => Message.RequestTxs(ids)
       case TxSubmission2Engine.Message.ReplyTxs(originals) => Message.ReplyTxs(originals)
       case TxSubmission2Engine.Message.Done                => Message.Done
-  private val wire = ProtocolWire.Limits(
-    MaxMessageBytes,
-    MaxOriginalBytes,
-    32,
-    ProtocolWire.MaxItems,
-    ProtocolWire.MaxItems
-  )
 
-  private val conwayProfile = new TxSubmission2Engine.Profile[Bytes, Bytes]:
+  /** How the transactions of the era a codec carries are read: the reference's TxSubmission2 codec
+    * takes the transaction decoder of the block type (`codecTxSubmission2` over `decodeNodeToNode`,
+    * `Ouroboros/Consensus/Network/NodeToNode.hs`, ouroboros-consensus 82ecba32), which for a
+    * `GenTx` is the era's own after the hard-fork combinator's era index (`dispatchDecoder`,
+    * `HardFork/Combinator/Serialisation/SerialiseNodeToNode.hs:80-109,156-159`), and for a
+    * Shelley-based era is the ledger's decoder of the transaction inside CBOR-in-CBOR
+    * (`unwrapCBORinCBOR (eraDecoder @era decCBOR)`, `Shelley/Ledger/Mempool.hs:261-266`). This
+    * codec reads only Conway's index, so the reader is that of Conway's transactions; the ledger
+    * that knows their structure supplies it, as the protocols here do not.
+    */
+  trait TransactionReader:
+    /** The bytes of the body of the transaction `original`, as the era's decoder reads them: the
+      * transaction id is their hash. A refusal where `original` is not a transaction those decoders
+      * frame.
+      */
+    def body(original: Bytes): Either[ProtocolError, Bytes]
+
+  private def profile(reader: TransactionReader) = new TxSubmission2Engine.Profile[Bytes, Bytes]:
     def maxBatch: Int = MaxBatch
     def maxOriginalBytes: Int = MaxOriginalBytes
     def maxAdvertisedSize: Long = MaxOriginalBytes.toLong + 16L
-    def maxMessageBytes(state: State): Int = state match
-      case State.Init | State.Idle  => 65535
-      case State.Ids(_) | State.Txs => MaxMessageBytes
-      case State.Done               => 0
+    def maxMessageBytes(state: State): Int = TxSubmission2.maxMessageBytes(state)
     def writeId(value: Bytes, state: State, writer: ProtocolWire.Writer)(using
         ProtocolWire.Scope
     ): Unit =
@@ -77,21 +84,25 @@ object TxSubmission2:
     def writeBody(value: Bytes, state: State, writer: ProtocolWire.Writer)(using
         ProtocolWire.Scope
     ): Unit =
-      original(value)
+      original(value, reader)
       writer.head(4, 2); writer.head(0, 6); writer.head(6, 24)
       writer.head(2, value.size); writer.raw(value)
-    def readBody(reader: ProtocolWire.Reader)(using ProtocolWire.Scope): Bytes =
-      if reader.arrayLength() != 2 || reader.uint().value != 6 || reader.tag() != 24 then
+    def readBody(in: ProtocolWire.Reader)(using ProtocolWire.Scope): Bytes =
+      if in.arrayLength() != 2 || in.uint().value != 6 || in.tag() != 24 then
         bad(ProtocolError.ExpectedConwayGenTx)
-      val value = reader.bytes(MaxOriginalBytes); original(value); value
+      val value = in.bytes(MaxOriginalBytes); original(value, reader); value
 
-  private[scarab] val conwayCodec: TxSubmission2Engine.Codec[Bytes, Bytes] =
-    TxSubmission2Engine.codec(conwayProfile, advertisedSize, bodyId)
+  /** The codec of Conway's `GenTx`, its transactions read by `reader`. */
+  private[scarab] def codec(reader: TransactionReader): TxSubmission2Engine.Codec[Bytes, Bytes] =
+    TxSubmission2Engine.codec(profile(reader), advertisedSize, bodyId(_)(using reader))
 
   /** TxSubmission2/Codec.hs:50-63: Init and Idle use smallByteLimit. The remaining active states
     * retain the stricter local eight-transaction profile rather than upstream's 2500000 bytes.
     */
-  def maxMessageBytes(state: State): Int = conwayProfile.maxMessageBytes(state)
+  def maxMessageBytes(state: State): Int = state match
+    case State.Init | State.Idle  => 65535
+    case State.Ids(_) | State.Txs => MaxMessageBytes
+    case State.Done               => 0
 
   def transition(state: State, sender: Role, message: Message): Either[ProtocolError, State] =
     TxSubmission2Engine.transition(state, sender, toEngine(message))
@@ -108,35 +119,11 @@ object TxSubmission2:
                                     else 5)
       )
 
-  /** Structural identity only; admission remains the caller's responsibility. The members are read
-    * as `decodeRecordNamed "AlonzoTx"` reads them
-    * (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs:532-553`, cardano-ledger f649f975): the
-    * body, the witness set, the validity flag when the third member is a boolean, and the auxiliary
-    * data or null; three members without the flag, four with it, in a definite or an indefinite
-    * list (#699).
+  /** The transaction id of `original`, the hash of its body as `reader` reads it, within the size
+    * this codec carries; admission remains the caller's responsibility.
     */
-  def bodyId(original: Bytes): Either[ProtocolError, Bytes] = attempt {
-    get(advertisedSize(original.size))
-    val r = new ProtocolWire.Reader(original, wire.copy(maxMessageBytes = MaxOriginalBytes))
-    val indefinite = original.headOption.contains(0x9f.toByte)
-    val declared = if indefinite then { r.read(); None }
-    else Some(r.arrayLength())
-    if declared.exists(n => n != 3 && n != 4) then
-      bad(ProtocolError.ExpectedConwayTransactionMembers)
-    val body = r.item()
-    if !body.headOption.exists(b => (b & 0xe0) == 0xa0) then
-      bad(ProtocolError.TransactionBodyIsNotAMap)
-    r.item()
-    val third = original.byteOr(r.position)(bad(ProtocolError.TruncatedCbor))(_ & 255)
-    val flagged = third == 0xf4 || third == 0xf5
-    if flagged then r.read()
-    r.item()
-    if declared.exists(_ != (if flagged then 4 else 3)) then
-      bad(ProtocolError.ExpectedConwayTransactionMembers)
-    if indefinite && r.read() != 0xff then bad(ProtocolError.ExpectedBreakAfterTransactionMembers)
-    if r.position != original.size then bad(ProtocolError.TrailingOriginalTransactionBytes)
-    Blake2b.hash256.hash(body)
-  }
+  def bodyId(original: Bytes)(using reader: TransactionReader): Either[ProtocolError, Bytes] =
+    advertisedSize(original.size).flatMap(_ => reader.body(original)).map(Blake2b.hash256.hash)
 
   private def checkId(id: Bytes)(using ProtocolWire.Scope): Unit =
     if id.size != 32 then bad(ProtocolError.TransactionIDMustBe32Bytes(id.size))
@@ -148,22 +135,28 @@ object TxSubmission2:
     if n < 0 || n > 65535 then bad(ProtocolError.CountOutsideUint16(BigInt(n)))
   private def batch(n: Int)(using ProtocolWire.Scope): Unit =
     if n > MaxBatch then bad(ProtocolError.BatchLimitExceeded(n, MaxBatch))
-  private def original(bytes: Bytes)(using ProtocolWire.Scope): Unit =
+  private def original(bytes: Bytes, reader: TransactionReader)(using ProtocolWire.Scope): Unit =
     get(advertisedSize(bytes.size))
-    get(ProtocolWire.validateItem(bytes, wire.copy(maxMessageBytes = MaxOriginalBytes)))
+    get(reader.body(bytes))
 
-  def encode(state: State, sender: Role, message: Message): Either[ProtocolError, Bytes] =
-    conwayCodec.encode(state, sender, toEngine(message))
+  def encode(state: State, sender: Role, message: Message)(using
+      TransactionReader
+  ): Either[ProtocolError, Bytes] =
+    codec(summon[TransactionReader]).encode(state, sender, toEngine(message))
 
-  def decodePrefix(state: State, sender: Role, bytes: Bytes): ChainSync.DecodeResult[Message] =
-    conwayCodec.decodePrefix(state, sender, bytes) match
+  def decodePrefix(state: State, sender: Role, bytes: Bytes)(using
+      TransactionReader
+  ): ChainSync.DecodeResult[Message] =
+    codec(summon[TransactionReader]).decodePrefix(state, sender, bytes) match
       case ChainSync.DecodeResult.NeedMore      => ChainSync.DecodeResult.NeedMore
       case ChainSync.DecodeResult.Failed(error) => ChainSync.DecodeResult.Failed(error)
       case ChainSync.DecodeResult.Decoded(message, consumed) =>
         ChainSync.DecodeResult.Decoded(fromEngine(message), consumed)
 
-  def decode(state: State, sender: Role, bytes: Bytes): Either[ProtocolError, Message] =
-    conwayCodec.decodePrefix(state, sender, bytes) match
+  def decode(state: State, sender: Role, bytes: Bytes)(using
+      TransactionReader
+  ): Either[ProtocolError, Message] =
+    codec(summon[TransactionReader]).decodePrefix(state, sender, bytes) match
       case ChainSync.DecodeResult.NeedMore      => Left(ProtocolError.TruncatedTxSubmission2Message)
       case ChainSync.DecodeResult.Failed(error) => Left(error)
       case ChainSync.DecodeResult.Decoded(message, n) =>
