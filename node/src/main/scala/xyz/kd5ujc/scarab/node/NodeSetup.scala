@@ -267,7 +267,10 @@ object NodeSetup:
               )
             }
           }
-    val byron = (bytes: Array[Byte]) => ByronGenesisFile.read(Bytes.fromArray(bytes)).map(_._2)
+    // `readGenesis` reads the Byron genesis whole before it compares its hash (cardano-node 11.1.3
+    // `Cardano/Node/Protocol/Byron.hs:91-95`), so a genesis the schema refuses is refused for that
+    val byron = (bytes: Array[Byte]) =>
+      ByronGenesisFile.parse(Bytes.fromArray(bytes), None).map(_.hash)
     val plain = (bytes: Array[Byte]) => Right(hashOf(bytes))
     val files = config.files
     val hashes = config.hashes

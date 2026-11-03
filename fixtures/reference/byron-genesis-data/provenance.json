@@ -118,13 +118,13 @@
     "main": "scripts/oracle/byron-genesis-data/Main.hs",
     "mainSha256": "a6b71b1dc945b7daf7e81dd139ac688df92768eb8d9929682adeefa0d6e76333",
     "cases": "scripts/oracle/byron-genesis-data/cases.py",
-    "casesSha256": "42b138ce4c19c62f1d91fba671f2dbbf7e38e5cebd15731b857118aaf053bdf8"
+    "casesSha256": "4043f69b7339da5e0ad4570fe4a78d21429eb44ceb63ba0055d47167519c0751"
   },
   "cases": {
     "file": "cases.jsonl",
-    "sha256": "ca77850c53bba5244eb769d0af1a2b52e7e2205319f914e5e4ff8a0c757753b5",
-    "count": 198,
-    "accepted": 86,
-    "refused": 112
+    "sha256": "eb8d1857a2b01955f7f02f00f4e8a9b6783eb19f504c11264c82183898749115",
+    "count": 204,
+    "accepted": 87,
+    "refused": 117
   }
 }

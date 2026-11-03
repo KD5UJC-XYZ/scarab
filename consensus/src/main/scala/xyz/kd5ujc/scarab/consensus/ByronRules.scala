@@ -75,6 +75,18 @@ object ByronRules:
       pbft: PBftState
   )
 
+  /** The most blocks a genesis key may sign in the window: `pbftWindowParams` 's
+    * `floor (pbftSignatureThreshold * fromIntegral winSize) :: Word64` (ouroboros-consensus
+    * 82ecba32 `Ouroboros/Consensus/Protocol/PBFT.hs:403-412`). GHC 9.10.3 floors through `Integer`
+    * and takes the result modulo 2^64, so a window of 2^64 - 1 (a `k` of -1 in the genesis, #734)
+    * at a threshold of 1 is 0; a product that is not finite decodes to a multiple of 2^64 and is 0
+    * too.
+    */
+  def windowThreshold(threshold: Double, window: BigInt): BigInt =
+    val product = threshold * window.toDouble
+    if product.isNaN || product.isInfinite then BigInt(0)
+    else BigDecimal.exact(math.floor(product)).toBigInt.mod(BigInt(1) << 64)
+
   /** The genesis key that is the round-robin leader of `slot`. */
   def scheduledLeader(genesis: ByronGenesis, slot: BigInt): Bytes =
     genesis.genesisKeys((slot % genesis.genesisKeys.size).toInt)
@@ -175,7 +187,7 @@ object ByronRules:
         signer <- KeyHash.fromBytes[Genesis](genesisKey).leftMap(ByronChainError.Vocabulary(_))
         k = config.ledger.genesis.securityParam
         pbft = previous.append(PBftSigner(slot, signer), k)
-        threshold = math.floor(config.signatureThreshold * k.toDouble).toLong
+        threshold = ByronRules.windowThreshold(config.signatureThreshold, k)
         signed = pbft.countSignedBy(signer).toBigInt
         _ <- Either.cond(
           signed <= threshold,

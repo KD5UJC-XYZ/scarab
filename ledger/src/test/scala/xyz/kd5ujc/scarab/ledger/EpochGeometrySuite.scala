@@ -86,6 +86,19 @@ class EpochGeometrySuite extends ScalaCheckSuite:
     }
   }
 
+  test(
+    "a Byron slot of 2^64 ms is kept exact in time arithmetic and its start is past every clock"
+  ) {
+    val long = geometry(1, 10, 500).copy(byron = ByronSpan(1, 10, BigInt(1) << 64))
+    assertEquals(long.slotOffsetMillis(1), BigInt(1) << 64)
+    assertEquals(long.slotStart(0), start)
+    assertEquals(long.slotStart(1), Instant.ofEpochMilli(Long.MaxValue))
+    assertEquals(
+      PosixClock.total(long).posix(1),
+      Right(BigInt(start.toEpochMilli) + (BigInt(1) << 64))
+    )
+  }
+
   test("slot length changes at the Shelley start") {
     val g = geometry(1, 50, 500)
     assertEquals(g.slotStart(49), start.plusMillis(49000))

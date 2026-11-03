@@ -13,13 +13,16 @@ import xyz.kd5ujc.scarab.ledger.json.CanonicalJson
 class ShelleyStartByronGenesisSuite extends FunSuite:
   private val dir = Path.of("fixtures/preview/genesis")
 
-  /** The Preview files, the configured Byron hash left out so that an edited genesis is read. */
-  private def setup(byron: String => String): Either[ConfigError, NodeSetup] =
+  /** The Preview files, the configured Byron hash left out unless `keepHash`. */
+  private def setup(
+      byron: String => String,
+      keepHash: Boolean = false
+  ): Either[ConfigError, NodeSetup] =
     NodeSetup.fromFiles { name =>
       Option.when(Files.exists(dir.resolve(name))) {
         val bytes = Files.readAllBytes(dir.resolve(name))
         name match
-          case "config.json" =>
+          case "config.json" if !keepHash =>
             new String(bytes, "UTF-8")
               .replaceAll("\\s*\"ByronGenesisHash\":\\s*\"[0-9a-f]+\",", "")
               .getBytes("UTF-8")
@@ -34,17 +37,21 @@ class ShelleyStartByronGenesisSuite extends FunSuite:
     assertEquals(read.byronParams.map(_.securityParam), Some(BigInt(432)))
   }
 
-  test("a Byron genesis the reference refuses does not start a chain that begins in Shelley") {
-    val edited = (text: String) =>
-      assertEquals(text.split("\"startTime\": 1666656000", -1).length, 2)
-      text.replace("\"startTime\": 1666656000", "\"startTime\": \"1666656000\"")
-    assertEquals(
-      setup(edited).left.map(_.problem),
-      Left(
-        ConfigProblem.ByronGenesisValue(
-          ByronGenesisField.StartTime,
-          ByronFieldError.Kind(CanonicalJson.Kind.Number, CanonicalJson.Kind.String)
-        )
-      )
+  private val edited = (text: String) =>
+    assertEquals(text.split("\"startTime\": 1666656000", -1).length, 2)
+    text.replace("\"startTime\": 1666656000", "\"startTime\": \"1666656000\"")
+
+  private val refusal = Left(
+    ConfigProblem.ByronGenesisValue(
+      ByronGenesisField.StartTime,
+      ByronFieldError.Kind(CanonicalJson.Kind.Number, CanonicalJson.Kind.String)
     )
+  )
+
+  test("a Byron genesis the reference refuses does not start a chain that begins in Shelley") {
+    assertEquals(setup(edited).left.map(_.problem), refusal)
+  }
+
+  test("the schema is read before the configured hash is compared, as readGenesis does") {
+    assertEquals(setup(edited, keepHash = true).left.map(_.problem), refusal)
   }

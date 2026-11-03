@@ -78,8 +78,16 @@ final case class EpochGeometry(
     if slot < byron.slots then slot * byron.slotLengthMillis
     else byron.slots * byron.slotLengthMillis + (slot - byron.slots) * slotLengthMillis
 
+  /** The onset of `slot` on the node's clock. A slot later than the last millisecond an `Instant`
+    * counts from the epoch (`Long.MaxValue`, some 292 million years on) is placed there: no clock
+    * reaches it, as no clock reaches it in the reference, whose `UTCTime` is unbounded
+    * (`fromByronSlotLength`, a `Natural` slot duration, #734).
+    */
   def slotStart(slot: BigInt): Instant =
-    systemStart.plusMillis(slotOffsetMillis(slot).toLong)
+    val offset = slotOffsetMillis(slot)
+    if (BigInt(systemStart.toEpochMilli) + offset).isValidLong then
+      systemStart.plusMillis(offset.toLong)
+    else Instant.ofEpochMilli(Long.MaxValue)
 
   def slotAt(instant: Instant): BigInt =
     val elapsed = instant.toEpochMilli - systemStart.toEpochMilli

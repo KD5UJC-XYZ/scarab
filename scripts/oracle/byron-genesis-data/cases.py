@@ -106,6 +106,8 @@ def cases():
     add("bootStakeholders: a key in upper case", None, (f'"{K1}": 1\n', f'"{K1.upper()}": 1\n'))
     add("bootStakeholders: a key in mixed case", None, (f'"{K1}": 1\n', f'"{K1[:10].upper() + K1[10:]}": 1\n'))
     add("bootStakeholders: a key twice in two cases", None, (f'"{K1}": 1\n', f'"{K1}": 1, "{K1.upper()}": 2\n'))
+    add("bootStakeholders: a key twice, the second value a string", "bootStakeholders",
+        (f'"{K1}": 1\n', f'"{K1}": 1, "{K1}": "2"\n'))
     add("bootStakeholders: keys out of order", None, (STAKEHOLDERS, '{ "%s": 1, "%s": 1, "%s": 1 }' % (K3, K1, K2)))
     add("bootStakeholders: a key of odd length", "bootStakeholders", (f'"{K1}": 1\n', f'"{K1}0": 1\n'))
     add("bootStakeholders: a key of 27 bytes", "bootStakeholders", (f'"{K1}": 1\n', f'"{K1[:-2]}": 1\n'))
@@ -113,6 +115,8 @@ def cases():
     add("bootStakeholders: a key not hex", "bootStakeholders", (f'"{K1}": 1\n', f'"{K1[:-2]}zz": 1\n'))
     add("bootStakeholders: a key with 0x", "bootStakeholders", (f'"{K1}": 1\n', f'"0x{K1}": 1\n'))
     add("bootStakeholders: an empty key", "bootStakeholders", (f'"{K1}": 1\n', '"": 1\n'))
+    add("bootStakeholders: a key not hex and its value a string, the key is read first", "bootStakeholders",
+        (f'"{K1}": 1\n', f'"{K1[:-2]}zz": "1"\n'))
 
     # heavyDelegation: `Map KeyHash Certificate`, then `recreateGenesisDelegation`
     add("heavyDelegation: empty", None, (heavy, '"heavyDelegation": {}\n'))
@@ -127,6 +131,11 @@ def cases():
     add("heavyDelegation: a delegate that is an issuer", "heavyDelegation", (DELEGATE1, ISSUER2))
     add("heavyDelegation: an issuer that delegates to itself", "heavyDelegation", (DELEGATE1, ISSUER1))
     add("heavyDelegation: two issuers, one delegate", None, (DELEGATE2, DELEGATE1))
+    add("heavyDelegation: a key twice, the second certificate null", "heavyDelegation",
+        (heavy, heavy.rstrip().rstrip("}").rstrip() + '\n    , "%s": null\n    }\n' % K1))
+    add("heavyDelegation: a key twice, the second certificate valid but another issuer's, the first holds", None,
+        (heavy, heavy.rstrip().rstrip("}").rstrip() + '\n    , "%s": { "omega": 0, "issuerPk": "%s", "delegatePk": "%s", "cert": "%s" }\n    }\n'
+         % (K1, ISSUER2, DELEGATE2, CERT1)))
     omega1 = f'"omega": 0\n        , "issuerPk":\n            "{ISSUER1}"'
     for label, v, field in (("5", "5", None), ("-1", "-1", None), ("fifteen digits", "999999999999999", None),
                             ("a string", '"0"', "omega"), ("null", "null", "omega")):
@@ -153,6 +162,18 @@ def cases():
                             ("not hex", CERT1[:-2] + "zz", "cert"), ("all zero", "00" * 64, None)):
         add(f"heavyDelegation: cert {label}", field, (f'"{CERT1}"', json.dumps(v)))
     add("heavyDelegation: cert a number", "cert", (f'"{CERT1}"', "1"))
+    # entries are read in the order of the text, then checked in the order of their keys
+    k1_entry = heavy[heavy.index(f'"{K1}":'):heavy.index(f', "{K2}":')].rstrip()
+    k3_entry = heavy[heavy.index(f'"{K3}":'):].rstrip().rstrip("}").rstrip()
+    k2_entry = heavy[heavy.index(f'"{K2}":'):heavy.index(f', "{K3}":')].rstrip()
+    reordered = '"heavyDelegation":\n    { %s\n    , %s\n    , %s\n    }\n' % (k3_entry, k2_entry, k1_entry)
+    add("heavyDelegation: two certificates wrong, the first in the text is named, not the first key", "omega",
+        (heavy, reordered.replace(k3_entry, k3_entry.replace('"omega": 0', '"omega": "0"'))
+                         .replace(k1_entry, k1_entry.replace(f'"{CERT1}"', "1"))))
+    add("heavyDelegation: a key not its issuer's hash and a multi-layer delegation, the first key is named",
+        "heavyDelegation",
+        (heavy, reordered.replace(k3_entry, k3_entry.replace(k3_entry.split('"delegatePk":')[1].split('"')[1], ISSUER1))
+                         .replace(k1_entry, k1_entry.replace(ISSUER1, ISSUER2))))
     add("heavyDelegation: the certificate's fields wrong, omega is read first", "omega",
         (omega1, omega1.replace('"omega": 0', '"omega": "0"')), (f'"{CERT1}"', "1"))
 
@@ -295,11 +316,14 @@ def refusal(field, failure):
     name = field[0].upper() + field[1:]
     expected = re.search(r'seExpected = "((?:[^"\\]|\\.)*)"', failure).group(1)
     actual = re.search(r'seActual = (Nothing|Just "((?:[^"\\]|\\.)*)")', failure).group(2)
-    return {"field": name, "problem": problem(expected, actual, failure)}
+    return {"field": name, "problem": problem(expected, actual, failure, field)}
 
 
-def problem(expected, actual, failure):
+def problem(expected, actual, failure, field):
     if expected.startswith("field "):
+        # the reader names the missing field: it must be the one the case means
+        missing = re.fullmatch(r'field (?:\\"(.*)\\"|(.*))', expected)
+        assert field in missing.groups(), (expected, field)
         return {"Missing": {}}
     if actual in KINDS and (expected == "object" or expected in NUMBER_TYPES or expected in STRING_TYPES):
         want = "Object" if expected == "object" else "Number" if expected in NUMBER_TYPES else "String"
