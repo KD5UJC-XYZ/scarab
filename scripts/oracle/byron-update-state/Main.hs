@@ -8,10 +8,16 @@
 -- describes a state field by field; the harness builds it with the released types and writes the
 -- encoding, and decodes that again (`decodeFull'` at `byronProtVer`) to check it reads back as the
 -- state it was built from.
+--
+-- With `register`, each case is instead a software update proposal, signed with a throwaway key
+-- derived from a fixed seed, which `Registration.registerProposal` registers or refuses
+-- (`Cardano/Chain/Update/Validation/Registration.hs:331-391, 553-585`, cardano-ledger f649f975): the
+-- harness writes the proposal's bytes and the verdict.
 module Main (main) where
 
 import Cardano.Chain.Common (
   KeyHash (..),
+  hashKey,
   LovelacePortion,
   TxFeePolicy (..),
   TxSizeLinear (..),
@@ -19,9 +25,15 @@ import Cardano.Chain.Common (
   rationalToLovelacePortion,
  )
 import Cardano.Chain.Slotting (EpochNumber (..), SlotNumber (..))
+import qualified Cardano.Chain.Delegation as Delegation
 import Cardano.Chain.Update (
   ApplicationName (..),
+  ApplicationNameError (..),
   InstallerHash (..),
+  ProposalBody (ProposalBody),
+  ProtocolParametersUpdate (..),
+  SoftwareVersionError (..),
+  SystemTagError (..),
   ProtocolParameters (..),
   ProtocolVersion (..),
   SoftforkRule (..),
@@ -31,8 +43,20 @@ import Cardano.Chain.Update (
 import Cardano.Chain.Update.Validation.Endorsement (CandidateProtocolUpdate (..), Endorsement (..))
 import qualified Cardano.Chain.Update.Validation.Interface as UPI
 import qualified Cardano.Chain.Update.Validation.Registration as Registration
-import Cardano.Crypto.Hashing (AbstractHash, HashAlgorithm, abstractHashFromBytes)
-import Cardano.Ledger.Binary (DecoderError, ToCBOR (..), byronProtVer, decodeFull')
+import Cardano.Chain.Update.Proposal (signProposal)
+import Cardano.Crypto.Hashing (AbstractHash, HashAlgorithm, abstractHashFromBytes, hashRaw)
+import Cardano.Crypto.ProtocolMagic (ProtocolMagicId (..))
+import Cardano.Crypto.Signing (deterministicKeyGen, noPassSafeSigner)
+import Cardano.Ledger.Binary (
+  Annotated (..),
+  DecCBOR (..),
+  DecoderError,
+  ToCBOR (..),
+  byronProtVer,
+  decodeFull',
+  decodeFullAnnotatedBytes,
+  serialize',
+ )
 import qualified Codec.CBOR.Write as CBOR
 import Data.Aeson
 import Data.Aeson.Types (Parser, parseEither)
@@ -166,10 +190,89 @@ run = \v -> case parseEither describe v of
   where
     describe = withObject "case" $ \o -> (,) <$> (o .: "name" :: Parser T.Text) <*> (o .: "state" >>= state)
 
+-- | The protocol magic of the registration cases.
+magicId :: ProtocolMagicId
+magicId = ProtocolMagicId 4242
+
+-- | A software update proposal signed by a delegate of the one genesis key, registered against
+-- the case's adopted state: its bytes and the verdict of `registerProposal`.
+register :: Value -> Value
+register = \v -> case parseEither describe v of
+  Left err -> object ["failure" .= err]
+  Right (name, body, env, st) ->
+    let proposal = signProposal magicId body (noPassSafeSigner signer)
+        bytes = serialize' byronProtVer proposal
+        verdict =
+          decodeFullAnnotatedBytes byronProtVer "Proposal" decCBOR (LBS.fromStrict bytes)
+            >>= \annotated -> Right (Registration.registerProposal env st annotated)
+     in object $
+          ["name" .= name, "proposal" .= TE.decodeUtf8 (Base16.encode bytes)] ++ case verdict of
+            Left err -> ["accepted" .= False, "rule" .= ("DecodeFailure" :: T.Text), "failure" .= show err]
+            Right (Left err) -> ["accepted" .= False, "failure" .= show err] ++ refusal err
+            Right (Right (Registration.State _ sups)) ->
+              [ "accepted" .= True
+              , "registered"
+                  .= [ object ["name" .= unApplicationName n, "number" .= k, "tags" .= map getSystemTag (Map.keys m)]
+                     | Registration.SoftwareUpdateProposal (SoftwareVersion n k) m <- Map.elems sups
+                     ]
+              ]
+  where
+    (verification, signer) = deterministicKeyGen (BS.replicate 32 0x2a)
+    (genesis, _) = deterministicKeyGen (BS.replicate 32 0x2b)
+    refusal err = case err of
+      Registration.SystemTagError (SystemTagTooLong t) -> ["rule" .= ("SystemTagTooLong" :: T.Text), "text" .= t]
+      Registration.SystemTagError (SystemTagNotAscii t) -> ["rule" .= ("SystemTagNotAscii" :: T.Text), "text" .= t]
+      Registration.SoftwareVersionError (SoftwareVersionApplicationNameError (ApplicationNameTooLong t)) ->
+        ["rule" .= ("ApplicationNameTooLong" :: T.Text), "text" .= t]
+      Registration.SoftwareVersionError (SoftwareVersionApplicationNameError (ApplicationNameNotAscii t)) ->
+        ["rule" .= ("ApplicationNameNotAscii" :: T.Text), "text" .= t]
+      Registration.DuplicateSoftwareVersion _ -> ["rule" .= ("DuplicateSoftwareVersion" :: T.Text)]
+      Registration.InvalidSoftwareVersion _ _ -> ["rule" .= ("InvalidSoftwareVersion" :: T.Text)]
+      Registration.NullUpdateProposal -> ["rule" .= ("NullUpdateProposal" :: T.Text)]
+      _ -> ["rule" .= ("Other" :: T.Text)]
+    describe = withObject "registration" $ \o -> do
+      name <- o .: "name" :: Parser T.Text
+      tags <- o .: "tags" :: Parser [T.Text]
+      software <- SoftwareVersion <$> (ApplicationName <$> o .: "app") <*> (o .: "number" >>= word)
+      adopted <- o .: "adoptedParameters" >>= parameters
+      proposed <- o .: "version" >>= version
+      apps <- o .: "appVersions" >>= traverse app
+      sups <- o .: "registered" >>= traverse sup
+      let nothing = ProtocolParametersUpdate Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+          meta = Map.fromList [(SystemTag t, InstallerHash (hashRaw (LBS.fromStrict (TE.encodeUtf8 t)))) | t <- tags]
+          body = ProposalBody proposed nothing software meta
+          delegation = Delegation.fromList [(hashKey genesis, hashKey verification)]
+          env =
+            Registration.Environment
+              (Annotated magicId (serialize' byronProtVer magicId))
+              (SlotNumber 1)
+              (ProtocolVersion 0 0 0)
+              adopted
+              (Map.fromList apps)
+              delegation
+      pure (name, body, env, Registration.State Map.empty (Map.fromList (zipWith upId [1 :: Int ..] sups)))
+    app = withObject "appVersion" $ \a -> do
+      n <- ApplicationName <$> a .: "name"
+      v <- Registration.ApplicationVersion <$> (a .: "number" >>= word) <*> pure (SlotNumber 0) <*> pure Map.empty
+      pure (n, v)
+    sup = withObject "registered" $ \a ->
+      SoftwareVersion <$> (ApplicationName <$> a .: "name") <*> (a .: "number" >>= word)
+    upId i sv =
+      ( hashRawUpId i
+      , Registration.SoftwareUpdateProposal sv Map.empty
+      )
+    hashRawUpId i = case abstractHashFromBytes (BS.replicate 32 (fromIntegral i)) of
+      Just h -> h
+      Nothing -> error "a 32-byte id"
+
 main :: IO ()
 main = do
   args <- getArgs
-  cases <- case args of
-    [p] -> (LBS.readFile p >>= either die pure . eitherDecode) :: IO [Value]
-    _ -> die "one input JSON path required"
-  LBS.putStr (encode (map run cases))
+  case args of
+    [p] -> run' p run
+    ["register", p] -> run' p register
+    _ -> die "usage: scarab-byron-update-state [register] INPUT.json"
+  where
+    run' p f = do
+      cases <- (LBS.readFile p >>= either die pure . eitherDecode) :: IO [Value]
+      LBS.putStr (encode (map f cases))
