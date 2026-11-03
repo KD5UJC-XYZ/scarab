@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-03",
+  "scope": "Registration.registerProposal of software update proposals signed by a throwaway delegate key (deterministicKeyGen of a fixed seed in Main.hs), against a state of application versions and registered software proposals: the verdict, the refusal's constructor and text, and the registered software proposals after an acceptance; no block, vote or epoch rule is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "compiler": "GHC 9.10.3",
+  "packages": {
+    "cardano-ledger-byron": "1.3.0.0",
+    "cardano-crypto-wrapper": "1.7.0.0",
+    "cardano-ledger-binary": "1.9.1.0",
+    "text": "2.1.3"
+  },
+  "sourceFiles": {
+    "registration": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/Validation/Registration.hs",
+      "sourceSha256": "71684878cb304ef7ef292c82a64fd1ed8871d2b111f4a63338d7851f886dda88",
+      "matchesPin": true,
+      "note": "registerProposal: proposer, signature, then the components (331-391); registerSoftwareUpdate: checkSystemTag of each key of the metadata in Map order, the duplicate, checkSoftwareVersion, svCanFollow (553-597)"
+    },
+    "systemTag": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/SystemTag.hs",
+      "sourceSha256": "20bb78a21bf6d1b5b26e2ed1b18dd80478bc10fe6714a42f925ece181d5e729c",
+      "matchesPin": true,
+      "note": "systemTagMaxLength 10 (67-68); checkSystemTag: T.length over it is SystemTagTooLong, then any non-isAscii character SystemTagNotAscii (113-117)"
+    },
+    "applicationName": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/ApplicationName.hs",
+      "sourceSha256": "6ce1abbe9f93bfba05665b283d8afabb69f2ce781b84c90b1720a4dd649ac535",
+      "matchesPin": true,
+      "note": "checkApplicationName: T.length over 12 is ApplicationNameTooLong, then ApplicationNameNotAscii (113-123)"
+    },
+    "softwareVersion": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/SoftwareVersion.hs",
+      "sourceSha256": "c37be4f6d9769e1772fb30878413ca4cfd8b0681ab157e5396cacd711dae658b",
+      "matchesPin": true,
+      "note": "checkSoftwareVersion wraps checkApplicationName in SoftwareVersionApplicationNameError (78-80, 112-116)"
+    }
+  },
+  "harness": {
+    "main": "scripts/oracle/byron-update-state/Main.hs",
+    "mainSha256": "5133213527d9227b1c43c083299c1b6d4fcbc255989800f61389bb84fab3ef1c",
+    "cases": "scripts/oracle/byron-update-state/registration_cases.py",
+    "casesSha256": "1c4e3b8257bc1a41bb069c8c0329cade34f18f38d847293bd5c238f5e7cb90be"
+  },
+  "cases": {
+    "file": "cases.jsonl",
+    "sha256": "a3f689468a90200d5005064607853e6e990397523074bdaa88874146cc5fa35b",
+    "count": 31,
+    "accepted": 9,
+    "refused": 22
+  }
+}
