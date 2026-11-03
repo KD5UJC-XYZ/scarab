@@ -120,11 +120,11 @@ class NtcQueryRecordsSuite extends FailsOnUncaught:
       decodeQuery(message(proposals(hex("819fff5820" + "66" * 32)))),
       DecodeResult.NeedMore
     )
-    // a break inside a definite list does not wait: the query is refused as it is read
-    decodeQuery(message(proposals(hex("829fff5820" + "66" * 32 + "00ff")))) match
-      case DecodeResult.Decoded(Message.Query(framed), _) => assert(NtcQuery.decode(framed).isLeft)
-      case DecodeResult.Failed(_)                         => ()
-      case other                                          => fail(s"not refused: $other")
+    // a break inside a definite list does not wait: the query's decoder refuses it at once
+    assertEquals(
+      decodeQuery(message(proposals(hex("829fff5820" + "66" * 32 + "00ff")))),
+      DecodeResult.Failed(xyz.kd5ujc.scarab.protocol.ProtocolError.UndecodableQuery)
+    )
   }
 
   test("read as a tree, as before, a detached id ends the query early and the message after it") {

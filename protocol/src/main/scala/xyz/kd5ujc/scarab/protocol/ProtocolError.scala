@@ -135,6 +135,7 @@ enum ProtocolError extends DomainError:
   case UnknownByronSubtag
   case UnknownEraIndex
   case UnknownKeepAliveTagStateOrExactArity
+  case UndecodableQuery
   case UnknownLocalStateQueryFailure
   case UnknownLocalStateQueryTagOrArity
   case UnknownLocalTxMonitorTagOrArity
@@ -306,6 +307,7 @@ enum ProtocolError extends DomainError:
     case UnknownByronSubtag                   => "unknown Byron subtag"
     case UnknownEraIndex                      => "unknown era index"
     case UnknownKeepAliveTagStateOrExactArity => "unknown KeepAlive tag, state or exact arity"
+    case UndecodableQuery                     => "the query's decoder refuses it"
     case UnknownLocalStateQueryFailure        => "unknown LocalStateQuery failure"
     case UnknownLocalStateQueryTagOrArity     => "unknown LocalStateQuery tag or arity"
     case UnknownLocalTxMonitorTagOrArity      => "unknown LocalTxMonitor tag or arity"

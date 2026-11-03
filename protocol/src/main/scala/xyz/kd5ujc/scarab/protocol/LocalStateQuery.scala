@@ -70,6 +70,9 @@ object LocalStateQuery:
     /** The input ends before the query does. */
     case Short
 
+    /** The query's decoder fails on it, whatever follows. */
+    case Refused
+
   type Target = LocalStateQueryEngine.Target[Point]
   val Target: LocalStateQueryEngine.Target.type = LocalStateQueryEngine.Target
 

@@ -174,8 +174,9 @@ object NtcQuery:
 
   /** Where a query of `MsgQuery` ends, as the reference's decoder of queries reads it from the
     * stream: one holding a detached record spans the record's fields after it, and one whose
-    * record's fields have not all arrived is short ([[DetachedRecords.prefix]]). A query without an
-    * empty indefinite list `9f ff` is one item of a tree, as before (#700).
+    * record's fields have not all arrived is short ([[DetachedRecords.prefix]]); one the walk
+    * refuses is refused, as the reference's stream decoder fails on it whatever follows. A query
+    * without an empty indefinite list `9f ff` is one item of a tree, as before (#700).
     */
   val reader: LocalStateQuery.QueryReader = input =>
     if !DetachedRecords.mayHold(input) then LocalStateQuery.QuerySpan.Item
@@ -183,8 +184,9 @@ object NtcQuery:
       DetachedRecords.prefix(input, shape) match
         case DetachedRecords.Prefix.Item(end, records) if !records.isEmpty =>
           LocalStateQuery.QuerySpan.Prefix(end)
-        case DetachedRecords.Prefix.Short => LocalStateQuery.QuerySpan.Short
-        case _                            => LocalStateQuery.QuerySpan.Item
+        case DetachedRecords.Prefix.Short      => LocalStateQuery.QuerySpan.Short
+        case DetachedRecords.Prefix.Refused    => LocalStateQuery.QuerySpan.Refused
+        case DetachedRecords.Prefix.Item(_, _) => LocalStateQuery.QuerySpan.Item
 
   /** The query as the reference's decoders read it, as far as it holds a `RecD` record
     * ([[DetachedRecords]]): the set of `GovActionId` of `GetProposals` (`(2, 31)`,

@@ -101,7 +101,8 @@ object LocalStateQueryEngine:
         queries.span(q) match
           case LocalStateQuery.QuerySpan.Prefix(size) if size == q.size =>
             get(ProtocolWire.validateItems(q, wire))
-          case _ => get(ProtocolWire.validateItem(q, wire))
+          case LocalStateQuery.QuerySpan.Refused => bad(ProtocolError.UndecodableQuery)
+          case _                                 => get(ProtocolWire.validateItem(q, wire))
         outer(2, 3); w.raw(q)
       case Message.Result(r) =>
         get(ProtocolWire.validateItem(r, wire)); outer(2, 4); w.raw(r)
@@ -144,7 +145,8 @@ object LocalStateQueryEngine:
             case LocalStateQuery.QuerySpan.Short        =>
               // what has arrived still meets the reader's checks, its depth among them
               r.spanning(bytes.size - r.position)
-              bad(ProtocolError.TruncatedCbor))
+              bad(ProtocolError.TruncatedCbor)
+            case LocalStateQuery.QuerySpan.Refused => bad(ProtocolError.UndecodableQuery))
         case (2, 4) if tag == 4   => Message.Result(r.item())
         case (1, 5) if tag == 5   => Message.Release
         case (2, 6) if tag == 6   => Message.ReAcquire(Target.Specific(point.readFrom(r)))
