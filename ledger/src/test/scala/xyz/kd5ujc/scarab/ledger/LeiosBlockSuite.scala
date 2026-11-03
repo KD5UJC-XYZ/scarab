@@ -75,7 +75,7 @@ class LeiosBlockSuite extends munit.FunSuite:
     val v = h.praosView
     assertEquals(v.era, Era.Conway)
     assertEquals(v.hash, h.hash)
-    assertEquals(v.bodyRaw, h.bodyRaw)
+    assertEquals(v.signable, h.signable)
     assertEquals(v.protocolVersion, (BigInt(12), BigInt(0)))
     assertEquals(v.vrf, HeaderVrf.Praos(h.vrf))
     assertEquals(h.point.toString.contains("86463"), true)

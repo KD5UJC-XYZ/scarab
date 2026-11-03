@@ -11,6 +11,7 @@ authoritative recipe; this page adds the order of work and the check before a co
 | Conway bodies and witness sets (version 9; Babbage bodies at 7) | `cases.py` | `fixtures/reference/conway-decoding` | `ConwayDecodingReferenceSuite` |
 | Pre-Conway sets (Shelley to Babbage) | `pre_conway_cases.py` | `fixtures/reference/pre-conway-sets` | `PreConwaySetsReferenceSuite` |
 | Definite and indefinite byte strings | `definite_bytes_cases.py` | `fixtures/reference/definite-bytes` | `DefiniteBytesReferenceSuite` |
+| Block headers and the bytes their KES signature covers ([its own harness](../../scripts/oracle/header-decoding/README.md)) | `scripts/oracle/header-decoding/header_cases.py` | `fixtures/reference/header-decoding` | `HeaderDecodingReferenceSuite` |
 
 1. Add the case to the corpus's generator in `scripts/oracle/conway-decoding/`: one encoding that
    breaks the rule and a twin that keeps it, written by hand, not produced by Scarab.

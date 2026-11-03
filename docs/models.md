@@ -315,7 +315,8 @@ All of the following run in `models/test` (`check` includes them).
   operational certificate and protocol version equal `xyz.kd5ujc.scarab.ledger.Header`; the transaction bodies and witness sets keep
   the exact original bytes of `xyz.kd5ujc.scarab.ledger.Block.Transaction`; the transaction ids (Blake2b-256 of the preserved body)
   equal; the auxiliary-data positions and invalid-transaction indexes equal.
-- Header hash = Blake2b-256 of `header.raw` equals `Header.hash`; `headerBody.raw` equals `bodyRaw` (the KES message).
+- Header hash = Blake2b-256 of `header.raw` equals `Header.hash`; `headerBody.raw` equals `signable` (the KES message, the
+  body encoded again as the reference signs it, which these canonical headers equal).
   `encode(decode(x)) == x`, and `canonical(members)` reproduces real headers (they are canonical).
 - Handshake: `ntn-accept14-preview`, `scalus-ntn-propose14`, `scalus-ntn-accept16`, `scalus-ntn-refuse` and messages
   built by the hand-written writer (versions 14, 15, 16, query reply, decode error) decode to the same versions and

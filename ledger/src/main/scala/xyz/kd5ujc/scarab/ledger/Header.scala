@@ -38,11 +38,15 @@ sealed trait Header:
   def isBoundary: Boolean = false
 
 object Header:
-  /** Shelley..Conway header: `bodyRaw` is the exact signed `header_body` encoding (KES message). */
+  /** Shelley..Conway header. `raw` is the exact encoding, which the hash is over; `signable` is the
+    * header body as the reference encodes it again, which the KES signature is over
+    * ([[HeaderBodyEncoding]]): not the body's original bytes, from which it differs when they hold
+    * a non-minimal head, an indefinite list or a detached record (#698).
+    */
   final case class Shelley(
       era: Era,
       raw: Bytes,
-      bodyRaw: Bytes,
+      signable: Bytes,
       hash: Bytes,
       blockNo: BigInt,
       slot: BigInt,
@@ -190,15 +194,38 @@ object Header:
         fail(LedgerDecodeError.Protocol(ProtocolError.SizeHint(value)))
       )
 
-  /** Decode a Shelley-based raw header `[header_body, kes_signature]` of the given era. */
+  /** Decode a Shelley-based raw header `[header_body, kes_signature]` of the given era, as the
+    * reference reads it at the era's decoder version (`eraDecoder`, consensus 82ecba32
+    * `Shelley/Ledger/Block.hs:340-350`).
+    *
+    * A Praos header (Babbage, Conway) and its body are `RecD` records
+    * (`libs/cardano-protocol/src/Cardano/Protocol/Praos/BlockHeader.hs:203-229`, cardano-ledger
+    * f649f975): a definite list or a detached one, `9f ff` with the fields after it, whose fields
+    * are read by [[DetachedRecords]] ([[CborRead.record]]); its operational certificate and
+    * protocol version are `CBORGroup` lists (`decodeRecordNamed`, `Binary/Group.hs:27-35`),
+    * definite or indefinite. A TPraos header (Shelley to Alonzo) and its body are read by
+    * `decodeRecordNamed` (`TPraos/BlockHeader.hs:193-241`), definite or indefinite, never detached.
+    * A VRF certificate is a definite list in both (`enforceSize`, `Decoding/DecCBOR.hs:568-573`).
+    * The body size is a `Word32`, the protocol version a `Version` (a `Word32` up to
+    * [[DecoderVersion.MaxVersion]], `decodeVersion`, `Decoding/Decoder.hs:462-463`) and a `Word32`.
+    * The hash is over `raw`.
+    */
   def fromRaw(era: Era, raw: Bytes): Either[ChainError, Header.Shelley] =
-    val strings = ByteStrings.of(DecoderVersion.of(era))
     for
       _ <- Either.cond(era != Era.Byron, (), fail(LedgerDecodeError.ByronLayout))
-      root <- CborRead.decode(raw, headerLimits).leftMap(fail)
-      outer <- array(root, 2)
+      header <- DetachedRecords.read(raw, headerLimits, DetachedRecords.Shapes.header(era))(e =>
+        fail(LedgerDecodeError.Syntax(e))
+      )(read(era, raw, _))
+    yield header
+
+  private def read(era: Era, raw: Bytes, root: Node): Either[ChainError, Header.Shelley] =
+    val strings = ByteStrings.of(DecoderVersion.of(era))
+    val list: (Node, Int) => Either[ChainError, Vector[Node]] =
+      if era.usesTPraos then array else record
+    for
+      outer <- list(root, 2)
       kes <- bytes(outer(1), 448, strings)
-      body <- array(outer(0), if era.usesTPraos then 15 else 10)
+      body <- list(outer(0), if era.usesTPraos then 15 else 10)
       blockNo <- uint(body(0))
       slot <- uint(body(1))
       prev <- optHash(body(2), strings)
@@ -206,10 +233,22 @@ object Header:
       vrfVkey <- bytes(body(4), 32, strings)
       layout <- if era.usesTPraos then tpraosTail(body, strings) else praosTail(body, strings)
       (vrf, bodySize, bodyHash, opCert, pv) = layout
+      fields = HeaderBodyEncoding.Fields(
+        blockNo,
+        slot,
+        prev,
+        issuer,
+        vrfVkey,
+        vrf,
+        bodySize,
+        bodyHash,
+        opCert,
+        pv
+      )
     yield Shelley(
       era,
       raw,
-      outer(0).original,
+      HeaderBodyEncoding.encode(fields),
       Blake2b.hash256.hash(raw),
       blockNo,
       slot,
@@ -233,43 +272,69 @@ object Header:
     for
       nonce <- vrfCert(body(5), strings)
       leader <- vrfCert(body(6), strings)
-      size <- uint(body(7))
+      size <- word32(body(7), DecodeField.BlockBodySize)
       hash <- bytes(body(8), 32, strings)
       hot <- bytes(body(9), 32, strings)
       seq <- uint(body(10))
       period <- uint(body(11))
       sigma <- bytes(body(12), 64, strings)
-      major <- uint(body(13))
-      minor <- uint(body(14))
+      pv <- protocolVersion(body(13), body(14))
     yield (
       HeaderVrf.TPraos(nonce, leader),
       size,
       hash,
       OpCert(hot, seq, period, sigma),
-      (major, minor)
+      pv
     )
 
   /** Praos tail: vrf_result, size, hash, operational_cert, protocol_version. */
   private def praosTail(body: Vector[Node], strings: ByteStrings): Either[ChainError, Tail] =
     for
       vrf <- vrfCert(body(5), strings)
-      size <- uint(body(6))
+      size <- word32(body(6), DecodeField.BlockBodySize)
       hash <- bytes(body(7), 32, strings)
       oc <- array(body(8), 4)
       hot <- bytes(oc(0), 32, strings)
       seq <- uint(oc(1))
       period <- uint(oc(2))
       sigma <- bytes(oc(3), 64, strings)
-      pv <- array(body(9), 2)
-      major <- uint(pv(0))
-      minor <- uint(pv(1))
-    yield (HeaderVrf.Praos(vrf), size, hash, OpCert(hot, seq, period, sigma), (major, minor))
+      version <- array(body(9), 2)
+      pv <- protocolVersion(version(0), version(1))
+    yield (HeaderVrf.Praos(vrf), size, hash, OpCert(hot, seq, period, sigma), pv)
+
+  /** `ProtVer` (`BaseTypes.hs:211-244`): the major a `Version` (`decodeVersion`, a `Word32` that
+    * `mkVersion32` takes up to [[DecoderVersion.MaxVersion]], `Binary/Version.hs:111-124`), the
+    * minor a `Word32`.
+    */
+  private[ledger] def protocolVersion(
+      major: Node,
+      minor: Node
+  ): Either[ChainError, (BigInt, BigInt)] =
+    for
+      ma <- word32(major, DecodeField.Major)
+      _ <- Either.cond(
+        ma <= DecoderVersion.MaxVersion,
+        (),
+        fail(
+          LedgerDecodeError.NumberOutOfRange(DecodeField.Major, ma, 0, DecoderVersion.MaxVersion)
+        )
+      )
+      mi <- word32(minor, DecodeField.Minor)
+    yield (ma, mi)
+
+  /** `decodeWord32`: an unsigned integer of any head width whose value fits 32 bits. */
+  private[ledger] def word32(n: Node, site: DecodeSite): Either[ChainError, BigInt] =
+    Unsigned.read[Unsigned.Width.W32](n, site).bimap(fail, _.value)
 
   private[ledger] def vrfCert(n: Node): Either[ChainError, VrfCert] =
     vrfCert(n, ByteStrings.Chunked)
 
+  /** `DecCBOR (CertifiedVRF v a)` (`Decoding/DecCBOR.hs:568-573`): `enforceSize`, a definite list
+    * of two (`decodeListLen`, `Decoding/Decoder.hs:1403-1404`).
+    */
   private[ledger] def vrfCert(n: Node, strings: ByteStrings): Either[ChainError, VrfCert] =
     for
+      _ <- CborRead.definite(n, DecodeField.Header).leftMap(fail)
       xs <- array(n, 2)
       out <- bytes(xs(0), 64, strings)
       proof <- bytes(xs(1), 80, strings)
@@ -388,6 +453,8 @@ object Header:
     ChainError.Decode(DecodeField.Header, reason)
   private[ledger] def array(n: Node, size: Int): Either[ChainError, Vector[Node]] =
     CborRead.arrayN(n, size, DecodeField.Header).leftMap(fail)
+  private[ledger] def record(n: Node, size: Int): Either[ChainError, Vector[Node]] =
+    CborRead.record(n, size, DecodeField.Header).leftMap(fail)
   private[ledger] def uint(n: Node): Either[ChainError, BigInt] = n.value match
     case Value.UInt(v) => Right(v)
     case _ =>

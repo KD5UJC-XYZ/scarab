@@ -244,7 +244,9 @@ class PraosHeaderValidationSuite extends FailsOnUncaught:
         outer.head.value match
           case Value.Arr(body) =>
             val sizeIndex = if h.era.usesTPraos then 7 else 6
-            val changed = body.updated(sizeIndex, Node(Value.UInt(BigInt(1) << 40), Bytes.empty))
+            // the largest body size a header decodes, a Word32 (#698), above every maximum
+            val changed =
+              body.updated(sizeIndex, Node(Value.UInt((BigInt(1) << 32) - 1), Bytes.empty))
             Cbor
               .encode(Value.Arr(outer.updated(0, Node(Value.Arr(changed), Bytes.empty))))
               .fold(error => fail(error.message), identity)

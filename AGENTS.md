@@ -114,7 +114,10 @@ scala code … I love the use of type parameters when I can use them"*.
   implemented, with a written reason that records the approval. Existing code, earlier PRs, review
   notes and design documents are not approval. If exact fidelity seems impossible, stop and ask the
   owner.
-- Pure rules; exact `Rational` arithmetic; anything hashed or signed is hashed over its original bytes.
+- Pure rules; exact `Rational` arithmetic; anything hashed or signed is hashed over its original bytes,
+  except where the reference itself signs a re-encoding: a header's KES signature covers its body
+  encoded again (`Praos/BlockHeader.hs:113-117`, cardano-ledger f649f975), its hash the original
+  bytes ([CONTRIBUTING.md](CONTRIBUTING.md#style-rules), original-bytes rule).
 - Stack safety ([ADR 0011](docs/adr/0011-stack-safety.md)): recursion whose depth or width comes from outside
   data (blocks, peers, files, queries) is a library fold/traversal, `@tailrec`, `tailRecM` over a typed
   state, or an explicit stack machine; never recursion inside an `Either`/`Option` for-comprehension.

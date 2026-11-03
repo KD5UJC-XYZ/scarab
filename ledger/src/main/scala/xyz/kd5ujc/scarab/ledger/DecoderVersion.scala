@@ -11,6 +11,12 @@ import xyz.kd5ujc.scarab.protocol.Era
 opaque type DecoderVersion = Int
 
 object DecoderVersion:
+  /** `MaxVersion` (`libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Version.hs:63`): the
+    * largest `Version` the reference constructs, and so the largest major protocol version it
+    * decodes (`mkVersion32`, `:111-124`).
+    */
+  val MaxVersion: Int = 13
+
   /** `eraProtVerLow`. Byron has no transactions of this shape and reads as Shelley. */
   def of(era: Era): DecoderVersion = era match
     case Era.Byron | Era.Shelley => 2

@@ -466,8 +466,23 @@ object DetachedRecords:
         )
       else Record(List(body(era), witnesses(era), nullable(auxiliaryData(era))))
 
+    /** A header of a Shelley-based era: from Babbage the Praos `HeaderRaw` and its `HeaderBody` are
+      * `RecD` records (`libs/cardano-protocol/src/Cardano/Protocol/Praos/BlockHeader.hs:203-229`),
+      * the body's operational certificate and protocol version lists read by `decodeRecordNamed`
+      * and so not records; a TPraos header to Alonzo holds none (`TPraos/BlockHeader.hs:193-241`).
+      */
+    def header(era: Era): Shape =
+      if since(era, Era.Babbage) then Record(List(Record(List.fill(10)(Item)), Item)) else Item
+
+    /** A Leios header (`libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs`): the
+      * header, its body and a present endorser block announcement are `RecD` records (`:92-104,
+      * 229-257`).
+      */
+    val leiosHeader: Shape =
+      Record(List(Record(List.fill(11)(Item) :+ nullable(pair)), Item))
+
     /** A block as BlockFetch carries it, `[era tag, block]`: a block of a Shelley-based era is its
-      * header, then the bodies, the witness sets, the auxiliary data by index and the invalid
+      * [[header]], then the bodies, the witness sets, the auxiliary data by index and the invalid
       * transactions (`Block.hs:104-115`, `Alonzo/BlockBody/Internal.hs:215-240`).
       */
     val block: Shape = Sum(tag =>
@@ -476,7 +491,7 @@ object DetachedRecords:
           List(
             Fields(
               List(
-                Item,
+                header(era),
                 ListOf(body(era)),
                 ListOf(witnesses(era)),
                 MapOf(Item, auxiliaryData(era))

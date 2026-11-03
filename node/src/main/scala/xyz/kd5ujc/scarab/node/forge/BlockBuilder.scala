@@ -6,6 +6,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, ForgeError, Header, LedgerFailure, VrfCert}
+import xyz.kd5ujc.scarab.ledger.{HeaderBodyEncoding, HeaderVrf}
 import xyz.kd5ujc.scarab.ledger.{LedgerGlobals, PosixClock, ProtocolParams, RefScripts, TxEnv}
 import xyz.kd5ujc.scarab.ledger.rules.Globals
 import xyz.kd5ujc.scarab.plutus.{ExUnits, ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
@@ -41,7 +42,6 @@ object BlockBuilder:
   private def uint(n: BigInt): Array[Byte] = head(0, n.toLong)
   private def bstr(b: Bytes): Array[Byte] = head(2, b.size.toLong) ++ b.toArray
   private def arr(n: Int): Array[Byte] = head(4, n.toLong)
-  private val Null: Array[Byte] = Array(0xf6.toByte)
 
   private def headLength(n: Int): Long = head(0, n.toLong).length.toLong
 
@@ -232,7 +232,10 @@ object BlockBuilder:
     val done = go(candidates.toList, Acc(ticked, Vector.empty, Vector.empty, TxMeasure.zero))
     Selection(done.chosen, done.withheld)
 
-  /** The ten-element Praos `header_body`; its exact bytes are what the KES key signs. */
+  /** The ten-element Praos `header_body`, encoded as the reference encodes it to check the KES
+    * signature ([[HeaderBodyEncoding]]): the bytes the KES key signs, and the block holds them as
+    * they are, so the header's original bytes are that encoding too.
+    */
   def headerBody(
       blockNo: BigInt,
       slot: BigInt,
@@ -245,12 +248,19 @@ object BlockBuilder:
       opCert: Header.OpCert,
       protocolVersion: (BigInt, BigInt)
   ): Bytes =
-    Bytes.fromArray(
-      arr(10) ++ uint(blockNo) ++ uint(slot) ++ prevHash.fold(Null)(bstr(_)) ++ bstr(issuerVkey) ++
-        bstr(vrfVkey) ++ arr(2) ++ bstr(vrf.output) ++ bstr(vrf.proof) ++ uint(bodySize) ++
-        bstr(bodyHash) ++ arr(4) ++ bstr(opCert.hotVkey) ++ uint(opCert.sequence) ++
-        uint(opCert.kesPeriod) ++ bstr(opCert.sigma) ++ arr(2) ++ uint(protocolVersion._1) ++
-        uint(protocolVersion._2)
+    HeaderBodyEncoding.encode(
+      HeaderBodyEncoding.Fields(
+        blockNo,
+        slot,
+        prevHash,
+        issuerVkey,
+        vrfVkey,
+        HeaderVrf.Praos(vrf),
+        BigInt(bodySize),
+        bodyHash,
+        opCert,
+        protocolVersion
+      )
     )
 
   /** `[era, [header, bodies, witnesses, aux, invalid]]` with `header = [header_body, kes_sig]`. */
