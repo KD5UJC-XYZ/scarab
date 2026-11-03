@@ -53,6 +53,14 @@ object ChainSync:
     case IntersectFound(point: Point, tip: Tip)
     case IntersectNotFound(tip: Tip)
     case Done
+
+  /** The bytes of a point's hash: the reference reads it with `decodeRawHash`, which refuses any
+    * other length than the block's `HashSize` (`Ouroboros/Consensus/Block/Abstract.hs:276-279,
+    * 307-314`, ouroboros-consensus 82ecba32), 32 in every Cardano era (`HashSize ByronBlock = 32`,
+    * `Byron/Ledger/Block.hs:84`, the same across eras by `CanHardFork`; #755).
+    */
+  val HashBytes: Int = 32
+
   enum DecodeResult[+A]:
     case NeedMore
     case Failed(error: ProtocolError)
@@ -61,11 +69,19 @@ object ChainSync:
   /** Bounds are local policy. 65535 is the pinned network smallByteLimit per message on
     * node-to-node. `local` lifts the message and string bound to the 2.5 MB of a mux message, for
     * the node-to-client protocol, which carries whole blocks and has no byte limit upstream.
+    *
+    * @param maxItems
+    *   the most CBOR items of a message: 65535, so that within the 65535 bytes of a node-to-node
+    *   message, where every item takes a byte, it never binds; the reference counts none (#755).
+    * @param maxCandidates
+    *   the most points this node puts in a `MsgFindIntersect` it sends. One it receives is read
+    *   with `decodeList` and bounded by its bytes alone (`ChainSync/Codec.hs:165-166,209-214`,
+    *   ouroboros-network 2fb69829; #755).
     */
   final case class Limits(
       maxMessageBytes: Int = 65535,
       maxDepth: Int = 24,
-      maxItems: Int = 8192,
+      maxItems: Int = 65535,
       maxStringBytes: Int = 65535,
       maxCandidates: Int = 64,
       maxHashBytes: Int = 64,
@@ -100,10 +116,11 @@ object ChainSync:
   private[scarab] val enginePointCodec: ChainSyncEngine.PointCodec[Point] =
     new ChainSyncEngine.PointCodec[Point]:
       def encode(value: Point): Either[ProtocolError, Bytes] = encodePoint(value)
-      def decode(item: Bytes): Either[ProtocolError, Point] = decoded(decodePoint(item), item.size)
+      def decode(item: Bytes): Either[ProtocolError, Point] =
+        decoded(decodePoint(item), item.size).flatMap(cardano)
       override private[protocol] def readFrom(reader: ProtocolWire.Reader)(using
           ProtocolWire.Scope
-      ): Point = reader.point()
+      ): Point = get(cardano(reader.point()))
       override private[protocol] def writeTo(
           writer: ProtocolWire.Writer,
           value: Point,
@@ -113,10 +130,14 @@ object ChainSync:
   private[scarab] val engineTipCodec: ChainSyncEngine.TipCodec[Tip] =
     new ChainSyncEngine.TipCodec[Tip]:
       def encode(value: Tip): Either[ProtocolError, Bytes] = encodeTip(value)
-      def decode(item: Bytes): Either[ProtocolError, Tip] = decoded(decodeTip(item), item.size)
+      def decode(item: Bytes): Either[ProtocolError, Tip] =
+        decoded(decodeTip(item), item.size).flatMap(t => cardano(t.point).map(_ => t))
       override private[protocol] def readFrom(reader: ProtocolWire.Reader)(using
           ProtocolWire.Scope
-      ): Tip = reader.tip()
+      ): Tip =
+        val t = reader.tip()
+        get(cardano(t.point))
+        t
       override private[protocol] def writeTo(
           writer: ProtocolWire.Writer,
           value: Tip,
@@ -129,6 +150,14 @@ object ChainSync:
     new ChainSyncEngine.PayloadCodec[P]:
       def encode(value: P): Either[ProtocolError, Bytes] = codec.encode(value)
       def decode(item: Bytes): Either[ProtocolError, P] = codec.decode(item)
+
+  /** A point of the Cardano chain as the reference's codecs read it: its hash, if it has one, is of
+    * [[HashBytes]] (`decodeRawHash`).
+    */
+  private def cardano(point: Point): Either[ProtocolError, Point] = point match
+    case Point.Block(_, hash) if hash.size != HashBytes =>
+      Left(ProtocolError.CardanoPointHashMustContain32Bytes(hash.size))
+    case _ => Right(point)
 
   private def decoded[A](result: DecodeResult[A], consumed: Int): Either[ProtocolError, A] =
     result match

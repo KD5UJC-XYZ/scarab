@@ -157,7 +157,8 @@ object ChainSyncEngine:
       case 1 => Message.AwaitReply
       case 2 => Message.RollForward(payload.readFrom(reader), tip.readFrom(reader))
       case 3 => Message.RollBackward(point.readFrom(reader), tip.readFrom(reader))
-      case 4 => Message.FindIntersect(reader.items(limits.maxCandidates)(point.readFrom))
+      // as many points as the message's bytes hold (`decodeList`, #755)
+      case 4 => Message.FindIntersect(reader.items(Int.MaxValue)(point.readFrom))
       case 5 => Message.IntersectFound(point.readFrom(reader), tip.readFrom(reader))
       case 6 => Message.IntersectNotFound(tip.readFrom(reader))
       case 7 => Message.Done
