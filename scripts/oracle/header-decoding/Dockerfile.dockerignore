@@ -1,0 +1,8 @@
+**
+!scripts/
+!scripts/oracle/
+!scripts/oracle/header-decoding/
+!scripts/oracle/header-decoding/cabal.project
+!scripts/oracle/header-decoding/cabal.project.freeze
+!scripts/oracle/header-decoding/Main.hs
+!scripts/oracle/header-decoding/scarab-header-oracle.cabal
