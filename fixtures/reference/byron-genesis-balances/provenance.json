@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-03",
+  "scope": "The unchanged released Byron genesis reader as readGenesisData applies it: parseCanonicalJSON, then fromJSField of nonAvvmBalances (GenesisNonAvvmBalances) and avvmDistr (GenesisAvvmBalances), and UTxO.fromBalances of each, the AVVM balances at redeem addresses without a network magic; a genesis object with only the two balance fields; no other genesis field, ledger rule or signature is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "compiler": "GHC 9.10.3",
+  "packages": {
+    "cardano-ledger-byron": "1.3.0.0",
+    "cardano-crypto-wrapper": "1.7.0.0",
+    "cardano-prelude": "0.2.2.0",
+    "canonical-json": "0.6.0.1",
+    "base64-bytestring": "1.2.1.0"
+  },
+  "sourceFiles": {
+    "genesisData": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Genesis/Data.hs",
+      "sourceSha256": "31789533260a90b30d814525acd7dd801d6dfac4d2b3e1e2279ff8dbb29bca9d",
+      "matchesPin": true,
+      "note": "FromJSON GenesisData reads nonAvvmBalances and avvmDistr with fromJSField (96, 102); readGenesisData parses with parseCanonicalJSON (169-181)"
+    },
+    "address": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Common/Address.hs",
+      "sourceSha256": "ee2286bb24301148ffa68a8ea23ca15a1c27a1be724b662b5ed46851a99ad48c",
+      "matchesPin": true,
+      "note": "FromObjectKey Address is decodeAddressBase58 (188-189): Base58, then decodeFull' byronProtVer (233-243)"
+    },
+    "lovelace": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Common/Lovelace.hs",
+      "sourceSha256": "ef5e81d943f419475e08e2179ac9a913944a215ecdfaeb5c41f7e45f25258f30",
+      "matchesPin": true,
+      "note": "FromJSON Lovelace is fmap Lovelace . fromJSON @Word64, with no maxLovelaceVal check (117-118)"
+    },
+    "utxo": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/UTxO/UTxO.hs",
+      "sourceSha256": "a1b8749e9e8f5071978efe8ca0dd12c66343aadea966420abd0baa1ff9dda8b7",
+      "matchesPin": true,
+      "note": "fromBalances keys each output by serializeCborHash of its address (121-131)"
+    },
+    "genesisUtxo": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/UTxO/GenesisUTxO.hs",
+      "sourceSha256": "732f7b53648ea3f0020df966f1daa40101e042cf935f8f60987ec9b40465c18e",
+      "matchesPin": true,
+      "note": "genesisUtxo: the AVVM balances at makeRedeemAddress, then the non-AVVM balances (16-32)"
+    },
+    "canonicalClass": {
+      "file": "canonical-json-0.6.0.1/Text/JSON/Canonical/Class.hs",
+      "sourceSha256": "5d29f3abc832f08ba972c5abcceb6426f8e1b1b0c375a3b1de5f4ca2efaeb1de",
+      "note": "FromJSON (Map k a): Map.fromList of the entries reversed, so the first of two equal keys holds (162-175)"
+    },
+    "canonicalTypes": {
+      "file": "canonical-json-0.6.0.1/Text/JSON/Canonical/Types.hs",
+      "sourceSha256": "9f4a8bdeae02846e157919d8492e933d1ecf7db23c3ba4207ccf2670b4fc065e",
+      "note": "JSString holds the UTF-8 bytes, fromJSString gives one Char per byte (64, 90-91)"
+    },
+    "preludeCanonical": {
+      "file": "cardano-prelude-0.2.2.0/src/Cardano/Prelude/Json/Canonical.hs",
+      "sourceSha256": "f8c61a39df2eed1267024e996889e3c815b8a65f2d2c82e6a2aafcbc403acad4",
+      "note": "FromJSON Word64 is parseJSString (readEither . Text.unpack) (114-115)"
+    },
+    "redeemKey": {
+      "file": "cardano-crypto-wrapper-1.7.0.0/src/Cardano/Crypto/Signing/Redeem/VerificationKey.hs",
+      "sourceSha256": "65d24084e82913312b05bb33004e921796a345321c377ec7edc47481c4a43718",
+      "note": "fromAvvmVK: - and _ to + and /, base64-bytestring decode, 32 bytes (120-129)"
+    },
+    "compactRedeemKey": {
+      "file": "cardano-crypto-wrapper-1.7.0.0/src/Cardano/Crypto/Signing/Redeem/Compact.hs",
+      "sourceSha256": "dae55241f566e964f18dcba31d765c60d4a7d4b0e1086992af37566e0bf4a4ea",
+      "note": "FromObjectKey CompactRedeemVerificationKey is fromAvvmVK (141-145)"
+    }
+  },
+  "harness": {
+    "main": "scripts/oracle/byron-genesis-balances/Main.hs",
+    "mainSha256": "51dd48a1740e1aaa43b1dda1903d894461360a61a95277a3a319472da6b3b91a",
+    "cases": "scripts/oracle/byron-genesis-balances/cases.py",
+    "casesSha256": "3a6ec282a916e962c6bca279100f6933e0570e06fd0e2a54a340095f2f451e6d"
+  },
+  "cases": {
+    "file": "cases.jsonl",
+    "sha256": "a3413a33de17300610242f7a6e66c7faa2f3d43c62c0bc4475497734e812a04d",
+    "count": 114,
+    "accepted": 62,
+    "refused": 52
+  }
+}

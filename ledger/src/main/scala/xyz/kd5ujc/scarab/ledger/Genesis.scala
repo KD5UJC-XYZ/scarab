@@ -2,13 +2,13 @@
 package xyz.kd5ujc.scarab.ledger
 
 import cats.syntax.all.*
-import io.circe.{ACursor, Decoder, Json}
+import io.circe.{ACursor, Decoder, Json, JsonObject}
 import io.circe.parser
 import java.time.Instant
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.byron.ByronParams
-import xyz.kd5ujc.scarab.ledger.json.{FromJson, NumberError}
+import xyz.kd5ujc.scarab.ledger.byron.{ByronAddress, ByronParams}
+import xyz.kd5ujc.scarab.ledger.json.{FromJson, HaskellRead, NumberError}
 import xyz.kd5ujc.scarab.ledger.state.PositiveUnitInterval
 
 /** Network configuration read from the Shelley genesis file. */
@@ -208,44 +208,98 @@ object ByronGenesisFile:
     )
 
   /** The balances of the genesis file: AVVM (redeem key, lovelace) and non-AVVM (address,
-    * lovelace), in key order. All a chain that starts in Shelley needs of its Byron genesis.
+    * lovelace), as `readGenesisData` reads them (`Cardano/Chain/Genesis/Data.hs:96, 102`,
+    * cardano-ledger f649f975). Each field is canonical JSON's `FromJSON (Map k a)` (canonical-json
+    * 0.6.0.1 `Text/JSON/Canonical/Class.hs:162-175`): of two keys that read as the same address or
+    * redeem key, the first in the text holds. A non-AVVM key is `decodeAddressBase58`
+    * (`Cardano/Chain/Common/Address.hs:188-189, 233-243`), a whole Byron address, kept as the
+    * reference encodes it again ([[ByronAddress.reencoded]], #728); an AVVM key is `fromAvvmVK`
+    * ([[avvmKey]], #729); an amount is a `Word64` read by `readEither` ([[HaskellRead.word64]],
+    * #729). Measured with `scripts/oracle/byron-genesis-balances`.
     */
   def genesisBalances(
       json: Json
   ): Either[ConfigError, (Vector[(Bytes, BigInt)], Vector[(Bytes, BigInt)])] =
     val c = json.hcursor
     def balances(name: String)(key: String => Either[ConfigError, Bytes]) =
+      def field(e: io.circe.DecodingFailure) =
+        ConfigError(ConfigProblem.JsonField("byron genesis", name, e))
       c.downField(name)
-        .as[Option[Map[String, String]]]
-        .leftMap(e => ConfigError(ConfigProblem.JsonField("byron genesis", name, e)))
+        .as[Option[JsonObject]]
+        .leftMap(field)
         .flatMap(
-          _.getOrElse(Map.empty).toVector
-            .sortBy(_._1)
+          _.fold(Vector.empty)(_.toVector)
             .traverse { (k, v) =>
               (
                 key(k),
-                Either
-                  .catchNonFatal(BigInt(v))
-                  .leftMap(_ => ConfigError(ConfigProblem.IntegerText("byron balance", v)))
+                v.as[String]
+                  .leftMap(field)
+                  .flatMap(text =>
+                    HaskellRead
+                      .word64(canonicalString(text))
+                      .toRight(ConfigError(ConfigProblem.IntegerText("byron balance", text)))
+                  )
               ).tupled
             }
         )
+        .map(firstOfEach)
     (
-      balances("avvmDistr")(k =>
-        Either
-          .catchNonFatal(Bytes.fromArray(java.util.Base64.getUrlDecoder.decode(k)))
-          .leftMap(e => ConfigError(ConfigProblem.Base64("avvm key", k, e)))
-          .flatMap(b =>
-            Either
-              .cond(b.size == 32, b, ConfigError(ConfigProblem.ByteLength("avvm key", 32, b.size)))
-          )
-      ),
+      balances("avvmDistr")(k => avvmKey(k).leftMap(e => ConfigError(ConfigProblem.AvvmKey(k, e)))),
       balances("nonAvvmBalances")(k =>
         xyz.kd5ujc.scarab.ledger.Base58
           .decode(k)
           .toRight(ConfigError(ConfigProblem.Base58Address(k)))
+          .flatMap(raw =>
+            ByronAddress
+              .reencoded(raw)
+              .leftMap(e => ConfigError(ConfigProblem.ByronGenesisAddress(k, e)))
+          )
       )
     ).tupled
+
+  /** The `String` canonical-json gives for a JSON string: its UTF-8 bytes, a `Char` each
+    * (`fromJSString`, canonical-json 0.6.0.1 `Text/JSON/Canonical/Types.hs:64, 90-91`).
+    * `readEither` reads that, so a character outside ASCII is the bytes of its encoding to it.
+    */
+  private def canonicalString(text: String): String =
+    String(
+      text.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+      java.nio.charset.StandardCharsets.ISO_8859_1
+    )
+
+  /** The first balance of each key, in the order of the text (`Map.fromList` of the reversed
+    * entries).
+    */
+  private def firstOfEach(balances: Vector[(Bytes, BigInt)]): Vector[(Bytes, BigInt)] =
+    balances
+      .foldLeft((Set.empty[Bytes], Vector.empty[(Bytes, BigInt)])) { case ((seen, kept), (k, v)) =>
+        if seen.contains(k) then (seen, kept) else (seen + k, kept :+ (k -> v))
+      }
+      ._2
+
+  private val Base64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+  /** `fromAvvmVK` (`Cardano/Crypto/Signing/Redeem/VerificationKey.hs:120-129`,
+    * cardano-crypto-wrapper 1.7.0.0): `-` and `_` become `+` and `/`, the text is
+    * base64-bytestring's `decode`, which takes padded, canonical base64 only (its length a multiple
+    * of four, at most two `=` at the end and the bits they leave zero), and the key is 32 bytes.
+    */
+  private[ledger] def avvmKey(text: String): Either[AvvmKeyError, Bytes] =
+    val b64 = text.replace('-', '+').replace('_', '/')
+    val body = b64.reverse.dropWhile(_ == '=').reverse
+    val pads = b64.length - body.length
+    val leftover = if pads == 1 then 0x03 else if pads == 2 then 0x0f else 0
+    val canonical =
+      b64.length % 4 == 0 && pads <= 2 && body.forall(Base64Alphabet.contains(_)) &&
+        body.lastOption.forall(last => (Base64Alphabet.indexOf(last.toInt) & leftover) == 0)
+    for
+      raw <- Either
+        .catchNonFatal(java.util.Base64.getDecoder.decode(b64))
+        .toOption
+        .filter(_ => canonical)
+        .toRight(AvvmKeyError.Format)
+      key <- Either.cond(raw.length == 32, Bytes.fromArray(raw), AvvmKeyError.Length(raw.length))
+    yield key
 
   private def delegation(j: Json): Either[ConfigError, ByronDelegation] =
     val c = j.hcursor

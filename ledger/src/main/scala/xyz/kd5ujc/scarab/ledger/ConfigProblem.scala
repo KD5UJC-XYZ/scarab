@@ -24,6 +24,14 @@ enum ConfigProblem:
   case IntegerText(context: String, value: String)
   case Base64(context: String, value: String, cause: Throwable)
   case Base58Address(value: String)
+
+  /** A Byron genesis non-AVVM balance whose key is Base58 but not a Byron address as
+    * `decodeAddressBase58` reads it (#728).
+    */
+  case ByronGenesisAddress(value: String, cause: LedgerDecodeError)
+
+  /** A Byron genesis AVVM balance whose key `fromAvvmVK` refuses (#729). */
+  case AvvmKey(value: String, cause: AvvmKeyError)
   case Hex(cause: Bytes.HexError)
   case ByteLength(context: String, expected: Int, actual: Int)
   case LedgerValue(cause: LedgerDecodeError)
@@ -123,8 +131,24 @@ enum ConfigProblem:
       "topology bootstrapPeers cannot be configured with ConsensusMode GenesisMode"
     case GenesisUnverifiable(cause) => s"no verdict on the genesis: ${cause.message}"
     case GenesisCostModel(cause)    => s"genesis cost models: ${cause.message}"
-    case WithUsage(cause, usage)    => s"${cause.message}\n$usage"
-    case _                          => toString
+    case ByronGenesisAddress(value, cause) =>
+      s"byron genesis nonAvvmBalances: $value is not a Byron address: ${cause.message}"
+    case AvvmKey(value, AvvmKeyError.Format) =>
+      s"byron genesis avvmDistr: $value is not base64(url)"
+    case AvvmKey(value, AvvmKeyError.Length(n)) =>
+      s"byron genesis avvmDistr: $value is $n bytes, a redeem key is 32"
+    case WithUsage(cause, usage) => s"${cause.message}\n$usage"
+    case _                       => toString
+
+/** Why `fromAvvmVK` refuses an AVVM key (`AvvmVKError`,
+  * `Cardano/Crypto/Signing/Redeem/VerificationKey.hs:94-98`, cardano-crypto-wrapper 1.7.0.0).
+  */
+enum AvvmKeyError:
+  /** `ApeAddressFormat`: not base64 in either alphabet, padded and canonical. */
+  case Format
+
+  /** `ApeAddressLength`: a key of other than 32 bytes. */
+  case Length(actual: Int)
 
 /** A genesis file of the Shelley-based eras. */
 enum GenesisFile:
