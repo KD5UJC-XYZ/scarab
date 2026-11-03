@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.crypto.bls.Vote
-import xyz.kd5ujc.scarab.codec.{Bytes, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, DomainError, Value}
 
 import LeiosWire.*
 import LeiosWord.Word32
@@ -23,6 +23,20 @@ object LeiosNotify:
 
   enum State:
     case Idle, Busy, Quit, Done
+
+  /** The decoder of an announced header. The build reads `MsgLeiosBlockAnnouncement` 's header as
+    * `Header blk` with the node-to-node decoder of its era (`decodeNodeToNode`, `dispatchDecoder`:
+    * `HardFork/Combinator/Serialisation/SerialiseNodeToNode.hs:125-130`, ouroboros-consensus
+    * `2416493b`; `codecLeiosNotify` is given it at
+    * `Ouroboros/Consensus/Network/NodeToNode.hs:1074-1081`), so a header its era's decoder refuses
+    * fails the message. The eras' headers are the ledger's, which the protocols cannot see, so the
+    * node supplies this reader (#757).
+    */
+  trait AnnouncementReader:
+    /** Unit where `header`, the envelope of an era of the chain, holds a header of that era as the
+      * era's decoder reads it; that decoder's refusal otherwise.
+      */
+    def read(header: HfcHeader): Either[DomainError, Unit]
 
   /** `byteLimitsLeiosNotify` (`LeiosDemoOnlyTestNotify.hs:241-247`): `smallByteLimit`, 65,535 bytes
     * (ouroboros-network `2f1c154f` `Protocol/Limits.hs:131-132`), in Idle, Busy and Quit; Done has
@@ -83,5 +97,7 @@ object LeiosNotify:
     * ([[LeiosNotifyDecoder]]); returns the message and the number of bytes consumed.
     * `Left(Incomplete)` means more bytes are needed.
     */
-  def decodePrefix(state: State, bytes: Bytes): Either[LeiosWireError, (Message, Int)] =
+  def decodePrefix(state: State, bytes: Bytes)(using
+      reader: AnnouncementReader
+  ): Either[LeiosWireError, (Message, Int)] =
     LeiosNotifyDecoder.decode(state, bytes)

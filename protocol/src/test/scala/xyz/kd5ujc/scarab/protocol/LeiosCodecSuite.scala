@@ -11,6 +11,9 @@ import LeiosWord.{Word16, Word32, Word64}
 
 /** Round trips and malformed input for the LeiosNotify and LeiosFetch codecs. */
 class LeiosCodecSuite extends ScalaCheckSuite:
+  // the era decoders are the ledger's; here every envelope of a known era holds a header
+  private given LeiosNotify.AnnouncementReader = _ => Right(())
+
   private def bs(xs: Int*): Bytes = Bytes.wrap(xs.map(_.toByte).toArray)
   private def ok[A, E](e: Either[E, A]): A =
     e.fold(x => throw new AssertionError(x.toString), identity)
@@ -221,6 +224,21 @@ class LeiosCodecSuite extends ScalaCheckSuite:
         bad.hex
       )
     }
+  }
+
+  test("LeiosNotify: the reader's refusal of an announced header fails the message, typed") {
+    import LeiosNotify.*
+    val refusing: AnnouncementReader = _ => Left(LeiosCodecSuite.NotAHeader)
+    val dijkstra = bs(0x82, 0x07, 0xd8, 0x18, 0x41, 0x00)
+    assertEquals(
+      decodePrefix(State.Busy, bs(0x82, 0x04) ++ dijkstra)(using refusing),
+      Left(LeiosWireError.UndecodableAnnouncement(LeiosCodecSuite.NotAHeader))
+    )
+    // the reader is not asked about an envelope of no era
+    assertEquals(
+      decodePrefix(State.Busy, bs(0x82, 0x04, 0x82, 0x09, 0x41, 0x00))(using refusing),
+      Left(LeiosWireError.BadField(4, LeiosField.Header))
+    )
   }
 
   test("LeiosNotify: a point as `decodeLeiosPoint` reads it, in both messages that carry one") {
@@ -586,3 +604,7 @@ class LeiosCodecSuite extends ScalaCheckSuite:
     )
   }
 end LeiosCodecSuite
+
+object LeiosCodecSuite:
+  /** A reader's refusal, for the test of the refusal path. */
+  case object NotAHeader extends xyz.kd5ujc.scarab.codec.DomainError

@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.crypto.bls.BlsError
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, DomainError, Node, Value}
 
 import LeiosWord.{Word16, Word64}
 
@@ -31,6 +31,12 @@ enum LeiosWireError:
 
   /** A vote inside `MsgLeiosVotes` failed strict decoding. */
   case BadVote(index: Int, error: BlsError)
+
+  /** The announced header, in the envelope of an era, is not a header of that era as its decoder
+    * reads it; `cause` is that decoder's refusal (the ledger's errors are not visible to the
+    * protocols, so it is kept as the `DomainError` it is).
+    */
+  case UndecodableAnnouncement(cause: DomainError)
 
   /** The CBOR encoder refused the value of the message; `cause` retains its typed reason. */
   case Unencodable(cause: Cbor.Error)

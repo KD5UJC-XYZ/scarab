@@ -9,6 +9,9 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import LeiosFetch.{Message, State, decodePrefix}
 
 class LeiosFetchDecoderSuite extends FunSuite:
+  // the era decoders are the ledger's; here every envelope of a known era holds a header
+  private given LeiosNotify.AnnouncementReader = _ => Right(())
+
   private def bs(values: Int*): Bytes = Bytes.wrap(values.map(_.toByte).toArray)
   private def ok[A, E](value: Either[E, A]): A =
     value.fold(error => throw new AssertionError(error.toString), identity)

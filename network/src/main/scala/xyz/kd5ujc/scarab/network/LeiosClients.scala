@@ -37,8 +37,10 @@ object LeiosNotifyClient:
   /** The server may hold a request for as long as it has nothing to announce. */
   final case class Settings(busyTimeout: FiniteDuration = 10.minutes)
 
+  /** `reader` reads an announced header as the build does ([[LeiosNotify.AnnouncementReader]]). */
   def apply[F[_]: Temporal](channel: MuxChannel[F], settings: Settings = Settings())(using
-      Raise[F, NetworkError]
+      Raise[F, NetworkError],
+      LeiosNotify.AnnouncementReader
   ): LeiosNotifyClient[F] =
     val id = Protocols.LeiosNotify
     def illegal[A](detail: NetworkError.Violation): F[A] =

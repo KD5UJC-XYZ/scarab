@@ -3,7 +3,9 @@ package xyz.kd5ujc.scarab.models
 
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.LeiosHeader
 import xyz.kd5ujc.scarab.crypto.bls.Vote
 import xyz.kd5ujc.scarab.models.leios.notify.LeiosNotifyMessage
 import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, LeiosNotify, LeiosWord}
@@ -14,6 +16,9 @@ import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, LeiosNotify, LeiosWord}
   * case, and both refuse the same malformed ones, including more than sixteen votes.
   */
 class LeiosNotifyCddlSuite extends munit.FunSuite:
+  // the announced header read by its era with the ledger's decoders, as the node's reader does
+  private given LeiosNotify.AnnouncementReader = h => LeiosHeader.byEra(h).void
+
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.message), identity)
 
   private val vote: Vote =

@@ -808,10 +808,11 @@ point is `enforceSize 2` with a 32-byte hash (`decodeLeiosPoint`, `LeiosDemoType
 endorser block is a definite map (`decodeMapLen`) of 32-byte hashes (`decodeLeiosEb`, `:1301-1310`);
 `MsgLeiosVotes` is a definite list of any number of votes, each `enforceSize 3` of a 32-byte hash, a
 `Word16` of any head width and a 48-byte signature that may be the identity (`decodeLeiosVote`,
-`:1379-1390`); an announcement is a header in the hard-fork envelope of one of the eras. What the codec
-still does not do is decode the announced header inside that envelope as the build's node-to-node header
-decoder does: the codec is in the `protocol` module, which cannot reach the ledger's header decoders.
-The framing bounds are the build's too: each state's byte limit (`byteLimitsLeiosNotify`, 65,535 bytes in
+`:1379-1390`); an announcement is a header in the hard-fork envelope of one of the eras. The header
+inside that envelope is read by the decoder of its era too (#757), as the build's node-to-node header
+decoder reads it: the codec is in the `protocol` module, which cannot reach the ledger's header decoders,
+so the node supplies them (`LeiosNotify.AnnouncementReader`, `AnnouncedHeaders`), and a header its era's
+decoder refuses fails the message with that refusal. The framing bounds are the build's too: each state's byte limit (`byteLimitsLeiosNotify`, 65,535 bytes in
 every state with a receiver; `byteLimitsLeiosFetch`, 65,535, 660,000 and 550,000), applied by the
 receiving driver, and no depth or item budget of the decoder's own.
 

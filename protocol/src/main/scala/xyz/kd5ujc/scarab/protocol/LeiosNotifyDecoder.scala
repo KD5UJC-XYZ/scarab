@@ -53,16 +53,21 @@ private[protocol] object LeiosNotifyDecoder:
       .flatMap(n => repeat(n)(vote))
       .map(vs => Message.Votes(vs.map(_._1), vs.map(_._2)))
 
-  /** The announcing header, `Header blk` read by the node-to-node decoder: the hard-fork envelope
-    * `[era, payload]` of one of the eras ([[HfcHeader.decode]]); its original bytes are kept.
+  /** The announcing header, `Header blk` read by the node-to-node decoder of its era: the hard-fork
+    * envelope `[era, payload]` of one of the eras ([[HfcHeader.decode]]), then the header inside it
+    * by the era's decoder, which the node supplies ([[LeiosNotify.AnnouncementReader]]); its
+    * original bytes are kept.
     */
-  private val announcement: Decoder[Message] =
+  private def announcement(using reader: LeiosNotify.AnnouncementReader): Decoder[Message] =
     item.flatMap(raw =>
       StateT.liftF[Result, Cursor, Message](
         HfcHeader.decode(raw) match
           case Right(_: HfcHeader.Unrecognised) | Left(_) =>
             Left(LeiosWireError.BadField(4, LeiosField.Header))
-          case Right(_) => Right(Message.BlockAnnouncement(raw))
+          case Right(header) =>
+            reader
+              .read(header)
+              .bimap(LeiosWireError.UndecodableAnnouncement(_), _ => Message.BlockAnnouncement(raw))
       )
     )
 
@@ -70,7 +75,9 @@ private[protocol] object LeiosNotifyDecoder:
     * and `decodeWord`, then the length, the key and the state are matched together before any field
     * is read.
     */
-  def decode(state: State, input: Bytes): Result[(Message, Int)] =
+  def decode(state: State, input: Bytes)(using
+      LeiosNotify.AnnouncementReader
+  ): Result[(Message, Int)] =
     val decoder = for
       size <- definite(4, LeiosWireError.NotAnArray)
       key <- unsigned(0, Word64.Max, LeiosWireError.BadField(-1, LeiosField.Word64))
