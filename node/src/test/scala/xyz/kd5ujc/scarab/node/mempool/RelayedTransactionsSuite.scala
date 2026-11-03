@@ -7,7 +7,7 @@ import cats.mtl.Raise
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.ledger.DetachedRecordsReferenceSuite
+import xyz.kd5ujc.scarab.ledger.{DetachedRecordsReferenceSuite, TxEnvelopeReferenceSuite}
 import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.protocol.{Era, ProtocolError, TxSubmission2, TxSubmission2Fixtures}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
@@ -148,9 +148,10 @@ class RelayedTransactionsSuite extends FailsOnUncaught:
     )
   }
 
-  test("an envelope of other than four parts, a body that is not a map or no flag is refused") {
+  test(
+    "an envelope of other than three or four parts, a body not a map or a wrong flag is refused"
+  ) {
     Vector(
-      "83a0a0f5",
       "84a0a0f5f600",
       "9f",
       "9fff",
@@ -176,12 +177,45 @@ class RelayedTransactionsSuite extends FailsOnUncaught:
     )
     assertEquals(
       RelayedTransactions.body(hex("84a0a000f6")),
-      Left(ProtocolError.TransactionValidityIsNotABoolean)
+      Left(ProtocolError.ExpectedConwayTransactionMembers)
     )
     assertEquals(
       RelayedTransactions.body(hex("83a0a0f5")),
-      Left(ProtocolError.ExpectedFourMemberConwayTransaction)
+      Left(ProtocolError.ExpectedConwayTransactionMembers)
     )
+  }
+
+  test("a transaction without its validity flag has its body's id, as `AlonzoTx` reads it (#699)") {
+    // `decodeRecordNamed "AlonzoTx"` (`Alonzo/Tx.hs:532-553`, cardano-ledger f649f975): a third
+    // member that is not a boolean is the auxiliary data, and the list holds three members
+    val bodyId = Blake2b.hash256.hash(hex("a0"))
+    Vector("83a0a0f6", "83a0a0a0", "83a0a0d90103a0", "9fa0a0f6ff", "9fa0a0a0ff", "84a0a0f4f6")
+      .foreach(t => assertEquals(TxSubmission2.bodyId(hex(t)), Right(bodyId), t))
+    // a boolean third member is the flag, and the auxiliary data must follow it; a member that is
+    // not a boolean is not a flag, and the list then holds one member too many
+    Vector(
+      "83a0a0f5",
+      "9fa0a0f5ff",
+      "84a0a0f6f6",
+      "9fa0a0f6f6ff",
+      "84a0a0f6",
+      "82a0a0",
+      "85a0a0f5f6f6"
+    )
+      .foreach(t => assert(TxSubmission2.bodyId(hex(t)).isLeft, t))
+  }
+  test("the reference's whole Conway transactions, with and without the flag, through the codec") {
+    // `fixtures/reference/tx-envelope/cases.jsonl` (#699): the codec takes each the reference reads,
+    // under its id, and the mempool refuses each the codec takes and the reference refuses
+    val envelopes = TxEnvelopeReferenceSuite.load.filter(_.era == Era.Conway)
+    assert(envelopes.exists(_.accepted) && envelopes.exists(!_.accepted))
+    envelopes.foreach { row =>
+      val codec = TxSubmission2.decode(State.Txs, Role.Client, wire(row.raw))
+      if row.accepted then
+        assertEquals(codec, Right(Message.ReplyTxs(Vector(row.raw))), row.name)
+        row.txid.foreach(id => assertEquals(TxSubmission2.bodyId(row.raw).map(_.hex), Right(id)))
+      else if codec.isRight then assert(MempoolState.parseParts(row.raw).isLeft, row.name)
+    }
   }
 
   test("nesting is bounded by the transaction's size, as in the reference, which has no bound") {
