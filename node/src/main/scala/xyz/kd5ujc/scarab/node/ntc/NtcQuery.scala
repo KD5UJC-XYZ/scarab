@@ -232,11 +232,12 @@ object NtcQuery:
       case Word8Range(field)              => s"$field: expected an unsigned integer of 8 bits"
 
   private type R[A] = Either[Error, A]
-  private val limits = Cbor.Limits(
-    maxInputBytes = 2000000,
-    maxItems = 200000,
-    maxStringBytes = 1000000
-  )
+
+  /** A query is read with no budget but its size: the reference reads LocalStateQuery with no byte
+    * or item limit (`LocalStateQueryEngine`), and the wire bounds only its nesting, as recorded in
+    * docs/decisions.md (#474, #749).
+    */
+  private val limits = Cbor.Limits.Unbounded
 
   /** How a query of an era reads its arguments: at the era's lowest protocol version, as the
     * reference reads them (`fromEraCBOR @era`, `Era.hs:236-243`, cardano-ledger f649f975): its byte
