@@ -52,6 +52,21 @@ class IssueBriefCase(unittest.TestCase):
         self.assertNotIn("in progress:", text)
         self.assertIn("triage: clean", text)
 
+    def test_the_brief_and_check_agree_on_decision_issues_in_every_state(self):
+        for state in ("open", "closed"):
+            for number, cited in ((567, True), (999, False)):
+                with self.subTest(state=state, cited=cited):
+                    raw = issue(number, "area:scripts", "priority:P2", "status:backlog",
+                                "owner-decision", state=state)
+                    problems = status.check([raw], NOW, DECISIONS)
+                    self.assertEqual(bool(problems), not cited)
+                    text = self.brief(raw)
+                    if cited:
+                        self.assertIn("triage: clean", text)
+                    else:
+                        self.assertNotIn("triage: clean", text)
+                        self.assertIn(status.Kind.OWNER_DECISION_NO_ROW.value, text)
+
     def test_levels_follow_the_areas(self):
         self.assertTrue(status.suggested_level(["docs"]).startswith("0 "))
         self.assertTrue(status.suggested_level(["scripts", "build"]).startswith("1 "))

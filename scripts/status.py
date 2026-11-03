@@ -337,7 +337,7 @@ def issue_brief(issue: dict, roadmap: dict[int, str], decisions: str, playbooks:
     lines += [f"    {r}" for r in rows]
     lines.append("  playbooks: " + (", ".join(playbooks_for(areas, playbooks)) or "none"))
     lines.append(f"  suggested level: {suggested_level(areas)}")
-    problems = check([issue], now, decisions) if issue["state"] == "open" else []
+    problems = check([issue], now, decisions)
     lines.append("  triage: " + ("clean" if not problems else "; ".join(f"{v.kind.value} [{v.detail}]" for v in problems)))
     return "\n".join(lines)
 
