@@ -1168,6 +1168,31 @@
       "page": "docs/compatibility/ledger-genesis-fields.md"
     },
     {
+      "id": "ledger-byron-genesis-balances",
+      "component": "Ledger: Byron genesis balances (#728, #729)",
+      "status": "implemented",
+      "summary": "The Byron genesis balances read as readGenesisData reads them: each non-AVVM address decoded whole and held encoded again minimally, each AVVM key read by fromAvvmVK, each amount by Read Word64, the first of two equal keys kept",
+      "evidence": {
+        "suites": [
+          "ByronGenesisBalancesReferenceSuite"
+        ],
+        "paths": [
+          "fixtures/reference/byron-genesis-balances/README.md",
+          "scripts/oracle/byron-genesis-balances/README.md"
+        ],
+        "issues": [
+          728,
+          729
+        ]
+      },
+      "limitations": {
+        "issues": [
+          730
+        ]
+      },
+      "page": "docs/compatibility/ledger-byron-genesis-balances.md"
+    },
+    {
       "id": "plutus-phase-2",
       "component": "Plutus phase 2 (V1, V2, V3)",
       "status": "implemented",
