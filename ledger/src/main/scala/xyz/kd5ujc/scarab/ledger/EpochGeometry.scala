@@ -85,8 +85,9 @@ final case class EpochGeometry(
     */
   def slotStart(slot: BigInt): Instant =
     val offset = slotOffsetMillis(slot)
+    // within that range the offset's seconds fit a `Long`, though its milliseconds may not
     if (BigInt(systemStart.toEpochMilli) + offset).isValidLong then
-      systemStart.plusMillis(offset.toLong)
+      systemStart.plusSeconds((offset / 1000).toLong).plusMillis((offset % 1000).toLong)
     else Instant.ofEpochMilli(Long.MaxValue)
 
   def slotAt(instant: Instant): BigInt =

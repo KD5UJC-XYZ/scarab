@@ -99,6 +99,12 @@ class EpochGeometrySuite extends ScalaCheckSuite:
     )
   }
 
+  test("a Byron slot of 2^63 ms from a start before the epoch is placed exactly") {
+    val before = geometry(1, 10, 500)
+      .copy(systemStart = Instant.ofEpochSecond(-1), byron = ByronSpan(1, 10, BigInt(1) << 63))
+    assertEquals(BigInt(before.slotStart(1).toEpochMilli), (BigInt(1) << 63) - 1000)
+  }
+
   test("slot length changes at the Shelley start") {
     val g = geometry(1, 50, 500)
     assertEquals(g.slotStart(49), start.plusMillis(49000))
