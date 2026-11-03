@@ -8,10 +8,10 @@
     python3 scripts/status.py --json               the digest as JSON instead of text
     python3 scripts/status.py --from issues.json   read the output of
                                                    `gh issue list --json number,title,labels` from a file
-    python3 scripts/status.py --check              the triage check: exit 1 and list each open issue that
-                                                   breaks the labelling rules of docs/process.md
+    python3 scripts/status.py --check              the triage check: exit 1 and list each issue that breaks
+                                                   the labelling rules of docs/process.md, open or closed
     python3 scripts/status.py --check --from p.json the check over the output of
-                                                   `gh api --paginate --slurp 'repos/{owner}/{repo}/issues?state=open'`
+                                                   `gh api --paginate --slurp 'repos/{owner}/{repo}/issues?state=all'`
     python3 scripts/status.py --issue 567          what a session needs before it works on issue 567: its state,
                                                    labels and milestone, its roadmap id (or those of the issues it
                                                    cites), the decisions of docs/decisions.md that cite it, the
@@ -26,7 +26,9 @@ failing that the first line that cites the issue at all. Labels follow docs/proc
 The check reports, grouped by violation: an open issue missing an `area:`, `priority:` or `status:` label; an
 `area:` label that names neither an sbt module nor `build`, `scripts` or `docs`; one without a milestone whose
 status is neither `status:idea` nor `status:parked`; one with two `status:` labels; `status:in-progress` not
-updated for 7 days and `status:needs-owner` not updated for 14. It exits 0 when clean, 1 on violations and 2 when
+updated for 7 days and `status:needs-owner` not updated for 14; and, whatever its state, an `owner-decision` issue
+that no row of `docs/decisions.md` cites — the labelling rules are about open issues, and a decision's issue is
+usually closed by the time the decision is written down. It exits 0 when clean, 1 on violations and 2 when
 `gh` fails. The areas are read from `docs/data/codemap.json` (one per module, as `build.sbt` defines them) and the
 rest of the vocabulary is the one docs/process.md lists.
 
@@ -63,12 +65,27 @@ def module_areas(codemap: Path = CODEMAP) -> tuple[str, ...]:
     return tuple(m if isinstance(m, str) else m["name"] for m in modules) + OUTSIDE_MODULES
 
 
+def decisions_cited(text: str) -> frozenset[int]:
+    """The issues the issue column of the rows of docs/decisions.md cites."""
+    return frozenset(int(number) for line in text.splitlines() if (row := DECISION_ROW.match(line))
+                     for number in ISSUE_LINK.findall(row.group(2)))
+
+
+def read_register(root: Path) -> str:
+    """docs/decisions.md, or the empty text when the file is absent (the check then reports every labelled issue)."""
+    path = root / "docs/decisions.md"
+    return path.read_text(encoding="utf-8") if path.is_file() else ""
+
+
 AREAS = module_areas()
 PRIORITIES = ("P0", "P1", "P2")
 STATUSES = ("idea", "backlog", "in-progress", "blocked", "parked", "needs-owner")
 MILESTONES = ("reference-parity", "mainnet-evidence", "leios-dijkstra")
 WITHOUT_MILESTONE = frozenset({"idea", "parked"})
-CHECK_COMMAND = ["gh", "api", "--paginate", "--slurp", "repos/{owner}/{repo}/issues?state=open&per_page=100"]
+CHECK_COMMAND = ["gh", "api", "--paginate", "--slurp", "repos/{owner}/{repo}/issues?state=all&per_page=100"]
+OWNER_DECISION = "owner-decision"
+# A row of docs/decisions.md: the date the decision was taken, the issues it came from, then the decision.
+DECISION_ROW = re.compile(r"^\|\s*(\d{4}-\d{2}-\d{2})\s*\|([^|]*)\|([^|]*)\|")
 
 
 class GhFailure(Exception):
@@ -80,6 +97,7 @@ class Kind(Enum):
     UNKNOWN_AREA = "an area label that is neither an sbt module nor build, scripts or docs"
     NO_MILESTONE = "no milestone, and the status is neither idea nor parked"
     TWO_STATUSES = "more than one status label"
+    OWNER_DECISION_NO_ROW = "an owner-decision issue that no row of docs/decisions.md cites"
     STALE_IN_PROGRESS = "status:in-progress not updated for more than 7 days"
     STALE_NEEDS_OWNER = "status:needs-owner not updated for more than 14 days"
 
@@ -169,12 +187,22 @@ def updated(issue: dict) -> datetime:
     return datetime.fromisoformat(issue["updated_at"].replace("Z", "+00:00"))
 
 
-def check(raw: list[dict], now: datetime) -> list[Violation]:
-    """Every violation of the labelling rules, in the order of `Kind`, then by issue number."""
+def check(raw: list[dict], now: datetime, decisions: str = "") -> list[Violation]:
+    """Every violation, in the order of `Kind`, then by issue number.
+
+    The register rule reads every issue of `raw`; the labelling rules read the open ones. With no register text
+    every `owner-decision` issue is reported, so a missing `docs/decisions.md` cannot read as clean.
+    """
+    cited = decisions_cited(decisions)
     found = []
     for issue in sorted(raw, key=lambda i: int(i["number"])):
         labels = label_names(issue)
         number, title = int(issue["number"]), issue["title"].strip()
+        if OWNER_DECISION in labels and number not in cited:
+            found.append(Violation(Kind.OWNER_DECISION_NO_ROW, number, title,
+                                   f"{issue.get('state', 'open')} issue, and no row cites it"))
+        if issue.get("state", "open") != "open":
+            continue
         statuses = [label.removeprefix("status:") for label in labels if label.startswith("status:")]
         missing = [prefix for prefix in ("area", "priority", "status")
                    if not any(label.startswith(prefix + ":") for label in labels)]
@@ -201,18 +229,18 @@ def check(raw: list[dict], now: datetime) -> list[Violation]:
 
 def render_check(violations: list[Violation], issues: int) -> str:
     if not violations:
-        return f"triage check: clean ({issues} open issues)"
+        return f"triage check: clean ({issues} issues)"
     groups: dict[Kind, list[Violation]] = defaultdict(list)
     for v in violations:
         groups[v.kind].append(v)
-    lines = [f"triage check: {len(violations)} violations over {issues} open issues"]
+    lines = [f"triage check: {len(violations)} violations over {issues} issues"]
     for kind, members in groups.items():
         lines.append(f"{kind.value} ({len(members)})")
         lines.extend(f"  #{v.number:<5} {v.title} [{v.detail}]" for v in members)
     return "\n".join(lines)
 
 
-def open_issues(pages: list) -> list[dict]:
+def without_pull_requests(pages: list) -> list[dict]:
     """The issues of `gh api --paginate --slurp` pages (or of one flat list), without the pull requests."""
     flat = [item for page in pages for item in (page if isinstance(page, list) else [page])]
     return [item for item in flat if "pull_request" not in item]
@@ -220,20 +248,21 @@ def open_issues(pages: list) -> list[dict]:
 
 def fetch_for_check(source: Path | None, run=subprocess.run) -> list[dict]:
     if source is not None:
-        return open_issues(json.loads(source.read_text(encoding="utf-8")))
+        return without_pull_requests(json.loads(source.read_text(encoding="utf-8")))
     done = run(CHECK_COMMAND, capture_output=True, text=True, check=False)
     if done.returncode != 0:
         raise GhFailure(done.stderr.strip())
-    return open_issues(json.loads(done.stdout))
+    return without_pull_requests(json.loads(done.stdout))
 
 
-def run_check(source: Path | None, as_json: bool, now: datetime, run=subprocess.run) -> int:
+def run_check(source: Path | None, as_json: bool, now: datetime, run=subprocess.run,
+              decisions: str = "") -> int:
     try:
         issues = fetch_for_check(source, run)
     except GhFailure as failure:
         print(f"gh api failed: {failure}", file=sys.stderr)
         return 2
-    violations = check(issues, now)
+    violations = check(issues, now, decisions)
     if as_json:
         print(json.dumps([{**asdict(v), "kind": v.kind.name} for v in violations], indent=1))
     else:
@@ -241,7 +270,6 @@ def run_check(source: Path | None, as_json: bool, now: datetime, run=subprocess.
     return 1 if violations else 0
 
 
-DECISION_ROW = re.compile(r"^\|\s*(\d{4}-\d{2}-\d{2})\s*\|([^|]*)\|([^|]*)\|")
 PLAYBOOK_ROW = re.compile(r"^\|[^|]*\|\s*\[([^\]]+)\]\(([^)]+)\)\s*\|([^|]*)\|")
 CITED = re.compile(r"(?<![\w/])#(\d+)\b|issues/(\d+)")
 CRITICAL_AREAS = frozenset({"ledger", "consensus", "storage", "protocol", "crypto"})
@@ -309,7 +337,7 @@ def issue_brief(issue: dict, roadmap: dict[int, str], decisions: str, playbooks:
     lines += [f"    {r}" for r in rows]
     lines.append("  playbooks: " + (", ".join(playbooks_for(areas, playbooks)) or "none"))
     lines.append(f"  suggested level: {suggested_level(areas)}")
-    problems = check([issue], now) if issue["state"] == "open" else []
+    problems = check([issue], now, decisions) if issue["state"] == "open" else []
     lines.append("  triage: " + ("clean" if not problems else "; ".join(f"{v.kind.value} [{v.detail}]" for v in problems)))
     return "\n".join(lines)
 
@@ -350,11 +378,11 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         read = lambda p: (root / p).read_text(encoding="utf-8") if (root / p).is_file() else ""
         roadmap = roadmap_ids(args.roadmap.read_text(encoding="utf-8")) if args.roadmap.is_file() else {}
-        print(issue_brief(issue, roadmap, read("docs/decisions.md"), read("docs/playbooks/README.md"),
+        print(issue_brief(issue, roadmap, read_register(root), read("docs/playbooks/README.md"),
                           datetime.now(timezone.utc)))
         return 0
     if args.check:
-        return run_check(args.source, args.json, datetime.now(timezone.utc))
+        return run_check(args.source, args.json, datetime.now(timezone.utc), decisions=read_register(root))
     roadmap = roadmap_ids(args.roadmap.read_text(encoding="utf-8")) if args.roadmap.is_file() else {}
     items = select(digest(load_issues(args.source), roadmap), args.area, args.priority)
     if args.json:

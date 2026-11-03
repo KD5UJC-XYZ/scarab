@@ -105,6 +105,11 @@ reported as stale (the nightly triage below flags it), and so is a
 File an issue through a form or through `python3 scripts/file_issue.py` (`--help` shows its options), which refuses
 one without the three labels and a milestone.
 
+An issue that carries a decision of the owner's gets the `owner-decision` label, and the rows of
+[the decisions register](decisions.md) cite the issues their decisions came from. The check below reports a labelled
+issue that no row cites, open or closed: the labelling rules are about open issues, but a decision's issue is
+usually closed by the time the decision is written down ([#612](https://github.com/KD5UJC-XYZ/scarab/issues/612)).
+
 The nightly [triage workflow](../.github/workflows/triage.yml), which also runs when an issue is opened, fixes the
 mechanical drift itself with `python3 scripts/triage_fix.py --apply` (owner decision, 2026-10-29; the script's
 docstring lists the rules): a closed issue loses the statuses that claim work; a form's area and priority answers
