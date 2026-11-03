@@ -11,7 +11,14 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.consensus.{BlockRef, ConsensusExtras}
 import xyz.kd5ujc.scarab.consensus.state.{MirrorProvenance, ProtocolState}
 import xyz.kd5ujc.scarab.ledger.{PlutusStats, PoolRelayError, Utxo}
-import xyz.kd5ujc.scarab.ledger.state.{Conway, ConwayLedgerState, NewEpochState, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Conway,
+  ConwayLedgerState,
+  NewEpochState,
+  ShelleyBasedEra,
+  SlotNo,
+  WithOrigin
+}
 import xyz.kd5ujc.scarab.node.{NodeSetup, SkippedPool}
 import xyz.kd5ujc.scarab.node.read.{ChainRead, InEra, MirrorEraRead, Read}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
@@ -33,6 +40,7 @@ class WalletPeerReferenceSuite extends FunSuite:
       def provenance: MirrorProvenance = MirrorProvenance.complete
       def era: Era = Era.Conway
       def ledgerEpoch: BigInt = native.nes.epoch.toBigInt
+      def tipSlot: WithOrigin[SlotNo] = WithOrigin.Origin
       def protocol: ProtocolState = native.setup.mirrorStart.protocol
       def consensus: ConsensusExtras = native.setup.mirrorStart.consensus
       def plutus: PlutusStats = PlutusStats.zero

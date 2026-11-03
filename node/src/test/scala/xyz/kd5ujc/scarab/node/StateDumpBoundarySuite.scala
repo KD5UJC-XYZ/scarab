@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.IO
+import cats.effect.{IO, Ref}
 import cats.mtl.Handle
 import cats.syntax.all.*
 import java.nio.file.{Files, Path}
@@ -9,12 +9,14 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.{Block, Header, StorageError}
+import xyz.kd5ujc.scarab.ledger.state.{SlotNo, WithOrigin}
+import xyz.kd5ujc.scarab.node.log.NodeEvent
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** [[StateDump.Dumper]] decides an epoch boundary from the state a block was applied to and the
-  * state it produced, over the captured `devnet.py up-eras` chain (`fixtures/eras`): a Byron epoch,
-  * then one Shelley-based epoch per protocol step.
+/** [[StateDump.Dumper]] decides an epoch boundary or a slot target from the state a block was
+  * applied to and the state it produced, over the captured `devnet.py up-eras` chain
+  * (`fixtures/eras`): a Byron epoch, then one Shelley-based epoch per protocol step.
   */
 class StateDumpBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private val fixtures = Path.of("fixtures/eras")
@@ -109,4 +111,73 @@ class StateDumpBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       )
       assertEquals(atEnd.sorted, atBoundary.sorted, "a later block of the epoch is not a boundary")
     ).guarantee(removed)
+  }
+
+  /** A Shelley-based block after the handover that is not the last of [[steps]], and a slot target
+    * above the tip of the state it was applied to and at or below its own slot.
+    */
+  private lazy val slotTarget: (Int, Header.Shelley, BigInt) =
+    val handover = steps.indexWhere((_, a, b) => a.era == Era.Byron && b.era != Era.Byron)
+    val at = handover + 2
+    assert(handover >= 0 && at < steps.length - 1, s"handover $handover, steps ${steps.length}")
+    val (header, before, state) = steps(at)
+    val shelley = header match
+      case h: Header.Shelley => h
+      case other             => fail(s"not a Shelley header: $other")
+    val below = before.tipSlot match
+      case WithOrigin.At(slot) => slot.toBigInt
+      case WithOrigin.Origin   => fail("the state before the block is at the origin")
+    assert(below < shelley.slot, s"tip $below before block slot ${shelley.slot}")
+    assertEquals(state.tipSlot, WithOrigin.At(SlotNo.fromUnsigned(shelley.slot.toLong)))
+    (at, shelley, below + 1)
+
+  private def name(h: Header.Shelley): String = f"${h.slot.toLong}%012d-${h.hash.hex}.json"
+
+  private def slotRun(
+      run: StateDump.Dumper[IO, MirrorState] => IO[Unit]
+  ): IO[(Vector[String], List[NodeEvent])] =
+    val (_, _, target) = slotTarget
+    val dir = Files.createTempDirectory("state-dump-slots")
+    val removed = IO.blocking {
+      Files.list(dir).iterator.asScala.foreach(Files.delete)
+      Files.delete(dir)
+    }
+    (for
+      events <- Ref.of[IO, List[NodeEvent]](Nil)
+      dumper <- StateDump.Dumper.create[IO, MirrorState](
+        dir,
+        StateDump.Targets.Slots(List(target)),
+        None,
+        e => events.update(e :: _)
+      )
+      _ <- run(dumper)
+      written <- IO.blocking(digests(dir))
+      seen <- events.get
+    yield (written.sorted, seen.reverse.collect { case r: NodeEvent.StateDumpRefused => r }))
+      .guarantee(removed)
+
+  test("a replacement of a rolled-back block that met a slot target gets one digest") {
+    val (at, shelley, _) = slotTarget
+    val (_, before, state) = steps(at)
+    val replacement = shelley.copy(hash = Bytes.wrap(Array.fill(32)(0x5a.toByte)))
+    slotRun { dumper =>
+      steps.take(at + 1).traverse_(after(dumper, _)) *>
+        after(dumper, (replacement, before, state)) *>
+        after(dumper, steps(at + 1))
+    }.map { (written, refused) =>
+      assertEquals(refused, Nil, "no projection refused")
+      assertEquals(
+        written,
+        Vector(name(shelley), name(replacement)).sorted,
+        "one digest of the block that met the target and one of its replacement"
+      )
+    }
+  }
+
+  test("a slot target met with no rollback gets exactly one digest") {
+    val (_, shelley, _) = slotTarget
+    slotRun(dumper => steps.traverse_(after(dumper, _))).map { (written, refused) =>
+      assertEquals(refused, Nil, "no projection refused")
+      assertEquals(written, Vector(name(shelley)), "one digest, of the block that met the target")
+    }
   }
