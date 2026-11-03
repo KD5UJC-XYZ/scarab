@@ -979,27 +979,29 @@
       "id": "ledger-recd-records",
       "component": "Ledger: RecD records are definite lists, decoder versions 2 to 9 (#668)",
       "status": "partial",
-      "summary": "The update proposal, a redeemer's execution units (with their Word64 and Int64 bounds), Conway's GovActionId (with its Word16 index), VotingProcedure, ProposalProcedure, Constitution and Anchor, an output's value and the list form of auxiliary data are read from a block as definite lists only, as the reference's RecD decoders read them; a stored output keeps reading its value in either form (ADR 0006); one written as an empty indefinite list with its fields after it is read as the reference reads it (#687)",
+      "summary": "The update proposal, a redeemer's execution units (with their Word64 and Int64 bounds), Conway's GovActionId (with its Word16 index), VotingProcedure, ProposalProcedure, Constitution and Anchor, an output's value and the list form of auxiliary data are read from a block as definite lists only, as the reference's RecD decoders read them; a stored output keeps reading its value in either form (ADR 0006); one written as an empty indefinite list with its fields after it is read as the reference reads it (#687), as is a whole transaction (#699)",
       "evidence": {
         "suites": [
           "RecdRecordsReferenceSuite",
           "StoredChunkedOutputSuite",
           "DetachedRecordsReferenceSuite",
           "DetachedRecordsSuite",
-          "CborDetachedSuite"
+          "CborDetachedSuite",
+          "TxEnvelopeReferenceSuite",
+          "TxEnvelopeSubmissionSuite"
         ],
         "paths": [
           "fixtures/reference/recd-records/cases.jsonl",
           "scripts/oracle/conway-decoding/recd_cases.py",
           "fixtures/reference/recd-detached/cases.jsonl",
-          "scripts/oracle/conway-decoding/detached_cases.py"
+          "scripts/oracle/conway-decoding/detached_cases.py",
+          "fixtures/reference/tx-envelope/cases.jsonl",
+          "scripts/oracle/conway-decoding/tx_envelope_cases.py"
         ]
       },
       "limitations": {
         "issues": [
-          688,
           698,
-          699,
           700,
           702
         ]
