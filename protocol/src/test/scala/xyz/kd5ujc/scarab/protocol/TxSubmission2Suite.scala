@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
-import TxSubmission2Fixtures.given
 import xyz.kd5ujc.scarab.codec.Bytes
 
+import TxSubmission2Fixtures.given
 import ChainSync.{DecodeResult, Role}
 import TxSubmission2.{State, Message}
 

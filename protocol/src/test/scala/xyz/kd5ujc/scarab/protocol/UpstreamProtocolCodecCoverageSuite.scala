@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
-import TxSubmission2Fixtures.given
 import java.io.InputStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
@@ -9,6 +8,7 @@ import java.security.MessageDigest
 import scala.io.Source
 import xyz.kd5ujc.scarab.codec.Bytes
 
+import TxSubmission2Fixtures.given
 import ChainSync.DecodeResult
 
 private enum ChainSyncSplitCoverage:
