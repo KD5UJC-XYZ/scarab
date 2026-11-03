@@ -115,7 +115,7 @@ class SclsBaseSuite extends CatsEffectSuite:
                     Files.write(
                       (db / "snapshots" / FileLedgerSnapshots.nameOf(anchor)).toNioPath,
                       FileLedgerSnapshots.closed(
-                        SnapshotV7.framed(
+                        SnapshotV8.framed(
                           StorageTestKit.boundTo(
                             db / "utxo" / "checkpoints" / StateBacking.stem(anchor)
                           ),
@@ -374,7 +374,7 @@ class SclsBaseSuite extends CatsEffectSuite:
                       .verified(snapshotBytes)
                       .leftMap(e => new AssertionError(e.toString))
                   )
-                  native <- ok(SnapshotV7.format[IO](SnapshotCheck.Full).decode(content)).flatMap(
+                  native <- ok(SnapshotV8.format[IO](SnapshotCheck.Full).decode(content)).flatMap(
                     result => IO.fromEither(result.leftMap(e => new AssertionError(e.toString)))
                   )
                 yield
@@ -382,7 +382,7 @@ class SclsBaseSuite extends CatsEffectSuite:
                   assertEquals(prepared.snapshot.anchor, Some(anchor))
                   assertEquals(native.anchor, Some(anchor))
                   assertEquals(prepared.utxo.count, 3L)
-                  assertEquals(SnapshotV7.sidecarOf(content).map(_.gaps), Right(Set.empty[Gap]))
+                  assertEquals(SnapshotV8.sidecarOf(content).map(_.gaps), Right(Set.empty[Gap]))
                   prepared.directory
               }
           )

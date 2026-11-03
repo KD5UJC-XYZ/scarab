@@ -17,13 +17,15 @@ import xyz.kd5ujc.scarab.protocol.Era
 
 import StorageTestKit.*
 
-/** Complete fixed files: the maintained V7 inputs, and the V5 files (from a native V5 writer and
-  * verified historical conversions) they were converted from, which remain the previous-version
-  * inputs of the migration. Original capture provenance remains pinned separately.
+/** Complete fixed files: the maintained V8 inputs, the V7 files they were converted from, and the
+  * V5 files (from a native V5 writer and verified historical conversions) those were converted
+  * from; the V5 and V7 files remain the previous-version inputs of the migration. Original capture
+  * provenance remains pinned separately.
   */
 class SnapshotGoldenSuite extends CatsEffectSuite:
   private val previous = JPath.of("fixtures/snapshot-v5")
-  private val fixtures = JPath.of("fixtures/snapshot-v7")
+  private val v7 = JPath.of("fixtures/snapshot-v7")
+  private val fixtures = JPath.of("fixtures/snapshot-v8")
   private val legacyGaps = Set(Gap.NonMyopic, Gap.PendingPulsingUpdate, Gap.ShelleyTransition)
   private val currentGaps = Set(Gap.NonMyopic, Gap.ShelleyTransition)
 
@@ -58,21 +60,25 @@ class SnapshotGoldenSuite extends CatsEffectSuite:
   private val previewV7 = "692acd226a7da77730114ae646643f3f6b8f3557763cdba28b65eaaae37248bc"
   private val conwayV7 = "a104434df873e4c7406fa57d00fe4b861a773d697312744c8ac30ea1de6ff97a"
   private val nativeV7 = "27a5e02eee38bc3c565d8f85830ea01804406a2b562dca957db368d9883699b2"
-  private def both(
+  private val previewV8 = "f5e2584a862e521162c2098a99dd3268e74300f7aae6fd069279cbe94d831ad0"
+  private val conwayV8 = "2eba1699708be0c1c99a2224f596ebedfced2043e5c92354e7413a534f443e95"
+  private val nativeV8 = "c27be6850661f3fe1c01e5662d55873cf7f60074a5a16f285a62ca806908b647"
+  private def all(
       file: String,
-      v5: String,
-      v7: String,
+      hashes: (String, String, String),
       preview: Boolean,
       gaps: Set[Gap]
   ): Vector[Golden] =
+    val (h5, h7, h8) = hashes
     Vector(
-      Golden(previous, FormatVersion.V5, file, v5, v7, preview, gaps),
-      Golden(fixtures, FormatVersion.V7, file, v7, v7, preview, gaps)
+      Golden(previous, FormatVersion.V5, file, h5, h8, preview, gaps),
+      Golden(v7, FormatVersion.V7, file, h7, h8, preview, gaps),
+      Golden(fixtures, FormatVersion.V8, file, h8, h8, preview, gaps)
     )
   private val goldens =
-    both("preview-4320.bin", previewV5, previewV7, true, legacyGaps) ++
-      both("eras/conway-730.bin", conwayV5, conwayV7, false, legacyGaps) ++
-      both("conway-native-730.bin", nativeV5, nativeV7, false, currentGaps)
+    all("preview-4320.bin", (previewV5, previewV7, previewV8), true, legacyGaps) ++
+      all("eras/conway-730.bin", (conwayV5, conwayV7, conwayV8), false, legacyGaps) ++
+      all("conway-native-730.bin", (nativeV5, nativeV7, nativeV8), false, currentGaps)
 
   private def sha256(bytes: Array[Byte]): String =
     MessageDigest.getInstance("SHA-256").digest(bytes).map(b => f"${b & 0xff}%02x").mkString
@@ -94,8 +100,8 @@ class SnapshotGoldenSuite extends CatsEffectSuite:
     }
   }
 
-  test("every maintained V7 file is the registered conversion of its V5 source") {
-    val raw = JFiles.readAllBytes(fixtures.resolve("manifest.json"))
+  test("every V7 file is the registered conversion of its V5 source") {
+    val raw = JFiles.readAllBytes(v7.resolve("manifest.json"))
     val manifest = io.circe.parser
       .parse(new String(raw, "UTF-8"))
       .fold(e => fail(e.message), identity)
@@ -109,7 +115,7 @@ class SnapshotGoldenSuite extends CatsEffectSuite:
         cursor.get[String](name).fold(e => fail(e.message), identity)
       val file = field("file")
       val source = JFiles.readAllBytes(previous.resolve(file))
-      val target = JFiles.readAllBytes(fixtures.resolve(file))
+      val target = JFiles.readAllBytes(v7.resolve(file))
       assertEquals(sha256(source), field("sourceSha256"), file)
       assertEquals(sha256(target), field("targetSha256"), file)
       val converted = FileLedgerSnapshots
@@ -125,6 +131,44 @@ class SnapshotGoldenSuite extends CatsEffectSuite:
         FileLedgerSnapshots.verified(source).flatMap(SnapshotV5.sidecarOf),
         file
       )
+    }
+  }
+
+  test("every maintained V8 file is the registered conversion of its V7 source") {
+    val raw = JFiles.readAllBytes(fixtures.resolve("manifest.json"))
+    val manifest = io.circe.parser
+      .parse(new String(raw, "UTF-8"))
+      .fold(e => fail(e.message), identity)
+      .hcursor
+    assertEquals(manifest.get[String]("format").toOption, Some("SCRBSNP8"))
+    val entries = manifest.get[Vector[io.circe.Json]]("files").fold(e => fail(e.message), identity)
+    assertEquals(entries.size, 17)
+    entries.foreach { entry =>
+      val cursor = entry.hcursor
+      def field(name: String): String =
+        cursor.get[String](name).fold(e => fail(e.message), identity)
+      val file = field("file")
+      val source = JFiles.readAllBytes(v7.resolve(file))
+      val target = JFiles.readAllBytes(fixtures.resolve(file))
+      assertEquals(sha256(source), field("sourceSha256"), file)
+      assertEquals(sha256(target), field("targetSha256"), file)
+      val converted = FileLedgerSnapshots
+        .verified(source)
+        .flatMap(SnapshotV8.fromV7)
+        .map(FileLedgerSnapshots.closed)
+        .fold(e => fail(e.message), identity)
+      assert(java.util.Arrays.equals(converted, target), file)
+      val content = FileLedgerSnapshots.verified(target).fold(e => fail(e.message), identity)
+      val sourceContent = FileLedgerSnapshots.verified(source).fold(e => fail(e.message), identity)
+      assertEquals(SnapshotV8.bindingOf(content), SnapshotV7.bindingOf(sourceContent), file)
+      assertEquals(SnapshotV8.sidecarOf(content), SnapshotV7.sidecarOf(sourceContent), file)
+      // the binding and the Haskell bytes are kept; only the magic and the sidecar's schema
+      // fingerprint differ, the states holding no Byron software proposal or application version
+      val (_, _, haskell) = SnapshotV8.sections(content).fold(e => fail(e.message), identity)
+      val (_, _, sourceHaskell) =
+        SnapshotV7.sections(sourceContent).fold(e => fail(e.message), identity)
+      assertEquals(haskell, sourceHaskell, file)
+      assertEquals(content.length, sourceContent.length, file)
     }
   }
 
@@ -182,7 +226,7 @@ class SnapshotGoldenSuite extends CatsEffectSuite:
   goldens.foreach { g =>
     test(s"${g.file} at ${g.version}: migrates once, then restores its state and carried gaps") {
       given Ask[IO, ConsensusMirrorEnv] = Ask.const(g.environment)
-      given SnapshotFormat[IO, MirrorState] = SnapshotV7.format[IO](SnapshotCheck.Full)
+      given SnapshotFormat[IO, MirrorState] = SnapshotV8.format[IO](SnapshotCheck.Full)
       tempDir.use { dir =>
         val name = FileLedgerSnapshots.nameOf(g.anchor)
         val file = dir / name
@@ -195,7 +239,7 @@ class SnapshotGoldenSuite extends CatsEffectSuite:
           second <- ok(SnapshotMigration.toCurrent[IO].run(dir))
           raw <- IO(JFiles.readAllBytes(file.toNioPath))
           content = FileLedgerSnapshots.verified(raw).fold(e => fail(e.message), identity)
-          sidecar = SnapshotV7.sidecarOf(content).fold(e => fail(e.message), identity)
+          sidecar = SnapshotV8.sidecarOf(content).fold(e => fail(e.message), identity)
           restored <- ok(
             FileLedgerSnapshots
               .open[IO, MirrorState](dir)
@@ -209,8 +253,8 @@ class SnapshotGoldenSuite extends CatsEffectSuite:
           )
         yield
           val migrated =
-            if g.version == FormatVersion.V7 then Nil
-            else List(Migrated(FileKind.SnapshotFile, g.version, FormatVersion.V7, 1))
+            if g.version == FormatVersion.V8 then Nil
+            else List(Migrated(FileKind.SnapshotFile, g.version, FormatVersion.V8, 1))
           assertEquals(first, SnapshotMigration.Report(migrated, Nil))
           assertEquals(second, SnapshotMigration.Report.empty)
           assertEquals(sha256(raw), g.migratedSha256, g.file)

@@ -1328,7 +1328,7 @@
       "id": "persistence-snapshot-v7",
       "component": "Persistence: ledger snapshot format (V7)",
       "status": "implemented",
-      "summary": "Native snapshot format V7: the V5 body behind a checkpoint binding; V5 files migrate on open; older payload readers retired behind identity and version preflight",
+      "summary": "Native snapshot format V7: the V5 body behind a checkpoint binding; V5 files migrate on open; older payload readers retired behind identity and version preflight; superseded by V8 (#726), to which V7 files migrate",
       "evidence": {
         "suites": [
           "ChainStorageSuite"
@@ -1344,6 +1344,29 @@
         ]
       },
       "page": "docs/compatibility/persistence-snapshot-v7.md"
+    },
+    {
+      "id": "persistence-snapshot-v8",
+      "component": "Persistence: ledger snapshot format (V8)",
+      "status": "implemented",
+      "summary": "Native snapshot format V8: the V7 layout whose sidecar keeps the Byron update state's installer metadata; V5 and V7 files migrate on open, and one whose Byron update state lost that metadata is refused with a typed resync requirement",
+      "evidence": {
+        "suites": [
+          "SnapshotV8MigrationSuite",
+          "SnapshotGoldenSuite",
+          "SnapshotPreflightSuite"
+        ],
+        "issues": [
+          726
+        ]
+      },
+      "limitations": {
+        "issues": [
+          129,
+          37
+        ]
+      },
+      "page": "docs/compatibility/persistence-snapshot-v8.md"
     },
     {
       "id": "persistence-haskell-immutabledb",
@@ -1400,6 +1423,7 @@
       "summary": "LocalTxSubmission, LocalStateQuery, LocalTxMonitor and whole-block ChainSync over a Unix socket; query coverage partial",
       "evidence": {
         "suites": [
+          "ByronUpdateInterfaceSuite",
           "DeepQuerySuite",
           "NtcQueryArgumentsSuite",
           "NtcQueryRecordsSuite",
@@ -1407,7 +1431,9 @@
         ],
         "paths": [
           "fixtures/reference/ntc-query-arguments/cases.jsonl",
-          "scripts/oracle/ntc-query-arguments/cases.py"
+          "scripts/oracle/ntc-query-arguments/cases.py",
+          "fixtures/reference/byron-update-state/cases.jsonl",
+          "scripts/oracle/byron-update-state/cases.py"
         ]
       },
       "limitations": {
@@ -1417,8 +1443,7 @@
           123,
           330,
           353,
-          356,
-          726
+          356
         ]
       },
       "page": "docs/compatibility/node-to-client.md"

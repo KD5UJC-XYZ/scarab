@@ -179,13 +179,14 @@ class ByronUpdateSuite extends ScalaCheckSuite:
       version: (Long, Long, Long),
       update: Bytes = Cb.arr(Seq.fill(14)(Cb.arr())*),
       software: (String, Long) = ("cardano-sl", 1),
-      tamper: Boolean = false
+      tamper: Boolean = false,
+      metadata: Bytes = Cb.map()
   ): Bytes =
     val elements = Seq(
       Cb.arr(Cb.uint(version._1), Cb.uint(version._2), Cb.uint(version._3)),
       update,
       Cb.arr(Cb.text(software._1), Cb.uint(software._2)),
-      Cb.map(),
+      metadata,
       Cb.map()
     )
     val signed = ByronCbor.of(0x85) ++ ByronCbor.concat(elements*)
@@ -285,6 +286,40 @@ class ByronUpdateSuite extends ScalaCheckSuite:
     )
     // a value that is not an `InstallerHash`
     assert(proposalWith(Cb.map(Cb.text("lin") -> Cb.uint(0)), Cb.map()).isLeft)
+  }
+
+  test(
+    "a software proposal's installer metadata is registered and its application version keeps it"
+  ) {
+    // `registerSoftwareUpdate` keeps the proposal's metadata (`Validation/Registration.hs:578-585`),
+    // and `registerVotes` gives a confirmed proposal's application version that metadata
+    // (`Validation/Interface.hs:336-345`, cardano-ledger f649f975); an `InstallerHash` keeps only
+    // its second hash (`Update/InstallerHash.hs:58-65`)
+    def hashOf(b: Int) = Bytes.fromArray(Array.fill(32)(b.toByte))
+    def installerOf(b: Int) =
+      Cb.arr(Cb.bytes(Bytes.empty), Cb.bytes(hashOf(b)), Cb.bytes(hashOf(9)), Cb.bytes(Bytes.empty))
+    val metadata = Map("linux" -> hashOf(7), "win64" -> hashOf(8))
+    val pb = proposalBytes(
+      dKeys(0),
+      (0, 0, 0),
+      software = ("cardano-sl", 1),
+      metadata = Cb.map(Cb.text("linux") -> installerOf(7), Cb.text("win64") -> installerOf(8))
+    )
+    val p = payload(Some(pb), Nil)
+    val proposal = p.proposal.getOrElse(fail("no proposal"))
+    assertEquals(proposal.metadata, metadata)
+    val registered =
+      register(state0, 5, p, ByronVersion.zero, dKeys(0)).fold(e => fail(e.toString), identity)
+    assertEquals(
+      registered.registeredSoftware,
+      Map(proposal.id -> SoftwareProposal("cardano-sl", 1, metadata))
+    )
+    val votes = payload(None, dKeys.map(voteBytes(_, proposal.id)))
+    val confirmed =
+      register(registered, 6, votes, ByronVersion.zero, dKeys(0))
+        .fold(e => fail(e.toString), identity)
+    assertEquals(confirmed.appVersions, Map("cardano-sl" -> AppVersion(1, 6, metadata)))
+    assertEquals(confirmed.registeredSoftware, Map.empty[Bytes, SoftwareProposal])
   }
 
   test("a proposal's attributes are empty: `dropEmptyAttributes` refuses any entry (#552)") {
@@ -459,7 +494,7 @@ class ByronUpdateSuite extends ScalaCheckSuite:
     )
     // nothing changes: the adopted version and no software change
     val none = payload(Some(proposalBytes(dKeys(0), (0, 0, 0), software = ("cardano-sl", 0))), Nil)
-    val withApp = state0.copy(appVersions = Map("cardano-sl" -> AppVersion(0, 0)))
+    val withApp = state0.copy(appVersions = Map("cardano-sl" -> AppVersion(0, 0, Map.empty)))
     assertEquals(
       register(withApp, 5, none, ByronVersion.zero, dKeys(0)),
       Left(UpdateError.NullUpdateProposal)

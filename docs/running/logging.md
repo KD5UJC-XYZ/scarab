@@ -192,7 +192,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `networkRecorded` | `Storage.NetworkRecorded` | Info | `magic`, `shelleyGenesis`, `byronGenesis`, `alonzoGenesis`, `conwayGenesis`, `adoptedExisting` |
 | `snapshotSkipped` | `Storage.SnapshotSkipped` | Warning | `file`, `reason` |
 | `snapshotRestored` | `Storage.SnapshotRestored` | Info | `file`, `anchor` |
-| `snapshotUnbound` | `Storage.SnapshotUnbound` | Warning | `file`, `anchor`: the restored snapshot predates checkpoint binding (V5 migrated to V7) and its checkpoint was admitted by directory name. |
+| `snapshotUnbound` | `Storage.SnapshotUnbound` | Warning | `file`, `anchor`: the restored snapshot predates checkpoint binding (V5 migrated through V7 to V8) and its checkpoint was admitted by directory name. |
 | `snapshotWritten` | `Storage.SnapshotWritten` | Info | `file`, `anchor`, `bytes`, `millis` |
 | `snapshotFailed` | `Storage.SnapshotFailed` | Error | `reason` |
 | `snapshotRefused` | `Storage.SnapshotRefused` | Error | `file`, `anchor`, `reason` |

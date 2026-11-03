@@ -8,7 +8,11 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.ledger.{CborRead, ProviderDefect}
 
-/** An update proposal: a protocol version with parameter changes, a software version, metadata. */
+/** An update proposal: a protocol version with parameter changes, a software version, metadata.
+  * @param metadata
+  *   the installer metadata, `Map SystemTag InstallerHash`: each system tag's installer hash
+  *   (`Update/Proposal.hs:216`, cardano-ledger f649f975)
+  */
 final case class ByronProposal(
     raw: Bytes,
     id: Bytes,
@@ -16,6 +20,7 @@ final case class ByronProposal(
     update: ByronParamsUpdate,
     softwareName: String,
     softwareNumber: BigInt,
+    metadata: Map[String, Bytes],
     signedBody: Bytes,
     issuer: Bytes,
     signature: Bytes
@@ -46,7 +51,7 @@ object UpdatePayload:
         number <- CborRead.uint(sv(1), DecodeField.SoftwareNumber)
         // the metadata and the attributes as the reference reads them, as the fetched body's
         // transport check does (`ByronTransport`): the keys are decoded, not only counted
-        _ <- ByronTransport.installerMetadata(xs(3))
+        metadata <- ByronTransport.installerMetadata(xs(3))
         _ <- ByronTransport.emptyAttributes(xs(4), DecodeField.ProposalAttributes)
         issuer <- CborRead.bytesN(xs(5), 64, DecodeField.ProposalIssuer)
         signature <- CborRead.bytesN(xs(6), 64, DecodeField.ProposalSignature)
@@ -57,6 +62,7 @@ object UpdatePayload:
         update,
         name,
         number,
+        metadata,
         ByronCbor.of(0x85) ++ xs.take(5).foldLeft(Bytes.empty)(_ ++ _.original),
         issuer,
         signature
@@ -124,16 +130,30 @@ enum UpdateError:
 
 final case class CandidateUpdate(slot: BigInt, version: ByronVersion, params: ByronParams)
 final case class ProtocolProposal(version: ByronVersion, params: ByronParams)
-final case class AppVersion(number: BigInt, slot: BigInt)
 
-/** The update-interface state (`Update.Validation.Interface.State`). */
+/** An application's version (`ApplicationVersion`, `Validation/Registration.hs:99-104`,
+  * cardano-ledger f649f975): its number, the slot at which its proposal was confirmed, and the
+  * installer metadata of that proposal.
+  */
+final case class AppVersion(number: BigInt, slot: BigInt, metadata: Map[String, Bytes])
+
+/** A registered software update (`SoftwareUpdateProposal`, `Validation/Registration.hs:162-165`):
+  * the application's name and proposed number, and the proposal's installer metadata.
+  */
+final case class SoftwareProposal(name: String, number: BigInt, metadata: Map[String, Bytes])
+
+/** The update-interface state (`Update.Validation.Interface.State`, `Interface.hs:109-133`,
+  * cardano-ledger f649f975), less its `currentEpoch`: only `initialState` writes it, with 0
+  * (`Interface.hs:225-238`), and no rule changes it, so the state has no use for it (its encoding,
+  * `ByronUpdateInterface`, writes the 0).
+  */
 final case class UpdateState(
     adoptedVersion: ByronVersion,
     adoptedParams: ByronParams,
     candidates: Vector[CandidateUpdate],
     appVersions: Map[String, AppVersion],
     registeredProtocol: Map[Bytes, ProtocolProposal],
-    registeredSoftware: Map[Bytes, (String, BigInt)],
+    registeredSoftware: Map[Bytes, SoftwareProposal],
     confirmed: Map[Bytes, BigInt],
     votes: Map[Bytes, Set[Bytes]],
     endorsements: Set[(ByronVersion, Bytes)],
@@ -267,13 +287,13 @@ object ByronUpdate:
   private def registerSoftware(
       st: UpdateState,
       p: ByronProposal
-  ): Either[UpdateError, Map[Bytes, (String, BigInt)]] =
+  ): Either[UpdateError, Map[Bytes, SoftwareProposal]] =
     val follows = st.appVersions.get(p.softwareName) match
       case None    => p.softwareNumber == 0 || p.softwareNumber == 1
       case Some(a) => p.softwareNumber == a.number + 1
     for
       _ <- Either.cond(
-        !st.registeredSoftware.valuesIterator.exists(_._1 == p.softwareName),
+        !st.registeredSoftware.valuesIterator.exists(_.name == p.softwareName),
         (),
         UpdateError.DuplicateSoftwareVersion(p.softwareName)
       )
@@ -282,7 +302,12 @@ object ByronUpdate:
         (),
         UpdateError.InvalidSoftwareVersion(p.softwareName, p.softwareNumber)
       )
-    yield st.registeredSoftware.updated(p.id, (p.softwareName, p.softwareNumber))
+    // the proposal's metadata is registered with it (`registerSoftwareUpdate`,
+    // `Validation/Registration.hs:578-585`)
+    yield st.registeredSoftware.updated(
+      p.id,
+      SoftwareProposal(p.softwareName, p.softwareNumber, p.metadata)
+    )
 
   // ---------------------------------------------------------------- votes
 
@@ -335,8 +360,10 @@ object ByronUpdate:
       )
       .map { after =>
         val confirmedSoftware = after.registeredSoftware.view.filterKeys(after.confirmed.contains)
-        val appVersions = confirmedSoftware.values.map { (name, number) =>
-          name -> AppVersion(number, env.slot)
+        // a confirmed proposal's application version carries its metadata (`registerVotes`,
+        // `Interface.hs:336-345`)
+        val appVersions = confirmedSoftware.values.map { software =>
+          software.name -> AppVersion(software.number, env.slot, software.metadata)
         }.toMap
         after.copy(
           appVersions = after.appVersions ++ appVersions,

@@ -286,10 +286,19 @@ object QueryAnswers:
           case None => w.array(0)
       })
     case NtcQuery.ByronUpdateInterfaceState =>
-      // Byron's update interface state is not answered (#726): in any later era the query gets the
-      // era mismatch, as the reference sends.
+      // Byron's update-interface state while the ledger is in Byron (`answerPureBlockQuery`,
+      // `Ouroboros/Consensus/Byron/Ledger/Ledger.hs:243-246`, ouroboros-consensus 82ecba32), the
+      // era mismatch in any later era, as the reference sends. A Byron state without its ledger
+      // has no update state to answer with.
       if view.era != Era.Byron then Right(CborOut.build(mismatch(_, QueryEra.Byron, view.era)))
-      else Left(Unanswered.Unsupported)
+      else
+        view.read
+          .consensus(view.state)
+          .byron
+          .ledger
+          .toRight(Unanswered.Unsupported)
+          .flatMap(ledger => ByronUpdateInterface.encode(ledger.update))
+          .map(r => CborOut.build(_.array(1).raw(r)))
     case NtcQuery.IfCurrent(index, inner) =>
       val era = view.era
       if index != QueryEra.of(era) then Right(CborOut.build(mismatch(_, index, era)))

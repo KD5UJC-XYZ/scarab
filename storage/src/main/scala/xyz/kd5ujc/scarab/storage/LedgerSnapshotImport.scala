@@ -263,8 +263,8 @@ object LedgerSnapshotImport:
                 Set.empty,
                 SnapshotSidecar.Chain.InShelley(utxo, params, Some(previous), extras)
               )
-              content = SnapshotV7.framed(binding, sidecar, raw)
-              back <- SnapshotV7.format[F](SnapshotCheck.Structure).decode(content)
+              content = SnapshotV8.framed(binding, sidecar, raw)
+              back <- SnapshotV8.format[F](SnapshotCheck.Structure).decode(content)
               _ <- lift(back.leftMap(Error.Storage(_)).void)
               snapshots = stage / "artifacts" / "snapshots"
               _ <- files.createDirectories(snapshots)
