@@ -6,6 +6,7 @@ Run from the repository root:  python3 -m unittest discover -s scripts/tests -v
 import contextlib
 import io
 import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -1428,3 +1429,82 @@ class PeercutPolicyTest(unittest.TestCase):
         for field, bad in [("failure", "Misbehaved"), ("action", "done"),
                            ("peer", "127.0.0.1:3001"), ("event", "reconnecting")]:
             self.assertFalse(peercut.transient_proxy_loss([dict(event, **{field: bad})]))
+
+
+class RunDirectoryDiskTest(unittest.TestCase):
+    """Issue 610: a scenario refuses to start below a free-space margin, and reports what its run directory holds
+    when it ends."""
+
+    def test_size_parser_takes_binary_units_and_plain_bytes(self):
+        for text, expected in (("20G", 20 * 1024**3), ("512M", 512 * 1024**2), ("1.5T", int(1.5 * 1024**4)),
+                               ("4096", 4096), ("20 GiB", 20 * 1024**3), (" 2g ", 2 * 1024**3)):
+            self.assertEqual(util.parse_size(text), expected, text)
+
+    def test_size_parser_refuses_what_is_not_a_size(self):
+        for text in ("", "20X", "-1G", "lots", "1GG", "G"):
+            with self.assertRaises(ValueError, msg=text):
+                util.parse_size(text)
+
+    def test_free_space_check_refuses_below_the_margin_and_names_the_numbers(self):
+        with self.assertRaises(util.InsufficientDisk) as caught:
+            util.require_free_disk(pathlib.Path("/tmp/scarab/does-not-matter"), 20 * 1024**3, free=3 * 1024**3)
+        message = str(caught.exception)
+        self.assertIn("20.0 GiB", message)        # the margin it wanted
+        self.assertIn("3.0 GiB", message)         # what the filesystem had
+        self.assertIn("--min-free-disk", message)  # how an operator lowers it
+        self.assertNotIn("\n", message)           # one line, not a traceback
+        self.assertIsInstance(caught.exception, SystemExit)  # ...which is why it is a SystemExit
+
+    def test_free_space_check_passes_at_the_margin_and_above(self):
+        self.assertEqual(util.require_free_disk(pathlib.Path("/tmp/x"), 1024, free=1024), 1024)
+        self.assertEqual(util.require_free_disk(pathlib.Path("/tmp/x"), 1024, free=2048), 2048)
+
+    def test_free_space_is_read_from_the_nearest_existing_ancestor(self):
+        # the margin is checked before the run directory exists
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = pathlib.Path(tmp) / "a" / "b"
+            self.assertGreater(util.filesystem_free(missing), 0)
+
+    def test_free_space_margin_defaults_to_the_module_constant(self):
+        with self.assertRaises(util.InsufficientDisk):
+            util.require_free_disk(pathlib.Path("/tmp/x"), free=util.MIN_FREE_DISK - 1)
+        self.assertEqual(util.require_free_disk(pathlib.Path("/tmp/x"), free=util.MIN_FREE_DISK),
+                         util.MIN_FREE_DISK)
+
+    def test_run_directory_size_is_recursive_and_a_missing_one_is_zero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "genesis").mkdir()
+            (root / "genesis" / "shelley-genesis.json").write_text("x" * 100)
+            (root / "follower.jsonl").write_text("y" * 250)
+            self.assertEqual(util.directory_size(root), 350)
+            self.assertEqual(util.directory_size(root / "absent"), 0)
+
+    def test_run_size_report_names_the_size_and_how_to_remove_the_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp) / "scarab-devnet"
+            root.mkdir()
+            (root / "log").write_text("z" * 2048)
+            lines = []
+            report = util.report_run_size(root, emit=lines.append)
+            self.assertEqual(report, {"runDir": str(root), "bytes": 2048, "human": "2.0 KiB"})
+            self.assertEqual(len(lines), 1)
+            self.assertIn("2.0 KiB", lines[0])
+            self.assertIn("down", lines[0])
+            self.assertIsNone(util.report_run_size(root / "absent", emit=lines.append))
+
+    def test_cli_documents_the_margin_and_refuses_before_it_starts_anything(self):
+        env = dict(os.environ, SCARAB_DATA_DIR=tempfile.mkdtemp(prefix="scarab-610-"))
+        try:
+            helped = subprocess.run([sys.executable, str(util.ENTRY), "--help"], capture_output=True, text=True)
+            self.assertEqual(helped.returncode, 0, helped.stderr)
+            self.assertIn("--min-free-disk", helped.stdout)
+            self.assertIn(util.human_size(util.MIN_FREE_DISK), helped.stdout)  # the documented default
+            refused = subprocess.run([sys.executable, str(util.ENTRY), "--min-free-disk", "100T", "up"],
+                                     capture_output=True, text=True, env=env)
+            self.assertEqual(refused.returncode, 1, refused.stderr)
+            self.assertIn("refusing to start", refused.stderr)
+            self.assertIn("100.0 TiB", refused.stderr)
+            self.assertEqual(refused.stdout, "")  # nothing ran, nothing was printed as a result
+        finally:
+            shutil.rmtree(env["SCARAB_DATA_DIR"], ignore_errors=True)

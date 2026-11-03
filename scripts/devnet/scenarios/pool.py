@@ -14,7 +14,7 @@ from ..cluster import database_mounts, freeze_classes, scala_container, start_no
 from ..compare import Comparisons, compare_or_error, whole_failures, whole_state
 from ..scenarios.relay import SCALA_PORT, log_counts, tip_at
 from .. import util
-from ..util import CLI, ENTRY, ENV, MAGIC, QUERY_PORT, data_root, docker, in_ref, put_file, read_json, read_log, ref, scheduling_summary
+from ..util import CLI, ENTRY, ENV, MAGIC, QUERY_PORT, data_root, docker, in_ref, put_file, read_json, read_log, ref, require_free_disk, scheduling_summary
 
 
 # ---------------------------------------------------------------- the Scala node as a block producer
@@ -272,6 +272,7 @@ def pool(args):
     root = data_root(args.name)
     if root.exists():
         raise SystemExit(f"{root} exists; run `devnet.py --name {args.name} down` first")
+    require_free_disk(root, getattr(args, "min_free_disk", None))
     (root / "genesis").mkdir(parents=True)
     (root / "keys").mkdir(mode=0o700)
     start_reference(args.name)

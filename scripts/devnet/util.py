@@ -3,6 +3,8 @@
 import json
 import os
 import pathlib
+import re
+import shutil
 import subprocess
 import sys
 
@@ -80,6 +82,87 @@ def data_dir(env=None, exists=pathlib.Path.exists, notice=lambda text: print(tex
 
 def data_root(name):
     return data_dir() / name
+
+
+# ---------------------------------------------------------------- run directories and disk space
+
+MIN_FREE_DISK = 20 * 1024**3  # default margin a scenario needs free before it starts (issue 610)
+_SIZE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([kmgt]?)(?:i?b)?\s*$", re.IGNORECASE)
+_FACTORS = {"": 1, "k": 1 << 10, "m": 1 << 20, "g": 1 << 30, "t": 1 << 40}
+
+
+class InsufficientDisk(SystemExit):
+    """A scenario refused to start because the filesystem holding its run directory has less free space than
+    the configured margin. A `SystemExit` so the refusal is one line instead of a traceback, and typed so a
+    caller or a test can tell it from every other refusal."""
+
+    def __init__(self, path, margin, free):
+        self.path, self.margin, self.free = path, margin, free
+        super().__init__(f"refusing to start: the filesystem holding {path} has {human_size(free)} free, "
+                         f"below the {human_size(margin)} margin (--min-free-disk {margin} lowers it)")
+
+
+def parse_size(text):
+    """Bytes of a size such as `20G`, `512M`, `1.5T`, `20 GiB` or a plain byte count (`21474836480`); the
+    units are binary. Raises `ValueError`, which argparse turns into a usage error."""
+    match = _SIZE.match(str(text))
+    if not match:
+        raise ValueError(f"not a size: {text!r} (write 20G, 512M, 1.5T or a byte count)")
+    return int(float(match.group(1)) * _FACTORS[match.group(2).lower()])
+
+
+def human_size(n):
+    """A byte count in binary units, one decimal place (`20.0 GiB`, `512.0 MiB`)."""
+    for unit, factor in (("TiB", 1 << 40), ("GiB", 1 << 30), ("MiB", 1 << 20), ("KiB", 1 << 10)):
+        if n >= factor:
+            return f"{n / factor:.1f} {unit}"
+    return f"{n} B"
+
+
+def filesystem_free(path):
+    """Free bytes on the filesystem that would hold `path`: the nearest existing ancestor is measured, so a
+    scenario checks its margin before it creates the run directory."""
+    path = pathlib.Path(path)
+    existing = path
+    while not existing.exists() and existing != existing.parent:
+        existing = existing.parent
+    return shutil.disk_usage(existing).free
+
+
+def require_free_disk(path, margin=None, free=None):
+    """Refuse, with `InsufficientDisk`, unless `margin` bytes are free on the filesystem that would hold
+    `path`, and return the free space measured. `free` lets a caller (or a test) supply the measurement."""
+    margin = MIN_FREE_DISK if margin is None else margin
+    free = filesystem_free(path) if free is None else free
+    if free < margin:
+        raise InsufficientDisk(path, margin, free)
+    return free
+
+
+def directory_size(root):
+    """Bytes of every file under `root`, recursively; a missing directory is 0. Symbolic links are not
+    followed, so a run directory linking another does not count the same bytes twice."""
+    root = pathlib.Path(root)
+    if not root.is_dir():
+        return 0
+    return sum(p.stat().st_size for p in root.rglob("*") if p.is_file() and not p.is_symlink())
+
+
+def report_run_size(root, emit=None):
+    """Print the size of the run directory at the end of a scenario and return it as `{runDir, bytes, human}`;
+    `None` when there is no run directory (a command that never made one, or `down`, which removes it).
+
+    The line goes to stderr: a scenario's last stdout line is its JSON summary, which callers parse.
+    """
+    root = pathlib.Path(root)
+    if not root.is_dir():
+        return None
+    size = directory_size(root)
+    report = {"runDir": str(root), "bytes": size, "human": human_size(size)}
+    line = (f"run directory {root}: {report['human']} ({size} bytes); "
+            f"`devnet.py --name {root.name} down` removes it")
+    (emit or (lambda text: print(text, file=sys.stderr)))(line)
+    return report
 
 
 def jdk_image(present=None):

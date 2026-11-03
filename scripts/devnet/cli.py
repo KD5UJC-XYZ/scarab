@@ -70,12 +70,16 @@ from .scenarios.peer_sharing import peer_sharing
 from .scenarios.restart import restart
 from .scenarios.v1context import v1_context
 from .scenarios.soak import soak
-from .util import REPO
+from .util import MIN_FREE_DISK, REPO, data_root, human_size, parse_size, report_run_size
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--name", help="container and run-directory name (default scarab-devnet; scarab-eras for up-eras, capture-eras, e2e; scarab-pool for pool)")
+    p.add_argument("--min-free-disk", type=parse_size, default=MIN_FREE_DISK, metavar="SIZE",
+                   help=f"free space a scenario requires on the filesystem of its run directory before it starts "
+                        f"(default {human_size(MIN_FREE_DISK)}; SIZE as 20G, 512M or a byte count; 0 disables the "
+                        f"check). Write it before the command, like --name")
     scala_options = argparse.ArgumentParser(add_help=False)
     scala_options.add_argument("--scala-cpus", type=float, default=2,
                                help="CPUs of the Scala node's container (default 2; 1 shows how it behaves when the host is short of CPU)")
@@ -344,4 +348,9 @@ def main():
                               help="Scala consensus mode; reference pools retain their original configuration")
     args = p.parse_args()
     args.name = args.name or ("scarab-eras" if args.command in ("up-eras", "capture-eras", "e2e", "sample-chain-dep", "assemble-chain-dep") else "scarab-pool" if args.command == "pool" else "scarab-kes-rotate" if args.command == "kes-rotate" else "scarab-devnet")
-    args.run(args)
+    try:
+        args.run(args)
+    finally:
+        # The size of what the run left behind, at its end and on its way out of a failure too; on stderr so
+        # the scenario's JSON summary stays the last line of stdout.
+        report_run_size(data_root(args.name))

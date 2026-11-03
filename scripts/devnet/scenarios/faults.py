@@ -16,7 +16,7 @@ import sys
 import time
 from .. import faultplan, netfaults
 from ..cluster import database_mounts, freeze_classes, scala_container, start_reference
-from ..util import ENV, QUERY_PORT, data_root, docker, in_ref, put_file, read_log, ref
+from ..util import ENV, QUERY_PORT, data_root, docker, in_ref, put_file, read_log, ref, require_free_disk
 from .pool import pool_environment
 from .relay import SCALA_PORT, log_counts, tip_at
 
@@ -305,6 +305,7 @@ def faults(args):
     root = data_root(args.name)
     if root.exists():
         raise SystemExit(f"{root} exists; run `devnet.py --name {args.name} down` first")
+    require_free_disk(root, getattr(args, "min_free_disk", None))
     (root / "genesis").mkdir(parents=True)
     (root / "proxy").mkdir()
     (root / "proxy").chmod(0o777)

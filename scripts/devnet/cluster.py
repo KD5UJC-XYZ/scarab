@@ -8,7 +8,8 @@ import subprocess
 import time
 from . import util
 from cleanup import container_labels
-from .util import ENV, cache_dir, jdk_image, MAGIC, REFERENCE_IMAGE, REPO, TX, USER, data_root, docker, in_ref, put_file, query, read_json, ref
+from .util import (ENV, cache_dir, jdk_image, MAGIC, REFERENCE_IMAGE, REPO, TX, USER, data_root,
+                   docker, in_ref, put_file, query, read_json, ref, require_free_disk)
 
 
 def start_reference(name):
@@ -25,6 +26,7 @@ def up(args):
     root = data_root(args.name)
     if root.exists():
         raise SystemExit(f"{root} exists; run `devnet.py down` first")
+    require_free_disk(root, getattr(args, "min_free_disk", None))
     (root / "genesis").mkdir(parents=True)
     start_reference(args.name)
     in_ref(args.name, f"cardano-testnet create-env --num-pool-nodes 3 --testnet-magic {MAGIC} "
@@ -314,6 +316,7 @@ def up_eras(args, on_nodes_up=None, on_pools_ready=None, on_tick=None):
     root = data_root(args.name)
     if root.exists():
         raise SystemExit(f"{root} exists; run `devnet.py down` first")
+    require_free_disk(root, getattr(args, "min_free_disk", None))
     (root / "genesis").mkdir(parents=True)
     start_reference(args.name)
     shelley = prepare_eras_env(args.name, args)
