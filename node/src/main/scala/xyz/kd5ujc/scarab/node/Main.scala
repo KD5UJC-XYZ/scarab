@@ -1008,7 +1008,8 @@ object Main extends IOApp:
           backing,
           rules.warm,
           Some(scheduling.compute),
-          Some(SnapshotMigration.toCurrent[IO])
+          Some(SnapshotMigration.toCurrent[IO]),
+          Some(TransitionRecount.reopen[IO](genesis.geometry))
         )
         .evalMap { r =>
           ChainStorage

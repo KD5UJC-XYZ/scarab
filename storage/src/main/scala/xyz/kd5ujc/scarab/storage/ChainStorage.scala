@@ -123,6 +123,15 @@ object ChainPersistence:
   * Layout: `<dir>/network-identity`, `<dir>/immutable/`, `<dir>/snapshots/`, `<dir>/volatile/`.
   */
 object ChainStorage:
+  /** What is done to a restored snapshot's state, with the immutable store at hand, before the
+    * stored blocks are replayed on it: a value the snapshot does not carry recovered from the
+    * chain.
+    */
+  trait Reopen[F[_], S]:
+    def apply(store: ImmutableStore[F], anchor: Option[BlockRef], state: S)(using
+        Raise[F, StorageError]
+    ): F[S]
+
   /** Stored blocks are prepared this many at a time during replay. */
   private val ReplayBatch = 64
 
@@ -251,7 +260,8 @@ object ChainStorage:
       backing: StateBacking[F, S],
       prepare: Vector[Bytes] => F[Unit],
       compute: Option[Compute[F]] = None,
-      snapshotMigration: Option[SnapshotMigration[F]] = None
+      snapshotMigration: Option[SnapshotMigration[F]] = None,
+      reopen: Option[Reopen[F, S]] = None
   )(using
       SnapshotFormat[F, S],
       Raise[F, StorageError],
@@ -332,8 +342,10 @@ object ChainStorage:
       _ <- Resource.eval(
         restored.skipped.traverse_(s => events.emit(StorageEvent.SnapshotSkipped(s.name, s.error)))
       )
-      start = restored.snapshot.fold((Option.empty[BlockRef], initial))((_, s) =>
-        (s.anchor, s.state)
+      start <- Resource.eval(
+        restored.snapshot.fold(F.pure((Option.empty[BlockRef], initial)))((_, s) =>
+          reopen.fold(F.pure(s.state))(_(store, s.anchor, s.state)).map(s.anchor -> _)
+        )
       )
       _ <- Resource.eval(
         restored.snapshot.traverse_((name, s) =>

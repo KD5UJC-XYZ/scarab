@@ -109,6 +109,9 @@ final case class MirrorProvenance private (
   def entered(era: Era, epoch: BigInt): MirrorProvenance =
     copy(observed = observed.updatedWith(era)(_.orElse(Some(epoch))))
 
+  /** The provenance with `gap` closed, its missing value having been recovered exactly. */
+  def recovered(gap: Gap): MirrorProvenance = copy(gaps = gaps - gap)
+
   /** NEWEPOCH discards the old reward update and resets the voting count. Count one SNAP witness
     * per successful block crossing an epoch, even when its tick traverses several: this
     * conservatively understates recovery. Three witnesses replace every imported mark/set/go and
