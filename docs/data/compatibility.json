@@ -1129,6 +1129,33 @@
       "page": "docs/compatibility/ledger-plutus-data-decoding.md"
     },
     {
+      "id": "plutus-v4-dijkstra",
+      "component": "Plutus at protocol 12: PlutusV4 and case on Data (#54)",
+      "status": "partial",
+      "summary": "The Leios testnet build's Plutus from protocol 12 (plutus 1.71.0.0): program version 1.2.0, case on Data, variants F and G, PlutusV4 as cardano-ledger 9df9f98c runs it, and the PlutusV4 script context of a Dijkstra transaction; the node does not reach protocol 12",
+      "evidence": {
+        "suites": [
+          "PlutusConformance171Suite",
+          "CaseOnDataSuite",
+          "PlutusAvailabilitySuite",
+          "UnliftingBoundsSuite",
+          "DijkstraScriptContextsSuite",
+          "DijkstraContextWireSuite"
+        ],
+        "paths": [
+          "plutus/src/test/resources/plutus-conformance-1.71.0.0/README.md",
+          "fixtures/reference/leios-testnet-contexts/README.md",
+          "scripts/oracle/leios-testnet/leios_context_cases.py"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          54
+        ]
+      },
+      "page": "docs/compatibility/plutus-v4-dijkstra.md"
+    },
+    {
       "id": "ledger-repeated-withdrawals",
       "component": "Ledger: repeated withdrawal accounts, decoder versions 2 to 9 (#494)",
       "status": "implemented",
