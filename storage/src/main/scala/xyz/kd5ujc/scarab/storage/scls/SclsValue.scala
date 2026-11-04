@@ -79,7 +79,7 @@ object SclsValue:
     case PoolRelay(cause: PoolRelayError)
     case Ledger(cause: LedgerDecodeError)
 
-  /** Which DNS names a pool relay may hold when a value is read.
+  /** Which DNS names a pool relay, and which URLs a pool's metadata, may hold when a value is read.
     *
     * `Imported` reads data from outside the node as the reference's import reads it: a relay is
     * `LedgerCBOR` (`BasicTypes.hs:283-291`), decoded at Conway's lowest protocol version, 9
@@ -250,22 +250,33 @@ object SclsValue:
       shape(namespace, "reward account with a network nibble and 28-byte credential hash")
     )
 
-  private def poolMetadata(value: Node, namespace: Namespace): Either[Error, Bytes] =
+  /** `PoolMetadata` is `LedgerCBOR` (`BasicTypes.hs:293-301`): `[url, hash]` (`EncCBOR` and
+    * `DecCBOR PoolMetadata`, `StakePool.hs:516-524`). The hash is a `ByteArray` of any length, read
+    * and written without a bound (`decodeByteArray`, cardano-ledger-binary `Decoder.hs:1426-1434`).
+    * The URL is a `Url`, bounded at 128 UTF-8 bytes when it is read at Conway's version (`DecCBOR
+    * Url`, `BaseTypes.hs:678-685`) and written with no bound (`EncCBOR Url`,
+    * `BaseTypes.hs:674-676`); see [[Reading]].
+    */
+  private def poolMetadata(
+      value: Node,
+      namespace: Namespace,
+      reading: Reading
+  ): Either[Error, Bytes] =
     val raw = value.original
     value.value match
       case V.Arr(Vector(url, hashNode)) =>
         val checkedUrl = url.value match
           case V.Text(textValue) =>
             Either.cond(
-              textValue.getBytes(StandardCharsets.UTF_8).length <= 128,
+              reading == Reading.Exported ||
+                textValue.getBytes(StandardCharsets.UTF_8).length <= 128,
               (),
               shape(namespace, "PoolMetadata URL up to 128 UTF-8 bytes")
             )
           case _ => Left(shape(namespace, "PoolMetadata [URL, hash]"))
         for
           _ <- checkedUrl
-          hash <- asBytes(hashNode, namespace)
-          _ <- Either.cond(hash.size == 32, (), shape(namespace, "PoolMetadata 32-byte hash"))
+          _ <- asBytes(hashNode, namespace)
           canonical <- encoded(value)
           _ <- Either.cond(canonical == raw, (), Error.NonCanonical(namespace))
         yield raw
@@ -279,7 +290,7 @@ object SclsValue:
     CborCodec
       .decode(value, limits)
       .leftMap(Error.Cbor(_))
-      .flatMap(decoded => poolMetadata(decoded, namespace).map(_ => decoded))
+      .flatMap(decoded => poolMetadata(decoded, namespace, Reading.Exported).map(_ => decoded))
 
   private def poolRelays(
       value: Node,
@@ -371,7 +382,7 @@ object SclsValue:
         owners <- keyHashSet[S.Staking](fields("owners"), namespace)
         relays <- poolRelays(fields("relays"), namespace, limits, reading)
         deposit <- compactCoin(fields("deposit"), namespace)
-        metadata <- optional(fields("metadata"), poolMetadata(_, namespace))
+        metadata <- optional(fields("metadata"), poolMetadata(_, namespace, reading))
         account <- ledgerCredential[S.Staking](fields("account_id"), namespace)
         delegators <- credentialSet[S.Staking](fields("delegators"), namespace)
       yield
@@ -423,7 +434,7 @@ object SclsValue:
         owners <- keyHashSet[S.Staking](fields("owners"), namespace)
         pledge <- canonicalCoin(fields("pledge"), namespace)
         relays <- poolRelays(fields("relays"), namespace, limits, reading)
-        metadata <- optional(fields("metadata"), poolMetadata(_, namespace))
+        metadata <- optional(fields("metadata"), poolMetadata(_, namespace, reading))
         address <- accountAddress(fields("account_address"), namespace)
       yield PoolParams(
         id,

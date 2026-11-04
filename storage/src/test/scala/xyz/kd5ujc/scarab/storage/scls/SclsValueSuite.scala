@@ -117,6 +117,56 @@ class SclsValueSuite extends FunSuite:
     )
   }
 
+  private def withMetadata(url: String, hashBytes: Int): SclsValue.Entry =
+    val metadata = Cbor
+      .encode(
+        V.Arr(
+          Vector(
+            Node(V.Text(url), Bytes.empty),
+            Node(V.ByteString(Bytes.wrap(Array.fill[Byte](hashBytes)(7))), Bytes.empty)
+          )
+        )
+      )
+      .fold(e => fail(e.message), identity)
+    val pool = poolVector
+    SclsValue.Entry.StakePool(
+      pool.copy(
+        state = Some(poolState(pool).copy(metadata = Some(metadata))),
+        futureParams = Some(poolFuture(pool).copy(metadata = Some(metadata)))
+      )
+    )
+
+  // `PoolMetadata` is `LedgerCBOR`: its `Url` is written with no bound and read at 128 bytes from
+  // version 9, its hash a `ByteArray` of any length both ways (`StakePool.hs:516-524`).
+  test("a held pool metadata URL past 128 bytes is exported, and the import refuses it") {
+    val held = withMetadata("a" * 200, 32)
+    val encoded = SclsValue.encode(held).fold(e => fail(e.toString), identity)
+    assertEquals(
+      SclsValue.decode(Namespace.StakePools, encoded),
+      Left(
+        SclsValue.Error.WrongShape(Namespace.StakePools, "PoolMetadata URL up to 128 UTF-8 bytes")
+      )
+    )
+    assertEquals(
+      SclsValue.decode(Namespace.StakePools, encoded, reading = SclsValue.Reading.Exported),
+      Right(held)
+    )
+    val at = withMetadata("é" * 64, 32)
+    val atBytes = SclsValue.encode(at).fold(e => fail(e.toString), identity)
+    assertEquals(SclsValue.decode(Namespace.StakePools, atBytes), Right(at), "128 UTF-8 bytes")
+    val past =
+      SclsValue.encode(withMetadata("é" * 64 + "a", 32)).fold(e => fail(e.toString), identity)
+    assert(SclsValue.decode(Namespace.StakePools, past).isLeft, "129 UTF-8 bytes")
+  }
+
+  test("a pool metadata hash of any length is exported and imported") {
+    Vector(0, 1, 31, 33, 64).foreach { size =>
+      val entry = withMetadata("https://example.com/p.json", size)
+      val encoded = SclsValue.encode(entry).fold(e => fail(s"$size: $e"), identity)
+      assertEquals(SclsValue.decode(Namespace.StakePools, encoded), Right(entry), s"$size bytes")
+    }
+  }
+
   // `mkCanonicalStakePoolState` and `mkCanonicalStakePoolParams` compact the pledge and cost with
   // `toCompactPartial` (`EntitiesStakePools/V0.hs:195-196,267-269`), which fails for a Coin outside
   // `Word64` (`Compactible.hs:42-45`, `Coin.hs:153,177-181`): the reference writes no value.
