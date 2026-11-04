@@ -97,22 +97,25 @@ nightly campaign and the fixed-seed gate all run them:
 - `volatile-store-log` reads `VolatileStore.decodeAll`, the log a restart resumes from. The seeds are
   what the writer produces for each record shape: a block, a boundary block, a rollback to origin and
   a rollback to a point, plus the same log truncated and doubled. Properties: no exception; decoding
-  the seed and encoding what came back reproduces the seed byte for byte, so a field the reader loses
-  cannot pass by agreeing with itself; and one bit changed in an accepted record's header or payload
-  drops that record while the records before it are unchanged, which is what its CRC-32 is for.
+  the seed and encoding what came back reproduces the seed byte for byte, so a field the reader drops
+  or transposes changes the bytes it writes back; and a bit changed in the last header byte and a bit
+  changed in the first payload byte of every accepted record drop that record while the records before
+  it are unchanged, which is what its CRC-32 is for.
 - `node-config-strict` reads `NodeConfig.parse` both ways: strictly, as `cardano-node run` reads the
   configuration, and leniently. The seeds are the committed configurations of the three public
   networks and of the Leios testnet, plus degenerate documents. Properties: no exception; a
   configuration accepted strictly is accepted leniently with the same value, because the two differ
-  only in the fields strict requires; and the empty document, which names none of them, is refused
-  strictly, so the required-field checks are still enforced.
+  only in the fields strict requires; and a document that names none of those fields is refused
+  strictly and accepted without the checks, so the split is asserted on both sides, not one.
 - `node-topology` reads `Topology.parse`. The seeds are the committed topologies of the same
-  networks. Properties: no exception; the access points it keeps are exactly the ones the document
-  declares, counted group by group from the document's JSON tree rather than from the parse under
-  test; and a document that declares local roots or bootstrap peers yields peers to follow.
+  networks. Properties: no exception; the number of access points it keeps matches the number the
+  document declares, counted group by group from the document's JSON tree rather than from the parse
+  under test, so a reader that drops, invents or duplicates one fails here; and a document that
+  declares local roots or bootstrap peers yields peers to follow.
 
 Covered by that inventory: snapshot metadata and tables, SCLS framing and values, native V8
 snapshots and their sidecars, ancillary manifests and keys, Mithril receipts, the network identity
-file, MemPack outputs, the volatile log, and the configuration and topology JSON. Not covered: the
-immutable store's own segment layout, which is read through a private file reader rather than a
-decoder over a byte array, and the RocksDB-backed UTxO store.
+file, the peer snapshot, MemPack outputs, the volatile log, and the configuration and topology JSON.
+Not covered: the immutable store's own segment layout, which is read through a private file reader
+rather than a decoder over a byte array; the RocksDB-backed UTxO store; and the cardano-cli key-file
+envelope, whose `type` and `cborHex` fields the forge reads but no target exercises.

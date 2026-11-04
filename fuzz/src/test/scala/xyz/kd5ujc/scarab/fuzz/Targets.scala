@@ -1742,18 +1742,25 @@ object Targets:
       fixture("fixtures/leios/testnet/config/config.json")
     val minimal = Vector("{}", "[]", "\"Cardano\"", "", "{\"Protocol\":\"Cardano\"}")
       .map(_.getBytes(UTF_8))
+    // Valid documents that name none of the fields the strict path requires: strict refuses them
+    // and the lenient path, which only defaults those fields, accepts them. Asserting both halves
+    // is what makes the split falsifiable - a reader that refuses them either way, or accepts them
+    // strictly, fails here.
+    val strictRefused = Vector("{}", "{\"Protocol\":\"Cardano\"}").map(_.getBytes(UTF_8))
     Vector(
       Target(
         "node-config-strict",
         () => configs ++ minimal ++ Corpus.tricky,
         probe("node-config-strict") { bytes =>
           val text = new String(bytes.toArray, UTF_8)
-          // The empty document lacks every field strict requires, so it separates the two readings:
-          // a parse where the strict checks stopped biting would accept it.
-          if java.util.Arrays.equals(bytes.toArray, minimal.head) then
+          if strictRefused.exists(seed => java.util.Arrays.equals(bytes.toArray, seed)) then
             req(
               NodeConfig.parse(text, strict = true).isLeft,
-              "an empty configuration is read strictly, so the required-field checks do not bite"
+              "a configuration naming none of the required fields is accepted strictly, so the checks do not bite"
+            )
+            req(
+              NodeConfig.parse(text).isRight,
+              "a configuration refused only for a missing required field is refused without the checks too"
             )
           NodeConfig.parse(text, strict = true).foreach { config =>
             req(
@@ -1767,7 +1774,7 @@ object Targets:
     )
 
   /** The operator's `topology.json`, as the reference reads a P2P topology: whatever the input
-    * mutates to, an accepted topology keeps exactly the access points the document declares, group
+    * mutates to, an accepted topology keeps as many access points as the document declares, group
     * by group - the document is counted from its JSON tree rather than from the parse under test,
     * so a reader that drops, invents or duplicates one disagrees here - and a document that
     * declares local roots or bootstrap peers still yields peers to follow.
