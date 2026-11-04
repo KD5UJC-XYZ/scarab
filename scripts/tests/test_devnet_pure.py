@@ -19,6 +19,7 @@ from fractions import Fraction
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from devnet import cbor, cluster, compare, encoding, eraload, eratx, eraview, follower, govextra, govview, ntccases, ntccli, ntclocal, ntcqueries, ntcquery, refused_fixture, util  # noqa: E402
+from devnet.scenarios import e2e as e2e_scenario  # noqa: E402
 from devnet.scenarios import peercut
 from devnet.scenarios import ntc  # noqa: E402
 from devnet.scenarios import pool  # noqa: E402
@@ -584,6 +585,241 @@ class PoolReferenceLogsOnExceptionTest(unittest.TestCase):
         self.assertIn(("logs", (2, 3)), events)
         self.assertLess(events.index(("logs", (2, 3))), events.index(("docker", ("rm", "-f", util.ref("n")))))
         self.assertEqual(summary["failures"], [])
+
+
+class NativeEvidenceTest(unittest.TestCase):
+    """A failed run keeps what only the reference container still holds (#293)."""
+
+    @staticmethod
+    def run_writing_logs(calls, failed=()):
+        def run(command, stdout=None, **kwargs):
+            calls.append(command)
+            if stdout is not None:
+                if any(name in command[-1] for name in failed):
+                    return subprocess.CompletedProcess(command, 1, "", "cat: cannot open: no such file")
+                stdout.write("native log\n")
+                return subprocess.CompletedProcess(command, 0)
+            if command[:2] == ["docker", "inspect"]:
+                return subprocess.CompletedProcess(command, 0, "running 2026-11-04T09:00:00Z\n", "")
+            if "query" in command:
+                out = json.dumps({"block": 0, "slot": 0, "era": "Byron", "epoch": 0})
+            elif command[-1].endswith("shelley-genesis.json"):
+                out = json.dumps({"systemStart": "2026-11-04T09:00:10Z", "slotLength": 0.2, "epochLength": 500,
+                                  "activeSlotsCoeff": 0.2, "securityParam": 5,
+                                  "protocolParams": {"protocolVersion": {"major": 2, "minor": 0}}})
+            elif command[-1].endswith("byron-genesis.json"):
+                out = json.dumps({"startTime": 1762246810, "blockVersionData": {"slotDuration": "1000"}})
+            else:
+                out = json.dumps({"TestShelleyHardForkAtEpoch": 1, "TestAllegraHardForkAtEpoch": 2})
+            return subprocess.CompletedProcess(command, 0, out, "")
+        return run
+
+    def test_a_failed_run_keeps_the_native_logs_and_the_startup_and_tip_observations(self):
+        calls = []
+        with tempfile.TemporaryDirectory() as d, \
+                patch.object(cluster.subprocess, "run", side_effect=self.run_writing_logs(calls)):
+            root = pathlib.Path(d) / "run"
+            report = cluster.keep_native_evidence("n", root)
+            kept = sorted(f.name for f in root.iterdir())
+            observations = json.loads((root / "reference-observations.json").read_text())
+        self.assertEqual(kept, ["reference-create-env.log", "reference-node1.log", "reference-node2.log",
+                                "reference-node3.log", "reference-observations.json"])
+        self.assertEqual(sorted(report["kept"]), kept)
+        self.assertEqual(report["notKept"], {})
+        self.assertEqual(observations["container"], "running 2026-11-04T09:00:00Z")
+        self.assertEqual(observations["nodes"]["node2"], {"block": 0, "slot": 0, "era": "Byron", "epoch": 0})
+        self.assertEqual(observations["startup"]["byronStartTime"], 1762246810)
+        self.assertEqual(observations["startup"]["shelleySystemStart"], "2026-11-04T09:00:10Z")
+        self.assertEqual(observations["startup"]["hardForkAtEpoch"],
+                         {"TestShelleyHardForkAtEpoch": 1, "TestAllegraHardForkAtEpoch": 2})
+        # the start of the log is kept, not only its end: a bootstrap stall is diagnosed there
+        copy = next(command for command in calls if "/work/node1.log" in command[-1])
+        self.assertIn("head -c", copy[-1])
+        self.assertIn("/work/node1.log", copy[-1])
+
+    def test_a_long_log_keeps_its_head_and_its_tail_with_the_bytes_it_omitted(self):
+        with tempfile.TemporaryDirectory() as d, patch.object(cluster, "EVIDENCE_BYTES", 4):
+            long = pathlib.Path(d) / "node1.log"
+            long.write_text("0123456789abcdefghij")  # 20 bytes: over twice the 4-byte end
+            short = pathlib.Path(d) / "short.log"
+            short.write_text("012345")  # 6 bytes: kept whole
+            whole = subprocess.run(["/bin/sh", "-c", cluster.log_copy_script(str(long))], capture_output=True, text=True)
+            brief = subprocess.run(["/bin/sh", "-c", cluster.log_copy_script(str(short))], capture_output=True, text=True)
+        self.assertEqual(whole.returncode, 0)
+        self.assertEqual(whole.stdout, "0123\n[12 of 20 bytes omitted]\nghij")
+        self.assertEqual(brief.stdout, "012345")
+
+    def test_a_log_that_cannot_be_read_is_reported_and_leaves_no_empty_file(self):
+        calls = []
+        with tempfile.TemporaryDirectory() as d, \
+                patch.object(cluster.subprocess, "run",
+                             side_effect=self.run_writing_logs(calls, failed=("/work/node2.log",))):
+            root = pathlib.Path(d) / "run"
+            report = cluster.keep_native_evidence("n", root)
+            kept = sorted(f.name for f in root.iterdir())
+        self.assertEqual(report["notKept"], {"reference-node2.log": "exit 1: cat: cannot open: no such file"})
+        self.assertNotIn("reference-node2.log", kept)  # a short copy must not read like the whole log
+        self.assertIn("reference-node1.log", kept)
+
+    def test_an_unreadable_cluster_still_keeps_the_observations_with_their_errors(self):
+        def run(command, stdout=None, **kwargs):
+            if stdout is not None:
+                stdout.write("native log\n")
+                return subprocess.CompletedProcess(command, 0)
+            raise subprocess.TimeoutExpired(command, 60)
+        with tempfile.TemporaryDirectory() as d, patch.object(cluster.subprocess, "run", side_effect=run):
+            root = pathlib.Path(d) / "run"
+            report = cluster.keep_native_evidence("n", root)
+            observations = json.loads((root / "reference-observations.json").read_text())
+        self.assertIn("reference-observations.json", report["kept"])
+        self.assertIn("TimeoutExpired", observations["container"]["error"])
+        self.assertEqual(sorted(k for k in observations["startup"] if k.endswith("Error")),
+                         ["byronError", "configError", "shelleyError"])
+        self.assertIn("TimeoutExpired", observations["startup"]["shelleyError"])
+        self.assertEqual(observations["nodes"]["node1"]["error"].count("TimeoutExpired"), 1)
+
+
+    def test_a_genesis_left_half_written_is_an_error_for_its_part_and_not_the_capture(self):
+        # a bootstrap stall can leave a genesis that parses to null; that is the shape the capture must survive
+        def run(command, stdout=None, **kwargs):
+            if stdout is not None:
+                stdout.write("native log\n")
+                return subprocess.CompletedProcess(command, 0)
+            if command[-1].endswith("shelley-genesis.json"):
+                return subprocess.CompletedProcess(command, 0, "null", "")
+            return subprocess.CompletedProcess(command, 0, "{}", "")
+        with tempfile.TemporaryDirectory() as d, patch.object(cluster.subprocess, "run", side_effect=run):
+            root = pathlib.Path(d) / "run"
+            report = cluster.keep_native_evidence("n", root)
+            observations = json.loads((root / "reference-observations.json").read_text())
+        self.assertIn("reference-observations.json", report["kept"])
+        self.assertIn("ValueError", observations["startup"]["shelleyError"])  # its own part, not the capture
+        self.assertIn("byronStartTime", observations["startup"])  # the other parts survive its failure
+
+    def test_a_configuration_the_cluster_has_not_rewritten_yet_costs_only_its_own_part(self):
+        # `create-env` writes `configuration.yaml` as YAML before it rewrites it: a stall in that window must not
+        # throw away the start times the chain is measured against
+        def run(command, stdout=None, **kwargs):
+            if stdout is not None:
+                stdout.write("native log\n")
+                return subprocess.CompletedProcess(command, 0)
+            if command[-1].endswith("configuration.yaml"):
+                return subprocess.CompletedProcess(command, 0, "Protocol: Cardano\n", "")
+            if command[-1].endswith("shelley-genesis.json"):
+                return subprocess.CompletedProcess(command, 0, json.dumps({"systemStart": "09:00:10", "slotLength": 0.2}), "")
+            return subprocess.CompletedProcess(command, 0, json.dumps({"startTime": 1762246810}), "")
+        with tempfile.TemporaryDirectory() as d, patch.object(cluster.subprocess, "run", side_effect=run):
+            root = pathlib.Path(d) / "run"
+            report = cluster.keep_native_evidence("n", root)
+            observations = json.loads((root / "reference-observations.json").read_text())
+        self.assertIn("reference-observations.json", report["kept"])
+        self.assertIn("configError", observations["startup"])
+        self.assertEqual(observations["startup"]["shelleySystemStart"], "09:00:10")
+        self.assertEqual(observations["startup"]["byronStartTime"], 1762246810)
+
+    def test_the_observations_are_taken_before_the_logs_so_a_wedged_copy_cannot_spend_their_budget(self):
+        calls = []
+        with tempfile.TemporaryDirectory() as d, \
+                patch.object(cluster.subprocess, "run", side_effect=self.run_writing_logs(calls)):
+            report = cluster.keep_native_evidence("n", pathlib.Path(d) / "run")
+        self.assertEqual(calls[0][:3], ["docker", "inspect", "--format"])  # the observations start the capture
+        copies = [i for i, command in enumerate(calls) if "node1.log" in command[-1]]
+        self.assertEqual(len(copies), 1)
+        self.assertGreater(copies[0], max(i for i, command in enumerate(calls) if "shelley-genesis.json" in command[-1]))
+        self.assertEqual(report["notKept"], {})
+
+    def test_a_spent_budget_records_every_part_as_not_kept_without_reading_the_cluster(self):
+        with tempfile.TemporaryDirectory() as d, patch.object(cluster, "EVIDENCE_SECONDS", 0), \
+                patch.object(cluster.subprocess, "run", side_effect=AssertionError("nothing may be read")):
+            report = cluster.keep_native_evidence("n", pathlib.Path(d) / "run")
+        self.assertEqual(report["kept"], [])
+        self.assertEqual(set(report["notKept"].values()), {"capture time budget spent"})
+        self.assertEqual(sorted(report["notKept"]),
+                         ["reference-create-env.log", "reference-node1.log", "reference-node2.log",
+                          "reference-node3.log", "reference-observations.json"])
+
+
+class E2EReferenceEvidenceTest(unittest.TestCase):
+    """The e2e keeps that evidence before the containers go, and never at the cost of its own verdict (#293)."""
+
+    def failed_run(self, evidence, error=None):
+        """`(summary, events, raised)`: an e2e run whose reference cluster ends with `error` (a stall by default)."""
+        events = []
+
+        def docker(*command, **kwargs):
+            events.append(("docker", command))
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        def keep(name, root):
+            events.append(("evidence", root.name))
+            return evidence(name, root)
+
+        args = types.SimpleNamespace(name="n", keep=False, no_compare=True, oracle=False, timeout=60)
+        stop = error or SystemExit("no new block for 90 s at {'block': 0, 'slot': 0}")
+        raised = None
+        with tempfile.TemporaryDirectory() as d, \
+                patch.object(e2e_scenario, "data_root", return_value=pathlib.Path(d) / "run"), \
+                patch.object(e2e_scenario, "Comparisons",
+                             return_value=types.SimpleNamespace(per_era={}, mismatches=[], whole={})), \
+                patch.object(e2e_scenario, "up_eras", side_effect=stop), \
+                patch.object(e2e_scenario, "stall_evidence", return_value=None), \
+                patch.object(e2e_scenario, "keep_native_evidence", side_effect=keep), \
+                patch.object(e2e_scenario, "comparison_table", return_value=""), \
+                patch.object(e2e_scenario, "docker", side_effect=docker), \
+                contextlib.redirect_stdout(io.StringIO()):
+            try:
+                e2e_scenario.e2e(args)
+            except BaseException as stop:
+                raised = stop
+            summary = json.loads((pathlib.Path(d) / "run" / "e2e-summary.json").read_text())
+        return summary, events, raised
+
+    @staticmethod
+    def removal_of(events, container):
+        """Where the run removed `container`. The ordering control names the container on purpose: a bare
+        `("rm", "-f")` would also match the Scala container's removal, so it could pass with the capture after
+        the reference container was already gone."""
+        for position, (kind, command) in enumerate(events):
+            if kind == "docker" and command[:3] == ("rm", "-f", container):
+                return position
+        raise AssertionError(f"the run never removed {container}: {events}")
+
+    def test_a_stalled_reference_cluster_keeps_its_evidence_before_the_containers_are_removed(self):
+        summary, events, raised = self.failed_run(lambda name, root: {"kept": ["reference-node1.log"], "notKept": {}})
+        self.assertLess(events.index(("evidence", "run")), self.removal_of(events, "n-ref"))
+        self.assertEqual(summary["referenceEvidence"], {"kept": ["reference-node1.log"], "notKept": {}})
+        self.assertEqual(summary["failures"], ["no new block for 90 s at {'block': 0, 'slot': 0}"])
+        self.assertEqual(raised.code, 1)  # still a failed run, not a traceback
+
+    def test_an_exception_no_failure_records_still_keeps_the_evidence_and_the_summary(self):
+        # a reference query timing out raises out of e2e() with `failures` still empty: the evidence is kept and
+        # the summary written before the exception goes on (#293)
+        summary, events, raised = self.failed_run(lambda name, root: {"kept": ["reference-node2.log"], "notKept": {}},
+                                                 error=subprocess.TimeoutExpired("docker", 30))
+        self.assertIsInstance(raised, subprocess.TimeoutExpired)
+        self.assertEqual(summary["referenceEvidence"]["kept"], ["reference-node2.log"])
+        self.assertEqual(summary["failures"], [])
+        self.assertFalse(summary["passed"])  # it left by traceback: the summary must not call that a pass
+        self.assertLess(events.index(("evidence", "run")), self.removal_of(events, "n-ref"))
+
+    def test_a_capture_that_fails_keeps_the_runs_own_failure_and_cause(self):
+        def gone(name, root):
+            raise OSError("the reference container is gone")
+        summary, events, raised = self.failed_run(gone)
+        self.assertEqual(summary["failures"], ["no new block for 90 s at {'block': 0, 'slot': 0}"])
+        self.assertEqual(summary["referenceEvidence"]["kept"], [])
+        self.assertEqual(summary["referenceEvidence"]["notKept"],
+                         {"all": "OSError('the reference container is gone')"})
+        self.assertEqual(raised.code, 1)
+
+    def test_a_capture_that_raises_an_unexpected_type_cannot_replace_the_run_failure(self):
+        def bad_shape(name, root):
+            raise AttributeError("'NoneType' object has no attribute 'get'")
+        summary, events, raised = self.failed_run(bad_shape)
+        self.assertEqual(summary["failures"], ["no new block for 90 s at {'block': 0, 'slot': 0}"])
+        self.assertEqual(summary["referenceEvidence"]["notKept"],
+                         {"all": "AttributeError(\"'NoneType' object has no attribute 'get'\")"})
+        self.assertEqual(raised.code, 1)
 
 
 class ReferenceImageTest(unittest.TestCase):

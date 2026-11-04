@@ -1,0 +1,3 @@
+### Fixed (devnet e2e, #293)
+
+- A failed `e2e` run now keeps the reference cluster's own evidence in the run directory before the reference container, and the tmpfs its logs live on, are removed: each node's process log (`reference-node1.log` to `reference-node3.log`) and the `create-env` log, whole when short and as head plus tail when long, and `reference-observations.json` with the container's state, each node's tip answer and the genesis start times, slot and epoch lengths and configured hard-fork epochs. A capture that cannot read a file records that beside the run's failures and leaves the failed status, the failure text and the cause unchanged.
