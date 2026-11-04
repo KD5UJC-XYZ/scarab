@@ -4,15 +4,22 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from check_text_policy import ALLOWED, MODULE, OWNER, findings, unexplained
+from check_text_policy import ALLOWED, MODULE, OWNER, findings, reads, sources, unexplained
 
+REPO = Path(__file__).resolve().parents[2]
 READER = MODULE + "/scala/xyz/kd5ujc/scarab/ledger/Block.scala"
 
 
 class TextPolicyGuardTest(unittest.TestCase):
     def test_a_new_match_is_reported_with_its_file_and_line(self):
         source = b"object Block:\n  def read(n: Node): String =\n    n.value match\n      case Value.Text(v) => v\n"
-        self.assertEqual(findings([(READER, source)]), [READER + ":4: Value.Text("])
+        self.assertEqual(findings([(READER, source)]), [READER + ":4: Value.Text"])
+
+    def test_a_type_test_and_a_spaced_argument_list_are_reads(self):
+        self.assertEqual(findings([(READER, b"case t: Value.Text => t.v\n")]), [READER + ":1: Value.Text"])
+        self.assertEqual(findings([(READER, b"case Value.Text (v) => v\n")]), [READER + ":1: Value.Text"])
+        self.assertEqual(findings([(READER, b"case Value.Text /* c */ (v) => v\n")]),
+                         [READER + ":1: Value.Text"])
 
     def test_the_owning_reader_passes(self):
         self.assertEqual(findings([(OWNER, b"case Value.Text(v) => v\n")]), [])
@@ -23,8 +30,8 @@ class TextPolicyGuardTest(unittest.TestCase):
 
     def test_a_blank_allowlist_reason_does_not_allow_a_file(self):
         files = [(READER, b"case Value.Text(v) => v\n")]
-        self.assertEqual(findings(files, {READER: ""}), [READER + ":1: Value.Text("])
-        self.assertEqual(findings(files, {READER: "reads a key shape only"}), [])
+        self.assertEqual(findings(files, {READER: ""}), [READER + ":1: Value.Text"])
+        self.assertEqual(findings(files, {READER: "names a key shape only"}), [])
 
     def test_comments_and_literals_are_not_reads(self):
         source = (b"// Value.Text(v) is the policy\n/* a /* nested */ Value.Text(v) */\n"
@@ -40,9 +47,19 @@ class TextPolicyGuardTest(unittest.TestCase):
     def test_every_allowlist_entry_carries_a_reason(self):
         self.assertEqual(unexplained(), [])
 
-    def test_a_type_reference_is_not_a_read(self):
-        source = b"def isText(v: Value): Boolean = v.isInstanceOf[Value.Text]\n"
-        self.assertEqual(findings([(READER, source)]), [])
+
+class TreeTest(unittest.TestCase):
+    """The guard over the real module, so a wrong owner path or a misspelt allowlist key is not silent."""
+
+    def test_the_tree_passes_the_guard(self):
+        self.assertEqual(findings(sources(REPO)), [])
+
+    def test_the_owning_reader_is_among_the_scanned_sources(self):
+        self.assertIn(OWNER, {path for path, _ in sources(REPO)})
+
+    def test_every_allowlist_entry_has_a_live_match(self):
+        found = reads(sources(REPO))
+        self.assertEqual([path for path in ALLOWED if not found.get(path)], [])
 
 
 if __name__ == "__main__":
