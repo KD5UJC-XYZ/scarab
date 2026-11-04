@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.node.ConfigSettings
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{IO, Ref}
 import cats.mtl.{Handle, Raise, Stateful}
@@ -142,8 +143,11 @@ trait ForgeFixture:
       rulesThrow: Option[Throwable] = None,
       storageFailure: Option[StorageError] = None,
       clock: Option[IO[Instant]] = None,
-      unbounded: Boolean = false
+      unbounded: Boolean = false,
+      protocolVersion: (BigInt, BigInt) = ConfigSettings().protocolVersion,
+      network: Int = globals.network
   )(using Handle[IO, NodeError]): IO[Harness] =
+    val rulesGlobals = globals.copy(network = network)
     for
       start <- IO.pure(mirrorState(ledger))
       ref <- Ref.of[IO, VolatileChain[MirrorState]](
@@ -152,7 +156,7 @@ trait ForgeFixture:
       given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
       realRules = MirrorRules[IO](
         config.copy(verdicts = verdicts),
-        globals,
+        rulesGlobals,
         None,
         None,
         mirrorEnv.byron
@@ -175,14 +179,14 @@ trait ForgeFixture:
         .fromEither(
           xyz.kd5ujc.scarab.node.read
             .ConwayView(start, None)
-            .traverse(MempoolLedger.tick(_, Some(BigInt(4999)), MempoolEnv(globals, geometry)))
+            .traverse(MempoolLedger.tick(_, Some(BigInt(4999)), MempoolEnv(rulesGlobals, geometry)))
             .left
             .map(ChainError.MempoolTick(BigInt(4999) + 1, _))
         )
       mempool <- Mempool.create[IO](
         mempoolBase,
         4999,
-        MempoolEnv(globals, geometry),
+        MempoolEnv(rulesGlobals, geometry),
         None,
         MempoolEvents.none[IO]
       )
@@ -209,7 +213,7 @@ trait ForgeFixture:
               .Raise[IO, NodeError]
               .fromEither(
                 MempoolLedger
-                  .at(c.state, c.tipRef, MempoolEnv(globals, geometry))
+                  .at(c.state, c.tipRef, MempoolEnv(rulesGlobals, geometry))
                   .left
                   .map(ChainError.MempoolTick(c.tipRef.fold(BigInt(0))(_.slot + 1), _))
               )
@@ -224,7 +228,8 @@ trait ForgeFixture:
       // `live` drives the real loop on the test clock from slot 5000; otherwise steps are manual.
       forger <- Forger.create[IO, MirrorState](
         config,
-        globals,
+        rulesGlobals,
+        protocolVersion,
         p.creds,
         follower,
         mempool,
