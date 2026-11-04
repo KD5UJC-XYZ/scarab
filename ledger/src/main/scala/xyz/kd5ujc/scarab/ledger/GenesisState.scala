@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import xyz.kd5ujc.scarab.codec.Rational
 import cats.syntax.all.*
 import io.circe.{ACursor, Decoder, Json, JsonObject}
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -163,32 +162,9 @@ object GenesisState:
       TxIn(Blake2b.hash256.hash(address.raw), 0) -> TxOut(address, Value.coin(amount.toBigInt))
     }
 
+  /** A genesis stake pool: [[GenesisPoolFields.pool]]. */
   def pool(id: String, j: Json): Either[ConfigError, (Bytes, PoolParams)] =
-    val c = j.hcursor
-    for
-      operator <- hex28(id)
-      vrf <- get[String](c, "vrf").flatMap(h =>
-        Bytes.fromHex(h).leftMap(e => ConfigError(ConfigProblem.Hex(e)))
-      )
-      pledge <- get[BigInt](c, "pledge")
-      cost <- get[BigInt](c, "cost")
-      margin <- get[BigDecimal](c, "margin").map(Rational.fromDecimal)
-      account <- get[String](c.downField("accountAddress").downField("credential"), "keyHash")
-        .flatMap(hex28)
-      network <- get[String](c.downField("accountAddress"), "network")
-      owners <- get[Vector[String]](c, "owners").flatMap(_.traverse(hex28))
-      fields <- GenesisPoolFields.read(c)
-    yield operator -> PoolParams(
-      operator,
-      vrf,
-      pledge,
-      cost,
-      margin,
-      RewardAccount(if network == "Mainnet" then 1 else 0, Credential.Key(account)),
-      owners.toSet,
-      fields._1,
-      fields._2
-    )
+    GenesisPoolFields.pool(id, j)
 
   def credential(s: String): Either[ConfigError, Credential] =
     if s.startsWith("keyHash-") then hex28(s.drop(8)).map(Credential.Key(_))

@@ -1877,7 +1877,7 @@ object Targets:
     )
 
   private val genesisPoolFields: Target =
-    import io.circe.{Json, parser}
+    import io.circe.parser
     Target(
       "genesis-pool-fields",
       () =>
@@ -1888,15 +1888,18 @@ object Targets:
           .map { line =>
             val row = parser.parse(line).fold(e => throw new Violation(e.message), identity)
             row.hcursor
-              .get[Json]("pool")
+              .get[String]("poolJson")
               .fold(e => throw new Violation(e.message), identity)
-              .noSpaces
               .getBytes(java.nio.charset.StandardCharsets.UTF_8)
           }
           .toVector,
       probe("genesis-pool-fields") { bytes =>
         parser.parse(new String(bytes.toArray, java.nio.charset.StandardCharsets.UTF_8)).foreach {
-          json => seen("genesis-pool-fields", GenesisPoolFields.read(json.hcursor).isRight)
+          json =>
+            seen(
+              "genesis-pool-fields",
+              GenesisPoolFields.pool("00" * 28, json).isRight
+            )
         }
       }
     )

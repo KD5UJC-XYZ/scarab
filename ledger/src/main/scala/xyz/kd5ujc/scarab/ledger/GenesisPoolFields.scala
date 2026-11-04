@@ -4,18 +4,95 @@ package xyz.kd5ujc.scarab.ledger
 import cats.syntax.all.*
 import io.circe.{ACursor, Json, JsonObject}
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, DomainError, Node, Value}
+import xyz.kd5ujc.scarab.ledger.json.{BoundedRatio, FromJson, NumberError, Scientific}
 
-/** The JSON fields of `StakePoolParams` that genesis injects unchanged. JSON names and URLs are
-  * unrestricted Text, unlike their protocol-versioned CBOR decoders (cardano-ledger f649f975,
-  * `BaseTypes.hs:674-701`, `State/StakePool.hs:293-360,467-483`).
+/** The genesis `StakePoolParams` as the reference's `FromJSON` reads it (cardano-ledger f649f975,
+  * `State/StakePool.hs:293-360,467-483`). JSON names and URLs are unrestricted Text, unlike their
+  * protocol-versioned CBOR decoders (`BaseTypes.hs:674-701`).
   */
 object GenesisPoolFields:
   enum Error extends DomainError:
-    case Port(value: Json)
+    case Port(value: Json, cause: NumberError)
     case Ipv4(value: String)
     case Ipv6(value: String)
     case Encoding(cause: Cbor.Error)
+    case Number(field: String, cause: NumberError)
     def message: String = toString
+
+  /** The parameters of the pool under genesis key `id`. The operator is the inner `poolId` (or its
+    * old name `publicKey`), which `mkStakePoolState` drops; the state is keyed by `id`
+    * (`Shelley/Transition.hs:526-543`). `publicKey` and `rewardAccount` are tried after any failure
+    * of `poolId` and `accountAddress`, not only an absent one (`<|>`,
+    * `State/StakePool.hs:467-481`). Coins are aeson's `Integer` (`Coin.hs:93-103`): any sign, and
+    * no refusal of a negative pledge or cost anywhere on the genesis path (`mkStakePoolState`,
+    * `State/StakePool.hs:256-270`).
+    */
+  def pool(id: String, j: Json): Either[ConfigError, (Bytes, PoolParams)] =
+    val c = j.hcursor
+    for
+      key <- GenesisState.hex28(id)
+      operator <- hash(c, "poolId", 28).orElse(hash(c, "publicKey", 28))
+      vrf <- hash(c, "vrf", 32)
+      pledge <- number(c, "pledge")(FromJson.integer)
+      cost <- number(c, "cost")(FromJson.integer)
+      margin <- number(c, "margin")(BoundedRatio.Unit.fromJson)
+      account <- rewardAccount(c.downField("accountAddress"))
+        .orElse(rewardAccount(c.downField("rewardAccount")))
+      owners <- GenesisState.get[Vector[Json]](c, "owners").flatMap(_.traverse(hex(_, 28)))
+      fields <- read(c)
+    yield key -> PoolParams(
+      operator,
+      vrf,
+      pledge,
+      cost,
+      margin,
+      account,
+      owners.toSet,
+      fields._1,
+      fields._2
+    )
+
+  private def number[A](c: ACursor, field: String)(
+      read: Json => Either[NumberError, A]
+  ): Either[ConfigError, A] =
+    GenesisState.get[Json](c, field).flatMap(read(_).leftMap(e => failure(Error.Number(field, e))))
+
+  /** A `Hash` from hex text of exactly `size` bytes, either case (`hashFromTextAsHex`). */
+  private def hex(j: Json, size: Int): Either[ConfigError, Bytes] =
+    for
+      text <- j
+        .as[String]
+        .leftMap(e => ConfigError(ConfigProblem.JsonField("genesis pool", "hash", e)))
+      bytes <- Bytes.fromHex(text).leftMap(e => ConfigError(ConfigProblem.Hex(e)))
+      _ <- Either.cond(
+        bytes.size == size,
+        (),
+        ConfigError(ConfigProblem.ByteLength("hash", size, bytes.size))
+      )
+    yield bytes
+
+  private def hash(c: ACursor, field: String, size: Int): Either[ConfigError, Bytes] =
+    GenesisState.get[Json](c, field).flatMap(hex(_, size))
+
+  /** `FromJSON AccountAddress` (`Address.hs:231-237`): a `Network` (`Testnet` or `Mainnet`) and a
+    * credential, whose script forms are tried before its key forms, each after any failure of the
+    * one before (`Credential.hs:159-165`).
+    */
+  private def rewardAccount(c: ACursor): Either[ConfigError, RewardAccount] =
+    val cred = c.downField("credential")
+    for
+      network <- GenesisState.get[String](c, "network").flatMap {
+        case "Testnet" => Right(0)
+        case "Mainnet" => Right(1)
+        case other =>
+          Left(ConfigError(ConfigProblem.Selection("network", other, Set("Testnet", "Mainnet"))))
+      }
+      _ <- GenesisState.get[JsonObject](c, "credential")
+      credential <- hash(cred, "scriptHash", 28)
+        .orElse(hash(cred, "script hash", 28))
+        .map(Credential.Script(_))
+        .orElse(hash(cred, "keyHash", 28).orElse(hash(cred, "key hash", 28)).map(Credential.Key(_)))
+    yield RewardAccount(network, credential)
 
   /** The encoded relays and optional metadata of a genesis pool. No relays is `Bytes.empty`, the
     * form the snapshot codec reads an empty sequence back as (`NodeTypeCodecs.relays`).
@@ -58,10 +135,13 @@ object GenesisPoolFields:
         .as[Option[Json]]
         .leftMap(e => ConfigError(ConfigProblem.JsonField("genesis pool relay", "port", e)))
         .flatMap(_.traverse { value =>
-          Either.fromOption(
-            value.asNumber.flatMap(_.toInt).flatMap(RelayPort.fromInt),
-            failure(Error.Port(value))
-          )
+          // `FromJSON Word16`: `toBoundedInteger` of the Scientific as written.
+          FromJson
+            .word(16)(value)
+            .flatMap(n =>
+              RelayPort.fromInt(n.toInt).toRight(NumberError.NotWord(16, Scientific(n, 0)))
+            )
+            .leftMap(e => failure(Error.Port(value, e)))
         })
     def ip[A](c: ACursor, name: String, parse: String => Option[A], error: String => Error) =
       c.downField(name)
