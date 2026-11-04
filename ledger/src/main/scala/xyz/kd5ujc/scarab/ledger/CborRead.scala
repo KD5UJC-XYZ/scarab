@@ -63,6 +63,15 @@ private[ledger] object CborRead:
   def definite(n: Node, what: DecodeSite): Result[Unit] =
     Either.cond(!n.isIndefinite, (), LedgerDecodeError.IndefiniteLength(what))
 
+  /** A text value and whether its head is indefinite (chunked), or `None` when the item is not
+    * text: the text rule's head test in one place (see [[text]]). A reader whose refusals are its
+    * own takes the flag and maps it to its own error (`PoolRelays.dns`,
+    * `PoolRelayError.IndefiniteDnsName`) instead of writing the head test again (#435, #562).
+    */
+  def indefinite(n: Node): Option[(String, Boolean)] = n.value match
+    case Value.Text(v) => Some((v, n.isIndefinite))
+    case _             => None
+
   /** A text value the reference reads as a text field: a definite-length string only.
     *
     * Every text field of a block body is read with `decodeString` (cborg, through `instance DecCBOR
@@ -73,14 +82,14 @@ private[ledger] object CborRead:
     * (`decodeMetadatum`, `Metadata.hs:153-222`) and Plutus `Data`. A node built by hand without
     * original bytes was not read from a chunked string.
     */
-  def text(n: Node, what: DecodeSite): Result[String] = n.value match
-    case Value.Text(v) =>
+  def text(n: Node, what: DecodeSite): Result[String] = indefinite(n) match
+    case Some((v, chunked)) =>
       Either.cond(
-        !n.isIndefinite,
+        !chunked,
         v,
         LedgerDecodeError.IndefiniteLength(what)
       )
-    case _ => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Text, n.value))
+    case None => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Text, n.value))
 
   /** A `Url` or a `DnsName`: definite text ([[text]]) of at most 64 bytes of UTF-8 below decoder
     * version 9 and 128 from it (`instance DecCBOR Url`, `instance DecCBOR DnsName`:
