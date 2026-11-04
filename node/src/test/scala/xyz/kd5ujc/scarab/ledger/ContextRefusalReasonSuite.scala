@@ -119,9 +119,18 @@ class ContextRefusalReasonSuite extends FunSuite:
       )
       // What agrees on both sides is the framing before the description and the payload after it;
       // a difference anywhere else would mean a second, untracked divergence in the same refusal.
+      // The framing is 18 bytes: the array and constructor tags that open `ConwayApplyTxError`'s
+      // single failure down to `ValidationTagMismatch`, then the outcome selector (failed or
+      // passed unexpectedly). The selector must agree too - a difference there is a different
+      // outcome, not a different description - so the description starts at byte 18 and the
+      // divergence must be exactly there.
       val shared =
         encoded.toArray.zip(recorded.reason.toArray).takeWhile { case (a, b) => a == b }.length
-      assert(shared >= 17, s"$name: the refusal framing differs after $shared bytes")
+      assertEquals(
+        shared,
+        18,
+        s"$name: the divergence starts at byte $shared, not at the description byte 18 opens"
+      )
       val ours = payloadFrom(encoded).getOrElse(fail(s"$name: no payload in the encoded refusal"))
       val theirs = payloadFrom(recorded.reason).getOrElse(fail(s"$name: no payload in the reason"))
       assertEquals(ours, theirs, s"$name: the payload after the description differs")
