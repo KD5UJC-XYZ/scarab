@@ -137,7 +137,6 @@ object Praos:
       window: BigInt
   ): Either[PraosError | ProviderDefect, (PraosState, LeaderCheck)] =
     val pool = Blake2b.hash224.hash(header.issuerVkey)
-    val vrfHash = Blake2b.hash256.hash(header.vrfVkey)
     val distributed = stakeView match
       case StakeView.Known(pools)      => pools.stake.contains(pool)
       case StakeView.Unknown(registry) => registry.contains(pool)
@@ -162,6 +161,34 @@ object Praos:
           bounded = true
         )
         .leftMap(PraosError.OCert(_))
+      verified <- verifyVrf(header, vrf, stakeView, state.epochNonce, config)
+      (output, leader) = verified
+    yield
+      val evolving = state.evolvingNonce.combine(nonceValue(output))
+      val nextEpoch = config.geometry.firstSlot(config.geometry.epochOf(header.slot) + 1)
+      state.copy(
+        lastSlot = lastSlot,
+        evolvingNonce = evolving,
+        candidateNonce =
+          if header.slot + window < nextEpoch then evolving
+          else state.candidateNonce,
+        labNonce = header.prevHash.fold(Nonce.Neutral)(Nonce.Hash(_)),
+        ocertCounters = state.ocertCounters.updated(issuer, sequence)
+      ) -> leader
+
+  /** Shared VRF checks, after the protocol's certificate checks. Praos2 delegates the same rules
+    * (`PolyPraos.hs:811-840`, consensus 2416493b), with its own ticked epoch nonce and ledger view.
+    */
+  private[consensus] def verifyVrf(
+      header: Header.Shelley,
+      vrf: xyz.kd5ujc.scarab.ledger.VrfCert,
+      stakeView: StakeView,
+      epochNonce: Nonce,
+      config: PraosConfig
+  ): Either[PraosError | ProviderDefect, (Bytes, LeaderCheck)] =
+    val pool = Blake2b.hash224.hash(header.issuerVkey)
+    val vrfHash = Blake2b.hash256.hash(header.vrfVkey)
+    for
       registered <- stakeView match
         case StakeView.Known(pools) =>
           for
@@ -186,17 +213,37 @@ object Praos:
               PraosError.VrfKeyMismatch(pool, vrfHash, keys)
             )
           yield None
-      input <- ProviderDefect.vrfInput(vrfInput(state.epochNonce, header.slot))(
+      result <- verifyVrfWithStake(
+        header,
+        vrf,
+        epochNonce,
+        config,
+        registered.map { (stake, total) => Leader.Fraction.checked(stake, total) }
+      )
+    yield result
+
+  /** Proof and threshold checks after registration. A fraction-conversion error is landed only
+    * after proof verification, preserving the existing Praos refusal order.
+    */
+  private[consensus] def verifyVrfWithStake(
+      header: Header.Shelley,
+      vrf: xyz.kd5ujc.scarab.ledger.VrfCert,
+      epochNonce: Nonce,
+      config: PraosConfig,
+      stake: Option[Either[Leader.Error, Leader.Fraction]]
+  ): Either[PraosError | ProviderDefect, (Bytes, LeaderCheck)] =
+    for
+      input <- ProviderDefect.vrfInput(vrfInput(epochNonce, header.slot))(
         PraosError.VrfInput(_)
       )
       output <- ProviderDefect.vrf(
         config.verdicts.praosVrf(input, header.vrfVkey, vrf.proof, vrf.output)
       )(PraosError.VrfRejected(_))
-      leader <- registered match
-        case Some((stake, total)) =>
+      leader <- stake match
+        case Some(fractionResult) =>
           for
             value <- Leader.leaderValue(output).leftMap(PraosError.LeaderThreshold(_))
-            fraction <- Leader.Fraction.checked(stake, total).leftMap(PraosError.LeaderThreshold(_))
+            fraction <- fractionResult.leftMap(PraosError.LeaderThreshold(_))
             decision <- Leader
               .check(value, fraction, config.activeSlotsCoeff)
               .leftMap(PraosError.LeaderThreshold(_))
@@ -207,18 +254,7 @@ object Praos:
             )
           yield LeaderCheck.Threshold
         case None => Right(LeaderCheck.Unchecked(LeaderCheck.UncheckedReason.BootstrapStakeUnknown))
-    yield
-      val evolving = state.evolvingNonce.combine(nonceValue(output))
-      val nextEpoch = config.geometry.firstSlot(config.geometry.epochOf(header.slot) + 1)
-      state.copy(
-        lastSlot = lastSlot,
-        evolvingNonce = evolving,
-        candidateNonce =
-          if header.slot + window < nextEpoch then evolving
-          else state.candidateNonce,
-        labNonce = header.prevHash.fold(Nonce.Neutral)(Nonce.Hash(_)),
-        ocertCounters = state.ocertCounters.updated(issuer, sequence)
-      ) -> leader
+    yield output -> leader
 
   /** The VRF input of a slot under an epoch nonce. */
   def vrfInput(epochNonce: Nonce, slot: BigInt): Either[Vrf.Failure, Vrf.Input] =

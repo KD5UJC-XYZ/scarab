@@ -65,7 +65,10 @@
    "dependents": [
     "docs/leios.md",
     "scripts/oracle/leios-testnet/cabal.project",
-    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/LeiosBlock.scala"
+    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/LeiosBlock.scala",
+    "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos2.scala",
+    "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/vrf/PraosLeaderThreshold.scala",
+    "scripts/oracle/leios-praos2/README.md"
    ]
   },
   {
@@ -167,11 +170,13 @@
    "repository": "IntersectMBO/ouroboros-consensus",
    "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
    "urlPattern": "https://github.com/IntersectMBO/ouroboros-consensus/commit/{revision}",
-   "role": "Leios testnet reference: the build of the public Leios testnet (release rc-2026w44, #711): the block envelope (decodeDiskHfcBlock) and Praos2's header.",
+   "role": "Leios testnet reference: the build of the public Leios testnet (release rc-2026w44, #711): the block envelope (decodeDiskHfcBlock), Praos2 header validation and protocol-state evolution.",
    "dependents": [
     "docs/leios.md",
     "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/LeiosBlock.scala",
-    "scripts/oracle/leios-testnet/README.md"
+    "scripts/oracle/leios-testnet/README.md",
+    "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos2.scala",
+    "scripts/oracle/leios-praos2/README.md"
    ]
   },
   {

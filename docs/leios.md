@@ -839,9 +839,9 @@ the configuration and validation follow-ups are linked below.
 4. No Dijkstra ledger (X3): a transaction is decoded (section 12.5) but no rule applies to it; no stake
    distribution (X4), certificate verification (X5), endorser blocks (X7), mini-protocols 18 and 19
    (X8), `TxSubmissionLogicV2` (X10), ledger peers or the peer snapshot (X11).
-5. `Praos2`'s rules beyond header decoding (its envelope checks and ledger view) have not been
-   compared with `consensus.Praos`; tracked by
-   [#746](https://github.com/KD5UJC-XYZ/scarab/issues/746).
+5. The pure `consensus.Praos2` header rules consume a supplied ledger forecast and are compared
+   with the build's native validator (section 12.6, #746). The follower still needs Dijkstra era
+   activation and production of that forecast; the validator does not supply either.
 6. The build's Praos header (Babbage, Conway) is also read by `decodeRecordNamed` at these revisions,
    where this node follows cardano-ledger f649f975 for those eras; no such block occurs on the testnet.
 
@@ -872,3 +872,46 @@ of the captured blocks and on synthetic ones at each of these boundaries, and
 `LeiosTestnetBlockReferenceSuite` requires the same verdict, transaction id, validity flag, script
 and datum hashes, redeemer map (last value for a repeated key, in key order) and sub-transactions
 of Scarab.
+
+### 12.6 Praos2 header validation (#746)
+
+`consensus.Praos2` consumes a typed header-only ledger view, epoch forecast and chain-dependent
+state. Its `tick`, `validate`, `validateProtocol` and trusted-header `reupdate` correspond to the
+public testnet build's functions below. This pure API does not activate Dijkstra, apply a block,
+persist a new state format or connect the node to the testnet.
+
+| Order / transition | Reference at consensus `2416493b` | Implementation |
+|---|---|---|
+| Tick before validation | [`tickChainDepStatePolyPraos`](https://github.com/IntersectMBO/ouroboros-consensus/blob/2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b/ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/PolyPraos.hs#L551-L587) | Query the old epoch's geometry; at an epoch change rotate epoch/previous/last-epoch nonces and clear the announcement |
+| Block number, minimum slot, previous hash, checkpoint | [`validateHeaderEnvelope`](https://github.com/IntersectMBO/ouroboros-consensus/blob/2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b/ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HeaderValidation.hs#L374-L438) | First failure in that order; original header hash for checkpoints |
+| Supported ledger major, header size, body size | [`additionalEnvelopeChecks`](https://github.com/IntersectMBO/ouroboros-consensus/blob/2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b/ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Protocol/EnvelopeChecks.hs) | Ledger major, not the producer's advertised version; exact original header size |
+| EB size, certificate predecessor, certificate age | [`leiosHeaderChecks`](https://github.com/IntersectMBO/ouroboros-consensus/blob/2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b/ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/PolyPraos.hs#L715-L769) | Immediate predecessor's announcement, a non-origin last slot and the current header slot's forecast length |
+| Operational certificate, counter, VRF | [`updateChainDepStatePolyPraos`](https://github.com/IntersectMBO/ouroboros-consensus/blob/2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b/ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/PolyPraos.hs#L600-L668) | KES window, cold signature, original-body KES signature, counter lower/upper bounds, registered VRF key, proof and leader threshold |
+| State update | Same source, `reupdateChainDepStatePolyPraos` | Last slot, counter, evolving/candidate/lab nonces and replacement of the previous announcement, including replacement with none |
+
+The pool view preserves `IndividualPoolStake.individualPoolStake` as an exact Rational and its
+typed pool ID and VRF hash. It does not recompute the fraction from `individualTotalPoolStake`:
+that amount can include proposal deposits excluded from the stored fraction
+([ledger `9df9f98c`, `PoolDistr.hs`](https://github.com/IntersectMBO/cardano-ledger/blob/9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c/libs/cardano-ledger-core/src/Cardano/Ledger/State/PoolDistr.hs#L54-L67)).
+The fraction's numerator and denominator remain unbounded integers. Two native cases exposed
+the incorrect coin-normalizing adapter before this correction, one with a differing stored share
+and another whose denominator exceeds `Word64`.
+
+Certification uses `ceil((3*A + V + D)/slotMillis)`, with unbounded intermediate milliseconds,
+slot length truncated to whole milliseconds and unsigned slot addition. KES end-period addition,
+counter increment, epoch increment and nonce-window slot addition retain the reference's unsigned
+machine-word behavior. A forecast or crypto provider failure is a typed defect, separate from
+refusing a header. The native `succ` exception at the maximum block/slot number is also represented
+as a defect. The header ledger view omits committee/quorum/transaction-size fields, which none of
+these header predicates read; the native harness supplies them explicitly.
+
+Executed comparison, 2026-11-04: all 1,100 `rc-2026w44` recorded headers and every resulting
+protocol-state field agree with the compiled native validator. The capture has no announcements
+or certificates. A further 61 synthetic cases cover 19 accepted transitions, 36 refusals and six
+timing results, including valid native-signed announcements/certificates, rejection precedence,
+counter increments and unsigned overflow. `Praos2ReferenceSuite` retains all cases and compares
+all accepted state fields and the exact refusal constructor/domain arguments. Native diagnostic
+text is retained but its rendering is outside the comparison. Supplied genesis stake covers only
+the capture's first two epochs; these results do not establish Dijkstra ledger-forecast, block-body,
+committee/certificate-aggregation or live-node conformance. The [maintained results](../fixtures/reference/leios-praos2/README.md)
+and [reproduction harness](../scripts/oracle/leios-praos2/README.md) record that scope and the source pins.
