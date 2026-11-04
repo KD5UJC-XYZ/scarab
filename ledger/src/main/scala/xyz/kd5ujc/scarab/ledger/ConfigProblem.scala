@@ -48,6 +48,7 @@ enum ConfigProblem:
     * certificate): there is no verdict on the genesis, which is not a fault of the genesis.
     */
   case GenesisUnverifiable(cause: ProviderDefect)
+  case GenesisPool(cause: GenesisPoolFields.Error)
   case Credential(value: String)
   case DRep(value: String)
   case GenesisCostModel(cause: CostModelProblem)
