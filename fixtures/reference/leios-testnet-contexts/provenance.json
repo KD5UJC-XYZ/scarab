@@ -1,0 +1,26 @@
+{
+ "schemaVersion": 1,
+ "measuredAt": "2026-11-04",
+ "scope": "The Plutus script contexts the build of the public Leios testnet (release rc-2026w44) collects for a Dijkstra top-level transaction before evaluation (mkDijkstraStAnnTopTx at protocol version 12.0, a PlutusV4 cost model of 251 zeros, slots of one second from the POSIX epoch): for each case the ToCBOR PlutusWithContext encoding of every context of the top-level transaction and of each sub-transaction, or the collection's failure. Scripts are placeholders, never deserialised or evaluated.",
+ "ledgerSourceCommit": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+ "plutusSourceCommit": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+ "reference": {
+  "release": "input-output-hk/ouroboros-leios rc-2026w44",
+  "cardanoNode": "b004fe0c50913dcdaa827a98e68a43d0ccce152a",
+  "cardanoLedger": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+  "plutus": "plutus-core and plutus-ledger-api 1.71.0.0 (261766ad1d582bce8c86bad1af7a3b0e5355b21c), the versions the release's node binary links"
+ },
+ "compiler": "GHC 9.10.3 (the release builds with 9.6)",
+ "harness": "scripts/oracle/leios-testnet/Main.hs, kind \"context\"; cases from scripts/oracle/leios-testnet/leios_context_cases.py",
+ "cases": {
+  "file": "cases.json",
+  "count": 11,
+  "sha256": "5cf6a1f2405a5c2bfc56dda44c3abe3f22e3b5ecec90cbf4de08749357c94ece"
+ },
+ "results": {
+  "file": "results.json",
+  "sha256": "7d4e2a9f089f44e871e6ef81c4e8e233f3fbfa8460045653b5cbbd523fc877b7",
+  "accepted": 4,
+  "refused": 7
+ }
+}
