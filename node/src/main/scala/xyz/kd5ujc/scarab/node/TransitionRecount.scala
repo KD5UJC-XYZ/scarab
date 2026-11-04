@@ -16,13 +16,14 @@ import xyz.kd5ujc.scarab.node.read.ChainRead.given
   * recounted from the immutable store before the stored blocks are replayed.
   *
   * The reference's state always holds the counter (`shelleyLedgerTransition`, serialised with the
-  * ledger state, `Ledger.hs:855-882`, ouroboros-consensus 82ecba32): the blocks of the tip's epoch
-  * at or after the voting deadline, reset by the first tick into a new epoch (`Ledger.hs:563-575`)
-  * and raised by each block at or after the deadline (`Ledger.hs:711-717`). Eras change at epoch
-  * boundaries only, so the counter is the number of the chain's blocks from the deadline to the
-  * tip, which the immutable store holds whenever it holds a block before the deadline: its block
-  * numbers are consecutive and the snapshot's anchor is one of them. A store that starts at or
-  * after the deadline cannot tell how many blocks it lacks, and the gap stays open.
+  * ledger state, `Ledger.hs:855-864,882`, ouroboros-consensus 82ecba32): the blocks of the tip's
+  * epoch at or after the voting deadline, reset by the first tick into a new epoch
+  * (`Ledger.hs:569-575`) and raised by each block at or after the deadline (`Ledger.hs:711-717`).
+  * Eras change at epoch boundaries only, so the counter is the number of the chain's blocks from
+  * the deadline to the tip, which the immutable store holds whenever it holds a block before the
+  * deadline: its block numbers are consecutive and the snapshot's anchor is one of them. A store
+  * that starts at or after the deadline cannot tell how many blocks it lacks, and the gap stays
+  * open.
   */
 object TransitionRecount:
   def reopen[F[_]: Monad](geometry: EpochGeometry): ChainStorage.Reopen[F, MirrorState] =
