@@ -118,6 +118,6 @@ snapshots and their sidecars, ancillary manifests and keys, Mithril receipts, th
 file, the peer snapshot, MemPack outputs, the volatile log, and the configuration and topology JSON.
 Not covered: the immutable store's own segment layout, which is read through a private file reader
 rather than a decoder over a byte array; the RocksDB-backed UTxO store; the checkpoints file the run
-path reads, whose bytes are unpinned when no hash is configured and which no target exercises; and the
-cardano-cli key-file envelope, whose `type` and `cborHex` fields the forge reads but no target
-exercises.
+path reads (`CheckpointsFile.parse`), whose bytes are unpinned when no hash is configured and which
+no target exercises; and the cardano-cli key-file envelope, whose `type` and `cborHex` fields the
+forge reads but no target exercises.
