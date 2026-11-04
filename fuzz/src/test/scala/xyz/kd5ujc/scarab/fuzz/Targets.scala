@@ -1713,16 +1713,16 @@ object Targets:
       .map(_.getBytes(UTF_8))
     Vector(
       Target(
-        "node-config",
+        "node-config-strict",
         () => configs ++ minimal ++ Corpus.tricky,
-        probe("node-config") { bytes =>
+        probe("node-config-strict") { bytes =>
           val text = new String(bytes.toArray, UTF_8)
           NodeConfig.parse(text, strict = true).foreach { config =>
             req(
               NodeConfig.parse(text) == Right(config),
               "a configuration read strictly is not read with the same value without the checks"
             )
-            hit("node-config")
+            hit("node-config-strict")
           }
         }
       )

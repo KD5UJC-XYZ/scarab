@@ -10,6 +10,11 @@ import scala.concurrent.duration.*
 class FuzzSuite extends FunSuite:
   override val munitTimeout: Duration = 2.hours
 
+  test("target names are unique") {
+    val names = Targets.all.map(_.name)
+    assertEquals(names.distinct, names)
+  }
+
   for target <- Targets.all do
     test(s"fuzz ${target.name}") {
       val before = Option(Targets.accepted.get(target.name)).fold(0L)(_.sum())

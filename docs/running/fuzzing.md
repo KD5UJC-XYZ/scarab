@@ -99,7 +99,7 @@ nightly campaign and the fixed-seed gate all run them:
   a rollback to a point. Properties: no exception; every record the reader accepts re-encodes to
   bytes the reader accepts as that record again; and a damaged tail leaves the records before it
   unchanged.
-- `node-config` reads `NodeConfig.parse` both ways: strictly, as `cardano-node run` reads the
+- `node-config-strict` reads `NodeConfig.parse` both ways: strictly, as `cardano-node run` reads the
   configuration, and leniently. The seeds are the committed configurations of the three public
   networks and of the Leios testnet. Property: a configuration accepted strictly is accepted
   leniently with the same value, because the two differ only in the fields strict requires.
