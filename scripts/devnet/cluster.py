@@ -453,6 +453,7 @@ def scala_container(args, root, classpath, main_class, program_args, mounts=(), 
 # ---------------------------------------------------------------- evidence a failed run keeps
 
 EVIDENCE_BYTES = 8_000_000  # each end of a native log a failed run keeps: a bootstrap stall is at its start
+EVIDENCE_SECONDS = 300  # the whole capture's budget: a run that already failed must not wait on a wedged daemon
 # the three nodes' own logs and the `create-env` run that wrote their genesis; the plain `up` path also writes
 # `cluster.log`, which a `cardano-testnet`-supervised cluster has and the era walk does not
 NATIVE_LOGS = ("node1.log", "node2.log", "node3.log", "create-env.log")
@@ -469,14 +470,22 @@ def log_copy_script(path):
             f"tail -c {EVIDENCE_BYTES} {path}; fi")
 
 
-def _native_observations(name):
+def _native_observations(name, deadline):
     """What the cluster itself still says about the run, before it is removed: the container's state, each node's
     tip answer (or the error), and the clock and era plan the nodes started from - what a chain stalled at the
-    initial Byron EBB is measured against. Each part is best effort; a part that cannot be read is an error."""
-    def shell(argv, timeout=60):
+    initial Byron EBB is measured against. Each part is best effort; a part that cannot be read is an error, and
+    no read waits past `deadline`.
+
+    Every value here is read from a file or a command that a stalled cluster may have left half-written, so a
+    part is never trusted to have the shape it should: a genesis that parses to `null` is an error for that part,
+    not an exception out of the capture."""
+    def shell(argv):
         """(stdout, None), or (None, why) when the command cannot be run or fails."""
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None, "capture time budget spent"
         try:
-            r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+            r = subprocess.run(argv, capture_output=True, text=True, timeout=max(1, min(60, remaining)))
         except (OSError, subprocess.SubprocessError) as error:
             return None, repr(error)
         return (r.stdout, None) if r.returncode == 0 else (None, (r.stderr or r.stdout).strip() or f"exit {r.returncode}")
@@ -485,11 +494,14 @@ def _native_observations(name):
         out, error = shell(["docker", "exec", ref(name), "cat", path])
         if out is None:
             raise OSError(f"{path}: {error}")
-        return json.loads(out)
+        value = json.loads(out)
+        if not isinstance(value, dict):
+            raise ValueError(f"{path}: not a JSON object")
+        return value
 
     observations = {"readAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     out, error = shell(["docker", "inspect", "--format", "{{.State.Status}} {{.State.StartedAt}}", ref(name)])
-    observations["container"] = out.strip() if out is not None else {"error": error}
+    observations["container"] = out.strip() if out and out.strip() else {"error": error or "no state answered"}
     observations["nodes"] = {}
     for n in (1, 2, 3):
         out, error = shell(["docker", "exec", ref(name), "cardano-cli", "conway", "query", "tip",
@@ -498,10 +510,15 @@ def _native_observations(name):
             observations["nodes"][f"node{n}"] = json.loads(out) if out is not None else {"error": error}
         except ValueError:
             observations["nodes"][f"node{n}"] = {"unparsed": out}
+    observations["startup"] = _startup(name, read)
+    return observations
+
+
+def _startup(name, read):
+    """The clock and era plan the reference nodes started from, or the error that kept it from being read."""
     try:
-        shelley, byron = read(f"{ENV}/shelley-genesis.json"), read(f"{ENV}/byron-genesis.json")
-        config = read(f"{ENV}/configuration.yaml")
-        observations["startup"] = {
+        shelley, byron, config = read(f"{ENV}/shelley-genesis.json"), read(f"{ENV}/byron-genesis.json"), read(f"{ENV}/configuration.yaml")
+        return {
             "shelleySystemStart": shelley.get("systemStart"), "byronStartTime": byron.get("startTime"),
             "byronSlotDuration": (byron.get("blockVersionData") or {}).get("slotDuration"),
             "slotLength": shelley.get("slotLength"), "epochLength": shelley.get("epochLength"),
@@ -509,9 +526,8 @@ def _native_observations(name):
             "protocolMajor": ((shelley.get("protocolParams") or {}).get("protocolVersion") or {}).get("major"),
             "hardForkAtEpoch": {k: v for k, v in config.items()
                                 if k.startswith("Test") and k.endswith("HardForkAtEpoch")}}
-    except (OSError, ValueError, subprocess.SubprocessError) as error:
-        observations["startup"] = {"error": repr(error)}
-    return observations
+    except Exception as error:  # a half-written genesis can fail as anything; it must not end the capture
+        return {"error": repr(error)}
 
 
 def keep_native_evidence(name, root):
@@ -521,15 +537,24 @@ def keep_native_evidence(name, root):
     Best effort by design: every part is attempted, each failure is recorded in the returned report, and nothing
     here raises, because this runs in the cleanup of a failed run whose own failure and cause must survive even
     when the diagnostics cannot be read. A copy that fails is removed rather than left as a short log that reads
-    like the whole one."""
+    like the whole one, and its stderr is kept so a missing log and a broken shell read differently.
+
+    The pool scenario's `keep_reference_logs` keeps the tail of node 2 and 3's logs under the same names for its
+    own failed runs (#609); the depth differs on purpose - a bootstrap stall is at the start of a log, which a
+    tail keeps none of."""
     root.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + EVIDENCE_SECONDS
     report = {"kept": [], "notKept": {}}
     for entry in NATIVE_LOGS:
         out = root / f"reference-{entry}"
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            report["notKept"][out.name] = "capture time budget spent"
+            continue
         try:
             with out.open("w") as handle:
                 r = subprocess.run(["docker", "exec", ref(name), "/bin/sh", "-c", log_copy_script(f"/work/{entry}")],
-                                   stdout=handle, stderr=subprocess.DEVNULL, text=True, timeout=300)
+                                   stdout=handle, stderr=subprocess.PIPE, timeout=max(1, min(120, remaining)))
         except (OSError, subprocess.SubprocessError) as error:
             report["notKept"][out.name] = repr(error)
             with contextlib.suppress(OSError):
@@ -538,15 +563,21 @@ def keep_native_evidence(name, root):
         if r.returncode == 0:
             report["kept"].append(out.name)
         else:
-            report["notKept"][out.name] = f"exit {r.returncode}"
+            why = (r.stderr or "").strip()[:400]
+            report["notKept"][out.name] = f"exit {r.returncode}" + (f": {why}" if why else "")
             with contextlib.suppress(OSError):
                 out.unlink()
     observations = root / "reference-observations.json"
+    if time.monotonic() > deadline:
+        report["notKept"][observations.name] = "capture time budget spent"
+        return report
     try:
-        observations.write_text(json.dumps(_native_observations(name), indent=2) + "\n")
+        observations.write_text(json.dumps(_native_observations(name, deadline), indent=2) + "\n")
         report["kept"].append(observations.name)
-    except (OSError, ValueError, subprocess.SubprocessError) as error:
+    except Exception as error:  # the evidence must never cost the run its own failure
         report["notKept"][observations.name] = repr(error)
+        with contextlib.suppress(OSError):
+            observations.unlink()
     return report
 
 

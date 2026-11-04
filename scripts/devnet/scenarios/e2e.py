@@ -190,7 +190,7 @@ def reference_evidence(name, root):
     is reported next to the run's own failures, which it neither replaces nor adds to (#293)."""
     try:
         return keep_native_evidence(name, root)
-    except (OSError, ValueError, subprocess.SubprocessError) as error:
+    except Exception as error:  # this runs in the cleanup of a failed run: the capture must not replace its failure
         return {"kept": [], "notKept": {"all": repr(error)}}
 
 
@@ -370,8 +370,9 @@ def e2e(args):
         if evidence is not None:
             summary["stallDiagnostics"] = evidence
         # the reference container and the tmpfs its logs live on go with the run: keep the native side's own
-        # evidence first, before the summary is written and the containers removed. A run that passed keeps none;
-        # anything that failed, or ended with an exception no failure recorded, keeps what can still be read.
+        # evidence first, before the summary is written and that container removed (the Scala node's container is
+        # already gone). A run that passed keeps none; anything that failed, or ended with an exception no failure
+        # recorded, keeps what can still be read.
         if failures or sys.exc_info()[0] is not None:
             summary["referenceEvidence"] = reference_evidence(args.name, root)
         summary["failures"] = failures
