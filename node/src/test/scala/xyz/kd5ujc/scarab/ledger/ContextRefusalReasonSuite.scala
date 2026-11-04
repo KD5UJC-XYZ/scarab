@@ -24,9 +24,9 @@ import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
   * comparison is made here. The one refusal whose description this node does not yet write as the
   * reference does is excluded from that equality and pinned below ([[diverging]], #781).
   *
-  * Cases that keep no raw reason (the `v1-context` and `plutus-boundaries` files) are still
-  * bounded to containment; register entry `v1context-refusal-membership` stays `bounded` until a
-  * fresh recording gives them one too (#434).
+  * Cases that keep no raw reason (the `v1-context` and `plutus-boundaries` files) are still bounded
+  * to containment; register entry `v1context-refusal-membership` stays `bounded` until a fresh
+  * recording gives them one too (#434).
   */
 class ContextRefusalReasonSuite extends FunSuite:
   private final case class Refused(name: String, plutus: PlutusCase, reason: Bytes)
@@ -66,13 +66,13 @@ class ContextRefusalReasonSuite extends FunSuite:
   private def encodedRefusal(c: PlutusCase, name: String): Bytes =
     val nes = Build.funded(Build.nes[Conway](5, c.params), utxoOf(c))
     TestLedger.conwayLedger(nes, c.tx, TestLedger.env) match
-      case Right(_)                               => fail(s"$name: the node accepts what the reference refused")
+      case Right(_) => fail(s"$name: the node accepts what the reference refused")
       case Left(LedgerFailure.Rejected.Single(_, failure)) =>
         PredicateFailureCbor.applyTxError(Vector(failure))
       case Left(other) => fail(s"$name: not a single refusal: $other")
 
-  /** The bytes of `item` from its first two-byte-string head: the reference's payload and everything
-    * after the failure's description, which both sides write alike.
+  /** The bytes of `item` from its first two-byte-string head: the reference's payload and
+    * everything after the failure's description, which both sides write alike.
     */
   private def payloadFrom(item: Bytes): Option[Bytes] =
     val bytes = item.toArray
@@ -96,7 +96,9 @@ class ContextRefusalReasonSuite extends FunSuite:
     }
   }
 
-  test("the refusals whose encoded reason differs from the reference's are the ones an issue tracks") {
+  test(
+    "the refusals whose encoded reason differs from the reference's are the ones an issue tracks"
+  ) {
     val differing = refused
       .filter(r => encodedRefusal(r.plutus, r.name) != r.reason)
       .map(_.name)
@@ -105,7 +107,9 @@ class ContextRefusalReasonSuite extends FunSuite:
   }
 
   diverging.foreach { case (name, issue) =>
-    test(s"$name: only the failure description still differs from the reference's reason ($issue)") {
+    test(
+      s"$name: only the failure description still differs from the reference's reason ($issue)"
+    ) {
       val recorded = refused.find(_.name == name).getOrElse(fail(s"no refusal named $name"))
       val encoded = encodedRefusal(recorded.plutus, name)
       assertNotEquals(
@@ -115,7 +119,8 @@ class ContextRefusalReasonSuite extends FunSuite:
       )
       // What agrees on both sides is the framing before the description and the payload after it;
       // a difference anywhere else would mean a second, untracked divergence in the same refusal.
-      val shared = encoded.toArray.zip(recorded.reason.toArray).takeWhile { case (a, b) => a == b }.length
+      val shared =
+        encoded.toArray.zip(recorded.reason.toArray).takeWhile { case (a, b) => a == b }.length
       assert(shared >= 17, s"$name: the refusal framing differs after $shared bytes")
       val ours = payloadFrom(encoded).getOrElse(fail(s"$name: no payload in the encoded refusal"))
       val theirs = payloadFrom(recorded.reason).getOrElse(fail(s"$name: no payload in the reason"))
