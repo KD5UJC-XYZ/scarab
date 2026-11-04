@@ -90,7 +90,8 @@ object Targets:
       corpus: () => Vector[Array[Byte]],
       decode: (S, R, Bytes) => DecodeResult[M],
       encode: (S, R, M) => Either[E, Bytes],
-      equivalent: (M, M) => Boolean = (left: M, right: M) => left == right
+      equivalent: (M, M) => Boolean = (left: M, right: M) => left == right,
+      expectedEncodeError: M => Option[E] = (_: M) => None
   ): Target =
     Target(
       name,
@@ -111,8 +112,16 @@ object Targets:
                 "a shorter prefix decodes too"
               )
               encode(s, r, message) match
-                case Left(e) => throw new Violation(s"$s/$r: decoded $message does not encode: $e")
+                case Left(e) =>
+                  req(
+                    expectedEncodeError(message).contains(e),
+                    s"$s/$r: decoded $message unexpectedly refuses encoding: $e"
+                  )
                 case Right(enc) =>
+                  req(
+                    expectedEncodeError(message).isEmpty,
+                    s"$s/$r: encoder omitted its policy check"
+                  )
                   req(
                     decode(s, r, enc) match
                       case DecodeResult.Decoded(again, consumed) =>
@@ -126,6 +135,16 @@ object Targets:
 
   private def netCorpus(rules: String*): () => Vector[Array[Byte]] = () =>
     Corpus.tricky ++ Corpus.networkFixtures ++ rules.toVector.flatMap(Corpus.sampled(_, 80))
+
+  // The receiver accepts lists larger than the local producer's candidate policy. These are
+  // decoded and checked like every other input; re-encoding must return that exact policy error.
+  private def largeIntersectionSeeds: Vector[Array[Byte]] =
+    Vector(65, 1025).map { size =>
+      val head =
+        if size < 256 then Array[Byte](0x82.toByte, 4, 0x98.toByte, size.toByte)
+        else Array[Byte](0x82.toByte, 4, 0x99.toByte, (size >> 8).toByte, size.toByte)
+      head ++ Array.fill[Byte](size)(0x80.toByte)
+    }
 
   private val chainSyncSeeds: () => Vector[Array[Byte]] = () =>
     val tip = Tip(
@@ -146,7 +165,7 @@ object Targets:
         .map(_.toArray)
     }
     require(state != null)
-    forward ++ netCorpus("chain-sync:chainSyncMessage")()
+    forward ++ largeIntersectionSeeds ++ netCorpus("chain-sync:chainSyncMessage")()
 
   private val blockFetchSeeds: () => Vector[Array[Byte]] = () =>
     val blocks = Corpus.blocks.take(12).flatMap { b =>
@@ -325,7 +344,7 @@ object Targets:
     val cases = pinnedLines(s"$fixture/chainsync-behavior-cases.tsv").map(_.split("\\t", -1))
     val blocks = pinnedLines(s"$fixture/chainsync-behavior-blocks.tsv").map(_.split("\\t", -1))
     val points = pinnedLines(s"$fixture/chainsync-behavior-points.tsv").map(_.split("\\t", -1))
-    cases.take(12).flatMap { row =>
+    largeIntersectionSeeds ++ cases.take(12).flatMap { row =>
       val seed = row(1)
       val ordinal = row(2)
       val tip = Bytes.fromHex(row(8)).toOption
@@ -638,7 +657,13 @@ object Targets:
       ChainSync.Role.values.toSeq,
       chainSyncSeeds,
       (s, r, b) => ChainSync.decodePrefix(s, r, b, NtNHeader.codec),
-      (s, r, m) => ChainSync.encode(s, r, m, NtNHeader.codec)
+      (s, r, m) => ChainSync.encode(s, r, m, NtNHeader.codec),
+      expectedEncodeError = {
+        case ChainSync.Message.FindIntersect(points)
+            if points.size > ChainSync.Limits().maxCandidates =>
+          Some(ProtocolError.CandidateLimitExceeded)
+        case _ => None
+      }
     ),
     roundTrip(
       "chainsync-ntc",
@@ -660,7 +685,13 @@ object Targets:
               .map(_.toArray)
           ) ++ chainSyncSeeds(),
       (s, r, b) => ChainSync.decodePrefix(s, r, b, anyItem, ChainSync.Limits.NodeToClient),
-      (s, r, m) => ChainSync.encode(s, r, m, anyItem, ChainSync.Limits.NodeToClient)
+      (s, r, m) => ChainSync.encode(s, r, m, anyItem, ChainSync.Limits.NodeToClient),
+      expectedEncodeError = {
+        case ChainSync.Message.FindIntersect(points)
+            if points.size > ChainSync.Limits.NodeToClient.maxCandidates =>
+          Some(ProtocolError.CandidateLimitExceeded)
+        case _ => None
+      }
     ),
     roundTrip(
       "chainsync-engine-opaque",
@@ -669,7 +700,13 @@ object Targets:
       chainSyncEngineSeeds,
       (s, r, b) =>
         ChainSyncEngine.decodePrefix(s, r, b, opaquePoint, opaqueTip, opaqueChainPayload),
-      (s, r, m) => ChainSyncEngine.encode(s, r, m, opaquePoint, opaqueTip, opaqueChainPayload)
+      (s, r, m) => ChainSyncEngine.encode(s, r, m, opaquePoint, opaqueTip, opaqueChainPayload),
+      expectedEncodeError = {
+        case ChainSyncEngine.Message.FindIntersect(points)
+            if points.size > ChainSync.Limits().maxCandidates =>
+          Some(ProtocolError.CandidateLimitExceeded)
+        case _ => None
+      }
     ),
     roundTrip(
       "blockfetch",
