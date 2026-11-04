@@ -370,9 +370,9 @@ def e2e(args):
         if evidence is not None:
             summary["stallDiagnostics"] = evidence
         # the reference container and the tmpfs its logs live on go with the run: keep the native side's own
-        # evidence first, before the summary is written and that container removed (the Scala node's container is
-        # already gone). A run that passed keeps none; anything that failed, or ended with an exception no failure
-        # recorded, keeps what can still be read.
+        # evidence first, before the summary is written and that container removed (the Scala node's container,
+        # removed higher up in this `finally` when it was still running). A run that passed keeps none; anything
+        # that failed, or ended with an exception no failure recorded, keeps what can still be read.
         if failures or sys.exc_info()[0] is not None:
             summary["referenceEvidence"] = reference_evidence(args.name, root)
         summary["failures"] = failures

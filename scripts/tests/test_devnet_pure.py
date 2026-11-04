@@ -633,8 +633,9 @@ class NativeEvidenceTest(unittest.TestCase):
         self.assertEqual(observations["startup"]["hardForkAtEpoch"],
                          {"TestShelleyHardForkAtEpoch": 1, "TestAllegraHardForkAtEpoch": 2})
         # the start of the log is kept, not only its end: a bootstrap stall is diagnosed there
-        self.assertIn("head -c", calls[0][-1])
-        self.assertIn("/work/node1.log", calls[0][-1])
+        copy = next(command for command in calls if "/work/node1.log" in command[-1])
+        self.assertIn("head -c", copy[-1])
+        self.assertIn("/work/node1.log", copy[-1])
 
     def test_a_long_log_keeps_its_head_and_its_tail_with_the_bytes_it_omitted(self):
         with tempfile.TemporaryDirectory() as d, patch.object(cluster, "EVIDENCE_BYTES", 4):
@@ -692,6 +693,17 @@ class NativeEvidenceTest(unittest.TestCase):
         self.assertIn("reference-observations.json", report["kept"])
         self.assertIn("ValueError", observations["startup"]["error"])
 
+    def test_the_observations_are_taken_before_the_logs_so_a_wedged_copy_cannot_spend_their_budget(self):
+        calls = []
+        with tempfile.TemporaryDirectory() as d, \
+                patch.object(cluster.subprocess, "run", side_effect=self.run_writing_logs(calls)):
+            report = cluster.keep_native_evidence("n", pathlib.Path(d) / "run")
+        self.assertEqual(calls[0][:3], ["docker", "inspect", "--format"])  # the observations start the capture
+        copies = [i for i, command in enumerate(calls) if "node1.log" in command[-1]]
+        self.assertEqual(len(copies), 1)
+        self.assertGreater(copies[0], max(i for i, command in enumerate(calls) if "shelley-genesis.json" in command[-1]))
+        self.assertEqual(report["notKept"], {})
+
     def test_a_spent_budget_records_every_part_as_not_kept_without_reading_the_cluster(self):
         with tempfile.TemporaryDirectory() as d, patch.object(cluster, "EVIDENCE_SECONDS", 0), \
                 patch.object(cluster.subprocess, "run", side_effect=AssertionError("nothing may be read")):
@@ -711,7 +723,7 @@ class E2EReferenceEvidenceTest(unittest.TestCase):
         events = []
 
         def docker(*command, **kwargs):
-            events.append(("docker", command[:2]))
+            events.append(("docker", command))
             return subprocess.CompletedProcess(command, 0, "", "")
 
         def keep(name, root):
@@ -738,9 +750,19 @@ class E2EReferenceEvidenceTest(unittest.TestCase):
             summary = json.loads((pathlib.Path(d) / "run" / "e2e-summary.json").read_text())
         return summary, events, raised
 
+    @staticmethod
+    def removal_of(events, container):
+        """Where the run removed `container`. The ordering control names the container on purpose: a bare
+        `("rm", "-f")` would also match the Scala container's removal, so it could pass with the capture after
+        the reference container was already gone."""
+        for position, (kind, command) in enumerate(events):
+            if kind == "docker" and command[:3] == ("rm", "-f", container):
+                return position
+        raise AssertionError(f"the run never removed {container}: {events}")
+
     def test_a_stalled_reference_cluster_keeps_its_evidence_before_the_containers_are_removed(self):
         summary, events, raised = self.failed_run(lambda name, root: {"kept": ["reference-node1.log"], "notKept": {}})
-        self.assertLess(events.index(("evidence", "run")), events.index(("docker", ("rm", "-f"))))
+        self.assertLess(events.index(("evidence", "run")), self.removal_of(events, "n-ref"))
         self.assertEqual(summary["referenceEvidence"], {"kept": ["reference-node1.log"], "notKept": {}})
         self.assertEqual(summary["failures"], ["no new block for 90 s at {'block': 0, 'slot': 0}"])
         self.assertEqual(raised.code, 1)  # still a failed run, not a traceback
@@ -753,7 +775,7 @@ class E2EReferenceEvidenceTest(unittest.TestCase):
         self.assertIsInstance(raised, subprocess.TimeoutExpired)
         self.assertEqual(summary["referenceEvidence"]["kept"], ["reference-node2.log"])
         self.assertEqual(summary["failures"], [])
-        self.assertLess(events.index(("evidence", "run")), events.index(("docker", ("rm", "-f"))))
+        self.assertLess(events.index(("evidence", "run")), self.removal_of(events, "n-ref"))
 
     def test_a_capture_that_fails_keeps_the_runs_own_failure_and_cause(self):
         def gone(name, root):

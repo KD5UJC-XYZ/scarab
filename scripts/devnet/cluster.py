@@ -7,6 +7,7 @@ import pathlib
 import shutil
 import subprocess
 import time
+from datetime import datetime, timezone
 from . import util
 from cleanup import container_labels
 from .util import ENV, cache_dir, jdk_image, MAGIC, REFERENCE_IMAGE, REPO, TX, USER, data_root, docker, in_ref, put_file, query, read_json, ref
@@ -499,7 +500,7 @@ def _native_observations(name, deadline):
             raise ValueError(f"{path}: not a JSON object")
         return value
 
-    observations = {"readAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    observations = {"readAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
     out, error = shell(["docker", "inspect", "--format", "{{.State.Status}} {{.State.StartedAt}}", ref(name)])
     observations["container"] = out.strip() if out and out.strip() else {"error": error or "no state answered"}
     observations["nodes"] = {}
@@ -541,10 +542,24 @@ def keep_native_evidence(name, root):
 
     The pool scenario's `keep_reference_logs` keeps the tail of node 2 and 3's logs under the same names for its
     own failed runs (#609); the depth differs on purpose - a bootstrap stall is at the start of a log, which a
-    tail keeps none of."""
+    tail keeps none of.
+
+    The observations are taken first: they are the cheapest part and the one `referenceEvidence` is keyed on, so a
+    wedged `docker exec` on a log must not spend the budget before them."""
     root.mkdir(parents=True, exist_ok=True)
     deadline = time.monotonic() + EVIDENCE_SECONDS
     report = {"kept": [], "notKept": {}}
+    observations = root / "reference-observations.json"
+    if time.monotonic() > deadline:
+        report["notKept"][observations.name] = "capture time budget spent"
+    else:
+        try:
+            observations.write_text(json.dumps(_native_observations(name, deadline), indent=2) + "\n")
+            report["kept"].append(observations.name)
+        except Exception as error:  # the evidence must never cost the run its own failure
+            report["notKept"][observations.name] = repr(error)
+            with contextlib.suppress(OSError):
+                observations.unlink()
     for entry in NATIVE_LOGS:
         out = root / f"reference-{entry}"
         remaining = deadline - time.monotonic()
@@ -555,7 +570,7 @@ def keep_native_evidence(name, root):
             with out.open("w") as handle:
                 r = subprocess.run(["docker", "exec", ref(name), "/bin/sh", "-c", log_copy_script(f"/work/{entry}")],
                                    stdout=handle, stderr=subprocess.PIPE, timeout=max(1, min(120, remaining)))
-        except (OSError, subprocess.SubprocessError) as error:
+        except Exception as error:  # one unreadable log must not cost the other files their entry
             report["notKept"][out.name] = repr(error)
             with contextlib.suppress(OSError):
                 out.unlink()
@@ -567,17 +582,6 @@ def keep_native_evidence(name, root):
             report["notKept"][out.name] = f"exit {r.returncode}" + (f": {why}" if why else "")
             with contextlib.suppress(OSError):
                 out.unlink()
-    observations = root / "reference-observations.json"
-    if time.monotonic() > deadline:
-        report["notKept"][observations.name] = "capture time budget spent"
-        return report
-    try:
-        observations.write_text(json.dumps(_native_observations(name, deadline), indent=2) + "\n")
-        report["kept"].append(observations.name)
-    except Exception as error:  # the evidence must never cost the run its own failure
-        report["notKept"][observations.name] = repr(error)
-        with contextlib.suppress(OSError):
-            observations.unlink()
     return report
 
 
