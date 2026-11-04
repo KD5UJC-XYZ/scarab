@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Fail when a ledger reader reaches for `Value.Text` itself instead of reading text through `CborRead`.
+"""Fail on unreviewed `Value.Text` sites outside the ledger's shared text reader.
 
-Text has one policy: `instance DecCBOR Text` reads a definite-length string (`decodeString`,
+Shelley-through-Conway text fields use a definite-length string (`instance DecCBOR Text` / `decodeString`,
 `libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs:356-358`, cardano-ledger
-f649f975), and `CborRead.text` is that rule in this tree — it refuses an indefinite (chunked) string,
-whose head is `0x7f`. A reader that mentions the constructor on its own bypasses the policy: the relay
-name reader had to write a second refusal by hand (#435), and a reader that never reaches `CborRead` at
+f649f975), and `CborRead.text` is that rule in this tree. Dijkstra's version-12 reader instead permits
+chunked text (cardano-ledger 9df9f98c `Decoding/Decoder.hs:1564-1569,1582-1598`); `dijkstra.V12.text`
+owns that rule and is allowlisted explicitly. A reader that mentions the constructor on its own can
+bypass its shared reader: the relay name reader had to write a second refusal by hand (#435), and a
+reader that never reaches `CborRead` at
 all — one that matches a map itself and never looks at its keys (#552) — cannot be fixed by any argument
 to it. The rule is therefore a guard at the call site, not a parameter (#562).
 
-The check reads `ledger/src/main/**/*.scala` only, which is the scope the issue sets: outside that module
-text is read by the Byron decoders (their own bytes and decoder version), the metadata reader and Plutus
-`Data`, each of which has its own rule. `CborRead.scala` is where the rule lives, so it is not a
-violation; the three readers in `ALLOWED` mention the constructor deliberately and say why.
+The check reads `ledger/src/main/**/*.scala` only, which is the scope the issue sets. `CborRead.scala`
+owns the definite-text rule, so it is not a violation. Sites in `ALLOWED` state why they have another
+contract: metadata and Dijkstra readers, value inspection, or construction when encoding a value.
 
 Every mention counts, not only a constructor call: `case t: Value.Text => t.v` is a type test that reads
 the text with no parenthesis, so a bare check for `Value.Text(` would leave the obvious bypass open.
@@ -42,9 +43,9 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULE = "ledger/src/main"
 OWNER = "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CborRead.scala"
 
-# Readers that mention `Value.Text` on purpose, each because the text policy does not apply there. Keep
-# this short: an entry claims this reader is not reading a block-body text field. An entry without a
-# reason is a failure, and so is one whose file no longer mentions the constructor.
+# Sites that mention `Value.Text` on purpose, each because the definite-text reader does not apply.
+# Keep this short: an entry names the distinct reading, inspection or encoding contract. An entry
+# without a reason is a failure, and so is one whose file no longer mentions the constructor.
 ALLOWED: Mapping[str, str] = {
     "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/AuxiliaryScripts.scala":
         "the metadata reader: `decodeMetadatum` reads a chunked text as the joined text and a definite "
@@ -56,6 +57,15 @@ ALLOWED: Mapping[str, str] = {
     "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ForgeProblems.scala":
         "`KeyShape.of` names the shape of a malformed map key and discards its contents "
         "(`Value.Text(_)`), so no text is read at all",
+    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/GenesisPoolFields.scala":
+        "constructs a text node to encode the URL already read from genesis JSON; "
+        "this is encoding, not a CBOR text read",
+    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/dijkstra/V12.scala":
+        "owns the version-12 text rule: definite or chunked, with each chunk checked by the "
+        "item decoder (cardano-ledger 9df9f98c Decoding/Decoder.hs:1564-1569,1582-1598)",
+    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/dijkstra/DijkstraWitnesses.scala":
+        "`DijkstraAuxData.metadatum` measures the joined text of metadata, including chunked "
+        "text (cardano-ledger 9df9f98c Metadata.hs:154-185), as the older metadata reader does",
 }
 
 SITE = re.compile(r"(?<!\w)Value\.Text\b")
@@ -184,8 +194,8 @@ def main() -> int:
     else:
         scopes = []
     if rows:
-        print("Value.Text mentions outside the owning reader (read text with CborRead.text, or carry the")
-        print("head test in CborRead so a reader with its own errors can translate it):")
+        print("Unreviewed Value.Text sites (use the shared reader for the decoder version, or document")
+        print("why a distinct reading, inspection or encoding contract needs an allowlist entry):")
         print("\n".join(rows))
     if empty:
         print("allowlist entries without a reason (say why the text policy does not apply):")
@@ -198,8 +208,8 @@ def main() -> int:
         print("\n".join(scopes))
     if rows or empty or missing or stale or scopes:
         return 1
-    print(f"text is read through CborRead in {MODULE}: {len(scanned)} sources, no Value.Text mention "
-          f"outside it and its {len(ALLOWED)} allowlisted readers")
+    print(f"text sites checked in {MODULE}: {len(scanned)} sources, no Value.Text mention "
+          f"outside CborRead and {len(ALLOWED)} reasoned file exceptions")
     return 0
 
 

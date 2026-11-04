@@ -35,6 +35,19 @@ class TextPolicyGuardTest(unittest.TestCase):
         files = [(path, b"case Value.Text(v) => v\n") for path in ALLOWED]
         self.assertEqual(findings(files), [])
 
+    def test_the_dijkstra_reader_exception_does_not_allow_another_reader_in_its_package(self):
+        package = MODULE + "/scala/xyz/kd5ujc/scarab/ledger/dijkstra/"
+        source = b"case Value.Text(v) => Right(v)\n"
+        self.assertEqual(findings([(package + "V12.scala", source),
+                                   (package + "OtherReader.scala", source)]),
+                         [package + "OtherReader.scala:1: Value.Text"])
+
+    def test_the_genesis_encoder_exception_does_not_allow_an_unreviewed_construction(self):
+        encoder = MODULE + "/scala/xyz/kd5ujc/scarab/ledger/GenesisPoolFields.scala"
+        source = b"Node(Value.Text(url), Bytes.empty)\n"
+        self.assertEqual(findings([(encoder, source), (READER, source)]),
+                         [READER + ":1: Value.Text"])
+
     def test_a_blank_allowlist_reason_does_not_allow_a_file(self):
         files = [(READER, b"case Value.Text(v) => v\n")]
         self.assertEqual(findings(files, {READER: ""}), [READER + ":1: Value.Text"])
