@@ -512,6 +512,24 @@
       "page": "docs/compatibility/consensus-tpraos-headers.md"
     },
     {
+      "id": "consensus-hard-fork-transitions",
+      "component": "Consensus: Shelley-based era transitions (#342, #771)",
+      "status": "implemented",
+      "summary": "One transition rule for the tick, the header envelope, the Genesis window and a genesis start: a configured epoch, or a definite update to exactly the next era's version with k blocks after the voting deadline",
+      "evidence": {
+        "suites": [
+          "HardForkSuite",
+          "TickRulesSuite",
+          "EraTransitionSuite"
+        ],
+        "issues": [
+          342,
+          771
+        ]
+      },
+      "page": "docs/compatibility/consensus-hard-fork-transitions.md"
+    },
+    {
       "id": "consensus-byron-pbft",
       "component": "Consensus: Byron (PBFT)",
       "status": "implemented",
