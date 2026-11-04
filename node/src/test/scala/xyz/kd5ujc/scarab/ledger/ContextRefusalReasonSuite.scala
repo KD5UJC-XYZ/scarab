@@ -31,12 +31,31 @@ import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
 class ContextRefusalReasonSuite extends FunSuite:
   private final case class Refused(name: String, plutus: PlutusCase, reason: Bytes)
 
-  private val submissions =
-    parse(
-      Files.readString(Path.of("fixtures/reference/context-errors/submissions/conway-pv10.json"))
-    ).fold(error => fail(error.message), identity)
-      .asArray
-      .getOrElse(fail("not submissions"))
+  // The submission files are discovered the way the sibling suite discovers its corpus: a
+  // re-recording adds or replaces a file here and the comparison picks it up, rather than this
+  // suite pinning one file name and silently skipping anything added beside it.
+  private val submissions: Vector[io.circe.Json] =
+    val directory = Path.of("fixtures/reference/context-errors/submissions")
+    // committed fixtures: a missing directory fails rather than leaving no cases to run
+    if !Files.isDirectory(directory) then fail(s"missing committed fixture directory $directory")
+    else
+      val stream = Files.newDirectoryStream(directory)
+      val paths =
+        try
+          val builder = Vector.newBuilder[Path]
+          val it = stream.iterator()
+          while it.hasNext do builder += it.next()
+          builder.result()
+        finally stream.close()
+      paths
+        .filter(_.toString.endsWith(".json"))
+        .sortBy(_.getFileName.toString)
+        .flatMap { path =>
+          parse(Files.readString(path))
+            .fold(error => fail(error.message), identity)
+            .asArray
+            .getOrElse(fail(s"not submissions: $path"))
+        }
 
   /** Every refused submission, with the raw reason the reference answered. */
   private val refused: Vector[Refused] =
@@ -71,8 +90,10 @@ class ContextRefusalReasonSuite extends FunSuite:
         PredicateFailureCbor.applyTxError(Vector(failure))
       case Left(other) => fail(s"$name: not a single refusal: $other")
 
-  /** The bytes of `item` from its first two-byte-string head: the reference's payload and
-    * everything after the failure's description, which both sides write alike.
+  /** The bytes of `item` from its first `0x59 0x04 0x40` head - a two-byte string of length 1088,
+    * this fixture's script message - to its end: the payload after the failure's description, which
+    * both sides write alike. The anchor is that fixture's message length, so a re-recorded corpus
+    * fails the pin loudly instead of comparing a span it did not choose.
     */
   private def payloadFrom(item: Bytes): Option[Bytes] =
     val bytes = item.toArray
@@ -117,8 +138,10 @@ class ContextRefusalReasonSuite extends FunSuite:
         recorded.reason,
         s"$name no longer differs: remove it from the tracked divergences and its issue"
       )
-      // What agrees on both sides is the framing before the description and the payload after it;
-      // a difference anywhere else would mean a second, untracked divergence in the same refusal.
+      // What this pin compares is the framing before the description and the payload from the
+      // anchor onwards. A difference in the framing is a different outcome, not a different
+      // description, so it fails here; the bytes between the description's end and the anchor are
+      // not compared by this test.
       // The framing is 18 bytes: the array and constructor tags that open `ConwayApplyTxError`'s
       // single failure down to `ValidationTagMismatch`, then the outcome selector (failed or
       // passed unexpectedly). The selector must agree too - a difference there is a different
@@ -129,7 +152,7 @@ class ContextRefusalReasonSuite extends FunSuite:
       assertEquals(
         shared,
         18,
-        s"$name: the divergence starts at byte $shared, not at the description byte 18 opens"
+        s"$name: the divergence starts at byte $shared, not at byte 18, where the description opens"
       )
       val ours = payloadFrom(encoded).getOrElse(fail(s"$name: no payload in the encoded refusal"))
       val theirs = payloadFrom(recorded.reason).getOrElse(fail(s"$name: no payload in the reason"))

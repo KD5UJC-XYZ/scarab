@@ -582,7 +582,7 @@
       "id": "v1context-refusal-membership",
       "classification": "sampling-limit",
       "status": "bounded",
-      "scope": "Refused cases of V1ContextSuite (v1-context, context-errors submissions and plutus-boundaries transactions).",
+      "scope": "Refused cases of V1ContextSuite and ContextRefusalReasonSuite (v1-context, context-errors submissions and plutus-boundaries transactions).",
       "assertion": "The refused context submissions, whose reference ApplyTxErr is recorded, are replayed through the Conway transaction rule and their encoded reason compared as a whole with it: 11 of the 12 are byte equal, and the twelfth is pinned as a divergence whose description text still differs (#781). For the refused cases that keep no raw reason, the one cause the recorded reference text names (validation-tag mismatch, or a translation error and its source) is exactly the failure the Scala phase-2, transaction and block rules give.",
       "rationale": "The v1-context and plutus-boundaries texts are cut at 1,500 characters and keep no raw reason, so those cases compare neither the reference's whole failure list nor the encoded reason; a fresh recording of those fixtures is what lifts that part of the bound. One recorded submission, a script failure with the flag set valid, still differs in the failure description text; the suite pins that divergence and its own issue owns the encoder fix.",
       "owner": "ledger maintainer",
@@ -591,6 +591,7 @@
       "evidence": [
         "node/src/test/scala/xyz/kd5ujc/scarab/ledger/ContextRefusalReasonSuite.scala",
         "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/V1ContextSuite.scala",
+        "fixtures/reference/context-errors/submissions/conway-pv10.json",
         "fixtures/reference/v1-context/README.md"
       ],
       "candidateRequired": false
