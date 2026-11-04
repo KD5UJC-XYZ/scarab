@@ -367,14 +367,16 @@ object PoolRelays:
           case None     => Left(PoolRelayError.BadIpv6(index))
       case _ => Left(PoolRelayError.BadIpv6(index))
 
+  /** A `DnsName`: definite text (`CborRead.indefinite`), so a chunked name is this reader's own
+    * refusal and not a second reading of the head (#435).
+    */
   private def dns(n: Node, index: Int, reading: Reading): Either[PoolRelayError, String] =
-    n.value match
-      case Value.Text(s) =>
-        if n.isIndefinite then Left(PoolRelayError.IndefiniteDnsName(index))
-        else
-          val size = s.getBytes(StandardCharsets.UTF_8).length
-          Either.cond(size <= reading.dnsBytes, s, PoolRelayError.DnsNameTooLong(index, size))
-      case _ => Left(PoolRelayError.BadDnsName(index))
+    CborRead.indefinite(n) match
+      case Some((_, true)) => Left(PoolRelayError.IndefiniteDnsName(index))
+      case None            => Left(PoolRelayError.BadDnsName(index))
+      case Some((s, false)) =>
+        val size = s.getBytes(StandardCharsets.UTF_8).length
+        Either.cond(size <= reading.dnsBytes, s, PoolRelayError.DnsNameTooLong(index, size))
 
   // ---------------------------------------------------------------------------------- encoding
 
