@@ -5,8 +5,9 @@ import cats.Functor
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
+import java.nio.file.Files
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.{Handshake, LocalStateQuery, LocalTxSubmission}
+import xyz.kd5ujc.scarab.protocol.{Handshake, LocalStateQuery, LocalTxSubmission, ProtocolError}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 import xyz.kd5ujc.scarab.protocol.LocalStateQuery.{Message, State, Target}
 
@@ -64,6 +65,19 @@ class NodeToClientAcceptDefectSuite extends FailsOnUncaught:
           )
         )
 
+  /** A socket after the reference's own: its file stays when the server stops, so the directory is
+    * removed here by the test that made it.
+    */
+  private def socket: Resource[IO, Path] =
+    Resource
+      .make(IO.blocking(Files.createTempDirectory("scarab-ntc-accept-defect")))(dir =>
+        IO.blocking {
+          Files.deleteIfExists(dir.resolve("node.socket"))
+          Files.deleteIfExists(dir)
+        }.void
+      )
+      .map(_.resolve("node.socket"))
+
   /** The node's local socket, each connection served by [[NodeToClientServer.acceptOn]] over a
     * multiplexer whose `poisoned` protocol decodes by throwing. Only the first connection is
     * poisoned, so the second one is served by the node that survived it.
@@ -72,10 +86,8 @@ class NodeToClientAcceptDefectSuite extends FailsOnUncaught:
       poisoned: Int,
       stateQuery: Option[LocalStateQueryServer.Source[IO, Nothing]]
   )(body: Node => IO[Unit]): IO[Unit] =
-    Resource
-      .eval(IO(java.nio.file.Files.createTempDirectory("scarab-ntc-accept-defect")))
-      .flatMap { dir =>
-        val path = dir.resolve("node.socket")
+    socket
+      .flatMap { path =>
         for
           refs <- Resource.eval(
             (
@@ -159,7 +171,7 @@ class NodeToClientAcceptDefectSuite extends FailsOnUncaught:
 
   private def send(
       channel: MuxChannel[IO],
-      encoded: Either[xyz.kd5ujc.scarab.protocol.ProtocolError, Bytes]
+      encoded: Either[ProtocolError, Bytes]
   )(using Handle[IO, NetworkError]): IO[Unit] =
     encoded.fold(
       error =>
@@ -196,6 +208,7 @@ class NodeToClientAcceptDefectSuite extends FailsOnUncaught:
         acquired <- channel.recv(LocalStateQuery.MaxResultBytes)(
           LocalStateQuery.decodePrefix(State.Acquiring, Role.Server, _)
         )
+        _ <- IO(assertEquals(acquired, Message.Acquired))
         _ <- send(
           channel,
           LocalStateQuery.encode(State.Acquired, Role.Client, Message.Query(Bytes(Vector(0x01))))
@@ -203,9 +216,7 @@ class NodeToClientAcceptDefectSuite extends FailsOnUncaught:
         answer <- channel.recv(LocalStateQuery.MaxResultBytes)(
           LocalStateQuery.decodePrefix(State.Querying, Role.Server, _)
         )
-      yield
-        assertEquals(acquired, Message.Acquired)
-        answer
+      yield answer
     }
 
   /** The one connection that failed, as the node saw it. */
@@ -217,36 +228,34 @@ class NodeToClientAcceptDefectSuite extends FailsOnUncaught:
       case other => fail(s"expected one DecoderDefect, got $other")
     }
 
-  test(
-    "local submission: a throwing decoder ends that connection only, and the listener serves the next client"
-  ) {
-    withNode(Protocols.LocalTxSubmission, None) { node =>
+  /** Two clients of `protocol`: the first on a connection whose decoder throws, the second on a
+    * healthy one that must be served with `expected`.
+    */
+  private def failsAlone[A](
+      protocol: Int,
+      stateQuery: Option[LocalStateQueryServer.Source[IO, Nothing]]
+  )(request: Path => IO[Either[NetworkError, A]])(expected: A): IO[Unit] =
+    withNode(protocol, stateQuery) { node =>
       for
-        failed <- submit(node.path)
+        failed <- request(node.path)
         _ <- node.firstEnded.get
-        served <- submit(node.path)
-        _ <- onlyDecoderDefect(node, Protocols.LocalTxSubmission)
+        served <- request(node.path)
+        _ <- onlyDecoderDefect(node, protocol)
       yield
         failed match
           case Left(_: NetworkError.BearerClosed) => ()
           case other => fail(s"expected the connection to close without an answer, got $other")
-        assertEquals(served, Right(LocalTxSubmission.Message.AcceptTx))
+        assertEquals(served, Right(expected))
     }
+
+  test(
+    "local submission: a throwing decoder ends that connection only, and the listener serves the next client"
+  ) {
+    failsAlone(Protocols.LocalTxSubmission, None)(submit)(LocalTxSubmission.Message.AcceptTx)
   }
 
   test(
     "local state query: a throwing decoder ends that connection only, and the listener serves the next client"
   ) {
-    withNode(Protocols.LocalStateQuery, Some(ledger)) { node =>
-      for
-        failed <- query(node.path)
-        _ <- node.firstEnded.get
-        served <- query(node.path)
-        _ <- onlyDecoderDefect(node, Protocols.LocalStateQuery)
-      yield
-        failed match
-          case Left(_: NetworkError.BearerClosed) => ()
-          case other => fail(s"expected the connection to close without an answer, got $other")
-        assertEquals(served, Right(Message.Result(state)))
-    }
+    failsAlone(Protocols.LocalStateQuery, Some(ledger))(query)(Message.Result(state))
   }
