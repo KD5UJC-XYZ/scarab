@@ -5,6 +5,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.crypto.bls.Certificate
+import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx
 import xyz.kd5ujc.scarab.protocol.{ChainSync, EbHash, Era, HfcHeader}
 
 import Header.{array, bytes, fail, headerLimits, optHash, uint}
@@ -207,8 +208,9 @@ end LeiosHeader
 
 /** A Dijkstra block of the Leios testnet, block tag 8: `[header, block_body]` with `block_body =
   * [transactions, leios_certificate / nil, peras_certificate / nil]`. Each transaction is whole,
-  * `[body, witnesses, auxiliary_data / nil, is_valid]`, and the block body hash is the Blake2b-256
-  * digest of the whole encoded body (cardano-ledger `Dijkstra/BlockBody/Internal.hs:120`:
+  * `[body, witnesses, auxiliary_data / nil, is_valid]`, decoded as the build decodes it
+  * ([[dijkstra.DijkstraTx]]), and the block body hash is the Blake2b-256 digest of the whole
+  * encoded body (cardano-ledger `Dijkstra/BlockBody/Internal.hs:120`:
   * `hashBlockBody = extractHash . getMemoBytesHash`), not a merkle of component hashes (the CDDL
   * comment "merkle triple root" is stale).
   *
@@ -216,7 +218,7 @@ end LeiosHeader
   */
 final case class LeiosBlock(
     header: LeiosHeader,
-    transactions: Vector[Block.Transaction],
+    transactions: Vector[DijkstraTx],
     leiosCertificate: Option[LeiosBlock.CertificateBytes],
     perasCertificate: Option[Bytes],
     bodySize: Long,
@@ -277,8 +279,9 @@ object LeiosBlock:
     * No list of the block is a `RecD` record at version 12 ([[LeiosHeader.decode]]; the records of
     * a transaction are read by `decodeRecordNamed` from version 12, e.g. `Mary/Value.hs:308-321`),
     * so the block is read as a tree of items, and an empty indefinite list with fields after it is
-    * refused where the reference refuses it. A transaction's parts are kept as their bytes; they
-    * are not decoded.
+    * refused where the reference refuses it. Each transaction is decoded in full at version 12
+    * ([[dijkstra.DijkstraTx.inBlock]]): its body, witness set, auxiliary data and sub-transactions,
+    * each with its original bytes; no ledger rule is applied.
     */
   def decode(raw: Bytes): Either[ChainError, LeiosBlock] =
     for
@@ -294,34 +297,13 @@ object LeiosBlock:
       parts <- array(outer(1), 2)
       header <- LeiosHeader.decode(parts(0).original)
       xs <- array(parts(1), 3)
-      txs <- list(xs(0)).flatMap(_.traverse(transaction))
+      txs <- list(xs(0)).flatMap(_.traverse(DijkstraTx.inBlock(_).leftMap(fail)))
       cert <- nullable(xs(1))(certificate)
       peras <- nullable(xs(2))(c =>
         CborRead.bytes(c, DecodeField.PerasCertificate)(using ByteStrings.Chunked).leftMap(fail)
       )
       body = parts(1).original
     yield LeiosBlock(header, txs, cert, peras, body.size.toLong, Blake2b.hash256.hash(body))
-
-  /** `[transaction_body, transaction_witness_set, auxiliary_data / nil, is_valid]`. */
-  private def transaction(n: Node): Either[ChainError, Block.Transaction] =
-    for
-      xs <- array(n, 4)
-      valid <- xs(3).value match
-        case Value.Bool(b) => Right(b)
-        case _ =>
-          Left(
-            fail(
-              LedgerDecodeError.Expected(
-                DecodeField.IsValid,
-                LedgerDecodeError.Shape.Boolean,
-                xs(3).value
-              )
-            )
-          )
-      aux = xs(2).value match
-        case Value.Null => None
-        case _          => Some(xs(2).original)
-    yield Block.Transaction(xs(0).original, xs(1).original, aux, valid)
 
   /** `DecCBOR LeiosCert` (cardano-ledger-binary `Decoding/DecCBOR.hs:721-736`, 9df9f98c):
     * `decodeRecordNamed` of the signers, a byte string of at most 8192 bytes, and the signature, a

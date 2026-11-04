@@ -25,6 +25,11 @@ enum LedgerDecodeError extends DomainError:
   case MissingField(site: DecodeSite, field: DecodeSite)
   case UnknownFields(site: DecodeSite, fields: Set[Int])
 
+  /** Required keys of a sparse record that are absent (`decodeSparseKeyed`, `Decoder.hs:1243-1254`,
+    * cardano-ledger 9df9f98c).
+    */
+  case MissingKeys(site: DecodeSite, keys: Set[Int])
+
   /** A key of a sparse record that names no field of it (`invalidKey`, `Coders.hs`). */
   case UnknownKey(site: DecodeSite, key: BigInt)
   case DuplicateKey(site: DecodeSite)
