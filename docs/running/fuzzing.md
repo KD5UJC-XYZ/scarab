@@ -96,16 +96,16 @@ nightly campaign and the fixed-seed gate all run them:
 
 - `volatile-store-log` reads `VolatileStore.decodeAll`, the log a restart resumes from. The seeds are
   what the writer produces for each record shape: a block, a boundary block, a rollback to origin and
-  a rollback to a point. Properties: no exception; every record the reader accepts re-encodes to
-  bytes the reader accepts as that record again; and a damaged tail leaves the records before it
-  unchanged.
+  a rollback to a point. Properties: no exception; every record the reader accepts decodes as that
+  same record again; and one bit changed anywhere in an accepted record drops that record while the
+  records before it are unchanged, which is what its CRC-32 is for.
 - `node-config-strict` reads `NodeConfig.parse` both ways: strictly, as `cardano-node run` reads the
   configuration, and leniently. The seeds are the committed configurations of the three public
   networks and of the Leios testnet. Property: a configuration accepted strictly is accepted
   leniently with the same value, because the two differ only in the fields strict requires.
 - `node-topology` reads `Topology.parse`. The seeds are the committed topologies of the same
-  networks. Properties: no exception, no repeated peer, and no peer at an unspecified address or
-  port 0.
+  networks. Properties: no exception; every peer it follows is an address the document declares; and
+  when local roots or bootstrap peers are configured, the public roots are not followed instead.
 
 Covered by that inventory: snapshot metadata and tables, SCLS framing and values, native V8
 snapshots and their sidecars, ancillary manifests and keys, Mithril receipts, the network identity

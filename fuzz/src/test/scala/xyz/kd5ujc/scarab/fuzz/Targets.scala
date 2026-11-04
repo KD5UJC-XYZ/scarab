@@ -1650,9 +1650,10 @@ object Targets:
     )
 
   /** The node's own volatile log: the last blocks and the rollbacks a restart resumes from.
-    * `VolatileStore.decodeAll` returns the valid prefix of a file, so a damaged tail must not
-    * change the records before it; a record it accepts must re-encode to a record it accepts as
-    * itself.
+    * `VolatileStore.decodeAll` returns the valid prefix of a file, so a record it accepts must
+    * decode to that same record again, and a damaged record must be dropped without disturbing the
+    * records before it: the CRC-32 covers every byte after itself, so flipping one bit of an
+    * accepted record must shorten the prefix by exactly that record.
     */
   private val volatileLog: Vector[Target] =
     import xyz.kd5ujc.scarab.consensus.BlockRef
@@ -1681,26 +1682,38 @@ object Targets:
             val encoded = VolatileStore.encode(record)
             val again = VolatileStore.decodeAll(encoded)
             req(
-              again.size == 1 &&
-                java.util.Arrays.equals(VolatileStore.encode(again.head._1), encoded),
+              again.size == 1 && again.head._1 == record,
               s"a log record ending at $end of ${all.length} does not decode as itself"
+            )
+            req(
+              java.util.Arrays.equals(VolatileStore.encode(again.head._1), encoded),
+              s"re-encoding the record ending at $end changes its bytes"
             )
           }
           if decoded.nonEmpty then
             hit("volatile-store-log")
-            val last = decoded.last._2
-            if last < all.length then
-              req(
-                VolatileStore.decodeAll(all.take(last)).size == decoded.size,
-                "a damaged tail of the log changes the records before it"
-              )
+            val ends = decoded.map(_._2)
+            val starts = 0 +: decoded.dropRight(1).map(_._2)
+            ends.zip(starts).zipWithIndex.foreach { case ((end, start), index) =>
+              val at = start + VolatileStore.HeaderSize - 1
+              if at < end then
+                val damaged = all.clone()
+                damaged(at) = (damaged(at) ^ 0x01.toByte).toByte
+                req(
+                  VolatileStore.decodeAll(damaged).size == index,
+                  s"record ${index + 1} of ${decoded.size} is still accepted after one bit of it " +
+                    "changed, so its checksum is not verified"
+                )
+            }
         }
       )
     )
 
   /** The operator's `config.json`, read as `cardano-node run` reads it. The run path is the strict
     * form (`NodeSetup`); the lenient one only defaults what strict requires, so a configuration
-    * accepted strictly is accepted with the same value without those checks.
+    * accepted strictly is accepted with the same value without those checks. This is a divergence
+    * guard between the two entry points, not a second oracle for the value: both share one parse,
+    * and `strict` only adds the trailing required-field checks.
     */
   private val nodeConfiguration: Vector[Target] =
     import java.nio.charset.StandardCharsets.UTF_8
@@ -1729,15 +1742,17 @@ object Targets:
     )
 
   /** The operator's `topology.json`, as the reference reads a P2P topology: whatever the input
-    * mutates to, an accepted topology must not name an unspecified destination or port 0.
+    * mutates to, an accepted topology follows only destinations the document declares, and it
+    * follows the operator's local roots or bootstrap peers instead of the public roots when those
+    * are configured, which is what `Topology.peers` documents.
     */
   private val nodeTopologyFile: Vector[Target] =
     import java.nio.charset.StandardCharsets.UTF_8
-    import com.comcast.ip4s.IpAddress
     import xyz.kd5ujc.scarab.node.Topology
-    val topologies = Vector("mainnet", "preprod", "preview").map(network =>
-      Files.readAllBytes(java.nio.file.Path.of(s"fixtures/$network/genesis/topology.json"))
-    )
+    val paths = Vector("mainnet", "preprod", "preview")
+      .map(network => s"fixtures/$network/genesis/topology.json") :+
+      "fixtures/leios/testnet/config/topology.json"
+    val topologies = paths.map(path => Files.readAllBytes(java.nio.file.Path.of(path)))
     Vector(
       Target(
         "node-topology",
@@ -1746,15 +1761,23 @@ object Targets:
           val text = new String(bytes.toArray, UTF_8)
           Topology.parse(text).foreach { topology =>
             hit("node-topology")
-            val peers = topology.peers
-            req(peers.distinct == peers, s"a topology repeats one of its ${peers.size} peers")
-            peers.foreach { peer =>
-              req(peer.port.value != 0, s"a topology names port 0 for ${peer.host}")
-              val unspecified = peer.host match
-                case ip: IpAddress => ip.toBytes.forall(_ == 0)
-                case _             => false
-              req(!unspecified, s"a topology names $peer, an unspecified destination")
-            }
+            val roots = topology.localRoots.flatMap(_.accessPoints) ++
+              topology.bootstrapPeers.getOrElse(Vector.empty) ++
+              topology.publicRoots.flatMap(_.accessPoints)
+            val declared = roots.map(_.socketAddress)
+            req(
+              topology.peers.forall(declared.contains),
+              "a topology follows a peer the document does not declare"
+            )
+            val configured =
+              topology.localRoots.flatMap(_.accessPoints) ++
+                topology.bootstrapPeers.getOrElse(Vector.empty)
+            val chosen = configured.map(_.socketAddress)
+            if chosen.nonEmpty then
+              req(
+                topology.peers.forall(chosen.contains),
+                "a topology with local roots or bootstrap peers follows a public root instead"
+              )
           }
         }
       )
