@@ -45,7 +45,14 @@ class LocalTxSubmissionIncrementalSuite extends FunSuite:
       "9f7f6180ff",
       "9f1c",
       "9f5bffffffffffffffff",
-      "9f9bffffffffffffffff"
+      "9f9bffffffffffffffff",
+      "9b000000007fffffff",
+      "9b000000007ffffffe",
+      "819b000000007ffffffe",
+      "bb0000000040000000",
+      "bb000000003fffffff",
+      "81bb000000003fffffff",
+      "9f5f40ff9b000000007ffffffc"
     )
     val messages = payloads.map(p => hex("8200" + p)) ++
       Vector("8103", "820500", "8100", "9f0000ff", "98021800820000").map(hex)

@@ -20,7 +20,7 @@ private[protocol] object CborMessageDecoder:
     case Array, MapKey, MapValue
     case Chunks(major: Int)
 
-  private final case class Progress(offset: Int, frames: List[Frame])
+  private final case class Progress(offset: Int, frames: List[Frame], items: Int)
   private enum Scan:
     case More(progress: Progress)
     case Complete
@@ -84,13 +84,16 @@ private[protocol] object CborMessageDecoder:
         val chunk = frame match
           case Frame.Chunks(major) => Some(major)
           case _                   => None
-        if isBreak then if closes then Right(Progress(h.end, rest)) else Left(Scan.Invalid)
+        if isBreak then
+          if closes then Right(progress.copy(offset = h.end, frames = rest)) else Left(Scan.Invalid)
+        else if progress.items == Int.MaxValue then Left(Scan.Invalid)
         else if chunk.exists(major => h.major != major || h.additional == 31) then
           Left(Scan.Invalid)
         else
           val parents = after(frame) :: rest
-          def scalar(end: Int) = Right(Progress(end, parents))
-          def container(child: Frame) = Right(Progress(h.end, child :: parents))
+          val items = progress.items + 1
+          def scalar(end: Int) = Right(Progress(end, parents, items))
+          def container(child: Frame) = Right(Progress(h.end, child :: parents, items))
           h.major match
             case 0 | 1 | 6 =>
               if h.additional == 31 then Left(Scan.Invalid)
@@ -107,7 +110,10 @@ private[protocol] object CborMessageDecoder:
             case 4 | 5 =>
               if h.additional == 31 then
                 container(if h.major == 4 then Frame.Array else Frame.MapKey)
-              else if h.argument < 0 || h.argument > Int.MaxValue / (if h.major == 5 then 2 else 1)
+              // ProtocolWire counts the container itself and every preceding item/chunk before
+              // checking its declared children, even when their bytes have not arrived yet.
+              else if h.argument < 0 ||
+                h.argument > (Int.MaxValue - items) / (if h.major == 5 then 2 else 1)
               then Left(Scan.Invalid)
               else container(Frame.Count(h.argument * (if h.major == 5 then 2 else 1)))
             case _ =>
@@ -140,5 +146,5 @@ private[protocol] object CborMessageDecoder:
           case None =>
             prefix(input) match
               case DecodeResult.Decoded(Some(offset), _) =>
-                continue(Progress(offset, List(Frame.Count(1))))
+                continue(Progress(offset, List(Frame.Count(1)), 0))
               case _ => (None, decode(input))
