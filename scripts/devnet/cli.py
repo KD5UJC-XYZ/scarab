@@ -27,6 +27,9 @@
     devnet.py capture-eras         capture the up-eras chain as test fixtures (fixtures/eras)
     devnet.py sample-chain-dep     next to up-eras: the reference's DebugChainDepState answers at chosen tips
     devnet.py assemble-chain-dep   write answers.json of the sampled points that are in the captured chain
+    devnet.py up-dijkstra          REFERENCE ONLY: a cluster of the Leios testnet build (rc-2026w44) that starts in
+                                   Conway, forks into Dijkstra and includes one Dijkstra transaction; no Scala node
+    devnet.py capture-dijkstra     REFERENCE ONLY: capture the up-dijkstra chain as fixtures (fixtures/dijkstra-devnet)
     devnet.py e2e [--keep]         up-eras + Scala follower from Origin; assert every era and
                                    era transition was followed with no validation error
     devnet.py refusal-corpus       the reference-refusal corpus (#401): each transaction of `refusalcases` submitted to the
@@ -56,6 +59,7 @@ import sys
 from .chaindep import assemble, sample
 from .cluster import down, tip, up, up_eras
 from .compare import compare
+from .dijkstra import DEFAULT_FIXTURE as DIJKSTRA_OUT, capture_dijkstra, up_dijkstra
 from .follower import follow
 from .load import govload, load
 from .oracle_cmd import oracle
@@ -76,7 +80,7 @@ from .scenarios.soak import soak
 from .util import GIB, REPO, data_root, free_space_shortfall, human_bytes, tree_size
 
 # the subcommands that start containers and fill a run directory: the free-space check and the size report apply
-RUNS = frozenset({"up", "up-eras", "capture-eras", "e2e", "follow", "soak", "relay", "peer-sharing", "peercut",
+RUNS = frozenset({"up", "up-eras", "capture-eras", "up-dijkstra", "capture-dijkstra", "e2e", "follow", "soak", "relay", "peer-sharing", "peercut",
                   "inbound-flood", "governor", "ntc", "pool", "kes-rotate", "faults", "restart", "v1-context"})
 DEFAULT_MIN_FREE_GIB = 5.0
 RUN_MARKER = "SCARAB_DEVNET_RUN"
@@ -108,7 +112,7 @@ def run(args, out=sys.stderr, shortfall=free_space_shortfall, size=tree_size, en
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--name", help="container and run-directory name (default scarab-devnet; scarab-eras for up-eras, capture-eras, e2e; scarab-pool for pool)")
+    p.add_argument("--name", help="container and run-directory name (default scarab-devnet; scarab-eras for up-eras, capture-eras, e2e; scarab-dijkstra for up-dijkstra, capture-dijkstra; scarab-pool for pool)")
     p.add_argument("--min-free-gib", type=float, default=DEFAULT_MIN_FREE_GIB,
                    help=f"refuse to start a run when the file system of the run directory has less than this many "
                         f"GiB free (default {DEFAULT_MIN_FREE_GIB:g}; 0 skips the check)")
@@ -147,6 +151,25 @@ def main():
     ce.add_argument("--out", default=str(REPO / "fixtures/eras"), help="fixture directory")
     ce.add_argument("--conway-blocks", type=int, default=3, help="Conway blocks to capture")
     ce.set_defaults(run=capture_eras)
+    ud = sub.add_parser("up-dijkstra", help="REFERENCE ONLY (Scarab cannot follow Dijkstra yet): a Leios-build "
+                        "cluster from Conway into Dijkstra with one Dijkstra transaction")
+    ud.add_argument("--pools", type=int, default=3, help="block-producing reference pools")
+    ud.add_argument("--epoch-length", type=int, default=200, help="slots per epoch")
+    ud.add_argument("--slot-length", type=float, default=0.1, help="slot length in seconds")
+    ud.add_argument("--active-slots-coeff", type=float, default=0.2, help="Praos active slot coefficient f")
+    ud.add_argument("--security-param", type=int, default=5, help="security parameter k")
+    ud.add_argument("--dijkstra-epoch", type=int, default=1, help="TestDijkstraHardForkAtEpoch (at least 1)")
+    ud.add_argument("--genesis-protocol-major", type=int, default=12,
+                    help="protocol major of the Shelley genesis, kept into Dijkstra (12 as on the Leios testnet)")
+    ud.add_argument("--blocks-after", type=int, default=3,
+                    help="blocks past the Dijkstra transaction's that must be immutable before it returns")
+    ud.add_argument("--stall-seconds", type=int, default=60, help="fail when the chain does not grow for this long")
+    ud.add_argument("--timeout", type=int, default=900, help="overall time limit in seconds")
+    ud.set_defaults(run=up_dijkstra)
+    cd = sub.add_parser("capture-dijkstra", help="REFERENCE ONLY: capture the running up-dijkstra chain as fixtures")
+    cd.add_argument("--out", default=str(DIJKSTRA_OUT), help="fixture directory")
+    cd.add_argument("--blocks-after", type=int, default=3, help="blocks kept past the Dijkstra transaction's")
+    cd.set_defaults(run=capture_dijkstra)
     sc = sub.add_parser("sample-chain-dep", help="next to up-eras: record the reference's DebugChainDepState answers at chosen tips")
     sc.add_argument("--out", required=True, help="JSON file of the recorded points")
     sc.add_argument("--interval", type=float, default=0.8, help="seconds between acquires")
@@ -379,5 +402,5 @@ def main():
         scenario.add_argument("--consensus-mode", choices=["PraosMode", "GenesisMode"],
                               help="Scala consensus mode; reference pools retain their original configuration")
     args = p.parse_args()
-    args.name = args.name or ("scarab-eras" if args.command in ("up-eras", "capture-eras", "e2e", "sample-chain-dep", "assemble-chain-dep") else "scarab-pool" if args.command == "pool" else "scarab-kes-rotate" if args.command == "kes-rotate" else "scarab-devnet")
+    args.name = args.name or ("scarab-dijkstra" if args.command in ("up-dijkstra", "capture-dijkstra") else "scarab-eras" if args.command in ("up-eras", "capture-eras", "e2e", "sample-chain-dep", "assemble-chain-dep") else "scarab-pool" if args.command == "pool" else "scarab-kes-rotate" if args.command == "kes-rotate" else "scarab-devnet")
     run(args)
