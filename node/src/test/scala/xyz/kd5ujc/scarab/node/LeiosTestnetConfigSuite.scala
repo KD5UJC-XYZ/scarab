@@ -49,6 +49,34 @@ class LeiosTestnetConfigSuite extends FunSuite:
     assertEquals(config.settings.maxNtnVersion, NtnVersion.V16)
   }
 
+  test("the live configuration retains the Leios and LedgerDB settings and reports them unused") {
+    val settings = config.settings
+    assertEquals(settings.dijkstraHardForkEpoch, Some(BigInt(0)))
+    assertEquals(settings.leios.egressBudgetMbps, 250.0)
+    assertEquals(settings.leios.database, LeiosDbBackend.SQLite)
+    assertEquals(settings.leios.minOfferLead.map(_.toBigInt), Some(BigInt(1200)))
+    assertEquals(settings.leios.adaptiveEndorsements, Some(LeiosAdaptiveSettings()))
+    assertEquals(settings.ledgerDb.backend, LedgerDbBackend.V2InMemory)
+    assertEquals(
+      settings.ledgerDb.queryBatchSize,
+      LedgerQueryBatchSize.Requested(xyz.kd5ujc.scarab.ledger.state.Word64.fromUnsigned(100000))
+    )
+    val interval = settings.ledgerDb.snapshots.interval match
+      case LedgerSnapshotInterval.Requested(slots) => Some(slots.value.toBigInt)
+      case LedgerSnapshotInterval.Default          => None
+    assertEquals(interval, Some(BigInt(4320)))
+    assertEquals(settings.ledgerDb.snapshots.minimumDelaySeconds, BigInt(300))
+    assertEquals(settings.ledgerDb.snapshots.maximumDelaySeconds, BigInt(1080))
+    for key <- List(
+        "EgressBudgetMbps",
+        "LeiosDbConfig",
+        "LeiosMinOfferLead",
+        "LeiosAdaptiveEndorsements",
+        "LedgerDB"
+      )
+    do assert(settings.unsupported.contains(s"$key: recognised but unused"))
+  }
+
   test("the node setup reads the genesis, funds and pool from `extraConfig` included") {
     val setup =
       NodeSetup.fromConfigFile(dir.resolve("config.json")).fold(e => fail(e.message), identity)

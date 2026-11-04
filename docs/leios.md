@@ -824,12 +824,13 @@ the configuration and validation follow-ups are linked below.
 
 1. The node has no `Era.Dijkstra` and its follower does not use `HfcHeader`, `LeiosHeader` or
    `LeiosBlock` (X1, X2): on this chain it stops at block 0, as every header is of era index 7.
-2. `NodeConfig` reads `DijkstraGenesisFile` and `DijkstraGenesisHash`, and
-   `NodeSetup.verifyHashes` checks the supplied file. Topology parsing also reads
-   `useLedgerAfterSlot` (1,000 in the captured topology). The missing configuration support is
-   `TestDijkstraHardForkAtEpoch` and the Leios settings (`LeiosAdaptiveEndorsements`,
-   `EgressBudgetMbps`, `LeiosMinOfferLead`, `LedgerDB` `V2InMemory`), tracked by
-   [#745](https://github.com/KD5UJC-XYZ/scarab/issues/745).
+2. `NodeConfig` reads the Dijkstra genesis file/hash and epoch/version triggers when experimental
+   hard forks are enabled, and `NodeSetup.verifyHashes` checks the supplied file. The Leios and
+   `LedgerDB` settings are retained with the pinned reader's types and defaults and reported as
+   recognised and unused; they do not activate Dijkstra or configure its services (#745).
+   [Configuration behavior](running/configuration.md#configuration-and-topology-files) describes
+   the conditional parsing and snapshot precedence. Topology parsing also reads and uses
+   `useLedgerAfterSlot` (1,000 in the captured topology).
 3. ~~The configuration fixtures, the header captures and the suites over them are of the network
    before the restart, and `LeiosHeaderChain` and `LeiosCheckMain` read a header of era index 6 as a
    Leios header.~~ Resolved by #743: the fixtures are the restarted network's, and a header is read by

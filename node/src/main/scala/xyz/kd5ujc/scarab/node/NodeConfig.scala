@@ -120,7 +120,11 @@ final case class ConfigSettings(
     maxConcurrencyDeadline: Option[Int] = None,
     maxConcurrencyBulkSync: Option[Int] = None,
     genesis: GenesisSettings = GenesisSettings(),
-    acceptedConnectionsLimit: AcceptedConnectionsLimit = AcceptedConnectionsLimit.default
+    acceptedConnectionsLimit: AcceptedConnectionsLimit = AcceptedConnectionsLimit.default,
+    dijkstraHardForkEpoch: Option[BigInt] = None,
+    dijkstraHardForkVersion: Option[BigInt] = None,
+    leios: LeiosSettings = LeiosSettings(),
+    ledgerDb: LedgerDbSettings = LedgerDbSettings()
 ):
   /** The highest node-to-node version the node offers and accepts: 15 unless
     * `ExperimentalProtocolsEnabled` is set, as the reference's `limitToLatestReleasedVersion`.
@@ -142,7 +146,7 @@ final case class ConfigSettings(
       Option.when(hardForkVersions.nonEmpty)(
         "Test<Era>HardForkAtVersion: hard forks triggered by a version are not honoured"
       )
-    ).flatten
+    ).flatten ++ leios.unused ++ ledgerDb.unused
 
 /** The node configuration keys that shape the era history: the Byron genesis hash and the epochs at
   * which each Shelley-based era starts (`Test<Era>HardForkAtEpoch`). An absent
@@ -329,6 +333,16 @@ object NodeConfig:
         ConfigError(ConfigProblem.ExpectedObject("configuration", json))
       )
       k = Keys(json.hcursor)
+      hardForks <- renamed(k, "ExperimentalHardForksEnabled", "TestEnableDevelopmentHardForkEras")
+      fields <- ConfigFields.read("configuration", json)
+      leios <- LeiosSettings.parse(fields)
+      ledgerDb <- LedgerDbSettings.parse(fields)
+      dijkstraEpoch <-
+        if hardForks.contains(true) then k.word64(ConfigNumberField.DijkstraHardForkAtEpoch)
+        else Right(None)
+      dijkstraVersion <-
+        if hardForks.contains(true) then k.word64(ConfigNumberField.DijkstraHardForkAtVersion)
+        else Right(None)
       byronHash <- k.hash("ByronGenesisHash")
       forks <- Eras.traverse(era =>
         k.word64(ConfigNumberField.HardForkAtEpoch(era)).map(_.map(era -> _))
@@ -347,13 +361,14 @@ object NodeConfig:
       shelleyFile <- fileName(k, "Shelley")
       alonzoFile <- k.opt[String]("AlonzoGenesisFile")
       conwayFile <- k.opt[String]("ConwayGenesisFile")
-      dijkstraFile <- k.opt[String]("DijkstraGenesisFile")
+      dijkstraFile <-
+        if hardForks.contains(true) then k.opt[String]("DijkstraGenesisFile") else Right(None)
       checkpointsFile <- k.opt[String]("CheckpointsFile")
       hashes <- (
         k.hash("ShelleyGenesisHash"),
         k.hash("AlonzoGenesisHash"),
         k.hash("ConwayGenesisHash"),
-        k.hash("DijkstraGenesisHash"),
+        if hardForks.contains(true) then k.hash("DijkstraGenesisHash") else Right(None),
         k.hash("CheckpointsFileHash")
       ).tupled
       protocol <- k.opt[String]("Protocol")
@@ -366,7 +381,6 @@ object NodeConfig:
       minor <- k.opt[Int]("LastKnownBlockVersion-Minor")
       alt <- k.opt[Int]("LastKnownBlockVersion-Alt")
       maxKnown <- k.opt[BigInt]("MaxKnownMajorProtocolVersion")
-      hardForks <- renamed(k, "ExperimentalHardForksEnabled", "TestEnableDevelopmentHardForkEras")
       protocols <- renamed(
         k,
         "ExperimentalProtocolsEnabled",
@@ -500,6 +514,10 @@ object NodeConfig:
           deadlineConcurrency,
           bulkConcurrency,
           genesisOptions,
-          accepted.getOrElse(AcceptedConnectionsLimit.default)
+          accepted.getOrElse(AcceptedConnectionsLimit.default),
+          dijkstraEpoch,
+          dijkstraVersion,
+          leios,
+          ledgerDb
         )
       )

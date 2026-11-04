@@ -209,11 +209,14 @@ enum GenesisFieldError:
 enum ConfigNumberField:
   case HardForkAtEpoch(era: Era)
   case HardForkAtVersion(era: Era)
+  case DijkstraHardForkAtEpoch, DijkstraHardForkAtVersion
 
   /** The JSON key. */
   def key: String = this match
-    case HardForkAtEpoch(era)   => s"Test${era}HardForkAtEpoch"
-    case HardForkAtVersion(era) => s"Test${era}HardForkAtVersion"
+    case HardForkAtEpoch(era)      => s"Test${era}HardForkAtEpoch"
+    case HardForkAtVersion(era)    => s"Test${era}HardForkAtVersion"
+    case DijkstraHardForkAtEpoch   => "TestDijkstraHardForkAtEpoch"
+    case DijkstraHardForkAtVersion => "TestDijkstraHardForkAtVersion"
 
 /** A Shelley genesis field read with a number instance of the reference. */
 enum GenesisNumberField:

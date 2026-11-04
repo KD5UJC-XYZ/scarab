@@ -5,6 +5,12 @@ this project learned from comparing against the Haskell node and the public Prev
 where it was found and what pins it now. They are observations to confirm against the reference
 source, not authoritative statements. Roadmap IDs (B1, ...) point into [roadmap.md](roadmap.md).
 
+## Configuration
+
+| Finding | Where found | Pinned by |
+|---|---|---|
+| The Leios testnet configuration contains Dijkstra triggers and local Leios/LedgerDB settings that must be parsed even before their services are implemented. Disabled experimental hard forks ignore Dijkstra fields; disabled adaptive endorsements still validate their other fields. | Captured testnet configuration, 2026-11-03; cardano-node b004fe0c `Configuration/POM.hs:373-380,518-608,674-680,713-715` and `Configuration/Leios.hs:95-108`, #745. | `LeiosTestnetConfigSuite`, `LeiosSettingsSuite`; [operator behavior](running/configuration.md#configuration-and-topology-files). |
+
 ## Plutus scheduling
 
 | Finding | Where found | Pinned by |

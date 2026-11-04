@@ -1788,6 +1788,33 @@ object Targets:
       }
     )
 
+  private val nodeConfig: Target =
+    import xyz.kd5ujc.scarab.node.NodeConfig
+    Target(
+      "node-config",
+      () =>
+        Vector(
+          Files.readAllBytes(java.nio.file.Path.of("fixtures/leios/testnet/config/config.json")),
+          "{}".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+          """{"LeiosAdaptiveEndorsements":{"Enabled":false,"GainP":"+inf","AliveWindow":9223372036854775807},"LedgerDB":{"Snapshots":"Mithril"}}"""
+            .getBytes(java.nio.charset.StandardCharsets.UTF_8),
+          """{"LedgerDB":{"Backend":"V2LSM","QueryBatchSize":18446744073709551615,"Snapshots":{"SnapshotInterval":1,"RateLimit":-1,"MinDelay":-2,"MaxDelay":0}}}"""
+            .getBytes(java.nio.charset.StandardCharsets.UTF_8)
+        ),
+      probe("node-config") { bytes =>
+        val text = new String(bytes.toArray, java.nio.charset.StandardCharsets.UTF_8)
+        NodeConfig.parse(text).foreach { config =>
+          hit("node-config")
+          if !config.settings.experimentalHardForksEnabled then
+            req(
+              config.files.dijkstra.isEmpty && config.hashes.dijkstra.isEmpty &&
+                config.settings.dijkstraHardForkEpoch.isEmpty && config.settings.dijkstraHardForkVersion.isEmpty,
+              "disabled Dijkstra fields were retained"
+            )
+        }
+      }
+    )
+
   private val nativeJson: Target =
     import xyz.kd5ujc.scarab.ledger.json.{JsonValue, NativeJson}
     Target(
@@ -1854,6 +1881,7 @@ object Targets:
       Vector(
         sclsValues,
         genesisInjections,
+        nodeConfig,
         nativeJson,
         injectionJson,
         genesisPoolFields
