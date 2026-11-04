@@ -63,6 +63,20 @@ class SclsValueSuite extends FunSuite:
     }
   }
 
+  test("a held pool relay name past the 128-byte wire bound is exported as the state holds it") {
+    val (_, ns, raw) = sourceVectors
+      .find(_._1 == "stake-pool-current-future-relay-metadata-retirement")
+      .getOrElse(fail("stake pool Haskell vector"))
+    val relays = PoolRelays.encode(Vector(PoolRelay.MultiHostName("a" * 200 + ".example")))
+    SclsValue.decode(ns, raw) match
+      case Right(SclsValue.Entry.StakePool(pool)) =>
+        val state = pool.state.getOrElse(fail("Haskell pool vector has no registered state"))
+        val held = SclsValue.Entry.StakePool(pool.copy(state = Some(state.copy(relays = relays))))
+        val encoded = SclsValue.encode(held).fold(e => fail(e.toString), identity)
+        assert(encoded.toArray.containsSlice(relays.toArray), "the exported value holds the relays")
+      case other => fail(s"stake pool vector did not decode: $other")
+  }
+
   test("pinned Haskell typed value vectors cover nonnull account DReps and credential maps") {
     assertEquals(sourceVectors.size, 10)
     sourceVectors.foreach { case (name, ns, raw) =>

@@ -276,7 +276,7 @@ object SclsValue:
       case V.Arr(items) =>
         val raw = if items.isEmpty then Bytes.empty else value.original
         PoolRelays
-          .decode(raw, limits)
+          .decodeWire(raw, limits)
           .leftMap(Error.PoolRelay(_))
           .flatMap(relays =>
             Either.cond(

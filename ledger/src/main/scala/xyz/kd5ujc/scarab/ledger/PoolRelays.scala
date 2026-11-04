@@ -211,9 +211,11 @@ enum PoolRelayError:
   * 128 from it; an address is a byte string, definite below version 12.
   *
   * A transaction body's relays are read at the body's version ([[fromBody]]). A registration the
-  * node holds was read so when it was made, and the ledger states the node keeps are Conway's, at
-  * version 9 or later: [[decode]] reads a held registration at the larger bound, and takes a
-  * chunked address as the builds before #436 stored it (ADR 0006).
+  * node holds was checked when it was made: with the body, or from a genesis pool, whose JSON
+  * `DnsName` is unbounded Text (`BaseTypes.hs:687-697`) and which the reference holds and serves as
+  * it is. [[decode]] therefore reads a held registration with no bound on a name, and takes a
+  * chunked address as the builds before #436 stored it (ADR 0006). [[decodeWire]] reads one that
+  * arrives from outside at the wire's larger bound.
   *
   * An address is `bytes .size 4` or `bytes .size 16` (`shelley.cddl:187-188`). An IPv4 address is
   * in network order, the first octet first; an IPv6 address is not (below). cardano-ledger-binary
@@ -240,21 +242,33 @@ object PoolRelays:
   /** How the relays are read: the form of an address and the bound of a DNS name. */
   private final case class Reading(addresses: ByteStrings, dnsBytes: Int)
 
-  /** A registration the node holds: the larger bound, and a chunked address as stored before #436.
-    */
-  private val held = Reading(ByteStrings.Chunked, MaxDnsNameBytes)
+  /** A registration the node holds: any name, and a chunked address as stored before #436. */
+  private val held = Reading(ByteStrings.Chunked, Int.MaxValue)
 
   /** The relays of a registration the node holds, in order. */
   def decode(relays: Bytes): Either[PoolRelayError, Vector[PoolRelay]] =
     decode(relays, Cbor.Limits.Unbounded)
 
   def decode(relays: Bytes, limits: Cbor.Limits): Either[PoolRelayError, Vector[PoolRelay]] =
+    read(relays, limits, held)
+
+  /** The relays of a registration from outside the node, a name of at most 128 bytes and a chunked
+    * address as [[decode]] takes it.
+    */
+  def decodeWire(relays: Bytes, limits: Cbor.Limits): Either[PoolRelayError, Vector[PoolRelay]] =
+    read(relays, limits, held.copy(dnsBytes = MaxDnsNameBytes))
+
+  private def read(
+      relays: Bytes,
+      limits: Cbor.Limits,
+      reading: Reading
+  ): Either[PoolRelayError, Vector[PoolRelay]] =
     if relays.isEmpty then Right(Vector.empty)
     else
       CborRead
         .decode(relays, limits)
         .leftMap(PoolRelayError.NotCbor(_))
-        .flatMap(sequence(_, held))
+        .flatMap(sequence(_, reading))
 
   /** The relays of a registration in a transaction body read at `version`, as the reference reads
     * them with the body (`decodeStakePoolParamsFlat`, `State/StakePool.hs:578-589`, cardano-ledger
@@ -381,8 +395,7 @@ object PoolRelays:
   // ---------------------------------------------------------------------------------- encoding
 
   /** The relays as a registration holds them (definite-length arrays, the form the reference
-    * writes); no relays is the empty array. `decode(encode(rs)) == Right(rs)` for every `rs` whose
-    * names fit 128 bytes.
+    * writes); no relays is the empty array. `decode(encode(rs)) == Right(rs)` for every `rs`.
     */
   def encode(relays: Vector[PoolRelay]): Bytes =
     val out = new ByteArrayOutputStream()

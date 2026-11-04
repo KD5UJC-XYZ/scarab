@@ -164,6 +164,21 @@ class LedgerPeersWiringSuite extends CatsEffectSuite:
     assertEquals(got.skipped, Vector(SkippedPool(key(4).bytes, PoolRelayError.NotASequence)))
   }
 
+  test("a genesis pool's DNS name past the 128-byte wire bound is a ledger peer") {
+    val long = "a" * 200 + ".example"
+    val read = state(
+      distribution = Seq(1 -> share(1, 1)),
+      registered = Seq(1 -> relays(PoolRelay.SingleHostName(Some(port(3001)), long))),
+      future = Seq.empty
+    )
+    val got = LedgerPeersSource.of(read).fold(e => fail(e.toString), identity)
+    assertEquals(
+      got.pools.map(_.relays.toVector),
+      Vector(Vector(LedgerRelay.Domain(long, port(3001))))
+    )
+    assertEquals(got.skipped, Vector.empty)
+  }
+
   test("a pool that registers again keeps its old relays until the new ones take effect") {
     val read = state(
       distribution = Seq(1 -> share(1, 1)),
