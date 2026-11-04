@@ -99,10 +99,10 @@ object ScriptIntegrity:
   /** The encoded language views for `languages` (`getLanguageView` and `encodeLangViews`,
     * cardano-ledger f649f975, `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs:566-598`).
     * Every language of the set has an entry. A language without a cost model has the encoded `null`
-    * as its cost model (`maybe encodeNull encodeCostModel`, line 584): `f6` for V2 to V4, and for
-    * V1, whose value is wrapped as bytes, `41 f6`. PlutusV4 has the view of V2 and V3
-    * (`latestLangDepView`, `PParams.hs:560-574` at cardano-ledger 9df9f98c), keyed by its language
-    * id 3.
+    * as its cost model (`maybe encodeNull encodeCostModel`, line 584 at f649f975, 573 at 9df9f98c):
+    * `f6` for V2 to V4, and for V1, whose value is wrapped as bytes, `41 f6`. PlutusV4 has the view
+    * of V2 and V3 (`latestLangDepView`, `PParams.hs:560-574` at cardano-ledger 9df9f98c), keyed by
+    * its language id 3.
     */
   def plutusLanguageViews(pp: ProtocolParams, languages: Set[PlutusLanguage]): Vector[Byte] =
     val sorted = languages.toVector.sortBy(_.id)

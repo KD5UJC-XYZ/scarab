@@ -9,6 +9,6 @@
   the envelope check refuses every block once the ledger's major version passes `HardForkConfig.MaxMajorProtVer`, 11.
 - **The PlutusV4 script context of a Dijkstra transaction** (`DijkstraScriptContexts`), as cardano-ledger 9df9f98c builds it
   with plutus-ledger-api 1.71.0.0: the transaction information with sub-transactions, guards, direct deposits and balance
-  intervals, the purposes a body needs scripts for, and a guard's view of the whole transaction. The contexts of three
-  transactions and five refusals equal those the Leios testnet's build collects (the oracle's new "context" kind). The
+  intervals, the purposes a body needs scripts for, and a guard's view of the whole transaction. The contexts of four
+  transactions and seven refusals equal those the Leios testnet's build collects (the oracle's new "context" kind). The
   ledger rules of the Dijkstra era do not use them yet.
