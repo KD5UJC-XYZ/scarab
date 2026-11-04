@@ -101,8 +101,11 @@ class PrBodyTests(unittest.TestCase):
         self.assertIsNone(self.check("", user_type="Bot"))
         self.assertIsNone(self.check("", head="dev"))
 
-    def test_levels_below_two_need_no_sections(self):
-        self.assertEqual(self.check(body_of(1)), 1)
+    def test_levels_below_one_need_no_sections_and_level_one_needs_both(self):
+        self.assertEqual(self.check(body_of(0)), 0)
+        for body in [body_of(1), body_of(1, "", "")]:
+            with self.subTest(body=body), self.assertRaisesRegex(policy.PolicyError, "Deviations from the reference"):
+                self.check(body)
 
     def test_level_two_needs_both_sections_none_or_well_formed(self):
         self.assertEqual(self.check(body_of(2, "None", "None.")), 2)
