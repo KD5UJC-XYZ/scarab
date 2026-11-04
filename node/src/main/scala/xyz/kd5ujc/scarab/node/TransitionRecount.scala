@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorState, MirrorSte
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, StorageError}
 import xyz.kd5ujc.scarab.ledger.state.{Gap, WithOrigin}
 import xyz.kd5ujc.scarab.storage.{ChainStorage, ImmutableStore}
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
 
 /** The after-voting counter of a restored snapshot that does not know it (`Gap.ShelleyTransition`),
   * recounted from the immutable store before the stored blocks are replayed.
@@ -32,7 +33,10 @@ object TransitionRecount:
         (anchor, tipSlot(state)) match
           case (Some(tip), Some(slot))
               if state.provenance.gaps.contains(Gap.ShelleyTransition) && tip.slot == slot =>
-            val deadline = MirrorStep.votingDeadline(geometry, geometry.epochOf(slot))
+            // the era history the live counter is kept with: a chain whose Byron span is derived
+            // learned its first Shelley epoch when it entered Shelley (`LedgerRules.entry`)
+            val resolved = state.geometry(geometry)
+            val deadline = MirrorStep.votingDeadline(resolved, resolved.epochOf(slot))
             store.pointAtOrAfterSlot(0).flatMap {
               case Some(first) if first.slot < deadline =>
                 store
