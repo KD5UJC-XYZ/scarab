@@ -19,12 +19,12 @@ import xyz.kd5ujc.scarab.protocol.HfcHeader
 /** Development tool, not part of the node: `xyz.kd5ujc.scarab.node.tools.LeiosCheckMain`.
   *
   * `check --headers <file.gz> --config <config.json> [--stop-block N]`: reads the header capture of
-  * [[LeiosCaptureMain]] (no network) and runs [[LeiosHeaderChain]] over it from the genesis of the
-  * node configuration (the genesis files are read from its directory, as `follow` reads them):
-  * chain links, operational certificates, KES signatures, VRF proofs under the evolved epoch
-  * nonces, and the leader threshold in the epochs whose stake the genesis gives. Reports the first
-  * header that fails or the totals, by era index of the envelope, with how leadership was
-  * established.
+  * [[LeiosCaptureMain]] (no network), reads each header by its era as the testnet's build does
+  * (`LeiosHeader.byEra`), and runs [[LeiosHeaderChain]] over them from the genesis of the node
+  * configuration (the genesis files are read from its directory, as `follow` reads them): chain
+  * links, operational certificates, KES signatures, VRF proofs under the evolved epoch nonces, and
+  * the leader threshold in the epochs whose stake the genesis gives. Reports the first header that
+  * fails or the totals, by era index of the envelope, with how leadership was established.
   */
 object LeiosCheckMain extends IOApp:
   private enum DecodeProblem:
@@ -95,11 +95,9 @@ object LeiosCheckMain extends IOApp:
       val decoded = for
         envelope <- Bytes.fromHex(cols(4)).left.map(DecodeProblem.Hex(_))
         hfc <- HfcHeader.decode(envelope).left.map(DecodeProblem.Envelope(_))
-        raw <- hfc match
-          case HfcHeader.Supported(h)       => Right(h.raw)
-          case HfcHeader.Dijkstra(r)        => Right(r)
+        header <- hfc match
           case HfcHeader.Unrecognised(i, _) => Left(DecodeProblem.UnrecognisedEra(i))
-        header <- LeiosHeader.decode(raw).left.map(DecodeProblem.Header(_))
+          case known => LeiosHeader.byEra(known).left.map(DecodeProblem.Header(_))
       yield header
       decoded match
         case Left(reason) =>

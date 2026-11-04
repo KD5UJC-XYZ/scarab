@@ -6,8 +6,8 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.state.ProtocolState
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{
+  Header,
   LeaderCheck,
-  LeiosHeader,
   PoolDistribution,
   PraosError,
   ProviderDefect,
@@ -15,12 +15,14 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** Header-only validation of a chain of Leios headers (the shape of `dijkstra.cddl` 's `header`,
-  * see [[LeiosHeader]]), with what a node can check before it has any ledger rule for the era:
+/** Header-only validation of a chain of the Leios testnet's headers, each read by its era as the
+  * testnet's build reads it ([[xyz.kd5ujc.scarab.ledger.LeiosHeader.byEra]]: a Leios header for
+  * Dijkstra, a Praos header for Babbage and Conway), with what a node can check before it has any
+  * ledger rule for the era:
   *
   *   - the chain: each header's `prev_hash` is the previous header's hash, block numbers rise by
   *     one, slots rise;
-  *   - the Praos rules on the header, unchanged ([[Praos.validate]] on [[LeiosHeader.praosView]]):
+  *   - the Praos rules on the header, unchanged ([[Praos.validate]] on the header's Praos view):
   *     the operational certificate and the KES signature over the exact header body bytes, the VRF
   *     proof under the epoch nonce, the certificate counter, the evolution of the nonces, and the
   *     leader threshold wherever the stake view is known.
@@ -84,7 +86,7 @@ object LeiosHeaderChain:
   /** Accept `header` on top of `state`. */
   def step(config: PraosConfig, stake: StakePolicy)(
       state: State,
-      header: LeiosHeader
+      header: Header.Shelley
   ): Either[Fault, State] =
     val epoch = config.geometry.epochOf(header.slot)
     val pool = Blake2b.hash224.hash(header.issuerVkey)
@@ -111,7 +113,7 @@ object LeiosHeaderChain:
       validated <- Praos
         .validate(
           Praos.tick(state.protocol, Era.Conway, epoch),
-          header.praosView,
+          header,
           view,
           config
         )
