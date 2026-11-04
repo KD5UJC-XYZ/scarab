@@ -51,6 +51,7 @@ class WithdrawalContextsSuite extends FunSuite:
         case PlutusData.Constr(_, fields) => fields.lift(at).getOrElse(fail("missing withdrawals"))
         case other                        => fail(s"not TxInfo: $other")
       val expected = language match
+        case PlutusLanguage.V4 => fail("no PlutusV4 context before Dijkstra")
         case PlutusLanguage.V1 =>
           PlutusData.List(translated.map((credential, amount) => constr(0, credential, amount)))
         case PlutusLanguage.V2 => PlutusData.Map(translated)
