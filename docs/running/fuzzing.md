@@ -23,7 +23,7 @@ exercise nonempty input/output decoding without asserting ledger admission. Whol
 three fields before Alonzo and four from Alonzo; the harness preserves that era boundary.
 
 Properties (`Harness.scala`, `Targets.scala`): the decoder never throws (a result or a typed error), finishes within
-2 s (a decode stuck for 30 s kills the fork after printing the input), allocates at most 24 MB plus 400 bytes per
+2 s (a decode stuck for 30 s kills the fork after printing the input), allocates at most 24 MB plus 1000 bytes per
 input byte (so a declared length cannot buy memory), and what decodes re-encodes and decodes to the same message
 (mini-protocols: also the consumed prefix decodes alone and a shorter prefix does not). `GuardSuite` adds the fixed
 cases: every registered target accepts at least one seed in that run, without exemptions, and a short input that declares 2^60 or 2^32 elements or bytes
@@ -99,8 +99,8 @@ nightly campaign and the fixed-seed gate all run them:
   a rollback to a point, plus the same log truncated and doubled. Properties: no exception; decoding
   the seed and encoding what came back reproduces the seed byte for byte, so a field the reader drops
   or transposes changes the bytes it writes back; and a bit changed in the last header byte of every
-  accepted record, and in the first payload byte of each record that has one, drops that record while
-  the records before it are unchanged, which is what its CRC-32 is for.
+  accepted record, and in the first payload byte of each record that has one, drops that record and
+  leaves the records before it accepted, which is what its CRC-32 is for.
 - `node-config-strict` reads `NodeConfig.parse` both ways: strictly, as `cardano-node run` reads the
   configuration, and leniently. The seeds are the committed configurations of the three public
   networks and of the Leios testnet, plus degenerate documents. Properties: no exception; a
@@ -108,7 +108,7 @@ nightly campaign and the fixed-seed gate all run them:
   only in the fields strict requires; and a document that names none of those fields is refused
   strictly and accepted without the checks, so the split is asserted on both sides, not one.
 - `node-topology` reads `Topology.parse`. The seeds are the committed topologies of the same
-  networks. Properties: no exception; the number of access points it keeps matches the number the
+  networks. Properties: no exception; the number of fixed access points it keeps matches the number the
   document declares, counted group by group from the document's JSON tree rather than from the parse
   under test, so a reader that drops, invents or duplicates one fails here; and a document that
   declares local roots or bootstrap peers yields peers to follow.

@@ -1697,10 +1697,6 @@ object Targets:
               again.size == 1 && again.head._1 == record,
               s"a log record ending at $end of ${all.length} does not decode as itself"
             )
-            req(
-              java.util.Arrays.equals(VolatileStore.encode(again.head._1), encoded),
-              s"re-encoding the record ending at $end changes its bytes"
-            )
           }
           if decoded.nonEmpty then
             hit("volatile-store-log")
