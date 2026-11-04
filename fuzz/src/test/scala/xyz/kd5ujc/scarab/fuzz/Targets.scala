@@ -1683,6 +1683,10 @@ object Targets:
           // that loses the boundary flag, the slot, the hash or the payload re-encodes the seed to
           // bytes other than the ones it was written from.
           if java.util.Arrays.equals(all, log) then
+            req(
+              decoded.map(_._1) == records,
+              "the seed log does not decode to the known records"
+            )
             val reencoded = decoded.foldLeft(Array.emptyByteArray) { case (out, (record, _)) =>
               out ++ VolatileStore.encode(record)
             }
@@ -1713,9 +1717,9 @@ object Targets:
                 val damaged = all.clone()
                 damaged(at) = (damaged(at) ^ 0x01.toByte).toByte
                 req(
-                  VolatileStore.decodeAll(damaged).size == index,
-                  s"record ${index + 1} of ${decoded.size} is still accepted after the bit at $at " +
-                    "changed, so its checksum is not verified"
+                  VolatileStore.decodeAll(damaged) == decoded.take(index),
+                  s"damage at byte $at of record ${index + 1} of ${decoded.size} " +
+                    "does not preserve exactly the preceding records and their end offsets"
                 )
               }
             }

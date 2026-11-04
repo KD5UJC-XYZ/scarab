@@ -100,7 +100,7 @@ nightly campaign and the fixed-seed gate all run them:
   the seed and encoding what came back reproduces the seed byte for byte, so a field the reader drops
   or transposes changes the bytes it writes back; and a bit changed in the last header byte of every
   accepted record, and in the first payload byte of each record that has one, drops that record and
-  leaves the records before it accepted, which is what its CRC-32 is for.
+  preserves exactly the preceding records and their end offsets, which is what its CRC-32 is for.
 - `node-config-strict` reads `NodeConfig.parse` both ways: strictly, as `cardano-node run` reads the
   configuration, and leniently. The seeds are the committed configurations of the three public
   networks and of the Leios testnet, plus degenerate documents. Properties: no exception; a
