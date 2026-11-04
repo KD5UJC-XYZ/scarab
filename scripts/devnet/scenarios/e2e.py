@@ -9,7 +9,7 @@ import threading
 import time
 import traceback
 from .. import eraload, govextra, protocolversions, protocolwalk
-from ..cluster import down, freeze_classes, scala_container, up_eras
+from ..cluster import down, freeze_classes, keep_native_evidence, scala_container, up_eras
 from ..compare import PROJECTION_SCOPE, Comparisons, compare_era, comparison_table, judge_comparisons, lsq
 from ..follower import follower_problem, start_follower
 from ..load import start_conway_load
@@ -182,6 +182,16 @@ def summarize_e2e(events, other, expected, exit_code):
     if exit_code not in (None, 0):
         failures.append(f"the follower exited with {exit_code}")
     return summary, failures
+
+
+def reference_evidence(name, root):
+    """`summary["referenceEvidence"]`: what of the reference cluster's native evidence the run kept before its
+    container was removed. The capture is best effort and cannot change the run's verdict: a capture that fails
+    is reported next to the run's own failures, which it neither replaces nor adds to (#293)."""
+    try:
+        return keep_native_evidence(name, root)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        return {"kept": [], "notKept": {"all": repr(error)}}
 
 
 def e2e(args):
@@ -359,6 +369,11 @@ def e2e(args):
         evidence = stall_evidence(root) if root.exists() else None
         if evidence is not None:
             summary["stallDiagnostics"] = evidence
+        # the reference container and the tmpfs its logs live on go with the run: keep the native side's own
+        # evidence first, before the summary is written and the containers removed. A run that passed keeps none;
+        # anything that failed, or ended with an exception no failure recorded, keeps what can still be read.
+        if failures or sys.exc_info()[0] is not None:
+            summary["referenceEvidence"] = reference_evidence(args.name, root)
         summary["failures"] = failures
         summary["passed"] = not failures
         root.mkdir(parents=True, exist_ok=True)

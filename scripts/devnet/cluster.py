@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Starting, inspecting and removing the Haskell reference cluster (plain and era-walking)."""
+import contextlib
 import json
 import os
 import pathlib
@@ -447,6 +448,106 @@ def scala_container(args, root, classpath, main_class, program_args, mounts=(), 
     jvm = ["-Xmx768m", "-XX:+UseG1GC", "-XX:MaxGCPauseMillis=20",
            "--sun-misc-unsafe-memory-access=allow", "--enable-native-access=ALL-UNNAMED"]
     return command + ["--entrypoint", "java", jdk_image(), *jvm, "-cp", classpath, main_class, *program_args]
+
+
+# ---------------------------------------------------------------- evidence a failed run keeps
+
+EVIDENCE_BYTES = 8_000_000  # each end of a native log a failed run keeps: a bootstrap stall is at its start
+# the three nodes' own logs and the `create-env` run that wrote their genesis; the plain `up` path also writes
+# `cluster.log`, which a `cardano-testnet`-supervised cluster has and the era walk does not
+NATIVE_LOGS = ("node1.log", "node2.log", "node3.log", "create-env.log")
+
+
+def log_copy_script(path):
+    """Shell that writes one log of the reference container to stdout: whole when it is at most twice
+    `EVIDENCE_BYTES`, else its head, a line saying how much is missing, and its tail. The head matters: a
+    bootstrap stall is diagnosed at the start of the log, which a tail alone loses (#293)."""
+    limit = 2 * EVIDENCE_BYTES
+    return (f"n=$(wc -c < {path}) || exit 1; "
+            f"if [ \"$n\" -le {limit} ]; then cat {path}; else "
+            f"head -c {EVIDENCE_BYTES} {path}; printf '\\n[%s of %s bytes omitted]\\n' $((n - {limit})) $n; "
+            f"tail -c {EVIDENCE_BYTES} {path}; fi")
+
+
+def _native_observations(name):
+    """What the cluster itself still says about the run, before it is removed: the container's state, each node's
+    tip answer (or the error), and the clock and era plan the nodes started from - what a chain stalled at the
+    initial Byron EBB is measured against. Each part is best effort; a part that cannot be read is an error."""
+    def shell(argv, timeout=60):
+        """(stdout, None), or (None, why) when the command cannot be run or fails."""
+        try:
+            r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        except (OSError, subprocess.SubprocessError) as error:
+            return None, repr(error)
+        return (r.stdout, None) if r.returncode == 0 else (None, (r.stderr or r.stdout).strip() or f"exit {r.returncode}")
+
+    def read(path):
+        out, error = shell(["docker", "exec", ref(name), "cat", path])
+        if out is None:
+            raise OSError(f"{path}: {error}")
+        return json.loads(out)
+
+    observations = {"readAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    out, error = shell(["docker", "inspect", "--format", "{{.State.Status}} {{.State.StartedAt}}", ref(name)])
+    observations["container"] = out.strip() if out is not None else {"error": error}
+    observations["nodes"] = {}
+    for n in (1, 2, 3):
+        out, error = shell(["docker", "exec", ref(name), "cardano-cli", "conway", "query", "tip",
+                            "--testnet-magic", str(MAGIC), "--socket-path", f"{ENV}/socket/node{n}/sock"])
+        try:
+            observations["nodes"][f"node{n}"] = json.loads(out) if out is not None else {"error": error}
+        except ValueError:
+            observations["nodes"][f"node{n}"] = {"unparsed": out}
+    try:
+        shelley, byron = read(f"{ENV}/shelley-genesis.json"), read(f"{ENV}/byron-genesis.json")
+        config = read(f"{ENV}/configuration.yaml")
+        observations["startup"] = {
+            "shelleySystemStart": shelley.get("systemStart"), "byronStartTime": byron.get("startTime"),
+            "byronSlotDuration": (byron.get("blockVersionData") or {}).get("slotDuration"),
+            "slotLength": shelley.get("slotLength"), "epochLength": shelley.get("epochLength"),
+            "activeSlotsCoeff": shelley.get("activeSlotsCoeff"), "securityParam": shelley.get("securityParam"),
+            "protocolMajor": ((shelley.get("protocolParams") or {}).get("protocolVersion") or {}).get("major"),
+            "hardForkAtEpoch": {k: v for k, v in config.items()
+                                if k.startswith("Test") and k.endswith("HardForkAtEpoch")}}
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        observations["startup"] = {"error": repr(error)}
+    return observations
+
+
+def keep_native_evidence(name, root):
+    """Keep the reference cluster's own evidence in the run directory before the container - and the tmpfs its
+    logs live on - is removed (#293): each native log, and the startup and tip observations of the cluster.
+
+    Best effort by design: every part is attempted, each failure is recorded in the returned report, and nothing
+    here raises, because this runs in the cleanup of a failed run whose own failure and cause must survive even
+    when the diagnostics cannot be read. A copy that fails is removed rather than left as a short log that reads
+    like the whole one."""
+    root.mkdir(parents=True, exist_ok=True)
+    report = {"kept": [], "notKept": {}}
+    for entry in NATIVE_LOGS:
+        out = root / f"reference-{entry}"
+        try:
+            with out.open("w") as handle:
+                r = subprocess.run(["docker", "exec", ref(name), "/bin/sh", "-c", log_copy_script(f"/work/{entry}")],
+                                   stdout=handle, stderr=subprocess.DEVNULL, text=True, timeout=300)
+        except (OSError, subprocess.SubprocessError) as error:
+            report["notKept"][out.name] = repr(error)
+            with contextlib.suppress(OSError):
+                out.unlink()
+            continue
+        if r.returncode == 0:
+            report["kept"].append(out.name)
+        else:
+            report["notKept"][out.name] = f"exit {r.returncode}"
+            with contextlib.suppress(OSError):
+                out.unlink()
+    observations = root / "reference-observations.json"
+    try:
+        observations.write_text(json.dumps(_native_observations(name), indent=2) + "\n")
+        report["kept"].append(observations.name)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        report["notKept"][observations.name] = repr(error)
+    return report
 
 
 def down(args, quiet=False):
