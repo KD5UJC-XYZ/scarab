@@ -3,7 +3,7 @@
 """Validate pull-request metadata without loading pull-request code.
 
 Besides the title and the promotion source, the body states the level of the change (CONTRIBUTING.md, "Levels"), and a
-pull request of level 2 or higher carries the two sections CONTRIBUTING.md asks for ("Commits and pull requests"):
+pull request of level 1 or higher carries the two sections CONTRIBUTING.md asks for ("Commits and pull requests"):
 "Deviations from the reference" (`None`, or a table of behaviour, the pinned reference, what Scarab does and the
 approval link) and "Gaps" (`None`, or bullets that each start with an issue link). A section that opens with
 `None` may go on in prose. The stated level has floors from the changed files (`--files`, the pull request's file
@@ -32,7 +32,7 @@ DEVIATIONS = "deviations from the reference"
 GAPS = "gaps"
 ISSUE_LINK = re.compile(r"(?:\[#\d+\]\([^)]*\)|#\d+\b|https://github\.com/[^/\s]+/[^/\s]+/issues/\d+)")
 APPROVAL = re.compile(r"(?:https?://|#\d+|\]\()")
-SECTION_LEVEL = 2
+SECTION_LEVEL = 1
 DOCUMENTATION = re.compile(r"(?:.*\.md|docs/.*|changes/.*|LICENSE|NOTICE)")
 PERSISTED_FORMAT = "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala"
 
@@ -73,7 +73,7 @@ def is_none(text):
 
 
 def check_deviations(text):
-    require(text is not None, 'a level 2 or higher pull request needs a "## Deviations from the reference" section')
+    require(text is not None and text.strip(), 'a level 1 or higher pull request needs a "## Deviations from the reference" section')
     if is_none(text):
         return
     rows = [line.strip() for line in text.splitlines() if line.strip()]
@@ -87,7 +87,7 @@ def check_deviations(text):
 
 
 def check_gaps(text):
-    require(text is not None, 'a level 2 or higher pull request needs a "## Gaps" section')
+    require(text is not None and text.strip(), 'a level 1 or higher pull request needs a "## Gaps" section')
     if is_none(text):
         return
     bullets = [line for line in text.splitlines() if line.strip() and not line[:1].isspace()]

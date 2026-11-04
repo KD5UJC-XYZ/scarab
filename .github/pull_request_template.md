@@ -12,8 +12,9 @@
 
 ## Deviations from the reference
 
-<!-- Level 2 and above: `None`, or one row per deviation, each with the owner's approval
-(ADR 0001; docs/decisions.md). The PR policy check reads this section.
+<!-- Level 1 and above: `None`, or one row per deviation, each with the owner's approval
+(ADR 0001; docs/decisions.md). Scarab references the Haskell cardano-node in every respect for production
+behaviour, so a deviation is the owner's decision, never a silent choice. The PR policy check reads this section.
 | Behaviour | Reference (pinned) | Scarab | Approval |
 |---|---|---|---|
 | what differs | repository revision `File.hs:line` | what Scarab does | link to the decision |
@@ -21,7 +22,7 @@
 
 ## Gaps
 
-<!-- Level 2 and above: `None`, or one bullet per remaining gap, each starting with its issue:
+<!-- Level 1 and above: `None`, or one bullet per remaining gap, each starting with its issue:
 - #123: what remains -->
 
 ## Evidence and docs
@@ -39,3 +40,6 @@
 
 - [ ] No keys, secrets or run data committed; fixtures have provenance and licence recorded (NOTICE/README)
 - [ ] Domain errors are closed ADTs through `Raise`; hashed bytes are the original bytes
+
+<!-- End with `Closes #N`, or `Related to #N; this PR leaves the issue open: <reason>`.
+GitHub treats a closing keyword followed by an issue reference as a closing link even when the sentence negates it. -->
