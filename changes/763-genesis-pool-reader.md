@@ -7,6 +7,6 @@
   margins as decimals or `{"numerator", "denominator"}` objects, and relay ports in any `Word16`
   spelling. A genesis integer may now carry a written exponent below -1024 when its value is
   whole, as aeson reads it.
-- A relay DNS name longer than 128 bytes, which genesis accepts, is now kept by the ledger peers,
-  the ledger-peer snapshot query and the SCLS export instead of making them skip or refuse the
-  pool. The SCLS import still reads names at the wire's 128-byte bound.
+- A relay DNS name longer than 128 bytes, which genesis accepts, is now kept by the ledger peers
+  and the ledger-peer snapshot query instead of making them skip or refuse the pool. The SCLS
+  import still reads names at the wire's 128-byte bound; the SCLS export of such a name is #775.
