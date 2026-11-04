@@ -402,7 +402,7 @@ object NodeSetup:
             files,
             injections,
             fromByron,
-            praos.forks.eraAt(globals.firstEpoch, params.protocolMajor),
+            praos.forks.initialEra(genesis.geometry.k)(globals.firstEpoch),
             shelleyHash,
             lite
           )

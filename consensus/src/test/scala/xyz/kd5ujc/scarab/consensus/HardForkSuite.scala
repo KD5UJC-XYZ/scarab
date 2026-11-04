@@ -17,56 +17,38 @@ class HardForkSuite extends ScalaCheckSuite:
 
   private val eras = HardForkConfig.Sequence.toVector
 
-  test("by version, the era follows the protocol major version (eraProtVerLow)") {
-    val table = Vector(
-      2 -> Era.Shelley,
-      3 -> Era.Allegra,
-      4 -> Era.Mary,
-      5 -> Era.Alonzo,
-      6 -> Era.Alonzo,
-      7 -> Era.Babbage,
-      8 -> Era.Babbage,
-      9 -> Era.Conway,
-      10 -> Era.Conway,
-      11 -> Era.Conway
-    )
-    table.foreach((major, era) => assertEquals(byVersion.eraAt(100, major), era, s"major $major"))
-    assertEquals(byVersion.eraAt(0, 0), Era.Shelley)
-  }
+  // ---- the era of a chain started from genesis (`injectInitialExtLedgerState`, Nary.hs:259-306)
 
-  test("an epoch trigger ignores the version, a version trigger ignores the epoch") {
-    val c = HardForkConfig.fromEpochs(Map(Era.Allegra -> 2, Era.Mary -> 3))
-    assertEquals(c.triggers(Era.Allegra), ForkTrigger.AtEpoch(2))
+  private val genesisK = BigInt(5)
+
+  test("a genesis start enters only the eras configured at its first epoch, in order") {
+    val c = HardForkConfig.fromEpochs(Map(Era.Allegra -> 0, Era.Mary -> 0, Era.Babbage -> 0))
+    assertEquals(c.triggers(Era.Allegra), ForkTrigger.AtEpoch(0))
     assertEquals(c.triggers(Era.Alonzo), ForkTrigger.AtVersion(5))
-    assertEquals(c.eraAt(1, 9), Era.Shelley) // Allegra not reached yet, whatever the version
-    assertEquals(c.eraAt(2, 2), Era.Allegra)
-    assertEquals(c.eraAt(3, 2), Era.Mary)
-    assertEquals(c.eraAt(3, 5), Era.Alonzo) // the version trigger of Alonzo fires once Mary is in
-    assertEquals(c.eraAt(0, 5), Era.Shelley) // eras are entered in order
+    // Alonzo is entered by version, which a genesis state never decides, so Babbage is not reached
+    assertEquals(c.initialEra(genesisK)(0), Era.Mary)
+    val all = HardForkConfig.fromEpochs(eras.tail.map(_ -> BigInt(0)).toMap)
+    assertEquals(all.initialEra(genesisK)(0), Era.Conway)
+    val later = HardForkConfig.fromEpochs(Map(Era.Allegra -> 1))
+    assertEquals(later.initialEra(genesisK)(0), Era.Shelley)
   }
 
-  private val majors = Gen.choose(0, 14)
+  test("a genesis start by version stays in Shelley, whatever the genesis protocol version") {
+    // the Shelley genesis's `protocolVersion` is in the parameters in force, not a definite update
+    assertEquals(byVersion.initialEra(genesisK)(0), Era.Shelley)
+    assertEquals(
+      byVersion.initialEra(genesisK)(0),
+      byVersion.eraOf(genesisK)(Hfc.Pending(Era.Shelley, 0, None, 0L), 0)
+    )
+  }
+
   private val epochs = Gen.choose(0, 30)
 
-  property("the era never decreases as the epoch or the major version grows") {
-    val configs = Gen.oneOf(
-      byVersion,
-      HardForkConfig.fromEpochs(Map(Era.Allegra -> 2, Era.Alonzo -> 4, Era.Conway -> 8)),
-      HardForkConfig.fromEpochs(eras.tail.zipWithIndex.map((e, i) => e -> BigInt(i)).toMap)
-    )
-    forAll(configs, epochs, epochs, majors, majors) { (c, e1, e2, m1, m2) =>
-      assert(c.eraAt(e1.min(e2), m1.min(m2)).ordinal <= c.eraAt(e1.max(e2), m1.max(m2)).ordinal)
-    }
-  }
-
-  property("a ledger whose version rises at the configured epochs agrees with the epoch config") {
-    // era i is entered at epoch i (configured) and the ledger reaches eraProtVerLow(i) there
-    val forEpochs =
-      HardForkConfig.fromEpochs(eras.tail.zipWithIndex.map((e, i) => e -> BigInt(i + 1)).toMap)
-    forAll(epochs) { epoch =>
-      val era = eras(epoch.min(eras.size - 1))
-      assertEquals(forEpochs.eraAt(epoch, HardForkConfig.eraProtVerLow(era)), era)
-      assertEquals(byVersion.eraAt(epoch, HardForkConfig.eraProtVerLow(era)), era)
+  property("the era a genesis start is in never decreases as the configured eras move earlier") {
+    forAll(epochs, epochs) { (e1, e2) =>
+      val early = HardForkConfig.fromEpochs(eras.tail.map(_ -> BigInt(e1.min(e2))).toMap)
+      val late = HardForkConfig.fromEpochs(eras.tail.map(_ -> BigInt(e1.max(e2))).toMap)
+      assert(late.initialEra(genesisK)(0).ordinal <= early.initialEra(genesisK)(0).ordinal)
     }
   }
 
@@ -92,8 +74,6 @@ class HardForkSuite extends ScalaCheckSuite:
     // Mary to version 7 (Babbage's): the next era is Alonzo, whose version is 5
     assertEquals(byVersion.transition(k)(pending(Era.Mary, Some(7))), None)
     assertEquals(byVersion.eraOf(k)(pending(Era.Mary, Some(7)), 41), Era.Mary)
-    // the stateless walk of an initial state would put the same version in Babbage
-    assertEquals(byVersion.eraAt(41, 7), Era.Babbage)
   }
 
   test("fewer than k blocks after the voting deadline do not decide the transition") {

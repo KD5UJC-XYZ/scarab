@@ -39,22 +39,15 @@ enum ForkTrigger:
   */
 final case class HardForkConfig(triggers: Map[Era, ForkTrigger], maxMajorProtVer: Int):
 
-  /** The era of a state whose history is not at hand (an initial or imported state), from its epoch
-    * and protocol major version: the eras are entered in order, so the first one whose trigger has
-    * not fired ends the walk. An approximation of the history: a running chain's era is the one its
-    * state is in, moved on only by [[transition]].
+  /** The era a chain started from genesis is in at its first slot (`epoch`, Shelley's first):
+    * `injectInitialExtLedgerState` extends the initial state to slot 0, entering every era whose
+    * transition its genesis state already decides (ouroboros-consensus 82ecba32
+    * `HardFork/Combinator/Embed/Nary.hs:259-306`). A genesis state has no definite update and no
+    * block after the voting deadline, so only a configured epoch (`Test<Era>HardForkAtEpoch`)
+    * enters an era there; the protocol version of the Shelley genesis enters none.
     */
-  def eraAt(epoch: BigInt, major: BigInt): Era =
-    // the first era, unless a later one's trigger has fired
-    HardForkConfig.Sequence.tail
-      .takeWhile(fired(_, epoch, major))
-      .lastOption
-      .getOrElse(HardForkConfig.Sequence.head)
-
-  private def fired(era: Era, epoch: BigInt, major: BigInt): Boolean =
-    triggers(era) match
-      case ForkTrigger.AtEpoch(e)   => epoch >= e
-      case ForkTrigger.AtVersion(v) => major >= v
+  def initialEra(k: BigInt)(epoch: BigInt): Era =
+    eraOf(k)(Hfc.Pending(HardForkConfig.Sequence.head, epoch, None, 0L), epoch)
 
   /** The epoch at which the chain leaves the era of `pending` (`singleEraTransition`,
     * `ShelleyHFC.hs:220-227`): the configured epoch of the next era, or with a version trigger the
