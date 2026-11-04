@@ -802,13 +802,17 @@ The build's LeiosFetch codec writes `MsgLeiosBlockTxs` as `[4, [* tx]]` (ourobor
 
 ### 12.4 What still stops this node following the testnet
 
-Not resolved by #711; listed for the integrator (no issue filed here):
+The integration work belongs to [#73](https://github.com/KD5UJC-XYZ/scarab/issues/73);
+the configuration and validation follow-ups are linked below.
 
 1. The node has no `Era.Dijkstra` and its follower does not use `HfcHeader`, `LeiosHeader` or
    `LeiosBlock` (X1, X2): on this chain it stops at block 0, as every header is of era index 7.
-2. Configuration: `TestDijkstraHardForkAtEpoch`, the Dijkstra genesis and the new keys
-   (`LeiosAdaptiveEndorsements`, `EgressBudgetMbps`, `LeiosMinOfferLead`, `LedgerDB` `V2InMemory`)
-   are not read; `useLedgerAfterSlot` is now 1,000.
+2. `NodeConfig` reads `DijkstraGenesisFile` and `DijkstraGenesisHash`, and
+   `NodeSetup.verifyHashes` checks the supplied file. Topology parsing also reads
+   `useLedgerAfterSlot` (1,000 in the captured topology). The missing configuration support is
+   `TestDijkstraHardForkAtEpoch` and the Leios settings (`LeiosAdaptiveEndorsements`,
+   `EgressBudgetMbps`, `LeiosMinOfferLead`, `LedgerDB` `V2InMemory`), tracked by
+   [#745](https://github.com/KD5UJC-XYZ/scarab/issues/745).
 3. The configuration fixtures, the header captures and the suites over them (`LeiosTestnetConfigSuite`,
    `LeiosHeaderChainSuite`, `LeiosCheckMain`) are of the network before the restart; `LeiosHeaderChain`
    and `LeiosCheckMain` read a header of era index 6 as a Leios header, which the build reads as a
@@ -816,8 +820,9 @@ Not resolved by #711; listed for the integrator (no issue filed here):
 4. No Dijkstra ledger (X3): a transaction is decoded (section 12.5) but no rule applies to it; no stake
    distribution (X4), certificate verification (X5), endorser blocks (X7), mini-protocols 18 and 19
    (X8), `TxSubmissionLogicV2` (X10), ledger peers or the peer snapshot (X11).
-5. `Praos2`'s rules beyond the header (its envelope checks and ledger view) were not compared with
-   `consensus.Praos`.
+5. `Praos2`'s rules beyond header decoding (its envelope checks and ledger view) have not been
+   compared with `consensus.Praos`; tracked by
+   [#746](https://github.com/KD5UJC-XYZ/scarab/issues/746).
 6. The build's Praos header (Babbage, Conway) is also read by `decodeRecordNamed` at these revisions,
    where this node follows cardano-ledger f649f975 for those eras; no such block occurs on the testnet.
 
