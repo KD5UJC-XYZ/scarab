@@ -362,6 +362,85 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       .rescue(error => IO(fail(error.toString)))
   }
 
+  test("opening the chain storage recounts a restored gapped snapshot before replaying on it") {
+    import xyz.kd5ujc.scarab.consensus.BlockRules
+    import xyz.kd5ujc.scarab.consensus.state.MirrorProvenance
+    import xyz.kd5ujc.scarab.ledger.state.Gap
+    import storage.{
+      ChainStorage,
+      CheckpointBinding,
+      FileImmutableStore,
+      FileLedgerSnapshots,
+      SnapshotFormat,
+      SnapshotPolicy,
+      StateBacking,
+      StateSnapshot,
+      StorageEvents
+    }
+    // the snapshot is three blocks before the last Shelley block, all after the voting deadline;
+    // the immutable store holds the chain up to that last block, which the opening replays
+    val tip = boundaries(1) - 1
+    val at = tip - 3
+    val deadline = MirrorStep.votingDeadline(geometry, geometry.epochOf(headers(tip).slot))
+    assert(headers(at).slot >= deadline, "the snapshot must follow the voting deadline")
+    val afterDeadline = blocks.indices.indexWhere(i => headers(i).slot >= deadline)
+    val gapped = MirrorStep
+      .recounted(states(at + 1), 0L)
+      .fold(e => fail(e.toString), identity)
+      .copy(provenance = MirrorProvenance.recorded(Set(Gap.ShelleyTransition), Map.empty))
+    val snapshot = StateSnapshot(Some(ref(at)), gapped, CheckpointBinding.Unbacked)
+    given SnapshotFormat[IO, MirrorState] with
+      // the current snapshot magic, so that the storage's version preflight reads the file
+      def encode(s: StateSnapshot[MirrorState]) =
+        val kind = ledger.FileKind.SnapshotFile
+        IO.pure(Right(kind.identifier(kind.current).getBytes("US-ASCII") :+ 1.toByte))
+      def decode(content: Array[Byte]) = IO.pure(Right(snapshot))
+    val rules: BlockRules[IO, MirrorState] = BlockRules.from((state, header, raw) =>
+      IO(MirrorSteps.block(setup, state, header, raw).fold(f => fail(f.reason), identity))
+    )
+    val quiet: StorageEvents[IO] = _ => IO.unit
+    def opened(from: Int)(using Handle[IO, NodeError]): IO[MirrorState] =
+      fs2.io.file.Files[IO].tempDirectory.use { dir =>
+        for
+          _ <- FileImmutableStore.open[IO](dir / "immutable").use { (store, _) =>
+            (from to tip).toList.traverse_(i => store.append(ref(i), raws(i))) *> store.sync
+          }
+          snapshots <- FileLedgerSnapshots.open[IO, MirrorState](dir / "snapshots")
+          _ <- snapshots.write(snapshot)
+          state <- ChainStorage
+            .open[IO, MirrorState](
+              dir,
+              ChainStorage.Config(
+                SnapshotPolicy.EverySlots(BigInt(1000000)),
+                byronEpochSlots = geometry.byron.epochSlots
+              ),
+              rules,
+              setup.mirrorStart,
+              quiet,
+              StateBacking.none[IO, MirrorState],
+              _ => IO.unit,
+              reopen = Some(TransitionRecount.reopen[IO](geometry))
+            )
+            .use(recovered => IO.pure(recovered.state))
+        yield state
+      }
+    Handle
+      .allow[NodeError] {
+        for
+          whole <- opened(0)
+          partial <- opened(afterDeadline)
+        yield
+          // recounted before the replay: the replayed state is the one the whole chain reaches
+          assertEquals(whole.provenance.gaps, Set.empty[Gap])
+          assertEquals(whole.ext, states(tip + 1).ext)
+          assertEquals(MirrorStep.afterVotingOf(whole), MirrorStep.afterVotingOf(states(tip + 1)))
+          // a store that starts after the deadline: the gap stays, the replay counts on from zero
+          assert(partial.provenance.gaps.contains(Gap.ShelleyTransition))
+          assertEquals(MirrorStep.afterVotingOf(partial), (tip - at).toLong)
+      }
+      .rescue(error => IO(fail(error.message)))
+  }
+
   test("the first block of an era is rejected when the era history does not enter it there") {
     val allegra = boundaries(1)
     assertEquals(eraAt(allegra), Era.Allegra)
