@@ -1649,6 +1649,117 @@ object Targets:
       )
     )
 
+  /** The node's own volatile log: the last blocks and the rollbacks a restart resumes from.
+    * `VolatileStore.decodeAll` returns the valid prefix of a file, so a damaged tail must not
+    * change the records before it; a record it accepts must re-encode to a record it accepts as
+    * itself.
+    */
+  private val volatileLog: Vector[Target] =
+    import xyz.kd5ujc.scarab.consensus.BlockRef
+    import xyz.kd5ujc.scarab.storage.{VolatileRecord, VolatileStore}
+    def hash(byte: Int): Bytes = Bytes.fromArray(Array.fill[Byte](32)(byte.toByte))
+    val records = Vector(
+      VolatileRecord.Block(
+        BlockRef(BigInt(1), hash(1), BigInt(1)),
+        Bytes.fromArray(Array[Byte](0x82.toByte, 0x01, 0x02))
+      ),
+      VolatileRecord.Block(BlockRef(BigInt(2), hash(2), BigInt(2), boundary = true), Bytes.empty),
+      VolatileRecord.Rollback(ChainSync.Point.Origin),
+      VolatileRecord.Rollback(ChainSync.Point.Block(ChainSync.UInt64.saturating(2), hash(2)))
+    )
+    val log = records.map(VolatileStore.encode).reduce(_ ++ _)
+    Vector(
+      Target(
+        "volatile-store-log",
+        () =>
+          Vector(log, log.take(log.length - 1), log.drop(VolatileStore.HeaderSize), log ++ log) ++
+            Corpus.tricky,
+        probe("volatile-store-log") { bytes =>
+          val all = bytes.toArray
+          val decoded = VolatileStore.decodeAll(all)
+          decoded.foreach { (record, end) =>
+            val encoded = VolatileStore.encode(record)
+            val again = VolatileStore.decodeAll(encoded)
+            req(
+              again.size == 1 &&
+                java.util.Arrays.equals(VolatileStore.encode(again.head._1), encoded),
+              s"a log record ending at $end of ${all.length} does not decode as itself"
+            )
+          }
+          if decoded.nonEmpty then
+            hit("volatile-store-log")
+            val last = decoded.last._2
+            if last < all.length then
+              req(
+                VolatileStore.decodeAll(all.take(last)).size == decoded.size,
+                "a damaged tail of the log changes the records before it"
+              )
+        }
+      )
+    )
+
+  /** The operator's `config.json`, read as `cardano-node run` reads it. The run path is the strict
+    * form (`NodeSetup`); the lenient one only defaults what strict requires, so a configuration
+    * accepted strictly is accepted with the same value without those checks.
+    */
+  private val nodeConfiguration: Vector[Target] =
+    import java.nio.charset.StandardCharsets.UTF_8
+    import xyz.kd5ujc.scarab.node.NodeConfig
+    def fixture(path: String): Array[Byte] = Files.readAllBytes(java.nio.file.Path.of(path))
+    val configs = Vector("mainnet", "preprod", "preview")
+      .map(network => fixture(s"fixtures/$network/genesis/config.json")) :+
+      fixture("fixtures/leios/testnet/config/config.json")
+    val minimal = Vector("{}", "[]", "\"Cardano\"", "", "{\"Protocol\":\"Cardano\"}")
+      .map(_.getBytes(UTF_8))
+    Vector(
+      Target(
+        "node-config",
+        () => configs ++ minimal ++ Corpus.tricky,
+        probe("node-config") { bytes =>
+          val text = new String(bytes.toArray, UTF_8)
+          NodeConfig.parse(text, strict = true).foreach { config =>
+            req(
+              NodeConfig.parse(text) == Right(config),
+              "a configuration read strictly is not read with the same value without the checks"
+            )
+            hit("node-config")
+          }
+        }
+      )
+    )
+
+  /** The operator's `topology.json`, as the reference reads a P2P topology: whatever the input
+    * mutates to, an accepted topology must not name an unspecified destination or port 0.
+    */
+  private val nodeTopologyFile: Vector[Target] =
+    import java.nio.charset.StandardCharsets.UTF_8
+    import com.comcast.ip4s.IpAddress
+    import xyz.kd5ujc.scarab.node.Topology
+    val topologies = Vector("mainnet", "preprod", "preview").map(network =>
+      Files.readAllBytes(java.nio.file.Path.of(s"fixtures/$network/genesis/topology.json"))
+    )
+    Vector(
+      Target(
+        "node-topology",
+        () => topologies ++ Corpus.tricky,
+        probe("node-topology") { bytes =>
+          val text = new String(bytes.toArray, UTF_8)
+          Topology.parse(text).foreach { topology =>
+            hit("node-topology")
+            val peers = topology.peers
+            req(peers.distinct == peers, s"a topology repeats one of its ${peers.size} peers")
+            peers.foreach { peer =>
+              req(peer.port.value != 0, s"a topology names port 0 for ${peer.host}")
+              val unspecified = peer.host match
+                case ip: IpAddress => ip.toBytes.forall(_ == 0)
+                case _             => false
+              req(!unspecified, s"a topology names $peer, an unspecified destination")
+            }
+          }
+        }
+      )
+    )
+
   private val sclsValues: Target =
     import xyz.kd5ujc.scarab.storage.scls.{SclsRecord, SclsValue}
     val supported = Vector(
@@ -1910,4 +2021,5 @@ object Targets:
         nativeJson,
         injectionJson,
         genesisPoolFields
-      ) ++ nativeSnapshots ++ ancillary ++ mithril ++ networkIdentity
+      ) ++ nativeSnapshots ++ ancillary ++ mithril ++ networkIdentity ++ volatileLog ++
+      nodeConfiguration ++ nodeTopologyFile

@@ -10,7 +10,7 @@ data from a peer, a client or a block: raw CBOR, the node-to-node and node-to-cl
 frame, stream), ChainSync, BlockFetch, TxSubmission2, KeepAlive, LocalStateQuery, LocalTxSubmission and
 LocalTxMonitor in every state and for both roles, headers and blocks (Byron and each later era), transaction bodies,
 witness sets and whole submitted transactions per era, addresses and outputs, scripts, Plutus data, node-to-client
-queries and protocol-parameter updates. `Targets.all` is the maintained target registry.
+queries and protocol-parameter updates, the node's own volatile log, and the operator's `config.json` and `topology.json`. `Targets.all` is the maintained target registry.
 
 Inputs (`Mutate.scala`, `Corpus.scala`): ScalaCheck generators that take a seed item and apply one to four
 mutations (bit flips, truncation, extension, a head rewritten to declare 2^60 elements, a fresh head with a huge
@@ -88,3 +88,27 @@ rotating seeds. A pull request that changes a decoder or a fuzz input also runs 
 `ledger`, `plutus`, `models`, `models-gen`, `fixtures`, the node-to-client and mempool packages of `node`, `build.sbt`,
 `project`, `scripts/sbtw` and the workflow itself). The job always reports; when none of those paths changed it
 skips the fuzz steps and passes. It can be started by hand from the Actions tab, where it always fuzzes.
+
+### Persisted formats and operator JSON (#200)
+
+The file and operator-JSON readers are registered like the wire ones, so the default suite, the
+nightly campaign and the fixed-seed gate all run them:
+
+- `volatile-store-log` reads `VolatileStore.decodeAll`, the log a restart resumes from. The seeds are
+  what the writer produces for each record shape: a block, a boundary block, a rollback to origin and
+  a rollback to a point. Properties: no exception; every record the reader accepts re-encodes to
+  bytes the reader accepts as that record again; and a damaged tail leaves the records before it
+  unchanged.
+- `node-config` reads `NodeConfig.parse` both ways: strictly, as `cardano-node run` reads the
+  configuration, and leniently. The seeds are the committed configurations of the three public
+  networks and of the Leios testnet. Property: a configuration accepted strictly is accepted
+  leniently with the same value, because the two differ only in the fields strict requires.
+- `node-topology` reads `Topology.parse`. The seeds are the committed topologies of the same
+  networks. Properties: no exception, no repeated peer, and no peer at an unspecified address or
+  port 0.
+
+Covered by that inventory: snapshot metadata and tables, SCLS framing and values, native V8
+snapshots and their sidecars, ancillary manifests and keys, Mithril receipts, the network identity
+file, MemPack outputs, the volatile log, and the configuration and topology JSON. Not covered: the
+immutable store's own segment layout, which is read through a private file reader rather than a
+decoder over a byte array, and the RocksDB-backed UTxO store.
