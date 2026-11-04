@@ -1777,7 +1777,8 @@ object Targets:
     * mutates to, an accepted topology keeps as many access points as the document declares, group
     * by group - the document is counted from its JSON tree rather than from the parse under test,
     * so a reader that drops, invents or duplicates one disagrees here - and a document that
-    * declares local roots or bootstrap peers still yields peers to follow.
+    * declares local roots or bootstrap peers still yields peers to follow. That last check guards
+    * `Topology.peers`, not the parse: `peers` builds its configured set from those same two groups.
     */
   private val nodeTopologyFile: Vector[Target] =
     import java.nio.charset.StandardCharsets.UTF_8

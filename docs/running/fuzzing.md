@@ -98,9 +98,9 @@ nightly campaign and the fixed-seed gate all run them:
   what the writer produces for each record shape: a block, a boundary block, a rollback to origin and
   a rollback to a point, plus the same log truncated and doubled. Properties: no exception; decoding
   the seed and encoding what came back reproduces the seed byte for byte, so a field the reader drops
-  or transposes changes the bytes it writes back; and a bit changed in the last header byte and a bit
-  changed in the first payload byte of every accepted record drop that record while the records before
-  it are unchanged, which is what its CRC-32 is for.
+  or transposes changes the bytes it writes back; and a bit changed in the last header byte of every
+  accepted record, and in the first payload byte of each record that has one, drops that record while
+  the records before it are unchanged, which is what its CRC-32 is for.
 - `node-config-strict` reads `NodeConfig.parse` both ways: strictly, as `cardano-node run` reads the
   configuration, and leniently. The seeds are the committed configurations of the three public
   networks and of the Leios testnet, plus degenerate documents. Properties: no exception; a
@@ -113,9 +113,11 @@ nightly campaign and the fixed-seed gate all run them:
   under test, so a reader that drops, invents or duplicates one fails here; and a document that
   declares local roots or bootstrap peers yields peers to follow.
 
-Covered by that inventory: snapshot metadata and tables, SCLS framing and values, native V8
+Included in that inventory: snapshot metadata and tables, SCLS framing and values, native V8
 snapshots and their sidecars, ancillary manifests and keys, Mithril receipts, the network identity
 file, the peer snapshot, MemPack outputs, the volatile log, and the configuration and topology JSON.
 Not covered: the immutable store's own segment layout, which is read through a private file reader
-rather than a decoder over a byte array; the RocksDB-backed UTxO store; and the cardano-cli key-file
-envelope, whose `type` and `cborHex` fields the forge reads but no target exercises.
+rather than a decoder over a byte array; the RocksDB-backed UTxO store; the checkpoints file the run
+path reads, whose bytes are unpinned when no hash is configured and which no target exercises; and the
+cardano-cli key-file envelope, whose `type` and `cborHex` fields the forge reads but no target
+exercises.
