@@ -44,8 +44,10 @@ failure produced a passing query verdict or caused a returned answer to be disca
 
 These fixtures prove the bounded Conway query cases represented here. They do not establish
 all-era RPC support, arbitrary-state numerical equivalence, or completeness of old likelihood
-histories. The latter remains roadmap J3.1 / issue #129. Scarab bootstrap currently drops
-injected genesis pool relays and metadata ([#283](https://github.com/KD5UJC-XYZ/scarab/issues/283));
-decoding these native states directly does not establish parity for that genesis conversion path.
+histories. The latter remains roadmap J3.1 / issue #129. Decoding these native states directly
+does not by itself establish parity for the genesis conversion path; `WalletPeerReferenceSuite`
+separately bootstraps Scarab from the `peer-relays` genesis and compares its pools' relay and
+metadata bytes with the native state ([#283](https://github.com/KD5UJC-XYZ/scarab/issues/283)).
+The genesis pools carry no metadata, so metadata there is compared only as absent.
 
 Generated test data; Apache-2.0.

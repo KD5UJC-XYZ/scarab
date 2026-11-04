@@ -207,28 +207,35 @@ class PeerSelectionSuite extends FunSuite:
     val st2 = List(7, 8).foldLeft(st1)((s, p) => complete(s, Outcome.Connected(p), t0))
     val (st3, _, _) = settle(st2, t0)
     val hot = List(7, 8).foldLeft(st3)((s, p) => complete(s, Outcome.Activated(p), t0))
-    val ended = PeerSelection
+    def delays(d: Decision[Int]) = d.traces.collect {
+      case Trace.DemoteAsynchronous(_, _, _, _, _, delay) => delay
+    }
+    val returned = PeerSelection
       .apply(hot, Event.Observed(7, Observation.HotEnded(Some(30.seconds))), 1.minute)
-      .state
+    val ended = returned.state
     val Status.Warm(readyAt) = statusOf(ended, 7): @unchecked
     assert(readyAt >= 90.seconds && readyAt <= 101.seconds, readyAt.toString)
-    val cooling = PeerSelection
+    // the traced delay is the fuzzed wait the peer is warm for (`Governor/Monitor.hs` 150-161)
+    assertEquals(delays(returned), List(Some(readyAt - 1.minute)))
+    val lingering = PeerSelection
       .apply(
         ended,
         Event.Observed(8, Observation.Lost(FailureClass.Transient, 5.seconds, false, "lost")),
         2.minutes
       )
-      .state
+    val cooling = lingering.state
     assertEquals(statusOf(cooling, 8), Status.Cooling)
-    val cold = PeerSelection
+    assertEquals(delays(lingering), List(Some(5.seconds)))
+    val released = PeerSelection
       .apply(
         cooling,
         Event.Observed(8, Observation.Lost(FailureClass.Transient, 5.seconds, true, "lost")),
         2.minutes + 1.second
       )
-      .state
-    assert(statusOf(cold, 8).isInstanceOf[Status.Cold])
+    val cold = released.state
+    val Status.Cold(Some(retryAt)) = statusOf(cold, 8): @unchecked
     assertEquals(cold.peers(8).failCount, 1)
+    assertEquals(delays(released), List(Some(retryAt - (2.minutes + 1.second))))
   }
 
   // issue 564: a hot session lost to a failure of the node's own code, as `OutboundPeers.lost`

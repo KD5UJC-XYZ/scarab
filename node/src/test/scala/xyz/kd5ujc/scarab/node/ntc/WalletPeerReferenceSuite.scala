@@ -9,9 +9,16 @@ import java.security.MessageDigest
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.consensus.{BlockRef, ConsensusExtras}
-import xyz.kd5ujc.scarab.consensus.state.{MirrorProvenance, ProtocolState}
+import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorProvenance, ProtocolState}
 import xyz.kd5ujc.scarab.ledger.{PlutusStats, PoolRelayError, Utxo}
-import xyz.kd5ujc.scarab.ledger.state.{Conway, ConwayLedgerState, NewEpochState, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Conway,
+  ConwayLedgerState,
+  NewEpochState,
+  ShelleyBasedEra,
+  SlotNo,
+  WithOrigin
+}
 import xyz.kd5ujc.scarab.node.{NodeSetup, SkippedPool}
 import xyz.kd5ujc.scarab.node.read.{ChainRead, InEra, MirrorEraRead, Read}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
@@ -33,6 +40,7 @@ class WalletPeerReferenceSuite extends FunSuite:
       def provenance: MirrorProvenance = MirrorProvenance.complete
       def era: Era = Era.Conway
       def ledgerEpoch: BigInt = native.nes.epoch.toBigInt
+      def tipSlot: WithOrigin[SlotNo] = WithOrigin.Origin
       def protocol: ProtocolState = native.setup.mirrorStart.protocol
       def consensus: ConsensusExtras = native.setup.mirrorStart.consensus
       def plutus: PlutusStats = PlutusStats.zero
@@ -174,6 +182,25 @@ class WalletPeerReferenceSuite extends FunSuite:
           case other => fail(s"expected successful HFC result, got $other")
       case other => fail(s"expected MsgResult, got $other")
     assert(amounts.exists(_ > 0), "fixture must exercise the nonzero member reward formula")
+  }
+
+  test("genesis bootstrap keeps the injected pool relays and metadata the native node registered") {
+    val fixture = fixtures.find(_.name == "peer-relays").getOrElse(fail("missing peer fixture"))
+    val genesis = fixture.state.setup.mirrorStart.ext.ledgerState.state match
+      case EraLedgerState.InShelleyEra(ShelleyBasedEra.SConway, state) =>
+        state.nes.es.ls.cert.pState.stakePools
+      case other => fail(s"expected a Conway genesis start, got ${other.era}")
+    val native = fixture.state.nes.es.ls.cert.pState.stakePools
+    assertEquals(genesis.keySet, native.keySet)
+    native.foreach { (id, pool) =>
+      val started = genesis.getOrElse(id, fail(s"missing genesis pool ${id.bytes.hex}"))
+      assert(
+        xyz.kd5ujc.scarab.ledger.PoolRelays.decode(pool.relays).exists(_.nonEmpty),
+        s"native pool ${id.bytes.hex} registers relays"
+      )
+      assertEquals(started.relays, pool.relays, s"relays of ${id.bytes.hex}")
+      assertEquals(started.metadata, pool.metadata, s"metadata of ${id.bytes.hex}")
+    }
   }
 
   test("malformed stored relay bytes refuse the complete snapshot rather than omitting a pool") {
