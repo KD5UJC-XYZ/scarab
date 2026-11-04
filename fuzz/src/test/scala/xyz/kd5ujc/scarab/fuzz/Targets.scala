@@ -897,8 +897,9 @@ object Targets:
         "leios-block",
         () => Corpus.leiosBlocks ++ Corpus.tricky,
         probe("leios-block") { b =>
-          seen("leios-block", LeiosBlock.decode(b).isRight)
-          LeiosBlock.decode(b).foreach(_.faults)
+          val decoded = LeiosBlock.decode(b)
+          seen("leios-block", decoded.isRight)
+          decoded.foreach(_.faults)
         }
       ),
       Target(

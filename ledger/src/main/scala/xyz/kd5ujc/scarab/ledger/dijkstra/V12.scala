@@ -32,9 +32,15 @@ private[ledger] object V12:
   val Int64Max: BigInt = BigInt(Long.MaxValue)
   val Int64Min: BigInt = BigInt(Long.MinValue)
 
-  /** The original bytes of an item of the block, as limits for decoding an item nested in it. */
+  /** Embedded CBOR has no additional decoder budget in the reference. Its enclosing input already
+    * bounds its bytes, items and nesting; ledger size rules apply after decoding.
+    */
   val nestedLimits: Cbor.Limits =
-    Cbor.Limits(maxInputBytes = 2500000, maxItems = 1000000, maxStringBytes = 2500000)
+    Cbor.Limits(
+      maxInputBytes = Int.MaxValue,
+      maxItems = Int.MaxValue,
+      maxStringBytes = Int.MaxValue
+    )
 
   /** cborg's `decodeWord8`, `decodeWord16`, `decodeWord32`, `decodeWord64` (and `decodeWord`, 64
     * bits wide): an unsigned integer of any head width no larger than `max`.

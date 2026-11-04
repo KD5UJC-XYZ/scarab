@@ -11,3 +11,5 @@
   body's bytes, and a script's and datum's hash is over its own. No Dijkstra ledger rule is applied.
 - The Leios testnet oracle reads a transaction alone, and its corpus holds the testnet's
   transactions and synthetic ones at each decoder's boundary, compared case by case.
+- Embedded CBOR in a reference script or inline datum has no additional byte or item budget;
+  its enclosing input bounds the decoder and the ledger applies its size rules afterwards.

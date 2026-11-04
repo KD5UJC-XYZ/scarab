@@ -105,3 +105,15 @@ python3 scripts/oracle/leios-testnet/leios_cases.py --inputs /tmp/leios-inputs.j
   signatures are filler bytes.
 - The standalone transaction cases include block 64,853 of the restarted network. Full block
   coverage in this corpus still uses the earlier capture; #743 supplies the later block fixtures.
+
+## Additional decoder-bound check (2026-11-03, #750)
+
+`DijkstraTxDepthSuite` constructs a transaction with a reference script containing 2,500,001
+zero bytes (language tag 1), wrapped in tag 24. The transaction is 2,500,098 bytes; its SHA-256 is
+`bf8465b9f67b969961a0a0ddcabc5ed303d51af44e9210eaac6b65b4d119a83d`. Run the
+transaction's hex through this harness as a single input with `kind: "tx"`; the pinned reference
+accepts it, with transaction id
+`5509833325c071edf4f2c5968671cb3f9654c158330121acc1e6efd6c3af6692`. Scarab's suite
+requires the same decode acceptance. This checks that embedded CBOR adds no byte budget; it does
+not establish ledger acceptance or block-size validity. This generated case is outside the retained
+corpus above, and its raw generated input is not published.

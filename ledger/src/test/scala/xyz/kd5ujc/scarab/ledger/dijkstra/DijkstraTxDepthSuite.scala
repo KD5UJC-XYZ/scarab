@@ -46,3 +46,10 @@ class DijkstraTxDepthSuite extends FunSuite:
     val decoded = decodes(tx("80", "a0", s"a101${nested("01", "81", "")}"))
     assert(decoded)
   }
+
+  test("an embedded reference script has no additional byte budget") {
+    val script = "82015a002625a1" + "00" * 2500001
+    val wrapped = s"d8185a${f"${script.length / 2}%08x"}$script"
+    val decoded = decodes(tx(s"81a300581d61${"22" * 28}010503$wrapped", "a0", "f6"))
+    assert(decoded)
+  }
