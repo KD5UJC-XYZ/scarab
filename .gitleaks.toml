@@ -33,6 +33,7 @@ paths = [
   # Fixtures are public chain data (fixtures/*/README.md and NOTICE record provenance). One entry per file that
   # the full-history scan reports for generic-api-key; a new fixture with a flagged value needs its own entry.
   '''^fixtures/devnet/lsq/genesis/shelley-genesis\.json$''',
+  '''^fixtures/dijkstra-devnet/genesis/shelley-genesis\.json$''',
   '''^fixtures/leios/testnet/config/shelley-genesis\.json$''',
   '''^fixtures/mainnet/byron-genesis-trimmed\.json$''',
   '''^fixtures/mainnet/genesis/byron-genesis\.json$''',
