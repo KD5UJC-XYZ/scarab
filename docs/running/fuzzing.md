@@ -10,7 +10,7 @@ data from a peer, a client or a block: raw CBOR, the node-to-node and node-to-cl
 frame, stream), ChainSync, BlockFetch, TxSubmission2, KeepAlive, LocalStateQuery, LocalTxSubmission and
 LocalTxMonitor in every state and for both roles, headers and blocks (Byron and each later era), transaction bodies,
 witness sets and whole submitted transactions per era, addresses and outputs, scripts, Plutus data, node-to-client
-queries and protocol-parameter updates. `Targets.all` is the maintained target registry.
+queries and protocol-parameter updates, the node's own volatile log, and the operator's `config.json` and `topology.json`. `Targets.all` is the maintained target registry.
 
 Inputs (`Mutate.scala`, `Corpus.scala`): ScalaCheck generators that take a seed item and apply one to four
 mutations (bit flips, truncation, extension, a head rewritten to declare 2^60 elements, a fresh head with a huge
@@ -23,7 +23,7 @@ exercise nonempty input/output decoding without asserting ledger admission. Whol
 three fields before Alonzo and four from Alonzo; the harness preserves that era boundary.
 
 Properties (`Harness.scala`, `Targets.scala`): the decoder never throws (a result or a typed error), finishes within
-2 s (a decode stuck for 30 s kills the fork after printing the input), allocates at most 24 MB plus 400 bytes per
+2 s (a decode stuck for 30 s kills the fork after printing the input), allocates at most 24 MB plus 1000 bytes per
 input byte (so a declared length cannot buy memory), and what decodes re-encodes and decodes to the same message
 (mini-protocols: also the consumed prefix decodes alone and a shorter prefix does not). `GuardSuite` adds the fixed
 cases: every registered target accepts at least one seed in that run, without exemptions, and a short input that declares 2^60 or 2^32 elements or bytes
@@ -83,8 +83,51 @@ the hex into a regression test next to the decoder (see `DecoderRobustnessSuite`
 shrunk input is still large, and record the finding in [findings.md](../findings.md). The nightly workflow
 `.github/workflows/fuzz.yml` runs `fuzz 60000 <date-based seed> 8` and keeps the log of a failing run for 30 days;
 start it by hand with other values from the Actions tab (`cases`, `first-seed`, `seeds`). The nightly keeps its
-rotating seeds. A pull request that changes a decoder or a fuzz input also runs the fixed-seed gate
-`fuzz 100000 1 4` in `.github/workflows/fuzz-gate.yml` (changed paths under `fuzz`, `codec`, `crypto`, `protocol`,
-`ledger`, `plutus`, `models`, `models-gen`, `fixtures`, the node-to-client and mempool packages of `node`, `build.sbt`,
-`project`, `scripts/sbtw` and the workflow itself). The job always reports; when none of those paths changed it
-skips the fuzz steps and passes. It can be started by hand from the Actions tab, where it always fuzzes.
+rotating seeds. The pull-request workflow [fuzz-gate.yml](../../.github/workflows/fuzz-gate.yml)
+runs the fixed-seed command `fuzz 100000 1 4` when its detection step's path list matches the change.
+The workflow maintains that list, including storage and node readers, fuzz inputs and build tooling.
+The job always reports; when no selected path changes, it skips the fuzz steps and passes. Manual
+dispatch from the Actions tab always runs the gate.
+
+### Persisted formats and operator JSON (#200)
+
+The file and operator-JSON readers are registered like the wire ones, so the default suite, the
+nightly campaign and the fixed-seed gate all run them:
+
+- `volatile-store-log` reads `VolatileStore.decodeAll`, the record decoder that the restart file
+  reader applies to each record. The seeds are what the writer produces for each record shape:
+  a block, a boundary block, a rollback to origin and a rollback to a point, plus the same log
+  truncated, missing its first header, and doubled. Properties: no exception; decoding the seed
+  and encoding what came back reproduces the seed byte for byte, so a field the reader drops
+  or transposes changes the bytes it writes back; and a bit changed in the last header byte of every
+  accepted record, and in the first payload byte of each record that has one, drops that record and
+  preserves exactly the preceding records and their end offsets, which is what its CRC-32 is for.
+- `node-config-strict` reads `NodeConfig.parse` both ways: strictly, as `cardano-node run` reads the
+  configuration, and leniently. The seeds are the committed configurations of the three public
+  networks and of the Leios testnet, plus degenerate documents. Properties: no exception; a
+  configuration accepted strictly is accepted leniently with the same value, because the two differ
+  only in the fields strict requires; and a document that names none of those fields is refused
+  strictly and accepted without the checks, so the split is asserted on both sides, not one.
+- `node-topology` reads `Topology.parse`. The seeds are the committed topologies of the same
+  networks. Properties: no exception; the number of fixed access points it keeps matches the number the
+  document declares, counted group by group from the document's JSON tree rather than from the parse
+  under test, so a reader that drops, invents or duplicates one fails here; and a document that
+  declares local roots or bootstrap peers yields peers to follow.
+
+Included in that inventory: snapshot metadata and tables, SCLS framing and values, native V8
+snapshots and their sidecars, ancillary manifests and keys, Mithril receipts, the network identity
+file, the peer snapshot, MemPack outputs, the volatile log, and the configuration and topology JSON.
+Known uncovered paths tracked by [#200](https://github.com/KD5UJC-XYZ/scarab/issues/200) include:
+
+- The native snapshot migration readers (`SnapshotV7.fromV5`, `SnapshotV8.fromV7` and the V7
+  sidecar schema). The native V8 target mutates current-format bytes; its additional historical
+  seed is converted from V5 through V7 before mutation, so it does not fuzz migration-on-open.
+- The immutable store's segment, format and index file readers, and the volatile store's
+  channel framing around the record codec.
+- The RocksDB-backed UTxO store and `MemoryUtxoStore.restore`, which reads `utxo.bin`.
+- The checkpoints file the run path reads (`CheckpointsFile.parse`), whose bytes are unpinned
+  when no hash is configured.
+- The cardano-cli key-file envelope, whose `type` and `cborHex` fields the forge reads.
+
+The malformed-file restart/import demonstration that checks preservation of an existing database
+also remains under #200.

@@ -9,8 +9,8 @@ implemented: every decoder returns a value or a typed error, in bounded time and
 
 ## Evidence
 
-structured fuzzing (K3): `fuzz` project, ScalaCheck generators with byte, length-field, nesting, indefinite-length and tag mutations of the committed fixtures and of valid items sampled from the pinned CDDL, deterministic seeds, properties never-throws, time and allocation bounds (a 10-byte input declaring 2^60 elements), decode-encode round trips; 400,000 cases per target in the longest run so far (4 seeds of 100,000), bugs found in [findings.md](../findings.md); `check` runs a one-minute budget, the nightly workflow `fuzz.yml` many seeds
+structured fuzzing (K3): `fuzz` project, ScalaCheck generators with byte, length-field, nesting, indefinite-length and tag mutations of the committed fixtures and of valid items sampled from the pinned CDDL, deterministic seeds, properties never-throws, time and allocation bounds (a 10-byte input declaring 2^60 elements), decode-encode round trips, including the node's volatile log and the configuration and topology JSON ([fuzzing](../running/fuzzing.md)); 400,000 cases per target in the longest run so far (4 seeds of 100,000), bugs found in [findings.md](../findings.md); `check` runs a one-minute budget, the nightly workflow `fuzz.yml` many seeds
 
 ## Explicitly unchecked or unconfirmed
 
-fuzzing finds crashes, not wrong verdicts (that is the oracle's job); the generators reach 1 to 25 percent valid items per target, so deep ledger rules behind a valid transaction are exercised by the ledger suites, not by the fuzzer; storage files (snapshots, stores) and the JSON configuration are not fuzzed
+fuzzing finds crashes, not wrong verdicts (that is the oracle's job); the generators reach 1 to 25 percent valid items per target, so deep ledger rules behind a valid transaction are exercised by the ledger suites, not by the fuzzer; registered file and operator-JSON targets and known uncovered paths are inventoried in [fuzzing](../running/fuzzing.md#persisted-formats-and-operator-json-200), with gaps tracked under [#200](https://github.com/KD5UJC-XYZ/scarab/issues/200)

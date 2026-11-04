@@ -37,7 +37,8 @@ jobs:
           persist-credentials: false
       # Everything the fuzz project reads or runs: its own sources; the decoders it calls (codec, protocol with the
       # mini-protocol and mux codecs, ledger with the block, header, transaction, witness and script decoders, plutus
-      # for Plutus data, crypto for hashing, node-to-client queries and the mempool messages in node); the CDDL
+      # for Plutus data, crypto for hashing, storage for persisted formats, and node for configuration, topology,
+      # node-to-client queries and mempool messages); the CDDL
       # schemas and overrides it samples (models, models-gen); every committed fixture and fuzz seed (fixtures); and
       # the build, the launcher and this workflow. Deliberately broad: a decoder missed here escapes the gate.
       - name: Decide whether decoders or fuzz inputs changed
@@ -46,9 +47,7 @@ jobs:
           EVENT: ${{ github.event_name }}
         run: |
           paths=(
-            fuzz codec crypto protocol ledger plutus models models-gen fixtures
-            node/src/main/scala/xyz/kd5ujc/scarab/node/ntc
-            node/src/main/scala/xyz/kd5ujc/scarab/node/mempool
+            fuzz codec crypto protocol ledger plutus storage node models models-gen fixtures
             build.sbt project scripts/sbtw scripts/prepare_scalus.py patches/scalus
             .github/workflows/fuzz-gate.yml
           )
