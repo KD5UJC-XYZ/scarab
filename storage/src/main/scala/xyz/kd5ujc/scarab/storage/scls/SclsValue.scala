@@ -79,6 +79,20 @@ object SclsValue:
     case PoolRelay(cause: PoolRelayError)
     case Ledger(cause: LedgerDecodeError)
 
+  /** Which DNS names a pool relay may hold when a value is read.
+    *
+    * `Imported` reads data from outside the node as the reference's import reads it: a relay is
+    * `LedgerCBOR` (`BasicTypes.hs:283-291`), decoded at Conway's lowest protocol version, 9
+    * (`fromEraCBOR`, cardano-ledger-core `Core/Era.hs:241-260`; `ProtVerLow ConwayEra`,
+    * `Internal/Definition/Era.hs:132`), which bounds a name at 128 bytes (`DecCBOR DnsName`,
+    * `BaseTypes.hs:691-697`), cardano-ledger f649f975. `Exported` is the export's check of the
+    * values it wrote from the state the node holds. The reference's export writes a relay with no
+    * bound (`EncCBOR DnsName` and `assumeCanonicalEncoding`, `BaseTypes.hs:687-689`,
+    * `LedgerCBOR.hs:84-85`) and reads nothing back, so a held name of any length passes.
+    */
+  enum Reading:
+    case Imported, Exported
+
   /** The three nullable fields of the canonical `CanonicalStakePool` namespace record. */
   final case class StakePoolValue(
       state: Option[S.StakePoolState],
@@ -270,13 +284,16 @@ object SclsValue:
   private def poolRelays(
       value: Node,
       namespace: Namespace,
-      limits: CborCodec.Limits
+      limits: CborCodec.Limits,
+      reading: Reading
   ): Either[Error, Bytes] =
     value.value match
       case V.Arr(items) =>
         val raw = if items.isEmpty then Bytes.empty else value.original
-        PoolRelays
-          .decodeWire(raw, limits)
+        (reading match
+          case Reading.Imported => PoolRelays.decodeWire(raw, limits)
+          case Reading.Exported => PoolRelays.decode(raw, limits)
+        )
           .leftMap(Error.PoolRelay(_))
           .flatMap(relays =>
             Either.cond(
@@ -327,7 +344,8 @@ object SclsValue:
   private def poolState(
       value: Node,
       namespace: Namespace,
-      limits: CborCodec.Limits
+      limits: CborCodec.Limits,
+      reading: Reading
   ): Either[Error, S.StakePoolState] =
     val names = Vector(
       "vrf",
@@ -351,7 +369,7 @@ object SclsValue:
         pledge = S.Coin(pledgeValue)
         margin <- ratio(fields("margin"), namespace)
         owners <- keyHashSet[S.Staking](fields("owners"), namespace)
-        relays <- poolRelays(fields("relays"), namespace, limits)
+        relays <- poolRelays(fields("relays"), namespace, limits, reading)
         deposit <- compactCoin(fields("deposit"), namespace)
         metadata <- optional(fields("metadata"), poolMetadata(_, namespace))
         account <- ledgerCredential[S.Staking](fields("account_id"), namespace)
@@ -380,7 +398,8 @@ object SclsValue:
   private def futurePool(
       value: Node,
       namespace: Namespace,
-      limits: CborCodec.Limits
+      limits: CborCodec.Limits,
+      reading: Reading
   ): Either[Error, PoolParams] =
     val names = Vector(
       "id",
@@ -403,7 +422,7 @@ object SclsValue:
         margin <- ratio(fields("margin"), namespace)
         owners <- keyHashSet[S.Staking](fields("owners"), namespace)
         pledge <- canonicalCoin(fields("pledge"), namespace)
-        relays <- poolRelays(fields("relays"), namespace, limits)
+        relays <- poolRelays(fields("relays"), namespace, limits, reading)
         metadata <- optional(fields("metadata"), poolMetadata(_, namespace))
         address <- accountAddress(fields("account_address"), namespace)
       yield PoolParams(
@@ -422,7 +441,8 @@ object SclsValue:
   private def stakePool(
       value: Node,
       namespace: Namespace,
-      limits: CborCodec.Limits
+      limits: CborCodec.Limits,
+      reading: Reading
   ): Either[Error, StakePoolValue] =
     fieldMap(
       value,
@@ -431,7 +451,7 @@ object SclsValue:
     )
       .flatMap { fields =>
         for
-          state <- optional(fields("stake_pool_state"), poolState(_, namespace, limits))
+          state <- optional(fields("stake_pool_state"), poolState(_, namespace, limits, reading))
           retiring <- optional(
             fields("retiring_epoch_no"),
             n =>
@@ -439,7 +459,10 @@ object SclsValue:
                 S.EpochNo.fromBigInt(v).leftMap(Error.Vocabulary(_))
               )
           )
-          future <- optional(fields("future_stake_pool_params"), futurePool(_, namespace, limits))
+          future <- optional(
+            fields("future_stake_pool_params"),
+            futurePool(_, namespace, limits, reading)
+          )
         yield StakePoolValue(state, retiring, future)
       }
 
@@ -740,7 +763,8 @@ object SclsValue:
   private def decodeEntry(
       namespace: Namespace,
       value: Node,
-      limits: CborCodec.Limits
+      limits: CborCodec.Limits,
+      reading: Reading
   ): Either[Error, Entry] = namespace match
     case Namespace.Blocks =>
       natural(value, namespace).map(Entry.Blocks(_))
@@ -812,7 +836,7 @@ object SclsValue:
     case Namespace.Proposals =>
       proposalValue(value, namespace, limits).map(Entry.Proposal(_))
     case Namespace.StakePools =>
-      stakePool(value, namespace, limits).map(Entry.StakePool(_))
+      stakePool(value, namespace, limits, reading).map(Entry.StakePool(_))
     case Namespace.StakePoolVrfHashes =>
       asUInt(value, namespace).flatMap { n =>
         S.Word64
@@ -839,13 +863,16 @@ object SclsValue:
         }
       }
 
-  /** Decode and verify original-byte canonicality using one consistent caller resource profile. */
+  /** Decode and verify original-byte canonicality using one consistent caller resource profile.
+    * `reading` is [[Reading.Imported]] unless the bytes are the export's own.
+    */
   def decode(
       namespace: Namespace,
       raw: Bytes,
-      limits: CborCodec.Limits = CborCodec.Limits()
+      limits: CborCodec.Limits = CborCodec.Limits(),
+      reading: Reading = Reading.Imported
   ): Either[Error, Entry] =
-    decodeNode(namespace, raw, limits).flatMap { entry =>
+    decodeNode(namespace, raw, limits, reading).flatMap { entry =>
       encode(entry, limits).flatMap(bytes =>
         Either.cond(bytes == raw, entry, Error.NonCanonical(namespace))
       )
@@ -854,9 +881,13 @@ object SclsValue:
   private def decodeNode(
       namespace: Namespace,
       raw: Bytes,
-      limits: CborCodec.Limits
+      limits: CborCodec.Limits,
+      reading: Reading
   ): Either[Error, Entry] =
-    CborCodec.decode(raw, limits).leftMap(Error.Cbor(_)).flatMap(decodeEntry(namespace, _, limits))
+    CborCodec
+      .decode(raw, limits)
+      .leftMap(Error.Cbor(_))
+      .flatMap(decodeEntry(namespace, _, limits, reading))
 
   /** Encode using the caller's output and nested original-byte validation limits. */
   def encode(entry: Entry, limits: CborCodec.Limits = CborCodec.Limits()): Either[Error, Bytes] =
