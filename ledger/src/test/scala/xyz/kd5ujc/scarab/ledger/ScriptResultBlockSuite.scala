@@ -77,7 +77,7 @@ class ScriptResultBlockSuite extends FunSuite:
     EraBlock.program(
       EraBlock.Context(
         TestLedger.globals,
-        _ => None,
+        _ => xyz.kd5ujc.scarab.ledger.rules.Hfc.Decision.Stays,
         0L,
         evaluator = evaluator,
         observer = Some(seen)

@@ -5,6 +5,7 @@ import cats.{Eq, Show}
 import cats.derived.*
 import xyz.kd5ujc.scarab.ledger.TxIn
 import xyz.kd5ujc.scarab.ledger.state.VocabError
+import xyz.kd5ujc.scarab.protocol.Era
 
 /** Why a tick can fail. Haskell's TICK, NEWEPOCH, EPOCH, SNAP, POOLREAP, MIR, RUPD and UPEC have no
   * predicate failures (`type PredicateFailure (TICK era) = Void`, `Tick.hs:112`; the same line in
@@ -36,8 +37,18 @@ enum TickFailure derives Eq, Show:
     */
   case UndecodableAddress(in: TxIn)
 
+  /** The tick would leave `era` at `epoch` if the blocks after the voting deadline reached `k`, and
+    * the state does not know its counter ([[Hfc.Decision.Undecided]]). Not a verdict on the block
+    * and no peer's fault: the node stops ([[xyz.kd5ujc.scarab.ledger.ChainError]]
+    * `TransitionUndecided`) rather than cross, or not cross, on a guess (owner-approved 2026-11-04,
+    * PR #772).
+    */
+  case TransitionUndecided(era: Era, epoch: BigInt)
+
 object TickFailure:
   private given Eq[VocabError] = Eq.fromUniversalEquals
   private given Show[VocabError] = Show.fromToString
   private given Eq[TxIn] = Eq.fromUniversalEquals
   private given Show[TxIn] = Show.fromToString
+  private given Eq[Era] = Eq.fromUniversalEquals
+  private given Show[Era] = Show.fromToString

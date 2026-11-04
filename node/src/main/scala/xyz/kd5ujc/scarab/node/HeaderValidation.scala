@@ -6,7 +6,7 @@ import xyz.kd5ujc.scarab.consensus.*
 import xyz.kd5ujc.scarab.consensus.state.ProtocolState
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Hfc}
-import xyz.kd5ujc.scarab.ledger.state.EraTag
+import xyz.kd5ujc.scarab.ledger.state.{EraTag, Gap}
 import xyz.kd5ujc.scarab.node.read.{ChainRead, EraRead}
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -65,65 +65,68 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
         if nextEpoch then ledger.paramsNextEpoch(glob)
         else ledgerParams
       val pools = ledger.leaderPools(nextEpoch = nextEpoch)
-      val expected = cfg.forks.eraOf(geometry.k)(
-        Hfc.Pending(
-          EraNes.eraOf(ledger.era),
-          ledgerEpoch,
-          ledger.definiteUpdateMajor,
-          afterVoting
-        ),
-        epoch
-      )
-      val envelope =
-        cfg.forks
-          .check(
-            h.era,
-            expected,
-            epoch,
-            h.protocolVersion._1,
-            params.protocolMajor,
-            h.raw.size,
-            params.maxBlockHeaderSize,
-            h.bodySize,
-            params.maxBlockBodySize,
-            mainnet = glob.network == 1
+      val counterKnown = !anchor.provenance.gaps.contains(Gap.ShelleyTransition)
+      val pending =
+        Hfc.Pending(EraNes.eraOf(ledger.era), ledgerEpoch, ledger.definiteUpdateMajor, afterVoting)
+      cfg.forks.eraOf(geometry.k, counterKnown)(pending, epoch) match
+        // a transition that the unknown counter leaves undecided is no verdict on the header; the
+        // block that would cross it stops the node (owner-approved 2026-11-04, PR #772)
+        case Left(undecided) =>
+          HeaderRules.Prepared.Unknown(
+            HeaderRules.ForecastReason.TransitionUndecided(undecided.era, undecided.epoch)
           )
-          .leftMap(HeaderError.Envelope(_))
-      val nonceWindow =
-        if h.era.ordinal >= Era.Conway.ordinal then geometry.randomnessStabilisationWindow.toBigInt
-        else geometry.stabilityWindow.toBigInt
-      val delegations = ledger.genDelegsAt(h.slot)
-      HeaderRules.Prepared.Check(() =>
-        val checked: Either[HeaderError | ProviderDefect, ProtocolState] =
-          genericEnvelope.flatMap(_ => envelope).flatMap { _ =>
-            if h.era.usesTPraos then
-              val view = LedgerView(
-                params.effectiveD,
-                params.extraEntropy,
-                delegations,
-                StakeView.Known(pools)
+        case Right(expected) =>
+          val envelope =
+            cfg.forks
+              .check(
+                h.era,
+                expected,
+                epoch,
+                h.protocolVersion._1,
+                params.protocolMajor,
+                h.raw.size,
+                params.maxBlockHeaderSize,
+                h.bodySize,
+                params.maxBlockBodySize,
+                mainnet = glob.network == 1
               )
-              TPraos
-                .update(Praos.tick(prev, h.era, epoch, params.extraEntropy), h, view, cfg)
-                .map(_.state)
-                .leftMap {
-                  case defect: ProviderDefect => defect
-                  case error: TPraosError     => HeaderError.TPraos(error)
-                }
-            else
-              Praos
-                .validate(
-                  Praos.tick(prev, h.era, epoch),
-                  h,
-                  StakeView.Known(pools),
-                  cfg,
-                  nonceWindow
-                )
-                .map(_._1)
-                .leftMap {
-                  case defect: ProviderDefect => defect
-                  case error: PraosError      => HeaderError.Praos(error)
-                }
-          }
-        HeaderRules.outcome(checked)
-      )
+              .leftMap(HeaderError.Envelope(_))
+          val nonceWindow =
+            if h.era.ordinal >= Era.Conway.ordinal then
+              geometry.randomnessStabilisationWindow.toBigInt
+            else geometry.stabilityWindow.toBigInt
+          val delegations = ledger.genDelegsAt(h.slot)
+          HeaderRules.Prepared.Check(() =>
+            val checked: Either[HeaderError | ProviderDefect, ProtocolState] =
+              genericEnvelope.flatMap(_ => envelope).flatMap { _ =>
+                if h.era.usesTPraos then
+                  val view = LedgerView(
+                    params.effectiveD,
+                    params.extraEntropy,
+                    delegations,
+                    StakeView.Known(pools)
+                  )
+                  TPraos
+                    .update(Praos.tick(prev, h.era, epoch, params.extraEntropy), h, view, cfg)
+                    .map(_.state)
+                    .leftMap {
+                      case defect: ProviderDefect => defect
+                      case error: TPraosError     => HeaderError.TPraos(error)
+                    }
+                else
+                  Praos
+                    .validate(
+                      Praos.tick(prev, h.era, epoch),
+                      h,
+                      StakeView.Known(pools),
+                      cfg,
+                      nonceWindow
+                    )
+                    .map(_._1)
+                    .leftMap {
+                      case defect: ProviderDefect => defect
+                      case error: PraosError      => HeaderError.Praos(error)
+                    }
+              }
+            HeaderRules.outcome(checked)
+          )

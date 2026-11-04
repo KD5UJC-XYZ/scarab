@@ -165,7 +165,7 @@ class AuxiliaryScriptsSuite extends FunSuite:
     EraBlock.program(
       EraBlock.Context(
         TestLedger.globals,
-        _ => None,
+        _ => xyz.kd5ujc.scarab.ledger.rules.Hfc.Decision.Stays,
         0L,
         evaluator = TestLedger.scripted(valid),
         decoder = decoder

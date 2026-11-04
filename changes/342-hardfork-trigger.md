@@ -12,3 +12,8 @@
 - **A restored snapshot that did not know its after-voting counter has it recounted** (#771): a state carrying
   `Gap.ShelleyTransition` gets the exact count of its epoch's blocks from the voting deadline to the anchor from the
   immutable store before replay, and the gap is closed; a store with no block before the deadline leaves it open.
+- **A version-triggered boundary is not crossed on a guess** (#771): when the counter cannot be recounted (the store
+  holds no block before the deadline) and is below `k`, a version-triggered transition is undecided: the tick refuses
+  and the node stops with `ChainError.TransitionUndecided` instead of crossing or staying; epoch-configured transitions
+  are unaffected. This is the owner's decision (2026-11-04, PR #772); the reference serialises the counter and never
+  meets the case.

@@ -26,7 +26,7 @@ class TickRulesSuite extends FunSuite:
   private def first(epoch: Int): Long = epoch.toLong * 10000
   private def late(epoch: Int): Long = first(epoch) + 5000
 
-  private val noEra: Hfc.Transition = _ => None
+  private val noEra: Hfc.Transition = _ => Hfc.Decision.Stays
 
   private def tick(nes: NewEpochState[Conway], slot: Long): NewEpochState[Conway] =
     Hfc
@@ -208,7 +208,7 @@ class TickRulesSuite extends FunSuite:
 
   /** Babbage is left at the next epoch once the definite update is to major version 9. */
   private val schedule: Hfc.Transition = p =>
-    Option.when(p.era == Era.Babbage && p.update.contains(BigInt(9)))(p.epoch + 1)
+    Hfc.Decision.of(Option.when(p.era == Era.Babbage && p.update.contains(BigInt(9)))(p.epoch + 1))
 
   private def enterConway(from: NewEpochState[Babbage]): NewEpochState[Conway] =
     Hfc
@@ -240,7 +240,10 @@ class TickRulesSuite extends FunSuite:
   // the slot is at or past the end of the state's era, whatever the state's own epoch
   test("a tick across an epoch with no block still translates into an era that began in it") {
     val laterConway: Hfc.Transition =
-      p => Option.when(p.era == Era.Babbage && p.update.contains(BigInt(9)))(BigInt(7))
+      p =>
+        Hfc.Decision.of(
+          Option.when(p.era == Era.Babbage && p.update.contains(BigInt(9)))(BigInt(7))
+        )
     val from = EraNes.InEra(ShelleyBasedEra.SBabbage, babbage(conway(5, 10, 2)))
     val after = Hfc
       .tick(globals, laterConway)(from, 0L, ok(SlotNo.fromBigInt(first(8) + 10)))
@@ -249,9 +252,27 @@ class TickRulesSuite extends FunSuite:
     assertEquals(after.epoch, ok(EpochNo.fromBigInt(5)))
   }
 
+  test("a transition the state cannot decide is refused by the tick, not guessed") {
+    val from = EraNes.InEra(ShelleyBasedEra.SBabbage, babbage(conway(5, 10, 2)))
+    val undecided: Hfc.Transition = _ => Hfc.Decision.Undecided(6)
+    val slot = ok(SlotNo.fromBigInt(first(6) + 10))
+    assertEquals(
+      Hfc.tick(globals, undecided)(from, 2L, slot).map(_.toEra),
+      Left(TickFailure.TransitionUndecided(Era.Babbage, 6))
+    )
+    // within the epoch the transition is not reached, so it does not need deciding
+    val within = Hfc
+      .tick(globals, undecided)(from, 2L, ok(SlotNo.fromBigInt(late(5))))
+      .fold(e => fail(s"refused: $e"), identity)
+    assertEquals(within.toEra, Era.Babbage)
+  }
+
   test("the tick asks the transition of the state before it, with the counter it is given") {
     val enough: Hfc.Transition =
-      p => Option.when(p.update.contains(BigInt(9)) && p.afterVoting >= 3)(p.epoch + 1)
+      p =>
+        Hfc.Decision.of(
+          Option.when(p.update.contains(BigInt(9)) && p.afterVoting >= 3)(p.epoch + 1)
+        )
     val from = EraNes.InEra(ShelleyBasedEra.SBabbage, babbage(conway(5, 10, 2)))
     // the definite update only, of the state before the tick
     assertEquals(Hfc.pending(from, 2L), Hfc.Pending(Era.Babbage, 5, Some(9), 2L))

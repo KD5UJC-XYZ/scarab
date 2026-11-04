@@ -326,6 +326,49 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     assert(refused.left.exists(_.reason.contains("the chain is in Shelley")))
   }
 
+  test("a version-triggered boundary is refused while the counter is unknown, crossed once known") {
+    import xyz.kd5ujc.scarab.consensus.state.MirrorProvenance
+    import xyz.kd5ujc.scarab.ledger.state.Gap
+    import xyz.kd5ujc.scarab.ledger.rules.TickFailure
+    // owner-approved 2026-11-04, PR #772: a state carrying Gap.ShelleyTransition whose counter
+    // (a lower bound) is below k does not cross a version-triggered boundary on a guess
+    val byVersion = setup.praos.copy(forks =
+      consensus.HardForkConfig.fromEpochs(Map.empty, setup.praos.forks.maxMajorProtVer)
+    )
+    val allegra = boundaries(1)
+    val before = states(allegra)
+    val unknown = MirrorStep
+      .recounted(before, 0L)
+      .fold(e => fail(e.toString), identity)
+      .copy(provenance = MirrorProvenance.recorded(Set(Gap.ShelleyTransition), Map.empty))
+    val refused = applyBlock(unknown, headers(allegra), raws(allegra), byVersion)
+    assertEquals(
+      refused.left.toOption,
+      Some(ledger.BlockFailure.Tick(TickFailure.TransitionUndecided(Era.Shelley, 2)))
+    )
+    // the node's stop, not a verdict on the block
+    assertEquals(
+      refused.left.toOption.flatMap(MirrorRules.stateOutOfRange(headers(allegra), _)),
+      Some(ledger.ChainError.TransitionUndecided(headers(allegra).slot, Era.Shelley, 2))
+    )
+    // the gap closed (the counter recounted) or the counter at k already: the boundary is crossed
+    val known = applyBlock(before, headers(allegra), raws(allegra), byVersion)
+    assertEquals(known.map(_.era), Right(Era.Allegra))
+    val atK = MirrorStep
+      .recounted(before, geometry.k.toLong)
+      .fold(e => fail(e.toString), identity)
+      .copy(provenance = unknown.provenance)
+    assertEquals(
+      applyBlock(atK, headers(allegra), raws(allegra), byVersion).map(_.era),
+      Right(Era.Allegra)
+    )
+    // a configured epoch does not read the counter: the gap does not hold the boundary
+    assertEquals(
+      applyBlock(unknown, headers(allegra), raws(allegra)).map(_.era),
+      Right(Era.Allegra)
+    )
+  }
+
   test("a restored state without its after-voting counter recounts it from the immutable store") {
     import xyz.kd5ujc.scarab.consensus.state.MirrorProvenance
     import xyz.kd5ujc.scarab.ledger.state.Gap

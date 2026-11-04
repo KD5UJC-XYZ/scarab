@@ -37,8 +37,8 @@ class HardForkSuite extends ScalaCheckSuite:
     // the Shelley genesis's `protocolVersion` is in the parameters in force, not a definite update
     assertEquals(byVersion.initialEra(genesisK)(0), Era.Shelley)
     assertEquals(
-      byVersion.initialEra(genesisK)(0),
-      byVersion.eraOf(genesisK)(Hfc.Pending(Era.Shelley, 0, None, 0L), 0)
+      byVersion.eraOf(genesisK)(Hfc.Pending(Era.Shelley, 0, None, 0L), 0),
+      Right(byVersion.initialEra(genesisK)(0))
     )
   }
 
@@ -60,40 +60,90 @@ class HardForkSuite extends ScalaCheckSuite:
     Hfc.Pending(era, epoch, update.map(BigInt(_)), afterVoting)
 
   test("a definite update to exactly the next era's first version leaves the era next epoch") {
-    assertEquals(byVersion.transition(k)(pending(Era.Babbage, Some(9))), Some(BigInt(41)))
-    assertEquals(byVersion.transition(k)(pending(Era.Mary, Some(5))), Some(BigInt(41)))
+    assertEquals(byVersion.transition(k)(pending(Era.Babbage, Some(9))), Hfc.Decision.Leaves(41))
+    assertEquals(byVersion.transition(k)(pending(Era.Mary, Some(5))), Hfc.Decision.Leaves(41))
   }
 
   test("a version above the next era's first version is not a transition") {
     // `guard $ pvMajor protVer == transitionMajorVersion`: an equality, not a bound
-    assertEquals(byVersion.transition(k)(pending(Era.Babbage, Some(10))), None)
-    assertEquals(byVersion.transition(k)(pending(Era.Alonzo, Some(8))), None)
+    assertEquals(byVersion.transition(k)(pending(Era.Babbage, Some(10))), Hfc.Decision.Stays)
+    assertEquals(byVersion.transition(k)(pending(Era.Alonzo, Some(8))), Hfc.Decision.Stays)
   }
 
   test("a version that skips an era does not enter the era after it") {
     // Mary to version 7 (Babbage's): the next era is Alonzo, whose version is 5
-    assertEquals(byVersion.transition(k)(pending(Era.Mary, Some(7))), None)
-    assertEquals(byVersion.eraOf(k)(pending(Era.Mary, Some(7)), 41), Era.Mary)
+    assertEquals(byVersion.transition(k)(pending(Era.Mary, Some(7))), Hfc.Decision.Stays)
+    assertEquals(byVersion.eraOf(k)(pending(Era.Mary, Some(7)), 41), Right(Era.Mary))
   }
 
   test("fewer than k blocks after the voting deadline do not decide the transition") {
-    assertEquals(byVersion.transition(k)(pending(Era.Babbage, Some(9), k.toLong - 1)), None)
-    assertEquals(byVersion.transition(k)(pending(Era.Babbage, Some(9), k.toLong)), Some(BigInt(41)))
-    assertEquals(byVersion.eraOf(k)(pending(Era.Babbage, Some(9), k.toLong - 1), 41), Era.Babbage)
-    assertEquals(byVersion.eraOf(k)(pending(Era.Babbage, Some(9), k.toLong), 41), Era.Conway)
+    assertEquals(
+      byVersion.transition(k)(pending(Era.Babbage, Some(9), k.toLong - 1)),
+      Hfc.Decision.Stays
+    )
+    assertEquals(
+      byVersion.transition(k)(pending(Era.Babbage, Some(9), k.toLong)),
+      Hfc.Decision.Leaves(41)
+    )
+    assertEquals(
+      byVersion.eraOf(k)(pending(Era.Babbage, Some(9), k.toLong - 1), 41),
+      Right(Era.Babbage)
+    )
+    assertEquals(byVersion.eraOf(k)(pending(Era.Babbage, Some(9), k.toLong), 41), Right(Era.Conway))
   }
 
   test("no definite update is no transition, even when the parameters in force have the version") {
-    assertEquals(byVersion.transition(k)(pending(Era.Babbage, None)), None)
+    assertEquals(byVersion.transition(k)(pending(Era.Babbage, None)), Hfc.Decision.Stays)
+  }
+
+  // ---- an unknown counter (`Gap.ShelleyTransition` not recounted): refused, not guessed
+  // (owner-approved 2026-11-04, PR #772)
+
+  test("an unknown counter below k leaves a version transition undecided, never a guess") {
+    val short = pending(Era.Babbage, Some(9), k.toLong - 1)
+    assertEquals(byVersion.transition(k, counterKnown = false)(short), Hfc.Decision.Undecided(41))
+    assertEquals(
+      byVersion.eraOf(k, counterKnown = false)(short, 41),
+      Left(Hfc.UndecidedTransition(Era.Babbage, 41))
+    )
+    // the epoch before the transition does not depend on it
+    assertEquals(byVersion.eraOf(k, counterKnown = false)(short, 40), Right(Era.Babbage))
+  }
+
+  test("an unknown counter does not matter where the update or a configured epoch decides") {
+    // the counter is a lower bound: once it reaches k, the transition is certain
+    assertEquals(
+      byVersion.transition(k, counterKnown = false)(pending(Era.Babbage, Some(9), k.toLong)),
+      Hfc.Decision.Leaves(41)
+    )
+    // no update to the next era's version: nothing for the counter to decide
+    assertEquals(
+      byVersion.transition(k, counterKnown = false)(pending(Era.Babbage, Some(10), 0)),
+      Hfc.Decision.Stays
+    )
+    assertEquals(
+      byVersion.transition(k, counterKnown = false)(pending(Era.Babbage, None, 0)),
+      Hfc.Decision.Stays
+    )
+    // a configured epoch does not read the counter
+    val c = HardForkConfig.fromEpochs(Map(Era.Conway -> 41))
+    assertEquals(
+      c.transition(k, counterKnown = false)(pending(Era.Babbage, Some(9), 0)),
+      Hfc.Decision.Leaves(41)
+    )
+    assertEquals(
+      c.eraOf(k, counterKnown = false)(pending(Era.Babbage, Some(9), 0), 41),
+      Right(Era.Conway)
+    )
   }
 
   test("an epoch trigger is the configured epoch, whatever the state; Conway is never left") {
     val c = HardForkConfig.fromEpochs(Map(Era.Allegra -> 2, Era.Mary -> 2))
-    assertEquals(c.transition(k)(pending(Era.Shelley, None, 0, epoch = 0)), Some(BigInt(2)))
-    assertEquals(byVersion.transition(k)(pending(Era.Conway, Some(10))), None)
+    assertEquals(c.transition(k)(pending(Era.Shelley, None, 0, epoch = 0)), Hfc.Decision.Leaves(2))
+    assertEquals(byVersion.transition(k)(pending(Era.Conway, Some(10))), Hfc.Decision.Stays)
     // the combinator translates through every era whose transition the block's epoch has reached
-    assertEquals(c.eraOf(k)(pending(Era.Shelley, None, 0, epoch = 1), 1), Era.Shelley)
-    assertEquals(c.eraOf(k)(pending(Era.Shelley, None, 0, epoch = 1), 2), Era.Mary)
+    assertEquals(c.eraOf(k)(pending(Era.Shelley, None, 0, epoch = 1), 1), Right(Era.Shelley))
+    assertEquals(c.eraOf(k)(pending(Era.Shelley, None, 0, epoch = 1), 2), Right(Era.Mary))
   }
 
   // ---- envelope

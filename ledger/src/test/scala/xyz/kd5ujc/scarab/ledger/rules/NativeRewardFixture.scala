@@ -148,7 +148,7 @@ object NativeRewardFixture extends Assertions:
       era: ShelleyBasedEra[E]
   ): NewEpochState[E] =
     tickOk(
-      Hfc.tick(g, _ => None)(
+      Hfc.tick(g, _ => Hfc.Decision.Stays)(
         EraNes.InEra(era, nes),
         0L,
         ok(SlotNo.fromBigInt(slot))

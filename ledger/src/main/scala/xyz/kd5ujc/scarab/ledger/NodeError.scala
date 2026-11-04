@@ -304,6 +304,15 @@ enum ChainError extends NodeError:
     */
   case StateOutOfRange(slot: BigInt, cause: xyz.kd5ujc.scarab.ledger.state.VocabError)
 
+  /** The block at `slot` would take the chain out of `era` at `epoch` if the blocks after the
+    * voting deadline reached `k`, and the state does not know its counter (a snapshot of the
+    * retired flat formats carrying `Gap.ShelleyTransition` that the immutable store could not
+    * recount). The reference serialises the counter and never meets this; the node stops rather
+    * than cross, or not cross, on a guess, until the gap closes (owner-approved 2026-11-04, PR
+    * #772). Neither a verdict on the block nor a fault of the peer that sent it.
+    */
+  case TransitionUndecided(slot: BigInt, era: xyz.kd5ujc.scarab.protocol.Era, epoch: BigInt)
+
   /** An exception while the node committed a chain it selected (persisting it, publishing it,
     * telling the mempool). The reference commits in the ChainDB's background thread, which is
     * linked to the node (ouroboros-consensus 82ecba32 `Storage/ChainDB/Impl/Background.hs:107-108,
@@ -317,6 +326,10 @@ enum ChainError extends NodeError:
       s"the node's own code threw while committing a chain: ${NetworkError.describe(cause)}"
     case StateOutOfRange(slot, cause) =>
       s"the ledger state in the rules for slot $slot is out of range: ${cats.Show[xyz.kd5ujc.scarab.ledger.state.VocabError].show(cause)}"
+    case TransitionUndecided(slot, era, epoch) =>
+      s"the block at slot $slot may take the chain out of $era at epoch $epoch, and the state does " +
+        "not know its blocks after the voting deadline (a legacy snapshot whose counter the " +
+        "immutable store cannot recount): resynchronise from a complete snapshot"
     case StateAcquire(cause) => cause.message
     case Decode(w, r)        => s"decode ${w.show}: ${r.show}"
     case NotConnected(p, t)  => s"${Points.show(p)} does not extend tip ${Points.show(t)}"

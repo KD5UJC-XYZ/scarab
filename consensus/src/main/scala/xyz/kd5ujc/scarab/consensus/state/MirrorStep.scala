@@ -158,13 +158,13 @@ object MirrorStep:
           provenanceAfter(m, placement.geometry, era, header.slot, start.epoch)
         )
 
-  /** Consensus `Shelley/Ledger/Ledger.hs:568-575,713-741` (82ecba3): reset at a new epoch, then
-    * increment at/after the voting deadline `subSlots (2 * swindow) startOfNextEpoch`. `subSlots`
-    * is `assert (x >= n) $ SlotNo (x - n)` (`HardFork/History/Util.hs:25-26`); release builds
-    * compile the assertion out, so when `2 * swindow` exceeds the next epoch's first slot the
-    * `Word64` subtraction wraps, the deadline lies past every slot and the counter does not move.
-    * Native `succ` throws on Word32 overflow; this pure boundary reports a typed refusal instead of
-    * an uncaught exception. Across-Shelley translation preserves the counter
+  /** Consensus `Shelley/Ledger/Ledger.hs:569-575,711-717,740-741` (82ecba3): reset at a new epoch,
+    * then increment at/after the voting deadline `subSlots (2 * swindow) startOfNextEpoch`.
+    * `subSlots` is `assert (x >= n) $ SlotNo (x - n)` (`HardFork/History/Util.hs:25-26`); release
+    * builds compile the assertion out, so when `2 * swindow` exceeds the next epoch's first slot
+    * the `Word64` subtraction wraps, the deadline lies past every slot and the counter does not
+    * move. Native `succ` throws on Word32 overflow; this pure boundary reports a typed refusal
+    * instead of an uncaught exception. Across-Shelley translation preserves the counter
     * (`Cardano/CanHardFork.hs:704`); Byron enters with zero (:360).
     */
   private val Word64Modulus: BigInt = BigInt(2).pow(64)
@@ -181,9 +181,6 @@ object MirrorStep:
     if slot >= deadline && before == -1 then Left(StateMirrorError.TransitionCounterOverflow)
     else Right(Word32.fromUnsigned(if slot >= deadline then before + 1 else before))
 
-  /** The blocks of the tip's epoch at or after its voting deadline (`shelleyAfterVoting`), what the
-    * hard-fork combinator reads of the state before ticking it; none before Shelley.
-    */
   /** The first slot of `epoch` whose blocks count in `shelleyAfterVoting`: `2 * swindow` before the
     * next epoch, both `Word64` and the subtraction modulo 2^64 (`Ledger.hs:740-741`,
     * ouroboros-consensus 82ecba32).
@@ -218,6 +215,14 @@ object MirrorStep:
             )
           }
 
+  /** Whether the state knows its after-voting counter: not while it carries `Gap.ShelleyTransition`
+    * (a snapshot of the retired flat formats that was not recounted).
+    */
+  def counterKnown(m: MirrorState): Boolean = !m.provenance.gaps.contains(Gap.ShelleyTransition)
+
+  /** The blocks of the tip's epoch at or after its voting deadline (`shelleyAfterVoting`), what the
+    * hard-fork combinator reads of the state before ticking it; none before Shelley.
+    */
   def afterVotingOf(m: MirrorState): Long =
     m.ext.ledgerState.state match
       case EraLedgerState.ByronCurrent(_)    => 0L
