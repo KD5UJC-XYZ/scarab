@@ -5,6 +5,7 @@ import java.lang.management.ManagementFactory
 import munit.FunSuite
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Bytes
+
 import ChainSync.{DecodeResult, Role}
 import LocalTxSubmission.{Message, State}
 

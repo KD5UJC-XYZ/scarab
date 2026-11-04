@@ -6,6 +6,7 @@ import java.nio.ByteBuffer
 import java.nio.charset.{CodingErrorAction, StandardCharsets}
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Bytes
+
 import ChainSync.DecodeResult
 
 /** Resumable framing for a protocol message consisting of one ordinary CBOR item. This does not
