@@ -37,19 +37,37 @@ object NodeToClientServer:
       submit: Bytes => F[LocalTxSubmissionServer.Response],
       stateQuery: Option[LocalStateQueryServer.Source[F, E]],
       chainSync: Option[Resource[F, ChainSyncServer.Source[F, RawNtNBlock]]] = None,
-      txMonitor: Option[LocalTxMonitorServer.Source[F]] = None
+      txMonitor: Option[LocalTxMonitorServer.Source[F]] = None,
+      openMux: MuxFactory[F] = MuxFactory.nodeToClient[F]
   )(using Raise[F, NetworkError]): F[Either[E, LocalTxSubmissionServer.End]] =
-    Mux
-      .resource(
+    openMux
+      .open(
         bearer,
         protocols(
           stateQuery = stateQuery.isDefined,
           chainSync = chainSync.isDefined,
           txMonitor = txMonitor.isDefined
-        ),
-        Mux.Config.nodeToClient
+        )
       )
       .use(mux => acceptOn(mux, magic, submit, stateQuery, chainSync, txMonitor))
+
+  /** Opens a connection's multiplexer over its bearer. */
+  trait MuxFactory[F[_]]:
+    def open(bearer: Bearer[F], protocols: Set[Int])(using
+        Async[F],
+        Raise[F, NetworkError]
+    ): Resource[F, Mux[F]]
+
+  object MuxFactory:
+    /** The node's own: [[Mux.Config.nodeToClient]] over the mini-protocols [[protocols]] returns,
+      * and the default of [[acceptBackend]]'s `openMux`. A caller that wraps this one serves the
+      * production set and config, and differs from the node only in the decoder it injects.
+      */
+    def nodeToClient[F[_]]: MuxFactory[F] = new MuxFactory[F]:
+      def open(bearer: Bearer[F], protocols: Set[Int])(using
+          Async[F],
+          Raise[F, NetworkError]
+      ): Resource[F, Mux[F]] = Mux.resource(bearer, protocols, Mux.Config.nodeToClient)
 
   /** The mini-protocols a connection serves: the handshake and submission always, the others when
     * their source is given. A multiplexer handed to [[acceptOn]] is opened for these.

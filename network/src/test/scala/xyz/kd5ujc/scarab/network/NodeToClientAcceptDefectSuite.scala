@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.Functor
-import cats.effect.{Deferred, IO, Ref, Resource}
+import cats.effect.{Async, Deferred, IO, Ref, Resource}
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
 import java.nio.file.Files
@@ -108,31 +108,30 @@ class NodeToClientAcceptDefectSuite extends FailsOnUncaught:
               case HandlerFailure.Defect(thrown) =>
                 IO(fail(s"the connection was a defect of the node: $thrown"))
           )((bearer, _) =>
-            for
-              nth <- accepted.updateAndGet(_ + 1)
-              _ <- Mux
-                .resource(
-                  bearer,
-                  NodeToClientServer.protocols(
-                    stateQuery = stateQuery.isDefined,
-                    chainSync = false,
-                    txMonitor = false
-                  ),
-                  Mux.Config.nodeToClient
-                )
-                .use { opened =>
-                  val served = if nth == 1 then PoisonedMux(opened, poisoned, cause) else opened
-                  NodeToClientServer
-                    .acceptOn(
-                      served,
-                      magic,
-                      _ => IO.pure(LocalTxSubmissionServer.Response.Accepted),
-                      stateQuery
-                    )
-                    .map(_.fold(identity, identity))
-                    .void
-                }
-            yield ()
+            NodeToClientServer
+              .acceptBackend[IO, Nothing](
+                bearer,
+                magic,
+                _ => IO.pure(LocalTxSubmissionServer.Response.Accepted),
+                stateQuery,
+                openMux = new NodeToClientServer.MuxFactory[IO]:
+                  def open(bearer: Bearer[IO], served: Set[Int])(using
+                      Async[IO],
+                      Raise[IO, NetworkError]
+                  ): Resource[IO, Mux[IO]] =
+                    NodeToClientServer.MuxFactory
+                      .nodeToClient[IO]
+                      .open(bearer, served)
+                      .evalMap(opened =>
+                        accepted
+                          .updateAndGet(_ + 1)
+                          .map(nth =>
+                            if nth == 1 then PoisonedMux(opened, poisoned, cause) else opened
+                          )
+                      )
+              )
+              .map(_.fold(identity, identity))
+              .void
           )
         yield Node(path, failures, firstEnded)
       }
