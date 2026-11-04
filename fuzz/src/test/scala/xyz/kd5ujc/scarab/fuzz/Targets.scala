@@ -1649,7 +1649,7 @@ object Targets:
       )
     )
 
-  /** The node's own volatile log: the last blocks and the rollbacks a restart resumes from.
+  /** The codec of the node's volatile-log records; the restart file reader applies it per record.
     * `VolatileStore.decodeAll` returns the valid prefix of a file. The seed log was written from
     * known records, so decoding it and encoding what came back must reproduce the seed byte for
     * byte: a reader that loses a field cannot agree with itself out of that. A damaged record must
@@ -1774,9 +1774,9 @@ object Targets:
     )
 
   /** The operator's `topology.json`, as the reference reads a P2P topology: whatever the input
-    * mutates to, an accepted topology keeps as many access points as the document declares, group
-    * by group - the document is counted from its JSON tree rather than from the parse under test,
-    * so a reader that drops, invents or duplicates one disagrees here - and a document that
+    * mutates to, an accepted topology keeps as many fixed access points as the document declares,
+    * group by group - the document is counted from its JSON tree rather than from the parse under
+    * test, so a reader that drops, invents or duplicates one disagrees here - and a document that
     * declares local roots or bootstrap peers still yields peers to follow. That last check guards
     * `Topology.peers`, not the parse: `peers` builds its configured set from those same two groups.
     */

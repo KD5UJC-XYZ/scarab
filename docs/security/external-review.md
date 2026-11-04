@@ -57,9 +57,9 @@ node-local signing and a secret-memory boundary that require review.
   thoroughly reviewed implementation can replace the hand-ported code without changing acceptance.
 - [G5 / #35](https://github.com/KD5UJC-XYZ/scarab/issues/35) records implemented transport limits;
   [K3 / #50](https://github.com/KD5UJC-XYZ/scarab/issues/50) records structured fuzzing. Its
-  [registered targets](../../fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/Targets.scala) include native
-  snapshots, MemPack, snapshot tables/metadata, SCLS, ancillary JSON and network identities;
-  unregistered file layouts and node configuration JSON need separate coverage review. Valid early-era whole-transaction seed coverage
+  [registered targets](../../fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/Targets.scala) and known
+  file and operator-JSON gaps are recorded in the [fuzz inventory](../running/fuzzing.md#persisted-formats-and-operator-json-200)
+  under [#200](https://github.com/KD5UJC-XYZ/scarab/issues/200). Valid early-era whole-transaction seed coverage
   remains [K3a / #179](https://github.com/KD5UJC-XYZ/scarab/issues/179). Full Ouroboros Genesis
   density and ledger-dependent fork choice remain [G3 / #33](https://github.com/KD5UJC-XYZ/scarab/issues/33);
   finite fork/withholding tests do not close that gap. Per-client mempool admission fairness remains G5-F1.

@@ -94,10 +94,11 @@ skips the fuzz steps and passes. It can be started by hand from the Actions tab,
 The file and operator-JSON readers are registered like the wire ones, so the default suite, the
 nightly campaign and the fixed-seed gate all run them:
 
-- `volatile-store-log` reads `VolatileStore.decodeAll`, the log a restart resumes from. The seeds are
-  what the writer produces for each record shape: a block, a boundary block, a rollback to origin and
-  a rollback to a point, plus the same log truncated and doubled. Properties: no exception; decoding
-  the seed and encoding what came back reproduces the seed byte for byte, so a field the reader drops
+- `volatile-store-log` reads `VolatileStore.decodeAll`, the record decoder that the restart file
+  reader applies to each record. The seeds are what the writer produces for each record shape:
+  a block, a boundary block, a rollback to origin and a rollback to a point, plus the same log
+  truncated, missing its first header, and doubled. Properties: no exception; decoding the seed
+  and encoding what came back reproduces the seed byte for byte, so a field the reader drops
   or transposes changes the bytes it writes back; and a bit changed in the last header byte of every
   accepted record, and in the first payload byte of each record that has one, drops that record and
   preserves exactly the preceding records and their end offsets, which is what its CRC-32 is for.
@@ -116,8 +117,17 @@ nightly campaign and the fixed-seed gate all run them:
 Included in that inventory: snapshot metadata and tables, SCLS framing and values, native V8
 snapshots and their sidecars, ancillary manifests and keys, Mithril receipts, the network identity
 file, the peer snapshot, MemPack outputs, the volatile log, and the configuration and topology JSON.
-Not covered: the immutable store's own segment layout, which is read through a private file reader
-rather than a decoder over a byte array; the RocksDB-backed UTxO store; the checkpoints file the run
-path reads (`CheckpointsFile.parse`), whose bytes are unpinned when no hash is configured and which
-no target exercises; and the cardano-cli key-file envelope, whose `type` and `cborHex` fields the
-forge reads but no target exercises.
+Known uncovered paths tracked by [#200](https://github.com/KD5UJC-XYZ/scarab/issues/200) include:
+
+- The native snapshot migration readers (`SnapshotV7.fromV5`, `SnapshotV8.fromV7` and the V7
+  sidecar schema). The native V8 target mutates current-format bytes; its additional historical
+  seed is converted from V5 through V7 before mutation, so it does not fuzz migration-on-open.
+- The immutable store's segment, format and index file readers, and the volatile store's
+  channel framing around the record codec.
+- The RocksDB-backed UTxO store and `MemoryUtxoStore.restore`, which reads `utxo.bin`.
+- The checkpoints file the run path reads (`CheckpointsFile.parse`), whose bytes are unpinned
+  when no hash is configured.
+- The cardano-cli key-file envelope, whose `type` and `cborHex` fields the forge reads.
+
+The malformed-file restart/import demonstration that checks preservation of an existing database
+also remains under #200.
