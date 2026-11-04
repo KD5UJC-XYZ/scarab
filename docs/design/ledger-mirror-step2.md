@@ -415,7 +415,8 @@ Goal: debug-query answers byte-equal to the reference with no mask, on a node sy
    `82ecba329d7d054340bf707d44fe6e9ac27cec40`, `Shelley/Ledger/Ledger.hs:568-575,713-741`,
    `Cardano/CanHardFork.hs:360-361,704`. Tests cover deadline edges, epoch/skipped-epoch reset,
    overflow refusal, same-epoch translation and production block application. A historical transition
-   gap clears only at a successful new epoch.
+   gap clears at a successful new epoch, or on restore when the immutable store holds a block before
+   the voting deadline and the counter is recounted from it (`TransitionRecount`, #771).
 8. **J3.8 Byte equality:**
    - devnet `ntc` compares the four ledger-state answers with **no mask**, including incomplete imports;
    - `MirrorAnswersSuite` asserts empty gaps from genesis;

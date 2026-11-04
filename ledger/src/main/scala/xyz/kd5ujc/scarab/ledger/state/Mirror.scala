@@ -43,7 +43,9 @@ enum Gap derives Eq, Show, Diff:
   case PendingPulsingUpdate
 
   /** `shelleyLedgerTransition` of the consensus state (the count of blocks since the era's
-    * transition was known): not kept by the node. Added by the consensus side of the mirror.
+    * transition was known): not kept by the node. Added by the consensus side of the mirror. Closed
+    * at the next epoch boundary, or on restore when the immutable store lets the counter be
+    * recounted exactly (`TransitionRecount`).
     */
   case ShelleyTransition
 

@@ -8,7 +8,7 @@
 - **A chain started from genesis enters only the eras configured at its first epoch** (#771), as
   `injectInitialExtLedgerState` does (ouroboros-consensus 82ecba32 `HardFork/Combinator/Embed/Nary.hs:259-306`):
   the Shelley genesis's protocol version no longer moves the starting era (`HardForkConfig.eraAt`, `major >= v`, is
-  removed).
+  removed), nor decides whether the Conway genesis is read into the start's parameters.
 - **A restored snapshot that did not know its after-voting counter has it recounted** (#771): a state carrying
   `Gap.ShelleyTransition` gets the exact count of its epoch's blocks from the voting deadline to the anchor from the
   immutable store before replay, and the gap is closed; a store with no block before the deadline leaves it open.
