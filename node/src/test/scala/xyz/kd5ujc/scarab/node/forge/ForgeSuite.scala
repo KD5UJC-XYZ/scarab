@@ -1098,14 +1098,14 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     val key = Draft03Prover.SigningKey
       .fromSeed(hex(Array.fill(32)(9.toByte)))
       .fold(e => fail(e.toString), identity)
-    val active = Leader.Fraction.checked(3, 4).fold(e => fail(e.message), identity)
+    val active = Leader.Fraction.checked(0, 1).fold(e => fail(e.message), identity)
     assertEquals(
       Leadership.check(1, epochNonce, key, 2, 1, config.activeSlotsCoeff),
       Left(ForgeError.LeaderThreshold(Leader.Error.InvalidFraction(2, 1)))
     )
     assertEquals(
       Leadership.check(1, epochNonce, key, 1, 1, active),
-      Left(ForgeError.LeaderThreshold(Leader.Error.UnsupportedActiveSlotsCoefficient(3, 4)))
+      Left(ForgeError.LeaderThreshold(Leader.Error.NonPositiveActiveSlotsCoefficient(0, 1)))
     )
     val expected = xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate.Slot
       .fromBigInt(-1)

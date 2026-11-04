@@ -9,7 +9,7 @@ implemented: overlay schedule, two VRF certificates, 512-bit leader value; typed
 
 ## Evidence
 
-unit/property; devnet e2e (`leaderUnchecked` 0 in every era); Preview Alonzo/Babbage sync (every non-overlay header threshold-checked)
+unit/property; devnet e2e (`leaderUnchecked` 0 in every era); Preview Alonzo/Babbage sync (every non-overlay header threshold-checked); the 512-bit cases of the leader-threshold reference corpus (#770)
 
 ## Explicitly unchecked or unconfirmed
 
