@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
+import contextlib
+import io
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from check_text_policy import ALLOWED, MODULE, OWNER, findings, reads, sources, unexplained
+from check_text_policy import ALLOWED, MODULE, OWNER, findings, main, reads, sources, unexplained
 
 REPO = Path(__file__).resolve().parents[2]
 READER = MODULE + "/scala/xyz/kd5ujc/scarab/ledger/Block.scala"
@@ -20,6 +23,10 @@ class TextPolicyGuardTest(unittest.TestCase):
         self.assertEqual(findings([(READER, b"case Value.Text (v) => v\n")]), [READER + ":1: Value.Text"])
         self.assertEqual(findings([(READER, b"case Value.Text /* c */ (v) => v\n")]),
                          [READER + ":1: Value.Text"])
+
+    def test_a_qualified_name_is_not_a_mention(self):
+        # A longer identifier that ends in `Value` is a different type, not a read of this one.
+        self.assertEqual(findings([(READER, b"case t: SomeValue.Text => t.v\n")]), [])
 
     def test_the_owning_reader_passes(self):
         self.assertEqual(findings([(OWNER, b"case Value.Text(v) => v\n")]), [])
@@ -46,6 +53,36 @@ class TextPolicyGuardTest(unittest.TestCase):
 
     def test_every_allowlist_entry_carries_a_reason(self):
         self.assertEqual(unexplained(), [])
+
+
+class MainTest(unittest.TestCase):
+    """`main` on a root of its own, so each non-vacuity exit is driven rather than assumed."""
+
+    def run_on(self, root: str) -> tuple[int, str]:
+        argv = sys.argv
+        sys.argv = ["check_text_policy.py", root]
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out):
+                return main(), out.getvalue()
+        finally:
+            sys.argv = argv
+
+    def test_a_module_without_sources_fails(self):
+        with tempfile.TemporaryDirectory() as root:
+            (Path(root) / MODULE).mkdir(parents=True)
+            code, out = self.run_on(root)
+        self.assertEqual(code, 1)
+        self.assertIn(f"{MODULE}: no Scala sources found under it", out)
+
+    def test_a_module_without_the_owning_reader_fails_with_its_message(self):
+        with tempfile.TemporaryDirectory() as root:
+            reader = Path(root) / MODULE / "scala/x/Block.scala"
+            reader.parent.mkdir(parents=True)
+            reader.write_text("object Block:\n")
+            code, out = self.run_on(root)
+        self.assertEqual(code, 1)
+        self.assertIn(f"{OWNER}: the owning reader is not among the module's sources", out)
 
 
 class TreeTest(unittest.TestCase):

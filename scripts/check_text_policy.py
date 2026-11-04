@@ -18,9 +18,10 @@ violation; the three readers in `ALLOWED` mention the constructor deliberately a
 Every mention counts, not only a constructor call: `case t: Value.Text => t.v` is a type test that reads
 the text with no parenthesis, so a bare check for `Value.Text(` would leave the obvious bypass open.
 Comments, string and character literals are blanked before the match, with newlines kept, so a scaladoc
-that quotes the constructor is documentation and not a read. Two forms stay out of reach and the guard
-does not claim them: a mention inside a string interpolation is blanked with the string, and a reference
-reached only through a wildcard import (`import Value.*; Text(v)`) names no `Value.Text` at all.
+that quotes the constructor is documentation and not a read. Forms stay out of reach and the guard
+does not claim them: a mention inside a string interpolation is blanked with the string, a reference
+reached only through a wildcard import (`import Value.*; Text(v)`) names no `Value.Text` at all, and a
+mention split across a line continuation (`Value.` on one line, `Text(v)` on the next) never matches.
 
 An `ALLOWED` entry must carry its reason and a live match: an entry with no reason, or one whose file no
 longer mentions the constructor, fails the check, so the list stays short as the issue asks.
@@ -57,7 +58,7 @@ ALLOWED: Mapping[str, str] = {
         "(`Value.Text(_)`), so no text is read at all",
 }
 
-SITE = re.compile(r"Value\.Text\b")
+SITE = re.compile(r"(?<!\w)Value\.Text\b")
 CHAR = re.compile(r"'(?:\\.|[^'\\\n])'")
 
 
@@ -179,7 +180,7 @@ def main() -> int:
     if not scanned:
         scopes = [f"{MODULE}: no Scala sources found under it"]
     elif OWNER not in scanned:
-        scopes.append(f"{OWNER}: the owning reader is not among the module's sources")
+        scopes = [f"{OWNER}: the owning reader is not among the module's sources"]
     else:
         scopes = []
     if rows:
