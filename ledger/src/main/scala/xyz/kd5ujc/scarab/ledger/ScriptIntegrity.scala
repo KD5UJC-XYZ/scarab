@@ -20,7 +20,8 @@ import xyz.kd5ujc.scarab.codec.Bytes
   *     encodings first). PlutusV2 and V3 are `language id => [cost model]` with a definite list.
   *     PlutusV1 keeps its historical encoding: the key is the byte string `0x4100` (the language id
   *     serialised, then wrapped as bytes) and the value is a byte string wrapping the cost model as
-  *     an indefinite-length list. Because of that key, V1 sorts after V2 and V3.
+  *     an indefinite-length list. Because of that key, V1 sorts after V2 and V3. A language without
+  *     a cost model still has an entry, with `null` for its cost model.
   *   - No languages gives the empty map `0xa0`.
   *   - A transaction with no redeemers, no datums and no languages has no hash.
   *
@@ -82,27 +83,34 @@ object ScriptIntegrity:
       encoded
     }
 
-  /** The encoded language views for `languages`. */
+  /** The encoded language views for `languages` (`getLanguageView` and `encodeLangViews`,
+    * cardano-ledger f649f975, `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs:566-598`).
+    * Every Plutus language of the set has an entry. A language without a cost model has the encoded
+    * `null` as its cost model (`maybe encodeNull encodeCostModel`, line 584): `f6` for V2 and V3,
+    * and for V1, whose value is wrapped as bytes, `41 f6`.
+    */
   def languageViews(pp: ProtocolParams, languages: Set[ScriptKind]): Vector[Byte] =
     val plutus = languages.toVector.filter(_.isPlutus).sortBy(_.tag)
     // Encoded keys sort by length first: the one-byte keys of V2 and V3 precede V1's two bytes.
     val ordered = plutus.filter(_ != ScriptKind.PlutusV1) ++ plutus.filter(_ == ScriptKind.PlutusV1)
-    val entries = ordered.flatMap { kind =>
+    val entries = ordered.map { kind =>
       val language = kind.tag - 1
-      pp.costModels.get(language).toVector.map { model =>
-        val ints = model.flatMap(Cbor.int)
-        if kind == ScriptKind.PlutusV1 then
-          // Key 0x41 0x00; value: bytes( 0x9f ints 0xff ).
-          Vector(0x41, 0x00).map(_.toByte) ++ Cbor.bytesHeader(
-            ints.size + 2
-          ) ++ (0x9f.toByte +: ints) :+ 0xff.toByte
-        else Cbor.int(language) ++ Cbor.arrayHeader(model.size) ++ ints
-      }
+      val model = pp.costModels.get(language)
+      if kind == ScriptKind.PlutusV1 then
+        // Key 0x41 0x00; value: bytes( 0x9f ints 0xff ), or bytes( 0xf6 ) without a cost model.
+        val encoded =
+          model.fold(Vector(Cbor.Null))(m => (0x9f.toByte +: m.flatMap(Cbor.int)) :+ 0xff.toByte)
+        Vector(0x41, 0x00).map(_.toByte) ++ Cbor.bytesHeader(encoded.size) ++ encoded
+      else
+        Cbor.int(language) ++ model.fold(Vector(Cbor.Null))(m =>
+          Cbor.arrayHeader(m.size) ++ m.flatMap(Cbor.int)
+        )
     }
     if entries.isEmpty then Vector(0xa0.toByte) else Cbor.mapHeader(entries.size) ++ entries.flatten
 
   /** Minimal CBOR writers for the integers and headers a language view needs. */
   private object Cbor:
+    val Null: Byte = 0xf6.toByte
     private def head(major: Int, v: BigInt): Vector[Byte] =
       if v < 24 then Vector(((major << 5) | v.toInt).toByte)
       else if v < 256 then Vector(((major << 5) | 24).toByte, v.toByte)

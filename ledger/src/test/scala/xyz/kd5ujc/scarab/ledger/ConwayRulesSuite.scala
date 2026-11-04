@@ -32,7 +32,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Staking,
   VocabError
 }
-import xyz.kd5ujc.scarab.plutus.ExUnits
+import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusLanguage}
 
 import TestLedger.*
 
@@ -376,6 +376,35 @@ class ConwayRulesSuite extends FunSuite:
       Left(
         PredicateFailure.utxow(
           UtxowFailure.ScriptIntegrityHashMismatch(Mismatch(Some(wrong), expected), preimage)
+        )
+      )
+    )
+    // without a V3 cost model the language view is still there, with `null` for the cost model
+    // (`getLanguageView`, `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs:584`, cardano-ledger
+    // f649f975): a body hashed without the language is refused, and one hashed with the null view
+    // passes UTXOW and fails collection for want of a cost model (`NoCostModel`)
+    val noV3 = pp.copy(costModels = pp.costModels - 2)
+    val withoutModel = conway(funds, noV3)
+    val unsigned = tx(bodyWith(None), Vector(alice), wits)
+    val languageOmitted = ScriptIntegrity.hash(unsigned, noV3, Set.empty)
+    val nullView = ScriptIntegrity.hash(unsigned, noV3, Set(ScriptKind.PlutusV3))
+    assertNotEquals(languageOmitted, nullView)
+    assertEquals(
+      rule(attempt(succeeds = true, isValid = true, bodyWith(languageOmitted), withoutModel)),
+      "PPViewHashesDontMatch"
+    )
+    assertEquals(
+      attempt(succeeds = true, isValid = true, bodyWith(nullView), withoutModel).left.map {
+        case LedgerFailure.Rejected.Single(_, f) => f
+        case other                               => fail(other.message)
+      },
+      Left(
+        PredicateFailure.utxo(
+          UtxoFailure.Utxos(
+            UtxosFailure.CollectErrors(
+              cats.data.NonEmptyVector.one(CollectError.NoCostModel(PlutusLanguage.V3))
+            )
+          )
         )
       )
     )
