@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.fuzz
 import cats.syntax.all.*
 import fs2.Chunk
 import java.nio.file.Files
+import scala.annotation.tailrec
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -816,6 +817,28 @@ object Targets:
           netCorpus("local-tx-submission:localTxSubmissionMessage")(),
       LocalTxSubmission.decodePrefix,
       LocalTxSubmission.encode
+    ),
+    Target(
+      "local-tx-submission-incremental",
+      netCorpus("local-tx-submission:localTxSubmissionMessage"),
+      probe("local-tx-submission-incremental") { b =>
+        for state <- LocalTxSubmission.State.values; role <- ChainSync.Role.values do
+          val decoder = LocalTxSubmission.incremental(state, role)
+          val chunk = 1 + b.headOption.fold(0)(v => (v & 0xff) % 23)
+          @tailrec def feed(
+              end: Int,
+              cursor: decoder.Cursor
+          ): DecodeResult[LocalTxSubmission.Message] =
+            val (next, result) = decoder.resume(cursor, b.take(end))
+            if end == b.size || result != DecodeResult.NeedMore then result
+            else feed(math.min(b.size, end + chunk), next)
+          val result = feed(0, decoder.initial)
+          seen("local-tx-submission-incremental", result.isInstanceOf[DecodeResult.Decoded[?]])
+          req(
+            result == LocalTxSubmission.decodePrefix(state, role, b),
+            "fragmented submission differs"
+          )
+      }
     ),
     roundTrip(
       "local-tx-monitor",

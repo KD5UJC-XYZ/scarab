@@ -17,7 +17,7 @@ detached, an empty indefinite list with its fields after it, is refused. The env
 is read by `enforceSize`, a definite list. The KES signature of a Leios header is over its body's
 original bytes.
 
-The 2026-11-04 corpus in `cases.jsonl` holds 621 lines, one case each, written by
+The 2026-11-04 corpus in `cases.jsonl` holds 623 lines, one case each, written by
 `scripts/oracle/leios-testnet/leios_cases.py` and, for the transactions, `leios_tx_cases.py`:
 - the testnet's blocks as BlockFetch carries them (`kind` "block"), of the network as restarted on
   2026-10-18 (`fixtures/leios/testnet/blocks-rc-2026w44.tsv`): blocks 0, 1 and 8,562 (empty), a
@@ -58,12 +58,14 @@ The 2026-11-04 corpus in `cases.jsonl` holds 621 lines, one case each, written b
 - Leios headers alone (`kind` "header"), as ChainSync carries them inside their era envelope: the
   header of block 0 of the current network, and the forms of the
   [header decoding oracle](../header-decoding/README.md) (definite, indefinite, detached, body,
-  version info, announcement and operational certificate in each form, a chunked issuer key,
+  version info, announcement and operational certificate in each form, a chunked issuer key, one
+  after 244 empty chunks (1100 bytes, the retained testnet's `maxBHSize`, over 256 items) and one after 4000 (over
+  4096 bytes), which no decoder counts (#749),
   non-minimal heads, a version info major of 13, 14 and over a `Word32`, a body size or announcement
   size over a `Word32`, a VRF output of no bytes, a body of eleven fields).
 
 The verdict (`accepted` and the complete `failure`) is what the build's decoders did with each:
-314 accepted and 307 refused (273 and 263 of the transactions). The record-form variants accept indefinite lists and refuse detached ones; the outer block envelope requires a definite list. For an
+316 accepted and 307 refused (273 and 263 of the transactions). The record-form variants accept indefinite lists and refuse detached ones; the outer block envelope requires a definite list. For an
 accepted case the line records the header hash (`hash`), its size, the signed bytes (`signable`),
 the header fields, and for a block its tag, body hash and size as the ledger computes them, each
 transaction's id and validity flag (`txs`) and whether it carries a Leios or a Peras certificate.

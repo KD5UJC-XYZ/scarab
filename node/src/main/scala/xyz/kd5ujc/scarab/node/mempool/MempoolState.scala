@@ -504,11 +504,12 @@ object MempoolState:
   ): MempoolState =
     MempoolState(ledger, tipSlot, ledger, Vector.empty, 0L, 1L, capacityOverride, tipHash)
 
-  private val limits = Cbor.Limits(
-    maxInputBytes = 1048576,
-    maxItems = 100000,
-    maxStringBytes = 1048576
-  )
+  /** A submitted transaction is read as the reference's mempool reads it, with no budget but its
+    * size (`unwrapCBORinCBOR (eraDecoder @era decCBOR)`, `Shelley/Ledger/Mempool.hs:261-266`,
+    * ouroboros-consensus 82ecba32): its channel bounds the bytes and the rules its size
+    * (`maxTxSize`, #749).
+    */
+  private val limits = Cbor.Limits.Unbounded
 
   /** A parsed submission: its id (the hash of the original body), the decoded transaction and the
     * original bytes of its parts with the flag it carried.

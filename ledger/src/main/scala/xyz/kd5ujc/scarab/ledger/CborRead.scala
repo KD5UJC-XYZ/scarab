@@ -20,7 +20,10 @@ enum FieldKeys:
   case Stored
 
 private[ledger] object CborRead:
-  def decode(bytes: Bytes, limits: Cbor.Limits = Cbor.Limits()): Result[Node] =
+  /** `bytes`, read by default as the reference's ledger decoders read, with no budget but its size
+    * ([[Cbor.Limits.Unbounded]], #749).
+    */
+  def decode(bytes: Bytes, limits: Cbor.Limits = Cbor.Limits.Unbounded): Result[Node] =
     Cbor.decode(bytes, limits).leftMap(LedgerDecodeError.Syntax(_))
 
   type Result[A] = Either[LedgerDecodeError, A]

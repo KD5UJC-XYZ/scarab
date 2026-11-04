@@ -487,7 +487,8 @@ object LiteLedger:
     case PoolRetiring(pool: Bytes, epoch: BigInt)
     case GenesisDelegation(genesisKey: Bytes, pair: GenDelegPair)
 
-  private val bodyLimits = Cbor.Limits(2500000, 64, 1000000, 2500000)
+  // a body of a block, read as the block is (`Block`, #749)
+  private val bodyLimits = Cbor.Limits.Unbounded
 
   /** The effects of a transaction body. Update proposals (key 6) exist up to Babbage only. A body
     * holding a `RecD` record written as an empty indefinite list is read as the reference reads it

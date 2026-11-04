@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger.byron
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value}
-import xyz.kd5ujc.scarab.ledger.{CborRead, DecodeField, DecodeSite, LedgerDecodeError}
+import xyz.kd5ujc.scarab.ledger.{ByteStrings, CborRead, DecodeField, DecodeSite, LedgerDecodeError}
 import xyz.kd5ujc.scarab.ledger.DecodeSite.Qualifier
 
 import ByronInteger.decode as integer
@@ -199,6 +199,29 @@ object ByronTransport:
         _ <- fixedBytes(fields(2), 32, DecodeField.DelegationProof)
         _ <- fixedBytes(fields(3), 32, DecodeField.UpdateProof)
       yield ()
+
+  /** A boundary header's extra data as the reference reads it at decoder version 1
+    * (`dropBoundaryExtraHeaderDataRetainGenesisTag`, `Block/Boundary.hs:61-67`, cardano-ledger
+    * f649f975): a definite list of one item (`enforceSize`) holding its attributes
+    * (`decCBORAttributes`, `Common/Attributes.hs:213-232`), a definite map of strictly ascending
+    * `Word8` keys to definite byte strings (`decodeMapSkel` below version 2, `Decoder.hs:736-765`
+    * and `810-823`). Whether attribute 255 is "Genesis", the tag with which a boundary header of
+    * any epoch names the genesis as its predecessor (`Block/Header.hs:623-624`).
+    */
+  private[ledger] def boundaryExtra(node: Node): Result[Boolean] =
+    for
+      fields <- tuple(node, 1, DecodeField.BoundaryExtraData)
+      entries <- attributes(fields(0), DecodeField.BoundaryAttributes)
+      values <- entries.traverse((key, value) =>
+        CborRead
+          .bytes(value, DecodeField.BoundaryAttributes)(using ByteStrings.Definite)
+          .map(key -> _)
+      )
+    yield values.exists((key, value) => key == GenesisTagKey && value == GenesisTag)
+
+  private val GenesisTagKey = BigInt(255)
+  private val GenesisTag =
+    Bytes.fromArray("Genesis".getBytes(java.nio.charset.StandardCharsets.US_ASCII))
 
   /** `dropSscProof`: a `Word8` tag, then two byte strings for tags 0 to 2 and one for tag 3. */
   private def sscProof(node: Node): Result[Unit] =

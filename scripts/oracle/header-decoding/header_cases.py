@@ -31,9 +31,14 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "conway-decoding"))
 import cases as c  # noqa: E402  (the CBOR helpers)
+
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "scripts"))
+from devnet import cborspan  # noqa: E402
 
 CASES = []
 TPRAOS = ["shelley", "alonzo"]
@@ -67,10 +72,12 @@ def vrf_cert(byte, form="definite", width=None, output=64):
 
 
 def fields(era, prev=True, nonmin=False, ocert="definite", pv="definite", vrf="definite", major=None,
-           minor=0, size=1024, announcement=None, chunked=False, large=False, output=64):
+           minor=0, size=1024, announcement=None, chunked=False, empty_chunks=0, large=False, output=64):
     """The fields of a header body; `nonmin` writes every head that has a shorter form wider. A Leios
     body adds the certificate flag and the announcement, null or `announcement` (a list form and a
-    size); `chunked` writes the issuer key as an indefinite byte string; `large` writes the block
+    size); `chunked` writes the issuer key as an indefinite byte string, and `empty_chunks` as one
+    whose key follows that many empty chunks (each an item of its own to a reader that counts the
+    chunks, #749); `large` writes the block
     number, slot, certificate counter and KES period at and above 2^63, the top of a `Word64`;
     `output` is the length of the VRF outputs."""
     w8 = 8 if nonmin else None
@@ -81,7 +88,7 @@ def fields(era, prev=True, nonmin=False, ocert="definite", pv="definite", vrf="d
         c.uint(2**64 - 1 if large else 42, w8),
         c.uint(2**63 if large else 1000, w8),
         nbstr(c.h(0x11, 32), w2) if prev else c.NULL,
-        (b"\x5f" + c.bstr(c.h(0x22, 16)) + c.bstr(c.h(0x22, 16)) + b"\xff") if chunked else nbstr(c.h(0x22, 32), w2),
+        issuer_key(chunked, empty_chunks, w2),
         nbstr(c.h(0x33, 32), w2),
     ]
     cert = [nbstr(c.h(0x66, 32), w2), c.uint(2**63 + 3 if large else 3, w8), c.uint(2**63 + 7 if large else 7, w8),
@@ -98,6 +105,16 @@ def fields(era, prev=True, nonmin=False, ocert="definite", pv="definite", vrf="d
         return praos + [b"\xf4", c.NULL]
     form, eb_size = announcement
     return praos + [b"\xf5", items([nbstr(c.h(0x99, 32), w2), c.uint(eb_size, w4)], form, 1 if nonmin else None)]
+
+
+def issuer_key(chunked, empty_chunks, width):
+    """The issuer key: definite, two chunks of 16 bytes, or the key after `empty_chunks` empty ones."""
+    key = c.h(0x22, 32)
+    if empty_chunks:
+        return b"\x5f" + b"\x40" * empty_chunks + c.bstr(key) + b"\xff"
+    if chunked:
+        return b"\x5f" + c.bstr(key[:16]) + c.bstr(key[16:]) + b"\xff"
+    return nbstr(key, width)
 
 
 SIGNATURE = c.bstr(c.h(0x88, 448))
@@ -171,6 +188,90 @@ for era in TPRAOS + PRAOS:
 for era in ["alonzo", "conway"]:
     CASES.append({"id": c.case_id(f"{era} vrfcheck"), "name": f"{era} vrfcheck", "era": era, "kind": "vrfcheck",
                   "bytes": (c.h(0x5e, 32) + f"slot 1000 of {era}".encode()).hex()})
+
+
+# #749: the reference joins a chunked string's chunks without counting them, and bounds a header by
+# the ChainSync codec's bytes and, after decoding, `maxBHSize`, nothing else. Below decoder version 12
+# a chunked string is refused, so a Shelley-to-Conway header has no such form; the Leios header, read
+# at 12, is the Leios testnet oracle's (`leios_cases.py`).
+for era in ["alonzo", "conway"]:
+    case(era, "header", "issuer key chunked", header(era, chunked=True))
+    case(era, "header", "issuer key after 244 empty chunks", header(era, empty_chunks=244))
+
+
+def boundary_header(attributes, fields=5):
+    """A Byron epoch boundary header: protocol magic, previous hash, body proof, `[epoch,
+    [difficulty]]` and `[attributes]`, a map of `Word8` to byte strings whose entries the reference
+    keeps unparsed (`decCBORABoundaryHeader`, `eras/byron/ledger/impl/src/Cardano/Chain/Block/
+    Header.hs:613-626`; `Boundary.hs:33-38,61-67`; `Common/Attributes.hs:213-232`); the first
+    `fields` of them."""
+    parts = [c.uint(764824073), c.bstr(c.h(0x11, 32)), c.bstr(c.h(0x22, 32)),
+             c.array([c.uint(5), c.array([c.uint(108000)])]), c.array([c.cmap(attributes)])]
+    return c.array(parts[:fields])
+
+
+BYRON = "byron"
+original_block = bytes.fromhex((ROOT / "fixtures/byron-version/headers/original.hex").read_text())
+start, end = cborspan.resolve(original_block, [1, 0])[0]
+original_header = original_block[start:end]
+start, end = cborspan.resolve(original_header, [2, 1])[0]
+# SscProof's CertificatesProof reads and drops a byte string without a hash-size check
+# (Cardano/Chain/Ssc.hs:169-188). The body-proof rules do not compare this obsolete SSC field.
+large_ssc = c.array([c.uint(3), c.bstr(b"\x00" * 5000)])
+case(BYRON, "mainheader", "original mainnet header", original_header)
+case(BYRON, "mainheader", "SSC proof of 5000 bytes",
+     original_header[:start] + large_ssc + original_header[end:])
+case(BYRON, "boundaryheader", "no attributes", boundary_header([]))
+case(BYRON, "boundaryheader", "200 attributes", boundary_header([(c.uint(k), c.bstr(b"")) for k in range(200)]))
+case(BYRON, "boundaryheader", "four fields", boundary_header([], fields=4))
+case(BYRON, "boundaryheader", "200 attributes with a chunked final value",
+     boundary_header([(c.uint(k), c.bstr(b"")) for k in range(199)] +
+                     [(c.uint(199), b"\x5f\x40\xff")]))
+
+
+def boundary_extra(extra):
+    """A Byron boundary header of epoch 5 with `extra` as its extra data (#754)."""
+    return c.array([c.uint(764824073), c.bstr(c.h(0x11, 32)), c.bstr(c.h(0x22, 32)),
+                    c.array([c.uint(5), c.array([c.uint(108000)])]), extra])
+
+
+# #754: the extra data is a definite list of one item, `enforceSize`; the attributes a definite map
+# of strictly ascending `Word8` keys to definite byte strings (`decodeMapSkel` below version 2,
+# `Decoder.hs:736-765,810-823`); attribute 255 "Genesis" makes the header name the genesis.
+EMPTY = c.bstr(b"")
+
+
+def attrs(*pairs):
+    return c.array([c.cmap(list(pairs))])
+
+
+for name, extra in [
+    ("extra data with a non-minimal list head", b"\x98\x01" + c.cmap([])),
+    ("attributes with a non-minimal map head", c.array([b"\xb8\x01" + c.uint(1) + EMPTY])),
+    ("a key with a non-minimal head", attrs((b"\x18\x05", EMPTY))),
+    ("a key in nine bytes", attrs((b"\x1b" + (5).to_bytes(8, "big"), EMPTY))),
+    ("keys 24 and 255", attrs((c.uint(24), EMPTY), (c.uint(255), EMPTY))),
+    ("a value with a non-minimal length head", attrs((c.uint(1), b"\x58\x01\x00"))),
+    ("a value of 1000 bytes", attrs((c.uint(1), c.bstr(b"\x00" * 1000)))),
+    ("ascending keys with a gap", attrs((c.uint(1), EMPTY), (c.uint(7), EMPTY))),
+    ("a non-minimal key below the next", attrs((b"\x18\x05", EMPTY), (c.uint(6), EMPTY))),
+    ("the genesis tag", attrs((c.uint(255), c.bstr(b"Genesis")))),
+    ("extra data indefinite", b"\x9f" + c.cmap([]) + b"\xff"),
+    ("extra data not a list", c.cmap([])),
+    ("extra data of no fields", c.array([])),
+    ("extra data of two fields", c.array([c.cmap([]), c.cmap([])])),
+    ("attributes not a map", c.array([c.uint(0)])),
+    ("attributes an indefinite map", c.array([c.cmap([(c.uint(1), EMPTY)], indef=True)])),
+    ("a key of 256", attrs((c.uint(256), EMPTY))),
+    ("a negative key", attrs((b"\x20", EMPTY))),
+    ("a chunked value", attrs((c.uint(1), b"\x5f\x41\x00\xff"))),
+    ("a text value", attrs((c.uint(1), c.text("a")))),
+    ("a tagged value", attrs((c.uint(1), b"\xc2\x40"))),
+    ("duplicate keys", attrs((c.uint(1), EMPTY), (c.uint(1), c.bstr(b"a")))),
+    ("descending keys", attrs((c.uint(2), EMPTY), (c.uint(1), EMPTY))),
+    ("a non-minimal key above the next", attrs((c.uint(6), EMPTY), (b"\x18\x05", EMPTY))),
+]:
+    case(BYRON, "boundaryheader", name, boundary_extra(extra))
 
 
 def merge(reference):

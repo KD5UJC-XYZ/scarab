@@ -1,6 +1,7 @@
 # Block headers and the bytes their KES signature covers
 
-Status: Current. Evidence for [#698](https://github.com/KD5UJC-XYZ/scarab/issues/698).
+Status: Current. Evidence for [#698](https://github.com/KD5UJC-XYZ/scarab/issues/698) and
+[#749](https://github.com/KD5UJC-XYZ/scarab/issues/749).
 
 Babbage and Conway headers are Praos headers: `HeaderBody` and `HeaderRaw` are `RecD` records
 (`libs/cardano-protocol/src/Cardano/Protocol/Praos/BlockHeader.hs:203-229`, cardano-ledger
@@ -24,9 +25,20 @@ records those signed bytes (`signable`): in each of them they are the body's can
 definite lists and the shortest heads, and in the cases with an indefinite or detached body or a
 non-minimal head they differ from the body's original bytes.
 
-`cases.jsonl` holds 122 lines, one case each, written by
-`scripts/oracle/header-decoding/header_cases.py`, for Shelley and Alonzo (TPraos) and Babbage and
-Conway (Praos):
+No decoder counts items, string bytes or nesting: a chunked string's chunks are joined, each an item
+of its own to a reader that counts them, and a header is bounded only by the ChainSync codec's 65535
+bytes a message and, after decoding, by `maxBHSize` (#749). Below decoder version 12 a chunked
+string is refused ("expected bytes"), so only a Leios header can be written so.
+
+The 2026-11-03 corpus in `cases.jsonl` holds 156 lines, one case each, written by
+`scripts/oracle/header-decoding/header_cases.py`, for Shelley and Alonzo (TPraos), Babbage and
+Conway (Praos), and Byron. The boundary cases include a refused 200-attribute header
+whose final value is chunked; it exceeds the old item budget and still fails semantic decoding:
+
+- a Byron main header (`kind` "mainheader", `decCBORAHeader` with 21,600 epoch slots): the
+  retained mainnet control and a copy whose obsolete SSC proof holds 5000 bytes. The 5578-byte
+  header decodes despite exceeding the former 4096-byte budget. Signatures and chain rules are
+  not checked by these cases;
 - a header (`kind` "header"): definite, with a genesis predecessor, indefinite, detached, its body
   indefinite or detached, both, with non-minimal heads everywhere; a VRF certificate written as an
   indefinite list; a major protocol version of 13 and 14, a minor and a body size over a `Word32`;
@@ -34,7 +46,8 @@ Conway (Praos):
   bytes and of 65 bytes;
   a detached header without its signature and a detached body one field short; for Praos the
   operational certificate and protocol version indefinite and detached, and every list indefinite
-  but the VRF certificate's;
+  but the VRF certificate's; for Alonzo and Conway an issuer key written as two chunks and one after
+  244 empty chunks, both refused;
 - a header body alone (`kind` "headerbody"), definite, indefinite and detached;
 - a ledger block (`kind` "block", `Block.hs:104-115`, without BlockFetch's era tag) holding a
   definite, indefinite or detached header or one with a VRF output of no bytes, and for Praos a
@@ -43,14 +56,27 @@ Conway (Praos):
   certificate of a message (the case's bytes, seed then message), with the output as evaluated,
   empty, one byte longer and one byte shorter; for each, whether the era's decoder reads the
   certificate and whether `verifyCertified` accepts it (`vrf`). Every one decodes, and only the
-  evaluated output verifies (#712).
+  evaluated output verifies (#712);
+- a Byron epoch boundary header (`kind` "boundaryheader", `decCBORABoundaryHeader`,
+  `eras/byron/ledger/impl/src/Cardano/Chain/Block/Header.hs:613-626`, as consensus reads it from
+  ChainSync at `byronProtVer`), with no attributes, with 200 (over 400 items in 661 bytes), and of
+  four fields, refused; and its extra data (#754), a definite list of one item holding the
+  attributes, a definite map of strictly ascending `Word8` keys to definite byte strings
+  (`Block/Boundary.hs:61-67`, `Common/Attributes.hs:213-232`, `decodeMapSkel` below version 2,
+  `Decoder.hs:736-765`): accepted with non-minimal list, map, key and length heads, a key in nine
+  bytes, keys 24 and 255, a value of 1000 bytes, ascending keys with a gap and the "Genesis" tag;
+  refused indefinite, not a list, of no fields or two, with attributes not a map or an indefinite
+  map, a key of 256 or a negative one, a chunked, text or tagged value, and duplicate, descending
+  or non-minimally written descending keys.
 
 The verdict (`accepted` and the complete `failure`) is what the unchanged released decoders did with
 each, at the era's decoder version (2, 5, 7, 9): `decodeFullAnnotator` for a header
 and a block, `decodeFull` for a body. An accepted header or block also records the header hash
-(`hash`), and a block its block body hash (`bodyHash`). In all, 72 accepted and 50 refused.
-`HeaderDecodingReferenceSuite` requires the same verdict from `Header.fromRaw` or
-`Block.decodeShelley` (a body alone inside a definite header with a signature), the same hashes
+(`hash`), and a block its block body hash (`bodyHash`); a Byron boundary header records its verdict
+only. In all, 86 accepted and 70 refused.
+`HeaderDecodingReferenceSuite` requires the same verdict from `Header.fromRaw`,
+`Block.decodeShelley` (a body alone inside a definite header with a signature) or
+`Header.byronFromRaw`, the same hashes
 and the same signed bytes, and signs a body in three non-canonical forms with a KES key of its own
 to show that a signature over the canonical encoding checks and one over the original bytes does
 not. It also requires the same verdicts of the VRF checks from `Header.vrfCert` and
@@ -75,7 +101,10 @@ python3 scripts/oracle/header-decoding/header_cases.py --inputs /tmp/header-inpu
 - No KES signature, and no VRF proof of a header, is checked: their signatures and keys are filler
   bytes; the KES check over the signed bytes is `HeaderDecodingReferenceSuite`'s own key, and the VRF
   check is the "vrfcheck" cases'.
-- Byron headers ([#574](https://github.com/KD5UJC-XYZ/scarab/issues/574)).
+- Byron main headers, the forms of a Byron header's byte strings and the rest of a boundary
+  header's grammar ([#574](https://github.com/KD5UJC-XYZ/scarab/issues/574)).
+- The byte bounds themselves: a header's bytes are bounded by the ChainSync codec, which
+  `ChainSyncSuite` and the network suites exercise, not by a decoder.
 - The Leios header: until 2026-11-03 this corpus held 25 Leios header cases of the released
   `cardano-protocol` 0.1.0.0, whose header is a `RecD` record. The Leios reference is now the build
   of the public Leios testnet, whose header is not (#711); its cases are in

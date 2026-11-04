@@ -19,6 +19,11 @@ enum ByronChainError:
   case Body(cause: LedgerDecodeError)
   case Ledger(cause: ByronError)
   case InitialBoundaryRequired
+
+  /** A boundary block after the first names the genesis, not the tip `expected`
+    * (`ChainValidationExpectedHeaderHash`).
+    */
+  case GenesisPredecessor(expected: Bytes)
   case BoundaryOrder(epoch: BigInt, previousEpoch: BigInt, previousBoundary: Boolean)
   case SlotOrder(slot: BigInt, previous: BigInt)
   case SignatureRejected
@@ -34,9 +39,11 @@ enum ByronChainError:
     case SlotBeforeLastSigned(s, l) => s"slot $s is below the last signed slot $l"
     case SignatureThreshold(k, s, w, t) =>
       s"genesis key ${k.hex.take(16)} signed $s of the last $w blocks, above the threshold $t"
-    case Body(e)                 => e.message
-    case Ledger(e)               => e.message
-    case InitialBoundaryRequired => "the chain must start with the epoch 0 boundary"
+    case Body(e)   => e.message
+    case Ledger(e) => e.message
+    case InitialBoundaryRequired =>
+      "the chain must start with a boundary block that names the genesis"
+    case GenesisPredecessor(e) => s"boundary block names the genesis, not the tip ${e.hex}"
     case BoundaryOrder(e, p, b) =>
       s"boundary block of epoch $e after epoch $p${if b then " boundary" else ""}"
     case SlotOrder(s, p)   => s"slot $s does not follow $p"

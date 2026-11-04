@@ -782,7 +782,7 @@ Read at the pinned revisions; each is a case of the corpus.
 | VRF certificate | `decodeRecordNamed`, definite or indefinite; the output exactly 64 bytes (`Decoding/DecCBOR.hs:627-652`) | a definite list, an output of any length |
 | KES signature | over the header body's original bytes (`getSignableRepresentation = originalBytes`, `Leios/BlockHeader.hs:164-165`) | over the body encoded again |
 | Leios certificate | `decodeRecordNamed` of the signers (at most 8,192 bytes) and the signature, byte strings definite or chunked (`Decoding/DecCBOR.hs:721-736`); the signature a compressed G1 point of the subgroup, the identity included (cardano-base `BLS12381/Internal.hs:476-491`), which verification refuses | canonical CBOR only, and the identity refused at decode |
-| Records in a transaction | every `RecD` record is read by `decodeRecordNamed` from decoder version 12 (e.g. `Mary/Value.hs:308-321`) | not decoded (until #750, section 12.5) |
+| Records in a transaction | every `RecD` record is read by `decodeRecordNamed` from decoder version 12 (e.g. `Mary/Value.hs:308-321`) | decoded at version 12 (#750, section 12.5) |
 
 `LeiosBlock.decode` and `LeiosHeader.decode` now read as the first column says, and the header
 decoding corpus of #716 no longer holds Leios cases (they are in the new corpus).

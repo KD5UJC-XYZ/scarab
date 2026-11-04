@@ -246,7 +246,7 @@ object PoolRelays:
 
   /** The relays of a registration the node holds, in order. */
   def decode(relays: Bytes): Either[PoolRelayError, Vector[PoolRelay]] =
-    decode(relays, Cbor.Limits())
+    decode(relays, Cbor.Limits.Unbounded)
 
   def decode(relays: Bytes, limits: Cbor.Limits): Either[PoolRelayError, Vector[PoolRelay]] =
     if relays.isEmpty then Right(Vector.empty)
