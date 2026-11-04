@@ -74,15 +74,15 @@ private[ledger] object CborRead:
 
   /** A Shelley-through-Conway text field: a definite-length string only.
     *
-    * These fields are read with `decodeString` (cborg, through `instance DecCBOR
-    * Text` in `libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs:356-358`,
-    * cardano-ledger f649f975), which takes a definite string at that reference pin: an
-    * indefinite (chunked) one, whose head is `0x7f`, is not text there and cborg fails it with
-    * "expected string". Dijkstra uses `dijkstra.V12.text`: the newer pinned ledger permits chunked
-    * text at version 12 (cardano-ledger 9df9f98c `Decoding/Decoder.hs:1564-1569,1582-1598`). Other
-    * forms that stay chunked have their own readers: transaction metadata
-    * (`decodeMetadatum`, `Metadata.hs:153-222`) and Plutus `Data`. A node built by hand without
-    * original bytes was not read from a chunked string.
+    * These fields are read with `decodeString` (cborg, through `instance DecCBOR Text` in
+    * `libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs:356-358`,
+    * cardano-ledger f649f975), which takes a definite string at that reference pin: an indefinite
+    * (chunked) one, whose head is `0x7f`, is not text there and cborg fails it with "expected
+    * string". Dijkstra uses `dijkstra.V12.text`: the newer pinned ledger permits chunked text at
+    * version 12 (cardano-ledger 9df9f98c `Decoding/Decoder.hs:1564-1569,1582-1598`). Other forms
+    * that stay chunked have their own readers: transaction metadata (`decodeMetadatum`,
+    * `Metadata.hs:153-222`) and Plutus `Data`. A node built by hand without original bytes was not
+    * read from a chunked string.
     */
   def text(n: Node, what: DecodeSite): Result[String] = indefinite(n) match
     case Some((v, chunked)) =>
