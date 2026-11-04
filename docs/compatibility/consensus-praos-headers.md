@@ -9,8 +9,8 @@ implemented: VRF, KES, opcert counters, nonce evolution, leader threshold; typed
 
 ## Evidence
 
-unit/property; golden Praos/VRF/KES/opcert vectors; devnet nonce comparison (all five Praos nonces); Preview sync (every header threshold-checked)
+unit/property; golden Praos/VRF/KES/opcert vectors; devnet nonce comparison (all five Praos nonces); Preview sync (every header threshold-checked); leader-threshold reference corpus `fixtures/reference/leader-threshold` (490 cases; `ln(1 - f)` from the reference's own `splitLn` for any active-slot coefficient in (0, 1], verdicts on both sides of the threshold for 256- and 512-bit leader values; #770)
 
 ## Explicitly unchecked or unconfirmed
 
-header protocol-version rule on mainnet (`HeaderProtVerTooHigh`) implemented from source and never exercised (no mainnet run); Byron to Shelley derived from the Byron update state (B13, C1)
+header protocol-version rule on mainnet (`HeaderProtVerTooHigh`) implemented from source and never exercised (no mainnet run); Byron to Shelley derived from the Byron update state (B13, C1); the corpus's verdicts come from a copy of `checkLeaderNatValue`'s body in the oracle harness, because `cardano-protocol` is not in the reference image (the `splitLn`, `taylorExpCmp` and `mkActiveSlotCoeff` it calls are the installed library's); `MaxReached` of `taylorExpCmp` is not exercised (with stake at most 1 the comparison decides first)
