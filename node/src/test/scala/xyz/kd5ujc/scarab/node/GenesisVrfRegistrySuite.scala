@@ -23,7 +23,9 @@ class GenesisVrfRegistrySuite extends FunSuite:
         "network" -> Json.fromString("Testnet"),
         "credential" -> Json.obj("keyHash" -> Json.fromString(reward))
       ),
-      "owners" -> Json.arr()
+      "owners" -> Json.arr(),
+      "relays" -> Json.arr(),
+      "metadata" -> Json.Null
     )
     def read(name: String): Option[Array[Byte]] =
       Option.when(Files.exists(directory.resolve(name))) {
