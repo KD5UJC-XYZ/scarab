@@ -279,6 +279,23 @@ class JsonValueSuite extends FunSuite:
     assertEquals(n.base10Exponent, Long.MinValue + 1)
   }
 
+  test("bounded integers reject huge stored exponents even when normalization wraps") {
+    // Executed with scientific 0.3.8.1: toBoundedInteger checks the stored exponent first.
+    for
+      zeros <- 1 to 3
+      sign <- List(-1, 1)
+      (min, max) <- List(
+        BigInt(Long.MinValue) -> BigInt(Long.MaxValue),
+        BigInt(0) -> ((BigInt(1) << 64) - 1),
+        BigInt(0) -> BigInt(65535)
+      )
+    do
+      val value = Scientific(sign * BigInt(10).pow(zeros), Long.MaxValue - zeros + 1)
+      assertEquals(value.normalize.base10Exponent, Long.MinValue)
+      assertEquals(value.toBoundedInteger(min, max), None, value)
+    assertEquals(Scientific(0, Long.MaxValue).toBoundedInteger(0, 65535), Some(BigInt(0)))
+  }
+
   test("Scientific shows as the reference's show and showsPrec 11") {
     assertEquals(scientifics.size, scientificShown.size)
     scientifics.lazyZip(scientificShown).foreach { (s, expected) =>

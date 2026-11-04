@@ -10,6 +10,7 @@ source, not authoritative statements. Roadmap IDs (B1, ...) point into [roadmap.
 | Finding | Where found | Pinned by |
 |---|---|---|
 | The Leios testnet configuration contains Dijkstra triggers and local Leios/LedgerDB settings that must be parsed even before their services are implemented. Disabled experimental hard forks ignore Dijkstra fields; disabled adaptive endorsements still validate their other fields. | Captured testnet configuration, 2026-11-03; cardano-node b004fe0c `Configuration/POM.hs:373-380,518-608,674-680,713-715` and `Configuration/Leios.hs:95-108`, #745. | `LeiosTestnetConfigSuite`, `LeiosSettingsSuite`; [operator behavior](running/configuration.md#configuration-and-topology-files). |
+| A bounded integer's stored exponent must be checked even when normalization wraps it: `10e9223372036854775807` was accepted as `1`, while the reference refuses it. Floating-point fields still accept this input as positive infinity. | Adversarial configuration review, 2026-11-04; executed aeson 2.3.1.0 / scientific 0.3.8.1 from the Leios reference, #745. | `JsonValueSuite` fails without the correction; `LeiosSettingsSuite` checks the actual settings and floating-point distinction; [reference details](compatibility/ledger-genesis-fields.md#bounded-integer-exponents). |
 
 ## Plutus scheduling
 

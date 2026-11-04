@@ -1796,6 +1796,8 @@ object Targets:
         Vector(
           Files.readAllBytes(java.nio.file.Path.of("fixtures/leios/testnet/config/config.json")),
           "{}".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+          """{"LeiosMinOfferLead":10e9223372036854775807,"LeiosAdaptiveEndorsements":{"AliveWindow":-100e9223372036854775806}}"""
+            .getBytes(java.nio.charset.StandardCharsets.UTF_8),
           """{"LeiosAdaptiveEndorsements":{"Enabled":false,"GainP":"+inf","AliveWindow":9223372036854775807},"LedgerDB":{"Snapshots":"Mithril"}}"""
             .getBytes(java.nio.charset.StandardCharsets.UTF_8),
           """{"LedgerDB":{"Backend":"V2LSM","QueryBatchSize":18446744073709551615,"Snapshots":{"SnapshotInterval":1,"RateLimit":-1,"MinDelay":-2,"MaxDelay":0}}}"""

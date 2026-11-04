@@ -18,7 +18,12 @@ class LeiosSettingsSuite extends FunSuite:
       "2.2250738585072011e-308" -> "4503599627370495",
       "5e-324" -> "1",
       "1e400" -> "9218868437227405312",
-      "-1e400" -> "18442240474082181120"
+      "-1e400" -> "18442240474082181120",
+      "10e9223372036854775807" -> "9218868437227405312",
+      "-10e9223372036854775807" -> "18442240474082181120",
+      "10e-9223372036854775808" -> "0",
+      "0e9223372036854775807" -> "0",
+      "1e18446744073709551616" -> "4607182418800017408"
     )
     cases.foreach { (input, bits) =>
       val value = read(s"""{"EgressBudgetMbps":$input}""").leios.egressBudgetMbps
@@ -75,6 +80,22 @@ class LeiosSettingsSuite extends FunSuite:
       assert(NodeConfig.parse(s"""{"LeiosDbConfig":$value}""").isLeft)
     for value <- List("-1", "18446744073709551616", "0.5", "\"1\"") do
       assert(NodeConfig.parse(s"""{"LeiosMinOfferLead":$value}""").isLeft)
+  }
+
+  test("Word64 and signed Int settings refuse normalization overflow as the reference does") {
+    for value <- List(
+        "10e9223372036854775807",
+        "100e9223372036854775806",
+        "-10e9223372036854775807"
+      )
+    do
+      for config <- List(
+          s"""{"LeiosMinOfferLead":$value}""",
+          s"""{"ExperimentalHardForksEnabled":true,"TestDijkstraHardForkAtEpoch":$value}""",
+          s"""{"LedgerDB":{"QueryBatchSize":$value}}""",
+          s"""{"LeiosAdaptiveEndorsements":{"AliveWindow":$value}}"""
+        )
+      do assert(NodeConfig.parse(config).isLeft, config)
   }
 
   test("adaptive presence enables defaults and disabled settings still parse every field") {
