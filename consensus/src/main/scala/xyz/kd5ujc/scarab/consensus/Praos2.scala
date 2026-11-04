@@ -2,9 +2,10 @@
 package xyz.kd5ujc.scarab.consensus
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.consensus.state.PraosState
 import xyz.kd5ujc.scarab.crypto.Blake2b
+import xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold
 import xyz.kd5ujc.scarab.ledger.{
   EbAnnouncement,
   EnvelopeError,
@@ -12,10 +13,8 @@ import xyz.kd5ujc.scarab.ledger.{
   LeiosHeader,
   Nonce,
   OCertError,
-  PoolDistribution,
   PraosError,
-  ProviderDefect,
-  StakeView
+  ProviderDefect
 }
 import xyz.kd5ujc.scarab.ledger.OCertRules.refusedAs
 import xyz.kd5ujc.scarab.ledger.state.{
@@ -25,6 +24,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   KeyHash,
   ProtVer,
   SlotNo,
+  StakePool,
+  VRFVerKeyHash,
   VocabError,
   Word64,
   WithOrigin
@@ -36,12 +37,18 @@ import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word16, Word32}
   * The public node's era activation and forecast production belong to the Dijkstra integration.
   */
 object Praos2:
+  /** The native header rules read the stored rational share and VRF hash, not the coin amount
+    * (which also includes proposal deposits) or BLS key of `IndividualPoolStake` (cardano-ledger
+    * 9df9f98c, `State/PoolDistr.hs:54-67`).
+    */
+  final case class PoolStake(share: Rational, vrf: VRFVerKeyHash)
+
   /** The fields of PolyPraosLedgerView read by header validation (Praos2.hs:131-159 and
     * Praos/Views.hs:70-93). Committee, quorum and transaction-byte bounds belong to body/vote
     * validation and are not consulted by these header predicates.
     */
   final case class LedgerView(
-      pools: PoolDistribution,
+      pools: Map[KeyHash[StakePool], PoolStake],
       maxHeaderSize: Word16,
       maxBodySize: Word32,
       protocolVersion: ProtVer,
@@ -164,15 +171,32 @@ object Praos2:
       blockNo <- BlockNo.fromBigInt(header.blockNo).leftMap(Defect.Vocabulary(_))
       _ <- leiosChecks(config.epochInfo, ticked.ledger, slot, header, ticked.chain.protocol)
       issuer <- Praos.issuerKey(header.issuerVkey).leftMap(Defect.Vocabulary(_))
+      pool <- KeyHash.fromBytes[StakePool](issuer.bytes).leftMap(Defect.Vocabulary(_))
       sequence <- Praos.counterOf(header.opCert.sequence).leftMap(Defect.Vocabulary(_))
-      _ <- certificate(config.praos, ticked.ledger.pools, p, issuer, sequence, header)
+      _ <- certificate(
+        config.praos,
+        ticked.ledger.pools.contains(pool),
+        p,
+        issuer,
+        sequence,
+        header
+      )
+      registered <- ticked.ledger.pools
+        .get(pool)
+        .toRight(Error.Praos(PraosError.IssuerWithoutStake(pool.bytes)))
+      vrfHash = Blake2b.hash256.hash(header.vrfVkey)
+      _ <- Either.cond(
+        vrfHash == registered.vrf.bytes,
+        (),
+        Error.Praos(PraosError.VrfKeyMismatch(pool.bytes, vrfHash, Set(registered.vrf.bytes)))
+      )
       _ <- Praos
-        .verifyVrf(
+        .verifyVrfWithStake(
           header.praosView,
           header.vrf,
-          StakeView.Known(ticked.ledger.pools),
           p.epochNonce,
-          config.praos
+          config.praos,
+          Some(Right(PraosLeaderThreshold.Fraction.storedStake(registered.share)))
         )
         .leftMap {
           case e: PraosError     => Error.Praos(e)
@@ -310,7 +334,7 @@ object Praos2:
     */
   private def certificate(
       config: PraosConfig,
-      pools: PoolDistribution,
+      knownPool: Boolean,
       state: PraosState,
       issuer: KeyHash[BlockIssuer],
       sequence: Word64,
@@ -334,11 +358,10 @@ object Praos2:
       _ <- config.verdicts
         .opCert(header.praosView, config.slotsPerKesPeriod, config.maxKesEvolutions)
         .refusedAs(Error.Certificate(_))
-      pool = Blake2b.hash224.hash(header.issuerVkey)
       previous <- state.ocertCounters
         .get(issuer)
-        .orElse(Option.when(pools.stake.contains(pool))(Word64.zero))
-        .toRight(Error.Certificate(OCertError.NoCounter(pool)))
+        .orElse(Option.when(knownPool)(Word64.zero))
+        .toRight(Error.Certificate(OCertError.NoCounter(issuer.bytes)))
       _ <- Either.cond(
         previous.toBigInt <= sequence.toBigInt,
         (),

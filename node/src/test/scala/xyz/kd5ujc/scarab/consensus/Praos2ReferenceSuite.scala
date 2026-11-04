@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.consensus
 import io.circe.{Decoder, Json, parser}
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, ProtocolState}
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -12,14 +12,7 @@ import xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold
 import xyz.kd5ujc.scarab.crypto.kes.Sum6Kes
 import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
 import xyz.kd5ujc.scarab.ledger.{Header, ProviderDefect, Verdicts}
-import xyz.kd5ujc.scarab.ledger.{
-  EnvelopeError,
-  LeiosHeader,
-  Nonce,
-  OCertError,
-  PoolDistribution,
-  PraosError
-}
+import xyz.kd5ujc.scarab.ledger.{EnvelopeError, LeiosHeader, Nonce, OCertError, PraosError}
 import xyz.kd5ujc.scarab.ledger.state.{
   BlockIssuer,
   BlockNo,
@@ -27,6 +20,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   KeyHash,
   ProtVer,
   SlotNo,
+  StakePool,
+  VRFVerKeyHash,
   Word64,
   WithOrigin
 }
@@ -53,7 +48,12 @@ class Praos2ReferenceSuite extends munit.FunSuite:
   private def word16(n: Int): Word16 = Word16.from(n).fold(e => fail(e.toString), identity)
   private def word32(n: Long): Word32 = Word32.from(n).fold(e => fail(e.toString), identity)
   private val view = Praos2.LedgerView(
-    pools,
+    pools.stake.map { (id, amount) =>
+      poolId(id) -> Praos2.PoolStake(
+        Rational(amount, pools.total),
+        vrfHash(pools.vrf.getOrElse(id, fail("missing genesis VRF key")))
+      )
+    },
     word16(1100),
     word32(90112),
     ProtVer(Word64.fromUnsigned(12), Word64.zero),
@@ -89,6 +89,10 @@ class Praos2ReferenceSuite extends munit.FunSuite:
     case Nonce.Hash(h) => Json.fromString(h.hex)
 
   private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e.message), identity)
+  private def poolId(raw: Bytes): KeyHash[StakePool] =
+    KeyHash.fromBytes[StakePool](raw).fold(e => fail(e.toString), identity)
+  private def vrfHash(raw: Bytes): VRFVerKeyHash =
+    VRFVerKeyHash.fromBytes(raw).fold(e => fail(e.toString), identity)
   private def field[A: Decoder](json: Json, key: String): A =
     json.hcursor.get[A](key).fold(e => fail(e.message), identity)
   private def optional[A: Decoder](json: Json, key: String): Option[A] =
@@ -105,11 +109,18 @@ class Praos2ReferenceSuite extends munit.FunSuite:
     LeiosHeader.decode(bytes(hex)).fold(e => fail(e.message), identity)
 
   private def testView(options: Json): Praos2.LedgerView =
-    val distribution = optional[Vector[Json]](options, "poolOverride").fold(pools) { entries =>
-      PoolDistribution(
-        entries.map(p => bytes(field[String](p, "pool")) -> field[BigInt](p, "stake")).toMap,
-        entries.map(p => bytes(field[String](p, "pool")) -> bytes(field[String](p, "vrf"))).toMap
-      )
+    val distribution = optional[Vector[Json]](options, "poolOverride").fold(view.pools) { entries =>
+      val total = entries.map(p => field[BigInt](p, "stake")).sum.max(BigInt(1))
+      entries.map { p =>
+        val share = optional[Json](p, "share").fold(Rational(field[BigInt](p, "stake"), total)) {
+          r =>
+            Rational(field[BigInt](r, "numerator"), field[BigInt](r, "denominator"))
+        }
+        poolId(bytes(field[String](p, "pool"))) -> Praos2.PoolStake(
+          share,
+          vrfHash(bytes(field[String](p, "vrf")))
+        )
+      }.toMap
     }
     view.copy(
       pools = distribution,
@@ -254,14 +265,14 @@ class Praos2ReferenceSuite extends munit.FunSuite:
       case Praos2.Error.Praos(PraosError.NotElected(_, _)) =>
         val value =
           PraosLeaderThreshold.leaderValue(header.vrf.output).fold(e => fail(e.toString), identity)
-        val stake = ledger.pools.stake(Blake2b.hash224.hash(header.issuerVkey))
-        val divisor = stake.gcd(ledger.pools.total)
+        val share =
+          ledger.pools.getOrElse(poolId(issuer(header).bytes), fail("missing elected pool")).share
         tagged(
           "VRFLeaderValueTooBig",
           n(value),
           Json.obj(
-            "numerator" -> n(stake / divisor),
-            "denominator" -> n(ledger.pools.total / divisor)
+            "numerator" -> n(share.numerator),
+            "denominator" -> n(share.denominator)
           ),
           Json.fromBigDecimal(BigDecimal("0.05"))
         )

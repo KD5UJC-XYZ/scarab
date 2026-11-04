@@ -20,6 +20,10 @@ committee, quorum and transaction-byte bounds, but header validation never consu
 
 `--batch` applies each case's unmodified recorded prefix, then its supplied forecast/state
 overrides and final header. Mutations retain the old signature to expose cheap-check precedence.
+The pool-share type is pinned to cardano-ledger `9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c`
+(`State/PoolDistr.hs:54-67`). Pool inputs may supply the stored rational `share` independently of their coin amount, matching
+the native ledger view; absent that override, the genesis fixture derives its share from stake.
+The large-denominator and differing-share cases guard against normalizing these native values.
 `--sign` separately produces valid cold/KES signatures using public deterministic test seeds;
 the templates retain the recorded VRF key and proof, and their forecast registers the synthetic
 issuer. No operational key material is read or emitted. The native test-only pure KES API is

@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.crypto.vrf
 
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import scala.annotation.tailrec
 
 /** The reference's leader check in its own E34 fixed-point arithmetic (`FixedPoint`, cardano-ledger
@@ -43,6 +43,13 @@ object PraosLeaderThreshold:
   private val MaxWord = (BigInt(1) << 64) - 1
   final class Fraction private (val numerator: BigInt, val denominator: BigInt)
   object Fraction:
+    /** A ledger forecast's stored pool share is already a Rational, with no machine-word bound
+      * (`IndividualPoolStake`, ledger 9df9f98c `State/PoolDistr.hs:54-67`). It is consumed directly
+      * by `checkLeaderNatValue`; its coin amount may separately include proposal deposits.
+      */
+    private[scarab] def storedStake(value: Rational): Fraction =
+      new Fraction(value.numerator, value.denominator)
+
     def checked(n: BigInt, d: BigInt): Either[Error, Fraction] =
       if n == null then Left(Error.MissingNumerator)
       else if d == null then Left(Error.MissingDenominator)

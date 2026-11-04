@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "measuredAt": "2026-11-04",
-  "scope": "Native Praos2 header acceptance/refusal constructor and domain arguments; every accepted protocol-state field; certification-slot arithmetic. The supplied genesis pool forecast covers epochs zero and one. Backend error rendering and complete ledger/body/forecast behavior are outside this comparison; native diagnostics and original input encodings are retained.",
+  "scope": "Native Praos2 header acceptance/refusal constructor and domain arguments; every accepted protocol-state field; certification-slot arithmetic; stored rational pool shares independent of coin amounts, including an unbounded denominator. The supplied genesis pool forecast covers epochs zero and one. Backend error rendering and complete ledger/body/forecast behavior are outside this comparison; native diagnostics and original input encodings are retained.",
   "consensusSourceCommit": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
   "ledgerSourceCommit": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
   "reference": {
@@ -10,17 +10,17 @@
     "ouroborosNetwork": "2f1c154f248659b89523d5679ca532f442e7ed2a"
   },
   "compiler": "GHC 9.10.3; release uses GHC 9.6. Source-reference helper, not the release binary dependency closure.",
-  "oracleImageSha256": "5f5faae70d5efbd55600d80fa22277fb95960f41be8e5b76e9545b869ae17159",
+  "oracleImageSha256": "f153ba537264eea4e2e2d58d47b9f964ffb31d5c7632ebf59602afdf3a35c9d0",
   "cases": {
     "file": "cases.jsonl",
-    "count": 59,
-    "sha256": "90ea5fb06c42ba20c16dce5ec74db7c6f65c382257e307325633e569662278cf"
+    "count": 61,
+    "sha256": "61a06818daa988105afb494254c5d4f777b2b5570aba4d5676a2d55e19a328d6"
   },
   "results": {
     "headerTransitions": {
-      "cases": 53,
-      "accepted": 18,
-      "refused": 35
+      "cases": 55,
+      "accepted": 19,
+      "refused": 36
     },
     "timing": {
       "cases": 6
@@ -38,10 +38,10 @@
     "config/dijkstra-genesis.json": "9895c096a45225e99630b3fb866e5b115ce3d28c6ecd45ceda8feb0e29306127"
   },
   "harnessSha256": {
-    "Main.hs": "db6d90ea91c8b289a089952856becd6f849a878882eeb43ad7c6c5e7dc59f278",
+    "Main.hs": "a894ab03debaf295b0838c27d458688733b9d4c0b6df89151189df7198f5513f",
     "cabal.project": "11ae089926fe9a031bf75df04f5f2a6fa3b3429ed2219be55d7db24447db135b",
     "scarab-leios-praos2-oracle.cabal": "1c85c089b6251ba25ca6d54680b5c22ba9fca6223cee60c24a080b7df8a956e9",
-    "praos2_cases.py": "0a7e92e12f29adab1593dd65d66e150717148de37cdf7b18c88fc3907378b93f"
+    "praos2_cases.py": "1dc0d2f15f9007a420983aff13b38ca59a7cac3c3ef9a15c514e5b9fa319dc61"
   },
   "reproduce": "scripts/oracle/leios-praos2/README.md",
   "consumer": "node/src/test/scala/xyz/kd5ujc/scarab/consensus/Praos2ReferenceSuite.scala",

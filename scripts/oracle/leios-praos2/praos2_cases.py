@@ -132,6 +132,12 @@ def cases(source, signed=None):
     add("vrf-proof-wrong-epoch-nonce", epochNonce="00" * 32)
     add("vrf-not-elected", poolOverride=[dict(source["pools"][0], stake=1),
         {"pool": "00" * 28, "vrf": "00" * 32, "stake": maximum - 1}])
+    add("stored-pool-fraction-not-normalized-coins", poolOverride=[
+        dict(source["pools"][0], share={"numerator": 1, "denominator": 1}),
+        {"pool": "00" * 28, "vrf": "00" * 32, "stake": source["pools"][0]["stake"],
+         "share": {"numerator": 0, "denominator": 1}}])
+    add("stored-pool-fraction-unbounded-denominator", poolOverride=[
+        dict(source["pools"][0], share={"numerator": 1, "denominator": maximum + 1})])
     add("counter-too-small", counter=2)
     add("kes-before-start", change(raw, {8: c.items([cert[0], cert[1], u(1), cert[3]])}))
     add("kes-after-end", maxKesEvolutions=0)

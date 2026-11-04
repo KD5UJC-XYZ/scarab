@@ -9,13 +9,14 @@ provenance are [the restarted public testnet fixtures](../../leios/testnet/READM
 | File | Executed result | SHA-256 |
 |---|---|---|
 | `headers.jsonl` | All 1,100 recorded headers accepted; every resulting protocol-state field retained | `9f5cde5f97a302e9f8a4284bd4cec87f421a91f53daac5e31530d47bbfd8752c` |
-| `cases.jsonl` | 59 synthetic cases: 18 accepted transitions, 35 refusals and six certification-slot results | `90ea5fb06c42ba20c16dce5ec74db7c6f65c382257e307325633e569662278cf` |
+| `cases.jsonl` | 61 synthetic cases: 19 accepted transitions, 36 refusals and six certification-slot results | `61a06818daa988105afb494254c5d4f777b2b5570aba4d5676a2d55e19a328d6` |
 
 `cases.jsonl` retains the original or modified header, recorded-prefix length, explicit forecast
 and prior-state overrides, and native result. `praos2_cases.py` recreates these inputs. The ten
 signed cases use seven deterministic native-signed headers; the signing seeds are public test
 constants in the harness, not testnet credentials. Ordinary testnet headers have no announcements
-or certificates, so the synthetic cases supply that coverage explicitly.
+or certificates, so the synthetic cases supply that coverage explicitly. Two further cases check
+stored pool fractions independently of coin amounts, including a denominator beyond Word64.
 
 `Praos2ReferenceSuite` compares every accepted protocol-state field, each refusal constructor and
 its domain arguments, and every timing result. Native diagnostic text is retained but its rendering

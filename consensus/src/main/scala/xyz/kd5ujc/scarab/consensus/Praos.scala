@@ -213,17 +213,37 @@ object Praos:
               PraosError.VrfKeyMismatch(pool, vrfHash, keys)
             )
           yield None
+      result <- verifyVrfWithStake(
+        header,
+        vrf,
+        epochNonce,
+        config,
+        registered.map { (stake, total) => Leader.Fraction.checked(stake, total) }
+      )
+    yield result
+
+  /** Proof and threshold checks after registration. A fraction-conversion error is landed only
+    * after proof verification, preserving the existing Praos refusal order.
+    */
+  private[consensus] def verifyVrfWithStake(
+      header: Header.Shelley,
+      vrf: xyz.kd5ujc.scarab.ledger.VrfCert,
+      epochNonce: Nonce,
+      config: PraosConfig,
+      stake: Option[Either[Leader.Error, Leader.Fraction]]
+  ): Either[PraosError | ProviderDefect, (Bytes, LeaderCheck)] =
+    for
       input <- ProviderDefect.vrfInput(vrfInput(epochNonce, header.slot))(
         PraosError.VrfInput(_)
       )
       output <- ProviderDefect.vrf(
         config.verdicts.praosVrf(input, header.vrfVkey, vrf.proof, vrf.output)
       )(PraosError.VrfRejected(_))
-      leader <- registered match
-        case Some((stake, total)) =>
+      leader <- stake match
+        case Some(fractionResult) =>
           for
             value <- Leader.leaderValue(output).leftMap(PraosError.LeaderThreshold(_))
-            fraction <- Leader.Fraction.checked(stake, total).leftMap(PraosError.LeaderThreshold(_))
+            fraction <- fractionResult.leftMap(PraosError.LeaderThreshold(_))
             decision <- Leader
               .check(value, fraction, config.activeSlotsCoeff)
               .leftMap(PraosError.LeaderThreshold(_))

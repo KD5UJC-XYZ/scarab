@@ -889,6 +889,14 @@ persist a new state format or connect the node to the testnet.
 | Operational certificate, counter, VRF | [`updateChainDepStatePolyPraos`](https://github.com/IntersectMBO/ouroboros-consensus/blob/2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b/ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/PolyPraos.hs#L600-L668) | KES window, cold signature, original-body KES signature, counter lower/upper bounds, registered VRF key, proof and leader threshold |
 | State update | Same source, `reupdateChainDepStatePolyPraos` | Last slot, counter, evolving/candidate/lab nonces and replacement of the previous announcement, including replacement with none |
 
+The pool view preserves `IndividualPoolStake.individualPoolStake` as an exact Rational and its
+typed pool ID and VRF hash. It does not recompute the fraction from `individualTotalPoolStake`:
+that amount can include proposal deposits excluded from the stored fraction
+([ledger `9df9f98c`, `PoolDistr.hs`](https://github.com/IntersectMBO/cardano-ledger/blob/9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c/libs/cardano-ledger-core/src/Cardano/Ledger/State/PoolDistr.hs#L54-L67)).
+The fraction's numerator and denominator remain unbounded integers. Two native cases exposed
+the incorrect coin-normalizing adapter before this correction, one with a differing stored share
+and another whose denominator exceeds `Word64`.
+
 Certification uses `ceil((3*A + V + D)/slotMillis)`, with unbounded intermediate milliseconds,
 slot length truncated to whole milliseconds and unsigned slot addition. KES end-period addition,
 counter increment, epoch increment and nonce-window slot addition retain the reference's unsigned
@@ -899,7 +907,7 @@ these header predicates read; the native harness supplies them explicitly.
 
 Executed comparison, 2026-11-04: all 1,100 `rc-2026w44` recorded headers and every resulting
 protocol-state field agree with the compiled native validator. The capture has no announcements
-or certificates. A further 59 synthetic cases cover 18 accepted transitions, 35 refusals and six
+or certificates. A further 61 synthetic cases cover 19 accepted transitions, 36 refusals and six
 timing results, including valid native-signed announcements/certificates, rejection precedence,
 counter increments and unsigned overflow. `Praos2ReferenceSuite` retains all cases and compares
 all accepted state fields and the exact refusal constructor/domain arguments. Native diagnostic

@@ -71,6 +71,7 @@ data PoolInput = PoolInput
   { pool :: KeyHash StakePool
   , vrf :: VRFVerKeyHash StakePoolVRF
   , stake :: Word64
+  , share :: Maybe Rational
   } deriving (Generic)
 instance FromJSON PoolInput
 
@@ -131,7 +132,7 @@ option field opts fallback = fromMaybe fallback (opts >>= field)
 poolDistribution :: [PoolInput] -> Either InputError PoolDistr
 poolDistribution ps = do
   pure $ PoolDistr
-    (Map.fromList [(pool p, IndividualPoolStake (toInteger (stake p) % totalStake) (CompactCoin (stake p)) (vrf p) SNothing) | p <- ps])
+    (Map.fromList [(pool p, IndividualPoolStake (fromMaybe (toInteger (stake p) % totalStake) (share p)) (CompactCoin (stake p)) (vrf p) SNothing) | p <- ps])
     (nonZeroOr (Coin totalStake) (knownNonZeroCoin @1))
   where
     totalStake = max 1 (sum (map (toInteger . stake) ps))

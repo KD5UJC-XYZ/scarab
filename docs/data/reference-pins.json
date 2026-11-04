@@ -65,7 +65,10 @@
    "dependents": [
     "docs/leios.md",
     "scripts/oracle/leios-testnet/cabal.project",
-    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/LeiosBlock.scala"
+    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/LeiosBlock.scala",
+    "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos2.scala",
+    "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/vrf/PraosLeaderThreshold.scala",
+    "scripts/oracle/leios-praos2/README.md"
    ]
   },
   {

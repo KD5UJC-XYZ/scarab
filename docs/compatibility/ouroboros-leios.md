@@ -13,7 +13,7 @@ N3 against the public Leios testnet `musashi` (2026-10-16, read-only, owner-appr
 
 The pure Praos2 header rules are compared separately with the restarted testnet build: the
 2026-11-04 run accepted all 1,100 recorded headers and matched every protocol-state field, plus
-59 synthetic cases (18 accepted transitions, 35 refusals, six timing results). Signed cases cover
+61 synthetic cases (19 accepted transitions, 36 refusals, six timing results). Signed cases cover
 valid announcements/certificates and counter increments. See [the as-built rules and exact scope](../leios.md#126-praos2-header-validation-746)
 and [native fixtures](../../fixtures/reference/leios-praos2/README.md). This supplies header-rule
 evidence with an explicit forecast; it does not establish any of the integration items below.
