@@ -520,7 +520,8 @@
         "suites": [
           "HardForkSuite",
           "TickRulesSuite",
-          "EraTransitionSuite"
+          "EraTransitionSuite",
+          "GenesisStartSuite"
         ],
         "issues": [
           342,
