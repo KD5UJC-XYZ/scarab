@@ -13,7 +13,10 @@ class LeiosFetchClientSuite extends FailsOnUncaught:
         for
           limits <- Ref.of[IO, Vector[Int]](Vector.empty)
           sent <- Ref.of[IO, Vector[Bytes]](Vector.empty)
-          raw = Bytes.wrap(Array[Byte](0x82.toByte, 2, 0xa1.toByte, 0x40, 0))
+          raw = Bytes.wrap(
+            Array[Byte](0x82.toByte, 2, 0xa1.toByte, 0x58, 0x20) ++ Array
+              .fill[Byte](32)(1) :+ 0.toByte
+          )
           channel = new MuxChannel[IO]:
             def protocol = Protocols.LeiosFetch
             def send(message: Bytes)(using Raise[IO, NetworkError]) = sent.update(_ :+ message)

@@ -28,8 +28,10 @@ object DecoderVersion:
 
   /** Dijkstra's `eraProtVerLow`, 12 (`type ProtVerLow DijkstraEra = 12`,
     * `libs/cardano-ledger-core/internal/Cardano/Ledger/Internal/Definition/Era.hs:140`,
-    * cardano-ledger f649f975). The node has no Dijkstra ledger: only the arguments of a
-    * node-to-client query of that era are read at it, as the reference reads them (#720).
+    * cardano-ledger f649f975). The node has no Dijkstra ledger: the arguments of a node-to-client
+    * query of that era are read at it, as the reference reads them (#720), and the transactions of
+    * a Leios block by the readers of [[dijkstra.V12]], which follow the Leios testnet's build
+    * (#750).
     */
   val Dijkstra: DecoderVersion = 12
 

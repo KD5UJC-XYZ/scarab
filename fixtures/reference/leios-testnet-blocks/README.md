@@ -1,4 +1,4 @@
-# Leios testnet blocks and headers as the testnet's build reads them
+# Leios testnet blocks, headers and transactions as the testnet's build reads them
 
 Status: Current. Evidence for [#711](https://github.com/KD5UJC-XYZ/scarab/issues/711).
 
@@ -17,20 +17,18 @@ detached, an empty indefinite list with its fields after it, is refused. The env
 is read by `enforceSize`, a definite list. The KES signature of a Leios header is over its body's
 original bytes.
 
-`cases.jsonl` holds 88 lines, one case each, written by
-`scripts/oracle/leios-testnet/leios_cases.py`:
-- the testnet's blocks as BlockFetch carries them (`kind` "block"): blocks 0, 1 and 8,562 of the
-  current network (`fixtures/leios/testnet/blocks-rc-2026w44.tsv`, all empty) and the six blocks of
-  the network before its restart of 2026-10-18 (`blocks.tsv`): its two blocks of tag 7, which hold a
-  Leios header and are refused, and its four of tag 8 (empty, certifying, with transactions,
-  announcing with transactions), accepted;
-- the block of that network with transactions with one list written in another form: the envelope
+The 2026-11-04 corpus in `cases.jsonl` holds 621 lines, one case each, written by
+`scripts/oracle/leios-testnet/leios_cases.py` and, for the transactions, `leios_tx_cases.py`:
+- the testnet's blocks as BlockFetch carries them (`kind` "block"), of the network as restarted on
+  2026-10-18 (`fixtures/leios/testnet/blocks-rc-2026w44.tsv`): blocks 0, 1 and 8,562 (empty), a
+  certifying block and an announcing block with transactions, all accepted;
+- block 0 holding two synthetic transactions, with one list written in another form: the envelope
   (indefinite, three items, tag 9, a trailing byte), the block, its header and the header body
   (indefinite, detached, wrong lengths), the block body (indefinite, detached, two and four items),
   the transaction list (indefinite, tagged 258), a transaction (indefinite, detached, three and five
   items, marked invalid, a validity that is not a boolean), the Peras certificate (bytes, chunked
   bytes, an integer);
-- its certifying block with the Leios certificate indefinite, detached, its signature chunked, its
+- the certifying block with the Leios certificate indefinite, detached, its signature chunked, its
   signers with a wide length head, and signers of 8,192 and 8,193 bytes; and with a signature of 47
   and 49 bytes, off the curve and outside the subgroup (the compressed G1 vectors of
   `fixtures/leios/bls/cardano-base-serde-test-vectors`), not compressed, and the identity, which
@@ -42,6 +40,21 @@ original bytes.
 - the empty block 0 of the current network with synthetic transactions whose output value
   `[coin, multiasset]` is definite, indefinite or detached, in an output list and an output map, a
   coin value, and two transactions of which the second holds a detached value;
+- the empty block 0 with the transaction `[0, 0, null, true]` of #750, refused;
+- transactions alone (`kind` "tx", #750), read by `decodeDijkstraTopTxInBlock` at decoder version 12
+  as the block body reads each: the 40 transactions of block 64,853 of the restarted network
+  (`announcing-with-txs`), and 496
+  synthetic ones with one field changed at each decoder's boundary: each required body field
+  missing, unknown, repeated and negative keys, every body key of a top-level transaction and of a
+  sub-transaction, empty collections where the build refuses them, duplicates by value (inputs,
+  certificates, proposals, owners, guards, map keys) and by hash (scripts, datums, sub-transaction
+  ids), definite, indefinite, detached, tagged and chunked forms, outputs in each form with values,
+  datums and reference scripts of each language, the multi-asset size bound (1,488 and 1,489 assets),
+  every certificate tag with a pool's voting key (valid, null, malformed, off the curve, outside the
+  subgroup, the identity), relays, votes, every governance action and every Dijkstra parameter
+  update key with values at their bounds, witness sets (vkey, bootstrap, native and Plutus V1 to V4
+  scripts, datums, redeemers as a map and as a list, repeated redeemer keys and reversed key order),
+  and auxiliary data in each form;
 - Leios headers alone (`kind` "header"), as ChainSync carries them inside their era envelope: the
   header of block 0 of the current network, and the forms of the
   [header decoding oracle](../header-decoding/README.md) (definite, indefinite, detached, body,
@@ -50,34 +63,48 @@ original bytes.
   size over a `Word32`, a VRF output of no bytes, a body of eleven fields).
 
 The verdict (`accepted` and the complete `failure`) is what the build's decoders did with each:
-43 accepted and 45 refused. Every detached form is refused, every indefinite one accepted. For an
+314 accepted and 307 refused (273 and 263 of the transactions). The record-form variants accept indefinite lists and refuse detached ones; the outer block envelope requires a definite list. For an
 accepted case the line records the header hash (`hash`), its size, the signed bytes (`signable`),
 the header fields, and for a block its tag, body hash and size as the ledger computes them, each
 transaction's id and validity flag (`txs`) and whether it carries a Leios or a Peras certificate.
-`LeiosTestnetBlockReferenceSuite` requires the same verdict from `LeiosBlock.decode` (a block of
-another tag from `Block.decode`) or `LeiosHeader.decode`, and the same values.
+For an accepted transaction alone the line records its id (`txid`), its validity flag, the keys of
+its witness set's script and datum maps (`scripts`, `datums`: hashes of each one's original bytes)
+and its redeemers in key order (`redeemers`: purpose and index, original data bytes and execution
+units, with the last value kept for repeated keys), and each sub-transaction's corresponding
+fields (`subtxs`). `LeiosTestnetBlockReferenceSuite` requires the
+same verdict from `LeiosBlock.decode` (a block of another tag from `Block.decode`),
+`LeiosHeader.decode` or `DijkstraTx.inBlock`, and the same values.
 `provenance.json` records the revisions, the hashes of the sources read, of the harness, the
 generator, its input and output, and of the corpus.
 
 ## Regenerating
 
-Build the image as [the oracle README](../../../scripts/oracle/leios-testnet/README.md) describes,
-then:
+Build the image as [the oracle README](../../../scripts/oracle/leios-testnet/README.md) describes.
+The maintained capture includes block 64,853; no extra `--blocks` input is needed. Then:
 
 ```sh
 python3 scripts/oracle/leios-testnet/leios_cases.py --inputs /tmp/leios-inputs.json
 docker run --rm --network none --read-only -v /tmp:/fixtures:ro \
   scarab-leios-testnet:local /fixtures/leios-inputs.json > /tmp/leios-reference.json
-python3 scripts/oracle/leios-testnet/leios_cases.py --inputs /tmp/leios-inputs.json \
-  --reference /tmp/leios-reference.json --out fixtures/reference/leios-testnet-blocks/cases.jsonl
+python3 scripts/oracle/leios-testnet/leios_cases.py --inputs /tmp/leios-inputs.json --reference /tmp/leios-reference.json --out fixtures/reference/leios-testnet-blocks/cases.jsonl
 ```
 
 ## Not covered here
 
-- A transaction's parts are not decoded by Scarab beyond the four items of a transaction: the
-  Dijkstra transaction rules are not implemented (the `dijkstra` component, roadmap L1). The
-  verdicts on the synthetic transactions turn on their framing only.
+- No Dijkstra ledger rule is applied to a transaction (the `dijkstra` component, roadmap L1); the
+  transaction cases compare decoding only. A Plutus script's program is not deserialised, as the
+  build does not deserialise it when it decodes a block.
 - No KES signature, VRF proof or Leios certificate is checked; the synthetic headers' keys and
   signatures are filler bytes.
-- No block of the current network with transactions, an announcement or a certificate: the three
-  fetched are empty, and fetching later ones would mean following the chain from a known point.
+
+## Additional decoder-bound check (2026-11-03, #750)
+
+`DijkstraTxDepthSuite` constructs a transaction with a reference script containing 2,500,001
+zero bytes (language tag 1), wrapped in tag 24. The transaction is 2,500,098 bytes; its SHA-256 is
+`bf8465b9f67b969961a0a0ddcabc5ed303d51af44e9210eaac6b65b4d119a83d`. Run the
+transaction's hex through this harness as a single input with `kind: "tx"`; the pinned reference
+accepts it, with transaction id
+`5509833325c071edf4f2c5968671cb3f9654c158330121acc1e6efd6c3af6692`. Scarab's suite
+requires the same decode acceptance. This checks that embedded CBOR adds no byte budget; it does
+not establish ledger acceptance or block-size validity. This generated case is outside the retained
+corpus above, and its raw generated input is not published.

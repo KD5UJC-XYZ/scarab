@@ -272,6 +272,16 @@ enum DecodeField(val label: String) extends DecodeSite:
   case MetadataLabels extends DecodeField("metadata labels")
   case MetadataValue extends DecodeField("metadata value")
 
+  // Dijkstra transactions (the Leios testnet's build, cardano-ledger 9df9f98c)
+  case AccountBalanceIntervals extends DecodeField("account balance intervals")
+  case BlsKey extends DecodeField("BLS key")
+  case DirectDeposits extends DecodeField("direct deposits")
+  case Guards extends DecodeField("guards")
+  case PoolRelay extends DecodeField("pool relay")
+  case RequiredTopLevelGuards extends DecodeField("required top-level guards")
+  case SubTransaction extends DecodeField("sub-transaction")
+  case SubTransactions extends DecodeField("sub-transactions")
+
   // Blocks and headers
   case Block extends DecodeField("block")
   case BlockBodySize extends DecodeField("block body size")

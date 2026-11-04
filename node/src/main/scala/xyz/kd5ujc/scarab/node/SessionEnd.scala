@@ -14,6 +14,7 @@ import xyz.kd5ujc.scarab.ledger.{
   LedgerFailure,
   NodeError,
   PeerError,
+  Points,
   StorageError,
   ValidationError,
   VerificationDefect
@@ -259,7 +260,7 @@ object SessionEnd:
       case Returned           => reason(_ => "initiator returned")
       case NoMoreIntersection => reason(_ => "no more intersection")
       case RolledBackPastIntersection(point) =>
-        reason(_ => s"rolled back past intersection: $point")
+        reason(_ => s"rolled back past intersection: ${Points.show(point)}")
       case Stopped(true) => reason(_ => "asked to terminate")
       case _             => None
 

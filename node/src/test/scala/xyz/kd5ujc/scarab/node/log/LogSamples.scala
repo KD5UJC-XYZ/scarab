@@ -193,7 +193,9 @@ object LogSamples:
       peerB,
       Temperature.Cold,
       Some(FailureClass.Transient),
-      Some("unavailable: connection closed")
+      Some("unavailable: connection closed"),
+      None,
+      Some(12.5.seconds)
     ),
     Trace.PeerActionFailed(
       peerA,

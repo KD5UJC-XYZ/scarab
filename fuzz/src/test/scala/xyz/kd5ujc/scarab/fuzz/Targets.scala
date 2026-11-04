@@ -21,6 +21,7 @@ import xyz.kd5ujc.scarab.node.mempool.{
   MempoolState,
   RelayedTransactions
 }
+import xyz.kd5ujc.scarab.node.AnnouncedHeaders
 import xyz.kd5ujc.scarab.node.ntc.NtcQuery
 import xyz.kd5ujc.scarab.plutus.PlutusData
 
@@ -87,7 +88,8 @@ object Targets:
       roles: Seq[R],
       corpus: () => Vector[Array[Byte]],
       decode: (S, R, Bytes) => DecodeResult[M],
-      encode: (S, R, M) => Either[E, Bytes]
+      encode: (S, R, M) => Either[E, Bytes],
+      equivalent: (M, M) => Boolean = (left: M, right: M) => left == right
   ): Target =
     Target(
       name,
@@ -111,7 +113,10 @@ object Targets:
                 case Left(e) => throw new Violation(s"$s/$r: decoded $message does not encode: $e")
                 case Right(enc) =>
                   req(
-                    decode(s, r, enc) == DecodeResult.Decoded(message, enc.size),
+                    decode(s, r, enc) match
+                      case DecodeResult.Decoded(again, consumed) =>
+                        consumed == enc.size && equivalent(message, again)
+                      case _ => false,
                     s"$s/$r: $message re-decodes differently"
                   )
             case _ => ()
@@ -188,9 +193,14 @@ object Targets:
   private def leiosSeed[A](value: Either[LeiosWireError, A]): A =
     value.fold(error => throw new AssertionError(error.toString), identity)
 
+  /** The node's reader of announced headers; no fuzzed announcement is of the Byron era, so its
+    * epoch length is not read.
+    */
+  private val announcedHeaders = AnnouncedHeaders(BigInt(21600))
+
   private val leiosFetchSeeds: () => Vector[Array[Byte]] = () =>
     val point = EbPoint(
-      leiosSeed(LeiosWord.Word64.from(371614L)),
+      leiosSeed(LeiosWord.Word64.from(1455818L)),
       EbHash.fromBytes(Bytes.fromArray(Array.fill(32)(7.toByte)))
     )
     val bitmaps = TxBitmaps(
@@ -207,13 +217,7 @@ object Targets:
         )
       ),
       LeiosFetch.Message.BlockTxsRequest(point, bitmaps),
-      LeiosFetch.Message.BlockTxs(Corpus.transactions.take(3).map(Bytes.fromArray)),
-      // the older form of Blueprint fe4cceb9, which the decoder still reads (docs/leios.md 11.6, X12)
-      LeiosFetch.Message.LegacyBlockTxs(
-        point,
-        bitmaps,
-        Corpus.transactions.take(3).map(Bytes.fromArray)
-      )
+      LeiosFetch.Message.BlockTxs(Corpus.transactions.take(3).map(Bytes.fromArray))
     )
     // requests at and past each bitmap rule of the reference decoder (zero bitmap, window 268, windows
     // that do not ascend, 269 entries, definite and indefinite), which the decoder refuses
@@ -240,7 +244,7 @@ object Targets:
 
   private val leiosNotifySeeds: () => Vector[Array[Byte]] = () =>
     val point = EbPoint(
-      leiosSeed(LeiosWord.Word64.from(371614L)),
+      leiosSeed(LeiosWord.Word64.from(1455818L)),
       EbHash.fromBytes(Bytes.fromArray(Array.fill(32)(7.toByte)))
     )
     val seeds = Vector(
@@ -743,8 +747,19 @@ object Targets:
       LeiosNotify.State.values.toSeq,
       Seq(()),
       leiosNotifySeeds,
-      (s, _, b) => leiosResult(LeiosNotify.decodePrefix(s, b)),
-      (_, _, m) => LeiosNotify.encode(m)
+      (s, _, b) => leiosResult(LeiosNotify.decodePrefix(s, b)(using announcedHeaders)),
+      (_, _, m) => LeiosNotify.encode(m),
+      (left, right) =>
+        (left, right) match
+          // The hard-fork wrapper is canonicalised; the era and original inner header stay exact.
+          case (
+                LeiosNotify.Message.BlockAnnouncement(a),
+                LeiosNotify.Message.BlockAnnouncement(b)
+              ) =>
+            (HfcHeader.decode(a), HfcHeader.decode(b)) match
+              case (Right(x), Right(y)) => x == y
+              case _                    => false
+          case _ => left == right
     ),
     roundTrip(
       "local-state-query",
@@ -897,8 +912,9 @@ object Targets:
         "leios-block",
         () => Corpus.leiosBlocks ++ Corpus.tricky,
         probe("leios-block") { b =>
-          seen("leios-block", LeiosBlock.decode(b).isRight)
-          LeiosBlock.decode(b).foreach(_.faults)
+          val decoded = LeiosBlock.decode(b)
+          seen("leios-block", decoded.isRight)
+          decoded.foreach(_.faults)
         }
       ),
       Target(
@@ -1808,11 +1824,37 @@ object Targets:
       }
     )
 
+  private val genesisPoolFields: Target =
+    import io.circe.{Json, parser}
+    Target(
+      "genesis-pool-fields",
+      () =>
+        Files
+          .readString(java.nio.file.Path.of("fixtures/reference/genesis-pool-fields/cases.jsonl"))
+          .linesIterator
+          .filter(_.nonEmpty)
+          .map { line =>
+            val row = parser.parse(line).fold(e => throw new Violation(e.message), identity)
+            row.hcursor
+              .get[Json]("pool")
+              .fold(e => throw new Violation(e.message), identity)
+              .noSpaces
+              .getBytes(java.nio.charset.StandardCharsets.UTF_8)
+          }
+          .toVector,
+      probe("genesis-pool-fields") { bytes =>
+        parser.parse(new String(bytes.toArray, java.nio.charset.StandardCharsets.UTF_8)).foreach {
+          json => seen("genesis-pool-fields", GenesisPoolFields.read(json.hcursor).isRight)
+        }
+      }
+    )
+
   val all: Vector[Target] =
     network ++ node ++ ledgerPeers ++ mempackTxOut ++ snapshotMeta ++ snapshotTables ++ sclsFraming ++
       Vector(
         sclsValues,
         genesisInjections,
         nativeJson,
-        injectionJson
+        injectionJson,
+        genesisPoolFields
       ) ++ nativeSnapshots ++ ancillary ++ mithril ++ networkIdentity

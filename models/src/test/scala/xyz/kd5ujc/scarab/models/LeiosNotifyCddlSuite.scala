@@ -3,10 +3,12 @@ package xyz.kd5ujc.scarab.models
 
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.LeiosHeader
 import xyz.kd5ujc.scarab.crypto.bls.Vote
 import xyz.kd5ujc.scarab.models.leios.notify.LeiosNotifyMessage
-import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, LeiosNotify, LeiosWireError, LeiosWord}
+import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, LeiosNotify, LeiosWord}
 
 /** The generated reader of the LeiosNotify messages (`models.conf`: consensus' `leiosNotify.cddl`,
   * which imports the ChainSync header, so `header.cddl` is a module of that name too) against the
@@ -14,6 +16,9 @@ import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, LeiosNotify, LeiosWireError,
   * case, and both refuse the same malformed ones, including more than sixteen votes.
   */
 class LeiosNotifyCddlSuite extends munit.FunSuite:
+  // the announced header read by its era with the ledger's decoders, as the node's reader does
+  private given LeiosNotify.AnnouncementReader = h => LeiosHeader.byEra(h).void
+
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.message), identity)
 
   private val vote: Vote =
@@ -30,12 +35,12 @@ class LeiosNotifyCddlSuite extends munit.FunSuite:
       .asScala
       .filterNot(l => l.startsWith("#") || l.isEmpty)
       .map(_.split('\t'))
-      .find(_(0) == "first-announcement")
+      .find(_(0) == "announcing")
       .map(p => hex(p(5)))
       .getOrElse(fail("fixture"))
 
   private val point = EbPoint(
-    LeiosWord.Word64.from(371614L).fold(e => fail(e.toString), identity),
+    LeiosWord.Word64.from(1455818L).fold(e => fail(e.toString), identity),
     EbHash.fromBytes(hex("00" * 31 + "07"))
   )
 
@@ -87,21 +92,21 @@ class LeiosNotifyCddlSuite extends munit.FunSuite:
     })
   }
 
-  test("more than sixteen votes are refused by both, sixteen accepted by both") {
+  test(
+    "the CDDL bounds the votes to one to sixteen; the build's codec, and so this one, does not"
+  ) {
+    // `leiosNotify.cddl` has `[1*16 vote]`; `decodeVotes` of ouroboros-consensus 2416493b reads a
+    // definite list of any count (`LeiosDemoOnlyTestNotify.hs:384-388`), which this codec follows
     def votes(n: Int): Bytes =
-      hex("8207" + (0x80 + n).toHexString) ++ (1 to n).map(_ => vote.encode).reduce(_ ++ _)
+      hex("8207" + (0x80 + n).toHexString) ++ (1 to n)
+        .map(_ => vote.encode)
+        .foldLeft(Bytes.empty)(_ ++ _)
     assert(generated(votes(16)).isRight)
     assert(LeiosNotify.decodePrefix(LeiosNotify.State.Busy, votes(16)).isRight)
     assert(generated(votes(17)).isLeft)
-    assertEquals(
-      LeiosNotify
-        .decodePrefix(LeiosNotify.State.Busy, votes(17))
-        .left
-        .map(_ == LeiosWireError.BadField(7, xyz.kd5ujc.scarab.protocol.LeiosField.Votes)),
-      Left(true)
-    )
-    // an empty list is refused too (`1*16`)
-    assert(generated(hex("820780")).isLeft)
+    assert(LeiosNotify.decodePrefix(LeiosNotify.State.Busy, votes(17)).isRight)
+    assert(generated(votes(0)).isLeft)
+    assert(LeiosNotify.decodePrefix(LeiosNotify.State.Busy, votes(0)).isRight)
   }
 
   test("an unknown tag, a wrong arity and trailing bytes are refused by the generated reader") {
