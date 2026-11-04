@@ -131,13 +131,10 @@ object ChainSync:
     new ChainSyncEngine.TipCodec[Tip]:
       def encode(value: Tip): Either[ProtocolError, Bytes] = encodeTip(value)
       def decode(item: Bytes): Either[ProtocolError, Tip] =
-        decoded(decodeTip(item), item.size).flatMap(t => cardano(t.point).map(_ => t))
+        decoded(parse(item, Limits())(r => readCardanoTip(r)), item.size)
       override private[protocol] def readFrom(reader: ProtocolWire.Reader)(using
           ProtocolWire.Scope
-      ): Tip =
-        val t = reader.tip()
-        get(cardano(t.point))
-        t
+      ): Tip = readCardanoTip(reader)
       override private[protocol] def writeTo(
           writer: ProtocolWire.Writer,
           value: Tip,
@@ -158,6 +155,14 @@ object ChainSync:
     case Point.Block(_, hash) if hash.size != HashBytes =>
       Left(ProtocolError.CardanoPointHashMustContain32Bytes(hash.size))
     case _ => Right(point)
+
+  /** `decodeTip decodeRawHash` checks the point's hash before reading the block number
+    * (`Ouroboros/Network/Block.hs:319-325`, ouroboros-network 2fb69829).
+    */
+  private def readCardanoTip(reader: ProtocolWire.Reader)(using ProtocolWire.Scope): Tip =
+    if reader.arrayLength() != 2 then bad(ProtocolError.TipArity)
+    val point = get(cardano(reader.point()))
+    Tip(point, reader.uint())
 
   private def decoded[A](result: DecodeResult[A], consumed: Int): Either[ProtocolError, A] =
     result match

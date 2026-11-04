@@ -9,6 +9,23 @@ class ChainSyncSuite extends munit.FunSuite:
   private def b(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), identity)
   private def right[E, A](value: Either[E, A]): A = value.fold(e => fail(e.toString), identity)
   private val payload = ChainSyncFixtures.rawItem
+
+  test("a tip's invalid hash is refused before its missing block number") {
+    val prefixes = Vector(
+      State.NextCanAwait -> "830380",
+      State.Intersect -> "8206"
+    )
+    prefixes.foreach { case (state, prefix) =>
+      assertEquals(
+        decodePrefix(state, Role.Server, b(prefix + "82820040"), payload),
+        DecodeResult.Failed(ProtocolError.CardanoPointHashMustContain32Bytes(0))
+      )
+      assertEquals(
+        decodePrefix(state, Role.Server, b(prefix + "8282005820" + "11" * 32), payload),
+        DecodeResult.NeedMore
+      )
+    }
+  }
   private def decoded[A](value: DecodeResult[A]): A = value match
     case DecodeResult.Decoded(v, _) => v
     case other                      => fail(s"expected decoded: $other")
