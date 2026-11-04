@@ -69,7 +69,7 @@ class DijkstraScriptContextsSuite extends FunSuite:
     (c, field(r, "result"))
 
   test("the cases and results are the same transactions") {
-    assertEquals(cases.size, 8)
+    assertEquals(cases.size, 11)
     assertEquals(results.map(field(_, "name")), cases.map(field(_, "name")))
   }
 
@@ -84,7 +84,7 @@ class DijkstraScriptContextsSuite extends FunSuite:
       }
     )
 
-  Vector("everything", "guarded", "governance").foreach { name =>
+  Vector("everything", "guarded", "governance", "sub-transaction scripts").foreach { name =>
     test(s"$name: every PlutusV4 context is the reference's") {
       val (c, r) = named(name)
       val (tx, utxo) = read(c)
@@ -92,7 +92,11 @@ class DijkstraScriptContextsSuite extends FunSuite:
       val (topCollection, subCollections) = DijkstraScriptContexts.transaction(tx, env(utxo))
       val top = arguments(topCollection)
       val expectedTop = contexts(field(r, "top"))
-      assert(expectedTop.nonEmpty, "the reference collected contexts")
+      val expectedSubsAll = field(r, "subtxs").asArray.getOrElse(fail("subtxs")).map(contexts)
+      assert(
+        expectedTop.nonEmpty || expectedSubsAll.exists(_.nonEmpty),
+        "the reference collected contexts"
+      )
       assertEquals(top.size, expectedTop.size, "top-level contexts")
       top
         .zip(expectedTop)
@@ -111,6 +115,8 @@ class DijkstraScriptContextsSuite extends FunSuite:
   /** The reference's refusal, as the constructor its failure shows, and Scarab's. */
   private val refusals = Vector(
     "pointer output" -> "PointerPresentInOutput (TxOutFromOutput (TxIx {unTxIx = 0}))",
+    "byron output" -> "ByronTxOutInContext (TxOutFromOutput (TxIx {unTxIx = 0}))",
+    "unresolved input" -> "TranslationLogicMissingInput",
     "reference input also an input" -> "ReferenceInputsNotDisjointFromInputs",
     "redeemer pointing nowhere" -> "RedeemerPointerPointsToNothing",
     "no redeemer" -> "NoRedeemer (DijkstraMinting",
@@ -125,6 +131,9 @@ class DijkstraScriptContextsSuite extends FunSuite:
       cause match
         case DijkstraContextError.PointerPresentInOutput(DijkstraTxOutSource.FromOutput(ix)) =>
           s"PointerPresentInOutput (TxOutFromOutput (TxIx {unTxIx = $ix}))"
+        case DijkstraContextError.ByronTxOutInContext(DijkstraTxOutSource.FromOutput(ix)) =>
+          s"ByronTxOutInContext (TxOutFromOutput (TxIx {unTxIx = $ix}))"
+        case DijkstraContextError.UnresolvedInput(_) => "TranslationLogicMissingInput"
         case DijkstraContextError.ReferenceInputsNotDisjointFromInputs(_) =>
           "ReferenceInputsNotDisjointFromInputs"
         case DijkstraContextError.RedeemerPointerPointsToNothing(_, _) =>

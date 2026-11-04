@@ -282,11 +282,10 @@ object DijkstraScriptContexts:
       entries: Vector[(RewardAccount, DijkstraBalanceInterval)]
   ): PlutusData =
     def interval(i: DijkstraBalanceInterval): PlutusData = i match
-      case DijkstraBalanceInterval.Bounds(Some(l), None)    => constr(0, I(l))
-      case DijkstraBalanceInterval.Bounds(None, Some(u))    => constr(1, I(u))
-      case DijkstraBalanceInterval.Bounds(Some(l), Some(u)) => constr(2, I(l), I(u))
-      case DijkstraBalanceInterval.Bounds(None, None)       => constr(2)
-      case DijkstraBalanceInterval.Exact(c)                 => constr(3, I(c))
+      case DijkstraBalanceInterval.Lower(l)   => constr(0, I(l))
+      case DijkstraBalanceInterval.Upper(u)   => constr(1, I(u))
+      case DijkstraBalanceInterval.Both(l, u) => constr(2, I(l), I(u))
+      case DijkstraBalanceInterval.Exact(c)   => constr(3, I(c))
     PlutusData.Map(
       entries
         .sortBy(_._1)(using DijkstraPurposes.accountOrder)

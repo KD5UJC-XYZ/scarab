@@ -271,6 +271,78 @@ def governance():
     return array([b, wits, NULL, TRUE]), utxo
 
 
+def account_key0(byte):
+    return b"\xe0" + h(byte, 28)
+
+
+def account_script0(sh):
+    return b"\xf0" + sh
+
+
+def sub_transactions():
+    """PlutusV4 scripts inside sub-transactions: a guard, and spends of outputs with a datum hash
+    whose datum the sub-transaction carries or not; maps keyed by key and script credentials of
+    both networks; a parameter change of cost models, DRep thresholds and a pledge leverage."""
+    guard, spend = script(50), script(51)
+    s_guard, s_spend = v4_hash(guard), v4_hash(spend)
+    s_other = h(0x80, 28)
+    utxo = [
+        (txin(0x61), output(base_key(0x40), 90_000_000)),
+        (txin(0x62), output(enterprise_script(s_spend), 3_000_000, datum=by_hash(DATUM))),
+        (txin(0x63), output(enterprise_script(s_spend), 3_000_000, datum=by_hash(DATUM_2))),
+    ]
+    mixed = cmap([(bstr(account_key(0x81)), uint(1)), (bstr(account_script(s_other)), uint(2)),
+                  (bstr(account_key0(0x81)), uint(3)), (bstr(account_script0(s_other)), uint(4))])
+    sub = array([
+        body({
+            0: array([txin(0x62), txin(0x63)]),
+            1: array([output(base_key(0x46), 6_000_000)]),
+            5: mixed,
+            14: array([cred(script_hash=s_guard), cred(key=h(0x82, 28))]),
+            24: cmap([(cred(key=h(0x83, 28)), NULL), (cred(script_hash=s_other), DATUM),
+                      (cred(script_hash=s_guard), DATUM_2)]),
+            25: mixed,
+            26: cmap([(bstr(account_script(s_other)), uint(4)), (bstr(account_key0(0x84)), array([NULL, uint(5)]))]),
+        }),
+        cmap([(uint(4), array([DATUM])),
+              (uint(5), redeemers((0, 0, uint(1)), (0, 1, uint(2)), (6, 0, uint(3)))),
+              (uint(8), array([bstr(guard), bstr(spend)]))]),
+        NULL,
+    ])
+    update = cmap([
+        (uint(18), cmap([(uint(3), array([uint(i) for i in range(251)]))])),
+        (uint(26), array([ratio(i + 1, 20) for i in range(10)])),
+        (uint(38), ratio(5, 1)),
+    ])
+    b = body({
+        0: array([txin(0x61)]),
+        1: array([output(base_key(0x52), 1_000_000)]),
+        2: uint(200_000),
+        5: mixed,
+        20: array([array([uint(1), bstr(account_key(0x76)), array([uint(0), NULL, update, NULL]), ANCHOR])]),
+        23: array([sub]),
+    })
+    return array([b, cmap([]), NULL, TRUE]), utxo
+
+
+def byron_output():
+    """A PlutusV4 minting script with a Byron address among the outputs: refused."""
+    import zlib
+    payload = array([bstr(h(0x90, 28)), cmap([]), uint(0)])
+    address = array([tag(24, bstr(payload)), uint(zlib.crc32(payload))])
+    mint = script(21)
+    s_mint = v4_hash(mint)
+    utxo = [(txin(0x32), output(base_key(0x40), 9_000_000))]
+    b = body({
+        0: array([txin(0x32)]),
+        1: array([output(address, 8_000_000, assets=cmap([(bstr(s_mint), cmap([(bstr(b"aa"), uint(1))]))]))]),
+        2: uint(200_000),
+        9: cmap([(bstr(s_mint), cmap([(bstr(b"aa"), uint(1))]))]),
+    })
+    wits = cmap([(uint(5), redeemers((1, 0, uint(0)))), (uint(8), array([bstr(mint)]))])
+    return array([b, wits, NULL, TRUE]), utxo
+
+
 def pointer_output():
     """A PlutusV4 minting script with a pointer address among the outputs: refused."""
     mint = script(20)
@@ -316,7 +388,10 @@ def main():
         ("everything", everything),
         ("guarded", guarded),
         ("governance", governance),
+        ("sub-transaction scripts", sub_transactions),
         ("pointer output", pointer_output),
+        ("byron output", byron_output),
+        ("unresolved input", lambda: minting(extra={0: array([txin(0x41), txin(0x42)])})),
         ("reference input also an input", lambda: minting(ref_overlap=True)),
         ("redeemer pointing nowhere", lambda: minting(more=(1, 1))),
         ("no redeemer", lambda: minting(redeemer=None)),

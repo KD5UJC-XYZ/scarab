@@ -8,12 +8,15 @@ import xyz.kd5ujc.scarab.ledger.{Credential, DecodeField, LedgerDecodeError, Rew
 
 import V12.{Result, given}
 
-/** An account balance interval of a body (`AccountBalanceInterval`): an exact balance, or bounds of
-  * which at least one is given (the lower inclusive, the upper exclusive).
+/** An account balance interval of a body (`AccountBalanceInterval`,
+  * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs:670-675`, cardano-ledger 9df9f98c):
+  * an exact balance, or an inclusive lower bound, an exclusive upper bound, or both.
   */
 enum DijkstraBalanceInterval:
   case Exact(coin: BigInt)
-  case Bounds(lower: Option[BigInt], upper: Option[BigInt])
+  case Lower(inclusive: BigInt)
+  case Upper(exclusive: BigInt)
+  case Both(inclusive: BigInt, exclusive: BigInt)
 
 /** The level of a transaction: one of a block, or one of the sub-transactions of a body. */
 enum DijkstraLevel:
@@ -262,8 +265,10 @@ object DijkstraTx:
           ).tupled
         )
         .flatMap {
-          case (None, None)   => Left(LedgerDecodeError.Empty(DecodeField.AccountBalanceIntervals))
-          case (lower, upper) => Right(DijkstraBalanceInterval.Bounds(lower, upper))
+          case (None, None)    => Left(LedgerDecodeError.Empty(DecodeField.AccountBalanceIntervals))
+          case (Some(l), None) => Right(DijkstraBalanceInterval.Lower(l))
+          case (None, Some(u)) => Right(DijkstraBalanceInterval.Upper(u))
+          case (Some(l), Some(u)) => Right(DijkstraBalanceInterval.Both(l, u))
         }
 
   /** `decodeSubTransactions` (`TxBody.hs:452-456`, `decodeNonEmptySetLikeEnforceNoDuplicatesAnn`,
