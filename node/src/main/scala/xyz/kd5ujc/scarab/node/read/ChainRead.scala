@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.consensus.{BlockRef, ByronState, ConsensusExtras}
 import xyz.kd5ujc.scarab.consensus.state.*
 import xyz.kd5ujc.scarab.ledger as flat
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
-import xyz.kd5ujc.scarab.ledger.state.{EraTag, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.state.{EraTag, ShelleyBasedEra, SlotNo, WithOrigin}
 import scala.annotation.unused
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -35,6 +35,9 @@ trait ChainRead[S]:
 
     /** The epoch of the ledger state (of the placeholder ledger while the chain is in Byron). */
     def ledgerEpoch: BigInt
+
+    /** The slot of the last block applied to the state: the header state's tip. */
+    def tipSlot: WithOrigin[SlotNo]
 
     /** The chain-dependent state of the protocol the chain runs, with what the node keeps beside
       * it.
@@ -85,6 +88,9 @@ object ChainRead:
       def ledgerEpoch: BigInt = m.ext.ledgerState.state match
         case EraLedgerState.ByronCurrent(_)    => BigInt(0)
         case i: EraLedgerState.InShelleyEra[e] => i.state.nes.epoch.toBigInt
+      def tipSlot: WithOrigin[SlotNo] = m.ext.headerState.tip match
+        case WithOrigin.Origin  => WithOrigin.Origin
+        case WithOrigin.At(tip) => WithOrigin.At(tip.slot)
       def protocol: ProtocolState = ProtocolState(depState(m), consensus.protocol)
       def consensus: ConsensusExtras = m.extras match
         case MirrorExtras.InShelley(_, c) => c
