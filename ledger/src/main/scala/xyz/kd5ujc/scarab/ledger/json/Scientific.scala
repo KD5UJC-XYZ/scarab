@@ -24,8 +24,9 @@ final case class Scientific(coefficient: BigInt, base10Exponent: Long):
       Scientific(stripped, base10Exponent + zeros)
 
   /** `toBoundedInteger` (`Data/Scientific.hs:771-802`): the whole number in `[min, max]`, or `None`
-    * for a floating value or one outside the bounds. A value whose normalized exponent alone
-    * exceeds the bounds' digits is outside them without being expanded, as `dangerouslyBig` does.
+    * for a floating value or one outside the bounds. Check the stored exponent as `dangerouslyBig`
+    * does: normalization can wrap it into a negative machine Int. A normalized exponent exceeding
+    * the bounds' digits also proves the value is outside them without expansion.
     */
   def toBoundedInteger(min: BigInt, max: BigInt): Option[BigInt] =
     if coefficient == 0 then Option.when(min <= 0 && 0 <= max)(BigInt(0))
@@ -33,7 +34,7 @@ final case class Scientific(coefficient: BigInt, base10Exponent: Long):
       val n = normalize
       val digits = min.abs.max(max.abs).toString.length.toLong
       if base10Exponent < 0 && n.base10Exponent < 0 then None
-      else if n.base10Exponent > digits then None
+      else if base10Exponent > digits || n.base10Exponent > digits then None
       else
         Some(n.coefficient * BigInt(10).pow(n.base10Exponent.toInt)).filter(i =>
           min <= i && i <= max

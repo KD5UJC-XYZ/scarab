@@ -16,7 +16,10 @@ What the configuration does:
 |---|---|
 | `ByronGenesisFile` (or `GenesisFile`), `ShelleyGenesisFile` (or `GenesisFile`), `AlonzoGenesisFile`, `ConwayGenesisFile` | the genesis files, looked up next to the configuration (or in `--genesis-dir`); required; `GenesisFile` next to the specific name is an error |
 | `ByronGenesisHash`, `ShelleyGenesisHash`, `AlonzoGenesisHash`, `ConwayGenesisHash` | verified against the files: the Byron hash is that of the canonical JSON of the file, the others the blake2b-256 of the file's bytes (`cardano-cli genesis hash`). A mismatch is a `ConfigError` of kind `GenesisHashMismatch` that names the file, the listed and the actual hash; a hash that is not 64 hexadecimal digits is refused. The check runs for `--genesis-dir` too |
-| `DijkstraGenesisFile`/`Hash` | the hash is verified when the file is present; the Dijkstra era is not implemented |
+| `DijkstraGenesisFile`/`Hash` | read only when experimental hard forks are enabled, when the file is required and its listed hash is verified; otherwise both fields are ignored. The Dijkstra era is not implemented |
+| `TestDijkstraHardForkAtEpoch`/`Version` | read as unsigned 64-bit values only with experimental hard forks enabled; retained without activating Dijkstra |
+| `EgressBudgetMbps`, `LeiosDbConfig`, `LeiosMinOfferLead`, `LeiosAdaptiveEndorsements` | parsed with the public Leios testnet build's types and defaults; explicit settings are reported in `configUnsupported` as recognised and unused |
+| `LedgerDB`, deprecated `SnapshotInterval`/`NumOfDiskSnapshots` | the reference's backend, query-batch and snapshot settings are parsed and retained; explicit settings are reported as recognised and unused, and do not configure Scarab's store |
 | `CheckpointsFile`/`Hash` | a configured file is required; its byte hash is verified before parsing. Unique unsigned block numbers map to 32-byte header hashes, enforced during header and block validation across eras |
 | `TestShelleyHardForkAtEpoch` ... `TestConwayHardForkAtEpoch` | the first epoch of each era (`0` for all of them: the chain starts in that era, as Preview); absent for Shelley: the Byron ledger decides |
 | `RequiresNetworkMagic`, `PBftSignatureThreshold` | the Byron address magic and the PBFT signing threshold |
@@ -29,7 +32,17 @@ What the configuration does:
 | `MaxConcurrencyDeadline` | nonnegative target active fetching peers in deadline mode (default 1); preferred-peer handover can temporarily exceed it |
 | `MaxConcurrencyBulkSync` | corresponding nonnegative bulk-sync fetching-peer target (default 1) |
 | `TargetNumberOfRootPeers`, `TargetNumberOfKnownPeers`, `TargetNumberOfEstablishedPeers`, `TargetNumberOfActivePeers`, and the three `...BigLedgerPeers` | the targets of the peer governor (see "Peer selection"); absent keys leave the reference defaults |
-| everything else (`TraceOptions`, `LedgerDB`, ...) | ignored |
+| everything else (`TraceOptions`, ...) | ignored |
+
+The Leios settings follow `cardano-node` [b004fe0c's configuration reader](https://github.com/IntersectMBO/cardano-node/blob/b004fe0c50913dcdaa827a98e68a43d0ccce152a/cardano-node/src/Cardano/Node/Configuration/POM.hs#L390)
+and [Leios instances](https://github.com/IntersectMBO/cardano-node/blob/b004fe0c50913dcdaa827a98e68a43d0ccce152a/cardano-node/src/Cardano/Node/Configuration/Leios.hs#L24).
+An absent adaptive-endorsement object disables adaptation; a present object defaults to enabled.
+Its other fields are still checked when `Enabled` is false. Optional `null` values count as absent.
+`LedgerDB.Snapshots` accepts an object or the named `Mithril` policy. It cannot coexist with non-null
+flat snapshot fields inside `LedgerDB`. A nested snapshot interval or count takes precedence over
+the deprecated top-level value; both values must parse. A named policy uses its complete defaults.
+These parsing checks do not establish Dijkstra ledger validation or public-testnet production support;
+see [the integration gaps](../leios.md#124-what-still-stops-this-node-following-the-testnet).
 
 The topology needs `localRoots` and `publicRoots`; `bootstrapPeers` (a list or `null`), `useLedgerAfterSlot`
 (above 0: after that slot, `0`: always, below: never) and `peerSnapshotFile` are optional. An access point with a
