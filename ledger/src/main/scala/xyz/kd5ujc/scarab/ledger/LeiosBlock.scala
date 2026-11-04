@@ -99,6 +99,19 @@ object LeiosHeader:
   def decode(raw: Bytes): Either[ChainError, LeiosHeader] =
     CborRead.decode(raw, headerLimits).leftMap(fail).flatMap(read(raw, _))
 
+  /** A ChainSync header of the Leios testnet's chain read by its era, as the testnet's build reads
+    * it (`CardanoShelleyEras`, ouroboros-consensus 2416493b
+    * `ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/Block.hs:269-278`):
+    * index 7 is Dijkstra's Leios header, read by [[decode]], and an earlier era's index that era's
+    * header, read by [[Header.fromRaw]] (Babbage and Conway a 10-field Praos header). The Praos
+    * rules read either as a [[Header.Shelley]], a Leios header through [[LeiosHeader.praosView]].
+    */
+  def byEra(header: HfcHeader): Either[ChainError, Header.Shelley] = header match
+    case HfcHeader.Dijkstra(raw) => decode(raw).map(_.praosView)
+    case HfcHeader.Supported(h)  => Header.fromRaw(h.era, h.raw)
+    case HfcHeader.Unrecognised(index, _) =>
+      Left(fail(LedgerDecodeError.UnknownTag(DecodeField.BlockEra, index)))
+
   private def read(raw: Bytes, root: Node): Either[ChainError, LeiosHeader] =
     for
       outer <- array(root, 2)

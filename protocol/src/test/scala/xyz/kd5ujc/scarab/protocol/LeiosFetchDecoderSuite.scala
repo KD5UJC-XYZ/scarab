@@ -9,10 +9,14 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import LeiosFetch.{Message, State, decodePrefix}
 
 class LeiosFetchDecoderSuite extends FunSuite:
+  // the era decoders are the ledger's; here every envelope of a known era holds a header
+  private given LeiosNotify.AnnouncementReader = _ => Right(())
+
   private def bs(values: Int*): Bytes = Bytes.wrap(values.map(_.toByte).toArray)
   private def ok[A, E](value: Either[E, A]): A =
     value.fold(error => throw new AssertionError(error.toString), identity)
-  private val point = bs(0x82, 0x00, 0x40)
+  private val ebHash = Bytes.wrap(Array.fill[Byte](32)(0x0e))
+  private val point = bs(0x82, 0x00, 0x58, 0x20) ++ ebHash
   private val transaction = bs(0xd8, 0x18, 0x41, 0xa0)
 
   test("native decodeBytes refuses chunked payloads and hashes, including empty chunks") {
@@ -42,11 +46,10 @@ class LeiosFetchDecoderSuite extends FunSuite:
 
   test("every valid framing prefix asks for more; complete message leaves trailing bytes") {
     val messages = Vector(
-      State.Idle -> bs(0x9f, 1, 0x9f, 0, 0x40, 0xff, 0xff),
+      State.Idle -> (bs(0x82, 1) ++ point),
       State.Idle -> (bs(0x83, 3) ++ point ++ bs(0xbf, 0, 1, 0xff)),
-      State.Block -> bs(0x9f, 2, 0xbf, 0x41, 0, 0x1a, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff),
-      State.BlockTxs -> (bs(0x9f, 4, 0x9f) ++ transaction ++ bs(0xff, 0xff)),
-      State.BlockTxs -> (bs(0x9f, 4) ++ point ++ bs(0xa0, 0x9f, 0xa0, 0xff, 0xff))
+      State.Block -> (bs(0x82, 2, 0xa1, 0x58, 0x20) ++ ebHash ++ bs(0x1a, 0xff, 0xff, 0xff, 0xff)),
+      State.BlockTxs -> (bs(0x82, 4, 0x9f) ++ transaction ++ bs(0xff))
     )
     messages.foreach { (state, raw) =>
       (0 until raw.size).foreach { n =>
@@ -76,17 +79,13 @@ class LeiosFetchDecoderSuite extends FunSuite:
       Left(LeiosWireError.TooMany(3, LeiosField.Bitmaps, 268, 269))
     )
     assertEquals(
-      decodePrefix(State.BlockTxs, bs(0x9f, 4, 0x99, 0x42, 0xf7)),
-      Left(LeiosWireError.TooMany(4, LeiosField.Transactions, 17142, 17143))
-    )
-    assertEquals(
       decodePrefix(State.Block, bs(0x82, 2, 0xbb, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)),
       Left(LeiosWireError.TooMany(2, LeiosField.EndorserBlock, 17142, BigInt(Long.MaxValue)))
     )
   }
 
-  test("bitmap entry errors precede later truncated fields and outer record arity") {
-    val prefix = bs(0x82, 3) ++ point
+  test("bitmap entry errors precede later truncated fields") {
+    val prefix = bs(0x83, 3) ++ point
     assertEquals(
       decodePrefix(State.Idle, prefix ++ bs(0xa2, 0, 0)),
       Left(LeiosWireError.ZeroBitmap(3, 0))
@@ -106,24 +105,31 @@ class LeiosFetchDecoderSuite extends FunSuite:
     )
   }
 
-  test("record arity follows fields and agency precedes the message body") {
-    assertEquals(decodePrefix(State.Idle, bs(0x81, 1)), Left(LeiosWireError.Incomplete))
+  test("a definite record's arity precedes its fields, and agency the message body") {
+    // `decodeListLen`, then the length, key and state matched together before any field
+    // (`LeiosDemoOnlyTestFetch.hs:279-282, 350-388`, ouroboros-consensus 2416493b)
+    assertEquals(decodePrefix(State.Idle, bs(0x81, 1)), Left(LeiosWireError.WrongArity(1, 1, 0)))
     assertEquals(
       decodePrefix(State.Idle, bs(0x81, 1) ++ point),
       Left(LeiosWireError.WrongArity(1, 1, 0))
     )
     assertEquals(decodePrefix(State.Idle, bs(0x82, 0)), Left(LeiosWireError.WrongArity(0, 0, 1)))
-    assertEquals(decodePrefix(State.Idle, bs(0x9f, 0, 0)), Left(LeiosWireError.ExcessTerms(0)))
+    assertEquals(decodePrefix(State.Idle, bs(0x9f, 0, 0xff)), Left(LeiosWireError.NotAnArray))
     assertEquals(decodePrefix(State.Idle, bs(0x82, 2)), Left(LeiosWireError.NotAdmitted(2)))
     assertEquals(
       decodePrefix(State.Block, bs(0x82, 0x1a, 0, 1, 0, 0)),
       Left(LeiosWireError.UnknownTag(BigInt(65536)))
     )
-    assertEquals(decodePrefix(State.Idle, bs(0x82, 1, 0x81, 0)), Left(LeiosWireError.Incomplete))
+    // `enforceSize 2` of the point refuses a list of one before its field (`LeiosDemoTypes.hs:208-211`)
     assertEquals(
-      decodePrefix(State.Idle, bs(0x82, 1, 0x81, 0, 0x40)),
+      decodePrefix(State.Idle, bs(0x82, 1, 0x81)),
       Left(LeiosWireError.BadField(1, LeiosField.Point))
     )
+    assertEquals(
+      decodePrefix(State.Idle, bs(0x82, 1, 0x9f, 0) ++ bs(0x58, 0x20) ++ ebHash ++ bs(0xff)),
+      Left(LeiosWireError.BadField(1, LeiosField.Point))
+    )
+    assertEquals(decodePrefix(State.Idle, bs(0x82, 1, 0x82, 0)), Left(LeiosWireError.Incomplete))
   }
 
   test("indefinite bound checks inspect break before refusing the next entry") {
@@ -136,6 +142,45 @@ class LeiosFetchDecoderSuite extends FunSuite:
       decodePrefix(State.BlockTxs, prefix ++ bs(0xd8)),
       Left(LeiosWireError.TooMany(4, LeiosField.Transactions, 17142, 17143))
     )
+  }
+
+  test(
+    "an invalid announcement wrapper is refused before scanning its contents, on a small stack"
+  ) {
+    // The reference reads the hard-fork wrapper before the opaque header bytes. A malformed
+    // wrapper is refused immediately, including when its contents are incomplete or deeply nested.
+    val deep = Bytes.wrap(Array.fill[Byte](30000)(0x81.toByte) :+ 0.toByte)
+    val wide = bs(0x9f) ++ Bytes.wrap(Array.fill[Byte](70000)(0)) ++ bs(0xff)
+    val result = new CompletableFuture[Either[Throwable, Vector[Either[LeiosWireError, Int]]]]()
+    val thread = new Thread(
+      null,
+      () => {
+        try
+          result.complete(
+            Right(
+              Vector(deep, wide, bs(0x9f), bs(0x82, 0x08), bs(0x82, 0x07, 0xd7)).map(item =>
+                LeiosNotify
+                  .decodePrefix(LeiosNotify.State.Busy, bs(0x82, 0x04) ++ item)
+                  .map(_._2)
+              )
+            )
+          )
+        catch case error: Throwable => result.complete(Left(error))
+        ()
+      },
+      "leios-notify-small-stack",
+      256 * 1024
+    )
+    thread.start()
+    try
+      val decoded = result.get(30, TimeUnit.SECONDS)
+      assertEquals(
+        decoded,
+        Right(Vector.fill(5)(Left(LeiosWireError.BadField(4, LeiosField.Header))))
+      )
+    finally thread.join()
+    assertEquals(LeiosNotify.byteLimit(LeiosNotify.State.Busy), Some(65535))
+    assertEquals(LeiosNotify.byteLimit(LeiosNotify.State.Done), None)
   }
 
   test("maximum-width list decoding uses a 256 KiB stack") {
@@ -168,10 +213,15 @@ class LeiosFetchDecoderSuite extends FunSuite:
       State.Block -> Message.Block(Vector(LeiosTxHash.fromBytes(payload) -> size)),
       State.BlockTxs -> Message.BlockTxs(Vector(payload))
     )
-    messages.foreach { (state, message) =>
+    // the decoder reads a hash of 32 bytes only, so the first two are refused there
+    val decoded = Vector(
+      Left(LeiosWireError.BadField(1, LeiosField.Hash)),
+      Left(LeiosWireError.BadField(2, LeiosField.Hash))
+    )
+    messages.zip(decoded.map(Some(_)) :+ None).foreach { case ((state, message), refusal) =>
       val encoded = ok(LeiosFetch.encode(message))
       assert(encoded.size > 1048576)
-      assertEquals(decodePrefix(state, encoded), Right(message -> encoded.size))
+      assertEquals(decodePrefix(state, encoded), refusal.getOrElse(Right(message -> encoded.size)))
     }
     // Pinned encodeLeiosTx (consensus 7b239a16) with cardano-binary 1.9.1.0/cborg 0.2.10.0:
     // remove the message/list framing and compare the entire native tag-24 encoding.

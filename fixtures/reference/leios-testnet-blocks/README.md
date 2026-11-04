@@ -1,4 +1,4 @@
-# Leios testnet blocks and headers as the testnet's build reads them
+# Leios testnet blocks, headers and transactions as the testnet's build reads them
 
 Status: Current. Evidence for [#711](https://github.com/KD5UJC-XYZ/scarab/issues/711).
 
@@ -17,20 +17,18 @@ detached, an empty indefinite list with its fields after it, is refused. The env
 is read by `enforceSize`, a definite list. The KES signature of a Leios header is over its body's
 original bytes.
 
-The 2026-11-03 corpus in `cases.jsonl` holds 630 lines, one case each, written by
+The 2026-11-04 corpus in `cases.jsonl` holds 621 lines, one case each, written by
 `scripts/oracle/leios-testnet/leios_cases.py` and, for the transactions, `leios_tx_cases.py`:
-- the testnet's blocks as BlockFetch carries them (`kind` "block"): blocks 0, 1 and 8,562 of the
-  current network (`fixtures/leios/testnet/blocks-rc-2026w44.tsv`, all empty) and the six blocks of
-  the network before its restart of 2026-10-18 (`blocks.tsv`): its two blocks of tag 7, which hold a
-  Leios header and are refused, and its four of tag 8 (empty, certifying, with transactions,
-  announcing with transactions), accepted;
-- the block of that network with transactions with one list written in another form: the envelope
+- the testnet's blocks as BlockFetch carries them (`kind` "block"), of the network as restarted on
+  2026-10-18 (`fixtures/leios/testnet/blocks-rc-2026w44.tsv`): blocks 0, 1 and 8,562 (empty), a
+  certifying block and an announcing block with transactions, all accepted;
+- block 0 holding two synthetic transactions, with one list written in another form: the envelope
   (indefinite, three items, tag 9, a trailing byte), the block, its header and the header body
   (indefinite, detached, wrong lengths), the block body (indefinite, detached, two and four items),
   the transaction list (indefinite, tagged 258), a transaction (indefinite, detached, three and five
   items, marked invalid, a validity that is not a boolean), the Peras certificate (bytes, chunked
   bytes, an integer);
-- its certifying block with the Leios certificate indefinite, detached, its signature chunked, its
+- the certifying block with the Leios certificate indefinite, detached, its signature chunked, its
   signers with a wide length head, and signers of 8,192 and 8,193 bytes; and with a signature of 47
   and 49 bytes, off the curve and outside the subgroup (the compressed G1 vectors of
   `fixtures/leios/bls/cardano-base-serde-test-vectors`), not compressed, and the identity, which
@@ -44,9 +42,8 @@ The 2026-11-03 corpus in `cases.jsonl` holds 630 lines, one case each, written b
   coin value, and two transactions of which the second holds a detached value;
 - the empty block 0 with the transaction `[0, 0, null, true]` of #750, refused;
 - transactions alone (`kind` "tx", #750), read by `decodeDijkstraTopTxInBlock` at decoder version 12
-  as the block body reads each: the 45 transactions of the captured blocks with transactions (the
-  40 of block 64,853 of the current network, `announcing-with-txs`, captured on #743 and passed with
-  `--blocks` until that capture is in the repository, and the 5 of the previous network), and 496
+  as the block body reads each: the 40 transactions of block 64,853 of the restarted network
+  (`announcing-with-txs`), and 496
   synthetic ones with one field changed at each decoder's boundary: each required body field
   missing, unknown, repeated and negative keys, every body key of a top-level transaction and of a
   sub-transaction, empty collections where the build refuses them, duplicates by value (inputs,
@@ -66,7 +63,7 @@ The 2026-11-03 corpus in `cases.jsonl` holds 630 lines, one case each, written b
   size over a `Word32`, a VRF output of no bytes, a body of eleven fields).
 
 The verdict (`accepted` and the complete `failure`) is what the build's decoders did with each:
-321 accepted and 309 refused (278 and 263 of the transactions). Every detached form is refused, every indefinite one accepted. For an
+314 accepted and 307 refused (273 and 263 of the transactions). The record-form variants accept indefinite lists and refuse detached ones; the outer block envelope requires a definite list. For an
 accepted case the line records the header hash (`hash`), its size, the signed bytes (`signable`),
 the header fields, and for a block its tag, body hash and size as the ledger computes them, each
 transaction's id and validity flag (`txs`) and whether it carries a Leios or a Peras certificate.
@@ -83,17 +80,13 @@ generator, its input and output, and of the corpus.
 ## Regenerating
 
 Build the image as [the oracle README](../../../scripts/oracle/leios-testnet/README.md) describes.
-`/tmp/blocks-rc-2026w44.tsv` is the block capture of #743, which adds block 64,853 to
-`fixtures/leios/testnet/blocks-rc-2026w44.tsv` (`provenance.json` records its hash); once it is in
-the repository the option is not needed. Then:
+The maintained capture includes block 64,853; no extra `--blocks` input is needed. Then:
 
 ```sh
-python3 scripts/oracle/leios-testnet/leios_cases.py --inputs /tmp/leios-inputs.json \
-  --blocks /tmp/blocks-rc-2026w44.tsv
+python3 scripts/oracle/leios-testnet/leios_cases.py --inputs /tmp/leios-inputs.json
 docker run --rm --network none --read-only -v /tmp:/fixtures:ro \
   scarab-leios-testnet:local /fixtures/leios-inputs.json > /tmp/leios-reference.json
-python3 scripts/oracle/leios-testnet/leios_cases.py --inputs /tmp/leios-inputs.json \
-  --blocks /tmp/blocks-rc-2026w44.tsv --reference /tmp/leios-reference.json --out fixtures/reference/leios-testnet-blocks/cases.jsonl
+python3 scripts/oracle/leios-testnet/leios_cases.py --inputs /tmp/leios-inputs.json --reference /tmp/leios-reference.json --out fixtures/reference/leios-testnet-blocks/cases.jsonl
 ```
 
 ## Not covered here
@@ -103,8 +96,6 @@ python3 scripts/oracle/leios-testnet/leios_cases.py --inputs /tmp/leios-inputs.j
   build does not deserialise it when it decodes a block.
 - No KES signature, VRF proof or Leios certificate is checked; the synthetic headers' keys and
   signatures are filler bytes.
-- The standalone transaction cases include block 64,853 of the restarted network. Full block
-  coverage in this corpus still uses the earlier capture; #743 supplies the later block fixtures.
 
 ## Additional decoder-bound check (2026-11-03, #750)
 

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "measuredAt": "2026-11-03",
-  "scope": "The block and Leios header decoders of the build the public Leios testnet runs (release rc-2026w44): a block as BlockFetch carries it, [tag, block], read with the envelope of decodeDiskHfcBlock (tag 8 a ledger Block of the Leios header at Dijkstra's decoder version 12, tag 7 a Conway Block of the Praos header at 9), and a Leios header alone with decodeFullAnnotator at 12; the testnet's blocks, those blocks with each list definite, indefinite, detached (an empty indefinite list with the fields after it) or of the wrong length, the certificates in several forms, the certificate's signature of the wrong length, off the curve, outside the subgroup, not compressed and the identity, a tag-7 Conway block with a Praos header and with a Leios header, synthetic transactions with an output value in each form, and Leios headers in the forms of the header decoding oracle; for each accepted case the header hash, size, signed bytes and fields, the block body hash and size, each transaction's id and validity flag and which certificates the body holds; no rule, signature or certificate is checked; and each transaction alone as decodeDijkstraTopTxInBlock reads it at version 12 (#750): the transactions of the captured blocks of both networks, and synthetic transactions with one field changed at each decoder's boundary (each required body field missing, unknown and repeated keys, wrong types, empty collections, duplicates by value or hash, definite, indefinite, detached, tagged and chunked forms, outputs, values, datums and reference scripts, certificates with the pool voting key, votes, proposals and every Dijkstra parameter update key, sub-transactions, guards, deposits and balance intervals, witness sets with Plutus V4, redeemers and datums, auxiliary data); for each accepted transaction its id, validity flag, the keys of its witness set's script and datum maps and its sub-transactions; decoded redeemer map entries, including duplicate purposes retaining the last value and map key ordering",
+  "measuredAt": "2026-11-04",
+  "scope": "The block and Leios header decoders of the build the public Leios testnet runs (release rc-2026w44): a block as BlockFetch carries it, [tag, block], read with the envelope of decodeDiskHfcBlock (tag 8 a ledger Block of the Leios header at Dijkstra's decoder version 12, tag 7 a Conway Block of the Praos header at 9), and a Leios header alone with decodeFullAnnotator at 12; the blocks of the testnet as restarted on 2026-10-18, a block of synthetic transactions and the certifying block with each list definite, indefinite, detached (an empty indefinite list with the fields after it) or of the wrong length, the certificates in several forms, the certificate's signature of the wrong length, off the curve, outside the subgroup, not compressed and the identity, a tag-7 Conway block with a Praos header and with a Leios header, synthetic transactions with an output value in each form, and Leios headers in the forms of the header decoding oracle; for each accepted case the header hash, size, signed bytes and fields, the block body hash and size, each transaction's id and validity flag and which certificates the body holds; no rule, signature or certificate is checked; and each transaction alone as decodeDijkstraTopTxInBlock reads it at version 12 (#750): the transactions of the captured blocks of the restarted testnet, and synthetic transactions with one field changed at each decoder's boundary (each required body field missing, unknown and repeated keys, wrong types, empty collections, duplicates by value or hash, definite, indefinite, detached, tagged and chunked forms, outputs, values, datums and reference scripts, certificates with the pool voting key, votes, proposals and every Dijkstra parameter update key, sub-transactions, guards, deposits and balance intervals, witness sets with Plutus V4, redeemers and datums, auxiliary data); for each accepted transaction its id, validity flag, the keys of its witness set's script and datum maps and its sub-transactions; decoded redeemer map entries, including duplicate purposes retaining the last value and map key ordering",
   "ledgerSourceCommit": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
   "consensusSourceCommit": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
   "reference": {
@@ -156,27 +156,25 @@
     }
   },
   "inputs": {
-    "fixtures/leios/testnet/blocks-rc-2026w44.tsv": "4a7369eb0bbae69c052852fa2d0cf9a01dbddd88589f174bc7a1783478a88d73",
-    "fixtures/leios/testnet/blocks.tsv": "56ff9901f0fed8909eadc8a85583bbd38b4f70b0d8ed854b715fb15371b6094b",
+    "fixtures/leios/testnet/blocks-rc-2026w44.tsv": "d95b2739ab6bda22c8a106c8a2e5f067421b406ae33f95cbc0731e64625cdfcf",
     "fixtures/leios/bls/cardano-base-serde-test-vectors": "4a083d3fe6d2a73f47206a92ab2c08930fb11aa2cbdebeeb34563b9ea36ad267",
-    "fixtures/leios/bls/devnet-pools.tsv": "b60bf7ced6af6e8b4ac841a4eb0ef7863b25eef3b221bea3c081fc5a6aa477b7",
-    "fixtures/leios/testnet/blocks-rc-2026w44.tsv (as #743 captured it, block 64,853 announcing-with-txs, passed with --blocks)": "d95b2739ab6bda22c8a106c8a2e5f067421b406ae33f95cbc0731e64625cdfcf"
+    "fixtures/leios/bls/devnet-pools.tsv": "b60bf7ced6af6e8b4ac841a4eb0ef7863b25eef3b221bea3c081fc5a6aa477b7"
   },
   "harness": {
     "file": "scripts/oracle/leios-testnet/Main.hs",
     "sha256": "b4363d351231c73d27220c26a99685686443c45260e54cb90a8781e9e55dbe9f",
     "cabalProjectSha256": "1c72a46f8750acb95c9d1a2b92c45556b9b18dc3c3869d385631a0b36a104850",
-    "image": "built from scripts/oracle/leios-testnet/Dockerfile; scarab-leios-codex750:local image sha256:69ea3a285a611fad4e0c884eef1fa330d4ff20ab629527a498ffc87ace943242",
-    "invocation": "docker run --rm --network none --read-only -v \"$ORACLE_FIXTURES\":/fixtures:ro scarab-leios-codex750:local /fixtures/inputs.json",
+    "image": "built from scripts/oracle/leios-testnet/Dockerfile; scarab-leios-codex750-integration:local image sha256:750fef333375c36a78575523d8ff2b0efe0797f85cd4174f5fb26ccf3409b578",
+    "invocation": "docker run --rm --network none --read-only -v \"$ORACLE_FIXTURES\":/fixtures:ro scarab-leios-codex750-integration:local /fixtures/inputs.json",
     "cabalFileSha256": "01abcb329759fb03ebd6f7dff237acfc8899495bf3d2001dc729a3694fa76372"
   },
-  "generatorSha256": "b874785adb699d5de2e3349a221e0b1a2aeb31872b1abecbb97cf6bf10971708",
-  "harnessInputSha256": "328ab4e66fa3b32e933d3c4e63f3a2ad077e6de0254d2ae400604c0ef486a443",
-  "harnessOutputSha256": "5c7f200654526250186323601ec2c223462e68ca7e4066024e3c3142959015c8",
-  "casesSha256": "d6aab8d314c7d5af076da696b56fd6bdd0977d259177634399704b258e74ac4c",
-  "cases": 630,
-  "accepted": 321,
-  "refused": 309,
+  "generatorSha256": "71e896d5c9613746e1fc4a5ce1be899448c37566cf86f27e58f98d2436d27346",
+  "harnessInputSha256": "588e318c53d70a69f60a7f916432b887dfea00aa8e150bc49cc9292aa72b9dfd",
+  "harnessOutputSha256": "9e8a1ab305218b52cd32e6417ea0a8de0cdde99eca7fd88b935c60b6351529fa",
+  "casesSha256": "8e0d6c0e9442da0e7256288d5709d4d9cf7c3fd2bd4d14893d1ea81ee6051cfe",
+  "cases": 621,
+  "accepted": 314,
+  "refused": 307,
   "originalBytesRetained": true,
   "txGeneratorSha256": "74929bd5da928791cf7d5e71ff962ec9a0261546039cf874683aa5c1c910a52b"
 }
