@@ -1,38 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Value}
 
 import LeiosWire.*
 import LeiosWord.Word32
 
-/** Pure codec of the LeiosFetch mini-protocol (number 19), after the Blueprint's
-  * `network/node-to-node/leios-fetch/messages.cddl` (cardano-blueprint `0460c5a6`, 2026-10-16:
-  * "LeiosFetch transactions are CBOR-in-CBOR, endorser blocks non-empty") and the consensus
-  * `leiosFetch.cddl` of ouroboros-consensus#2416 (merged to `main` as `e71a27fc`, 2026-10-20),
-  * whose codec is `Ouroboros.Consensus.MiniProtocol.LeiosFetch.Type` (ouroboros-consensus `main`
-  * `7b239a16`, 2026-10-22).
+/** Pure codec of the LeiosFetch mini-protocol (number 19) as the build of the public Leios testnet
+  * runs it, the Leios reference (#711): `codecLeiosFetch` of ouroboros-consensus `2416493b`
+  * (`ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs:255-391`), wired in
+  * `Ouroboros/Consensus/Network/NodeToNode.hs:1082-1090` with `maxTxsPerEb` and the
+  * `LeiosDemoTypes` point, endorser block and transaction codecs. The Blueprint's
+  * `network/node-to-node/leios-fetch/messages.cddl` (cardano-blueprint `0460c5a6`) draws the same
+  * messages.
   *
-  * The current wire form:
+  * A message is a definite list (`decodeListLen`) whose length and key are checked together before
+  * any field is read (`:279-282, 350-388`). The current wire form:
   *
   *   - `MsgLeiosBlock` is `[2, { + hash => word32 }]`: at least one and at most [[MaxTxsPerEb]]
-  *     entries, a definite or an indefinite map;
+  *     entries;
   *   - `MsgLeiosBlockTxs` is `[4, [* tx]]`, only the transactions: the client checks them against
   *     its own request ([[answers]]), the message echoes neither the point nor the bitmaps. The
-  *     list is definite or indefinite and holds at most [[MaxTxsPerEb]] transactions;
-  *   - a transaction is `#6.24(bytes .cbor dijkstra.block_transaction)`. The codec keeps the bytes
-  *     inside the tag exactly as they came (a transaction that is hashed is never re-encoded) and
-  *     does not interpret them, as the reference decoder does not (it checks the framing only).
+  *     encoder writes a definite list (`:319-323`); the decoder reads a definite or an indefinite
+  *     one and refuses more than [[MaxTxsPerEb]] transactions before it reads the one past the
+  *     bound (`:364-379`);
+  *   - a transaction is `#6.24(bytes)` (`encodeLeiosTx`, `decodeLeiosTx`: `encodeNestedCborBytes`,
+  *     `decodeNestedCborBytes`, `LeiosDemoTypes.hs:1222-1229`). The codec keeps the bytes inside
+  *     the tag exactly as they came and does not interpret them, as the reference does not.
   *
-  * Compatibility path, [[Message.LegacyBlockTxs]]: the Blueprint of `fe4cceb9` (2026-10-13) had
-  * `MsgLeiosBlockTxs = [4, point, bitmaps, tx_list]` with each transaction any CBOR item. Nobody
-  * has captured a LeiosFetch message from the public testnet relay (docs/leios.md 11.7), whose
-  * release `11.1.0.164-prototype-2026w38a` predates the change, so the decoder reads that form too,
-  * and the encoder writes it only for a [[Message.LegacyBlockTxs]]. Removal condition: a capture,
-  * or a testnet release that includes ouroboros-consensus#2416, shows which form a relay speaks;
-  * once the new form is confirmed, delete [[Message.LegacyBlockTxs]], its decode branch and its
-  * tests (issue #174). Only `MsgLeiosBlockTxs` has two forms; an empty endorser block is refused in
-  * both.
+  * The older form of Blueprint `fe4cceb9`, `[4, point, bitmaps, tx_list]`, is not read: the build
+  * neither writes nor reads it (#744).
   *
   * The Blueprint draws `bitmaps` as an indefinite-length map. The reference decoder
   * (`decodeBitmaps`, `decodeMapLenOrIndef`) accepts both, and its encoder always writes the
@@ -68,8 +65,12 @@ object LeiosFetch:
   enum State:
     case Idle, Block, BlockTxs, Done
 
-  /** byteLimitsLeiosFetch at consensus `7b239a16`: smallByteLimit in Idle, then a ten-percent
-    * margin on the 600 kB endorser block and 500 kB transaction reply. Done has no receiver.
+  /** `byteLimitsLeiosFetch` (ouroboros-consensus `2416493b`, `LeiosDemoOnlyTestFetch.hs:231-245`):
+    * `smallByteLimit` (65,535, ouroboros-network `2f1c154f` `Protocol/Limits.hs:131-132`) in Idle,
+    * then `addSafetyMargin` (a tenth more,
+    * `cardano-diffusion/lib/Cardano/Network/NodeToNode.hs:327-328`) of the 600 kB endorser block
+    * and the 500 kB transaction reply. Done has no receiver. The receiving driver applies it; the
+    * decoder has no other bound.
     */
   val BlockByteLimit: Int = 660000
   val BlockTxsByteLimit: Int = 550000
@@ -91,28 +92,13 @@ object LeiosFetch:
     /** `[4, [* #6.24(bytes)]]`: the bytes inside each tag 24, as they came, in wire order. */
     case BlockTxs(transactions: Vector[Bytes])
 
-    /** The form of `MsgLeiosBlockTxs` at Blueprint `fe4cceb9`, `[4, point, bitmaps, [* tx]]`, with
-      * each transaction as the original bytes of its item. Read for compatibility only; see the
-      * object's documentation for the removal condition.
-      */
-    case LegacyBlockTxs(point: EbPoint, bitmaps: TxBitmaps, transactions: Vector[Bytes])
-
   def next(state: State, message: Message): Option[State] = (state, message) match
-    case (State.Idle, Message.Done)                  => Some(State.Done)
-    case (State.Idle, _: Message.BlockRequest)       => Some(State.Block)
-    case (State.Idle, _: Message.BlockTxsRequest)    => Some(State.BlockTxs)
-    case (State.Block, _: Message.Block)             => Some(State.Idle)
-    case (State.BlockTxs, _: Message.BlockTxs)       => Some(State.Idle)
-    case (State.BlockTxs, _: Message.LegacyBlockTxs) => Some(State.Idle)
-    case _                                           => None
-
-  // The native pure encoder has no driver byte limit. Keep the existing CBOR implementation's
-  // JVM-indexable representation bound; the receiving driver applies byteLimit separately.
-  private val EncodingLimits = Cbor.Limits(
-    maxInputBytes = Int.MaxValue,
-    maxItems = Int.MaxValue,
-    maxStringBytes = Int.MaxValue
-  )
+    case (State.Idle, Message.Done)               => Some(State.Done)
+    case (State.Idle, _: Message.BlockRequest)    => Some(State.Block)
+    case (State.Idle, _: Message.BlockTxsRequest) => Some(State.BlockTxs)
+    case (State.Block, _: Message.Block)          => Some(State.Idle)
+    case (State.BlockTxs, _: Message.BlockTxs)    => Some(State.Idle)
+    case _                                        => None
 
   def encode(message: Message): Either[LeiosWireError, Bytes] = message match
     case Message.Done            => LeiosWire.encode(tagged(0), EncodingLimits)
@@ -143,16 +129,6 @@ object LeiosFetch:
         ),
         EncodingLimits
       )
-    case Message.LegacyBlockTxs(p, b, txs) =>
-      for
-        list <- arrayWithVerbatim(Vector.empty, txs, EncodingLimits)
-        bm <- bitmapsBytes(b, EncodingLimits)
-        out <- arrayWithVerbatim(
-          Vector(Value.UInt(BigInt(4)), pointValue(p)),
-          Vector(bm, list),
-          EncodingLimits
-        )
-      yield out
 
   /** The client's check of an answer against its own request: one transaction for each bit the
     * request's bitmaps set. (The answer does not say which; the order is the bitmaps'.)

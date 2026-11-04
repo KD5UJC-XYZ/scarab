@@ -30,18 +30,22 @@ trait LeiosNotifyClient[F[_]]:
   /** Send `MsgLeiosNotificationRequestNext` and wait for the server's reply. */
   def requestNext: F[Observed[LeiosNotify.Message]]
 
-  /** Leave: send `MsgQuit` and wait for `MsgDone` (replies already in flight are skipped). */
+  /** Leave from Idle: send `MsgQuit` and wait for `MsgDone`. */
   def quit: F[Unit]
 
 object LeiosNotifyClient:
-  /** The server may hold a request for as long as it has nothing to announce. */
+  /** `timeLimitsLeiosNotify` of ouroboros-consensus `2416493b`
+    * (`LeiosDemoOnlyTestNotify.hs:249-255`): Busy waits forever, Quit uses `longWait` (60 seconds).
+    */
   final case class Settings(
-      busyTimeout: FiniteDuration = 10.minutes,
-      maxMessageBytes: Int = 2500000
+      busyTimeout: ProtocolDeadline = ProtocolDeadline.Unbounded,
+      quitTimeout: FiniteDuration = 60.seconds
   )
 
+  /** `reader` reads an announced header as the build does ([[LeiosNotify.AnnouncementReader]]). */
   def apply[F[_]: Temporal](channel: MuxChannel[F], settings: Settings = Settings())(using
-      Raise[F, NetworkError]
+      Raise[F, NetworkError],
+      LeiosNotify.AnnouncementReader
   ): LeiosNotifyClient[F] =
     val id = Protocols.LeiosNotify
     def illegal[A](detail: NetworkError.Violation): F[A] =
@@ -49,16 +53,17 @@ object LeiosNotifyClient:
     def send(m: LeiosNotify.Message): F[Unit] =
       LeiosNotify.encode(m).fold(e => illegal(ProtocolError.Leios(e)), channel.send)
     def receive(state: LeiosNotify.State): F[Observed[LeiosNotify.Message]] =
-      Timed.within(settings.busyTimeout, id, state.toString)(
-        channel.recv(settings.maxMessageBytes)(bytes =>
-          LeiosDecode.result(LeiosNotify.decodePrefix(state, bytes), bytes)
-        )
+      // `byteLimitsLeiosNotify`: the limit of Busy and Quit, the states received in
+      channel.recv(LeiosNotify.SmallByteLimit)(bytes =>
+        LeiosDecode.result(LeiosNotify.decodePrefix(state, bytes), bytes)
       )
     new LeiosNotifyClient[F]:
       def requestNext: F[Observed[LeiosNotify.Message]] =
-        send(LeiosNotify.Message.RequestNext) *> receive(LeiosNotify.State.Busy)
+        send(LeiosNotify.Message.RequestNext) *>
+          Timed.within(settings.busyTimeout, id, "Busy")(receive(LeiosNotify.State.Busy))
       def quit: F[Unit] =
-        send(LeiosNotify.Message.Quit) *> receive(LeiosNotify.State.Quit).void
+        send(LeiosNotify.Message.Quit) *>
+          Timed.within(settings.quitTimeout, id, "Quit")(receive(LeiosNotify.State.Quit)).void
 
 /** LeiosFetch client (mini-protocol 19). Single fiber. */
 trait LeiosFetchClient[F[_]]:

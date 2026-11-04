@@ -101,21 +101,29 @@ private[selection] object Events:
           // a hot protocol ended and the connection is up: warm again
           case Observation.HotEnded(delay, reason) if record.status == Status.Hot =>
             val (extra, st) = fuzz(st0, policy.warmReconnectFuzz._1, policy.warmReconnectFuzz._2)
-            val readyAt = delay.fold(now)(d => now + (d + extra).max(Duration.Zero))
+            // the trace carries the fuzzed delay, as `demotions'` does (`Governor/Monitor.hs` 150-161)
+            val wait = delay.map(d => (d + extra).max(Duration.Zero))
             Decision(
-              st.updated(peer)(_.copy(status = Status.Warm(readyAt))),
+              st.updated(peer)(_.copy(status = Status.Warm(wait.fold(now)(now + _)))),
               Nil,
-              List(Trace.DemoteAsynchronous(peer, Temperature.Warm, None, None, reason, delay))
+              List(Trace.DemoteAsynchronous(peer, Temperature.Warm, None, None, reason, wait))
             )
           // the connection is going: it lingers until the connection manager releases it
-          case Observation.Lost(failure, _, false, reason) =>
+          case Observation.Lost(failure, delay, false, reason) =>
             record.status match
               case Status.Warm(_) | Status.Hot | Status.Activating =>
                 Decision(
                   st0.withStatus(peer, Status.Cooling),
                   Nil,
                   List(
-                    Trace.DemoteAsynchronous(peer, Temperature.Cold, Some(failure), Some(reason))
+                    Trace.DemoteAsynchronous(
+                      peer,
+                      Temperature.Cold,
+                      Some(failure),
+                      Some(reason),
+                      None,
+                      Some(delay)
+                    )
                   )
                 )
               case _ => Decision(st0, Nil, Nil)
@@ -130,7 +138,14 @@ private[selection] object Events:
                 Decision(
                   result.state,
                   Nil,
-                  Trace.DemoteAsynchronous(peer, Temperature.Cold, Some(failure), Some(reason)) ::
+                  Trace.DemoteAsynchronous(
+                    peer,
+                    Temperature.Cold,
+                    Some(failure),
+                    Some(reason),
+                    None,
+                    Some(wait)
+                  ) ::
                     (if result.forgotten then List(Trace.Forgotten(List(peer))) else Nil)
                 )
               // the job that is working on the peer reports how it ends

@@ -520,8 +520,9 @@ published, with the other Cardano environments, at
 deployment of `input-output-hk/cardano-playground` `docs/environments-pre/leios/`. The Leios team's
 relay recipe, `input-output-hk/ouroboros-leios` `testnet/` (`README.md`, `pin-config.sh`,
 `run-node.sh`; main `614b10d2`), pins an older snapshot of the same files and names the bootstrap
-relay `leios-node.play.dev.cardano.org:3001`. The files of 2026-10-16 are in
-`fixtures/leios/testnet/config/`, byte for byte as downloaded. Seven of the eight equal the pinned
+relay `leios-node.play.dev.cardano.org:3001`. The files of 2026-10-16 were kept in
+`fixtures/leios/testnet/config/`, byte for byte as downloaded, until #743 replaced them with those of
+the restarted network (section 12). Seven of the eight equal the pinned
 snapshot of the relay recipe; `config.json` differs (the recipe's is older: `MinNodeVersion`
 `11.1.0.164-prototype-2026w36`, `MempoolCapacityBytesOverride` 2,000,000 and a `Filepath` for the
 LeiosDb, none of which the live file has; the live one adds snapshot delays and different trace
@@ -602,7 +603,7 @@ uses `Peer.nodeToNode`) ends with `protocol: decode header: expected 10-element 
 | VRF proof under the epoch nonce (evolved from the hash of the Shelley genesis file through 160 epochs: evolving nonce per block, candidate nonce frozen 4k/f slots before the end of the epoch, last-block nonce of the previous epoch) | all. The VRF input contains the nonce, so one wrong nonce anywhere would fail every later header: the nonce rules of Praos hold unchanged for these headers over 160 epochs |
 | Leader threshold against the genesis stake | 2,112 headers (epochs 0 and 1, led by the one genesis pool, relative stake 1) |
 | Leader threshold, epochs 2 on | **152,586 headers `Unchecked`**: the stake comes from the chain's transactions (pool registrations, delegations), which this follower does not apply; an issuer's VRF key is taken on trust at first sight |
-| Block bodies | the six blocks kept as fixtures (two of tag 7, four of tag 8: empty, with transactions, announcing, certifying) decode, and in every one the body hash and the body size equal the header's, the certificate flag equals the presence of the certificate, and a certificate does not come with transactions (`LeiosBlock.faults`; consensus `Shelley/Ledger/Block.hs` 224 to 231); the body hash of two 88 kB tip blocks was checked by hand as well |
+| Block bodies | the six blocks then kept as fixtures (replaced by #743; two of tag 7, four of tag 8: empty, with transactions, announcing, certifying) decode, and in every one the body hash and the body size equal the header's, the certificate flag equals the presence of the certificate, and a certificate does not come with transactions (`LeiosBlock.faults`; consensus `Shelley/Ledger/Block.hs` 224 to 231); the body hash of two 88 kB tip blocks was checked by hand as well |
 | Leios certificate | decoded strictly (`Certificate.decode`: bitfield up to 8,192 bytes, a signature that is a valid G1 point); **not verified**: no committee |
 
 Nothing was applied to a ledger: 0 blocks are ledger-validated, because the Dijkstra era has no
@@ -648,7 +649,9 @@ The whole check takes about four minutes on one core (`LeiosCheckMain`: 255 s, 2
 5. **LeiosNotify carries at most sixteen votes in the prototype**: `MsgLeiosVotes = [7, [1*16 vote]]` in
    `ouroboros-consensus-cardano/cddl/node-to-node/leiosnotify/leiosNotify.cddl` (consensus main
    `144cb4f1`, 2026-10-14: "TODO Bound the votes in the blueprint too"); the Blueprint does not bound
-   them. The codec now refuses more (`LeiosNotify.MaxVotes`, `LeiosCodecSuite`). The same file shows
+   them. The codec refused more until #744 (2026-11-03): the decoder of the build the testnet runs
+   (ouroboros-consensus `2416493b`, `LeiosDemoOnlyTestNotify.hs:384-388`) reads a definite list of any
+   number of votes, and the codec now does too (section 12.3). The same file shows
    `announcement = header.header`: the announcement is the ChainSync header of the announcing block,
    whichever era index it has.
 6. **A compatibility hazard the node has, not a Leios finding.** `NodeToNode.over` and
@@ -678,7 +681,7 @@ these). "Cited" is the source read, at the revisions of sections 1 and 11.2 and,
 | **X9** | ~~Handshake: the node offers version 14 only; the relay accepts 14 to 16, 16 adding the Peras flag~~ Resolved (G4, [#34](https://github.com/KD5UJC-XYZ/scarab/issues/34)): both sides offer 14 and 15 by default, as cardano-node 11.1.3 (`latestReleasedNodeVersion` is 15, `Cardano/Node.hs` 456 of consensus 4.2.1.0), and 16 with `ExperimentalProtocolsEnabled` (`limitToLatestReleasedVersion`, diffusion `Node.hs` 1152 to 1165). The Peras flag is off, so version 16 differs from 15 only by the fifth element of the version data. The public Leios testnet sets the key, so its relay is offered 14 to 16 and answers 16 | handshake | section 8; `LeiosTestnetHandshakeSuite`, `HandshakeNegotiationSuite` |
 | **X10** | `TxSubmissionLogicVersion: TxSubmissionLogicV2` and the Leios mempool (an EB reservation; section 4.4) are not modelled | mempool, TxSubmission2 | `config.json` |
 | **X11** | `ConsensusMode: PraosMode` with ledger peers after slot 151,200 and a peer snapshot: no ledger peers, no peer snapshot, one bootstrap relay only | topology | `topology.json`, `peer-snapshot.json` |
-| **X12** | The CDDL pipeline (`models-gen`) takes the Leios CDDL it was given: `dijkstra:header` (12-element body, round trip byte for byte, `LeiosTestnetHeaderSuite`), consensus' `leiosNotify.cddl` (a module `leios-notify`; its `;# import header as header` needs `header.cddl` as a second module of that name; `LeiosNotifyCddlSuite` compares the generated reader with the hand-written codec, sixteen votes included) and, since G4, the Blueprint's `leios-fetch/messages.cddl`, now at `0460c5a6` ([#174](https://github.com/KD5UJC-XYZ/scarab/issues/174); a module `leios-fetch`; its `base` is the consensus `base` module plus `word16` in `overrides/base-word16.cddl`, and it includes the `dijkstra` era module for `dijkstra.block_transaction`, so the generated reader decodes each transaction; `LeiosFetchCddlSuite`, the cuddle root `leios-fetch:leiosBlockFetchMessage`, fuzz targets `leios-fetch` and `leios-notify`). Since 2026-10-20 ouroboros-consensus `main` has its own LeiosFetch CDDL (#2416, merged; `tx = #6.24(bytes)`, the inner type left open because neither the protocol nor the LeiosDB decodes it); the Blueprint's file stays the pin. The wire of `0460c5a6`, which the codec writes: `MsgLeiosBlockTxs` is `[4, [* tx]]` (the client checks the answer against its own request, `LeiosFetch.answers`), a transaction is `#6.24(bytes)` whose bytes the codec keeps as they came and does not read (as the reference decoder), an endorser block names at least one and at most `maxTxsPerEb` = 17,142 transactions (`(600,000 - 5) / 35`, `Leios/Types.hs` of ouroboros-consensus `7b239a16`), and so does a transaction list, definite or indefinite. The older form of `fe4cceb9` (`[4, point, bitmaps, tx_list]`, any CBOR item as a transaction) is still read, as `LeiosFetch.Message.LegacyBlockTxs`, because no capture shows which form a relay speaks (11.7); removal condition: a capture or a testnet release containing #2416 settles it, then the case, its decode branch and its tests go. Bitmaps: the Blueprint draws an indefinite-length map; the reference decoder (`decodeBitmaps`, `MiniProtocol/LeiosFetch/Type.hs` of ouroboros-consensus `main` `7b239a16`, 2026-10-22, lines 387 to 435) takes `decodeMapLenOrIndef`, so a definite map is accepted, and its encoder always writes the indefinite one. This codec reads both and writes the indefinite one, for byte parity. The decoder also applies the reference's checks, each a typed error: at most `ceil(maxTxsPerEb / 64)` = 268 entries (`TooMany`), no zero bitmap (`ZeroBitmap`), no window at or above 268 (`BitmapWindowOutOfRange`), windows strictly ascending (`BitmapWindowsNotAscending`), in the reference's order. As in native `encodeLeiosEb`, `encodeLeiosFetch` and `encodeBitmaps`, the pure encoder writes the supplied typed values; emptiness, collection bounds and bitmap semantics are decoder checks. It has no receive-state byte cap, and the `fe4cceb9` form carries the same bitmaps and decode checks. The generated reader and the codec have explicit differences, tested separately: the codec does not read the bytes inside tag 24 (the generated reader requires a Dijkstra block transaction), and the CDDL has neither the entry bound where the codec has `maxTxsPerEb` nor the bitmap checks above, and the generated writer writes a definite bitmaps map where the codec writes the indefinite one (`LeiosFetchCddlSuite` reads each other's bytes). The native `decodeNestedCborBytes` primitive accepts definite byte strings only; chunked byte strings remain accepted by the generated Blueprint reader and are explicitly refused by the codec comparison test. `LeiosFetchDecoder` checks declared collection bounds before entries and each bitmap before the following entry, then validates record arity after its fields, following `decodeRecordSum`/`decodeRecordNamed`; it preserves every opaque transaction payload byte. `LeiosFetch.byteLimit` records the reference receive limits (Idle 65,535, Block 660,000, BlockTxs 550,000 bytes; Done inactive), and the block client passes its state limit to the mux driver. This does not implement the transaction-fetch client or establish relay interoperability. The native `EbHash` and `TxHash` decoders retain arbitrary definite byte strings, while the Blueprint requires 32 bytes; the wire wrappers follow the native decoder and the comparison suite records that difference. `LeiosWordSuite` checks the full unsigned slot/bitmap range, bounded transaction sizes, separate hash roles and constructor refusal outside each word type; the ranking-block announcement and cryptographic hash-length checks remain separate. Not generated: `dijkstra:block` and `pool_params` (the 12 rules with a required member after an optional one, `docs/models.md` section 8). The cross-check was run for both new modules (G4) and again for LeiosFetch at `0460c5a6` (#174, `cddl_crosscheck.py run --count 40`: `leios-fetch` 40 of 40 terms in each direction, 31 byte-exact, no exemption) | `models` | `models/src/main/cddl/models.conf` |
+| **X12** | The CDDL pipeline (`models-gen`) takes the Leios CDDL it was given: `dijkstra:header` (12-element body, round trip byte for byte, `LeiosTestnetHeaderSuite`), consensus' `leiosNotify.cddl` (a module `leios-notify`; its `;# import header as header` needs `header.cddl` as a second module of that name; `LeiosNotifyCddlSuite` compares the generated reader with the hand-written codec, sixteen votes included) and, since G4, the Blueprint's `leios-fetch/messages.cddl`, now at `0460c5a6` ([#174](https://github.com/KD5UJC-XYZ/scarab/issues/174); a module `leios-fetch`; its `base` is the consensus `base` module plus `word16` in `overrides/base-word16.cddl`, and it includes the `dijkstra` era module for `dijkstra.block_transaction`, so the generated reader decodes each transaction; `LeiosFetchCddlSuite`, the cuddle root `leios-fetch:leiosBlockFetchMessage`, fuzz targets `leios-fetch` and `leios-notify`). Since 2026-10-20 ouroboros-consensus `main` has its own LeiosFetch CDDL (#2416, merged; `tx = #6.24(bytes)`, the inner type left open because neither the protocol nor the LeiosDB decodes it); the Blueprint's file stays the pin. The wire of `0460c5a6`, which the codec writes: `MsgLeiosBlockTxs` is `[4, [* tx]]` (the client checks the answer against its own request, `LeiosFetch.answers`), a transaction is `#6.24(bytes)` whose bytes the codec keeps as they came and does not read (as the reference decoder), an endorser block names at least one and at most `maxTxsPerEb` = 17,142 transactions (`(600,000 - 5) / 35`, `Leios/Types.hs` of ouroboros-consensus `7b239a16`), and so does a transaction list, definite or indefinite. The older form of `fe4cceb9` (`[4, point, bitmaps, tx_list]`) was read as `LeiosFetch.Message.LegacyBlockTxs` until #744 removed it: the Leios testnet's build (ouroboros-consensus `2416493b`, section 12) writes only `[4, [* tx]]`, as a definite list, and its decoder reads a definite message list whose length is matched with the key before any field (`LeiosDemoOnlyTestFetch.hs:279-282, 319-323, 350-388`); the codec now reads and writes `MsgLeiosBlockTxs` and the message frame so. Bitmaps: the Blueprint draws an indefinite-length map; the reference decoder (`decodeBitmaps`, `MiniProtocol/LeiosFetch/Type.hs` of ouroboros-consensus `main` `7b239a16`, 2026-10-22, lines 387 to 435) takes `decodeMapLenOrIndef`, so a definite map is accepted, and its encoder always writes the indefinite one. This codec reads both and writes the indefinite one, for byte parity. The decoder also applies the reference's checks, each a typed error: at most `ceil(maxTxsPerEb / 64)` = 268 entries (`TooMany`), no zero bitmap (`ZeroBitmap`), no window at or above 268 (`BitmapWindowOutOfRange`), windows strictly ascending (`BitmapWindowsNotAscending`), in the reference's order. As in native `encodeLeiosEb`, `encodeLeiosFetch` and `encodeBitmaps`, the pure encoder writes the supplied typed values; emptiness, collection bounds and bitmap semantics are decoder checks. It has no receive-state byte cap, and the `fe4cceb9` form carries the same bitmaps and decode checks. The generated reader and the codec have explicit differences, tested separately: the codec does not read the bytes inside tag 24 (the generated reader requires a Dijkstra block transaction), and the CDDL has neither the entry bound where the codec has `maxTxsPerEb` nor the bitmap checks above, and the generated writer writes a definite bitmaps map where the codec writes the indefinite one (`LeiosFetchCddlSuite` reads each other's bytes). The native `decodeNestedCborBytes` primitive accepts definite byte strings only; chunked byte strings remain accepted by the generated Blueprint reader and are explicitly refused by the codec comparison test. `LeiosFetchDecoder` checks declared collection bounds before entries and each bitmap before the following entry, then validates record arity after its fields, following `decodeRecordSum`/`decodeRecordNamed`; it preserves every opaque transaction payload byte. `LeiosFetch.byteLimit` records the reference receive limits (Idle 65,535, Block 660,000, BlockTxs 550,000 bytes; Done inactive), and the block client passes its state limit to the mux driver. This does not implement the transaction-fetch client or establish relay interoperability. The decoders read every hash as exactly 32 bytes, as the testnet build's `decodeFixedSized` does (#744); the `EbHash` and `TxHash` wrappers themselves keep any bytes. `LeiosWordSuite` checks the full unsigned slot/bitmap range, bounded transaction sizes, separate hash roles and constructor refusal outside each word type; the ranking-block announcement and cryptographic hash-length checks remain separate. Not generated: `dijkstra:block` and `pool_params` (the 12 rules with a required member after an optional one, `docs/models.md` section 8). The cross-check was run for both new modules (G4) and again for LeiosFetch at `0460c5a6` (#174, `cddl_crosscheck.py run --count 40`: `leios-fetch` 40 of 40 terms in each direction, 31 byte-exact, no exemption) | `models` | `models/src/main/cddl/models.conf` |
 | **X13** | `header_version_info` is not interpreted: nothing compares `highest_supported_major_version` with the chain's version or the node's maximum; the earlier eras' `protocol_version` is checked against the ledger's on mainnet | envelope checks | cardano-ledger-core `Block.hs` 147 to 156 |
 
 ### 11.7 The Leios mini-protocols against the relay
@@ -692,8 +695,8 @@ handshake, serves ChainSync and BlockFetch normally, and **ends the connection w
 first message on protocol 18 or 19** ("closed by peer"); a duplex connection that sends nothing gets
 nothing on 18 or 19 in 60 seconds. No raw LeiosNotify or LeiosFetch message was therefore captured,
 and no endorser block, vote or announcement message was seen. (The testnet release,
-`11.1.0.164-prototype-2026w38a`, predates ouroboros-consensus#2416, so it may still speak the form of
-Blueprint `fe4cceb9`; the codec reads both, X12.) Hypotheses, none shown: (1) the
+`11.1.0.164-prototype-2026w38a`, predates ouroboros-consensus#2416, so it may still have spoken the form of
+Blueprint `fe4cceb9`; the build the restarted testnet runs does not, and #744 removed that form, X12.) Hypotheses, none shown: (1) the
 relay's handling of an initiator-only inbound peer has no responder for 18 and 19 (in the release,
 `initiator` registers them as `InitiatorProtocolOnly` and only `initiatorAndResponder` as responders
 too); (2) the responder exists only for a peer the relay has made hot in its own peer governor, and
@@ -731,9 +734,10 @@ request 1,000, then 100 more per 100 received). Settling it needs the relay's tr
    the ledger at epoch boundaries (the K1 comparator extended to Dijkstra). Throughput with the conventions of
    [performance.md](performance.md). Stop at the defined scenario and the divergence list if the reference is
    not stable enough.
-7. **Regression**: the header capture of this section stays a test (`LeiosHeaderChainSuite` runs the first
-   1,100 headers from the genesis; `LeiosCheckMain` runs all 154,698), and a new capture should be taken when
-   the testnet respins.
+7. **Regression**: the header rules stay a test (`LeiosHeaderChainSuite` runs the first 1,100 headers from
+   the genesis; `LeiosCheckMain` runs any capture), and a new capture is taken when the testnet respins: the
+   restart of 2026-10-18 was one, and #743 replaced the captures of this section with the restarted
+   network's.
 
 ## 12. The Leios reference: the build the testnet runs (2026-11-03, #711)
 
@@ -761,7 +765,8 @@ revisions are in section 1 and `docs/data/reference-pins.json`.
 
 The oracle of `scripts/oracle/leios-testnet` is built from these revisions (the ledger and
 cardano-base packages from source; consensus's two-line block envelope copied), and
-`fixtures/reference/leios-testnet-blocks` holds its 88 verdicts.
+`fixtures/reference/leios-testnet-blocks` holds its verdicts (on blocks and headers since #711, on
+transactions alone since #750; its README and `provenance.json` have the counts).
 
 ### 12.2 What the build reads, and what changed in this node
 
@@ -777,7 +782,7 @@ Read at the pinned revisions; each is a case of the corpus.
 | VRF certificate | `decodeRecordNamed`, definite or indefinite; the output exactly 64 bytes (`Decoding/DecCBOR.hs:627-652`) | a definite list, an output of any length |
 | KES signature | over the header body's original bytes (`getSignableRepresentation = originalBytes`, `Leios/BlockHeader.hs:164-165`) | over the body encoded again |
 | Leios certificate | `decodeRecordNamed` of the signers (at most 8,192 bytes) and the signature, byte strings definite or chunked (`Decoding/DecCBOR.hs:721-736`); the signature a compressed G1 point of the subgroup, the identity included (cardano-base `BLS12381/Internal.hs:476-491`), which verification refuses | canonical CBOR only, and the identity refused at decode |
-| Records in a transaction | every `RecD` record is read by `decodeRecordNamed` from decoder version 12 (e.g. `Mary/Value.hs:308-321`) | not decoded (and not now: X3) |
+| Records in a transaction | every `RecD` record is read by `decodeRecordNamed` from decoder version 12 (e.g. `Mary/Value.hs:308-321`) | not decoded (until #750, section 12.5) |
 
 `LeiosBlock.decode` and `LeiosHeader.decode` now read as the first column says, and the header
 decoding corpus of #716 no longer holds Leios cases (they are in the new corpus).
@@ -796,26 +801,73 @@ exists. Four short connections to `leios-node.play.dev.cardano.org:3001`, submit
 - BlockFetch of blocks 0, 1 and 8,562: tag 8, empty; kept in `fixtures/leios/testnet/blocks-rc-2026w44.tsv`.
 
 The build's LeiosFetch codec writes `MsgLeiosBlockTxs` as `[4, [* tx]]` (ouroboros-consensus
-2416493b, `Test/LeiosDemoTypes.hs`), the form of ouroboros-consensus#2416: the removal condition of
-`LeiosFetch.Message.LegacyBlockTxs` (X12) is met.
+2416493b, `LeiosDemoOnlyTestFetch.hs:319-323`), the form of ouroboros-consensus#2416, so #744 removed
+the older form `LeiosFetch.Message.LegacyBlockTxs` (X12). The rest of both Leios codecs now follows the
+build too (#744), where it had followed ouroboros-consensus `7b239a16` or the Blueprint: every message of
+LeiosNotify and LeiosFetch is a definite list whose length, key and state are matched before any field; a
+point is `enforceSize 2` with a 32-byte hash (`decodeLeiosPoint`, `LeiosDemoTypes.hs:208-211`); an
+endorser block is a definite map (`decodeMapLen`) of 32-byte hashes (`decodeLeiosEb`, `:1301-1310`);
+`MsgLeiosVotes` is a definite list of any number of votes, each `enforceSize 3` of a 32-byte hash, a
+`Word16` of any head width and a 48-byte signature that may be the identity (`decodeLeiosVote`,
+`:1379-1390`); an announcement is a header in the hard-fork envelope of one of the eras. The header
+inside that envelope is read by the decoder of its era too (#757), as the build's node-to-node header
+decoder reads it: the codec is in the `protocol` module, which cannot reach the ledger's header decoders,
+so the node supplies them (`LeiosNotify.AnnouncementReader`, `AnnouncedHeaders`), and a header its era's
+decoder refuses fails the message with that refusal. The framing bounds are the build's too: each state's byte limit (`byteLimitsLeiosNotify`, 65,535 bytes in
+every state with a receiver; `byteLimitsLeiosFetch`, 65,535, 660,000 and 550,000), applied by the
+receiving driver, and no depth or item budget of the decoder's own.
 
 ### 12.4 What still stops this node following the testnet
 
-Not resolved by #711; listed for the integrator (no issue filed here):
+The integration work belongs to [#73](https://github.com/KD5UJC-XYZ/scarab/issues/73);
+the configuration and validation follow-ups are linked below.
 
 1. The node has no `Era.Dijkstra` and its follower does not use `HfcHeader`, `LeiosHeader` or
    `LeiosBlock` (X1, X2): on this chain it stops at block 0, as every header is of era index 7.
-2. Configuration: `TestDijkstraHardForkAtEpoch`, the Dijkstra genesis and the new keys
-   (`LeiosAdaptiveEndorsements`, `EgressBudgetMbps`, `LeiosMinOfferLead`, `LedgerDB` `V2InMemory`)
-   are not read; `useLedgerAfterSlot` is now 1,000.
-3. The configuration fixtures, the header captures and the suites over them (`LeiosTestnetConfigSuite`,
-   `LeiosHeaderChainSuite`, `LeiosCheckMain`) are of the network before the restart; `LeiosHeaderChain`
-   and `LeiosCheckMain` read a header of era index 6 as a Leios header, which the build reads as a
-   Praos header.
-4. No Dijkstra ledger (X3): a transaction is kept as its four parts and not decoded; no stake
+2. `NodeConfig` reads `DijkstraGenesisFile` and `DijkstraGenesisHash`, and
+   `NodeSetup.verifyHashes` checks the supplied file. Topology parsing also reads
+   `useLedgerAfterSlot` (1,000 in the captured topology). The missing configuration support is
+   `TestDijkstraHardForkAtEpoch` and the Leios settings (`LeiosAdaptiveEndorsements`,
+   `EgressBudgetMbps`, `LeiosMinOfferLead`, `LedgerDB` `V2InMemory`), tracked by
+   [#745](https://github.com/KD5UJC-XYZ/scarab/issues/745).
+3. ~~The configuration fixtures, the header captures and the suites over them are of the network
+   before the restart, and `LeiosHeaderChain` and `LeiosCheckMain` read a header of era index 6 as a
+   Leios header.~~ Resolved by #743: the fixtures are the restarted network's, and a header is read by
+   its era as the build reads it (`LeiosHeader.byEra`: index 7 the Leios header, an earlier index that
+   era's Praos or TPraos header).
+4. No Dijkstra ledger (X3): a transaction is decoded (section 12.5) but no rule applies to it; no stake
    distribution (X4), certificate verification (X5), endorser blocks (X7), mini-protocols 18 and 19
    (X8), `TxSubmissionLogicV2` (X10), ledger peers or the peer snapshot (X11).
-5. `Praos2`'s rules beyond the header (its envelope checks and ledger view) were not compared with
-   `consensus.Praos`.
+5. `Praos2`'s rules beyond header decoding (its envelope checks and ledger view) have not been
+   compared with `consensus.Praos`; tracked by
+   [#746](https://github.com/KD5UJC-XYZ/scarab/issues/746).
 6. The build's Praos header (Babbage, Conway) is also read by `decodeRecordNamed` at these revisions,
    where this node follows cardano-ledger f649f975 for those eras; no such block occurs on the testnet.
+
+### 12.5 A block's transactions (#750)
+
+Each transaction of a Dijkstra block is decoded as the build decodes it, by
+`decodeDijkstraTopTxInBlock` at decoder version 12 (cardano-ledger 9df9f98c,
+`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:175-182`); `ledger/.../dijkstra/` holds the
+readers, `DijkstraTx.inBlock` the entry, and `LeiosBlock.decode` refuses a block whose transaction
+the build refuses. Decoding only: no rule of the Dijkstra ledger is applied (X3). What the readers
+mirror, at that revision:
+
+| Part | The build |
+|---|---|
+| Body | `decodeSparseKeyed` (`Decoding/Decoder.hs:1228-1287`): keys 0 to 27 as `TxBody.hs:347-479` lists them; inputs, outputs and fee required; fee, collateral (13, 16, 17), sub-transactions (23) and starting balance intervals (27) a top-level transaction's only; a present collection empty is refused (`failOnNull`, `failOnMempty`) except the guards (14); the donation positive |
+| Sub-transactions | key 23: a non-empty set (tag 258 allowed) of `[body, witnesses, auxiliary data / null]` whose bodies are of the sub-transaction level, no transaction id (the hash of the body's original bytes) twice; they do not nest |
+| Guards, required guards | key 14 `decodeGuards`: the first element decides whether all are credentials or key hashes; key 24 a non-empty map of credentials to Plutus `Data` or null |
+| Deposits, balance intervals | keys 25 to 27: non-empty maps of account addresses; an interval an unsigned coin or `[lower / null, upper / null]`, not both null |
+| Outputs, values | `decodeBabbageTxOut`: a map (not one of an eight-byte length head) or `[address, value (, datum hash)]`; a multi-asset map non-empty at version 12 (`Mary/Value.hs:325-350`); a reference script `AlonzoScript` with Plutus V1 to V4 |
+| Certificates | `DijkstraTxCert` (`TxCert.hs:233-250`): tags 0, 1, 5 and 6 refused; a pool registration's voting key slot (`StakePool.hs:744-770`): a list or null after the VRF key hash, its key a G2 and its proof a G1 point of the subgroup, neither the identity |
+| Governance | votes, and proposals whose parameter update is Dijkstra's `PParamsUpdate` of update keys 0 to 56 (`Dijkstra/PParams.hs`); a hard fork's major at most 13 |
+| Witnesses | `AlonzoTxWits` at version 12: every set non-empty and without duplicates, by key and signature, by key, chain code and attributes (bootstrap), or by the hash of the original bytes (scripts, datums); Plutus V4 at key 8; redeemers a map only, of purposes 0 to 6 |
+| Auxiliary data | a metadata map; `[metadata, native scripts]` read by `decodeRecordNamed`; or the tag 259 over keys 0 to 5 (Plutus V4 at 5) |
+| Forms | every record definite or indefinite, never detached; byte strings and text chunked or not; bounded rationals the tag 30 over two `Word64` (`decodeIntegralRational`) |
+
+The corpus `fixtures/reference/leios-testnet-blocks` holds the build's verdict on each transaction
+of the captured blocks and on synthetic ones at each of these boundaries, and
+`LeiosTestnetBlockReferenceSuite` requires the same verdict, transaction id, validity flag, script
+and datum hashes, redeemer map (last value for a repeated key, in key order) and sub-transactions
+of Scarab.

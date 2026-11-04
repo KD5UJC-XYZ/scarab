@@ -16,10 +16,10 @@ and the `RecD` records a transaction can hold are read by `decodeRecordNamed` fr
 Leios block is definite or indefinite with its fields before the break, and none is read detached:
 an empty indefinite list `9f ff` with the fields after it is refused.
 
-The cases are the blocks of the testnet captured in `fixtures/leios/testnet/` (the current network,
-`blocks-rc-2026w44.tsv`, and the previous one, `blocks.tsv`), those blocks with one list written in
-another form, a block of synthetic transactions whose output value is written in each form, and Leios
-headers alone in the forms of the header decoding oracle.
+The cases are the blocks of the testnet captured in `fixtures/leios/testnet/blocks-rc-2026w44.tsv`
+(the network as restarted on 2026-10-18), a block of synthetic transactions and the certifying block
+with one list written in another form, blocks of synthetic transactions whose output value is
+written in each form, and Leios headers alone in the forms of the header decoding oracle.
 
     python3 scripts/oracle/leios-testnet/leios_cases.py --inputs /tmp/leios-inputs.json
     docker run --rm --network none --read-only -v /tmp:/fixtures:ro \\
@@ -38,6 +38,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "conway-decoding"))
 sys.path.insert(0, os.path.join(HERE, "..", "header-decoding"))
 import cases as c  # noqa: E402  (the CBOR helpers)
 import header_cases as hc  # noqa: E402  (the header fields and forms)
+import leios_tx_cases as tc  # noqa: E402  (the transaction cases, #750)
 
 CASES = []
 
@@ -121,9 +122,7 @@ def load(path):
 
 
 CURRENT = "fixtures/leios/testnet/blocks-rc-2026w44.tsv"
-PREVIOUS = "fixtures/leios/testnet/blocks.tsv"
 current = load(CURRENT)
-previous = load(PREVIOUS)
 FORMS_BLOCK = "scripts/oracle/header-decoding/header_cases.py"
 
 
@@ -155,12 +154,31 @@ def block_case(name, raw, source):
 
 for label, raw in current.items():
     block_case(f"rc-2026w44 {label}", raw, f"{CURRENT} {label}")
-for label, raw in previous.items():
-    block_case(f"previous network {label}", raw, f"{PREVIOUS} {label}")
 
-# The forms of each list of a block, on the block of the previous network with transactions.
-SOURCE = f"{PREVIOUS} dijkstra-with-txs"
-base = Block(previous["dijkstra-with-txs"])
+# Synthetic transactions in the empty block 0 of the current network: an output whose value is the
+# `MaryValue` record, in each form and in each output form.
+SOURCE = f"{CURRENT} block-0"
+empty = Block(current["block-0"])
+ADDRESS = c.bstr(b"\x60" + c.h(0x22, 28))
+ASSETS = c.cmap([(c.bstr(c.h(0x88, 28)), c.cmap([(c.bstr(b"a"), c.uint(5))]))])
+
+
+def value(form):
+    return items([c.uint(2_000_000), ASSETS], form)
+
+
+def tx(output, valid=c.TRUE):
+    body = c.cmap([(c.uint(0), c.array([c.array([c.bstr(c.h(0x11, 32)), c.uint(0)])])),
+                   (c.uint(1), c.array([output])),
+                   (c.uint(2), c.uint(200_000))])
+    return items([body, c.cmap([]), c.NULL, valid])
+
+
+# The forms of each list of a block, on block 0 of the current network holding two synthetic
+# transactions (the network's own blocks with transactions are 84 kB each).
+SOURCE = f"{CURRENT} block-0, two synthetic transactions"
+base = Block(empty.build(body=empty.with_body(txs=[tx(c.array([ADDRESS, value("definite")])),
+                                                   tx(c.array([ADDRESS, c.uint(3_000_000)]))])))
 block_case("block indefinite", base.build(form="indefinite"), SOURCE)
 block_case("block detached", b"\x82\x08\x9f\xff" + base.header + base.body, SOURCE)
 block_case("block of three items", c.array([c.uint(8), c.array([base.header, base.body, c.NULL])]), SOURCE)
@@ -200,9 +218,9 @@ block_case("peras certificate chunked bytes",
            SOURCE)
 block_case("peras certificate an integer", base.build(body=base.with_body(peras=c.uint(7))), SOURCE)
 
-# The forms of the Leios certificate, on the certifying block of the previous network.
-SOURCE = f"{PREVIOUS} dijkstra-certificate"
-cert_block = Block(previous["dijkstra-certificate"])
+# The forms of the Leios certificate, on the certifying block of the current network.
+SOURCE = f"{CURRENT} certifying"
+cert_block = Block(current["certifying"])
 empty_header = Block(current["block-0"]).header
 signers, signature = parts(cert_block.leios)
 for form in ["indefinite", "detached"]:
@@ -240,25 +258,7 @@ block_case("tag 7 Conway block with a Praos header",
 block_case("tag 7 Conway block with a Leios header",
            c.array([c.uint(7), hc.block(CONWAY, empty_header)]), f"{CURRENT} block-0")
 
-# Synthetic transactions in the empty block 0 of the current network: an output whose value is the
-# `MaryValue` record, in each form and in each output form.
 SOURCE = f"{CURRENT} block-0"
-empty = Block(current["block-0"])
-ADDRESS = c.bstr(b"\x60" + c.h(0x22, 28))
-ASSETS = c.cmap([(c.bstr(c.h(0x88, 28)), c.cmap([(c.bstr(b"a"), c.uint(5))]))])
-
-
-def value(form):
-    return items([c.uint(2_000_000), ASSETS], form)
-
-
-def tx(output, valid=c.TRUE):
-    body = c.cmap([(c.uint(0), c.array([c.array([c.bstr(c.h(0x11, 32)), c.uint(0)])])),
-                   (c.uint(1), c.array([output])),
-                   (c.uint(2), c.uint(200_000))])
-    return items([body, c.cmap([]), c.NULL, valid])
-
-
 for form in ["definite", "indefinite", "detached"]:
     block_case(f"transaction output list with its value {form}",
                empty.build(body=empty.with_body(txs=[tx(c.array([ADDRESS, value(form)]))])), SOURCE)
@@ -267,6 +267,8 @@ for form in ["definite", "indefinite", "detached"]:
                    txs=[tx(c.cmap([(c.uint(0), ADDRESS), (c.uint(1), value(form))]))])), SOURCE)
 block_case("transaction output with a coin value",
            empty.build(body=empty.with_body(txs=[tx(c.array([ADDRESS, c.uint(2_000_000)]))])), SOURCE)
+block_case("transaction of a zero body and zero witnesses",
+           empty.build(body=empty.with_body(txs=[c.array([c.uint(0), c.uint(0), c.NULL, c.TRUE])])), SOURCE)
 block_case("two transactions, the second with its value detached",
            empty.build(body=empty.with_body(txs=[tx(c.array([ADDRESS, value("definite")])),
                                                  tx(c.array([ADDRESS, value("detached")]))])), SOURCE)
@@ -315,13 +317,55 @@ header("every list indefinite but the vrf certificate",
                  announcement=("indefinite", 5000)))
 
 
+def transactions(paths):
+    """The transaction cases (`leios_tx_cases.py`): each transaction of every tag-8 block with
+    transactions in the captures of both networks and in `paths` (block captures in the same TSV form
+    that this branch does not hold yet), then the synthetic ones."""
+    blocks = []
+    seen = set()
+    for path in [CURRENT] + list(paths):
+        rows = load(path) if not os.path.isabs(path) else load_abs(path)
+        label = os.path.basename(path)
+        for name, raw in rows.items():
+            if parts(raw)[0] != c.uint(8):
+                continue
+            txs = parts(Block(raw).txs) if Block(raw).txs[0] != 0x9F else indefinite_parts(Block(raw).txs)
+            if txs and (label, name) not in seen:
+                seen.add((label, name))
+                source = f"fixtures/leios/testnet/{label} {name}"
+                blocks.append((source, txs))
+    tc.build(lambda name, raw, source: case("tx", name, raw, source), blocks)
+
+
+def load_abs(path):
+    rows = {}
+    with open(path) as f:
+        for line in f:
+            if line.startswith("#") or not line.strip():
+                continue
+            cols = line.rstrip("\n").split("\t")
+            rows[cols[0]] = bytes.fromhex(cols[-1])
+    return rows
+
+
+def indefinite_parts(b):
+    """The items of an indefinite list, as their original bytes."""
+    assert b[0] == 0x9F and b[-1] == 0xFF
+    out, i = [], 1
+    while i < len(b) - 1:
+        j = end_of(b, i)
+        out.append(b[i:j])
+        i = j
+    return out
+
+
 def merge(reference):
     """The corpus lines: each case with the verdict and what the reference read from it."""
     assert len(reference) == len(CASES), "the harness answered a different number of cases"
     lines = []
     keys = ["hash", "headersize", "signable", "blockno", "slot", "declaredbodysize", "declaredbodyhash",
             "versioninfo", "containscert", "announcement", "tag", "bodyhash", "bodysize", "txs", "leioscert",
-            "perascert"]
+            "perascert", "valid", "scripts", "datums", "redeemers", "subtxs"]
     for case_, verdict in zip(CASES, reference):
         assert (verdict["name"], verdict["kind"]) == (case_["name"], case_["kind"])
         result = verdict["result"]
@@ -334,6 +378,8 @@ def merge(reference):
             "failure": result.get("failure"),
         }
         line.update({k: result[k] for k in keys if k in result})
+        if case_["kind"] == "tx" and result["accepted"]:
+            line["txid"] = result["id"]
         line["bytes"] = case_["bytes"]
         lines.append(json.dumps({k: v for k, v in line.items() if v is not None or k == "announcement"},
                                 separators=(",", ":")))
@@ -345,7 +391,10 @@ def main():
     parser.add_argument("--inputs", help="write the array of original encodings the harness reads")
     parser.add_argument("--reference", help="the harness output for those inputs, to merge")
     parser.add_argument("--out", help="write the corpus lines (needs --reference)")
+    parser.add_argument("--blocks", action="append", default=[],
+                        help="a further block capture (TSV) whose transactions become cases")
     args = parser.parse_args()
+    transactions(args.blocks)
     names = [x["name"] for x in CASES]
     assert len(names) == len(set(names)), "case names must be unique"
     ids = [x["id"] for x in CASES]

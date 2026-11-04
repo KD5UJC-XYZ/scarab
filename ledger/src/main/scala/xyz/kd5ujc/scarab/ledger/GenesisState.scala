@@ -177,6 +177,7 @@ object GenesisState:
         .flatMap(hex28)
       network <- get[String](c.downField("accountAddress"), "network")
       owners <- get[Vector[String]](c, "owners").flatMap(_.traverse(hex28))
+      fields <- GenesisPoolFields.read(c)
     yield operator -> PoolParams(
       operator,
       vrf,
@@ -185,8 +186,8 @@ object GenesisState:
       margin,
       RewardAccount(if network == "Mainnet" then 1 else 0, Credential.Key(account)),
       owners.toSet,
-      Bytes.empty,
-      None
+      fields._1,
+      fields._2
     )
 
   def credential(s: String): Either[ConfigError, Credential] =

@@ -98,7 +98,7 @@ object Corpus extends munit.Assertions:
     }
 
   /** Blocks of tag 7 and 8 of the same chain. */
-  lazy val leiosBlocks: Vector[Array[Byte]] = leiosColumn("blocks.tsv", 5)
+  lazy val leiosBlocks: Vector[Array[Byte]] = leiosColumn("blocks-rc-2026w44.tsv", 5)
 
   def txBodies(era: Era): Vector[Array[Byte]] =
     shelleyBlocks.filter(_.era == era).flatMap(_.transactions.map(_.body.toArray)) ++

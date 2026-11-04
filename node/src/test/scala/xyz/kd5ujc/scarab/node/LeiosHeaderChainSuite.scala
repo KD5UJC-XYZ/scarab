@@ -8,17 +8,19 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.LeiosHeaderChain
 import xyz.kd5ujc.scarab.consensus.state.ProtocolState
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.ledger.LeiosHeader
+import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf, LeiosHeader}
 import xyz.kd5ujc.scarab.protocol.HfcHeader
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.read.InEra
 
-/** The header rules over the first 1,100 headers of the public Leios testnet, from its genesis
-  * (`fixtures/leios/testnet/headers-from-origin.tsv`; provenance in `fixtures/leios/README.md`):
-  * epoch 0 and the start of epoch 1, all led by the one pool the genesis seats, whose stake is the
-  * whole of the distribution. Every operational certificate, KES signature and VRF proof is
-  * verified, under epoch nonces evolved from the hash of the Shelley genesis file, and every
-  * header's leader value is compared with the pool's threshold.
+/** The header rules over the first 1,100 headers of the public Leios testnet as restarted on
+  * 2026-10-18, from its genesis (`fixtures/leios/testnet/headers-from-origin.tsv`; provenance in
+  * `fixtures/leios/README.md`), each read by its era as the testnet's build reads it
+  * ([[LeiosHeader.byEra]]; every one is a Dijkstra Leios header): epoch 0 and the start of epoch 1,
+  * all led by the one pool the genesis seats, whose stake is the whole of the distribution. Every
+  * operational certificate, KES signature and VRF proof is verified, under epoch nonces evolved
+  * from the hash of the Shelley genesis file, and every header's leader value is compared with the
+  * pool's threshold.
   */
 class LeiosHeaderChainSuite extends munit.FunSuite:
   private val dir = Path.of("fixtures", "leios", "testnet")
@@ -41,7 +43,7 @@ class LeiosHeaderChainSuite extends munit.FunSuite:
     )
   private val initial = LeiosHeaderChain.initial(setup.mirrorStart.protocol)
 
-  private val headers: Vector[LeiosHeader] =
+  private val headers: Vector[Header.Shelley] =
     Files
       .readAllLines(dir.resolve("headers-from-origin.tsv"))
       .asScala
@@ -49,14 +51,14 @@ class LeiosHeaderChainSuite extends munit.FunSuite:
       .filterNot(l => l.startsWith("#") || l.isEmpty)
       .map { l =>
         val envelope = Bytes.fromHex(l.split('\t')(4)).fold(e => fail(e.message), identity)
-        val raw = HfcHeader.decode(envelope) match
-          case Right(HfcHeader.Supported(h)) => h.raw
-          case other                         => fail(other.toString)
-        LeiosHeader.decode(raw).fold(e => fail(e.message), identity)
+        HfcHeader.decode(envelope) match
+          case Right(dijkstra: HfcHeader.Dijkstra) =>
+            LeiosHeader.byEra(dijkstra).fold(e => fail(e.message), identity)
+          case other => fail(other.toString)
       }
 
   private def run(
-      hs: Vector[LeiosHeader],
+      hs: Vector[Header.Shelley],
       from: LeiosHeaderChain.State = initial
   ): Either[(Int, LeiosHeaderChain.Fault), LeiosHeaderChain.State] =
     @tailrec def go(
@@ -70,11 +72,11 @@ class LeiosHeaderChainSuite extends munit.FunSuite:
           case Right(n) => go(i + 1, n)
     go(0, from)
 
-  private def corrupt(raw: Bytes, at: Int): LeiosHeader =
+  private def corrupt(raw: Bytes, at: Int): Header.Shelley =
     val bit = Bytes(Vector((raw.toArray(at) ^ 1).toByte))
     LeiosHeader
       .decode(raw.take(at) ++ bit ++ raw.drop(at + 1))
-      .fold(e => fail(e.message), identity)
+      .fold(e => fail(e.message), _.praosView)
 
   test(
     "the node setup reads the genesis: Praos parameters, one seated pool, the hash of the file"
@@ -86,7 +88,7 @@ class LeiosHeaderChainSuite extends munit.FunSuite:
     assertEquals(stake.genesis.total, BigInt(900000000)) // the delegated funds of `extraConfig`
     assertEquals(
       setup.identity.shelleyGenesis.hex,
-      "1944510a4fd91415444285231058f6f6ff0f6f3ff3d0356c76c00c5a77f29567"
+      "d1b19e006c1198fb7ac9d53073c1a9f77acb1a9474c92310006ae4418290cda3"
     ) // the ShelleyGenesisHash of the published config.json
   }
 
@@ -139,7 +141,10 @@ class LeiosHeaderChainSuite extends munit.FunSuite:
     val raw = h.raw
     // locate the fields by their bytes in the encoding
     val kes = raw.size - 448
-    val vrfProof = raw.hex.indexOf(h.vrf.proof.hex) / 2
+    val proof = h.vrf match
+      case HeaderVrf.Praos(cert) => cert.proof
+      case other                 => fail(s"not a Praos VRF: $other")
+    val vrfProof = raw.hex.indexOf(proof.hex) / 2
     val sigma = raw.hex.indexOf(h.opCert.sigma.hex) / 2
     Vector("KES" -> (kes + 3), "VRF" -> (vrfProof + 7), "opcert" -> (sigma + 9)).foreach {
       (what, at) =>
@@ -154,7 +159,7 @@ class LeiosHeaderChainSuite extends munit.FunSuite:
   test("a header in the wrong slot is refused: the VRF input is the slot") {
     val h = headers(5)
     val moved = h.copy(slot = h.slot + 1)
-    // praosView reads the decoded fields, so the signed bytes and the VRF input now disagree
+    // the Praos view holds the decoded fields, so the signed bytes and the VRF input now disagree
     assert(run(headers.take(5) :+ moved).isLeft)
   }
 

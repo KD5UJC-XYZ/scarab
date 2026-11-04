@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-10-26",
+  "scope": "Unmodified released StakePoolParams FromJSON plus EncCBOR relay and optional metadata payloads at protocol version 11; no ledger transition, socket resolution, or whole genesis conformance claim.",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "compiler": "ghc-9.10.3",
+  "imageId": "sha256:0d7d3971a5ff78c8a6786459d191f39b166d69a4d71a6eb310c9d8338d6e035e",
+  "freezeSha256": "f7e6220cf1d723bb8722b4a7e90be5993c4f1fa5a380e64a13c3303546e8a68c",
+  "harnessSha256": "ff1329a2cd6775899a7624d0f22b20ba9b0dba983c4f73799bc6f738eb509028",
+  "executableSha256": "0e2b88e318fd086bc4e444917ab482e380a9d7c687cc09f8f7a0049d4ea2ec91",
+  "casesSha256": "d89e59685f43f04a8550cc60b94b85d4db99145cf56026198b0f429260088c4f",
+  "sourceFiles": [
+    {
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0",
+      "archiveSha256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "file": "src/Cardano/Ledger/State/StakePool.hs",
+      "sourceSha256": "bf63493aff3bbea614698908595999e5c0b0b23a3c101a4c5bf735b243a0165e",
+      "matchesLedgerPin": true
+    },
+    {
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0",
+      "archiveSha256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "file": "src/Cardano/Ledger/BaseTypes.hs",
+      "sourceSha256": "0b86d1ecdd5abb0cf89194e7324fe1f62e58214cbd7386a1c50aeaf1c605866e",
+      "matchesLedgerPin": true
+    },
+    {
+      "package": "cardano-base",
+      "version": "0.1.6.0",
+      "archiveSha256": "32c9e3fc57891995cdc7021c3b3fe9b882b4a26042faf13a3792fad98929a457",
+      "file": "src/Cardano/Base/IP.hs",
+      "sourceSha256": "e73cda9b85ea6835b8d6fa86e3815085918563896e43d22cd593a5a155e01e64"
+    },
+    {
+      "package": "iproute",
+      "version": "1.7.15",
+      "archiveSha256": "18a331a7e0e6f9dc89a2da95577b0d76bd2690b8f832b72b46d6cc9b667b4ba5",
+      "file": "Data/IP/Addr.hs",
+      "sourceSha256": "6014fc095c46f0a0ba5a9690bd604e16ef105e7da97545ce12dcf0a158c5fbfc"
+    }
+  ],
+  "packageUnits": [
+    {
+      "name": "aeson",
+      "version": "2.2.5.0",
+      "id": "aeson-2.2.5.0-339d6fee3de193e2bbf41260d8e8e7b362b1ccb7269b7adf75b19a355597fd8a",
+      "sourceSha256": "e22f9883adce9e02d77de6a1bba36f2f98d322c8a9fa3bc51596d31493d00ac5"
+    },
+    {
+      "name": "cardano-base",
+      "version": "0.1.6.0",
+      "id": "cardano-base-0.1.6.0-28164e4118fc6328e920090089901da37bb1f33f2de3aada56e23e3cf30482b3",
+      "sourceSha256": "32c9e3fc57891995cdc7021c3b3fe9b882b4a26042faf13a3792fad98929a457"
+    },
+    {
+      "name": "cardano-ledger-binary",
+      "version": "1.9.1.0",
+      "id": "cardano-ledger-binary-1.9.1.0-93fac3e5034ba74b4def74d66d2bbb1f70e4253832078b1296786d0598e34580",
+      "sourceSha256": "05d59229edffc94b8f61273117456601532e23d8656f3076775bbf38e600bb8a"
+    },
+    {
+      "name": "cardano-ledger-core",
+      "version": "1.21.0.0",
+      "id": "cardano-ledger-core-1.21.0.0-a518dc82925c344bb5b353a39280ec624a60690ea811fb8e390724ba6f026669",
+      "sourceSha256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a"
+    },
+    {
+      "name": "iproute",
+      "version": "1.7.15",
+      "id": "iproute-1.7.15-675d0924cc8ecc9518c8af4644f4e034916815cc365682b5eefbcbc8f970c6ae",
+      "sourceSha256": "18a331a7e0e6f9dc89a2da95577b0d76bd2690b8f832b72b46d6cc9b667b4ba5"
+    }
+  ],
+  "caseCount": 70,
+  "accepted": 30,
+  "refused": 40,
+  "encodingNote": "Released cardano-ledger-binary 1.9.1.0 writes IPv4 in network order; its fix differs from the f649f975 binary source. Core JSON parser sources above match the pinned commit exactly."
+}

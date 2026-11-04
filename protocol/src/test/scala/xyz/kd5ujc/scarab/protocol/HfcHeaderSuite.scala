@@ -7,8 +7,8 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
 
 /** The hard-fork envelope of ChainSync headers, open for the eras after Conway, against headers
-  * captured from the public Leios testnet (`fixtures/leios/testnet`, provenance in
-  * `fixtures/leios/README.md`).
+  * captured from the public Leios testnet as restarted on 2026-10-18, every one of era index 7
+  * (`fixtures/leios/testnet`, provenance in `fixtures/leios/README.md`).
   */
 class HfcHeaderSuite extends munit.FunSuite:
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
@@ -40,18 +40,8 @@ class HfcHeaderSuite extends munit.FunSuite:
 
   private def row(label: String) = notable.find(_.label == label).getOrElse(fail(label))
 
-  test("a Conway-tagged header of the testnet is a supported envelope, byte for byte") {
-    val r = fromOrigin.head
-    HfcHeader.decode(r.envelope) match
-      case Right(HfcHeader.Supported(h)) =>
-        assertEquals(h.era, Era.Conway)
-        assertEquals(Blake2b.hash256.hash(h.raw).hex, r.hash)
-        assertEquals(HfcHeader.encode(HfcHeader.Supported(h)), Right(r.envelope))
-      case other => fail(other.toString)
-  }
-
   test("a Dijkstra header (index 7) is named, its raw bytes hash to the block hash") {
-    val r = row("first-dijkstra-tag")
+    val r = row("first")
     HfcHeader.decode(r.envelope) match
       case Right(d @ HfcHeader.Dijkstra(raw)) =>
         assertEquals(Blake2b.hash256.hash(raw).hex, r.hash)
@@ -71,7 +61,7 @@ class HfcHeaderSuite extends munit.FunSuite:
   test(
     "the closed decoder of the supported eras refuses index 7 (the baseline this one replaces)"
   ) {
-    assert(NtNHeader.codec.decode(row("first-dijkstra-tag").envelope).isLeft)
+    assert(NtNHeader.codec.decode(row("first").envelope).isLeft)
   }
 
   test("an index no era has is kept with its payload, not refused") {
@@ -104,7 +94,7 @@ class HfcHeaderSuite extends munit.FunSuite:
     assertEquals(HfcHeader.decode(hex("820741" + "00")), Left(HfcHeaderError.NotEmbeddedCbor))
     assertEquals(HfcHeader.decode(hex("8207d81801")), Left(HfcHeaderError.NotEmbeddedCbor))
     // trailing bytes after the envelope
-    val good = row("first-dijkstra-tag").envelope
+    val good = row("first").envelope
     assertEquals(
       HfcHeader.decode(good ++ hex("00")),
       Left(HfcHeaderError.Syntax(xyz.kd5ujc.scarab.codec.Cbor.Error.TrailingBytes))
@@ -169,14 +159,14 @@ class HfcHeaderSuite extends munit.FunSuite:
   }
 
   test("every prefix of a real envelope is refused, never accepted") {
-    val bytes = row("first-dijkstra-tag").envelope
+    val bytes = row("first").envelope
     (0 until bytes.size by 7).foreach { n =>
       assert(HfcHeader.decode(bytes.take(n)).isLeft, s"prefix $n")
     }
   }
 
   test("the ChainSync payload codec accepts a header of any era and refuses a malformed envelope") {
-    val good = row("first-dijkstra-tag").envelope
+    val good = row("first").envelope
     assert(HfcHeader.codec.decode(good).isRight)
     assert(HfcHeader.codec.decode(good.take(10)).isLeft)
     assertEquals(HfcHeader.codec.encode(HfcHeader.codec.decode(good).toOption.get), Right(good))
