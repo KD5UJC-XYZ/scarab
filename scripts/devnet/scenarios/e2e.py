@@ -375,8 +375,11 @@ def e2e(args):
         # that failed, or ended with an exception no failure recorded, keeps what can still be read.
         if failures or sys.exc_info()[0] is not None:
             summary["referenceEvidence"] = reference_evidence(args.name, root)
+        # a run that ends by an exception with nothing in `failures` has failed too: the summary must not say
+        # `passed` beside a kept evidence block and a traceback (#293)
+        failed = bool(failures) or sys.exc_info()[0] is not None
         summary["failures"] = failures
-        summary["passed"] = not failures
+        summary["passed"] = not failed
         root.mkdir(parents=True, exist_ok=True)
         (root / "e2e-summary.json").write_text(json.dumps(summary, indent=2))
         shutil.rmtree(root / "classes", ignore_errors=True)

@@ -516,19 +516,40 @@ def _native_observations(name, deadline):
 
 
 def _startup(name, read):
-    """The clock and era plan the reference nodes started from, or the error that kept it from being read."""
-    try:
-        shelley, byron, config = read(f"{ENV}/shelley-genesis.json"), read(f"{ENV}/byron-genesis.json"), read(f"{ENV}/configuration.yaml")
-        return {
-            "shelleySystemStart": shelley.get("systemStart"), "byronStartTime": byron.get("startTime"),
-            "byronSlotDuration": (byron.get("blockVersionData") or {}).get("slotDuration"),
-            "slotLength": shelley.get("slotLength"), "epochLength": shelley.get("epochLength"),
-            "activeSlotsCoeff": shelley.get("activeSlotsCoeff"), "securityParam": shelley.get("securityParam"),
-            "protocolMajor": ((shelley.get("protocolParams") or {}).get("protocolVersion") or {}).get("major"),
-            "hardForkAtEpoch": {k: v for k, v in config.items()
-                                if k.startswith("Test") and k.endswith("HardForkAtEpoch")}}
-    except Exception as error:  # a half-written genesis can fail as anything; it must not end the capture
-        return {"error": repr(error)}
+    """The clock and era plan the reference nodes started from.
+
+    Each file is read on its own, because this runs against a cluster that may still be writing: a genesis that
+    parses to `null`, or a `configuration.yaml` that is still the YAML `create-env` writes before it rewrites it,
+    must cost only its own part - the start times are what a chain stalled at the initial EBB is measured
+    against."""
+
+    def part(path):
+        """(value, None), or ({}, why) when that file cannot be read as a JSON object."""
+        try:
+            return read(path), None
+        except Exception as error:  # a half-written file can fail as anything; it must not cost the other parts
+            return {}, repr(error)
+
+    shelley, shelley_error = part(f"{ENV}/shelley-genesis.json")
+    byron, byron_error = part(f"{ENV}/byron-genesis.json")
+    config, config_error = part(f"{ENV}/configuration.yaml")
+    started = {}
+    for label, error in (("shelley", shelley_error), ("byron", byron_error), ("config", config_error)):
+        if error is not None:
+            started[f"{label}Error"] = error
+    if shelley_error is None:
+        started.update({
+            "shelleySystemStart": shelley.get("systemStart"), "slotLength": shelley.get("slotLength"),
+            "epochLength": shelley.get("epochLength"), "activeSlotsCoeff": shelley.get("activeSlotsCoeff"),
+            "securityParam": shelley.get("securityParam"),
+            "protocolMajor": ((shelley.get("protocolParams") or {}).get("protocolVersion") or {}).get("major")})
+    if byron_error is None:
+        started.update({"byronStartTime": byron.get("startTime"),
+                        "byronSlotDuration": (byron.get("blockVersionData") or {}).get("slotDuration")})
+    if config_error is None:
+        started["hardForkAtEpoch"] = {k: v for k, v in config.items()
+                                      if k.startswith("Test") and k.endswith("HardForkAtEpoch")}
+    return started
 
 
 def keep_native_evidence(name, root):
@@ -578,7 +599,9 @@ def keep_native_evidence(name, root):
         if r.returncode == 0:
             report["kept"].append(out.name)
         else:
-            why = (r.stderr or "").strip()[:400]
+            why = r.stderr or ""
+            why = why.decode("utf-8", "replace") if isinstance(why, bytes) else why
+            why = why.strip()[:400]
             report["notKept"][out.name] = f"exit {r.returncode}" + (f": {why}" if why else "")
             with contextlib.suppress(OSError):
                 out.unlink()

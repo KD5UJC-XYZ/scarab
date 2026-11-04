@@ -673,7 +673,9 @@ class NativeEvidenceTest(unittest.TestCase):
             observations = json.loads((root / "reference-observations.json").read_text())
         self.assertIn("reference-observations.json", report["kept"])
         self.assertIn("TimeoutExpired", observations["container"]["error"])
-        self.assertIn("error", observations["startup"])
+        self.assertEqual(sorted(k for k in observations["startup"] if k.endswith("Error")),
+                         ["byronError", "configError", "shelleyError"])
+        self.assertIn("TimeoutExpired", observations["startup"]["shelleyError"])
         self.assertEqual(observations["nodes"]["node1"]["error"].count("TimeoutExpired"), 1)
 
 
@@ -691,7 +693,29 @@ class NativeEvidenceTest(unittest.TestCase):
             report = cluster.keep_native_evidence("n", root)
             observations = json.loads((root / "reference-observations.json").read_text())
         self.assertIn("reference-observations.json", report["kept"])
-        self.assertIn("ValueError", observations["startup"]["error"])
+        self.assertIn("ValueError", observations["startup"]["shelleyError"])  # its own part, not the capture
+        self.assertIn("byronStartTime", observations["startup"])  # the other parts survive its failure
+
+    def test_a_configuration_the_cluster_has_not_rewritten_yet_costs_only_its_own_part(self):
+        # `create-env` writes `configuration.yaml` as YAML before it rewrites it: a stall in that window must not
+        # throw away the start times the chain is measured against
+        def run(command, stdout=None, **kwargs):
+            if stdout is not None:
+                stdout.write("native log\n")
+                return subprocess.CompletedProcess(command, 0)
+            if command[-1].endswith("configuration.yaml"):
+                return subprocess.CompletedProcess(command, 0, "Protocol: Cardano\n", "")
+            if command[-1].endswith("shelley-genesis.json"):
+                return subprocess.CompletedProcess(command, 0, json.dumps({"systemStart": "09:00:10", "slotLength": 0.2}), "")
+            return subprocess.CompletedProcess(command, 0, json.dumps({"startTime": 1762246810}), "")
+        with tempfile.TemporaryDirectory() as d, patch.object(cluster.subprocess, "run", side_effect=run):
+            root = pathlib.Path(d) / "run"
+            report = cluster.keep_native_evidence("n", root)
+            observations = json.loads((root / "reference-observations.json").read_text())
+        self.assertIn("reference-observations.json", report["kept"])
+        self.assertIn("configError", observations["startup"])
+        self.assertEqual(observations["startup"]["shelleySystemStart"], "09:00:10")
+        self.assertEqual(observations["startup"]["byronStartTime"], 1762246810)
 
     def test_the_observations_are_taken_before_the_logs_so_a_wedged_copy_cannot_spend_their_budget(self):
         calls = []
@@ -775,6 +799,7 @@ class E2EReferenceEvidenceTest(unittest.TestCase):
         self.assertIsInstance(raised, subprocess.TimeoutExpired)
         self.assertEqual(summary["referenceEvidence"]["kept"], ["reference-node2.log"])
         self.assertEqual(summary["failures"], [])
+        self.assertFalse(summary["passed"])  # it left by traceback: the summary must not call that a pass
         self.assertLess(events.index(("evidence", "run")), self.removal_of(events, "n-ref"))
 
     def test_a_capture_that_fails_keeps_the_runs_own_failure_and_cause(self):
