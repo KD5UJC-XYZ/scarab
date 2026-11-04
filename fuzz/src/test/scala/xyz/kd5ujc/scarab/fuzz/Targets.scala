@@ -1650,10 +1650,11 @@ object Targets:
     )
 
   /** The node's own volatile log: the last blocks and the rollbacks a restart resumes from.
-    * `VolatileStore.decodeAll` returns the valid prefix of a file, so a record it accepts must
-    * decode to that same record again, and a damaged record must be dropped without disturbing the
-    * records before it: the CRC-32 covers every byte after itself, so flipping one bit of an
-    * accepted record must shorten the prefix by exactly that record.
+    * `VolatileStore.decodeAll` returns the valid prefix of a file. The seed log was written from
+    * known records, so decoding it and encoding what came back must reproduce the seed byte for
+    * byte: a reader that loses a field cannot agree with itself out of that. A damaged record must
+    * be dropped without disturbing the records before it: the CRC-32 covers the header and the
+    * payload, so flipping one bit of either must shorten the prefix by exactly that record.
     */
   private val volatileLog: Vector[Target] =
     import xyz.kd5ujc.scarab.consensus.BlockRef
@@ -1678,6 +1679,17 @@ object Targets:
         probe("volatile-store-log") { bytes =>
           val all = bytes.toArray
           val decoded = VolatileStore.decodeAll(all)
+          // The seed is known, so its decode is an oracle that does not agree with itself: a reader
+          // that loses the boundary flag, the slot, the hash or the payload re-encodes the seed to
+          // bytes other than the ones it was written from.
+          if java.util.Arrays.equals(all, log) then
+            val reencoded = decoded.foldLeft(Array.emptyByteArray) { case (out, (record, _)) =>
+              out ++ VolatileStore.encode(record)
+            }
+            req(
+              java.util.Arrays.equals(reencoded, log),
+              "the seed log does not decode to the records it was written from"
+            )
           decoded.foreach { (record, end) =>
             val encoded = VolatileStore.encode(record)
             val again = VolatileStore.decodeAll(encoded)
@@ -1695,15 +1707,21 @@ object Targets:
             val ends = decoded.map(_._2)
             val starts = 0 +: decoded.dropRight(1).map(_._2)
             ends.zip(starts).zipWithIndex.foreach { case ((end, start), index) =>
-              val at = start + VolatileStore.HeaderSize - 1
-              if at < end then
+              // the last header byte, and the first payload byte when the record has a payload: the
+              // CRC covers both, so either flip must drop this record and keep the ones before it
+              val flips = Vector(start + VolatileStore.HeaderSize - 1) ++
+                (if end > start + VolatileStore.HeaderSize then
+                   Vector(start + VolatileStore.HeaderSize)
+                 else Vector.empty)
+              flips.foreach { at =>
                 val damaged = all.clone()
                 damaged(at) = (damaged(at) ^ 0x01.toByte).toByte
                 req(
                   VolatileStore.decodeAll(damaged).size == index,
-                  s"record ${index + 1} of ${decoded.size} is still accepted after one bit of it " +
+                  s"record ${index + 1} of ${decoded.size} is still accepted after the bit at $at " +
                     "changed, so its checksum is not verified"
                 )
+              }
             }
         }
       )
@@ -1730,6 +1748,13 @@ object Targets:
         () => configs ++ minimal ++ Corpus.tricky,
         probe("node-config-strict") { bytes =>
           val text = new String(bytes.toArray, UTF_8)
+          // The empty document lacks every field strict requires, so it separates the two readings:
+          // a parse where the strict checks stopped biting would accept it.
+          if java.util.Arrays.equals(bytes.toArray, minimal.head) then
+            req(
+              NodeConfig.parse(text, strict = true).isLeft,
+              "an empty configuration is read strictly, so the required-field checks do not bite"
+            )
           NodeConfig.parse(text, strict = true).foreach { config =>
             req(
               NodeConfig.parse(text) == Right(config),
@@ -1742,9 +1767,10 @@ object Targets:
     )
 
   /** The operator's `topology.json`, as the reference reads a P2P topology: whatever the input
-    * mutates to, an accepted topology follows only destinations the document declares, and it
-    * follows the operator's local roots or bootstrap peers instead of the public roots when those
-    * are configured, which is what `Topology.peers` documents.
+    * mutates to, an accepted topology keeps exactly the access points the document declares, group
+    * by group - the document is counted from its JSON tree rather than from the parse under test,
+    * so a reader that drops, invents or duplicates one disagrees here - and a document that
+    * declares local roots or bootstrap peers still yields peers to follow.
     */
   private val nodeTopologyFile: Vector[Target] =
     import java.nio.charset.StandardCharsets.UTF_8
@@ -1753,6 +1779,27 @@ object Targets:
       .map(network => s"fixtures/$network/genesis/topology.json") :+
       "fixtures/leios/testnet/config/topology.json"
     val topologies = paths.map(path => Files.readAllBytes(java.nio.file.Path.of(path)))
+    // The fixed `{"address": ..., "port": <number>}` pairs a document declares, counted straight
+    // from its JSON tree: an address without a numeric port is an SRV name, which the parse records
+    // apart from a fixed access point.
+    def fixedPoints(points: Vector[io.circe.Json]): Int =
+      points.count { point =>
+        val c = point.hcursor
+        c.downField("address").as[String].isRight &&
+        c.downField("port").focus.exists(_.isNumber)
+      }
+    def pointsIn(c: io.circe.HCursor, name: String): Vector[io.circe.Json] =
+      c.downField(name).as[Vector[io.circe.Json]].getOrElse(Vector.empty)
+    def declaredCounts(text: String): Option[(Int, Int, Int)] =
+      io.circe.parser.parse(text).toOption.map { json =>
+        val c = json.hcursor
+        val local =
+          pointsIn(c, "localRoots").flatMap(root => pointsIn(root.hcursor, "accessPoints"))
+        val bootstrap = pointsIn(c, "bootstrapPeers")
+        val public =
+          pointsIn(c, "publicRoots").flatMap(root => pointsIn(root.hcursor, "accessPoints"))
+        (fixedPoints(local), fixedPoints(bootstrap), fixedPoints(public))
+      }
     Vector(
       Target(
         "node-topology",
@@ -1761,22 +1808,21 @@ object Targets:
           val text = new String(bytes.toArray, UTF_8)
           Topology.parse(text).foreach { topology =>
             hit("node-topology")
-            val roots = topology.localRoots.flatMap(_.accessPoints) ++
-              topology.bootstrapPeers.getOrElse(Vector.empty) ++
-              topology.publicRoots.flatMap(_.accessPoints)
-            val declared = roots.map(_.socketAddress)
-            req(
-              topology.peers.forall(declared.contains),
-              "a topology follows a peer the document does not declare"
-            )
-            val configured =
-              topology.localRoots.flatMap(_.accessPoints) ++
-                topology.bootstrapPeers.getOrElse(Vector.empty)
-            val chosen = configured.map(_.socketAddress)
-            if chosen.nonEmpty then
+            val local = topology.localRoots.map(_.accessPoints.size).sum
+            val bootstrap = topology.bootstrapPeers.getOrElse(Vector.empty).size
+            val public = topology.publicRoots.map(_.accessPoints.size).sum
+            declaredCounts(text).foreach {
+              case (declaredLocal, declaredBootstrap, declaredPublic) =>
+                req(
+                  (local, bootstrap, public) == (declaredLocal, declaredBootstrap, declaredPublic),
+                  s"the parse keeps $local/$bootstrap/$public access points where the document " +
+                    s"declares $declaredLocal/$declaredBootstrap/$declaredPublic"
+                )
+            }
+            if local + bootstrap > 0 then
               req(
-                topology.peers.forall(chosen.contains),
-                "a topology with local roots or bootstrap peers follows a public root instead"
+                topology.peers.nonEmpty,
+                "a topology that declares local roots or bootstrap peers follows no peer"
               )
           }
         }
