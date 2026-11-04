@@ -5,6 +5,6 @@ version: 0.1.0.0
 build-type: Simple
 executable scarab-leios-testnet-oracle
   main-is: Main.hs
-  build-depends: base, cardano-protocol, cardano-ledger-dijkstra, cardano-ledger-conway, cardano-ledger-alonzo, cardano-ledger-core, cardano-ledger-binary, cardano-binary, cardano-crypto-class, cardano-crypto-leios, cborg, bytestring, aeson, base16-bytestring, text, microlens
+  build-depends: base, cardano-protocol, cardano-ledger-dijkstra, cardano-ledger-conway, cardano-ledger-alonzo, cardano-ledger-core, cardano-ledger-binary, cardano-binary, cardano-crypto-class, cardano-crypto-leios, cborg, cardano-data, containers, bytestring, aeson, base16-bytestring, text, microlens
   default-language: Haskell2010
   ghc-options: -Wall -Werror
