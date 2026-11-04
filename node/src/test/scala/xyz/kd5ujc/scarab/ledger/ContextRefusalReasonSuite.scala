@@ -21,7 +21,8 @@ import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
   * whole: the Conway LEDGER rule replays the transaction at the recorded protocol parameters, and
   * the encoded Scala refusal must be the reference's reason, byte for byte. The encoding lives in
   * the node module (`PredicateFailureCbor`), which the ledger module cannot reach, so the
-  * comparison is made here.
+  * comparison is made here. The one refusal whose description this node does not yet write as the
+  * reference does is excluded from that equality and pinned below ([[diverging]], #781).
   *
   * Cases that keep no raw reason (the `v1-context` and `plutus-boundaries` files) are still
   * bounded to containment; register entry `v1context-refusal-membership` stays `bounded` until a
@@ -50,57 +51,74 @@ class ContextRefusalReasonSuite extends FunSuite:
         Some(Refused(name, PlutusCase.fromJson(json), reason))
     }
 
-  private def utxoOf(c: PlutusCase): Map[TxIn, TxOut] = c.spent ++ c.references ++ c.collateral
-
-  /** A refusal whose reason this node's encoder does not reproduce yet, and the issue that owns it.
+  /** A refusal this node's encoder does not reproduce yet, and the issue that owns it.
     *
     * `PredicateFailureCbor` writes the failed script's whole message where the reference writes its
     * own description of the failure, so the two encodings differ in that one text field and in its
-    * length head. Every other refusal here is compared as a whole; this one is pinned as a
-    * divergence so that fixing the encoder fails this test and removes the exclusion (#434, #781).
+    * length head. The pin below asserts that the difference is confined to that field and fails
+    * once the encodings agree, so fixing the encoder removes the exclusion by failing the test.
     */
-  private val diverging = Map(
-    "conway-pv10-v1-plain-fail-valid-tag" -> "the failed script's description (#781)"
-  )
+  private val diverging = Map("conway-pv10-v1-plain-fail-valid-tag" -> "#781")
+
+  private def utxoOf(c: PlutusCase): Map[TxIn, TxOut] = c.spent ++ c.references ++ c.collateral
+
+  /** The reason the Conway transaction rule gives for `c`, as the node sends it. */
+  private def encodedRefusal(c: PlutusCase, name: String): Bytes =
+    val nes = Build.funded(Build.nes[Conway](5, c.params), utxoOf(c))
+    TestLedger.conwayLedger(nes, c.tx, TestLedger.env) match
+      case Right(_)                               => fail(s"$name: the node accepts what the reference refused")
+      case Left(LedgerFailure.Rejected.Single(_, failure)) =>
+        PredicateFailureCbor.applyTxError(Vector(failure))
+      case Left(other) => fail(s"$name: not a single refusal: $other")
+
+  /** The bytes of `item` from its first two-byte-string head: the reference's payload and everything
+    * after the failure's description, which both sides write alike.
+    */
+  private def payloadFrom(item: Bytes): Option[Bytes] =
+    val bytes = item.toArray
+    val head = Array(0x59.toByte, 0x04.toByte, 0x40.toByte)
+    (0 to bytes.length - head.length)
+      .find(start => bytes.slice(start, start + head.length).sameElements(head))
+      .map(start => Bytes(bytes.drop(start).toVector))
 
   test("every refused submission carries the reference's whole raw reason") {
     assertEquals(refused.size, 12, "refusals in the recorded submissions")
     assert(refused.forall(_.reason.nonEmpty), "a refusal with an empty reason")
   }
 
-  test("the refusals whose reason the encoder does not reproduce are the ones tracked by an issue") {
-    assertEquals(
-      refused.map(_.name).filter(diverging.contains).toSet,
-      diverging.keySet,
-      "a tracked divergence that no longer occurs, or a new one that is not tracked"
-    )
-  }
-
   refused.filterNot(r => diverging.contains(r.name)).foreach { r =>
     test(s"${r.name}: the ledger rule's encoded refusal is the reference's raw reason") {
-      val c = r.plutus
-      val nes = Build.funded(Build.nes[Conway](5, c.params), utxoOf(c))
-      TestLedger.conwayLedger(nes, c.tx, TestLedger.env) match
-        case Right(_) => fail("the node accepts what the reference refused")
-        case Left(LedgerFailure.Rejected.Single(_, failure)) =>
-          assertEquals(
-            PredicateFailureCbor.applyTxError(Vector(failure)),
-            r.reason,
-            s"encoded refusal of ${c.name}"
-          )
-        case Left(other) => fail(s"not a single refusal: $other")
+      assertEquals(
+        encodedRefusal(r.plutus, r.name),
+        r.reason,
+        s"encoded refusal of ${r.plutus.name}"
+      )
     }
   }
 
-  diverging.foreach { case (name, why) =>
-    test(s"$name: the encoder's refusal still differs from the reference's reason, $why") {
-      val c = refused.find(_.name == name).getOrElse(fail(s"no refusal named $name")).plutus
-      val nes = Build.funded(Build.nes[Conway](5, c.params), utxoOf(c))
-      val encoded = TestLedger.conwayLedger(nes, c.tx, TestLedger.env) match
-        case Left(LedgerFailure.Rejected.Single(_, failure)) =>
-          PredicateFailureCbor.applyTxError(Vector(failure))
-        case other => fail(s"not a single refusal: $other")
-      val reason = refused.find(_.name == name).get.reason
-      assertNotEquals(encoded, reason)
+  test("the refusals whose encoded reason differs from the reference's are the ones an issue tracks") {
+    val differing = refused
+      .filter(r => encodedRefusal(r.plutus, r.name) != r.reason)
+      .map(_.name)
+      .toSet
+    assertEquals(differing, diverging.keySet, "a divergence that is not tracked")
+  }
+
+  diverging.foreach { case (name, issue) =>
+    test(s"$name: only the failure description still differs from the reference's reason ($issue)") {
+      val recorded = refused.find(_.name == name).getOrElse(fail(s"no refusal named $name"))
+      val encoded = encodedRefusal(recorded.plutus, name)
+      assertNotEquals(
+        encoded,
+        recorded.reason,
+        s"$name no longer differs: remove it from the tracked divergences and its issue"
+      )
+      // What agrees on both sides is the framing before the description and the payload after it;
+      // a difference anywhere else would mean a second, untracked divergence in the same refusal.
+      val shared = encoded.toArray.zip(recorded.reason.toArray).takeWhile { case (a, b) => a == b }.length
+      assert(shared >= 17, s"$name: the refusal framing differs after $shared bytes")
+      val ours = payloadFrom(encoded).getOrElse(fail(s"$name: no payload in the encoded refusal"))
+      val theirs = payloadFrom(recorded.reason).getOrElse(fail(s"$name: no payload in the reason"))
+      assertEquals(ours, theirs, s"$name: the payload after the description differs")
     }
   }
