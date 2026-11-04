@@ -125,6 +125,11 @@ trait ForgeEvents[F[_]]:
   * slot is attempted: slots that pass while an attempt runs are not attempted, and nothing is said
   * of them, as the reference's `knownSlotWatcher` passes over them.
   *
+  * @param protocolVersion
+  *   The protocol version the forged headers carry: the node's own
+  *   ([[xyz.kd5ujc.scarab.node.ConfigSettings.protocolVersion]]), not the ledger's, as
+  *   `forgeShelleyBlock` takes `shelleyProtocolVersion` of the block config (ouroboros-consensus
+  *   82ecba32 `Shelley/Ledger/Forge.hs:83`).
   * @param credentials
   *   The pool's keys as they were at the start; the VRF key and the cold key never change, the KES
   *   key and certificate are those of `hot`.
@@ -145,6 +150,7 @@ trait ForgeEvents[F[_]]:
 final class Forger[F[_]: Async, S](
     config: PraosConfig,
     globals: LedgerGlobals,
+    protocolVersion: (BigInt, BigInt),
     credentials: PoolCredentials,
     val hot: HotKeys[F],
     follower: Follower[F, S],
@@ -573,7 +579,7 @@ final class Forger[F[_]: Async, S](
         body.size,
         body.hash,
         c.opCert,
-        ticked.params.version
+        protocolVersion
       )
       header match
         case Left(e)           => F.pure(Left(e))
@@ -828,6 +834,7 @@ object Forger:
   def create[F[_]: Async, S](
       config: PraosConfig,
       globals: LedgerGlobals,
+      protocolVersion: (BigInt, BigInt),
       credentials: PoolCredentials,
       follower: Follower[F, S],
       mempool: Mempool[F],
@@ -853,6 +860,7 @@ object Forger:
       new Forger[F, S](
         config,
         globals,
+        protocolVersion,
         credentials,
         hot,
         follower,

@@ -132,6 +132,15 @@ final case class ConfigSettings(
   def maxNtnVersion: NtnVersion =
     NtnVersion.maximum(experimentalProtocols = experimentalProtocolsEnabled)
 
+  /** The greatest protocol version the node declares it handles (`cardanoProtocolVersion`): 12.0
+    * with `ExperimentalHardForksEnabled`, 11.2 otherwise (cardano-node 11.1.3
+    * `Cardano.Node.Protocol.Cardano` lines 192-194). Forged headers carry it in every Shelley-based
+    * era (ouroboros-consensus 82ecba32 `Shelley/Ledger/Forge.hs:83`, the block configs of
+    * `Cardano/Node.hs:703-830`).
+    */
+  def protocolVersion: (BigInt, BigInt) =
+    if experimentalHardForksEnabled then (BigInt(12), BigInt(0)) else (BigInt(11), BigInt(2))
+
   /** POM.hs:899-905: relays default on, producers off; an explicit setting wins. */
   def peerSharingEnabled(producer: Boolean): Boolean = peerSharing.getOrElse(!producer)
 

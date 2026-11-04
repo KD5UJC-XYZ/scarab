@@ -1660,6 +1660,7 @@ object Main extends IOApp:
             Forger.create[IO, MirrorState](
               setup.praos.copy(geometry = geometry),
               globals,
+              setup.config.settings.protocolVersion,
               pool,
               follower,
               mempool,

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.node.ConfigSettings
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import xyz.kd5ujc.scarab.ledger.ChainError
 import cats.effect.{IO, Ref}
@@ -365,6 +366,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
           forger <- Forger.create[IO, MirrorState](
             config,
             globals,
+            ConfigSettings().protocolVersion,
             p.creds,
             follower,
             mempool,
