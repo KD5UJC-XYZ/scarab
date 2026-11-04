@@ -532,7 +532,7 @@
       "status": "covered",
       "scope": "384 unchanged native active-state observations across eight seeds, both peer trust values and both idle settings, plus seven unsigned Word64 boundaries.",
       "assertion": "Compare every captured deadline using the production client receive-state selector or effective server idle setting, exact binary timeout samples and picoseconds; verify complete retained RNG advancement and random scaling boundaries.",
-      "rationale": "Untrustable MustReply deadlines are freshly randomized601\u2013911seconds. Trustable local-root clients are unbounded, other states do not consume random input, and partial reads retain a single state budget.",
+      "rationale": "Untrustable MustReply deadlines are freshly randomized601–911seconds. Trustable local-root clients are unbounded, other states do not consume random input, and partial reads retain a single state budget.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/35",
       "resolution": "Every native output is retained without masks or exceptions. Native and JVM PRNG seed streams are not equated; actual native Word64 samples drive identical production scaling. Runtime tests independently exercise hook ordering, trust, fresh state draws and fragmented reads.",
@@ -664,6 +664,22 @@
         "scripts/oracle/injection-json/Main.hs"
       ],
       "candidateRequired": true
+    },
+    {
+      "id": "leios-praos2-headers",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "Praos2 header verdict constructor and domain arguments, all accepted protocol-state fields, and certification-slot arithmetic under supplied forecast inputs. Native backend diagnostic rendering is retained but not compared; this is not ledger/body or forecast-production conformance.",
+      "assertion": "Praos2ReferenceSuite compares all 1100 recorded headers and 59 synthetic native results without exclusions, state-field masks or numeric tolerances.",
+      "rationale": "The captured chain has no announcement/certificate headers; deterministic native-signed synthetic headers and explicit state/forecast boundaries supply those cases.",
+      "owner": "consensus",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/746",
+      "resolution": "Keep the exact header-decision/state contract when refreshing the pinned build; node integration and its ledger forecast remain #73.",
+      "evidence": [
+        "fixtures/reference/leios-praos2/provenance.json",
+        "node/src/test/scala/xyz/kd5ujc/scarab/consensus/Praos2ReferenceSuite.scala"
+      ],
+      "candidateRequired": false
     }
   ]
 }

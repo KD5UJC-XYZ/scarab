@@ -1609,7 +1609,7 @@
       "id": "ouroboros-leios",
       "component": "Ouroboros Leios (CIP-164)",
       "status": "not implemented",
-      "summary": "Not implemented in the node; read-only decoders and header rules for the public Leios testnet chain",
+      "summary": "Not implemented in the node; read-only decoders and native-compared pure Praos2 header rules for the public Leios testnet chain",
       "limitations": {
         "issues": [
           73
@@ -1618,7 +1618,17 @@
           "N4"
         ]
       },
-      "page": "docs/compatibility/ouroboros-leios.md"
+      "page": "docs/compatibility/ouroboros-leios.md",
+      "evidence": {
+        "paths": [
+          "fixtures/reference/leios-praos2/headers.jsonl",
+          "fixtures/reference/leios-praos2/cases.jsonl",
+          "node/src/test/scala/xyz/kd5ujc/scarab/consensus/Praos2ReferenceSuite.scala"
+        ],
+        "issues": [
+          746
+        ]
+      }
     },
     {
       "id": "typed-ledger-state-differences",

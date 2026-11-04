@@ -1,0 +1,7 @@
+**
+!scripts/
+!scripts/oracle/
+!scripts/oracle/leios-praos2/
+!scripts/oracle/leios-praos2/cabal.project
+!scripts/oracle/leios-praos2/Main.hs
+!scripts/oracle/leios-praos2/scarab-leios-praos2-oracle.cabal

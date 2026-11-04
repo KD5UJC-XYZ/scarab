@@ -30,6 +30,7 @@ source, not authoritative statements. Roadmap IDs (B1, ...) point into [roadmap.
 
 | Finding | Where found | Pinned by |
 |---|---|---|
+| **Praos2 retains only the immediate predecessor's Leios announcement and clears it at an epoch change.** Certificate timing rounds up after truncating slot length to milliseconds; KES end periods, counter increments and slot arithmetic retain unsigned wrap. These rules are separate from ordinary Praos validation. | Restarted Leios testnet capture and executed native `2416493b` validator, 2026-11-04, #746 | `Praos2ReferenceSuite`; [native results and coverage](../fixtures/reference/leios-praos2/README.md), [as-built rules](leios.md#126-praos2-header-validation-746) |
 | The candidate nonce freezes `3k/f` slots before the epoch end in Alonzo **and** Babbage, and `4k/f` from Conway (and on the devnet, which runs Conway rules). The stability window is era dependent. | Preview, "Verified on real data" in the project status notes (TPraos work, commit 592399e) | `TPraosSuite`; devnet nonce comparison |
 | The nonce contribution is `blake2b256` of the **64-byte** VRF output (TPraos). | same | `TPraosSuite` |
 | The TPraos overlay schedule follows cardano-ledger `classifyOverlaySlot`: `position = ceiling(s * d)`, a slot is active when `position mod floor(1/f) = 0`. Overlay-slot headers have no leader-threshold check. | Preview epochs 0 and 1 (d = 1) | `TPraosSuite` |
