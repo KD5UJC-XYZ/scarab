@@ -413,10 +413,10 @@ class HeaderRulesSuite extends ScalaCheckSuite:
       validate(pools = known.copy(stake = Map(pool -> BigInt(-1)))),
       Left(PraosError.LeaderThreshold(Leader.Error.InvalidFraction(-1, -1)))
     )
-    val active = Leader.Fraction.checked(3, 4).fold(e => fail(e.message), identity)
+    val active = Leader.Fraction.checked(0, 1).fold(e => fail(e.message), identity)
     assertEquals(
       validate(config = ForgedChain.config.copy(activeSlotsCoeff = active)),
-      Left(PraosError.LeaderThreshold(Leader.Error.UnsupportedActiveSlotsCoefficient(3, 4)))
+      Left(PraosError.LeaderThreshold(Leader.Error.NonPositiveActiveSlotsCoefficient(0, 1)))
     )
     assertEquals(
       validate(header = h.copy(slot = -1)),

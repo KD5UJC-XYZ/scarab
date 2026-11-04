@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.crypto.vrf
 
+import io.circe.Json
+import io.circe.parser.parse
+import java.nio.file.{Files, Path}
+import java.util.concurrent.FutureTask
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 
@@ -79,7 +83,7 @@ class PraosLeaderThresholdSuite extends munit.FunSuite:
   }
 
   test(
-    "comparison errors distinguish missing context, invalid domains and unsupported coefficients"
+    "comparison errors distinguish missing context, invalid domains and a zero coefficient"
   ) {
     val stake = fraction(1, 1)
     val active = fraction(1, 20)
@@ -94,9 +98,98 @@ class PraosLeaderThresholdSuite extends munit.FunSuite:
       )
     assertEquals(check(0, null, active), Left(Error.MissingStake))
     assertEquals(check(0, stake, null), Left(Error.MissingActiveSlotsCoefficient))
-    for (n, d) <- Vector((0, 1), (3, 4)) do
+    // the reference's coefficient is a PositiveUnitInterval: zero cannot be constructed
+    assertEquals(
+      check(0, stake, fraction(0, 1)),
+      Left(Error.NonPositiveActiveSlotsCoefficient(0, 1))
+    )
+    assertEquals(activeSlotLog(fraction(0, 1)), Left(Error.NonPositiveActiveSlotsCoefficient(0, 1)))
+  }
+
+  /* Results of the reference's own leader check (#770), measured by
+   * `scripts/oracle/leader-threshold/run.py` through the installed cardano-ledger-core and
+   * non-integral packages (`fixtures/reference/leader-threshold/README.md`). Each row holds an
+   * active-slot coefficient across (0, 1], among them 1/20, 0.6, 0.63 and 0.64 either side of
+   * 1 - 1/e where splitLn's exponent leaves -1, 0.75, 0.9, 0.99, (2^64-2)/(2^64-1) and 1; a stake;
+   * and a leader value just either side of the threshold, over 2^256 (Praos) and 2^512 (TPraos).
+   * The reference records `unActiveSlotLog`, the `taylorExpCmp` outcome and the verdict. No row
+   * reaches MaxReached: with a stake of at most 1 the error term floors to zero long before the
+   * thousandth term, so the comparison always decides.
+   */
+  private val reference = Files
+    .readString(Path.of("fixtures/reference/leader-threshold/cases.jsonl"))
+    .linesIterator
+    .filter(_.nonEmpty)
+    .map(line => parse(line).fold(e => fail(e.message), identity))
+    .toVector
+
+  private def text(row: Json, key: String): String =
+    row.hcursor.get[String](key).fold(e => fail(e.message), identity)
+  private def number(row: Json, key: String): BigInt = BigInt(text(row, key))
+  private def coefficient(row: Json): Fraction =
+    Fraction
+      .checked(number(row, "activeNumerator"), number(row, "activeDenominator"))
+      .fold(e => fail(e.message), identity)
+
+  test("the reference corpus covers every coefficient and both verdicts") {
+    assertEquals(reference.size, 490)
+    val coefficients =
+      reference.map(r => (number(r, "activeNumerator"), number(r, "activeDenominator")))
+    assertEquals(coefficients.distinct.size, 10)
+    assertEquals(
+      reference.map(r => text(r, "outcome")).toSet,
+      Set("ABOVE", "BELOW", "one")
+    )
+  }
+
+  test("ln(1 - f) is the reference's unActiveSlotLog for every coefficient") {
+    reference
+      .distinctBy(r => (number(r, "activeNumerator"), number(r, "activeDenominator")))
+      .foreach { row =>
+        assertEquals(
+          activeSlotLog(coefficient(row)),
+          Right(number(row, "activeSlotLog")),
+          text(row, "name")
+        )
+      }
+  }
+
+  test("the mainnet coefficient's logarithm is the value of splitLn's fixed exponent -1") {
+    assertEquals(
+      activeSlotLog(fraction(1, 20)),
+      Right(BigInt("-512932943875505334261962382072846"))
+    )
+  }
+
+  test("every leader verdict is the reference's, on either side of the threshold") {
+    reference.foreach { row =>
+      val expected = text(row, "outcome") match
+        case "ABOVE"      => Decision.Ineligible
+        case "BELOW"      => Decision.Eligible
+        case "one"        => Decision.Eligible
+        case "MaxReached" => Decision.IterationLimit
+        case other        => fail(s"unknown outcome $other")
+      val stake = Fraction
+        .checked(number(row, "stakeNumerator"), number(row, "stakeDenominator"))
+        .fold(e => fail(e.message), identity)
+      val decision = check(number(row, "value"), stake, coefficient(row), number(row, "range"))
+      assertEquals(decision, Right(expected), text(row, "name"))
       assertEquals(
-        check(0, stake, fraction(n, d)),
-        Left(Error.UnsupportedActiveSlotsCoefficient(n, d))
+        decision.contains(Decision.Eligible),
+        row.hcursor.get[Boolean]("leader").fold(e => fail(e.message), identity),
+        text(row, "name")
       )
+    }
+  }
+
+  test("the logarithm of a coefficient next to 1 runs on a small stack") {
+    // outside the corpus, so no earlier test has cached it; ln(2 / (2^64 - 1)) is about -43.67
+    val f = Fraction
+      .checked((BigInt(1) << 64) - 3, (BigInt(1) << 64) - 1)
+      .fold(e => fail(e.message), identity)
+    val task = new FutureTask(() => activeSlotLog(f))
+    val thread = new Thread(null, task, "small", 64 * 1024)
+    thread.start()
+    val log = task.get()
+    assert(log.exists(l => l > BigInt(-44) * Scale && l < BigInt(-43) * Scale), log)
   }

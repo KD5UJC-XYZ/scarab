@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "ledgerPin": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "image": "sha256:9052fa97d907cdd7ee1ad37f4afcf5a0d653f4eaac8bab3da7223652b4b5bce0",
+  "compiler": "GHC 9.10.3",
+  "measured": "2026-11-03",
+  "sourceIdentity": "BaseTypes.hs and BaseTypes/NonZero.hs in the installed package archives are byte-identical to the pinned Git objects; the installed NonIntegral.hs differs from the pinned object only in layout (parentheses around single type-class constraints and the export list's closing line).",
+  "sources": [
+    {
+      "path": "libs/non-integral/src/Cardano/Ledger/NonIntegral.hs",
+      "sha256": "12a0a3fb63f2e39a3473239f751750b960f581cc815829a4f2ac23056c1cf890",
+      "installedSha256": "7550c8d3f6f2a653ef64d9e8e183cf38d64a9085d1cffbf34a04ac1bb768b2ce",
+      "package": "non-integral",
+      "version": "1.0.0.0"
+    },
+    {
+      "path": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+      "sha256": "0b86d1ecdd5abb0cf89194e7324fe1f62e58214cbd7386a1c50aeaf1c605866e",
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0"
+    },
+    {
+      "path": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes/NonZero.hs",
+      "sha256": "bfa9b3d06f33eb05690ba86c0fa205291f92baca8c99794ef14ab6cf5ed9f24e",
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0"
+    }
+  ],
+  "copiedSource": "checkLeaderNatValue (libs/cardano-protocol/src/Cardano/Protocol/TPraos/BlockHeader.hs:373-402 at the pin) is in cardano-protocol, which the image does not hold; the harness repeats its body with BoundedNatural unfolded.",
+  "oracleSha256": "eccd31f03a1e4ec693cf761688f66d515a210c9cbfc953d8515d5ee333e007c8",
+  "casesSha256": "3cf1e71bd6cc3565346daaa87a25dfe6c228fd6972c787a3d9c50592a5d8ffc5",
+  "cases": 490,
+  "scope": "unActiveSlotLog, splitLn's exponent and remainder, the taylorExpCmp outcome and the leader verdict for ten active-slot coefficients in (0, 1], three stakes and leader values either side of the threshold over 2^256 and 2^512. Not VRF evaluation or header validation.",
+  "replay": "python3 scripts/oracle/leader-threshold/run.py --image sha256:9052fa97d907cdd7ee1ad37f4afcf5a0d653f4eaac8bab3da7223652b4b5bce0"
+}

@@ -231,10 +231,10 @@ class TPraosSuite extends FunSuite:
     val vrf = Blake2b.hash256.hash(h.vrfVkey)
     val pools = PoolDistribution(Map(issuer -> BigInt(1)), Map(issuer -> vrf))
     val view = lite.view.copy(d = Rational.zero, stake = StakeView.Known(pools))
-    val active = Leader.Fraction.checked(3, 4).fold(e => fail(e.message), identity)
+    val active = Leader.Fraction.checked(0, 1).fold(e => fail(e.message), identity)
     assertEquals(
       TPraos.update(initial, h, view, config.copy(activeSlotsCoeff = active)),
-      Left(TPraosError.LeaderThreshold(Leader.Error.UnsupportedActiveSlotsCoefficient(3, 4)))
+      Left(TPraosError.LeaderThreshold(Leader.Error.NonPositiveActiveSlotsCoefficient(0, 1)))
     )
     val invalid = view.copy(stake = StakeView.Known(pools.copy(stake = Map(issuer -> BigInt(-1)))))
     assertEquals(

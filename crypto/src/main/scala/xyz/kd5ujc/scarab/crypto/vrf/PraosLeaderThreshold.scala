@@ -5,9 +5,11 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import scala.annotation.tailrec
 
-/** Source-derived E34 Fixed arithmetic and bounded reference Taylor comparison. No Double/Float, no
-  * claim of an independently checked runtime oracle. Active coefficient >1/2 except 1 is outside
-  * this experimental profile (the source's error bound assumes the normal range).
+/** The reference's leader check in its own E34 fixed-point arithmetic (`FixedPoint`, cardano-ledger
+  * f649f975 `BaseTypes.hs:265-275`): `ln'` with `splitLn` for the logarithm of `1 - f`, and the
+  * bounded `taylorExpCmp` comparison of `checkLeaderNatValue` (`BlockHeader.hs:373-402`), for any
+  * active-slot coefficient in (0, 1]. Every multiplication and division floors at 10^-34 as
+  * `Data.Fixed` does; no Double/Float.
   */
 object PraosLeaderThreshold:
   enum Error:
@@ -19,7 +21,8 @@ object PraosLeaderThreshold:
     case InvalidRange(actual: BigInt)
     case LeaderValueOutOfRange(value: BigInt, range: BigInt)
     case MissingStake, MissingActiveSlotsCoefficient
-    case UnsupportedActiveSlotsCoefficient(numerator: BigInt, denominator: BigInt)
+    case NonPositiveActiveSlotsCoefficient(numerator: BigInt, denominator: BigInt)
+    case ActiveSlotLogOutsideDomain(numerator: BigInt, denominator: BigInt)
 
     def message: String = this match
       case MissingNumerator | MissingDenominator | InvalidFraction(_, _) =>
@@ -29,8 +32,10 @@ object PraosLeaderThreshold:
       case MissingLeaderValue | MissingRange | InvalidRange(_) | LeaderValueOutOfRange(_, _) |
           MissingStake | MissingActiveSlotsCoefficient =>
         "malformed leader comparison"
-      case UnsupportedActiveSlotsCoefficient(_, _) =>
-        "supported active coefficient is (0,1/2] or the reference testing case 1"
+      case NonPositiveActiveSlotsCoefficient(_, _) =>
+        "active slot coefficient must be in (0,1]"
+      case ActiveSlotLogOutsideDomain(_, _) =>
+        "ln(1 - active slot coefficient) is outside the reference continued fraction's domain"
 
   val Scale: BigInt = BigInt(10).pow(34)
   val Range: BigInt = BigInt(1) << 256
@@ -64,19 +69,41 @@ object PraosLeaderThreshold:
         if next.abs < Epsilon then acc else go(n + 1, next, acc + next, divisor + Scale)
     go(1, Scale, Scale, Scale)
 
-  // For 0 < f <= 1/2, ln'(1-f)'s splitLn exponent is exactly -1.
-  // This bounded specialization follows the source continued fraction without real arithmetic.
-  // ln(1 - f) depends only on the active slot coefficient, a constant of the network: computed once
-  // per coefficient instead of once per block (the continued fraction is a thousand big divisions).
-  private val logs = new java.util.concurrent.ConcurrentHashMap[(BigInt, BigInt), BigInt]()
+  private enum Power:
+    case Square, Multiply
 
-  private def activeLog(f: Fraction): BigInt =
-    logs.computeIfAbsent((f.numerator, f.denominator), _ => computeActiveLog(f))
+  // ipow' (NonIntegral.hs:31-37) for n >= 0: its squarings and multiplications, from the innermost
+  // out, applied to 1, so each rounds as the recursion does.
+  private def ipowNatural(x: BigInt, n: BigInt): BigInt =
+    @tailrec def steps(m: BigInt, acc: List[Power]): List[Power] =
+      if m == 0 then acc
+      else if !m.testBit(0) then steps(m >> 1, Power.Square :: acc)
+      else steps(m - 1, Power.Multiply :: acc)
+    steps(n, Nil).foldLeft(Scale) {
+      case (y, Power.Square)   => mul(y, y)
+      case (y, Power.Multiply) => mul(x, y)
+    }
 
-  private def computeActiveLog(f: Fraction): BigInt =
-    val x = div(Scale - fixed(f), div(Scale, expOne)) - Scale
-    // the convergents A_i / B_i from the two before them; it stops at the thousandth or when two in
-    // a row are within Epsilon
+  // ipow (NonIntegral.hs:39-42)
+  private def ipow(x: BigInt, n: BigInt): BigInt =
+    if n < 0 then div(Scale, ipowNatural(x, -n)) else ipowNatural(x, n)
+
+  // findE (NonIntegral.hs:155-158): `bound` squares 1/e and e until they enclose x (117-128), then
+  // `contract` bisects with `ipow` for e^n <= x < e^(n+1) (132-149).
+  private def findE(e: BigInt, x: BigInt): BigInt =
+    @tailrec def bound(low: BigInt, high: BigInt, l: BigInt, u: BigInt): (BigInt, BigInt) =
+      if low <= x && x <= high then (l, u) else bound(mul(low, low), mul(high, high), 2 * l, 2 * u)
+    @tailrec def contract(l: BigInt, u: BigInt): BigInt =
+      if l + 1 == u then l
+      else
+        val mid = l + floorDiv(u - l, 2)
+        if x < ipow(e, mid) then contract(l, mid) else contract(mid, u)
+    val (lower, upper) = bound(div(Scale, e), e, -1, 1)
+    contract(lower, upper)
+
+  // lncf 1000 (NonIntegral.hs:52-57) through cf (89-111): the convergents A_i / B_i from the two
+  // before them; it stops at the thousandth or when two in a row are within eps.
+  private def lncf(x: BigInt): BigInt =
     @tailrec def go(
         i: Int,
         a2: BigInt,
@@ -93,7 +120,35 @@ object PraosLeaderThreshold:
       val result = div(a, b)
       if i == 1000 || last.exists(v => (v - result).abs < Epsilon) then result
       else go(i + 1, a1, b1, a, b, Some(result))
-    go(0, Scale, BigInt(0), BigInt(0), Scale, None) - Scale
+    go(0, Scale, BigInt(0), BigInt(0), Scale, None)
+
+  // ln(1 - f) depends only on the active slot coefficient, a constant of the network: computed once
+  // per coefficient instead of once per block (the continued fraction is a thousand big divisions).
+  private val logs =
+    new java.util.concurrent.ConcurrentHashMap[(BigInt, BigInt), Either[Error, BigInt]]()
+
+  /** `unActiveSlotLog` of `mkActiveSlotCoeff` (`BaseTypes.hs:735-749`) in E34 units: 0 for f = 1,
+    * else `floor (fpPrecision * ln' (1 - fromRational f))`. Multiplying by `fpPrecision` and taking
+    * the floor gives the E34 units of `ln'` exactly, and `activeSlotLog` divides them back
+    * (`BaseTypes.hs:754-755`).
+    */
+  def activeSlotLog(f: Fraction): Either[Error, BigInt] =
+    if f.numerator == 0 then
+      Left(Error.NonPositiveActiveSlotsCoefficient(f.numerator, f.denominator))
+    else if f.numerator == f.denominator then Right(BigInt(0))
+    else logs.computeIfAbsent((f.numerator, f.denominator), _ => computeActiveLog(f))
+
+  // ln' and splitLn (NonIntegral.hs:162-174) of 1 - f, which is positive for f < 1: `lncf` refuses
+  // a negative remainder with `error`, which this returns as a typed cause.
+  private def computeActiveLog(f: Fraction): Either[Error, BigInt] =
+    val x = Scale - fixed(f)
+    val n = findE(expOne, x)
+    val remainder = div(x, ipow(expOne, n)) - Scale
+    Either.cond(
+      remainder >= 0,
+      n * Scale + lncf(remainder),
+      Error.ActiveSlotLogOutsideDomain(f.numerator, f.denominator)
+    )
 
   def leaderValue(verifiedOutput: Bytes): Either[Error, BigInt] =
     if verifiedOutput == null then Left(Error.MissingVrfOutput)
@@ -131,22 +186,23 @@ object PraosLeaderThreshold:
     else if value < 0 || value >= range then Left(Error.LeaderValueOutOfRange(value, range))
     else if stake == null then Left(Error.MissingStake)
     else if active == null then Left(Error.MissingActiveSlotsCoefficient)
-    else if active.numerator == 0 ||
-      (active.numerator != active.denominator && active.numerator * 2 > active.denominator)
-    then Left(Error.UnsupportedActiveSlotsCoefficient(active.numerator, active.denominator))
     else if active.numerator == active.denominator then Right(Decision.Eligible)
-    else
-      val cmp = range * Scale / (range - value)
-      // Haskell2010 prefix negation has precedence 6; multiplication (7) happens first.
-      val x = -mul(fixed(stake), activeLog(active))
-      @tailrec def go(n: Int, err: BigInt, acc: BigInt, divisor: BigInt): Decision =
-        if n >= 1000 then Decision.IterationLimit
-        else
-          val nextDivisor = divisor + Scale
-          val nextErr = div(mul(err, x), nextDivisor)
-          val nextAcc = acc + err
-          val error = mul(nextErr, 3 * Scale).abs
-          if cmp >= nextAcc + error then Decision.Ineligible
-          else if cmp < nextAcc - error then Decision.Eligible
-          else go(n + 1, nextErr, nextAcc, nextDivisor)
-      Right(go(0, x, Scale, Scale))
+    else activeSlotLog(active).map(log => compare(value, stake, log, range))
+
+  // taylorExpCmp 3 recip_q x (NonIntegral.hs:196-209): MaxReached is IterationLimit, which callers
+  // treat as not leader, as checkLeaderNatValue does.
+  private def compare(value: BigInt, stake: Fraction, log: BigInt, range: BigInt): Decision =
+    val cmp = range * Scale / (range - value)
+    // Haskell2010 prefix negation has precedence 6; multiplication (7) happens first.
+    val x = -mul(fixed(stake), log)
+    @tailrec def go(n: Int, err: BigInt, acc: BigInt, divisor: BigInt): Decision =
+      if n >= 1000 then Decision.IterationLimit
+      else
+        val nextDivisor = divisor + Scale
+        val nextErr = div(mul(err, x), nextDivisor)
+        val nextAcc = acc + err
+        val error = mul(nextErr, 3 * Scale).abs
+        if cmp >= nextAcc + error then Decision.Ineligible
+        else if cmp < nextAcc - error then Decision.Eligible
+        else go(n + 1, nextErr, nextAcc, nextDivisor)
+    go(0, x, Scale, Scale)
