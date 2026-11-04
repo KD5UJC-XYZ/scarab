@@ -8,9 +8,9 @@ import xyz.kd5ujc.scarab.ledger.LeiosHeader
 import xyz.kd5ujc.scarab.protocol.HfcHeader
 
 /** The generated `dijkstra.Header` codec (from the pinned `dijkstra.cddl`, `models.conf`) against
-  * headers of the public Leios testnet and against the hand-written [[LeiosHeader]]: same fields,
-  * same bytes back. The testnet sends the 12-element header in blocks tagged Conway too, which the
-  * generated Conway header (10 elements) refuses.
+  * headers of the public Leios testnet (every one of era index 7) and against the hand-written
+  * [[LeiosHeader]]: same fields, same bytes back. The generated Conway header (10 elements) refuses
+  * them.
   */
 class LeiosTestnetHeaderSuite extends munit.FunSuite:
   private val dir = Path.of("fixtures", "leios", "testnet")
@@ -25,9 +25,8 @@ class LeiosTestnetHeaderSuite extends munit.FunSuite:
         .map { l =>
           val envelope = Bytes.fromHex(l.split('\t').last).fold(e => fail(e.message), identity)
           HfcHeader.decode(envelope) match
-            case Right(HfcHeader.Supported(h)) => h.raw
-            case Right(HfcHeader.Dijkstra(r))  => r
-            case other                         => fail(other.toString)
+            case Right(HfcHeader.Dijkstra(r)) => r
+            case other                        => fail(other.toString)
         }
     }
 

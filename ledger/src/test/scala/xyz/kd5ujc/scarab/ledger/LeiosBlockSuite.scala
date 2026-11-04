@@ -29,15 +29,14 @@ class LeiosBlockSuite extends munit.FunSuite:
   private val headers: Map[String, (String, Bytes)] =
     lines("headers-notable.tsv").map { p =>
       val raw = HfcHeader.decode(hex(p(5))) match
-        case Right(HfcHeader.Supported(h)) => h.raw
-        case Right(HfcHeader.Dijkstra(r))  => r
-        case other                         => fail(other.toString)
+        case Right(HfcHeader.Dijkstra(r)) => r
+        case other                        => fail(other.toString)
       p(0) -> (p(4) -> raw)
     }.toMap
 
   /** Blocks by label: `label, kind, block no, slot, hash, block (hex)`. */
   private val blocks: Map[String, (String, Bytes)] =
-    lines("blocks.tsv").map(p => p(0) -> (p(4) -> hex(p(5)))).toMap
+    lines("blocks-rc-2026w44.tsv").map(p => p(0) -> (p(4) -> hex(p(5)))).toMap
 
   private def block(label: String): LeiosBlock =
     LeiosBlock.decode(blocks(label)._2).fold(e => fail(s"$label: ${e.message}"), identity)
@@ -52,9 +51,10 @@ class LeiosBlockSuite extends munit.FunSuite:
       assertEquals(h.raw, raw, label)
       assertEquals(Blake2b.hash256.hash(raw), h.hash, label)
     }
-    val first = header("first-dijkstra-tag")
-    assertEquals(first.blockNo, BigInt(4255))
-    assertEquals(first.slot, BigInt(86463))
+    val first = header("first")
+    assertEquals(first.blockNo, BigInt(0))
+    assertEquals(first.slot, BigInt(16))
+    assertEquals(first.prevHash, None)
     assertEquals(first.leios.versionInfo, HeaderVersionInfo(12, 0))
     assertEquals(first.leios.blockBodyContainsLeiosCert, false)
     assertEquals(first.leios.announcement, None)
@@ -62,24 +62,26 @@ class LeiosBlockSuite extends munit.FunSuite:
   }
 
   test("the announcing headers name an endorser block and its size; the certifying ones say so") {
-    val announcing = header("first-announcement")
-    assertEquals(announcing.blockNo, BigInt(17397))
-    assert(announcing.leios.announcement.exists(_.size == 7994L))
-    val certifying = header("first-certificate-flag")
-    assertEquals(certifying.leios.blockBodyContainsLeiosCert, true)
-    assert(certifying.leios.announcement.isDefined)
-    assertEquals(header("before-first-announcement").leios.announcement, None)
+    val announcing = header("announcing")
+    assertEquals(announcing.blockNo, BigInt(64849))
+    assert(announcing.leios.announcement.isDefined)
+    assertEquals(announcing.leios.blockBodyContainsLeiosCert, false)
+    Vector("certifying", "certifying-2").foreach { label =>
+      val certifying = header(label)
+      assertEquals(certifying.leios.blockBodyContainsLeiosCert, true, label)
+      assert(certifying.leios.announcement.isDefined, label)
+    }
   }
 
   test("the Praos view of a header is what the Praos rules read, tagged Conway") {
-    val h = header("first-dijkstra-tag")
+    val h = header("first")
     val v = h.praosView
     assertEquals(v.era, Era.Conway)
     assertEquals(v.hash, h.hash)
     assertEquals(v.signable, h.signable)
     assertEquals(v.protocolVersion, (BigInt(12), BigInt(0)))
     assertEquals(v.vrf, HeaderVrf.Praos(h.vrf))
-    assertEquals(h.point.toString.contains("86463"), true)
+    assertEquals(h.point.toString.contains("16"), true)
   }
 
   test("a header of the Conway layout is not a Leios header, and a truncated one is refused") {
@@ -89,7 +91,7 @@ class LeiosBlockSuite extends munit.FunSuite:
     val ten = conwayHeader(conway)
     assert(Header.fromRaw(Era.Conway, ten).isRight)
     assert(LeiosHeader.decode(ten).isLeft)
-    val good = headers("first-dijkstra-tag")._2
+    val good = headers("first")._2
     (1 until good.size by 11).foreach(n => assert(LeiosHeader.decode(good.take(n)).isLeft, s"$n"))
   }
 
@@ -105,31 +107,30 @@ class LeiosBlockSuite extends munit.FunSuite:
 
   test("a block of the Conway tag is not a Leios block, nor a Conway one with this header") {
     // tag 7 is `ShelleyBlock (Praos c) ConwayEra` in the testnet's build (ouroboros-consensus
-    // 2416493b, `Cardano/Block.hs:269-278`): a Praos header of 10 fields, not the Leios header the
-    // previous network's Conway-tagged blocks carried
-    for label <- Vector("conway-tag-empty", "conway-tag-with-txs") do
-      val raw = blocks(label)._2
-      assert(LeiosBlock.decode(raw).left.exists {
-        case ChainError.Decode(_, LedgerDecodeError.UnknownTag(DecodeField.LeiosBlockTag, t)) =>
-          t == 7
-        case _ => false
-      })
-      assert(Block.decode(raw, BigInt(21600)).isLeft, label)
+    // 2416493b, `Cardano/Block.hs:269-278`): a Praos header of 10 fields, not the Leios header
+    val raw = blocks("block-0")._2
+    val conwayTag = raw.take(1) ++ Bytes(Vector(0x07.toByte)) ++ raw.drop(2)
+    assert(LeiosBlock.decode(conwayTag).left.exists {
+      case ChainError.Decode(_, LedgerDecodeError.UnknownTag(DecodeField.LeiosBlockTag, t)) =>
+        t == 7
+      case _ => false
+    })
+    assert(Block.decode(conwayTag, BigInt(21600)).isLeft)
   }
 
   test("a Dijkstra block hashes its whole body, transactions are whole, and the header matches") {
-    val txs = block("dijkstra-with-txs")
+    val txs = block("announcing-with-txs")
     assert(txs.transactions.nonEmpty)
     assertEquals(txs.faults, Vector.empty)
     assertEquals(txs.bodyHash, txs.header.bodyHash)
     assert(txs.transactions.forall(_.isValid))
-    val empty = block("dijkstra-empty")
+    val empty = block("block-0")
     assertEquals(empty.bodySize, 4L) // [[], null, null] = 0x83 0x80 0xf6 0xf6
     assertEquals(empty.faults, Vector.empty)
   }
 
   test("a block that announces an endorser block carries transactions and no certificate") {
-    val b = block("dijkstra-announcing-with-txs")
+    val b = block("announcing-with-txs")
     assert(b.header.leios.announcement.isDefined)
     assert(b.transactions.nonEmpty)
     assertEquals(b.leiosCertificate, None)
@@ -137,7 +138,7 @@ class LeiosBlockSuite extends munit.FunSuite:
   }
 
   test("a certifying block carries a strictly decoded certificate and no transactions") {
-    val b = block("dijkstra-certificate")
+    val b = block("certifying")
     val cert = b.leiosCertificate.getOrElse(fail("no certificate"))
     assertEquals(b.header.leios.blockBodyContainsLeiosCert, true)
     assertEquals(b.transactions, Vector.empty)
@@ -147,8 +148,8 @@ class LeiosBlockSuite extends munit.FunSuite:
   }
 
   test("every block fault is reported on its own case") {
-    val cert = block("dijkstra-certificate")
-    val txs = block("dijkstra-with-txs")
+    val cert = block("certifying")
+    val txs = block("announcing-with-txs")
     // a certificate and transactions together
     assertEquals(
       cert.copy(transactions = txs.transactions).faults,
@@ -170,8 +171,8 @@ class LeiosBlockSuite extends munit.FunSuite:
   }
 
   test("a changed byte in the body is caught by the body hash, one in the header by its hash") {
-    val raw = blocks("dijkstra-with-txs")._2
-    val decoded = block("dijkstra-with-txs")
+    val raw = blocks("announcing-with-txs")._2
+    val decoded = block("announcing-with-txs")
     val bodyStart = raw.size - decoded.bodySize.toInt
     // inside the body, in the middle of a transaction
     val i = bodyStart + decoded.bodySize.toInt / 2
@@ -187,7 +188,7 @@ class LeiosBlockSuite extends munit.FunSuite:
   }
 
   test("a block of another tag or with a malformed certificate is refused with a reason") {
-    val raw = blocks("dijkstra-certificate")._2
+    val raw = blocks("certifying")._2
     // tag 8 -> 9
     val otherTag = raw.take(1) ++ Bytes(Vector(0x09.toByte)) ++ raw.drop(2)
     assert(LeiosBlock.decode(otherTag).left.exists {

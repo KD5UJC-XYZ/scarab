@@ -23,9 +23,10 @@ import xyz.kd5ujc.scarab.protocol.{
   * The native and Blueprint differences are explicit and tested below. The codec carries the bytes
   * inside a transaction's tag 24 without reading them, as the reference decoder does, while the
   * Blueprint's `.cbor dijkstra.block_transaction` makes the generated reader decode them. The CDDL
-  * has no bound on the number of entries where the codec has `maxTxsPerEb`; its hash size
-  * constraint is absent from the native byte wrappers. The older form of `MsgLeiosBlockTxs`
-  * (`fe4cceb9`) is read by the codec only (`LeiosFetch.Message.LegacyBlockTxs`).
+  * has no bound on the number of entries where the codec has `maxTxsPerEb`, and the Blueprint
+  * reader takes an indefinite endorser block map where the build's `decodeMapLen` does not. Both
+  * read a hash of 32 bytes only. The older form of `MsgLeiosBlockTxs` (`fe4cceb9`) is read by
+  * neither (#744).
   */
 class LeiosFetchCddlSuite extends munit.FunSuite:
   private def big(x: Any): BigInt = BigInt(x.toString)
@@ -41,7 +42,7 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
   private def txHash(n: Int): LeiosTxHash = LeiosTxHash.fromBytes(hash(n).bytes)
   private def bitmap(windows: Vector[(Int, BigInt)]): TxBitmaps =
     TxBitmaps(windows.map((window, bits) => word16(window) -> word64(bits)))
-  private val point = EbPoint(word64(371614L), hash(7))
+  private val point = EbPoint(word64(1455818L), hash(7))
   private val bitmaps = bitmap(Vector(0 -> BigInt(1), 3 -> BigInt("ffffffffffffffff", 16)))
   // two Dijkstra block transactions [body, witness set, auxiliary data, is_valid], with the inputs as the
   // generated writer writes a set (tag 258): the least one, and one with a time to live
@@ -124,10 +125,14 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
       LeiosFetch.decodePrefix(LeiosFetch.State.BlockTxs, answer).map(_._1),
       Right(LeiosFetch.Message.BlockTxs(Vector(hex(tx))))
     )
-    // an indefinite-length endorser block map
+    // an indefinite-length endorser block map: the Blueprint reader takes it; the build's
+    // `decodeLeiosEb` reads `decodeMapLen` (`LeiosDemoTypes.hs:1301-1310`, 2416493b), and so this
     val eb = hex("82" + "02" + "bf" + "5820" + "01" * 32 + "01" + "ff")
     assert(generated(eb).isRight)
-    assert(LeiosFetch.decodePrefix(LeiosFetch.State.Block, eb).isRight)
+    assertEquals(
+      LeiosFetch.decodePrefix(LeiosFetch.State.Block, eb),
+      Left(LeiosWireError.BadField(2, xyz.kd5ujc.scarab.protocol.LeiosField.EndorserBlock))
+    )
   }
 
   test("native decodeNestedCborBytes refuses chunked bytes admitted by the Blueprint reader") {
@@ -146,15 +151,14 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
   }
 
   test("an endorser block with no transaction is refused by both") {
-    Vector("82" + "02" + "a0", "82" + "02" + "bf" + "ff").foreach { h =>
-      val bytes = hex(h)
-      assert(generated(bytes).isLeft, h)
-      assertEquals(
-        LeiosFetch.decodePrefix(LeiosFetch.State.Block, bytes),
-        Left(LeiosWireError.EmptyEndorserBlock),
-        h
-      )
-    }
+    assert(generated(hex("8202a0")).isLeft)
+    assertEquals(
+      LeiosFetch.decodePrefix(LeiosFetch.State.Block, hex("8202a0")),
+      Left(LeiosWireError.EmptyEndorserBlock)
+    )
+    // an empty indefinite map: refused by both, here as not a definite map
+    assert(generated(hex("8202bfff")).isLeft)
+    assert(LeiosFetch.decodePrefix(LeiosFetch.State.Block, hex("8202bfff")).isLeft)
   }
 
   test("a transaction that is not tag 24 around bytes is refused by both") {
@@ -199,22 +203,14 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
     assert(generated(over).isRight)
   }
 
-  test(
-    "the form of fe4cceb9 is read by the codec as LegacyBlockTxs and not by the generated reader"
-  ) {
+  test("the form of fe4cceb9 is read by neither the codec nor the generated reader") {
     val p = written(LeiosFetch.Message.BlockRequest(point)).drop(2).hex
     // [4, point, {0: 1}, [h'a0']]: the point, the bitmaps and a plain transaction
     val old = hex("84" + "04" + p + "a1" + "0001" + "81" + "a0")
     assert(generated(old).isLeft)
     assertEquals(
-      LeiosFetch.decodePrefix(LeiosFetch.State.BlockTxs, old).map(_._1),
-      Right(
-        LeiosFetch.Message.LegacyBlockTxs(
-          point,
-          bitmap(Vector(0 -> BigInt(1))),
-          Vector(hex("a0"))
-        )
-      )
+      LeiosFetch.decodePrefix(LeiosFetch.State.BlockTxs, old),
+      Left(LeiosWireError.WrongArity(4, 1, 3))
     )
   }
 
@@ -243,19 +239,13 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
     assert(generated(hex("8404" + "82" + "1a0005a91e" + "5820" + "07" * 32 + "a0" + "80")).isLeft)
   }
 
-  test("the native hash wrapper accepts short bytes outside the Blueprint hash constraint") {
+  test("a hash of other than 32 bytes is refused by both") {
+    // `decodeEbHash` is `decodeFixedSized` of `PackedBytes 32` (`Leios/Types.hs:105-106`, 2416493b)
     val bytes = hex("8201821a0005a91e5810" + "07" * 16)
     assert(generated(bytes).isLeft)
     assertEquals(
       LeiosFetch.decodePrefix(LeiosFetch.State.Idle, bytes),
-      Right(
-        (
-          LeiosFetch.Message.BlockRequest(
-            EbPoint(word64(370974), EbHash.fromBytes(hex("07" * 16)))
-          ),
-          bytes.size
-        )
-      )
+      Left(LeiosWireError.BadField(1, xyz.kd5ujc.scarab.protocol.LeiosField.Hash))
     )
   }
 end LeiosFetchCddlSuite

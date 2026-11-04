@@ -18,6 +18,10 @@ import scala.concurrent.duration.*
   * Throwaway tool: not part of the node, not run by `check`.
   */
 object LeiosProbe extends IOApp:
+  // a throwaway probe records what it receives: it checks an announcement's envelope only, as the
+  // network module cannot reach the ledger's era decoders (the node's reader is `AnnouncedHeaders`)
+  private given LeiosNotify.AnnouncementReader = _ => Right(())
+
   private final case class Tally(counts: Map[String, Int], fetched: Int)
 
   def run(args: List[String]): IO[ExitCode] = args match

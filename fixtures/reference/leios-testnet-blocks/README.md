@@ -17,20 +17,18 @@ detached, an empty indefinite list with its fields after it, is refused. The env
 is read by `enforceSize`, a definite list. The KES signature of a Leios header is over its body's
 original bytes.
 
-`cases.jsonl` holds 90 lines, one case each, written by
+The 2026-11-04 corpus in `cases.jsonl` holds 86 lines, one case each, written by
 `scripts/oracle/leios-testnet/leios_cases.py`:
-- the testnet's blocks as BlockFetch carries them (`kind` "block"): blocks 0, 1 and 8,562 of the
-  current network (`fixtures/leios/testnet/blocks-rc-2026w44.tsv`, all empty) and the six blocks of
-  the network before its restart of 2026-10-18 (`blocks.tsv`): its two blocks of tag 7, which hold a
-  Leios header and are refused, and its four of tag 8 (empty, certifying, with transactions,
-  announcing with transactions), accepted;
-- the block of that network with transactions with one list written in another form: the envelope
+- the testnet's blocks as BlockFetch carries them (`kind` "block"), of the network as restarted on
+  2026-10-18 (`fixtures/leios/testnet/blocks-rc-2026w44.tsv`): blocks 0, 1 and 8,562 (empty), a
+  certifying block and an announcing block with transactions, all accepted;
+- block 0 holding two synthetic transactions, with one list written in another form: the envelope
   (indefinite, three items, tag 9, a trailing byte), the block, its header and the header body
   (indefinite, detached, wrong lengths), the block body (indefinite, detached, two and four items),
   the transaction list (indefinite, tagged 258), a transaction (indefinite, detached, three and five
   items, marked invalid, a validity that is not a boolean), the Peras certificate (bytes, chunked
   bytes, an integer);
-- its certifying block with the Leios certificate indefinite, detached, its signature chunked, its
+- the certifying block with the Leios certificate indefinite, detached, its signature chunked, its
   signers with a wide length head, and signers of 8,192 and 8,193 bytes; and with a signature of 47
   and 49 bytes, off the curve and outside the subgroup (the compressed G1 vectors of
   `fixtures/leios/bls/cardano-base-serde-test-vectors`), not compressed, and the identity, which
@@ -45,14 +43,14 @@ original bytes.
 - Leios headers alone (`kind` "header"), as ChainSync carries them inside their era envelope: the
   header of block 0 of the current network, and the forms of the
   [header decoding oracle](../header-decoding/README.md) (definite, indefinite, detached, body,
-  version info, announcement and operational certificate in each form, a chunked issuer key, one
+  version info, announcement and operational certificate in each form, a chunked issuer key (also after 244 and 4000 empty chunks), one
   after 244 empty chunks (1100 bytes, mainnet's `maxBHSize`, over 256 items) and one after 4000 (over
   4096 bytes), which no decoder counts (#749),
   non-minimal heads, a version info major of 13, 14 and over a `Word32`, a body size or announcement
   size over a `Word32`, a VRF output of no bytes, a body of eleven fields).
 
 The verdict (`accepted` and the complete `failure`) is what the build's decoders did with each:
-45 accepted and 45 refused. Every detached form is refused, every indefinite one accepted. For an
+43 accepted and 43 refused. The record-form variants accept indefinite lists and refuse detached ones; the outer block envelope requires a definite list. For an
 accepted case the line records the header hash (`hash`), its size, the signed bytes (`signable`),
 the header fields, and for a block its tag, body hash and size as the ledger computes them, each
 transaction's id and validity flag (`txs`) and whether it carries a Leios or a Peras certificate.
@@ -77,9 +75,7 @@ python3 scripts/oracle/leios-testnet/leios_cases.py --inputs /tmp/leios-inputs.j
 ## Not covered here
 
 - A transaction's parts are not decoded by Scarab beyond the four items of a transaction: the
-  Dijkstra transaction rules are not implemented (the `dijkstra` component, roadmap L1). The
+  Dijkstra transaction rules are not implemented (#750; the `dijkstra` component, roadmap L1). The
   verdicts on the synthetic transactions turn on their framing only.
 - No KES signature, VRF proof or Leios certificate is checked; the synthetic headers' keys and
   signatures are filler bytes.
-- No block of the current network with transactions, an announcement or a certificate: the three
-  fetched are empty, and fetching later ones would mean following the chain from a known point.

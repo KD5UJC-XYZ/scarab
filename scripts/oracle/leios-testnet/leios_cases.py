@@ -16,10 +16,10 @@ and the `RecD` records a transaction can hold are read by `decodeRecordNamed` fr
 Leios block is definite or indefinite with its fields before the break, and none is read detached:
 an empty indefinite list `9f ff` with the fields after it is refused.
 
-The cases are the blocks of the testnet captured in `fixtures/leios/testnet/` (the current network,
-`blocks-rc-2026w44.tsv`, and the previous one, `blocks.tsv`), those blocks with one list written in
-another form, a block of synthetic transactions whose output value is written in each form, and Leios
-headers alone in the forms of the header decoding oracle.
+The cases are the blocks of the testnet captured in `fixtures/leios/testnet/blocks-rc-2026w44.tsv`
+(the network as restarted on 2026-10-18), a block of synthetic transactions and the certifying block
+with one list written in another form, blocks of synthetic transactions whose output value is
+written in each form, and Leios headers alone in the forms of the header decoding oracle.
 
     python3 scripts/oracle/leios-testnet/leios_cases.py --inputs /tmp/leios-inputs.json
     docker run --rm --network none --read-only -v /tmp:/fixtures:ro \\
@@ -121,9 +121,7 @@ def load(path):
 
 
 CURRENT = "fixtures/leios/testnet/blocks-rc-2026w44.tsv"
-PREVIOUS = "fixtures/leios/testnet/blocks.tsv"
 current = load(CURRENT)
-previous = load(PREVIOUS)
 FORMS_BLOCK = "scripts/oracle/header-decoding/header_cases.py"
 
 
@@ -155,12 +153,31 @@ def block_case(name, raw, source):
 
 for label, raw in current.items():
     block_case(f"rc-2026w44 {label}", raw, f"{CURRENT} {label}")
-for label, raw in previous.items():
-    block_case(f"previous network {label}", raw, f"{PREVIOUS} {label}")
 
-# The forms of each list of a block, on the block of the previous network with transactions.
-SOURCE = f"{PREVIOUS} dijkstra-with-txs"
-base = Block(previous["dijkstra-with-txs"])
+# Synthetic transactions in the empty block 0 of the current network: an output whose value is the
+# `MaryValue` record, in each form and in each output form.
+SOURCE = f"{CURRENT} block-0"
+empty = Block(current["block-0"])
+ADDRESS = c.bstr(b"\x60" + c.h(0x22, 28))
+ASSETS = c.cmap([(c.bstr(c.h(0x88, 28)), c.cmap([(c.bstr(b"a"), c.uint(5))]))])
+
+
+def value(form):
+    return items([c.uint(2_000_000), ASSETS], form)
+
+
+def tx(output, valid=c.TRUE):
+    body = c.cmap([(c.uint(0), c.array([c.array([c.bstr(c.h(0x11, 32)), c.uint(0)])])),
+                   (c.uint(1), c.array([output])),
+                   (c.uint(2), c.uint(200_000))])
+    return items([body, c.cmap([]), c.NULL, valid])
+
+
+# The forms of each list of a block, on block 0 of the current network holding two synthetic
+# transactions (the network's own blocks with transactions are 84 kB each).
+SOURCE = f"{CURRENT} block-0, two synthetic transactions"
+base = Block(empty.build(body=empty.with_body(txs=[tx(c.array([ADDRESS, value("definite")])),
+                                                   tx(c.array([ADDRESS, c.uint(3_000_000)]))])))
 block_case("block indefinite", base.build(form="indefinite"), SOURCE)
 block_case("block detached", b"\x82\x08\x9f\xff" + base.header + base.body, SOURCE)
 block_case("block of three items", c.array([c.uint(8), c.array([base.header, base.body, c.NULL])]), SOURCE)
@@ -200,9 +217,9 @@ block_case("peras certificate chunked bytes",
            SOURCE)
 block_case("peras certificate an integer", base.build(body=base.with_body(peras=c.uint(7))), SOURCE)
 
-# The forms of the Leios certificate, on the certifying block of the previous network.
-SOURCE = f"{PREVIOUS} dijkstra-certificate"
-cert_block = Block(previous["dijkstra-certificate"])
+# The forms of the Leios certificate, on the certifying block of the current network.
+SOURCE = f"{CURRENT} certifying"
+cert_block = Block(current["certifying"])
 empty_header = Block(current["block-0"]).header
 signers, signature = parts(cert_block.leios)
 for form in ["indefinite", "detached"]:
@@ -240,25 +257,7 @@ block_case("tag 7 Conway block with a Praos header",
 block_case("tag 7 Conway block with a Leios header",
            c.array([c.uint(7), hc.block(CONWAY, empty_header)]), f"{CURRENT} block-0")
 
-# Synthetic transactions in the empty block 0 of the current network: an output whose value is the
-# `MaryValue` record, in each form and in each output form.
 SOURCE = f"{CURRENT} block-0"
-empty = Block(current["block-0"])
-ADDRESS = c.bstr(b"\x60" + c.h(0x22, 28))
-ASSETS = c.cmap([(c.bstr(c.h(0x88, 28)), c.cmap([(c.bstr(b"a"), c.uint(5))]))])
-
-
-def value(form):
-    return items([c.uint(2_000_000), ASSETS], form)
-
-
-def tx(output, valid=c.TRUE):
-    body = c.cmap([(c.uint(0), c.array([c.array([c.bstr(c.h(0x11, 32)), c.uint(0)])])),
-                   (c.uint(1), c.array([output])),
-                   (c.uint(2), c.uint(200_000))])
-    return items([body, c.cmap([]), c.NULL, valid])
-
-
 for form in ["definite", "indefinite", "detached"]:
     block_case(f"transaction output list with its value {form}",
                empty.build(body=empty.with_body(txs=[tx(c.array([ADDRESS, value(form)]))])), SOURCE)

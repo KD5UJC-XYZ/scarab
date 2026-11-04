@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "measuredAt": "2026-11-03",
-  "scope": "The block and Leios header decoders of the build the public Leios testnet runs (release rc-2026w44): a block as BlockFetch carries it, [tag, block], read with the envelope of decodeDiskHfcBlock (tag 8 a ledger Block of the Leios header at Dijkstra's decoder version 12, tag 7 a Conway Block of the Praos header at 9), and a Leios header alone with decodeFullAnnotator at 12; the testnet's blocks, those blocks with each list definite, indefinite, detached (an empty indefinite list with the fields after it) or of the wrong length, the certificates in several forms, the certificate's signature of the wrong length, off the curve, outside the subgroup, not compressed and the identity, a tag-7 Conway block with a Praos header and with a Leios header, synthetic transactions with an output value in each form, and Leios headers in the forms of the header decoding oracle, among them an issuer key after 244 and 4000 empty chunks (#749); for each accepted case the header hash, size, signed bytes and fields, the block body hash and size, each transaction's id and validity flag and which certificates the body holds; no rule, signature or certificate is checked",
+  "measuredAt": "2026-11-04",
+  "scope": "The block and Leios header decoders of the build the public Leios testnet runs (release rc-2026w44): a block as BlockFetch carries it, [tag, block], read with the envelope of decodeDiskHfcBlock (tag 8 a ledger Block of the Leios header at Dijkstra's decoder version 12, tag 7 a Conway Block of the Praos header at 9), and a Leios header alone with decodeFullAnnotator at 12; the blocks of the testnet as restarted on 2026-10-18, a block of synthetic transactions and the certifying block with each list definite, indefinite, detached (an empty indefinite list with the fields after it) or of the wrong length, the certificates in several forms, the certificate's signature of the wrong length, off the curve, outside the subgroup, not compressed and the identity, a tag-7 Conway block with a Praos header and with a Leios header, synthetic transactions with an output value in each form, and Leios headers in the forms of the header decoding oracle, including issuer keys after 244 and 4000 empty chunks (#749); for each accepted case the header hash, size, signed bytes and fields, the block body hash and size, each transaction's id and validity flag and which certificates the body holds; no rule, signature or certificate is checked",
   "ledgerSourceCommit": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
   "consensusSourceCommit": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
   "reference": {
@@ -98,23 +98,22 @@
     }
   },
   "inputs": {
-    "fixtures/leios/testnet/blocks-rc-2026w44.tsv": "4a7369eb0bbae69c052852fa2d0cf9a01dbddd88589f174bc7a1783478a88d73",
-    "fixtures/leios/testnet/blocks.tsv": "56ff9901f0fed8909eadc8a85583bbd38b4f70b0d8ed854b715fb15371b6094b",
+    "fixtures/leios/testnet/blocks-rc-2026w44.tsv": "d95b2739ab6bda22c8a106c8a2e5f067421b406ae33f95cbc0731e64625cdfcf",
     "fixtures/leios/bls/cardano-base-serde-test-vectors": "4a083d3fe6d2a73f47206a92ab2c08930fb11aa2cbdebeeb34563b9ea36ad267"
   },
   "harness": {
     "file": "scripts/oracle/leios-testnet/Main.hs",
     "sha256": "f46697752d1e911cce6abfe417d12eb43adb809ec64bd54cf7950e51de2ee809",
     "cabalProjectSha256": "1c72a46f8750acb95c9d1a2b92c45556b9b18dc3c3869d385631a0b36a104850",
-    "image": "built from scripts/oracle/leios-testnet/Dockerfile on scarab-plutus176-context-reference:local (sha256:66c862cc374749f3631e91114358f3c063a7b0ec144163e501f3d22ca47821ef)",
-    "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-leios-testnet:local /fixtures/leios-inputs.json"
+    "image": "built from scripts/oracle/leios-testnet/Dockerfile; scarab-leios-codex749-integration:local image sha256:3316b3dc96f575f8137ab411f509af3d0402bb89e24dd66eec8a5cdf7e353c41",
+    "invocation": "docker run --rm --network none --read-only -v \"$ORACLE_FIXTURES\":/fixtures:ro scarab-leios-codex749-integration:local /fixtures/inputs.json"
   },
-  "generatorSha256": "89d1bc017af4d9970e7cf8d111fd0277f01217d731323ef9b5262d8b83ce4e3c",
-  "harnessInputSha256": "4e2c3b0866633d0344d97ee8e6bae03d82a851f1887fb182b86f888b24fcd464",
-  "harnessOutputSha256": "5b19a24d8861780838e49c0af78c1bd3879219c7c5ff15b83aeff11921fe15b2",
-  "casesSha256": "6c304c45c8bcc38fe50687c120ac63915bf202f3655a5424afc1e04fe2760cf8",
-  "cases": 90,
-  "accepted": 45,
-  "refused": 45,
+  "generatorSha256": "d1738cce905a63f4770e3de8a9eb4baaee855d67d3cdbf40c6c8323fb7c9427e",
+  "harnessInputSha256": "4e017d8e98583dbdd02619d9365a02f66c90453d47f06e573e1763f000704280",
+  "harnessOutputSha256": "8d100730ac9820da17f8c8297ffa0b4a1f5ed241b740eea6f4a80538f419a9b6",
+  "casesSha256": "3e71940b80b2eec38d33d9a47037c15f85009ca3233571d4e98351fb715c6a46",
+  "cases": 86,
+  "accepted": 43,
+  "refused": 43,
   "originalBytesRetained": true
 }

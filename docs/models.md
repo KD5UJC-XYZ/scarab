@@ -326,10 +326,10 @@ All of the following run in `models/test` (`check` includes them).
   real Byron header, `RollBackward`, `IntersectFound`, `IntersectNotFound`, `FindIntersect`, `Done`, with points and tips
   including Origin. The decoded header's preserved bytes equal the announced bytes and the whole message re-encodes to the
   received bytes.
-- Leios (`fixtures/leios/testnet`, N3, `docs/leios.md` section 11): the 1,100 + 6 headers of the public Leios testnet
-  decode through the generated `dijkstra.Header` (12-element body) field by field as `ledger.LeiosHeader` does and
-  re-encode to the received bytes (the generated Conway header refuses them: the testnet sends the 12-element header in
-  Conway-tagged blocks); consensus' `leiosNotify.cddl` is a module (`leios-notify`, with `header.cddl` once more under the
+- Leios (`fixtures/leios/testnet`, N3, `docs/leios.md` sections 11 and 12): the 1,100 + 4 headers of the public Leios
+  testnet (the network as restarted on 2026-10-18, every header of era index 7) decode through the generated
+  `dijkstra.Header` (12-element body) field by field as `ledger.LeiosHeader` does and re-encode to the received bytes
+  (the generated Conway header refuses them); consensus' `leiosNotify.cddl` is a module (`leios-notify`, with `header.cddl` once more under the
   name `header`, which its `;# import` wants), and every message of the hand-written LeiosNotify codec reads back as the same
   case, with `[1*16 vote]` refusing a seventeenth vote as the codec does (`LeiosNotifyCddlSuite`). The newer file is the only
   one pinned from a commit other than `SOURCES`' (see there).
