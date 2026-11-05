@@ -234,6 +234,12 @@ object Header:
   def fromRaw(era: Era, raw: Bytes): Either[ChainError, Header.Shelley] =
     for
       _ <- Either.cond(era != Era.Byron, (), fail(LedgerDecodeError.ByronLayout))
+      // a Dijkstra header has twelve fields (Praos2), not Praos's ten
+      _ <- Either.cond(
+        era != Era.Dijkstra,
+        (),
+        fail(LedgerDecodeError.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Header))
+      )
       header <- DetachedRecords.read(raw, headerLimits, DetachedRecords.Shapes.header(era))(e =>
         fail(LedgerDecodeError.Syntax(e))
       )(read(era, raw, _))

@@ -138,13 +138,14 @@ object NewEpochState:
   def retype[A <: EraTag, B <: EraTag](a: ShelleyBasedEra[A], b: ShelleyBasedEra[B])(
       nes: NewEpochState[A]
   ): Option[NewEpochState[B]] = (a, b) match
-    case (ShelleyBasedEra.SShelley, ShelleyBasedEra.SShelley) => Some(nes)
-    case (ShelleyBasedEra.SAllegra, ShelleyBasedEra.SAllegra) => Some(nes)
-    case (ShelleyBasedEra.SMary, ShelleyBasedEra.SMary)       => Some(nes)
-    case (ShelleyBasedEra.SAlonzo, ShelleyBasedEra.SAlonzo)   => Some(nes)
-    case (ShelleyBasedEra.SBabbage, ShelleyBasedEra.SBabbage) => Some(nes)
-    case (ShelleyBasedEra.SConway, ShelleyBasedEra.SConway)   => Some(nes)
-    case _                                                    => None
+    case (ShelleyBasedEra.SShelley, ShelleyBasedEra.SShelley)   => Some(nes)
+    case (ShelleyBasedEra.SAllegra, ShelleyBasedEra.SAllegra)   => Some(nes)
+    case (ShelleyBasedEra.SMary, ShelleyBasedEra.SMary)         => Some(nes)
+    case (ShelleyBasedEra.SAlonzo, ShelleyBasedEra.SAlonzo)     => Some(nes)
+    case (ShelleyBasedEra.SBabbage, ShelleyBasedEra.SBabbage)   => Some(nes)
+    case (ShelleyBasedEra.SConway, ShelleyBasedEra.SConway)     => Some(nes)
+    case (ShelleyBasedEra.SDijkstra, ShelleyBasedEra.SDijkstra) => Some(nes)
+    case _                                                      => None
 
   /** The state of an empty chain at `epoch`, of any era (see [[Empty]]). */
   def empty[E <: EraTag](epoch: EpochNo, params: ProtocolParams)(using
