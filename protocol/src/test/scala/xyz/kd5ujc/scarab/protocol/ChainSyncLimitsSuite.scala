@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.codec.Bytes
+
 import ChainSync.{DecodeResult, Limits, Message, Point, Role, State, Tip}
 
 class ChainSyncLimitsSuite extends munit.FunSuite:
