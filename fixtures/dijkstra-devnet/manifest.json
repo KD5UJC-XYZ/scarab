@@ -1,0 +1,72 @@
+{
+  "capturedAt": "2026-11-04",
+  "referenceOnly": true,
+  "image": "ghcr.io/input-output-hk/ouroboros-leios/cardano-node-testnet@sha256:70439665b4b93c58ecaa8f73c8919ac7b358f938dd262b6644cd515270773fca",
+  "nodeRevision": "b004fe0c50913dcdaa827a98e68a43d0ccce152a",
+  "versions": {
+    "cardano-node": [
+      "cardano-node 11.2.0.164 - linux-x86_64 - ghc-9.6",
+      "git rev b004fe0c50913dcdaa827a98e68a43d0ccce152a"
+    ],
+    "cardano-cli": [
+      "cardano-cli 11.3.1.0 - linux-x86_64 - ghc-9.6",
+      "git rev b004fe0c50913dcdaa827a98e68a43d0ccce152a"
+    ]
+  },
+  "blocks": 41,
+  "blocksPerEra": {
+    "conway": 33,
+    "dijkstra": 8
+  },
+  "firstDijkstraBlock": {
+    "blockNo": 33,
+    "slot": 202,
+    "headerHash": "fa3c849d4f9e5295a7dda6f7c20cd404183001c87103eca47f0f38220d885c4a"
+  },
+  "transaction": {
+    "id": "df055e9b54970ade706f9ce95ff05369f98d4b51764a5f7ff6f3e83597bf2c22",
+    "blockNo": 37,
+    "slot": 225
+  },
+  "plan": [
+    {
+      "era": "conway",
+      "epoch": 0,
+      "protocolMajor": 12
+    },
+    {
+      "era": "dijkstra",
+      "epoch": 1,
+      "protocolMajor": 12
+    }
+  ],
+  "eras": [
+    {
+      "era": "conway",
+      "epoch": 0,
+      "slot": 23,
+      "block": 1,
+      "hash": "a9111910102cc1a580526a604eeba61c8927982aadae2cdf075fdc462d82f208"
+    },
+    {
+      "era": "dijkstra",
+      "epoch": 1,
+      "slot": 204,
+      "block": 34,
+      "hash": "6f83eaeef29e3a0d346a8db3c9307382c34699021d0f10e55a36d771a5af6ed6"
+    }
+  ],
+  "protocolMajorByEpoch": {
+    "0": 12,
+    "1": 12
+  },
+  "cluster": {
+    "pools": 3,
+    "epochLength": 200,
+    "slotLength": 0.1,
+    "activeSlotsCoeff": 0.2,
+    "securityParam": 5,
+    "networkMagic": 1082026
+  },
+  "blocksSha256": "e1da0c447af50129c782b5f6bdc08582ca7f289f75a87fa895e2792b39dec446"
+}

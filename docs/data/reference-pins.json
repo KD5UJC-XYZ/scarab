@@ -21,6 +21,8 @@
    "role": "Leios testnet reference: the build of the public Leios testnet (release rc-2026w44, #711): the node (branch leios-prototype) the release's flake.lock and Docker image name.",
    "dependents": [
     "docs/leios.md",
+    "fixtures/dijkstra-devnet/README.md",
+    "scripts/devnet/dijkstra.py",
     "scripts/oracle/leios-testnet/cabal.project",
     "scripts/oracle/leios-testnet/README.md"
    ]
