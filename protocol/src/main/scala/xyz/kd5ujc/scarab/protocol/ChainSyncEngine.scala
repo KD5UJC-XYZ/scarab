@@ -94,7 +94,7 @@ object ChainSyncEngine:
       limits: Limits = Limits()
   ): Either[ProtocolError, Bytes] = attempt {
     get(transition(state, sender, message))
-    val bounds = ChainSyncWire.checked(limits)
+    val bounds = ChainSyncWire.encoding(limits)
     val writer = new ChainSyncWire.Writer(limits)
     def outer(arity: Int, tag: Int): Unit =
       writer.head(4, arity)
@@ -111,7 +111,6 @@ object ChainSyncEngine:
         point.writeTo(writer, serverPoint, bounds)
         tip.writeTo(writer, serverTip, bounds)
       case Message.FindIntersect(points) =>
-        if points.size > limits.maxCandidates then bad(ProtocolError.CandidateLimitExceeded)
         outer(2, 4)
         if points.isEmpty then writer.head(4, 0)
         else
@@ -142,7 +141,7 @@ object ChainSyncEngine:
   ): DecodeResult[Message[Q, T, P]] = ProtocolWire.prefix {
     val bounds = ChainSyncWire.checked(limits)
     val reader = new ChainSyncWire.Reader(bytes, limits)
-    val arity = reader.arrayLength()
+    val arity = reader.arrayArity()
     val tag = reader.uint().value
     val expectedArity = tag match
       case n if n == 0 || n == 1 || n == 7 => 1
@@ -158,7 +157,7 @@ object ChainSyncEngine:
       case 2 => Message.RollForward(payload.readFrom(reader), tip.readFrom(reader))
       case 3 => Message.RollBackward(point.readFrom(reader), tip.readFrom(reader))
       // as many points as the message's bytes hold (`decodeList`, #755)
-      case 4 => Message.FindIntersect(reader.items(Int.MaxValue)(point.readFrom))
+      case 4 => Message.FindIntersect(reader.items(point.readFrom))
       case 5 => Message.IntersectFound(point.readFrom(reader), tip.readFrom(reader))
       case 6 => Message.IntersectNotFound(tip.readFrom(reader))
       case 7 => Message.Done

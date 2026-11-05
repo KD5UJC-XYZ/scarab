@@ -57,7 +57,7 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
       size: Int
   ): Resource[IO, ChainSyncServer.Source[IO, RawNtNBlock]] =
     def block(i: Int): RawNtNBlock =
-      RawNtNBlock.from(Bytes(Vector.fill(size)(i.toByte))).toOption.get
+      CardanoBlockFetch.localBlock(Bytes.fromArray(Array.fill(size)(i.toByte)))
     def point(i: Int): Point = Point.Block(UInt64.saturating(i), Bytes(Vector.fill(32)(i.toByte)))
     def tip(i: Int) = ChainSync.Tip(point(i), UInt64.saturating(i))
     Resource.eval(Ref.of[IO, Int](0)).map { cursor =>
@@ -116,29 +116,35 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
         .flatMap { server =>
           Handle
             .allow[NetworkError] {
-              Mux.resource(clientEnd, Set(0, 5, 6, 9), Mux.Config()).use { mux =>
-                for
-                  hs <- mux.channel(0)
-                  _ <- HandshakeClient.run(
-                    hs,
-                    Vector(16, 23).map(v => v -> Handshake.Data(magic)),
-                    suite = Handshake.Suite.NodeToClient
-                  )
-                  monitorChannel <- mux.channel(9)
-                  chainChannel <- mux.channel(5)
-                  submission <- mux.channel(6)
-                  out <- body(monitorChannel, chainChannel)
-                  _ <- sendTo(
-                    submission,
-                    LocalTxSubmission.encode(
-                      LocalTxSubmission.State.Idle,
-                      Role.Client,
-                      LocalTxSubmission.Message.Done
+              Mux
+                .resource(
+                  clientEnd,
+                  Set(0, 5, 6, 9),
+                  Mux.Config.nodeToClient.copy(role = Mux.Role.Initiator)
+                )
+                .use { mux =>
+                  for
+                    hs <- mux.channel(0)
+                    _ <- HandshakeClient.run(
+                      hs,
+                      Vector(16, 23).map(v => v -> Handshake.Data(magic)),
+                      suite = Handshake.Suite.NodeToClient
                     )
-                  )
-                  _ <- submission.flush
-                yield out
-              }
+                    monitorChannel <- mux.channel(9)
+                    chainChannel <- mux.channel(5)
+                    submission <- mux.channel(6)
+                    out <- body(monitorChannel, chainChannel)
+                    _ <- sendTo(
+                      submission,
+                      LocalTxSubmission.encode(
+                        LocalTxSubmission.State.Idle,
+                        Role.Client,
+                        LocalTxSubmission.Message.Done
+                      )
+                    )
+                    _ <- submission.flush
+                  yield out
+                }
             }
             .rescue(e => IO.raiseError[A](RuntimeException(e.message)))
             .flatMap(out => server.cancel.as(out -> "client finished"))
@@ -290,19 +296,28 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
     }
   }
 
-  test("local ChainSync serves whole blocks larger than the node-to-node message bound") {
-    val size = 150000
+  test(
+    "local ChainSync receives long intersections and serves blocks beyond the former 2.5 MB cap"
+  ) {
+    val size = 2600000
     connected(None, Some(chainSource(3, size))) { (_, ch) =>
-      val codec = CardanoBlockFetch.payloadCodec()
+      val codec = CardanoBlockFetch.localPayloadCodec
       val limits = ChainSync.Limits.NodeToClient
       def send(state: ChainSync.State, m: ChainSync.Message[RawNtNBlock]): IO[Unit] =
         sendTo(ch, ChainSync.encode(state, Role.Client, m, codec, limits))
       def receive(state: ChainSync.State) =
-        ch.recv(limits.maxMessageBytes)(
+        ch.recvUnbounded(
           ChainSync.decodePrefix(state, Role.Server, _, codec, limits)
         )
       for
-        _ <- send(ChainSync.State.Idle, ChainSync.Message.FindIntersect(Vector(Point.Origin)))
+        _ <- send(
+          ChainSync.State.Idle,
+          ChainSync.Message.FindIntersect(
+            Vector.fill(70000)(
+              Point.Block(UInt64.Zero, Bytes.fromArray(Array.fill(32)(0.toByte)))
+            ) :+ Point.Origin
+          )
+        )
         found <- receive(ChainSync.State.Intersect)
         _ <- send(ChainSync.State.Idle, ChainSync.Message.RequestNext)
         one <- receive(ChainSync.State.NextCanAwait)

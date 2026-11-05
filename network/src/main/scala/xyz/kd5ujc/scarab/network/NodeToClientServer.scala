@@ -156,7 +156,7 @@ object NodeToClientServer:
             source.use(
               ChainSyncServer.run(
                 c,
-                CardanoBlockFetch.payloadCodec(),
+                CardanoBlockFetch.localPayloadCodec,
                 _,
                 ChainSyncServer.NodeToClient
               )

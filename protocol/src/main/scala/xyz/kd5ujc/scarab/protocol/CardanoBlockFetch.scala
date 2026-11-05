@@ -7,8 +7,8 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import ChainSync.{Point, UInt64}
 import ProtocolWire.{bad, get, attempt}
 
-/** Cardano NtN serialized-block adapter. No NtC profile, inner CBOR inspection, block identity
-  * derivation, consensus checks or ledger validation.
+/** Cardano serialized-block adapters. No inner CBOR inspection, block identity derivation,
+  * consensus checks or ledger validation.
   */
 object CardanoBlockFetch:
   val DefaultNtNVersion: Int = 14
@@ -71,7 +71,7 @@ object CardanoBlockFetch:
   /** Owned immutable original byte-string contents. The inner bytes may even be invalid CBOR. This
     * type deliberately does not expose a validated-block conversion.
     */
-  final class RawNtNBlock private (val bytes: Bytes):
+  final class RawNtNBlock private[CardanoBlockFetch] (val bytes: Bytes):
     override def equals(other: Any): Boolean = other match
       case block: RawNtNBlock => bytes == block.bytes
       case _                  => false
@@ -86,6 +86,29 @@ object CardanoBlockFetch:
       else if bytes.size > maxRawBytes then
         Left(ProtocolError.RawBlockByteLimitExceeded(bytes.size, maxRawBytes))
       else Right(new RawNtNBlock(bytes))
+
+  /** Local ChainSync carries the same serialized block without BlockFetch's byte limit. `runPeer`
+    * has no codec budget (ouroboros-consensus 82ecba32, `Network/NodeToClient.hs:438-453`). The
+    * bytes retain their original representation.
+    */
+  def localBlock(bytes: Bytes): RawNtNBlock = new RawNtNBlock(bytes)
+
+  val localPayloadCodec: ChainSync.PayloadCodec[RawNtNBlock] =
+    new ChainSync.PayloadCodec[RawNtNBlock]:
+      def encode(block: RawNtNBlock): Either[ProtocolError, Bytes] = attempt {
+        val writer = new ChainSyncWire.Writer(ChainSync.Limits.NodeToClient)
+        writer.head(6, 24)
+        writer.head(2, block.bytes.size)
+        writer.raw(block.bytes)
+        writer.result
+      }
+      def decode(bytes: Bytes): Either[ProtocolError, RawNtNBlock] = attempt {
+        val reader = new ChainSyncWire.Reader(bytes, ChainSync.Limits.NodeToClient)
+        if reader.tag() != 24 then bad(ProtocolError.ExpectedSerializedBlockTag24)
+        val block = localBlock(reader.bytes(Int.MaxValue))
+        if reader.position != bytes.size then bad(ProtocolError.TrailingSerializedBlockBytes)
+        block
+      }
 
   /** Default leaves room for the nine-byte canonical Block message wrapper. */
   final case class RawLimits(maxRawBytes: Int = 2499991):

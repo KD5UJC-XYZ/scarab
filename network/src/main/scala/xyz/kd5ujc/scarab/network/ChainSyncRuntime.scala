@@ -161,7 +161,7 @@ object ChainSyncRuntime:
           val next = ChainSyncEngine.transition(current, Role.Client, message)
           ChainSyncEngine
             .encode(current, Role.Client, message, point, tip, payload, settings.limits)
-            .fold(illegal(_), bytes => channel.send(bytes))
+            .fold(illegal(_), bytes => channel.sendUnbounded(bytes))
             .productR(next.fold(illegal(_), state.set))
         }
 
@@ -174,7 +174,7 @@ object ChainSyncRuntime:
           case other => illegal[ProtocolDeadline](RuntimeViolation.ReplyNotExpected(other))
         limit.flatMap { wait =>
           Timed.within(wait, id, current.toString)(
-            channel.recv(settings.limits.maxMessageBytes)(
+            channel.recvWithin(settings.limits.messageByteLimit)(
               ChainSyncEngine.decodePrefix(
                 current,
                 Role.Server,
@@ -252,7 +252,7 @@ object ChainSyncRuntime:
                     payload,
                     settings.limits
                   )
-                  .fold(illegal(_), bytes => List.fill(n)(bytes).traverse_(channel.send))
+                  .fold(illegal(_), bytes => List.fill(n)(bytes).traverse_(channel.sendUnbounded))
                   .productR(List.fill(n)(()).traverse(_ => collectOne.flatTap(onUpdate)))
                   .map(_.toVector)
               case other => illegal(RuntimeViolation.PipelinedRequest(other))
@@ -309,7 +309,7 @@ object ChainSyncRuntime:
     def send(state: State, message: Message[Q, T, P]): F[State] =
       ChainSyncEngine
         .encode(state, Role.Server, message, point, tip, payload, settings.limits)
-        .fold(illegal, channel.send)
+        .fold(illegal, channel.sendUnbounded)
         .productR(ChainSyncEngine.transition(state, Role.Server, message).fold(illegal, F.pure))
     def instruction(update: Update[Q, T, P]): Message[Q, T, P] = update match
       case Update.RollForward(value, serverTip) => Message.RollForward(value, serverTip)
@@ -323,7 +323,7 @@ object ChainSyncRuntime:
           id,
           "idle"
         )(
-          channel.recv(settings.limits.maxMessageBytes)(
+          channel.recvWithin(settings.limits.messageByteLimit)(
             ChainSyncEngine
               .decodePrefix(State.Idle, Role.Client, _, point, tip, payload, settings.limits)
           )

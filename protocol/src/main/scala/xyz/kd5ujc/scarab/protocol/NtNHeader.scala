@@ -46,7 +46,7 @@ object NtNHeader:
       w.head(2, value.raw.size)
       w.raw(value.raw)
       val out = w.result
-      get(validateItem(out))
+      get(ProtocolWire.validateItem(out, ChainSyncWire.encoding(Limits())))
       out
     }
 

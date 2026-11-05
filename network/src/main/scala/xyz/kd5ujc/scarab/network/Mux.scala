@@ -28,6 +28,11 @@ trait MuxChannel[F[_]]:
   /** Queue one complete protocol message; it is split into SDUs by the writer. */
   def send(message: Bytes)(using Raise[F, NetworkError]): F[Unit]
 
+  /** Queue without a protocol message-size policy, as the reference ChainSync encoder does.
+    * Transport SDU framing and egress backpressure still apply.
+    */
+  def sendUnbounded(message: Bytes)(using Raise[F, NetworkError]): F[Unit] = send(message)
+
   /** Completes once everything queued on the connection so far has been written to the bearer (or
     * the connection has failed). Used before closing, so that a final message is not lost.
     */
@@ -41,6 +46,17 @@ trait MuxChannel[F[_]]:
   def recv[A](maxBytes: Int)(decode: Bytes => DecodeResult[A])(using
       Raise[F, NetworkError]
   ): F[A]
+
+  /** Receive without a mini-protocol byte limit. The default adapter's `Bytes` result can only
+    * contain an `Int` number of bytes; the live mux omits the policy check entirely and retains its
+    * separate receive-buffer capacity check.
+    */
+  def recvUnbounded[A](decode: Bytes => DecodeResult[A])(using Raise[F, NetworkError]): F[A] =
+    recv(Int.MaxValue)(decode)
+
+  def recvWithin[A](limit: Option[Int])(decode: Bytes => DecodeResult[A])(using
+      Raise[F, NetworkError]
+  ): F[A] = limit.fold(recvUnbounded(decode))(recv(_)(decode))
 
   /** [[recv]] with progress retained between prefixes. The default uses the equivalent stateless
     * decoder; the live mux retains its cursor while waiting for more SDUs.
@@ -605,7 +621,7 @@ object Mux:
                       sending(lane.role),
                       config.sduSize,
                       lane.protocol,
-                      config.maxMessageBytes
+                      payload.size
                     )
                     .flatMap(_.traverse(WireMux.encode))
                   frames match
@@ -765,8 +781,16 @@ object Mux:
     private def permitted(using Raise[F, NetworkError]): F[Unit] =
       dispatch.check((id, role)).flatMap(_.fold(F.unit)(_.raise[F, Unit]))
 
-    def send(message: Bytes)(using Raise[F, NetworkError]): F[Unit] = permitted *>
-      (if message.size == 0 || message.size > config.maxMessageBytes then
+    def send(message: Bytes)(using Raise[F, NetworkError]): F[Unit] =
+      sendWithin(message, Some(config.maxMessageBytes))
+
+    override def sendUnbounded(message: Bytes)(using Raise[F, NetworkError]): F[Unit] =
+      sendWithin(message, None)
+
+    private def sendWithin(message: Bytes, limit: Option[Int])(using
+        Raise[F, NetworkError]
+    ): F[Unit] = permitted *>
+      (if message.size == 0 || limit.exists(message.size > _) then
          NetworkError
            .IllegalTransition(
              id,
@@ -804,14 +828,18 @@ object Mux:
     def recv[A](maxBytes: Int)(decode: Bytes => DecodeResult[A])(using
         Raise[F, NetworkError]
     ): F[A] =
-      receive(maxBytes, ())((_, bytes) => ((), decode(bytes)))
+      receive(Some(maxBytes), ())((_, bytes) => ((), decode(bytes)))
+
+    override def recvUnbounded[A](decode: Bytes => DecodeResult[A])(using
+        Raise[F, NetworkError]
+    ): F[A] = receive(None, ())((_, bytes) => ((), decode(bytes)))
 
     override def recvIncremental[A](maxBytes: Int)(
         decode: xyz.kd5ujc.scarab.protocol.IncrementalDecoder[A]
     )(using Raise[F, NetworkError]): F[A] =
-      receive(maxBytes, decode.initial)(decode.resume)
+      receive(Some(maxBytes), decode.initial)(decode.resume)
 
-    private def receive[S, A](maxBytes: Int, initial: S)(
+    private def receive[S, A](maxBytes: Option[Int], initial: S)(
         decode: (S, Bytes) => (S, DecodeResult[A])
     )(using
         Raise[F, NetworkError]
@@ -824,7 +852,8 @@ object Mux:
             Either.catchNonFatal(decode(cursor, held)) match
               case Left(cause) => NetworkError.DecoderDefect(id, cause).raise[F, A]
               case Right((_, DecodeResult.Decoded(value, consumed))) =>
-                if consumed > maxBytes then NetworkError.IngressLimit(id, consumed).raise[F, A]
+                if maxBytes.exists(consumed > _) then
+                  NetworkError.IngressLimit(id, consumed).raise[F, A]
                 else
                   F.delay(buffer.consume(consumed)) *>
                     handshakeInput
@@ -833,7 +862,8 @@ object Mux:
               case Right((_, DecodeResult.Failed(reason))) =>
                 NetworkError.Decode(id, reason).raise[F, A]
               case Right((next, DecodeResult.NeedMore)) =>
-                if held.size > maxBytes then NetworkError.IngressLimit(id, held.size).raise[F, A]
+                if maxBytes.exists(held.size > _) then
+                  NetworkError.IngressLimit(id, held.size).raise[F, A]
                 else handshakeInput.traverse_(_.continue) *> await(next, held.size)
           }
 
@@ -853,7 +883,7 @@ object Mux:
           F.delay(buffer.size).flatMap { held =>
             // The handshake mux decodes after every SDU: it must not read ahead into SDUs that
             // belong to the application protocols.
-            if handshakeInput.isDefined || held > maxBytes || held >= 2L * attempted then
+            if handshakeInput.isDefined || maxBytes.exists(held > _) || held >= 2L * attempted then
               decodeNow(cursor)
             else
               permitted *> ingress.tryTake.flatMap {
@@ -871,7 +901,10 @@ object Mux:
         def append(payload: Bytes): F[Unit] =
           F.delay(buffer.append(payload)).flatMap { fits =>
             if fits then F.unit
-            else NetworkError.IngressLimit(id, Int.MaxValue).raise[F, Unit]
+            else
+              NetworkError
+                .ReceiveCapacityExceeded(id, buffer.size.toLong + payload.size, buffer.capacity)
+                .raise[F, Unit]
           }
 
         decodeNow(initial)

@@ -111,12 +111,12 @@ class FixtureChainModelSuite extends munit.FunSuite:
     assert(result.step(Role.Client, Message.Done).isLeft)
     assert(result.step(Role.Client, Message.RequestNext).isLeft)
   }
-  test("history/candidates/trace/hash allocations have explicit local bounds") {
+  test("synthetic history and trace stay bounded while intersection lists have no count policy") {
     assert(FixtureChainModel.start(Vector.empty).isLeft)
     assert(FixtureChainModel.start(Vector.fill(257)(a)).isLeft)
     assert(FixtureChainModel.start(Vector(a, a)).isLeft)
     assert(FixtureChainModel.start(Vector(Point.Block(UInt64.Zero, Bytes(Vector(1))))).isLeft)
-    assert(FixtureChainModel.intersect(Vector.fill(65)(a), history).isLeft)
+    assertEquals(FixtureChainModel.intersect(Vector.fill(1025)(a), history), Right(Some(a)))
     val full = right(FixtureChainModel.start((0 until 256).map(i => p(i, 1)).toVector))
     val requested = right(full.step(Role.Client, Message.RequestNext))
     assert(

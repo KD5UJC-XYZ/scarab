@@ -17,7 +17,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
   * value may keep a slice of it.
   */
 @SuppressWarnings(Array("org.wartremover.warts.Var"))
-private[network] final class ReceiveBuffer(limit: Long = ReceiveBuffer.MaxArray):
+private[network] final class ReceiveBuffer(val capacity: Long = ReceiveBuffer.MaxArray):
   private var array: Array[Byte] = ReceiveBuffer.NoBytes
   private var start = 0
   private var end = 0
@@ -31,7 +31,7 @@ private[network] final class ReceiveBuffer(limit: Long = ReceiveBuffer.MaxArray)
 
   /** Add `more`; false, with the buffer unchanged, when the total would not fit in one array. */
   def append(more: Bytes): Boolean =
-    ReceiveBuffer.room(live, end, array.length, more.size, limit) match
+    ReceiveBuffer.room(live, end, array.length, more.size, capacity) match
       case ReceiveBuffer.Room.TooLarge => false
       case room =>
         room match

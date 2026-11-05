@@ -446,6 +446,8 @@ object Peer:
     // and not the node (network 2fb69829 RethrowPolicy.hs 61-70, 99-103; consensus 82ecba329
     // Node/RethrowPolicy.hs, `ourBug`). The peer is not charged (owner decision, issue 567).
     case NetworkError.Defect(cause) => Fault.Failed(PeerError.ConnectionDefect(cause))
+    case failure: NetworkError.ReceiveCapacityExceeded =>
+      Fault.Failed(PeerError.ConnectionDefect(new NetworkError.InternalFailure(failure)))
     case NetworkError.DecoderDefect(protocol, cause) =>
       Fault.Failed(PeerError.InputDefect(PeerError.InputSite.Wire(protocol), cause))
     case NetworkError.BearerDefect(cause) =>

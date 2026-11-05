@@ -83,6 +83,8 @@ object Targets:
 
   // --- network -------------------------------------------------------------------------------------
 
+  // The native encoder has no driver byte limit: canonical list encoding can grow a message.
+  // Input probes retain their receive policy; decodeEncoded checks the encoded codec value.
   private def roundTrip[S, R, M, E](
       name: String,
       states: Seq[S],
@@ -91,7 +93,7 @@ object Targets:
       decode: (S, R, Bytes) => DecodeResult[M],
       encode: (S, R, M) => Either[E, Bytes],
       equivalent: (M, M) => Boolean = (left: M, right: M) => left == right,
-      expectedEncodeError: M => Option[E] = (_: M) => None
+      decodeEncoded: Option[(S, R, Bytes) => DecodeResult[M]] = None
   ): Target =
     Target(
       name,
@@ -113,17 +115,10 @@ object Targets:
               )
               encode(s, r, message) match
                 case Left(e) =>
-                  req(
-                    expectedEncodeError(message).contains(e),
-                    s"$s/$r: decoded $message unexpectedly refuses encoding: $e"
-                  )
+                  req(false, s"$s/$r: decoded $message refuses encoding: $e")
                 case Right(enc) =>
                   req(
-                    expectedEncodeError(message).isEmpty,
-                    s"$s/$r: encoder omitted its policy check"
-                  )
-                  req(
-                    decode(s, r, enc) match
+                    decodeEncoded.getOrElse(decode)(s, r, enc) match
                       case DecodeResult.Decoded(again, consumed) =>
                         consumed == enc.size && equivalent(message, again)
                       case _ => false,
@@ -136,8 +131,7 @@ object Targets:
   private def netCorpus(rules: String*): () => Vector[Array[Byte]] = () =>
     Corpus.tricky ++ Corpus.networkFixtures ++ rules.toVector.flatMap(Corpus.sampled(_, 80))
 
-  // The receiver accepts lists larger than the local producer's candidate policy. These are
-  // decoded and checked like every other input; re-encoding must return that exact policy error.
+  // Exercise the former outgoing candidate caps in both encoding and decoding.
   private def largeIntersectionSeeds: Vector[Array[Byte]] =
     Vector(65, 1025).map { size =>
       val head =
@@ -658,12 +652,9 @@ object Targets:
       chainSyncSeeds,
       (s, r, b) => ChainSync.decodePrefix(s, r, b, NtNHeader.codec),
       (s, r, m) => ChainSync.encode(s, r, m, NtNHeader.codec),
-      expectedEncodeError = {
-        case ChainSync.Message.FindIntersect(points)
-            if points.size > ChainSync.Limits().maxCandidates =>
-          Some(ProtocolError.CandidateLimitExceeded)
-        case _ => None
-      }
+      decodeEncoded = Some((s, r, b) =>
+        ChainSync.decodePrefix(s, r, b, NtNHeader.codec, ChainSync.Limits.NodeToClient)
+      )
     ),
     roundTrip(
       "chainsync-ntc",
@@ -685,13 +676,7 @@ object Targets:
               .map(_.toArray)
           ) ++ chainSyncSeeds(),
       (s, r, b) => ChainSync.decodePrefix(s, r, b, anyItem, ChainSync.Limits.NodeToClient),
-      (s, r, m) => ChainSync.encode(s, r, m, anyItem, ChainSync.Limits.NodeToClient),
-      expectedEncodeError = {
-        case ChainSync.Message.FindIntersect(points)
-            if points.size > ChainSync.Limits.NodeToClient.maxCandidates =>
-          Some(ProtocolError.CandidateLimitExceeded)
-        case _ => None
-      }
+      (s, r, m) => ChainSync.encode(s, r, m, anyItem, ChainSync.Limits.NodeToClient)
     ),
     roundTrip(
       "chainsync-engine-opaque",
@@ -701,12 +686,17 @@ object Targets:
       (s, r, b) =>
         ChainSyncEngine.decodePrefix(s, r, b, opaquePoint, opaqueTip, opaqueChainPayload),
       (s, r, m) => ChainSyncEngine.encode(s, r, m, opaquePoint, opaqueTip, opaqueChainPayload),
-      expectedEncodeError = {
-        case ChainSyncEngine.Message.FindIntersect(points)
-            if points.size > ChainSync.Limits().maxCandidates =>
-          Some(ProtocolError.CandidateLimitExceeded)
-        case _ => None
-      }
+      decodeEncoded = Some((s, r, b) =>
+        ChainSyncEngine.decodePrefix(
+          s,
+          r,
+          b,
+          opaquePoint,
+          opaqueTip,
+          opaqueChainPayload,
+          ChainSync.Limits.NodeToClient
+        )
+      )
     ),
     roundTrip(
       "blockfetch",

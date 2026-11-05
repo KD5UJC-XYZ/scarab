@@ -51,7 +51,7 @@ object KeepAlive:
       maxDepth >= 0 && maxDepth <= 64 && maxItems > 0 && maxItems <= 65535
     private[protocol] def wire(using ProtocolWire.Scope): ProtocolWire.Limits =
       if !valid then bad(ProtocolError.InvalidKeepAliveLimits)
-      ProtocolWire.Limits(maxMessageBytes, 0, 0, maxDepth, maxItems, 0)
+      ProtocolWire.Limits(maxMessageBytes, 0, 0, maxDepth, maxItems)
 
   /** Reference state deadlines used by the runtime; the keep-alive interval is separate policy. */
   object UpstreamTimeLimits:

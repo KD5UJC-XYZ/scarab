@@ -34,15 +34,15 @@ private[protocol] object ProtocolWire:
       maxHashBytes: Int = 64,
       maxDepth: Int = 24,
       maxItems: Int = 8192,
-      maxCandidates: Int = 64,
-      bound: Bound = Bound.Network
+      bound: Bound = Bound.Network,
+      unboundedBytes: Boolean = false,
+      deferredLengths: Boolean = false
   ):
     def valid: Boolean =
       maxMessageBytes > 0 && maxMessageBytes <= bound.bytes &&
         maxStringBytes >= 0 && maxStringBytes <= bound.bytes &&
         maxHashBytes >= 0 && maxHashBytes <= bound.bytes &&
-        maxDepth >= 0 && maxItems > 0 && maxItems <= bound.items &&
-        maxCandidates >= 0 && maxCandidates <= 1024
+        maxDepth >= 0 && maxItems > 0 && maxItems <= bound.items
   type Scope = boundary.Label[Either[ProtocolError, Nothing]]
 
   /** The most items a message may hold. A level of nesting is an item, so this is also the deepest
@@ -92,8 +92,17 @@ private[protocol] object ProtocolWire:
     private var pos = 0
     private var items = 0
     def position: Int = pos
+    private def needDeclared(n: BigInt): Unit =
+      if n > input.size - pos then
+        if !limits.unboundedBytes && input.size > limits.maxMessageBytes then
+          bad(ProtocolError.MessageByteLimitExceeded)
+        else bad(ProtocolError.TruncatedCbor)
+
     private def need(n: Int): Unit =
-      if n < 0 || n > limits.maxMessageBytes - pos then bad(ProtocolError.MessageByteLimitExceeded)
+      if limits.deferredLengths then needDeclared(BigInt(n))
+      if n < 0 then bad(ProtocolError.RepresentationCapacityExceeded(BigInt(n)))
+      if !limits.unboundedBytes && n > limits.maxMessageBytes - pos then
+        bad(ProtocolError.MessageByteLimitExceeded)
       if n > input.size - pos then bad(ProtocolError.TruncatedCbor)
     def read(): Int =
       val b = peek
@@ -118,13 +127,24 @@ private[protocol] object ProtocolWire:
           value = (value << 8) | read()
           i += 1
         value
+    private def lengthArgument(ai: Int): BigInt =
+      val length = argument(ai)
+      if limits.deferredLengths && length > Long.MaxValue then
+        bad(ProtocolError.CBORLengthOutsideInt64(length))
+      length
+
     private def bounded(value: BigInt, max: Int, what: ProtocolError): Int =
-      if value > max then bad(what)
+      if value > max then
+        if limits.unboundedBytes && max == Int.MaxValue then
+          bad(ProtocolError.RepresentationCapacityExceeded(value))
+        else bad(what)
       value.toInt
-    def arrayLength(): Int =
+    def arrayArity(): BigInt =
       val h = read()
       if h / 32 != 4 || (h & 31) == 31 then bad(ProtocolError.ExpectedDefiniteArray)
-      bounded(argument(h & 31), limits.maxItems, ProtocolError.ArrayLimitExceeded)
+      lengthArgument(h & 31)
+    def arrayLength(): Int =
+      bounded(arrayArity(), limits.maxItems, ProtocolError.ArrayLimitExceeded)
     def uint(): UInt64 =
       val h = read()
       if h / 32 != 0 then bad(ProtocolError.ExpectedUint64)
@@ -136,8 +156,10 @@ private[protocol] object ProtocolWire:
     def bytes(max: Int): Bytes =
       val h = read()
       if h / 32 != 2 || (h & 31) == 31 then bad(ProtocolError.ExpectedDefiniteByteString)
+      val declared = lengthArgument(h & 31)
+      if limits.deferredLengths then needDeclared(declared)
       val n = bounded(
-        argument(h & 31),
+        declared,
         math.min(max, limits.maxStringBytes),
         ProtocolError.StringLimitExceeded
       )
@@ -148,7 +170,7 @@ private[protocol] object ProtocolWire:
     def mapLength(): Int =
       val h = read()
       if h / 32 != 5 || (h & 31) == 31 then bad(ProtocolError.ExpectedDefiniteMap)
-      bounded(argument(h & 31), limits.maxItems, ProtocolError.MapLimitExceeded)
+      bounded(lengthArgument(h & 31), limits.maxItems, ProtocolError.MapLimitExceeded)
     def bool(): Boolean = read() match
       case 0xf4 => false
       case 0xf5 => true
@@ -156,8 +178,10 @@ private[protocol] object ProtocolWire:
     def text(max: Int): String =
       val h = read()
       if h / 32 != 3 || (h & 31) == 31 then bad(ProtocolError.ExpectedDefiniteTextString)
+      val declared = lengthArgument(h & 31)
+      if limits.deferredLengths then needDeclared(declared)
       val n = bounded(
-        argument(h & 31),
+        declared,
         math.min(max, limits.maxStringBytes),
         ProtocolError.StringLimitExceeded
       )
@@ -174,44 +198,40 @@ private[protocol] object ProtocolWire:
         .fold(_ => bad(ProtocolError.InvalidUTF8), identity)
       pos += n
       decoded
-    def point(): Point = arrayLength() match
-      case 0 => Point.Origin
-      case 2 => Point.Block(uint(), bytes(limits.maxHashBytes))
-      case _ => bad(ProtocolError.PointArity)
+    private def pointArity(): BigInt =
+      if limits.deferredLengths then arrayArity() else BigInt(arrayLength())
+    def point(): Point = pointArity() match
+      case n if n == 0 => Point.Origin
+      case n if n == 2 => Point.Block(uint(), bytes(limits.maxHashBytes))
+      case _           => bad(ProtocolError.PointArity)
     def tip(): Tip =
-      if arrayLength() != 2 then bad(ProtocolError.TipArity)
+      if pointArity() != 2 then bad(ProtocolError.TipArity)
       Tip(point(), uint())
-    def points(): Vector[Point] =
-      items(limits.maxCandidates)(_.point())
 
-    /** Read a definite or indefinite CBOR array with the candidate-list limits used by ChainSync.
-      * The element reader runs inline, so specialized domain codecs retain the protocol's
-      * validation order without first materializing opaque CBOR items.
+    /** Read the candidate list inline, without a count policy. A declaration does not allocate its
+      * contents or preempt the first point's error (`ChainSync/Codec.hs:209-214`, ouroboros-network
+      * 2fb69829).
       */
-    def items[A](maxCandidates: Int)(readOne: Reader => A): Vector[A] =
+    def items[A](readOne: Reader => A): Vector[A] =
       val h = read()
       if h / 32 != 4 then bad(ProtocolError.ExpectedCandidateArray)
       val out = Vector.newBuilder[A]
       if (h & 31) == 31 then
-        var n = 0
-        while peek != 255 do
-          if n >= maxCandidates then bad(ProtocolError.CandidateLimitExceeded)
-          out += readOne(this)
-          n += 1
+        while peek != 255 do out += readOne(this)
         read()
       else
-        val n =
-          bounded(argument(h & 31), maxCandidates, ProtocolError.CandidateLimitExceeded)
-        var i = 0
-        while i < n do
+        var remaining = lengthArgument(h & 31)
+        while remaining > 0 do
           out += readOne(this)
-          i += 1
+          remaining -= 1
       out.result()
     private def count(): Unit =
       if items >= limits.maxItems then bad(ProtocolError.CBORItemLimitExceeded)
       items += 1
     private def stringChunk(major: Int, ai: Int, remaining: Int): Int =
-      val n = bounded(argument(ai), remaining, ProtocolError.StringLimitExceeded)
+      val declared = lengthArgument(ai)
+      if limits.deferredLengths then needDeclared(declared)
+      val n = bounded(declared, remaining, ProtocolError.StringLimitExceeded)
       need(n)
       if major == 3 then
         Either
@@ -233,8 +253,8 @@ private[protocol] object ProtocolWire:
       * [[IndefiniteArray]], [[IndefiniteKey]] or [[IndefiniteValue]].
       */
     def skip(depth: Int): Unit =
-      val pending = scala.collection.mutable.ArrayBuffer.empty[Int]
-      var remaining = 1
+      val pending = scala.collection.mutable.ArrayBuffer.empty[BigInt]
+      var remaining = BigInt(1)
       while remaining != 0 || pending.nonEmpty do
         if remaining == 0 then remaining = pending.remove(pending.size - 1)
         else if (remaining == IndefiniteArray || remaining == IndefiniteKey) && peek == 255 then
@@ -253,7 +273,7 @@ private[protocol] object ProtocolWire:
 
     private enum Opened:
       case Scalar
-      case Container(children: Int)
+      case Container(children: BigInt)
 
     /** Read one item's head and its scalar payload; a container or tag is left open. */
     private def opened(): Opened =
@@ -279,11 +299,17 @@ private[protocol] object ProtocolWire:
           val multiplier = if major == 5 then 2 else 1
           if ai == 31 then Opened.Container(if major == 5 then IndefiniteKey else IndefiniteArray)
           else
-            val n = bounded(
-              argument(ai),
-              (limits.maxItems - items) / multiplier,
-              ProtocolError.ItemLimitExceeded
-            )
+            val declared = lengthArgument(ai)
+            val n =
+              if limits.deferredLengths then declared
+              else
+                BigInt(
+                  bounded(
+                    declared,
+                    (limits.maxItems - items) / multiplier,
+                    ProtocolError.ItemLimitExceeded
+                  )
+                )
             Opened.Container(n * multiplier)
         case 6 => argument(ai); Opened.Container(1)
         case _ =>
@@ -313,10 +339,13 @@ private[protocol] object ProtocolWire:
     if !limits.valid then bad(ProtocolError.InvalidLocalLimits)
     private val out = new java.io.ByteArrayOutputStream()
     def byte(b: Int): Unit =
-      if out.size() >= limits.maxMessageBytes then bad(ProtocolError.MessageByteLimitExceeded)
+      if !limits.unboundedBytes && out.size() >= limits.maxMessageBytes then
+        bad(ProtocolError.MessageByteLimitExceeded)
       out.write(b)
     def raw(bytes: Bytes): Unit =
-      if bytes.size > limits.maxMessageBytes - out.size() then
+      if bytes.size > Int.MaxValue - out.size() then
+        bad(ProtocolError.RepresentationCapacityExceeded(BigInt(out.size()) + bytes.size))
+      if !limits.unboundedBytes && bytes.size > limits.maxMessageBytes - out.size() then
         bad(ProtocolError.MessageByteLimitExceeded)
       bytes.withRange((array, offset, length) => out.write(array, offset, length))
     def head(major: Int, value: BigInt): Unit =

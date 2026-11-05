@@ -7,7 +7,6 @@ import ChainSync.*
 object FixtureChainModel:
   enum Error:
     case Protocol(cause: ProtocolError)
-    case CandidateLimitExceeded
     case UnofferedIntersection
     case UnknownOrPrunedRollbackTargetReintersectionRequired
     case ModelHistoryLimitExceededReintersectionRequired
@@ -45,8 +44,7 @@ object FixtureChainModel:
     ): Either[Error, Model] =
       val change: Either[Error, (Vector[Point], Vector[Point], String)] = message match
         case Message.FindIntersect(points) =>
-          if points.size > Limits().maxCandidates then Left(Error.CandidateLimitExceeded)
-          else Right((history, points, "find-intersect"))
+          Right((history, points, "find-intersect"))
         case Message.IntersectFound(point, _) =>
           if !offered.contains(point) then Left(Error.UnofferedIntersection)
           else
@@ -90,8 +88,7 @@ object FixtureChainModel:
       case Message.IntersectFound(p, tip) => Vector(p, tip.point)
       case Message.IntersectNotFound(tip) => Vector(tip.point)
       case _                              => Vector.empty
-    if points.size > Limits().maxCandidates || !points.forall(validPoint) then
-      Left(Error.ModelRequiresBoundedCardanoWidthSyntheticPoints)
+    if !points.forall(validPoint) then Left(Error.ModelRequiresBoundedCardanoWidthSyntheticPoints)
     else Right(())
 
   def start(history: Vector[Point] = Vector(Point.Origin)): Either[Error, Model] =
@@ -105,7 +102,7 @@ object FixtureChainModel:
       candidates: Vector[Point],
       serverHistory: Vector[Point]
   ): Either[Error, Option[Point]] =
-    if candidates.size > Limits().maxCandidates || serverHistory.size > MaxHistory || !candidates
+    if serverHistory.size > MaxHistory || !candidates
         .forall(validPoint) || !serverHistory.forall(validPoint)
     then Left(Error.IntersectionModelBoundExceeded)
     else Right(candidates.find(serverHistory.contains))

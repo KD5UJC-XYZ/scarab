@@ -79,8 +79,8 @@ final class ChainServer[F[_]: Async] private (
     */
   def blockSource(failed: Fatal => F[Unit]): Resource[F, ChainSyncServer.Source[F, RawNtNBlock]] =
     cursor(
-      served => RawNtNBlock.from(served.raw).toOption,
-      raw => RawNtNBlock.from(raw).toOption,
+      served => Some(xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.localBlock(served.raw)),
+      raw => Some(xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.localBlock(raw)),
       failed
     )
 

@@ -154,6 +154,10 @@ class PeerSuite extends ScalaCheckSuite:
     // the multiplexer cannot read
     assertEquals(classified(NetworkError.IngressLimit(2, 462100L)), FailureClass.Misbehaved)
     assertEquals(
+      classified(NetworkError.ReceiveCapacityExceeded(5, 2000L, 1500L)),
+      FailureClass.NotThePeers
+    )
+    assertEquals(
       classified(
         NetworkError.TxSubmission(
           xyz.kd5ujc.scarab.network.TxSubmissionPolicy.Violation.Outstanding(10, 1)

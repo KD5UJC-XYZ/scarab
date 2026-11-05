@@ -269,6 +269,52 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
       }
     }.map(r => assertEquals(r, Right(true)))
 
+  test("unbounded protocol sending retains SDU framing without the local message-size policy"):
+    val config =
+      Mux.Config.nodeToClient.copy(role = Mux.Role.Initiator, maxMessageBytes = 100, sduSize = 200)
+    typed {
+      linked(
+        protocols = Set(Protocols.ChainSync),
+        client = config,
+        server = config.copy(role = Mux.Role.Responder)
+      ).use { (client, server) =>
+        for
+          c <- client.channel(Protocols.ChainSync)
+          s <- server.channel(Protocols.ChainSync)
+          _ <- c.sendUnbounded(payload(500))
+          got <- s.recvUnbounded(exactly(500))
+        yield got
+      }
+    }.map(result => assertEquals(result, Right(payload(500))))
+
+  test("an unbounded local receive reports representation capacity separately from ingress policy"):
+    val config = Mux.Config.nodeToClient.copy(
+      role = Mux.Role.Initiator,
+      sduSize = 1000,
+      receiveBufferLimit = 1500
+    )
+    typed {
+      linked(
+        protocols = Set(Protocols.LocalChainSync),
+        client = config,
+        server = config.copy(role = Mux.Role.Responder)
+      ).use { (client, server) =>
+        for
+          c <- client.channel(Protocols.LocalChainSync)
+          s <- server.channel(Protocols.LocalChainSync)
+          _ <- c.send(payload(2000))
+          _ <- s.recvUnbounded[Unit](_ =>
+            xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult.NeedMore
+          )
+        yield ()
+      }
+    }.map(result =>
+      assertEquals(
+        result,
+        Left(NetworkError.ReceiveCapacityExceeded(Protocols.LocalChainSync, 2000, 1500))
+      )
+    )
+
   test(
     "a queued SDU that would overflow the receive buffer waits until the complete message is delivered"
   ):

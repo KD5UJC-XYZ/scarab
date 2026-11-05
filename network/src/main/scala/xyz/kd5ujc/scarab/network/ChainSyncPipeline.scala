@@ -86,7 +86,7 @@ private[network] object ChainSyncPipeline:
             )
             .flatMap(timeout =>
               Timed.within(timeout, id, current.toString)(
-                channel.recv(settings.limits.maxMessageBytes)(
+                channel.recvWithin(settings.limits.messageByteLimit)(
                   ChainSyncEngine.decodePrefix(
                     current,
                     Role.Server,
@@ -207,7 +207,7 @@ private[network] object ChainSyncPipeline:
                               )
                               .fold(
                                 cause => NetworkError.IllegalTransition(id, cause).raise[F, Unit],
-                                channel.send
+                                channel.sendUnbounded
                               )
                           }) *>
                           submissions.offer(Request(hook))

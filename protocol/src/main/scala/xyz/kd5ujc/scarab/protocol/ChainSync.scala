@@ -66,42 +66,39 @@ object ChainSync:
     case Failed(error: ProtocolError)
     case Decoded(value: A, consumed: Int)
 
-  /** Bounds are local policy. 65535 is the pinned network smallByteLimit per message on
-    * node-to-node. `local` lifts the message and string bound to the 2.5 MB of a mux message, for
-    * the node-to-client protocol, which carries whole blocks and has no byte limit upstream.
-    *
-    * @param maxItems
-    *   the most CBOR items of a message: 65535, so that within the 65535 bytes of a node-to-node
-    *   message, where every item takes a byte, it never binds; the reference counts none (#755).
-    * @param maxCandidates
-    *   the most points this node puts in a `MsgFindIntersect` it sends. One it receives is read
-    *   with `decodeList` and bounded by its bytes alone (`ChainSync/Codec.hs:165-166,209-214`,
-    *   ouroboros-network 2fb69829; #755).
+  /** Receive bounds. Node-to-node's `byteLimitsChainSync` uses `smallByteLimit` (65535) in every
+    * active state (ouroboros-network 2fb69829, `ChainSync/Codec.hs:39-51`). Items, nesting and
+    * strings cannot exceed the bytes that contain them; there is no smaller budget. Encoding has no
+    * such limit (`Codec.hs:124-125,204-207`).
     */
   final case class Limits(
       maxMessageBytes: Int = 65535,
-      maxDepth: Int = 24,
+      maxDepth: Int = 65535,
       maxItems: Int = 65535,
       maxStringBytes: Int = 65535,
-      maxCandidates: Int = 64,
-      maxHashBytes: Int = 64,
+      maxHashBytes: Int = 65535,
       local: Boolean = false
   ):
+    def messageByteLimit: Option[Int] = Option.unless(local)(maxMessageBytes)
+
     private[protocol] def valid: Boolean =
-      val ceiling = if local then 2500000 else 65535
-      maxMessageBytes > 0 && maxMessageBytes <= ceiling && maxDepth >= 0 && maxDepth <= 64 &&
-      maxItems > 0 && maxItems <= 65535 && maxStringBytes >= 0 && maxStringBytes <= ceiling &&
-      maxCandidates >= 0 && maxCandidates <= 1024 && maxHashBytes >= 0 && maxHashBytes <= 65535
+      val ceiling = if local then Int.MaxValue else 65535
+      maxMessageBytes > 0 && maxMessageBytes <= ceiling && maxDepth >= 0 && maxDepth <= ceiling &&
+      maxItems > 0 && maxItems <= ceiling && maxStringBytes >= 0 && maxStringBytes <= ceiling &&
+      maxHashBytes >= 0 && maxHashBytes <= ceiling
 
   object Limits:
-    /** The node-to-client profile: whole blocks (`RawNtNBlock`s up to 2499991 bytes) and the
-      * longest intersection list a client sends.
+    /** Node-to-client uses `runPeer`, without codec limits (ouroboros-consensus 82ecba32,
+      * `Network/NodeToClient.hs:438-453`). These maxima are the extent of the current `Bytes`
+      * representation, not a reference protocol limit; its mux queue is separately 0xffffffff.
       */
     val NodeToClient: Limits =
       Limits(
-        maxMessageBytes = 2500000,
-        maxStringBytes = 2500000,
-        maxCandidates = 1024,
+        maxMessageBytes = Int.MaxValue,
+        maxDepth = Int.MaxValue,
+        maxItems = Int.MaxValue,
+        maxStringBytes = Int.MaxValue,
+        maxHashBytes = Int.MaxValue,
         local = true
       )
 
@@ -160,7 +157,7 @@ object ChainSync:
     * (`Ouroboros/Network/Block.hs:319-325`, ouroboros-network 2fb69829).
     */
   private def readCardanoTip(reader: ProtocolWire.Reader)(using ProtocolWire.Scope): Tip =
-    if reader.arrayLength() != 2 then bad(ProtocolError.TipArity)
+    if reader.arrayArity() != 2 then bad(ProtocolError.TipArity)
     val point = get(cardano(reader.point()))
     Tip(point, reader.uint())
 
@@ -207,14 +204,14 @@ object ChainSync:
     val writer = new ChainSyncWire.Writer(limits)
     writer.point(point)
     val result = writer.result
-    get(validateItem(result, limits))
+    get(ProtocolWire.validateItem(result, ChainSyncWire.encoding(limits)))
     result
   }
   def encodeTip(tip: Tip, limits: Limits = Limits()): Either[ProtocolError, Bytes] = attempt {
     val writer = new ChainSyncWire.Writer(limits)
     writer.tip(tip)
     val result = writer.result
-    get(validateItem(result, limits))
+    get(ProtocolWire.validateItem(result, ChainSyncWire.encoding(limits)))
     result
   }
   def decodePoint(bytes: Bytes, limits: Limits = Limits()): DecodeResult[Point] =

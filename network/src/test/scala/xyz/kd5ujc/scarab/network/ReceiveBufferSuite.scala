@@ -92,6 +92,17 @@ class ReceiveBufferSuite extends FunSuite:
     assertEquals(ReceiveBuffer.room(limit - 1, limit - 1, limit, 1), Room.Fits)
   }
 
+  test("the local ingress allowance is distinct from the current contiguous buffer capacity") {
+    val capacity = ReceiveBuffer.MaxArray.toInt
+    assertEquals(IngressLimits.NodeToClientBytes, 0xffffffffL)
+    assert(IngressLimits.NodeToClientBytes > ReceiveBuffer.MaxArray)
+    assertEquals(
+      ReceiveBuffer.room(capacity - 1, capacity - 1, capacity, 1),
+      ReceiveBuffer.Room.Fits
+    )
+    assertEquals(ReceiveBuffer.room(capacity, capacity, capacity, 1), ReceiveBuffer.Room.TooLarge)
+  }
+
   test("a refused append leaves the buffer unchanged and fits once bytes are consumed") {
     val buffer = new ReceiveBuffer(1500)
     assert(buffer.append(bytes(0, 1000)))

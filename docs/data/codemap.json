@@ -188,6 +188,7 @@
       ],
       "suites": [
         "ChainSyncSuite",
+        "ChainSyncLimitsSuite",
         "BlockFetchSuite",
         "HandshakeSuite",
         "TxSubmission2Suite",

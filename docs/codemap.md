@@ -50,7 +50,7 @@ Pure Ouroboros mini-protocol codecs and state machines.
 
 | Package | Responsibility | Entry points | Suites | Decisions |
 |---|---|---|---|---|
-| protocol | Pure mini-protocol codecs and state machines, versions, era and header tags | `ChainSync`, `BlockFetch`, `Handshake`, `TxSubmission2`, `LocalStateQuery`, `Mux`, `KeepAlive`, `PeerSharing`, `LeiosFetch`, `LeiosNotify`, `LeiosWord`, `EbHash`, `LeiosTxHash` | `ChainSyncSuite`, `BlockFetchSuite`, `HandshakeSuite`, `TxSubmission2Suite`, `LocalStateQuerySuite`, `MuxSuite`, `KeepAliveSuite`, `LeiosCodecSuite`, `LeiosWordSuite`, `LeiosFetchDecoderSuite` | [ADR 0008](adr/0008-networking-mirrors-ouroboros-network.md), [design domain-errors](design/domain-errors.md) |
+| protocol | Pure mini-protocol codecs and state machines, versions, era and header tags | `ChainSync`, `BlockFetch`, `Handshake`, `TxSubmission2`, `LocalStateQuery`, `Mux`, `KeepAlive`, `PeerSharing`, `LeiosFetch`, `LeiosNotify`, `LeiosWord`, `EbHash`, `LeiosTxHash` | `ChainSyncSuite`, `ChainSyncLimitsSuite`, `BlockFetchSuite`, `HandshakeSuite`, `TxSubmission2Suite`, `LocalStateQuerySuite`, `MuxSuite`, `KeepAliveSuite`, `LeiosCodecSuite`, `LeiosWordSuite`, `LeiosFetchDecoderSuite` | [ADR 0008](adr/0008-networking-mirrors-ouroboros-network.md), [design domain-errors](design/domain-errors.md) |
 
 ## network
 
