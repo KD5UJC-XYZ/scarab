@@ -52,9 +52,9 @@ object LogRouterBenchMain extends IOApp.Simple:
       severity = if silenced then Map((Sink.File, Scope.All) -> Threshold.Silence) else Map.empty
     )
 
-  /** `writers` fibers, each writing its share of `lines`, all started before the clock is read, so
-    * the `tell` calls overlap and the lock is contended. The sink is emptied first, so the digest
-    * taken after a round is that round's bytes.
+  /** `writers` fibers, each writing its share of `lines`, started one per fiber after the clock is
+    * read, so the starts fall inside the timing and the `tell` calls overlap on the lock. The sink
+    * is emptied first, so the digest taken after a round is that round's bytes.
     */
   private def round(s: LogSettings, w: Int, file: Path): IO[Long] =
     IO.blocking(Files.deleteIfExists(file)) *> LogRouter.resource[IO](s).use { log =>
