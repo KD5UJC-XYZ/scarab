@@ -5,6 +5,7 @@ import cats.Eval
 import cats.syntax.all.*
 import java.util.Base64
 import xyz.kd5ujc.scarab.plutus.{EvalRequest, PlutusData, PlutusLanguage}
+
 import ReferenceDocument.{Doc, *}
 
 /** The Plutus V1/V2/V3 context diagnostic instances, at plutus 507cab8c:

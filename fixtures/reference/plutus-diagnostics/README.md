@@ -34,4 +34,5 @@ Reference definitions:
   and [prettyprinter1.7.2 algebra/layout](https://hackage.haskell.org/package/prettyprinter-1.7.2/docs/src/Prettyprinter.Internal.html).
 
 Regenerate/verify with the [oracle recipe](../../../scripts/oracle/plutus/diagnostics/README.md).
-Raw build and test artifacts are not published.
+Inputs and observer code are original Apache-2.0 material; upstream package licenses and notices
+are described in [NOTICE](../../../NOTICE). Raw build and test artifacts are not published.
