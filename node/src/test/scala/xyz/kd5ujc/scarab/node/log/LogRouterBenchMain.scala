@@ -53,8 +53,8 @@ object LogRouterBenchMain extends IOApp.Simple:
     )
 
   /** `writers` fibers, each writing its share of `lines`, all started before the clock is read, so
-    * the `tell`s overlap and the lock is contended. The sink is emptied first, so the digest taken
-    * after a round is that round's bytes.
+    * the `tell` calls overlap and the lock is contended. The sink is emptied first, so the digest
+    * taken after a round is that round's bytes.
     */
   private def round(s: LogSettings, w: Int, file: Path): IO[Long] =
     IO.blocking(Files.deleteIfExists(file)) *> LogRouter.resource[IO](s).use { log =>
