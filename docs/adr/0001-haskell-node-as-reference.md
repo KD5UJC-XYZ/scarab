@@ -42,3 +42,33 @@ seems impossible, stop and ask the owner.
 
 Networking is mirrored in structure and behaviour too
 ([0008](0008-networking-mirrors-ouroboros-network.md)).
+
+## Amendment (2026-11-04): exact diagnostic and refusal parity
+
+The owner's direction supersedes the diagnostic-wording waiver recorded in
+[#208](https://github.com/KD5UJC-XYZ/scarab/issues/208), including its folded continuation in
+[#491](https://github.com/KD5UJC-XYZ/scarab/issues/491). Complete diagnostic and refusal presentation
+is required reference fidelity, rather than optional work contingent on a consumer.
+
+At each supported reference-facing interface, Scarab mirrors the pinned reference's complete
+encoded refusal, embedded diagnostic text and corresponding CLI presentation for the same inputs
+and configuration. Constructor names, field and failure order, escaping, Unicode, numeric forms,
+whitespace and line layout are part of that comparison. This applies across mirrored subsystems;
+there is no separate wording waiver for another printer. Existing explicitly approved deviations
+outside this diagnostic-wording waiver retain their authority.
+
+A staged implementation declares its exact coverage and records the remaining categories under
+[#796](https://github.com/KD5UJC-XYZ/scarab/issues/796). Incomplete categories, missing captures and
+provider-message fallbacks are not conformance passes. Comparisons have no diagnostic masks,
+expected divergences or tolerance. Historical evidence retains the scope actually measured.
+
+Scarab-specific service defects without a native rejection counterpart remain typed defects.
+A presentation defect ends the affected connection under [ADR 0017](0017-fibers-end-with-values.md),
+retaining its typed cause; it must not fabricate substitute rejection bytes. This does not excuse
+an unimplemented reference diagnostic. If a required reference output is demonstrably variable or
+otherwise impossible to reproduce, retain a minimal reproducer and proof of exposure, keep that
+category incomplete, and bring the precise blocker to the owner. No agent may normalize it or
+create another exception unilaterally.
+
+[The implementation plan](../design/diagnostic-parity.md) defines the inventory, oracle and closure
+work; this amendment is the authoritative policy.

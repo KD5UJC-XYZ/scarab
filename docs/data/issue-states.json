@@ -143,7 +143,6 @@
   "179": ["closed", "completed", false],
   "189": ["closed", "completed", false],
   "195": ["closed", "completed", false],
-  "208": ["closed", "not_planned", false],
   "222": ["open", "", false],
   "223": ["closed", "completed", false],
   "224": ["closed", "completed", false],
@@ -158,6 +157,6 @@
   "288": ["closed", "completed", false],
   "290": ["closed", "completed", false],
   "349": ["open", "", false],
-  "491": ["open", "", false]
+  "796": ["open", "", true]
  }
 }

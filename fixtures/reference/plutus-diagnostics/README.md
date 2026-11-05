@@ -19,7 +19,7 @@ in their existing corpora and are compared unconditionally by `ContextRefusalRea
 
 This finite corpus does not establish every possible layout, ledger admission, arbitrary UPLC term
 printing or every CEK error constructor. This change renders explicit UPLC `error` descriptions;
-remaining error printers are tracked in [#491](https://github.com/KD5UJC-XYZ/scarab/issues/491).
+complete remaining error/term/refusal parity is required under [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796).
 The raw-reason recordings still missing from the other context corpora are tracked in
 [#434](https://github.com/KD5UJC-XYZ/scarab/issues/434).
 

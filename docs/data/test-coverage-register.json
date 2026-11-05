@@ -622,7 +622,7 @@
       "rationale": "First-failure comparisons cannot show check-order regressions or a missing accumulated failure, and replays of accepted chains never contain a refused transaction.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
-      "resolution": "Every case must compare as complete ApplyTxErr bytes, including PlutusFailure text; no text masks, expected differences or canceled cases. The fixture manifest declares the required era/family scope (#401). Byron transaction errors remain outside that scope.",
+      "resolution": "Covered when every recorded case compares equal and the complete required era/family scope is covered (#401). Every retained case now compares complete bytes, including both former #491 explicit-error text gaps. The recorded corpus does not cover every evaluation-error constructor (#796), and missing raw context refusals remain #434.",
       "evidence": [
         "fixtures/reference/refusals/manifest.json",
         "fixtures/reference/refusals/README.md",
@@ -692,12 +692,30 @@
       "rationale": "The reference failure description includes the script/hash, CEK error, protocol version and formatted context; a short provider message or constructor-name containment cannot establish byte equality.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/781",
-      "resolution": "Retain all native observations and whole refusal comparisons. The finite corpus covers explicit UPLC error descriptions; other CEK error printers remain tracked by #491, and unrecorded raw reasons remain #434.",
+      "resolution": "Retain all native observations and whole refusal comparisons. The finite corpus covers explicit UPLC error descriptions; other CEK error printers remain required under #796, and unrecorded raw reasons remain #434.",
       "evidence": [
         "fixtures/reference/plutus-diagnostics/README.md",
         "fixtures/reference/plutus-diagnostics/provenance.json",
         "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/PlutusContextTextSuite.scala",
         "node/src/test/scala/xyz/kd5ujc/scarab/ledger/ContextRefusalReasonSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "reference-diagnostic-presentation",
+      "classification": "native-parity",
+      "status": "open",
+      "scope": "Complete diagnostics and refusal presentation at supported reference-facing interfaces across mirrored subsystems, including all evaluation-error constructors and raw refusal recordings.",
+      "assertion": "Require the complete native bytes and corresponding text for every inventoried category; distinguish API-only evidence, actual wire exposure and missing cases. No provider-message fallback, mask, divergence or cancellation establishes conformance.",
+      "rationale": "Finite explicit-error context controls do not establish full error-printer or codebase-wide diagnostic parity; the earlier wording waiver is superseded.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/796",
+      "resolution": "Complete the inventory, native exposure and repeatability proofs, lossless typed diagnostics, full printers and provenance-bound raw captures described in the diagnostic plan. Any demonstrated native variability on a required boundary remains an explicit owner blocker.",
+      "evidence": [
+        "docs/adr/0001-haskell-node-as-reference.md",
+        "docs/design/diagnostic-parity.md",
+        "fixtures/reference/plutus-diagnostics/README.md",
         "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
       ],
       "candidateRequired": true
