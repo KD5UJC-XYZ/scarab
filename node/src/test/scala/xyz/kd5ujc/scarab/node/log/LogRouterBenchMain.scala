@@ -69,8 +69,14 @@ object LogRouterBenchMain extends IOApp.Simple:
   private def bytes(file: Path): IO[String] =
     IO.blocking(if Files.exists(file) then s"${Files.size(file)}" else "none")
 
+  /** Empties the sink, then measures, so the digest that follows a writer count is one round's
+    * bytes rather than every round's.
+    */
+  private def measure(name: String, s: LogSettings, w: Int, file: Path): IO[Unit] =
+    IO.blocking(Files.deleteIfExists(file)) *> rounds(name, s, w)
+
   /** One warm-up round, then two timed rounds of which the faster is reported. */
-  private def measure(name: String, s: LogSettings, w: Int): IO[Unit] =
+  private def rounds(name: String, s: LogSettings, w: Int): IO[Unit] =
     round(s, w) *> List.fill(2)(()).traverse(_ => round(s, w)).map { times =>
       val nanos = times.min
       val us = nanos.toDouble / lines / 1000.0
@@ -88,10 +94,9 @@ object LogRouterBenchMain extends IOApp.Simple:
         "silenced" -> dir.resolve("silenced.jsonl")
       )
       configs.traverse_ { (name, file) =>
-        // each round opens the file afresh, so a configuration's rounds are independent
+        // each round starts from an empty file, so a configuration's rounds are independent
         val s = settings(file, silenced = name == "silenced")
-        writers
-          .traverse_(w => IO.blocking(Files.deleteIfExists(file)) *> measure(name, s, w)) *>
+        writers.traverse_(w => measure(name, s, w, file)) *>
           bytes(file).map(n => println(s"DIGEST config=$name bytes=$n"))
       }
     }
