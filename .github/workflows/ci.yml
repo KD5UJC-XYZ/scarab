@@ -3,7 +3,6 @@ name: CI
 
 on:
   pull_request:
-    branches: [main, dev, release/alpha, release/beta, release/preprod, release/prod]
   push:
     branches: [main]
 
@@ -87,6 +86,8 @@ jobs:
         run: python3 scripts/check_test_coverage.py
       - name: Closed error channel guard
         run: python3 scripts/check_error_channels.py
+      - name: Diagnostic presentation source and native constructor inventory
+        run: python3 scripts/check_diagnostic_presentation.py
       - name: No new try/catch/finally in main sources
         run: python3 scripts/check_imperative.py
       - name: No absolute home paths in tracked files
