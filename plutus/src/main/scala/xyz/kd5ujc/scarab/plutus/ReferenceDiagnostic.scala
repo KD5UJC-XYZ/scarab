@@ -77,8 +77,18 @@ object ReferenceDiagnostic:
     case MissingCaseBranch(index: BigInt)
     case Panic(nativeException: String)
 
+  /** Typed inputs to DefaultUniverse.hs:919-1034 and Builtin/Case.hs:63-67. */
+  enum CaseBuiltinError:
+    case Unavailable(protocol: BigInt)
+    case OutOfBounds(value: Constant, branches: BigInt)
+    case ExpectedNonEmptyList
+    case DataUnsupported
+    case NonConstructorData
+    case UnsupportedType(universe: Universe)
+    case NativeMessage(text: String)
+
   enum CekUserError:
-    case CaseBuiltin(nativeError: String)
+    case CaseBuiltin(cause: CaseBuiltinError)
     case OutOfBudget(remaining: Budget)
     case EvaluationFailure
 
