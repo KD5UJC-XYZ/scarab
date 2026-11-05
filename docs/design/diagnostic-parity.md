@@ -162,3 +162,42 @@ owned generated outputs and containers under AGENTS.md. Missing implementation o
 corresponding entry incomplete. The general coverage row's `candidateRequired` flag remains false:
 that flag controls release-candidate gating, not whether #796 is required implementation work. This
 decision adds no separate release-pipeline rule and does not claim #796 completion.
+
+## Printer implementation and evidence
+
+**Status: Implemented presentation components; integration and final stack validation pending.**
+The pure `ReferenceDiagnostic` input retains terms, typed constants/universes, exact budgets,
+optional cause terms and all five native evaluation-error families. Native text payloads are accepted
+only where an explicitly constructed native API value itself contains text. Runtime adapters must
+supply typed source operands; provider exception messages are not a presentation alternative.
+
+`ReferenceDocument` implements both first-line and indentation-sensitive fitting over memoized,
+trampolined layout streams. Its alternatives examine the laid-out continuation, including independent
+choices by later groups. It retains the native distinction between hard lines and flattenable text
+newlines, resolved ribbon columns, logical negative indentation and suppression of empty-line spaces.
+See [prettyprinter 1.7.2, `Internal.hs`](https://hackage.haskell.org/package/prettyprinter-1.7.2/src/src/Prettyprinter/Internal.hs),
+`layoutPretty` and `layoutSmart` (lines 1925–2149).
+
+`ReferenceUplc` implements classic and readable terms, named De Bruijn indices, all pinned universe
+constructors and every constant representation, including arrays, BLS elements, opaque Miller-loop
+results and values. Its `PrettyConst` text preserves the pinned GHC printable Unicode classification
+and reuses `HaskellShow.literalChar` for nonprintable escapes. Scalar unit/bool/integer lists use the
+native `PrettyAny` whole-list `Show` override; compound lists keep document layout.
+The authoritative instances are [UPLC classic](https://github.com/IntersectMBO/plutus/blob/507cab8cf6192e5143f12be5b2d3005a2928dc6d/plutus-core/untyped-plutus-core/src/UntypedPlutusCore/Core/Instance/Pretty/Classic.hs#L23-L80),
+[UPLC readable](https://github.com/IntersectMBO/plutus/blob/507cab8cf6192e5143f12be5b2d3005a2928dc6d/plutus-core/untyped-plutus-core/src/UntypedPlutusCore/Core/Instance/Pretty/Readable.hs),
+and [`PrettyConst.hs`, lines 99–180](https://github.com/IntersectMBO/plutus/blob/507cab8cf6192e5143f12be5b2d3005a2928dc6d/plutus-core/plutus-core/src/PlutusCore/Pretty/PrettyConst.hs#L99-L180).
+
+`ReferenceEvaluationText` keeps derived outer `Show` separate from `Pretty`. In particular, CEK
+`Show` renders the readable cause with `layoutSmart`, while `Pretty` renders the classic cause.
+All machine, user, free-variable, decoding, budget, mismatch and invalid-return constructors have
+explicit cases. Native version-availability types include diagnostic-only Plutus V4 without adding
+an executable language profile. Source authorities are [`Common/Eval.hs`, lines 58–87](https://github.com/IntersectMBO/plutus/blob/507cab8cf6192e5143f12be5b2d3005a2928dc6d/plutus-ledger-api/src/PlutusLedgerApi/Common/Eval.hs#L58-L87)
+and [`ErrorWithCause.hs`, lines 40–62](https://github.com/IntersectMBO/plutus/blob/507cab8cf6192e5143f12be5b2d3005a2928dc6d/plutus-core/plutus-core/src/PlutusCore/Evaluation/ErrorWithCause.hs#L40-L62).
+
+On 2026-11-05, the Docker JDK 25.0.4.1 targeted run
+`node/testOnly *ReferenceEvaluationTextSuite *ReferenceDocumentSuite *PlutusContextTextSuite *ScriptResultWireSuite`
+passed 530 checks, including 464 independent native term/error/document observations, the original
+context and whole-refusal controls, and small-stack deep-term checks. Native expected strings were
+not edited. That dated development result precedes final fixture expansion, stack rebasing, full
+preflight, area scenarios and independent final-head review; it does not establish general diagnostic
+conformance or readiness. Native API controls are distinct from signed node-wire recordings.

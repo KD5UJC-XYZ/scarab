@@ -17,7 +17,7 @@ private[scarab] object HaskellShow:
   /** `showLitChar c`, where `next` is the first character of what follows (`protectEsc` inspects
     * it), or -1 when what follows cannot start with a digit or `H`.
     */
-  private def litChar(c: Int, next: Int): String =
+  def literalChar(c: Int, next: Int): String =
     if c > 0x7f then if isDec(next) then s"\\$c\\&" else s"\\$c"
     else if c == 0x7f then "\\DEL"
     else if c == '\\' then "\\\\"
@@ -40,7 +40,8 @@ private[scarab] object HaskellShow:
     points.indices
       .map { i =>
         val c = points(i)
-        if c == '"' then "\\\"" else litChar(c, if i + 1 < points.size then points(i + 1) else -1)
+        if c == '"' then "\\\""
+        else literalChar(c, if i + 1 < points.size then points(i + 1) else -1)
       }
       .mkString("\"", "", "\"")
 
@@ -51,4 +52,4 @@ private[scarab] object HaskellShow:
   def bytes(value: Bytes): String = litString(value.value.map(_ & 0xff))
 
   /** `show` of a `Char`. */
-  def char(c: Int): String = if c == '\'' then "'\\''" else s"'${litChar(c, -1)}'"
+  def char(c: Int): String = if c == '\'' then "'\\''" else s"'${literalChar(c, -1)}'"
