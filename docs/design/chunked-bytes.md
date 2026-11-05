@@ -76,15 +76,17 @@ or output must fit `Bytes`; they do not establish unlimited capacity. Generic pa
 use `StreamingDecoder.bounded` retain their own contiguous representation contract. Explicit
 conversions preserve a typed `ChunkedBytes.Error` rather than presenting capacity as a protocol rule.
 
-`ChunkedChainSyncSuite` checks the native opaque serialized-byte case above 2 GiB, including the
-incremental payload/wire hashes, fragmented wrapper refusals and a small-stack continuation.
+`ChunkedChainSyncSuite` checks the [maintained native opaque serialized-byte witness](../../fixtures/reference/chainsync-wide-serialised/README.md)
+above 2 GiB, including the incremental payload/wire hashes, fragmented wrapper refusals and a
+small-stack continuation.
 `ChunkedChainSyncClientSuite` exercises both ordinary and rolling clients with a receive array
 smaller than the payload. Egress tests cover internal chunk boundaries and accounting beyond a
 `Long` sum; the `chainsync-ntc-response-streamed` fuzz target compares finite fragmented inputs
 against the independently implemented buffered decoder, including values, errors and first-message
 consumption. These tests concern opaque serialization, not ledger-valid giant blocks.
 
-Ledger CBOR spans, complete block/transaction decoding and validation, hash/signature callers,
+Other local mini-protocol payload APIs (LocalStateQuery, LocalTxSubmission and LocalTxMonitor),
+ledger CBOR spans, complete block/transaction decoding and validation, hash/signature callers,
 builders and stores still use their existing bounded representations. The production local server
 wraps the bytes supplied by its validated storage source; it does not make that source capable of
 validating or storing a multi-gigabyte block. Those consumers require a separate migration that

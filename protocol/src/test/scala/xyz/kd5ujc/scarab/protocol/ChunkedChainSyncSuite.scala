@@ -3,6 +3,8 @@ package xyz.kd5ujc.scarab.protocol
 
 import cats.data.Chain
 import java.security.MessageDigest
+import java.nio.file.{Files, Path}
+import io.circe.parser.parse
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.{Bytes, ChunkedBytes}
 
@@ -43,25 +45,53 @@ class ChunkedChainSyncSuite extends munit.FunSuite:
     loop(decoder.initial, chunks, Bytes.empty, 0L)
 
   test("native opaque serialized value crosses 2 GiB without a whole-message array") {
-    val megabyte = Bytes.fromArray(Array.fill[Byte](1024 * 1024)(0xa5.toByte))
-    val body =
-      right(ChunkedBytes.fromChunks(Chain.fromSeq(Vector.fill(2048)(megabyte)).append(hex("a5"))))
+    val expected = right(
+      parse(
+        Files.readString(
+          Path.of(
+            "fixtures/reference/chainsync-wide-serialised/expected.json"
+          )
+        )
+      )
+    ).hcursor
+    assertEquals(right(expected.get[Int]("schemaVersion")), 1)
+    assertEquals(right(expected.get[Boolean]("accepted")), true)
+    val recipe = expected.downField("recipe")
+    val length = right(recipe.get[Long]("payloadLength"))
+    assert(length > Int.MaxValue.toLong)
+    val chunkSize = right(expected.get[Int]("feedChunkBytes"))
+    val byte = right(recipe.get[Int]("payloadByte"))
+    assert(chunkSize > 0 && byte >= 0 && byte <= 255)
+    val chunk = Bytes.fromArray(Array.fill[Byte](chunkSize)(byte.toByte))
+    @tailrec def repeat(remaining: Long, out: Chain[Bytes]): Chain[Bytes] =
+      if remaining == 0 then out
+      else
+        val count = math.min(remaining, chunkSize.toLong).toInt
+        repeat(remaining - count, out.append(chunk.take(count)))
+    val body = right(ChunkedBytes.fromChunks(repeat(length, Chain.empty)))
+    val prefix = hex(right(recipe.get[String]("prefixHex")))
+    val suffix = hex(right(recipe.get[String]("suffixHex")))
+    val payloadHash = right(expected.downField("payload").get[String]("sha256"))
     val block = CardanoBlockFetch.localBlock(body)
     val message = Message.RollForward(block, Tip.Origin)
     val wire =
       right(ChainSync.encodeChunked(State.NextCanAwait, Role.Server, message, codec, limits))
     // Executed pinned native codec/plain runPeer witness; opaque bytes, not a valid ledger block.
-    assertEquals(body.size, 2147483649L)
-    assertEquals(wire.size, 2147483661L)
-    assertEquals(right(right(wire.take(9)).toBytes(9)), hex("8302d8185a80000001"))
-    assertEquals(right(right(wire.slice(wire.size - 3, wire.size)).toBytes(3)), hex("828000"))
-    assertEquals(sha(body), "114193d08794979d627c89a4493957fe87b8f66bd9ed5c1ab56e123d4ff73229")
-    assertEquals(sha(wire), "39a939abf8a81382ee7228368d99477730822a75a5a3de0b4dcb2b79867ba656")
+    assert(body.size > Int.MaxValue.toLong)
+    assertEquals(body.size, right(expected.downField("payload").get[Long]("bytes")))
+    assertEquals(wire.size, right(expected.downField("wire").get[Long]("bytes")))
+    assertEquals(right(right(wire.take(prefix.size)).toBytes(prefix.size)), prefix)
+    assertEquals(
+      right(right(wire.slice(wire.size - suffix.size, wire.size)).toBytes(suffix.size)),
+      suffix
+    )
+    assertEquals(sha(body), payloadHash)
+    assertEquals(sha(wire), right(expected.downField("wire").get[String]("sha256")))
     assertEquals(
       codec.encode(block),
       Left(
         ProtocolError.ChunkedRepresentation(
-          ChunkedBytes.Error.ContiguousLimitExceeded(body.size + 7, Int.MaxValue)
+          ChunkedBytes.Error.ContiguousLimitExceeded(body.size + prefix.size - 2, Int.MaxValue)
         )
       )
     )
@@ -72,7 +102,7 @@ class ChunkedChainSyncSuite extends munit.FunSuite:
       case Message.RollForward(value, tip) =>
         assertEquals(value.bytes.size, body.size)
         assertEquals(tip, Tip.Origin)
-        assertEquals(sha(value.bytes), sha(body))
+        assertEquals(sha(value.bytes), payloadHash)
       case other => fail(s"unexpected response: $other")
   }
 
