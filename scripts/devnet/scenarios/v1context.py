@@ -76,6 +76,7 @@ class Driver:
         self.models = {1: models["PlutusV1"], 2: models.get("PlutusV2"), 3: models.get("PlutusV3")}
         self.byron = self.byron_address()
         self.cases = []
+        self.submission = None
 
     # ------------------------------------------------------------ reference plumbing
     def sh(self, script, stdin=None, timeout=90):
@@ -96,8 +97,18 @@ class Driver:
         env = eratx.envelope(self.era, tx)
         r = self.sh(f"mkdir -p /work/tx && cat > /work/tx/{label}.tx && cardano-cli conway transaction submit "
                     f"{SOCKET} --tx-file /work/tx/{label}.tx", stdin=env)
-        text = (r.stderr or r.stdout).strip().split("CallStack")[0].strip()
-        return r.returncode == 0, text
+        from ..refusalrecording import capture
+        from ..refusalcorpus import sha256, write
+        accepted = r.returncode == 0
+        text = (r.stdout + r.stderr).strip()
+        wire = None if accepted else capture(self.name, self.era, tx)
+        self.submission = {"exit": r.returncode, "stdout": r.stdout, "stderr": r.stderr,
+                           "wire": wire}
+        if wire is not None:
+            directory = data_root(self.name) / "refusal-evidence"
+            write(directory / "states" / f"{sha256(wire.state)}.cbor", wire.state)
+            write(directory / "utxo" / f"{sha256(wire.utxo)}.cbor", wire.utxo)
+        return accepted, text
 
     def wait_gone(self, txid, ix, timeout=90):
         """The input is spent (or, for an invalid transaction, the collateral is)."""
@@ -188,7 +199,12 @@ class Driver:
             "costModels": {str(l - 1): [str(x) for x in self.models[l]] for l in languages},  # by language id, V1 is 0
             "clock": {},
             "txId": tid,
-            "reference": {"accepted": accepted, "expected": expect, "error": "" if accepted else text[:1500]},
+            "reference": {"accepted": accepted, "expected": expect, "error": "" if accepted else text,
+                          "reasonCbor": (self.submission["wire"].reasons[0].hex()
+                                         if self.submission["wire"] is not None else None),
+                          "cli": {key: self.submission[key] for key in ("exit", "stdout", "stderr")},
+                          "wire": (self.submission["wire"].evidence()
+                                   if self.submission["wire"] is not None else None)},
         }
         self.cases.append(case)
         verdict = "accepted" if accepted else "refused"
@@ -273,7 +289,7 @@ def run(driver):
                           reference_inputs=[(m[0], m[1]) for m in refs] or None, valid=valid)
         accepted, text = d.submit(tx, name)
         if accepted and not (d.wait_gone(coll[0], coll[1]) if not valid else d.wait_gone(fund[0], fund[1])):
-            accepted, text = False, "accepted by the node but not in a block in time"
+            raise RuntimeError("reference accepted the transaction but inclusion was not observed")
         resolved = {"spent": [fund] + list(spend_extra), "references": list(refs), "collateral": [coll]}
         agree = d.record(name, description, tx, tid, resolved, accepted, text, valid, sorted(scripts), expect)
         if agree and expect is not None and expect not in text:
