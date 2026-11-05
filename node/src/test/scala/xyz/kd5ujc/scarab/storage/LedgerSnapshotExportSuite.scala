@@ -132,7 +132,7 @@ class LedgerSnapshotExportSuite extends CatsEffectSuite:
     JFiles.createDirectories((db / "snapshots").toNioPath)
     JFiles.write(
       (db / "snapshots" / FileLedgerSnapshots.nameOf(anchor)).toNioPath,
-      FileLedgerSnapshots.closed(SnapshotV8.framed(bindingOf(db, anchor), sidecar, raw))
+      FileLedgerSnapshots.closed(SnapshotV9.framed(bindingOf(db, anchor), sidecar, raw))
     )
     ()
   }
@@ -275,7 +275,7 @@ class LedgerSnapshotExportSuite extends CatsEffectSuite:
         path = db / "snapshots" / FileLedgerSnapshots.nameOf(
           sidecar.anchor.getOrElse(fail("anchor"))
         )
-        content = SnapshotV8.framed(
+        content = SnapshotV9.framed(
           bindingOf(db, sidecar.anchor.getOrElse(fail("anchor"))),
           sidecar,
           raw

@@ -14,14 +14,15 @@ import xyz.kd5ujc.scarab.storage.{
   SnapshotV5,
   SnapshotV7,
   SnapshotV8,
+  SnapshotV9,
   StateSnapshot
 }
 
-/** Recorded-data tools consume checksummed native copies: current V8 files, and V5 and V7 files of
-  * the archived recorded corpora, which are brought to V8 in memory by the registered conversions
-  * ([[SnapshotV7.fromV5]], [[SnapshotV8.fromV7]]) exactly as opening their database would. Older
-  * historical captures remain archived; their conversion belongs to the pinned evidence recipe,
-  * rather than the test loader.
+/** Recorded-data tools consume checksummed native copies: current V9 files, and V5, V7 and V8 files
+  * of the archived recorded corpora, which are brought to V9 in memory by the registered
+  * conversions ([[SnapshotV7.fromV5]], [[SnapshotV8.fromV7]], [[SnapshotV9.fromV8]]) exactly as
+  * opening their database would. Older historical captures remain archived; their conversion
+  * belongs to the pinned evidence recipe, rather than the test loader.
   */
 object NativeSnapshots:
   def read[F[_]: Sync](
@@ -48,14 +49,16 @@ object NativeSnapshots:
       case Right(content) =>
         current(content).fold(
           error => Sync[F].pure(Left(error)),
-          SnapshotV8.format[F](SnapshotCheck.Full).decode(_)
+          SnapshotV9.format[F](SnapshotCheck.Full).decode(_)
         )
 
-  /** Current-format content of a verified file's content: a V5 or V7 content through the registered
-    * conversions, anything else unchanged (the V8 reader then judges it).
+  /** Current-format content of a verified file's content: a V5, V7 or V8 content through the
+    * registered conversions, anything else unchanged (the V9 reader then judges it).
     */
   def current(content: Array[Byte]): Either[StorageError, Array[Byte]] =
     if content.startsWith(SnapshotV5.Magic) then
-      SnapshotV7.fromV5(content).flatMap(SnapshotV8.fromV7)
-    else if content.startsWith(SnapshotV7.Magic) then SnapshotV8.fromV7(content)
+      SnapshotV7.fromV5(content).flatMap(SnapshotV8.fromV7).flatMap(SnapshotV9.fromV8)
+    else if content.startsWith(SnapshotV7.Magic) then
+      SnapshotV8.fromV7(content).flatMap(SnapshotV9.fromV8)
+    else if content.startsWith(SnapshotV8.Magic) then SnapshotV9.fromV8(content)
     else Right(content)

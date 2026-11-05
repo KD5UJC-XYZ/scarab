@@ -25,7 +25,7 @@ import xyz.kd5ujc.scarab.storage.{
   RocksUtxoStore,
   SnapshotCheck,
   SnapshotSidecar,
-  SnapshotV8,
+  SnapshotV9,
   StateBacking,
   StateSnapshot,
   UtxoCheckpoint
@@ -109,7 +109,7 @@ object SclsBase:
       _ <- lift(Either.cond(exists, (), Error.MissingSource(path)))
       raw <- guard(path)(Files.readAllBytes(path.toNioPath))
       content <- lift(FileLedgerSnapshots.verified(raw).leftMap(Error.Storage(_)))
-      sections <- lift(SnapshotV8.sections(content).leftMap(Error.Storage(_)))
+      sections <- lift(SnapshotV9.sections(content).leftMap(Error.Storage(_)))
       (binding, sidecar, _) = sections
       _ <- lift(Either.cond(sidecar.gaps.isEmpty, (), Error.Gaps(sidecar.gaps)))
       _ <- lift(
@@ -136,7 +136,7 @@ object SclsBase:
           Error.Unsettled(utxo.stamp, utxo.flushed, utxo.diff.size)
         )
       )
-      decoded <- SnapshotV8.format[F](SnapshotCheck.Full).decode(content)
+      decoded <- SnapshotV9.format[F](SnapshotCheck.Full).decode(content)
       snapshot <- lift(decoded.leftMap(Error.Storage(_)))
       ledgerEra = snapshot.state.ext.ledgerState.era
       headerEra = snapshot.state.ext.headerState.chainDep.era

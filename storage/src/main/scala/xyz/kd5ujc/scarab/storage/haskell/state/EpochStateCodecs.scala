@@ -3,8 +3,15 @@ package xyz.kd5ujc.scarab.storage.haskell.state
 
 import xyz.kd5ujc.scarab.codec.Value
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.models.runtime.{Codec, Decoded, Node, Writer}
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.models.runtime.{
+  Codec,
+  ConstraintViolation,
+  DecodeError,
+  Decoded,
+  Node,
+  Writer
+}
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
 
 import Wire.*
 
@@ -21,17 +28,33 @@ object Versions:
       case ShelleyBasedEra.SAlonzo  => 5L
       case ShelleyBasedEra.SBabbage => 7L
       case ShelleyBasedEra.SConway  => 9L
+      // `type ProtVerLow DijkstraEra = 12` (cardano-ledger 9df9f98c
+      // `libs/cardano-ledger-core/internal/Cardano/Ledger/Internal/Definition/Era.hs:140`)
+      case ShelleyBasedEra.SDijkstra => 12L
     ProtVer(Word64.fromUnsigned(major), Word64.zero)
+
+  /** A codec of a Dijkstra value this build does not read or write yet (#54): its decoder refuses
+    * with [[DijkstraNotYet.LedgerState]], and [[Codec.check]] refuses any value, so nothing is
+    * written.
+    */
+  def notYet[A](what: String): Codec[A] = new Codec[A]:
+    def decode(n: Node): Decoded[A] =
+      Left(DecodeError.at(n, DecodeError.Kind.Domain(DijkstraNotYet.LedgerState)))
+    // refused by `check`; never written
+    def encode(a: A, out: Writer): Unit = ()
+    override def check(a: A): Option[ConstraintViolation] =
+      Some(ConstraintViolation(what, "a value of an era this build writes", "Dijkstra"))
 
   /** The witness of a Shelley-based era; none for Byron. */
   def shelleyBased(era: Era): Option[ShelleyBasedEra[?]] = era match
-    case Era.Byron   => None
-    case Era.Shelley => Some(ShelleyBasedEra.SShelley)
-    case Era.Allegra => Some(ShelleyBasedEra.SAllegra)
-    case Era.Mary    => Some(ShelleyBasedEra.SMary)
-    case Era.Alonzo  => Some(ShelleyBasedEra.SAlonzo)
-    case Era.Babbage => Some(ShelleyBasedEra.SBabbage)
-    case Era.Conway  => Some(ShelleyBasedEra.SConway)
+    case Era.Byron    => None
+    case Era.Shelley  => Some(ShelleyBasedEra.SShelley)
+    case Era.Allegra  => Some(ShelleyBasedEra.SAllegra)
+    case Era.Mary     => Some(ShelleyBasedEra.SMary)
+    case Era.Alonzo   => Some(ShelleyBasedEra.SAlonzo)
+    case Era.Babbage  => Some(ShelleyBasedEra.SBabbage)
+    case Era.Conway   => Some(ShelleyBasedEra.SConway)
+    case Era.Dijkstra => Some(ShelleyBasedEra.SDijkstra)
 
 /** The era-dependent parts of the state and the records that hold them, up to `NewEpochState`
   * (`LedgerState/Types.hs`). The parts that depend on the era are chosen by the [[ShelleyBasedEra]]
@@ -106,7 +129,11 @@ trait EpochStateCodecs extends RewardCodecs:
       )
     )
 
-  /** The codec of the state of an era, at the version the reference writes it at. */
+  /** The codec of the state of an era, at the version the reference writes it at. Dijkstra's state
+    * is refused both ways ([[Versions.notYet]]): its parameters and its EPOCH's committee are not
+    * Conway's in this layout.
+    */
   given newEpochState[E <: EraTag](using era: ShelleyBasedEra[E]): Codec[NewEpochState[E]] =
     given ProtVer = Versions.eraLow(era)
-    newEpochStateAt[E]
+    if era == ShelleyBasedEra.SDijkstra then Versions.notYet("NewEpochState")
+    else newEpochStateAt[E]

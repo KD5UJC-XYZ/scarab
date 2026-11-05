@@ -78,6 +78,9 @@ enum LedgerDecodeError extends DomainError:
   case TransactionIndex(actual: Value, bound: Int)
   case LeiosCertificate(cause: xyz.kd5ujc.scarab.crypto.bls.BlsError)
 
+  /** A part of the Dijkstra era this build does not decode yet. */
+  case NotYet(part: xyz.kd5ujc.scarab.protocol.DijkstraNotYet)
+
   /** A datum, a redeemer's data or an inline datum that is not Plutus `Data` as Plutus's
     * `decodeData` reads it (#721).
     */
@@ -108,6 +111,14 @@ object LedgerDecodeError:
     * rendered the same way.
     */
   given Show[LedgerDecodeError] = Show.show(repr)
+
+  /** A transaction of Dijkstra is refused ([[NotYet]]); one of any other era is read on. */
+  def implemented(era: xyz.kd5ujc.scarab.protocol.Era): Either[LedgerDecodeError, Unit] =
+    Either.cond(
+      era != xyz.kd5ujc.scarab.protocol.Era.Dijkstra,
+      (),
+      NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Transaction)
+    )
 
   private def repr(x: Any): String = x match
     case site: DecodeSite => site.show

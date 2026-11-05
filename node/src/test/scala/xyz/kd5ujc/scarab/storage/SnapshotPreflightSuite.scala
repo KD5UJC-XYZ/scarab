@@ -24,12 +24,12 @@ class SnapshotPreflightSuite extends CatsEffectSuite:
     .fromDirectory(java.nio.file.Path.of("fixtures/eras/genesis"))
     .fold(e => fail(e.message), identity)
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-  private given SnapshotFormat[IO, MirrorState] = SnapshotV8.format[IO](SnapshotCheck.Full)
+  private given SnapshotFormat[IO, MirrorState] = SnapshotV9.format[IO](SnapshotCheck.Full)
   private val snapshotName = "snapshot-99999999999999999999-1.bin"
 
   private val versions =
     Vector(FormatVersion.V1, FormatVersion.V2, FormatVersion.V3, FormatVersion.V4)
-      .map(v => Some(v) -> FileKind.SnapshotFile.identifier(v)) :+ (None -> "SCRBSNP9")
+      .map(v => Some(v) -> FileKind.SnapshotFile.identifier(v)) :+ (None -> "SCRBSNPA")
 
   private def header(version: Option[FormatVersion], identifier: String): Array[Byte] =
     version match

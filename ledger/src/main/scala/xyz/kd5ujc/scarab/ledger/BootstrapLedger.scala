@@ -39,14 +39,15 @@ object ParamUpdate:
   final case class Rules(keys: Keys, maxMajor: BigInt)
 
   object Rules:
-    /** The rules of the update of `era`; none for Byron and Conway, which have no PPUP. */
+    /** The rules of the update of `era`; none for Byron, Conway and Dijkstra, which have no PPUP.
+      */
     def of(era: Era): Option[Rules] = era match
-      case Era.Shelley            => Some(Rules(Keys.ShelleyToMary, 3))
-      case Era.Allegra            => Some(Rules(Keys.ShelleyToMary, 4))
-      case Era.Mary               => Some(Rules(Keys.ShelleyToMary, 5))
-      case Era.Alonzo             => Some(Rules(Keys.Alonzo, 7))
-      case Era.Babbage            => Some(Rules(Keys.Babbage, 9))
-      case Era.Byron | Era.Conway => None
+      case Era.Shelley                           => Some(Rules(Keys.ShelleyToMary, 3))
+      case Era.Allegra                           => Some(Rules(Keys.ShelleyToMary, 4))
+      case Era.Mary                              => Some(Rules(Keys.ShelleyToMary, 5))
+      case Era.Alonzo                            => Some(Rules(Keys.Alonzo, 7))
+      case Era.Babbage                           => Some(Rules(Keys.Babbage, 9))
+      case Era.Byron | Era.Conway | Era.Dijkstra => None
 
   /** The update of a transaction or proposal from its map of field index to value, as the shared
     * sparse decoder of `PParamsUpdate` reads it below decoder version 12 (`SparseKeyed`,

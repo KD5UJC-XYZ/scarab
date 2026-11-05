@@ -86,6 +86,12 @@ object Block:
       era <- Era
         .fromBlockTag(tag)
         .toRight(fail(LedgerDecodeError.UnknownTag(DecodeField.BlockEra, tag)))
+      // a Dijkstra block (`[txs, leios_cert / nil, peras_cert / nil]` body) is [[LeiosBlock]]'s
+      _ <- Either.cond(
+        era != Era.Dijkstra,
+        (),
+        fail(LedgerDecodeError.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Block))
+      )
       block <-
         if era == Era.Byron then
           byronEpochSlots

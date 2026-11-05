@@ -41,7 +41,7 @@
                                    `e2e --oracle`, `soak --oracle` or `follow --dump-state`) with the
                                    Haskell ledger state db-analyser stores in the reference container
     devnet.py restart              up + follow --db, stop it with SIGTERM (the JVM must exit within 30 s, issue 89),
-                                   start it again (it must restore the snapshot, and the files are V8)
+                                   start it again (it must restore the snapshot, and the files are V9)
     devnet.py faults --seed N      the Scala node as pool 1 next to two Haskell pools, under a seeded schedule of network faults
                                    (tc netem latency and loss, partitions and heals, node crashes and restarts);
                                    convergence, growth, no fatal outcome and rejoin are checked, and the schedule

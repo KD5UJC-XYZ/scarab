@@ -30,7 +30,7 @@ object RewardSnapshotFixtureMain extends Assertions:
       case _         => fail("expected create or rewrite")
     val setup = NodeSetup.fromDirectory(Path.of(args(1))).fold(e => fail(e.toString), identity)
     given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-    val format = SnapshotV8.format[IO](SnapshotCheck.Full)
+    val format = SnapshotV9.format[IO](SnapshotCheck.Full)
     val snapshot = mode match
       case Mode.Rewrite =>
         format

@@ -550,7 +550,8 @@ object DetachedRecords:
       * transactions (`Block.hs:104-115`, `Alonzo/BlockBody/Internal.hs:215-240`).
       */
     val block: Shape = Sum(tag =>
-      Era.fromBlockTag(BigInt(tag)).filter(_ != Era.Byron) match
+      // a Dijkstra block has another body, refused by its decoder (`DijkstraNotYet.Block`)
+      Era.fromBlockTag(BigInt(tag)).filter(e => e != Era.Byron && e != Era.Dijkstra) match
         case Some(era) =>
           List(
             Fields(

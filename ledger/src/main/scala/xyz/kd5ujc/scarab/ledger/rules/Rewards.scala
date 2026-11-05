@@ -145,7 +145,8 @@ object Rewards:
   private def decentralisation[E <: EraTag](p: xyz.kd5ujc.scarab.ledger.ProtocolParams)(using
       era: ShelleyBasedEra[E]
   ): Rational = era match
-    case ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway => Rational.zero
+    case ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway | ShelleyBasedEra.SDijkstra =>
+      Rational.zero
     case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
         ShelleyBasedEra.SAlonzo =>
       p.d

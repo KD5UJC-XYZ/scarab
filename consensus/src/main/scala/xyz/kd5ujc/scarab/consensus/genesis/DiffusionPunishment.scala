@@ -47,12 +47,13 @@ object DiffusionPunishment:
   val initial: State = State.Byron(None)
 
   private def protocolEra[E <: EraTag](era: ShelleyBasedEra[E]): Era = era match
-    case ShelleyBasedEra.SShelley => Era.Shelley
-    case ShelleyBasedEra.SAllegra => Era.Allegra
-    case ShelleyBasedEra.SMary    => Era.Mary
-    case ShelleyBasedEra.SAlonzo  => Era.Alonzo
-    case ShelleyBasedEra.SBabbage => Era.Babbage
-    case ShelleyBasedEra.SConway  => Era.Conway
+    case ShelleyBasedEra.SShelley  => Era.Shelley
+    case ShelleyBasedEra.SAllegra  => Era.Allegra
+    case ShelleyBasedEra.SMary     => Era.Mary
+    case ShelleyBasedEra.SAlonzo   => Era.Alonzo
+    case ShelleyBasedEra.SBabbage  => Era.Babbage
+    case ShelleyBasedEra.SConway   => Era.Conway
+    case ShelleyBasedEra.SDijkstra => Era.Dijkstra
 
   def view(header: Header): Either[TentativeHeaderError, View] =
     Word64
@@ -81,6 +82,8 @@ object DiffusionPunishment:
                 case Era.Alonzo  => Right(View.Shelley(ShelleyBasedEra.SAlonzo, blockNo, identity))
                 case Era.Babbage => Right(View.Shelley(ShelleyBasedEra.SBabbage, blockNo, identity))
                 case Era.Conway  => Right(View.Shelley(ShelleyBasedEra.SConway, blockNo, identity))
+                case Era.Dijkstra =>
+                  Right(View.Shelley(ShelleyBasedEra.SDijkstra, blockNo, identity))
             yield result
       }
 

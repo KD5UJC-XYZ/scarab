@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.models.runtime.{
   Writer,
   at
 }
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
 
 import DecodeError.Kind
 import EraLedgerState.toEra
@@ -62,7 +62,11 @@ trait LedgerFileCodecs extends ConsensusCodecs:
     def decode(n: Node): Decoded[AnnTip] =
       Arr.exact(n, 2).flatMap { xs =>
         eraIndex.decode(xs(0)).at("era").flatMap { era =>
-          (if era == Era.Byron then byronTip(xs(1)) else shelleyTipIn(era, xs(0))(xs(1))).at("tip")
+          // the tip of a Dijkstra chain: its state is not read by this build
+          if era == Era.Dijkstra then
+            Left(DecodeError.at(xs(0), Kind.Domain(DijkstraNotYet.LedgerState)))
+          else if era == Era.Byron then byronTip(xs(1)).at("tip")
+          else shelleyTipIn(era, xs(0))(xs(1)).at("tip")
         }
       }
     def encode(a: AnnTip, out: Writer): Unit =

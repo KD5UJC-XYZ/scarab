@@ -90,9 +90,10 @@ object PreConway:
     * matched once, for the rule that is given a state of whichever era the chain is in.
     */
   def of[E <: EraTag](era: ShelleyBasedEra[E]): Option[PreConway[E]] = era match
-    case ShelleyBasedEra.SShelley => Some(summon[PreConway[Shelley]])
-    case ShelleyBasedEra.SAllegra => Some(summon[PreConway[Allegra]])
-    case ShelleyBasedEra.SMary    => Some(summon[PreConway[Mary]])
-    case ShelleyBasedEra.SAlonzo  => Some(summon[PreConway[Alonzo]])
-    case ShelleyBasedEra.SBabbage => Some(summon[PreConway[Babbage]])
-    case ShelleyBasedEra.SConway  => None
+    case ShelleyBasedEra.SShelley  => Some(summon[PreConway[Shelley]])
+    case ShelleyBasedEra.SAllegra  => Some(summon[PreConway[Allegra]])
+    case ShelleyBasedEra.SMary     => Some(summon[PreConway[Mary]])
+    case ShelleyBasedEra.SAlonzo   => Some(summon[PreConway[Alonzo]])
+    case ShelleyBasedEra.SBabbage  => Some(summon[PreConway[Babbage]])
+    case ShelleyBasedEra.SConway   => None
+    case ShelleyBasedEra.SDijkstra => None

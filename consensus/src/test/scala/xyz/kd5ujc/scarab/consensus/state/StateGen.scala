@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   BlockIssuer,
   BlockNo,
   Conway,
+  Dijkstra,
   EpochNo,
   EraTag,
   Genesis,
@@ -72,12 +73,13 @@ object StateGen:
         Gen
           .oneOf(ByronState.initial, ByronState.initial.copy(firstShelleyEpoch = Some(BigInt(4))))
           .map(EraLedgerState.ByronCurrent(_))
-      case Era.Shelley => packed[Shelley]
-      case Era.Allegra => packed[Allegra]
-      case Era.Mary    => packed[Mary]
-      case Era.Alonzo  => packed[Alonzo]
-      case Era.Babbage => packed[Babbage]
-      case Era.Conway  => packed[Conway]
+      case Era.Shelley  => packed[Shelley]
+      case Era.Allegra  => packed[Allegra]
+      case Era.Mary     => packed[Mary]
+      case Era.Alonzo   => packed[Alonzo]
+      case Era.Babbage  => packed[Babbage]
+      case Era.Conway   => packed[Conway]
+      case Era.Dijkstra => packed[Dijkstra]
 
   private val nonce: Gen[Nonce] = arb[Nonce]
   private val lastSlot: Gen[WithOrigin[SlotNo]] = arb[WithOrigin[SlotNo]]
@@ -156,7 +158,8 @@ object StateGen:
       .make(past, Current(bs(era.index), current))
       .fold(e => sys.error(e.show), identity)
 
-  val anyEra: Gen[Era] = Gen.oneOf(Era.values.toSeq)
+  /** An era a chain of this node can be in: not Dijkstra, which it does not enter yet (#54). */
+  val anyEra: Gen[Era] = Gen.oneOf(Era.values.toSeq.filter(_ != Era.Dijkstra))
 
   val cardanoLedgerState: Gen[CardanoLedgerState] = anyEra.flatMap(telescope(_, eraLedgerState))
 
