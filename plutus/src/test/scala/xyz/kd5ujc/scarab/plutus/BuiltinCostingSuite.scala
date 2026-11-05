@@ -24,11 +24,7 @@ import scalus.uplc.Program
   * is V3 from 11.
   */
 class BuiltinCostingSuite extends FunSuite:
-  private def resource(name: String): String =
-    val in = getClass.getResourceAsStream(s"/plutus-1.70.0.0/$name")
-    assert(in != null, name)
-    try String(in.readAllBytes(), "UTF-8")
-    finally in.close()
+  private def resource(name: String): String = PlutusConformanceSuite.resource(name)
 
   private def json(name: String): Json = parser.parse(resource(name)).fold(throw _, identity)
 

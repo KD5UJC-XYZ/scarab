@@ -85,6 +85,8 @@ jobs:
           '
       - name: Fixture identities and comparison contracts
         run: python3 scripts/check_test_coverage.py
+      - name: Plutus reference views match their recorded digests
+        run: python3 scripts/plutus_reference.py check
       - name: Closed error channel guard
         run: python3 scripts/check_error_channels.py
       - name: No new try/catch/finally in main sources
