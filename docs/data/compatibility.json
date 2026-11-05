@@ -1144,7 +1144,7 @@
           "CostModelNameTablesSuite"
         ],
         "paths": [
-          "plutus/src/test/resources/plutus-conformance-1.71.0.0/README.md",
+          "plutus/src/test/resources/plutus-reference/README.md",
           "fixtures/reference/leios-testnet-contexts/README.md",
           "scripts/oracle/leios-testnet/leios_context_cases.py"
         ]
