@@ -1,4 +1,5 @@
-### Fixed (ChainSync, #755)
+### Fixed (ChainSync, #755, #341)
 
-- The ChainSync server reads a `MsgFindIntersect` of any number of points within the 65535 bytes of a node-to-node message, as the reference's `decodeList decodePoint` does, where it refused more than 64 points or 8192 CBOR items. A node-to-node ChainSync message's items are bounded by its 65535 bytes; node-to-client has no protocol item budget.
+- The ChainSync server reads `MsgFindIntersect` lists within the reference's node-to-node message byte bound, including lists beyond the former candidate and CBOR-item caps.
+- The ChainSync client offers the reference's Fibonacci-spaced intersection points and fragment anchor, replacing the newest-16 and doubling-stride selection.
 - A ChainSync point or tip whose hash is not 32 bytes is refused, as consensus's `decodeRawHash` refuses it; it was read. Reference verdicts: `fixtures/reference/chainsync-find-intersect`.

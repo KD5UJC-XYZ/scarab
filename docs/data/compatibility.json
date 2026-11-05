@@ -232,13 +232,16 @@
           "HeaderGateSuite",
           "ConnectionManagerSuite",
           "ConnectionStateSuite",
-          "PraosHeaderValidationSuite"
+          "PraosHeaderValidationSuite",
+          "PeerSuite",
+          "PeerIntersectionSuite"
         ],
         "paths": [
           "fixtures/network"
         ],
         "issues": [
-          318
+          318,
+          341
         ]
       },
       "limitations": {
@@ -383,10 +386,17 @@
           "NodeToNodeSuite",
           "ChainServerSuite",
           "InboundGovernorSuite",
-          "TxSubmission2Suite"
+          "TxSubmission2Suite",
+          "ChainSyncFindIntersectReferenceSuite"
         ],
         "docs": [
           "docs/design/network-limits.md#reference-and-implementation-matrix"
+        ],
+        "paths": [
+          "fixtures/reference/chainsync-find-intersect/README.md"
+        ],
+        "issues": [
+          755
         ]
       },
       "page": "docs/compatibility/network-servers-duplex.md"
@@ -1464,13 +1474,16 @@
           "DeepQuerySuite",
           "NtcQueryArgumentsSuite",
           "NtcQueryRecordsSuite",
-          "QueryGoldenSuite"
+          "QueryGoldenSuite",
+          "ChainSyncFindIntersectReferenceSuite",
+          "LocalTxMonitorServerSuite"
         ],
         "paths": [
           "fixtures/reference/ntc-query-arguments/cases.jsonl",
           "scripts/oracle/ntc-query-arguments/cases.py",
           "fixtures/reference/byron-update-state/cases.jsonl",
-          "scripts/oracle/byron-update-state/cases.py"
+          "scripts/oracle/byron-update-state/cases.py",
+          "fixtures/reference/chainsync-find-intersect/README.md"
         ]
       },
       "limitations": {
