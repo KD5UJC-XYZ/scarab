@@ -725,6 +725,8 @@
         "ConfigSuite",
         "InboundGovernorSuite",
         "HeaderGateSuite",
+        "PeerSuite",
+        "PeerIntersectionSuite",
         "OutboundLossReportSuite",
         "OutboundLinkIdentitySuite",
         "ConnectionMonitorSuite",
