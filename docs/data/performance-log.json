@@ -4276,7 +4276,7 @@
      "id": "perf-60.t1",
      "header": [
       "Sink configuration",
-      "Writers",
+      "Writers requested (one fiber ran)",
       "µs per line",
       "Lines a second"
      ],
