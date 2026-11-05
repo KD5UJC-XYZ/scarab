@@ -120,7 +120,8 @@ object PreparedBlockFixture:
     )
     val ctx = EraBlock.Context(
       TestLedger.globals,
-      (_, _) => Era.Conway,
+      _ => None,
+      0L,
       evaluator = evaluator,
       observer = observer,
       verdicts = verdicts
@@ -155,7 +156,7 @@ object PreparedBlockFixture:
       100,
       empty
     )
-    val ctx = EraBlock.Context(TestLedger.globals, (_, _) => Era.Babbage, evaluator = evaluator)
+    val ctx = EraBlock.Context(TestLedger.globals, _ => None, 0L, evaluator = evaluator)
     EraBlock.program(ctx)(
       EraNes.InEra(ShelleyBasedEra.SBabbage, from),
       h,

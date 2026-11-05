@@ -93,6 +93,7 @@ final class NodeHeaderRules[S](
             shelleyRules.prepareShelley(
               anchor,
               ledger,
+              anchor.afterVoting,
               tip,
               old.state,
               h,
@@ -114,6 +115,7 @@ final class NodeHeaderRules[S](
                   .prepareShelley(
                     anchor,
                     ledger,
+                    0L,
                     tip,
                     old.state,
                     h,
@@ -298,6 +300,7 @@ final class NodeHeaderRules[S](
             .prepareShelley(
               anchor,
               view,
+              0L,
               tip,
               pending,
               header,

@@ -55,7 +55,7 @@ trait StateMirror[F[_]]:
 object StateMirror:
   def apply[F[_]: Monad](using Ask[F, MirrorEnv], Raise[F, MirrorError]): StateMirror[F]
 ```
-Pure core F = Kleisli[Either[MirrorError, *], MirrorEnv, *]. Era from forks.eraAt. Derived to-mirror: vrfKeyHashes, spsDelegators, StakePoolSnapShot, PoolDistr, FuturePParams, lastSlot/tips from anchor, telescope Bounds from EraHistory.summary. fromMirror recomputes derived fields, raises DerivedMismatch. Confirm on real states first: poolDistribution == snapshots.set contents; futureGenDelegs sorted. EraHistory Bound/EraSummary/summary move to consensus/state with an export alias.
+Pure core F = Kleisli[Either[MirrorError, *], MirrorEnv, *]. Era from forks.eraAt (replaced since #342 and #771 by `forks.transition`, and `forks.initialEra` for a genesis start). Derived to-mirror: vrfKeyHashes, spsDelegators, StakePoolSnapShot, PoolDistr, FuturePParams, lastSlot/tips from anchor, telescope Bounds from EraHistory.summary. fromMirror recomputes derived fields, raises DerivedMismatch. Confirm on real states first: poolDistribution == snapshots.set contents; futureGenDelegs sorted. EraHistory Bound/EraSummary/summary move to consensus/state with an export alias.
 
 ## 4. Laws and tests
 StateMirrorLaws (discipline RuleSet): retraction from(to(s)) == Right(s); normalisation; tamper rejection; exact gaps. monocle-law Iso/Lens tests for true bijections. cats-kernel-laws OrderTests for Credential/DRep/KeyHash, plus agreement with LedgerEncoders orderings. Generators (new stage): leaves, PoolParams, GovActionState, ProtocolParams perturbing fixtures/eras genesis, consistent Gen[LedgerState] per era, Gen[NodeState]+BlockRef. Corpus: round-trip at every block of fixtures/eras and Preview/Preprod rule suite states.

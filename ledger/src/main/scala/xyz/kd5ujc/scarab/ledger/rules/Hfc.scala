@@ -11,11 +11,9 @@ import xyz.kd5ujc.scarab.protocol.Era
   * era it ends in.
   *
   * The order is the combinator's (`extendToSlot` before `tickOne`): at an epoch boundary where the
-  * next era begins the state is translated first and the boundary (NEWEPOCH) runs in the new era;
-  * the old rules did the boundary first and translated after, with a special case for Conway. Which
-  * era the chain is in at an epoch is the hard-fork configuration's (`eraAt`: by protocol version
-  * or by configured epoch); the version asked of is the one the boundary is about to adopt, the
-  * parameters of the next epoch (`nextEpochPParams`), as the ledger's `shelleyTransition` does.
+  * next era begins the state is translated first and the boundary (NEWEPOCH) runs in the new era.
+  * Whether the chain leaves its era is the hard-fork configuration's decision ([[Transition]]),
+  * made as the combinator makes it (`extendToSlot`): from the state before the tick.
   *
   * Like the reference, this ticks to a slot only: [[Tick]] runs once, in the epoch of the slot, and
   * NEWEPOCH does nothing when that epoch is not the one after the state's (`Shelley/Rules/
@@ -27,24 +25,39 @@ import xyz.kd5ujc.scarab.protocol.Era
   */
 object Hfc:
 
-  /** The era the chain is in at `epoch` when the parameters adopted there have protocol major
-    * version `major`.
+  /** What `singleEraTransition` reads of the state of the era the chain is in
+    * (`ShelleyHFC.hs:194-227`, ouroboros-consensus 82ecba32).
+    *
+    * @param epoch
+    *   the epoch of the state
+    * @param update
+    *   the protocol major version of the definite parameter update the next boundary adopts (`SJust
+    *   pp` of `pparamsUpdate`); `None` when there is none, even if the parameters in force already
+    *   have the version
+    * @param afterVoting
+    *   the blocks of `epoch` at or after its voting deadline (`shelleyAfterVoting`)
     */
-  type EraAt = (BigInt, BigInt) => Era
+  final case class Pending(era: Era, epoch: BigInt, update: Option[BigInt], afterVoting: Long)
 
-  /** The state at `slot`, from the state `start` of the epoch the chain is in. */
-  def tick(globals: Globals, eraAt: EraAt)(
+  /** The epoch at which the chain leaves the era of the state, when that is decided. */
+  type Transition = Pending => Option[BigInt]
+
+  /** The state at `slot`, from the state `start` of the epoch the chain is in, whose blocks after
+    * the voting deadline are `afterVoting`. A translation carries the update and the counter over
+    * (`Cardano/CanHardFork.hs:704`), so every era on the way is asked with the same counter.
+    */
+  def tick(globals: Globals, transition: Transition)(
       start: EraNes,
+      afterVoting: Long,
       slot: SlotNo
   ): Either[TickFailure, EraNes] =
     val target = globals.epochOf(slot.toBigInt)
     type Result[A] = Either[TickFailure, A]
-    // one step: translate into the next era (the slot is past the end of the state's era: the era
-    // of the slot's epoch is a later one, whatever the state's own epoch), or tick
+    // one step: translate into the next era (the slot is past the end of the state's era, as
+    // decided from the state before it, whatever the state's own epoch), or tick
     Monad[Result].tailRecM(start) { current =>
       val epoch = current.epoch.toBigInt
-      if epoch < target && current.toEra.ordinal < eraAt(target, adoptedMajor(current)).ordinal
-      then
+      if epoch < target && transition(pending(current, afterVoting)).exists(_ <= target) then
         Translate.next(globals, current).flatMap {
           case Some(translated) => Right(Left(translated))
           case None             => ticked(globals, current, slot).map(Right(_))
@@ -52,12 +65,16 @@ object Hfc:
       else ticked(globals, current, slot).map(Right(_))
     }
 
-  /** The major version of the parameters the next boundary adopts (`nextEpochPParams`). */
-  private def adoptedMajor(e: EraNes): BigInt = e match
+  /** What the combinator reads of `e`: the definite update only (`ShelleyHFC.hs:222`). */
+  def pending(e: EraNes, afterVoting: Long): Pending = e match
     case i: EraNes.InEra[e] =>
       given ShelleyBasedEra[e] = i.era
-      val gov = i.nes.es.ls.utxo.gov
-      EraLedger.futurePParams(gov).definite.getOrElse(EraLedger.curPParams(gov)).protocolMajor
+      Pending(
+        e.toEra,
+        i.nes.epoch.toBigInt,
+        EraLedger.futurePParams(i.nes.es.ls.utxo.gov).definite.map(_.protocolMajor),
+        afterVoting
+      )
 
   private def ticked(globals: Globals, e: EraNes, slot: SlotNo): Either[TickFailure, EraNes] =
     e match

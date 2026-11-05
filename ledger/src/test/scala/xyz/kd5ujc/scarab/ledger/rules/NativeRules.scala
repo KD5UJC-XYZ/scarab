@@ -23,7 +23,7 @@ import xyz.kd5ujc.scarab.protocol.Era
   * small states of a suite, so its failure is a broken test.
   *
   * The era a state is in is the one its protocol version names, as the hard-fork configuration of
-  * the suites says ([[eraAt]]).
+  * the suites says ([[transition]]).
   */
 object NativeRules:
   /** What a test cannot run: a failure of the test itself, never a verdict of the rules. */
@@ -38,8 +38,11 @@ object NativeRules:
     else if major <= 8 then Era.Babbage
     else Era.Conway
 
-  /** The hard-fork configuration of the suites: each era from its protocol version. */
-  val eraAt: Hfc.EraAt = (_, major) => eraOf(major)
+  /** The hard-fork configuration of the suites: the era is left at the boundary that adopts a
+    * definite update of a later era's version.
+    */
+  val transition: Hfc.Transition = p =>
+    p.update.filter(eraOf(_).ordinal > p.era.ordinal).map(_ => p.epoch + 1)
 
   /** The state of a suite: an empty chain in epoch 5 with the test parameters of `protocolMajor` in
     * force, `funds` as its UTxO set and the reserves what makes the total [[TestLedger.Supply]].
@@ -157,7 +160,7 @@ object NativeRules:
       .fromBigInt(slot)
       .left
       .map(v => s"$v")
-      .flatMap(s => Hfc.tick(globals(g), eraAt)(e, s).left.map(f => s"$f"))
+      .flatMap(s => Hfc.tick(globals(g), transition)(e, 0L, s).left.map(f => s"$f"))
       .fold(why => broken(s"the tick refuses: $why"), identity)
 
   /** The state one epoch later, as the boundary into the next epoch makes it. The state's own

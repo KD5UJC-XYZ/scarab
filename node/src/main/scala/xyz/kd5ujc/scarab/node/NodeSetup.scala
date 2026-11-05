@@ -346,12 +346,14 @@ object NodeSetup:
       _ <- GenesisSchema.conway(files.conway)
       injections <- GenesisInjections.read(files)
       globals <- GenesisState.globals(files, genesis)
-      startsInConway = files.shelley.hcursor
-        .downField("protocolParams")
-        .downField("protocolVersion")
-        .downField("major")
-        .as[Int]
-        .exists(_ >= 9)
+      forks = HardForkConfig.fromEpochs(config.hardForkEpochs)
+      // The era the first slot is in: Byron unless Shelley starts at epoch 0, then the eras whose
+      // transition the genesis state decides (`HardForkConfig.initialEra`), never the Shelley
+      // genesis's protocol version.
+      startEra = byron.fold(forks.initialEra(genesis.geometry.k)(globals.firstEpoch))(_ =>
+        Era.Byron
+      )
+      startsInConway = startEra == Era.Conway
       // Parse the supplied injection even when a Byron start will not apply it: the reference
       // reads AlonzoGenesis.extraConfig before perEraInjections chooses Byron's identity
       // (cardano-ledger f649f975 Alonzo/Genesis.hs:222-242; consensus 82ecba32 Cardano/Node.hs:957-959).
@@ -369,7 +371,7 @@ object NodeSetup:
         genesis.slotsPerKesPeriod,
         genesis.maxKesEvolutions,
         active,
-        HardForkConfig.fromEpochs(config.hardForkEpochs),
+        forks,
         checkpoints = checkpoints
       )
       lite <- LiteLedger.fromGenesis(files.shelley, firstShelley.getOrElse(BigInt(0)))
@@ -402,7 +404,7 @@ object NodeSetup:
             files,
             injections,
             fromByron,
-            praos.forks.eraAt(globals.firstEpoch, params.protocolMajor),
+            startEra,
             shelleyHash,
             lite
           )

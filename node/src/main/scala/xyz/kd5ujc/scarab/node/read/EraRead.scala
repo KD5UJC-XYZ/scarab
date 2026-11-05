@@ -61,6 +61,11 @@ trait EraRead[E <: EraTag]:
     */
   def paramsNextEpoch(globals: flat.LedgerGlobals): flat.ProtocolParams
 
+  /** The protocol major version of the definite parameter update the next boundary adopts: what the
+    * hard-fork combinator reads of the state (`ShelleyHFC.hs:222`, ouroboros-consensus 82ecba32).
+    */
+  def definiteUpdateMajor: Option[BigInt]
+
   /** The genesis delegations in force at `slot`: the current ones with those that fall due by then
     * applied, in the order of their slot and key (`LedgerView` of TPraos).
     */
@@ -159,6 +164,9 @@ final class MirrorEraRead[E <: EraTag](val state: NewEpochState[E])(using
   def paramsNextEpoch(globals: flat.LedgerGlobals): flat.ProtocolParams =
     val g = ls.utxo.gov
     EraLedger.futurePParams(g).nextParams.getOrElse(EraLedger.curPParams(g))
+
+  def definiteUpdateMajor: Option[BigInt] =
+    EraLedger.futurePParams(ls.utxo.gov).definite.map(_.protocolMajor)
 
   def genDelegsAt(slot: BigInt): Map[Bytes, flat.GenDelegPair] =
     EraRead.genDelegsAt(EraLedger.genDelegs(ls), EraLedger.futureGenDelegs(ls), slot)

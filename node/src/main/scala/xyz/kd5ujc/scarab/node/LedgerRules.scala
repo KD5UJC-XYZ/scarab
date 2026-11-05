@@ -227,10 +227,14 @@ object NodeRules:
     * signature of TPraos or Praos, with the pool distribution in force and, for TPraos, the overlay
     * schedule of the genesis delegations. What the old rules and the era-indexed ones share: the
     * ledger part is read from the state by the caller.
+    *
+    * @param expected
+    *   the era of the ledger state ticked to the header's slot
     */
   def headerChecks(
       protocol: ProtocolState,
       header: Header.Shelley,
+      expected: Era,
       bodySize: Long,
       config: PraosConfig,
       globals: LedgerGlobals,
@@ -248,6 +252,7 @@ object NodeRules:
       _ <- config.forks
         .check(
           header.era,
+          expected,
           epoch,
           header.protocolVersion._1,
           params.protocolMajor,

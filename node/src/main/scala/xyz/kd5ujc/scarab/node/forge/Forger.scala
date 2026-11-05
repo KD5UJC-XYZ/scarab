@@ -618,9 +618,11 @@ final class Forger[F[_]: Async, S](
         .fromBigInt(slot)
         .left
         .map(e => ForgeError.LedgerViewUnavailable(slot, ForgeLedgerProblem.Vocabulary(e)))
+      // Conway is the last era, so no transition reads the blocks after the voting deadline
       state <- Hfc
-        .tick(Globals(globals, geometry), config.forks.eraAt)(
+        .tick(Globals(globals, geometry), config.forks.transition(geometry.k))(
           EraNes.InEra(ShelleyBasedEra.SConway, nes),
+          0L,
           target
         )
         .left

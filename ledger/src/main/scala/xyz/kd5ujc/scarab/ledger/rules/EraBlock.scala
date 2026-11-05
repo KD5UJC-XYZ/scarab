@@ -28,15 +28,18 @@ import xyz.kd5ujc.scarab.protocol.Era
   * rules read of the network, so serial and prepared execution can be compared directly.
   */
 object EraBlock:
-  /** What the rules read beyond the state: the network's constants and era history, which era each
-    * epoch is, the signature verdicts, the Plutus evaluator, and a hook on phase-2 evaluations.
-    * `clock` is the slot to time translation of the block's scripts, the era history of the ledger
-    * state the block is applied to (the node's blocks always carry it); none is the geometry alone,
-    * without a forecast horizon, for fixtures with no era history.
+  /** What the rules read beyond the state: the network's constants and era history, when the chain
+    * leaves an era, the blocks of the state's epoch after its voting deadline (kept by consensus
+    * beside the ledger state, `shelleyAfterVoting`), the signature verdicts, the Plutus evaluator,
+    * and a hook on phase-2 evaluations. `clock` is the slot to time translation of the block's
+    * scripts, the era history of the ledger state the block is applied to (the node's blocks always
+    * carry it); none is the geometry alone, without a forecast horizon, for fixtures with no era
+    * history.
     */
   final case class Context(
       globals: Globals,
-      eraAt: Hfc.EraAt,
+      transition: Hfc.Transition,
+      afterVoting: Long,
       verdicts: Verdicts = Verdicts.Direct,
       evaluator: ScriptEvaluator[cats.Id] = ScalusEvaluator.default,
       observer: Option[Phase2.Observation => Unit] = None,
@@ -164,7 +167,9 @@ object EraBlock:
       _ <- Either.cond(block.header.hash == header.hash, (), BlockFailure.HeaderDiffers)
       _ <- Either.cond(epoch >= from.epoch.toBigInt, (), BlockFailure.EpochPrecedesLedger(epoch))
       slot <- SlotNo.fromBigInt(header.slot).leftMap(e => BlockFailure.Tick(TickFailure.Input(e)))
-      ticked <- Hfc.tick(globals, ctx.eraAt)(from, slot).leftMap(BlockFailure.Tick(_))
+      ticked <- Hfc
+        .tick(globals, ctx.transition)(from, ctx.afterVoting, slot)
+        .leftMap(BlockFailure.Tick(_))
     yield ticked
 
   /** The block `block` (the decoded `raw`, whose header is `header`) applied to `from`. */

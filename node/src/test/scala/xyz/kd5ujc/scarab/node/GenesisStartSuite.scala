@@ -231,6 +231,46 @@ class GenesisStartSuite extends FunSuite:
     do assert(GenesisInjections.read(sourceFiles(fundSources(invalid))).isLeft)
   }
 
+  // `injectInitialExtLedgerState` (ouroboros-consensus 82ecba32 `Embed/Nary.hs:259-306`) extends the
+  // genesis state to slot 0: a genesis state has no definite update, so an era with a version
+  // trigger is not entered there, whatever the Shelley genesis's protocol version
+  test("a genesis start at protocol 10 with only Shelley configured at epoch 0 stays in Shelley") {
+    val later = Vector("Allegra", "Mary", "Alonzo", "Babbage", "Conway")
+    val shelleyOnly = NodeSetup
+      .fromFiles(files { (name, value) =>
+        if name == "configuration.yaml" then
+          value.mapObject(o =>
+            later.foldLeft(o)((acc, era) => acc.remove(s"Test${era}HardForkAtEpoch"))
+          )
+        else value
+      })
+      .fold(e => fail(e.message), identity)
+    assertEquals(
+      shelleyOnly.mirrorStart.ext.ledgerState.era,
+      xyz.kd5ujc.scarab.protocol.Era.Shelley
+    )
+    val params = MirrorSteps.ledger(shelleyOnly.mirrorStart) match
+      case Some(xyz.kd5ujc.scarab.node.read.InEra.Of(_, l)) => l.params
+      case None                                             => fail("not a Shelley-based start")
+    assertEquals(params.protocolMajor, BigInt(10))
+    // the Conway genesis is not read into the parameters of a start that is not in Conway
+    assertEquals(params.drepDeposit, BigInt(0))
+    assert(MirrorSteps.ledger(setup.mirrorStart).exists {
+      case xyz.kd5ujc.scarab.node.read.InEra.Of(_, l) => l.params.drepDeposit > 0
+    })
+    // configured up to Mary, the start is in Mary
+    val toMary = NodeSetup
+      .fromFiles(files { (name, value) =>
+        if name == "configuration.yaml" then
+          value.mapObject(o =>
+            later.drop(2).foldLeft(o)((acc, era) => acc.remove(s"Test${era}HardForkAtEpoch"))
+          )
+        else value
+      })
+      .fold(e => fail(e.message), identity)
+    assertEquals(toMary.mirrorStart.ext.ledgerState.era, xyz.kd5ujc.scarab.protocol.Era.Mary)
+  }
+
   Vector("initialFunds", "stakePools", "stakeCredentials", "initialDReps", "delegs").foreach {
     source =>
       test(s"$source requires an object when supplied, even for a Byron start") {

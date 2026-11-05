@@ -283,18 +283,212 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   // ---------------------------------------------------------------- validation across the boundaries
 
-  test("the version-triggered era history agrees with the configured epochs on the whole chain") {
-    // The cluster places the boundaries with Test<Era>HardForkAtEpoch and raises the ledger's
-    // protocol version in step; the mainnet-style history (era from the ledger's version alone)
-    // must give the same era for every Shelley-based block.
-    val byVersion = consensus.HardForkConfig.default
-    val byEpoch = setup.praos.forks
-    blocks.indices.filter(blocks(_).isInstanceOf[Block.Shelley]).foreach { i =>
-      val epoch = geometry.epochOf(headers(i).slot)
-      val major = params(states(i + 1)).protocolMajor
-      assertEquals(byEpoch.eraAt(epoch, major), eraAt(i), s"block $i by epoch")
-      assertEquals(byVersion.eraAt(epoch, major), eraAt(i), s"block $i by version (major $major)")
+  test(
+    "every real block applies across the version-triggered boundaries of a mainnet-style history"
+  ) {
+    // Each Shelley-based era is entered as mainnet enters it (`TriggerHardForkAtVersion`), so the
+    // tick and the header envelope cross every boundary from Allegra to Conway by the state's
+    // history alone: the definite update to exactly the next era's version and at least k blocks
+    // after the voting deadline (`singleEraTransition`, ouroboros-consensus 82ecba32
+    // `ShelleyHFC.hs:220-227`). Byron to Shelley stays the Byron rules' decision.
+    val byVersion = setup.praos.copy(forks =
+      consensus.HardForkConfig.fromEpochs(Map.empty, setup.praos.forks.maxMajorProtVer)
+    )
+    val walked = blocks.indices.foldLeft(Vector(setup.mirrorStart)) { (acc, i) =>
+      applyBlock(acc.last, headers(i), raws(i), byVersion) match
+        case Right(next) => acc :+ next
+        case Left(f) =>
+          fail(s"block $i (${eraAt(i)}) rejected by ${f.rule.name}: ${f.reason}")
     }
+    blocks.indices.foreach(i => assertEquals(walked(i + 1).era, eraAt(i), s"block $i"))
+    assertEquals(walked.last.ext, states.last.ext)
+    boundaries.drop(1).foreach { b =>
+      val before = walked(b)
+      val next = eraAt(b)
+      val update = before.ledger(None).toOption.flatten.flatMap { case InEra.Of(_, l) =>
+        l.definiteUpdateMajor
+      }
+      assertEquals(update, Some(BigInt(consensus.HardForkConfig.eraProtVerLow(next))), s"$next")
+      assert(
+        MirrorStep.afterVotingOf(before) >= geometry.k.toLong,
+        s"$next: ${MirrorStep.afterVotingOf(before)} blocks after the voting deadline"
+      )
+    }
+    // the same history with Allegra at a version the update does not name leaves Shelley in place
+    val allegra = boundaries(1)
+    val otherVersion = byVersion.copy(forks =
+      byVersion.forks.copy(triggers =
+        byVersion.forks.triggers.updated(Era.Allegra, consensus.ForkTrigger.AtVersion(4))
+      )
+    )
+    val refused = applyBlock(walked(allegra), headers(allegra), raws(allegra), otherVersion)
+    assertEquals(refused.left.map(_.rule), Left(BlockRule.Envelope))
+    assert(refused.left.exists(_.reason.contains("the chain is in Shelley")))
+  }
+
+  test(
+    "a restored state without its after-voting counter is recounted from the store, or refused"
+  ) {
+    import xyz.kd5ujc.scarab.consensus.state.MirrorProvenance
+    import xyz.kd5ujc.scarab.ledger.state.Gap
+    // the last Shelley block: its epoch's voting deadline is behind it
+    val last = boundaries(1) - 1
+    val exact = states(last + 1)
+    val counter = MirrorStep.afterVotingOf(exact)
+    assert(counter >= geometry.k.toLong, s"$counter blocks after the deadline")
+    val gapped = MirrorStep
+      .recounted(exact, 0L)
+      .fold(e => fail(e.toString), identity)
+      .copy(provenance = MirrorProvenance.recorded(Set(Gap.ShelleyTransition), Map.empty))
+    val deadline = MirrorStep.votingDeadline(geometry, geometry.epochOf(headers(last).slot))
+    val afterDeadline = blocks.indices.indexWhere(i => headers(i).slot >= deadline)
+    def recount(
+        from: Int,
+        state: MirrorState = gapped,
+        anchor: Int = last
+    ): IO[Either[ledger.StorageError, MirrorState]] =
+      Handle
+        .allow[ledger.StorageError] {
+          fs2.io.file
+            .Files[IO]
+            .tempDirectory
+            .use { dir =>
+              storage.FileImmutableStore.open[IO](dir).use { (store, _) =>
+                (from to last).toList.traverse_(i => store.append(ref(i), raws(i))) *>
+                  TransitionRecount.reopen[IO](geometry)(store, Some(ref(anchor)), state)
+              }
+            }
+            .map(Right(_))
+        }
+        .rescue(error => IO.pure(Left(error)))
+    for
+      whole <- recount(0)
+      partial <- recount(afterDeadline)
+      elsewhere <- recount(0, anchor = last - 1)
+      complete <- recount(afterDeadline, state = exact)
+    yield
+      val recounted = whole.fold(e => fail(e.message), identity)
+      assertEquals(MirrorStep.afterVotingOf(recounted), counter)
+      assertEquals(recounted.provenance.gaps, Set.empty[Gap])
+      assertEquals(recounted.ext, exact.ext)
+      // a store that starts after the deadline cannot tell how many blocks it lacks: the snapshot
+      // is refused at open (owner-approved 2026-11-04, PR #772)
+      assertEquals(
+        partial,
+        Left(
+          ledger.StorageError.UnrecoverableTransitionCounter(
+            ledger.TransitionCounterProblem
+              .StoreStartsAfterDeadline(deadline, Some(headers(afterDeadline).slot))
+          )
+        )
+      )
+      // so is one whose anchor is not its ledger tip
+      assertEquals(
+        elsewhere,
+        Left(
+          ledger.StorageError.UnrecoverableTransitionCounter(
+            ledger.TransitionCounterProblem
+              .AnchorNotTip(Some(headers(last - 1).slot), Some(headers(last).slot))
+          )
+        )
+      )
+      // a state that knows its counter is not touched, whatever the store holds
+      assertEquals(complete, Right(exact))
+  }
+
+  test(
+    "opening the chain storage recounts a gapped snapshot before replay, or refuses to open it"
+  ) {
+    import xyz.kd5ujc.scarab.consensus.BlockRules
+    import xyz.kd5ujc.scarab.consensus.state.MirrorProvenance
+    import xyz.kd5ujc.scarab.ledger.state.Gap
+    import storage.{
+      ChainStorage,
+      CheckpointBinding,
+      FileImmutableStore,
+      FileLedgerSnapshots,
+      SnapshotFormat,
+      SnapshotPolicy,
+      StateBacking,
+      StateSnapshot,
+      StorageEvents
+    }
+    // the snapshot is three blocks before the last Shelley block, all after the voting deadline;
+    // the immutable store holds the chain up to that last block, which the opening replays
+    val tip = boundaries(1) - 1
+    val at = tip - 3
+    val deadline = MirrorStep.votingDeadline(geometry, geometry.epochOf(headers(tip).slot))
+    assert(headers(at).slot >= deadline, "the snapshot must follow the voting deadline")
+    val afterDeadline = blocks.indices.indexWhere(i => headers(i).slot >= deadline)
+    val gapped = MirrorStep
+      .recounted(states(at + 1), 0L)
+      .fold(e => fail(e.toString), identity)
+      .copy(provenance = MirrorProvenance.recorded(Set(Gap.ShelleyTransition), Map.empty))
+    val rules: BlockRules[IO, MirrorState] = BlockRules.from((state, header, raw) =>
+      IO(MirrorSteps.block(setup, state, header, raw).fold(f => fail(f.reason), identity))
+    )
+    val quiet: StorageEvents[IO] = _ => IO.unit
+    def opened(from: Int, state: MirrorState): IO[Either[NodeError, MirrorState]] =
+      val written = StateSnapshot(Some(ref(at)), state, CheckpointBinding.Unbacked)
+      given SnapshotFormat[IO, MirrorState] with
+        // the current snapshot magic, so that the storage's version preflight reads the file
+        def encode(s: StateSnapshot[MirrorState]) =
+          val kind = ledger.FileKind.SnapshotFile
+          IO.pure(Right(kind.identifier(kind.current).getBytes("US-ASCII") :+ 1.toByte))
+        def decode(content: Array[Byte]) = IO.pure(Right(written))
+      Handle
+        .allow[NodeError] {
+          fs2.io.file
+            .Files[IO]
+            .tempDirectory
+            .use { dir =>
+              for
+                _ <- FileImmutableStore.open[IO](dir / "immutable").use { (store, _) =>
+                  (from to tip).toList.traverse_(i => store.append(ref(i), raws(i))) *> store.sync
+                }
+                snapshots <- FileLedgerSnapshots.open[IO, MirrorState](dir / "snapshots")
+                _ <- snapshots.write(written)
+                state <- ChainStorage
+                  .open[IO, MirrorState](
+                    dir,
+                    ChainStorage.Config(
+                      SnapshotPolicy.EverySlots(BigInt(1000000)),
+                      byronEpochSlots = geometry.byron.epochSlots
+                    ),
+                    rules,
+                    setup.mirrorStart,
+                    quiet,
+                    StateBacking.none[IO, MirrorState],
+                    _ => IO.unit,
+                    reopen = Some(TransitionRecount.reopen[IO](geometry))
+                  )
+                  .use(recovered => IO.pure(recovered.state))
+              yield state
+            }
+            .map(Right(_))
+        }
+        .rescue(error => IO.pure(Left(error)))
+    for
+      whole <- opened(0, gapped)
+      partial <- opened(afterDeadline, gapped)
+      complete <- opened(afterDeadline, states(at + 1))
+    yield
+      // recounted before the replay: the replayed state is the one the whole chain reaches
+      val recounted = whole.fold(e => fail(e.message), identity)
+      assertEquals(recounted.provenance.gaps, Set.empty[Gap])
+      assertEquals(recounted.ext, states(tip + 1).ext)
+      // a store that starts after the deadline: the open is refused, nothing runs with the gap
+      assertEquals(
+        partial.left.toOption,
+        Some(
+          ledger.StorageError.UnrecoverableTransitionCounter(
+            ledger.TransitionCounterProblem
+              .StoreStartsAfterDeadline(deadline, Some(headers(afterDeadline).slot))
+          )
+        )
+      )
+      // a snapshot without the gap opens on the same store as before
+      assertEquals(complete.map(_.ext), Right(states(tip + 1).ext))
   }
 
   test("the first block of an era is rejected when the era history does not enter it there") {

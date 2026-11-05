@@ -165,7 +165,8 @@ class AuxiliaryScriptsSuite extends FunSuite:
     EraBlock.program(
       EraBlock.Context(
         TestLedger.globals,
-        (_, _) => Era.Conway,
+        _ => None,
+        0L,
         evaluator = TestLedger.scripted(valid),
         decoder = decoder
       )
