@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger.json
 
 import xyz.kd5ujc.scarab.codec.HaskellShow
-
 import cats.Order
 import munit.FunSuite
 import scala.annotation.tailrec

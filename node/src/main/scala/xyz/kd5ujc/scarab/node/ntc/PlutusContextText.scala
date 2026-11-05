@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node.ntc
 
 import xyz.kd5ujc.scarab.codec.HaskellShow
-
 import cats.Eval
 import cats.syntax.all.*
 import java.util.Base64

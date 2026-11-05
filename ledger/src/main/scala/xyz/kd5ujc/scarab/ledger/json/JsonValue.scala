@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger.json
 
 import xyz.kd5ujc.scarab.codec.HaskellShow
-
 import cats.{Order, Show}
 import scala.annotation.tailrec
 import scala.collection.immutable.TreeMap

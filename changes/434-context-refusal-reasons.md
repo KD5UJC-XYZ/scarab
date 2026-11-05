@@ -8,4 +8,4 @@
   A malformed context now retains its typed presentation defect and original evaluator cause,
   closes only the submitting connection without rejection bytes, and permits a fresh client.
 - Refusals without recorded raw reason bytes remain bounded to their recorded cause until the
-  re-recording tracked by #434; other CEK error descriptions remain tracked by #491.
+  re-recording tracked by #434; complete remaining CEK, term and refusal parity is required by #796.
