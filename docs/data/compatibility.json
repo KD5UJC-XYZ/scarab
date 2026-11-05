@@ -1425,6 +1425,29 @@
       "page": "docs/compatibility/persistence-snapshot-v8.md"
     },
     {
+      "id": "persistence-snapshot-v9",
+      "component": "Persistence: ledger snapshot format (V9)",
+      "status": "implemented",
+      "summary": "Native snapshot format V9: the V8 layout whose sidecar names the Dijkstra era among the eras; V8 files, and V5 and V7 files through V8, migrate on open with no loss, the previous readers taking a frozen era codec",
+      "evidence": {
+        "suites": [
+          "SnapshotV9MigrationSuite",
+          "SnapshotGoldenSuite",
+          "CodecSuite"
+        ],
+        "issues": [
+          54
+        ]
+      },
+      "limitations": {
+        "issues": [
+          129,
+          37
+        ]
+      },
+      "page": "docs/compatibility/persistence-snapshot-v9.md"
+    },
+    {
       "id": "persistence-haskell-immutabledb",
       "component": "Persistence: Haskell ImmutableDB format",
       "status": "partial",
