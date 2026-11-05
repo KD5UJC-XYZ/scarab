@@ -43,7 +43,7 @@ enum NumberError extends DomainError:
   /** `nonZeroM` (`BaseTypes/NonZero.hs:126-129` at cardano-ledger f649f975). */
   case Zero
 
-  /** `withBoundedScientific'` of `FromJSON Integer`: a decimal exponent beyond 1024 either way. */
+  /** `withBoundedScientific'` of `FromJSON Integer`: a decimal exponent, as written, above 1024. */
   case ExponentOutOfBounds(value: Scientific)
 
   /** `parseIntegralFromScientific`: an `Integer` that is not whole. */
@@ -85,8 +85,7 @@ enum NumberError extends DomainError:
     case NotNatural(value) => s"parsing Natural failed, unexpected negative number ${value.shown}"
     case Zero              => "Encountered zero while trying to construct a NonZero value"
     case ExponentOutOfBounds(value) =>
-      val side = if value.base10Exponent > 0 then "greater than 1024" else "less than -1024"
-      s"parsing Integer failed, found a number with exponent ${value.base10Exponent}, but it must not be $side"
+      s"parsing Integer failed, found a number with exponent ${value.base10Exponent}, but it must not be greater than 1024"
     case Floating(value)     => s"parsing Integer failed, unexpected floating number ${value.shown}"
     case MissingKey(key)     => s"key \"${key.key}\" not found"
     case InComponent(key, e) => s"${key.key}: ${e.message}"
@@ -138,13 +137,13 @@ object FromJson:
   def nonZeroWord64(json: Json): Either[NumberError, NonZero[Word64]] =
     word64(json).flatMap(w => NonZero.from(w).left.map(_ => NumberError.Zero))
 
-  /** `FromJSON Integer` (`parseIntegral`): a whole number whose exponent, as written, is within
-    * 1024 either way.
+  /** `FromJSON Integer` (`parseIntegral`): a whole number whose exponent, as written, is at most
+    * 1024 (`withBoundedScientific_`, aeson 2.2.5.0 `Types/FromJSON.hs:796-803`); a negative
+    * exponent has no bound, so `1` followed by 1025 zeros and `e-1025` is 1.
     */
   def integer(json: Json): Either[NumberError, BigInt] =
     scientific(json).flatMap { s =>
-      if s.base10Exponent > 1024 || s.base10Exponent < -1024 then
-        Left(NumberError.ExponentOutOfBounds(s))
+      if s.base10Exponent > 1024 then Left(NumberError.ExponentOutOfBounds(s))
       else s.wholeNumber.toRight(NumberError.Floating(s))
     }
 

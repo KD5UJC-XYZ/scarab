@@ -14,7 +14,9 @@ class GenesisVrfRegistrySuite extends FunSuite:
   private val reward = "33" * 28
 
   private def setup(major: Int): NodeSetup =
+    // The reference reader requires the inner `poolId` (or `publicKey`), apart from the map key.
     val pool = Json.obj(
+      "poolId" -> Json.fromString(operator),
       "vrf" -> Json.fromString(vrf),
       "pledge" -> Json.fromInt(0),
       "cost" -> Json.fromInt(0),

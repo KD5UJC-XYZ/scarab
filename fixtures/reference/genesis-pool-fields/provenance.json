@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "capturedAt": "2026-10-26",
-  "scope": "Unmodified released StakePoolParams FromJSON plus EncCBOR relay and optional metadata payloads at protocol version 11; no ledger transition, socket resolution, or whole genesis conformance claim.",
+  "capturedAt": "2026-11-03",
+  "scope": "Unmodified released StakePoolParams FromJSON over each pool's JSON text: every accepted field (hashes, Coins and account by ToJSON, the reduced margin, and EncCBOR relay and optional metadata payloads at protocol version 11); no ledger transition, socket resolution, or whole genesis conformance claim.",
   "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
   "compiler": "ghc-9.10.3",
-  "imageId": "sha256:0d7d3971a5ff78c8a6786459d191f39b166d69a4d71a6eb310c9d8338d6e035e",
+  "imageId": "sha256:9052fa97d907cdd7ee1ad37f4afcf5a0d653f4eaac8bab3da7223652b4b5bce0",
   "freezeSha256": "f7e6220cf1d723bb8722b4a7e90be5993c4f1fa5a380e64a13c3303546e8a68c",
-  "harnessSha256": "ff1329a2cd6775899a7624d0f22b20ba9b0dba983c4f73799bc6f738eb509028",
-  "executableSha256": "0e2b88e318fd086bc4e444917ab482e380a9d7c687cc09f8f7a0049d4ea2ec91",
-  "casesSha256": "d89e59685f43f04a8550cc60b94b85d4db99145cf56026198b0f429260088c4f",
+  "harnessSha256": "d47576c51858b1a2b43c4694838f0caab108443735a05abd9e4a134329a87819",
+  "executableSha256": "05a5c9b30adc17e2c4ec476df343227cf249039d95abd616d7c79b9e40608816",
+  "casesSha256": "1e91103b21f5abf27b9f03f9fd12548f13e883caa8bd1a8b6f22774555945da6",
   "sourceFiles": [
     {
       "package": "cardano-ledger-core",
@@ -27,6 +27,27 @@
       "matchesLedgerPin": true
     },
     {
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0",
+      "archiveSha256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "file": "src/Cardano/Ledger/Address.hs",
+      "sourceSha256": "f2ef8e3cebbe7475676e7466d6fa57a6dfc8495f3bdb0b516d3ae4420b04ec2d"
+    },
+    {
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0",
+      "archiveSha256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "file": "src/Cardano/Ledger/Credential.hs",
+      "sourceSha256": "5f452eb975836a9031c7b765face02948dd5fb433fb3f2c33861010ddee0fb36"
+    },
+    {
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0",
+      "archiveSha256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "file": "src/Cardano/Ledger/Coin.hs",
+      "sourceSha256": "fd4fb02a353f0dcaf1e17945fb816993802d0c2b3e51ee674d311b74a7bc4dc0"
+    },
+    {
       "package": "cardano-base",
       "version": "0.1.6.0",
       "archiveSha256": "32c9e3fc57891995cdc7021c3b3fe9b882b4a26042faf13a3792fad98929a457",
@@ -39,6 +60,24 @@
       "archiveSha256": "18a331a7e0e6f9dc89a2da95577b0d76bd2690b8f832b72b46d6cc9b667b4ba5",
       "file": "Data/IP/Addr.hs",
       "sourceSha256": "6014fc095c46f0a0ba5a9690bd604e16ef105e7da97545ce12dcf0a158c5fbfc"
+    },
+    {
+      "package": "aeson",
+      "version": "2.2.5.0",
+      "file": "src/Data/Aeson/Types/FromJSON.hs",
+      "sourceSha256": "a089e0dfb1196a719e1cfbdf8dc022dd0a107f756989b324f461c5eb587f1c16"
+    },
+    {
+      "package": "aeson",
+      "version": "2.2.5.0",
+      "file": "src/Data/Aeson/Decoding/ByteString/Lazy.hs",
+      "sourceSha256": "b1b68434ef3d4b46f86fdb1debf337972b18806c567e63c9133987cff7fc9f09"
+    },
+    {
+      "package": "scientific",
+      "version": "0.3.8.1",
+      "file": "src/Data/Scientific.hs",
+      "sourceSha256": "c8769f9c91fbf3430cdd98419b0045be0b772de777ac4fd6cdae7bed0a51167f"
     }
   ],
   "packageUnits": [
@@ -73,8 +112,8 @@
       "sourceSha256": "18a331a7e0e6f9dc89a2da95577b0d76bd2690b8f832b72b46d6cc9b667b4ba5"
     }
   ],
-  "caseCount": 70,
-  "accepted": 30,
-  "refused": 40,
+  "caseCount": 163,
+  "accepted": 82,
+  "refused": 81,
   "encodingNote": "Released cardano-ledger-binary 1.9.1.0 writes IPv4 in network order; its fix differs from the f649f975 binary source. Core JSON parser sources above match the pinned commit exactly."
 }

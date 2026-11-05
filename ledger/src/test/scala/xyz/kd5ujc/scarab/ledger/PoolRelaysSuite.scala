@@ -5,7 +5,7 @@ import java.nio.file.{Files, Path}
 import munit.ScalaCheckSuite
 import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Prop.forAll
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 
 /** The relays of a pool registration: `StakePoolRelay` of cardano-ledger-core
   * (`State/StakePool.hs:328-421`), read from the bytes a registration holds. The fixtures: the one
@@ -130,15 +130,27 @@ class PoolRelaysSuite extends ScalaCheckSuite:
     assertEquals(refused("82 82 02 61 61 82 02 01"), BadDnsName(1))
   }
 
-  test("a DNS name longer than 128 bytes is refused, 128 bytes is read") {
+  test("a wire DNS name longer than 128 bytes is refused, 128 bytes is read") {
     def named(n: Int): Bytes = PoolRelays.encode(Vector(PoolRelay.MultiHostName("a" * n)))
-    assertEquals(PoolRelays.decode(named(128)).map(_.size), Right(1))
-    assertEquals(PoolRelays.decode(named(129)), Left(PoolRelayError.DnsNameTooLong(0, 129)))
+    val limits = Cbor.Limits()
+    assertEquals(PoolRelays.decodeWire(named(128), limits).map(_.size), Right(1))
+    assertEquals(
+      PoolRelays.decodeWire(named(129), limits),
+      Left(PoolRelayError.DnsNameTooLong(0, 129))
+    )
     // the bound is in bytes of UTF-8: 65 two-byte characters are 130 bytes
     assertEquals(
-      PoolRelays.decode(PoolRelays.encode(Vector(PoolRelay.MultiHostName("é" * 65)))),
+      PoolRelays.decodeWire(PoolRelays.encode(Vector(PoolRelay.MultiHostName("é" * 65))), limits),
       Left(PoolRelayError.DnsNameTooLong(0, 130))
     )
+  }
+
+  test("a held registration keeps a genesis DNS name of any length") {
+    val relays = Vector(
+      PoolRelay.SingleHostName(RelayPort.fromInt(3001), "a" * 300),
+      PoolRelay.MultiHostName("é" * 2000)
+    )
+    assertEquals(PoolRelays.decode(PoolRelays.encode(relays)), Right(relays))
   }
 
   test("bytes that are not CBOR are refused as such") {
