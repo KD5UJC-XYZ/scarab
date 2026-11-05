@@ -52,32 +52,32 @@ object LogRouterBenchMain extends IOApp.Simple:
       severity = if silenced then Map((Sink.File, Scope.All) -> Threshold.Silence) else Map.empty
     )
 
-  /** `writers` fibers, each writing its share of `lines`, all started before the clock is read. */
-  private def round(s: LogSettings, w: Int): IO[Long] =
-    LogRouter.resource[IO](s).use { log =>
+  /** `writers` fibers, each writing its share of `lines`, all started before the clock is read, so
+    * the `tell`s overlap and the lock is contended. The sink is emptied first, so the digest taken
+    * after a round is that round's bytes.
+    */
+  private def round(s: LogSettings, w: Int, file: Path): IO[Long] =
+    IO.blocking(Files.deleteIfExists(file)) *> LogRouter.resource[IO](s).use { log =>
       val per = lines / w
-      val work =
-        (0 until w).toList.traverse(_ => (0 until per).toList.traverse_(_ => log.tell(line)))
+      // One IO per writer, each started on its own fiber, so the tells overlap on the lock.
+      val loops = List.fill(w)((0 until per).toList.traverse_(_ => log.tell(line)))
       for
         began <- IO.monotonic
-        fibers <- work.start
-        _ <- fibers.joinWithNever
+        fibers <- loops.traverse(_.start)
+        _ <- fibers.traverse_(_.joinWithNever)
         took <- IO.monotonic.map(_ - began)
       yield took.toNanos
     }
 
   private def bytes(file: Path): IO[String] =
-    IO.blocking(if Files.exists(file) then s"${Files.size(file)}" else "none")
+    IO.blocking(s"${if Files.exists(file) then Files.size(file) else 0L}")
 
-  /** Empties the sink, then measures, so the digest that follows a writer count is one round's
-    * bytes rather than every round's.
+  /** One warm-up round, then two timed rounds of which the faster is reported. `round` empties the
+    * sink, so each round measures an empty file and the digest that follows a writer count is one
+    * round's bytes.
     */
   private def measure(name: String, s: LogSettings, w: Int, file: Path): IO[Unit] =
-    IO.blocking(Files.deleteIfExists(file)) *> rounds(name, s, w)
-
-  /** One warm-up round, then two timed rounds of which the faster is reported. */
-  private def rounds(name: String, s: LogSettings, w: Int): IO[Unit] =
-    round(s, w) *> List.fill(2)(()).traverse(_ => round(s, w)).map { times =>
+    round(s, w, file) *> List.fill(2)(()).traverse(_ => round(s, w, file)).map { times =>
       val nanos = times.min
       val us = nanos.toDouble / lines / 1000.0
       val rate = lines.toDouble / (nanos.toDouble / 1e9)

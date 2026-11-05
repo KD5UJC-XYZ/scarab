@@ -4301,19 +4301,19 @@
        "85,005"
       ],
       [
-       "`silenced`: lock, admission and clock only",
+       "`silenced`: route filter only, no render, no lock",
        "1",
        "0.05",
        "19,844,198"
       ],
       [
-       "`silenced`: lock, admission and clock only",
+       "`silenced`: route filter only, no render, no lock",
        "4",
        "0.05",
        "19,946,989"
       ],
       [
-       "`silenced`: lock, admission and clock only",
+       "`silenced`: route filter only, no render, no lock",
        "16",
        "0.045",
        "22,051,687"
