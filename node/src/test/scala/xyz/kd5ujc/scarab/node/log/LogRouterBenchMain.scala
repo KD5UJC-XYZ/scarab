@@ -11,9 +11,10 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
 /** What the router's one sink lock costs: `tell` throughput with several fibers writing at once,
   * against a file sink that admits every line (`file`), and against the same sink with every line
   * silenced (`silenced`), where the route filter drops the line before the lock, the clock, the
-  * render and the write. What is lost between `writers = 1` and more writers is the contention the
-  * lock causes; what is lost between `file` and `silenced` is the render, the write, the lock and
-  * the clock together, which this harness does not separate.
+  * render and the write. The difference between `writers = 1` and more writers includes the
+  * contention the lock causes, the fiber dispatch, and the writers sharing cores for the render;
+  * what is lost between `file` and `silenced` is the render, the write, the lock and the clock
+  * together, which this harness does not separate.
   *
   * Not part of `check`: run it with `bash scripts/sbtw "node/Test/runMain
   * xyz.kd5ujc.scarab.node.log.LogRouterBenchMain"`. It prints a `METRIC` line per configuration and
@@ -80,10 +81,12 @@ object LogRouterBenchMain extends IOApp.Simple:
   private def measure(name: String, s: LogSettings, w: Int, file: Path): IO[Unit] =
     round(s, w, file) *> List.fill(2)(()).traverse(_ => round(s, w, file)).map { times =>
       val nanos = times.min
-      val us = nanos.toDouble / lines / 1000.0
-      val rate = lines.toDouble / (nanos.toDouble / 1e9)
+      // The lines the round actually wrote, which is `lines` whenever the writer count divides it.
+      val total = lines / w * w
+      val us = nanos.toDouble / total / 1000.0
+      val rate = total.toDouble / (nanos.toDouble / 1e9)
       println(
-        f"METRIC config=$name writers=$w lines=$lines us_per_line=$us%.3f lines_per_s=$rate%.0f"
+        f"METRIC config=$name writers=$w lines=$total us_per_line=$us%.3f lines_per_s=$rate%.0f"
       )
       ()
     }
