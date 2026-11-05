@@ -171,6 +171,10 @@ class CodecSuite extends ScalaCheckSuite:
     assertEquals(hex(SnapshotSidecarV7.fingerprint), GoldenPreviousSidecarFingerprint)
   }
 
+  test("golden: the frozen sidecar schema of V8 files keeps its fingerprint") {
+    assertEquals(hex(SnapshotSidecarV8.fingerprint), GoldenV8SidecarFingerprint)
+  }
+
   test("golden: the schema fingerprint and encodings of the V7 checkpoint binding") {
     assertEquals(hex(CheckpointBinding.fingerprint), GoldenBindingFingerprint)
     def encoded(b: CheckpointBinding) = hex(Codec.encode(b)(using CheckpointBinding.codec))
@@ -216,6 +220,8 @@ class CodecSuite extends ScalaCheckSuite:
   private val GoldenSidecarFingerprint = "31718eaf81232a77"
   // The sidecar schema of V5 and V7 files (`SnapshotSidecarV7`), frozen at V8: never regenerated.
   private val GoldenPreviousSidecarFingerprint = "7c483457b06802d6"
+  // The sidecar schema of V8 files (`SnapshotSidecarV8`), frozen at V9: never regenerated.
+  private val GoldenV8SidecarFingerprint = "31718eaf81232a77"
   // The V7 binding in front of the V5 body (#395): a change to it is a new version too.
   private val GoldenBindingFingerprint = "bd43aa08b4fae886"
   private val GoldenSidecar =

@@ -5,7 +5,8 @@ import cats.syntax.all.*
 import java.nio.charset.StandardCharsets
 import xyz.kd5ujc.scarab.codec.{BinaryError, Bytes}
 import xyz.kd5ujc.scarab.consensus.state.MirrorExtras
-import xyz.kd5ujc.scarab.consensus.{ByronState, ConsensusExtras}
+import xyz.kd5ujc.scarab.consensus.{BootstrapState, ByronState, ConsensusExtras}
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{FileKind, FormatLoss, FormatVersion, StorageError}
 import xyz.kd5ujc.scarab.ledger.byron.{
   ByronParams,
@@ -45,8 +46,9 @@ private[storage] object SnapshotSidecarV7:
         registrationSlot: Map[Bytes, BigInt]
     )
 
-  // The givens below that contain the update state are named as those of `NodeCodecs`, which they
-  // shadow: the derivations here find them, and the other givens of `NodeCodecs`, unchanged.
+  // The givens below that contain the update state or an era are named as those of `NodeCodecs`,
+  // which they shadow: the derivations here find them, and the other givens of `NodeCodecs`,
+  // unchanged. The eras are the frozen ones of the files before V9 ([[FrozenEra]]).
   import NodeCodecs.given
 
   private val frozen: Codec[Frozen.UpdateState] = Codec.auto
@@ -94,6 +96,8 @@ private[storage] object SnapshotSidecarV7:
     def read(in: In): Either[BinaryError, LiveUpdateState] = frozen.read(in).flatMap(current)
     def shape: String = frozen.shape
 
+  given era: Codec[Era] = FrozenEra.codec
+  given bootstrap: Codec[BootstrapState] = Codec.auto
   given byron: Codec[ByronState] = Codec.auto
   given consensusExtras: Codec[ConsensusExtras] = Codec.auto
   given mirrorInShelley: Codec[MirrorExtras.InShelley] = Codec.auto
