@@ -11,8 +11,8 @@ composition and `Follower` the consumer, both in `node`):
 | Part | Where | Role |
 |---|---|---|
 | `ImmutableStore[F]` | `ImmutableStore.scala` (`FileImmutableStore`) | Append-only raw blocks older than `k`: `append`, `sync`, `tip`, `get(point)`, `byBlockNo`, `stream(after)` |
-| `LedgerSnapshots[F, S]` | `LedgerSnapshots.scala` (`FileLedgerSnapshots`) | Atomic, checksummed snapshots of the full `MirrorState` at an immutable point; newest valid wins. The file's content is a `SnapshotFormat[F, S]` (`SnapshotV8`: a `CheckpointBinding`, then the Haskell ledger state and a `SnapshotSidecar`); a write refusal is a value (`SnapshotRefusal`), while retired/unknown reads refuse restoration |
-| `SnapshotMigration[F]` | `SnapshotMigration.scala` | Registered migration structure and read-only version admission; historical V1–V4 payloads are retired, V5 and V7 migrate to V8, the current version |
+| `LedgerSnapshots[F, S]` | `LedgerSnapshots.scala` (`FileLedgerSnapshots`) | Atomic, checksummed snapshots of the full `MirrorState` at an immutable point; newest valid wins. The file's content is a `SnapshotFormat[F, S]` (`SnapshotV9`: a `CheckpointBinding`, then the Haskell ledger state and a `SnapshotSidecar`); a write refusal is a value (`SnapshotRefusal`), while retired/unknown reads refuse restoration |
+| `SnapshotMigration[F]` | `SnapshotMigration.scala` | Registered migration structure and read-only version admission; historical V1–V4 payloads are retired, V5, V7 and V8 migrate to V9, the current version |
 | `VolatileStore[F]` | `VolatileStore.scala` | Append-only log of the volatile chain's updates (blocks, rollback markers); lets a restart continue at the previous tip |
 | `NetworkIdentityFile` | `NetworkIdentityFile.scala`, `NetworkIdentity.scala` | The network the database was created for (`<db>/network-identity`), checked on every open |
 | `SnapshotPolicy` | `SnapshotPolicy.scala` | When the immutable tip is snapshotted: `Aligned` (the Haskell node's default, a multiple of 40 k slots and at most one per 10 minutes) or `EverySlots` (`--snapshot-every`); the pure `due` |
