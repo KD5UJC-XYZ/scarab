@@ -56,6 +56,11 @@
    "file": "docs/performance/plutus-budget-arithmetic.md",
    "title": "The reference's budget arithmetic in the evaluator",
    "prefix": "plutus-budget-arithmetic"
+  },
+  {
+   "file": "docs/performance/logging-and-the-router.md",
+   "title": "Logging and the router",
+   "prefix": "logging-and-the-router"
   }
  ],
  "entries": [
@@ -4252,6 +4257,87 @@
     }
    ],
    "listings": []
+  },
+  {
+   "id": "perf-60",
+   "section": "54",
+   "heading": "54. The log router's one sink lock (#233)",
+   "subject": "The log router's one sink lock (#233)",
+   "date": "2026-11-05",
+   "dateSource": "text",
+   "issues": [
+    "#233"
+   ],
+   "commits": [],
+   "links": [],
+   "page": "logging-and-the-router",
+   "results": [
+    {
+     "id": "perf-60.t1",
+     "header": [
+      "Sink configuration",
+      "Writers requested (one fiber ran)",
+      "µs per line",
+      "Lines a second"
+     ],
+     "separator": "|---|---:|---:|---:|",
+     "rows": [
+      [
+       "`file`: admitted path — render, append, lock and clock",
+       "1",
+       "12.19",
+       "82,059"
+      ],
+      [
+       "`file`: admitted path — render, append, lock and clock",
+       "4",
+       "11.89",
+       "84,092"
+      ],
+      [
+       "`file`: admitted path — render, append, lock and clock",
+       "16",
+       "11.76",
+       "85,005"
+      ],
+      [
+       "`silenced`: route filter only, no render, no lock",
+       "1",
+       "0.05",
+       "19,844,198"
+      ],
+      [
+       "`silenced`: route filter only, no render, no lock",
+       "4",
+       "0.05",
+       "19,946,989"
+      ],
+      [
+       "`silenced`: route filter only, no render, no lock",
+       "16",
+       "0.045",
+       "22,051,687"
+      ]
+     ]
+    }
+   ],
+   "listings": [
+    {
+     "id": "perf-60.c1",
+     "fence": "```text",
+     "lines": [
+      "METRIC config=file writers=1 lines=240000 us_per_line=12.186 lines_per_s=82059",
+      "METRIC config=file writers=4 lines=240000 us_per_line=11.892 lines_per_s=84092",
+      "METRIC config=file writers=16 lines=240000 us_per_line=11.764 lines_per_s=85005",
+      "DIGEST config=file bytes=207357801",
+      "METRIC config=silenced writers=1 lines=240000 us_per_line=0.050 lines_per_s=19844198",
+      "METRIC config=silenced writers=4 lines=240000 us_per_line=0.050 lines_per_s=19946989",
+      "METRIC config=silenced writers=16 lines=240000 us_per_line=0.045 lines_per_s=22051687",
+      "DIGEST config=silenced bytes=0"
+     ],
+     "close": "```"
+    }
+   ]
   }
  ]
 }
