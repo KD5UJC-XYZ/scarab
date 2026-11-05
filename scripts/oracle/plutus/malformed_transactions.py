@@ -9,6 +9,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from devnet.scenarios.v1context import Driver, ENV_DIR, FEE, FUND, UNITS, open_text, script_hash
 from devnet.util import query
+from devnet.refusalrecording import RecordingError
 
 
 class Mode(Enum):
@@ -51,7 +52,7 @@ def build(driver, language, mode, valid, fund, collateral):
         collateral=[collateral[:2]] if mode.witness else None)
 
 
-def run(name, era, protocol, output, registry):
+def run(name, era, protocol, output, registry, *, wallet=None):
     observed = query(name, "protocol-parameters")["protocolVersion"]["major"]
     if observed != protocol:
         raise ValueError(f"native protocol is {observed}, requested {protocol}")
@@ -61,33 +62,45 @@ def run(name, era, protocol, output, registry):
     modes = list(Mode) if era != "alonzo" else [Mode.WITNESS]
     requests = [(language, mode, valid) for language in languages for mode in modes
                 for valid in (True, False)]
-    address = open_text(name, f"{ENV_DIR}/utxo-keys/utxo1/utxo.addr")
-    driver = Driver(name, era, protocol, f"{ENV_DIR}/utxo-keys/utxo1/utxo.skey", address,
+    skey, address = wallet or (f"{ENV_DIR}/utxo-keys/utxo1/utxo.skey",
+                              open_text(name, f"{ENV_DIR}/utxo-keys/utxo1/utxo.addr"))
+    driver = Driver(name, era, protocol, skey, address,
                     log=lambda row: print(json.dumps(row), flush=True))
     made = driver.setup({}, len(requests))
     for index, (language, mode, valid) in enumerate(requests):
         fund, collateral = made[f"fund{index}"], made[f"collateral{index}"]
         transaction, txid = build(driver, language, mode, valid, fund, collateral)
         label = f"{era}-pv{protocol}-v{language}-{mode.value}-valid-{str(valid).lower()}"
-        accepted, text = driver.submit(transaction, label)
-        if accepted:
+        try:
+            accepted, text = driver.submit(transaction, label)
+        except RecordingError as error:
+            # Driver has retained the complete counterexample. Do not replace variable bytes by
+            # one selected answer, and keep collecting independent controls in this profile.
+            print(json.dumps({"incompleteCase": label, "problem": error.problem.name}), flush=True)
+            continue
+        if accepted and era != "alonzo":
             raise RuntimeError(f"reference unexpectedly accepted malformed4100: {label}")
-        if any(constructor not in text for constructor in mode.constructors):
+        if era != "alonzo" and any(constructor not in text for constructor in mode.constructors):
             raise RuntimeError(f"reference did not name the intended malformed-script guard: {label}")
+        if accepted and not driver.wait_gone(*collateral[:2]):
+            raise RuntimeError(f"accepted invalid-tag control was not included: {label}")
         driver.record(label, "original4100 native admission/exposure control", transaction, txid,
                       {"spent": [fund], "references": [], "collateral": [collateral]
                        if mode.witness else []}, accepted, text, valid, [language],
-                      mode.constructors[0])
+                      None if accepted else ("ValidationTagMismatch" if era == "alonzo"
+                                             else mode.constructors[0]))
         driver.cases[-1]["malformedProbe"] = {
             "language": language, "serializedScript": "4100", "mode": mode.value,
-            "expectedConstructors": mode.constructors,
+            "expectedConstructors": [] if era == "alonzo" else mode.constructors,
+            "alonzoHasPhase1MalformedGuard": False,
             "referenceInputExecutionClaim": False,
             "boundary": "required minting witness" if not mode.reference
             else "creation of an output carrying a reference script",
         }
         Path(output).write_text(json.dumps(driver.cases, indent=1) + "\n")
     print(json.dumps({"profile": [era, protocol], "languages": languages,
-                      "cases": len(driver.cases), "allRefused": True}), flush=True)
+                      "requested": len(requests), "recorded": len(driver.cases),
+                      "incomplete": len(requests) - len(driver.cases)}), flush=True)
 
 
 if __name__ == "__main__":

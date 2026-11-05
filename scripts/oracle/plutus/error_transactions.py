@@ -22,14 +22,16 @@ def requests(programs, definitions, languages):
             for program, definition, units in selected + tiny for valid in (True, False)]
 
 
-def run(name, era, protocol, output, registry, programs_file, definitions_file):
+def run(name, era, protocol, output, registry, programs_file, definitions_file, *, wallet=None):
     if query(name, "protocol-parameters")["protocolVersion"]["major"] != protocol:
         raise ValueError("the native protocol does not match the requested profile")
-    programs = json.loads(programs_file.read_text())
-    definitions = json.loads(definitions_file.read_text())
+    program_bytes, definition_bytes = programs_file.read_bytes(), definitions_file.read_bytes()
+    programs = json.loads(program_bytes)
+    definitions = json.loads(definition_bytes)
     pending = requests(programs, definitions, legal_languages(era, protocol, registry))
-    address = open_text(name, f"{ENV_DIR}/utxo-keys/utxo1/utxo.addr")
-    driver = Driver(name, era, protocol, f"{ENV_DIR}/utxo-keys/utxo1/utxo.skey", address,
+    skey, address = wallet or (f"{ENV_DIR}/utxo-keys/utxo1/utxo.skey",
+                              open_text(name, f"{ENV_DIR}/utxo-keys/utxo1/utxo.addr"))
+    driver = Driver(name, era, protocol, skey, address,
                     log=lambda row: print(json.dumps(row), flush=True))
     made = driver.setup({}, len(pending))
     for index, (program, definition, units, valid) in enumerate(pending):
@@ -54,8 +56,9 @@ def run(name, era, protocol, output, registry, programs_file, definitions_file):
             "id": program["id"], "serializedScript": program["script"],
             "language": language, "version": definition["version"],
             "arity": len(definition["arguments"]), "budget": list(units),
-            "compileInputsSha256": hashlib.sha256(definitions_file.read_bytes()).hexdigest(),
-            "compileOutputsSha256": hashlib.sha256(programs_file.read_bytes()).hexdigest(),
+            "compileInputsSha256": hashlib.sha256(definition_bytes).hexdigest(),
+            "compileOutputsSha256": hashlib.sha256(program_bytes).hexdigest(),
+            "compileInput": definition, "compileOutput": program,
         }
         output.write_text(json.dumps(driver.cases, indent=1) + "\n")
     print(json.dumps({"profile": [era, protocol], "cases": len(driver.cases),

@@ -16,9 +16,10 @@ class Problem(Enum):
 class RecordingError(Exception):
     """A capture did not establish its declared evidence contract."""
 
-    def __init__(self, problem, observations=()):
+    def __init__(self, problem, observations=(), recording=None):
         self.problem = problem
         self.observations = tuple(observations)
+        self.recording = recording
         super().__init__(problem.value)
 
 
@@ -81,8 +82,9 @@ def capture(name, era, transaction, *, repetitions=4, attempts=40, session=Sessi
                 client.release()
             if client.tip(era) != point or client.mempool() != (slot, 0):
                 continue
+            recording = Refusal(bytes(transaction), payload, tuple(point[0]), slot, state, utxo,
+                                tuple(reasons), tuple(messages))
             if len(set(reasons)) != 1:
-                raise RecordingError(Problem.UNSTABLE, reasons)
-            return Refusal(bytes(transaction), payload, tuple(point[0]), slot, state, utxo,
-                           tuple(reasons), tuple(messages))
+                raise RecordingError(Problem.UNSTABLE, reasons, recording)
+            return recording
     raise RecordingError(Problem.NO_STABLE_STATE)

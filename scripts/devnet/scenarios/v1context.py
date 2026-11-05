@@ -97,11 +97,25 @@ class Driver:
         env = eratx.envelope(self.era, tx)
         r = self.sh(f"mkdir -p /work/tx && cat > /work/tx/{label}.tx && cardano-cli conway transaction submit "
                     f"{SOCKET} --tx-file /work/tx/{label}.tx", stdin=env)
-        from ..refusalrecording import capture
+        from ..refusalrecording import capture, RecordingError
         from ..refusalcorpus import sha256, write
         accepted = r.returncode == 0
         text = (r.stdout + r.stderr).strip()
-        wire = None if accepted else capture(self.name, self.era, tx)
+        try:
+            wire = None if accepted else capture(self.name, self.era, tx)
+        except RecordingError as error:
+            # A genuine native variability counterexample is an unresolved input, never a pass.
+            # Retain its exact signed bytes and every observation before propagating the failure.
+            evidence = {"case": label, "problem": error.problem.name, "transaction": tx.hex(),
+                        "cli": {"exit": r.returncode, "stdout": r.stdout, "stderr": r.stderr},
+                        "wire": error.recording.evidence() if error.recording else None}
+            directory = data_root(self.name) / "refusal-evidence"
+            write(directory / f"{label}-incomplete.json",
+                  (json.dumps(evidence, indent=2) + "\n").encode())
+            if error.recording:
+                for kind, data in (("states", error.recording.state), ("utxo", error.recording.utxo)):
+                    write(directory / kind / f"{sha256(data)}.cbor", data)
+            raise
         self.submission = {"exit": r.returncode, "stdout": r.stdout, "stderr": r.stderr,
                            "wire": wire}
         if wire is not None:

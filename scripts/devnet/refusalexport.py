@@ -4,6 +4,7 @@ import argparse
 from enum import Enum
 import json
 from pathlib import Path
+import subprocess
 
 from .refusalcorpus import GENESIS, families, item, provenance, sha256, write
 
@@ -46,6 +47,8 @@ def validate(row, era, protocol):
 
 def export(name, root, input_file, out, corpus_name, era, protocol, source_commit):
     """Retain source rows verbatim and add a corpus consumed by the whole-reason Scala gate."""
+    source_commit = subprocess.run(["git", "rev-parse", "--verify", f"{source_commit}^{{commit}}"],
+                                   capture_output=True, text=True, check=True).stdout.strip()
     rows = json.loads(input_file.read_text())
     directory = out / corpus_name
     if directory.exists():
