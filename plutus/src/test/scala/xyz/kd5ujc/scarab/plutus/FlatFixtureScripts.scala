@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.plutus
 
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import scala.util.Try
 import scalus.uplc.Program
@@ -19,23 +19,19 @@ object FlatFixtureScripts:
   private def hex(id: String, s: String): Array[Byte] =
     Bytes.fromHex(s).fold(e => throw BadFixture(id, e.toString), _.toArray)
 
-  private lazy val conformanceRoot: Path =
-    Paths.get(getClass.getResource(s"/${PlutusConformanceSuite.Directory}").toURI)
-
   /** Flat bytes from the conformance programs Scalus parses and can encode (a BLS constant has no
     * flat encoding), and from the original-byte sidecars.
     */
   lazy val conformance: Vector[(String, Array[Byte])] =
-    val files = Files.walk(conformanceRoot).iterator().asScala.toVector
-    val encoded = files.filter(_.toString.endsWith(".uplc")).flatMap { path =>
+    val files = PlutusConformanceSuite.reference.under(PlutusConformanceSuite.Conformance)
+    val encoded = files.filter(_._1.endsWith(".uplc")).flatMap { (id, path) =>
       Program
         .parseUplc(Files.readString(path))
         .toOption
         .flatMap(program => Try(program.flatEncoded).toOption)
-        .map(conformanceRoot.relativize(path).toString -> _)
+        .map(id -> _)
     }
-    val sidecars = files.filter(_.toString.endsWith(".flat.cbor.hex")).flatMap { path =>
-      val id = conformanceRoot.relativize(path).toString
+    val sidecars = files.filter(_._1.endsWith(".flat.cbor.hex")).flatMap { (id, path) =>
       PlutusScriptBytes.flatOf(hex(id, Files.readString(path).trim)).map(id -> _)
     }
     encoded ++ sidecars

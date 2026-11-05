@@ -7,8 +7,9 @@ package xyz.kd5ujc.scarab.plutus
   * `showParamName` (`PlutusLedgerApi/Common/ParamName.hs` lines 54-75) writes a constructor in
   * lower-kebab form: the first letter in lower case and every `'` as `-`.
   *
-  * `ParamNamesSuite` compares the tables with the names the test resources `plutus-1.70.0.0` record
-  * from the same sources, and the names of the Alonzo genesis files with the V1 table.
+  * `ParamNamesSuite` compares the tables with the names the 1.70.0.0 view of the test resources
+  * `plutus-reference` records from the same sources, and the names of the Alonzo genesis files with
+  * the V1 table.
   */
 object ParamNames:
 

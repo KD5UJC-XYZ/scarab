@@ -8,26 +8,31 @@ No upstream defaults or source pins are updated by this tool.
 
 import argparse
 import json
+import sys
 from functools import reduce
 from operator import getitem
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from plutus_reference import REFERENCE, release_view  # noqa: E402
 
-def parameters(resources: Path, language: int, protocol: int) -> list[int]:
+RELEASE = "1.70.0.0"
+
+
+def parameters(resources: dict[str, Path], language: int, protocol: int) -> list[int]:
     variant = ("C" if protocol < 11 else "E") if language == 3 else (
         "B" if protocol < 11 else "D"
     )
-    builtin = json.loads((resources / f"builtinCostModel{variant}.json").read_text())
-    machine = json.loads((resources / f"cekMachineCosts{variant}.json").read_text())
+    builtin = json.loads(resources[f"cost-model/builtinCostModel{variant}.json"].read_text())
+    machine = json.loads(resources[f"cost-model/cekMachineCosts{variant}.json"].read_text())
 
     def parameter(name: str) -> int:
         parts = name.split("'")
         keys = (parts[0][0].lower() + parts[0][1:], *parts[1:])
         return reduce(getitem, keys, machine if keys[0].startswith("cek") else builtin)
 
-    return [parameter(name) for name in (
-        resources / f"V{language}-param-names.txt"
-    ).read_text().splitlines() if name]
+    return [parameter(name) for name in
+            resources[f"ledger-api/V{language}-param-names.txt"].read_text().splitlines() if name]
 
 
 def main() -> None:
@@ -36,7 +41,7 @@ def main() -> None:
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[3]
     scripts = root / "fixtures/reference/plutus-upstream-boundaries/scripts.jsonl"
-    resources = root / "plutus/src/test/resources/plutus-1.70.0.0"
+    resources = release_view(root / REFERENCE, RELEASE)
     rows = [
         {
             "id": probe["id"],
