@@ -38,8 +38,9 @@ At the node-to-client wire boundary, a typed failed request reconstructs the ref
 budget and cost model. The failure-description payload is Base64 of those bytes. All 73 requests in
 the retained corpus match exactly, including all V1/V2/V3 arguments and models. Unexpectedly passing
 invalid-tag failures match the complete reference UTXOS predicate bytes. A failing valid-tag predicate
-retains every failure and matching reconstruction payload. The context printer and explicit UPLC
-error descriptions now match the retained native context/refusal controls as whole outputs.
+retains every failure and matching reconstruction payload. `ScriptResultWireSuite` compares each of
+the 25 native aggregation rows as complete validity-tag predicate bytes, including explicit UPLC error
+descriptions. The separate context/refusal controls also compare whole outputs.
 Other CEK/evaluation-error descriptions still use provider text and are incomplete under
 [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796); those fallbacks do not establish conformance.
 

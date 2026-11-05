@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node.ntc
 
 import io.circe.parser.parse
+import io.circe.{Decoder, DecodingFailure}
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -9,6 +10,37 @@ import xyz.kd5ujc.scarab.ledger.PreprodDeepTx
 import xyz.kd5ujc.scarab.plutus.{EvalRequest, ExUnits, PlutusData, PlutusLanguage}
 
 class PlutusContextTextSuite extends FunSuite:
+  private enum FixtureKind:
+    case ArgumentsV1, ArgumentsV2, ContextV1, ContextV2, ContextV3, RawData
+
+  private given Decoder[FixtureKind] = Decoder.instance { cursor =>
+    cursor
+      .as[String]
+      .flatMap(value =>
+        FixtureKind.values
+          .find(_.toString == value)
+          .toRight(DecodingFailure(s"unknown oracle kind: $value", cursor.history))
+      )
+  }
+
+  private def arguments(
+      language: PlutusLanguage,
+      data: PlutusData
+  ): Either[PlutusContextText.Error, String] = data match
+    case PlutusData.List(values) =>
+      PlutusContextText
+        .arguments(
+          EvalRequest(language, 10, Bytes.empty, values, Vector.empty, ExUnits.zero)
+        )
+        .map(_.render)
+    case other =>
+      Left(
+        PlutusContextText.Error.Shape(
+          PlutusContextText.Kind.Sequence(PlutusContextText.Kind.RawData),
+          other
+        )
+      )
+
   private val corpus =
     parse(Files.readString(Path.of("fixtures/reference/plutus-diagnostics/contexts.json")))
       .fold(e => fail(e.message), identity)
@@ -18,27 +50,20 @@ class PlutusContextTextSuite extends FunSuite:
   corpus.foreach { entry =>
     val cursor = entry.hcursor
     def field(name: String) = cursor.get[String](name).fold(e => fail(e.message), identity)
+    val kind = cursor.get[FixtureKind]("kind").fold(e => fail(e.message), identity)
     test(field("name")) {
       val bytes = Bytes.fromHex(field("dataCbor")).fold(e => fail(e.toString), identity)
       val data = PlutusData.decode(bytes).fold(e => fail(e.toString), identity)
-      val rendered = field("kind") match
-        case "ArgumentsV1" | "ArgumentsV2" =>
-          val language =
-            if field("kind") == "ArgumentsV1" then PlutusLanguage.V1 else PlutusLanguage.V2
-          val args = data match
-            case PlutusData.List(values) => values
-            case other                   => fail(s"not an argument list: $other")
-          PlutusContextText
-            .arguments(EvalRequest(language, 10, Bytes.empty, args, Vector.empty, ExUnits.zero))
-            .map(_.render)
-        case kind =>
-          val schema = kind match
-            case "ContextV1" => PlutusContextText.Kind.ContextV1
-            case "ContextV2" => PlutusContextText.Kind.ContextV2
-            case "ContextV3" => PlutusContextText.Kind.ContextV3
-            case "RawData"   => PlutusContextText.Kind.RawData
-            case other       => fail(s"unknown oracle type $other")
-          PlutusContextText.render(schema, data)
+      val rendered = kind match
+        case FixtureKind.ArgumentsV1 => arguments(PlutusLanguage.V1, data)
+        case FixtureKind.ArgumentsV2 => arguments(PlutusLanguage.V2, data)
+        case FixtureKind.ContextV1 =>
+          PlutusContextText.render(PlutusContextText.Kind.ContextV1, data)
+        case FixtureKind.ContextV2 =>
+          PlutusContextText.render(PlutusContextText.Kind.ContextV2, data)
+        case FixtureKind.ContextV3 =>
+          PlutusContextText.render(PlutusContextText.Kind.ContextV3, data)
+        case FixtureKind.RawData => PlutusContextText.render(PlutusContextText.Kind.RawData, data)
       assertEquals(rendered, Right(field("text")))
     }
   }

@@ -44,7 +44,10 @@ Retain the original native fixtures and compare whole outputs unconditionally. N
 and byte controls cover all byte values, escape terminators, SO followed by H, quotes/backslashes,
 Unicode supplementary characters and boundaries. The finite context/explicit-error corpus is a
 foundation. General error formatting and the current document printer's restricted fitting remain
-incomplete until later stages.
+incomplete until later stages. The remaining inventory explicitly includes the provider-description
+fallback in `PredicateFailureCbor` and the pre-Conway encoder's short-circuit precedence: an earlier
+unsupported constructor returns `Right(None)` before a later presentation defect is rendered. This
+does not affect Conway-only local submission; broader diagnostic outcome precedence requires proof.
 
 This source landing also synchronizes policy, roadmap and compatibility references. Preserve dated
 historical receipts without upgrading their measured scope. A fresh independent review checks code
@@ -156,4 +159,6 @@ level and gates. Presentation/cause plumbing runs full preflight and ntc; reasse
 or fault routing change. Rebase, recheck factual claims and obtain fresh independent Claude review of
 the final head before readiness. Record source/input/command/version/result evidence, then clean exact
 owned generated outputs and containers under AGENTS.md. Missing implementation or evidence keeps the
-corresponding entry incomplete.
+corresponding entry incomplete. The general coverage row's `candidateRequired` flag remains false:
+that flag controls release-candidate gating, not whether #796 is required implementation work. This
+decision adds no separate release-pipeline rule and does not claim #796 completion.

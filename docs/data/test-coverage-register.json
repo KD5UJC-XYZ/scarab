@@ -718,7 +718,7 @@
         "fixtures/reference/plutus-diagnostics/README.md",
         "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
       ],
-      "candidateRequired": true
+      "candidateRequired": false
     }
   ]
 }

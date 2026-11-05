@@ -85,7 +85,6 @@ class ReferenceRefusalSuite extends FunSuite:
     case Right(corpus) =>
       test("the refusal corpus reads, every file matching its recorded hash") {
         assert(corpus.corpora.nonEmpty, "the manifest lists no corpus")
-
       }
       corpus.corpora.foreach { c =>
         c.states.foreach { (file, bytes) =>

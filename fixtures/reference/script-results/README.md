@@ -20,8 +20,11 @@ exact inputs from the retained signed source.
 Each `oracle` field is the unchanged released Haskell API output: complete passing/failing script
 order, verbose logs, ordinary ledger Quiet logs, successful consumed budgets and exact reconstruction
 contexts/validity-tag predicate CBOR. Failed consumed budgets are absent because the reference API
-does not expose them. Full diagnostic prose is retained in the golden even though Scarab currently
-uses its own typed-cause diagnostic prose; see the [as-built design](../../../docs/design/script-results.md).
+does not expose them. `ScriptResultWireSuite` compares every row's complete validity-tag predicate
+CBOR, including every explicit-error diagnostic and reconstruction payload, with the native oracle.
+This finite explicit-error corpus does not establish all error categories; complete remaining parity
+is required under [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796) and
+[the as-built design](../../../docs/design/script-results.md).
 The API oracle does not replace full UTXOW/BBODY admission or the CEK conformance corpus.
 
 Reproduce and verify with the [oracle recipe](../../../scripts/oracle/plutus/aggregation/README.md).

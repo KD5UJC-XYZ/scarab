@@ -34,8 +34,9 @@ original signed admission is reused and which transactions are API-only derivati
 operational-node restart, signing keys or public-chain synchronization is needed.
 
 Scarab's deterministic tests compare all verdicts, failure order, successful consumed units, verbose
-logs, declared budgets and every reconstruction payload. Complete failing-tag diagnostic text is
-retained as reference evidence, with the remaining presentation difference explicitly recorded in
-[the as-built design](../../../../docs/design/script-results.md). The original all-pass invalid-tag
-predicate is compared byte-for-byte. The reference restricting API returns no consumed budget on
+logs, declared budgets and every reconstruction payload. `ScriptResultWireSuite` compares the complete
+validity-tag predicate CBOR for every row, including all explicit-error descriptions and the original
+all-pass invalid-tag control. No description or structural field is masked. General error/term/refusal
+parity remains required under [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796) and
+[the as-built design](../../../../docs/design/script-results.md). The reference restricting API returns no consumed budget on
 failure; this wrapper does not manufacture one.
