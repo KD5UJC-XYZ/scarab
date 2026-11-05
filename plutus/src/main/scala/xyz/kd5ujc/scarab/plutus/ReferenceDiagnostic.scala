@@ -56,10 +56,14 @@ object ReferenceDiagnostic:
     case FreeUnique(unique: BigInt)
     case FreeIndex(index: BigInt)
 
-  /** The native type itself contains Text. This is native error payload, not a provider-message
-    * escape hatch: interpreter adapters construct it from a verified typed unlifting cause.
+  /** The native UnliftingError contains Text. Production captures its structured source before
+    * rendering; NativeMessage retains explicitly constructed native API payloads for oracle use.
     */
-  final case class UnliftingError(text: String)
+  enum UnliftingError:
+    case NotAConstant
+    case TypeMismatch(expected: Universe, actual: Universe)
+    case TypeErrorBypassed
+    case NativeMessage(text: String)
 
   enum MachineError:
     case NonPolymorphicInstantiation
