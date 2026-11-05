@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Writes the node-to-node ChainSync client messages the find-intersect oracle reads (#755).
+"""Writes compact ChainSync input recipes and consumes executed native observations (#755).
 
 Each case is a message `[4, points]` (`MsgFindIntersect`) or a neighbour, as the server reads it
 in `StIdle`. A large one is written as `prefix`, `count` copies of `unit` and `suffix`, so that the
 corpus stays small; `bytes` expands it. The reference reads the points with `decodeList` (a definite
 or indefinite list, `ChainSync/Codec.hs:209-214`, ouroboros-network 2fb69829) and each with
 `decodePoint (decodeRawHash p)`: `[]` or `[slot, hash]`, the hash a byte string of exactly 32 bytes.
-Nothing bounds the number of points but the codec's 65535 bytes a message.
+The NtN driver bounds incoming messages at 65535 bytes; the plain NtC driver and the encoder do not.
 
     python3 scripts/oracle/chainsync-find-intersect/find_intersect_cases.py --inputs /tmp/fi-inputs.txt
     docker run --rm -i --network none -v "$out:/observer" --entrypoint /observer/find-intersect-observer \\
@@ -16,6 +16,7 @@ Nothing bounds the number of points but the codec's 65535 bytes a message.
         --out fixtures/reference/chainsync-find-intersect/cases.jsonl
 """
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -25,10 +26,12 @@ import cases as c  # noqa: E402  (the CBOR helpers)
 
 CASES = []
 LIMIT = 65535
+SELECTIONS = [f"select 2160 {n} origin" for n in [0, 1, 2, 3, 4, 5, 8, 13, 16, 21, 34, 64, 2160]]
+SELECTIONS += ["select 5 9 origin", "select 2160 0 block", "select 2160 5 block", "offsets 2147483647 2147483647"]
 
 
-def case(name, prefix, unit=b"", count=0, suffix=b""):
-    CASES.append({"name": name, "prefix": prefix.hex(), "unit": unit.hex(), "count": count, "suffix": suffix.hex()})
+def case(name, prefix, unit=b"", count=0, suffix=b"", transport="ntn", kind="points"):
+    CASES.append({"name": name, "kind": kind, "transport": transport, "prefix": prefix.hex(), "unit": unit.hex(), "count": count, "suffix": suffix.hex()})
 
 
 def expand(row):
@@ -77,20 +80,71 @@ case("a negative slot", FIND + c.array([c.array([b"\x20", c.bstr(H)])]))
 case("points not a list", FIND + c.cmap([]))
 case("the message as an indefinite list", b"\x9f\x04" + c.array([P]) + b"\xff")
 
+for count in [65536, 70000]:
+    case(f"NtC {count} origins", *definite(count, ORIGIN), transport="ntc")
+case("NtC 70000 points beyond 2.5 MB", *definite(70000, P), transport="ntc")
+case("NtC 70000 points indefinite beyond 2.5 MB", *indefinite(70000, P), transport="ntc")
+case("NtC invalid hash after 70000 origins", FIND + c.head(4, 70001), ORIGIN, 70000,
+     point(1000, c.h(0xab, 31)), transport="ntc")
+case("NtC nested point is not a point", FIND + c.head(4, 1), b"\x81", 128,
+     ORIGIN, transport="ntc")
+for size in [2**31, 2**63, 2**64 - 1]:
+    for suffix, label in [(b"", "incomplete"), (b"\xf6", "invalid first point")]:
+        case(f"NtC declared {size} points, {label}", FIND + c.head(4, size), suffix=suffix,
+             transport="ntc", kind="prefix")
+    case(f"NtC declared {size} hash bytes, incomplete", FIND + b"\x81\x82\x00" + c.head(2, size),
+         transport="ntc", kind="prefix")
+    case(f"NtC declared {size} opaque payload bytes, incomplete", b"\x83\x02" + c.head(2, size),
+         transport="ntc", kind="block-prefix")
+case("NtC declared 65536 hash bytes, incomplete", FIND + b"\x81\x82\x00" + c.head(2, 65536),
+     transport="ntc", kind="prefix")
+case("NtC a complete 65536-byte hash is not a Cardano hash", FIND + b"\x81\x82\x00" + c.head(2, 65536),
+     b"\x00", 65536, transport="ntc")
+case("opaque point canonical output crosses NtN receive limit", bytes.fromhex("82048159fff9"),
+     b"\x00", 65529, kind="opaque")
+case("NtC opaque RawBlock beyond 2.5 MB", b"\x83\x02\xd8\x18" + c.head(2, 2600000),
+     b"\x00", 2600000, b"\x82\x80\x00", transport="ntc", kind="block")
+for count, kind in [(65, "point"), (1025, "point"), (70000, "point"), (65536, "origin")]:
+    CASES.append({"name": f"encode {count} {kind}s", "kind": "encode", "count": count, "pointKind": kind})
+
+
+def request(row):
+    if row["kind"] == "encode":
+        return f'encode {row["count"]} {row["pointKind"]}'
+    mode = "decode" if row["kind"] == "points" else row["kind"]
+    return mode + " " + expand(row).hex()
+
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--inputs", help="write one hex message a line, for the oracle")
     parser.add_argument("--reference", help="the oracle's verdicts, one JSON line a case")
     parser.add_argument("--out", help="write the corpus lines (needs --reference)")
+    parser.add_argument("--selection-inputs", help="write native selection requests")
+    parser.add_argument("--selection-reference", help="executed native selection observations")
+    parser.add_argument("--selection-out", help="write the compact selection fixture")
     args = parser.parse_args()
     names = [x["name"] for x in CASES]
     assert len(names) == len(set(names)), "case names must be unique"
     for x in CASES:
-        assert len(expand(x)) <= LIMIT, x["name"]
+        if x.get("transport") == "ntn":
+            assert len(expand(x)) <= LIMIT, x["name"]
     if args.inputs:
         with open(args.inputs, "w") as f:
-            f.writelines(expand(x).hex() + "\n" for x in CASES)
+            f.writelines(request(x) + "\n" for x in CASES)
+    if args.selection_inputs:
+        with open(args.selection_inputs, "w") as f:
+            f.writelines(x + "\n" for x in SELECTIONS)
+    if args.selection_out:
+        if not args.selection_reference:
+            parser.error("--selection-out needs --selection-reference")
+        with open(args.selection_reference) as f:
+            lines = [line for line in f if line.strip()]
+        assert len(lines) == len(SELECTIONS), "the selection oracle answered a different number of cases"
+        for line in lines:
+            json.loads(line)
+        with open(args.selection_out, "w") as f:
+            f.writelines(lines)
     if args.out:
         if not args.reference:
             parser.error("--out needs --reference")
@@ -99,12 +153,10 @@ def main():
         assert len(verdicts) == len(CASES), "the oracle answered a different number of cases"
         with open(args.out, "w") as f:
             for x, v in zip(CASES, verdicts):
-                row = dict(x, accepted=v["accepted"])
-                if v["accepted"]:
-                    row["points"] = len(v["points"])
-                    row["first"] = v["points"][0] if v["points"] else None
-                else:
-                    row["failure"] = v["failure"]
+                row = dict(x, **v)
+                if x["kind"] != "encode":
+                    raw = expand(x)
+                    row["input"] = {"bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
                 f.write(json.dumps(row, separators=(",", ":")) + "\n")
 
 

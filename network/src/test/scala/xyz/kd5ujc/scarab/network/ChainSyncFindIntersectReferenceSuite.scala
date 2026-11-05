@@ -3,91 +3,185 @@ package xyz.kd5ujc.scarab.network
 
 import io.circe.{Decoder, parser}
 import java.nio.file.{Files, Path}
+import java.security.MessageDigest
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.ChainSync
-import xyz.kd5ujc.scarab.protocol.ChainSync.{DecodeResult, Message, Point, Role, State}
+import xyz.kd5ujc.scarab.protocol.{CardanoBlockFetch, ChainSync, ChainSyncEngine, ProtocolError}
+import xyz.kd5ujc.scarab.protocol.ChainSync.{DecodeResult, Message, Point, Role, State, UInt64}
 
-/** `fixtures/reference/chainsync-find-intersect/cases.jsonl` holds client messages of node-to-node
-  * ChainSync with the verdict of the released `codecChainSync` (ouroboros-network 1.2.0.0) and the
-  * point decoder consensus gives it, `decodePoint (decodeRawHash p)`, read in the server's
-  * `StIdle`. `MsgFindIntersect` takes as many points as its 65535 bytes hold, and a point's hash
-  * exactly 32 bytes. The node's server must read each as the reference does: the same verdict, and
-  * for an accepted one the same points (#755).
+/** Executed released-codec observations at ouroboros-network 2fb69829. Compact recipes retain exact
+  * wire identities for NtN-sized requests, large NtC requests and opaque blocks, outgoing lists,
+  * and incremental declared-length boundaries. The fixture README states the finite scope.
   */
 class ChainSyncFindIntersectReferenceSuite extends FunSuite:
   import ChainSyncFindIntersectReferenceSuite.*
 
   private val rows = load
-
   private val payload = new ChainSync.PayloadCodec[Bytes]:
-    def encode(value: Bytes): Either[xyz.kd5ujc.scarab.protocol.ProtocolError, Bytes] = Right(value)
-    def decode(bytes: Bytes): Either[xyz.kd5ujc.scarab.protocol.ProtocolError, Bytes] = Right(bytes)
+    def encode(value: Bytes): Either[ProtocolError, Bytes] = Right(value)
+    def decode(bytes: Bytes): Either[ProtocolError, Bytes] = Right(bytes)
 
-  test("the corpus has accepted and refused cases, and messages up to the codec's bound") {
-    assert(rows.exists(_.accepted) && rows.exists(!_.accepted))
-    assert(rows.exists(_.bytes.size > 60000))
-    assert(rows.forall(_.bytes.size <= 65535))
+  private def value[A](result: Either[ProtocolError, A]): A =
+    result.fold(e => fail(e.toString), identity)
+  private def assertWire(bytes: Bytes, expected: Option[Wire]): Unit =
+    assertEquals(Some(Wire(bytes.size, sha256(bytes))), expected)
+
+  test("the native corpus crosses the former candidate, item, and NtC byte bounds") {
+    assert(rows.exists(_.count == 1025))
+    assert(rows.exists(_.bytes.size > 2500000))
+    assert(rows.exists(_.points.exists(_ > 65535)))
+    assert(rows.exists(_.needMore))
+    assert(rows.exists(row => !row.accepted && !row.needMore))
   }
 
   for row <- rows do
     test(row.name) {
-      ChainSync.decodePrefix(State.Idle, Role.Client, row.bytes, payload) match
-        case DecodeResult.Decoded(message, consumed) =>
-          assert(row.accepted, s"the reference refuses it: ${row.failure}")
-          assertEquals(consumed, row.bytes.size)
-          message match
-            case Message.FindIntersect(points) =>
-              assertEquals(Some(points.size), row.points)
-              assertEquals(points.headOption.map(first), row.first.flatten)
-            case other => fail(s"not a FindIntersect: $other")
-        case DecodeResult.Failed(error) =>
-          assert(!row.accepted, s"the reference reads it: $error")
-        case DecodeResult.NeedMore =>
-          fail(s"a complete message is read as incomplete; the reference: ${row.failure}")
+      if row.kind != Kind.Encode then assertWire(row.bytes, row.input)
+      val limits = if row.local then ChainSync.Limits.NodeToClient else ChainSync.Limits()
+      row.kind match
+        case Kind.Points | Kind.Prefix | Kind.BlockPrefix =>
+          val (state, role) =
+            if row.kind == Kind.BlockPrefix then (State.NextCanAwait, Role.Server)
+            else (State.Idle, Role.Client)
+          ChainSync.decodePrefix(state, role, row.bytes, payload, limits) match
+            case DecodeResult.Decoded(message, consumed) =>
+              assert(row.accepted, s"the reference refuses it: ${row.failure}")
+              assertEquals(consumed, row.bytes.size)
+              message match
+                case Message.FindIntersect(points) =>
+                  assertEquals(Some(points.size), row.points)
+                  assertEquals(points.headOption.map(first), row.first)
+                  assertWire(
+                    value(ChainSync.encode(State.Idle, Role.Client, message, payload)),
+                    row.encoded
+                  )
+                case other => fail(s"not a FindIntersect: $other")
+            case DecodeResult.Failed(error) =>
+              assert(!row.accepted && !row.needMore, s"the reference does not reject it: $error")
+            case DecodeResult.NeedMore =>
+              assert(row.needMore, s"the reference completes decoding: ${row.failure}")
+        case Kind.Encode =>
+          val point = row.first match
+            case Some(RefPoint(Some(true), _, _)) => Point.Origin
+            case Some(RefPoint(_, Some(slot), Some(hash))) =>
+              Point.Block(value(UInt64.from(slot)), hex(hash))
+            case other => fail(s"missing native outgoing point: $other")
+          val message = Message.FindIntersect(Vector.fill(row.count)(point))
+          assertWire(
+            value(ChainSync.encode(State.Idle, Role.Client, message, payload)),
+            row.encoded
+          )
+        case Kind.Opaque =>
+          val point = ChainSyncEngine.pointCodec[Bytes](Right(_), Right(_))
+          val tip = ChainSyncEngine.tipCodec[Bytes](Right(_), Right(_))
+          val body = ChainSyncEngine.payloadCodec[Bytes](Right(_), Right(_))
+          ChainSyncEngine.decodePrefix(State.Idle, Role.Client, row.bytes, point, tip, body) match
+            case DecodeResult.Decoded(message, consumed) =>
+              assertEquals(consumed, row.bytes.size)
+              assertWire(
+                value(ChainSyncEngine.encode(State.Idle, Role.Client, message, point, tip, body)),
+                row.encoded
+              )
+            case other => fail(s"the reference accepts the opaque point: $other")
+        case Kind.Block =>
+          val blockCodec = CardanoBlockFetch.localPayloadCodec
+          ChainSync.decodePrefix(
+            State.NextCanAwait,
+            Role.Server,
+            row.bytes,
+            blockCodec,
+            limits
+          ) match
+            case DecodeResult.Decoded(message @ Message.RollForward(block, _), consumed) =>
+              assertEquals(consumed, row.bytes.size)
+              assertWire(block.bytes, row.payload)
+              assertWire(
+                value(
+                  ChainSync.encode(State.NextCanAwait, Role.Server, message, blockCodec, limits)
+                ),
+                row.encoded
+              )
+            case other => fail(s"the reference accepts the opaque serialized block: $other")
     }
 
 object ChainSyncFindIntersectReferenceSuite:
-  /** A point as the oracle reports it: the origin, or a slot and a hash. */
-  final case class RefPoint(origin: Option[Boolean], slot: Option[BigInt], hash: Option[String])
+  enum Kind:
+    case Points, Prefix, BlockPrefix, Encode, Opaque, Block
 
+  final case class RefPoint(origin: Option[Boolean], slot: Option[BigInt], hash: Option[String])
+  final case class Wire(bytes: Int, sha256: String)
   final case class Row(
       name: String,
+      kind: Kind,
+      local: Boolean,
       bytes: Bytes,
+      count: Int,
       accepted: Boolean,
+      needMore: Boolean,
       failure: Option[String],
       points: Option[Int],
-      first: Option[Option[RefPoint]]
+      first: Option[RefPoint],
+      input: Option[Wire],
+      encoded: Option[Wire],
+      payload: Option[Wire]
   )
 
   private def first(p: Point): RefPoint = p match
     case Point.Origin         => RefPoint(Some(true), None, None)
     case Point.Block(s, hash) => RefPoint(None, Some(s.value), Some(hash.hex))
 
-  private given Decoder[RefPoint] =
-    Decoder.forProduct3("origin", "slot", "hash")(RefPoint.apply)
+  private given Decoder[Kind] = Decoder.decodeString.emap {
+    case "points"       => Right(Kind.Points)
+    case "prefix"       => Right(Kind.Prefix)
+    case "block-prefix" => Right(Kind.BlockPrefix)
+    case "encode"       => Right(Kind.Encode)
+    case "opaque"       => Right(Kind.Opaque)
+    case "block"        => Right(Kind.Block)
+    case other          => Left(s"unknown native case kind: $other")
+  }
+  private given Decoder[RefPoint] = Decoder.forProduct3("origin", "slot", "hash")(RefPoint.apply)
+  private given Decoder[Wire] = Decoder.forProduct2("bytes", "sha256")(Wire.apply)
 
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => sys.error(e.toString), identity)
+  private def sha256(bytes: Bytes): String =
+    MessageDigest
+      .getInstance("SHA-256")
+      .digest(bytes.value.toArray)
+      .map(b => f"${b & 0xff}%02x")
+      .mkString
 
   private given Decoder[Row] = Decoder.instance { c =>
     for
       name <- c.get[String]("name")
-      prefix <- c.get[String]("prefix")
-      unit <- c.get[String]("unit")
+      kind <- c.get[Kind]("kind")
+      transport <- c.get[Option[String]]("transport")
+      prefix <- c.getOrElse[String]("prefix")("")
+      unit <- c.getOrElse[String]("unit")("")
       count <- c.get[Int]("count")
-      suffix <- c.get[String]("suffix")
+      suffix <- c.getOrElse[String]("suffix")("")
       accepted <- c.get[Boolean]("accepted")
+      needMore <- c.getOrElse[Boolean]("needMore")(false)
       failure <- c.get[Option[String]]("failure")
       points <- c.get[Option[Int]]("points")
-      first <- c.get[Option[Option[RefPoint]]]("first")
+      first <- c.get[Option[RefPoint]]("first")
+      input <- c.get[Option[Wire]]("input")
+      encoded <- c.get[Option[Wire]]("encoded")
+      payload <- c.get[Option[Wire]]("payload")
     yield Row(
       name,
+      kind,
+      transport.contains("ntc"),
       hex(prefix) ++ Bytes(Vector.fill(count)(hex(unit).value).flatten) ++ hex(suffix),
+      count,
       accepted,
+      needMore,
       failure,
       points,
-      first
+      first,
+      input,
+      encoded,
+      payload
     )
   }
 
