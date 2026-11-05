@@ -2,11 +2,9 @@
 package xyz.kd5ujc.scarab.plutus
 
 import io.circe.{Json, parser}
-import java.nio.file.{Files, Path, Paths}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import munit.FunSuite
-import scala.jdk.CollectionConverters.*
 import scalus.cardano.ledger.{Language, MajorProtocolVersion}
 import scalus.uplc.{BuiltinSemanticsVariant, Constant, DeBruijnedProgram, Program, Term}
 import scalus.uplc.eval.{CountingBudgetSpender, Log, RestrictingBudgetSpender}
@@ -35,8 +33,7 @@ class PlutusConformanceSuite extends FunSuite:
   private val language = PlutusLanguage.V3
   private val protocol = 11
 
-  private val root: Path =
-    Paths.get(getClass.getResource(s"/$Directory").toURI)
+  private val reference = PlutusConformanceSuite.reference
 
   /** The machine [[ScalusEvaluator]] builds for the request ([[ScalusEvaluator.corrected]]). */
   private val machine: ScalusEvaluator.CorrectedVm =
@@ -51,8 +48,6 @@ class PlutusConformanceSuite extends FunSuite:
 
   private val Unlimited = ExUnits(BigInt(1) << 60, BigInt(1) << 60)
 
-  private def read(p: Path): String = Files.readString(p)
-
   private def budgetOf(text: String): Option[ExUnits] =
     val n = raw"cpu:\s*(\d+)\s*\|\s*mem:\s*(\d+)".r.unanchored
     text match
@@ -61,27 +56,23 @@ class PlutusConformanceSuite extends FunSuite:
       case _                                           => fail(s"budget file: $text")
 
   private def cases: Vector[Case] =
-    Files
-      .walk(root)
-      .iterator()
-      .asScala
-      .filter(_.getFileName.toString.endsWith(".uplc"))
-      .map { p =>
-        val dir = p.getParent
-        val name = p.getFileName.toString.stripSuffix(".uplc")
+    reference
+      .under(Conformance)
+      .collect { case (name, _) if name.endsWith(".uplc") => name.stripSuffix(".uplc") }
+      .map { stem =>
+        def file(suffix: String) = s"$Conformance/$stem$suffix"
         Case(
-          root.relativize(dir).toString,
-          read(p),
-          read(dir.resolve(s"$name.uplc.expected")).trim,
-          budgetOf(read(dir.resolve(s"$name.budget.expected"))),
-          Option.when(Files.exists(dir.resolve(s"$name.flat.cbor.hex"))) {
+          stem.split('/').dropRight(1).mkString("/"),
+          reference.read(file(".uplc")),
+          reference.read(file(".uplc.expected")).trim,
+          budgetOf(reference.read(file(".budget.expected"))),
+          Option.when(reference.contains(file(".flat.cbor.hex"))) {
             Bytes
-              .fromHex(read(dir.resolve(s"$name.flat.cbor.hex")).trim)
+              .fromHex(reference.read(file(".flat.cbor.hex")).trim)
               .fold(e => fail(e.toString), identity)
           }
         )
       }
-      .toVector
       .sortBy(_.id)
 
   /** Runs one case through the evaluator; `None` when it passes, else why not. */
@@ -332,13 +323,17 @@ class PlutusConformanceSuite extends FunSuite:
   }
 
 object PlutusConformanceSuite:
-  val Directory = "plutus-conformance-1.70.0.0"
+  /** The reference data of the release whose cases the suite runs. */
+  def reference: PlutusReference.View = PlutusReference.view(PlutusRelease.Plutus1_70)
 
+  /** The conformance cases' directory in a [[PlutusReference.View]]. */
+  val Conformance = "conformance"
+
+  /** A file of the release's `cost-model` or `ledger-api` data, by its name. */
   def resource(name: String): String =
-    val in = PlutusConformanceSuite.getClass.getResourceAsStream(s"/plutus-1.70.0.0/$name")
-    assert(in != null, name)
-    try String(in.readAllBytes(), "UTF-8")
-    finally in.close()
+    reference.read(
+      Vector(s"cost-model/$name", s"ledger-api/$name").find(reference.contains).getOrElse(name)
+    )
 
   def json(name: String): Json = parser.parse(resource(name)).fold(throw _, identity)
 

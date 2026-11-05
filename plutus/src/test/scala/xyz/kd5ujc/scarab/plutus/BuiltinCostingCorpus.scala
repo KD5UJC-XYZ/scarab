@@ -3,15 +3,13 @@ package xyz.kd5ujc.scarab.plutus
 
 import io.circe.Json
 import java.nio.file.{Files, Path}
-import scala.jdk.CollectionConverters.*
 import scalus.uplc.{Program, Term, Constant}
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** Deterministic inputs for the independent Haskell ledger-API costing matrix. */
 object BuiltinCostingCorpus:
   final case class Probe(id: String, script: Bytes, builtins: Set[String])
-  private val source =
-    Path.of("plutus/src/test/resources/plutus-conformance-1.70.0.0/builtin/semantics")
+  private val source = s"${PlutusConformanceSuite.Conformance}/builtin/semantics"
   private def compile(id: String, text: String): Probe =
     val p = Program.parseUplc(text).fold(e => sys.error(s"$id: $e"), identity)
     locally {
@@ -23,16 +21,11 @@ object BuiltinCostingCorpus:
       )
     }
   lazy val upstream: Vector[Probe] =
-    val files = Files.walk(source)
-    try
-      files
-        .iterator()
-        .asScala
-        .filter(_.toString.endsWith(".uplc"))
-        .toVector
-        .sortBy(_.toString)
-        .map(p => compile("upstream/" + source.relativize(p).toString, Files.readString(p)))
-    finally files.close()
+    PlutusConformanceSuite.reference
+      .under(source)
+      .collect {
+        case (id, p) if id.endsWith(".uplc") => compile("upstream/" + id, Files.readString(p))
+      }
 
   private def call(name: String, arguments: String*): String =
     arguments.foldLeft(s"(builtin $name)")((term, arg) => s"[$term $arg]")

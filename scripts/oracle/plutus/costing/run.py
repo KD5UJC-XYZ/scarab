@@ -8,10 +8,15 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from plutus_reference import REFERENCE, release_view  # noqa: E402
 
 IMAGE = "scarab-plutus-costing-oracle:local"
 PIN = "507cab8cf6192e5143f12be5b2d3005a2928dc6d"
+RELEASE = "1.70.0.0"
 
 
 def dump(value):
@@ -72,12 +77,12 @@ def main():
     manifest["oracleBaseImage"] = "sha256:e061568cd4971962854e85f26910eb5094ff1c416567a547feb3ba6eff59c5da"
     manifest["toolSha256"] = {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest() for path in (Path(__file__).resolve().with_name("Main.hs"), root / "plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/BuiltinCostingCorpus.scala")}
     manifest["rawSha256"] = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in args.evidence.glob("raw-*.jsonl")}
-    resources = root / "plutus/src/test/resources/plutus-1.70.0.0"
+    resources = release_view(root / REFERENCE, RELEASE)
     def shapes(value):
         if isinstance(value, dict):
             return sorted(set(([value["type"]] if "type" in value else []) + [shape for child in value.values() for shape in shapes(child)]))
         return []
-    shape_inventory = {letter: {name: {dimension: shapes(value[dimension]) for dimension in ("cpu", "memory")} for name, value in json.loads((resources / f"builtinCostModel{letter}.json").read_text()).items()} for letter in "ABCDE"}
+    shape_inventory = {letter: {name: {dimension: shapes(value[dimension]) for dimension in ("cpu", "memory")} for name, value in json.loads(resources[f"cost-model/builtinCostModel{letter}.json"].read_text()).items()} for letter in "ABCDE"}
     (args.fixtures / "cost-shapes.json").write_text(json.dumps(shape_inventory, indent=2) + "\n")
     manifest["sha256"]["cost-shapes.json"] = hashlib.sha256((args.fixtures / "cost-shapes.json").read_bytes()).hexdigest()
     (args.fixtures / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")

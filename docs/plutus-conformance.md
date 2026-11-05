@@ -9,7 +9,11 @@ which dependency differences reached ledger validation. That historical classifi
 below; it no longer excuses an upstream test failure.
 [`PlutusConformanceSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/PlutusConformanceSuite.scala)
 now runs the complete original corpus with the reference executable's execution profile. Trigger
-details are not written here (see [SECURITY.md](../SECURITY.md)).
+details are not written here (see [SECURITY.md](../SECURITY.md)). The corpus, the cost model data
+and the parameter-name lists are kept once for every pinned plutus release, in
+[`plutus-reference`](../plutus/src/test/resources/plutus-reference/README.md): the newest release
+whole, and only the files that differ for an older one. `scripts/plutus_reference.py verify` compares
+each release with its pinned upstream archive.
 
 The profile follows `PlutusConformance/CekEvaluator.hs:46-61` at Plutus commit
 `507cab8cf6192e5143f12be5b2d3005a2928dc6d`: check the whole term for free variables, then evaluate
@@ -56,8 +60,9 @@ part of the evaluator; the evaluator selects the *shape* by builtin semantics va
 | V3 (from 9) | n/a | C (`V3/EvaluationContext.hs` 50-53) | E |
 
 The parameter-name lists of 1.70.0.0 (the order of the on-chain list) have 343 names for V1 and for
-V2 and 361 for V3 (`plutus/src/test/resources/plutus-1.70.0.0`). Language and builtin availability
-(`PlutusLedgerApi/Common/Versions.hs`, 109-110 and 320-356, transcribed in
+V2 and 361 for V3 (`ledger-api/` in the 1.70.0.0 view of
+[`plutus-reference`](../plutus/src/test/resources/plutus-reference/README.md)). Language and builtin
+availability (`PlutusLedgerApi/Common/Versions.hs`, 109-110 and 320-356, transcribed in
 [`PlutusAvailability`](../plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/PlutusAvailability.scala) and
 checked by `PlutusAvailabilitySuite`):
 

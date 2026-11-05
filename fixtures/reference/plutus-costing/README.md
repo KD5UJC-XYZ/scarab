@@ -55,5 +55,5 @@ prose equality, network evidence, failure-consumed-budget equality, or future pr
 Reproduce with the [retained oracle harness](../../../scripts/oracle/plutus/costing/README.md).
 Upstream inputs are Apache-2.0; generated inputs and harness are Apache-2.0. See repository `NOTICE`
 for general dependency notices; the original corpus has its own
-[provenance](../../../plutus/src/test/resources/plutus-conformance-1.70.0.0/README.md) and
+[provenance](../../../plutus/src/test/resources/plutus-reference/README.md) and
 this directory retains the upstream `NOTICE`.
