@@ -42,17 +42,20 @@ object PredicateFailureCbor:
     * or whose payload this encoding does not write ([[inConway]]) is sent as the ledger's own
     * free-text failure, so that the client still shows the reason.
     */
-  def applyTxError(failures: Vector[PredicateFailure]): Bytes =
-    CborOut.build { w =>
-      w.array(1).array(2).uint(ConwayIndex)
-      list(w, failures)(ledger)
+  def applyTxError(failures: Vector[PredicateFailure]): Either[RefusalPresentationError, Bytes] =
+    failures.traverse(prepareLedger).map { encoders =>
+      CborOut.build { w =>
+        w.array(1).array(2).uint(ConwayIndex)
+        list(w, encoders)((k, encoder) => encoder.write(k))
+      }
     }
 
-  /** The reason item for a refused transaction of `era`, when the era's ledger has a constructor
-    * for every failure: Conway's [[applyTxError]], or the earlier eras' ([[PreConwayFailureCbor]]).
-    */
-  def applyTxError(era: Era, failures: Vector[PredicateFailure]): Option[Bytes] = era match
-    case Era.Conway => Some(applyTxError(failures))
+  /** An unsupported era constructor has no encoding; a presentation defect retains its cause. */
+  def applyTxError(
+      era: Era,
+      failures: Vector[PredicateFailure]
+  ): Either[RefusalPresentationError, Option[Bytes]] = era match
+    case Era.Conway => applyTxError(failures).map(Some(_))
     case other      => PreConwayFailureCbor.applyTxError(other, failures)
 
   /** The failure as Conway's ledger reports it: itself, or its text (`ConwayMempoolFailure`). */
@@ -182,69 +185,155 @@ object PredicateFailureCbor:
 
   // ---- LEDGER
 
-  def ledger(w: W, f: PredicateFailure): Unit = conway(w, conwayForm(f))
+  /** Only prepared encoders can write: every fallible rendering has already completed once. */
+  private final case class Prepared(write: W => Unit)
 
-  private def conway(w: W, f: PredicateFailure): Unit = f match
-    case PredicateFailure.Utxow(u) => w.array(2).uint(1); utxow(w, u)
-    case PredicateFailure.Certs(c) => w.array(2).uint(2); certs(w, c)
-    case PredicateFailure.Gov(g)   => w.array(2).uint(3); gov(w, g)
-    case PredicateFailure.WdrlNotDelegatedToDRep(hs) =>
-      w.array(2).uint(4); list(w, hs)(hash)
-    case PredicateFailure.TreasuryValueMismatch(m) =>
-      w.array(3).uint(5); swapped(w, m)(coin)
-    case PredicateFailure.TxRefScriptsSizeTooBig(m) =>
-      w.array(3).uint(6); group(w, m)(small)
-    case PredicateFailure.Mempool(text) => w.array(2).uint(7).text(text.message)
-    case PredicateFailure.WithdrawalsMissingAccounts(ws) =>
-      w.array(2).uint(8)
-      map(w, ws)(rewardAccount, coin)
-    case PredicateFailure.IncompleteWithdrawals(ms) =>
-      w.array(2).uint(9)
-      map(w, ms)(
-        rewardAccount,
-        (k, m) => { k.array(2); group(k, m)(coin) }
-      )
+  private def prepareLedger(f: PredicateFailure): Either[RefusalPresentationError, Prepared] =
+    prepareConway(conwayForm(f))
+
+  private[ntc] def ledger(f: PredicateFailure): Either[RefusalPresentationError, Bytes] =
+    prepareLedger(f).map(encoder => CborOut.build(encoder.write))
+
+  private def prepareConway(f: PredicateFailure): Either[RefusalPresentationError, Prepared] =
+    f match
+      case PredicateFailure.Utxow(u) =>
+        prepareUtxow(u).map(child =>
+          Prepared { w =>
+            w.array(2).uint(1); child.write(w)
+          }
+        )
+      case PredicateFailure.Certs(c) =>
+        Right(Prepared { w =>
+          w.array(2).uint(2); certs(w, c)
+        })
+      case PredicateFailure.Gov(g) =>
+        Right(Prepared { w =>
+          w.array(2).uint(3); gov(w, g)
+        })
+      case PredicateFailure.WdrlNotDelegatedToDRep(hs) =>
+        Right(Prepared { w =>
+          w.array(2).uint(4); list(w, hs)(hash)
+        })
+      case PredicateFailure.TreasuryValueMismatch(m) =>
+        Right(Prepared { w =>
+          w.array(3).uint(5); swapped(w, m)(coin)
+        })
+      case PredicateFailure.TxRefScriptsSizeTooBig(m) =>
+        Right(Prepared { w =>
+          w.array(3).uint(6); group(w, m)(small)
+        })
+      case PredicateFailure.Mempool(text) =>
+        Right(Prepared { w =>
+          w.array(2).uint(7).text(text.message)
+        })
+      case PredicateFailure.WithdrawalsMissingAccounts(ws) =>
+        Right(Prepared { w =>
+          w.array(2).uint(8)
+          map(w, ws)(rewardAccount, coin)
+        })
+      case PredicateFailure.IncompleteWithdrawals(ms) =>
+        Right(Prepared { w =>
+          w.array(2).uint(9)
+          map(w, ms)(
+            rewardAccount,
+            (k, m) => { k.array(2); group(k, m)(coin) }
+          )
+        })
 
   // ---- UTXOW
 
-  private def utxow(w: W, f: UtxowFailure): Unit = f match
-    case UtxowFailure.Utxo(u)                        => w.array(2).uint(0); utxo(w, u)
-    case UtxowFailure.InvalidWitnesses(keys)         => w.array(2).uint(1); list(w, keys)(hash)
-    case UtxowFailure.MissingVKeyWitnesses(hs)       => w.array(2).uint(2); hashSet(w, hs)
-    case UtxowFailure.MissingScriptWitnesses(hs)     => w.array(2).uint(3); hashSet(w, hs)
-    case UtxowFailure.ScriptWitnessNotValidating(hs) => w.array(2).uint(4); hashSet(w, hs)
-    case UtxowFailure.MissingTxBodyMetadataHash(h)   => w.array(2).uint(5).bytes(h)
-    case UtxowFailure.MissingTxMetadata(h)           => w.array(2).uint(6).bytes(h)
-    case UtxowFailure.ConflictingMetadataHash(m) =>
-      w.array(3).uint(7); group(w, m)((k, h) => k.bytes(h))
-    case UtxowFailure.InvalidMetadata               => w.array(1).uint(8)
-    case UtxowFailure.ExtraneousScriptWitnesses(hs) => w.array(2).uint(9); hashSet(w, hs)
-    case UtxowFailure.MissingRedeemers(ps) =>
-      ps.toVector
-        .traverse((purpose, script) => conwayPurpose(purpose).map(_ -> script))
-        .fold(notInConway(w)) { entries =>
-          w.array(2).uint(10)
-          list(w, entries) { case (k, (purpose, script)) =>
-            k.array(2); k.raw(purpose); k.bytes(script)
-          }
-          ()
+  private def prepareUtxow(f: UtxowFailure): Either[RefusalPresentationError, Prepared] = f match
+    case UtxowFailure.Utxo(u) =>
+      prepareUtxo(u).map(child =>
+        Prepared { w =>
+          w.array(2).uint(0); child.write(w)
         }
+      )
+    case UtxowFailure.InvalidWitnesses(keys) =>
+      Right(Prepared { w =>
+        w.array(2).uint(1); list(w, keys)(hash)
+      })
+    case UtxowFailure.MissingVKeyWitnesses(hs) =>
+      Right(Prepared { w =>
+        w.array(2).uint(2); hashSet(w, hs)
+      })
+    case UtxowFailure.MissingScriptWitnesses(hs) =>
+      Right(Prepared { w =>
+        w.array(2).uint(3); hashSet(w, hs)
+      })
+    case UtxowFailure.ScriptWitnessNotValidating(hs) =>
+      Right(Prepared { w =>
+        w.array(2).uint(4); hashSet(w, hs)
+      })
+    case UtxowFailure.MissingTxBodyMetadataHash(h) =>
+      Right(Prepared { w =>
+        w.array(2).uint(5).bytes(h)
+      })
+    case UtxowFailure.MissingTxMetadata(h) =>
+      Right(Prepared { w =>
+        w.array(2).uint(6).bytes(h)
+      })
+    case UtxowFailure.ConflictingMetadataHash(m) =>
+      Right(Prepared { w =>
+        w.array(3).uint(7); group(w, m)((k, h) => k.bytes(h))
+      })
+    case UtxowFailure.InvalidMetadata =>
+      Right(Prepared { w =>
+        w.array(1).uint(8)
+      })
+    case UtxowFailure.ExtraneousScriptWitnesses(hs) =>
+      Right(Prepared { w =>
+        w.array(2).uint(9); hashSet(w, hs)
+      })
+    case UtxowFailure.MissingRedeemers(ps) =>
+      Right(Prepared { w =>
+        ps.toVector
+          .traverse((purpose, script) => conwayPurpose(purpose).map(_ -> script))
+          .fold(notInConway(w)) { entries =>
+            w.array(2).uint(10)
+            list(w, entries) { case (k, (purpose, script)) =>
+              k.array(2); k.raw(purpose); k.bytes(script)
+            }
+            ()
+          }
+      })
     case UtxowFailure.MissingRequiredDatums(missing, received) =>
-      w.array(3).uint(11); hashSet(w, missing); hashSet(w, received)
+      Right(Prepared { w =>
+        w.array(3).uint(11); hashSet(w, missing); hashSet(w, received)
+      })
     case UtxowFailure.NotAllowedSupplementalDatums(unallowed, acceptable) =>
-      w.array(3).uint(12); hashSet(w, unallowed); hashSet(w, acceptable)
+      Right(Prepared { w =>
+        w.array(3).uint(12); hashSet(w, unallowed); hashSet(w, acceptable)
+      })
     case UtxowFailure.PPViewHashesDontMatch(m) =>
-      w.array(3).uint(13); group(w, m)(maybeHash(_, _))
+      Right(Prepared { w =>
+        w.array(3).uint(13); group(w, m)(maybeHash(_, _))
+      })
     case UtxowFailure.UnspendableUTxONoDatumHash(ins) =>
-      w.array(2).uint(14); set(w, ins)(txIn)
+      Right(Prepared { w =>
+        w.array(2).uint(14); set(w, ins)(txIn)
+      })
     case UtxowFailure.ExtraRedeemers(ps) =>
-      w.array(2).uint(15)
-      list(w, ps) { case (k, (tag, ix)) => k.array(2).uint(tag).uint(ix) }
-    case UtxowFailure.MalformedScriptWitnesses(hs)  => w.array(2).uint(16); hashSet(w, hs)
-    case UtxowFailure.MalformedReferenceScripts(hs) => w.array(2).uint(17); hashSet(w, hs)
+      Right(Prepared { w =>
+        w.array(2).uint(15)
+        list(w, ps) { case (k, (tag, ix)) => k.array(2).uint(tag).uint(ix) }
+      })
+    case UtxowFailure.MalformedScriptWitnesses(hs) =>
+      Right(Prepared { w =>
+        w.array(2).uint(16); hashSet(w, hs)
+      })
+    case UtxowFailure.MalformedReferenceScripts(hs) =>
+      Right(Prepared { w =>
+        w.array(2).uint(17); hashSet(w, hs)
+      })
     case UtxowFailure.ScriptIntegrityHashMismatch(m, expected) =>
-      w.array(3).uint(18); w.array(2); group(w, m)(maybeHash(_, _)); maybeHash(w, expected); ()
-    case UtxowFailure.MIRInsufficientGenesisSigs(_) => notInConway(w)
+      Right(Prepared { w =>
+        w.array(3).uint(18); w.array(2); group(w, m)(maybeHash(_, _)); maybeHash(w, expected); ()
+      })
+    case UtxowFailure.MIRInsufficientGenesisSigs(_) =>
+      Right(Prepared { w =>
+        notInConway(w)
+      })
 
   /** A Plutus purpose as the ledger names it with the item it applies to (`PlutusPurpose AsItem`):
     * `[tag, item]`. The certifying purpose is the exception: its item is the Conway certificate,
@@ -268,78 +357,158 @@ object PredicateFailureCbor:
 
   private[ntc] def value(w: W, v: Value): Unit = { put(w, v)(using UtxoCodecs.value); () }
 
-  private def utxo(w: W, f: UtxoFailure): Unit = f match
-    case UtxoFailure.Utxos(u)       => w.array(2).uint(0); utxos(w, u)
-    case UtxoFailure.BadInputs(ins) => w.array(2).uint(1); set(w, ins)(txIn)
+  private def prepareUtxo(f: UtxoFailure): Either[RefusalPresentationError, Prepared] = f match
+    case UtxoFailure.Utxos(u) =>
+      prepareUtxos(u).map(child =>
+        Prepared { w =>
+          w.array(2).uint(0); child.write(w)
+        }
+      )
+    case UtxoFailure.BadInputs(ins) =>
+      Right(Prepared { w =>
+        w.array(2).uint(1); set(w, ins)(txIn)
+      })
     case UtxoFailure.OutsideValidityInterval(notBefore, before, slot) =>
-      w.array(3).uint(2)
-      w.array(2)
-      maybe(w, notBefore)((k, s) => k.uint(s))
-      maybe(w, before)((k, s) => k.uint(s))
-      w.uint(slot)
-    case UtxoFailure.MaxTxSize(m)         => w.array(3).uint(3); group(w, m)(coin)
-    case UtxoFailure.InputSetEmpty        => w.array(1).uint(4)
-    case UtxoFailure.FeeTooSmall(m)       => w.array(3).uint(5); swapped(w, m)(coin)
-    case UtxoFailure.ValueNotConserved(m) => w.array(3).uint(6); group(w, m)(value)
+      Right(Prepared { w =>
+        w.array(3).uint(2)
+        w.array(2)
+        maybe(w, notBefore)((k, s) => k.uint(s))
+        maybe(w, before)((k, s) => k.uint(s))
+        w.uint(slot)
+      })
+    case UtxoFailure.MaxTxSize(m) =>
+      Right(Prepared { w =>
+        w.array(3).uint(3); group(w, m)(coin)
+      })
+    case UtxoFailure.InputSetEmpty =>
+      Right(Prepared { w =>
+        w.array(1).uint(4)
+      })
+    case UtxoFailure.FeeTooSmall(m) =>
+      Right(Prepared { w =>
+        w.array(3).uint(5); swapped(w, m)(coin)
+      })
+    case UtxoFailure.ValueNotConserved(m) =>
+      Right(Prepared { w =>
+        w.array(3).uint(6); group(w, m)(value)
+      })
     case UtxoFailure.WrongNetwork(expected, addresses) =>
-      w.array(3).uint(7).uint(expected)
-      set(w, addresses)((k, a) => k.bytes(a))
+      Right(Prepared { w =>
+        w.array(3).uint(7).uint(expected)
+        set(w, addresses)((k, a) => k.bytes(a))
+      })
     case UtxoFailure.WrongNetworkWithdrawal(expected, accounts) =>
-      w.array(3).uint(8).uint(expected)
-      set(w, accounts)(rewardAccount)
-    case UtxoFailure.OutputTooSmall(outs)            => w.array(2).uint(9); list(w, outs)(txOut)
-    case UtxoFailure.OutputBootAddrAttrsTooBig(outs) => w.array(2).uint(10); list(w, outs)(txOut)
+      Right(Prepared { w =>
+        w.array(3).uint(8).uint(expected)
+        set(w, accounts)(rewardAccount)
+      })
+    case UtxoFailure.OutputTooSmall(outs) =>
+      Right(Prepared { w =>
+        w.array(2).uint(9); list(w, outs)(txOut)
+      })
+    case UtxoFailure.OutputBootAddrAttrsTooBig(outs) =>
+      Right(Prepared { w =>
+        w.array(2).uint(10); list(w, outs)(txOut)
+      })
     case UtxoFailure.OutputTooBig(outs) =>
-      w.array(2).uint(11)
-      list(w, outs) { case (k, (size, max, out)) =>
-        k.array(3).uint(size).uint(max); txOut(k, out)
-      }
+      Right(Prepared { w =>
+        w.array(2).uint(11)
+        list(w, outs) { case (k, (size, max, out)) =>
+          k.array(3).uint(size).uint(max); txOut(k, out)
+        }
+      })
     case UtxoFailure.InsufficientCollateral(balance, required) =>
-      w.array(3).uint(12).int(balance).uint(required)
+      Right(Prepared { w =>
+        w.array(3).uint(12).int(balance).uint(required)
+      })
     case UtxoFailure.ScriptsNotPaid(outs) =>
-      w.array(2).uint(13)
-      map(w, outs)(txIn, txOut)
+      Right(Prepared { w =>
+        w.array(2).uint(13)
+        map(w, outs)(txIn, txOut)
+      })
     case UtxoFailure.ExUnitsTooBig(m) =>
-      w.array(3).uint(14); swapped(w, m)(exUnits(_, _))
-    case UtxoFailure.CollateralContainsNonAda(v) => w.array(2).uint(15); value(w, v)
-    case UtxoFailure.WrongNetworkInTxBody(m)     => w.array(3).uint(16); swapped(w, m)(small)
-    case UtxoFailure.OutsideForecast(slot)       => w.array(2).uint(17).uint(slot)
-    case UtxoFailure.TooManyCollateralInputs(m)  => w.array(3).uint(18); swapped(w, m)(small)
-    case UtxoFailure.NoCollateralInputs          => w.array(1).uint(19)
+      Right(Prepared { w =>
+        w.array(3).uint(14); swapped(w, m)(exUnits(_, _))
+      })
+    case UtxoFailure.CollateralContainsNonAda(v) =>
+      Right(Prepared { w =>
+        w.array(2).uint(15); value(w, v)
+      })
+    case UtxoFailure.WrongNetworkInTxBody(m) =>
+      Right(Prepared { w =>
+        w.array(3).uint(16); swapped(w, m)(small)
+      })
+    case UtxoFailure.OutsideForecast(slot) =>
+      Right(Prepared { w =>
+        w.array(2).uint(17).uint(slot)
+      })
+    case UtxoFailure.TooManyCollateralInputs(m) =>
+      Right(Prepared { w =>
+        w.array(3).uint(18); swapped(w, m)(small)
+      })
+    case UtxoFailure.NoCollateralInputs =>
+      Right(Prepared { w =>
+        w.array(1).uint(19)
+      })
     case UtxoFailure.IncorrectTotalCollateralField(provided, declared) =>
-      w.array(3).uint(20).int(provided).uint(declared)
+      Right(Prepared { w =>
+        w.array(3).uint(20).int(provided).uint(declared)
+      })
     case UtxoFailure.BabbageOutputTooSmall(outs) =>
-      w.array(2).uint(21)
-      list(w, outs) { case (k, (out, min)) => k.array(2); txOut(k, out); k.uint(min) }
+      Right(Prepared { w =>
+        w.array(2).uint(21)
+        list(w, outs) { case (k, (out, min)) => k.array(2); txOut(k, out); k.uint(min) }
+      })
     case UtxoFailure.BabbageNonDisjointRefInputs(ins) =>
-      w.array(2).uint(22); list(w, ins)(txIn)
-    case UtxoFailure.ExpiredUTxO(_) | UtxoFailure.Update(_) => notInConway(w)
+      Right(Prepared { w =>
+        w.array(2).uint(22); list(w, ins)(txIn)
+      })
+    case UtxoFailure.ExpiredUTxO(_) | UtxoFailure.Update(_) =>
+      Right(Prepared { w =>
+        notInConway(w)
+      })
 
-  private[ntc] def utxos(w: W, f: UtxosFailure)(using ProtVer): Unit = f match
+  private[ntc] def utxos(f: UtxosFailure)(using
+      ProtVer
+  ): Either[RefusalPresentationError, Bytes] =
+    prepareUtxos(f).map(encoder => CborOut.build(encoder.write))
+
+  private def prepareUtxos(f: UtxosFailure)(using
+      ProtVer
+  ): Either[RefusalPresentationError, Prepared] = f match
     case UtxosFailure.ValidationTagMismatch(isValid, failures) =>
-      w.array(3).uint(0).bool(isValid)
-      failures match
-        case None => w.array(1).uint(0)
-        case Some(fs) =>
-          w.array(2).uint(1)
-          list(w, fs) { (k, failure) =>
-            k.array(3)
-              .uint(1)
-              .text(
-                PlutusFailureCbor
-                  .description(failure)
-                  .toOption
-                  .flatten
-                  .getOrElse(failure.cause.message)
+      failures
+        .traverse(_.traverse { failure =>
+          PlutusFailureCbor
+            .description(failure)
+            .left
+            .map(cause => RefusalPresentationError.InvalidPlutusContext(failure, cause))
+            .map(description =>
+              (
+                description.getOrElse(failure.cause.message),
+                PlutusFailureCbor.reconstruction(failure)
               )
-              .bytes(PlutusFailureCbor.reconstruction(failure))
-          }
-    case UtxosFailure.CollectErrors(errors) =>
-      ContextFailureCbor
-        .utxos(ContextEra.Conway, errors)
-        .fold(notInConway(w))(raw => {
-          w.raw(raw); ()
+            )
         })
+        .map { descriptions =>
+          Prepared { w =>
+            w.array(3).uint(0).bool(isValid)
+            descriptions match
+              case None => w.array(1).uint(0)
+              case Some(fs) =>
+                w.array(2).uint(1)
+                list(w, fs) { case (k, (description, reconstruction)) =>
+                  k.array(3).uint(1).text(description).bytes(reconstruction)
+                }
+            ()
+          }
+        }
+    case UtxosFailure.CollectErrors(errors) =>
+      Right(Prepared { w =>
+        ContextFailureCbor
+          .utxos(ContextEra.Conway, errors)
+          .fold(notInConway(w))(raw => { w.raw(raw); () })
+      })
 
   // ---- CERTS, CERT, DELEG, POOL, GOVCERT
 

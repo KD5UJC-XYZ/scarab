@@ -23,7 +23,10 @@ class PreConwayFailureCborSuite extends FunSuite:
   private val h = keyHash.hex
 
   private def reason(era: Era, failures: PredicateFailure*): Option[String] =
-    PredicateFailureCbor.applyTxError(era, failures.toVector).map(_.hex)
+    PredicateFailureCbor
+      .applyTxError(era, failures.toVector)
+      .fold(error => fail(error.message), identity)
+      .map(_.hex)
 
   // ---- Shelley
 
@@ -294,7 +297,12 @@ class PreConwayFailureCborSuite extends FunSuite:
     assertEquals(reason(Era.Byron, f), None)
     assertEquals(
       reason(Era.Conway, f),
-      Some(PredicateFailureCbor.applyTxError(Vector(f)).hex)
+      Some(
+        PredicateFailureCbor
+          .applyTxError(Vector(f))
+          .fold(error => fail(error.message), identity)
+          .hex
+      )
     )
   }
 
@@ -327,7 +335,11 @@ class PreConwayFailureCborSuite extends FunSuite:
       assert(!PredicateFailureCbor.inConway(f), s"$f")
       val decoded =
         Cbor
-          .decode(PredicateFailureCbor.applyTxError(Vector(f)))
+          .decode(
+            PredicateFailureCbor
+              .applyTxError(Vector(f))
+              .fold(error => fail(error.message), identity)
+          )
           .fold(e => fail(e.message), identity)
       // [[6, [[7 ConwayMempoolFailure, text]]]]
       decoded.value match
@@ -349,7 +361,7 @@ class PreConwayFailureCborSuite extends FunSuite:
 
   test("Conway's LEDGER encoder, called on its own, also sends them as text") {
     val f = PredicateFailure.utxo(UtxoFailure.ExpiredUTxO(Mismatch(100, 120)))
-    val item = CborOut.build(PredicateFailureCbor.ledger(_, f))
+    val item = PredicateFailureCbor.ledger(f).fold(error => fail(error.message), identity)
     Cbor.decode(item).fold(e => fail(e.message), identity).value match
       case CborValue.Arr(Vector(tag, text)) =>
         assertEquals(tag.value, CborValue.UInt(7))
@@ -374,7 +386,10 @@ class PreConwayFailureCborSuite extends FunSuite:
       era <- Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage)
       f <- shared
     do
-      val bytes = PredicateFailureCbor.applyTxError(era, Vector(f)).getOrElse(fail(s"$era $f"))
+      val bytes = PredicateFailureCbor
+        .applyTxError(era, Vector(f))
+        .fold(error => fail(error.message), identity)
+        .getOrElse(fail(s"$era $f"))
       val decoded = Cbor.decode(bytes).fold(e => fail(s"$era $f: $e"), identity)
       decoded.value match
         case CborValue.Arr(Vector(wrapper)) =>

@@ -40,12 +40,12 @@ class ScriptResultWireSuite extends FunSuite:
             Some(failures.toVector.map(f => PlutusFailure(f.reason, hex(""), Some(f.request))))
           )
         case other => fail(s"no verdict: $other")
-      val encoded = CborOut.build(w =>
-        PredicateFailureCbor.utxos(w, failure)(using
+      val encoded = PredicateFailureCbor
+        .utxos(failure)(using
           xyz.kd5ujc.scarab.storage.haskell.state.Versions
             .eraLow(xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SConway)
         )
-      )
+        .fold(error => fail(error.message), identity)
       val oracleKey = if valid then "validTagFailureCbor" else "invalidTagFailureCbor"
       val reference = hex(field[String](recorded.oracle, oracleKey))
       // Diagnostic prose is presentation; compare all structural fields and exact reconstruction bytes.

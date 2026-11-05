@@ -69,7 +69,9 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     )
     assertEquals(
       refused(result.left.getOrElse(fail("accepted"))),
-      PredicateFailureCbor.applyTxError(Vector(expected))
+      PredicateFailureCbor
+        .applyTxError(Vector(expected))
+        .fold(error => fail(error.message), identity)
     )
   }
 
@@ -83,7 +85,9 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     assertEquals(limitsOf(result), List(expected))
     assertEquals(
       refused(result.left.getOrElse(fail("accepted"))),
-      PredicateFailureCbor.applyTxError(Vector(expected))
+      PredicateFailureCbor
+        .applyTxError(Vector(expected))
+        .fold(error => fail(error.message), identity)
     )
   }
 
@@ -132,7 +136,9 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     assertEquals(result, Left(Rejection.Ledger(LedgerFailure.Rejected(id, expected))))
     assertEquals(
       refused(result.left.getOrElse(fail("accepted"))),
-      PredicateFailureCbor.applyTxError(Vector(expected))
+      PredicateFailureCbor
+        .applyTxError(Vector(expected))
+        .fold(error => fail(error.message), identity)
     )
   }
 
@@ -329,7 +335,9 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
         )
         assertEquals(
           refused(full),
-          PredicateFailureCbor.applyTxError(Vector(PredicateFailure.Mempool(full.problem)))
+          PredicateFailureCbor
+            .applyTxError(Vector(PredicateFailure.Mempool(full.problem)))
+            .fold(error => fail(error.message), identity)
         )
       case other => fail(s"expected a full pool, received $other")
   }

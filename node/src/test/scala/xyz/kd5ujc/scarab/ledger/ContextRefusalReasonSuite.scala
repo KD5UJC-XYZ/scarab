@@ -77,7 +77,9 @@ class ContextRefusalReasonSuite extends FunSuite:
     TestLedger.conwayLedger(nes, c.tx, TestLedger.env) match
       case Right(_) => fail(s"$name: the node accepts what the reference refused")
       case Left(LedgerFailure.Rejected.Single(_, failure)) =>
-        PredicateFailureCbor.applyTxError(Vector(failure))
+        PredicateFailureCbor
+          .applyTxError(Vector(failure))
+          .fold(error => fail(error.message), identity)
       case Left(other) => fail(s"$name: not a single refusal: $other")
 
   test("every refused submission carries the reference's whole raw reason") {

@@ -273,7 +273,10 @@ class PlutusFailureReferenceSuite extends FunSuite:
     test(s"${r.era} ${r.kind}: the bytes are the reference's") {
       val failures = expected(r)
       assertEquals(
-        PredicateFailureCbor.applyTxError(r.era, failures).map(_.hex),
+        PredicateFailureCbor
+          .applyTxError(r.era, failures)
+          .fold(error => fail(error.message), identity)
+          .map(_.hex),
         Some(r.reason.hex)
       )
     }

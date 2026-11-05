@@ -71,8 +71,16 @@ class DetachedOutputFailureSuite extends FunSuite:
       val failure = PredicateFailure.utxo(UtxoFailure.OutputTooSmall(Vector(out)))
       val era = eras.getOrElse(row.era, fail(row.era))
       val answer =
-        if era == Era.Conway then Some(PredicateFailureCbor.applyTxError(Vector(failure)))
-        else PreConwayFailureCbor.applyTxError(era, Vector(failure))
+        if era == Era.Conway then
+          Some(
+            PredicateFailureCbor
+              .applyTxError(Vector(failure))
+              .fold(error => fail(error.message), identity)
+          )
+        else
+          PreConwayFailureCbor
+            .applyTxError(era, Vector(failure))
+            .fold(error => fail(error.message), identity)
       val hex = answer.map(_.hex).getOrElse(fail(s"${row.name}: no encoding"))
       assert(hex.contains(expected.hex), hex)
       assert(!hex.contains(original.hex), hex)

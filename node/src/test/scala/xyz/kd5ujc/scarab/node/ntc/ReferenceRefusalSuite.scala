@@ -197,6 +197,7 @@ class ReferenceRefusalSuite extends FunSuite:
             failures =>
               PreConwayFailureCbor
                 .applyTxError(rc.era.wire, failures.toChain.toVector)
+                .fold(error => fail(error.message), identity)
                 .fold(Judgement.Unencodable(failures))(Judgement.Refused(_)),
             _ => Judgement.Accepted
           )

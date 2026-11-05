@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.codec.HaskellShow
+
 import cats.Eval
 import cats.syntax.all.*
 import java.util.Base64
@@ -597,7 +599,7 @@ private[ntc] object PlutusContextText:
         else leaf(text(value.toString))
       case B(value) =>
         leaf(
-          if showing then protect(task, text("B ") ++ text(HaskellString.quoteBytes(value)))
+          if showing then protect(task, text("B ") ++ text(HaskellShow.bytes(value)))
           else text(Base64.getEncoder.encodeToString(value.toArray))
         )
       case Constr(tag, values) =>

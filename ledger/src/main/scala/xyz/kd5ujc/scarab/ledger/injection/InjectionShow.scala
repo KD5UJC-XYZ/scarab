@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.injection
 
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.HaskellShow
 import xyz.kd5ujc.scarab.ledger.injection.InjectionJson.{End, Item, Scalar}
 import xyz.kd5ujc.scarab.ledger.json.Scientific
 
@@ -16,13 +16,13 @@ private[injection] object InjectionShow:
   def item(value: Item): String = value match
     case Item.ArrayBegin      => "ArrayBegin"
     case Item.ObjectBegin     => "ObjectBegin"
-    case Item.ArrayEnd(rest)  => "ArrayEnd " + bytes(rest)
+    case Item.ArrayEnd(rest)  => "ArrayEnd " + HaskellShow.bytes(rest)
     case Item.JValue(value)   => "JValue " + scalar(value)
     case Item.JInteger(value) => "JInteger " + signed(value)
 
   def end(value: End): String = value match
-    case End.ArrayEnd(rest)  => "ArrayEnd " + bytes(rest)
-    case End.ObjectEnd(rest) => "ObjectEnd " + bytes(rest)
+    case End.ArrayEnd(rest)  => "ArrayEnd " + HaskellShow.bytes(rest)
+    case End.ObjectEnd(rest) => "ObjectEnd " + HaskellShow.bytes(rest)
 
   // The field of a derived constructor is shown at precedence 11.
   private def scalar(value: Scalar): String = value match
@@ -57,61 +57,3 @@ private[injection] object InjectionShow:
       val whole = digits.take(width).padTo(width, '0')
       val fraction = digits.drop(width)
       whole + "." + (if fraction.isEmpty then "0" else fraction)
-
-  private val asciiTab = Vector(
-    "NUL",
-    "SOH",
-    "STX",
-    "ETX",
-    "EOT",
-    "ENQ",
-    "ACK",
-    "BEL",
-    "BS",
-    "HT",
-    "LF",
-    "VT",
-    "FF",
-    "CR",
-    "SO",
-    "SI",
-    "DLE",
-    "DC1",
-    "DC2",
-    "DC3",
-    "DC4",
-    "NAK",
-    "SYN",
-    "ETB",
-    "CAN",
-    "EM",
-    "SUB",
-    "ESC",
-    "FS",
-    "GS",
-    "RS",
-    "US"
-  )
-
-  // `showList` of the bytes as Latin-1 characters: `showLitString`, `showLitChar` and
-  // `protectEsc` (ghc-internal 9.1003.0 `GHC/Internal/Show.hs:375-437`).
-  private def bytes(value: Bytes): String =
-    def at(i: Int): Int = value.lift(i).fold('"'.toInt)(_ & 255)
-    def char(i: Int): String = at(i) match
-      case 34  => "\\\""
-      case 92  => "\\\\"
-      case 127 => "\\DEL"
-      case 7   => "\\a"
-      case 8   => "\\b"
-      case 12  => "\\f"
-      case 10  => "\\n"
-      case 13  => "\\r"
-      case 9   => "\\t"
-      case 11  => "\\v"
-      case 14  => if at(i + 1) == 'H' then "\\SO\\&" else "\\SO"
-      case c if c > 127 =>
-        val digit = at(i + 1) >= '0' && at(i + 1) <= '9'
-        "\\" + c.toString + (if digit then "\\&" else "")
-      case c if c >= 32 => c.toChar.toString
-      case c            => "\\" + asciiTab(c)
-    (0 until value.size).iterator.map(char).mkString("\"", "", "\"")

@@ -287,3 +287,116 @@ class LocalSubmissionSuite extends FailsOnUncaught:
           assert(heldAfter)
       }
   }
+
+  test("a malformed refusal context sends no MsgRejectTx and a fresh client can still submit") {
+    val original = new scalus.uplc.eval.EvaluationFailure(Vector.empty)
+    val failure = xyz.kd5ujc.scarab.ledger.PlutusFailure(
+      xyz.kd5ujc.scarab.plutus.EvalFailure
+        .Script(xyz.kd5ujc.scarab.plutus.ScriptFailure(original, Vector("trace"))),
+      Bytes.empty,
+      Some(
+        xyz.kd5ujc.scarab.plutus.EvalRequest(
+          xyz.kd5ujc.scarab.plutus.PlutusLanguage.V1,
+          10,
+          Bytes.empty,
+          Vector.empty,
+          Vector.empty,
+          xyz.kd5ujc.scarab.plutus.ExUnits.zero
+        )
+      )
+    )
+    val rejection = Rejection.Ledger(
+      xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(
+        Bytes.empty,
+        xyz.kd5ujc.scarab.ledger.PredicateFailure.utxo(
+          xyz.kd5ujc.scarab.ledger.UtxoFailure.Utxos(
+            xyz.kd5ujc.scarab.ledger.UtxosFailure.ValidationTagMismatch(true, Some(Vector(failure)))
+          )
+        )
+      )
+    )
+    LocalSubmission.reasonItem(rejection) match
+      case Left(error: xyz.kd5ujc.scarab.node.ntc.RefusalPresentationError) =>
+        assert(error.failure eq failure)
+      case other => fail(s"presentation defect became rejection bytes: $other")
+    val (good, id) = pay(1)
+    Resource
+      .eval(for
+        mempool <- Mempool.create[IO](Right(ledger(2)), 1000, env, None, MempoolEvents.none[IO])
+        first <- Ref.of[IO, Boolean](true)
+        ended <- Deferred[IO, LocalTxSubmissionServer.End]
+      yield (mempool, first, ended))
+      .flatMap { (mempool, first, ended) =>
+        Resource
+          .make(IO(java.nio.file.Files.createTempDirectory("scarab-presentation-defect")))(dir =>
+            IO(java.nio.file.Files.deleteIfExists(dir.resolve("node.socket"))).void *>
+              IO(java.nio.file.Files.deleteIfExists(dir)).void
+          )
+          .flatMap { dir =>
+            val path = dir.resolve("node.socket")
+            serving(path) { bearer =>
+              Handle
+                .allow[NetworkError](
+                  NodeToClientServer.accept(
+                    bearer,
+                    magic,
+                    item =>
+                      first.getAndSet(false).flatMap {
+                        case true => IO.pure(LocalSubmission.response(rejection))
+                        case false =>
+                          LocalSubmission
+                            .handler(mempool)(fatal => IO(fail(s"unexpected fatal: $fatal")))(item)
+                      }
+                  )
+                )
+                .rescue(error => IO.pure(LocalTxSubmissionServer.End.ConnectionClosed(error)))
+                .flatMap(end => ended.complete(end).void)
+            }.as((mempool, ended, path))
+          }
+      }
+      .use { (mempool, ended, path) =>
+        def client: IO[Either[NetworkError, LocalTxSubmission.Message]] =
+          LocalClient.connect[IO](path).use { bearer =>
+            Handle
+              .allow[NetworkError] {
+                Mux.resource(bearer, Set(0, 6)).use { mux =>
+                  for
+                    handshake <- mux.channel(0)
+                    _ <- HandshakeClient.run(
+                      handshake,
+                      Vector(23 -> Handshake.Data(magic)),
+                      suite = Handshake.Suite.NodeToClient
+                    )
+                    channel <- mux.channel(6)
+                    reply <- submit(channel, wrap(good))
+                  yield reply.asRight[NetworkError]
+                }
+              }
+              .rescue(error => IO.pure(error.asLeft[LocalTxSubmission.Message]))
+          }
+        for
+          defect <- client
+          serverEnd <- ended.get
+          healthy <- client
+          held <- mempool.contains(id)
+        yield
+          defect match
+            case Left(_: NetworkError.BearerClosed) => ()
+            case other => fail(s"expected connection closure without MsgRejectTx, got $other")
+          serverEnd match
+            case LocalTxSubmissionServer.End.ServiceUnavailable(
+                  LocalTxSubmissionServer.Unavailable.Presentation(
+                    error: xyz.kd5ujc.scarab.node.ntc.RefusalPresentationError
+                  )
+                ) =>
+              assert(error.failure eq failure)
+              error.failure.cause match
+                case xyz.kd5ujc.scarab.plutus.EvalFailure
+                      .Script(xyz.kd5ujc.scarab.plutus.ScriptFailure(cause, _)) =>
+                  assert(cause eq original)
+                case other => fail(s"original evaluator cause lost: $other")
+            case other => fail(s"unexpected server end: $other")
+          assertEquals(healthy, Right(LocalTxSubmission.Message.AcceptTx))
+          assert(held)
+      }
+  }

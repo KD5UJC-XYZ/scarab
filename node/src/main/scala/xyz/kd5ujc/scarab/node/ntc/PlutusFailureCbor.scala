@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.codec.HaskellShow
+
 import java.util.Base64
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -27,9 +29,9 @@ private[ntc] object PlutusFailureCbor:
 
   /** `explainPlutusEvaluationError` for an explicit UPLC error. Other CEK failure kinds retain
     * their provider description until their typed cause printers are ported (#491). This function
-    * retains an invalid context as a typed presentation error; the wire encoder keeps the provider
-    * description for that case too. Production contexts come from the ledger's typed builders, so a
-    * malformed context indicates a builder defect or a synthetic request.
+    * retains an invalid context as a typed presentation defect: it has no rejection bytes.
+    * Production contexts come from the ledger's typed builders, so a malformed context indicates a
+    * builder defect or a synthetic request.
     */
   def description(failure: PlutusFailure): Either[PlutusContextText.Error, Option[String]] =
     (failure.request, failure.cause) match
@@ -44,7 +46,7 @@ private[ntc] object PlutusFailureCbor:
               "",
               s"The $language script failed:",
               "Base64-encoded script bytes:",
-              HaskellString.quote(binary),
+              HaskellShow.text(binary),
               s"The script hash is:ScriptHash \"${hash.hex}\"",
               "The plutus evaluation error is: CekError An error has occurred:\n" +
                 "The machine terminated because of an error, either from a built-in function or from an explicit use of 'error'.\n" +

@@ -347,7 +347,11 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
       case Voter.Pool(h) => "82" + "04" + "581c" + h.hex
       case other         => fail(s"expected a pool voter, got $other")
     assertEquals(
-      PredicateFailureCbor.applyTxError(Vector(failure)).hex.takeRight(6 + 3 * 64),
+      PredicateFailureCbor
+        .applyTxError(Vector(failure))
+        .fold(error => fail(error.message), identity)
+        .hex
+        .takeRight(6 + 3 * 64),
       "820e83" + expected.map(entry).mkString
     )
   }
