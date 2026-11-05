@@ -2869,5 +2869,11 @@
       917760,
       917999
     ]
-  ]
+  ],
+  "comparison": {
+    "probeSha256": "44d3462d1ebe0c522ee1f609537bf26398717c6b90f8ebc9a9b1180e4d8217ff",
+    "apiImage": "sha256:e061568cd4971962854e85f26910eb5094ff1c416567a547feb3ba6eff59c5da",
+    "compatibility": "Only the SOURCE boot-import pragma is removed in an isolated copy of the Bits helper; category-table and lookup code are unchanged.",
+    "outputSha256": "00488feb37adae3d9c37eb564d81d434ed0775d51db056b90f9bafb7a74e2f87"
+  }
 }
