@@ -671,12 +671,12 @@
       "id": "leios-praos2-headers",
       "classification": "native-parity",
       "status": "covered",
-      "scope": "Praos2 header verdict constructor and domain arguments, all accepted protocol-state fields, and certification-slot arithmetic under supplied forecast inputs. Native backend diagnostic rendering is retained but not compared; this is not ledger/body or forecast-production conformance.",
+      "scope": "Praos2 header verdict constructor and domain arguments, all accepted protocol-state fields, and certification-slot arithmetic under supplied forecast inputs. Native backend diagnostic rendering is retained but not compared in this bounded evidence; complete remaining presentation parity is required under #796; this is not ledger/body or forecast-production conformance.",
       "assertion": "Praos2ReferenceSuite compares all 1100 recorded headers and 61 synthetic native results without exclusions, state-field masks or numeric tolerances.",
       "rationale": "The captured chain has no announcement/certificate headers; deterministic native-signed synthetic headers and explicit state/forecast boundaries supply those cases.",
       "owner": "consensus",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/746",
-      "resolution": "Keep the exact header-decision/state contract when refreshing the pinned build; node integration and its ledger forecast remain #73.",
+      "resolution": "Keep the exact header-decision/state contract when refreshing the pinned build; node integration and its ledger forecast remain #73. Complete native diagnostic rendering/exposure remains required under #796 and the ADR0001 amendment.",
       "evidence": [
         "fixtures/reference/leios-praos2/provenance.json",
         "node/src/test/scala/xyz/kd5ujc/scarab/consensus/Praos2ReferenceSuite.scala"

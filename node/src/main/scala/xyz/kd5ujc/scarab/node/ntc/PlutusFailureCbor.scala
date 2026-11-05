@@ -27,8 +27,8 @@ private[ntc] object PlutusFailureCbor:
   }
 
   /** `explainPlutusEvaluationError` for an explicit UPLC error. Other CEK failure kinds retain
-    * their provider description until their required typed cause printers are ported (#796). This function
-    * retains an invalid context as a typed presentation defect: it has no rejection bytes.
+    * their provider description until their required typed cause printers are ported (#796). This
+    * function retains an invalid context as a typed presentation defect: it has no rejection bytes.
     * Production contexts come from the ledger's typed builders, so a malformed context indicates a
     * builder defect or a synthetic request.
     */
