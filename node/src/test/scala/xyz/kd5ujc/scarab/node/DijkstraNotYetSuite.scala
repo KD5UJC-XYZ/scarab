@@ -52,6 +52,10 @@ class DijkstraNotYetSuite extends FunSuite:
       NtNHeader.codec.encode(NtNHeader(Era.Dijkstra, raw, None)),
       Left(ProtocolError.NotYet(DijkstraNotYet.Header))
     )
+    assertEquals(
+      xyz.kd5ujc.scarab.ledger.Header.fromNtN(NtNHeader(Era.Dijkstra, raw, None), 21600),
+      Left(ChainError.Decode(DecodeField.Header, LedgerDecodeError.NotYet(DijkstraNotYet.Header)))
+    )
   }
 
   test("a block of tag 8 is refused by the ledger's block decoder") {
