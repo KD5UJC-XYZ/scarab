@@ -304,15 +304,6 @@ enum ChainError extends NodeError:
     */
   case StateOutOfRange(slot: BigInt, cause: xyz.kd5ujc.scarab.ledger.state.VocabError)
 
-  /** The block at `slot` would take the chain out of `era` at `epoch` if the blocks after the
-    * voting deadline reached `k`, and the state does not know its counter (a snapshot of the
-    * retired flat formats carrying `Gap.ShelleyTransition` that the immutable store could not
-    * recount). The reference serialises the counter and never meets this; the node stops rather
-    * than cross, or not cross, on a guess, until the gap closes (owner-approved 2026-11-04, PR
-    * #772). Neither a verdict on the block nor a fault of the peer that sent it.
-    */
-  case TransitionUndecided(slot: BigInt, era: xyz.kd5ujc.scarab.protocol.Era, epoch: BigInt)
-
   /** An exception while the node committed a chain it selected (persisting it, publishing it,
     * telling the mempool). The reference commits in the ChainDB's background thread, which is
     * linked to the node (ouroboros-consensus 82ecba32 `Storage/ChainDB/Impl/Background.hs:107-108,
@@ -326,10 +317,6 @@ enum ChainError extends NodeError:
       s"the node's own code threw while committing a chain: ${NetworkError.describe(cause)}"
     case StateOutOfRange(slot, cause) =>
       s"the ledger state in the rules for slot $slot is out of range: ${cats.Show[xyz.kd5ujc.scarab.ledger.state.VocabError].show(cause)}"
-    case TransitionUndecided(slot, era, epoch) =>
-      s"the block at slot $slot may take the chain out of $era at epoch $epoch, and the state does " +
-        "not know its blocks after the voting deadline (a legacy snapshot whose counter the " +
-        "immutable store cannot recount): resynchronise from a complete snapshot"
     case StateAcquire(cause) => cause.message
     case Decode(w, r)        => s"decode ${w.show}: ${r.show}"
     case NotConnected(p, t)  => s"${Points.show(p)} does not extend tip ${Points.show(t)}"
@@ -456,6 +443,28 @@ enum FirstImmutableProblem extends DomainError:
     case MissingChunk       => "first immutable index references a missing chunk"
     case BlockDecode(error) => s"first immutable block cannot be decoded: ${error.message}"
 
+/** Why the after-voting counter of a snapshot that does not know it (`Gap.ShelleyTransition`, a
+  * snapshot converted by a pre-native Scarab build) cannot be recounted from the immutable store.
+  */
+enum TransitionCounterProblem extends DomainError:
+  /** The store holds no block before the voting deadline (at slot `deadline`) of the tip's epoch,
+    * so it cannot tell how many blocks after it it lacks; `firstStored` is the slot of its first
+    * block, none when it is empty.
+    */
+  case StoreStartsAfterDeadline(deadline: BigInt, firstStored: Option[BigInt])
+
+  /** The snapshot's anchor (`anchor`, a slot) is not the tip of its Shelley-based ledger state
+    * (`tip`), so the blocks counted up to the anchor are not the state's.
+    */
+  case AnchorNotTip(anchor: Option[BigInt], tip: Option[BigInt])
+
+  def message: String = this match
+    case StoreStartsAfterDeadline(deadline, first) =>
+      s"the immutable store's first block (${first.fold("none")(s => s"slot $s")}) is not before the voting deadline at slot $deadline"
+    case AnchorNotTip(anchor, tip) =>
+      s"the snapshot's anchor (${anchor.fold("origin")(s => s"slot $s")}) is not its ledger tip (${tip
+          .fold("origin")(s => s"slot $s")})"
+
 enum StorageError extends NodeError:
   /** Reconstruction failed independently of whether the stored bytes are well formed. */
   case Reconstruction[E <: DomainError](what: String, cause: E) extends StorageError
@@ -471,6 +480,14 @@ enum StorageError extends NodeError:
 
   /** An operating-system failure reading or writing `what`. */
   case Io(what: String, cause: Throwable)
+
+  /** A snapshot converted by a pre-native Scarab build does not know its after-voting counter
+    * (`Gap.ShelleyTransition`) and the immutable store cannot recount it: it is not opened. The
+    * reference serialises the counter and cannot open a state without it; a fresh sync and a
+    * Haskell or Mithril import always carry it (owner-approved 2026-11-04, PR #772). Stale local
+    * data, not a fault of any peer.
+    */
+  case UnrecoverableTransitionCounter(problem: TransitionCounterProblem)
 
   /** The data was written by an incompatible format or schema version. */
   case VersionMismatch(what: String, found: String, expected: String)
@@ -537,6 +554,8 @@ enum StorageError extends NodeError:
     case FirstImmutable(p) => s"corrupt first immutable block: ${p.message}"
     case Io(w, r)          => s"io $w: $r"
     case VersionMismatch(w, f, e) => s"$w version $f, expected $e"
+    case UnrecoverableTransitionCounter(problem) =>
+      s"the ledger snapshot was converted by a pre-native Scarab build and does not know its blocks after the voting deadline, which cannot be recounted: ${problem.message}; resynchronise (remove <db>/snapshots and <db>/utxo and replay the immutable chunks, or sync a new database) or import a Haskell or Mithril ledger state"
     case UnknownVersion(w, k, f) =>
       s"$w: unknown ${k.label} format '$f' (this build reads from '${k.identifier(k.readableFrom)}' through '${k.identifier(k.current)}'); it was probably written by a newer build"
     case RetiredVersion(w, k, f, oldest) =>

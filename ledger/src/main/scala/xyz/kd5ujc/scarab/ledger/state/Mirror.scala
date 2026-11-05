@@ -44,8 +44,9 @@ enum Gap derives Eq, Show, Diff:
 
   /** `shelleyLedgerTransition` of the consensus state (the count of blocks since the era's
     * transition was known): not kept by the node. Added by the consensus side of the mirror. Closed
-    * at the next epoch boundary, or on restore when the immutable store lets the counter be
-    * recounted exactly (`TransitionRecount`).
+    * on restore by recounting the counter from the immutable store (`TransitionRecount`); a
+    * snapshot whose counter cannot be recounted is refused at open (owner-approved 2026-11-04, PR
+    * #772), so no running state carries it.
     */
   case ShelleyTransition
 

@@ -42,7 +42,7 @@ object NativeRules:
     * definite update of a later era's version.
     */
   val transition: Hfc.Transition = p =>
-    Hfc.Decision.of(p.update.filter(eraOf(_).ordinal > p.era.ordinal).map(_ => p.epoch + 1))
+    p.update.filter(eraOf(_).ordinal > p.era.ordinal).map(_ => p.epoch + 1)
 
   /** The state of a suite: an empty chain in epoch 5 with the test parameters of `protocolMajor` in
     * force, `funds` as its UTxO set and the reserves what makes the total [[TestLedger.Supply]].

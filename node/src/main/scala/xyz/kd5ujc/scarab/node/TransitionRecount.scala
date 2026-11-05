@@ -7,7 +7,7 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorState, MirrorStep}
-import xyz.kd5ujc.scarab.ledger.{EpochGeometry, StorageError}
+import xyz.kd5ujc.scarab.ledger.{EpochGeometry, StorageError, TransitionCounterProblem}
 import xyz.kd5ujc.scarab.ledger.state.{Gap, WithOrigin}
 import xyz.kd5ujc.scarab.storage.{ChainStorage, ImmutableStore}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
@@ -22,8 +22,10 @@ import xyz.kd5ujc.scarab.node.read.ChainRead.given
   * Eras change at epoch boundaries only, so the counter is the number of the chain's blocks from
   * the deadline to the tip, which the immutable store holds whenever it holds a block before the
   * deadline: its block numbers are consecutive and the snapshot's anchor is one of them. A store
-  * that starts at or after the deadline cannot tell how many blocks it lacks, and the gap stays
-  * open.
+  * that starts at or after the deadline cannot tell how many blocks it lacks: the snapshot is then
+  * refused at open ([[StorageError.UnrecoverableTransitionCounter]]) and the node never runs with
+  * the gap open (owner-approved 2026-11-04, PR #772; the gap exists only in snapshots converted by
+  * pre-native Scarab builds).
   */
 object TransitionRecount:
   def reopen[F[_]: Monad](geometry: EpochGeometry): ChainStorage.Reopen[F, MirrorState] =
@@ -31,32 +33,36 @@ object TransitionRecount:
       def apply(store: ImmutableStore[F], anchor: Option[BlockRef], state: MirrorState)(using
           Raise[F, StorageError]
       ): F[MirrorState] =
-        (anchor, tipSlot(state)) match
-          case (Some(tip), Some(slot))
-              if state.provenance.gaps.contains(Gap.ShelleyTransition) && tip.slot == slot =>
-            // the era history the live counter is kept with: a chain whose Byron span is derived
-            // learned its first Shelley epoch when it entered Shelley (`LedgerRules.entry`)
-            val resolved = state.geometry(geometry)
-            val deadline = MirrorStep.votingDeadline(resolved, resolved.epochOf(slot))
-            store.pointAtOrAfterSlot(0).flatMap {
-              case Some(first) if first.slot < deadline =>
-                store
-                  .pointAtOrAfterSlot(deadline)
-                  .map(counted(tip, _))
-                  .flatMap(n =>
-                    MirrorStep
-                      .recounted(state, n)
-                      .fold(
-                        e =>
-                          StorageError
-                            .Reconstruction("after-voting counter", e)
-                            .raise[F, MirrorState],
-                        _.pure[F]
-                      )
+        def refuse(problem: TransitionCounterProblem): F[MirrorState] =
+          StorageError.UnrecoverableTransitionCounter(problem).raise[F, MirrorState]
+        def recount(n: Long): F[MirrorState] =
+          MirrorStep
+            .recounted(state, n)
+            .fold(
+              e => StorageError.Reconstruction("after-voting counter", e).raise[F, MirrorState],
+              _.pure[F]
+            )
+        if !state.provenance.gaps.contains(Gap.ShelleyTransition) then state.pure[F]
+        else
+          (state.ext.ledgerState.state, anchor, tipSlot(state)) match
+            // Byron keeps no counter: Shelley starts it at zero, so the gap is closed as it is
+            case (EraLedgerState.ByronCurrent(_), _, _)         => recount(0L)
+            case (_, Some(tip), Some(slot)) if tip.slot == slot =>
+              // the era history the live counter is kept with: a chain whose Byron span is
+              // derived learned its first Shelley epoch when it entered Shelley (`LedgerRules.entry`)
+              val resolved = state.geometry(geometry)
+              val deadline = MirrorStep.votingDeadline(resolved, resolved.epochOf(slot))
+              store.pointAtOrAfterSlot(0).flatMap {
+                case Some(first) if first.slot < deadline =>
+                  store.pointAtOrAfterSlot(deadline).map(counted(tip, _)).flatMap(recount)
+                case first =>
+                  refuse(
+                    TransitionCounterProblem.StoreStartsAfterDeadline(deadline, first.map(_.slot))
                   )
-              case _ => state.pure[F]
-            }
-          case _ => state.pure[F]
+              }
+            // refused, never opened with the gap (owner-approved 2026-11-04, PR #772)
+            case (_, _, slot) =>
+              refuse(TransitionCounterProblem.AnchorNotTip(anchor.map(_.slot), slot))
 
   /** The blocks from the first at or after the deadline to `tip`, both included. */
   private[node] def counted(tip: BlockRef, fromDeadline: Option[BlockRef]): Long =

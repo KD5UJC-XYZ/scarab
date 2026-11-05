@@ -120,7 +120,7 @@ object PreparedBlockFixture:
     )
     val ctx = EraBlock.Context(
       TestLedger.globals,
-      _ => xyz.kd5ujc.scarab.ledger.rules.Hfc.Decision.Stays,
+      _ => None,
       0L,
       evaluator = evaluator,
       observer = observer,
@@ -156,12 +156,7 @@ object PreparedBlockFixture:
       100,
       empty
     )
-    val ctx = EraBlock.Context(
-      TestLedger.globals,
-      _ => xyz.kd5ujc.scarab.ledger.rules.Hfc.Decision.Stays,
-      0L,
-      evaluator = evaluator
-    )
+    val ctx = EraBlock.Context(TestLedger.globals, _ => None, 0L, evaluator = evaluator)
     EraBlock.program(ctx)(
       EraNes.InEra(ShelleyBasedEra.SBabbage, from),
       h,

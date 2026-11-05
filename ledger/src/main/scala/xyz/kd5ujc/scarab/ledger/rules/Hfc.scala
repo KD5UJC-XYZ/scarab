@@ -39,35 +39,8 @@ object Hfc:
     */
   final case class Pending(era: Era, epoch: BigInt, update: Option[BigInt], afterVoting: Long)
 
-  /** What the hard-fork configuration answers of a state: whether, and at which epoch, the chain
-    * leaves its era.
-    */
-  enum Decision:
-    /** No transition is decided: the chain stays in its era. */
-    case Stays
-
-    /** The chain leaves its era at `epoch`. */
-    case Leaves(epoch: BigInt)
-
-    /** The chain leaves its era at `epoch` if the blocks after the voting deadline reached `k`,
-      * which the state cannot tell: its counter is not known (`Gap.ShelleyTransition` of a snapshot
-      * of the retired flat formats that the immutable store could not recount). The reference never
-      * has an unknown counter (it serialises it), so this answer is Scarab's own and is never taken
-      * as either way: the owner approved refusing to cross on it (2026-11-04, PR #772).
-      */
-    case Undecided(epoch: BigInt)
-
-  object Decision:
-    /** The decision of a rule that always knows its answer. */
-    def of(leaves: Option[BigInt]): Decision = leaves.fold(Stays)(Leaves(_))
-
-  /** A transition out of `era` at `epoch` that the state's unknown counter leaves undecided
-    * ([[Decision.Undecided]]), met by a block of `epoch` or later.
-    */
-  final case class UndecidedTransition(era: Era, epoch: BigInt)
-
-  /** Whether, and at which epoch, the chain leaves the era of the state. */
-  type Transition = Pending => Decision
+  /** The epoch at which the chain leaves the era of the state, when that is decided. */
+  type Transition = Pending => Option[BigInt]
 
   /** The state at `slot`, from the state `start` of the epoch the chain is in, whose blocks after
     * the voting deadline are `afterVoting`. A translation carries the update and the counter over
@@ -84,18 +57,12 @@ object Hfc:
     // decided from the state before it, whatever the state's own epoch), or tick
     Monad[Result].tailRecM(start) { current =>
       val epoch = current.epoch.toBigInt
-      val decision =
-        if epoch < target then transition(pending(current, afterVoting)) else Decision.Stays
-      decision match
-        case Decision.Leaves(at) if at <= target =>
-          Translate.next(globals, current).flatMap {
-            case Some(translated) => Right(Left(translated))
-            case None             => ticked(globals, current, slot).map(Right(_))
-          }
-        // refused, not guessed (owner-approved 2026-11-04, PR #772): see `Decision.Undecided`
-        case Decision.Undecided(at) if at <= target =>
-          Left(TickFailure.TransitionUndecided(current.toEra, at))
-        case _ => ticked(globals, current, slot).map(Right(_))
+      if epoch < target && transition(pending(current, afterVoting)).exists(_ <= target) then
+        Translate.next(globals, current).flatMap {
+          case Some(translated) => Right(Left(translated))
+          case None             => ticked(globals, current, slot).map(Right(_))
+        }
+      else ticked(globals, current, slot).map(Right(_))
     }
 
   /** What the combinator reads of `e`: the definite update only (`ShelleyHFC.hs:222`). */

@@ -7,7 +7,6 @@ import xyz.kd5ujc.scarab.consensus.state.{
   EraHistory,
   EraLedgerState,
   MirrorState,
-  MirrorStep,
   Past,
   ShelleyLedgerState
 }
@@ -74,28 +73,23 @@ object GenesisHistory:
           )
         )
       case EraLedgerState.InShelleyEra(era, ledger) =>
-        shelleyTransition(ledger, telescope.era, config, MirrorStep.counterKnown(state))(using era)
+        shelleyTransition(ledger, telescope.era, config)(using era)
 
   private def shelleyTransition[E <: EraTag](
       ledger: ShelleyLedgerState[E],
       current: Era,
-      config: PraosConfig,
-      counterKnown: Boolean
+      config: PraosConfig
   )(using ShelleyBasedEra[E]): Option[BigInt] =
     // State/Governance.hs:131: potential parameters do not establish a transition, even if
     // evaluating them could predict the same version.
-    // An undecided transition (unknown counter, owner-approved 2026-11-04, PR #772) is not a
-    // known end of the era, as a version trigger before k blocks is not.
-    config.forks.transition(config.geometry.k, counterKnown)(
+    config.forks.transition(config.geometry.k)(
       Hfc.Pending(
         current,
         ledger.nes.epoch.toBigInt,
         EraLedger.futurePParams(ledger.nes.es.ls.utxo.gov).definite.map(_.protocolMajor),
         ledger.transition.afterVoting.toLong
       )
-    ) match
-      case Hfc.Decision.Leaves(epoch)                     => Some(epoch)
-      case Hfc.Decision.Stays | Hfc.Decision.Undecided(_) => None
+    )
 
   /** Pure reconstruction inputs, also consumed by the native history boundary corpus. */
   def query(

@@ -192,11 +192,13 @@ object MirrorStep:
   /** A state whose after-voting counter was not known (`Gap.ShelleyTransition`, of a snapshot of
     * the retired flat formats) with the counter recounted from the stored chain: the blocks of the
     * tip's epoch at or after its voting deadline, which is what the reference's state holds
-    * (`Ledger.hs:299-322`), and the gap closed. A Byron state, which has no counter, is unchanged.
+    * (`Ledger.hs:299-322`), and the gap closed. A Byron state has no counter (Shelley starts it at
+    * zero), so only its gap is closed.
     */
   def recounted(m: MirrorState, afterVoting: Long): Either[StateMirrorError, MirrorState] =
     m.ext.ledgerState.state match
-      case EraLedgerState.ByronCurrent(_) => Right(m)
+      case EraLedgerState.ByronCurrent(_) =>
+        Right(m.copy(provenance = m.provenance.recovered(Gap.ShelleyTransition)))
       case i: EraLedgerState.InShelleyEra[e] =>
         Either
           .cond(
@@ -214,11 +216,6 @@ object MirrorStep:
               provenance = m.provenance.recovered(Gap.ShelleyTransition)
             )
           }
-
-  /** Whether the state knows its after-voting counter: not while it carries `Gap.ShelleyTransition`
-    * (a snapshot of the retired flat formats that was not recounted).
-    */
-  def counterKnown(m: MirrorState): Boolean = !m.provenance.gaps.contains(Gap.ShelleyTransition)
 
   /** The blocks of the tip's epoch at or after its voting deadline (`shelleyAfterVoting`), what the
     * hard-fork combinator reads of the state before ticking it; none before Shelley.

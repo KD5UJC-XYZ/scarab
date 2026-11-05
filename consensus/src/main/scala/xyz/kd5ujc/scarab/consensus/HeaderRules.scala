@@ -80,20 +80,12 @@ object HeaderRules:
     case ShelleyLedgerNotReady
     case Horizon(slot: BigInt, tipSlot: BigInt)
     case ParentStateUnknown
-
-    /** The header's epoch reaches a transition out of `era` at `epoch` that the state cannot
-      * decide: its after-voting counter is unknown (`Hfc.Decision.Undecided`, owner-approved
-      * 2026-11-04, PR #772).
-      */
-    case TransitionUndecided(era: xyz.kd5ujc.scarab.protocol.Era, epoch: BigInt)
     def message: String = this match
       case ShelleyLedgerNotReady =>
         "the Shelley ledger exists once the first Shelley block is applied"
       case Horizon(slot, tip) =>
         s"slot $slot is beyond the forecast horizon of the ledger at slot $tip"
       case ParentStateUnknown => "the parent's header state is not known yet"
-      case TransitionUndecided(era, epoch) =>
-        s"whether the chain leaves $era at epoch $epoch is undecided: the after-voting counter is unknown"
   enum UncheckedReason:
     case Byron, FirstShelley, ParentInBatch, NoCommonLedger
     case ForecastFallback(cause: ForecastReason)

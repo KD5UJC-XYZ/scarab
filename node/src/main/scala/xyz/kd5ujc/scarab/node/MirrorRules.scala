@@ -165,24 +165,18 @@ object MirrorRules:
     * transaction ([[BlockFailure.stateOutOfRange]]), or the consensus state's per-epoch transition
     * counter past `Word32` ([[StateMirrorError.TransitionCounterOverflow]]): no verdict on the
     * block. The reference aborts with an exception there (`compactCoinOrError`; the counter's
-    * `succ`, which throws at `maxBound`), so this is the node's stop and never a refusal. So is a
-    * tick that a state with an unknown after-voting counter cannot decide
-    * ([[TickFailure.TransitionUndecided]], owner-approved 2026-11-04, PR #772).
+    * `succ`, which throws at `maxBound`), so this is the node's stop and never a refusal.
     */
   private[node] def stateOutOfRange(
       header: Header,
       failure: BlockFailure
   ): Option[xyz.kd5ujc.scarab.ledger.ChainError] =
-    failure match
-      case BlockFailure.Tick(TickFailure.TransitionUndecided(era, epoch)) =>
-        Some(xyz.kd5ujc.scarab.ledger.ChainError.TransitionUndecided(header.slot, era, epoch))
-      case _ =>
-        failure.stateOutOfRange
-          .orElse(failure match
-            case BlockFailure.Mirror(StateMirrorError.TransitionCounterOverflow) =>
-              Some(VocabError.OutOfRange(VocabError.Kind.Word32, BigInt(1) << 32))
-            case _ => None)
-          .map(xyz.kd5ujc.scarab.ledger.ChainError.StateOutOfRange(header.slot, _))
+    failure.stateOutOfRange
+      .orElse(failure match
+        case BlockFailure.Mirror(StateMirrorError.TransitionCounterOverflow) =>
+          Some(VocabError.OutOfRange(VocabError.Kind.Word32, BigInt(1) << 32))
+        case _ => None)
+      .map(xyz.kd5ujc.scarab.ledger.ChainError.StateOutOfRange(header.slot, _))
 
   /** The label a block application is recorded under: a block that crossed an epoch boundary or ran
     * Plutus scripts says so, as those are the steps that take long.
@@ -333,7 +327,7 @@ object MirrorRules:
     val epoch = geometry.epochOf(announced.slot)
     val context = EraBlock.Context(
       Globals(globals, geometry),
-      config.forks.transition(geometry.k, MirrorStep.counterKnown(state)),
+      config.forks.transition(geometry.k),
       MirrorStep.afterVotingOf(state),
       verdicts = config.verdicts,
       observer = phase2Observer,

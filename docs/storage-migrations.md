@@ -203,7 +203,9 @@ Missing non-myopic history does not heal merely because a new reward update is c
 reward-attribution, pending-update and Shelley-transition gaps can clear at a successful epoch
 boundary that replaces their affected state. The Shelley-transition gap also clears when a snapshot
 is restored and its immutable store holds a block before the tip epoch's voting deadline: the
-counter is then recounted exactly from the store (`TransitionRecount`, #771). While the gap stays open, a version-triggered era transition that the counter does not already decide stops the node rather than be guessed (owner-approved 2026-11-04, PR #772). Delegator-count provenance requires three observed
+counter is then recounted exactly from the store (`TransitionRecount`, #771). A snapshot whose
+counter cannot be recounted that way is refused at open (`StorageError.UnrecoverableTransitionCounter`,
+owner-approved 2026-11-04, PR #772): resynchronise, or import a Haskell or Mithril ledger state. Delegator-count provenance requires three observed
 native snapshot rotations to replace arbitrary imported mark/set/go snapshots. Its rotation proof
 is transient: a restore retains the gap and restarts the proof, so repeated restarts can delay its
 clearance. It never infers that a missing rotation happened from elapsed epoch numbers alone.
