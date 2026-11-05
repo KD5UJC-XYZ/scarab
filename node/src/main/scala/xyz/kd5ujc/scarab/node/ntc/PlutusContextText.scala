@@ -74,11 +74,11 @@ private[ntc] object PlutusContextText:
   private def fields(task: Task, kinds: Vector[Kind]): Result[Vector[PlutusData]] = task.data match
     case Constr(tag, values) if tag == 0 && values.size == kinds.size => Right(values)
     case other => Left(Error.Shape(task.kind, other))
-  private def product(task: Task, kinds: Vector[Kind])(
+  private def product(task: Task, kinds: Vector[Kind], precedence: Int = 0)(
       assemble: PartialFunction[Vector[Doc], Doc]
   ): Result[Plan] =
     fields(task, kinds).flatMap(values =>
-      node(kinds.zip(values).map((kind, value) => child(task, kind, value)))(assemble)
+      node(kinds.zip(values).map((kind, value) => child(task, kind, value, precedence)))(assemble)
     )
   private def sum(
       task: Task,
@@ -455,7 +455,7 @@ private[ntc] object PlutusContextText:
             case _ => Left(Error.Shape(task.kind, data))
         }
       case Rational =>
-        product(task, Vector(Number, Number)) { case Vector(n, d) =>
+        product(task, Vector(Number, Number), if task.show then 11 else 0) { case Vector(n, d) =>
           if task.show then protect(task, text("Rational").space(n).space(d))
           else text("Rational:").space(n).space(d)
         }

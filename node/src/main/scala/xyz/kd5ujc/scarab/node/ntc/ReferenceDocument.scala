@@ -6,7 +6,9 @@ import scala.annotation.tailrec
 /** The subset of prettyprinter's document algebra used by the Plutus diagnostic instances.
   * `Prettyprinter/Internal.hs` (prettyprinter 1.7.2), `group`, `flatAlt`, `encloseSep` and
   * `layoutPretty`; the reference's default page is 80 columns with ribbon fraction 1. Both fitting
-  * and rendering use explicit work lists: argument nesting never consumes the JVM stack.
+  * and rendering use explicit work lists: argument nesting never consumes the JVM stack. The
+  * context schemas put later groups behind line breaks or already chosen closing delimiters.
+  * General term printers must extend fitting to select those later groups independently.
   */
 private[ntc] object ReferenceDocument:
   enum Doc:

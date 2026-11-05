@@ -26,8 +26,10 @@ private[ntc] object PlutusFailureCbor:
   }
 
   /** `explainPlutusEvaluationError` for an explicit UPLC error. Other CEK failure kinds retain
-    * their existing provider description until their typed cause printers are ported (#491). An
-    * invalid context is reported as a typed presentation error by [[description]].
+    * their provider description until their typed cause printers are ported (#491). This function
+    * retains an invalid context as a typed presentation error; the wire encoder keeps the provider
+    * description for that case too. Production contexts come from the ledger's typed builders, so a
+    * malformed context indicates a builder defect or a synthetic request.
     */
   def description(failure: PlutusFailure): Either[PlutusContextText.Error, Option[String]] =
     (failure.request, failure.cause) match

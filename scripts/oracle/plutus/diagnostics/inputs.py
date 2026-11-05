@@ -118,6 +118,8 @@ def inputs():
             fields = list(info1.fields)
             fields[6] = interval
             cases.append((f"v1-bound-{tag}-{closed}", "ContextV1", c(0, c(0, *fields), purposes1[0])))
+    negative_quorum = c(0, 100, cred, c(4, nothing, [cred], m(), c(0, -1, 2)))
+    cases.append(("v3-negative-quorum-show", "ContextV3", c(0, info3, datum, c(5, 0, negative_quorum))))
     cases += [("data-layout", "RawData", datum), ("data-empty", "RawData", c(42)),
               ("data-long", "RawData", [bytes(range(60))] * 4)]
     return [dict(name=name, kind=kind, dataCbor=encode(d).hex()) for name, kind, d in cases]
