@@ -7,8 +7,8 @@ import xyz.kd5ujc.scarab.codec.Bytes
 /** Lossless inputs to the pinned native diagnostic printers. Values remain structured until the
   * presentation boundary; provider exceptions are retained separately by the evaluation result.
   * Plutus 507cab8c: Common/Eval.hs:58-73, Machine/Exception.hs:44-70, Cek/Internal.hs:497-506,
-  * Core/Type.hs and Default/Universe.hs:136-155. Indices, constructor tags and budgets are unbounded
-  * here so presentation cannot lose information at a JVM or provider numeric boundary.
+  * Core/Type.hs and Default/Universe.hs:136-155. Indices, constructor tags and budgets are
+  * unbounded here so presentation cannot lose information at a JVM or provider numeric boundary.
   */
 object ReferenceDiagnostic:
   final case class Budget(cpu: BigInt, memory: BigInt)
