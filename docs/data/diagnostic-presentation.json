@@ -1,0 +1,3165 @@
+{
+  "schemaVersion": 1,
+  "contract": "docs/adr/0001-haskell-node-as-reference.md#amendment-2026-11-04-exact-diagnostic-and-refusal-parity",
+  "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/796",
+  "discoveryScope": "All main Scala modules: declared presentation methods, explicit provider-message access and named native presenters. Constructor indexing is lexical and does not replace compiler exhaustiveness/call-graph review.",
+  "boundaries": [
+    {
+      "id": "ghc-scalar-show",
+      "use": "native-json",
+      "state": "incomplete",
+      "scope": "Shared GHC Show String/Char/ByteString escaping used by native JSON, injection and network presentation.",
+      "sources": [
+        "codec/src/main/scala/xyz/kd5ujc/scarab/codec/HaskellShow.scala",
+        "network/src/main/scala/xyz/kd5ujc/scarab/network/HaskellShow.scala",
+        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/injection/InjectionShow.scala"
+      ],
+      "native": [
+        "ghc-internal9.1003.0:GHC/Internal/Show.hs:375-437; source correspondence in HaskellShow Scaladoc"
+      ],
+      "tests": [
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/json/JsonValueSuite.scala",
+        "network/src/test/scala/xyz/kd5ujc/scarab/network/SystemErrorSuite.scala"
+      ],
+      "observations": [
+        "fixtures/reference/native-json/README.md"
+      ],
+      "evidence": "Native controls cover byte-valued chars and Unicode/escape boundaries; official compiler Unicode differences must be distinguished from UPLC PrettyConst.",
+      "resolution": "Retain native controls and source-exhaustive scalar handling; propagate a pin/compiler change to the native oracle."
+    },
+    {
+      "id": "ledger-json",
+      "use": "native-json",
+      "state": "incomplete",
+      "scope": "Native JSON Value, Scientific and streaming injection result/parse-error presentation.",
+      "sources": [
+        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/JsonValue.scala",
+        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/NativeJson.scala",
+        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/injection/InjectionJson.scala"
+      ],
+      "native": [
+        "aeson2.2.3.0, scientific0.3.8.0 and streaming-json-via Plutus reference source; pinned corpus provenance"
+      ],
+      "tests": [
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/json/NativeJsonSuite.scala",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/injection/InjectionJsonSuite.scala"
+      ],
+      "observations": [
+        "fixtures/reference/native-json/README.md",
+        "fixtures/reference/injection-json/README.md"
+      ],
+      "evidence": "The corpora compare complete native parse diagnostics as well as typed result streams; complete constructor/exposure mapping remains explicit.",
+      "resolution": "Bind every renderer/constructor to retained native cases and source branches; additional discovered producers are not silently covered."
+    },
+    {
+      "id": "local-tx-refusal",
+      "use": "native-wire",
+      "state": "incomplete",
+      "scope": "Complete supported ApplyTxErr, era mismatch, context collection and CLI rejection presentation.",
+      "sources": [
+        "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/PredicateFailureCbor.scala",
+        "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/PreConwayFailureCbor.scala",
+        "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/ContextFailureCbor.scala",
+        "node/src/main/scala/xyz/kd5ujc/scarab/node/mempool/LocalSubmission.scala"
+      ],
+      "native": [
+        "cardano-ledger@f649f9751074d2ab3de033fc3912f29c9862c1f5:eras/*/impl/src/Cardano/Ledger/*/Rules and API/Mempool.hs"
+      ],
+      "tests": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ScriptResultWireSuite.scala"
+      ],
+      "observations": [
+        "fixtures/reference/refusals/manifest.json",
+        "fixtures/reference/script-results/README.md"
+      ],
+      "evidence": "Recorded explicit-error refusals now compare whole bytes; ordinary malformed/admission/free-text Mempool paths, missing #434 recordings and #401 era/family completeness need independent exposure proof.",
+      "resolution": "Complete all native categories and ordered accumulated failures; no projection, provider description or synthetic substitute may satisfy a native refusal row."
+    },
+    {
+      "id": "plutus-evaluation",
+      "use": "native-wire",
+      "state": "incomplete",
+      "scope": "Script context, evaluation/decode/scope error, failing term/constants/types and layout embedded in native refusals.",
+      "sources": [
+        "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ScriptEvaluator.scala",
+        "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/FlatScan.scala",
+        "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/PlutusFailureCbor.scala",
+        "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/PlutusContextText.scala",
+        "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceDocument.scala"
+      ],
+      "native": [
+        "plutus@507cab8cf6192e5143f12be5b2d3005a2928dc6d:plutus-ledger-api/src/PlutusLedgerApi/Common/Eval.hs:58-73",
+        "cardano-ledger@f649f9751074d2ab3de033fc3912f29c9862c1f5:libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Evaluate.hs:405-419"
+      ],
+      "tests": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/PlutusContextTextSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ScriptResultWireSuite.scala"
+      ],
+      "observations": [
+        "fixtures/reference/plutus-diagnostics/README.md"
+      ],
+      "evidence": "All native EvaluationError families are required; current finite context/explicit-error controls do not establish general error/term coverage.",
+      "resolution": "Capture lossless typed diagnostics; complete Pretty/Show/layout and every native family; prove actual exposure of variable Flat decoder strings before defining goldens."
+    },
+    {
+      "id": "handshake-refusal",
+      "use": "native-wire",
+      "state": "incomplete",
+      "scope": "Generic/Cardano handshake rejection constructors, version data decoding and refusal text emitted to peers.",
+      "sources": [
+        "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/Handshake.scala"
+      ],
+      "native": [
+        "ouroboros-network@2fb69829:ouroboros-network-protocols/src/Ouroboros/Network/Protocol/Handshake/{Codec,Client,Server}.hs"
+      ],
+      "tests": [
+        "protocol/src/test/scala/xyz/kd5ujc/scarab/protocol/GenericHandshakeUpstreamSuite.scala",
+        "network/src/test/scala/xyz/kd5ujc/scarab/network/NativeHandshakeBoundarySuite.scala"
+      ],
+      "observations": [
+        "fixtures/reference/ouroboros-network-protocol-codecs/COVERAGE.md"
+      ],
+      "evidence": "Wire round trips alone do not establish that a locally generated decoder/agreement error uses the native refusal text.",
+      "resolution": "Map every locally generated refusalText producer to its pinned native branch and compare full emitted bytes/text, keeping peer-supplied text as original input."
+    },
+    {
+      "id": "native-system-trace",
+      "use": "native-trace",
+      "state": "incomplete",
+      "scope": "Native local-address/file-descriptor/system-error Show payloads at the network trace boundary.",
+      "sources": [
+        "network/src/main/scala/xyz/kd5ujc/scarab/network/SystemError.scala",
+        "network/src/main/scala/xyz/kd5ujc/scarab/network/HaskellShow.scala"
+      ],
+      "native": [
+        "ouroboros-network@2fb69829:network-mux and network socket exception trace payloads; pinned source citations in SystemError"
+      ],
+      "tests": [
+        "network/src/test/scala/xyz/kd5ujc/scarab/network/SystemErrorSuite.scala"
+      ],
+      "observations": [],
+      "evidence": "Existing finite SystemError controls and shared scalar escaping establish their stated scope, not every OS exception variant.",
+      "resolution": "Prove every generated native error payload mapping under the same OS/compiler inputs; retain existing separately approved logging-envelope decisions."
+    },
+    {
+      "id": "praos2-header",
+      "use": "native-trace",
+      "state": "incomplete",
+      "scope": "Native Praos2 refusal constructor/domain fields and corresponding diagnostic presentation.",
+      "sources": [
+        "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/HeaderRules.scala"
+      ],
+      "native": [
+        "ouroboros-consensus rc-2026w44 pins from fixtures/reference/leios-praos2/provenance.json"
+      ],
+      "tests": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/consensus/Praos2ReferenceSuite.scala"
+      ],
+      "observations": [
+        "fixtures/reference/leios-praos2/README.md"
+      ],
+      "evidence": "The retained native header corpus compares constructor/domain arguments; full native diagnostic text is not yet a comparison.",
+      "resolution": "Complete full native header error presentation or prove its supported exposure boundary; no constructor projection is full text parity."
+    },
+    {
+      "id": "protocol-diagnostics",
+      "use": "needs-exposure-proof",
+      "state": "incomplete",
+      "scope": "Protocol failures, query refusals and connection/control diagnostics; determine which strings reach a native wire or trace boundary.",
+      "sources": [
+        "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ChainSync.scala"
+      ],
+      "native": [],
+      "tests": [],
+      "observations": [],
+      "evidence": "These are discovered producer candidates, not exclusions. The source symbol catalog is exhaustive for the documented lexical discovery rules; real native exposure requires call-site/source and independent boundary evidence.",
+      "resolution": "Resolve each candidate through an explicit reference-facing consumer or a demonstrated Scarab-only interface; retain typed service defects without invented native refusals."
+    },
+    {
+      "id": "ledger-diagnostics",
+      "use": "needs-exposure-proof",
+      "state": "incomplete",
+      "scope": "Typed ledger/admission/genesis/header failures before presentation; map external consumers individually.",
+      "sources": [
+        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Address.scala"
+      ],
+      "native": [],
+      "tests": [],
+      "observations": [],
+      "evidence": "These are discovered producer candidates, not exclusions. The source symbol catalog is exhaustive for the documented lexical discovery rules; real native exposure requires call-site/source and independent boundary evidence.",
+      "resolution": "Resolve each candidate through an explicit reference-facing consumer or a demonstrated Scarab-only interface; retain typed service defects without invented native refusals."
+    },
+    {
+      "id": "consensus-diagnostics",
+      "use": "needs-exposure-proof",
+      "state": "incomplete",
+      "scope": "Consensus and chain-rule failures before trace/CLI presentation; preserve peer-vs-node fault policy.",
+      "sources": [
+        "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/BlockRules.scala"
+      ],
+      "native": [],
+      "tests": [],
+      "observations": [],
+      "evidence": "These are discovered producer candidates, not exclusions. The source symbol catalog is exhaustive for the documented lexical discovery rules; real native exposure requires call-site/source and independent boundary evidence.",
+      "resolution": "Resolve each candidate through an explicit reference-facing consumer or a demonstrated Scarab-only interface; retain typed service defects without invented native refusals."
+    },
+    {
+      "id": "storage-diagnostics",
+      "use": "needs-exposure-proof",
+      "state": "incomplete",
+      "scope": "Import/snapshot/store/bootstrap refusal diagnostics; identify native import/CLI counterparts and Scarab-only persisted-format/service defects.",
+      "sources": [
+        "storage/src/main/scala/xyz/kd5ujc/scarab/storage/Binary.scala"
+      ],
+      "native": [],
+      "tests": [],
+      "observations": [],
+      "evidence": "These are discovered producer candidates, not exclusions. The source symbol catalog is exhaustive for the documented lexical discovery rules; real native exposure requires call-site/source and independent boundary evidence.",
+      "resolution": "Resolve each candidate through an explicit reference-facing consumer or a demonstrated Scarab-only interface; retain typed service defects without invented native refusals."
+    },
+    {
+      "id": "node-diagnostics",
+      "use": "needs-exposure-proof",
+      "state": "incomplete",
+      "scope": "Node configuration, submission, forging, topology and scoped service-defect diagnostics; distinguish native counterparts from approved local interfaces.",
+      "sources": [
+        "node/src/main/scala/xyz/kd5ujc/scarab/node/CheckpointsFile.scala"
+      ],
+      "native": [],
+      "tests": [],
+      "observations": [],
+      "evidence": "These are discovered producer candidates, not exclusions. The source symbol catalog is exhaustive for the documented lexical discovery rules; real native exposure requires call-site/source and independent boundary evidence.",
+      "resolution": "Resolve each candidate through an explicit reference-facing consumer or a demonstrated Scarab-only interface; retain typed service defects without invented native refusals."
+    },
+    {
+      "id": "primitive-diagnostics",
+      "use": "needs-exposure-proof",
+      "state": "incomplete",
+      "scope": "Primitive binary/CBOR/crypto failures; downstream native serializers determine exposure rather than a primitive message alone.",
+      "sources": [
+        "codec/src/main/scala/xyz/kd5ujc/scarab/codec/BinaryError.scala",
+        "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/bls/Blst.scala"
+      ],
+      "native": [],
+      "tests": [],
+      "observations": [],
+      "evidence": "These are discovered producer candidates, not exclusions. The source symbol catalog is exhaustive for the documented lexical discovery rules; real native exposure requires call-site/source and independent boundary evidence.",
+      "resolution": "Resolve each candidate through an explicit reference-facing consumer or a demonstrated Scarab-only interface; retain typed service defects without invented native refusals."
+    },
+    {
+      "id": "generator-diagnostics",
+      "use": "needs-exposure-proof",
+      "state": "incomplete",
+      "scope": "Scarab CDDL/schema generation and its own tool failures; no native node command is implemented here.",
+      "sources": [
+        "models-gen/src/main/scala/xyz/kd5ujc/scarab/models/gen/CddlParser.scala"
+      ],
+      "native": [],
+      "tests": [],
+      "observations": [],
+      "evidence": "These are discovered producer candidates, not exclusions. The source symbol catalog is exhaustive for the documented lexical discovery rules; real native exposure requires call-site/source and independent boundary evidence.",
+      "resolution": "Resolve each candidate through an explicit reference-facing consumer or a demonstrated Scarab-only interface; retain typed service defects without invented native refusals."
+    }
+  ],
+  "nativeFamilies": [
+    {
+      "family": "EvaluationError",
+      "source": "plutus-ledger-api/src/PlutusLedgerApi/Common/Eval.hs",
+      "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+      "sourceSha256": "45384b6ab50d825c6b7f6dea755835e1f54b0932585208f4662c9eecea1c97c2",
+      "line": 58,
+      "constructors": [
+        "CekError",
+        "DeBruijnError",
+        "CodecError",
+        "CostModelParameterMismatch",
+        "InvalidReturnValue"
+      ],
+      "state": "incomplete",
+      "scalaMapping": {
+        "CekError": null,
+        "DeBruijnError": null,
+        "CodecError": null,
+        "CostModelParameterMismatch": null,
+        "InvalidReturnValue": null
+      },
+      "oracleCases": {
+        "CekError": [],
+        "DeBruijnError": [],
+        "CodecError": [],
+        "CostModelParameterMismatch": [],
+        "InvalidReturnValue": []
+      },
+      "constructorDigest": "938f64b4a37a09a7cb101c483a713c15a05cf521f1a3646795cc765046830514"
+    },
+    {
+      "family": "MachineError",
+      "source": "plutus-core/plutus-core/src/PlutusCore/Evaluation/Machine/Exception.hs",
+      "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+      "sourceSha256": "58140a97be5898cbe0cb6057a9eb55f4c48c0b4d09cbe69bcc1737111f917cc1",
+      "line": 44,
+      "constructors": [
+        "NonPolymorphicInstantiationMachineError",
+        "NonWrapUnwrappedMachineError",
+        "NonFunctionalApplicationMachineError",
+        "OpenTermEvaluatedMachineError",
+        "UnliftingMachineError",
+        "BuiltinTermArgumentExpectedMachineError",
+        "UnexpectedBuiltinTermArgumentMachineError",
+        "NonConstrScrutinizedMachineError",
+        "MissingCaseBranchMachineError",
+        "PanicMachineError"
+      ],
+      "state": "incomplete",
+      "scalaMapping": {
+        "NonPolymorphicInstantiationMachineError": null,
+        "NonWrapUnwrappedMachineError": null,
+        "NonFunctionalApplicationMachineError": null,
+        "OpenTermEvaluatedMachineError": null,
+        "UnliftingMachineError": null,
+        "BuiltinTermArgumentExpectedMachineError": null,
+        "UnexpectedBuiltinTermArgumentMachineError": null,
+        "NonConstrScrutinizedMachineError": null,
+        "MissingCaseBranchMachineError": null,
+        "PanicMachineError": null
+      },
+      "oracleCases": {
+        "NonPolymorphicInstantiationMachineError": [],
+        "NonWrapUnwrappedMachineError": [],
+        "NonFunctionalApplicationMachineError": [],
+        "OpenTermEvaluatedMachineError": [],
+        "UnliftingMachineError": [],
+        "BuiltinTermArgumentExpectedMachineError": [],
+        "UnexpectedBuiltinTermArgumentMachineError": [],
+        "NonConstrScrutinizedMachineError": [],
+        "MissingCaseBranchMachineError": [],
+        "PanicMachineError": []
+      },
+      "constructorDigest": "854e515dd8bee3632fea4236676227174f4092eb9eca89ad7b2b1e2fdaa49149"
+    },
+    {
+      "family": "CekUserError",
+      "source": "plutus-core/untyped-plutus-core/src/UntypedPlutusCore/Evaluation/Machine/Cek/Internal.hs",
+      "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+      "sourceSha256": "f7483a9661dc5ff5291140dc4c6f4609911e6f6d5f54b043bf98a0cb88090527",
+      "line": 497,
+      "constructors": [
+        "CekCaseBuiltinError",
+        "CekOutOfExError",
+        "CekEvaluationFailure"
+      ],
+      "state": "incomplete",
+      "scalaMapping": {
+        "CekCaseBuiltinError": null,
+        "CekOutOfExError": null,
+        "CekEvaluationFailure": null
+      },
+      "oracleCases": {
+        "CekCaseBuiltinError": [],
+        "CekOutOfExError": [],
+        "CekEvaluationFailure": []
+      },
+      "constructorDigest": "7c373da3ebe35ade3014d2e6c52e1b8f4e41bb6cd5cf603431c3f84427385223"
+    },
+    {
+      "family": "FreeVariableError",
+      "source": "plutus-core/plutus-core/src/PlutusCore/DeBruijn/Internal.hs",
+      "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+      "sourceSha256": "55b2928e0d2d0af4a246bfa21a790270af243f3b9d9336490ef1468d223053ec",
+      "line": 252,
+      "constructors": [
+        "FreeUnique",
+        "FreeIndex"
+      ],
+      "state": "incomplete",
+      "scalaMapping": {
+        "FreeUnique": null,
+        "FreeIndex": null
+      },
+      "oracleCases": {
+        "FreeUnique": [],
+        "FreeIndex": []
+      },
+      "constructorDigest": "144b7efe7d72b8b32eb385b9957c298131061737b26399d54e18417870bea79f"
+    },
+    {
+      "family": "ScriptDecodeError",
+      "source": "plutus-ledger-api/src/PlutusLedgerApi/Common/SerialisedScript.hs",
+      "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+      "sourceSha256": "3ebeee02a9899938c61a236d5a9b207518fc0ce7dce53ed6d13e4a93c142d82d",
+      "line": 55,
+      "constructors": [
+        "CBORDeserialiseError",
+        "RemainderError",
+        "LedgerLanguageNotAvailableError",
+        "PlutusCoreLanguageNotAvailableError"
+      ],
+      "state": "incomplete",
+      "scalaMapping": {
+        "CBORDeserialiseError": null,
+        "RemainderError": null,
+        "LedgerLanguageNotAvailableError": null,
+        "PlutusCoreLanguageNotAvailableError": null
+      },
+      "oracleCases": {
+        "CBORDeserialiseError": [],
+        "RemainderError": [],
+        "LedgerLanguageNotAvailableError": [],
+        "PlutusCoreLanguageNotAvailableError": []
+      },
+      "constructorDigest": "c1054732ba5acb249916195d2dfbcdde662a48c19317bda7e5e0d3c64acbf2d5"
+    },
+    {
+      "family": "DefaultUni",
+      "source": "plutus-core/plutus-core/src/PlutusCore/Default/Universe.hs",
+      "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+      "sourceSha256": "d47b2250cfb9d4998305393be2f0df7e0fdd8a43e84afb22049b9f364eee9e0f",
+      "line": 136,
+      "constructors": [
+        "DefaultUniInteger",
+        "DefaultUniByteString",
+        "DefaultUniString",
+        "DefaultUniUnit",
+        "DefaultUniBool",
+        "DefaultUniProtoArray",
+        "DefaultUniProtoList",
+        "DefaultUniProtoPair",
+        "DefaultUniApply",
+        "DefaultUniData",
+        "DefaultUniBLS12_381_G1_Element",
+        "DefaultUniBLS12_381_G2_Element",
+        "DefaultUniBLS12_381_MlResult",
+        "DefaultUniValue"
+      ],
+      "state": "incomplete",
+      "scalaMapping": {
+        "DefaultUniInteger": null,
+        "DefaultUniByteString": null,
+        "DefaultUniString": null,
+        "DefaultUniUnit": null,
+        "DefaultUniBool": null,
+        "DefaultUniProtoArray": null,
+        "DefaultUniProtoList": null,
+        "DefaultUniProtoPair": null,
+        "DefaultUniApply": null,
+        "DefaultUniData": null,
+        "DefaultUniBLS12_381_G1_Element": null,
+        "DefaultUniBLS12_381_G2_Element": null,
+        "DefaultUniBLS12_381_MlResult": null,
+        "DefaultUniValue": null
+      },
+      "oracleCases": {
+        "DefaultUniInteger": [],
+        "DefaultUniByteString": [],
+        "DefaultUniString": [],
+        "DefaultUniUnit": [],
+        "DefaultUniBool": [],
+        "DefaultUniProtoArray": [],
+        "DefaultUniProtoList": [],
+        "DefaultUniProtoPair": [],
+        "DefaultUniApply": [],
+        "DefaultUniData": [],
+        "DefaultUniBLS12_381_G1_Element": [],
+        "DefaultUniBLS12_381_G2_Element": [],
+        "DefaultUniBLS12_381_MlResult": [],
+        "DefaultUniValue": []
+      },
+      "constructorDigest": "be5eb279e03934917ddd0a6f3b6a5147419f16a35426da35c23c627326541d60"
+    }
+  ],
+  "producers": [
+    {
+      "source": "codec/src/main/scala/xyz/kd5ujc/scarab/codec/BinaryError.scala",
+      "boundary": "primitive-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.codec.BinaryError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.codec.BinaryError.BadMagic",
+        "xyz.kd5ujc.scarab.codec.BinaryError.CountExceedsRemaining",
+        "xyz.kd5ujc.scarab.codec.BinaryError.EmptyBigInt",
+        "xyz.kd5ujc.scarab.codec.BinaryError.IntOutOfRange",
+        "xyz.kd5ujc.scarab.codec.BinaryError.Internal",
+        "xyz.kd5ujc.scarab.codec.BinaryError.InvalidBoolean",
+        "xyz.kd5ujc.scarab.codec.BinaryError.InvalidByronVersion",
+        "xyz.kd5ujc.scarab.codec.BinaryError.InvalidKeyHashLength",
+        "xyz.kd5ujc.scarab.codec.BinaryError.InvalidNativeScriptTag",
+        "xyz.kd5ujc.scarab.codec.BinaryError.InvalidOptionTag",
+        "xyz.kd5ujc.scarab.codec.BinaryError.InvalidVariant",
+        "xyz.kd5ujc.scarab.codec.BinaryError.LengthExceedsRemaining",
+        "xyz.kd5ujc.scarab.codec.BinaryError.NonPositiveDenominator",
+        "xyz.kd5ujc.scarab.codec.BinaryError.Reconstruction",
+        "xyz.kd5ujc.scarab.codec.BinaryError.TrailingBytes",
+        "xyz.kd5ujc.scarab.codec.BinaryError.UnexpectedEnd",
+        "xyz.kd5ujc.scarab.codec.BinaryError.VarintTooLong"
+      ]
+    },
+    {
+      "source": "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Bytes.scala",
+      "boundary": "primitive-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.codec.Bytes.HexError.message : String",
+        "xyz.kd5ujc.scarab.codec.toString : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.codec.Bytes.HexError.InvalidCharacter",
+        "xyz.kd5ujc.scarab.codec.Bytes.HexError.OddLength"
+      ]
+    },
+    {
+      "source": "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Cbor.scala",
+      "boundary": "primitive-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.ArgumentOutOfRange",
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.DepthLimitExceeded",
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.DetachedRecord",
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.InputLimitExceeded",
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.InvalidAdditionalInformation",
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.InvalidLimits",
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.InvalidSimpleValue",
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.InvalidStringChunk",
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.InvalidUnicode",
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.InvalidUtf8",
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.ItemLimitExceeded",
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.MapPairLimitExceeded",
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.NonNegativeNInt",
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.OutputLimitExceeded",
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.StackExhausted",
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.StringLimitExceeded",
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.TrailingBytes",
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.TruncatedString",
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.UnexpectedEnd",
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.UnmatchedMapKey",
+        "xyz.kd5ujc.scarab.codec.Cbor.Error.UnsupportedSimpleValue"
+      ]
+    },
+    {
+      "source": "codec/src/main/scala/xyz/kd5ujc/scarab/codec/HaskellShow.scala",
+      "boundary": "ghc-scalar-show",
+      "methods": [
+        "xyz.kd5ujc.scarab.codec.HaskellShow.bytes ( value : Bytes ) : String",
+        "xyz.kd5ujc.scarab.codec.HaskellShow.char ( c : Int ) : String",
+        "xyz.kd5ujc.scarab.codec.HaskellShow.isDec ( c : Int ) : Boolean",
+        "xyz.kd5ujc.scarab.codec.HaskellShow.litChar ( c : Int , next : Int ) : String",
+        "xyz.kd5ujc.scarab.codec.HaskellShow.litString ( points : IndexedSeq [ Int ] ) : String",
+        "xyz.kd5ujc.scarab.codec.HaskellShow.text ( value : String ) : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Rational.scala",
+      "boundary": "primitive-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.codec.Rational.toString : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Tree.scala",
+      "boundary": "primitive-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.codec.Tree.render [ A < : AnyRef ] ( x : A , limit : Int = DefaultRenderLimit ) ( using t : Tree [ A ] ) : String",
+        "xyz.kd5ujc.scarab.codec.Tree.shown ( b : Bytes ) : String",
+        "xyz.kd5ujc.scarab.codec.Tree.shown ( s : String ) : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Value.scala",
+      "boundary": "primitive-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.codec.Node.toString : String",
+        "xyz.kd5ujc.scarab.codec.Value.toString : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/BlockRules.scala",
+      "boundary": "consensus-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.consensus.BlockNoVerdict.message : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/HeaderRules.scala",
+      "boundary": "consensus-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.consensus.HeaderChain.Error.message : String",
+        "xyz.kd5ujc.scarab.consensus.HeaderRules.ForecastReason.message : String",
+        "xyz.kd5ujc.scarab.consensus.HeaderRules.UncheckedReason.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.consensus.HeaderChain.Error.DoesNotExtend",
+        "xyz.kd5ujc.scarab.consensus.HeaderRules.ForecastReason.Horizon",
+        "xyz.kd5ujc.scarab.consensus.HeaderRules.ForecastReason.ParentStateUnknown",
+        "xyz.kd5ujc.scarab.consensus.HeaderRules.ForecastReason.ShelleyLedgerNotReady",
+        "xyz.kd5ujc.scarab.consensus.HeaderRules.UncheckedReason.Byron",
+        "xyz.kd5ujc.scarab.consensus.HeaderRules.UncheckedReason.FirstShelley",
+        "xyz.kd5ujc.scarab.consensus.HeaderRules.UncheckedReason.ForecastFallback",
+        "xyz.kd5ujc.scarab.consensus.HeaderRules.UncheckedReason.NoCommonLedger",
+        "xyz.kd5ujc.scarab.consensus.HeaderRules.UncheckedReason.ParentInBatch"
+      ]
+    },
+    {
+      "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/state/CardanoLedgerState.scala",
+      "boundary": "consensus-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.consensus.state.EraLedgerState.show ( a : EraLedgerState ) : String",
+        "xyz.kd5ujc.scarab.consensus.state.EraLedgerState.showIn [ E < : EraTag ] ( era : ShelleyBasedEra [ E ] , s : ShelleyLedgerState [ E ] ) : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/bls/Blst.scala",
+      "boundary": "primitive-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.crypto.bls.BlstProblem.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.crypto.bls.BlstProblem.LibraryNeedsMissingCpuFeatures",
+        "xyz.kd5ujc.scarab.crypto.bls.BlstProblem.Unusable"
+      ]
+    },
+    {
+      "source": "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/bls/MinSig.scala",
+      "boundary": "primitive-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.crypto.bls.ProofOfPossession.toString : String",
+        "xyz.kd5ujc.scarab.crypto.bls.SecretKey.toString : String",
+        "xyz.kd5ujc.scarab.crypto.bls.Signature.toString : String",
+        "xyz.kd5ujc.scarab.crypto.bls.VerificationKey.toString : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/kes/Sum6KesSigning.scala",
+      "boundary": "primitive-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning.Failure.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning.Failure.InvalidKeyLength",
+        "xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning.Failure.InvalidSeedLength",
+        "xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning.Failure.MissingKey",
+        "xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning.Failure.MissingSeed",
+        "xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning.Failure.PeriodOutOfRange",
+        "xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning.Failure.RightSeedMismatch",
+        "xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning.Failure.SeedStateMismatch",
+        "xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning.Failure.VerificationKeyMismatch"
+      ]
+    },
+    {
+      "source": "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/opcert/OperationalCertificate.scala",
+      "boundary": "primitive-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate.Failure.message : String",
+        "xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate.UInt64.Error.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate.Failure.ColdKey",
+        "xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate.Failure.Defect",
+        "xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate.Failure.InvalidCounter",
+        "xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate.Failure.InvalidHotKeyLength",
+        "xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate.Failure.InvalidStartPeriod",
+        "xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate.Failure.MissingCertificate",
+        "xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate.Failure.MissingColdKey",
+        "xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate.Failure.MissingHotKey",
+        "xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate.Failure.MissingSignature",
+        "xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate.Failure.PrimitiveContractViolation",
+        "xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate.Failure.PrimitiveFailure",
+        "xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate.Failure.Signature",
+        "xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate.UInt64.Error.MissingValue",
+        "xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate.UInt64.Error.OutOfRange"
+      ]
+    },
+    {
+      "source": "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/vrf/PraosLeaderThreshold.scala",
+      "boundary": "primitive-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold.Error.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold.Error.ActiveSlotLogOutsideDomain",
+        "xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold.Error.InvalidFraction",
+        "xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold.Error.InvalidRange",
+        "xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold.Error.InvalidVrfOutputLength",
+        "xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold.Error.LeaderValueOutOfRange",
+        "xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold.Error.MissingActiveSlotsCoefficient",
+        "xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold.Error.MissingDenominator",
+        "xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold.Error.MissingLeaderValue",
+        "xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold.Error.MissingNumerator",
+        "xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold.Error.MissingRange",
+        "xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold.Error.MissingStake",
+        "xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold.Error.MissingVrfOutput",
+        "xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold.Error.NonPositiveActiveSlotsCoefficient"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Address.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.Credential.render : String",
+        "xyz.kd5ujc.scarab.ledger.TxIn.render : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.Ptr.Failure.OutOfRange",
+        "xyz.kd5ujc.scarab.ledger.Ptr.Failure.Truncated"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/BlockFailure.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.HandoverProblem.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.BlockExUnitsTooBig",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.BodyCommitment",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.Byron",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.ByronAfterShelley",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.ByronAfterTransition",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.Decode",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.Envelope",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.EpochPrecedesLedger",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.EraAnnounced",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.Handover",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.HeaderDiffers",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.LedgerEra",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.Lite",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.Mirror",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.NoByronGenesis",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.Praos",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.RefScriptsTooLarge",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.ShelleyBeforeTransition",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.SupplyInvariant",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.TPraos",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.Tick",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.TransitionUndecided",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.Transport",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.Tx",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.TxDecode",
+        "xyz.kd5ujc.scarab.ledger.BlockFailure.Unverifiable",
+        "xyz.kd5ujc.scarab.ledger.HandoverProblem.MissingByronRules",
+        "xyz.kd5ujc.scarab.ledger.HandoverProblem.MissingShelleyContext"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/BlockTransport.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.BlockTransportError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.BlockTransportError.ByronBodyDecode",
+        "xyz.kd5ujc.scarab.ledger.BlockTransportError.ByronBodyProof",
+        "xyz.kd5ujc.scarab.ledger.BlockTransportError.Decode",
+        "xyz.kd5ujc.scarab.ledger.BlockTransportError.TransactionDecode",
+        "xyz.kd5ujc.scarab.ledger.BlockTransportError.WrongBodyHash",
+        "xyz.kd5ujc.scarab.ledger.BlockTransportError.WrongEra",
+        "xyz.kd5ujc.scarab.ledger.BlockTransportError.WrongHeader"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ByronChainError.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.ByronChainError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.ByronChainError.Body",
+        "xyz.kd5ujc.scarab.ledger.ByronChainError.BoundaryOrder",
+        "xyz.kd5ujc.scarab.ledger.ByronChainError.GenesisPredecessor",
+        "xyz.kd5ujc.scarab.ledger.ByronChainError.InitialBoundaryRequired",
+        "xyz.kd5ujc.scarab.ledger.ByronChainError.Ledger",
+        "xyz.kd5ujc.scarab.ledger.ByronChainError.MissingConsensusData",
+        "xyz.kd5ujc.scarab.ledger.ByronChainError.PreviousHash",
+        "xyz.kd5ujc.scarab.ledger.ByronChainError.ProtocolMagic",
+        "xyz.kd5ujc.scarab.ledger.ByronChainError.SignatureInput",
+        "xyz.kd5ujc.scarab.ledger.ByronChainError.SignatureRejected",
+        "xyz.kd5ujc.scarab.ledger.ByronChainError.SignatureThreshold",
+        "xyz.kd5ujc.scarab.ledger.ByronChainError.SlotBeforeLastSigned",
+        "xyz.kd5ujc.scarab.ledger.ByronChainError.SlotOrder",
+        "xyz.kd5ujc.scarab.ledger.ByronChainError.SlotOutsideEpoch",
+        "xyz.kd5ujc.scarab.ledger.ByronChainError.UnknownDelegate",
+        "xyz.kd5ujc.scarab.ledger.ByronChainError.Vocabulary"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ByronGenesisRead.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.ByronFieldError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.ByronFieldError.Base64",
+        "xyz.kd5ujc.scarab.ledger.ByronFieldError.DelegationKey",
+        "xyz.kd5ujc.scarab.ledger.ByronFieldError.HashLength",
+        "xyz.kd5ujc.scarab.ledger.ByronFieldError.Hex",
+        "xyz.kd5ujc.scarab.ledger.ByronFieldError.KeyLength",
+        "xyz.kd5ujc.scarab.ledger.ByronFieldError.Kind",
+        "xyz.kd5ujc.scarab.ledger.ByronFieldError.Missing",
+        "xyz.kd5ujc.scarab.ledger.ByronFieldError.MultiLayer",
+        "xyz.kd5ujc.scarab.ledger.ByronFieldError.NumberText",
+        "xyz.kd5ujc.scarab.ledger.ByronFieldError.Portion",
+        "xyz.kd5ujc.scarab.ledger.ByronFieldError.SignatureLength"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CollectError.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.CollectError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.CollectError.BadTranslation",
+        "xyz.kd5ujc.scarab.ledger.CollectError.NoCostModel",
+        "xyz.kd5ujc.scarab.ledger.CollectError.NoRedeemer",
+        "xyz.kd5ujc.scarab.ledger.CollectError.NoWitness"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ConfigProblem.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.message : String",
+        "xyz.kd5ujc.scarab.ledger.GenesisFieldError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.AvvmKeyError.Format",
+        "xyz.kd5ujc.scarab.ledger.AvvmKeyError.Length",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.ActiveSlotsCoefficient",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.Ancillary",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.AncillaryKeyRequired",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.AncillaryVerificationRequired",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.AvvmKey",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.Base58Address",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.Base64",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.BootstrapPeersInGenesisMode",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.ByronGenesisAddress",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.ByronGenesisRequired",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.ByronGenesisValue",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.ByteLength",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.CanonicalJsonSyntax",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.ConfigNumber",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.ConflictingFields",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.Credential",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.DRep",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.DuplicateFlag",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.ExpectedObject",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.FileMissing",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.FileRead",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.FlagDependency",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.FlagValue",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.FractionalSlotMilliseconds",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.GenesisAddressEncoding",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.GenesisCostModel",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.GenesisField",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.GenesisHashMismatch",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.GenesisNumber",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.GenesisPool",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.GenesisStart",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.GenesisUnverifiable",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.Hex",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.IntegerText",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.InvalidPath",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.InvalidTimestamp",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.JsonField",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.JsonSyntax",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.LedgerValue",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.LogNamespace",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.LogSink",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.MempoolCapacity",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.MissingChunkSize",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.MissingField",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.MissingFlag",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.MissingFlagValue",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.MissingGenesis",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.MissingGenesisParameters",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.MissingValency",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.Negative",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.NoPeers",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.NonPositive",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.PeerAddress",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.PeerSnapshot",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.PeerTargets",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.RemovedFlag",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.RenamedField",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.RequiredOneOf",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.SecurityParamBeyondStorage",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.Selection",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.SrvAccessPoint",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.StateMirror",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.TopologyHost",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.TopologyPort",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.UnexpectedArgument",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.UnknownFlag",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.UnspecifiedDestination",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.UnsupportedTopology",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.UntrustedBootstrap",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.Usage",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.WithUsage",
+        "xyz.kd5ujc.scarab.ledger.GenesisFieldError.Choice",
+        "xyz.kd5ujc.scarab.ledger.GenesisFieldError.Hash",
+        "xyz.kd5ujc.scarab.ledger.GenesisFieldError.Kind",
+        "xyz.kd5ujc.scarab.ledger.GenesisFieldError.Missing",
+        "xyz.kd5ujc.scarab.ledger.GenesisFieldError.Nested",
+        "xyz.kd5ujc.scarab.ledger.GenesisFieldError.Number"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/DecodeSite.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.DecodeSite.render ( site : DecodeSite ) : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ForgeProblems.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.ForgeAssemblyProblem.BlockDecode",
+        "xyz.kd5ujc.scarab.ledger.ForgeAssemblyProblem.BodySize",
+        "xyz.kd5ujc.scarab.ledger.ForgeAssemblyProblem.Cbor",
+        "xyz.kd5ujc.scarab.ledger.ForgeAssemblyProblem.Envelope",
+        "xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.Cbor",
+        "xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.CertificateEnvelope",
+        "xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.CertificateFields",
+        "xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.EnvelopeType",
+        "xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.ExpectedByteString",
+        "xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.Field",
+        "xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.FixedBytes",
+        "xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.Hex",
+        "xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.InstanceLocked",
+        "xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.Io",
+        "xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.Json",
+        "xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.OtherPermissions",
+        "xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.UnsignedInteger",
+        "xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.Vrf",
+        "xyz.kd5ujc.scarab.ledger.ForgeLedgerProblem.EpochPrecedes",
+        "xyz.kd5ujc.scarab.ledger.ForgeLedgerProblem.Tick",
+        "xyz.kd5ujc.scarab.ledger.ForgeLedgerProblem.Vocabulary",
+        "xyz.kd5ujc.scarab.ledger.ForgeProtocolProblem.Bootstrap",
+        "xyz.kd5ujc.scarab.ledger.ForgeProtocolProblem.Earlier",
+        "xyz.kd5ujc.scarab.ledger.ForgeProtocolProblem.InByron",
+        "xyz.kd5ujc.scarab.ledger.ForgeProtocolProblem.LeftConway",
+        "xyz.kd5ujc.scarab.ledger.ForgeProtocolProblem.Mirror",
+        "xyz.kd5ujc.scarab.ledger.ForgeProtocolProblem.Version"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/GenesisCostModels.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.CostModelProblem.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.CostModelProblem.MissingField",
+        "xyz.kd5ujc.scarab.ledger.CostModelProblem.MissingLanguage",
+        "xyz.kd5ujc.scarab.ledger.CostModelProblem.MissingParameters",
+        "xyz.kd5ujc.scarab.ledger.CostModelProblem.NotArray",
+        "xyz.kd5ujc.scarab.ledger.CostModelProblem.NotInt64",
+        "xyz.kd5ujc.scarab.ledger.CostModelProblem.NotObject",
+        "xyz.kd5ujc.scarab.ledger.CostModelProblem.NotObjectOrArray",
+        "xyz.kd5ujc.scarab.ledger.CostModelProblem.ParameterCount",
+        "xyz.kd5ujc.scarab.ledger.CostModelProblem.UnknownKey"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/GenesisPoolFields.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.GenesisPoolFields.Error.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.GenesisPoolFields.Error.Encoding",
+        "xyz.kd5ujc.scarab.ledger.GenesisPoolFields.Error.Ipv4",
+        "xyz.kd5ujc.scarab.ledger.GenesisPoolFields.Error.Ipv6",
+        "xyz.kd5ujc.scarab.ledger.GenesisPoolFields.Error.Number",
+        "xyz.kd5ujc.scarab.ledger.GenesisPoolFields.Error.Port"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Governance.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.VotingProcedures.DecodeError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.VotingProcedures.DecodeError.InvalidStructure",
+        "xyz.kd5ujc.scarab.ledger.VotingProcedures.DecodeError.InvalidVote"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/HeaderErrors.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.EnvelopeError.message : String",
+        "xyz.kd5ujc.scarab.ledger.HeaderError.message : String",
+        "xyz.kd5ujc.scarab.ledger.PraosError.message : String",
+        "xyz.kd5ujc.scarab.ledger.TPraosError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.EnvelopeError.BlockSizeTooLarge",
+        "xyz.kd5ujc.scarab.ledger.EnvelopeError.CheckpointMismatch",
+        "xyz.kd5ujc.scarab.ledger.EnvelopeError.HeaderProtVerTooHigh",
+        "xyz.kd5ujc.scarab.ledger.EnvelopeError.HeaderSizeTooLarge",
+        "xyz.kd5ujc.scarab.ledger.EnvelopeError.ObsoleteNode",
+        "xyz.kd5ujc.scarab.ledger.EnvelopeError.WrongEra",
+        "xyz.kd5ujc.scarab.ledger.HeaderError.Byron",
+        "xyz.kd5ujc.scarab.ledger.HeaderError.Envelope",
+        "xyz.kd5ujc.scarab.ledger.HeaderError.FarFuture",
+        "xyz.kd5ujc.scarab.ledger.HeaderError.Praos",
+        "xyz.kd5ujc.scarab.ledger.HeaderError.Structure",
+        "xyz.kd5ujc.scarab.ledger.HeaderError.TPraos",
+        "xyz.kd5ujc.scarab.ledger.HeaderStructureProblem.BlockNumber",
+        "xyz.kd5ujc.scarab.ledger.HeaderStructureProblem.EpochPrecedes",
+        "xyz.kd5ujc.scarab.ledger.HeaderStructureProblem.LedgerRead",
+        "xyz.kd5ujc.scarab.ledger.HeaderStructureProblem.MissingByronLedger",
+        "xyz.kd5ujc.scarab.ledger.HeaderStructureProblem.PreviousHash",
+        "xyz.kd5ujc.scarab.ledger.HeaderStructureProblem.SlotNumber",
+        "xyz.kd5ujc.scarab.ledger.HeaderStructureProblem.Transition",
+        "xyz.kd5ujc.scarab.ledger.HeaderStructureProblem.UnexpectedBoundarySlot",
+        "xyz.kd5ujc.scarab.ledger.PraosError.IssuerWithoutStake",
+        "xyz.kd5ujc.scarab.ledger.PraosError.LeaderThreshold",
+        "xyz.kd5ujc.scarab.ledger.PraosError.NotElected",
+        "xyz.kd5ujc.scarab.ledger.PraosError.NotPraos",
+        "xyz.kd5ujc.scarab.ledger.PraosError.OCert",
+        "xyz.kd5ujc.scarab.ledger.PraosError.TPraosHeader",
+        "xyz.kd5ujc.scarab.ledger.PraosError.UnregisteredPool",
+        "xyz.kd5ujc.scarab.ledger.PraosError.Vocabulary",
+        "xyz.kd5ujc.scarab.ledger.PraosError.VrfInput",
+        "xyz.kd5ujc.scarab.ledger.PraosError.VrfKeyMismatch",
+        "xyz.kd5ujc.scarab.ledger.PraosError.VrfRejected",
+        "xyz.kd5ujc.scarab.ledger.PraosError.WrongState",
+        "xyz.kd5ujc.scarab.ledger.TPraosError.BadLeaderVrf",
+        "xyz.kd5ujc.scarab.ledger.TPraosError.BadNonceVrf",
+        "xyz.kd5ujc.scarab.ledger.TPraosError.LeaderThreshold",
+        "xyz.kd5ujc.scarab.ledger.TPraosError.LeaderValueTooBig",
+        "xyz.kd5ujc.scarab.ledger.TPraosError.NotActiveOverlaySlot",
+        "xyz.kd5ujc.scarab.ledger.TPraosError.NotTPraos",
+        "xyz.kd5ujc.scarab.ledger.TPraosError.OCert",
+        "xyz.kd5ujc.scarab.ledger.TPraosError.PraosHeader",
+        "xyz.kd5ujc.scarab.ledger.TPraosError.UnknownGenesisKey",
+        "xyz.kd5ujc.scarab.ledger.TPraosError.Vocabulary",
+        "xyz.kd5ujc.scarab.ledger.TPraosError.VrfKeyUnknown",
+        "xyz.kd5ujc.scarab.ledger.TPraosError.VrfKeyWrong",
+        "xyz.kd5ujc.scarab.ledger.TPraosError.WrongGenesisColdKey",
+        "xyz.kd5ujc.scarab.ledger.TPraosError.WrongGenesisVrfKey",
+        "xyz.kd5ujc.scarab.ledger.TPraosError.WrongState"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Horizon.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.Horizon.Edge.show : String",
+        "xyz.kd5ujc.scarab.ledger.Horizon.Era.show : String",
+        "xyz.kd5ujc.scarab.ledger.Horizon.show : String",
+        "xyz.kd5ujc.scarab.ledger.Horizon.showSeconds ( ps : BigInt ) : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/LedgerDecodeError.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.message : String",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.toString : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.AddressHeader",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.AddressLength",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.ArrayLength",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.AssetNameLength",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.AtMostOne",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.BodyWitnessCount",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.ByronBlockUnexpected",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.ByronLayout",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.ByteLength",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.CostModelLength",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.CrcMismatch",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Delegation",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.DetachedList",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.DuplicateElement",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.DuplicateGenesisAddress",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.DuplicateKey",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Empty",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.EmptyInputsOrOutputs",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Expected",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.ExpectedTag",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.IndefiniteLength",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.LeiosCertificate",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.MissingField",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.MissingKeys",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.MultiAssetNotAllowed",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.MultiAssetTooBig",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.NativeScript",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.NumberOutOfRange",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.OutputForm",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.PlutusData",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Pointer",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.PoolRelay",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.ProposalEpochMismatch",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Protocol",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.RationalOutOfBounds",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.RewardAccountHeader",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Shape.Array",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Shape.ArrayOrMap",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Shape.Boolean",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Shape.Bytes",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Shape.Integer",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Shape.Map",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Shape.Metadatum",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Shape.Null",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Shape.Text",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Shape.Unsigned",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Syntax",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.TaggedArity",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.TextTooLong",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Transaction",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.TransactionIndex",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.UnknownFields",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.UnknownKey",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.UnknownTag",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.UnsupportedCostModelLanguage",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Version",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Voting",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Zero",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.ZeroDenominator",
+        "xyz.kd5ujc.scarab.ledger.LedgerDecodeError.ZeroQuantity"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/LedgerView.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.LeaderCheck.UncheckedReason.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.LeaderCheck.UncheckedReason.BootstrapStakeUnknown"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/NetworkIdentity.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.IdentityProvenance.render ( provenance : IdentityProvenance ) : String",
+        "xyz.kd5ujc.scarab.ledger.NetworkIdentity.renderGenesisHash ( binding : GenesisFileHash ) : String",
+        "xyz.kd5ujc.scarab.ledger.render : String",
+        "xyz.kd5ujc.scarab.ledger.renderAs ( version : FormatVersion ) : String",
+        "xyz.kd5ujc.scarab.ledger.renderAs ( version : FormatVersion , provenance : IdentityProvenance ) : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/NodeError.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "provider-message:xyz.kd5ujc.scarab.ledger.KesFileFailureCause.message",
+        "xyz.kd5ujc.scarab.ledger.BlockPoolProblem.message : String",
+        "xyz.kd5ujc.scarab.ledger.ChainError.message : String",
+        "xyz.kd5ujc.scarab.ledger.ChainSyncInternalProblem.message : String",
+        "xyz.kd5ujc.scarab.ledger.CheckpointProblem.render : String",
+        "xyz.kd5ujc.scarab.ledger.ClockProblem.message : String",
+        "xyz.kd5ujc.scarab.ledger.ConfigError.message : String",
+        "xyz.kd5ujc.scarab.ledger.EvaluationUnavailable.message : String",
+        "xyz.kd5ujc.scarab.ledger.FirstImmutableProblem.message : String",
+        "xyz.kd5ujc.scarab.ledger.ForgeError.message : String",
+        "xyz.kd5ujc.scarab.ledger.GenesisInternalProblem.message : String",
+        "xyz.kd5ujc.scarab.ledger.GovernorFault.message : String",
+        "xyz.kd5ujc.scarab.ledger.KesFileFailureCause.message : String",
+        "xyz.kd5ujc.scarab.ledger.KesStageMismatch.message : String",
+        "xyz.kd5ujc.scarab.ledger.NativeLibraryError.message : String",
+        "xyz.kd5ujc.scarab.ledger.NativeLibraryProblem.message : String",
+        "xyz.kd5ujc.scarab.ledger.NodeError.message : String",
+        "xyz.kd5ujc.scarab.ledger.PeerError.Divergence.message : String",
+        "xyz.kd5ujc.scarab.ledger.PeerError.GenesisProblem.message : String",
+        "xyz.kd5ujc.scarab.ledger.PeerError.InputSite.message : String",
+        "xyz.kd5ujc.scarab.ledger.PeerError.ProtocolProblem.message : String",
+        "xyz.kd5ujc.scarab.ledger.PeerError.Unavailability.message : String",
+        "xyz.kd5ujc.scarab.ledger.PeerError.message : String",
+        "xyz.kd5ujc.scarab.ledger.Points.show ( point : ChainSync . Point ) : String",
+        "xyz.kd5ujc.scarab.ledger.StorageError.message : String",
+        "xyz.kd5ujc.scarab.ledger.TransitionCounterProblem.message : String",
+        "xyz.kd5ujc.scarab.ledger.UtxoStoreClosure.message : String",
+        "xyz.kd5ujc.scarab.ledger.ValidationError.message : String",
+        "xyz.kd5ujc.scarab.ledger.VerificationDefect.Site.message : String",
+        "xyz.kd5ujc.scarab.ledger.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.BlockPoolProblem.AvailableCycle",
+        "xyz.kd5ujc.scarab.ledger.BlockPoolProblem.AvailableHashMismatch",
+        "xyz.kd5ujc.scarab.ledger.BlockPoolProblem.DifferentInvalidRegistry",
+        "xyz.kd5ujc.scarab.ledger.BlockPoolProblem.MissingDeliveredHeader",
+        "xyz.kd5ujc.scarab.ledger.BlockPoolProblem.NoSelectionWorker",
+        "xyz.kd5ujc.scarab.ledger.BlockPoolProblem.SelectionProjectionChanged",
+        "xyz.kd5ujc.scarab.ledger.ChainError.CommitDefect",
+        "xyz.kd5ujc.scarab.ledger.ChainError.Decode",
+        "xyz.kd5ujc.scarab.ledger.ChainError.MempoolTick",
+        "xyz.kd5ujc.scarab.ledger.ChainError.NoIntersection",
+        "xyz.kd5ujc.scarab.ledger.ChainError.NotConnected",
+        "xyz.kd5ujc.scarab.ledger.ChainError.RollbackBeyondAnchor",
+        "xyz.kd5ujc.scarab.ledger.ChainError.StateAcquire",
+        "xyz.kd5ujc.scarab.ledger.ChainError.StateOutOfRange",
+        "xyz.kd5ujc.scarab.ledger.ChainSyncInternalProblem.InvalidBlockNumber",
+        "xyz.kd5ujc.scarab.ledger.ChainSyncInternalProblem.InvalidPipelineMarks",
+        "xyz.kd5ujc.scarab.ledger.ChainSyncInternalProblem.MissingHeight",
+        "xyz.kd5ujc.scarab.ledger.ChainSyncInternalProblem.MissingRequestContext",
+        "xyz.kd5ujc.scarab.ledger.ChainSyncInternalProblem.NegativeOutstanding",
+        "xyz.kd5ujc.scarab.ledger.CheckpointProblem.Absent",
+        "xyz.kd5ujc.scarab.ledger.CheckpointProblem.DigestMismatch",
+        "xyz.kd5ujc.scarab.ledger.CheckpointProblem.IndexTooLarge",
+        "xyz.kd5ujc.scarab.ledger.CheckpointProblem.LayoutMismatch",
+        "xyz.kd5ujc.scarab.ledger.CheckpointProblem.MixedKeyLayouts",
+        "xyz.kd5ujc.scarab.ledger.CheckpointProblem.Unbound",
+        "xyz.kd5ujc.scarab.ledger.CheckpointProblem.UnknownKeyLength",
+        "xyz.kd5ujc.scarab.ledger.ClockProblem.SystemClockMovedBack",
+        "xyz.kd5ujc.scarab.ledger.ConfigError",
+        "xyz.kd5ujc.scarab.ledger.EvaluationUnavailable",
+        "xyz.kd5ujc.scarab.ledger.FirstImmutableProblem.BlockDecode",
+        "xyz.kd5ujc.scarab.ledger.FirstImmutableProblem.ChecksumMismatch",
+        "xyz.kd5ujc.scarab.ledger.FirstImmutableProblem.InvalidIndexEntry",
+        "xyz.kd5ujc.scarab.ledger.FirstImmutableProblem.MissingChunk",
+        "xyz.kd5ujc.scarab.ledger.ForgeError.Assembly",
+        "xyz.kd5ujc.scarab.ledger.ForgeError.CertificateFailure",
+        "xyz.kd5ujc.scarab.ledger.ForgeError.CertificateSignatureRejected",
+        "xyz.kd5ujc.scarab.ledger.ForgeError.KesEvolution",
+        "xyz.kd5ujc.scarab.ledger.ForgeError.KesFileFailure",
+        "xyz.kd5ujc.scarab.ledger.ForgeError.KesKey",
+        "xyz.kd5ujc.scarab.ledger.ForgeError.KesKeyNotCertified",
+        "xyz.kd5ujc.scarab.ledger.ForgeError.KesUpdateInterrupted",
+        "xyz.kd5ujc.scarab.ledger.ForgeError.KeyFile",
+        "xyz.kd5ujc.scarab.ledger.ForgeError.KeyPeriodOutOfRange",
+        "xyz.kd5ujc.scarab.ledger.ForgeError.LeaderThreshold",
+        "xyz.kd5ujc.scarab.ledger.ForgeError.LedgerViewUnavailable",
+        "xyz.kd5ujc.scarab.ledger.ForgeError.NotLeader",
+        "xyz.kd5ujc.scarab.ledger.ForgeError.UnsupportedProtocol",
+        "xyz.kd5ujc.scarab.ledger.ForgeError.VrfInput",
+        "xyz.kd5ujc.scarab.ledger.ForgeError.VrfProof",
+        "xyz.kd5ujc.scarab.ledger.GenesisInternalProblem.GraftMissingPoint",
+        "xyz.kd5ujc.scarab.ledger.GenesisInternalProblem.HeaderSelectionUnavailable",
+        "xyz.kd5ujc.scarab.ledger.GenesisInternalProblem.HeaderStateUnavailable",
+        "xyz.kd5ujc.scarab.ledger.GenesisInternalProblem.HeaderTimeUnavailable",
+        "xyz.kd5ujc.scarab.ledger.GenesisInternalProblem.InvalidConnectionIdentity",
+        "xyz.kd5ujc.scarab.ledger.GenesisInternalProblem.MissingConnectionIdentity",
+        "xyz.kd5ujc.scarab.ledger.GenesisInternalProblem.MissingDynamoJumpInfo",
+        "xyz.kd5ujc.scarab.ledger.GenesisInternalProblem.PatienceWatcherFailed",
+        "xyz.kd5ujc.scarab.ledger.GenesisInternalProblem.UnexpectedIntersection",
+        "xyz.kd5ujc.scarab.ledger.GovernorFault.BootstrapPeersCriticalTimeout",
+        "xyz.kd5ujc.scarab.ledger.GovernorFault.InvariantBroken",
+        "xyz.kd5ujc.scarab.ledger.GovernorFault.LocalDnsRefreshDefect",
+        "xyz.kd5ujc.scarab.ledger.KesFileFailureCause.FileSystem",
+        "xyz.kd5ujc.scarab.ledger.KesFileFailureCause.NoWriteProgress",
+        "xyz.kd5ujc.scarab.ledger.KesFileFailureCause.StageReadback",
+        "xyz.kd5ujc.scarab.ledger.KesFileFailureCause.StageStillPresentAfterRecovery",
+        "xyz.kd5ujc.scarab.ledger.KesFileFailureCause.StagedKeyMismatch",
+        "xyz.kd5ujc.scarab.ledger.NativeLibraryError",
+        "xyz.kd5ujc.scarab.ledger.NativeLibraryProblem.Bls",
+        "xyz.kd5ujc.scarab.ledger.NativeLibraryProblem.PlutusCrypto",
+        "xyz.kd5ujc.scarab.ledger.PeerError.ConnectionDefect",
+        "xyz.kd5ujc.scarab.ledger.PeerError.Diverged",
+        "xyz.kd5ujc.scarab.ledger.PeerError.Divergence.DetachedCandidate",
+        "xyz.kd5ujc.scarab.ledger.PeerError.Divergence.ForeignBlock",
+        "xyz.kd5ujc.scarab.ledger.PeerError.Divergence.RollbackOutsideChain",
+        "xyz.kd5ujc.scarab.ledger.PeerError.Framing",
+        "xyz.kd5ujc.scarab.ledger.PeerError.Genesis",
+        "xyz.kd5ujc.scarab.ledger.PeerError.GenesisInvariant",
+        "xyz.kd5ujc.scarab.ledger.PeerError.GenesisProblem.CandidateTooSparse",
+        "xyz.kd5ujc.scarab.ledger.PeerError.GenesisProblem.DensityTooLow",
+        "xyz.kd5ujc.scarab.ledger.PeerError.GenesisProblem.HistoricalAwait",
+        "xyz.kd5ujc.scarab.ledger.PeerError.GenesisProblem.HistoricalRollback",
+        "xyz.kd5ujc.scarab.ledger.PeerError.GenesisProblem.InvalidJumpResponse",
+        "xyz.kd5ujc.scarab.ledger.PeerError.GenesisProblem.LoPExpired",
+        "xyz.kd5ujc.scarab.ledger.PeerError.Handshake",
+        "xyz.kd5ujc.scarab.ledger.PeerError.InputDefect",
+        "xyz.kd5ujc.scarab.ledger.PeerError.InputSite.Bearer",
+        "xyz.kd5ujc.scarab.ledger.PeerError.InputSite.ChainSyncHeader",
+        "xyz.kd5ujc.scarab.ledger.PeerError.InputSite.FetchedBlock",
+        "xyz.kd5ujc.scarab.ledger.PeerError.InputSite.Wire",
+        "xyz.kd5ujc.scarab.ledger.PeerError.InvalidBlock",
+        "xyz.kd5ujc.scarab.ledger.PeerError.InvalidHeader",
+        "xyz.kd5ujc.scarab.ledger.PeerError.MuxSetup",
+        "xyz.kd5ujc.scarab.ledger.PeerError.MuxWrite",
+        "xyz.kd5ujc.scarab.ledger.PeerError.NoIntersection",
+        "xyz.kd5ujc.scarab.ledger.PeerError.Protocol",
+        "xyz.kd5ujc.scarab.ledger.PeerError.ProtocolProblem.BlockCount",
+        "xyz.kd5ujc.scarab.ledger.PeerError.ProtocolProblem.FetchedBlockIntegrity",
+        "xyz.kd5ujc.scarab.ledger.PeerError.ProtocolProblem.HeaderDecode",
+        "xyz.kd5ujc.scarab.ledger.PeerError.ProtocolProblem.HeaderDoesNotExtend",
+        "xyz.kd5ujc.scarab.ledger.PeerError.ProtocolProblem.HeaderValidationDidNotSettle",
+        "xyz.kd5ujc.scarab.ledger.PeerError.ProtocolProblem.InvalidPunishmentHeader",
+        "xyz.kd5ujc.scarab.ledger.PeerError.RolledBackPastIntersection",
+        "xyz.kd5ujc.scarab.ledger.PeerError.ServingDefect",
+        "xyz.kd5ujc.scarab.ledger.PeerError.Unavailability.Connection",
+        "xyz.kd5ujc.scarab.ledger.PeerError.Unavailability.MissingAnnouncedBlock",
+        "xyz.kd5ujc.scarab.ledger.PeerError.Unavailability.Network",
+        "xyz.kd5ujc.scarab.ledger.PeerError.Unavailability.Resolution",
+        "xyz.kd5ujc.scarab.ledger.PeerError.Unavailability.SessionEnded",
+        "xyz.kd5ujc.scarab.ledger.PeerError.Unavailable",
+        "xyz.kd5ujc.scarab.ledger.PeerError.Unverifiable",
+        "xyz.kd5ujc.scarab.ledger.StorageError.Corrupt",
+        "xyz.kd5ujc.scarab.ledger.StorageError.DatabaseInUse",
+        "xyz.kd5ujc.scarab.ledger.StorageError.DecoderDefect",
+        "xyz.kd5ujc.scarab.ledger.StorageError.FirstImmutable",
+        "xyz.kd5ujc.scarab.ledger.StorageError.ForeignChain",
+        "xyz.kd5ujc.scarab.ledger.StorageError.IdentityBackupConflict",
+        "xyz.kd5ujc.scarab.ledger.StorageError.Io",
+        "xyz.kd5ujc.scarab.ledger.StorageError.LegacyIdentityNeedsConfirmation",
+        "xyz.kd5ujc.scarab.ledger.StorageError.LegacyNetworkMismatch",
+        "xyz.kd5ujc.scarab.ledger.StorageError.Missing",
+        "xyz.kd5ujc.scarab.ledger.StorageError.MissingIdentityNeedsConfirmation",
+        "xyz.kd5ujc.scarab.ledger.StorageError.NetworkMismatch",
+        "xyz.kd5ujc.scarab.ledger.StorageError.OutOfOrder",
+        "xyz.kd5ujc.scarab.ledger.StorageError.Reconstruction",
+        "xyz.kd5ujc.scarab.ledger.StorageError.ResyncRequired",
+        "xyz.kd5ujc.scarab.ledger.StorageError.RetiredVersion",
+        "xyz.kd5ujc.scarab.ledger.StorageError.UnknownVersion",
+        "xyz.kd5ujc.scarab.ledger.StorageError.UnrecoverableTransitionCounter",
+        "xyz.kd5ujc.scarab.ledger.StorageError.UtxoCheckpoint",
+        "xyz.kd5ujc.scarab.ledger.StorageError.UtxoStoreClosed",
+        "xyz.kd5ujc.scarab.ledger.StorageError.VersionMismatch",
+        "xyz.kd5ujc.scarab.ledger.TransitionCounterProblem.AnchorNotTip",
+        "xyz.kd5ujc.scarab.ledger.TransitionCounterProblem.StoreStartsAfterDeadline",
+        "xyz.kd5ujc.scarab.ledger.ValidationError",
+        "xyz.kd5ujc.scarab.ledger.VerificationDefect",
+        "xyz.kd5ujc.scarab.ledger.VerificationDefect.Site.Header",
+        "xyz.kd5ujc.scarab.ledger.VerificationDefect.Site.Witness"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Nonce.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.Nonce.render : Option [ String ]"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/OCertRules.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.OCertError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.OCertError.CounterOutOfRange",
+        "xyz.kd5ujc.scarab.ledger.OCertError.CounterTooSmall",
+        "xyz.kd5ujc.scarab.ledger.OCertError.KesFailure",
+        "xyz.kd5ujc.scarab.ledger.OCertError.KesPeriodOutsideWindow",
+        "xyz.kd5ujc.scarab.ledger.OCertError.KesSignatureRejected",
+        "xyz.kd5ujc.scarab.ledger.OCertError.NoCounter",
+        "xyz.kd5ujc.scarab.ledger.OCertError.OpCertFailure",
+        "xyz.kd5ujc.scarab.ledger.OCertError.OpCertSignatureRejected"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.FormatLoss.message : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.Ipv4.render : String",
+        "xyz.kd5ujc.scarab.ledger.Ipv6.render : String",
+        "xyz.kd5ujc.scarab.ledger.RelayIp.render : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.PoolRelayError.BadDnsName",
+        "xyz.kd5ujc.scarab.ledger.PoolRelayError.BadIpv4",
+        "xyz.kd5ujc.scarab.ledger.PoolRelayError.BadIpv6",
+        "xyz.kd5ujc.scarab.ledger.PoolRelayError.BadPort",
+        "xyz.kd5ujc.scarab.ledger.PoolRelayError.DnsNameTooLong",
+        "xyz.kd5ujc.scarab.ledger.PoolRelayError.IndefiniteAddress",
+        "xyz.kd5ujc.scarab.ledger.PoolRelayError.IndefiniteDnsName",
+        "xyz.kd5ujc.scarab.ledger.PoolRelayError.NotARelay",
+        "xyz.kd5ujc.scarab.ledger.PoolRelayError.NotASequence",
+        "xyz.kd5ujc.scarab.ledger.PoolRelayError.NotCbor",
+        "xyz.kd5ujc.scarab.ledger.PoolRelayError.UnknownTag",
+        "xyz.kd5ujc.scarab.ledger.PoolRelayError.WrongLength"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ProviderDefect.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.ProviderDefect.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.ProviderDefect.Ed25519",
+        "xyz.kd5ujc.scarab.ledger.ProviderDefect.Kes",
+        "xyz.kd5ujc.scarab.ledger.ProviderDefect.OpCertSignature",
+        "xyz.kd5ujc.scarab.ledger.ProviderDefect.VrfInput",
+        "xyz.kd5ujc.scarab.ledger.ProviderDefect.VrfVerifier"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PtrMap.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.toString : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Scripts.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.NativeScript.DecodeError.message : String",
+        "xyz.kd5ujc.scarab.ledger.NativeScript.toString : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.NativeScript.DecodeError.Malformed",
+        "xyz.kd5ujc.scarab.ledger.NativeScript.DecodeError.RequiredOutOfRange",
+        "xyz.kd5ujc.scarab.ledger.NativeScript.DecodeError.SlotOutOfRange"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ShelleyGenesisValidation.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.ShelleyGenesisValidation.ValidationErr.description : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/TentativeHeaderError.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.TentativeHeaderError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.TentativeHeaderError.IssuerKeyLength",
+        "xyz.kd5ujc.scarab.ledger.TentativeHeaderError.ShelleyHeaderByron",
+        "xyz.kd5ujc.scarab.ledger.TentativeHeaderError.Vocabulary"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/TransactionDecodeProblem.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.MempoolLedgerProblem.message : String",
+        "xyz.kd5ujc.scarab.ledger.MempoolProblem.message : String",
+        "xyz.kd5ujc.scarab.ledger.TransactionDecodeProblem.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.MempoolLedgerProblem.Earlier",
+        "xyz.kd5ujc.scarab.ledger.MempoolLedgerProblem.InByron",
+        "xyz.kd5ujc.scarab.ledger.MempoolLedgerProblem.Refused",
+        "xyz.kd5ujc.scarab.ledger.MempoolProblem.AllInputsSpent",
+        "xyz.kd5ujc.scarab.ledger.MempoolProblem.Capacity",
+        "xyz.kd5ujc.scarab.ledger.MempoolProblem.Ledger",
+        "xyz.kd5ujc.scarab.ledger.MempoolProblem.Malformed",
+        "xyz.kd5ujc.scarab.ledger.MempoolProblem.NoLedger",
+        "xyz.kd5ujc.scarab.ledger.MempoolProblem.Rule",
+        "xyz.kd5ujc.scarab.ledger.MempoolProblem.UnelectedCommittee",
+        "xyz.kd5ujc.scarab.ledger.TransactionDecodeProblem.EraEnvelope",
+        "xyz.kd5ujc.scarab.ledger.TransactionDecodeProblem.EraExpected",
+        "xyz.kd5ujc.scarab.ledger.TransactionDecodeProblem.EraOutOfRange",
+        "xyz.kd5ujc.scarab.ledger.TransactionDecodeProblem.Ledger",
+        "xyz.kd5ujc.scarab.ledger.TransactionDecodeProblem.Syntax",
+        "xyz.kd5ujc.scarab.ledger.TransactionDecodeProblem.TaggedPayload"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/TranslationError.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.TranslationError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.TranslationError.ByronTxOutInContext",
+        "xyz.kd5ujc.scarab.ledger.TranslationError.CertificateNotSupported",
+        "xyz.kd5ujc.scarab.ledger.TranslationError.CostModelParameterTooLarge",
+        "xyz.kd5ujc.scarab.ledger.TranslationError.CurrentTreasuryFieldNotSupported",
+        "xyz.kd5ujc.scarab.ledger.TranslationError.DelegationWithoutDelegatee",
+        "xyz.kd5ujc.scarab.ledger.TranslationError.InlineDatumsNotSupported",
+        "xyz.kd5ujc.scarab.ledger.TranslationError.NativeScriptRedeemer",
+        "xyz.kd5ujc.scarab.ledger.TranslationError.NoClockSample",
+        "xyz.kd5ujc.scarab.ledger.TranslationError.NoEraHistory",
+        "xyz.kd5ujc.scarab.ledger.TranslationError.NoScriptBytes",
+        "xyz.kd5ujc.scarab.ledger.TranslationError.PastHorizon",
+        "xyz.kd5ujc.scarab.ledger.TranslationError.PlutusPurposeNotSupported",
+        "xyz.kd5ujc.scarab.ledger.TranslationError.ProposalProceduresFieldNotSupported",
+        "xyz.kd5ujc.scarab.ledger.TranslationError.RedeemerPointerPointsToNothing",
+        "xyz.kd5ujc.scarab.ledger.TranslationError.ReferenceInputsNotDisjointFromInputs",
+        "xyz.kd5ujc.scarab.ledger.TranslationError.ReferenceInputsNotSupported",
+        "xyz.kd5ujc.scarab.ledger.TranslationError.ReferenceScriptsNotSupported",
+        "xyz.kd5ujc.scarab.ledger.TranslationError.TreasuryDonationFieldNotSupported",
+        "xyz.kd5ujc.scarab.ledger.TranslationError.Undecodable",
+        "xyz.kd5ujc.scarab.ledger.TranslationError.UnresolvedInput",
+        "xyz.kd5ujc.scarab.ledger.TranslationError.VotingProceduresFieldNotSupported"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Tx.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.DRep.render : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/TxEnv.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.LedgerFailure.message : String",
+        "xyz.kd5ujc.scarab.ledger.TxDefect.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected",
+        "xyz.kd5ujc.scarab.ledger.LedgerFailure.StateOutOfRange",
+        "xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable",
+        "xyz.kd5ujc.scarab.ledger.LedgerFailure.Undecodable",
+        "xyz.kd5ujc.scarab.ledger.LedgerFailure.Unverifiable",
+        "xyz.kd5ujc.scarab.ledger.LedgerFailure.Vocab",
+        "xyz.kd5ujc.scarab.ledger.TxDefect.AuxiliaryData",
+        "xyz.kd5ujc.scarab.ledger.TxDefect.ConwayCertificate",
+        "xyz.kd5ujc.scarab.ledger.TxDefect.DelegationWithoutDelegatee",
+        "xyz.kd5ujc.scarab.ledger.TxDefect.GovernanceFieldsBeforeConway",
+        "xyz.kd5ujc.scarab.ledger.TxDefect.PlutusFieldsBeforeAlonzo",
+        "xyz.kd5ujc.scarab.ledger.TxDefect.PoolMetadata",
+        "xyz.kd5ujc.scarab.ledger.TxDefect.PreConwayCertificate",
+        "xyz.kd5ujc.scarab.ledger.TxDefect.UnreadableProtocolVersion"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/byron/ByronDelegation.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.byron.DelegationError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.byron.DelegationError.InvalidCertificate",
+        "xyz.kd5ujc.scarab.ledger.byron.DelegationError.MultipleDelegationsForEpoch",
+        "xyz.kd5ujc.scarab.ledger.byron.DelegationError.MultipleDelegationsForSlot",
+        "xyz.kd5ujc.scarab.ledger.byron.DelegationError.NonGenesisDelegator",
+        "xyz.kd5ujc.scarab.ledger.byron.DelegationError.WrongEpoch"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/byron/ByronLedger.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.AttributeOwner.Address",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.AttributeOwner.Transaction",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.BlockTooLarge",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.Decode",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.Delegation",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.FeeCalculation",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.FeeTooSmall",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.HeaderTooLarge",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.LovelaceContext.Fee",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.LovelaceContext.InputBalance",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.LovelaceContext.OutputBalance",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.LovelaceOutOfRange",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.MissingDelegatedSignature",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.MissingInput",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.NetworkMagicMismatch",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.OverlappingOutputs",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.Proof.Delegation",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.Proof.Transaction",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.Proof.Update",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.ProofMismatch",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.ProtocolMagicMismatch",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.TxTooLarge",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.UnknownAttributes",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.Update",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.WitnessCount",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.WrongKey",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronError.WrongSignature"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/byron/ByronParams.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.byron.ByronVersion.Error.message : String",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronVersion.render : String",
+        "xyz.kd5ujc.scarab.ledger.byron.TxFeePolicy.Error.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.byron.ByronVersion.Error.ExpectedTriple",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronVersion.Error.ExpectedUnsigned",
+        "xyz.kd5ujc.scarab.ledger.byron.ByronVersion.Error.OutOfRange",
+        "xyz.kd5ujc.scarab.ledger.byron.TxFeePolicy.Error.Overflow",
+        "xyz.kd5ujc.scarab.ledger.byron.TxFeePolicy.Error.SizeTooLarge",
+        "xyz.kd5ujc.scarab.ledger.byron.TxFeePolicy.Error.SizeTooSmall",
+        "xyz.kd5ujc.scarab.ledger.byron.TxFeePolicy.Error.SummandOutOfRange"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/byron/ByronUpdate.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.byron.UpdateError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.byron.UpdateError.DuplicateProtocolVersion",
+        "xyz.kd5ujc.scarab.ledger.byron.UpdateError.DuplicateSoftwareVersion",
+        "xyz.kd5ujc.scarab.ledger.byron.UpdateError.InvalidProposer",
+        "xyz.kd5ujc.scarab.ledger.byron.UpdateError.InvalidProtocolVersion",
+        "xyz.kd5ujc.scarab.ledger.byron.UpdateError.InvalidScriptVersion",
+        "xyz.kd5ujc.scarab.ledger.byron.UpdateError.InvalidSignature",
+        "xyz.kd5ujc.scarab.ledger.byron.UpdateError.InvalidSoftwareVersion",
+        "xyz.kd5ujc.scarab.ledger.byron.UpdateError.MaxBlockSizeTooLarge",
+        "xyz.kd5ujc.scarab.ledger.byron.UpdateError.MaxTxSizeTooLarge",
+        "xyz.kd5ujc.scarab.ledger.byron.UpdateError.MultipleProposalsForProtocolVersion",
+        "xyz.kd5ujc.scarab.ledger.byron.UpdateError.NullUpdateProposal",
+        "xyz.kd5ujc.scarab.ledger.byron.UpdateError.ProposalTooLarge",
+        "xyz.kd5ujc.scarab.ledger.byron.UpdateError.SoftwareVersionError",
+        "xyz.kd5ujc.scarab.ledger.byron.UpdateError.SystemTagError",
+        "xyz.kd5ujc.scarab.ledger.byron.UpdateError.VoteAlreadyCast",
+        "xyz.kd5ujc.scarab.ledger.byron.UpdateError.VoterNotDelegate",
+        "xyz.kd5ujc.scarab.ledger.byron.UpdateError.VotingProposalNotRegistered"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/injection/InjectionJson.scala",
+      "boundary": "ledger-json",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.injection.InjectionJson.Error.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.injection.InjectionJson.Error.IgnoredArrayEnd",
+        "xyz.kd5ujc.scarab.ledger.injection.InjectionJson.Error.IgnoredObjectEnd",
+        "xyz.kd5ujc.scarab.ledger.injection.InjectionJson.Error.TokenFailed",
+        "xyz.kd5ujc.scarab.ledger.injection.InjectionJson.Error.Undecodable",
+        "xyz.kd5ujc.scarab.ledger.injection.InjectionJson.Error.UnexpectedItem",
+        "xyz.kd5ujc.scarab.ledger.injection.InjectionJson.Error.UnexpectedToken"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/injection/InjectionShow.scala",
+      "boundary": "ghc-scalar-show",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.injection.InjectionShow.end ( value : End ) : String",
+        "xyz.kd5ujc.scarab.ledger.injection.InjectionShow.item ( value : Item ) : String",
+        "xyz.kd5ujc.scarab.ledger.injection.InjectionShow.positive ( value : Scientific ) : String",
+        "xyz.kd5ujc.scarab.ledger.injection.InjectionShow.scalar ( value : Scalar ) : String",
+        "xyz.kd5ujc.scarab.ledger.injection.InjectionShow.scientific ( value : Scientific ) : String",
+        "xyz.kd5ujc.scarab.ledger.injection.InjectionShow.signed ( value : Long ) : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/CanonicalJson.scala",
+      "boundary": "ledger-json",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.json.CanonicalJson.render ( value : CanonicalJson ) : Bytes"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.json.CanonicalJson.ParseError"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/FromJson.scala",
+      "boundary": "ledger-json",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.json.FromJson.showRational ( r : Rational ) : String",
+        "xyz.kd5ujc.scarab.ledger.json.NumberError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.json.NumberError.ExponentOutOfBounds",
+        "xyz.kd5ujc.scarab.ledger.json.NumberError.Floating",
+        "xyz.kd5ujc.scarab.ledger.json.NumberError.InComponent",
+        "xyz.kd5ujc.scarab.ledger.json.NumberError.MissingKey",
+        "xyz.kd5ujc.scarab.ledger.json.NumberError.Negative",
+        "xyz.kd5ujc.scarab.ledger.json.NumberError.NotNatural",
+        "xyz.kd5ujc.scarab.ledger.json.NumberError.NotWord",
+        "xyz.kd5ujc.scarab.ledger.json.NumberError.NotWord64",
+        "xyz.kd5ujc.scarab.ledger.json.NumberError.OutsideOfBounds",
+        "xyz.kd5ujc.scarab.ledger.json.NumberError.TooBig",
+        "xyz.kd5ujc.scarab.ledger.json.NumberError.TooPrecise",
+        "xyz.kd5ujc.scarab.ledger.json.NumberError.TypeMismatch",
+        "xyz.kd5ujc.scarab.ledger.json.NumberError.UnreadNumberText",
+        "xyz.kd5ujc.scarab.ledger.json.NumberError.Zero",
+        "xyz.kd5ujc.scarab.ledger.json.NumberError.ZeroDenominator"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/JsonValue.scala",
+      "boundary": "ledger-json",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.json.JsonValue.render ( value : JsonValue ) : Predef . String",
+        "xyz.kd5ujc.scarab.ledger.json.JsonValue.toString : Predef . String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/NativeJson.scala",
+      "boundary": "ledger-json",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.json.NativeJson.DecodeError.message : String",
+        "xyz.kd5ujc.scarab.ledger.json.NativeJson.Error.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.json.NativeJson.DecodeError.Syntax",
+        "xyz.kd5ujc.scarab.ledger.json.NativeJson.DecodeError.TrailingGarbage",
+        "xyz.kd5ujc.scarab.ledger.json.NativeJson.Error.EndOfInput",
+        "xyz.kd5ujc.scarab.ledger.json.NativeJson.Error.InvalidUtf8Stream",
+        "xyz.kd5ujc.scarab.ledger.json.NativeJson.Error.LeadingZero",
+        "xyz.kd5ujc.scarab.ledger.json.NativeJson.Error.NumberByte",
+        "xyz.kd5ujc.scarab.ledger.json.NativeJson.Error.NumberChar",
+        "xyz.kd5ujc.scarab.ledger.json.NativeJson.Error.NumberEnd",
+        "xyz.kd5ujc.scarab.ledger.json.NativeJson.Error.StringControl",
+        "xyz.kd5ujc.scarab.ledger.json.NativeJson.Error.StringEnd",
+        "xyz.kd5ujc.scarab.ledger.json.NativeJson.Error.Unexpected"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/Scientific.scala",
+      "boundary": "ledger-json",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.json.Scientific.showPositive ( s : Scientific ) : String",
+        "xyz.kd5ujc.scarab.ledger.json.Scientific.shown : String",
+        "xyz.kd5ujc.scarab.ledger.json.Scientific.showsPrec ( d : Int ) : String",
+        "xyz.kd5ujc.scarab.ledger.json.Scientific.toString : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Diff.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.state.Diff.from.show ( a : A ) : String",
+        "xyz.kd5ujc.scarab.ledger.state.Diff.leaf.show ( a : A ) : String",
+        "xyz.kd5ujc.scarab.ledger.state.Diff.record.show ( a : A ) : String",
+        "xyz.kd5ujc.scarab.ledger.state.Diff.show ( a : ( A , B ) ) : String",
+        "xyz.kd5ujc.scarab.ledger.state.Diff.show ( a : A ) : String",
+        "xyz.kd5ujc.scarab.ledger.state.Diff.show ( a : List [ A ] ) : String",
+        "xyz.kd5ujc.scarab.ledger.state.Diff.show ( a : Map [ K , V ] ) : String",
+        "xyz.kd5ujc.scarab.ledger.state.Diff.show ( a : Option [ A ] ) : String",
+        "xyz.kd5ujc.scarab.ledger.state.Diff.show ( a : Set [ A ] ) : String",
+        "xyz.kd5ujc.scarab.ledger.state.Diff.show ( a : SortedMap [ K , V ] ) : String",
+        "xyz.kd5ujc.scarab.ledger.state.Diff.show ( a : Vector [ A ] ) : String",
+        "xyz.kd5ujc.scarab.ledger.state.Path.render : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Vocabulary.scala",
+      "boundary": "ledger-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.state.WithOrigin.show ( a : WithOrigin [ A ] ) : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.InvalidRewardRelativeStake",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.BlockCount",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.BlockNo",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.Coin",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.CompactCoin",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.EpochNo",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.Hash32",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.KeyHash",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.NonZero",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.OcertCounter",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.ProtocolMajor",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.ProtocolMinor",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.RewardBlockCount",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.RewardPulseSize",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.ScriptHash",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.SlotNo",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.VRFVerKeyHash",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.Word32",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.Negative",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.OutOfRange",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.WrongHashLength",
+        "xyz.kd5ujc.scarab.ledger.state.VocabError.Zero"
+      ]
+    },
+    {
+      "source": "models/src/main/scala/xyz/kd5ujc/scarab/models/runtime/DecodeError.scala",
+      "boundary": "primitive-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.models.runtime.render : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Arity.AtLeast",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Arity.Exactly",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Arity.OneOf",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Arity.Range",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Kind.BadArity",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Kind.BadSize",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Kind.BadTag",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Kind.Domain",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Kind.DuplicateElement",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Kind.DuplicateKey",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Kind.Internal",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Kind.LiteralMismatch",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Kind.MissingKey",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Kind.NoAlternative",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Kind.OutOfRange",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Kind.Reconstruction",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Kind.Syntax",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Kind.TypeMismatch",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Kind.UnexpectedKey",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Kind.Unsupported",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Kind.Violation",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.Terminal",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.TerminalCause.Internal",
+        "xyz.kd5ujc.scarab.models.runtime.DecodeError.TerminalCause.Reconstruction"
+      ]
+    },
+    {
+      "source": "models-gen/src/main/scala/xyz/kd5ujc/scarab/models/gen/CddlParser.scala",
+      "boundary": "generator-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.models.gen.CddlParser.ParseFailure.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.models.gen.CddlParser.ParseFailure"
+      ]
+    },
+    {
+      "source": "models-gen/src/main/scala/xyz/kd5ujc/scarab/models/gen/Emitter.scala",
+      "boundary": "generator-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.models.gen.PreparedEmitter.renderArrayDecode ( items : Vector [ ArrItem ] , build : String , node : String , ind : String , withXs : Boolean = true , from : String = , finish : Option [ String ] = None ) : String",
+        "xyz.kd5ujc.scarab.models.gen.PreparedEmitter.renderArrayEncode ( items : Vector [ ArrItem ] , acc : FieldInfo = > String , ind : String , head : Boolean = true ) : String",
+        "xyz.kd5ujc.scarab.models.gen.PreparedEmitter.renderDecl ( d : Decl , owners : Owners ) : String",
+        "xyz.kd5ujc.scarab.models.gen.PreparedEmitter.renderMapDecode ( items : Vector [ MapItem ] , build : String , node : String , spec : String , ind : String ) : String",
+        "xyz.kd5ujc.scarab.models.gen.PreparedEmitter.renderMapEncode ( items : Vector [ MapItem ] , acc : FieldInfo = > String , ind : String ) : String",
+        "xyz.kd5ujc.scarab.models.gen.PreparedEmitter.renderMapSpec ( items : Vector [ MapItem ] , name : String , ind : String ) : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "models-gen/src/main/scala/xyz/kd5ujc/scarab/models/gen/GenError.scala",
+      "boundary": "generator-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.models.gen.ConfigProblem.message : String",
+        "xyz.kd5ujc.scarab.models.gen.GenError.message : String",
+        "xyz.kd5ujc.scarab.models.gen.UnsupportedFeature.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.models.gen.ConfigProblem.Directive",
+        "xyz.kd5ujc.scarab.models.gen.ConfigProblem.MissingPackage",
+        "xyz.kd5ujc.scarab.models.gen.ConfigProblem.QualifiedName",
+        "xyz.kd5ujc.scarab.models.gen.ConfigProblem.UnreachableRule",
+        "xyz.kd5ujc.scarab.models.gen.GenError.ArityMismatch",
+        "xyz.kd5ujc.scarab.models.gen.GenError.BadConfig",
+        "xyz.kd5ujc.scarab.models.gen.GenError.CyclicExpansion",
+        "xyz.kd5ujc.scarab.models.gen.GenError.Defect",
+        "xyz.kd5ujc.scarab.models.gen.GenError.EmptyIntegerDomain",
+        "xyz.kd5ujc.scarab.models.gen.GenError.Io",
+        "xyz.kd5ujc.scarab.models.gen.GenError.NameClash",
+        "xyz.kd5ujc.scarab.models.gen.GenError.Parse",
+        "xyz.kd5ujc.scarab.models.gen.GenError.SamplingCycle",
+        "xyz.kd5ujc.scarab.models.gen.GenError.UnknownModule",
+        "xyz.kd5ujc.scarab.models.gen.GenError.UnresolvedName",
+        "xyz.kd5ujc.scarab.models.gen.GenError.Unsupported"
+      ]
+    },
+    {
+      "source": "models-gen/src/main/scala/xyz/kd5ujc/scarab/models/gen/Schema.scala",
+      "boundary": "generator-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.models.gen.QName.toString : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "models-gen/src/main/scala/xyz/kd5ujc/scarab/models/gen/SyntaxSummary.scala",
+      "boundary": "generator-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.models.gen.SyntaxSummary.render ( value : Any ) : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/ConnectionEnd.scala",
+      "boundary": "protocol-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.network.ConnectionEnd.message : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/HaskellShow.scala",
+      "boundary": "ghc-scalar-show",
+      "methods": [
+        "xyz.kd5ujc.scarab.network.HaskellShow.intArgument ( n : Int ) : String",
+        "xyz.kd5ujc.scarab.network.HaskellShow.string ( s : String ) : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/LocalSocket.scala",
+      "boundary": "protocol-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.network.DiffusionFailure.shown : String",
+        "xyz.kd5ujc.scarab.network.FileDescriptor.shown : String",
+        "xyz.kd5ujc.scarab.network.LocalAddress.shown : String",
+        "xyz.kd5ujc.scarab.network.SocketConfigError.message : String",
+        "xyz.kd5ujc.scarab.network.SocketConfigError.shown : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.network.DiffusionFailure.Defect",
+        "xyz.kd5ujc.scarab.network.DiffusionFailure.PathTooLong",
+        "xyz.kd5ujc.scarab.network.DiffusionFailure.System",
+        "xyz.kd5ujc.scarab.network.DiffusionFailure.UserInterrupt",
+        "xyz.kd5ujc.scarab.network.SocketConfigError.LocalSocketError"
+      ]
+    },
+    {
+      "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/LocalTxSubmissionServer.scala",
+      "boundary": "protocol-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.network.LocalTxSubmissionServer.End.message : String",
+        "xyz.kd5ujc.scarab.network.LocalTxSubmissionServer.Unavailable.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.network.LocalTxSubmissionServer.Unavailable.Presentation",
+        "xyz.kd5ujc.scarab.network.LocalTxSubmissionServer.Unavailable.ScriptEvaluation",
+        "xyz.kd5ujc.scarab.network.LocalTxSubmissionServer.Unavailable.Verification"
+      ]
+    },
+    {
+      "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/PeerActionError.scala",
+      "boundary": "protocol-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.network.PeerActionError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.network.PeerActionError.ApplicationFailures",
+        "xyz.kd5ujc.scarab.network.PeerActionError.ConnectionFailure",
+        "xyz.kd5ujc.scarab.network.PeerActionError.Inactive",
+        "xyz.kd5ujc.scarab.network.PeerActionError.TimedOut"
+      ]
+    },
+    {
+      "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/SystemError.scala",
+      "boundary": "native-system-trace",
+      "methods": [
+        "provider-message:xyz.kd5ujc.scarab.network.Errno.of",
+        "xyz.kd5ujc.scarab.network.ErrnoCause.shown : String",
+        "xyz.kd5ujc.scarab.network.SystemCallError.shown : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.network.IoErrorType.AlreadyExists",
+        "xyz.kd5ujc.scarab.network.IoErrorType.HardwareFault",
+        "xyz.kd5ujc.scarab.network.IoErrorType.InappropriateType",
+        "xyz.kd5ujc.scarab.network.IoErrorType.Interrupted",
+        "xyz.kd5ujc.scarab.network.IoErrorType.InvalidArgument",
+        "xyz.kd5ujc.scarab.network.IoErrorType.NoSuchThing",
+        "xyz.kd5ujc.scarab.network.IoErrorType.OtherError",
+        "xyz.kd5ujc.scarab.network.IoErrorType.PermissionDenied",
+        "xyz.kd5ujc.scarab.network.IoErrorType.ProtocolError",
+        "xyz.kd5ujc.scarab.network.IoErrorType.ResourceBusy",
+        "xyz.kd5ujc.scarab.network.IoErrorType.ResourceExhausted",
+        "xyz.kd5ujc.scarab.network.IoErrorType.UnsupportedOperation",
+        "xyz.kd5ujc.scarab.network.SystemCallError"
+      ]
+    },
+    {
+      "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/LedgerPeers.scala",
+      "boundary": "protocol-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.network.selection.toString : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/Targets.scala",
+      "boundary": "protocol-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.network.selection.Targets.Problem.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.network.selection.Targets.Problem.AboveCap",
+        "xyz.kd5ujc.scarab.network.selection.Targets.Problem.Negative",
+        "xyz.kd5ujc.scarab.network.selection.Targets.Problem.NotNested"
+      ]
+    },
+    {
+      "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/Vocabulary.scala",
+      "boundary": "protocol-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.network.selection.GovernorError.message : String",
+        "xyz.kd5ujc.scarab.network.selection.ReturnReason.Typed.message : String",
+        "xyz.kd5ujc.scarab.network.selection.ReturnReason.message : String",
+        "xyz.kd5ujc.scarab.network.selection.SourceRefusal.Typed.message : String",
+        "xyz.kd5ujc.scarab.network.selection.SourceRefusal.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.network.selection.FailureClass.Misbehaved",
+        "xyz.kd5ujc.scarab.network.selection.FailureClass.NotThePeers",
+        "xyz.kd5ujc.scarab.network.selection.FailureClass.Transient",
+        "xyz.kd5ujc.scarab.network.selection.GovernorError.BootstrapPeersCriticalTimeout",
+        "xyz.kd5ujc.scarab.network.selection.GovernorError.InvariantBroken",
+        "xyz.kd5ujc.scarab.network.selection.ReturnReason.Typed",
+        "xyz.kd5ujc.scarab.network.selection.SourceRefusal.Typed"
+      ]
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/CheckpointsFile.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.CheckpointsFile.Problem.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.node.CheckpointsFile.Problem.DuplicateBlockNumbers"
+      ]
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/ConfigFields.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.ConfigFieldError.message : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/EstablishmentError.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.EstablishmentError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.node.EstablishmentError.Defect",
+        "xyz.kd5ujc.scarab.node.EstablishmentError.Failed",
+        "xyz.kd5ujc.scarab.node.EstablishmentError.Superseded"
+      ]
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/Follower.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.Follower.AdoptionLoss.message : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/InboundEnd.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.InboundEnd.message : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/InboundGovernor.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.InboundGovernor.ReturnReason.message : String",
+        "xyz.kd5ujc.scarab.node.InboundGovernor.SessionFailure.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.node.InboundGovernor.ReturnReason.NoMoreIntersection",
+        "xyz.kd5ujc.scarab.node.InboundGovernor.ReturnReason.RolledBackPastIntersection",
+        "xyz.kd5ujc.scarab.node.InboundGovernor.SessionFailure.Fatal",
+        "xyz.kd5ujc.scarab.node.InboundGovernor.SessionFailure.Peer"
+      ]
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/Peer.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.Peer.AddressError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.node.Peer.AddressError.Invalid",
+        "xyz.kd5ujc.scarab.node.Peer.Rejection.Forgiven",
+        "xyz.kd5ujc.scarab.node.Peer.Rejection.NoAddingClient",
+        "xyz.kd5ujc.scarab.node.Peer.Rejection.NotImplicated",
+        "xyz.kd5ujc.scarab.node.Peer.Rejection.PunishedForeign"
+      ]
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/PeerSnapshot.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.PeerSnapshotRefusal.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.node.PeerSnapshotError.Malformed",
+        "xyz.kd5ujc.scarab.node.PeerSnapshotError.Missing",
+        "xyz.kd5ujc.scarab.node.PeerSnapshotError.NoRelays",
+        "xyz.kd5ujc.scarab.node.PeerSnapshotError.NotJson",
+        "xyz.kd5ujc.scarab.node.PeerSnapshotError.Unreadable",
+        "xyz.kd5ujc.scarab.node.PeerSnapshotError.UnsupportedVersion",
+        "xyz.kd5ujc.scarab.node.PeerSnapshotRefusal.AtOrigin",
+        "xyz.kd5ujc.scarab.node.PeerSnapshotRefusal.LegacyVersion",
+        "xyz.kd5ujc.scarab.node.PeerSnapshotRefusal.TooOld",
+        "xyz.kd5ujc.scarab.node.PeerSnapshotRefusal.UnreadableSnapshot",
+        "xyz.kd5ujc.scarab.node.PeerSnapshotRefusal.WrongMagic"
+      ]
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/SessionEnd.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.Fatal.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.node.Fault.Defect",
+        "xyz.kd5ujc.scarab.node.Fault.Failed"
+      ]
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/Topology.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.AccessPoint.toString : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/VerificationCache.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.VerificationCache.Counters.toString : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/forge/HotKeys.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.forge.ReloadRefusal.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.node.forge.ReloadRefusal.BadCertificateSignature",
+        "xyz.kd5ujc.scarab.node.forge.ReloadRefusal.CertificateFailure",
+        "xyz.kd5ujc.scarab.node.forge.ReloadRefusal.Counter",
+        "xyz.kd5ujc.scarab.node.forge.ReloadRefusal.Expired",
+        "xyz.kd5ujc.scarab.node.forge.ReloadRefusal.KeyNotCertified",
+        "xyz.kd5ujc.scarab.node.forge.ReloadRefusal.KeyPastPeriod",
+        "xyz.kd5ujc.scarab.node.forge.ReloadRefusal.NotYetValid",
+        "xyz.kd5ujc.scarab.node.forge.ReloadRefusal.Unreadable",
+        "xyz.kd5ujc.scarab.node.forge.ReloadRefusal.WrongPool"
+      ]
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/log/LogSettings.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.log.LogSettings.formatOf ( text : String ) : Option [ Format ]",
+        "xyz.kd5ujc.scarab.node.log.Scope.show : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/log/NodeEvent.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "provider-message:xyz.kd5ujc.scarab.node.log.NodeEvent.dumpJson",
+        "xyz.kd5ujc.scarab.node.log.LocalServerLines.line ( trace : Trace ) : Line",
+        "xyz.kd5ujc.scarab.node.log.LocalServerLines.mode ( m : Int ) : Json",
+        "xyz.kd5ujc.scarab.node.log.NodeEvent.dumpJson ( dump : StallDiagnostics . Dump ) : Json",
+        "xyz.kd5ujc.scarab.node.log.NodeEvent.finished [ S ] ( chain : VolatileChain [ S ] ) : NodeEvent",
+        "xyz.kd5ujc.scarab.node.log.NodeEvent.inbound ( remote : String , state : String , reason : Option [ String ] ) : Line",
+        "xyz.kd5ujc.scarab.node.log.NodeEvent.session ( d : xyz . kd5ujc . scarab . node . FetchCoordinator . SessionDiagnostic ) : Json",
+        "xyz.kd5ujc.scarab.node.log.NodeEvent.started ( peers : List [ SocketAddress [ Host ] ] , genesis : ShelleyGenesis , config : NodeConfig = NodeConfig . empty , topology : Option [ Topology ] = None ) : NodeEvent"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/mempool/LocalSubmission.scala",
+      "boundary": "local-tx-refusal",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.mempool.LocalSubmission.message : String",
+        "xyz.kd5ujc.scarab.node.mempool.LocalSubmission.reasonItem ( rejection : Rejection ) : Either [ NoReply , Bytes ]"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/mempool/MempoolState.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.mempool.MempoolState.showCredential ( c : Credential ) : String",
+        "xyz.kd5ujc.scarab.node.mempool.Rejection.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.node.mempool.Rejection.AlreadyHeld",
+        "xyz.kd5ujc.scarab.node.mempool.Rejection.Full",
+        "xyz.kd5ujc.scarab.node.mempool.Rejection.InputDefect",
+        "xyz.kd5ujc.scarab.node.mempool.Rejection.Ledger",
+        "xyz.kd5ujc.scarab.node.mempool.Rejection.Limits",
+        "xyz.kd5ujc.scarab.node.mempool.Rejection.Malformed",
+        "xyz.kd5ujc.scarab.node.mempool.Rejection.NoLedger",
+        "xyz.kd5ujc.scarab.node.mempool.Rejection.RulesDefect",
+        "xyz.kd5ujc.scarab.node.mempool.Rejection.WrongEra"
+      ]
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/metrics/Exposition.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.metrics.Exposition.render ( snapshot : Snapshot ) : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/metrics/Labels.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.metrics.LabelValue.render ( a : A ) : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/ContextFailureCbor.scala",
+      "boundary": "local-tx-refusal",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.ContextEra.protVer : ProtVer",
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.babbageCase ( error : TranslationError ) ( using ProtVer ) : Option [ Bytes ]",
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.certificate ( era : ContextEra , cert : Certificate ) ( using ProtVer ) : Option [ Bytes ]",
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.collect ( era : ContextEra ) ( error : CollectError ) ( using ProtVer ) : Option [ Bytes ]",
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.context ( era : ContextEra , error : TranslationError ) ( using ProtVer ) : Option [ Bytes ]",
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.conwayCertificate ( cert : Certificate ) ( using ProtVer ) : Option [ Bytes ]",
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.conwayContext ( error : TranslationError ) ( using ProtVer ) : Option [ Bytes ]",
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.encodeCertificate ( cert : Certificate ) ( using ProtVer ) : Option [ Bytes ]",
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.encodeCertificate.anchor ( value : Option [ Anchor ] ) : Unit",
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.encodeCertificate.drep ( value : DRep ) : Unit",
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.pair ( tag : Int , payload : Bytes ) : Bytes",
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.proposal ( value : Proposal ) ( using ProtVer ) : Option [ Bytes ]",
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.purpose ( era : ContextEra , p : Purpose ) ( using ProtVer ) : Option [ Bytes ]",
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.relayBytes ( raw : Bytes ) : Option [ Bytes ]",
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.relayBytes.optional [ A ] ( value : Option [ A ] ) ( write : A = > CborOut ) : Unit",
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.shelleyCertificate ( cert : Certificate ) : Option [ Bytes ]",
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.source ( value : TxOutSource ) : Bytes",
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.utxos ( era : ContextEra , errors : NonEmptyVector [ CollectError ] ) : Option [ Bytes ]",
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.votingProcedures ( procedures : Vector [ ( Voter , Vector [ ( GovActionId , VotingProcedure ) ] ) ] ) ( using ProtVer ) : Bytes"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.ContextEra.Alonzo",
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.ContextEra.Babbage",
+        "xyz.kd5ujc.scarab.node.ntc.ContextFailureCbor.ContextEra.Conway"
+      ]
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/GenesisConfig.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.ntc.GenesisConfig.Error.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.node.ntc.GenesisConfig.Error.InvalidActiveSlotsCoeff",
+        "xyz.kd5ujc.scarab.node.ntc.GenesisConfig.Error.InvalidDecimal",
+        "xyz.kd5ujc.scarab.node.ntc.GenesisConfig.Error.InvalidField",
+        "xyz.kd5ujc.scarab.node.ntc.GenesisConfig.Error.InvalidHex",
+        "xyz.kd5ujc.scarab.node.ntc.GenesisConfig.Error.InvalidSystemStart"
+      ]
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/NtcQuery.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.Arity",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.Constructor",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.ConwayOnly",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.Duplicate",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.Empty",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.ExpectedArray",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.ExpectedBytes",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.ExpectedCoin",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.ExpectedSetTag",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.ExpectedUnsigned",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.IndefiniteBytes",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.IndefiniteList",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.IndefiniteRecord",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.InvalidAddress",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.InvalidCredential",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.InvalidDRep",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.InvalidHash",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.InvalidNonMyopicCredential",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.InvalidTxId",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.InvalidTxIn",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.MalformedCbor",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.MemberStatusRange",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.NotAscending",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.UnexpectedSetTag",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.UnknownEra",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.UnknownTag",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.UnsupportedVersion",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.Word16Range",
+        "xyz.kd5ujc.scarab.node.ntc.NtcQuery.Error.Word8Range"
+      ]
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/PlutusContextText.scala",
+      "boundary": "plutus-evaluation",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.ntc.PlutusContextText.render ( kind : Kind , data : PlutusData ) : Result [ String ]",
+        "xyz.kd5ujc.scarab.node.ntc.PlutusContextText.shown ( kind : Kind , data : PlutusData , precedence : Int = 0 ) : Task"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.node.ntc.PlutusContextText.Error.Arguments",
+        "xyz.kd5ujc.scarab.node.ntc.PlutusContextText.Error.Constructor",
+        "xyz.kd5ujc.scarab.node.ntc.PlutusContextText.Error.LayoutArity",
+        "xyz.kd5ujc.scarab.node.ntc.PlutusContextText.Error.Shape"
+      ]
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/PlutusFailureCbor.scala",
+      "boundary": "plutus-evaluation",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.ntc.PlutusFailureCbor.context ( request : EvalRequest ) : Bytes",
+        "xyz.kd5ujc.scarab.node.ntc.PlutusFailureCbor.description ( failure : PlutusFailure ) : Either [ PlutusContextText . Error , Option [ String ] ]",
+        "xyz.kd5ujc.scarab.node.ntc.PlutusFailureCbor.reconstruction ( failure : PlutusFailure ) : Bytes"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/PreConwayFailureCbor.scala",
+      "boundary": "local-tx-refusal",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.absent [ A ] : Encoding [ A ]",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.allegra ( failures : Vector [ PredicateFailure ] ) ( using ProtVer ) : Encoding [ Vector [ Enc ] ]",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.allegraUtxo ( f : UtxoFailure ) ( using ProtVer ) : Encoding [ Enc ]",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.alonzo ( failures : Vector [ PredicateFailure ] ) ( using ProtVer ) : Encoding [ Vector [ Enc ] ]",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.alonzoUtxo ( era : ContextEra ) ( f : UtxoFailure ) ( using ProtVer ) : Encoding [ Enc ]",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.alonzoUtxow ( era : ContextEra , utxo : UtxoFailure = > Encoding [ Enc ] ) ( u : UtxowFailure ) ( using ProtVer ) : Encoding [ Enc ]",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.applyTxError ( era : Era , failures : Vector [ PredicateFailure ] ) : Result [ Option [ Bytes ] ]",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.babbage ( failures : Vector [ PredicateFailure ] ) ( using ProtVer ) : Encoding [ Vector [ Enc ] ]",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.babbageUtxo ( f : UtxoFailure ) ( using ProtVer ) : Encoding [ Enc ]",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.babbageUtxow ( u : UtxowFailure ) ( using ProtVer ) : Encoding [ Enc ]",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.ledger ( utxow : UtxowFailure = > Encoding [ Enc ] , f : PredicateFailure ) ( using ProtVer ) : Encoding [ Enc ]",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.potCode ( pot : Pot ) : Int",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.ppup ( f : PpupFailure ) ( using ProtVer ) : Enc",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.present [ A ] ( value : A ) : Encoding [ A ]",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.rec [ A ] ( m : Mismatch [ A ] ) ( each : ( W , A ) = > Unit ) : Enc",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.sharedUtxo ( f : UtxoFailure ) ( using ProtVer ) : Encoding [ Enc ]",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.shelley ( failures : Vector [ PredicateFailure ] ) ( using ProtVer ) : Encoding [ Vector [ Enc ] ]",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.shelleyDeleg ( f : DelegFailure ) ( using ProtVer ) : Encoding [ Enc ]",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.shelleyUtxo ( f : UtxoFailure ) ( using ProtVer ) : Encoding [ Enc ]",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.shelleyUtxow ( utxo : UtxoFailure = > Encoding [ Enc ] ) ( u : UtxowFailure ) ( using ProtVer ) : Encoding [ Enc ]",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.sum ( tag : Int ) ( fields : Enc * ) : Enc",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.supported [ A ] ( value : Option [ A ] ) : Encoding [ A ]",
+        "xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.validityInterval ( notBefore : Option [ BigInt ] , before : Option [ BigInt ] ) : Enc"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/PredicateFailureCbor.scala",
+      "boundary": "local-tx-refusal",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.applyTxError ( era : Era , failures : Vector [ PredicateFailure ] ) : Either [ RefusalPresentationError , Option [ Bytes ] ]",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.applyTxError ( failures : Vector [ PredicateFailure ] ) : Either [ RefusalPresentationError , Bytes ]",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.certs ( w : W , f : CertsFailure ) : Unit",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.coin ( w : W , c : BigInt ) : Unit",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.conwayForm ( f : PredicateFailure ) : PredicateFailure",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.conwayPurpose ( p : Purpose ) : Option [ Bytes ]",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.credential ( w : W , c : Credential ) : W",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.deleg ( w : W , f : DelegFailure ) : Unit",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.delegInConway ( d : DelegFailure ) : Boolean",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.element [ A ] ( each : ( W , A ) = > Unit ) : Codec [ A ]",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.eraMismatch ( transactionEra : Int , transactionEraName : String ) : Bytes",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.exUnits ( w : W , e : ExUnits ) : W",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.gov ( w : W , f : GovFailure ) : Unit",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.govAction ( w : W , a : GovAction ) : W",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.govActionId ( w : W , i : GovActionId ) : W",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.govCert ( w : W , f : GovCertFailure ) : Unit",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.group [ A ] ( w : W , m : Mismatch [ A ] ) ( each : ( W , A ) = > Unit ) : Unit",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.hash ( w : W , h : Bytes ) : Unit",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.hashSet ( w : W , hs : Set [ Bytes ] ) ( using ProtVer ) : W",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.inConway ( f : PredicateFailure ) : Boolean",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.item ( w : W , p : Purpose ) : Unit",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.ledger ( f : PredicateFailure ) : Either [ RefusalPresentationError , Bytes ]",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.list [ A ] ( w : W , xs : Iterable [ A ] ) ( each : ( W , A ) = > Unit ) : W",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.map [ K : Order , V ] ( w : W , entries : Map [ K , V ] ) ( key : ( W , K ) = > Unit , value : ( W , V ) = > Unit ) ( using ProtVer ) : W",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.maybe [ A ] ( w : W , a : Option [ A ] ) ( each : ( W , A ) = > Unit ) : W",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.maybeHash ( w : W , h : Option [ Bytes ] ) : W",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.notInConway ( w : W ) : Unit",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.pool ( w : W , f : PoolFailure ) ( using ProtVer ) : Unit",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.prepareConway ( f : PredicateFailure ) : Either [ RefusalPresentationError , Prepared ]",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.prepareLedger ( f : PredicateFailure ) : Either [ RefusalPresentationError , Prepared ]",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.prepareUtxo ( f : UtxoFailure ) : Either [ RefusalPresentationError , Prepared ]",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.prepareUtxos ( f : UtxosFailure ) ( using ProtVer ) : Either [ RefusalPresentationError , Prepared ]",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.prepareUtxow ( f : UtxowFailure ) : Either [ RefusalPresentationError , Prepared ]",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.proposalProcedure ( w : W , p : Proposal ) : W",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.protVer ( w : W , v : ( BigInt , BigInt ) ) : Unit",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.put [ A ] ( w : W , a : A ) ( using codec : Codec [ A ] ) : W",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.rewardAccount ( w : W , a : RewardAccount ) : W",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.set [ A : Order ] ( w : W , xs : Iterable [ A ] ) ( each : ( W , A ) = > Unit ) ( using ProtVer ) : W",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.small ( w : W , n : Int ) : Unit",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.swapped [ A ] ( w : W , m : Mismatch [ A ] ) ( each : ( W , A ) = > Unit ) : Unit",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.txIn ( w : W , i : TxIn ) : W",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.txOut ( w : W , o : TxOut ) : W",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.utxos ( f : UtxosFailure ) ( using ProtVer ) : Either [ RefusalPresentationError , Bytes ]",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.utxowInConway ( u : UtxowFailure ) : Boolean",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.value ( w : W , v : Value ) : Unit",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.voter ( w : W , v : Voter ) : W",
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.votes ( w : W , vs : Vector [ ( Voter , GovActionId ) ] ) : W"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.Prepared"
+      ]
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceDocument.scala",
+      "boundary": "plutus-evaluation",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.ntc.ReferenceDocument.Doc.render : String",
+        "xyz.kd5ujc.scarab.node.ntc.ReferenceDocument.render ( document : Doc ) : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/RefusalPresentationError.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.ntc.RefusalPresentationError.message : String",
+        "xyz.kd5ujc.scarab.node.ntc.RefusalPresentationError.toString : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.node.ntc.RefusalPresentationError.InvalidPlutusContext"
+      ]
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/tools/LeiosCheckMain.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.tools.LeiosCheckMain.DecodeProblem.message : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "node/src/main/scala/xyz/kd5ujc/scarab/node/tools/MithrilBootstrapCommand.scala",
+      "boundary": "node-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.Problem.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.Problem.ConflictingGenesis",
+        "xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.Problem.Duplicate",
+        "xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.Problem.InvalidChunkSize",
+        "xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.Problem.InvalidClient",
+        "xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.Problem.InvalidPath",
+        "xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.Problem.InvalidTimeout",
+        "xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.Problem.Missing",
+        "xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.Problem.NeedsValue",
+        "xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.Problem.Setup",
+        "xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.Problem.Unknown"
+      ]
+    },
+    {
+      "source": "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/FlatScan.scala",
+      "boundary": "plutus-evaluation",
+      "methods": [
+        "xyz.kd5ujc.scarab.plutus.FlatScan.Failure.message : String",
+        "xyz.kd5ujc.scarab.plutus.FlatScan.ValueFault.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.plutus.FlatScan.Failure.BadBuiltin",
+        "xyz.kd5ujc.scarab.plutus.FlatScan.Failure.BadTermTag",
+        "xyz.kd5ujc.scarab.plutus.FlatScan.Failure.BadTypeTag",
+        "xyz.kd5ujc.scarab.plutus.FlatScan.Failure.ConstrCaseBefore110",
+        "xyz.kd5ujc.scarab.plutus.FlatScan.Failure.IllFormedType",
+        "xyz.kd5ujc.scarab.plutus.FlatScan.Failure.InvalidUtf8",
+        "xyz.kd5ujc.scarab.plutus.FlatScan.Failure.MalformedData",
+        "xyz.kd5ujc.scarab.plutus.FlatScan.Failure.NoFlatConstant",
+        "xyz.kd5ujc.scarab.plutus.FlatScan.Failure.TooMuchSpace",
+        "xyz.kd5ujc.scarab.plutus.FlatScan.Failure.Truncated",
+        "xyz.kd5ujc.scarab.plutus.FlatScan.Failure.UnterminatedFiller",
+        "xyz.kd5ujc.scarab.plutus.FlatScan.Failure.WordOverflow",
+        "xyz.kd5ujc.scarab.plutus.FlatScan.Failure.WordTooLong",
+        "xyz.kd5ujc.scarab.plutus.FlatScan.ValueFault.CurrenciesNotAscending",
+        "xyz.kd5ujc.scarab.plutus.FlatScan.ValueFault.EmptyInnerMap",
+        "xyz.kd5ujc.scarab.plutus.FlatScan.ValueFault.KeyTooLong",
+        "xyz.kd5ujc.scarab.plutus.FlatScan.ValueFault.QuantityOutOfRange",
+        "xyz.kd5ujc.scarab.plutus.FlatScan.ValueFault.TokensNotAscending",
+        "xyz.kd5ujc.scarab.plutus.FlatScan.ValueFault.ZeroQuantity"
+      ]
+    },
+    {
+      "source": "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/NativeCrypto.scala",
+      "boundary": "plutus-evaluation",
+      "methods": [
+        "xyz.kd5ujc.scarab.plutus.NativeCryptoProblem.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.plutus.NativeCryptoProblem.AnswerDefect",
+        "xyz.kd5ujc.scarab.plutus.NativeCryptoProblem.Missing",
+        "xyz.kd5ujc.scarab.plutus.NativeCryptoProblem.NotLoaded",
+        "xyz.kd5ujc.scarab.plutus.NativeCryptoProblem.Unpinned",
+        "xyz.kd5ujc.scarab.plutus.NativeCryptoProblem.UnsupportedPlatform",
+        "xyz.kd5ujc.scarab.plutus.NativeCryptoProblem.WrongAnswer"
+      ]
+    },
+    {
+      "source": "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ParamNames.scala",
+      "boundary": "plutus-evaluation",
+      "methods": [
+        "xyz.kd5ujc.scarab.plutus.ParamNames.show ( constructor : String ) : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/PlutusAvailability.scala",
+      "boundary": "plutus-evaluation",
+      "methods": [
+        "xyz.kd5ujc.scarab.plutus.PlutusAvailability.Failure.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.plutus.PlutusAvailability.Failure.BuiltinUnavailable",
+        "xyz.kd5ujc.scarab.plutus.PlutusAvailability.Failure.LanguageUnavailable",
+        "xyz.kd5ujc.scarab.plutus.PlutusAvailability.Failure.MalformedValue",
+        "xyz.kd5ujc.scarab.plutus.PlutusAvailability.Failure.TooManyConstrFields",
+        "xyz.kd5ujc.scarab.plutus.PlutusAvailability.Failure.TypeHeaderTooLarge",
+        "xyz.kd5ujc.scarab.plutus.PlutusAvailability.Failure.VersionUnavailable"
+      ]
+    },
+    {
+      "source": "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/PlutusData.scala",
+      "boundary": "plutus-evaluation",
+      "methods": [
+        "xyz.kd5ujc.scarab.plutus.PlutusData.toString : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.plutus.PlutusData.DecodeError.BigNumberBytes",
+        "xyz.kd5ujc.scarab.plutus.PlutusData.DecodeError.BigNumberWideHead",
+        "xyz.kd5ujc.scarab.plutus.PlutusData.DecodeError.ByteStringChunkLimit",
+        "xyz.kd5ujc.scarab.plutus.PlutusData.DecodeError.ConstructorEnvelope",
+        "xyz.kd5ujc.scarab.plutus.PlutusData.DecodeError.ConstructorFields",
+        "xyz.kd5ujc.scarab.plutus.PlutusData.DecodeError.ConstructorIndex",
+        "xyz.kd5ujc.scarab.plutus.PlutusData.DecodeError.Syntax",
+        "xyz.kd5ujc.scarab.plutus.PlutusData.DecodeError.UnexpectedItem",
+        "xyz.kd5ujc.scarab.plutus.PlutusData.DecodeError.UnexpectedTag"
+      ]
+    },
+    {
+      "source": "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ScriptEvaluator.scala",
+      "boundary": "plutus-evaluation",
+      "methods": [
+        "provider-message:xyz.kd5ujc.scarab.plutus.BackendFailure.message",
+        "provider-message:xyz.kd5ujc.scarab.plutus.ScriptFailure.message",
+        "xyz.kd5ujc.scarab.plutus.BackendFailure.message : String",
+        "xyz.kd5ujc.scarab.plutus.EvalFailure.message : String",
+        "xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.message : String",
+        "xyz.kd5ujc.scarab.plutus.ScriptFailure.message : String",
+        "xyz.kd5ujc.scarab.plutus.ScriptProblem.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.plutus.BackendFailure.BudgetOutOfRange",
+        "xyz.kd5ujc.scarab.plutus.BackendFailure.BuiltinUnavailable",
+        "xyz.kd5ujc.scarab.plutus.BackendFailure.CostingUnmirrored",
+        "xyz.kd5ujc.scarab.plutus.BackendFailure.Defect",
+        "xyz.kd5ujc.scarab.plutus.BackendFailure.NoResult",
+        "xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted",
+        "xyz.kd5ujc.scarab.plutus.EvalFailure.Decode",
+        "xyz.kd5ujc.scarab.plutus.EvalFailure.OpenTerm",
+        "xyz.kd5ujc.scarab.plutus.EvalFailure.OutOfBudget",
+        "xyz.kd5ujc.scarab.plutus.EvalFailure.Script",
+        "xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported",
+        "xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Malformed",
+        "xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Unavailable",
+        "xyz.kd5ujc.scarab.plutus.ScriptFailure",
+        "xyz.kd5ujc.scarab.plutus.ScriptProblem.Availability",
+        "xyz.kd5ujc.scarab.plutus.ScriptProblem.CborByteStringExpected",
+        "xyz.kd5ujc.scarab.plutus.ScriptProblem.Flat",
+        "xyz.kd5ujc.scarab.plutus.ScriptProblem.TrailingBytes"
+      ]
+    },
+    {
+      "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ChainSync.scala",
+      "boundary": "protocol-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.protocol.ChainSync.UInt64.toString : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ConnectionError.scala",
+      "boundary": "protocol-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.protocol.ConnectionError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.protocol.ConnectionError.AddressLimit",
+        "xyz.kd5ujc.scarab.protocol.ConnectionError.AlreadyConnected",
+        "xyz.kd5ujc.scarab.protocol.ConnectionError.IllegalTransition",
+        "xyz.kd5ujc.scarab.protocol.ConnectionError.InboundLimit",
+        "xyz.kd5ujc.scarab.protocol.ConnectionError.OutboundLimit",
+        "xyz.kd5ujc.scarab.protocol.ConnectionError.TimeWait"
+      ]
+    },
+    {
+      "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ConnectionIdentityError.scala",
+      "boundary": "protocol-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.protocol.ConnectionIdentityError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.protocol.ConnectionIdentityError.InvalidPort",
+        "xyz.kd5ujc.scarab.protocol.ConnectionIdentityError.NonNumericScope",
+        "xyz.kd5ujc.scarab.protocol.ConnectionIdentityError.ScopeOutOfRange",
+        "xyz.kd5ujc.scarab.protocol.ConnectionIdentityError.UnresolvedAddress",
+        "xyz.kd5ujc.scarab.protocol.ConnectionIdentityError.UnsupportedAddressLength"
+      ]
+    },
+    {
+      "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ConnectionState.scala",
+      "boundary": "protocol-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.protocol.ConnectionState.Illegal.message : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/Handshake.scala",
+      "boundary": "handshake-refusal",
+      "methods": [
+        "xyz.kd5ujc.scarab.protocol.Handshake.DataCodec.refusalText ( error : E ) : String",
+        "xyz.kd5ujc.scarab.protocol.Handshake.DecodeError.message : String",
+        "xyz.kd5ujc.scarab.protocol.Handshake.message [ V : VersionCodec : Ordering ] ( state : State , term : Term ) ( using ProtocolWire . Scope ) : WireMessage [ V ]",
+        "xyz.kd5ujc.scarab.protocol.Handshake.refusalText ( error : ProtocolError ) : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.protocol.Handshake.DecodeError",
+        "xyz.kd5ujc.scarab.protocol.Handshake.Reason.DecodeError",
+        "xyz.kd5ujc.scarab.protocol.Handshake.Reason.Refused",
+        "xyz.kd5ujc.scarab.protocol.Handshake.Reason.VersionMismatch",
+        "xyz.kd5ujc.scarab.protocol.Handshake.SelectionError.DecodeError",
+        "xyz.kd5ujc.scarab.protocol.Handshake.SelectionError.Refused",
+        "xyz.kd5ujc.scarab.protocol.Handshake.SelectionError.VersionMismatch",
+        "xyz.kd5ujc.scarab.protocol.Handshake.WireReason.DecodeError",
+        "xyz.kd5ujc.scarab.protocol.Handshake.WireReason.Refused",
+        "xyz.kd5ujc.scarab.protocol.Handshake.WireReason.VersionMismatch"
+      ]
+    },
+    {
+      "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/KeepAlive.scala",
+      "boundary": "protocol-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.protocol.KeepAlive.Cookie.toString : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/Mux.scala",
+      "boundary": "protocol-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.protocol.Mux.Error.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.protocol.Mux.Error.FeedFrameLimit",
+        "xyz.kd5ujc.scarab.protocol.Mux.Error.FeedInputLimit",
+        "xyz.kd5ujc.scarab.protocol.Mux.Error.FrameLength",
+        "xyz.kd5ujc.scarab.protocol.Mux.Error.HandshakeLength",
+        "xyz.kd5ujc.scarab.protocol.Mux.Error.HeaderLength",
+        "xyz.kd5ujc.scarab.protocol.Mux.Error.InvalidFrameLimit",
+        "xyz.kd5ujc.scarab.protocol.Mux.Error.InvalidInputLimit",
+        "xyz.kd5ujc.scarab.protocol.Mux.Error.InvalidMessageLimit",
+        "xyz.kd5ujc.scarab.protocol.Mux.Error.InvalidPayloadLimit",
+        "xyz.kd5ujc.scarab.protocol.Mux.Error.MessageLength",
+        "xyz.kd5ujc.scarab.protocol.Mux.Error.PayloadLengthOutOfRange",
+        "xyz.kd5ujc.scarab.protocol.Mux.Error.ProtocolOutOfRange",
+        "xyz.kd5ujc.scarab.protocol.Mux.Error.TimestampOutOfRange",
+        "xyz.kd5ujc.scarab.protocol.Mux.Error.TruncatedHeader",
+        "xyz.kd5ujc.scarab.protocol.Mux.Error.TruncatedPayload"
+      ]
+    },
+    {
+      "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/NetworkError.scala",
+      "boundary": "protocol-diagnostics",
+      "methods": [
+        "provider-message:xyz.kd5ujc.scarab.protocol.NetworkError.describe",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.Closure.message : String",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.HandshakeFailure.message : String",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.protocol.NetworkError.BearerClosed",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.BearerDefect",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.Closure.Aborted",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.Closure.AbortedBy",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.Closure.PeerClosed",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.Closure.Transport",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.Connect",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.ConnectionRole.Initiator",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.ConnectionRole.Responder",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.Decode",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.DecoderDefect",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.Defect",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.Framing",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.HandshakeFailure.Local",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.HandshakeFailure.QueryAnswered",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.HandshakeFailure.Remote",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.HandshakeFailure.UnexpectedQueryReply",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.HandshakeFailure.VersionMismatch",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.HandshakeRefused",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.IllegalTransition",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.IngressLimit",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.MuxSetup",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.MuxWrite",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.ProtocolIdleTimeout",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.QueryRefused",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.ApplicationAlreadyInstalled",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.BlockFetchEngineUnexpected",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.BlockFetchTooFewBlocks",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.BlockFetchTooManyBlocks",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.BlockFetchUnexpected",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.ChainSyncEngineUnexpected",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.ChainSyncUnexpected",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.IntersectionNotOffered",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.InvalidPipelineCapacity",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.KeepAliveUnexpected",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.LocalStateQueryEngineUnexpected",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.LocalStateQueryUnexpected",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.LocalTxMonitorUnexpected",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.LocalTxSubmissionUnexpected",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.NotRegistered",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.OutgoingMessageSize",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.PeerSharingPolicy",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.PeerSharingUnexpected",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.PipelineCapacity",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.PipelinedRequest",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.ReplyNotExpected",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.TransactionNotRequested",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.TxSubmissionUnexpected",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.UnexpectedProtocol",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.UnofferedLocalVersion",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation.WrongModeBit",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.SduOperation.Read",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.SduOperation.Write",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.SduTimeout",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.ServingDefect",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.StateAcquireFailure",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.Timeout",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.TxSubmission",
+        "xyz.kd5ujc.scarab.protocol.NetworkError.VersionMismatch"
+      ]
+    },
+    {
+      "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/PeerSharing.scala",
+      "boundary": "protocol-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.protocol.PeerSharing.Error.message : String",
+        "xyz.kd5ujc.scarab.protocol.PeerSharing.Violation.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.protocol.PeerSharing.Error.Arity",
+        "xyz.kd5ujc.scarab.protocol.PeerSharing.Error.OutOfRange",
+        "xyz.kd5ujc.scarab.protocol.PeerSharing.Error.PeerItem",
+        "xyz.kd5ujc.scarab.protocol.PeerSharing.Error.ReservedHead",
+        "xyz.kd5ujc.scarab.protocol.PeerSharing.Error.Terminal",
+        "xyz.kd5ujc.scarab.protocol.PeerSharing.Error.TooLarge",
+        "xyz.kd5ujc.scarab.protocol.PeerSharing.Error.Trailing",
+        "xyz.kd5ujc.scarab.protocol.PeerSharing.Error.Truncated",
+        "xyz.kd5ujc.scarab.protocol.PeerSharing.Error.Unexpected",
+        "xyz.kd5ujc.scarab.protocol.PeerSharing.Error.UnexpectedKey",
+        "xyz.kd5ujc.scarab.protocol.PeerSharing.Error.WrongAgency"
+      ]
+    },
+    {
+      "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ProtocolError.scala",
+      "boundary": "protocol-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.AckExceedsOutstandingInventory",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ArrayLimitExceeded",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.BatchLimitExceeded",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.BlockFetchAgency",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.BlockFetchIsTerminal",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.BlockPointOrderMismatch",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ByronHeaderRequiresItsWrapper",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.CBORArgumentOutsideUint64",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.CBORDepthLimitExceeded",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.CBORIntegerOutsideUint64",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.CBORItemLimitExceeded",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.CBORResourceLimitExceeded",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.CandidateLimitExceeded",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.CardanoPointHashMustContain32Bytes",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ChainSyncAgency",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ClientIsNotAwaitingConfirmation",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.Codec",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.CountOutsideUint16",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.DuplicateBodyRequest",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.DuplicateExpectedPoints",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.DuplicateMeasureName",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.DuplicateOfferID",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.DuplicateVersion",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.EarlyBatchDoneIncompleteRequestedRange",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedBlockingBoolean",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedBoolean",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedByronSubtagSize",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedByronSubtagSizeHeader",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedCandidateArray",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedConwayGenTx",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedConwayTransactionID",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedConwayTransactionMembers",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedDefiniteArray",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedDefiniteByteString",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedDefiniteMap",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedDefiniteTextString",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedDefiniteVersionMap",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedEraHeader",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedIndefiniteProtocolList",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedKeepAliveResponse",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedPointCountOutsideRequestLimits",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedRequestRange",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedSerializedBlockTag24",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedTag",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedTag24Header",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExpectedUint64",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ExtraBlockInRequestedBatch",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.HandshakeAlreadyDone",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.HandshakeByteLimitExceeded",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.HashByteLimitExceeded",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.HfcHeader",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.IncompleteBlockFetchRequestAtEndOfInput",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.IncompleteCbor",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidBlockFetchLimits",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidBlockingInventoryRequest",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidExtendedCBORSimpleValue",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidExtendedSimpleValue",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidFloatBits",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidIndefiniteStringChunk",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidKeepAliveLimits",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidLocalLimits",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidLocalProposal",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidNegotiationResult",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidNonblockingInventoryRequest",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidOrOversizedRefusalText",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidRawBlockLimit",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidRefusalTagOrArity",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidRequestAccountingLimitsBytes",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidRequestLimits",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidSimpleValue",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidStringChunk",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidTxSubmission2Limits",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidUTF8",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.InvalidUnicodeText",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ItemLimitExceeded",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ItemRunsPastSpan",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.KeepAliveAgency",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.KeepAliveCookieMismatch",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.KeepAliveCookieOutsideUint16",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.KeepAliveIsTerminal",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.Leios",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.LocalStateQueryAgency",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.LocalTxMonitorAgency",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.LocalTxSubmissionAgency",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.MapLimitExceeded",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.MeasureArity",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.MessageByteLimitExceeded",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.MonitorField.CapacityInBytes",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.MonitorField.NumberOfTxs",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.MonitorField.SizeInBytes",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.MonitorField.TxCount",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.NetworkMagicMismatch",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.NetworkMagicOutsideUint32",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.NtCDataArity",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.NtCHasNoNtNFeatures",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.NtNDataArity",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.OfferArity",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.OnlyByronHeadersCarryAWrapper",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.OriginIsNotAnAddressableCardanoBlock",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.OriginalSizeOutsidePolicy",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.OutsideUint64",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.PeerSharing",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.PeerSharingMustBe0Or1",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.PerasRequiresVersion16",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.PointArity",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.RawBlockByteLimitExceeded",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.RecognizedVersionsMustBeDistinctAndIncreasing",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.RequestAlreadyCompleted",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.RequestBlockLimitExceeded",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ReservedCBORArgument",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ReservedCBORSimpleValue",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ReservedOrIndefiniteArgument",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ResponderExpectsProposal",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ReversedExpectedSlotOrder",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.ServerSelectedAVersionNotOffered",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.SizeHint",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.SizeOutsideUint32",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.SizesArity",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.StringByteLimitExceeded",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.StringLimitExceeded",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.TipArity",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.TrailingBlockFetchBytes",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.TrailingBytes",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.TrailingHeaderBytes",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.TrailingKeepAliveBytes",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.TrailingPayloadBytes",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.TrailingSerializedBlockBytes",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.TrailingTxSubmission2Bytes",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.TransactionBodyIsNotAMap",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.TransactionIDMustBe32Bytes",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.TruncatedBlockFetchMessage",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.TruncatedCbor",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.TruncatedKeepAliveMessage",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.TruncatedList",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.TruncatedTxSubmission2Message",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.TxSubmission2Agency",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.UnadvertisedAcknowledgedOrRepeatedBodyRequest",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.UndecodableQuery",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.UndecodableTransaction",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.UnexpectedBreak",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.UnexpectedBreakOrReservedSimpleValue",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.UnexpectedClientMessageInServerBatch",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.UnexpectedHandshakeTagArityOrState",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.UnknownBlockFetchTag",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.UnknownByronSubtag",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.UnknownEraIndex",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.UnknownKeepAliveTagStateOrExactArity",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.UnknownLocalStateQueryFailure",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.UnknownLocalStateQueryTagOrArity",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.UnknownLocalTxMonitorTagOrArity",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.UnknownLocalTxSubmissionTagOrArity",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.UnknownTagOrWrongExactOuterArity",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.UnknownTxSubmission2TagStateArity",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.UnrecognizedSelectedVersion",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.UnsolicitedKeepAliveResponse",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.UnsupportedLogicalVersion",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.Word32Range",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.WrongBlockFetchAgency",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.WrongBlockFetchOuterArityForState",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.WrongBlockFetchState",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.WrongExactBlockFetchOuterArity",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.WrongKeepAliveAgency",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.WrongKeepAliveOuterArityForState",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.WrongLocalStateQueryAgency",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.WrongLocalTxMonitorAgency",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.WrongLocalTxSubmissionAgency",
+        "xyz.kd5ujc.scarab.protocol.ProtocolError.WrongTxSubmission2Agency"
+      ]
+    },
+    {
+      "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/QueryRefusal.scala",
+      "boundary": "protocol-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.protocol.QueryRefusal.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.protocol.QueryRefusal.Defect",
+        "xyz.kd5ujc.scarab.protocol.QueryRefusal.OutOfRange",
+        "xyz.kd5ujc.scarab.protocol.QueryRefusal.Undecodable",
+        "xyz.kd5ujc.scarab.protocol.QueryRefusal.Unsupported",
+        "xyz.kd5ujc.scarab.protocol.QueryRefusal.Unwritable"
+      ]
+    },
+    {
+      "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/TxSubmissionPolicy.scala",
+      "boundary": "protocol-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.protocol.TxSubmissionPolicy.Violation.message : String"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/Binary.scala",
+      "boundary": "storage-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.storage.Binary.Failure.OutOfRange.message : String",
+        "xyz.kd5ujc.scarab.storage.Binary.Failure.UnknownVersion.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.storage.Binary.Failure.OutOfRange",
+        "xyz.kd5ujc.scarab.storage.Binary.Failure.UnknownVersion"
+      ]
+    },
+    {
+      "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ChainStorage.scala",
+      "boundary": "storage-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.storage.ChainStorage.validateFirstPredecessor.show ( h : Option [ Bytes ] )"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala",
+      "boundary": "storage-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.storage.FileImmutableStore.formatMigration [ F [ _ ] : Sync ] ( chunkSlots : Long ) : Migration [ F ]"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshotExport.scala",
+      "boundary": "storage-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotExport.Error.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotExport.Error.AnchorMismatch",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotExport.Error.Byron",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotExport.Error.CheckpointStamp",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotExport.Error.Collision",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotExport.Error.EraMismatch",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotExport.Error.Gaps",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotExport.Error.Metadata",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotExport.Error.MissingSnapshot",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotExport.Error.MissingSource",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotExport.Error.NameMismatch",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotExport.Error.NonemptyStateTables",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotExport.Error.Origin",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotExport.Error.OutputWithinSource",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotExport.Error.StampOutOfRange",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotExport.Error.State",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotExport.Error.Storage",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotExport.Error.Tables",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotExport.Error.Unsettled"
+      ]
+    },
+    {
+      "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshotImport.scala",
+      "boundary": "storage-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotImport.Error.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotImport.Error.Ancillary",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotImport.Error.Byron",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotImport.Error.Collision",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotImport.Error.Duplicate",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotImport.Error.EraMismatch",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotImport.Error.InstantStakeMismatch",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotImport.Error.LedgerTablesNotEmpty",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotImport.Error.Metadata",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotImport.Error.Origin",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotImport.Error.SourceNotRegular",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotImport.Error.StampOutOfRange",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotImport.Error.State",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotImport.Error.Storage",
+        "xyz.kd5ujc.scarab.storage.LedgerSnapshotImport.Error.Tables"
+      ]
+    },
+    {
+      "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotFailure.scala",
+      "boundary": "storage-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.storage.SnapshotFailure.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.storage.SnapshotFailure.Defect",
+        "xyz.kd5ujc.scarab.storage.SnapshotFailure.Reconstruction",
+        "xyz.kd5ujc.scarab.storage.SnapshotFailure.Storage"
+      ]
+    },
+    {
+      "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV8.scala",
+      "boundary": "storage-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.storage.SnapshotV8.format [ F [ _ ] : Sync ] ( check : SnapshotCheck ) ( using env : Ask [ F , ConsensusMirrorEnv ] ) : SnapshotFormat [ F , MirrorState ]"
+      ],
+      "constructors": []
+    },
+    {
+      "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/HaskellImmutableDb.scala",
+      "boundary": "storage-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.storage.haskell.ChunkFault.message : String",
+        "xyz.kd5ujc.scarab.storage.haskell.HaskellImmutableError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.storage.haskell.ChunkFault.BlockNotCbor",
+        "xyz.kd5ujc.scarab.storage.haskell.ChunkFault.BlockOffsetRange",
+        "xyz.kd5ujc.scarab.storage.haskell.ChunkFault.BlockOutOfBounds",
+        "xyz.kd5ujc.scarab.storage.haskell.ChunkFault.CrcMismatch",
+        "xyz.kd5ujc.scarab.storage.haskell.ChunkFault.HeaderHashMismatch",
+        "xyz.kd5ujc.scarab.storage.haskell.ChunkFault.HeaderOutOfBlock",
+        "xyz.kd5ujc.scarab.storage.haskell.ChunkFault.IndexCountMismatch",
+        "xyz.kd5ujc.scarab.storage.haskell.ChunkFault.OffsetMismatch",
+        "xyz.kd5ujc.scarab.storage.haskell.ChunkFault.PrimaryEmpty",
+        "xyz.kd5ujc.scarab.storage.haskell.ChunkFault.PrimaryFirstOffset",
+        "xyz.kd5ujc.scarab.storage.haskell.ChunkFault.PrimaryLength",
+        "xyz.kd5ujc.scarab.storage.haskell.ChunkFault.PrimaryStep",
+        "xyz.kd5ujc.scarab.storage.haskell.ChunkFault.PrimaryTooLong",
+        "xyz.kd5ujc.scarab.storage.haskell.ChunkFault.PrimaryVersion",
+        "xyz.kd5ujc.scarab.storage.haskell.ChunkFault.SecondaryLength",
+        "xyz.kd5ujc.scarab.storage.haskell.ChunkFault.SlotMismatch",
+        "xyz.kd5ujc.scarab.storage.haskell.ChunkFault.SlotRange",
+        "xyz.kd5ujc.scarab.storage.haskell.ChunkFault.TrailingBytes",
+        "xyz.kd5ujc.scarab.storage.haskell.HaskellImmutableError.ChunkGap",
+        "xyz.kd5ujc.scarab.storage.haskell.HaskellImmutableError.Invalid",
+        "xyz.kd5ujc.scarab.storage.haskell.HaskellImmutableError.Io",
+        "xyz.kd5ujc.scarab.storage.haskell.HaskellImmutableError.MissingFile",
+        "xyz.kd5ujc.scarab.storage.haskell.HaskellImmutableError.NoImmutableDir"
+      ]
+    },
+    {
+      "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/HaskellImport.scala",
+      "boundary": "storage-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.storage.haskell.HaskellImport.show ( h : Option [ Bytes ] ) : String",
+        "xyz.kd5ujc.scarab.storage.haskell.HaskellImportError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.storage.haskell.HaskellImportError.BlockNumberJump",
+        "xyz.kd5ujc.scarab.storage.haskell.HaskellImportError.BrokenLink",
+        "xyz.kd5ujc.scarab.storage.haskell.HaskellImportError.ForeignGenesis",
+        "xyz.kd5ujc.scarab.storage.haskell.HaskellImportError.HeaderHashDisagrees",
+        "xyz.kd5ujc.scarab.storage.haskell.HaskellImportError.MagicFileMalformed",
+        "xyz.kd5ujc.scarab.storage.haskell.HaskellImportError.MagicFileMissing",
+        "xyz.kd5ujc.scarab.storage.haskell.HaskellImportError.MagicMismatch",
+        "xyz.kd5ujc.scarab.storage.haskell.HaskellImportError.SlotDisagrees",
+        "xyz.kd5ujc.scarab.storage.haskell.HaskellImportError.Source",
+        "xyz.kd5ujc.scarab.storage.haskell.HaskellImportError.Target",
+        "xyz.kd5ujc.scarab.storage.haskell.HaskellImportError.TargetNotInSource",
+        "xyz.kd5ujc.scarab.storage.haskell.HaskellImportError.Undecodable"
+      ]
+    },
+    {
+      "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/mithril/MithrilBootstrap.scala",
+      "boundary": "storage-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilBootstrap.Error.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilBootstrap.Error.AmbiguousLedger",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilBootstrap.Error.Client",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilBootstrap.Error.DestinationExists",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilBootstrap.Error.Immutable",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilBootstrap.Error.Ledger",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilBootstrap.Error.MissingLedger",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilBootstrap.Error.MissingManifest",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilBootstrap.Error.NetworkMismatch",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilBootstrap.Error.Storage",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilBootstrap.Error.TruncatedImmutable",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilBootstrap.Error.UnsafeSource"
+      ]
+    },
+    {
+      "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/mithril/MithrilClient.scala",
+      "boundary": "storage-diagnostics",
+      "methods": [
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilClient.Error.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilClient.Error.AmbiguousReceipt",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilClient.Error.Defect",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilClient.Error.ExecutableDigest",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilClient.Error.Exit",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilClient.Error.InvalidArtifact",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilClient.Error.InvalidEndpoint",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilClient.Error.InvalidKey",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilClient.Error.InvalidReceipt",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilClient.Error.Launch",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilClient.Error.MissingReceipt",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilClient.Error.NotRegular",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilClient.Error.OutputLimit",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilClient.Error.RefusedVerification",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilClient.Error.TimedOut",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilClient.Error.UnsupportedNetwork",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilClient.Error.WrongArtifact",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilClient.Error.WrongDirectory",
+        "xyz.kd5ujc.scarab.storage.mithril.MithrilClient.Error.WrongNetwork"
+      ]
+    }
+  ]
+}
