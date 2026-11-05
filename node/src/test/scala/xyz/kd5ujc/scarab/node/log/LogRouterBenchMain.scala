@@ -10,9 +10,10 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
 
 /** What the router's one sink lock costs: `tell` throughput with several fibers writing at once,
   * against a file sink that admits every line (`file`), and against the same sink with every line
-  * silenced (`silenced`), which leaves the lock and the clock with no render and no write. What is
-  * lost between `writers = 1` and more writers is the contention the lock causes; what is lost
-  * between `file` and `silenced` is the render and the write.
+  * silenced (`silenced`), where the route filter drops the line before the lock, the clock, the
+  * render and the write. What is lost between `writers = 1` and more writers is the contention the
+  * lock causes; what is lost between `file` and `silenced` is the render, the write, the lock and
+  * the clock together, which this harness does not separate.
   *
   * Not part of `check`: run it with `bash scripts/sbtw "node/Test/runMain
   * xyz.kd5ujc.scarab.node.log.LogRouterBenchMain"`. It prints a `METRIC` line per configuration and
