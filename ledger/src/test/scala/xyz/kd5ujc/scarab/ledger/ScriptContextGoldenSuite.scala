@@ -357,6 +357,7 @@ class ScriptContextGoldenSuite extends FunSuite:
         sl.ExUnits(1000, 2000)
       )
       val theirs: Data = language match
+        case PlutusLanguage.V4 => fail("no PlutusV4 context before Dijkstra")
         case PlutusLanguage.V1 => dataOf(Oracle.getScriptContextV1(sr, stx, utxos, config, pv))
         case PlutusLanguage.V2 => dataOf(Oracle.getScriptContextV2(sr, stx, utxos, config, pv))
         case PlutusLanguage.V3 =>

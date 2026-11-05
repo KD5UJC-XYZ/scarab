@@ -6,7 +6,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
-import scalus.uplc.{BuiltinSemanticsVariant, DefaultFun, Program}
+import scalus.uplc.{DefaultFun, Program}
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** The `ensurable` variants' unlifting bounds (issue 498, [[UnliftingBounds]]): from protocol 11 an
@@ -98,14 +98,34 @@ class UnliftingBoundsSuite extends FunSuite:
       s"[ [ (builtin consByteString) ${integer(BigInt(1) << 262143)} ] (con bytestring #00) ]"
     fails(PlutusLanguage.V2, 11, cons)
     assertEquals(
-      UnliftingBounds.of(DefaultFun.ConsByteString, BuiltinSemanticsVariant.E).map(_._1),
+      UnliftingBounds.of(DefaultFun.ConsByteString, SemanticsVariant.E).map(_._1),
       Vector(1)
+    )
+  }
+
+  test("variants F and G (protocol 12) bound byte strings and not integers (plutus 1.71.0.0)") {
+    val big = integer(BigInt(1) << 262143)
+    PlutusLanguage.values.foreach { language =>
+      succeeds(language, 12, s"[ [ (builtin addInteger) $big ] (con integer 1) ]")
+      fails(language, 12, hash(bytes(65537)))
+      succeeds(language, 12, hash(bytes(65536)))
+    }
+    // F takes consByteString's integer unbounded, modulo 256; G takes a Word8
+    succeeds(PlutusLanguage.V2, 12, s"[ [ (builtin consByteString) $big ] (con bytestring #00) ]")
+    fails(PlutusLanguage.V4, 12, s"[ [ (builtin consByteString) $big ] (con bytestring #00) ]")
+    assertEquals(
+      UnliftingBounds.of(DefaultFun.AddInteger, SemanticsVariant.F),
+      Vector.empty
+    )
+    assertEquals(
+      UnliftingBounds.of(DefaultFun.ConsByteString, SemanticsVariant.D).map(_._1),
+      Vector(0, 1)
     )
   }
 
   test("35 builtins have a bounded argument, as the ensurable branches of Builtins.hs type them") {
     val bounded =
-      DefaultFun.values.filter(f => UnliftingBounds.of(f, BuiltinSemanticsVariant.D).nonEmpty)
+      DefaultFun.values.filter(f => UnliftingBounds.of(f, SemanticsVariant.D).nonEmpty)
     assertEquals(bounded.size, 35)
     assert(!bounded.contains(DefaultFun.EqualsInteger))
   }

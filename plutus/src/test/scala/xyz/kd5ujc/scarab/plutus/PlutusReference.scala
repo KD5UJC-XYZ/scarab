@@ -10,6 +10,7 @@ import scala.jdk.CollectionConverters.*
   */
 enum PlutusRelease(val tag: String):
   case Plutus1_70 extends PlutusRelease("1.70.0.0")
+  case Plutus1_71 extends PlutusRelease("1.71.0.0")
 
 /** The test resources `plutus-reference`: one copy of the plutus data, read per release.
   *

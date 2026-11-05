@@ -67,7 +67,10 @@ class SpendingDatumSuite extends FunSuite:
     assertEquals(cases.size, 18)
     assertEquals(
       cases.map(r => (r.language, r.mode, r.c.tx.isValid)).toSet,
-      (for l <- PlutusLanguage.values; m <- Mode.values; flag <- Vector(true, false)
+      (for
+        l <- PlutusLanguage.values.filterNot(_ == PlutusLanguage.V4)
+        m <- Mode.values
+        flag <- Vector(true, false)
       yield (l, m, flag)).toSet
     )
   }
@@ -163,6 +166,7 @@ class SpendingDatumSuite extends FunSuite:
           case PlutusLanguage.V1 => 5 to 11
           case PlutusLanguage.V2 => 7 to 11
           case PlutusLanguage.V3 => 9 to 11
+          case PlutusLanguage.V4 => fail("no PlutusV4 case before Dijkstra")
         protocols.foreach { protocol =>
           assertEquals(
             TestLedger.verdict(

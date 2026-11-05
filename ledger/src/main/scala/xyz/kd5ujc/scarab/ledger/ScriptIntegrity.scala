@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 
 /** The script integrity hash (`script_data_hash`) of a transaction:
   *
@@ -83,26 +84,40 @@ object ScriptIntegrity:
       encoded
     }
 
-  /** The encoded language views for `languages` (`getLanguageView` and `encodeLangViews`,
-    * cardano-ledger f649f975, `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs:566-598`).
-    * Every Plutus language of the set has an entry. A language without a cost model has the encoded
-    * `null` as its cost model (`maybe encodeNull encodeCostModel`, line 584): `f6` for V2 and V3,
-    * and for V1, whose value is wrapped as bytes, `41 f6`.
+  /** The encoded language views for the Plutus languages of `languages`: [[plutusLanguageViews]].
     */
   def languageViews(pp: ProtocolParams, languages: Set[ScriptKind]): Vector[Byte] =
-    val plutus = languages.toVector.filter(_.isPlutus).sortBy(_.tag)
-    // Encoded keys sort by length first: the one-byte keys of V2 and V3 precede V1's two bytes.
-    val ordered = plutus.filter(_ != ScriptKind.PlutusV1) ++ plutus.filter(_ == ScriptKind.PlutusV1)
-    val entries = ordered.map { kind =>
-      val language = kind.tag - 1
-      val model = pp.costModels.get(language)
-      if kind == ScriptKind.PlutusV1 then
+    plutusLanguageViews(
+      pp,
+      languages.collect {
+        case ScriptKind.PlutusV1 => PlutusLanguage.V1
+        case ScriptKind.PlutusV2 => PlutusLanguage.V2
+        case ScriptKind.PlutusV3 => PlutusLanguage.V3
+      }
+    )
+
+  /** The encoded language views for `languages` (`getLanguageView` and `encodeLangViews`,
+    * cardano-ledger f649f975, `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs:566-598`).
+    * Every language of the set has an entry. A language without a cost model has the encoded `null`
+    * as its cost model (`maybe encodeNull encodeCostModel`, line 584 at f649f975, 573 at 9df9f98c):
+    * `f6` for V2 to V4, and for V1, whose value is wrapped as bytes, `41 f6`. PlutusV4 has the view
+    * of V2 and V3 (`latestLangDepView`, `PParams.hs:560-574` at cardano-ledger 9df9f98c), keyed by
+    * its language id 3.
+    */
+  def plutusLanguageViews(pp: ProtocolParams, languages: Set[PlutusLanguage]): Vector[Byte] =
+    val sorted = languages.toVector.sortBy(_.id)
+    // Encoded keys sort by length first: the one-byte keys of V2 to V4 precede V1's two bytes.
+    val ordered =
+      sorted.filter(_ != PlutusLanguage.V1) ++ sorted.filter(_ == PlutusLanguage.V1)
+    val entries = ordered.map { language =>
+      val model = pp.costModels.get(language.id)
+      if language == PlutusLanguage.V1 then
         // Key 0x41 0x00; value: bytes( 0x9f ints 0xff ), or bytes( 0xf6 ) without a cost model.
         val encoded =
           model.fold(Vector(Cbor.Null))(m => (0x9f.toByte +: m.flatMap(Cbor.int)) :+ 0xff.toByte)
         Vector(0x41, 0x00).map(_.toByte) ++ Cbor.bytesHeader(encoded.size) ++ encoded
       else
-        Cbor.int(language) ++ model.fold(Vector(Cbor.Null))(m =>
+        Cbor.int(language.id) ++ model.fold(Vector(Cbor.Null))(m =>
           Cbor.arrayHeader(m.size) ++ m.flatMap(Cbor.int)
         )
     }

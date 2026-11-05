@@ -79,6 +79,11 @@ checked by `PlutusAvailabilitySuite`):
 `Data`, and allowed on `Data` from 12 (`Common/Eval.hs` `defaultCaserBuiltinFor`, 142-146).
 UPLC program version 1.1.0 (`constr`, `case`) is V3 from 9 and V1/V2 from 11.
 
+Protocol 12 exists only in the Dijkstra of the Leios testnet build, whose node links plutus 1.71.0.0
+(`261766ad`): there `case` on `Data` needs program version 1.2.0 as well, and the variants are F and
+G. [Plutus at protocol 12](compatibility/plutus-v4-dijkstra.md) records that evaluator, PlutusV4 and
+the evidence for them.
+
 ## 2. Where a script is decoded and checked
 
 1. `deserialiseScript` (`Common/SerialisedScript.hs` 195-263) is called from the ledger in phase 1 from

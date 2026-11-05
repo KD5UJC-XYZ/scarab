@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import xyz.kd5ujc.scarab.plutus.ExUnits
+import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusLanguage}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import munit.FunSuite
@@ -44,6 +44,25 @@ class ScriptIntegritySuite extends FunSuite:
         "a3" + "01" + "84" + "04050607" + "02" + "83" + "20" + "19012c" + "1a00011170" +
           "4100" + "45" + "9f010203ff"
       )
+    )
+  }
+
+  test("PlutusV4 is a plain key 3 and a definite list, ordered with V2 and V3 before V1") {
+    val withV4 = pp.copy(costModels = pp.costModels.updated(3, Vector(BigInt(9))))
+    assertEquals(
+      ScriptIntegrity.plutusLanguageViews(withV4, Set(PlutusLanguage.V4)),
+      bytes("a1" + "03" + "81" + "09")
+    )
+    assertEquals(
+      ScriptIntegrity.plutusLanguageViews(withV4, PlutusLanguage.values.toSet),
+      bytes(
+        "a4" + "01" + "84" + "04050607" + "02" + "83" + "20" + "19012c" + "1a00011170" +
+          "03" + "81" + "09" + "4100" + "45" + "9f010203ff"
+      )
+    )
+    assertEquals(
+      ScriptIntegrity.plutusLanguageViews(pp.copy(costModels = Map.empty), Set(PlutusLanguage.V4)),
+      bytes("a1" + "03" + "f6")
     )
   }
 

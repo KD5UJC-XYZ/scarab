@@ -181,6 +181,7 @@ object FlatDecodeCorpus:
       language <- PlutusLanguage.values.toVector
       if language != PlutusLanguage.V3 || protocol >= 9
       if language != PlutusLanguage.V2 || protocol >= 7
+      if language != PlutusLanguage.V4 || protocol >= 12
     yield (language, protocol)
 
   /** Writes the oracle's requests (`scripts/oracle/plutus/Main.hs` reads them). */

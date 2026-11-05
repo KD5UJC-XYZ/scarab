@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.plutus
 
-import scalus.uplc.{BuiltinSemanticsVariant, Constant, DefaultFun}
+import scalus.uplc.{Constant, DefaultFun}
 import scalus.uplc.eval.CekValue
 
 /** The bounds the `ensurable` semantics variants put on the arguments of some builtins (plutus
@@ -13,6 +13,10 @@ import scalus.uplc.eval.CekValue
   * 875-925). Unlifting is deferred to the saturated application, and a failed one ends the
   * evaluation with no cost for the application (`toMonoF`, `PlutusCore/Builtin/Meaning.hs` lines
   * 245-262). Results are not bounded. Scalus 1.4.0 has no such bound (issue 498).
+  *
+  * Variants F and G of plutus 1.71.0.0 (`261766ad`, PlutusV1 to PlutusV4 from protocol 12) keep the
+  * byte-string bounds (`ensurableByteString`) and drop the integer ones (`ensurableInteger`,
+  * `PlutusCore/Default/Builtins.hs:2806-2820`): [[SemanticsVariant]].
   */
 private[plutus] object UnliftingBounds:
   /** The type an argument is unlifted as. */
@@ -29,14 +33,27 @@ private[plutus] object UnliftingBounds:
 
   /** The bounded arguments of each builtin, by position, as the `ensurable` branches of
     * `toBuiltinMeaning` type them. `ConsByteString` takes its first argument as `CInteger` in
-    * variant D and as a `Word8` in variant E, which only variant D bounds here.
+    * variant D, as a `Word8` in variants E and G and as an unbounded `Integer` in variant F, which
+    * only variant D bounds here.
     */
-  def of(fun: DefaultFun, variant: BuiltinSemanticsVariant): Vector[(Int, Bound)] =
+  def of(fun: DefaultFun, variant: SemanticsVariant): Vector[(Int, Bound)] =
+    if !variant.boundsByteStrings then Vector.empty
+    else
+      val ints = if variant.boundsIntegers then integerArgs(fun, variant) else Vector.empty
+      (ints ++ byteStrings(fun)).sortBy(_._1)
+
+  private def integerArgs(fun: DefaultFun, variant: SemanticsVariant): Vector[(Int, Bound)] =
     import DefaultFun.*
     fun match
       case AddInteger | SubtractInteger | MultiplyInteger | DivideInteger | QuotientInteger |
           RemainderInteger | ModInteger | LessThanInteger | LessThanEqualsInteger =>
         integers
+      case ConsByteString if variant == SemanticsVariant.D => Vector(0 -> Bound.CInteger)
+      case _                                               => Vector.empty
+
+  private def byteStrings(fun: DefaultFun): Vector[(Int, Bound)] =
+    import DefaultFun.*
+    fun match
       case AppendByteString | EqualsByteString | LessThanByteString | LessThanEqualsByteString =>
         bytes2
       case Sha2_256 | Sha3_256 | Blake2b_256 | Blake2b_224 | Keccak_256 | Ripemd_160 | DecodeUtf8 |
@@ -48,11 +65,8 @@ private[plutus] object UnliftingBounds:
         Vector(1 -> Bound.CByteString)
       case AndByteString | OrByteString | XorByteString =>
         Vector(1 -> Bound.CByteString, 2 -> Bound.CByteString)
-      case ConsByteString =>
-        if variant == BuiltinSemanticsVariant.D then
-          Vector(0 -> Bound.CInteger, 1 -> Bound.CByteString)
-        else Vector(1 -> Bound.CByteString)
-      case _ => Vector.empty
+      case ConsByteString => Vector(1 -> Bound.CByteString)
+      case _              => Vector.empty
 
   /** Whether `value` unlifts as `bound`; a value of another type is left to the builtin's own
     * unlifting.

@@ -5,45 +5,33 @@ import io.circe.{Json, parser}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import munit.FunSuite
-import scalus.cardano.ledger.{Language, MajorProtocolVersion}
-import scalus.uplc.{BuiltinSemanticsVariant, Constant, DeBruijnedProgram, Program, Term}
+import scalus.uplc.{Constant, DeBruijnedProgram, Program, Term}
 import scalus.uplc.eval.{CountingBudgetSpender, Log, RestrictingBudgetSpender}
 import scalus.uplc.DeBruijn
 
-/** All original Plutus 1.70.0.0 evaluation cases, under the upstream executable's term profile:
-  * variant E, saturating counting and `caseBuiltin` including Data. Terms execute directly so BLS
+/** The original evaluation cases of a plutus release, under the upstream executable's term profile:
+  * its semantics variant, saturating counting and its caser. Terms execute directly so BLS
   * constants retain their meaning and cost rather than being rewritten as Flat `uncompress` calls.
   * The machine is the one [[ScalusEvaluator]] builds for a request ([[ScalusEvaluator.corrected]],
-  * [[ScalusEvaluator.CorrectedVm.cek]]): same builtin runtimes, cost model, `case` on built-in
-  * values and tracing flag. Two settings follow the upstream executable (`CekEvaluator.hs` lines
-  * 46-61 at plutus 507cab8c) and differ from the ledger's: the budget is the counting one, and
-  * `case` on `Data` is allowed (`caseBuiltin`, where the ledger's `caseBuiltinNoData` applies from
-  * protocol 11 up to Dijkstra, `Common/Eval.hs` lines 142-146).
-  *
-  * Original malformed-Value Flat sidecars retain decoder coverage where the dependency's text
-  * parser normalises their order. Ledger admission and restricting budgets are separate contracts,
-  * tested by [[PlutusReachabilitySuite]] and the focused profile regressions below. No case is
-  * excluded: successful terms and recorded budgets must equal the unchanged upstream expectations.
+  * [[ScalusEvaluator.CorrectedVm.cek]]). No case is excluded: successful terms and recorded budgets
+  * must equal the unchanged upstream expectations.
   */
-class PlutusConformanceSuite extends FunSuite:
+abstract class PlutusConformanceCorpus(release: PlutusConformanceSuite.Release) extends FunSuite:
   import PlutusConformanceSuite.*
 
   override val munitTimeout = scala.concurrent.duration.Duration(10, "min")
 
-  private val language = PlutusLanguage.V3
-  private val protocol = 11
+  protected val language: PlutusLanguage = release.language
+  protected val protocol: Int = release.protocol
+  private val costModel = release.costModel
 
-  private val reference = PlutusConformanceSuite.reference
+  private val reference = release.view
 
   /** The machine [[ScalusEvaluator]] builds for the request ([[ScalusEvaluator.corrected]]). */
-  private val machine: ScalusEvaluator.CorrectedVm =
-    val variant = BuiltinSemanticsVariant.fromProtocolAndPlutusVersion(
-      MajorProtocolVersion(protocol),
-      Language.fromId(language.id)
-    )
-    assertEquals(variant, BuiltinSemanticsVariant.E)
+  protected val machine: ScalusEvaluator.CorrectedVm =
+    assertEquals(SemanticsVariant.of(language, protocol), release.variant)
     ScalusEvaluator
-      .corrected(language, protocol, costModel)
+      .corrected(language, protocol, costModel, caseOnData = false)
       .fold(failure => fail(failure.message), identity)
 
   private val Unlimited = ExUnits(BigInt(1) << 60, BigInt(1) << 60)
@@ -55,7 +43,7 @@ class PlutusConformanceSuite extends FunSuite:
       case "parse/decode error" | "evaluation failure" => None
       case _                                           => fail(s"budget file: $text")
 
-  private def cases: Vector[Case] =
+  protected def cases: Vector[Case] =
     reference
       .under(Conformance)
       .collect { case (name, _) if name.endsWith(".uplc") => name.stripSuffix(".uplc") }
@@ -76,7 +64,7 @@ class PlutusConformanceSuite extends FunSuite:
       .sortBy(_.id)
 
   /** Runs one case through the evaluator; `None` when it passes, else why not. */
-  private def check(c: Case): Option[String] = c.originalFlat match
+  protected def check(c: Case): Option[String] = c.originalFlat match
     case Some(script) =>
       // Scalus's text parser normalises malformed Value maps. These public corpus literals
       // must reach the decoder as their original ordered Flat entries, before that parser.
@@ -86,7 +74,7 @@ class PlutusConformanceSuite extends FunSuite:
       )
     case None => checkParsed(c)
 
-  private def checkParsed(c: Case, evaluate: Program => Outcome = run): Option[String] =
+  protected def checkParsed(c: Case, evaluate: Program => Outcome = run): Option[String] =
     val parsed = Program.parseUplc(c.program)
     c.expected match
       case "parse/decode error" =>
@@ -141,7 +129,7 @@ class PlutusConformanceSuite extends FunSuite:
       sameTerm(x, y) && cs.size == ds.size && cs.zip(ds).forall(sameTerm.tupled)
     case _ => false
 
-  private enum Outcome:
+  protected enum Outcome:
     case Undecodable(reason: String)
     case Unavailable(reason: String)
     case Failed(spent: ExUnits, reason: String)
@@ -160,7 +148,7 @@ class PlutusConformanceSuite extends FunSuite:
     )
 
   private val step: ExUnits =
-    val machineCosts = json("cekMachineCostsE.json").hcursor
+    val machineCosts = release.json("cekMachineCostsE.json").hcursor
     def cost(key: String, unit: String) =
       machineCosts.downField(key).downField(unit).as[Long].fold(throw _, identity)
     // every step kind costs the same in variant E; the wrapper uses apply, lam and const
@@ -172,7 +160,7 @@ class PlutusConformanceSuite extends FunSuite:
   private def minus(a: ExUnits, steps: Int): ExUnits =
     ExUnits(a.mem - step.mem * steps, a.steps - step.steps * steps)
 
-  private def runLedger(p: Program): Outcome =
+  protected def runLedger(p: Program): Outcome =
     // A free variable cannot be flat-encoded: the reference reports it as a decode error too.
     scala.util.Try((p.cborEncoded, wrapped(p).cborEncoded)) match
       case scala.util.Failure(e) => Outcome.Undecodable(s"cannot encode: ${e.getMessage}")
@@ -223,10 +211,9 @@ class PlutusConformanceSuite extends FunSuite:
 
   /** The upstream executable evaluates terms directly, with no ledger result-unit restriction.
     * CountingBudgetSpender saturates additions as Plutus SatInt does (Scalus 1.3.0 Cek.scala:809).
-    * The explicit Data flag mirrors caseBuiltin, rather than the ledger's caseBuiltinNoData at
-    * PV11.
+    * The Data flag is the release executable's caser ([[PlutusConformanceSuite.Release]]).
     */
-  private def run(p: Program): Outcome =
+  protected def run(p: Program): Outcome =
     scala.util.Try(p.deBruijnedProgram.term) match
       case scala.util.Failure(error) => Outcome.Unavailable(error.toString)
       case scala.util.Success(term) if !closed(List(term -> 0)) =>
@@ -235,7 +222,7 @@ class PlutusConformanceSuite extends FunSuite:
         val spender = CountingBudgetSpender()
         val log = Log()
         def spent = ExUnits(spender.getSpentBudget.memory, spender.getSpentBudget.steps)
-        val cek = machine.cek(spender, log, debug = false, caseOnData = true)
+        val cek = machine.cek(spender, log, debug = false, release.caseOnData(p.version))
         scala.util
           .Try(DeBruijn.fromDeBruijnTerm(cek.evaluateTerm(term)))
           .fold(
@@ -258,7 +245,8 @@ class PlutusConformanceSuite extends FunSuite:
     }
     val failures = results.collect { case (c, Some(why)) => c.id -> why }
     println(
-      s"plutus conformance 1.70.0.0, variant E, ${all.size} cases in ${"%.1f".format(seconds)} s\n" +
+      s"plutus conformance ${release.tag}, variant ${release.variant}, ${all.size} cases in " +
+        s"${"%.1f".format(seconds)} s\n" +
         summary.mkString("\n") +
         s"\n  total: ${all.size - failures.size} passed, ${failures.size} failed"
     )
@@ -286,6 +274,18 @@ class PlutusConformanceSuite extends FunSuite:
     assert(closed(List(deep -> 0)), "closedness walks deep terms without recursive JVM frames")
   }
 
+/** All original Plutus 1.70.0.0 evaluation cases, under the upstream executable's term profile:
+  * variant E, saturating counting and `caseBuiltin` including Data. Two settings follow the
+  * upstream executable (`CekEvaluator.hs` lines 46-61 at plutus 507cab8c) and differ from the
+  * ledger's: the budget is the counting one, and `case` on `Data` is allowed (`caseBuiltin`, where
+  * the ledger's `caseBuiltinNoData` applies from protocol 11 up to Dijkstra, `Common/Eval.hs` lines
+  * 142-146).
+  *
+  * Original malformed-Value Flat sidecars retain decoder coverage where the dependency's text
+  * parser normalises their order. Ledger admission and restricting budgets are separate contracts,
+  * tested by [[PlutusReachabilitySuite]] and the focused profile regressions below.
+  */
+class PlutusConformanceSuite extends PlutusConformanceCorpus(PlutusConformanceSuite.Release.V170):
   test("direct BLS constants, saturating counts and Data cases repair the original harness") {
     val all = cases
     val bls = all.filter(c => c.id.startsWith("builtin/parser/bls12-381/") && c.budget.nonEmpty)
@@ -323,24 +323,70 @@ class PlutusConformanceSuite extends FunSuite:
   }
 
 object PlutusConformanceSuite:
-  /** The reference data of the release whose cases the suite runs. */
-  def reference: PlutusReference.View = PlutusReference.view(PlutusRelease.Plutus1_70)
-
   /** The conformance cases' directory in a [[PlutusReference.View]]. */
   val Conformance = "conformance"
 
-  /** A file of the release's `cost-model` or `ledger-api` data, by its name. */
-  def resource(name: String): String =
-    reference.read(
-      Vector(s"cost-model/$name", s"ledger-api/$name").find(reference.contains).getOrElse(name)
+  /** A plutus release's reference data and the profile of its conformance executable.
+    *
+    * @param caseOnData
+    *   the executable's caser for a program of this version: `caseBuiltin` at 1.70.0.0
+    *   (`CekEvaluator.hs:46-61`, 507cab8c), `defaultCaserBuiltinFor newestPV` at 1.71.0.0
+    *   (`CekEvaluator.hs:47-61`, 261766ad), which is the ledger's rule at protocol 12
+    */
+  final case class Release(
+      reference: PlutusRelease,
+      language: PlutusLanguage,
+      protocol: Int,
+      variant: SemanticsVariant,
+      caseOnData: ((Int, Int, Int)) => Boolean
+  ):
+    def tag: String = reference.tag
+
+    def view: PlutusReference.View = PlutusReference.view(reference)
+
+    /** A file of the release's `cost-model` or `ledger-api` data, by its name. */
+    def resource(name: String): String =
+      view.read(
+        Vector(s"cost-model/$name", s"ledger-api/$name").find(view.contains).getOrElse(name)
+      )
+
+    def json(name: String): Json = parser.parse(resource(name)).fold(throw _, identity)
+
+    /** The variant E on-chain parameters of PlutusV3, valued from the plutus JSON files. */
+    lazy val costModel: Vector[Long] = costModelOf(this)
+
+  object Release:
+    val V170: Release = Release(
+      PlutusRelease.Plutus1_70,
+      PlutusLanguage.V3,
+      11,
+      SemanticsVariant.E,
+      _ => true
     )
 
-  def json(name: String): Json = parser.parse(resource(name)).fold(throw _, identity)
+    /** The executable runs at `newestPV`, 12, in the default variant, `maxBound`: G. The cases run
+      * as PlutusV4, which the ledger evaluates in PlutusV3's evaluation context.
+      */
+    val V171: Release = Release(
+      PlutusRelease.Plutus1_71,
+      PlutusLanguage.V4,
+      12,
+      SemanticsVariant.G,
+      PlutusAvailability.caseOnData(12, _)
+    )
 
-  /** The variant E on-chain parameters of the language, valued from the plutus JSON files. */
-  lazy val costModel: Vector[Long] =
-    val builtins = json("builtinCostModelE.json")
-    val machine = json("cekMachineCostsE.json")
+  /** The reference data of the 1.70.0.0 release, whose cases [[PlutusConformanceSuite]] runs. */
+  def reference: PlutusReference.View = Release.V170.view
+
+  def resource(name: String): String = Release.V170.resource(name)
+
+  def json(name: String): Json = Release.V170.json(name)
+
+  lazy val costModel: Vector[Long] = Release.V170.costModel
+
+  private def costModelOf(release: Release): Vector[Long] =
+    val builtins = release.json("builtinCostModelE.json")
+    val machine = release.json("cekMachineCostsE.json")
     def valueOf(name: String): Option[Long] =
       val path = name.split('\'').toVector
       val head = s"${path.head.head.toLower}${path.head.tail}"
@@ -353,14 +399,16 @@ object PlutusConformanceSuite:
         .flatten
         .flatMap(_.asNumber)
         .flatMap(_.toLong)
-    resource(s"V${PlutusLanguage.V3.id + 1}-param-names.txt").linesIterator
+    release
+      .resource(s"V${PlutusLanguage.V3.id + 1}-param-names.txt")
+      .linesIterator
       .filter(_.nonEmpty)
       .map(valueOf)
       .takeWhile(_.isDefined)
       .map(_.get)
       .toVector
 
-  private final case class Case(
+  final case class Case(
       id: String,
       program: String,
       expected: String,
@@ -369,7 +417,7 @@ object PlutusConformanceSuite:
   )
 
   /** `builtin/semantics`, `builtin/parser`, `term`, ... */
-  private def category(id: String): String =
+  private[plutus] def category(id: String): String =
     id.split('/').take(if id.startsWith("builtin/") then 2 else 1).mkString("/")
 
-  extension (e: ExUnits) private def show: String = s"cpu ${e.steps}, mem ${e.mem}"
+  extension (e: ExUnits) private[plutus] def show: String = s"cpu ${e.steps}, mem ${e.mem}"
