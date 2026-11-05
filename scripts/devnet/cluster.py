@@ -31,6 +31,11 @@ def up(args):
     start_reference(args.name)
     in_ref(args.name, f"cardano-testnet create-env --num-pool-nodes 3 --testnet-magic {MAGIC} "
                       f"--output {ENV} > /work/create-env.log 2>&1")
+    major = getattr(args, "protocol_major", None)
+    if major is not None:
+        genesis = read_json(args.name, f"{ENV}/shelley-genesis.json")
+        genesis["protocolParams"]["protocolVersion"] = {"major": major, "minor": 0}
+        put_file(args.name, f"{ENV}/shelley-genesis.json", json.dumps(genesis, indent=2))
     ports = {n: int(in_ref(args.name, f"cat {ENV}/node-data/node{n}/port").stdout) for n in (1, 2, 3)}
     (root / "ports.json").write_text(json.dumps(ports))
     docker("exec", "-d", ref(args.name), "/bin/sh", "-c",
@@ -40,6 +45,9 @@ def up(args):
         try:
             tip = query(args.name, "tip")
             if tip.get("block", 0) > 0:
+                observed = query(args.name, "protocol-parameters")["protocolVersion"]["major"]
+                if major is not None and observed != major:
+                    raise SystemExit(f"requested protocol {major}, reference started at {observed}")
                 # Copy genesis only now: starting the cluster rewrites systemStart. Bytes must be
                 # exact because the initial Praos nonce is the hash of the Shelley genesis file.
                 for f in ["shelley-genesis.json", "byron-genesis.json", "alonzo-genesis.json",

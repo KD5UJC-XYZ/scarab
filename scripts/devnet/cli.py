@@ -123,7 +123,10 @@ def main():
                                help="fail when the Scala node logged more cats-effect CPU-starvation warnings than this "
                                     "(default: only report them)")
     sub = p.add_subparsers(dest="command", required=True)
-    sub.add_parser("up", help="create genesis and start the 3-pool reference cluster").set_defaults(run=up)
+    plain_up = sub.add_parser("up", help="create genesis and start the 3-pool reference cluster")
+    plain_up.add_argument("--protocol-major", type=int, choices=(9, 10, 11),
+                          help="Conway genesis protocol major (default: reference create-env default)")
+    plain_up.set_defaults(run=up)
     def eras_options():
         # a fresh parser each time: `set_defaults` of the e2e subparser would otherwise change the shared
         # actions' defaults and turn the plain up-eras defaults into the e2e ones
