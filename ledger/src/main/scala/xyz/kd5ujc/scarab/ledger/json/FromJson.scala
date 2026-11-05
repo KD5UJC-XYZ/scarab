@@ -72,7 +72,8 @@ enum NumberError extends DomainError:
 
   /** Text for logs, modelled on aeson's messages (`Data/Aeson/Types/FromJSON.hs:194-212, 537-543,
     * 799-810, 918-921, 1708-1724`) and cardano-ledger's `failWith` (`BaseTypes.hs:464-465`); the
-    * cases, not the wording, are what mirror the reference.
+    * cases retain typed causes. Reference-facing presentation follows the exact diagnostic
+    * contract of ADR 0001; a finite parser corpus does not waive remaining wording parity.
     */
   def message: String = this match
     case TypeMismatch(found) => s"expected Number, but encountered $found"

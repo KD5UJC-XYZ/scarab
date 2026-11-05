@@ -120,8 +120,8 @@
       "observations": [
         "fixtures/reference/ouroboros-network-protocol-codecs/COVERAGE.md"
       ],
-      "evidence": "Wire round trips alone do not establish that a locally generated decoder/agreement error uses the native refusal text.",
-      "resolution": "Map every locally generated refusalText producer to its pinned native branch and compare full emitted bytes/text, keeping peer-supplied text as original input."
+      "evidence": "Handshake.cardanoProfile.refusalText delegates to ProtocolError.message and emits it in WireReason.DecodeError/Refused. Existing generic mock-domain text controls do not compare actual Cardano decoder/agreement text.",
+      "resolution": "Implement source-verified typed VersionData errors, native record/CBOR-Term Show and check order; remove unapproved local caps that prevent native messages; compare complete native rejection bytes/text at the active pin."
     },
     {
       "id": "native-system-trace",
@@ -139,8 +139,8 @@
         "network/src/test/scala/xyz/kd5ujc/scarab/network/SystemErrorSuite.scala"
       ],
       "observations": [],
-      "evidence": "Existing finite SystemError controls and shared scalar escaping establish their stated scope, not every OS exception variant.",
-      "resolution": "Prove every generated native error payload mapping under the same OS/compiler inputs; retain existing separately approved logging-envelope decisions."
+      "evidence": "SystemError.ofNumber and ErrnoCause.Unrecognised currently retain non-native provider fallbacks; inline captured strings lack a retained observation manifest. Native content in NodeEvent must be distinguished from approved custom envelopes.",
+      "resolution": "Implement complete native errno/category text and retain source/image/actual stderr observations. An unknown provider defect cannot masquerade as a native operating-system error."
     },
     {
       "id": "praos2-header",
@@ -148,7 +148,7 @@
       "state": "incomplete",
       "scope": "Native Praos2 refusal constructor/domain fields and corresponding diagnostic presentation.",
       "sources": [
-        "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/HeaderRules.scala"
+        "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos2.scala"
       ],
       "native": [
         "ouroboros-consensus rc-2026w44 pins from fixtures/reference/leios-praos2/provenance.json"
@@ -159,7 +159,7 @@
       "observations": [
         "fixtures/reference/leios-praos2/README.md"
       ],
-      "evidence": "The retained native header corpus compares constructor/domain arguments; full native diagnostic text is not yet a comparison.",
+      "evidence": "Praos2.check returns typed errors; the retained API suite compares constructor/domain arguments. There is no main-source presentation consumer, so native API error presentation must be added without claiming full Dijkstra node integration.",
       "resolution": "Complete full native header error presentation or prove its supported exposure boundary; no constructor projection is full text parity."
     },
     {
@@ -249,8 +249,8 @@
     },
     {
       "id": "generator-diagnostics",
-      "use": "needs-exposure-proof",
-      "state": "incomplete",
+      "use": "scarab-diagnostic",
+      "state": "no-native-counterpart",
       "scope": "Scarab CDDL/schema generation and its own tool failures; no native node command is implemented here.",
       "sources": [
         "models-gen/src/main/scala/xyz/kd5ujc/scarab/models/gen/CddlParser.scala"
@@ -258,8 +258,27 @@
       "native": [],
       "tests": [],
       "observations": [],
-      "evidence": "These are discovered producer candidates, not exclusions. The source symbol catalog is exhaustive for the documented lexical discovery rules; real native exposure requires call-site/source and independent boundary evidence.",
-      "resolution": "Resolve each candidate through an explicit reference-facing consumer or a demonstrated Scarab-only interface; retain typed service defects without invented native refusals."
+      "evidence": "The models-gen module generates Scarab Scala schemas through its own Main and Emitter. Its generation/parser tooling is not a cardano-node command or mirrored network/ledger refusal interface; docs/models.md documents this toolchain.",
+      "resolution": "Keep generator failures typed; a future reference-facing consumer requires a new native boundary mapping instead of inheriting this tool-only classification."
+    },
+    {
+      "id": "genesis-startup",
+      "use": "native-cli",
+      "state": "incomplete",
+      "scope": "Native genesis JSON/parser/domain error payloads and protocol-startup presentation for supported node configurations.",
+      "sources": [
+        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ConfigProblem.scala",
+        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/FromJson.scala",
+        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/GenesisPoolFields.scala",
+        "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/GenesisConfig.scala"
+      ],
+      "native": [
+        "cardano-node11.1.3:Cardano/Node/Protocol/Shelley.hs and protocol genesis-read errors; aeson parser path/error presentation"
+      ],
+      "tests": [],
+      "observations": [],
+      "evidence": "Current startup errors embed Circe text and custom field wording. Native lexical/parser and genesis error envelope need source verification and retained startup-stderr controls; dynamic program name is an input, not a blanket wording waiver.",
+      "resolution": "Use native JSON diagnostics and typed aeson path/domain failures at the startup presentation boundary; compare controlled original malformed inputs and native stderr without changing validation or inventing native failures."
     }
   ],
   "nativeFamilies": [
@@ -466,6 +485,171 @@
         "DefaultUniValue": []
       },
       "constructorDigest": "be5eb279e03934917ddd0a6f3b6a5147419f16a35426da35c23c627326541d60"
+    },
+    {
+      "family": "ErrorWithCause",
+      "source": "plutus-core/plutus-core/src/PlutusCore/Evaluation/ErrorWithCause.hs",
+      "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+      "sourceSha256": "5ec737c9edf58d8e67144dd31d66f305abcc7407fc042b0422059360e1a934a7",
+      "line": 24,
+      "constructors": [
+        "ErrorWithCause"
+      ],
+      "state": "incomplete",
+      "scalaMapping": {
+        "ErrorWithCause": null
+      },
+      "oracleCases": {
+        "ErrorWithCause": []
+      },
+      "constructorDigest": "3e0eeb2b5af62e9cec8dd9d2386a465087dae398641bfc2d37405823655365e3"
+    },
+    {
+      "family": "StructuralOperationalEvaluationError",
+      "source": "plutus-core/plutus-core/src/PlutusCore/Evaluation/Error.hs",
+      "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+      "sourceSha256": "6b5d8035b535264fc133af41782ec5d03ea7baa40ebd0736db9367dc0e14c456",
+      "line": 43,
+      "constructors": [
+        "StructuralError",
+        "OperationalError"
+      ],
+      "state": "incomplete",
+      "scalaMapping": {
+        "StructuralError": null,
+        "OperationalError": null
+      },
+      "oracleCases": {
+        "StructuralError": [],
+        "OperationalError": []
+      },
+      "constructorDigest": "2373834bc06ce2c280f9b0734f5dd44e9f1bc05b8dfa953e9b6952ec2dd2e2bd"
+    },
+    {
+      "family": "UnliftingError",
+      "source": "plutus-core/plutus-core/src/PlutusCore/Builtin/Result.hs",
+      "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+      "sourceSha256": "79f8202a565a883bfc7e5aa033228d0243b214cbbe982c0450202d32b97a663e",
+      "line": 39,
+      "constructors": [
+        "MkUnliftingError"
+      ],
+      "state": "incomplete",
+      "scalaMapping": {
+        "MkUnliftingError": null
+      },
+      "oracleCases": {
+        "MkUnliftingError": []
+      },
+      "constructorDigest": "447b25253f60537292f85faeabe38028a42e0a6c574443f3533b7537f94052b3"
+    },
+    {
+      "family": "BuiltinError",
+      "source": "plutus-core/plutus-core/src/PlutusCore/Builtin/Result.hs",
+      "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+      "sourceSha256": "79f8202a565a883bfc7e5aa033228d0243b214cbbe982c0450202d32b97a663e",
+      "line": 53,
+      "constructors": [
+        "BuiltinUnliftingEvaluationError",
+        "BuiltinEvaluationFailure"
+      ],
+      "state": "incomplete",
+      "scalaMapping": {
+        "BuiltinUnliftingEvaluationError": null,
+        "BuiltinEvaluationFailure": null
+      },
+      "oracleCases": {
+        "BuiltinUnliftingEvaluationError": [],
+        "BuiltinEvaluationFailure": []
+      },
+      "constructorDigest": "1a26f02cb42e4bb3977899a5b055079169691a1b454ed35d4a4f6d4a7682af1a"
+    },
+    {
+      "family": "Term",
+      "source": "plutus-core/untyped-plutus-core/src/UntypedPlutusCore/Core/Type.hs",
+      "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+      "sourceSha256": "902bb51a5ba193a5f7947b08c9b61d1632b358ddb9ac0bb7996841d51576f275",
+      "line": 88,
+      "constructors": [
+        "Var",
+        "LamAbs",
+        "Apply",
+        "Delay",
+        "Force",
+        "Constant",
+        "Builtin",
+        "Error",
+        "Constr",
+        "Case"
+      ],
+      "state": "incomplete",
+      "scalaMapping": {
+        "Var": null,
+        "LamAbs": null,
+        "Apply": null,
+        "Delay": null,
+        "Force": null,
+        "Constant": null,
+        "Builtin": null,
+        "Error": null,
+        "Constr": null,
+        "Case": null
+      },
+      "oracleCases": {
+        "Var": [],
+        "LamAbs": [],
+        "Apply": [],
+        "Delay": [],
+        "Force": [],
+        "Constant": [],
+        "Builtin": [],
+        "Error": [],
+        "Constr": [],
+        "Case": []
+      },
+      "constructorDigest": "113dcc3aff0cda9d2f5317b4630bc2fdcdd71e92925a0101f1948bc28cc1e76b"
+    },
+    {
+      "family": "DeserialiseFailureInfo",
+      "source": "plutus-core/plutus-core/src/Codec/Extras/SerialiseViaFlat.hs",
+      "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+      "sourceSha256": "0ed6622daa30737f5691f78056e3ff25538eab7e9c249273df180ca297b37d0c",
+      "line": 61,
+      "constructors": [
+        "DeserialiseFailureInfo"
+      ],
+      "state": "incomplete",
+      "scalaMapping": {
+        "DeserialiseFailureInfo": null
+      },
+      "oracleCases": {
+        "DeserialiseFailureInfo": []
+      },
+      "constructorDigest": "8def498cbae3e1616b4cc1af9315177bee77ce887530b33ebde988ece305361d"
+    },
+    {
+      "family": "DeserialiseFailureReason",
+      "source": "plutus-core/plutus-core/src/Codec/Extras/SerialiseViaFlat.hs",
+      "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+      "sourceSha256": "0ed6622daa30737f5691f78056e3ff25538eab7e9c249273df180ca297b37d0c",
+      "line": 75,
+      "constructors": [
+        "EndOfInput",
+        "ExpectedBytes",
+        "OtherReason"
+      ],
+      "state": "incomplete",
+      "scalaMapping": {
+        "EndOfInput": null,
+        "ExpectedBytes": null,
+        "OtherReason": null
+      },
+      "oracleCases": {
+        "EndOfInput": [],
+        "ExpectedBytes": [],
+        "OtherReason": []
+      },
+      "constructorDigest": "90dcefa6c6ae226f6b6df00ab0eb2539ca4849c78048181b4395fcd902a35b89"
     }
   ],
   "producers": [
