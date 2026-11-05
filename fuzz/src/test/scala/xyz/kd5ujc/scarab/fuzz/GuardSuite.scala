@@ -144,6 +144,15 @@ class GuardSuite extends ScalaCheckSuite:
       assert(after > before, s"pinned upstream fixture seeds were not accepted by $name")
   }
 
+  test("wide streamed ChainSync requests keep the target within its linear allocation budget") {
+    val target = Targets.all
+      .find(_.name == "chainsync-ntc-streamed")
+      .getOrElse(fail("missing streamed request target"))
+    // The trailing bytes make the content-derived chunk size one, exercising the most fragments.
+    val input = hex("82049f" + "80" * 50000 + "ff810714")
+    target.check(input)
+  }
+
   test("previously missing imported CDDL modules supply every constructor without dropped seeds") {
     val rules = Vector(
       "chainsync-header:header" -> (0 to 7).toSet,

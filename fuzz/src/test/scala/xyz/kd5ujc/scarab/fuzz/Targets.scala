@@ -161,6 +161,69 @@ object Targets:
     require(state != null)
     forward ++ largeIntersectionSeeds ++ netCorpus("chain-sync:chainSyncMessage")()
 
+  private val chainSyncRequestSeeds: () => Vector[Array[Byte]] = () =>
+    val literals = Vector(
+      "8100",
+      "8107",
+      "820480",
+      "82049f80ff",
+      "8204828082005820" + "ab" * 32,
+      "82049f82005820" + "ab" * 32 + "80ff8107",
+      "82049f8000ff",
+      "82049b0000000080000000",
+      "82049b8000000000000000",
+      "82049f82005b0000000080000000",
+      "82049f82005821" + "ab" * 33
+    ).map(value => Bytes.fromHex(value).fold(e => throw new Violation(e.toString), _.toArray))
+    literals ++ largeIntersectionSeeds ++ netCorpus("chain-sync:chainSyncMessage")()
+
+  /** Replay distinct chunks while releasing every consumed prefix, as Mux.recvStreaming does.
+    * Slices of the fuzz input avoid making the harness itself quadratic when a token is incomplete.
+    */
+  private def streamedRequest(bytes: Bytes, chunk: Int): DecodeResult[ChainSyncRequest[Point]] =
+    val decoder = ChainSyncRequest.decoder
+    @tailrec def feed(
+        at: Int,
+        end: Int,
+        cursor: decoder.Cursor
+    ): DecodeResult[ChainSyncRequest[Point]] =
+      val held = bytes.slice(at, end)
+      decoder.resume(cursor, held) match
+        case StreamingDecoder.Step.Failed(error) => DecodeResult.Failed(error)
+        case StreamingDecoder.Step.Done(value, consumed) =>
+          req(
+            consumed >= 0 && consumed <= held.size,
+            s"stream consumed $consumed of ${held.size} bytes"
+          )
+          DecodeResult.Decoded(value, at + consumed)
+        case StreamingDecoder.Step.More(next, consumed) =>
+          req(
+            consumed >= 0 && consumed <= held.size,
+            s"continuation consumed $consumed of ${held.size} bytes"
+          )
+          if end == bytes.size then DecodeResult.NeedMore
+          else feed(at + consumed, end + (bytes.size - end).min(chunk), next)
+    feed(0, 0, decoder.initial)
+
+  private def bufferedRequest(bytes: Bytes): DecodeResult[ChainSyncRequest[Point]] =
+    ChainSync.decodePrefix(
+      ChainSync.State.Idle,
+      ChainSync.Role.Client,
+      bytes,
+      anyItem,
+      ChainSync.Limits.NodeToClient
+    ) match
+      case DecodeResult.NeedMore      => DecodeResult.NeedMore
+      case DecodeResult.Failed(error) => DecodeResult.Failed(error)
+      case DecodeResult.Decoded(message, consumed) =>
+        val request = message match
+          case ChainSync.Message.RequestNext => ChainSyncRequest.RequestNext
+          case ChainSync.Message.Done        => ChainSyncRequest.Done
+          case ChainSync.Message.FindIntersect(points) =>
+            ChainSyncRequest.FindIntersect(cats.data.Chain.fromSeq(points))
+          case other => throw new Violation(s"idle client decoded unexpected $other")
+        DecodeResult.Decoded(request, consumed)
+
   private val blockFetchSeeds: () => Vector[Array[Byte]] = () =>
     val blocks = Corpus.blocks.take(12).flatMap { b =>
       BlockFetch
@@ -677,6 +740,38 @@ object Targets:
           ) ++ chainSyncSeeds(),
       (s, r, b) => ChainSync.decodePrefix(s, r, b, anyItem, ChainSync.Limits.NodeToClient),
       (s, r, m) => ChainSync.encode(s, r, m, anyItem, ChainSync.Limits.NodeToClient)
+    ),
+    Target(
+      "chainsync-ntc-streamed",
+      chainSyncRequestSeeds,
+      probe("chainsync-ntc-streamed") { bytes =>
+        val expected = bufferedRequest(bytes)
+        val chunk = 1 + bytes.foldLeft(0)((sum, byte) => (sum + (byte & 0xff)) & 63)
+        expected match
+          case DecodeResult.Decoded(request, consumed) =>
+            hit("chainsync-ntc-streamed")
+            req(
+              consumed > 0 && consumed <= bytes.size,
+              s"request consumed $consumed of ${bytes.size}"
+            )
+            val done = Bytes.wrap(Array(0x81.toByte, 7.toByte))
+            val coalesced = bytes.take(consumed) ++ done
+            val first = streamedRequest(coalesced, chunk)
+            req(
+              first == DecodeResult.Decoded(request, consumed),
+              "a following Done changes request consumption"
+            )
+            req(
+              ChainSyncRequest.decoder.decodePrefix(coalesced.drop(consumed)) == DecodeResult
+                .Decoded(ChainSyncRequest.Done, done.size),
+              "the coalesced suffix does not decode with a fresh cursor"
+            )
+          case _ =>
+            req(
+              streamedRequest(bytes, chunk) == expected,
+              s"$chunk-byte chunks differ from buffered rejection or incompleteness"
+            )
+      }
     ),
     roundTrip(
       "chainsync-engine-opaque",
