@@ -13,7 +13,8 @@ private[ntc] object PlutusFailureCbor:
   def context(request: EvalRequest): Bytes = CborOut.build { w =>
     w.array(5).uint(request.protocolMajor)
     w.array(2).uint(request.language.id).bytes(request.script)
-    if request.language != PlutusLanguage.V3 then w.array(request.args.size)
+    // PlutusV3 and PlutusV4 arguments are one script context, not a list
+    if request.language.evaluatedAs != PlutusLanguage.V3 then w.array(request.args.size)
     request.args.foreach(arg =>
       w.raw(Bytes.fromArray(DataSerialiser.serialise(ScalusEvaluator.toData(arg))))
     )

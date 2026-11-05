@@ -29,7 +29,7 @@ class PlutusBoundaryOracleSuite extends FunSuite:
       .toSet
     val expected = (for
       probe <- PlutusBoundaryCorpus.probes
-      language <- PlutusLanguage.values
+      language <- PlutusLanguage.values.filterNot(_ == PlutusLanguage.V4)
       protocol <- 9 to 11
     yield (probe.id, language.id + 1, protocol)).toSet
     assertEquals(actual, expected)

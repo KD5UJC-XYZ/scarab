@@ -8,7 +8,8 @@ import scalus.cardano.ledger.CardanoInfo
 import scalus.uplc.{DefaultFun, Program, Term}
 
 /** The builtin availability table against `plutus-ledger-api` 1.70.0.0 (`Spec.Versions`,
-  * `testPermittedBuiltins`), and the decoder and the evaluator applying it to real scripts.
+  * `testPermittedBuiltins`) and, from protocol 12, 1.71.0.0, and the decoder and the evaluator
+  * applying it to real scripts.
   */
 class PlutusAvailabilitySuite extends FunSuite:
   import PlutusAvailability.*
@@ -40,7 +41,8 @@ class PlutusAvailabilitySuite extends FunSuite:
     (PlutusLanguage.V3, 9, b1 ++ b2 ++ b3 ++ b4a ++ b4b),
     (PlutusLanguage.V3, 10, b1 ++ b2 ++ b3 ++ b4a ++ b4b ++ b5),
     (PlutusLanguage.V3, 11, all),
-    (PlutusLanguage.V3, 12, all)
+    (PlutusLanguage.V3, 12, all),
+    (PlutusLanguage.V4, 12, all)
   )
 
   test("the batches are disjoint and together are every builtin Scalus knows") {
@@ -60,7 +62,8 @@ class PlutusAvailabilitySuite extends FunSuite:
       (language, intro) <- Seq(
         PlutusLanguage.V1 -> 5,
         PlutusLanguage.V2 -> 7,
-        PlutusLanguage.V3 -> 9
+        PlutusLanguage.V3 -> 9,
+        PlutusLanguage.V4 -> 12
       )
       pv <- 2 until intro
     do assert(decodeFailure(language, pv, Set(DefaultFun.AddInteger)).isDefined, s"$language @ $pv")
@@ -96,6 +99,56 @@ class PlutusAvailabilitySuite extends FunSuite:
     assertEquals(programVersionsAvailableIn(PlutusLanguage.V2, 11), Set((1, 0, 0), (1, 1, 0)))
     assertEquals(programVersionsAvailableIn(PlutusLanguage.V3, 9), Set((1, 0, 0), (1, 1, 0)))
     assertEquals(programVersionsAvailableIn(PlutusLanguage.V3, 8), Set.empty)
+  }
+
+  test(
+    "UPLC program version 1.2.0 is every language's from protocol 12, and PlutusV4's only then"
+  ) {
+    val upTo110 = Set((1, 0, 0), (1, 1, 0))
+    Seq(PlutusLanguage.V1, PlutusLanguage.V2, PlutusLanguage.V3).foreach { language =>
+      assertEquals(programVersionsAvailableIn(language, 11), upTo110, s"$language @ 11")
+      assertEquals(
+        versionFailure(language, 11, (1, 2, 0)),
+        Some(Failure.VersionUnavailable((1, 2, 0), language, 11))
+      )
+      assertEquals(programVersionsAvailableIn(language, 12), upTo110 + ((1, 2, 0)))
+    }
+    assertEquals(programVersionsAvailableIn(PlutusLanguage.V4, 12), upTo110 + ((1, 2, 0)))
+    assertEquals(
+      decodeFailure(PlutusLanguage.V4, 11, Set(DefaultFun.AddInteger)),
+      Some(Failure.LanguageUnavailable(PlutusLanguage.V4, 11))
+    )
+    assertEquals(decodeFailure(PlutusLanguage.V4, 12, all), None)
+  }
+
+  test("case on Data: from protocol 12, for programs of version 1.2.0 or later only") {
+    assert(!caseOnData(11, (1, 2, 0)))
+    assert(!caseOnData(12, (1, 1, 0)))
+    assert(caseOnData(12, (1, 2, 0)))
+    assert(caseOnData(13, (1, 2, 0)))
+  }
+
+  test("the semantics variants by language and protocol version (MachineParameters.hs, 1.71)") {
+    import SemanticsVariant.*
+    val table = Seq(
+      (PlutusLanguage.V1, 8, A),
+      (PlutusLanguage.V1, 9, B),
+      (PlutusLanguage.V2, 10, B),
+      (PlutusLanguage.V2, 11, D),
+      (PlutusLanguage.V1, 12, F),
+      (PlutusLanguage.V2, 12, F),
+      (PlutusLanguage.V3, 10, C),
+      (PlutusLanguage.V3, 11, E),
+      (PlutusLanguage.V3, 12, G),
+      (PlutusLanguage.V4, 12, G)
+    )
+    table.foreach((language, pv, variant) =>
+      assertEquals(SemanticsVariant.of(language, pv), variant, s"$language @ $pv")
+    )
+    assertEquals(F.scalus, D.scalus)
+    assertEquals(G.scalus, E.scalus)
+    assertEquals(SemanticsVariant.values.filter(_.boundsIntegers).toSet, Set(D, E))
+    assertEquals(SemanticsVariant.values.filter(_.boundsByteStrings).toSet, Set(D, E, F, G))
   }
 
   // --- real scripts ---------------------------------------------------------------------------
