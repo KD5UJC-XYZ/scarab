@@ -29,7 +29,7 @@ CBOR with original bytes, exact rationals.
 
 | Package | Responsibility | Entry points | Suites | Decisions |
 |---|---|---|---|---|
-| codec | CBOR with original-bytes preservation, document index, exact rationals, base domain error | `Cbor`, `Value`, `Document`, `Tree`, `TreeFold`, `Interns`, `Rational` | `CborSuite`, `IndexedNodeSuite`, `InternsSuite`, `RationalSuite`, `DomainErrorContractSuite` | [ADR 0005](adr/0005-cbor-codec-and-scodec.md), [ADR 0013](adr/0013-cbor-documents-are-an-index-over-the-input.md), [ADR 0011](adr/0011-stack-safety.md) |
+| codec | CBOR with original-bytes preservation, document index, exact rationals, base domain error | `Cbor`, `Value`, `Document`, `Tree`, `TreeFold`, `Interns`, `Rational`, `ChunkedBytes` | `CborSuite`, `IndexedNodeSuite`, `InternsSuite`, `RationalSuite`, `ChunkedBytesSuite`, `DomainErrorContractSuite` | [ADR 0005](adr/0005-cbor-codec-and-scodec.md), [ADR 0013](adr/0013-cbor-documents-are-an-index-over-the-input.md), [ADR 0011](adr/0011-stack-safety.md), [design chunked-bytes](design/chunked-bytes.md) |
 
 ## crypto
 

@@ -42,19 +42,22 @@
         "Tree",
         "TreeFold",
         "Interns",
-        "Rational"
+        "Rational",
+        "ChunkedBytes"
       ],
       "suites": [
         "CborSuite",
         "IndexedNodeSuite",
         "InternsSuite",
         "RationalSuite",
+        "ChunkedBytesSuite",
         "DomainErrorContractSuite"
       ],
       "docs": [
         "docs/adr/0005-cbor-codec-and-scodec.md",
         "docs/adr/0013-cbor-documents-are-an-index-over-the-input.md",
-        "docs/adr/0011-stack-safety.md"
+        "docs/adr/0011-stack-safety.md",
+        "docs/design/chunked-bytes.md"
       ]
     },
     {
