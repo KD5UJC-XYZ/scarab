@@ -104,11 +104,17 @@ object CardanoBlockFetch:
       }
       def decode(bytes: Bytes): Either[ProtocolError, RawNtNBlock] = attempt {
         val reader = new ChainSyncWire.Reader(bytes, ChainSync.Limits.NodeToClient)
-        if reader.tag() != 24 then bad(ProtocolError.ExpectedSerializedBlockTag24)
-        val block = localBlock(reader.bytes(Int.MaxValue))
+        val block = readFrom(reader)
         if reader.position != bytes.size then bad(ProtocolError.TrailingSerializedBlockBytes)
         block
       }
+      override private[protocol] def readFrom(reader: ProtocolWire.Reader)(using
+          ProtocolWire.Scope
+      ): RawNtNBlock =
+        // Serialised.decode checks the tag before requesting the byte string, and decodeBytes
+        // refuses an indefinite string before any chunks (network 2fb69829, Block.hs:501-504).
+        if reader.tag() != 24 then bad(ProtocolError.ExpectedSerializedBlockTag24)
+        localBlock(reader.bytes(Int.MaxValue))
 
   /** Default leaves room for the nine-byte canonical Block message wrapper. */
   final case class RawLimits(maxRawBytes: Int = 2499991):

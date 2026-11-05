@@ -104,6 +104,19 @@ case("opaque point canonical output crosses NtN receive limit", bytes.fromhex("8
      b"\x00", 65529, kind="opaque")
 case("NtC opaque RawBlock beyond 2.5 MB", b"\x83\x02\xd8\x18" + c.head(2, 2600000),
      b"\x00", 2600000, b"\x82\x80\x00", transport="ntc", kind="block")
+for name, raw in [
+    ("missing tag", "8302"),
+    ("wrong tag without its body", "8302d819"),
+    ("wrong tag before an incomplete array", "8302d8199a80000000"),
+    ("correct tag without a byte-string head", "8302d818"),
+    ("indefinite byte string without its break", "8302d8185f"),
+    ("array in place of bytes without its contents", "8302d8189a80000000"),
+    ("definite byte string without its contents", "8302d81841"),
+    ("complete empty payload without its tip", "8302d81840"),
+    ("complete payload with an invalid tip", "8302d8184100f6"),
+]:
+    case("NtC serialized block: " + name, bytes.fromhex(raw), transport="ntc", kind="serialised-prefix")
+case("NtC complete empty serialized block", bytes.fromhex("8302d81840828000"), transport="ntc", kind="block")
 for count, kind in [(65, "point"), (1025, "point"), (70000, "point"), (65536, "origin")]:
     CASES.append({"name": f"encode {count} {kind}s", "kind": "encode", "count": count, "pointKind": kind})
 

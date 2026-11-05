@@ -17,8 +17,9 @@ This is the plain driver used by consensus's NtC server
 budget. NtN's separate limited receive driver is not exercised; cases marked NtN fit its 65535-byte
 bound. Direct outgoing cases invoke native codec encoding without a receive-size policy.
 
-Incomplete declarations run the incremental codec with one input chunk and no EOF, distinguishing
-`DecodePartial` from refusal. Opaque blocks use the native `Serialised` instance (tag 24 and a byte
+Incremental prefixes run the codec with one input chunk and no EOF, distinguishing `DecodePartial`
+from refusal, including a wrong serialized-block tag or payload type before missing contents.
+Opaque blocks use the native `Serialised` instance (tag 24 and a byte
 string), preserving the block contents without interpreting them. Selection cases use the native
 anchored fragment implementation plus consensus's exact `mkOffsets` body with its wrapper types
 removed and the exact Double/Binet `fib` implementation (`Client.hs:2039-2043`, `Util.hs:443-449`).

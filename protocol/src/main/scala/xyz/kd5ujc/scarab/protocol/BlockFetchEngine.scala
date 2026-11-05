@@ -42,7 +42,9 @@ object BlockFetchEngine:
 
   /** Payloads are opaque to the protocol state machine; codecs own one complete CBOR item. */
   trait PayloadCodec[B] extends ChainSync.PayloadCodec[B]:
-    private[protocol] def readFrom(reader: ProtocolWire.Reader)(using ProtocolWire.Scope): B =
+    override private[protocol] def readFrom(reader: ProtocolWire.Reader)(using
+        ProtocolWire.Scope
+    ): B =
       get(this.decode(reader.item()))
 
   def pointCodec[P](

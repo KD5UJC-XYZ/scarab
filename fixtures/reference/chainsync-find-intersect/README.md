@@ -14,7 +14,7 @@ and `provenance.json` identify the sources, dependencies and executed artifacts.
 
 ## Wire observations
 
-On 2026-11-05, `cases.jsonl` records 48 executed observations: 21 accepted, 23 refused and four
+On 2026-11-05, `cases.jsonl` records 58 executed observations: 22 accepted, 28 refused and eight
 incremental inputs needing more bytes. Large messages remain compact recipes: `prefix`, `count`
 copies of `unit`, then `suffix`. Each input carries its byte count and SHA-256; accepted outputs carry
 the native encoded byte count and SHA-256, and points carry their count and first value.
@@ -30,6 +30,9 @@ The corpus includes:
   the native encoder uses indefinite-list framing;
 - a 2,600,000-byte opaque serialized block transferred in a 2,600,012-byte NtC RollForward, with
   the original block contents and full wire encoding checked separately;
+- serialized-block prefixes with wrong tags, indefinite byte strings or the wrong payload major type,
+  rejected before missing contents are requested; genuine incomplete tags/payloads/tips remain partial,
+  and a complete empty serialized block is accepted;
 - declared list/hash/payload lengths at 2^31, 2^63 and 2^64-1. The 2^31 incomplete inputs wait;
   an available malformed first point fails before the rest of the declared list arrives.
   Declarations beyond native signed Int64 capacity fail immediately. A declared 65536-byte hash

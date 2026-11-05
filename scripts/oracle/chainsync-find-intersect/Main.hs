@@ -133,6 +133,17 @@ blockPrefixVerdict raw = do
     DecodeFail failure -> object ["accepted" .= False, "needMore" .= False, "failure" .= show failure]
     DecodeDone _ _ -> object ["accepted" .= True, "needMore" .= False]
 
+serialisedPrefixVerdict :: LBS.ByteString -> IO Value
+serialisedPrefixVerdict raw = do
+  initial <- decode blockCodec (SingNext SingCanAwait)
+  step <- case initial of
+    DecodePartial more -> more (Just raw)
+    other -> pure other
+  pure $ case step of
+    DecodePartial _ -> object ["accepted" .= False, "needMore" .= True]
+    DecodeFail failure -> object ["accepted" .= False, "needMore" .= False, "failure" .= show failure]
+    DecodeDone _ _ -> object ["accepted" .= True, "needMore" .= False]
+
 -- Use the same plain driver as consensus's node-to-client ChainSync server. The driver
 -- has no byte/item/depth policy; node-to-node's separate limited driver is not exercised.
 -- Append MsgDone so that the real server peer terminates after reading the candidate list.
@@ -229,6 +240,7 @@ request line = case BS8.words line of
   ["decode", raw] -> withHex verdict raw
   ["prefix", raw] -> withHex prefixVerdict raw
   ["block-prefix", raw] -> withHex blockPrefixVerdict raw
+  ["serialised-prefix", raw] -> withHex serialisedPrefixVerdict raw
   ["block", raw] -> withHex blockVerdict raw
   ["opaque", raw] -> withHex opaqueVerdict raw
   _ -> withHex verdict line

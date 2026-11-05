@@ -84,7 +84,7 @@ class ChainSyncFindIntersectReferenceSuite extends FunSuite:
                 row.encoded
               )
             case other => fail(s"the reference accepts the opaque point: $other")
-        case Kind.Block =>
+        case Kind.Block | Kind.SerialisedPrefix =>
           val blockCodec = CardanoBlockFetch.localPayloadCodec
           ChainSync.decodePrefix(
             State.NextCanAwait,
@@ -94,6 +94,7 @@ class ChainSyncFindIntersectReferenceSuite extends FunSuite:
             limits
           ) match
             case DecodeResult.Decoded(message @ Message.RollForward(block, _), consumed) =>
+              assert(row.accepted, s"the reference refuses it: ${row.failure}")
               assertEquals(consumed, row.bytes.size)
               assertWire(block.bytes, row.payload)
               assertWire(
@@ -102,12 +103,16 @@ class ChainSyncFindIntersectReferenceSuite extends FunSuite:
                 ),
                 row.encoded
               )
-            case other => fail(s"the reference accepts the opaque serialized block: $other")
+            case DecodeResult.Failed(error) =>
+              assert(!row.accepted && !row.needMore, s"the reference does not reject it: $error")
+            case DecodeResult.NeedMore =>
+              assert(row.needMore, s"the reference completes decoding: ${row.failure}")
+            case other => fail(s"not an opaque serialized block: $other")
     }
 
 object ChainSyncFindIntersectReferenceSuite:
   enum Kind:
-    case Points, Prefix, BlockPrefix, Encode, Opaque, Block
+    case Points, Prefix, BlockPrefix, Encode, Opaque, Block, SerialisedPrefix
 
   final case class RefPoint(origin: Option[Boolean], slot: Option[BigInt], hash: Option[String])
   final case class Wire(bytes: Int, sha256: String)
@@ -132,13 +137,14 @@ object ChainSyncFindIntersectReferenceSuite:
     case Point.Block(s, hash) => RefPoint(None, Some(s.value), Some(hash.hex))
 
   private given Decoder[Kind] = Decoder.decodeString.emap {
-    case "points"       => Right(Kind.Points)
-    case "prefix"       => Right(Kind.Prefix)
-    case "block-prefix" => Right(Kind.BlockPrefix)
-    case "encode"       => Right(Kind.Encode)
-    case "opaque"       => Right(Kind.Opaque)
-    case "block"        => Right(Kind.Block)
-    case other          => Left(s"unknown native case kind: $other")
+    case "points"            => Right(Kind.Points)
+    case "prefix"            => Right(Kind.Prefix)
+    case "block-prefix"      => Right(Kind.BlockPrefix)
+    case "encode"            => Right(Kind.Encode)
+    case "opaque"            => Right(Kind.Opaque)
+    case "block"             => Right(Kind.Block)
+    case "serialised-prefix" => Right(Kind.SerialisedPrefix)
+    case other               => Left(s"unknown native case kind: $other")
   }
   private given Decoder[RefPoint] = Decoder.forProduct3("origin", "slot", "hash")(RefPoint.apply)
   private given Decoder[Wire] = Decoder.forProduct2("bytes", "sha256")(Wire.apply)

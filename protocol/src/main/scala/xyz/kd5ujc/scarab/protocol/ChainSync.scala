@@ -102,10 +102,14 @@ object ChainSync:
         local = true
       )
 
-  /** A payload adapter receives exactly one bounded syntactically valid CBOR item. */
+  /** A payload adapter reads one CBOR item. The default materializes that item before decoding;
+    * specialized readers can preserve the reference's validation order on incomplete prefixes.
+    */
   trait PayloadCodec[P]:
     def encode(value: P): Either[ProtocolError, Bytes]
     def decode(bytes: Bytes): Either[ProtocolError, P]
+    private[protocol] def readFrom(reader: ProtocolWire.Reader)(using ProtocolWire.Scope): P =
+      get(decode(reader.item()))
 
   /** Strict Cardano point and tip adapters used by the generic network runtime. Their reader and
     * writer hooks retain the direct validation order of this facade.
@@ -144,6 +148,9 @@ object ChainSync:
     new ChainSyncEngine.PayloadCodec[P]:
       def encode(value: P): Either[ProtocolError, Bytes] = codec.encode(value)
       def decode(item: Bytes): Either[ProtocolError, P] = codec.decode(item)
+      override private[protocol] def readFrom(reader: ProtocolWire.Reader)(using
+          ProtocolWire.Scope
+      ): P = codec.readFrom(reader)
 
   /** A point of the Cardano chain as the reference's codecs read it: its hash, if it has one, is of
     * [[HashBytes]] (`decodeRawHash`).
