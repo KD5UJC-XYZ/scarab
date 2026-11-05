@@ -74,8 +74,8 @@ object LogRouterBenchMain extends IOApp.Simple:
     IO.blocking(s"${if Files.exists(file) then Files.size(file) else 0L}")
 
   /** One warm-up round, then two timed rounds of which the faster is reported. `round` empties the
-    * sink, so each round measures an empty file and the digest that follows a writer count is one
-    * round's bytes.
+    * sink, so each round measures an empty file, and the digest printed once for a configuration is
+    * the last of its rounds — one round's bytes, not a sum over them.
     */
   private def measure(name: String, s: LogSettings, w: Int, file: Path): IO[Unit] =
     round(s, w, file) *> List.fill(2)(()).traverse(_ => round(s, w, file)).map { times =>
