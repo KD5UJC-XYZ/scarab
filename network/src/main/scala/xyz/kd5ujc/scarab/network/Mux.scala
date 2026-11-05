@@ -196,9 +196,10 @@ object Mux:
 
   object Config:
     /** The responder of a node-to-client connection. The reference gives every node-to-client
-      * mini-protocol `maximumMiniProtocolLimits` and runs its codecs without byte limits, so a
-      * message is bounded only by what a byte array can hold: a LocalStateQuery answer may be tens
-      * of megabytes (`GetCBOR DebugEpochState` on preprod).
+      * mini-protocol `maximumMiniProtocolLimits` and runs its codecs without message byte limits.
+      * `maxMessageBytes` governs ordinary contiguous sends; streamed ChainSync uses chunked sends
+      * and receives. Other local payload APIs retain their `Bytes` representation boundary (#749),
+      * which is not a reference protocol limit.
       */
     val nodeToClient: Config = Config(
       role = Role.Responder,

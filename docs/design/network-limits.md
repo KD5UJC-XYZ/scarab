@@ -25,7 +25,7 @@ State names refer to wire agency, so KeepAlive `Client` is the server waiting fo
 | Mux write | 30s for one SDU on the application bearer, 10s on the handshake bearer (`ConnectionHandler.hs:94-102,335,379,412,451`); a batched write gets SDU-count×timeout (`Bearer/Socket.hs:224`) | 30s per SDU, 10s for the handshake lane, which is the reference's handshake bearer. Each write is one SDU with its own budget: no cross-protocol batch (`Egress.hs:164-186` batches up to 100 SDUs or 131072 bytes under SDU-count×timeout), so no donation from later SDUs. This difference remains |
 | Mux framing | Header 8 bytes, payload at most 65535 accepted; SDUs sent are cut at the bearer's `sduSize`, 12288 for sockets (`Bearer.hs:83-86`, node-to-client `Snocket.hs:455-456`) | Same: `Mux.Config.sduSize` 12288 for sending, `maxSduPayload` 65535 for acceptance; the decoder rejects oversized and zero-byte SDUs, partial EOF and invalid headers |
 | Node-to-node ChainSync receiving states | 65535 bytes; Intersect/CanAwait10s; Idle `ChainSyncIdleTimeout`, default 3373 s (`Cardano/Network/Protocol/ChainSync/Codec/TimeLimits.hs:59-64`, `Cardano/Network/Diffusion/Configuration.hs` `defaultChainSyncIdleTimeout`); MustReply uses peer trust and per-state random timeout | Same: server Idle3373s; each untrustable MustReply state draws a fresh uniform601–911s budget; trustable outbound peers wait indefinitely. The local-root activation captures trustability; inbound peers are untrustable. Partial message reads retain the sampled budget. Explicit fixed test profiles remain supported. |
-| Node-to-client ChainSync | Plain `runPeer`, without message byte or time limits (`Ouroboros/Consensus/Network/NodeToClient.hs:438`, consensus `82ecba32`); the mux queue has a separate limit | The Cardano server streams incoming requests with `recvStreaming`, releasing consumed input and retaining candidates in a segmented `Chain`. No aggregate message-byte, item or candidate-count policy applies. Other local ChainSync receives use `recvUnbounded`; serialized local blocks do not inherit the BlockFetch message bound. Those materialized values and outgoing encodings still use array-backed `Bytes`; their capacity ceiling is not a reference protocol limit or an approved exception. |
+| Node-to-client ChainSync | Plain `runPeer`, without message byte or time limits (`Ouroboros/Consensus/Network/NodeToClient.hs:438`, consensus `82ecba32`); the mux queue has a separate limit | The Cardano server streams incoming requests, and ordinary/rolling local clients stream serialized responses through `recvStreaming`. Offers remain in `Chain`; logical encodings and opaque payloads use `ChunkedBytes`. No aggregate message-byte, item or candidate-count policy applies to these paths. [Representation scope and remaining boundaries](chunked-bytes.md). |
 | BlockFetch Idle/Busy | 65535bytes; Idle indefinite, Busy 60 s (`BlockFetch/Codec.hs:59-68`) | Same byte bound, Busy 60 s and server Idle indefinite |
 | BlockFetch Streaming | 2500000bytes per message,60s per reply | Same per-reply wire limit; no cumulative request deadline or aggregate byte/range-count cap. Full candidate fragments determine request sizes; the server streams any range it holds (ouroboros-consensus `82ecba32`, `MiniProtocol/BlockFetch/Server.hs`). |
 | TxSubmission Init/Idle | 65535bytes; indefinite (`TxSubmission2/Codec.hs:78-88`) | 65535bytes in codec and runtime channel; indefinite in both states |
@@ -62,13 +62,12 @@ budget. Each direction/mini-protocol has its own counter; a slow consumer never 
 On overrun, the connection ends with `NetworkError.IngressLimit`. Zero-byte SDUs are rejected by
 the framing codec, so counting positive payload bytes also bounds the number of queued SDUs.
 
-Egress admission holds at most 65 messages/fences by default: the configured 64 queue slots plus
-one writer allowance. One semaphore covers the inbox, staged per-channel queues and the current
-write, so importing work never frees admission capacity. Ordinary `send` applies
-`Mux.Config.maxMessageBytes` at admission, 2500000 bytes by default. ChainSync uses `sendUnbounded`,
-without that complete-message policy. Both paths wait for a credit and segment the admitted payload
-using its actual size and the socket SDU size. Protocol-specific ingress and receive limits remain
-separate. No additional byte budget is introduced without a measured need.
+Egress uses the [per-lane soft byte budget described below](#fair-egress-as-built-258).
+Admitted bytes remain charged through staged/current work until each SDU is written. Ordinary
+`send` applies `Mux.Config.maxMessageBytes` at admission, 2500000 bytes by default. ChainSync uses
+`sendChunked`, without that complete-message policy; its internal storage chunks are packed into
+bounded SDUs without changing lane turns or flush ordering. Protocol-specific ingress and receive
+limits remain separate.
 Node-to-client's separate queue ceiling is 4294967295 bytes, matching the reference local-interface
 allowance; it should not be described as an unbounded queue.
 
@@ -90,12 +89,14 @@ their length is refused, without retaining those contents. `ChainSyncStreamingSu
 `ChainSyncFindIntersectReferenceSuite` exercise these rules, coalesced following messages and
 small receive buffers.
 
-`recvUnbounded` removes the complete-message policy for other local ChainSync receives; it does
-not remove the mux queue bound or the capacity of a materialized array-backed value. Outgoing
-encodings also still use `Bytes`. This representation boundary remains under the peer-facing
-decode audit [#749](https://github.com/KD5UJC-XYZ/scarab/issues/749); neither a declaration-only
-native observation nor an opaque serialized-block test demonstrates a valid multi-gigabyte
-ledger block. Smaller configured network block sizes do not approve an additional API limit.
+Local serialized responses use `CardanoBlockFetch.LocalBlock`, `ChainSync.responseDecoder` and
+`recvStreaming`; outgoing encodings use `encodeChunked` and `sendChunked`. The
+[chunked-byte design](chunked-bytes.md) records the primary APIs, checked contiguous conveniences,
+complete-message validation and the [executed native opaque-byte witness](../../fixtures/reference/chainsync-wide-serialised/README.md).
+The witness establishes that serialized API boundary, not validation, forging or storage of a
+multi-gigabyte ledger block. Other local protocol and ledger/storage representations remain under
+[#749](https://github.com/KD5UJC-XYZ/scarab/issues/749); smaller configured block sizes do not approve
+an additional API limit.
 
 The production client samples its captured, newest-first volatile fragment using the reference's
 offsets: zero, Fibonacci offsets below the retained fragment length, and its anchor. This follows
