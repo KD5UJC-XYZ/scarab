@@ -10,7 +10,7 @@ import fs2.Stream
 import java.nio.file.{Files, Path}
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.ledger.{PoolRelay, PoolRelayError, PoolRelays, StorageError}
 import xyz.kd5ujc.scarab.storage.scls.SclsRecord.{Entry, Namespace, Record}
 
 class SclsStreamingSuite extends CatsEffectSuite:
@@ -72,6 +72,35 @@ class SclsStreamingSuite extends CatsEffectSuite:
       assertEquals(result, Right(()))
       assertEquals(reference.size, 6060)
       assertEquals(written, reference)
+  }
+
+  test("the export writes a held pool relay name past 128 bytes, and the import refuses it") {
+    val index = entries.indexWhere(_._1 == Namespace.StakePools)
+    assert(index >= 0, "the reference has a stake pool")
+    val (namespace, entry) = entries(index)
+    val relays = PoolRelays.encode(Vector(PoolRelay.MultiHostName("a" * 200)))
+    val long = right(SclsValue.decode(namespace, entry.value)) match
+      case SclsValue.Entry.StakePool(pool) =>
+        val state = pool.state.getOrElse(fail("the reference pool has no registered state"))
+        SclsValue.Entry.StakePool(pool.copy(state = Some(state.copy(relays = relays))))
+      case other => fail(s"not a stake pool: $other")
+    val changed =
+      entries.updated(index, namespace -> entry.copy(value = right(SclsValue.encode(long))))
+    for
+      output <- Ref.of[IO, Vector[Bytes]](Vector.empty)
+      written <- attempt {
+        write[IO](Stream.emits(changed).covary[IO], manifest.slot, outputSummary, config(2048))(
+          bytes => output.update(_ :+ bytes)
+        )
+      }
+      artifact <- output.get.map(concat)
+      imported <- attempt(read[IO](input(artifact), config(2048))((_, _) => IO.unit))
+    yield
+      assertEquals(written, Right(()))
+      assertEquals(
+        imported.left.toOption,
+        Some(Error.Value(SclsValue.Error.PoolRelay(PoolRelayError.DnsNameTooLong(0, 200))))
+      )
   }
 
   test("import handles byte-at-a-time and coalesced sources with bounded feed fragments") {

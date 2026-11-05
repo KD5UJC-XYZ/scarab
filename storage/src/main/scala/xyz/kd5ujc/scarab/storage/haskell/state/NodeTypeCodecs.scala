@@ -156,6 +156,16 @@ trait NodeTypeCodecs extends VocabularyCodecs:
 
   // ---- pools
 
+  /** The pledge and cost of `StakePoolParams`, a `Coin` (`Coin.hs:93-111`): written as an `Integer`
+    * and read as a `Word64`. A genesis pool may hold a negative one or one past `Word64`, which the
+    * reference's genesis reader accepts; it is written as the reference writes it, in a query
+    * answer and in the state, and refused when the state is read back.
+    */
+  private val poolCoin: Codec[BigInt] = new Codec[BigInt]:
+    private val under = word(64)
+    def decode(n: Node): Decoded[BigInt] = under.decode(n)
+    def encode(a: BigInt, out: Writer): Unit = out.integer(a)
+
   /** `StakePoolParams` (`StakePool.hs:550-571`): nine fields in a flat array, the owners a set, the
     * metadata `null` when there is none. The relays and the metadata are the registered items, as
     * they came; no relays at all is `Bytes.empty`, written as an empty array and read back as it.
@@ -165,8 +175,8 @@ trait NodeTypeCodecs extends VocabularyCodecs:
       (
         hash28,
         hash32Bytes,
-        amount,
-        amount,
+        poolCoin,
+        poolCoin,
         unitInterval,
         rewardAccount,
         sortedSet(hash28),

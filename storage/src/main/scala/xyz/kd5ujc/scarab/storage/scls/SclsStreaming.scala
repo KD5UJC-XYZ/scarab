@@ -56,13 +56,17 @@ object SclsStreaming:
       Raise[F, Error]
   ): F[A] = result.fold(_.raise[F, A], Concurrent[F].pure)
 
+  /** Check one value as `reading` reads it (see [[SclsValue.Reading]]). */
   private def validateValue[F[_]: Concurrent](
       namespace: Namespace,
       entry: Entry,
-      limits: CborCodec.Limits
+      limits: CborCodec.Limits,
+      reading: SclsValue.Reading
   )(using Raise[F, Error]): F[Unit] =
     for
-      value <- lift(SclsValue.decode(namespace, entry.value, limits).leftMap(Error.Value(_)))
+      value <- lift(
+        SclsValue.decode(namespace, entry.value, limits, reading).leftMap(Error.Value(_))
+      )
       _ <- lift(
         Either.cond(
           value.namespace == namespace,
@@ -88,7 +92,7 @@ object SclsStreaming:
       finished <- entries
         .evalMapAccumulate(initial) { case (builder, (namespace, entry)) =>
           for
-            _ <- validateValue(namespace, entry, config.valueLimits)
+            _ <- validateValue(namespace, entry, config.valueLimits, SclsValue.Reading.Exported)
             pushed <- lift(
               builder.push(namespace, entry).leftMap(Error.Output(_))
             )
@@ -122,7 +126,12 @@ object SclsStreaming:
                     .leftMap(Error.Key(_))
                     .void
                 )
-                _ <- validateValue(chunk.namespace, entry, config.valueLimits)
+                _ <- validateValue(
+                  chunk.namespace,
+                  entry,
+                  config.valueLimits,
+                  SclsValue.Reading.Imported
+                )
                 _ <- stage(chunk.namespace, entry)
               yield ()
             }

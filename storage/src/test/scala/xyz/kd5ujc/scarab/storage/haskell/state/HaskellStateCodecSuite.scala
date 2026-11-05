@@ -95,6 +95,44 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     }
   }
 
+  // A genesis pool may hold a negative pledge or cost, or one past Word64; the reference writes a
+  // `StakePoolParams` Coin as an Integer (`StakePool.hs:550-571`, `Coin.hs:93-111`), in a query
+  // answer and in the state, and refuses it as a Word64 when it reads it back.
+  test("a pool's pledge and cost are written as an Integer and read as a Word64") {
+    val params = xyz.kd5ujc.scarab.ledger.PoolParams(
+      hex("02" * 28),
+      hex("03" * 32),
+      BigInt(0),
+      BigInt(0),
+      Rational(1, 2),
+      xyz.kd5ujc.scarab.ledger
+        .RewardAccount(0, xyz.kd5ujc.scarab.ledger.Credential.Key(hex(key28))),
+      Set.empty,
+      Bytes.empty,
+      None
+    )
+    val zero = poolParams.encodeUnchecked(params)
+    // the array head, the 28-byte id and the 32-byte VRF key hash, each with its byte-string head
+    val coins = 1 + 2 + 28 + 2 + 32
+    assertEquals(zero.value.slice(coins, coins + 2), Vector[Byte](0, 0))
+    def withCoins(pledge: BigInt, cost: BigInt): Bytes =
+      Bytes(
+        zero.value.take(coins) ++ bytesOf(_.integer(pledge)).value ++
+          bytesOf(_.integer(cost)).value ++ zero.value.drop(coins + 2)
+      )
+    val max = (BigInt(1) << 64) - 1
+    val atMax = params.copy(pledge = max, cost = max)
+    assertEquals(poolParams.write(atMax), Right(withCoins(max, max)))
+    assertEquals(bytesOf(_.integer(max)).hex, "1bffffffffffffffff", "a Word64 as it was written")
+    assertEquals(readOk(poolParams, withCoins(max, max)), atMax)
+    Vector(BigInt(-1) -> BigInt(5), BigInt(5) -> -(BigInt(1) << 70), (max + 1) -> BigInt(5))
+      .foreach { (pledge, cost) =>
+        val outside = params.copy(pledge = pledge, cost = cost)
+        assertEquals(poolParams.write(outside), Right(withCoins(pledge, cost)), s"$pledge $cost")
+        assert(read(poolParams, withCoins(pledge, cost)).isLeft, s"$pledge $cost is not a Word64")
+      }
+  }
+
   test("amounts: Coin is written as an Integer and read as a Word64 (Coin.hs:93,111)") {
     val big = (BigInt(1) << 64) - 1
     val c = Coin(big)
