@@ -10,7 +10,7 @@
   "observations": 28,
   "inputSha256": "b9575fb4f88bcb1004c288651a89f6b2e149f0b67bcefeae6d5fa5bb2e29e5f3",
   "outputSha256": "d8fe8817dcb5ab220cad7749a4c8a21a076c6f10bc261eae0605d2ad50dfe042",
-  "imageId": "sha256:a71079d7a931ef6d914d8c04b3f442bb3dba65767cc778288e4ee3fc5887a504",
+  "imageId": "sha256:47a76c882d863cf8bc90a391ff3d7a6e5dcade6de2958d2b645a88cb5ff270fb",
   "oracleBinarySha256": "568a1e81e72796188fd948c2f541c4926c36a09f8e2391172e5d11e92ee120d0",
   "harnessSha256": {
     "scripts/oracle/plutus/diagnostics/Main.hs": "231dc08d3b1e90c772c0d81da24a1131a81a61ca7d02c5e43c0597a556a04de3",
@@ -18,6 +18,6 @@
     "scripts/oracle/plutus/context-matrix/cabal.project.freeze": "f7e6220cf1d723bb8722b4a7e90be5993c4f1fa5a380e64a13c3303546e8a68c",
     "scripts/oracle/plutus/diagnostics/Dockerfile": "9417d9bfaf05c6af4b574da41721ea167a710d33f97907dcf37e2f1113fe99d5",
     "scripts/oracle/plutus/diagnostics/inputs.py": "bd0c5168c9e3fb5a202b942b225d326dfa1cd29b463cf74eb8e702d3d300b7a5",
-    "scripts/oracle/plutus/diagnostics/run.py": "fe339fa7041d322ee18f971f8ff167136aa5c28fee45c35c162a79fca632f10f"
+    "scripts/oracle/plutus/diagnostics/run.py": "922956c02a78e245bfc1938ceb6439c8ad0be739edcaea07688e06dcebdb51a8"
   }
 }

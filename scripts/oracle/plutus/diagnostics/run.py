@@ -78,8 +78,10 @@ def main():
         (CORPUS / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
     else:
         accepted = json.loads((CORPUS / "provenance.json").read_text())
+        # The capture's image ID is historical: a rebuild can change OCI attestation timestamps.
+        # Execute only the resolved immutable ID, and require the accepted binary and source bytes.
         for key, value in identity.items():
-            if accepted[key] != value:
+            if key != "imageId" and accepted[key] != value:
                 raise ValueError(f"native oracle identity differs: {key}")
         if sha(encoded) != accepted["inputSha256"] or sha(observed) != accepted["outputSha256"]:
             raise ValueError("native input/output differs from accepted observation")

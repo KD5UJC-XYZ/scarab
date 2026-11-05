@@ -4,7 +4,9 @@ Build the accepted [context-matrix base](../context-matrix/README.md) first. Thi
 patch to the reference libraries. Its Docker recipe reuses that frozen Plutus1.70.0.0 dependency
 build; `run.py` refuses a changed base before building, checks embedded source/pins before executing,
 and binds replay to the immutable image and accepted executable. Runs have no network and a read-only
-container filesystem. Temporary image receipts are removed automatically.
+container filesystem. The captured image ID is retained as historical evidence; a rebuild's OCI
+metadata may differ, while accepted executable/source hashes and every output must still agree.
+Temporary image receipts are removed automatically.
 
 ```sh
 python3 scripts/oracle/plutus/diagnostics/run.py --build
