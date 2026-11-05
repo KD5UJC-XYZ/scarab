@@ -14,6 +14,12 @@ import scala.concurrent.duration.*
 import Peers.*
 
 class MuxDeadlinesSuite extends FailsOnUncaught:
+  // Every deadline this suite exercises is virtual time, but the stack-safety case reads 100000 real SDUs:
+  // about 10 s on the development host and over 31 s on a slower idle one. That work, not a product deadline,
+  // is what munit's budget spans, so the budget is a hang backstop and not a performance contract - no case
+  // here asserts elapsed time.
+  override def munitIOTimeout: Duration = 10.minutes
+
   private val readTimeout = NetworkError.SduTimeout(NetworkError.SduOperation.Read)
   private val writeTimeout = NetworkError.SduTimeout(NetworkError.SduOperation.Write)
 
@@ -193,6 +199,9 @@ class MuxDeadlinesSuite extends FailsOnUncaught:
       }
     }.map(result => assertEquals(result, Right((100, 100))))
 
+  // The subject is stack depth, not speed: 100000 frames is far more than a per-SDU recursion could
+  // survive on a 256KiB stack, and the assertions below are the typed close reason, the reader's release and
+  // the thread it ran on.
   test("100000 SDUs traverse the timed reader on a256KiB worker stack"):
     Resource
       .make(
