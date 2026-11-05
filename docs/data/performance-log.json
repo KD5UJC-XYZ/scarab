@@ -4283,19 +4283,19 @@
      "separator": "|---|---:|---:|---:|",
      "rows": [
       [
-       "`file`: JSON render and append",
+       "`file`: admitted path — render, append, lock and clock",
        "1",
        "12.19",
        "82,059"
       ],
       [
-       "`file`: JSON render and append",
+       "`file`: admitted path — render, append, lock and clock",
        "4",
        "11.89",
        "84,092"
       ],
       [
-       "`file`: JSON render and append",
+       "`file`: admitted path — render, append, lock and clock",
        "16",
        "11.76",
        "85,005"
