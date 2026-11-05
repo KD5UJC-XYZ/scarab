@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-04",
+  "scope": "Complete Pretty context/argument/data text for the finite synthetic typed inputs; no transaction-admission or general CEK-error claim",
+  "ledgerSourceRevision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "plutusSourceCommit": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+  "oracleCompiler": "GHC9.10.3",
+  "plutusPackage": "1.70.0.0",
+  "prettyprinterPackage": "1.7.2",
+  "observations": 28,
+  "inputSha256": "b9575fb4f88bcb1004c288651a89f6b2e149f0b67bcefeae6d5fa5bb2e29e5f3",
+  "outputSha256": "d8fe8817dcb5ab220cad7749a4c8a21a076c6f10bc261eae0605d2ad50dfe042",
+  "imageId": "sha256:a71079d7a931ef6d914d8c04b3f442bb3dba65767cc778288e4ee3fc5887a504",
+  "oracleBinarySha256": "568a1e81e72796188fd948c2f541c4926c36a09f8e2391172e5d11e92ee120d0",
+  "harnessSha256": {
+    "scripts/oracle/plutus/diagnostics/Main.hs": "231dc08d3b1e90c772c0d81da24a1131a81a61ca7d02c5e43c0597a556a04de3",
+    "scripts/oracle/plutus/context-matrix/cabal.project": "c8e3e046ac067d88cb9315a4f962bf318b7184ab95f5c2d1f5ef059b01b95618",
+    "scripts/oracle/plutus/context-matrix/cabal.project.freeze": "f7e6220cf1d723bb8722b4a7e90be5993c4f1fa5a380e64a13c3303546e8a68c",
+    "scripts/oracle/plutus/diagnostics/Dockerfile": "9417d9bfaf05c6af4b574da41721ea167a710d33f97907dcf37e2f1113fe99d5",
+    "scripts/oracle/plutus/diagnostics/inputs.py": "bd0c5168c9e3fb5a202b942b225d326dfa1cd29b463cf74eb8e702d3d300b7a5",
+    "scripts/oracle/plutus/diagnostics/run.py": "fe339fa7041d322ee18f971f8ff167136aa5c28fee45c35c162a79fca632f10f"
+  }
+}

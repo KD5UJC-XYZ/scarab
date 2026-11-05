@@ -583,8 +583,8 @@
       "classification": "sampling-limit",
       "status": "bounded",
       "scope": "Refused cases of V1ContextSuite and ContextRefusalReasonSuite (v1-context, context-errors submissions and plutus-boundaries transactions).",
-      "assertion": "The refused context submissions, whose reference ApplyTxErr is recorded, are replayed through the Conway transaction rule and their encoded reason compared as a whole with it: 11 of the 12 are byte equal, and the twelfth is pinned as a divergence whose description text still differs (#781). For the refused cases that keep no raw reason, the one cause the recorded reference text names (validation-tag mismatch, or a translation error and its source) is exactly the failure the Scala phase-2, transaction and block rules give.",
-      "rationale": "The v1-context and plutus-boundaries texts are cut at 1,500 characters and keep no raw reason, so those cases compare neither the reference's whole failure list nor the encoded reason; a fresh recording of those fixtures is what lifts that part of the bound. One recorded submission, a script failure with the flag set valid, still differs in the failure description text; the suite pins that divergence and its own issue owns the encoder fix.",
+      "assertion": "Every refused context submission with recorded reference ApplyTxErr bytes is replayed through the Conway transaction rule and its complete encoded reason must equal the recording, without exclusions. For cases without raw reason bytes, the recorded cause is checked against the Scala phase-2, transaction and block rules.",
+      "rationale": "The v1-context and plutus-boundaries texts are cut at 1,500 characters and keep no raw reason, so those cases compare neither the whole reference failure list nor the encoded reason; a fresh recording lifts that bound (#434).",
       "owner": "ledger maintainer",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/434",
       "resolution": "Covered once every refused case carries the reference's raw reason; the recorded submissions already do and are compared byte for byte, the rest await a re-recording.",
@@ -616,13 +616,13 @@
     {
       "id": "reference-refusal-corpus",
       "classification": "native-parity",
-      "status": "open",
+      "status": "covered",
       "scope": "Transactions the released reference node refused over node-to-client LocalTxSubmission in all six Shelley-based eras, with the ledger state, UTxO and genesis each was judged against; the families each era must cover are declared in the manifest. Byron transaction-error coverage is not established.",
       "assertion": "Replay every case through Scarab (Conway: LocalSubmission and MempoolState.add on the reference's ticked state; Shelley through Babbage: the era's LEDGER rule and PreConwayFailureCbor) and require the complete ApplyTxErr bytes, every accumulated failure in order; every required family per era must have a case.",
       "rationale": "First-failure comparisons cannot show check-order regressions or a missing accumulated failure, and replays of accepted chains never contain a refused transaction.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
-      "resolution": "Covered when every recorded case compares equal and the complete required era/family scope is covered (#401). The 2026-10-26 corpus has 105 transactions comprising 103 complete byte comparisons and two incomplete PlutusFailure-text comparisons (#491). Those two remove only that text for the partial comparison, assert the original bytes still differ and cancel; they are not conformance passes. Other differing cases fail.",
+      "resolution": "Every case must compare as complete ApplyTxErr bytes, including PlutusFailure text; no text masks, expected differences or canceled cases. The fixture manifest declares the required era/family scope (#401). Byron transaction errors remain outside that scope.",
       "evidence": [
         "fixtures/reference/refusals/manifest.json",
         "fixtures/reference/refusals/README.md",
@@ -682,6 +682,25 @@
         "node/src/test/scala/xyz/kd5ujc/scarab/consensus/Praos2ReferenceSuite.scala"
       ],
       "candidateRequired": false
+    },
+    {
+      "id": "plutus-diagnostic-contexts",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The complete finite typed-context/argument/Data diagnostic corpus in plutus-diagnostics, plus recorded explicit-error refusal descriptions in context-errors and refusals.",
+      "assertion": "Assert every native context/argument/Data text and every recorded raw refusal as a whole; no expected divergence, field mask or canceled case. Check arbitrary datum nesting on a small-stack thread.",
+      "rationale": "The reference failure description includes the script/hash, CEK error, protocol version and formatted context; a short provider message or constructor-name containment cannot establish byte equality.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/781",
+      "resolution": "Retain all native observations and whole refusal comparisons. The finite corpus covers explicit UPLC error descriptions; other CEK error printers remain tracked by #491, and unrecorded raw reasons remain #434.",
+      "evidence": [
+        "fixtures/reference/plutus-diagnostics/README.md",
+        "fixtures/reference/plutus-diagnostics/provenance.json",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/PlutusContextTextSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/ledger/ContextRefusalReasonSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
     }
   ]
 }
