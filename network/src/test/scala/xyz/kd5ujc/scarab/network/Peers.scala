@@ -93,7 +93,7 @@ object Peers:
         )
         .flatMap {
           case Message.FindIntersect(points) =>
-            sendChainSync(channel, ChainSync.State.Intersect, List(intersect(points))) *>
+            sendChainSync(channel, ChainSync.State.Intersect, List(intersect(points.toVector))) *>
               loop(remaining)
           case Message.RequestNext =>
             remaining match

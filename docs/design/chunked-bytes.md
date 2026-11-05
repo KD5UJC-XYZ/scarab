@@ -1,6 +1,6 @@
 # Chunked bytes and large local payloads
 
-**Status:** Codec foundation implemented; consumer migration and local capacity parity incomplete.
+**Status:** Codec foundation and local ChainSync serialized-byte integration implemented; ledger and storage migration incomplete.
 **Issue:** [#749](https://github.com/KD5UJC-XYZ/scarab/issues/749).
 
 `ChunkedBytes` is an immutable sequence of nonempty `Bytes` chunks with a checked signed-64-bit
@@ -52,12 +52,44 @@ slice laws, cursor progress and immutability, checked overflow, and traversals o
 Its wide-offset case shares one 64 KiB array across enough chunks to cross 2 GiB; it is an executed
 logical-offset test, not an allocation or native full-block witness.
 
-The foundation does not yet migrate CBOR spans, `ProtocolWire`, local serialized block adapters,
-receive buffers, hashing, builders or stores. Those consumers must preserve original bytes while
-using chunk traversal and checked global positions. Fixed hashes, individual mux SDUs and messages
-received under the reference's bounded NtN policy can retain contiguous representations. Large
-local payloads must not inherit those bounds accidentally. Integration and native comparisons stay
-incomplete until the relevant consumers execute through the wider representation.
+Local ChainSync uses `CardanoBlockFetch.LocalBlock` with `ChunkedBytes` payloads. The primary
+`ChainSync.encodeChunked` and engine entrypoints build a logical message without flattening its
+payload or offered-point collection. `FindIntersect` and client APIs carry `Chain[Point]`; Vector
+conveniences only widen an existing bounded collection into a Chain. The payload remains one
+definite CBOR byte string under tag 24: internal chunks do not appear on the wire.
+
+`MuxChannel.sendChunked` admits that complete logical message atomically. Its writer packs across
+internal chunk boundaries into bounded SDUs, preserves per-lane FIFO and turn-taking, and releases
+the soft egress budget as SDUs are written. The held-byte accounting uses `BigInt` so two admitted
+logical messages cannot overflow a signed-64-bit sum. Only one SDU is materialized at a time.
+
+Ordinary and rolling local clients use `ChainSync.responseDecoder`/the shared engine decoder through
+`recvStreaming`. The payload continuation retains immutable input chunks, while point hashes and
+scalar fields remain bounded. Native wrapper checks retain their order: a wrong tag or indefinite
+byte-string head is refused before waiting for a body; an invalid point hash is refused after its
+complete declared body. Receivers preserve coalesced trailing messages and retire a cancelled
+partially consumed channel. The bounded NtN ChainSync and BlockFetch receive policies remain at
+their reference boundaries.
+
+The existing `encode` and `decodePrefix(Bytes)` methods are contiguous conveniences. Their input
+or output must fit `Bytes`; they do not establish unlimited capacity. Generic payload adapters that
+use `StreamingDecoder.bounded` retain their own contiguous representation contract. Explicit
+conversions preserve a typed `ChunkedBytes.Error` rather than presenting capacity as a protocol rule.
+
+`ChunkedChainSyncSuite` checks the native opaque serialized-byte case above 2 GiB, including the
+incremental payload/wire hashes, fragmented wrapper refusals and a small-stack continuation.
+`ChunkedChainSyncClientSuite` exercises both ordinary and rolling clients with a receive array
+smaller than the payload. Egress tests cover internal chunk boundaries and accounting beyond a
+`Long` sum; the `chainsync-ntc-response-streamed` fuzz target compares finite fragmented inputs
+against the independently implemented buffered decoder, including values, errors and first-message
+consumption. These tests concern opaque serialization, not ledger-valid giant blocks.
+
+Ledger CBOR spans, complete block/transaction decoding and validation, hash/signature callers,
+builders and stores still use their existing bounded representations. The production local server
+wraps the bytes supplied by its validated storage source; it does not make that source capable of
+validating or storing a multi-gigabyte block. Those consumers require a separate migration that
+preserves original bytes while using checked global positions. Fixed hashes, individual mux SDUs
+and messages received under the reference's bounded NtN policy retain contiguous representations.
 
 No wire or persisted bytes change here. An in-memory change alone does not imply a format bump;
 an actual persisted-format change still follows [ADR 0006](../adr/0006-versioned-formats-migrate-on-open.md).

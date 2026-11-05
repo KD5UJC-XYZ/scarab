@@ -13,7 +13,7 @@ class ChainSyncFlightSuite extends FailsOnUncaught:
       .typed {
         for
           entered <- Deferred[IO, Unit]
-          channel = new MuxChannel[IO]:
+          channel = new ContiguousTestMuxChannel:
             def protocol = Protocols.ChainSync
             def send(message: Bytes)(using Raise[IO, NetworkError]) =
               entered.complete(()).void *> IO.never[Unit]
@@ -42,7 +42,7 @@ class ChainSyncFlightSuite extends FailsOnUncaught:
     Peers
       .typed {
         val cause = NetworkError.Timeout(Protocols.ChainSync, "injected-send")
-        val channel = new MuxChannel[IO]:
+        val channel = new ContiguousTestMuxChannel:
           def protocol = Protocols.ChainSync
           def send(message: Bytes)(using raise: Raise[IO, NetworkError]) =
             raise.raise[NetworkError, Unit](cause)

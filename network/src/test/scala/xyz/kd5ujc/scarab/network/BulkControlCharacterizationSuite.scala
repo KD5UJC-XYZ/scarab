@@ -36,7 +36,7 @@ class BulkControlCharacterizationSuite extends FailsOnUncaught:
       delegate: MuxChannel[IO],
       sent: IO[Unit] = IO.unit,
       received: IO[Unit] = IO.unit
-  ): MuxChannel[IO] = new MuxChannel[IO]:
+  ): MuxChannel[IO] = new ContiguousTestMuxChannel:
     def protocol = delegate.protocol
     def send(message: Bytes)(using Raise[IO, NetworkError]) = delegate.send(message) *> sent
     def flush = delegate.flush

@@ -7,7 +7,8 @@ import cats.effect.syntax.all.*
 import cats.effect.std.Queue
 import cats.syntax.all.*
 import scala.collection.immutable.Queue as Fifo
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, ChunkedBytes}
+import cats.data.Chain
 
 /** Egress.hs:149–213 at ouroboros-network 2fb69829: one SDU turn per active channel. Each lane
   * (mini-protocol and direction) has a soft byte budget like the reference's
@@ -19,30 +20,52 @@ private[network] object MuxEgress:
   final case class Lane(protocol: Int, role: Mux.Role)
 
   private enum Command[F[_]]:
-    case Send(lane: Lane, bytes: Bytes)
+    case Send(lane: Lane, bytes: ChunkedBytes)
     case Flush(ack: Deferred[F, Unit])
 
-  private final case class Active(lane: Lane, head: Bytes, tail: Fifo[Bytes])
+  private final case class Active(lane: Lane, head: ChunkedBytes.Cursor, tail: Fifo[ChunkedBytes])
   private final case class Part(lane: Lane, bytes: Bytes, last: Boolean)
   private final case class Schedule[F[_]](
       active: Vector[Active],
       fence: Option[Deferred[F, Unit]]
   ):
-    def append(lane: Lane, bytes: Bytes): Schedule[F] =
+    def append(lane: Lane, bytes: ChunkedBytes): Schedule[F] =
       val index = active.indexWhere(_.lane == lane)
-      if index < 0 then copy(active = active :+ Active(lane, bytes, Fifo.empty))
+      if index < 0 then copy(active = active :+ Active(lane, bytes.cursor, Fifo.empty))
       else
         val current = active(index)
         copy(active = active.updated(index, current.copy(tail = current.tail.enqueue(bytes))))
 
-    def next(limit: Int): Option[(Part, Schedule[F])] = active.headOption.map { current =>
-      val remaining = current.head.drop(limit)
-      val next =
-        if remaining.nonEmpty then Some(current.copy(head = remaining))
-        else current.tail.dequeueOption.map { (head, tail) => Active(current.lane, head, tail) }
-      Part(current.lane, current.head.take(limit), remaining.isEmpty) ->
-        copy(active = active.drop(1) ++ next.toVector)
-    }
+    def next(limit: Int): Either[NetworkError, Option[(Part, Schedule[F])]] =
+      active.headOption.traverse { current =>
+        @scala.annotation.tailrec
+        def collect(
+            cursor: ChunkedBytes.Cursor,
+            left: Int,
+            chunks: Chain[Bytes]
+        ): Either[ChunkedBytes.Error, (Bytes, ChunkedBytes.Cursor)] =
+          if left == 0 || cursor.isEmpty then
+            ChunkedBytes.fromChunks(chunks).flatMap(_.toBytes(limit)).map(_ -> cursor)
+          else
+            cursor.takeChunk(left) match
+              case Left(error) => Left(error)
+              case Right(None) =>
+                ChunkedBytes.fromChunks(chunks).flatMap(_.toBytes(limit)).map(_ -> cursor)
+              case Right(Some((chunk, rest))) =>
+                collect(rest, left - chunk.size, chunks.append(chunk))
+        collect(current.head, limit, Chain.empty)
+          .leftMap(NetworkError.ByteRepresentation(current.lane.protocol, _))
+          .map { (bytes, remaining) =>
+            val next =
+              if !remaining.isEmpty then Some(current.copy(head = remaining))
+              else
+                current.tail.dequeueOption.map { (head, tail) =>
+                  Active(current.lane, head.cursor, tail)
+                }
+            Part(current.lane, bytes, remaining.isEmpty) ->
+              copy(active = active.drop(1) ++ next.toVector)
+          }
+      }
 
   /** A sender waiting for its lane to drain below the limit. The granting writer queues `command`
     * itself, in grant order, and then completes `admitted`.
@@ -53,7 +76,7 @@ private[network] object MuxEgress:
       admitted: Deferred[F, Unit]
   )
 
-  private final case class Budget[F[_]](held: Long, waiters: Fifo[Waiter[F]])
+  private final case class Budget[F[_]](held: BigInt, waiters: Fifo[Waiter[F]])
 
   final class Outbox[F[_]] private[MuxEgress] (
       inbox: Queue[F, Command[F]],
@@ -61,19 +84,19 @@ private[network] object MuxEgress:
       limit: Long,
       payloadLimit: Int
   )(using F: Concurrent[F]):
-    private def empty: Budget[F] = Budget(0L, Fifo.empty)
+    private def empty: Budget[F] = Budget(BigInt(0), Fifo.empty)
 
     /** Admit `bytes` on the lane now, or park a waiter. Admission and queueing are one atomic step
       * against release, so a message is never queued without its bytes counted. A cancelled waiter
       * owns nothing: it is removed while parked, and once granted its message is already queued
       * (cancellation after submission leaves work queued) and the writer releases its bytes.
       */
-    def send(protocol: Int, role: Mux.Role, bytes: Bytes): F[Unit] =
+    def send(protocol: Int, role: Mux.Role, bytes: ChunkedBytes): F[Unit] =
       val lane = Lane(protocol, role)
       val command: Command[F] = Command.Send(lane, bytes)
       F.uncancelable { poll =>
         Deferred[F, Unit].flatMap { admitted =>
-          val waiter = Waiter[F](command, bytes.size.toLong, admitted)
+          val waiter = Waiter[F](command, bytes.size, admitted)
           budgets
             .modify { all =>
               val budget = all.getOrElse(lane, empty)
@@ -108,10 +131,10 @@ private[network] object MuxEgress:
             val budget = all.getOrElse(lane, empty)
             @scala.annotation.tailrec
             def grant(
-                held: Long,
+                held: BigInt,
                 waiters: Fifo[Waiter[F]],
                 granted: Vector[Waiter[F]]
-            ): (Long, Fifo[Waiter[F]], Vector[Waiter[F]]) =
+            ): (BigInt, Fifo[Waiter[F]], Vector[Waiter[F]]) =
               waiters.dequeueOption match
                 case Some((head, rest)) if held < limit =>
                   grant(held + head.size, rest, granted :+ head)
@@ -151,12 +174,13 @@ private[network] object MuxEgress:
       F.tailRecM(Schedule[F](Vector.empty, None)) { state =>
         fill(state).flatMap { ready =>
           ready.next(payloadLimit) match
-            case Some((part, next)) =>
+            case Left(error) => F.pure(Right(error))
+            case Right(Some((part, next))) =>
               write(part.lane, part.bytes).flatMap {
                 case Left(reason) => F.pure(Right(reason))
                 case Right(_)     => release(part.lane, part.bytes.size).as(Left(next))
               }
-            case None =>
+            case Right(None) =>
               ready.fence.traverse_(_.complete(())) *>
                 F.pure(Left(Schedule[F](Vector.empty, None)))
         }
@@ -166,9 +190,11 @@ private[network] object MuxEgress:
     *   The soft byte budget of each lane, positive.
     */
   def create[F[_]: Concurrent](limit: Long, payloadLimit: Int): F[Outbox[F]] =
-    if limit <= 0 then
+    if limit <= 0 || payloadLimit <= 0 then
       Concurrent[F].raiseError(
-        new IllegalArgumentException(s"egress buffer limit must be positive: $limit")
+        new IllegalArgumentException(
+          s"egress buffer and SDU limits must be positive: $limit, $payloadLimit"
+        )
       )
     else
       (Queue.unbounded[F, Command[F]], Ref.of[F, Map[Lane, Budget[F]]](Map.empty))

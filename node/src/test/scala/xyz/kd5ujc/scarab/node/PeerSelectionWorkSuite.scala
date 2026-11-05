@@ -34,13 +34,15 @@ class PeerSelectionWorkSuite extends FailsOnUncaught:
       _ <- follower.installInvalidBlocks(pool.invalidBlocks)
       fatal <- Ref.of[IO, Vector[Fatal]](Vector.empty)
       chainSync = new ChainSyncClient[IO, NtNHeader]:
-        def findIntersect(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
+        def findIntersect(points: cats.data.Chain[ChainSync.Point])(using Raise[IO, NetworkError]) =
           IO.pure(
-            Option.when(points.contains(ChainSync.Point.Origin))(
+            Option.when(points.exists(_ == ChainSync.Point.Origin))(
               ChainSync.Point.Origin -> ChainSync.Tip.Origin
             )
           )
-        def findIntersectResult(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
+        def findIntersectResult(points: cats.data.Chain[ChainSync.Point])(using
+            Raise[IO, NetworkError]
+        ) =
           findIntersect(points).map(
             _.fold[ChainSyncClient.Intersection](
               ChainSyncRuntime.Intersection.NotFound(ChainSync.Tip.Origin)

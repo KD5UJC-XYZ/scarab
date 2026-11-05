@@ -200,7 +200,8 @@
         "KeepAliveSuite",
         "LeiosCodecSuite",
         "LeiosWordSuite",
-        "LeiosFetchDecoderSuite"
+        "LeiosFetchDecoderSuite",
+        "ChunkedChainSyncSuite"
       ],
       "docs": [
         "docs/adr/0008-networking-mirrors-ouroboros-network.md",
@@ -232,7 +233,8 @@
         "BlockFetchPipelineSuite",
         "ProtocolResultsSuite",
         "WarmHotSuite",
-        "LeiosFetchClientSuite"
+        "LeiosFetchClientSuite",
+        "ChunkedChainSyncClientSuite"
       ],
       "docs": [
         "docs/adr/0008-networking-mirrors-ouroboros-network.md",

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
-import cats.data.NonEmptyVector
-import xyz.kd5ujc.scarab.codec.Bytes
+import cats.data.{Chain, NonEmptyVector}
+import xyz.kd5ujc.scarab.codec.{Bytes, ChunkedBytes}
 
 import ChainSync.{Point, UInt64}
 import ProtocolWire.{bad, get, attempt}
@@ -87,22 +87,41 @@ object CardanoBlockFetch:
         Left(ProtocolError.RawBlockByteLimitExceeded(bytes.size, maxRawBytes))
       else Right(new RawNtNBlock(bytes))
 
-  /** Local ChainSync carries the same serialized block without BlockFetch's byte limit. `runPeer`
-    * has no codec budget (ouroboros-consensus 82ecba32, `Network/NodeToClient.hs:438-453`). The
-    * bytes retain their original representation.
+  /** Opaque local serialized bytes. This is not a certificate of block validity or support by the
+    * ledger/storage pipeline. The reference Serialised value carries bytes independently of those
+    * layers (network 2fb69829, Network/Block.hs:445–504).
     */
-  def localBlock(bytes: Bytes): RawNtNBlock = new RawNtNBlock(bytes)
+  final class LocalBlock private[CardanoBlockFetch] (val bytes: ChunkedBytes):
+    override def equals(other: Any): Boolean = other match
+      case block: LocalBlock => bytes == block.bytes
+      case _                 => false
+    override def hashCode: Int = bytes.hashCode
 
-  val localPayloadCodec: ChainSync.PayloadCodec[RawNtNBlock] =
-    new ChainSync.PayloadCodec[RawNtNBlock]:
-      def encode(block: RawNtNBlock): Either[ProtocolError, Bytes] = attempt {
+  def localBlock(bytes: ChunkedBytes): LocalBlock = new LocalBlock(bytes)
+  def localBlock(bytes: Bytes): LocalBlock = localBlock(ChunkedBytes.fromBytes(bytes))
+
+  /** Native local ChainSync has no whole-message byte budget. Internal chunks retain the exact
+    * payload and are encoded as one definite byte string, never an indefinite string.
+    */
+  val localPayloadCodec: ChainSync.PayloadCodec[LocalBlock] =
+    new ChainSync.PayloadCodec[LocalBlock]:
+      override def encodeChunked(block: LocalBlock): Either[ProtocolError, ChunkedBytes] = attempt {
         val writer = new ChainSyncWire.Writer(ChainSync.Limits.NodeToClient)
         writer.head(6, 24)
         writer.head(2, block.bytes.size)
-        writer.raw(block.bytes)
-        writer.result
+        get(
+          ChunkedBytes
+            .fromBytes(writer.result)
+            .concat(block.bytes)
+            .left
+            .map(ProtocolError.ChunkedRepresentation(_))
+        )
       }
-      def decode(bytes: Bytes): Either[ProtocolError, RawNtNBlock] = attempt {
+      def encode(block: LocalBlock): Either[ProtocolError, Bytes] =
+        encodeChunked(block).flatMap(
+          _.toBytes(Int.MaxValue).left.map(ProtocolError.ChunkedRepresentation(_))
+        )
+      def decode(bytes: Bytes): Either[ProtocolError, LocalBlock] = attempt {
         val reader = new ChainSyncWire.Reader(bytes, ChainSync.Limits.NodeToClient)
         val block = readFrom(reader)
         if reader.position != bytes.size then bad(ProtocolError.TrailingSerializedBlockBytes)
@@ -110,11 +129,35 @@ object CardanoBlockFetch:
       }
       override private[protocol] def readFrom(reader: ProtocolWire.Reader)(using
           ProtocolWire.Scope
-      ): RawNtNBlock =
-        // Serialised.decode checks the tag before requesting the byte string, and decodeBytes
-        // refuses an indefinite string before any chunks (network 2fb69829, Block.hs:501-504).
+      ): LocalBlock =
+        // The legacy contiguous adapter is explicitly bounded by Bytes. The primary live receive
+        // path below streams the same wrapper and body without that array ceiling.
         if reader.tag() != 24 then bad(ProtocolError.ExpectedSerializedBlockTag24)
         localBlock(reader.bytes(Int.MaxValue))
+
+      override def streaming: StreamingDecoder[LocalBlock] = ChainSyncAtoms
+        .scalar { reader =>
+          // Serialised.decode checks tag24 before decodeBytes, which refuses an indefinite string
+          // immediately (network 2fb69829, Network/Block.hs:501–504).
+          if reader.tag() != 24 then bad(ProtocolError.ExpectedSerializedBlockTag24)
+          reader.byteStringLength().toLong
+        }
+        .flatMap { declared =>
+          new StreamingDecoder[LocalBlock]:
+            type Cursor = (Long, Chain[Bytes])
+            def initial = (declared, Chain.empty)
+            def resume(cursor: Cursor, input: Bytes): StreamingDecoder.Step[Cursor, LocalBlock] =
+              val (unread, chunks) = cursor
+              val count = math.min(unread, input.size.toLong).toInt
+              val retained = if count == 0 then chunks else chunks.append(input.take(count))
+              val left = unread - count
+              if left != 0 then StreamingDecoder.Step.More((left, retained), count)
+              else
+                ChunkedBytes.fromChunks(retained) match
+                  case Left(error) =>
+                    StreamingDecoder.Step.Failed(ProtocolError.ChunkedRepresentation(error))
+                  case Right(bytes) => StreamingDecoder.Step.Done(localBlock(bytes), count)
+        }
 
   /** Default leaves room for the nine-byte canonical Block message wrapper. */
   final case class RawLimits(maxRawBytes: Int = 2499991):

@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.protocol.{
   LocalTxMonitor,
   LocalTxSubmission
 }
-import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
+import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.LocalBlock
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Role, UInt64}
 import xyz.kd5ujc.scarab.protocol.LocalTxMonitor.{Kind, Message, State}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.{Held, Snapshot, TxMeasure}
@@ -55,13 +55,13 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
   private def chainSource(
       n: Int,
       size: Int
-  ): Resource[IO, ChainSyncServer.Source[IO, RawNtNBlock]] =
-    def block(i: Int): RawNtNBlock =
+  ): Resource[IO, ChainSyncServer.Source[IO, LocalBlock]] =
+    def block(i: Int): LocalBlock =
       CardanoBlockFetch.localBlock(Bytes.fromArray(Array.fill(size)(i.toByte)))
     def point(i: Int): Point = Point.Block(UInt64.saturating(i), Bytes(Vector.fill(32)(i.toByte)))
     def tip(i: Int) = ChainSync.Tip(point(i), UInt64.saturating(i))
     Resource.eval(Ref.of[IO, Int](0)).map { cursor =>
-      new ChainSyncServer.Source[IO, RawNtNBlock]:
+      new ChainSyncServer.Source[IO, LocalBlock]:
         def intersect(points: cats.data.Chain[Point]) =
           points.find(p => p == Point.Origin || (1 to n).exists(point(_) == p)) match
             case Some(Point.Origin) => cursor.set(0).as(Right(Point.Origin -> tip(n)))
@@ -93,7 +93,7 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
 
   private def connected[A](
       monitor: Option[LocalTxMonitorServer.Source[IO]],
-      chain: Option[Resource[IO, ChainSyncServer.Source[IO, RawNtNBlock]]]
+      chain: Option[Resource[IO, ChainSyncServer.Source[IO, LocalBlock]]]
   )(
       body: (MuxChannel[IO], MuxChannel[IO]) => Handle[IO, NetworkError] ?=> IO[A]
   ): IO[(A, String)] =
@@ -303,7 +303,7 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
     connected(None, Some(chainSource(3, size))) { (_, ch) =>
       val codec = CardanoBlockFetch.localPayloadCodec
       val limits = ChainSync.Limits.NodeToClient
-      def send(state: ChainSync.State, m: ChainSync.Message[RawNtNBlock]): IO[Unit] =
+      def send(state: ChainSync.State, m: ChainSync.Message[LocalBlock]): IO[Unit] =
         sendTo(ch, ChainSync.encode(state, Role.Client, m, codec, limits))
       def receive(state: ChainSync.State) =
         ch.recvUnbounded(
@@ -333,9 +333,9 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
         case other                                             => fail(other.toString)
       assertEquals(
         blocks.collect { case ChainSync.Message.RollForward(b, _) =>
-          b.bytes.size -> b.bytes.value.head
+          b.bytes.size -> b.bytes.byteAt(0).getOrElse(fail("empty block"))
         },
-        List(size -> 1.toByte, size -> 2.toByte, size -> 3.toByte)
+        List(size.toLong -> 1.toByte, size.toLong -> 2.toByte, size.toLong -> 3.toByte)
       )
     }
   }

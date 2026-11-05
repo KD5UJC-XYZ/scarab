@@ -19,7 +19,7 @@ import xyz.kd5ujc.scarab.network.{
 }
 import xyz.kd5ujc.scarab.ledger.{ChainError, StorageError}
 import xyz.kd5ujc.scarab.protocol.{Handshake, LocalStateQuery}
-import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
+import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.LocalBlock
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Role, Tip}
 import xyz.kd5ujc.scarab.node.log.NodeEvent
 
@@ -101,7 +101,7 @@ class ListenerFailuresSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       sibling = Resource.make(
         siblingStarted
           .complete(())
-          .as(new ChainSyncServer.Source[IO, RawNtNBlock]:
+          .as(new ChainSyncServer.Source[IO, LocalBlock]:
             def intersect(points: cats.data.Chain[Point]) = IO.pure(Left(Tip.Origin))
             def poll = IO.pure(None)
             def await = IO.never)

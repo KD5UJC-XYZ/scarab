@@ -207,7 +207,8 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             blocks <- server.blockSource.use { source =>
               def loop(acc: List[Bytes]): IO[List[Bytes]] =
                 source.poll.flatMap {
-                  case Some(Update.RollForward(b, _))  => loop(acc :+ b.bytes)
+                  case Some(Update.RollForward(b, _)) =>
+                    loop(acc :+ b.bytes.toBytes(Int.MaxValue).fold(e => fail(e.toString), identity))
                   case Some(Update.RollBackward(_, _)) => loop(acc)
                   case None                            => IO.pure(acc)
                 }

@@ -49,8 +49,10 @@ class PeerReintersectSuite extends FailsOnUncaught:
         inFlight <- Ref.of[IO, Int](0)
         atReintersection <- Ref.of[IO, Option[Int]](None)
         pipeline = new ChainSyncClient.Pipeline[IO, NtNHeader]:
-          def findIntersect(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
-            offered.updateAndGet(_ :+ points).flatMap { calls =>
+          def findIntersect(points: cats.data.Chain[ChainSync.Point])(using
+              Raise[IO, NetworkError]
+          ) =
+            offered.updateAndGet(_ :+ points.toVector).flatMap { calls =>
               if calls.size == 1 then IO.pure(Some(ChainSync.Point.Origin -> tip))
               else
                 inFlight.get.flatMap(n => atReintersection.set(Some(n))) *> reintersection
@@ -60,7 +62,7 @@ class PeerReintersectSuite extends FailsOnUncaught:
                       .as(headers(i).point -> tip)
                   }
             }
-          def findIntersectResult(points: Vector[ChainSync.Point])(using
+          def findIntersectResult(points: cats.data.Chain[ChainSync.Point])(using
               Raise[IO, NetworkError]
           ) = IO(fail("no chain-sync jumping in a Praos session"))
           def submit(using Raise[IO, NetworkError]) =

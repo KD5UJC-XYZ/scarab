@@ -44,7 +44,7 @@ object FixtureChainModel:
     ): Either[Error, Model] =
       val change: Either[Error, (Vector[Point], Vector[Point], String)] = message match
         case Message.FindIntersect(points) =>
-          Right((history, points, "find-intersect"))
+          Right((history, points.toVector, "find-intersect"))
         case Message.IntersectFound(point, _) =>
           if !offered.contains(point) then Left(Error.UnofferedIntersection)
           else
@@ -82,7 +82,7 @@ object FixtureChainModel:
       forward: Option[Point]
   ): Either[Error, Unit] =
     val points = message match
-      case Message.FindIntersect(ps)      => ps
+      case Message.FindIntersect(ps)      => ps.toVector
       case Message.RollForward(_, tip)    => Vector(tip.point) ++ forward.toVector
       case Message.RollBackward(p, tip)   => Vector(p, tip.point)
       case Message.IntersectFound(p, tip) => Vector(p, tip.point)

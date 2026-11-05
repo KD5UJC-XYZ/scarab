@@ -37,7 +37,7 @@ class ChainSyncPipelineSuite extends FailsOnUncaught:
       started,
       aborts,
       readCancelled,
-      new MuxChannel[IO]:
+      new ContiguousTestMuxChannel:
         val protocol = Protocols.ChainSync
         def send(bytes: Bytes)(using Raise[IO, NetworkError]): IO[Unit] = IO.unit
         def flush: IO[Unit] = IO.unit
@@ -517,7 +517,7 @@ class ChainSyncPipelineSuite extends FailsOnUncaught:
           failSend <- Ref.of[IO, Boolean](false)
           senderError = NetworkError.BearerClosed(NetworkError.Closure.Aborted)
           abort = (e: NetworkError) => entered.complete(()) *> gate.get *> s.aborts.update(_ :+ e)
-          channel = new MuxChannel[IO]:
+          channel = new ContiguousTestMuxChannel:
             val protocol = s.channel.protocol
             def send(bytes: Bytes)(using Raise[IO, NetworkError]): IO[Unit] =
               failSend.get.flatMap(if _ then senderError.raise[IO, Unit] else s.channel.send(bytes))

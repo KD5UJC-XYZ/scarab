@@ -50,9 +50,13 @@ class PeerForkPrefixSuite extends FailsOnUncaught:
           .map((h, raw) => h.hash -> raw)
           .toMap
         val chainSync = new ChainSyncClient[IO, NtNHeader]:
-          def findIntersect(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
-            IO.pure(Option.when(points.contains(base.point))(base.point -> tip))
-          def findIntersectResult(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
+          def findIntersect(points: cats.data.Chain[ChainSync.Point])(using
+              Raise[IO, NetworkError]
+          ) =
+            IO.pure(Option.when(points.exists(_ == base.point))(base.point -> tip))
+          def findIntersectResult(points: cats.data.Chain[ChainSync.Point])(using
+              Raise[IO, NetworkError]
+          ) =
             findIntersect(points).map(
               _.fold[ChainSyncClient.Intersection](ChainSyncRuntime.Intersection.NotFound(tip)) {
                 (point, remoteTip) => ChainSyncRuntime.Intersection.Found(point, remoteTip)

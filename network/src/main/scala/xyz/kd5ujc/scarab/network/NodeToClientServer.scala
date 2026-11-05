@@ -9,7 +9,7 @@ import cats.effect.Resource
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.NtcVersion
 import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch
-import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
+import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.LocalBlock
 
 /** One inbound node-to-client connection: the handshake (versions 16 to 23), then the
   * mini-protocols the node serves (LocalChainSync, LocalTxSubmission, LocalStateQuery and
@@ -25,7 +25,7 @@ object NodeToClientServer:
       magic: Long,
       submit: Bytes => F[LocalTxSubmissionServer.Response],
       stateQuery: Option[LocalStateQueryServer.Source[F, Nothing]] = None,
-      chainSync: Option[Resource[F, ChainSyncServer.Source[F, RawNtNBlock]]] = None,
+      chainSync: Option[Resource[F, ChainSyncServer.Source[F, LocalBlock]]] = None,
       txMonitor: Option[LocalTxMonitorServer.Source[F]] = None
   )(using Raise[F, NetworkError]): F[LocalTxSubmissionServer.End] =
     acceptBackend[F, Nothing](bearer, magic, submit, stateQuery, chainSync, txMonitor)
@@ -36,7 +36,7 @@ object NodeToClientServer:
       magic: Long,
       submit: Bytes => F[LocalTxSubmissionServer.Response],
       stateQuery: Option[LocalStateQueryServer.Source[F, E]],
-      chainSync: Option[Resource[F, ChainSyncServer.Source[F, RawNtNBlock]]] = None,
+      chainSync: Option[Resource[F, ChainSyncServer.Source[F, LocalBlock]]] = None,
       txMonitor: Option[LocalTxMonitorServer.Source[F]] = None,
       openMux: MuxFactory[F] = MuxFactory.nodeToClient[F]
   )(using Raise[F, NetworkError]): F[Either[E, LocalTxSubmissionServer.End]] =
@@ -93,7 +93,7 @@ object NodeToClientServer:
       magic: Long,
       submit: Bytes => F[LocalTxSubmissionServer.Response],
       stateQuery: Option[LocalStateQueryServer.Source[F, E]],
-      chainSync: Option[Resource[F, ChainSyncServer.Source[F, RawNtNBlock]]] = None,
+      chainSync: Option[Resource[F, ChainSyncServer.Source[F, LocalBlock]]] = None,
       txMonitor: Option[LocalTxMonitorServer.Source[F]] = None
   )(using Raise[F, NetworkError]): F[Either[E, LocalTxSubmissionServer.End]] =
     // the connection's protocols run in fibers of their own; each in an error scope of its own, and

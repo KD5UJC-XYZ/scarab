@@ -17,7 +17,7 @@ class LeiosFetchClientSuite extends FailsOnUncaught:
             Array[Byte](0x82.toByte, 2, 0xa1.toByte, 0x58, 0x20) ++ Array
               .fill[Byte](32)(1) :+ 0.toByte
           )
-          channel = new MuxChannel[IO]:
+          channel = new ContiguousTestMuxChannel:
             def protocol = Protocols.LeiosFetch
             def send(message: Bytes)(using Raise[IO, NetworkError]) = sent.update(_ :+ message)
             def flush = IO.unit

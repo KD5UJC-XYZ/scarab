@@ -32,9 +32,13 @@ class PeerCsjBoundarySuite extends FailsOnUncaught:
           ChainSync.Point.Origin
         )
         chainSync = new ChainSyncClient[IO, NtNHeader]:
-          def findIntersect(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
+          def findIntersect(points: cats.data.Chain[ChainSync.Point])(using
+              Raise[IO, NetworkError]
+          ) =
             intersections.update(_ + 1).as(points.headOption.map(_ -> ChainSync.Tip.Origin))
-          def findIntersectResult(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
+          def findIntersectResult(points: cats.data.Chain[ChainSync.Point])(using
+              Raise[IO, NetworkError]
+          ) =
             findIntersect(points).map(
               _.fold[ChainSyncClient.Intersection](
                 ChainSyncRuntime.Intersection.NotFound(ChainSync.Tip.Origin)

@@ -142,7 +142,7 @@ class ChainSyncFindIntersectReferenceSuite extends FunSuite:
               assertEquals(consumed, row.bytes.size)
               message match
                 case Message.FindIntersect(points) =>
-                  assertEquals(Some(points.size), row.points)
+                  assertEquals(Some(points.size), row.points.map(_.toLong))
                   assertEquals(points.headOption.map(first), row.first)
                   assertWire(
                     value(ChainSync.encode(State.Idle, Role.Client, message, payload)),
@@ -188,7 +188,10 @@ class ChainSyncFindIntersectReferenceSuite extends FunSuite:
             case DecodeResult.Decoded(message @ Message.RollForward(block, _), consumed) =>
               assert(row.accepted, s"the reference refuses it: ${row.failure}")
               assertEquals(consumed, row.bytes.size)
-              assertWire(block.bytes, row.payload)
+              assertWire(
+                block.bytes.toBytes(Int.MaxValue).fold(e => fail(e.toString), identity),
+                row.payload
+              )
               assertWire(
                 value(
                   ChainSync.encode(State.NextCanAwait, Role.Server, message, blockCodec, limits)

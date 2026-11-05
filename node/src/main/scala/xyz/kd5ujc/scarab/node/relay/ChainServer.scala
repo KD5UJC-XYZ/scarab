@@ -9,7 +9,7 @@ import fs2.Stream
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Era, NtNHeader}
-import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
+import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.LocalBlock
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Tip}
 import xyz.kd5ujc.scarab.network.{BlockFetchServer, ChainSyncServer}
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef}
@@ -72,12 +72,12 @@ final class ChainServer[F[_]: Async] private (
     cursor(s => Some(s.header), raw => headerOf(raw).toOption.map(_.ntn), fatal)
 
   /** One cursor per connected node-to-client ChainSync client: whole blocks, as stored. */
-  def blockSource: Resource[F, ChainSyncServer.Source[F, RawNtNBlock]] = blockSource(fatal)
+  def blockSource: Resource[F, ChainSyncServer.Source[F, LocalBlock]] = blockSource(fatal)
 
   /** The same, with a storage failure under the cursor given to `failed` instead of the node's
     * fatal sink (a node-to-client connection ends alone).
     */
-  def blockSource(failed: Fatal => F[Unit]): Resource[F, ChainSyncServer.Source[F, RawNtNBlock]] =
+  def blockSource(failed: Fatal => F[Unit]): Resource[F, ChainSyncServer.Source[F, LocalBlock]] =
     cursor(
       served => Some(xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.localBlock(served.raw)),
       raw => Some(xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.localBlock(raw)),

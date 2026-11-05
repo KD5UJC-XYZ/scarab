@@ -18,6 +18,7 @@ enum ProtocolError extends DomainError:
   case CBORItemLimitExceeded
   case CBORResourceLimitExceeded
   case RepresentationCapacityExceeded(required: BigInt)
+  case ChunkedRepresentation(cause: xyz.kd5ujc.scarab.codec.ChunkedBytes.Error)
   case CandidateLimitExceeded
   case CardanoPointHashMustContain32Bytes(actual: BigInt)
   case ClientIsNotAwaitingConfirmation
@@ -196,6 +197,7 @@ enum ProtocolError extends DomainError:
     case CBORResourceLimitExceeded => "CBOR resource limit exceeded"
     case RepresentationCapacityExceeded(required) =>
       s"CBOR representation capacity exceeded: $required"
+    case ChunkedRepresentation(cause)           => s"chunked byte representation: $cause"
     case CandidateLimitExceeded                 => "candidate limit exceeded"
     case CardanoPointHashMustContain32Bytes(_)  => "Cardano point hash must contain 32 bytes"
     case ClientIsNotAwaitingConfirmation        => "client is not awaiting confirmation"

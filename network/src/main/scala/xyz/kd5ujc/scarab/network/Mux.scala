@@ -9,7 +9,7 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import fs2.{Chunk, Pull, Stream}
 import fs2.concurrent.SignallingRef
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, ChunkedBytes}
 import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
 import xyz.kd5ujc.scarab.protocol.Mux as WireMux
 import scala.concurrent.duration.*
@@ -31,7 +31,13 @@ trait MuxChannel[F[_]]:
   /** Queue without a protocol message-size policy, as the reference ChainSync encoder does.
     * Transport SDU framing and egress backpressure still apply.
     */
-  def sendUnbounded(message: Bytes)(using Raise[F, NetworkError]): F[Unit] = send(message)
+  def sendUnbounded(message: Bytes)(using Raise[F, NetworkError]): F[Unit] =
+    sendChunked(ChunkedBytes.fromBytes(message))
+
+  /** Queue one complete logical message without flattening its chunks. The writer packs bounded
+    * SDUs independently of the chunk boundaries; egress admission owns the complete message.
+    */
+  def sendChunked(message: ChunkedBytes)(using Raise[F, NetworkError]): F[Unit]
 
   /** Completes once everything queued on the connection so far has been written to the bearer (or
     * the connection has failed). Used before closing, so that a final message is not lost.
@@ -802,12 +808,12 @@ object Mux:
       }
 
     def send(message: Bytes)(using Raise[F, NetworkError]): F[Unit] =
-      sendWithin(message, Some(config.maxMessageBytes))
+      sendWithin(ChunkedBytes.fromBytes(message), Some(config.maxMessageBytes))
 
-    override def sendUnbounded(message: Bytes)(using Raise[F, NetworkError]): F[Unit] =
+    def sendChunked(message: ChunkedBytes)(using Raise[F, NetworkError]): F[Unit] =
       sendWithin(message, None)
 
-    private def sendWithin(message: Bytes, limit: Option[Int])(using
+    private def sendWithin(message: ChunkedBytes, limit: Option[Int])(using
         Raise[F, NetworkError]
     ): F[Unit] = permitted *>
       (if message.size == 0 || limit.exists(message.size > _) then

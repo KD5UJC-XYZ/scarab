@@ -14,11 +14,11 @@ private[protocol] object ProtocolWire:
   // Extraction of existing ChainSyncWire mechanics; independent protocol policy.
   // Mini-protocol limits are checked before entering this shared framing layer.
 
-  /** The largest limits a protocol may configure. `Network` is the bound of every node-to-node
-    * message. `Local` is that of a node-to-client message: the reference reads it with no byte or
-    * item limit (`codecLocalStateQuery` is `mkCodecCborLazyBS`, run with `Stateful.runPeer`), so
-    * only its mux ingress queue bounds it (`maximumMiniProtocolLimits`, `0xffffffff`), and here the
-    * largest array the JVM can index.
+  /** Configuration ceilings for these contiguous framing adapters. `Network` covers the bounded
+    * node-to-node protocols. `Local` is the largest Bytes array, not a native whole-message policy:
+    * the reference local driver has no codec budget and separately bounds queued unread mux bytes.
+    * Local ChainSync's streamed request/serialized-response paths release prefixes instead of
+    * collecting their complete input through this reader.
     */
   enum Bound(val bytes: Int, val items: Int):
     case Network extends Bound(2500000, 65535)
