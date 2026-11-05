@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.{Deferred, IO, Ref}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import fs2.Chunk
@@ -43,7 +43,7 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
     TestControl
       .executeEmbed {
         typed {
-          linked(protocols = Set(2)).use { (client, server) =>
+          linked(protocols = Set(2, 3)).use { (client, server) =>
             val progress = new java.util.concurrent.atomic.AtomicBoolean(false)
             val suffix = Bytes.fromHex("008100").fold(e => fail(e.toString), identity)
             for
@@ -58,11 +58,55 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
               replay <- typed(
                 s.recvUnbounded(xyz.kd5ujc.scarab.protocol.ChainSyncRequest.decoder.decodePrefix)
               )
+              send <- typed(s.send(Bytes.wrap(Array(7.toByte))))
               reason <- server.failure
+              siblingClient <- client.channel(3)
+              siblingServer <- server.channel(3)
+              _ <- siblingClient.send(Bytes.wrap(Array(8.toByte)))
+              sibling <- siblingServer.recv(1)(exactly(1))
             yield
               val aborted = NetworkError.BearerClosed(NetworkError.Closure.Aborted)
               assertEquals(replay, Left(aborted))
-              assertEquals(reason, Some(aborted))
+              assertEquals(send, Left(aborted))
+              assertEquals(reason, None)
+              assertEquals(sibling, Bytes.wrap(Array(8.toByte)))
+          }
+        }.map(result => assertEquals(result, Right(())))
+      }
+      .timeout(10.seconds)
+  }
+
+  test("a streaming owner's cancellation wakes queued receivers without replacing a mux failure") {
+    TestControl
+      .executeEmbed {
+        typed {
+          linked(protocols = Set(2)).use { (client, server) =>
+            val progress = new java.util.concurrent.atomic.AtomicBoolean(false)
+            for
+              c <- client.channel(2)
+              s <- server.channel(2)
+              result <- Resource
+                .make(typed(s.recvStreaming(consuming(progress))).start)(_.cancel)
+                .use { owner =>
+                  c.send(Bytes.fromHex("008100").fold(e => fail(e.toString), identity)) *>
+                    (IO.cede *> IO(progress.get())).iterateUntil(identity) *>
+                    IO.sleep(1.second) *>
+                    typed(
+                      s.recvUnbounded(
+                        xyz.kd5ujc.scarab.protocol.ChainSyncRequest.decoder.decodePrefix
+                      )
+                    ).background.use { joined =>
+                      IO.sleep(1.second) *> owner.cancel *> joined.flatMap(_.embedNever)
+                    }
+                }
+              before <- server.failure
+              defect = NetworkError.Defect(new IllegalStateException("original mux failure"))
+              _ <- server.abort(defect)
+              after <- typed(s.recv(1)(exactly(1)))
+            yield
+              assertEquals(result, Left(NetworkError.BearerClosed(NetworkError.Closure.Aborted)))
+              assertEquals(before, None)
+              assertEquals(after, Left(defect))
           }
         }.map(result => assertEquals(result, Right(())))
       }

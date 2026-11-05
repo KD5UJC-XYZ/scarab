@@ -114,7 +114,11 @@ writer bounds the actual bearer write, including a stalled handshake flush. A ti
 Cancelling an acquired streaming receive retires its channel before releasing the receive lock:
 consumed prefixes cannot be reconstructed for a new decoder, so a later call must not interpret
 the retained suffix as a fresh request. Cancelling a caller waiting for that lock does not retire
-the active receiver. `MuxSuite` checks both cases.
+the active receiver. Retirement does not publish a new `Mux.closed` event: cancellation during
+sibling cleanup must preserve the owner's original failure. This matches the native mux's
+[asynchronous-exception distinction](https://github.com/IntersectMBO/ouroboros-network/blob/2fb69829a19b5c04e4fb212bdd78fb63f9d2d776/network-mux/src/Network/Mux.hs#L356-L364).
+`MuxSuite` checks retirement, queued callers, sibling-channel use and preservation of a real mux
+failure; `ListenerFailuresSuite` checks that the acquisition fatal follows resource release.
 
 `TxSubmissionPolicy` is pure and immutable. Its closed `Violation` distinguishes bad counts,
 acknowledgement/credit, invalid blocking style, duplicate/unadvertised body IDs and excess/duplicate

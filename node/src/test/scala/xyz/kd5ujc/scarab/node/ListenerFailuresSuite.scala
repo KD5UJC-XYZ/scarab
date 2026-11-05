@@ -118,8 +118,10 @@ class ListenerFailuresSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               Some(source),
               chainSync = Some(sibling)
             )
-            .flatMap(_ =>
-              IO[Unit](fail("incoherent acquisition returned as an ordinary connection ending"))
+            .flatMap(end =>
+              IO[Unit](
+                fail(s"incoherent acquisition returned as an ordinary connection ending: $end")
+              )
             )
         }
         .rescue(error =>
@@ -136,7 +138,7 @@ class ListenerFailuresSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           )
         )
         .background
-        .use { _ =>
+        .use { joined =>
           Handle
             .allow[NetworkError] {
               Mux.resource(client, Set(0, 5, 6, 7), Mux.Config()).use { mux =>
@@ -159,7 +161,12 @@ class ListenerFailuresSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   )
                   _ <- query.send(acquire)
                   _ <- query.flush
-                  fatal <- stopped.get.timeout(3.seconds)
+                  // Observe the owned server too: an unexpected connection result must report its
+                  // assertion directly, rather than disappear behind the fatal-signal timeout.
+                  fatal <- IO
+                    .race(stopped.get, joined.flatMap(_.embedNever) *> stopped.get)
+                    .map(_.merge)
+                    .timeout(3.seconds)
                 yield assertEquals(fatal, Fatal.Internal(ChainError.StateAcquire(cause)))
               }
             }

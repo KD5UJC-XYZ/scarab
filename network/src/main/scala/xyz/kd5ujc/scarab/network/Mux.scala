@@ -68,8 +68,9 @@ trait MuxChannel[F[_]]:
   /** Receive without a whole-message budget, releasing the decoder's consumed prefixes. The default
     * preserves compatibility with finite scripted channels; the live mux releases input after each
     * continuation and never collects the message into one array. Cancelling a receive that owns the
-    * channel lock retires the channel and connection: its consumed prefix cannot be reconstructed
-    * by another caller. Cancelling a caller still waiting for the lock does not.
+    * channel lock retires the channel: its consumed prefix cannot be reconstructed by another
+    * caller. It does not publish a connection failure that could replace the owner's original
+    * error. Cancelling a caller still waiting for the lock does not retire the channel.
     */
   def recvStreaming[A](decode: xyz.kd5ujc.scarab.protocol.StreamingDecoder[A])(using
       Raise[F, NetworkError]
@@ -793,7 +794,10 @@ object Mux:
 
     private def permitted(using Raise[F, NetworkError]): F[Unit] =
       retired.get.flatMap {
-        case true  => closed.get.flatMap(_.raise[F, Unit])
+        case true =>
+          closed.tryGet.flatMap(
+            _.getOrElse(NetworkError.BearerClosed(NetworkError.Closure.Aborted)).raise[F, Unit]
+          )
         case false => dispatch.check((id, role)).flatMap(_.fold(F.unit)(_.raise[F, Unit]))
       }
 
@@ -886,11 +890,10 @@ object Mux:
                     }
                   }
           }
-        F.onCancel(
-          next(decode.initial),
-          closed.complete(NetworkError.BearerClosed(NetworkError.Closure.Aborted)).void *>
-            retired.set(true)
-        )
+        // Native network-mux Mux.hs:356–364 (2fb69829) does not report asynchronous cancellation
+        // as a mini-protocol exception. Publishing a synthetic mux close here can win the owner's
+        // race while it cancels sibling protocols, replacing the actual failure being unwound.
+        F.onCancel(next(decode.initial), retired.set(true))
       }
 
     private def receive[S, A](maxBytes: Option[Int], initial: S)(
