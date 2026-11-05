@@ -243,6 +243,33 @@ class ProvenanceTest(unittest.TestCase):
                                                 "is 2"):
             self.check()
 
+    def test_incremental_observations_are_a_distinct_optional_outcome(self):
+        self.write(dict(self.record, accepted=1, refused=0, needMore=1))
+        self.assertEqual(self.check(), "fixtures/reference/sample/provenance.json")
+        self.write(dict(self.record, batches=[{
+            "cases": 3, "accepted": 1, "refused": 1, "needMore": 1,
+        }]))
+        self.assertEqual(self.check(), "fixtures/reference/sample/provenance.json")
+
+    def test_incremental_observations_must_be_included_in_the_total(self):
+        self.write(dict(self.record, needMore=1))
+        with self.assertRaisesRegex(ValueError,
+                                    "cases: records 2 cases, accepted 1 plus refused 1 plus needMore 1 is 3"):
+            self.check()
+        self.write(dict(self.record, batches=[{
+            "cases": 2, "accepted": 1, "refused": 1, "needMore": 1,
+        }]))
+        with self.assertRaisesRegex(ValueError,
+                                    "batches.0.cases: records 2 cases, accepted 1 plus refused 1 plus needMore 1 is 3"):
+            self.check()
+
+    def test_incremental_observation_count_must_be_a_non_negative_integer(self):
+        for value in (-1, True, 1.5, None, "1"):
+            with self.subTest(value=value):
+                self.write(dict(self.record, needMore=value))
+                with self.assertRaisesRegex(ValueError, "needMore: must be a non-negative integer"):
+                    self.check()
+
     def test_a_nested_digest_is_checked_wherever_it_sits(self):
         self.write(dict(self.record, batches=[{"configurationSha256": {"configuration.yaml": "not-a-digest"}}]))
         with self.assertRaisesRegex(ValueError, "batches.0.configurationSha256.configuration.yaml: must be a "
@@ -303,7 +330,7 @@ class ProvenanceTest(unittest.TestCase):
                     self.check()
 
     def test_nested_counts_and_splits_reject_invalid_types(self):
-        for field in ("cases", "caseCount", "lines", "accepted", "refused"):
+        for field in ("cases", "caseCount", "lines", "accepted", "refused", "needMore"):
             for value in (None, -1, "2", True, 2.5, []):
                 with self.subTest(field=field, value=value):
                     batch = {"cases": 2, "accepted": 1, "refused": 1, field: value}
