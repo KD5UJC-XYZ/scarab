@@ -299,7 +299,7 @@ class LocalSubmissionSuite extends FailsOnUncaught:
           xyz.kd5ujc.scarab.plutus.PlutusLanguage.V1,
           10,
           Bytes.empty,
-          Vector.empty,
+          Vector.fill(2)(xyz.kd5ujc.scarab.plutus.PlutusData.int(0)),
           Vector.empty,
           xyz.kd5ujc.scarab.plutus.ExUnits.zero
         )
