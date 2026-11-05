@@ -325,7 +325,13 @@ object PredicateFailureCbor:
           list(w, fs) { (k, failure) =>
             k.array(3)
               .uint(1)
-              .text(failure.cause.message)
+              .text(
+                PlutusFailureCbor
+                  .description(failure)
+                  .toOption
+                  .flatten
+                  .getOrElse(failure.cause.message)
+              )
               .bytes(PlutusFailureCbor.reconstruction(failure))
           }
     case UtxosFailure.CollectErrors(errors) =>
