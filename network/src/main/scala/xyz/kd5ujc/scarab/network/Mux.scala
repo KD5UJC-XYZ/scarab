@@ -65,6 +65,16 @@ trait MuxChannel[F[_]]:
       using Raise[F, NetworkError]
   ): F[A] = recv(maxBytes)(decode.decodePrefix)
 
+  /** Receive without a whole-message budget, releasing the decoder's consumed prefixes. The default
+    * preserves compatibility with finite scripted channels; the live mux releases input after each
+    * continuation and never collects the message into one array. Cancelling a receive that owns the
+    * channel lock retires the channel and connection: its consumed prefix cannot be reconstructed
+    * by another caller. Cancelling a caller still waiting for the lock does not.
+    */
+  def recvStreaming[A](decode: xyz.kd5ujc.scarab.protocol.StreamingDecoder[A])(using
+      Raise[F, NetworkError]
+  ): F[A] = recvUnbounded(decode.decodePrefix)
+
 /** Multiplexer over one [[Bearer]]: a reader fiber routes SDUs into the ingress queue of their
   * mini-protocol and a writer fiber rotates complete SDUs between admitted outbound channels.
   *
@@ -656,6 +666,7 @@ object Mux:
                 // an SDU that did not fit beside the buffered bytes while batching: held for the
                 // next round, after the buffered message has been decoded and consumed
                 pending <- Ref[F].of(Option.empty[Bytes])
+                retired <- Ref[F].of(false)
               yield key -> (
                 channel(
                   protocol,
@@ -666,6 +677,7 @@ object Mux:
                   buffer,
                   lock,
                   pending,
+                  retired,
                   config,
                   dispatch,
                   handshakeInput.filter(_ => (protocol, role) == (Protocols.Handshake, config.role))
@@ -771,6 +783,7 @@ object Mux:
       buffer: ReceiveBuffer,
       lock: Mutex[F],
       pending: Ref[F, Option[Bytes]],
+      retired: Ref[F, Boolean],
       config: Config,
       dispatch: Dispatch[F],
       handshakeInput: Option[HandshakeInput[F]]
@@ -779,7 +792,10 @@ object Mux:
     def protocol = id
 
     private def permitted(using Raise[F, NetworkError]): F[Unit] =
-      dispatch.check((id, role)).flatMap(_.fold(F.unit)(_.raise[F, Unit]))
+      retired.get.flatMap {
+        case true  => closed.get.flatMap(_.raise[F, Unit])
+        case false => dispatch.check((id, role)).flatMap(_.fold(F.unit)(_.raise[F, Unit]))
+      }
 
     def send(message: Bytes)(using Raise[F, NetworkError]): F[Unit] =
       sendWithin(message, Some(config.maxMessageBytes))
@@ -838,6 +854,44 @@ object Mux:
         decode: xyz.kd5ujc.scarab.protocol.IncrementalDecoder[A]
     )(using Raise[F, NetworkError]): F[A] =
       receive(Some(maxBytes), decode.initial)(decode.resume)
+
+    override def recvStreaming[A](decode: xyz.kd5ujc.scarab.protocol.StreamingDecoder[A])(using
+        Raise[F, NetworkError]
+    ): F[A] =
+      import xyz.kd5ujc.scarab.protocol.StreamingDecoder.Step
+      lock.lock.surround {
+        def next(cursor: decode.Cursor): F[A] = permitted *>
+          F.delay(buffer.view).flatMap { held =>
+            Either.catchNonFatal(decode.resume(cursor, held)) match
+              case Left(cause)                => NetworkError.DecoderDefect(id, cause).raise[F, A]
+              case Right(Step.Failed(reason)) => NetworkError.Decode(id, reason).raise[F, A]
+              case Right(Step.Done(value, consumed)) =>
+                F.delay(buffer.consume(consumed)) *>
+                  handshakeInput
+                    .traverse_(input => F.delay(buffer.clear()) *> input.complete)
+                    .as(value)
+              case Right(Step.More(cursor, consumed)) =>
+                F.delay(buffer.consume(consumed)) *> handshakeInput.traverse_(_.continue) *>
+                  pending.getAndSet(None).flatMap(_.fold(nextPayload)(F.pure)).flatMap { payload =>
+                    F.delay(buffer.append(payload)).flatMap { fits =>
+                      if fits then next(cursor)
+                      else
+                        NetworkError
+                          .ReceiveCapacityExceeded(
+                            id,
+                            buffer.size.toLong + payload.size,
+                            buffer.capacity
+                          )
+                          .raise[F, A]
+                    }
+                  }
+          }
+        F.onCancel(
+          next(decode.initial),
+          closed.complete(NetworkError.BearerClosed(NetworkError.Closure.Aborted)).void *>
+            retired.set(true)
+        )
+      }
 
     private def receive[S, A](maxBytes: Option[Int], initial: S)(
         decode: (S, Bytes) => (S, DecodeResult[A])

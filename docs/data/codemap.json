@@ -225,6 +225,7 @@
         "NodeToNodeSuite",
         "HandshakeSuite",
         "ChainSyncRuntimeSuite",
+        "ChainSyncStreamingSuite",
         "BlockFetchPipelineSuite",
         "ProtocolResultsSuite",
         "WarmHotSuite",

@@ -152,7 +152,7 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
         honest.codec,
         honest.chainSync.map { inner =>
           new ChainSyncServer.Source[IO, NtNHeader]:
-            def intersect(points: Vector[ChainSync.Point]) =
+            def intersect(points: cats.data.Chain[ChainSync.Point]) =
               intersections.update(_ + 1) *> inner.intersect(points)
             def poll = inner.poll
             def await = inner.await

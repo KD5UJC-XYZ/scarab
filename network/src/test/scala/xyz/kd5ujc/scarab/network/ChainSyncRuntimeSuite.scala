@@ -36,7 +36,7 @@ class ChainSyncRuntimeSuite extends FailsOnUncaught:
     val chainTip = MockTip(item("82821800401801"))
     val header = MockHeader(item("a10102"))
     val source = new ChainSyncRuntime.Source[IO, MockPoint, MockTip, MockHeader]:
-      def intersect(points: Vector[MockPoint]) =
+      def intersect(points: cats.data.Chain[MockPoint]) =
         IO.pure(points.headOption.fold(Left(chainTip))(found => Right(found -> chainTip)))
       def poll = IO.pure(Some(ChainSyncRuntime.Update.RollForward(header, chainTip)))
       def await = IO.never[ChainSyncRuntime.Update[MockPoint, MockTip, MockHeader]]

@@ -102,7 +102,7 @@ class ListenerFailuresSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         siblingStarted
           .complete(())
           .as(new ChainSyncServer.Source[IO, RawNtNBlock]:
-            def intersect(points: Vector[Point]) = IO.pure(Left(Tip.Origin))
+            def intersect(points: cats.data.Chain[Point]) = IO.pure(Left(Tip.Origin))
             def poll = IO.pure(None)
             def await = IO.never)
       )(_ => siblingReleased.set(true))

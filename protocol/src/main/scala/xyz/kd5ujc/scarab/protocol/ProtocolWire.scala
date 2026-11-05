@@ -153,10 +153,12 @@ private[protocol] object ProtocolWire:
       val h = read()
       if h / 32 != 6 then bad(ProtocolError.ExpectedTag)
       argument(h & 31)
-    def bytes(max: Int): Bytes =
+    def byteStringLength(): BigInt =
       val h = read()
       if h / 32 != 2 || (h & 31) == 31 then bad(ProtocolError.ExpectedDefiniteByteString)
-      val declared = lengthArgument(h & 31)
+      lengthArgument(h & 31)
+    def bytes(max: Int): Bytes =
+      val declared = byteStringLength()
       if limits.deferredLengths then needDeclared(declared)
       val n = bounded(
         declared,
@@ -212,15 +214,25 @@ private[protocol] object ProtocolWire:
       * contents or preempt the first point's error (`ChainSync/Codec.hs:209-214`, ouroboros-network
       * 2fb69829).
       */
-    def items[A](readOne: Reader => A): Vector[A] =
+    def candidateCount(): Option[BigInt] =
       val h = read()
       if h / 32 != 4 then bad(ProtocolError.ExpectedCandidateArray)
+      Option.unless((h & 31) == 31)(lengthArgument(h & 31))
+
+    def breakIfPresent(): Boolean =
+      if peek == 255 then
+        read()
+        true
+      else false
+
+    def items[A](readOne: Reader => A): Vector[A] =
+      val count = candidateCount()
       val out = Vector.newBuilder[A]
-      if (h & 31) == 31 then
+      if count.isEmpty then
         while peek != 255 do out += readOne(this)
         read()
       else
-        var remaining = lengthArgument(h & 31)
+        var remaining = count.getOrElse(BigInt(0))
         while remaining > 0 do
           out += readOne(this)
           remaining -= 1

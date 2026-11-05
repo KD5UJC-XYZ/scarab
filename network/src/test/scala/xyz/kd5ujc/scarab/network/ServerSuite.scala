@@ -33,7 +33,7 @@ class ServerSuite extends FailsOnUncaught:
     def source: Resource[IO, ChainSyncServer.Source[IO, Bytes]] =
       Resource.eval(Ref.of[IO, Int](0)).map { cursor =>
         new ChainSyncServer.Source[IO, Bytes]:
-          def intersect(points: Vector[Point]) =
+          def intersect(points: cats.data.Chain[Point]) =
             for
               chain <- blocks.get
               t <- tip

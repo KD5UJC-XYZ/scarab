@@ -97,7 +97,7 @@ final class ChainServer[F[_]: Async] private (
       .make(state.modify(_.open()))(id => state.update(_.close(id)))
       .map { id =>
         new ChainSyncServer.Source[F, P]:
-          def intersect(points: Vector[Point]) = StorageBoundary.run(fatal) {
+          def intersect(points: cats.data.Chain[Point]) = StorageBoundary.run(fatal) {
             state.get.flatMap { chain =>
               points
                 .findM(onChain(chain, _))

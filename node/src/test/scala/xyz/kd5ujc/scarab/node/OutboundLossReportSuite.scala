@@ -24,7 +24,7 @@ class OutboundLossReportSuite extends FailsOnUncaught:
 
   private def handlers: ServerHandlers[IO, NtNHeader] =
     val cursor = new ChainSyncServer.Source[IO, NtNHeader]:
-      def intersect(points: Vector[ChainSync.Point]) = IO.pure(Left(ChainSync.Tip.Origin))
+      def intersect(points: cats.data.Chain[ChainSync.Point]) = IO.pure(Left(ChainSync.Tip.Origin))
       def poll = IO.pure(None)
       def await = IO.never[ChainSyncServer.Update[NtNHeader]]
     val blocks = new BlockFetchServer.Blocks[IO]:

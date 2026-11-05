@@ -215,7 +215,8 @@ class PeerDefectPolicySuite extends FailsOnUncaught:
       NtNHeader.codec,
       Resource.pure[IO, ChainSyncServer.Source[IO, NtNHeader]](
         new ChainSyncServer.Source[IO, NtNHeader]:
-          def intersect(points: Vector[ChainSync.Point]) = IO.pure(Left(ChainSync.Tip.Origin))
+          def intersect(points: cats.data.Chain[ChainSync.Point]) =
+            IO.pure(Left(ChainSync.Tip.Origin))
           def poll = IO.pure(None)
           def await = IO.never
       ),

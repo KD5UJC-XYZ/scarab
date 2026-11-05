@@ -27,6 +27,80 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
   private def payload(n: Int, seed: Int = 7): Bytes =
     Bytes(Vector.tabulate(n)(i => ((i * 31 + seed) & 0xff).toByte))
 
+  private def consuming(started: java.util.concurrent.atomic.AtomicBoolean) =
+    new xyz.kd5ujc.scarab.protocol.StreamingDecoder[Unit]:
+      import xyz.kd5ujc.scarab.protocol.StreamingDecoder.Step
+      type Cursor = Boolean
+      def initial = false
+      def resume(cursor: Boolean, input: Bytes): Step[Boolean, Unit] =
+        if !cursor && input.nonEmpty then
+          started.set(true)
+          Step.More(true, 1)
+        else if cursor && input.size >= 3 then Step.Done((), 3)
+        else Step.More(cursor, 0)
+
+  test("cancelling a consuming receive retires its buffered suffix and releases the channel lock") {
+    TestControl
+      .executeEmbed {
+        typed {
+          linked(protocols = Set(2)).use { (client, server) =>
+            val progress = new java.util.concurrent.atomic.AtomicBoolean(false)
+            val suffix = Bytes.fromHex("008100").fold(e => fail(e.toString), identity)
+            for
+              c <- client.channel(2)
+              s <- server.channel(2)
+              _ <- typed(s.recvStreaming(consuming(progress))).background.use { _ =>
+                c.send(suffix) *> (IO.cede *> IO(progress.get())).iterateUntil(identity) *>
+                  IO.sleep(1.second)
+              }
+              // The retained 8100 is a complete RequestNext. A new caller must not decode it after
+              // the consuming cursor was cancelled; completing mux.closed alone still allowed that.
+              replay <- typed(
+                s.recvUnbounded(xyz.kd5ujc.scarab.protocol.ChainSyncRequest.decoder.decodePrefix)
+              )
+              reason <- server.failure
+            yield
+              val aborted = NetworkError.BearerClosed(NetworkError.Closure.Aborted)
+              assertEquals(replay, Left(aborted))
+              assertEquals(reason, Some(aborted))
+          }
+        }.map(result => assertEquals(result, Right(())))
+      }
+      .timeout(10.seconds)
+  }
+
+  test("cancelling a streaming caller waiting for the lock leaves its active owner usable") {
+    TestControl
+      .executeEmbed {
+        typed {
+          linked(protocols = Set(2)).use { (client, server) =>
+            val progress = new java.util.concurrent.atomic.AtomicBoolean(false)
+            for
+              c <- client.channel(2)
+              s <- server.channel(2)
+              _ <- typed(s.recvStreaming(consuming(progress))).background.use { joined =>
+                for
+                  _ <- c.send(Bytes.fromHex("008100").fold(e => fail(e.toString), identity))
+                  _ <- (IO.cede *> IO(progress.get())).iterateUntil(identity) *> IO.sleep(1.second)
+                  _ <- typed(
+                    s.recvStreaming(consuming(new java.util.concurrent.atomic.AtomicBoolean(false)))
+                  ).background.use(_ => IO.sleep(1.second))
+                  before <- server.failure
+                  _ <- c.send(Bytes.wrap(Array(0.toByte)))
+                  owner <- joined.flatMap(_.embedNever)
+                  after <- server.failure
+                yield
+                  assertEquals(before, None)
+                  assertEquals(owner, Right(()))
+                  assertEquals(after, None)
+              }
+            yield ()
+          }
+        }.map(result => assertEquals(result, Right(())))
+      }
+      .timeout(10.seconds)
+  }
+
   test("messages are routed to their mini-protocol channel"):
     typed {
       linked().use { (client, server) =>

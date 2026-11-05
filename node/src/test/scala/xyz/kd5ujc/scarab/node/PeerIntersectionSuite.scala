@@ -19,6 +19,29 @@ import scala.concurrent.duration.*
   * into the selection of that intersection.
   */
 class PeerIntersectionSuite extends FailsOnUncaught:
+  test(
+    "the production intersection source searches a wide segmented offer without materializing a vector"
+  ) {
+    for
+      server <- ChainServer
+        .open[IO](None, None, RelayKit.headerOf, cause => IO(fail(s"server failure: $cause")))
+      _ <- server.source.use { source =>
+        val points = cats.data.Chain
+          .fromSeq(Vector.fill(50000)(RelayKit.ref(999).point))
+          .append(ChainSync.Point.Origin)
+        for
+          found <- source.intersect(points)
+          next <- source.poll
+        yield
+          assertEquals(found, Right(ChainSync.Point.Origin -> ChainSync.Tip.Origin))
+          assertEquals(
+            next,
+            Some(ChainSyncServer.Update.RollBackward(ChainSync.Point.Origin, ChainSync.Tip.Origin))
+          )
+      }
+    yield ()
+  }
+
   private final case class Result(
       offered: Vector[ChainSync.Point],
       found: Option[ChainSync.Point],
@@ -77,8 +100,8 @@ class PeerIntersectionSuite extends FailsOnUncaught:
             Peers.linked(protocols = Set(Protocols.ChainSync)).use { (clientMux, serverMux) =>
               server.source.use { source =>
                 val observed = new ChainSyncServer.Source[IO, NtNHeader]:
-                  def intersect(points: Vector[ChainSync.Point]) =
-                    offered.set(points) *> source.intersect(points)
+                  def intersect(points: cats.data.Chain[ChainSync.Point]) =
+                    offered.set(points.toVector) *> source.intersect(points)
                   def poll = source.poll
                   def await = source.await
                 for

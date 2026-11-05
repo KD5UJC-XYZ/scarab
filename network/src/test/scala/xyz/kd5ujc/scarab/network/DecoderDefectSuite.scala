@@ -30,7 +30,7 @@ class DecoderDefectSuite extends FailsOnUncaught:
     case other => fail(s"expected a DecoderDefect of ${Protocols.name(protocol)}, got $other")
 
   private val source = new ChainSyncServer.Source[IO, Bytes]:
-    def intersect(points: Vector[ChainSync.Point]) = IO.pure(Left(ChainSync.Tip.Origin))
+    def intersect(points: cats.data.Chain[ChainSync.Point]) = IO.pure(Left(ChainSync.Tip.Origin))
     def poll = IO.pure(None)
     def await = IO.never[ChainSyncServer.Update[Bytes]]
   private val handlers = ServerHandlers[IO, Bytes](
@@ -270,7 +270,7 @@ class DecoderDefectSuite extends FailsOnUncaught:
       def acquire = IO.never
       def awaitChange(seen: LocalTxMonitorServer.Snapshot) = IO.never
     val chain = new ChainSyncServer.Source[IO, RawNtNBlock]:
-      def intersect(points: Vector[ChainSync.Point]) = IO.pure(Left(ChainSync.Tip.Origin))
+      def intersect(points: cats.data.Chain[ChainSync.Point]) = IO.pure(Left(ChainSync.Tip.Origin))
       def poll = IO.pure(None)
       def await = IO.never
     List(

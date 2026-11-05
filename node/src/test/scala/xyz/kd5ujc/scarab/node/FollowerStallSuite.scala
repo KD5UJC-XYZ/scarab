@@ -114,7 +114,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       honest.chainSync.evalMap { inner =>
         Ref.of[IO, Int](0).map { served =>
           new ChainSyncServer.Source[IO, NtNHeader]:
-            def intersect(points: Vector[Point]) = inner.intersect(points)
+            def intersect(points: cats.data.Chain[Point]) = inner.intersect(points)
             // The second half of the headers follows the first answered range, so that its
             // blocks are a range of their own: BlockFetch requests whatever the candidate holds.
             def poll = served.getAndUpdate(_ + 1).flatMap { n =>
@@ -206,7 +206,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       honest.codec,
       honest.chainSync.map { inner =>
         new ChainSyncServer.Source[IO, NtNHeader]:
-          def intersect(points: Vector[Point]) = ready *> inner.intersect(points)
+          def intersect(points: cats.data.Chain[Point]) = ready *> inner.intersect(points)
           def poll = inner.poll
           def await = inner.await
       },

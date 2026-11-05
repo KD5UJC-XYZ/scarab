@@ -62,7 +62,7 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
     def tip(i: Int) = ChainSync.Tip(point(i), UInt64.saturating(i))
     Resource.eval(Ref.of[IO, Int](0)).map { cursor =>
       new ChainSyncServer.Source[IO, RawNtNBlock]:
-        def intersect(points: Vector[Point]) =
+        def intersect(points: cats.data.Chain[Point]) =
           points.find(p => p == Point.Origin || (1 to n).exists(point(_) == p)) match
             case Some(Point.Origin) => cursor.set(0).as(Right(Point.Origin -> tip(n)))
             case Some(p) =>

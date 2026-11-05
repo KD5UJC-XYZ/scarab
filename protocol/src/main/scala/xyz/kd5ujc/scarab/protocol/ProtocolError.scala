@@ -19,7 +19,7 @@ enum ProtocolError extends DomainError:
   case CBORResourceLimitExceeded
   case RepresentationCapacityExceeded(required: BigInt)
   case CandidateLimitExceeded
-  case CardanoPointHashMustContain32Bytes(actual: Int)
+  case CardanoPointHashMustContain32Bytes(actual: BigInt)
   case ClientIsNotAwaitingConfirmation
   case CountOutsideUint16(value: BigInt)
   case DuplicateBodyRequest

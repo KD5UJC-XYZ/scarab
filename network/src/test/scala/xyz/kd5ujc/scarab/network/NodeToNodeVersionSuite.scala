@@ -20,7 +20,7 @@ class NodeToNodeVersionSuite extends CatsEffectSuite:
   private val handlers = ServerHandlers[IO, Bytes](
     ChainSyncFixtures.rawItem,
     Resource.pure[IO, ChainSyncServer.Source[IO, Bytes]](new ChainSyncServer.Source[IO, Bytes]:
-      def intersect(points: Vector[ChainSync.Point]) = IO.pure(Left(Peers.tip(1)))
+      def intersect(points: cats.data.Chain[ChainSync.Point]) = IO.pure(Left(Peers.tip(1)))
       def poll = IO.pure(None)
       def await = IO.never),
     (_, _) => IO.pure(None),

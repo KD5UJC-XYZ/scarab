@@ -7,7 +7,14 @@ import java.security.MessageDigest
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.{CardanoBlockFetch, ChainSync, ChainSyncEngine, ProtocolError}
+import xyz.kd5ujc.scarab.protocol.{
+  CardanoBlockFetch,
+  ChainSync,
+  ChainSyncEngine,
+  ChainSyncRequest,
+  ProtocolError,
+  StreamingDecoder
+}
 import xyz.kd5ujc.scarab.protocol.ChainSync.{DecodeResult, Message, Point, Role, State, UInt64}
 
 /** Executed released-codec observations at ouroboros-network 2fb69829. Compact recipes retain exact
@@ -26,6 +33,91 @@ class ChainSyncFindIntersectReferenceSuite extends FunSuite:
     result.fold(e => fail(e.toString), identity)
   private def assertWire(bytes: Bytes, expected: Option[Wire]): Unit =
     assertEquals(Some(Wire(bytes.size, sha256(bytes))), expected)
+
+  private def streamed(bytes: Bytes, width: Int): DecodeResult[ChainSyncRequest[Point]] =
+    val decoder = ChainSyncRequest.decoder
+    @scala.annotation.tailrec
+    def feed(
+        cursor: decoder.Cursor,
+        held: Bytes,
+        at: Int,
+        consumed: Int
+    ): DecodeResult[ChainSyncRequest[Point]] =
+      decoder.resume(cursor, held) match
+        case StreamingDecoder.Step.Failed(error)  => DecodeResult.Failed(error)
+        case StreamingDecoder.Step.Done(value, n) => DecodeResult.Decoded(value, consumed + n)
+        case StreamingDecoder.Step.More(next, n) =>
+          if at == bytes.size then DecodeResult.NeedMore
+          else
+            val end = (at + width).min(bytes.size)
+            feed(next, held.drop(n) ++ bytes.slice(at, end), end, consumed + n)
+    feed(decoder.initial, Bytes.empty, 0, 0)
+
+  for row <- rows if row.kind == Kind.Points || row.kind == Kind.Prefix do
+    test(s"streamed Cardano request: ${row.name}") {
+      Vector(1, 7, 64).foreach { width =>
+        streamed(row.bytes, width) match
+          case DecodeResult.Decoded(ChainSyncRequest.FindIntersect(points), consumed) =>
+            assert(row.accepted, s"native rejected ${row.name}")
+            assertEquals(consumed, row.bytes.size)
+            assertEquals(Some(points.length), row.points.map(_.toLong))
+            assertEquals(points.headOption.map(first), row.first)
+          case DecodeResult.NeedMore => assert(row.needMore)
+          case DecodeResult.Failed(error) =>
+            assert(!row.accepted && !row.needMore, error.message)
+          case other => fail(s"unexpected request $other")
+      }
+    }
+
+  test("an invalid long point hash is consumed before its size is rejected") {
+    val prefix = hex("82049f82005a00001000")
+    val raw = prefix ++ Bytes.wrap(Array.fill(4096)(0.toByte))
+    assertEquals(streamed(raw.take(raw.size - 1), 7), DecodeResult.NeedMore)
+    assertEquals(
+      streamed(raw, 7),
+      DecodeResult.Failed(ProtocolError.CardanoPointHashMustContain32Bytes(4096))
+    )
+  }
+
+  test("streaming hash lengths cross Int.MaxValue without retaining the payload") {
+    val decoder = ChainSyncRequest.decoder
+    val prefix = hex("82049f82005b0000000080000000")
+    val chunk = Bytes.wrap(Array.fill(1024 * 1024)(0.toByte))
+    val first = decoder.resume(decoder.initial, prefix) match
+      case StreamingDecoder.Step.More(cursor, consumed) =>
+        assertEquals(consumed, prefix.size)
+        cursor
+      case other => fail(s"expected hash continuation: $other")
+    val beforeLast = (0 until 2047).foldLeft(first) { (cursor, _) =>
+      decoder.resume(cursor, chunk) match
+        case StreamingDecoder.Step.More(next, consumed) =>
+          assertEquals(consumed, chunk.size)
+          next
+        case other => fail(s"premature hash outcome: $other")
+    }
+    assertEquals(
+      decoder.resume(beforeLast, chunk),
+      StreamingDecoder.Step.Failed(
+        ProtocolError.CardanoPointHashMustContain32Bytes(BigInt(1) << 31)
+      )
+    )
+  }
+
+  test("a wide streamed offer remains stack safe") {
+    val bytes = hex("82049f") ++ Bytes.wrap(Array.fill(50000)(0x80.toByte)) ++ hex("ff")
+    val task = new java.util.concurrent.FutureTask[DecodeResult[ChainSyncRequest[Point]]](() =>
+      streamed(bytes, bytes.size)
+    )
+    val worker = new Thread(null, task, "streamed-chain-sync-small-stack", 256 * 1024)
+    worker.start()
+    val result = task.get()
+    worker.join()
+    result match
+      case DecodeResult.Decoded(ChainSyncRequest.FindIntersect(points), consumed) =>
+        assertEquals(points.length, 50000L)
+        assertEquals(consumed, bytes.size)
+      case other => fail(s"expected complete offer: $other")
+  }
 
   test("the native corpus crosses the former candidate, item, and NtC byte bounds") {
     assert(rows.exists(_.count == 1025))

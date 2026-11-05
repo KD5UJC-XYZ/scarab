@@ -172,7 +172,7 @@ class UpstreamPipeBehaviorSuite extends FailsOnUncaught:
   private def source(testCase: FixtureCase): IO[ChainSyncRuntime.Source[IO, Bytes, Bytes, Bytes]] =
     Ref.of[IO, Int](0).map { cursor =>
       new ChainSyncRuntime.Source[IO, Bytes, Bytes, Bytes]:
-        def intersect(points: Vector[Bytes]): IO[Either[Bytes, (Bytes, Bytes)]] =
+        def intersect(points: cats.data.Chain[Bytes]): IO[Either[Bytes, (Bytes, Bytes)]] =
           val chainPoints = fromHex("80") +: testCase.initial.flatMap(_.point)
           val found = points.find(chainPoints.contains)
           IO.pure(

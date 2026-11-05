@@ -100,7 +100,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
         NtNHeader.codec,
         server.source.map(source =>
           new ChainSyncServer.Source[IO, NtNHeader]:
-            def intersect(points: Vector[Point]) =
+            def intersect(points: cats.data.Chain[Point]) =
               intersections.update(_ + 1) *> source.intersect(points)
             def poll = source.poll
             def await = source.await
@@ -261,7 +261,8 @@ class InboundGovernorSuite extends FailsOnUncaught:
               NtNHeader.codec,
               Resource.pure[IO, ChainSyncServer.Source[IO, NtNHeader]](
                 new ChainSyncServer.Source[IO, NtNHeader]:
-                  def intersect(points: Vector[Point]) = IO.pure(Left(ChainSync.Tip.Origin))
+                  def intersect(points: cats.data.Chain[Point]) =
+                    IO.pure(Left(ChainSync.Tip.Origin))
                   def poll = IO.pure(None)
                   def await = IO.never
               ),
@@ -701,7 +702,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
           remoteNode.handlers.codec,
           remoteNode.handlers.chainSync.map { inner =>
             new ChainSyncServer.Source[IO, NtNHeader]:
-              def intersect(points: Vector[Point]) = inner.intersect(points).flatTap {
+              def intersect(points: cats.data.Chain[Point]) = inner.intersect(points).flatTap {
                 case Right((point, _)) => intersections.update(_ :+ point)
                 case Left(_)           => IO.unit
               }
@@ -975,7 +976,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
                 remoteNode.handlers.codec,
                 remoteNode.handlers.chainSync.map { inner =>
                   new ChainSyncServer.Source[IO, NtNHeader]:
-                    def intersect(points: Vector[Point]) = inner.intersect(points)
+                    def intersect(points: cats.data.Chain[Point]) = inner.intersect(points)
                     def poll = inner.poll
                     def await = awaiting.complete(()).void *> inner.await
                 },
