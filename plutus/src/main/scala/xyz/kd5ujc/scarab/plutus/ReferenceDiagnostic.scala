@@ -14,6 +14,12 @@ object ReferenceDiagnostic:
   final case class Budget(cpu: BigInt, memory: BigInt)
   final case class Version(major: BigInt, minor: BigInt, patch: BigInt)
 
+  /** The pinned native language type includes V4 even before its ledger activation. This
+    * presentation type does not add an execution profile to PlutusLanguage.
+    */
+  enum LedgerLanguage:
+    case V1, V2, V3, V4
+
   enum Universe:
     case Integer, ByteString, Text, Unit, Bool, ProtoArray, ProtoList, ProtoPair
     case Apply(function: Universe, argument: Universe)
@@ -85,8 +91,8 @@ object ReferenceDiagnostic:
   enum ScriptDecodeError:
     case CborDeserialiseError(offset: BigInt, reason: DeserialiseFailureReason)
     case Remainder(bytes: Bytes)
-    case LedgerLanguageNotAvailable(language: PlutusLanguage, introduced: BigInt, current: BigInt)
-    case PlutusCoreLanguageNotAvailable(version: Version, language: PlutusLanguage, current: BigInt)
+    case LedgerLanguageNotAvailable(language: LedgerLanguage, introduced: BigInt, current: BigInt)
+    case PlutusCoreLanguageNotAvailable(version: Version, language: LedgerLanguage, current: BigInt)
 
   enum EvaluationError:
     case Cek(error: ErrorWithCause)
