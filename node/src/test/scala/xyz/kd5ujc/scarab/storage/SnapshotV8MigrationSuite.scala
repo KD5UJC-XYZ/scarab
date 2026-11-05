@@ -15,11 +15,11 @@ import xyz.kd5ujc.scarab.node.NodeSetup
 
 import StorageTestKit.*
 
-/** V8 keeps the installer metadata of the Byron update state's software proposals and application
-  * versions, which V5 and V7 discarded (#726). A V5 or V7 snapshot whose Byron update state holds
-  * none migrates as it is; one that holds any is refused with [[StorageError.ResyncRequired]] at
-  * every entry point, before any file is rewritten, and nothing is invented for it (ADR 0006,
-  * amendment of 2026-11-03).
+/** V8 (and V9 after it) keeps the installer metadata of the Byron update state's software proposals
+  * and application versions, which V5 and V7 discarded (#726). A V5 or V7 snapshot whose Byron
+  * update state holds none migrates as it is; one that holds any is refused with
+  * [[StorageError.ResyncRequired]] at every entry point, before any file is rewritten, and nothing
+  * is invented for it (ADR 0006, amendment of 2026-11-03).
   */
 class SnapshotV8MigrationSuite extends CatsEffectSuite:
   private val env: ConsensusMirrorEnv = NodeSetup
@@ -125,17 +125,17 @@ class SnapshotV8MigrationSuite extends CatsEffectSuite:
         assertEquals(
           report,
           SnapshotMigration.Report(
-            List(Migrated(FileKind.SnapshotFile, FormatVersion.V7, FormatVersion.V8, 1)),
+            List(Migrated(FileKind.SnapshotFile, FormatVersion.V7, FormatVersion.V9, 1)),
             Nil
           )
         )
         assertEquals(
           after,
-          JFiles.readAllBytes(JPath.of("fixtures/snapshot-v8").resolve(byron)).toVector
+          JFiles.readAllBytes(JPath.of("fixtures/snapshot-v9").resolve(byron)).toVector
         )
         val sidecar = FileLedgerSnapshots
           .verified(after.toArray)
-          .flatMap(SnapshotV8.sidecarOf)
+          .flatMap(SnapshotV9.sidecarOf)
           .fold(e => fail(e.message), identity)
         assertEquals(sidecar, v7._2)
     }
@@ -194,7 +194,7 @@ class SnapshotV8MigrationSuite extends CatsEffectSuite:
       assertEquals(SnapshotV7.fromV5(v5Content), refusal(FormatVersion.V5))
   }
 
-  test("V8 keeps the installer metadata of software proposals and application versions") {
+  test("V8 and V9 keep the installer metadata of software proposals and application versions") {
     val (binding, sidecar, haskell) = v7
     val update = (u: UpdateState) =>
       u.copy(
@@ -202,9 +202,11 @@ class SnapshotV8MigrationSuite extends CatsEffectSuite:
         appVersions = Map("cardano-sl" -> application)
       )
     val changed = withUpdate(sidecar)(update)
-    val written = SnapshotV8.framed(binding, changed, haskell)
-    assertEquals(SnapshotV8.sidecarOf(written).map(updateOf), Right(updateOf(changed)))
-    val state = SnapshotV8.decode(env, written).fold(e => fail(e.message), identity).state
+    val v8 = SnapshotV8.framed(binding, changed, haskell)
+    assertEquals(SnapshotV8.sidecarOf(v8).map(updateOf), Right(updateOf(changed)))
+    val written = SnapshotV9.fromV8(v8).fold(e => fail(e.message), identity)
+    assertEquals(SnapshotV9.sidecarOf(written).map(updateOf), Right(updateOf(changed)))
+    val state = SnapshotV9.decode(env, written).fold(e => fail(e.message), identity).state
     state.ext.ledgerState.state match
       case EraLedgerState.ByronCurrent(b) =>
         assertEquals(b.ledger.map(_.update), Some(updateOf(changed)))

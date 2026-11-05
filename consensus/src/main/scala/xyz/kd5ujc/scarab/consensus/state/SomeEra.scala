@@ -20,10 +20,11 @@ enum SomeEra:
 object SomeEra:
   /** The pack of an era, `None` for Byron (which has no Shelley-based state). Total. */
   def of(era: Era): Option[SomeEra] = era match
-    case Era.Byron   => None
-    case Era.Shelley => Some(Of(ShelleyBasedEra.SShelley))
-    case Era.Allegra => Some(Of(ShelleyBasedEra.SAllegra))
-    case Era.Mary    => Some(Of(ShelleyBasedEra.SMary))
-    case Era.Alonzo  => Some(Of(ShelleyBasedEra.SAlonzo))
-    case Era.Babbage => Some(Of(ShelleyBasedEra.SBabbage))
-    case Era.Conway  => Some(Of(ShelleyBasedEra.SConway))
+    case Era.Byron    => None
+    case Era.Shelley  => Some(Of(ShelleyBasedEra.SShelley))
+    case Era.Allegra  => Some(Of(ShelleyBasedEra.SAllegra))
+    case Era.Mary     => Some(Of(ShelleyBasedEra.SMary))
+    case Era.Alonzo   => Some(Of(ShelleyBasedEra.SAlonzo))
+    case Era.Babbage  => Some(Of(ShelleyBasedEra.SBabbage))
+    case Era.Conway   => Some(Of(ShelleyBasedEra.SConway))
+    case Era.Dijkstra => Some(Of(ShelleyBasedEra.SDijkstra))

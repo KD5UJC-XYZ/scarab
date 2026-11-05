@@ -16,16 +16,17 @@ import xyz.kd5ujc.scarab.ledger.byron.{
   UpdateState as LiveUpdateState
 }
 
-/** The sidecar schema of the V5 and V7 bodies, frozen: the current one ([[SnapshotSidecar]], V8)
-  * less the installer metadata of the Byron update state's software proposals and application
-  * versions, which those versions discarded (issue #726).
+/** The sidecar schema of the V5 and V7 bodies, frozen: the V8 one ([[SnapshotSidecarV8]]) less the
+  * installer metadata of the Byron update state's software proposals and application versions,
+  * which those versions discarded (issue #726).
   *
   * It reads into the current types. A Byron update state that holds no software proposal and no
   * application version lost nothing and is read as it is; one that holds any is refused with
   * [[StorageError.ResyncRequired]], because its metadata cannot be recovered and the node does not
   * invent it (ADR 0006). The schema fingerprint golden of `CodecSuite` keeps it the one those files
-  * were written with: the frozen types below carry the names of the V7 types, and the other types
-  * are shared with the current schema, unchanged at V8.
+  * were written with: the frozen types below carry the names of the V7 types, the eras are those of
+  * the files before V9 ([[FrozenEra]]), and the other types are shared with the current schema,
+  * unchanged at V8 and V9.
   */
 private[storage] object SnapshotSidecarV7:
 

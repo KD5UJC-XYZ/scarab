@@ -6,8 +6,15 @@ import cats.syntax.eq.*
 import cats.syntax.show.*
 import xyz.kd5ujc.scarab.consensus.state.*
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.models.runtime.{Codec, ConstraintViolation, Decoded, Node, Writer}
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.models.runtime.{
+  Codec,
+  ConstraintViolation,
+  DecodeError,
+  Decoded,
+  Node,
+  Writer
+}
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
 
 import Envelope.*
 import Wire.*
@@ -78,16 +85,25 @@ trait ConsensusCodecs extends EpochStateCodecs:
     case Era.Alonzo  => readIn(ShelleyBasedEra.SAlonzo, n)
     case Era.Babbage => readIn(ShelleyBasedEra.SBabbage, n)
     case Era.Conway  => readIn(ShelleyBasedEra.SConway, n)
+    // the state of Dijkstra is not Conway's in this layout (its parameters, its EPOCH's committee)
+    case Era.Dijkstra =>
+      Left(DecodeError.at(n, DecodeError.Kind.Domain(DijkstraNotYet.LedgerState)))
 
   private def writeFileEra(a: LedgerFileEra, out: Writer): Unit = a match
     case LedgerFileEra.ByronItem(item) => originalItem.encode(item, out)
+    case LedgerFileEra.Mirrored(EraLedgerState.InShelleyEra(ShelleyBasedEra.SDijkstra, _)) =>
+      () // refused by `checkFileEra`; a decoded telescope never holds it
     case LedgerFileEra.Mirrored(EraLedgerState.InShelleyEra(era, state)) =>
       writeIn(era, state, out)
     case LedgerFileEra.Mirrored(EraLedgerState.ByronCurrent(_)) =>
       () // refused by `checkFileEra`; a decoded telescope never holds it
 
   private def checkFileEra(a: LedgerFileEra): Option[ConstraintViolation] = a match
-    case LedgerFileEra.ByronItem(_)                                      => None
+    case LedgerFileEra.ByronItem(_) => None
+    case LedgerFileEra.Mirrored(EraLedgerState.InShelleyEra(ShelleyBasedEra.SDijkstra, _)) =>
+      Some(
+        ConstraintViolation("LedgerFileEra", "the state of an era this build writes", "Dijkstra")
+      )
     case LedgerFileEra.Mirrored(EraLedgerState.InShelleyEra(era, state)) => checkIn(era, state)
     case LedgerFileEra.Mirrored(EraLedgerState.ByronCurrent(_)) =>
       Some(

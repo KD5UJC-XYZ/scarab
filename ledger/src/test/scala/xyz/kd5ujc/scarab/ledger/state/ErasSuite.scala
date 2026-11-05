@@ -19,7 +19,7 @@ class ErasSuite extends FunSuite:
       val c: ShelleyCertState = cert
       s"shelley ${c.pState.stakePools.size}"
     // a group of eras gets no refinement from an alternative pattern; the witness's proof does it
-    case SAllegra | SMary | SAlonzo | SBabbage =>
+    case SAllegra | SMary | SAlonzo | SBabbage | SDijkstra =>
       era.cert.on(cert)(c => s"shelley-based ${c.dState.genDelegs.size}", c => s"conway $c")
 
   private def isConway[E <: EraTag](using era: ShelleyBasedEra[E]): Boolean = era match
@@ -33,7 +33,8 @@ class ErasSuite extends FunSuite:
     assertEquals(ShelleyBasedEra[Alonzo], SAlonzo)
     assertEquals(ShelleyBasedEra[Babbage], SBabbage)
     assertEquals(ShelleyBasedEra[Conway], SConway)
-    assertEquals(ShelleyBasedEra.values.length, 6)
+    assertEquals(ShelleyBasedEra[Dijkstra], SDijkstra)
+    assertEquals(ShelleyBasedEra.values.length, 7)
   }
 
   test("a using witness drives era-generic code") {
@@ -81,6 +82,11 @@ class ErasSuite extends FunSuite:
   test("right-era access compiles") {
     assertEquals(typeCheckErrors("val c: CertState[Conway] = LedgerStateGen.conwayCert"), Nil)
     assertEquals(typeCheckErrors("val c: CertState[Alonzo] = LedgerStateGen.shelleyCert"), Nil)
+    // Dijkstra's families are Conway's records (cardano-ledger 9df9f98c `Dijkstra/State/*.hs`)
+    assertEquals(typeCheckErrors("val c: CertState[Dijkstra] = LedgerStateGen.conwayCert"), Nil)
+    assertEquals(typeCheckErrors("val g: GovState[Dijkstra] = LedgerStateGen.conwayGov"), Nil)
+    assert(typeCheckErrors("val c: CertState[Dijkstra] = LedgerStateGen.shelleyCert").nonEmpty)
+    assert(ShelleyBasedEra.SDijkstra.shapes.isRight)
     assertEquals(
       typeCheckErrors(
         "def f[E <: EraTag](era: ShelleyBasedEra[E], c: CertState[E]): ConwayCertState = era match { case ShelleyBasedEra.SConway => c; case _ => LedgerStateGen.conwayCert }"

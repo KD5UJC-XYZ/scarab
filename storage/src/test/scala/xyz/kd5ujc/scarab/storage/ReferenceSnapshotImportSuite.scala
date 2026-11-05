@@ -68,7 +68,9 @@ class ReferenceSnapshotImportSuite extends CatsEffectSuite:
     val genesis =
       Params.empty.copy(minFeeA = 77, drepDeposit = 42, costModels = Map(0 -> Vector(BigInt(1))))
     val read = Params.empty.copy(minFeeA = 0)
-    val completed = Params.complete(ShelleyBasedEra.SShelley, read, genesis)
+    val completed = Params
+      .complete(ShelleyBasedEra.SShelley, read, genesis)
+      .fold(e => fail(e.message), identity)
     assertEquals(completed.minFeeA, BigInt(0))
     assertEquals(completed.drepDeposit, BigInt(42))
     assertEquals(completed.costModels, genesis.costModels)

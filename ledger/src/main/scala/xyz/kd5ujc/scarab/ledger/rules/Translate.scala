@@ -24,12 +24,13 @@ enum EraNes:
 object EraNes:
   /** The runtime era a witness stands for. */
   def eraOf[E <: EraTag](era: ShelleyBasedEra[E]): Era = era match
-    case ShelleyBasedEra.SShelley => Era.Shelley
-    case ShelleyBasedEra.SAllegra => Era.Allegra
-    case ShelleyBasedEra.SMary    => Era.Mary
-    case ShelleyBasedEra.SAlonzo  => Era.Alonzo
-    case ShelleyBasedEra.SBabbage => Era.Babbage
-    case ShelleyBasedEra.SConway  => Era.Conway
+    case ShelleyBasedEra.SShelley  => Era.Shelley
+    case ShelleyBasedEra.SAllegra  => Era.Allegra
+    case ShelleyBasedEra.SMary     => Era.Mary
+    case ShelleyBasedEra.SAlonzo   => Era.Alonzo
+    case ShelleyBasedEra.SBabbage  => Era.Babbage
+    case ShelleyBasedEra.SConway   => Era.Conway
+    case ShelleyBasedEra.SDijkstra => Era.Dijkstra
 
   /** The state with the handle on its UTxO set changed by `f`: the entries a block reads put in,
     * the stamp of the block, the set settled to what the backing store holds.
@@ -69,7 +70,9 @@ object EraNes:
   */
 object Translate:
 
-  /** The next era's state, or none in the last era. */
+  /** The next era's state, or none in the last era (Dijkstra; the translation into it is refused,
+    * [[TickFailure.NotYet]]).
+    */
   def next(globals: Globals, e: EraNes): Either[TickFailure, Option[EraNes]] = e match
     case i: EraNes.InEra[e] =>
       i.era match
@@ -83,7 +86,11 @@ object Translate:
           Right(Some(EraNes.InEra(ShelleyBasedEra.SBabbage, alonzoToBabbage(i.nes))))
         case ShelleyBasedEra.SBabbage =>
           babbageToConway(globals, i.nes).map(n => Some(EraNes.InEra(ShelleyBasedEra.SConway, n)))
-        case ShelleyBasedEra.SConway => Right(None)
+        // `TranslateEra DijkstraEra NewEpochState` (cardano-ledger 9df9f98c
+        // `Dijkstra/Translation.hs:71-88`) is not implemented yet
+        case ShelleyBasedEra.SConway =>
+          Left(TickFailure.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Translation))
+        case ShelleyBasedEra.SDijkstra => Right(None)
 
   // ---- the parameters
 

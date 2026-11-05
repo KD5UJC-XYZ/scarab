@@ -45,12 +45,13 @@ object SnapshotMigration:
     val empty: Report = Report(Nil, Nil)
 
   /** The native snapshot migration registration: V5 files are brought to V7 ([[SnapshotV7.fromV5]]:
-    * the V5 body unchanged behind a [[CheckpointBinding.Legacy]] binding), and V7 files to V8
-    * ([[SnapshotV8.fromV7]]: the sidecar read in the frozen V7 schema and written in the current
-    * one), each step atomically. A future format adds its frozen previous reader and atomic
-    * conversion here; retired V1–V4 identifiers remain recognized and refuse admission before any
-    * mutable store opens, and so does a V5 or V7 file that no migration can convert without
-    * inventing state ([[StorageError.ResyncRequired]]).
+    * the V5 body unchanged behind a [[CheckpointBinding.Legacy]] binding), V7 files to V8
+    * ([[SnapshotV8.fromV7]]: the sidecar read in the frozen V7 schema and written in the frozen V8
+    * one), and V8 files to V9 ([[SnapshotV9.fromV8]]: the sidecar read in the frozen V8 schema and
+    * written in the current one), each step atomically. A future format adds its frozen previous
+    * reader and atomic conversion here; retired V1–V4 identifiers remain recognized and refuse
+    * admission before any mutable store opens, and so does a V5 or V7 file that no migration can
+    * convert without inventing state ([[StorageError.ResyncRequired]]).
     */
   def toCurrent[F[_]: Sync]: NodeSnapshotMigration[F] =
     new NodeSnapshotMigration[F]
@@ -178,6 +179,20 @@ object SnapshotMigration:
               FileLedgerSnapshots
                 .verified(raw)
                 .flatMap(SnapshotV8.fromV7)
+                .fold(
+                  e => named(file, e).raise[F, Unit],
+                  content =>
+                    AtomicFile
+                      .replaceAll[F](file, Seq(content, FileLedgerSnapshots.digest(content)))
+                )
+            )
+        case (FormatVersion.V8, FormatVersion.V9) =>
+          AtomicFile
+            .guard[F, Array[Byte]](file.toString)(JFiles.readAllBytes(file.toNioPath))
+            .flatMap(raw =>
+              FileLedgerSnapshots
+                .verified(raw)
+                .flatMap(SnapshotV9.fromV8)
                 .fold(
                   e => named(file, e).raise[F, Unit],
                   content =>

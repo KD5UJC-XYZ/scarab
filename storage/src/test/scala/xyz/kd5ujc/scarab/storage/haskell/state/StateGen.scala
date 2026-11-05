@@ -347,7 +347,8 @@ object StateGen:
             minUTxOValue = none.minUTxOValue,
             coinsPerUTxOWord = none.coinsPerUTxOWord
           )
-        case ShelleyBasedEra.SConway =>
+        // Dijkstra's are refused by the codec; generated as Conway's to show that
+        case ShelleyBasedEra.SConway | ShelleyBasedEra.SDijkstra =>
           noDecentralisation(p).copy(
             minUTxOValue = none.minUTxOValue,
             coinsPerUTxOWord = none.coinsPerUTxOWord

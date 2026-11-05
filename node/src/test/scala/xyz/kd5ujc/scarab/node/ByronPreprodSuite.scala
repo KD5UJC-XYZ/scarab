@@ -235,7 +235,7 @@ class ByronPreprodSuite extends CatsEffectSuite:
   ) {
     given cats.mtl.Ask[IO, xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv] =
       setup.mirrorAsk(IO.pure(Map.empty))
-    val format = xyz.kd5ujc.scarab.storage.SnapshotV8.format[IO](
+    val format = xyz.kd5ujc.scarab.storage.SnapshotV9.format[IO](
       xyz.kd5ujc.scarab.storage.SnapshotCheck.Full
     )
     Vector(1, 20, byronCount, byronCount + 5).traverse_ { i =>

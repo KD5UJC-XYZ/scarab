@@ -56,7 +56,7 @@ final case class HardForkConfig(triggers: Map[Era, ForkTrigger], maxMajorProtVer
   def transition(k: BigInt): Hfc.Transition = pending =>
     HardForkConfig
       .next(pending.era)
-      .flatMap(triggers.get)
+      .flatMap(trigger)
       .flatMap {
         case ForkTrigger.AtEpoch(epoch) => Some(epoch)
         case ForkTrigger.AtVersion(major) =>
@@ -64,6 +64,23 @@ final case class HardForkConfig(triggers: Map[Era, ForkTrigger], maxMajorProtVer
             pending.update.contains(BigInt(major)) && pending.afterVoting >= k
           )(pending.epoch + 1)
       }
+
+  /** The trigger of `era` when this node may enter it. Dijkstra is entered only once the maximum
+    * major protocol version reaches its first (12, [[HardForkConfig.eraProtVerLow]]): the reference
+    * has 12 only with `ExperimentalHardForksEnabled` (cardano-node b004fe0c
+    * `Cardano/Node/Protocol/Cardano.hs:192-194`), and this build implements none of Dijkstra's
+    * rules yet. Below that its trigger is carried (`triggerHardForkDijkstra`, ouroboros-consensus
+    * 2416493b `Cardano/Node.hs:724-728`) but never fires, so the chain stays in Conway, where the
+    * reference with an epoch trigger would translate the state into Dijkstra. That refusal is the
+    * owner's decision of 2026-11-04 on #54 (Dijkstra lands in parts behind a refusal to enter it)
+    * and is removed when the node implements the era.
+    */
+  def trigger(era: Era): Option[ForkTrigger] =
+    triggers
+      .get(era)
+      .filter(_ =>
+        era != Era.Dijkstra || maxMajorProtVer >= HardForkConfig.eraProtVerLow(Era.Dijkstra)
+      )
 
   /** The era a block at `epoch` is in, from the state `pending` of the chain before it: the eras
     * the combinator's tick enters on the way (`extendToSlot`), each asked of [[transition]] with
@@ -129,7 +146,15 @@ object HardForkConfig:
 
   /** The Shelley-based eras in the order they are entered. */
   val Sequence: NonEmptyVector[Era] =
-    NonEmptyVector.of(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway)
+    NonEmptyVector.of(
+      Era.Shelley,
+      Era.Allegra,
+      Era.Mary,
+      Era.Alonzo,
+      Era.Babbage,
+      Era.Conway,
+      Era.Dijkstra
+    )
 
   /** The Shelley-based era entered after `era`, if any. */
   def next(era: Era): Option[Era] =
@@ -144,6 +169,9 @@ object HardForkConfig:
     case Era.Alonzo  => 5
     case Era.Babbage => 7
     case Era.Conway  => 9
+    // `type ProtVerLow DijkstraEra = 12`, cardano-ledger 9df9f98c
+    // `libs/cardano-ledger-core/internal/Cardano/Ledger/Internal/Definition/Era.hs:140`
+    case Era.Dijkstra => 12
 
   /** An era with a `Test<Era>HardForkAtEpoch` key is entered at that epoch, any other at its first
     * protocol version.

@@ -30,12 +30,13 @@ object EraLedgerState:
   extension [E <: EraTag](era: ShelleyBasedEra[E])
     /** The era a witness stands for. */
     def toEra: Era = era match
-      case ShelleyBasedEra.SShelley => Era.Shelley
-      case ShelleyBasedEra.SAllegra => Era.Allegra
-      case ShelleyBasedEra.SMary    => Era.Mary
-      case ShelleyBasedEra.SAlonzo  => Era.Alonzo
-      case ShelleyBasedEra.SBabbage => Era.Babbage
-      case ShelleyBasedEra.SConway  => Era.Conway
+      case ShelleyBasedEra.SShelley  => Era.Shelley
+      case ShelleyBasedEra.SAllegra  => Era.Allegra
+      case ShelleyBasedEra.SMary     => Era.Mary
+      case ShelleyBasedEra.SAlonzo   => Era.Alonzo
+      case ShelleyBasedEra.SBabbage  => Era.Babbage
+      case ShelleyBasedEra.SConway   => Era.Conway
+      case ShelleyBasedEra.SDijkstra => Era.Dijkstra
 
   extension (s: EraLedgerState)
     /** The era the state is in. */
@@ -53,13 +54,14 @@ object EraLedgerState:
     case (InShelleyEra(ea, a), InShelleyEra(eb, b)) =>
       import ShelleyBasedEra.*
       (ea, eb) match
-        case (SShelley, SShelley) => eqIn(ea, a, b)
-        case (SAllegra, SAllegra) => eqIn(ea, a, b)
-        case (SMary, SMary)       => eqIn(ea, a, b)
-        case (SAlonzo, SAlonzo)   => eqIn(ea, a, b)
-        case (SBabbage, SBabbage) => eqIn(ea, a, b)
-        case (SConway, SConway)   => eqIn(ea, a, b)
-        case (_, _)               => false
+        case (SShelley, SShelley)   => eqIn(ea, a, b)
+        case (SAllegra, SAllegra)   => eqIn(ea, a, b)
+        case (SMary, SMary)         => eqIn(ea, a, b)
+        case (SAlonzo, SAlonzo)     => eqIn(ea, a, b)
+        case (SBabbage, SBabbage)   => eqIn(ea, a, b)
+        case (SConway, SConway)     => eqIn(ea, a, b)
+        case (SDijkstra, SDijkstra) => eqIn(ea, a, b)
+        case (_, _)                 => false
     case _ => false
   }
 
@@ -72,13 +74,14 @@ object EraLedgerState:
       case (InShelleyEra(ea, x), InShelleyEra(eb, y)) =>
         import ShelleyBasedEra.*
         (ea, eb) match
-          case (SShelley, SShelley) => diffIn(ea, x, y)
-          case (SAllegra, SAllegra) => diffIn(ea, x, y)
-          case (SMary, SMary)       => diffIn(ea, x, y)
-          case (SAlonzo, SAlonzo)   => diffIn(ea, x, y)
-          case (SBabbage, SBabbage) => diffIn(ea, x, y)
-          case (SConway, SConway)   => diffIn(ea, x, y)
-          case (_, _)               => Some(Difference(Path.root, show(a), show(b)))
+          case (SShelley, SShelley)   => diffIn(ea, x, y)
+          case (SAllegra, SAllegra)   => diffIn(ea, x, y)
+          case (SMary, SMary)         => diffIn(ea, x, y)
+          case (SAlonzo, SAlonzo)     => diffIn(ea, x, y)
+          case (SBabbage, SBabbage)   => diffIn(ea, x, y)
+          case (SConway, SConway)     => diffIn(ea, x, y)
+          case (SDijkstra, SDijkstra) => diffIn(ea, x, y)
+          case (_, _)                 => Some(Difference(Path.root, show(a), show(b)))
       case _ => Some(Difference(Path.root, show(a), show(b)))
     def show(a: EraLedgerState): String = Difference.clipped(a match
       case ByronCurrent(s)    => s"ByronCurrent(${s.toString})"

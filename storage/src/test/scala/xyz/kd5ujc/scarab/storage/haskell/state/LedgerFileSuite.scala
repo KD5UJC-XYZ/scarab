@@ -116,12 +116,13 @@ class LedgerFileSuite extends ScalaCheckSuite:
             (0 until n).foreach(_ => w.nul())
           })
         )
-    case Era.Shelley => shelleyIn[Shelley]
-    case Era.Allegra => shelleyIn[Allegra]
-    case Era.Mary    => shelleyIn[Mary]
-    case Era.Alonzo  => shelleyIn[Alonzo]
-    case Era.Babbage => shelleyIn[Babbage]
-    case Era.Conway  => shelleyIn[Conway]
+    case Era.Shelley  => shelleyIn[Shelley]
+    case Era.Allegra  => shelleyIn[Allegra]
+    case Era.Mary     => shelleyIn[Mary]
+    case Era.Alonzo   => shelleyIn[Alonzo]
+    case Era.Babbage  => shelleyIn[Babbage]
+    case Era.Conway   => shelleyIn[Conway]
+    case Era.Dijkstra => shelleyIn[Dijkstra]
 
   private val fileGen: Gen[HaskellLedgerFile] =
     for
@@ -228,8 +229,14 @@ class LedgerFileSuite extends ScalaCheckSuite:
 
   test("a telescope of no items or of more eras than the chain has is refused") {
     assert(failure(chainDepTelescope, bytesOf(_.arrayHead(0))).kind.isInstanceOf[Kind.BadArity])
+    val nine = telescopeOf(w => (0 until 9).foreach(_ => w.nul()), 9)
+    assert(failure(chainDepTelescope, nine).kind.isInstanceOf[Kind.BadArity])
+    // eight is a telescope in Dijkstra, whose states this build does not read yet (#54)
     val eight = telescopeOf(w => (0 until 8).foreach(_ => w.nul()), 8)
-    assert(failure(chainDepTelescope, eight).kind.isInstanceOf[Kind.BadArity])
+    assertEquals(
+      failure(chainDepTelescope, eight).kind,
+      Kind.Domain(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.LedgerState)
+    )
   }
 
   test("a telescope whose eras do not abut is refused as a violation, naming the telescope") {

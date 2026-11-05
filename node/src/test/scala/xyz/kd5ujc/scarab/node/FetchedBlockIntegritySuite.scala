@@ -39,7 +39,8 @@ class FetchedBlockIntegritySuite extends FunSuite:
 
   test("all 731 reference-adopted original bodies satisfy their exact announced headers") {
     assertEquals(originals.size, 731)
-    assertEquals(originals.map(_._1.era).toSet, Era.values.toSet)
+    // the node does not enter Dijkstra (#54)
+    assertEquals(originals.map(_._1.era).toSet, Era.values.toSet - Era.Dijkstra)
     assert(originals.exists(_._1.header.isBoundary))
     originals.foreach { (block, raw) =>
       assertEquals(BlockTransport.check(block.header, raw), Right(block))
@@ -89,7 +90,7 @@ class FetchedBlockIntegritySuite extends FunSuite:
     assert(ReceivedBlockRecovery.checked(ref, Bytes(Vector(0xff.toByte)), epochSlots).isLeft)
   }
 
-  for era <- Era.values.filterNot(_ == Era.Byron) do
+  for era <- Era.values.filterNot(e => e == Era.Byron || e == Era.Dijkstra) do
     test(s"$era declared-size-only failure remains semantic, not a transport body-hash failure") {
       val (block, raw) = originals.find(_._1.era == era).getOrElse(fail(s"missing $era"))
       val header = block.header match
